@@ -7,8 +7,8 @@
     "name": "Christopher Bobrowitz",
     "email": "cbobrowitz@viasat.com"
   },
-  "homepage": "https://git.viasat.com/cbobrowitz/super-spec",
-  "repository": "https://git.viasat.com/cbobrowitz/super-spec",
+  "homepage": "https://github.com/aztechead/super-spec",
+  "repository": "https://github.com/aztechead/super-spec",
   "license": "MIT",
   "keywords": ["spec-driven", "skills", "tdd", "agents", "claude-code"]
 }
