@@ -5,29 +5,50 @@
 #   exit 0  = allow
 #   exit 2  = block (with stderr message shown to user)
 #
-# Validates that tool_input.metadata contains all required fields:
-#   blockedBy, files, verifyCommand, acceptanceCriteria
+# SCOPE: only super-spec-owned tasks are validated. A task is super-spec-owned
+# when tool_input.metadata.superSpec == true (written by EXECUTE Step 4) or the
+# subject matches the EXECUTE naming convention "task-NNN: ...". Every other
+# TaskCreate — the main thread's ordinary task tracking, other plugins, other
+# workflows — passes through untouched. Enforcing on unmarked tasks broke core
+# Claude Code task tracking for any session with the plugin installed.
 #
-# Exit 2 with DENY: message to stderr listing missing/invalid fields.
-# Exit 0 when all required fields are present and valid.
+# Validates that marked tasks carry: blockedBy, files, verifyCommand,
+# acceptanceCriteria (the EXECUTE self-claim contract).
+#
+# Kill switch: SUPER_SPEC_TASK_GUARD=0 -> exit 0 unconditionally.
+# Fail-open: malformed payload or python3 failure -> exit 0 (never error).
 set -euo pipefail
 
-INPUT=$(cat)
+# Fail-open: any unexpected error must not block the session.
+trap 'exit 0' ERR
 
-validate_metadata() {
-  printf '%s' "$INPUT" | python3 -c "
-import json, sys
+if [[ "${SUPER_SPEC_TASK_GUARD:-1}" == "0" ]]; then
+  exit 0
+fi
 
-d = json.load(sys.stdin)
-metadata = d.get('tool_input', {}).get('metadata', None)
+INPUT=$(cat 2>/dev/null) || true
+[[ -z "$INPUT" ]] && exit 0
+
+RESULT=$(printf '%s' "$INPUT" | python3 -c "
+import json, re, sys
+
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('SKIP')
+    sys.exit(0)
+
+tool_input = d.get('tool_input') or {}
+metadata = tool_input.get('metadata') or {}
+subject = tool_input.get('subject') or ''
+
+marked = metadata.get('superSpec') is True or re.match(r'^task-[0-9]+:', subject)
+if not marked:
+    print('SKIP')
+    sys.exit(0)
 
 required = ['blockedBy', 'files', 'verifyCommand', 'acceptanceCriteria']
 missing = []
-
-if metadata is None:
-    print('MISSING:' + ','.join(required))
-    sys.exit(0)
-
 for field in required:
     if field not in metadata:
         missing.append(field)
@@ -44,14 +65,18 @@ if missing:
     print('MISSING:' + ','.join(missing))
 else:
     print('OK')
-"
-}
+" 2>/dev/null) || RESULT="SKIP"
 
-RESULT=$(validate_metadata)
-if [[ "$RESULT" != "OK" ]]; then
-  MISSING_FIELDS="${RESULT#MISSING:}"
-  echo "DENY: Task metadata missing or invalid required fields: $MISSING_FIELDS. All tasks must have blockedBy, files, verifyCommand, and acceptanceCriteria." >&2
-  exit 2
-fi
-
-exit 0
+case "$RESULT" in
+  OK|SKIP|"")
+    exit 0
+    ;;
+  MISSING:*)
+    MISSING_FIELDS="${RESULT#MISSING:}"
+    echo "DENY: super-spec task metadata missing or invalid required fields: $MISSING_FIELDS. EXECUTE tasks must carry blockedBy, files, verifyCommand, and acceptanceCriteria. (Disable: SUPER_SPEC_TASK_GUARD=0)" >&2
+    exit 2
+    ;;
+  *)
+    exit 0
+    ;;
+esac

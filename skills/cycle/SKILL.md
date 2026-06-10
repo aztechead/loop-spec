@@ -51,6 +51,15 @@ When a phase ends: call `TeamDelete` to tear down the team before the next phase
 
 This rule applies in DISCUSS, PLAN, EXECUTE, VERIFY, MAP-CODEBASE, and any sub-skill called from this cycle.
 
+**No-teams fallback:** when `.super-spec/runtime.json.teamsAvailable == false`,
+every rule above degrades per the substitution table in
+**`skills/shared/no-teams-fallback.md`**: no `TeamCreate`/`TeamDelete`/`SendMessage`
+— teammates become one-shot `Agent` calls with the same agent types, models, and
+prompt templates, rework rounds re-dispatch with prior summaries from
+`gate-logs/` inlined, and EXECUTE's ladder selects the loop-fleet or subagent
+rung. Phases MUST NOT call team tools when `teamsAvailable == false`; doing so
+throws harness errors.
+
 ## Non-interactive mode
 
 Set `SUPER_SPEC_NON_INTERACTIVE=1` to skip all AskUserQuestion calls (used by the manual non-interactive end-to-end matrix and CI).
@@ -81,7 +90,7 @@ Scan `.super-spec/features/*/feature.json` (if directory exists). For each:
   - "Migrate to v4": run `bash "${CLAUDE_SKILL_DIR}/../../lib/migrate-schema-v3-to-v4.sh" ".super-spec/features/{slug}"`, reload feature.json
   - "Continue on v3": proceed without migration; cycle will use the existing v3 behavior (no spec phase)
   - When `SUPER_SPEC_NON_INTERACTIVE=1`: default to "Continue on v3" unless `SUPER_SPEC_ANSWER_MIGRATE_SCHEMA=1` is set
-- **Orphan detection:** if `currentTeamName != null`, probe team liveness by calling `TaskList({team: currentTeamName})`:
+- **Orphan detection:** if `currentTeamName != null`, probe team liveness by calling `TaskList({team: currentTeamName})`. (When agent teams are unavailable this probe is meaningless: treat the team as gone, clear `currentTeamName`, and add the feature to the resumable list — see `skills/shared/no-teams-fallback.md`.) Otherwise:
   - If `TaskList` returns without error: the team is still live (orphaned). Print:
     ```
     Previous team {currentTeamName} for feature {slug} was orphaned and is still live in the harness.
@@ -104,19 +113,24 @@ If user picks resume: load feature.json into memory, skip Steps 2-5, route to St
 
 ### Step 2 - Startup health-check
 
-Check that `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is set to `1`:
+Probe agent-teams availability. Teams are an ACCELERATOR, not a prerequisite:
+when they are unavailable the cycle still runs end-to-end on the documented
+fallbacks (DISCUSS/PLAN/VERIFY: one-shot subagent fallback per the **No-teams
+fallback** contract below; EXECUTE: loop-fleet or subagent rung). Do NOT abort.
 
 ```bash
-if [[ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS}" != "1" ]]; then
-  echo "super-spec health check FAILED"
-  echo "  Capability: agent teams"
-  echo "  Error: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS is not set to 1"
-  echo "  Suggested fix: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 and re-run"
-  exit 1
+teams_available=true
+if [[ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" != "1" ]]; then
+  teams_available=false
+  loops_hint="subagent fallback"
+  command -v claude >/dev/null 2>&1 && loops_hint="loop-fleet + subagent fallback"
+  echo "super-spec: agent teams unavailable (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1)."
+  echo "  Continuing with ${loops_hint}. For persistent phase teams: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1."
 fi
 ```
 
-Abort immediately if unset or not equal to `1`.
+`teams_available` is persisted into `.super-spec/runtime.json` together with the
+workflow probe below; phase skills read it to pick their dispatch path.
 
 Model availability is probed in Step 3.5. Model selection is fixed (no preset), so the probe always covers the same two models.
 
@@ -142,7 +156,25 @@ Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe c
 
 Model selection is fixed (see `skills/shared/model-matrix.md`): the unique model set is always `{claude-opus-4-8, claude-sonnet-4-6}`.
 
-Dispatch one probe Agent per unique model (parallel, single tool message):
+**Probe cache (speed):** the probe result is cached in `.super-spec/runtime.json`
+(`modelsProbedAt`, ISO-8601). Skip the probe entirely — zero Agent dispatches —
+when either holds:
+
+```bash
+skip_probe=false
+[[ "${SUPER_SPEC_SKIP_HEALTHCHECK:-}" == "1" ]] && skip_probe=true
+probed_at=$(jq -r '.modelsProbedAt // empty' .super-spec/runtime.json 2>/dev/null || true)
+if [[ -n "$probed_at" ]]; then
+  age=$(( $(date -u +%s) - $(python3 -c "import sys,datetime;print(int(datetime.datetime.strptime(sys.argv[1],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()))" "$probed_at" 2>/dev/null || echo 0) ))
+  [[ "$age" -lt 86400 ]] && skip_probe=true   # probed within the last 24h
+fi
+```
+
+A model-policy failure surfaces identically on the first real dispatch, so the
+cache trades nothing for the saved startup latency. On probe success, write
+`modelsProbedAt` into `runtime.json` (merged with the workflow probe below).
+
+When not skipped, dispatch one probe Agent per unique model (parallel, single tool message):
 
 ```
 Parallel:
@@ -170,7 +202,21 @@ mkdir -p .super-spec
 wf="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workflow-availability.sh")"
 optin=false
 [[ "${SUPER_SPEC_EXECUTE_WORKFLOW:-}" == "1" ]] && optin=true
-python3 -c "import json,sys; json.dump({'workflowsAvailable': sys.argv[1]=='true', 'workflowExecuteOptIn': sys.argv[2]=='true'}, open('.super-spec/runtime.json','w'))" "$wf" "$optin"
+# Merge-write: preserves modelsProbedAt (Step 3.5 cache) across cycles.
+python3 -c "
+import json, sys, os
+path = '.super-spec/runtime.json'
+data = {}
+if os.path.exists(path):
+    try:
+        data = json.load(open(path))
+    except Exception:
+        data = {}
+data['workflowsAvailable'] = sys.argv[1] == 'true'
+data['workflowExecuteOptIn'] = sys.argv[2] == 'true'
+data['teamsAvailable'] = sys.argv[3] == 'true'
+json.dump(data, open(path, 'w'))
+" "$wf" "$optin" "$teams_available"
 ```
 
 `lib/workflow-availability.sh` gates on the CC version; set `SUPER_SPEC_WORKFLOWS_AVAILABLE=1|0` to force it (testing).

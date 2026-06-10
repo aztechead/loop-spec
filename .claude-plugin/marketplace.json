@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "super-spec",
-      "description": "Spec-driven development workflow for Claude Code (spec phase, user-gate flow, graphify, Ralph remediation, forensics, dynamic-workflow fan-out)",
-      "version": "3.1.1",
+      "description": "Spec-driven development workflow for Claude Code (spec phase, loop-runner fleet execution, user-gate flow, graphify, Ralph remediation, forensics, dynamic-workflow fan-out)",
+      "version": "3.2.0",
       "source": "./",
       "author": {
         "name": "Christopher Bobrowitz",

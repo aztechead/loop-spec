@@ -1,0 +1,24 @@
+# nightly.cron — run a loop on infrastructure time instead of your attention.
+#
+# A loop is cron plus a decision-maker in the body. This is the cron half: the
+# scheduler fires, the harness runs the agent, the guardrails make sure it halts,
+# and the exit status + log tell you what happened. Install with `crontab -e`.
+#
+# Adjust paths, repo, budget, and the task to taste. Keep the budget conservative —
+# a runaway nightly loop is exactly the billing surprise the guardrails exist to prevent.
+
+# Every night at 02:00: triage and fix flaky tests, then open a PR if anything changed.
+0 2 * * *  cd /home/you/project && \
+  /usr/bin/python3 /path/to/loop-runner/scripts/loop.py \
+    "Investigate tests marked @flaky. Stabilize them with real fixes (not retries or skips). \
+     If you change anything, open a PR titled 'nightly: flaky test fixes'." \
+    --verify "pytest -q -m 'not slow'" \
+    --budget 3.00 --max-iterations 8 --timeout 3600 --commit \
+    --state-dir /home/you/project/.loop/nightly --task-id nightly-flaky \
+    >> /home/you/project/.loop/nightly.log 2>&1
+
+# Notes:
+# - Each scheduled run uses its own --state-file so an interrupted night resumes cleanly.
+# - Redirect to a log: unattended, the only record is what you captured.
+# - The harness exits non-zero unless the task completed, so you can chain `|| notify ...`
+#   to alert yourself when a night halts on budget/iterations instead of success.

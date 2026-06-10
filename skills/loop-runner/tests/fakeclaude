@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# fakeclaude — offline stand-in for `claude -p`, used by tests/run_tests.sh.
+#
+# Behaviors (env-driven so one stub covers every scenario):
+#   FAKE_COST     per-call total_cost_usd        (default 1.25)
+#   FAKE_STILL=1  change nothing (stall scenario)
+#   FAKE_TAMPER=<path>  append to that path (verifier-integrity scenario)
+#   FAKE_PLAN=<file>    return that file's contents as the result (compiler scenario)
+#
+# Protocol: if the prompt (any argv) contains TOUCH:<file>, create/append that file —
+# lets plan tasks "do work" that their verifiers can check.
+set -euo pipefail
+COST="${FAKE_COST:-1.25}"
+
+PROMPT=""
+for a in "$@"; do PROMPT="$PROMPT $a"; done
+
+if [[ -n "${FAKE_PLAN:-}" ]]; then
+  python3 - "$FAKE_PLAN" "$COST" << 'EOF'
+import json, sys, pathlib
+print(json.dumps({"type":"result","subtype":"success","is_error":False,
+  "total_cost_usd":float(sys.argv[2]),"session_id":"sess-compile","num_turns":2,
+  "result":pathlib.Path(sys.argv[1]).read_text()}))
+EOF
+  exit 0
+fi
+
+if [[ -n "${FAKE_TAMPER:-}" ]]; then
+  echo "tampered" >> "$FAKE_TAMPER"
+fi
+
+if [[ "$PROMPT" =~ TOUCH:([A-Za-z0-9._/-]+) ]]; then
+  f="${BASH_REMATCH[1]}"
+  mkdir -p "$(dirname "$f")" 2>/dev/null || true
+  echo "work $(date +%s%N)" >> "$f"
+elif [[ "${FAKE_STILL:-0}" != "1" ]]; then
+  echo "iter $(date +%s%N)" >> work.txt
+fi
+
+python3 - "$COST" << 'EOF'
+import json, sys
+print(json.dumps({"type":"result","subtype":"success","is_error":False,
+  "total_cost_usd":float(sys.argv[1]),"session_id":"sess-abc","num_turns":3,
+  "result":"did some work this iteration"}))
+EOF

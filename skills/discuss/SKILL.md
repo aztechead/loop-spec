@@ -8,6 +8,13 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 You are the DISCUSS phase orchestrator. Invoked by `super-spec:cycle` after tier + style + slug are chosen.
 
+> **No-teams fallback:** if `.super-spec/runtime.json.teamsAvailable == false`, do NOT
+> call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run every teammate below as
+> a one-shot `Agent` call with the same agent type, model, and prompt template, per
+> `skills/shared/no-teams-fallback.md`. Critique rounds become sequential challenger →
+> advocate Agent calls with prior round summaries (from `gate-logs/`) inlined. All
+> artifacts, gates, and retry budgets are unchanged.
+
 ## Inputs (from cycle skill via feature.json)
 
 - `slug`, `tier`, `execStyle`, `feature_title`

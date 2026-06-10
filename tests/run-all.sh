@@ -35,6 +35,7 @@ run_suite "lib/team-ops"              "bash tests/lib/team-ops.test.sh"
 run_suite "lib/git-ops"               "bash tests/lib/git-ops.test.sh"
 run_suite "lib/gsd-ingest"            "bash tests/lib/gsd-ingest.test.sh"
 run_suite "hooks/team/teammate-idle"  "bash hooks/team/teammate-idle.test.sh"
+run_suite "hooks/team/task-created"   "bash hooks/team/task-created.test.sh"
 run_suite "hooks/team/task-completed" "bash hooks/team/task-completed.test.sh"
 run_suite "hooks/team/post-task-complete-revalidate" "bash hooks/team/post-task-complete-revalidate.test.sh"
 run_suite "hooks/team/stop-revalidate-user-gates" "bash hooks/team/stop-revalidate-user-gates.test.sh"
@@ -54,6 +55,8 @@ run_suite "lib/migrate-schema-v3-to-v4"   "bash tests/lib/migrate-schema-v3-to-v
 run_suite "lib/worktree-commit-check" "bash tests/lib/worktree-commit-check.test.sh"
 run_suite "lib/workflow-availability" "bash tests/lib/workflow-availability.test.sh"
 run_suite "lib/dag-width"             "bash tests/lib/dag-width.test.sh"
+run_suite "lib/plan-to-loop"          "bash tests/lib/plan-to-loop.test.sh"
+run_suite "skills/loop-runner"        "bash skills/loop-runner/tests/run_tests.sh"
 
 # Workflow scripts need a node runtime to syntax-check. Run the workflows smoke
 # only when node is resolvable; otherwise skip (do not fail the suite) since the

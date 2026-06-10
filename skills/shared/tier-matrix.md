@@ -31,9 +31,11 @@ available concurrency wins, and the heaviest (Workflow) requires explicit opt-in
 
 | W (DAG width) | Mechanism | Why |
 |---|---|---|
+| any W, `SUPER_SPEC_EXECUTE_LOOPS=1` + `claude` CLI | **loop fleet** | explicit opt-in: bounded headless loops, per-iteration verify, SPEC/PLAN hash-locked (`skills/shared/execute-loop-fleet.md`) |
 | `W == 1` | **subagent, sequential** | no concurrency to exploit; one `Agent` per task, lead merges inline |
 | `2 <= W < t_team` | **subagent, batched** | modest fan-out; a wave of parallel `Agent` calls, no persistent team |
 | `t_team <= W < t_wf` | **agent team** | high concurrency with rework/idle-wake coordination pays for `TeamCreate` |
+| `t_team <= W`, teams unavailable + `claude` CLI | **loop fleet** | automatic replacement for the team rung when `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is not enabled |
 | `W >= t_wf` **and** opted in **and** available | **workflow** | undeniable fan-out ROI; deterministic DAG via `execute-dag.js` |
 
 Thresholds:

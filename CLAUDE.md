@@ -26,7 +26,7 @@ Skills must use `${CLAUDE_SKILL_DIR}` (the documented skill substitution) to rea
 
 ## Tests
 
-- Test runner: `bash tests/run-all.sh` from repo root (validators + hook + lib units + workflow syntax).
+- Test runner: `bash tests/run-all.sh` from repo root (validators + hook + lib units + workflow syntax + the bundled loop-runner offline suite).
 - Manual end-to-end matrix: see `tests/README.md` (run against a live Claude Code session; there is no scripted headless e2e test).
 - All commits must keep `tests/run-all.sh` passing.
 

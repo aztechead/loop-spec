@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test suite for hooks/team/task-created.sh
-# PreToolUse (TaskCreate) hook: schema validation on task creation.
+# PreToolUse (TaskCreate) hook: schema validation on super-spec-owned tasks only.
 # Usage: bash hooks/team/task-created.test.sh
 set -euo pipefail
 
@@ -26,43 +26,59 @@ check() {
   fi
 }
 
-# Build a TaskCreate payload with given metadata JSON string
-payload_with_metadata() {
-  local metadata="$1"
-  printf '{"tool_name":"TaskCreate","tool_input":{"metadata":%s}}' "$metadata"
+# Build a TaskCreate payload with given subject + metadata JSON string
+payload() {
+  local subject="$1"
+  local metadata="$2"
+  printf '{"tool_name":"TaskCreate","tool_input":{"subject":"%s","metadata":%s}}' "$subject" "$metadata"
 }
 
-VALID_META='{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"]}'
+VALID_META='{"superSpec":true,"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"]}'
 
 echo "=== task-created.sh tests ==="
 
-# a: all four fields present and valid -> ALLOW (exit 0)
-check "a: all required fields present ALLOW" 0 \
-  "$(payload_with_metadata "$VALID_META")"
+# a: marked task, all four fields present -> ALLOW (exit 0)
+check "a: marked task with all required fields ALLOW" 0 \
+  "$(payload 'task-001: add adder' "$VALID_META")"
 
-# b: empty metadata {} -> DENY (exit 2)
-check "b: empty metadata DENY" 2 \
-  "$(payload_with_metadata '{}')"
+# b: UNMARKED ordinary task with no metadata -> ALLOW (core task tracking must not break)
+check "b: unmarked bare TaskCreate ALLOW" 0 \
+  '{"tool_name":"TaskCreate","tool_input":{"subject":"Refactor the parser","description":"..."}}'
 
-# c: missing verifyCommand -> DENY (exit 2)
-MISSING_VERIFY='{"blockedBy":[],"files":["foo.sh"],"acceptanceCriteria":["works"]}'
-check "c: missing verifyCommand DENY" 2 \
-  "$(payload_with_metadata "$MISSING_VERIFY")"
+# c: unmarked task with partial metadata -> ALLOW (not super-spec-owned)
+check "c: unmarked task with unrelated metadata ALLOW" 0 \
+  "$(payload 'Investigate flaky test' '{"priority":"high"}')"
 
-# d: empty acceptanceCriteria array -> DENY (exit 2)
-EMPTY_AC='{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":[]}'
-check "d: empty acceptanceCriteria array DENY" 2 \
-  "$(payload_with_metadata "$EMPTY_AC")"
+# d: superSpec marker with missing verifyCommand -> DENY (exit 2)
+MISSING_VERIFY='{"superSpec":true,"blockedBy":[],"files":["foo.sh"],"acceptanceCriteria":["works"]}'
+check "d: marked task missing verifyCommand DENY" 2 \
+  "$(payload 'task-002: x' "$MISSING_VERIFY")"
 
-# e: missing blockedBy -> DENY (exit 2)
-MISSING_BLOCKED_BY='{"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"]}'
-check "e: missing blockedBy DENY" 2 \
-  "$(payload_with_metadata "$MISSING_BLOCKED_BY")"
+# e: subject convention task-NNN: marks the task even without superSpec key -> DENY on empty metadata
+check "e: task-NNN: subject convention enforced DENY" 2 \
+  "$(payload 'task-003: y' '{}')"
 
-# f: missing files -> DENY (exit 2)
-MISSING_FILES='{"blockedBy":[],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"]}'
-check "f: missing files DENY" 2 \
-  "$(payload_with_metadata "$MISSING_FILES")"
+# f: marked, empty acceptanceCriteria array -> DENY (exit 2)
+EMPTY_AC='{"superSpec":true,"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":[]}'
+check "f: marked task empty acceptanceCriteria DENY" 2 \
+  "$(payload 'task-004: z' "$EMPTY_AC")"
+
+# g: malformed JSON payload -> ALLOW (fail-open, never a hook error)
+check "g: malformed payload fail-open ALLOW" 0 'this is not json'
+
+# h: empty stdin -> ALLOW (fail-open)
+check "h: empty stdin ALLOW" 0 ''
+
+# i: kill switch SUPER_SPEC_TASK_GUARD=0 -> ALLOW even when invalid
+actual_exit=0
+echo "$(payload 'task-005: k' '{}')" | SUPER_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then
+  echo "PASS: i: kill switch ALLOW"
+  ((PASS++)) || true
+else
+  echo "FAIL: i: kill switch ALLOW (got $actual_exit)"
+  ((FAIL++)) || true
+fi
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

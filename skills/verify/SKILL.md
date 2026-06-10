@@ -8,6 +8,12 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 Invoked when feature.json currentPhase == "verify".
 
+> **No-teams fallback:** if `.super-spec/runtime.json.teamsAvailable == false`, do NOT
+> call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run verifier and
+> code-reviewer as sequential one-shot `Agent` calls with the same agent types, models,
+> and prompt templates, per `skills/shared/no-teams-fallback.md`. The acceptance gate and
+> code-review HARD-GATE semantics are unchanged.
+
 ## Inputs
 
 - `feature_path` (path to `.super-spec/features/{slug}/feature.json`)

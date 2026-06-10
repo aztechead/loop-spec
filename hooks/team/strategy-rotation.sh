@@ -43,6 +43,12 @@ if [[ "${SUPER_SPEC_STRATEGY_ROTATION:-1}" == "0" ]]; then
   exit 0
 fi
 
+# Scope: only active in projects that use super-spec. This hook fires on every
+# Bash/Edit/Write in the session; a stat is the most it may cost elsewhere.
+if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.super-spec" && ! -d "$PWD/.super-spec" ]]; then
+  exit 0
+fi
+
 THRESHOLD="${SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD:-2}"
 
 # Session identification (same priority as claude-octopus reference)

@@ -1,6 +1,6 @@
 ---
 name: execute
-description: EXECUTE phase - concurrency ladder picks dispatch by DAG width W. Rung 1/2 subagent (lead-driven Agent waves), rung 3 agent team (TeamCreate self-claim), rung 4 workflow DAG (execute-dag.js, opt-in only). Width thresholds in tier-matrix.
+description: EXECUTE phase - concurrency ladder picks dispatch by DAG width W. Rung 1/2 subagent (lead-driven Agent waves), rung 3 agent team (TeamCreate self-claim), rung 4 workflow DAG (execute-dag.js, opt-in only). Loop-fleet rung (bundled loop-runner, headless bounded loops with verifier integrity) replaces the team rung on opt-in or when agent teams are unavailable. Width thresholds in tier-matrix.
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet Workflow
 ---
 
@@ -159,6 +159,10 @@ fi
 
 workflows_available=$(jq -r '.workflowsAvailable // false' .super-spec/runtime.json 2>/dev/null || echo false)
 workflow_optin=$(jq -r '.workflowExecuteOptIn // false' .super-spec/runtime.json 2>/dev/null || echo false)
+teams_available=$(jq -r '.teamsAvailable // true' .super-spec/runtime.json 2>/dev/null || echo true)
+loops_available=false
+command -v claude >/dev/null 2>&1 && loops_available=true
+loops_optin="${SUPER_SPEC_EXECUTE_LOOPS:-}"
 ```
 
 #### Step 3b - Select the rung
@@ -166,10 +170,20 @@ workflow_optin=$(jq -r '.workflowExecuteOptIn // false' .super-spec/runtime.json
 Using `t_team` and `t_wf` from the tier table above:
 
 ```text
-if   W >= t_wf AND workflows_available == true AND workflow_optin == true:  rung = "workflow"   # rung 4
-elif W >= t_team:                                                           rung = "team"       # rung 3
+if   loops_optin == "1" AND loops_available == true:                        rung = "loop"       # explicit opt-in, any W
+elif W >= t_wf AND workflows_available == true AND workflow_optin == true:  rung = "workflow"   # rung 4
+elif W >= t_team AND teams_available == true:                               rung = "team"       # rung 3
+elif W >= t_team AND loops_available == true AND loops_optin != "0":        rung = "loop"       # teams unavailable -> loop fleet
 else:                                                                       rung = "subagent"   # rung 1 (W==1) or 2 (2<=W<t_team)
 ```
+
+The **loop** rung runs the DAG as a fleet of bounded headless loops via the
+bundled loop-runner skill — no agent teams, no Workflow tool, mechanical
+verifier enforcement per iteration, SPEC.md/PLAN.md integrity-protected.
+`SUPER_SPEC_EXECUTE_LOOPS=1` forces it at any width; `SUPER_SPEC_EXECUTE_LOOPS=0`
+disables it (kill switch). When agent teams are unavailable it replaces the team
+rung automatically so EXECUTE keeps working without
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`.
 
 Announce the choice on one line, then dispatch the matching path below:
 
@@ -178,6 +192,7 @@ echo "[EXECUTE] DAG width W=$W tier=$tier -> rung: $rung"
 ```
 
 - `rung == "subagent"`: follow **`skills/shared/execute-subagent.md`** (lead-driven waves of one-shot `Agent` calls + inline ff-merge). It returns the same `{merged, blocked, escalation, tier}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
+- `rung == "loop"`: follow **`skills/shared/execute-loop-fleet.md`** (plan-to-loop conversion + loop-runner supervisor fleet). It returns the same `{merged, blocked, escalation, tier}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
 - `rung == "team"`: fall through to **Steps 4-10** (the TeamCreate self-claim team).
 - `rung == "workflow"`: follow the **Rung 4 - workflow path** section immediately below.
 
@@ -265,7 +280,7 @@ for task in $tasks; do
     --argjson acceptanceCriteria "$task.acceptanceCriteria" \
     --argjson readFirst "${task.readFirst:-[]}" \
     --arg specPath "${task.specPath:-}" \
-    '{blockedBy: $blockedBy, files: $files, verifyCommand: $verifyCommand, acceptanceCriteria: $acceptanceCriteria, readFirst: $readFirst, specPath: (if $specPath == "" then null else $specPath end), claimedBy: null, retries: 0}')
+    '{superSpec: true, blockedBy: $blockedBy, files: $files, verifyCommand: $verifyCommand, acceptanceCriteria: $acceptanceCriteria, readFirst: $readFirst, specPath: (if $specPath == "" then null else $specPath end), claimedBy: null, retries: 0}')
 
   if ! bash "${CLAUDE_SKILL_DIR}/../../lib/validate-task-metadata.sh" "$metadata_json"; then
     echo "EXECUTE Step 4: task $task.id failed metadata validation; aborting" >&2
@@ -280,6 +295,7 @@ After validation passes, call `TaskCreate` once per task:
 TaskCreate({
   subject: "{task.id}: {task.subject}",
   metadata: {
+    superSpec:          true,   // marks the task as super-spec-owned; plugin hooks only enforce on marked tasks
     blockedBy:          [...explicit edges from PLAN.md] + [...synthetic edges from Step 2b],
     files:              [task.files],
     verifyCommand:      "task.verifyCommand",
