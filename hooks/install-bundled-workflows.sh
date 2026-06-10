@@ -39,7 +39,7 @@ for pair in "code-review-dimensions:codebase-audit" "plan-multi-angle:multi-angl
   src_name="${pair%%:*}"
   dst_name="${pair##*:}"
   src="$LIB/${src_name}.js"
-  dst="$DEST/super-spec-${dst_name}.js"
+  dst="$DEST/loop-spec-${dst_name}.js"
   [[ -f "$src" ]] || continue
   if [[ -L "$dst" || -f "$dst" ]]; then rm -f "$dst"; fi
   ln -s "$src" "$dst" 2>/dev/null || cp "$src" "$dst"

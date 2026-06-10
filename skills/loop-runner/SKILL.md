@@ -17,9 +17,9 @@ description: >-
 
 # Loop Runner
 
-## In super-spec (read this first when invoked as a plugin skill)
+## In loop-spec (read this first when invoked as a plugin skill)
 
-This skill ships bundled inside the super-spec plugin and is the engine of the
+This skill ships bundled inside the loop-spec plugin and is the engine of the
 EXECUTE **loop-fleet rung** (`skills/shared/execute-loop-fleet.md`): PLAN.md
 tasks are converted to a loop plan via `lib/plan-to-loop.sh` and run as a
 supervised fleet with SPEC.md/PLAN.md integrity-protected. It is equally usable

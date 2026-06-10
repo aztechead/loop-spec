@@ -1,11 +1,11 @@
 ---
 name: discipline
-description: Toggle discipline mode on or off for the current project. Reads and writes .super-spec/discipline.conf to persist state across sessions.
+description: Toggle discipline mode on or off for the current project. Reads and writes .loop-spec/discipline.conf to persist state across sessions.
 ---
 
 # Discipline Skill
 
-Invoked as `/super-spec:discipline <subcommand>`.
+Invoked as `/loop-spec:discipline <subcommand>`.
 
 ## Subcommands
 
@@ -20,7 +20,7 @@ Invoked as `/super-spec:discipline <subcommand>`.
 
 ## State file
 
-All subcommands read and write `.super-spec/discipline.conf` in the project root.
+All subcommands read and write `.loop-spec/discipline.conf` in the project root.
 
 Format:
 
@@ -40,18 +40,18 @@ The `hooks/team/discipline-inject.sh` SessionStart hook reads this file. When `E
 
 ### on
 
-1. Create `.super-spec/` directory in the project root if it does not exist.
-2. Write `ENABLED=1` to `.super-spec/discipline.conf` (overwriting any previous content).
+1. Create `.loop-spec/` directory in the project root if it does not exist.
+2. Write `ENABLED=1` to `.loop-spec/discipline.conf` (overwriting any previous content).
 3. Report: "Discipline mode ON. The 5 behavioral gates will be injected at next session start."
 
 ### off
 
-1. Write `ENABLED=0` to `.super-spec/discipline.conf` (overwriting any previous content).
+1. Write `ENABLED=0` to `.loop-spec/discipline.conf` (overwriting any previous content).
 2. Report: "Discipline mode OFF. No directive will be injected at next session start."
 
 ### status
 
-1. Read `.super-spec/discipline.conf`.
+1. Read `.loop-spec/discipline.conf`.
 2. If the file does not exist: report "Discipline mode: OFF (no conf file)."
 3. If `ENABLED=1` is present: report "Discipline mode: ON."
 4. Otherwise: report "Discipline mode: OFF."
@@ -68,7 +68,7 @@ When discipline mode is on, the following gates are active for the session:
 
 ## Kill switch
 
-Setting `SUPER_SPEC_DISCIPLINE=0` in the environment disables the hook's injection entirely, regardless of the conf file state. This is a session-level override; it does not modify the conf file.
+Setting `LOOP_SPEC_DISCIPLINE=0` in the environment disables the hook's injection entirely, regardless of the conf file state. This is a session-level override; it does not modify the conf file.
 
 ## Notes
 

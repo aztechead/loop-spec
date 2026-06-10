@@ -107,7 +107,7 @@ echo "=== discipline-inject.sh tests ==="
 
 # --- Test: enabled inject ---
 # conf file present with ENABLED=1 -> outputs additionalContext with all 5 gates
-CONF_DIR="$TMPDIR_TEST/enabled/.super-spec"
+CONF_DIR="$TMPDIR_TEST/enabled/.loop-spec"
 mkdir -p "$CONF_DIR"
 printf 'ENABLED=1\n' > "$CONF_DIR/discipline.conf"
 
@@ -140,11 +140,11 @@ check_output "g: enabled inject - intent-gate present" 0 \
   CLAUDE_PROJECT_DIR="$TMPDIR_TEST/enabled"
 
 # --- Test: kill switch ---
-# SUPER_SPEC_DISCIPLINE=0 -> exits 0 with no additionalContext
+# LOOP_SPEC_DISCIPLINE=0 -> exits 0 with no additionalContext
 check_no_pattern "h: kill switch - no additionalContext injected" 0 \
   "additionalContext" \
   CLAUDE_PROJECT_DIR="$TMPDIR_TEST/enabled" \
-  SUPER_SPEC_DISCIPLINE=0
+  LOOP_SPEC_DISCIPLINE=0
 
 # --- Test: file absent ---
 # No conf file -> exits 0 with no additionalContext
@@ -156,7 +156,7 @@ check_no_pattern "i: file absent - no additionalContext injected" 0 \
   CLAUDE_PROJECT_DIR="$NO_CONF_DIR"
 
 # --- Test: ENABLED=0 in conf file ---
-DISABLED_DIR="$TMPDIR_TEST/disabled/.super-spec"
+DISABLED_DIR="$TMPDIR_TEST/disabled/.loop-spec"
 mkdir -p "$DISABLED_DIR"
 printf 'ENABLED=0\n' > "$DISABLED_DIR/discipline.conf"
 

@@ -11,36 +11,36 @@
 # dispatch regardless of completion misattributed main-thread writes to a
 # long-finished subagent and produced spurious DENYs.
 #
-# Caller subagent_type is namespaced "super-spec:<role>" (plugin agents); the
-# legacy bare "super-spec-<role>" form is also accepted. Both are normalized to the
+# Caller subagent_type is namespaced "loop-spec:<role>" (plugin agents); the
+# legacy bare "loop-spec-<role>" form is also accepted. Both are normalized to the
 # bare <role> before matching.
 #
 # Rules (by role):
-#   spec-writer, planner, pattern-mapper -> docs/super-spec/features/**
-#   mapper-*                          -> docs/super-spec/codebase/**
+#   spec-writer, planner, pattern-mapper -> docs/loop-spec/features/**
+#   mapper-*                          -> docs/loop-spec/codebase/**
 #   implementer, verifier            -> unrestricted
 #   main thread (no open Agent dispatch) -> unrestricted
 #   all other subagent_types         -> unrestricted
 #
-# Fast path: when the project has no .super-spec/features state (no cycle has
+# Fast path: when the project has no .loop-spec/features state (no cycle has
 # ever run here), exit 0 before parsing anything — this hook must not tax every
-# Write/Edit in unrelated projects. SUPER_SPEC_PATH_GUARD_FORCE=1 bypasses the
+# Write/Edit in unrelated projects. LOOP_SPEC_PATH_GUARD_FORCE=1 bypasses the
 # fast path (used by tests).
 #
-# Kill switch: SUPER_SPEC_PATH_GUARD=0 -> exit 0 unconditionally.
+# Kill switch: LOOP_SPEC_PATH_GUARD=0 -> exit 0 unconditionally.
 # Fail-open: malformed payload or parse failure -> exit 0 (never a hook error).
 set -euo pipefail
 
 # Fail-open: any unexpected error must not block the session.
 trap 'exit 0' ERR
 
-if [[ "${SUPER_SPEC_PATH_GUARD:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_PATH_GUARD:-1}" == "0" ]]; then
   exit 0
 fi
 
-# Fast path: no super-spec state in this project -> nothing to restrict.
-if [[ "${SUPER_SPEC_PATH_GUARD_FORCE:-0}" != "1" ]]; then
-  if [[ ! -d "$PWD/.super-spec/features" && ! -d "${CLAUDE_PROJECT_DIR:-/nonexistent}/.super-spec/features" ]]; then
+# Fast path: no loop-spec state in this project -> nothing to restrict.
+if [[ "${LOOP_SPEC_PATH_GUARD_FORCE:-0}" != "1" ]]; then
+  if [[ ! -d "$PWD/.loop-spec/features" && ! -d "${CLAUDE_PROJECT_DIR:-/nonexistent}/.loop-spec/features" ]]; then
     exit 0
   fi
 fi
@@ -138,7 +138,7 @@ path_allowed() {
   if [[ "$FILE_PATH" == ${prefix}/* || "$FILE_PATH" == ${prefix} ]]; then
     return 0
   fi
-  # Absolute path containing the prefix segment (e.g. /Users/.../docs/super-spec/features/...)
+  # Absolute path containing the prefix segment (e.g. /Users/.../docs/loop-spec/features/...)
   if [[ "$FILE_PATH" == */${prefix}/* || "$FILE_PATH" == */${prefix} ]]; then
     return 0
   fi
@@ -146,25 +146,25 @@ path_allowed() {
 }
 
 # Normalize the caller to a bare role name. Plugin agents are namespaced
-# "super-spec:<role>" in the transcript; older transcripts may carry the legacy
-# "super-spec-<role>" form. Strip either prefix so the role patterns below match
+# "loop-spec:<role>" in the transcript; older transcripts may carry the legacy
+# "loop-spec-<role>" form. Strip either prefix so the role patterns below match
 # regardless of how the harness recorded the subagent_type.
-CALLER="${CALLER#super-spec:}"
-CALLER="${CALLER#super-spec-}"
+CALLER="${CALLER#loop-spec:}"
+CALLER="${CALLER#loop-spec-}"
 
 case "$CALLER" in
   spec-writer|planner|pattern-mapper)
-    if path_allowed "docs/super-spec/features"; then
+    if path_allowed "docs/loop-spec/features"; then
       exit 0
     fi
-    echo "DENY: $CALLER may only $TOOL_NAME under docs/super-spec/features/** (attempted: $FILE_PATH). (Disable: SUPER_SPEC_PATH_GUARD=0)" >&2
+    echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/features/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
     exit 2
     ;;
   mapper-*)
-    if path_allowed "docs/super-spec/codebase"; then
+    if path_allowed "docs/loop-spec/codebase"; then
       exit 0
     fi
-    echo "DENY: $CALLER may only $TOOL_NAME under docs/super-spec/codebase/** (attempted: $FILE_PATH). (Disable: SUPER_SPEC_PATH_GUARD=0)" >&2
+    echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/codebase/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
     exit 2
     ;;
   implementer|verifier|"")

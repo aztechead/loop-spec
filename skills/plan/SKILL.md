@@ -6,9 +6,9 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 # PLAN Phase
 
-You are the PLAN phase orchestrator. Invoked by `super-spec:cycle` when `feature.json.currentPhase == "plan"`.
+You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.json.currentPhase == "plan"`.
 
-> **No-teams fallback:** if `.super-spec/runtime.json.teamsAvailable == false`, do NOT
+> **No-teams fallback:** if `.loop-spec/runtime.json.teamsAvailable == false`, do NOT
 > call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run planner, advocate, and
 > challenger as one-shot `Agent` calls with the same agent types, models, and prompt
 > templates, per `skills/shared/no-teams-fallback.md`. Critique rounds become sequential
@@ -18,11 +18,11 @@ You are the PLAN phase orchestrator. Invoked by `super-spec:cycle` when `feature
 ## Inputs (from cycle skill via feature.json)
 
 - `slug`, `tier`, `execStyle`
-- `feature_dir`: `.super-spec/features/{slug}/`
-- `feature_json_path`: `.super-spec/features/{slug}/feature.json`
+- `feature_dir`: `.loop-spec/features/{slug}/`
+- `feature_json_path`: `.loop-spec/features/{slug}/feature.json`
 - `spec_path`: from `feature.json.artifacts.spec`
-- `plan_path`: `docs/super-spec/features/{slug}/PLAN.md` (equals `feature.json.artifacts.plan`); bound here so the Step 5.5 decision-coverage call has a real path
-- Required: `docs/super-spec/codebase/*.md` (cycle skill guarantees these exist before PLAN starts)
+- `plan_path`: `docs/loop-spec/features/{slug}/PLAN.md` (equals `feature.json.artifacts.plan`); bound here so the Step 5.5 decision-coverage call has a real path
+- Required: `docs/loop-spec/codebase/*.md` (cycle skill guarantees these exist before PLAN starts)
 
 ## Procedure
 
@@ -33,14 +33,14 @@ Before spawning the team, check in order:
 **0a - Existing PATTERNS.md (any source):**
 
 ```bash
-patterns_target="docs/super-spec/features/${slug}/PATTERNS.md"
+patterns_target="docs/loop-spec/features/${slug}/PATTERNS.md"
 if [[ -f "$patterns_target" ]]; then
   echo "CACHED"
 fi
 ```
 
 If the file exists: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/super-spec/features/${slug}/PATTERNS.md"`
+- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
 - `artifacts.patternsSource = "pattern-mapper"`
 
 Then proceed to Step 1 (TeamCreate). Planner will detect PATTERNS.md exists and skip its Step 0 production. This applies on any resume or re-trigger where PATTERNS.md was already produced.
@@ -48,7 +48,7 @@ Then proceed to Step 1 (TeamCreate). Planner will detect PATTERNS.md exists and 
 **0b - GSD ingestion (if no cached file):**
 
 ```bash
-target="docs/super-spec/features/${slug}/PATTERNS.md"
+target="docs/loop-spec/features/${slug}/PATTERNS.md"
 result="$(bash "${CLAUDE_SKILL_DIR}/../../lib/gsd-ingest.sh" patterns "$slug" "$target")"
 echo "$result"
 ```
@@ -56,7 +56,7 @@ echo "$result"
 The script prints `INGESTED <source-path>` on success or `NONE` if no GSD PATTERNS.md matched the slug.
 
 If `INGESTED`: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/super-spec/features/${slug}/PATTERNS.md"`
+- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
 - `artifacts.patternsSource = "gsd-ingest"`
 
 Then proceed to Step 1 (TeamCreate). Planner will detect PATTERNS.md exists and skip its Step 0 production.
@@ -67,11 +67,11 @@ If `NONE`: continue to Step 1.
 
 ```
 TeamCreate({
-  name: "super-spec-plan-{slug}",
+  name: "loop-spec-plan-{slug}",
   teammates: [
-    { name: "planner-1",    subagent_type: "super-spec:planner",    model: feature.models.planner },
-    { name: "advocate-1",   subagent_type: "super-spec:advocate",   model: feature.models.advocate },
-    { name: "challenger-1", subagent_type: "super-spec:challenger", model: feature.models.challenger }
+    { name: "planner-1",    subagent_type: "loop-spec:planner",    model: feature.models.planner },
+    { name: "advocate-1",   subagent_type: "loop-spec:advocate",   model: feature.models.advocate },
+    { name: "challenger-1", subagent_type: "loop-spec:challenger", model: feature.models.challenger }
   ]
 })
 ```
@@ -79,7 +79,7 @@ TeamCreate({
 Each teammate object MUST include `subagent_type` (binds to the role definition in `agents/*.md`) and `model` (read literally from `feature.models.<role>`; see `skills/shared/model-matrix.md`).
 
 Update `feature.json` via `lib/feature-write.sh`:
-- `currentTeamName = "super-spec-plan-{slug}"`
+- `currentTeamName = "loop-spec-plan-{slug}"`
 - `currentTeammates = ["planner-1", "advocate-1", "challenger-1"]`
 
 #### Warm up the reviewers while the planner authors (skip on quick tier)
@@ -89,11 +89,11 @@ If `tier != "quick"` (the Step 3 critique gate will run), send advocate-1 and ch
 ```
 SendMessage({
   to: "advocate-1",
-  body: "Warm-up only: read SPEC.md at {spec_path} and the codebase maps at docs/super-spec/codebase/*.md now to load context. Do NOT read PLAN.md or PATTERNS.md yet -- they are still being authored and may not exist. Prepare your review checklist from the spec and maps, then go idle and wait for the lead's round-1 prompt with PLAN.md ready."
+  body: "Warm-up only: read SPEC.md at {spec_path} and the codebase maps at docs/loop-spec/codebase/*.md now to load context. Do NOT read PLAN.md or PATTERNS.md yet -- they are still being authored and may not exist. Prepare your review checklist from the spec and maps, then go idle and wait for the lead's round-1 prompt with PLAN.md ready."
 })
 SendMessage({
   to: "challenger-1",
-  body: "Warm-up only: read SPEC.md at {spec_path} and the codebase maps at docs/super-spec/codebase/*.md now to load context. Do NOT read PLAN.md or PATTERNS.md yet -- they are still being authored and may not exist. Prepare your critique checklist from the spec and maps, then go idle and wait for the lead's round-1 prompt."
+  body: "Warm-up only: read SPEC.md at {spec_path} and the codebase maps at docs/loop-spec/codebase/*.md now to load context. Do NOT read PLAN.md or PATTERNS.md yet -- they are still being authored and may not exist. Prepare your critique checklist from the spec and maps, then go idle and wait for the lead's round-1 prompt."
 })
 ```
 
@@ -101,7 +101,7 @@ If `tier == "quick"`: send no warm-up (the critique gate is skipped, so the revi
 
 ### Plan authoring (workflow path or fallback)
 
-Read `.super-spec/runtime.json`. If `workflowsAvailable=true` AND
+Read `.loop-spec/runtime.json`. If `workflowsAvailable=true` AND
 `feature.tier == "quality"`, dispatch:
 
 ```text
@@ -116,8 +116,8 @@ Workflow({
 ```
 
 Result: `{plan: <markdown>, angles: [...], winner}`. Skill writes `plan` to
-`docs/super-spec/features/{slug}/PLAN.md` and logs `angles` to
-`.super-spec/features/{slug}/gate-logs/plan-multi-angle.json`.
+`docs/loop-spec/features/{slug}/PLAN.md` and logs `angles` to
+`.loop-spec/features/{slug}/gate-logs/plan-multi-angle.json`.
 
 If `workflowsAvailable=false` OR tier != "quality", fall through to the
 existing single-planner Agent dispatch below.
@@ -130,21 +130,21 @@ Model: `feature.models.planner` (resolved once at cycle Step 5; do not re-derive
 SendMessage({
   to: "planner-1",
   body: """
-    You are planner-1 in team super-spec-plan-{slug}.
+    You are planner-1 in team loop-spec-plan-{slug}.
 
     slug: {slug}
     spec_path: {spec_path}
-    patterns_path: docs/super-spec/features/{slug}/PATTERNS.md
-    codebase_mapping_paths: {paths to docs/super-spec/codebase/*.md}
+    patterns_path: docs/loop-spec/features/{slug}/PATTERNS.md
+    codebase_mapping_paths: {paths to docs/loop-spec/codebase/*.md}
     tier: {tier}
 
-    FIRST: If docs/super-spec/features/{slug}/PATTERNS.md does not exist, produce it now.
+    FIRST: If docs/loop-spec/features/{slug}/PATTERNS.md does not exist, produce it now.
     Analyze the codebase for concept analogs per the spec, following the pattern-mapper role
     definition at agents/pattern-mapper.md. Write to
-    docs/super-spec/features/{slug}/PATTERNS.md.
+    docs/loop-spec/features/{slug}/PATTERNS.md.
 
     THEN: Read PATTERNS.md; cite concept analogs in each task's Steps so implementers know
-    which existing code to mirror. Produce PLAN.md at docs/super-spec/features/{slug}/PLAN.md
+    which existing code to mirror. Produce PLAN.md at docs/loop-spec/features/{slug}/PLAN.md
     per your role definition. Return tasks[] as structured JSON in your completion message.
     Do NOT compute or return waves[] -- EXECUTE Step 2b derives synthetic blockedBy edges
     from file overlap, so wave assignment is no longer your responsibility.
@@ -171,11 +171,11 @@ SendMessage({
 ```
 
 Wait for `TeammateIdle` from `planner-1`. If `planner-1` goes idle without producing both `PATTERNS.md` and `PLAN.md`:
-- Send `SendMessage({to: "planner-1", body: "Check docs/super-spec/features/{slug}/PATTERNS.md and docs/super-spec/features/{slug}/PLAN.md -- one or both are missing. Produce any missing files now and include tasks[] JSON in your completion message."})` once.
+- Send `SendMessage({to: "planner-1", body: "Check docs/loop-spec/features/{slug}/PATTERNS.md and docs/loop-spec/features/{slug}/PLAN.md -- one or both are missing. Produce any missing files now and include tasks[] JSON in your completion message."})` once.
 - If still idle without output on second idle, escalate to user via `AskUserQuestion`.
 
 On `PATTERNS.md and PLAN.md written` message received: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/super-spec/features/${slug}/PATTERNS.md"`
+- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
 - `artifacts.patternsSource = "pattern-mapper"`
 
 Parse the `tasks[]` JSON from the message body. Store for use in Steps 3 and 4.
@@ -204,7 +204,7 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 Create the gate-logs directory:
 ```bash
-mkdir -p .super-spec/features/{slug}/gate-logs/
+mkdir -p .loop-spec/features/{slug}/gate-logs/
 ```
 
 #### Spawn advocate-1
@@ -270,7 +270,7 @@ For each round N = 1 .. maxCritiqueRounds:
 
 5. Append each message to the gate-log:
    ```
-   Write .super-spec/features/{slug}/gate-logs/plan-critique-round-{N}.md
+   Write .loop-spec/features/{slug}/gate-logs/plan-critique-round-{N}.md
    Contents:
      # plan-critique Round {N}
 
@@ -293,7 +293,7 @@ For each round N = 1 .. maxCritiqueRounds:
 
 ### Step 4 - Synthesize fix-list
 
-Read all files under `.super-spec/features/{slug}/gate-logs/` matching `plan-critique-round-*.md`.
+Read all files under `.loop-spec/features/{slug}/gate-logs/` matching `plan-critique-round-*.md`.
 
 Apply reconciliation rules:
 
@@ -343,7 +343,7 @@ SendMessage({
     PLAN.md needs revisions. Fix-list:
     {fix_list items, numbered}
 
-    Read the current PLAN.md at docs/super-spec/features/{slug}/PLAN.md.
+    Read the current PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.
     Apply all items on the fix-list. Write the updated PLAN.md in place.
     When done: SendMessage({to: "lead", body: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
     then go idle.
@@ -423,7 +423,7 @@ SendMessage({
     PLAN.md is missing coverage for the following decisions from the spec:
     {uncovered decisions list, one per line prefixed with "- "}
 
-    Read the current PLAN.md at docs/super-spec/features/{slug}/PLAN.md.
+    Read the current PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.
     Revise PLAN.md so each listed decision is explicitly addressed.
     When done: SendMessage({to: "lead", body: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
     then go idle.
@@ -438,7 +438,7 @@ Exit code 0 (all decisions covered, or no `<decisions>` block present): proceed 
 ### Step 6 - Commit PLAN.md and update feature.json
 
 ```bash
-git add docs/super-spec/features/{slug}/PLAN.md
+git add docs/loop-spec/features/{slug}/PLAN.md
 git commit -m "plan: NO_JIRA {slug}"
 ```
 
@@ -447,14 +447,14 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-plan
 ```
 
 Update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.plan = "docs/super-spec/features/{slug}/PLAN.md"`
+- `artifacts.plan = "docs/loop-spec/features/{slug}/PLAN.md"`
 - `completedPhases` append `"plan"`
 - `currentPhase = "execute"`
 
 ### Step 7 - TeamDelete and clear team state
 
 ```
-TeamDelete({name: "super-spec-plan-{slug}"})
+TeamDelete({name: "loop-spec-plan-{slug}"})
 ```
 
 Update `feature.json` via `lib/feature-write.sh`:
@@ -465,10 +465,10 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 | execStyle | Action |
 |-----------|--------|
-| auto | Invoke `super-spec:execute` immediately |
-| step | Print "PLAN complete. PLAN.md at docs/super-spec/features/{slug}/PLAN.md." Return to user. |
+| auto | Invoke `loop-spec:execute` immediately |
+| step | Print "PLAN complete. PLAN.md at docs/loop-spec/features/{slug}/PLAN.md." Return to user. |
 | interactive | Same as step. |
-| review-only | Invoke `super-spec:execute` (gate already paused for human if findings) |
+| review-only | Invoke `loop-spec:execute` (gate already paused for human if findings) |
 
 Return.
 

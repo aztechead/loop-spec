@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generates two crash-recovery artifacts for a super-spec feature:
+# Generates two crash-recovery artifacts for a loop-spec feature:
 #   HANDOFF.json       - machine-readable snapshot (7 keys)
 #   .continue-here.md  - human-readable resume guide with severity-tagged sections
 #
@@ -9,7 +9,7 @@
 #
 # Arguments:
 #   --feature-dir <path>  Path to the feature directory (contains feature.json).
-#                         Defaults to scanning .super-spec/features/*/feature.json.
+#                         Defaults to scanning .loop-spec/features/*/feature.json.
 #   --dry-run             Output HANDOFF.json to stdout; write no files.
 #
 # Exit codes:
@@ -18,11 +18,11 @@
 #   2  IO error writing HANDOFF.json (primary artifact)
 #
 # Kill switch:
-#   SUPER_SPEC_PAUSE=0  Exit 0 immediately without reading or writing any file.
+#   LOOP_SPEC_PAUSE=0  Exit 0 immediately without reading or writing any file.
 set -euo pipefail
 
 # Kill switch.
-if [[ "${SUPER_SPEC_PAUSE:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_PAUSE:-1}" == "0" ]]; then
   exit 0
 fi
 
@@ -62,7 +62,7 @@ if [[ -n "$FEATURE_DIR" ]]; then
   FEATURE_JSON_PATH="$FEATURE_DIR/feature.json"
 else
   REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-  FEATURE_JSON_PATH=$(find "$REPO_ROOT/.super-spec/features" -maxdepth 2 -name "feature.json" 2>/dev/null | head -1 || true)
+  FEATURE_JSON_PATH=$(find "$REPO_ROOT/.loop-spec/features" -maxdepth 2 -name "feature.json" 2>/dev/null | head -1 || true)
 fi
 
 if [[ -z "$FEATURE_JSON_PATH" || ! -f "$FEATURE_JSON_PATH" ]]; then
@@ -217,7 +217,7 @@ printf '%s\n' ""
 printf '%s\n' "Ordered list of files to read before writing any code in a resumed session."
 printf '%s\n' ""
 printf '%s\n' "1. HANDOFF.json (this feature dir) - current phase, pending tasks, blockers"
-printf '%s\n' "2. docs/super-spec/features/resilience-ops/PLAN.md - full task DAG and acceptance criteria"
+printf '%s\n' "2. docs/loop-spec/features/resilience-ops/PLAN.md - full task DAG and acceptance criteria"
 printf '%s\n' "3. feature.json (this feature dir) - gate history, retry budget, branch info"
 } > "$CONTINUE_PATH" 2>/dev/null || true
 

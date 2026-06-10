@@ -31,7 +31,7 @@ available concurrency wins, and the heaviest (Workflow) requires explicit opt-in
 
 | W (DAG width) | Mechanism | Why |
 |---|---|---|
-| any W, `SUPER_SPEC_EXECUTE_LOOPS=1` + `claude` CLI | **loop fleet** | explicit opt-in: bounded headless loops, per-iteration verify, SPEC/PLAN hash-locked (`skills/shared/execute-loop-fleet.md`) |
+| any W, `LOOP_SPEC_EXECUTE_LOOPS=1` + `claude` CLI | **loop fleet** | explicit opt-in: bounded headless loops, per-iteration verify, SPEC/PLAN hash-locked (`skills/shared/execute-loop-fleet.md`) |
 | `W == 1` | **subagent, sequential** | no concurrency to exploit; one `Agent` per task, lead merges inline |
 | `2 <= W < t_team` | **subagent, batched** | modest fan-out; a wave of parallel `Agent` calls, no persistent team |
 | `t_team <= W < t_wf` | **agent team** | high concurrency with rework/idle-wake coordination pays for `TeamCreate` |
@@ -49,7 +49,7 @@ Thresholds:
   reflects the parallelism the DAG structurally exposes. `maxParallelImplementers`
   still caps the width of each dispatched wave within the chosen mechanism.
 - The **workflow** rung fires only when all three hold: `W >= t_wf`,
-  `runtime.json.workflowExecuteOptIn == true` (set from `SUPER_SPEC_EXECUTE_WORKFLOW=1`
+  `runtime.json.workflowExecuteOptIn == true` (set from `LOOP_SPEC_EXECUTE_WORKFLOW=1`
   at cycle startup), and `runtime.json.workflowsAvailable == true`. When opt-in is
   off, the ladder tops out at the agent-team rung regardless of width -- Workflow is
   never selected silently.

@@ -1,6 +1,6 @@
 # Feature State Schema
 
-Per-feature runtime state lives at `.super-spec/features/{slug}/feature.json` (gitignored). Atomic write pattern: write `feature.json.tmp`, fsync, rename. Backup `feature.json.bak` updated on each successful write. All writes go through `lib/feature-write.sh`.
+Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json` (gitignored). Atomic write pattern: write `feature.json.tmp`, fsync, rename. Backup `feature.json.bak` updated on each successful write. All writes go through `lib/feature-write.sh`.
 
 Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet`) per phase team, not in `feature.json`. See "Harness task list usage" below.
 
@@ -33,9 +33,9 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "patternMapper": "claude-sonnet-4-6 (fixed)"
   },
   "artifacts": {
-    "specInterview": "path or null (.super-spec/features/{slug}/spec-interview-transcript.md)",
+    "specInterview": "path or null (.loop-spec/features/{slug}/spec-interview-transcript.md)",
     "spec": "path or null",
-    "patterns": "path or null (docs/super-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
+    "patterns": "path or null (docs/loop-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
     "patternsSource": "gsd-ingest | pattern-mapper | manual | null",
     "plan": "path or null",
     "execution": "path or null",
@@ -48,7 +48,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
       "domain": "gsd-ingest | mapper | manual | null"
     }
   },
-  "currentTeamName": "string or null (e.g., super-spec-execute-{slug}); null between phases",
+  "currentTeamName": "string or null (e.g., loop-spec-execute-{slug}); null between phases",
   "currentTeammates": ["array of teammate names currently spawned, e.g., implementer-1, reviewer-1; empty between phases"],
   "currentGate": {
     "phase": "string or null",
@@ -110,7 +110,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `retryBudget.perGateUsed` is a map keyed by `{phase}.{gate}` (e.g., `discuss.spec-critique`) of integer retry counts. It is persisted via `lib/feature-write.sh` on every gate failure so a kill mid-gate does not reset the budget.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. All three are reset (`null` / `[]` / zeroed) after `TeamDelete`.
 - `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
-- `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.super-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
+- `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null` unless the cycle's Step 2 capability probe signals a specific mode.
 - Schema version 4 adds the `spec` phase fields. `currentPhase` gains `"spec"` as the first value; `retryBudget.perPhase` and `retryBudget.perPhaseUsed` each gain a `"spec"` field; `artifacts.specInterview` is added as a nullable path field pointing to the interview transcript written by the spec phase orchestrator (main thread). Migration from v3 to v4 is opt-in via `lib/migrate-schema-v3-to-v4.sh`. In-flight v3 features continue on v3 unless the user explicitly migrates.
 - `pendingRemediationTasks`, `bootstrapPendingDomains`, and `activeWorkflow` are runtime-only working fields written by the code (VERIFY remediation routing, cycle Step 5.5b background mapping, and the workflow dispatch contract in `dispatch-fanout.md`). They are documented here so validators and migrations treat the v4 shape as complete; all three are absent or empty/null between phases.
@@ -138,7 +138,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "baseBranch": "string (e.g., main)",
   "artifacts": {
     "spec": "path or null",
-    "patterns": "path or null (docs/super-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
+    "patterns": "path or null (docs/loop-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
     "patternsSource": "gsd-ingest | pattern-mapper | manual | null",
     "plan": "path or null",
     "execution": "path or null",
@@ -151,7 +151,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
       "domain": "gsd-ingest | mapper | manual | null"
     }
   },
-  "currentTeamName": "string or null (e.g., super-spec-execute-{slug}); null between phases",
+  "currentTeamName": "string or null (e.g., loop-spec-execute-{slug}); null between phases",
   "currentTeammates": ["array of teammate names currently spawned, e.g., implementer-1, reviewer-1; empty between phases"],
   "currentGate": {
     "phase": "string or null",
@@ -204,7 +204,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `retryBudget.perGateUsed` is a map keyed by `{phase}.{gate}` (e.g., `discuss.spec-critique`) of integer retry counts. It is persisted via `lib/feature-write.sh` on every gate failure so a kill mid-gate does not reset the budget.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. All three are reset (`null` / `[]` / zeroed) after `TeamDelete`.
 - `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
-- `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.super-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
+- `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null`.
 - Schema version jumps from 2 to 3. There is no migration from v2 (clean break). In-flight features must be completed on v0.3.x or restarted on v1.0.0.
 
@@ -234,7 +234,7 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 ### Per-phase harness task list notes
 
-**DISCUSS.** No harness task list. The spec-writer, advocate, and challenger communicate via `SendMessage`; the lead tracks gate state in `feature.json.currentGate` and appends round-end messages to `.super-spec/features/{slug}/gate-logs/`.
+**DISCUSS.** No harness task list. The spec-writer, advocate, and challenger communicate via `SendMessage`; the lead tracks gate state in `feature.json.currentGate` and appends round-end messages to `.loop-spec/features/{slug}/gate-logs/`.
 
 **PLAN.** No harness task list for PLAN's internal teammates (pattern-mapper, planner, advocate, challenger). PLAN emits the validated `tasks[]` JSON in the planner's completion message; the EXECUTE team's harness task list is created from it later, by `TaskCreate` calls in EXECUTE Step 3 (one task per planned task), populated with `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, and `specPath` in task `metadata`. It is not pre-created at PLAN exit and there is no EXECUTE Step 0.
 
@@ -242,9 +242,9 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 **VERIFY.** No per-task harness task list for the verifier or code-reviewer teammates. Those teammates are single-instance; the lead tracks their completion via `TeammateIdle` and direct `SendMessage` to `lead`. Mapper teammates (incremental codebase refresh) use a small task list with one task per stale domain.
 
-## Codebase index schema (.super-spec/codebase/index.json)
+## Codebase index schema (.loop-spec/codebase/index.json)
 
-`.super-spec/codebase/index.json` is the file-to-domain mapping used by `map-codebase` and `verify` skills. It is not gitignored (shared across machines).
+`.loop-spec/codebase/index.json` is the file-to-domain mapping used by `map-codebase` and `verify` skills. It is not gitignored (shared across machines).
 
 ```json
 {
@@ -289,7 +289,7 @@ Implemented in `lib/feature-write.sh`. Replaces `lib/state-write.sh` (removed in
 
 ## Resume
 
-On `cycle` skill startup: scan `.super-spec/features/*/feature.json`. For any with `currentPhase != "completed"` and `updatedAt` within `stalenessHours`, probe for live team by calling `TaskList({team: currentTeamName})`:
+On `cycle` skill startup: scan `.loop-spec/features/*/feature.json`. For any with `currentPhase != "completed"` and `updatedAt` within `stalenessHours`, probe for live team by calling `TaskList({team: currentTeamName})`:
 
 - `TaskList` errors (team not found): clear `currentTeamName` in `feature.json`, recreate the phase team from scratch, replay phase Step 0 from on-disk artifacts.
 - `TaskList` succeeds (team still live): print the orphan-cleanup message with the explicit team name; require manual `TeamDelete` before resume.

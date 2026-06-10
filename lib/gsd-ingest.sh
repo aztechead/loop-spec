@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Ingest existing get-shit-done artifacts into super-spec format.
+# Ingest existing get-shit-done artifacts into loop-spec format.
 #
 # Subcommands:
 #
 #   codebase
-#     Reads .planning/codebase/* and concatenates into docs/super-spec/codebase/{TECH,ARCH,QUALITY,CONCERNS}.md.
-#     Mapping (one row per super-spec target):
+#     Reads .planning/codebase/* and concatenates into docs/loop-spec/codebase/{TECH,ARCH,QUALITY,CONCERNS}.md.
+#     Mapping (one row per loop-spec target):
 #       TECH      <- STACK.md + INTEGRATIONS.md
 #       ARCH      <- ARCHITECTURE.md + STRUCTURE.md
 #       QUALITY   <- CONVENTIONS.md + TESTING.md
 #       CONCERNS  <- CONCERNS.md
-#     DOMAIN.md is never ingested (no GSD analog) and must be produced by super-spec-mapper-domain.
+#     DOMAIN.md is never ingested (no GSD analog) and must be produced by loop-spec-mapper-domain.
 #     Prints one line per target: "INGESTED <target>" or "SKIPPED <target> (no source)".
-#     Outputs are idempotent: if super-spec target already exists it is overwritten only when at least
+#     Outputs are idempotent: if loop-spec target already exists it is overwritten only when at least
 #     one source exists; otherwise left alone.
 #
 #   patterns <slug> <target_path>
@@ -35,7 +35,7 @@ case "$cmd" in
       exit 0
     fi
 
-    mkdir -p docs/super-spec/codebase
+    mkdir -p docs/loop-spec/codebase
     iso_now="$(date -u +%Y-%m-%dT%H:%MZ)"
 
     declare -a rows=(
@@ -56,7 +56,7 @@ case "$cmd" in
         [[ -f ".planning/codebase/$s" ]] && present+=("$s")
       done
 
-      target="docs/super-spec/codebase/${target_name}.md"
+      target="docs/loop-spec/codebase/${target_name}.md"
       if (( ${#present[@]} == 0 )); then
         printf 'SKIPPED %s (no source)\n' "$target_name"
         continue

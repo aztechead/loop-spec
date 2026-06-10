@@ -16,7 +16,7 @@ run_test() {
 
   tmpdir=$(mktemp -d)
   mkdir -p "$tmpdir/agents"
-  cp "$FIXTURE" "$tmpdir/agents/super-spec-bad-agent.md"
+  cp "$FIXTURE" "$tmpdir/agents/loop-spec-bad-agent.md"
 
   # Run validator from temp dir; override EXPECTED to 1 so count check passes
   output=$(cd "$tmpdir" && EXPECTED=1 bash "$VALIDATOR" 2>&1)

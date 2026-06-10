@@ -68,7 +68,7 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
 
    ```bash
    worktree_branch="task/{taskId}-{slug}"
-   worktree_path="${featureWorktreeRoot}/.super-spec/worktrees/{slug}/task-{taskId}"
+   worktree_path="${featureWorktreeRoot}/.loop-spec/worktrees/{slug}/task-{taskId}"
 
    if ! bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-commit-check.sh" "feat/{slug}" "$worktree_branch"; then
      # no commits over the feature branch -> not mergeable
@@ -96,7 +96,7 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
 Dispatch every implementer and reviewer with the **default** agent (do NOT pass
 `subagent_type`), exactly as `lib/workflows/execute-dag.js` does. The prompts below are
 self-contained -- they carry the worktree, implement, verify, commit, and review
-instructions in full. Do NOT pass `subagent_type: "super-spec:implementer"`: that agent
+instructions in full. Do NOT pass `subagent_type: "loop-spec:implementer"`: that agent
 declares `isolation: worktree` in its frontmatter, which would create a second worktree
 on top of the explicit `git worktree add` in the prompt. Pass the role model via the
 `Agent` `model` field (`models.implementer` / `models.specComplianceReviewer`).

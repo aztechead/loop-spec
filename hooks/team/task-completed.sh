@@ -5,8 +5,8 @@
 #   exit 0  = allow
 #   exit 2  = block (with stderr message shown to user)
 #
-# SCOPE: only super-spec-owned tasks are gated. A task is super-spec-owned when
-# tool_input.metadata.superSpec == true (written by EXECUTE Step 4) or the
+# SCOPE: only loop-spec-owned tasks are gated. A task is loop-spec-owned when
+# tool_input.metadata.loopSpec == true (written by EXECUTE Step 4) or the
 # subject matches "task-NNN: ...". Ordinary task-tracking completions (main
 # thread, other plugins) pass through untouched — gating them broke core task
 # tracking and ran the project's lint/typecheck on every unrelated completion.
@@ -18,15 +18,15 @@
 #   other    -> allow (exit 0)
 #
 # If feature.json is missing, exit 0 (graceful).
-# SUPER_SPEC_FEATURE_DIR env var overrides the default feature directory location.
-# Kill switch: SUPER_SPEC_TASK_GUARD=0 -> exit 0 unconditionally.
+# LOOP_SPEC_FEATURE_DIR env var overrides the default feature directory location.
+# Kill switch: LOOP_SPEC_TASK_GUARD=0 -> exit 0 unconditionally.
 # Fail-open: malformed payload or python3 failure -> exit 0 (never a hook error).
 set -euo pipefail
 
 # Fail-open: any unexpected error must not block the session.
 trap 'exit 0' ERR
 
-if [[ "${SUPER_SPEC_TASK_GUARD:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_TASK_GUARD:-1}" == "0" ]]; then
   exit 0
 fi
 
@@ -34,7 +34,7 @@ INPUT=$(cat 2>/dev/null) || true
 [[ -z "$INPUT" ]] && exit 0
 
 # Locate feature.json
-FEATURE_DIR="${SUPER_SPEC_FEATURE_DIR:-}"
+FEATURE_DIR="${LOOP_SPEC_FEATURE_DIR:-}"
 FEATURE_JSON=""
 
 if [[ -n "$FEATURE_DIR" ]]; then
@@ -43,11 +43,11 @@ else
   # Default: resolve to user's project root via CLAUDE_PROJECT_DIR (set by CC harness),
   # not via dirname of the hook script (which resolves to the plugin install dir).
   REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-  # Fast path: no .super-spec/features dir means no active feature — skip the find.
-  if [[ ! -d "$REPO_ROOT/.super-spec/features" ]]; then
+  # Fast path: no .loop-spec/features dir means no active feature — skip the find.
+  if [[ ! -d "$REPO_ROOT/.loop-spec/features" ]]; then
     exit 0
   fi
-  FEATURE_JSON=$(find "$REPO_ROOT/.super-spec/features" -maxdepth 2 -name "feature.json" 2>/dev/null | head -1 || true)
+  FEATURE_JSON=$(find "$REPO_ROOT/.loop-spec/features" -maxdepth 2 -name "feature.json" 2>/dev/null | head -1 || true)
 fi
 
 # Missing feature.json: graceful exit
@@ -55,7 +55,7 @@ if [[ -z "$FEATURE_JSON" || ! -f "$FEATURE_JSON" ]]; then
   exit 0
 fi
 
-# Scope check: pass through any completion that is not a super-spec-owned task.
+# Scope check: pass through any completion that is not a loop-spec-owned task.
 MARKED=$(printf '%s' "$INPUT" | python3 -c "
 import json, re, sys
 try:
@@ -66,7 +66,7 @@ except Exception:
 tool_input = d.get('tool_input') or {}
 metadata = tool_input.get('metadata') or {}
 subject = tool_input.get('subject') or ''
-marked = metadata.get('superSpec') is True or bool(re.match(r'^task-[0-9]+:', subject))
+marked = metadata.get('loopSpec') is True or bool(re.match(r'^task-[0-9]+:', subject))
 print('yes' if marked else 'no')
 " 2>/dev/null) || MARKED="no"
 
@@ -167,7 +167,7 @@ except Exception:
       lint_rc=0
       run_check "$LINT_CMD" || lint_rc=$?
       if [[ "$lint_rc" -ne 0 ]]; then
-        echo "DENY: lint failed (command: $LINT_CMD). Fix lint errors before marking task completed. (Disable: SUPER_SPEC_TASK_GUARD=0)" >&2
+        echo "DENY: lint failed (command: $LINT_CMD). Fix lint errors before marking task completed. (Disable: LOOP_SPEC_TASK_GUARD=0)" >&2
         exit 2
       fi
     fi
@@ -176,7 +176,7 @@ except Exception:
       tc_rc=0
       run_check "$TYPECHECK_CMD" || tc_rc=$?
       if [[ "$tc_rc" -ne 0 ]]; then
-        echo "DENY: typecheck failed (command: $TYPECHECK_CMD). Fix type errors before marking task completed. (Disable: SUPER_SPEC_TASK_GUARD=0)" >&2
+        echo "DENY: typecheck failed (command: $TYPECHECK_CMD). Fix type errors before marking task completed. (Disable: LOOP_SPEC_TASK_GUARD=0)" >&2
         exit 2
       fi
     fi
@@ -186,7 +186,7 @@ except Exception:
     RESULT=$(validate_metadata)
     if [[ "$RESULT" != "OK" ]]; then
       MISSING_FIELDS="${RESULT#MISSING:}"
-      echo "DENY: super-spec task metadata missing or invalid required fields: $MISSING_FIELDS. All super-spec tasks must have blockedBy, files, verifyCommand, and acceptanceCriteria. (Disable: SUPER_SPEC_TASK_GUARD=0)" >&2
+      echo "DENY: loop-spec task metadata missing or invalid required fields: $MISSING_FIELDS. All loop-spec tasks must have blockedBy, files, verifyCommand, and acceptanceCriteria. (Disable: LOOP_SPEC_TASK_GUARD=0)" >&2
       exit 2
     fi
     ;;

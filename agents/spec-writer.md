@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-description: Produces SPEC.md from a discuss-phase conversation. Writes only to docs/super-spec/features/**.
+description: Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**.
 tools:
   - Read
   - Write
@@ -25,7 +25,7 @@ The orchestrator provides:
 
 ## Output
 
-A single file at `docs/super-spec/features/{slug}/SPEC.md` populated from `skills/shared/artifact-templates/SPEC.md.template`.
+A single file at `docs/loop-spec/features/{slug}/SPEC.md` populated from `skills/shared/artifact-templates/SPEC.md.template`.
 
 The SPEC.md must include a `<decisions>` block. Each entry in the block records one binding design choice made during the DISCUSS phase: the decision itself, the rationale, and the alternatives that were considered and rejected. The block appears near the top of the file, before the Goals section. Example structure:
 
@@ -53,7 +53,7 @@ Do not produce a SPEC.md without a populated `<decisions>` block. If no binding 
 
 ## What NOT to do
 
-- Do NOT write to any path outside `docs/super-spec/features/{slug}/` (the PreToolUse hook will deny).
+- Do NOT write to any path outside `docs/loop-spec/features/{slug}/` (the PreToolUse hook will deny).
 - Do NOT propose implementation details (that's PLAN's job).
 - Do NOT skip the critique-gate fix-list when re-dispatched. Apply every fix.
 - Do NOT write code or modify other files.
@@ -69,6 +69,6 @@ If the orchestrator re-dispatches you with a `fix_list`, apply each fix to the e
 
 Return:
 - **Status**: DONE | NEEDS_CONTEXT
-- **Spec path**: `docs/super-spec/features/{slug}/SPEC.md`
+- **Spec path**: `docs/loop-spec/features/{slug}/SPEC.md`
 - **Sections written**: list
 - **Open issues**: any concerns the orchestrator should know

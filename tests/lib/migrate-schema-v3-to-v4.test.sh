@@ -20,7 +20,7 @@ check() {
   fi
 }
 
-WORK="${TMPDIR:-/tmp}/super-spec-migrate.$$"
+WORK="${TMPDIR:-/tmp}/loop-spec-migrate.$$"
 trap 'rm -rf "$WORK"' EXIT
 
 # Minimal v3 feature.json with currentPhase=discuss and perPhaseUsed present
@@ -62,7 +62,7 @@ V3_PLAN=$(cat <<'JSON'
     "globalUsed": 0
   },
   "artifacts": {
-    "spec": "docs/super-spec/features/mid-flight-feature/SPEC.md",
+    "spec": "docs/loop-spec/features/mid-flight-feature/SPEC.md",
     "plan": null
   }
 }

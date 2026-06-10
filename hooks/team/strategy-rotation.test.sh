@@ -82,7 +82,7 @@ payload_other_tool() {
 
 # Use a unique session per test run to isolate state files
 SESSION_KEY="test-session-$$"
-STATE_FILE="${TMPDIR:-/tmp}/super-spec-failures-${SESSION_KEY}.json"
+STATE_FILE="${TMPDIR:-/tmp}/loop-spec-failures-${SESSION_KEY}.json"
 
 # Clean up any leftover state from this session
 cleanup() {
@@ -94,9 +94,9 @@ echo "=== strategy-rotation.sh tests ==="
 
 # ── Case 1: kill switch ────────────────────────────────────────────────────
 cleanup
-check "kill switch: SUPER_SPEC_STRATEGY_ROTATION=0 -> exit 0 no output" 0 \
+check "kill switch: LOOP_SPEC_STRATEGY_ROTATION=0 -> exit 0 no output" 0 \
   "$(payload_bash_failure)" \
-  SUPER_SPEC_STRATEGY_ROTATION=0 \
+  LOOP_SPEC_STRATEGY_ROTATION=0 \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY"
 check_no_output "kill switch: no additionalContext emitted" "additionalContext"
 
@@ -107,7 +107,7 @@ printf 'THIS IS NOT JSON' > "$STATE_FILE"
 check "fail-open: malformed state file -> exit 0" 0 \
   "$(payload_bash_failure)" \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY" \
-  SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD=2
+  LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD=2
 
 # ── Case 3: threshold trigger ─────────────────────────────────────────────
 # Send 2 consecutive Bash failures; on the 2nd the hook should emit additionalContext
@@ -116,14 +116,14 @@ cleanup
 check "threshold trigger: first failure no output" 0 \
   "$(payload_bash_failure)" \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY" \
-  SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD=2
+  LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD=2
 check_no_output "threshold trigger: no additionalContext after first failure" "additionalContext"
 
 # Second failure (counter -> 2, at threshold -> emit)
 check "threshold trigger: second failure exit 0" 0 \
   "$(payload_bash_failure)" \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY" \
-  SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD=2
+  LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD=2
 check_output "threshold trigger: additionalContext emitted at threshold" "additionalContext"
 check_output "threshold trigger: message mentions STOP or stop" "STOP\|[Ss]top"
 check_output "threshold trigger: message mentions failure mode or approach" "approach\|[Ff]ailure"
@@ -136,20 +136,20 @@ cleanup
 check "success reset: initial failure" 0 \
   "$(payload_bash_failure)" \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY" \
-  SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD=2
+  LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD=2
 
 # Success: resets counter to 0
 check "success reset: success resets counter exit 0" 0 \
   "$(payload_bash_success)" \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY" \
-  SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD=2
+  LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD=2
 check_no_output "success reset: no additionalContext on success" "additionalContext"
 
 # One more failure after reset -> counter=1, still below threshold=2 -> no output
 check "success reset: post-reset failure below threshold exit 0" 0 \
   "$(payload_bash_failure)" \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY" \
-  SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD=2
+  LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD=2
 check_no_output "success reset: no additionalContext after single post-reset failure" "additionalContext"
 
 # ── Case 5: non-tracked tool ignored ──────────────────────────────────────
@@ -157,7 +157,7 @@ cleanup
 check "non-tracked tool: Read tool exit 0 no output" 0 \
   "$(payload_other_tool)" \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY" \
-  SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD=2
+  LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD=2
 check_no_output "non-tracked tool: no additionalContext" "additionalContext"
 
 echo ""

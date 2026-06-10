@@ -5,11 +5,11 @@
 
 ## Codebase context consulted
 
-- `docs/super-spec/codebase/TECH.md`
-- `docs/super-spec/codebase/ARCH.md`
-- `docs/super-spec/codebase/QUALITY.md`
-- `docs/super-spec/codebase/CONCERNS.md`
-- `docs/super-spec/codebase/DOMAIN.md`
+- `docs/loop-spec/codebase/TECH.md`
+- `docs/loop-spec/codebase/ARCH.md`
+- `docs/loop-spec/codebase/QUALITY.md`
+- `docs/loop-spec/codebase/CONCERNS.md`
+- `docs/loop-spec/codebase/DOMAIN.md`
 
 (omit any not actually read)
 

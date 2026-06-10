@@ -11,7 +11,7 @@ Exactly one of:
 
 1. A user-gate task has `"requiresUserSpecification": true` in its `json:metadata` fence, OR
 2. The agent ran the "do I know HOW?" self-check (see `skills/checking-gates/SKILL.md`) and concluded the verification mechanics are ambiguous (Path A routing), OR
-3. The user manually invoked `Skill(super-spec:specifying-gates)` for a specific task ID.
+3. The user manually invoked `Skill(loop-spec:specifying-gates)` for a specific task ID.
 
 In all other cases -- where `verifyCommand` is concrete and every `acceptanceCriteria` entry has an observable proof -- the agent executes the gate directly and does NOT invoke this skill.
 
@@ -144,7 +144,7 @@ After all questions are answered:
 2. **Append a "Specification" section** to the human-readable part of the task description, above the `json:metadata` fence:
 
 ```markdown
-### Specification (via Skill(super-spec:specifying-gates) on <ISO-date>)
+### Specification (via Skill(loop-spec:specifying-gates) on <ISO-date>)
 
 - **Outcome:** <Q1>
 - **Mechanism:** <Q2>
@@ -165,6 +165,6 @@ After all questions are answered:
 
 ## Integration
 
-- **Invoked from:** `skills/checking-gates/SKILL.md` (Path A routing, automatic), or `Skill(super-spec:specifying-gates)` manual invocation.
+- **Invoked from:** `skills/checking-gates/SKILL.md` (Path A routing, automatic), or `Skill(loop-spec:specifying-gates)` manual invocation.
 - **Returns to:** `skills/execute/SKILL.md`. The agent reads the updated task and executes the now-concrete `verifyCommand` (or dispatches the subagent with `subagentBrief`).
 - **References:** `skills/shared/feature-state-schema.md` for the full metadata schema including all 9 optional gate fields.

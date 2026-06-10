@@ -19,7 +19,7 @@ check() {
   fi
 }
 
-WORK="${TMPDIR:-/tmp}/super-spec-gsd-ingest.$$"
+WORK="${TMPDIR:-/tmp}/loop-spec-gsd-ingest.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK"
 cd "$WORK"
@@ -45,7 +45,7 @@ check "D: QUALITY ingested" "INGESTED QUALITY" "$(echo "$out" | grep QUALITY)"
 check "E: CONCERNS ingested" "INGESTED CONCERNS" "$(echo "$out" | grep CONCERNS)"
 
 # Verify TECH.md contains both source contents
-[[ -f docs/super-spec/codebase/TECH.md ]] && tech=$(cat docs/super-spec/codebase/TECH.md) || tech=""
+[[ -f docs/loop-spec/codebase/TECH.md ]] && tech=$(cat docs/loop-spec/codebase/TECH.md) || tech=""
 echo "$tech" | grep -q "stack-content" && a=ok || a=bad
 echo "$tech" | grep -q "integ-content" && b=ok || b=bad
 check "F: TECH.md contains STACK content" "ok" "$a"
@@ -60,7 +60,7 @@ echo "arch-only" > .planning/codebase/ARCHITECTURE.md  # no STRUCTURE.md
 out=$(bash "$LIB" codebase)
 check "I: TECH skipped (no source)" "SKIPPED TECH (no source)" "$(echo "$out" | grep TECH)"
 check "J: ARCH ingested with single source" "INGESTED ARCH" "$(echo "$out" | grep ARCH)"
-arch=$(cat docs/super-spec/codebase/ARCH.md)
+arch=$(cat docs/loop-spec/codebase/ARCH.md)
 echo "$arch" | grep -q "arch-only" && d=ok || d=bad
 check "K: ARCH.md contains the single source content" "ok" "$d"
 
@@ -68,9 +68,9 @@ check "K: ARCH.md contains the single source content" "ok" "$d"
 rm -rf .planning docs
 mkdir -p .planning/phases/my-feature
 echo "pattern-content" > .planning/phases/my-feature/PATTERNS.md
-got=$(bash "$LIB" patterns my-feature docs/super-spec/features/my-feature/PATTERNS.md)
+got=$(bash "$LIB" patterns my-feature docs/loop-spec/features/my-feature/PATTERNS.md)
 check "L: patterns INGESTED from .planning/phases/<slug>" "INGESTED .planning/phases/my-feature/PATTERNS.md" "$got"
-target=$(cat docs/super-spec/features/my-feature/PATTERNS.md)
+target=$(cat docs/loop-spec/features/my-feature/PATTERNS.md)
 echo "$target" | grep -q "pattern-content" && e=ok || e=bad
 check "M: patterns target contains source content" "ok" "$e"
 
@@ -78,12 +78,12 @@ check "M: patterns target contains source content" "ok" "$e"
 rm -rf .planning docs
 mkdir -p .planning/other-feat
 echo "flat-pattern" > .planning/other-feat/PATTERNS.md
-got=$(bash "$LIB" patterns other-feat docs/super-spec/features/other-feat/PATTERNS.md)
+got=$(bash "$LIB" patterns other-feat docs/loop-spec/features/other-feat/PATTERNS.md)
 check "N: patterns INGESTED from .planning/<slug>" "INGESTED .planning/other-feat/PATTERNS.md" "$got"
 
 # === patterns: no GSD match ===
 rm -rf .planning docs
-got=$(bash "$LIB" patterns nope docs/super-spec/features/nope/PATTERNS.md)
+got=$(bash "$LIB" patterns nope docs/loop-spec/features/nope/PATTERNS.md)
 check "O: patterns NONE when no match" "NONE" "$got"
 
 # === bad invocation ===

@@ -1,6 +1,6 @@
 ---
 name: mapper-concerns
-description: Maps security, perf hotspots, tech debt. Writes only to docs/super-spec/codebase/CONCERNS.md.
+description: Maps security, perf hotspots, tech debt. Writes only to docs/loop-spec/codebase/CONCERNS.md.
 tools:
   - Read
   - Write

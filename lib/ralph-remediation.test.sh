@@ -63,7 +63,7 @@ fi
 
 # Test 2: Above threshold exits 0 immediately (4 tasks, threshold default 3)
 FDIR=$(make_feature_dir)
-if SUPER_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1; then
+if LOOP_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1; then
   EXITCODE=0
 else
   EXITCODE=$?
@@ -80,7 +80,7 @@ FDIR=$(make_feature_dir_small)
 LOGFILE="${TMPDIR:-/tmp}/ralph-remediation-small-feature.log"
 rm -f "$LOGFILE"
 set +e
-SUPER_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1
+LOOP_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1
 EXITCODE=$?
 set -e
 if [[ "$EXITCODE" -eq 1 ]]; then
@@ -96,7 +96,7 @@ SLUG="small-feature"
 LOGFILE="${TMPDIR:-/tmp}/ralph-remediation-${SLUG}.log"
 rm -f "$LOGFILE"
 set +e
-SUPER_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1
+LOOP_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1
 set -e
 if [[ -f "$LOGFILE" ]]; then
   pass "log file created for at-threshold case"
@@ -112,7 +112,7 @@ SLUG="small-feature"
 LOGFILE="${TMPDIR:-/tmp}/ralph-remediation-${SLUG}.log"
 rm -f "$LOGFILE"
 set +e
-SUPER_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1
+LOOP_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1
 set -e
 if grep -q "iteration\|iter" "$LOGFILE" 2>/dev/null; then
   pass "log file contains iteration info"
@@ -124,7 +124,7 @@ rm -f "$LOGFILE"
 
 # Test 6: Empty tasks list exits 0 immediately
 FDIR=$(make_feature_dir_empty)
-if SUPER_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1; then
+if LOOP_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1; then
   pass "empty task list exits 0"
 else
   fail "empty task list exits 0"
@@ -137,7 +137,7 @@ SLUG="small-feature"
 LOGFILE="${TMPDIR:-/tmp}/ralph-remediation-${SLUG}.log"
 rm -f "$LOGFILE"
 set +e
-SUPER_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1
+LOOP_SPEC_RALPH_THRESHOLD=3 bash "$SCRIPT" "$FDIR" > /dev/null 2>&1
 set -e
 if [[ -f "$LOGFILE" ]]; then
   # Check for common emoji unicode ranges (octopus is U+1F419)

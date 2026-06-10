@@ -6,7 +6,7 @@ set -euo pipefail
 
 HOOK="$(dirname "$0")/stop-deflection-guard.sh"
 TRACE_LOG="${TMPDIR:-/tmp}/claude-hooks-test-$$/deflection-trace.log"
-export SUPER_SPEC_DEFLECTION_TRACE_LOG="$TRACE_LOG"
+export LOOP_SPEC_DEFLECTION_TRACE_LOG="$TRACE_LOG"
 
 PASS=0
 FAIL=0
@@ -53,11 +53,11 @@ mkdir -p "$(dirname "$TRACE_LOG")"
 
 echo "=== stop-deflection-guard.sh tests ==="
 
-# a: kill-switch: SUPER_SPEC_DEFLECTION_GUARD=0 -> exit 0 (even with deflection phrase + low usage)
+# a: kill-switch: LOOP_SPEC_DEFLECTION_GUARD=0 -> exit 0 (even with deflection phrase + low usage)
 check "a: kill-switch ALLOW" 0 \
   "$(payload_with_usage "We should start a fresh session for this." 5000)" \
-  SUPER_SPEC_DEFLECTION_GUARD=0 \
-  SUPER_SPEC_DEFLECTION_TRACE_LOG="$TRACE_LOG"
+  LOOP_SPEC_DEFLECTION_GUARD=0 \
+  LOOP_SPEC_DEFLECTION_TRACE_LOG="$TRACE_LOG"
 
 # b: fail-open: empty payload -> exit 0
 check "b: fail-open empty payload ALLOW" 0 \

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib/regression-scan.sh <project-root>
 #
-# Reads docs/super-spec/features/*/VERIFICATION.md for completed features,
+# Reads docs/loop-spec/features/*/VERIFICATION.md for completed features,
 # extracts test commands, runs them, and outputs structured JSON.
 #
 # Output: {"prior_features":[{"slug":"...","status":"pass|fail"}], "failed_tests":[{"slug":"...","command":"...","exit_code":N,"output":"..."}]}
@@ -24,7 +24,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 PROJECT_ROOT="$1"
-FEATURES_DIR="$PROJECT_ROOT/docs/super-spec/features"
+FEATURES_DIR="$PROJECT_ROOT/docs/loop-spec/features"
 
 if [[ ! -d "$FEATURES_DIR" ]]; then
   printf '%s\n' "$EMPTY_JSON"

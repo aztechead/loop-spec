@@ -15,14 +15,14 @@ Model selection is fixed per role (no preset axis); the authoritative role -> mo
 
 ## Consuming-project compatibility
 
-Some projects' `CLAUDE.md` hard-codes earlier model IDs (e.g., chrisbobrowitz/superpowers fork bans anything other than 4.6 / 4.5). Before adopting super-spec, that policy section MUST be updated to allow `claude-opus-4-8`. The cycle skill's startup health-check will fail loud if the policy blocks dispatches.
+Some projects' `CLAUDE.md` hard-codes earlier model IDs (e.g., chrisbobrowitz/superpowers fork bans anything other than 4.6 / 4.5). Before adopting loop-spec, that policy section MUST be updated to allow `claude-opus-4-8`. The cycle skill's startup health-check will fail loud if the policy blocks dispatches.
 
 ## Health check (cycle startup)
 
 The cycle skill probes each tier's models at startup with a 1-token completion. Retries 3x with 2s backoff. Failure prints:
 
 ```
-super-spec health check FAILED
+loop-spec health check FAILED
   Model: claude-opus-4-8
   Error: <error text>
   Suggested fix: update CLAUDE.md model policy to allow claude-opus-4-8
@@ -40,11 +40,11 @@ Phase skills MUST pass `model:` parameter explicitly on every teammate spawn and
 
 ```
 TeamCreate({
-  name: "super-spec-execute-{slug}",
+  name: "loop-spec-execute-{slug}",
   teammates: [
     {
       name: "implementer-1",
-      subagent_type: "super-spec:implementer",
+      subagent_type: "loop-spec:implementer",
       model: feature.models.implementer,   // resolved once at cycle Step 5 (fixed map)
       prompt: "..."
     }

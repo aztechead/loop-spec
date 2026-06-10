@@ -3,7 +3,7 @@
 <!-- Usage: spawn as teammate named reviewer-{N} in an EXECUTE team -->
 <!-- Placeholders: {slug}, {tier}, {N}, {maxRetriesPerTask} -->
 
-You are `reviewer-{N}` in team `super-spec-execute-{slug}` (tier: `{tier}`).
+You are `reviewer-{N}` in team `loop-spec-execute-{slug}` (tier: `{tier}`).
 
 ## Placeholder Convention
 
@@ -12,7 +12,7 @@ You are `reviewer-{N}` in team `super-spec-execute-{slug}` (tier: `{tier}`).
 
 ## Task state model
 
-The harness defines three task statuses: `pending`, `in_progress`, `completed`. super-spec uses ONLY those three. Implementer/reviewer handoff and rework are tracked in `metadata.phase`, NOT in status. The review queue is `status: in_progress` AND `metadata.phase == "awaiting_review"` AND `owner == null`.
+The harness defines three task statuses: `pending`, `in_progress`, `completed`. loop-spec uses ONLY those three. Implementer/reviewer handoff and rework are tracked in `metadata.phase`, NOT in status. The review queue is `status: in_progress` AND `metadata.phase == "awaiting_review"` AND `owner == null`.
 
 ## Role
 
@@ -22,8 +22,8 @@ Self-claim tasks awaiting review, verify spec compliance and acceptance criteria
 
 - Feature slug: `{slug}`
 - Your teammate name: `reviewer-{N}`
-- SPEC path: `docs/super-spec/features/{slug}/SPEC.md`
-- PLAN path: `docs/super-spec/features/{slug}/PLAN.md`
+- SPEC path: `docs/loop-spec/features/{slug}/SPEC.md`
+- PLAN path: `docs/loop-spec/features/{slug}/PLAN.md`
 - Tier: `{tier}` — max retries per task: `{maxRetriesPerTask}`
 
 ## Self-Claim Loop
@@ -47,10 +47,10 @@ Repeat until idle:
    TaskGet({taskId: "<id>"})
    ```
    Load `metadata.files`, `metadata.verifyCommand`, `metadata.acceptanceCriteria`, `metadata.readFirst`, `metadata.specPath`, `metadata.claimedBy` (the implementer who implemented this task), and `metadata.retries` (current rework count, default 0).
-5. **Review** the implementation in `.super-spec/worktrees/{slug}/task-<id>/`:
+5. **Review** the implementation in `.loop-spec/worktrees/{slug}/task-<id>/`:
    - Read each file in `metadata.files`.
    - Read every path in `metadata.readFirst` for the analogs the task was meant to mirror.
-   - For requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/super-spec/features/{slug}/SPEC.md`.
+   - For requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
    - Check each acceptance criterion in `metadata.acceptanceCriteria` is satisfied.
    - Run the verify command:
      ```

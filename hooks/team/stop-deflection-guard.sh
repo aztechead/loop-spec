@@ -10,35 +10,35 @@
 #
 # Blocks the stop (exit 2) when:
 #   1. The last assistant text contains a known deflection phrase, AND
-#   2. Computed usage percentage is below SUPER_SPEC_DEFLECTION_THRESHOLD_PCT.
+#   2. Computed usage percentage is below LOOP_SPEC_DEFLECTION_THRESHOLD_PCT.
 #
 # Fail-open: if payload is missing, malformed, or the 'usage' field is absent,
 # the hook always exits 0. Errors never cascade into the user's session.
 #
 # Environment variables (all optional):
-#   SUPER_SPEC_DEFLECTION_GUARD           Set to "0" to disable. Default: 1 (active).
-#   SUPER_SPEC_CONTEXT_LIMIT              Total context window in tokens. Default: 200000.
-#   SUPER_SPEC_DEFLECTION_THRESHOLD_PCT   Threshold %. Below this with phrase -> block. Default: 50.
-#   SUPER_SPEC_DEFLECTION_TRACE_LOG       Path for trace log.
-#                                         Default: /tmp/claude-hooks/super-spec-deflection-trace.log
+#   LOOP_SPEC_DEFLECTION_GUARD           Set to "0" to disable. Default: 1 (active).
+#   LOOP_SPEC_CONTEXT_LIMIT              Total context window in tokens. Default: 200000.
+#   LOOP_SPEC_DEFLECTION_THRESHOLD_PCT   Threshold %. Below this with phrase -> block. Default: 50.
+#   LOOP_SPEC_DEFLECTION_TRACE_LOG       Path for trace log.
+#                                         Default: /tmp/claude-hooks/loop-spec-deflection-trace.log
 set -euo pipefail
 
 # Kill switch.
-if [[ "${SUPER_SPEC_DEFLECTION_GUARD:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_DEFLECTION_GUARD:-1}" == "0" ]]; then
   exit 0
 fi
 
-# Scope: only active in projects that use super-spec.
-if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.super-spec" && ! -d "$PWD/.super-spec" ]]; then
+# Scope: only active in projects that use loop-spec.
+if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then
   exit 0
 fi
 
 # Fail-open: any unexpected error must not block the session.
 trap 'exit 0' ERR
 
-TRACE_LOG="${SUPER_SPEC_DEFLECTION_TRACE_LOG:-/tmp/claude-hooks/super-spec-deflection-trace.log}"
-CONTEXT_LIMIT="${SUPER_SPEC_CONTEXT_LIMIT:-200000}"
-THRESHOLD_PCT="${SUPER_SPEC_DEFLECTION_THRESHOLD_PCT:-50}"
+TRACE_LOG="${LOOP_SPEC_DEFLECTION_TRACE_LOG:-/tmp/claude-hooks/loop-spec-deflection-trace.log}"
+CONTEXT_LIMIT="${LOOP_SPEC_CONTEXT_LIMIT:-200000}"
+THRESHOLD_PCT="${LOOP_SPEC_DEFLECTION_THRESHOLD_PCT:-50}"
 
 trace() {
   local task_id="$1"
@@ -153,7 +153,7 @@ for pattern in "${PATTERNS[@]}"; do
   if echo "$TEXT" | grep -qi "$pattern"; then
     trace "?" "deny" "phrase='${pattern}' usage=${CONTEXT_PCT}%"
     echo "DENY: deflection phrase detected but context usage is only ${CONTEXT_PCT}% (${TOKENS}/${CONTEXT_LIMIT} tokens). Provide a substantive response." >&2
-    echo "(To disable this check, set SUPER_SPEC_DEFLECTION_GUARD=0.)" >&2
+    echo "(To disable this check, set LOOP_SPEC_DEFLECTION_GUARD=0.)" >&2
     exit 2
   fi
 done

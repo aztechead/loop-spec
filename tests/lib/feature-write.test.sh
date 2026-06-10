@@ -19,7 +19,7 @@ check() {
   fi
 }
 
-WORK="${TMPDIR:-/tmp}/super-spec-feature-write.$$"
+WORK="${TMPDIR:-/tmp}/loop-spec-feature-write.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/feat"
 

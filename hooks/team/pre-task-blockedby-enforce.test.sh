@@ -18,9 +18,9 @@ check() {
   local actual_exit=0
 
   if [[ -n "$extra_env" ]]; then
-    echo "$payload" | env SUPER_SPEC_BLOCKEDBY_TRACE_LOG="$TRACE_LOG" $extra_env bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    echo "$payload" | env LOOP_SPEC_BLOCKEDBY_TRACE_LOG="$TRACE_LOG" $extra_env bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
   else
-    echo "$payload" | env SUPER_SPEC_BLOCKEDBY_TRACE_LOG="$TRACE_LOG" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    echo "$payload" | env LOOP_SPEC_BLOCKEDBY_TRACE_LOG="$TRACE_LOG" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
   fi
 
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then
@@ -49,10 +49,10 @@ payload_update() {
 
 echo "=== pre-task-blockedby-enforce.sh tests ==="
 
-# a: kill-switch: SUPER_SPEC_BLOCKEDBY_GUARD=0 -> exit 0 regardless of payload
+# a: kill-switch: LOOP_SPEC_BLOCKEDBY_GUARD=0 -> exit 0 regardless of payload
 check "a: kill-switch exit 0" 0 \
   "$(payload_update "task-002" "in_progress" '["task-001"]' '[{"id":"task-001","status":"pending"}]')" \
-  "SUPER_SPEC_BLOCKEDBY_GUARD=0"
+  "LOOP_SPEC_BLOCKEDBY_GUARD=0"
 
 # b: fail-open: empty payload -> exit 0
 check "b: fail-open empty payload" 0 ""

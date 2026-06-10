@@ -20,7 +20,7 @@
 #   intercepting task creation, but its payload schema is not published, and
 #   `PreToolUse: TaskCreate` is not a documented matcher (TaskCreate is not in
 #   the listed PreToolUse tool set). To avoid depending on undocumented hook
-#   behavior, super-spec validates task metadata orchestrator-side instead --
+#   behavior, loop-spec validates task metadata orchestrator-side instead --
 #   the cycle's EXECUTE phase (skills/execute/SKILL.md Step 3) calls this
 #   script once per task before invoking TaskCreate.
 set -euo pipefail

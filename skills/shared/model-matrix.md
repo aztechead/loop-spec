@@ -42,9 +42,9 @@ on every spawn:
 
 ```
 TeamCreate({
-  name: "super-spec-{phase}-{slug}",
+  name: "loop-spec-{phase}-{slug}",
   teammates: [
-    { name: "implementer-1", subagent_type: "super-spec:implementer", model: feature.models.implementer, prompt: "..." },
+    { name: "implementer-1", subagent_type: "loop-spec:implementer", model: feature.models.implementer, prompt: "..." },
     // ... additional teammates
   ]
 })

@@ -23,8 +23,8 @@ TASKS_OK='[
 
 # A: valid conversion exits 0 and emits valid JSON
 if OUT=$(printf '%s' "$TASKS_OK" | bash "$SCRIPT" --slug demo \
-    --spec docs/super-spec/features/demo/SPEC.md \
-    --plan docs/super-spec/features/demo/PLAN.md 2>/dev/null); then
+    --spec docs/loop-spec/features/demo/SPEC.md \
+    --plan docs/loop-spec/features/demo/PLAN.md 2>/dev/null); then
   pass "A: valid tasks convert (exit 0)"
 else
   fail "A: valid tasks convert (exit 0)"
@@ -59,8 +59,8 @@ fi
 PROT=$(printf '%s' "$OUT" | python3 -c "
 import json,sys; p=json.load(sys.stdin)
 t={x['id']:x for x in p['tasks']}
-ok1 = all('docs/super-spec/features/demo/SPEC.md' in x['protected'] and
-          'docs/super-spec/features/demo/PLAN.md' in x['protected'] for x in p['tasks'])
+ok1 = all('docs/loop-spec/features/demo/SPEC.md' in x['protected'] and
+          'docs/loop-spec/features/demo/PLAN.md' in x['protected'] for x in p['tasks'])
 ok2 = 'docs/sub-spec.md' in t['task-002']['protected']
 print('ok' if ok1 and ok2 else 'bad')")
 if [[ "$PROT" == "ok" ]]; then

@@ -33,7 +33,7 @@ got=$(bash "$LIB" slugify "MIXED Case 123")
 check "D: slugify lowercases + keeps digits" "mixed-case-123" "$got"
 
 # Git-context cases (use temp repo)
-WORK="${TMPDIR:-/tmp}/super-spec-git-ops.$$"
+WORK="${TMPDIR:-/tmp}/loop-spec-git-ops.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK"
 cd "$WORK"

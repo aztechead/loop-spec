@@ -1,4 +1,4 @@
-# super-spec test matrix
+# loop-spec test matrix
 
 ## Automated suites
 
@@ -13,7 +13,7 @@ tests, the `lib/` unit tests, and (when a node runtime is available) the workflo
 syntax checks in `tests/workflows/smoke.sh`. It needs only bash, git, jq, python3,
 and (for the workflow checks) node. It does NOT require the Claude CLI.
 
-There is no scripted end-to-end cycle test: driving a full `super-spec:cycle`
+There is no scripted end-to-end cycle test: driving a full `loop-spec:cycle`
 headless against the installed plugin proved unreliable (it exercises a cached
 plugin snapshot and the interactive AskUserQuestion path). End-to-end coverage is
 the manual matrix below, run against a live Claude Code session.
@@ -64,8 +64,8 @@ installed). Full grid quarterly.
 
 Total: 36 cells (3 feature sizes x 3 tiers x 4 execution styles).
 
-For each cell, drive `super-spec:cycle` in `SUPER_SPEC_NON_INTERACTIVE=1` mode
-(set `SUPER_SPEC_ANSWER_TIER`, `SUPER_SPEC_ANSWER_STYLE`, `SUPER_SPEC_ANSWER_TITLE`)
+For each cell, drive `loop-spec:cycle` in `LOOP_SPEC_NON_INTERACTIVE=1` mode
+(set `LOOP_SPEC_ANSWER_TIER`, `LOOP_SPEC_ANSWER_STYLE`, `LOOP_SPEC_ANSWER_TITLE`)
 and confirm SPEC.md / PLAN.md / VERIFICATION.md are produced, `feature.json`
 `currentPhase == "completed"`, and the feature branch carries the expected commits.
 

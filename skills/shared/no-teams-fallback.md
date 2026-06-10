@@ -1,6 +1,6 @@
 # No-teams fallback (reference)
 
-Applies when `.super-spec/runtime.json.teamsAvailable == false` (cycle Step 2
+Applies when `.loop-spec/runtime.json.teamsAvailable == false` (cycle Step 2
 probe: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1`). Every phase still runs and
 produces the same artifacts and gates; only the dispatch mechanism changes.
 Teams are an accelerator (persistent context across critique rounds), not a
@@ -21,7 +21,7 @@ prerequisite — a missing experimental flag must never make the plugin throw.
 
 - **DISCUSS / PLAN critique gates:** run each round as `challenger` then
   `advocate` one-shot Agent calls (challenger output feeds the advocate prompt).
-  Round transcripts still land in `.super-spec/features/{slug}/gate-logs/` and
+  Round transcripts still land in `.loop-spec/features/{slug}/gate-logs/` and
   the convergence/fix-list rules are unchanged. What is lost without teams is
   in-context memory between rounds; compensate by inlining
   `prior_round_summaries` (already persisted to gate-logs) into each new spawn

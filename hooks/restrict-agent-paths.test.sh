@@ -10,7 +10,7 @@ PASS=0
 FAIL=0
 
 # Tests run outside an active cycle; bypass the no-feature-state fast path.
-export SUPER_SPEC_PATH_GUARD_FORCE=1
+export LOOP_SPEC_PATH_GUARD_FORCE=1
 
 check() {
   local name="$1"
@@ -41,20 +41,20 @@ payload() {
 echo "=== restrict-agent-paths.sh tests ==="
 
 # Case A: spec-writer Write to allowed features path -> ALLOW (exit 0)
-check "A: spec-writer Write to docs/super-spec/features/foo/SPEC.md ALLOW" 0 \
-  "$(payload "Write" "docs/super-spec/features/foo/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "A: spec-writer Write to docs/loop-spec/features/foo/SPEC.md ALLOW" 0 \
+  "$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
 
 # Case B: spec-writer Write to disallowed path -> DENY (exit 2)
 check "B: spec-writer Write to src/foo.py DENY" 2 \
   "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")"
 
 # Case C: planner Edit to allowed features path -> ALLOW (exit 0)
-check "C: planner Edit to docs/super-spec/features/foo/PLAN.md ALLOW" 0 \
-  "$(payload "Edit" "docs/super-spec/features/foo/PLAN.md" "$FIXTURES/planner.jsonl")"
+check "C: planner Edit to docs/loop-spec/features/foo/PLAN.md ALLOW" 0 \
+  "$(payload "Edit" "docs/loop-spec/features/foo/PLAN.md" "$FIXTURES/planner.jsonl")"
 
 # Case D: mapper-tech Write to allowed codebase path -> ALLOW (exit 0)
-check "D: mapper-tech Write to docs/super-spec/codebase/TECH.md ALLOW" 0 \
-  "$(payload "Write" "docs/super-spec/codebase/TECH.md" "$FIXTURES/mapper-tech.jsonl")"
+check "D: mapper-tech Write to docs/loop-spec/codebase/TECH.md ALLOW" 0 \
+  "$(payload "Write" "docs/loop-spec/codebase/TECH.md" "$FIXTURES/mapper-tech.jsonl")"
 
 # Case E: mapper-arch Write to disallowed path -> DENY (exit 2)
 check "E: mapper-arch Write to src/foo.py DENY" 2 \
@@ -73,16 +73,16 @@ check "H: Bash tool not restricted ALLOW" 0 \
   "$(payload "Bash" "src/foo.py" "$FIXTURES/spec-writer.jsonl")"
 
 # Case I: spec-writer with absolute path to allowed location -> ALLOW (exit 0)
-check "I: spec-writer Write to /abs/path/docs/super-spec/features/bar/SPEC.md ALLOW" 0 \
-  "$(payload "Write" "/abs/path/docs/super-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "I: spec-writer Write to /abs/path/docs/loop-spec/features/bar/SPEC.md ALLOW" 0 \
+  "$(payload "Write" "/abs/path/docs/loop-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
 
 # Case J: mapper-arch Edit to absolute allowed codebase path -> ALLOW (exit 0)
-check "J: mapper-arch Edit to /abs/docs/super-spec/codebase/MAP.md ALLOW" 0 \
-  "$(payload "Edit" "/abs/docs/super-spec/codebase/MAP.md" "$FIXTURES/mapper-arch.jsonl")"
+check "J: mapper-arch Edit to /abs/docs/loop-spec/codebase/MAP.md ALLOW" 0 \
+  "$(payload "Edit" "/abs/docs/loop-spec/codebase/MAP.md" "$FIXTURES/mapper-arch.jsonl")"
 
 # Case K: pattern-mapper Write to allowed features path -> ALLOW (exit 0)
-check "K: pattern-mapper Write to docs/super-spec/features/foo/PATTERNS.md ALLOW" 0 \
-  "$(payload "Write" "docs/super-spec/features/foo/PATTERNS.md" "$FIXTURES/pattern-mapper.jsonl")"
+check "K: pattern-mapper Write to docs/loop-spec/features/foo/PATTERNS.md ALLOW" 0 \
+  "$(payload "Write" "docs/loop-spec/features/foo/PATTERNS.md" "$FIXTURES/pattern-mapper.jsonl")"
 
 # Case L: pattern-mapper Write to disallowed path -> DENY (exit 2)
 check "L: pattern-mapper Write to src/foo.py DENY" 2 \
@@ -107,10 +107,10 @@ fi
 check "O: nonexistent transcript path ALLOW" 0 \
   "$(payload "Write" "src/foo.py" "/nonexistent/transcript.jsonl")"
 
-# Case P: kill switch SUPER_SPEC_PATH_GUARD=0 -> ALLOW even for restricted caller
+# Case P: kill switch LOOP_SPEC_PATH_GUARD=0 -> ALLOW even for restricted caller
 actual_exit=0
 echo "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" \
-  | SUPER_SPEC_PATH_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+  | LOOP_SPEC_PATH_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then
   echo "PASS: P: kill switch ALLOW"
   ((PASS++)) || true
@@ -119,11 +119,11 @@ else
   ((FAIL++)) || true
 fi
 
-# Case Q: fast path — no .super-spec/features and no force flag -> ALLOW without parsing
+# Case Q: fast path — no .loop-spec/features and no force flag -> ALLOW without parsing
 HOOK_ABS="$(cd "$(dirname "$HOOK")" && pwd)/$(basename "$HOOK")"
 actual_exit=0
 echo "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" \
-  | env -u SUPER_SPEC_PATH_GUARD_FORCE CLAUDE_PROJECT_DIR=/nonexistent bash -c "cd /tmp && bash '$HOOK_ABS'" >/dev/null 2>&1 || actual_exit=$?
+  | env -u LOOP_SPEC_PATH_GUARD_FORCE CLAUDE_PROJECT_DIR=/nonexistent bash -c "cd /tmp && bash '$HOOK_ABS'" >/dev/null 2>&1 || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then
   echo "PASS: Q: no-feature-state fast path ALLOW"
   ((PASS++)) || true

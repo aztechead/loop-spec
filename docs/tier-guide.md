@@ -1,6 +1,6 @@
 # Tier Guide
 
-Two independent choices control how super-spec runs.
+Two independent choices control how loop-spec runs.
 
 ---
 
@@ -41,7 +41,7 @@ width `W` of the task DAG and uses the lightest mechanism that fits: a single su
 for a serial plan (`W == 1`), batched one-shot subagent waves for modest parallelism
 (`2 <= W < t_team`), a self-claim agent team for high parallelism (`t_team <= W < t_wf`),
 and the Workflow DAG only for very wide plans (`W >= t_wf`) when you opt in with
-`SUPER_SPEC_EXECUTE_WORKFLOW=1`. Tier only tunes the width thresholds and the per-wave
+`LOOP_SPEC_EXECUTE_WORKFLOW=1`. Tier only tunes the width thresholds and the per-wave
 cap:
 
 | Tier | t_team (team rung at W >=) | t_wf (workflow rung at W >=) | maxParallelImplementers |

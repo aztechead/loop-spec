@@ -10,7 +10,7 @@ PASS=0
 FAIL=0
 
 TRACE_LOG="${TMPDIR:-/tmp}/budget-gate-test-$$.log"
-export SUPER_SPEC_BUDGET_TRACE_LOG="$TRACE_LOG"
+export LOOP_SPEC_BUDGET_TRACE_LOG="$TRACE_LOG"
 
 # check <name> <expected_exit> <stdin_payload> [env_vars...]
 # Captures stdout and stderr separately.
@@ -65,30 +65,30 @@ EMPTY_PAYLOAD='{}'
 
 echo "=== budget-gate.sh tests ==="
 
-# 1. No ceiling: SUPER_SPEC_MAX_COST_USD unset -> exit 0 unconditionally
+# 1. No ceiling: LOOP_SPEC_MAX_COST_USD unset -> exit 0 unconditionally
 check "1: no ceiling (MAX unset) exits 0" 0 \
   "$EMPTY_PAYLOAD" \
-  SUPER_SPEC_SESSION_COST_USD=999
+  LOOP_SPEC_SESSION_COST_USD=999
 
-# 2. Kill switch: SUPER_SPEC_BUDGET_GUARD=0, over budget -> still exit 0
+# 2. Kill switch: LOOP_SPEC_BUDGET_GUARD=0, over budget -> still exit 0
 check "2: kill switch GUARD=0 exits 0 even when over budget" 0 \
   "$EMPTY_PAYLOAD" \
-  SUPER_SPEC_MAX_COST_USD=10 \
-  SUPER_SPEC_SESSION_COST_USD=20 \
-  SUPER_SPEC_BUDGET_GUARD=0
+  LOOP_SPEC_MAX_COST_USD=10 \
+  LOOP_SPEC_SESSION_COST_USD=20 \
+  LOOP_SPEC_BUDGET_GUARD=0
 
 # 3. Warn at 80%: cost=8, max=10 -> exit 0, stdout contains "WARNING"
 check_stdout_contains "3: warn at 80% exits 0 with WARNING in stdout" 0 \
   "WARNING" \
   "$EMPTY_PAYLOAD" \
-  SUPER_SPEC_MAX_COST_USD=10 \
-  SUPER_SPEC_SESSION_COST_USD=8
+  LOOP_SPEC_MAX_COST_USD=10 \
+  LOOP_SPEC_SESSION_COST_USD=8
 
 # 4. Block at 100%: cost=10, max=10 -> exit 2
 check "4: block at 100% exits 2" 2 \
   "$EMPTY_PAYLOAD" \
-  SUPER_SPEC_MAX_COST_USD=10 \
-  SUPER_SPEC_SESSION_COST_USD=10
+  LOOP_SPEC_MAX_COST_USD=10 \
+  LOOP_SPEC_SESSION_COST_USD=10
 
 # 5. Fail-open: malformed metrics-session.json -> exit 0
 TMPDIR_TESTS="${TMPDIR:-/tmp}/budget-gate-tests-$$"
@@ -97,7 +97,7 @@ printf 'not valid json {{{' > "$TMPDIR_TESTS/metrics-session.json"
 
 actual_exit=0
 (cd "$TMPDIR_TESTS" && printf '%s' "$EMPTY_PAYLOAD" | \
-  SUPER_SPEC_MAX_COST_USD=10 bash "$HOOK" >/dev/null 2>/dev/null) || actual_exit=$?
+  LOOP_SPEC_MAX_COST_USD=10 bash "$HOOK" >/dev/null 2>/dev/null) || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then
   echo "PASS: 5: fail-open malformed metrics-session.json exits 0"
   ((PASS++)) || true
@@ -109,13 +109,13 @@ fi
 # 6. Block above 100%: cost=15, max=10 -> exit 2
 check "6: block above 100% exits 2" 2 \
   "$EMPTY_PAYLOAD" \
-  SUPER_SPEC_MAX_COST_USD=10 \
-  SUPER_SPEC_SESSION_COST_USD=15
+  LOOP_SPEC_MAX_COST_USD=10 \
+  LOOP_SPEC_SESSION_COST_USD=15
 
 # 7. Below 80%: cost=7.9, max=10 -> exit 0, no WARNING in stdout
 actual_exit=0
 actual_stdout=$(printf '%s' "$EMPTY_PAYLOAD" | \
-  SUPER_SPEC_MAX_COST_USD=10 SUPER_SPEC_SESSION_COST_USD=7.9 bash "$HOOK" 2>/dev/null) || actual_exit=$?
+  LOOP_SPEC_MAX_COST_USD=10 LOOP_SPEC_SESSION_COST_USD=7.9 bash "$HOOK" 2>/dev/null) || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]] && ! echo "$actual_stdout" | grep -q "WARNING"; then
   echo "PASS: 7: below 80% exits 0 silently"
   ((PASS++)) || true
@@ -128,7 +128,7 @@ fi
 printf '{"totals":{"estimated_cost_usd":8.5}}' > "$TMPDIR_TESTS/metrics-session.json"
 actual_exit=0
 actual_stdout=$(cd "$TMPDIR_TESTS" && printf '%s' "$EMPTY_PAYLOAD" | \
-  SUPER_SPEC_MAX_COST_USD=10 bash "$HOOK" 2>/dev/null) || actual_exit=$?
+  LOOP_SPEC_MAX_COST_USD=10 bash "$HOOK" 2>/dev/null) || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]] && echo "$actual_stdout" | grep -q "WARNING"; then
   echo "PASS: 8: metrics-session.json cost source warns at 80%"
   ((PASS++)) || true

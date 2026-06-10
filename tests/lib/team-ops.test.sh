@@ -25,10 +25,10 @@ source "$LIB"
 
 # Case A: team_name_for_phase
 got=$(team_name_for_phase discuss foo)
-check "A: team_name_for_phase discuss foo" "super-spec-discuss-foo" "$got"
+check "A: team_name_for_phase discuss foo" "loop-spec-discuss-foo" "$got"
 
 got=$(team_name_for_phase implement my-feature)
-check "A2: team_name_for_phase implement my-feature" "super-spec-implement-my-feature" "$got"
+check "A2: team_name_for_phase implement my-feature" "loop-spec-implement-my-feature" "$got"
 
 # Case B: assert_team_env exits 0 when env var set to 1
 exit_code=0
@@ -50,10 +50,10 @@ check "D: assert_team_env exits 2 when env var set to 0" "2" "$exit_code"
 
 # Case E: feature_json_path
 got=$(feature_json_path foo)
-check "E: feature_json_path foo" ".super-spec/features/foo/feature.json" "$got"
+check "E: feature_json_path foo" ".loop-spec/features/foo/feature.json" "$got"
 
 got=$(feature_json_path my-feature)
-check "E2: feature_json_path my-feature" ".super-spec/features/my-feature/feature.json" "$got"
+check "E2: feature_json_path my-feature" ".loop-spec/features/my-feature/feature.json" "$got"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

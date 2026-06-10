@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Atomic write of .super-spec/features/{slug}/feature.json with .bak rotation.
+# Atomic write of .loop-spec/features/{slug}/feature.json with .bak rotation.
 #
 # Usage:
 #   bash lib/feature-write.sh <feature_dir> <feature_json_string>

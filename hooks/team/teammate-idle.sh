@@ -5,9 +5,9 @@
 # Always exits 0 (advisory only, never blocks).
 #
 # Environment:
-#   SUPER_SPEC_FEATURE_DIR  path to the feature dir containing feature.json
-#                           (e.g. .super-spec/features/my-feature)
-#                           If unset, the hook scans .super-spec/features/ for
+#   LOOP_SPEC_FEATURE_DIR  path to the feature dir containing feature.json
+#                           (e.g. .loop-spec/features/my-feature)
+#                           If unset, the hook scans .loop-spec/features/ for
 #                           any feature.json and uses the first one found.
 set -euo pipefail
 
@@ -17,12 +17,12 @@ advisory() {
 
 # Locate feature.json
 FEATURE_JSON=""
-if [[ -n "${SUPER_SPEC_FEATURE_DIR:-}" ]]; then
-  FEATURE_JSON="${SUPER_SPEC_FEATURE_DIR}/feature.json"
+if [[ -n "${LOOP_SPEC_FEATURE_DIR:-}" ]]; then
+  FEATURE_JSON="${LOOP_SPEC_FEATURE_DIR}/feature.json"
 else
-  # Scan for any active feature.json under .super-spec/features/
-  if [[ -d ".super-spec/features" ]]; then
-    FEATURE_JSON=$(find .super-spec/features -maxdepth 2 -name feature.json | head -1)
+  # Scan for any active feature.json under .loop-spec/features/
+  if [[ -d ".loop-spec/features" ]]; then
+    FEATURE_JSON=$(find .loop-spec/features -maxdepth 2 -name feature.json | head -1)
   fi
 fi
 

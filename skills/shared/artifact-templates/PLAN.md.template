@@ -1,6 +1,6 @@
 # {feature_title} - Implementation Plan
 
-**Spec:** `docs/super-spec/features/{slug}/SPEC.md`
+**Spec:** `docs/loop-spec/features/{slug}/SPEC.md`
 **Created:** {created_at}
 
 ## Architecture overview

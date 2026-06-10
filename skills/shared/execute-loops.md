@@ -23,7 +23,7 @@ Repeat until idle:
 After step 4, the implementer creates its worktree:
 
 ```bash
-worktree_path=".super-spec/worktrees/{slug}/task-{taskId}/"
+worktree_path=".loop-spec/worktrees/{slug}/task-{taskId}/"
 worktree_branch="task/{taskId}-{slug}"
 
 git worktree add -b {worktree_branch} {worktree_path} {branch}
