@@ -1,6 +1,6 @@
 # Cycle resume + escalation (reference)
 
-Reference procedures the `super-spec:cycle` skill follows. Step 1 (Resume detection) contains the inline fast-path; this file is the full algorithm and the pause/escalation handling.
+Reference procedures the `loop-spec:cycle` skill follows. Step 1 (Resume detection) contains the inline fast-path; this file is the full algorithm and the pause/escalation handling.
 
 ## Resume strategy
 
@@ -12,13 +12,13 @@ Run:
 ```bash
 bash lib/git-ops.sh list-feature-worktrees
 ```
-This prints one line per worktree under `.claude/worktrees/`: `<path>\t<branch>`. For each line, read `<path>/.super-spec/features/*/feature.json` to discover in-progress features living in their own worktree.
+This prints one line per worktree under `.claude/worktrees/`: `<path>\t<branch>`. For each line, read `<path>/.loop-spec/features/*/feature.json` to discover in-progress features living in their own worktree.
 
 Features found here are **worktree-mode** (schemaVersion 6). They are collected alongside any legacy candidates (see step 2 below) into a single candidate list.
 
 ### 2. Enumerate legacy feature.json files (schemaVersion 5 or earlier)
 
-Read `.super-spec/features/*/feature.json` from the **main checkout**. A feature is **legacy** if:
+Read `.loop-spec/features/*/feature.json` from the **main checkout**. A feature is **legacy** if:
 - `schemaVersion` is absent or <= 5, OR
 - `worktreePath` is absent or empty.
 
@@ -69,7 +69,7 @@ Call this BEFORE routing to the current phase. All subsequent phase work runs in
 No worktree is entered. Resume proceeds in the main checkout exactly as before.
 
 **Both paths then:**
-Load feature state into memory. Jump directly to Step 6 (phase routing) with `state = loaded feature.json`. Do not re-run Steps 2-4. The phase team is re-created fresh via `TeamCreate` (the harness does not support in-process teammate resume). If `currentGate` in `feature.json` is non-null with a non-zero round, load prior debate transcript from `.super-spec/features/{slug}/gate-logs/` into the spawn prompt so the resumed advocate/challenger have prior context.
+Load feature state into memory. Jump directly to Step 6 (phase routing) with `state = loaded feature.json`. Do not re-run Steps 2-4. The phase team is re-created fresh via `TeamCreate` (the harness does not support in-process teammate resume). If `currentGate` in `feature.json` is non-null with a non-zero round, load prior debate transcript from `.loop-spec/features/{slug}/gate-logs/` into the spawn prompt so the resumed advocate/challenger have prior context.
 
 The `TaskList` probe is the sole mechanism for detecting live teams. The harness exposes no `TeamList` tool, and the probe is non-destructive (it reads only, cannot create or delete teams).
 
@@ -80,7 +80,7 @@ If a phase pauses + escalates (budget exhausted, NEEDS_CONTEXT, etc.):
 1. Call `TeamDelete({name: feature_json.currentTeamName})` (if `currentTeamName` is non-null) before returning control to the user.
 2. Clear `currentTeamName` and `currentTeammates` in `feature.json` via `lib/feature-write.sh`.
 3. Print escalation reason.
-4. Read `retryBudget` from `feature.json` (`.super-spec/features/{slug}/feature.json`) and show `gateHistory` tail (last 3 attempts from `feature.json.gateHistory`).
+4. Read `retryBudget` from `feature.json` (`.loop-spec/features/{slug}/feature.json`) and show `gateHistory` tail (last 3 attempts from `feature.json.gateHistory`).
 5. Show partial artifacts (spec/plan/execution/verification paths from `feature.json.artifacts`).
 6. **Worktree-mode only (schemaVersion 6):** after snapshotting (step 5 above), call `ExitWorktree({action: "keep"})` to return the session to the main checkout. The worktree and branch are preserved on disk; the next resume will re-enter via `EnterWorktree`. Legacy (in-place) features skip this step.
 7. Return control to user.
@@ -88,5 +88,5 @@ If a phase pauses + escalates (budget exhausted, NEEDS_CONTEXT, etc.):
 User options:
 - Edit artifacts manually + re-invoke cycle (resume continues)
 - Reset retry counters: edit `feature.json` directly (`globalUsed = 0`, `perPhaseUsed.{phase} = 0`); resume
-- Rollback: the `super-spec:rollback` skill operates inside the worktree (cwd is already the worktree when the session is active inside it). On pause the session has exited the worktree, so re-enter via `EnterWorktree({path: feature.worktreePath})` first, then invoke rollback.
-- Abort: delete `.super-spec/features/{slug}/`; new branch state up to user
+- Rollback: the `loop-spec:rollback` skill operates inside the worktree (cwd is already the worktree when the session is active inside it). On pause the session has exited the worktree, so re-enter via `EnterWorktree({path: feature.worktreePath})` first, then invoke rollback.
+- Abort: delete `.loop-spec/features/{slug}/`; new branch state up to user

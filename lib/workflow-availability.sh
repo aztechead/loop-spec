@@ -10,7 +10,7 @@
 #                When omitted, the version is read from `claude --version`.
 #
 # Override:
-#   SUPER_SPEC_WORKFLOWS_AVAILABLE=1|0  forces the result (1 -> true, else false),
+#   LOOP_SPEC_WORKFLOWS_AVAILABLE=1|0  forces the result (1 -> true, else false),
 #   bypassing version detection entirely.
 #
 # Always exits 0; the answer is on stdout ("true" or "false").
@@ -18,8 +18,8 @@ set -euo pipefail
 
 MIN="2.1.154"
 
-if [[ -n "${SUPER_SPEC_WORKFLOWS_AVAILABLE:-}" ]]; then
-  [[ "$SUPER_SPEC_WORKFLOWS_AVAILABLE" == "1" ]] && echo "true" || echo "false"
+if [[ -n "${LOOP_SPEC_WORKFLOWS_AVAILABLE:-}" ]]; then
+  [[ "$LOOP_SPEC_WORKFLOWS_AVAILABLE" == "1" ]] && echo "true" || echo "false"
   exit 0
 fi
 

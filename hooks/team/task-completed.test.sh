@@ -23,7 +23,7 @@ check() {
     local fdir="$TMPDIR_TESTS/$name"
     mkdir -p "$fdir"
     printf '%s' "$feature_json" > "$fdir/feature.json"
-    env_args=(SUPER_SPEC_FEATURE_DIR="$fdir")
+    env_args=(LOOP_SPEC_FEATURE_DIR="$fdir")
   fi
 
   if [[ ${#env_args[@]} -gt 0 ]]; then
@@ -41,10 +41,10 @@ check() {
   fi
 }
 
-# Build a TaskCompleted payload (super-spec-marked via subject convention)
+# Build a TaskCompleted payload (loop-spec-marked via subject convention)
 payload_completed() {
   local task_id="${1:-task-001}"
-  printf '{"tool_name":"TaskCompleted","tool_input":{"taskId":"%s","subject":"%s: do the thing","metadata":{"superSpec":true}}}' "$task_id" "$task_id"
+  printf '{"tool_name":"TaskCompleted","tool_input":{"taskId":"%s","subject":"%s: do the thing","metadata":{"loopSpec":true}}}' "$task_id" "$task_id"
 }
 
 # Build an UNMARKED TaskCompleted payload (ordinary task tracking)
@@ -111,7 +111,7 @@ feature_execute_no_commands() {
 }
 
 # Build a TaskCompleted payload with task metadata for discuss/plan validation
-# (marked super-spec via subject convention so the metadata gate applies)
+# (marked loop-spec via subject convention so the metadata gate applies)
 payload_completed_with_metadata() {
   local task_id="${1:-task-001}"
   local metadata="${2:-}"
@@ -122,7 +122,7 @@ payload_completed_with_metadata() {
 
 echo "=== task-completed.sh tests ==="
 
-# A: Missing feature.json (no SUPER_SPEC_FEATURE_DIR set) -> ALLOW (exit 0)
+# A: Missing feature.json (no LOOP_SPEC_FEATURE_DIR set) -> ALLOW (exit 0)
 check "A: missing feature.json graceful exit 0" 0 \
   "$(payload_completed)"
 
@@ -179,7 +179,7 @@ check_exit=0
 fdir_ks="$TMPDIR_TESTS/kill-switch"
 mkdir -p "$fdir_ks"
 printf '%s' "$(feature_execute_failing_lint)" > "$fdir_ks/feature.json"
-echo "$(payload_completed)" | SUPER_SPEC_FEATURE_DIR="$fdir_ks" SUPER_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || check_exit=$?
+echo "$(payload_completed)" | LOOP_SPEC_FEATURE_DIR="$fdir_ks" LOOP_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || check_exit=$?
 if [[ "$check_exit" -eq 0 ]]; then
   echo "PASS: J2: kill switch ALLOW"
   ((PASS++)) || true
@@ -193,11 +193,11 @@ check "J3: malformed payload fail-open ALLOW" 0 \
   'not json at all' \
   "$(feature_execute_failing_lint)"
 
-# K: EXECUTE phase with SUPER_SPEC_FEATURE_DIR pointing to empty dir -> ALLOW (exit 0)
+# K: EXECUTE phase with LOOP_SPEC_FEATURE_DIR pointing to empty dir -> ALLOW (exit 0)
 EMPTY_DIR="$TMPDIR_TESTS/empty-dir"
 mkdir -p "$EMPTY_DIR"
 check_exit=0
-echo "$(payload_completed)" | SUPER_SPEC_FEATURE_DIR="$EMPTY_DIR" bash "$HOOK" >/dev/null 2>&1 || check_exit=$?
+echo "$(payload_completed)" | LOOP_SPEC_FEATURE_DIR="$EMPTY_DIR" bash "$HOOK" >/dev/null 2>&1 || check_exit=$?
 if [[ "$check_exit" -eq 0 ]]; then
   echo "PASS: K: feature dir exists but no feature.json exit 0"
   ((PASS++)) || true

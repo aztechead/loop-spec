@@ -40,13 +40,13 @@ else
 fi
 
 # 4. No retired opus model id in shipped agents/skills/README (allow CHANGELOG history).
-if grep -rn 'claude-opus-4-7' agents skills README.md 2>/dev/null | grep -v '/docs/super-spec/' >/tmp/super-spec-opus47.$$; then
+if grep -rn 'claude-opus-4-7' agents skills README.md 2>/dev/null | grep -v '/docs/loop-spec/' >/tmp/loop-spec-opus47.$$; then
   fail "retired claude-opus-4-7 referenced in shipped docs:"
-  cat /tmp/super-spec-opus47.$$
+  cat /tmp/loop-spec-opus47.$$
 else
   pass "no retired claude-opus-4-7 in shipped agents/skills/README"
 fi
-rm -f /tmp/super-spec-opus47.$$
+rm -f /tmp/loop-spec-opus47.$$
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

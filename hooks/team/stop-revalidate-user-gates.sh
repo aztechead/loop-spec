@@ -17,10 +17,10 @@
 # top-level "transcript_path" field pointing to a JSONL session file. If this
 # field is absent or the file does not exist, the hook exits 0 (fail-open).
 #
-# Escape hatch: set SUPER_SPEC_USERGATE_STOP_GUARD=0 to disable.
+# Escape hatch: set LOOP_SPEC_USERGATE_STOP_GUARD=0 to disable.
 set -euo pipefail
 
-TRACE_LOG="${SUPER_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/super-spec-user-gate-trace.log}"
+TRACE_LOG="${LOOP_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/loop-spec-user-gate-trace.log}"
 mkdir -p "$(dirname "$TRACE_LOG")" 2>/dev/null || true
 
 trace() {
@@ -30,8 +30,8 @@ trace() {
     >> "$TRACE_LOG" 2>/dev/null || true
 }
 
-# Kill-switch: SUPER_SPEC_USERGATE_STOP_GUARD=0 disables the hook.
-if [[ "${SUPER_SPEC_USERGATE_STOP_GUARD:-1}" == "0" ]]; then
+# Kill-switch: LOOP_SPEC_USERGATE_STOP_GUARD=0 disables the hook.
+if [[ "${LOOP_SPEC_USERGATE_STOP_GUARD:-1}" == "0" ]]; then
   trace "?" "skip" "stop-guard=0"
   exit 0
 fi
@@ -237,7 +237,7 @@ trace "?" "block" "unproven_gates=$BLOCKED_COUNT"
   echo "  Gate: <subject>"
   echo "  AC: <criterion> -- PROVEN BY <exact command/output/result>"
   echo
-  echo "(To disable this check, set SUPER_SPEC_USERGATE_STOP_GUARD=0.)"
+  echo "(To disable this check, set LOOP_SPEC_USERGATE_STOP_GUARD=0.)"
 } >&2
 
 exit 2

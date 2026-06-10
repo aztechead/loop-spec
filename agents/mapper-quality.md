@@ -1,6 +1,6 @@
 ---
 name: mapper-quality
-description: Maps test coverage, lint state, type safety. Writes only to docs/super-spec/codebase/QUALITY.md.
+description: Maps test coverage, lint state, type safety. Writes only to docs/loop-spec/codebase/QUALITY.md.
 tools:
   - Read
   - Write

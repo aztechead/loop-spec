@@ -2,9 +2,9 @@
 # Helpers for agent-team operations.
 #
 # Functions:
-#   team_name_for_phase <phase> <slug>  -> "super-spec-<phase>-<slug>"
+#   team_name_for_phase <phase> <slug>  -> "loop-spec-<phase>-<slug>"
 #   assert_team_env                     -> exits 2 if CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != "1"
-#   feature_json_path <slug>            -> ".super-spec/features/<slug>/feature.json"
+#   feature_json_path <slug>            -> ".loop-spec/features/<slug>/feature.json"
 #
 # Exit codes (assert_team_env):
 #   0  env var is set to "1"
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 team_name_for_phase() {
-  echo "super-spec-${1}-${2}"
+  echo "loop-spec-${1}-${2}"
 }
 
 assert_team_env() {
@@ -23,7 +23,7 @@ assert_team_env() {
 }
 
 feature_json_path() {
-  echo ".super-spec/features/${1}/feature.json"
+  echo ".loop-spec/features/${1}/feature.json"
 }
 
 # CLI dispatcher: allows `bash lib/team-ops.sh <function_name> [args...]`.

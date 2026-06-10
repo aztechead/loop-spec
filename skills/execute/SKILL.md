@@ -15,8 +15,8 @@ return the same `{merged, blocked, escalation, tier}` result shape.
 
 ## Inputs
 
-- `feature_path`: `.super-spec/features/{slug}/feature.json`
-- `plan_path`: `docs/super-spec/features/{slug}/PLAN.md`
+- `feature_path`: `.loop-spec/features/{slug}/feature.json`
+- `plan_path`: `docs/loop-spec/features/{slug}/PLAN.md`
 - `branch`: `feature.json.branch` (e.g., `feat/{slug}`)
 
 ## Procedure
@@ -64,7 +64,7 @@ Run on **every EXECUTE entry**: both the first entry from PLAN and any re-entry 
 
 #### Step 2a - Read planned tasks from PLAN.md
 
-Parse every task block from `docs/super-spec/features/{slug}/PLAN.md`. Each task block must contain:
+Parse every task block from `docs/loop-spec/features/{slug}/PLAN.md`. Each task block must contain:
 - `id` (e.g., `task-001`)
 - `files[]` — list of files the task modifies
 - `blockedBy[]` — explicit dependency edges declared in PLAN.md (may be empty)
@@ -77,7 +77,7 @@ Parse every task block from `docs/super-spec/features/{slug}/PLAN.md`. Each task
 On re-entry from VERIFY, the lead also reads any remediation tasks injected by the verifier or code-reviewer. These are persisted at `feature.json.pendingRemediationTasks[]` (VERIFY appends to this array via `lib/feature-write.sh append` before its `TeamDelete`, so the tasks survive the verify team's teardown). Read them with:
 
 ```bash
-remediation_tasks=$(jq -r '.pendingRemediationTasks // []' .super-spec/features/{slug}/feature.json)
+remediation_tasks=$(jq -r '.pendingRemediationTasks // []' .loop-spec/features/{slug}/feature.json)
 ```
 
 Include these tasks in the full task set before computing conflict edges. After tasks are registered (TaskCreate or workflow dispatch), clear the array:
@@ -103,15 +103,15 @@ The default exclusion list is **empty** — all file overlaps are flagged by def
 Projects configure exclusions via either source (both are unioned):
 
 - `feature.json.fileConflictExcludeGlobs[]` — per-feature overrides, set directly in `feature.json`.
-- `.super-spec/file-conflict-exclude.txt` — one glob per line, repo-wide, in the gitignored state directory.
+- `.loop-spec/file-conflict-exclude.txt` — one glob per line, repo-wide, in the gitignored state directory.
 
 Load both sources at the start of Step 2b:
 
 ```bash
-feature_globs=$(jq -r '.fileConflictExcludeGlobs // [] | .[]' .super-spec/features/{slug}/feature.json)
+feature_globs=$(jq -r '.fileConflictExcludeGlobs // [] | .[]' .loop-spec/features/{slug}/feature.json)
 repo_globs=""
-if [[ -f .super-spec/file-conflict-exclude.txt ]]; then
-  repo_globs=$(grep -v '^#' .super-spec/file-conflict-exclude.txt | grep -v '^$')
+if [[ -f .loop-spec/file-conflict-exclude.txt ]]; then
+  repo_globs=$(grep -v '^#' .loop-spec/file-conflict-exclude.txt | grep -v '^$')
 fi
 all_exclude_globs=$(printf '%s\n%s' "$feature_globs" "$repo_globs" | grep -v '^$')
 ```
@@ -157,12 +157,12 @@ if [[ "$dag_rc" -eq 3 ]]; then
   exit 2
 fi
 
-workflows_available=$(jq -r '.workflowsAvailable // false' .super-spec/runtime.json 2>/dev/null || echo false)
-workflow_optin=$(jq -r '.workflowExecuteOptIn // false' .super-spec/runtime.json 2>/dev/null || echo false)
-teams_available=$(jq -r '.teamsAvailable // true' .super-spec/runtime.json 2>/dev/null || echo true)
+workflows_available=$(jq -r '.workflowsAvailable // false' .loop-spec/runtime.json 2>/dev/null || echo false)
+workflow_optin=$(jq -r '.workflowExecuteOptIn // false' .loop-spec/runtime.json 2>/dev/null || echo false)
+teams_available=$(jq -r '.teamsAvailable // true' .loop-spec/runtime.json 2>/dev/null || echo true)
 loops_available=false
 command -v claude >/dev/null 2>&1 && loops_available=true
-loops_optin="${SUPER_SPEC_EXECUTE_LOOPS:-}"
+loops_optin="${LOOP_SPEC_EXECUTE_LOOPS:-}"
 ```
 
 #### Step 3b - Select the rung
@@ -180,7 +180,7 @@ else:                                                                       rung
 The **loop** rung runs the DAG as a fleet of bounded headless loops via the
 bundled loop-runner skill — no agent teams, no Workflow tool, mechanical
 verifier enforcement per iteration, SPEC.md/PLAN.md integrity-protected.
-`SUPER_SPEC_EXECUTE_LOOPS=1` forces it at any width; `SUPER_SPEC_EXECUTE_LOOPS=0`
+`LOOP_SPEC_EXECUTE_LOOPS=1` forces it at any width; `LOOP_SPEC_EXECUTE_LOOPS=0`
 disables it (kill switch). When agent teams are unavailable it replaces the team
 rung automatically so EXECUTE keeps working without
 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`.
@@ -205,7 +205,7 @@ to the user; clean proceeds to Phase exit.
 Persist `feature.json.activeWorkflow` before calling Workflow (signature: `set <feature_dir> <dot_path> <value_json>`):
 
 ```bash
-fdir=".super-spec/features/{slug}"
+fdir=".loop-spec/features/{slug}"
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" activeWorkflow "$(jq -n \
   --arg sp "${CLAUDE_SKILL_DIR}/../../lib/workflows/execute-dag.js" \
   --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -269,7 +269,7 @@ Behavior is retained verbatim. The long self-claim loop and reviewer loop detail
 
 ### Step 4 - Team: TaskCreate for each planned task
 
-After conflict edges are computed (Step 2b), validate each task's metadata orchestrator-side then call `TaskCreate`. The orchestrator owns this validation because the documented `TaskCreated` hook event has an unpublished payload schema and `PreToolUse: TaskCreate` is not a documented matcher; running the check here keeps super-spec on documented harness behavior:
+After conflict edges are computed (Step 2b), validate each task's metadata orchestrator-side then call `TaskCreate`. The orchestrator owns this validation because the documented `TaskCreated` hook event has an unpublished payload schema and `PreToolUse: TaskCreate` is not a documented matcher; running the check here keeps loop-spec on documented harness behavior:
 
 ```bash
 for task in $tasks; do
@@ -280,7 +280,7 @@ for task in $tasks; do
     --argjson acceptanceCriteria "$task.acceptanceCriteria" \
     --argjson readFirst "${task.readFirst:-[]}" \
     --arg specPath "${task.specPath:-}" \
-    '{superSpec: true, blockedBy: $blockedBy, files: $files, verifyCommand: $verifyCommand, acceptanceCriteria: $acceptanceCriteria, readFirst: $readFirst, specPath: (if $specPath == "" then null else $specPath end), claimedBy: null, retries: 0}')
+    '{loopSpec: true, blockedBy: $blockedBy, files: $files, verifyCommand: $verifyCommand, acceptanceCriteria: $acceptanceCriteria, readFirst: $readFirst, specPath: (if $specPath == "" then null else $specPath end), claimedBy: null, retries: 0}')
 
   if ! bash "${CLAUDE_SKILL_DIR}/../../lib/validate-task-metadata.sh" "$metadata_json"; then
     echo "EXECUTE Step 4: task $task.id failed metadata validation; aborting" >&2
@@ -295,7 +295,7 @@ After validation passes, call `TaskCreate` once per task:
 TaskCreate({
   subject: "{task.id}: {task.subject}",
   metadata: {
-    superSpec:          true,   // marks the task as super-spec-owned; plugin hooks only enforce on marked tasks
+    loopSpec:          true,   // marks the task as loop-spec-owned; plugin hooks only enforce on marked tasks
     blockedBy:          [...explicit edges from PLAN.md] + [...synthetic edges from Step 2b],
     files:              [task.files],
     verifyCommand:      "task.verifyCommand",
@@ -313,7 +313,7 @@ TaskCreate({
 After all `TaskCreate` calls complete, update `feature.json`:
 
 ```bash
-lib/feature-write.sh set currentTeamName "super-spec-execute-{slug}"
+lib/feature-write.sh set currentTeamName "loop-spec-execute-{slug}"
 ```
 
 ### Step 5 - Fallback: TeamCreate for the EXECUTE team
@@ -336,11 +336,11 @@ implementers use `feature.models.implementer` (sonnet), the spec-compliance gate
 
 ```
 TeamCreate({
-  name: "super-spec-execute-{slug}",
+  name: "loop-spec-execute-{slug}",
   teammates: [
     {
       name: "implementer-1",
-      subagent_type: "super-spec:implementer",
+      subagent_type: "loop-spec:implementer",
       model: feature.models.implementer,
       prompt: "<implementer.md template with {slug}, {tier}, {N}=1, {maxRetriesPerTask} substituted>"
     },
@@ -348,7 +348,7 @@ TeamCreate({
     // R reviewers (omitted on quick tier):
     {
       name: "reviewer-1",
-      subagent_type: "super-spec:spec-compliance-reviewer",
+      subagent_type: "loop-spec:spec-compliance-reviewer",
       model: feature.models.specComplianceReviewer,
       prompt: "<reviewer spawn prompt with slug, tier, roster>"
     },
@@ -370,7 +370,7 @@ lib/feature-write.sh set currentTeammates '["implementer-1", ..., "implementer-{
 Each `implementer-{N}` runs the following self-claim loop autonomously (as documented in `skills/shared/team-prompts/implementer.md`). The full step-by-step implementer self-claim loop (query, filter unblocked, claim, worktree, implement, verify, commit, hand off), the reviewer self-claim loop, the race-claim serialization contract, and the rework re-entry path are documented in **`skills/shared/execute-loops.md`**.
 
 Contract the lead depends on (the rest is teammate-internal):
-- Implementers create a worktree per task at an **absolute path**: `$WT_ROOT/.super-spec/worktrees/{slug}/task-{taskId}/` (where `WT_ROOT=$(git rev-parse --show-toplevel)` is resolved inside the feature worktree before spawning). The worktree is created on branch `task/{taskId}-{slug}`. The implementer commits there, then sets `metadata.phase = "awaiting_review"` (or goes straight to `completed` on quick tier).
+- Implementers create a worktree per task at an **absolute path**: `$WT_ROOT/.loop-spec/worktrees/{slug}/task-{taskId}/` (where `WT_ROOT=$(git rev-parse --show-toplevel)` is resolved inside the feature worktree before spawning). The worktree is created on branch `task/{taskId}-{slug}`. The implementer commits there, then sets `metadata.phase = "awaiting_review"` (or goes straight to `completed` on quick tier).
 - Reviewers (quality/balanced only) flip a task to `completed` on pass and `SendMessage` `REVIEW PASS: task-{taskId}` to the lead; on terminal failure they mark it `completed` with `metadata.result = "blocked"`.
 - On quick tier (R = 0) there are no reviewers; implementers self-complete and message the lead directly.
 
@@ -412,7 +412,7 @@ The lead serializes worktree merges through a FIFO dependency-aware merge queue.
 **Merge procedure:**
 
 ```bash
-worktree_path="$WT_ROOT/.super-spec/worktrees/{slug}/task-{taskId}/"
+worktree_path="$WT_ROOT/.loop-spec/worktrees/{slug}/task-{taskId}/"
 worktree_branch="task/{taskId}-{slug}"
 
 if ! bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-commit-check.sh" "feat/{slug}" "{worktree_branch}"; then
@@ -469,7 +469,7 @@ For each `plan_task_id`, confirm at least one completed task subject contains it
 TeamDelete and cleanup:
 
 ```
-TeamDelete({name: "super-spec-execute-{slug}"})
+TeamDelete({name: "loop-spec-execute-{slug}"})
 ```
 
 ```bash

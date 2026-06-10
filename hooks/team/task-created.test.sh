@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test suite for hooks/team/task-created.sh
-# PreToolUse (TaskCreate) hook: schema validation on super-spec-owned tasks only.
+# PreToolUse (TaskCreate) hook: schema validation on loop-spec-owned tasks only.
 # Usage: bash hooks/team/task-created.test.sh
 set -euo pipefail
 
@@ -33,7 +33,7 @@ payload() {
   printf '{"tool_name":"TaskCreate","tool_input":{"subject":"%s","metadata":%s}}' "$subject" "$metadata"
 }
 
-VALID_META='{"superSpec":true,"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"]}'
+VALID_META='{"loopSpec":true,"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"]}'
 
 echo "=== task-created.sh tests ==="
 
@@ -45,21 +45,21 @@ check "a: marked task with all required fields ALLOW" 0 \
 check "b: unmarked bare TaskCreate ALLOW" 0 \
   '{"tool_name":"TaskCreate","tool_input":{"subject":"Refactor the parser","description":"..."}}'
 
-# c: unmarked task with partial metadata -> ALLOW (not super-spec-owned)
+# c: unmarked task with partial metadata -> ALLOW (not loop-spec-owned)
 check "c: unmarked task with unrelated metadata ALLOW" 0 \
   "$(payload 'Investigate flaky test' '{"priority":"high"}')"
 
-# d: superSpec marker with missing verifyCommand -> DENY (exit 2)
-MISSING_VERIFY='{"superSpec":true,"blockedBy":[],"files":["foo.sh"],"acceptanceCriteria":["works"]}'
+# d: loopSpec marker with missing verifyCommand -> DENY (exit 2)
+MISSING_VERIFY='{"loopSpec":true,"blockedBy":[],"files":["foo.sh"],"acceptanceCriteria":["works"]}'
 check "d: marked task missing verifyCommand DENY" 2 \
   "$(payload 'task-002: x' "$MISSING_VERIFY")"
 
-# e: subject convention task-NNN: marks the task even without superSpec key -> DENY on empty metadata
+# e: subject convention task-NNN: marks the task even without loopSpec key -> DENY on empty metadata
 check "e: task-NNN: subject convention enforced DENY" 2 \
   "$(payload 'task-003: y' '{}')"
 
 # f: marked, empty acceptanceCriteria array -> DENY (exit 2)
-EMPTY_AC='{"superSpec":true,"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":[]}'
+EMPTY_AC='{"loopSpec":true,"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":[]}'
 check "f: marked task empty acceptanceCriteria DENY" 2 \
   "$(payload 'task-004: z' "$EMPTY_AC")"
 
@@ -69,9 +69,9 @@ check "g: malformed payload fail-open ALLOW" 0 'this is not json'
 # h: empty stdin -> ALLOW (fail-open)
 check "h: empty stdin ALLOW" 0 ''
 
-# i: kill switch SUPER_SPEC_TASK_GUARD=0 -> ALLOW even when invalid
+# i: kill switch LOOP_SPEC_TASK_GUARD=0 -> ALLOW even when invalid
 actual_exit=0
-echo "$(payload 'task-005: k' '{}')" | SUPER_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+echo "$(payload 'task-005: k' '{}')" | LOOP_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then
   echo "PASS: i: kill switch ALLOW"
   ((PASS++)) || true

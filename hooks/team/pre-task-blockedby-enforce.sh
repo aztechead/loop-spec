@@ -14,13 +14,13 @@
 # Fail-open: if the payload is malformed, empty, or missing the "tasks"
 # field entirely, exit 0. Enforcement requires peer status data.
 #
-# Kill switch: SUPER_SPEC_BLOCKEDBY_GUARD=0 disables enforcement entirely.
+# Kill switch: LOOP_SPEC_BLOCKEDBY_GUARD=0 disables enforcement entirely.
 #
 # Trace log: every decision writes a pipe-separated line to
-# ${SUPER_SPEC_BLOCKEDBY_TRACE_LOG:-/tmp/claude-hooks/super-spec-user-gate-trace.log}
+# ${LOOP_SPEC_BLOCKEDBY_TRACE_LOG:-/tmp/claude-hooks/loop-spec-user-gate-trace.log}
 set -euo pipefail
 
-TRACE_LOG="${SUPER_SPEC_BLOCKEDBY_TRACE_LOG:-/tmp/claude-hooks/super-spec-user-gate-trace.log}"
+TRACE_LOG="${LOOP_SPEC_BLOCKEDBY_TRACE_LOG:-/tmp/claude-hooks/loop-spec-user-gate-trace.log}"
 mkdir -p "$(dirname "$TRACE_LOG")" 2>/dev/null || true
 
 trace() {
@@ -30,7 +30,7 @@ trace() {
     >> "$TRACE_LOG" 2>/dev/null || true
 }
 
-if [[ "${SUPER_SPEC_BLOCKEDBY_GUARD:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_BLOCKEDBY_GUARD:-1}" == "0" ]]; then
   trace "?" "skip" "guard=0"
   exit 0
 fi
@@ -131,7 +131,7 @@ case "$RESULT" in
       done
       echo ""
       echo "Complete or cancel the listed tasks before starting task $task_id."
-      echo "(Disable: SUPER_SPEC_BLOCKEDBY_GUARD=0)"
+      echo "(Disable: LOOP_SPEC_BLOCKEDBY_GUARD=0)"
     } >&2
     exit 2
     ;;

@@ -20,14 +20,14 @@ echo "=== session-end-learnings.sh tests ==="
 # Test 1: append - running the hook once adds exactly 1 JSONL line.
 # ---------------------------------------------------------------------------
 TEST1_DIR="$TMPDIR_TEST/test1"
-# The hook is scoped to projects that already use super-spec: .super-spec/ must
+# The hook is scoped to projects that already use loop-spec: .loop-spec/ must
 # pre-exist (the hook never creates it in arbitrary projects).
-mkdir -p "$TEST1_DIR/.super-spec"
+mkdir -p "$TEST1_DIR/.loop-spec"
 
 PAYLOAD='{"total_agent_calls":1,"errors":[],"workflow":"build"}'
 printf '%s' "$PAYLOAD" | env CLAUDE_PROJECT_DIR="$TEST1_DIR" bash "$HOOK" 2>/dev/null
 
-LEARNINGS_FILE="$TEST1_DIR/.super-spec/learnings.jsonl"
+LEARNINGS_FILE="$TEST1_DIR/.loop-spec/learnings.jsonl"
 if [[ -f "$LEARNINGS_FILE" ]]; then
   LINE_COUNT=$(wc -l < "$LEARNINGS_FILE" | tr -d ' ')
   if [[ "$LINE_COUNT" -eq 1 ]]; then
@@ -60,10 +60,10 @@ fi
 # Test 2: cap at 50 - write 60 lines, verify final count is exactly 50.
 # ---------------------------------------------------------------------------
 TEST2_DIR="$TMPDIR_TEST/test2"
-mkdir -p "$TEST2_DIR/.super-spec"
+mkdir -p "$TEST2_DIR/.loop-spec"
 
 # Pre-populate with 60 lines.
-LEARNINGS_FILE2="$TEST2_DIR/.super-spec/learnings.jsonl"
+LEARNINGS_FILE2="$TEST2_DIR/.loop-spec/learnings.jsonl"
 for i in $(seq 1 60); do
   printf '{"timestamp":"2026-01-01T00:00:00Z","sessionId":"seed-%d","taskType":"general","approach":"agents=0 task_type=general","outcome":"success","lesson":"session completed"}\n' "$i" >> "$LEARNINGS_FILE2"
 done
@@ -80,23 +80,23 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3: kill switch - SUPER_SPEC_LEARNINGS=0 -> exit 0, file untouched.
+# Test 3: kill switch - LOOP_SPEC_LEARNINGS=0 -> exit 0, file untouched.
 # ---------------------------------------------------------------------------
 TEST3_DIR="$TMPDIR_TEST/test3"
 mkdir -p "$TEST3_DIR"
-LEARNINGS_FILE3="$TEST3_DIR/.super-spec/learnings.jsonl"
+LEARNINGS_FILE3="$TEST3_DIR/.loop-spec/learnings.jsonl"
 
 PAYLOAD3='{"total_agent_calls":2,"errors":[]}'
-printf '%s' "$PAYLOAD3" | env CLAUDE_PROJECT_DIR="$TEST3_DIR" SUPER_SPEC_LEARNINGS=0 bash "$HOOK" 2>/dev/null
+printf '%s' "$PAYLOAD3" | env CLAUDE_PROJECT_DIR="$TEST3_DIR" LOOP_SPEC_LEARNINGS=0 bash "$HOOK" 2>/dev/null
 
 if [[ ! -f "$LEARNINGS_FILE3" ]]; then
-  pass "3: kill switch - file not created when SUPER_SPEC_LEARNINGS=0"
+  pass "3: kill switch - file not created when LOOP_SPEC_LEARNINGS=0"
 else
   fail "3: kill switch - file was written despite kill switch"
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3b: scope - project without .super-spec/ is never touched.
+# Test 3b: scope - project without .loop-spec/ is never touched.
 # ---------------------------------------------------------------------------
 TEST3B_DIR="$TMPDIR_TEST/test3b"
 mkdir -p "$TEST3B_DIR"
@@ -104,18 +104,18 @@ mkdir -p "$TEST3B_DIR"
 PAYLOAD3B='{"total_agent_calls":2,"errors":[]}'
 printf '%s' "$PAYLOAD3B" | env CLAUDE_PROJECT_DIR="$TEST3B_DIR" bash "$HOOK" 2>/dev/null
 
-if [[ ! -d "$TEST3B_DIR/.super-spec" ]]; then
-  pass "3b: scope - .super-spec/ not created in non-super-spec project"
+if [[ ! -d "$TEST3B_DIR/.loop-spec" ]]; then
+  pass "3b: scope - .loop-spec/ not created in non-loop-spec project"
 else
-  fail "3b: scope - hook created .super-spec/ in a project that never used super-spec"
+  fail "3b: scope - hook created .loop-spec/ in a project that never used loop-spec"
 fi
 
 # ---------------------------------------------------------------------------
 # Test 4: heuristic lessons - >3 agents produces "parallel dispatch effective".
 # ---------------------------------------------------------------------------
 TEST4_DIR="$TMPDIR_TEST/test4"
-mkdir -p "$TEST4_DIR/.super-spec"
-LEARNINGS_FILE4="$TEST4_DIR/.super-spec/learnings.jsonl"
+mkdir -p "$TEST4_DIR/.loop-spec"
+LEARNINGS_FILE4="$TEST4_DIR/.loop-spec/learnings.jsonl"
 
 PAYLOAD4='{"total_agent_calls":5,"errors":[],"workflow":"build"}'
 printf '%s' "$PAYLOAD4" | env CLAUDE_PROJECT_DIR="$TEST4_DIR" bash "$HOOK" 2>/dev/null

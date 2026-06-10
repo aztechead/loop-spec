@@ -6,15 +6,15 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill AskUserQuestion
 
 # SPEC Phase
 
-You are the SPEC phase orchestrator, running on the **main thread**. Invoked by `super-spec:cycle` after tier + style + slug are chosen. Your responsibility: run a Socratic interview across up to 6 rounds, score 4 ambiguity dimensions after each round, gate on ambiguity <= 0.20 with per-dimension minimums, and write SPEC.md with an `ambiguity_scores` frontmatter block.
+You are the SPEC phase orchestrator, running on the **main thread**. Invoked by `loop-spec:cycle` after tier + style + slug are chosen. Your responsibility: run a Socratic interview across up to 6 rounds, score 4 ambiguity dimensions after each round, gate on ambiguity <= 0.20 with per-dimension minimums, and write SPEC.md with an `ambiguity_scores` frontmatter block.
 
 **The interview runs on the main thread, not in a subagent.** A spawned teammate cannot hold an interactive question-and-answer with the user (it runs one turn and goes idle). Only the main-thread orchestrator has a real `AskUserQuestion` loop with the user. This phase therefore creates no team and spawns no teammates; it asks questions, scores answers, and writes the file directly. This mirrors `skills/discuss/SKILL.md` Step 1, which already runs its clarifying loop on the main thread.
 
 ## Inputs (from cycle skill via feature.json)
 
 - `slug`, `tier`, `execStyle`, `feature_title`
-- `feature_dir`: `.super-spec/features/{slug}/`
-- `feature_json_path`: `.super-spec/features/{slug}/feature.json`
+- `feature_dir`: `.loop-spec/features/{slug}/`
+- `feature_json_path`: `.loop-spec/features/{slug}/feature.json`
 
 ## Ambiguity Model
 
@@ -83,16 +83,16 @@ Apply one perspective per round. Each perspective surfaces different blindspots.
 ### Step 1 - Scout the codebase
 
 Before asking any questions, read for grounding context:
-- `.super-spec/features/{slug}/` - feature.json and any prior `spec-interview-transcript.md` (resume context)
-- `docs/super-spec/features/{slug}/` - any prior SPEC.md or committed artifacts
-- `docs/super-spec/codebase/` - domain maps (TECH, ARCH, QUALITY, CONCERNS, DOMAIN) if present
+- `.loop-spec/features/{slug}/` - feature.json and any prior `spec-interview-transcript.md` (resume context)
+- `docs/loop-spec/features/{slug}/` - any prior SPEC.md or committed artifacts
+- `docs/loop-spec/codebase/` - domain maps (TECH, ARCH, QUALITY, CONCERNS, DOMAIN) if present
 - Relevant source files to understand current state
 
 Synthesize current state internally: what exists today related to this feature, and the gap to the target state. Do not present this synthesis to the user - use it to ask precise, grounded questions.
 
 Score all 4 dimensions from what you already know (feature title, tier, any existing context). This is the initial assessment; display it before the first round.
 
-If `SUPER_SPEC_NON_INTERACTIVE=1` is set: skip Step 2 entirely and go to the **Non-interactive mode** section below.
+If `LOOP_SPEC_NON_INTERACTIVE=1` is set: skip Step 2 entirely and go to the **Non-interactive mode** section below.
 
 ### Step 2 - Interview loop (main thread, max 6 rounds)
 
@@ -147,29 +147,29 @@ If "Write SPEC.md anyway": go to Step 3, marking unresolved dimensions in the `a
 
 Write SPEC.md directly (the main thread is unrestricted by `hooks/restrict-agent-paths.sh`):
 
-- SPEC.md to `docs/super-spec/features/{slug}/SPEC.md` (must begin with the `ambiguity_scores` frontmatter block - see SPEC.md Output Format below).
-- Interview transcript (all rounds, all questions, all scores) to `.super-spec/features/{slug}/spec-interview-transcript.md`.
+- SPEC.md to `docs/loop-spec/features/{slug}/SPEC.md` (must begin with the `ambiguity_scores` frontmatter block - see SPEC.md Output Format below).
+- Interview transcript (all rounds, all questions, all scores) to `.loop-spec/features/{slug}/spec-interview-transcript.md`.
 
 ### Step 4 - Update feature.json
 
 Update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.specInterview = ".super-spec/features/{slug}/spec-interview-transcript.md"`
-- `artifacts.spec = "docs/super-spec/features/{slug}/SPEC.md"`
+- `artifacts.specInterview = ".loop-spec/features/{slug}/spec-interview-transcript.md"`
+- `artifacts.spec = "docs/loop-spec/features/{slug}/SPEC.md"`
 - `completedPhases` append `"spec"`
 - `currentPhase = "discuss"`
 
 ### Step 5 - Commit SPEC.md
 
 ```bash
-git add docs/super-spec/features/{slug}/SPEC.md
+git add docs/loop-spec/features/{slug}/SPEC.md
 git commit -m "spec: NO_JIRA {slug}"
 ```
 
 Also commit the interview transcript if it was written:
 
 ```bash
-if [[ -f ".super-spec/features/{slug}/spec-interview-transcript.md" ]]; then
-  git add ".super-spec/features/{slug}/spec-interview-transcript.md"
+if [[ -f ".loop-spec/features/{slug}/spec-interview-transcript.md" ]]; then
+  git add ".loop-spec/features/{slug}/spec-interview-transcript.md"
   git commit -m "docs: NO_JIRA {slug} spec interview transcript"
 fi
 ```
@@ -178,10 +178,10 @@ fi
 
 | execStyle    | Action                                                                          |
 |--------------|---------------------------------------------------------------------------------|
-| auto         | Invoke `Skill(super-spec:discuss)` immediately                                  |
-| step         | Print "SPEC complete. SPEC.md at docs/super-spec/features/{slug}/SPEC.md." Return to user. |
+| auto         | Invoke `Skill(loop-spec:discuss)` immediately                                  |
+| step         | Print "SPEC complete. SPEC.md at docs/loop-spec/features/{slug}/SPEC.md." Return to user. |
 | interactive  | Same as step.                                                                   |
-| review-only  | Invoke `Skill(super-spec:discuss)` (gate already paused for human if findings)  |
+| review-only  | Invoke `Skill(loop-spec:discuss)` (gate already paused for human if findings)  |
 
 Return.
 
@@ -221,18 +221,18 @@ The discuss phase reads this SPEC.md and refines it; if its frontmatter contains
 
 ## Non-interactive mode
 
-When `SUPER_SPEC_NON_INTERACTIVE=1` is set there is no user to interview. The orchestrator does not run Step 2; instead it synthesizes SPEC.md from the available context (feature title, tier, codebase domain maps) and always writes the file - it never abandons.
+When `LOOP_SPEC_NON_INTERACTIVE=1` is set there is no user to interview. The orchestrator does not run Step 2; instead it synthesizes SPEC.md from the available context (feature title, tier, codebase domain maps) and always writes the file - it never abandons.
 
 | Env var                           | Values       | Behavior it controls                                            |
 |-----------------------------------|--------------|-----------------------------------------------------------------|
-| `SUPER_SPEC_ANSWER_SPEC_CONFIRM`  | `yes`, `no`  | Confirm writing SPEC.md when the synthesized gate passes (default: `yes`) |
-| `SUPER_SPEC_ANSWER_SPEC_OVERRIDE` | `yes`, `no`  | Write SPEC.md despite a failing synthesized gate (default: `yes`) |
+| `LOOP_SPEC_ANSWER_SPEC_CONFIRM`  | `yes`, `no`  | Confirm writing SPEC.md when the synthesized gate passes (default: `yes`) |
+| `LOOP_SPEC_ANSWER_SPEC_OVERRIDE` | `yes`, `no`  | Write SPEC.md despite a failing synthesized gate (default: `yes`) |
 
 Synthesis procedure (non-interactive):
 1. Run Step 1 (scout + initial scoring) only.
 2. Derive the best SPEC.md you can from the feature title and codebase context. Score the 4 dimensions honestly from that text.
-3. If the synthesized gate passes (or `SUPER_SPEC_ANSWER_SPEC_CONFIRM` is unset/`yes`): write SPEC.md with `gate_passed: true`.
-4. If the synthesized gate fails: write SPEC.md anyway (default, or when `SUPER_SPEC_ANSWER_SPEC_OVERRIDE` is unset/`yes`) with `gate_passed: false` and the failing dimensions listed in `unresolved_dimensions`.
+3. If the synthesized gate passes (or `LOOP_SPEC_ANSWER_SPEC_CONFIRM` is unset/`yes`): write SPEC.md with `gate_passed: true`.
+4. If the synthesized gate fails: write SPEC.md anyway (default, or when `LOOP_SPEC_ANSWER_SPEC_OVERRIDE` is unset/`yes`) with `gate_passed: false` and the failing dimensions listed in `unresolved_dimensions`.
 5. Write the transcript (a short note that the spec was synthesized non-interactively, with the scores).
 6. Proceed to Step 4 (update feature.json), Step 5 (commit), Step 6 (route).
 
@@ -244,6 +244,6 @@ If invoked with `currentPhase == "spec"` already in `feature.json`:
 
 1. Read `feature.json` and check `artifacts.spec`:
    - `artifacts.spec` is set: SPEC.md was written but the phase advance failed; jump to Step 4.
-   - `artifacts.spec` is null: the interview did not complete. Check `.super-spec/features/{slug}/spec-interview-transcript.md` for partial progress.
+   - `artifacts.spec` is null: the interview did not complete. Check `.loop-spec/features/{slug}/spec-interview-transcript.md` for partial progress.
 2. On resume with a partial transcript: read it, restore the prior round scores, and continue the interview loop (Step 2) from the next round rather than restarting. Do not re-ask questions already answered in the transcript.
 3. This phase holds no team, so there is no team-liveness probe and no `currentTeamName` to clear (it stays `null` throughout the spec phase).

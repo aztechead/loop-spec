@@ -14,7 +14,7 @@ fail() { echo "FAIL: $1"; (( FAIL++ )) || true; }
 TMPDIR_TEST="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
-FEATURE_DIR="$TMPDIR_TEST/.super-spec/features/test-feature"
+FEATURE_DIR="$TMPDIR_TEST/.loop-spec/features/test-feature"
 mkdir -p "$FEATURE_DIR"
 
 cat > "$FEATURE_DIR/feature.json" <<'EOF'
@@ -52,10 +52,10 @@ else
   fail "uncommittedFiles is not an array; got: $OUTPUT"
 fi
 
-# Test 4: kill switch SUPER_SPEC_PAUSE=0 exits 0 without output
-KILL_OUTPUT=$(SUPER_SPEC_PAUSE=0 bash "$SCRIPT" --dry-run --feature-dir "$FEATURE_DIR" 2>/dev/null || echo "exit-nonzero")
+# Test 4: kill switch LOOP_SPEC_PAUSE=0 exits 0 without output
+KILL_OUTPUT=$(LOOP_SPEC_PAUSE=0 bash "$SCRIPT" --dry-run --feature-dir "$FEATURE_DIR" 2>/dev/null || echo "exit-nonzero")
 if [[ -z "$KILL_OUTPUT" ]]; then
-  ok "kill switch SUPER_SPEC_PAUSE=0 exits 0 with no output"
+  ok "kill switch LOOP_SPEC_PAUSE=0 exits 0 with no output"
 else
   fail "kill switch did not suppress output; got: '$KILL_OUTPUT'"
 fi

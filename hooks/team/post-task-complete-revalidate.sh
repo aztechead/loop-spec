@@ -9,14 +9,14 @@
 # for AC: or PROVEN BY evidence tokens. If none are found, exits 2.
 #
 # Fail-open: empty or malformed JSON payload -> exit 0
-# Kill-switch: SUPER_SPEC_USERGATE_GUARD=0 -> exit 0 unconditionally
+# Kill-switch: LOOP_SPEC_USERGATE_GUARD=0 -> exit 0 unconditionally
 #
 # Trace log: pipe-separated lines appended to
-#   ${SUPER_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/super-spec-user-gate-trace.log}
+#   ${LOOP_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/loop-spec-user-gate-trace.log}
 #   format: <ISO-8601>|post-task-complete-revalidate|<task-id>|<event>|<reason>
 set -euo pipefail
 
-TRACE_LOG="${SUPER_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/super-spec-user-gate-trace.log}"
+TRACE_LOG="${LOOP_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/loop-spec-user-gate-trace.log}"
 mkdir -p "$(dirname "$TRACE_LOG")" 2>/dev/null || true
 
 trace() {
@@ -27,7 +27,7 @@ trace() {
 }
 
 # Kill-switch: allow unconditional bypass
-if [[ "${SUPER_SPEC_USERGATE_GUARD:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_USERGATE_GUARD:-1}" == "0" ]]; then
   trace "?" "skip" "guard=0"
   exit 0
 fi
@@ -156,7 +156,7 @@ trace "$TASK_ID" "block" "gate-without-evidence evidence=$EVIDENCE_FOUND axes=$A
   echo "If evidence was already posted in different wording, re-state it"
   echo "in the canonical form above, then reclose the task."
   echo ""
-  echo "(Runtime disable: SUPER_SPEC_USERGATE_GUARD=0. Trace: $TRACE_LOG)"
+  echo "(Runtime disable: LOOP_SPEC_USERGATE_GUARD=0. Trace: $TRACE_LOG)"
 } >&2
 
 exit 2

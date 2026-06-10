@@ -1,21 +1,21 @@
 ---
 name: forensics
-description: Read-only diagnostic that detects 7 anomaly patterns in a stuck or failed feature workflow and writes a structured report to .super-spec/forensics/.
+description: Read-only diagnostic that detects 7 anomaly patterns in a stuck or failed feature workflow and writes a structured report to .loop-spec/forensics/.
 argument-hint: "[feature slug or description of the stuck/failed workflow]"
 ---
 
 # Forensics Diagnostic
 
-Invoked as `/super-spec:forensics [problem description]`.
+Invoked as `/loop-spec:forensics [problem description]`.
 
 This skill is strictly read-only. It makes no changes to project state, feature.json,
 PLAN.md, SPEC.md, or any other file. The only write is the structured report at
-`.super-spec/forensics/report-{ISO-8601}.md`.
+`.loop-spec/forensics/report-{ISO-8601}.md`.
 
 ## Inputs
 
 - `$ARGUMENTS` (optional): free-text description of the problem the user observed.
-- Feature state read from `.super-spec/features/*/feature.json` (all active features).
+- Feature state read from `.loop-spec/features/*/feature.json` (all active features).
 - Git history and working-tree state via read-only git commands.
 
 ## Read-only constraint
@@ -25,7 +25,7 @@ All bash commands below use read-only git operations (`git log`, `git diff --nam
 `git reset`, or any write operation during this skill. Do NOT modify feature.json,
 PLAN.md, SPEC.md, VERIFICATION.md, or any project file.
 
-Permitted writes: `.super-spec/forensics/report-{ISO-8601}.md` only.
+Permitted writes: `.loop-spec/forensics/report-{ISO-8601}.md` only.
 
 ## Procedure
 
@@ -58,7 +58,7 @@ to oldest) it appears in. If any file appears in 3 or more consecutive commits, 
 **Detection:** `currentPhase` in feature.json does not match the committed artifacts
 on disk.
 
-For each feature found in `.super-spec/features/*/feature.json`:
+For each feature found in `.loop-spec/features/*/feature.json`:
 
 ```bash
 # Read currentPhase and slug
@@ -66,13 +66,13 @@ python3 -c "
 import json, sys
 d = json.load(open(sys.argv[1]))
 print(d.get('currentPhase',''), d.get('slug',''))
-" .super-spec/features/{slug}/feature.json
+" .loop-spec/features/{slug}/feature.json
 ```
 
 Then check expected artifact paths for that phase:
-- discuss phase complete: `docs/super-spec/features/{slug}/SPEC.md` must exist.
-- plan phase complete: `docs/super-spec/features/{slug}/PLAN.md` must exist.
-- verify phase complete: `docs/super-spec/features/{slug}/VERIFICATION.md` must exist.
+- discuss phase complete: `docs/loop-spec/features/{slug}/SPEC.md` must exist.
+- plan phase complete: `docs/loop-spec/features/{slug}/PLAN.md` must exist.
+- verify phase complete: `docs/loop-spec/features/{slug}/VERIFICATION.md` must exist.
 
 If `currentPhase` is past a phase boundary but the expected artifact is absent, flag
 as missing artifact.
@@ -87,7 +87,7 @@ tasks tracked by the harness.
 
 ```bash
 # Count tasks in PLAN.md (lines matching "| task-" in the DAG table)
-grep -c "^| task-" docs/super-spec/features/{slug}/PLAN.md 2>/dev/null || echo 0
+grep -c "^| task-" docs/loop-spec/features/{slug}/PLAN.md 2>/dev/null || echo 0
 ```
 
 Compare against `completedTasks` and `pendingTasks` arrays in feature.json:
@@ -99,7 +99,7 @@ d = json.load(open(sys.argv[1]))
 completed = len(d.get('completedTasks', []))
 pending = len(d.get('pendingTasks', []))
 print(completed + pending)
-" .super-spec/features/{slug}/feature.json
+" .loop-spec/features/{slug}/feature.json
 ```
 
 If the PLAN.md count differs from `completedTasks + pendingTasks`, flag as partial plan
@@ -140,7 +140,7 @@ d = json.load(open(sys.argv[1]))
 updated_at = d.get('updatedAt', '')
 current_phase = d.get('currentPhase', '')
 print(updated_at, current_phase)
-" .super-spec/features/{slug}/feature.json
+" .loop-spec/features/{slug}/feature.json
 ```
 
 Combine signals:
@@ -166,7 +166,7 @@ git diff --name-only HEAD~10..HEAD 2>/dev/null || git log --name-only --format="
 ```
 
 Any file in the git diff output that does not match any path listed in PLAN.md `files[]`
-is a scope-drift candidate. Exclude `.super-spec/` state files and docs paths used by
+is a scope-drift candidate. Exclude `.loop-spec/` state files and docs paths used by
 the harness itself (those are expected writes).
 
 - Confidence HIGH: 3 or more out-of-scope files modified.
@@ -185,7 +185,7 @@ git log --oneline -20 | grep -iE "fix test|revert|broken|regression|fail" || tru
 Also check if a VERIFICATION.md exists for the current feature and contains FAIL entries:
 
 ```bash
-grep -c "FAIL\|failed\|failing" docs/super-spec/features/{slug}/VERIFICATION.md 2>/dev/null || echo 0
+grep -c "FAIL\|failed\|failing" docs/loop-spec/features/{slug}/VERIFICATION.md 2>/dev/null || echo 0
 ```
 
 - Confidence HIGH: VERIFICATION.md explicitly shows FAIL for a previously passing test,
@@ -211,10 +211,10 @@ Remediation hint: "re-enter the phase skill to redispatch the workflow."
 Create the report directory if absent:
 
 ```bash
-mkdir -p .super-spec/forensics
+mkdir -p .loop-spec/forensics
 ```
 
-Write the report to `.super-spec/forensics/report-{ISO-8601}.md` where `{ISO-8601}` is
+Write the report to `.loop-spec/forensics/report-{ISO-8601}.md` where `{ISO-8601}` is
 the current timestamp in the format `YYYYMMDDTHHMMSSZ` (e.g., `20260528T142300Z`).
 
 The report must follow this structure:
@@ -267,15 +267,15 @@ detected. The feature workflow appears consistent with its recorded state."}
 
 ## Recommended Actions
 
-1. {Specific, actionable step - e.g., "Run /super-spec:resume to restart from last
-   committed phase" or "Manually inspect .super-spec/features/{slug}/feature.json
+1. {Specific, actionable step - e.g., "Run /loop-spec:resume to restart from last
+   committed phase" or "Manually inspect .loop-spec/features/{slug}/feature.json
    and correct currentPhase"}
 2. {Additional step if applicable}
 
 ---
 
-*Report generated by /super-spec:forensics. This file is the only artifact written
-by this diagnostic run. Report path: .super-spec/forensics/report-{timestamp}.md*
+*Report generated by /loop-spec:forensics. This file is the only artifact written
+by this diagnostic run. Report path: .loop-spec/forensics/report-{timestamp}.md*
 ```
 
 **Path redaction rules:**
@@ -288,13 +288,13 @@ by this diagnostic run. Report path: .super-spec/forensics/report-{timestamp}.md
 After writing the report, print a summary to the user:
 
 ```
-Forensic report written to: .super-spec/forensics/report-{timestamp}.md
+Forensic report written to: .loop-spec/forensics/report-{timestamp}.md
 
 Anomalies found: {count}
 {for each anomaly: "  - {pattern name} ({confidence})"}
 
 {if count == 0: "No anomalies detected. The feature workflow appears healthy."}
-{if count > 0: "Run /super-spec:rollback or /super-spec:resume to act on findings."}
+{if count > 0: "Run /loop-spec:rollback or /loop-spec:resume to act on findings."}
 ```
 
 Do not offer to auto-remediate. Offer to explain any finding in more detail if the user
@@ -305,10 +305,10 @@ asks follow-up questions.
 Reports are always written to:
 
 ```
-.super-spec/forensics/report-{ISO-8601}.md
+.loop-spec/forensics/report-{ISO-8601}.md
 ```
 
-Example: `.super-spec/forensics/report-20260528T142300Z.md`
+Example: `.loop-spec/forensics/report-20260528T142300Z.md`
 
 The `forensics/report-` path prefix is the unique identifier for this skill's output.
 No other path is ever written.

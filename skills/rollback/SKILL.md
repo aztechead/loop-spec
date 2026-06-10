@@ -5,7 +5,7 @@ description: Restore the working tree to a named checkpoint tag using history-sa
 
 # ROLLBACK Skill
 
-Invoked via `/super-spec:rollback` or directly by the cycle lead when a phase needs to be undone.
+Invoked via `/loop-spec:rollback` or directly by the cycle lead when a phase needs to be undone.
 
 ## Checkpoint types
 
@@ -18,19 +18,19 @@ Six checkpoint types are created automatically by phase skills and `lib/checkpoi
 | `post-execute` | `skills/execute/SKILL.md` | After the final merge step, before advancing to verify |
 | `post-verify` | `skills/verify/SKILL.md` | After VERIFICATION.md is committed at the end of VERIFY |
 | `pre-rollback` | `lib/checkpoint.sh` | Automatically, immediately before a rollback executes |
-| `manual` | User via `/super-spec:checkpoint <name>` | On demand, at any point during a session |
+| `manual` | User via `/loop-spec:checkpoint <name>` | On demand, at any point during a session |
 
 ## Tag format
 
 All checkpoint tags follow the pattern:
 
 ```
-super-spec-checkpoint-{type}-YYYYMMDD-HHMMSS
+loop-spec-checkpoint-{type}-YYYYMMDD-HHMMSS
 ```
 
-Example: `super-spec-checkpoint-post-plan-20260528-143022`
+Example: `loop-spec-checkpoint-post-plan-20260528-143022`
 
-Tags are created with `git tag` and are visible via `git tag -l 'super-spec-checkpoint-*'`.
+Tags are created with `git tag` and are visible via `git tag -l 'loop-spec-checkpoint-*'`.
 
 ## Rollback mechanics
 
@@ -47,28 +47,28 @@ The implementation is in `lib/checkpoint.sh` (`rollback` subcommand).
 Before rollback executes, the user must confirm by typing **ROLLBACK** (all caps). In a skill context the confirmation is supplied by setting the environment variable:
 
 ```bash
-SUPER_SPEC_ROLLBACK_CONFIRMED=1
+LOOP_SPEC_ROLLBACK_CONFIRMED=1
 ```
 
 If the variable is absent or not equal to `1`, `lib/checkpoint.sh` exits 1 with an error message and no changes are made.
 
 ## Inputs
 
-- `tag` - the full checkpoint tag name to restore (e.g. `super-spec-checkpoint-post-plan-20260528-143022`)
+- `tag` - the full checkpoint tag name to restore (e.g. `loop-spec-checkpoint-post-plan-20260528-143022`)
 
 ## Procedure
 
 ### Step 1 - List available checkpoints
 
 ```bash
-git tag -l 'super-spec-checkpoint-*' | sort
+git tag -l 'loop-spec-checkpoint-*' | sort
 ```
 
 Present the list to the user so they can choose the target tag.
 
 ### Step 2 - Confirm
 
-Ask the user to type **ROLLBACK** to confirm. Do not proceed until the literal string `ROLLBACK` is received. Set `SUPER_SPEC_ROLLBACK_CONFIRMED=1` once confirmed.
+Ask the user to type **ROLLBACK** to confirm. Do not proceed until the literal string `ROLLBACK` is received. Set `LOOP_SPEC_ROLLBACK_CONFIRMED=1` once confirmed.
 
 Before executing, create a `pre-rollback` checkpoint of the current state so the forward path can be recovered:
 
@@ -79,7 +79,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag pre-rollback
 ### Step 3 - Run checkpoint rollback
 
 ```bash
-SUPER_SPEC_ROLLBACK_CONFIRMED=1 bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" rollback <tag>
+LOOP_SPEC_ROLLBACK_CONFIRMED=1 bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" rollback <tag>
 ```
 
 `lib/checkpoint.sh` will:

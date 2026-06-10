@@ -7,7 +7,7 @@
 #
 # Cost source hierarchy:
 #   1. metrics-session.json (.totals.estimated_cost_usd) in CWD if the file exists
-#   2. SUPER_SPEC_SESSION_COST_USD env var (test override)
+#   2. LOOP_SPEC_SESSION_COST_USD env var (test override)
 #   3. 0 (no data -> fail-open, allow)
 #
 # Behavior:
@@ -15,14 +15,14 @@
 #   0.80 <= ratio < 1.0 -> exit 0, emit hookSpecificOutput.additionalContext WARNING to stdout
 #   ratio < 0.80  -> exit 0 silently
 #
-# Kill-switch: SUPER_SPEC_BUDGET_GUARD=0 -> exit 0 unconditionally
+# Kill-switch: LOOP_SPEC_BUDGET_GUARD=0 -> exit 0 unconditionally
 # Fail-open: malformed metrics file -> exit 0
 #
 # Trace log:
-#   ${SUPER_SPEC_BUDGET_TRACE_LOG:-/tmp/claude-hooks/super-spec-budget-gate-trace.log}
+#   ${LOOP_SPEC_BUDGET_TRACE_LOG:-/tmp/claude-hooks/loop-spec-budget-gate-trace.log}
 set -euo pipefail
 
-TRACE_LOG="${SUPER_SPEC_BUDGET_TRACE_LOG:-/tmp/claude-hooks/super-spec-budget-gate-trace.log}"
+TRACE_LOG="${LOOP_SPEC_BUDGET_TRACE_LOG:-/tmp/claude-hooks/loop-spec-budget-gate-trace.log}"
 
 trace() {
   local event="$1"
@@ -34,7 +34,7 @@ trace() {
 }
 
 # Kill-switch: unconditional bypass.
-if [[ "${SUPER_SPEC_BUDGET_GUARD:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_BUDGET_GUARD:-1}" == "0" ]]; then
   trace "skip" "guard=0"
   exit 0
 fi
@@ -43,7 +43,7 @@ fi
 trap 'trace "error" "trap-ERR"; exit 0' ERR
 
 # No ceiling configured: nothing to enforce.
-if [[ -z "${SUPER_SPEC_MAX_COST_USD:-}" ]]; then
+if [[ -z "${LOOP_SPEC_MAX_COST_USD:-}" ]]; then
   trace "skip" "no-ceiling"
   exit 0
 fi
@@ -51,7 +51,7 @@ fi
 # Drain stdin (required by PreToolUse hook protocol).
 cat > /dev/null 2>&1 || true
 
-MAX_COST="${SUPER_SPEC_MAX_COST_USD}"
+MAX_COST="${LOOP_SPEC_MAX_COST_USD}"
 
 # Resolve current cost.
 # Priority 1: metrics-session.json in CWD.
@@ -64,7 +64,7 @@ fi
 
 # Priority 2: env var override (for tests or explicit injection).
 if [[ -z "$CURRENT_COST" ]]; then
-  CURRENT_COST="${SUPER_SPEC_SESSION_COST_USD:-}"
+  CURRENT_COST="${LOOP_SPEC_SESSION_COST_USD:-}"
 fi
 
 # Priority 3: treat as 0 (fail-open, no data).

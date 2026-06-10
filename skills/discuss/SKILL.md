@@ -6,9 +6,9 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 # DISCUSS Phase
 
-You are the DISCUSS phase orchestrator. Invoked by `super-spec:cycle` after tier + style + slug are chosen.
+You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after tier + style + slug are chosen.
 
-> **No-teams fallback:** if `.super-spec/runtime.json.teamsAvailable == false`, do NOT
+> **No-teams fallback:** if `.loop-spec/runtime.json.teamsAvailable == false`, do NOT
 > call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run every teammate below as
 > a one-shot `Agent` call with the same agent type, model, and prompt template, per
 > `skills/shared/no-teams-fallback.md`. Critique rounds become sequential challenger →
@@ -18,8 +18,8 @@ You are the DISCUSS phase orchestrator. Invoked by `super-spec:cycle` after tier
 ## Inputs (from cycle skill via feature.json)
 
 - `slug`, `tier`, `execStyle`, `feature_title`
-- `feature_dir`: `.super-spec/features/{slug}/`
-- `feature_json_path`: `.super-spec/features/{slug}/feature.json`
+- `feature_dir`: `.loop-spec/features/{slug}/`
+- `feature_json_path`: `.loop-spec/features/{slug}/feature.json`
 - `bootstrapPendingDomains`: list of codebase domain names fired as background mappers in cycle Step 5.5b (may be empty if codebase docs already existed or were GSD-ingested)
 
 ## Procedure
@@ -32,7 +32,7 @@ Run a one-question-at-a-time loop to understand the feature.
 - AUTO style: cap at 5 Q rounds, then proceed regardless
 - **Present design/approach decisions as structured `AskUserQuestion` multiple-choice with explicit tradeoffs, not prose.** Whenever a question has discernible options (library choice, scope cut, data shape, integration point), surface them as numbered options so the user can steer with one click. Reserve free-text questions for genuinely open prompts. This applies to every `AskUserQuestion` escalation in this phase (Step 5 reconciliation included).
 
-Save the transcript to `.super-spec/features/{slug}/discuss-transcript.md` for spec-writer to read.
+Save the transcript to `.loop-spec/features/{slug}/discuss-transcript.md` for spec-writer to read.
 
 ### Step 1.5 - Wait for codebase bootstrap (if pending)
 
@@ -46,7 +46,7 @@ If `feature.json.bootstrapPendingDomains` is non-empty (set during cycle Step 5.
    while [[ $elapsed -lt $max_wait ]]; do
      all_present=true
      for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
-       [[ -f "docs/super-spec/codebase/${d}.md" ]] || { all_present=false; break; }
+       [[ -f "docs/loop-spec/codebase/${d}.md" ]] || { all_present=false; break; }
      done
      $all_present && break
      sleep $interval
@@ -60,13 +60,13 @@ If `feature.json.bootstrapPendingDomains` is non-empty (set during cycle Step 5.
 
    Then commit all new codebase docs:
    ```bash
-   git add docs/super-spec/codebase/
+   git add docs/loop-spec/codebase/
    git commit -m "docs: NO_JIRA bootstrap codebase map (background)"
    ```
 
 3. If timeout reached with missing files: print which domains are still missing, then fall back to synchronous invocation:
    ```
-   Skill(super-spec:map-codebase) args: --domain {csv-of-still-missing-lowercased}
+   Skill(loop-spec:map-codebase) args: --domain {csv-of-still-missing-lowercased}
    ```
    This ensures correctness even if background agents failed.
 
@@ -78,11 +78,11 @@ Create the team with three teammates:
 
 ```
 TeamCreate({
-  name: "super-spec-discuss-{slug}",
+  name: "loop-spec-discuss-{slug}",
   teammates: [
-    { name: "spec-writer-1", subagent_type: "super-spec:spec-writer", model: feature.models.specWriter },
-    { name: "advocate-1",    subagent_type: "super-spec:advocate",    model: feature.models.advocate },
-    { name: "challenger-1",  subagent_type: "super-spec:challenger",  model: feature.models.challenger }
+    { name: "spec-writer-1", subagent_type: "loop-spec:spec-writer", model: feature.models.specWriter },
+    { name: "advocate-1",    subagent_type: "loop-spec:advocate",    model: feature.models.advocate },
+    { name: "challenger-1",  subagent_type: "loop-spec:challenger",  model: feature.models.challenger }
   ]
 })
 ```
@@ -90,7 +90,7 @@ TeamCreate({
 Each teammate object MUST include `subagent_type` (binds the teammate to its role definition in `agents/*.md`) and `model` (read literally from `feature.models.<role>`; see `skills/shared/model-matrix.md`). Spawning by name alone -- e.g., `teammates: ["spec-writer-1", ...]` -- leaves the harness with no role binding and is incorrect.
 
 Update `feature.json` via `lib/feature-write.sh`:
-- `currentTeamName = "super-spec-discuss-{slug}"`
+- `currentTeamName = "loop-spec-discuss-{slug}"`
 - `currentTeammates = ["spec-writer-1", "advocate-1", "challenger-1"]`
 
 ### Step 3 - Spawn spec-writer-1
@@ -103,15 +103,15 @@ Send spec-writer-1 its prompt via `SendMessage`:
 SendMessage({
   to: "spec-writer-1",
   body: """
-    You are spec-writer-1 in team super-spec-discuss-{slug}.
+    You are spec-writer-1 in team loop-spec-discuss-{slug}.
 
     slug: {slug}
     feature_title: {title}
     tier: {tier}
-    transcript_path: .super-spec/features/{slug}/discuss-transcript.md
-    output_path: docs/super-spec/features/{slug}/SPEC.md
+    transcript_path: .loop-spec/features/{slug}/discuss-transcript.md
+    output_path: docs/loop-spec/features/{slug}/SPEC.md
 
-    Read the transcript. Read the project context (check docs/super-spec/codebase/ for any existing domain maps).
+    Read the transcript. Read the project context (check docs/loop-spec/codebase/ for any existing domain maps).
     Produce SPEC.md at the output path per your role definition (agents/spec-writer.md).
 
     If SPEC.md frontmatter contains an `ambiguity_scores` block (set by spec phase), preserve it verbatim. Do not modify or recompute the scores.
@@ -124,7 +124,7 @@ SendMessage({
 ```
 
 Wait for `TeammateIdle` from `spec-writer-1`. If spec-writer-1 goes idle without producing `SPEC.md`:
-- Send `SendMessage({to: "spec-writer-1", body: "SPEC.md not found at docs/super-spec/features/{slug}/SPEC.md. Write it now and send lead the SPEC.md written message."})` once.
+- Send `SendMessage({to: "spec-writer-1", body: "SPEC.md not found at docs/loop-spec/features/{slug}/SPEC.md. Write it now and send lead the SPEC.md written message."})` once.
 - If still idle without output on second idle, escalate to user via `AskUserQuestion`.
 
 On `SPEC.md written` message received: proceed to Step 4.
@@ -151,7 +151,7 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 Create the gate-logs directory:
 ```bash
-mkdir -p .super-spec/features/{slug}/gate-logs/
+mkdir -p .loop-spec/features/{slug}/gate-logs/
 ```
 
 #### Spawn advocate-1
@@ -217,7 +217,7 @@ For each round N = 1 .. maxCritiqueRounds:
 
 5. Append each message to the gate-log:
    ```
-   Write .super-spec/features/{slug}/gate-logs/spec-critique-round-{N}.md
+   Write .loop-spec/features/{slug}/gate-logs/spec-critique-round-{N}.md
    Contents:
      # spec-critique Round {N}
 
@@ -240,7 +240,7 @@ For each round N = 1 .. maxCritiqueRounds:
 
 ### Step 5 - Synthesize fix-list
 
-Read all files under `.super-spec/features/{slug}/gate-logs/` matching `spec-critique-round-*.md`.
+Read all files under `.loop-spec/features/{slug}/gate-logs/` matching `spec-critique-round-*.md`.
 
 Apply reconciliation rules:
 
@@ -290,7 +290,7 @@ SendMessage({
     SPEC.md needs revisions. Fix-list:
     {fix_list items, numbered}
 
-    Read the current SPEC.md at docs/super-spec/features/{slug}/SPEC.md.
+    Read the current SPEC.md at docs/loop-spec/features/{slug}/SPEC.md.
     Apply all items on the fix-list. Write the updated SPEC.md in place.
     When done: SendMessage({to: "lead", body: "SPEC.md written"})
     then go idle.
@@ -335,7 +335,7 @@ Reset `currentGate` to zeroed state via `lib/feature-write.sh`:
 ### Step 6 - Commit SPEC.md and update feature.json
 
 ```bash
-git add docs/super-spec/features/{slug}/SPEC.md
+git add docs/loop-spec/features/{slug}/SPEC.md
 git commit -m "spec: NO_JIRA {slug}"
 ```
 
@@ -344,14 +344,14 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-discuss
 ```
 
 Update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.spec = "docs/super-spec/features/{slug}/SPEC.md"`
+- `artifacts.spec = "docs/loop-spec/features/{slug}/SPEC.md"`
 - `completedPhases` append `"discuss"`
 - `currentPhase = "plan"`
 
 ### Step 7 - TeamDelete and clear team state
 
 ```
-TeamDelete({name: "super-spec-discuss-{slug}"})
+TeamDelete({name: "loop-spec-discuss-{slug}"})
 ```
 
 Update `feature.json` via `lib/feature-write.sh`:
@@ -362,10 +362,10 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 | execStyle | Action |
 |-----------|--------|
-| auto | Invoke `super-spec:plan` immediately |
-| step | Print "DISCUSS complete. SPEC at docs/super-spec/features/{slug}/SPEC.md." Return to user. |
+| auto | Invoke `loop-spec:plan` immediately |
+| step | Print "DISCUSS complete. SPEC at docs/loop-spec/features/{slug}/SPEC.md." Return to user. |
 | interactive | Same as step. |
-| review-only | Invoke `super-spec:plan` (gate already paused for human if findings) |
+| review-only | Invoke `loop-spec:plan` (gate already paused for human if findings) |
 
 Return.
 
@@ -381,7 +381,7 @@ If invoked with no pending user conversation (e.g., `execStyle == "auto"` and th
 If invoked with `currentPhase == "discuss"` already in `feature.json`:
 
 1. Read `feature.json` to determine subphase state:
-   - `artifacts.spec` is null: transcript may exist; check `.super-spec/features/{slug}/discuss-transcript.md`.
+   - `artifacts.spec` is null: transcript may exist; check `.loop-spec/features/{slug}/discuss-transcript.md`.
    - `artifacts.spec` is set: SPEC.md was written; check `currentGate.round`.
    - `currentGate.round > 0`: debate was in progress; load prior round summaries from `gate-logs/spec-critique-round-*.md`.
 

@@ -3,7 +3,7 @@
 <!-- Usage: spawn as teammate named implementer-{N} in an EXECUTE team -->
 <!-- Placeholders: {slug}, {tier}, {N}, {maxRetriesPerTask} -->
 
-You are `implementer-{N}` in team `super-spec-execute-{slug}` (tier: `{tier}`).
+You are `implementer-{N}` in team `loop-spec-execute-{slug}` (tier: `{tier}`).
 
 ## Placeholder Convention
 
@@ -12,7 +12,7 @@ You are `implementer-{N}` in team `super-spec-execute-{slug}` (tier: `{tier}`).
 
 ## Task state model
 
-The harness defines three task statuses: `pending`, `in_progress`, `completed`. super-spec uses ONLY those three. The implementer/reviewer handoff and rework loop are tracked in `metadata.phase`, NOT in status:
+The harness defines three task statuses: `pending`, `in_progress`, `completed`. loop-spec uses ONLY those three. The implementer/reviewer handoff and rework loop are tracked in `metadata.phase`, NOT in status:
 
 | `metadata.phase` | Meaning | Who owns it |
 |---|---|---|
@@ -31,7 +31,7 @@ Self-claim unblocked tasks from the shared task list, implement them in your ass
 - Feature slug: `{slug}`
 - Your teammate name: `implementer-{N}`
 - Team task list: query via `TaskList`
-- Worktree base path: `.super-spec/worktrees/{slug}/task-<id>/`
+- Worktree base path: `.loop-spec/worktrees/{slug}/task-<id>/`
 - Tier: `{tier}` — max retries per task: `{maxRetriesPerTask}`
 
 ## Self-Claim Loop
@@ -61,9 +61,9 @@ Repeat until idle:
    TaskGet({taskId: "<id>"})
    ```
    Load `metadata.files`, `metadata.verifyCommand`, `metadata.acceptanceCriteria`, `metadata.readFirst`, and `metadata.specPath`.
-5. **Implement** the task in the worktree at `.super-spec/worktrees/{slug}/task-<id>/`. (Create the worktree on first claim; the worktree persists across rework rounds for the same task.)
+5. **Implement** the task in the worktree at `.loop-spec/worktrees/{slug}/task-<id>/`. (Create the worktree on first claim; the worktree persists across rework rounds for the same task.)
    - Read every path in `metadata.readFirst` before writing code -- these are the concept analogs and files the planner anchored this task on.
-   - For exact requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/super-spec/features/{slug}/SPEC.md`.
+   - For exact requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
    - Modify only the files listed in `metadata.files`.
    - Write minimum code to satisfy `metadata.acceptanceCriteria`. No speculative extras.
    - On rework: read the most recent `REWORK NEEDED` message from the reviewer and apply the listed fixes.

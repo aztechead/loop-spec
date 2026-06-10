@@ -1,14 +1,14 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "super-spec",
+  "name": "loop-spec",
   "description": "Spec-driven development workflow for Claude Code. 5 phases (SPEC/DISCUSS/PLAN/EXECUTE/VERIFY), 3 tiers, fixed per-role model map, 4 execution styles, EXECUTE concurrency ladder (subagent/loop-fleet/team/workflow by DAG width), bundled loop-runner skill (bounded autonomous loops with verifier integrity, spec→plan compiler, fleet supervisor), teams-optional operation, optional graphify codebase mapping, user-gate verification flow, Ralph remediation loop, dynamic-workflow fan-out acceleration.",
-  "version": "3.2.0",
+  "version": "1.0.0",
   "author": {
     "name": "Christopher Bobrowitz",
     "email": "cbobrowitz@viasat.com"
   },
-  "homepage": "https://github.com/aztechead/super-spec",
-  "repository": "https://github.com/aztechead/super-spec",
+  "homepage": "https://github.com/aztechead/loop-spec",
+  "repository": "https://github.com/aztechead/loop-spec",
   "license": "MIT",
   "keywords": ["spec-driven", "skills", "tdd", "agents", "claude-code"]
 }

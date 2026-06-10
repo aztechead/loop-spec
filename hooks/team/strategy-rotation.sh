@@ -10,16 +10,16 @@
 # verbalize a different approach before retrying.
 #
 # Configuration (all optional):
-#   SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD  failures before rotation (default: 2)
-#   SUPER_SPEC_STRATEGY_ROTATION            set to 0 to disable entirely
+#   LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD  failures before rotation (default: 2)
+#   LOOP_SPEC_STRATEGY_ROTATION            set to 0 to disable entirely
 #
-# State file: ${TMPDIR:-/tmp}/super-spec-failures-${SESSION:-default}.json
+# State file: ${TMPDIR:-/tmp}/loop-spec-failures-${SESSION:-default}.json
 # Hook event: PostToolUse (matcher: Bash|Edit|Write)
 #
 # Fail-open: any JSON parse/file error -> reset state to {} or exit 0
-# Kill switch: SUPER_SPEC_STRATEGY_ROTATION=0 -> exit 0 immediately
+# Kill switch: LOOP_SPEC_STRATEGY_ROTATION=0 -> exit 0 immediately
 #
-# Trace log: ${SUPER_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/super-spec-user-gate-trace.log}
+# Trace log: ${LOOP_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/loop-spec-user-gate-trace.log}
 # format: <ISO-8601>|strategy-rotation|<tool>|<event>|<reason>
 
 set -euo pipefail
@@ -27,7 +27,7 @@ set -euo pipefail
 # Fail-open exit trap: any unexpected error must not block the session.
 trap 'exit 0' ERR
 
-TRACE_LOG="${SUPER_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/super-spec-user-gate-trace.log}"
+TRACE_LOG="${LOOP_SPEC_USERGATE_TRACE_LOG:-/tmp/claude-hooks/loop-spec-user-gate-trace.log}"
 mkdir -p "$(dirname "$TRACE_LOG")" 2>/dev/null || true
 
 trace() {
@@ -38,22 +38,22 @@ trace() {
 }
 
 # Kill switch
-if [[ "${SUPER_SPEC_STRATEGY_ROTATION:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_STRATEGY_ROTATION:-1}" == "0" ]]; then
   trace "?" "skip" "kill-switch"
   exit 0
 fi
 
-# Scope: only active in projects that use super-spec. This hook fires on every
+# Scope: only active in projects that use loop-spec. This hook fires on every
 # Bash/Edit/Write in the session; a stat is the most it may cost elsewhere.
-if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.super-spec" && ! -d "$PWD/.super-spec" ]]; then
+if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then
   exit 0
 fi
 
-THRESHOLD="${SUPER_SPEC_STRATEGY_ROTATION_THRESHOLD:-2}"
+THRESHOLD="${LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD:-2}"
 
 # Session identification (same priority as claude-octopus reference)
 SESSION="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-$$}}"
-STATE_FILE="${TMPDIR:-/tmp}/super-spec-failures-${SESSION}.json"
+STATE_FILE="${TMPDIR:-/tmp}/loop-spec-failures-${SESSION}.json"
 
 # Drain stdin
 INPUT=""

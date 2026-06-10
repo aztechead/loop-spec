@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Git helpers used across super-spec skills.
+# Git helpers used across loop-spec skills.
 #
 # Subcommands:
 #   detect-base-branch                  Print the project's base branch (origin/HEAD or fallback).

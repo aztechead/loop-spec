@@ -20,10 +20,10 @@ check() {
   fi
 }
 
-WORK="${TMPDIR:-/tmp}/super-spec-regression-scan.$$"
+WORK="${TMPDIR:-/tmp}/loop-spec-regression-scan.$$"
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/docs/super-spec/features/feat-a"
-mkdir -p "$WORK/docs/super-spec/features/feat-b"
+mkdir -p "$WORK/docs/loop-spec/features/feat-a"
+mkdir -p "$WORK/docs/loop-spec/features/feat-b"
 
 # --- Case A: output has required keys ---
 out=$(bash "$LIB" "$WORK" 2>/dev/null)
@@ -38,7 +38,7 @@ check "B: no VERIFICATION.md -> prior_features is empty array" "0" "$prior_len"
 
 # --- Case C: VERIFICATION.md present, with a passing bash test command ---
 # Create a VERIFICATION.md with a verify command that will pass (echo PASS)
-cat > "$WORK/docs/super-spec/features/feat-a/VERIFICATION.md" <<'VEOF'
+cat > "$WORK/docs/loop-spec/features/feat-a/VERIFICATION.md" <<'VEOF'
 # VERIFICATION - feat-a
 
 ## Acceptance criteria
@@ -61,7 +61,7 @@ slug=$(printf '%s' "$out2" | jq -r '.prior_features[0].slug' 2>/dev/null || echo
 check "D: prior_features[0] has slug field" "feat-a" "$slug"
 
 # --- Case E: VERIFICATION.md with a failing command -> failed_tests populated ---
-cat > "$WORK/docs/super-spec/features/feat-b/VERIFICATION.md" <<'VEOF'
+cat > "$WORK/docs/loop-spec/features/feat-b/VERIFICATION.md" <<'VEOF'
 # VERIFICATION - feat-b
 
 ## Acceptance criteria

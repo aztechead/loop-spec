@@ -11,7 +11,7 @@ FAIL=0
 
 # Use a temp trace log so tests don't pollute the real one
 TRACE_LOG="${TMPDIR:-/tmp}/post-task-complete-revalidate-test-$$.log"
-export SUPER_SPEC_USERGATE_TRACE_LOG="$TRACE_LOG"
+export LOOP_SPEC_USERGATE_TRACE_LOG="$TRACE_LOG"
 
 check() {
   local name="$1"
@@ -57,10 +57,10 @@ TRANSCRIPT_WITHOUT_EVIDENCE='[{"role":"assistant","content":"I completed the tas
 
 echo "=== post-task-complete-revalidate.sh tests ==="
 
-# (a) kill-switch: SUPER_SPEC_USERGATE_GUARD=0 -> exit 0 regardless of payload
+# (a) kill-switch: LOOP_SPEC_USERGATE_GUARD=0 -> exit 0 regardless of payload
 check "a: kill-switch guard=0 exits 0" 0 \
   "$(payload_gate_task_with_transcript "task-001" "$TRANSCRIPT_WITHOUT_EVIDENCE")" \
-  "SUPER_SPEC_USERGATE_GUARD=0"
+  "LOOP_SPEC_USERGATE_GUARD=0"
 
 # (b) fail-open: empty payload -> exit 0
 check "b: fail-open empty payload exits 0" 0 \

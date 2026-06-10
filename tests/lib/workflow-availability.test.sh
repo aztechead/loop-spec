@@ -16,7 +16,7 @@ check() {
 }
 
 # Version gating (explicit version arg; unset override so detection path runs)
-unset SUPER_SPEC_WORKFLOWS_AVAILABLE
+unset LOOP_SPEC_WORKFLOWS_AVAILABLE
 check "A: exact minimum 2.1.154 -> true"      "true"  "$(bash "$LIB" 2.1.154)"
 check "B: above minimum 2.1.159 -> true"      "true"  "$(bash "$LIB" 2.1.159)"
 check "C: newer minor 2.2.0 -> true"          "true"  "$(bash "$LIB" 2.2.0)"
@@ -26,8 +26,8 @@ check "F: older minor 2.0.9 -> false"         "false" "$(bash "$LIB" 2.0.9)"
 check "G: older major 1.9.9 -> false"         "false" "$(bash "$LIB" 1.9.9)"
 
 # Override takes precedence over version
-check "H: override=1 forces true"  "true"  "$(SUPER_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 1.0.0)"
-check "I: override=0 forces false" "false" "$(SUPER_SPEC_WORKFLOWS_AVAILABLE=0 bash "$LIB" 9.9.9)"
+check "H: override=1 forces true"  "true"  "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 1.0.0)"
+check "I: override=0 forces false" "false" "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=0 bash "$LIB" 9.9.9)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

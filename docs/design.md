@@ -1,9 +1,9 @@
-# super-spec - Spec-Driven Development Plugin
+# loop-spec - Spec-Driven Development Plugin
 
 **Date:** 2026-05-05
 **Status:** Design approved, planning next
 **Author:** Christopher Bobrowitz
-**Repo (target):** `git.viasat.com/cbobrowitz/super-spec`
+**Repo (target):** `git.viasat.com/cbobrowitz/loop-spec`
 
 ## Problem
 
@@ -30,13 +30,13 @@ Claude Code subagents spawned by the superpowers fork have no spec-driven discip
 - Zero external dependencies (markdown + CC tooling only)
 - Plugin must work standalone, no coupling to superpowers fork
 - Model policy: opus -> `claude-opus-4-7`, sonnet -> `claude-sonnet-4-6` (1M ctx), haiku -> `claude-haiku-4-5`
-  - **Note:** consuming projects whose `CLAUDE.md` hard-codes earlier model IDs (e.g., chrisbobrowitz/superpowers fork's policy banning anything other than 4.6/4.5) must update their policy section before adopting super-spec. Plugin's `cycle` startup health-check verifies model availability via tiny test dispatches (1-token completion against each tier's models); failure prints diagnostic + which model failed + suggested CLAUDE.md edit, then aborts. No silent fallback.
+  - **Note:** consuming projects whose `CLAUDE.md` hard-codes earlier model IDs (e.g., chrisbobrowitz/superpowers fork's policy banning anything other than 4.6/4.5) must update their policy section before adopting loop-spec. Plugin's `cycle` startup health-check verifies model availability via tiny test dispatches (1-token completion against each tier's models); failure prints diagnostic + which model failed + suggested CLAUDE.md edit, then aborts. No silent fallback.
   - 1M-context flag: cycle skill probes a sonnet dispatch with a >200k-token noop input; if rejected, falls back to standard sonnet 4.6 (200k) with a warning logged in `state.json.warnings[]`. Plan/Execute phases still run, just lose room for very large planner contexts.
 - Skill content tested manually + `tests/smoke.sh` zero-dep bash runner for one cell of the matrix
 
 ## Success criteria
 
-- A user can run `Skill(super-spec:cycle)` on any project, pick tier+style, and ship a feature end-to-end with all 4 artifacts written and a PR opened
+- A user can run `Skill(loop-spec:cycle)` on any project, pick tier+style, and ship a feature end-to-end with all 4 artifacts written and a PR opened
 - AUTO style self-heals 3 retries per gate, 12 total per feature, then escalates
 - Resume after context clear lands in correct phase with task graph intact
 - Map-codebase auto-refreshes only stale domains after each cycle
@@ -49,29 +49,29 @@ Claude Code subagents spawned by the superpowers fork have no spec-driven discip
 ### Plugin layout
 
 ```
-super-spec/
+loop-spec/
 ├── .claude-plugin/
-│   ├── plugin.json                     # name: "super-spec", version: 0.1.0
+│   ├── plugin.json                     # name: "loop-spec", version: 0.1.0
 │   └── marketplace.json                # solo plugin
-├── .gitignore                          # .super-spec/, common
+├── .gitignore                          # .loop-spec/, common
 ├── LICENSE
 ├── README.md
 ├── CHANGELOG.md
 ├── CLAUDE.md                           # contributor guide
 ├── agents/                             # 13 agent defs
-│   ├── super-spec-spec-writer.md
-│   ├── super-spec-planner.md
-│   ├── super-spec-implementer.md
-│   ├── super-spec-spec-compliance-reviewer.md
-│   ├── super-spec-verifier.md
-│   ├── super-spec-code-reviewer.md
-│   ├── super-spec-advocate.md
-│   ├── super-spec-challenger.md
-│   ├── super-spec-mapper-tech.md
-│   ├── super-spec-mapper-arch.md
-│   ├── super-spec-mapper-quality.md
-│   ├── super-spec-mapper-concerns.md
-│   └── super-spec-mapper-domain.md
+│   ├── loop-spec-spec-writer.md
+│   ├── loop-spec-planner.md
+│   ├── loop-spec-implementer.md
+│   ├── loop-spec-spec-compliance-reviewer.md
+│   ├── loop-spec-verifier.md
+│   ├── loop-spec-code-reviewer.md
+│   ├── loop-spec-advocate.md
+│   ├── loop-spec-challenger.md
+│   ├── loop-spec-mapper-tech.md
+│   ├── loop-spec-mapper-arch.md
+│   ├── loop-spec-mapper-quality.md
+│   ├── loop-spec-mapper-concerns.md
+│   └── loop-spec-mapper-domain.md
 ├── skills/
 │   ├── cycle/                          # orchestrator
 │   ├── discuss/
@@ -103,19 +103,19 @@ super-spec/
 ### Per-feature artifact tree (in consuming project)
 
 ```
-docs/super-spec/features/{slug}/        # COMMITTED
+docs/loop-spec/features/{slug}/        # COMMITTED
 ├── SPEC.md
 ├── PLAN.md
 └── VERIFICATION.md
 
-docs/super-spec/codebase/                # COMMITTED, auto-refreshed
+docs/loop-spec/codebase/                # COMMITTED, auto-refreshed
 ├── TECH.md
 ├── ARCH.md
 ├── QUALITY.md
 ├── CONCERNS.md
 └── DOMAIN.md
 
-.super-spec/                             # GITIGNORED
+.loop-spec/                             # GITIGNORED
 ├── features/{slug}/
 │   ├── state.json
 │   ├── state.json.bak                   # last-good copy for crash recovery
@@ -135,21 +135,21 @@ docs/super-spec/codebase/                # COMMITTED, auto-refreshed
 ### Top-level flow
 
 ```
-User -> Skill(super-spec:cycle)
+User -> Skill(loop-spec:cycle)
          ├─ asks tier (quality | balanced | quick)
          ├─ asks exec style (auto | step | interactive | review-only)
          ├─ writes feature slug + state.json
-         ├─ invokes super-spec:discuss   -> SPEC.md committed
-         ├─ invokes super-spec:plan      -> PLAN.md committed
-         ├─ invokes super-spec:execute   -> EXECUTION.md (gitignored) + per-task commits
-         └─ invokes super-spec:verify    -> VERIFICATION.md committed + map refresh + PR opened
+         ├─ invokes loop-spec:discuss   -> SPEC.md committed
+         ├─ invokes loop-spec:plan      -> PLAN.md committed
+         ├─ invokes loop-spec:execute   -> EXECUTION.md (gitignored) + per-task commits
+         └─ invokes loop-spec:verify    -> VERIFICATION.md committed + map refresh + PR opened
 
 Each phase skill:
   - reads state.json -> knows tier
   - dispatches subagents from agents/ dir with model = tier-matrix[role][tier]
   - HARD-GATE on critique-gate / code review findings
   - writes phase artifact + updates state.json atomically
-  - returns control to super-spec:cycle
+  - returns control to loop-spec:cycle
 ```
 
 ---
@@ -180,7 +180,7 @@ Resolution:
 Phase skill computes model at dispatch:
 ```
 model = tier_matrix[role][state.tier]
-Agent({subagent_type: "super-spec-implementer", model: model, prompt: ...})
+Agent({subagent_type: "loop-spec-implementer", model: model, prompt: ...})
 ```
 
 Estimated cost per 5-task feature on BALANCED ~= 270k tokens. QUALITY ~= 2x. QUICK ~= 0.4x. Cycle skill prints estimate before EXECUTE; STEP/INTERACTIVE pause for confirmation.
@@ -193,19 +193,19 @@ Estimated cost per 5-task feature on BALANCED ~= 270k tokens. QUALITY ~= 2x. QUI
 
 | Agent | Purpose | Tools |
 |-------|---------|-------|
-| `super-spec-spec-writer` | Produces SPEC.md from discuss conversation | Read, Write (specs only), Grep, Glob |
-| `super-spec-planner` | Produces PLAN.md (task DAG, files, verify cmds) | Read, Write (specs only), Grep, Glob, Bash (read-only) |
-| `super-spec-implementer` | Implements one task per dispatch | Read, Edit, Write, Bash, Grep, Glob |
-| `super-spec-spec-compliance-reviewer` | Checks impl matches per-task spec | Read, Bash (read-only), Grep, Glob |
-| `super-spec-verifier` | Runs acceptance criteria, writes VERIFICATION.md | Read, Bash, Grep, Glob, Write (specs only) |
-| `super-spec-code-reviewer` | Quality + security pass on diff | Read, Bash (read-only), Grep, Glob |
-| `super-spec-advocate` | Defends spec/plan in critique gate | Read |
-| `super-spec-challenger` | Critiques spec/plan in critique gate | Read |
-| `super-spec-mapper-tech` | Maps languages, frameworks, deps | Read, Grep, Glob, Bash (read-only), Write (codebase only) |
-| `super-spec-mapper-arch` | Maps modules, boundaries, data flow | Read, Grep, Glob, Bash (read-only), Write (codebase only) |
-| `super-spec-mapper-quality` | Maps test coverage, lint state, type safety | Read, Grep, Glob, Bash (read-only), Write (codebase only) |
-| `super-spec-mapper-concerns` | Maps security, perf hotspots, tech debt | Read, Grep, Glob, Bash (read-only), Write (codebase only) |
-| `super-spec-mapper-domain` | Maps business concepts, glossary, entities | Read, Grep, Glob, Write (codebase only) |
+| `loop-spec-spec-writer` | Produces SPEC.md from discuss conversation | Read, Write (specs only), Grep, Glob |
+| `loop-spec-planner` | Produces PLAN.md (task DAG, files, verify cmds) | Read, Write (specs only), Grep, Glob, Bash (read-only) |
+| `loop-spec-implementer` | Implements one task per dispatch | Read, Edit, Write, Bash, Grep, Glob |
+| `loop-spec-spec-compliance-reviewer` | Checks impl matches per-task spec | Read, Bash (read-only), Grep, Glob |
+| `loop-spec-verifier` | Runs acceptance criteria, writes VERIFICATION.md | Read, Bash, Grep, Glob, Write (specs only) |
+| `loop-spec-code-reviewer` | Quality + security pass on diff | Read, Bash (read-only), Grep, Glob |
+| `loop-spec-advocate` | Defends spec/plan in critique gate | Read |
+| `loop-spec-challenger` | Critiques spec/plan in critique gate | Read |
+| `loop-spec-mapper-tech` | Maps languages, frameworks, deps | Read, Grep, Glob, Bash (read-only), Write (codebase only) |
+| `loop-spec-mapper-arch` | Maps modules, boundaries, data flow | Read, Grep, Glob, Bash (read-only), Write (codebase only) |
+| `loop-spec-mapper-quality` | Maps test coverage, lint state, type safety | Read, Grep, Glob, Bash (read-only), Write (codebase only) |
+| `loop-spec-mapper-concerns` | Maps security, perf hotspots, tech debt | Read, Grep, Glob, Bash (read-only), Write (codebase only) |
+| `loop-spec-mapper-domain` | Maps business concepts, glossary, entities | Read, Grep, Glob, Write (codebase only) |
 
 **Tool restriction format:** CC agent frontmatter supports a `tools` allow/deny list (which tools the agent can use), NOT per-glob path scoping. Path-level enforcement uses a different mechanism:
 
@@ -217,8 +217,8 @@ Estimated cost per 5-task feature on BALANCED ~= 270k tokens. QUALITY ~= 2x. QUI
 
 **Concrete rules:**
 - Reviewer agents (`spec-compliance-reviewer`, `code-reviewer`, `advocate`, `challenger`): `tools` list excludes `Write` and `Edit` entirely. Hard guarantee.
-- `spec-writer` and `planner`: `tools` includes `Write`, but plugin's PreToolUse hook (`hooks/restrict-spec-writer-paths.sh`) blocks any `Write`/`Edit` whose `file_path` is outside `docs/super-spec/features/**`.
-- `mapper-*`: same hook gates `Write` to `docs/super-spec/codebase/**`.
+- `spec-writer` and `planner`: `tools` includes `Write`, but plugin's PreToolUse hook (`hooks/restrict-spec-writer-paths.sh`) blocks any `Write`/`Edit` whose `file_path` is outside `docs/loop-spec/features/**`.
+- `mapper-*`: same hook gates `Write` to `docs/loop-spec/codebase/**`.
 - `implementer` and `verifier`: full `Write`/`Edit`/`Bash` (must write code + test files anywhere).
 
 The PreToolUse hook is shipped in the plugin under `hooks/restrict-agent-paths.sh` and registered in `plugin.json`. Risk #6 updated accordingly: enforcement is empirically verifiable (hook runs in CC harness, easy to test).
@@ -238,9 +238,9 @@ The PreToolUse hook is shipped in the plugin under `hooks/restrict-agent-paths.s
   "currentPhase": "execute",
   "completedPhases": ["discuss", "plan"],
   "artifacts": {
-    "spec": "docs/super-spec/features/spec-driven-cycle-mvp/SPEC.md",
-    "plan": "docs/super-spec/features/spec-driven-cycle-mvp/PLAN.md",
-    "execution": ".super-spec/features/spec-driven-cycle-mvp/EXECUTION.md",
+    "spec": "docs/loop-spec/features/spec-driven-cycle-mvp/SPEC.md",
+    "plan": "docs/loop-spec/features/spec-driven-cycle-mvp/PLAN.md",
+    "execution": ".loop-spec/features/spec-driven-cycle-mvp/EXECUTION.md",
     "verification": null
   },
   "branch": "feat/spec-driven-cycle-mvp",
@@ -251,8 +251,8 @@ The PreToolUse hook is shipped in the plugin under `hooks/restrict-agent-paths.s
       "subject": "Add agents/ dir scaffolding",
       "status": "completed",
       "blockedBy": [],
-      "files": ["agents/super-spec-spec-writer.md"],
-      "verifyCommand": "test -f agents/super-spec-spec-writer.md",
+      "files": ["agents/loop-spec-spec-writer.md"],
+      "verifyCommand": "test -f agents/loop-spec-spec-writer.md",
       "acceptanceCriteria": ["File exists", "Frontmatter valid"],
       "wave": 1,
       "commitSha": "abc123",
@@ -313,7 +313,7 @@ Atomic write pattern: write to `state.json.tmp`, fsync, rename. Keep last-good `
 
 ## Phase walkthroughs
 
-### DISCUSS (`super-spec:discuss`)
+### DISCUSS (`loop-spec:discuss`)
 
 ```
 1. Orchestrator collects feature title -> derives slug
@@ -321,27 +321,27 @@ Atomic write pattern: write to `state.json.tmp`, fsync, rename. Keep last-good `
 3. Conversational clarifying loop with user (one Q at a time)
    - Non-AUTO styles: full conversation in main thread
    - AUTO: <=5 Q rounds then proceeds
-4. Dispatch super-spec-spec-writer (model per tier)
+4. Dispatch loop-spec-spec-writer (model per tier)
    - Input: conversation transcript, project context
-   - Output: SPEC.md draft committed to docs/super-spec/features/{slug}/
+   - Output: SPEC.md draft committed to docs/loop-spec/features/{slug}/
 5. GATE: Spec critique gate
-   - Dispatch super-spec-advocate + super-spec-challenger in parallel
+   - Dispatch loop-spec-advocate + loop-spec-challenger in parallel
    - Both read SPEC.md, write structured findings
    - Orchestrator reconciles -> fix list
    - Non-empty fix list -> re-dispatch spec-writer with fixes -> re-review
    - Per-gate retry counter; cap 3 -> escalate human
 6. On gate pass: append to completedPhases, set currentPhase="plan"
    - Commit: "spec: NO_JIRA {slug}"
-7. AUTO/REVIEW-ONLY -> invoke super-spec:plan
-   STEP/INTERACTIVE -> return to user, await /super-spec next
+7. AUTO/REVIEW-ONLY -> invoke loop-spec:plan
+   STEP/INTERACTIVE -> return to user, await /loop-spec next
 ```
 
-### PLAN (`super-spec:plan`)
+### PLAN (`loop-spec:plan`)
 
 ```
 1. Read SPEC.md + state.json
-2. Read docs/super-spec/codebase/*.md if present (gives planner architecture context)
-3. Dispatch super-spec-planner (model per tier)
+2. Read docs/loop-spec/codebase/*.md if present (gives planner architecture context)
+3. Dispatch loop-spec-planner (model per tier)
    - Output: PLAN.md with task DAG (numbered, blockedBy, files, verify cmds, acceptance criteria, est scope, wave assignment)
    - TDD ordering enforced for code tasks; non-code tasks excluded
 4. Planner writes tasks[] + waves[] into state.json
@@ -356,7 +356,7 @@ Atomic write pattern: write to `state.json.tmp`, fsync, rename. Keep last-good `
 8. Phase routing per exec style
 ```
 
-### EXECUTE (`super-spec:execute`)
+### EXECUTE (`loop-spec:execute`)
 
 > **Concurrency ladder (v3.1.0).** The wave pseudocode below describes the per-task
 > implement -> review -> ff-merge contract, which is unchanged. What changed is *which
@@ -365,7 +365,7 @@ Atomic write pattern: write to `state.json.tmp`, fsync, rename. Keep last-good `
 > single subagent sequentially, `2 <= W < t_team` fans out batched one-shot `Agent`
 > waves (no team), `t_team <= W < t_wf` runs the self-claim agent team, and `W >= t_wf`
 > escalates to the `execute-dag.js` Workflow only on explicit opt-in
-> (`SUPER_SPEC_EXECUTE_WORKFLOW=1`). Thresholds live in `skills/shared/tier-matrix.md`;
+> (`LOOP_SPEC_EXECUTE_WORKFLOW=1`). Thresholds live in `skills/shared/tier-matrix.md`;
 > the subagent rung is documented in `skills/shared/execute-subagent.md`. All rungs
 > return the same `{merged, blocked, escalation}` result.
 
@@ -382,16 +382,16 @@ Atomic write pattern: write to `state.json.tmp`, fsync, rename. Keep last-good `
      c. If wave.tasks.length > 3: generate per-task spec files
      d. Dispatch implementers in parallel - EACH IN ITS OWN GIT WORKTREE:
         for task in wave.tasks:
-          - Create worktree at .super-spec/worktrees/{slug}/task-NNN/ off feat/{slug}
+          - Create worktree at .loop-spec/worktrees/{slug}/task-NNN/ off feat/{slug}
           - Set task.status = "dispatching" -> atomic state write
           - model = tier_matrix.implementer[tier]
           - prompt: full task spec, working dir = worktree path, "Commit your work to this worktree's branch task/NNN-{slug}"
-          - subagent_type = super-spec-implementer
+          - subagent_type = loop-spec-implementer
           - Set task.status = "running" -> atomic state write
      e. As each implementer returns:
         - Set task.status = "reviewing" -> atomic state write
         - Append implementer report to EXECUTION.md
-        - Dispatch super-spec-spec-compliance-reviewer pointed at that task's worktree
+        - Dispatch loop-spec-spec-compliance-reviewer pointed at that task's worktree
      f. GATE: Spec compliance per task
         - PASS -> set task.status = "merging" -> atomic state write
         - FAIL -> re-dispatch implementer in same worktree with findings, retry++, cap 3 per task
@@ -413,17 +413,17 @@ Notes:
 - INTERACTIVE style pauses before each implementer dispatch.
 - Per-task `status` field uses fine-grained values (`pending` -> `dispatching` -> `running` -> `reviewing` -> `merging` -> `completed`) for crash recovery. Resume inspects each in-flight task: `running`/`reviewing` -> re-dispatch from prior step (worktree state is ground truth); `merging` -> resume merge attempt.
 
-### VERIFY (`super-spec:verify`)
+### VERIFY (`loop-spec:verify`)
 
 ```
 1. Read SPEC.md acceptance criteria + PLAN.md task results + state.json
-2. Dispatch super-spec-verifier (model per tier)
+2. Dispatch loop-spec-verifier (model per tier)
    - Runs each acceptance criterion's verify command
    - Collects evidence (output, exit codes)
    - Writes VERIFICATION.md draft (PASS/FAIL/N/A per criterion)
 3. GATE: Acceptance criteria
-   - Any FAIL -> bounce to super-spec:execute with failed criteria as new tasks
-4. Dispatch super-spec-code-reviewer (model per tier)
+   - Any FAIL -> bounce to loop-spec:execute with failed criteria as new tasks
+4. Dispatch loop-spec-code-reviewer (model per tier)
    - Reviews diff base..HEAD against PLAN.md + project conventions
    - Writes findings into VERIFICATION.md
 5. GATE: Code review HARD-GATE
@@ -433,8 +433,8 @@ Notes:
 6. Map-codebase incremental update (auto)
    - Compute stale domains from git diff base..HEAD
    - Dispatch mapper-{domain} agents in parallel (only stale ones)
-   - Each updates docs/super-spec/codebase/{TOPIC}.md
-   - Update .super-spec/codebase/index.json
+   - Each updates docs/loop-spec/codebase/{TOPIC}.md
+   - Update .loop-spec/codebase/index.json
    - Commit: "docs: NO_JIRA refresh codebase mapping (feature: {slug})"
 7. Branch finish
    - Ensure tests pass
@@ -497,7 +497,7 @@ Gate failure detected
 
 ```
 verify phase complete
-  -> read .super-spec/codebase/index.json
+  -> read .loop-spec/codebase/index.json
   -> compute changedFiles = git diff base..HEAD --name-only
   -> staleDomains = unique(index[file] for file in changedFiles) U "arch" if new files added
   -> dispatch mapper-{domain} agents in parallel (only stale ones)
@@ -506,7 +506,7 @@ verify phase complete
   -> commit: "docs: NO_JIRA refresh codebase mapping (feature: {slug})"
 ```
 
-### Standalone (`Skill(super-spec:map-codebase)`)
+### Standalone (`Skill(loop-spec:map-codebase)`)
 
 - `--full`: re-map all 5 domains
 - `--domain tech,arch`: re-map subset
@@ -518,12 +518,12 @@ verify phase complete
 
 ---
 
-## Build plan (greenfield super-spec repo)
+## Build plan (greenfield loop-spec repo)
 
 ### Repo
 
-- Remote: `git.viasat.com/cbobrowitz/super-spec`
-- Plugin name: `super-spec`
+- Remote: `git.viasat.com/cbobrowitz/loop-spec`
+- Plugin name: `loop-spec`
 - Initial version: `0.1.0`
 - License: MIT
 - Empty main -> first commit = scaffolding
@@ -533,10 +533,10 @@ verify phase complete
 ```
 Wave 1 - bare repo
   - git init, push to remote
-  - LICENSE, README stub, .gitignore (.super-spec/), CHANGELOG, CLAUDE.md
+  - LICENSE, README stub, .gitignore (.loop-spec/), CHANGELOG, CLAUDE.md
   - .claude-plugin/{plugin,marketplace}.json @ 0.1.0
   - Empty agents/ + skills/ dirs with .gitkeep
-  Commit: "feat: NO_JIRA scaffold super-spec plugin v0.1.0"
+  Commit: "feat: NO_JIRA scaffold loop-spec plugin v0.1.0"
 
 Wave 2 - shared infra
   - skills/shared/{tier-matrix, feature-state-schema, model-policy}.md
@@ -565,10 +565,10 @@ Wave 6 - docs
   Commit: "docs: NO_JIRA initial documentation"
 
 Wave 7 - dogfood
-  - Use Skill(super-spec:cycle) to ship a tiny feature in this same repo
-    (e.g., super-spec:status sub-skill that prints state.json summary)
+  - Use Skill(loop-spec:cycle) to ship a tiny feature in this same repo
+    (e.g., loop-spec:status sub-skill that prints state.json summary)
   - This commit produces the first SPEC/PLAN/VERIFICATION trail in
-    docs/super-spec/features/{slug}/ inside super-spec itself
+    docs/loop-spec/features/{slug}/ inside loop-spec itself
   Tag: v0.1.0
 ```
 
@@ -577,15 +577,15 @@ Wave 7 - dogfood
 ```json
 {
   "marketplaces": {
-    "super-spec": "git+ssh://git@git.viasat.com/cbobrowitz/super-spec.git"
+    "loop-spec": "git+ssh://git@git.viasat.com/cbobrowitz/loop-spec.git"
   }
 }
 ```
-Then `claude plugin install super-spec@super-spec-marketplace`.
+Then `claude plugin install loop-spec@loop-spec-marketplace`.
 
 ### No coupling to existing fork
 
-- Standalone plugin. Users can have both `superpowers-extended-cc` AND `super-spec` installed.
+- Standalone plugin. Users can have both `superpowers-extended-cc` AND `loop-spec` installed.
 - Skill namespacing prevents collision.
 
 ### Test surface
@@ -598,7 +598,7 @@ Then `claude plugin install super-spec@super-spec-marketplace`.
 - `tests/smoke.sh` - bash-only runnable smoke (zero-dep, just bash + git + claude CLI):
   - Spins up temp dir, `git init`
   - Drops a fixture project (3-file Python module with stub tests)
-  - Invokes `claude` with `Skill(super-spec:cycle)` on QUICK + AUTO defaults
+  - Invokes `claude` with `Skill(loop-spec:cycle)` on QUICK + AUTO defaults
   - Asserts: SPEC.md / PLAN.md / VERIFICATION.md created, state.json reaches `currentPhase: completed`, exit code 0
   - One cell of the matrix, runnable by user OR pre-tag. Catches the 80% regressions.
   - All 36 cells documented in tests/README.md but not all scripted (cost/time prohibitive for full automation).

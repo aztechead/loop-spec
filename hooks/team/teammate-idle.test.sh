@@ -39,7 +39,7 @@ check() {
 TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
-FEATURE_DIR="$TMPDIR_TEST/.super-spec/features/my-feature"
+FEATURE_DIR="$TMPDIR_TEST/.loop-spec/features/my-feature"
 mkdir -p "$FEATURE_DIR"
 
 FEATURE_JSON="$FEATURE_DIR/feature.json"
@@ -48,40 +48,40 @@ echo "=== teammate-idle.sh tests ==="
 
 # Case A: no feature.json -> exit 0, advisory to stderr
 check "A: missing feature.json exits 0 with advisory" 0 "advisory" \
-  "SUPER_SPEC_FEATURE_DIR=$TMPDIR_TEST/.super-spec/features/nonexistent"
+  "LOOP_SPEC_FEATURE_DIR=$TMPDIR_TEST/.loop-spec/features/nonexistent"
 
 # Case B: feature.json currentPhase=discuss -> exit 0, message mentions "discuss"
 cat > "$FEATURE_JSON" <<'JSON'
-{"schemaVersion":3,"slug":"my-feature","currentPhase":"discuss","currentTeamName":"super-spec-discuss-my-feature","currentTeammates":["spec-writer-1"]}
+{"schemaVersion":3,"slug":"my-feature","currentPhase":"discuss","currentTeamName":"loop-spec-discuss-my-feature","currentTeammates":["spec-writer-1"]}
 JSON
 check "B: currentPhase=discuss mentions discuss" 0 "discuss" \
-  "SUPER_SPEC_FEATURE_DIR=$FEATURE_DIR"
+  "LOOP_SPEC_FEATURE_DIR=$FEATURE_DIR"
 
 # Case C: feature.json currentPhase=plan -> exit 0, message mentions "plan"
 cat > "$FEATURE_JSON" <<'JSON'
-{"schemaVersion":3,"slug":"my-feature","currentPhase":"plan","currentTeamName":"super-spec-plan-my-feature","currentTeammates":["planner-1"]}
+{"schemaVersion":3,"slug":"my-feature","currentPhase":"plan","currentTeamName":"loop-spec-plan-my-feature","currentTeammates":["planner-1"]}
 JSON
 check "C: currentPhase=plan mentions plan" 0 "plan" \
-  "SUPER_SPEC_FEATURE_DIR=$FEATURE_DIR"
+  "LOOP_SPEC_FEATURE_DIR=$FEATURE_DIR"
 
 # Case D: feature.json currentPhase=execute -> exit 0, message mentions "execute"
 cat > "$FEATURE_JSON" <<'JSON'
-{"schemaVersion":3,"slug":"my-feature","currentPhase":"execute","currentTeamName":"super-spec-execute-my-feature","currentTeammates":["implementer-1","reviewer-1"]}
+{"schemaVersion":3,"slug":"my-feature","currentPhase":"execute","currentTeamName":"loop-spec-execute-my-feature","currentTeammates":["implementer-1","reviewer-1"]}
 JSON
 check "D: currentPhase=execute mentions execute" 0 "execute" \
-  "SUPER_SPEC_FEATURE_DIR=$FEATURE_DIR"
+  "LOOP_SPEC_FEATURE_DIR=$FEATURE_DIR"
 
 # Case E: feature.json currentPhase=verify -> exit 0, message mentions "verify"
 cat > "$FEATURE_JSON" <<'JSON'
-{"schemaVersion":3,"slug":"my-feature","currentPhase":"verify","currentTeamName":"super-spec-verify-my-feature","currentTeammates":["verifier-1"]}
+{"schemaVersion":3,"slug":"my-feature","currentPhase":"verify","currentTeamName":"loop-spec-verify-my-feature","currentTeammates":["verifier-1"]}
 JSON
 check "E: currentPhase=verify mentions verify" 0 "verify" \
-  "SUPER_SPEC_FEATURE_DIR=$FEATURE_DIR"
+  "LOOP_SPEC_FEATURE_DIR=$FEATURE_DIR"
 
 # Case F: corrupt JSON -> exit 0, graceful handling with advisory to stderr
 printf '{not valid json' > "$FEATURE_JSON"
 check "F: corrupt feature.json exits 0 with advisory" 0 "advisory" \
-  "SUPER_SPEC_FEATURE_DIR=$FEATURE_DIR"
+  "LOOP_SPEC_FEATURE_DIR=$FEATURE_DIR"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

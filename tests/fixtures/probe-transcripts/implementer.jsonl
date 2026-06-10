@@ -1,1 +1,1 @@
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"super-spec:implementer","prompt":"Implement feature foo"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"loop-spec:implementer","prompt":"Implement feature foo"}}]}}

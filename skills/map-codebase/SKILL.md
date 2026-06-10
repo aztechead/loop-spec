@@ -7,7 +7,7 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete 
 
 # map-codebase
 
-Standalone skill that builds or refreshes `docs/super-spec/codebase/*.md`. Also auto-invoked by `super-spec:verify` at end of feature cycle.
+Standalone skill that builds or refreshes `docs/loop-spec/codebase/*.md`. Also auto-invoked by `loop-spec:verify` at end of feature cycle.
 
 ## Modes
 
@@ -21,7 +21,7 @@ When auto-invoked from verify:
 - `since_sha: feature.baseSha`
 - `tier: feature.tier`
 
-When standalone (`Skill(super-spec:map-codebase)`):
+When standalone (`Skill(loop-spec:map-codebase)`):
 - Optional args: `--full` (forces full mode), `--domain tech,arch` (filter to subset)
 - `since_sha`: derived from latest "refresh codebase mapping" commit, or HEAD~1 if none
 
@@ -48,10 +48,10 @@ If `mode == "full"` or `--domain` specified: stale_domains = explicit list (or a
 Else (incremental):
 ```bash
 changedFiles=$(git diff {since_sha} HEAD --name-only)
-# Read .super-spec/codebase/index.json
+# Read .loop-spec/codebase/index.json
 # index.json structure: {"file_path": ["domain1", "domain2", ...], ...}
 stale_domains=$(jq -r --argjson files "$(echo "$changedFiles" | jq -R . | jq -s .)" \
-  '[.[$files[]] // [] | .[]] | unique' .super-spec/codebase/index.json 2>/dev/null || echo '["arch"]')
+  '[.[$files[]] // [] | .[]] | unique' .loop-spec/codebase/index.json 2>/dev/null || echo '["arch"]')
 
 # Always include "arch" if any new files added (changedFiles contains paths not in index)
 ```
@@ -60,7 +60,7 @@ If `stale_domains` empty: print "No stale domains, nothing to refresh." Exit.
 
 ### Step 2 - Dispatch (workflow path or fallback)
 
-Read `.super-spec/runtime.json`. If `workflowsAvailable=true` AND
+Read `.loop-spec/runtime.json`. If `workflowsAvailable=true` AND
 `stale_domains` has 2+ entries, prefer the workflow path:
 
 ```text
@@ -91,11 +91,11 @@ Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `
 
 ```
 TeamCreate({
-  name: "super-spec-map-codebase-{project_id}",
+  name: "loop-spec-map-codebase-{project_id}",
   teammates: [
-    { name: "mapper-quality-1",   subagent_type: "super-spec:mapper-quality",  model: mapper_model },
-    { name: "mapper-concerns-1",  subagent_type: "super-spec:mapper-concerns", model: mapper_model },
-    { name: "mapper-domain-1",    subagent_type: "super-spec:mapper-domain",   model: mapper_model }
+    { name: "mapper-quality-1",   subagent_type: "loop-spec:mapper-quality",  model: mapper_model },
+    { name: "mapper-concerns-1",  subagent_type: "loop-spec:mapper-concerns", model: mapper_model },
+    { name: "mapper-domain-1",    subagent_type: "loop-spec:mapper-domain",   model: mapper_model }
   ]
 })
 ```
@@ -112,7 +112,7 @@ SendMessage({
   body: """
     mode: {full | incremental}
     since_sha: {since_sha if incremental}
-    target_path: docs/super-spec/codebase/{DOMAIN}.md
+    target_path: docs/loop-spec/codebase/{DOMAIN}.md
     teammates: [mapper-quality-1, mapper-concerns-1, mapper-domain-1]
 
     Run your mapping. You may SendMessage any other mapper by name to share intermediate
@@ -138,12 +138,12 @@ for file in mapper.inspected_files:
 
 Also update `index.json` field `last_refreshed_at.{domain}` to the current ISO-8601 timestamp.
 
-Atomic write to `.super-spec/codebase/index.json`.
+Atomic write to `.loop-spec/codebase/index.json`.
 
 ### Step 5 - Delete map-codebase team
 
 ```
-TeamDelete({ name: "super-spec-map-codebase-{project_id}" })
+TeamDelete({ name: "loop-spec-map-codebase-{project_id}" })
 ```
 
 Clear `currentTeamName` and `currentTeammates` in `feature.json` (if invoked from within a cycle).
@@ -151,11 +151,11 @@ Clear `currentTeamName` and `currentTeammates` in `feature.json` (if invoked fro
 ### Step 6 - Commit
 
 ```bash
-git add docs/super-spec/codebase/ .super-spec/codebase/index.json
+git add docs/loop-spec/codebase/ .loop-spec/codebase/index.json
 git commit -m "docs: NO_JIRA refresh codebase mapping (feature: {slug if available, else 'standalone'})"
 ```
 
-Note: `.super-spec/codebase/index.json` is NOT gitignored (it's a tracking file the mapping needs across machines). Only `.super-spec/features/` and `.super-spec/worktrees/` are gitignored. Update `.gitignore` accordingly if needed (this should already be correct from Task 0).
+Note: `.loop-spec/codebase/index.json` is NOT gitignored (it's a tracking file the mapping needs across machines). Only `.loop-spec/features/` and `.loop-spec/worktrees/` are gitignored. Update `.gitignore` accordingly if needed (this should already be correct from Task 0).
 
 ### Step 7 - Report
 
@@ -167,9 +167,9 @@ Print:
 ## Standalone CLI
 
 ```
-Skill(super-spec:map-codebase)              # incremental
-Skill(super-spec:map-codebase) args: --full # all domains
-Skill(super-spec:map-codebase) args: --domain tech,arch
+Skill(loop-spec:map-codebase)              # incremental
+Skill(loop-spec:map-codebase) args: --full # all domains
+Skill(loop-spec:map-codebase) args: --domain tech,arch
 ```
 
 Mappers always run on `claude-sonnet-4-6` (fixed; see `skills/shared/model-matrix.md`).

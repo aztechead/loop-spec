@@ -6,7 +6,7 @@ and TeamCreate paths at fan-out points.
 ## Rule
 
 ```text
-1. Read .super-spec/runtime.json. Treat missing file as workflowsAvailable=false.
+1. Read .loop-spec/runtime.json. Treat missing file as workflowsAvailable=false.
 2. If workflowsAvailable=true:
    a. Resolve workflow params from skills/shared/tier-matrix.md "Workflow params" table by feature.tier.
    b. Dispatch Workflow({scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/<name>.js",

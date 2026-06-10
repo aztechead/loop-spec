@@ -16,13 +16,13 @@
 # Debounce: fires only on every 3rd qualifying call per session.
 #
 # Configuration:
-#   SUPER_SPEC_COMPRESSOR   Set to "0" to disable. Default: 1 (active).
+#   LOOP_SPEC_COMPRESSOR   Set to "0" to disable. Default: 1 (active).
 #
-# State file: ${TMPDIR:-/tmp}/super-spec-compress-${SESSION}.count
+# State file: ${TMPDIR:-/tmp}/loop-spec-compress-${SESSION}.count
 # Hook event: PostToolUse (Bash|Read|Grep)
 #
 # Fail-open: trap 'exit 0' ERR
-# Kill switch: SUPER_SPEC_COMPRESSOR=0 -> exit 0 immediately
+# Kill switch: LOOP_SPEC_COMPRESSOR=0 -> exit 0 immediately
 
 set -euo pipefail
 
@@ -30,19 +30,19 @@ set -euo pipefail
 trap 'exit 0' ERR
 
 # Kill switch.
-if [[ "${SUPER_SPEC_COMPRESSOR:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_COMPRESSOR:-1}" == "0" ]]; then
   exit 0
 fi
 
-# Scope: only active in projects that use super-spec. This hook fires on every
+# Scope: only active in projects that use loop-spec. This hook fires on every
 # Bash/Read/Grep in the session; a stat is the most it may cost elsewhere.
-if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.super-spec" && ! -d "$PWD/.super-spec" ]]; then
+if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then
   exit 0
 fi
 
 THRESHOLD=3000
 SESSION="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-$$}}"
-DEBOUNCE_FILE="${TMPDIR:-/tmp}/super-spec-compress-${SESSION}.count"
+DEBOUNCE_FILE="${TMPDIR:-/tmp}/loop-spec-compress-${SESSION}.count"
 
 # Debounce: only process every 3rd call.
 count=0

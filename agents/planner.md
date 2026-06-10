@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/super-spec/features/**.
+description: Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**.
 tools:
   - Read
   - Write
@@ -14,20 +14,20 @@ effort: medium
 
 # planner
 
-You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and the project's docs/super-spec/codebase/ mapping. You produce PATTERNS.md yourself first (unless it already exists), then use it to write PLAN.md.
+You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and the project's docs/loop-spec/codebase/ mapping. You produce PATTERNS.md yourself first (unless it already exists), then use it to write PLAN.md.
 
 ## Input
 
 - `slug`
 - `spec_path`: path to SPEC.md
-- `patterns_path`: path to `docs/super-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
-- `codebase_mapping_paths`: list of docs/super-spec/codebase/*.md
+- `patterns_path`: path to `docs/loop-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
+- `codebase_mapping_paths`: list of docs/loop-spec/codebase/*.md
 - `tier`
 
 ## Output
 
-1. `docs/super-spec/features/{slug}/PATTERNS.md` - concept analogs from the existing codebase (produced first, in Step 0)
-2. `docs/super-spec/features/{slug}/PLAN.md` - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
+1. `docs/loop-spec/features/{slug}/PATTERNS.md` - concept analogs from the existing codebase (produced first, in Step 0)
+2. `docs/loop-spec/features/{slug}/PLAN.md` - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
 
 Plus a `tasks` array returned in the completion message for the lead to seed the EXECUTE harness task list via `TaskCreate`. Concurrency safety is enforced by EXECUTE Step 2b, which adds synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap, so the planner does not assign waves.
 
@@ -39,13 +39,13 @@ If `patterns_path` already exists on disk, skip this step and read it directly.
 
 Otherwise, produce PATTERNS.md by following the pattern-mapper role definition at `agents/pattern-mapper.md`. Specifically:
 
-1. Read SPEC.md and every `docs/super-spec/codebase/*.md` to understand the project's stack, conventions, and the feature's required concepts.
+1. Read SPEC.md and every `docs/loop-spec/codebase/*.md` to understand the project's stack, conventions, and the feature's required concepts.
 2. Extract 3-10 distinct system-design concepts the feature needs (e.g. "OAuth token refresh", "JSON request validation", "background job retry"). Not file paths.
 3. For each concept, Glob+Grep the codebase for the closest existing implementation. Prefer the canonical, most-tested instance.
 4. For each chosen analog, capture: path+lines, imports, the 5-30 line core pattern verbatim, surrounding error handling, and a test analog if one exists.
-5. Note gotchas: 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells flagged in `docs/super-spec/codebase/CONCERNS.md`, etc.).
+5. Note gotchas: 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells flagged in `docs/loop-spec/codebase/CONCERNS.md`, etc.).
 6. If no clear analog exists for a concept, list it under `## Concepts with no clear analog`. Do not invent a plausible-looking analog.
-7. Write to `docs/super-spec/features/{slug}/PATTERNS.md` using the template at `${CLAUDE_PLUGIN_ROOT}/skills/shared/artifact-templates/PATTERNS.md.template`.
+7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md` using the template at `${CLAUDE_PLUGIN_ROOT}/skills/shared/artifact-templates/PATTERNS.md.template`.
 
 For `quick` tier: top-1 analog per concept. For `balanced`/`quality`: top-2 with rationale.
 
@@ -111,7 +111,7 @@ After you return, automated gates check the PLAN.md you produced. Self-check aga
 - Do NOT skip TDD for code tasks.
 - Do NOT create tasks larger than one commit.
 - Do NOT create a cyclic `blockedBy` edge.
-- Do NOT write outside docs/super-spec/features/.
+- Do NOT write outside docs/loop-spec/features/.
 
 ## Re-dispatch behavior
 

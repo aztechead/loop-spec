@@ -1,15 +1,15 @@
 {
-  "name": "super-spec-marketplace",
-  "description": "Marketplace for super-spec plugin",
+  "name": "loop-spec-marketplace",
+  "description": "Marketplace for loop-spec plugin",
   "owner": {
     "name": "Christopher Bobrowitz",
     "email": "cbobrowitz@viasat.com"
   },
   "plugins": [
     {
-      "name": "super-spec",
+      "name": "loop-spec",
       "description": "Spec-driven development workflow for Claude Code (spec phase, loop-runner fleet execution, user-gate flow, graphify, Ralph remediation, forensics, dynamic-workflow fan-out)",
-      "version": "3.2.0",
+      "version": "1.0.0",
       "source": "./",
       "author": {
         "name": "Christopher Bobrowitz",

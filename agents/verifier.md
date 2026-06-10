@@ -34,7 +34,7 @@ You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE
 4. Run the test command if defined (full project test suite). Use the command the orchestrator passed in your brief, or `feature.json.commands.test` if not provided.
 5. Run the lint command if defined (brief, or `feature.json.commands.lint`).
 6. Run the typecheck command if defined (brief, or `feature.json.commands.typecheck`).
-7. Generate `docs/super-spec/features/{slug}/VERIFICATION.md` from template, populated with:
+7. Generate `docs/loop-spec/features/{slug}/VERIFICATION.md` from template, populated with:
    - Acceptance criteria table
    - Verify command outputs
    - Test/lint/typecheck outputs
@@ -44,7 +44,7 @@ You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE
 
 - Do NOT modify code to make tests pass. You verify, you do not fix.
 - Do NOT skip a criterion because the verify command is awkward - figure it out.
-- Do NOT write outside `docs/super-spec/features/{slug}/VERIFICATION.md`.
+- Do NOT write outside `docs/loop-spec/features/{slug}/VERIFICATION.md`.
 - Do NOT assume the orchestrator will re-run test/lint/typecheck after you return. You ARE the authoritative test runner for VERIFY phase. Your `Test suite status` result is final. Report accurately.
 - Do NOT report `Test suite status: PASS` if the test command exited non-zero. Gate on actual exit code, not on partial output.
 

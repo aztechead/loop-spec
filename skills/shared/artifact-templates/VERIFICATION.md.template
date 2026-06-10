@@ -1,7 +1,7 @@
 # {feature_title} - Verification
 
-**Spec:** `docs/super-spec/features/{slug}/SPEC.md`
-**Plan:** `docs/super-spec/features/{slug}/PLAN.md`
+**Spec:** `docs/loop-spec/features/{slug}/SPEC.md`
+**Plan:** `docs/loop-spec/features/{slug}/PLAN.md`
 
 ## Acceptance criteria
 

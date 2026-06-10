@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Checkpoint tagging and history-safe rollback for super-spec phase boundaries.
+# Checkpoint tagging and history-safe rollback for loop-spec phase boundaries.
 #
 # Subcommands:
-#   tag <type>      Create a git tag super-spec-checkpoint-{type}-YYYYMMDD-HHMMSS
-#   rollback <tag>  Restore files to <tag> via git checkout (requires SUPER_SPEC_ROLLBACK_CONFIRMED=1)
+#   tag <type>      Create a git tag loop-spec-checkpoint-{type}-YYYYMMDD-HHMMSS
+#   rollback <tag>  Restore files to <tag> via git checkout (requires LOOP_SPEC_ROLLBACK_CONFIRMED=1)
 #
 # Valid types: post-discuss, post-plan, post-execute, post-verify, pre-rollback, manual
 #
@@ -20,9 +20,9 @@ usage() {
 Usage: checkpoint.sh <subcommand> [args]
 
 Subcommands:
-  tag <type>      Create git tag super-spec-checkpoint-{type}-YYYYMMDD-HHMMSS
+  tag <type>      Create git tag loop-spec-checkpoint-{type}-YYYYMMDD-HHMMSS
   rollback <tag>  Restore to <tag> via git checkout TAG -- . (creates new commit)
-                  Requires env var: SUPER_SPEC_ROLLBACK_CONFIRMED=1
+                  Requires env var: LOOP_SPEC_ROLLBACK_CONFIRMED=1
 
 Valid types for tag: post-discuss, post-plan, post-execute, post-verify, pre-rollback, manual
 EOF
@@ -51,7 +51,7 @@ case "$cmd" in
       usage
       exit 2
     fi
-    tag_name="super-spec-checkpoint-${type}-$(date +%Y%m%d-%H%M%S)"
+    tag_name="loop-spec-checkpoint-${type}-$(date +%Y%m%d-%H%M%S)"
     git tag "$tag_name"
     echo "Created checkpoint tag: $tag_name"
     ;;
@@ -62,8 +62,8 @@ case "$cmd" in
       usage
       exit 2
     fi
-    if [[ "${SUPER_SPEC_ROLLBACK_CONFIRMED:-}" != "1" ]]; then
-      echo "checkpoint.sh rollback: set SUPER_SPEC_ROLLBACK_CONFIRMED=1 to proceed" >&2
+    if [[ "${LOOP_SPEC_ROLLBACK_CONFIRMED:-}" != "1" ]]; then
+      echo "checkpoint.sh rollback: set LOOP_SPEC_ROLLBACK_CONFIRMED=1 to proceed" >&2
       exit 1
     fi
     git checkout "$tag" -- .

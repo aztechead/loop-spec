@@ -4,7 +4,7 @@
 # Remediation loop harness for HARD-GATE failures in skills/verify/SKILL.md.
 #
 # Reads pendingRemediationTasks[] from <feature-dir>/feature.json. If the task
-# count exceeds SUPER_SPEC_RALPH_THRESHOLD (default 3) the script exits 0
+# count exceeds LOOP_SPEC_RALPH_THRESHOLD (default 3) the script exits 0
 # immediately; the caller routes to the full EXECUTE team. At or below
 # threshold, runs a loop up to MAX_ITERATIONS (5), echoing the dispatch
 # instruction for each task and checking for <promise>COMPLETE</promise> in
@@ -21,7 +21,7 @@
 set -euo pipefail
 
 MAX_ITERATIONS=5
-RALPH_THRESHOLD="${SUPER_SPEC_RALPH_THRESHOLD:-3}"
+RALPH_THRESHOLD="${LOOP_SPEC_RALPH_THRESHOLD:-3}"
 
 usage() {
   echo "usage: ralph-remediation.sh <feature-dir>" >&2

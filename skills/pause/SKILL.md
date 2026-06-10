@@ -5,11 +5,11 @@ description: Snapshot in-progress feature state to HANDOFF.json + .continue-here
 
 # Pause
 
-Invoked as `/super-spec:pause`. Captures the current feature state into two crash-recovery artifacts so work can resume safely in a later session.
+Invoked as `/loop-spec:pause`. Captures the current feature state into two crash-recovery artifacts so work can resume safely in a later session.
 
 ## Inputs
 
-- `feature_path` (optional): path to `.super-spec/features/{slug}/feature.json`. Defaults to scanning `.super-spec/features/*/feature.json` for the active feature.
+- `feature_path` (optional): path to `.loop-spec/features/{slug}/feature.json`. Defaults to scanning `.loop-spec/features/*/feature.json` for the active feature.
 
 ## Procedure
 
@@ -18,7 +18,7 @@ Invoked as `/super-spec:pause`. Captures the current feature state into two cras
 Before snapshotting feature.json, if `feature.json.activeWorkflow` is set:
 
 ```bash
-RUN_ID=$(jq -r '.activeWorkflow.runId // ""' .super-spec/features/{slug}/feature.json)
+RUN_ID=$(jq -r '.activeWorkflow.runId // ""' .loop-spec/features/{slug}/feature.json)
 # Stop the workflow if /workflows shows it as running (advisory; runtime
 # already handles session exit gracefully).
 ```
@@ -33,7 +33,7 @@ resume will re-dispatch with `scriptPath + args` and receive a new runId.
 bash "${CLAUDE_SKILL_DIR}/../../lib/pause-snapshot.sh" [--feature-dir <path>]
 ```
 
-`lib/pause-snapshot.sh` generates both artifacts atomically into `.super-spec/features/{slug}/`. Kill switch: if `SUPER_SPEC_PAUSE=0` is set the script exits 0 without writing any file.
+`lib/pause-snapshot.sh` generates both artifacts atomically into `.loop-spec/features/{slug}/`. Kill switch: if `LOOP_SPEC_PAUSE=0` is set the script exits 0 without writing any file.
 
 ### Step 2 - Print summary
 
@@ -48,8 +48,8 @@ Example output:
 
 ```
 Pause snapshot written.
-  HANDOFF.json:      .super-spec/features/{slug}/HANDOFF.json
-  .continue-here.md: .super-spec/features/{slug}/.continue-here.md
+  HANDOFF.json:      .loop-spec/features/{slug}/HANDOFF.json
+  .continue-here.md: .loop-spec/features/{slug}/.continue-here.md
   Current phase:     execute
   Pending tasks:     2
   Blocking:          3 constraints listed in .continue-here.md
@@ -128,7 +128,7 @@ An ordered list of files to read before writing any code in a resumed session.
 
 ```
 1. HANDOFF.json (this feature dir) - current phase, pending tasks, blockers
-2. docs/super-spec/features/{slug}/PLAN.md - full task DAG and acceptance criteria
+2. docs/loop-spec/features/{slug}/PLAN.md - full task DAG and acceptance criteria
 3. feature.json (this feature dir) - gate history, retry budget, branch info
 ```
 

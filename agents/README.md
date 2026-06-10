@@ -1,6 +1,6 @@
 # Agent Frontmatter Reference
 
-This directory contains agent definitions for the super-spec system. Each agent is a Markdown file with YAML frontmatter followed by the agent's prompt body.
+This directory contains agent definitions for the loop-spec system. Each agent is a Markdown file with YAML frontmatter followed by the agent's prompt body.
 
 ## Required fields
 

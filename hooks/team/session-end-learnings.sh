@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Stop hook: append structured JSONL learning entry at session end.
 #
-# Appends one JSONL line to .super-spec/learnings.jsonl and trims the file
+# Appends one JSONL line to .loop-spec/learnings.jsonl and trims the file
 # to the last 50 lines (FIFO cap). Infers a heuristic lesson from session
 # signals extracted from the Stop payload.
 #
@@ -14,7 +14,7 @@
 #   - errors present    -> lesson: "partial outcome detected"
 #   Both signals: first match (agent count) wins.
 #
-# Kill switch: SUPER_SPEC_LEARNINGS=0 -> exit 0 immediately, file untouched.
+# Kill switch: LOOP_SPEC_LEARNINGS=0 -> exit 0 immediately, file untouched.
 # Fail-open:   trap 'exit 0' ERR
 #
 # Hook event: Stop (SessionEnd not universally available; Stop fires reliably)
@@ -22,7 +22,7 @@
 set -euo pipefail
 
 # Kill switch.
-if [[ "${SUPER_SPEC_LEARNINGS:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_LEARNINGS:-1}" == "0" ]]; then
   exit 0
 fi
 
@@ -34,12 +34,12 @@ SESSION="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-$$}}"
 
 # Target file path.
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-SUPER_SPEC_DIR="${PROJECT_DIR}/.super-spec"
-LEARNINGS_FILE="${SUPER_SPEC_DIR}/learnings.jsonl"
+LOOP_SPEC_DIR="${PROJECT_DIR}/.loop-spec"
+LEARNINGS_FILE="${LOOP_SPEC_DIR}/learnings.jsonl"
 
-# Scope: only record learnings in projects that already use super-spec.
-# Creating .super-spec/ in every project the user ever opens is litter.
-if [[ ! -d "$SUPER_SPEC_DIR" ]]; then
+# Scope: only record learnings in projects that already use loop-spec.
+# Creating .loop-spec/ in every project the user ever opens is litter.
+if [[ ! -d "$LOOP_SPEC_DIR" ]]; then
   exit 0
 fi
 
@@ -164,7 +164,7 @@ printf '%s\n' "$JSONL_LINE" >> "$LEARNINGS_FILE"
 # FIFO cap: trim to last 50 lines.
 LINE_COUNT=$(wc -l < "$LEARNINGS_FILE" 2>/dev/null | tr -d ' ' || echo 0)
 if [[ "${LINE_COUNT}" -gt 50 ]]; then
-  TMPFILE=$(mktemp "${TMPDIR:-/tmp}/super-spec-learnings-cap-XXXXXX")
+  TMPFILE=$(mktemp "${TMPDIR:-/tmp}/loop-spec-learnings-cap-XXXXXX")
   tail -n 50 "$LEARNINGS_FILE" > "$TMPFILE"
   mv "$TMPFILE" "$LEARNINGS_FILE"
 fi

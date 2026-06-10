@@ -6,7 +6,7 @@ LIB="$(cd "$(dirname "$0")/../.." && pwd)/lib/detect-test-cmd.sh"
 PASS=0
 FAIL=0
 
-WORK="${TMPDIR:-/tmp}/super-spec-detect-test-cmd.$$"
+WORK="${TMPDIR:-/tmp}/loop-spec-detect-test-cmd.$$"
 trap 'rm -rf "$WORK"' EXIT
 
 check() {

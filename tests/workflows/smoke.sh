@@ -56,7 +56,7 @@ for s in map-codebase acceptance-verify code-review-dimensions plan-multi-angle 
 done
 
 # Verify bundled mirrors exist
-for f in super-spec-codebase-audit.js super-spec-multi-angle-plan.js; do
+for f in loop-spec-codebase-audit.js loop-spec-multi-angle-plan.js; do
   if [[ ! -e ".claude/workflows/$f" ]]; then
     echo "FAIL: .claude/workflows/$f missing"
     fail=1

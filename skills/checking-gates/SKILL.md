@@ -17,9 +17,9 @@ User-gate enforcement is an opt-in flow. When the opt-in hook is not registered,
 
 Any one of:
 
-1. You are about to start a task whose `json:metadata` has `"userGate": true` or whose `tags` contains `"user-gate"` AND the opt-in hook is active (if you were invoked via `Skill(super-spec:checking-gates)`, the hook is active by definition).
-2. A hook fired stderr telling you to run `Skill(super-spec:checking-gates)` for a task id.
-3. The user manually invoked `Skill(super-spec:checking-gates)` for a task id.
+1. You are about to start a task whose `json:metadata` has `"userGate": true` or whose `tags` contains `"user-gate"` AND the opt-in hook is active (if you were invoked via `Skill(loop-spec:checking-gates)`, the hook is active by definition).
+2. A hook fired stderr telling you to run `Skill(loop-spec:checking-gates)` for a task id.
+3. The user manually invoked `Skill(loop-spec:checking-gates)` for a task id.
 
 If none of these apply, return to the execute skill without running this skill.
 
@@ -38,7 +38,7 @@ If none of these apply, return to the execute skill without running this skill.
 
 ### Step 2 -- Route
 
-**Path A -- HOW is ambiguous.** Invoke `Skill(super-spec:specifying-gates)` (or tell the user to run `Skill(super-spec:specifying-gates)` for this task id). Stop. Let that skill lock down the mechanics. When it returns, re-enter this skill from Step 1.
+**Path A -- HOW is ambiguous.** Invoke `Skill(loop-spec:specifying-gates)` (or tell the user to run `Skill(loop-spec:specifying-gates)` for this task id). Stop. Let that skill lock down the mechanics. When it returns, re-enter this skill from Step 1.
 
 **Path B -- HOW is clear.** Continue to Step 3.
 
@@ -77,12 +77,12 @@ If any of the three is missing for any criterion, HOW is NOT clear -- Path A.
 
 - Do NOT modify the execute skill's behavior from inside this skill. This skill is a leaf -- it returns control when done.
 - Do NOT invoke `EnterPlanMode` or `ExitPlanMode`.
-- Do NOT substitute a cheaper verification for the one specified. If you think the spec is wrong, reopen via `Skill(super-spec:specifying-gates)` -- do not walk around it.
+- Do NOT substitute a cheaper verification for the one specified. If you think the spec is wrong, reopen via `Skill(loop-spec:specifying-gates)` -- do not walk around it.
 - Do NOT close the task if any criterion lacks concrete evidence. "Looks fine" is not evidence.
 
 ## Integration
 
-- **Invoked from:** the `post-task-complete-revalidate.sh` hook (TaskCompleted event) or `stop-revalidate-user-gates.sh` hook (Stop event); or direct user invocation of `Skill(super-spec:checking-gates)`.
-- **May hand off to:** `Skill(super-spec:specifying-gates)` (Path A).
+- **Invoked from:** the `post-task-complete-revalidate.sh` hook (TaskCompleted event) or `stop-revalidate-user-gates.sh` hook (Stop event); or direct user invocation of `Skill(loop-spec:checking-gates)`.
+- **May hand off to:** `Skill(loop-spec:specifying-gates)` (Path A).
 - **Returns to:** `skills/execute/SKILL.md` (or wherever it was invoked from) after `TaskUpdate`.
 - **References:** `skills/shared/feature-state-schema.md` for metadata schema; `TaskGet` and `TaskUpdate` harness tools for reading and writing task state.

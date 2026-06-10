@@ -13,7 +13,7 @@ LAST_EXIT=0
 
 # Unique session key per test run to isolate debounce state files.
 SESSION_KEY="test-compressor-$$"
-DEBOUNCE_FILE="${TMPDIR:-/tmp}/super-spec-compress-${SESSION_KEY}.count"
+DEBOUNCE_FILE="${TMPDIR:-/tmp}/loop-spec-compress-${SESSION_KEY}.count"
 
 cleanup() {
   rm -f "$DEBOUNCE_FILE" 2>/dev/null || true
@@ -108,9 +108,9 @@ echo "=== output-compressor.sh tests ==="
 # ── Case 1: kill switch ───────────────────────────────────────────────────────
 cleanup
 advance_to_third_call
-check "kill switch: SUPER_SPEC_COMPRESSOR=0 -> exit 0" 0 \
+check "kill switch: LOOP_SPEC_COMPRESSOR=0 -> exit 0" 0 \
   "$(make_payload "$(big_string)")" \
-  SUPER_SPEC_COMPRESSOR=0 \
+  LOOP_SPEC_COMPRESSOR=0 \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY"
 check_no_output "kill switch: no output emitted" "decision"
 
@@ -119,7 +119,7 @@ cleanup
 advance_to_third_call
 check "threshold trigger: large output -> exit 0" 0 \
   "$(make_payload "$(big_string)")" \
-  SUPER_SPEC_COMPRESSOR=1 \
+  LOOP_SPEC_COMPRESSOR=1 \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY"
 check_output "threshold trigger: hookSpecificOutput shape" "hookSpecificOutput"
 check_output "threshold trigger: additionalContext present" "additionalContext"
@@ -129,7 +129,7 @@ cleanup
 advance_to_third_call
 check "threshold not reached: small output -> exit 0 no output" 0 \
   "$(make_payload "small output")" \
-  SUPER_SPEC_COMPRESSOR=1 \
+  LOOP_SPEC_COMPRESSOR=1 \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY"
 check_no_output "threshold not reached: no compression output" "decision"
 
@@ -138,7 +138,7 @@ cleanup
 advance_to_third_call
 check "JSON array shape: large array -> exit 0" 0 \
   "$(big_json_array_payload)" \
-  SUPER_SPEC_COMPRESSOR=1 \
+  LOOP_SPEC_COMPRESSOR=1 \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY"
 check_output "JSON array shape: additionalContext present" "additionalContext"
 check_output "JSON array shape: mentions item count (20 items)" "20"
@@ -149,7 +149,7 @@ cleanup
 advance_to_third_call
 check "fail-open: malformed JSON -> exit 0" 0 \
   "THIS IS NOT JSON AT ALL" \
-  SUPER_SPEC_COMPRESSOR=1 \
+  LOOP_SPEC_COMPRESSOR=1 \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY"
 check_no_output "fail-open: no output on malformed input" "decision"
 
@@ -159,21 +159,21 @@ cleanup
 # First call: count becomes 1, not divisible by 3 -> no output.
 check "debounce: first call no output" 0 \
   "$(make_payload "$(big_string)")" \
-  SUPER_SPEC_COMPRESSOR=1 \
+  LOOP_SPEC_COMPRESSOR=1 \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY"
 check_no_output "debounce: first call silent" "decision"
 
 # Second call: count becomes 2, not divisible by 3 -> no output.
 check "debounce: second call no output" 0 \
   "$(make_payload "$(big_string)")" \
-  SUPER_SPEC_COMPRESSOR=1 \
+  LOOP_SPEC_COMPRESSOR=1 \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY"
 check_no_output "debounce: second call silent" "decision"
 
 # Third call: count becomes 3, divisible by 3 -> compression fires.
 check "debounce: third call compresses" 0 \
   "$(make_payload "$(big_string)")" \
-  SUPER_SPEC_COMPRESSOR=1 \
+  LOOP_SPEC_COMPRESSOR=1 \
   CLAUDE_CODE_SESSION_ID="$SESSION_KEY"
 check_output "debounce: third call emits additionalContext" "additionalContext"
 

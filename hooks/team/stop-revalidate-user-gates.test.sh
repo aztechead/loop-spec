@@ -112,21 +112,21 @@ TRACE_LOG="$TMPDIR_TESTS/trace-$$.log"
 
 echo "=== stop-revalidate-user-gates.sh tests ==="
 
-# (a) kill-switch: SUPER_SPEC_USERGATE_STOP_GUARD=0 -> exit 0
-check "a: kill-switch SUPER_SPEC_USERGATE_STOP_GUARD=0 ALLOW" 0 \
+# (a) kill-switch: LOOP_SPEC_USERGATE_STOP_GUARD=0 -> exit 0
+check "a: kill-switch LOOP_SPEC_USERGATE_STOP_GUARD=0 ALLOW" 0 \
   "$(payload_no_transcript)" \
-  "SUPER_SPEC_USERGATE_STOP_GUARD=0" \
-  "SUPER_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
+  "LOOP_SPEC_USERGATE_STOP_GUARD=0" \
+  "LOOP_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
 
 # (b) fail-open: empty payload -> exit 0
 check "b: fail-open empty payload ALLOW" 0 \
   "$(payload_empty)" \
-  "SUPER_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
+  "LOOP_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
 
 # (c) fail-open: malformed JSON -> exit 0
 check "c: fail-open malformed JSON ALLOW" 0 \
   "$(payload_bad_json)" \
-  "SUPER_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
+  "LOOP_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
 
 # (d) no-trigger: last assistant message has no plan-complete phrase -> exit 0
 #     Has a gate task closed, but no plan-complete phrase in final message.
@@ -139,7 +139,7 @@ T_NO_TRIGGER="$TMPDIR_TESTS/t-no-trigger.jsonl"
 
 check "d: no-trigger no plan-complete phrase ALLOW" 0 \
   "$(payload_with_transcript "$T_NO_TRIGGER")" \
-  "SUPER_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
+  "LOOP_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
 
 # (e) all-proven: plan-complete phrase present, gate task has AC:/PROVEN BY -> exit 0
 T_ALL_PROVEN="$TMPDIR_TESTS/t-all-proven.jsonl"
@@ -152,7 +152,7 @@ T_ALL_PROVEN="$TMPDIR_TESTS/t-all-proven.jsonl"
 
 check "e: all-proven all gates have evidence ALLOW" 0 \
   "$(payload_with_transcript "$T_ALL_PROVEN")" \
-  "SUPER_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
+  "LOOP_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
 
 # (f) blocked: plan-complete phrase present, one gate task missing evidence -> exit 2
 T_BLOCKED="$TMPDIR_TESTS/t-blocked.jsonl"
@@ -164,13 +164,13 @@ T_BLOCKED="$TMPDIR_TESTS/t-blocked.jsonl"
 
 check "f: blocked gate missing evidence DENY" 2 \
   "$(payload_with_transcript "$T_BLOCKED")" \
-  "SUPER_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
+  "LOOP_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
 
 # (f2) stop_hook_active guard: same blocking transcript but stop_hook_active=true
 #      -> exit 0 (must not re-block a Stop-hook continuation, per Claude Code docs)
 check "f2: stop_hook_active continuation ALLOW (no re-block)" 0 \
   "$(payload_stop_hook_active "$T_BLOCKED")" \
-  "SUPER_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
+  "LOOP_SPEC_USERGATE_TRACE_LOG=$TRACE_LOG"
 
 # (g) trace-log line written: log file contains pipe-separated line after invocations
 if [[ -f "$TRACE_LOG" ]]; then

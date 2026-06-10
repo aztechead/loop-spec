@@ -10,7 +10,7 @@
 #   H2: Multi-verb     - action verb + and|then|also conjunction + action verb.
 #   H3: Bullet list    - two or more lines starting with "- " or "* ".
 #
-# Kill switch: SUPER_SPEC_DONE_CRITERIA=0 -> exit 0 immediately.
+# Kill switch: LOOP_SPEC_DONE_CRITERIA=0 -> exit 0 immediately.
 # Fail-open:   trap 'exit 0' ERR
 #
 # Hook event: UserPromptSubmit
@@ -18,12 +18,12 @@
 set -euo pipefail
 
 # Kill switch.
-if [[ "${SUPER_SPEC_DONE_CRITERIA:-1}" == "0" ]]; then
+if [[ "${LOOP_SPEC_DONE_CRITERIA:-1}" == "0" ]]; then
   exit 0
 fi
 
-# Scope: only active in projects that use super-spec.
-if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.super-spec" && ! -d "$PWD/.super-spec" ]]; then
+# Scope: only active in projects that use loop-spec.
+if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then
   exit 0
 fi
 

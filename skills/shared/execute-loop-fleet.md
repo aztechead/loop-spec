@@ -10,12 +10,12 @@ no `Workflow` tool — only the `claude` CLI on PATH and git.
 
 ## When this rung is selected (see execute/SKILL.md Step 3b)
 
-1. `SUPER_SPEC_EXECUTE_LOOPS=1` and `claude` CLI present — explicit opt-in, any W.
+1. `LOOP_SPEC_EXECUTE_LOOPS=1` and `claude` CLI present — explicit opt-in, any W.
 2. Agent teams unavailable (`runtime.json.teamsAvailable == false`) and `claude`
    CLI present — automatic fallback that keeps EXECUTE fully functional without
    `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`.
 
-`SUPER_SPEC_EXECUTE_LOOPS=0` disables the rung entirely (kill switch; the ladder
+`LOOP_SPEC_EXECUTE_LOOPS=0` disables the rung entirely (kill switch; the ladder
 then behaves exactly as before this rung existed).
 
 Note (subscription plans): headless `claude -p` usage may draw from a separate
@@ -35,14 +35,14 @@ Serialize the Step 2a/2b `tasks[]` array (explicit + synthetic `blockedBy`
 edges already unioned) and convert:
 
 ```bash
-fdir=".super-spec/features/{slug}"
+fdir=".loop-spec/features/{slug}"
 printf '%s' "$tasks_json" | bash "${CLAUDE_SKILL_DIR}/../../lib/plan-to-loop.sh" \
   --slug "{slug}" \
-  --spec "docs/super-spec/features/{slug}/SPEC.md" \
-  --plan "docs/super-spec/features/{slug}/PLAN.md" \
-  --fleet-budget "${SUPER_SPEC_LOOP_FLEET_BUDGET:-20}" \
-  --task-budget "${SUPER_SPEC_LOOP_TASK_BUDGET:-4}" \
-  --max-iterations "${SUPER_SPEC_LOOP_MAX_ITERATIONS:-10}" \
+  --spec "docs/loop-spec/features/{slug}/SPEC.md" \
+  --plan "docs/loop-spec/features/{slug}/PLAN.md" \
+  --fleet-budget "${LOOP_SPEC_LOOP_FLEET_BUDGET:-20}" \
+  --task-budget "${LOOP_SPEC_LOOP_TASK_BUDGET:-4}" \
+  --max-iterations "${LOOP_SPEC_LOOP_MAX_ITERATIONS:-10}" \
   > "$fdir/loop-plan.json"
 ```
 
@@ -95,7 +95,7 @@ fatal=$(jq -r '.fleet_fatal' "$fleet")
   `tasks[id].halt_reason`:
   - `max_iterations`, `no_progress`, `verifier_thrash`, `agent_error` → `retry-exhausted`
   - `budget`, `fleet_budget`, `timeout` → `retry-exhausted` (budget-bounded; raise
-    `SUPER_SPEC_LOOP_TASK_BUDGET` / `--fleet-budget` and re-enter EXECUTE to resume —
+    `LOOP_SPEC_LOOP_TASK_BUDGET` / `--fleet-budget` and re-enter EXECUTE to resume —
     loop state is durable, completed iterations are not re-paid)
   - ids in `.skipped` → `reason: "dep-failed"` (upstream task failed)
 - `escalation`:

@@ -72,10 +72,10 @@ check_output "3: bullet list trigger injects additionalContext" \
   "additionalContext" \
   "$BULLET_PAYLOAD"
 
-# 4. Kill switch: SUPER_SPEC_DONE_CRITERIA=0 -> exit 0, no output
+# 4. Kill switch: LOOP_SPEC_DONE_CRITERIA=0 -> exit 0, no output
 check_silent "4: kill switch exits 0 silently" \
   "$NUMBERED_PAYLOAD" \
-  SUPER_SPEC_DONE_CRITERIA=0
+  LOOP_SPEC_DONE_CRITERIA=0
 
 # 5. Fail-open: malformed JSON -> exit 0, no output
 check_silent "5: fail-open on malformed JSON exits 0 silently" \

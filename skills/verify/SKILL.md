@@ -8,7 +8,7 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 Invoked when feature.json currentPhase == "verify".
 
-> **No-teams fallback:** if `.super-spec/runtime.json.teamsAvailable == false`, do NOT
+> **No-teams fallback:** if `.loop-spec/runtime.json.teamsAvailable == false`, do NOT
 > call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run verifier and
 > code-reviewer as sequential one-shot `Agent` calls with the same agent types, models,
 > and prompt templates, per `skills/shared/no-teams-fallback.md`. The acceptance gate and
@@ -16,7 +16,7 @@ Invoked when feature.json currentPhase == "verify".
 
 ## Inputs
 
-- `feature_path` (path to `.super-spec/features/{slug}/feature.json`)
+- `feature_path` (path to `.loop-spec/features/{slug}/feature.json`)
 - `spec_path`, `plan_path`
 - `branch`, `baseSha`
 - `slug`, `tier`
@@ -25,11 +25,11 @@ Invoked when feature.json currentPhase == "verify".
 
 ### Step 0 - Regression gate (opt-in)
 
-This scan re-runs every prior completed feature's test commands serially and is **advisory only** (it can never block VERIFY). Because that serial cost sits in front of the fail-fast marker scan and the parallel team, it is **off by default**; enable it with `SUPER_SPEC_REGRESSION_SCAN=1`.
+This scan re-runs every prior completed feature's test commands serially and is **advisory only** (it can never block VERIFY). Because that serial cost sits in front of the fail-fast marker scan and the parallel team, it is **off by default**; enable it with `LOOP_SPEC_REGRESSION_SCAN=1`.
 
 ```bash
-if [[ "${SUPER_SPEC_REGRESSION_SCAN:-0}" != "1" ]]; then
-  echo "Regression scan skipped (set SUPER_SPEC_REGRESSION_SCAN=1 to enable)"
+if [[ "${LOOP_SPEC_REGRESSION_SCAN:-0}" != "1" ]]; then
+  echo "Regression scan skipped (set LOOP_SPEC_REGRESSION_SCAN=1 to enable)"
 else
   REGRESSION_JSON=$(bash "${CLAUDE_SKILL_DIR}/../../lib/regression-scan.sh" .)
 fi
@@ -83,16 +83,16 @@ Create the verify team with verifier and code-reviewer as parallel teammates:
 
 ```
 TeamCreate({
-  name: "super-spec-verify-{slug}",
+  name: "loop-spec-verify-{slug}",
   teammates: [
     {
       name: "verifier-1",
-      subagent_type: "super-spec:verifier",
+      subagent_type: "loop-spec:verifier",
       model: feature.models.verifier
     },
     {
       name: "code-reviewer-1",
-      subagent_type: "super-spec:code-reviewer",
+      subagent_type: "loop-spec:code-reviewer",
       model: feature.models.codeReviewer
     }
   ]
@@ -100,12 +100,12 @@ TeamCreate({
 ```
 
 Update `feature.json` via `lib/feature-write.sh`:
-- `currentTeamName = "super-spec-verify-{slug}"`
+- `currentTeamName = "loop-spec-verify-{slug}"`
 - `currentTeammates = ["verifier-1", "code-reviewer-1"]`
 
 ### Step 3 - Acceptance gate (workflow path or fallback)
 
-Read `.super-spec/runtime.json`. If `workflowsAvailable=true`, dispatch:
+Read `.loop-spec/runtime.json`. If `workflowsAvailable=true`, dispatch:
 
 ```text
 Workflow({
@@ -137,7 +137,7 @@ Resolve the test/lint/typecheck commands from `feature.json.commands` and pass t
 ```
 SendMessage({
   to: "verifier-1",
-  body: "Run every acceptance criterion's verify command from PLAN.md. Gate ONLY on the SPEC 'Good Enough' success criteria; report 'Exceptional' (stretch) criteria as informational, never as a FAIL. Write VERIFICATION.md to docs/super-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', body: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
+  body: "Run every acceptance criterion's verify command from PLAN.md. Gate ONLY on the SPEC 'Good Enough' success criteria; report 'Exceptional' (stretch) criteria as informational, never as a FAIL. Write VERIFICATION.md to docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', body: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
   // also include: slug, spec_path, plan_path, branch, baseSha, tier,
   //   and the resolved commands: test="<feature.commands.test>", lint="<feature.commands.lint>", typecheck="<feature.commands.typecheck>"
 })
@@ -147,7 +147,7 @@ verifier-1 works independently. Lead waits for its completion signal.
 
 ### Step 5 - Code-review HARD-GATE (workflow path or fallback)
 
-Read `.super-spec/runtime.json`. If `workflowsAvailable=true`:
+Read `.loop-spec/runtime.json`. If `workflowsAvailable=true`:
 
 ```text
 Workflow({
@@ -201,10 +201,10 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
   - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
   - Check budgets. If either `perPhaseUsed.verify >= retryBudget.perPhase.verify` or `globalUsed >= retryBudget.global`: pause and escalate to user.
   - Else: set `currentPhase = "execute"`.
-- Call `TeamDelete({name: "super-spec-verify-{slug}"})`.
+- Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
 - Discard code-reviewer output for this iteration (will re-run when verify loops back after remediation).
-- Route to `super-spec:execute`.
+- Route to `loop-spec:execute`.
 
 **If verifier reports `FAIL`:**
 - Discard code-reviewer output for this iteration.
@@ -226,9 +226,9 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
   - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
   - Check budgets. If exceeded: pause and escalate to user.
   - Else: set `currentPhase = "execute"`.
-- Call `TeamDelete({name: "super-spec-verify-{slug}"})`.
+- Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
-- Route to `super-spec:execute`. When execute completes, re-invoke verify from Step 1.
+- Route to `loop-spec:execute`. When execute completes, re-invoke verify from Step 1.
 
 #### code-reviewer-1 HARD-GATE
 
@@ -247,12 +247,12 @@ Use the `CODE-REVIEWER DONE` message already received from Step 6.
   - Append entry to `gateHistory[]` (`phase: verify`, `gate: code-review`, `result: fail`).
   - Check budgets. If exceeded: pause and escalate to user.
   - Else: set `currentPhase = "execute"`.
-- Call `TeamDelete({name: "super-spec-verify-{slug}"})`.
+- Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
 - **Ralph remediation routing:** Check `pendingRemediationTasks.length` from `feature.json`.
-  - `RALPH_THRESHOLD="${SUPER_SPEC_RALPH_THRESHOLD:-3}"` (default 3).
+  - `RALPH_THRESHOLD="${LOOP_SPEC_RALPH_THRESHOLD:-3}"` (default 3).
   - If `pendingRemediationTasks.length <= RALPH_THRESHOLD`: invoke `bash "${CLAUDE_SKILL_DIR}/../../lib/ralph-remediation.sh" "$feature_dir"` and use its output to drive the remediation loop instead of the full EXECUTE team. If `ralph-remediation.sh` exits 1 (max iterations reached), fall through to the full EXECUTE team path.
-  - Else (task count exceeds threshold): route to `super-spec:execute` (existing behavior). When execute completes, re-invoke verify from Step 1.
+  - Else (task count exceeds threshold): route to `loop-spec:execute` (existing behavior). When execute completes, re-invoke verify from Step 1.
 
 **If PASS or PASS_WITH_MINOR:**
 - Append code-review section to VERIFICATION.md.
@@ -261,7 +261,7 @@ Use the `CODE-REVIEWER DONE` message already received from Step 6.
 ### Step 8 - TeamDelete verify team
 
 ```
-TeamDelete({name: "super-spec-verify-{slug}"})
+TeamDelete({name: "loop-spec-verify-{slug}"})
 ```
 
 Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
@@ -281,7 +281,7 @@ Failure of the graphify call is non-blocking; log a warning and continue.
 Invoke the map-codebase skill for an incremental refresh:
 
 ```
-Skill(super-spec:map-codebase) with mode: "incremental", since_sha: feature.baseSha
+Skill(loop-spec:map-codebase) with mode: "incremental", since_sha: feature.baseSha
 ```
 
 Note: the map-codebase skill runs inside the feature worktree (cwd is already there). Any mapper subagents it spawns do NOT inherit the cwd and must receive an absolute repo path. Resolve it once and pass it through:
@@ -302,8 +302,8 @@ Push and PR creation execute from inside the feature worktree (cwd is already on
 git push -u origin {feature.branch}
 
 # PR body: SPEC.md Problem+Goals sections + VERIFICATION.md acceptance table
-spec_summary=$(awk '/^## Problem/,/^## (Constraints|User-facing)/' docs/super-spec/features/{slug}/SPEC.md | head -100)
-verify_table=$(awk '/^## Acceptance criteria/,/^## Verify command outputs/' docs/super-spec/features/{slug}/VERIFICATION.md)
+spec_summary=$(awk '/^## Problem/,/^## (Constraints|User-facing)/' docs/loop-spec/features/{slug}/SPEC.md | head -100)
+verify_table=$(awk '/^## Acceptance criteria/,/^## Verify command outputs/' docs/loop-spec/features/{slug}/VERIFICATION.md)
 pr_body="$(printf '## Spec summary\n\n%s\n\n## Verification\n\n%s\n' "$spec_summary" "$verify_table")"
 
 # Use baseBranch from feature.json (feature.baseBranch), not hardcoded main
@@ -313,7 +313,7 @@ pr_url=$(gh pr create --base "${feature.baseBranch:-main}" --head {feature.branc
 ### Step 11 - Commit VERIFICATION.md
 
 ```bash
-git add docs/super-spec/features/{slug}/VERIFICATION.md
+git add docs/loop-spec/features/{slug}/VERIFICATION.md
 git commit -m "verify: NO_JIRA {slug} (PR: {pr_url})"
 ```
 
@@ -326,7 +326,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-verify
 Update `feature.json` via `lib/feature-write.sh`:
 - `completedPhases.append("verify")`
 - `currentPhase = "completed"`
-- `artifacts.verification = "docs/super-spec/features/{slug}/VERIFICATION.md"`
+- `artifacts.verification = "docs/loop-spec/features/{slug}/VERIFICATION.md"`
 
 ### Step 13 - Exit feature worktree (schema-6 only)
 

@@ -1,6 +1,6 @@
 ---
 name: mapper-domain
-description: Maps business concepts, glossary, entity model. Writes only to docs/super-spec/codebase/DOMAIN.md.
+description: Maps business concepts, glossary, entity model. Writes only to docs/loop-spec/codebase/DOMAIN.md.
 tools:
   - Read
   - Write
@@ -24,7 +24,7 @@ You map the business domain: concepts, glossary, entity model.
 
 ## What NOT to do
 
-- Do NOT write outside docs/super-spec/codebase/DOMAIN.md.
+- Do NOT write outside docs/loop-spec/codebase/DOMAIN.md.
 - Do NOT include implementation details (mapper-arch covers that).
 - Do NOT invent definitions for domain terms whose meaning isn't grounded in README/docs/code. Mark such terms "definition unclear from codebase" rather than guessing.
 

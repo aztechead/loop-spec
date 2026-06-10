@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Read .super-spec/runtime.json; if workflowsAvailable=false, print
+# Read .loop-spec/runtime.json; if workflowsAvailable=false, print
 # /permissions hint. Non-fatal.
 set -euo pipefail
 
-RUNTIME=".super-spec/runtime.json"
+RUNTIME=".loop-spec/runtime.json"
 if [[ ! -f "$RUNTIME" ]]; then
   exit 0
 fi
@@ -14,7 +14,7 @@ if [[ "$avail" == "True" ]]; then
 fi
 
 cat <<'EOF'
-[super-spec] Workflow tool unavailable in this session.
+[loop-spec] Workflow tool unavailable in this session.
    Fan-out phases (map-codebase, acceptance gate, code-review HARD-GATE) will
    fall back to TeamCreate dispatch. To enable workflow acceleration:
 
