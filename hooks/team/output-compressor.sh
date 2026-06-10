@@ -34,6 +34,12 @@ if [[ "${SUPER_SPEC_COMPRESSOR:-1}" == "0" ]]; then
   exit 0
 fi
 
+# Scope: only active in projects that use super-spec. This hook fires on every
+# Bash/Read/Grep in the session; a stat is the most it may cost elsewhere.
+if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.super-spec" && ! -d "$PWD/.super-spec" ]]; then
+  exit 0
+fi
+
 THRESHOLD=3000
 SESSION="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-$$}}"
 DEBOUNCE_FILE="${TMPDIR:-/tmp}/super-spec-compress-${SESSION}.count"

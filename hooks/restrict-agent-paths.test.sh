@@ -9,6 +9,9 @@ FIXTURES="$(dirname "$0")/../tests/fixtures/probe-transcripts"
 PASS=0
 FAIL=0
 
+# Tests run outside an active cycle; bypass the no-feature-state fast path.
+export SUPER_SPEC_PATH_GUARD_FORCE=1
+
 check() {
   local name="$1"
   local expected_exit="$2"
@@ -84,6 +87,50 @@ check "K: pattern-mapper Write to docs/super-spec/features/foo/PATTERNS.md ALLOW
 # Case L: pattern-mapper Write to disallowed path -> DENY (exit 2)
 check "L: pattern-mapper Write to src/foo.py DENY" 2 \
   "$(payload "Write" "src/foo.py" "$FIXTURES/pattern-mapper.jsonl")"
+
+# Case M: dispatch FINISHED (tool_result received) -> main thread, ALLOW anywhere
+check "M: finished spec-writer dispatch does not restrict main thread ALLOW" 0 \
+  "$(payload "Write" "src/foo.py" "$FIXTURES/finished-dispatch.jsonl")"
+
+# Case N: malformed payload -> fail-open ALLOW (exit 0, never a hook error)
+actual_exit=0
+echo 'not json' | bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then
+  echo "PASS: N: malformed payload fail-open ALLOW"
+  ((PASS++)) || true
+else
+  echo "FAIL: N: malformed payload fail-open ALLOW (got $actual_exit)"
+  ((FAIL++)) || true
+fi
+
+# Case O: missing transcript file -> fail-open ALLOW
+check "O: nonexistent transcript path ALLOW" 0 \
+  "$(payload "Write" "src/foo.py" "/nonexistent/transcript.jsonl")"
+
+# Case P: kill switch SUPER_SPEC_PATH_GUARD=0 -> ALLOW even for restricted caller
+actual_exit=0
+echo "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" \
+  | SUPER_SPEC_PATH_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then
+  echo "PASS: P: kill switch ALLOW"
+  ((PASS++)) || true
+else
+  echo "FAIL: P: kill switch ALLOW (got $actual_exit)"
+  ((FAIL++)) || true
+fi
+
+# Case Q: fast path — no .super-spec/features and no force flag -> ALLOW without parsing
+HOOK_ABS="$(cd "$(dirname "$HOOK")" && pwd)/$(basename "$HOOK")"
+actual_exit=0
+echo "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" \
+  | env -u SUPER_SPEC_PATH_GUARD_FORCE CLAUDE_PROJECT_DIR=/nonexistent bash -c "cd /tmp && bash '$HOOK_ABS'" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then
+  echo "PASS: Q: no-feature-state fast path ALLOW"
+  ((PASS++)) || true
+else
+  echo "FAIL: Q: no-feature-state fast path ALLOW (got $actual_exit)"
+  ((FAIL++)) || true
+fi
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

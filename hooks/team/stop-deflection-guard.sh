@@ -28,6 +28,11 @@ if [[ "${SUPER_SPEC_DEFLECTION_GUARD:-1}" == "0" ]]; then
   exit 0
 fi
 
+# Scope: only active in projects that use super-spec.
+if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.super-spec" && ! -d "$PWD/.super-spec" ]]; then
+  exit 0
+fi
+
 # Fail-open: any unexpected error must not block the session.
 trap 'exit 0' ERR
 

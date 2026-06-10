@@ -1,0 +1,3 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_01","name":"Agent","input":{"subagent_type":"super-spec:spec-writer","prompt":"Write spec for feature foo"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"DONE: SPEC.md written"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Spec written. Now editing source on the main thread."}]}}

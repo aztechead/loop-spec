@@ -37,6 +37,12 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 SUPER_SPEC_DIR="${PROJECT_DIR}/.super-spec"
 LEARNINGS_FILE="${SUPER_SPEC_DIR}/learnings.jsonl"
 
+# Scope: only record learnings in projects that already use super-spec.
+# Creating .super-spec/ in every project the user ever opens is litter.
+if [[ ! -d "$SUPER_SPEC_DIR" ]]; then
+  exit 0
+fi
+
 # Read stdin (Stop payload). Tolerate empty input.
 if [ -t 0 ]; then
   INPUT=""
@@ -151,9 +157,6 @@ if [[ -z "$JSONL_LINE" ]]; then
   JSONL_LINE=$(printf '{"timestamp":"%s","sessionId":"%s","taskType":"%s","approach":"%s","outcome":"%s","lesson":"%s"}' \
     "$TIMESTAMP" "$SESSION" "$TASK_TYPE" "$APPROACH" "$OUTCOME" "$LESSON")
 fi
-
-# Ensure target directory exists.
-mkdir -p "$SUPER_SPEC_DIR"
 
 # Append JSONL line.
 printf '%s\n' "$JSONL_LINE" >> "$LEARNINGS_FILE"

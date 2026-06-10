@@ -5,7 +5,13 @@
 #   exit 0  = allow
 #   exit 2  = block (with stderr message shown to user)
 #
-# Behavior by currentPhase in feature.json:
+# SCOPE: only super-spec-owned tasks are gated. A task is super-spec-owned when
+# tool_input.metadata.superSpec == true (written by EXECUTE Step 4) or the
+# subject matches "task-NNN: ...". Ordinary task-tracking completions (main
+# thread, other plugins) pass through untouched — gating them broke core task
+# tracking and ran the project's lint/typecheck on every unrelated completion.
+#
+# Behavior by currentPhase in feature.json (marked tasks only):
 #   execute  -> run lint and typecheck commands from feature.json.commands if configured
 #   discuss  -> validate task metadata has required fields (blockedBy, files, verifyCommand, acceptanceCriteria)
 #   plan     -> validate task metadata has required fields
@@ -13,9 +19,19 @@
 #
 # If feature.json is missing, exit 0 (graceful).
 # SUPER_SPEC_FEATURE_DIR env var overrides the default feature directory location.
+# Kill switch: SUPER_SPEC_TASK_GUARD=0 -> exit 0 unconditionally.
+# Fail-open: malformed payload or python3 failure -> exit 0 (never a hook error).
 set -euo pipefail
 
-INPUT=$(cat)
+# Fail-open: any unexpected error must not block the session.
+trap 'exit 0' ERR
+
+if [[ "${SUPER_SPEC_TASK_GUARD:-1}" == "0" ]]; then
+  exit 0
+fi
+
+INPUT=$(cat 2>/dev/null) || true
+[[ -z "$INPUT" ]] && exit 0
 
 # Locate feature.json
 FEATURE_DIR="${SUPER_SPEC_FEATURE_DIR:-}"
@@ -27,6 +43,10 @@ else
   # Default: resolve to user's project root via CLAUDE_PROJECT_DIR (set by CC harness),
   # not via dirname of the hook script (which resolves to the plugin install dir).
   REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+  # Fast path: no .super-spec/features dir means no active feature — skip the find.
+  if [[ ! -d "$REPO_ROOT/.super-spec/features" ]]; then
+    exit 0
+  fi
   FEATURE_JSON=$(find "$REPO_ROOT/.super-spec/features" -maxdepth 2 -name "feature.json" 2>/dev/null | head -1 || true)
 fi
 
@@ -35,7 +55,26 @@ if [[ -z "$FEATURE_JSON" || ! -f "$FEATURE_JSON" ]]; then
   exit 0
 fi
 
-# Read phase and commands using python3 with path as argument (avoids interpolation issues)
+# Scope check: pass through any completion that is not a super-spec-owned task.
+MARKED=$(printf '%s' "$INPUT" | python3 -c "
+import json, re, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('no')
+    sys.exit(0)
+tool_input = d.get('tool_input') or {}
+metadata = tool_input.get('metadata') or {}
+subject = tool_input.get('subject') or ''
+marked = metadata.get('superSpec') is True or bool(re.match(r'^task-[0-9]+:', subject))
+print('yes' if marked else 'no')
+" 2>/dev/null) || MARKED="no"
+
+if [[ "$MARKED" != "yes" ]]; then
+  exit 0
+fi
+
+# Read phase using python3 with path as argument (avoids interpolation issues)
 CURRENT_PHASE=$(python3 -c "
 import json, sys
 try:
@@ -44,7 +83,7 @@ try:
     print(d.get('currentPhase', ''))
 except Exception:
     print('')
-" "$FEATURE_JSON")
+" "$FEATURE_JSON" 2>/dev/null) || CURRENT_PHASE=""
 
 validate_metadata() {
   printf '%s' "$INPUT" | python3 -c "
@@ -76,7 +115,7 @@ if missing:
     print('MISSING:' + ','.join(missing))
 else:
     print('OK')
-"
+" 2>/dev/null || echo "OK"
 }
 
 run_check() {
@@ -112,7 +151,7 @@ try:
     print(d.get('commands', {}).get('lint', '') or '')
 except Exception:
     print('')
-" "$FEATURE_JSON")
+" "$FEATURE_JSON" 2>/dev/null) || LINT_CMD=""
 
     TYPECHECK_CMD=$(python3 -c "
 import json, sys
@@ -122,13 +161,13 @@ try:
     print(d.get('commands', {}).get('typecheck', '') or '')
 except Exception:
     print('')
-" "$FEATURE_JSON")
+" "$FEATURE_JSON" 2>/dev/null) || TYPECHECK_CMD=""
 
     if [[ -n "$LINT_CMD" ]]; then
       lint_rc=0
       run_check "$LINT_CMD" || lint_rc=$?
       if [[ "$lint_rc" -ne 0 ]]; then
-        echo "DENY: lint failed (command: $LINT_CMD). Fix lint errors before marking task completed." >&2
+        echo "DENY: lint failed (command: $LINT_CMD). Fix lint errors before marking task completed. (Disable: SUPER_SPEC_TASK_GUARD=0)" >&2
         exit 2
       fi
     fi
@@ -137,7 +176,7 @@ except Exception:
       tc_rc=0
       run_check "$TYPECHECK_CMD" || tc_rc=$?
       if [[ "$tc_rc" -ne 0 ]]; then
-        echo "DENY: typecheck failed (command: $TYPECHECK_CMD). Fix type errors before marking task completed." >&2
+        echo "DENY: typecheck failed (command: $TYPECHECK_CMD). Fix type errors before marking task completed. (Disable: SUPER_SPEC_TASK_GUARD=0)" >&2
         exit 2
       fi
     fi
@@ -147,7 +186,7 @@ except Exception:
     RESULT=$(validate_metadata)
     if [[ "$RESULT" != "OK" ]]; then
       MISSING_FIELDS="${RESULT#MISSING:}"
-      echo "DENY: Task metadata missing or invalid required fields: $MISSING_FIELDS. All tasks must have blockedBy, files, verifyCommand, and acceptanceCriteria." >&2
+      echo "DENY: super-spec task metadata missing or invalid required fields: $MISSING_FIELDS. All super-spec tasks must have blockedBy, files, verifyCommand, and acceptanceCriteria. (Disable: SUPER_SPEC_TASK_GUARD=0)" >&2
       exit 2
     fi
     ;;

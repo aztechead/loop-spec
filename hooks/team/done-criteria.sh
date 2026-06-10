@@ -22,6 +22,11 @@ if [[ "${SUPER_SPEC_DONE_CRITERIA:-1}" == "0" ]]; then
   exit 0
 fi
 
+# Scope: only active in projects that use super-spec.
+if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.super-spec" && ! -d "$PWD/.super-spec" ]]; then
+  exit 0
+fi
+
 # Fail-open: unexpected errors must not disrupt the session.
 trap 'exit 0' ERR
 

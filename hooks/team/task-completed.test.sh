@@ -41,10 +41,16 @@ check() {
   fi
 }
 
-# Build a TaskCompleted payload
+# Build a TaskCompleted payload (super-spec-marked via subject convention)
 payload_completed() {
   local task_id="${1:-task-001}"
-  printf '{"tool_name":"TaskCompleted","tool_input":{"taskId":"%s"}}' "$task_id"
+  printf '{"tool_name":"TaskCompleted","tool_input":{"taskId":"%s","subject":"%s: do the thing","metadata":{"superSpec":true}}}' "$task_id" "$task_id"
+}
+
+# Build an UNMARKED TaskCompleted payload (ordinary task tracking)
+payload_completed_unmarked() {
+  local task_id="${1:-7}"
+  printf '{"tool_name":"TaskCompleted","tool_input":{"taskId":"%s","subject":"Refactor the parser"}}' "$task_id"
 }
 
 # feature.json fixture: EXECUTE phase with lint and typecheck commands
@@ -105,12 +111,13 @@ feature_execute_no_commands() {
 }
 
 # Build a TaskCompleted payload with task metadata for discuss/plan validation
+# (marked super-spec via subject convention so the metadata gate applies)
 payload_completed_with_metadata() {
   local task_id="${1:-task-001}"
   local metadata="${2:-}"
   if [[ -z "$metadata" ]]; then metadata="{}"; fi
-  printf '{"tool_name":"TaskCompleted","tool_input":{"taskId":"%s","metadata":%s}}' \
-    "$task_id" "$metadata"
+  printf '{"tool_name":"TaskCompleted","tool_input":{"taskId":"%s","subject":"%s: gated work","metadata":%s}}' \
+    "$task_id" "$task_id" "$metadata"
 }
 
 echo "=== task-completed.sh tests ==="
@@ -156,6 +163,35 @@ check "G: plan phase missing acceptanceCriteria DENY" 2 \
 check "H: plan phase valid metadata ALLOW" 0 \
   "$(payload_completed_with_metadata "task-001" "$VALID_META")" \
   "$(feature_plan)"
+
+# I: UNMARKED completion in EXECUTE phase with failing lint -> ALLOW (scope: pass-through)
+check "I: unmarked task passes through failing-lint gate ALLOW" 0 \
+  "$(payload_completed_unmarked)" \
+  "$(feature_execute_failing_lint)"
+
+# J: UNMARKED completion in DISCUSS phase without metadata -> ALLOW (scope: pass-through)
+check "J: unmarked task passes through discuss metadata gate ALLOW" 0 \
+  "$(payload_completed_unmarked)" \
+  "$(feature_discuss)"
+
+# J2: kill switch -> ALLOW even for marked task with failing lint
+check_exit=0
+fdir_ks="$TMPDIR_TESTS/kill-switch"
+mkdir -p "$fdir_ks"
+printf '%s' "$(feature_execute_failing_lint)" > "$fdir_ks/feature.json"
+echo "$(payload_completed)" | SUPER_SPEC_FEATURE_DIR="$fdir_ks" SUPER_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || check_exit=$?
+if [[ "$check_exit" -eq 0 ]]; then
+  echo "PASS: J2: kill switch ALLOW"
+  ((PASS++)) || true
+else
+  echo "FAIL: J2: kill switch ALLOW (expected 0, got $check_exit)"
+  ((FAIL++)) || true
+fi
+
+# J3: malformed payload -> ALLOW (fail-open)
+check "J3: malformed payload fail-open ALLOW" 0 \
+  'not json at all' \
+  "$(feature_execute_failing_lint)"
 
 # K: EXECUTE phase with SUPER_SPEC_FEATURE_DIR pointing to empty dir -> ALLOW (exit 0)
 EMPTY_DIR="$TMPDIR_TESTS/empty-dir"

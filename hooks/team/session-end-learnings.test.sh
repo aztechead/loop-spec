@@ -20,7 +20,9 @@ echo "=== session-end-learnings.sh tests ==="
 # Test 1: append - running the hook once adds exactly 1 JSONL line.
 # ---------------------------------------------------------------------------
 TEST1_DIR="$TMPDIR_TEST/test1"
-mkdir -p "$TEST1_DIR"
+# The hook is scoped to projects that already use super-spec: .super-spec/ must
+# pre-exist (the hook never creates it in arbitrary projects).
+mkdir -p "$TEST1_DIR/.super-spec"
 
 PAYLOAD='{"total_agent_calls":1,"errors":[],"workflow":"build"}'
 printf '%s' "$PAYLOAD" | env CLAUDE_PROJECT_DIR="$TEST1_DIR" bash "$HOOK" 2>/dev/null
@@ -94,10 +96,25 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 3b: scope - project without .super-spec/ is never touched.
+# ---------------------------------------------------------------------------
+TEST3B_DIR="$TMPDIR_TEST/test3b"
+mkdir -p "$TEST3B_DIR"
+
+PAYLOAD3B='{"total_agent_calls":2,"errors":[]}'
+printf '%s' "$PAYLOAD3B" | env CLAUDE_PROJECT_DIR="$TEST3B_DIR" bash "$HOOK" 2>/dev/null
+
+if [[ ! -d "$TEST3B_DIR/.super-spec" ]]; then
+  pass "3b: scope - .super-spec/ not created in non-super-spec project"
+else
+  fail "3b: scope - hook created .super-spec/ in a project that never used super-spec"
+fi
+
+# ---------------------------------------------------------------------------
 # Test 4: heuristic lessons - >3 agents produces "parallel dispatch effective".
 # ---------------------------------------------------------------------------
 TEST4_DIR="$TMPDIR_TEST/test4"
-mkdir -p "$TEST4_DIR"
+mkdir -p "$TEST4_DIR/.super-spec"
 LEARNINGS_FILE4="$TEST4_DIR/.super-spec/learnings.jsonl"
 
 PAYLOAD4='{"total_agent_calls":5,"errors":[],"workflow":"build"}'
