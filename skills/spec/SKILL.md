@@ -1,0 +1,249 @@
+---
+name: spec
+description: SPEC phase - Socratic interview with quantitative ambiguity scoring; gates ambiguity <= 0.20
+allowed-tools: Bash Read Write Edit Glob Grep Skill AskUserQuestion
+---
+
+# SPEC Phase
+
+You are the SPEC phase orchestrator, running on the **main thread**. Invoked by `super-spec:cycle` after tier + style + slug are chosen. Your responsibility: run a Socratic interview across up to 6 rounds, score 4 ambiguity dimensions after each round, gate on ambiguity <= 0.20 with per-dimension minimums, and write SPEC.md with an `ambiguity_scores` frontmatter block.
+
+**The interview runs on the main thread, not in a subagent.** A spawned teammate cannot hold an interactive question-and-answer with the user (it runs one turn and goes idle). Only the main-thread orchestrator has a real `AskUserQuestion` loop with the user. This phase therefore creates no team and spawns no teammates; it asks questions, scores answers, and writes the file directly. This mirrors `skills/discuss/SKILL.md` Step 1, which already runs its clarifying loop on the main thread.
+
+## Inputs (from cycle skill via feature.json)
+
+- `slug`, `tier`, `execStyle`, `feature_title`
+- `feature_dir`: `.super-spec/features/{slug}/`
+- `feature_json_path`: `.super-spec/features/{slug}/feature.json`
+
+## Ambiguity Model
+
+Score each dimension 0.0 (completely unclear) to 1.0 (crystal clear):
+
+| Dimension          | Weight | Minimum | What it measures                                  |
+|--------------------|--------|---------|---------------------------------------------------|
+| Goal Clarity       | 35%    | 0.60    | Is the outcome specific and measurable?           |
+| Boundary Clarity   | 25%    | 0.50    | What is in scope vs out of scope?                 |
+| Constraint Clarity | 20%    | 0.40    | Performance, compatibility, data requirements?    |
+| Acceptance Clarity | 20%    | 0.50    | How do we know it is done?                         |
+
+**Ambiguity score formula:** `1.0 - (0.35 * goal_clarity + 0.25 * boundary_clarity + 0.20 * constraint_clarity + 0.20 * acceptance_clarity)`
+
+**Gate:** ambiguity <= 0.20 AND goal_clarity >= 0.60 AND boundary_clarity >= 0.50 AND constraint_clarity >= 0.40 AND acceptance_clarity >= 0.50
+
+**Score from the SPEC text you could write right now, not from optimism about where the conversation is heading.** Anchor each dimension against these calibration examples (at the dimension minimum vs near-done at ~0.85):
+
+| Dimension | At the minimum | At ~0.85 |
+|-----------|----------------|----------|
+| Goal Clarity (min 0.60) | "Make the export faster" (direction only, no measurable target) | "Cut p95 export latency from 4s to under 1.5s for a 10k-row sheet" |
+| Boundary Clarity (min 0.50) | "Mostly the export path" (fuzzy edges) | "Touch only `export/*`; CSV and PDF paths explicitly out of scope" |
+| Constraint Clarity (min 0.40) | "Should work on the current stack" | "Must stay on Python 3.12, no new deps, within the 2GB worker cap" |
+| Acceptance Clarity (min 0.50) | "It should feel snappy" (subjective) | "`pytest tests/export_test.py` passes AND latency assertion <1.5s holds in CI" |
+
+## Interview Perspectives
+
+Apply one perspective per round. Each perspective surfaces different blindspots. Ask 2-3 questions per round maximum; do not frontload all questions at once.
+
+| Round | Perspective      | Focus                                                  |
+|-------|-----------------|--------------------------------------------------------|
+| 1     | Researcher       | Ground the discussion in current reality               |
+| 2     | Simplifier       | Surface minimum viable scope                           |
+| 3     | Boundary Keeper  | Lock the perimeter of what is and is not in scope      |
+| 4     | Failure Analyst  | Find edge cases that invalidate requirements           |
+| 5     | Seed Closer      | Lock remaining undecided territory                     |
+| 6     | Seed Closer      | Final pass on lowest-scoring dimensions                |
+
+**Researcher (round 1) example questions:**
+- "What exists in the codebase today related to this feature?"
+- "What is the delta between today and the target state?"
+- "What triggers this work - what is broken or missing?"
+
+**Simplifier (round 2) example questions:**
+- "What is the simplest version that solves the core problem?"
+- "If you had to cut 50%, what is the irreducible core?"
+- "What would make this feature a success even without the nice-to-haves?"
+
+**Boundary Keeper (round 3) example questions:**
+- "What explicitly will NOT be done in this phase?"
+- "What adjacent problems is it tempting to solve but should not be?"
+- "What does 'done' look like - what is the final deliverable?"
+
+**Failure Analyst (round 4) example questions:**
+- "What is the worst thing that could go wrong if we get the requirements wrong?"
+- "What does a broken version of this look like?"
+- "What would cause a verifier to reject the output?"
+
+**Seed Closer (rounds 5-6) example questions:**
+- "We have [dimension] at [score] - what would make it completely clear?"
+- "The remaining ambiguity is in [area] - can we make a decision now?"
+- "Is there anything you would regret not specifying before planning starts?"
+
+## Procedure
+
+### Step 1 - Scout the codebase
+
+Before asking any questions, read for grounding context:
+- `.super-spec/features/{slug}/` - feature.json and any prior `spec-interview-transcript.md` (resume context)
+- `docs/super-spec/features/{slug}/` - any prior SPEC.md or committed artifacts
+- `docs/super-spec/codebase/` - domain maps (TECH, ARCH, QUALITY, CONCERNS, DOMAIN) if present
+- Relevant source files to understand current state
+
+Synthesize current state internally: what exists today related to this feature, and the gap to the target state. Do not present this synthesis to the user - use it to ask precise, grounded questions.
+
+Score all 4 dimensions from what you already know (feature title, tier, any existing context). This is the initial assessment; display it before the first round.
+
+If `SUPER_SPEC_NON_INTERACTIVE=1` is set: skip Step 2 entirely and go to the **Non-interactive mode** section below.
+
+### Step 2 - Interview loop (main thread, max 6 rounds)
+
+Run the loop directly on the main thread. For each round N = 1 .. 6:
+
+1. Ask 2-3 questions using the perspective for round N. Use `AskUserQuestion`. **When a question has discernible options (a scope cut, a data shape, an integration point, a yes/no decision), present them as structured multiple-choice with explicit tradeoffs**; reserve free-text for genuinely open prompts. This matches the discuss-phase convention.
+2. Read the user's answers.
+3. Update all 4 dimension scores from the answers.
+4. Compute the ambiguity score and display the scoring block (format below).
+5. Run the gate check.
+
+**Scoring block displayed after each round:**
+
+```
+After round [N]:
+  Goal Clarity:       [score] (min 0.60) [pass or needs improvement]
+  Boundary Clarity:   [score] (min 0.50) [pass or needs improvement]
+  Constraint Clarity: [score] (min 0.40) [pass or needs improvement]
+  Acceptance Clarity: [score] (min 0.50) [pass or needs improvement]
+  Ambiguity: [score] (gate: <= 0.20)
+```
+
+**On gate pass** (ambiguity <= 0.20 AND all per-dimension minimums met):
+
+```
+AskUserQuestion({
+  header: "Spec Gate Passed",
+  question: "Ambiguity is [score] after round [N] - requirements are clear enough to write SPEC.md. Proceed?",
+  options: ["Yes - write SPEC.md", "One more round", "Done talking - write it"]
+})
+```
+
+If the user selects "Yes" or "Done talking - write it": go to Step 3. If "One more round": continue the loop.
+
+**On round 6 reached with the gate still failing:**
+
+```
+AskUserQuestion({
+  header: "Max Rounds Reached",
+  question: "After 6 rounds, ambiguity is [score]. Dimensions still below minimum: [list]. What would you like to do?",
+  options: [
+    "Write SPEC.md anyway - flag unresolved dimensions as assumptions",
+    "Keep talking (no round limit from here)",
+    "Abandon - exit without writing"
+  ]
+})
+```
+
+If "Write SPEC.md anyway": go to Step 3, marking unresolved dimensions in the `ambiguity_scores` block (`gate_passed: false`). If "Keep talking": continue without a round limit. If "Abandon": stop without writing; report that the user abandoned and return to the cycle.
+
+### Step 3 - Write SPEC.md and the transcript
+
+Write SPEC.md directly (the main thread is unrestricted by `hooks/restrict-agent-paths.sh`):
+
+- SPEC.md to `docs/super-spec/features/{slug}/SPEC.md` (must begin with the `ambiguity_scores` frontmatter block - see SPEC.md Output Format below).
+- Interview transcript (all rounds, all questions, all scores) to `.super-spec/features/{slug}/spec-interview-transcript.md`.
+
+### Step 4 - Update feature.json
+
+Update `feature.json` via `lib/feature-write.sh`:
+- `artifacts.specInterview = ".super-spec/features/{slug}/spec-interview-transcript.md"`
+- `artifacts.spec = "docs/super-spec/features/{slug}/SPEC.md"`
+- `completedPhases` append `"spec"`
+- `currentPhase = "discuss"`
+
+### Step 5 - Commit SPEC.md
+
+```bash
+git add docs/super-spec/features/{slug}/SPEC.md
+git commit -m "spec: NO_JIRA {slug}"
+```
+
+Also commit the interview transcript if it was written:
+
+```bash
+if [[ -f ".super-spec/features/{slug}/spec-interview-transcript.md" ]]; then
+  git add ".super-spec/features/{slug}/spec-interview-transcript.md"
+  git commit -m "docs: NO_JIRA {slug} spec interview transcript"
+fi
+```
+
+### Step 6 - Phase routing
+
+| execStyle    | Action                                                                          |
+|--------------|---------------------------------------------------------------------------------|
+| auto         | Invoke `Skill(super-spec:discuss)` immediately                                  |
+| step         | Print "SPEC complete. SPEC.md at docs/super-spec/features/{slug}/SPEC.md." Return to user. |
+| interactive  | Same as step.                                                                   |
+| review-only  | Invoke `Skill(super-spec:discuss)` (gate already paused for human if findings)  |
+
+Return.
+
+## SPEC.md Output Format
+
+SPEC.md MUST begin with an `ambiguity_scores` YAML frontmatter block:
+
+```yaml
+---
+ambiguity_scores:
+  goal_clarity: 0.85
+  boundary_clarity: 0.80
+  constraint_clarity: 0.75
+  acceptance_clarity: 0.80
+  ambiguity: 0.18
+  rounds_completed: 3
+  gate_passed: true
+  unresolved_dimensions: []
+---
+```
+
+If any dimension is below its minimum when SPEC.md is written (user override at round 6, or non-interactive synthesis with thin input), set `gate_passed: false` and list the dimension names in `unresolved_dimensions`. These signal to the discuss phase that certain requirements must be treated as assumptions by the planner.
+
+Every requirement entry in SPEC.md MUST have:
+- One specific, testable statement
+- Current state (what exists now)
+- Target state (what it should become)
+- Acceptance criterion (how to verify it was met)
+
+Boundaries are mandatory explicit lists:
+- "In scope" - what this feature produces
+- "Out of scope" - what it explicitly does NOT do (with brief reasoning)
+
+Acceptance criteria must be pass/fail checkboxes. No subjective criteria.
+
+The discuss phase reads this SPEC.md and refines it; if its frontmatter contains `ambiguity_scores`, discuss preserves the block verbatim.
+
+## Non-interactive mode
+
+When `SUPER_SPEC_NON_INTERACTIVE=1` is set there is no user to interview. The orchestrator does not run Step 2; instead it synthesizes SPEC.md from the available context (feature title, tier, codebase domain maps) and always writes the file - it never abandons.
+
+| Env var                           | Values       | Behavior it controls                                            |
+|-----------------------------------|--------------|-----------------------------------------------------------------|
+| `SUPER_SPEC_ANSWER_SPEC_CONFIRM`  | `yes`, `no`  | Confirm writing SPEC.md when the synthesized gate passes (default: `yes`) |
+| `SUPER_SPEC_ANSWER_SPEC_OVERRIDE` | `yes`, `no`  | Write SPEC.md despite a failing synthesized gate (default: `yes`) |
+
+Synthesis procedure (non-interactive):
+1. Run Step 1 (scout + initial scoring) only.
+2. Derive the best SPEC.md you can from the feature title and codebase context. Score the 4 dimensions honestly from that text.
+3. If the synthesized gate passes (or `SUPER_SPEC_ANSWER_SPEC_CONFIRM` is unset/`yes`): write SPEC.md with `gate_passed: true`.
+4. If the synthesized gate fails: write SPEC.md anyway (default, or when `SUPER_SPEC_ANSWER_SPEC_OVERRIDE` is unset/`yes`) with `gate_passed: false` and the failing dimensions listed in `unresolved_dimensions`.
+5. Write the transcript (a short note that the spec was synthesized non-interactively, with the scores).
+6. Proceed to Step 4 (update feature.json), Step 5 (commit), Step 6 (route).
+
+Non-interactive mode never selects "Abandon": SPEC.md is always written.
+
+## Resume
+
+If invoked with `currentPhase == "spec"` already in `feature.json`:
+
+1. Read `feature.json` and check `artifacts.spec`:
+   - `artifacts.spec` is set: SPEC.md was written but the phase advance failed; jump to Step 4.
+   - `artifacts.spec` is null: the interview did not complete. Check `.super-spec/features/{slug}/spec-interview-transcript.md` for partial progress.
+2. On resume with a partial transcript: read it, restore the prior round scores, and continue the interview loop (Step 2) from the next round rather than restarting. Do not re-ask questions already answered in the transcript.
+3. This phase holds no team, so there is no team-liveness probe and no `currentTeamName` to clear (it stays `null` throughout the spec phase).

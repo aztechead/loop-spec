@@ -1,0 +1,61 @@
+# PATTERNS.md - {slug}
+
+> Produced by `pattern-mapper`. Read by `planner` before drafting tasks.
+> One section per **concept** the upcoming feature will need. Concepts are system-design nouns/verbs, not file paths.
+
+## Codebase context consulted
+
+- `docs/super-spec/codebase/TECH.md`
+- `docs/super-spec/codebase/ARCH.md`
+- `docs/super-spec/codebase/QUALITY.md`
+- `docs/super-spec/codebase/CONCERNS.md`
+- `docs/super-spec/codebase/DOMAIN.md`
+
+(omit any not actually read)
+
+## Concept: {name}
+
+**Closest analog:** `{path}:{lines}`
+
+**Why this analog (one line):** {rationale}
+
+**Imports**
+
+```{lang}
+{import block}
+```
+
+**Core pattern**
+
+```{lang}
+{5-30 line block, verbatim}
+```
+
+**Error handling**
+
+```{lang}
+{surrounding try/except / retry / guard logic}
+```
+
+**Test analog** (if any)
+
+```{lang}
+{5-15 line test block} -- from {test path}
+```
+
+**Application gotchas**
+
+- {bullet about what NOT to carry over verbatim}
+- {bullet about house-style deviation to honor}
+
+---
+
+(repeat the `## Concept` block for each concept; 3-10 concepts typical)
+
+## Open questions for the planner
+
+- {anything the spec was ambiguous about that affected analog selection}
+
+## Concepts with no clear analog
+
+- `{concept}` -- {one-line explanation of why nothing in the codebase fits; planner should treat as novel work}

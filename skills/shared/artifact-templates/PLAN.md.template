@@ -1,0 +1,55 @@
+# {feature_title} - Implementation Plan
+
+**Spec:** `docs/super-spec/features/{slug}/SPEC.md`
+**Created:** {created_at}
+
+## Architecture overview
+
+{2-3 sentences on approach.}
+
+## File map
+
+- Create: `{path}` - {responsibility}
+- Modify: `{path}:{line-range}` - {what changes}
+- Delete: `{path}` - {why}
+
+## Task DAG
+
+| ID | Subject | BlockedBy | Files | Est scope |
+|----|---------|-----------|-------|-----------|
+| task-001 | {subject} | - | {files} | small/medium/large |
+
+## Tasks
+
+### task-001: {subject}
+
+**Goal:** {one sentence}
+
+**Files:**
+- {path}
+
+**read_first:**
+- {path or path:line-range or path (section)}
+
+**Verify:** `{exact command}` -> {expected output}
+
+**Acceptance criteria:**
+- [ ] {criterion}
+
+**Steps (TDD where applicable):**
+
+- [ ] Step 1: Write failing test ({path})
+- [ ] Step 2: Run test, expect FAIL
+- [ ] Step 3: Implement
+- [ ] Step 4: Run test, expect PASS
+- [ ] Step 5: Commit
+
+(repeat per task)
+
+## Test strategy
+
+{How tests will be run; per-task test commands rolled up.}
+
+## Rollback plan
+
+{How to revert if VERIFY phase fails after merges.}

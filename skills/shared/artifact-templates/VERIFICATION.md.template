@@ -1,0 +1,55 @@
+# {feature_title} - Verification
+
+**Spec:** `docs/super-spec/features/{slug}/SPEC.md`
+**Plan:** `docs/super-spec/features/{slug}/PLAN.md`
+
+## Acceptance criteria
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| 1 | {from SPEC} | PASS / FAIL / N/A | `{verify command}` -> {output summary} |
+
+## Verify command outputs
+
+### Criterion 1
+
+```
+{full output of verify command}
+```
+
+(repeat per criterion)
+
+## Code review
+
+**Reviewer:** code-reviewer ({model})
+
+### Findings
+
+#### Critical
+{list or "none"}
+
+#### Important
+{list or "none"}
+
+#### Minor (deferred)
+{list or "none"}
+
+### Resolution
+{which findings were addressed in which commits, which deferred to follow-up tasks}
+
+## Security review summary
+
+{Any security-relevant findings.}
+
+## Final test suite
+
+```
+{output of commands.test}
+```
+
+## Branch state
+
+- Branch: `feat/{slug}`
+- Final commit: {sha}
+- Pushed: {y/n}
+- PR URL: {url}

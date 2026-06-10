@@ -1,0 +1,415 @@
+# super-spec
+
+A spec-driven development plugin for Claude Code. Bash + git + jq + python3 only -- no npm/pip/brew installs. 5 phases. 3 tiers. Fixed per-role model map. 4 execution styles.
+
+**Status:** v3.1.0. Built on Claude Code agent teams (requires CC v2.1.32+ and `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`).
+
+## Why this exists
+
+The two open-source ideas I kept reaching for:
+
+- **[superpowers](https://github.com/obra/superpowers)** -- a curated bundle of skills (brainstorming, writing-plans, subagent-driven-development, TDD, debugging, ...) that turn Claude Code from a freeform assistant into a fast, disciplined collaborator. The lesson I took: skills are how you encode workflow. Skills are how you make Claude FAST.
+- **[get-shit-done](https://github.com/gsd-build/get-shit-done)** -- a multi-phase workflow (spec → discuss → plan → execute → verify) that captures every decision in markdown artifacts kept in `.planning/`. The lesson I took: spec-driven development beats prompt-driven development the moment a task is bigger than one commit, because the spec is what catches the design errors that re-rolls can't fix.
+
+super-spec is what happens when you take the speed of superpowers (persistent specialized agents, asymmetric tier-based model selection, parallel work) and bolt it onto the durability of GSD (every phase produces a committed markdown artifact, every gate is auditable, every `feature.json` is resumable). Plus a handful of opinionated additions:
+
+- **Persistent phase teams** (v1.0.0): each phase runs in a `TeamCreate`d team whose teammates persist for the full phase and communicate via `SendMessage`. Within a phase the lead does not re-dispatch a teammate as a fresh `Agent` call — rework rides on `SendMessage` so accumulated context is preserved across rounds.
+- **EXECUTE concurrency ladder** (v3.1.0): EXECUTE picks its dispatch mechanism by the structural width `W` of the task DAG (`lib/dag-width.sh`), scaling the orchestration weight to the available parallelism instead of always reaching for the heaviest tool. `W == 1` runs a **subagent** sequentially; `2 <= W < t_team` fans out batched **subagent** waves (parallel one-shot `Agent` calls, no persistent team); `t_team <= W < t_wf` spins up an **agent team** (the self-claim `TeamCreate` path); and `W >= t_wf` escalates to the **Workflow DAG** (`lib/workflows/execute-dag.js`) only when the operator opted in (`SUPER_SPEC_EXECUTE_WORKFLOW=1`) and the `Workflow` tool is available. Width thresholds (`t_team`, `t_wf`) live per-tier in `skills/shared/tier-matrix.md`. All four rungs use per-task git worktrees under `.super-spec/worktrees/{slug}/task-NNN/`, share the same spec-compliance + retry contract, ff-merge each passed task branch into `feat/{slug}`, and return the identical `{merged, blocked, escalation}` result. Synthetic `blockedBy` edges between tasks with overlapping `files[]` provide concurrency safety beyond the explicit DAG. This follows the Anthropic tool idiom: subagents for modest fan-out, teams for coordinated high concurrency, Workflow only on explicit opt-in for undeniable fan-out ROI.
+- **Critique gates** (advocate + challenger pair) on SPEC and PLAN. ROUND-N debate is logged to `.super-spec/features/{slug}/gate-logs/` and a non-empty fix-list re-dispatches the upstream author via `SendMessage` with prior summaries threaded in. Skipped on `quick` tier.
+- **First-run codebase map** that ingests an existing GSD `.planning/codebase/` if present, then dispatches mappers only for whatever's still missing -- pay for the map once per project, never twice.
+- **Pattern-mapper** (also borrowed from GSD) that runs at PLAN Step 0 and writes per-feature `PATTERNS.md` so the planner cites real codebase analogs instead of inventing shapes.
+- **Bounded retries**: 3 per gate, per-phase ceilings, 30 global. The cycle either ships or escalates -- it never loops forever.
+- **Worktrees always project-local**: per-task worktrees are created under `.super-spec/worktrees/` (EXECUTE), always within the repo root. The `using-git-worktrees` skill (superpowers-extended-cc plugin) was updated in tandem to enforce the same constraint for general skill use, removing the former `~/.config/...` global path option. Multi-repo setups get a separate worktree dir per repo.
+- **VERIFY marker scan** (ported from GSD): before dispatching any acceptance agents, VERIFY scans changed files for unresolved `TBD`/`FIXME`/`XXX` markers and fails fast, saving agent budget on incomplete work.
+- **Stall detection** (ported from GSD): EXECUTE resume distinguishes "done", "stalled mid-write" (re-dispatches with the partial diff as context), and "clean stall" (fresh re-dispatch). The previous heuristic of "commits exist = done" could skip review on a crashed agent.
+- **Orphaned worktree pruning** (ported from GSD): after EXECUTE completes, it prunes worktrees whose branches are already merged without destroying uncommitted work.
+- **Remediation routing** (v1.0.0): when VERIFY's acceptance gate or code-review HARD-GATE fires, remediation tasks are persisted to `feature.json.pendingRemediationTasks[]` and consumed by EXECUTE on re-entry — they survive the verify team's teardown without requiring the verify and execute teams to share state.
+
+The rest of this README is install + usage.
+
+## Quickstart
+
+1. Register the marketplace and install the plugin:
+   ```bash
+   claude plugin marketplace add git@git.viasat.com:cbobrowitz/super-spec.git
+   claude plugin install super-spec@super-spec-marketplace
+   ```
+
+2. Set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (requires Claude Code v2.1.32+). See [docs/super-spec/PREREQUISITES.md](docs/super-spec/PREREQUISITES.md) for setup options.
+
+   Ensure `bash >= 4`, `git`, `jq >= 1.5`, and `python3 >= 3.6` are on PATH. macOS ships them all by default; minimal Linux images (Alpine, distroless) may need `apk add jq python3` or equivalent.
+
+3. Update your `CLAUDE.md` model policy to allow `claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`.
+
+4. Restart Claude Code (or run `/reload-plugins`) so the new skills register.
+
+## Usage
+
+### Start a feature cycle
+
+`cd` into the project repo, open Claude Code, then invoke either:
+
+```
+/super-spec:cycle
+```
+
+or equivalently:
+
+```
+Skill(super-spec:cycle)
+```
+
+Each per-phase skill is directly slash-invocable (the skill is the command, no separate command layer): `/super-spec:spec`, `/super-spec:discuss`, `/super-spec:plan`, `/super-spec:execute`, `/super-spec:verify`, `/super-spec:map-codebase`. Use one when you want to run a single phase rather than the full cycle. None of the workflow skills set `disable-model-invocation`: the cycle orchestrator chains phases via the Skill tool (a `disable-model-invocation` skill cannot be invoked that way), and each phase hands off to the next the same way. You start a run with `/super-spec:cycle`; the orchestrator drives the rest.
+
+The cycle skill runs a startup health-check (probes opus-4-8 and sonnet-4-6 with 1-token dispatches in a single parallel batch) and then asks for:
+
+1. **Tier** -- controls gate behavior, retries, and fan-out width, not models.
+   - `quality` -- spec + plan critique gates run; code-review blocks on Critical + Important. Use for irreversible / security-critical work.
+   - `balanced` -- same gate behavior as quality. Default for typical features.
+   - `quick` -- **critique gate skipped**; code-review blocks on Critical only. Fastest, cheapest. Use for prototypes or small tweaks.
+
+2. **Execution style**
+   - `auto` -- end-to-end. Hard-gate failures self-heal (re-dispatch upstream agent with findings, max 3 retries per gate, 30 global) before pausing for human.
+   - `step` -- pause between phases. You review SPEC.md / PLAN.md / VERIFICATION.md before next phase fires.
+   - `interactive` -- pause before every subagent dispatch. Maximum control.
+   - `review-only` -- auto except at critique-gate reconciliation, where it pauses for your judgment.
+
+3. **Feature title** -- free text. Cycle derives a kebab-case slug.
+
+**Model selection is fixed** (no preset). Opus runs the reasoning-heavy roles (spec-writer, planner, advocate, challenger, spec-compliance-reviewer); sonnet runs the high-throughput roles (implementer, code-reviewer, verifier, mappers). See `skills/shared/model-matrix.md`.
+
+### What the cycle does
+
+The five phases run in order:
+
+| Phase | Produces | Gates |
+|-------|----------|-------|
+| **SPEC** | `docs/super-spec/features/{slug}/SPEC.md` with `ambiguity_scores` frontmatter | 6-round Socratic interview; ambiguity gate (ambiguity <= 0.20) |
+| **DISCUSS** | `docs/super-spec/features/{slug}/SPEC.md` (revised) | spec critique gate (skipped on quick) |
+| **PLAN** | `docs/super-spec/features/{slug}/PATTERNS.md` (Step 0) + `PLAN.md` (Step 1) | plan critique gate + feasibility check |
+| **EXECUTE** | per-task commits on `feat/{slug}` branch | per-task spec-compliance gate with retry (quality/balanced); Workflow DAG when available, self-claim team fallback |
+| **VERIFY** | `docs/super-spec/features/{slug}/VERIFICATION.md` + map-codebase refresh in `docs/super-spec/codebase/` + PR opened | acceptance gate + code-review HARD-GATE |
+
+EXECUTE prefers a Workflow DAG (`lib/workflows/execute-dag.js`) when the `Workflow` tool is available: deterministic dependency-ordered waves of implementer agents create per-task worktrees via `git worktree add` at absolute paths, a spec-compliance gate with per-task retry guards quality/balanced tiers, and a dedicated merge agent ff-merges each passed branch into `feat/{slug}` sequentially. When the `Workflow` tool is unavailable, EXECUTE falls back to a self-claim team of 2-4 implementers (cap from `tier.execute.maxParallelImplementers`) with a manual FIFO merge queue. Both paths use per-task git worktrees in `.super-spec/worktrees/{slug}/task-NNN/`.
+
+### First-run setup (one time per project)
+
+The very first time you invoke `/super-spec:cycle` in a project, before SPEC starts the cycle ensures `docs/super-spec/codebase/{TECH,ARCH,QUALITY,CONCERNS,DOMAIN}.md` all exist:
+
+1. **GSD ingest.** If the project already has a get-shit-done map at `.planning/codebase/`, super-spec concatenates the relevant GSD docs into super-spec format (with an `Imported from GSD` header) and commits them.
+2. **Mapper dispatch.** For whatever's still missing after ingest (always at least `DOMAIN.md`, since GSD has no analog), the cycle invokes `Skill(super-spec:map-codebase) --domain <missing>`. Mapper agents run in parallel; each writes one of the 5 docs.
+
+Subsequent runs skip Step 5.5 entirely; the incremental refresh at end of VERIFY keeps the map fresh.
+
+### Resume an in-flight feature
+
+If a cycle was interrupted, re-invoke `Skill(super-spec:cycle)`. It scans `.super-spec/features/*/feature.json`, finds incomplete features within the staleness window (default 48h), probes the prior phase team via `TaskList` to distinguish stale-but-resumable state from a still-live orphaned team, and offers to resume from the last completed step. State writes are atomic (`.tmp` + `sync` + rename, with `.bak` rotation) so partial crashes leave the previous-good state recoverable.
+
+### Refresh codebase mapping standalone
+
+Auto-refresh runs at end of each cycle. Manual invocation:
+
+```
+Skill(super-spec:map-codebase)             # incremental, only stale domains
+Skill(super-spec:map-codebase) --full      # re-map all 5 domains
+Skill(super-spec:map-codebase) --domain tech,arch
+```
+
+### Non-interactive mode
+
+For CI / scripting / smoke tests, set env vars before invoking:
+
+```bash
+export SUPER_SPEC_NON_INTERACTIVE=1
+export SUPER_SPEC_ANSWER_TIER=quick
+export SUPER_SPEC_ANSWER_STYLE=auto
+export SUPER_SPEC_ANSWER_TITLE="add subtract function"
+```
+
+The cycle skill detects the env var and skips every AskUserQuestion call.
+
+### Artifact tree
+
+```
+docs/super-spec/                          # COMMITTED
+├── features/{slug}/
+│   ├── SPEC.md
+│   ├── PATTERNS.md
+│   ├── PLAN.md
+│   └── VERIFICATION.md
+└── codebase/
+    ├── TECH.md
+    ├── ARCH.md
+    ├── QUALITY.md
+    ├── CONCERNS.md
+    └── DOMAIN.md
+
+.super-spec/                              # GITIGNORED (except codebase/index.json)
+├── features/{slug}/
+│   ├── feature.json                      # schema v4, atomic-write with .bak rotation
+│   ├── feature.json.bak
+│   ├── spec-interview-transcript.md      # SPEC Socratic interview transcript
+│   ├── discuss-transcript.md             # DISCUSS conversational transcript
+│   └── gate-logs/                        # critique-gate round transcripts
+├── worktrees/{slug}/                     # per-task git worktrees, lifecycle = task
+└── codebase/
+    └── index.json                        # file -> domain[] for incremental map (TRACKED)
+```
+
+### When things fail
+
+- **Health check fails** -- your `CLAUDE.md` model policy probably blocks one of the two models the fixed model map uses. Update policy to allow `claude-opus-4-8` and `claude-sonnet-4-6`.
+- **Critique gate keeps bouncing** (>3 retries on same gate) -- spec or plan is genuinely ambiguous. Cycle pauses and escalates. Edit the artifact manually then re-invoke cycle to resume.
+- **Merge conflict on a task branch** -- the lead's sequential merge rebases the worktree onto current `feat/{slug}` HEAD and retries once. If still fails, cycle pauses (counts against `tier.execute.maxRetriesPerTask`).
+- **Crash mid-execute** -- `feature.json` records `currentTeamName`, `mergeQueue`, and per-phase artifact paths; the harness task list owns per-task status. Resume probes whether the EXECUTE team is still live, replays the merge queue, and instructs implementers to re-claim orphaned in-flight tasks.
+
+See `docs/adopting.md` for more pitfalls and `docs/design.md` for the full architecture (phase walkthroughs, retry budgets, model matrix, tier policy, agent catalog).
+
+## Architecture
+
+super-spec is built on Claude Code agent teams. The cycle skill is a thin orchestrator; each phase skill owns its own team (TeamCreate at phase start, TeamDelete at phase end), teammates persist for the full phase and communicate via SendMessage, and tasks are tracked via the harness `TaskList`. The orchestrator never spawns one-shot subagents for in-phase work -- fresh `Agent` calls are reserved for background codebase mappers.
+
+Each feature runs in its own git worktree created at cycle Step 5 via `git worktree add .claude/worktrees/{slug} -b feat/{slug} {baseSha}`. All phase work (SPEC through VERIFY: docs, state, code, commits) happens inside that worktree on branch `feat/{slug}`. The user's main checkout is never switched onto a feature branch. On resume, the cycle discovers in-progress features by reading `git worktree list` output and locating each worktree's `feature.json` (schema v6 adds `worktreePath`). Features created on schema v5 or earlier resume in-place without a worktree (back-compat).
+
+### Top-level cycle
+
+```mermaid
+flowchart LR
+    user([User]) -->|"Skill(super-spec:cycle)"| cycle[cycle skill<br/>orchestrator]
+    cycle -->|"health-check + tier/style"| init[feature.json<br/>schema v6]
+    init --> spec[SPEC phase<br/>main-thread interview]
+    spec -->|SPEC.md + ambiguity_scores| discuss[DISCUSS team<br/>spec-writer + advocate + challenger]
+    discuss -->|SPEC.md| plan[PLAN team<br/>planner + advocate + challenger]
+    plan -->|PLAN.md + task DAG| execute[EXECUTE team<br/>lead + N implementers + R reviewers]
+    execute -->|merged commits on feat/&lcub;slug&rcub;| verify[VERIFY team<br/>verifier + code-reviewer]
+    verify -->|VERIFICATION.md| pr([PR opened])
+    verify -.->|remediation tasks<br/>via feature.json| execute
+    plan -.->|fix-list<br/>via SendMessage| plan
+    discuss -.->|fix-list<br/>via SendMessage| discuss
+```
+
+Solid arrows are forward progression; dotted arrows are gate-failure retry loops. Each phase persists its artifact under `docs/super-spec/features/{slug}/` and commits it before handoff, so a crash at any boundary is resumable.
+
+### Per-phase team lifecycle
+
+Every phase follows the same lifecycle. The lead is the orchestrator's tool-using thread; teammates are spawned via `TeamCreate` with specialized agent types from `agents/super-spec-*.md`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant L as Lead<br/>(phase skill)
+    participant H as Harness
+    participant T as Teammate(s)
+
+    L->>H: TeamCreate(name, [teammates])
+    L->>L: feature.json.currentTeamName = name
+    L->>T: SendMessage(spawn prompt)
+    Note over T: Teammate persists<br/>for full phase
+    T->>T: Read inputs / produce artifact
+    T->>L: SendMessage(DONE: ...)
+    opt Gate failure
+        L->>T: SendMessage(revise: fix-list)
+        T->>L: SendMessage(DONE: ...)
+    end
+    L->>L: Commit artifact + advance feature.json
+    L->>H: TeamDelete(name)
+    L->>L: feature.json.currentTeamName = null
+```
+
+Resume detection in cycle Step 1 reads `currentTeamName` from each candidate `feature.json` and probes the harness via `TaskList`: a successful call means the prior team is still live (orphaned — manual `TeamDelete` required), an error means the team is gone and the feature can be resumed by recreating the team fresh.
+
+### Critique gate (DISCUSS + PLAN)
+
+Both DISCUSS and PLAN run a paired critique gate on their artifact. The gate is skipped on `quick` tier and capped at `tier.maxCritiqueRounds` (1/2/3 for quick/balanced/quality). Convergence ends the loop early on mutual `DONE`.
+
+```mermaid
+flowchart TD
+    spawn[Lead spawns advocate-1 + challenger-1<br/>with &lcub;N_round&rcub;=1] --> round{Round N}
+    round -->|"SendMessage(critique)"| ch[challenger-N]
+    ch -->|"SendMessage(critique)"| ad[advocate-N]
+    ad -->|"SendMessage(ROUND-N DONE: ...)"| log[Append to<br/>gate-logs/&lcub;phase&rcub;-critique-round-N.md]
+    ch -->|"SendMessage(ROUND-N DONE: ...)"| log
+    log --> conv{Convergence?}
+    conv -->|"both DONE"| pass[fix_list empty<br/>→ artifact accepted]
+    conv -->|"N == maxRounds"| pass
+    conv -->|"otherwise"| nextround[N += 1<br/>SendMessage start round N+1]
+    nextround --> round
+    pass --> revise{fix_list?}
+    revise -->|"empty"| commit[Commit artifact]
+    revise -->|"non-empty"| author[SendMessage author:<br/>revise with fix-list]
+    author --> restart[Re-send spawn prompts<br/>with prior_round_summaries]
+    restart --> round
+```
+
+Gate transcripts are persisted under `.super-spec/features/{slug}/gate-logs/` so a re-entry after revision can replay prior debate context into the new round.
+
+### EXECUTE: the agent-team rung (self-claim parallelism)
+
+EXECUTE is the only phase without an authoring/critique pair. The diagram below is the **agent-team rung** of the concurrency ladder (selected when `t_team <= W < t_wf`, and the fallback whenever the lighter subagent rungs do not apply). The lead pre-populates the harness task list from PLAN.md tasks (plus any `pendingRemediationTasks` from a prior VERIFY pass), then a long-lived team of implementers (and reviewers on quality/balanced tiers) self-claim unblocked tasks until the list drains. On narrower DAGs (`W < t_team`) EXECUTE instead runs the lighter **subagent rung** (`skills/shared/execute-subagent.md`): the lead drives waves of one-shot `Agent` calls and merges inline, with no persistent team. On very wide DAGs with opt-in it escalates to the **Workflow DAG**. All rungs produce the same merged `feat/{slug}` branch.
+
+```mermaid
+flowchart LR
+    subgraph lead[Lead]
+        L1[Read PLAN.md +<br/>pendingRemediationTasks]
+        L2[Compute synthetic blockedBy<br/>from file overlap]
+        L3[TaskCreate for each task]
+        L4[TeamCreate execute team]
+        L5[Process mergeQueue<br/>FIFO + restart from head]
+    end
+    subgraph team[EXECUTE team]
+        I1[implementer-1]
+        I2[implementer-2]
+        IM[implementer-M]
+        R1[reviewer-1]
+        RR[reviewer-R]
+    end
+    subgraph harness[Harness task list]
+        TL[(TaskList<br/>3 statuses:<br/>pending / in_progress / completed<br/>+ metadata.phase for handoff)]
+    end
+    L1 --> L2 --> L3 --> L4 --> team
+    I1 -->|"TaskUpdate claim<br/>(harness serializes)"| TL
+    I2 -->|"TaskUpdate claim"| TL
+    IM -->|"TaskUpdate claim"| TL
+    TL -->|"metadata.phase=awaiting_review"| R1
+    TL -->|"metadata.phase=awaiting_review"| RR
+    R1 -->|"SendMessage REVIEW PASS"| L5
+    RR -->|"SendMessage REVIEW PASS"| L5
+    L5 -->|"git merge --ff-only"| branch([feat/&lcub;slug&rcub;])
+```
+
+Each claimed task runs in an isolated per-task git worktree under `.super-spec/worktrees/{slug}/task-NNN/`, so concurrent implementers cannot race on the working tree. Synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap (computed in Step 2b) provide additional concurrency safety beyond the explicit DAG.
+
+On `quick` tier the reviewer role is omitted (`R = 0`); implementers self-complete and the lead merges directly.
+
+### Implementer task lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: TaskCreate
+    pending --> in_progress: implementer claim<br/>(TaskUpdate status=in_progress,<br/>owner=implementer-N,<br/>metadata.phase=null)
+    in_progress --> in_progress: implementer hands off<br/>(owner=null,<br/>metadata.phase=awaiting_review)
+    in_progress --> in_progress: reviewer claim<br/>(owner=reviewer-N,<br/>metadata.phase=null)
+    in_progress --> in_progress: reviewer FAIL with retries<br/>(owner=null,<br/>metadata.phase=needs_rework,<br/>retries+1)
+    in_progress --> completed: reviewer PASS or<br/>quick-tier implementer self-complete<br/>(REVIEW PASS to lead)
+    in_progress --> completed: reviewer FAIL,<br/>retry budget exhausted<br/>(metadata.result=blocked)
+    completed --> [*]: lead merges<br/>(or escalates if metadata.result=blocked)
+```
+
+All status transitions are confined to the three harness-documented values (`pending`, `in_progress`, `completed`). Implementer/reviewer handoffs and rework happen via `owner` reassignment and `metadata.phase`/`metadata.result` mutation while status stays `in_progress`.
+
+See [docs/super-spec/PREREQUISITES.md](docs/super-spec/PREREQUISITES.md) for setup.
+
+## Limitations
+
+Known harness limitations as of v2.5.0:
+
+1. **No session resumption with in-process teammates.** `/resume` will not restore teammates from a previous session; phase-boundary resume only.
+2. **No nested teams.** Teammates cannot spawn sub-teams. Only the lead agent may create a team.
+3. **One team at a time per lead.** A lead cannot manage multiple concurrent teams.
+4. **`skills` and `mcpServers` frontmatter in agent definitions are inert when running as teammate.** Only the lead's skills and MCP servers are active.
+5. **Permissions set at spawn.** All teammates inherit the lead's permission mode; per-teammate permission scoping is not supported.
+
+## Repository layout
+
+```
+super-spec/
+├── .claude-plugin/
+│   ├── plugin.json
+│   └── marketplace.json
+├── agents/                          # 12 specialized agent defs (teammates + one-shot mappers/probe)
+│   ├── spec-writer.md
+│   ├── planner.md
+│   ├── pattern-mapper.md
+│   ├── implementer.md
+│   ├── spec-compliance-reviewer.md
+│   ├── verifier.md
+│   ├── code-reviewer.md
+│   ├── advocate.md
+│   ├── challenger.md
+│   └── mapper-{quality,concerns,domain}.md
+├── skills/
+│   ├── cycle/SKILL.md               # entry point
+│   ├── spec/SKILL.md
+│   ├── discuss/SKILL.md
+│   ├── plan/SKILL.md
+│   ├── execute/SKILL.md
+│   ├── verify/SKILL.md
+│   ├── map-codebase/SKILL.md
+│   └── shared/                      # model-matrix, tier-matrix, team-prompts/, model-policy, execute-loops, cycle-resume-escalation
+├── lib/                             # extracted bash with unit tests
+│   ├── feature-write.sh             # atomic feature.json writes with .bak rotation
+│   ├── git-ops.sh                   # base-branch detection, slugify, sha helpers
+│   ├── gsd-ingest.sh                # codebase + PATTERNS.md ingestion from GSD
+│   ├── migrate-schema-v3-to-v4.sh   # opt-in migration from schemaVersion 3 to 4
+│   └── team-ops.sh                  # team_name_for_phase + agent-teams env assertion
+├── hooks/
+│   ├── restrict-agent-paths.sh      # PreToolUse, parses transcript for caller subagent_type
+│   ├── team/                        # PostToolUse hooks: task-completed, task-created, teammate-idle
+│   └── hooks.json
+├── tests/
+│   ├── run-all.sh                   # meta runner: validators + hook + lib units + workflow syntax
+│   ├── validate-agents.sh           # frontmatter + tools-list + model invariants
+│   ├── lib/                         # unit tests for lib/*.sh
+│   ├── workflows/smoke.sh           # node --check for lib/workflows/*.js
+│   └── fixtures/                    # probe transcripts, sample agent definitions
+└── docs/
+    ├── design.md                    # full architecture
+    ├── tier-guide.md
+    └── adopting.md
+```
+
+## Docs
+
+- `docs/design.md` -- full architecture
+- `docs/tier-guide.md` -- when to use each tier
+- `docs/adopting.md` -- adoption guide
+- `tests/README.md` -- test matrix
+
+## Tests
+
+```bash
+bash tests/run-all.sh    # validators + hook + lib units + workflow syntax (no claude CLI required)
+```
+
+End-to-end cycle coverage is the manual matrix in `tests/README.md` (run against a live Claude Code session); there is no scripted headless e2e test.
+
+## Workflows integration
+
+Phase skills opportunistically dispatch [Claude Code dynamic workflows](https://code.claude.com/docs/en/workflows) at fan-out points (`map-codebase`, VERIFY acceptance gate, VERIFY code-review HARD-GATE, PLAN multi-angle on quality tier). The wrapper pattern preserves all existing TeamCreate orchestration and falls back automatically when the `Workflow` tool is unavailable.
+
+### Setup
+
+The cycle's startup health-check probes `Workflow` tool availability and writes `.super-spec/runtime.json`. If the tool is denied:
+
+```bash
+/permissions
+# add Workflow to allow list
+```
+
+To force the fallback path everywhere:
+
+```bash
+export CLAUDE_CODE_DISABLE_WORKFLOWS=1
+```
+
+Workflow subagents need `Bash`, `Read`, `Grep`, `Glob` (already in the typical super-spec allowlist).
+
+### Tier parameters
+
+| Param | quality | balanced | quick |
+|---|---|---|---|
+| refuteVoters | 5 | 3 | 1 |
+| planAngles | 5 | 3 | 1 |
+| dimensionReviewers | 4 | 3 | 1 |
+| completenessCritic | true | true | false |
+
+### Bundled standalone commands
+
+`hooks/install-bundled-workflows.sh` mirrors two scripts as user-facing slash commands:
+
+- `/super-spec:codebase-audit` -- multi-dimension code review of the current diff
+- `/super-spec:multi-angle-plan` -- draft N plans, judge, synthesize
+
+## License
+
+MIT.

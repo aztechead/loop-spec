@@ -1,0 +1,56 @@
+# {feature_title}
+
+**Slug:** `{slug}`
+**Created:** {created_at}
+**Tier:** {tier}
+**Execution style:** {exec_style}
+
+## Problem
+
+{What is broken / missing / needed.}
+
+<decisions>
+- Decision: {choice made}. Rationale: {why}. Alternatives considered: {what was rejected and why}.
+</decisions>
+
+## Goals
+
+- {Goal 1}
+- {Goal 2}
+
+## Non-goals
+
+- {Non-goal 1}
+
+## Boundaries (what NOT to do)
+
+- {Anti-goal 1: a behavior, change, or side-effect this feature must never produce}
+- {Anti-goal 2}
+
+## Constraints
+
+- {Constraint 1}
+
+## User-facing behavior
+
+{Concrete description of the change as the user experiences it.}
+
+## Success criteria
+
+### Good Enough
+
+- [ ] {Testable criterion 1 - minimum shippable bar}
+- [ ] {Testable criterion 2 - minimum shippable bar}
+
+### Exceptional
+
+- [ ] {Stretch criterion 1 - proves the feature excels beyond the minimum}
+- [ ] {Stretch criterion 2}
+
+## Out of scope
+
+- {Item 1}
+
+## Open questions
+
+(none - resolved during DISCUSS phase)

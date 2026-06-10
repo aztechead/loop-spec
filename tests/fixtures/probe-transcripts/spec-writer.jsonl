@@ -1,0 +1,1 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"super-spec:spec-writer","prompt":"Write spec for feature foo"}}]}}

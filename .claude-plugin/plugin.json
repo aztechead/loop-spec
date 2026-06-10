@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "super-spec",
+  "description": "Spec-driven development workflow for Claude Code. 5 phases (SPEC/DISCUSS/PLAN/EXECUTE/VERIFY), 3 tiers, fixed per-role model map, 4 execution styles, EXECUTE concurrency ladder (subagent/team/workflow by DAG width), optional graphify codebase mapping, user-gate verification flow, Ralph remediation loop, dynamic-workflow fan-out acceleration.",
+  "version": "3.1.1",
+  "author": {
+    "name": "Christopher Bobrowitz",
+    "email": "cbobrowitz@viasat.com"
+  },
+  "homepage": "https://git.viasat.com/cbobrowitz/super-spec",
+  "repository": "https://git.viasat.com/cbobrowitz/super-spec",
+  "license": "MIT",
+  "keywords": ["spec-driven", "skills", "tdd", "agents", "claude-code"]
+}

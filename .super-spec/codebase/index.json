@@ -1,0 +1,357 @@
+{
+  "last_refreshed_at": {
+    "tech": "2026-05-12T03:30:20Z",
+    "arch": "2026-05-12T03:30:20Z",
+    "quality": "2026-05-12T03:30:20Z",
+    "concerns": "2026-05-12T00:27:00Z",
+    "domain": "2026-05-12T00:27:00Z"
+  },
+  "files": {
+    ".claude-plugin/plugin.json": [
+      "tech",
+      "arch",
+      "quality",
+      "concerns",
+      "domain"
+    ],
+    ".claude-plugin/marketplace.json": [
+      "tech",
+      "arch"
+    ],
+    ".gitignore": [
+      "tech",
+      "arch",
+      "quality",
+      "concerns"
+    ],
+    "hooks/hooks.json": [
+      "tech",
+      "arch",
+      "quality",
+      "concerns"
+    ],
+    "hooks/restrict-agent-paths.sh": [
+      "tech",
+      "arch",
+      "quality",
+      "concerns"
+    ],
+    "hooks/restrict-agent-paths.test.sh": [
+      "tech",
+      "quality",
+      "concerns"
+    ],
+    "lib/git-ops.sh": [
+      "tech",
+      "arch",
+      "quality",
+      "concerns"
+    ],
+    "lib/gsd-ingest.sh": [
+      "tech",
+      "arch",
+      "quality",
+      "concerns",
+      "domain"
+    ],
+    "lib/state-write.sh": [
+      "tech",
+      "arch",
+      "quality",
+      "concerns"
+    ],
+    "tests/run-all.sh": [
+      "tech",
+      "quality",
+      "concerns",
+      "arch"
+    ],
+    "tests/smoke.sh": [
+      "tech",
+      "arch",
+      "quality",
+      "concerns"
+    ],
+    "tests/validate-agents.sh": [
+      "tech",
+      "arch",
+      "quality",
+      "concerns"
+    ],
+    "tests/fixtures/minimal-py/Makefile": [
+      "tech"
+    ],
+    "tests/fixtures/minimal-py/src/calculator.py": [
+      "tech"
+    ],
+    "skills/cycle/SKILL.md": [
+      "tech",
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "skills/shared/model-policy.md": [
+      "tech",
+      "arch",
+      "quality",
+      "domain"
+    ],
+    "skills/shared/preset-matrix.md": [
+      "tech",
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "skills/shared/feature-state-schema.md": [
+      "tech",
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "README.md": [
+      "tech",
+      "domain"
+    ],
+    "skills/discuss/SKILL.md": [
+      "arch",
+      "domain"
+    ],
+    "skills/plan/SKILL.md": [
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "skills/execute/SKILL.md": [
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "skills/verify/SKILL.md": [
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "skills/map-codebase/SKILL.md": [
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "skills/shared/tier-matrix.md": [
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "skills/shared/artifact-templates/SPEC.md.template": [
+      "arch",
+      "domain"
+    ],
+    "skills/shared/artifact-templates/PLAN.md.template": [
+      "arch",
+      "domain"
+    ],
+    "skills/shared/artifact-templates/EXECUTION.md.template": [
+      "arch"
+    ],
+    "skills/shared/artifact-templates/VERIFICATION.md.template": [
+      "arch",
+      "domain"
+    ],
+    "skills/shared/artifact-templates/PATTERNS.md.template": [
+      "arch",
+      "domain"
+    ],
+    "agents/super-spec-spec-writer.md": [
+      "arch",
+      "domain"
+    ],
+    "agents/super-spec-planner.md": [
+      "arch",
+      "domain"
+    ],
+    "agents/super-spec-implementer.md": [
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "agents/super-spec-verifier.md": [
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "agents/super-spec-spec-compliance-reviewer.md": [
+      "arch",
+      "domain"
+    ],
+    "agents/super-spec-code-reviewer.md": [
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "agents/super-spec-advocate.md": [
+      "arch",
+      "domain"
+    ],
+    "agents/super-spec-challenger.md": [
+      "arch",
+      "domain"
+    ],
+    "agents/super-spec-pattern-mapper.md": [
+      "arch",
+      "domain"
+    ],
+    "agents/super-spec-mapper-tech.md": [
+      "arch",
+      "domain"
+    ],
+    "agents/super-spec-mapper-arch.md": [
+      "arch",
+      "domain"
+    ],
+    "agents/super-spec-mapper-quality.md": [
+      "arch"
+    ],
+    "agents/super-spec-mapper-concerns.md": [
+      "arch"
+    ],
+    "agents/super-spec-mapper-domain.md": [
+      "arch",
+      "domain"
+    ],
+    "commands/cycle.md": [
+      "arch"
+    ],
+    "commands/discuss.md": [
+      "arch"
+    ],
+    "commands/plan.md": [
+      "arch"
+    ],
+    "commands/execute.md": [
+      "arch"
+    ],
+    "commands/verify.md": [
+      "arch"
+    ],
+    "commands/map-codebase.md": [
+      "arch"
+    ],
+    "docs/design.md": [
+      "arch",
+      "concerns",
+      "domain"
+    ],
+    "CLAUDE.md": [
+      "quality"
+    ],
+    "tests/README.md": [
+      "quality",
+      "concerns"
+    ],
+    "tests/probe-cc-capabilities.md": [
+      "quality"
+    ],
+    "tests/lib/state-write.test.sh": [
+      "quality",
+      "concerns"
+    ],
+    "tests/lib/git-ops.test.sh": [
+      "quality",
+      "concerns"
+    ],
+    "tests/lib/gsd-ingest.test.sh": [
+      "quality",
+      "concerns"
+    ],
+    "docs/tier-guide.md": [
+      "domain"
+    ],
+    "docs/adopting.md": [
+      "domain"
+    ],
+    "lib/feature-write.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "lib/team-ops.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "hooks/team/teammate-idle.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "hooks/team/task-created.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "hooks/team/task-completed.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "hooks/team/teammate-idle.test.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "hooks/team/task-created.test.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "hooks/team/task-completed.test.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "tests/lib/feature-write.test.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "tests/lib/team-ops.test.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "tests/validate-agents.test.sh": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "tests/fixtures/agent-with-skills-key.md": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "docs/super-spec/PREREQUISITES.md": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "skills/shared/team-prompts/advocate.md": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "skills/shared/team-prompts/challenger.md": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "skills/shared/team-prompts/implementer.md": [
+      "arch",
+      "quality",
+      "tech"
+    ],
+    "skills/shared/team-prompts/reviewer.md": [
+      "arch",
+      "quality",
+      "tech"
+    ]
+  }
+}

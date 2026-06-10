@@ -1,0 +1,20 @@
+{
+  "name": "super-spec-marketplace",
+  "description": "Marketplace for super-spec plugin",
+  "owner": {
+    "name": "Christopher Bobrowitz",
+    "email": "cbobrowitz@viasat.com"
+  },
+  "plugins": [
+    {
+      "name": "super-spec",
+      "description": "Spec-driven development workflow for Claude Code (spec phase, user-gate flow, graphify, Ralph remediation, forensics, dynamic-workflow fan-out)",
+      "version": "3.1.1",
+      "source": "./",
+      "author": {
+        "name": "Christopher Bobrowitz",
+        "email": "cbobrowitz@viasat.com"
+      }
+    }
+  ]
+}
