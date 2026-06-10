@@ -2,7 +2,7 @@
 
 A spec-driven development plugin for Claude Code. Bash + git + jq + python3 only -- no npm/pip/brew installs. 5 phases. 3 tiers. Fixed per-role model map. 4 execution styles.
 
-**Status:** v3.1.0. Built on Claude Code agent teams (requires CC v2.1.32+ and `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`).
+**Status:** v3.2.0. Built on Claude Code agent teams when available (CC v2.1.32+ with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), with first-class loop-runner execution that works without teams: every phase has a documented no-teams fallback, and EXECUTE runs as a supervised fleet of bounded autonomous loops (`skills/loop-runner/`).
 
 ## Why this exists
 
@@ -25,6 +25,30 @@ super-spec is what happens when you take the speed of superpowers (persistent sp
 - **Orphaned worktree pruning** (ported from GSD): after EXECUTE completes, it prunes worktrees whose branches are already merged without destroying uncommitted work.
 - **Remediation routing** (v1.0.0): when VERIFY's acceptance gate or code-review HARD-GATE fires, remediation tasks are persisted to `feature.json.pendingRemediationTasks[]` and consumed by EXECUTE on re-entry — they survive the verify team's teardown without requiring the verify and execute teams to share state.
 
+- **Loop engineering, first-class** (v3.2.0): the plugin bundles the **loop-runner**
+  skill (`skills/loop-runner/`, also invocable standalone as `/super-spec:loop-runner`) —
+  three tested layers for autonomous execution: `compile_spec.py` (spec → verified task
+  plan), `supervisor.py` (plan → fleet of workers in isolated worktrees with merge +
+  halt policy), `loop.py` (bounded loop with verifier-integrity locking,
+  budget/iteration/stall/timeout stops, durable state, `result.json` contract). EXECUTE
+  gains a **loop-fleet rung**: PLAN.md tasks are compiled to a loop plan
+  (`lib/plan-to-loop.sh`) and run as a supervised fleet — every iteration of every
+  worker mechanically re-runs the task's `verifyCommand`, and SPEC.md/PLAN.md are
+  hash-locked so no worker can edit the requirements to match its work. This is the
+  strongest spec-adherence guarantee in the plugin, and it requires neither agent teams
+  nor the Workflow tool. Enable everywhere with `SUPER_SPEC_EXECUTE_LOOPS=1`; it is also
+  the automatic EXECUTE path when agent teams are unavailable. The loop-runner offline
+  regression suite (29 checks, fake claude binary) runs as part of `tests/run-all.sh`.
+- **Teams-optional operation** (v3.2.0): the cycle no longer aborts when
+  `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is unset. Every phase declares a no-teams
+  fallback (`skills/shared/no-teams-fallback.md`): one-shot subagents with the same
+  agent types/models/prompts for critique and verify, loop-fleet or subagent rung for
+  EXECUTE. Hook guards (task metadata validation, lint/typecheck completion gates, agent
+  path restrictions) are scoped to super-spec-owned tasks (`metadata.superSpec` /
+  `task-NNN:` subjects) and active super-spec projects, fail open on any parse error,
+  and each carries a kill switch — they no longer throw on ordinary TaskCreate/
+  TaskUpdate/TaskCompleted traffic or tax tool calls in unrelated projects.
+
 The rest of this README is install + usage.
 
 ## Quickstart
@@ -35,7 +59,7 @@ The rest of this README is install + usage.
    claude plugin install super-spec@super-spec-marketplace
    ```
 
-2. Set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (requires Claude Code v2.1.32+). See [docs/super-spec/PREREQUISITES.md](docs/super-spec/PREREQUISITES.md) for setup options.
+2. Optionally set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (requires Claude Code v2.1.32+) to enable persistent phase teams. See [docs/super-spec/PREREQUISITES.md](docs/super-spec/PREREQUISITES.md) for setup options. Without it the cycle runs on the no-teams fallbacks (`skills/shared/no-teams-fallback.md`): one-shot subagents for critique/verify and the loop-fleet rung for EXECUTE (requires the `claude` CLI on PATH).
 
    Ensure `bash >= 4`, `git`, `jq >= 1.5`, and `python3 >= 3.6` are on PATH. macOS ships them all by default; minimal Linux images (Alpine, distroless) may need `apk add jq python3` or equivalent.
 
@@ -335,7 +359,8 @@ super-spec/
 │   ├── execute/SKILL.md
 │   ├── verify/SKILL.md
 │   ├── map-codebase/SKILL.md
-│   └── shared/                      # model-matrix, tier-matrix, team-prompts/, model-policy, execute-loops, cycle-resume-escalation
+│   ├── loop-runner/                 # bundled loop-runner skill: loop.py, compile_spec.py, supervisor.py + offline test suite
+│   └── shared/                      # model-matrix, tier-matrix, team-prompts/, model-policy, execute-loops, execute-loop-fleet, no-teams-fallback, cycle-resume-escalation
 ├── lib/                             # extracted bash with unit tests
 │   ├── feature-write.sh             # atomic feature.json writes with .bak rotation
 │   ├── git-ops.sh                   # base-branch detection, slugify, sha helpers

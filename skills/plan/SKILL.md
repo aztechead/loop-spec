@@ -8,6 +8,13 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 You are the PLAN phase orchestrator. Invoked by `super-spec:cycle` when `feature.json.currentPhase == "plan"`.
 
+> **No-teams fallback:** if `.super-spec/runtime.json.teamsAvailable == false`, do NOT
+> call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run planner, advocate, and
+> challenger as one-shot `Agent` calls with the same agent types, models, and prompt
+> templates, per `skills/shared/no-teams-fallback.md`. Critique rounds become sequential
+> challenger → advocate Agent calls with prior round summaries (from `gate-logs/`)
+> inlined. All artifacts, gates, and retry budgets are unchanged.
+
 ## Inputs (from cycle skill via feature.json)
 
 - `slug`, `tier`, `execStyle`
