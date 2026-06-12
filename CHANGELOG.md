@@ -2,7 +2,7 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
-## [Unreleased]
+## [1.1.0] - 2026-06-12
 
 ### Added
 - **Workspace mode (multi-repo)** (`lib/workspace.sh` with `detect`/`list-repos`/`resolve-repo`):
