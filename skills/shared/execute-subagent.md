@@ -167,3 +167,107 @@ self-claim, idle/wake messaging, and a persistent merge queue -- all of which ma
 when many implementers contend for a wide pool of tasks. At `W < t_team` the pool is
 small enough that the lead can dispatch each wave directly and serialize merges inline,
 which is cheaper and simpler while producing the identical merged feature branch.
+
+## Workspace mode
+
+When `feature.workspace` is non-null, the subagent rung is always selected (the rung is
+hard-pinned in `execute` SKILL Step 3). The wave loop below runs with these differences.
+
+### Wave construction
+
+Group the ready task set by `repo` field before forming a wave. Never schedule two tasks
+with the same `repo` concurrently -- a repo's branch history must remain a clean linear
+sequence of commits:
+
+```
+ready_tasks = [tasks in ready set]
+# Group by repo, take at most one per repo per wave:
+wave = []
+repos_in_wave = set()
+for task in ready_tasks:
+  if task.repo not in repos_in_wave and len(wave) < maxParallelImplementers:
+    wave.append(task)
+    repos_in_wave.add(task.repo)
+```
+
+Tasks from different repos may still run in the same wave (parallel across repos,
+serialized within each repo). The wave is still capped by `maxParallelImplementers`.
+
+### Implementer prompts (workspace mode)
+
+Each implementer `Agent` call in workspace mode receives a prompt that includes:
+- `repo`: the repo name (e.g., `frontend`)
+- `abs_repo`: the absolute path to the repo (`{feature.workspace.root}/{repo.path}`)
+- `branch`: `feat/{slug}` (the in-place branch on that repo)
+
+The prompt instructs the implementer:
+
+```
+You are an implementer agent for task {taskId} in repo '{repo}'.
+
+IMPORTANT: All paths must be ABSOLUTE. Do not use em-dashes.
+
+Repo: {repo}
+Repo path: {abs_repo}   (absolute; all git and file operations target this directory)
+Branch: feat/{slug}     (already checked out in this repo; do NOT create a worktree)
+
+Step 1 - Read the assigned files. Files are workspace-relative ({repo}/{path}); resolve
+         them as absolute paths under {abs_repo}.
+{readFirst clause}
+{specPath clause}
+
+Step 2 - Implement the task directly in the repo at {abs_repo}.
+Task subject: {task.subject}
+Brief: {task.brief}
+Acceptance criteria:
+{numbered acceptanceCriteria}
+{prior-findings clause on rework attempts}
+
+Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.
+Do NOT create a git worktree. Edit files directly in {abs_repo}.
+
+Step 3 - Run the configured quality commands with cwd = {abs_repo} (skip blanks):
+  Lint: {repo.commands.lint}
+  Test: {repo.commands.test}
+  Typecheck: {repo.commands.typecheck}
+
+Step 4 - Stage and commit using git -C so git does not depend on cwd:
+  git -C "{abs_repo}" add <files>
+  git -C "{abs_repo}" commit -m "feat: NO_JIRA {task.subject}"
+Do NOT push. Do NOT run git against any path other than {abs_repo}.
+
+Return JSON: { taskId: "{taskId}", repo: "{repo}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
+```
+
+### Merge and ff steps (workspace mode -- skipped)
+
+In workspace mode the per-task ff-merge steps from the standard wave loop (step 6:
+`git checkout feat/{slug}` / `git merge --ff-only`) are **skipped entirely**. Implementers
+commit directly on `feat/{slug}` in the repo; there is no task branch and no per-task
+worktree to merge. The lead does not run `git merge` or `git worktree remove` for
+workspace tasks.
+
+The post-wave test gate (step 7) still applies: run each participating repo's detected
+test command (`repo.commands.test`) from `abs_repo` after the wave completes; on
+failure, record a remediation note and surface via `escalation` or `blocked`.
+
+### Completion verification (workspace mode)
+
+After each wave, the lead verifies that each completed task actually produced commits.
+Use `lib/worktree-commit-check.sh -C <abs_repo>` to check commit presence over the
+repo's `baseSha`:
+
+```bash
+abs_repo="${workspace_root}/${repo.path}"
+base_sha="${repo.baseSha}"   # from feature.workspace.repos[] entry
+
+if ! bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-commit-check.sh" \
+    -C "$abs_repo" "$base_sha" "feat/${slug}"; then
+  # No commits over baseSha on feat/{slug} in this repo -- task commit is missing.
+  blocked+=("{taskId}:zero-commit")
+fi
+```
+
+A task is considered committed when `worktree-commit-check.sh -C <abs_repo> <baseSha>
+feat/{slug}` exits 0, meaning the commit count over `baseSha` on `feat/{slug}` in that
+repo has grown. This replaces the worktree-branch commit check used in single-repo mode.
