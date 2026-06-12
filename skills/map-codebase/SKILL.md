@@ -85,7 +85,18 @@ fall through to the existing TeamCreate path below.
 
 ### Step 3 - Create map-codebase team and spawn mapper teammates
 
-Derive `project_id` from the repo root path hash (e.g. `$(basename $(git rev-parse --show-toplevel))`).
+Derive `project_id` in a workspace-aware way -- never call bare `git rev-parse --show-toplevel` without first confirming the cwd is a git repo:
+
+```bash
+ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect 2>/dev/null || true)"
+ws_mode="$(echo "$ws_json" | jq -r '.mode // "single"')"
+ws_root="$(echo "$ws_json" | jq -r '.root // ""')"
+project_id="$(basename "$ws_root")"
+```
+
+In both single and workspace modes `project_id` is the basename of the detected root (the repo toplevel in single mode, the workspace parent directory in workspace mode). This avoids running `git rev-parse --show-toplevel` at a non-repo workspace root.
+
+**Workspace mode note:** in workspace mode the repo list is available from `ws_json`. Pass each repo's absolute path and name to mappers so they can cover each repo with per-repo sections. The commit step in Step 6 is gated on the root being a git repo (see Step 6 below).
 
 Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `feature.models.mapper`; standalone, use `claude-sonnet-4-6` (the fixed mapper model per `skills/shared/model-matrix.md`). Pass it explicitly on every mapper spawn so they never inherit the orchestrator's session model.
 
@@ -150,9 +161,22 @@ Clear `currentTeamName` and `currentTeammates` in `feature.json` (if invoked fro
 
 ### Step 6 - Commit
 
+In single mode, commit unconditionally:
+
 ```bash
 git add docs/loop-spec/codebase/ .loop-spec/codebase/index.json
 git commit -m "docs: NO_JIRA refresh codebase mapping (feature: {slug if available, else 'standalone'})"
+```
+
+In workspace mode, gate the commit on the workspace root being a git repo:
+
+```bash
+if git -C "$ws_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git -C "$ws_root" add docs/loop-spec/codebase/ .loop-spec/codebase/index.json
+  git -C "$ws_root" commit -m "docs: NO_JIRA refresh codebase mapping (feature: {slug if available, else 'standalone'})"
+else
+  echo "workspace root not a git repo; leaving codebase docs uncommitted"
+fi
 ```
 
 Note: `.loop-spec/codebase/index.json` is NOT gitignored (it's a tracking file the mapping needs across machines). Only `.loop-spec/features/` and `.loop-spec/worktrees/` are gitignored. Update `.gitignore` accordingly if needed (this should already be correct from Task 0).

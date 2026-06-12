@@ -29,7 +29,7 @@ You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and t
 1. `docs/loop-spec/features/{slug}/PATTERNS.md` - concept analogs from the existing codebase (produced first, in Step 0)
 2. `docs/loop-spec/features/{slug}/PLAN.md` - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
 
-Plus a `tasks` array returned in the completion message for the lead to seed the EXECUTE harness task list via `TaskCreate`. Concurrency safety is enforced by EXECUTE Step 2b, which adds synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap, so the planner does not assign waves.
+Plus a `tasks` array returned in the completion message for the lead to seed the EXECUTE harness task list via `TaskCreate`. Concurrency safety is enforced by EXECUTE Step 2b, which adds synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap, so the planner does not assign waves. In workspace mode each task object also carries `"repo": "<name>"` (matching a `workspace.repos[].name` value) so the EXECUTE harness knows which repo the task targets.
 
 ## Procedure
 
@@ -63,10 +63,45 @@ If `graphify-out/graph.json` exists, prefer `graphify query "<question>"`, `grap
 - Each task must be a coherent commit-able unit.
 - Code-producing tasks MUST specify TDD ordering in Steps (test first).
 - Skill/config/docs tasks excluded from TDD.
-- Each task has: id, subject, files, verify command, acceptance criteria, blockedBy, read_first.
+- Each task has: id, subject, files, verify command, acceptance criteria, blockedBy, read_first. In workspace mode each task also carries repo: the name of the single participating repository this task targets (workspace mode only; absent in single mode).
 - Every task MUST include a `read_first:` field containing a list of concrete file identifiers (paths, path:line-range, or path (section name)) that the implementer must read before starting. An empty list `[]` is allowed only when the task creates a brand-new file with no analog in the codebase.
 - Declare a `blockedBy` edge whenever a task logically depends on another (e.g., a refactor before its caller). Do NOT enumerate file-overlap-based edges manually -- EXECUTE Step 2b computes those automatically from `files[]` intersections, so the planner only needs explicit logical dependencies.
 - Bash tool is read-only here (run `ls`, `git log`, `wc -l` for context). Do NOT modify code.
+
+## Workspace mode -- repo field rules
+
+When `feature.workspace` is non-null, apply these additional rules in addition to all existing role-boundary rules.
+
+**One task, one repo.** Each task MUST target exactly one repository. The task's `repo` value must match a `workspace.repos[].name` in `feature.json`. Cross-repo work is expressed as separate tasks joined by explicit `blockedBy` edges.
+
+**workspace-relative files.** `files[]` entries are workspace-relative and must start with the repo name (e.g., `backend/lib/auth.py`). Every file in a task must resolve via `lib/workspace.sh resolve-repo` to the repo named in that task's `repo` field.
+
+**PLAN.md task-block format with repo (workspace mode example):**
+
+```
+### task-003: backend -- add audit-log middleware
+
+**Goal:** Write the audit-log middleware and wire it into the request pipeline.
+
+**repo:** backend
+
+**Files:**
+- `backend/lib/audit.py`
+- `backend/tests/test_audit.py`
+
+**blockedBy:** task-002
+
+**read_first:**
+- `backend/lib/auth.py:10-45` (request pipeline entry point)
+
+**Verify:** `bash -c "cd backend && python -m pytest tests/test_audit.py -q"`
+
+**Acceptance criteria:**
+- [ ] `backend/lib/audit.py` exists and is importable (exit code 0 from `python -c "import lib.audit"`).
+- [ ] `grep -c "audit_log" backend/lib/audit.py` returns 1 or more.
+```
+
+**tasks[] JSON shape in workspace mode:** include `"repo": "<name>"` as a top-level key alongside `id`, `subject`, `files`, etc. `lib/plan-to-loop.sh`, `lib/dag-width.sh`, and `lib/plan-adherence.sh` ignore unknown task keys, so no changes to those scripts are needed.
 
 ## BANNED PHRASES
 
