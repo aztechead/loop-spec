@@ -10,7 +10,7 @@
 
 1. Register the marketplace:
    ```bash
-   claude plugin marketplace add git@git.viasat.com:cbobrowitz/loop-spec.git
+   claude plugin marketplace add git@github.com:aztechead/loop-spec.git
    ```
 2. Install the plugin:
    ```bash

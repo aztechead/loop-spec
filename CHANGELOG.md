@@ -434,7 +434,7 @@ Hardening pass after the v0.1.x dogfood revealed skill-prose fragility.
 - Slash commands mirror skills 1:1: `/loop-spec:cycle`, `/loop-spec:discuss`, `/loop-spec:plan`, `/loop-spec:execute`, `/loop-spec:verify`, `/loop-spec:map-codebase`.
 
 ### Changed
-- Install commands now use SSH (`git@git.viasat.com:cbobrowitz/loop-spec.git`) for repos behind SSO.
+- Install commands now use SSH (`git@github.com:aztechead/loop-spec.git`) for repos behind SSO (URL since rehosted).
 
 ## [0.1.0] - 2026-05-05
 

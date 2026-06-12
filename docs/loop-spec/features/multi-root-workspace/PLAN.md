@@ -7,7 +7,7 @@
 
 Three workstreams sharing one foundation. Workstream A introduces a workspace resolver (`lib/workspace.sh`) and threads an optional repo target (`-C <path>`) through the three git-touching lib scripts, then teaches the cycle/plan/execute/verify skills a workspace branch alongside the existing single-repo branch. The feature state schema gains an optional `workspace` block (v7); absence means single mode, so v6 features and all current behavior are untouched. Workstreams B and C are additive skills plus deterministic lib helpers, both consuming `lib/workspace.sh` so they are workspace-aware from day one. No existing skill content is restructured; workspace paths are added as clearly-marked conditional sections.
 
-Concept provenance note: workstreams B and C adapt ideas (iterative review convergence, review independence, severity-gated blocking, churn-based fragility ranking, synthesized assessment reporting) from two proprietary reference skills. All text, structure, and code are written fresh for loop-spec; no proprietary content, identifiers, or framework references may appear (SPEC criterion bans "Viasat", "MAF", "maf.paths", "Proprietary" strings in new files).
+Concept provenance note: workstreams B and C adapt ideas (iterative review convergence, review independence, severity-gated blocking, churn-based fragility ranking, synthesized assessment reporting) from two proprietary reference skills. All text, structure, and code are written fresh for loop-spec; no proprietary content, identifiers, or framework references may appear (SPEC criterion bans vendor-identifying strings and "Proprietary" in new files).
 
 ## Assumptions
 
@@ -317,7 +317,7 @@ Frontmatter: `name: assess`, description (codebase fragility/health assessment, 
 
 Procedure: (1) `lib/workspace.sh detect` -> repo set (single repo or workspace repos; mode none -> abort). (2) Per repo: `bash "${CLAUDE_SKILL_DIR}/../../lib/fragility-scan.sh" <abs repo> --top 20`, print top table. (3) Reviewer dispatch: top `LOOP_SPEC_ASSESS_TOP_N` (default 5) files per repo, one-shot `Agent` calls `subagent_type: "loop-spec:code-reviewer"`, model `claude-sonnet-4-6` (hardcoded literal in the skill with a one-line note: assess runs standalone with no feature.json, so there is no `feature.models` map to read; keep in sync with `skills/shared/model-matrix.md`), parallel, prompts carrying absolute file path + fragility stats, asking for severity-ranked findings (read-only; output findings as JSON in the reply). (4) Synthesize `docs/loop-spec/assessment/ASSESSMENT.md`: header with scan metadata; per-repo fragility heat map table; reviewer findings table (file, line, severity, claim); cross-repo ranked findings (CRITICAL>HIGH>MEDIUM>LOW, then fragility score); prioritized fix recommendations; explicit "advisory, no gate" note. (5) Only that one file is written; nothing is committed.
 
-**Verify:** `grep -c "fragility-scan.sh\|ASSESSMENT.md\|LOOP_SPEC_ASSESS_TOP_N\|CLAUDE_SKILL_DIR" skills/assess/SKILL.md` >= 4; no banned strings (`grep -il "viasat\|maf" skills/assess/SKILL.md` empty).
+**Verify:** `grep -c "fragility-scan.sh\|ASSESSMENT.md\|LOOP_SPEC_ASSESS_TOP_N\|CLAUDE_SKILL_DIR" skills/assess/SKILL.md` >= 4; no banned strings (`grep -il "proprietary" skills/assess/SKILL.md` empty).
 
 ---
 

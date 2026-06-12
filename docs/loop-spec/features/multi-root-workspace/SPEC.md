@@ -11,7 +11,7 @@ loop-spec assumes the current working directory is (inside) a single git reposit
 
 A developer working on a product split across sibling repositories (e.g. `frontend/`, `backend/`, `db/` under one parent directory) cannot run one loop-spec cycle that plans, implements, and verifies a feature spanning all of them. The parent directory may or may not itself be a git repository.
 
-Separately, two proven review workflows exist only as proprietary external skills (Viasat MAF `quality-loop` and `assessment-pipeline`) that depend on a Python framework unavailable here. Their concepts -- an iterative pre-commit review convergence loop, and a codebase fragility assessment with synthesized reporting -- fit loop-spec's gap between EXECUTE and VERIFY and its codebase-mapping capability, but must be re-derived clean on loop-spec's runtime (bash + git + jq + python3 stdlib) with no proprietary text or code copied.
+Separately, two proven review workflows exist only as proprietary external skills (a vendor framework's `quality-loop` and `assessment-pipeline`) that depend on a Python framework unavailable here. Their concepts -- an iterative pre-commit review convergence loop, and a codebase fragility assessment with synthesized reporting -- fit loop-spec's gap between EXECUTE and VERIFY and its codebase-mapping capability, but must be re-derived clean on loop-spec's runtime (bash + git + jq + python3 stdlib) with no proprietary text or code copied.
 
 ## Goals
 
@@ -45,7 +45,7 @@ Separately, two proven review workflows exist only as proprietary external skill
 
 ## Non-goals
 
-- Porting any Viasat MAF text, code, templates, or checker implementations. Everything in workstreams B and C is re-derived behavior on loop-spec's stack; no proprietary content appears in any new file.
+- Porting any text, code, templates, or checker implementations from the proprietary vendor framework. Everything in workstreams B and C is re-derived behavior on loop-spec's stack; no proprietary content appears in any new file.
 - AST/tree-sitter static analysis checkers. Deterministic checks are the project's own detected commands plus existing marker scans.
 - Workspace-mode parity for the team, loop-fleet, and Workflow EXECUTE rungs. Workspace mode v1 runs the subagent rung only; the other rungs remain single-repo and are explicitly deferred.
 - Feature worktrees or `EnterWorktree` in workspace mode. Workspace repos get in-place `feat/{slug}` branches.
@@ -127,8 +127,8 @@ Separately, two proven review workflows exist only as proprietary external skill
   Verify: `bash tests/run-all.sh`.
 - [ ] README documents: workspace mode (detection rules, `workspace.json`, per-repo branches/PRs, subagent-rung cap), the assess skill, and the quality-loop skill; both new skills appear in the skills list. CHANGELOG `[Unreleased]` documents all additions.
   Verify: `grep -c "workspace" README.md` returns 6 or more; `grep -c "assess\|quality-loop" README.md` returns 4 or more; `grep -c "workspace\|assess\|quality-loop" CHANGELOG.md` returns 6 or more.
-- [ ] No file under `skills/assess/`, `skills/quality-loop/`, `agents/security-reviewer.md`, `lib/fragility-scan.sh`, or `lib/quality-loop-state.sh` contains the strings "Viasat", "MAF", "maf.paths", or "Proprietary".
-  Verify: `grep -ril "viasat\|maf\.paths\|proprietary" skills/assess skills/quality-loop agents/security-reviewer.md lib/fragility-scan.sh lib/quality-loop-state.sh` returns no matches.
+- [ ] No file under `skills/assess/`, `skills/quality-loop/`, `agents/security-reviewer.md`, `lib/fragility-scan.sh`, or `lib/quality-loop-state.sh` contains vendor-identifying strings from the proprietary reference material or the word "Proprietary".
+  Verify: `grep -ril "proprietary" skills/assess skills/quality-loop agents/security-reviewer.md lib/fragility-scan.sh lib/quality-loop-state.sh` returns no matches.
 - [ ] No em-dash (U+2014) in any new or modified file.
   Verify: `python3 -c "import sys,pathlib; bad=[p for p in map(pathlib.Path, sys.argv[1:]) if '—' in p.read_text()]; sys.exit(1 if bad else 0)" lib/workspace.sh lib/fragility-scan.sh lib/quality-loop-state.sh skills/assess/SKILL.md skills/quality-loop/SKILL.md agents/security-reviewer.md` exits 0.
 
