@@ -2,6 +2,36 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [Unreleased]
+
+### Added
+- **Workspace mode (multi-repo)** (`lib/workspace.sh` with `detect`/`list-repos`/`resolve-repo`):
+  depth-1 child-repo discovery or explicit `.loop-spec/workspace.json` pin; `-C <path>` option on
+  `lib/git-ops.sh`, `lib/checkpoint.sh`, and `lib/worktree-commit-check.sh` so every git operation
+  can target an arbitrary repo root; feature state schema v7 optional `workspace` block (absent =
+  single mode, no migration required); workspace paths added to `skills/cycle/SKILL.md` (Step 0
+  detection, per-repo Step 4 command detection, two-phase in-place `feat/{slug}` branch creation in
+  Step 5, graphify/GSD skip in Steps 5.4/5.5, workspace resume rule), `skills/plan/SKILL.md`,
+  `skills/execute/SKILL.md`, and `skills/verify/SKILL.md`; `LOOP_SPEC_ANSWER_REPOS` env var for
+  non-interactive workspace repo selection. EXECUTE subagent-rung cap in workspace mode is v1 scope;
+  team/loop-fleet/Workflow rungs remain single-repo only (deliberately deferred).
+- **`skills/assess/SKILL.md`** -- standalone, read-only codebase fragility and health assessment;
+  workspace-aware (scans every configured repo in workspace mode, single repo in single mode).
+  New `lib/fragility-scan.sh`: deterministic per-file fragility ranking from git history
+  (commit churn, bugfix-commit density, recency weighting), pure git + python3 stdlib; no LLM.
+  Dispatches bounded code-reviewer subagents at the top-N hotspot files (`LOOP_SPEC_ASSESS_TOP_N`,
+  default 5 per repo); synthesizes `docs/loop-spec/assessment/ASSESSMENT.md`. Concept adapted from
+  assessment-pipeline ideas; clean-room text.
+- **`skills/quality-loop/SKILL.md`** -- iterative pre-commit review convergence loop;
+  workspace-aware scope resolution (explicit file args win, else union of modified files across repos).
+  Deterministic-checks-first ordering; review independence protocol (no prior-round findings in
+  reviewer prompts); severity gate (security CRITICAL/HIGH block, MEDIUM/LOW advisory);
+  `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` (default 3); systemic-issue escalation on same category in
+  two consecutive rounds. New `lib/quality-loop-state.sh`: round/finding/convergence state tracker
+  with atomic writes at `.loop-spec/quality-loop.json`. New `agents/security-reviewer.md` (sonnet,
+  read-only tools: Read/Glob/Grep only); total agent count is now 13. Concept adapted from
+  quality-loop ideas; clean-room text.
+
 ## [1.0.0] - 2026-06-10
 
 ### Changed
