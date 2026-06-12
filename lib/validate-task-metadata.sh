@@ -91,6 +91,7 @@ check_optional('gateScope', lambda v: isinstance(v, str) and v in GATE_SCOPE_VAL
                f'must be one of: {sorted(GATE_SCOPE_VALUES)}')
 check_optional('requireEvidenceTokens', lambda v: isinstance(v, list),
                'must be array')
+check_optional('repo', lambda v: isinstance(v, str), 'must be string')
 
 if optional_errors:
     print('INVALID_OPTIONAL:' + ','.join(optional_errors))
