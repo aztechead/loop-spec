@@ -119,6 +119,14 @@ else
   ((FAIL++)) || true
 fi
 
+# Case R: spec-writer Write to absolute path under a workspace root -> features path ALLOW (exit 0)
+check "R: spec-writer Write to /tmp/ws-test/workspace/docs/loop-spec/features/x/SPEC.md ALLOW" 0 \
+  "$(payload "Write" "/tmp/ws-test/workspace/docs/loop-spec/features/x/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+
+# Case S: spec-writer Write to workspace repo source path -> DENY (exit 2)
+check "S: spec-writer Write to /tmp/ws-test/workspace/frontend/src/app.py DENY" 2 \
+  "$(payload "Write" "/tmp/ws-test/workspace/frontend/src/app.py" "$FIXTURES/spec-writer.jsonl")"
+
 # Case Q: fast path — no .loop-spec/features and no force flag -> ALLOW without parsing
 HOOK_ABS="$(cd "$(dirname "$HOOK")" && pwd)/$(basename "$HOOK")"
 actual_exit=0

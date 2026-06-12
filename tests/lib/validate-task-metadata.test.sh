@@ -91,6 +91,15 @@ check "R: all 9 new optional fields absent from valid payload ALLOW" 0 \
 check "S: invalid failurePolicy value DENY" 2 \
   '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"failurePolicy":"bogus"}'
 
+check "T: repo present as valid string ALLOW" 0 \
+  '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"repo":"frontend"}'
+
+check "U: repo absent ALLOW" 0 \
+  '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"]}'
+
+check "V: repo present as number DENY" 2 \
+  '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"repo":42}'
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

@@ -66,7 +66,7 @@ No linters, formatters, or type checkers are configured for this repository. The
 |---|---|
 | `bash tests/run-all.sh` | Run all non-e2e tests (no claude CLI required) |
 | `bash tests/smoke.sh` | Full e2e cycle smoke test (requires claude CLI + plugin installed) |
-| `claude plugin marketplace add git@git.viasat.com:cbobrowitz/loop-spec.git` | Register the plugin marketplace |
+| `claude plugin marketplace add git@github.com:aztechead/loop-spec.git` | Register the plugin marketplace |
 | `claude plugin install loop-spec@loop-spec-marketplace` | Install the plugin into Claude Code |
 
 ## Plugin / Integration Points

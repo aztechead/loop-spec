@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# lib/worktree-commit-check.sh <base_ref> <branch_ref>
+# lib/worktree-commit-check.sh [-C <path>] <base_ref> <branch_ref>
 #
 # Assert that a worktree branch actually carries commits over its base before the
 # EXECUTE lead ff-merges it. Subagents running in isolated worktrees occasionally
 # fail to commit (sandbox / worktree isolation), and a silent ff-merge of a branch
 # with zero new commits advances the pipeline on missing work. This guard makes
 # that case loud instead of silent.
+#
+# Options:
+#   -C <path>   Run git operations against the repo at <path>.
+#               Allows invocation from outside the target repo.
 #
 # Exit codes:
 #   0  branch is ahead of base (>=1 commit)  -> safe to merge
@@ -14,9 +18,22 @@
 #
 # Examples:
 #   worktree-commit-check.sh feat/my-slug task/task-001-my-slug
+#   worktree-commit-check.sh -C /abs/path/to/repo feat/my-slug task/task-001-my-slug
 set -euo pipefail
 
-usage() { echo "usage: worktree-commit-check.sh <base_ref> <branch_ref>" >&2; }
+usage() { echo "usage: worktree-commit-check.sh [-C <path>] <base_ref> <branch_ref>" >&2; }
+
+# Parse optional leading -C <path>
+G=(git)
+if [[ "${1:-}" == "-C" ]]; then
+  if [[ -z "${2:-}" ]]; then
+    echo "worktree-commit-check: -C requires a path argument" >&2
+    usage
+    exit 2
+  fi
+  G=(git -C "$2")
+  shift 2
+fi
 
 if [[ $# -ne 2 ]]; then
   usage
@@ -26,15 +43,15 @@ fi
 BASE="$1"
 BRANCH="$2"
 
-# Both refs must resolve in the current repo.
+# Both refs must resolve in the target repo.
 for ref in "$BASE" "$BRANCH"; do
-  if ! git rev-parse --verify --quiet "$ref^{commit}" >/dev/null; then
+  if ! "${G[@]}" rev-parse --verify --quiet "$ref^{commit}" >/dev/null; then
     echo "worktree-commit-check: ref not found: $ref" >&2
     exit 2
   fi
 done
 
-count="$(git rev-list --count "${BASE}..${BRANCH}")"
+count="$("${G[@]}" rev-list --count "${BASE}..${BRANCH}")"
 
 if [[ "$count" -eq 0 ]]; then
   echo "FAIL: $BRANCH has 0 commits over $BASE -- implementer work did not land (worktree commit missing)" >&2

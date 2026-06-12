@@ -4,11 +4,11 @@ Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json` (gi
 
 Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet`) per phase team, not in `feature.json`. See "Harness task list usage" below.
 
-## Schema (v6)
+## Schema (v7)
 
 ```json
 {
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "slug": "string (kebab-case)",
   "createdAt": "ISO-8601 timestamp",
   "updatedAt": "ISO-8601 timestamp",
@@ -71,6 +71,19 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "lint": "string",
     "typecheck": "string"
   },
+  "workspace": {
+    "root": "absolute path of the workspace parent directory",
+    "repos": [
+      {
+        "name": "frontend",
+        "path": "frontend",
+        "branch": "feat/{slug}",
+        "baseSha": "git sha at branch creation for this repo",
+        "baseBranch": "main",
+        "commands": {"test": "", "lint": "", "typecheck": ""}
+      }
+    ]
+  },
   "stalenessHours": 48,
   "warnings": ["array of strings"],
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
@@ -118,7 +131,29 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `models` is a fixed per-role map (no preset axis), written ONCE at cycle Step 5 as a mirror of `skills/shared/model-matrix.md`, and is the single source of truth for per-role model IDs. Every phase skill passes `model: feature.models.<role>` on each spawn rather than re-deriving, so teammates never silently inherit the orchestrator's session model. opus runs spec-writer, planner, advocate, challenger, and spec-compliance-reviewer; sonnet runs implementer, code-reviewer, verifier, mapper-*, and pattern-mapper. Cycle Step 5.9 normalizes this block idempotently on every resume, so pre-v2.3.0 features (no block) and features carrying a stale preset-era block are migrated to the fixed map before routing to any phase.
 - Schema version 5 removes the `preset` field (model selection is fixed; see `model-matrix.md`) and rewrites `models` to the fixed map. Migration is automatic and lossless: cycle Step 5.9 drops `preset` and normalizes `models` on the next resume of any in-flight feature. `tier` is unaffected.
 - Schema version 6 introduces `worktreePath`. Each new feature runs inside a dedicated git worktree created at cycle Step 5 via `lib/git-ops.sh create-feature-worktree`; all state, docs, and code live on `feat/{slug}` inside that worktree. Resume discovers feature worktrees via `git worktree list` (specifically `git-ops.sh list-feature-worktrees`). Back-compat: features without `worktreePath` (schema version 5 and earlier) continue to run legacy in-place; there is no forced migration of in-flight features into worktrees.
+- Schema version 7 introduces the optional `workspace` block for multi-root workspace support. Rules: (1) `workspace` absent or null means single mode; v6 features load unchanged with no migration required. (2) In workspace mode, the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` fields are null; the per-repo values inside `workspace.repos[]` are authoritative for each participating repository. (3) In workspace mode, the top-level `commands` block holds empty strings (per-repo commands live in each `workspace.repos[].commands`). (4) State and artifact directories are rooted at the workspace root (`workspace.root`). (5) Resume in workspace mode requires the session cwd to be `workspace.root`; the cycle skill detects this and instructs the user to cd there before re-invoking. No forced migration of in-flight v6 features.
 - Schema version jumps from 2 to 3 (no migration from v2, clean break). Features on v0.3.x must be completed or restarted on v1.0.0. Schema version 3 to 4 is an opt-in migration (see above).
+
+## Workspace pin file (.loop-spec/workspace.json)
+
+When a workspace parent directory is itself a git repo, or when the user wants to select a subset of discovered child repos, they create `.loop-spec/workspace.json` at the workspace root. This file pins the workspace mode and participating repo list. It is runtime config and is not committed (`.loop-spec/` is gitignored inside repos; at a non-repo workspace root gitignore is moot).
+
+```json
+{
+  "schemaVersion": 1,
+  "repos": [
+    {"name": "frontend", "path": "frontend"},
+    {"name": "backend", "path": "backend"}
+  ]
+}
+```
+
+Field notes:
+- `schemaVersion`: currently `1`. Unknown extra fields at the top level are tolerated. Missing `schemaVersion` is tolerated (treated as v1).
+- `repos[].name`: short identifier used in PLAN task `repo` fields and in summary tables. Must be unique within the list.
+- `repos[].path`: path to the repo, relative to the workspace root. The resolved path must exist, be a directory, and pass `git -C <abs-path> rev-parse --is-inside-work-tree`; invalid entries cause `lib/workspace.sh detect` to exit 1 with a clear message.
+- When to pin: (a) the workspace parent directory is itself a git repo (detection defaults to single mode; the pin overrides this), or (b) you want to use only a subset of the child repos discovered by depth-1 scan.
+- When not to pin: the workspace parent is not a git repo and you want all immediate child git repos included (auto-discovery covers this without a pin file).
 
 ## Schema (v3 - legacy)
 
@@ -231,6 +266,7 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 | `failurePolicy` | string enum | Lead at `TaskCreate` or `specifying-gates` skill | Optional. Controls what happens when a gate check fails. One of: `stop-plan` (halt the plan and block further progress), `reopen-continue` (reopen the task and continue other tasks), `log-continue` (log the failure and continue without blocking). |
 | `gateScope` | string enum | `specifying-gates` skill at gate specification | Optional. Controls how many times the gate is evaluated across targets. One of: `once` (checked a single time), `per-target` (checked once per verification target), `one-then-all` (one check then all in parallel), `custom` (custom scope defined in `dispatchBrief`). |
 | `requiresUserSpecification` | bool | Lead at `TaskCreate` or planner | Optional. When true, the `checking-gates` skill routes to `specifying-gates` before running the gate check, to collect missing verification mechanics from the user. Removed from metadata after `specifying-gates` completes. |
+| `repo` | string | Lead at `TaskCreate` (planner-supplied) | Optional. Workspace mode only. The name of the participating repository this task targets, matching a `workspace.repos[].name` value in `feature.json`. One task targets exactly one repo; cross-repo work is expressed as multiple tasks with `blockedBy` edges. Absent in single mode. |
 
 ### Per-phase harness task list notes
 

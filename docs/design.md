@@ -3,7 +3,7 @@
 **Date:** 2026-05-05
 **Status:** Design approved, planning next
 **Author:** Christopher Bobrowitz
-**Repo (target):** `git.viasat.com/cbobrowitz/loop-spec`
+**Repo (target):** `github.com/aztechead/loop-spec`
 
 ## Problem
 
@@ -522,7 +522,7 @@ verify phase complete
 
 ### Repo
 
-- Remote: `git.viasat.com/cbobrowitz/loop-spec`
+- Remote: `github.com/aztechead/loop-spec`
 - Plugin name: `loop-spec`
 - Initial version: `0.1.0`
 - License: MIT
@@ -577,7 +577,7 @@ Wave 7 - dogfood
 ```json
 {
   "marketplaces": {
-    "loop-spec": "git+ssh://git@git.viasat.com/cbobrowitz/loop-spec.git"
+    "loop-spec": "git+ssh://git@github.com/aztechead/loop-spec.git"
   }
 }
 ```

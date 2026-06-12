@@ -23,7 +23,27 @@ return the same `{merged, blocked, escalation, tier}` result shape.
 
 ### Step 1 - Branch check
 
-The behavior differs based on whether `feature.json` has a `worktreePath` field (schema 6) or not (legacy schema <= 5).
+The behavior differs based on whether `feature.json` has a `workspace` block (schema 7 workspace mode), a `worktreePath` field (schema 6), or neither (legacy schema <= 5).
+
+**Schema 7 workspace mode (`feature.workspace` non-null):** Each participating repo must be on `feat/{slug}`. Assert this before any other work:
+
+```bash
+workspace_root="$(jq -r '.workspace.root' .loop-spec/features/{slug}/feature.json)"
+feature_slug="{feature.json.slug}"
+jq -c '.workspace.repos[]' .loop-spec/features/{slug}/feature.json | while IFS= read -r repo_entry; do
+  rname="$(echo "$repo_entry" | jq -r '.name')"
+  rpath="$(echo "$repo_entry" | jq -r '.path')"
+  abs_repo="${workspace_root}/${rpath}"
+  current="$(git -C "$abs_repo" branch --show-current)"
+  if [[ "$current" != "feat/${feature_slug}" ]]; then
+    echo "ERROR: workspace repo '$rname' ($abs_repo): expected branch feat/${feature_slug} but current branch is '$current'." >&2
+    echo "Ensure every participating repo is on feat/${feature_slug} before running EXECUTE." >&2
+    exit 2
+  fi
+done
+```
+
+If any repo fails the check, abort with the message above. Do not proceed.
 
 **Schema 6 (worktreePath present):** The feature worktree was created at cycle start and the session was switched into it via `EnterWorktree`. The branch `feat/{slug}` is already checked out there. Assert this is the case; do not create the branch in-place:
 
@@ -61,6 +81,8 @@ Record `feature.json.baseSha = $(git rev-parse HEAD)` if not set; atomic write v
 ### Step 2 - Pre-task file-conflict detection
 
 Run on **every EXECUTE entry**: both the first entry from PLAN and any re-entry triggered by VERIFY routing back after a code-review HARD-GATE failure (which may add remediation tasks).
+
+**Workspace mode note:** Conflict detection logic is unchanged. In workspace mode, task `files[]` are workspace-relative paths of the form `<repo>/<path>` (e.g., `frontend/src/app.ts`). Because each task targets exactly one repo, file paths from different repos are disjoint by their repo prefix -- cross-repo overlaps are naturally impossible. The synthetic `blockedBy` edge logic of Step 2b still applies within a single repo's tasks.
 
 #### Step 2a - Read planned tasks from PLAN.md
 
@@ -128,10 +150,39 @@ opt-in.
 
 Build the `tasks[]` array from Step 2a/2b first: each element is `{id, subject, files, blockedBy (union of explicit + synthetic edges), specPath, acceptanceCriteria, readFirst, brief}`.
 
+**Workspace mode gate (evaluated BEFORE `featureWorktreeRoot` is resolved):**
+
+When `feature.workspace` is non-null, hard-pin the rung here and skip the `featureWorktreeRoot` line and the Step 3a/3b ladder entirely. The workspace root may not be a git repo; running `git rev-parse --show-toplevel` at a non-repo root would abort under set -e semantics.
+
 ```bash
-featureWorktreeRoot=$(git rev-parse --show-toplevel)
-skillDir="${CLAUDE_SKILL_DIR}"
+workspace_block="$(jq -r '.workspace // "null"' .loop-spec/features/{slug}/feature.json)"
+if [[ "$workspace_block" != "null" ]]; then
+  # Workspace mode: rung is always subagent. No ladder evaluation.
+  if [[ "${LOOP_SPEC_EXECUTE_LOOPS:-}" == "1" ]]; then
+    echo "[EXECUTE] ERROR: LOOP_SPEC_EXECUTE_LOOPS=1 is not supported in workspace mode." >&2
+    echo "  The loop-fleet rung is single-repo only. Unset LOOP_SPEC_EXECUTE_LOOPS or" >&2
+    echo "  run EXECUTE without it. Aborting -- resolve this before proceeding." >&2
+    exit 2
+  fi
+  repo_count="$(echo "$workspace_block" | jq '.repos | length')"
+  rung="subagent"
+  echo "[EXECUTE] workspace mode -> rung capped at subagent (repos: ${repo_count})"
+  skillDir="${CLAUDE_SKILL_DIR}"
+  # Skip to subagent dispatch; featureWorktreeRoot is not set (not needed in workspace mode).
+  # Follow skills/shared/execute-subagent.md "Workspace mode" section.
+else
 ```
+
+Close the else block after the ladder resolves:
+
+```bash
+  # --- single-repo path below ---
+  featureWorktreeRoot=$(git rev-parse --show-toplevel)
+  skillDir="${CLAUDE_SKILL_DIR}"
+fi
+```
+
+In workspace mode the `featureWorktreeRoot` variable is NOT set. The subagent path uses per-repo absolute paths from `feature.workspace.repos[]` instead. See `skills/shared/execute-subagent.md` "Workspace mode" section for the workspace-aware wave loop.
 
 Resolve tier params from `skills/shared/tier-matrix.md` by `feature.tier`:
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Validates all 12 agent defs.
+# Validates all 13 agent defs.
 set -euo pipefail
-EXPECTED="${EXPECTED:-12}"
+EXPECTED="${EXPECTED:-13}"
 ALLOWED_MODELS="claude-opus-4-8 claude-sonnet-4-6 claude-haiku-4-5"
 RESTRICTED_AGENTS="spec-compliance-reviewer code-reviewer advocate challenger"
 

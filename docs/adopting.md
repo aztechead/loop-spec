@@ -10,7 +10,7 @@
 
 1. Register the marketplace:
    ```bash
-   claude plugin marketplace add git@git.viasat.com:cbobrowitz/loop-spec.git
+   claude plugin marketplace add git@github.com:aztechead/loop-spec.git
    ```
 2. Install the plugin:
    ```bash
@@ -46,6 +46,35 @@
 ## Tier picking
 
 See `docs/tier-guide.md`.
+
+## Workspace (multi-repo) adoption
+
+loop-spec can span multiple sibling repositories in a single cycle using workspace mode.
+
+### How to start
+
+**Option A -- automatic discovery.** If your repos live as immediate children of a parent directory that is not itself a git repo, just `cd` to that parent and run `Skill(loop-spec:cycle)`. Cycle Step 0 discovers child repos (depth-1 scan, hidden dirs skipped), announces the list, and asks you to confirm before proceeding.
+
+**Option B -- explicit pin.** If the parent directory is itself a git repo, or if you want to select a subset of child repos, create `.loop-spec/workspace.json` at the parent:
+
+```json
+{"schemaVersion": 1, "repos": [{"name": "frontend", "path": "frontend"}, {"name": "backend", "path": "backend"}]}
+```
+
+Then run `Skill(loop-spec:cycle)` from that parent. The pin takes precedence over auto-detection. If the parent is or becomes a git repo, add `.loop-spec/` to its `.gitignore`.
+
+Non-interactive: set `LOOP_SPEC_ANSWER_REPOS=frontend,backend` to skip the confirmation prompt.
+
+### What changes vs. single-repo mode
+
+- State and artifacts land at the workspace root (`.loop-spec/` and `docs/loop-spec/features/{slug}/`).
+- PLAN tasks each carry a `repo` field; `files[]` paths are workspace-relative (`<repo>/<path>`). Cross-repo work splits across multiple tasks with `blockedBy` edges.
+- EXECUTE is capped at the subagent rung (team/loop-fleet/Workflow rungs are single-repo only in v1).
+- VERIFY pushes and opens one PR per repo that has commits; repos with no commits are left untouched.
+
+### In-place branch caveat
+
+In workspace mode each participating repo gets a `feat/{slug}` branch created directly in its working checkout -- there are no feature worktrees. The cycle scans every repo for uncommitted changes before creating any branch; a dirty repo aborts with a clear message listing which repos need to be committed or stashed. Resume from an interrupted workspace cycle by re-invoking `Skill(loop-spec:cycle)` from the workspace root; invoking from any other directory will prompt you to return there first.
 
 ## Resuming
 

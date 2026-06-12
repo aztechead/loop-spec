@@ -73,6 +73,27 @@ Load feature state into memory. Jump directly to Step 6 (phase routing) with `st
 
 The `TaskList` probe is the sole mechanism for detecting live teams. The harness exposes no `TeamList` tool, and the probe is non-destructive (it reads only, cannot create or delete teams).
 
+## Workspace features
+
+Features with `schemaVersion == 7` AND a non-null `workspace` block are workspace-mode features. They resume IN PLACE at the workspace root -- no worktree, no `EnterWorktree` call.
+
+Resume rules for workspace features:
+
+1. **Assert cwd == workspace.root.** Before routing to any phase, check that the current session working directory equals `feature.workspace.root`. If it does not match, print:
+   ```
+   loop-spec: this workspace feature must be resumed from its workspace root.
+   cd to {feature.workspace.root} and re-invoke cycle.
+   ```
+   Then abort (do not attempt phase routing from the wrong directory).
+
+2. **No worktree probe.** Skip `git-ops.sh list-feature-worktrees` for workspace features. The feature has no `worktreePath` (it is null).
+
+3. **Per-repo absolute paths.** All phase work uses absolute repo paths from `feature.workspace.repos[].path` resolved against `feature.workspace.root`. Subagents receive these absolute paths in their prompts.
+
+4. **Pause/escalation:** workspace features skip the `ExitWorktree` call in the pause path (step 6 below) because no worktree was entered.
+
+5. **Resume label:** append `" (workspace: {N} repos)"` to the option label when presenting workspace features in the resume selection list.
+
 ## On phase pause / escalation
 
 If a phase pauses + escalates (budget exhausted, NEEDS_CONTEXT, etc.):

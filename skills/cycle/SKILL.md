@@ -76,7 +76,69 @@ Note: Non-interactive mode bypasses `AskUserQuestion` entirely by reading env va
 
 ## Procedure
 
-**Startup is silent.** Run Steps 1 (resume detection), 2 (health-check), 3.5 (model probe), and the workflow-availability probe quietly: do NOT narrate each one. Batch their checks and emit output ONLY when (a) a check fails, (b) a resumable feature is found and a choice is needed, or (c) Step 3 announces the launch line. No "Running Step 1...", no per-step status prose. The user wants to land in the workflow, not watch a preflight.
+**Startup is silent.** Run Steps 0 (workspace detection), 1 (resume detection), 2 (health-check), 3.5 (model probe), and the workflow-availability probe quietly: do NOT narrate each one. Batch their checks and emit output ONLY when (a) a check fails, (b) a resumable feature is found and a choice is needed, or (c) Step 3 announces the launch line. No "Running Step 0...", no per-step status prose. The user wants to land in the workflow, not watch a preflight.
+
+### Step 0 - Workspace detection
+
+Run workspace detection FIRST, before resume or tier selection. The result determines whether every subsequent step runs in single-repo mode or workspace mode.
+
+```bash
+ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect)"
+workspace_mode="$(echo "$ws_json" | jq -r '.mode')"
+workspace_root="$(echo "$ws_json" | jq -r '.root')"
+workspace_repos_json="$(echo "$ws_json" | jq -c '.repos // []')"
+```
+
+**mode == "none":** abort with:
+```
+loop-spec: not a git repo and no child repos found.
+cd into a repo or create .loop-spec/workspace.json to pin a workspace.
+```
+
+**mode == "single":** continue as normal (all existing steps apply). Set `workspaceMode="single"`.
+
+**mode == "workspace":** announce the discovered repos, confirm participation, and set `workspaceMode="workspace"`.
+
+Announcement (print to user):
+```
+workspace mode: {N} repos ({name1}, {name2}, ...}
+  State and artifacts will be rooted at: {workspace_root}
+Advisory: if {workspace_root} is or becomes a git repo, add .loop-spec/ to its .gitignore.
+```
+
+Confirmation (interactive):
+```
+AskUserQuestion({
+  question: "Workspace repos: {list each repo name and relative path}. A feat/{slug} branch will be created IN PLACE in each participating repo (no worktree; the checkout switches branches). Proceed with all repos, or customize?",
+  options: ["All repos", "Customize"]
+})
+```
+
+If "Customize": ask the user to list repo names (comma-separated); filter `workspace_repos_json` to only those named.
+
+Non-interactive (`LOOP_SPEC_NON_INTERACTIVE=1`): read `LOOP_SPEC_ANSWER_REPOS` (comma-separated repo names, default = all). Skip AskUserQuestion.
+
+After confirmation, `workspace_repos_json` holds only the participating repos.
+
+Merge workspace fields into `.loop-spec/runtime.json` (same python3 merge-write pattern as the workflow probe):
+
+```bash
+mkdir -p .loop-spec
+python3 -c "
+import json, sys, os
+path = '.loop-spec/runtime.json'
+data = {}
+if os.path.exists(path):
+    try:
+        data = json.load(open(path))
+    except Exception:
+        data = {}
+data['workspaceMode']  = sys.argv[1]
+data['workspaceRoot']  = sys.argv[2]
+data['workspaceRepos'] = json.loads(sys.argv[3])
+json.dump(data, open(path, 'w'))
+" "$workspace_mode" "$workspace_root" "$workspace_repos_json"
+```
 
 ### Step 1 - Resume detection
 
@@ -107,7 +169,8 @@ If resumable list non-empty: present via AskUserQuestion (or skip if `LOOP_SPEC_
 - Options: each resumable feature + "New feature"
 
 If user picks resume: load feature.json into memory, skip Steps 2-5, route to Step 6.
-- **Worktree resume (schemaVersion 6+, `worktreePath` present):** run `git-ops.sh list-feature-worktrees` to confirm it exists, then `EnterWorktree({ path: feature.worktreePath })` before Step 6. If the worktree is gone, warn and offer to re-create or continue in-place.
+- **Workspace resume (schemaVersion 7, `workspace` block non-null):** resume IN PLACE at the workspace root. No worktree probe; do NOT call `EnterWorktree`. Assert that the current session cwd equals `feature.workspace.root`; if it does not, tell the user: `"cd to {feature.workspace.root} and re-invoke cycle to resume this feature."` and abort. All phase work proceeds from `workspace.root` using per-repo absolute paths.
+- **Worktree resume (schemaVersion 7 with `workspace == null`, or schemaVersion 6, `worktreePath` present):** run `git-ops.sh list-feature-worktrees` to confirm it exists, then `EnterWorktree({ path: feature.worktreePath })` before Step 6. If the worktree is gone, warn and offer to re-create or continue in-place.
 - **Legacy resume (no `worktreePath`):** resume in-place. Do NOT force-migrate.
 - Full algorithm: `skills/shared/cycle-resume-escalation.md`.
 
@@ -243,6 +306,8 @@ supported), else `false`. The cycle proceeds regardless; fan-out skills read
 
 ### Step 4 - Detect project commands
 
+**Single-repo mode (unchanged):**
+
 Auto-detect (best effort):
 - test: parse package.json scripts.test, Makefile `test` target, pyproject.toml [tool.pytest], go.mod presence (`go test ./...`)
 - lint: scripts.lint, Makefile lint, ruff/eslint config files
@@ -257,6 +322,24 @@ If customize: ask each separately.
 Skip this confirmation step when `LOOP_SPEC_NON_INTERACTIVE=1` (use auto-detected values as-is).
 
 Normalize all three to strings so `feature.commands` always carries `test`/`lint`/`typecheck` keys (undetected = empty string, never null; phases treat empty as "skip this check"): `cmd_test="${cmd_test:-}"; cmd_lint="${cmd_lint:-}"; cmd_typecheck="${cmd_typecheck:-}"`.
+
+**Workspace mode (additive):**
+
+Run the same auto-detection per participating repo using the repo's absolute path as the probe dir. Collect per-repo command maps:
+
+```bash
+declare -A repo_cmds_test repo_cmds_lint repo_cmds_typecheck
+for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
+  rname="$(echo "$repo_entry" | jq -r '.name')"
+  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
+  # run same detection logic against "$rpath"
+  repo_cmds_test["$rname"]="${detected_test:-}"
+  repo_cmds_lint["$rname"]="${detected_lint:-}"
+  repo_cmds_typecheck["$rname"]="${detected_typecheck:-}"
+done
+```
+
+Present a single AskUserQuestion listing all repos and detected commands; user confirms or customizes per-repo. Skip when `LOOP_SPEC_NON_INTERACTIVE=1`. Top-level `commands` in feature.json will carry empty strings (workspace mode per-repo commands are authoritative in `workspace.repos[].commands`).
 
 ### Step 5 - Initialize state
 
@@ -292,7 +375,7 @@ feature_json=$(jq -n \
   --arg test "$cmd_test" --arg lint "$cmd_lint" --arg typecheck "$cmd_typecheck" \
   --arg wt ".claude/worktrees/${slug}" \
   '{
-    schemaVersion: 6,
+    schemaVersion: 7,
     slug: $slug,
     createdAt: $now, updatedAt: $now,
     tier: $tier, execStyle: $style,
@@ -314,6 +397,7 @@ feature_json=$(jq -n \
     baseSha: $sha,
     baseBranch: $basebranch,
     worktreePath: $wt,
+    workspace: null,
     currentTeamName: null,
     currentTeammates: [],
     currentGate: {round: 0, phase: null},
@@ -342,6 +426,152 @@ feature_json=$(jq -n \
   }')
 
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$feature_json"
+
+#### Workspace mode Step 5 variant
+
+In workspace mode (`workspaceMode == "workspace"`), do NOT call `create-feature-worktree` and do NOT call `EnterWorktree`. All work stays at the workspace root. Replace the single-repo branch setup above with the following two-phase procedure.
+
+**Phase 1 -- pre-flight cleanliness check (ALL repos, before ANY branch is created):**
+
+```bash
+dirty_repos=()
+for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
+  rname="$(echo "$repo_entry" | jq -r '.name')"
+  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
+  if ! bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" ensure-clean-or-stash 2>/dev/null; then
+    dirty_repos+=("$rname ($rpath)")
+  fi
+done
+if [[ ${#dirty_repos[@]} -gt 0 ]]; then
+  echo "loop-spec: cannot create feature branches -- the following repos have uncommitted changes:"
+  for r in "${dirty_repos[@]}"; do echo "  $r"; done
+  echo "Please commit or stash changes in each repo above, then re-invoke cycle."
+  exit 1
+fi
+```
+
+If any repo is dirty, abort with the message above. No branches are created.
+
+**Phase 2 -- per-repo branch creation (only when all repos are clean):**
+
+```bash
+declare -A repo_base_sha repo_base_branch
+for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
+  rname="$(echo "$repo_entry" | jq -r '.name')"
+  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
+  base_sha_r="$(git -C "$rpath" rev-parse HEAD)"
+  base_branch_r="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" detect-base-branch)"
+  git -C "$rpath" checkout -b "feat/${slug}" "$base_sha_r"
+  repo_base_sha["$rname"]="$base_sha_r"
+  repo_base_branch["$rname"]="$base_branch_r"
+done
+```
+
+**State dirs** are created at the workspace root:
+
+```bash
+mkdir -p "${workspace_root}/.loop-spec/features/${slug}" \
+         "${workspace_root}/.loop-spec/codebase" \
+         "${workspace_root}/docs/loop-spec/features/${slug}"
+```
+
+**feature.json construction for workspace mode:**
+
+Build the `workspace.repos` array from the per-repo data collected above, then write feature.json:
+
+```bash
+repos_json_array="$(echo "$workspace_repos_json" | jq -c \
+  --argjson base_shas "$(for rname in "${!repo_base_sha[@]}"; do
+      echo "{\"name\":\"$rname\",\"sha\":\"${repo_base_sha[$rname]}\"}"; done | jq -s .)" \
+  --argjson base_branches "$(for rname in "${!repo_base_branch[@]}"; do
+      echo "{\"name\":\"$rname\",\"branch\":\"${repo_base_branch[$rname]}\"}"; done | jq -s .)" \
+  '[.[] | . as $r |
+    ($base_shas[] | select(.name == $r.name) | .sha) as $sha |
+    ($base_branches[] | select(.name == $r.name) | .branch) as $bb |
+    {
+      name: $r.name,
+      path: $r.path,
+      branch: ("feat/" + env.slug),
+      baseSha: $sha,
+      baseBranch: $bb,
+      commands: {
+        test: (env["REPO_TEST_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // ""),
+        lint: (env["REPO_LINT_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // ""),
+        typecheck: (env["REPO_TYPECHECK_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // "")
+      }
+    }
+  ]')"
+# (In practice, per-repo commands detected in Step 4 are substituted in directly
+#  rather than via env vars; the structure above is illustrative of the shape.)
+
+workspace_feature_json=$(jq -n \
+  --arg slug "$slug" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg tier "$tier" --arg style "$execStyle" \
+  --arg opus "$opus_model" --arg sonnet "$sonnet_model" \
+  --arg wsroot "$workspace_root" \
+  --argjson repos "$repos_json_array" \
+  '{
+    schemaVersion: 7,
+    slug: $slug,
+    createdAt: $now, updatedAt: $now,
+    tier: $tier, execStyle: $style,
+    models: {
+      specWriter: $opus, planner: $opus,
+      advocate: $opus, challenger: $opus, specComplianceReviewer: $opus,
+      implementer: $sonnet, codeReviewer: $sonnet, verifier: $sonnet,
+      mapper: $sonnet, patternMapper: $sonnet
+    },
+    currentPhase: "spec",
+    completedPhases: [],
+    artifacts: {
+      specInterview: null,
+      spec: null, patterns: null, plan: null, execution: null, verification: null,
+      patternsSource: null,
+      codebaseSource: {tech: null, arch: null, quality: null, concerns: null, domain: null}
+    },
+    branch: null,
+    baseSha: null,
+    baseBranch: null,
+    worktreePath: null,
+    workspace: {
+      root: $wsroot,
+      repos: $repos
+    },
+    currentTeamName: null,
+    currentTeammates: [],
+    currentGate: {round: 0, phase: null},
+    mergeQueue: [],
+    pendingRemediationTasks: [],
+    fileConflictExcludeGlobs: [],
+    gateHistory: [],
+    retryBudget: {
+      perGate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
+      perPhase: {
+        spec: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
+        discuss: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
+        plan: (if $tier == "quick" then 1 elif $tier == "balanced" then 3 else 4 end),
+        execute: null,
+        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end)
+      },
+      global: (if $tier == "quick" then 10 elif $tier == "balanced" then 20 else 30 end),
+      globalUsed: 0,
+      perGateUsed: {},
+      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0}
+    },
+    commands: {test: "", lint: "", typecheck: ""},
+    stalenessHours: 48,
+    warnings: [],
+    bootstrapPendingDomains: []
+  }')
+
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" \
+  "${workspace_root}/.loop-spec/features/${slug}" "$workspace_feature_json"
+```
+
+Schema notes for workspace feature.json:
+- `schemaVersion: 7`; top-level `branch`, `baseSha`, `baseBranch`, `worktreePath` are `null`; top-level `commands` holds empty strings.
+- `workspace.root` is the absolute workspace parent path.
+- `workspace.repos[]` carries `name`, `path` (relative to workspace root), `branch` (`feat/{slug}`), `baseSha`, `baseBranch`, and `commands` (per-repo detected commands) -- matching the schema in `skills/shared/feature-state-schema.md`.
 ```
 
 No initial commit is made here: `create-feature-worktree` already pointed `feat/{slug}` at a real commit (`base_sha`), and `feature.json` is gitignored runtime state (it lives in the worktree's working dir and is read back on resume, never committed -- consistent with the rest of loop-spec). Phase artifacts under `docs/loop-spec/features/{slug}/` are committed by each phase as it writes them (SPEC, PLAN, VERIFY).
@@ -357,7 +587,17 @@ Estimated cost: ~{N}k tokens (tier: {tier})
 
 ### Step 5.4 - Graphify bootstrap pre-flight (always; before the codebase-map skip)
 
-Runs on EVERY cycle when `graphify` is installed. It must NOT be gated behind the Step 5.5 "all 5 docs exist" skip: the graph (`graphify-out/graph.json`) is independent of the loop-spec codebase docs, so a repo that already has the 5 docs but no graph still needs one built. Idempotent, no LLM.
+**Workspace mode:** graphify operates on a single repo root; it has no multi-repo mode. Skip this step entirely in workspace mode and log one line:
+
+```
+workspace mode: skipping graphify bootstrap (single-repo only)
+```
+
+Then proceed directly to Step 5.5.
+
+---
+
+Runs on EVERY cycle when `graphify` is installed (single-repo mode). It must NOT be gated behind the Step 5.5 "all 5 docs exist" skip: the graph (`graphify-out/graph.json`) is independent of the loop-spec codebase docs, so a repo that already has the 5 docs but no graph still needs one built. Idempotent, no LLM.
 
 Decision tree:
 - graphify not installed -> skip.
@@ -394,6 +634,16 @@ fi
 ```
 
 ### Step 5.5 - First-run codebase map (one-time per project)
+
+**Workspace mode -- GSD ingest:** GSD ingest is a single-repo operation (`.planning/codebase/` lives inside one repo). Skip Step 5.5a (GSD ingest) entirely in workspace mode and log one line:
+
+```
+workspace mode: skipping GSD ingest (single-repo only)
+```
+
+Proceed directly to Step 5.5b mapper dispatch using the workspace-mode variant described below.
+
+---
 
 Required loop-spec docs: `docs/loop-spec/codebase/{TECH,ARCH,QUALITY,CONCERNS,DOMAIN}.md`.
 
@@ -448,12 +698,59 @@ If `missing` is non-empty:
 
 - Model for mappers: `model_mapper = feature.models.mapper` (resolved once at Step 5; do not re-derive from model-matrix).
 
-- **IMPORTANT:** background mappers are subagents and do NOT inherit the worktree cwd. Resolve the repo root once and pass ABSOLUTE paths in every Agent prompt:
+- **Single-repo mode:** background mappers are subagents and do NOT inherit the worktree cwd. Resolve the repo root once and pass ABSOLUTE paths in every Agent prompt:
   ```bash
   WT_ROOT="$(git rev-parse --show-toplevel)"
   ```
 
-- Fire one background `Agent` call per missing domain (all in a single tool message so they run concurrently):
+- **Workspace mode mapper dispatch:** do NOT run `git rev-parse --show-toplevel` at the workspace root (it may not be a git repo). Instead, build a repo-list string from the participating repos and pass it in each mapper prompt:
+
+  ```bash
+  repo_list=""
+  for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
+    rname="$(echo "$repo_entry" | jq -r '.name')"
+    rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
+    repo_list="${repo_list}${rname}=${rpath}, "
+  done
+  repo_list="${repo_list%, }"   # strip trailing comma+space
+  ```
+
+  Fire one background `Agent` call per missing domain (workspace variant):
+
+  ```
+  Parallel (background):
+    Agent({
+      subagent_type: "loop-spec:mapper-{domain-1}",
+      model: model_mapper,
+      run_in_background: true,
+      description: "Bootstrap codebase map: {domain-1}",
+      prompt: """
+        You are bootstrapping the codebase map for this workspace.
+        slug: {slug}
+        Workspace root (absolute): {workspace_root}
+        Repos: {repo_list}   (format: name=abs-path, ...)
+        Produce {workspace_root}/docs/loop-spec/codebase/{DOMAIN-1}.md per your role definition.
+        Cover each repo with per-repo sections. Use absolute paths throughout. Do NOT commit.
+        When done, reply with: "DONE: {domain-1}"
+      """
+    })
+    // ... one Agent call per missing domain
+  ```
+
+  After mapper agents complete, commit the codebase docs only when the workspace root is itself a git repo:
+
+  ```bash
+  if git -C "$workspace_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if ! git -C "$workspace_root" diff --quiet docs/loop-spec/codebase/ 2>/dev/null; then
+      git -C "$workspace_root" add docs/loop-spec/codebase/
+      git -C "$workspace_root" commit -m "docs: NO_JIRA bootstrap codebase map (workspace)"
+    fi
+  else
+    echo "workspace root not a git repo; leaving codebase docs uncommitted"
+  fi
+  ```
+
+- **Single-repo mode** fire one background `Agent` call per missing domain:
 
   ```
   Parallel (background):
