@@ -2,9 +2,11 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
-## [1.2.0-dev] - unreleased
+## [2.0.0] - unreleased
 
-Rolling `-dev` pre-release on `main`; the `-dev` suffix is stripped at release time.
+**BREAKING:** graphify is now a hard requirement — the cycle aborts at startup if it
+is not installed (escape hatch: `LOOP_SPEC_REQUIRE_GRAPHIFY=0`). Existing users must
+`uv tool install graphifyy` before running `/loop-spec:cycle`. Major version bump.
 
 ### Added
 - **ITERATE phase -- the outer convergence loop** (`skills/iterate/SKILL.md`,
@@ -55,9 +57,9 @@ Rolling `-dev` pre-release on `main`; the `-dev` suffix is stripped at release t
   `commitStrategy: at-end` collapses `feat/{slug}` into one commit at EXECUTE phase exit instead of
   per-task commits (default `per-task` unchanged; skipped in workspace mode).
   Test: `tests/lib/workflow-config.test.sh` (6).
-- **`-dev` pre-release version suffix** -- `main` now carries `1.2.0-dev` across
-  `plugin.json`/`marketplace.json`; `tests/validate-manifest.test.sh` accepts a semver prerelease
-  suffix. Stripped at release time, making the stable-vs-rolling distinction visible downstream.
+- **Semver prerelease support** -- `tests/validate-manifest.test.sh` now accepts a semver
+  prerelease suffix (e.g. `X.Y.Z-dev`) on `plugin.json`/`marketplace.json`, so rolling `main`
+  builds can carry a `-dev` marker that release tooling strips. (This release is cut as `2.0.0`.)
 
 ### Changed
 - **Graphify is now a hard requirement** (was optional/skip-if-missing). graphify
