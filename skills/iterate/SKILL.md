@@ -78,18 +78,22 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedba
 
 - **`execute`** — implementation gap. Convert `gap` into a remediation task (`subject = "Iterate fix: {gap.fix_first}"`, `verifyCommand` from `feature.commands.test` or the relevant acceptance check) and append to `pendingRemediationTasks[]` (EXECUTE Step 2a consumes it alongside PLAN.md tasks). Set `currentPhase = "execute"`.
 - **`plan`** — decomposition gap. Set `currentPhase = "plan"`. PLAN reads `iterate.feedback` and re-plans the affected slice (it does not re-author the whole plan from scratch; it addresses the gap). 
-- **`spec`** — goal unmet because the SPEC captured the wrong thing. This is the expensive rewind and **requires human approval** (it can change scope):
-  ```
-  AskUserQuestion({
-    header: "Re-open SPEC?",
-    question: "ITERATE judges the goal still unmet because of a SPEC-level gap: {gap.description}. Re-open SPEC/DISCUSS (may change scope), ship as-is, or stop and hand back?",
-    options: ["Re-open SPEC/DISCUSS", "Ship as-is", "Stop - escalate to me"]
-  })
-  ```
-  - "Re-open SPEC/DISCUSS": set `currentPhase = "discuss"` (DISCUSS refines the SPEC; full re-open of the Socratic interview only if the user asks). 
-  - "Ship as-is": `currentPhase = "completed"`, record the accepted gap in `warnings[]`.
-  - "Stop - escalate": pause per the **cycle-resume-escalation** contract, surfacing the gap.
-  - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): never silently re-open SPEC. Default to escalate (pause) with the gap recorded; honor `LOOP_SPEC_ANSWER_ITERATE_SPEC` ∈ {reopen, ship, escalate} if set.
+- **`spec`** — goal unmet because the SPEC captured the wrong thing. This is the expensive rewind, but it is **autonomous in the autonomous styles** — it does NOT block on a human. The loop stays hands-off because the rewind cannot game its own oracle: the `iterate-judge` always scores against the **immutable original goal** (`feature.json.feature_title`), never the rewritten SPEC, so refining the spec can only move the work toward the original goal, not redefine "done". The iteration budget (Step 0) hard-caps the number of rewinds.
+
+  Branch by `execStyle` (read from `feature.json`):
+  - **`auto` / `review-only` (autonomous):** set `currentPhase = "discuss"` and proceed WITHOUT asking. DISCUSS re-entry runs in **autonomous refinement mode** (driven by `iterate.feedback` + the immutable original goal; it does not run its interactive clarifying loop — see `skills/discuss/SKILL.md` ITERATE re-entry note). No `AskUserQuestion`. The next VERIFY→ITERATE pass re-judges against the original goal and either converges or spends another iteration.
+  - **`step` / `interactive` (human-in-loop by choice):** the user explicitly opted into per-phase control, so here — and ONLY here — present the approval gate:
+    ```
+    AskUserQuestion({
+      header: "Re-open SPEC?",
+      question: "ITERATE judges the goal still unmet because of a SPEC-level gap: {gap.description}. Re-open SPEC/DISCUSS, ship as-is, or stop?",
+      options: ["Re-open SPEC/DISCUSS", "Ship as-is", "Stop - hand back"]
+    })
+    ```
+    Re-open → `currentPhase = "discuss"`; Ship as-is → `currentPhase = "completed"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
+  - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): treat as autonomous — re-enter DISCUSS in refinement mode (same as `auto`). `LOOP_SPEC_ANSWER_ITERATE_SPEC` ∈ {reopen, ship} overrides; default `reopen`.
+
+The autonomy guarantee: in `auto`/`review-only`, **no gap type ever blocks on a human**. The loop runs EXECUTE/PLAN/SPEC rewinds on its own until it converges or the iteration budget is spent, then it ships-with-warnings (Step 0). The only thing that ever returns control to you mid-loop is the explicit human-in-loop styles, or a hard escalation (budget-exhausted in `step`/`interactive`). An overnight `auto` run never waits for input.
 
 Clear `currentTeamName`/`currentTeammates` are already null (ITERATE ran no team).
 

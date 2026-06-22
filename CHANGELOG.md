@@ -14,10 +14,15 @@ Rolling `-dev` pre-release on `main`; the `-dev` suffix is stripped at release t
   using a **dual oracle** -- deterministic acceptance gate (from VERIFICATION.md) AND an LLM goal
   re-judge scoring each criterion, brutally honest. On convergence it ships; otherwise it classifies
   the single highest-leverage gap and **rewinds** the phase chain: `execute` (implementation) routes
-  a remediation task to EXECUTE, `plan` (decomposition) re-enters PLAN, `spec` (wrong scope) re-opens
-  SPEC/DISCUSS **only with human approval**. Bounded by tier-scaled `feature.iterate.maxIterations`
-  (quick 1 / balanced 2 / quality 3) and the cycle-wide global budget -- it ships or escalates, never
-  spins -- and never stops to ask mid-loop except the scope-changing SPEC rewind. Phase chain is now
+  a remediation task to EXECUTE, `plan` (decomposition) re-enters PLAN, `spec` (wrong scope) re-enters
+  DISCUSS. **Fully autonomous in `auto`/`review-only`: no gap type blocks on a human** -- the `spec`
+  rewind re-enters DISCUSS in autonomous refinement mode (no AskUserQuestion). This is safe because the
+  judge always scores against the immutable original goal (`feature_title`), never the rewritten SPEC,
+  so a rewind cannot redefine "done" to game its own oracle; the iteration budget hard-caps the loop and
+  it ships-with-warnings when spent rather than waiting. Only `step`/`interactive` surface the SPEC-rewind
+  approval gate. Bounded by tier-scaled `feature.iterate.maxIterations`
+  (quick 1 / balanced 2 / quality 3) and the cycle-wide global budget -- it ships, never
+  spins, never pauses for input in auto. Phase chain is now
   SPEC→DISCUSS→PLAN→EXECUTE→VERIFY→ITERATE→completed; VERIFY now exits to `iterate` instead of
   `completed`; new `feature.json` `iterate` state block + `iteration` artifact; PLAN/DISCUSS read
   `iterate.feedback` on re-entry to "fix the weakest point first". Generalizes the former EXECUTE-only

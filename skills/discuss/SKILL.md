@@ -26,7 +26,9 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after tier 
 
 ### Step 1 - Conversational clarifying loop
 
-**ITERATE re-entry:** if `feature.json.iterate.feedback` is non-null, DISCUSS was re-entered by the ITERATE convergence loop after the user approved re-opening the SPEC for a `spec`-type goal gap. Read that feedback first and focus the conversation on closing the named scope gap, then refine SPEC.md accordingly — do not restart the whole interview unless the user asks.
+**ITERATE re-entry (autonomous refinement mode):** if `feature.json.iterate.feedback` is non-null, DISCUSS was re-entered by the ITERATE convergence loop to close a `spec`-type goal gap. Read that feedback first and target only the named scope gap, then refine SPEC.md toward the **original goal** (`feature.json.feature_title`) — do not restart the whole interview, and do not redefine the goal.
+- In `auto` / `review-only` styles (and under `LOOP_SPEC_NON_INTERACTIVE=1`): run this refinement **without `AskUserQuestion`** — synthesize the SPEC change from `iterate.feedback` + the codebase, note any assumption in SPEC.md, and proceed. The loop must not block on a human here; the next VERIFY→ITERATE pass re-judges against the immutable original goal.
+- In `step` / `interactive` styles only: you may run the normal clarifying loop to refine the scope gap with the user.
 
 Run a one-question-at-a-time loop to understand the feature.
 
