@@ -229,6 +229,8 @@ highest tier whose signals are present, default `balanced` when signals are mixe
 | `balanced` (default) | A normal multi-file feature or module: moderate scope, a handful of acceptance criteria, contained blast radius. Also the fallback whenever the signals are mixed or the prompt is thin. |
 | `quality` | High blast radius or high cost of being wrong: auth/security/permissions, payments/billing, data migrations or anything risking data loss, public API or wire-contract changes, concurrency/locking, "production"/"critical"/"compliance" framing, or a wide cross-cutting refactor. Also when the user explicitly asks for rigor. |
 
+**Safety floor (overrides the rubric):** if the prompt carries any security-relevant signal — auth, authentication, authorization, permissions, credentials/API keys/secrets/tokens, crypto, payments/billing, PII, or data migration/deletion — **never infer `quick`** (which skips the critique gate), even when the prompt is short and reads as trivially scoped. Floor it at `balanced` and lean `quality`. A one-liner like "add an API key check to this endpoint" is small in words but security-critical in blast radius; the critique gate must run.
+
 Resolution order:
 
 1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_TIER` → `quick` (unchanged CI/smoke contract — inference is NOT applied in non-interactive mode), `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset). A `LOOP_SPEC_ANSWER_PRESET` env var, if set, is ignored (model selection is fixed).

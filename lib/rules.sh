@@ -68,8 +68,13 @@ case "$cmd" in
       exit 2
     fi
     ensure_file
-    # Idempotent: skip if the exact rule text already present.
-    if grep -Fq -- "$rule" "$RULES_FILE" 2>/dev/null; then
+    # Idempotent on the WHOLE rule text, not a substring: strip each existing
+    # bullet's "- [ ] " prefix and optional "  (check: `...`)" suffix, then do a
+    # fixed-string whole-line match. A substring match (the old behavior) would
+    # silently swallow a new rule that is a substring of an existing one.
+    if grep -E '^- \[[ xX]\] ' "$RULES_FILE" 2>/dev/null \
+         | sed -E 's/^- \[[ xX]\] //; s/  \(check: `.*`\)$//' \
+         | grep -Fxq -- "$rule"; then
       echo "exists"
       exit 0
     fi

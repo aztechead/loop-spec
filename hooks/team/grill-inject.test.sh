@@ -1,118 +1,83 @@
 #!/usr/bin/env bash
 # Test suite for hooks/team/grill-inject.sh
-# Usage: bash hooks/team/grill-inject.test.sh
 #
-# Grill mode is DEFAULT ON, so the polarity is inverted vs discipline-inject:
-# absent conf file => inject; ENABLED=0 or kill switch => silent.
+# Grill mode is DEFAULT ON, but self-scoped to loop-spec projects (a .loop-spec/
+# dir must exist). Polarity vs discipline-inject is still inverted: with .loop-spec
+# present, absent conf => inject; ENABLED=0 or kill switch => silent.
 set -euo pipefail
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/grill-inject.sh"
 TMPDIR_TEST="${TMPDIR:-/tmp}/grill-inject-test-$$"
 mkdir -p "$TMPDIR_TEST"
+trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 PASS=0
 FAIL=0
 
 check_output() {
-  local name="$1"
-  local expected_exit="$2"
-  local grep_pattern="$3"
-  shift 3
-  local actual_exit=0
-  local actual_output=""
-
+  local name="$1" expected_exit="$2" grep_pattern="$3"; shift 3
+  local actual_exit=0 actual_output=""
   actual_output=$(env "$@" bash "$HOOK" 2>/dev/null) || actual_exit=$?
-
-  local exit_ok=0
-  local output_ok=0
+  local exit_ok=0 output_ok=0
   [[ "$actual_exit" -eq "$expected_exit" ]] && exit_ok=1
   printf '%s' "$actual_output" | grep -q "$grep_pattern" && output_ok=1
-
   if [[ "$exit_ok" -eq 1 && "$output_ok" -eq 1 ]]; then
-    echo "PASS: $name"
-    ((PASS++)) || true
+    echo "PASS: $name"; ((PASS++)) || true
   else
     echo "FAIL: $name"
     [[ "$exit_ok" -eq 0 ]] && echo "  expected exit $expected_exit, got $actual_exit"
-    [[ "$output_ok" -eq 0 ]] && { echo "  output did not match pattern: $grep_pattern"; echo "  actual output: $actual_output"; }
+    [[ "$output_ok" -eq 0 ]] && { echo "  no match: $grep_pattern"; echo "  output: $actual_output"; }
     ((FAIL++)) || true
   fi
 }
 
 check_no_pattern() {
-  local name="$1"
-  local expected_exit="$2"
-  local absent_pattern="$3"
-  shift 3
-  local actual_exit=0
-  local actual_output=""
-
+  local name="$1" expected_exit="$2" absent_pattern="$3"; shift 3
+  local actual_exit=0 actual_output=""
   actual_output=$(env "$@" bash "$HOOK" 2>/dev/null) || actual_exit=$?
-
-  local exit_ok=0
-  local output_ok=0
+  local exit_ok=0 output_ok=0
   [[ "$actual_exit" -eq "$expected_exit" ]] && exit_ok=1
   printf '%s' "$actual_output" | grep -q "$absent_pattern" || output_ok=1
-
   if [[ "$exit_ok" -eq 1 && "$output_ok" -eq 1 ]]; then
-    echo "PASS: $name"
-    ((PASS++)) || true
+    echo "PASS: $name"; ((PASS++)) || true
   else
-    echo "FAIL: $name"
-    [[ "$exit_ok" -eq 0 ]] && echo "  expected exit $expected_exit, got $actual_exit"
-    [[ "$output_ok" -eq 0 ]] && { echo "  output unexpectedly matched: $absent_pattern"; echo "  actual output: $actual_output"; }
-    ((FAIL++)) || true
+    echo "FAIL: $name"; echo "  output: $actual_output"; ((FAIL++)) || true
+  fi
+}
+
+check_valid_json() {
+  local name="$1"; shift
+  local out; out=$(env "$@" bash "$HOOK" 2>/dev/null) || true
+  if printf '%s' "$out" | jq . >/dev/null 2>&1; then
+    echo "PASS: $name"; ((PASS++)) || true
+  else
+    echo "FAIL: $name (invalid JSON: $out)"; ((FAIL++)) || true
   fi
 }
 
 echo "=== grill-inject.sh tests ==="
 
-# --- Test: default ON (no conf file) -> injects ---
-NO_CONF_DIR="$TMPDIR_TEST/noconf"
-mkdir -p "$NO_CONF_DIR"
+# --- loop-spec project, no conf -> default ON ---
+LS="$TMPDIR_TEST/proj"; mkdir -p "$LS/.loop-spec"
+check_output "a: loop-spec project, absent conf -> hookSpecificOutput" 0 "hookSpecificOutput" CLAUDE_PROJECT_DIR="$LS"
+check_output "b: default on -> GRILL MODE ACTIVE" 0 "GRILL MODE ACTIVE" CLAUDE_PROJECT_DIR="$LS"
+check_valid_json "c: default on -> valid JSON" CLAUDE_PROJECT_DIR="$LS"
 
-check_output "a: default on (absent conf) - outputs hookSpecificOutput" 0 \
-  "hookSpecificOutput" \
-  CLAUDE_PROJECT_DIR="$NO_CONF_DIR"
+# --- self-scoping: NO .loop-spec dir -> silent (does not hijack other projects) ---
+NOPROJ="$TMPDIR_TEST/noproj"; mkdir -p "$NOPROJ"
+check_no_pattern "d: no .loop-spec dir -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$NOPROJ"
 
-check_output "b: default on - GRILL MODE ACTIVE present" 0 \
-  "GRILL MODE ACTIVE" \
-  CLAUDE_PROJECT_DIR="$NO_CONF_DIR"
+# --- ENABLED=1 -> still injects ---
+ENA="$TMPDIR_TEST/enabled"; mkdir -p "$ENA/.loop-spec"; printf 'ENABLED=1\n' > "$ENA/.loop-spec/grill.conf"
+check_output "e: ENABLED=1 -> injects" 0 "GRILL MODE ACTIVE" CLAUDE_PROJECT_DIR="$ENA"
 
-check_output "c: default on - additionalContext present" 0 \
-  "additionalContext" \
-  CLAUDE_PROJECT_DIR="$NO_CONF_DIR"
+# --- ENABLED=0 -> silent ---
+DIS="$TMPDIR_TEST/disabled"; mkdir -p "$DIS/.loop-spec"; printf 'ENABLED=0\n' > "$DIS/.loop-spec/grill.conf"
+check_no_pattern "f: ENABLED=0 -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$DIS"
 
-# --- Test: ENABLED=1 in conf -> still injects ---
-ENABLED_DIR="$TMPDIR_TEST/enabled/.loop-spec"
-mkdir -p "$ENABLED_DIR"
-printf 'ENABLED=1\n' > "$ENABLED_DIR/grill.conf"
-
-check_output "d: ENABLED=1 - injects" 0 \
-  "GRILL MODE ACTIVE" \
-  CLAUDE_PROJECT_DIR="$TMPDIR_TEST/enabled"
-
-# --- Test: ENABLED=0 in conf -> silent ---
-DISABLED_DIR="$TMPDIR_TEST/disabled/.loop-spec"
-mkdir -p "$DISABLED_DIR"
-printf 'ENABLED=0\n' > "$DISABLED_DIR/grill.conf"
-
-check_no_pattern "e: ENABLED=0 - no additionalContext injected" 0 \
-  "additionalContext" \
-  CLAUDE_PROJECT_DIR="$TMPDIR_TEST/disabled"
-
-# --- Test: kill switch -> silent even with default-on ---
-check_no_pattern "f: kill switch LOOP_SPEC_GRILL=0 - no injection" 0 \
-  "additionalContext" \
-  CLAUDE_PROJECT_DIR="$NO_CONF_DIR" \
-  LOOP_SPEC_GRILL=0
-
-# Cleanup
-rm -rf "$TMPDIR_TEST"
+# --- kill switch -> silent even with .loop-spec + default ---
+check_no_pattern "g: LOOP_SPEC_GRILL=0 -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_GRILL=0
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
-if [[ "$FAIL" -gt 0 ]]; then
-  exit 1
-fi
-exit 0
+[[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

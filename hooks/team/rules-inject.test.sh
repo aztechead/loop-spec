@@ -43,6 +43,18 @@ ck_has "e: with rules -> additionalContext present" "additionalContext" CLAUDE_P
 ck_absent "f: kill switch LOOP_SPEC_RULES=0 -> silent" "additionalContext" \
   CLAUDE_PROJECT_DIR="$WITH" LOOP_SPEC_RULES=0
 
+# JSON validity with adversarial RULES.md content: tab, double-quote, backslash,
+# control char. The hand-rolled sed escaper produced invalid JSON here; jq does not.
+ADV="$TMP/adv"; mkdir -p "$ADV/.loop-spec"
+CLAUDE_PROJECT_DIR="$ADV" bash "$RULES_LIB" add 'a normal rule' >/dev/null
+printf -- '- [ ] use\ttabs and "quotes" and a back\\slash in a rule\n' >> "$ADV/.loop-spec/RULES.md"
+adv_out=$(CLAUDE_PROJECT_DIR="$ADV" bash "$HOOK" 2>/dev/null) || true
+if printf '%s' "$adv_out" | jq . >/dev/null 2>&1; then
+  echo "PASS: g: adversarial RULES.md -> valid JSON"; ((PASS++)) || true
+else
+  echo "FAIL: g: adversarial RULES.md -> INVALID JSON: $adv_out"; ((FAIL++)) || true
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

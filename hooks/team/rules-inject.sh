@@ -52,7 +52,8 @@ ${BODY}
 
 Add a new rule via lib/rules.sh add (or /loop-spec:rules add) whenever the loop repeats a mistake. Disable injection with LOOP_SPEC_RULES=0."
 
-# Escape for JSON.
-ESCAPED=$(printf '%s' "$DIRECTIVE" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ' | sed 's/  */ /g')
-
-printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ESCAPED"
+# Emit valid JSON. RULES.md is user-authored markdown (tabs, quotes, backslashes,
+# control chars), so let jq do the escaping rather than a hand-rolled sed/tr that
+# misses U+0000-U+001F. jq is a hard runtime dependency (jq >= 1.5).
+jq -n --arg ctx "$DIRECTIVE" \
+  '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'

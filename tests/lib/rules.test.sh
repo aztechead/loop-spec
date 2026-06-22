@@ -49,6 +49,17 @@ if r add "" >/dev/null 2>&1; then fail "empty add rejected"; else pass "empty ad
 # Case 8: path prints resolved file
 [[ "$(r path)" == "$RF" ]] && pass "path resolves" || fail "path resolves"
 
+# Case 9: whole-line idempotency - a rule that is a SUBSTRING of an existing rule
+# must still be added (the old substring match silently swallowed it).
+r add "never log secrets in production" >/dev/null
+out="$(r add "never log secrets")"
+[[ "$out" == "added" ]] && pass "substring-of-existing rule still added" || fail "substring-of-existing rule still added (got '$out')"
+cnt=$(grep -Fc "never log secrets" "$RF")  # matches both lines
+[[ "$cnt" -eq 2 ]] && pass "both distinct rules present" || fail "both distinct rules present (cnt=$cnt)"
+# But an exact repeat of the longer rule is still deduped
+out="$(r add "never log secrets in production")"
+[[ "$out" == "exists" ]] && pass "exact repeat still deduped" || fail "exact repeat still deduped (got '$out')"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

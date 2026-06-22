@@ -25,7 +25,17 @@ if [[ "${LOOP_SPEC_GRILL:-1}" == "0" ]]; then
   exit 0
 fi
 
-CONF_FILE="${CLAUDE_PROJECT_DIR:-.}/.loop-spec/grill.conf"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+
+# Self-scope: only act inside loop-spec projects, matching every other loop-spec
+# hook (rules-inject, session-end-learnings). A default-ON directive must not
+# inject into unrelated projects just because the plugin is installed.
+if [[ ! -d "${PROJECT_DIR}/.loop-spec" ]]; then
+  printf '{}\n'
+  exit 0
+fi
+
+CONF_FILE="${PROJECT_DIR}/.loop-spec/grill.conf"
 
 # Opt-out: if the conf file exists AND pins ENABLED=0, stay silent.
 # Absent conf file => default ON (inject).
@@ -47,7 +57,6 @@ Skip the grill pass only when the request is already unambiguous, purely informa
 
 Grill mode is ON by default. Disable it with /loop-spec:grill off or LOOP_SPEC_GRILL=0.'
 
-# Escape for JSON: backslashes, double-quotes, then collapse newlines to spaces.
-ESCAPED=$(printf '%s' "$DIRECTIVE" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ' | sed 's/  */ /g')
-
-printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ESCAPED"
+# Emit valid JSON via jq (hard dependency) rather than a hand-rolled escaper.
+jq -n --arg ctx "$DIRECTIVE" \
+  '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
