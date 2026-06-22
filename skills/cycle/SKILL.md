@@ -1,7 +1,7 @@
 ---
 name: cycle
-description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY). Pick tier (quality/balanced/quick) + execution style (auto/step/interactive/review-only) + feature title. Model selection is fixed (no preset). Resumes incomplete features automatically.
-argument-hint: "[feature description]  (optional inline: tier:quick|balanced|quality style:auto|step|interactive|review-only)"
+description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Just give it a feature description -- tier (quality/balanced/quick) is INFERRED from the prompt, execution style defaults to auto; both are overridable inline but never asked. Model selection is fixed (no preset). Resumes incomplete features automatically.
+argument-hint: "[feature description]  (optional inline overrides: tier:quick|balanced|quality style:auto|step|interactive|review-only)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree
 ---
 
@@ -45,7 +45,7 @@ Inter-agent communication within a phase team uses `SendMessage`. This is the co
 Whenever a phase skill or this orchestrator says "instruct teammate X to revise" or "notify implementer of rework":
 - Use `SendMessage({to: "<teammate-name>", body: "..."})` to address the teammate by their assigned name (e.g., `advocate-1`, `implementer-2`, `spec-writer-1`).
 - Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`.
-- A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers only.
+- A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers and the ITERATE phase's one-shot `iterate-judge` dispatch (`skills/iterate/SKILL.md`); both are main-thread one-shot dispatches, not team rework.
 
 When a phase ends: call `TeamDelete` to tear down the team before the next phase's `TeamCreate`.
 
@@ -195,25 +195,61 @@ fi
 `teams_available` is persisted into `.loop-spec/runtime.json` together with the
 workflow probe below; phase skills read it to pick their dispatch path.
 
+**Graphify is a HARD requirement** (unlike teams). graphify is loop-spec's de-facto
+code-graph solution; the design phases (SPEC / DISCUSS / PLAN) query the graph to ground
+their work, so the cycle aborts when it is missing rather than degrading. This gate runs as
+part of the silent startup batch:
+
+```bash
+if ! bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" check; then
+  # The preflight printed install instructions (uv tool install graphifyy).
+  echo "loop-spec: aborting -- graphify is required. Install it, or set LOOP_SPEC_REQUIRE_GRAPHIFY=0 to bypass (not recommended)." >&2
+  exit 1
+fi
+```
+
+The only escape hatch is `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (constrained environments); with it
+set, the design phases fall back to Glob/Grep grounding and emit a degraded-mode warning.
+
 Model availability is probed in Step 3.5. Model selection is fixed (no preset), so the probe always covers the same two models.
 
-### Step 3 - Pick tier + style + feature
+### Step 3 - Infer tier + style + feature
 
-Goal: launch straight into the workflow. Do NOT open a blocking 4-question prompt when the invocation already carries a feature description.
+Goal: launch straight into the workflow with **zero menu friction**. The tier is no
+longer a user-facing question — the model **infers** it from the prompt (and from the
+grill answers, if a grill pass ran). The user can still override inline, but is never
+asked to choose. Style defaults to `auto` and is likewise inference-free unless overridden.
+
+**Tier-inference rubric** (apply to the feature description + any grill answers; pick the
+highest tier whose signals are present, default `balanced` when signals are mixed or thin):
+
+| Tier | Choose when the work looks like… |
+|---|---|
+| `quick` | Single-file or trivially-scoped change: typo, copy edit, small bugfix, one isolated function, a config tweak. Low blast radius, one obvious acceptance check, no cross-cutting concerns. |
+| `balanced` (default) | A normal multi-file feature or module: moderate scope, a handful of acceptance criteria, contained blast radius. Also the fallback whenever the signals are mixed or the prompt is thin. |
+| `quality` | High blast radius or high cost of being wrong: auth/security/permissions, payments/billing, data migrations or anything risking data loss, public API or wire-contract changes, concurrency/locking, "production"/"critical"/"compliance" framing, or a wide cross-cutting refactor. Also when the user explicitly asks for rigor. |
+
+**Safety floor (overrides the rubric):** if the prompt carries any security-relevant signal — auth, authentication, authorization, permissions, credentials/API keys/secrets/tokens, crypto, payments/billing, PII, or data migration/deletion — **never infer `quick`** (which skips the critique gate), even when the prompt is short and reads as trivially scoped. Floor it at `balanced` and lean `quality`. A one-liner like "add an API key check to this endpoint" is small in words but security-critical in blast radius; the critique gate must run.
 
 Resolution order:
 
-1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_TIER` → `quick` (unchanged CI/smoke contract), `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset). A `LOOP_SPEC_ANSWER_PRESET` env var, if set, is ignored (model selection is fixed).
+1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_TIER` → `quick` (unchanged CI/smoke contract — inference is NOT applied in non-interactive mode), `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset). A `LOOP_SPEC_ANSWER_PRESET` env var, if set, is ignored (model selection is fixed).
 
 2. **Invocation carries a feature description** (`$ARGUMENTS` is non-empty -- the user typed `/loop-spec:cycle <description>`): this is the default fast path.
    - Title = `$ARGUMENTS` (slugified). Parse optional inline overrides anywhere in the text: `tier:quick|balanced|quality`, `style:auto|step|interactive|review-only`. A legacy `preset:...` token, if present, is silently ignored.
-   - Apply defaults for anything not given inline: **tier `balanced`, style `auto`.**
+   - **Tier:** if given inline, use it. Otherwise **infer** it from the description via the rubric above. Style defaults to `auto` unless given inline.
    - Do NOT call `AskUserQuestion`. Print one line and proceed:
-     `Launching: tier={tier} style={style} title="{title}". (Reply within this turn with e.g. "tier:quality" to adjust before SPEC starts.)`
+     `Launching: tier={tier} (inferred: {reason}) style={style} title="{title}". (Reply within this turn with e.g. "tier:quality" to adjust before SPEC starts.)`
+     When the tier was given inline rather than inferred, drop the `(inferred: ...)` clause.
 
-3. **Bare invocation** (no description): the only thing genuinely required is a title. Ask a SINGLE `AskUserQuestion` for the feature title, and offer tier/style as optional same-call questions defaulted to `balanced`/`auto` (the user can accept defaults with one click). Never block the launch on more than this.
+3. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for tier or style. Infer the tier from that answer (plus the grill pass) via the rubric; style = `auto`. Use the answer as the title. Never present a tier/style menu.
 
 Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe consecutive `-`).
+
+> The grill directive (`hooks/team/grill-inject.sh`, on by default) may already have
+> elicited disambiguating answers before SPEC runs; feed those into the inference above so
+> the tier reflects the clarified scope, not just the raw one-liner. Do not re-grill once
+> the SPEC phase starts — SPEC's Socratic interview is the in-cycle grill.
 
 ### Step 3.5 - Model probe
 
@@ -382,6 +418,7 @@ feature_json=$(jq -n \
     models: {
       specWriter: $opus, planner: $opus,
       advocate: $opus, challenger: $opus, specComplianceReviewer: $opus,
+      iterateJudge: $opus,
       implementer: $sonnet, codeReviewer: $sonnet, verifier: $sonnet,
       mapper: $sonnet, patternMapper: $sonnet
     },
@@ -390,6 +427,7 @@ feature_json=$(jq -n \
     artifacts: {
       specInterview: null,
       spec: null, patterns: null, plan: null, execution: null, verification: null,
+      iteration: null,
       patternsSource: null,
       codebaseSource: {tech: null, arch: null, quality: null, concerns: null, domain: null}
     },
@@ -412,12 +450,20 @@ feature_json=$(jq -n \
         discuss: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
         plan: (if $tier == "quick" then 1 elif $tier == "balanced" then 3 else 4 end),
         execute: null,
-        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end)
+        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end),
+        iterate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end)
       },
       global: (if $tier == "quick" then 10 elif $tier == "balanced" then 20 else 30 end),
       globalUsed: 0,
       perGateUsed: {},
-      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0}
+      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0, iterate: 0}
+    },
+    iterate: {
+      maxIterations: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
+      used: 0,
+      lastVerdict: null,
+      feedback: null,
+      history: []
     },
     commands: {test: $test, lint: $lint, typecheck: $typecheck},
     stalenessHours: 48,
@@ -518,6 +564,7 @@ workspace_feature_json=$(jq -n \
     models: {
       specWriter: $opus, planner: $opus,
       advocate: $opus, challenger: $opus, specComplianceReviewer: $opus,
+      iterateJudge: $opus,
       implementer: $sonnet, codeReviewer: $sonnet, verifier: $sonnet,
       mapper: $sonnet, patternMapper: $sonnet
     },
@@ -526,6 +573,7 @@ workspace_feature_json=$(jq -n \
     artifacts: {
       specInterview: null,
       spec: null, patterns: null, plan: null, execution: null, verification: null,
+      iteration: null,
       patternsSource: null,
       codebaseSource: {tech: null, arch: null, quality: null, concerns: null, domain: null}
     },
@@ -551,12 +599,20 @@ workspace_feature_json=$(jq -n \
         discuss: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
         plan: (if $tier == "quick" then 1 elif $tier == "balanced" then 3 else 4 end),
         execute: null,
-        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end)
+        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end),
+        iterate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end)
       },
       global: (if $tier == "quick" then 10 elif $tier == "balanced" then 20 else 30 end),
       globalUsed: 0,
       perGateUsed: {},
-      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0}
+      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0, iterate: 0}
+    },
+    iterate: {
+      maxIterations: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
+      used: 0,
+      lastVerdict: null,
+      feedback: null,
+      history: []
     },
     commands: {test: "", lint: "", typecheck: ""},
     stalenessHours: 48,
@@ -587,51 +643,48 @@ Estimated cost: ~{N}k tokens (tier: {tier})
 
 ### Step 5.4 - Graphify bootstrap pre-flight (always; before the codebase-map skip)
 
-**Workspace mode:** graphify operates on a single repo root; it has no multi-repo mode. Skip this step entirely in workspace mode and log one line:
-
-```
-workspace mode: skipping graphify bootstrap (single-repo only)
-```
-
-Then proceed directly to Step 5.5.
+**Workspace mode:** graphify operates on a single repo root, so workspace mode builds one graph **per participating repo** (see the workspace block at the end of this step) rather than skipping. graphify is still required in workspace mode.
 
 ---
 
-Runs on EVERY cycle when `graphify` is installed (single-repo mode). It must NOT be gated behind the Step 5.5 "all 5 docs exist" skip: the graph (`graphify-out/graph.json`) is independent of the loop-spec codebase docs, so a repo that already has the 5 docs but no graph still needs one built. Idempotent, no LLM.
+Runs on EVERY cycle (single-repo mode). graphify is a hard requirement (enforced at Step 2), so the graph is built unconditionally and a build failure aborts — the design phases depend on it. It must NOT be gated behind the Step 5.5 "all 5 docs exist" skip: the graph (`graphify-out/graph.json`) is independent of the loop-spec codebase docs, so a repo that already has the 5 docs but no graph still needs one built. Idempotent, no LLM.
 
 Decision tree:
-- graphify not installed -> skip.
-- `graphify-out/graph.json` exists -> do nothing.
-- missing -> `graphify update .` (deterministic AST extraction, no API key).
+- `graphify-out/graph.json` exists -> do nothing (already built).
+- missing -> build via `lib/graphify-preflight.sh build .` (`graphify .`, deterministic AST extraction, no API key). A build failure aborts the cycle (unless `LOOP_SPEC_REQUIRE_GRAPHIFY=0`).
 - missing + GSD `.planning/codebase/` present -> build the graph, then supersede the GSD docs: fold their content into `docs/loop-spec/codebase/` (gsd-ingest) and remove the raw GSD source (committed, recoverable).
 
 ```bash
-if command -v graphify >/dev/null 2>&1; then
-  if [[ -f graphify-out/graph.json ]]; then
-    echo "graphify graph present (graphify-out/graph.json); skipping bootstrap"
-  else
-    echo "First graphify run: building code graph (no LLM)..."
-    if graphify update .; then
-      git add graphify-out/ 2>/dev/null || true
-      git commit -m "chore: NO_JIRA bootstrap graphify code graph" >/dev/null 2>&1 || true
-      # Supersede GSD codebase docs: preserve content into loop-spec docs, then remove raw GSD.
-      if [[ -d .planning/codebase ]]; then
-        bash "${CLAUDE_SKILL_DIR}/../../lib/gsd-ingest.sh" codebase >/dev/null 2>&1 || true
-        if ! git diff --quiet docs/loop-spec/codebase/ 2>/dev/null; then
-          git add docs/loop-spec/codebase/
-          git commit -m "docs: NO_JIRA ingest GSD codebase map before graphify supersession" >/dev/null 2>&1 || true
-        fi
-        git rm -r --quiet .planning/codebase 2>/dev/null || rm -rf .planning/codebase
-        git add -A .planning 2>/dev/null || true
-        git commit -m "chore: NO_JIRA remove GSD codebase docs superseded by graphify" >/dev/null 2>&1 || true
-        echo "Superseded GSD codebase docs (.planning/codebase) and removed the raw GSD source"
+graph_status="$(bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" graph-status .)"
+if [[ "$graph_status" == "present" ]]; then
+  echo "graphify graph present (graphify-out/graph.json); skipping bootstrap"
+else
+  echo "Building code graph (graphify, no LLM)..."
+  if bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" build .; then
+    git add graphify-out/ 2>/dev/null || true
+    git commit -m "chore: NO_JIRA bootstrap graphify code graph" >/dev/null 2>&1 || true
+    # Supersede GSD codebase docs: preserve content into loop-spec docs, then remove raw GSD.
+    if [[ -d .planning/codebase ]]; then
+      bash "${CLAUDE_SKILL_DIR}/../../lib/gsd-ingest.sh" codebase >/dev/null 2>&1 || true
+      if ! git diff --quiet docs/loop-spec/codebase/ 2>/dev/null; then
+        git add docs/loop-spec/codebase/
+        git commit -m "docs: NO_JIRA ingest GSD codebase map before graphify supersession" >/dev/null 2>&1 || true
       fi
-    else
-      echo "warn: 'graphify update .' failed; continuing without a graph" >&2
+      git rm -r --quiet .planning/codebase 2>/dev/null || rm -rf .planning/codebase
+      git add -A .planning 2>/dev/null || true
+      git commit -m "chore: NO_JIRA remove GSD codebase docs superseded by graphify" >/dev/null 2>&1 || true
+      echo "Superseded GSD codebase docs (.planning/codebase) and removed the raw GSD source"
     fi
+  elif [[ "${LOOP_SPEC_REQUIRE_GRAPHIFY:-1}" == "0" ]]; then
+    echo "warn: graphify build failed but requirement bypassed; design phases will use Glob/Grep fallback" >&2
+  else
+    echo "loop-spec: aborting -- 'graphify .' failed and graphify is required (set LOOP_SPEC_REQUIRE_GRAPHIFY=0 to bypass)." >&2
+    exit 1
   fi
 fi
 ```
+
+**Workspace mode:** graphify operates on a single repo root. Build a graph **per participating repo** (loop over `workspace_repos_json`, running `lib/graphify-preflight.sh build "$repo_abs"` in each), committing each repo's `graphify-out/` in place. A per-repo build failure aborts unless bypassed. The design phases query whichever repo's graph is in scope.
 
 ### Step 5.5 - First-run codebase map (one-time per project)
 
@@ -811,7 +864,7 @@ fi
 
 The cycle does NOT create the phase team. Each phase skill owns its own team lifecycle: `TeamCreate` at phase start, `TeamDelete` + clear `currentTeamName` at phase end. This keeps team rosters phase-specific (each phase has different teammates) and avoids double-`TeamCreate` errors.
 
-For new features, `currentPhase` is initialized to `"spec"` (Step 5), so `Skill(loop-spec:spec)` is invoked first. After spec completes, `currentPhase` advances to `"discuss"`, then `"plan"`, `"execute"`, `"verify"`, and finally `"completed"`.
+For new features, `currentPhase` is initialized to `"spec"` (Step 5), so `Skill(loop-spec:spec)` is invoked first. After spec completes, `currentPhase` advances to `"discuss"`, then `"plan"`, `"execute"`, `"verify"`, then `"iterate"`, and finally `"completed"`. The `iterate` phase is the outer convergence loop: it judges the result against the original goal and may route `currentPhase` **back** to `"execute"`, `"plan"`, or (with your approval) `"spec"`/`"discuss"` to fix a gap, or forward to `"completed"` when converged or the iteration budget is spent. Because ITERATE can rewind the phase pointer, the cycle's phase loop (below) naturally re-invokes the upstream phase.
 
 Cycle's only responsibility here is to invoke the phase skill and react to its return:
 

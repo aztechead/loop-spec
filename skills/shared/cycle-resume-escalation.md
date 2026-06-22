@@ -94,6 +94,18 @@ Resume rules for workspace features:
 
 5. **Resume label:** append `" (workspace: {N} repos)"` to the option label when presenting workspace features in the resume selection list.
 
+## Before escalating: answer from the record first
+
+A coordinator must not escalate a question that is already answered. Before raising any `AskUserQuestion` during a phase:
+
+1. **Consult the decisions record.** Read PLAN.md's `## User decisions (already made)` section (and the SPEC `<decisions>` block). If the question is settled there, resolve it from the record and proceed — do not ask.
+2. **Consult the self-learning rules.** Render `.loop-spec/RULES.md` (`bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" render`). If a rule already governs the situation, apply it rather than asking.
+3. Escalate to the user **only** when neither the record nor the rules answer the question.
+
+When you do escalate, the question must be **self-contained**: name the artifact and its role, state its current verified state, say why the decision is still open, and never recommend an option that contradicts a recorded decision. A question the user cannot answer without re-reading the whole plan is a defect — rewrite it.
+
+When a gate or verifier rejects the **same class** of mistake more than once across runs, append a rule (`bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "<lesson>" [--check "<cmd>"]`, prefer a deterministic check) so the next loop cannot repeat it, then continue. This is the self-learning loop: one repeated mistake, one permanent check.
+
 ## On phase pause / escalation
 
 If a phase pauses + escalates (budget exhausted, NEEDS_CONTEXT, etc.):

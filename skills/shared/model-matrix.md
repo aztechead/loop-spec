@@ -20,6 +20,7 @@ source of truth that Step 5 mirrors.
 | spec-writer, planner | claude-opus-4-8 |
 | advocate, challenger | claude-opus-4-8 |
 | spec-compliance-reviewer | claude-opus-4-8 |
+| iterate-judge | claude-opus-4-8 |
 | code-reviewer, verifier | claude-sonnet-4-6 |
 | implementer | claude-sonnet-4-6 |
 | mapper-*, pattern-mapper | claude-sonnet-4-6 |

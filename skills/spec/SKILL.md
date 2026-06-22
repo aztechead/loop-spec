@@ -86,6 +86,11 @@ Before asking any questions, read for grounding context:
 - `.loop-spec/features/{slug}/` - feature.json and any prior `spec-interview-transcript.md` (resume context)
 - `docs/loop-spec/features/{slug}/` - any prior SPEC.md or committed artifacts
 - `docs/loop-spec/codebase/` - domain maps (TECH, ARCH, QUALITY, CONCERNS, DOMAIN) if present
+- **The code graph (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Ground yourself in what already exists for this feature area before interviewing:
+  - `graphify query "<feature area>"` — does an implementation already exist? What does it touch?
+  - `graphify-out/GRAPH_REPORT.md` — "god nodes" and cross-module connections reveal which subsystems a change will ripple through, so you can ask sharper boundary/constraint questions.
+  - `graphify explain "<entity>"` / `graphify path "<A>" "<B>"` — confirm how the target area connects to the rest of the system.
+  Use the graph to ask precise questions ("this would touch `X` which also feeds `Y` — in scope?") instead of generic ones. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode; then use flat-file reads.)
 - Relevant source files to understand current state
 
 Synthesize current state internally: what exists today related to this feature, and the gap to the target state. Do not present this synthesis to the user - use it to ask precise, grounded questions.

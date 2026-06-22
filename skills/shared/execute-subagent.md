@@ -50,8 +50,12 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
 3. **Form the wave:** `wave = ready[:maxParallelImplementers]`.
 4. **Dispatch the wave.** For each `taskId` in `wave`, issue an implementer `Agent`
    call. On rung 2 emit all wave calls in ONE assistant message so they run in
-   parallel; on rung 1 the wave has one task. Use the prompt template below with
-   `model: models.implementer`. Each call returns `{taskId, branch, committed, sha, notes}`.
+   parallel; on rung 1 the wave has one task. Use the prompt template below.
+   **Per-task model resolution** (cheapest model that fits, in priority order):
+   1. a concrete `metadata.model` pin on the task, else
+   2. `bash "${CLAUDE_SKILL_DIR}/../../lib/model-tier.sh" model "$(task.metadata.modelTier)"` when the task carries a `modelTier`, else
+   3. `models.implementer` (the role default).
+   Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
 5. **Review each committed task** (skip entirely when `reviewersEnabled == false`, i.e.
    quick tier). For each implementer result with `committed == true`, dispatch a
    spec-compliance reviewer `Agent` (`model: models.specComplianceReviewer`) using the

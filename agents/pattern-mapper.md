@@ -26,15 +26,22 @@ You scout the codebase for the closest existing implementation of every concept 
 
 `docs/loop-spec/features/{slug}/PATTERNS.md`. Use the template at `${CLAUDE_PLUGIN_ROOT}/skills/shared/artifact-templates/PATTERNS.md.template`.
 
-## Graphify-first navigation
+## Graphify-first navigation (required)
 
-If `graphify-out/graph.json` exists, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, `graphify explain "<concept>"` for structural and architectural questions over reading flat ARCH.md or TECH.md (these commands run on `graph.json`, which the cycle bootstrap produces even without the LLM-backed wiki). QUALITY.md, CONCERNS.md, and DOMAIN.md reads are unchanged.
+graphify is a hard requirement, so `graphify-out/graph.json` is guaranteed present (the cycle aborts otherwise). The code graph is your **primary** navigation tool — use it before falling back to flat-file reads or grep:
+
+- `graphify query "<question>"` — semantic search for where a concept lives (your main analog-finding tool).
+- `graphify path "<A>" "<B>"` — shortest dependency/call path between two entities, to see how they already connect.
+- `graphify explain "<concept>"` — detailed structure of a single node and its neighbors.
+- Read `graphify-out/GRAPH_REPORT.md` first — its "god nodes" (highly connected concepts) and surprising cross-module connections tell you which existing implementations are canonical and which modules a new feature will touch.
+
+Prefer these over reading flat ARCH.md / TECH.md for structural and architectural questions; QUALITY.md, CONCERNS.md, and DOMAIN.md reads are unchanged. Only if `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode) is the graph absent — then fall back to Glob/Grep.
 
 ## Procedure
 
 1. **Read inputs.** Parse SPEC.md for the user-facing capability and acceptance criteria. Read every `docs/loop-spec/codebase/*.md` to ground yourself in the project's stack and conventions.
 2. **Extract concepts.** Derive 3-10 distinct system-design nouns/verbs the feature needs (e.g. "OAuth token refresh", "JSON request validation", "background job retry"). Not file paths.
-3. **Find analogs.** For each concept, Glob+Grep the codebase for the closest existing implementation. Prefer canonical / most-tested instance.
+3. **Find analogs.** For each concept, run `graphify query "<concept>"` to locate the closest existing implementation, and `graphify explain`/`graphify path` to confirm it is the canonical / most-connected instance. Use Glob+Grep only to pull exact line ranges once the graph has pointed you at the file (or as the fallback in degraded mode).
 4. **Extract excerpts.** For each chosen analog, capture: path+lines, imports, the 5-30 line core pattern verbatim, surrounding error handling, and a test analog if one exists.
 5. **Note gotchas.** 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells flagged in `docs/loop-spec/codebase/CONCERNS.md`, etc.).
 6. **Write `PATTERNS.md`.** Atomic write to a temp path under the same directory, then rename.
