@@ -25,7 +25,9 @@ else
 fi
 
 # 2. CHANGELOG top version heading matches plugin.json version
-CHANGELOG_VER=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | tr -d '## []')
+# Accepts a semver prerelease suffix (e.g. 1.2.0-dev) for rolling main builds,
+# which release tooling strips at release time.
+CHANGELOG_VER=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?\]' CHANGELOG.md | tr -d '## []')
 if [[ "$CHANGELOG_VER" == "$PLUGIN_VER" ]]; then
   pass "CHANGELOG top ([$CHANGELOG_VER]) == plugin.json ($PLUGIN_VER)"
 else

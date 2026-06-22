@@ -29,16 +29,17 @@ Mapper model is fixed at `claude-sonnet-4-6` (see `skills/shared/model-matrix.md
 
 ## Procedure
 
-### Step 0 - Graphify pre-flight detection
+### Step 0 - Graphify pre-flight (required)
 
-Refresh (or first-build) the code graph deterministically. `graphify update .` re-extracts via AST and needs no LLM/API key; do NOT use the `--update --wiki` slash-skill form here (it requires an LLM key and errors out in CLI context).
+graphify is a hard requirement. Refresh (or first-build) the code graph deterministically via the preflight lib — `graphify <dir>` builds, `graphify <dir> --update` re-extracts only changed files; both run on AST and need no LLM/API key. Do NOT use the `--update --wiki` slash-skill form here (it requires an LLM key and errors out in CLI context).
 
 ```bash
-if command -v graphify > /dev/null 2>&1; then
-  graphify update . || echo "warn: 'graphify update .' failed; continuing without graph refresh" >&2
-else
-  echo "graphify not found. Install with: pip install graphifyy  (or: uv tool install graphifyy)" >&2
+if ! bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" check; then
+  # Prints install instructions (uv tool install graphifyy). Hard requirement.
+  exit 1
 fi
+bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" build . \
+  || echo "warn: graphify build failed (set LOOP_SPEC_REQUIRE_GRAPHIFY=0 to bypass)" >&2
 ```
 
 ### Step 1 - Determine stale domains
@@ -113,7 +114,7 @@ TeamCreate({
 
 Only include teammates whose domain is in `stale_domains`.
 
-When graphify is not installed, ARCH and TECH domains are not refreshed by this skill invocation. Install graphify to restore full coverage. This is the fallback mode: quality, concerns, and domain mapping continue normally, but ARCH and TECH analysis depends on graphify being present.
+graphify is a hard requirement, so ARCH and TECH domains are graph-backed by default. In the `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode only, ARCH and TECH are not refreshed by this skill invocation (quality, concerns, and domain mapping continue normally); install graphify to restore full coverage.
 
 Send each spawned mapper its work prompt via `SendMessage`:
 

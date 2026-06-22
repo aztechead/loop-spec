@@ -314,15 +314,14 @@ Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `cur
 
 **Single-repo mode (unchanged):**
 
-Before invoking the map-codebase skill, run an incremental graphify update if graphify is available:
+Before invoking the map-codebase skill, run an incremental graphify update via the preflight lib (`graphify . --update`). graphify is a hard requirement, so it is present; this post-merge refresh is nonetheless best-effort:
 
 ```bash
-if command -v graphify >/dev/null 2>&1; then
-  graphify update . || echo "Warning: 'graphify update .' failed; continuing without graph refresh" >&2
-fi
+bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" build . \
+  || echo "Warning: graphify refresh failed; continuing (non-blocking at verify stage)" >&2
 ```
 
-Failure of the graphify call is non-blocking; log a warning and continue.
+Failure of the graphify refresh is non-blocking here: VERIFY runs after the design phases, so a stale graph does not affect this phase's gates. Log a warning and continue.
 
 Invoke the map-codebase skill for an incremental refresh:
 

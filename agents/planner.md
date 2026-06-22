@@ -53,9 +53,16 @@ For `quick` tier: top-1 analog per concept. For `balanced`/`quality`: top-2 with
 
 Read SPEC.md, the PATTERNS.md just produced (or pre-existing), and all codebase mapping docs. Then produce PLAN.md.
 
-## Graphify-first navigation
+## Graphify-first navigation (required)
 
-If `graphify-out/graph.json` exists, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, `graphify explain "<concept>"` for structural and architectural questions over reading flat ARCH.md or TECH.md (these commands run on `graph.json`, which the cycle bootstrap produces even without the LLM-backed wiki). QUALITY.md, CONCERNS.md, and DOMAIN.md reads are unchanged.
+graphify is a hard requirement, so `graphify-out/graph.json` is guaranteed present. Use the code graph as your primary tool when shaping the plan:
+
+- `graphify query "<question>"` to find where capabilities already live before you assign a task to extend them.
+- `graphify path "<A>" "<B>"` to map the real dependency/call chain between two entities — this is how you derive correct `blockedBy` edges and `files[]` scopes instead of guessing.
+- `graphify explain "<concept>"` for the structure of a node you intend to modify, so a task's blast radius is grounded in actual edges.
+- Read `graphify-out/GRAPH_REPORT.md` for "god nodes" (highly connected concepts a change will ripple through) and cross-module connections — fold these into task ordering and impact notes.
+
+Prefer these over flat ARCH.md / TECH.md for structural and architectural questions; QUALITY.md, CONCERNS.md, and DOMAIN.md reads are unchanged. The graph is absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode) — then fall back to flat-file reads.
 
 ## Role boundary
 
@@ -139,7 +146,21 @@ Criteria that describe intent without a verifiable anchor are not acceptance cri
 After you return, automated gates check the PLAN.md you produced. Self-check against these before sending, or you trigger a re-dispatch round:
 
 - **Feasibility gate**: every task's verify command must pass `bash -n -c "$cmd"`; the `blockedBy` graph must be acyclic; every task must have at least one acceptance criterion in the REQUIRED CONCRETE FORM above.
-- **Decision-coverage gate**: for each entry in the SPEC `<decisions>` block, the decision text (the part after the `- `/`Decision: ` prefix) must appear verbatim somewhere in PLAN.md. Put them in a `## Decisions` or `## Assumptions` section so the fixed-string grep matches.
+- **Decision-coverage gate**: for each entry in the SPEC `<decisions>` block, the decision text (the part after the `- `/`Decision: ` prefix) must appear verbatim somewhere in PLAN.md. Put them in the `## User decisions (already made)` section below (or a `## Decisions`/`## Assumptions` section) so the fixed-string grep matches.
+
+### The "User decisions (already made)" record
+
+PLAN.md MUST carry a `## User decisions (already made)` section near the top. For each decision the user (or the SPEC interview / grill pass) already settled, record one bullet:
+
+```
+- **<decision>**: chose <option> over <alternatives>. Verified state: <what is true now>. Source: SPEC <decisions> / grill round N / inline.
+```
+
+This record is the authority during EXECUTE: a coordinator that hits a question already answered here resolves it from the record instead of re-escalating to the user. Never write a deferred/open question whose answer is already in this record, and never recommend an option that contradicts a recorded decision. If a decision is genuinely still open, state it as an explicit assumption in the relevant task's notes, naming the artifact and its current state — not a vague "TBD".
+
+### Optional per-task model tier
+
+A task whose work is clearly mechanical (rote scaffolding, a contained rename) or clearly judgment-heavy may carry an optional `modelTier` in its metadata: `mechanical`, `standard`, or `frontier`. EXECUTE resolves it via `lib/model-tier.sh` to route that one task to the cheapest model that fits, overriding the role default. Omit it to use the fixed per-role map (the common case). A concrete `model` pin still wins over `modelTier`.
 
 ## What NOT to do
 
@@ -157,4 +178,4 @@ Same as spec-writer: apply fix-list via Edit, preserve untouched content.
 - **Status**: DONE | NEEDS_CONTEXT
 - **Plan path**: ...
 - **Task count**: N
-- **Tasks JSON**: full tasks[] for the lead to seed the EXECUTE harness task list via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst` (from each task's `read_first` list), and `specPath` (a per-task spec file path if you wrote one for a complex task, else `null`))
+- **Tasks JSON**: full tasks[] for the lead to seed the EXECUTE harness task list via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst` (from each task's `read_first` list), `specPath` (a per-task spec file path if you wrote one for a complex task, else `null`), and optionally `modelTier` (`mechanical`/`standard`/`frontier`) when a task should override its role's default model)

@@ -2,6 +2,71 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [1.2.0-dev] - unreleased
+
+Rolling `-dev` pre-release on `main`; the `-dev` suffix is stripped at release time.
+
+### Added
+- **Grill mode (on by default)** -- `hooks/team/grill-inject.sh` SessionStart hook injects a
+  disambiguation directive so the assistant front-loads 2-4 sharp clarifying questions right after
+  the user's initial prompt, before writing code or committing to an approach. Inverse default of
+  discipline mode: ON unless `.loop-spec/grill.conf` pins `ENABLED=0` or `LOOP_SPEC_GRILL=0` is set.
+  New `skills/grill/SKILL.md` toggle (`on`/`off`/`status`), `hooks/team/grill-inject.test.sh`
+  (6 cases, wired into `tests/run-all.sh`), and hook registration in `hooks/hooks.json`.
+  Capability adapted from the superpowers brainstorming/clarify pattern; loop-spec realizes it
+  in-cycle through the existing SPEC Socratic interview and out-of-cycle through this directive.
+- **Self-learning loop (RULES.md)** -- `lib/rules.sh` manages a curated, human-owned
+  `.loop-spec/RULES.md`; `hooks/team/rules-inject.sh` (default on, inert until rules exist) carries
+  those rules forward into every session so a repeated mistake becomes a permanent, preferably
+  deterministic, check the loop cannot repeat. New `skills/rules/SKILL.md`
+  (`add`/`list`/`render`/`path`, `--check` for deterministic enforcement). Escalation contract
+  (`skills/shared/cycle-resume-escalation.md`) now appends a rule when a gate rejects the same class
+  of mistake twice. Tests: `tests/lib/rules.test.sh` (12), `hooks/team/rules-inject.test.sh` (6).
+  Idea from the "self-learning loop" anatomy (failure → enforced rule).
+- **Guided onboarding** -- `skills/onboard/SKILL.md` (`/loop-spec:onboard`): a short
+  multiple-choice walkthrough that writes the optional config in place (grill, self-learning,
+  discipline, commit strategy) and confirms each path. Non-destructive and re-runnable.
+- **Per-task model tier override** -- `lib/model-tier.sh` resolves an optional task
+  `modelTier` (`mechanical`/`standard`/`frontier`) to a concrete model so a single task can route to
+  the cheapest model that fits, overriding the fixed per-role default (a concrete `model` pin still
+  wins). Wired into the EXECUTE subagent/loop dispatch and the planner's task metadata; the team rung
+  keeps role defaults (teammates are pre-spawned). Test: `tests/lib/model-tier.test.sh` (8).
+- **Commit-strategy config** -- `lib/workflow-config.sh` reads `.loop-spec/workflow.json`;
+  `commitStrategy: at-end` collapses `feat/{slug}` into one commit at EXECUTE phase exit instead of
+  per-task commits (default `per-task` unchanged; skipped in workspace mode).
+  Test: `tests/lib/workflow-config.test.sh` (6).
+- **`-dev` pre-release version suffix** -- `main` now carries `1.2.0-dev` across
+  `plugin.json`/`marketplace.json`; `tests/validate-manifest.test.sh` accepts a semver prerelease
+  suffix. Stripped at release time, making the stable-vs-rolling distinction visible downstream.
+
+### Changed
+- **Graphify is now a hard requirement** (was optional/skip-if-missing). graphify
+  ([safishamsi/graphify](https://github.com/safishamsi/graphify), PyPI `graphifyy`) is loop-spec's
+  de-facto code-graph solution. New `lib/graphify-preflight.sh` (`check`/`graph-status`/`build`,
+  documented CLI `graphify .` / `graphify . --update`) enforces it: cycle Step 2 aborts at startup
+  when the binary is missing (with install instructions), and Step 5.4 hard-fails on a failed build
+  instead of "continuing without a graph". Workspace mode now builds one graph per participating repo
+  rather than skipping. Escape hatch: `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded Glob/Grep fallback).
+  The design phases now treat the graph as **guaranteed and primary**, not conditional:
+  `skills/spec/SKILL.md` (scout step queries the graph + GRAPH_REPORT.md god-nodes to ask sharper
+  questions), `skills/discuss/SKILL.md` (graph drives the AskUserQuestion option sets),
+  `agents/pattern-mapper.md` and `agents/planner.md` (graph-first analog-finding, dependency/blast-radius
+  reasoning). `skills/map-codebase/SKILL.md` routes through the preflight lib. Manifests, README, and
+  CLAUDE.md updated to list graphify as required. Test: `tests/lib/graphify-preflight.test.sh` (10).
+  The offline test suite never invokes the cycle, so it does not require graphify installed.
+- **Plan "User decisions (already made)" record** -- PLAN.md now carries an explicit
+  decisions section (`agents/planner.md`); EXECUTE coordinators resolve a question from that record
+  (and from `RULES.md`) before escalating, and escalation questions must be self-contained (name the
+  artifact + verified state, never contradict a recorded decision). Adapted from superpowers v6.0.0
+  plan-quality. (`skills/shared/cycle-resume-escalation.md`, `agents/planner.md`.)
+- **Tier is now inferred, not asked** (`skills/cycle/SKILL.md` Step 3). The cycle reads the feature
+  description (plus any grill answers) and infers `quick`/`balanced`/`quality` from a blast-radius
+  rubric instead of presenting a tier menu. Bare `/loop-spec:cycle` now asks a single free-text
+  "what do you want to build?" question — no tier/style menu. Inline overrides
+  (`tier:...`, `style:...`) still honored but never prompted for. Non-interactive mode is unchanged
+  (env vars, `LOOP_SPEC_ANSWER_TIER` default `quick`; inference is not applied in CI). Streamlines
+  the entry from a multi-question gate to a single launch line.
+
 ## [1.1.0] - 2026-06-12
 
 ### Added

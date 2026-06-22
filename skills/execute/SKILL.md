@@ -533,6 +533,25 @@ lib/feature-write.sh set currentTeamName null
 
 (Reached from workflow path clean completion OR fallback Step 10 all-clear.)
 
+### Commit strategy (optional)
+
+Before tagging the checkpoint, read the project's commit strategy:
+
+```bash
+commit_strategy="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workflow-config.sh" commit-strategy)"
+```
+
+- `per-task` (default, and the behavior when `.loop-spec/workflow.json` is absent): leave the per-task commit history on `feat/{slug}` exactly as the merge ladder produced it. No extra action.
+- `at-end`: collapse the feature branch into a single commit so the plan lands as one change. With `feat/{slug}` checked out and merged:
+  ```bash
+  base="$(jq -r '.baseBranch' "$fdir/feature.json")"
+  git reset --soft "$(git merge-base "$base" HEAD)"
+  git commit -m "feat: NO_JIRA {slug}"
+  ```
+  The per-task worktree commits are still required for the merge mechanics; `at-end` only rewrites the final history on `feat/{slug}`, never the per-task worktrees. Skip silently in workspace mode (in-place branches across repos make a cross-repo squash ambiguous; v1 keeps per-task there).
+
+  **Caveat (per Anthropic long-running-agent guidance):** for long unsupervised / overnight runs, prefer `per-task` (the default). Anthropic recommends committing after every meaningful unit so history is recoverable and progress is not lost if the compute budget exhausts mid-run; `at-end` trades that recoverability for a clean single commit and is best reserved for short, supervised features.
+
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-execute
 lib/feature-write.sh append completedPhases "execute"

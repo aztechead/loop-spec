@@ -28,6 +28,8 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after tier 
 
 Run a one-question-at-a-time loop to understand the feature.
 
+**Ground in the code graph first (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Before and during the loop, use `graphify query "<area>"`, `graphify path "<A>" "<B>"`, `graphify explain "<entity>"`, and `graphify-out/GRAPH_REPORT.md` (god nodes + cross-module connections) to see what the feature will actually touch. Let the graph drive design/approach questions — e.g. surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode.)
+
 - Non-AUTO styles: full conversation in main thread, no cap on rounds
 - AUTO style: cap at 5 Q rounds, then proceed regardless
 - **Present design/approach decisions as structured `AskUserQuestion` multiple-choice with explicit tradeoffs, not prose.** Whenever a question has discernible options (library choice, scope cut, data shape, integration point), surface them as numbered options so the user can steer with one click. Reserve free-text questions for genuinely open prompts. This applies to every `AskUserQuestion` escalation in this phase (Step 5 reconciliation included).
