@@ -26,6 +26,8 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after tier 
 
 ### Step 1 - Conversational clarifying loop
 
+**ITERATE re-entry:** if `feature.json.iterate.feedback` is non-null, DISCUSS was re-entered by the ITERATE convergence loop after the user approved re-opening the SPEC for a `spec`-type goal gap. Read that feedback first and focus the conversation on closing the named scope gap, then refine SPEC.md accordingly — do not restart the whole interview unless the user asks.
+
 Run a one-question-at-a-time loop to understand the feature.
 
 **Ground in the code graph first (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Before and during the loop, use `graphify query "<area>"`, `graphify path "<A>" "<B>"`, `graphify explain "<entity>"`, and `graphify-out/GRAPH_REPORT.md` (god nodes + cross-module connections) to see what the feature will actually touch. Let the graph drive design/approach questions — e.g. surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode.)

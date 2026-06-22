@@ -24,6 +24,8 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 - `plan_path`: `docs/loop-spec/features/{slug}/PLAN.md` (equals `feature.json.artifacts.plan`); bound here so the Step 5.5 decision-coverage call has a real path
 - Required: `docs/loop-spec/codebase/*.md` (cycle skill guarantees these exist before PLAN starts)
 
+**ITERATE re-entry:** if `feature.json.iterate.feedback` is non-null, this is a re-plan triggered by the ITERATE convergence loop (the judge classified a `plan`-type gap). Read that feedback first and target the named gap — revise or add only the tasks needed to close it (fix the weakest point first); do NOT re-author the whole plan from scratch. Preserve the `## User decisions (already made)` record. Clear `iterate.feedback` is the orchestrator's job after the phase routes, not yours.
+
 ## Procedure
 
 ### Step 0 - PATTERNS.md cache check and GSD ingestion

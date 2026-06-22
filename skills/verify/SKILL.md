@@ -466,7 +466,7 @@ done
 
 Update `feature.json` via `lib/feature-write.sh`:
 - `completedPhases.append("verify")`
-- `currentPhase = "completed"`
+- `currentPhase = "iterate"` — VERIFY's gates passing means the SPEC acceptance checklist is met; the ITERATE phase then judges the integrated result against the **original goal** and decides whether to ship or loop back. (When `feature.iterate.maxIterations` is exhausted on a prior pass, ITERATE ships rather than re-entering; see `skills/iterate/SKILL.md`.)
 - `artifacts.verification = "docs/loop-spec/features/{slug}/VERIFICATION.md"`
 
 ### Step 13 - Exit feature worktree (schema-6 only)

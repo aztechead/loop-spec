@@ -1,6 +1,6 @@
 ---
 name: cycle
-description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY). Just give it a feature description -- tier (quality/balanced/quick) is INFERRED from the prompt, execution style defaults to auto; both are overridable inline but never asked. Model selection is fixed (no preset). Resumes incomplete features automatically.
+description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Just give it a feature description -- tier (quality/balanced/quick) is INFERRED from the prompt, execution style defaults to auto; both are overridable inline but never asked. Model selection is fixed (no preset). Resumes incomplete features automatically.
 argument-hint: "[feature description]  (optional inline overrides: tier:quick|balanced|quality style:auto|step|interactive|review-only)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree
 ---
@@ -45,7 +45,7 @@ Inter-agent communication within a phase team uses `SendMessage`. This is the co
 Whenever a phase skill or this orchestrator says "instruct teammate X to revise" or "notify implementer of rework":
 - Use `SendMessage({to: "<teammate-name>", body: "..."})` to address the teammate by their assigned name (e.g., `advocate-1`, `implementer-2`, `spec-writer-1`).
 - Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`.
-- A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers only.
+- A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers and the ITERATE phase's one-shot `iterate-judge` dispatch (`skills/iterate/SKILL.md`); both are main-thread one-shot dispatches, not team rework.
 
 When a phase ends: call `TeamDelete` to tear down the team before the next phase's `TeamCreate`.
 
@@ -418,6 +418,7 @@ feature_json=$(jq -n \
     models: {
       specWriter: $opus, planner: $opus,
       advocate: $opus, challenger: $opus, specComplianceReviewer: $opus,
+      iterateJudge: $opus,
       implementer: $sonnet, codeReviewer: $sonnet, verifier: $sonnet,
       mapper: $sonnet, patternMapper: $sonnet
     },
@@ -426,6 +427,7 @@ feature_json=$(jq -n \
     artifacts: {
       specInterview: null,
       spec: null, patterns: null, plan: null, execution: null, verification: null,
+      iteration: null,
       patternsSource: null,
       codebaseSource: {tech: null, arch: null, quality: null, concerns: null, domain: null}
     },
@@ -448,12 +450,20 @@ feature_json=$(jq -n \
         discuss: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
         plan: (if $tier == "quick" then 1 elif $tier == "balanced" then 3 else 4 end),
         execute: null,
-        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end)
+        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end),
+        iterate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end)
       },
       global: (if $tier == "quick" then 10 elif $tier == "balanced" then 20 else 30 end),
       globalUsed: 0,
       perGateUsed: {},
-      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0}
+      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0, iterate: 0}
+    },
+    iterate: {
+      maxIterations: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
+      used: 0,
+      lastVerdict: null,
+      feedback: null,
+      history: []
     },
     commands: {test: $test, lint: $lint, typecheck: $typecheck},
     stalenessHours: 48,
@@ -554,6 +564,7 @@ workspace_feature_json=$(jq -n \
     models: {
       specWriter: $opus, planner: $opus,
       advocate: $opus, challenger: $opus, specComplianceReviewer: $opus,
+      iterateJudge: $opus,
       implementer: $sonnet, codeReviewer: $sonnet, verifier: $sonnet,
       mapper: $sonnet, patternMapper: $sonnet
     },
@@ -562,6 +573,7 @@ workspace_feature_json=$(jq -n \
     artifacts: {
       specInterview: null,
       spec: null, patterns: null, plan: null, execution: null, verification: null,
+      iteration: null,
       patternsSource: null,
       codebaseSource: {tech: null, arch: null, quality: null, concerns: null, domain: null}
     },
@@ -587,12 +599,20 @@ workspace_feature_json=$(jq -n \
         discuss: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
         plan: (if $tier == "quick" then 1 elif $tier == "balanced" then 3 else 4 end),
         execute: null,
-        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end)
+        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end),
+        iterate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end)
       },
       global: (if $tier == "quick" then 10 elif $tier == "balanced" then 20 else 30 end),
       globalUsed: 0,
       perGateUsed: {},
-      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0}
+      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0, iterate: 0}
+    },
+    iterate: {
+      maxIterations: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
+      used: 0,
+      lastVerdict: null,
+      feedback: null,
+      history: []
     },
     commands: {test: "", lint: "", typecheck: ""},
     stalenessHours: 48,
@@ -844,7 +864,7 @@ fi
 
 The cycle does NOT create the phase team. Each phase skill owns its own team lifecycle: `TeamCreate` at phase start, `TeamDelete` + clear `currentTeamName` at phase end. This keeps team rosters phase-specific (each phase has different teammates) and avoids double-`TeamCreate` errors.
 
-For new features, `currentPhase` is initialized to `"spec"` (Step 5), so `Skill(loop-spec:spec)` is invoked first. After spec completes, `currentPhase` advances to `"discuss"`, then `"plan"`, `"execute"`, `"verify"`, and finally `"completed"`.
+For new features, `currentPhase` is initialized to `"spec"` (Step 5), so `Skill(loop-spec:spec)` is invoked first. After spec completes, `currentPhase` advances to `"discuss"`, then `"plan"`, `"execute"`, `"verify"`, then `"iterate"`, and finally `"completed"`. The `iterate` phase is the outer convergence loop: it judges the result against the original goal and may route `currentPhase` **back** to `"execute"`, `"plan"`, or (with your approval) `"spec"`/`"discuss"` to fix a gap, or forward to `"completed"` when converged or the iteration budget is spent. Because ITERATE can rewind the phase pointer, the cycle's phase loop (below) naturally re-invokes the upstream phase.
 
 Cycle's only responsibility here is to invoke the phase skill and react to its return:
 

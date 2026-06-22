@@ -7,6 +7,21 @@ All notable changes documented here. Format follows Keep a Changelog.
 Rolling `-dev` pre-release on `main`; the `-dev` suffix is stripped at release time.
 
 ### Added
+- **ITERATE phase -- the outer convergence loop** (`skills/iterate/SKILL.md`,
+  `agents/iterate-judge.md`). Closes the loop the infographic/article calls the heart of autonomy:
+  after VERIFY's gates pass, ITERATE judges the integrated result against the **original goal**
+  (not just the frozen SPEC checklist) via a fresh, strict `iterate-judge` (opus, maker≠checker),
+  using a **dual oracle** -- deterministic acceptance gate (from VERIFICATION.md) AND an LLM goal
+  re-judge scoring each criterion, brutally honest. On convergence it ships; otherwise it classifies
+  the single highest-leverage gap and **rewinds** the phase chain: `execute` (implementation) routes
+  a remediation task to EXECUTE, `plan` (decomposition) re-enters PLAN, `spec` (wrong scope) re-opens
+  SPEC/DISCUSS **only with human approval**. Bounded by tier-scaled `feature.iterate.maxIterations`
+  (quick 1 / balanced 2 / quality 3) and the cycle-wide global budget -- it ships or escalates, never
+  spins -- and never stops to ask mid-loop except the scope-changing SPEC rewind. Phase chain is now
+  SPEC→DISCUSS→PLAN→EXECUTE→VERIFY→ITERATE→completed; VERIFY now exits to `iterate` instead of
+  `completed`; new `feature.json` `iterate` state block + `iteration` artifact; PLAN/DISCUSS read
+  `iterate.feedback` on re-entry to "fix the weakest point first". Generalizes the former EXECUTE-only
+  remediation loop into the full DISCOVER→PLAN→EXECUTE→VERIFY→ITERATE cycle. Agent count 13→14.
 - **Grill mode (on by default)** -- `hooks/team/grill-inject.sh` SessionStart hook injects a
   disambiguation directive so the assistant front-loads 2-4 sharp clarifying questions right after
   the user's initial prompt, before writing code or committing to an approach. Inverse default of

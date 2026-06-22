@@ -75,6 +75,7 @@ isolation: worktree
 | `challenger` | Critiques a SPEC or PLAN in the critique gate. Read-only. Surfaces gaps, ambiguities, and flawed assumptions. | claude-opus-4-8 |
 | `code-reviewer` | Quality + security review of feature branch diff. Read-only. | claude-sonnet-4-6 |
 | `implementer` | Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. | claude-sonnet-4-6 |
+| `iterate-judge` | Judges the integrated result against the original goal (not just the SPEC checklist) in the ITERATE phase and classifies the highest-leverage gap (execute/plan/spec). Read-only; returns verdict JSON. | claude-opus-4-8 |
 | `mapper-concerns` | Maps security, perf hotspots, tech debt. Writes only to docs/loop-spec/codebase/CONCERNS.md. | claude-sonnet-4-6 |
 | `mapper-domain` | Maps business concepts, glossary, entity model. Writes only to docs/loop-spec/codebase/DOMAIN.md. | claude-sonnet-4-6 |
 | `mapper-quality` | Maps test coverage, lint state, type safety. Writes only to docs/loop-spec/codebase/QUALITY.md. | claude-sonnet-4-6 |
