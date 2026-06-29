@@ -397,6 +397,16 @@ Validate the plan locally using the `tasks[]` data from Step 2 (or the latest pl
 2. **Task DAG acyclic.** Build graph from `blockedBy`; topological sort; if cycle -> fail.
 3. **Each task has >= 1 acceptance criterion.** Empty array -> fail.
 4. **Same-wave file disjointness.** For each wave: union of `files` across tasks must have no duplicates -> fail with conflict list.
+5. **Acceptance criteria are behavioral, not bare-substring greps.** Pipe the `tasks[]` JSON
+   to `lib/acceptance-lint.sh`; it flags any criterion that asserts a substring via an
+   unanchored `grep` (which passes on a code comment and fails on incidental substrings):
+   ```bash
+   printf '%s' "$tasks_json" | bash "${CLAUDE_SKILL_DIR}/../../lib/acceptance-lint.sh"
+   accept_lint_exit=$?
+   ```
+   - **quality / balanced:** exit 1 BLOCKS — add the flagged criteria to `infeasibility_list`
+     so the planner rewrites them as behavioral checks (a named test) or anchored greps.
+   - **quick:** exit 1 is ADVISORY — log the warning and proceed (quick skips the critique gate).
 
 Build `infeasibility_list`. If non-empty: re-dispatch planner-1 via `SendMessage` with the list, increment retries via `lib/feature-write.sh` (`retryBudget.perPhaseUsed.plan += 1`, `retryBudget.globalUsed += 1`), respect caps. On plan revision received, re-run Step 4b. Repeat until feasible or budget exhausted.
 

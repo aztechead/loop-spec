@@ -104,9 +104,11 @@ When `feature.workspace` is non-null, apply these additional rules in addition t
 **Verify:** `bash -c "cd backend && python -m pytest tests/test_audit.py -q"`
 
 **Acceptance criteria:**
+- [ ] `cd backend && python -m pytest tests/test_audit.py -q` passes (behavioral: middleware logs an audit record for a sample request).
 - [ ] `backend/lib/audit.py` exists and is importable (exit code 0 from `python -c "import lib.audit"`).
-- [ ] `grep -c "audit_log" backend/lib/audit.py` returns 1 or more.
 ```
+
+(Note the lead criterion is a behavioral test, not a `grep` over the source. A grep like `grep -c "audit_log" backend/lib/audit.py` would pass on a code comment that merely mentions `audit_log`; only the test proves the behavior. Use a grep only as a last resort and anchor it per the REQUIRED CONCRETE FORM rules below.)
 
 **tasks[] JSON shape in workspace mode:** include `"repo": "<name>"` as a top-level key alongside `id`, `subject`, `files`, etc. `lib/plan-to-loop.sh`, `lib/dag-width.sh`, and `lib/plan-adherence.sh` ignore unknown task keys, so no changes to those scripts are needed.
 
@@ -125,16 +127,20 @@ If you find yourself writing any of these phrases, stop and replace it with a RE
 
 ## REQUIRED CONCRETE FORM
 
-Every acceptance criterion MUST contain at least one of the following concrete, machine-verifiable anchors:
+Every acceptance criterion MUST contain at least one of the following concrete, machine-verifiable anchors. **Prefer behavioral anchors (top of the list) over source-text greps (bottom).** A behavioral check exercises the code; a grep only proves a string appears in a file -- it cannot tell a real behavior from a code comment or an incidental substring.
 
-- An exact value (e.g., `exit code 0`, `returns "ok"`, `count is 3`)
-- A regex pattern (e.g., `matches /^task-[0-9]+:/`)
-- An exit code (e.g., `exits 0`, `exits 1`, `exits 2`)
-- A file path (e.g., `file exists at lib/foo.sh`, `grep -c "pattern" path/to/file`)
-- A grep command with expected count or match (e.g., `grep -c "read_first" agents/foo.md` returns 1 or more)
-- A JSON path expression with expected value (e.g., `jq '.plan_task_ids | length'` returns 1)
+Priority order (use the highest that fits the task):
 
-Criteria that describe intent without a verifiable anchor are not acceptance criteria -- they are wishes. Rewrite them.
+1. **A named test that must pass** (strongly preferred): `pytest tests/export_test.py::test_p95 passes`, `npm test -- onboarding.test.tsx exits 0`. Behavioral: it runs the code. If a task produces behavior, assert a test over that behavior, not a grep over its source.
+2. **An exact runtime value / exit code**: `exit code 0`, `returns "ok"`, `count is 3`, `exits 1`.
+3. **A regex pattern over runtime output** (e.g., `stdout matches /^task-[0-9]+:/`).
+4. **A file-existence or JSON-shape check**: `file exists at lib/foo.sh`, `jq '.plan_task_ids | length'` returns 1.
+5. **A source grep -- only when no behavioral check fits, and ONLY when anchored.** A bare substring grep is banned: `grep -c "allVersions" file` conflates "the word appears" (including in a comment) with "the behavior exists." When you must grep source:
+   - Match whole words / code structure, not loose substrings: use `grep -wE 'allVersions'` or a regex anchored to the construct (`grep -E 'function +nextStep\b'`), never `grep -c "next"` (which also matches `backdrop`, `nextStep`, prose).
+   - Exclude comments so a comment can neither satisfy nor break the gate: strip them first, e.g. `grep -vE '^\s*(//|#|\*)' file | grep -cwE 'allVersions'`.
+   - Never write a grep whose target word could plausibly appear in a comment or an unrelated identifier; pick a behavioral check instead.
+
+Criteria that describe intent without a verifiable anchor are not acceptance criteria -- they are wishes. Rewrite them. A grep that a stray comment can pass or fail is also not an acceptance criterion -- promote it to a behavioral check or anchor it per rule 5.
 
 ## Engineering principles
 

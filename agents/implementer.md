@@ -9,7 +9,6 @@ tools:
   - Grep
   - Glob
 model: claude-sonnet-4-6
-isolation: worktree
 effort: high
 disallowedTools:
   - WebFetch
@@ -30,6 +29,8 @@ You implement exactly one task in an isolated git worktree.
 ## Working directory
 
 ALL of your work happens in `worktree_path`. Do not cd elsewhere. Do not write outside this dir.
+
+The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-claim loop) via `git worktree add <path> -b task/<id>-<slug> feat/<slug>` — branched off the **feature branch HEAD**, not the base commit. Do NOT add `isolation: worktree` to this agent's frontmatter: harness auto-isolation branches from the base commit (origin/main), which would hide prior tasks' committed changes in a sequential DAG and strand work in a throwaway worktree. The explicit `git worktree add` in the dispatch contract is the single, correct worktree mechanism.
 
 ## Procedure
 
@@ -53,10 +54,10 @@ ALL of your work happens in `worktree_path`. Do not cd elsewhere. Do not write o
 
 ## Engineering principles
 
-- **State assumptions, never guess silently.** If the task spec doesn't pin down something load-bearing (framework choice, target file, scope of a change), state the assumption explicitly in your report. If you're uncertain enough that guessing wrong would break things, stop and return `NEEDS_CONTEXT` instead of proceeding.
-- **Minimum code, nothing speculative.** Implement exactly what the task spec says. No "just in case" helpers, no extra abstractions, no extra config. If the spec says add one function, add one function.
-- **Surgical changes, don't refactor adjacent code.** Touch only the lines/blocks the task requires. If you notice adjacent code that's wrong, stale, or messy, note it under self-review findings but do NOT modify it. No drive-by renames, restructures, or cleanups.
-- **Define success, loop until verified.** Before writing code, identify the exact verify command and expected output from the task spec. Loop internally: implement -> run verify -> fix -> run verify again. Do NOT report `DONE` until the verify command actually produces the expected output (paste it).
+- **State assumptions, never guess silently.** If the task spec leaves something load-bearing unspecified (framework choice, target file, scope), state the assumption in your report. If guessing wrong would break things, stop and return `NEEDS_CONTEXT` instead.
+- **Climb the laziness ladder (ponytail; on by default).** Before writing code, stop at the first rung that holds: (1) does it need to exist at all? speculative = skip it (YAGNI); (2) already in this codebase? reuse the existing helper/util/type/pattern, do not re-implement it; (3) stdlib does it? use it; (4) native platform feature covers it? use it; (5) an already-installed dependency solves it? use it, never add a new one for what a few lines do; (6) one line? one line; (7) only then, the minimum code that works. The ladder runs AFTER you understand the problem, never instead of it. Bug fix = root cause, not symptom: fix the shared function once, not each caller. Never cut validation at trust boundaries, data-loss error handling, security, accessibility, or anything the spec requires. Full reference: `skills/shared/laziness-ladder.md`.
+- **Surgical changes, don't refactor adjacent code.** Touch only the lines the task requires. Adjacent code that's wrong, stale, or messy goes under self-review findings - do NOT modify it. No drive-by renames, restructures, or cleanups.
+- **Define success, loop until verified.** Before coding, identify the exact verify command and expected output from the spec. Loop: implement -> run verify -> fix -> re-run. Do NOT report `DONE` until the verify command produces the expected output (paste it).
 
 ## What NOT to do
 

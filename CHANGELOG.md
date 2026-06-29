@@ -2,6 +2,51 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.2.0]
+
+### Added
+- **`lib/feature-init.sh`** -- single source of truth for the schema-7 `feature.json`
+  skeleton and the canonical per-role models map. Cycle Step 5 (single + workspace) and
+  Step 5.9 now both build/normalize from it, so the two construction sites cannot drift
+  (this drift is what previously dropped `iterateJudge` from the normalized models map).
+- **`lib/resolve-bin.sh`** -- resolves the real on-disk executable for a tool past
+  version-manager shell-function shims (nvm/pyenv/rbenv/asdf), preferring
+  `node_modules/.bin/*`. Wired into cycle Step 4 command detection.
+- **`lib/acceptance-lint.sh`** -- flags bare-substring `grep` acceptance criteria (which
+  pass on comments / fail on incidental substrings). Wired into the PLAN feasibility gate
+  (blocks quality/balanced, advisory on quick).
+- **`skills/shared/laziness-ladder.md`** -- canonical ponytail directive, inlined into
+  every code-producing dispatch so the simplicity discipline is followed on every EXECUTE
+  rung (team, subagent, loop-fleet, workflow), not only on the main thread.
+- New tests: `feature-init`, `resolve-bin`, `acceptance-lint`, the `all-tests-registered`
+  meta-test (every `*.test.sh` must be wired into the runner), and `ponytail-coverage`
+  (the ladder must be present in every relevant-phase dispatch path). Wired three
+  previously-orphaned tests (`ralph-remediation`, `pause-snapshot`, `regression-scan`).
+
+### Changed
+- **`feature.json` is now the committed resume contract** (tracked in git; the cycle
+  commits it on each phase transition) so resume survives clone / hand-off. Its churny
+  siblings (`feature.json.bak`, `gate-logs/`, transcripts) stay gitignored.
+- Ponytail laziness ladder threaded into all four EXECUTE implementer dispatch paths and
+  the per-task reviewer over-engineering pass in the subagent/workflow rungs.
+- Cycle friction remediation: guarded team-op fallback (env var advertises intent, not
+  capability), post-merge re-verify in the subagent rung, behavioral-first acceptance form,
+  data-flow lens in the challenger, no-op-revision shortcut in DISCUSS.
+
+### Removed
+- **Pre-v7 schema support.** loop-spec is now schema-7 only; a `feature.json` with
+  `schemaVersion != 7` is skipped on resume with a warning. Deleted
+  `lib/migrate-schema-v3-to-v4.sh` and its test; stripped v1/v3/v5/v6/legacy branches from
+  cycle/execute/pause/verify resume logic, `cycle-resume-escalation.md`, and
+  `feature-state-schema.md`. Two modes remain: single-repo worktree and workspace.
+
+### Fixed
+- `lib/regression-scan.sh` used the bash-4-only `mapfile` builtin (live, used by VERIFY;
+  broke on stock macOS bash 3.2) -- replaced with a portable read loop.
+- Removed the redundant `isolation: worktree` frontmatter from `agents/implementer.md`
+  (the explicit `git worktree add` off the feature branch is the sole worktree mechanism;
+  harness auto-isolation branched from the base commit and stranded work).
+
 ## [2.1.0] - unreleased
 
 ### Added

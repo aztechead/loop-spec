@@ -16,6 +16,31 @@ You are the SPEC phase orchestrator, running on the **main thread**. Invoked by 
 - `feature_dir`: `.loop-spec/features/{slug}/`
 - `feature_json_path`: `.loop-spec/features/{slug}/feature.json`
 
+## Precondition — SPEC is cycle-initialized, not standalone
+
+SPEC reads (and at Step 4 writes) `feature.json`; it does NOT bootstrap one. `feature.json`
+is created by `loop-spec:cycle` Step 5 (slug, tier, execStyle, the full `retryBudget`/
+`iterate`/`models` blocks). Invoking `/loop-spec:spec` directly with no in-flight feature
+leaves every downstream phase (DISCUSS/PLAN read `retryBudget`, ITERATE reads `iterate`)
+without the state they require — do not hand-author a partial `feature.json` to work around
+this.
+
+Before Step 1, assert the contract and abort with guidance if it is unmet:
+
+```bash
+# A feature.json must already exist for some in-flight feature (cycle created it).
+if ! ls .loop-spec/features/*/feature.json >/dev/null 2>&1; then
+  echo "loop-spec:spec is a cycle phase, not a standalone entry point." >&2
+  echo "  No .loop-spec/features/*/feature.json found. Start the feature with:" >&2
+  echo "    /loop-spec:cycle <feature description>" >&2
+  echo "  cycle runs SPEC as its first phase after initializing feature.json." >&2
+  exit 2
+fi
+```
+
+(When `loop-spec:cycle` invokes this skill it has already created `feature.json`, so the
+guard is a no-op on the normal path; it only fires on a bare standalone invocation.)
+
 ## Ambiguity Model
 
 Score each dimension 0.0 (completely unclear) to 1.0 (crystal clear):

@@ -55,15 +55,15 @@ Pause snapshot written.
   Blocking:          3 constraints listed in .continue-here.md
 ```
 
-### Step 3 - Exit worktree (schema-6 features only)
+### Step 3 - Exit worktree (single-repo worktree features)
 
-If the feature's `feature.json` contains a `worktreePath` field (schemaVersion 6), call:
+If the feature's `feature.json` contains a `worktreePath` field (single-repo mode), call:
 
 ```
 ExitWorktree({ action: "keep" })
 ```
 
-This returns the session to the main checkout while the feature worktree and branch `feat/{slug}` remain on disk for later resume. Skip this step for legacy features (schemaVersion <= 5) that have no `worktreePath`.
+This returns the session to the main checkout while the feature worktree and branch `feat/{slug}` remain on disk for later resume. Skip this step for workspace-mode features (`workspace` block non-null, no `worktreePath`), which run in place at the workspace root.
 
 ## HANDOFF.json schema
 

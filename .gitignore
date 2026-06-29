@@ -1,4 +1,8 @@
-/.loop-spec/features/
+# feature.json is the resume contract -- commit it so resume survives clone / hand-off.
+# Everything else under a feature dir (feature.json.bak, gate-logs/, transcripts) is
+# per-machine churn and stays ignored.
+/.loop-spec/features/*/*
+!/.loop-spec/features/*/feature.json
 /.loop-spec/worktrees/
 .worktrees/
 .claude/worktrees/

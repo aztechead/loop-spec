@@ -31,8 +31,12 @@ if [[ ! -d "$FEATURES_DIR" ]]; then
   exit 0
 fi
 
-# Collect VERIFICATION.md files.
-mapfile -t VERIF_FILES < <(find "$FEATURES_DIR" -name "VERIFICATION.md" -type f 2>/dev/null | sort)
+# Collect VERIFICATION.md files. (Portable read loop instead of mapfile so this runs on
+# stock macOS bash 3.2, not only bash >= 4.)
+VERIF_FILES=()
+while IFS= read -r _line; do
+  [[ -n "$_line" ]] && VERIF_FILES+=("$_line")
+done < <(find "$FEATURES_DIR" -name "VERIFICATION.md" -type f 2>/dev/null | sort)
 
 if [[ "${#VERIF_FILES[@]}" -eq 0 ]]; then
   printf '%s\n' "$EMPTY_JSON"
@@ -109,7 +113,11 @@ for VERIF_FILE in "${VERIF_FILES[@]}"; do
   SLUG="$(basename "$FEATURE_DIR")"
 
   # Extract commands; on any failure continue with empty list (fail-open).
-  mapfile -t COMMANDS < <(extract_commands "$VERIF_FILE" 2>/dev/null || true)
+  # Portable read loop (bash 3.2 safe) instead of mapfile.
+  COMMANDS=()
+  while IFS= read -r _line; do
+    [[ -n "$_line" ]] && COMMANDS+=("$_line")
+  done < <(extract_commands "$VERIF_FILE" 2>/dev/null || true)
 
   FEATURE_STATUS="pass"
   FEATURE_FAILED=()

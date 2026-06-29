@@ -475,15 +475,13 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 **Single-repo mode (unchanged):**
 
-If `feature.worktreePath` is present (schemaVersion 6), the session is currently inside the feature worktree. Return to the main checkout while leaving the worktree and branch intact for the open PR:
+In single-repo mode `feature.worktreePath` is always present (set at cycle Step 5), so the session is currently inside the feature worktree. Return to the main checkout while leaving the worktree and branch intact for the open PR:
 
 ```
 ExitWorktree({ action: "keep" })
 ```
 
 The worktree is kept on disk until the PR merges. Do NOT auto-remove it. Removal is manual (or handled by a future cleanup skill) once the branch is confirmed merged.
-
-Skip this step entirely for legacy features (schemaVersion <= 5, no `worktreePath` field). Those features run in-place and have nothing to exit.
 
 ### Step 14 - Summary
 

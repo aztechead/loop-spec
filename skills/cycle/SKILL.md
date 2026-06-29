@@ -70,7 +70,6 @@ When set, read answers from env vars instead:
 | `LOOP_SPEC_ANSWER_TIER` | `quality`, `balanced`, `quick` | Tier selection (Step 3) |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`, `step`, `interactive`, `review-only` | Execution style (Step 3) |
 | `LOOP_SPEC_ANSWER_TITLE` | free text | Feature title (Step 3) |
-| `LOOP_SPEC_ANSWER_MIGRATE_SCHEMA` | `1` | Migrate v3 feature to v4 on resume (Step 1). Default: continue on v3. |
 
 Note: Non-interactive mode bypasses `AskUserQuestion` entirely by reading env vars. The S2 batching change (4 questions in one call) has no effect on non-interactive paths.
 
@@ -142,16 +141,14 @@ json.dump(data, open(path, 'w'))
 
 ### Step 1 - Resume detection
 
-Scan `.loop-spec/features/*/feature.json` (if directory exists). For each:
+Scan `.loop-spec/features/*/feature.json` (if directory exists). loop-spec is **schema-7
+only** — features are either single-repo worktree mode (`worktreePath` set, `workspace`
+null) or workspace mode (`workspace` block non-null). Older schemas (v1–v6) are not
+supported; a `feature.json` with `schemaVersion != 7` is skipped with a one-line warning
+(`feature {slug}: unsupported schemaVersion {n} (schema 7 only); skipping`). For each:
 - Parse safely (try/except; on parse fail, try `feature.json.bak`)
 - Skip if `currentPhase == "completed"`
-- **schemaVersion 3 detection:** if `schemaVersion == 3`, prompt the user via AskUserQuestion (before the orphan probe):
-  - header: `"In-flight v3 feature detected"`
-  - question: `"Feature {slug} is on schemaVersion 3. Migrate to v4 (adds spec-phase fields, does NOT rewind completed phases) or continue on v3?"`
-  - options: `["Migrate to v4", "Continue on v3"]`
-  - "Migrate to v4": run `bash "${CLAUDE_SKILL_DIR}/../../lib/migrate-schema-v3-to-v4.sh" ".loop-spec/features/{slug}"`, reload feature.json
-  - "Continue on v3": proceed without migration; cycle will use the existing v3 behavior (no spec phase)
-  - When `LOOP_SPEC_NON_INTERACTIVE=1`: default to "Continue on v3" unless `LOOP_SPEC_ANSWER_MIGRATE_SCHEMA=1` is set
+- Skip (with the warning above) if `schemaVersion != 7`
 - **Orphan detection:** if `currentTeamName != null`, probe team liveness by calling `TaskList({team: currentTeamName})`. (When agent teams are unavailable this probe is meaningless: treat the team as gone, clear `currentTeamName`, and add the feature to the resumable list — see `skills/shared/no-teams-fallback.md`.) Otherwise:
   - If `TaskList` returns without error: the team is still live (orphaned). Print:
     ```
@@ -169,9 +166,8 @@ If resumable list non-empty: present via AskUserQuestion (or skip if `LOOP_SPEC_
 - Options: each resumable feature + "New feature"
 
 If user picks resume: load feature.json into memory, skip Steps 2-5, route to Step 6.
-- **Workspace resume (schemaVersion 7, `workspace` block non-null):** resume IN PLACE at the workspace root. No worktree probe; do NOT call `EnterWorktree`. Assert that the current session cwd equals `feature.workspace.root`; if it does not, tell the user: `"cd to {feature.workspace.root} and re-invoke cycle to resume this feature."` and abort. All phase work proceeds from `workspace.root` using per-repo absolute paths.
-- **Worktree resume (schemaVersion 7 with `workspace == null`, or schemaVersion 6, `worktreePath` present):** run `git-ops.sh list-feature-worktrees` to confirm it exists, then `EnterWorktree({ path: feature.worktreePath })` before Step 6. If the worktree is gone, warn and offer to re-create or continue in-place.
-- **Legacy resume (no `worktreePath`):** resume in-place. Do NOT force-migrate.
+- **Workspace resume (`workspace` block non-null):** resume IN PLACE at the workspace root. No worktree probe; do NOT call `EnterWorktree`. Assert that the current session cwd equals `feature.workspace.root`; if it does not, tell the user: `"cd to {feature.workspace.root} and re-invoke cycle to resume this feature."` and abort. All phase work proceeds from `workspace.root` using per-repo absolute paths.
+- **Worktree resume (`workspace == null`, `worktreePath` present):** run `git-ops.sh list-feature-worktrees` to confirm it exists, then `EnterWorktree({ path: feature.worktreePath })` before Step 6. If the worktree is gone, warn and offer to re-create or continue in-place.
 - Full algorithm: `skills/shared/cycle-resume-escalation.md`.
 
 ### Step 2 - Startup health-check
@@ -191,6 +187,30 @@ if [[ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" != "1" ]]; then
   echo "  Continuing with ${loops_hint}. For persistent phase teams: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1."
 fi
 ```
+
+The env var advertises **intent**, not the actual tool surface: a harness can export
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` yet not expose `TeamCreate`/`TeamDelete`/
+`SendMessage` as callable tools. The env var is therefore a NECESSARY but not SUFFICIENT
+signal. To avoid trusting a false positive, the team primitives are used under a
+**guarded-team-op contract** rather than assumed-live: the env probe sets the optimistic
+default, and the first real team op confirms or refutes it.
+
+**Guarded-team-op contract (CRITICAL — applies to every phase):** whenever a phase is
+about to issue its first `TeamCreate` (or any team op) and `teamsAvailable == true`, treat
+a thrown `No such tool available` (or any "tool not found"/unknown-tool harness error from
+a team primitive) as a capability refutation, NOT a fatal error:
+
+1. Immediately set `.loop-spec/runtime.json.teamsAvailable = false` (merge-write):
+   ```bash
+   python3 -c "import json;p='.loop-spec/runtime.json';d=json.load(open(p));d['teamsAvailable']=False;json.dump(d,open(p,'w'))"
+   ```
+2. Print: `loop-spec: agent team tools not exposed by this harness despite CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; falling back to one-shot Agent dispatch.`
+3. Re-run the current phase via the no-teams fallback (`skills/shared/no-teams-fallback.md`):
+   one-shot `Agent` calls with the same agent types, models, and prompt templates. Do NOT
+   re-attempt the team op in this session.
+
+This makes the disagreement between the env var and the real tool surface self-healing on
+the first op instead of a hard stop mid-phase.
 
 `teams_available` is persisted into `.loop-spec/runtime.json` together with the
 workflow probe below; phase skills read it to pick their dispatch path.
@@ -349,6 +369,37 @@ Auto-detect (best effort):
 - lint: scripts.lint, Makefile lint, ruff/eslint config files
 - typecheck: scripts.typecheck, mypy.ini, tsconfig.json + tsc
 
+**Prefer direct binaries over package-manager wrappers (node projects).** When the project
+is a node project (`package.json` present) and `node_modules/.bin/` exists, emit the direct
+binary form rather than `npx`/`npm run`: `node_modules/.bin/vitest run`, `node_modules/.bin/tsc --noEmit`,
+`node_modules/.bin/eslint .` — NOT `npx vitest` / `npm run typecheck`. The wrappers are
+sensitive to shell shims: under nvm (and the RTK+nvm interaction) `node`/`npm`/`npx` may
+resolve to a shell function that prints help instead of executing non-interactively, which
+would make every generated verify command fail as written. `node_modules/.bin/*` invokes the
+binary directly and sidesteps the shim. (If a script is genuinely only reachable via
+`npm run <name>`, keep it but note the dependency on a working `npm` in the shell.)
+
+**Probe that the detected commands actually execute** via `lib/resolve-bin.sh`, which
+resolves the REAL on-disk executable past shell-function shims (nvm/pyenv/rbenv/asdf) and
+prefers `node_modules/.bin/*`. This is the general form of the node/nvm fix — it works for
+python/ruby version managers too. Surface a clear error rather than letting every later
+verify silently fail:
+
+```bash
+# For each detected runner the commands depend on (node, npx, python, etc.), confirm a
+# real binary resolves; if it does, prefer that absolute path in the generated command.
+for tool in node npx python python3; do
+  case "$cmd_test$cmd_lint$cmd_typecheck" in
+    *"$tool"*)
+      if ! bash "${CLAUDE_SKILL_DIR}/../../lib/resolve-bin.sh" "$tool" . >/dev/null 2>&1; then
+        echo "loop-spec: '$tool' does not resolve to a real executable in this shell" >&2
+        echo "  (likely a version-manager shell-function shim). Generated verify commands" >&2
+        echo "  may fail. Prefer node_modules/.bin/* (auto), or put the real binary on PATH." >&2
+      fi ;;
+  esac
+done
+```
+
 Confirm with user via AskUserQuestion (one Q with options):
 - "Detected commands: test=`{X}`, lint=`{Y}`, typecheck=`{Z}`. Use these?"
 - Options: "Yes", "Customize"
@@ -394,82 +445,18 @@ EnterWorktree({ path: ".claude/worktrees/${slug}" })
 # c. Create dirs and write feature.json INSIDE the worktree.
 mkdir -p ".loop-spec/features/${slug}" .loop-spec/codebase "docs/loop-spec/features/${slug}"
 
-# Model IDs are fixed (no preset). Persisted to feature.json.models ONCE here.
-# Every phase skill reads literal IDs from feature.models.<role> instead of re-deriving
-# from model-matrix.md per spawn -- this is what guarantees teammates never silently
-# inherit the orchestrator's session model. Mirrors skills/shared/model-matrix.md:
-#   opus   -> spec-writer, planner, advocate, challenger, spec-compliance-reviewer
-#   sonnet -> implementer, code-reviewer, verifier, mapper-*, pattern-mapper
-opus_model="claude-opus-4-8"
-sonnet_model="claude-sonnet-4-6"
-
-feature_json=$(jq -n \
-  --arg slug "$slug" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --arg tier "$tier" --arg style "$execStyle" \
-  --arg branch "feat/${slug}" --arg sha "$base_sha" --arg basebranch "$base_branch" \
-  --arg opus "$opus_model" --arg sonnet "$sonnet_model" \
-  --arg test "$cmd_test" --arg lint "$cmd_lint" --arg typecheck "$cmd_typecheck" \
-  --arg wt ".claude/worktrees/${slug}" \
-  '{
-    schemaVersion: 7,
-    slug: $slug,
-    createdAt: $now, updatedAt: $now,
-    tier: $tier, execStyle: $style,
-    models: {
-      specWriter: $opus, planner: $opus,
-      advocate: $opus, challenger: $opus, specComplianceReviewer: $opus,
-      iterateJudge: $opus,
-      implementer: $sonnet, codeReviewer: $sonnet, verifier: $sonnet,
-      mapper: $sonnet, patternMapper: $sonnet
-    },
-    currentPhase: "spec",
-    completedPhases: [],
-    artifacts: {
-      specInterview: null,
-      spec: null, patterns: null, plan: null, execution: null, verification: null,
-      iteration: null,
-      patternsSource: null,
-      codebaseSource: {tech: null, arch: null, quality: null, concerns: null, domain: null}
-    },
-    branch: $branch,
-    baseSha: $sha,
-    baseBranch: $basebranch,
-    worktreePath: $wt,
-    workspace: null,
-    currentTeamName: null,
-    currentTeammates: [],
-    currentGate: {round: 0, phase: null},
-    mergeQueue: [],
-    pendingRemediationTasks: [],
-    fileConflictExcludeGlobs: [],
-    gateHistory: [],
-    retryBudget: {
-      perGate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-      perPhase: {
-        spec: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-        discuss: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-        plan: (if $tier == "quick" then 1 elif $tier == "balanced" then 3 else 4 end),
-        execute: null,
-        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end),
-        iterate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end)
-      },
-      global: (if $tier == "quick" then 10 elif $tier == "balanced" then 20 else 30 end),
-      globalUsed: 0,
-      perGateUsed: {},
-      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0, iterate: 0}
-    },
-    iterate: {
-      maxIterations: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-      used: 0,
-      lastVerdict: null,
-      feedback: null,
-      history: []
-    },
-    commands: {test: $test, lint: $lint, typecheck: $typecheck},
-    stalenessHours: 48,
-    warnings: [],
-    bootstrapPendingDomains: []
-  }')
+# Build the full schema-7 skeleton from the single source of truth (lib/feature-init.sh).
+# Model IDs, the tier-derived retryBudget/iterate blocks, and the artifact scaffold all
+# live in that one script -- never hand-build feature.json inline (that drift is what
+# previously dropped iterateJudge from the normalized models map). Every phase skill reads
+# literal model IDs from feature.models.<role>, which guarantees teammates never silently
+# inherit the orchestrator's session model.
+feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode single \
+  --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --tier "$tier" --style "$execStyle" \
+  --branch "feat/${slug}" --base-sha "$base_sha" --base-branch "$base_branch" \
+  --worktree ".claude/worktrees/${slug}" \
+  --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
 
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$feature_json"
 
@@ -550,75 +537,14 @@ repos_json_array="$(echo "$workspace_repos_json" | jq -c \
 # (In practice, per-repo commands detected in Step 4 are substituted in directly
 #  rather than via env vars; the structure above is illustrative of the shape.)
 
-workspace_feature_json=$(jq -n \
-  --arg slug "$slug" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --arg tier "$tier" --arg style "$execStyle" \
-  --arg opus "$opus_model" --arg sonnet "$sonnet_model" \
-  --arg wsroot "$workspace_root" \
-  --argjson repos "$repos_json_array" \
-  '{
-    schemaVersion: 7,
-    slug: $slug,
-    createdAt: $now, updatedAt: $now,
-    tier: $tier, execStyle: $style,
-    models: {
-      specWriter: $opus, planner: $opus,
-      advocate: $opus, challenger: $opus, specComplianceReviewer: $opus,
-      iterateJudge: $opus,
-      implementer: $sonnet, codeReviewer: $sonnet, verifier: $sonnet,
-      mapper: $sonnet, patternMapper: $sonnet
-    },
-    currentPhase: "spec",
-    completedPhases: [],
-    artifacts: {
-      specInterview: null,
-      spec: null, patterns: null, plan: null, execution: null, verification: null,
-      iteration: null,
-      patternsSource: null,
-      codebaseSource: {tech: null, arch: null, quality: null, concerns: null, domain: null}
-    },
-    branch: null,
-    baseSha: null,
-    baseBranch: null,
-    worktreePath: null,
-    workspace: {
-      root: $wsroot,
-      repos: $repos
-    },
-    currentTeamName: null,
-    currentTeammates: [],
-    currentGate: {round: 0, phase: null},
-    mergeQueue: [],
-    pendingRemediationTasks: [],
-    fileConflictExcludeGlobs: [],
-    gateHistory: [],
-    retryBudget: {
-      perGate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-      perPhase: {
-        spec: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-        discuss: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-        plan: (if $tier == "quick" then 1 elif $tier == "balanced" then 3 else 4 end),
-        execute: null,
-        verify: (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end),
-        iterate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end)
-      },
-      global: (if $tier == "quick" then 10 elif $tier == "balanced" then 20 else 30 end),
-      globalUsed: 0,
-      perGateUsed: {},
-      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0, iterate: 0}
-    },
-    iterate: {
-      maxIterations: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-      used: 0,
-      lastVerdict: null,
-      feedback: null,
-      history: []
-    },
-    commands: {test: "", lint: "", typecheck: ""},
-    stalenessHours: 48,
-    warnings: [],
-    bootstrapPendingDomains: []
-  }')
+# Same single source of truth (lib/feature-init.sh), workspace mode: top-level
+# branch/baseSha/baseBranch/worktreePath are null, top-level commands are empty, and the
+# workspace block carries the per-repo array built above. Models + tier blocks are
+# identical to single-repo mode -- never re-hand-build them here.
+workspace_feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode workspace \
+  --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --tier "$tier" --style "$execStyle" \
+  --ws-root "$workspace_root" --repos "$repos_json_array")
 
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" \
   "${workspace_root}/.loop-spec/features/${slug}" "$workspace_feature_json"
@@ -630,7 +556,16 @@ Schema notes for workspace feature.json:
 - `workspace.repos[]` carries `name`, `path` (relative to workspace root), `branch` (`feat/{slug}`), `baseSha`, `baseBranch`, and `commands` (per-repo detected commands) -- matching the schema in `skills/shared/feature-state-schema.md`.
 ```
 
-No initial commit is made here: `create-feature-worktree` already pointed `feat/{slug}` at a real commit (`base_sha`), and `feature.json` is gitignored runtime state (it lives in the worktree's working dir and is read back on resume, never committed -- consistent with the rest of loop-spec). Phase artifacts under `docs/loop-spec/features/{slug}/` are committed by each phase as it writes them (SPEC, PLAN, VERIFY).
+No initial commit of `feature.json` is forced here: `create-feature-worktree` already pointed `feat/{slug}` at a real commit (`base_sha`), and the first state commit lands at the first phase transition (Step 6). Phase artifacts under `docs/loop-spec/features/{slug}/` are committed by each phase as it writes them (SPEC, PLAN, VERIFY).
+
+> **feature.json is the committed resume contract.** Unlike the rest of `.loop-spec/`
+> runtime state, `feature.json` is tracked in git (see `.gitignore`: the feature dir's
+> contents are ignored EXCEPT `feature.json`). The cycle commits the updated state on every
+> phase transition (Step 6), so a `git clone` or a branch hand-off to another machine
+> carries the in-flight phase state and Step 1 resume detection can pick it up. The volatile
+> siblings (`feature.json.bak`, `gate-logs/`, transcripts) stay gitignored as per-machine
+> churn. In workspace mode, where the root may not be a git repo, the state commit is a
+> guarded no-op and resume remains local to that machine.
 
 Provenance fields:
 - `artifacts.patternsSource` -- one of `"gsd-ingest"`, `"pattern-mapper"`, `"manual"`, or `null` until written. Set in PLAN Step 0.
@@ -846,15 +781,17 @@ Phase skills read `model: feature.models.<role>` literally and do NOT re-derive 
 ```bash
 feat_dir=".loop-spec/features/${slug}"
 fjson="${feat_dir}/feature.json"
-canonical=$(jq -n --arg o "claude-opus-4-8" --arg s "claude-sonnet-4-6" '{
-  specWriter:$o, planner:$o, advocate:$o, challenger:$o, specComplianceReviewer:$o,
-  implementer:$s, codeReviewer:$s, verifier:$s, mapper:$s, patternMapper:$s
-}')
-# Rewrite only when models differ from canonical or a vestigial preset field lingers.
-# Only .models and .preset are touched; all other fields (including worktreePath) are preserved.
-if [[ "$(jq -c '.models // {}' "$fjson")" != "$(echo "$canonical" | jq -c .)" \
+# Canonical map comes from the SAME source Step 5 uses (lib/feature-init.sh models), so
+# the two can never drift -- this drift is what previously dropped iterateJudge here.
+canonical="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" models)"
+# Normalize by MERGE, not replace: force canonical IDs for known roles while preserving
+# any extra role the skeleton may carry. Rewrite only when the merged result differs from
+# the current map, or a vestigial preset field lingers. Only .models and .preset are
+# touched; all other fields (including worktreePath) are preserved.
+merged="$(jq -c --argjson m "$canonical" '(.models // {}) * $m' "$fjson")"
+if [[ "$(jq -c '.models // {}' "$fjson")" != "$merged" \
       || "$(jq 'has("preset")' "$fjson")" == "true" ]]; then
-  new_json="$(jq --argjson m "$canonical" '.models = $m | del(.preset)' "$fjson")"
+  new_json="$(jq --argjson m "$canonical" '.models = ((.models // {}) * $m) | del(.preset)' "$fjson")"
   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" "$feat_dir" "$new_json"
   echo "Normalized feature.models to the fixed model map."
 fi
@@ -878,6 +815,19 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    ```bash
    feature_json=$(cat ".loop-spec/features/${slug}/feature.json")
    next_phase=$(echo "$feature_json" | jq -r '.currentPhase')
+   ```
+
+   **Commit the resume contract (single point).** feature.json is committed (not gitignored)
+   so resume survives a clone or hand-off to another machine. The cycle is the one place
+   that observes every phase transition, so it snapshots state here -- phase skills do NOT
+   each commit feature.json. Guarded so workspace-mode (where the root may not be a git
+   repo) is a safe no-op:
+   ```bash
+   fj=".loop-spec/features/${slug}/feature.json"
+   if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && ! git diff --quiet "$fj" 2>/dev/null; then
+     git add "$fj"
+     git commit -q -m "chore: NO_JIRA ${slug} state @ ${next_phase}" || true
+   fi
    ```
 
 3. **Route to next iteration:**

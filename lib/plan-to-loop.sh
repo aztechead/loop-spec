@@ -94,7 +94,24 @@ for t in tasks:
     read_first = t.get('readFirst') or []
     spec_path = t.get('specPath')
 
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', f'TASK {raw}: {brief}', '']
+    # Ponytail laziness ladder (canonical: skills/shared/laziness-ladder.md). A SessionStart
+    # hook does not reach this loop-runner worker, so the directive is inlined here so the
+    # simplicity discipline applies on the loop-fleet rung every time, like the other rungs.
+    ladder = (
+        'SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution '
+        'that actually works; the best code is the code never written. BEFORE writing code, '
+        'stop at the first rung that holds: (1) does it need to exist at all? speculative = '
+        'skip it (YAGNI); (2) already in this codebase? reuse the existing helper/util/type/'
+        'pattern, do not re-implement it; (3) stdlib does it? use it; (4) native platform '
+        'feature covers it? use it; (5) an already-installed dependency solves it? use it, '
+        'never add a new one for what a few lines do; (6) can it be one line? one line; '
+        '(7) only then, the minimum code that works. The ladder runs AFTER you understand '
+        'the problem. Bug fix = root cause, not symptom. NEVER cut input validation at trust '
+        'boundaries, error handling that prevents data loss, security, accessibility, or '
+        'anything the spec requires. Non-trivial logic leaves ONE runnable check behind. '
+        'Mark deliberate shortcuts with a simplicity: comment.'
+    )
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', f'TASK {raw}: {brief}', '']
     if criteria:
         lines.append('Acceptance criteria (ALL must hold; the verify command is the contract):')
         lines += [f'- {c}' for c in criteria]

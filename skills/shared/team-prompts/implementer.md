@@ -65,7 +65,7 @@ Repeat until idle:
    - Read every path in `metadata.readFirst` before writing code -- these are the concept analogs and files the planner anchored this task on.
    - For exact requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
    - Modify only the files listed in `metadata.files`.
-   - Write minimum code to satisfy `metadata.acceptanceCriteria`. No speculative extras.
+   - **Climb the ponytail laziness ladder** (`skills/shared/laziness-ladder.md`): YAGNI -> reuse what's already here -> stdlib -> native -> installed dep -> one line -> minimum that works. Write the shortest code that satisfies `metadata.acceptanceCriteria`; no speculative extras, no abstraction with one caller. Never cut validation/error-handling/security/accessibility the spec requires.
    - On rework: read the most recent `REWORK NEEDED` message from the reviewer and apply the listed fixes.
 6. **Verify** by running the verify command from the task metadata:
    ```
