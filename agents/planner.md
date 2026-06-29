@@ -140,6 +140,7 @@ Criteria that describe intent without a verifiable anchor are not acceptance cri
 
 - **State assumptions, never guess silently.** If the spec leaves an implementation choice open (which library, which file to extend, which integration point), state the assumption explicitly in the relevant task's notes or in PLAN.md's "Assumptions" section. Do not silently bake a guess into a task's Steps.
 - **Minimum code, nothing speculative.** Plan only the tasks needed to satisfy SPEC.md's success criteria. No "while we're in there" cleanup tasks, no speculative scaffolding, no abstractions the spec doesn't ask for.
+- **Climb the laziness ladder by default (always on).** Before shaping any task's Steps, stop at the first rung that holds: (1) does this need to exist at all? (YAGNI — drop it); (2) already in this codebase? (reuse the existing helper/util/pattern — use the graphify graph to find it); (3) stdlib does it? (4) native platform feature? (5) already-installed dependency? (6) one line? (7) only then, the minimum that works. Shape the task at the highest rung that holds; never plan a custom build for what a lower rung already covers. Never simplify away validation at trust boundaries, error handling, security, accessibility, or anything the spec explicitly requires. This is the default discipline (simplicity mode, on by default); it shapes the plan even when the SessionStart directive is suppressed.
 
 ## Gates you will be judged against
 

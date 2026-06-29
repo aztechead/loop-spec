@@ -9,7 +9,7 @@
     {
       "name": "loop-spec",
       "description": "Spec-driven development workflow for Claude Code (spec phase, loop-runner fleet execution, user-gate flow, required graphify code graph, Ralph remediation, forensics, dynamic-workflow fan-out, workspace multi-repo mode, assess + quality-loop skills)",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "source": "./",
       "author": {
         "name": "aztechead",

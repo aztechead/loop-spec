@@ -52,6 +52,7 @@ run_suite "hooks/team/strategy-rotation" "bash hooks/team/strategy-rotation.test
 run_suite "hooks/team/budget-gate"    "bash hooks/team/budget-gate.test.sh"
 run_suite "hooks/team/discipline-inject" "bash hooks/team/discipline-inject.test.sh"
 run_suite "hooks/team/grill-inject"   "bash hooks/team/grill-inject.test.sh"
+run_suite "hooks/team/simplicity-inject" "bash hooks/team/simplicity-inject.test.sh"
 run_suite "hooks/team/rules-inject"   "bash hooks/team/rules-inject.test.sh"
 run_suite "lib/rules"                 "bash tests/lib/rules.test.sh"
 run_suite "lib/workflow-config"       "bash tests/lib/workflow-config.test.sh"

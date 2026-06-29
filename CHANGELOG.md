@@ -2,6 +2,29 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.1.0] - unreleased
+
+### Added
+- **Simplicity mode -- the laziness ladder** (`skills/simplicity/SKILL.md`,
+  `hooks/team/simplicity-inject.sh`), concept-and-implementation ported from
+  [ponytail](https://github.com/DietrichGebert/ponytail). A default-ON,
+  self-scoped SessionStart directive that makes the assistant climb a 7-rung
+  ladder before writing code -- YAGNI, reuse, stdlib, native, installed dep,
+  one line, then the minimum that works -- without cutting validation, error
+  handling, security, or accessibility ("lazy, not negligent"). Toggle and set
+  intensity with `/loop-spec:simplicity on|off|lite|full|ultra|status`; kill
+  switch `LOOP_SPEC_SIMPLICITY=0`. Follows the same toggle-skill + inject-hook
+  pattern as grill and discipline, so it reuses existing infrastructure rather
+  than adding a parallel mechanism.
+- **Over-engineering review pass in `code-reviewer`** (quality/balanced tiers).
+  VERIFY's code review now hunts complexity alongside correctness: tagged
+  `delete`/`stdlib`/`native`/`yagni`/`shrink` findings reported as Important,
+  with a `net: -N lines possible` tally. This ports ponytail-review into the
+  existing review machinery instead of shipping a separate command skill. The
+  `simplicity:` deliberate-shortcut comment convention (ceiling + upgrade path,
+  harvestable with one grep) is distinct from the `TBD`/`FIXME`/`XXX` markers
+  VERIFY blocks on.
+
 ## [2.0.0] - unreleased
 
 **BREAKING:** graphify is now a hard requirement — the cycle aborts at startup if it
