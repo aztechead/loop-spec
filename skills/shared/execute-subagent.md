@@ -34,7 +34,7 @@ wave (`min(|ready|, maxParallelImplementers)`).
 
 ## Inputs (resolved by `execute` Step 3 before entering this path)
 
-- `tasks[]` — each `{id, subject, files, blockedBy (union), specPath, acceptanceCriteria, readFirst, brief}`.
+- `tasks[]` — each `{id, subject, files, blockedBy (union), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` comes straight from the PLAN task block; it is the per-task behavioral assertion re-run post-merge in step 7.)
 - `tier`, `maxParallelImplementers`, `maxRetriesPerTask`, `reviewersEnabled` — from the tier matrix.
 - `featureWorktreeRoot = $(git rev-parse --show-toplevel)`, `featureBranch = feat/{slug}`.
 - `models.implementer`, `models.specComplianceReviewer` — passed as the `Agent` `model`.
@@ -89,10 +89,35 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    ```
 
    On a successful merge add the task id to `mergedSet`.
+
+   **Post-merge re-verify (all tiers) — trust the INTEGRATED branch, not the implementer's
+   worktree.** The implementer's own "TASK PASS" / verify output came from inside its task
+   worktree, which is removed immediately above. That signal describes an environment that no
+   longer exists and may have been branched from a stale base; it is NOT trustworthy on its
+   own. So, right after the worktree is removed and the task is in `mergedSet`, re-run that
+   task's `verifyCommand` from the **feature worktree** (`feat/{slug}` with the merge applied):
+
+   ```bash
+   if [[ -n "{task.verifyCommand}" ]]; then
+     ( cd "$featureWorktreeRoot" && git checkout "feat/{slug}" >/dev/null 2>&1 && eval "{task.verifyCommand}" )
+     if [[ $? -ne 0 ]]; then
+       # The merged, integrated code fails the task's own behavioral check.
+       blocked+=("{taskId}:retry-exhausted")   # surface for re-queue / escalation
+       # (Do NOT leave it silently in mergedSet as "passed".)
+     fi
+   fi
+   ```
+
+   A task is only genuinely done when its `verifyCommand` passes against the integrated
+   feature branch. This mirrors the team rung's post-merge test gate (`execute` SKILL Step 8)
+   but at per-task granularity, and it is the safety net for finding #2/#8: even if an
+   implementer ran isolated-from-base and its green check was for a discarded worktree, the
+   post-merge re-verify here catches code that never actually integrated.
 7. **Post-merge test gate** (quality/balanced only; quick skips): run
    `feature.json.commands.test` (or `lib/detect-test-cmd.sh` if unset) from the feature
    worktree. On failure, record a remediation note and surface it via `escalation` or a
-   `blocked` entry rather than silently proceeding.
+   `blocked` entry rather than silently proceeding. (The per-task re-verify above asserts each
+   task's own behavior; this whole-suite gate catches cross-task regressions.)
 8. Loop back to step 1.
 
 ## Agent dispatch convention
@@ -110,10 +135,27 @@ on top of the explicit `git worktree add` in the prompt. Pass the role model via
 Substitute the runtime values. This mirrors the implementer contract in
 `lib/workflows/execute-dag.js` so behavior is identical across rungs.
 
+This dispatch uses the DEFAULT agent (not loop-spec:implementer), so the agent definition's
+ponytail directive does NOT apply here and a SessionStart hook does not reach this subagent.
+The simplicity directive is therefore inlined verbatim below (canonical source:
+`skills/shared/laziness-ladder.md`) so EXECUTE follows ponytail on this rung every time.
+
 ```
 You are an implementer agent for task {taskId}.
 
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
+
+SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
+actually works; the best code is the code never written. BEFORE writing code, stop at the
+first rung that holds: (1) does it need to exist at all? speculative = skip it (YAGNI);
+(2) already in this codebase? reuse the existing helper/util/type/pattern, do not
+re-implement it; (3) stdlib does it? use it; (4) native platform feature covers it? use it;
+(5) an already-installed dependency solves it? use it, never add a new one for what a few
+lines do; (6) can it be one line? one line; (7) only then, the minimum code that works. The
+ladder runs AFTER you understand the problem. Bug fix = root cause, not symptom. NEVER cut
+input validation at trust boundaries, error handling that prevents data loss, security,
+accessibility, or anything the spec requires. Non-trivial logic leaves ONE runnable check
+behind. Mark deliberate shortcuts with a `simplicity:` comment naming the ceiling.
 
 Step 1 - Create the task worktree (skip if it already exists):
   git -C "{featureWorktreeRoot}" worktree add "{worktree_path}" -b "task/{taskId}-{slug}" "feat/{slug}"
@@ -156,9 +198,16 @@ Acceptance criteria:
 {numbered acceptanceCriteria}
 
 Determine whether the implementation satisfies all acceptance criteria and matches the spec.
+
+Over-engineering pass (ponytail; quality/balanced only — skip on quick): scan the diff for
+complexity it does not need. Flag each as a rework finding — delete: dead/speculative code;
+stdlib: hand-rolled thing the standard library already ships; yagni: abstraction with one
+implementation or config nobody sets; shrink: same logic in fewer lines. Do NOT flag the
+ponytail minimum (a single smoke/assert check, or an accepted `simplicity:`-marked shortcut).
+
 Return one of:
   - verdict "pass"   if everything is satisfied
-  - verdict "rework" with specific findings if fixable issues exist
+  - verdict "rework" with specific findings if fixable issues exist (incl. over-engineering)
   - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
 
 Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...] }
@@ -210,6 +259,15 @@ The prompt instructs the implementer:
 You are an implementer agent for task {taskId} in repo '{repo}'.
 
 IMPORTANT: All paths must be ABSOLUTE. Do not use em-dashes.
+
+SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
+actually works. BEFORE writing code, stop at the first rung that holds: (1) needed at all?
+speculative = skip (YAGNI); (2) already in this codebase? reuse it; (3) stdlib does it?
+use it; (4) native platform feature? use it; (5) installed dependency solves it? use it,
+add no new one for what a few lines do; (6) one line? one line; (7) only then the minimum
+that works. Ladder runs AFTER understanding the problem; bug fix = root cause not symptom.
+NEVER cut validation at trust boundaries, data-loss error handling, security, accessibility,
+or anything the spec requires. Non-trivial logic leaves ONE runnable check behind.
 
 Repo: {repo}
 Repo path: {abs_repo}   (absolute; all git and file operations target this directory)

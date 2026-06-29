@@ -469,7 +469,9 @@ loop-spec/
 │   ├── plan-to-loop.sh              # EXECUTE tasks[] -> loop-runner plan (loop-fleet rung)
 │   ├── ralph-remediation.sh         # VERIFY remediation loop harness
 │   ├── workflow-availability.sh     # CC-version gate for the Workflow tool
-│   ├── migrate-schema-v3-to-v4.sh   # opt-in migration from schemaVersion 3 to 4
+│   ├── feature-init.sh              # single source of truth for the schema-7 feature.json skeleton + models map
+│   ├── resolve-bin.sh               # resolve real executables past version-manager shell shims (nvm/pyenv/...)
+│   ├── acceptance-lint.sh           # flags bare-substring grep acceptance criteria (plan feasibility gate)
 │   ├── team-ops.sh                  # team_name_for_phase + agent-teams env assertion
 │   ├── workflows/                   # dynamic-workflow scripts (execute-dag, map-codebase, ...)
 │   └── checkpoint / decision-coverage / detect-test-cmd / pause-snapshot / plan-adherence / regression-scan / validate-task-metadata / worktree-commit-check

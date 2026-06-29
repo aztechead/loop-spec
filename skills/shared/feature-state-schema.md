@@ -1,6 +1,6 @@
 # Feature State Schema
 
-Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json` (gitignored). Atomic write pattern: write `feature.json.tmp`, fsync, rename. Backup `feature.json.bak` updated on each successful write. All writes go through `lib/feature-write.sh`.
+Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json`. It is the **committed resume contract** (tracked in git so resume survives a clone / hand-off; the cycle commits it on each phase transition). Its siblings -- `feature.json.bak`, `gate-logs/`, transcripts -- stay gitignored as per-machine churn. Atomic write pattern: write `feature.json.tmp`, fsync, rename. Backup `feature.json.bak` updated on each successful write. All writes go through `lib/feature-write.sh`.
 
 Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet`) per phase team, not in `feature.json`. See "Harness task list usage" below.
 
@@ -17,7 +17,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "currentPhase": "spec | discuss | plan | execute | verify | completed",
   "completedPhases": ["array of phase names"],
   "branch": "string (feat/{slug})",
-  "worktreePath": "string (.claude/worktrees/{slug}); absent => legacy in-place",
+  "worktreePath": "string (.claude/worktrees/{slug}) in single-repo mode; null in workspace mode",
   "baseSha": "git sha at branch creation",
   "baseBranch": "string (e.g., main)",
   "models": {
@@ -125,14 +125,13 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
 - `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null` unless the cycle's Step 2 capability probe signals a specific mode.
-- Schema version 4 adds the `spec` phase fields. `currentPhase` gains `"spec"` as the first value; `retryBudget.perPhase` and `retryBudget.perPhaseUsed` each gain a `"spec"` field; `artifacts.specInterview` is added as a nullable path field pointing to the interview transcript written by the spec phase orchestrator (main thread). Migration from v3 to v4 is opt-in via `lib/migrate-schema-v3-to-v4.sh`. In-flight v3 features continue on v3 unless the user explicitly migrates.
-- `pendingRemediationTasks`, `bootstrapPendingDomains`, and `activeWorkflow` are runtime-only working fields written by the code (VERIFY remediation routing, cycle Step 5.5b background mapping, and the workflow dispatch contract in `dispatch-fanout.md`). They are documented here so validators and migrations treat the v4 shape as complete; all three are absent or empty/null between phases.
-- `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base; EXECUTE Step 1 still records it idempotently for resumed v3 features.
-- `models` is a fixed per-role map (no preset axis), written ONCE at cycle Step 5 as a mirror of `skills/shared/model-matrix.md`, and is the single source of truth for per-role model IDs. Every phase skill passes `model: feature.models.<role>` on each spawn rather than re-deriving, so teammates never silently inherit the orchestrator's session model. opus runs spec-writer, planner, advocate, challenger, and spec-compliance-reviewer; sonnet runs implementer, code-reviewer, verifier, mapper-*, and pattern-mapper. Cycle Step 5.9 normalizes this block idempotently on every resume, so pre-v2.3.0 features (no block) and features carrying a stale preset-era block are migrated to the fixed map before routing to any phase.
-- Schema version 5 removes the `preset` field (model selection is fixed; see `model-matrix.md`) and rewrites `models` to the fixed map. Migration is automatic and lossless: cycle Step 5.9 drops `preset` and normalizes `models` on the next resume of any in-flight feature. `tier` is unaffected.
-- Schema version 6 introduces `worktreePath`. Each new feature runs inside a dedicated git worktree created at cycle Step 5 via `lib/git-ops.sh create-feature-worktree`; all state, docs, and code live on `feat/{slug}` inside that worktree. Resume discovers feature worktrees via `git worktree list` (specifically `git-ops.sh list-feature-worktrees`). Back-compat: features without `worktreePath` (schema version 5 and earlier) continue to run legacy in-place; there is no forced migration of in-flight features into worktrees.
-- Schema version 7 introduces the optional `workspace` block for multi-root workspace support. Rules: (1) `workspace` absent or null means single mode; v6 features load unchanged with no migration required. (2) In workspace mode, the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` fields are null; the per-repo values inside `workspace.repos[]` are authoritative for each participating repository. (3) In workspace mode, the top-level `commands` block holds empty strings (per-repo commands live in each `workspace.repos[].commands`). (4) State and artifact directories are rooted at the workspace root (`workspace.root`). (5) Resume in workspace mode requires the session cwd to be `workspace.root`; the cycle skill detects this and instructs the user to cd there before re-invoking. No forced migration of in-flight v6 features.
-- Schema version jumps from 2 to 3 (no migration from v2, clean break). Features on v0.3.x must be completed or restarted on v1.0.0. Schema version 3 to 4 is an opt-in migration (see above).
+- `artifacts.specInterview` is a nullable path to the SPEC-phase interview transcript (written by the spec orchestrator on the main thread). `currentPhase` includes `"spec"` as its first value; `retryBudget.perPhase`/`perPhaseUsed` each carry a `"spec"` field.
+- `pendingRemediationTasks`, `bootstrapPendingDomains`, and `activeWorkflow` are runtime-only working fields written by the code (VERIFY remediation routing, cycle Step 5.5b background mapping, and the workflow dispatch contract in `dispatch-fanout.md`); all three are absent or empty/null between phases.
+- `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base.
+- `models` is a fixed per-role map (no preset axis), built ONCE at cycle Step 5 from `lib/feature-init.sh` (the single source of truth, mirroring `skills/shared/model-matrix.md`). Every phase skill passes `model: feature.models.<role>` on each spawn rather than re-deriving, so teammates never silently inherit the orchestrator's session model. opus runs spec-writer, planner, advocate, challenger, spec-compliance-reviewer, and iterate-judge; sonnet runs implementer, code-reviewer, verifier, mapper-*, and pattern-mapper. Cycle Step 5.9 re-normalizes this block idempotently on every resume from the same `feature-init.sh` source (forcing canonical IDs, dropping any vestigial `preset` field), so the two construction sites cannot drift.
+- `worktreePath` (single-repo mode) points at the dedicated git worktree created at cycle Step 5 via `lib/git-ops.sh create-feature-worktree`; all state, docs, and code live on `feat/{slug}` inside it. Resume discovers feature worktrees via `git-ops.sh list-feature-worktrees`.
+- The optional `workspace` block enables multi-root workspace mode. Rules: (1) `workspace` absent or null means single-repo mode (`worktreePath` set). (2) In workspace mode the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` are null; per-repo values in `workspace.repos[]` are authoritative. (3) The top-level `commands` block holds empty strings (per-repo commands live in `workspace.repos[].commands`). (4) State and artifact dirs are rooted at `workspace.root`. (5) Resume requires the session cwd to be `workspace.root`; the cycle skill instructs the user to cd there before re-invoking.
+- **Schema is 7-only.** A `feature.json` with `schemaVersion != 7` is unsupported and skipped on resume with a warning; there is no in-place migration path for older schemas. New features are always created at schema 7 by `lib/feature-init.sh`.
 
 ## Workspace pin file (.loop-spec/workspace.json)
 
@@ -154,94 +153,6 @@ Field notes:
 - `repos[].path`: path to the repo, relative to the workspace root. The resolved path must exist, be a directory, and pass `git -C <abs-path> rev-parse --is-inside-work-tree`; invalid entries cause `lib/workspace.sh detect` to exit 1 with a clear message.
 - When to pin: (a) the workspace parent directory is itself a git repo (detection defaults to single mode; the pin overrides this), or (b) you want to use only a subset of the child repos discovered by depth-1 scan.
 - When not to pin: the workspace parent is not a git repo and you want all immediate child git repos included (auto-discovery covers this without a pin file).
-
-## Schema (v3 - legacy)
-
-```json
-{
-  "schemaVersion": 3,
-  "slug": "string (kebab-case)",
-  "createdAt": "ISO-8601 timestamp",
-  "updatedAt": "ISO-8601 timestamp",
-  "tier": "quality | balanced | quick",
-  "preset": "quality | balanced | fast",
-  "execStyle": "auto | step | interactive | review-only",
-  "currentPhase": "discuss | plan | execute | verify | completed",
-  "completedPhases": ["array of phase names"],
-  "branch": "string (feat/{slug})",
-  "baseSha": "git sha at branch creation",
-  "baseBranch": "string (e.g., main)",
-  "artifacts": {
-    "spec": "path or null",
-    "patterns": "path or null (docs/loop-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
-    "patternsSource": "gsd-ingest | pattern-mapper | manual | null",
-    "plan": "path or null",
-    "execution": "path or null",
-    "verification": "path or null",
-    "codebaseSource": {
-      "tech": "gsd-ingest | mapper | manual | null",
-      "arch": "gsd-ingest | mapper | manual | null",
-      "quality": "gsd-ingest | mapper | manual | null",
-      "concerns": "gsd-ingest | mapper | manual | null",
-      "domain": "gsd-ingest | mapper | manual | null"
-    }
-  },
-  "currentTeamName": "string or null (e.g., loop-spec-execute-{slug}); null between phases",
-  "currentTeammates": ["array of teammate names currently spawned, e.g., implementer-1, reviewer-1; empty between phases"],
-  "currentGate": {
-    "phase": "string or null",
-    "gate": "string or null",
-    "round": "integer (current round of advocate/challenger debate, 0 if no gate active)",
-    "advocateName": "string or null (e.g., advocate-1)",
-    "challengerName": "string or null (e.g., challenger-1)",
-    "startedAt": "ISO-8601 timestamp or null"
-  },
-  "retryBudget": {
-    "perGate": 3,
-    "perPhase": {"discuss": 3, "plan": 4, "execute": null, "verify": 4},
-    "perGateUsed": {},
-    "perPhaseUsed": {"discuss": 0, "plan": 0, "execute": 0, "verify": 0},
-    "global": 30,
-    "globalUsed": 0
-  },
-  "commands": {
-    "test": "string (e.g., npm test)",
-    "lint": "string",
-    "typecheck": "string"
-  },
-  "stalenessHours": 48,
-  "warnings": ["array of strings"],
-  "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
-  "harnessTaskMetadataMode": "string or null (reserved for future harness capability negotiation)",
-  "harnessStatusMode": "string or null (reserved for future harness capability negotiation)",
-  "fileConflictExcludeGlobs": ["optional array of globs excluded from EXECUTE pre-task file-conflict detection"],
-  "gateHistory": [
-    {
-      "phase": "string",
-      "gate": "spec-critique | plan-critique | plan-feasibility | spec-compliance | acceptance | code-review",
-      "attempt": "integer",
-      "result": "pass | fail",
-      "advocateModel": "string or null",
-      "challengerModel": "string or null",
-      "rounds": "integer (rounds the debate ran)",
-      "convergence": "mutual-done | cap-reached | one-sided",
-      "findingsAddressed": ["string", "..."],
-      "notes": "string or null"
-    }
-  ]
-}
-```
-
-### Field notes (v3)
-
-- The `tasks` and `waves` arrays from v2 are gone. Live task state lives in the harness task list, not in `feature.json`.
-- `retryBudget.perPhase.execute: null` means unlimited at the phase level. The per-task cap (`tier.execute.maxRetriesPerTask`) is the operative limit during EXECUTE; a phase-level cap is intentionally omitted because EXECUTE's progress is bounded by the task DAG, not gate retries.
-- `retryBudget.perGateUsed` is a map keyed by `{phase}.{gate}` (e.g., `discuss.spec-critique`) of integer retry counts. It is persisted via `lib/feature-write.sh` on every gate failure so a kill mid-gate does not reset the budget.
-- `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. All three are reset (`null` / `[]` / zeroed) after `TeamDelete`.
-- `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
-- `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
-- `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null`.
-- Schema version jumps from 2 to 3. There is no migration from v2 (clean break). In-flight features must be completed on v0.3.x or restarted on v1.0.0.
 
 ## Harness task list usage
 
@@ -325,10 +236,4 @@ Implemented in `lib/feature-write.sh`. Replaces `lib/state-write.sh` (removed in
 
 ## Resume
 
-On `cycle` skill startup: scan `.loop-spec/features/*/feature.json`. For any with `currentPhase != "completed"` and `updatedAt` within `stalenessHours`, probe for live team by calling `TaskList({team: currentTeamName})`:
-
-- `TaskList` errors (team not found): clear `currentTeamName` in `feature.json`, recreate the phase team from scratch, replay phase Step 0 from on-disk artifacts.
-- `TaskList` succeeds (team still live): print the orphan-cleanup message with the explicit team name; require manual `TeamDelete` before resume.
-- `currentTeamName == null` and within `stalenessHours`: standard resumable case; recreate phase team.
-
-If `currentGate` is non-null on resume, load prior debate transcript from `gate-logs/` into the spawn prompts of the new advocate and challenger.
+On `cycle` skill startup, candidate `feature.json` files are enumerated, filtered (completed/stale skip, `TaskList({team: currentTeamName})` live-team probe), and routed back into their phase. The full algorithm, the orphan/stale-team handling, worktree/workspace re-entry, and `currentGate` transcript reload are documented authoritatively in `skills/shared/cycle-resume-escalation.md`.

@@ -34,6 +34,17 @@ For PLAN reviews, also check:
 - Missing dependencies (blockedBy gaps)
 - Untestable acceptance criteria
 - Same-wave file overlaps
+- **Single source of truth / data flow.** Trace each piece of state to exactly one owner.
+  Flag any design where two components independently create or derive the SAME state
+  instead of one owning it and passing it down (e.g., two callers each invoking the same
+  stateful hook/factory, two modules each holding their own copy of a config, parallel reads
+  of a value that can diverge). Divergent state instances read inconsistently and the bug
+  surfaces only at runtime. Ask: "who owns this state, and does everyone else read it from
+  that one owner?" — if the answer is "more than one creates it," that is a finding.
+- **Acceptance criteria that grep source text.** Flag any acceptance criterion that asserts a
+  substring appears in a file (`grep -c "foo"`): it passes on a code comment and fails on an
+  incidental substring, so it measures spelling, not behavior. Require a behavioral check (a
+  named test) or an anchored, comment-excluding grep.
 
 Keep under 500 words. Cite section names or quote the artifact.
 

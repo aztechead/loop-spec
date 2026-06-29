@@ -4,29 +4,30 @@ Reference procedures the `loop-spec:cycle` skill follows. Step 1 (Resume detecti
 
 ## Resume strategy
 
-The full resume algorithm (used at Step 1 and when the user selects a feature to resume):
+The full resume algorithm (used at Step 1 and when the user selects a feature to resume).
+loop-spec is **schema-7 only**: a resumable feature is either single-repo **worktree mode**
+(`worktreePath` set, `workspace` null) or **workspace mode** (`workspace` block non-null,
+`worktreePath` null). Any `feature.json` with `schemaVersion != 7` is skipped with a one-line
+warning — there is no legacy in-place resume path.
 
-### 1. Enumerate feature worktrees (schemaVersion 6+)
+### 1. Enumerate feature worktrees (single-repo mode)
 
 Run:
 ```bash
 bash lib/git-ops.sh list-feature-worktrees
 ```
-This prints one line per worktree under `.claude/worktrees/`: `<path>\t<branch>`. For each line, read `<path>/.loop-spec/features/*/feature.json` to discover in-progress features living in their own worktree.
+This prints one line per worktree under `.claude/worktrees/`: `<path>\t<branch>`. For each line, read `<path>/.loop-spec/features/*/feature.json` to discover in-progress single-repo features living in their own worktree.
 
-Features found here are **worktree-mode** (schemaVersion 6). They are collected alongside any legacy candidates (see step 2 below) into a single candidate list.
+### 2. Enumerate workspace features
 
-### 2. Enumerate legacy feature.json files (schemaVersion 5 or earlier)
-
-Read `.loop-spec/features/*/feature.json` from the **main checkout**. A feature is **legacy** if:
-- `schemaVersion` is absent or <= 5, OR
-- `worktreePath` is absent or empty.
-
-Legacy features resume **in-place in the main checkout** exactly as before. No worktree is entered. Document this to the user when presenting the selection list (e.g., append `"(in-place)"` to the label).
+Read `.loop-spec/features/*/feature.json` from the workspace root. Features with a non-null
+`workspace` block are workspace-mode (resume in place; see "Workspace features" below). Both
+sources feed a single candidate list. Skip any candidate whose `schemaVersion != 7`
+(`feature {slug}: unsupported schemaVersion {n} (schema 7 only); skipping`).
 
 ### 3. Filter candidates
 
-For each candidate (worktree or legacy):
+For each candidate (worktree or workspace):
 
 1. **Load feature.json.** On parse error, try `feature.json.bak`. On both failing, skip.
 2. **Skip completed features.** If `currentPhase == "completed"`, skip.
@@ -44,13 +45,13 @@ For each candidate (worktree or legacy):
 ### 4. Present resume options
 
 The resume option label is: `"Resume {slug} - phase {currentPhase} (last updated {ago})"`. Append:
-- `" (in-place)"` for legacy features.
-- `" (worktree: {worktreePath})"` for schemaVersion 6 features.
+- `" (worktree: {worktreePath})"` for single-repo worktree features.
+- `" (workspace: {N} repos)"` for workspace features.
 - `" (prior team {oldName} was stale and cleared)"` if a stale team was cleared.
 
 ### 5. On resume selection
 
-**Worktree-mode features (schemaVersion 6, worktreePath present):**
+**Single-repo worktree features (worktreePath present):**
 
 First confirm the worktree still exists on disk before entering it. Step 1 already ran `git-ops.sh list-feature-worktrees`; the chosen feature's `worktreePath` MUST appear in that listing. If it does NOT (the directory was deleted or `git worktree prune`d), do not call `EnterWorktree` (it would error). Instead warn the user and offer to recreate it from the recorded base:
 ```
@@ -65,8 +66,8 @@ EnterWorktree({ path: feature.worktreePath })
 ```
 Call this BEFORE routing to the current phase. All subsequent phase work runs inside the worktree with the feature branch already checked out. Subagents dispatched from phase skills must receive absolute paths (resolve via `git rev-parse --show-toplevel` from inside the worktree).
 
-**Legacy features (schemaVersion <= 5 or no worktreePath):**
-No worktree is entered. Resume proceeds in the main checkout exactly as before.
+**Workspace features (`workspace` block non-null):**
+No worktree is entered. Resume proceeds in place at the workspace root (see "Workspace features" below).
 
 **Both paths then:**
 Load feature state into memory. Jump directly to Step 6 (phase routing) with `state = loaded feature.json`. Do not re-run Steps 2-4. The phase team is re-created fresh via `TeamCreate` (the harness does not support in-process teammate resume). If `currentGate` in `feature.json` is non-null with a non-zero round, load prior debate transcript from `.loop-spec/features/{slug}/gate-logs/` into the spawn prompt so the resumed advocate/challenger have prior context.
@@ -75,7 +76,7 @@ The `TaskList` probe is the sole mechanism for detecting live teams. The harness
 
 ## Workspace features
 
-Features with `schemaVersion == 7` AND a non-null `workspace` block are workspace-mode features. They resume IN PLACE at the workspace root -- no worktree, no `EnterWorktree` call.
+Features with a non-null `workspace` block are workspace-mode features. They resume IN PLACE at the workspace root -- no worktree, no `EnterWorktree` call.
 
 Resume rules for workspace features:
 
@@ -115,7 +116,7 @@ If a phase pauses + escalates (budget exhausted, NEEDS_CONTEXT, etc.):
 3. Print escalation reason.
 4. Read `retryBudget` from `feature.json` (`.loop-spec/features/{slug}/feature.json`) and show `gateHistory` tail (last 3 attempts from `feature.json.gateHistory`).
 5. Show partial artifacts (spec/plan/execution/verification paths from `feature.json.artifacts`).
-6. **Worktree-mode only (schemaVersion 6):** after snapshotting (step 5 above), call `ExitWorktree({action: "keep"})` to return the session to the main checkout. The worktree and branch are preserved on disk; the next resume will re-enter via `EnterWorktree`. Legacy (in-place) features skip this step.
+6. **Single-repo worktree mode only:** after snapshotting (step 5 above), call `ExitWorktree({action: "keep"})` to return the session to the main checkout. The worktree and branch are preserved on disk; the next resume will re-enter via `EnterWorktree`. Workspace features (in-place at the workspace root) skip this step.
 7. Return control to user.
 
 User options:

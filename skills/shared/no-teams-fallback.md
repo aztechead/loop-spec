@@ -1,8 +1,12 @@
 # No-teams fallback (reference)
 
-Applies when `.loop-spec/runtime.json.teamsAvailable == false` (cycle Step 2
-probe: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1`). Every phase still runs and
-produces the same artifacts and gates; only the dispatch mechanism changes.
+Applies when `.loop-spec/runtime.json.teamsAvailable == false`. This is set
+either by the cycle Step 2 env probe (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1`)
+**or** by the guarded-team-op contract (cycle Step 2): when the env var claimed teams
+were available but the first `TeamCreate` throws `No such tool available`, the phase flips
+`teamsAvailable=false` and re-runs itself on this fallback instead of hard-erroring. Either
+way, every phase still runs and produces the same artifacts and gates; only the dispatch
+mechanism changes.
 Teams are an accelerator (persistent context across critique rounds), not a
 prerequisite — a missing experimental flag must never make the plugin throw.
 

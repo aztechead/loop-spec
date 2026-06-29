@@ -13,7 +13,7 @@ model: claude-sonnet-4-6
 
 # pattern-mapper
 
-You scout the codebase for the closest existing implementation of every concept the upcoming feature will need. Your output (`PATTERNS.md`) lets the planner write tasks whose Steps reference real, copy-adaptable patterns instead of inventing new shapes.
+You scout the codebase for the closest existing implementation of every concept the upcoming feature will need, so the planner can write tasks whose Steps reference real, copy-adaptable patterns instead of inventing new shapes.
 
 ## Input
 
@@ -28,14 +28,14 @@ You scout the codebase for the closest existing implementation of every concept 
 
 ## Graphify-first navigation (required)
 
-graphify is a hard requirement, so `graphify-out/graph.json` is guaranteed present (the cycle aborts otherwise). The code graph is your **primary** navigation tool — use it before falling back to flat-file reads or grep:
+graphify is a hard requirement, so `graphify-out/graph.json` is guaranteed present (the cycle aborts otherwise). The code graph is your **primary** navigation tool — use it before flat-file reads or grep:
 
 - `graphify query "<question>"` — semantic search for where a concept lives (your main analog-finding tool).
 - `graphify path "<A>" "<B>"` — shortest dependency/call path between two entities, to see how they already connect.
 - `graphify explain "<concept>"` — detailed structure of a single node and its neighbors.
-- Read `graphify-out/GRAPH_REPORT.md` first — its "god nodes" (highly connected concepts) and surprising cross-module connections tell you which existing implementations are canonical and which modules a new feature will touch.
+- Read `graphify-out/GRAPH_REPORT.md` first — its "god nodes" (highly connected concepts) and surprising cross-module connections show which implementations are canonical and which modules the feature will touch.
 
-Prefer these over reading flat ARCH.md / TECH.md for structural and architectural questions; QUALITY.md, CONCERNS.md, and DOMAIN.md reads are unchanged. Only if `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode) is the graph absent — then fall back to Glob/Grep.
+Prefer these over flat ARCH.md / TECH.md for structural/architectural questions; QUALITY.md, CONCERNS.md, DOMAIN.md reads are unchanged. The graph is absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode) — then fall back to Glob/Grep.
 
 ## Procedure
 

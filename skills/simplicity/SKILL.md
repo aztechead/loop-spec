@@ -128,10 +128,13 @@ applies to tests too.
 
 ## Relationship to the cycle
 
-Simplicity mode is the always-on backdrop; the cycle realizes it at specific gates:
-- **PLAN / planner** climbs the ladder when shaping tasks — no speculative abstractions in the plan.
-- **EXECUTE / implementer** already ships "minimum code, nothing speculative"; the ladder is the same discipline, named.
-- **VERIFY / code-reviewer** runs the over-engineering pass (delete / stdlib / native / yagni / shrink) on the diff, tier-gated.
+Simplicity mode is the always-on backdrop; the cycle realizes it at specific gates. A
+SessionStart hook reaches only the main thread, so each code-producing phase carries the
+ladder in its OWN dispatch prompt — canonical text in `skills/shared/laziness-ladder.md`,
+enforced every time by `tests/ponytail-coverage.test.sh`:
+- **PLAN / planner** climbs the ladder when shaping tasks — no speculative abstractions in the plan (`agents/planner.md`).
+- **EXECUTE / implementer** carries the ladder on **every rung** — team (`agents/implementer.md`), subagent (`skills/shared/execute-subagent.md`), loop-fleet (`lib/plan-to-loop.sh`), and workflow (`lib/workflows/execute-dag.js`) — since the lighter rungs dispatch the default agent / a loop worker / a Workflow agent that the agent-definition ladder and the SessionStart hook do not reach.
+- **VERIFY / code-reviewer** runs the over-engineering pass (delete / stdlib / native / yagni / shrink) on the diff, tier-gated (`agents/code-reviewer.md`); the per-task reviewers in the EXECUTE subagent/workflow rungs run the same pass on each task diff.
 
 ## Notes
 

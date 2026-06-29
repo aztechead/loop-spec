@@ -288,6 +288,12 @@ Append the fail entry to `feature.json.gateHistory` via `lib/feature-write.sh` B
 }
 ```
 
+Snapshot SPEC.md before sending the fix-list (used by the no-op-revision shortcut below):
+
+```bash
+spec_hash_before="$(git hash-object docs/loop-spec/features/{slug}/SPEC.md 2>/dev/null || echo none)"
+```
+
 Re-dispatch spec-writer-1 via `SendMessage` (not a fresh Agent call):
 ```
 SendMessage({
@@ -304,7 +310,25 @@ SendMessage({
 })
 ```
 
-Wait for `TeammateIdle` from `spec-writer-1`. When `SPEC.md written` is received, re-run the debate: reset `currentGate.round = 0`, then re-send spawn prompts to `advocate-1` and `challenger-1` with `{N_round} = 1` and `{prior_round_summaries} = (concatenated content of all existing gate-logs/spec-critique-round-*.md files)`. This resets their per-round context so they argue against the revised SPEC.md with awareness of prior debate. Then return to Step 4 (critique debate loop), starting with round 1.
+Wait for `TeammateIdle` from `spec-writer-1`. When `SPEC.md written` is received:
+
+**No-op-revision shortcut (skip the redundant re-critique).** Re-critiquing byte-identical
+text yields the same verdict, so a re-dispatch that did not actually change SPEC.md must not
+trigger another full debate round (wasted opus dispatches, and a potential loop). Compare the
+hash:
+
+```bash
+spec_hash_after="$(git hash-object docs/loop-spec/features/{slug}/SPEC.md 2>/dev/null || echo none)"
+```
+
+If `spec_hash_after == spec_hash_before` (the spec-writer made no substantive change — either
+it judged the fix-list non-actionable or the edits were cosmetic), do NOT re-run the debate.
+Record the gate as converged with `notes: "spec-writer made no change to SPEC.md; re-critique
+skipped"` in the `gateHistory` pass entry, reset `currentGate` (as in the fix_list-empty
+branch below), and proceed to Step 6. This collapses a re-critique round only when it would be
+provably redundant; any real revision still re-runs the full debate.
+
+Otherwise (SPEC.md changed): re-run the debate — reset `currentGate.round = 0`, then re-send spawn prompts to `advocate-1` and `challenger-1` with `{N_round} = 1` and `{prior_round_summaries} = (concatenated content of all existing gate-logs/spec-critique-round-*.md files)`. This resets their per-round context so they argue against the revised SPEC.md with awareness of prior debate. Then return to Step 4 (critique debate loop), starting with round 1.
 
 #### If fix_list empty:
 

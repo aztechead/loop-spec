@@ -36,22 +36,4 @@ Sonnet 4.6 supports 1M context with the `context-1m-2025-08-07` beta flag (or eq
 
 ## Dispatch rule
 
-Phase skills MUST pass `model:` parameter explicitly on every teammate spawn and on every one-shot `Agent` dispatch:
-
-```
-TeamCreate({
-  name: "loop-spec-execute-{slug}",
-  teammates: [
-    {
-      name: "implementer-1",
-      subagent_type: "loop-spec:implementer",
-      model: feature.models.implementer,   // resolved once at cycle Step 5 (fixed map)
-      prompt: "..."
-    }
-  ]
-})
-```
-
-The one-shot `Agent({subagent_type, model, prompt})` form is reserved for Step 5.5b background mappers; it also requires explicit `model:`.
-
-Never rely on default model. Never omit the parameter.
+Phase skills MUST pass `model:` explicitly on every teammate spawn and every one-shot `Agent` dispatch, reading the resolved ID from `feature.models.<role>`. Never rely on the agent frontmatter default. See `skills/shared/model-matrix.md` "Dispatch rule" for the canonical `TeamCreate` shape and the Step 5.5b background-mapper exception.

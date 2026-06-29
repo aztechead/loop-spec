@@ -23,9 +23,9 @@ return the same `{merged, blocked, escalation, tier}` result shape.
 
 ### Step 1 - Branch check
 
-The behavior differs based on whether `feature.json` has a `workspace` block (schema 7 workspace mode), a `worktreePath` field (schema 6), or neither (legacy schema <= 5).
+loop-spec is schema-7 only. A feature is either workspace mode (`workspace` block non-null) or single-repo worktree mode (`workspace == null`, `worktreePath` set). There is no legacy in-place path.
 
-**Schema 7 workspace mode (`feature.workspace` non-null):** Each participating repo must be on `feat/{slug}`. Assert this before any other work:
+**Workspace mode (`feature.workspace` non-null):** Each participating repo must be on `feat/{slug}`. Assert this before any other work:
 
 ```bash
 workspace_root="$(jq -r '.workspace.root' .loop-spec/features/{slug}/feature.json)"
@@ -45,7 +45,7 @@ done
 
 If any repo fails the check, abort with the message above. Do not proceed.
 
-**Schema 6 (worktreePath present):** The feature worktree was created at cycle start and the session was switched into it via `EnterWorktree`. The branch `feat/{slug}` is already checked out there. Assert this is the case; do not create the branch in-place:
+**Single-repo worktree mode (`worktreePath` present):** The feature worktree was created at cycle start and the session was switched into it via `EnterWorktree`. The branch `feat/{slug}` is already checked out there. Assert this is the case; do not create the branch in-place:
 
 ```bash
 current=$(git branch --show-current)
@@ -57,26 +57,6 @@ fi
 ```
 
 `baseSha` and `baseBranch` were already written by cycle Step 5 (`baseBranch` is the real base, e.g. `main`, used by VERIFY as the PR `--base`). Do not overwrite them here. The per-task ff-merge target is the literal feature branch `feat/{slug}`, never `baseBranch`.
-
-**Legacy (no worktreePath, schema <= 5):** Create the branch from the detected base if not already on it:
-
-```bash
-current=$(git branch --show-current)
-if [[ "$current" != "{feature.json.branch}" ]]; then
-  base=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
-  if [[ -z "$base" ]]; then
-    for candidate in main master develop trunk; do
-      if git show-ref --verify --quiet "refs/heads/$candidate"; then
-        base="$candidate"; break
-      fi
-    done
-  fi
-  [[ -z "$base" ]] && { echo "ERROR: cannot determine base branch"; exit 2; }
-  git checkout -b {feature.json.branch} "$base"
-fi
-```
-
-Record `feature.json.baseSha = $(git rev-parse HEAD)` if not set; atomic write via `lib/feature-write.sh`. Also record `feature.json.baseBranch = "$base"` for later merge target.
 
 ### Step 2 - Pre-task file-conflict detection
 
@@ -148,7 +128,7 @@ concurrency ladder") follows the Anthropic tool idiom: the lightest mechanism th
 the available concurrency wins, and the heaviest (Workflow) fires only on explicit
 opt-in.
 
-Build the `tasks[]` array from Step 2a/2b first: each element is `{id, subject, files, blockedBy (union of explicit + synthetic edges), specPath, acceptanceCriteria, readFirst, brief}`.
+Build the `tasks[]` array from Step 2a/2b first: each element is `{id, subject, files, blockedBy (union of explicit + synthetic edges), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` is carried through so the subagent rung can re-run each task's behavioral check against the integrated branch post-merge — see `skills/shared/execute-subagent.md` step 6/7.)
 
 **Workspace mode gate (evaluated BEFORE `featureWorktreeRoot` is resolved):**
 
