@@ -37,8 +37,8 @@ The agent-teams execution mode adds hard requirements beyond the tools listed ab
 
 | Requirement | Detail |
 |---|---|
-| **Claude Code >= v2.1.32** | Minimum version for agent teams harness support. Earlier versions will fail the capability probe. |
-| **`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`** | Must be set in the environment (or in `.claude/settings.json` under `env`) before launching `claude`. `lib/team-ops.sh:assert_team_env()` enforces this at runtime and exits with code 2 if absent. |
+| **Claude Code >= v2.1.32** | Minimum version for agent teams. CC **>= 2.1.178** removed `TeamCreate`/`TeamDelete`; `lib/teams-capability.sh` version-gates the cycle onto the implicit-team model (`Agent({name})`) on those builds and the legacy explicit model below it. Teams are optional — absent them, the no-teams fallback runs. |
+| **`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`** | Opt-in flag for agent teams. Set in the environment (or in `.claude/settings.json` under `env`) before launching `claude`. When unset the cycle records `teamsMode=none` and uses one-shot `Agent` dispatch; it does not abort. Override the resolved mode with `LOOP_SPEC_TEAMS_MODE=none\|explicit\|implicit`. |
 | **Agent teams harness capabilities** | The cycle skill runs a capability probe verifying: TeamCreate, TaskUpdate status, TaskUpdate metadata, SendMessage, concurrent-claim. If any check fails, the skill aborts. See `docs/loop-spec/PREREQUISITES.md` for the full probe spec. |
 
 ## Dev Dependencies

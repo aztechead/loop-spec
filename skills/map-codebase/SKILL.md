@@ -9,6 +9,11 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete 
 
 Standalone skill that builds or refreshes `docs/loop-spec/codebase/*.md`. Also auto-invoked by `loop-spec:verify` at end of feature cycle.
 
+> **Team-mode adaptation (Step 3–5):** read `.loop-spec/runtime.json.teamsMode`.
+> - `none` → no team: run each mapper as a one-shot `Agent` call (`skills/shared/no-teams-fallback.md`); skip the `TeamCreate`/`TeamDelete` steps and collect each mapper's returned report directly.
+> - `implicit` (CC >= 2.1.178) → `TeamCreate`/`TeamDelete` were removed and throw. Skip the `TeamCreate` in Step 3 and the `TeamDelete` in Step 5; spawn each mapper with `Agent({name: "mapper-{domain}-1", subagent_type, model, prompt})`, folding its `SendMessage` work prompt into the spawn. Mapper-to-mapper and `DOMAIN_DONE` messaging via `SendMessage` is unchanged. Per `skills/shared/implicit-team-mode.md`.
+> - `explicit` → the `TeamCreate`/`TeamDelete` steps below run as written.
+
 ## Modes
 
 - **incremental** (default): only re-map domains whose tracked files changed since last refresh

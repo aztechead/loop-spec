@@ -14,6 +14,13 @@ Invoked when feature.json currentPhase == "verify".
 > and prompt templates, per `skills/shared/no-teams-fallback.md`. The acceptance gate and
 > code-review HARD-GATE semantics are unchanged.
 
+> **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
+> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
+> spawn verifier and code-reviewer with `Agent({name, subagent_type, model, prompt})`, folding
+> each one's work prompt into the spawn, and use `SendMessage` for any follow-up. Per
+> `skills/shared/implicit-team-mode.md`. The acceptance gate and code-review HARD-GATE
+> semantics are unchanged.
+
 ## Inputs
 
 - `feature_path` (path to `.loop-spec/features/{slug}/feature.json`)

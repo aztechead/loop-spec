@@ -298,6 +298,15 @@ without workflow opt-in/availability). Steps 4-10 are the TeamCreate self-claim 
 Behavior is retained verbatim. The long self-claim loop and reviewer loop details are in
 **`skills/shared/execute-loops.md`**.
 
+> **Implicit-team harness (`.loop-spec/runtime.json.teamsMode == "implicit"`, CC >= 2.1.178):**
+> `TeamCreate`/`TeamDelete` were removed and throw. The self-claim team still runs — only the
+> create/teardown changes. In **Step 5**, instead of one `TeamCreate` with a `teammates` array,
+> spawn each teammate object as its own `Agent({name, subagent_type, model, prompt})` call (the
+> prompts are already inline, so this is a 1:1 expansion). In **Steps 9-10**, skip `TeamDelete`
+> — just clear `currentTeamName`/`currentTeammates`. `TaskCreate`/`TaskUpdate`/`TaskList` (Steps 4,
+> 6-8) and all `SendMessage` routing are unchanged: the session-implicit team shares one task list.
+> Per `skills/shared/implicit-team-mode.md`.
+
 ### Step 4 - Team: TaskCreate for each planned task
 
 After conflict edges are computed (Step 2b), validate each task's metadata orchestrator-side then call `TaskCreate`. The orchestrator owns this validation because the documented `TaskCreated` hook event has an unpublished payload schema and `PreToolUse: TaskCreate` is not a documented matcher; running the check here keeps loop-spec on documented harness behavior:

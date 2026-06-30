@@ -149,6 +149,35 @@ check "fleet exit 1"      "$?" "1"
 check "dependent skipped" "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['skipped'])")" "['child']"
 check "child never ran"   "$(test ! -f c.txt && echo yes)" "yes"
 
+echo "== 12. --fallback-model flag + --retry-watchdog env reach the claude invocation =="
+newrepo
+REC="$R/rec.txt"
+cat > recstub.sh << EOF
+#!/usr/bin/env bash
+{ echo "ARGV: \$*"; echo "WATCHDOG: \${CLAUDE_CODE_RETRY_WATCHDOG:-unset}"; } >> "$REC"
+echo '{"type":"result","subtype":"success","is_error":false,"total_cost_usd":0.1,"session_id":"s","num_turns":1,"result":"ok"}'
+EOF
+chmod +x recstub.sh
+python3 "$SCRIPTS/loop.py" "noop" --task-id fb --claude-bin "$R/recstub.sh" \
+  --fallback-model claude-haiku-4-5-20251001 --retry-watchdog 5 \
+  --max-iterations 1 --budget 99 --verify 'true' >/dev/null 2>&1
+check "fallback-model flag passed" "$(grep -c -- '--fallback-model claude-haiku-4-5-20251001' "$REC")" "1"
+check "retry-watchdog env set"      "$(grep -c 'WATCHDOG: 5' "$REC")" "1"
+
+# Default (flags omitted): no fallback flag, watchdog inherited (unset here)
+newrepo
+REC2="$R/rec.txt"
+cat > recstub.sh << EOF
+#!/usr/bin/env bash
+{ echo "ARGV: \$*"; echo "WATCHDOG: \${CLAUDE_CODE_RETRY_WATCHDOG:-unset}"; } >> "$REC2"
+echo '{"type":"result","subtype":"success","is_error":false,"total_cost_usd":0.1,"session_id":"s","num_turns":1,"result":"ok"}'
+EOF
+chmod +x recstub.sh
+env -u CLAUDE_CODE_RETRY_WATCHDOG python3 "$SCRIPTS/loop.py" "noop" --task-id nofb --claude-bin "$R/recstub.sh" \
+  --max-iterations 1 --budget 99 --verify 'true' >/dev/null 2>&1
+check "no fallback flag by default"  "$(grep -c -- '--fallback-model' "$REC2")" "0"
+check "watchdog unset by default"    "$(grep -c 'WATCHDOG: unset' "$REC2")" "1"
+
 echo
 echo "================= $PASS passed, $FAIL failed ================="
 exit $([[ $FAIL -eq 0 ]] && echo 0 || echo 1)
