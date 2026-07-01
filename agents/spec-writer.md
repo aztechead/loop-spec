@@ -19,7 +19,6 @@ You produce a SPEC.md document for a feature based on a discuss-phase conversati
 The orchestrator provides:
 - `slug`: feature kebab-case identifier
 - `feature_title`: human title
-- `tier`: quality | balanced | quick
 - `conversation_transcript`: the discuss-phase Q&A
 - `project_context_summary`: brief read of repo state
 
@@ -45,7 +44,7 @@ If no binding decisions were made during DISCUSS, return `NEEDS_CONTEXT` and ask
 - Every "Success criterion" testable (verify command or observable behavior).
 - "Open questions" empty - if any remain, return `NEEDS_CONTEXT` instead of writing.
 - A `## Boundaries (what NOT to do)` section listing explicit anti-goals: behaviors, changes, or side-effects the feature must never produce.
-- `## Success criteria` split into `### Good Enough` (minimum shippable bar) and `### Exceptional` (stretch criteria that prove the feature excels). A flat list with no tier split = defect.
+- `## Success criteria` split into `### Good Enough` (minimum shippable bar) and `### Exceptional` (stretch criteria that prove the feature excels). A flat list with no Good Enough / Exceptional split = defect.
 
 ## Engineering principles
 

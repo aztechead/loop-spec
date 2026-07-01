@@ -24,7 +24,6 @@ Standalone skill that builds or refreshes `docs/loop-spec/codebase/*.md`. Also a
 When auto-invoked from verify:
 - `mode: "incremental"`
 - `since_sha: feature.baseSha`
-- `tier: feature.tier`
 
 When standalone (`Skill(loop-spec:map-codebase)`):
 - Optional args: `--full` (forces full mode), `--domain tech,arch` (filter to subset)
@@ -73,14 +72,13 @@ Read `.loop-spec/runtime.json`. If `workflowsAvailable=true` AND
 Workflow({
   scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/map-codebase.js",
   args: {
-    tier: feature.tier,
     staleDomains: stale_domains,
     sinceSha: since_sha,
   }
 })
 ```
 
-Result shape: `{domains: [{name, mdPath, coverage, weakSpots}], tier}`.
+Result shape: `{domains: [{name, mdPath, coverage, weakSpots}]}`.
 Skill consumes `domains[].mdPath` as the canonical refresh outputs and writes
 no additional artifacts (workflow agents wrote the files).
 

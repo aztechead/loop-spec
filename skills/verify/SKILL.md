@@ -26,7 +26,7 @@ Invoked when feature.json currentPhase == "verify".
 - `feature_path` (path to `.loop-spec/features/{slug}/feature.json`)
 - `spec_path`, `plan_path`
 - `branch`, `baseSha`
-- `slug`, `tier`
+- `slug`
 
 ## Procedure
 
@@ -102,6 +102,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" "{baseSha}" .
 
 Exit 1 = signals found: VERIFY fails immediately. Print the listed signals verbatim. This is NOT auto-remediable by re-running EXECUTE with a generic brief — the remediation task must state the specific tampering (`subject = "Fix: restore tampered test — {signal}"`) so the implementer un-tampers rather than re-tampers. A legitimate skip (e.g. a platform-gated test) is the HUMAN's call: in `step`/`interactive` styles ask; in autonomous styles treat as tampering and remediate — a real platform gate will come back with justification in the task notes and can be accepted on the next pass by recording it in `warnings[]`.
 
+### Step 2 - TeamCreate verify team
+
 Create the verify team with verifier and code-reviewer as parallel teammates:
 
 ```
@@ -134,7 +136,6 @@ Read `.loop-spec/runtime.json`. If `workflowsAvailable=true`, dispatch:
 Workflow({
   scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/acceptance-verify.js",
   args: {
-    tier: feature.tier,
     criteria: <parsed from PLAN.md acceptance section>,
   }
 })
@@ -163,7 +164,7 @@ Resolve the test/lint/typecheck commands from `feature.json.commands` and pass t
 SendMessage({
   to: "verifier-1",
   body: "Run every acceptance criterion's verify command from PLAN.md. Gate ONLY on the SPEC 'Good Enough' success criteria; report 'Exceptional' (stretch) criteria as informational, never as a FAIL. Write VERIFICATION.md to docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', body: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
-  // also include: slug, spec_path, plan_path, branch, baseSha, tier,
+  // also include: slug, spec_path, plan_path, branch, baseSha,
   //   and the resolved commands: test="<feature.commands.test>", lint="<feature.commands.lint>", typecheck="<feature.commands.typecheck>"
 })
 ```
@@ -178,7 +179,6 @@ Read `.loop-spec/runtime.json`. If `workflowsAvailable=true`:
 Workflow({
   scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/code-review-dimensions.js",
   args: {
-    tier: feature.tier,
     baseSha: feature.baseSha,
   }
 })
@@ -198,15 +198,15 @@ spawn below.
 
 Send code-reviewer-1 its work prompt via SendMessage:
 
-Pass `spec_path` so the reviewer can check each SPEC Boundary / anti-goal against the diff (the "must never produce" behaviors most worth catching at a HARD gate), and echo the tier-to-blocking-severity rule (from the HARD-GATE table below) so the reviewer self-prioritizes blocking findings.
+Pass `spec_path` so the reviewer can check each SPEC Boundary / anti-goal against the diff (the "must never produce" behaviors most worth catching at a HARD gate), and echo the blocking-severity rule (Critical + Important block; Minor is recorded, backlogged, and never blocks) so the reviewer self-prioritizes blocking findings.
 
 **Single-repo mode (unchanged):**
 
 ```
 SendMessage({
   to: "code-reviewer-1",
-  body: "Review the feature branch diff against SPEC.md and PLAN.md acceptance criteria. Check each SPEC '## Boundaries (what NOT to do)' anti-goal against the diff; flag any violation Critical. Rank findings by the tier rule: quality/balanced => Critical+Important block; quick => Critical only. When complete, SendMessage({to: 'lead', body: 'CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <summary of findings>'})."
-  // also include: slug, branch, baseSha, spec_path, plan_path, tier
+  body: "Review the feature branch diff against SPEC.md and PLAN.md acceptance criteria. Check each SPEC '## Boundaries (what NOT to do)' anti-goal against the diff; flag any violation Critical. Rank findings by the fixed rule: Critical + Important block; Minor is recorded but never blocks. When complete, SendMessage({to: 'lead', body: 'CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <summary of findings>'})."
+  // also include: slug, branch, baseSha, spec_path, plan_path
 })
 ```
 
@@ -261,10 +261,7 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
 
 Use the `CODE-REVIEWER DONE` message already received from Step 6.
 
-| Tier | Gate behavior |
-|------|---------------|
-| quality / balanced | BLOCK on Critical OR Important. PASS_WITH_MINOR proceeds (Minor deferred). |
-| quick | BLOCK on Critical only. Important + Minor deferred. |
+Fixed gate rule (single-tier operation): **BLOCK on Critical OR Important. PASS_WITH_MINOR proceeds; every Minor is backlogged below.**
 
 **If BLOCK:**
 - Generate one remediation task per blocking finding (same remediation task shape as verifier FAIL above).
@@ -283,7 +280,7 @@ Use the `CODE-REVIEWER DONE` message already received from Step 6.
 
 **If PASS or PASS_WITH_MINOR:**
 - Append code-review section to VERIFICATION.md.
-- **Backlog the deferred findings (they must not evaporate):** every finding the tier rule deferred rather than blocked (quick: each Important + Minor; quality/balanced: each Minor in a PASS_WITH_MINOR) is appended to the project backlog:
+- **Backlog the deferred findings (they must not evaporate):** every Minor finding in a PASS_WITH_MINOR is appended to the project backlog:
   ```bash
   bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "{slug}" verify-deferred "{finding: file:line — claim}"
   ```

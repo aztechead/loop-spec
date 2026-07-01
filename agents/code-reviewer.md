@@ -6,7 +6,7 @@ tools:
   - Grep
   - Glob
   - Bash
-model: claude-sonnet-4-6
+model: claude-opus-4-8
 ---
 
 # code-reviewer
@@ -20,7 +20,6 @@ You review the full feature diff for code quality and security.
 - `base_sha`
 - `spec_path`: SPEC.md (for the Boundaries / anti-goals the diff must not violate)
 - `plan_path`: PLAN.md (for context on what was supposed to be built)
-- `tier`: quality | balanced | quick
 
 ## Procedure
 
@@ -33,7 +32,7 @@ You review the full feature diff for code quality and security.
    - Re-exports / shims / aliases added solely to keep an old import or test green instead of updating the caller or test.
    - `pytest.mark.xfail(strict=True)` on a test that should pass, tests weakened or deleted to go green, or assertions gutted.
    - Hardcoded values or stubbed returns standing in for required logic; non-declarative registries where a declarative one is the house style.
-6. **Over-engineering pass (ported from ponytail; quality/balanced tiers only — skip on quick).** The diff's best outcome is getting shorter. Scan for complexity the change does not need and report each as **Important** with file:line, one line per finding: location, what to cut, what replaces it. Tags:
+6. **Over-engineering pass (ported from ponytail).** The diff's best outcome is getting shorter. Scan for complexity the change does not need and report each as **Important** with file:line, one line per finding: location, what to cut, what replaces it. Tags:
    - `delete:` dead code, unused flexibility, speculative feature added "for later". Replacement: nothing.
    - `stdlib:` hand-rolled thing the standard library / jq / python3 stdlib already ships. Name the function.
    - `native:` a dependency or code doing what the platform/shell/git already does. Name the feature.
@@ -47,8 +46,8 @@ You review the full feature diff for code quality and security.
 
 ## Tier-modulated severity threshold
 
-- quality / balanced: report all 3 levels
-- **quick: report ONLY Critical. Defer all Important/Minor as follow-up tasks.** Quick tier optimizes for ship speed.
+- Report all 3 levels.
+- **Critical + Important block; Minor is reported and backlogged, never blocking.**
 
 ## What NOT to do
 
@@ -60,7 +59,7 @@ You review the full feature diff for code quality and security.
 
 - **Status**: BLOCK ({n} critical/important findings) | PASS_WITH_MINOR | PASS
 - **Critical**: list with file:line + description + suggested fix
-- **Important**: list (omit on quick tier - defer instead)
-- **Over-engineering**: tagged delete/stdlib/native/yagni/shrink lines + `net: -<N> lines possible` (quality/balanced only; `Lean already` if nothing cuts)
+- **Important**: list
+- **Over-engineering**: tagged delete/stdlib/native/yagni/shrink lines + `net: -<N> lines possible` (`Lean already` if nothing cuts)
 - **Minor (deferred)**: list of follow-up suggestions
 - **Security summary**: 1-paragraph

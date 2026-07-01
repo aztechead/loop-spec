@@ -20,7 +20,6 @@ You scout the codebase for the closest existing implementation of every concept 
 - `slug`
 - `spec_path`: path to `docs/loop-spec/features/{slug}/SPEC.md`
 - `codebase_mapping_paths`: list of `docs/loop-spec/codebase/*.md` (TECH/ARCH/QUALITY/CONCERNS/DOMAIN). Always present -- the cycle skill guarantees the codebase map exists before PLAN starts.
-- `tier`: affects depth. `quick` = top-1 analog per concept; `balanced`/`quality` = top-2 with rationale.
 
 ## Output
 

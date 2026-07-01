@@ -1,6 +1,6 @@
 ---
 name: execute
-description: EXECUTE phase - concurrency ladder picks dispatch by DAG width W. Rung 1/2 subagent (lead-driven Agent waves), rung 3 agent team (TeamCreate self-claim), rung 4 workflow DAG (execute-dag.js, opt-in only). Loop-fleet rung (bundled loop-runner, headless bounded loops with verifier integrity) replaces the team rung on opt-in or when agent teams are unavailable. Width thresholds in tier-matrix.
+description: EXECUTE phase - concurrency ladder picks dispatch by DAG width W. Rung 1/2 subagent (lead-driven Agent waves), rung 3 agent team (self-claim), rung 4 workflow DAG (execute-dag.js, opt-in only). Loop-fleet rung (bundled loop-runner, headless bounded loops with verifier integrity) replaces the team rung on opt-in or when agent teams are unavailable. Fixed width thresholds in tier-matrix.
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet Workflow ToolSearch
 ---
 
@@ -11,7 +11,7 @@ Invoked when `feature.json.currentPhase == "execute"`. Dispatch is chosen by a
 (`skills/shared/execute-subagent.md`), rung 3 agent team (TeamCreate self-claim, Steps
 4-10), rung 4 Workflow DAG (`lib/workflows/execute-dag.js`, opt-in only). Width
 thresholds and the rung rule live in `skills/shared/tier-matrix.md`. All three paths
-return the same `{merged, blocked, escalation, tier}` result shape.
+return the same `{merged, blocked, escalation}` result shape.
 
 ## Inputs
 
@@ -164,13 +164,11 @@ fi
 
 In workspace mode the `featureWorktreeRoot` variable is NOT set. The subagent path uses per-repo absolute paths from `feature.workspace.repos[]` instead. See `skills/shared/execute-subagent.md` "Workspace mode" section for the workspace-aware wave loop.
 
-Resolve tier params from `skills/shared/tier-matrix.md` by `feature.tier`:
+Fixed operating params (`skills/shared/tier-matrix.md`):
 
-| Tier | maxParallelImplementers | maxRetriesPerTask | reviewersEnabled | t_team | t_wf |
-|---|---|---|---|---|---|
-| quality | 4 | 3 | true | 3 | 6 |
-| balanced | 3 | 2 | true | 3 | 6 |
-| quick | 2 | 1 | false | 4 | 8 |
+| maxParallelImplementers | maxRetriesPerTask | reviewersEnabled | t_team | t_wf |
+|---|---|---|---|---|
+| 3 | 2 | true | 3 | 6 |
 
 #### Step 3a - Compute DAG width W and read runtime flags
 
@@ -198,7 +196,7 @@ loops_optin="${LOOP_SPEC_EXECUTE_LOOPS:-}"
 
 #### Step 3b - Select the rung
 
-Using `t_team` and `t_wf` from the tier table above:
+Using the fixed `t_team = 3` and `t_wf = 6`:
 
 ```text
 if   loops_optin == "1" AND loops_available == true:                        rung = "loop"       # explicit opt-in, any W
@@ -219,11 +217,11 @@ rung automatically so EXECUTE keeps working without
 Announce the choice on one line, then dispatch the matching path below:
 
 ```
-echo "[EXECUTE] DAG width W=$W tier=$tier -> rung: $rung"
+echo "[EXECUTE] DAG width W=$W -> rung: $rung"
 ```
 
-- `rung == "subagent"`: follow **`skills/shared/execute-subagent.md`** (lead-driven waves of one-shot `Agent` calls + inline ff-merge). It returns the same `{merged, blocked, escalation, tier}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
-- `rung == "loop"`: follow **`skills/shared/execute-loop-fleet.md`** (plan-to-loop conversion + loop-runner supervisor fleet). It returns the same `{merged, blocked, escalation, tier}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
+- `rung == "subagent"`: follow **`skills/shared/execute-subagent.md`** (lead-driven waves of one-shot `Agent` calls + inline ff-merge). It returns the same `{merged, blocked, escalation}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
+- `rung == "loop"`: follow **`skills/shared/execute-loop-fleet.md`** (plan-to-loop conversion + loop-runner supervisor fleet). It returns the same `{merged, blocked, escalation}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
 - `rung == "team"`: fall through to **Steps 4-10** (the TeamCreate self-claim team).
 - `rung == "workflow"`: follow the **Rung 4 - workflow path** section immediately below.
 
@@ -251,7 +249,6 @@ Dispatch:
 Workflow({
   scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/execute-dag.js",
   args: {
-    tier: feature.tier,
     slug: feature.slug,
     featureWorktreeRoot: featureWorktreeRoot,
     featureBranch: "feat/{slug}",
@@ -259,9 +256,9 @@ Workflow({
       implementer: feature.models.implementer,
       specComplianceReviewer: feature.models.specComplianceReviewer
     },
-    maxParallelImplementers: <from tier table above>,
-    maxRetriesPerTask: <from tier table above>,
-    reviewersEnabled: <from tier table above>,
+    maxParallelImplementers: 3,
+    maxRetriesPerTask: 2,
+    reviewersEnabled: true,
     commands: feature.commands,
     skillDir: skillDir,
     tasks: <tasks[] array from Step 2a/2b>
@@ -275,7 +272,7 @@ Clear `activeWorkflow` after the call:
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" activeWorkflow null
 ```
 
-Consume the FROZEN return `{merged, blocked, escalation, tier}`:
+Consume the FROZEN return `{merged, blocked, escalation}`:
 
 - **escalation non-null or blocked non-empty:** Pause EXECUTE. Print escalation reason and any blocked task ids with their reasons. Return control to the user (cycle-resume-escalation contract). Do not proceed to VERIFY. Reasons come from a fixed vocabulary (display only; do not pattern-match): `blocked[].reason` is one of `spec-compliance-block`, `retry-exhausted`, `commit-missing`, `zero-commit`; `escalation.reason` is `deadlock` or `rebase-conflict`.
 - **clean (escalation null, blocked empty):** All tasks merged onto `feat/{slug}`. Skip Steps 4-10 (harness TaskList/TeamCreate are NOT used in this path). Proceed directly to the **Phase exit** section at the end of this skill.
@@ -358,17 +355,7 @@ lib/feature-write.sh set currentTeamName "loop-spec-execute-{slug}"
 
 ### Step 5 - Fallback: TeamCreate for the EXECUTE team
 
-Size the team from the tier matrix:
-
-| Tier | maxParallelImplementers (M) | Reviewers (R = ceil(M/2)) |
-|---|---|---|
-| quality | 4 | 2 |
-| balanced | 3 | 2 |
-| quick | 2 | 0 |
-
-`M = min(plannedTaskCount, tier.execute.maxParallelImplementers)`. `R = ceil(M / 2)`.
-
-When `R == 0` (quick tier): omit all `reviewer-{N}` entries from the `TeamCreate` teammates list.
+Size the team from the fixed params: `M = min(plannedTaskCount, 3)`, `R = ceil(M / 2)`.
 
 Models are read literally from `feature.json.models` (resolved once at cycle Step 5):
 implementers use `feature.models.implementer` (sonnet), the spec-compliance gate uses
@@ -382,15 +369,15 @@ TeamCreate({
       name: "implementer-1",
       subagent_type: "loop-spec:implementer",
       model: feature.models.implementer,
-      prompt: "<implementer.md template with {slug}, {tier}, {N}=1, {maxRetriesPerTask} substituted>"
+      prompt: "<implementer.md template with {slug}, {N}=1, {maxRetriesPerTask} substituted>"
     },
     // ... implementer-2 through implementer-M
-    // R reviewers (omitted on quick tier):
+    // R reviewers:
     {
       name: "reviewer-1",
       subagent_type: "loop-spec:spec-compliance-reviewer",
       model: feature.models.specComplianceReviewer,
-      prompt: "<reviewer spawn prompt with slug, tier, roster>"
+      prompt: "<reviewer spawn prompt with slug, roster>"
     },
     // ... reviewer-2 through reviewer-R (if R > 1)
   ]
@@ -410,9 +397,8 @@ lib/feature-write.sh set currentTeammates '["implementer-1", ..., "implementer-{
 Each `implementer-{N}` runs the following self-claim loop autonomously (as documented in `skills/shared/team-prompts/implementer.md`). The full step-by-step implementer self-claim loop (query, filter unblocked, claim, worktree, implement, verify, commit, hand off), the reviewer self-claim loop, the race-claim serialization contract, and the rework re-entry path are documented in **`skills/shared/execute-loops.md`**.
 
 Contract the lead depends on (the rest is teammate-internal):
-- Implementers create a worktree per task at an **absolute path**: `$WT_ROOT/.loop-spec/worktrees/{slug}/task-{taskId}/` (where `WT_ROOT=$(git rev-parse --show-toplevel)` is resolved inside the feature worktree before spawning). The worktree is created on branch `task/{taskId}-{slug}`. The implementer commits there, then sets `metadata.phase = "awaiting_review"` (or goes straight to `completed` on quick tier).
-- Reviewers (quality/balanced only) flip a task to `completed` on pass and `SendMessage` `REVIEW PASS: task-{taskId}` to the lead; on terminal failure they mark it `completed` with `metadata.result = "blocked"`.
-- On quick tier (R = 0) there are no reviewers; implementers self-complete and message the lead directly.
+- Implementers create a worktree per task at an **absolute path**: `$WT_ROOT/.loop-spec/worktrees/{slug}/task-{taskId}/` (where `WT_ROOT=$(git rev-parse --show-toplevel)` is resolved inside the feature worktree before spawning). The worktree is created on branch `task/{taskId}-{slug}`. The implementer commits there, then sets `metadata.phase = "awaiting_review"`.
+- Reviewers flip a task to `completed` on pass and `SendMessage` `REVIEW PASS: task-{taskId}` to the lead; on terminal failure they mark it `completed` with `metadata.result = "blocked"`.
 
 ### Steps 7-10 - Fallback: idle/wake, merge queue, log emission, phase exit
 

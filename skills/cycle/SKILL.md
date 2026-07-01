@@ -1,7 +1,7 @@
 ---
 name: cycle
-description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview) -- tier (quality/balanced/quick) is INFERRED from the prompt, execution style defaults to auto; both are overridable inline but never asked. Model selection is fixed (no preset). Resumes incomplete features automatically.
-argument-hint: "[feature description | path/to/spec.md]  (optional inline overrides: tier:quick|balanced|quality style:auto|step|interactive|review-only)"
+description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gates and budgets are fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model selection is fixed. Resumes incomplete features automatically.
+argument-hint: "[feature description | path/to/spec.md | backlog]  (optional inline override: style:auto|step|interactive|review-only)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
 
@@ -26,7 +26,7 @@ The orchestrator (this skill running on the main thread) and every phase sub-ski
 | `Bash` | Invoking `lib/*.sh` scripts, git commands, file inspection |
 | `Read` | Reading SPEC / PLAN / feature.json / source files |
 | `Write`, `Edit` | Updating skill-owned artifacts only (feature.json via `lib/feature-write.sh`) |
-| `AskUserQuestion` | Tier / style / title prompts; pause-and-escalate decisions |
+| `AskUserQuestion` | Style / title prompts; pause-and-escalate decisions |
 | `Skill` | Invoking another loop-spec skill (`Skill(loop-spec:plan)` etc.) |
 | `Glob`, `Grep` | Code exploration |
 | `EnterWorktree` | Switch the session into the feature worktree (Step 5 create; Step 1 resume) |
@@ -73,7 +73,6 @@ When set, read answers from env vars instead:
 
 | Env var | Values | AskUserQuestion it replaces |
 |---|---|---|
-| `LOOP_SPEC_ANSWER_TIER` | `quality`, `balanced`, `quick` | Tier selection (Step 3) |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`, `step`, `interactive`, `review-only` | Execution style (Step 3) |
 | `LOOP_SPEC_ANSWER_TITLE` | free text | Feature title (Step 3) |
 | `LOOP_SPEC_SPEC_FILE` | path to an existing `.md` | Spec-file invocation (Step 3): headless equivalent of `/loop-spec:cycle path/to/spec.md`. When set, the title falls back to the file's first `# ` heading if `LOOP_SPEC_ANSWER_TITLE` is unset. |
@@ -86,7 +85,7 @@ Note: Non-interactive mode bypasses `AskUserQuestion` entirely by reading env va
 
 ### Step 0 - Workspace detection
 
-Run workspace detection FIRST, before resume or tier selection. The result determines whether every subsequent step runs in single-repo mode or workspace mode.
+Run workspace detection FIRST, before resume detection or feature setup. The result determines whether every subsequent step runs in single-repo mode or workspace mode.
 
 ```bash
 ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect)"
@@ -226,49 +225,46 @@ set, the design phases fall back to Glob/Grep grounding and emit a degraded-mode
 
 Model availability is probed in Step 3.5. Model selection is fixed (no preset), so the probe always covers the same two models.
 
-### Step 3 - Infer tier + style + feature
+### Step 3 - Resolve style + feature
 
-Goal: launch straight into the workflow with **zero menu friction**. The tier is no
-longer a user-facing question — the model **infers** it from the prompt (and from the
-grill answers, if a grill pass ran). The user can still override inline, but is never
-asked to choose. Style defaults to `auto` and is likewise inference-free unless overridden.
-
-**Tier-inference rubric + safety floor:** apply the rubric verbatim from `${CLAUDE_SKILL_DIR}/references/tier-inference.md` — quick for trivially-scoped single-file work, `balanced` default when signals are mixed or thin, `quality` for high blast radius. The SAFETY FLOOR overrides everything: any security-relevant signal (auth, credentials, payments, PII, data migration/deletion, crypto) means never `quick` — floor at `balanced`, lean `quality`.
+Goal: launch straight into the workflow with **zero menu friction**. There is NO tier:
+gates and budgets are fixed (`skills/shared/tier-matrix.md`), and cost on trivially-scoped
+work is handled by the structural fast-path AFTER planning (measured scope), never by an
+intent tier inferred from the prompt. Style defaults to `auto` unless overridden inline.
 
 Resolution order:
 
-1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_TIER` → `quick` (unchanged CI/smoke contract — inference is NOT applied in non-interactive mode), `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset — EXCEPT when `LOOP_SPEC_SPEC_FILE` is set, where the title falls back to the spec file's first `# ` heading, else its filename). If `LOOP_SPEC_SPEC_FILE` points to an existing readable `.md`, apply the spec-file invocation branch (3) below with that path (abort if set but unreadable). A `LOOP_SPEC_ANSWER_PRESET` env var, if set, is ignored (model selection is fixed).
+1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset — EXCEPT when `LOOP_SPEC_SPEC_FILE` is set, where the title falls back to the spec file's first `# ` heading, else its filename). If `LOOP_SPEC_SPEC_FILE` points to an existing readable `.md`, apply the spec-file invocation branch (3) below with that path (abort if set but unreadable). Legacy `LOOP_SPEC_ANSWER_TIER` / `LOOP_SPEC_ANSWER_PRESET` env vars, if set, are ignored with a one-line notice (single-tier operation; model selection is fixed).
 
 2. **Invocation carries a feature description** (`$ARGUMENTS` is non-empty -- the user typed `/loop-spec:cycle <description>`): this is the default fast path.
-   - Parse optional inline overrides anywhere in the text: `tier:quick|balanced|quality`, `style:auto|step|interactive|review-only`. A legacy `preset:...` token, if present, is silently ignored. **Strip every recognized override token from the text FIRST**, then Title = the remaining text (slugified for the slug, verbatim for `feature_title`). The title is the immutable original goal the ITERATE judge scores against — `tier:quality` in it pollutes the oracle.
-   - **Tier:** if given inline, use it. Otherwise **infer** it from the description via the rubric above. Style defaults to `auto` unless given inline.
+   - Parse the optional inline override anywhere in the text: `style:auto|step|interactive|review-only`. Legacy `tier:...` / `preset:...` tokens, if present, are ignored with a one-line notice. **Strip every recognized (and legacy) token from the text FIRST**, then Title = the remaining text (slugified for the slug, verbatim for `feature_title`). The title is the immutable original goal the ITERATE judge scores against — a stray `tier:quality` in it pollutes the oracle.
+   - Style defaults to `auto` unless given inline.
    - Do NOT call `AskUserQuestion`. Print one line and proceed:
-     `Launching: tier={tier} (inferred: {reason}) style={style} title="{title}". (Reply within this turn with e.g. "tier:quality" to adjust before SPEC starts.)`
-     When the tier was given inline rather than inferred, drop the `(inferred: ...)` clause.
+     `Launching: style={style} title="{title}".`
 
-3. **Invocation carries a spec file path** (loop-driven development from a spec file): if `$ARGUMENTS`, after stripping inline `tier:`/`style:` overrides, is a single token that resolves to an existing readable `.md` file (check with `[[ -f "$arg" ]]`), the user pre-authored the spec — do NOT run the SPEC interview against them.
+3. **Invocation carries a spec file path** (loop-driven development from a spec file): if `$ARGUMENTS`, after stripping the inline `style:` override (and legacy tokens), is a single token that resolves to an existing readable `.md` file (check with `[[ -f "$arg" ]]`), the user pre-authored the spec — do NOT run the SPEC interview against them.
    - Title = the file's first `# ` heading (strip the `# `); fall back to the filename without extension. Slugify as usual.
    - Resolve the file to an absolute path NOW (`spec_draft_abs="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"`) — Step 5 enters a worktree and relative paths die there.
-   - Tier: inline override wins; otherwise infer from the spec file's CONTENT via the rubric. Style defaults to `auto`.
-   - Print: `Launching from spec file: {path} — tier={tier} style={style} title="{title}".`
+   - Style defaults to `auto` unless given inline.
+   - Print: `Launching from spec file: {path} — style={style} title="{title}".`
    - In Step 5, once the feature dir exists (single-repo: after the worktree `mkdir -p`; workspace: after the workspace-root `mkdir -p` in the Step 5 variant), copy the draft in: `cp "$spec_draft_abs" ".loop-spec/features/${slug}/spec-draft.md"` (workspace mode: prefix with `${workspace_root}/`). The SPEC phase detects `spec-draft.md` and runs **spec-file ingest mode** (validate + normalize the draft through the ambiguity gate, no interview — see `skills/spec/SKILL.md`).
 
 4. **Backlog-drain mode** (`$ARGUMENTS` is exactly `backlog`, optionally with inline overrides): the bounded Ralph loop over `.loop-spec/BACKLOG.md` — one feature per loop, explicit stop conditions.
    ```bash
    entry="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" next)" || { echo "backlog empty — nothing to drain"; exit 0; }
    ```
-   - Use the entry text as the feature description (branch 2 above: infer tier, style `auto` unless overridden). Run the full cycle for it.
+   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it.
    - On completion (the On-completion section finishing cleanly), mark it off: `bash .../lib/backlog.sh done "$entry"`.
    - **Loop bound:** `LOOP_SPEC_MAX_FEATURES` (default `1`). After marking an entry done, if features completed this invocation `< LOOP_SPEC_MAX_FEATURES` and `backlog.sh next` yields another entry, start the next cycle from Step 3 branch 2 with it. Stop when the bound is hit, the backlog is empty, or any feature ends paused/escalated (never chain past a failure).
    - Overnight form: an outer `while :; do claude -p "/loop-spec:cycle backlog"; done` gets one feature per fresh session — the Ralph loop with real stop conditions.
 
-5. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for tier or style. Infer the tier from that answer (plus the grill pass) via the rubric; style = `auto`. Use the answer as the title. Never present a tier/style menu.
+5. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for style. Style = `auto`. Use the answer as the title. Never present a style menu.
 
 Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe consecutive `-`).
 
 > The grill directive (`hooks/team/grill-inject.sh`, on by default) may already have
 > elicited disambiguating answers before SPEC runs; feed those into the inference above so
-> the tier reflects the clarified scope, not just the raw one-liner. Do not re-grill once
+> the SPEC reflects the clarified scope, not just the raw one-liner. Do not re-grill once
 > the SPEC phase starts — SPEC's Socratic interview is the in-cycle grill.
 
 ### Step 3.5 - Model probe + Workflow availability probe
@@ -297,14 +293,14 @@ EnterWorktree({ path: ".claude/worktrees/${slug}" })
 mkdir -p ".loop-spec/features/${slug}" .loop-spec/codebase "docs/loop-spec/features/${slug}"
 
 # Build the full schema-7 skeleton from the single source of truth (lib/feature-init.sh).
-# Model IDs, the tier-derived retryBudget/iterate blocks, and the artifact scaffold all
+# Model IDs, the fixed retryBudget/iterate blocks, and the artifact scaffold all
 # live in that one script -- never hand-build feature.json inline (that drift is what
 # previously dropped iterateJudge from the normalized models map). Every phase skill reads
 # literal model IDs from feature.models.<role>, which guarantees teammates never silently
 # inherit the orchestrator's session model.
 feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode single \
   --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --tier "$tier" --style "$execStyle" --title "$title" \
+  --style "$execStyle" --title "$title" \
   --branch "feat/${slug}" --base-sha "$base_sha" --base-branch "$base_branch" \
   --worktree ".claude/worktrees/${slug}" \
   --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
@@ -319,9 +315,9 @@ Provenance fields:
 - `artifacts.patternsSource` -- one of `"gsd-ingest"`, `"pattern-mapper"`, `"manual"`, or `null` until written. Set in PLAN Step 0.
 - `artifacts.codebaseSource.{domain}` -- one of `"gsd-ingest"`, `"mapper"`, `"manual"`, or `null` until written. Set per-domain in Step 5.5.
 
-Print cost estimate based on tier + expected scope:
+Print cost estimate based on expected scope:
 ```
-Estimated cost: ~{N}k tokens (tier: {tier})
+Estimated cost: ~{N}k tokens
 ```
 
 ### Step 5.4 - Graphify bootstrap pre-flight (always; before the codebase-map skip)
@@ -375,7 +371,7 @@ One-time per project: ingest an existing GSD `.planning/codebase/` if present (S
 
 ### Step 5.9 - Normalize feature.models (resume backfill + migration)
 
-Phase skills read `model: feature.models.<role>` literally and do NOT re-derive from `model-matrix.md`. Model selection is fixed, so the canonical map is the same for every feature. Older features either lack a `models` block (pre-v2.3.0) or carry a stale one from the removed preset scheme (opus reviewers, or haiku roles). Before routing to any phase, write the canonical fixed map idempotently and drop the vestigial `preset` field. This is the single fallback point, so no individual phase skill needs its own:
+Phase skills read `model: feature.models.<role>` literally and do NOT re-derive from `model-matrix.md`. Model selection is fixed, so the canonical map is the same for every feature. Older features either lack a `models` block (pre-v2.3.0) or carry a stale one from the removed preset scheme. Before routing to any phase, write the canonical fixed map idempotently and drop the vestigial `preset` and `tier` fields (single-tier hard cutover: budgets already in the file keep working, but the tier axis no longer exists). This is the single fallback point, so no individual phase skill needs its own:
 
 ```bash
 feat_dir=".loop-spec/features/${slug}"
@@ -389,10 +385,10 @@ canonical="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" models)"
 # touched; all other fields (including worktreePath) are preserved.
 merged="$(jq -c --argjson m "$canonical" '(.models // {}) * $m' "$fjson")"
 if [[ "$(jq -c '.models // {}' "$fjson")" != "$merged" \
-      || "$(jq 'has("preset")' "$fjson")" == "true" ]]; then
-  new_json="$(jq --argjson m "$canonical" '.models = ((.models // {}) * $m) | del(.preset)' "$fjson")"
+      || "$(jq 'has("preset") or has("tier")' "$fjson")" == "true" ]]; then
+  new_json="$(jq --argjson m "$canonical" '.models = ((.models // {}) * $m) | del(.preset) | del(.tier)' "$fjson")"
   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" "$feat_dir" "$new_json"
-  echo "Normalized feature.models to the fixed model map."
+  echo "Normalized feature.models to the fixed model map (and dropped legacy tier/preset)."
 fi
 
 # Backfill feature_title (pre-2.4.0 features lack it). It is the IMMUTABLE original
@@ -430,7 +426,7 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    next_phase=$(echo "$feature_json" | jq -r '.currentPhase')
    ```
 
-   **Phase watchdog check:** compare now against `currentPhaseStartedAt` and the tier-scaled ceiling — quick 30 / balanced 60 / quality 120 minutes, overridable via `LOOP_SPEC_PHASE_TIMEOUT_MINS`. If the phase that just returned exceeded its ceiling, print a one-line warning (`phase {name} took {N}m, ceiling {M}m`) and append it to `warnings[]`; if a RESUMED feature's `currentPhaseStartedAt` is already past the ceiling before re-invoking (the previous session hung or died mid-phase), do NOT blindly re-enter — surface it: `phase {name} exceeded its {M}m ceiling in a prior session; resuming from last durable state` and let the phase skill's own resume logic pick up from artifacts. The watchdog never kills work; it makes a wedged loop visible instead of silently eternal.
+   **Phase watchdog check:** compare now against `currentPhaseStartedAt` and the phase ceiling — 60 minutes default, overridable via `LOOP_SPEC_PHASE_TIMEOUT_MINS`. If the phase that just returned exceeded its ceiling, print a one-line warning (`phase {name} took {N}m, ceiling {M}m`) and append it to `warnings[]`; if a RESUMED feature's `currentPhaseStartedAt` is already past the ceiling before re-invoking (the previous session hung or died mid-phase), do NOT blindly re-enter — surface it: `phase {name} exceeded its {M}m ceiling in a prior session; resuming from last durable state` and let the phase skill's own resume logic pick up from artifacts. The watchdog never kills work; it makes a wedged loop visible instead of silently eternal.
 
    **Progress journal (append-only narrative — the machine state's "why").** Append one short block to `.loop-spec/features/{slug}/PROGRESS.md` (create with a `# Progress — {slug}` heading if absent):
    ```

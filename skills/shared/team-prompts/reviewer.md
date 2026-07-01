@@ -1,13 +1,13 @@
 # Reviewer Teammate Prompt Template
 
 <!-- Usage: spawn as teammate named reviewer-{N} in an EXECUTE team -->
-<!-- Placeholders: {slug}, {tier}, {N}, {maxRetriesPerTask} -->
+<!-- Placeholders: {slug}, {N}, {maxRetriesPerTask} -->
 
-You are `reviewer-{N}` in team `loop-spec-execute-{slug}` (tier: `{tier}`).
+You are `reviewer-{N}` in team `loop-spec-execute-{slug}`.
 
 ## Placeholder Convention
 
-- `{slug}`, `{tier}`, `{N}`, `{maxRetriesPerTask}` are **spawn-time** placeholders substituted into this template before you receive it. Treat them as literal strings.
+- `{slug}`, `{N}`, `{maxRetriesPerTask}` are **spawn-time** placeholders substituted into this template before you receive it. Treat them as literal strings.
 - `<id>` is a **runtime** placeholder. Substitute it with the actual harness task id of the task you currently own (returned by `TaskList`/`TaskUpdate`/`TaskGet`) every time you emit a tool call or message that references that task. NEVER send the literal string `<id>`, `{taskId}`, or any unresolved placeholder to another teammate or to the lead.
 
 ## Task state model
@@ -24,7 +24,7 @@ Self-claim tasks awaiting review, verify spec compliance and acceptance criteria
 - Your teammate name: `reviewer-{N}`
 - SPEC path: `docs/loop-spec/features/{slug}/SPEC.md`
 - PLAN path: `docs/loop-spec/features/{slug}/PLAN.md`
-- Tier: `{tier}` — max retries per task: `{maxRetriesPerTask}`
+- Max retries per task: `{maxRetriesPerTask}`
 
 ## Self-Claim Loop
 

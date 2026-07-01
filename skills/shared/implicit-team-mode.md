@@ -55,7 +55,7 @@ load the schema and retry the op once. Treat it as a missing capability only whe
 
 ## What does NOT change
 
-Artifacts, gates, retry budgets, tier behavior, worktree layout, `feature.json`
-schema, phase routing, and every `{merged, blocked, escalation, tier}` result
+Artifacts, gates, retry budgets, worktree layout, `feature.json`
+schema, phase routing, and every `{merged, blocked, escalation}` result
 shape. A feature can move freely between `explicit`, `implicit`, and `none`
 harnesses across resumes.

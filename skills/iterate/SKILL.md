@@ -12,7 +12,7 @@ This phase runs no team. It dispatches ONE fresh `iterate-judge` subagent (maker
 
 ## Inputs (from feature.json)
 
-- `slug`, `tier`, `feature_dir`, `feature_title` (the **original goal**, in the user's words).
+- `slug`, `feature_dir`, `feature_title` (the **original goal**, in the user's words).
 - `iterate`: `{maxIterations, used, confirmationUsed, lastVerdict, feedback, history[]}`.
 - `retryBudget.global` / `globalUsed` (cycle-wide ceiling).
 - `artifacts`: `spec`, `plan`, `verification` paths.
@@ -61,7 +61,7 @@ One-shot `Agent` dispatch (not a team), fresh context, strict grader:
 Agent({
   subagent_type: "loop-spec:iterate-judge",
   model: feature.models.iterateJudge,   // opus
-  prompt: "<iterate-judge.md inputs: slug, tier, iteration=(used+1), original_goal=feature_title,
+  prompt: "<iterate-judge.md inputs: slug, iteration=(used+1), original_goal=feature_title,
             paths to SPEC.md / VERIFICATION.md / PLAN.md, feat/{slug} diff, and prior_feedback=feature.iterate.feedback>"
 })
 ```
@@ -148,7 +148,7 @@ ITERATE does not append itself to `completedPhases` on a rewind (it will run aga
 ## Design notes
 
 - **The deterministic gate is the floor; the goal re-judge is the ceiling.** ITERATE never ships on the judge's word alone — `deterministic_gate_passed` (from VERIFICATION.md) must hold too. And it never ships on a green checklist alone — the judge must agree the *goal* is met. This is the dual oracle.
-- **Bounded, always.** `maxIterations` is tier-scaled (quick 1 / balanced 2 / quality 3) and the cycle-wide `global` budget is also respected. The loop ships or escalates; it never spins.
+- **Bounded, always.** `maxIterations` is fixed at 10 (single-tier operation) and the cycle-wide `global` budget (40) is also respected. Ten iterations is a convergence budget, not an expectation — most features converge in 1-2; the headroom exists so a legitimately hard goal is not shipped-with-warnings prematurely. The loop ships or escalates; it never spins.
 - **Don't stop to ask mid-loop**, except the one SPEC-rewind approval gate (scope changes are the user's call). Everywhere else, the judge assumes, notes it, and the loop continues — per the article's self-checking-loop rule.
 - **Fix the weakest first — but carry the whole list.** Each rewind carries `iterate.feedback` so the re-entered phase targets the single highest-leverage gap first; `remaining_gaps[]` rides along so already-identified execute-level misses are remediated in the same pass instead of costing one judge iteration each.
 - **Never ship silent.** Both terminal paths (converged, budget-spent) end in the cycle's On-completion summary; the budget-spent path must arrive there with every accepted gap in `warnings[]` so the summary shows them.

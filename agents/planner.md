@@ -22,7 +22,6 @@ You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and t
 - `spec_path`: path to SPEC.md
 - `patterns_path`: path to `docs/loop-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
 - `codebase_mapping_paths`: list of docs/loop-spec/codebase/*.md
-- `tier`
 
 ## Output
 
@@ -47,7 +46,7 @@ Otherwise, produce PATTERNS.md by following the pattern-mapper role definition a
 6. If no clear analog exists for a concept, list it under `## Concepts with no clear analog`. Do not invent a plausible-looking analog.
 7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md` using the template at `${CLAUDE_PLUGIN_ROOT}/skills/shared/artifact-templates/PATTERNS.md.template`.
 
-For `quick` tier: top-1 analog per concept. For `balanced`/`quality`: top-2 with rationale.
+Top-2 analogs per concept with rationale.
 
 ### Step 1 - Read inputs and produce PLAN.md
 

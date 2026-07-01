@@ -2,6 +2,35 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.5.0]
+
+### Changed (BREAKING — single-tier hard cutover, no migration)
+- **The quick/balanced/quality tier axis is REMOVED.** `feature.json` no longer carries a
+  `tier` field (Step 5.9 deletes it from legacy features on resume); `lib/feature-init.sh`
+  rejects `--tier`; `LOOP_SPEC_ANSWER_TIER` and inline `tier:` tokens are ignored with a
+  notice; the tier-inference rubric + security safety floor are deleted (nothing to floor —
+  no gate can be skipped by intent anymore). Rationale: every tier-skipped gate became a
+  shipped defect class, and tier was chosen from prompt wording before the real scope was
+  known.
+- **Fixed gates**: spec critique ALWAYS runs; code review blocks Critical + Important with
+  every Minor backlogged; acceptance-lint / decision-coverage / criteria-coverage always
+  BLOCK (no advisory mode); post-merge test gate and over-engineering pass always run.
+- **Structural fast-path replaces `quick`** (plan Step 3): the PLAN critique debate is
+  skipped iff the plan has <= 2 tasks AND touches <= 3 files AND SPEC/PLAN carry no
+  security signal — measured AFTER planning from the actual task DAG.
+- **Fixed budgets**: perGate 3, global 40, and **`iterate.maxIterations = 10`** (a
+  convergence budget, not an expectation — most features converge in 1-2 passes; the
+  headroom prevents premature ship-with-warnings on legitimately hard goals).
+- **`codeReviewer` model: sonnet → opus.** The HARD-GATE checker is never weaker than the
+  maker's advocate; the mechanical `verifier` stays sonnet.
+- **Fixed fan-out**: t_team 3, t_wf 6, maxParallelImplementers 3, maxRetriesPerTask 2,
+  reviewers always enabled; workflow params fixed at the former balanced row (workflow
+  scripts' `expandTierParams(tier)` → `expandParams()`); multi-angle plan authoring is now
+  opt-in via `LOOP_SPEC_PLAN_MULTI_ANGLE=1` (no quality tier to key on).
+- Phase watchdog ceiling: fixed 60m default (`LOOP_SPEC_PHASE_TIMEOUT_MINS` overrides).
+- Manual e2e matrix: 36 cells → 12 (3 sizes x 4 styles). `docs/tier-guide.md` rewritten as
+  the single-tier operating guide.
+
 ## [2.4.0]
 
 ### Fixed

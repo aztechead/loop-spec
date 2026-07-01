@@ -29,7 +29,7 @@ done
 SendMessage({
   to: "verifier-1",
   body: "Run every acceptance criterion's verify command from PLAN.md. This is a workspace feature. For each repo listed below, run its own commands with cwd set to that repo's absolute path. Gate ONLY on the SPEC 'Good Enough' success criteria. Write VERIFICATION.md to {workspace_root}/docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', body: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
-  // also include: slug, spec_path, plan_path, tier, workspace_root,
+  // also include: slug, spec_path, plan_path, workspace_root,
   //   and per-repo entries for each workspace.repos[]:
   //     repo name, abs path ({workspace_root}/{repo.path}), branch (repo.branch), baseSha (repo.baseSha),
   //     commands: test=<repo.commands.test>, lint=<repo.commands.lint>, typecheck=<repo.commands.typecheck>
@@ -45,8 +45,8 @@ verifier-1 works independently. Lead waits for its completion signal.
 ```
 SendMessage({
   to: "code-reviewer-1",
-  body: "Review the feature branch diff for this workspace feature against SPEC.md and PLAN.md acceptance criteria. For each repo listed, review its diff over its baseSha using git -C <abs-repo-path> diff <baseSha>..HEAD. Check each SPEC '## Boundaries (what NOT to do)' anti-goal against each repo's diff; flag violations Critical. Rank findings by the tier rule: quality/balanced => Critical+Important block; quick => Critical only. When complete, SendMessage({to: 'lead', body: 'CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <summary of findings>'})."
-  // also include: slug, spec_path, plan_path, tier, workspace_root,
+  body: "Review the feature branch diff for this workspace feature against SPEC.md and PLAN.md acceptance criteria. For each repo listed, review its diff over its baseSha using git -C <abs-repo-path> diff <baseSha>..HEAD. Check each SPEC '## Boundaries (what NOT to do)' anti-goal against each repo's diff; flag violations Critical. Rank findings by the fixed rule: Critical + Important block; Minor is recorded but never blocks. When complete, SendMessage({to: 'lead', body: 'CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <summary of findings>'})."
+  // also include: slug, spec_path, plan_path, workspace_root,
   //   and per-repo entries: name, abs path, branch, baseSha
 })
 ```

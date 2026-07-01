@@ -57,7 +57,7 @@ git merge --ff-only {worktree_branch}
 
 **Post-merge cleanup:** `git worktree remove "$worktree_path"` and `git branch -D {worktree_branch}`. Remove task id from `mergeQueue` via `lib/feature-write.sh`.
 
-**Post-merge test gate:** quality/balanced tiers run `feature.json.commands.test` (or `lib/detect-test-cmd.sh` if unset). On failure: create a remediation task and re-enter Step 2. quick tier: skip the gate.
+**Post-merge test gate:** run `feature.json.commands.test` (or `lib/detect-test-cmd.sh` if unset). On failure: create a remediation task and re-enter Step 2.
 
 For full detail on the self-claim loop, reviewer loop, rework re-entry, and race-claim serialization, see **`skills/shared/execute-loops.md`**.
 

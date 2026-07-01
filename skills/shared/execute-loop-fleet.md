@@ -68,7 +68,7 @@ python3 "$LOOP_DIR/supervisor.py" \
   --plan "$fdir/loop-plan.json" \
   --parallel "$parallel" \
   --model "{feature.models.implementer}" \
-  --retries "{tier.execute.maxRetriesPerTask}"
+  --retries "2"
 rc=$?
 ```
 
