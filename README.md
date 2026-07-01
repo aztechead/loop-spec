@@ -118,14 +118,14 @@ The cycle skill runs a quiet startup health-check — agent-teams probe, model p
 **Single tier — nothing to infer, nothing to ask.** Gates and budgets are fixed (`skills/shared/tier-matrix.md`): spec critique always runs, plan critique is skipped only by the structural fast-path (<=2 tasks, <=3 files, no security signal, measured AFTER planning), code review blocks Critical + Important (Minor is backlogged), `iterate.maxIterations = 10`. You can override the style inline anywhere in the text (`style:auto|step|interactive|review-only`); legacy `tier:` tokens are ignored.
 
 **Execution style** (`auto` default; override inline):
-- `auto` -- end-to-end. Hard-gate failures self-heal (re-dispatch upstream agent with findings, max 3 retries per gate, 30 global) before pausing for human.
+- `auto` -- end-to-end. Hard-gate failures self-heal (re-dispatch upstream agent with findings, max 3 retries per gate, 40 global) before pausing for human.
 - `step` -- pause between phases. You review SPEC.md / PLAN.md / VERIFICATION.md before next phase fires.
 - `interactive` -- pause before every subagent dispatch. Maximum control.
 - `review-only` -- auto except at critique-gate reconciliation, where it pauses for your judgment.
 
 **Grill mode (on by default).** Right after your opening prompt, the assistant runs a short "grill" pass — 2-4 sharp clarifying questions (structured multiple-choice where the answers are discernible) — to collapse the highest-leverage ambiguities before committing to an approach, and feeds those answers into the SPEC interview. Inside the cycle, the SPEC phase Socratic interview is the in-cycle realization of this; outside the cycle it is injected as a session-start directive by `hooks/team/grill-inject.sh`. Toggle with `/loop-spec:grill on|off|status` or the `LOOP_SPEC_GRILL=0` kill switch.
 
-**Model selection is fixed** (no preset). Opus runs the reasoning-heavy roles (spec-writer, planner, advocate, challenger, spec-compliance-reviewer); sonnet runs the high-throughput roles (implementer, code-reviewer, verifier, mappers). See `skills/shared/model-matrix.md`.
+**Model selection is fixed** (no preset). Opus authors and judges (spec-writer, planner, advocate, challenger, spec-compliance-reviewer, iterate-judge, code-reviewer — the checker is never weaker than the maker); sonnet runs the high-throughput roles (implementer, verifier, mappers). See `skills/shared/model-matrix.md`.
 
 ### What the cycle does
 
@@ -134,11 +134,11 @@ The six phases run in order (ITERATE can rewind the chain):
 | Phase | Produces | Gates |
 |-------|----------|-------|
 | **SPEC** | `docs/loop-spec/features/{slug}/SPEC.md` with `ambiguity_scores` frontmatter | 6-round Socratic interview; ambiguity gate (ambiguity <= 0.20) |
-| **DISCUSS** | `docs/loop-spec/features/{slug}/SPEC.md` (revised) | spec critique gate (skipped on quick) |
+| **DISCUSS** | `docs/loop-spec/features/{slug}/SPEC.md` (revised) | spec critique gate (always runs) |
 | **PLAN** | `docs/loop-spec/features/{slug}/PATTERNS.md` (Step 0) + `PLAN.md` (Step 1) | plan critique gate + feasibility check |
-| **EXECUTE** | per-task commits on `feat/{slug}` branch | per-task spec-compliance gate with retry (quality/balanced); dispatch via the concurrency ladder (subagent / loop fleet / agent team / opt-in Workflow DAG) |
+| **EXECUTE** | per-task commits on `feat/{slug}` branch | per-task spec-compliance gate with retry; dispatch via the concurrency ladder (subagent / loop fleet / agent team / opt-in Workflow DAG) |
 | **VERIFY** | `docs/loop-spec/features/{slug}/VERIFICATION.md` + map-codebase refresh in `docs/loop-spec/codebase/` + PR opened | acceptance gate + code-review HARD-GATE |
-| **ITERATE** | `docs/loop-spec/features/{slug}/ITERATION.md` (per-iteration verdict log) | dual oracle (deterministic acceptance gate **+** an `iterate-judge` goal re-judge); converged → ship, else classify the gap and rewind to EXECUTE / PLAN / SPEC. Bounded by `feature.iterate.maxIterations` (quick 1 / balanced 2 / quality 3) and the cycle-wide global budget |
+| **ITERATE** | `docs/loop-spec/features/{slug}/ITERATION.md` (per-iteration verdict log) | dual oracle (deterministic acceptance gate **+** an `iterate-judge` goal re-judge); converged → ship, else classify the gap and rewind to EXECUTE / PLAN / SPEC. Bounded by `feature.iterate.maxIterations` (10) and the cycle-wide global budget; on budget exhaustion a one-shot report-only confirmation pass re-judges the final fix and every accepted gap lands in `warnings[]` + BACKLOG.md |
 
 **ITERATE — the convergence loop.** VERIFY proves the SPEC acceptance checklist is met; ITERATE asks the harder question: is the result there yet *against the original goal*? A fresh `iterate-judge` (opus, maker≠checker) scores the integrated result against the user's original intent and classifies the single highest-leverage gap — `execute` (implementation), `plan` (decomposition), or `spec` (wrong scope) — then ships when converged or the iteration budget is spent, or rewinds to the matching phase to fix it.
 
@@ -175,7 +175,6 @@ For CI / scripting / smoke tests, set env vars before invoking:
 
 ```bash
 export LOOP_SPEC_NON_INTERACTIVE=1
-export LOOP_SPEC_ANSWER_TIER=quick
 export LOOP_SPEC_ANSWER_STYLE=auto
 export LOOP_SPEC_ANSWER_TITLE="add subtract function"
 ```
@@ -226,7 +225,7 @@ docs/loop-spec/                          # COMMITTED
 
 .loop-spec/                              # GITIGNORED (except codebase/index.json)
 ├── features/{slug}/
-│   ├── feature.json                      # schema v6, atomic-write with .bak rotation
+│   ├── feature.json                      # schema v7, atomic-write with .bak rotation
 │   ├── feature.json.bak
 │   ├── spec-interview-transcript.md      # SPEC Socratic interview transcript
 │   ├── discuss-transcript.md             # DISCUSS conversational transcript
@@ -246,12 +245,12 @@ docs/loop-spec/                          # COMMITTED
 
 - **Health check fails** -- your `CLAUDE.md` model policy probably blocks one of the two models the fixed model map uses. Update policy to allow `claude-opus-4-8` and `claude-sonnet-4-6`.
 - **Critique gate keeps bouncing** (>3 retries on same gate) -- spec or plan is genuinely ambiguous. Cycle pauses and escalates. Edit the artifact manually then re-invoke cycle to resume.
-- **Merge conflict on a task branch** -- the lead's sequential merge rebases the worktree onto current `feat/{slug}` HEAD and retries once. If still fails, cycle pauses (counts against `tier.execute.maxRetriesPerTask`).
+- **Merge conflict on a task branch** -- the lead's sequential merge rebases the worktree onto current `feat/{slug}` HEAD and retries once. If still fails, cycle pauses (counts against `maxRetriesPerTask`, fixed 2).
 - **Crash mid-execute** -- `feature.json` records `currentTeamName`, `mergeQueue`, and per-phase artifact paths; the harness task list owns per-task status. Resume probes whether the EXECUTE team is still live, replays the merge queue, and instructs implementers to re-claim orphaned in-flight tasks.
 - **Loop-fleet task halts** -- read `halt_reason` in `.loop/fleet-result.json`, not vibes: `no_progress` = task under-specified or too big (split it in PLAN.md); `budget`/`timeout` = raise `LOOP_SPEC_LOOP_TASK_BUDGET` and re-enter EXECUTE (state is durable, completed iterations are not re-paid); `verifier_integrity` = a worker touched SPEC.md/PLAN.md/verify targets — inspect the diff with suspicion before resuming. Full table in `skills/shared/execute-loop-fleet.md`.
 - **Teams unavailable** -- not a failure: the cycle continues on the no-teams fallbacks (`skills/shared/no-teams-fallback.md`). Set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to restore persistent phase teams.
 
-See `docs/adopting.md` for more pitfalls and `docs/design.md` for the full architecture (phase walkthroughs, retry budgets, model matrix, tier policy, agent catalog).
+See `docs/adopting.md` for more pitfalls and `docs/design.md` for the full architecture (phase walkthroughs, retry budgets, model matrix, fixed operating parameters, agent catalog).
 
 ## Workspaces (multi-repo)
 
@@ -289,14 +288,14 @@ Each `path` is relative to the workspace root. If the workspace root is or becom
 
 loop-spec is built on Claude Code agent teams when they are available. The cycle skill is a thin orchestrator; each phase skill owns its own team, teammates persist for the full phase and communicate via SendMessage, and tasks are tracked via the harness `TaskList`. Cycle Step 2 resolves a **`teamsMode`** (`lib/teams-capability.sh`, version-gated): on Claude Code **>= 2.1.178** (`implicit`) the `TeamCreate`/`TeamDelete` tools were removed, so each phase spawns its named teammates directly with `Agent({name})` (`skills/shared/implicit-team-mode.md`); on earlier builds (`explicit`) it uses per-phase `TeamCreate`/`TeamDelete`. With teams enabled either way, the orchestrator never spawns one-shot subagents for in-phase work -- fresh `Agent` calls without a `name` are reserved for background codebase mappers. Without teams (`teamsMode == "none"`, i.e. `runtime.json.teamsAvailable == false`), phases substitute one-shot `Agent` calls per `skills/shared/no-teams-fallback.md`, and EXECUTE runs the loop-fleet rung (bounded headless `claude -p` loops supervised by `skills/loop-runner/scripts/supervisor.py`) or subagent waves -- same artifacts, gates, and result contracts on all paths.
 
-Each feature runs in its own git worktree created at cycle Step 5 via `git worktree add .claude/worktrees/{slug} -b feat/{slug} {baseSha}`. All phase work (SPEC through VERIFY: docs, state, code, commits) happens inside that worktree on branch `feat/{slug}`. The user's main checkout is never switched onto a feature branch. On resume, the cycle discovers in-progress features by reading `git worktree list` output and locating each worktree's `feature.json` (schema v6 adds `worktreePath`). Features created on schema v5 or earlier resume in-place without a worktree (back-compat).
+Each feature runs in its own git worktree created at cycle Step 5 via `git worktree add .claude/worktrees/{slug} -b feat/{slug} {baseSha}`. All phase work (SPEC through VERIFY: docs, state, code, commits) happens inside that worktree on branch `feat/{slug}`. The user's main checkout is never switched onto a feature branch. On resume, the cycle discovers in-progress features by scanning `.loop-spec/features/*/feature.json` and re-enters the recorded worktree via its `worktreePath`. loop-spec is schema-7 only; older schemas are skipped with a warning.
 
 ### Top-level cycle
 
 ```mermaid
 flowchart LR
     user([User]) -->|"Skill(loop-spec:cycle)"| cycle[cycle skill<br/>orchestrator]
-    cycle -->|"health-check + tier/style"| init[feature.json<br/>schema v6]
+    cycle -->|"health-check + style"| init[feature.json<br/>schema v7]
     init --> spec[SPEC phase<br/>main-thread interview]
     spec -->|SPEC.md + ambiguity_scores| discuss[DISCUSS team<br/>spec-writer + advocate + challenger]
     discuss -->|SPEC.md| plan[PLAN team<br/>planner + advocate + challenger]
@@ -340,7 +339,7 @@ Resume detection in cycle Step 1 reads `currentTeamName` from each candidate `fe
 
 ### Critique gate (DISCUSS + PLAN)
 
-Both DISCUSS and PLAN run a paired critique gate on their artifact. The gate is skipped on `quick` tier and capped at `tier.maxCritiqueRounds` (1/2/3 for quick/balanced/quality). Convergence ends the loop early on mutual `DONE`.
+Both DISCUSS and PLAN run a paired critique gate on their artifact. The SPEC critique always runs; the PLAN critique is skipped only by the structural fast-path (<=2 tasks, <=3 files, no security signal). Rounds are capped at 2 (fixed). Convergence ends the loop early on mutual `DONE`.
 
 ```mermaid
 flowchart TD
@@ -365,7 +364,7 @@ Gate transcripts are persisted under `.loop-spec/features/{slug}/gate-logs/` so 
 
 ### EXECUTE: the agent-team rung (self-claim parallelism)
 
-EXECUTE is the only phase without an authoring/critique pair. The diagram below is the **agent-team rung** of the concurrency ladder (selected when `t_team <= W < t_wf` with teams available). The lead pre-populates the harness task list from PLAN.md tasks (plus any `pendingRemediationTasks` from a prior VERIFY pass), then a long-lived team of implementers (and reviewers on quality/balanced tiers) self-claim unblocked tasks until the list drains. On narrower DAGs (`W < t_team`) EXECUTE instead runs the lighter **subagent rung** (`skills/shared/execute-subagent.md`): the lead drives waves of one-shot `Agent` calls and merges inline, with no persistent team. On `LOOP_SPEC_EXECUTE_LOOPS=1` (any width) or when teams are unavailable, the **loop-fleet rung** (`skills/shared/execute-loop-fleet.md`) replaces this diagram entirely: `lib/plan-to-loop.sh` compiles the same task set into a loop plan and `supervisor.py` walks the DAG with bounded headless loops. On very wide DAGs with opt-in it escalates to the **Workflow DAG**. All rungs produce the same merged `feat/{slug}` branch.
+EXECUTE is the only phase without an authoring/critique pair. The diagram below is the **agent-team rung** of the concurrency ladder (selected when `t_team <= W < t_wf` with teams available). The lead pre-populates the harness task list from PLAN.md tasks (plus any `pendingRemediationTasks` from a prior VERIFY pass), then a long-lived team of implementers (and reviewers) self-claim unblocked tasks until the list drains. On narrower DAGs (`W < t_team`) EXECUTE instead runs the lighter **subagent rung** (`skills/shared/execute-subagent.md`): the lead drives waves of one-shot `Agent` calls and merges inline, with no persistent team. On `LOOP_SPEC_EXECUTE_LOOPS=1` (any width) or when teams are unavailable, the **loop-fleet rung** (`skills/shared/execute-loop-fleet.md`) replaces this diagram entirely: `lib/plan-to-loop.sh` compiles the same task set into a loop plan and `supervisor.py` walks the DAG with bounded headless loops. On very wide DAGs with opt-in it escalates to the **Workflow DAG**. All rungs produce the same merged `feat/{slug}` branch.
 
 ```mermaid
 flowchart LR
@@ -399,7 +398,6 @@ flowchart LR
 
 Each claimed task runs in an isolated per-task git worktree under `.loop-spec/worktrees/{slug}/task-NNN/`, so concurrent implementers cannot race on the working tree. Synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap (computed in Step 2b) provide additional concurrency safety beyond the explicit DAG.
 
-On `quick` tier the reviewer role is omitted (`R = 0`); implementers self-complete and the lead merges directly.
 
 ### Implementer task lifecycle
 
@@ -410,7 +408,7 @@ stateDiagram-v2
     in_progress --> in_progress: implementer hands off<br/>(owner=null,<br/>metadata.phase=awaiting_review)
     in_progress --> in_progress: reviewer claim<br/>(owner=reviewer-N,<br/>metadata.phase=null)
     in_progress --> in_progress: reviewer FAIL with retries<br/>(owner=null,<br/>metadata.phase=needs_rework,<br/>retries+1)
-    in_progress --> completed: reviewer PASS or<br/>quick-tier implementer self-complete<br/>(REVIEW PASS to lead)
+    in_progress --> completed: reviewer PASS<br/>(REVIEW PASS to lead)
     in_progress --> completed: reviewer FAIL,<br/>retry budget exhausted<br/>(metadata.result=blocked)
     completed --> [*]: lead merges<br/>(or escalates if metadata.result=blocked)
 ```
@@ -518,7 +516,7 @@ End-to-end cycle coverage is the manual matrix in `tests/README.md` (run against
 
 ## Workflows integration
 
-Phase skills opportunistically dispatch [Claude Code dynamic workflows](https://code.claude.com/docs/en/workflows) at fan-out points (`map-codebase`, VERIFY acceptance gate, VERIFY code-review HARD-GATE, PLAN multi-angle on quality tier). The wrapper pattern preserves all existing TeamCreate orchestration and falls back automatically when the `Workflow` tool is unavailable.
+Phase skills opportunistically dispatch [Claude Code dynamic workflows](https://code.claude.com/docs/en/workflows) at fan-out points (`map-codebase`, VERIFY acceptance gate, VERIFY code-review HARD-GATE, PLAN multi-angle on `LOOP_SPEC_PLAN_MULTI_ANGLE=1`). The wrapper pattern preserves all existing TeamCreate orchestration and falls back automatically when the `Workflow` tool is unavailable.
 
 ### Setup
 
@@ -537,14 +535,14 @@ export CLAUDE_CODE_DISABLE_WORKFLOWS=1
 
 Workflow subagents need `Bash`, `Read`, `Grep`, `Glob` (already in the typical loop-spec allowlist).
 
-### Tier parameters
+### Fan-out parameters (fixed)
 
-| Param | quality | balanced | quick |
-|---|---|---|---|
-| refuteVoters | 5 | 3 | 1 |
-| planAngles | 5 | 3 | 1 |
-| dimensionReviewers | 4 | 3 | 1 |
-| completenessCritic | true | true | false |
+| Param | Value |
+|---|---|
+| refuteVoters | 3 |
+| planAngles | 3 |
+| dimensionReviewers | 3 |
+| completenessCritic | true |
 
 ### Bundled standalone commands
 
