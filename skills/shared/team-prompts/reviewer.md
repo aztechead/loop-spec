@@ -32,7 +32,7 @@ Repeat until idle:
 
 1. **Query** for tasks awaiting review:
    ```
-   review_queue = [t for t in TaskList({status: "in_progress"}) if t.metadata.phase == "awaiting_review" and t.owner == null]
+   review_queue = [t for t in TaskList() if t.status == "in_progress" and t.metadata.phase == "awaiting_review" and t.owner == null]
    ```
 2. If `review_queue` is empty: go to the "When No Tasks Are Available" section below.
 3. **Claim** the first task by taking ownership (status stays `in_progress`):

@@ -121,6 +121,7 @@ Dispatch prompt (read-only; ask for JSON findings in the reply):
 
 ```
 Agent({
+  description: "Assess hotspot review",
   subagent_type: "loop-spec:code-reviewer",
   model: "sonnet",
   prompt: """

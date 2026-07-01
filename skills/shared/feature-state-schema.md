@@ -235,4 +235,4 @@ Implemented in `lib/feature-write.sh`. Replaces `lib/state-write.sh` (removed in
 
 ## Resume
 
-On `cycle` skill startup, candidate `feature.json` files are enumerated, filtered (completed/stale skip, `TaskList({team: currentTeamName})` live-team probe), and routed back into their phase. The full algorithm, the orphan/stale-team handling, worktree/workspace re-entry, and `currentGate` transcript reload are documented authoritatively in `skills/shared/cycle-resume-escalation.md`.
+On `cycle` skill startup, candidate `feature.json` files are enumerated, filtered (completed/stale skip, `TaskList({team: currentTeamName})` live-team probe — explicit teams mode only), and routed back into their phase. The full algorithm, the orphan/stale-team handling, worktree/workspace re-entry, and `currentGate` transcript reload are documented authoritatively in `skills/shared/cycle-resume-escalation.md`.

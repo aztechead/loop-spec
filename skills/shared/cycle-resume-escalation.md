@@ -38,7 +38,7 @@ For each candidate (worktree or workspace):
      team was ever created. Skip the `TaskList` liveness probe entirely — treat the team as gone:
      clear `currentTeamName` in `feature.json`, print `"feature {slug} had stale team reference {currentTeamName}; cleared and ready to resume"`, and mark the feature resumable. Only `explicit`
      mode runs the live-orphan probe below.
-   - Call `TaskList({team: currentTeamName})`.
+   - In `explicit` teams mode only, call `TaskList({team: currentTeamName})` (modern `TaskList` takes no parameters; in `implicit`/`none` skip the probe, clear `currentTeamName`, mark resumable).
    - If `TaskList` succeeds (no error): the team is live (orphaned). Present the orphan-cleanup message:
      ```
      Previous team {currentTeamName} for feature {slug} was orphaned and is still live in the harness.
@@ -134,7 +134,7 @@ User options:
 
 ## Step 1 orphan detection (moved verbatim from cycle Step 1)
 
-- **Orphan detection:** if `currentTeamName != null`, probe team liveness by calling `TaskList({team: currentTeamName})`. (When agent teams are unavailable this probe is meaningless: treat the team as gone, clear `currentTeamName`, and add the feature to the resumable list — see `skills/shared/no-teams-fallback.md`.) Otherwise:
+- **Orphan detection (explicit teams mode only):** if `currentTeamName != null` and `teamsMode == "explicit"`, probe team liveness by calling `TaskList({team: currentTeamName})`. (In `implicit`/`none` modes the probe is invalid AND meaningless — modern `TaskList` takes no parameters, and teammates never survive the session: treat the team as gone, clear `currentTeamName`, and add the feature to the resumable list — see `skills/shared/no-teams-fallback.md`.) Otherwise:
   - If `TaskList` returns without error: the team is still live (orphaned). Print:
     ```
     Previous team {currentTeamName} for feature {slug} was orphaned and is still live in the harness.

@@ -7,7 +7,7 @@ These steps apply on the team rung (explicit or implicit team mode). Apply as wr
 
 Idle and wake are event-driven. No polling.
 
-When `TaskList({status: "pending"})` returns no unblocked tasks and no `needs_rework` tasks are claimable, the implementer sends `SendMessage({to: "lead", body: "implementer-{N} idle: no available tasks"})`.
+When `TaskList()` (client-filtered to `status == "pending"`) returns no unblocked tasks and no `needs_rework` tasks are claimable, the implementer sends `SendMessage({to: "lead", body: "implementer-{N} idle: no available tasks"})`.
 
 The lead maintains an in-memory set of known idle implementers. When the lead receives a `REVIEW PASS` message and new tasks are unblocked, it wakes idle implementers:
 

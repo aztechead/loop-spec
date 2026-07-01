@@ -157,9 +157,16 @@ After round [N]:
 
 ```
 AskUserQuestion({
-  header: "Spec Gate Passed",
-  question: "Ambiguity is [score] after round [N] - requirements are clear enough to write SPEC.md. Proceed?",
-  options: ["Yes - write SPEC.md", "One more round", "Done talking - write it"]
+  questions: [{
+    question: "Ambiguity is [score] after round [N] - requirements are clear enough to write SPEC.md. Proceed?",
+    header: "Spec gate",
+    options: [
+      { label: "Yes - write SPEC.md", description: "Requirements are clear; proceed to the draft" },
+      { label: "One more round", description: "Ask another round of clarifying questions first" },
+      { label: "Done talking - write it", description: "Stop the interview and write with what we have" }
+    ],
+    multiSelect: false
+  }]
 })
 ```
 
@@ -169,13 +176,16 @@ If the user selects "Yes" or "Done talking - write it": go to Step 3. If "One mo
 
 ```
 AskUserQuestion({
-  header: "Max Rounds Reached",
-  question: "After 6 rounds, ambiguity is [score]. Dimensions still below minimum: [list]. What would you like to do?",
-  options: [
-    "Write SPEC.md anyway - flag unresolved dimensions as assumptions",
-    "Keep talking (no round limit from here)",
-    "Abandon - exit without writing"
-  ]
+  questions: [{
+    question: "After 6 rounds, ambiguity is [score]. Dimensions still below minimum: [list]. What would you like to do?",
+    header: "Max rounds",
+    options: [
+      { label: "Write SPEC.md anyway", description: "Flag unresolved dimensions as assumptions; DISCUSS resolves them" },
+      { label: "Keep talking", description: "Continue the interview with no round limit from here" },
+      { label: "Abandon", description: "Exit without writing a spec" }
+    ],
+    multiSelect: false
+  }]
 })
 ```
 

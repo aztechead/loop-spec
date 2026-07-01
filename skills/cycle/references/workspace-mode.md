@@ -129,8 +129,15 @@ Advisory: if {workspace_root} is or becomes a git repo, add .loop-spec/ to its .
 Confirmation (interactive):
 ```
 AskUserQuestion({
-  question: "Workspace repos: {list each repo name and relative path}. A feat/{slug} branch will be created IN PLACE in each participating repo (no worktree; the checkout switches branches). Proceed with all repos, or customize?",
-  options: ["All repos", "Customize"]
+  questions: [{
+    question: "Workspace repos: {list each repo name and relative path}. A feat/{slug} branch will be created IN PLACE in each participating repo (no worktree; the checkout switches branches). Proceed with all repos, or customize?",
+    header: "Repos",
+    options: [
+      { label: "All repos", description: "Create feat/{slug} in every discovered repo" },
+      { label: "Customize", description: "Name the participating repos; the rest are left untouched" }
+    ],
+    multiSelect: false
+  }]
 })
 ```
 

@@ -59,6 +59,7 @@ One-shot `Agent` dispatch (not a team), fresh context, strict grader:
 
 ```
 Agent({
+  description: "Iterate goal re-judge",
   subagent_type: "loop-spec:iterate-judge",
   model: feature.models.iterateJudge,   // opus
   prompt: "<iterate-judge.md inputs: slug, iteration=(used+1), original_goal=feature_title,
@@ -122,9 +123,16 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedba
   - **`step` / `interactive` (human-in-loop by choice):** the user explicitly opted into per-phase control, so here — and ONLY here — present the approval gate:
     ```
     AskUserQuestion({
-      header: "Re-open SPEC?",
-      question: "ITERATE judges the goal still unmet because of a SPEC-level gap: {gap.description}. Re-open SPEC/DISCUSS, ship as-is, or stop?",
-      options: ["Re-open SPEC/DISCUSS", "Ship as-is", "Stop - hand back"]
+      questions: [{
+        question: "ITERATE judges the goal still unmet because of a SPEC-level gap: {gap.description}. Re-open SPEC/DISCUSS, ship as-is, or stop?",
+        header: "Re-open SPEC",
+        options: [
+          { label: "Re-open SPEC/DISCUSS", description: "Rewind to refine the spec toward the original goal (costs an iteration)" },
+          { label: "Ship as-is", description: "Complete now; the accepted gap is recorded in warnings[] and the backlog" },
+          { label: "Stop - hand back", description: "Pause the cycle and return control (resume later)" }
+        ],
+        multiSelect: false
+      }]
     })
     ```
     Re-open → `currentPhase = "discuss"`; Ship as-is → `currentPhase = "completed"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.

@@ -16,7 +16,7 @@ Invoked when feature.json currentPhase == "verify".
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
 > do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
-> spawn verifier and code-reviewer with `Agent({name, subagent_type, model, prompt})`, folding
+> spawn verifier and code-reviewer with `Agent({name, description, subagent_type, model, prompt})`, folding
 > each one's work prompt into the spawn, and use `SendMessage` for any follow-up. Per
 > `skills/shared/implicit-team-mode.md`. The acceptance gate and code-review HARD-GATE
 > semantics are unchanged.
@@ -410,7 +410,7 @@ Print to user:
 If invoked with `feature.json currentPhase == "verify"`: check what completed (team created? verifier ran? acceptance gate? code-reviewer? map-codebase? push? PR?). Resume from first incomplete step.
 
 On resume, if `currentTeamName` is non-null:
-- Call `TaskList({team: currentTeamName})`. If it errors (team not found): clear `currentTeamName` in `feature.json`, recreate team via Step 2.
+- In `explicit` teams mode only: call `TaskList({team: currentTeamName})`; if it errors (team not found), clear `currentTeamName` in `feature.json` and recreate the team via Step 2. In `implicit`/`none` modes skip the probe (modern `TaskList` takes no parameters; teammates never survive the session): clear `currentTeamName` and re-run Step 2's spawn path.
 - If it succeeds (team still live): re-attach and resume from the last incomplete step.
 
 If `currentTeamName` is null: recreate the verify team from Step 2 and replay.

@@ -40,8 +40,8 @@ Repeat until idle:
 
 1. **Query** for two kinds of available work in one pass:
    ```
-   pending      = TaskList({status: "pending"})
-   needs_rework = [t for t in TaskList({status: "in_progress"}) if t.metadata.phase == "needs_rework" and t.owner == null]
+   pending      = [t for t in TaskList() if t.status == "pending"]
+   needs_rework = [t for t in TaskList() if t.status == "in_progress" and t.metadata.phase == "needs_rework" and t.owner == null]
    ```
 2. **Filter** `pending` for tasks whose `blockedBy` entries are all in `completed` status. Concatenate `needs_rework` (rework tasks are already unblocked). Pick the first available task. If none, see "When No Tasks Are Available" below.
 3. **Claim** it:

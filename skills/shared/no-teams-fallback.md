@@ -36,7 +36,7 @@ prerequisite — a missing experimental flag must never make the plugin throw.
   (`skills/shared/execute-subagent.md`).
 - **VERIFY:** verifier and code-reviewer become sequential one-shot Agent
   calls; the acceptance gate and code-review HARD-GATE semantics are unchanged.
-- **Resume / orphan detection (cycle Step 1):** the `TaskList({team: ...})`
+- **Resume / orphan detection (cycle Step 1):** the explicit-mode-only `TaskList({team: ...})`
   liveness probe is meaningless without teams. When `teamsAvailable == false`
   and a candidate `feature.json` carries a non-null `currentTeamName`, treat the
   team as gone: clear `currentTeamName` and add the feature to the resumable

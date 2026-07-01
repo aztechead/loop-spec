@@ -2,6 +2,29 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.5.2]
+
+### Fixed
+- **Systematic harness call-contract audit** — same defect class as the v2.5.1 model-ID
+  bug, hunted exhaustively this time by diffing every skill-instructed tool call against
+  live tool schemas (recorded in `skills/shared/harness-call-contracts.md`):
+  - **`AskUserQuestion`: all 8 call sites used an invalid flat shape** (`{header, question,
+    options: ["A","B"]}`) — the real schema requires a `questions[]` wrapper, option
+    OBJECTS (`{label, description}`), and `multiSelect`. Every interactive gate (iterate
+    spec-rewind approval, spec-gate/max-rounds, workspace repo confirmation, all 4 onboard
+    questions) would have failed validation.
+  - **`Agent`: required `description` parameter missing** from the iterate-judge dispatch,
+    both startup model probes, quality-loop's two reviewer spawns, assess's hotspot
+    reviewer, and every implicit-team spawn template across 8 skills.
+  - **`TaskCreate`: required `description` parameter missing** from EXECUTE Step 4's
+    per-task creation template (+ `activeForm` added).
+  - **`TaskList` takes NO parameters on the modern harness**: `TaskList({status: ...})`
+    filters replaced with client-side filtering in the implementer/reviewer self-claim
+    loops; the `TaskList({team: ...})` orphan-liveness probe is now gated to `explicit`
+    teams mode only (cycle Step 1, verify/plan resume, resume-escalation doc).
+- New lint suite `tests/lib/harness-call-shapes.test.sh` (8 checks) enforces the recorded
+  contracts over the whole skill/agent corpus — the class, not just these instances.
+
 ## [2.5.1]
 
 ### Fixed

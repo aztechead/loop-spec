@@ -8,8 +8,8 @@ Repeat until idle:
 
 1. **Query** for pending tasks AND in-flight tasks awaiting rework:
    ```
-   pending     = TaskList({status: "pending"})
-   needs_rework = [t for t in TaskList({status: "in_progress"}) if t.metadata.phase == "needs_rework" and t.owner == null]
+   pending     = [t for t in TaskList() if t.status == "pending"]
+   needs_rework = [t for t in TaskList() if t.status == "in_progress" and t.metadata.phase == "needs_rework" and t.owner == null]
    ```
 2. **Filter** `pending` for tasks whose `blockedBy` entries are all in `completed` status. Concatenate with `needs_rework` (rework tasks are inherently unblocked). Select the first available task.
 3. **Claim** via `TaskUpdate({taskId: "<id>", status: "in_progress", owner: "implementer-{N}", metadata: {claimedBy: "implementer-{N}", phase: null}})`.
@@ -67,7 +67,7 @@ Repeat until idle:
 
 1. **Query** `awaiting_review` tasks (status stays `in_progress`; `metadata.phase` is the discriminator):
    ```
-   review_queue = [t for t in TaskList({status: "in_progress"}) if t.metadata.phase == "awaiting_review" and t.owner == null]
+   review_queue = [t for t in TaskList() if t.status == "in_progress" and t.metadata.phase == "awaiting_review" and t.owner == null]
    ```
 2. **Claim** by taking ownership (status unchanged, still `in_progress`):
    ```

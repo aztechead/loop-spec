@@ -17,7 +17,7 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
 > do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
-> spawn each teammate below with `Agent({name, subagent_type, model, prompt})`, folding its first
+> spawn each teammate below with `Agent({name, description, subagent_type, model, prompt})`, folding its first
 > work prompt into the spawn, then drive critique rounds with `SendMessage` as written. Per
 > `skills/shared/implicit-team-mode.md`. `SendMessage` and the shared task list are unchanged.
 

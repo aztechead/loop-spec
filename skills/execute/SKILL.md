@@ -298,7 +298,7 @@ Behavior is retained verbatim. The long self-claim loop and reviewer loop detail
 > **Implicit-team harness (`.loop-spec/runtime.json.teamsMode == "implicit"`, CC >= 2.1.178):**
 > `TeamCreate`/`TeamDelete` were removed and throw. The self-claim team still runs — only the
 > create/teardown changes. In **Step 5**, instead of one `TeamCreate` with a `teammates` array,
-> spawn each teammate object as its own `Agent({name, subagent_type, model, prompt})` call (the
+> spawn each teammate object as its own `Agent({name, description, subagent_type, model, prompt})` call (the
 > prompts are already inline, so this is a 1:1 expansion). In **Steps 9-10**, skip `TeamDelete`
 > — just clear `currentTeamName`/`currentTeammates`. `TaskCreate`/`TaskUpdate`/`TaskList` (Steps 4,
 > 6-8) and all `SendMessage` routing are unchanged: the session-implicit team shares one task list.
@@ -331,6 +331,8 @@ After validation passes, call `TaskCreate` once per task:
 ```
 TaskCreate({
   subject: "{task.id}: {task.subject}",
+  description: "{task.brief — goal, files, acceptance criteria summary}",   // REQUIRED by the harness schema
+  activeForm: "Working on {task.subject}",
   metadata: {
     loopSpec:          true,   // marks the task as loop-spec-owned; plugin hooks only enforce on marked tasks
     blockedBy:          [...explicit edges from PLAN.md] + [...synthetic edges from Step 2b],
