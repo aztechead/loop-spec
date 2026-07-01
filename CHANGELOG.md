@@ -2,6 +2,48 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.3.0]
+
+### Added
+- **`lib/teams-capability.sh`** + **`skills/shared/implicit-team-mode.md`** -- the cycle now
+  works on Claude Code **>= 2.1.178**, which **removed the `TeamCreate` / `TeamDelete` tools**
+  (every session now has one implicit team; teammates are spawned directly via `Agent({name})`).
+  Cycle Step 2 replaces the binary env probe with a deterministic, version-gated capability probe
+  that resolves a three-way **`teamsMode`** (`none` / `explicit` / `implicit`), persisted to
+  `.loop-spec/runtime.json` alongside the existing `teamsAvailable` boolean. Phase skills
+  (`discuss`, `plan`, `execute`, `verify`, `map-codebase`) gained an implicit-mode adaptation:
+  in `implicit` mode they skip `TeamCreate`/`TeamDelete` and spawn named teammates with `Agent({name})`,
+  with `SendMessage` and the shared `TaskList` unchanged. Override with `LOOP_SPEC_TEAMS_MODE`.
+  Tests: `tests/lib/teams-capability.test.sh` (11 cases) wired into `tests/run-all.sh`.
+
+- **Unattended fleet resilience** (`skills/loop-runner/scripts/loop.py` + `supervisor.py`): new
+  opt-in `--fallback-model <id>` (passes `claude -p --fallback-model` so a tick survives overload /
+  model-unavailable instead of dying) and `--retry-watchdog <n>` (sets `CLAUDE_CODE_RETRY_WATCHDOG`
+  for the child — the recommended unattended retry mechanism, CC 2.1.186, over the now-capped
+  `CLAUDE_CODE_MAX_RETRIES`). The supervisor threads both into every loop config. Both default off.
+  Tests: `run_tests.sh` section 12 (flag + env propagation, and the default-off case).
+
+### Changed
+- **Accurate team detection messaging.** On a modern harness with the flag set, the cycle no
+  longer prints "agent teams unavailable / not exposed" and no longer issues a doomed `TeamCreate`
+  that trips the guarded-team-op fallback. The guarded-team-op contract is retained as the
+  `explicit`-mode safety net only. Resume/orphan handling (`cycle-resume-escalation.md`) skips the
+  `TaskList` liveness probe and `TeamDelete` cleanup in `implicit`/`none` mode (no cross-session
+  team to orphan or delete).
+- **Hardened the ITERATE convergence oracle** (`skills/iterate/SKILL.md`): the `iterate-judge`
+  verdict is now extracted from its fenced ```json block and key-validated before the ship/rewind
+  decision; a malformed or missing verdict is treated as re-dispatch-once-then-escalate, never as
+  "converged". Complements the harness structured-output hardening (CC 2.1.186/2.1.187) that already
+  backstops the Workflow `agent({schema})` rungs (`lib/workflows/*.js`).
+
+### Docs
+- **Operator hardening guidance** (`docs/loop-spec/PREREQUISITES.md`): optional `Agent(model:...)`
+  deny rules (parameter-matched permission syntax, named-spawn enforcement fixed in CC 2.1.186) to
+  fail closed on off-policy models as defense-in-depth over loop-spec's prompt-level model pinning;
+  plus a note on nested per-repo `.claude/skills` (`<dir>:<name>`) in workspace mode.
+- **Subagent depth budget** documented in the cycle dispatch convention (CC's 5-level nested-subagent
+  cap; loop-spec dispatch stays within it, and the loop-fleet rung sidesteps it via top-level `claude -p`).
+
 ## [2.2.0]
 
 ### Added

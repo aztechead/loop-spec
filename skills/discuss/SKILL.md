@@ -15,6 +15,12 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after tier 
 > advocate Agent calls with prior round summaries (from `gate-logs/`) inlined. All
 > artifacts, gates, and retry budgets are unchanged.
 
+> **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
+> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
+> spawn each teammate below with `Agent({name, subagent_type, model, prompt})`, folding its first
+> work prompt into the spawn, then drive critique rounds with `SendMessage` as written. Per
+> `skills/shared/implicit-team-mode.md`. `SendMessage` and the shared task list are unchanged.
+
 ## Inputs (from cycle skill via feature.json)
 
 - `slug`, `tier`, `execStyle`, `feature_title`

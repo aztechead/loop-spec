@@ -38,26 +38,30 @@ If a step you're about to take requires a tool not on the whitelist, stop and re
 
 ## Dispatch convention (CRITICAL)
 
-Every phase runs inside a persistent **team** created via `TeamCreate`. Teammates are spawned at phase start and persist for the full phase; they are NOT one-shot dispatches that die after one reply.
+Every phase runs inside a persistent **team** of named teammates. Teammates are spawned at phase start and persist for the full phase; they are NOT one-shot dispatches that die after one reply. How the team is created depends on `.loop-spec/runtime.json.teamsMode` (set in Step 2):
+- **`explicit`** (CC < 2.1.178): the lead creates the roster with `TeamCreate` and tears it down with `TeamDelete` at the phase boundary.
+- **`implicit`** (CC >= 2.1.178): the session already has one team. The lead spawns each teammate directly with `Agent({name: "<teammate-name>", subagent_type, model, prompt})` — no `TeamCreate`, no `TeamDelete`. See **`skills/shared/implicit-team-mode.md`**.
 
-Inter-agent communication within a phase team uses `SendMessage`. This is the correct tool for routing work, critique rounds, and notifications between the lead and teammates (or between teammates directly by name).
+Inter-agent communication within a phase team uses `SendMessage` in BOTH team modes. This is the correct tool for routing work, critique rounds, and notifications between the lead and teammates (or between teammates directly by name).
 
 Whenever a phase skill or this orchestrator says "instruct teammate X to revise" or "notify implementer of rework":
 - Use `SendMessage({to: "<teammate-name>", body: "..."})` to address the teammate by their assigned name (e.g., `advocate-1`, `implementer-2`, `spec-writer-1`).
-- Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`.
+- Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`. (In `implicit` mode the *initial* spawn is an `Agent({name})` call; rework after that still goes through `SendMessage`.)
 - A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers and the ITERATE phase's one-shot `iterate-judge` dispatch (`skills/iterate/SKILL.md`); both are main-thread one-shot dispatches, not team rework.
 
-When a phase ends: call `TeamDelete` to tear down the team before the next phase's `TeamCreate`.
+When a phase ends: in `explicit` mode call `TeamDelete` before the next phase's `TeamCreate`; in `implicit` mode there is nothing to delete — just clear `feature.json.currentTeamName` and stop messaging the phase's teammates.
 
 This rule applies in DISCUSS, PLAN, EXECUTE, VERIFY, MAP-CODEBASE, and any sub-skill called from this cycle.
 
-**No-teams fallback:** when `.loop-spec/runtime.json.teamsAvailable == false`,
-every rule above degrades per the substitution table in
+**Subagent depth budget (CC caps nested subagents at 5 levels; forked subagents count toward the cap).** loop-spec's dispatch stays well inside this: the orchestrator (depth 0) spawns phase teammates (depth 1), and a teammate may spawn at most one helper (e.g. a background mapper, depth 2). Phase teammates MUST NOT build their own deep subagent chains — if a teammate needs more fan-out, surface it to the lead rather than nesting. EXECUTE's loop-fleet rung sidesteps the cap entirely (each loop is a separate top-level `claude -p` process, not a nested subagent).
+
+**No-teams fallback:** when `.loop-spec/runtime.json.teamsMode == "none"` (equivalently
+`teamsAvailable == false`), every rule above degrades per the substitution table in
 **`skills/shared/no-teams-fallback.md`**: no `TeamCreate`/`TeamDelete`/`SendMessage`
 — teammates become one-shot `Agent` calls with the same agent types, models, and
 prompt templates, rework rounds re-dispatch with prior summaries from
 `gate-logs/` inlined, and EXECUTE's ladder selects the loop-fleet or subagent
-rung. Phases MUST NOT call team tools when `teamsAvailable == false`; doing so
+rung. Phases MUST NOT call team tools when `teamsMode == "none"`; doing so
 throws harness errors.
 
 ## Non-interactive mode
@@ -177,43 +181,63 @@ when they are unavailable the cycle still runs end-to-end on the documented
 fallbacks (DISCUSS/PLAN/VERIFY: one-shot subagent fallback per the **No-teams
 fallback** contract below; EXECUTE: loop-fleet or subagent rung). Do NOT abort.
 
+Agent teams come in **two harness generations**, and the cycle must route to the right
+one. Claude Code **>= 2.1.178** removed the `TeamCreate` / `TeamDelete` tools: every
+session now has one implicit team and teammates are spawned directly via `Agent({name})`.
+Earlier versions use the explicit `TeamCreate` / `TeamDelete` roster model. `lib/teams-capability.sh`
+resolves which generation is live into a single **mode** word (deterministic, version-gated —
+mirrors the `Workflow` probe; does not rely on model self-introspection):
+
 ```bash
+teams_mode="$(bash "${CLAUDE_SKILL_DIR}/../../lib/teams-capability.sh")"   # none | explicit | implicit
 teams_available=true
-if [[ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" != "1" ]]; then
-  teams_available=false
-  loops_hint="subagent fallback"
-  command -v claude >/dev/null 2>&1 && loops_hint="loop-fleet + subagent fallback"
-  echo "loop-spec: agent teams unavailable (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1)."
-  echo "  Continuing with ${loops_hint}. For persistent phase teams: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1."
-fi
+[[ "$teams_mode" == "none" ]] && teams_available=false
+
+case "$teams_mode" in
+  none)
+    loops_hint="subagent fallback"
+    command -v claude >/dev/null 2>&1 && loops_hint="loop-fleet + subagent fallback"
+    echo "loop-spec: agent teams off (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1)."
+    echo "  Continuing with ${loops_hint}. For persistent phase teams: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1." ;;
+  implicit)
+    echo "loop-spec: agent teams on (implicit-team model, CC >= 2.1.178)."
+    echo "  Teammates are spawned via Agent({name}); TeamCreate/TeamDelete are not used. See skills/shared/implicit-team-mode.md." ;;
+  explicit)
+    echo "loop-spec: agent teams on (explicit-team model, CC < 2.1.178). Per-phase TeamCreate/TeamDelete." ;;
+esac
 ```
 
-The env var advertises **intent**, not the actual tool surface: a harness can export
-`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` yet not expose `TeamCreate`/`TeamDelete`/
-`SendMessage` as callable tools. The env var is therefore a NECESSARY but not SUFFICIENT
-signal. To avoid trusting a false positive, the team primitives are used under a
-**guarded-team-op contract** rather than assumed-live: the env probe sets the optimistic
-default, and the first real team op confirms or refutes it.
+**`teams_mode` decides every phase's dispatch path:**
 
-**Guarded-team-op contract (CRITICAL — applies to every phase):** whenever a phase is
-about to issue its first `TeamCreate` (or any team op) and `teamsAvailable == true`, treat
-a thrown `No such tool available` (or any "tool not found"/unknown-tool harness error from
-a team primitive) as a capability refutation, NOT a fatal error:
+- `none` → no teams. Phases use **`skills/shared/no-teams-fallback.md`** (one-shot
+  `Agent`; EXECUTE uses the loop-fleet or subagent rung). Phases MUST NOT call any team tool.
+- `implicit` → teams are live but `TeamCreate` / `TeamDelete` do **not** exist. Phases
+  spawn named teammates with `Agent({name})` and message them via `SendMessage` per
+  **`skills/shared/implicit-team-mode.md`**. Phases MUST NOT call `TeamCreate` / `TeamDelete`
+  (they throw `No such tool available`).
+- `explicit` → the per-phase `TeamCreate` / `TeamDelete` roster model, as written in each phase skill.
 
-1. Immediately set `.loop-spec/runtime.json.teamsAvailable = false` (merge-write):
+**Guarded-team-op contract (CRITICAL — explicit-mode safety net):** the version gate is
+deterministic, but a non-standard harness could still disagree with it. So in **`explicit`
+mode only**, whenever a phase issues its first `TeamCreate` (or any team op) and it throws
+`No such tool available` (or any "tool not found"/unknown-tool error from a team primitive),
+treat it as a capability refutation, NOT a fatal error:
+
+1. If the harness is the modern one (the tools were removed, not the flag), re-resolve via
+   `LOOP_SPEC_TEAMS_MODE=implicit` and re-run the phase per `skills/shared/implicit-team-mode.md`.
+   Otherwise downgrade to `none`. Merge-write the corrected mode:
    ```bash
-   python3 -c "import json;p='.loop-spec/runtime.json';d=json.load(open(p));d['teamsAvailable']=False;json.dump(d,open(p,'w'))"
+   python3 -c "import json,sys;p='.loop-spec/runtime.json';d=json.load(open(p));m=sys.argv[1];d['teamsMode']=m;d['teamsAvailable']=(m!='none');json.dump(d,open(p,'w'))" implicit   # or: none
    ```
-2. Print: `loop-spec: agent team tools not exposed by this harness despite CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; falling back to one-shot Agent dispatch.`
-3. Re-run the current phase via the no-teams fallback (`skills/shared/no-teams-fallback.md`):
-   one-shot `Agent` calls with the same agent types, models, and prompt templates. Do NOT
-   re-attempt the team op in this session.
+2. Print: `loop-spec: explicit team tools not exposed by this harness; switching to <implicit-team | one-shot Agent> dispatch.`
+3. Re-run the current phase on the corrected path. Do NOT re-attempt the explicit team op in this session.
 
-This makes the disagreement between the env var and the real tool surface self-healing on
+In `implicit` and `none` mode the contract is a no-op — those phases never call `TeamCreate`,
+so there is nothing to refute. This keeps a version/tool-surface disagreement self-healing on
 the first op instead of a hard stop mid-phase.
 
-`teams_available` is persisted into `.loop-spec/runtime.json` together with the
-workflow probe below; phase skills read it to pick their dispatch path.
+`teams_mode` and `teams_available` are persisted into `.loop-spec/runtime.json` together with
+the workflow probe below; phase skills read them to pick their dispatch path.
 
 **Graphify is a HARD requirement** (unlike teams). graphify is loop-spec's de-facto
 code-graph solution; the design phases (SPEC / DISCUSS / PLAN) query the graph to ground
@@ -334,9 +358,13 @@ if os.path.exists(path):
 data['workflowsAvailable'] = sys.argv[1] == 'true'
 data['workflowExecuteOptIn'] = sys.argv[2] == 'true'
 data['teamsAvailable'] = sys.argv[3] == 'true'
+data['teamsMode'] = sys.argv[4]   # none | explicit | implicit
 json.dump(data, open(path, 'w'))
-" "$wf" "$optin" "$teams_available"
+" "$wf" "$optin" "$teams_available" "$teams_mode"
 ```
+
+`teamsMode` is the authoritative dispatch selector; `teamsAvailable` is kept as the
+`teamsMode != "none"` convenience boolean that existing phase branches already read.
 
 `lib/workflow-availability.sh` gates on the CC version; set `LOOP_SPEC_WORKFLOWS_AVAILABLE=1|0` to force it (testing).
 

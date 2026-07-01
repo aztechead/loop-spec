@@ -32,6 +32,12 @@ For each candidate (worktree or workspace):
 1. **Load feature.json.** On parse error, try `feature.json.bak`. On both failing, skip.
 2. **Skip completed features.** If `currentPhase == "completed"`, skip.
 3. **Probe team liveness.** If `feature.json.currentTeamName` is non-null:
+   - **Mode guard (read `.loop-spec/runtime.json.teamsMode`).** When `teamsMode != "explicit"`
+     (i.e. `implicit` or `none`), there is no cross-session team to orphan: in `implicit` mode
+     named teammates are session-scoped subagents that did not survive, and in `none` mode no
+     team was ever created. Skip the `TaskList` liveness probe entirely — treat the team as gone:
+     clear `currentTeamName` in `feature.json`, print `"feature {slug} had stale team reference {currentTeamName}; cleared and ready to resume"`, and mark the feature resumable. Only `explicit`
+     mode runs the live-orphan probe below.
    - Call `TaskList({team: currentTeamName})`.
    - If `TaskList` succeeds (no error): the team is live (orphaned). Present the orphan-cleanup message:
      ```
@@ -111,7 +117,8 @@ When a gate or verifier rejects the **same class** of mistake more than once acr
 
 If a phase pauses + escalates (budget exhausted, NEEDS_CONTEXT, etc.):
 
-1. Call `TeamDelete({name: feature_json.currentTeamName})` (if `currentTeamName` is non-null) before returning control to the user.
+1. Tear down the phase team before returning control to the user — **only in `explicit`
+   mode** (`.loop-spec/runtime.json.teamsMode == "explicit"`): call `TeamDelete({name: feature_json.currentTeamName})` if `currentTeamName` is non-null. In `implicit` and `none` mode `TeamDelete` does not exist (it throws); skip it — the teammates are session-scoped and end with the turn.
 2. Clear `currentTeamName` and `currentTeammates` in `feature.json` via `lib/feature-write.sh`.
 3. Print escalation reason.
 4. Read `retryBudget` from `feature.json` (`.loop-spec/features/{slug}/feature.json`) and show `gateHistory` tail (last 3 attempts from `feature.json.gateHistory`).

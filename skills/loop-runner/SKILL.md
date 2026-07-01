@@ -92,6 +92,24 @@ python3 scripts/loop.py \
 Also accepts `--config loop.json` (any `LoopConfig` field; CLI overrides), which is
 how the supervisor — and your derivative skills — should drive it.
 
+### Unattended resilience (CC >= 2.1.178/2.1.186)
+
+Because the fleet runs headless and unsupervised, two optional flags harden each tick
+against transient model failures — both on `loop.py` and `supervisor.py` (the supervisor
+threads them into every loop's config):
+
+- `--fallback-model <id>` — on overload or model-unavailable, the tick falls back to this
+  model (`claude -p --fallback-model`) instead of dying, e.g. `--fallback-model claude-haiku-4-5-20251001`.
+- `--retry-watchdog <n>` — sets `CLAUDE_CODE_RETRY_WATCHDOG` for the child, the recommended
+  unattended retry mechanism (replaces relying on `CLAUDE_CODE_MAX_RETRIES`, capped at 15).
+
+```bash
+python3 scripts/supervisor.py --plan plan/tasks.json --parallel 2 \
+  --fallback-model claude-haiku-4-5-20251001 --retry-watchdog 5
+```
+
+Both default off — behavior is unchanged unless you opt in.
+
 ## What makes a loop trustworthy here
 
 **Verifier integrity (the trust anchor).** At start, the loop hashes every

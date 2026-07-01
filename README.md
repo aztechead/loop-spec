@@ -228,7 +228,7 @@ docs/loop-spec/                          # COMMITTED
 │   ├── loop-plan.json                    # EXECUTE loop-fleet rung: compiled loop plan
 │   └── gate-logs/                        # critique-gate round transcripts
 ├── worktrees/{slug}/                     # per-task git worktrees, lifecycle = task
-├── runtime.json                          # teamsAvailable, workflowsAvailable, workflowExecuteOptIn, modelsProbedAt
+├── runtime.json                          # teamsMode, teamsAvailable, workflowsAvailable, workflowExecuteOptIn, modelsProbedAt
 └── codebase/
     └── index.json                        # file -> domain[] for incremental map (TRACKED)
 
@@ -282,7 +282,7 @@ Each `path` is relative to the workspace root. If the workspace root is or becom
 
 ## Architecture
 
-loop-spec is built on Claude Code agent teams when they are available. The cycle skill is a thin orchestrator; each phase skill owns its own team (TeamCreate at phase start, TeamDelete at phase end), teammates persist for the full phase and communicate via SendMessage, and tasks are tracked via the harness `TaskList`. With teams enabled, the orchestrator never spawns one-shot subagents for in-phase work -- fresh `Agent` calls are reserved for background codebase mappers. Without teams (`runtime.json.teamsAvailable == false`), phases substitute one-shot `Agent` calls per `skills/shared/no-teams-fallback.md`, and EXECUTE runs the loop-fleet rung (bounded headless `claude -p` loops supervised by `skills/loop-runner/scripts/supervisor.py`) or subagent waves -- same artifacts, gates, and result contracts on both paths.
+loop-spec is built on Claude Code agent teams when they are available. The cycle skill is a thin orchestrator; each phase skill owns its own team, teammates persist for the full phase and communicate via SendMessage, and tasks are tracked via the harness `TaskList`. Cycle Step 2 resolves a **`teamsMode`** (`lib/teams-capability.sh`, version-gated): on Claude Code **>= 2.1.178** (`implicit`) the `TeamCreate`/`TeamDelete` tools were removed, so each phase spawns its named teammates directly with `Agent({name})` (`skills/shared/implicit-team-mode.md`); on earlier builds (`explicit`) it uses per-phase `TeamCreate`/`TeamDelete`. With teams enabled either way, the orchestrator never spawns one-shot subagents for in-phase work -- fresh `Agent` calls without a `name` are reserved for background codebase mappers. Without teams (`teamsMode == "none"`, i.e. `runtime.json.teamsAvailable == false`), phases substitute one-shot `Agent` calls per `skills/shared/no-teams-fallback.md`, and EXECUTE runs the loop-fleet rung (bounded headless `claude -p` loops supervised by `skills/loop-runner/scripts/supervisor.py`) or subagent waves -- same artifacts, gates, and result contracts on all paths.
 
 Each feature runs in its own git worktree created at cycle Step 5 via `git worktree add .claude/worktrees/{slug} -b feat/{slug} {baseSha}`. All phase work (SPEC through VERIFY: docs, state, code, commits) happens inside that worktree on branch `feat/{slug}`. The user's main checkout is never switched onto a feature branch. On resume, the cycle discovers in-progress features by reading `git worktree list` output and locating each worktree's `feature.json` (schema v6 adds `worktreePath`). Features created on schema v5 or earlier resume in-place without a worktree (back-compat).
 

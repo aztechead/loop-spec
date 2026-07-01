@@ -49,6 +49,24 @@ Agent({
 
 Parse the verdict JSON from its completion message (schema in `agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[], weakest, gap{type,description,fix_first}, summary}`.
 
+**Defensive parse (the verdict is the loop's oracle — extract it deterministically, do not eyeball it):** the judge returns the verdict inside a fenced ```json block. Capture its completion message to `$fdir/.iterate-judge.out`, then extract and validate before acting:
+
+```bash
+verdict=$(python3 - "$fdir/.iterate-judge.out" <<'PY'
+import json, re, sys
+txt = open(sys.argv[1]).read()
+m = re.search(r"```json\s*(\{.*?\})\s*```", txt, re.S) or re.search(r"(\{.*\})", txt, re.S)
+if not m: sys.exit("iterate-judge: no JSON verdict found in completion message")
+d = json.loads(m.group(1))
+for k in ("converged", "deterministic_gate_passed", "summary"):
+    if k not in d: sys.exit(f"iterate-judge: verdict missing required key '{k}'")
+print(json.dumps(d))
+PY
+) || { echo "ITERATE: malformed judge verdict; not shipping. Re-dispatch once, then escalate." >&2; }
+```
+
+A malformed or missing verdict must NOT be read as "converged": treat it as re-dispatch-once-then-escalate. The convergence decision (Step 3) reads the validated `$verdict`, never the raw message.
+
 ### Step 2 - Record the iteration
 
 ```bash

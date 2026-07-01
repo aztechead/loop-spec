@@ -81,6 +81,12 @@ class LoopConfig:
     permission_mode: str = "acceptEdits"
     allowed_tools: str = ""
     model: str = ""
+    fallback_model: str = ""          # --fallback-model: on overload / model-unavailable
+                                      # the headless tick falls back to this model instead
+                                      # of dying — matters for unattended fleet loops
+    retry_watchdog: str = ""          # CLAUDE_CODE_RETRY_WATCHDOG for the child: the
+                                      # recommended unattended-session retry mechanism
+                                      # (CC 2.1.186). Empty = leave the env as inherited.
     max_turns: int = 30               # per-iteration turn cap (0 disables) — bounds a
                                       # single invocation so one tick can't eat the budget
     judge: bool = False
@@ -224,12 +230,19 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         cmd += ["--resume", resume]
     if cfg.model:
         cmd += ["--model", cfg.model]
+    if cfg.fallback_model:
+        cmd += ["--fallback-model", cfg.fallback_model]
     if cfg.max_turns and not resume:
         cmd += ["--max-turns", str(cfg.max_turns)]
     cmd += list(cfg.extra_args)
 
+    env = None
+    if cfg.retry_watchdog:
+        env = dict(os.environ)
+        env["CLAUDE_CODE_RETRY_WATCHDOG"] = cfg.retry_watchdog
+
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
     except FileNotFoundError:
         return {"ok": False, "error": f"`{cfg.claude_bin}` not found on PATH",
                 "cost": 0.0, "turns": 0, "session_id": resume, "result": ""}
@@ -543,6 +556,8 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     p.add_argument("--permission-mode", default=None)
     p.add_argument("--allowed-tools", default=None)
     p.add_argument("--model", default=None)
+    p.add_argument("--fallback-model", default=None, dest="fallback_model")
+    p.add_argument("--retry-watchdog", default=None, dest="retry_watchdog")
     p.add_argument("--max-turns", type=int, default=None)
     p.add_argument("--judge", action="store_true", default=None)
     p.add_argument("--judge-model", default=None)
