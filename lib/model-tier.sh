@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# model-tier.sh - Resolve an abstract per-task model tier to a concrete model id.
+# model-tier.sh - Resolve an abstract per-task model tier to a harness model alias.
 #
 # loop-spec uses a FIXED per-role model map (skills/shared/model-matrix.md). This
 # adds an OPTIONAL per-task override: a plan task may carry a `modelTier`
@@ -8,13 +8,13 @@
 # plans survive model generations; this file decides what a tier means today.
 #
 # Today's mapping (only opus + sonnet are in the fixed set):
-#   mechanical -> claude-sonnet-4-6   (rote edits, scaffolding, mechanical fixes)
-#   standard   -> claude-sonnet-4-6   (normal implementation / review throughput)
-#   frontier   -> claude-opus-4-8     (judgment-heavy reasoning)
+#   mechanical -> sonnet   (rote edits, scaffolding, mechanical fixes)
+#   standard   -> sonnet   (normal implementation / review throughput)
+#   frontier   -> opus     (judgment-heavy reasoning)
 #
 # Usage:
 #   model-tier.sh model <mechanical|standard|frontier>
-#       Print the model id for the tier. Unknown/empty tier -> standard default.
+#       Print the model alias for the tier. Unknown/empty tier -> standard default.
 #
 #   model-tier.sh valid <tier>
 #       Exit 0 if tier is one of the three known tiers, else exit 1.
@@ -24,9 +24,9 @@
 
 set -euo pipefail
 
-MECHANICAL_MODEL="claude-sonnet-4-6"
-STANDARD_MODEL="claude-sonnet-4-6"
-FRONTIER_MODEL="claude-opus-4-8"
+MECHANICAL_MODEL="sonnet"
+STANDARD_MODEL="sonnet"
+FRONTIER_MODEL="opus"
 
 cmd="${1:-}"
 case "$cmd" in

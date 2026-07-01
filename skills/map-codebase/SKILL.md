@@ -29,7 +29,7 @@ When standalone (`Skill(loop-spec:map-codebase)`):
 - Optional args: `--full` (forces full mode), `--domain tech,arch` (filter to subset)
 - `since_sha`: derived from latest "refresh codebase mapping" commit, or HEAD~1 if none
 
-Mapper model is fixed at `claude-sonnet-4-6` (see `skills/shared/model-matrix.md`); there is no preset input.
+Mapper model is fixed at the `sonnet` alias (see `skills/shared/model-matrix.md`); there is no preset input.
 
 ## Procedure
 
@@ -102,7 +102,7 @@ In both single and workspace modes `project_id` is the basename of the detected 
 
 **Workspace mode note:** in workspace mode the repo list is available from `ws_json`. Pass each repo's absolute path and name to mappers so they can cover each repo with per-repo sections. The commit step in Step 6 is gated on the root being a git repo (see Step 6 below).
 
-Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `feature.models.mapper`; standalone, use `claude-sonnet-4-6` (the fixed mapper model per `skills/shared/model-matrix.md`). Pass it explicitly on every mapper spawn so they never inherit the orchestrator's session model.
+Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `feature.models.mapper`; standalone, use `sonnet` (the fixed mapper alias per `skills/shared/model-matrix.md`). Pass it explicitly on every mapper spawn so they never inherit the orchestrator's session model.
 
 ```
 TeamCreate({
@@ -200,7 +200,7 @@ Skill(loop-spec:map-codebase) args: --full # all domains
 Skill(loop-spec:map-codebase) args: --domain tech,arch
 ```
 
-Mappers always run on `claude-sonnet-4-6` (fixed; see `skills/shared/model-matrix.md`).
+Mappers always run on the `sonnet` alias (fixed; see `skills/shared/model-matrix.md`).
 
 ## Quarterly forced full re-map
 

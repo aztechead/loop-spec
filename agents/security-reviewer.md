@@ -5,7 +5,7 @@ tools:
   - Read
   - Glob
   - Grep
-model: claude-sonnet-4-6
+model: sonnet
 ---
 
 # security-reviewer

@@ -269,7 +269,7 @@ Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe c
 
 ### Step 3.5 - Model probe + Workflow availability probe
 
-Model selection is fixed (`{claude-opus-4-8, claude-sonnet-4-6}`); probe results are cached 24h in `.loop-spec/runtime.json` (`LOOP_SPEC_SKIP_HEALTHCHECK=1` skips). Run the model dispatch probe and the `Workflow` availability probe now, verbatim per `${CLAUDE_SKILL_DIR}/references/startup-probes.md` (probe mechanics, cache format, degraded-mode handling, `workflowsAvailable` persistence). The cycle proceeds regardless of probe outcomes; fan-out skills read `runtime.json` to pick their dispatch path (`skills/shared/dispatch-fanout.md`).
+Model selection is fixed (aliases `{opus, sonnet}`); probe results are cached 24h in `.loop-spec/runtime.json` (`LOOP_SPEC_SKIP_HEALTHCHECK=1` skips). Run the model dispatch probe and the `Workflow` availability probe now, verbatim per `${CLAUDE_SKILL_DIR}/references/startup-probes.md` (probe mechanics, cache format, degraded-mode handling, `workflowsAvailable` persistence). The cycle proceeds regardless of probe outcomes; fan-out skills read `runtime.json` to pick their dispatch path (`skills/shared/dispatch-fanout.md`).
 
 ### Step 4 - Detect project commands
 

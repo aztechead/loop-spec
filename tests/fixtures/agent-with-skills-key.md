@@ -2,7 +2,7 @@
 name: loop-spec-bad-agent
 description: Agent with forbidden frontmatter key
 tools: Read, Bash
-model: claude-sonnet-4-6
+model: sonnet
 skills:
   - some-skill
 ---

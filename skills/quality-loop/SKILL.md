@@ -148,14 +148,14 @@ Each persona reviews the current state of the files as if it is the first and on
 
 Dispatch `loop-spec:code-reviewer` and `loop-spec:security-reviewer` in parallel as one-shot Agent calls.
 
-**Model note:** `quality-loop` runs standalone with no `feature.json`, so there is no `feature.models` map to read. Use `claude-sonnet-4-6` hardcoded for both reviewer calls. Keep this in sync with `skills/shared/model-matrix.md`.
+**Model note:** `quality-loop` runs standalone with no `feature.json`, so there is no `feature.models` map to read. Use the `sonnet` alias hardcoded for both reviewer calls. Keep this in sync with `skills/shared/model-matrix.md`.
 
 ### Code-reviewer prompt
 
 ```
 Agent({
   subagent_type: "loop-spec:code-reviewer",
-  model: "claude-sonnet-4-6",
+  model: "sonnet",
   prompt: """
 You are performing a one-shot code quality review.
 
@@ -187,7 +187,7 @@ Return [] if no issues found. Return only the JSON array -- no surrounding text.
 ```
 Agent({
   subagent_type: "loop-spec:security-reviewer",
-  model: "claude-sonnet-4-6",
+  model: "sonnet",
   prompt: """
 You are performing a one-shot adversarial security review.
 

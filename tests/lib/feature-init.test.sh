@@ -19,9 +19,9 @@ check() {
 # --- models subcommand ---
 models="$(bash "$LIB" models)"
 check "models is valid JSON" "$(echo "$models" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"
-check "models includes iterateJudge=opus" "$(echo "$models" | jq -e '.iterateJudge == "claude-opus-4-8"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "models includes codeReviewer=opus" "$(echo "$models" | jq -e '.codeReviewer == "claude-opus-4-8"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "models includes implementer=sonnet" "$(echo "$models" | jq -e '.implementer == "claude-sonnet-4-6"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "models includes iterateJudge=opus" "$(echo "$models" | jq -e '.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "models includes codeReviewer=opus" "$(echo "$models" | jq -e '.codeReviewer == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "models includes implementer=sonnet" "$(echo "$models" | jq -e '.implementer == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- skeleton single ---
 single="$(bash "$LIB" skeleton --mode single --slug demo --now 2026-06-29T00:00:00Z \
@@ -30,7 +30,7 @@ single="$(bash "$LIB" skeleton --mode single --slug demo --now 2026-06-29T00:00:
   --worktree .claude/worktrees/demo --test "npm test" --lint "" --typecheck "tsc")"
 check "single is valid JSON" "$(echo "$single" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single schemaVersion==7" "$(echo "$single" | jq -e '.schemaVersion == 7' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "single carries iterateJudge" "$(echo "$single" | jq -e '.models.iterateJudge == "claude-opus-4-8"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single carries iterateJudge" "$(echo "$single" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single worktreePath set" "$(echo "$single" | jq -e '.worktreePath == ".claude/worktrees/demo"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single workspace null" "$(echo "$single" | jq -e '.workspace == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single tier field ABSENT (hard cutover)" "$(echo "$single" | jq -e 'has("tier") | not' >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -59,7 +59,7 @@ check "workspace worktreePath null" "$(echo "$ws" | jq -e '.worktreePath == null
 check "workspace root set" "$(echo "$ws" | jq -e '.workspace.root == "/ws"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace repo passed through" "$(echo "$ws" | jq -e '.workspace.repos[0].name == "fe"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace top commands empty" "$(echo "$ws" | jq -e '.commands.test == ""' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "workspace carries iterateJudge" "$(echo "$ws" | jq -e '.models.iterateJudge == "claude-opus-4-8"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "workspace carries iterateJudge" "$(echo "$ws" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- feature_title backfill (cycle Step 5.9) ---
 # Pre-2.4.0 feature.json lacks feature_title; the resume path backfills it from slug
@@ -78,8 +78,8 @@ check "backfill never overwrites existing title" "$(echo "$kept" | jq -e '.featu
 canonical="$(bash "$LIB" models)"
 stale='{"models":{"implementer":"old-model","extraRole":"keep"},"preset":"balanced","slug":"x"}'
 normalized="$(echo "$stale" | jq --argjson m "$canonical" '.models = ((.models // {}) * $m) | del(.preset)')"
-check "normalize restores iterateJudge" "$(echo "$normalized" | jq -e '.models.iterateJudge == "claude-opus-4-8"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "normalize forces canonical implementer" "$(echo "$normalized" | jq -e '.models.implementer == "claude-sonnet-4-6"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "normalize restores iterateJudge" "$(echo "$normalized" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "normalize forces canonical implementer" "$(echo "$normalized" | jq -e '.models.implementer == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "normalize preserves extra role" "$(echo "$normalized" | jq -e '.models.extraRole == "keep"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "normalize drops preset" "$(echo "$normalized" | jq -e 'has("preset") == false' >/dev/null 2>&1 && echo 1 || echo 0)"
 

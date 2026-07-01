@@ -8,7 +8,7 @@ tools:
   - Grep
   - Glob
   - Bash
-model: claude-sonnet-4-6
+model: sonnet
 ---
 
 # mapper-concerns

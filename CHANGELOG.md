@@ -2,6 +2,21 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.5.1]
+
+### Fixed
+- **Model targeting uses harness ALIASES, not pinned IDs.** The modern Agent tool's
+  `model` parameter is an alias enum (`sonnet | opus | haiku | ...`) and rejects literal
+  IDs like `claude-opus-4-8` with an InputValidationError — which would have failed every
+  teammate spawn on the implicit-team harness this release targets. All dispatch surfaces
+  now pass aliases: `lib/feature-init.sh` canonical models map (`opus`/`sonnet`),
+  `lib/model-tier.sh` (mechanical/standard -> `sonnet`, frontier -> `opus`), all 14
+  `agents/*.md` frontmatter `model:` values, standalone skills (map-codebase,
+  quality-loop, assess), the startup model probe, and `tests/validate-agents.sh`'s
+  allowed set. Step 5.9's canonical-map merge migrates legacy feature.json ID values to
+  aliases automatically on resume. The loop-runner's `--fallback-model` keeps a full
+  model ID — that flag feeds `claude -p --fallback-model`, a CLI surface that accepts IDs.
+
 ## [2.5.0]
 
 ### Changed (BREAKING — single-tier hard cutover, no migration)

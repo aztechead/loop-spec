@@ -24,8 +24,12 @@
 # Exit codes: 0 success; 1 bad invocation.
 set -euo pipefail
 
-OPUS="claude-opus-4-8"
-SONNET="claude-sonnet-4-6"
+# Harness model ALIASES, not pinned IDs. The modern Agent tool's `model` parameter
+# is an alias enum (sonnet | opus | haiku | ...); a literal ID like claude-opus-4-8
+# fails InputValidationError at dispatch. Aliases resolve to the harness's current
+# model for that family, which is the supported targeting mechanism.
+OPUS="opus"
+SONNET="sonnet"
 
 # Canonical models map -- the only definition of which model each role uses.
 # Mirrors skills/shared/model-matrix.md. When a role is added, add it HERE only.

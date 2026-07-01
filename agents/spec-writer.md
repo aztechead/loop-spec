@@ -7,7 +7,7 @@ tools:
   - Edit
   - Grep
   - Glob
-model: claude-opus-4-8
+model: opus
 ---
 
 # spec-writer

@@ -3,7 +3,7 @@ name: advocate
 description: Makes the case for a SPEC or PLAN in the critique gate. Read-only. Argues the design is sound.
 tools:
   - Read
-model: claude-opus-4-8
+model: opus
 ---
 
 # advocate
