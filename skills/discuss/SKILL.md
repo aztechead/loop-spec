@@ -36,6 +36,13 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after tier 
 - In `auto` / `review-only` styles (and under `LOOP_SPEC_NON_INTERACTIVE=1`): run this refinement **without `AskUserQuestion`** — synthesize the SPEC change from `iterate.feedback` + the codebase, note any assumption in SPEC.md, and proceed. The loop must not block on a human here; the next VERIFY→ITERATE pass re-judges against the immutable original goal.
 - In `step` / `interactive` styles only: you may run the normal clarifying loop to refine the scope gap with the user.
 
+**Unresolved SPEC dimensions (consume them — SPEC wrote them for THIS step):** read the `ambiguity_scores` YAML frontmatter of the SPEC draft (`docs/loop-spec/features/{slug}/SPEC.md`). If `gate_passed: false`, the `unresolved_dimensions[]` list names requirement dimensions the SPEC phase could NOT pin down (user override at round 6, or thin non-interactive input). These are open asks — left unconsumed they survive every downstream gate and ship unmet. For EACH listed dimension:
+
+- **`step` / `interactive`:** ask ONE targeted `AskUserQuestion` for that dimension first, before any other clarifying question.
+- **`auto` / `review-only` / non-interactive:** do not block; resolve it as an explicit assumption grounded in the code graph, and record it in the transcript as `ASSUMPTION ({dimension}): ...`.
+
+Either way, the spec-writer brief (Step 3) must require: every resolved dimension becomes a concrete requirement (or explicit assumption) WITH a testable acceptance criterion under `### Good Enough`, and the updated SPEC.md frontmatter drops it from `unresolved_dimensions` (empty list + `gate_passed: true` once all are resolved). An unresolved dimension may never be silently carried past DISCUSS.
+
 Run a one-question-at-a-time loop to understand the feature.
 
 **Ground in the code graph first (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Before and during the loop, use `graphify query "<area>"`, `graphify path "<A>" "<B>"`, `graphify explain "<entity>"`, and `graphify-out/GRAPH_REPORT.md` (god nodes + cross-module connections) to see what the feature will actually touch. Let the graph drive design/approach questions — e.g. surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode.)

@@ -452,7 +452,18 @@ SendMessage({
 
 Wait for `TeammateIdle` from `planner-1`. When the revision is received, return to Step 4 (critique debate) with the updated plan.
 
-Exit code 0 (all decisions covered, or no `<decisions>` block present): proceed to Step 6.
+Exit code 0 (all decisions covered, or no `<decisions>` block present): proceed to the criteria-coverage check below.
+
+**Criteria coverage (same gate, second artifact):** every SPEC `### Good Enough` success criterion must appear verbatim in PLAN.md — VERIFY runs only the criteria PLAN records, so a criterion dropped here is invisible to every downstream gate (VERIFY green, ITERATE floor green) and ships unmet:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/criteria-coverage.sh" "$spec_path" "$plan_path"
+criteria_exit=$?
+```
+
+Handle exit code 1 exactly like decision-coverage above (quality/balanced: BLOCK and re-dispatch planner-1 with the uncovered criteria list, increment the same retry counters; quick: ADVISORY warning). In the re-dispatch body, instruct planner-1 to add each missing criterion verbatim to the `## Spec coverage` section mapped to the task(s) that satisfy it.
+
+Exit code 0 on both checks: proceed to Step 6.
 
 ### Step 6 - Commit PLAN.md and update feature.json
 

@@ -24,7 +24,8 @@ check "models includes implementer=sonnet" "$(echo "$models" | jq -e '.implement
 
 # --- skeleton single (balanced) ---
 single="$(bash "$LIB" skeleton --mode single --slug demo --now 2026-06-29T00:00:00Z \
-  --tier balanced --style auto --branch feat/demo --base-sha abc --base-branch main \
+  --tier balanced --style auto --title "add CSV export with progress bar" \
+  --branch feat/demo --base-sha abc --base-branch main \
   --worktree .claude/worktrees/demo --test "npm test" --lint "" --typecheck "tsc")"
 check "single is valid JSON" "$(echo "$single" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single schemaVersion==7" "$(echo "$single" | jq -e '.schemaVersion == 7' >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -35,11 +36,13 @@ check "single balanced perGate==2" "$(echo "$single" | jq -e '.retryBudget.perGa
 check "single iterate.maxIterations==2" "$(echo "$single" | jq -e '.iterate.maxIterations == 2' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single commands.test set" "$(echo "$single" | jq -e '.commands.test == "npm test"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single currentPhase==spec" "$(echo "$single" | jq -e '.currentPhase == "spec"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single feature_title persisted verbatim" "$(echo "$single" | jq -e '.feature_title == "add CSV export with progress bar"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- tier budget variants ---
 quick="$(bash "$LIB" skeleton --mode single --slug q --now N --tier quick --style auto --branch feat/q --base-sha a --base-branch main --worktree wt)"
 qual="$(bash "$LIB" skeleton --mode single --slug r --now N --tier quality --style auto --branch feat/r --base-sha a --base-branch main --worktree wt)"
 check "quick global budget==10" "$(echo "$quick" | jq -e '.retryBudget.global == 10' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "missing --title falls back to slug" "$(echo "$quick" | jq -e '.feature_title == "q"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "quality global budget==30" "$(echo "$qual" | jq -e '.retryBudget.global == 30' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "quality plan perPhase==4" "$(echo "$qual" | jq -e '.retryBudget.perPhase.plan == 4' >/dev/null 2>&1 && echo 1 || echo 0)"
 
@@ -53,6 +56,16 @@ check "workspace root set" "$(echo "$ws" | jq -e '.workspace.root == "/ws"' >/de
 check "workspace repo passed through" "$(echo "$ws" | jq -e '.workspace.repos[0].name == "fe"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace top commands empty" "$(echo "$ws" | jq -e '.commands.test == ""' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace carries iterateJudge" "$(echo "$ws" | jq -e '.models.iterateJudge == "claude-opus-4-8"' >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# --- feature_title backfill (cycle Step 5.9) ---
+# Pre-2.4.0 feature.json lacks feature_title; the resume path backfills it from slug
+# and never overwrites an existing value.
+old='{"slug":"legacy-slug"}'
+backfilled="$(echo "$old" | jq 'if (.feature_title // "") == "" then .feature_title = .slug else . end')"
+check "backfill sets feature_title from slug" "$(echo "$backfilled" | jq -e '.feature_title == "legacy-slug"' >/dev/null 2>&1 && echo 1 || echo 0)"
+keep='{"slug":"s","feature_title":"the real goal"}'
+kept="$(echo "$keep" | jq 'if (.feature_title // "") == "" then .feature_title = .slug else . end')"
+check "backfill never overwrites existing title" "$(echo "$kept" | jq -e '.feature_title == "the real goal"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- Step 5.9 normalize regression (finding #5) ---
 # A stale feature.json whose models map LACKS iterateJudge and carries an extra role +

@@ -233,7 +233,7 @@ ambiguity_scores:
 ---
 ```
 
-If any dimension is below its minimum when SPEC.md is written (user override at round 6, or non-interactive synthesis with thin input), set `gate_passed: false` and list the dimension names in `unresolved_dimensions`. These signal to the discuss phase that certain requirements must be treated as assumptions by the planner.
+If any dimension is below its minimum when SPEC.md is written (user override at round 6, or non-interactive synthesis with thin input), set `gate_passed: false` and list the dimension names in `unresolved_dimensions`. DISCUSS Step 1 consumes this list: each entry is resolved with the user (interactive styles) or as an explicit graph-grounded assumption (autonomous styles), converted into a testable `### Good Enough` criterion, and removed from the list — see `skills/discuss/SKILL.md`.
 
 Every requirement entry in SPEC.md MUST have:
 - One specific, testable statement

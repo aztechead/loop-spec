@@ -9,7 +9,7 @@
 #       -> prints the canonical models map (JSON object). The ONE place model roles live.
 #
 #   bash lib/feature-init.sh skeleton --mode single \
-#       --slug S --now ISO --tier T --style ST \
+#       --slug S --now ISO --tier T --style ST --title "ORIGINAL GOAL" \
 #       --branch feat/S --base-sha SHA --base-branch BB --worktree PATH \
 #       --test CMD --lint CMD --typecheck CMD
 #       -> prints a complete single-repo schema-7 feature.json.
@@ -68,16 +68,20 @@ tier_blocks() {
 }
 
 # Common skeleton (everything except the mode-specific branch/worktree/workspace block
-# and the commands field). $1=slug $2=now $3=tier $4=style.
+# and the commands field). $1=slug $2=now $3=tier $4=style $5=title.
+# feature_title is the IMMUTABLE original goal in the user's words -- the oracle the
+# ITERATE judge scores against. It must survive every phase and resume untouched.
 common_skeleton() {
-  local slug="$1" now="$2" tier="$3" style="$4"
+  local slug="$1" now="$2" tier="$3" style="$4" title="$5"
   jq -n \
     --arg slug "$slug" --arg now "$now" --arg tier "$tier" --arg style "$style" \
+    --arg title "$title" \
     --argjson models "$(canonical_models)" \
     --argjson tierblocks "$(tier_blocks "$tier")" \
     '{
       schemaVersion: 7,
       slug: $slug,
+      feature_title: (if $title == "" then $slug else $title end),
       createdAt: $now, updatedAt: $now,
       tier: $tier, execStyle: $style,
       models: $models,
@@ -109,7 +113,7 @@ case "${1:-}" in
     ;;
   skeleton)
     shift
-    mode="" slug="" now="" tier="" style=""
+    mode="" slug="" now="" tier="" style="" title=""
     branch="" base_sha="" base_branch="" worktree=""
     test_cmd="" lint_cmd="" typecheck_cmd=""
     ws_root="" repos_json="[]"
@@ -117,6 +121,7 @@ case "${1:-}" in
       case "$1" in
         --mode)        mode="$2"; shift 2;;
         --slug)        slug="$2"; shift 2;;
+        --title)       title="$2"; shift 2;;
         --now)         now="$2"; shift 2;;
         --tier)        tier="$2"; shift 2;;
         --style)       style="$2"; shift 2;;
@@ -135,7 +140,7 @@ case "${1:-}" in
     [[ -z "$slug" || -z "$now" || -z "$tier" || -z "$style" ]] && {
       echo "feature-init: --slug --now --tier --style are required" >&2; exit 1; }
 
-    base="$(common_skeleton "$slug" "$now" "$tier" "$style")"
+    base="$(common_skeleton "$slug" "$now" "$tier" "$style" "$title")"
 
     case "$mode" in
       single)

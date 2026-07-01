@@ -44,6 +44,7 @@ run_suite "hooks/team/pre-task-blockedby-enforce" "bash hooks/team/pre-task-bloc
 run_suite "hooks/team/stop-deflection-guard" "bash hooks/team/stop-deflection-guard.test.sh"
 run_suite "lib/validate-task-metadata" "bash tests/lib/validate-task-metadata.test.sh"
 run_suite "lib/decision-coverage"     "bash tests/lib/decision-coverage.test.sh"
+run_suite "lib/criteria-coverage"     "bash tests/lib/criteria-coverage.test.sh"
 run_suite "lib/plan-adherence"        "bash tests/lib/plan-adherence.test.sh"
 run_suite "lib/detect-test-cmd"       "bash tests/lib/detect-test-cmd.test.sh"
 run_suite "lib/workspace"          "bash tests/lib/workspace.test.sh"

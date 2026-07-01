@@ -32,7 +32,12 @@ gused=$(jq -r '.retryBudget.globalUsed' "$fdir/feature.json")
 gmax=$(jq -r '.retryBudget.global' "$fdir/feature.json")
 ```
 
-If `used >= maxit` OR `gused >= gmax`: **stop iterating and ship.** Set `currentPhase = "completed"`, append a note to `warnings[]` that the iteration budget was spent with the last verdict's gaps unresolved, write the final ITERATION.md, and go to Phase exit. Do NOT re-enter an upstream phase — this is the article's `STOP WHEN: ... OR N iterations reached`.
+If `used >= maxit` OR `gused >= gmax`: **stop iterating and ship — but ship LOUD, never silent.** Do NOT re-enter an upstream phase — this is the article's `STOP WHEN: ... OR N iterations reached`. Before setting `currentPhase = "completed"`:
+
+1. **Harvest every unresolved gap from `iterate.lastVerdict`** into `warnings[]` (one entry per below-8 criterion and per gap in `gap` / `remaining_gaps[]`), each prefixed `iterate-budget-spent:`. A budget-exhausted ship with an empty warning trail is indistinguishable from a clean converge — that silence is the failure mode this step exists to prevent.
+2. **If a rewind fix landed after the last judge pass** (i.e. `used > 0` and the phase pointer arrived here from VERIFY, not from a fresh feature), append one more warning: `iterate-budget-spent: final remediation was never re-judged against the original goal (maxIterations reached before a confirming pass)`.
+3. Write the final ITERATION.md section stating the budget was spent, listing the harvested warnings verbatim.
+4. Set `currentPhase = "completed"` and go to Phase exit. The cycle's On-completion summary prints `warnings[]` — the user must see the accepted gaps without opening feature.json.
 
 ### Step 1 - Dispatch the judge (maker ≠ checker)
 
@@ -47,7 +52,7 @@ Agent({
 })
 ```
 
-Parse the verdict JSON from its completion message (schema in `agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[], weakest, gap{type,description,fix_first}, summary}`.
+Parse the verdict JSON from its completion message (schema in `agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[], weakest, gap{type,description,fix_first}, remaining_gaps[], summary}`. `gap` is the single highest-leverage miss that decides the routing; `remaining_gaps[]` (possibly empty) lists the other known misses so one pass can remediate several and a budget-exhausted ship can report ALL of them.
 
 **Defensive parse (the verdict is the loop's oracle — extract it deterministically, do not eyeball it):** the judge returns the verdict inside a fenced ```json block. Capture its completion message to `$fdir/.iterate-judge.out`, then extract and validate before acting:
 
@@ -94,7 +99,7 @@ git commit -m "iterate: NO_JIRA {slug} iteration $((used+1))"
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedback "<gap json>"
 ```
 
-- **`execute`** — implementation gap. Convert `gap` into a remediation task (`subject = "Iterate fix: {gap.fix_first}"`, `verifyCommand` from `feature.commands.test` or the relevant acceptance check) and append to `pendingRemediationTasks[]` (EXECUTE Step 2a consumes it alongside PLAN.md tasks). Set `currentPhase = "execute"`.
+- **`execute`** — implementation gap. Convert `gap` into a remediation task (`subject = "Iterate fix: {gap.fix_first}"`, `verifyCommand` from `feature.commands.test` or the relevant acceptance check) and append to `pendingRemediationTasks[]` (EXECUTE Step 2a consumes it alongside PLAN.md tasks). **Also convert every `remaining_gaps[]` entry with `type == "execute"` into its own remediation task** — the iteration budget counts judge passes, not fixes, so burning one pass per known miss when several are already identified wastes the budget the loop needs to converge. Set `currentPhase = "execute"`.
 - **`plan`** — decomposition gap. Set `currentPhase = "plan"`. PLAN reads `iterate.feedback` and re-plans the affected slice (it does not re-author the whole plan from scratch; it addresses the gap). 
 - **`spec`** — goal unmet because the SPEC captured the wrong thing. This is the expensive rewind, but it is **autonomous in the autonomous styles** — it does NOT block on a human. The loop stays hands-off because the rewind cannot game its own oracle: the `iterate-judge` always scores against the **immutable original goal** (`feature.json.feature_title`), never the rewritten SPEC, so refining the spec can only move the work toward the original goal, not redefine "done". The iteration budget (Step 0) hard-caps the number of rewinds.
 
@@ -131,4 +136,5 @@ ITERATE does not append itself to `completedPhases` on a rewind (it will run aga
 - **The deterministic gate is the floor; the goal re-judge is the ceiling.** ITERATE never ships on the judge's word alone — `deterministic_gate_passed` (from VERIFICATION.md) must hold too. And it never ships on a green checklist alone — the judge must agree the *goal* is met. This is the dual oracle.
 - **Bounded, always.** `maxIterations` is tier-scaled (quick 1 / balanced 2 / quality 3) and the cycle-wide `global` budget is also respected. The loop ships or escalates; it never spins.
 - **Don't stop to ask mid-loop**, except the one SPEC-rewind approval gate (scope changes are the user's call). Everywhere else, the judge assumes, notes it, and the loop continues — per the article's self-checking-loop rule.
-- **Fix the weakest first.** Each rewind carries `iterate.feedback` so the re-entered phase targets the single highest-leverage gap rather than re-doing everything.
+- **Fix the weakest first — but carry the whole list.** Each rewind carries `iterate.feedback` so the re-entered phase targets the single highest-leverage gap first; `remaining_gaps[]` rides along so already-identified execute-level misses are remediated in the same pass instead of costing one judge iteration each.
+- **Never ship silent.** Both terminal paths (converged, budget-spent) end in the cycle's On-completion summary; the budget-spent path must arrive there with every accepted gap in `warnings[]` so the summary shows them.

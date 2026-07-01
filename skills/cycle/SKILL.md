@@ -236,6 +236,22 @@ In `implicit` and `none` mode the contract is a no-op — those phases never cal
 so there is nothing to refute. This keeps a version/tool-surface disagreement self-healing on
 the first op instead of a hard stop mid-phase.
 
+**Deferred-tool rescue (applies in `implicit` AND `explicit` mode, BEFORE any refutation):**
+modern harnesses may expose team primitives (`SendMessage`, `TaskCreate`, `TaskUpdate`,
+`TaskList`, `TaskGet`) as **deferred tools** — the tool exists but its schema is not loaded,
+and a direct call fails with `InputValidationError` (or a "schema not loaded" / "tool not
+loaded" error) rather than `No such tool available`. That failure is NOT a capability
+refutation. When any team primitive fails this way:
+
+1. Call `ToolSearch("select:<ToolName>")` (e.g. `ToolSearch("select:SendMessage,TaskCreate,TaskUpdate,TaskList,TaskGet")`)
+   to load the schema, then retry the op ONCE.
+2. Only if `ToolSearch` reports no matching deferred tool (or the retry still throws
+   `No such tool available`) does the failure count as a refutation for the guarded
+   contract above.
+
+Misreading a deferred tool as a missing tool is exactly the failure that silently downgrades
+a teams-capable harness to the no-teams fallback — rescue first, refute second.
+
 `teams_mode` and `teams_available` are persisted into `.loop-spec/runtime.json` together with
 the workflow probe below; phase skills read them to pick their dispatch path.
 
@@ -481,7 +497,7 @@ mkdir -p ".loop-spec/features/${slug}" .loop-spec/codebase "docs/loop-spec/featu
 # inherit the orchestrator's session model.
 feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode single \
   --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --tier "$tier" --style "$execStyle" \
+  --tier "$tier" --style "$execStyle" --title "$title" \
   --branch "feat/${slug}" --base-sha "$base_sha" --base-branch "$base_branch" \
   --worktree ".claude/worktrees/${slug}" \
   --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
@@ -571,7 +587,7 @@ repos_json_array="$(echo "$workspace_repos_json" | jq -c \
 # identical to single-repo mode -- never re-hand-build them here.
 workspace_feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode workspace \
   --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --tier "$tier" --style "$execStyle" \
+  --tier "$tier" --style "$execStyle" --title "$title" \
   --ws-root "$workspace_root" --repos "$repos_json_array")
 
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" \
@@ -823,6 +839,16 @@ if [[ "$(jq -c '.models // {}' "$fjson")" != "$merged" \
   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" "$feat_dir" "$new_json"
   echo "Normalized feature.models to the fixed model map."
 fi
+
+# Backfill feature_title (pre-2.4.0 features lack it). It is the IMMUTABLE original
+# goal that the ITERATE judge scores against; without it the judge silently falls back
+# to SPEC.md -- the exact drift the dual oracle exists to prevent. The slug is the only
+# available (lossy) stand-in on old features; never overwrite an existing value.
+if [[ "$(jq -r '.feature_title // ""' "$fjson")" == "" ]]; then
+  new_json="$(jq '.feature_title = .slug' "$fjson")"
+  bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" "$feat_dir" "$new_json"
+  echo "Backfilled feature_title from slug (pre-2.4.0 feature; lossy stand-in for the original goal)."
+fi
 ```
 
 ### Step 6 - Route to phase
@@ -879,6 +905,15 @@ Phase chain finishes when verify completes successfully. Before marking complete
    bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$completed_json"
    ```
 
-Then print final summary (PR URL, commits, time, cost).
+Then print final summary (PR URL, commits, time, cost) — **and `warnings[]`, always checked:**
+
+```bash
+jq -r '.warnings[]?' ".loop-spec/features/${slug}/feature.json"
+```
+
+If non-empty, print them under a `## Shipped with warnings` heading, one bullet each, before
+the PR URL. `iterate-budget-spent:` entries are accepted goal gaps — a completion that hides
+them is indistinguishable from a clean converge, which is precisely how an unmet requirement
+ships unnoticed. If empty, print nothing extra.
 
 **Note:** `TeamDelete` is called explicitly here at the orchestration layer. It is NOT implemented as a bash `trap` because `TeamDelete` is a harness MCP tool callable only from the lead's tool-using context, not from a shell signal handler. See the resume strategy orphan-detection path for killed-session cleanup.

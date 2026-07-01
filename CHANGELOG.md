@@ -2,6 +2,48 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.4.0]
+
+### Fixed
+- **Released the modern-harness agent-teams support to main.** The v2.3.0 work (implicit-team
+  mode for Claude Code >= 2.1.178) was merged but never released; the published 2.2.0 still
+  attempted `TeamCreate` on harnesses that removed it, tripping the guarded-team-op refutation
+  and permanently downgrading every phase to the no-teams fallback. This is the root cause of
+  "TeamCreate/TeamDelete aren't exposed, only SendMessage, so it doesn't use agent teams".
+- **`feature_title` is now persisted in feature.json** (`lib/feature-init.sh --title`, cycle
+  Step 5 both modes, Step 5.9 backfill-from-slug for pre-2.4.0 features). ITERATE's judge
+  scores against `feature.json.feature_title` as the immutable original goal; the schema-7
+  skeleton never wrote it, so the judge silently fell back to SPEC.md — the exact
+  passing-checklist-on-a-wrong-spec drift the dual oracle exists to catch.
+- **ITERATE budget-exhausted ship is loud, never silent** (`skills/iterate/SKILL.md` Step 0):
+  every unresolved gap from the last verdict is harvested into `warnings[]` (prefixed
+  `iterate-budget-spent:`), an un-re-judged final remediation is called out explicitly, and
+  the cycle On-completion summary now prints `warnings[]` under `## Shipped with warnings`.
+  Previously a budget-spent ship looked identical to a clean converge, which is how a whole
+  unmet requirement could pass ITERATE after a single remediation pass (quick tier
+  `maxIterations=1` ships on re-entry without re-judging the fix).
+- **`unresolved_dimensions` now has a consumer**: DISCUSS Step 1 reads the SPEC
+  `ambiguity_scores` frontmatter and resolves each unresolved dimension (targeted question in
+  interactive styles; explicit graph-grounded assumption in autonomous styles), converting it
+  into a testable Good Enough criterion. Previously the list was written and read by nobody.
+
+### Added
+- **`lib/criteria-coverage.sh`** + plan Step 5.5 criteria-coverage gate + planner
+  `## Spec coverage` section: every SPEC `### Good Enough` criterion must appear verbatim in
+  PLAN.md, mapped to the task(s) satisfying it (quality/balanced BLOCK, quick advisory).
+  VERIFY runs only the criteria PLAN records, so a criterion dropped in the SPEC->PLAN handoff
+  was invisible to every downstream gate. Test: `tests/lib/criteria-coverage.test.sh`.
+- **`iterate-judge` verdict gains `remaining_gaps[]`**: the judge still routes on the single
+  highest-leverage gap, but now lists every other known miss; ITERATE converts execute-level
+  remaining gaps into remediation tasks in the same pass (the budget counts judge passes, not
+  fixes) and reports all of them on a budget-exhausted ship.
+- **Deferred-tool rescue in the guarded-team-op contract** (cycle Step 2,
+  `skills/shared/implicit-team-mode.md`): modern harnesses may expose `SendMessage`/`Task*`
+  as deferred tools whose direct call fails with `InputValidationError` until a
+  `ToolSearch("select:...")` loads the schema. That failure is now rescued (load + retry once)
+  instead of being misread as a capability refutation that silently downgrades a
+  teams-capable harness to the no-teams fallback.
+
 ## [2.3.0]
 
 ### Added

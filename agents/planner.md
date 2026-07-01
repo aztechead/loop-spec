@@ -154,6 +154,7 @@ After you return, automated gates check the PLAN.md you produced. Self-check aga
 
 - **Feasibility gate**: every task's verify command must pass `bash -n -c "$cmd"`; the `blockedBy` graph must be acyclic; every task must have at least one acceptance criterion in the REQUIRED CONCRETE FORM above.
 - **Decision-coverage gate**: for each entry in the SPEC `<decisions>` block, the decision text (the part after the `- `/`Decision: ` prefix) must appear verbatim somewhere in PLAN.md. Put them in the `## User decisions (already made)` section below (or a `## Decisions`/`## Assumptions` section) so the fixed-string grep matches.
+- **Criteria-coverage gate**: every SPEC `### Good Enough` success criterion must appear verbatim somewhere in PLAN.md. Carry a `## Spec coverage` section mapping each criterion (copied verbatim — the gate is a fixed-string grep) to the task ID(s) that satisfy it: `- <criterion verbatim> -> task-NNN`. A criterion you cannot map to a task means the plan is missing a task, not that the mapping is optional — VERIFY only runs what PLAN records, so an unmapped criterion ships unverified.
 
 ### The "User decisions (already made)" record
 

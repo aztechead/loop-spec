@@ -25,6 +25,15 @@ the explicit-team path.
 | `TeammateIdle` wake / idle protocol | **Unchanged.** Idle named teammates wake on `SendMessage` exactly as documented. |
 | `TeamDelete({name})` | **No call.** There is no team object to delete. At phase boundary just stop messaging the phase's teammates and clear `feature.json.currentTeamName`; the next phase spawns its own named teammates. |
 
+## Deferred tool schemas
+
+Modern harnesses may list `SendMessage` / `TaskCreate` / `TaskUpdate` / `TaskList` /
+`TaskGet` as **deferred tools**: the tool exists, but calling it before its schema is
+loaded fails with `InputValidationError` (or a "schema not loaded" error) — NOT
+`No such tool available`. On that failure, call `ToolSearch("select:<ToolName>")` to
+load the schema and retry the op once. Treat it as a missing capability only when
+`ToolSearch` finds no match. (Full contract: cycle Step 2 "Deferred-tool rescue".)
+
 ## Phase notes
 
 - **DISCUSS / PLAN / VERIFY:** spawn each roster member (e.g. `spec-writer-1`,
