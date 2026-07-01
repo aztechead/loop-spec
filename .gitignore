@@ -3,6 +3,7 @@
 # per-machine churn and stays ignored.
 /.loop-spec/features/*/*
 !/.loop-spec/features/*/feature.json
+!/.loop-spec/features/*/PROGRESS.md
 /.loop-spec/worktrees/
 .worktrees/
 .claude/worktrees/

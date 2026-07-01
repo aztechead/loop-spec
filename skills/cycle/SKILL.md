@@ -435,7 +435,12 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    - next: <1 line: what the next phase must do>
    - gotchas: <0-2 lines: anything a fresh session must know (build quirks, env, partial work); omit if none>
    ```
-   Commit it together with feature.json below. feature.json says WHERE the loop is; PROGRESS.md says WHY — it is what a fresh or compacted session reads to re-orient (Step 1 re-grounding), and the handoff document for fresh-context rewinds.
+   Commit it together with feature.json below — and ensure the gitignore exception exists first (the feature dir is ignored except named files; without this line the add silently no-ops):
+   ```bash
+   grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null \
+     || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
+   ```
+   feature.json says WHERE the loop is; PROGRESS.md says WHY — it is what a fresh or compacted session reads to re-orient (Step 1 re-grounding), and the handoff document for fresh-context rewinds.
 
    **Commit the resume contract (single point).** feature.json is committed (not gitignored)
    so resume survives a clone or hand-off to another machine. The cycle is the one place
