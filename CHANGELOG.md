@@ -27,6 +27,36 @@ All notable changes documented here. Format follows Keep a Changelog.
   interactive styles; explicit graph-grounded assumption in autonomous styles), converting it
   into a testable Good Enough criterion. Previously the list was written and read by nobody.
 
+### Added (self-regulation — Ralph-loop + long-running-agent patterns)
+- **Progress journal (F1)**: cycle appends a what/next/gotchas block to
+  `.loop-spec/features/{slug}/PROGRESS.md` at every phase transition and commits it with
+  feature.json — the narrative complement to machine state, read on resume and used as the
+  handoff document for fresh-context rewinds.
+- **Resume re-grounding (F2)**: mandatory protocol before re-entering any phase on resume —
+  read PROGRESS.md, `git log -10`, run the test command once; a broken tree redirects to a
+  remediation task instead of building a new phase on top of it.
+- **Test-tamper scan (F3)**: `lib/test-tamper-scan.sh` + VERIFY Step 1.5 fail-fast — deleted
+  test files, added skip/focus annotations (`.skip`, `.only`, `xit`, `@pytest.mark.skip`,
+  `t.Skip`, ...), and `|| true` on added lines of test files are Critical tampering signals.
+  Only ADDED lines are scanned (pre-existing skips never fire). 9-case suite.
+- **Deferred-work backlog (F4)**: `lib/backlog.sh` (`add`/`next`/`done`/`count`, idempotent) +
+  two automatic producers — VERIFY's tier-deferred findings and ITERATE's budget-spent gaps —
+  and a completion-summary count line. Deferral now means "queued", not "gone". 13-case suite.
+- **Backlog-drain mode (F5)**: `/loop-spec:cycle backlog` runs one full cycle per top backlog
+  entry, bounded by `LOOP_SPEC_MAX_FEATURES` (default 1); never chains past a failure. The
+  bounded Ralph loop: `while :; do claude -p "/loop-spec:cycle backlog"; done`.
+- **Phase watchdog (F6)**: `currentPhaseStartedAt` stamped at every phase route (new schema
+  field + skeleton default); elapsed time checked against tier-scaled ceilings (quick 30m /
+  balanced 60m / quality 120m, `LOOP_SPEC_PHASE_TIMEOUT_MINS` override) on phase exit and
+  resume. Warns and surfaces; never kills work.
+- **Self-learning writers (F7)**: the previously writer-less RULES.md loop gains two automatic
+  producers — a VERIFY criterion that fails twice becomes a deterministic rule
+  (`rules.sh add --check`), and a budget-spent iterate ship records its gap class.
+- **Fresh-context rewind (F8, opt-in `LOOP_SPEC_ITERATE_FRESH=1`)**: ITERATE rewinds commit
+  state (feature.json + PROGRESS.md + iterate.feedback) and return to the user for a clean
+  relaunch instead of continuing in an ever-longer session; an outer loop or loop-runner
+  drives the re-entry.
+
 ### Fixed (post-audit hardening)
 - **Tool whitelist contradictions**: `ToolSearch` (required by the deferred-tool rescue) and
   `Workflow` (dispatched by plan/verify/execute) were absent from the cycle tool whitelist and

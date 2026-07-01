@@ -104,7 +104,16 @@ None of the workflow skills set `disable-model-invocation`: the cycle orchestrat
 
 The cycle skill runs a quiet startup health-check — agent-teams probe, model probe (two 1-token dispatches, cached 24h in `.loop-spec/runtime.json`; `LOOP_SPEC_SKIP_HEALTHCHECK=1` skips), and Workflow availability. **You just give it a feature description** — there is no tier/style menu. `/loop-spec:cycle <feature description>` launches immediately: the cycle **infers the tier** from your prompt (and from any grill answers), defaults style to `auto`, and proceeds. A bare `/loop-spec:cycle` asks one free-text question for what you want to build — nothing else.
 
-**From a spec file:** `/loop-spec:cycle path/to/spec.md` starts the loop from a pre-authored spec. The SPEC phase skips its interview (spec-file ingest mode): it grounds the draft against the code graph, scores the ambiguity gate on the draft itself, normalizes it into the SPEC.md format (requirements preserved verbatim), and proceeds to DISCUSS. Tier is inferred from the spec's content unless overridden inline.
+**From a spec file:** `/loop-spec:cycle path/to/spec.md` starts the loop from a pre-authored spec. The SPEC phase skips its interview (spec-file ingest mode): it grounds the draft against the code graph, scores the ambiguity gate on the draft itself, normalizes it into the SPEC.md format (requirements preserved verbatim), and proceeds to DISCUSS. Tier is inferred from the spec's content unless overridden inline (headless: `LOOP_SPEC_SPEC_FILE=path`).
+
+**Self-regulating operation (Ralph-loop patterns, bounded):**
+
+- **Progress journal** — every phase transition appends what/next/gotchas to `.loop-spec/features/{slug}/PROGRESS.md`; resume reads it (with `git log` + one test run) before re-entering any phase, so a fresh or compacted session re-orients from durable state and never builds on a silently broken tree.
+- **Backlog** — VERIFY's tier-deferred findings and ITERATE's budget-spent gaps land in `.loop-spec/BACKLOG.md` instead of evaporating. `/loop-spec:cycle backlog` drains it one feature per loop, bounded by `LOOP_SPEC_MAX_FEATURES` (default 1). Overnight form: `while :; do claude -p "/loop-spec:cycle backlog"; done` — the Ralph loop with explicit stop conditions.
+- **Test-tamper scan** — VERIFY fails fast if the diff deletes tests, adds skip/focus annotations, or swallows a test command's exit code (`lib/test-tamper-scan.sh`); the acceptance oracle cannot be gamed silently.
+- **Phase watchdog** — each phase is stamped (`currentPhaseStartedAt`) and checked against a tier-scaled wall-clock ceiling (quick 30m / balanced 60m / quality 120m; `LOOP_SPEC_PHASE_TIMEOUT_MINS` overrides); a wedged phase becomes visible instead of eternal.
+- **Self-learning** — repeated VERIFY gate failures and budget-spent iterate ships write deterministic rules into `.loop-spec/RULES.md` (injected at session start), so the loop stops repeating its own mistakes.
+- **Fresh-context rewinds** (opt-in `LOOP_SPEC_ITERATE_FRESH=1`) — ITERATE rewinds hand off through committed state and relaunch in a clean session rather than accumulating context.
 
 **Tier is inferred, not asked.** Tier controls gate behavior, retries, and fan-out width (never models). The cycle reads the request and picks:
 
@@ -476,6 +485,8 @@ loop-spec/
 │   ├── resolve-bin.sh               # resolve real executables past version-manager shell shims (nvm/pyenv/...)
 │   ├── acceptance-lint.sh           # flags bare-substring grep acceptance criteria (plan feasibility gate)
 │   ├── criteria-coverage.sh         # SPEC Good-Enough criteria must appear in PLAN (plan Step 5.5 gate)
+│   ├── test-tamper-scan.sh          # anti-reward-hacking: deleted tests / added skips / || true (VERIFY Step 1.5)
+│   ├── backlog.sh                   # deferred-work backlog (.loop-spec/BACKLOG.md) + drain-mode support
 │   ├── teams-capability.sh          # 3-way teamsMode probe: none / explicit / implicit (CC >= 2.1.178)
 │   ├── team-ops.sh                  # team_name_for_phase + agent-teams env assertion
 │   ├── workflows/                   # dynamic-workflow scripts (execute-dag, map-codebase, ...)

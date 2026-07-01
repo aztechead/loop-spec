@@ -131,3 +131,17 @@ User options:
 - Reset retry counters: edit `feature.json` directly (`globalUsed = 0`, `perPhaseUsed.{phase} = 0`); resume
 - Rollback: the `loop-spec:rollback` skill operates inside the worktree (cwd is already the worktree when the session is active inside it). On pause the session has exited the worktree, so re-enter via `EnterWorktree({path: feature.worktreePath})` first, then invoke rollback.
 - Abort: delete `.loop-spec/features/{slug}/`; new branch state up to user
+
+## Step 1 orphan detection (moved verbatim from cycle Step 1)
+
+- **Orphan detection:** if `currentTeamName != null`, probe team liveness by calling `TaskList({team: currentTeamName})`. (When agent teams are unavailable this probe is meaningless: treat the team as gone, clear `currentTeamName`, and add the feature to the resumable list — see `skills/shared/no-teams-fallback.md`.) Otherwise:
+  - If `TaskList` returns without error: the team is still live (orphaned). Print:
+    ```
+    Previous team {currentTeamName} for feature {slug} was orphaned and is still live in the harness.
+    Run TeamDelete for team {currentTeamName} (e.g., via the harness CLI or by re-invoking cycle in cleanup mode), then restart cycle to resume feature {slug}.
+    ```
+    Add to a "needs cleanup" sub-list. Do NOT add to resumable list.
+  - If `TaskList` errors (team not found): the prior team is gone. Print `"feature {slug} had stale team reference {currentTeamName}; cleared and ready to resume"`. Clear `currentTeamName` in `feature.json` via `lib/feature-write.sh`. Add to resumable list.
+- If `currentTeamName == null` AND `(now - updatedAt) < stalenessHours * 3600`: add to resumable list.
+
+If "needs cleanup" sub-list is non-empty: display it to the user after presenting resume options, so they know which teams require manual `TeamDelete`.

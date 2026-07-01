@@ -77,7 +77,30 @@ git diff --diff-filter=ACMR {baseSha}..HEAD --name-only \
 
 **Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 1 - Unresolved marker scan").
 
-### Step 2 - TeamCreate verify team
+If any matches (in either mode): VERIFY fails immediately. List each `file:line: match` to the user.
+Do not spawn verifier or code-reviewer until all markers are resolved.
+
+Notes:
+- `--diff-filter=ACMR` excludes deleted files (avoids "no such file" errors on xargs)
+- `.md` excluded from filter: prose descriptions of markers are not unresolved code
+- `-w` (word boundary) avoids false positives on identifiers like `STBD`, `XXXL`
+
+Rationale: unresolved markers indicate incomplete implementation; running acceptance
+gates against incomplete code wastes agent budget.
+
+### Step 1.5 - Test-tamper scan (anti-reward-hacking, fail-fast)
+
+The implementer may have edited the very suite the acceptance gate is about to trust. Before spawning teammates, scan the diff for oracle tampering — deleted test files, newly-added skip/focus annotations (`.skip`, `.only`, `xit`, `@pytest.mark.skip`, `t.Skip`, ...), and `|| true` swallowing a test command's exit code:
+
+**Single-repo mode:**
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" "{baseSha}" .
+```
+
+**Workspace mode:** run once per participating repo with that repo's `baseSha` and absolute path.
+
+Exit 1 = signals found: VERIFY fails immediately. Print the listed signals verbatim. This is NOT auto-remediable by re-running EXECUTE with a generic brief — the remediation task must state the specific tampering (`subject = "Fix: restore tampered test — {signal}"`) so the implementer un-tampers rather than re-tampers. A legitimate skip (e.g. a platform-gated test) is the HUMAN's call: in `step`/`interactive` styles ask; in autonomous styles treat as tampering and remediate — a real platform gate will come back with justification in the task notes and can be accepted on the next pass by recording it in `warnings[]`.
 
 Create the verify team with verifier and code-reviewer as parallel teammates:
 
@@ -260,7 +283,20 @@ Use the `CODE-REVIEWER DONE` message already received from Step 6.
 
 **If PASS or PASS_WITH_MINOR:**
 - Append code-review section to VERIFICATION.md.
+- **Backlog the deferred findings (they must not evaporate):** every finding the tier rule deferred rather than blocked (quick: each Important + Minor; quality/balanced: each Minor in a PASS_WITH_MINOR) is appended to the project backlog:
+  ```bash
+  bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "{slug}" verify-deferred "{finding: file:line — claim}"
+  ```
+  Deferral means "not this feature", not "never" — the backlog is where `/loop-spec:cycle backlog` picks them up.
 - Proceed to Step 8.
+
+**Self-learning writer (repeat failures become rules):** whenever this step appends a `result: fail` entry to `gateHistory[]`, check whether the SAME criterion or finding already failed in a prior entry (same `gate`, matching criterion/finding text). On the second failure, record the lesson as a deterministic rule so future runs cannot repeat it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "VERIFY repeat-fail on '{criterion}' ({slug}): check this before EXECUTE completes" --check "{the criterion's verify command}"
+```
+
+One rule per repeated criterion (rules.sh add is idempotent). Do not write rules for first-time failures — one failure is remediation's job; a repeat is a pattern.
 
 ### Step 8 - TeamDelete verify team
 

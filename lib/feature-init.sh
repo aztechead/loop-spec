@@ -87,6 +87,7 @@ common_skeleton() {
       tier: $tier, execStyle: $style,
       models: $models,
       currentPhase: "spec",
+      currentPhaseStartedAt: null,
       completedPhases: [],
       artifacts: {
         specInterview: null,

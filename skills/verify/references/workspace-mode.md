@@ -19,16 +19,7 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
 done
 ```
 
-If any matches (in either mode): VERIFY fails immediately. List each `file:line: match` to the user.
-Do not spawn verifier or code-reviewer until all markers are resolved.
-
-Notes:
-- `--diff-filter=ACMR` excludes deleted files (avoids "no such file" errors on xargs)
-- `.md` excluded from filter: prose descriptions of markers are not unresolved code
-- `-w` (word boundary) avoids false positives on identifiers like `STBD`, `XXXL`
-
-Rationale: unresolved markers indicate incomplete implementation; running acceptance
-gates against incomplete code wastes agent budget.
+(Shared fail rules and notes for this step live in the SKILL's Step 1 — they apply to both modes.)
 
 ## Step 4 - Spawn verifier-1
 

@@ -38,6 +38,17 @@ If `used >= maxit` OR `gused >= gmax`: **stop iterating and ship — but ship LO
    - `converged == true` (and `deterministic_gate_passed`): the final fix actually closed the goal. Record the verdict in `iterate.lastVerdict` + `history`, write ITERATION.md's final section as a clean converge, and ship with NO budget warnings — this converts "shipped with unknown state" into a confirmed converge.
    - `converged == false` (or the dispatch fails/malforms): fall through to the loud-ship steps below using THIS verdict's gaps (they are fresher than the pre-fix `lastVerdict`).
 1. **Harvest every unresolved gap from the freshest verdict** (the confirmation verdict when one ran, else `iterate.lastVerdict`) into `warnings[]` (one entry per below-8 criterion and per gap in `gap` / `remaining_gaps[]`), each prefixed `iterate-budget-spent:`. A budget-exhausted ship with an empty warning trail is indistinguishable from a clean converge — that silence is the failure mode this step exists to prevent.
+
+   **Backlog each harvested gap too** — warnings are a report, the backlog is a queue:
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "{slug}" iterate-gap "{gap.description} — fix first: {gap.fix_first}"
+   ```
+   `/loop-spec:cycle backlog` turns each into its own bounded follow-up cycle instead of the gap dying in feature.json.
+
+   **Self-learning writer:** a budget-spent ship means the loop could not converge within its budget — record the pattern once so the next feature plans for it:
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "iterate budget spent on {slug} with a {gap.type}-level gap: '{gap.fix_first}' — surface this class of requirement during PLAN" --check "bash lib/criteria-coverage.sh docs/loop-spec/features/{slug}/SPEC.md docs/loop-spec/features/{slug}/PLAN.md"
+   ```
 2. **If no confirmation pass could run** (already used, or the dispatch failed), append one more warning: `iterate-budget-spent: final remediation was never re-judged against the original goal`.
 3. Write the final ITERATION.md section stating the budget was spent, listing the harvested warnings verbatim.
 4. Set `currentPhase = "completed"` and go to Phase exit. The cycle's On-completion summary prints `warnings[]` — the user must see the accepted gaps without opening feature.json.
@@ -127,7 +138,7 @@ Clear `currentTeamName`/`currentTeammates` are already null (ITERATE ran no team
 
 | execStyle | Action |
 |---|---|
-| `auto`, `review-only` | If `currentPhase == "completed"`: proceed to the cycle's On-completion. Else: return to cycle, which re-invokes `Skill(loop-spec:{currentPhase})` for the rewind. |
+| `auto`, `review-only` | If `currentPhase == "completed"`: proceed to the cycle's On-completion. Else: return to cycle, which re-invokes `Skill(loop-spec:{currentPhase})` for the rewind — UNLESS `LOOP_SPEC_ITERATE_FRESH=1`, where the cycle instead commits state and returns to the user so an outer loop relaunches the rewind in a fresh session (see cycle Step 6 routing, "Fresh-context rewind"). |
 | `step`, `interactive` | Print the iteration verdict (converged? / gap / where it routes next) and return to the user; they re-invoke `Skill(loop-spec:cycle)` to continue. |
 
 ## Phase exit

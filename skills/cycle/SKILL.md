@@ -95,15 +95,7 @@ workspace_root="$(echo "$ws_json" | jq -r '.root')"
 workspace_repos_json="$(echo "$ws_json" | jq -c '.repos // []')"
 ```
 
-**mode == "none":** abort with:
-```
-loop-spec: not a git repo and no child repos found.
-cd into a repo or create .loop-spec/workspace.json to pin a workspace.
-```
-
-**mode == "single":** continue as normal (all existing steps apply). Set `workspaceMode="single"`.
-
-**mode == "workspace":** announce the discovered repos, confirm participation, and set `workspaceMode="workspace"`.
+**mode == "none":** abort (`loop-spec: not a git repo and no child repos found. cd into a repo or create .loop-spec/workspace.json to pin a workspace.`). **mode == "single":** continue as normal; set `workspaceMode="single"`. **mode == "workspace":** announce repos, confirm participation, set `workspaceMode="workspace"`.
 
 Announce the discovered repos, confirm participation (interactive `AskUserQuestion`; `LOOP_SPEC_ANSWER_REPOS` when non-interactive), filter `workspace_repos_json` to the participating repos, and merge `workspaceMode`/`workspaceRoot`/`workspaceRepos` into `.loop-spec/runtime.json` -- exact prompts and merge-write snippet in `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 0 detail").
 
@@ -117,23 +109,20 @@ supported; a `feature.json` with `schemaVersion != 7` is skipped with a one-line
 - Parse safely (try/except; on parse fail, try `feature.json.bak`)
 - Skip if `currentPhase == "completed"`
 - Skip (with the warning above) if `schemaVersion != 7`
-- **Orphan detection:** if `currentTeamName != null`, probe team liveness by calling `TaskList({team: currentTeamName})`. (When agent teams are unavailable this probe is meaningless: treat the team as gone, clear `currentTeamName`, and add the feature to the resumable list — see `skills/shared/no-teams-fallback.md`.) Otherwise:
-  - If `TaskList` returns without error: the team is still live (orphaned). Print:
-    ```
-    Previous team {currentTeamName} for feature {slug} was orphaned and is still live in the harness.
-    Run TeamDelete for team {currentTeamName} (e.g., via the harness CLI or by re-invoking cycle in cleanup mode), then restart cycle to resume feature {slug}.
-    ```
-    Add to a "needs cleanup" sub-list. Do NOT add to resumable list.
-  - If `TaskList` errors (team not found): the prior team is gone. Print `"feature {slug} had stale team reference {currentTeamName}; cleared and ready to resume"`. Clear `currentTeamName` in `feature.json` via `lib/feature-write.sh`. Add to resumable list.
+- **Orphan detection:** if `currentTeamName != null`, probe team liveness (`TaskList({team: ...})`) and sort the feature into the resumable list or a "needs cleanup" sub-list — exact probe outcomes, messages, and the staleness rule per `skills/shared/cycle-resume-escalation.md` ("Step 1 orphan detection").
 - If `currentTeamName == null` AND `(now - updatedAt) < stalenessHours * 3600`: add to resumable list.
-
-If "needs cleanup" sub-list is non-empty: display it to the user after presenting resume options, so they know which teams require manual `TeamDelete`.
 
 If resumable list non-empty: present via AskUserQuestion (or skip if `LOOP_SPEC_NON_INTERACTIVE=1`):
 - "Resume {slug} (phase: {currentPhase}, last updated {ago})?"
 - Options: each resumable feature + "New feature"
 
-If user picks resume: load feature.json into memory, skip Steps 2-5, route to Step 6.
+If user picks resume: load feature.json into memory, skip Steps 2-5, route to Step 6 — **after the re-grounding protocol below.**
+
+**Resume re-grounding (MANDATORY before re-entering any phase).** A resumed session knows nothing the previous one learned, and the tree may be silently broken. Re-orient from durable state before building on it:
+
+1. Read `.loop-spec/features/{slug}/PROGRESS.md` (the narrative journal: what happened, what's next, gotchas). If absent (pre-2.5.0 feature), skip without warning.
+2. `git log --oneline -10` on the feature branch (workspace mode: per participating repo) — reconcile against the journal.
+3. Run `feature.commands.test` once (workspace mode: per repo with a non-empty test command). **If it fails:** do NOT re-enter the recorded phase on top of a broken tree — append a remediation task (`subject = "Fix: test suite broken at resume"`, `verifyCommand = feature.commands.test`) to `pendingRemediationTasks[]`, set `currentPhase = "execute"`, and print one line saying resume was redirected to remediation. If it passes (or no test command is configured): continue to the recorded phase.
 - **Workspace resume (`workspace` block non-null):** resume IN PLACE at the workspace root. No worktree probe; do NOT call `EnterWorktree`. Assert that the current session cwd equals `feature.workspace.root`; if it does not, tell the user: `"cd to {feature.workspace.root} and re-invoke cycle to resume this feature."` and abort. All phase work proceeds from `workspace.root` using per-repo absolute paths.
 - **Worktree resume (`workspace == null`, `worktreePath` present):** run `git-ops.sh list-feature-worktrees` to confirm it exists, then `EnterWorktree({ path: feature.worktreePath })` before Step 6. If the worktree is gone, warn and offer to re-create or continue in-place.
 - Full algorithm: `skills/shared/cycle-resume-escalation.md`.
@@ -244,16 +233,7 @@ longer a user-facing question — the model **infers** it from the prompt (and f
 grill answers, if a grill pass ran). The user can still override inline, but is never
 asked to choose. Style defaults to `auto` and is likewise inference-free unless overridden.
 
-**Tier-inference rubric** (apply to the feature description + any grill answers; pick the
-highest tier whose signals are present, default `balanced` when signals are mixed or thin):
-
-| Tier | Choose when the work looks like… |
-|---|---|
-| `quick` | Single-file or trivially-scoped change: typo, copy edit, small bugfix, one isolated function, a config tweak. Low blast radius, one obvious acceptance check, no cross-cutting concerns. |
-| `balanced` (default) | A normal multi-file feature or module: moderate scope, a handful of acceptance criteria, contained blast radius. Also the fallback whenever the signals are mixed or the prompt is thin. |
-| `quality` | High blast radius or high cost of being wrong: auth/security/permissions, payments/billing, data migrations or anything risking data loss, public API or wire-contract changes, concurrency/locking, "production"/"critical"/"compliance" framing, or a wide cross-cutting refactor. Also when the user explicitly asks for rigor. |
-
-**Safety floor (overrides the rubric):** if the prompt carries any security-relevant signal — auth, authentication, authorization, permissions, credentials/API keys/secrets/tokens, crypto, payments/billing, PII, or data migration/deletion — **never infer `quick`** (which skips the critique gate), even when the prompt is short and reads as trivially scoped. Floor it at `balanced` and lean `quality`. A one-liner like "add an API key check to this endpoint" is small in words but security-critical in blast radius; the critique gate must run.
+**Tier-inference rubric + safety floor:** apply the rubric verbatim from `${CLAUDE_SKILL_DIR}/references/tier-inference.md` — quick for trivially-scoped single-file work, `balanced` default when signals are mixed or thin, `quality` for high blast radius. The SAFETY FLOOR overrides everything: any security-relevant signal (auth, credentials, payments, PII, data migration/deletion, crypto) means never `quick` — floor at `balanced`, lean `quality`.
 
 Resolution order:
 
@@ -273,7 +253,16 @@ Resolution order:
    - Print: `Launching from spec file: {path} — tier={tier} style={style} title="{title}".`
    - In Step 5, once the feature dir exists (single-repo: after the worktree `mkdir -p`; workspace: after the workspace-root `mkdir -p` in the Step 5 variant), copy the draft in: `cp "$spec_draft_abs" ".loop-spec/features/${slug}/spec-draft.md"` (workspace mode: prefix with `${workspace_root}/`). The SPEC phase detects `spec-draft.md` and runs **spec-file ingest mode** (validate + normalize the draft through the ambiguity gate, no interview — see `skills/spec/SKILL.md`).
 
-4. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for tier or style. Infer the tier from that answer (plus the grill pass) via the rubric; style = `auto`. Use the answer as the title. Never present a tier/style menu.
+4. **Backlog-drain mode** (`$ARGUMENTS` is exactly `backlog`, optionally with inline overrides): the bounded Ralph loop over `.loop-spec/BACKLOG.md` — one feature per loop, explicit stop conditions.
+   ```bash
+   entry="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" next)" || { echo "backlog empty — nothing to drain"; exit 0; }
+   ```
+   - Use the entry text as the feature description (branch 2 above: infer tier, style `auto` unless overridden). Run the full cycle for it.
+   - On completion (the On-completion section finishing cleanly), mark it off: `bash .../lib/backlog.sh done "$entry"`.
+   - **Loop bound:** `LOOP_SPEC_MAX_FEATURES` (default `1`). After marking an entry done, if features completed this invocation `< LOOP_SPEC_MAX_FEATURES` and `backlog.sh next` yields another entry, start the next cycle from Step 3 branch 2 with it. Stop when the bound is hit, the backlog is empty, or any feature ends paused/escalated (never chain past a failure).
+   - Overnight form: an outer `while :; do claude -p "/loop-spec:cycle backlog"; done` gets one feature per fresh session — the Ralph loop with real stop conditions.
+
+5. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for tier or style. Infer the tier from that answer (plus the grill pass) via the rubric; style = `auto`. Use the answer as the title. Never present a tier/style menu.
 
 Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe consecutive `-`).
 
@@ -425,7 +414,11 @@ For new features, `currentPhase` is initialized to `"spec"` (Step 5), so `Skill(
 
 Cycle's only responsibility here is to invoke the phase skill and react to its return:
 
-1. **Invoke phase skill:**
+1. **Invoke phase skill** (with the watchdog stamp):
+   ```bash
+   # Phase watchdog: stamp the phase start so a hung phase is detectable (resume + exit check).
+   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" currentPhaseStartedAt "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+   ```
    ```
    Skill(loop-spec:{currentPhase})
    ```
@@ -437,6 +430,17 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    next_phase=$(echo "$feature_json" | jq -r '.currentPhase')
    ```
 
+   **Phase watchdog check:** compare now against `currentPhaseStartedAt` and the tier-scaled ceiling — quick 30 / balanced 60 / quality 120 minutes, overridable via `LOOP_SPEC_PHASE_TIMEOUT_MINS`. If the phase that just returned exceeded its ceiling, print a one-line warning (`phase {name} took {N}m, ceiling {M}m`) and append it to `warnings[]`; if a RESUMED feature's `currentPhaseStartedAt` is already past the ceiling before re-invoking (the previous session hung or died mid-phase), do NOT blindly re-enter — surface it: `phase {name} exceeded its {M}m ceiling in a prior session; resuming from last durable state` and let the phase skill's own resume logic pick up from artifacts. The watchdog never kills work; it makes a wedged loop visible instead of silently eternal.
+
+   **Progress journal (append-only narrative — the machine state's "why").** Append one short block to `.loop-spec/features/{slug}/PROGRESS.md` (create with a `# Progress — {slug}` heading if absent):
+   ```
+   ## {ISO timestamp} — {phase} → {next_phase}
+   - did: <1-2 lines: what this phase produced/decided>
+   - next: <1 line: what the next phase must do>
+   - gotchas: <0-2 lines: anything a fresh session must know (build quirks, env, partial work); omit if none>
+   ```
+   Commit it together with feature.json below. feature.json says WHERE the loop is; PROGRESS.md says WHY — it is what a fresh or compacted session reads to re-orient (Step 1 re-grounding), and the handoff document for fresh-context rewinds.
+
    **Commit the resume contract (single point).** feature.json is committed (not gitignored)
    so resume survives a clone or hand-off to another machine. The cycle is the one place
    that observes every phase transition, so it snapshots state here -- phase skills do NOT
@@ -444,14 +448,17 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    repo) is a safe no-op:
    ```bash
    fj=".loop-spec/features/${slug}/feature.json"
-   if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && ! git diff --quiet "$fj" 2>/dev/null; then
-     git add "$fj"
-     git commit -q -m "chore: NO_JIRA ${slug} state @ ${next_phase}" || true
+   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+     git add "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null
+     git diff --cached --quiet 2>/dev/null || git commit -q -m "chore: NO_JIRA ${slug} state @ ${next_phase}" || true
    fi
    ```
 
 3. **Route to next iteration:**
    - If `next_phase == "completed"`: jump to the "On completion" section below.
+   - **Fresh-context rewind (opt-in, `LOOP_SPEC_ITERATE_FRESH=1`):** if the phase that just returned was `iterate` AND `next_phase` is a rewind (not `completed`) AND the env var is set: do NOT continue inline. The Ralph-loop bet is that a fresh context beats an accumulated one — the durable state (feature.json + PROGRESS.md + iterate.feedback) IS the handoff. Print:
+     `fresh-context rewind: state committed; relaunch with /loop-spec:cycle (or let your outer loop do it) to re-enter {next_phase} in a clean session.`
+     and return to the user. An outer `while :; do claude -p "/loop-spec:cycle"; done` (or the loop-runner) drives the relaunch; resume detection re-enters at `{next_phase}` with a fresh window.
    - If `execStyle` is `auto` or `review-only`: continue the loop -- invoke `Skill(loop-spec:{next_phase})`.
    - If `execStyle` is `step` or `interactive`: print phase summary and return to user. User re-invokes `Skill(loop-spec:cycle)` to continue (resume detection in Step 1 picks up the in-progress state).
 
@@ -481,5 +488,12 @@ If non-empty, print them under a `## Shipped with warnings` heading, one bullet 
 the PR URL. `iterate-budget-spent:` entries are accepted goal gaps — a completion that hides
 them is indistinguishable from a clean converge, which is precisely how an unmet requirement
 ships unnoticed. If empty, print nothing extra.
+
+Also print the backlog state (one line, always):
+
+```bash
+n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
+[[ "$n" -gt 0 ]] && echo "Backlog: ${n} deferred item(s) — drain with /loop-spec:cycle backlog"
+```
 
 **Note:** `TeamDelete` is called explicitly here at the orchestration layer. It is NOT implemented as a bash `trap` because `TeamDelete` is a harness MCP tool callable only from the lead's tool-using context, not from a shell signal handler. See the resume strategy orphan-detection path for killed-session cleanup.
