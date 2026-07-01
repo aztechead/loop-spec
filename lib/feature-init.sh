@@ -60,6 +60,7 @@ tier_blocks() {
     iterate: {
       maxIterations: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
       used: 0,
+      confirmationUsed: false,
       lastVerdict: null,
       feedback: null,
       history: []

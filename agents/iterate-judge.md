@@ -67,3 +67,4 @@ When `converged` is `true`, set `gap` to `null`, `weakest` to `null`, and `remai
 - Judge against the **original goal**, not optimism about the SPEC. A passing checklist on a wrong spec is the failure mode you exist to catch.
 - Be decisive: one gap, one phase, one fix-first. Never recommend re-opening a decision recorded in PLAN.md's `## User decisions (already made)` without naming why it must change.
 - Do not ask questions. Make a sensible assumption, note it in `summary`, and return the verdict.
+- **Confirmation mode** (`mode=confirmation` in your dispatch prompt): the iteration budget is spent and the orchestrator will ship regardless of your verdict — you cannot trigger a rewind. Judge exactly as strictly as always; your verdict only decides whether the ship is recorded as a confirmed converge or ships with your named gaps in `warnings[]`. Same JSON format.

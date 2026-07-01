@@ -52,6 +52,12 @@ mkdir -p "${workspace_root}/.loop-spec/features/${slug}" \
          "${workspace_root}/docs/loop-spec/features/${slug}"
 ```
 
+If Step 3 resolved a spec-file invocation (`spec_draft_abs` is set), copy the draft in now:
+
+```bash
+cp "$spec_draft_abs" "${workspace_root}/.loop-spec/features/${slug}/spec-draft.md"
+```
+
 **feature.json construction for workspace mode:**
 
 Build the `workspace.repos` array from the per-repo data collected above, then write feature.json:

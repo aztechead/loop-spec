@@ -45,6 +45,10 @@ if [[ -z "$criteria_block" ]]; then
   exit 0
 fi
 
+# Whitespace-normalized plan content: a criterion reflowed across lines in PLAN.md
+# must still count as covered (the match is semantic identity, not line layout).
+plan_norm="$(tr -s '[:space:]' ' ' < "$plan_path" 2>/dev/null || true)"
+
 # Parse individual criteria (lines starting with "- ")
 uncovered=()
 while IFS= read -r line; do
@@ -59,8 +63,9 @@ while IFS= read -r line; do
   entry="${entry#\[x\] }"
   [[ -z "$entry" ]] && continue
 
-  # Check if the criterion appears in the plan (fixed-string match)
-  if ! grep -qF "$entry" "$plan_path" 2>/dev/null; then
+  # Fixed-string match on whitespace-normalized text (both sides)
+  entry_norm="$(printf '%s' "$entry" | tr -s '[:space:]' ' ')"
+  if [[ "$plan_norm" != *"$entry_norm"* ]]; then
     uncovered+=("$entry")
   fi
 done <<< "$criteria_block"

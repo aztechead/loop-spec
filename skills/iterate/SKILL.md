@@ -13,7 +13,7 @@ This phase runs no team. It dispatches ONE fresh `iterate-judge` subagent (maker
 ## Inputs (from feature.json)
 
 - `slug`, `tier`, `feature_dir`, `feature_title` (the **original goal**, in the user's words).
-- `iterate`: `{maxIterations, used, lastVerdict, feedback, history[]}`.
+- `iterate`: `{maxIterations, used, confirmationUsed, lastVerdict, feedback, history[]}`.
 - `retryBudget.global` / `globalUsed` (cycle-wide ceiling).
 - `artifacts`: `spec`, `plan`, `verification` paths.
 - `models.iterateJudge` (opus).
@@ -34,8 +34,11 @@ gmax=$(jq -r '.retryBudget.global' "$fdir/feature.json")
 
 If `used >= maxit` OR `gused >= gmax`: **stop iterating and ship — but ship LOUD, never silent.** Do NOT re-enter an upstream phase — this is the article's `STOP WHEN: ... OR N iterations reached`. Before setting `currentPhase = "completed"`:
 
-1. **Harvest every unresolved gap from `iterate.lastVerdict`** into `warnings[]` (one entry per below-8 criterion and per gap in `gap` / `remaining_gaps[]`), each prefixed `iterate-budget-spent:`. A budget-exhausted ship with an empty warning trail is indistinguishable from a clean converge — that silence is the failure mode this step exists to prevent.
-2. **If a rewind fix landed after the last judge pass** (i.e. `used > 0` and the phase pointer arrived here from VERIFY, not from a fresh feature), append one more warning: `iterate-budget-spent: final remediation was never re-judged against the original goal (maxIterations reached before a confirming pass)`.
+0. **Confirmation pass (bounded to exactly one, report-only).** If a rewind fix landed after the last judge pass (`used > 0` and the phase pointer arrived here from VERIFY) AND `iterate.confirmationUsed` is not `true`: set `iterate.confirmationUsed = true` (via `lib/feature-write.sh`, BEFORE dispatching, so a crash/resume can never run it twice), then dispatch the `iterate-judge` once more exactly as in Step 1 but with `mode=confirmation` noted in the prompt. This pass does NOT increment `iterate.used` or `retryBudget.globalUsed` and CANNOT trigger a rewind — its verdict only decides what the ship looks like:
+   - `converged == true` (and `deterministic_gate_passed`): the final fix actually closed the goal. Record the verdict in `iterate.lastVerdict` + `history`, write ITERATION.md's final section as a clean converge, and ship with NO budget warnings — this converts "shipped with unknown state" into a confirmed converge.
+   - `converged == false` (or the dispatch fails/malforms): fall through to the loud-ship steps below using THIS verdict's gaps (they are fresher than the pre-fix `lastVerdict`).
+1. **Harvest every unresolved gap from the freshest verdict** (the confirmation verdict when one ran, else `iterate.lastVerdict`) into `warnings[]` (one entry per below-8 criterion and per gap in `gap` / `remaining_gaps[]`), each prefixed `iterate-budget-spent:`. A budget-exhausted ship with an empty warning trail is indistinguishable from a clean converge — that silence is the failure mode this step exists to prevent.
+2. **If no confirmation pass could run** (already used, or the dispatch failed), append one more warning: `iterate-budget-spent: final remediation was never re-judged against the original goal`.
 3. Write the final ITERATION.md section stating the budget was spent, listing the harvested warnings verbatim.
 4. Set `currentPhase = "completed"` and go to Phase exit. The cycle's On-completion summary prints `warnings[]` — the user must see the accepted gaps without opening feature.json.
 

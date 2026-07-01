@@ -445,12 +445,13 @@ loop-spec/
 │   ├── challenger.md
 │   └── mapper-{quality,concerns,domain}.md
 ├── skills/
-│   ├── cycle/SKILL.md               # entry point
-│   ├── spec/SKILL.md
+│   ├── cycle/SKILL.md               # entry point (references/: workspace-mode, startup-probes, detect-commands, codebase-map-bootstrap)
+│   ├── spec/SKILL.md                # interview OR spec-file ingest mode (spec-draft.md)
 │   ├── discuss/SKILL.md
-│   ├── plan/SKILL.md
-│   ├── execute/SKILL.md
-│   ├── verify/SKILL.md
+│   ├── plan/SKILL.md                # references/: workspace-task-format, patterns-bootstrap
+│   ├── execute/SKILL.md             # references/: team-rung-protocol
+│   ├── verify/SKILL.md              # references/: workspace-mode
+│   ├── iterate/SKILL.md             # outer convergence loop (goal re-judge + confirmation pass)
 │   ├── map-codebase/SKILL.md
 │   ├── assess/SKILL.md              # standalone codebase fragility and health assessment (workspace-aware)
 │   ├── quality-loop/SKILL.md        # iterative pre-commit review convergence loop (workspace-aware)
@@ -474,6 +475,8 @@ loop-spec/
 │   ├── feature-init.sh              # single source of truth for the schema-7 feature.json skeleton + models map
 │   ├── resolve-bin.sh               # resolve real executables past version-manager shell shims (nvm/pyenv/...)
 │   ├── acceptance-lint.sh           # flags bare-substring grep acceptance criteria (plan feasibility gate)
+│   ├── criteria-coverage.sh         # SPEC Good-Enough criteria must appear in PLAN (plan Step 5.5 gate)
+│   ├── teams-capability.sh          # 3-way teamsMode probe: none / explicit / implicit (CC >= 2.1.178)
 │   ├── team-ops.sh                  # team_name_for_phase + agent-teams env assertion
 │   ├── workflows/                   # dynamic-workflow scripts (execute-dag, map-codebase, ...)
 │   └── checkpoint / decision-coverage / detect-test-cmd / pause-snapshot / plan-adherence / regression-scan / validate-task-metadata / worktree-commit-check

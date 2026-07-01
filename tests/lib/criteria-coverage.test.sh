@@ -112,6 +112,25 @@ check "D: no-section exits 0" "0" "$exit_code"
 echo "$output" | grep -qi "skip" && skipped="yes" || skipped="no"
 check "D: no-section prints skipped note" "yes" "$skipped"
 
+# === Case R: reflowed criterion in PLAN still counts as covered ===
+SPEC_R="$WORK/spec-r.md"
+PLAN_R="$WORK/plan-r.md"
+cat > "$SPEC_R" <<'EOF'
+### Good Enough
+
+- a long criterion that a planner will reflow across two lines when writing the coverage table
+EOF
+cat > "$PLAN_R" <<'EOF'
+## Spec coverage
+
+- a long criterion that a planner will reflow
+  across two lines when writing the coverage table -> task-001
+EOF
+
+exit_code=0
+bash "$SCRIPT" "$SPEC_R" "$PLAN_R" >/dev/null 2>&1 || exit_code=$?
+check "R: reflowed criterion exits 0" "0" "$exit_code"
+
 # === Case E: missing SPEC file (fail-open) ===
 exit_code=0
 bash "$SCRIPT" "$WORK/does-not-exist.md" "$PLAN_A" >/dev/null 2>&1 || exit_code=$?

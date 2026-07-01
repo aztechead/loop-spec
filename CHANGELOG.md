@@ -27,6 +27,29 @@ All notable changes documented here. Format follows Keep a Changelog.
   interactive styles; explicit graph-grounded assumption in autonomous styles), converting it
   into a testable Good Enough criterion. Previously the list was written and read by nobody.
 
+### Fixed (post-audit hardening)
+- **Tool whitelist contradictions**: `ToolSearch` (required by the deferred-tool rescue) and
+  `Workflow` (dispatched by plan/verify/execute) were absent from the cycle tool whitelist and
+  most phase `allowed-tools` — a literal reading of "any tool not listed is not permitted"
+  forbade the cycle's own procedures. Both added everywhere they are used.
+- **ITERATE confirmation pass**: when the iteration budget is spent but a remediation landed
+  after the last judge pass, the judge runs exactly once more in report-only `mode=confirmation`
+  (guarded by `iterate.confirmationUsed`, set before dispatch; does not count as an iteration;
+  cannot rewind). Converged → ships as a confirmed converge; else the ship's warnings use the
+  fresher verdict. Closes the remaining "fix shipped un-re-judged" semantics on quick tier.
+- **Coverage gates whitespace-normalized**: `decision-coverage.sh` and `criteria-coverage.sh`
+  now match on whitespace-collapsed text, so a criterion/decision reflowed across lines in
+  PLAN.md no longer fails the gate falsely (reflow regression cases added to both tests).
+- Inline `tier:`/`style:` override tokens are stripped from the feature title before it is
+  slugified/persisted — they were polluting `feature_title`, the immutable goal the ITERATE
+  judge scores against. Spec-draft copy instruction made workspace-mode-aware.
+- `LOOP_SPEC_SPEC_FILE` env var: headless equivalent of `/loop-spec:cycle path/to/spec.md`
+  for the non-interactive contract (title falls back to the spec's first `# ` heading).
+- New lint suite `tests/lib/skill-references.test.sh`: every `${CLAUDE_SKILL_DIR}/references/*`
+  pointer in a SKILL.md must resolve, and every references/ file must be pointed to (guards the
+  progressive-disclosure layer against rename drift). Manual e2e matrix gains scenario rows
+  (spec-file ingest, implicit/explicit harness, iterate budget ship); README tree refreshed.
+
 ### Added
 - **Spec-file entry path** (the "loop-driven development from a spec file" claim, now honored
   end-to-end): `/loop-spec:cycle path/to/spec.md` detects an existing `.md` argument, copies it

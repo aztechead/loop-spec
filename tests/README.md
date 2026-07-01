@@ -64,8 +64,18 @@ installed). Full grid quarterly.
 
 Total: 36 cells (3 feature sizes x 3 tiers x 4 execution styles).
 
+Additional scenario rows (run alongside the grid):
+
+| # | Scenario | How | Status |
+|---|----------|-----|--------|
+| S1 | spec-file ingest | `/loop-spec:cycle path/to/spec.md` with a pre-authored spec (also headless: `LOOP_SPEC_SPEC_FILE=path`). Confirm: NO interview questions; SPEC.md preserves the draft's requirements verbatim; `spec-draft.md` exists in the feature dir; ambiguity gate scored on the draft. | not run |
+| S2 | implicit-team harness (CC >= 2.1.178) | Any trivial cell with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` on a modern CC. Confirm: `runtime.json.teamsMode == "implicit"`; NO `TeamCreate`/`TeamDelete` calls appear; teammates spawn via `Agent({name})` and rework rides `SendMessage`. | not run |
+| S3 | explicit-team harness (CC < 2.1.178) | Same as S2 on a legacy CC. Confirm `teamsMode == "explicit"` and per-phase `TeamCreate`/`TeamDelete`. | not run |
+| S4 | iterate budget ship | Force a gap (spec asks for X+Y, sabotage Y) on quick tier. Confirm: confirmation pass runs once; unresolved gaps land in `warnings[]` prefixed `iterate-budget-spent:`; cycle completion prints `## Shipped with warnings`. | not run |
+
 For each cell, drive `loop-spec:cycle` in `LOOP_SPEC_NON_INTERACTIVE=1` mode
-(set `LOOP_SPEC_ANSWER_TIER`, `LOOP_SPEC_ANSWER_STYLE`, `LOOP_SPEC_ANSWER_TITLE`)
+(set `LOOP_SPEC_ANSWER_TIER`, `LOOP_SPEC_ANSWER_STYLE`, `LOOP_SPEC_ANSWER_TITLE`,
+or `LOOP_SPEC_SPEC_FILE` for the spec-file scenario)
 and confirm SPEC.md / PLAN.md / VERIFICATION.md are produced, `feature.json`
 `currentPhase == "completed"`, and the feature branch carries the expected commits.
 
@@ -74,6 +84,7 @@ and confirm SPEC.md / PLAN.md / VERIFICATION.md are produced, `feature.json`
 - One trivial + quick + auto cell.
 - Plus 3 hand-picked cells from rows 13-36 covering: parallel waves, AUTO self-heal
   triggered, STEP execution.
+- Plus S1 (spec-file ingest) and whichever of S2/S3 matches the local CC version.
 
 ### Quarterly
 

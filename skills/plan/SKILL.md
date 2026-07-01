@@ -1,7 +1,7 @@
 ---
 name: plan
 description: PLAN phase - creates a plan team with planner, advocate, and challenger; planner produces PATTERNS.md then PLAN.md; runs critique debate via SendMessage; writes PLAN.md and updates feature.json.
-allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet
+allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
 # PLAN Phase
