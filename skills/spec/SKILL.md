@@ -124,6 +124,14 @@ Score all 4 dimensions from what you already know (feature title, tier, any exis
 
 If `LOOP_SPEC_NON_INTERACTIVE=1` is set: skip Step 2 entirely and go to the **Non-interactive mode** section below.
 
+**Spec-file ingest mode:** if `.loop-spec/features/{slug}/spec-draft.md` exists (cycle Step 3 placed it there — the user pre-authored the spec), skip the interview (Step 2) entirely:
+
+1. Read the draft. Treat it as the primary source of truth for goal, scope, constraints, and criteria; the Step 1 graph scout grounds it against the actual codebase.
+2. Score the 4 ambiguity dimensions against the DRAFT (not against interview answers). A well-written spec file typically passes the gate outright.
+3. Normalize the draft into the required SPEC.md output format below — preserve the author's requirements verbatim wherever they already fit a section; add only what the format requires (`ambiguity_scores` frontmatter, `<decisions>` block from any decisions the draft states, `## Boundaries (what NOT to do)`, `### Good Enough` / `### Exceptional` split). Do not invent scope the draft doesn't state.
+4. If a dimension is below its minimum, do NOT interview: in `step`/`interactive` styles ask ONE targeted `AskUserQuestion` per failing dimension; in `auto`/`review-only`/non-interactive, write SPEC.md with `gate_passed: false` and the failing dimensions in `unresolved_dimensions` (DISCUSS Step 1 consumes them).
+5. Continue at Step 3 (write SPEC.md + transcript; note `source: spec-draft.md` in the transcript).
+
 ### Step 2 - Interview loop (main thread, max 6 rounds)
 
 Run the loop directly on the main thread. For each round N = 1 .. 6:

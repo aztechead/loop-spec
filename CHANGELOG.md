@@ -28,6 +28,20 @@ All notable changes documented here. Format follows Keep a Changelog.
   into a testable Good Enough criterion. Previously the list was written and read by nobody.
 
 ### Added
+- **Spec-file entry path** (the "loop-driven development from a spec file" claim, now honored
+  end-to-end): `/loop-spec:cycle path/to/spec.md` detects an existing `.md` argument, copies it
+  to `.loop-spec/features/{slug}/spec-draft.md`, and the SPEC phase runs **spec-file ingest
+  mode** — no interview; the draft is graph-grounded, scored against the ambiguity gate, and
+  normalized into the SPEC.md format with requirements preserved verbatim.
+- **Skill-authoring audit against current Claude Code recommendations**: all four oversized
+  SKILL.mds brought under the documented 500-line guidance via verbatim extraction into
+  per-skill `references/` files (cycle 919→482 — workspace-mode procedures, startup probes,
+  command detection, codebase-map bootstrap; verify 533→383 — workspace variants; execute
+  555→457 — team-rung protocol Steps 7-10; plan 561→496 — workspace task-format rules +
+  PATTERNS bootstrap). No content rewrites — pure relocation with pointer stubs.
+  `argument-hint` added to quality-loop and rollback; README/marketplace/plugin descriptions
+  updated (6 phases, v2.4.0 status, both agent-team harness generations, ponytail-ported
+  simplicity mode named alongside the required graphify graph).
 - **`lib/criteria-coverage.sh`** + plan Step 5.5 criteria-coverage gate + planner
   `## Spec coverage` section: every SPEC `### Good Enough` criterion must appear verbatim in
   PLAN.md, mapped to the task(s) satisfying it (quality/balanced BLOCK, quick advisory).

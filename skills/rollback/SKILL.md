@@ -1,6 +1,7 @@
 ---
 name: rollback
 description: Restore the working tree to a named checkpoint tag using history-safe git checkout, then commit the rollback as a new commit.
+argument-hint: "[checkpoint tag or type]  (e.g. post-plan, or a full loop-spec-checkpoint-* tag)"
 ---
 
 # ROLLBACK Skill

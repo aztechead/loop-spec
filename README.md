@@ -1,8 +1,8 @@
 # loop-spec
 
-A spec-driven development plugin for Claude Code. Shipped code is Bash + git + jq + python3 only -- no npm/pip/brew installs. One external tool is required: [graphify](https://github.com/safishamsi/graphify) (`uv tool install graphifyy`), the de-facto code graph the design phases query. 5 phases. 3 tiers. Fixed per-role model map. 4 execution styles.
+Loop-driven development from a spec file, for Claude Code. Give the cycle a feature description — or an existing spec `.md` — and it runs SPEC → DISCUSS → PLAN → EXECUTE → VERIFY → ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent. Shipped code is Bash + git + jq + python3 only -- no npm/pip/brew installs. One external tool is required: [graphify](https://github.com/safishamsi/graphify) (`uv tool install graphifyy`), the de-facto code graph the design phases query; the anti-over-engineering discipline is ported from [ponytail](https://github.com/DietrichGebert/ponytail) (simplicity mode, on by default). 6 phases. 3 tiers. Fixed per-role model map. 4 execution styles.
 
-**Status:** v1.1.0 (rebranded from super-spec; previous lineage v1.0.0–v3.2.0). Built on Claude Code agent teams when available (CC v2.1.32+ with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), with first-class loop-runner execution that works without teams: every phase has a documented no-teams fallback, and EXECUTE runs as a supervised fleet of bounded autonomous loops (`skills/loop-runner/`).
+**Status:** v2.4.0 (rebranded from super-spec; previous lineage v1.0.0–v3.2.0). Built on Claude Code agent teams when available — both harness generations: explicit `TeamCreate`/`TeamDelete` (CC < 2.1.178) and the modern implicit per-session team (CC >= 2.1.178, teammates spawned via `Agent({name})`; requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, resolved by `lib/teams-capability.sh`) — with first-class loop-runner execution that works without teams: every phase has a documented no-teams fallback, and EXECUTE runs as a supervised fleet of bounded autonomous loops (`skills/loop-runner/`).
 
 ## Why this exists
 
@@ -103,6 +103,8 @@ Each per-phase skill is directly slash-invocable (the skill is the command, no s
 None of the workflow skills set `disable-model-invocation`: the cycle orchestrator chains phases via the Skill tool (a `disable-model-invocation` skill cannot be invoked that way), and each phase hands off to the next the same way. You start a run with `/loop-spec:cycle`; the orchestrator drives the rest.
 
 The cycle skill runs a quiet startup health-check — agent-teams probe, model probe (two 1-token dispatches, cached 24h in `.loop-spec/runtime.json`; `LOOP_SPEC_SKIP_HEALTHCHECK=1` skips), and Workflow availability. **You just give it a feature description** — there is no tier/style menu. `/loop-spec:cycle <feature description>` launches immediately: the cycle **infers the tier** from your prompt (and from any grill answers), defaults style to `auto`, and proceeds. A bare `/loop-spec:cycle` asks one free-text question for what you want to build — nothing else.
+
+**From a spec file:** `/loop-spec:cycle path/to/spec.md` starts the loop from a pre-authored spec. The SPEC phase skips its interview (spec-file ingest mode): it grounds the draft against the code graph, scores the ambiguity gate on the draft itself, normalizes it into the SPEC.md format (requirements preserved verbatim), and proceeds to DISCUSS. Tier is inferred from the spec's content unless overridden inline.
 
 **Tier is inferred, not asked.** Tier controls gate behavior, retries, and fan-out width (never models). The cycle reads the request and picks:
 

@@ -37,40 +37,7 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 
 ### Step 0 - PATTERNS.md cache check and GSD ingestion
 
-Before spawning the team, check in order:
-
-**0a - Existing PATTERNS.md (any source):**
-
-```bash
-patterns_target="docs/loop-spec/features/${slug}/PATTERNS.md"
-if [[ -f "$patterns_target" ]]; then
-  echo "CACHED"
-fi
-```
-
-If the file exists: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
-- `artifacts.patternsSource = "pattern-mapper"`
-
-Then proceed to Step 1 (TeamCreate). Planner will detect PATTERNS.md exists and skip its Step 0 production. This applies on any resume or re-trigger where PATTERNS.md was already produced.
-
-**0b - GSD ingestion (if no cached file):**
-
-```bash
-target="docs/loop-spec/features/${slug}/PATTERNS.md"
-result="$(bash "${CLAUDE_SKILL_DIR}/../../lib/gsd-ingest.sh" patterns "$slug" "$target")"
-echo "$result"
-```
-
-The script prints `INGESTED <source-path>` on success or `NONE` if no GSD PATTERNS.md matched the slug.
-
-If `INGESTED`: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
-- `artifacts.patternsSource = "gsd-ingest"`
-
-Then proceed to Step 1 (TeamCreate). Planner will detect PATTERNS.md exists and skip its Step 0 production.
-
-If `NONE`: continue to Step 1.
+Before spawning the team: if `docs/loop-spec/features/{slug}/PATTERNS.md` already exists, record it in `feature.json.artifacts` and skip production; else attempt GSD `.planning/codebase/` ingestion; else the planner produces PATTERNS.md at its own Step 0. Exact cache/ingest procedure and artifact bookkeeping verbatim in `${CLAUDE_SKILL_DIR}/references/patterns-bootstrap.md`.
 
 ### Step 1 - TeamCreate the plan team
 
@@ -526,36 +493,4 @@ If invoked with `currentPhase == "plan"` already in `feature.json`:
 
 ## Workspace mode -- task-format rules
 
-When `feature.workspace` is non-null (workspace mode), the following additional rules apply to every task the planner produces. These rules are additive; all existing task-format rules remain in force.
-
-### repo field (required in workspace mode)
-
-Every task MUST carry a `repo` field whose value matches exactly one `workspace.repos[].name` from `feature.json`. Omitting `repo` in workspace mode is an error caught by the feasibility gate.
-
-In the PLAN.md task-block format, `repo` appears as a dedicated line alongside `**Files:**` and `**blockedBy:**`:
-
-```
-**repo:** frontend
-```
-
-In the planner's `tasks[]` JSON shape (returned in the completion message and passed to `TaskCreate` via task `metadata`), `repo` is a top-level string key:
-
-```json
-{"id": "task-001", "subject": "...", "repo": "frontend", "files": ["frontend/src/app.ts"], ...}
-```
-
-### One task, one repo
-
-A single task MUST target exactly one repo. Work that spans multiple repos is expressed as multiple tasks connected by explicit `blockedBy` edges. The planner must never list files from more than one repo in a single task's `files[]`.
-
-### workspace-relative file paths
-
-In workspace mode `files[]` entries are workspace-relative and MUST begin with the repo name as the first path component (e.g., `frontend/src/app.ts`, not `src/app.ts`). Every file in a task must resolve -- via `lib/workspace.sh resolve-repo <workspace-root> <path>` -- to the same repo named in the task's `repo` field.
-
-### Cross-repo blockedBy edges
-
-When a change in one repo must precede a change in another repo, express this as two tasks: the upstream task (repo A) and the downstream task (repo B) with `blockedBy: [upstream-task-id]`. This is the only mechanism for cross-repo ordering.
-
-### Ignored by lib helpers
-
-`lib/plan-to-loop.sh`, `lib/dag-width.sh`, and `lib/plan-adherence.sh` ignore unknown task keys, so adding `repo` to task metadata requires no changes to those scripts.
+When `feature.workspace` is non-null, every task additionally carries a `repo` field (must match one `workspace.repos[].name`; feasibility gate enforces), targets exactly one repo, uses workspace-relative `<repo>/<path>` file paths, and may declare cross-repo `blockedBy` edges. Full rules verbatim in `${CLAUDE_SKILL_DIR}/references/workspace-task-format.md` — the planner brief MUST include them in workspace mode.

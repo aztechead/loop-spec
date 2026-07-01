@@ -1,7 +1,7 @@
 ---
 name: cycle
-description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Just give it a feature description -- tier (quality/balanced/quick) is INFERRED from the prompt, execution style defaults to auto; both are overridable inline but never asked. Model selection is fixed (no preset). Resumes incomplete features automatically.
-argument-hint: "[feature description]  (optional inline overrides: tier:quick|balanced|quality style:auto|step|interactive|review-only)"
+description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview) -- tier (quality/balanced/quick) is INFERRED from the prompt, execution style defaults to auto; both are overridable inline but never asked. Model selection is fixed (no preset). Resumes incomplete features automatically.
+argument-hint: "[feature description | path/to/spec.md]  (optional inline overrides: tier:quick|balanced|quality style:auto|step|interactive|review-only)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree
 ---
 
@@ -102,46 +102,7 @@ cd into a repo or create .loop-spec/workspace.json to pin a workspace.
 
 **mode == "workspace":** announce the discovered repos, confirm participation, and set `workspaceMode="workspace"`.
 
-Announcement (print to user):
-```
-workspace mode: {N} repos ({name1}, {name2}, ...}
-  State and artifacts will be rooted at: {workspace_root}
-Advisory: if {workspace_root} is or becomes a git repo, add .loop-spec/ to its .gitignore.
-```
-
-Confirmation (interactive):
-```
-AskUserQuestion({
-  question: "Workspace repos: {list each repo name and relative path}. A feat/{slug} branch will be created IN PLACE in each participating repo (no worktree; the checkout switches branches). Proceed with all repos, or customize?",
-  options: ["All repos", "Customize"]
-})
-```
-
-If "Customize": ask the user to list repo names (comma-separated); filter `workspace_repos_json` to only those named.
-
-Non-interactive (`LOOP_SPEC_NON_INTERACTIVE=1`): read `LOOP_SPEC_ANSWER_REPOS` (comma-separated repo names, default = all). Skip AskUserQuestion.
-
-After confirmation, `workspace_repos_json` holds only the participating repos.
-
-Merge workspace fields into `.loop-spec/runtime.json` (same python3 merge-write pattern as the workflow probe):
-
-```bash
-mkdir -p .loop-spec
-python3 -c "
-import json, sys, os
-path = '.loop-spec/runtime.json'
-data = {}
-if os.path.exists(path):
-    try:
-        data = json.load(open(path))
-    except Exception:
-        data = {}
-data['workspaceMode']  = sys.argv[1]
-data['workspaceRoot']  = sys.argv[2]
-data['workspaceRepos'] = json.loads(sys.argv[3])
-json.dump(data, open(path, 'w'))
-" "$workspace_mode" "$workspace_root" "$workspace_repos_json"
-```
+Announce the discovered repos, confirm participation (interactive `AskUserQuestion`; `LOOP_SPEC_ANSWER_REPOS` when non-interactive), filter `workspace_repos_json` to the participating repos, and merge `workspaceMode`/`workspaceRoot`/`workspaceRepos` into `.loop-spec/runtime.json` -- exact prompts and merge-write snippet in `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 0 detail").
 
 ### Step 1 - Resume detection
 
@@ -302,7 +263,14 @@ Resolution order:
      `Launching: tier={tier} (inferred: {reason}) style={style} title="{title}". (Reply within this turn with e.g. "tier:quality" to adjust before SPEC starts.)`
      When the tier was given inline rather than inferred, drop the `(inferred: ...)` clause.
 
-3. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for tier or style. Infer the tier from that answer (plus the grill pass) via the rubric; style = `auto`. Use the answer as the title. Never present a tier/style menu.
+3. **Invocation carries a spec file path** (loop-driven development from a spec file): if `$ARGUMENTS`, after stripping inline `tier:`/`style:` overrides, is a single token that resolves to an existing readable `.md` file (check with `[[ -f "$arg" ]]`), the user pre-authored the spec — do NOT run the SPEC interview against them.
+   - Title = the file's first `# ` heading (strip the `# `); fall back to the filename without extension. Slugify as usual.
+   - Resolve the file to an absolute path NOW (`spec_draft_abs="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"`) — Step 5 enters a worktree and relative paths die there.
+   - Tier: inline override wins; otherwise infer from the spec file's CONTENT via the rubric. Style defaults to `auto`.
+   - Print: `Launching from spec file: {path} — tier={tier} style={style} title="{title}".`
+   - In Step 5, after `mkdir -p`, copy the draft into the feature dir: `cp "$spec_draft_abs" ".loop-spec/features/${slug}/spec-draft.md"`. The SPEC phase detects `spec-draft.md` and runs **spec-file ingest mode** (validate + normalize the draft through the ambiguity gate, no interview — see `skills/spec/SKILL.md`).
+
+4. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for tier or style. Infer the tier from that answer (plus the grill pass) via the rubric; style = `auto`. Use the answer as the title. Never present a tier/style menu.
 
 Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe consecutive `-`).
 
@@ -311,166 +279,13 @@ Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe c
 > the tier reflects the clarified scope, not just the raw one-liner. Do not re-grill once
 > the SPEC phase starts — SPEC's Socratic interview is the in-cycle grill.
 
-### Step 3.5 - Model probe
+### Step 3.5 - Model probe + Workflow availability probe
 
-Model selection is fixed (see `skills/shared/model-matrix.md`): the unique model set is always `{claude-opus-4-8, claude-sonnet-4-6}`.
-
-**Probe cache (speed):** the probe result is cached in `.loop-spec/runtime.json`
-(`modelsProbedAt`, ISO-8601). Skip the probe entirely — zero Agent dispatches —
-when either holds:
-
-```bash
-skip_probe=false
-[[ "${LOOP_SPEC_SKIP_HEALTHCHECK:-}" == "1" ]] && skip_probe=true
-probed_at=$(jq -r '.modelsProbedAt // empty' .loop-spec/runtime.json 2>/dev/null || true)
-if [[ -n "$probed_at" ]]; then
-  age=$(( $(date -u +%s) - $(python3 -c "import sys,datetime;print(int(datetime.datetime.strptime(sys.argv[1],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()))" "$probed_at" 2>/dev/null || echo 0) ))
-  [[ "$age" -lt 86400 ]] && skip_probe=true   # probed within the last 24h
-fi
-```
-
-A model-policy failure surfaces identically on the first real dispatch, so the
-cache trades nothing for the saved startup latency. On probe success, write
-`modelsProbedAt` into `runtime.json` (merged with the workflow probe below).
-
-When not skipped, dispatch one probe Agent per unique model (parallel, single tool message):
-
-```
-Parallel:
-  Agent({subagent_type: "loop-spec:spec-writer", model: "claude-opus-4-8",   prompt: "Reply with the single word: ok"})
-  Agent({subagent_type: "loop-spec:implementer", model: "claude-sonnet-4-6", prompt: "Reply with the single word: ok"})
-```
-
-Retry each on transient error (2x, 2s backoff). On hard failure:
-```
-loop-spec health check FAILED
-  Model: {model_id}
-  Error: {error}
-  Suggested fix: update CLAUDE.md model policy to allow {model_id}
-```
-Then abort.
-
-Set `sonnet_1m_available = false` (1M context probe removed; defaults to false; the skill will use standard context windows).
-
-### Workflow availability probe
-
-After the model health-check, write `.loop-spec/runtime.json` recording (a) whether the `Workflow` tool is available, gated deterministically on the Claude Code version (`Workflow` ships in CC `>= 2.1.154`; do not rely on model self-introspection), and (b) whether the operator opted into the EXECUTE workflow rung:
-
-```bash
-mkdir -p .loop-spec
-wf="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workflow-availability.sh")"
-optin=false
-[[ "${LOOP_SPEC_EXECUTE_WORKFLOW:-}" == "1" ]] && optin=true
-# Merge-write: preserves modelsProbedAt (Step 3.5 cache) across cycles.
-python3 -c "
-import json, sys, os
-path = '.loop-spec/runtime.json'
-data = {}
-if os.path.exists(path):
-    try:
-        data = json.load(open(path))
-    except Exception:
-        data = {}
-data['workflowsAvailable'] = sys.argv[1] == 'true'
-data['workflowExecuteOptIn'] = sys.argv[2] == 'true'
-data['teamsAvailable'] = sys.argv[3] == 'true'
-data['teamsMode'] = sys.argv[4]   # none | explicit | implicit
-json.dump(data, open(path, 'w'))
-" "$wf" "$optin" "$teams_available" "$teams_mode"
-```
-
-`teamsMode` is the authoritative dispatch selector; `teamsAvailable` is kept as the
-`teamsMode != "none"` convenience boolean that existing phase branches already read.
-
-`lib/workflow-availability.sh` gates on the CC version; set `LOOP_SPEC_WORKFLOWS_AVAILABLE=1|0` to force it (testing).
-
-`workflowExecuteOptIn` gates the heaviest EXECUTE rung. EXECUTE's concurrency ladder
-(`skills/shared/tier-matrix.md`) selects subagent or agent-team dispatch by DAG width on
-its own; it escalates to a Workflow DAG **only** when the operator sets
-`LOOP_SPEC_EXECUTE_WORKFLOW=1` AND the DAG is wide enough (`W >= t_wf`) AND the
-`Workflow` tool is available. This honors the Anthropic guidance that Workflow runs only
-on explicit opt-in. With the flag unset, EXECUTE never dispatches a Workflow even on a
-very wide DAG; it tops out at the agent-team rung. (The flag does not affect the
-opportunistic fan-out workflows in PLAN/VERIFY/map-codebase, which remain gated on
-`workflowsAvailable` alone.)
-
-Then invoke the permission check hook (non-fatal advisory):
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../hooks/pre-cycle-permission-check.sh"
-```
-
-`workflowsAvailable` is `true` on Claude Code `>= 2.1.154` (where `Workflow` is
-supported), else `false`. The cycle proceeds regardless; fan-out skills read
-`runtime.json` to decide their dispatch path. See `skills/shared/dispatch-fanout.md`.
+Model selection is fixed (`{claude-opus-4-8, claude-sonnet-4-6}`); probe results are cached 24h in `.loop-spec/runtime.json` (`LOOP_SPEC_SKIP_HEALTHCHECK=1` skips). Run the model dispatch probe and the `Workflow` availability probe now, verbatim per `${CLAUDE_SKILL_DIR}/references/startup-probes.md` (probe mechanics, cache format, degraded-mode handling, `workflowsAvailable` persistence). The cycle proceeds regardless of probe outcomes; fan-out skills read `runtime.json` to pick their dispatch path (`skills/shared/dispatch-fanout.md`).
 
 ### Step 4 - Detect project commands
 
-**Single-repo mode (unchanged):**
-
-Auto-detect (best effort):
-- test: parse package.json scripts.test, Makefile `test` target, pyproject.toml [tool.pytest], go.mod presence (`go test ./...`)
-- lint: scripts.lint, Makefile lint, ruff/eslint config files
-- typecheck: scripts.typecheck, mypy.ini, tsconfig.json + tsc
-
-**Prefer direct binaries over package-manager wrappers (node projects).** When the project
-is a node project (`package.json` present) and `node_modules/.bin/` exists, emit the direct
-binary form rather than `npx`/`npm run`: `node_modules/.bin/vitest run`, `node_modules/.bin/tsc --noEmit`,
-`node_modules/.bin/eslint .` — NOT `npx vitest` / `npm run typecheck`. The wrappers are
-sensitive to shell shims: under nvm (and the RTK+nvm interaction) `node`/`npm`/`npx` may
-resolve to a shell function that prints help instead of executing non-interactively, which
-would make every generated verify command fail as written. `node_modules/.bin/*` invokes the
-binary directly and sidesteps the shim. (If a script is genuinely only reachable via
-`npm run <name>`, keep it but note the dependency on a working `npm` in the shell.)
-
-**Probe that the detected commands actually execute** via `lib/resolve-bin.sh`, which
-resolves the REAL on-disk executable past shell-function shims (nvm/pyenv/rbenv/asdf) and
-prefers `node_modules/.bin/*`. This is the general form of the node/nvm fix — it works for
-python/ruby version managers too. Surface a clear error rather than letting every later
-verify silently fail:
-
-```bash
-# For each detected runner the commands depend on (node, npx, python, etc.), confirm a
-# real binary resolves; if it does, prefer that absolute path in the generated command.
-for tool in node npx python python3; do
-  case "$cmd_test$cmd_lint$cmd_typecheck" in
-    *"$tool"*)
-      if ! bash "${CLAUDE_SKILL_DIR}/../../lib/resolve-bin.sh" "$tool" . >/dev/null 2>&1; then
-        echo "loop-spec: '$tool' does not resolve to a real executable in this shell" >&2
-        echo "  (likely a version-manager shell-function shim). Generated verify commands" >&2
-        echo "  may fail. Prefer node_modules/.bin/* (auto), or put the real binary on PATH." >&2
-      fi ;;
-  esac
-done
-```
-
-Confirm with user via AskUserQuestion (one Q with options):
-- "Detected commands: test=`{X}`, lint=`{Y}`, typecheck=`{Z}`. Use these?"
-- Options: "Yes", "Customize"
-
-If customize: ask each separately.
-
-Skip this confirmation step when `LOOP_SPEC_NON_INTERACTIVE=1` (use auto-detected values as-is).
-
-Normalize all three to strings so `feature.commands` always carries `test`/`lint`/`typecheck` keys (undetected = empty string, never null; phases treat empty as "skip this check"): `cmd_test="${cmd_test:-}"; cmd_lint="${cmd_lint:-}"; cmd_typecheck="${cmd_typecheck:-}"`.
-
-**Workspace mode (additive):**
-
-Run the same auto-detection per participating repo using the repo's absolute path as the probe dir. Collect per-repo command maps:
-
-```bash
-declare -A repo_cmds_test repo_cmds_lint repo_cmds_typecheck
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  # run same detection logic against "$rpath"
-  repo_cmds_test["$rname"]="${detected_test:-}"
-  repo_cmds_lint["$rname"]="${detected_lint:-}"
-  repo_cmds_typecheck["$rname"]="${detected_typecheck:-}"
-done
-```
-
-Present a single AskUserQuestion listing all repos and detected commands; user confirms or customizes per-repo. Skip when `LOOP_SPEC_NON_INTERACTIVE=1`. Top-level `commands` in feature.json will carry empty strings (workspace mode per-repo commands are authoritative in `workspace.repos[].commands`).
+Auto-detect test/lint/typecheck commands (best effort) and confirm with the user (one `AskUserQuestion`; skipped when `LOOP_SPEC_NON_INTERACTIVE=1`, where `LOOP_SPEC_CMD_*` env vars win). Workspace mode detects per-repo commands (authoritative in `workspace.repos[].commands`; top-level `commands` stays empty). Apply the detection heuristics and confirmation flow verbatim from `${CLAUDE_SKILL_DIR}/references/detect-commands.md`.
 
 ### Step 5 - Initialize state
 
@@ -506,110 +321,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slu
 
 #### Workspace mode Step 5 variant
 
-In workspace mode (`workspaceMode == "workspace"`), do NOT call `create-feature-worktree` and do NOT call `EnterWorktree`. All work stays at the workspace root. Replace the single-repo branch setup above with the following two-phase procedure.
-
-**Phase 1 -- pre-flight cleanliness check (ALL repos, before ANY branch is created):**
-
-```bash
-dirty_repos=()
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  if ! bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" ensure-clean-or-stash 2>/dev/null; then
-    dirty_repos+=("$rname ($rpath)")
-  fi
-done
-if [[ ${#dirty_repos[@]} -gt 0 ]]; then
-  echo "loop-spec: cannot create feature branches -- the following repos have uncommitted changes:"
-  for r in "${dirty_repos[@]}"; do echo "  $r"; done
-  echo "Please commit or stash changes in each repo above, then re-invoke cycle."
-  exit 1
-fi
-```
-
-If any repo is dirty, abort with the message above. No branches are created.
-
-**Phase 2 -- per-repo branch creation (only when all repos are clean):**
-
-```bash
-declare -A repo_base_sha repo_base_branch
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  base_sha_r="$(git -C "$rpath" rev-parse HEAD)"
-  base_branch_r="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" detect-base-branch)"
-  git -C "$rpath" checkout -b "feat/${slug}" "$base_sha_r"
-  repo_base_sha["$rname"]="$base_sha_r"
-  repo_base_branch["$rname"]="$base_branch_r"
-done
-```
-
-**State dirs** are created at the workspace root:
-
-```bash
-mkdir -p "${workspace_root}/.loop-spec/features/${slug}" \
-         "${workspace_root}/.loop-spec/codebase" \
-         "${workspace_root}/docs/loop-spec/features/${slug}"
-```
-
-**feature.json construction for workspace mode:**
-
-Build the `workspace.repos` array from the per-repo data collected above, then write feature.json:
-
-```bash
-repos_json_array="$(echo "$workspace_repos_json" | jq -c \
-  --argjson base_shas "$(for rname in "${!repo_base_sha[@]}"; do
-      echo "{\"name\":\"$rname\",\"sha\":\"${repo_base_sha[$rname]}\"}"; done | jq -s .)" \
-  --argjson base_branches "$(for rname in "${!repo_base_branch[@]}"; do
-      echo "{\"name\":\"$rname\",\"branch\":\"${repo_base_branch[$rname]}\"}"; done | jq -s .)" \
-  '[.[] | . as $r |
-    ($base_shas[] | select(.name == $r.name) | .sha) as $sha |
-    ($base_branches[] | select(.name == $r.name) | .branch) as $bb |
-    {
-      name: $r.name,
-      path: $r.path,
-      branch: ("feat/" + env.slug),
-      baseSha: $sha,
-      baseBranch: $bb,
-      commands: {
-        test: (env["REPO_TEST_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // ""),
-        lint: (env["REPO_LINT_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // ""),
-        typecheck: (env["REPO_TYPECHECK_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // "")
-      }
-    }
-  ]')"
-# (In practice, per-repo commands detected in Step 4 are substituted in directly
-#  rather than via env vars; the structure above is illustrative of the shape.)
-
-# Same single source of truth (lib/feature-init.sh), workspace mode: top-level
-# branch/baseSha/baseBranch/worktreePath are null, top-level commands are empty, and the
-# workspace block carries the per-repo array built above. Models + tier blocks are
-# identical to single-repo mode -- never re-hand-build them here.
-workspace_feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode workspace \
-  --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --tier "$tier" --style "$execStyle" --title "$title" \
-  --ws-root "$workspace_root" --repos "$repos_json_array")
-
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" \
-  "${workspace_root}/.loop-spec/features/${slug}" "$workspace_feature_json"
-```
-
-Schema notes for workspace feature.json:
-- `schemaVersion: 7`; top-level `branch`, `baseSha`, `baseBranch`, `worktreePath` are `null`; top-level `commands` holds empty strings.
-- `workspace.root` is the absolute workspace parent path.
-- `workspace.repos[]` carries `name`, `path` (relative to workspace root), `branch` (`feat/{slug}`), `baseSha`, `baseBranch`, and `commands` (per-repo detected commands) -- matching the schema in `skills/shared/feature-state-schema.md`.
-```
-
-No initial commit of `feature.json` is forced here: `create-feature-worktree` already pointed `feat/{slug}` at a real commit (`base_sha`), and the first state commit lands at the first phase transition (Step 6). Phase artifacts under `docs/loop-spec/features/{slug}/` are committed by each phase as it writes them (SPEC, PLAN, VERIFY).
-
-> **feature.json is the committed resume contract.** Unlike the rest of `.loop-spec/`
-> runtime state, `feature.json` is tracked in git (see `.gitignore`: the feature dir's
-> contents are ignored EXCEPT `feature.json`). The cycle commits the updated state on every
-> phase transition (Step 6), so a `git clone` or a branch hand-off to another machine
-> carries the in-flight phase state and Step 1 resume detection can pick it up. The volatile
-> siblings (`feature.json.bak`, `gate-logs/`, transcripts) stay gitignored as per-machine
-> churn. In workspace mode, where the root may not be a git repo, the state commit is a
-> guarded no-op and resume remains local to that machine.
+In workspace mode (`workspaceMode == "workspace"`), do NOT call `create-feature-worktree` and do NOT call `EnterWorktree`; all work stays at the workspace root on in-place `feat/{slug}` branches. Apply the two-phase procedure (Phase 1: pre-flight cleanliness check across ALL repos before ANY branch is created; Phase 2: per-repo branch creation + the workspace-mode `feature-init.sh` skeleton) verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 5 variant").
 
 Provenance fields:
 - `artifacts.patternsSource` -- one of `"gsd-ingest"`, `"pattern-mapper"`, `"manual"`, or `null` until written. Set in PLAN Step 0.
@@ -667,156 +379,7 @@ fi
 
 ### Step 5.5 - First-run codebase map (one-time per project)
 
-**Workspace mode -- GSD ingest:** GSD ingest is a single-repo operation (`.planning/codebase/` lives inside one repo). Skip Step 5.5a (GSD ingest) entirely in workspace mode and log one line:
-
-```
-workspace mode: skipping GSD ingest (single-repo only)
-```
-
-Proceed directly to Step 5.5b mapper dispatch using the workspace-mode variant described below.
-
----
-
-Required loop-spec docs: `docs/loop-spec/codebase/{TECH,ARCH,QUALITY,CONCERNS,DOMAIN}.md`.
-
-If all 5 already exist: skip this step. Incremental refresh runs at end of cycle automatically (in VERIFY).
-
-Mapping (used by `lib/gsd-ingest.sh codebase`):
-
-| GSD source files (`.planning/codebase/`) | Loop-spec target (`docs/loop-spec/codebase/`) |
-|---|---|
-| `STACK.md` + `INTEGRATIONS.md` | `TECH.md` |
-| `ARCHITECTURE.md` + `STRUCTURE.md` | `ARCH.md` |
-| `CONVENTIONS.md` + `TESTING.md` | `QUALITY.md` |
-| `CONCERNS.md` | `CONCERNS.md` |
-| (no GSD analog) | `DOMAIN.md` -- always mapped by `mapper-domain` |
-
-Graphify (and GSD supersession when graphify is present) is handled in Step 5.4 above, which always runs. The remaining sub-steps below build any loop-spec codebase docs that are still missing.
-
-#### Step 5.5a - GSD ingestion (if applicable)
-
-```bash
-ingest_output="$(bash "${CLAUDE_SKILL_DIR}/../../lib/gsd-ingest.sh" codebase)"
-echo "$ingest_output"
-```
-
-The script writes any `INGESTED <DOMAIN>` lines for domains it filled and `SKIPPED <DOMAIN> (no source)` for ones it couldn't. If `.planning/codebase/` doesn't exist it prints `NONE`.
-
-Update `feature.artifacts.codebaseSource.{domain} = "gsd-ingest"` for each `INGESTED` line by calling `bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" .artifacts.codebaseSource.{domain} '"gsd-ingest"'` per domain.
-
-`.loop-spec/codebase/index.json` is **not** rebuilt here -- the next incremental refresh (end of VERIFY) populates it from the actual file scan. Leaving it absent at this point is correct; the incremental code paths handle the missing-file case.
-
-If GSD ingest produced any new files, commit immediately so the repo state is clean before mapper agents touch it:
-
-```bash
-if ! git diff --quiet docs/loop-spec/codebase/; then
-  git add docs/loop-spec/codebase/
-  git commit -m "docs: NO_JIRA ingest GSD codebase map (domains: <csv>)"
-fi
-```
-
-#### Step 5.5b - Map missing domains
-
-```bash
-missing=()
-for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
-  [[ -f "docs/loop-spec/codebase/${d}.md" ]] || missing+=("${d,,}")
-done
-```
-
-If `missing` is non-empty:
-
-- Print: `First loop-spec run. Bootstrapping {N} codebase domain(s) in background: {csv}...`
-
-- Model for mappers: `model_mapper = feature.models.mapper` (resolved once at Step 5; do not re-derive from model-matrix).
-
-- **Single-repo mode:** background mappers are subagents and do NOT inherit the worktree cwd. Resolve the repo root once and pass ABSOLUTE paths in every Agent prompt:
-  ```bash
-  WT_ROOT="$(git rev-parse --show-toplevel)"
-  ```
-
-- **Workspace mode mapper dispatch:** do NOT run `git rev-parse --show-toplevel` at the workspace root (it may not be a git repo). Instead, build a repo-list string from the participating repos and pass it in each mapper prompt:
-
-  ```bash
-  repo_list=""
-  for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-    rname="$(echo "$repo_entry" | jq -r '.name')"
-    rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-    repo_list="${repo_list}${rname}=${rpath}, "
-  done
-  repo_list="${repo_list%, }"   # strip trailing comma+space
-  ```
-
-  Fire one background `Agent` call per missing domain (workspace variant):
-
-  ```
-  Parallel (background):
-    Agent({
-      subagent_type: "loop-spec:mapper-{domain-1}",
-      model: model_mapper,
-      run_in_background: true,
-      description: "Bootstrap codebase map: {domain-1}",
-      prompt: """
-        You are bootstrapping the codebase map for this workspace.
-        slug: {slug}
-        Workspace root (absolute): {workspace_root}
-        Repos: {repo_list}   (format: name=abs-path, ...)
-        Produce {workspace_root}/docs/loop-spec/codebase/{DOMAIN-1}.md per your role definition.
-        Cover each repo with per-repo sections. Use absolute paths throughout. Do NOT commit.
-        When done, reply with: "DONE: {domain-1}"
-      """
-    })
-    // ... one Agent call per missing domain
-  ```
-
-  After mapper agents complete, commit the codebase docs only when the workspace root is itself a git repo:
-
-  ```bash
-  if git -C "$workspace_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    if ! git -C "$workspace_root" diff --quiet docs/loop-spec/codebase/ 2>/dev/null; then
-      git -C "$workspace_root" add docs/loop-spec/codebase/
-      git -C "$workspace_root" commit -m "docs: NO_JIRA bootstrap codebase map (workspace)"
-    fi
-  else
-    echo "workspace root not a git repo; leaving codebase docs uncommitted"
-  fi
-  ```
-
-- **Single-repo mode** fire one background `Agent` call per missing domain:
-
-  ```
-  Parallel (background):
-    Agent({
-      subagent_type: "loop-spec:mapper-{domain-1}",
-      model: model_mapper,
-      run_in_background: true,
-      description: "Bootstrap codebase map: {domain-1}",
-      prompt: """
-        You are bootstrapping the codebase map for this project.
-        slug: {slug}
-        Working directory (absolute): {WT_ROOT}
-        Produce {WT_ROOT}/docs/loop-spec/codebase/{DOMAIN-1}.md per your role definition (agents/mapper-{domain-1}.md).
-        Use the template at {WT_ROOT}/skills/shared/artifact-templates/{DOMAIN-1}.md.template if it exists.
-        Write only your assigned domain file using absolute paths. Do NOT commit.
-        When done, reply with: "DONE: {domain-1}"
-      """
-    })
-    // ... one Agent call per missing domain; always pass WT_ROOT-prefixed absolute paths
-  ```
-
-- Record pending domains in `feature.json`:
-  ```bash
-  lib/feature-write.sh set bootstrapPendingDomains '["tech", "arch", ...]'
-  ```
-  (list only the domains that were fired as background agents)
-
-- Proceed immediately to Step 6 (do NOT wait here). The DISCUSS skill will wait for these files before dispatching the spec-writer.
-
-The DISCUSS skill waits for all 5 docs before dispatching spec-writer (see discuss/SKILL.md Step 1.5).
-
-If `missing` is empty (all ingested from GSD): no mapper dispatch, no second commit.
-
-This produces at most two clean commits per first run (one ingest, one mapper bootstrap) and never amends. This is the ONLY one-time setup the cycle performs per project; everything else is per-feature.
+One-time per project: ingest an existing GSD `.planning/codebase/` if present (Step 5.5a), then fire background mappers only for the domains still missing (Step 5.5b). Skip only when all 5 domain docs already exist in `docs/loop-spec/codebase/`. Apply the full procedure verbatim from `${CLAUDE_SKILL_DIR}/references/codebase-map-bootstrap.md` (GSD ingest rules, mapper dispatch, commit discipline, `bootstrapPendingDomains` bookkeeping, workspace-mode behavior).
 
 ### Step 5.9 - Normalize feature.models (resume backfill + migration)
 
