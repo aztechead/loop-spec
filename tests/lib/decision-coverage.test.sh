@@ -90,6 +90,25 @@ check "C: no-decisions-block exits 0" "0" "$exit_code"
 echo "$output" | grep -qi "skip" && skipped="yes" || skipped="no"
 check "C: no-decisions-block prints skipped note" "yes" "$skipped"
 
+# === Case R: reflowed decision in PLAN still counts as covered ===
+SPEC_R="$WORK/spec-r.md"
+PLAN_R="$WORK/plan-r.md"
+cat > "$SPEC_R" <<'EOF'
+<decisions>
+- Decision: a long decision text that a planner will reflow across two lines in the decisions record
+</decisions>
+EOF
+cat > "$PLAN_R" <<'EOF'
+## User decisions (already made)
+
+- a long decision text that a planner will reflow
+  across two lines in the decisions record
+EOF
+
+exit_code=0
+bash "$SCRIPT" "$SPEC_R" "$PLAN_R" >/dev/null 2>&1 || exit_code=$?
+check "R: reflowed decision exits 0" "0" "$exit_code"
+
 # === Case D: missing SPEC file ===
 # SPEC path does not exist -> exit 0 (fail-open)
 SPEC_D="$WORK/does-not-exist.md"

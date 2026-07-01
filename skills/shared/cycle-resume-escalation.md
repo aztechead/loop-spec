@@ -32,6 +32,12 @@ For each candidate (worktree or workspace):
 1. **Load feature.json.** On parse error, try `feature.json.bak`. On both failing, skip.
 2. **Skip completed features.** If `currentPhase == "completed"`, skip.
 3. **Probe team liveness.** If `feature.json.currentTeamName` is non-null:
+   - **Mode guard (read `.loop-spec/runtime.json.teamsMode`).** When `teamsMode != "explicit"`
+     (i.e. `implicit` or `none`), there is no cross-session team to orphan: in `implicit` mode
+     named teammates are session-scoped subagents that did not survive, and in `none` mode no
+     team was ever created. Skip the `TaskList` liveness probe entirely — treat the team as gone:
+     clear `currentTeamName` in `feature.json`, print `"feature {slug} had stale team reference {currentTeamName}; cleared and ready to resume"`, and mark the feature resumable. Only `explicit`
+     mode runs the live-orphan probe below.
    - Call `TaskList({team: currentTeamName})`.
    - If `TaskList` succeeds (no error): the team is live (orphaned). Present the orphan-cleanup message:
      ```
@@ -111,7 +117,8 @@ When a gate or verifier rejects the **same class** of mistake more than once acr
 
 If a phase pauses + escalates (budget exhausted, NEEDS_CONTEXT, etc.):
 
-1. Call `TeamDelete({name: feature_json.currentTeamName})` (if `currentTeamName` is non-null) before returning control to the user.
+1. Tear down the phase team before returning control to the user — **only in `explicit`
+   mode** (`.loop-spec/runtime.json.teamsMode == "explicit"`): call `TeamDelete({name: feature_json.currentTeamName})` if `currentTeamName` is non-null. In `implicit` and `none` mode `TeamDelete` does not exist (it throws); skip it — the teammates are session-scoped and end with the turn.
 2. Clear `currentTeamName` and `currentTeammates` in `feature.json` via `lib/feature-write.sh`.
 3. Print escalation reason.
 4. Read `retryBudget` from `feature.json` (`.loop-spec/features/{slug}/feature.json`) and show `gateHistory` tail (last 3 attempts from `feature.json.gateHistory`).
@@ -124,3 +131,17 @@ User options:
 - Reset retry counters: edit `feature.json` directly (`globalUsed = 0`, `perPhaseUsed.{phase} = 0`); resume
 - Rollback: the `loop-spec:rollback` skill operates inside the worktree (cwd is already the worktree when the session is active inside it). On pause the session has exited the worktree, so re-enter via `EnterWorktree({path: feature.worktreePath})` first, then invoke rollback.
 - Abort: delete `.loop-spec/features/{slug}/`; new branch state up to user
+
+## Step 1 orphan detection (moved verbatim from cycle Step 1)
+
+- **Orphan detection:** if `currentTeamName != null`, probe team liveness by calling `TaskList({team: currentTeamName})`. (When agent teams are unavailable this probe is meaningless: treat the team as gone, clear `currentTeamName`, and add the feature to the resumable list — see `skills/shared/no-teams-fallback.md`.) Otherwise:
+  - If `TaskList` returns without error: the team is still live (orphaned). Print:
+    ```
+    Previous team {currentTeamName} for feature {slug} was orphaned and is still live in the harness.
+    Run TeamDelete for team {currentTeamName} (e.g., via the harness CLI or by re-invoking cycle in cleanup mode), then restart cycle to resume feature {slug}.
+    ```
+    Add to a "needs cleanup" sub-list. Do NOT add to resumable list.
+  - If `TaskList` errors (team not found): the prior team is gone. Print `"feature {slug} had stale team reference {currentTeamName}; cleared and ready to resume"`. Clear `currentTeamName` in `feature.json` via `lib/feature-write.sh`. Add to resumable list.
+- If `currentTeamName == null` AND `(now - updatedAt) < stalenessHours * 3600`: add to resumable list.
+
+If "needs cleanup" sub-list is non-empty: display it to the user after presenting resume options, so they know which teams require manual `TeamDelete`.

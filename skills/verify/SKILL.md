@@ -1,7 +1,7 @@
 ---
 name: verify
-description: VERIFY phase - acceptance gate, code-review HARD-GATE via TeamCreate, map-codebase refresh, branch finish (push + PR).
-allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet
+description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team (explicit, implicit, or no-teams dispatch), map-codebase refresh, branch finish (push + PR).
+allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
 # VERIFY Phase
@@ -14,12 +14,19 @@ Invoked when feature.json currentPhase == "verify".
 > and prompt templates, per `skills/shared/no-teams-fallback.md`. The acceptance gate and
 > code-review HARD-GATE semantics are unchanged.
 
+> **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
+> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
+> spawn verifier and code-reviewer with `Agent({name, subagent_type, model, prompt})`, folding
+> each one's work prompt into the spawn, and use `SendMessage` for any follow-up. Per
+> `skills/shared/implicit-team-mode.md`. The acceptance gate and code-review HARD-GATE
+> semantics are unchanged.
+
 ## Inputs
 
 - `feature_path` (path to `.loop-spec/features/{slug}/feature.json`)
 - `spec_path`, `plan_path`
 - `branch`, `baseSha`
-- `slug`, `tier`
+- `slug`
 
 ## Procedure
 
@@ -68,19 +75,7 @@ git diff --diff-filter=ACMR {baseSha}..HEAD --name-only \
   | xargs grep -wn 'TBD\|FIXME\|XXX' 2>/dev/null || true
 ```
 
-**Workspace mode (additive):** loop over `feature.workspace.repos[]` and run the scan per repo. The abs repo path is `feature.workspace.root + "/" + repo.path`.
-
-```bash
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="$(echo "$repo_entry" | jq -r '.path')"
-  rabs="${feature_workspace_root}/${rpath}"
-  rbase_sha="$(echo "$repo_entry" | jq -r '.baseSha')"
-  git -C "$rabs" diff --diff-filter=ACMR "${rbase_sha}..HEAD" --name-only \
-    | grep -E '\.(py|ts|js|go|rs|java|rb|sh)$' \
-    | xargs grep -wn 'TBD\|FIXME\|XXX' 2>/dev/null || true
-done
-```
+**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 1 - Unresolved marker scan").
 
 If any matches (in either mode): VERIFY fails immediately. List each `file:line: match` to the user.
 Do not spawn verifier or code-reviewer until all markers are resolved.
@@ -92,6 +87,20 @@ Notes:
 
 Rationale: unresolved markers indicate incomplete implementation; running acceptance
 gates against incomplete code wastes agent budget.
+
+### Step 1.5 - Test-tamper scan (anti-reward-hacking, fail-fast)
+
+The implementer may have edited the very suite the acceptance gate is about to trust. Before spawning teammates, scan the diff for oracle tampering — deleted test files, newly-added skip/focus annotations (`.skip`, `.only`, `xit`, `@pytest.mark.skip`, `t.Skip`, ...), and `|| true` swallowing a test command's exit code:
+
+**Single-repo mode:**
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" "{baseSha}" .
+```
+
+**Workspace mode:** run once per participating repo with that repo's `baseSha` and absolute path.
+
+Exit 1 = signals found: VERIFY fails immediately. Print the listed signals verbatim. This is NOT auto-remediable by re-running EXECUTE with a generic brief — the remediation task must state the specific tampering (`subject = "Fix: restore tampered test — {signal}"`) so the implementer un-tampers rather than re-tampers. A legitimate skip (e.g. a platform-gated test) is the HUMAN's call: in `step`/`interactive` styles ask; in autonomous styles treat as tampering and remediate — a real platform gate will come back with justification in the task notes and can be accepted on the next pass by recording it in `warnings[]`.
 
 ### Step 2 - TeamCreate verify team
 
@@ -127,7 +136,6 @@ Read `.loop-spec/runtime.json`. If `workflowsAvailable=true`, dispatch:
 Workflow({
   scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/acceptance-verify.js",
   args: {
-    tier: feature.tier,
     criteria: <parsed from PLAN.md acceptance section>,
   }
 })
@@ -156,25 +164,12 @@ Resolve the test/lint/typecheck commands from `feature.json.commands` and pass t
 SendMessage({
   to: "verifier-1",
   body: "Run every acceptance criterion's verify command from PLAN.md. Gate ONLY on the SPEC 'Good Enough' success criteria; report 'Exceptional' (stretch) criteria as informational, never as a FAIL. Write VERIFICATION.md to docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', body: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
-  // also include: slug, spec_path, plan_path, branch, baseSha, tier,
+  // also include: slug, spec_path, plan_path, branch, baseSha,
   //   and the resolved commands: test="<feature.commands.test>", lint="<feature.commands.lint>", typecheck="<feature.commands.typecheck>"
 })
 ```
 
-**Workspace mode (additive):** include the per-repo command map and per-repo absolute paths. The verifier runs each repo's commands with cwd = that repo's absolute path.
-
-```
-SendMessage({
-  to: "verifier-1",
-  body: "Run every acceptance criterion's verify command from PLAN.md. This is a workspace feature. For each repo listed below, run its own commands with cwd set to that repo's absolute path. Gate ONLY on the SPEC 'Good Enough' success criteria. Write VERIFICATION.md to {workspace_root}/docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', body: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
-  // also include: slug, spec_path, plan_path, tier, workspace_root,
-  //   and per-repo entries for each workspace.repos[]:
-  //     repo name, abs path ({workspace_root}/{repo.path}), branch (repo.branch), baseSha (repo.baseSha),
-  //     commands: test=<repo.commands.test>, lint=<repo.commands.lint>, typecheck=<repo.commands.typecheck>
-})
-```
-
-verifier-1 works independently. Lead waits for its completion signal.
+**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 4 - Spawn verifier-1").
 
 ### Step 5 - Code-review HARD-GATE (workflow path or fallback)
 
@@ -184,7 +179,6 @@ Read `.loop-spec/runtime.json`. If `workflowsAvailable=true`:
 Workflow({
   scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/code-review-dimensions.js",
   args: {
-    tier: feature.tier,
     baseSha: feature.baseSha,
   }
 })
@@ -204,30 +198,19 @@ spawn below.
 
 Send code-reviewer-1 its work prompt via SendMessage:
 
-Pass `spec_path` so the reviewer can check each SPEC Boundary / anti-goal against the diff (the "must never produce" behaviors most worth catching at a HARD gate), and echo the tier-to-blocking-severity rule (from the HARD-GATE table below) so the reviewer self-prioritizes blocking findings.
+Pass `spec_path` so the reviewer can check each SPEC Boundary / anti-goal against the diff (the "must never produce" behaviors most worth catching at a HARD gate), and echo the blocking-severity rule (Critical + Important block; Minor is recorded, backlogged, and never blocks) so the reviewer self-prioritizes blocking findings.
 
 **Single-repo mode (unchanged):**
 
 ```
 SendMessage({
   to: "code-reviewer-1",
-  body: "Review the feature branch diff against SPEC.md and PLAN.md acceptance criteria. Check each SPEC '## Boundaries (what NOT to do)' anti-goal against the diff; flag any violation Critical. Rank findings by the tier rule: quality/balanced => Critical+Important block; quick => Critical only. When complete, SendMessage({to: 'lead', body: 'CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <summary of findings>'})."
-  // also include: slug, branch, baseSha, spec_path, plan_path, tier
+  body: "Review the feature branch diff against SPEC.md and PLAN.md acceptance criteria. Check each SPEC '## Boundaries (what NOT to do)' anti-goal against the diff; flag any violation Critical. Rank findings by the fixed rule: Critical + Important block; Minor is recorded but never blocks. When complete, SendMessage({to: 'lead', body: 'CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <summary of findings>'})."
+  // also include: slug, branch, baseSha, spec_path, plan_path
 })
 ```
 
-**Workspace mode (additive):** include the per-repo absolute paths and each repo's baseSha. The code-reviewer reviews each repo's diff over its own baseSha (i.e., `git -C <abs repo> diff <repo.baseSha>..HEAD`).
-
-```
-SendMessage({
-  to: "code-reviewer-1",
-  body: "Review the feature branch diff for this workspace feature against SPEC.md and PLAN.md acceptance criteria. For each repo listed, review its diff over its baseSha using git -C <abs-repo-path> diff <baseSha>..HEAD. Check each SPEC '## Boundaries (what NOT to do)' anti-goal against each repo's diff; flag violations Critical. Rank findings by the tier rule: quality/balanced => Critical+Important block; quick => Critical only. When complete, SendMessage({to: 'lead', body: 'CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <summary of findings>'})."
-  // also include: slug, spec_path, plan_path, tier, workspace_root,
-  //   and per-repo entries: name, abs path, branch, baseSha
-})
-```
-
-code-reviewer-1 works independently in parallel with verifier-1. Lead waits for both.
+**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 6 - Spawn code-reviewer-1").
 
 ### Step 7 - Acceptance gate
 
@@ -278,10 +261,7 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
 
 Use the `CODE-REVIEWER DONE` message already received from Step 6.
 
-| Tier | Gate behavior |
-|------|---------------|
-| quality / balanced | BLOCK on Critical OR Important. PASS_WITH_MINOR proceeds (Minor deferred). |
-| quick | BLOCK on Critical only. Important + Minor deferred. |
+Fixed gate rule (single-tier operation): **BLOCK on Critical OR Important. PASS_WITH_MINOR proceeds; every Minor is backlogged below.**
 
 **If BLOCK:**
 - Generate one remediation task per blocking finding (same remediation task shape as verifier FAIL above).
@@ -300,7 +280,20 @@ Use the `CODE-REVIEWER DONE` message already received from Step 6.
 
 **If PASS or PASS_WITH_MINOR:**
 - Append code-review section to VERIFICATION.md.
+- **Backlog the deferred findings (they must not evaporate):** every Minor finding in a PASS_WITH_MINOR is appended to the project backlog:
+  ```bash
+  bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "{slug}" verify-deferred "{finding: file:line — claim}"
+  ```
+  Deferral means "not this feature", not "never" — the backlog is where `/loop-spec:cycle backlog` picks them up.
 - Proceed to Step 8.
+
+**Self-learning writer (repeat failures become rules):** whenever this step appends a `result: fail` entry to `gateHistory[]`, check whether the SAME criterion or finding already failed in a prior entry (same `gate`, matching criterion/finding text). On the second failure, record the lesson as a deterministic rule so future runs cannot repeat it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "VERIFY repeat-fail on '{criterion}' ({slug}): check this before EXECUTE completes" --check "{the criterion's verify command}"
+```
+
+One rule per repeated criterion (rules.sh add is idempotent). Do not write rules for first-time failures — one failure is remediation's job; a repeat is a pattern.
 
 ### Step 8 - TeamDelete verify team
 
@@ -339,26 +332,7 @@ WORKTREE_ABS="$(git rev-parse --show-toplevel)"
 
 If map-codebase fails: log warning to `feature.json warnings[]` via `lib/feature-write.sh` and continue (non-blocking; map failure is not a release gate).
 
-**Workspace mode (additive):** skip the graphify step entirely (graphify operates on a single repo root; it has no multi-repo mode) and log one line:
-
-```
-workspace mode: skipping graphify update (single-repo only)
-```
-
-Do NOT resolve `WORKTREE_ABS` via `git rev-parse --show-toplevel` in workspace mode; the workspace root may not be a git repo and that command would abort. Instead, pass the per-repo absolute paths to the map-codebase skill:
-
-```bash
-# Build repo list for map-codebase workspace dispatch
-repo_list=""
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="${feature_workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  repo_list="${repo_list}${rname}=${rpath}, "
-done
-repo_list="${repo_list%, }"
-# Pass repo_list to map-codebase; mappers cover each repo with per-repo sections.
-Skill(loop-spec:map-codebase) with mode: "incremental", workspace_repos: repo_list
-```
+**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 9 - map-codebase refresh").
 
 ### Step 10 - Branch finish
 
@@ -379,55 +353,7 @@ pr_body="$(printf '## Spec summary\n\n%s\n\n## Verification\n\n%s\n' "$spec_summ
 pr_url=$(gh pr create --base "${feature.baseBranch:-main}" --head {feature.branch} --title "feat: {feature_title}" --body "$pr_body")
 ```
 
-**Workspace mode (additive):** loop over `feature.workspace.repos[]`. For each repo, count commits over its baseSha. Repos with commits get a push and a PR; repos with zero commits are skipped and their feature branch is deleted. Push/PR failure for one repo degrades to printing the manual commands and continues with the remaining repos -- never aborts the loop.
-
-```bash
-declare -A repo_pr_urls repo_skip_reasons repo_commit_counts
-
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="${feature_workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  rbase_sha="$(echo "$repo_entry" | jq -r '.baseSha')"
-  rbase_branch="$(echo "$repo_entry" | jq -r '.baseBranch')"
-  rbranch="$(echo "$repo_entry" | jq -r '.branch')"
-
-  commit_count=$(git -C "$rpath" rev-list --count "${rbase_sha}..HEAD" 2>/dev/null || echo 0)
-  repo_commit_counts["$rname"]="$commit_count"
-
-  if [[ "$commit_count" -eq 0 ]]; then
-    # Zero-commit repo: skip push/PR, delete feature branch.
-    git -C "$rpath" checkout "$rbase_branch" 2>/dev/null || true
-    git -C "$rpath" branch -d "$rbranch" 2>/dev/null || true
-    repo_skip_reasons["$rname"]="no commits (branch deleted)"
-    continue
-  fi
-
-  # Push the feature branch from this repo.
-  if ! git -C "$rpath" push -u origin "$rbranch" 2>/dev/null; then
-    repo_skip_reasons["$rname"]="push failed -- run manually: git -C ${rpath} push -u origin ${rbranch}"
-    continue
-  fi
-
-  # Open PR for this repo (cwd = repo path).
-  spec_summary=$(awk '/^## Problem/,/^## (Constraints|User-facing)/' \
-    "${feature_workspace_root}/docs/loop-spec/features/${slug}/SPEC.md" | head -100)
-  verify_table=$(awk '/^## Acceptance criteria/,/^## Verify command outputs/' \
-    "${feature_workspace_root}/docs/loop-spec/features/${slug}/VERIFICATION.md")
-  pr_body="$(printf '## Spec summary\n\n%s\n\n## Verification\n\n%s\n' "$spec_summary" "$verify_table")"
-
-  pr_url=""
-  if ! pr_url=$(cd "$rpath" && gh pr create \
-      --base "$rbase_branch" \
-      --head "$rbranch" \
-      --title "feat: ${slug} (${rname})" \
-      --body "$pr_body" 2>/dev/null); then
-    repo_skip_reasons["$rname"]="PR creation failed -- run manually: cd ${rpath} && gh pr create --base ${rbase_branch} --head ${rbranch}"
-    continue
-  fi
-
-  repo_pr_urls["$rname"]="$pr_url"
-done
-```
+**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 10 - Branch finish").
 
 ### Step 11 - Commit VERIFICATION.md
 
@@ -442,25 +368,7 @@ git commit -m "verify: NO_JIRA {slug} (PR: {pr_url})"
 bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-verify
 ```
 
-**Workspace mode (additive):** commit VERIFICATION.md only when the workspace root is itself a git repo. Issue a checkpoint tag per repo using `lib/checkpoint.sh -C <abs repo>`.
-
-```bash
-# Commit VERIFICATION.md at workspace root if it is a git repo.
-if git -C "$feature_workspace_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git -C "$feature_workspace_root" add \
-    "docs/loop-spec/features/${slug}/VERIFICATION.md"
-  git -C "$feature_workspace_root" commit \
-    -m "verify: NO_JIRA ${slug} (workspace)"
-else
-  echo "workspace root not a git repo; leaving VERIFICATION.md uncommitted"
-fi
-
-# Checkpoint tag per repo.
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rpath="${feature_workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" -C "$rpath" tag post-verify
-done
-```
+**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 11 - Commit VERIFICATION.md").
 
 ### Step 12 - Update feature.json
 
@@ -495,25 +403,7 @@ Print to user:
 - Token usage estimate
 - Total elapsed time
 
-**Workspace mode (additive):** print a per-repo summary table instead of a single PR URL.
-
-```
-Workspace verify summary for {slug}:
-
-| Repo     | Commits | Result                   |
-|----------|---------|--------------------------|
-| frontend |       3 | PR: https://github.com/... |
-| backend  |       0 | skipped (no commits; branch deleted) |
-| db       |       1 | PR creation failed -- run manually: ... |
-
-Token usage estimate: {N}k
-Total elapsed time: {T}
-```
-
-Columns:
-- Repo: the `workspace.repos[].name`
-- Commits: count of commits over `repo.baseSha` on `feat/{slug}`
-- Result: PR URL if created; skip reason or manual command if not
+**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 14 - Summary").
 
 ## Resume
 

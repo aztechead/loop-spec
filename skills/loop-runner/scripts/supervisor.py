@@ -124,6 +124,10 @@ class Supervisor:
             }
             if self.args.model:
                 cfg["model"] = self.args.model
+            if self.args.fallback_model:
+                cfg["fallback_model"] = self.args.fallback_model
+            if self.args.retry_watchdog:
+                cfg["retry_watchdog"] = self.args.retry_watchdog
             cfg_path = wt / ".loop" / f"{tid}.config.json"
             cfg_path.parent.mkdir(parents=True, exist_ok=True)
             cfg_path.write_text(json.dumps(cfg, indent=2))
@@ -253,6 +257,12 @@ def main() -> int:
                    help="Retries for stalls/thrash/agent errors. Budget halts never retry.")
     p.add_argument("--task-timeout", type=int, default=3600)
     p.add_argument("--model", default="")
+    p.add_argument("--fallback-model", default="", dest="fallback_model",
+                   help="Per-tick fallback model on overload / model-unavailable "
+                        "(passed to each loop's `claude -p --fallback-model`).")
+    p.add_argument("--retry-watchdog", default="", dest="retry_watchdog",
+                   help="CLAUDE_CODE_RETRY_WATCHDOG for each unattended loop tick "
+                        "(recommended unattended retry mechanism, CC 2.1.186).")
     p.add_argument("--claude-bin", default="claude")
     p.add_argument("--no-worktree", action="store_true",
                    help="Run tasks in the repo itself (serial use only; no isolation).")

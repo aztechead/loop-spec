@@ -22,7 +22,6 @@ You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and t
 - `spec_path`: path to SPEC.md
 - `patterns_path`: path to `docs/loop-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
 - `codebase_mapping_paths`: list of docs/loop-spec/codebase/*.md
-- `tier`
 
 ## Output
 
@@ -47,7 +46,7 @@ Otherwise, produce PATTERNS.md by following the pattern-mapper role definition a
 6. If no clear analog exists for a concept, list it under `## Concepts with no clear analog`. Do not invent a plausible-looking analog.
 7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md` using the template at `${CLAUDE_PLUGIN_ROOT}/skills/shared/artifact-templates/PATTERNS.md.template`.
 
-For `quick` tier: top-1 analog per concept. For `balanced`/`quality`: top-2 with rationale.
+Top-2 analogs per concept with rationale.
 
 ### Step 1 - Read inputs and produce PLAN.md
 
@@ -154,6 +153,7 @@ After you return, automated gates check the PLAN.md you produced. Self-check aga
 
 - **Feasibility gate**: every task's verify command must pass `bash -n -c "$cmd"`; the `blockedBy` graph must be acyclic; every task must have at least one acceptance criterion in the REQUIRED CONCRETE FORM above.
 - **Decision-coverage gate**: for each entry in the SPEC `<decisions>` block, the decision text (the part after the `- `/`Decision: ` prefix) must appear verbatim somewhere in PLAN.md. Put them in the `## User decisions (already made)` section below (or a `## Decisions`/`## Assumptions` section) so the fixed-string grep matches.
+- **Criteria-coverage gate**: every SPEC `### Good Enough` success criterion must appear verbatim somewhere in PLAN.md. Carry a `## Spec coverage` section mapping each criterion (copied verbatim — the gate is a fixed-string grep) to the task ID(s) that satisfy it: `- <criterion verbatim> -> task-NNN`. A criterion you cannot map to a task means the plan is missing a task, not that the mapping is optional — VERIFY only runs what PLAN records, so an unmapped criterion ships unverified.
 
 ### The "User decisions (already made)" record
 

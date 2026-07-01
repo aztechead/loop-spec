@@ -1,12 +1,12 @@
 ---
 name: discuss
 description: DISCUSS phase - conversational requirements gathering, spawns a discuss team, runs advocate/challenger debate via SendMessage, writes SPEC.md.
-allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet
+allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch
 ---
 
 # DISCUSS Phase
 
-You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after tier + style + slug are chosen.
+You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style + slug are chosen.
 
 > **No-teams fallback:** if `.loop-spec/runtime.json.teamsAvailable == false`, do NOT
 > call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run every teammate below as
@@ -15,9 +15,15 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after tier 
 > advocate Agent calls with prior round summaries (from `gate-logs/`) inlined. All
 > artifacts, gates, and retry budgets are unchanged.
 
+> **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
+> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
+> spawn each teammate below with `Agent({name, subagent_type, model, prompt})`, folding its first
+> work prompt into the spawn, then drive critique rounds with `SendMessage` as written. Per
+> `skills/shared/implicit-team-mode.md`. `SendMessage` and the shared task list are unchanged.
+
 ## Inputs (from cycle skill via feature.json)
 
-- `slug`, `tier`, `execStyle`, `feature_title`
+- `slug`, `execStyle`, `feature_title`
 - `feature_dir`: `.loop-spec/features/{slug}/`
 - `feature_json_path`: `.loop-spec/features/{slug}/feature.json`
 - `bootstrapPendingDomains`: list of codebase domain names fired as background mappers in cycle Step 5.5b (may be empty if codebase docs already existed or were GSD-ingested)
@@ -29,6 +35,13 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after tier 
 **ITERATE re-entry (autonomous refinement mode):** if `feature.json.iterate.feedback` is non-null, DISCUSS was re-entered by the ITERATE convergence loop to close a `spec`-type goal gap. Read that feedback first and target only the named scope gap, then refine SPEC.md toward the **original goal** (`feature.json.feature_title`) — do not restart the whole interview, and do not redefine the goal.
 - In `auto` / `review-only` styles (and under `LOOP_SPEC_NON_INTERACTIVE=1`): run this refinement **without `AskUserQuestion`** — synthesize the SPEC change from `iterate.feedback` + the codebase, note any assumption in SPEC.md, and proceed. The loop must not block on a human here; the next VERIFY→ITERATE pass re-judges against the immutable original goal.
 - In `step` / `interactive` styles only: you may run the normal clarifying loop to refine the scope gap with the user.
+
+**Unresolved SPEC dimensions (consume them — SPEC wrote them for THIS step):** read the `ambiguity_scores` YAML frontmatter of the SPEC draft (`docs/loop-spec/features/{slug}/SPEC.md`). If `gate_passed: false`, the `unresolved_dimensions[]` list names requirement dimensions the SPEC phase could NOT pin down (user override at round 6, or thin non-interactive input). These are open asks — left unconsumed they survive every downstream gate and ship unmet. For EACH listed dimension:
+
+- **`step` / `interactive`:** ask ONE targeted `AskUserQuestion` for that dimension first, before any other clarifying question.
+- **`auto` / `review-only` / non-interactive:** do not block; resolve it as an explicit assumption grounded in the code graph, and record it in the transcript as `ASSUMPTION ({dimension}): ...`.
+
+Either way, the spec-writer brief (Step 3) must require: every resolved dimension becomes a concrete requirement (or explicit assumption) WITH a testable acceptance criterion under `### Good Enough`, and the updated SPEC.md frontmatter drops it from `unresolved_dimensions` (empty list + `gate_passed: true` once all are resolved). An unresolved dimension may never be silently carried past DISCUSS.
 
 Run a one-question-at-a-time loop to understand the feature.
 
@@ -113,7 +126,6 @@ SendMessage({
 
     slug: {slug}
     feature_title: {title}
-    tier: {tier}
     transcript_path: .loop-spec/features/{slug}/discuss-transcript.md
     output_path: docs/loop-spec/features/{slug}/SPEC.md
 
@@ -135,11 +147,11 @@ Wait for `TeammateIdle` from `spec-writer-1`. If spec-writer-1 goes idle without
 
 On `SPEC.md written` message received: proceed to Step 4.
 
-### Step 4 - Critique debate (SKIP if tier == quick)
+### Step 4 - Critique debate (ALWAYS runs)
 
-If `tier == "quick"`: skip directly to Step 5.
+The SPEC critique is the cheap gate that catches building the wrong thing entirely — it is never skipped (single-tier operation; the structural fast-path applies only to the PLAN critique).
 
-Read `maxCritiqueRounds` from `skills/shared/tier-matrix.md` for the current tier (quality: 3, balanced: 2, quick: 1).
+`maxCritiqueRounds = 2` (fixed; `skills/shared/tier-matrix.md`).
 
 Update `feature.json` via `lib/feature-write.sh`:
 ```json
@@ -170,7 +182,6 @@ SendMessage({
   body: """
     [Populate from skills/shared/team-prompts/advocate.md with these substitutions:
       {slug} = slug
-      {tier} = tier
       {N} = 1
       {phase} = discuss
       {artifact} = SPEC.md
@@ -194,7 +205,6 @@ SendMessage({
   body: """
     [Populate from skills/shared/team-prompts/challenger.md with these substitutions:
       {slug} = slug
-      {tier} = tier
       {N} = 1
       {phase} = discuss
       {artifact} = SPEC.md

@@ -10,7 +10,7 @@ This path returns the **same** result object as the workflow and team paths so t
 consuming code in `execute` SKILL Step 3 is shape-identical:
 
 ```json
-{ "merged": ["task-001", ...], "blocked": [{"taskId": "...", "reason": "..."}], "escalation": null | {"reason": "...", "detail": "..."}, "tier": "<tier>" }
+{ "merged": ["task-001", ...], "blocked": [{"taskId": "...", "reason": "..."}], "escalation": null | {"reason": "...", "detail": "..."} }
 ```
 
 `blocked[].reason` and `escalation.reason` use the SAME fixed vocabulary as
@@ -21,7 +21,7 @@ consuming code in `execute` SKILL Step 3 is shape-identical:
 
 - **Rung 1 (`W == 1`):** the DAG is a serial chain (or a single task). Each wave has
   exactly one ready task. The lead dispatches one implementer `Agent`, reviews it
-  (quality/balanced), merges it, then advances. No real concurrency exists, so the
+  , merges it, then advances. No real concurrency exists, so the
   team/workflow machinery would be pure overhead.
 - **Rung 2 (`2 <= W < t_team`):** modest concurrency. Each wave has a handful of ready
   tasks; the lead fires them as parallel `Agent` calls **in a single assistant
@@ -35,7 +35,7 @@ wave (`min(|ready|, maxParallelImplementers)`).
 ## Inputs (resolved by `execute` Step 3 before entering this path)
 
 - `tasks[]` — each `{id, subject, files, blockedBy (union), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` comes straight from the PLAN task block; it is the per-task behavioral assertion re-run post-merge in step 7.)
-- `tier`, `maxParallelImplementers`, `maxRetriesPerTask`, `reviewersEnabled` — from the tier matrix.
+- `maxParallelImplementers` (3), `maxRetriesPerTask` (2), `reviewersEnabled` (true) — fixed (`skills/shared/tier-matrix.md`).
 - `featureWorktreeRoot = $(git rev-parse --show-toplevel)`, `featureBranch = feat/{slug}`.
 - `models.implementer`, `models.specComplianceReviewer` — passed as the `Agent` `model`.
 - `commands` — `{lint, test, typecheck}` from `feature.json.commands`.
@@ -56,8 +56,7 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    2. `bash "${CLAUDE_SKILL_DIR}/../../lib/model-tier.sh" model "$(task.metadata.modelTier)"` when the task carries a `modelTier`, else
    3. `models.implementer` (the role default).
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
-5. **Review each committed task** (skip entirely when `reviewersEnabled == false`, i.e.
-   quick tier). For each implementer result with `committed == true`, dispatch a
+5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, dispatch a
    spec-compliance reviewer `Agent` (`model: models.specComplianceReviewer`) using the
    review prompt below. It returns `{verdict: "pass"|"rework"|"block", findings[]}`.
    - `pass`: the task is ready to merge.
@@ -68,7 +67,7 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    - `block`: `blocked.push({taskId, reason: "spec-compliance-block"})`.
    - implementer `committed == false`: `blocked.push({taskId, reason: "commit-missing"})`.
 6. **Merge the passed tasks** (inline, serial, in `wave` order). For each task that
-   reached `pass` (or, on quick tier, simply committed):
+   reached `pass`:
 
    ```bash
    worktree_branch="task/{taskId}-{slug}"
@@ -113,7 +112,7 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    but at per-task granularity, and it is the safety net for finding #2/#8: even if an
    implementer ran isolated-from-base and its green check was for a discarded worktree, the
    post-merge re-verify here catches code that never actually integrated.
-7. **Post-merge test gate** (quality/balanced only; quick skips): run
+7. **Post-merge test gate**: run
    `feature.json.commands.test` (or `lib/detect-test-cmd.sh` if unset) from the feature
    worktree. On failure, record a remediation note and surface it via `escalation` or a
    `blocked` entry rather than silently proceeding. (The per-task re-verify above asserts each
@@ -185,7 +184,7 @@ Do NOT push. Do NOT run git outside the task worktree.
 Return JSON: { taskId: "{taskId}", branch: "task/{taskId}-{slug}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
 ```
 
-## Reviewer Agent prompt (quality/balanced only)
+## Reviewer Agent prompt
 
 ```
 You are a spec-compliance reviewer for task {taskId} (attempt {n}).
@@ -199,7 +198,7 @@ Acceptance criteria:
 
 Determine whether the implementation satisfies all acceptance criteria and matches the spec.
 
-Over-engineering pass (ponytail; quality/balanced only — skip on quick): scan the diff for
+Over-engineering pass (ponytail): scan the diff for
 complexity it does not need. Flag each as a rework finding — delete: dead/speculative code;
 stdlib: hand-rolled thing the standard library already ships; yagni: abstraction with one
 implementation or config nobody sets; shrink: same logic in fewer lines. Do NOT flag the

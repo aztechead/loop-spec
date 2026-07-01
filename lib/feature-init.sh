@@ -9,13 +9,13 @@
 #       -> prints the canonical models map (JSON object). The ONE place model roles live.
 #
 #   bash lib/feature-init.sh skeleton --mode single \
-#       --slug S --now ISO --tier T --style ST \
+#       --slug S --now ISO --style ST --title "ORIGINAL GOAL" \
 #       --branch feat/S --base-sha SHA --base-branch BB --worktree PATH \
 #       --test CMD --lint CMD --typecheck CMD
 #       -> prints a complete single-repo schema-7 feature.json.
 #
 #   bash lib/feature-init.sh skeleton --mode workspace \
-#       --slug S --now ISO --tier T --style ST \
+#       --slug S --now ISO --style ST \
 #       --ws-root ROOT --repos REPOS_JSON
 #       -> prints a complete workspace-mode schema-7 feature.json
 #          (top-level branch/baseSha/baseBranch/worktreePath null; commands empty;
@@ -32,34 +32,29 @@ SONNET="claude-sonnet-4-6"
 canonical_models() {
   jq -n --arg o "$OPUS" --arg s "$SONNET" '{
     specWriter:$o, planner:$o, advocate:$o, challenger:$o, specComplianceReviewer:$o,
-    iterateJudge:$o,
-    implementer:$s, codeReviewer:$s, verifier:$s, mapper:$s, patternMapper:$s
+    iterateJudge:$o, codeReviewer:$o,
+    implementer:$s, verifier:$s, mapper:$s, patternMapper:$s
   }'
 }
 
-# Tier-derived blocks (retryBudget + iterate), identical for single and workspace modes.
-# Emitted as a JSON object merged into the skeleton.
-tier_blocks() {
-  local tier="$1"
-  jq -n --arg tier "$tier" '{
+# Fixed operating blocks (retryBudget + iterate), identical for single and workspace modes.
+# Single-tier operation (v2.5.0 hard cutover): one set of budgets, no tier scaling.
+# iterate.maxIterations=10 is the convergence loop ceiling; retryBudget.global=40 leaves
+# headroom for those judge passes plus gate retries (ITERATE increments globalUsed per pass).
+fixed_blocks() {
+  jq -n '{
     retryBudget: {
-      perGate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-      perPhase: {
-        spec:    (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-        discuss: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
-        plan:    (if $tier == "quick" then 1 elif $tier == "balanced" then 3 else 4 end),
-        execute: null,
-        verify:  (if $tier == "quick" then 2 elif $tier == "balanced" then 3 else 4 end),
-        iterate: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end)
-      },
-      global: (if $tier == "quick" then 10 elif $tier == "balanced" then 20 else 30 end),
+      perGate: 3,
+      perPhase: {spec: 3, discuss: 3, plan: 4, execute: null, verify: 4, iterate: 10},
+      global: 40,
       globalUsed: 0,
       perGateUsed: {},
       perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0, iterate: 0}
     },
     iterate: {
-      maxIterations: (if $tier == "quick" then 1 elif $tier == "balanced" then 2 else 3 end),
+      maxIterations: 10,
       used: 0,
+      confirmationUsed: false,
       lastVerdict: null,
       feedback: null,
       history: []
@@ -68,20 +63,25 @@ tier_blocks() {
 }
 
 # Common skeleton (everything except the mode-specific branch/worktree/workspace block
-# and the commands field). $1=slug $2=now $3=tier $4=style.
+# and the commands field). $1=slug $2=now $3=style $4=title.
+# feature_title is the IMMUTABLE original goal in the user's words -- the oracle the
+# ITERATE judge scores against. It must survive every phase and resume untouched.
 common_skeleton() {
-  local slug="$1" now="$2" tier="$3" style="$4"
+  local slug="$1" now="$2" style="$3" title="$4"
   jq -n \
-    --arg slug "$slug" --arg now "$now" --arg tier "$tier" --arg style "$style" \
+    --arg slug "$slug" --arg now "$now" --arg style "$style" \
+    --arg title "$title" \
     --argjson models "$(canonical_models)" \
-    --argjson tierblocks "$(tier_blocks "$tier")" \
+    --argjson tierblocks "$(fixed_blocks)" \
     '{
       schemaVersion: 7,
       slug: $slug,
+      feature_title: (if $title == "" then $slug else $title end),
       createdAt: $now, updatedAt: $now,
-      tier: $tier, execStyle: $style,
+      execStyle: $style,
       models: $models,
       currentPhase: "spec",
+      currentPhaseStartedAt: null,
       completedPhases: [],
       artifacts: {
         specInterview: null,
@@ -109,7 +109,7 @@ case "${1:-}" in
     ;;
   skeleton)
     shift
-    mode="" slug="" now="" tier="" style=""
+    mode="" slug="" now="" style="" title=""
     branch="" base_sha="" base_branch="" worktree=""
     test_cmd="" lint_cmd="" typecheck_cmd=""
     ws_root="" repos_json="[]"
@@ -117,8 +117,8 @@ case "${1:-}" in
       case "$1" in
         --mode)        mode="$2"; shift 2;;
         --slug)        slug="$2"; shift 2;;
+        --title)       title="$2"; shift 2;;
         --now)         now="$2"; shift 2;;
-        --tier)        tier="$2"; shift 2;;
         --style)       style="$2"; shift 2;;
         --branch)      branch="$2"; shift 2;;
         --base-sha)    base_sha="$2"; shift 2;;
@@ -132,10 +132,10 @@ case "${1:-}" in
         *) echo "feature-init: unknown flag '$1'" >&2; exit 1;;
       esac
     done
-    [[ -z "$slug" || -z "$now" || -z "$tier" || -z "$style" ]] && {
-      echo "feature-init: --slug --now --tier --style are required" >&2; exit 1; }
+    [[ -z "$slug" || -z "$now" || -z "$style" ]] && {
+      echo "feature-init: --slug --now --style are required" >&2; exit 1; }
 
-    base="$(common_skeleton "$slug" "$now" "$tier" "$style")"
+    base="$(common_skeleton "$slug" "$now" "$style" "$title")"
 
     case "$mode" in
       single)

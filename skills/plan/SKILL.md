@@ -1,7 +1,7 @@
 ---
 name: plan
 description: PLAN phase - creates a plan team with planner, advocate, and challenger; planner produces PATTERNS.md then PLAN.md; runs critique debate via SendMessage; writes PLAN.md and updates feature.json.
-allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet
+allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
 # PLAN Phase
@@ -15,9 +15,16 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 > challenger → advocate Agent calls with prior round summaries (from `gate-logs/`)
 > inlined. All artifacts, gates, and retry budgets are unchanged.
 
+> **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
+> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
+> spawn planner, advocate, and challenger with `Agent({name, subagent_type, model, prompt})`,
+> folding each one's first work prompt into the spawn, then run the critique debate with
+> `SendMessage` as written. Per `skills/shared/implicit-team-mode.md`. `SendMessage` and the
+> shared task list are unchanged.
+
 ## Inputs (from cycle skill via feature.json)
 
-- `slug`, `tier`, `execStyle`
+- `slug`, `execStyle`
 - `feature_dir`: `.loop-spec/features/{slug}/`
 - `feature_json_path`: `.loop-spec/features/{slug}/feature.json`
 - `spec_path`: from `feature.json.artifacts.spec`
@@ -30,40 +37,7 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 
 ### Step 0 - PATTERNS.md cache check and GSD ingestion
 
-Before spawning the team, check in order:
-
-**0a - Existing PATTERNS.md (any source):**
-
-```bash
-patterns_target="docs/loop-spec/features/${slug}/PATTERNS.md"
-if [[ -f "$patterns_target" ]]; then
-  echo "CACHED"
-fi
-```
-
-If the file exists: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
-- `artifacts.patternsSource = "pattern-mapper"`
-
-Then proceed to Step 1 (TeamCreate). Planner will detect PATTERNS.md exists and skip its Step 0 production. This applies on any resume or re-trigger where PATTERNS.md was already produced.
-
-**0b - GSD ingestion (if no cached file):**
-
-```bash
-target="docs/loop-spec/features/${slug}/PATTERNS.md"
-result="$(bash "${CLAUDE_SKILL_DIR}/../../lib/gsd-ingest.sh" patterns "$slug" "$target")"
-echo "$result"
-```
-
-The script prints `INGESTED <source-path>` on success or `NONE` if no GSD PATTERNS.md matched the slug.
-
-If `INGESTED`: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
-- `artifacts.patternsSource = "gsd-ingest"`
-
-Then proceed to Step 1 (TeamCreate). Planner will detect PATTERNS.md exists and skip its Step 0 production.
-
-If `NONE`: continue to Step 1.
+Before spawning the team: if `docs/loop-spec/features/{slug}/PATTERNS.md` already exists, record it in `feature.json.artifacts` and skip production; else attempt GSD `.planning/codebase/` ingestion; else the planner produces PATTERNS.md at its own Step 0. Exact cache/ingest procedure and artifact bookkeeping verbatim in `${CLAUDE_SKILL_DIR}/references/patterns-bootstrap.md`.
 
 ### Step 1 - TeamCreate the plan team
 
@@ -84,9 +58,9 @@ Update `feature.json` via `lib/feature-write.sh`:
 - `currentTeamName = "loop-spec-plan-{slug}"`
 - `currentTeammates = ["planner-1", "advocate-1", "challenger-1"]`
 
-#### Warm up the reviewers while the planner authors (skip on quick tier)
+#### Warm up the reviewers while the planner authors
 
-If `tier != "quick"` (the Step 3 critique gate will run), send advocate-1 and challenger-1 a warm-up brief so they load context concurrently with plan authoring instead of starting round 1 cold:
+Send advocate-1 and challenger-1 a warm-up brief so they load context concurrently with plan authoring instead of starting round 1 cold (if the structural fast-path later skips the critique, the warm-up cost is two idle context loads — acceptable):
 
 ```
 SendMessage({
@@ -99,18 +73,15 @@ SendMessage({
 })
 ```
 
-If `tier == "quick"`: send no warm-up (the critique gate is skipped, so the reviewers are never used).
-
 ### Plan authoring (workflow path or fallback)
 
 Read `.loop-spec/runtime.json`. If `workflowsAvailable=true` AND
-`feature.tier == "quality"`, dispatch:
+`LOOP_SPEC_PLAN_MULTI_ANGLE=1` (explicit opt-in; single-tier operation has no quality tier to key on), dispatch:
 
 ```text
 Workflow({
   scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/plan-multi-angle.js",
   args: {
-    tier: feature.tier,
     specPath: feature.artifacts.spec,
     patternsPath: feature.artifacts.patterns,
   }
@@ -121,7 +92,7 @@ Result: `{plan: <markdown>, angles: [...], winner}`. Skill writes `plan` to
 `docs/loop-spec/features/{slug}/PLAN.md` and logs `angles` to
 `.loop-spec/features/{slug}/gate-logs/plan-multi-angle.json`.
 
-If `workflowsAvailable=false` OR tier != "quality", fall through to the
+If `workflowsAvailable=false` OR the opt-in is unset, fall through to the
 existing single-planner Agent dispatch below.
 
 ### Step 2 - Spawn planner-1
@@ -138,7 +109,6 @@ SendMessage({
     spec_path: {spec_path}
     patterns_path: docs/loop-spec/features/{slug}/PATTERNS.md
     codebase_mapping_paths: {paths to docs/loop-spec/codebase/*.md}
-    tier: {tier}
 
     FIRST: If docs/loop-spec/features/{slug}/PATTERNS.md does not exist, produce it now.
     Analyze the codebase for concept analogs per the spec, following the pattern-mapper role
@@ -184,11 +154,11 @@ Parse the `tasks[]` JSON from the message body. Store for use in Steps 3 and 4.
 
 Proceed to Step 3.
 
-### Step 3 - Critique gate (SKIP if tier == quick)
+### Step 3 - Critique gate (structural fast-path may skip)
 
-If `tier == "quick"`: skip directly to Step 4.
+**Structural fast-path (replaces the old quick tier — measured scope, decided AFTER planning):** skip this critique debate iff ALL hold: the plan has <= 2 tasks, AND the union of task `files[]` touches <= 3 files, AND neither SPEC.md nor PLAN.md matches the security-signal pattern `auth|authenticat|authoriz|permission|credential|secret|token|crypt|payment|billing|PII|migrat|delet` (case-insensitive grep). When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)` and go to Step 4b (feasibility still runs). Any condition failing = full debate.
 
-Read `maxCritiqueRounds` from `skills/shared/tier-matrix.md` for the current tier (quality: 3, balanced: 2, quick: 1).
+`maxCritiqueRounds = 2` (fixed; `skills/shared/tier-matrix.md`).
 
 Update `feature.json` via `lib/feature-write.sh`:
 ```json
@@ -219,7 +189,6 @@ SendMessage({
   body: """
     [Populate from skills/shared/team-prompts/advocate.md with these substitutions:
       {slug} = slug
-      {tier} = tier
       {N} = 1
       {phase} = plan
       {artifact} = PLAN.md
@@ -243,7 +212,6 @@ SendMessage({
   body: """
     [Populate from skills/shared/team-prompts/challenger.md with these substitutions:
       {slug} = slug
-      {tier} = tier
       {N} = 1
       {phase} = plan
       {artifact} = PLAN.md
@@ -404,9 +372,8 @@ Validate the plan locally using the `tasks[]` data from Step 2 (or the latest pl
    printf '%s' "$tasks_json" | bash "${CLAUDE_SKILL_DIR}/../../lib/acceptance-lint.sh"
    accept_lint_exit=$?
    ```
-   - **quality / balanced:** exit 1 BLOCKS — add the flagged criteria to `infeasibility_list`
+   - Exit 1 BLOCKS — add the flagged criteria to `infeasibility_list`
      so the planner rewrites them as behavioral checks (a named test) or anchored greps.
-   - **quick:** exit 1 is ADVISORY — log the warning and proceed (quick skips the critique gate).
 
 Build `infeasibility_list`. If non-empty: re-dispatch planner-1 via `SendMessage` with the list, increment retries via `lib/feature-write.sh` (`retryBudget.perPhaseUsed.plan += 1`, `retryBudget.globalUsed += 1`), respect caps. On plan revision received, re-run Step 4b. Repeat until feasible or budget exhausted.
 
@@ -419,14 +386,9 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/decision-coverage.sh" "$spec_path" "$plan_pa
 coverage_exit=$?
 ```
 
-**Tier-conditional handling of exit code 1:**
+**Exit code 1 BLOCKS** (always — single-tier operation has no advisory mode): re-dispatch planner-1 via SendMessage with the uncovered decisions in the body and return to Step 4 (debate).
 
-| Tier | Exit code 1 behaviour |
-|------|-----------------------|
-| quality / balanced | BLOCKS. Re-dispatch planner-1 via SendMessage with the uncovered decisions in the body. Return to Step 4 (debate). |
-| quick | ADVISORY. Log a warning to the console, then proceed to Step 6 (commit). |
-
-When blocking (quality or balanced tier): increment retry counters via `lib/feature-write.sh` (`retryBudget.perPhaseUsed.plan += 1`, `retryBudget.globalUsed += 1`) and respect existing caps. Send:
+When blocking: increment retry counters via `lib/feature-write.sh` (`retryBudget.perPhaseUsed.plan += 1`, `retryBudget.globalUsed += 1`) and respect existing caps. Send:
 
 ```
 SendMessage({
@@ -445,7 +407,18 @@ SendMessage({
 
 Wait for `TeammateIdle` from `planner-1`. When the revision is received, return to Step 4 (critique debate) with the updated plan.
 
-Exit code 0 (all decisions covered, or no `<decisions>` block present): proceed to Step 6.
+Exit code 0 (all decisions covered, or no `<decisions>` block present): proceed to the criteria-coverage check below.
+
+**Criteria coverage (same gate, second artifact):** every SPEC `### Good Enough` success criterion must appear verbatim in PLAN.md — VERIFY runs only the criteria PLAN records, so a criterion dropped here is invisible to every downstream gate (VERIFY green, ITERATE floor green) and ships unmet:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/criteria-coverage.sh" "$spec_path" "$plan_path"
+criteria_exit=$?
+```
+
+Handle exit code 1 exactly like decision-coverage above (BLOCK and re-dispatch planner-1 with the uncovered criteria list, incrementing the same retry counters). In the re-dispatch body, instruct planner-1 to add each missing criterion verbatim to the `## Spec coverage` section mapped to the task(s) that satisfy it.
+
+Exit code 0 on both checks: proceed to Step 6.
 
 ### Step 6 - Commit PLAN.md and update feature.json
 
@@ -508,36 +481,4 @@ If invoked with `currentPhase == "plan"` already in `feature.json`:
 
 ## Workspace mode -- task-format rules
 
-When `feature.workspace` is non-null (workspace mode), the following additional rules apply to every task the planner produces. These rules are additive; all existing task-format rules remain in force.
-
-### repo field (required in workspace mode)
-
-Every task MUST carry a `repo` field whose value matches exactly one `workspace.repos[].name` from `feature.json`. Omitting `repo` in workspace mode is an error caught by the feasibility gate.
-
-In the PLAN.md task-block format, `repo` appears as a dedicated line alongside `**Files:**` and `**blockedBy:**`:
-
-```
-**repo:** frontend
-```
-
-In the planner's `tasks[]` JSON shape (returned in the completion message and passed to `TaskCreate` via task `metadata`), `repo` is a top-level string key:
-
-```json
-{"id": "task-001", "subject": "...", "repo": "frontend", "files": ["frontend/src/app.ts"], ...}
-```
-
-### One task, one repo
-
-A single task MUST target exactly one repo. Work that spans multiple repos is expressed as multiple tasks connected by explicit `blockedBy` edges. The planner must never list files from more than one repo in a single task's `files[]`.
-
-### workspace-relative file paths
-
-In workspace mode `files[]` entries are workspace-relative and MUST begin with the repo name as the first path component (e.g., `frontend/src/app.ts`, not `src/app.ts`). Every file in a task must resolve -- via `lib/workspace.sh resolve-repo <workspace-root> <path>` -- to the same repo named in the task's `repo` field.
-
-### Cross-repo blockedBy edges
-
-When a change in one repo must precede a change in another repo, express this as two tasks: the upstream task (repo A) and the downstream task (repo B) with `blockedBy: [upstream-task-id]`. This is the only mechanism for cross-repo ordering.
-
-### Ignored by lib helpers
-
-`lib/plan-to-loop.sh`, `lib/dag-width.sh`, and `lib/plan-adherence.sh` ignore unknown task keys, so adding `repo` to task metadata requires no changes to those scripts.
+When `feature.workspace` is non-null, every task additionally carries a `repo` field (must match one `workspace.repos[].name`; feasibility gate enforces), targets exactly one repo, uses workspace-relative `<repo>/<path>` file paths, and may declare cross-repo `blockedBy` edges. Full rules verbatim in `${CLAUDE_SKILL_DIR}/references/workspace-task-format.md` — the planner brief MUST include them in workspace mode.

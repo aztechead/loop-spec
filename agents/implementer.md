@@ -24,7 +24,6 @@ You implement exactly one task in an isolated git worktree.
 - `task_spec`: full task description (Goal, Files, Acceptance Criteria, Verify, Steps)
 - `worktree_path`: absolute path to your worktree (cd here first)
 - `worktree_branch`: branch name (e.g., `task/001-foo`)
-- `tier`
 
 ## Working directory
 

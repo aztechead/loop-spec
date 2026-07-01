@@ -2,7 +2,7 @@
 
 Maps each agent role to a fixed model ID. There is no model preset axis: model
 selection is fixed and identical for every feature. Gate behavior, retry budgets,
-and fan-out width remain tier-driven and orthogonal; see `tier-matrix.md`.
+and fan-out width are also fixed (single-tier operation); see `tier-matrix.md`.
 
 The concrete IDs are resolved once at cycle Step 5 into `feature.models.<role>`,
 and every spawn passes `model: feature.models.<role>` explicitly. This file is the
@@ -21,7 +21,8 @@ source of truth that Step 5 mirrors.
 | advocate, challenger | claude-opus-4-8 |
 | spec-compliance-reviewer | claude-opus-4-8 |
 | iterate-judge | claude-opus-4-8 |
-| code-reviewer, verifier | claude-sonnet-4-6 |
+| code-reviewer | claude-opus-4-8 |
+| verifier | claude-sonnet-4-6 |
 | implementer | claude-sonnet-4-6 |
 | mapper-*, pattern-mapper | claude-sonnet-4-6 |
 
@@ -29,9 +30,11 @@ source of truth that Step 5 mirrors.
 
 - **Opus** runs the reasoning-heavy roles: spec/plan authoring (spec-writer,
   planner), the SPEC/PLAN critique gate (advocate, challenger), and the
-  spec-compliance gate (spec-compliance-reviewer, the Ralph loop).
-- **Sonnet** runs the high-throughput roles: implementation (implementer), code
-  review (code-reviewer), acceptance verification (verifier), and codebase
+  spec-compliance gate (spec-compliance-reviewer, the Ralph loop), the ITERATE
+  goal re-judge (iterate-judge), and the code-review HARD-GATE (code-reviewer):
+  the checker is never weaker than the maker.
+- **Sonnet** runs the high-throughput roles: implementation (implementer),
+  acceptance verification (verifier, mechanical command execution), and codebase
   mapping (mapper-*, pattern-mapper).
 - haiku is no longer used by any role.
 

@@ -9,6 +9,11 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete 
 
 Standalone skill that builds or refreshes `docs/loop-spec/codebase/*.md`. Also auto-invoked by `loop-spec:verify` at end of feature cycle.
 
+> **Team-mode adaptation (Step 3–5):** read `.loop-spec/runtime.json.teamsMode`.
+> - `none` → no team: run each mapper as a one-shot `Agent` call (`skills/shared/no-teams-fallback.md`); skip the `TeamCreate`/`TeamDelete` steps and collect each mapper's returned report directly.
+> - `implicit` (CC >= 2.1.178) → `TeamCreate`/`TeamDelete` were removed and throw. Skip the `TeamCreate` in Step 3 and the `TeamDelete` in Step 5; spawn each mapper with `Agent({name: "mapper-{domain}-1", subagent_type, model, prompt})`, folding its `SendMessage` work prompt into the spawn. Mapper-to-mapper and `DOMAIN_DONE` messaging via `SendMessage` is unchanged. Per `skills/shared/implicit-team-mode.md`.
+> - `explicit` → the `TeamCreate`/`TeamDelete` steps below run as written.
+
 ## Modes
 
 - **incremental** (default): only re-map domains whose tracked files changed since last refresh
@@ -19,7 +24,6 @@ Standalone skill that builds or refreshes `docs/loop-spec/codebase/*.md`. Also a
 When auto-invoked from verify:
 - `mode: "incremental"`
 - `since_sha: feature.baseSha`
-- `tier: feature.tier`
 
 When standalone (`Skill(loop-spec:map-codebase)`):
 - Optional args: `--full` (forces full mode), `--domain tech,arch` (filter to subset)
@@ -68,14 +72,13 @@ Read `.loop-spec/runtime.json`. If `workflowsAvailable=true` AND
 Workflow({
   scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/map-codebase.js",
   args: {
-    tier: feature.tier,
     staleDomains: stale_domains,
     sinceSha: since_sha,
   }
 })
 ```
 
-Result shape: `{domains: [{name, mdPath, coverage, weakSpots}], tier}`.
+Result shape: `{domains: [{name, mdPath, coverage, weakSpots}]}`.
 Skill consumes `domains[].mdPath` as the canonical refresh outputs and writes
 no additional artifacts (workflow agents wrote the files).
 

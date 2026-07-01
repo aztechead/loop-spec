@@ -41,6 +41,10 @@ if [[ -z "$decisions_block" ]]; then
 fi
 
 # Parse individual decision entries (lines starting with "- ")
+# Whitespace-normalized plan content: a decision reflowed across lines in PLAN.md
+# must still count as covered (the match is semantic identity, not line layout).
+plan_norm="$(tr -s '[:space:]' ' ' < "$plan_path" 2>/dev/null || true)"
+
 uncovered=()
 while IFS= read -r line; do
   # Strip leading whitespace
@@ -54,8 +58,9 @@ while IFS= read -r line; do
   entry="${entry#decision: }"
   [[ -z "$entry" ]] && continue
 
-  # Check if the entry appears in the plan (fixed-string match)
-  if ! grep -qF "$entry" "$plan_path" 2>/dev/null; then
+  # Fixed-string match on whitespace-normalized text (both sides)
+  entry_norm="$(printf '%s' "$entry" | tr -s '[:space:]' ' ')"
+  if [[ "$plan_norm" != *"$entry_norm"* ]]; then
     uncovered+=("$entry")
   fi
 done <<< "$decisions_block"

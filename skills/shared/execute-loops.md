@@ -38,7 +38,7 @@ The implementer then:
    ```
    TaskUpdate({taskId: "<id>", owner: null, metadata: {phase: "awaiting_review"}})
    ```
-   Status stays `in_progress` (work is in flight; only the role-holder is changing). On `quick` tier (no reviewers), the implementer skips this and instead transitions to `completed` directly (see implementer.md).
+   Status stays `in_progress` (work is in flight; only the role-holder is changing).
 9. Returns to step 1 to claim the next task.
 
 ### When no tasks are available
@@ -61,7 +61,7 @@ The harness serializes concurrent `TaskUpdate` calls on the same task id. If two
 
 ## Reviewer self-claim loop (per reviewer)
 
-Only runs when R > 0 (quality and balanced tiers). For quick tier (R = 0), there are no reviewers. Mirrors the implementer self-claim model.
+Mirrors the implementer self-claim model.
 
 Repeat until idle:
 
@@ -82,7 +82,7 @@ Repeat until idle:
 6. **Outcome decision:**
    - **Pass:** `TaskUpdate({taskId, status: "completed"})`, then `SendMessage({to: "lead", body: "REVIEW PASS: task-<id>"})`.
    - **Fail (retry budget remaining):** `TaskUpdate({taskId, owner: null, metadata: {phase: "needs_rework", retries: <current+1>}})`, then `SendMessage({to: "<metadata.claimedBy>", body: "REWORK NEEDED: task-<id>\n{findings}"})`. Task stays `in_progress`; implementer picks it back up via the rework filter in their self-claim loop.
-   - **Fail (retry budget exhausted, i.e. `retries + 1 > tier.execute.maxRetriesPerTask`):** `TaskUpdate({taskId, status: "completed", metadata: {phase: null, result: "blocked"}})`, then `SendMessage({to: "lead", body: "TASK BLOCKED: task-<id> exceeded retry budget"})`. Marking the task `completed` (terminal status) keeps the harness task list moving forward; `metadata.result == "blocked"` flags it for the lead's exit-condition check to pause + escalate.
+   - **Fail (retry budget exhausted, i.e. `retries + 1 > maxRetriesPerTask` (fixed: 2)):** `TaskUpdate({taskId, status: "completed", metadata: {phase: null, result: "blocked"}})`, then `SendMessage({to: "lead", body: "TASK BLOCKED: task-<id> exceeded retry budget"})`. Marking the task `completed` (terminal status) keeps the harness task list moving forward; `metadata.result == "blocked"` flags it for the lead's exit-condition check to pause + escalate.
 7. Return to step 1 to claim the next `awaiting_review` task.
 
 ### Rework re-entry for implementers

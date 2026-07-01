@@ -2,6 +2,186 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.5.0]
+
+### Changed (BREAKING — single-tier hard cutover, no migration)
+- **The quick/balanced/quality tier axis is REMOVED.** `feature.json` no longer carries a
+  `tier` field (Step 5.9 deletes it from legacy features on resume); `lib/feature-init.sh`
+  rejects `--tier`; `LOOP_SPEC_ANSWER_TIER` and inline `tier:` tokens are ignored with a
+  notice; the tier-inference rubric + security safety floor are deleted (nothing to floor —
+  no gate can be skipped by intent anymore). Rationale: every tier-skipped gate became a
+  shipped defect class, and tier was chosen from prompt wording before the real scope was
+  known.
+- **Fixed gates**: spec critique ALWAYS runs; code review blocks Critical + Important with
+  every Minor backlogged; acceptance-lint / decision-coverage / criteria-coverage always
+  BLOCK (no advisory mode); post-merge test gate and over-engineering pass always run.
+- **Structural fast-path replaces `quick`** (plan Step 3): the PLAN critique debate is
+  skipped iff the plan has <= 2 tasks AND touches <= 3 files AND SPEC/PLAN carry no
+  security signal — measured AFTER planning from the actual task DAG.
+- **Fixed budgets**: perGate 3, global 40, and **`iterate.maxIterations = 10`** (a
+  convergence budget, not an expectation — most features converge in 1-2 passes; the
+  headroom prevents premature ship-with-warnings on legitimately hard goals).
+- **`codeReviewer` model: sonnet → opus.** The HARD-GATE checker is never weaker than the
+  maker's advocate; the mechanical `verifier` stays sonnet.
+- **Fixed fan-out**: t_team 3, t_wf 6, maxParallelImplementers 3, maxRetriesPerTask 2,
+  reviewers always enabled; workflow params fixed at the former balanced row (workflow
+  scripts' `expandTierParams(tier)` → `expandParams()`); multi-angle plan authoring is now
+  opt-in via `LOOP_SPEC_PLAN_MULTI_ANGLE=1` (no quality tier to key on).
+- Phase watchdog ceiling: fixed 60m default (`LOOP_SPEC_PHASE_TIMEOUT_MINS` overrides).
+- Manual e2e matrix: 36 cells → 12 (3 sizes x 4 styles). `docs/tier-guide.md` rewritten as
+  the single-tier operating guide.
+
+## [2.4.0]
+
+### Fixed
+- **Released the modern-harness agent-teams support to main.** The v2.3.0 work (implicit-team
+  mode for Claude Code >= 2.1.178) was merged but never released; the published 2.2.0 still
+  attempted `TeamCreate` on harnesses that removed it, tripping the guarded-team-op refutation
+  and permanently downgrading every phase to the no-teams fallback. This is the root cause of
+  "TeamCreate/TeamDelete aren't exposed, only SendMessage, so it doesn't use agent teams".
+- **`feature_title` is now persisted in feature.json** (`lib/feature-init.sh --title`, cycle
+  Step 5 both modes, Step 5.9 backfill-from-slug for pre-2.4.0 features). ITERATE's judge
+  scores against `feature.json.feature_title` as the immutable original goal; the schema-7
+  skeleton never wrote it, so the judge silently fell back to SPEC.md — the exact
+  passing-checklist-on-a-wrong-spec drift the dual oracle exists to catch.
+- **ITERATE budget-exhausted ship is loud, never silent** (`skills/iterate/SKILL.md` Step 0):
+  every unresolved gap from the last verdict is harvested into `warnings[]` (prefixed
+  `iterate-budget-spent:`), an un-re-judged final remediation is called out explicitly, and
+  the cycle On-completion summary now prints `warnings[]` under `## Shipped with warnings`.
+  Previously a budget-spent ship looked identical to a clean converge, which is how a whole
+  unmet requirement could pass ITERATE after a single remediation pass (quick tier
+  `maxIterations=1` ships on re-entry without re-judging the fix).
+- **`unresolved_dimensions` now has a consumer**: DISCUSS Step 1 reads the SPEC
+  `ambiguity_scores` frontmatter and resolves each unresolved dimension (targeted question in
+  interactive styles; explicit graph-grounded assumption in autonomous styles), converting it
+  into a testable Good Enough criterion. Previously the list was written and read by nobody.
+
+### Added (self-regulation — Ralph-loop + long-running-agent patterns)
+- **Progress journal (F1)**: cycle appends a what/next/gotchas block to
+  `.loop-spec/features/{slug}/PROGRESS.md` at every phase transition and commits it with
+  feature.json — the narrative complement to machine state, read on resume and used as the
+  handoff document for fresh-context rewinds.
+- **Resume re-grounding (F2)**: mandatory protocol before re-entering any phase on resume —
+  read PROGRESS.md, `git log -10`, run the test command once; a broken tree redirects to a
+  remediation task instead of building a new phase on top of it.
+- **Test-tamper scan (F3)**: `lib/test-tamper-scan.sh` + VERIFY Step 1.5 fail-fast — deleted
+  test files, added skip/focus annotations (`.skip`, `.only`, `xit`, `@pytest.mark.skip`,
+  `t.Skip`, ...), and `|| true` on added lines of test files are Critical tampering signals.
+  Only ADDED lines are scanned (pre-existing skips never fire). 9-case suite.
+- **Deferred-work backlog (F4)**: `lib/backlog.sh` (`add`/`next`/`done`/`count`, idempotent) +
+  two automatic producers — VERIFY's tier-deferred findings and ITERATE's budget-spent gaps —
+  and a completion-summary count line. Deferral now means "queued", not "gone". 13-case suite.
+- **Backlog-drain mode (F5)**: `/loop-spec:cycle backlog` runs one full cycle per top backlog
+  entry, bounded by `LOOP_SPEC_MAX_FEATURES` (default 1); never chains past a failure. The
+  bounded Ralph loop: `while :; do claude -p "/loop-spec:cycle backlog"; done`.
+- **Phase watchdog (F6)**: `currentPhaseStartedAt` stamped at every phase route (new schema
+  field + skeleton default); elapsed time checked against tier-scaled ceilings (quick 30m /
+  balanced 60m / quality 120m, `LOOP_SPEC_PHASE_TIMEOUT_MINS` override) on phase exit and
+  resume. Warns and surfaces; never kills work.
+- **Self-learning writers (F7)**: the previously writer-less RULES.md loop gains two automatic
+  producers — a VERIFY criterion that fails twice becomes a deterministic rule
+  (`rules.sh add --check`), and a budget-spent iterate ship records its gap class.
+- **Fresh-context rewind (F8, opt-in `LOOP_SPEC_ITERATE_FRESH=1`)**: ITERATE rewinds commit
+  state (feature.json + PROGRESS.md + iterate.feedback) and return to the user for a clean
+  relaunch instead of continuing in an ever-longer session; an outer loop or loop-runner
+  drives the re-entry.
+
+### Fixed (post-audit hardening)
+- **Tool whitelist contradictions**: `ToolSearch` (required by the deferred-tool rescue) and
+  `Workflow` (dispatched by plan/verify/execute) were absent from the cycle tool whitelist and
+  most phase `allowed-tools` — a literal reading of "any tool not listed is not permitted"
+  forbade the cycle's own procedures. Both added everywhere they are used.
+- **ITERATE confirmation pass**: when the iteration budget is spent but a remediation landed
+  after the last judge pass, the judge runs exactly once more in report-only `mode=confirmation`
+  (guarded by `iterate.confirmationUsed`, set before dispatch; does not count as an iteration;
+  cannot rewind). Converged → ships as a confirmed converge; else the ship's warnings use the
+  fresher verdict. Closes the remaining "fix shipped un-re-judged" semantics on quick tier.
+- **Coverage gates whitespace-normalized**: `decision-coverage.sh` and `criteria-coverage.sh`
+  now match on whitespace-collapsed text, so a criterion/decision reflowed across lines in
+  PLAN.md no longer fails the gate falsely (reflow regression cases added to both tests).
+- Inline `tier:`/`style:` override tokens are stripped from the feature title before it is
+  slugified/persisted — they were polluting `feature_title`, the immutable goal the ITERATE
+  judge scores against. Spec-draft copy instruction made workspace-mode-aware.
+- `LOOP_SPEC_SPEC_FILE` env var: headless equivalent of `/loop-spec:cycle path/to/spec.md`
+  for the non-interactive contract (title falls back to the spec's first `# ` heading).
+- New lint suite `tests/lib/skill-references.test.sh`: every `${CLAUDE_SKILL_DIR}/references/*`
+  pointer in a SKILL.md must resolve, and every references/ file must be pointed to (guards the
+  progressive-disclosure layer against rename drift). Manual e2e matrix gains scenario rows
+  (spec-file ingest, implicit/explicit harness, iterate budget ship); README tree refreshed.
+
+### Added
+- **Spec-file entry path** (the "loop-driven development from a spec file" claim, now honored
+  end-to-end): `/loop-spec:cycle path/to/spec.md` detects an existing `.md` argument, copies it
+  to `.loop-spec/features/{slug}/spec-draft.md`, and the SPEC phase runs **spec-file ingest
+  mode** — no interview; the draft is graph-grounded, scored against the ambiguity gate, and
+  normalized into the SPEC.md format with requirements preserved verbatim.
+- **Skill-authoring audit against current Claude Code recommendations**: all four oversized
+  SKILL.mds brought under the documented 500-line guidance via verbatim extraction into
+  per-skill `references/` files (cycle 919→482 — workspace-mode procedures, startup probes,
+  command detection, codebase-map bootstrap; verify 533→383 — workspace variants; execute
+  555→457 — team-rung protocol Steps 7-10; plan 561→496 — workspace task-format rules +
+  PATTERNS bootstrap). No content rewrites — pure relocation with pointer stubs.
+  `argument-hint` added to quality-loop and rollback; README/marketplace/plugin descriptions
+  updated (6 phases, v2.4.0 status, both agent-team harness generations, ponytail-ported
+  simplicity mode named alongside the required graphify graph).
+- **`lib/criteria-coverage.sh`** + plan Step 5.5 criteria-coverage gate + planner
+  `## Spec coverage` section: every SPEC `### Good Enough` criterion must appear verbatim in
+  PLAN.md, mapped to the task(s) satisfying it (quality/balanced BLOCK, quick advisory).
+  VERIFY runs only the criteria PLAN records, so a criterion dropped in the SPEC->PLAN handoff
+  was invisible to every downstream gate. Test: `tests/lib/criteria-coverage.test.sh`.
+- **`iterate-judge` verdict gains `remaining_gaps[]`**: the judge still routes on the single
+  highest-leverage gap, but now lists every other known miss; ITERATE converts execute-level
+  remaining gaps into remediation tasks in the same pass (the budget counts judge passes, not
+  fixes) and reports all of them on a budget-exhausted ship.
+- **Deferred-tool rescue in the guarded-team-op contract** (cycle Step 2,
+  `skills/shared/implicit-team-mode.md`): modern harnesses may expose `SendMessage`/`Task*`
+  as deferred tools whose direct call fails with `InputValidationError` until a
+  `ToolSearch("select:...")` loads the schema. That failure is now rescued (load + retry once)
+  instead of being misread as a capability refutation that silently downgrades a
+  teams-capable harness to the no-teams fallback.
+
+## [2.3.0]
+
+### Added
+- **`lib/teams-capability.sh`** + **`skills/shared/implicit-team-mode.md`** -- the cycle now
+  works on Claude Code **>= 2.1.178**, which **removed the `TeamCreate` / `TeamDelete` tools**
+  (every session now has one implicit team; teammates are spawned directly via `Agent({name})`).
+  Cycle Step 2 replaces the binary env probe with a deterministic, version-gated capability probe
+  that resolves a three-way **`teamsMode`** (`none` / `explicit` / `implicit`), persisted to
+  `.loop-spec/runtime.json` alongside the existing `teamsAvailable` boolean. Phase skills
+  (`discuss`, `plan`, `execute`, `verify`, `map-codebase`) gained an implicit-mode adaptation:
+  in `implicit` mode they skip `TeamCreate`/`TeamDelete` and spawn named teammates with `Agent({name})`,
+  with `SendMessage` and the shared `TaskList` unchanged. Override with `LOOP_SPEC_TEAMS_MODE`.
+  Tests: `tests/lib/teams-capability.test.sh` (11 cases) wired into `tests/run-all.sh`.
+
+- **Unattended fleet resilience** (`skills/loop-runner/scripts/loop.py` + `supervisor.py`): new
+  opt-in `--fallback-model <id>` (passes `claude -p --fallback-model` so a tick survives overload /
+  model-unavailable instead of dying) and `--retry-watchdog <n>` (sets `CLAUDE_CODE_RETRY_WATCHDOG`
+  for the child — the recommended unattended retry mechanism, CC 2.1.186, over the now-capped
+  `CLAUDE_CODE_MAX_RETRIES`). The supervisor threads both into every loop config. Both default off.
+  Tests: `run_tests.sh` section 12 (flag + env propagation, and the default-off case).
+
+### Changed
+- **Accurate team detection messaging.** On a modern harness with the flag set, the cycle no
+  longer prints "agent teams unavailable / not exposed" and no longer issues a doomed `TeamCreate`
+  that trips the guarded-team-op fallback. The guarded-team-op contract is retained as the
+  `explicit`-mode safety net only. Resume/orphan handling (`cycle-resume-escalation.md`) skips the
+  `TaskList` liveness probe and `TeamDelete` cleanup in `implicit`/`none` mode (no cross-session
+  team to orphan or delete).
+- **Hardened the ITERATE convergence oracle** (`skills/iterate/SKILL.md`): the `iterate-judge`
+  verdict is now extracted from its fenced ```json block and key-validated before the ship/rewind
+  decision; a malformed or missing verdict is treated as re-dispatch-once-then-escalate, never as
+  "converged". Complements the harness structured-output hardening (CC 2.1.186/2.1.187) that already
+  backstops the Workflow `agent({schema})` rungs (`lib/workflows/*.js`).
+
+### Docs
+- **Operator hardening guidance** (`docs/loop-spec/PREREQUISITES.md`): optional `Agent(model:...)`
+  deny rules (parameter-matched permission syntax, named-spawn enforcement fixed in CC 2.1.186) to
+  fail closed on off-policy models as defense-in-depth over loop-spec's prompt-level model pinning;
+  plus a note on nested per-repo `.claude/skills` (`<dir>:<name>`) in workspace mode.
+- **Subagent depth budget** documented in the cycle dispatch convention (CC's 5-level nested-subagent
+  cap; loop-spec dispatch stays within it, and the loop-fleet rung sidesteps it via top-level `claude -p`).
+
 ## [2.2.0]
 
 ### Added

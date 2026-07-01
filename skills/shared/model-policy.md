@@ -19,7 +19,7 @@ Some projects' `CLAUDE.md` hard-codes earlier model IDs (e.g., chrisbobrowitz/su
 
 ## Health check (cycle startup)
 
-The cycle skill probes each tier's models at startup with a 1-token completion. Retries 3x with 2s backoff. Failure prints:
+The cycle skill probes the fixed model set at startup with a 1-token completion. Retries 3x with 2s backoff. Failure prints:
 
 ```
 loop-spec health check FAILED

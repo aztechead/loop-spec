@@ -57,7 +57,7 @@ Skills run in main thread. Main thread has AskUserQuestion. Confirmed working: A
 
 ### 4. `claude --print` stdin behavior
 
-**Decision:** PROCEED via WORKAROUND. Smoke runner does NOT pipe stdin to interactive prompts. Instead, cycle skill supports env-var overrides: `LOOP_SPEC_NON_INTERACTIVE=1`, `LOOP_SPEC_ANSWER_TIER=quick`, `LOOP_SPEC_ANSWER_STYLE=auto`, `LOOP_SPEC_ANSWER_TITLE="..."`. Cycle skill detects env var and skips AskUserQuestion calls, reading answers from env. Standard pattern; doesn't require any CC harness probe.
+**Decision:** PROCEED via WORKAROUND. Smoke runner does NOT pipe stdin to interactive prompts. Instead, cycle skill supports env-var overrides: `LOOP_SPEC_NON_INTERACTIVE=1`, `LOOP_SPEC_ANSWER_STYLE=auto`, `LOOP_SPEC_ANSWER_TITLE="..."`. Cycle skill detects env var and skips AskUserQuestion calls, reading answers from env. Standard pattern; doesn't require any CC harness probe.
 
 ## Summary
 

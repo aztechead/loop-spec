@@ -12,7 +12,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "slug": "string (kebab-case)",
   "createdAt": "ISO-8601 timestamp",
   "updatedAt": "ISO-8601 timestamp",
-  "tier": "quality | balanced | quick",
   "execStyle": "auto | step | interactive | review-only",
   "currentPhase": "spec | discuss | plan | execute | verify | completed",
   "completedPhases": ["array of phase names"],
@@ -60,7 +59,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   },
   "retryBudget": {
     "perGate": 3,
-    "perPhase": {"spec": "integer (tier-dependent, mirrors discuss budget)", "discuss": 3, "plan": 4, "execute": null, "verify": 4},
+    "perPhase": {"spec": 3, "discuss": 3, "plan": 4, "execute": null, "verify": 4, "iterate": 10},
     "perGateUsed": {},
     "perPhaseUsed": {"spec": 0, "discuss": 0, "plan": 0, "execute": 0, "verify": 0},
     "global": 30,
@@ -119,7 +118,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 ### Field notes
 
 - The `tasks` and `waves` arrays from v2 are gone. Live task state lives in the harness task list, not in `feature.json`.
-- `retryBudget.perPhase.execute: null` means unlimited at the phase level. The per-task cap (`tier.execute.maxRetriesPerTask`) is the operative limit during EXECUTE; a phase-level cap is intentionally omitted because EXECUTE's progress is bounded by the task DAG, not gate retries.
+- `retryBudget.perPhase.execute: null` means unlimited at the phase level. The per-task cap (`maxRetriesPerTask`, fixed 2) is the operative limit during EXECUTE; a phase-level cap is intentionally omitted because EXECUTE's progress is bounded by the task DAG, not gate retries.
 - `retryBudget.perGateUsed` is a map keyed by `{phase}.{gate}` (e.g., `discuss.spec-critique`) of integer retry counts. It is persisted via `lib/feature-write.sh` on every gate failure so a kill mid-gate does not reset the budget.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. All three are reset (`null` / `[]` / zeroed) after `TeamDelete`.
 - `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
@@ -160,7 +159,7 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 | Field | Type | Set by | Description |
 |---|---|---|---|
-| `retries` | integer | Reviewer (`team-prompts/reviewer.md` On Fail rework) / EXECUTE SKILL Step 6 | Per-task retry counter. Capped by `tier.execute.maxRetriesPerTask`. Initialized to 0 at `TaskCreate`. Resets to 0 on EXECUTE resume (harness task list is recreated from `PLAN.md`). |
+| `retries` | integer | Reviewer (`team-prompts/reviewer.md` On Fail rework) / EXECUTE SKILL Step 6 | Per-task retry counter. Capped by `maxRetriesPerTask` (fixed 2). Initialized to 0 at `TaskCreate`. Resets to 0 on EXECUTE resume (harness task list is recreated from `PLAN.md`). |
 | `claimedBy` | string or null | Implementer, after successful `TaskUpdate` status claim | Teammate name of the implementer that claimed this task (e.g., `implementer-2`). Kept for reviewer addressing: reviewer reads `claimedBy` to direct `needs_rework` messages via `SendMessage({to: claimedBy, ...})`. Redundant with the harness `owner` field; both are set. |
 | `blockedBy` | array of task ids | Lead at `TaskCreate` | Tasks that must be `completed` before this task can be claimed. Used by implementers to filter available tasks. Synthetic `blockedBy` edges for file-conflict detection are added by the lead before calling `TaskCreate`. |
 | `files` | array of paths | Lead at `TaskCreate` | Files the task is expected to touch. Used for pre-task file-conflict detection and for the post-merge heuristic on EXECUTE resume. |

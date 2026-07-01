@@ -6,20 +6,20 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill AskUserQuestion
 
 # SPEC Phase
 
-You are the SPEC phase orchestrator, running on the **main thread**. Invoked by `loop-spec:cycle` after tier + style + slug are chosen. Your responsibility: run a Socratic interview across up to 6 rounds, score 4 ambiguity dimensions after each round, gate on ambiguity <= 0.20 with per-dimension minimums, and write SPEC.md with an `ambiguity_scores` frontmatter block.
+You are the SPEC phase orchestrator, running on the **main thread**. Invoked by `loop-spec:cycle` after style + slug are chosen. Your responsibility: run a Socratic interview across up to 6 rounds, score 4 ambiguity dimensions after each round, gate on ambiguity <= 0.20 with per-dimension minimums, and write SPEC.md with an `ambiguity_scores` frontmatter block.
 
 **The interview runs on the main thread, not in a subagent.** A spawned teammate cannot hold an interactive question-and-answer with the user (it runs one turn and goes idle). Only the main-thread orchestrator has a real `AskUserQuestion` loop with the user. This phase therefore creates no team and spawns no teammates; it asks questions, scores answers, and writes the file directly. This mirrors `skills/discuss/SKILL.md` Step 1, which already runs its clarifying loop on the main thread.
 
 ## Inputs (from cycle skill via feature.json)
 
-- `slug`, `tier`, `execStyle`, `feature_title`
+- `slug`, `execStyle`, `feature_title`
 - `feature_dir`: `.loop-spec/features/{slug}/`
 - `feature_json_path`: `.loop-spec/features/{slug}/feature.json`
 
 ## Precondition — SPEC is cycle-initialized, not standalone
 
 SPEC reads (and at Step 4 writes) `feature.json`; it does NOT bootstrap one. `feature.json`
-is created by `loop-spec:cycle` Step 5 (slug, tier, execStyle, the full `retryBudget`/
+is created by `loop-spec:cycle` Step 5 (slug, execStyle, the full `retryBudget`/
 `iterate`/`models` blocks). Invoking `/loop-spec:spec` directly with no in-flight feature
 leaves every downstream phase (DISCUSS/PLAN read `retryBudget`, ITERATE reads `iterate`)
 without the state they require — do not hand-author a partial `feature.json` to work around
@@ -120,9 +120,17 @@ Before asking any questions, read for grounding context:
 
 Synthesize current state internally: what exists today related to this feature, and the gap to the target state. Do not present this synthesis to the user - use it to ask precise, grounded questions.
 
-Score all 4 dimensions from what you already know (feature title, tier, any existing context). This is the initial assessment; display it before the first round.
+Score all 4 dimensions from what you already know (feature title, any existing context). This is the initial assessment; display it before the first round.
 
 If `LOOP_SPEC_NON_INTERACTIVE=1` is set: skip Step 2 entirely and go to the **Non-interactive mode** section below.
+
+**Spec-file ingest mode:** if `.loop-spec/features/{slug}/spec-draft.md` exists (cycle Step 3 placed it there — the user pre-authored the spec), skip the interview (Step 2) entirely:
+
+1. Read the draft. Treat it as the primary source of truth for goal, scope, constraints, and criteria; the Step 1 graph scout grounds it against the actual codebase.
+2. Score the 4 ambiguity dimensions against the DRAFT (not against interview answers). A well-written spec file typically passes the gate outright.
+3. Normalize the draft into the required SPEC.md output format below — preserve the author's requirements verbatim wherever they already fit a section; add only what the format requires (`ambiguity_scores` frontmatter, `<decisions>` block from any decisions the draft states, `## Boundaries (what NOT to do)`, `### Good Enough` / `### Exceptional` split). Do not invent scope the draft doesn't state.
+4. If a dimension is below its minimum, do NOT interview: in `step`/`interactive` styles ask ONE targeted `AskUserQuestion` per failing dimension; in `auto`/`review-only`/non-interactive, write SPEC.md with `gate_passed: false` and the failing dimensions in `unresolved_dimensions` (DISCUSS Step 1 consumes them).
+5. Continue at Step 3 (write SPEC.md + transcript; note `source: spec-draft.md` in the transcript).
 
 ### Step 2 - Interview loop (main thread, max 6 rounds)
 
@@ -233,7 +241,7 @@ ambiguity_scores:
 ---
 ```
 
-If any dimension is below its minimum when SPEC.md is written (user override at round 6, or non-interactive synthesis with thin input), set `gate_passed: false` and list the dimension names in `unresolved_dimensions`. These signal to the discuss phase that certain requirements must be treated as assumptions by the planner.
+If any dimension is below its minimum when SPEC.md is written (user override at round 6, or non-interactive synthesis with thin input), set `gate_passed: false` and list the dimension names in `unresolved_dimensions`. DISCUSS Step 1 consumes this list: each entry is resolved with the user (interactive styles) or as an explicit graph-grounded assumption (autonomous styles), converted into a testable `### Good Enough` criterion, and removed from the list — see `skills/discuss/SKILL.md`.
 
 Every requirement entry in SPEC.md MUST have:
 - One specific, testable statement
@@ -251,7 +259,7 @@ The discuss phase reads this SPEC.md and refines it; if its frontmatter contains
 
 ## Non-interactive mode
 
-When `LOOP_SPEC_NON_INTERACTIVE=1` is set there is no user to interview. The orchestrator does not run Step 2; instead it synthesizes SPEC.md from the available context (feature title, tier, codebase domain maps) and always writes the file - it never abandons.
+When `LOOP_SPEC_NON_INTERACTIVE=1` is set there is no user to interview. The orchestrator does not run Step 2; instead it synthesizes SPEC.md from the available context (feature title, codebase domain maps) and always writes the file - it never abandons.
 
 | Env var                           | Values       | Behavior it controls                                            |
 |-----------------------------------|--------------|-----------------------------------------------------------------|

@@ -1,8 +1,8 @@
 ---
 name: cycle
-description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Just give it a feature description -- tier (quality/balanced/quick) is INFERRED from the prompt, execution style defaults to auto; both are overridable inline but never asked. Model selection is fixed (no preset). Resumes incomplete features automatically.
-argument-hint: "[feature description]  (optional inline overrides: tier:quick|balanced|quality style:auto|step|interactive|review-only)"
-allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree
+description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gates and budgets are fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model selection is fixed. Resumes incomplete features automatically.
+argument-hint: "[feature description | path/to/spec.md | backlog]  (optional inline override: style:auto|step|interactive|review-only)"
+allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
 
 # loop-spec:cycle
@@ -26,11 +26,13 @@ The orchestrator (this skill running on the main thread) and every phase sub-ski
 | `Bash` | Invoking `lib/*.sh` scripts, git commands, file inspection |
 | `Read` | Reading SPEC / PLAN / feature.json / source files |
 | `Write`, `Edit` | Updating skill-owned artifacts only (feature.json via `lib/feature-write.sh`) |
-| `AskUserQuestion` | Tier / style / title prompts; pause-and-escalate decisions |
+| `AskUserQuestion` | Style / title prompts; pause-and-escalate decisions |
 | `Skill` | Invoking another loop-spec skill (`Skill(loop-spec:plan)` etc.) |
 | `Glob`, `Grep` | Code exploration |
 | `EnterWorktree` | Switch the session into the feature worktree (Step 5 create; Step 1 resume) |
 | `ExitWorktree` | Leave the feature worktree on pause or completion (action: "keep") |
+| `ToolSearch` | Deferred-tool rescue only (Step 2 guarded contract): load a team primitive's schema before treating its failure as a capability refutation |
+| `Workflow` | Opt-in fan-out rungs only: plan multi-angle authoring, verify acceptance/code-review workflows, EXECUTE DAG rung (gated on `runtime.json.workflowsAvailable`) |
 
 Any tool not listed above is not permitted. `EnterWorktree` and `ExitWorktree` are used for the FEATURE-level worktree only (Step 5 / resume); per-TASK worktrees in EXECUTE use raw `git worktree add` via `lib/git-ops.sh` and do NOT use the harness tools. `WebFetch`, `WebSearch` are banned (offline by design). `CronCreate`, `CronList`, `CronDelete`, `ScheduleWakeup` are banned (synchronous execution only).
 
@@ -38,26 +40,30 @@ If a step you're about to take requires a tool not on the whitelist, stop and re
 
 ## Dispatch convention (CRITICAL)
 
-Every phase runs inside a persistent **team** created via `TeamCreate`. Teammates are spawned at phase start and persist for the full phase; they are NOT one-shot dispatches that die after one reply.
+Every phase runs inside a persistent **team** of named teammates. Teammates are spawned at phase start and persist for the full phase; they are NOT one-shot dispatches that die after one reply. How the team is created depends on `.loop-spec/runtime.json.teamsMode` (set in Step 2):
+- **`explicit`** (CC < 2.1.178): the lead creates the roster with `TeamCreate` and tears it down with `TeamDelete` at the phase boundary.
+- **`implicit`** (CC >= 2.1.178): the session already has one team. The lead spawns each teammate directly with `Agent({name: "<teammate-name>", subagent_type, model, prompt})` — no `TeamCreate`, no `TeamDelete`. See **`skills/shared/implicit-team-mode.md`**.
 
-Inter-agent communication within a phase team uses `SendMessage`. This is the correct tool for routing work, critique rounds, and notifications between the lead and teammates (or between teammates directly by name).
+Inter-agent communication within a phase team uses `SendMessage` in BOTH team modes. This is the correct tool for routing work, critique rounds, and notifications between the lead and teammates (or between teammates directly by name).
 
 Whenever a phase skill or this orchestrator says "instruct teammate X to revise" or "notify implementer of rework":
 - Use `SendMessage({to: "<teammate-name>", body: "..."})` to address the teammate by their assigned name (e.g., `advocate-1`, `implementer-2`, `spec-writer-1`).
-- Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`.
+- Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`. (In `implicit` mode the *initial* spawn is an `Agent({name})` call; rework after that still goes through `SendMessage`.)
 - A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers and the ITERATE phase's one-shot `iterate-judge` dispatch (`skills/iterate/SKILL.md`); both are main-thread one-shot dispatches, not team rework.
 
-When a phase ends: call `TeamDelete` to tear down the team before the next phase's `TeamCreate`.
+When a phase ends: in `explicit` mode call `TeamDelete` before the next phase's `TeamCreate`; in `implicit` mode there is nothing to delete — just clear `feature.json.currentTeamName` and stop messaging the phase's teammates.
 
 This rule applies in DISCUSS, PLAN, EXECUTE, VERIFY, MAP-CODEBASE, and any sub-skill called from this cycle.
 
-**No-teams fallback:** when `.loop-spec/runtime.json.teamsAvailable == false`,
-every rule above degrades per the substitution table in
+**Subagent depth budget (CC caps nested subagents at 5 levels; forked subagents count toward the cap).** loop-spec's dispatch stays well inside this: the orchestrator (depth 0) spawns phase teammates (depth 1), and a teammate may spawn at most one helper (e.g. a background mapper, depth 2). Phase teammates MUST NOT build their own deep subagent chains — if a teammate needs more fan-out, surface it to the lead rather than nesting. EXECUTE's loop-fleet rung sidesteps the cap entirely (each loop is a separate top-level `claude -p` process, not a nested subagent).
+
+**No-teams fallback:** when `.loop-spec/runtime.json.teamsMode == "none"` (equivalently
+`teamsAvailable == false`), every rule above degrades per the substitution table in
 **`skills/shared/no-teams-fallback.md`**: no `TeamCreate`/`TeamDelete`/`SendMessage`
 — teammates become one-shot `Agent` calls with the same agent types, models, and
 prompt templates, rework rounds re-dispatch with prior summaries from
 `gate-logs/` inlined, and EXECUTE's ladder selects the loop-fleet or subagent
-rung. Phases MUST NOT call team tools when `teamsAvailable == false`; doing so
+rung. Phases MUST NOT call team tools when `teamsMode == "none"`; doing so
 throws harness errors.
 
 ## Non-interactive mode
@@ -67,9 +73,9 @@ When set, read answers from env vars instead:
 
 | Env var | Values | AskUserQuestion it replaces |
 |---|---|---|
-| `LOOP_SPEC_ANSWER_TIER` | `quality`, `balanced`, `quick` | Tier selection (Step 3) |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`, `step`, `interactive`, `review-only` | Execution style (Step 3) |
 | `LOOP_SPEC_ANSWER_TITLE` | free text | Feature title (Step 3) |
+| `LOOP_SPEC_SPEC_FILE` | path to an existing `.md` | Spec-file invocation (Step 3): headless equivalent of `/loop-spec:cycle path/to/spec.md`. When set, the title falls back to the file's first `# ` heading if `LOOP_SPEC_ANSWER_TITLE` is unset. |
 
 Note: Non-interactive mode bypasses `AskUserQuestion` entirely by reading env vars. The S2 batching change (4 questions in one call) has no effect on non-interactive paths.
 
@@ -79,7 +85,7 @@ Note: Non-interactive mode bypasses `AskUserQuestion` entirely by reading env va
 
 ### Step 0 - Workspace detection
 
-Run workspace detection FIRST, before resume or tier selection. The result determines whether every subsequent step runs in single-repo mode or workspace mode.
+Run workspace detection FIRST, before resume detection or feature setup. The result determines whether every subsequent step runs in single-repo mode or workspace mode.
 
 ```bash
 ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect)"
@@ -88,56 +94,9 @@ workspace_root="$(echo "$ws_json" | jq -r '.root')"
 workspace_repos_json="$(echo "$ws_json" | jq -c '.repos // []')"
 ```
 
-**mode == "none":** abort with:
-```
-loop-spec: not a git repo and no child repos found.
-cd into a repo or create .loop-spec/workspace.json to pin a workspace.
-```
+**mode == "none":** abort (`loop-spec: not a git repo and no child repos found. cd into a repo or create .loop-spec/workspace.json to pin a workspace.`). **mode == "single":** continue as normal; set `workspaceMode="single"`. **mode == "workspace":** announce repos, confirm participation, set `workspaceMode="workspace"`.
 
-**mode == "single":** continue as normal (all existing steps apply). Set `workspaceMode="single"`.
-
-**mode == "workspace":** announce the discovered repos, confirm participation, and set `workspaceMode="workspace"`.
-
-Announcement (print to user):
-```
-workspace mode: {N} repos ({name1}, {name2}, ...}
-  State and artifacts will be rooted at: {workspace_root}
-Advisory: if {workspace_root} is or becomes a git repo, add .loop-spec/ to its .gitignore.
-```
-
-Confirmation (interactive):
-```
-AskUserQuestion({
-  question: "Workspace repos: {list each repo name and relative path}. A feat/{slug} branch will be created IN PLACE in each participating repo (no worktree; the checkout switches branches). Proceed with all repos, or customize?",
-  options: ["All repos", "Customize"]
-})
-```
-
-If "Customize": ask the user to list repo names (comma-separated); filter `workspace_repos_json` to only those named.
-
-Non-interactive (`LOOP_SPEC_NON_INTERACTIVE=1`): read `LOOP_SPEC_ANSWER_REPOS` (comma-separated repo names, default = all). Skip AskUserQuestion.
-
-After confirmation, `workspace_repos_json` holds only the participating repos.
-
-Merge workspace fields into `.loop-spec/runtime.json` (same python3 merge-write pattern as the workflow probe):
-
-```bash
-mkdir -p .loop-spec
-python3 -c "
-import json, sys, os
-path = '.loop-spec/runtime.json'
-data = {}
-if os.path.exists(path):
-    try:
-        data = json.load(open(path))
-    except Exception:
-        data = {}
-data['workspaceMode']  = sys.argv[1]
-data['workspaceRoot']  = sys.argv[2]
-data['workspaceRepos'] = json.loads(sys.argv[3])
-json.dump(data, open(path, 'w'))
-" "$workspace_mode" "$workspace_root" "$workspace_repos_json"
-```
+Announce the discovered repos, confirm participation (interactive `AskUserQuestion`; `LOOP_SPEC_ANSWER_REPOS` when non-interactive), filter `workspace_repos_json` to the participating repos, and merge `workspaceMode`/`workspaceRoot`/`workspaceRepos` into `.loop-spec/runtime.json` -- exact prompts and merge-write snippet in `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 0 detail").
 
 ### Step 1 - Resume detection
 
@@ -149,23 +108,20 @@ supported; a `feature.json` with `schemaVersion != 7` is skipped with a one-line
 - Parse safely (try/except; on parse fail, try `feature.json.bak`)
 - Skip if `currentPhase == "completed"`
 - Skip (with the warning above) if `schemaVersion != 7`
-- **Orphan detection:** if `currentTeamName != null`, probe team liveness by calling `TaskList({team: currentTeamName})`. (When agent teams are unavailable this probe is meaningless: treat the team as gone, clear `currentTeamName`, and add the feature to the resumable list — see `skills/shared/no-teams-fallback.md`.) Otherwise:
-  - If `TaskList` returns without error: the team is still live (orphaned). Print:
-    ```
-    Previous team {currentTeamName} for feature {slug} was orphaned and is still live in the harness.
-    Run TeamDelete for team {currentTeamName} (e.g., via the harness CLI or by re-invoking cycle in cleanup mode), then restart cycle to resume feature {slug}.
-    ```
-    Add to a "needs cleanup" sub-list. Do NOT add to resumable list.
-  - If `TaskList` errors (team not found): the prior team is gone. Print `"feature {slug} had stale team reference {currentTeamName}; cleared and ready to resume"`. Clear `currentTeamName` in `feature.json` via `lib/feature-write.sh`. Add to resumable list.
+- **Orphan detection:** if `currentTeamName != null`, probe team liveness (`TaskList({team: ...})`) and sort the feature into the resumable list or a "needs cleanup" sub-list — exact probe outcomes, messages, and the staleness rule per `skills/shared/cycle-resume-escalation.md` ("Step 1 orphan detection").
 - If `currentTeamName == null` AND `(now - updatedAt) < stalenessHours * 3600`: add to resumable list.
-
-If "needs cleanup" sub-list is non-empty: display it to the user after presenting resume options, so they know which teams require manual `TeamDelete`.
 
 If resumable list non-empty: present via AskUserQuestion (or skip if `LOOP_SPEC_NON_INTERACTIVE=1`):
 - "Resume {slug} (phase: {currentPhase}, last updated {ago})?"
 - Options: each resumable feature + "New feature"
 
-If user picks resume: load feature.json into memory, skip Steps 2-5, route to Step 6.
+If user picks resume: load feature.json into memory, skip Steps 2-5, route to Step 6 — **after the re-grounding protocol below.**
+
+**Resume re-grounding (MANDATORY before re-entering any phase).** A resumed session knows nothing the previous one learned, and the tree may be silently broken. Re-orient from durable state before building on it:
+
+1. Read `.loop-spec/features/{slug}/PROGRESS.md` (the narrative journal: what happened, what's next, gotchas). If absent (pre-2.5.0 feature), skip without warning.
+2. `git log --oneline -10` on the feature branch (workspace mode: per participating repo) — reconcile against the journal.
+3. Run `feature.commands.test` once (workspace mode: per repo with a non-empty test command). **If it fails:** do NOT re-enter the recorded phase on top of a broken tree — append a remediation task (`subject = "Fix: test suite broken at resume"`, `verifyCommand = feature.commands.test`) to `pendingRemediationTasks[]`, set `currentPhase = "execute"`, and print one line saying resume was redirected to remediation. If it passes (or no test command is configured): continue to the recorded phase.
 - **Workspace resume (`workspace` block non-null):** resume IN PLACE at the workspace root. No worktree probe; do NOT call `EnterWorktree`. Assert that the current session cwd equals `feature.workspace.root`; if it does not, tell the user: `"cd to {feature.workspace.root} and re-invoke cycle to resume this feature."` and abort. All phase work proceeds from `workspace.root` using per-repo absolute paths.
 - **Worktree resume (`workspace == null`, `worktreePath` present):** run `git-ops.sh list-feature-worktrees` to confirm it exists, then `EnterWorktree({ path: feature.worktreePath })` before Step 6. If the worktree is gone, warn and offer to re-create or continue in-place.
 - Full algorithm: `skills/shared/cycle-resume-escalation.md`.
@@ -177,43 +133,79 @@ when they are unavailable the cycle still runs end-to-end on the documented
 fallbacks (DISCUSS/PLAN/VERIFY: one-shot subagent fallback per the **No-teams
 fallback** contract below; EXECUTE: loop-fleet or subagent rung). Do NOT abort.
 
+Agent teams come in **two harness generations**, and the cycle must route to the right
+one. Claude Code **>= 2.1.178** removed the `TeamCreate` / `TeamDelete` tools: every
+session now has one implicit team and teammates are spawned directly via `Agent({name})`.
+Earlier versions use the explicit `TeamCreate` / `TeamDelete` roster model. `lib/teams-capability.sh`
+resolves which generation is live into a single **mode** word (deterministic, version-gated —
+mirrors the `Workflow` probe; does not rely on model self-introspection):
+
 ```bash
+teams_mode="$(bash "${CLAUDE_SKILL_DIR}/../../lib/teams-capability.sh")"   # none | explicit | implicit
 teams_available=true
-if [[ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" != "1" ]]; then
-  teams_available=false
-  loops_hint="subagent fallback"
-  command -v claude >/dev/null 2>&1 && loops_hint="loop-fleet + subagent fallback"
-  echo "loop-spec: agent teams unavailable (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1)."
-  echo "  Continuing with ${loops_hint}. For persistent phase teams: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1."
-fi
+[[ "$teams_mode" == "none" ]] && teams_available=false
+
+case "$teams_mode" in
+  none)
+    loops_hint="subagent fallback"
+    command -v claude >/dev/null 2>&1 && loops_hint="loop-fleet + subagent fallback"
+    echo "loop-spec: agent teams off (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1)."
+    echo "  Continuing with ${loops_hint}. For persistent phase teams: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1." ;;
+  implicit)
+    echo "loop-spec: agent teams on (implicit-team model, CC >= 2.1.178)."
+    echo "  Teammates are spawned via Agent({name}); TeamCreate/TeamDelete are not used. See skills/shared/implicit-team-mode.md." ;;
+  explicit)
+    echo "loop-spec: agent teams on (explicit-team model, CC < 2.1.178). Per-phase TeamCreate/TeamDelete." ;;
+esac
 ```
 
-The env var advertises **intent**, not the actual tool surface: a harness can export
-`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` yet not expose `TeamCreate`/`TeamDelete`/
-`SendMessage` as callable tools. The env var is therefore a NECESSARY but not SUFFICIENT
-signal. To avoid trusting a false positive, the team primitives are used under a
-**guarded-team-op contract** rather than assumed-live: the env probe sets the optimistic
-default, and the first real team op confirms or refutes it.
+**`teams_mode` decides every phase's dispatch path:**
 
-**Guarded-team-op contract (CRITICAL — applies to every phase):** whenever a phase is
-about to issue its first `TeamCreate` (or any team op) and `teamsAvailable == true`, treat
-a thrown `No such tool available` (or any "tool not found"/unknown-tool harness error from
-a team primitive) as a capability refutation, NOT a fatal error:
+- `none` → no teams. Phases use **`skills/shared/no-teams-fallback.md`** (one-shot
+  `Agent`; EXECUTE uses the loop-fleet or subagent rung). Phases MUST NOT call any team tool.
+- `implicit` → teams are live but `TeamCreate` / `TeamDelete` do **not** exist. Phases
+  spawn named teammates with `Agent({name})` and message them via `SendMessage` per
+  **`skills/shared/implicit-team-mode.md`**. Phases MUST NOT call `TeamCreate` / `TeamDelete`
+  (they throw `No such tool available`).
+- `explicit` → the per-phase `TeamCreate` / `TeamDelete` roster model, as written in each phase skill.
 
-1. Immediately set `.loop-spec/runtime.json.teamsAvailable = false` (merge-write):
+**Guarded-team-op contract (CRITICAL — explicit-mode safety net):** the version gate is
+deterministic, but a non-standard harness could still disagree with it. So in **`explicit`
+mode only**, whenever a phase issues its first `TeamCreate` (or any team op) and it throws
+`No such tool available` (or any "tool not found"/unknown-tool error from a team primitive),
+treat it as a capability refutation, NOT a fatal error:
+
+1. If the harness is the modern one (the tools were removed, not the flag), re-resolve via
+   `LOOP_SPEC_TEAMS_MODE=implicit` and re-run the phase per `skills/shared/implicit-team-mode.md`.
+   Otherwise downgrade to `none`. Merge-write the corrected mode:
    ```bash
-   python3 -c "import json;p='.loop-spec/runtime.json';d=json.load(open(p));d['teamsAvailable']=False;json.dump(d,open(p,'w'))"
+   python3 -c "import json,sys;p='.loop-spec/runtime.json';d=json.load(open(p));m=sys.argv[1];d['teamsMode']=m;d['teamsAvailable']=(m!='none');json.dump(d,open(p,'w'))" implicit   # or: none
    ```
-2. Print: `loop-spec: agent team tools not exposed by this harness despite CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; falling back to one-shot Agent dispatch.`
-3. Re-run the current phase via the no-teams fallback (`skills/shared/no-teams-fallback.md`):
-   one-shot `Agent` calls with the same agent types, models, and prompt templates. Do NOT
-   re-attempt the team op in this session.
+2. Print: `loop-spec: explicit team tools not exposed by this harness; switching to <implicit-team | one-shot Agent> dispatch.`
+3. Re-run the current phase on the corrected path. Do NOT re-attempt the explicit team op in this session.
 
-This makes the disagreement between the env var and the real tool surface self-healing on
+In `implicit` and `none` mode the contract is a no-op — those phases never call `TeamCreate`,
+so there is nothing to refute. This keeps a version/tool-surface disagreement self-healing on
 the first op instead of a hard stop mid-phase.
 
-`teams_available` is persisted into `.loop-spec/runtime.json` together with the
-workflow probe below; phase skills read it to pick their dispatch path.
+**Deferred-tool rescue (applies in `implicit` AND `explicit` mode, BEFORE any refutation):**
+modern harnesses may expose team primitives (`SendMessage`, `TaskCreate`, `TaskUpdate`,
+`TaskList`, `TaskGet`) as **deferred tools** — the tool exists but its schema is not loaded,
+and a direct call fails with `InputValidationError` (or a "schema not loaded" / "tool not
+loaded" error) rather than `No such tool available`. That failure is NOT a capability
+refutation. When any team primitive fails this way:
+
+1. Call `ToolSearch("select:<ToolName>")` (e.g. `ToolSearch("select:SendMessage,TaskCreate,TaskUpdate,TaskList,TaskGet")`)
+   to load the schema, then retry the op ONCE.
+2. Only if `ToolSearch` reports no matching deferred tool (or the retry still throws
+   `No such tool available`) does the failure count as a refutation for the guarded
+   contract above.
+
+Misreading a deferred tool as a missing tool is exactly the failure that silently downgrades
+a teams-capable harness to the no-teams fallback — rescue first, refute second.
+
+`teams_mode` and `teams_available` are persisted into `.loop-spec/runtime.json` together with
+the workflow probe below; phase skills read them to pick their dispatch path.
 
 **Graphify is a HARD requirement** (unlike teams). graphify is loop-spec's de-facto
 code-graph solution; the design phases (SPEC / DISCUSS / PLAN) query the graph to ground
@@ -233,200 +225,55 @@ set, the design phases fall back to Glob/Grep grounding and emit a degraded-mode
 
 Model availability is probed in Step 3.5. Model selection is fixed (no preset), so the probe always covers the same two models.
 
-### Step 3 - Infer tier + style + feature
+### Step 3 - Resolve style + feature
 
-Goal: launch straight into the workflow with **zero menu friction**. The tier is no
-longer a user-facing question — the model **infers** it from the prompt (and from the
-grill answers, if a grill pass ran). The user can still override inline, but is never
-asked to choose. Style defaults to `auto` and is likewise inference-free unless overridden.
-
-**Tier-inference rubric** (apply to the feature description + any grill answers; pick the
-highest tier whose signals are present, default `balanced` when signals are mixed or thin):
-
-| Tier | Choose when the work looks like… |
-|---|---|
-| `quick` | Single-file or trivially-scoped change: typo, copy edit, small bugfix, one isolated function, a config tweak. Low blast radius, one obvious acceptance check, no cross-cutting concerns. |
-| `balanced` (default) | A normal multi-file feature or module: moderate scope, a handful of acceptance criteria, contained blast radius. Also the fallback whenever the signals are mixed or the prompt is thin. |
-| `quality` | High blast radius or high cost of being wrong: auth/security/permissions, payments/billing, data migrations or anything risking data loss, public API or wire-contract changes, concurrency/locking, "production"/"critical"/"compliance" framing, or a wide cross-cutting refactor. Also when the user explicitly asks for rigor. |
-
-**Safety floor (overrides the rubric):** if the prompt carries any security-relevant signal — auth, authentication, authorization, permissions, credentials/API keys/secrets/tokens, crypto, payments/billing, PII, or data migration/deletion — **never infer `quick`** (which skips the critique gate), even when the prompt is short and reads as trivially scoped. Floor it at `balanced` and lean `quality`. A one-liner like "add an API key check to this endpoint" is small in words but security-critical in blast radius; the critique gate must run.
+Goal: launch straight into the workflow with **zero menu friction**. There is NO tier:
+gates and budgets are fixed (`skills/shared/tier-matrix.md`), and cost on trivially-scoped
+work is handled by the structural fast-path AFTER planning (measured scope), never by an
+intent tier inferred from the prompt. Style defaults to `auto` unless overridden inline.
 
 Resolution order:
 
-1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_TIER` → `quick` (unchanged CI/smoke contract — inference is NOT applied in non-interactive mode), `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset). A `LOOP_SPEC_ANSWER_PRESET` env var, if set, is ignored (model selection is fixed).
+1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset — EXCEPT when `LOOP_SPEC_SPEC_FILE` is set, where the title falls back to the spec file's first `# ` heading, else its filename). If `LOOP_SPEC_SPEC_FILE` points to an existing readable `.md`, apply the spec-file invocation branch (3) below with that path (abort if set but unreadable). Legacy `LOOP_SPEC_ANSWER_TIER` / `LOOP_SPEC_ANSWER_PRESET` env vars, if set, are ignored with a one-line notice (single-tier operation; model selection is fixed).
 
 2. **Invocation carries a feature description** (`$ARGUMENTS` is non-empty -- the user typed `/loop-spec:cycle <description>`): this is the default fast path.
-   - Title = `$ARGUMENTS` (slugified). Parse optional inline overrides anywhere in the text: `tier:quick|balanced|quality`, `style:auto|step|interactive|review-only`. A legacy `preset:...` token, if present, is silently ignored.
-   - **Tier:** if given inline, use it. Otherwise **infer** it from the description via the rubric above. Style defaults to `auto` unless given inline.
+   - Parse the optional inline override anywhere in the text: `style:auto|step|interactive|review-only`. Legacy `tier:...` / `preset:...` tokens, if present, are ignored with a one-line notice. **Strip every recognized (and legacy) token from the text FIRST**, then Title = the remaining text (slugified for the slug, verbatim for `feature_title`). The title is the immutable original goal the ITERATE judge scores against — a stray `tier:quality` in it pollutes the oracle.
+   - Style defaults to `auto` unless given inline.
    - Do NOT call `AskUserQuestion`. Print one line and proceed:
-     `Launching: tier={tier} (inferred: {reason}) style={style} title="{title}". (Reply within this turn with e.g. "tier:quality" to adjust before SPEC starts.)`
-     When the tier was given inline rather than inferred, drop the `(inferred: ...)` clause.
+     `Launching: style={style} title="{title}".`
 
-3. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for tier or style. Infer the tier from that answer (plus the grill pass) via the rubric; style = `auto`. Use the answer as the title. Never present a tier/style menu.
+3. **Invocation carries a spec file path** (loop-driven development from a spec file): if `$ARGUMENTS`, after stripping the inline `style:` override (and legacy tokens), is a single token that resolves to an existing readable `.md` file (check with `[[ -f "$arg" ]]`), the user pre-authored the spec — do NOT run the SPEC interview against them.
+   - Title = the file's first `# ` heading (strip the `# `); fall back to the filename without extension. Slugify as usual.
+   - Resolve the file to an absolute path NOW (`spec_draft_abs="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"`) — Step 5 enters a worktree and relative paths die there.
+   - Style defaults to `auto` unless given inline.
+   - Print: `Launching from spec file: {path} — style={style} title="{title}".`
+   - In Step 5, once the feature dir exists (single-repo: after the worktree `mkdir -p`; workspace: after the workspace-root `mkdir -p` in the Step 5 variant), copy the draft in: `cp "$spec_draft_abs" ".loop-spec/features/${slug}/spec-draft.md"` (workspace mode: prefix with `${workspace_root}/`). The SPEC phase detects `spec-draft.md` and runs **spec-file ingest mode** (validate + normalize the draft through the ambiguity gate, no interview — see `skills/spec/SKILL.md`).
+
+4. **Backlog-drain mode** (`$ARGUMENTS` is exactly `backlog`, optionally with inline overrides): the bounded Ralph loop over `.loop-spec/BACKLOG.md` — one feature per loop, explicit stop conditions.
+   ```bash
+   entry="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" next)" || { echo "backlog empty — nothing to drain"; exit 0; }
+   ```
+   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it.
+   - On completion (the On-completion section finishing cleanly), mark it off: `bash .../lib/backlog.sh done "$entry"`.
+   - **Loop bound:** `LOOP_SPEC_MAX_FEATURES` (default `1`). After marking an entry done, if features completed this invocation `< LOOP_SPEC_MAX_FEATURES` and `backlog.sh next` yields another entry, start the next cycle from Step 3 branch 2 with it. Stop when the bound is hit, the backlog is empty, or any feature ends paused/escalated (never chain past a failure).
+   - Overnight form: an outer `while :; do claude -p "/loop-spec:cycle backlog"; done` gets one feature per fresh session — the Ralph loop with real stop conditions.
+
+5. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for style. Style = `auto`. Use the answer as the title. Never present a style menu.
 
 Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe consecutive `-`).
 
 > The grill directive (`hooks/team/grill-inject.sh`, on by default) may already have
 > elicited disambiguating answers before SPEC runs; feed those into the inference above so
-> the tier reflects the clarified scope, not just the raw one-liner. Do not re-grill once
+> the SPEC reflects the clarified scope, not just the raw one-liner. Do not re-grill once
 > the SPEC phase starts — SPEC's Socratic interview is the in-cycle grill.
 
-### Step 3.5 - Model probe
+### Step 3.5 - Model probe + Workflow availability probe
 
-Model selection is fixed (see `skills/shared/model-matrix.md`): the unique model set is always `{claude-opus-4-8, claude-sonnet-4-6}`.
-
-**Probe cache (speed):** the probe result is cached in `.loop-spec/runtime.json`
-(`modelsProbedAt`, ISO-8601). Skip the probe entirely — zero Agent dispatches —
-when either holds:
-
-```bash
-skip_probe=false
-[[ "${LOOP_SPEC_SKIP_HEALTHCHECK:-}" == "1" ]] && skip_probe=true
-probed_at=$(jq -r '.modelsProbedAt // empty' .loop-spec/runtime.json 2>/dev/null || true)
-if [[ -n "$probed_at" ]]; then
-  age=$(( $(date -u +%s) - $(python3 -c "import sys,datetime;print(int(datetime.datetime.strptime(sys.argv[1],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()))" "$probed_at" 2>/dev/null || echo 0) ))
-  [[ "$age" -lt 86400 ]] && skip_probe=true   # probed within the last 24h
-fi
-```
-
-A model-policy failure surfaces identically on the first real dispatch, so the
-cache trades nothing for the saved startup latency. On probe success, write
-`modelsProbedAt` into `runtime.json` (merged with the workflow probe below).
-
-When not skipped, dispatch one probe Agent per unique model (parallel, single tool message):
-
-```
-Parallel:
-  Agent({subagent_type: "loop-spec:spec-writer", model: "claude-opus-4-8",   prompt: "Reply with the single word: ok"})
-  Agent({subagent_type: "loop-spec:implementer", model: "claude-sonnet-4-6", prompt: "Reply with the single word: ok"})
-```
-
-Retry each on transient error (2x, 2s backoff). On hard failure:
-```
-loop-spec health check FAILED
-  Model: {model_id}
-  Error: {error}
-  Suggested fix: update CLAUDE.md model policy to allow {model_id}
-```
-Then abort.
-
-Set `sonnet_1m_available = false` (1M context probe removed; defaults to false; the skill will use standard context windows).
-
-### Workflow availability probe
-
-After the model health-check, write `.loop-spec/runtime.json` recording (a) whether the `Workflow` tool is available, gated deterministically on the Claude Code version (`Workflow` ships in CC `>= 2.1.154`; do not rely on model self-introspection), and (b) whether the operator opted into the EXECUTE workflow rung:
-
-```bash
-mkdir -p .loop-spec
-wf="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workflow-availability.sh")"
-optin=false
-[[ "${LOOP_SPEC_EXECUTE_WORKFLOW:-}" == "1" ]] && optin=true
-# Merge-write: preserves modelsProbedAt (Step 3.5 cache) across cycles.
-python3 -c "
-import json, sys, os
-path = '.loop-spec/runtime.json'
-data = {}
-if os.path.exists(path):
-    try:
-        data = json.load(open(path))
-    except Exception:
-        data = {}
-data['workflowsAvailable'] = sys.argv[1] == 'true'
-data['workflowExecuteOptIn'] = sys.argv[2] == 'true'
-data['teamsAvailable'] = sys.argv[3] == 'true'
-json.dump(data, open(path, 'w'))
-" "$wf" "$optin" "$teams_available"
-```
-
-`lib/workflow-availability.sh` gates on the CC version; set `LOOP_SPEC_WORKFLOWS_AVAILABLE=1|0` to force it (testing).
-
-`workflowExecuteOptIn` gates the heaviest EXECUTE rung. EXECUTE's concurrency ladder
-(`skills/shared/tier-matrix.md`) selects subagent or agent-team dispatch by DAG width on
-its own; it escalates to a Workflow DAG **only** when the operator sets
-`LOOP_SPEC_EXECUTE_WORKFLOW=1` AND the DAG is wide enough (`W >= t_wf`) AND the
-`Workflow` tool is available. This honors the Anthropic guidance that Workflow runs only
-on explicit opt-in. With the flag unset, EXECUTE never dispatches a Workflow even on a
-very wide DAG; it tops out at the agent-team rung. (The flag does not affect the
-opportunistic fan-out workflows in PLAN/VERIFY/map-codebase, which remain gated on
-`workflowsAvailable` alone.)
-
-Then invoke the permission check hook (non-fatal advisory):
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../hooks/pre-cycle-permission-check.sh"
-```
-
-`workflowsAvailable` is `true` on Claude Code `>= 2.1.154` (where `Workflow` is
-supported), else `false`. The cycle proceeds regardless; fan-out skills read
-`runtime.json` to decide their dispatch path. See `skills/shared/dispatch-fanout.md`.
+Model selection is fixed (`{claude-opus-4-8, claude-sonnet-4-6}`); probe results are cached 24h in `.loop-spec/runtime.json` (`LOOP_SPEC_SKIP_HEALTHCHECK=1` skips). Run the model dispatch probe and the `Workflow` availability probe now, verbatim per `${CLAUDE_SKILL_DIR}/references/startup-probes.md` (probe mechanics, cache format, degraded-mode handling, `workflowsAvailable` persistence). The cycle proceeds regardless of probe outcomes; fan-out skills read `runtime.json` to pick their dispatch path (`skills/shared/dispatch-fanout.md`).
 
 ### Step 4 - Detect project commands
 
-**Single-repo mode (unchanged):**
-
-Auto-detect (best effort):
-- test: parse package.json scripts.test, Makefile `test` target, pyproject.toml [tool.pytest], go.mod presence (`go test ./...`)
-- lint: scripts.lint, Makefile lint, ruff/eslint config files
-- typecheck: scripts.typecheck, mypy.ini, tsconfig.json + tsc
-
-**Prefer direct binaries over package-manager wrappers (node projects).** When the project
-is a node project (`package.json` present) and `node_modules/.bin/` exists, emit the direct
-binary form rather than `npx`/`npm run`: `node_modules/.bin/vitest run`, `node_modules/.bin/tsc --noEmit`,
-`node_modules/.bin/eslint .` — NOT `npx vitest` / `npm run typecheck`. The wrappers are
-sensitive to shell shims: under nvm (and the RTK+nvm interaction) `node`/`npm`/`npx` may
-resolve to a shell function that prints help instead of executing non-interactively, which
-would make every generated verify command fail as written. `node_modules/.bin/*` invokes the
-binary directly and sidesteps the shim. (If a script is genuinely only reachable via
-`npm run <name>`, keep it but note the dependency on a working `npm` in the shell.)
-
-**Probe that the detected commands actually execute** via `lib/resolve-bin.sh`, which
-resolves the REAL on-disk executable past shell-function shims (nvm/pyenv/rbenv/asdf) and
-prefers `node_modules/.bin/*`. This is the general form of the node/nvm fix — it works for
-python/ruby version managers too. Surface a clear error rather than letting every later
-verify silently fail:
-
-```bash
-# For each detected runner the commands depend on (node, npx, python, etc.), confirm a
-# real binary resolves; if it does, prefer that absolute path in the generated command.
-for tool in node npx python python3; do
-  case "$cmd_test$cmd_lint$cmd_typecheck" in
-    *"$tool"*)
-      if ! bash "${CLAUDE_SKILL_DIR}/../../lib/resolve-bin.sh" "$tool" . >/dev/null 2>&1; then
-        echo "loop-spec: '$tool' does not resolve to a real executable in this shell" >&2
-        echo "  (likely a version-manager shell-function shim). Generated verify commands" >&2
-        echo "  may fail. Prefer node_modules/.bin/* (auto), or put the real binary on PATH." >&2
-      fi ;;
-  esac
-done
-```
-
-Confirm with user via AskUserQuestion (one Q with options):
-- "Detected commands: test=`{X}`, lint=`{Y}`, typecheck=`{Z}`. Use these?"
-- Options: "Yes", "Customize"
-
-If customize: ask each separately.
-
-Skip this confirmation step when `LOOP_SPEC_NON_INTERACTIVE=1` (use auto-detected values as-is).
-
-Normalize all three to strings so `feature.commands` always carries `test`/`lint`/`typecheck` keys (undetected = empty string, never null; phases treat empty as "skip this check"): `cmd_test="${cmd_test:-}"; cmd_lint="${cmd_lint:-}"; cmd_typecheck="${cmd_typecheck:-}"`.
-
-**Workspace mode (additive):**
-
-Run the same auto-detection per participating repo using the repo's absolute path as the probe dir. Collect per-repo command maps:
-
-```bash
-declare -A repo_cmds_test repo_cmds_lint repo_cmds_typecheck
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  # run same detection logic against "$rpath"
-  repo_cmds_test["$rname"]="${detected_test:-}"
-  repo_cmds_lint["$rname"]="${detected_lint:-}"
-  repo_cmds_typecheck["$rname"]="${detected_typecheck:-}"
-done
-```
-
-Present a single AskUserQuestion listing all repos and detected commands; user confirms or customizes per-repo. Skip when `LOOP_SPEC_NON_INTERACTIVE=1`. Top-level `commands` in feature.json will carry empty strings (workspace mode per-repo commands are authoritative in `workspace.repos[].commands`).
+Auto-detect test/lint/typecheck commands (best effort) and confirm with the user (one `AskUserQuestion`; skipped when `LOOP_SPEC_NON_INTERACTIVE=1`, where `LOOP_SPEC_CMD_*` env vars win). Workspace mode detects per-repo commands (authoritative in `workspace.repos[].commands`; top-level `commands` stays empty). Apply the detection heuristics and confirmation flow verbatim from `${CLAUDE_SKILL_DIR}/references/detect-commands.md`.
 
 ### Step 5 - Initialize state
 
@@ -446,14 +293,14 @@ EnterWorktree({ path: ".claude/worktrees/${slug}" })
 mkdir -p ".loop-spec/features/${slug}" .loop-spec/codebase "docs/loop-spec/features/${slug}"
 
 # Build the full schema-7 skeleton from the single source of truth (lib/feature-init.sh).
-# Model IDs, the tier-derived retryBudget/iterate blocks, and the artifact scaffold all
+# Model IDs, the fixed retryBudget/iterate blocks, and the artifact scaffold all
 # live in that one script -- never hand-build feature.json inline (that drift is what
 # previously dropped iterateJudge from the normalized models map). Every phase skill reads
 # literal model IDs from feature.models.<role>, which guarantees teammates never silently
 # inherit the orchestrator's session model.
 feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode single \
   --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --tier "$tier" --style "$execStyle" \
+  --style "$execStyle" --title "$title" \
   --branch "feat/${slug}" --base-sha "$base_sha" --base-branch "$base_branch" \
   --worktree ".claude/worktrees/${slug}" \
   --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
@@ -462,118 +309,15 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slu
 
 #### Workspace mode Step 5 variant
 
-In workspace mode (`workspaceMode == "workspace"`), do NOT call `create-feature-worktree` and do NOT call `EnterWorktree`. All work stays at the workspace root. Replace the single-repo branch setup above with the following two-phase procedure.
-
-**Phase 1 -- pre-flight cleanliness check (ALL repos, before ANY branch is created):**
-
-```bash
-dirty_repos=()
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  if ! bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" ensure-clean-or-stash 2>/dev/null; then
-    dirty_repos+=("$rname ($rpath)")
-  fi
-done
-if [[ ${#dirty_repos[@]} -gt 0 ]]; then
-  echo "loop-spec: cannot create feature branches -- the following repos have uncommitted changes:"
-  for r in "${dirty_repos[@]}"; do echo "  $r"; done
-  echo "Please commit or stash changes in each repo above, then re-invoke cycle."
-  exit 1
-fi
-```
-
-If any repo is dirty, abort with the message above. No branches are created.
-
-**Phase 2 -- per-repo branch creation (only when all repos are clean):**
-
-```bash
-declare -A repo_base_sha repo_base_branch
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  base_sha_r="$(git -C "$rpath" rev-parse HEAD)"
-  base_branch_r="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" detect-base-branch)"
-  git -C "$rpath" checkout -b "feat/${slug}" "$base_sha_r"
-  repo_base_sha["$rname"]="$base_sha_r"
-  repo_base_branch["$rname"]="$base_branch_r"
-done
-```
-
-**State dirs** are created at the workspace root:
-
-```bash
-mkdir -p "${workspace_root}/.loop-spec/features/${slug}" \
-         "${workspace_root}/.loop-spec/codebase" \
-         "${workspace_root}/docs/loop-spec/features/${slug}"
-```
-
-**feature.json construction for workspace mode:**
-
-Build the `workspace.repos` array from the per-repo data collected above, then write feature.json:
-
-```bash
-repos_json_array="$(echo "$workspace_repos_json" | jq -c \
-  --argjson base_shas "$(for rname in "${!repo_base_sha[@]}"; do
-      echo "{\"name\":\"$rname\",\"sha\":\"${repo_base_sha[$rname]}\"}"; done | jq -s .)" \
-  --argjson base_branches "$(for rname in "${!repo_base_branch[@]}"; do
-      echo "{\"name\":\"$rname\",\"branch\":\"${repo_base_branch[$rname]}\"}"; done | jq -s .)" \
-  '[.[] | . as $r |
-    ($base_shas[] | select(.name == $r.name) | .sha) as $sha |
-    ($base_branches[] | select(.name == $r.name) | .branch) as $bb |
-    {
-      name: $r.name,
-      path: $r.path,
-      branch: ("feat/" + env.slug),
-      baseSha: $sha,
-      baseBranch: $bb,
-      commands: {
-        test: (env["REPO_TEST_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // ""),
-        lint: (env["REPO_LINT_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // ""),
-        typecheck: (env["REPO_TYPECHECK_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // "")
-      }
-    }
-  ]')"
-# (In practice, per-repo commands detected in Step 4 are substituted in directly
-#  rather than via env vars; the structure above is illustrative of the shape.)
-
-# Same single source of truth (lib/feature-init.sh), workspace mode: top-level
-# branch/baseSha/baseBranch/worktreePath are null, top-level commands are empty, and the
-# workspace block carries the per-repo array built above. Models + tier blocks are
-# identical to single-repo mode -- never re-hand-build them here.
-workspace_feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode workspace \
-  --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --tier "$tier" --style "$execStyle" \
-  --ws-root "$workspace_root" --repos "$repos_json_array")
-
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" \
-  "${workspace_root}/.loop-spec/features/${slug}" "$workspace_feature_json"
-```
-
-Schema notes for workspace feature.json:
-- `schemaVersion: 7`; top-level `branch`, `baseSha`, `baseBranch`, `worktreePath` are `null`; top-level `commands` holds empty strings.
-- `workspace.root` is the absolute workspace parent path.
-- `workspace.repos[]` carries `name`, `path` (relative to workspace root), `branch` (`feat/{slug}`), `baseSha`, `baseBranch`, and `commands` (per-repo detected commands) -- matching the schema in `skills/shared/feature-state-schema.md`.
-```
-
-No initial commit of `feature.json` is forced here: `create-feature-worktree` already pointed `feat/{slug}` at a real commit (`base_sha`), and the first state commit lands at the first phase transition (Step 6). Phase artifacts under `docs/loop-spec/features/{slug}/` are committed by each phase as it writes them (SPEC, PLAN, VERIFY).
-
-> **feature.json is the committed resume contract.** Unlike the rest of `.loop-spec/`
-> runtime state, `feature.json` is tracked in git (see `.gitignore`: the feature dir's
-> contents are ignored EXCEPT `feature.json`). The cycle commits the updated state on every
-> phase transition (Step 6), so a `git clone` or a branch hand-off to another machine
-> carries the in-flight phase state and Step 1 resume detection can pick it up. The volatile
-> siblings (`feature.json.bak`, `gate-logs/`, transcripts) stay gitignored as per-machine
-> churn. In workspace mode, where the root may not be a git repo, the state commit is a
-> guarded no-op and resume remains local to that machine.
+In workspace mode (`workspaceMode == "workspace"`), do NOT call `create-feature-worktree` and do NOT call `EnterWorktree`; all work stays at the workspace root on in-place `feat/{slug}` branches. Apply the two-phase procedure (Phase 1: pre-flight cleanliness check across ALL repos before ANY branch is created; Phase 2: per-repo branch creation + the workspace-mode `feature-init.sh` skeleton) verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 5 variant").
 
 Provenance fields:
 - `artifacts.patternsSource` -- one of `"gsd-ingest"`, `"pattern-mapper"`, `"manual"`, or `null` until written. Set in PLAN Step 0.
 - `artifacts.codebaseSource.{domain}` -- one of `"gsd-ingest"`, `"mapper"`, `"manual"`, or `null` until written. Set per-domain in Step 5.5.
 
-Print cost estimate based on tier + expected scope:
+Print cost estimate based on expected scope:
 ```
-Estimated cost: ~{N}k tokens (tier: {tier})
+Estimated cost: ~{N}k tokens
 ```
 
 ### Step 5.4 - Graphify bootstrap pre-flight (always; before the codebase-map skip)
@@ -623,160 +367,11 @@ fi
 
 ### Step 5.5 - First-run codebase map (one-time per project)
 
-**Workspace mode -- GSD ingest:** GSD ingest is a single-repo operation (`.planning/codebase/` lives inside one repo). Skip Step 5.5a (GSD ingest) entirely in workspace mode and log one line:
-
-```
-workspace mode: skipping GSD ingest (single-repo only)
-```
-
-Proceed directly to Step 5.5b mapper dispatch using the workspace-mode variant described below.
-
----
-
-Required loop-spec docs: `docs/loop-spec/codebase/{TECH,ARCH,QUALITY,CONCERNS,DOMAIN}.md`.
-
-If all 5 already exist: skip this step. Incremental refresh runs at end of cycle automatically (in VERIFY).
-
-Mapping (used by `lib/gsd-ingest.sh codebase`):
-
-| GSD source files (`.planning/codebase/`) | Loop-spec target (`docs/loop-spec/codebase/`) |
-|---|---|
-| `STACK.md` + `INTEGRATIONS.md` | `TECH.md` |
-| `ARCHITECTURE.md` + `STRUCTURE.md` | `ARCH.md` |
-| `CONVENTIONS.md` + `TESTING.md` | `QUALITY.md` |
-| `CONCERNS.md` | `CONCERNS.md` |
-| (no GSD analog) | `DOMAIN.md` -- always mapped by `mapper-domain` |
-
-Graphify (and GSD supersession when graphify is present) is handled in Step 5.4 above, which always runs. The remaining sub-steps below build any loop-spec codebase docs that are still missing.
-
-#### Step 5.5a - GSD ingestion (if applicable)
-
-```bash
-ingest_output="$(bash "${CLAUDE_SKILL_DIR}/../../lib/gsd-ingest.sh" codebase)"
-echo "$ingest_output"
-```
-
-The script writes any `INGESTED <DOMAIN>` lines for domains it filled and `SKIPPED <DOMAIN> (no source)` for ones it couldn't. If `.planning/codebase/` doesn't exist it prints `NONE`.
-
-Update `feature.artifacts.codebaseSource.{domain} = "gsd-ingest"` for each `INGESTED` line by calling `bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" .artifacts.codebaseSource.{domain} '"gsd-ingest"'` per domain.
-
-`.loop-spec/codebase/index.json` is **not** rebuilt here -- the next incremental refresh (end of VERIFY) populates it from the actual file scan. Leaving it absent at this point is correct; the incremental code paths handle the missing-file case.
-
-If GSD ingest produced any new files, commit immediately so the repo state is clean before mapper agents touch it:
-
-```bash
-if ! git diff --quiet docs/loop-spec/codebase/; then
-  git add docs/loop-spec/codebase/
-  git commit -m "docs: NO_JIRA ingest GSD codebase map (domains: <csv>)"
-fi
-```
-
-#### Step 5.5b - Map missing domains
-
-```bash
-missing=()
-for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
-  [[ -f "docs/loop-spec/codebase/${d}.md" ]] || missing+=("${d,,}")
-done
-```
-
-If `missing` is non-empty:
-
-- Print: `First loop-spec run. Bootstrapping {N} codebase domain(s) in background: {csv}...`
-
-- Model for mappers: `model_mapper = feature.models.mapper` (resolved once at Step 5; do not re-derive from model-matrix).
-
-- **Single-repo mode:** background mappers are subagents and do NOT inherit the worktree cwd. Resolve the repo root once and pass ABSOLUTE paths in every Agent prompt:
-  ```bash
-  WT_ROOT="$(git rev-parse --show-toplevel)"
-  ```
-
-- **Workspace mode mapper dispatch:** do NOT run `git rev-parse --show-toplevel` at the workspace root (it may not be a git repo). Instead, build a repo-list string from the participating repos and pass it in each mapper prompt:
-
-  ```bash
-  repo_list=""
-  for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-    rname="$(echo "$repo_entry" | jq -r '.name')"
-    rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-    repo_list="${repo_list}${rname}=${rpath}, "
-  done
-  repo_list="${repo_list%, }"   # strip trailing comma+space
-  ```
-
-  Fire one background `Agent` call per missing domain (workspace variant):
-
-  ```
-  Parallel (background):
-    Agent({
-      subagent_type: "loop-spec:mapper-{domain-1}",
-      model: model_mapper,
-      run_in_background: true,
-      description: "Bootstrap codebase map: {domain-1}",
-      prompt: """
-        You are bootstrapping the codebase map for this workspace.
-        slug: {slug}
-        Workspace root (absolute): {workspace_root}
-        Repos: {repo_list}   (format: name=abs-path, ...)
-        Produce {workspace_root}/docs/loop-spec/codebase/{DOMAIN-1}.md per your role definition.
-        Cover each repo with per-repo sections. Use absolute paths throughout. Do NOT commit.
-        When done, reply with: "DONE: {domain-1}"
-      """
-    })
-    // ... one Agent call per missing domain
-  ```
-
-  After mapper agents complete, commit the codebase docs only when the workspace root is itself a git repo:
-
-  ```bash
-  if git -C "$workspace_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    if ! git -C "$workspace_root" diff --quiet docs/loop-spec/codebase/ 2>/dev/null; then
-      git -C "$workspace_root" add docs/loop-spec/codebase/
-      git -C "$workspace_root" commit -m "docs: NO_JIRA bootstrap codebase map (workspace)"
-    fi
-  else
-    echo "workspace root not a git repo; leaving codebase docs uncommitted"
-  fi
-  ```
-
-- **Single-repo mode** fire one background `Agent` call per missing domain:
-
-  ```
-  Parallel (background):
-    Agent({
-      subagent_type: "loop-spec:mapper-{domain-1}",
-      model: model_mapper,
-      run_in_background: true,
-      description: "Bootstrap codebase map: {domain-1}",
-      prompt: """
-        You are bootstrapping the codebase map for this project.
-        slug: {slug}
-        Working directory (absolute): {WT_ROOT}
-        Produce {WT_ROOT}/docs/loop-spec/codebase/{DOMAIN-1}.md per your role definition (agents/mapper-{domain-1}.md).
-        Use the template at {WT_ROOT}/skills/shared/artifact-templates/{DOMAIN-1}.md.template if it exists.
-        Write only your assigned domain file using absolute paths. Do NOT commit.
-        When done, reply with: "DONE: {domain-1}"
-      """
-    })
-    // ... one Agent call per missing domain; always pass WT_ROOT-prefixed absolute paths
-  ```
-
-- Record pending domains in `feature.json`:
-  ```bash
-  lib/feature-write.sh set bootstrapPendingDomains '["tech", "arch", ...]'
-  ```
-  (list only the domains that were fired as background agents)
-
-- Proceed immediately to Step 6 (do NOT wait here). The DISCUSS skill will wait for these files before dispatching the spec-writer.
-
-The DISCUSS skill waits for all 5 docs before dispatching spec-writer (see discuss/SKILL.md Step 1.5).
-
-If `missing` is empty (all ingested from GSD): no mapper dispatch, no second commit.
-
-This produces at most two clean commits per first run (one ingest, one mapper bootstrap) and never amends. This is the ONLY one-time setup the cycle performs per project; everything else is per-feature.
+One-time per project: ingest an existing GSD `.planning/codebase/` if present (Step 5.5a), then fire background mappers only for the domains still missing (Step 5.5b). Skip only when all 5 domain docs already exist in `docs/loop-spec/codebase/`. Apply the full procedure verbatim from `${CLAUDE_SKILL_DIR}/references/codebase-map-bootstrap.md` (GSD ingest rules, mapper dispatch, commit discipline, `bootstrapPendingDomains` bookkeeping, workspace-mode behavior).
 
 ### Step 5.9 - Normalize feature.models (resume backfill + migration)
 
-Phase skills read `model: feature.models.<role>` literally and do NOT re-derive from `model-matrix.md`. Model selection is fixed, so the canonical map is the same for every feature. Older features either lack a `models` block (pre-v2.3.0) or carry a stale one from the removed preset scheme (opus reviewers, or haiku roles). Before routing to any phase, write the canonical fixed map idempotently and drop the vestigial `preset` field. This is the single fallback point, so no individual phase skill needs its own:
+Phase skills read `model: feature.models.<role>` literally and do NOT re-derive from `model-matrix.md`. Model selection is fixed, so the canonical map is the same for every feature. Older features either lack a `models` block (pre-v2.3.0) or carry a stale one from the removed preset scheme. Before routing to any phase, write the canonical fixed map idempotently and drop the vestigial `preset` and `tier` fields (single-tier hard cutover: budgets already in the file keep working, but the tier axis no longer exists). This is the single fallback point, so no individual phase skill needs its own:
 
 ```bash
 feat_dir=".loop-spec/features/${slug}"
@@ -790,10 +385,20 @@ canonical="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" models)"
 # touched; all other fields (including worktreePath) are preserved.
 merged="$(jq -c --argjson m "$canonical" '(.models // {}) * $m' "$fjson")"
 if [[ "$(jq -c '.models // {}' "$fjson")" != "$merged" \
-      || "$(jq 'has("preset")' "$fjson")" == "true" ]]; then
-  new_json="$(jq --argjson m "$canonical" '.models = ((.models // {}) * $m) | del(.preset)' "$fjson")"
+      || "$(jq 'has("preset") or has("tier")' "$fjson")" == "true" ]]; then
+  new_json="$(jq --argjson m "$canonical" '.models = ((.models // {}) * $m) | del(.preset) | del(.tier)' "$fjson")"
   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" "$feat_dir" "$new_json"
-  echo "Normalized feature.models to the fixed model map."
+  echo "Normalized feature.models to the fixed model map (and dropped legacy tier/preset)."
+fi
+
+# Backfill feature_title (pre-2.4.0 features lack it). It is the IMMUTABLE original
+# goal that the ITERATE judge scores against; without it the judge silently falls back
+# to SPEC.md -- the exact drift the dual oracle exists to prevent. The slug is the only
+# available (lossy) stand-in on old features; never overwrite an existing value.
+if [[ "$(jq -r '.feature_title // ""' "$fjson")" == "" ]]; then
+  new_json="$(jq '.feature_title = .slug' "$fjson")"
+  bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" "$feat_dir" "$new_json"
+  echo "Backfilled feature_title from slug (pre-2.4.0 feature; lossy stand-in for the original goal)."
 fi
 ```
 
@@ -805,7 +410,11 @@ For new features, `currentPhase` is initialized to `"spec"` (Step 5), so `Skill(
 
 Cycle's only responsibility here is to invoke the phase skill and react to its return:
 
-1. **Invoke phase skill:**
+1. **Invoke phase skill** (with the watchdog stamp):
+   ```bash
+   # Phase watchdog: stamp the phase start so a hung phase is detectable (resume + exit check).
+   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" currentPhaseStartedAt "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+   ```
    ```
    Skill(loop-spec:{currentPhase})
    ```
@@ -817,6 +426,17 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    next_phase=$(echo "$feature_json" | jq -r '.currentPhase')
    ```
 
+   **Phase watchdog check:** compare now against `currentPhaseStartedAt` and the phase ceiling — 60 minutes default, overridable via `LOOP_SPEC_PHASE_TIMEOUT_MINS`. If the phase that just returned exceeded its ceiling, print a one-line warning (`phase {name} took {N}m, ceiling {M}m`) and append it to `warnings[]`; if a RESUMED feature's `currentPhaseStartedAt` is already past the ceiling before re-invoking (the previous session hung or died mid-phase), do NOT blindly re-enter — surface it: `phase {name} exceeded its {M}m ceiling in a prior session; resuming from last durable state` and let the phase skill's own resume logic pick up from artifacts. The watchdog never kills work; it makes a wedged loop visible instead of silently eternal.
+
+   **Progress journal (append-only narrative — the machine state's "why").** Append one short block to `.loop-spec/features/{slug}/PROGRESS.md` (create with a `# Progress — {slug}` heading if absent):
+   ```
+   ## {ISO timestamp} — {phase} → {next_phase}
+   - did: <1-2 lines: what this phase produced/decided>
+   - next: <1 line: what the next phase must do>
+   - gotchas: <0-2 lines: anything a fresh session must know (build quirks, env, partial work); omit if none>
+   ```
+   Commit it together with feature.json below. feature.json says WHERE the loop is; PROGRESS.md says WHY — it is what a fresh or compacted session reads to re-orient (Step 1 re-grounding), and the handoff document for fresh-context rewinds.
+
    **Commit the resume contract (single point).** feature.json is committed (not gitignored)
    so resume survives a clone or hand-off to another machine. The cycle is the one place
    that observes every phase transition, so it snapshots state here -- phase skills do NOT
@@ -824,14 +444,17 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    repo) is a safe no-op:
    ```bash
    fj=".loop-spec/features/${slug}/feature.json"
-   if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && ! git diff --quiet "$fj" 2>/dev/null; then
-     git add "$fj"
-     git commit -q -m "chore: NO_JIRA ${slug} state @ ${next_phase}" || true
+   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+     git add "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null
+     git diff --cached --quiet 2>/dev/null || git commit -q -m "chore: NO_JIRA ${slug} state @ ${next_phase}" || true
    fi
    ```
 
 3. **Route to next iteration:**
    - If `next_phase == "completed"`: jump to the "On completion" section below.
+   - **Fresh-context rewind (opt-in, `LOOP_SPEC_ITERATE_FRESH=1`):** if the phase that just returned was `iterate` AND `next_phase` is a rewind (not `completed`) AND the env var is set: do NOT continue inline. The Ralph-loop bet is that a fresh context beats an accumulated one — the durable state (feature.json + PROGRESS.md + iterate.feedback) IS the handoff. Print:
+     `fresh-context rewind: state committed; relaunch with /loop-spec:cycle (or let your outer loop do it) to re-enter {next_phase} in a clean session.`
+     and return to the user. An outer `while :; do claude -p "/loop-spec:cycle"; done` (or the loop-runner) drives the relaunch; resume detection re-enters at `{next_phase}` with a fresh window.
    - If `execStyle` is `auto` or `review-only`: continue the loop -- invoke `Skill(loop-spec:{next_phase})`.
    - If `execStyle` is `step` or `interactive`: print phase summary and return to user. User re-invokes `Skill(loop-spec:cycle)` to continue (resume detection in Step 1 picks up the in-progress state).
 
@@ -851,6 +474,22 @@ Phase chain finishes when verify completes successfully. Before marking complete
    bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$completed_json"
    ```
 
-Then print final summary (PR URL, commits, time, cost).
+Then print final summary (PR URL, commits, time, cost) — **and `warnings[]`, always checked:**
+
+```bash
+jq -r '.warnings[]?' ".loop-spec/features/${slug}/feature.json"
+```
+
+If non-empty, print them under a `## Shipped with warnings` heading, one bullet each, before
+the PR URL. `iterate-budget-spent:` entries are accepted goal gaps — a completion that hides
+them is indistinguishable from a clean converge, which is precisely how an unmet requirement
+ships unnoticed. If empty, print nothing extra.
+
+Also print the backlog state (one line, always):
+
+```bash
+n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
+[[ "$n" -gt 0 ]] && echo "Backlog: ${n} deferred item(s) — drain with /loop-spec:cycle backlog"
+```
 
 **Note:** `TeamDelete` is called explicitly here at the orchestration layer. It is NOT implemented as a bash `trap` because `TeamDelete` is a harness MCP tool callable only from the lead's tool-using context, not from a shell signal handler. See the resume strategy orphan-detection path for killed-session cleanup.

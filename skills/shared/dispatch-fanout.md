@@ -8,9 +8,9 @@ and TeamCreate paths at fan-out points.
 ```text
 1. Read .loop-spec/runtime.json. Treat missing file as workflowsAvailable=false.
 2. If workflowsAvailable=true:
-   a. Resolve workflow params from skills/shared/tier-matrix.md "Workflow params" table by feature.tier.
+   a. Resolve workflow params from skills/shared/tier-matrix.md "Workflow params" table (fixed values).
    b. Dispatch Workflow({scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/<name>.js",
-                         args: {tier, workflowParams, <skill-specific args>}}).
+                         args: {workflowParams, <skill-specific args>}}).
    c. The workflow returns a structured JSON result.
 3. If workflowsAvailable=false:
    a. Run the current TeamCreate + Agent dispatch verbatim.
