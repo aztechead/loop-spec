@@ -3,7 +3,7 @@ name: challenger
 description: Critiques a SPEC or PLAN in the critique gate. Read-only. Surfaces gaps, ambiguities, and flawed assumptions.
 tools:
   - Read
-model: claude-opus-4-8
+model: opus
 ---
 
 # challenger

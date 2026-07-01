@@ -4,7 +4,7 @@ Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. App
 
 ### Step 3.5 - Model probe
 
-Model selection is fixed (see `skills/shared/model-matrix.md`): the unique model set is always `{claude-opus-4-8, claude-sonnet-4-6}`.
+Model selection is fixed (see `skills/shared/model-matrix.md`): the unique alias set is always `{opus, sonnet}` (harness aliases — the Agent tool's `model` parameter accepts aliases, not literal IDs).
 
 **Probe cache (speed):** the probe result is cached in `.loop-spec/runtime.json`
 (`modelsProbedAt`, ISO-8601). Skip the probe entirely — zero Agent dispatches —
@@ -28,8 +28,8 @@ When not skipped, dispatch one probe Agent per unique model (parallel, single to
 
 ```
 Parallel:
-  Agent({subagent_type: "loop-spec:spec-writer", model: "claude-opus-4-8",   prompt: "Reply with the single word: ok"})
-  Agent({subagent_type: "loop-spec:implementer", model: "claude-sonnet-4-6", prompt: "Reply with the single word: ok"})
+  Agent({subagent_type: "loop-spec:spec-writer", model: "opus",   prompt: "Reply with the single word: ok"})
+  Agent({subagent_type: "loop-spec:implementer", model: "sonnet", prompt: "Reply with the single word: ok"})
 ```
 
 Retry each on transient error (2x, 2s backoff). On hard failure:

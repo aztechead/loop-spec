@@ -104,7 +104,7 @@ ALL_SCANS[$REPO_NAME]="$SCAN_JSON"
 
 For each repo, collect the top `LOOP_SPEC_ASSESS_TOP_N` (default 5) files from the scan result and dispatch one `Agent` call per file as parallel, one-shot reviewer subagents.
 
-**Model note:** `assess` runs standalone with no `feature.json`, so there is no `feature.models` map to read. Use `claude-sonnet-4-6` hardcoded here. Keep this in sync with `skills/shared/model-matrix.md`.
+**Model note:** `assess` runs standalone with no `feature.json`, so there is no `feature.models` map to read. Use the `sonnet` alias hardcoded here. Keep this in sync with `skills/shared/model-matrix.md`.
 
 For each file in the top-N set:
 
@@ -122,7 +122,7 @@ Dispatch prompt (read-only; ask for JSON findings in the reply):
 ```
 Agent({
   subagent_type: "loop-spec:code-reviewer",
-  model: "claude-sonnet-4-6",
+  model: "sonnet",
   prompt: """
 You are reviewing a high-fragility file for code quality and correctness issues.
 
@@ -285,7 +285,7 @@ No source files were edited. Nothing was committed.
 - **Do not edit any source file.** The only file written is `docs/loop-spec/assessment/ASSESSMENT.md`.
 - **Do not commit.** The skill explicitly does not commit. The assessment doc is intentionally left uncommitted for the user to review and optionally commit separately.
 - **Do not run unbounded reviewer dispatch.** The number of files sent to reviewers is always capped by `LOOP_SPEC_ASSESS_TOP_N` (default 5) per repo. Do not dispatch one agent per file from the full 20-file scan list.
-- **Do not read `feature.json` or `feature.models`.** This skill runs standalone. The model is hardcoded to `claude-sonnet-4-6` as noted in Step 3.
+- **Do not read `feature.json` or `feature.models`.** This skill runs standalone. The model is hardcoded to the `sonnet` alias as noted in Step 3.
 - **Do not abort on a single reviewer failure.** If one Agent call returns unparseable output, record the advisory LOW finding and continue with the remaining results.
 
 ## Standalone CLI

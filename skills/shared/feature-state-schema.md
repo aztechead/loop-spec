@@ -20,16 +20,16 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "baseSha": "git sha at branch creation",
   "baseBranch": "string (e.g., main)",
   "models": {
-    "specWriter": "claude-opus-4-8 (fixed)",
-    "planner": "claude-opus-4-8 (fixed)",
-    "advocate": "claude-opus-4-8 (fixed)",
-    "challenger": "claude-opus-4-8 (fixed)",
-    "specComplianceReviewer": "claude-opus-4-8 (fixed; Ralph loop)",
-    "implementer": "claude-sonnet-4-6 (fixed)",
-    "codeReviewer": "claude-sonnet-4-6 (fixed)",
-    "verifier": "claude-sonnet-4-6 (fixed)",
-    "mapper": "claude-sonnet-4-6 (fixed)",
-    "patternMapper": "claude-sonnet-4-6 (fixed)"
+    "specWriter": "opus (fixed alias)",
+    "planner": "opus (fixed alias)",
+    "advocate": "opus (fixed alias)",
+    "challenger": "opus (fixed alias)",
+    "specComplianceReviewer": "opus (fixed alias; Ralph loop)",
+    "implementer": "sonnet (fixed alias)",
+    "codeReviewer": "opus (fixed alias)",
+    "verifier": "sonnet (fixed alias)",
+    "mapper": "sonnet (fixed alias)",
+    "patternMapper": "sonnet (fixed alias)"
   },
   "artifacts": {
     "specInterview": "path or null (.loop-spec/features/{slug}/spec-interview-transcript.md)",

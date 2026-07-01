@@ -2,7 +2,7 @@
 # Validates all 14 agent defs.
 set -euo pipefail
 EXPECTED="${EXPECTED:-14}"
-ALLOWED_MODELS="claude-opus-4-8 claude-sonnet-4-6 claude-haiku-4-5"
+ALLOWED_MODELS="opus sonnet haiku"
 RESTRICTED_AGENTS="spec-compliance-reviewer code-reviewer advocate challenger"
 
 count=$(ls agents/*.md 2>/dev/null | grep -v '/README\.md$' | wc -l | tr -d ' ')

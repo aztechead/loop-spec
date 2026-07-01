@@ -9,7 +9,7 @@
     {
       "name": "loop-spec",
       "description": "Loop-driven development from a spec file (or a prose description) for Claude Code: SPEC/DISCUSS/PLAN/EXECUTE/VERIFY/ITERATE convergence loop, loop-runner fleet execution, required graphify code graph, ponytail-ported simplicity mode, user-gate flow, Ralph remediation, forensics, dynamic-workflow fan-out, workspace multi-repo mode, assess + quality-loop skills",
-      "version": "2.5.0",
+      "version": "2.5.1",
       "source": "./",
       "author": {
         "name": "aztechead",

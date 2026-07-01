@@ -10,21 +10,24 @@ source of truth that Step 5 mirrors.
 
 ## Resolution
 
-- opus   -> `claude-opus-4-8`
-- sonnet -> `claude-sonnet-4-6` (1M context flag enabled when available)
+Dispatch values are harness **aliases**, not pinned IDs: the modern Agent tool's
+`model` parameter is an alias enum (`sonnet | opus | haiku | ...`) and rejects
+literal IDs like `claude-opus-4-8` with an InputValidationError. The alias
+resolves to the harness's current model for that family (as of this writing:
+opus -> claude-opus-4-8, sonnet -> claude-sonnet-4-6).
 
 ## Matrix
 
 | Role family | Model |
 |---|---|
-| spec-writer, planner | claude-opus-4-8 |
-| advocate, challenger | claude-opus-4-8 |
-| spec-compliance-reviewer | claude-opus-4-8 |
-| iterate-judge | claude-opus-4-8 |
-| code-reviewer | claude-opus-4-8 |
-| verifier | claude-sonnet-4-6 |
-| implementer | claude-sonnet-4-6 |
-| mapper-*, pattern-mapper | claude-sonnet-4-6 |
+| spec-writer, planner | opus |
+| advocate, challenger | opus |
+| spec-compliance-reviewer | opus |
+| iterate-judge | opus |
+| code-reviewer | opus |
+| verifier | sonnet |
+| implementer | sonnet |
+| mapper-*, pattern-mapper | sonnet |
 
 ## Design rules
 
@@ -62,10 +65,10 @@ Never rely on agent frontmatter default. Never omit the `model:` parameter.
 ## Standalone (no feature.json)
 
 Skills invoked without a feature.json context use the same fixed map. There is no
-`--preset` flag. `map-codebase` standalone spawns its mappers on
-`claude-sonnet-4-6`.
+`--preset` flag. `map-codebase` standalone spawns its mappers on the `sonnet`
+alias.
 
 ## Unique model set
 
-Two distinct model IDs are used across all roles: `claude-opus-4-8` and
-`claude-sonnet-4-6`. The cycle startup health-check probes both.
+Two distinct aliases are used across all roles: `opus` and `sonnet`. The cycle
+startup health-check probes both.

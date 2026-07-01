@@ -7,11 +7,11 @@ pass() { echo "PASS: $1"; ((PASS++)) || true; }
 fail() { echo "FAIL: $1"; ((FAIL++)) || true; }
 mt() { bash "$SCRIPT" "$@"; }
 
-[[ "$(mt model mechanical)" == "claude-sonnet-4-6" ]] && pass "mechanical -> sonnet" || fail "mechanical -> sonnet"
-[[ "$(mt model standard)"   == "claude-sonnet-4-6" ]] && pass "standard -> sonnet"   || fail "standard -> sonnet"
-[[ "$(mt model frontier)"   == "claude-opus-4-8"   ]] && pass "frontier -> opus"     || fail "frontier -> opus"
-[[ "$(mt model)"            == "claude-sonnet-4-6" ]] && pass "empty -> standard"    || fail "empty -> standard"
-[[ "$(mt model garbage)"    == "claude-sonnet-4-6" ]] && pass "unknown -> standard"  || fail "unknown -> standard"
+[[ "$(mt model mechanical)" == "sonnet" ]] && pass "mechanical -> sonnet" || fail "mechanical -> sonnet"
+[[ "$(mt model standard)"   == "sonnet" ]] && pass "standard -> sonnet"   || fail "standard -> sonnet"
+[[ "$(mt model frontier)"   == "opus"   ]] && pass "frontier -> opus"     || fail "frontier -> opus"
+[[ "$(mt model)"            == "sonnet" ]] && pass "empty -> standard"    || fail "empty -> standard"
+[[ "$(mt model garbage)"    == "sonnet" ]] && pass "unknown -> standard"  || fail "unknown -> standard"
 
 mt valid frontier  && pass "valid frontier" || fail "valid frontier"
 mt valid mechanical && pass "valid mechanical" || fail "valid mechanical"

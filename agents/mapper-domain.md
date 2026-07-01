@@ -7,7 +7,7 @@ tools:
   - Edit
   - Grep
   - Glob
-model: claude-sonnet-4-6
+model: sonnet
 ---
 
 # mapper-domain

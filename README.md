@@ -70,7 +70,7 @@ The rest of this README is install + usage.
    ```
    On first cycle run loop-spec builds `graphify-out/graph.json` (deterministic AST extraction, no API key, offline) and commits it. Constrained environments can bypass the requirement with `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode: design phases fall back to Glob/Grep).
 
-4. Update your `CLAUDE.md` model policy to allow `claude-opus-4-8` and `claude-sonnet-4-6` (the fixed model map uses exactly these two; see `skills/shared/model-matrix.md`).
+4. Update your `CLAUDE.md` model policy to allow whatever the harness's `opus` and `sonnet` aliases resolve to (dispatch targets these two aliases; see `skills/shared/model-matrix.md`).
 
 5. Restart Claude Code (or run `/reload-plugins`) so the new skills register.
 
@@ -243,7 +243,7 @@ docs/loop-spec/                          # COMMITTED
 
 ### When things fail
 
-- **Health check fails** -- your `CLAUDE.md` model policy probably blocks one of the two models the fixed model map uses. Update policy to allow `claude-opus-4-8` and `claude-sonnet-4-6`.
+- **Health check fails** -- your `CLAUDE.md` model policy probably blocks one of the two model families the fixed map targets. Update policy to allow what the `opus` and `sonnet` aliases resolve to.
 - **Critique gate keeps bouncing** (>3 retries on same gate) -- spec or plan is genuinely ambiguous. Cycle pauses and escalates. Edit the artifact manually then re-invoke cycle to resume.
 - **Merge conflict on a task branch** -- the lead's sequential merge rebases the worktree onto current `feat/{slug}` HEAD and retries once. If still fails, cycle pauses (counts against `maxRetriesPerTask`, fixed 2).
 - **Crash mid-execute** -- `feature.json` records `currentTeamName`, `mergeQueue`, and per-phase artifact paths; the harness task list owns per-task status. Resume probes whether the EXECUTE team is still live, replays the merge queue, and instructs implementers to re-claim orphaned in-flight tasks.
