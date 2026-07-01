@@ -46,6 +46,7 @@ run_suite "lib/validate-task-metadata" "bash tests/lib/validate-task-metadata.te
 run_suite "lib/decision-coverage"     "bash tests/lib/decision-coverage.test.sh"
 run_suite "lib/criteria-coverage"     "bash tests/lib/criteria-coverage.test.sh"
 run_suite "lib/skill-references"      "bash tests/lib/skill-references.test.sh"
+run_suite "lib/harness-call-shapes"   "bash tests/lib/harness-call-shapes.test.sh"
 run_suite "lib/test-tamper-scan"      "bash tests/lib/test-tamper-scan.test.sh"
 run_suite "lib/backlog"               "bash tests/lib/backlog.test.sh"
 run_suite "lib/plan-adherence"        "bash tests/lib/plan-adherence.test.sh"

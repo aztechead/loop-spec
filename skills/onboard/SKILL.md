@@ -32,9 +32,15 @@ defaulted option so re-running onboarding is non-destructive.
 
 ```
 AskUserQuestion({
-  header: "Grill mode",
-  question: "Grill mode front-loads 2-4 sharp clarifying questions right after your initial prompt to lower ambiguity before work starts. It is ON by default. Keep it on?",
-  options: ["On (recommended)", "Off"]
+  questions: [{
+    question: "Grill mode front-loads 2-4 sharp clarifying questions right after your initial prompt to lower ambiguity before work starts. It is ON by default. Keep it on?",
+    header: "Grill mode",
+    options: [
+      { label: "On (recommended)", description: "Front-load clarifying questions before work starts" },
+      { label: "Off", description: "Skip the grill pass; ambiguity is resolved during SPEC instead" }
+    ],
+    multiSelect: false
+  }]
 })
 ```
 
@@ -45,9 +51,15 @@ AskUserQuestion({
 
 ```
 AskUserQuestion({
-  header: "Self-learning",
-  question: "Self-learning rules carry lessons from past runs forward: each repeated mistake becomes a permanent rule in .loop-spec/RULES.md, injected into every session. Enable it?",
-  options: ["On (recommended)", "Off"]
+  questions: [{
+    question: "Self-learning rules carry lessons from past runs forward: each repeated mistake becomes a permanent rule in .loop-spec/RULES.md, injected into every session. Enable it?",
+    header: "Learning",
+    options: [
+      { label: "On (recommended)", description: "Repeated mistakes become permanent rules injected each session" },
+      { label: "Off", description: "No rules file; lessons live only in the conversation" }
+    ],
+    multiSelect: false
+  }]
 })
 ```
 
@@ -58,9 +70,15 @@ AskUserQuestion({
 
 ```
 AskUserQuestion({
-  header: "Discipline",
-  question: "Discipline mode enforces five behavioral gates (brainstorm-before-coding, verification-before-claims, investigation-before-fixes, decision-gate, intent-gate). It is OFF by default. Enable it?",
-  options: ["Off (default)", "On"]
+  questions: [{
+    question: "Discipline mode enforces five behavioral gates (brainstorm-before-coding, verification-before-claims, investigation-before-fixes, decision-gate, intent-gate). It is OFF by default. Enable it?",
+    header: "Discipline",
+    options: [
+      { label: "Off (default)", description: "No behavioral gate enforcement" },
+      { label: "On", description: "Enforce the five gates on every session" }
+    ],
+    multiSelect: false
+  }]
 })
 ```
 
@@ -71,9 +89,15 @@ AskUserQuestion({
 
 ```
 AskUserQuestion({
-  header: "Commit cadence",
-  question: "How should EXECUTE commit? Per-task (one commit per completed task, default) or at-end (tasks stage changes; one final commit closes the plan)?",
-  options: ["Per-task (default)", "At-end"]
+  questions: [{
+    question: "How should EXECUTE commit? Per-task (one commit per completed task, default) or at-end (tasks stage changes; one final commit closes the plan)?",
+    header: "Commits",
+    options: [
+      { label: "Per-task (default)", description: "One commit per completed task" },
+      { label: "At-end", description: "Tasks stage changes; one final commit closes the plan" }
+    ],
+    multiSelect: false
+  }]
 })
 ```
 

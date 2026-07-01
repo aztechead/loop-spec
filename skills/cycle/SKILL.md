@@ -42,7 +42,7 @@ If a step you're about to take requires a tool not on the whitelist, stop and re
 
 Every phase runs inside a persistent **team** of named teammates. Teammates are spawned at phase start and persist for the full phase; they are NOT one-shot dispatches that die after one reply. How the team is created depends on `.loop-spec/runtime.json.teamsMode` (set in Step 2):
 - **`explicit`** (CC < 2.1.178): the lead creates the roster with `TeamCreate` and tears it down with `TeamDelete` at the phase boundary.
-- **`implicit`** (CC >= 2.1.178): the session already has one team. The lead spawns each teammate directly with `Agent({name: "<teammate-name>", subagent_type, model, prompt})` — no `TeamCreate`, no `TeamDelete`. See **`skills/shared/implicit-team-mode.md`**.
+- **`implicit`** (CC >= 2.1.178): the session already has one team. The lead spawns each teammate directly with `Agent({name: "<teammate-name>", description, subagent_type, model, prompt})` — no `TeamCreate`, no `TeamDelete`. See **`skills/shared/implicit-team-mode.md`**.
 
 Inter-agent communication within a phase team uses `SendMessage` in BOTH team modes. This is the correct tool for routing work, critique rounds, and notifications between the lead and teammates (or between teammates directly by name).
 
@@ -108,7 +108,7 @@ supported; a `feature.json` with `schemaVersion != 7` is skipped with a one-line
 - Parse safely (try/except; on parse fail, try `feature.json.bak`)
 - Skip if `currentPhase == "completed"`
 - Skip (with the warning above) if `schemaVersion != 7`
-- **Orphan detection:** if `currentTeamName != null`, probe team liveness (`TaskList({team: ...})`) and sort the feature into the resumable list or a "needs cleanup" sub-list — exact probe outcomes, messages, and the staleness rule per `skills/shared/cycle-resume-escalation.md` ("Step 1 orphan detection").
+- **Orphan detection:** if `currentTeamName != null` AND `teamsMode == "explicit"` (legacy harness — only there does `TaskList` accept a `team` argument), probe team liveness (`TaskList({team: ...})`) and sort the feature into the resumable list or a "needs cleanup" sub-list — exact probe outcomes, messages, and the staleness rule per `skills/shared/cycle-resume-escalation.md` ("Step 1 orphan detection"). In `implicit`/`none` modes do NOT probe (the modern `TaskList` takes no parameters and teammates never survive the session): clear `currentTeamName` and add to the resumable list.
 - If `currentTeamName == null` AND `(now - updatedAt) < stalenessHours * 3600`: add to resumable list.
 
 If resumable list non-empty: present via AskUserQuestion (or skip if `LOOP_SPEC_NON_INTERACTIVE=1`):
@@ -435,7 +435,12 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    - next: <1 line: what the next phase must do>
    - gotchas: <0-2 lines: anything a fresh session must know (build quirks, env, partial work); omit if none>
    ```
-   Commit it together with feature.json below. feature.json says WHERE the loop is; PROGRESS.md says WHY — it is what a fresh or compacted session reads to re-orient (Step 1 re-grounding), and the handoff document for fresh-context rewinds.
+   Commit it together with feature.json below — and ensure the gitignore exception exists first (the feature dir is ignored except named files; without this line the add silently no-ops):
+   ```bash
+   grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null \
+     || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
+   ```
+   feature.json says WHERE the loop is; PROGRESS.md says WHY — it is what a fresh or compacted session reads to re-orient (Step 1 re-grounding), and the handoff document for fresh-context rewinds.
 
    **Commit the resume contract (single point).** feature.json is committed (not gitignored)
    so resume survives a clone or hand-off to another machine. The cycle is the one place

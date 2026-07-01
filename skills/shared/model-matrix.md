@@ -57,7 +57,7 @@ TeamCreate({
 })
 ```
 
-The one-shot `Agent({subagent_type, model, prompt})` form (reserved for Step 5.5b
+The one-shot `Agent({description, subagent_type, model, prompt})` form (reserved for Step 5.5b
 background codebase mappers) also requires an explicit `model:` parameter.
 
 Never rely on agent frontmatter default. Never omit the `model:` parameter.

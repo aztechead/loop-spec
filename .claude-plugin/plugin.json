@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "loop-spec",
   "description": "Loop-driven development from a spec file (or a prose description) for Claude Code. 6 phases (SPEC/DISCUSS/PLAN/EXECUTE/VERIFY/ITERATE, where ITERATE is the convergence loop that judges the result against the original goal and rewinds until converged or budget-spent), single-tier operation (fixed gates/budgets, structural fast-path for trivially-scoped plans, iterate convergence budget 10), fixed per-role model map (opus authors/judges incl. code review; sonnet implements), 4 execution styles, EXECUTE concurrency ladder (subagent/loop-fleet/team/workflow by DAG width), bundled loop-runner skill (bounded autonomous loops with verifier integrity, spec→plan compiler, fleet supervisor), teams-optional operation (explicit and implicit agent-team harnesses), required graphify code graph (queried to ground SPEC/DISCUSS/PLAN), ponytail-ported simplicity mode (laziness ladder, on by default), user-gate verification flow, Ralph remediation loop, dynamic-workflow fan-out acceleration, workspace (multi-repo) mode, standalone assess and quality-loop skills.",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "author": {
     "name": "aztechead",
     "email": "nctightend@gmail.com"

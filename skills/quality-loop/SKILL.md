@@ -154,6 +154,7 @@ Dispatch `loop-spec:code-reviewer` and `loop-spec:security-reviewer` in parallel
 
 ```
 Agent({
+  description: "Quality-loop code review",
   subagent_type: "loop-spec:code-reviewer",
   model: "sonnet",
   prompt: """
@@ -186,6 +187,7 @@ Return [] if no issues found. Return only the JSON array -- no surrounding text.
 
 ```
 Agent({
+  description: "Quality-loop security review",
   subagent_type: "loop-spec:security-reviewer",
   model: "sonnet",
   prompt: """

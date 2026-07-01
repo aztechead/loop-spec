@@ -17,7 +17,7 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
 > do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
-> spawn planner, advocate, and challenger with `Agent({name, subagent_type, model, prompt})`,
+> spawn planner, advocate, and challenger with `Agent({name, description, subagent_type, model, prompt})`,
 > folding each one's first work prompt into the spawn, then run the critique debate with
 > `SendMessage` as written. Per `skills/shared/implicit-team-mode.md`. `SendMessage` and the
 > shared task list are unchanged.
@@ -472,7 +472,7 @@ If invoked with `currentPhase == "plan"` already in `feature.json`:
    - `artifacts.plan` is set and `currentGate.round == 0` and `currentGate.phase == null`: plan written and critique passed; run Step 4b feasibility gate.
 
 2. Live-team probe:
-   - If `currentTeamName != null`: call `TaskList({team: currentTeamName})`.
+   - If `currentTeamName != null` AND `teamsMode == "explicit"`: call `TaskList({team: currentTeamName})`. (`implicit`/`none`: skip the probe — modern `TaskList` takes no parameters and teammates never survive the session; clear `currentTeamName` and respawn.)
      - Error (team gone): clear `currentTeamName` in `feature.json` via `lib/feature-write.sh`, recreate team via `TeamCreate`, replay from the detected subphase.
      - Success (team live): print orphan-cleanup message with explicit team name; require manual `TeamDelete` before resume.
    - If `currentTeamName == null`: recreate team via `TeamCreate` and replay from subphase.

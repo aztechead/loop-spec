@@ -28,8 +28,8 @@ When not skipped, dispatch one probe Agent per unique model (parallel, single to
 
 ```
 Parallel:
-  Agent({subagent_type: "loop-spec:spec-writer", model: "opus",   prompt: "Reply with the single word: ok"})
-  Agent({subagent_type: "loop-spec:implementer", model: "sonnet", prompt: "Reply with the single word: ok"})
+  Agent({description: "Model probe: opus", subagent_type: "loop-spec:spec-writer", model: "opus",   prompt: "Reply with the single word: ok"})
+  Agent({description: "Model probe: sonnet", subagent_type: "loop-spec:implementer", model: "sonnet", prompt: "Reply with the single word: ok"})
 ```
 
 Retry each on transient error (2x, 2s backoff). On hard failure:
