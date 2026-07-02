@@ -21,6 +21,11 @@ Invoked when feature.json currentPhase == "verify".
 > `skills/shared/implicit-team-mode.md`. The acceptance gate and code-review HARD-GATE
 > semantics are unchanged.
 
+> **Autonomous mode** (`feature.json.autonomous == true`): no escalation in this phase
+> may wait on a human — pause-and-escalate points halt with evidence in `warnings[]`
+> instead, per `skills/shared/autonomous-mode.md`. The acceptance gate, code-review
+> HARD-GATE, and test-tamper scan are safety gates and are NEVER self-answered past.
+
 ## Inputs
 
 - `feature_path` (path to `.loop-spec/features/{slug}/feature.json`)

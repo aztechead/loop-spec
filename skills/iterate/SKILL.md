@@ -10,6 +10,8 @@ You are the ITERATE phase orchestrator, running on the **main thread**. Invoked 
 
 This phase runs no team. It dispatches ONE fresh `iterate-judge` subagent (maker ≠ checker) for the goal re-judge, decides on its verdict, and rewinds or advances the phase pointer. The bounded outer loop is: `... EXECUTE → VERIFY → ITERATE → (EXECUTE|PLAN|SPEC again | completed)`.
 
+Autonomous mode (`feature.json.autonomous == true`) forces style `auto`, so the spec-rewind approval gate below never fires — every rewind runs hands-off per `skills/shared/autonomous-mode.md`.
+
 ## Inputs (from feature.json)
 
 - `slug`, `feature_dir`, `feature_title` (the **original goal**, in the user's words).
