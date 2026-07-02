@@ -29,7 +29,7 @@ Usage:
   space); truncates `output` to 300 chars (append `…` when truncated); appends ONE
   line:
   `- EVID-NNN | <ISO-8601 UTC ts> | claim: <claim> | cmd: <command> | out: <output>`
-  where NNN is zero-padded 3-digit sequential (EVID-001 first). Idempotent: if an
+  where NNN is zero-padded 3-digit sequential (first id is 001). Idempotent: if an
   existing entry has the same sanitized claim AND command, do not append; print the
   existing id. Always prints the id (existing or new) on stdout as the last line.
 - `list`: prints all `- EVID-` lines (nothing + exit 0 for empty/missing ledger).
@@ -143,7 +143,7 @@ Same-wave file sets are disjoint.
 **Verify:** `bash tests/lib/evidence.test.sh && bash tests/lib/grounding-lint.test.sh && bash tests/all-tests-registered.test.sh` -> all pass
 
 **Acceptance criteria:**
-- [ ] `bash tests/lib/evidence.test.sh` passes, covering: first add creates ledger + returns EVID-001; second distinct add returns EVID-002; identical claim+command re-add returns EVID-001 without appending; sanitization of `|` and newlines; 300-char output truncation; `list` on missing ledger exits 0 empty; `next-id` correctness; missing-args exit 1.
+- [ ] `bash tests/lib/evidence.test.sh` passes, covering: first add creates ledger + returns id 001; second distinct add returns id 002; identical claim+command re-add returns the first id without appending; sanitization of `|` and newlines; 300-char output truncation; `list` on missing ledger exits 0 empty; `next-id` correctness; missing-args exit 1.
 - [ ] `bash tests/lib/grounding-lint.test.sh` passes, covering: exit 0 on `- none` artifact; **exit 0 on a Grounding section byte-identical to the artifact-template block (4-line HTML comment + `- none`)**; exit 0 on artifact with resolving EVID refs + well-formed ASSUMPTION **including one whose verify command contains a literal `|`**; exit 1 for each FLAG class in the pinned interface (missing section, malformed bullet, unresolved EVID ref, `bash -n`-failing verify cmd, whole-word UNVERIFIED inside the section, none+evidence contradiction); **whole-word UNVERIFIED OUTSIDE the section does NOT flag**; FLAG lines carry line numbers; missing artifact exits 1.
 - [ ] `bash tests/all-tests-registered.test.sh` passes (both suites registered in `tests/run-all.sh`).
 
