@@ -28,6 +28,9 @@ Top 5-7 most impactful issues across:
 - **Flawed assumptions**: what the design assumes that may not hold (e.g., about CC plugin loading, model availability, agent tool restrictions, subagent dispatch semantics, git worktree behavior)
 - **Better alternatives**: where a different approach would be materially superior
 - **Daily-use friction**: where this design will frustrate the user (cost, latency, retry storms, gate failures, resume confusion)
+- **Ungrounded external claims**: any statement asserting a capability, limitation, schema, or configuration of an external system (dataset, API, service, infra) without an `EVID-NNN` citation or an explicit `ASSUMPTION` marker. Each such finding MUST be emitted as its own line in exactly this format:
+  `UNGROUNDED: "<verbatim quote from the artifact>" — probe: <suggested read-only command>`
+  The suggested probe must be read-only (never INSERT, create, delete, apply, or any write verb).
 
 For PLAN reviews, also check:
 - Task atomicity (can each task ship independently?)
