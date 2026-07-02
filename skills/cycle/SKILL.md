@@ -1,7 +1,7 @@
 ---
 name: cycle
 description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gates and budgets are fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model selection is fixed. Resumes incomplete features automatically.
-argument-hint: "[feature description | path/to/spec.md | backlog]  (optional inline override: style:auto|step|interactive|review-only)"
+argument-hint: "[new] [feature description | path/to/spec.md | backlog]  (optional inline overrides: style:auto|step|interactive|review-only, autonomous)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
 
@@ -79,6 +79,19 @@ When set, read answers from env vars instead:
 
 Note: Non-interactive mode bypasses `AskUserQuestion` entirely by reading env vars. The S2 batching change (4 questions in one call) has no effect on non-interactive paths.
 
+## Autonomous mode
+
+The inline token `autonomous` (or `LOOP_SPEC_AUTONOMOUS=1`) is strictly stronger than
+non-interactive: instead of requiring pre-pinned `LOOP_SPEC_ANSWER_*` values, every
+`AskUserQuestion` site self-answers with the recommended option and records the assumption
+in the decisions record. Style is forced to `auto`. Explicit `LOOP_SPEC_ANSWER_*` /
+`LOOP_SPEC_CMD_*` vars still win where set. Full contract — trigger, precedence,
+self-answer rule, decisions record, per-site map — in **`skills/shared/autonomous-mode.md`**;
+every phase skill honors it. Headless form: `claude -p "/loop-spec:cycle autonomous <description>"`.
+Setup answers made before SPEC.md exists (workspace repos, resume choice, commands) are
+buffered in memory and written into SPEC.md's `## Decisions (assumed — autonomous)` list
+by the SPEC phase.
+
 ## Procedure
 
 **Startup is silent.** Run Steps 0 (workspace detection), 1 (resume detection), 2 (health-check), 3.5 (model probe), and the workflow-availability probe quietly: do NOT narrate each one. Batch their checks and emit output ONLY when (a) a check fails, (b) a resumable feature is found and a choice is needed, or (c) Step 3 announces the launch line. No "Running Step 0...", no per-step status prose. The user wants to land in the workflow, not watch a preflight.
@@ -94,9 +107,27 @@ workspace_root="$(echo "$ws_json" | jq -r '.root')"
 workspace_repos_json="$(echo "$ws_json" | jq -c '.repos // []')"
 ```
 
-**mode == "none":** abort (`loop-spec: not a git repo and no child repos found. cd into a repo or create .loop-spec/workspace.json to pin a workspace.`). **mode == "single":** continue as normal; set `workspaceMode="single"`. **mode == "workspace":** announce repos, confirm participation, set `workspaceMode="workspace"`.
+**mode == "none":** route to the greenfield branch below — this is no longer an unconditional abort. **mode == "single":** continue as normal; set `workspaceMode="single"`. **mode == "workspace":** announce repos, confirm participation, set `workspaceMode="workspace"`.
 
-Announce the discovered repos, confirm participation (interactive `AskUserQuestion`; `LOOP_SPEC_ANSWER_REPOS` when non-interactive), filter `workspace_repos_json` to the participating repos, and merge `workspaceMode`/`workspaceRoot`/`workspaceRepos` into `.loop-spec/runtime.json` -- exact prompts and merge-write snippet in `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 0 detail").
+#### Greenfield branch (net-new application; `mode == "none"`)
+
+`mode == "none"` means there is no repo here — which is exactly where a net-new
+application starts. Resolve it:
+
+1. **`new` token present** in `$ARGUMENTS` (leading token, stripped like `style:` — Step 3), **or** autonomous mode with a feature description: bootstrap a repo in place and continue as greenfield:
+   ```bash
+   git init
+   git commit --allow-empty -m "chore: init repo (loop-spec greenfield)"
+   ```
+   Set `greenfield=1` and `workspaceMode="single"`. Pre-existing untracked files in the directory are left untouched (never bulk-added). Autonomous mode records the bootstrap as an assumed decision.
+2. **Interactive, no `new` token:** ask ONE AskUserQuestion — "Not a git repo. Start a net-new application here (`git init`), or abort?" Options: `Start new project here` / `Abort`. On start, run the bootstrap above.
+3. **Non-interactive without autonomous, or no description to build from:** abort with the original message (`loop-spec: not a git repo and no child repos found. cd into a repo, create .loop-spec/workspace.json, or start a net-new app with /loop-spec:cycle new <description>.`).
+
+Greenfield consequences downstream (each step carries its own branch): Step 4 skips command detection (commands are backfilled by EXECUTE after the scaffold task lands), Step 5.4 defers the graphify build until source exists, Step 5.5 skips the codebase map (VERIFY's refresh writes the first one), SPEC round 1 runs the **Foundations** perspective (stack/structure/tooling — `skills/spec/SKILL.md`), and PLAN must emit a scaffold-first task DAG (`skills/plan/SKILL.md`, "Greenfield plans"). Persist the flag as `feature.json.greenfield = true` (Step 5).
+
+The `new` token inside an EXISTING repo (mode `single`) is refused with: `already a git repo — greenfield is for empty directories. Run the normal cycle, or cd into an empty directory for a new app.` Workspace mode has no greenfield variant (multi-repo bootstrap is out of scope; deferred).
+
+Announce the discovered repos, confirm participation (interactive `AskUserQuestion`; `LOOP_SPEC_ANSWER_REPOS` when non-interactive; autonomous mode takes all discovered repos and records the assumption — `skills/shared/autonomous-mode.md`), filter `workspace_repos_json` to the participating repos, and merge `workspaceMode`/`workspaceRoot`/`workspaceRepos` into `.loop-spec/runtime.json` -- exact prompts and merge-write snippet in `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 0 detail").
 
 ### Step 1 - Resume detection
 
@@ -114,6 +145,7 @@ supported; a `feature.json` with `schemaVersion != 7` is skipped with a one-line
 If resumable list non-empty: present via AskUserQuestion (or skip if `LOOP_SPEC_NON_INTERACTIVE=1`):
 - "Resume {slug} (phase: {currentPhase}, last updated {ago})?"
 - Options: each resumable feature + "New feature"
+- Autonomous mode: no question — resume the most recently updated resumable feature; if the invocation carries a new description that matches none of them, start the new feature instead. Record the choice.
 
 If user picks resume: load feature.json into memory, skip Steps 2-5, route to Step 6 — **after the re-grounding protocol below.**
 
@@ -237,12 +269,12 @@ Resolution order:
 1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset — EXCEPT when `LOOP_SPEC_SPEC_FILE` is set, where the title falls back to the spec file's first `# ` heading, else its filename). If `LOOP_SPEC_SPEC_FILE` points to an existing readable `.md`, apply the spec-file invocation branch (3) below with that path (abort if set but unreadable). Legacy `LOOP_SPEC_ANSWER_TIER` / `LOOP_SPEC_ANSWER_PRESET` env vars, if set, are ignored with a one-line notice (single-tier operation; model selection is fixed).
 
 2. **Invocation carries a feature description** (`$ARGUMENTS` is non-empty -- the user typed `/loop-spec:cycle <description>`): this is the default fast path.
-   - Parse the optional inline override anywhere in the text: `style:auto|step|interactive|review-only`. Legacy `tier:...` / `preset:...` tokens, if present, are ignored with a one-line notice. **Strip every recognized (and legacy) token from the text FIRST**, then Title = the remaining text (slugified for the slug, verbatim for `feature_title`). The title is the immutable original goal the ITERATE judge scores against — a stray `tier:quality` in it pollutes the oracle.
+   - Parse the optional inline overrides anywhere in the text: `style:auto|step|interactive|review-only`, `autonomous` (self-answer contract, forces style `auto` — `skills/shared/autonomous-mode.md`), and the leading token `new` (greenfield mode — see Step 0 greenfield branch). Legacy `tier:...` / `preset:...` tokens, if present, are ignored with a one-line notice. **Strip every recognized (and legacy) token from the text FIRST**, then Title = the remaining text (slugified for the slug, verbatim for `feature_title`). The title is the immutable original goal the ITERATE judge scores against — a stray `tier:quality` in it pollutes the oracle.
    - Style defaults to `auto` unless given inline.
    - Do NOT call `AskUserQuestion`. Print one line and proceed:
      `Launching: style={style} title="{title}".`
 
-3. **Invocation carries a spec file path** (loop-driven development from a spec file): if `$ARGUMENTS`, after stripping the inline `style:` override (and legacy tokens), is a single token that resolves to an existing readable `.md` file (check with `[[ -f "$arg" ]]`), the user pre-authored the spec — do NOT run the SPEC interview against them.
+3. **Invocation carries a spec file path** (loop-driven development from a spec file): if `$ARGUMENTS`, after stripping the inline overrides (`style:`, `autonomous`, `new`) and legacy tokens, is a single token that resolves to an existing readable `.md` file (check with `[[ -f "$arg" ]]`), the user pre-authored the spec — do NOT run the SPEC interview against them. (This is also the handoff path from `/loop-spec:intake`, which converts non-spec sources — Slack messages, Jira tickets, prompts — into a draft at `.loop-spec/intake/{slug}.md` and invokes this branch.)
    - Title = the file's first `# ` heading (strip the `# `); fall back to the filename without extension. Slugify as usual.
    - Resolve the file to an absolute path NOW (`spec_draft_abs="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"`) — Step 5 enters a worktree and relative paths die there.
    - Style defaults to `auto` unless given inline.
@@ -253,19 +285,20 @@ Resolution order:
    ```bash
    entry="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" next)" || { echo "backlog empty — nothing to drain"; exit 0; }
    ```
-   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it.
+   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it. Record the originating entry on the feature (after Step 5 creates feature.json): `feature.json.backlogEntry = "<entry text>"` — ITERATE's autonomous terminal rule needs it to detect a gap spending its budget twice.
    - On completion (the On-completion section finishing cleanly), mark it off: `bash .../lib/backlog.sh done "$entry"`.
    - **Loop bound:** `LOOP_SPEC_MAX_FEATURES` (default `1`). After marking an entry done, if features completed this invocation `< LOOP_SPEC_MAX_FEATURES` and `backlog.sh next` yields another entry, start the next cycle from Step 3 branch 2 with it. Stop when the bound is hit, the backlog is empty, or any feature ends paused/escalated (never chain past a failure).
    - Overnight form: an outer `while :; do claude -p "/loop-spec:cycle backlog"; done` gets one feature per fresh session — the Ralph loop with real stop conditions.
 
-5. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for style. Style = `auto`. Use the answer as the title. Never present a style menu.
+5. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for style. Style = `auto`. Use the answer as the title. Never present a style menu. Autonomous mode cannot self-answer this (there is no goal to infer): abort with `autonomous invocations must carry a feature description, a spec file path, or 'backlog'.` — unless resume detection (Step 1) already selected a resumable feature.
 
 Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe consecutive `-`).
 
 > The grill directive (`hooks/team/grill-inject.sh`, on by default) may already have
 > elicited disambiguating answers before SPEC runs; feed those into the inference above so
 > the SPEC reflects the clarified scope, not just the raw one-liner. Do not re-grill once
-> the SPEC phase starts — SPEC's Socratic interview is the in-cycle grill.
+> the SPEC phase starts — SPEC's Socratic interview is the in-cycle grill. In autonomous
+> mode the hook suppresses the directive (`LOOP_SPEC_AUTONOMOUS=1`); there is nobody to grill.
 
 ### Step 3.5 - Model probe + Workflow availability probe
 
@@ -273,7 +306,9 @@ Model selection is fixed (aliases `{opus, sonnet}`); probe results are cached 24
 
 ### Step 4 - Detect project commands
 
-Auto-detect test/lint/typecheck commands (best effort) and confirm with the user (one `AskUserQuestion`; skipped when `LOOP_SPEC_NON_INTERACTIVE=1`, where `LOOP_SPEC_CMD_*` env vars win). Workspace mode detects per-repo commands (authoritative in `workspace.repos[].commands`; top-level `commands` stays empty). Apply the detection heuristics and confirmation flow verbatim from `${CLAUDE_SKILL_DIR}/references/detect-commands.md`.
+Auto-detect test/lint/typecheck commands (best effort) and confirm with the user (one `AskUserQuestion`; skipped when `LOOP_SPEC_NON_INTERACTIVE=1`, where `LOOP_SPEC_CMD_*` env vars win; autonomous mode trusts the detection — `LOOP_SPEC_CMD_*` still wins — and records the assumption).
+
+**Greenfield:** skip detection entirely (there is nothing to detect); leave all three commands empty with a one-line note. EXECUTE backfills them by re-running `lib/detect-test-cmd.sh` after the scaffold task (task-001) merges — see `skills/execute/SKILL.md` "Greenfield command backfill". Workspace mode detects per-repo commands (authoritative in `workspace.repos[].commands`; top-level `commands` stays empty). Apply the detection heuristics and confirmation flow verbatim from `${CLAUDE_SKILL_DIR}/references/detect-commands.md`.
 
 ### Step 5 - Initialize state
 
@@ -307,6 +342,12 @@ feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --m
 
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$feature_json"
 
+# Autonomous mode: persist the flag so phase skills and resumed sessions see it
+# without re-parsing the invocation (skills/shared/autonomous-mode.md).
+# Greenfield mode: persist it the same way (Step 0 greenfield branch set $greenfield).
+[[ "${autonomous:-0}" == "1" ]] && bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" autonomous true
+[[ "${greenfield:-0}" == "1" ]] && bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" greenfield true
+
 #### Workspace mode Step 5 variant
 
 In workspace mode (`workspaceMode == "workspace"`), do NOT call `create-feature-worktree` and do NOT call `EnterWorktree`; all work stays at the workspace root on in-place `feat/{slug}` branches. Apply the two-phase procedure (Phase 1: pre-flight cleanliness check across ALL repos before ANY branch is created; Phase 2: per-repo branch creation + the workspace-mode `feature-init.sh` skeleton) verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 5 variant").
@@ -329,6 +370,7 @@ Estimated cost: ~{N}k tokens
 Runs on EVERY cycle (single-repo mode). graphify is a hard requirement (enforced at Step 2), so the graph is built unconditionally and a build failure aborts — the design phases depend on it. It must NOT be gated behind the Step 5.5 "all 5 docs exist" skip: the graph (`graphify-out/graph.json`) is independent of the loop-spec codebase docs, so a repo that already has the 5 docs but no graph still needs one built. Idempotent, no LLM.
 
 Decision tree:
+- **Greenfield (`feature.json.greenfield` / `$greenfield == 1`) with no source files yet** -> defer: a graph of an empty repo grounds nothing. Print `greenfield: graphify build deferred until source exists (VERIFY refresh builds it)` and continue — the design phases ground in the stated goal and stack conventions instead, and VERIFY's map-refresh step builds the graph once EXECUTE has landed code. graphify itself must still be installed (Step 2 gate is unchanged).
 - `graphify-out/graph.json` exists -> do nothing (already built).
 - missing -> build via `lib/graphify-preflight.sh build .` (`graphify .`, deterministic AST extraction, no API key). A build failure aborts the cycle (unless `LOOP_SPEC_REQUIRE_GRAPHIFY=0`).
 - missing + GSD `.planning/codebase/` present -> build the graph, then supersede the GSD docs: fold their content into `docs/loop-spec/codebase/` (gsd-ingest) and remove the raw GSD source (committed, recoverable).
@@ -367,7 +409,7 @@ fi
 
 ### Step 5.5 - First-run codebase map (one-time per project)
 
-One-time per project: ingest an existing GSD `.planning/codebase/` if present (Step 5.5a), then fire background mappers only for the domains still missing (Step 5.5b). Skip only when all 5 domain docs already exist in `docs/loop-spec/codebase/`. Apply the full procedure verbatim from `${CLAUDE_SKILL_DIR}/references/codebase-map-bootstrap.md` (GSD ingest rules, mapper dispatch, commit discipline, `bootstrapPendingDomains` bookkeeping, workspace-mode behavior).
+One-time per project: ingest an existing GSD `.planning/codebase/` if present (Step 5.5a), then fire background mappers only for the domains still missing (Step 5.5b). Skip only when all 5 domain docs already exist in `docs/loop-spec/codebase/` — **or when greenfield** (an empty repo has nothing to map; VERIFY's end-of-cycle refresh writes the first map from the shipped code). Apply the full procedure verbatim from `${CLAUDE_SKILL_DIR}/references/codebase-map-bootstrap.md` (GSD ingest rules, mapper dispatch, commit discipline, `bootstrapPendingDomains` bookkeeping, workspace-mode behavior).
 
 ### Step 5.9 - Normalize feature.models (resume backfill + migration)
 
@@ -496,5 +538,23 @@ Also print the backlog state (one line, always):
 n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
 [[ "$n" -gt 0 ]] && echo "Backlog: ${n} deferred item(s) — drain with /loop-spec:cycle backlog"
 ```
+
+**Autonomous chaining (`feature.json.autonomous == true`).** An autonomous run manages its
+own iteration cycles end-to-end — it does not complete by leaving `iterate-budget-spent`
+gaps for a human to read (`skills/shared/autonomous-mode.md`, continuation ladder). If this
+feature's ITERATE queued backlog entries (its `warnings[]` contains `iterate-budget-spent:`
+entries and the backlog is non-empty), chain directly into backlog-drain mode (Step 3
+branch 4) for those entries, under the same bounds that keep drain mode finite:
+
+- at most `LOOP_SPEC_MAX_FEATURES` (default 1) chained features per invocation;
+- never chain past a failure (a chained cycle that ends paused/escalated stops the chain);
+- never chain an entry marked `TERMINAL` (ITERATE's autonomous terminal rule);
+- chained features inherit `autonomous` and carry `backlogEntry`, so a gap that spends a
+  second full budget goes terminal instead of looping forever.
+
+When the bound stops the chain with entries still queued, print the overnight form —
+`while :; do claude -p "/loop-spec:cycle backlog autonomous"; done` — which drains the
+rest one bounded fresh-session cycle at a time. Warnings stay in the PR as the audit
+trail; the backlog + chain is what actually handles them.
 
 **Note:** `TeamDelete` is called explicitly here at the orchestration layer. It is NOT implemented as a bash `trap` because `TeamDelete` is a harness MCP tool callable only from the lead's tool-using context, not from a shell signal handler. See the resume strategy orphan-detection path for killed-session cleanup.

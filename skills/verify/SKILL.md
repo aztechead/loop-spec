@@ -21,6 +21,15 @@ Invoked when feature.json currentPhase == "verify".
 > `skills/shared/implicit-team-mode.md`. The acceptance gate and code-review HARD-GATE
 > semantics are unchanged.
 
+> **Autonomous mode** (`feature.json.autonomous == true`): no escalation in this phase
+> may wait on a human, and `warnings[]` is an audit record, never the handler
+> (`skills/shared/autonomous-mode.md`, continuation ladder). Gate failures route through
+> the existing autonomous machinery: acceptance and code-review findings become
+> `pendingRemediationTasks[]` consumed by EXECUTE re-entry (the Ralph remediation loop),
+> exactly as written below. The acceptance gate, code-review HARD-GATE, and test-tamper
+> scan are safety gates and are NEVER self-answered past — they are satisfied by
+> remediation, not skipped.
+
 ## Inputs
 
 - `feature_path` (path to `.loop-spec/features/{slug}/feature.json`)
@@ -315,6 +324,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" build . \
 ```
 
 Failure of the graphify refresh is non-blocking here: VERIFY runs after the design phases, so a stale graph does not affect this phase's gates. Log a warning and continue.
+
+**Greenfield (`feature.json.greenfield == true`):** this is where the project's FIRST graph and FIRST codebase map get built (cycle Steps 5.4/5.5 deferred them — an empty repo grounds nothing). The `graphify-preflight.sh build` above creates the initial graph; then invoke map-codebase with `--full` instead of incremental, since there are no existing domain docs to refresh.
 
 Invoke the map-codebase skill for an incremental refresh:
 

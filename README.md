@@ -4,6 +4,8 @@ Loop-driven development from a spec file, for Claude Code.
 
 Give the cycle a feature description — or a pre-authored spec `.md` — and it runs **SPEC → DISCUSS → PLAN → EXECUTE → VERIFY → ITERATE**: an outer convergence loop that judges the integrated result against your *original goal* and rewinds itself until converged or the iteration budget (10) is spent, then opens a PR. Every phase writes a committed markdown artifact; every run is resumable from `feature.json`.
 
+The same archetypes cover the rest of the development surface: `/loop-spec:cycle new <description>` bootstraps a **net-new application** in an empty directory (greenfield mode), `/loop-spec:debug <error or vague symptom>` runs a **bounded spec-driven debugging loop** (red reproduction as the oracle), and the `autonomous` token runs any of it **question-free from the command line** — every point that would ask a human instead takes the model's recommended answer and records it in an auditable decisions record. Anything that is *not* already spec-shaped — a Slack message, a Jira ticket, an email, a prompt — goes in through `/loop-spec:intake`, which converts it into a spec draft and starts the cycle from it.
+
 - **Zero package deps.** Shipped code is bash + git + jq + python3. One external tool: [graphify](https://github.com/safishamsi/graphify) (required code graph). Anti-over-engineering discipline ported from [ponytail](https://github.com/DietrichGebert/ponytail) (on by default).
 - **Single tier.** Gates and budgets are fixed; trivially-scoped plans skip the plan critique via a structural fast-path measured from the actual task DAG — never inferred from your prompt.
 - **Teams-optional.** Runs on both agent-team harness generations (explicit `TeamCreate` on CC < 2.1.178, implicit `Agent({name})` teams on newer, resolved by `lib/teams-capability.sh`) and degrades to one-shot subagents or a bounded loop fleet without teams.
@@ -77,6 +79,8 @@ Skill(loop-spec:cycle)
 
 Each per-phase skill is directly slash-invocable (the skill is the command, no separate command layer): `/loop-spec:spec`, `/loop-spec:discuss`, `/loop-spec:plan`, `/loop-spec:execute`, `/loop-spec:verify`, `/loop-spec:iterate`, `/loop-spec:map-codebase`. Use one when you want to run a single phase rather than the full cycle. The bundled loop engine is also directly invocable as `/loop-spec:loop-runner` for standalone autonomous loops ("implement this spec", "keep going until tests pass", overnight/cron runs) outside the cycle. Two additional standalone skills are available outside the cycle:
 
+- `/loop-spec:intake` -- turn ANY input into a cycle-ready spec draft and kick off the cycle: a pasted Slack message, a Jira ticket, an email, a `.txt`/`.md` file, or a bare prompt. It faithfully restructures the source into a draft at `.loop-spec/intake/{slug}.md` (**restructure, never invent** — the source's open questions stay open for the ambiguity gate/DISCUSS to resolve; the verbatim original is preserved in the draft's `## Source` provenance block) and hands it to `/loop-spec:cycle` via the existing spec-file ingest path. Inline tokens pass through (`/loop-spec:intake new autonomous <pasted text>` takes a Slack message describing a new app all the way to a PR, question-free); `--no-run` stops after writing the draft.
+- `/loop-spec:debug` -- bounded spec-driven debugging loop for a **specific error** (message, stack trace, failing test) or a **non-specific symptom** ("something's wrong", flaky, slow). Non-specific input runs a TRIAGE pass (suite run, git history/bisect, graph + fragility hotspots, named logs) that converges on one reproducible signal; the hard gate is a **red reproduction before any fix**; the FIX loop is bounded (5 hypotheses × 3 attempts, falsify-before-change); VERIFY keeps the repro as a regression test and runs the full suite + test-tamper scan. Writes `docs/loop-spec/debug/{slug}/BUG.md` (the committed audit trail — and the spec draft if the fix escalates to a full cycle). Autonomous-mode aware.
 - `/loop-spec:assess` -- standalone, read-only codebase fragility and health assessment; workspace-aware; dispatches bounded code-reviewer subagents at the top-N hotspots and writes `docs/loop-spec/assessment/ASSESSMENT.md`.
 - `/loop-spec:quality-loop` -- iterative pre-commit review convergence loop; workspace-aware; runs deterministic checks then parallel code-reviewer and security-reviewer passes, repeating until convergence or the round budget is exhausted.
 - `/loop-spec:grill` -- toggle grill mode (`on`/`off`/`status`). Grill mode is **on by default**: a session-start directive makes the assistant front-load 2-4 sharp disambiguation questions right after your initial prompt to lower ambiguity before acting. Persists in `.loop-spec/grill.conf`; `LOOP_SPEC_GRILL=0` is the session kill switch.
@@ -166,6 +170,54 @@ export LOOP_SPEC_ANSWER_TITLE="add subtract function"
 
 The cycle skill detects the env var and skips every AskUserQuestion call.
 
+### Autonomous mode (no human in the loop)
+
+Strictly stronger than non-interactive: instead of pre-pinning answers in env vars, every
+point that would ask a question takes the model's **recommended answer** — grounded in the
+code graph, the codebase map, and best practice — and records it as an assumed decision.
+
+```bash
+claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
+# or: export LOOP_SPEC_AUTONOMOUS=1
+```
+
+What changes: style is forced to `auto`; the SPEC phase runs its Socratic interview in
+**self-answered form** (the model asks and answers each perspective's questions, scoring
+honestly); the grill directive is suppressed; explicit `LOOP_SPEC_ANSWER_*` / `LOOP_SPEC_CMD_*`
+vars still win where set; safety aborts (dirty repos, budget ceilings, the code-review
+HARD-GATE, the test-tamper scan) are never overridden. Every assumed answer lands in
+SPEC.md's `## Decisions (assumed — autonomous)` list and PLAN.md's `## User decisions
+(already made)` record suffixed `(assumed)` — the PR reviewer reads exactly what was assumed
+and why, and can rerun with corrections pinned. A bare autonomous invocation with no
+description aborts (there is no goal to infer).
+
+Autonomous runs manage **every cycle of iteration themselves** — warnings are an audit
+record, never the handler. The continuation ladder: self-heal in phase (retry budgets) →
+lead-authored artifact fallback when a teammate fails twice → hands-off ITERATE rewinds
+(while iterations remain, gaps always rewind — the backlog is never an in-budget
+mechanism, in any mode) → only at the iteration limit, accepted gaps become `BACKLOG.md`
+entries and the run **chains directly into backlog drain** (bounded by
+`LOOP_SPEC_MAX_FEATURES`, never past a failure) →
+a gap that spends a second full budget goes **terminal** with its complete evidence trail
+(two budgets on one gap means the approach is wrong, not under-iterated). Full contract:
+`skills/shared/autonomous-mode.md`.
+
+### Net-new applications (greenfield)
+
+```bash
+mkdir my-app && cd my-app
+claude -p "/loop-spec:cycle new autonomous a CLI tool that ... "
+```
+
+In a directory with no git repo, `new` (or an interactive confirmation, or autonomous mode
+with a description) bootstraps `git init` + an empty initial commit and runs the full cycle
+as greenfield: SPEC round 1 swaps Researcher for a **Foundations** perspective (stack,
+structure, tooling — autonomous mode picks the boring industry-standard choice), PLAN leads
+with a scaffold task every other task blocks on, EXECUTE backfills the detected
+test/lint/typecheck commands once the scaffold lands, and the graphify graph + codebase map
+are built at VERIFY from the shipped code (an empty repo grounds nothing). `new` inside an
+existing repo is refused; workspace-mode greenfield is deferred.
+
 ### Environment variables
 
 | Variable | Effect |
@@ -190,6 +242,7 @@ The cycle skill detects the env var and skips every AskUserQuestion call.
 | `LOOP_SPEC_TEAMS_MODE` | Force the teams capability mode (`none`/`explicit`/`implicit`), overriding the version probe. |
 | `LOOP_SPEC_REGRESSION_SCAN` | `1` enables VERIFY's advisory prior-feature regression scan (off by default). |
 | `LOOP_SPEC_NON_INTERACTIVE` + `LOOP_SPEC_ANSWER_*` | CI mode, see above. |
+| `LOOP_SPEC_AUTONOMOUS` | `1` = autonomous mode (equivalent to the inline `autonomous` token): self-answer every question site with the recommended option and record it; forces style `auto`; suppresses grill. See above. |
 
 All hook guards additionally self-scope: they no-op outside projects with `.loop-spec/` state, and the task gates only fire on loop-spec-owned tasks (`metadata.loopSpec` / `task-NNN:` subjects).
 
@@ -496,13 +549,15 @@ loop-spec/
 │   ├── iterate/SKILL.md             # outer convergence loop (goal re-judge + confirmation pass)
 │   ├── map-codebase/SKILL.md
 │   ├── assess/SKILL.md              # standalone codebase fragility and health assessment (workspace-aware)
+│   ├── debug/SKILL.md               # bounded debugging loop: triage -> red repro -> fix -> verify (BUG.md artifact)
+│   ├── intake/SKILL.md              # anything -> spec draft -> cycle (slack/jira/email/txt/prompt converter)
 │   ├── quality-loop/SKILL.md        # iterative pre-commit review convergence loop (workspace-aware)
 │   ├── loop-runner/                 # bundled loop-runner skill: loop.py, compile_spec.py, supervisor.py + offline test suite
 │   ├── pause/ rollback/ forensics/  # cycle lifecycle utilities
 │   ├── discipline/                  # 5-gate behavioral directive toggle
 │   ├── simplicity/                  # laziness-ladder directive toggle (ponytail-ported; lite/full/ultra)
 │   ├── checking-gates/ specifying-gates/  # user-gate verification flow
-│   └── shared/                      # model-matrix, tier-matrix, team-prompts/, model-policy, execute-loops, execute-subagent, execute-loop-fleet, no-teams-fallback, cycle-resume-escalation, dispatch-fanout, feature-state-schema
+│   └── shared/                      # model-matrix, tier-matrix, team-prompts/, model-policy, autonomous-mode, execute-loops, execute-subagent, execute-loop-fleet, no-teams-fallback, cycle-resume-escalation, dispatch-fanout, feature-state-schema
 ├── lib/                             # extracted bash with unit tests
 │   ├── feature-write.sh             # atomic feature.json writes with .bak rotation
 │   ├── git-ops.sh                   # base-branch detection, slugify, sha helpers (-C <path> for workspace mode)

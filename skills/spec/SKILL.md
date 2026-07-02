@@ -83,6 +83,12 @@ Apply one perspective per round. Each perspective surfaces different blindspots.
 - "What is the delta between today and the target state?"
 - "What triggers this work - what is broken or missing?"
 
+**Greenfield (`feature.json.greenfield == true`): round 1 runs the Foundations perspective instead of Researcher** — there is no codebase to research; the foundations ARE the round-1 blindspot. Ask (or in autonomous mode self-answer, preferring the boring industry-standard choice for the app's domain):
+- "What language/runtime and framework? What is the deployment target (CLI, web service, desktop, library)?"
+- "What project structure and tooling — test framework, linter, formatter, build tool?"
+- "What is the smallest end-to-end slice that proves the app works (the walking skeleton)?"
+The chosen stack and its canonical test/lint/typecheck commands MUST land in SPEC.md as explicit requirements (PLAN's scaffold task and EXECUTE's command backfill read them). Rounds 2-6 are unchanged.
+
 **Simplifier (round 2) example questions:**
 - "What is the simplest version that solves the core problem?"
 - "If you had to cut 50%, what is the irreducible core?"
@@ -115,14 +121,16 @@ Before asking any questions, read for grounding context:
   - `graphify query "<feature area>"` — does an implementation already exist? What does it touch?
   - `graphify-out/GRAPH_REPORT.md` — "god nodes" and cross-module connections reveal which subsystems a change will ripple through, so you can ask sharper boundary/constraint questions.
   - `graphify explain "<entity>"` / `graphify path "<A>" "<B>"` — confirm how the target area connects to the rest of the system.
-  Use the graph to ask precise questions ("this would touch `X` which also feeds `Y` — in scope?") instead of generic ones. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode; then use flat-file reads.)
+  Use the graph to ask precise questions ("this would touch `X` which also feeds `Y` — in scope?") instead of generic ones. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode; then use flat-file reads. **Greenfield:** the graph build is deferred until source exists — skip the graph scout and ground in the stated goal and the chosen stack's conventions instead.)
 - Relevant source files to understand current state
 
 Synthesize current state internally: what exists today related to this feature, and the gap to the target state. Do not present this synthesis to the user - use it to ask precise, grounded questions.
 
 Score all 4 dimensions from what you already know (feature title, any existing context). This is the initial assessment; display it before the first round.
 
-If `LOOP_SPEC_NON_INTERACTIVE=1` is set: skip Step 2 entirely and go to the **Non-interactive mode** section below.
+If `feature.json.autonomous == true` (or `LOOP_SPEC_AUTONOMOUS=1`): run Step 2 in **self-answered form** per the **Autonomous mode** section below — do NOT fall through to the thinner non-interactive synthesis.
+
+If `LOOP_SPEC_NON_INTERACTIVE=1` is set (and autonomous is not): skip Step 2 entirely and go to the **Non-interactive mode** section below.
 
 **Spec-file ingest mode:** if `.loop-spec/features/{slug}/spec-draft.md` exists (cycle Step 3 placed it there — the user pre-authored the spec), skip the interview (Step 2) entirely:
 
@@ -285,6 +293,34 @@ Synthesis procedure (non-interactive):
 6. Proceed to Step 4 (update feature.json), Step 5 (commit), Step 6 (route).
 
 Non-interactive mode never selects "Abandon": SPEC.md is always written.
+
+## Autonomous mode (self-answered interview)
+
+When `feature.json.autonomous == true` (or `LOOP_SPEC_AUTONOMOUS=1`), there is no user —
+but the interview still runs, because the perspectives are what surface blindspots. The
+orchestrator plays both roles (`skills/shared/autonomous-mode.md` self-answer rule):
+
+1. Run Step 1 (scout + initial scoring) as normal. The graph scout matters MORE here —
+   it is the only source of grounding.
+2. For each round N (same perspectives table, max 6 — in practice self-answering
+   converges in 2-3): formulate the round's 2-3 questions, then answer each one yourself
+   with the recommendation you would have marked as the default option — grounded first
+   in what the codebase already does (graph/map evidence), then industry best practice,
+   then the most reversible choice. Score the 4 dimensions after each round from the
+   answers, honestly — do not inflate scores because you authored the answers.
+3. Gate prompts self-answer: on gate pass take "Yes - write SPEC.md"; at round 6 with a
+   failing gate take "Write SPEC.md anyway" (`gate_passed: false`, dimensions listed in
+   `unresolved_dimensions` for DISCUSS's autonomous resolution). Never "Abandon".
+4. Record every Q → A → one-line rationale in the transcript (marked `(self-answered)`),
+   and add a `## Decisions (assumed — autonomous)` list inside SPEC.md's `<decisions>`
+   block — one entry per assumed answer, PLUS any setup decisions the cycle buffered
+   before SPEC ran (workspace repos, resume choice, detected commands). PLAN copies these
+   forward into `## User decisions (already made)` suffixed `(assumed)`, so the
+   escalation contract treats them exactly like human answers.
+5. Proceed to Steps 3-6 unchanged.
+
+Autonomous beats non-interactive synthesis when both are set: the self-answered interview
+produces a spec with explicit, auditable assumptions instead of a one-shot guess.
 
 ## Resume
 

@@ -17,6 +17,12 @@ Claude Code subagents spawned by the superpowers fork have no spec-driven discip
 - Real `.claude/agents/` definitions instead of inline prompt templates
 - Self-healing AUTO loop with bounded retries
 - Codebase mapping that auto-refreshes after each cycle
+- (v2.6) Full development surface on the same archetypes: greenfield mode (net-new
+  application bootstrap inside the cycle — Foundations SPEC round, scaffold-first plan,
+  deferred graph/map), `/loop-spec:debug` (bounded triage → red-repro → fix → verify loop,
+  BUG.md artifact), and autonomous mode (question-free headless runs; self-answer contract
+  in `skills/shared/autonomous-mode.md`, assumed decisions recorded through the
+  decision-coverage gate)
 
 ## Non-goals
 

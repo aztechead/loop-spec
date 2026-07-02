@@ -39,6 +39,8 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 
 Before spawning the team: if `docs/loop-spec/features/{slug}/PATTERNS.md` already exists, record it in `feature.json.artifacts` and skip production; else attempt GSD `.planning/codebase/` ingestion; else the planner produces PATTERNS.md at its own Step 0. Exact cache/ingest procedure and artifact bookkeeping verbatim in `${CLAUDE_SKILL_DIR}/references/patterns-bootstrap.md`.
 
+**Greenfield plans (`feature.json.greenfield == true`).** There are no codebase analogs: PATTERNS.md records the chosen stack's canonical conventions (project layout, test placement, naming) from SPEC.md's Foundations requirements instead of mined analogs, marked `Source: stack conventions (greenfield)`. The task DAG MUST lead with **task-001 = scaffold**: initialize the project structure, dependency manifest, test harness, and a passing walking-skeleton test; its `verifyCommand` is the stack's canonical test command from SPEC.md, and EVERY other task is `blockedBy: ["task-001"]` (directly or transitively). No task may assume tooling that task-001 does not create. After task-001 merges, EXECUTE backfills `feature.commands.*` (see `skills/execute/SKILL.md`) so later tasks and VERIFY run real commands.
+
 ### Step 1 - TeamCreate the plan team
 
 ```
@@ -144,7 +146,7 @@ SendMessage({
 
 Wait for `TeammateIdle` from `planner-1`. If `planner-1` goes idle without producing both `PATTERNS.md` and `PLAN.md`:
 - Send `SendMessage({to: "planner-1", body: "Check docs/loop-spec/features/{slug}/PATTERNS.md and docs/loop-spec/features/{slug}/PLAN.md -- one or both are missing. Produce any missing files now and include tasks[] JSON in your completion message."})` once.
-- If still idle without output on second idle, escalate to user via `AskUserQuestion`.
+- If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors PATTERNS.md + PLAN.md itself from the same brief and continues, noting `lead-authored` in `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
 
 On `PATTERNS.md and PLAN.md written` message received: update `feature.json` via `lib/feature-write.sh`:
 - `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
@@ -272,7 +274,7 @@ Apply reconciliation rules:
 | Challenger raises point advocate also flagged as risk | High-confidence. Add to fix-list. |
 | Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
 | Both agree | No action. |
-| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. |
+| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it in `## User decisions (already made)` suffixed `(assumed)` (`skills/shared/autonomous-mode.md`), and add it to the fix-list. |
 
 Build `fix_list` (may be empty).
 

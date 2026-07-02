@@ -45,7 +45,7 @@ Either way, the spec-writer brief (Step 3) must require: every resolved dimensio
 
 Run a one-question-at-a-time loop to understand the feature.
 
-**Ground in the code graph first (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Before and during the loop, use `graphify query "<area>"`, `graphify path "<A>" "<B>"`, `graphify explain "<entity>"`, and `graphify-out/GRAPH_REPORT.md` (god nodes + cross-module connections) to see what the feature will actually touch. Let the graph drive design/approach questions — e.g. surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode.)
+**Ground in the code graph first (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Before and during the loop, use `graphify query "<area>"`, `graphify path "<A>" "<B>"`, `graphify explain "<entity>"`, and `graphify-out/GRAPH_REPORT.md` (god nodes + cross-module connections) to see what the feature will actually touch. Let the graph drive design/approach questions — e.g. surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. (Absent under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode, and in greenfield features before code exists — `feature.json.greenfield`; there, ground in SPEC.md's Foundations requirements and the chosen stack's conventions instead.)
 
 - Non-AUTO styles: full conversation in main thread, no cap on rounds
 - AUTO style: cap at 5 Q rounds, then proceed regardless
@@ -143,7 +143,7 @@ SendMessage({
 
 Wait for `TeammateIdle` from `spec-writer-1`. If spec-writer-1 goes idle without producing `SPEC.md`:
 - Send `SendMessage({to: "spec-writer-1", body: "SPEC.md not found at docs/loop-spec/features/{slug}/SPEC.md. Write it now and send lead the SPEC.md written message."})` once.
-- If still idle without output on second idle, escalate to user via `AskUserQuestion`.
+- If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors SPEC.md itself from the same brief and continues, noting `lead-authored` in the transcript and `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
 
 On `SPEC.md written` message received: proceed to Step 4.
 
@@ -265,7 +265,7 @@ Apply reconciliation rules:
 | Challenger raises point advocate also flagged as risk | High-confidence. Add to fix-list. |
 | Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
 | Both agree | No action. |
-| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. |
+| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it in the decisions record (`skills/shared/autonomous-mode.md`), and add it to the fix-list so the spec states it explicitly. |
 
 Build `fix_list` (may be empty).
 

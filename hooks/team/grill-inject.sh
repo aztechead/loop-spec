@@ -8,7 +8,9 @@
 #
 # Suppressed only when:
 #   - .loop-spec/grill.conf contains ENABLED=0, OR
-#   - LOOP_SPEC_GRILL=0 is set (session-level kill switch).
+#   - LOOP_SPEC_GRILL=0 is set (session-level kill switch), OR
+#   - LOOP_SPEC_AUTONOMOUS=1 is set (headless run: nobody to grill; the SPEC
+#     phase self-answers its interview per skills/shared/autonomous-mode.md).
 #
 # Environment variables:
 #   LOOP_SPEC_GRILL     Set to "0" to disable (kill switch). Default: on.
@@ -21,6 +23,12 @@ trap 'exit 0' ERR
 
 # Kill switch.
 if [[ "${LOOP_SPEC_GRILL:-1}" == "0" ]]; then
+  printf '{}\n'
+  exit 0
+fi
+
+# Autonomous mode: no human to grill.
+if [[ "${LOOP_SPEC_AUTONOMOUS:-0}" == "1" ]]; then
   printf '{}\n'
   exit 0
 fi
