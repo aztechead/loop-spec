@@ -18,6 +18,20 @@ All notable changes documented here. Format follows Keep a Changelog.
   the escalation contract treats them like human answers and the PR carries the audit
   trail. Contract: `skills/shared/autonomous-mode.md`. Headless form:
   `claude -p "/loop-spec:cycle autonomous <description>"`.
+  - **Continuation ladder — autonomous runs manage all iteration cycles themselves;
+    `warnings[]` is an audit record, never the handler.** Self-heal in phase (existing
+    retry budgets) → lead-authored artifact fallback when a teammate fails twice
+    (DISCUSS/PLAN) → hands-off ITERATE rewinds (while iterations remain the backlog is
+    never used, in ANY mode — in-budget gaps always rewind) → only at the iteration
+    limit the confirmation pass runs, accepted gaps are queued to `BACKLOG.md`
+    (ITERATE's sole backlog entry point), and the cycle's On-completion
+    **chains directly into backlog drain** (bounded by `LOOP_SPEC_MAX_FEATURES`, never
+    past a failure) → a gap that spends a second full budget on a drained entry goes
+    **terminal** (`iterate-terminal:`, backlog entry closed `TERMINAL`, full evidence in
+    ITERATION.md) instead of looping forever. VERIFY escalations route through the
+    existing remediation loop (`pendingRemediationTasks[]` → EXECUTE re-entry); safety
+    gates are satisfied by remediation, never skipped. Backlog-drain features record
+    `feature.json.backlogEntry` so the terminal rule is detectable.
 - **Greenfield mode — net-new application development.** `/loop-spec:cycle new
   <description>` in a non-repo directory (or an interactive confirmation / autonomous
   start) bootstraps `git init` + an empty initial commit and runs the full cycle: SPEC

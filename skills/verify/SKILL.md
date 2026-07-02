@@ -22,9 +22,13 @@ Invoked when feature.json currentPhase == "verify".
 > semantics are unchanged.
 
 > **Autonomous mode** (`feature.json.autonomous == true`): no escalation in this phase
-> may wait on a human — pause-and-escalate points halt with evidence in `warnings[]`
-> instead, per `skills/shared/autonomous-mode.md`. The acceptance gate, code-review
-> HARD-GATE, and test-tamper scan are safety gates and are NEVER self-answered past.
+> may wait on a human, and `warnings[]` is an audit record, never the handler
+> (`skills/shared/autonomous-mode.md`, continuation ladder). Gate failures route through
+> the existing autonomous machinery: acceptance and code-review findings become
+> `pendingRemediationTasks[]` consumed by EXECUTE re-entry (the Ralph remediation loop),
+> exactly as written below. The acceptance gate, code-review HARD-GATE, and test-tamper
+> scan are safety gates and are NEVER self-answered past — they are satisfied by
+> remediation, not skipped.
 
 ## Inputs
 

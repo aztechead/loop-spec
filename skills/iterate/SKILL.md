@@ -41,11 +41,13 @@ If `used >= maxit` OR `gused >= gmax`: **stop iterating and ship — but ship LO
    - `converged == false` (or the dispatch fails/malforms): fall through to the loud-ship steps below using THIS verdict's gaps (they are fresher than the pre-fix `lastVerdict`).
 1. **Harvest every unresolved gap from the freshest verdict** (the confirmation verdict when one ran, else `iterate.lastVerdict`) into `warnings[]` (one entry per below-8 criterion and per gap in `gap` / `remaining_gaps[]`), each prefixed `iterate-budget-spent:`. A budget-exhausted ship with an empty warning trail is indistinguishable from a clean converge — that silence is the failure mode this step exists to prevent.
 
-   **Backlog each harvested gap too** — warnings are a report, the backlog is a queue:
+   **Backlog each harvested gap too** — warnings are a report, the backlog is a queue. (This is the ONLY point in ITERATE, in any mode, where the backlog is written: the iteration limit is hit and the loop can no longer work the gap itself. While budget remains, gaps rewind — Step 3 — and never touch the backlog.)
    ```bash
    bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "{slug}" iterate-gap "{gap.description} — fix first: {gap.fix_first}"
    ```
    `/loop-spec:cycle backlog` turns each into its own bounded follow-up cycle instead of the gap dying in feature.json.
+
+   **Autonomous terminal rule** (`feature.json.autonomous == true`): if THIS feature was itself started from a backlog drain (`feature.json.backlogEntry` non-null) and the gap being harvested is the same gap that entry was created for (match on the normalized `fix_first`/description text), do NOT re-backlog it — two full iteration budgets on the same gap means the approach is wrong, not under-iterated. Record it as `iterate-terminal:` (instead of `iterate-budget-spent:`) in `warnings[]`, close the backlog entry with a `TERMINAL` note (`lib/backlog.sh done` + the note appended to ITERATION.md), and write the complete evidence trail into ITERATION.md. This is the ladder's one legitimate stop (`skills/shared/autonomous-mode.md`, rung 5) — everything short of it keeps the loop working the gap.
 
    **Self-learning writer:** a budget-spent ship means the loop could not converge within its budget — record the pattern once so the next feature plans for it:
    ```bash
@@ -53,7 +55,7 @@ If `used >= maxit` OR `gused >= gmax`: **stop iterating and ship — but ship LO
    ```
 2. **If no confirmation pass could run** (already used, or the dispatch failed), append one more warning: `iterate-budget-spent: final remediation was never re-judged against the original goal`.
 3. Write the final ITERATION.md section stating the budget was spent, listing the harvested warnings verbatim.
-4. Set `currentPhase = "completed"` and go to Phase exit. The cycle's On-completion summary prints `warnings[]` — the user must see the accepted gaps without opening feature.json.
+4. Set `currentPhase = "completed"` and go to Phase exit. The cycle's On-completion summary prints `warnings[]` — the user must see the accepted gaps without opening feature.json. **Autonomous mode:** the cycle's On-completion additionally chains straight into a backlog drain for the gaps just queued (bounded — see cycle "On completion", autonomous chaining), so a budget-spent ship is a handoff to the next bounded cycle, not a stop that relies on someone reading warnings.
 
 ### Step 1 - Dispatch the judge (maker ≠ checker)
 
@@ -110,7 +112,7 @@ git commit -m "iterate: NO_JIRA {slug} iteration $((used+1))"
 
 **Converged** (`verdict.converged == true`): set `currentPhase = "completed"`. Clear `iterate.feedback = null`. Go to Phase exit → the cycle ships.
 
-**Not converged:** route by `gap.type`. In every case, write the gap so the re-entered phase can "fix the weakest point first":
+**Not converged:** route by `gap.type`. **The backlog is NEVER an option here, in any mode** — while iterations remain, every gap is worked by a rewind (below); deferring an in-budget gap to `BACKLOG.md` would let the loop claim convergence work it never did. The backlog is exclusively the budget-exhaustion exit (Step 0's loud-ship path). In every case, write the gap so the re-entered phase can "fix the weakest point first":
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedback "<gap json>"

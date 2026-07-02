@@ -54,6 +54,15 @@ human-in-the-loop; recommended answer per best practice), each with rationale.
 - **No new bash libs, no new agents.** All three capabilities are markdown
   skill logic over the existing lib/ + agent surface (ponytail: reuse before
   build). The only shell change is a 3-line suppression in grill-inject.sh.
+- **(User, mid-review) Autonomous runs manage all iteration cycles themselves;
+  warnings are audit-only.** Realized as the continuation ladder in
+  `skills/shared/autonomous-mode.md`: in-phase self-heal → lead-authored
+  artifact fallback → hands-off rewinds → backlog + bounded drain chaining at
+  the limit → terminal on a second spent budget for the same gap.
+- **(User, mid-review) The backlog is exclusively the iteration-limit exit, in
+  BOTH modes.** While iterations remain, every ITERATE gap is worked by a
+  rewind — never deferred to `BACKLOG.md`. Only when `maxIterations` is hit do
+  accepted gaps queue to the backlog (and, autonomous only, chain into drain).
 </decisions>
 
 ## Requirements

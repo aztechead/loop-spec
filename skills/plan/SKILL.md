@@ -146,7 +146,7 @@ SendMessage({
 
 Wait for `TeammateIdle` from `planner-1`. If `planner-1` goes idle without producing both `PATTERNS.md` and `PLAN.md`:
 - Send `SendMessage({to: "planner-1", body: "Check docs/loop-spec/features/{slug}/PATTERNS.md and docs/loop-spec/features/{slug}/PLAN.md -- one or both are missing. Produce any missing files now and include tasks[] JSON in your completion message."})` once.
-- If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, halt the phase with the evidence appended to `warnings[]` — never wait on a human (`skills/shared/autonomous-mode.md`).
+- If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors PATTERNS.md + PLAN.md itself from the same brief and continues, noting `lead-authored` in `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
 
 On `PATTERNS.md and PLAN.md written` message received: update `feature.json` via `lib/feature-write.sh`:
 - `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`

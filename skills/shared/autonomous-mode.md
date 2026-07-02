@@ -63,10 +63,44 @@ stay hard failures exactly as written in their skills:
 - VERIFY's code-review HARD-GATE and the test-tamper scan
 - anything the skill marks abort/escalate-with-evidence rather than ask
 
-When a phase's escalation path fires with no human available (e.g. a gate
-bounces past its retry budget), do what the budget-spent path already does in
-`auto` style: ship-with-warnings or halt with the evidence written to the
-artifact and `warnings[]` — never invent an approval.
+## The continuation ladder (warnings are a record, not a handler)
+
+An autonomous run must manage every cycle of iteration itself. `warnings[]` is
+the audit trail of what happened — it is NEVER how a problem gets handled,
+because in a headless run nobody is reading warnings mid-flight. When a phase's
+escalation path fires, climb this ladder instead of stopping:
+
+1. **Self-heal in phase** — the existing retry budgets (gate re-dispatch with
+   findings, teammate rework via SendMessage) run exactly as written.
+2. **Lead-authored fallback** — if a teammate fails to produce its artifact
+   after one fresh re-dispatch, the lead (main thread) authors the artifact
+   itself from the same brief and continues, noting `lead-authored` in the
+   transcript. A missing teammate output is a dispatch problem, not a reason
+   to stop the loop.
+3. **ITERATE rewinds** — `execute`/`plan`/`spec` gaps rewind hands-off (style
+   is `auto`); the immutable original goal keeps the oracle honest and
+   `iterate.maxIterations` keeps it bounded. **While iterations remain, the
+   backlog is never used** (any mode): every gap is worked by a rewind, not
+   deferred — a backlogged in-budget gap would be convergence the loop claimed
+   but never did.
+4. **Iteration limit hit (the ONLY backlog entry point)** — run ITERATE's
+   confirmation pass as written, then convert EVERY accepted gap into a
+   concrete `BACKLOG.md` entry (`lib/backlog.sh add`, one self-contained
+   feature description per gap). On cycle completion the autonomous run
+   **chains directly into backlog drain** (cycle Step 3 branch 4 semantics,
+   bounded by `LOOP_SPEC_MAX_FEATURES`) so the gaps become worked items in the
+   same run, not notes for a human. Record the same facts in `warnings[]` for
+   the PR audit trail.
+5. **Terminal** — a gap that re-enters via backlog drain and spends its budget
+   AGAIN is not re-backlogged: mark it terminal (`iterate-terminal:` prefix in
+   `warnings[]` and the backlog entry closed with a `TERMINAL` note). Two full
+   budgets on the same gap means the approach is wrong, not under-iterated —
+   that is the one legitimate stop, and it stops with the complete evidence
+   trail (BUG-level detail in ITERATION.md), never silently.
+
+The ladder never invents an approval and never overrides a safety gate; it
+exhausts autonomous handling before anything is left for a human, and what it
+does leave is a worked evidence trail rather than a warning line.
 
 ## The decisions record
 
@@ -96,8 +130,9 @@ an edited spec file.
 | cycle Step 4 command confirmation | AskUserQuestion | trust detection (or `LOOP_SPEC_CMD_*`); record |
 | SPEC interview (all rounds + gate prompts) | AskUserQuestion loop | self-answered interview — see `skills/spec/SKILL.md` "Autonomous mode" |
 | DISCUSS unresolved dimensions / "depends on user intent" rows | AskUserQuestion in `step`/`interactive` | graph-grounded assumption, recorded (already the `auto` path; the intent row picks the more reversible reading and records it) |
-| PLAN teammate-idle / gate escalation | AskUserQuestion | one fresh re-dispatch, then halt with evidence in `warnings[]` |
+| DISCUSS / PLAN teammate-idle | AskUserQuestion | one fresh re-dispatch, then the lead authors the artifact itself (continuation ladder rung 2) |
 | ITERATE spec-rewind approval (`step`/`interactive` only) | AskUserQuestion | moot — style is forced to `auto`, which already auto-approves |
+| ITERATE budget spent | ship-with-warnings, human drains backlog later | confirmation pass → accepted gaps become BACKLOG entries → chain into backlog drain (ladder rungs 4-5) |
 | debug skill fix-strategy and escalation choices | AskUserQuestion | recommended strategy, recorded in BUG.md |
 
 Sites not listed follow the general rule: recommended option, recorded, proceed.

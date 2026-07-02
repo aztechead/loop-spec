@@ -285,7 +285,7 @@ Resolution order:
    ```bash
    entry="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" next)" || { echo "backlog empty — nothing to drain"; exit 0; }
    ```
-   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it.
+   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it. Record the originating entry on the feature (after Step 5 creates feature.json): `feature.json.backlogEntry = "<entry text>"` — ITERATE's autonomous terminal rule needs it to detect a gap spending its budget twice.
    - On completion (the On-completion section finishing cleanly), mark it off: `bash .../lib/backlog.sh done "$entry"`.
    - **Loop bound:** `LOOP_SPEC_MAX_FEATURES` (default `1`). After marking an entry done, if features completed this invocation `< LOOP_SPEC_MAX_FEATURES` and `backlog.sh next` yields another entry, start the next cycle from Step 3 branch 2 with it. Stop when the bound is hit, the backlog is empty, or any feature ends paused/escalated (never chain past a failure).
    - Overnight form: an outer `while :; do claude -p "/loop-spec:cycle backlog"; done` gets one feature per fresh session — the Ralph loop with real stop conditions.
@@ -538,5 +538,23 @@ Also print the backlog state (one line, always):
 n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
 [[ "$n" -gt 0 ]] && echo "Backlog: ${n} deferred item(s) — drain with /loop-spec:cycle backlog"
 ```
+
+**Autonomous chaining (`feature.json.autonomous == true`).** An autonomous run manages its
+own iteration cycles end-to-end — it does not complete by leaving `iterate-budget-spent`
+gaps for a human to read (`skills/shared/autonomous-mode.md`, continuation ladder). If this
+feature's ITERATE queued backlog entries (its `warnings[]` contains `iterate-budget-spent:`
+entries and the backlog is non-empty), chain directly into backlog-drain mode (Step 3
+branch 4) for those entries, under the same bounds that keep drain mode finite:
+
+- at most `LOOP_SPEC_MAX_FEATURES` (default 1) chained features per invocation;
+- never chain past a failure (a chained cycle that ends paused/escalated stops the chain);
+- never chain an entry marked `TERMINAL` (ITERATE's autonomous terminal rule);
+- chained features inherit `autonomous` and carry `backlogEntry`, so a gap that spends a
+  second full budget goes terminal instead of looping forever.
+
+When the bound stops the chain with entries still queued, print the overnight form —
+`while :; do claude -p "/loop-spec:cycle backlog autonomous"; done` — which drains the
+rest one bounded fresh-session cycle at a time. Warnings stay in the PR as the audit
+trail; the backlog + chain is what actually handles them.
 
 **Note:** `TeamDelete` is called explicitly here at the orchestration layer. It is NOT implemented as a bash `trap` because `TeamDelete` is a harness MCP tool callable only from the lead's tool-using context, not from a shell signal handler. See the resume strategy orphan-detection path for killed-session cleanup.

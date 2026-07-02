@@ -188,7 +188,17 @@ HARD-GATE, the test-tamper scan) are never overridden. Every assumed answer land
 SPEC.md's `## Decisions (assumed — autonomous)` list and PLAN.md's `## User decisions
 (already made)` record suffixed `(assumed)` — the PR reviewer reads exactly what was assumed
 and why, and can rerun with corrections pinned. A bare autonomous invocation with no
-description aborts (there is no goal to infer). Full contract:
+description aborts (there is no goal to infer).
+
+Autonomous runs manage **every cycle of iteration themselves** — warnings are an audit
+record, never the handler. The continuation ladder: self-heal in phase (retry budgets) →
+lead-authored artifact fallback when a teammate fails twice → hands-off ITERATE rewinds
+(while iterations remain, gaps always rewind — the backlog is never an in-budget
+mechanism, in any mode) → only at the iteration limit, accepted gaps become `BACKLOG.md`
+entries and the run **chains directly into backlog drain** (bounded by
+`LOOP_SPEC_MAX_FEATURES`, never past a failure) →
+a gap that spends a second full budget goes **terminal** with its complete evidence trail
+(two budgets on one gap means the approach is wrong, not under-iterated). Full contract:
 `skills/shared/autonomous-mode.md`.
 
 ### Net-new applications (greenfield)
