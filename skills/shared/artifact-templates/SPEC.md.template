@@ -51,6 +51,14 @@
 
 - {Item 1}
 
+## Grounding
+
+<!-- Probe-before-assert (skills/shared/grounding-protocol.md): every load-bearing
+     fact about an external system (dataset, API, service, infra) must cite an
+     EVIDENCE.md entry (EVID-NNN) or be an explicit ASSUMPTION with a verify probe.
+     Keep the single `- none` line if nothing external is load-bearing. -->
+- none
+
 ## Open questions
 
 (none - resolved during DISCUSS phase)
