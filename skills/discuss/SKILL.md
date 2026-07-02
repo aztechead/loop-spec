@@ -45,7 +45,7 @@ Either way, the spec-writer brief (Step 3) must require: every resolved dimensio
 
 Run a one-question-at-a-time loop to understand the feature.
 
-**Ground in the code graph first (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Before and during the loop, use `graphify query "<area>"`, `graphify path "<A>" "<B>"`, `graphify explain "<entity>"`, and `graphify-out/GRAPH_REPORT.md` (god nodes + cross-module connections) to see what the feature will actually touch. Let the graph drive design/approach questions — e.g. surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode.)
+**Ground in the code graph first (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Before and during the loop, use `graphify query "<area>"`, `graphify path "<A>" "<B>"`, `graphify explain "<entity>"`, and `graphify-out/GRAPH_REPORT.md` (god nodes + cross-module connections) to see what the feature will actually touch. Let the graph drive design/approach questions — e.g. surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. (Absent under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode, and in greenfield features before code exists — `feature.json.greenfield`; there, ground in SPEC.md's Foundations requirements and the chosen stack's conventions instead.)
 
 - Non-AUTO styles: full conversation in main thread, no cap on rounds
 - AUTO style: cap at 5 Q rounds, then proceed regardless

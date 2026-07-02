@@ -316,6 +316,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" build . \
 
 Failure of the graphify refresh is non-blocking here: VERIFY runs after the design phases, so a stale graph does not affect this phase's gates. Log a warning and continue.
 
+**Greenfield (`feature.json.greenfield == true`):** this is where the project's FIRST graph and FIRST codebase map get built (cycle Steps 5.4/5.5 deferred them — an empty repo grounds nothing). The `graphify-preflight.sh build` above creates the initial graph; then invoke map-codebase with `--full` instead of incremental, since there are no existing domain docs to refresh.
+
 Invoke the map-codebase skill for an incremental refresh:
 
 ```

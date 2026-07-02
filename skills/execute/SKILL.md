@@ -120,6 +120,24 @@ all_exclude_globs=$(printf '%s\n%s' "$feature_globs" "$repo_globs" | grep -v '^$
 
 A file is excluded if it matches any glob in `all_exclude_globs` (use `fnmatch`-compatible matching).
 
+### Step 2.5 - Greenfield command backfill
+
+Only when `feature.json.greenfield == true` and `feature.commands.test` is empty: the plan
+leads with a scaffold task (task-001 — `skills/plan/SKILL.md`, "Greenfield plans"). Immediately
+after task-001 merges into `feat/{slug}` (whatever the rung), re-run detection against the now
+real project and persist it:
+
+```bash
+cmd_test="$(bash "${CLAUDE_SKILL_DIR}/../../lib/detect-test-cmd.sh" . 2>/dev/null || true)"
+```
+
+Cross-check against the canonical commands SPEC.md's Foundations requirements name (they
+should agree; if they differ, prefer what actually runs and append a one-line note to
+`warnings[]`), then write `commands.test` / `commands.lint` / `commands.typecheck` into
+feature.json via `lib/feature-write.sh`. Every later task's verify, the resume re-grounding
+test run, and VERIFY's acceptance gate depend on this backfill — an empty test command in a
+greenfield feature past task-001 is a bug, not a degraded mode.
+
 ### Step 3 - Dispatch (concurrency ladder)
 
 EXECUTE picks its dispatch mechanism by the structural **width** of the task DAG, not

@@ -83,6 +83,12 @@ Apply one perspective per round. Each perspective surfaces different blindspots.
 - "What is the delta between today and the target state?"
 - "What triggers this work - what is broken or missing?"
 
+**Greenfield (`feature.json.greenfield == true`): round 1 runs the Foundations perspective instead of Researcher** — there is no codebase to research; the foundations ARE the round-1 blindspot. Ask (or in autonomous mode self-answer, preferring the boring industry-standard choice for the app's domain):
+- "What language/runtime and framework? What is the deployment target (CLI, web service, desktop, library)?"
+- "What project structure and tooling — test framework, linter, formatter, build tool?"
+- "What is the smallest end-to-end slice that proves the app works (the walking skeleton)?"
+The chosen stack and its canonical test/lint/typecheck commands MUST land in SPEC.md as explicit requirements (PLAN's scaffold task and EXECUTE's command backfill read them). Rounds 2-6 are unchanged.
+
 **Simplifier (round 2) example questions:**
 - "What is the simplest version that solves the core problem?"
 - "If you had to cut 50%, what is the irreducible core?"
@@ -115,7 +121,7 @@ Before asking any questions, read for grounding context:
   - `graphify query "<feature area>"` — does an implementation already exist? What does it touch?
   - `graphify-out/GRAPH_REPORT.md` — "god nodes" and cross-module connections reveal which subsystems a change will ripple through, so you can ask sharper boundary/constraint questions.
   - `graphify explain "<entity>"` / `graphify path "<A>" "<B>"` — confirm how the target area connects to the rest of the system.
-  Use the graph to ask precise questions ("this would touch `X` which also feeds `Y` — in scope?") instead of generic ones. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode; then use flat-file reads.)
+  Use the graph to ask precise questions ("this would touch `X` which also feeds `Y` — in scope?") instead of generic ones. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode; then use flat-file reads. **Greenfield:** the graph build is deferred until source exists — skip the graph scout and ground in the stated goal and the chosen stack's conventions instead.)
 - Relevant source files to understand current state
 
 Synthesize current state internally: what exists today related to this feature, and the gap to the target state. Do not present this synthesis to the user - use it to ask precise, grounded questions.
