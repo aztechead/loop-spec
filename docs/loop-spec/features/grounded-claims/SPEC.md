@@ -43,8 +43,9 @@ already exists and demonstrably did not prevent the failure.
 - Gate the artifacts deterministically: a new `lib/grounding-lint.sh` blocks
   DISCUSS's commit and PLAN's coverage-gate cluster when a `## Grounding` section is
   missing/malformed, an `EVID-*` reference does not resolve to the ledger, an
-  `ASSUMPTION` entry lacks a runnable `verify:` command, or an `UNVERIFIED` token
-  survives.
+  `ASSUMPTION` entry lacks a runnable `verify:` command, or an `UNVERIFIED`
+  placeholder survives inside the `## Grounding` section (the writer's explicit
+  "could not even form an assumption" marker, defined in the protocol doc).
 - Make the challenger hunt ungrounded claims: a new issue class with a fixed
   `UNGROUNDED: "<quote>"` marker; the lead resolves each by running the probe
   itself, appending to the ledger, and re-dispatching the writer with the evidence.
@@ -110,13 +111,18 @@ re-dispatches — the user never has to say "actually query BigQuery first."
       well-formed entry, assigns sequential `EVID-NNN` ids, is idempotent on
       identical claim+command (returns the existing id), and `list`/`next-id`
       behave; proven by `bash tests/lib/evidence.test.sh`.
-- [ ] `lib/grounding-lint.sh <artifact> [ledger]` exits 1 (with FLAG lines) on:
-      missing `## Grounding` section; a malformed grounding bullet; an `EVID-NNN`
-      reference anywhere in the artifact with no ledger entry; an `ASSUMPTION`
-      bullet whose `verify:` command is absent or fails `bash -n`; a leftover
-      `UNVERIFIED` token; `- none` mixed with evidence bullets. Exits 0 on a
-      well-formed artifact including the bare `- none` form; proven by
-      `bash tests/lib/grounding-lint.test.sh`.
+- [ ] `lib/grounding-lint.sh <artifact> [ledger]` strips complete (multi-line)
+      `<!-- ... -->` comment blocks first and validates only `- `-prefixed lines
+      inside the `## Grounding` section; it exits 1 (with `FLAG <artifact>:<lineno>:`
+      lines) on: missing `## Grounding` section; a malformed grounding bullet; an
+      `EVID-NNN` reference anywhere in the artifact with no ledger entry; an
+      `ASSUMPTION` bullet whose `verify:` command (split on the LAST ` | verify: `)
+      is absent or fails `bash -n`; a whole-word `UNVERIFIED` inside the
+      `## Grounding` section; `- none` mixed with evidence bullets. Exits 0 on a
+      well-formed artifact including the bare `- none` form AND on a section that is
+      byte-identical to the artifact-template block (4-line comment + `- none`);
+      proven by `bash tests/lib/grounding-lint.test.sh` (fixtures include the
+      template block verbatim and a `|` inside a verify command).
 - [ ] `skills/shared/artifact-templates/SPEC.md.template` and
       `PLAN.md.template` contain a `## Grounding` section.
 - [ ] `skills/shared/grounding-protocol.md` exists and defines the claim taxonomy
@@ -137,16 +143,19 @@ re-dispatches — the user never has to say "actually query BigQuery first."
       before the Step 6 commit, re-dispatching on exit 1 under the existing retry
       budgets; the Step 6 commit includes `EVIDENCE.md` when present.
 - [ ] `skills/plan/SKILL.md` runs `lib/grounding-lint.sh` on PLAN.md in the
-      Step 5.5 gate cluster with the same blocking/re-dispatch handling, and the
-      planner brief carries the ledger path.
+      Step 5.5 gate cluster with the same blocking/re-dispatch handling, the
+      planner brief carries the ledger path, and the plan critique's fix-list
+      synthesis maps challenger `UNGROUNDED:` findings to lead-run read-only probes
+      + `lib/evidence.sh add` + planner re-dispatch, exactly as DISCUSS Step 5 does.
 - [ ] `skills/spec/SKILL.md` Step 1 scout enumerates external systems named in the
       ask and probes factual premises (read-only) before treating them as fact, with
       the autonomous-mode fallback (unverifiable -> recorded `ASSUMPTION`, no user
       question).
 - [ ] `tests/contract-strings.test.sh` pins both sides of the new couplings:
       `grounding-lint.sh"` in discuss+plan skills, `evidence.sh" add` in
-      spec+discuss skills, `UNGROUNDED:` in challenger agent + team prompt + discuss
-      skill, `EVID-` in `lib/evidence.sh` + `lib/grounding-lint.sh`.
+      spec+discuss+plan skills, `UNGROUNDED:` in challenger agent + team prompt +
+      discuss skill + plan skill, `EVID-` in `lib/evidence.sh` +
+      `lib/grounding-lint.sh`.
 - [ ] `bash tests/run-all.sh` passes with the two new suites registered.
 
 ### Exceptional
