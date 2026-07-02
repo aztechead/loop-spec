@@ -163,6 +163,8 @@ PLAN.md MUST carry a `## User decisions (already made)` section near the top. Fo
 - **<decision>**: chose <option> over <alternatives>. Verified state: <what is true now>. Source: SPEC <decisions> / grill round N / inline.
 ```
 
+Autonomous-mode runs (`feature.json.autonomous == true`) surface self-answered decisions in the SPEC `<decisions>` block under `## Decisions (assumed — autonomous)`; copy them into this record like any other decision, suffixed `(assumed)` — they carry the same authority during EXECUTE and the same decision-coverage obligation (`skills/shared/autonomous-mode.md`).
+
 This record is the authority during EXECUTE: a coordinator that hits a question already answered here resolves it from the record instead of re-escalating to the user. Never write a deferred/open question whose answer is already in this record, and never recommend an option that contradicts a recorded decision. If a decision is genuinely still open, state it as an explicit assumption in the relevant task's notes, naming the artifact and its current state — not a vague "TBD".
 
 ### Optional per-task model tier

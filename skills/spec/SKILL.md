@@ -122,7 +122,9 @@ Synthesize current state internally: what exists today related to this feature, 
 
 Score all 4 dimensions from what you already know (feature title, any existing context). This is the initial assessment; display it before the first round.
 
-If `LOOP_SPEC_NON_INTERACTIVE=1` is set: skip Step 2 entirely and go to the **Non-interactive mode** section below.
+If `feature.json.autonomous == true` (or `LOOP_SPEC_AUTONOMOUS=1`): run Step 2 in **self-answered form** per the **Autonomous mode** section below — do NOT fall through to the thinner non-interactive synthesis.
+
+If `LOOP_SPEC_NON_INTERACTIVE=1` is set (and autonomous is not): skip Step 2 entirely and go to the **Non-interactive mode** section below.
 
 **Spec-file ingest mode:** if `.loop-spec/features/{slug}/spec-draft.md` exists (cycle Step 3 placed it there — the user pre-authored the spec), skip the interview (Step 2) entirely:
 
@@ -285,6 +287,34 @@ Synthesis procedure (non-interactive):
 6. Proceed to Step 4 (update feature.json), Step 5 (commit), Step 6 (route).
 
 Non-interactive mode never selects "Abandon": SPEC.md is always written.
+
+## Autonomous mode (self-answered interview)
+
+When `feature.json.autonomous == true` (or `LOOP_SPEC_AUTONOMOUS=1`), there is no user —
+but the interview still runs, because the perspectives are what surface blindspots. The
+orchestrator plays both roles (`skills/shared/autonomous-mode.md` self-answer rule):
+
+1. Run Step 1 (scout + initial scoring) as normal. The graph scout matters MORE here —
+   it is the only source of grounding.
+2. For each round N (same perspectives table, max 6 — in practice self-answering
+   converges in 2-3): formulate the round's 2-3 questions, then answer each one yourself
+   with the recommendation you would have marked as the default option — grounded first
+   in what the codebase already does (graph/map evidence), then industry best practice,
+   then the most reversible choice. Score the 4 dimensions after each round from the
+   answers, honestly — do not inflate scores because you authored the answers.
+3. Gate prompts self-answer: on gate pass take "Yes - write SPEC.md"; at round 6 with a
+   failing gate take "Write SPEC.md anyway" (`gate_passed: false`, dimensions listed in
+   `unresolved_dimensions` for DISCUSS's autonomous resolution). Never "Abandon".
+4. Record every Q → A → one-line rationale in the transcript (marked `(self-answered)`),
+   and add a `## Decisions (assumed — autonomous)` list inside SPEC.md's `<decisions>`
+   block — one entry per assumed answer, PLUS any setup decisions the cycle buffered
+   before SPEC ran (workspace repos, resume choice, detected commands). PLAN copies these
+   forward into `## User decisions (already made)` suffixed `(assumed)`, so the
+   escalation contract treats them exactly like human answers.
+5. Proceed to Steps 3-6 unchanged.
+
+Autonomous beats non-interactive synthesis when both are set: the self-answered interview
+produces a spec with explicit, auditable assumptions instead of a one-shot guess.
 
 ## Resume
 

@@ -143,7 +143,7 @@ SendMessage({
 
 Wait for `TeammateIdle` from `spec-writer-1`. If spec-writer-1 goes idle without producing `SPEC.md`:
 - Send `SendMessage({to: "spec-writer-1", body: "SPEC.md not found at docs/loop-spec/features/{slug}/SPEC.md. Write it now and send lead the SPEC.md written message."})` once.
-- If still idle without output on second idle, escalate to user via `AskUserQuestion`.
+- If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, halt the phase with the evidence appended to `warnings[]` — never wait on a human (`skills/shared/autonomous-mode.md`).
 
 On `SPEC.md written` message received: proceed to Step 4.
 
@@ -265,7 +265,7 @@ Apply reconciliation rules:
 | Challenger raises point advocate also flagged as risk | High-confidence. Add to fix-list. |
 | Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
 | Both agree | No action. |
-| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. |
+| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it in the decisions record (`skills/shared/autonomous-mode.md`), and add it to the fix-list so the spec states it explicitly. |
 
 Build `fix_list` (may be empty).
 

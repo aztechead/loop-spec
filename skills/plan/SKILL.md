@@ -144,7 +144,7 @@ SendMessage({
 
 Wait for `TeammateIdle` from `planner-1`. If `planner-1` goes idle without producing both `PATTERNS.md` and `PLAN.md`:
 - Send `SendMessage({to: "planner-1", body: "Check docs/loop-spec/features/{slug}/PATTERNS.md and docs/loop-spec/features/{slug}/PLAN.md -- one or both are missing. Produce any missing files now and include tasks[] JSON in your completion message."})` once.
-- If still idle without output on second idle, escalate to user via `AskUserQuestion`.
+- If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, halt the phase with the evidence appended to `warnings[]` — never wait on a human (`skills/shared/autonomous-mode.md`).
 
 On `PATTERNS.md and PLAN.md written` message received: update `feature.json` via `lib/feature-write.sh`:
 - `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
@@ -272,7 +272,7 @@ Apply reconciliation rules:
 | Challenger raises point advocate also flagged as risk | High-confidence. Add to fix-list. |
 | Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
 | Both agree | No action. |
-| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. |
+| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it in `## User decisions (already made)` suffixed `(assumed)` (`skills/shared/autonomous-mode.md`), and add it to the fix-list. |
 
 Build `fix_list` (may be empty).
 
