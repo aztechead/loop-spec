@@ -60,6 +60,20 @@ checks=(
   # -- greenfield: bootstrap in cycle, backfill invariant in execute
   "skills/cycle/SKILL.md	greenfield-bootstrap.sh\" bootstrap"
   "skills/execute/SKILL.md	greenfield-bootstrap.sh\" backfill-check"
+  # -- grounding: evidence ledger + lint gate + challenger marker couplings
+  "skills/discuss/SKILL.md	grounding-lint.sh\""
+  "skills/plan/SKILL.md	grounding-lint.sh\""
+  "skills/spec/SKILL.md	evidence.sh\" add"
+  "skills/discuss/SKILL.md	evidence.sh\" add"
+  "skills/plan/SKILL.md	evidence.sh\" add"
+  "agents/challenger.md	UNGROUNDED:"
+  "skills/shared/team-prompts/challenger.md	UNGROUNDED:"
+  "skills/discuss/SKILL.md	UNGROUNDED:"
+  "skills/plan/SKILL.md	UNGROUNDED:"
+  "lib/evidence.sh	EVID-"
+  "lib/grounding-lint.sh	EVID-"
+  "skills/shared/grounding-protocol.md	## Grounding"
+  "lib/grounding-lint.sh	## Grounding"
 )
 
 for entry in "${checks[@]}"; do

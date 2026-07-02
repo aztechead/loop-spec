@@ -31,6 +31,19 @@ The same archetypes cover the rest of the development surface: `/loop-spec:cycle
    ```
    On first cycle run loop-spec builds `graphify-out/graph.json` (deterministic AST extraction, no API key, offline) and commits it. Constrained environments can bypass the requirement with `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode: design phases fall back to Glob/Grep).
 
+   **Probe-before-assert grounding.** During the SPEC/DISCUSS/PLAN design phases the
+   lead runs read-only probes (e.g. `bq show`, `gcloud describe`, `curl -s`,
+   `psql -c '\d'`) on any external-system premise before treating it as fact. Each
+   result is appended to a committed `docs/loop-spec/features/{slug}/EVIDENCE.md`
+   ledger (via `lib/evidence.sh add`, which assigns sequential `EVID-NNN` ids) and
+   cited in the artifact's `## Grounding` section. Facts that cannot be probed are
+   declared as `ASSUMPTION: <claim> | verify: <command>` bullets rather than asserted
+   from model memory. The deterministic `lib/grounding-lint.sh` gate blocks the DISCUSS
+   commit and the PLAN Step 5.5 cluster when the `## Grounding` section is missing,
+   malformed, or references an unresolved evidence id. The challenger flags ungrounded
+   claims with an `UNGROUNDED:` marker so the lead can resolve them with an actual
+   probe before the gate re-runs. Protocol details: `skills/shared/grounding-protocol.md`.
+
 4. Update your `CLAUDE.md` model policy to allow whatever the harness's `opus` and `sonnet` aliases resolve to (dispatch targets these two aliases; see `skills/shared/model-matrix.md`).
 
 5. Restart Claude Code (or run `/reload-plugins`) so the new skills register.

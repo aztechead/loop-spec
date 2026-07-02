@@ -2,6 +2,45 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.7.0]
+
+### Added
+- **Grounded-claims probe-before-assert protocol.** External-system facts in
+  SPEC/DISCUSS/PLAN must now cite a committed `EVIDENCE.md` ledger entry
+  (`EVID-NNN`, written via the new `lib/evidence.sh add` script) or be declared
+  as an explicit `ASSUMPTION: <claim> | verify: <command>` bullet. This closes
+  the failure mode where claims like "the dataset cannot be partitioned by UTC
+  day" were asserted from model memory rather than an actual probe.
+  - **`lib/evidence.sh`** — ledger writer (`add`/`list`/`next-id`); assigns
+    sequential `EVID-NNN` ids, is idempotent on identical claim+command, and
+    commits the ledger alongside SPEC.md/PLAN.md at
+    `docs/loop-spec/features/{slug}/EVIDENCE.md`.
+  - **`lib/grounding-lint.sh`** — deterministic grounding gate; validates the
+    `## Grounding` section of any artifact (missing section, malformed bullets,
+    unresolved EVID refs, `bash -n`-failing ASSUMPTION verify commands, stray
+    `UNVERIFIED` markers, `- none` contradictions). Exit 1 + `FLAG` lines block
+    the DISCUSS commit (new Step 5.75) and PLAN Step 5.5 cluster; the lead
+    re-dispatches the author with the FLAG list under the existing retry budgets.
+  - **`skills/shared/grounding-protocol.md`** — shared probe-before-assert
+    contract: claim taxonomy (codebase / external-system / ecosystem / user-stated),
+    read-only probe examples, `ASSUMPTION` fallback, ledger format, and the rule
+    that the lead runs all probes (teammates have no Bash by design).
+  - **`## Grounding` section** added to both artifact templates (`SPEC.md.template`,
+    `PLAN.md.template`), with a `- none` default and a template HTML comment.
+  - **Challenger gains the `UNGROUNDED:` claim-audit class.** Each finding is one
+    line `UNGROUNDED: "<verbatim quote>" — probe: <read-only command>`; the lead
+    extracts these, runs the suggested probe, appends via `lib/evidence.sh add`,
+    and feeds the `EVID-NNN` + output into the author re-dispatch. Both
+    `agents/challenger.md` and `skills/shared/team-prompts/challenger.md` carry
+    the `UNGROUNDED:` marker; suggested probes are enforced read-only.
+  - **Skill wiring** (SPEC/DISCUSS/PLAN): Step 1 external-reality scout, ledger
+    path in author briefs, DISCUSS Step 5.75 lint gate, PLAN Step 5.5 grounding
+    check, and `git add EVIDENCE.md` in Step 6 commits.
+- **`tests/contract-strings.test.sh`** — 13 new entries pin the grounding couplings
+  (`grounding-lint.sh"` in discuss+plan, `evidence.sh" add` in spec+discuss+plan,
+  `UNGROUNDED:` in challenger+team-prompt+discuss+plan, `EVID-` in
+  `lib/evidence.sh`+`lib/grounding-lint.sh`, `## Grounding` in protocol+lint).
+
 ## [2.6.1]
 
 ### Added
