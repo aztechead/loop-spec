@@ -150,6 +150,26 @@ human-in-the-loop; recommended answer per best practice), each with rationale.
   - [ ] `jq -r .version .claude-plugin/plugin.json` → `2.6.0`.
   - [ ] `bash tests/run-all.sh` → 0 failures.
 
+### R5 — Intake (anything → SPEC → cycle) *(added this round by the user)*
+
+- **Statement:** `/loop-spec:intake <file | pasted text>` converts any non-spec input
+  (Slack message, Jira ticket, email, txt file, prompt) into a spec draft and kicks
+  off the cycle from it.
+- **Current state:** the cycle accepts pre-authored spec `.md` files (spec-file
+  ingest) but nothing converts unstructured sources into that shape.
+- **Target state:** `skills/intake/SKILL.md` — acquire source (file or pasted text;
+  already-spec-shaped input skips conversion), extract faithfully into the spec
+  skeleton (**restructure, never invent**: requirements traceable to source, settled
+  decisions → `<decisions>` block, open questions listed but never answered), write
+  `.loop-spec/intake/{slug}.md` with a verbatim `## Source` provenance block, hand to
+  `Skill(loop-spec:cycle)` via the spec-file branch with inline tokens
+  (`autonomous`/`new`/`style:`) passed through. `--no-run` stops after the draft.
+  Offline: no URL fetching — sources arrive as text.
+- **Acceptance:**
+  - [ ] `skills/intake/SKILL.md` exists with frontmatter; fidelity rule stated.
+  - [ ] cycle Step 3 branch 3 names the intake handoff and strips the new tokens.
+  - [ ] README skills list includes `/loop-spec:intake`.
+
 ## Boundaries (what NOT to do)
 
 - **In scope:** the three capabilities above, their docs, and minimal test

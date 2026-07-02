@@ -42,6 +42,17 @@ All notable changes documented here. Format follows Keep a Changelog.
   graphify graph + codebase map are deferred to VERIFY's refresh (an empty repo grounds
   nothing — VERIFY builds the first graph and runs map-codebase `--full`). `new` inside
   an existing repo is refused; workspace-mode greenfield is deferred.
+- **Intake skill — `/loop-spec:intake <anything>`: turn any input into a cycle-ready
+  spec and run it.** Feed it a pasted Slack message, a Jira ticket, an email, a
+  `.txt`/`.md` file, or a bare prompt — anything not already SPEC.md-shaped. It
+  faithfully restructures the source into a draft at `.loop-spec/intake/{slug}.md`
+  (**restructure, never invent**: every requirement traceable to the source, open
+  questions listed but never answered — the ambiguity gate and DISCUSS own resolution;
+  the verbatim original is preserved in a `## Source` provenance block) and hands it to
+  `/loop-spec:cycle` through the existing spec-file ingest path. Already-spec-shaped
+  input skips conversion. Inline tokens pass through (`intake new autonomous <slack
+  paste>` = new app, question-free, straight to PR); `--no-run` stops after the draft.
+  Offline like the rest of the plugin: tickets and threads arrive as text, not URLs.
 - **Debug skill — `/loop-spec:debug <error | stack | failing test | vague symptom>`.**
   The cycle's archetypes scaled down to a bug: a TRIAGE pass (non-specific input only:
   suite run, report interrogation, git history/bisect, graph + fragility hotspots, named

@@ -274,7 +274,7 @@ Resolution order:
    - Do NOT call `AskUserQuestion`. Print one line and proceed:
      `Launching: style={style} title="{title}".`
 
-3. **Invocation carries a spec file path** (loop-driven development from a spec file): if `$ARGUMENTS`, after stripping the inline `style:` override (and legacy tokens), is a single token that resolves to an existing readable `.md` file (check with `[[ -f "$arg" ]]`), the user pre-authored the spec — do NOT run the SPEC interview against them.
+3. **Invocation carries a spec file path** (loop-driven development from a spec file): if `$ARGUMENTS`, after stripping the inline overrides (`style:`, `autonomous`, `new`) and legacy tokens, is a single token that resolves to an existing readable `.md` file (check with `[[ -f "$arg" ]]`), the user pre-authored the spec — do NOT run the SPEC interview against them. (This is also the handoff path from `/loop-spec:intake`, which converts non-spec sources — Slack messages, Jira tickets, prompts — into a draft at `.loop-spec/intake/{slug}.md` and invokes this branch.)
    - Title = the file's first `# ` heading (strip the `# `); fall back to the filename without extension. Slugify as usual.
    - Resolve the file to an absolute path NOW (`spec_draft_abs="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"`) — Step 5 enters a worktree and relative paths die there.
    - Style defaults to `auto` unless given inline.
