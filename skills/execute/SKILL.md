@@ -82,6 +82,15 @@ On re-entry from VERIFY, the lead also reads any remediation tasks injected by t
 remediation_tasks=$(jq -r '.pendingRemediationTasks // []' .loop-spec/features/{slug}/feature.json)
 ```
 
+**Normalize every remediation task to full shape BEFORE it joins the task set** — producers
+(resume redirection, ITERATE execute-gaps, VERIFY test-regression) write full-shape tasks,
+but a partial one from an older feature.json or a missed field must not reach Step 4, where
+the task guard hook DENYs it (`blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`
+required). Synthesize the missing fields: `blockedBy` → `[]`, `files` → `[]`,
+`acceptanceCriteria` → `[subject]`, `verifyCommand` → `feature.commands.test` (a remediation
+task with NO verify command at all is malformed — drop it with a one-line warning rather than
+registering an unverifiable task).
+
 Include these tasks in the full task set before computing conflict edges. After tasks are registered (TaskCreate or workflow dispatch), clear the array:
 
 ```bash

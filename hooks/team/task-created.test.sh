@@ -54,9 +54,21 @@ MISSING_VERIFY='{"loopSpec":true,"blockedBy":[],"files":["foo.sh"],"acceptanceCr
 check "d: marked task missing verifyCommand DENY" 2 \
   "$(payload 'task-002: x' "$MISSING_VERIFY")"
 
-# e: subject convention task-NNN: marks the task even without loopSpec key -> DENY on empty metadata
-check "e: task-NNN: subject convention enforced DENY" 2 \
+# e: subject convention task-NNN: WITHOUT loopSpec marker -> ALLOW (advisory only).
+# Enforcing on the naming convention turned version skew (new plugin + old task
+# config that never sets loopSpec) into a hard DENY on every TaskCreate.
+check "e: task-NNN: subject without loopSpec marker ALLOW" 0 \
   "$(payload 'task-003: y' '{}')"
+
+# e2: the advisory is printed on stderr for the convention-only case
+adv="$(echo "$(payload 'task-003: y' '{}')" | bash "$HOOK" 2>&1 >/dev/null || true)"
+if grep -q "no loopSpec marker" <<<"$adv"; then
+  echo "PASS: e2: convention-only advisory on stderr"
+  ((PASS++)) || true
+else
+  echo "FAIL: e2: convention-only advisory on stderr (got: $adv)"
+  ((FAIL++)) || true
+fi
 
 # f: marked, empty acceptanceCriteria array -> DENY (exit 2)
 EMPTY_AC='{"loopSpec":true,"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":[]}'

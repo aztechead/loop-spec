@@ -42,6 +42,21 @@ All notable changes documented here. Format follows Keep a Changelog.
   mechanism.
 
 ### Fixed
+- **Task guard no longer hard-blocks on version skew** (reported against 2.6.0:
+  `DENY: loop-spec task metadata missing or invalid required fields: blockedBy,files,
+  verifyCommand,acceptanceCriteria`). The `task-created.sh` hook enforced the metadata
+  contract on any task whose SUBJECT matched the `task-NNN:` naming convention, even
+  without the `loopSpec: true` marker — so a session running the new plugin against an
+  old task config (which never sets the marker) was denied on every TaskCreate. The
+  hook now enforces only on explicitly marked tasks (current EXECUTE always marks);
+  convention-named unmarked tasks pass with a stderr advisory. Kill switch
+  (`LOOP_SPEC_TASK_GUARD=0`) unchanged.
+- **Remediation tasks are full-shape at every producer.** Three prose sites (resume
+  redirection, ITERATE execute-gaps, VERIFY test-regression) created
+  `{subject, verifyCommand}`-only remediation tasks; EXECUTE registers all tasks with
+  `loopSpec: true`, so those were guaranteed guard DENYs even on a current install.
+  All three now specify `blockedBy`/`files`/`acceptanceCriteria`, and EXECUTE Step 2a
+  normalizes any residual partial-shape entry (older feature.json) before Step 4.
 - `backlog.sh count` emitted `0` twice when the file existed with zero unchecked
   entries (`grep -c ... || echo 0` — grep prints the 0 AND exits 1), breaking numeric
   callers.
