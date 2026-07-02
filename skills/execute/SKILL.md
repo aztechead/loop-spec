@@ -82,6 +82,15 @@ On re-entry from VERIFY, the lead also reads any remediation tasks injected by t
 remediation_tasks=$(jq -r '.pendingRemediationTasks // []' .loop-spec/features/{slug}/feature.json)
 ```
 
+**Normalize every remediation task to full shape BEFORE it joins the task set** — producers
+(resume redirection, ITERATE execute-gaps, VERIFY test-regression) write full-shape tasks,
+but a partial one from an older feature.json or a missed field must not reach Step 4, where
+the task guard hook DENYs it (`blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`
+required). Synthesize the missing fields: `blockedBy` → `[]`, `files` → `[]`,
+`acceptanceCriteria` → `[subject]`, `verifyCommand` → `feature.commands.test` (a remediation
+task with NO verify command at all is malformed — drop it with a one-line warning rather than
+registering an unverifiable task).
+
 Include these tasks in the full task set before computing conflict edges. After tasks are registered (TaskCreate or workflow dispatch), clear the array:
 
 ```bash
@@ -136,7 +145,15 @@ should agree; if they differ, prefer what actually runs and append a one-line no
 `warnings[]`), then write `commands.test` / `commands.lint` / `commands.typecheck` into
 feature.json via `lib/feature-write.sh`. Every later task's verify, the resume re-grounding
 test run, and VERIFY's acceptance gate depend on this backfill — an empty test command in a
-greenfield feature past task-001 is a bug, not a degraded mode.
+greenfield feature past task-001 is a bug, not a degraded mode. The invariant is ENFORCED,
+not just stated: after the write (and again before dispatching any post-task-001 task), run
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/greenfield-bootstrap.sh" backfill-check "$feature_dir"
+```
+
+exit 3 means the backfill is missing — fix it before dispatching anything else (re-run
+detection, or take the command from SPEC.md's Foundations requirements).
 
 ### Step 3 - Dispatch (concurrency ladder)
 

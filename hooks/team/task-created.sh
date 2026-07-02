@@ -5,12 +5,20 @@
 #   exit 0  = allow
 #   exit 2  = block (with stderr message shown to user)
 #
-# SCOPE: only loop-spec-owned tasks are validated. A task is loop-spec-owned
-# when tool_input.metadata.loopSpec == true (written by EXECUTE Step 4) or the
-# subject matches the EXECUTE naming convention "task-NNN: ...". Every other
-# TaskCreate — the main thread's ordinary task tracking, other plugins, other
-# workflows — passes through untouched. Enforcing on unmarked tasks broke core
-# Claude Code task tracking for any session with the plugin installed.
+# SCOPE: only tasks EXPLICITLY marked tool_input.metadata.loopSpec == true
+# (written by EXECUTE Step 4) are validated. Every other TaskCreate — the main
+# thread's ordinary task tracking, other plugins, other workflows — passes
+# through untouched. Enforcing on unmarked tasks broke core Claude Code task
+# tracking for any session with the plugin installed.
+#
+# The subject convention "task-NNN: ..." is deliberately NOT an enforcement
+# trigger (it was, until 2.6.1): a session running the new plugin against an
+# old task config / old PLAN run creates convention-named tasks with no
+# metadata, and the regex turned that version skew into a hard DENY on every
+# TaskCreate. Current EXECUTE always sets loopSpec: true, so the guard loses
+# nothing on current installs; convention-named tasks without the marker pass
+# through with an advisory on stderr (visible in verbose/hook logs, never a
+# block).
 #
 # Validates that marked tasks carry: blockedBy, files, verifyCommand,
 # acceptanceCriteria (the EXECUTE self-claim contract).
@@ -42,9 +50,11 @@ tool_input = d.get('tool_input') or {}
 metadata = tool_input.get('metadata') or {}
 subject = tool_input.get('subject') or ''
 
-marked = metadata.get('loopSpec') is True or re.match(r'^task-[0-9]+:', subject)
+marked = metadata.get('loopSpec') is True
+convention_only = (not marked) and re.match(r'^task-[0-9]+:', subject)
+
 if not marked:
-    print('SKIP')
+    print('CONVENTION' if convention_only else 'SKIP')
     sys.exit(0)
 
 required = ['blockedBy', 'files', 'verifyCommand', 'acceptanceCriteria']
@@ -69,6 +79,11 @@ else:
 
 case "$RESULT" in
   OK|SKIP|"")
+    exit 0
+    ;;
+  CONVENTION)
+    # Advisory only: convention-named but unmarked (old config / other workflow).
+    echo "loop-spec: task subject matches the EXECUTE convention (task-NNN:) but carries no loopSpec marker; not enforcing the metadata contract on it. Current EXECUTE runs mark their tasks — this usually means an older task config or a different workflow." >&2
     exit 0
     ;;
   MISSING:*)

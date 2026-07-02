@@ -230,7 +230,7 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
 **If verifier reports `ALL_PASS` AND `Test suite status: PASS` (or `N/A`):** proceed to code-reviewer gate below.
 
 **If verifier reports `ALL_PASS` but `Test suite status: FAIL`:**
-- Generate a remediation task: `subject = "Fix: test suite regression"`, `verifyCommand = feature.commands.test`.
+- Generate a FULL-SHAPE remediation task: `subject = "Fix: test suite regression"`, `verifyCommand = feature.commands.test`, `blockedBy = []`, `files = []` (unknown until diagnosed), `acceptanceCriteria = ["test suite passes"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them.
 - Append the remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step, so any `TaskCreate` calls on it would be lost.
 - Update `feature.json` via `lib/feature-write.sh`:
   - Increment `retryBudget.perPhaseUsed.verify` and `retryBudget.globalUsed`.

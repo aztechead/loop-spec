@@ -265,7 +265,7 @@ Apply reconciliation rules:
 | Challenger raises point advocate also flagged as risk | High-confidence. Add to fix-list. |
 | Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
 | Both agree | No action. |
-| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it in the decisions record (`skills/shared/autonomous-mode.md`), and add it to the fix-list so the spec states it explicitly. |
+| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it to disk (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" discuss "<dimension>" "<reading adopted>" "more reversible"` — `skills/shared/autonomous-mode.md`), and add it to the fix-list so the spec states it explicitly. |
 
 Build `fix_list` (may be empty).
 

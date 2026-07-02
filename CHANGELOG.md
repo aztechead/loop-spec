@@ -2,6 +2,73 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.6.1]
+
+### Added
+- **Deterministic scripts for the headless-safety mechanisms v2.6.0 shipped as prose.**
+  Five behaviors that gate autonomous (overnight, question-free) runs were enforced only
+  by skill prose — one probabilistic miss on a bound in a headless session has no human
+  catching it. Each is now a tested script the skills call and obey:
+  - `lib/autonomous-chain.sh should-chain` — the continuation-chain predicate (cycle
+    "On completion"): autonomous flag, budget-spent gaps, `LOOP_SPEC_MAX_FEATURES`
+    bound, never-past-failure, terminal-entry refusal, as one JSON verdict with stable
+    reasons.
+  - `lib/backlog.sh` gap identity — entries carry a deterministic 8-hex gap id
+    (`gap-id`, `add --id`, `next --json`, `terminal`, `is-terminal`); ITERATE's
+    autonomous terminal rule matches ids by exact equality instead of fuzzy text, and
+    `add` refuses to re-queue a TERMINAL id (ladder rung 5 enforced script-side).
+  - `lib/decisions.sh` — the assumed-decisions record is JSONL on disk from the moment
+    an assumption is made (staging dir before the feature exists, `migrate` at Step 5,
+    `render` into SPEC.md), never "buffered in memory" where compaction drops it.
+  - `lib/debug-budget.sh` + `lib/debug-init.sh` — the debug skill's 5-hypothesis /
+    3-attempt budgets tick in a state file with exit-code verdicts, and Step 0's
+    mechanics (slug, branch discipline, pre-change SHA capture, test-cmd detection)
+    are one call.
+  - `lib/parse-invocation.sh` — the inline token grammar (`autonomous`, `new`,
+    `style:`, legacy `tier:`/`preset:`, `--no-run`, spec-path/backlog/bare
+    classification) parsed once, shared by cycle/intake/debug; recognized tokens can
+    no longer leak into `feature_title` and pollute the ITERATE oracle.
+  - `lib/greenfield-bootstrap.sh` — greenfield bootstrap with refusal cases (existing
+    repo, workspace) plus `backfill-check`, which turns "an empty test command past
+    task-001 is a bug" from a sentence into an enforced invariant (execute Step 2.5).
+  - `lib/cycle-preflight.sh run` — the cycle's silent startup batch (workspace detect,
+    teams/workflow probes, graphify gate status, backlog count, mechanical resume scan
+    with schema/staleness/orphan triage) in ONE call returning one JSON blob; the
+    skill keeps only the judgment points (resume choice, repo confirmation, orphan
+    `TaskList` probes, hard-gate verdicts).
+- **`tests/contract-strings.test.sh`** — pins both sides of every string contract
+  between skills and scripts (warning prefixes, blob keys, refusal reasons, call
+  sites), so renaming one side fails CI instead of silently disarming a safety
+  mechanism.
+
+### Fixed
+- **Task guard no longer hard-blocks on version skew** (reported against 2.6.0:
+  `DENY: loop-spec task metadata missing or invalid required fields: blockedBy,files,
+  verifyCommand,acceptanceCriteria`). The `task-created.sh` hook enforced the metadata
+  contract on any task whose SUBJECT matched the `task-NNN:` naming convention, even
+  without the `loopSpec: true` marker — so a session running the new plugin against an
+  old task config (which never sets the marker) was denied on every TaskCreate. The
+  hook now enforces only on explicitly marked tasks (current EXECUTE always marks);
+  convention-named unmarked tasks pass with a stderr advisory. Kill switch
+  (`LOOP_SPEC_TASK_GUARD=0`) unchanged.
+- **Remediation tasks are full-shape at every producer.** Three prose sites (resume
+  redirection, ITERATE execute-gaps, VERIFY test-regression) created
+  `{subject, verifyCommand}`-only remediation tasks; EXECUTE registers all tasks with
+  `loopSpec: true`, so those were guaranteed guard DENYs even on a current install.
+  All three now specify `blockedBy`/`files`/`acceptanceCriteria`, and EXECUTE Step 2a
+  normalizes any residual partial-shape entry (older feature.json) before Step 4.
+- `backlog.sh count` emitted `0` twice when the file existed with zero unchecked
+  entries (`grep -c ... || echo 0` — grep prints the 0 AND exits 1), breaking numeric
+  callers.
+- Cycle drain records `feature.json.backlogEntryId` alongside `backlogEntry`, so
+  terminal detection survives entry-text rewording at the drain boundary.
+- Resume-scan timestamp parsing works on Python 3.6 (no `fromisoformat`); previously
+  every candidate would have been silently skipped as stale on 3.6.
+- Invocation text containing glob characters (`fix *.md handling`) no longer expands
+  against the working directory during token parsing.
+- `debug-init` refuses a zero-commit repo with a clear message instead of a raw git
+  error (no baseline exists for the test-tamper scan).
+
 ## [2.6.0]
 
 ### Added

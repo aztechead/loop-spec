@@ -25,13 +25,20 @@ downstream gates will faithfully verify the fabrication.
 
 ## Step 1 - Acquire the source
 
-Resolve `$ARGUMENTS` after stripping pass-through tokens (`autonomous`, `new`,
-`style:...`, `--no-run` — remember them for Step 4):
+Strip pass-through tokens (`autonomous`, `new`, `style:...`, `--no-run`) with the
+shared parser — never by prose (one grammar, one implementation):
 
-1. **Remaining args resolve to a readable file** (`[[ -f "$arg" ]]`): read it. Any text
-   format works (.txt, .md, .json export, log paste in a file).
-2. **Remaining args are non-empty text**: that text IS the source (pasted Slack
-   message, Jira description, email body, prompt).
+```bash
+inv="$(bash "${CLAUDE_SKILL_DIR}/../../lib/parse-invocation.sh" parse -- "$ARGUMENTS")"
+# .autonomous/.greenfield/.style/.no_run are the Step 4 pass-through tokens;
+# .spec_path (readable .md) or .title (everything else) is the remaining source.
+```
+
+1. **Remaining args resolve to a readable file** (`.spec_path` non-null, or `.title`
+   is a single token with `[[ -f "$arg" ]]`): read it. Any text format works (.txt,
+   .md, .json export, log paste in a file).
+2. **Remaining args are non-empty text** (`.title`): that text IS the source (pasted
+   Slack message, Jira description, email body, prompt).
 3. **Empty**: ask ONE free-text AskUserQuestion for the content ("Paste the source —
    Slack message, ticket text, or a description of what to build."). Autonomous mode
    cannot self-answer an empty intake: abort with usage guidance

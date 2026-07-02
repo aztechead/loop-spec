@@ -28,21 +28,29 @@ into BUG.md before any change is made.
 
 ## Step 0 - Classify and initialize
 
-1. Slug = kebab-case of a short symptom summary (<= 6 words) from `$ARGUMENTS`.
-2. `mkdir -p docs/loop-spec/debug/{slug}` and start `BUG.md` (format below) with the
-   verbatim input under `## Symptom (verbatim)`.
+1. **Initialize deterministically** — one call does the mechanics (token stripping,
+   slug, BUG.md dir, branch discipline, branch-point SHA capture, test-cmd detection):
+   ```bash
+   dbg="$(bash "${CLAUDE_SKILL_DIR}/../../lib/debug-init.sh" init -- "$ARGUMENTS")"
+   # {slug, bug_dir, branch, branch_action: created|switched|kept, default_branch,
+   #  dirty, sha_before, test_cmd, autonomous, style}
+   ```
+   `.sha_before` is the test-tamper baseline VERIFY needs (Step 4) — it is captured
+   before ANY change, which is exactly why it is script-side. `.test_cmd` honors
+   `LOOP_SPEC_CMD_TEST` over detection; `feature.commands.test` (when a feature
+   context exists) overrides both.
+2. Start `BUG.md` in `.bug_dir` (format below) with the verbatim input under
+   `## Symptom (verbatim)`.
 3. **Classify the input:**
    - **Specific** — it contains a concrete signal: an error message, a stack trace, a
      failing test name, a command that fails, a URL/endpoint that errors. Skip TRIAGE.
    - **Non-specific** — a vague symptom ("login sometimes hangs", "the build got
      slower", "something broke after Tuesday"). Run TRIAGE first.
-4. **Branch discipline:** if on the default branch, create and switch to `fix/{slug}`
-   (never commit directly to the default branch). If already on a work branch with a
-   dirty tree, stop and ask (autonomous: continue on the current branch only when the
-   dirty files are unrelated to the symptom; record the decision) — a debug diff mixed
-   into unrelated changes is unreviewable.
-5. Detect the test command (`bash "${CLAUDE_SKILL_DIR}/../../lib/detect-test-cmd.sh" .`,
-   or `feature.commands.test` / `LOOP_SPEC_CMD_TEST` when present).
+4. **Dirty work-branch judgment** (`.branch_action == "kept"` and `.dirty == true`):
+   stop and ask (autonomous: continue on the current branch only when the dirty files
+   are unrelated to the symptom; record the decision) — a debug diff mixed into
+   unrelated changes is unreviewable. The default-branch case never arises here:
+   debug-init already created/switched to `fix/{slug}`.
 
 ## Step 1 - TRIAGE (non-specific input only)
 
@@ -96,9 +104,20 @@ Exit conditions:
 
 ## Step 3 - FIX loop (bounded)
 
-Budgets: **max 5 hypotheses; max 3 fix attempts per hypothesis.** Track both in BUG.md
-`## Hypothesis log`. On exhaustion, stop and escalate with the full log — a spent budget
-with recorded verdicts is progress; unbounded thrashing is not.
+Budgets: **max 5 hypotheses; max 3 fix attempts per hypothesis.** The counter is a
+FILE, not model memory — a long session's compaction cannot drift a file. Before
+opening a hypothesis and before each fix attempt, tick the budget and obey the exit
+code (`0` = proceed, `3` = that budget is spent):
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/debug-budget.sh" hypothesis "{bug_dir}"   # opens Hn, resets attempts
+bash "${CLAUDE_SKILL_DIR}/../../lib/debug-budget.sh" attempt "{bug_dir}"      # ticks attempt on Hn
+```
+
+Narrative (mechanism, evidence, verdicts) still goes in BUG.md `## Hypothesis log`;
+`budget.json` is the arithmetic. On exit 3 from `attempt`: revert, refine or move to
+the next hypothesis. On exit 3 from `hypothesis`: stop and escalate with the full
+log — a spent budget with recorded verdicts is progress; unbounded thrashing is not.
 
 For each hypothesis, in ranked order:
 
@@ -133,10 +152,10 @@ For each hypothesis, in ranked order:
    fix. (Command-style repros get distilled into a test where feasible; where not,
    record the manual verification command in BUG.md.)
 2. Run: full test suite, lint + typecheck when configured, and the anti-reward-hacking
-   scan on the diff — `bash "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" <sha-before-debug>`
-   (the fix must not delete/skip tests or swallow exit codes to go green; record the
-   branch-point SHA at Step 0.4). Exception: the regression test ADDED here is expected
-   new test content, not tampering.
+   scan on the diff — `bash "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" "{sha_before}"`
+   (the fix must not delete/skip tests or swallow exit codes to go green; `sha_before`
+   is in debug-init's Step 0 output, captured before any change). Exception: the
+   regression test ADDED here is expected new test content, not tampering.
 3. Complete BUG.md (`## Fix` — root cause, mechanism, why this change is sufficient)
    and commit: BUG.md + fix + regression test on `fix/{slug}`, message
    `fix: {symptom summary}` with body naming the root cause.
