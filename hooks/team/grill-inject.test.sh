@@ -78,6 +78,11 @@ check_no_pattern "f: ENABLED=0 -> silent" 0 "additionalContext" CLAUDE_PROJECT_D
 # --- kill switch -> silent even with .loop-spec + default ---
 check_no_pattern "g: LOOP_SPEC_GRILL=0 -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_GRILL=0
 
+# --- autonomous mode -> silent (nobody to grill; SPEC self-answers instead) ---
+check_no_pattern "h: LOOP_SPEC_AUTONOMOUS=1 -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_AUTONOMOUS=1
+check_valid_json "i: LOOP_SPEC_AUTONOMOUS=1 -> valid JSON" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_AUTONOMOUS=1
+check_output "j: LOOP_SPEC_AUTONOMOUS=0 -> still injects" 0 "GRILL MODE ACTIVE" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_AUTONOMOUS=0
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

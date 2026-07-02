@@ -2,6 +2,45 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.6.0]
+
+### Added
+- **Autonomous mode — question-free runs from the command line.** Inline token
+  `autonomous` (or `LOOP_SPEC_AUTONOMOUS=1`): every `AskUserQuestion` site takes the
+  model's recommended answer — grounded in the code graph, the codebase map, and best
+  practice — and records it as an assumed decision. Style is forced to `auto`; the SPEC
+  phase runs its Socratic interview in self-answered form (both roles, honest scoring)
+  instead of the thinner non-interactive synthesis; the grill directive is suppressed
+  (`hooks/team/grill-inject.sh`); explicit `LOOP_SPEC_ANSWER_*` / `LOOP_SPEC_CMD_*` vars
+  still win; safety aborts are never overridden. Assumed answers land in SPEC.md's
+  `## Decisions (assumed — autonomous)` list and flow into PLAN.md's `## User decisions
+  (already made)` record suffixed `(assumed)` via the existing decision-coverage gate, so
+  the escalation contract treats them like human answers and the PR carries the audit
+  trail. Contract: `skills/shared/autonomous-mode.md`. Headless form:
+  `claude -p "/loop-spec:cycle autonomous <description>"`.
+- **Greenfield mode — net-new application development.** `/loop-spec:cycle new
+  <description>` in a non-repo directory (or an interactive confirmation / autonomous
+  start) bootstraps `git init` + an empty initial commit and runs the full cycle: SPEC
+  round 1 swaps Researcher for a **Foundations** perspective (stack, structure, tooling;
+  autonomous picks the boring standard choice), PLAN must lead with a scaffold task
+  (task-001) that every other task blocks on, EXECUTE Step 2.5 backfills
+  `feature.commands.*` via `lib/detect-test-cmd.sh` after the scaffold merges, and the
+  graphify graph + codebase map are deferred to VERIFY's refresh (an empty repo grounds
+  nothing — VERIFY builds the first graph and runs map-codebase `--full`). `new` inside
+  an existing repo is refused; workspace-mode greenfield is deferred.
+- **Debug skill — `/loop-spec:debug <error | stack | failing test | vague symptom>`.**
+  The cycle's archetypes scaled down to a bug: a TRIAGE pass (non-specific input only:
+  suite run, report interrogation, git history/bisect, graph + fragility hotspots, named
+  logs) converges vague symptoms to one reproducible signal; the hard gate is a **red
+  reproduction before any fix** (recorded observation plan + additive instrumentation for
+  the genuinely unreproducible); the FIX loop is bounded (max 5 hypotheses × 3 attempts,
+  mechanism-stated, falsify-before-change); VERIFY keeps the repro as a regression test
+  and runs the full suite + `lib/test-tamper-scan.sh`. Artifact:
+  `docs/loop-spec/debug/{slug}/BUG.md` — the committed audit trail, and the spec draft
+  when a fix proves feature-scale and escalates to `/loop-spec:cycle`. Always terminates
+  in one of: fixed-and-verified, instrumented-and-waiting, escalated-to-cycle, or
+  budget-spent-with-evidence.
+
 ## [2.5.2]
 
 ### Fixed
