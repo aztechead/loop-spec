@@ -93,7 +93,9 @@ escalation path fires, climb this ladder instead of stopping:
    the PR audit trail.
 5. **Terminal** — a gap that re-enters via backlog drain and spends its budget
    AGAIN is not re-backlogged: mark it terminal (`iterate-terminal:` prefix in
-   `warnings[]` and the backlog entry closed with a `TERMINAL` note). Two full
+   `warnings[]` and the backlog entry closed via `lib/backlog.sh terminal
+   <gap-id> <note>`; the gap id is deterministic — `backlog.sh gap-id` — and
+   matched by exact equality against `feature.backlogEntryId`, never fuzzy text). Two full
    budgets on the same gap means the approach is wrong, not under-iterated —
    that is the one legitimate stop, and it stops with the complete evidence
    trail (BUG-level detail in ITERATION.md), never silently.
@@ -104,13 +106,27 @@ does leave is a worked evidence trail rather than a warning line.
 
 ## The decisions record
 
-Every self-answered question lands in two places:
+The moment an assumption is made it goes to DISK, never model memory — the audit
+trail must survive compaction and session death. `lib/decisions.sh` is the store
+(JSONL; `add` / `render` / `migrate`):
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$dir" "$phase" "$question" "$answer" "$rationale"
+```
+
+`$dir` is the feature dir once it exists; setup answers made before then (cycle
+Steps 0–4: workspace repos, resume choice, detected commands) use the staging dir
+`.loop-spec/decisions-staging`, and cycle Step 5 migrates them right after
+feature-init: `decisions.sh migrate .loop-spec/decisions-staging "$feature_dir"`.
+
+From that store, every self-answered question lands in two places:
 
 1. **SPEC.md `<decisions>` block** — a `## Decisions (assumed — autonomous)`
-   list: `- **{question}** → {answer} — {one-line rationale}`. Written by
-   whichever phase made the assumption (SPEC for interview rounds, DISCUSS for
-   unresolved-dimension resolutions, cycle for setup answers made before
-   SPEC.md exists — cycle buffers them and SPEC writes them in).
+   list, rendered verbatim from the store (`decisions.sh render "$feature_dir"`
+   emits the `- **{question}** → {answer} — {rationale}` lines). Whichever phase
+   makes an assumption `add`s it (SPEC for interview rounds, DISCUSS for
+   unresolved-dimension resolutions, cycle for setup answers); SPEC writes the
+   rendered list in.
 2. **PLAN.md `## User decisions (already made)`** — the planner copies the
    record forward, each entry suffixed `(assumed)`, so the existing
    escalation contract ("consult the decisions record before asking") covers

@@ -89,22 +89,40 @@ in the decisions record. Style is forced to `auto`. Explicit `LOOP_SPEC_ANSWER_*
 self-answer rule, decisions record, per-site map — in **`skills/shared/autonomous-mode.md`**;
 every phase skill honors it. Headless form: `claude -p "/loop-spec:cycle autonomous <description>"`.
 Setup answers made before SPEC.md exists (workspace repos, resume choice, commands) are
-buffered in memory and written into SPEC.md's `## Decisions (assumed — autonomous)` list
-by the SPEC phase.
+recorded to disk immediately — `lib/decisions.sh add .loop-spec/decisions-staging cycle
+"<q>" "<a>" "<why>"` — never buffered in model memory (compaction would drop them). Step 5
+migrates the staging record into the feature dir; SPEC renders it into SPEC.md's
+`## Decisions (assumed — autonomous)` list via `decisions.sh render`.
 
 ## Procedure
 
-**Startup is silent.** Run Steps 0 (workspace detection), 1 (resume detection), 2 (health-check), 3.5 (model probe), and the workflow-availability probe quietly: do NOT narrate each one. Batch their checks and emit output ONLY when (a) a check fails, (b) a resumable feature is found and a choice is needed, or (c) Step 3 announces the launch line. No "Running Step 0...", no per-step status prose. The user wants to land in the workflow, not watch a preflight.
+**Startup is silent — and batched in ONE call.** The mechanical checks behind Steps 0
+(workspace detection), 1 (resume scan), 2 (health-check) and the workflow probe run as a
+single script; do NOT invoke workspace.sh / teams-capability.sh / graphify-preflight.sh /
+workflow-availability.sh / backlog.sh individually, and do NOT narrate:
+
+```bash
+pf="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-preflight.sh" run)"
+# {workspace: {mode, root, repos?}, teams: {mode, available}, workflows: {available},
+#  graphify: {ok, required, graph}, backlog: {count},
+#  resume: {candidates: [...], skipped: [...]}, warnings: [...]}
+```
+
+Steps 0-2 below consume this blob — each step keeps only its decision points (greenfield
+routing, repo confirmation, resume choice, orphan probes, hard-gate verdicts). Emit output
+ONLY when (a) a check fails or `.warnings` is non-empty (print those lines verbatim), (b) a
+resumable candidate exists and a choice is needed, or (c) Step 3 announces the launch line.
+No "Running Step 0...", no per-step status prose. The user wants to land in the workflow,
+not watch a preflight. (Step 3.5's model probe stays separate — it needs harness tools.)
 
 ### Step 0 - Workspace detection
 
-Run workspace detection FIRST, before resume detection or feature setup. The result determines whether every subsequent step runs in single-repo mode or workspace mode.
+Workspace mode comes FIRST, before resume detection or feature setup — it determines whether every subsequent step runs in single-repo mode or workspace mode. Read it from the preflight blob:
 
 ```bash
-ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect)"
-workspace_mode="$(echo "$ws_json" | jq -r '.mode')"
-workspace_root="$(echo "$ws_json" | jq -r '.root')"
-workspace_repos_json="$(echo "$ws_json" | jq -c '.repos // []')"
+workspace_mode="$(jq -r '.workspace.mode' <<<"$pf")"
+workspace_root="$(jq -r '.workspace.root' <<<"$pf")"
+workspace_repos_json="$(jq -c '.workspace.repos // []' <<<"$pf")"
 ```
 
 **mode == "none":** route to the greenfield branch below — this is no longer an unconditional abort. **mode == "single":** continue as normal; set `workspaceMode="single"`. **mode == "workspace":** announce repos, confirm participation, set `workspaceMode="workspace"`.
@@ -114,33 +132,37 @@ workspace_repos_json="$(echo "$ws_json" | jq -c '.repos // []')"
 `mode == "none"` means there is no repo here — which is exactly where a net-new
 application starts. Resolve it:
 
-1. **`new` token present** in `$ARGUMENTS` (leading token, stripped like `style:` — Step 3), **or** autonomous mode with a feature description: bootstrap a repo in place and continue as greenfield:
+1. **Greenfield requested** (`lib/parse-invocation.sh` reports `.greenfield == true` — the `new` token; Step 3 runs the same parse), **or** autonomous mode with a feature description: bootstrap a repo in place and continue as greenfield:
    ```bash
-   git init
-   git commit --allow-empty -m "chore: init repo (loop-spec greenfield)"
+   bash "${CLAUDE_SKILL_DIR}/../../lib/greenfield-bootstrap.sh" bootstrap
    ```
-   Set `greenfield=1` and `workspaceMode="single"`. Pre-existing untracked files in the directory are left untouched (never bulk-added). Autonomous mode records the bootstrap as an assumed decision.
+   (`git init -b <default>` + empty root commit; pre-existing untracked files are left untouched — never bulk-added. The script re-checks the workspace mode itself: exit 4 = existing repo refused, exit 5 = workspace refused, with the messages below.) Set `greenfield=1` and `workspaceMode="single"`. Autonomous mode records the bootstrap as an assumed decision (`lib/decisions.sh add .loop-spec/decisions-staging cycle ...`).
 2. **Interactive, no `new` token:** ask ONE AskUserQuestion — "Not a git repo. Start a net-new application here (`git init`), or abort?" Options: `Start new project here` / `Abort`. On start, run the bootstrap above.
 3. **Non-interactive without autonomous, or no description to build from:** abort with the original message (`loop-spec: not a git repo and no child repos found. cd into a repo, create .loop-spec/workspace.json, or start a net-new app with /loop-spec:cycle new <description>.`).
 
 Greenfield consequences downstream (each step carries its own branch): Step 4 skips command detection (commands are backfilled by EXECUTE after the scaffold task lands), Step 5.4 defers the graphify build until source exists, Step 5.5 skips the codebase map (VERIFY's refresh writes the first one), SPEC round 1 runs the **Foundations** perspective (stack/structure/tooling — `skills/spec/SKILL.md`), and PLAN must emit a scaffold-first task DAG (`skills/plan/SKILL.md`, "Greenfield plans"). Persist the flag as `feature.json.greenfield = true` (Step 5).
 
-The `new` token inside an EXISTING repo (mode `single`) is refused with: `already a git repo — greenfield is for empty directories. Run the normal cycle, or cd into an empty directory for a new app.` Workspace mode has no greenfield variant (multi-repo bootstrap is out of scope; deferred).
+The `new` token inside an EXISTING repo (mode `single`) is refused — `greenfield-bootstrap.sh` exits 4 with `already a git repo — greenfield is for empty directories. Run the normal cycle, or cd into an empty directory for a new app.` Workspace mode has no greenfield variant (exit 5; multi-repo bootstrap is out of scope; deferred). Relay the script's message verbatim and stop the greenfield path.
 
 Announce the discovered repos, confirm participation (interactive `AskUserQuestion`; `LOOP_SPEC_ANSWER_REPOS` when non-interactive; autonomous mode takes all discovered repos and records the assumption — `skills/shared/autonomous-mode.md`), filter `workspace_repos_json` to the participating repos, and merge `workspaceMode`/`workspaceRoot`/`workspaceRepos` into `.loop-spec/runtime.json` -- exact prompts and merge-write snippet in `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 0 detail").
 
 ### Step 1 - Resume detection
 
-Scan `.loop-spec/features/*/feature.json` (if directory exists). loop-spec is **schema-7
-only** — features are either single-repo worktree mode (`worktreePath` set, `workspace`
-null) or workspace mode (`workspace` block non-null). Older schemas (v1–v6) are not
-supported; a `feature.json` with `schemaVersion != 7` is skipped with a one-line warning
-(`feature {slug}: unsupported schemaVersion {n} (schema 7 only); skipping`). For each:
-- Parse safely (try/except; on parse fail, try `feature.json.bak`)
-- Skip if `currentPhase == "completed"`
-- Skip (with the warning above) if `schemaVersion != 7`
-- **Orphan detection:** if `currentTeamName != null` AND `teamsMode == "explicit"` (legacy harness — only there does `TaskList` accept a `team` argument), probe team liveness (`TaskList({team: ...})`) and sort the feature into the resumable list or a "needs cleanup" sub-list — exact probe outcomes, messages, and the staleness rule per `skills/shared/cycle-resume-escalation.md` ("Step 1 orphan detection"). In `implicit`/`none` modes do NOT probe (the modern `TaskList` takes no parameters and teammates never survive the session): clear `currentTeamName` and add to the resumable list.
-- If `currentTeamName == null` AND `(now - updatedAt) < stalenessHours * 3600`: add to resumable list.
+The mechanical scan is DONE — `.resume.candidates` in the preflight blob holds every
+schema-7, non-completed, non-stale feature, most-recently-updated first (each with
+`{slug, currentPhase, updatedAt, currentTeamName, needs_probe, worktreePath, workspace,
+teamsMode, parse_source}`); `.resume.skipped` and `.warnings` hold what was dropped and
+why (unparseable both ways, `schemaVersion != 7` — loop-spec is **schema-7 only** —
+staleness). Do not re-scan the directory. What remains is the judgment the script cannot
+make:
+- **Orphan probes** (`needs_probe == true`, i.e. `currentTeamName != null`): if the
+  candidate's `teamsMode == "explicit"` (legacy harness — only there does `TaskList`
+  accept a `team` argument), probe team liveness (`TaskList({team: ...})`) and sort the
+  feature into the resumable list or a "needs cleanup" sub-list — exact probe outcomes,
+  messages, and the staleness rule per `skills/shared/cycle-resume-escalation.md`
+  ("Step 1 orphan detection"). In `implicit`/`none` modes do NOT probe (the modern
+  `TaskList` takes no parameters and teammates never survive the session): clear
+  `currentTeamName` and treat the candidate as resumable.
 
 If resumable list non-empty: present via AskUserQuestion (or skip if `LOOP_SPEC_NON_INTERACTIVE=1`):
 - "Resume {slug} (phase: {currentPhase}, last updated {ago})?"
@@ -173,9 +195,8 @@ resolves which generation is live into a single **mode** word (deterministic, ve
 mirrors the `Workflow` probe; does not rely on model self-introspection):
 
 ```bash
-teams_mode="$(bash "${CLAUDE_SKILL_DIR}/../../lib/teams-capability.sh")"   # none | explicit | implicit
-teams_available=true
-[[ "$teams_mode" == "none" ]] && teams_available=false
+teams_mode="$(jq -r '.teams.mode' <<<"$pf")"          # none | explicit | implicit
+teams_available="$(jq -r '.teams.available' <<<"$pf")"
 
 case "$teams_mode" in
   none)
@@ -245,8 +266,9 @@ their work, so the cycle aborts when it is missing rather than degrading. This g
 part of the silent startup batch:
 
 ```bash
-if ! bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" check; then
-  # The preflight printed install instructions (uv tool install graphifyy).
+if [[ "$(jq -r '.graphify.ok' <<<"$pf")" != "true" && "$(jq -r '.graphify.required' <<<"$pf")" == "true" ]]; then
+  # Print install instructions (graphify-preflight.sh check emits them on stderr).
+  bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" check || true
   echo "loop-spec: aborting -- graphify is required. Install it, or set LOOP_SPEC_REQUIRE_GRAPHIFY=0 to bypass (not recommended)." >&2
   exit 1
 fi
@@ -264,35 +286,51 @@ gates and budgets are fixed (`skills/shared/tier-matrix.md`), and cost on trivia
 work is handled by the structural fast-path AFTER planning (measured scope), never by an
 intent tier inferred from the prompt. Style defaults to `auto` unless overridden inline.
 
+Token parsing is DETERMINISTIC — do not parse `$ARGUMENTS` by prose. One call
+classifies the invocation and strips every recognized token from the title (a stray
+`tier:quality` left in `feature_title` pollutes the ITERATE oracle — that bug is why
+this script exists):
+
+```bash
+inv="$(bash "${CLAUDE_SKILL_DIR}/../../lib/parse-invocation.sh" parse -- "$ARGUMENTS")"
+# {mode: description|spec-file|backlog|bare, title, slug, style, autonomous,
+#  greenfield, no_run, spec_path, legacy: []}
+```
+
+`.mode` selects the branch below; `.style` defaults to `auto`; `.autonomous` /
+`.greenfield` feed the autonomous contract and Step 0's greenfield branch; `.legacy`
+non-empty gets the one-line "ignored legacy token" notice.
+
 Resolution order:
 
 1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset — EXCEPT when `LOOP_SPEC_SPEC_FILE` is set, where the title falls back to the spec file's first `# ` heading, else its filename). If `LOOP_SPEC_SPEC_FILE` points to an existing readable `.md`, apply the spec-file invocation branch (3) below with that path (abort if set but unreadable). Legacy `LOOP_SPEC_ANSWER_TIER` / `LOOP_SPEC_ANSWER_PRESET` env vars, if set, are ignored with a one-line notice (single-tier operation; model selection is fixed).
 
-2. **Invocation carries a feature description** (`$ARGUMENTS` is non-empty -- the user typed `/loop-spec:cycle <description>`): this is the default fast path.
-   - Parse the optional inline overrides anywhere in the text: `style:auto|step|interactive|review-only`, `autonomous` (self-answer contract, forces style `auto` — `skills/shared/autonomous-mode.md`), and the leading token `new` (greenfield mode — see Step 0 greenfield branch). Legacy `tier:...` / `preset:...` tokens, if present, are ignored with a one-line notice. **Strip every recognized (and legacy) token from the text FIRST**, then Title = the remaining text (slugified for the slug, verbatim for `feature_title`). The title is the immutable original goal the ITERATE judge scores against — a stray `tier:quality` in it pollutes the oracle.
-   - Style defaults to `auto` unless given inline.
+2. **`mode == "description"`** (the user typed `/loop-spec:cycle <description>`): this is the default fast path.
+   - Title = `.title`, slug = `.slug`, style = `.style` — all token-stripped by the parser. `autonomous` forces style `auto` (`skills/shared/autonomous-mode.md`); `greenfield` routes through Step 0's greenfield branch.
    - Do NOT call `AskUserQuestion`. Print one line and proceed:
      `Launching: style={style} title="{title}".`
 
-3. **Invocation carries a spec file path** (loop-driven development from a spec file): if `$ARGUMENTS`, after stripping the inline overrides (`style:`, `autonomous`, `new`) and legacy tokens, is a single token that resolves to an existing readable `.md` file (check with `[[ -f "$arg" ]]`), the user pre-authored the spec — do NOT run the SPEC interview against them. (This is also the handoff path from `/loop-spec:intake`, which converts non-spec sources — Slack messages, Jira tickets, prompts — into a draft at `.loop-spec/intake/{slug}.md` and invokes this branch.)
+3. **`mode == "spec-file"`** (loop-driven development from a spec file — `.spec_path` is the already-absolutized path): the user pre-authored the spec — do NOT run the SPEC interview against them. (This is also the handoff path from `/loop-spec:intake`, which converts non-spec sources — Slack messages, Jira tickets, prompts — into a draft at `.loop-spec/intake/{slug}.md` and invokes this branch.)
    - Title = the file's first `# ` heading (strip the `# `); fall back to the filename without extension. Slugify as usual.
-   - Resolve the file to an absolute path NOW (`spec_draft_abs="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"`) — Step 5 enters a worktree and relative paths die there.
-   - Style defaults to `auto` unless given inline.
+   - `spec_draft_abs=".spec_path"` (the parser resolved it — Step 5 enters a worktree and relative paths die there).
+   - Style = `.style`.
    - Print: `Launching from spec file: {path} — style={style} title="{title}".`
    - In Step 5, once the feature dir exists (single-repo: after the worktree `mkdir -p`; workspace: after the workspace-root `mkdir -p` in the Step 5 variant), copy the draft in: `cp "$spec_draft_abs" ".loop-spec/features/${slug}/spec-draft.md"` (workspace mode: prefix with `${workspace_root}/`). The SPEC phase detects `spec-draft.md` and runs **spec-file ingest mode** (validate + normalize the draft through the ambiguity gate, no interview — see `skills/spec/SKILL.md`).
 
-4. **Backlog-drain mode** (`$ARGUMENTS` is exactly `backlog`, optionally with inline overrides): the bounded Ralph loop over `.loop-spec/BACKLOG.md` — one feature per loop, explicit stop conditions.
+4. **`mode == "backlog"`** (backlog-drain mode, optionally with inline overrides): the bounded Ralph loop over `.loop-spec/BACKLOG.md` — one feature per loop, explicit stop conditions.
    ```bash
-   entry="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" next)" || { echo "backlog empty — nothing to drain"; exit 0; }
+   entry_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" next --json)" || { echo "backlog empty — nothing to drain"; exit 0; }
+   entry="$(jq -r '.text' <<<"$entry_json")"
+   entry_id="$(jq -r '.id // empty' <<<"$entry_json")"
    ```
-   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it. Record the originating entry on the feature (after Step 5 creates feature.json): `feature.json.backlogEntry = "<entry text>"` — ITERATE's autonomous terminal rule needs it to detect a gap spending its budget twice.
+   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it. Record the originating entry on the feature (after Step 5 creates feature.json): `feature.json.backlogEntry = "<entry text>"` and `feature.json.backlogEntryId = "<entry_id>"` (null when the entry carries no id) — ITERATE's autonomous terminal rule matches the id exactly to detect a gap spending its budget twice.
    - On completion (the On-completion section finishing cleanly), mark it off: `bash .../lib/backlog.sh done "$entry"`.
    - **Loop bound:** `LOOP_SPEC_MAX_FEATURES` (default `1`). After marking an entry done, if features completed this invocation `< LOOP_SPEC_MAX_FEATURES` and `backlog.sh next` yields another entry, start the next cycle from Step 3 branch 2 with it. Stop when the bound is hit, the backlog is empty, or any feature ends paused/escalated (never chain past a failure).
    - Overnight form: an outer `while :; do claude -p "/loop-spec:cycle backlog"; done` gets one feature per fresh session — the Ralph loop with real stop conditions.
 
-5. **Bare invocation** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for style. Style = `auto`. Use the answer as the title. Never present a style menu. Autonomous mode cannot self-answer this (there is no goal to infer): abort with `autonomous invocations must carry a feature description, a spec file path, or 'backlog'.` — unless resume detection (Step 1) already selected a resumable feature.
+5. **`mode == "bare"`** (no description): the only thing genuinely required is the work itself. Ask ONE free-text `AskUserQuestion` for what the user wants to build — do NOT ask for style. Style = `auto`. Use the answer as the title. Never present a style menu. Autonomous mode cannot self-answer this (there is no goal to infer): abort with `autonomous invocations must carry a feature description, a spec file path, or 'backlog'.` — unless resume detection (Step 1) already selected a resumable feature.
 
-Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe consecutive `-`).
+Slug = the parser's `.slug` (kebab-case of title); for titles resolved after parsing (spec-file heading, bare-invocation answer) use `lib/git-ops.sh slugify "$title"`.
 
 > The grill directive (`hooks/team/grill-inject.sh`, on by default) may already have
 > elicited disambiguating answers before SPEC runs; feed those into the inference above so
@@ -302,7 +340,7 @@ Slug = kebab-case of title (lowercase, replace spaces+special with `-`, dedupe c
 
 ### Step 3.5 - Model probe + Workflow availability probe
 
-Model selection is fixed (aliases `{opus, sonnet}`); probe results are cached 24h in `.loop-spec/runtime.json` (`LOOP_SPEC_SKIP_HEALTHCHECK=1` skips). Run the model dispatch probe and the `Workflow` availability probe now, verbatim per `${CLAUDE_SKILL_DIR}/references/startup-probes.md` (probe mechanics, cache format, degraded-mode handling, `workflowsAvailable` persistence). The cycle proceeds regardless of probe outcomes; fan-out skills read `runtime.json` to pick their dispatch path (`skills/shared/dispatch-fanout.md`).
+Model selection is fixed (aliases `{opus, sonnet}`); probe results are cached 24h in `.loop-spec/runtime.json` (`LOOP_SPEC_SKIP_HEALTHCHECK=1` skips). Run the model dispatch probe now, verbatim per `${CLAUDE_SKILL_DIR}/references/startup-probes.md` (probe mechanics, cache format, degraded-mode handling). The `Workflow` availability answer is already in the preflight blob (`jq -r '.workflows.available' <<<"$pf"`) — do not re-probe; persist it as `workflowsAvailable` per the same reference. The cycle proceeds regardless of probe outcomes; fan-out skills read `runtime.json` to pick their dispatch path (`skills/shared/dispatch-fanout.md`).
 
 ### Step 4 - Detect project commands
 
@@ -347,6 +385,10 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slu
 # Greenfield mode: persist it the same way (Step 0 greenfield branch set $greenfield).
 [[ "${autonomous:-0}" == "1" ]] && bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" autonomous true
 [[ "${greenfield:-0}" == "1" ]] && bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" greenfield true
+
+# Move any pre-SPEC assumed decisions (recorded during Steps 0-4) into the feature dir
+# so SPEC can render them; no-op when nothing was staged.
+bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" migrate ".loop-spec/decisions-staging" ".loop-spec/features/${slug}"
 
 #### Workspace mode Step 5 variant
 
@@ -541,20 +583,29 @@ n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
 
 **Autonomous chaining (`feature.json.autonomous == true`).** An autonomous run manages its
 own iteration cycles end-to-end — it does not complete by leaving `iterate-budget-spent`
-gaps for a human to read (`skills/shared/autonomous-mode.md`, continuation ladder). If this
-feature's ITERATE queued backlog entries (its `warnings[]` contains `iterate-budget-spent:`
-entries and the backlog is non-empty), chain directly into backlog-drain mode (Step 3
-branch 4) for those entries, under the same bounds that keep drain mode finite:
+gaps for a human to read (`skills/shared/autonomous-mode.md`, continuation ladder). The
+chain decision is DETERMINISTIC — do not re-derive it from the ladder prose; call the
+predicate and obey its verdict:
 
-- at most `LOOP_SPEC_MAX_FEATURES` (default 1) chained features per invocation;
-- never chain past a failure (a chained cycle that ends paused/escalated stops the chain);
-- never chain an entry marked `TERMINAL` (ITERATE's autonomous terminal rule);
-- chained features inherit `autonomous` and carry `backlogEntry`, so a gap that spends a
-  second full budget goes terminal instead of looping forever.
+```bash
+verdict="$(bash "${CLAUDE_SKILL_DIR}/../../lib/autonomous-chain.sh" should-chain "$feature_dir" --completed "$features_completed_this_invocation")"
+```
 
-When the bound stops the chain with entries still queued, print the overnight form —
-`while :; do claude -p "/loop-spec:cycle backlog autonomous"; done` — which drains the
-rest one bounded fresh-session cycle at a time. Warnings stay in the PR as the audit
-trail; the backlog + chain is what actually handles them.
+- `{"chain": true, "entry": {...}}` → chain directly into backlog-drain mode (Step 3
+  branch 4) with that entry. The chained feature inherits `autonomous` and carries
+  `backlogEntry` + `backlogEntryId` from the entry JSON, so a gap that spends a second
+  full budget goes terminal instead of looping forever. After the chained cycle
+  completes, re-run the predicate with the incremented `--completed` count.
+- `{"chain": false, "reason": ...}` → stop chaining. The reasons encode the bounds that
+  keep drain mode finite: `max-features-reached` (`LOOP_SPEC_MAX_FEATURES`, default 1),
+  `feature-not-completed` (never chain past a paused/escalated cycle),
+  `next-entry-terminal` (ITERATE's autonomous terminal rule), `backlog-empty`,
+  `no-budget-spent-gaps`, `not-autonomous`.
+
+When the verdict is `max-features-reached` with entries still queued (`backlog.sh count`
+> 0), print the overnight form — `while :; do claude -p "/loop-spec:cycle backlog
+autonomous"; done` — which drains the rest one bounded fresh-session cycle at a time.
+Warnings stay in the PR as the audit trail; the backlog + chain is what actually handles
+them.
 
 **Note:** `TeamDelete` is called explicitly here at the orchestration layer. It is NOT implemented as a bash `trap` because `TeamDelete` is a harness MCP tool callable only from the lead's tool-using context, not from a shell signal handler. See the resume strategy orphan-detection path for killed-session cleanup.

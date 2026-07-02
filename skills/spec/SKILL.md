@@ -311,11 +311,14 @@ orchestrator plays both roles (`skills/shared/autonomous-mode.md` self-answer ru
 3. Gate prompts self-answer: on gate pass take "Yes - write SPEC.md"; at round 6 with a
    failing gate take "Write SPEC.md anyway" (`gate_passed: false`, dimensions listed in
    `unresolved_dimensions` for DISCUSS's autonomous resolution). Never "Abandon".
-4. Record every Q → A → one-line rationale in the transcript (marked `(self-answered)`),
-   and add a `## Decisions (assumed — autonomous)` list inside SPEC.md's `<decisions>`
-   block — one entry per assumed answer, PLUS any setup decisions the cycle buffered
-   before SPEC ran (workspace repos, resume choice, detected commands). PLAN copies these
-   forward into `## User decisions (already made)` suffixed `(assumed)`, so the
+4. Record every Q → A → one-line rationale TO DISK as it is made — `bash
+   "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" spec "<q>" "<a>"
+   "<why>"` — and mark it `(self-answered)` in the transcript. The store already holds
+   any setup decisions the cycle staged before SPEC ran (workspace repos, resume choice,
+   detected commands — migrated at Step 5). When writing SPEC.md, render the complete
+   record into a `## Decisions (assumed — autonomous)` list inside the `<decisions>`
+   block: `decisions.sh render "{feature_dir}"` emits the lines verbatim. PLAN copies
+   these forward into `## User decisions (already made)` suffixed `(assumed)`, so the
    escalation contract treats them exactly like human answers.
 5. Proceed to Steps 3-6 unchanged.
 
