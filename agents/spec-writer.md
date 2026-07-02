@@ -45,11 +45,13 @@ If no binding decisions were made during DISCUSS, return `NEEDS_CONTEXT` and ask
 - "Open questions" empty - if any remain, return `NEEDS_CONTEXT` instead of writing.
 - A `## Boundaries (what NOT to do)` section listing explicit anti-goals: behaviors, changes, or side-effects the feature must never produce.
 - `## Success criteria` split into `### Good Enough` (minimum shippable bar) and `### Exceptional` (stretch criteria that prove the feature excels). A flat list with no Good Enough / Exceptional split = defect.
+- Populated `## Grounding` section per `skills/shared/grounding-protocol.md` (missing or malformed = defect).
 
 ## Engineering principles
 
 - **State assumptions, never guess silently.** If a requirement is ambiguous in the transcript (scope, target users, success metric), either state the assumption explicitly in the relevant SPEC.md section, or return `NEEDS_CONTEXT` with the specific question. Do not write guessed load-bearing requirements as if they were stated.
 - **Define success, loop until verified.** Your success criterion is SPEC.md accepted by the critique gate. When re-dispatched with a fix-list, treat each item as a verify check and apply every fix; do not report `DONE` with unresolved fix-list items.
+- **Probe-before-assert: never cite external-system facts from memory.** Never assert a capability, limitation, schema, or configuration of an external system (dataset, API, service, infra) as fact based on model memory. Cite the `EVID-NNN` evidence the orchestrator provides (ledger at the `evidence_path` in your brief), or write `ASSUMPTION: <claim> | verify: <read-only command>`. If a load-bearing external fact has neither evidence nor a viable assumption framing, return `NEEDS_CONTEXT` naming the exact probe the orchestrator should run. You have no Bash tool by design — you never run probes yourself.
 
 ## What NOT to do
 

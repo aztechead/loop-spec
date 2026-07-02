@@ -122,6 +122,20 @@ Before asking any questions, read for grounding context:
   - `graphify-out/GRAPH_REPORT.md` — "god nodes" and cross-module connections reveal which subsystems a change will ripple through, so you can ask sharper boundary/constraint questions.
   - `graphify explain "<entity>"` / `graphify path "<A>" "<B>"` — confirm how the target area connects to the rest of the system.
   Use the graph to ask precise questions ("this would touch `X` which also feeds `Y` — in scope?") instead of generic ones. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode; then use flat-file reads. **Greenfield:** the graph build is deferred until source exists — skip the graph scout and ground in the stated goal and the chosen stack's conventions instead.)
+
+**External-reality scout (probe-before-assert).** Before treating any factual premise about an external system as fact (in synthesis, ambiguity scoring, or interview questions):
+
+1. Enumerate every external system the ask names or implies (datasets, APIs, services, infra).
+2. For each, run the cheapest READ-ONLY probe available (`bq show`, `bq query --dry_run`, `gcloud describe`, `aws ... describe`, `psql -c '\d'`, `curl -s`, `<tool> --version`) and record the result:
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add \
+     "docs/loop-spec/features/{slug}/EVIDENCE.md" \
+     "<claim>" "<command>" "<output>"
+   ```
+   The script prints the assigned `EVID-NNN` id; use it to cite the probe in interview questions and the eventual `## Grounding` section.
+3. Researcher-round questions must state probed facts with their `EVID-NNN`, never memory-asserted facts.
+4. Unverifiable (no CLI, no creds, offline): record it as `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md`. In autonomous styles (`feature.json.autonomous == true` or `LOOP_SPEC_AUTONOMOUS=1`) also record via `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add ...` — never ask the user about it. In step/interactive styles, surface the assumption conversationally but do not block indefinitely.
+
 - Relevant source files to understand current state
 
 Synthesize current state internally: what exists today related to this feature, and the gap to the target state. Do not present this synthesis to the user - use it to ask precise, grounded questions.

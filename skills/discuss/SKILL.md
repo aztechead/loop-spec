@@ -47,6 +47,16 @@ Run a one-question-at-a-time loop to understand the feature.
 
 **Ground in the code graph first (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Before and during the loop, use `graphify query "<area>"`, `graphify path "<A>" "<B>"`, `graphify explain "<entity>"`, and `graphify-out/GRAPH_REPORT.md` (god nodes + cross-module connections) to see what the feature will actually touch. Let the graph drive design/approach questions — e.g. surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. (Absent under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode, and in greenfield features before code exists — `feature.json.greenfield`; there, ground in SPEC.md's Foundations requirements and the chosen stack's conventions instead.)
 
+**Probe external reality before asserting it (required).** Before treating any factual premise about an external system (dataset, API, service, infra) as fact in questions, `AskUserQuestion` options, or the spec-writer brief, run the cheapest READ-ONLY probe and record the result:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add \
+  "docs/loop-spec/features/{slug}/EVIDENCE.md" \
+  "<claim>" "<command>" "<output>"
+```
+
+Facts about external systems presented in questions or `AskUserQuestion` options must carry their `EVID-NNN` citation or be phrased as explicit assumptions (e.g. "assuming X — probe: `<cmd>` — is this right?"). Autonomous and non-interactive styles self-run probes and never block on a user question; if a probe is impossible, record `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md` and proceed.
+
 - Non-AUTO styles: full conversation in main thread, no cap on rounds
 - AUTO style: cap at 5 Q rounds, then proceed regardless
 - **Present design/approach decisions as structured `AskUserQuestion` multiple-choice with explicit tradeoffs, not prose.** Whenever a question has discernible options (library choice, scope cut, data shape, integration point), surface them as numbered options so the user can steer with one click. Reserve free-text questions for genuinely open prompts. This applies to every `AskUserQuestion` escalation in this phase (Step 5 reconciliation included).
@@ -128,9 +138,10 @@ SendMessage({
     feature_title: {title}
     transcript_path: .loop-spec/features/{slug}/discuss-transcript.md
     output_path: docs/loop-spec/features/{slug}/SPEC.md
+    evidence_path: docs/loop-spec/features/{slug}/EVIDENCE.md
 
     Read the transcript. Read the project context (check docs/loop-spec/codebase/ for any existing domain maps).
-    Produce SPEC.md at the output path per your role definition (agents/spec-writer.md).
+    Produce SPEC.md at the output path per your role definition (agents/spec-writer.md). Every fact asserted about an external system must cite an `EVID-NNN` entry from the evidence_path ledger or be written as an explicit `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md`.
 
     If SPEC.md frontmatter contains an `ambiguity_scores` block (set by spec phase), preserve it verbatim. Do not modify or recompute the scores.
 
@@ -266,6 +277,7 @@ Apply reconciliation rules:
 | Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
 | Both agree | No action. |
 | Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it to disk (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" discuss "<dimension>" "<reading adopted>" "more reversible"` — `skills/shared/autonomous-mode.md`), and add it to the fix-list so the spec states it explicitly. |
+| Challenger finding is an `UNGROUNDED:` line (ungrounded external claim) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it via `bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, and adds a fix-list item carrying the `EVID-NNN` + output excerpt so spec-writer-1 cites it (or converts the claim to an ASSUMPTION if the probe is impossible). |
 
 Build `fix_list` (may be empty).
 
@@ -372,10 +384,20 @@ Reset `currentGate` to zeroed state via `lib/feature-write.sh`:
 }
 ```
 
+### Step 5.75 - Grounding gate (deterministic, ALWAYS runs)
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "docs/loop-spec/features/{slug}/SPEC.md"
+grounding_exit=$?
+```
+
+Exit 1 BLOCKS: before incrementing, check the cap exactly as Step 5 does (`retryBudget.perGateUsed["discuss.grounding"] >= retryBudget.perGate` — absent key reads as 0 — pause/escalate per the existing budget rules), then increment `retryBudget.perGateUsed["discuss.grounding"]`, `perPhaseUsed.discuss`, `globalUsed` via `lib/feature-write.sh` and re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (instruct: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`). On revision received, re-run ONLY this lint — lint-only failures do NOT re-run the critique debate. Exit 0: proceed to Step 6.
+
 ### Step 6 - Commit SPEC.md and update feature.json
 
 ```bash
 git add docs/loop-spec/features/{slug}/SPEC.md
+[ -f "docs/loop-spec/features/{slug}/EVIDENCE.md" ] && git add "docs/loop-spec/features/{slug}/EVIDENCE.md"
 git commit -m "spec: NO_JIRA {slug}"
 ```
 

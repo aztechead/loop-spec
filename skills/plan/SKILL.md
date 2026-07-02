@@ -111,6 +111,9 @@ SendMessage({
     spec_path: {spec_path}
     patterns_path: docs/loop-spec/features/{slug}/PATTERNS.md
     codebase_mapping_paths: {paths to docs/loop-spec/codebase/*.md}
+    evidence_path: docs/loop-spec/features/{slug}/EVIDENCE.md
+
+    Every fact asserted about an external system in PLAN.md must cite an `EVID-NNN` entry from the evidence_path ledger or be written as an explicit `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md`.
 
     FIRST: If docs/loop-spec/features/{slug}/PATTERNS.md does not exist, produce it now.
     Analyze the codebase for concept analogs per the spec, following the pattern-mapper role
@@ -275,6 +278,7 @@ Apply reconciliation rules:
 | Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
 | Both agree | No action. |
 | Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it to disk (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" plan "<question>" "<reading adopted>" "more reversible"`) AND in `## User decisions (already made)` suffixed `(assumed)` (`skills/shared/autonomous-mode.md`), and add it to the fix-list. |
+| Challenger finding is an `UNGROUNDED:` line (ungrounded external claim) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it via `bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, and feeds `EVID-NNN` + output excerpt into the planner re-dispatch so planner-1 cites it (or converts the claim to an ASSUMPTION if the probe is impossible). |
 
 Build `fix_list` (may be empty).
 
@@ -420,12 +424,20 @@ criteria_exit=$?
 
 Handle exit code 1 exactly like decision-coverage above (BLOCK and re-dispatch planner-1 with the uncovered criteria list, incrementing the same retry counters). In the re-dispatch body, instruct planner-1 to add each missing criterion verbatim to the `## Spec coverage` section mapped to the task(s) that satisfy it.
 
-Exit code 0 on both checks: proceed to Step 6.
+Exit code 0 on the decision and criteria checks: run the grounding gate:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "$plan_path"
+grounding_exit=$?
+```
+
+Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1 with the FLAG lines in the body, increment `retryBudget.perPhaseUsed.plan` and `globalUsed` via `lib/feature-write.sh`, respect caps). On revision received, re-run ONLY this lint. Exit 0 on all three checks: proceed to Step 6.
 
 ### Step 6 - Commit PLAN.md and update feature.json
 
 ```bash
 git add docs/loop-spec/features/{slug}/PLAN.md
+[ -f "docs/loop-spec/features/{slug}/EVIDENCE.md" ] && git add "docs/loop-spec/features/{slug}/EVIDENCE.md"
 git commit -m "plan: NO_JIRA {slug}"
 ```
 

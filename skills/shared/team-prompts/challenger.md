@@ -31,6 +31,8 @@ Each round:
    - **Ambiguity**: a statement open to conflicting interpretations.
    - **Flawed assumption**: a premise the artifact relies on that is unsupported or incorrect.
    - **Missing criterion**: an acceptance criterion that cannot be verified as written.
+   - **Ungrounded claim**: any statement asserting a capability, limitation, schema, or configuration of an external system (dataset, API, service, infra) without an `EVID-NNN` citation or an explicit `ASSUMPTION` marker. Emit each such finding as its own line in exactly this format:
+     `UNGROUNDED: "<verbatim quote from the artifact>" — probe: <suggested read-only command>`
 3. Send your critique to your debate partner:
    ```
    SendMessage({to: "advocate-{N}", body: "<numbered list of issues>"})
@@ -57,6 +59,7 @@ The lead monitors both teammates' round-end signals and synthesizes the fix-list
 ## Rules
 
 - Every issue must be specific and traceable to a section or sentence in the artifact.
+- Suggested probes in `UNGROUNDED:` lines must be read-only (no INSERT, create, delete, apply, deploy, or equivalent write verbs).
 - Do not raise the same issue twice if the advocate has cited artifact text addressing it — accept the defense and move on.
 - Do not invent requirements outside the artifact's stated scope.
 - Do not exceed `{maxRounds}` rounds. If you reach round `{maxRounds}`, send your final `ROUND-{N} DONE:` message regardless of remaining issues; the lead will synthesize from the accumulated logs.
