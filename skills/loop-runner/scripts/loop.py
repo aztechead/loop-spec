@@ -55,6 +55,8 @@ HALT_INTEGRITY = "verifier_integrity"
 HALT_THRASH = "verifier_thrash"
 HALT_AGENT_ERROR = "agent_error"
 
+MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower this
+
 PROGRESS_BANNER = (
     "# Loop progress notes\n\n"
     "Maintained by the agent across iterations. Each iteration: append what you "
@@ -250,7 +252,8 @@ def hash_paths(paths: list[Path], ignore_dir: str) -> str:
 # Claude Code invocation (headless)
 # =============================================================================
 def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
-               permission_mode: Optional[str] = None, raw_log: Optional[Path] = None) -> dict:
+               permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
+               timeout: Optional[float] = None) -> dict:
     cmd = [cfg.claude_bin, "-p", prompt, "--output-format", "json",
            "--permission-mode", permission_mode or cfg.permission_mode]
     if cfg.allowed_tools:
@@ -271,9 +274,15 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         env["CLAUDE_CODE_RETRY_WATCHDOG"] = cfg.retry_watchdog
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
     except FileNotFoundError:
         return {"ok": False, "error": f"`{cfg.claude_bin}` not found on PATH",
+                "cost": 0.0, "turns": 0, "session_id": resume, "result": ""}
+    except subprocess.TimeoutExpired as e:
+        if raw_log is not None:
+            raw_log.parent.mkdir(parents=True, exist_ok=True)
+            raw_log.write_text(e.stdout or "")
+        return {"ok": False, "error": f"agent tick timed out after {int(timeout)}s",
                 "cost": 0.0, "turns": 0, "session_id": resume, "result": ""}
 
     if raw_log is not None:  # capture everything: unattended, the only record is what you kept
@@ -341,9 +350,12 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str) -> bool:
     )
     jcfg = LoopConfig(task="", claude_bin=cfg.claude_bin, model=cfg.judge_model,
                       allowed_tools="", max_turns=0)
-    res = run_claude(prompt, jcfg, resume=None, permission_mode="plan")
+    res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600)
+    if not res["ok"]:
+        print(f"⚠ judge run failed ({res['error']}); treating as NOT_DONE")
+        return False
     up = res["result"].upper()
-    return res["ok"] and "DONE" in up and "NOT_DONE" not in up
+    return "DONE" in up and "NOT_DONE" not in up
 
 
 def git_commit_scoped(message: str, ignore_dir: str) -> str:
@@ -472,7 +484,8 @@ def run_loop(cfg: LoopConfig) -> dict:
 
         # --- Invoke the agent --------------------------------------------------
         res = run_claude(prompt, cfg, resume=resume,
-                         raw_log=state_dir / f"iter-{state.iteration:03d}.raw.json")
+                         raw_log=state_dir / f"iter-{state.iteration:03d}.raw.json",
+                         timeout=max(MIN_TICK_TIMEOUT, cfg.timeout_s - (time.time() - state.started_at)))
         state.cumulative_cost_usd += res["cost"]
         state.total_turns += res["turns"]
         if res["session_id"]:

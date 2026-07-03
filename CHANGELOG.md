@@ -38,6 +38,50 @@ All notable changes documented here. Format follows Keep a Changelog.
   - New section 13 in `skills/loop-runner/tests/run_tests.sh` verifies all four
     behaviors in a non-git temp dir (38 checks total, all passing).
 
+### Hardened
+- **Per-tick subprocess timeout — a hung `claude -p` no longer wedges the loop.**
+  `run_claude` gains an optional `timeout: Optional[float] = None` param passed through
+  to `subprocess.run`; on `subprocess.TimeoutExpired` it writes whatever partial stdout
+  arrived (`e.stdout or ""`) to `raw_log` and returns a clean `{"ok": False, ...}` dict.
+  `run_loop` passes `timeout=max(MIN_TICK_TIMEOUT, cfg.timeout_s - elapsed)` so a
+  single hung tick cannot burn past the wall-clock cap; the outer timeout check still
+  fires at the next iteration boundary. `judge_done` uses `timeout=600`;
+  `compile_spec.py` uses `timeout=1800`. `MIN_TICK_TIMEOUT = 60.0` is a module-level
+  constant so tests can lower it via `loop.MIN_TICK_TIMEOUT = 1.0`.
+- **Loud judge-run failures.** Inside `judge_done`, a failed `run_claude` now prints
+  `⚠ judge run failed (<error>); treating as NOT_DONE` instead of silently returning
+  `False` and burning iterations with no trace — the same silent-error class as the
+  git failures fixed in the `### Fixed` section above.
+- **Supervisor survives worker exceptions (`supervisor_error` halt reason).** `run_task`
+  is wrapped in `try/except Exception`; any unhandled exception (including
+  `worktree_for`'s `RuntimeError`) now prints `⛔ {tid}: supervisor error: {e}` and
+  returns `halt_reason: "supervisor_error"` instead of propagating through
+  `fut.result()` and crashing the fleet mid-flight with no `fleet-result.json`.
+  `supervisor_error` is not in `RETRYABLE` so it escalates — correct.
+- **Corrupt `result.json` handled gracefully (retryable `agent_error`).** New
+  `read_result(res_path, tid, log)` helper in `supervisor.py` returns the existing
+  `agent_error` dict on missing file and a new `f"corrupt result.json ({e}) — see
+  {log}"` dict on `json.JSONDecodeError` or `OSError`. Replaces the inline
+  missing/parse logic in `run_task`. `agent_error` stays in `RETRYABLE` — correct
+  for a truncated file from an interrupted run.
+- **`git merge --abort` failure reported.** If `--abort` itself returns nonzero after
+  a merge conflict, the supervisor now prints `⛔ merge --abort also failed (rc=N) —
+  repository left mid-merge; resolve by hand before rerunning` instead of silently
+  leaving the repo in a broken state.
+- **Opt-in `--cleanup-worktrees` flag for `supervisor.py`.** Default off (behavior
+  unchanged). When set, each task's worktree and branch are removed after a successful
+  merge via `git worktree remove --force` + `git branch -d loop/<id>`. Failed tasks
+  keep their worktrees for inspection. A nonzero cleanup returncode prints a one-line
+  warning and continues.
+- **Agent `model` alias enum re-pinned with `fable`.**
+  `skills/shared/harness-call-contracts.md` now documents
+  `"sonnet" | "opus" | "haiku" | "fable"` (re-verified live CC 2.1.187, 2026-07-03),
+  keeping the "ALIAS ENUM — literal IDs REJECTED" note. `model-matrix.md` unchanged
+  (already open-ended).
+- New sections 14–15 in `skills/loop-runner/tests/run_tests.sh` (43 checks total,
+  all passing): hung-tick timeout (library API with `MIN_TICK_TIMEOUT` lowered to
+  1.0, `FAKE_HANG=15`) and `read_result` unit (missing + corrupt JSON cases).
+
 ## [2.7.0]
 
 ### Added

@@ -224,6 +224,45 @@ print(repr(git_sha()))
 " 2>/dev/null | tail -1)
 check "git_sha returns empty string in non-git dir" "$GS" "''"
 
+echo "== 14. hung-tick timeout: per-tick subprocess timeout kills a hung claude -p =="
+newrepo
+HUNG_OUT=$(FAKE_HANG=15 PYTHONPATH="$SCRIPTS" python3 - "$FAKE" << 'EOF'
+import sys
+import loop
+loop.MIN_TICK_TIMEOUT = 1.0
+from loop import LoopConfig, run_loop
+r = run_loop(LoopConfig(task="hang", task_id="hang",
+    claude_bin=sys.argv[1], timeout_s=8, max_iterations=3, budget_usd=9))
+print(r["halt_reason"])
+EOF
+2>&1)
+check "hung-tick halts with timeout" "$(echo "$HUNG_OUT" | tail -1)" "timeout"
+
+echo "== 15. read_result: missing and corrupt result.json =="
+TMPDIR_RR="$(mktemp -d)"
+RR_MISS=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from pathlib import Path
+from supervisor import read_result
+r = read_result(Path('$TMPDIR_RR/nofile.json'), 't1', Path('$TMPDIR_RR/t.log'))
+print(r['halt_reason'])
+print('no result.json' in r.get('error', ''))
+")
+check "missing → agent_error"         "$(echo "$RR_MISS" | head -1)" "agent_error"
+check "missing → 'no result.json'"    "$(echo "$RR_MISS" | tail -1)" "True"
+
+echo "bad json" > "$TMPDIR_RR/bad.json"
+RR_BAD=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from pathlib import Path
+from supervisor import read_result
+r = read_result(Path('$TMPDIR_RR/bad.json'), 't2', Path('$TMPDIR_RR/t.log'))
+print(r['halt_reason'])
+print('corrupt result.json' in r.get('error', ''))
+")
+check "corrupt → agent_error"               "$(echo "$RR_BAD" | head -1)" "agent_error"
+check "corrupt → 'corrupt result.json'"     "$(echo "$RR_BAD" | tail -1)" "True"
+
 echo
 echo "================= $PASS passed, $FAIL failed ================="
 exit $([[ $FAIL -eq 0 ]] && echo 0 || echo 1)

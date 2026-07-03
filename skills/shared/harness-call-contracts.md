@@ -17,7 +17,7 @@ Agent({
   description: "<3-5 word task label>",   // REQUIRED
   prompt: "<the task>",                    // REQUIRED
   subagent_type: "loop-spec:<role>",       // optional; omit = general-purpose
-  model: "sonnet" | "opus" | "haiku",     // optional; ALIAS ENUM — literal IDs REJECTED
+  model: "sonnet" | "opus" | "haiku" | "fable",  // optional; ALIAS ENUM — literal IDs REJECTED
   isolation: "worktree" | "remote",        // optional
 })
 ```

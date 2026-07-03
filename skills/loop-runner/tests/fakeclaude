@@ -12,6 +12,10 @@
 set -euo pipefail
 COST="${FAKE_COST:-1.25}"
 
+if [[ -n "${FAKE_HANG:-}" ]]; then
+  sleep "$FAKE_HANG"
+fi
+
 PROMPT=""
 for a in "$@"; do PROMPT="$PROMPT $a"; done
 
