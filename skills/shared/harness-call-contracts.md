@@ -18,6 +18,8 @@ Agent({
   prompt: "<the task>",                    // REQUIRED
   subagent_type: "loop-spec:<role>",       // optional; omit = general-purpose
   model: "sonnet" | "opus" | "haiku" | "fable",  // optional; ALIAS ENUM — literal IDs REJECTED
+  name: "<teammate-name>",                 // optional; named = persistent, SendMessage-addressable
+  mode: "acceptEdits" | ... | "plan",     // optional permission mode for the spawned agent
   isolation: "worktree" | "remote",        // optional
 })
 ```
@@ -28,9 +30,12 @@ Agent({
   Subagents are backgrounded by the harness itself (background-by-default rollout, CC
   changelog 2.1.198). Parallel fan-out means issuing multiple Agent calls in one message,
   NOT setting a background flag.
-- Teams generations: with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` on CC >= 2.1.178 the
-  tool additionally accepts `name` (persistent, addressable teammate — the implicit-team
-  spawn). Not verifiable in a teams-off session; source: CC changelog 2.1.178.
+- `name` is live on the core tool as of CC 2.1.187 — verified in a session WITHOUT
+  `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` by an actual named spawn + `SendMessage` by
+  name (the teams surface merged into core; the flag remains loop-spec's routing gate
+  via `lib/teams-capability.sh`, not a schema gate). `name` pattern:
+  `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`.
+- `team_name` is accepted but ignored (harness marks it deprecated) — never emit it.
 
 ## AskUserQuestion
 
