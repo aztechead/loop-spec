@@ -72,5 +72,37 @@ check "harness-call-contracts.md present" "$([[ -f skills/shared/harness-call-co
 grep -q 'Verification method' skills/shared/harness-call-contracts.md && v=1 || v=0
 check "contract doc records verification method" "$v"
 
+# 8) No run_in_background anywhere in skills/ agents/ *.md
+#    (harness-call-contracts.md is excluded — it documents the param as invalid).
+bad=$(grep -rn 'run_in_background' skills agents --include='*.md' 2>/dev/null \
+        | grep -v 'harness-call-contracts' | head -5 || true)
+check "no run_in_background in skill/agent corpus" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
+# 9) For every SendMessage({ occurrence, the 4-line window must NOT contain body:
+#    (harness-call-contracts.md excluded — it documents the invalid param).
+bad=""
+for f in $CORPUS; do
+  [[ "$f" == *harness-call-contracts* ]] && continue
+  while IFS=: read -r ln _; do
+    [[ -z "$ln" ]] && continue
+    window=$(sed -n "${ln},$((ln+3))p" "$f")
+    echo "$window" | grep -q 'body:' && bad="$bad $f:$ln"
+  done < <(grep -n 'SendMessage({' "$f" 2>/dev/null)
+done
+check "SendMessage calls do not use invalid body: param" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
+# 10) For every SendMessage({ occurrence, the 4-line window MUST contain message
+#     (harness-call-contracts.md excluded).
+bad=""
+for f in $CORPUS; do
+  [[ "$f" == *harness-call-contracts* ]] && continue
+  while IFS=: read -r ln _; do
+    [[ -z "$ln" ]] && continue
+    window=$(sed -n "${ln},$((ln+3))p" "$f")
+    echo "$window" | grep -q 'message' || bad="$bad $f:$ln"
+  done < <(grep -n 'SendMessage({' "$f" 2>/dev/null)
+done
+check "SendMessage calls carry message param" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

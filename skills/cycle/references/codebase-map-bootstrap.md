@@ -87,11 +87,10 @@ If `missing` is non-empty:
   Fire one background `Agent` call per missing domain (workspace variant):
 
   ```
-  Parallel (background):
+  All Agent calls in ONE message (parallel; the harness runs subagents in the background):
     Agent({
       subagent_type: "loop-spec:mapper-{domain-1}",
       model: model_mapper,
-      run_in_background: true,
       description: "Bootstrap codebase map: {domain-1}",
       prompt: """
         You are bootstrapping the codebase map for this workspace.
@@ -119,14 +118,13 @@ If `missing` is non-empty:
   fi
   ```
 
-- **Single-repo mode** fire one background `Agent` call per missing domain:
+- **Single-repo mode** fire one `Agent` call per missing domain:
 
   ```
-  Parallel (background):
+  All Agent calls in ONE message (parallel; the harness runs subagents in the background):
     Agent({
       subagent_type: "loop-spec:mapper-{domain-1}",
       model: model_mapper,
-      run_in_background: true,
       description: "Bootstrap codebase map: {domain-1}",
       prompt: """
         You are bootstrapping the codebase map for this project.

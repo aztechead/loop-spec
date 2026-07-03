@@ -47,7 +47,7 @@ Every phase runs inside a persistent **team** of named teammates. Teammates are 
 Inter-agent communication within a phase team uses `SendMessage` in BOTH team modes. This is the correct tool for routing work, critique rounds, and notifications between the lead and teammates (or between teammates directly by name).
 
 Whenever a phase skill or this orchestrator says "instruct teammate X to revise" or "notify implementer of rework":
-- Use `SendMessage({to: "<teammate-name>", body: "..."})` to address the teammate by their assigned name (e.g., `advocate-1`, `implementer-2`, `spec-writer-1`).
+- Use `SendMessage({to: "<teammate-name>", message: "..."})` to address the teammate by their assigned name (e.g., `advocate-1`, `implementer-2`, `spec-writer-1`).
 - Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`. (In `implicit` mode the *initial* spawn is an `Agent({name})` call; rework after that still goes through `SendMessage`.)
 - A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers and the ITERATE phase's one-shot `iterate-judge` dispatch (`skills/iterate/SKILL.md`); both are main-thread one-shot dispatches, not team rework.
 

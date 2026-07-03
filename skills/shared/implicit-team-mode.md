@@ -20,7 +20,7 @@ the explicit-team path.
 |---|---|
 | `TeamCreate({name, agents:[{name, subagent_type, model}, ...]})` | **No call.** The team already exists. Do not declare a roster up front. Record `feature.json.currentTeamName` (for resume bookkeeping) but create nothing. |
 | Spawn a teammate + send its first work prompt | One `Agent({name: "<teammate-name>", description: "<short task label>", subagent_type, model, prompt: "<work prompt>"})` call. Passing `name` makes the teammate persistent and addressable; the prompt that the explicit path delivered via the post-`TeamCreate` `SendMessage` becomes this spawn's `prompt`. |
-| `SendMessage({to, body})` rework / critique / notify | **Unchanged.** `SendMessage` still exists and addresses any live named teammate (lead-to-teammate and teammate-to-teammate). |
+| `SendMessage({to, message})` rework / critique / notify | **Unchanged.** `SendMessage` still exists and addresses any live named teammate (lead-to-teammate and teammate-to-teammate). |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | **Unchanged.** All teammates in the session-implicit team share the same task list; the EXECUTE self-claim model and the `team:`-scoped `TaskList` liveness probe work as written. |
 | `TeammateIdle` wake / idle protocol | **Unchanged.** Idle named teammates wake on `SendMessage` exactly as documented. |
 | `TeamDelete({name})` | **No call.** There is no team object to delete. At phase boundary just stop messaging the phase's teammates and clear `feature.json.currentTeamName`; the next phase spawns its own named teammates. |

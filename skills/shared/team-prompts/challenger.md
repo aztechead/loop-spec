@@ -35,17 +35,17 @@ Each round:
      `UNGROUNDED: "<verbatim quote from the artifact>" — probe: <suggested read-only command>`
 3. Send your critique to your debate partner:
    ```
-   SendMessage({to: "advocate-{N}", body: "<numbered list of issues>"})
+   SendMessage({to: "advocate-{N}", message: "<numbered list of issues>"})
    ```
    If you have no new issues this round, send: `"No new issues this round."`
 4. End the round with a message to lead:
    - If you have **no new issues** to raise in the next round:
      ```
-     SendMessage({to: "lead", body: "ROUND-{N} DONE: <summary of issues raised and advocate responses received>"})
+     SendMessage({to: "lead", message: "ROUND-{N} DONE: <summary of issues raised and advocate responses received>"})
      ```
    - If you still have **unresolved issues**:
      ```
-     SendMessage({to: "lead", body: "ROUND-{N} DONE-WITH-ISSUES: <list of unresolved issues>"})
+     SendMessage({to: "lead", message: "ROUND-{N} DONE-WITH-ISSUES: <list of unresolved issues>"})
      ```
 
 ## "DONE" Semantics

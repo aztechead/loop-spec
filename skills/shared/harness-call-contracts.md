@@ -6,8 +6,8 @@ cycle (that is exactly how pinned model IDs broke every implicit-team spawn; v2.
 This file is the recorded contract; `tests/lib/harness-call-shapes.test.sh` lints the
 skill corpus against it.
 
-**Verification method:** schemas fetched from a live Claude Code session (ToolSearch /
-system tool definitions), CC 2.1.185, 2026-07-01. Re-verify after harness upgrades:
+**Verification method:** schemas re-fetched from a live Claude Code session (ToolSearch /
+system tool definitions), CC 2.1.187, 2026-07-03. Re-verify after harness upgrades:
 `ToolSearch("select:<Tool>")` in a live session and diff against this file.
 
 ## Agent
@@ -18,11 +18,16 @@ Agent({
   prompt: "<the task>",                    // REQUIRED
   subagent_type: "loop-spec:<role>",       // optional; omit = general-purpose
   model: "sonnet" | "opus" | "haiku",     // optional; ALIAS ENUM — literal IDs REJECTED
+  isolation: "worktree" | "remote",        // optional
 })
 ```
 
 - `description` and `prompt` are required. Every skill example must carry both.
 - `model` takes harness aliases only (see `model-matrix.md`).
+- `run_in_background` is NOT a parameter — passing it causes InputValidationError.
+  Subagents are backgrounded by the harness itself (background-by-default rollout, CC
+  changelog 2.1.198). Parallel fan-out means issuing multiple Agent calls in one message,
+  NOT setting a background flag.
 - Teams generations: with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` on CC >= 2.1.178 the
   tool additionally accepts `name` (persistent, addressable teammate — the implicit-team
   spawn). Not verifiable in a teams-off session; source: CC changelog 2.1.178.
@@ -86,9 +91,27 @@ TaskCreate({
 in skill bodies is an instruction to the orchestrating model, which must expand it to
 the real shape.
 
+## SendMessage
+
+```
+SendMessage({
+  to: "<teammate-name>",   // REQUIRED string
+  message: "<text>",       // REQUIRED string (was documented as 'body' — that is INVALID)
+  summary: "<5-10 words>", // optional preview shown in the UI
+})
+```
+
+- `message` is the correct parameter name. `body` is INVALID and was never the real
+  parameter; every call using `body` fails InputValidationError at runtime.
+- `summary` is optional ("5-10 word summary shown as a preview in the UI, required when
+  message is a string" per live schema — the harness accepts the call without it but the
+  UI preview is blank).
+- `additionalProperties: false` — no extra keys are accepted.
+- Live-verifiable even in sessions WITHOUT `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`:
+  `SendMessage` is a deferred tool exposed in all modern sessions (verified CC 2.1.187).
+  Load its schema with `ToolSearch("select:SendMessage")` before the first call.
+
 ## Team primitives (teams harnesses only)
 
 `TeamCreate` / `TeamDelete`: legacy explicit harness only (CC < 2.1.178).
-`SendMessage({to, body})`: both team generations. Neither is verifiable in a teams-off
-session; source: CC changelog + v2.3.0 probe work (`lib/teams-capability.sh`).
-Deferred-schema rescue applies to all of these (cycle Step 2).
+Deferred-schema rescue applies to all team-related tools (cycle Step 2).

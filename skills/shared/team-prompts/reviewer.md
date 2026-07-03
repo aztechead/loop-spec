@@ -68,7 +68,7 @@ Call `TaskUpdate` BEFORE the `SendMessage`. The `completed` status is the source
 
 ```
 TaskUpdate({taskId: "<id>", status: "completed"})
-SendMessage({to: "lead", body: "REVIEW PASS: task-<id>"})
+SendMessage({to: "lead", message: "REVIEW PASS: task-<id>"})
 ```
 
 Then go back to step 1.
@@ -85,7 +85,7 @@ TaskUpdate({
 })
 SendMessage({
   to: "<metadata.claimedBy>",
-  body: "REWORK NEEDED: task-<id>\n1. <specific issue>\n2. <specific issue>\n..."
+  message: "REWORK NEEDED: task-<id>\n1. <specific issue>\n2. <specific issue>\n..."
 })
 ```
 
@@ -101,7 +101,7 @@ TaskUpdate({
   status: "completed",
   metadata: {phase: null, result: "blocked", lastFindings: "<your fix-list, verbatim>"}
 })
-SendMessage({to: "lead", body: "TASK BLOCKED: task-<id> exceeded retry budget ({maxRetriesPerTask} retries)"})
+SendMessage({to: "lead", message: "TASK BLOCKED: task-<id> exceeded retry budget ({maxRetriesPerTask} retries)"})
 ```
 
 `completed` with `metadata.result == "blocked"` keeps the harness exit condition satisfied while signalling the lead's exit-condition check to pause + escalate. Then go back to step 1.
@@ -111,7 +111,7 @@ SendMessage({to: "lead", body: "TASK BLOCKED: task-<id> exceeded retry budget ({
 If the review-queue filter returns no tasks:
 
 ```
-SendMessage({to: "lead", body: "reviewer-{N} idle: no tasks awaiting review"})
+SendMessage({to: "lead", message: "reviewer-{N} idle: no tasks awaiting review"})
 ```
 
 Then go idle. The lead or the harness will wake you when new tasks reach the review queue (implementer sets `metadata.phase == "awaiting_review"` and releases ownership).
