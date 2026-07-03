@@ -14,6 +14,12 @@ peer messaging, and a shared task list all work. Only the *create/destroy* cerem
 is gone. The artifacts, gates, retry budgets, and result contracts are identical to
 the explicit-team path.
 
+Live-verified end to end on CC 2.1.187 with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+(2026-07-03): `TeamCreate`/`TeamDelete` absent from the tool surface; named
+`Agent({name})` spawns return mailbox agents (`<name>@session-<id>`); teammates see the
+shared task list, self-claim via `TaskUpdate({owner})`, and complete tasks; teammate→
+teammate and teammate→main `SendMessage({to, message, summary})` all deliver.
+
 ## Substitution table (explicit team op -> implicit equivalent)
 
 | Explicit-team primitive | Implicit-team equivalent |

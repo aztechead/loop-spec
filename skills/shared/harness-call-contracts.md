@@ -6,9 +6,12 @@ cycle (that is exactly how pinned model IDs broke every implicit-team spawn; v2.
 This file is the recorded contract; `tests/lib/harness-call-shapes.test.sh` lints the
 skill corpus against it.
 
-**Verification method:** schemas re-fetched from a live Claude Code session (ToolSearch /
-system tool definitions), CC 2.1.187, 2026-07-03. Re-verify after harness upgrades:
-`ToolSearch("select:<Tool>")` in a live session and diff against this file.
+**Verification method:** schemas re-fetched from live Claude Code sessions (ToolSearch /
+system tool definitions), CC 2.1.187, 2026-07-03 — in BOTH a teams-off session and a
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` session, plus a live implicit-team e2e (named
+spawns, shared-TaskList self-claim, peer SendMessage, teammate→main relay). Re-verify
+after harness upgrades: `ToolSearch("select:<Tool>")` in a live session and diff against
+this file.
 
 ## Agent
 
@@ -26,10 +29,12 @@ Agent({
 
 - `description` and `prompt` are required. Every skill example must carry both.
 - `model` takes harness aliases only (see `model-matrix.md`).
-- `run_in_background` is NOT a parameter — passing it causes InputValidationError.
-  Subagents are backgrounded by the harness itself (background-by-default rollout, CC
-  changelog 2.1.198). Parallel fan-out means issuing multiple Agent calls in one message,
-  NOT setting a background flag.
+- `run_in_background`: never emit it. It is absent from the teams-off schema but
+  ACCEPTED on a teams-enabled CC 2.1.187 (verified by live spawn) — i.e. it exists on
+  some harness generations and not others, and is redundant everywhere: subagents are
+  backgrounded by the harness itself (background-by-default rollout, CC changelog
+  2.1.198). Parallel fan-out means issuing multiple Agent calls in one message, NOT
+  setting a background flag.
 - `name` is live on the core tool as of CC 2.1.187 — verified in a session WITHOUT
   `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` by an actual named spawn + `SendMessage` by
   name (the teams surface merged into core; the flag remains loop-spec's routing gate
@@ -115,6 +120,9 @@ SendMessage({
 - Live-verifiable even in sessions WITHOUT `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`:
   `SendMessage` is a deferred tool exposed in all modern sessions (verified CC 2.1.187).
   Load its schema with `ToolSearch("select:SendMessage")` before the first call.
+- Schema is IDENTICAL with the teams flag on (re-verified in a
+  `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` session, CC 2.1.187): `{to, message, summary}`,
+  and the full lead→teammate→peer→main round trip works with these exact shapes.
 
 ## Team primitives (teams harnesses only)
 
