@@ -152,23 +152,52 @@ def sh(cmd: list[str], timeout: int = 60) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
+# Warn-once: prints a warning the first time a given key is seen.
+_warned: set = set()
+
+def warn_once(key: str, msg: str) -> None:
+    if key not in _warned:
+        _warned.add(key)
+        print(f"⚠ {msg}")
+
+
 def git_sha() -> str:
     try:
-        return sh(["git", "rev-parse", "HEAD"]).stdout.strip()
-    except Exception:
+        r = sh(["git", "rev-parse", "HEAD"])
+        if r.returncode != 0:
+            warn_once("git_sha", f"git rev-parse failed (rc={r.returncode}); start/end SHA unavailable")
+            return ""
+        return r.stdout.strip()
+    except Exception as e:
+        warn_once("git_sha", f"git rev-parse failed ({e}); start/end SHA unavailable")
         return ""
 
 
 def workspace_hash(ignore_dir: str) -> str:
     """Fingerprint of the git working tree, excluding the loop's own state dir
-    (which changes every tick and would otherwise mask real stalls)."""
+    (which changes every tick and would otherwise mask real stalls).
+
+    Returns "" when git is unavailable or failing — a falsy value that lets
+    `bool(new_hash)` correctly disable file-change stall detection (the documented
+    no-git degrade path). Previously a non-git dir returned rc=128 with empty stdout
+    which hashed to a non-empty constant, so `files_changed` was permanently False
+    instead of correctly disabled."""
     excl = ignore_dir.rstrip("/")
     try:
-        lines = sh(["git", "status", "--porcelain"], 30).stdout.splitlines()
-        lines = [ln for ln in lines if excl not in ln]
-        diff = sh(["git", "diff", "HEAD", "--", ".", f":(exclude){excl}/**"], 30).stdout
-        return hashlib.sha256(("\n".join(lines) + diff).encode()).hexdigest()[:16]
-    except Exception:
+        r_status = sh(["git", "status", "--porcelain"], 30)
+        r_diff = sh(["git", "diff", "HEAD", "--", ".", f":(exclude){excl}/**"], 30)
+        if r_status.returncode != 0 or r_diff.returncode != 0:
+            warn_once("workspace_hash",
+                      f"git unavailable or failing (status rc={r_status.returncode}, "
+                      f"diff rc={r_diff.returncode}); file-change stall detection degraded "
+                      "— verifier-fingerprint and hard caps still bound the loop")
+            return ""
+        lines = [ln for ln in r_status.stdout.splitlines() if excl not in ln]
+        return hashlib.sha256(("\n".join(lines) + r_diff.stdout).encode()).hexdigest()[:16]
+    except Exception as e:
+        warn_once("workspace_hash",
+                  f"git unavailable or failing ({e}); file-change stall detection degraded "
+                  "— verifier-fingerprint and hard caps still bound the loop")
         return ""  # no git: file-change stall detection degrades; other caps still bound
 
 
@@ -293,10 +322,16 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str) -> bool:
     diff_stat = diff_full = ""
     if start_sha:
         try:
-            diff_stat = sh(["git", "diff", "--stat", start_sha], 60).stdout[-1500:]
-            diff_full = sh(["git", "diff", start_sha], 120).stdout[-6000:]
-        except Exception:
-            pass
+            r_stat = sh(["git", "diff", "--stat", start_sha], 60)
+            r_full = sh(["git", "diff", start_sha], 120)
+            if r_stat.returncode != 0 or r_full.returncode != 0:
+                print(f"⚠ judge: git diff unavailable (stat rc={r_stat.returncode}, "
+                      f"diff rc={r_full.returncode}); judging on verifier output only")
+            else:
+                diff_stat = r_stat.stdout[-1500:]
+                diff_full = r_full.stdout[-6000:]
+        except Exception as e:
+            print(f"⚠ judge: git diff unavailable ({e}); judging on verifier output only")
     prompt = (
         "You are a strict completion validator. Answer with a single word: DONE or NOT_DONE.\n\n"
         f"Task:\n{cfg.task}\n\nVerifier output (it passed):\n{verifier_output[-2000:]}\n\n"
@@ -311,14 +346,35 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str) -> bool:
     return res["ok"] and "DONE" in up and "NOT_DONE" not in up
 
 
-def git_commit_scoped(message: str, ignore_dir: str) -> None:
-    """Commit the agent's work, never the loop's own state (or anything under it)."""
+def git_commit_scoped(message: str, ignore_dir: str) -> str:
+    """Commit the agent's work, never the loop's own state (or anything under it).
+
+    Returns:
+        "committed" — a new commit was created.
+        "nothing"   — nothing to commit (clean tree after add).
+        "failed"    — add or commit failed; warning printed (non-fatal — the loop
+                      continues; durability is best-effort, never crash on a commit).
+    """
     try:
-        sh(["git", "add", "-A", "--", ".", f":(exclude){ignore_dir}/**",
-            f":(exclude){ignore_dir}"], 60)
-        sh(["git", "commit", "-m", message, "--no-verify"], 60)
-    except Exception:
-        pass  # durability is best-effort; never crash the loop on a commit failure
+        r_add = sh(["git", "add", "-A", "--", ".", f":(exclude){ignore_dir}/**",
+                    f":(exclude){ignore_dir}"], 60)
+        if r_add.returncode != 0:
+            detail = (r_add.stderr.strip().splitlines() or ["(no stderr)"])[0]
+            print(f"⚠ commit failed (non-fatal): git add rc={r_add.returncode}: {detail}")
+            return "failed"
+        r_commit = sh(["git", "commit", "-m", message, "--no-verify"], 60)
+        if r_commit.returncode != 0:
+            out = (r_commit.stdout + r_commit.stderr).strip()
+            if "nothing to commit" in out:
+                return "nothing"
+            detail = (r_commit.stderr.strip().splitlines() or
+                      r_commit.stdout.strip().splitlines() or ["(no output)"])[0]
+            print(f"⚠ commit failed (non-fatal): {detail}")
+            return "failed"
+        return "committed"
+    except Exception as e:
+        print(f"⚠ commit failed (non-fatal): {e}")
+        return "failed"
 
 
 # =============================================================================
@@ -479,8 +535,11 @@ def run_loop(cfg: LoopConfig) -> dict:
         })
         state.save(state_path)
         if cfg.commit and files_changed:
-            git_commit_scoped(f"loop({task_id}): iteration {state.iteration} [autonomous]",
-                              ignore_dir)
+            commit_status = git_commit_scoped(
+                f"loop({task_id}): iteration {state.iteration} [autonomous]", ignore_dir)
+            if commit_status == "failed":
+                state.history[-1]["commit_failed"] = True
+                state.save(state_path)
 
         # --- Completion ----------------------------------------------------------
         if verified:

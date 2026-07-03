@@ -178,6 +178,52 @@ env -u CLAUDE_CODE_RETRY_WATCHDOG python3 "$SCRIPTS/loop.py" "noop" --task-id no
 check "no fallback flag by default"  "$(grep -c -- '--fallback-model' "$REC2")" "0"
 check "watchdog unset by default"    "$(grep -c 'WATCHDOG: unset' "$REC2")" "1"
 
+echo "== 13. git error degrade: non-git dir returns safe empty values =="
+NOGIT="$(mktemp -d)"   # NOT a git repo — git commands return rc=128
+cd "$NOGIT"
+
+# workspace_hash returns "" in a non-git dir (fixes latent bug: previously hashed
+# empty stdout to a non-empty constant, making files_changed permanently False).
+# Use tail -1 to get just the repr line (warn_once prints before the return value).
+WH=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from loop import workspace_hash, _warned
+_warned.clear()
+print(repr(workspace_hash('x')))
+" 2>/dev/null | tail -1)
+check "workspace_hash returns empty string in non-git dir" "$WH" "''"
+
+# degraded warning is printed (and only once across two calls)
+WH_OUT=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from loop import workspace_hash, _warned
+_warned.clear()
+workspace_hash('x')
+workspace_hash('x')
+" 2>&1)
+check "workspace_hash prints stall-detection-degraded warning" \
+  "$(echo "$WH_OUT" | grep -c 'stall detection degraded')" "1"
+
+# git_commit_scoped returns "failed" in a non-git dir
+CS_OUT=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from loop import git_commit_scoped
+print(git_commit_scoped('msg', '.loop'))
+" 2>&1)
+check "git_commit_scoped returns failed in non-git dir" \
+  "$(echo "$CS_OUT" | tail -1)" "failed"
+check "git_commit_scoped prints commit-failed warning in non-git dir" \
+  "$(echo "$CS_OUT" | grep -c 'commit failed')" "1"
+
+# git_sha returns "" in a non-git dir; use tail -1 to get just the repr line
+GS=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from loop import git_sha, _warned
+_warned.clear()
+print(repr(git_sha()))
+" 2>/dev/null | tail -1)
+check "git_sha returns empty string in non-git dir" "$GS" "''"
+
 echo
 echo "================= $PASS passed, $FAIL failed ================="
 exit $([[ $FAIL -eq 0 ]] && echo 0 || echo 1)

@@ -2,6 +2,42 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.7.1]
+
+### Fixed
+- **SendMessage `message` param — `body` was never valid.** Every teammate message
+  across the cycle was failing `InputValidationError` at runtime because the corpus
+  documented `SendMessage({to, body})` when the real parameter is `message`. All ~30
+  call sites in 14 skill/agent files renamed `body:` → `message:`. `harness-call-contracts.md`
+  updated with a full `## SendMessage` section (schema re-verified live, CC 2.1.187,
+  2026-07-03) explicitly stating `body` is invalid. New lint checks 8/9/10 in
+  `tests/lib/harness-call-shapes.test.sh` enforce `message` presence and `body` absence
+  in every `SendMessage({` window going forward.
+- **Agent `run_in_background` removed from mapper bootstrap templates.** The two
+  `Agent` call templates in `codebase-map-bootstrap.md` carried `run_in_background:
+  true`, which is not a real parameter and causes `InputValidationError`. Removed;
+  the section now explains that subagents are backgrounded by the harness itself
+  (CC changelog 2.1.198) and parallel fan-out is achieved by issuing multiple `Agent`
+  calls in one message. `harness-call-contracts.md` Agent section updated accordingly.
+  Lint check 8 enforces no `run_in_background` in the corpus.
+- **`loop.py` git failures are now loud instead of silent.** Previously every git
+  error was swallowed by a bare `except: pass`, silently degrading the loop:
+  - `git_commit_scoped` now checks returncodes of both `git add` and `git commit`,
+    prints `⚠ commit failed (non-fatal): <reason>`, and returns `"committed"` |
+    `"nothing"` | `"failed"`. The `run_loop` caller sets
+    `state.history[-1]["commit_failed"] = True` on failure and re-saves state.
+  - `git_sha` now checks returncode; on failure it warns once and returns `""`.
+  - `workspace_hash` now checks returncodes of both git calls; on failure it warns
+    once and returns `""`. This also fixes a latent bug: a non-git directory returned
+    `rc=128` with empty stdout, which hashed to a non-empty constant so
+    `files_changed` was permanently `False` instead of correctly disabled.
+  - `judge_done` now prints a warning when the git diff fetch fails, and continues
+    with empty diffs (judges on verifier output only).
+  - A `warn_once(key, msg)` helper (module-level `_warned: set`) ensures degradation
+    warnings print exactly once per process, not once per iteration.
+  - New section 13 in `skills/loop-runner/tests/run_tests.sh` verifies all four
+    behaviors in a non-git temp dir (38 checks total, all passing).
+
 ## [2.7.0]
 
 ### Added
