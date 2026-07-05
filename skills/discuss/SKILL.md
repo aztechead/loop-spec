@@ -57,6 +57,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add \
 
 Facts about external systems presented in questions or `AskUserQuestion` options must carry their `EVID-NNN` citation or be phrased as explicit assumptions (e.g. "assuming X — probe: `<cmd>` — is this right?"). Autonomous and non-interactive styles self-run probes and never block on a user question; if a probe is impossible, record `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md` and proceed.
 
+**Ask the corner question (required, once per design shape).** Before the design settles, ask: "what is the most likely next change to this feature — a new param, a new case, a new caller, a scale step — and does the proposed shape absorb it as a local diff?" Ground the candidate next-changes in the graph (ripple paths, god nodes). If the likely change would ripple broadly, surface the boundary that fixes it as an option (interactive: an `AskUserQuestion` choice; auto: resolve as a recorded assumption). This asks for a seam — a clean boundary, an injected dependency — never for built-out speculation; canonical reference `skills/shared/design-for-change.md`.
+
 - Non-AUTO styles: full conversation in main thread, no cap on rounds
 - AUTO style: cap at 5 Q rounds, then proceed regardless
 - **Present design/approach decisions as structured `AskUserQuestion` multiple-choice with explicit tradeoffs, not prose.** Whenever a question has discernible options (library choice, scope cut, data shape, integration point), surface them as numbered options so the user can steer with one click. Reserve free-text questions for genuinely open prompts. This applies to every `AskUserQuestion` escalation in this phase (Step 5 reconciliation included).

@@ -156,6 +156,14 @@ input validation at trust boundaries, error handling that prevents data loss, se
 accessibility, or anything the spec requires. Non-trivial logic leaves ONE runnable check
 behind. Mark deliberate shortcuts with a `simplicity:` comment naming the ceiling.
 
+DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task's stated
+interface, not an implementation detail; one unit, one reason to change. New units receive
+their collaborators (params/args/env), never construct them deep inside. Never cut a seam
+to save lines, and never build speculation behind one (YAGNI cuts artifacts, not seams).
+Bug-fix tasks: after the root cause is fixed, sweep callers, copy-pasted patterns, and
+parallel paths for the same mechanism; fix same-cause siblings within the task's files
+scope, report the rest.
+
 Step 1 - Create the task worktree (skip if it already exists):
   git -C "{featureWorktreeRoot}" worktree add "{worktree_path}" -b "task/{taskId}-{slug}" "feat/{slug}"
 
@@ -267,6 +275,12 @@ add no new one for what a few lines do; (6) one line? one line; (7) only then th
 that works. Ladder runs AFTER understanding the problem; bug fix = root cause not symptom.
 NEVER cut validation at trust boundaries, data-loss error handling, security, accessibility,
 or anything the spec requires. Non-trivial logic leaves ONE runnable check behind.
+
+DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task's stated
+interface; one unit, one reason to change; new units receive collaborators (params/args/env),
+never construct them deep inside. Never cut a seam to save lines, never build speculation
+behind one. Bug-fix tasks: sweep for the same mechanism (callers, copies, parallel paths)
+and fix same-cause siblings in scope; report the rest.
 
 Repo: {repo}
 Repo path: {abs_repo}   (absolute; all git and file operations target this directory)

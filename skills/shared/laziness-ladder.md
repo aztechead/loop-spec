@@ -27,6 +27,13 @@ the canonical compact text below in sync with the skill. The session-level copy 
 > then, the minimum code that works. The ladder runs AFTER you understand the problem, never
 > instead of it. Bug fix = root cause, not symptom (fix the shared function once). NEVER cut
 > input validation at trust boundaries, error handling that prevents data loss, security,
-> accessibility, or anything the spec explicitly requires. Non-trivial logic leaves ONE
-> runnable check behind. Mark deliberate shortcuts with a `simplicity:` comment naming the
-> ceiling and upgrade path.
+> accessibility, or anything the spec explicitly requires. A seam (a clean boundary, an
+> injected dependency) is not bloat — cutting it is not simplification. Non-trivial logic
+> leaves ONE runnable check behind. Mark deliberate shortcuts with a `simplicity:` comment
+> naming the ceiling and upgrade path.
+
+## Companion directive
+
+The ladder governs how much code exists; `skills/shared/design-for-change.md` (seams,
+not speculation) governs where its boundaries sit. The two never conflict: YAGNI cuts
+speculative artifacts, never seams.

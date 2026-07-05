@@ -66,6 +66,7 @@ Repeat until idle:
    - For exact requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
    - Modify only the files listed in `metadata.files`.
    - **Climb the ponytail laziness ladder** (`skills/shared/laziness-ladder.md`): YAGNI -> reuse what's already here -> stdlib -> native -> installed dep -> one line -> minimum that works. Write the shortest code that satisfies `metadata.acceptanceCriteria`; no speculative extras, no abstraction with one caller. Never cut validation/error-handling/security/accessibility the spec requires.
+   - **Design for change (seams, not speculation)** (`skills/shared/design-for-change.md`): design to the task's stated interface, one unit one reason to change, new units receive collaborators (params/args/env) instead of constructing them deep inside. Never cut a seam to save lines, never build speculation behind one. Bug-fix tasks: sweep callers/copies/parallel paths for the same mechanism, fix same-cause siblings in scope, report the rest.
    - On rework: read the most recent `REWORK NEEDED` message from the reviewer and apply the listed fixes.
 6. **Verify** by running the verify command from the task metadata:
    ```

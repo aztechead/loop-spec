@@ -6,6 +6,7 @@
 - **Graphify is a hard requirement.** loop-spec's de-facto code-graph solution is [graphify](https://github.com/safishamsi/graphify) (PyPI `graphifyy`, `uv tool install graphifyy`, needs Python 3.10+). The cycle aborts at startup if it is missing (`lib/graphify-preflight.sh check`); the design phases (SPEC/DISCUSS/PLAN) query the graph (`graphify query|path|explain`, `graphify-out/GRAPH_REPORT.md`) to ground their work. Escape hatch for constrained environments: `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded Glob/Grep fallback). The offline test suite never invokes the cycle, so it does not require graphify.
 - **Skills are code.** Don't restructure tested skill content without eval evidence.
 - **Spec-driven self-host.** All non-trivial changes go through the cycle skill.
+- **Design for change: seams, not speculation.** Design to an interface, not an implementation; one unit, one reason to change; units receive their collaborators (params/args/env) instead of constructing them deep inside. Place boundaries where change is likely so the next tweak is a local diff — but never build speculation behind a seam (YAGNI cuts artifacts, never seams). Tests come first (TDD), simplicity beats cleverness, and a confirmed root cause gets a sibling sweep — same mechanism fixed in the same change, new mechanisms backlogged. Canonical: `skills/shared/design-for-change.md`, enforced by `tests/design-coverage.test.sh`.
 
 ## Adding a Skill
 

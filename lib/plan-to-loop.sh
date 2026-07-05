@@ -111,7 +111,19 @@ for t in tasks:
         'anything the spec requires. Non-trivial logic leaves ONE runnable check behind. '
         'Mark deliberate shortcuts with a simplicity: comment.'
     )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', f'TASK {raw}: {brief}', '']
+
+    # Design-for-change directive (canonical: skills/shared/design-for-change.md).
+    # Travels with the ladder: the loop-runner worker sees only its prompt.
+    design = (
+        'DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task\'s '
+        'stated interface, not an implementation detail; one unit, one reason to change. '
+        'New units receive their collaborators (params/args/env), never construct them deep '
+        'inside. Never cut a seam to save lines, and never build speculation behind one '
+        '(YAGNI cuts artifacts, not seams). Bug-fix tasks: after the root cause is fixed, '
+        'sweep callers, copy-pasted patterns, and parallel paths for the same mechanism; '
+        'fix same-cause siblings within the task files scope, report the rest.'
+    )
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', f'TASK {raw}: {brief}', '']
     if criteria:
         lines.append('Acceptance criteria (ALL must hold; the verify command is the contract):')
         lines += [f'- {c}' for c in criteria]

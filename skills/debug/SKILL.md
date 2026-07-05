@@ -1,6 +1,6 @@
 ---
 name: debug
-description: Spec-driven debugging loop for a specific error (message/stack/failing test) OR a non-specific symptom ("something's wrong", flaky, slow). TRIAGE converges vague symptoms to one reproducible signal; REPRODUCE writes the failing oracle before any fix; a bounded FIX loop (max 5 hypotheses, 3 attempts each) closes it; VERIFY runs the full suite + test-tamper scan and keeps the repro as a regression test. Writes docs/loop-spec/debug/{slug}/BUG.md.
+description: Spec-driven debugging loop for a specific error (message/stack/failing test) OR a non-specific symptom ("something's wrong", flaky, slow). TRIAGE converges vague symptoms to one reproducible signal; REPRODUCE writes the failing oracle before any fix; a bounded FIX loop (max 5 hypotheses, 3 attempts each) closes it; a mandatory SIBLING SWEEP fixes same-mechanism occurrences in the same branch; VERIFY runs the full suite + test-tamper scan and keeps the repro as a regression test. Writes docs/loop-spec/debug/{slug}/BUG.md.
 argument-hint: "<error text | stack trace | failing test | vague symptom description>"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
@@ -145,6 +145,30 @@ For each hypothesis, in ranked order:
    first; autonomous: hand off and record). The debug loop fixes bugs; it does not
    smuggle features.
 
+## Step 3b - SIBLING SWEEP (mandatory after CONFIRMED)
+
+A confirmed root cause is rarely alone: the same mechanism tends to recur in sibling
+code. This step is not optional and not budget-ticked — the hypothesis is already
+CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
+
+1. **Sweep for the same mechanism** (canonical reference
+   `skills/shared/design-for-change.md`): grep every caller of the fixed function,
+   grep for copy-pasted instances of the flawed pattern, and walk `graphify query` /
+   `graphify path` from the fixed site to parallel code paths that share the mechanism.
+2. **Same mechanism found elsewhere → fix it in the same branch.** A sibling is covered
+   by the already-confirmed hypothesis; apply the same minimal fix, extend the
+   regression coverage where the sibling is independently reachable, and re-run the
+   verify battery from Step 3.4. The scope tripwire (Step 3.5) still applies: siblings
+   that push the fix to feature scale escalate to the cycle instead.
+3. **Different mechanism found during the sweep → it is a new bug, not a sibling.**
+   Record it under `## Deferred` (offer `lib/backlog.sh add`); do not fix it in this
+   branch — mixing mechanisms makes the diff unreviewable.
+4. **Record the sweep in BUG.md `## Sibling sweep`:** the commands run, every site
+   examined, and the verdict per site (`FIXED-SIBLING: <file:line>`,
+   `CLEAN: <file:line>`, or `DEFERRED-NEW-BUG: <file:line>`). An empty sweep section is
+   a defect: "no siblings" is a claim the commands must back. The loop does not
+   advance to VERIFY without this section populated.
+
 ## Step 4 - VERIFY and land
 
 1. **Keep the repro as a regression test** — it lands in the test suite, named after
@@ -176,6 +200,7 @@ For each hypothesis, in ranked order:
 ## Reproduction         <- command, red output verbatim, exit code
 ## Hypothesis log       <- H1..H5: mechanism, evidence, verdict (REFUTED/CONFIRMED), attempts
 ## Fix                  <- root cause, change, why sufficient
+## Sibling sweep        <- commands run, sites examined, verdict per site (FIXED-SIBLING/CLEAN/DEFERRED-NEW-BUG)
 ## Deferred             <- findings out of scope for this fix (backlog candidates)
 ```
 
@@ -190,6 +215,7 @@ spec draft if the bug escalates to a full cycle.
 | Fix attempts per hypothesis | 3 |
 | Triage sources before instrumented-stop | 5 |
 | Flaky-oracle battery | N-run, matched pre/post |
+| Sibling sweep after CONFIRMED fix | mandatory; same mechanism = same branch, new mechanism = deferred |
 
 The loop always terminates in one of: fixed-and-verified, instrumented-and-waiting,
 escalated-to-cycle, or budget-spent-with-evidence. Never in silent thrash.

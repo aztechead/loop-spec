@@ -38,10 +38,16 @@ You review the full feature diff for code quality and security.
    - `native:` a dependency or code doing what the platform/shell/git already does. Name the feature.
    - `yagni:` abstraction with one implementation, factory with one product, config nobody sets, layer with one caller.
    - `shrink:` same logic, fewer lines. Show the shorter form.
-   Do NOT flag the ponytail minimum as bloat: a single smoke test or `assert`-based self-check, or an accepted `simplicity:`-marked shortcut, is intentional — leave it. End this pass with `net: -<N> lines possible` (or `Lean already` if nothing cuts). This pass lists; it never rewrites.
-7. Classify remaining findings:
+   Do NOT flag the ponytail minimum as bloat: a single smoke test or `assert`-based self-check, or an accepted `simplicity:`-marked shortcut, is intentional — leave it. A seam is NOT bloat: a clean boundary or an injected dependency (a unit receiving its collaborators as params/args/env) is exempt from `yagni:` — only built-out speculation behind a seam (a second implementation nobody asked for, a factory for one product, config nobody sets) gets flagged. End this pass with `net: -<N> lines possible` (or `Lean already` if nothing cuts). This pass lists; it never rewrites.
+7. **Design-for-change pass** (companion to step 6; canonical reference `skills/shared/design-for-change.md`). The over-engineering pass asks "is there too much code?"; this pass asks "are the boundaries in the wrong place?". Report each as **Important** with file:line, one line per finding. Tags:
+   - `couple:` a unit reaching into another unit's internals instead of its boundary, or one unit carrying two reasons to change (separation-of-concerns violation).
+   - `corner:` a change pattern the diff makes expensive — adding the next obvious param/case/caller would require shotgun edits across files. Name the missing or misplaced boundary.
+   - `inject:` a dependency constructed deep inside a unit (hardcoded path, command, collaborator) that should be received via params/args/env — untestable in isolation.
+   - `iface:` a consumer depending on an implementation detail (internal field, private helper, output format quirk) rather than the stated interface.
+   This pass lists; it never rewrites. Findings here and in step 6 must not contradict: do not demand a seam be cut as bloat (step 6) and added as a boundary (this step) — the seam stays.
+8. Classify remaining findings:
    - **Critical**: security vulns (injection, auth bypass, secret leak), data loss risks, broken core invariants, SPEC Boundary/anti-goal violations, and any shortcut from step 5
-   - **Important**: bugs, perf regressions, missed test coverage, brittle code, over-engineering findings from step 6
+   - **Important**: bugs, perf regressions, missed test coverage, brittle code, over-engineering findings from step 6, design-for-change findings from step 7
    - **Minor**: style, clarity, naming, todo cleanup
 
 ## Tier-modulated severity threshold
@@ -61,5 +67,6 @@ You review the full feature diff for code quality and security.
 - **Critical**: list with file:line + description + suggested fix
 - **Important**: list
 - **Over-engineering**: tagged delete/stdlib/native/yagni/shrink lines + `net: -<N> lines possible` (`Lean already` if nothing cuts)
+- **Design-for-change**: tagged couple/corner/inject/iface lines (`Boundaries sound` if nothing flags)
 - **Minor (deferred)**: list of follow-up suggestions
 - **Security summary**: 1-paragraph
