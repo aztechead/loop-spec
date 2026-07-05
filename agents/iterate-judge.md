@@ -1,12 +1,14 @@
 ---
 name: iterate-judge
-description: Judges the integrated feature result against the ORIGINAL goal (not just the frozen SPEC checklist) and classifies the highest-leverage gap. Read-only; returns a structured verdict JSON. The maker never grades its own work — this is a fresh, strict checker.
+description: Judges the integrated feature result against the ORIGINAL goal (not just the frozen SPEC checklist) and classifies the highest-leverage gap. Read-only; returns a structured verdict JSON. The maker never grades its own work — this is a fresh, strict checker. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
 tools:
   - Read
   - Grep
   - Glob
   - Bash
 model: opus
+color: orange
+maxTurns: 30
 ---
 
 # iterate-judge

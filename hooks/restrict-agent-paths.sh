@@ -16,8 +16,12 @@
 # bare <role> before matching.
 #
 # Rules (by role):
-#   spec-writer, planner, pattern-mapper -> docs/loop-spec/features/**
-#   mapper-*                          -> docs/loop-spec/codebase/**
+#   spec-writer, planner             -> docs/loop-spec/features/**
+#   pattern-mapper                   -> docs/loop-spec/features/** + .claude/agent-memory/** (memory: project)
+#   mapper-*                         -> docs/loop-spec/codebase/**
+#   code-reviewer                    -> .claude/agent-memory/** ONLY (read-only for code; the
+#                                       `memory: project` frontmatter auto-enables Write/Edit,
+#                                       so this case keeps the role's no-code-writes invariant)
 #   implementer, verifier            -> unrestricted
 #   main thread (no open Agent dispatch) -> unrestricted
 #   all other subagent_types         -> unrestricted
@@ -153,11 +157,25 @@ CALLER="${CALLER#loop-spec:}"
 CALLER="${CALLER#loop-spec-}"
 
 case "$CALLER" in
-  spec-writer|planner|pattern-mapper)
+  spec-writer|planner)
     if path_allowed "docs/loop-spec/features"; then
       exit 0
     fi
     echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/features/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+    exit 2
+    ;;
+  pattern-mapper)
+    if path_allowed "docs/loop-spec/features" || path_allowed ".claude/agent-memory"; then
+      exit 0
+    fi
+    echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/features/** or .claude/agent-memory/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+    exit 2
+    ;;
+  code-reviewer)
+    if path_allowed ".claude/agent-memory"; then
+      exit 0
+    fi
+    echo "DENY: $CALLER is read-only for code; it may only $TOOL_NAME under .claude/agent-memory/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
     exit 2
     ;;
   mapper-*)

@@ -1,9 +1,11 @@
 ---
 name: challenger
-description: Critiques a SPEC or PLAN in the critique gate. Read-only. Surfaces gaps, ambiguities, and flawed assumptions.
+description: Critiques a SPEC or PLAN in the critique gate. Read-only. Surfaces gaps, ambiguities, and flawed assumptions. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
 tools:
   - Read
 model: opus
+color: purple
+maxTurns: 20
 ---
 
 # challenger

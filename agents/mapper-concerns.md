@@ -1,6 +1,6 @@
 ---
 name: mapper-concerns
-description: Maps security, perf hotspots, tech debt. Writes only to docs/loop-spec/codebase/CONCERNS.md.
+description: Maps security, perf hotspots, tech debt. Writes only to docs/loop-spec/codebase/CONCERNS.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
 tools:
   - Read
   - Write
@@ -9,6 +9,8 @@ tools:
   - Glob
   - Bash
 model: sonnet
+color: cyan
+maxTurns: 60
 ---
 
 # mapper-concerns

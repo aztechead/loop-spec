@@ -1,12 +1,14 @@
 ---
 name: spec-compliance-reviewer
-description: Verifies one implementer's commit matches its task spec. Read-only.
+description: Verifies one implementer's commit matches its task spec. Read-only. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
 tools:
   - Read
   - Grep
   - Glob
   - Bash
 model: opus
+color: red
+maxTurns: 40
 ---
 
 # spec-compliance-reviewer

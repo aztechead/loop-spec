@@ -123,7 +123,19 @@ for t in tasks:
         'sweep callers, copy-pasted patterns, and parallel paths for the same mechanism; '
         'fix same-cause siblings within the task files scope, report the rest.'
     )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', f'TASK {raw}: {brief}', '']
+
+    # Execution-discipline directive (canonical: skills/shared/execution-discipline.md).
+    # Travels with the ladder: the loop-runner worker sees only its prompt.
+    discipline = (
+        'EXECUTION DISCIPLINE (evidence over recall — on by default). You execute a brief a '
+        'stronger reasoning pass produced; your job is fidelity, not improvisation. Verify, '
+        'do not recall: never assert what a file/command does from memory — read it, run it, '
+        'paste the actual output. Surprise is signal: output contradicting expectation means '
+        'stop and revise, never explain away. Re-read the acceptance criteria before DONE and '
+        'check each against actual output. \"Should work\" / \"probably fine\" / \"tests likely '
+        'pass\" each mean run it now.'
+    )
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', discipline, '', f'TASK {raw}: {brief}', '']
     if criteria:
         lines.append('Acceptance criteria (ALL must hold; the verify command is the contract):')
         lines += [f'- {c}' for c in criteria]

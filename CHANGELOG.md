@@ -2,6 +2,38 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.8.0]
+
+### Added
+- **Design-for-change discipline (seams, not speculation).** New canonical directive
+  `skills/shared/design-for-change.md` — design to an interface not an implementation,
+  one unit one reason to change, dependency injection over deep construction, seams
+  placed where change is likely (YAGNI cuts artifacts, never seams), the corner test,
+  and the sibling sweep. Embedded in every design- and code-producing dispatch
+  (DISCUSS corner question, challenger corner/coupling checks, planner task shaping,
+  all implementer rungs, code-reviewer `couple:`/`corner:`/`inject:`/`iface:` pass);
+  the debug loop gains a mandatory Step 3b SIBLING SWEEP with a required BUG.md
+  section (same mechanism fixed in the same branch, new mechanisms deferred). Wiring
+  enforced by `tests/design-coverage.test.sh`.
+- **Execution discipline (evidence over recall).** New canonical directive
+  `skills/shared/execution-discipline.md` encoding frontier-model execution habits
+  for the mid-tier models that run EXECUTE/VERIFY: verify don't recall, surprise is
+  signal, re-read the contract before DONE, depth over breadth, artifacts over
+  memory, NEEDS_CONTEXT over confident filler, run-it-now tripwires. Embedded in
+  implementer/verifier agents and every EXECUTE rung (team prompt, subagent both
+  prompts, loop fleet, workflow DAG); enforced by
+  `tests/execution-discipline-coverage.test.sh`.
+- **Subagent-doc alignment (code.claude.com/docs/en/sub-agents).** All 14 agents
+  gain `maxTurns` (bounded-dispatch tripwire), role-family `color` coding, and a
+  delegation-guard description suffix (cycle agents assume a structured brief; the
+  guard stops Claude auto-delegating bare user requests to them). `code-reviewer`
+  and `pattern-mapper` gain `memory: project` (recurring findings / concept->analog
+  cache); since `memory` auto-enables Write/Edit, `hooks/restrict-agent-paths.sh`
+  gains `code-reviewer` (agent-memory ONLY) and `pattern-mapper` (features +
+  agent-memory) cases with test coverage. `tests/validate-agents.sh` now validates
+  `memory`/`color`/`maxTurns` values and rejects `hooks:`/`permissionMode:` (ignored
+  by Claude Code on plugin agents) alongside `skills:`/`mcpServers:`.
+
 ## [2.7.1]
 
 ### Fixed

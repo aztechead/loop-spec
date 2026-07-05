@@ -67,6 +67,7 @@ Repeat until idle:
    - Modify only the files listed in `metadata.files`.
    - **Climb the ponytail laziness ladder** (`skills/shared/laziness-ladder.md`): YAGNI -> reuse what's already here -> stdlib -> native -> installed dep -> one line -> minimum that works. Write the shortest code that satisfies `metadata.acceptanceCriteria`; no speculative extras, no abstraction with one caller. Never cut validation/error-handling/security/accessibility the spec requires.
    - **Design for change (seams, not speculation)** (`skills/shared/design-for-change.md`): design to the task's stated interface, one unit one reason to change, new units receive collaborators (params/args/env) instead of constructing them deep inside. Never cut a seam to save lines, never build speculation behind one. Bug-fix tasks: sweep callers/copies/parallel paths for the same mechanism, fix same-cause siblings in scope, report the rest.
+   - **Execution discipline (evidence over recall)** (`skills/shared/execution-discipline.md`): verify, don't recall — never assert what a file/command does from memory; read it, run it, paste the output. Surprise is signal — output contradicting expectation means stop and revise, never explain away. Re-read `metadata.acceptanceCriteria` before marking complete and check each against actual output. "Should work" / "probably fine" / "tests likely pass" each mean run it now.
    - On rework: read the most recent `REWORK NEEDED` message from the reviewer and apply the listed fixes.
 6. **Verify** by running the verify command from the task metadata:
    ```

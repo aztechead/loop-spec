@@ -140,6 +140,22 @@ else
   ((FAIL++)) || true
 fi
 
+# Case T: code-reviewer (memory-enabled, read-only for code) Write to source path -> DENY (exit 2)
+check "T: code-reviewer Write to src/foo.py DENY" 2 \
+  "$(payload "Write" "src/foo.py" "$FIXTURES/code-reviewer.jsonl")"
+
+# Case U: code-reviewer Write to its agent-memory dir -> ALLOW (exit 0)
+check "U: code-reviewer Write to .claude/agent-memory/code-reviewer/MEMORY.md ALLOW" 0 \
+  "$(payload "Write" ".claude/agent-memory/code-reviewer/MEMORY.md" "$FIXTURES/code-reviewer.jsonl")"
+
+# Case V: pattern-mapper Write to its agent-memory dir -> ALLOW (exit 0)
+check "V: pattern-mapper Write to .claude/agent-memory/pattern-mapper/notes.md ALLOW" 0 \
+  "$(payload "Write" ".claude/agent-memory/pattern-mapper/notes.md" "$FIXTURES/pattern-mapper.jsonl")"
+
+# Case W: code-reviewer Edit to absolute agent-memory path -> ALLOW (exit 0)
+check "W: code-reviewer Edit to /abs/proj/.claude/agent-memory/code-reviewer/MEMORY.md ALLOW" 0 \
+  "$(payload "Edit" "/abs/proj/.claude/agent-memory/code-reviewer/MEMORY.md" "$FIXTURES/code-reviewer.jsonl")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then
