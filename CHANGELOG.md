@@ -2,6 +2,86 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.7.1]
+
+### Fixed
+- **SendMessage `message` param — `body` was never valid.** Every teammate message
+  across the cycle was failing `InputValidationError` at runtime because the corpus
+  documented `SendMessage({to, body})` when the real parameter is `message`. All ~30
+  call sites in 14 skill/agent files renamed `body:` → `message:`. `harness-call-contracts.md`
+  updated with a full `## SendMessage` section (schema re-verified live, CC 2.1.187,
+  2026-07-03) explicitly stating `body` is invalid. New lint checks 8/9/10 in
+  `tests/lib/harness-call-shapes.test.sh` enforce `message` presence and `body` absence
+  in every `SendMessage({` window going forward.
+- **Agent `run_in_background` removed from mapper bootstrap templates.** The two
+  `Agent` call templates in `codebase-map-bootstrap.md` carried `run_in_background:
+  true`, which is not a real parameter and causes `InputValidationError`. Removed;
+  the section now explains that subagents are backgrounded by the harness itself
+  (CC changelog 2.1.198) and parallel fan-out is achieved by issuing multiple `Agent`
+  calls in one message. `harness-call-contracts.md` Agent section updated accordingly.
+  Lint check 8 enforces no `run_in_background` in the corpus.
+- **`loop.py` git failures are now loud instead of silent.** Previously every git
+  error was swallowed by a bare `except: pass`, silently degrading the loop:
+  - `git_commit_scoped` now checks returncodes of both `git add` and `git commit`,
+    prints `⚠ commit failed (non-fatal): <reason>`, and returns `"committed"` |
+    `"nothing"` | `"failed"`. The `run_loop` caller sets
+    `state.history[-1]["commit_failed"] = True` on failure and re-saves state.
+  - `git_sha` now checks returncode; on failure it warns once and returns `""`.
+  - `workspace_hash` now checks returncodes of both git calls; on failure it warns
+    once and returns `""`. This also fixes a latent bug: a non-git directory returned
+    `rc=128` with empty stdout, which hashed to a non-empty constant so
+    `files_changed` was permanently `False` instead of correctly disabled.
+  - `judge_done` now prints a warning when the git diff fetch fails, and continues
+    with empty diffs (judges on verifier output only).
+  - A `warn_once(key, msg)` helper (module-level `_warned: set`) ensures degradation
+    warnings print exactly once per process, not once per iteration.
+  - New section 13 in `skills/loop-runner/tests/run_tests.sh` verifies all four
+    behaviors in a non-git temp dir (38 checks total, all passing).
+
+### Hardened
+- **Per-tick subprocess timeout — a hung `claude -p` no longer wedges the loop.**
+  `run_claude` gains an optional `timeout: Optional[float] = None` param passed through
+  to `subprocess.run`; on `subprocess.TimeoutExpired` it writes whatever partial stdout
+  arrived (`e.stdout or ""`) to `raw_log` and returns a clean `{"ok": False, ...}` dict.
+  `run_loop` passes `timeout=max(MIN_TICK_TIMEOUT, cfg.timeout_s - elapsed)` so a
+  single hung tick cannot burn past the wall-clock cap; the outer timeout check still
+  fires at the next iteration boundary. `judge_done` uses `timeout=600`;
+  `compile_spec.py` uses `timeout=1800`. `MIN_TICK_TIMEOUT = 60.0` is a module-level
+  constant so tests can lower it via `loop.MIN_TICK_TIMEOUT = 1.0`.
+- **Loud judge-run failures.** Inside `judge_done`, a failed `run_claude` now prints
+  `⚠ judge run failed (<error>); treating as NOT_DONE` instead of silently returning
+  `False` and burning iterations with no trace — the same silent-error class as the
+  git failures fixed in the `### Fixed` section above.
+- **Supervisor survives worker exceptions (`supervisor_error` halt reason).** `run_task`
+  is wrapped in `try/except Exception`; any unhandled exception (including
+  `worktree_for`'s `RuntimeError`) now prints `⛔ {tid}: supervisor error: {e}` and
+  returns `halt_reason: "supervisor_error"` instead of propagating through
+  `fut.result()` and crashing the fleet mid-flight with no `fleet-result.json`.
+  `supervisor_error` is not in `RETRYABLE` so it escalates — correct.
+- **Corrupt `result.json` handled gracefully (retryable `agent_error`).** New
+  `read_result(res_path, tid, log)` helper in `supervisor.py` returns the existing
+  `agent_error` dict on missing file and a new `f"corrupt result.json ({e}) — see
+  {log}"` dict on `json.JSONDecodeError` or `OSError`. Replaces the inline
+  missing/parse logic in `run_task`. `agent_error` stays in `RETRYABLE` — correct
+  for a truncated file from an interrupted run.
+- **`git merge --abort` failure reported.** If `--abort` itself returns nonzero after
+  a merge conflict, the supervisor now prints `⛔ merge --abort also failed (rc=N) —
+  repository left mid-merge; resolve by hand before rerunning` instead of silently
+  leaving the repo in a broken state.
+- **Opt-in `--cleanup-worktrees` flag for `supervisor.py`.** Default off (behavior
+  unchanged). When set, each task's worktree and branch are removed after a successful
+  merge via `git worktree remove --force` + `git branch -d loop/<id>`. Failed tasks
+  keep their worktrees for inspection. A nonzero cleanup returncode prints a one-line
+  warning and continues.
+- **Agent `model` alias enum re-pinned with `fable`.**
+  `skills/shared/harness-call-contracts.md` now documents
+  `"sonnet" | "opus" | "haiku" | "fable"` (re-verified live CC 2.1.187, 2026-07-03),
+  keeping the "ALIAS ENUM — literal IDs REJECTED" note. `model-matrix.md` unchanged
+  (already open-ended).
+- New sections 14–15 in `skills/loop-runner/tests/run_tests.sh` (43 checks total,
+  all passing): hung-tick timeout (library API with `MIN_TICK_TIMEOUT` lowered to
+  1.0, `FAKE_HANG=15`) and `read_result` unit (missing + corrupt JSON cases).
+
 ## [2.7.0]
 
 ### Added

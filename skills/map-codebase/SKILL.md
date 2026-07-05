@@ -124,7 +124,7 @@ Send each spawned mapper its work prompt via `SendMessage`:
 ```
 SendMessage({
   to: "mapper-{domain}-1",
-  body: """
+  message: """
     mode: {full | incremental}
     since_sha: {since_sha if incremental}
     target_path: docs/loop-spec/codebase/{DOMAIN}.md
@@ -133,7 +133,7 @@ SendMessage({
     Run your mapping. You may SendMessage any other mapper by name to share intermediate
     findings (e.g. module boundaries, tech-stack observations) that would improve their
     output. When your domain doc is complete, send:
-      SendMessage({ to: "lead", body: "DOMAIN_DONE: {domain} files: [<list of inspected file paths>]" })
+      SendMessage({ to: "lead", message: "DOMAIN_DONE: {domain} files: [<list of inspected file paths>]" })
   """
 })
 ```

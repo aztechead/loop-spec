@@ -46,7 +46,7 @@ The implementer then:
 If no unblocked pending tasks exist, the implementer sends:
 
 ```
-SendMessage({to: "lead", body: "implementer-{N} idle: no available tasks"})
+SendMessage({to: "lead", message: "implementer-{N} idle: no available tasks"})
 ```
 
 Then goes idle. The lead will send a `SendMessage` wake when new tasks are unblocked; the implementer wakes automatically on receipt and re-runs from step 1.
@@ -80,9 +80,9 @@ Repeat until idle:
 4. **Run** `metadata.verifyCommand` from inside the task's worktree to confirm the implementation still passes.
 5. **Review** the implementation against `metadata.acceptanceCriteria` for spec compliance.
 6. **Outcome decision:**
-   - **Pass:** `TaskUpdate({taskId, status: "completed"})`, then `SendMessage({to: "lead", body: "REVIEW PASS: task-<id>"})`.
-   - **Fail (retry budget remaining):** `TaskUpdate({taskId, owner: null, metadata: {phase: "needs_rework", retries: <current+1>}})`, then `SendMessage({to: "<metadata.claimedBy>", body: "REWORK NEEDED: task-<id>\n{findings}"})`. Task stays `in_progress`; implementer picks it back up via the rework filter in their self-claim loop.
-   - **Fail (retry budget exhausted, i.e. `retries + 1 > maxRetriesPerTask` (fixed: 2)):** `TaskUpdate({taskId, status: "completed", metadata: {phase: null, result: "blocked"}})`, then `SendMessage({to: "lead", body: "TASK BLOCKED: task-<id> exceeded retry budget"})`. Marking the task `completed` (terminal status) keeps the harness task list moving forward; `metadata.result == "blocked"` flags it for the lead's exit-condition check to pause + escalate.
+   - **Pass:** `TaskUpdate({taskId, status: "completed"})`, then `SendMessage({to: "lead", message: "REVIEW PASS: task-<id>"})`.
+   - **Fail (retry budget remaining):** `TaskUpdate({taskId, owner: null, metadata: {phase: "needs_rework", retries: <current+1>}})`, then `SendMessage({to: "<metadata.claimedBy>", message: "REWORK NEEDED: task-<id>\n{findings}"})`. Task stays `in_progress`; implementer picks it back up via the rework filter in their self-claim loop.
+   - **Fail (retry budget exhausted, i.e. `retries + 1 > maxRetriesPerTask` (fixed: 2)):** `TaskUpdate({taskId, status: "completed", metadata: {phase: null, result: "blocked"}})`, then `SendMessage({to: "lead", message: "TASK BLOCKED: task-<id> exceeded retry budget"})`. Marking the task `completed` (terminal status) keeps the harness task list moving forward; `metadata.result == "blocked"` flags it for the lead's exit-condition check to pause + escalate.
 7. Return to step 1 to claim the next `awaiting_review` task.
 
 ### Rework re-entry for implementers

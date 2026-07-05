@@ -14,13 +14,19 @@ peer messaging, and a shared task list all work. Only the *create/destroy* cerem
 is gone. The artifacts, gates, retry budgets, and result contracts are identical to
 the explicit-team path.
 
+Live-verified end to end on CC 2.1.187 with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+(2026-07-03): `TeamCreate`/`TeamDelete` absent from the tool surface; named
+`Agent({name})` spawns return mailbox agents (`<name>@session-<id>`); teammates see the
+shared task list, self-claim via `TaskUpdate({owner})`, and complete tasks; teammate→
+teammate and teammate→main `SendMessage({to, message, summary})` all deliver.
+
 ## Substitution table (explicit team op -> implicit equivalent)
 
 | Explicit-team primitive | Implicit-team equivalent |
 |---|---|
 | `TeamCreate({name, agents:[{name, subagent_type, model}, ...]})` | **No call.** The team already exists. Do not declare a roster up front. Record `feature.json.currentTeamName` (for resume bookkeeping) but create nothing. |
 | Spawn a teammate + send its first work prompt | One `Agent({name: "<teammate-name>", description: "<short task label>", subagent_type, model, prompt: "<work prompt>"})` call. Passing `name` makes the teammate persistent and addressable; the prompt that the explicit path delivered via the post-`TeamCreate` `SendMessage` becomes this spawn's `prompt`. |
-| `SendMessage({to, body})` rework / critique / notify | **Unchanged.** `SendMessage` still exists and addresses any live named teammate (lead-to-teammate and teammate-to-teammate). |
+| `SendMessage({to, message})` rework / critique / notify | **Unchanged.** `SendMessage` still exists and addresses any live named teammate (lead-to-teammate and teammate-to-teammate). |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | **Unchanged.** All teammates in the session-implicit team share the same task list; the EXECUTE self-claim model and the `team:`-scoped `TaskList` liveness probe work as written. |
 | `TeammateIdle` wake / idle protocol | **Unchanged.** Idle named teammates wake on `SendMessage` exactly as documented. |
 | `TeamDelete({name})` | **No call.** There is no team object to delete. At phase boundary just stop messaging the phase's teammates and clear `feature.json.currentTeamName`; the next phase spawns its own named teammates. |

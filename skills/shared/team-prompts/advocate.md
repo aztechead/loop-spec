@@ -32,16 +32,16 @@ Each round:
    - Do not ignore any raised point.
 4. Send your response to your debate partner:
    ```
-   SendMessage({to: "challenger-{N}", body: "<your point-by-point defense>"})
+   SendMessage({to: "challenger-{N}", message: "<your point-by-point defense>"})
    ```
 5. End the round with a message to lead:
    - If you have **no new issues** to raise in the next round:
      ```
-     SendMessage({to: "lead", body: "ROUND-{N} DONE: <summary of defenses and any conceded gaps this round>"})
+     SendMessage({to: "lead", message: "ROUND-{N} DONE: <summary of defenses and any conceded gaps this round>"})
      ```
    - If you still have **open issues or unresolved concessions**:
      ```
-     SendMessage({to: "lead", body: "ROUND-{N} DONE-WITH-ISSUES: <summary of findings and open issues>"})
+     SendMessage({to: "lead", message: "ROUND-{N} DONE-WITH-ISSUES: <summary of findings and open issues>"})
      ```
 
 ## "DONE" Semantics

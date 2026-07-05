@@ -67,11 +67,11 @@ Send advocate-1 and challenger-1 a warm-up brief so they load context concurrent
 ```
 SendMessage({
   to: "advocate-1",
-  body: "Warm-up only: read SPEC.md at {spec_path} and the codebase maps at docs/loop-spec/codebase/*.md now to load context. Do NOT read PLAN.md or PATTERNS.md yet -- they are still being authored and may not exist. Prepare your review checklist from the spec and maps, then go idle and wait for the lead's round-1 prompt with PLAN.md ready."
+  message: "Warm-up only: read SPEC.md at {spec_path} and the codebase maps at docs/loop-spec/codebase/*.md now to load context. Do NOT read PLAN.md or PATTERNS.md yet -- they are still being authored and may not exist. Prepare your review checklist from the spec and maps, then go idle and wait for the lead's round-1 prompt with PLAN.md ready."
 })
 SendMessage({
   to: "challenger-1",
-  body: "Warm-up only: read SPEC.md at {spec_path} and the codebase maps at docs/loop-spec/codebase/*.md now to load context. Do NOT read PLAN.md or PATTERNS.md yet -- they are still being authored and may not exist. Prepare your critique checklist from the spec and maps, then go idle and wait for the lead's round-1 prompt."
+  message: "Warm-up only: read SPEC.md at {spec_path} and the codebase maps at docs/loop-spec/codebase/*.md now to load context. Do NOT read PLAN.md or PATTERNS.md yet -- they are still being authored and may not exist. Prepare your critique checklist from the spec and maps, then go idle and wait for the lead's round-1 prompt."
 })
 ```
 
@@ -104,7 +104,7 @@ Model: `feature.models.planner` (resolved once at cycle Step 5; do not re-derive
 ```
 SendMessage({
   to: "planner-1",
-  body: """
+  message: """
     You are planner-1 in team loop-spec-plan-{slug}.
 
     slug: {slug}
@@ -141,14 +141,14 @@ SendMessage({
          (fixed-string grep) matches.
 
     When done, send:
-      SendMessage({to: "lead", body: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
+      SendMessage({to: "lead", message: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
     then go idle.
   """
 })
 ```
 
 Wait for `TeammateIdle` from `planner-1`. If `planner-1` goes idle without producing both `PATTERNS.md` and `PLAN.md`:
-- Send `SendMessage({to: "planner-1", body: "Check docs/loop-spec/features/{slug}/PATTERNS.md and docs/loop-spec/features/{slug}/PLAN.md -- one or both are missing. Produce any missing files now and include tasks[] JSON in your completion message."})` once.
+- Send `SendMessage({to: "planner-1", message: "Check docs/loop-spec/features/{slug}/PATTERNS.md and docs/loop-spec/features/{slug}/PLAN.md -- one or both are missing. Produce any missing files now and include tasks[] JSON in your completion message."})` once.
 - If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors PATTERNS.md + PLAN.md itself from the same brief and continues, noting `lead-authored` in `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
 
 On `PATTERNS.md and PLAN.md written` message received: update `feature.json` via `lib/feature-write.sh`:
@@ -191,7 +191,7 @@ Model: `feature.models.advocate`.
 ```
 SendMessage({
   to: "advocate-1",
-  body: """
+  message: """
     [Populate from skills/shared/team-prompts/advocate.md with these substitutions:
       {slug} = slug
       {N} = 1
@@ -214,7 +214,7 @@ Model: `feature.models.challenger`.
 ```
 SendMessage({
   to: "challenger-1",
-  body: """
+  message: """
     [Populate from skills/shared/team-prompts/challenger.md with these substitutions:
       {slug} = slug
       {N} = 1
@@ -262,8 +262,8 @@ For each round N = 1 .. maxCritiqueRounds:
    - **Cap reached**: N == maxCritiqueRounds. Record `notes: "cap reached"` in gateHistory. Break loop.
    - Otherwise: N += 1. Send `SendMessage` to both teammates starting round N+1:
      ```
-     SendMessage({to: "challenger-1", body: "Start round {N+1}. Read PLAN.md and send your round {N+1} critique to advocate-1."})
-     SendMessage({to: "advocate-1", body: "Round {N+1} starting. Wait for challenger-1's critique, then respond."})
+     SendMessage({to: "challenger-1", message: "Start round {N+1}. Read PLAN.md and send your round {N+1} critique to advocate-1."})
+     SendMessage({to: "advocate-1", message: "Round {N+1} starting. Wait for challenger-1's critique, then respond."})
      ```
 
 ### Step 4 - Synthesize fix-list
@@ -315,13 +315,13 @@ Re-dispatch planner-1 via `SendMessage` (not a fresh Agent call):
 ```
 SendMessage({
   to: "planner-1",
-  body: """
+  message: """
     PLAN.md needs revisions. Fix-list:
     {fix_list items, numbered}
 
     Read the current PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.
     Apply all items on the fix-list. Write the updated PLAN.md in place.
-    When done: SendMessage({to: "lead", body: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
+    When done: SendMessage({to: "lead", message: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
     then go idle.
   """
 })
@@ -399,13 +399,13 @@ When blocking: increment retry counters via `lib/feature-write.sh` (`retryBudget
 ```
 SendMessage({
   to: "planner-1",
-  body: """
+  message: """
     PLAN.md is missing coverage for the following decisions from the spec:
     {uncovered decisions list, one per line prefixed with "- "}
 
     Read the current PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.
     Revise PLAN.md so each listed decision is explicitly addressed.
-    When done: SendMessage({to: "lead", body: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
+    When done: SendMessage({to: "lead", message: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
     then go idle.
   """
 })

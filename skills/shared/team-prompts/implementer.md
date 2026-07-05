@@ -78,7 +78,7 @@ Repeat until idle:
    - If no reviewer is assigned in the roster: mark complete directly:
      ```
      TaskUpdate({taskId: "<id>", status: "completed"})
-     SendMessage({to: "lead", body: "REVIEW PASS: task-<id>"})
+     SendMessage({to: "lead", message: "REVIEW PASS: task-<id>"})
      ```
    - Otherwise: release ownership and flag for review. Status stays `in_progress`:
      ```
@@ -91,7 +91,7 @@ Repeat until idle:
 If the combined query in Step 1 yields nothing:
 
 ```
-SendMessage({to: "lead", body: "implementer-{N} idle: no available tasks"})
+SendMessage({to: "lead", message: "implementer-{N} idle: no available tasks"})
 ```
 
 Then go idle. Do not loop-poll. The lead will send you a message via `SendMessage` when new tasks are unblocked or when rework is queued; you will wake automatically on receipt and re-run the self-claim loop from step 1.

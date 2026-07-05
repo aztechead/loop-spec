@@ -50,6 +50,20 @@ def sh(cmd: list[str], cwd: Path, timeout: int = 300) -> subprocess.CompletedPro
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
 
 
+def read_result(res_path: Path, tid: str, log: Path) -> dict:
+    """Parse result.json; return an agent_error dict on missing or corrupt file."""
+    if not res_path.exists():
+        return {"task_id": tid, "status": "halted", "halt_reason": "agent_error",
+                "cost_usd": 0.0, "iterations": 0,
+                "error": f"no result.json — see {log}"}
+    try:
+        return json.loads(res_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        return {"task_id": tid, "status": "halted", "halt_reason": "agent_error",
+                "cost_usd": 0.0, "iterations": 0,
+                "error": f"corrupt result.json ({e}) — see {log}"}
+
+
 class Supervisor:
     def __init__(self, plan: dict, repo: Path, args):
         self.plan = plan
@@ -85,7 +99,10 @@ class Supervisor:
         r = sh(["git", "merge", "--no-ff", "-m", f"loop({tid}): merge autonomous work",
                 f"loop/{tid}"], self.repo)
         if r.returncode != 0:
-            sh(["git", "merge", "--abort"], self.repo)
+            ra = sh(["git", "merge", "--abort"], self.repo)
+            if ra.returncode != 0:
+                print(f"⛔ merge --abort also failed (rc={ra.returncode}) — repository left "
+                      f"mid-merge; resolve by hand before rerunning")
             print(f"⛔ merge conflict bringing loop/{tid} into base — tasks that the "
                   f"plan called independent touched the same code. Halting fleet; "
                   f"resolve by hand or recompile the plan with a dep between them.")
@@ -95,77 +112,77 @@ class Supervisor:
 
     # ------------------------------------------------------------------ workers
     def run_task(self, tid: str) -> dict:
-        t = self.tasks[tid]
-        wt = self.repo if self.args.no_worktree else self.worktree_for(tid)
+        try:
+            t = self.tasks[tid]
+            wt = self.repo if self.args.no_worktree else self.worktree_for(tid)
 
-        attempt, nudge = 0, ""
-        while True:
-            attempt += 1
-            with self.lock:
-                remaining = self.fleet_budget - self.spent
-            if remaining <= 0:
-                return {"task_id": tid, "status": "halted", "halt_reason": "fleet_budget",
-                        "cost_usd": 0.0, "iterations": 0}
-            budget = min(float(t.get("budget_usd", 4.0)), remaining)
+            attempt, nudge = 0, ""
+            while True:
+                attempt += 1
+                with self.lock:
+                    remaining = self.fleet_budget - self.spent
+                if remaining <= 0:
+                    return {"task_id": tid, "status": "halted", "halt_reason": "fleet_budget",
+                            "cost_usd": 0.0, "iterations": 0}
+                budget = min(float(t.get("budget_usd", 4.0)), remaining)
 
-            cfg = {
-                "task": t["prompt"] + nudge,
-                "task_id": tid,
-                "verify": t["verify"],
-                "protected": t.get("protected", []),
-                "budget_usd": budget,
-                "max_iterations": int(t.get("max_iterations", 10)),
-                "timeout_s": int(t.get("timeout_s", self.args.task_timeout)),
-                "mode": t.get("mode", "fresh"),
-                "allowed_tools": t.get("allowed_tools", "Read,Edit,Bash"),
-                "claude_bin": self.args.claude_bin,
-                "commit": True,           # durability: each productive tick is a commit
-                "reset": attempt > 1,     # retries start clean but keep the nudge
-            }
-            if self.args.model:
-                cfg["model"] = self.args.model
-            if self.args.fallback_model:
-                cfg["fallback_model"] = self.args.fallback_model
-            if self.args.retry_watchdog:
-                cfg["retry_watchdog"] = self.args.retry_watchdog
-            cfg_path = wt / ".loop" / f"{tid}.config.json"
-            cfg_path.parent.mkdir(parents=True, exist_ok=True)
-            cfg_path.write_text(json.dumps(cfg, indent=2))
+                cfg = {
+                    "task": t["prompt"] + nudge,
+                    "task_id": tid,
+                    "verify": t["verify"],
+                    "protected": t.get("protected", []),
+                    "budget_usd": budget,
+                    "max_iterations": int(t.get("max_iterations", 10)),
+                    "timeout_s": int(t.get("timeout_s", self.args.task_timeout)),
+                    "mode": t.get("mode", "fresh"),
+                    "allowed_tools": t.get("allowed_tools", "Read,Edit,Bash"),
+                    "claude_bin": self.args.claude_bin,
+                    "commit": True,           # durability: each productive tick is a commit
+                    "reset": attempt > 1,     # retries start clean but keep the nudge
+                }
+                if self.args.model:
+                    cfg["model"] = self.args.model
+                if self.args.fallback_model:
+                    cfg["fallback_model"] = self.args.fallback_model
+                if self.args.retry_watchdog:
+                    cfg["retry_watchdog"] = self.args.retry_watchdog
+                cfg_path = wt / ".loop" / f"{tid}.config.json"
+                cfg_path.parent.mkdir(parents=True, exist_ok=True)
+                cfg_path.write_text(json.dumps(cfg, indent=2))
 
-            print(f"\n▶ {tid} (attempt {attempt}, budget ${budget:.2f}, "
-                  f"fleet ${self.spent:.2f}/${self.fleet_budget:.2f}) in {wt}")
-            log = wt / ".loop" / f"{tid}.supervisor.log"
-            with log.open("a") as lf:
-                subprocess.run([sys.executable, str(LOOP_PY), "--config", str(cfg_path)],
-                               cwd=wt, stdout=lf, stderr=subprocess.STDOUT)
+                print(f"\n▶ {tid} (attempt {attempt}, budget ${budget:.2f}, "
+                      f"fleet ${self.spent:.2f}/${self.fleet_budget:.2f}) in {wt}")
+                log = wt / ".loop" / f"{tid}.supervisor.log"
+                with log.open("a") as lf:
+                    subprocess.run([sys.executable, str(LOOP_PY), "--config", str(cfg_path)],
+                                   cwd=wt, stdout=lf, stderr=subprocess.STDOUT)
 
-            res_path = wt / ".loop" / tid / "result.json"
-            if not res_path.exists():
-                res = {"task_id": tid, "status": "halted", "halt_reason": "agent_error",
-                       "cost_usd": 0.0, "iterations": 0,
-                       "error": f"no result.json — see {log}"}
-            else:
-                res = json.loads(res_path.read_text())
+                res_path = wt / ".loop" / tid / "result.json"
+                res = read_result(res_path, tid, log)
 
-            with self.lock:
-                self.spent += float(res.get("cost_usd", 0.0))
+                with self.lock:
+                    self.spent += float(res.get("cost_usd", 0.0))
 
-            reason = res.get("halt_reason", "agent_error")
-            if res.get("status") == "complete":
+                reason = res.get("halt_reason", "agent_error")
+                if res.get("status") == "complete":
+                    return res
+                if reason in FLEET_FATAL:
+                    self.fleet_fatal = True
+                    return res
+                if reason in RETRYABLE and attempt <= self.args.retries:
+                    tail = ""
+                    vf = res.get("verifier", {}).get("last_output_file")
+                    if vf and Path(vf).exists():
+                        tail = Path(vf).read_text()[-1500:]
+                    nudge = (f"\n\n--- Retry context ---\nA previous autonomous attempt "
+                             f"halted with '{reason}'. Do not repeat the same approach. "
+                             f"Last verifier output:\n{tail}")
+                    continue
                 return res
-            if reason in FLEET_FATAL:
-                self.fleet_fatal = True
-                return res
-            if reason in RETRYABLE and attempt <= self.args.retries:
-                tail = ""
-                vf = res.get("verifier", {}).get("last_output_file")
-                if vf and Path(vf).exists():
-                    tail = Path(vf).read_text()[-1500:]
-                nudge = (f"\n\n--- Retry context ---\nA previous autonomous attempt "
-                         f"halted with '{reason}'. Do not repeat the same approach. "
-                         f"Last verifier output:\n{tail}")
-                continue
-            return res
+        except Exception as e:
+            print(f"⛔ {tid}: supervisor error: {e}")
+            return {"task_id": tid, "status": "halted", "halt_reason": "supervisor_error",
+                    "cost_usd": 0.0, "iterations": 0, "error": str(e)}
 
     # -------------------------------------------------------------------- fleet
     def run(self) -> int:
@@ -202,6 +219,17 @@ class Supervisor:
                             print(f"✓ {tid} complete and merged "
                                   f"(${res.get('cost_usd', 0):.2f}, "
                                   f"{res.get('iterations')} iters)")
+                            if self.args.cleanup_worktrees and not self.args.no_worktree:
+                                wt = self.wt_root / tid
+                                rr = sh(["git", "worktree", "remove", "--force", str(wt)],
+                                        self.repo)
+                                if rr.returncode != 0:
+                                    print(f"⚠ cleanup: worktree remove {wt} "
+                                          f"failed (rc={rr.returncode})")
+                                rb = sh(["git", "branch", "-d", f"loop/{tid}"], self.repo)
+                                if rb.returncode != 0:
+                                    print(f"⚠ cleanup: branch delete loop/{tid} "
+                                          f"failed (rc={rb.returncode})")
                         else:
                             failed.add(tid)
                     else:
@@ -266,6 +294,8 @@ def main() -> int:
     p.add_argument("--claude-bin", default="claude")
     p.add_argument("--no-worktree", action="store_true",
                    help="Run tasks in the repo itself (serial use only; no isolation).")
+    p.add_argument("--cleanup-worktrees", action="store_true", default=False,
+                   help="Remove each task's worktree and branch after a successful merge.")
     p.add_argument("--dry-run", action="store_true",
                    help="Validate the plan and print the schedule without running.")
     args = p.parse_args()

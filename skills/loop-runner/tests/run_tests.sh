@@ -178,6 +178,91 @@ env -u CLAUDE_CODE_RETRY_WATCHDOG python3 "$SCRIPTS/loop.py" "noop" --task-id no
 check "no fallback flag by default"  "$(grep -c -- '--fallback-model' "$REC2")" "0"
 check "watchdog unset by default"    "$(grep -c 'WATCHDOG: unset' "$REC2")" "1"
 
+echo "== 13. git error degrade: non-git dir returns safe empty values =="
+NOGIT="$(mktemp -d)"   # NOT a git repo — git commands return rc=128
+cd "$NOGIT"
+
+# workspace_hash returns "" in a non-git dir (fixes latent bug: previously hashed
+# empty stdout to a non-empty constant, making files_changed permanently False).
+# Use tail -1 to get just the repr line (warn_once prints before the return value).
+WH=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from loop import workspace_hash, _warned
+_warned.clear()
+print(repr(workspace_hash('x')))
+" 2>/dev/null | tail -1)
+check "workspace_hash returns empty string in non-git dir" "$WH" "''"
+
+# degraded warning is printed (and only once across two calls)
+WH_OUT=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from loop import workspace_hash, _warned
+_warned.clear()
+workspace_hash('x')
+workspace_hash('x')
+" 2>&1)
+check "workspace_hash prints stall-detection-degraded warning" \
+  "$(echo "$WH_OUT" | grep -c 'stall detection degraded')" "1"
+
+# git_commit_scoped returns "failed" in a non-git dir
+CS_OUT=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from loop import git_commit_scoped
+print(git_commit_scoped('msg', '.loop'))
+" 2>&1)
+check "git_commit_scoped returns failed in non-git dir" \
+  "$(echo "$CS_OUT" | tail -1)" "failed"
+check "git_commit_scoped prints commit-failed warning in non-git dir" \
+  "$(echo "$CS_OUT" | grep -c 'commit failed')" "1"
+
+# git_sha returns "" in a non-git dir; use tail -1 to get just the repr line
+GS=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from loop import git_sha, _warned
+_warned.clear()
+print(repr(git_sha()))
+" 2>/dev/null | tail -1)
+check "git_sha returns empty string in non-git dir" "$GS" "''"
+
+echo "== 14. hung-tick timeout: per-tick subprocess timeout kills a hung claude -p =="
+newrepo
+HUNG_OUT=$(FAKE_HANG=15 PYTHONPATH="$SCRIPTS" python3 - "$FAKE" << 'EOF'
+import sys
+import loop
+loop.MIN_TICK_TIMEOUT = 1.0
+from loop import LoopConfig, run_loop
+r = run_loop(LoopConfig(task="hang", task_id="hang",
+    claude_bin=sys.argv[1], timeout_s=8, max_iterations=3, budget_usd=9))
+print(r["halt_reason"])
+EOF
+2>&1)
+check "hung-tick halts with timeout" "$(echo "$HUNG_OUT" | tail -1)" "timeout"
+
+echo "== 15. read_result: missing and corrupt result.json =="
+TMPDIR_RR="$(mktemp -d)"
+RR_MISS=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from pathlib import Path
+from supervisor import read_result
+r = read_result(Path('$TMPDIR_RR/nofile.json'), 't1', Path('$TMPDIR_RR/t.log'))
+print(r['halt_reason'])
+print('no result.json' in r.get('error', ''))
+")
+check "missing → agent_error"         "$(echo "$RR_MISS" | head -1)" "agent_error"
+check "missing → 'no result.json'"    "$(echo "$RR_MISS" | tail -1)" "True"
+
+echo "bad json" > "$TMPDIR_RR/bad.json"
+RR_BAD=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from pathlib import Path
+from supervisor import read_result
+r = read_result(Path('$TMPDIR_RR/bad.json'), 't2', Path('$TMPDIR_RR/t.log'))
+print(r['halt_reason'])
+print('corrupt result.json' in r.get('error', ''))
+")
+check "corrupt → agent_error"               "$(echo "$RR_BAD" | head -1)" "agent_error"
+check "corrupt → 'corrupt result.json'"     "$(echo "$RR_BAD" | tail -1)" "True"
+
 echo
 echo "================= $PASS passed, $FAIL failed ================="
 exit $([[ $FAIL -eq 0 ]] && echo 0 || echo 1)

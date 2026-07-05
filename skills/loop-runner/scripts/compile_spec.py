@@ -102,7 +102,8 @@ def compile_spec(spec_path: Path, *, claude_bin: str, model: str,
     feedback = ""
     for attempt in (1, 2):
         print(f"⚙  Compiling spec → plan (attempt {attempt}/2)…")
-        res = run_claude(base_prompt + feedback, cfg, resume=None, permission_mode="plan")
+        res = run_claude(base_prompt + feedback, cfg, resume=None, permission_mode="plan",
+                         timeout=1800)
         if not res["ok"]:
             feedback = f"\n\nYour previous attempt failed to run: {res['error']}. Try again."
             continue

@@ -131,7 +131,7 @@ Send spec-writer-1 its prompt via `SendMessage`:
 ```
 SendMessage({
   to: "spec-writer-1",
-  body: """
+  message: """
     You are spec-writer-1 in team loop-spec-discuss-{slug}.
 
     slug: {slug}
@@ -146,14 +146,14 @@ SendMessage({
     If SPEC.md frontmatter contains an `ambiguity_scores` block (set by spec phase), preserve it verbatim. Do not modify or recompute the scores.
 
     When done, send:
-      SendMessage({to: "lead", body: "SPEC.md written"})
+      SendMessage({to: "lead", message: "SPEC.md written"})
     then go idle.
   """
 })
 ```
 
 Wait for `TeammateIdle` from `spec-writer-1`. If spec-writer-1 goes idle without producing `SPEC.md`:
-- Send `SendMessage({to: "spec-writer-1", body: "SPEC.md not found at docs/loop-spec/features/{slug}/SPEC.md. Write it now and send lead the SPEC.md written message."})` once.
+- Send `SendMessage({to: "spec-writer-1", message: "SPEC.md not found at docs/loop-spec/features/{slug}/SPEC.md. Write it now and send lead the SPEC.md written message."})` once.
 - If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors SPEC.md itself from the same brief and continues, noting `lead-authored` in the transcript and `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
 
 On `SPEC.md written` message received: proceed to Step 4.
@@ -190,7 +190,7 @@ Model: `feature.models.advocate` (resolved once at cycle Step 5; do not re-deriv
 ```
 SendMessage({
   to: "advocate-1",
-  body: """
+  message: """
     [Populate from skills/shared/team-prompts/advocate.md with these substitutions:
       {slug} = slug
       {N} = 1
@@ -213,7 +213,7 @@ Model: `feature.models.challenger` (resolved once at cycle Step 5; do not re-der
 ```
 SendMessage({
   to: "challenger-1",
-  body: """
+  message: """
     [Populate from skills/shared/team-prompts/challenger.md with these substitutions:
       {slug} = slug
       {N} = 1
@@ -261,8 +261,8 @@ For each round N = 1 .. maxCritiqueRounds:
    - **Cap reached**: N == maxCritiqueRounds. Record `notes: "cap reached"` in gateHistory. Break loop.
    - Otherwise: N += 1. Send `SendMessage` to both teammates starting round N+1:
      ```
-     SendMessage({to: "challenger-1", body: "Start round {N+1}. Read SPEC.md and send your round {N+1} critique to advocate-1."})
-     SendMessage({to: "advocate-1", body: "Round {N+1} starting. Wait for challenger-1's critique, then respond."})
+     SendMessage({to: "challenger-1", message: "Start round {N+1}. Read SPEC.md and send your round {N+1} critique to advocate-1."})
+     SendMessage({to: "advocate-1", message: "Round {N+1} starting. Wait for challenger-1's critique, then respond."})
      ```
 
 ### Step 5 - Synthesize fix-list
@@ -320,13 +320,13 @@ Re-dispatch spec-writer-1 via `SendMessage` (not a fresh Agent call):
 ```
 SendMessage({
   to: "spec-writer-1",
-  body: """
+  message: """
     SPEC.md needs revisions. Fix-list:
     {fix_list items, numbered}
 
     Read the current SPEC.md at docs/loop-spec/features/{slug}/SPEC.md.
     Apply all items on the fix-list. Write the updated SPEC.md in place.
-    When done: SendMessage({to: "lead", body: "SPEC.md written"})
+    When done: SendMessage({to: "lead", message: "SPEC.md written"})
     then go idle.
   """
 })
