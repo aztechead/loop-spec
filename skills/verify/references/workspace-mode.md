@@ -128,6 +128,12 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
 done
 ```
 
+**Note on `result.json` in workspace mode:** the single `prUrl` field in `result.json` is
+null in workspace mode — nothing persists a per-repo URL into `feature.json.prUrl` here.
+Per-repo PR URLs live in the `repo_pr_urls` map above and the per-repo git history.
+Workspace callers that need PR URLs should read the per-repo state directly; `result.json`'s
+`prUrl` is the single-repo shortcut for simple wrappers.
+
 ## Step 11 - Commit VERIFICATION.md
 
 **Workspace mode (additive):** commit VERIFICATION.md only when the workspace root is itself a git repo. Issue a checkpoint tag per repo using `lib/checkpoint.sh -C <abs repo>`.

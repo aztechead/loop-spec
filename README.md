@@ -216,6 +216,45 @@ a gap that spends a second full round of iterations goes **terminal** with its c
 (two spent limits on one gap means the approach is wrong, not under-iterated). Full contract:
 `skills/shared/autonomous-mode.md`.
 
+### Machine-readable results (headless callers)
+
+Wrappers and CI pipelines should not scrape git log or GitHub for cycle state. Two artefacts provide a stable contract:
+
+**`result.json`** — written by `lib/cycle-result.sh` at the end of every cycle (completed, paused, escalated, or terminal). The stable pointer is `.loop-spec/last-result.json` (overwritten each run); per-feature copies live at `.loop-spec/features/{slug}/result.json`.
+
+Schema (version 1):
+```json
+{
+  "schema": 1,
+  "slug": "my-feature",
+  "status": "completed | paused | escalated | terminal",
+  "reason": "string or null",
+  "phaseReached": "the last currentPhase value in feature.json",
+  "branch": "feat/my-feature",
+  "baseBranch": "main",
+  "prUrl": "https://github.com/... or null",
+  "checkpointPrUrl": "null or url",
+  "converged": true,
+  "iterations": {"used": 1, "max": 10},
+  "warnings": [],
+  "autonomous": false,
+  "feature_title": "original goal string",
+  "createdAt": "ISO-8601",
+  "finishedAt": "ISO-8601"
+}
+```
+
+`converged` is `true` only when `status == "completed"` AND `warnings[]` contains no `iterate-budget-spent:` or `iterate-terminal:` entries. A completed-but-not-converged run shipped with accepted gaps; the warnings list them.
+
+**`events.jsonl`** — one JSON object per line appended at each phase boundary. Canonical event names: `phase_start`, `phase_end`, `gate_round`, `iterate_verdict`, `completed`, `paused`, `escalated`, `checkpoint_pr`. Schema:
+```json
+{"ts":"ISO-8601 UTC","slug":"my-feature","event":"phase_end","phase":"execute","data":{"next":"verify"}}
+```
+
+**Process exit codes for headless composition** live at the loop-runner layer (`skills/loop-runner/` scripts exit 0 only on verified completion). The cycle skill runs inside a Claude session and cannot set the process exit code — wrappers should read `result.json` instead of scraping git or GitHub.
+
+Both files are local telemetry, deliberately not committed to the feature branch.
+
 ### Net-new applications (greenfield)
 
 ```bash

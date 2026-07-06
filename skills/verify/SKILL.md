@@ -356,6 +356,8 @@ pr_body="$(printf '## Spec summary\n\n%s\n\n## Verification\n\n%s\n' "$spec_summ
 
 # Use baseBranch from feature.json (feature.baseBranch), not hardcoded main
 pr_url=$(gh pr create --base "${feature.baseBranch:-main}" --head {feature.branch} --title "feat: {feature_title}" --body "$pr_body")
+# Persist prUrl in feature.json so result.json and headless callers can read it
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" prUrl "\"$pr_url\""
 ```
 
 **Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 10 - Branch finish").

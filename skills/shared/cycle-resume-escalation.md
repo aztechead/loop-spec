@@ -123,6 +123,12 @@ If a phase pauses + escalates (iteration limit exhausted, NEEDS_CONTEXT, etc.):
 3. Print escalation reason.
 4. Show the `gateHistory` tail (last 3 attempts from `feature.json.gateHistory` in `.loop-spec/features/{slug}/feature.json`).
 5. Show partial artifacts (spec/plan/execution/verification paths from `feature.json.artifacts`).
+5.5. Write the machine-readable result contract (non-fatal — must not block ExitWorktree):
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write ".loop-spec/features/${slug}" \
+     --status escalated --reason "<escalation reason>" || true
+   ```
+   This also emits the `escalated` event to `events.jsonl`.
 6. **Single-repo worktree mode only:** after snapshotting (step 5 above), call `ExitWorktree({action: "keep"})` to return the session to the main checkout. The worktree and branch are preserved on disk; the next resume will re-enter via `EnterWorktree`. Workspace features (in-place at the workspace root) skip this step.
 7. Return control to user.
 
