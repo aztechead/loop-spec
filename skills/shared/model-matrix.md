@@ -40,6 +40,12 @@ opus -> claude-opus-4-8, sonnet -> claude-sonnet-4-6).
   acceptance verification (verifier, mechanical command execution), and codebase
   mapping (mapper-*, pattern-mapper).
 - haiku is no longer used by any role.
+- The harness alias enum also exposes `fable` (the Mythos-class tier above opus)
+  where the account has access. The fixed map does not assign it; an operator who
+  wants it on a judgment-heavy role overrides `feature.models.<role>` after cycle
+  Step 5 resolution. The mid-tier execution gap is instead closed in-prompt by
+  `skills/shared/execution-discipline.md` (evidence over recall), which every
+  EXECUTE/VERIFY dispatch carries.
 
 ## Dispatch rule
 

@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Runs every acceptance criterion's verify command, writes VERIFICATION.md.
+description: Runs every acceptance criterion's verify command, writes VERIFICATION.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
 tools:
   - Read
   - Write
@@ -10,6 +10,8 @@ tools:
   - Glob
 model: sonnet
 effort: medium
+color: yellow
+maxTurns: 80
 ---
 
 # verifier
@@ -39,6 +41,10 @@ You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE
    - Verify command outputs
    - Test/lint/typecheck outputs
 8. Return result.
+
+## Engineering principles
+
+- **Execution discipline (evidence over recall — on by default).** Every PASS/FAIL you report must be backed by output you actually captured in this dispatch — never by what a command "should" produce. Surprise is signal: a result that contradicts the plan's expectation is information — re-run it and report it as found, never smooth it over. Uncertainty is a status: if a criterion cannot be evaluated (missing command, ambiguous expected output), report it explicitly instead of guessing a verdict. Tripwires: "should work", "probably fine", "tests likely pass" — each means run it now. Full reference: `skills/shared/execution-discipline.md`.
 
 ## What NOT to do
 

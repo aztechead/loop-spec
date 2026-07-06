@@ -30,9 +30,31 @@ for f in agents/*.md; do
   fm_model=$(echo "$fm" | grep '^model:' | sed 's/^model: *//')
   echo "$ALLOWED_MODELS" | grep -wq "$fm_model" || { echo "FAIL: $f model '$fm_model' not in allowed set"; exit 1; }
 
-  # Forbidden frontmatter keys: skills: and mcpServers:
-  if echo "$fm" | grep -qE '^(skills|mcpServers):'; then
-    echo "FAIL: $f contains forbidden frontmatter key (skills: or mcpServers:)"
+  # Forbidden frontmatter keys: skills: and mcpServers: (plus hooks:/permissionMode:,
+  # which Claude Code ignores for plugin agents -- a silently-dead field is a defect)
+  if echo "$fm" | grep -qE '^(skills|mcpServers|hooks|permissionMode):'; then
+    echo "FAIL: $f contains forbidden frontmatter key (skills:, mcpServers:, hooks:, or permissionMode:)"
+    exit 1
+  fi
+
+  # memory: if present, must be a valid scope
+  fm_memory=$(echo "$fm" | grep '^memory:' | sed 's/^memory: *//' || true)
+  if [[ -n "$fm_memory" ]] && ! echo "user project local" | grep -wq "$fm_memory"; then
+    echo "FAIL: $f invalid memory scope '$fm_memory' (allowed: user, project, local)"
+    exit 1
+  fi
+
+  # color: if present, must be a valid display color
+  fm_color=$(echo "$fm" | grep '^color:' | sed 's/^color: *//' || true)
+  if [[ -n "$fm_color" ]] && ! echo "red blue green yellow purple orange pink cyan" | grep -wq "$fm_color"; then
+    echo "FAIL: $f invalid color '$fm_color'"
+    exit 1
+  fi
+
+  # maxTurns: if present, must be a positive integer
+  fm_turns=$(echo "$fm" | grep '^maxTurns:' | sed 's/^maxTurns: *//' || true)
+  if [[ -n "$fm_turns" ]] && ! [[ "$fm_turns" =~ ^[1-9][0-9]*$ ]]; then
+    echo "FAIL: $f invalid maxTurns '$fm_turns' (must be a positive integer)"
     exit 1
   fi
 

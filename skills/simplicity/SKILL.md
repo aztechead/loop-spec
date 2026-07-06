@@ -95,7 +95,7 @@ path the ticket names leaves every sibling caller still broken.
 
 ## Rules
 
-- No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a value that never changes.
+- No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a value that never changes. A seam is the exception: a clean boundary or an injected dependency (a unit receiving its collaborators as params/args/env) is not bloat, and cutting it is not simplification — see `skills/shared/design-for-change.md`. YAGNI cuts artifacts, never seams.
 - No boilerplate or scaffolding "for later" — later can scaffold for itself.
 - Deletion over addition. Boring over clever. Fewest files possible.
 - Shortest working diff wins — but only once you understand the problem. The smallest change in the wrong place isn't lazy, it's a second bug.

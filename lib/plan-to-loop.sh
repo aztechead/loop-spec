@@ -111,7 +111,31 @@ for t in tasks:
         'anything the spec requires. Non-trivial logic leaves ONE runnable check behind. '
         'Mark deliberate shortcuts with a simplicity: comment.'
     )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', f'TASK {raw}: {brief}', '']
+
+    # Design-for-change directive (canonical: skills/shared/design-for-change.md).
+    # Travels with the ladder: the loop-runner worker sees only its prompt.
+    design = (
+        'DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task\'s '
+        'stated interface, not an implementation detail; one unit, one reason to change. '
+        'New units receive their collaborators (params/args/env), never construct them deep '
+        'inside. Never cut a seam to save lines, and never build speculation behind one '
+        '(YAGNI cuts artifacts, not seams). Bug-fix tasks: after the root cause is fixed, '
+        'sweep callers, copy-pasted patterns, and parallel paths for the same mechanism; '
+        'fix same-cause siblings within the task files scope, report the rest.'
+    )
+
+    # Execution-discipline directive (canonical: skills/shared/execution-discipline.md).
+    # Travels with the ladder: the loop-runner worker sees only its prompt.
+    discipline = (
+        'EXECUTION DISCIPLINE (evidence over recall — on by default). You execute a brief a '
+        'stronger reasoning pass produced; your job is fidelity, not improvisation. Verify, '
+        'do not recall: never assert what a file/command does from memory — read it, run it, '
+        'paste the actual output. Surprise is signal: output contradicting expectation means '
+        'stop and revise, never explain away. Re-read the acceptance criteria before DONE and '
+        'check each against actual output. \"Should work\" / \"probably fine\" / \"tests likely '
+        'pass\" each mean run it now.'
+    )
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', discipline, '', f'TASK {raw}: {brief}', '']
     if criteria:
         lines.append('Acceptance criteria (ALL must hold; the verify command is the contract):')
         lines += [f'- {c}' for c in criteria]

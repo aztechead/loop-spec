@@ -7,7 +7,7 @@ This directory contains agent definitions for the loop-spec system. Each agent i
 | Field | Description |
 |-------|-------------|
 | `name` | Must match the filename without the `.md` extension. |
-| `description` | One-line summary of the agent's role. Must be non-empty. |
+| `description` | One-line summary of the agent's role. Must be non-empty. Claude Code uses this field to decide **automatic delegation**, so every loop-spec agent description ends with the guard clause "Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation." — these agents assume a structured brief (paths, SHAs, slugs) and misbehave when auto-delegated a bare user request. |
 | `tools` | YAML list of allowed tool names. |
 | `model` | Harness model alias. Allowed values: `opus`, `sonnet`, `haiku`. (Aliases, not literal IDs — the Agent tool's `model` parameter is an alias enum and rejects pinned IDs.) |
 
@@ -63,9 +63,25 @@ Example:
 isolation: worktree
 ```
 
+### `maxTurns`
+
+Maximum number of agentic turns before the harness stops the subagent. Extends the plugin's bounded-loop philosophy (gate retries, debug budgets, iterate ceilings) down to the single dispatch: a thrashing agent terminates with partial output instead of spinning. Budgets are deliberately generous — they are a tripwire for runaway loops, not a performance target. Must be a positive integer (validated).
+
+```yaml
+maxTurns: 60
+```
+
+### `color`
+
+Display color in the harness task list / transcript. loop-spec assigns colors by role family so a running cycle reads at a glance: authors (`spec-writer`, `planner`) blue, critique gate (`advocate`, `challenger`) purple, review gates (`code-reviewer`, `spec-compliance-reviewer`, `security-reviewer`) red, judge (`iterate-judge`) orange, `implementer` green, `verifier` yellow, mappers cyan. Allowed values: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` (validated).
+
+### `memory`
+
+Persistent memory scope (`user` | `project` | `local`, validated). Grants the agent a directory that survives across dispatches; `project` scope (`.claude/agent-memory/<name>/`) is shareable via version control. **Setting `memory` auto-enables Write/Edit for the agent**, so a read-only role that gains memory MUST get a matching path-restriction case in `hooks/restrict-agent-paths.sh` confining its writes to `.claude/agent-memory/**` (see the `code-reviewer` case) plus test cases. Currently enabled for `code-reviewer` (recurring findings) and `pattern-mapper` (concept -> analog cache). Memory content is advisory: agents must re-verify remembered paths/claims against the current codebase before acting on them.
+
 ## Forbidden fields
 
-`skills:` and `mcpServers:` are not valid agent frontmatter fields and will cause `tests/validate-agents.sh` to fail.
+`skills:`, `mcpServers:`, `hooks:`, and `permissionMode:` are not valid loop-spec agent frontmatter fields and will cause `tests/validate-agents.sh` to fail. Claude Code ignores `hooks`, `mcpServers`, and `permissionMode` on plugin-distributed agents (security restriction), and `skills:` preloading is deliberately excluded to keep dispatch context lean — a field that silently does nothing is a defect, so the validator rejects all four.
 
 ## Agents roster
 
