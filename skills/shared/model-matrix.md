@@ -21,10 +21,11 @@ opus -> claude-opus-4-8, sonnet -> claude-sonnet-4-6).
 | Role family | Model |
 |---|---|
 | spec-writer, planner | opus |
-| advocate, challenger | opus |
-| spec-compliance-reviewer | opus |
+| challenger | opus |
 | iterate-judge | opus |
 | code-reviewer | opus |
+| advocate | sonnet |
+| spec-compliance-reviewer | sonnet |
 | verifier | sonnet |
 | implementer | sonnet |
 | mapper-*, pattern-mapper | sonnet |
@@ -32,20 +33,59 @@ opus -> claude-opus-4-8, sonnet -> claude-sonnet-4-6).
 ## Design rules
 
 - **Opus** runs the reasoning-heavy roles: spec/plan authoring (spec-writer,
-  planner), the SPEC/PLAN critique gate (advocate, challenger), and the
-  spec-compliance gate (spec-compliance-reviewer, the Ralph loop), the ITERATE
-  goal re-judge (iterate-judge), and the code-review HARD-GATE (code-reviewer):
-  the checker is never weaker than the maker.
-- **Sonnet** runs the high-throughput roles: implementation (implementer),
-  acceptance verification (verifier, mechanical command execution), and codebase
-  mapping (mapper-*, pattern-mapper).
+  planner), the challenge side of the SPEC/PLAN critique gate (challenger), the
+  ITERATE goal re-judge (iterate-judge), and the code-review HARD-GATE
+  (code-reviewer).
+- **Sonnet** runs the high-throughput and defense roles: the advocate side of the
+  critique gate, per-task spec-compliance review (spec-compliance-reviewer),
+  implementation (implementer), acceptance verification (verifier, mechanical
+  command execution), and codebase mapping (mapper-*, pattern-mapper).
+  - **advocate on sonnet:** the critique gate is asymmetric by design — the
+    challenger (still opus) surfaces gaps; the advocate defends. A weaker defense
+    biases the gate stricter, never looser, so sonnet cannot degrade final output.
+  - **spec-compliance-reviewer on sonnet:** per-task diff-vs-task-spec check, the
+    highest-volume opus dispatch. Checker == maker tier (sonnet implementer) still
+    satisfies "the checker is never weaker than the maker", and three downstream
+    gates backstop it: the mechanical acceptance verifier, the opus code-review
+    HARD-GATE, and the opus iterate-judge scoring against the original goal.
 - haiku is no longer used by any role.
 - The harness alias enum also exposes `fable` (the Mythos-class tier above opus)
-  where the account has access. The fixed map does not assign it; an operator who
-  wants it on a judgment-heavy role overrides `feature.models.<role>` after cycle
-  Step 5 resolution. The mid-tier execution gap is instead closed in-prompt by
+  where the account has access. The fixed map does not assign it; use a
+  `LOOP_SPEC_MODEL_<ROLE>` env override (see below) to route a role there.
+  The mid-tier execution gap is instead closed in-prompt by
   `skills/shared/execution-discipline.md` (evidence over recall), which every
   EXECUTE/VERIFY dispatch carries.
+
+## Per-role override
+
+Set `LOOP_SPEC_MODEL_<ROLE>` (SCREAMING_SNAKE of the JSON key) to reroute a single
+role without editing `lib/feature-init.sh`:
+
+```
+LOOP_SPEC_MODEL_ITERATE_JUDGE=fable   # promote the judge to fable
+LOOP_SPEC_MODEL_PLANNER=sonnet        # demote the planner to sonnet
+```
+
+**Allowed values:** `sonnet | opus | haiku | fable`. Any other value — including a
+literal model ID like `claude-opus-4-8` — causes `feature-init.sh` to print a clear
+error to stderr naming the offending var, the bad value, and the allowed enum, then
+exit 1. No silent fallback.
+
+**Precedence:** env override > canonical default. A per-task `model` pin or
+`modelTier` in plan metadata still wins at task level and is unaffected by this
+mechanism.
+
+**Scope:** because cycle Step 5 (state init) and Step 5.9 (resume normalization)
+both call `feature-init.sh models`, overrides resolve into `feature.models.<role>`
+at that point and propagate to every downstream phase skill automatically — phase
+skills need no changes.
+
+Role suffixes (SCREAMING_SNAKE → JSON key):
+`SPEC_WRITER` → `specWriter`, `PLANNER` → `planner`, `ADVOCATE` → `advocate`,
+`CHALLENGER` → `challenger`, `SPEC_COMPLIANCE_REVIEWER` → `specComplianceReviewer`,
+`ITERATE_JUDGE` → `iterateJudge`, `CODE_REVIEWER` → `codeReviewer`,
+`IMPLEMENTER` → `implementer`, `VERIFIER` → `verifier`, `MAPPER` → `mapper`,
+`PATTERN_MAPPER` → `patternMapper`.
 
 ## Dispatch rule
 

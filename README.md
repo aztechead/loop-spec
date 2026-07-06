@@ -128,7 +128,7 @@ The cycle skill runs a quiet startup health-check — agent-teams probe, model p
 
 **Grill mode (on by default).** Right after your opening prompt, the assistant runs a short "grill" pass — 2-4 sharp clarifying questions (structured multiple-choice where the answers are discernible) — to collapse the highest-leverage ambiguities before committing to an approach, and feeds those answers into the SPEC interview. Inside the cycle, the SPEC phase Socratic interview is the in-cycle realization of this; outside the cycle it is injected as a session-start directive by `hooks/team/grill-inject.sh`. Toggle with `/loop-spec:grill on|off|status` or the `LOOP_SPEC_GRILL=0` kill switch.
 
-**Model selection is fixed** (no preset). Opus authors and judges (spec-writer, planner, advocate, challenger, spec-compliance-reviewer, iterate-judge, code-reviewer — the checker is never weaker than the maker); sonnet runs the high-throughput roles (implementer, verifier, mappers). See `skills/shared/model-matrix.md`.
+**Model selection is fixed** (no preset). Opus runs the reasoning-heavy roles (spec-writer, planner, challenger, iterate-judge, code-reviewer); sonnet runs the high-throughput and defense roles (advocate, spec-compliance-reviewer, implementer, verifier, mappers). Per-role defaults can be overridden via `LOOP_SPEC_MODEL_<ROLE>` env vars. See `skills/shared/model-matrix.md`.
 
 ### What the cycle does
 
@@ -250,6 +250,7 @@ existing repo is refused; workspace-mode greenfield is deferred.
 | `LOOP_SPEC_SPEC_FILE` | Path to a pre-authored spec `.md` — headless equivalent of `/loop-spec:cycle path/to/spec.md`. |
 | `LOOP_SPEC_MAX_FEATURES` | Backlog-drain bound: features per `/loop-spec:cycle backlog` invocation (default 1). |
 | `LOOP_SPEC_PHASE_TIMEOUT_MINS` | Phase watchdog wall-clock ceiling (default 60). |
+| `LOOP_SPEC_MODEL_<ROLE>` | Per-role model alias override. `<ROLE>` is the SCREAMING_SNAKE form of the JSON key: `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, `PATTERN_MAPPER`. Allowed values: `sonnet \| opus \| haiku \| fable`. Unset/empty = canonical default. Invalid value (including any literal model ID) → stderr error + exit 1. Overrides resolve at cycle Step 5 / Step 5.9 and flow into `feature.models.<role>` automatically. |
 | `LOOP_SPEC_ITERATE_FRESH` | `1` = ITERATE rewinds hand off through committed state for a clean-session relaunch instead of continuing inline. |
 | `LOOP_SPEC_PLAN_MULTI_ANGLE` | `1` opts into multi-angle plan authoring via the Workflow tool. |
 | `LOOP_SPEC_TEAMS_MODE` | Force the teams capability mode (`none`/`explicit`/`implicit`), overriding the version probe. |
