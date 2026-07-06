@@ -2,6 +2,48 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.10.0]
+
+### Changed — model matrix rebalance (no output degradation)
+- **advocate: opus → sonnet.** The critique gate is asymmetric by design — the
+  challenger (still opus) surfaces gaps; the advocate defends. A weaker defense biases
+  the gate stricter, never looser.
+- **spec-compliance-reviewer: opus → sonnet.** Per-task diff-vs-task-spec check, the
+  highest-volume opus dispatch. Checker == maker tier still satisfies "the checker is
+  never weaker than the maker"; backstopped by the mechanical acceptance verifier, the
+  opus code-review HARD-GATE, and the opus iterate-judge.
+- Opus keeps the authoring/oracle roles: spec-writer, planner, challenger,
+  code-reviewer, iterate-judge.
+
+### Added — headless caller contract
+- **Per-role model overrides** (`LOOP_SPEC_MODEL_<ROLE>`, e.g.
+  `LOOP_SPEC_MODEL_ITERATE_JUDGE=fable`). Values validated against the harness alias
+  enum (`sonnet|opus|haiku|fable`); literal model IDs rejected loud (the Agent tool's
+  `model` param is an alias enum). Resolved in `lib/feature-init.sh` so overrides apply
+  to new features and resume normalization alike. Deployment alias-mapping guidance
+  (Bedrock/Vertex) documented in `skills/shared/model-policy.md` — loop-spec carries no
+  model-ID catalog by design; alias→ID resolution is harness-level.
+- **Machine-readable result contract.** `lib/cycle-result.sh` writes a versioned
+  `result.json` per feature plus the stable `.loop-spec/last-result.json` pointer at
+  every terminal state (completed/paused/escalated/terminal): slug, status, phase
+  reached, branch, PR URL, converged, iterations, warnings. VERIFY now persists
+  `feature.json.prUrl`. Wrappers read the file instead of scraping git/gh; process exit
+  codes remain the loop-runner layer's contract.
+- **Structured progress events.** `lib/events.sh` appends JSONL to the feature dir's
+  `events.jsonl` at phase boundaries (`phase_start`, `phase_end`, `iterate_verdict`,
+  `completed`, `paused`, `escalated`, `checkpoint_pr`). Both telemetry writers observe
+  a never-abort contract (warn + exit 0) and are deliberately not committed.
+- **Checkpoint draft PRs.** `lib/checkpoint-pr.sh` pushes the feature branch and opens
+  (or reuses) a draft PR on pause/escalation/terminal, so an interrupted headless run
+  yields a reviewable artifact instead of a dropped cycle. Default-on for autonomous
+  runs; `LOOP_SPEC_CHECKPOINT_PR=1/0` overrides; degrades gracefully without `gh`/origin.
+
+### Declined by design
+- A plugin-level model-ID catalog (harness owns alias resolution; Agent tool rejects
+  literal IDs) and a headless rigor dial capping critique rounds (contradicts 2.9.0
+  full-bore operation — the ONE bound stays ITERATE's round limit; per-role overrides
+  deliver the cost/speed win without weakening gates).
+
 ## [2.9.0]
 
 ### Removed — full-bore operation (the ONE bound is ITERATE's round limit)
