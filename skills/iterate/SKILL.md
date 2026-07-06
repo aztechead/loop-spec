@@ -96,6 +96,10 @@ A malformed or missing verdict must NOT be read as "converged": treat it as re-d
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.used "$((used+1))"
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.lastVerdict "<verdict json>"
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" iterate.history "<verdict json>"
+# emit iterate_verdict event (non-fatal; verdict lands in feature.json above)
+_cvgd="$(echo "$verdict" | jq -r 'if .converged then "converged" else "not-converged" end')"
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" iterate_verdict \
+  --phase iterate --data "{\"verdict\":\"$_cvgd\",\"iteration\":$((used+1))}" || true
 ```
 
 Write a human-readable `docs/loop-spec/features/{slug}/ITERATION.md` (append one section per iteration: number, converged?, per-criterion scores, weakest point, gap + fix-first, summary). Set `artifacts.iteration` to that path. Commit it:

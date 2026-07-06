@@ -3,7 +3,7 @@ name: advocate
 description: Makes the case for a SPEC or PLAN in the critique gate. Read-only. Argues the design is sound. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
 tools:
   - Read
-model: opus
+model: sonnet
 color: purple
 ---
 

@@ -99,7 +99,9 @@ escalation path fires, climb this ladder instead of stopping:
    matched by exact equality against `feature.backlogEntryId`, never fuzzy text). Two full
    limits on the same gap means the approach is wrong, not under-iterated —
    that is the one legitimate stop, and it stops with the complete evidence
-   trail (BUG-level detail in ITERATION.md), never silently.
+   trail (BUG-level detail in ITERATION.md), never silently. Before stopping,
+   the run salvages the work product via `lib/checkpoint-pr.sh` (draft PR with
+   the evidence trail) so a terminal stop still yields a reviewable artifact.
 
 The ladder never invents an approval and never overrides a safety gate; it
 exhausts autonomous handling before anything is left for a human, and what it

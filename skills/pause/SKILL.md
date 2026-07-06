@@ -36,6 +36,22 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/pause-snapshot.sh" [--feature-dir <path>]
 
 `lib/pause-snapshot.sh` generates both artifacts atomically into `.loop-spec/features/{slug}/`. Kill switch: if `LOOP_SPEC_PAUSE=0` is set the script exits 0 without writing any file.
 
+Write the machine-readable result contract (non-fatal — must not block the pause snapshot):
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "${feature_dir}" \
+  --status paused --reason "user pause" || true
+```
+
+This also emits the `paused` event to `events.jsonl`.
+
+Push the branch and open/reuse a draft PR as a salvage checkpoint. Gated: on by default for autonomous runs; LOOP_SPEC_CHECKPOINT_PR=1/0 overrides. Never blocks the pause flow.
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint-pr.sh" create "${feature_dir}" \
+  --reason "user pause" || true
+```
+
 ### Step 2 - Print summary
 
 After the script exits 0, print to the user:

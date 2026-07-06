@@ -8,10 +8,12 @@ Model selection is fixed per role (no preset axis); the authoritative role -> mo
 
 | Family | Alias | Roles |
 |--------|-------|-------|
-| Heavy | `opus` | spec-writer, planner, advocate, challenger, spec-compliance-reviewer, iterate-judge, code-reviewer |
-| Standard | `sonnet` | implementer, verifier, mapper-*, pattern-mapper (1M-ctx flag when available) |
+| Heavy | `opus` | spec-writer, planner, challenger, iterate-judge, code-reviewer |
+| Standard | `sonnet` | advocate, spec-compliance-reviewer, implementer, verifier, mapper-*, pattern-mapper (1M-ctx flag when available) |
 
 Dispatch uses harness ALIASES, not pinned IDs: the modern Agent tool's `model` parameter is an alias enum and rejects literal IDs. `haiku` is allowed by policy but no longer assigned to any role.
+
+Per-role canonical defaults can be overridden at deployment time via `LOOP_SPEC_MODEL_<ROLE>` env vars (SCREAMING_SNAKE of the JSON key); see `skills/shared/model-matrix.md` "Per-role override" for the full contract. Overrides must be harness aliases; literal model IDs are rejected at startup.
 
 ## Consuming-project compatibility
 
@@ -37,3 +39,7 @@ Sonnet 4.6 supports 1M context with the `context-1m-2025-08-07` beta flag (or eq
 ## Dispatch rule
 
 Phase skills MUST pass `model:` explicitly on every teammate spawn and every one-shot `Agent` dispatch, reading the resolved ID from `feature.models.<role>`. Never rely on the agent frontmatter default. See `skills/shared/model-matrix.md` "Dispatch rule" for the canonical `TeamCreate` shape and the Step 5.5b background-mapper exception.
+
+## Deployment alias mapping (Bedrock/Vertex)
+
+Harness aliases (`opus`, `sonnet`, etc.) resolve to concrete model IDs inside the harness layer; loop-spec deliberately does not carry its own model-ID catalog because the Agent tool rejects literal IDs with InputValidationError. A deployment environment missing a model family (e.g. a Bedrock deployment without sonnet) must remap at the harness level via `ANTHROPIC_MODEL` / provider settings, or route affected roles to an available alias using `LOOP_SPEC_MODEL_<ROLE>`. The cycle startup health-check probes the resolved aliases and fails loud on any error — there is no silent fallback.

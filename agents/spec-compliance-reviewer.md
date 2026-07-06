@@ -6,7 +6,7 @@ tools:
   - Grep
   - Glob
   - Bash
-model: opus
+model: sonnet
 color: red
 ---
 

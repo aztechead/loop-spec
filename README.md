@@ -128,7 +128,7 @@ The cycle skill runs a quiet startup health-check — agent-teams probe, model p
 
 **Grill mode (on by default).** Right after your opening prompt, the assistant runs a short "grill" pass — 2-4 sharp clarifying questions (structured multiple-choice where the answers are discernible) — to collapse the highest-leverage ambiguities before committing to an approach, and feeds those answers into the SPEC interview. Inside the cycle, the SPEC phase Socratic interview is the in-cycle realization of this; outside the cycle it is injected as a session-start directive by `hooks/team/grill-inject.sh`. Toggle with `/loop-spec:grill on|off|status` or the `LOOP_SPEC_GRILL=0` kill switch.
 
-**Model selection is fixed** (no preset). Opus authors and judges (spec-writer, planner, advocate, challenger, spec-compliance-reviewer, iterate-judge, code-reviewer — the checker is never weaker than the maker); sonnet runs the high-throughput roles (implementer, verifier, mappers). See `skills/shared/model-matrix.md`.
+**Model selection is fixed** (no preset). Opus runs the reasoning-heavy roles (spec-writer, planner, challenger, iterate-judge, code-reviewer); sonnet runs the high-throughput and defense roles (advocate, spec-compliance-reviewer, implementer, verifier, mappers). Per-role defaults can be overridden via `LOOP_SPEC_MODEL_<ROLE>` env vars. See `skills/shared/model-matrix.md`.
 
 ### What the cycle does
 
@@ -216,6 +216,47 @@ a gap that spends a second full round of iterations goes **terminal** with its c
 (two spent limits on one gap means the approach is wrong, not under-iterated). Full contract:
 `skills/shared/autonomous-mode.md`.
 
+### Machine-readable results (headless callers)
+
+Wrappers and CI pipelines should not scrape git log or GitHub for cycle state. Two artefacts provide a stable contract:
+
+**`result.json`** — written by `lib/cycle-result.sh` at the end of every cycle (completed, paused, escalated, or terminal). The stable pointer is `.loop-spec/last-result.json` (overwritten each run); per-feature copies live at `.loop-spec/features/{slug}/result.json`.
+
+Schema (version 1):
+```json
+{
+  "schema": 1,
+  "slug": "my-feature",
+  "status": "completed | paused | escalated | terminal",
+  "reason": "string or null",
+  "phaseReached": "the last currentPhase value in feature.json",
+  "branch": "feat/my-feature",
+  "baseBranch": "main",
+  "prUrl": "https://github.com/... or null",
+  "checkpointPrUrl": "null or url",
+  "converged": true,
+  "iterations": {"used": 1, "max": 10},
+  "warnings": [],
+  "autonomous": false,
+  "feature_title": "original goal string",
+  "createdAt": "ISO-8601",
+  "finishedAt": "ISO-8601"
+}
+```
+
+`converged` is `true` only when `status == "completed"` AND `warnings[]` contains no `iterate-budget-spent:` or `iterate-terminal:` entries. A completed-but-not-converged run shipped with accepted gaps; the warnings list them.
+
+**`events.jsonl`** — one JSON object per line appended at each phase boundary. Canonical event names: `phase_start`, `phase_end`, `gate_round`, `iterate_verdict`, `completed`, `paused`, `escalated`, `checkpoint_pr`. Schema:
+```json
+{"ts":"ISO-8601 UTC","slug":"my-feature","event":"phase_end","phase":"execute","data":{"next":"verify"}}
+```
+
+**Process exit codes for headless composition** live at the loop-runner layer (`skills/loop-runner/` scripts exit 0 only on verified completion). The cycle skill runs inside a Claude session and cannot set the process exit code — wrappers should read `result.json` instead of scraping git or GitHub.
+
+**Checkpoint draft PRs** — interrupted cycles (pause, escalation, or terminal stop) push the feature branch and open or reuse a draft GitHub PR so a slow or headless run yields a reviewable artifact rather than a dropped cycle. The URL is written to `feature.json.checkpointPrUrl`, surfaced in `result.json.checkpointPrUrl`, and recorded as a `checkpoint_pr` event in `events.jsonl`. Enabled by default for autonomous runs; `LOOP_SPEC_CHECKPOINT_PR=1/0` overrides. Requires `gh` on PATH and an `origin` remote; degrades gracefully (skip + one-line stderr note) when either is absent.
+
+Both files are local telemetry, deliberately not committed to the feature branch.
+
 ### Net-new applications (greenfield)
 
 ```bash
@@ -250,12 +291,14 @@ existing repo is refused; workspace-mode greenfield is deferred.
 | `LOOP_SPEC_SPEC_FILE` | Path to a pre-authored spec `.md` — headless equivalent of `/loop-spec:cycle path/to/spec.md`. |
 | `LOOP_SPEC_MAX_FEATURES` | Backlog-drain bound: features per `/loop-spec:cycle backlog` invocation (default 1). |
 | `LOOP_SPEC_PHASE_TIMEOUT_MINS` | Phase watchdog wall-clock ceiling (default 60). |
+| `LOOP_SPEC_MODEL_<ROLE>` | Per-role model alias override. `<ROLE>` is the SCREAMING_SNAKE form of the JSON key: `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, `PATTERN_MAPPER`. Allowed values: `sonnet \| opus \| haiku \| fable`. Unset/empty = canonical default. Invalid value (including any literal model ID) → stderr error + exit 1. Overrides resolve at cycle Step 5 / Step 5.9 and flow into `feature.models.<role>` automatically. |
 | `LOOP_SPEC_ITERATE_FRESH` | `1` = ITERATE rewinds hand off through committed state for a clean-session relaunch instead of continuing inline. |
 | `LOOP_SPEC_PLAN_MULTI_ANGLE` | `1` opts into multi-angle plan authoring via the Workflow tool. |
 | `LOOP_SPEC_TEAMS_MODE` | Force the teams capability mode (`none`/`explicit`/`implicit`), overriding the version probe. |
 | `LOOP_SPEC_REGRESSION_SCAN` | `1` enables VERIFY's advisory prior-feature regression scan (off by default). |
 | `LOOP_SPEC_NON_INTERACTIVE` + `LOOP_SPEC_ANSWER_*` | CI mode, see above. |
 | `LOOP_SPEC_AUTONOMOUS` | `1` = autonomous mode (equivalent to the inline `autonomous` token): self-answer every question site with the recommended option and record it; forces style `auto`; suppresses grill. See above. |
+| `LOOP_SPEC_CHECKPOINT_PR` | `1` = always push branch + open/reuse draft PR on pause/escalation/terminal; `0` = always skip; unset = enabled only for autonomous runs (headless default-on). |
 
 All hook guards additionally self-scope: they no-op outside projects with `.loop-spec/` state, and the task gates only fire on loop-spec-owned tasks (`metadata.loopSpec` / `task-NNN:` subjects).
 

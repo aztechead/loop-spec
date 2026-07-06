@@ -498,6 +498,7 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    ```bash
    # Phase watchdog: stamp the phase start so a hung phase is detectable (resume + exit check).
    bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" currentPhaseStartedAt "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+   bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" phase_start --phase "${currentPhase}" || true
    ```
    ```
    Skill(loop-spec:{currentPhase})
@@ -524,7 +525,15 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null \
      || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
    ```
+   `events.jsonl` and `result.json` are local telemetry, deliberately not committed — the default `.loop-spec/features/*/` gitignore covers them and no exception is added.
+
    feature.json says WHERE the loop is; PROGRESS.md says WHY — it is what a fresh or compacted session reads to re-orient (Step 1 re-grounding), and the handoff document for fresh-context rewinds.
+
+   Emit the `phase_end` event before committing (the event is non-fatal — it must not gate the commit):
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" phase_end \
+     --phase "{phase}" --data "{\"next\":\"${next_phase}\"}" || true
+   ```
 
    **Commit the resume contract (single point).** feature.json is committed (not gitignored)
    so resume survives a clone or hand-off to another machine. The cycle is the one place
@@ -580,6 +589,18 @@ Also print the backlog state (one line, always):
 n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
 [[ "$n" -gt 0 ]] && echo "Backlog: ${n} deferred item(s) — drain with /loop-spec:cycle backlog"
 ```
+
+Write the machine-readable result contract and emit the `completed` event (non-fatal):
+
+```bash
+_pr_url="$(jq -r '.prUrl // empty' ".loop-spec/features/${slug}/feature.json")"
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write ".loop-spec/features/${slug}" \
+  --status completed ${_pr_url:+--pr-url "$_pr_url"} || true
+```
+
+`.loop-spec/last-result.json` is the stable pointer headless wrappers should read; it is
+overwritten on each cycle completion. `events.jsonl` (one JSON object per line, canonical
+event names) records the full phase trace. Both are local telemetry and are not committed.
 
 **Autonomous chaining (`feature.json.autonomous == true`).** An autonomous run manages its
 own iteration cycles end-to-end — it does not complete by leaving `iterate-budget-spent`
