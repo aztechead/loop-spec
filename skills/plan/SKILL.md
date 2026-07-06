@@ -1,6 +1,6 @@
 ---
 name: plan
-description: PLAN phase - creates a plan team with planner, advocate, and challenger; planner produces PATTERNS.md then PLAN.md; runs critique debate via SendMessage; writes PLAN.md and updates feature.json.
+description: PLAN phase - creates a plan team with planner, advocate, and challenger; planner produces PATTERNS.md then PLAN.md; runs critique debate via SendMessage; writes PLAN.md and updates feature.json. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: discuss
-description: DISCUSS phase - conversational requirements gathering, spawns a discuss team, runs advocate/challenger debate via SendMessage, writes SPEC.md.
+description: DISCUSS phase - conversational requirements gathering, spawns a discuss team, runs advocate/challenger debate via SendMessage, writes SPEC.md. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch
 ---
 

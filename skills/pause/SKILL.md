@@ -1,6 +1,7 @@
 ---
 name: pause
 description: Snapshot in-progress feature state to HANDOFF.json + .continue-here.md for safe pause/resume
+argument-hint: "[path/to/feature.json]  (optional; defaults to the active feature)"
 ---
 
 # Pause

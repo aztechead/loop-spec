@@ -2,6 +2,27 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.8.1]
+
+### Changed
+- **Manifest descriptions rewritten and aligned.** `plugin.json`'s 1,561-character
+  run-on description and `marketplace.json`'s drifted 361-character variant are
+  replaced by one shared ~700-character blurb (cycle shape, concurrency ladder,
+  grounding gate, mode inventory); the exhaustive capability list lives in the
+  README, not the listing metadata.
+- **Cycle-internal guard on phase-skill descriptions.** `spec`, `discuss`, `plan`,
+  `execute`, `verify`, and `iterate` now carry the same guard clause their agent
+  counterparts gained in 2.8.0 ("Cycle-internal - invoked by /loop-spec:cycle
+  against the active feature's state; not for ad-hoc invocation on a bare user
+  request"). Skill descriptions drive model auto-invocation, so a bare "write a
+  spec" request could previously ambient-trigger a phase skill without cycle state.
+
+### Added
+- **`argument-hint` on subcommand skills.** `discipline` and `grill`
+  (`[on|off|status]`), `rules` (`add/list/render/path` grammar), and `pause`
+  (optional feature.json path) now show their argument grammar in `/` autocomplete,
+  matching the skills that already had hints.
+
 ## [2.8.0]
 
 ### Added
