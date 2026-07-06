@@ -11,7 +11,6 @@ tools:
 model: sonnet
 effort: medium
 color: yellow
-maxTurns: 80
 ---
 
 # verifier

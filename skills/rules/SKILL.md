@@ -1,6 +1,7 @@
 ---
 name: rules
 description: Manage the self-learning loop rules file (.loop-spec/RULES.md). Every repeated mistake becomes a permanent rule carried into future runs by the rules-inject SessionStart hook. Subcommands add/list/render/path. Prefer deterministic checks over prose notes.
+argument-hint: '<add "<rule text>" [--check "<cmd>"] | list | render | path>'
 ---
 
 # Rules Skill

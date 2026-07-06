@@ -1,6 +1,7 @@
 ---
 name: grill
 description: Toggle grill mode on or off for the current project. Grill mode (default ON) makes the assistant ask sharp disambiguation questions right after the initial prompt to lower ambiguity before acting. Reads and writes .loop-spec/grill.conf to persist state across sessions.
+argument-hint: "[on|off|status]"
 ---
 
 # Grill Skill

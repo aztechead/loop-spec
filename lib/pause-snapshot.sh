@@ -270,7 +270,7 @@ printf '%s\n' "Ordered list of files to read before writing any code in a resume
 printf '%s\n' ""
 printf '%s\n' "1. HANDOFF.json (this feature dir) - current phase, pending tasks, blockers"
 printf '%s\n' "2. docs/loop-spec/features/resilience-ops/PLAN.md - full task DAG and acceptance criteria"
-printf '%s\n' "3. feature.json (this feature dir) - gate history, retry budget, branch info"
+printf '%s\n' "3. feature.json (this feature dir) - gate history, branch info"
 } > "$CONTINUE_PATH" 2>/dev/null || true
 
 exit 0

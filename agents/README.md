@@ -15,7 +15,7 @@ This directory contains agent definitions for the loop-spec system. Each agent i
 
 ### `effort`
 
-Signals the expected compute budget for a single dispatch of this agent.
+Signals the expected compute effort for a single dispatch of this agent.
 
 Valid values:
 
@@ -63,14 +63,6 @@ Example:
 isolation: worktree
 ```
 
-### `maxTurns`
-
-Maximum number of agentic turns before the harness stops the subagent. Extends the plugin's bounded-loop philosophy (gate retries, debug budgets, iterate ceilings) down to the single dispatch: a thrashing agent terminates with partial output instead of spinning. Budgets are deliberately generous — they are a tripwire for runaway loops, not a performance target. Must be a positive integer (validated).
-
-```yaml
-maxTurns: 60
-```
-
 ### `color`
 
 Display color in the harness task list / transcript. loop-spec assigns colors by role family so a running cycle reads at a glance: authors (`spec-writer`, `planner`) blue, critique gate (`advocate`, `challenger`) purple, review gates (`code-reviewer`, `spec-compliance-reviewer`, `security-reviewer`) red, judge (`iterate-judge`) orange, `implementer` green, `verifier` yellow, mappers cyan. Allowed values: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` (validated).
@@ -81,7 +73,7 @@ Persistent memory scope (`user` | `project` | `local`, validated). Grants the ag
 
 ## Forbidden fields
 
-`skills:`, `mcpServers:`, `hooks:`, and `permissionMode:` are not valid loop-spec agent frontmatter fields and will cause `tests/validate-agents.sh` to fail. Claude Code ignores `hooks`, `mcpServers`, and `permissionMode` on plugin-distributed agents (security restriction), and `skills:` preloading is deliberately excluded to keep dispatch context lean — a field that silently does nothing is a defect, so the validator rejects all four.
+`skills:`, `mcpServers:`, `hooks:`, `permissionMode:`, and `maxTurns:` are not valid loop-spec agent frontmatter fields and will cause `tests/validate-agents.sh` to fail. Claude Code ignores `hooks`, `mcpServers`, and `permissionMode` on plugin-distributed agents (security restriction) — a field that silently does nothing is a defect. `skills:` preloading is deliberately excluded: agents receive their full brief in the dispatch prompt. `maxTurns:` is forbidden by policy: loop-spec agents run full bore; the only bound the plugin respects is the ITERATE round limit, so no per-dispatch turn caps.
 
 ## Agents roster
 

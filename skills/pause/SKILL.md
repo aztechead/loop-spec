@@ -1,6 +1,7 @@
 ---
 name: pause
 description: Snapshot in-progress feature state to HANDOFF.json + .continue-here.md for safe pause/resume
+argument-hint: "[path/to/feature.json]  (optional; defaults to the active feature)"
 ---
 
 # Pause
@@ -129,7 +130,7 @@ An ordered list of files to read before writing any code in a resumed session.
 ```
 1. HANDOFF.json (this feature dir) - current phase, pending tasks, blockers
 2. docs/loop-spec/features/{slug}/PLAN.md - full task DAG and acceptance criteria
-3. feature.json (this feature dir) - gate history, retry budget, branch info
+3. feature.json (this feature dir) - gate history, branch info
 ```
 
 ## Severity-tag parsing for cycle resume

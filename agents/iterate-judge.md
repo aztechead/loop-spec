@@ -8,7 +8,6 @@ tools:
   - Bash
 model: opus
 color: orange
-maxTurns: 30
 ---
 
 # iterate-judge
@@ -35,7 +34,7 @@ Read-only; you write no files. Return a verdict as JSON in your completion messa
    - `execute` — the design is right but the implementation is incomplete/buggy (a test gap, a missed edge case, a wrong value). The cheapest re-entry.
    - `plan` — the task decomposition is wrong or missing tasks; re-implementing against the current plan cannot close the gap.
    - `spec` — the goal is unmet because the SPEC captured the wrong thing or missed scope. The most expensive re-entry; the orchestrator will require human approval before acting on this.
-   Pick the **one** gap whose fix most moves the result toward the goal (fix the weakest point first) as `gap`. Then list every OTHER known miss in `remaining_gaps[]` with the same `{type, description, fix_first}` shape (empty array when the primary gap is the only one). The orchestrator routes on `gap` alone, but it remediates `remaining_gaps` execute-level entries in the same pass and reports all of them if the iteration budget runs out — an unlisted gap is a gap that ships silently.
+   Pick the **one** gap whose fix most moves the result toward the goal (fix the weakest point first) as `gap`. Then list every OTHER known miss in `remaining_gaps[]` with the same `{type, description, fix_first}` shape (empty array when the primary gap is the only one). The orchestrator routes on `gap` alone, but it remediates `remaining_gaps` execute-level entries in the same pass and reports all of them if the iteration limit runs out — an unlisted gap is a gap that ships silently.
 
 ## Report format (return EXACTLY this JSON in your completion message)
 
@@ -69,4 +68,4 @@ When `converged` is `true`, set `gap` to `null`, `weakest` to `null`, and `remai
 - Judge against the **original goal**, not optimism about the SPEC. A passing checklist on a wrong spec is the failure mode you exist to catch.
 - Be decisive: one gap, one phase, one fix-first. Never recommend re-opening a decision recorded in PLAN.md's `## User decisions (already made)` without naming why it must change.
 - Do not ask questions. Make a sensible assumption, note it in `summary`, and return the verdict.
-- **Confirmation mode** (`mode=confirmation` in your dispatch prompt): the iteration budget is spent and the orchestrator will ship regardless of your verdict — you cannot trigger a rewind. Judge exactly as strictly as always; your verdict only decides whether the ship is recorded as a confirmed converge or ships with your named gaps in `warnings[]`. Same JSON format.
+- **Confirmation mode** (`mode=confirmation` in your dispatch prompt): the iteration limit is spent and the orchestrator will ship regardless of your verdict — you cannot trigger a rewind. Judge exactly as strictly as always; your verdict only decides whether the ship is recorded as a confirmed converge or ships with your named gaps in `warnings[]`. Same JSON format.

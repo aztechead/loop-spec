@@ -89,7 +89,7 @@ repos_json_array="$(echo "$workspace_repos_json" | jq -c \
 
 # Same single source of truth (lib/feature-init.sh), workspace mode: top-level
 # branch/baseSha/baseBranch/worktreePath are null, top-level commands are empty, and the
-# workspace block carries the per-repo array built above. Models + fixed budget blocks are
+# workspace block carries the per-repo array built above. Models + the fixed iterate block are
 # identical to single-repo mode -- never re-hand-build them here.
 workspace_feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode workspace \
   --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

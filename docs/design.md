@@ -282,24 +282,6 @@ The PreToolUse hook is shipped in the plugin under `hooks/restrict-agent-paths.s
       "findingsAddressed": ["..."]
     }
   ],
-  "retryBudget": {
-    "perGate": 3,
-    "perPhase": {
-      "discuss": 3,
-      "plan": 4,
-      "execute": null,
-      "verify": 4
-    },
-    "executePerTask": 3,
-    "global": 30,
-    "globalUsed": 0,
-    "perPhaseUsed": {
-      "discuss": 0,
-      "plan": 0,
-      "execute": 0,
-      "verify": 0
-    }
-  },
   "commands": {
     "test": "npm test",
     "lint": "npm run lint",
@@ -463,29 +445,21 @@ Notes:
 
 ### Self-heal loop (AUTO)
 
-Bounded by THREE budgets (most restrictive wins):
-
-1. **Per-gate cap (`retryBudget.perGate`, default 3)** - same gate cannot retry more than 3 times consecutively
-2. **Per-phase cap (`retryBudget.perPhase[phase]`)** - total bounces in a phase is capped (DISCUSS=3, PLAN=4, VERIFY=4). EXECUTE phase has no flat per-phase cap; instead each TASK has `executePerTask=3` (independent budget per task in the wave). This prevents one bad task from starving others.
-3. **Global ceiling (`retryBudget.global`, default 30)** - absolute upper bound across the feature
+Full-bore operation: gate retries are unbounded. The ONE limit the cycle respects is
+ITERATE's round limit (`iterate.maxIterations`, fixed 10). Within EXECUTE, the per-task
+rework cap (`maxRetriesPerTask`, fixed 2) routes a repeatedly-failing task to the lead
+for escalation instead of ping-ponging it between the same implementer and reviewer.
 
 ```
 Gate failure detected
-  -> state.gateHistory[].attempt++
-  -> state.retryBudget.globalUsed++
-  -> state.retryBudget.perPhaseUsed[phase]++ (or task.retries++ if EXECUTE per-task gate)
-  -> if globalUsed > global: pause + escalate (global budget exhausted)
-  -> if EXECUTE per-task gate AND task.retries > executePerTask: pause + escalate this task
-  -> if non-EXECUTE AND perPhaseUsed[phase] > perPhase[phase]: pause + escalate phase
-  -> if attempt > perGate: pause + escalate gate
-  -> else:
-      bounce target phase = (gate's owning phase)
-      build fix-list from gate findings
-      re-dispatch the originating agent with fix-list
-      re-run gate
+  -> state.gateHistory[].attempt++   (every attempt is recorded; history, not a cap)
+  -> bounce target phase = (gate's owning phase)
+  -> build fix-list from gate findings
+  -> re-dispatch the originating agent with fix-list
+  -> re-run gate; repeat until it passes
 ```
 
-**Bounce-creates-new-tasks rule:** when VERIFY's acceptance gate fails and bounces to EXECUTE with new remediation tasks, the new tasks each get a fresh `executePerTask` budget (do NOT inherit parent's retries), but every dispatch increments `globalUsed`. This prevents infinite chains while letting genuine remediation proceed.
+**Bounce-creates-new-tasks rule:** when VERIFY's acceptance gate fails and bounces to EXECUTE with new remediation tasks, the new tasks each start with fresh `retries` (do NOT inherit the parent's), and every attempt lands in `gateHistory`.
 
 ---
 
@@ -617,7 +591,7 @@ Then `claude plugin install loop-spec@loop-spec-marketplace`.
 |---|------|------------|--------|------------|
 | 1 | Agent dispatch model param resolution. CC harness may resolve `model: "opus"` to wrong version. | High | Med | Pass full model ID at dispatch where supported; tier-matrix.md stores full IDs. Document min CC version. |
 | 2 | Sonnet 4.6 1M-context flag may need explicit beta flag. | High | Med | Probe at install time. cycle skill startup health-check. Fail loud. |
-| 3 | Self-heal loop infinite-runs disguised as bounded. | Med | High | Global feature-level retry budget (12 total) on top of per-gate cap (3). |
+| 3 | Self-heal loop infinite-runs disguised as bounded. | Med | High | ITERATE round limit (`iterate.maxIterations`, 10) is the terminal bound; every gate attempt is recorded in `gateHistory` so thrash is visible, and human-in-loop styles can interrupt at any phase. |
 | 4 | Wave parallelism causes file conflicts; planner promised disjoint files but was wrong. | Med | High | Pre-wave file-conflict check in EXECUTE step 3b. Demote conflicting tasks to next wave automatically. |
 | 5 | Working-tree race: parallel implementers stomp each other's changes. | (resolved) | High | **Per-task git worktrees** (EXECUTE step 3d). Each implementer commits to its own worktree branch. Orchestrator does sequential `git merge --ff-only` into feature branch. Eliminates the race entirely. New cost: disk usage (capped at 5 worktrees per wave x project size). |
 | 6 | Spec-writer / planner / mappers write outside designated dirs. | Low | Med | Plugin ships `hooks/restrict-agent-paths.sh` PreToolUse hook. Reviewer agents have no `Write`/`Edit` in their `tools:` allow-list at all. Hook enforcement empirically testable. |

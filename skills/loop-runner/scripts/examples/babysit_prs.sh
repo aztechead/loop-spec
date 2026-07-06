@@ -3,7 +3,7 @@
 #
 # The canonical "loop" starter. Runs Claude Code in a continuous session that watches
 # your open PRs, fixes failing CI by editing code, and addresses review comments.
-# Halts when no PR has a failing check, or on budget/time ceilings.
+# Halts when no PR has a failing check, or on iteration/time ceilings.
 #
 # Requires: claude (authenticated), gh (GitHub CLI, authenticated), a git repo.
 set -euo pipefail
@@ -19,7 +19,6 @@ python3 "$(dirname "$0")/../loop.py" \
             -q "[.[].statusCheckRollup[]? | select(.conclusion==\"FAILURE\")] | length == 0"' \
   --mode continue --task-id babysit-prs \
   --allowed-tools "Read,Edit,Bash" \
-  --budget 8.00 \
   --max-iterations 20 \
   --timeout 7200 \
   --no-progress 4 \

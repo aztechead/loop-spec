@@ -83,7 +83,7 @@ The lead re-evaluates this exit condition on every wake (Step 7 reconcile) and a
 
 Because the check is driven by the guaranteed `TeammateIdle` stream rather than by a final `REVIEW PASS`/idle message, the phase still exits cleanly when the last completion message is dropped: the teammate that finished the final task goes idle, the lead wakes, reconciles TaskList (zero open tasks, empty queue), and exits.
 
-If any `completed` task carries `metadata.result == "blocked"` (retry budget exhausted): pause EXECUTE, print the task id and last reviewer findings, return control to the user.
+If any `completed` task carries `metadata.result == "blocked"` (rework cap exhausted): pause EXECUTE, print the task id and last reviewer findings, return control to the user.
 
 **Plan-adherence gate:**
 

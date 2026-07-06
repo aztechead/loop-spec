@@ -1,6 +1,6 @@
 ---
 name: iterate
-description: ITERATE phase - the outer convergence loop. Judges the integrated result against the ORIGINAL goal (deterministic acceptance gate + an LLM goal re-judge), and either ships (converged or iteration budget spent) or classifies the highest-leverage gap and routes the cycle back to EXECUTE, PLAN, or (with human approval) SPEC/DISCUSS. Bounded by feature.iterate.maxIterations.
+description: ITERATE phase - the outer convergence loop. Judges the integrated result against the ORIGINAL goal (deterministic acceptance gate + an LLM goal re-judge), and either ships (converged or iteration limit spent) or classifies the highest-leverage gap and routes the cycle back to EXECUTE, PLAN, or (with human approval) SPEC/DISCUSS. Bounded by feature.iterate.maxIterations. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
 
@@ -16,47 +16,44 @@ Autonomous mode (`feature.json.autonomous == true`) forces style `auto`, so the 
 
 - `slug`, `feature_dir`, `feature_title` (the **original goal**, in the user's words).
 - `iterate`: `{maxIterations, used, confirmationUsed, lastVerdict, feedback, history[]}`.
-- `retryBudget.global` / `globalUsed` (cycle-wide ceiling).
 - `artifacts`: `spec`, `plan`, `verification` paths.
 - `models.iterateJudge` (opus).
 
 ## Procedure
 
-### Step 0 - Budget gate (hard stop first)
+### Step 0 - Round limit gate (hard stop first)
 
-A loop with no exit drains the account. Before judging, check the caps:
+The iterate round limit is the ONE bound the cycle respects. Before judging, check it:
 
 ```bash
 fdir=".loop-spec/features/${slug}"
 used=$(jq -r '.iterate.used' "$fdir/feature.json")
 maxit=$(jq -r '.iterate.maxIterations' "$fdir/feature.json")
-gused=$(jq -r '.retryBudget.globalUsed' "$fdir/feature.json")
-gmax=$(jq -r '.retryBudget.global' "$fdir/feature.json")
 ```
 
-If `used >= maxit` OR `gused >= gmax`: **stop iterating and ship — but ship LOUD, never silent.** Do NOT re-enter an upstream phase — this is the article's `STOP WHEN: ... OR N iterations reached`. Before setting `currentPhase = "completed"`:
+If `used >= maxit`: **stop iterating and ship — but ship LOUD, never silent.** Do NOT re-enter an upstream phase — this is the article's `STOP WHEN: ... OR N iterations reached`. Before setting `currentPhase = "completed"`:
 
-0. **Confirmation pass (bounded to exactly one, report-only).** If a rewind fix landed after the last judge pass (`used > 0` and the phase pointer arrived here from VERIFY) AND `iterate.confirmationUsed` is not `true`: set `iterate.confirmationUsed = true` (via `lib/feature-write.sh`, BEFORE dispatching, so a crash/resume can never run it twice), then dispatch the `iterate-judge` once more exactly as in Step 1 but with `mode=confirmation` noted in the prompt. This pass does NOT increment `iterate.used` or `retryBudget.globalUsed` and CANNOT trigger a rewind — its verdict only decides what the ship looks like:
-   - `converged == true` (and `deterministic_gate_passed`): the final fix actually closed the goal. Record the verdict in `iterate.lastVerdict` + `history`, write ITERATION.md's final section as a clean converge, and ship with NO budget warnings — this converts "shipped with unknown state" into a confirmed converge.
+0. **Confirmation pass (bounded to exactly one, report-only).** If a rewind fix landed after the last judge pass (`used > 0` and the phase pointer arrived here from VERIFY) AND `iterate.confirmationUsed` is not `true`: set `iterate.confirmationUsed = true` (via `lib/feature-write.sh`, BEFORE dispatching, so a crash/resume can never run it twice), then dispatch the `iterate-judge` once more exactly as in Step 1 but with `mode=confirmation` noted in the prompt. This pass does NOT increment `iterate.used` and CANNOT trigger a rewind — its verdict only decides what the ship looks like:
+   - `converged == true` (and `deterministic_gate_passed`): the final fix actually closed the goal. Record the verdict in `iterate.lastVerdict` + `history`, write ITERATION.md's final section as a clean converge, and ship with NO limit warnings — this converts "shipped with unknown state" into a confirmed converge.
    - `converged == false` (or the dispatch fails/malforms): fall through to the loud-ship steps below using THIS verdict's gaps (they are fresher than the pre-fix `lastVerdict`).
-1. **Harvest every unresolved gap from the freshest verdict** (the confirmation verdict when one ran, else `iterate.lastVerdict`) into `warnings[]` (one entry per below-8 criterion and per gap in `gap` / `remaining_gaps[]`), each prefixed `iterate-budget-spent:`. A budget-exhausted ship with an empty warning trail is indistinguishable from a clean converge — that silence is the failure mode this step exists to prevent.
+1. **Harvest every unresolved gap from the freshest verdict** (the confirmation verdict when one ran, else `iterate.lastVerdict`) into `warnings[]` (one entry per below-8 criterion and per gap in `gap` / `remaining_gaps[]`), each prefixed `iterate-budget-spent:`. A limit-exhausted ship with an empty warning trail is indistinguishable from a clean converge — that silence is the failure mode this step exists to prevent.
 
-   **Backlog each harvested gap too** — warnings are a report, the backlog is a queue. (This is the ONLY point in ITERATE, in any mode, where the backlog is written: the iteration limit is hit and the loop can no longer work the gap itself. While budget remains, gaps rewind — Step 3 — and never touch the backlog.) Stamp each entry with its deterministic gap id (computed from `fix_first`) — the id is how a re-drained gap is recognized later, by exact equality, never fuzzy text:
+   **Backlog each harvested gap too** — warnings are a report, the backlog is a queue. (This is the ONLY point in ITERATE, in any mode, where the backlog is written: the iteration limit is hit and the loop can no longer work the gap itself. While rounds remain, gaps rewind — Step 3 — and never touch the backlog.) Stamp each entry with its deterministic gap id (computed from `fix_first`) — the id is how a re-drained gap is recognized later, by exact equality, never fuzzy text:
    ```bash
    gid="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" gap-id "{gap.fix_first}")"
    bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "{slug}" iterate-gap "{gap.description} — fix first: {gap.fix_first}" --id "$gid"
    ```
    `/loop-spec:cycle backlog` turns each into its own bounded follow-up cycle instead of the gap dying in feature.json.
 
-   **Autonomous terminal rule** (`feature.json.autonomous == true`): if THIS feature was itself started from a backlog drain (`feature.json.backlogEntryId` non-null) and the gap being harvested is the same gap that entry was created for — exact id equality, `[[ "$gid" == "{feature.backlogEntryId}" ]]` with `gid` computed from `gap.fix_first` as above — do NOT re-backlog it: two full iteration budgets on the same gap means the approach is wrong, not under-iterated. Record it as `iterate-terminal:` (instead of `iterate-budget-spent:`) in `warnings[]`, close the backlog entry with `bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" terminal "$gid" "two budgets spent on {slug}; approach wrong"` (same note into ITERATION.md), and write the complete evidence trail into ITERATION.md. (Legacy feature with `backlogEntry` text but no `backlogEntryId`: close by exact text with `backlog.sh done` instead.) This is the ladder's one legitimate stop (`skills/shared/autonomous-mode.md`, rung 5) — everything short of it keeps the loop working the gap.
+   **Autonomous terminal rule** (`feature.json.autonomous == true`): if THIS feature was itself started from a backlog drain (`feature.json.backlogEntryId` non-null) and the gap being harvested is the same gap that entry was created for — exact id equality, `[[ "$gid" == "{feature.backlogEntryId}" ]]` with `gid` computed from `gap.fix_first` as above — do NOT re-backlog it: two full iteration limits on the same gap means the approach is wrong, not under-iterated. Record it as `iterate-terminal:` (instead of `iterate-budget-spent:`) in `warnings[]`, close the backlog entry with `bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" terminal "$gid" "two iteration limits spent on {slug}; approach wrong"` (same note into ITERATION.md), and write the complete evidence trail into ITERATION.md. (Legacy feature with `backlogEntry` text but no `backlogEntryId`: close by exact text with `backlog.sh done` instead.) This is the ladder's one legitimate stop (`skills/shared/autonomous-mode.md`, rung 5) — everything short of it keeps the loop working the gap.
 
-   **Self-learning writer:** a budget-spent ship means the loop could not converge within its budget — record the pattern once so the next feature plans for it:
+   **Self-learning writer:** a limit-spent ship means the loop could not converge within its rounds — record the pattern once so the next feature plans for it:
    ```bash
-   bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "iterate budget spent on {slug} with a {gap.type}-level gap: '{gap.fix_first}' — surface this class of requirement during PLAN" --check "bash lib/criteria-coverage.sh docs/loop-spec/features/{slug}/SPEC.md docs/loop-spec/features/{slug}/PLAN.md"
+   bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "iterate limit spent on {slug} with a {gap.type}-level gap: '{gap.fix_first}' — surface this class of requirement during PLAN" --check "bash lib/criteria-coverage.sh docs/loop-spec/features/{slug}/SPEC.md docs/loop-spec/features/{slug}/PLAN.md"
    ```
 2. **If no confirmation pass could run** (already used, or the dispatch failed), append one more warning: `iterate-budget-spent: final remediation was never re-judged against the original goal`.
-3. Write the final ITERATION.md section stating the budget was spent, listing the harvested warnings verbatim.
-4. Set `currentPhase = "completed"` and go to Phase exit. The cycle's On-completion summary prints `warnings[]` — the user must see the accepted gaps without opening feature.json. **Autonomous mode:** the cycle's On-completion additionally chains straight into a backlog drain for the gaps just queued (bounded — see cycle "On completion", autonomous chaining), so a budget-spent ship is a handoff to the next bounded cycle, not a stop that relies on someone reading warnings.
+3. Write the final ITERATION.md section stating the iteration limit was spent, listing the harvested warnings verbatim.
+4. Set `currentPhase = "completed"` and go to Phase exit. The cycle's On-completion summary prints `warnings[]` — the user must see the accepted gaps without opening feature.json. **Autonomous mode:** the cycle's On-completion additionally chains straight into a backlog drain for the gaps just queued (bounded — see cycle "On completion", autonomous chaining), so a limit-spent ship is a handoff to the next bounded cycle, not a stop that relies on someone reading warnings.
 
 ### Step 1 - Dispatch the judge (maker ≠ checker)
 
@@ -72,7 +69,7 @@ Agent({
 })
 ```
 
-Parse the verdict JSON from its completion message (schema in `agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[], weakest, gap{type,description,fix_first}, remaining_gaps[], summary}`. `gap` is the single highest-leverage miss that decides the routing; `remaining_gaps[]` (possibly empty) lists the other known misses so one pass can remediate several and a budget-exhausted ship can report ALL of them.
+Parse the verdict JSON from its completion message (schema in `agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[], weakest, gap{type,description,fix_first}, remaining_gaps[], summary}`. `gap` is the single highest-leverage miss that decides the routing; `remaining_gaps[]` (possibly empty) lists the other known misses so one pass can remediate several and a limit-exhausted ship can report ALL of them.
 
 **Defensive parse (the verdict is the loop's oracle — extract it deterministically, do not eyeball it):** the judge returns the verdict inside a fenced ```json block. Capture its completion message to `$fdir/.iterate-judge.out`, then extract and validate before acting:
 
@@ -95,9 +92,8 @@ A malformed or missing verdict must NOT be read as "converged": treat it as re-d
 ### Step 2 - Record the iteration
 
 ```bash
-# increment counters and append the verdict to history
+# increment the round counter and append the verdict to history
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.used "$((used+1))"
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" retryBudget.globalUsed "$((gused+1))"
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.lastVerdict "<verdict json>"
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" iterate.history "<verdict json>"
 ```
@@ -113,15 +109,15 @@ git commit -m "iterate: NO_JIRA {slug} iteration $((used+1))"
 
 **Converged** (`verdict.converged == true`): set `currentPhase = "completed"`. Clear `iterate.feedback = null`. Go to Phase exit → the cycle ships.
 
-**Not converged:** route by `gap.type`. **The backlog is NEVER an option here, in any mode** — while iterations remain, every gap is worked by a rewind (below); deferring an in-budget gap to `BACKLOG.md` would let the loop claim convergence work it never did. The backlog is exclusively the budget-exhaustion exit (Step 0's loud-ship path). In every case, write the gap so the re-entered phase can "fix the weakest point first":
+**Not converged:** route by `gap.type`. **The backlog is NEVER an option here, in any mode** — while iterations remain, every gap is worked by a rewind (below); deferring an in-limit gap to `BACKLOG.md` would let the loop claim convergence work it never did. The backlog is exclusively the limit-exhaustion exit (Step 0's loud-ship path). In every case, write the gap so the re-entered phase can "fix the weakest point first":
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedback "<gap json>"
 ```
 
-- **`execute`** — implementation gap. Convert `gap` into a FULL-SHAPE remediation task (`subject = "Iterate fix: {gap.fix_first}"`, `verifyCommand` from `feature.commands.test` or the relevant acceptance check, `blockedBy = []`, `files` = the files the verdict implicates (empty array when unknown), `acceptanceCriteria = ["{gap.fix_first}"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them) and append to `pendingRemediationTasks[]` (EXECUTE Step 2a consumes it alongside PLAN.md tasks). **Also convert every `remaining_gaps[]` entry with `type == "execute"` into its own remediation task** — the iteration budget counts judge passes, not fixes, so burning one pass per known miss when several are already identified wastes the budget the loop needs to converge. Set `currentPhase = "execute"`.
+- **`execute`** — implementation gap. Convert `gap` into a FULL-SHAPE remediation task (`subject = "Iterate fix: {gap.fix_first}"`, `verifyCommand` from `feature.commands.test` or the relevant acceptance check, `blockedBy = []`, `files` = the files the verdict implicates (empty array when unknown), `acceptanceCriteria = ["{gap.fix_first}"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them) and append to `pendingRemediationTasks[]` (EXECUTE Step 2a consumes it alongside PLAN.md tasks). **Also convert every `remaining_gaps[]` entry with `type == "execute"` into its own remediation task** — the iteration limit counts judge passes, not fixes, so burning one pass per known miss when several are already identified wastes the rounds the loop needs to converge. Set `currentPhase = "execute"`.
 - **`plan`** — decomposition gap. Set `currentPhase = "plan"`. PLAN reads `iterate.feedback` and re-plans the affected slice (it does not re-author the whole plan from scratch; it addresses the gap). 
-- **`spec`** — goal unmet because the SPEC captured the wrong thing. This is the expensive rewind, but it is **autonomous in the autonomous styles** — it does NOT block on a human. The loop stays hands-off because the rewind cannot game its own oracle: the `iterate-judge` always scores against the **immutable original goal** (`feature.json.feature_title`), never the rewritten SPEC, so refining the spec can only move the work toward the original goal, not redefine "done". The iteration budget (Step 0) hard-caps the number of rewinds.
+- **`spec`** — goal unmet because the SPEC captured the wrong thing. This is the expensive rewind, but it is **autonomous in the autonomous styles** — it does NOT block on a human. The loop stays hands-off because the rewind cannot game its own oracle: the `iterate-judge` always scores against the **immutable original goal** (`feature.json.feature_title`), never the rewritten SPEC, so refining the spec can only move the work toward the original goal, not redefine "done". The iteration limit (Step 0) hard-caps the number of rewinds.
 
   Branch by `execStyle` (read from `feature.json`):
   - **`auto` / `review-only` (autonomous):** set `currentPhase = "discuss"` and proceed WITHOUT asking. DISCUSS re-entry runs in **autonomous refinement mode** (driven by `iterate.feedback` + the immutable original goal; it does not run its interactive clarifying loop — see `skills/discuss/SKILL.md` ITERATE re-entry note). No `AskUserQuestion`. The next VERIFY→ITERATE pass re-judges against the original goal and either converges or spends another iteration.
@@ -143,7 +139,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedba
     Re-open → `currentPhase = "discuss"`; Ship as-is → `currentPhase = "completed"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
   - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): treat as autonomous — re-enter DISCUSS in refinement mode (same as `auto`). `LOOP_SPEC_ANSWER_ITERATE_SPEC` ∈ {reopen, ship} overrides; default `reopen`.
 
-The autonomy guarantee: in `auto`/`review-only`, **no gap type ever blocks on a human**. The loop runs EXECUTE/PLAN/SPEC rewinds on its own until it converges or the iteration budget is spent, then it ships-with-warnings (Step 0). The only thing that ever returns control to you mid-loop is the explicit human-in-loop styles, or a hard escalation (budget-exhausted in `step`/`interactive`). An overnight `auto` run never waits for input.
+The autonomy guarantee: in `auto`/`review-only`, **no gap type ever blocks on a human**. The loop runs EXECUTE/PLAN/SPEC rewinds on its own until it converges or the iteration limit is spent, then it ships-with-warnings (Step 0). The only thing that ever returns control to you mid-loop is the explicit human-in-loop styles, or a hard escalation (limit-exhausted in `step`/`interactive`). An overnight `auto` run never waits for input.
 
 Clear `currentTeamName`/`currentTeammates` are already null (ITERATE ran no team).
 
@@ -156,12 +152,12 @@ Clear `currentTeamName`/`currentTeammates` are already null (ITERATE ran no team
 
 ## Phase exit
 
-ITERATE does not append itself to `completedPhases` on a rewind (it will run again after the next VERIFY). It appends `"iterate"` to `completedPhases` only on the terminal pass (converged or budget-spent), immediately before `currentPhase = "completed"`.
+ITERATE does not append itself to `completedPhases` on a rewind (it will run again after the next VERIFY). It appends `"iterate"` to `completedPhases` only on the terminal pass (converged or limit-spent), immediately before `currentPhase = "completed"`.
 
 ## Design notes
 
 - **The deterministic gate is the floor; the goal re-judge is the ceiling.** ITERATE never ships on the judge's word alone — `deterministic_gate_passed` (from VERIFICATION.md) must hold too. And it never ships on a green checklist alone — the judge must agree the *goal* is met. This is the dual oracle.
-- **Bounded, always.** `maxIterations` is fixed at 10 (single-tier operation) and the cycle-wide `global` budget (40) is also respected. Ten iterations is a convergence budget, not an expectation — most features converge in 1-2; the headroom exists so a legitimately hard goal is not shipped-with-warnings prematurely. The loop ships or escalates; it never spins.
+- **Bounded by rounds, nothing else.** `maxIterations` is fixed at 10 — the ONE limit the cycle respects; everything else runs full bore. Ten iterations is headroom, not an expectation — most features converge in 1-2; the headroom exists so a legitimately hard goal is not shipped-with-warnings prematurely. The loop ships or escalates; it never spins.
 - **Don't stop to ask mid-loop**, except the one SPEC-rewind approval gate (scope changes are the user's call). Everywhere else, the judge assumes, notes it, and the loop continues — per the article's self-checking-loop rule.
 - **Fix the weakest first — but carry the whole list.** Each rewind carries `iterate.feedback` so the re-entered phase targets the single highest-leverage gap first; `remaining_gaps[]` rides along so already-identified execute-level misses are remediated in the same pass instead of costing one judge iteration each.
-- **Never ship silent.** Both terminal paths (converged, budget-spent) end in the cycle's On-completion summary; the budget-spent path must arrive there with every accepted gap in `warnings[]` so the summary shows them.
+- **Never ship silent.** Both terminal paths (converged, limit-spent) end in the cycle's On-completion summary; the limit-spent path must arrive there with every accepted gap in `warnings[]` so the summary shows them.

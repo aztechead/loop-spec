@@ -1,6 +1,6 @@
 ---
 name: execute
-description: EXECUTE phase - concurrency ladder picks dispatch by DAG width W. Rung 1/2 subagent (lead-driven Agent waves), rung 3 agent team (self-claim), rung 4 workflow DAG (execute-dag.js, opt-in only). Loop-fleet rung (bundled loop-runner, headless bounded loops with verifier integrity) replaces the team rung on opt-in or when agent teams are unavailable. Fixed width thresholds in tier-matrix.
+description: EXECUTE phase - concurrency ladder picks dispatch by DAG width W. Rung 1/2 subagent (lead-driven Agent waves), rung 3 agent team (self-claim), rung 4 workflow DAG (execute-dag.js, opt-in only). Loop-fleet rung (bundled loop-runner, headless bounded loops with verifier integrity) replaces the team rung on opt-in or when agent teams are unavailable. Fixed width thresholds in tier-matrix. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet Workflow ToolSearch
 ---
 
@@ -464,7 +464,7 @@ commit_strategy="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workflow-config.sh" commi
   ```
   The per-task worktree commits are still required for the merge mechanics; `at-end` only rewrites the final history on `feat/{slug}`, never the per-task worktrees. Skip silently in workspace mode (in-place branches across repos make a cross-repo squash ambiguous; v1 keeps per-task there).
 
-  **Caveat (per Anthropic long-running-agent guidance):** for long unsupervised / overnight runs, prefer `per-task` (the default). Anthropic recommends committing after every meaningful unit so history is recoverable and progress is not lost if the compute budget exhausts mid-run; `at-end` trades that recoverability for a clean single commit and is best reserved for short, supervised features.
+  **Caveat (per Anthropic long-running-agent guidance):** for long unsupervised / overnight runs, prefer `per-task` (the default). Anthropic recommends committing after every meaningful unit so history is recoverable and progress is not lost if the run dies partway; `at-end` trades that recoverability for a clean single commit and is best reserved for short, supervised features.
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-execute

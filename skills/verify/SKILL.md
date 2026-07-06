@@ -1,6 +1,6 @@
 ---
 name: verify
-description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team (explicit, implicit, or no-teams dispatch), map-codebase refresh, branch finish (push + PR).
+description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team (explicit, implicit, or no-teams dispatch), map-codebase refresh, branch finish (push + PR). Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
@@ -95,7 +95,7 @@ Notes:
 - `-w` (word boundary) avoids false positives on identifiers like `STBD`, `XXXL`
 
 Rationale: unresolved markers indicate incomplete implementation; running acceptance
-gates against incomplete code wastes agent budget.
+gates against incomplete code wastes agent effort.
 
 ### Step 1.5 - Test-tamper scan (anti-reward-hacking, fail-fast)
 
@@ -233,10 +233,8 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
 - Generate a FULL-SHAPE remediation task: `subject = "Fix: test suite regression"`, `verifyCommand = feature.commands.test`, `blockedBy = []`, `files = []` (unknown until diagnosed), `acceptanceCriteria = ["test suite passes"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them.
 - Append the remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step, so any `TaskCreate` calls on it would be lost.
 - Update `feature.json` via `lib/feature-write.sh`:
-  - Increment `retryBudget.perPhaseUsed.verify` and `retryBudget.globalUsed`.
   - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
-  - Check budgets. If either `perPhaseUsed.verify >= retryBudget.perPhase.verify` or `globalUsed >= retryBudget.global`: pause and escalate to user.
-  - Else: set `currentPhase = "execute"`.
+  - Set `currentPhase = "execute"` (gate retries are unbounded — full bore; only ITERATE's round limit bounds the cycle).
 - Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
 - Discard code-reviewer output for this iteration (will re-run when verify loops back after remediation).
@@ -258,10 +256,8 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
   ```
 - Append each remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step.
 - Update `feature.json` via `lib/feature-write.sh`:
-  - Increment `retryBudget.perPhaseUsed.verify` and `retryBudget.globalUsed`.
   - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
-  - Check budgets. If exceeded: pause and escalate to user.
-  - Else: set `currentPhase = "execute"`.
+  - Set `currentPhase = "execute"` (gate retries unbounded).
 - Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
 - Route to `loop-spec:execute`. When execute completes, re-invoke verify from Step 1.
@@ -276,10 +272,8 @@ Fixed gate rule (single-tier operation): **BLOCK on Critical OR Important. PASS_
 - Generate one remediation task per blocking finding (same remediation task shape as verifier FAIL above).
 - Append each remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry.
 - Update `feature.json` via `lib/feature-write.sh`:
-  - Increment `retryBudget.perPhaseUsed.verify` and `retryBudget.globalUsed`.
   - Append entry to `gateHistory[]` (`phase: verify`, `gate: code-review`, `result: fail`).
-  - Check budgets. If exceeded: pause and escalate to user.
-  - Else: set `currentPhase = "execute"`.
+  - Set `currentPhase = "execute"` (gate retries unbounded).
 - Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
 - **Ralph remediation routing:** Check `pendingRemediationTasks.length` from `feature.json`.

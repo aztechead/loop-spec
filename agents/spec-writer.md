@@ -9,7 +9,6 @@ tools:
   - Glob
 model: opus
 color: blue
-maxTurns: 40
 ---
 
 # spec-writer

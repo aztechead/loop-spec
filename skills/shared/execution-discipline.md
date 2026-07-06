@@ -35,8 +35,8 @@ follow mechanically. It complements — never replaces — the laziness ladder
 ## Relationship to existing gates
 
 The cycle already externalizes several of these habits into machinery — probe-before-
-assert grounding (`skills/shared/grounding-protocol.md`), file-based budgets
-(`lib/debug-budget.sh`), the test-tamper scan, maker≠checker gates. The directive is the
+assert grounding (`skills/shared/grounding-protocol.md`), the test-tamper scan,
+maker≠checker gates. The directive is the
 in-prompt counterpart: it shapes the executor's moment-to-moment behavior so the
 machinery catches less, not more.
 

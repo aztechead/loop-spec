@@ -1,6 +1,6 @@
 ---
 name: cycle
-description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration budget is spent). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gates and budgets are fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model selection is fixed. Resumes incomplete features automatically.
+description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration limit is spent). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model selection is fixed. Resumes incomplete features automatically.
 argument-hint: "[new] [feature description | path/to/spec.md | backlog]  (optional inline overrides: style:auto|step|interactive|review-only, autonomous)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
@@ -55,7 +55,7 @@ When a phase ends: in `explicit` mode call `TeamDelete` before the next phase's 
 
 This rule applies in DISCUSS, PLAN, EXECUTE, VERIFY, MAP-CODEBASE, and any sub-skill called from this cycle.
 
-**Subagent depth budget (CC caps nested subagents at 5 levels; forked subagents count toward the cap).** loop-spec's dispatch stays well inside this: the orchestrator (depth 0) spawns phase teammates (depth 1), and a teammate may spawn at most one helper (e.g. a background mapper, depth 2). Phase teammates MUST NOT build their own deep subagent chains — if a teammate needs more fan-out, surface it to the lead rather than nesting. EXECUTE's loop-fleet rung sidesteps the cap entirely (each loop is a separate top-level `claude -p` process, not a nested subagent).
+**Subagent depth (CC caps nested subagents at 5 levels; forked subagents count toward the cap).** loop-spec's dispatch stays well inside this: the orchestrator (depth 0) spawns phase teammates (depth 1), and a teammate may spawn at most one helper (e.g. a background mapper, depth 2). Phase teammates MUST NOT build their own deep subagent chains — if a teammate needs more fan-out, surface it to the lead rather than nesting. EXECUTE's loop-fleet rung sidesteps the cap entirely (each loop is a separate top-level `claude -p` process, not a nested subagent).
 
 **No-teams fallback:** when `.loop-spec/runtime.json.teamsMode == "none"` (equivalently
 `teamsAvailable == false`), every rule above degrades per the substitution table in
@@ -282,7 +282,7 @@ Model availability is probed in Step 3.5. Model selection is fixed (no preset), 
 ### Step 3 - Resolve style + feature
 
 Goal: launch straight into the workflow with **zero menu friction**. There is NO tier:
-gates and budgets are fixed (`skills/shared/tier-matrix.md`), and cost on trivially-scoped
+gate behavior is fixed (`skills/shared/tier-matrix.md`), and trivially-scoped
 work is handled by the structural fast-path AFTER planning (measured scope), never by an
 intent tier inferred from the prompt. Style defaults to `auto` unless overridden inline.
 
@@ -323,7 +323,7 @@ Resolution order:
    entry="$(jq -r '.text' <<<"$entry_json")"
    entry_id="$(jq -r '.id // empty' <<<"$entry_json")"
    ```
-   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it. Record the originating entry on the feature (after Step 5 creates feature.json): `feature.json.backlogEntry = "<entry text>"` and `feature.json.backlogEntryId = "<entry_id>"` (null when the entry carries no id) — ITERATE's autonomous terminal rule matches the id exactly to detect a gap spending its budget twice.
+   - Use the entry text as the feature description (branch 2 above; style `auto` unless overridden). Run the full cycle for it. Record the originating entry on the feature (after Step 5 creates feature.json): `feature.json.backlogEntry = "<entry text>"` and `feature.json.backlogEntryId = "<entry_id>"` (null when the entry carries no id) — ITERATE's autonomous terminal rule matches the id exactly to detect a gap spending its rounds twice.
    - On completion (the On-completion section finishing cleanly), mark it off: `bash .../lib/backlog.sh done "$entry"`.
    - **Loop bound:** `LOOP_SPEC_MAX_FEATURES` (default `1`). After marking an entry done, if features completed this invocation `< LOOP_SPEC_MAX_FEATURES` and `backlog.sh next` yields another entry, start the next cycle from Step 3 branch 2 with it. Stop when the bound is hit, the backlog is empty, or any feature ends paused/escalated (never chain past a failure).
    - Overnight form: an outer `while :; do claude -p "/loop-spec:cycle backlog"; done` gets one feature per fresh session — the Ralph loop with real stop conditions.
@@ -366,7 +366,7 @@ EnterWorktree({ path: ".claude/worktrees/${slug}" })
 mkdir -p ".loop-spec/features/${slug}" .loop-spec/codebase "docs/loop-spec/features/${slug}"
 
 # Build the full schema-7 skeleton from the single source of truth (lib/feature-init.sh).
-# Model IDs, the fixed retryBudget/iterate blocks, and the artifact scaffold all
+# Model IDs, the fixed iterate block, and the artifact scaffold all
 # live in that one script -- never hand-build feature.json inline (that drift is what
 # previously dropped iterateJudge from the normalized models map). Every phase skill reads
 # literal model IDs from feature.models.<role>, which guarantees teammates never silently
@@ -455,7 +455,7 @@ One-time per project: ingest an existing GSD `.planning/codebase/` if present (S
 
 ### Step 5.9 - Normalize feature.models (resume backfill + migration)
 
-Phase skills read `model: feature.models.<role>` literally and do NOT re-derive from `model-matrix.md`. Model selection is fixed, so the canonical map is the same for every feature. Older features either lack a `models` block (pre-v2.3.0) or carry a stale one from the removed preset scheme. Before routing to any phase, write the canonical fixed map idempotently and drop the vestigial `preset` and `tier` fields (single-tier hard cutover: budgets already in the file keep working, but the tier axis no longer exists). This is the single fallback point, so no individual phase skill needs its own:
+Phase skills read `model: feature.models.<role>` literally and do NOT re-derive from `model-matrix.md`. Model selection is fixed, so the canonical map is the same for every feature. Older features either lack a `models` block (pre-v2.3.0) or carry a stale one from the removed preset scheme. Before routing to any phase, write the canonical fixed map idempotently and drop the vestigial `preset` and `tier` fields (single-tier hard cutover: any legacy retryBudget block in the file is simply ignored, and the tier axis no longer exists). This is the single fallback point, so no individual phase skill needs its own:
 
 ```bash
 feat_dir=".loop-spec/features/${slug}"
@@ -490,7 +490,7 @@ fi
 
 The cycle does NOT create the phase team. Each phase skill owns its own team lifecycle: `TeamCreate` at phase start, `TeamDelete` + clear `currentTeamName` at phase end. This keeps team rosters phase-specific (each phase has different teammates) and avoids double-`TeamCreate` errors.
 
-For new features, `currentPhase` is initialized to `"spec"` (Step 5), so `Skill(loop-spec:spec)` is invoked first. After spec completes, `currentPhase` advances to `"discuss"`, then `"plan"`, `"execute"`, `"verify"`, then `"iterate"`, and finally `"completed"`. The `iterate` phase is the outer convergence loop: it judges the result against the original goal and may route `currentPhase` **back** to `"execute"`, `"plan"`, or (with your approval) `"spec"`/`"discuss"` to fix a gap, or forward to `"completed"` when converged or the iteration budget is spent. Because ITERATE can rewind the phase pointer, the cycle's phase loop (below) naturally re-invokes the upstream phase.
+For new features, `currentPhase` is initialized to `"spec"` (Step 5), so `Skill(loop-spec:spec)` is invoked first. After spec completes, `currentPhase` advances to `"discuss"`, then `"plan"`, `"execute"`, `"verify"`, then `"iterate"`, and finally `"completed"`. The `iterate` phase is the outer convergence loop: it judges the result against the original goal and may route `currentPhase` **back** to `"execute"`, `"plan"`, or (with your approval) `"spec"`/`"discuss"` to fix a gap, or forward to `"completed"` when converged or the iteration limit is spent. Because ITERATE can rewind the phase pointer, the cycle's phase loop (below) naturally re-invokes the upstream phase.
 
 Cycle's only responsibility here is to invoke the phase skill and react to its return:
 
@@ -549,7 +549,7 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
 
 ## Resume strategy + phase pause/escalation
 
-Full algorithm and escalation handling (budget exhausted, NEEDS_CONTEXT, etc.) in **`skills/shared/cycle-resume-escalation.md`**. Step 1 carries the inline fast-path.
+Full algorithm and escalation handling (iteration limit exhausted, NEEDS_CONTEXT, etc.) in **`skills/shared/cycle-resume-escalation.md`**. Step 1 carries the inline fast-path.
 
 ## On completion
 
@@ -594,7 +594,7 @@ verdict="$(bash "${CLAUDE_SKILL_DIR}/../../lib/autonomous-chain.sh" should-chain
 - `{"chain": true, "entry": {...}}` → chain directly into backlog-drain mode (Step 3
   branch 4) with that entry. The chained feature inherits `autonomous` and carries
   `backlogEntry` + `backlogEntryId` from the entry JSON, so a gap that spends a second
-  full budget goes terminal instead of looping forever. After the chained cycle
+  full round of iterations goes terminal instead of looping forever. After the chained cycle
   completes, re-run the predicate with the incremented `--completed` count.
 - `{"chain": false, "reason": ...}` → stop chaining. The reasons encode the bounds that
   keep drain mode finite: `max-features-reached` (`LOOP_SPEC_MAX_FEATURES`, default 1),

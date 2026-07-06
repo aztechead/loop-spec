@@ -10,7 +10,6 @@ tools:
   - Bash
 model: sonnet
 color: cyan
-maxTurns: 60
 memory: project
 ---
 

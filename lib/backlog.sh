@@ -3,7 +3,7 @@
 #
 # The project-scope analog of a Ralph loop's fix_plan.md: a persistent, prioritized
 # list of deferred work that survives feature completion. Two producers feed it
-# automatically (VERIFY's tier-deferred findings; ITERATE's budget-spent gaps) and
+# automatically (VERIFY's tier-deferred findings; ITERATE's limit-spent gaps) and
 # the cycle's backlog-drain mode consumes it one feature per loop.
 #
 # Usage:
@@ -41,7 +41,7 @@ BACKLOG_FILE="${LOOP_SPEC_BACKLOG_FILE:-${CLAUDE_PROJECT_DIR:-.}/.loop-spec/BACK
 HEADER='# BACKLOG.md
 
 Deferred work harvested by loop-spec: findings a tier deferred, goal gaps an
-iteration budget could not close, and manual entries. The cycle drains it with
+iteration limit could not close, and manual entries. The cycle drains it with
 `/loop-spec:cycle backlog` (one feature per loop). You own the ordering -- the
 drain mode always takes the top unchecked entry.
 '
@@ -95,7 +95,7 @@ case "${1:-}" in
       echo "usage: backlog.sh add <source-slug> <type> <text> [--id <gap-id>]" >&2; exit 2
     fi
     ensure_file
-    # A TERMINAL gap id is never re-queued: two spent budgets mean the approach is
+    # A TERMINAL gap id is never re-queued: two spent limits mean the approach is
     # wrong, not under-iterated (autonomous ladder rung 5). Refuse loudly.
     if [[ -n "$gid" ]]; then
       while IFS= read -r line; do

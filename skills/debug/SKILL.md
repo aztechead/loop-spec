@@ -1,6 +1,6 @@
 ---
 name: debug
-description: Spec-driven debugging loop for a specific error (message/stack/failing test) OR a non-specific symptom ("something's wrong", flaky, slow). TRIAGE converges vague symptoms to one reproducible signal; REPRODUCE writes the failing oracle before any fix; a bounded FIX loop (max 5 hypotheses, 3 attempts each) closes it; a mandatory SIBLING SWEEP fixes same-mechanism occurrences in the same branch; VERIFY runs the full suite + test-tamper scan and keeps the repro as a regression test. Writes docs/loop-spec/debug/{slug}/BUG.md.
+description: Spec-driven debugging loop for a specific error (message/stack/failing test) OR a non-specific symptom ("something's wrong", flaky, slow). TRIAGE converges vague symptoms to one reproducible signal; REPRODUCE writes the failing oracle before any fix; an evidence-disciplined FIX loop (confirm each hypothesis before changing code, revert failed attempts) closes it; a mandatory SIBLING SWEEP fixes same-mechanism occurrences in the same branch; VERIFY runs the full suite + test-tamper scan and keeps the repro as a regression test. Writes docs/loop-spec/debug/{slug}/BUG.md.
 argument-hint: "<error text | stack trace | failing test | vague symptom description>"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
@@ -102,22 +102,16 @@ Exit conditions:
    verify a fix. If determinism is unreachable, quantify it (`N` runs, `M` failures)
    and require the fixed code to pass the same N-run battery.
 
-## Step 3 - FIX loop (bounded)
+## Step 3 - FIX loop (evidence-disciplined, unbounded)
 
-Budgets: **max 5 hypotheses; max 3 fix attempts per hypothesis.** The counter is a
-FILE, not model memory — a long session's compaction cannot drift a file. Before
-opening a hypothesis and before each fix attempt, tick the budget and obey the exit
-code (`0` = proceed, `3` = that budget is spent):
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/debug-budget.sh" hypothesis "{bug_dir}"   # opens Hn, resets attempts
-bash "${CLAUDE_SKILL_DIR}/../../lib/debug-budget.sh" attempt "{bug_dir}"      # ticks attempt on Hn
-```
-
-Narrative (mechanism, evidence, verdicts) still goes in BUG.md `## Hypothesis log`;
-`budget.json` is the arithmetic. On exit 3 from `attempt`: revert, refine or move to
-the next hypothesis. On exit 3 from `hypothesis`: stop and escalate with the full
-log — a spent budget with recorded verdicts is progress; unbounded thrashing is not.
+Hypotheses and fix attempts are unbounded (full bore) — the loop runs until the
+mechanism is confirmed and fixed, the scope tripwire escalates it, or no remaining
+observation can discriminate between hypotheses (then instrument and stop, exactly
+like TRIAGE's not-converged exit). What replaces a numeric cap is DISCIPLINE: every
+hypothesis and every attempt is recorded in BUG.md `## Hypothesis log` (mechanism,
+evidence, verdict) BEFORE the next one opens — recorded verdicts are progress;
+unrecorded thrash is not. Never reopen a hypothesis whose verdict is REFUTED without
+new evidence.
 
 For each hypothesis, in ranked order:
 
@@ -135,8 +129,8 @@ For each hypothesis, in ranked order:
    backlog instead.
 4. **Verify:** repro goes green AND the full test suite passes AND nothing else changed
    behavior (`git diff` review — the diff should read as exactly the mechanism fix).
-   Record `CONFIRMED` with the green output. If the repro stays red: attempt counter
-   +1, revert the attempt (`git checkout -- <files>` or revert commit), refine or
+   Record `CONFIRMED` with the green output. If the repro stays red: record the
+   failed attempt, revert it (`git checkout -- <files>` or revert commit), refine or
    re-rank hypotheses.
 5. **Scope tripwire:** the moment a correct fix demonstrably requires feature-scale
    work (schema change, cross-cutting redesign, new dependency), stop fixing. BUG.md
@@ -148,7 +142,7 @@ For each hypothesis, in ranked order:
 ## Step 3b - SIBLING SWEEP (mandatory after CONFIRMED)
 
 A confirmed root cause is rarely alone: the same mechanism tends to recur in sibling
-code. This step is not optional and not budget-ticked — the hypothesis is already
+code. This step is not optional — the hypothesis is already
 CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
 
 1. **Sweep for the same mechanism** (canonical reference
@@ -198,7 +192,7 @@ CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
 ## Triage evidence      <- non-specific inputs only
 ## Converged signal     <- non-specific inputs only
 ## Reproduction         <- command, red output verbatim, exit code
-## Hypothesis log       <- H1..H5: mechanism, evidence, verdict (REFUTED/CONFIRMED), attempts
+## Hypothesis log       <- H1..Hn: mechanism, evidence, verdict (REFUTED/CONFIRMED), attempts
 ## Fix                  <- root cause, change, why sufficient
 ## Sibling sweep        <- commands run, sites examined, verdict per site (FIXED-SIBLING/CLEAN/DEFERRED-NEW-BUG)
 ## Deferred             <- findings out of scope for this fix (backlog candidates)
@@ -207,15 +201,14 @@ CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
 BUG.md is committed with the fix — it is the audit trail (the SPEC.md analog), and the
 spec draft if the bug escalates to a full cycle.
 
-## Bounds recap
+## Discipline recap
 
-| Bound | Value |
+| Rule | Value |
 |---|---|
-| Hypotheses | 5 |
-| Fix attempts per hypothesis | 3 |
-| Triage sources before instrumented-stop | 5 |
+| Hypotheses / fix attempts | unbounded (full bore); every one recorded in the Hypothesis log before the next opens |
+| Triage evidence sources | the 5-source checklist, then instrumented-stop if not converged |
 | Flaky-oracle battery | N-run, matched pre/post |
 | Sibling sweep after CONFIRMED fix | mandatory; same mechanism = same branch, new mechanism = deferred |
 
 The loop always terminates in one of: fixed-and-verified, instrumented-and-waiting,
-escalated-to-cycle, or budget-spent-with-evidence. Never in silent thrash.
+or escalated-to-cycle. Never in silent thrash.

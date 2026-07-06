@@ -51,10 +51,9 @@ for f in agents/*.md; do
     exit 1
   fi
 
-  # maxTurns: if present, must be a positive integer
-  fm_turns=$(echo "$fm" | grep '^maxTurns:' | sed 's/^maxTurns: *//' || true)
-  if [[ -n "$fm_turns" ]] && ! [[ "$fm_turns" =~ ^[1-9][0-9]*$ ]]; then
-    echo "FAIL: $f invalid maxTurns '$fm_turns' (must be a positive integer)"
+  # maxTurns: forbidden — the plugin runs full bore; only iterate rounds bound work
+  if echo "$fm" | grep -q '^maxTurns:'; then
+    echo "FAIL: $f contains forbidden frontmatter key maxTurns (no per-dispatch turn caps)"
     exit 1
   fi
 
