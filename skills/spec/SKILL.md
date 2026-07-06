@@ -19,9 +19,9 @@ You are the SPEC phase orchestrator, running on the **main thread**. Invoked by 
 ## Precondition — SPEC is cycle-initialized, not standalone
 
 SPEC reads (and at Step 4 writes) `feature.json`; it does NOT bootstrap one. `feature.json`
-is created by `loop-spec:cycle` Step 5 (slug, execStyle, the full `retryBudget`/
-`iterate`/`models` blocks). Invoking `/loop-spec:spec` directly with no in-flight feature
-leaves every downstream phase (DISCUSS/PLAN read `retryBudget`, ITERATE reads `iterate`)
+is created by `loop-spec:cycle` Step 5 (slug, execStyle, the full `iterate`/`models`
+blocks). Invoking `/loop-spec:spec` directly with no in-flight feature
+leaves every downstream phase (all phases read `feature.json`, ITERATE reads `iterate`)
 without the state they require — do not hand-author a partial `feature.json` to work around
 this.
 

@@ -57,14 +57,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "challengerName": "string or null (e.g., challenger-1)",
     "startedAt": "ISO-8601 timestamp or null"
   },
-  "retryBudget": {
-    "perGate": 3,
-    "perPhase": {"spec": 3, "discuss": 3, "plan": 4, "execute": null, "verify": 4, "iterate": 10},
-    "perGateUsed": {},
-    "perPhaseUsed": {"spec": 0, "discuss": 0, "plan": 0, "execute": 0, "verify": 0},
-    "global": 30,
-    "globalUsed": 0
-  },
   "commands": {
     "test": "string (e.g., npm test)",
     "lint": "string",
@@ -118,13 +110,12 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 ### Field notes
 
 - The `tasks` and `waves` arrays from v2 are gone. Live task state lives in the harness task list, not in `feature.json`.
-- `retryBudget.perPhase.execute: null` means unlimited at the phase level. The per-task cap (`maxRetriesPerTask`, fixed 2) is the operative limit during EXECUTE; a phase-level cap is intentionally omitted because EXECUTE's progress is bounded by the task DAG, not gate retries.
-- `retryBudget.perGateUsed` is a map keyed by `{phase}.{gate}` (e.g., `discuss.spec-critique`) of integer retry counts. It is persisted via `lib/feature-write.sh` on every gate failure so a kill mid-gate does not reset the budget.
+- There is no `retryBudget` block (full-bore operation): gate retries are unbounded, and every attempt is recorded in `gateHistory[]`. The only bound the cycle respects is `iterate.maxIterations`. During EXECUTE, the per-task rework cap (`maxRetriesPerTask`, fixed 2) routes a repeatedly-failing task to the lead for escalation rather than looping it forever between the same implementer and reviewer.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. All three are reset (`null` / `[]` / zeroed) after `TeamDelete`.
 - `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
 - `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null` unless the cycle's Step 2 capability probe signals a specific mode.
-- `artifacts.specInterview` is a nullable path to the SPEC-phase interview transcript (written by the spec orchestrator on the main thread). `currentPhase` includes `"spec"` as its first value; `retryBudget.perPhase`/`perPhaseUsed` each carry a `"spec"` field.
+- `artifacts.specInterview` is a nullable path to the SPEC-phase interview transcript (written by the spec orchestrator on the main thread). `currentPhase` includes `"spec"` as its first value.
 - `pendingRemediationTasks`, `bootstrapPendingDomains`, and `activeWorkflow` are runtime-only working fields written by the code (VERIFY remediation routing, cycle Step 5.5b background mapping, and the workflow dispatch contract in `dispatch-fanout.md`); all three are absent or empty/null between phases.
 - `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base.
 - `models` is a fixed per-role map (no preset axis), built ONCE at cycle Step 5 from `lib/feature-init.sh` (the single source of truth, mirroring `skills/shared/model-matrix.md`). Every phase skill passes `model: feature.models.<role>` on each spawn rather than re-deriving, so teammates never silently inherit the orchestrator's session model. opus runs spec-writer, planner, advocate, challenger, spec-compliance-reviewer, and iterate-judge; sonnet runs implementer, code-reviewer, verifier, mapper-*, and pattern-mapper. Cycle Step 5.9 re-normalizes this block idempotently on every resume from the same `feature-init.sh` source (forcing canonical IDs, dropping any vestigial `preset` field), so the two construction sites cannot drift.

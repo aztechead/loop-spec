@@ -464,7 +464,7 @@ commit_strategy="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workflow-config.sh" commi
   ```
   The per-task worktree commits are still required for the merge mechanics; `at-end` only rewrites the final history on `feat/{slug}`, never the per-task worktrees. Skip silently in workspace mode (in-place branches across repos make a cross-repo squash ambiguous; v1 keeps per-task there).
 
-  **Caveat (per Anthropic long-running-agent guidance):** for long unsupervised / overnight runs, prefer `per-task` (the default). Anthropic recommends committing after every meaningful unit so history is recoverable and progress is not lost if the compute budget exhausts mid-run; `at-end` trades that recoverability for a clean single commit and is best reserved for short, supervised features.
+  **Caveat (per Anthropic long-running-agent guidance):** for long unsupervised / overnight runs, prefer `per-task` (the default). Anthropic recommends committing after every meaningful unit so history is recoverable and progress is not lost if the run dies partway; `at-end` trades that recoverability for a clean single commit and is best reserved for short, supervised features.
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-execute

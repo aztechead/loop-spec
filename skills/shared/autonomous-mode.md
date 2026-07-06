@@ -59,7 +59,7 @@ Self-answering collapses *preference* questions, never *safety* aborts. These
 stay hard failures exactly as written in their skills:
 
 - dirty-repo aborts (workspace Step 5 two-phase check, worktree creation)
-- graphify hard requirement, schema-version guards, budget/iteration ceilings
+- graphify hard requirement, schema-version guards, the iteration ceiling
 - VERIFY's code-review HARD-GATE and the test-tamper scan
 - anything the skill marks abort/escalate-with-evidence rather than ask
 
@@ -70,8 +70,9 @@ the audit trail of what happened — it is NEVER how a problem gets handled,
 because in a headless run nobody is reading warnings mid-flight. When a phase's
 escalation path fires, climb this ladder instead of stopping:
 
-1. **Self-heal in phase** — the existing retry budgets (gate re-dispatch with
-   findings, teammate rework via SendMessage) run exactly as written.
+1. **Self-heal in phase** — the existing gate retry loops (gate re-dispatch with
+   findings, teammate rework via SendMessage) run exactly as written; gate
+   retries are unbounded.
 2. **Lead-authored fallback** — if a teammate fails to produce its artifact
    after one fresh re-dispatch, the lead (main thread) authors the artifact
    itself from the same brief and continues, noting `lead-authored` in the
@@ -81,7 +82,7 @@ escalation path fires, climb this ladder instead of stopping:
    is `auto`); the immutable original goal keeps the oracle honest and
    `iterate.maxIterations` keeps it bounded. **While iterations remain, the
    backlog is never used** (any mode): every gap is worked by a rewind, not
-   deferred — a backlogged in-budget gap would be convergence the loop claimed
+   deferred — a backlogged in-limit gap would be convergence the loop claimed
    but never did.
 4. **Iteration limit hit (the ONLY backlog entry point)** — run ITERATE's
    confirmation pass as written, then convert EVERY accepted gap into a
@@ -91,12 +92,12 @@ escalation path fires, climb this ladder instead of stopping:
    bounded by `LOOP_SPEC_MAX_FEATURES`) so the gaps become worked items in the
    same run, not notes for a human. Record the same facts in `warnings[]` for
    the PR audit trail.
-5. **Terminal** — a gap that re-enters via backlog drain and spends its budget
+5. **Terminal** — a gap that re-enters via backlog drain and spends its rounds
    AGAIN is not re-backlogged: mark it terminal (`iterate-terminal:` prefix in
    `warnings[]` and the backlog entry closed via `lib/backlog.sh terminal
    <gap-id> <note>`; the gap id is deterministic — `backlog.sh gap-id` — and
    matched by exact equality against `feature.backlogEntryId`, never fuzzy text). Two full
-   budgets on the same gap means the approach is wrong, not under-iterated —
+   limits on the same gap means the approach is wrong, not under-iterated —
    that is the one legitimate stop, and it stops with the complete evidence
    trail (BUG-level detail in ITERATION.md), never silently.
 
@@ -148,7 +149,7 @@ an edited spec file.
 | DISCUSS unresolved dimensions / "depends on user intent" rows | AskUserQuestion in `step`/`interactive` | graph-grounded assumption, recorded (already the `auto` path; the intent row picks the more reversible reading and records it) |
 | DISCUSS / PLAN teammate-idle | AskUserQuestion | one fresh re-dispatch, then the lead authors the artifact itself (continuation ladder rung 2) |
 | ITERATE spec-rewind approval (`step`/`interactive` only) | AskUserQuestion | moot — style is forced to `auto`, which already auto-approves |
-| ITERATE budget spent | ship-with-warnings, human drains backlog later | confirmation pass → accepted gaps become BACKLOG entries → chain into backlog drain (ladder rungs 4-5) |
+| ITERATE limit spent | ship-with-warnings, human drains backlog later | confirmation pass → accepted gaps become BACKLOG entries → chain into backlog drain (ladder rungs 4-5) |
 | debug skill fix-strategy and escalation choices | AskUserQuestion | recommended strategy, recorded in BUG.md |
 
 Sites not listed follow the general rule: recommended option, recorded, proceed.

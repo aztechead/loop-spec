@@ -1,8 +1,8 @@
 # Operating Parameters (single-tier)
 
 Single-tier operation (v2.5.0 hard cutover): the quick/balanced/quality axis is gone.
-Gate behavior, severity thresholds, retry budgets, and fan-out width are FIXED. Cost on
-trivially-scoped work is controlled structurally — by the measured plan (the fast-path
+Gate behavior, severity thresholds, and fan-out width are FIXED. Trivially-scoped work
+is handled structurally — by the measured plan (the fast-path
 below) and the DAG-width ladder — never by an intent tier inferred from the prompt.
 Model selection is fixed and lives in `skills/shared/model-matrix.md`.
 
@@ -40,13 +40,13 @@ Everything else (spec critique, compliance, acceptance, code review, tamper scan
 | execute.maxParallelImplementers | 3 |
 | execute.maxRetriesPerTask | 2 |
 
-## Retry + iteration budgets (fixed; mirrors `lib/feature-init.sh`)
+## Iteration limit (fixed; mirrors `lib/feature-init.sh`)
 
-| Budget | Value |
+Full-bore operation: gate retries are unbounded (every attempt still lands in
+`gateHistory`). The ONE bound the cycle respects:
+
+| Limit | Value |
 |---|---|
-| retryBudget.perGate | 3 |
-| retryBudget.perPhase | spec 3 / discuss 3 / plan 4 / execute — / verify 4 / iterate 10 |
-| retryBudget.global | 40 |
 | iterate.maxIterations | 10 |
 
 ## EXECUTE concurrency ladder

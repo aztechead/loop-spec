@@ -4,26 +4,25 @@ loop.py — bounded autonomous agent loop for Claude Code. Layer 1 of loop-runne
 
 A loop is cron plus a decision-maker in the body. This harness is everything wrapped
 around the decision so it halts safely: it repeatedly invokes `claude -p` (verified
-headless primitive, JSON output with total_cost_usd / is_error / session_id), runs a
-verifier, measures real progress, and stops on any guardrail.
+headless primitive, JSON output with is_error / session_id), runs a verifier,
+measures real progress, and stops on any guardrail.
 
 Trust anchors, in order of importance:
   1. VERIFIER INTEGRITY — the verify command's inputs (tests, the script itself,
      any --protected paths) are hashed at start; if the agent touches them the loop
      halts immediately with halt_reason=verifier_integrity. A loop that can edit its
      own exam is not verified, it's grading itself.
-  2. HARD STOPS — max iterations, cumulative dollar budget (from Claude Code's own
-     cost report; falls back loudly to turn accounting if cost reads zero),
-     wall-clock timeout, and stall detection.
+  2. HARD STOPS — max iterations (the loop's iterate rounds), wall-clock timeout,
+     and stall detection.
   3. REAL PROGRESS, not motion — stall counts both "no file changes" AND "verifier
      failing with the same fingerprint", so an agent churning files in circles still
      halts. Pass/fail oscillation (with --judge) halts as verifier_thrash.
   4. FEEDBACK — full verifier output is saved per iteration and its tail is fed into
      the next prompt; fresh mode re-anchors a PROGRESS.md the agent maintains, so
      ralph-style context resets don't mean amnesia.
-  5. MACHINE CONTRACT — a stable result.json (halt_reason, cost, cost_reliable,
-     iterations, verifier state, start/end commit) so supervisors act on *why* the
-     loop stopped, never by scraping stdout. Exit 0 only on verified completion.
+  5. MACHINE CONTRACT — a stable result.json (halt_reason, iterations, verifier
+     state, start/end commit) so supervisors act on *why* the loop stopped, never by
+     scraping stdout. Exit 0 only on verified completion.
 
 Use as a CLI (`loop.py "task" --verify ... --config loop.json`) or as a library:
     from loop import LoopConfig, run_loop
@@ -48,7 +47,6 @@ from typing import Optional
 # Halt reasons — the supervisor's policy switch. Keep these stable.
 HALT_COMPLETE = "complete"
 HALT_MAX_ITER = "max_iterations"
-HALT_BUDGET = "budget"
 HALT_TIMEOUT = "timeout"
 HALT_STALL = "no_progress"
 HALT_INTEGRITY = "verifier_integrity"
@@ -74,7 +72,6 @@ class LoopConfig:
     task_id: str = ""                 # stable id; decouples state from prompt text edits
     verify: str = ""                  # shell cmd, exit 0 == done. Strongly recommended.
     protected: list = field(default_factory=list)  # paths the agent must not modify
-    budget_usd: float = 5.0
     max_iterations: int = 10
     timeout_s: int = 3600
     no_progress: int = 3
@@ -89,8 +86,6 @@ class LoopConfig:
     retry_watchdog: str = ""          # CLAUDE_CODE_RETRY_WATCHDOG for the child: the
                                       # recommended unattended-session retry mechanism
                                       # (CC 2.1.186). Empty = leave the env as inherited.
-    max_turns: int = 30               # per-iteration turn cap (0 disables) — bounds a
-                                      # single invocation so one tick can't eat the budget
     judge: bool = False
     judge_model: str = "claude-haiku-4-5-20251001"
     state_dir: str = ""               # default .loop/<task_id>
@@ -113,8 +108,6 @@ class LoopState:
     task_id: str
     spec_hash: str
     iteration: int = 0
-    cumulative_cost_usd: float = 0.0
-    cost_reliable: bool = True
     total_turns: int = 0
     session_id: Optional[str] = None
     start_sha: str = ""
@@ -137,7 +130,7 @@ class LoopState:
                 st = cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
                 if st.spec_hash != spec_hash:
                     print("↻ Task text changed since last run; keeping state under the "
-                          "same task_id (cost and iteration counts carry over).")
+                          "same task_id (iteration counts carry over).")
                     st.spec_hash = spec_hash
                 return st
         return cls(task_id=task_id, spec_hash=spec_hash)
@@ -264,8 +257,6 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         cmd += ["--model", cfg.model]
     if cfg.fallback_model:
         cmd += ["--fallback-model", cfg.fallback_model]
-    if cfg.max_turns and not resume:
-        cmd += ["--max-turns", str(cfg.max_turns)]
     cmd += list(cfg.extra_args)
 
     env = None
@@ -277,13 +268,13 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
     except FileNotFoundError:
         return {"ok": False, "error": f"`{cfg.claude_bin}` not found on PATH",
-                "cost": 0.0, "turns": 0, "session_id": resume, "result": ""}
+                "turns": 0, "session_id": resume, "result": ""}
     except subprocess.TimeoutExpired as e:
         if raw_log is not None:
             raw_log.parent.mkdir(parents=True, exist_ok=True)
             raw_log.write_text(e.stdout or "")
         return {"ok": False, "error": f"agent tick timed out after {int(timeout)}s",
-                "cost": 0.0, "turns": 0, "session_id": resume, "result": ""}
+                "turns": 0, "session_id": resume, "result": ""}
 
     if raw_log is not None:  # capture everything: unattended, the only record is what you kept
         raw_log.parent.mkdir(parents=True, exist_ok=True)
@@ -293,17 +284,16 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
 
     if proc.returncode != 0:
         return {"ok": False, "error": (proc.stderr.strip() or f"exit {proc.returncode}")[:500],
-                "cost": 0.0, "turns": 0, "session_id": resume,
+                "turns": 0, "session_id": resume,
                 "result": proc.stdout.strip()[:1000]}
     try:
         data = json.loads(proc.stdout)
     except json.JSONDecodeError:
-        return {"ok": False, "error": "non-JSON output from claude", "cost": 0.0,
+        return {"ok": False, "error": "non-JSON output from claude",
                 "turns": 0, "session_id": resume, "result": proc.stdout.strip()[:1000]}
     return {
         "ok": not data.get("is_error", False),
         "error": None if not data.get("is_error", False) else str(data.get("subtype", "agent error")),
-        "cost": float(data.get("total_cost_usd") or 0.0),
         "turns": int(data.get("num_turns") or 0),
         "session_id": data.get("session_id") or resume,
         "result": data.get("result", "") or "",
@@ -349,7 +339,7 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str) -> bool:
         "if the verifier passed."
     )
     jcfg = LoopConfig(task="", claude_bin=cfg.claude_bin, model=cfg.judge_model,
-                      allowed_tools="", max_turns=0)
+                      allowed_tools="")
     res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600)
     if not res["ok"]:
         print(f"⚠ judge run failed ({res['error']}); treating as NOT_DONE")
@@ -405,13 +395,12 @@ def run_loop(cfg: LoopConfig) -> dict:
 
     state = LoopState.load(state_path, task_id, spec_hash)
     if state.iteration:
-        print(f"↻ Resuming '{task_id}' from iteration {state.iteration} "
-              f"(${state.cumulative_cost_usd:.2f} spent). Raise --budget to extend a "
-              f"budget-halted run; --reset to start clean.")
+        print(f"↻ Resuming '{task_id}' from iteration {state.iteration}. "
+              f"Raise --max-iterations to extend a halted run; --reset to start clean.")
 
     if not cfg.verify:
         print("⚠  No --verify command. The loop cannot detect completion or verifier-"
-              "level stalls; it will run to --max-iterations/--budget/--timeout. "
+              "level stalls; it will run to --max-iterations/--timeout. "
               "Feedback is what makes a loop trustworthy — add one if at all possible.")
 
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -431,14 +420,11 @@ def run_loop(cfg: LoopConfig) -> dict:
         state.last_workspace_hash = workspace_hash(ignore_dir)
 
     status = "running"
-    warned_cost = not state.cost_reliable
 
     while True:
-        # --- Hard stops, checked before spending anything --------------------
+        # --- Hard stops, checked before each tick -----------------------------
         if state.iteration >= cfg.max_iterations:
             status = HALT_MAX_ITER; break
-        if state.cumulative_cost_usd >= cfg.budget_usd:
-            status = HALT_BUDGET; break
         if time.time() - state.started_at >= cfg.timeout_s:
             status = HALT_TIMEOUT; break
         if cfg.no_progress and state.stale_streak >= cfg.no_progress:
@@ -451,7 +437,7 @@ def run_loop(cfg: LoopConfig) -> dict:
         state.iteration += 1
         elapsed = time.time() - state.started_at
         print(f"\n── {task_id} · iter {state.iteration}/{cfg.max_iterations} "
-              f"· ${state.cumulative_cost_usd:.2f}/${cfg.budget_usd:.2f} · {elapsed:.0f}s ──")
+              f"· {elapsed:.0f}s ──")
 
         # --- Build the prompt -------------------------------------------------
         last = state.history[-1] if state.history else {}
@@ -486,17 +472,9 @@ def run_loop(cfg: LoopConfig) -> dict:
         res = run_claude(prompt, cfg, resume=resume,
                          raw_log=state_dir / f"iter-{state.iteration:03d}.raw.json",
                          timeout=max(MIN_TICK_TIMEOUT, cfg.timeout_s - (time.time() - state.started_at)))
-        state.cumulative_cost_usd += res["cost"]
         state.total_turns += res["turns"]
         if res["session_id"]:
             state.session_id = res["session_id"]
-        if res["ok"] and res["cost"] == 0.0 and res["turns"] > 0 and not warned_cost:
-            warned_cost = True
-            state.cost_reliable = False
-            print("⚠  Claude Code reported $0.00 for a real run (common on subscription "
-                  "plans). The dollar budget guard is blind — iteration, turn, and "
-                  "timeout caps are now your only spend bounds. result.json will carry "
-                  "cost_reliable=false.")
         if not res["ok"]:
             print(f"   agent run failed: {res['error']}")
 
@@ -504,7 +482,7 @@ def run_loop(cfg: LoopConfig) -> dict:
         if targets:
             now_hash = hash_paths(targets, ignore_dir)
             if now_hash != state.protected_hash:
-                state.history.append({"iteration": state.iteration, "cost": round(res["cost"], 4),
+                state.history.append({"iteration": state.iteration,
                                       "agent_ok": res["ok"], "event": "integrity_violation"})
                 state.save(state_path)
                 print("⛔ Protected paths were modified — the verifier can no longer be "
@@ -537,7 +515,6 @@ def run_loop(cfg: LoopConfig) -> dict:
 
         state.history.append({
             "iteration": state.iteration,
-            "cost": round(res["cost"], 4),
             "turns": res["turns"],
             "agent_ok": res["ok"],
             "agent_summary": res["result"][:600],
@@ -572,8 +549,6 @@ def run_loop(cfg: LoopConfig) -> dict:
         "status": "complete" if status == HALT_COMPLETE else "halted",
         "halt_reason": status,
         "iterations": state.iteration,
-        "cost_usd": round(state.cumulative_cost_usd, 4),
-        "cost_reliable": state.cost_reliable,
         "total_turns": state.total_turns,
         "wall_clock_seconds": round(elapsed, 1),
         "verifier": {
@@ -596,8 +571,6 @@ def run_loop(cfg: LoopConfig) -> dict:
     print("\n" + "=" * 62)
     print(f"  {status.upper()}  ({result['status']})")
     print(f"  iterations : {state.iteration}   turns: {state.total_turns}")
-    print(f"  cost       : ${state.cumulative_cost_usd:.2f} of ${cfg.budget_usd:.2f}"
-          + ("" if state.cost_reliable else "   (UNRELIABLE — see warning)"))
     print(f"  wall clock : {elapsed:.0f}s of {cfg.timeout_s}s")
     print(f"  result     : {state_dir / 'result.json'}")
     print("=" * 62)
@@ -619,7 +592,6 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     p.add_argument("--protected", action="append", default=None,
                    help="Path the agent must not modify (repeatable). Tokens in the "
                         "verify command that exist on disk are auto-protected too.")
-    p.add_argument("--budget", type=float, default=None, dest="budget_usd")
     p.add_argument("--max-iterations", type=int, default=None)
     p.add_argument("--timeout", type=int, default=None, dest="timeout_s")
     p.add_argument("--no-progress", type=int, default=None)
@@ -630,7 +602,6 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     p.add_argument("--model", default=None)
     p.add_argument("--fallback-model", default=None, dest="fallback_model")
     p.add_argument("--retry-watchdog", default=None, dest="retry_watchdog")
-    p.add_argument("--max-turns", type=int, default=None)
     p.add_argument("--judge", action="store_true", default=None)
     p.add_argument("--judge-model", default=None)
     p.add_argument("--state-dir", default=None)

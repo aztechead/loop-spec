@@ -59,8 +59,8 @@ Repeat until idle:
    - Check for spec compliance: does the implementation match only what the spec requires, with no extraneous additions?
 6. **Decide:**
    - **Pass**: all acceptance criteria met, verify command passes, no spec violations. Go to "On Pass".
-   - **Fail with retry budget remaining**: one or more criteria unmet, verify fails, or spec violated, AND `metadata.retries + 1 <= {maxRetriesPerTask}`. Go to "On Fail (rework)".
-   - **Fail with retry budget exhausted**: same as above AND `metadata.retries + 1 > {maxRetriesPerTask}`. Go to "On Fail (blocked)".
+   - **Fail with rework cap remaining**: one or more criteria unmet, verify fails, or spec violated, AND `metadata.retries + 1 <= {maxRetriesPerTask}`. Go to "On Fail (rework)".
+   - **Fail with rework cap exhausted**: same as above AND `metadata.retries + 1 > {maxRetriesPerTask}`. Go to "On Fail (blocked)".
 
 ### On Pass
 
@@ -101,7 +101,7 @@ TaskUpdate({
   status: "completed",
   metadata: {phase: null, result: "blocked", lastFindings: "<your fix-list, verbatim>"}
 })
-SendMessage({to: "lead", message: "TASK BLOCKED: task-<id> exceeded retry budget ({maxRetriesPerTask} retries)"})
+SendMessage({to: "lead", message: "TASK BLOCKED: task-<id> exceeded rework cap ({maxRetriesPerTask} retries)"})
 ```
 
 `completed` with `metadata.result == "blocked"` keeps the harness exit condition satisfied while signalling the lead's exit-condition check to pause + escalate. Then go back to step 1.

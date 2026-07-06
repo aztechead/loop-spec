@@ -3,7 +3,6 @@
 #
 # Usage:
 #   plan-to-loop.sh --slug <slug> --spec <SPEC.md path> --plan <PLAN.md path> \
-#                   [--fleet-budget <usd>] [--task-budget <usd>] \
 #                   [--max-iterations <n>] [--tasks-file <file>]
 #
 # Reads the EXECUTE tasks[] array (the Step 2a/2b shape: id, brief|subject,
@@ -21,15 +20,13 @@
 # Exit codes: 0 ok, 1 invalid tasks input, 2 bad invocation.
 set -euo pipefail
 
-SLUG="" SPEC="" PLAN="" FLEET_BUDGET="20" TASK_BUDGET="4" MAX_ITER="10" TASKS_FILE=""
+SLUG="" SPEC="" PLAN="" MAX_ITER="10" TASKS_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --slug)           SLUG="$2"; shift 2 ;;
     --spec)           SPEC="$2"; shift 2 ;;
     --plan)           PLAN="$2"; shift 2 ;;
-    --fleet-budget)   FLEET_BUDGET="$2"; shift 2 ;;
-    --task-budget)    TASK_BUDGET="$2"; shift 2 ;;
     --max-iterations) MAX_ITER="$2"; shift 2 ;;
     --tasks-file)     TASKS_FILE="$2"; shift 2 ;;
     *) echo "plan-to-loop: unknown arg '$1'" >&2; exit 2 ;;
@@ -50,7 +47,7 @@ fi
 printf '%s' "$TASKS_JSON" | python3 -c "
 import json, re, sys
 
-slug, spec, plan, fleet_budget, task_budget, max_iter = sys.argv[1:7]
+slug, spec, plan, max_iter = sys.argv[1:5]
 
 try:
     tasks = json.load(sys.stdin)
@@ -163,7 +160,6 @@ for t in tasks:
         'prompt': '\n'.join(lines),
         'verify': verify,
         'protected': protected,
-        'budget_usd': float(task_budget),
         'max_iterations': int(max_iter),
         'deps': [id_map[d] for d in (t.get('blockedBy') or []) if d in id_map],
         'mode': 'fresh',
@@ -177,8 +173,7 @@ if errs:
 
 json.dump({
     'spec': spec,
-    'fleet_budget_usd': float(fleet_budget),
     'tasks': out_tasks,
 }, sys.stdout, indent=2)
 print()
-" "$SLUG" "$SPEC" "$PLAN" "$FLEET_BUDGET" "$TASK_BUDGET" "$MAX_ITER"
+" "$SLUG" "$SPEC" "$PLAN" "$MAX_ITER"

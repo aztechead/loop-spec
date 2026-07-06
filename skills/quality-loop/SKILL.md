@@ -1,6 +1,6 @@
 ---
 name: quality-loop
-description: Iterative pre-commit review convergence loop, workspace-aware. Resolves scope from explicit file arguments or modified files across repos, runs deterministic checks first (lint/typecheck plus unresolved-marker scan), then dispatches code-reviewer and security-reviewer in parallel per round, records findings via quality-loop-state.sh, and loops until convergence or the round budget is exhausted.
+description: Iterative pre-commit review convergence loop, workspace-aware. Resolves scope from explicit file arguments or modified files across repos, runs deterministic checks first (lint/typecheck plus unresolved-marker scan), then dispatches code-reviewer and security-reviewer in parallel per round, records findings via quality-loop-state.sh, and loops until convergence or the round limit is exhausted.
 argument-hint: "[file paths to review]  (optional; defaults to modified files)"
 allowed-tools: Bash Read Write Edit Glob Grep Agent AskUserQuestion
 ---
@@ -290,16 +290,16 @@ Stop the loop. Do not increment the round counter or continue looping.
 
 ## Step 5 -- Fix blocking findings and loop
 
-If blocking findings exist and no systemic issue was detected and the round budget is not exhausted:
+If blocking findings exist and no systemic issue was detected and the round limit is not exhausted:
 
 1. Fix blocking findings on the main thread (Edit/Write tools). For each finding, apply the minimal correct fix. Do not refactor beyond what the finding requires.
 2. Increment the round counter.
 3. Loop back to Step 1 (deterministic checks).
 
-**Round budget:** loop while `ROUND_NUM <= LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` (default 3). When the round budget is exhausted before convergence, escalate:
+**Round limit:** loop while `ROUND_NUM <= LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` (default 3). When the round limit is exhausted before convergence, escalate:
 
 ```
-quality-loop: ESCALATE -- round budget exhausted (LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS=N).
+quality-loop: ESCALATE -- round limit exhausted (LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS=N).
 Remaining blocking findings:
   - <source> <category> <severity>: <claim> (<file>:<line>)
   ...
@@ -313,7 +313,7 @@ findings manually and re-invoke quality-loop, or commit with awareness of
 these open issues.
 ```
 
-Do not mark any file clean on budget exhaustion. Stop.
+Do not mark any file clean on round-limit exhaustion. Stop.
 
 ## Step 6 -- Convergence
 
@@ -354,9 +354,9 @@ The skill exits 0. Advisory findings are NOT suppressed from this summary. They 
 
 - **Do NOT include prior-round findings in reviewer prompts.** The independence rule is absolute. Adding "check whether X was fixed" or pasting previous findings into a reviewer prompt contaminates the review and defeats the independence protocol.
 - **Do NOT suppress security findings.** MEDIUM and LOW security findings must appear in output at every round and in the final summary. They are advisory, not invisible.
-- **Do NOT continue the loop after systemic detection.** Systemic categories require human inspection. Looping further wastes budget without resolving the root cause.
+- **Do NOT continue the loop after systemic detection.** Systemic categories require human inspection. Looping further wastes effort without resolving the root cause.
 - **Do NOT skip the deterministic checks.** Lint, typecheck, and the unresolved-marker grep run every round before persona dispatch. Personas should not see files that still have marker or lint issues.
-- **Do NOT use `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` as a hidden variable.** Print its effective value at the start of the loop so the user knows the budget:
+- **Do NOT use `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` as a hidden variable.** Print its effective value at the start of the loop so the user knows the limit:
   ```
   quality-loop: max rounds = ${LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS:-3}
   ```
@@ -373,6 +373,6 @@ Skill(loop-spec:quality-loop)
 # Review specific files only:
 Skill(loop-spec:quality-loop) path/to/file1.py path/to/file2.ts
 
-# Increase round budget:
+# Increase round limit:
 LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS=5 Skill(loop-spec:quality-loop)
 ```

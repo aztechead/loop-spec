@@ -41,20 +41,12 @@ canonical_models() {
   }'
 }
 
-# Fixed operating blocks (retryBudget + iterate), identical for single and workspace modes.
-# Single-tier operation (v2.5.0 hard cutover): one set of budgets, no tier scaling.
-# iterate.maxIterations=10 is the convergence loop ceiling; retryBudget.global=40 leaves
-# headroom for those judge passes plus gate retries (ITERATE increments globalUsed per pass).
+# Fixed operating block (iterate), identical for single and workspace modes.
+# Full-bore operation: gate retries are unbounded (attempts still land in gateHistory);
+# iterate.maxIterations=10 — the convergence loop ceiling — is the ONLY bound the
+# cycle respects.
 fixed_blocks() {
   jq -n '{
-    retryBudget: {
-      perGate: 3,
-      perPhase: {spec: 3, discuss: 3, plan: 4, execute: null, verify: 4, iterate: 10},
-      global: 40,
-      globalUsed: 0,
-      perGateUsed: {},
-      perPhaseUsed: {spec: 0, discuss: 0, plan: 0, execute: 0, verify: 0, iterate: 0}
-    },
     iterate: {
       maxIterations: 10,
       used: 0,

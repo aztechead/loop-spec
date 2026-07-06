@@ -13,10 +13,10 @@ A spec is a bundle of testable claims. Compilation makes that explicit:
   4. Emit plan/tasks.json (schema in planlib.py), validated before it's written —
      a plan that compiles is a plan the supervisor can run.
 
-Compilation itself is one bounded `claude -p` invocation (read-only tools, its own
-budget cap via --max-turns), so the compiler is subject to the same discipline as
-the loops it produces. On schema/validation failure it retries once, feeding the
-errors back — the compiler eats its own dogfood: act, verify, correct.
+Compilation itself is one `claude -p` invocation (read-only tools), so the compiler
+is subject to the same discipline as the loops it produces. On schema/validation
+failure it retries once, feeding the errors back — the compiler eats its own
+dogfood: act, verify, correct.
 """
 
 from __future__ import annotations
@@ -33,7 +33,6 @@ from loop import LoopConfig, run_claude  # noqa: E402
 
 PLAN_SCHEMA_DOC = """{
   "spec": "<path to the spec file>",
-  "fleet_budget_usd": <number, total ceiling across all tasks>,
   "tasks": [
     {
       "id": "<unique slug, [a-z0-9-]>",
@@ -46,7 +45,6 @@ PLAN_SCHEMA_DOC = """{
       "protected": ["<paths the agent must not modify — always include the spec file
                      and any test/verifier files, so the loop's integrity check can
                      prove the exam wasn't edited>"],
-      "budget_usd": <number>,
       "max_iterations": <int>,
       "deps": ["<ids of tasks whose merged output this task needs>"],
       "mode": "fresh",
@@ -69,7 +67,6 @@ COMPILER_RULES = """Rules for a good plan:
   its source of truth.
 - Prompts must be self-contained: include the relevant spec excerpts verbatim. The
   worker will NOT be shown the rest of the plan or the spec.
-- Budgets: small tasks 2–4 USD, larger 4–8. The fleet budget should be ~1.3x the sum.
 If any part of the spec is too ambiguous to compile into a verifiable task, include a
 top-level "warnings" list in the JSON explaining what needs the human's clarification
 — do not invent requirements."""
@@ -86,18 +83,17 @@ def strip_fences(text: str) -> str:
 
 
 def compile_spec(spec_path: Path, *, claude_bin: str, model: str,
-                 fleet_budget: float, out_path: Path) -> dict:
+                 out_path: Path) -> dict:
     spec_text = spec_path.read_text()
     base_prompt = (
         "You are a plan compiler for autonomous coding loops. Read the spec below and "
         "the repository you are in, then output ONLY a JSON object (no prose, no "
         "markdown fences) matching this schema:\n\n"
         f"{PLAN_SCHEMA_DOC}\n\n{COMPILER_RULES}\n\n"
-        f"Set \"spec\" to \"{spec_path}\" and \"fleet_budget_usd\" to at most "
-        f"{fleet_budget}.\n\n--- SPEC ({spec_path}) ---\n{spec_text}"
+        f"Set \"spec\" to \"{spec_path}\".\n\n--- SPEC ({spec_path}) ---\n{spec_text}"
     )
     cfg = LoopConfig(task="", claude_bin=claude_bin, model=model,
-                     allowed_tools="Read,Glob,Grep", max_turns=20)
+                     allowed_tools="Read,Glob,Grep")
 
     feedback = ""
     for attempt in (1, 2):
@@ -137,19 +133,17 @@ def main() -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("spec", help="Path to the spec / goal file (markdown or text).")
     p.add_argument("--out", default="plan/tasks.json")
-    p.add_argument("--fleet-budget", type=float, default=20.0)
     p.add_argument("--model", default="", help="Model for the compiler pass.")
     p.add_argument("--claude-bin", default="claude")
     args = p.parse_args()
 
     plan = compile_spec(Path(args.spec), claude_bin=args.claude_bin, model=args.model,
-                        fleet_budget=args.fleet_budget, out_path=Path(args.out))
+                        out_path=Path(args.out))
 
     print(f"\n✓ Plan written to {args.out}")
-    print(f"  fleet budget : ${plan.get('fleet_budget_usd', 0):.2f}")
     for t in plan["tasks"]:
         deps = f"  ⇠ {', '.join(t['deps'])}" if t.get("deps") else ""
-        print(f"  • {t['id']:<24} ${t.get('budget_usd', 0):.2f}  verify: {t['verify'][:60]}{deps}")
+        print(f"  • {t['id']:<24} verify: {t['verify'][:60]}{deps}")
     for w in plan.get("warnings", []):
         print(f"  ⚠ needs human input: {w}")
     print(f"\nReview the plan (especially the verifiers — they are the contract), then:\n"

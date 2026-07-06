@@ -49,15 +49,6 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/pre-task-blockedby-enforce.sh"
           }
         ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/budget-gate.sh"
-          }
-        ]
       }
     ],
     "PostToolUse": [
@@ -67,15 +58,6 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/strategy-rotation.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Read|Grep",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/output-compressor.sh"
           }
         ]
       }

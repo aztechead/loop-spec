@@ -44,6 +44,6 @@ prerequisite — a missing experimental flag must never make the plugin throw.
 
 ## What does NOT change
 
-Artifacts, gates, retry budgets, worktree layout, feature.json
+Artifacts, gates, worktree layout, feature.json
 schema, phase routing. A feature started with teams can resume without them and
 vice versa.

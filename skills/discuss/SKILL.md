@@ -13,7 +13,7 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 > a one-shot `Agent` call with the same agent type, model, and prompt template, per
 > `skills/shared/no-teams-fallback.md`. Critique rounds become sequential challenger →
 > advocate Agent calls with prior round summaries (from `gate-logs/`) inlined. All
-> artifacts, gates, and retry budgets are unchanged.
+> artifacts and gates are unchanged.
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
 > do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
@@ -285,15 +285,7 @@ Build `fix_list` (may be empty).
 
 #### If fix_list non-empty:
 
-Check budgets (from `feature.json`):
-- If `retryBudget.perGateUsed["discuss.spec-critique"] >= retryBudget.perGate`: pause and escalate.
-- If `retryBudget.perPhaseUsed.discuss >= retryBudget.perPhase.discuss`: pause and escalate.
-- If `retryBudget.globalUsed >= retryBudget.global`: hard abort and escalate.
-
-Increment counters via `lib/feature-write.sh`:
-- `retryBudget.perGateUsed["discuss.spec-critique"] += 1`
-- `retryBudget.perPhaseUsed.discuss += 1`
-- `retryBudget.globalUsed += 1`
+Gate retries are unbounded (full bore): re-run the fix/debate loop until the gate passes. The only bound the cycle respects is ITERATE's round limit.
 
 Append the fail entry to `feature.json.gateHistory` via `lib/feature-write.sh` BEFORE re-dispatching (the re-dispatch path returns to Step 4 and would never reach an append placed after the return):
 
@@ -393,7 +385,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "docs/loop-spec/features/
 grounding_exit=$?
 ```
 
-Exit 1 BLOCKS: before incrementing, check the cap exactly as Step 5 does (`retryBudget.perGateUsed["discuss.grounding"] >= retryBudget.perGate` — absent key reads as 0 — pause/escalate per the existing budget rules), then increment `retryBudget.perGateUsed["discuss.grounding"]`, `perPhaseUsed.discuss`, `globalUsed` via `lib/feature-write.sh` and re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (instruct: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`). On revision received, re-run ONLY this lint — lint-only failures do NOT re-run the critique debate. Exit 0: proceed to Step 6.
+Exit 1 BLOCKS: re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (instruct: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`); retries are unbounded — repeat until the lint passes. On revision received, re-run ONLY this lint — lint-only failures do NOT re-run the critique debate. Exit 0: proceed to Step 6.
 
 ### Step 6 - Commit SPEC.md and update feature.json
 

@@ -1,5 +1,5 @@
 ---
-description: One-shot fix for an issue in existing code — the debug skill's bounded loop (red repro first, 5x3 hypothesis budget, mandatory sibling sweep, regression test, tamper scan) driven end to end in a single autonomous pass
+description: One-shot fix for an issue in existing code — the debug skill's evidence-disciplined loop (red repro first, recorded hypothesis verdicts, mandatory sibling sweep, regression test, tamper scan) driven end to end in a single autonomous pass
 argument-hint: "<error text | stack trace | failing test | symptom description>"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Skill, Agent
 ---
@@ -10,8 +10,8 @@ Issue to fix: $ARGUMENTS
 
 This command is the one-shot entry point to the debug skill: a single invocation that
 ends in **fixed-and-verified**, **instrumented-and-waiting** (genuinely
-unreproducible), **escalated-to-cycle** (feature-scale root cause), or
-**budget-spent-with-evidence** — never a mid-run question, never silent thrash.
+unreproducible), or **escalated-to-cycle** (feature-scale root cause) — never a
+mid-run question, never silent thrash.
 
 Invoke the full machinery now, in autonomous end-to-end style:
 
@@ -19,8 +19,8 @@ Invoke the full machinery now, in autonomous end-to-end style:
 Skill(loop-spec:debug, args: "autonomous auto $ARGUMENTS")
 ```
 
-Everything else — TRIAGE convergence, the red-reproduction hard gate, the file-based
-5-hypotheses x 3-attempts budget, minimal-fix discipline, the mandatory sibling sweep
+Everything else — TRIAGE convergence, the red-reproduction hard gate, the recorded
+hypothesis-verdict discipline, minimal-fix discipline, the mandatory sibling sweep
 (same mechanism fixed in the same branch, new mechanisms deferred), the test-tamper
 scan, the regression test, and BUG.md as the audit trail — is the debug skill's contract
 (`skills/debug/SKILL.md`). The only thing this wrapper adds is the one-shot framing:

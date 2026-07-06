@@ -13,7 +13,7 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 > challenger as one-shot `Agent` calls with the same agent types, models, and prompt
 > templates, per `skills/shared/no-teams-fallback.md`. Critique rounds become sequential
 > challenger → advocate Agent calls with prior round summaries (from `gate-logs/`)
-> inlined. All artifacts, gates, and retry budgets are unchanged.
+> inlined. All artifacts and gates are unchanged.
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
 > do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
@@ -284,15 +284,7 @@ Build `fix_list` (may be empty).
 
 #### If fix_list non-empty:
 
-Check budgets (from `feature.json`):
-- If `retryBudget.perGateUsed["plan.plan-critique"] >= retryBudget.perGate`: pause and escalate.
-- If `retryBudget.perPhaseUsed.plan >= retryBudget.perPhase.plan`: pause and escalate.
-- If `retryBudget.globalUsed >= retryBudget.global`: hard abort and escalate.
-
-Increment counters via `lib/feature-write.sh`:
-- `retryBudget.perGateUsed["plan.plan-critique"] += 1`
-- `retryBudget.perPhaseUsed.plan += 1`
-- `retryBudget.globalUsed += 1`
+Gate retries are unbounded (full bore): re-run the fix/debate loop until the gate passes. The only bound the cycle respects is ITERATE's round limit.
 
 Append the fail entry to `feature.json.gateHistory` via `lib/feature-write.sh` BEFORE re-dispatching (the re-dispatch path returns to Step 3 and would never reach an append placed after the return):
 
@@ -381,7 +373,7 @@ Validate the plan locally using the `tasks[]` data from Step 2 (or the latest pl
    - Exit 1 BLOCKS — add the flagged criteria to `infeasibility_list`
      so the planner rewrites them as behavioral checks (a named test) or anchored greps.
 
-Build `infeasibility_list`. If non-empty: re-dispatch planner-1 via `SendMessage` with the list, increment retries via `lib/feature-write.sh` (`retryBudget.perPhaseUsed.plan += 1`, `retryBudget.globalUsed += 1`), respect caps. On plan revision received, re-run Step 4b. Repeat until feasible or budget exhausted.
+Build `infeasibility_list`. If non-empty: re-dispatch planner-1 via `SendMessage` with the list. On plan revision received, re-run Step 4b. Retries are unbounded — repeat until feasible.
 
 ### Step 5.5 - Decision coverage gate
 
@@ -394,7 +386,7 @@ coverage_exit=$?
 
 **Exit code 1 BLOCKS** (always — single-tier operation has no advisory mode): re-dispatch planner-1 via SendMessage with the uncovered decisions in the body and return to Step 4 (debate).
 
-When blocking: increment retry counters via `lib/feature-write.sh` (`retryBudget.perPhaseUsed.plan += 1`, `retryBudget.globalUsed += 1`) and respect existing caps. Send:
+When blocking (retries unbounded — repeat until the gate passes), send:
 
 ```
 SendMessage({
@@ -431,7 +423,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "$plan_path"
 grounding_exit=$?
 ```
 
-Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1 with the FLAG lines in the body, increment `retryBudget.perPhaseUsed.plan` and `globalUsed` via `lib/feature-write.sh`, respect caps). On revision received, re-run ONLY this lint. Exit 0 on all three checks: proceed to Step 6.
+Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1 with the FLAG lines in the body; retries unbounded). On revision received, re-run ONLY this lint. Exit 0 on all three checks: proceed to Step 6.
 
 ### Step 6 - Commit PLAN.md and update feature.json
 

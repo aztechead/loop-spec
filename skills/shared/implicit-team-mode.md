@@ -11,7 +11,7 @@ persist for the rest of the session and are addressable by `SendMessage`. The
 
 This is NOT the no-teams fallback. Teams are fully live here — persistent teammates,
 peer messaging, and a shared task list all work. Only the *create/destroy* ceremony
-is gone. The artifacts, gates, retry budgets, and result contracts are identical to
+is gone. The artifacts, gates, and result contracts are identical to
 the explicit-team path.
 
 Live-verified end to end on CC 2.1.187 with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
@@ -61,7 +61,7 @@ load the schema and retry the op once. Treat it as a missing capability only whe
 
 ## What does NOT change
 
-Artifacts, gates, retry budgets, worktree layout, `feature.json`
+Artifacts, gates, worktree layout, `feature.json`
 schema, phase routing, and every `{merged, blocked, escalation}` result
 shape. A feature can move freely between `explicit`, `implicit`, and `none`
 harnesses across resumes.

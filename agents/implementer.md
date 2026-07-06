@@ -14,7 +14,6 @@ disallowedTools:
   - WebFetch
   - WebSearch
 color: green
-maxTurns: 100
 ---
 
 # implementer

@@ -11,7 +11,6 @@ tools:
 model: opus
 effort: medium
 color: blue
-maxTurns: 60
 ---
 
 # planner

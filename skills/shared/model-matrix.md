@@ -1,7 +1,7 @@
 # Model Matrix
 
 Maps each agent role to a fixed model ID. There is no model preset axis: model
-selection is fixed and identical for every feature. Gate behavior, retry budgets,
+selection is fixed and identical for every feature. Gate behavior,
 and fan-out width are also fixed (single-tier operation); see `tier-matrix.md`.
 
 The concrete IDs are resolved once at cycle Step 5 into `feature.models.<role>`,

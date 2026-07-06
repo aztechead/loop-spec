@@ -11,16 +11,14 @@ you can trust overnight.
 What it does per task, in dependency order (parallel where deps allow):
   1. Create an isolated git worktree on branch loop/<id> from the current base HEAD,
      so workers can never collide on files.
-  2. Run loop.py there (subprocess, own state dir, own budget — clamped to whatever
-     remains of the FLEET budget, so N workers can't multiply your ceiling away).
+  2. Run loop.py there (subprocess, own state dir).
   3. Read result.json and act on halt_reason, not exit codes scraped from stdout:
        complete           → merge loop/<id> into base (dependents see the work)
        no_progress/thrash → retry once with the stall context appended, then escalate
-       budget/timeout     → no retry (retrying a budget halt re-spends it); escalate
+       timeout            → no retry; escalate
        verifier_integrity → halt the whole fleet: nothing downstream is trustworthy
        agent_error        → retry once, then escalate
   4. Skip dependents of failed tasks; keep running independent tasks.
-  5. Stop launching anything once the fleet budget is spent.
 
 Output: .loop/fleet-result.json with per-task results + a human summary. Exit 0 only
 if every task completed and merged.
@@ -54,13 +52,13 @@ def read_result(res_path: Path, tid: str, log: Path) -> dict:
     """Parse result.json; return an agent_error dict on missing or corrupt file."""
     if not res_path.exists():
         return {"task_id": tid, "status": "halted", "halt_reason": "agent_error",
-                "cost_usd": 0.0, "iterations": 0,
+                "iterations": 0,
                 "error": f"no result.json — see {log}"}
     try:
         return json.loads(res_path.read_text())
     except (json.JSONDecodeError, OSError) as e:
         return {"task_id": tid, "status": "halted", "halt_reason": "agent_error",
-                "cost_usd": 0.0, "iterations": 0,
+                "iterations": 0,
                 "error": f"corrupt result.json ({e}) — see {log}"}
 
 
@@ -71,9 +69,7 @@ class Supervisor:
         self.args = args
         self.tasks = {t["id"]: t for t in plan["tasks"]}
         self.results: dict[str, dict] = {}
-        self.fleet_budget = float(args.fleet_budget or plan.get("fleet_budget_usd", 20.0))
-        self.spent = 0.0
-        self.lock = threading.Lock()        # serializes merges + budget accounting
+        self.lock = threading.Lock()        # serializes merges
         self.fleet_fatal = False
         self.wt_root = repo.parent / f"{repo.name}-loop-worktrees"
 
@@ -119,19 +115,12 @@ class Supervisor:
             attempt, nudge = 0, ""
             while True:
                 attempt += 1
-                with self.lock:
-                    remaining = self.fleet_budget - self.spent
-                if remaining <= 0:
-                    return {"task_id": tid, "status": "halted", "halt_reason": "fleet_budget",
-                            "cost_usd": 0.0, "iterations": 0}
-                budget = min(float(t.get("budget_usd", 4.0)), remaining)
 
                 cfg = {
                     "task": t["prompt"] + nudge,
                     "task_id": tid,
                     "verify": t["verify"],
                     "protected": t.get("protected", []),
-                    "budget_usd": budget,
                     "max_iterations": int(t.get("max_iterations", 10)),
                     "timeout_s": int(t.get("timeout_s", self.args.task_timeout)),
                     "mode": t.get("mode", "fresh"),
@@ -150,8 +139,7 @@ class Supervisor:
                 cfg_path.parent.mkdir(parents=True, exist_ok=True)
                 cfg_path.write_text(json.dumps(cfg, indent=2))
 
-                print(f"\n▶ {tid} (attempt {attempt}, budget ${budget:.2f}, "
-                      f"fleet ${self.spent:.2f}/${self.fleet_budget:.2f}) in {wt}")
+                print(f"\n▶ {tid} (attempt {attempt}) in {wt}")
                 log = wt / ".loop" / f"{tid}.supervisor.log"
                 with log.open("a") as lf:
                     subprocess.run([sys.executable, str(LOOP_PY), "--config", str(cfg_path)],
@@ -159,9 +147,6 @@ class Supervisor:
 
                 res_path = wt / ".loop" / tid / "result.json"
                 res = read_result(res_path, tid, log)
-
-                with self.lock:
-                    self.spent += float(res.get("cost_usd", 0.0))
 
                 reason = res.get("halt_reason", "agent_error")
                 if res.get("status") == "complete":
@@ -182,7 +167,7 @@ class Supervisor:
         except Exception as e:
             print(f"⛔ {tid}: supervisor error: {e}")
             return {"task_id": tid, "status": "halted", "halt_reason": "supervisor_error",
-                    "cost_usd": 0.0, "iterations": 0, "error": str(e)}
+                    "iterations": 0, "error": str(e)}
 
     # -------------------------------------------------------------------- fleet
     def run(self) -> int:
@@ -217,8 +202,7 @@ class Supervisor:
                         if ok:
                             done_merged.add(tid)
                             print(f"✓ {tid} complete and merged "
-                                  f"(${res.get('cost_usd', 0):.2f}, "
-                                  f"{res.get('iterations')} iters)")
+                                  f"({res.get('iterations')} iters)")
                             if self.args.cleanup_worktrees and not self.args.no_worktree:
                                 wt = self.wt_root / tid
                                 rr = sh(["git", "worktree", "remove", "--force", str(wt)],
@@ -234,8 +218,7 @@ class Supervisor:
                             failed.add(tid)
                     else:
                         failed.add(tid)
-                        print(f"✗ {tid} halted: {res.get('halt_reason')} "
-                              f"(${res.get('cost_usd', 0):.2f})")
+                        print(f"✗ {tid} halted: {res.get('halt_reason')}")
                 if self.fleet_fatal:
                     pending.clear()
 
@@ -247,8 +230,6 @@ class Supervisor:
 
         fleet = {
             "plan": self.args.plan,
-            "fleet_budget_usd": self.fleet_budget,
-            "spent_usd": round(self.spent, 4),
             "completed": sorted(done_merged),
             "failed": sorted(failed),
             "skipped": blocked,
@@ -261,7 +242,6 @@ class Supervisor:
 
         print("\n" + "=" * 62)
         print(f"  FLEET {'COMPLETE' if not failed and not blocked else 'INCOMPLETE'}")
-        print(f"  spent      : ${self.spent:.2f} of ${self.fleet_budget:.2f}")
         print(f"  completed  : {', '.join(sorted(done_merged)) or '—'}")
         if failed:
             print(f"  failed     : " + ", ".join(
@@ -277,12 +257,10 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--plan", default="plan/tasks.json")
-    p.add_argument("--fleet-budget", type=float, default=None,
-                   help="Override the plan's fleet ceiling.")
     p.add_argument("--parallel", type=int, default=1,
                    help="Max concurrent independent tasks (merges stay serialized).")
     p.add_argument("--retries", type=int, default=1,
-                   help="Retries for stalls/thrash/agent errors. Budget halts never retry.")
+                   help="Retries for stalls/thrash/agent errors. Timeout halts never retry.")
     p.add_argument("--task-timeout", type=int, default=3600)
     p.add_argument("--model", default="")
     p.add_argument("--fallback-model", default="", dest="fallback_model",
@@ -321,9 +299,7 @@ def main() -> int:
         for tid in order:
             t = next(x for x in plan["tasks"] if x["id"] == tid)
             deps = f"  ⇠ {', '.join(t.get('deps', []))}" if t.get("deps") else ""
-            print(f"  • {tid:<24} ${t.get('budget_usd', 0):.2f}  "
-                  f"verify: {t['verify'][:60]}{deps}")
-        print(f"Fleet budget: ${args.fleet_budget or plan.get('fleet_budget_usd')}")
+            print(f"  • {tid:<24} verify: {t['verify'][:60]}{deps}")
         return 0
 
     return Supervisor(plan, repo, args).run()

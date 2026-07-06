@@ -45,13 +45,11 @@ threads." The pattern:
   codes, retry or escalate) — the intelligence lives in the workers.
 - **Shared state in git, not memory.** Workers commit their progress; the supervisor
   reads the repo to see status. This is what makes the whole system survive a crash.
-- **Budget the fleet, not just each worker.** N workers at \$B each is \$N×B. Set a
-  fleet-level ceiling in the supervisor and stop launching when it's hit.
 
 All of this is implemented in `scripts/supervisor.py` — worktree-per-task, lazy
 branch creation from base HEAD, merge-on-complete (with conflict = fleet halt, because
-a conflict means the plan's independence claim was false), fleet-level budget clamping,
-and policy keyed on `result.json.halt_reason` rather than exit-code scraping. Read it
+a conflict means the plan's independence claim was false), and policy keyed on
+`result.json.halt_reason` rather than exit-code scraping. Read it
 before writing a custom supervisor; extend its policy table rather than replacing it.
 
 ## Designing a good verifier
@@ -61,7 +59,7 @@ The verifier is the most important line in the whole command. Properties of a go
 - **Exits 0 only when truly done.** No false positives — a verifier that passes early
   makes the loop stop on broken work. Prefer `pytest -q && ruff check . && mypy .` over
   a single loose check.
-- **Fast.** It runs every iteration. A 10-minute verifier dominates cost and wall-clock.
+- **Fast.** It runs every iteration. A 10-minute verifier dominates wall-clock.
   Scope it to the task (`pytest tests/test_thing.py`, not the whole suite) when you can.
 - **Informative on failure.** Its stdout/stderr is fed back into the next prompt, so a
   verifier that prints *what* failed (assertion diffs, the failing file) steers the agent.
@@ -85,16 +83,16 @@ edit the tests" in the prompt is a request; the integrity hash is a guarantee.
 ## Prompt-anchoring discipline (why `--mode fresh` resets context)
 
 Letting one conversation grow across dozens of iterations causes context bloat: the
-agent drowns in its own earlier output, costs climb, and quality drifts. Ralph's
-discipline — reset to a fixed anchor (the task prompt + current verifier output) each
-tick — keeps every iteration sharp and cheap. Use `--mode continue` only when carrying
-memory genuinely helps (long multi-stage tasks), and watch the budget when you do.
+agent drowns in its own earlier output and quality drifts. Ralph's discipline — reset
+to a fixed anchor (the task prompt + current verifier output) each tick — keeps every
+iteration sharp. Use `--mode continue` only when carrying memory genuinely helps
+(long multi-stage tasks).
 
 ## Failure modes to design against
 
-- **The loop that won't stop.** The headline fear: infinite loops and billing surprises
-  orders of magnitude over budget. Defended by the three hard stops — never run a loop
-  with all three disabled.
+- **The loop that won't stop.** The headline fear: a loop that never halts. Defended by
+  the hard stops (iterations, timeout, stall) — never run a loop with all of them
+  disabled.
 - **The confident-mistake machine.** A loop with no verifier writes plausible-looking
   broken code fast. Always verify.
 - **The spinner.** Agent "thinks" each iteration but changes nothing. No-progress
@@ -103,8 +101,6 @@ memory genuinely helps (long multi-stage tasks), and watch the budget when you d
   the requirement). Strengthen the verifier; add `--judge` for important runs.
 - **The colliding fleet.** Multiple workers editing the same files. Isolate with git
   worktrees.
-- **The budget that's really N budgets.** Forgetting that a fleet multiplies cost. Cap
-  the aggregate.
 
 ## The honest framing
 
@@ -116,4 +112,4 @@ everything you wrap around that decision so it halts safely. That wrapper is thi
 Reality check on the hype: agentic AI sits near the peak of inflated expectations, with
 only a small fraction of organizations actually running agents in production. The gap
 between the timeline and the receipts is real. Loops are useful and worth building — and
-the boring guardrails are what separate a useful loop from an expensive one.
+the boring guardrails are what separate a useful loop from a runaway one.

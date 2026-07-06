@@ -2,12 +2,12 @@
 
 Loop-driven development from a spec file, for Claude Code.
 
-Give the cycle a feature description — or a pre-authored spec `.md` — and it runs **SPEC → DISCUSS → PLAN → EXECUTE → VERIFY → ITERATE**: an outer convergence loop that judges the integrated result against your *original goal* and rewinds itself until converged or the iteration budget (10) is spent, then opens a PR. Every phase writes a committed markdown artifact; every run is resumable from `feature.json`.
+Give the cycle a feature description — or a pre-authored spec `.md` — and it runs **SPEC → DISCUSS → PLAN → EXECUTE → VERIFY → ITERATE**: an outer convergence loop that judges the integrated result against your *original goal* and rewinds itself until converged or the iteration limit (10) is spent, then opens a PR. Every phase writes a committed markdown artifact; every run is resumable from `feature.json`.
 
-The same archetypes cover the rest of the development surface: `/loop-spec:cycle new <description>` bootstraps a **net-new application** in an empty directory (greenfield mode), `/loop-spec:debug <error or vague symptom>` runs a **bounded spec-driven debugging loop** (red reproduction as the oracle), and the `autonomous` token runs any of it **question-free from the command line** — every point that would ask a human instead takes the model's recommended answer and records it in an auditable decisions record. Anything that is *not* already spec-shaped — a Slack message, a Jira ticket, an email, a prompt — goes in through `/loop-spec:intake`, which converts it into a spec draft and starts the cycle from it.
+The same archetypes cover the rest of the development surface: `/loop-spec:cycle new <description>` bootstraps a **net-new application** in an empty directory (greenfield mode), `/loop-spec:debug <error or vague symptom>` runs an **evidence-disciplined spec-driven debugging loop** (red reproduction as the oracle), and the `autonomous` token runs any of it **question-free from the command line** — every point that would ask a human instead takes the model's recommended answer and records it in an auditable decisions record. Anything that is *not* already spec-shaped — a Slack message, a Jira ticket, an email, a prompt — goes in through `/loop-spec:intake`, which converts it into a spec draft and starts the cycle from it.
 
 - **Zero package deps.** Shipped code is bash + git + jq + python3. One external tool: [graphify](https://github.com/safishamsi/graphify) (required code graph). Anti-over-engineering discipline ported from [ponytail](https://github.com/DietrichGebert/ponytail) (on by default).
-- **Single tier.** Gates and budgets are fixed; trivially-scoped plans skip the plan critique via a structural fast-path measured from the actual task DAG — never inferred from your prompt.
+- **Single tier.** Gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path measured from the actual task DAG — never inferred from your prompt.
 - **Teams-optional.** Runs on both agent-team harness generations (explicit `TeamCreate` on CC < 2.1.178, implicit `Agent({name})` teams on newer, resolved by `lib/teams-capability.sh`) and degrades to one-shot subagents or a bounded loop fleet without teams.
 
 **Status:** v2.5.2 (rebranded from super-spec).
@@ -64,7 +64,7 @@ What happens, in order:
 4. **DISCUSS** runs the advocate/challenger critique of the spec; **PLAN** writes `PATTERNS.md` (real codebase analogs) and `PLAN.md` (a task DAG with verify commands), gated by its own critique + feasibility + coverage checks.
 5. **EXECUTE** implements the tasks in parallel (dispatch scales with the DAG width), one commit per task on `feat/{slug}`.
 6. **VERIFY** runs the marker scan, the test-tamper scan, every acceptance criterion's verify command, and a code-review HARD-GATE — then pushes the branch and opens the PR.
-7. **ITERATE** re-judges the integrated result against your ORIGINAL request (not the spec it wrote) and rewinds the loop itself if the goal is not met. When it converges — or spends its budget of 10, loudly — the run completes and prints the PR URL, any `## Shipped with warnings`, and the backlog count.
+7. **ITERATE** re-judges the integrated result against your ORIGINAL request (not the spec it wrote) and rewinds the loop itself if the goal is not met. When it converges — or spends its 10 rounds, loudly — the run completes and prints the PR URL, any `## Shipped with warnings`, and the backlog count.
 
 You review the PR. That's the whole workflow.
 
@@ -94,9 +94,9 @@ Each per-phase skill is directly slash-invocable (the skill is the command, no s
 
 - `/loop-spec:intake` -- turn ANY input into a cycle-ready spec draft and kick off the cycle: a pasted Slack message, a Jira ticket, an email, a `.txt`/`.md` file, or a bare prompt. It faithfully restructures the source into a draft at `.loop-spec/intake/{slug}.md` (**restructure, never invent** — the source's open questions stay open for the ambiguity gate/DISCUSS to resolve; the verbatim original is preserved in the draft's `## Source` provenance block) and hands it to `/loop-spec:cycle` via the existing spec-file ingest path. Inline tokens pass through (`/loop-spec:intake new autonomous <pasted text>` takes a Slack message describing a new app all the way to a PR, question-free); `--no-run` stops after writing the draft.
 - `/loop-spec:debug` -- bounded spec-driven debugging loop for a **specific error** (message, stack trace, failing test) or a **non-specific symptom** ("something's wrong", flaky, slow). Non-specific input runs a TRIAGE pass (suite run, git history/bisect, graph + fragility hotspots, named logs) that converges on one reproducible signal; the hard gate is a **red reproduction before any fix**; the FIX loop is bounded (5 hypotheses × 3 attempts, falsify-before-change); VERIFY keeps the repro as a regression test and runs the full suite + test-tamper scan. Writes `docs/loop-spec/debug/{slug}/BUG.md` (the committed audit trail — and the spec draft if the fix escalates to a full cycle). Autonomous-mode aware.
-- `/loop-spec:loop-debug` -- **one-shot** entry point to the debug loop: same machinery as `/loop-spec:debug`, but autonomous mode is forced on, so a single invocation runs TRIAGE→REPRODUCE→FIX→VERIFY end to end with no mid-run questions and reports once at the end. Terminates only in fixed-and-verified, instrumented-and-waiting, escalated-to-cycle, or budget-spent-with-evidence.
+- `/loop-spec:loop-debug` -- **one-shot** entry point to the debug loop: same machinery as `/loop-spec:debug`, but autonomous mode is forced on, so a single invocation runs TRIAGE→REPRODUCE→FIX→VERIFY end to end with no mid-run questions and reports once at the end. Terminates only in fixed-and-verified, instrumented-and-waiting, or escalated-to-cycle.
 - `/loop-spec:assess` -- standalone, read-only codebase fragility and health assessment; workspace-aware; dispatches bounded code-reviewer subagents at the top-N hotspots and writes `docs/loop-spec/assessment/ASSESSMENT.md`.
-- `/loop-spec:quality-loop` -- iterative pre-commit review convergence loop; workspace-aware; runs deterministic checks then parallel code-reviewer and security-reviewer passes, repeating until convergence or the round budget is exhausted.
+- `/loop-spec:quality-loop` -- iterative pre-commit review convergence loop; workspace-aware; runs deterministic checks then parallel code-reviewer and security-reviewer passes, repeating until convergence or the round limit is exhausted.
 - `/loop-spec:grill` -- toggle grill mode (`on`/`off`/`status`). Grill mode is **on by default**: a session-start directive makes the assistant front-load 2-4 sharp disambiguation questions right after your initial prompt to lower ambiguity before acting. Persists in `.loop-spec/grill.conf`; `LOOP_SPEC_GRILL=0` is the session kill switch.
 - `/loop-spec:discipline` -- toggle discipline mode (`on`/`off`/`status`), an opt-in set of five behavioral gates (brainstorm-before-coding, verification-before-claims, investigation-before-fixes, decision-gate, intent-gate). Persists in `.loop-spec/discipline.conf`.
 - `/loop-spec:simplicity` -- toggle simplicity mode (`on`/`off`/`status`) and set intensity (`lite`/`full`/`ultra`). **On by default at `full`**: a session-start directive makes the assistant climb the laziness ladder before writing code -- YAGNI, reuse, stdlib, native, installed dep, one line, then the minimum that works -- without cutting validation, error handling, security, or accessibility. VERIFY's `code-reviewer` runs the matching over-engineering pass (delete/stdlib/native/yagni/shrink). Concept and implementation ported from [ponytail](https://github.com/DietrichGebert/ponytail). Persists in `.loop-spec/simplicity.conf`; `LOOP_SPEC_SIMPLICITY=0` is the session kill switch.
@@ -105,20 +105,20 @@ Each per-phase skill is directly slash-invocable (the skill is the command, no s
 
 None of the workflow skills set `disable-model-invocation`: the cycle orchestrator chains phases via the Skill tool (a `disable-model-invocation` skill cannot be invoked that way), and each phase hands off to the next the same way. You start a run with `/loop-spec:cycle`; the orchestrator drives the rest.
 
-The cycle skill runs a quiet startup health-check — agent-teams probe, model probe (two 1-token dispatches, cached 24h in `.loop-spec/runtime.json`; `LOOP_SPEC_SKIP_HEALTHCHECK=1` skips), and Workflow availability. **You just give it a feature description** — there is no menu. `/loop-spec:cycle <feature description>` launches immediately with style `auto` (single-tier: gates and budgets are fixed). A bare `/loop-spec:cycle` asks one free-text question for what you want to build — nothing else.
+The cycle skill runs a quiet startup health-check — agent-teams probe, model probe (two 1-token dispatches, cached 24h in `.loop-spec/runtime.json`; `LOOP_SPEC_SKIP_HEALTHCHECK=1` skips), and Workflow availability. **You just give it a feature description** — there is no menu. `/loop-spec:cycle <feature description>` launches immediately with style `auto` (single-tier: gate behavior is fixed). A bare `/loop-spec:cycle` asks one free-text question for what you want to build — nothing else.
 
 **From a spec file:** `/loop-spec:cycle path/to/spec.md` starts the loop from a pre-authored spec. The SPEC phase skips its interview (spec-file ingest mode): it grounds the draft against the code graph, scores the ambiguity gate on the draft itself, normalizes it into the SPEC.md format (requirements preserved verbatim), and proceeds to DISCUSS. (Headless: `LOOP_SPEC_SPEC_FILE=path`.)
 
 **Self-regulating operation (Ralph-loop patterns, bounded):**
 
 - **Progress journal** — every phase transition appends what/next/gotchas to `.loop-spec/features/{slug}/PROGRESS.md`; resume reads it (with `git log` + one test run) before re-entering any phase, so a fresh or compacted session re-orients from durable state and never builds on a silently broken tree.
-- **Backlog** — VERIFY's deferred Minor findings and ITERATE's budget-spent gaps land in `.loop-spec/BACKLOG.md` instead of evaporating. `/loop-spec:cycle backlog` drains it one feature per loop, bounded by `LOOP_SPEC_MAX_FEATURES` (default 1). Overnight form: `while :; do claude -p "/loop-spec:cycle backlog"; done` — the Ralph loop with explicit stop conditions.
+- **Backlog** — VERIFY's deferred Minor findings and ITERATE's round-limit-spent gaps land in `.loop-spec/BACKLOG.md` instead of evaporating. `/loop-spec:cycle backlog` drains it one feature per loop, bounded by `LOOP_SPEC_MAX_FEATURES` (default 1). Overnight form: `while :; do claude -p "/loop-spec:cycle backlog"; done` — the Ralph loop with explicit stop conditions.
 - **Test-tamper scan** — VERIFY fails fast if the diff deletes tests, adds skip/focus annotations, or swallows a test command's exit code (`lib/test-tamper-scan.sh`); the acceptance oracle cannot be gamed silently.
 - **Phase watchdog** — each phase is stamped (`currentPhaseStartedAt`) and checked against a wall-clock ceiling (60m default; `LOOP_SPEC_PHASE_TIMEOUT_MINS` overrides); a wedged phase becomes visible instead of eternal.
-- **Self-learning** — repeated VERIFY gate failures and budget-spent iterate ships write deterministic rules into `.loop-spec/RULES.md` (injected at session start), so the loop stops repeating its own mistakes.
+- **Self-learning** — repeated VERIFY gate failures and limit-spent iterate ships write deterministic rules into `.loop-spec/RULES.md` (injected at session start), so the loop stops repeating its own mistakes.
 - **Fresh-context rewinds** (opt-in `LOOP_SPEC_ITERATE_FRESH=1`) — ITERATE rewinds hand off through committed state and relaunch in a clean session rather than accumulating context.
 
-**Single tier — nothing to infer, nothing to ask.** Gates and budgets are fixed (`skills/shared/tier-matrix.md`): spec critique always runs, plan critique is skipped only by the structural fast-path (<=2 tasks, <=3 files, no security signal, measured AFTER planning), code review blocks Critical + Important (Minor is backlogged), `iterate.maxIterations = 10`. You can override the style inline anywhere in the text (`style:auto|step|interactive|review-only`); legacy `tier:` tokens are ignored.
+**Single tier — nothing to infer, nothing to ask.** Gate behavior is fixed (`skills/shared/tier-matrix.md`): spec critique always runs, plan critique is skipped only by the structural fast-path (<=2 tasks, <=3 files, no security signal, measured AFTER planning), code review blocks Critical + Important (Minor is backlogged), `iterate.maxIterations = 10`. You can override the style inline anywhere in the text (`style:auto|step|interactive|review-only`); legacy `tier:` tokens are ignored.
 
 **Execution style** (`auto` default; override inline):
 - `auto` -- end-to-end. Hard-gate failures self-heal (re-dispatch upstream agent with findings, max 3 retries per gate, 40 global) before pausing for human.
@@ -141,11 +141,11 @@ The six phases run in order (ITERATE can rewind the chain):
 | **PLAN** | `docs/loop-spec/features/{slug}/PATTERNS.md` (Step 0) + `PLAN.md` (Step 1) | plan critique gate + feasibility check |
 | **EXECUTE** | per-task commits on `feat/{slug}` branch | per-task spec-compliance gate with retry; dispatch via the concurrency ladder (subagent / loop fleet / agent team / opt-in Workflow DAG) |
 | **VERIFY** | `docs/loop-spec/features/{slug}/VERIFICATION.md` + map-codebase refresh in `docs/loop-spec/codebase/` + PR opened | acceptance gate + code-review HARD-GATE |
-| **ITERATE** | `docs/loop-spec/features/{slug}/ITERATION.md` (per-iteration verdict log) | dual oracle (deterministic acceptance gate **+** an `iterate-judge` goal re-judge); converged → ship, else classify the gap and rewind to EXECUTE / PLAN / SPEC. Bounded by `feature.iterate.maxIterations` (10) and the cycle-wide global budget; on budget exhaustion a one-shot report-only confirmation pass re-judges the final fix and every accepted gap lands in `warnings[]` + BACKLOG.md |
+| **ITERATE** | `docs/loop-spec/features/{slug}/ITERATION.md` (per-iteration verdict log) | dual oracle (deterministic acceptance gate **+** an `iterate-judge` goal re-judge); converged → ship, else classify the gap and rewind to EXECUTE / PLAN / SPEC. Bounded by `feature.iterate.maxIterations` (10) — the one limit the cycle respects; when it is spent a one-shot report-only confirmation pass re-judges the final fix and every accepted gap lands in `warnings[]` + BACKLOG.md |
 
-**ITERATE — the convergence loop.** VERIFY proves the SPEC acceptance checklist is met; ITERATE asks the harder question: is the result there yet *against the original goal*? A fresh `iterate-judge` (opus, maker≠checker) scores the integrated result against the user's original intent and classifies the single highest-leverage gap — `execute` (implementation), `plan` (decomposition), or `spec` (wrong scope) — then ships when converged or the iteration budget is spent, or rewinds to the matching phase to fix it.
+**ITERATE — the convergence loop.** VERIFY proves the SPEC acceptance checklist is met; ITERATE asks the harder question: is the result there yet *against the original goal*? A fresh `iterate-judge` (opus, maker≠checker) scores the integrated result against the user's original intent and classifies the single highest-leverage gap — `execute` (implementation), `plan` (decomposition), or `spec` (wrong scope) — then ships when converged or the iteration limit is spent, or rewinds to the matching phase to fix it.
 
-**Fully autonomous in `auto`/`review-only`.** No gap type blocks on a human: `execute`, `plan`, and `spec` rewinds all run on their own (the `spec` rewind re-enters DISCUSS in autonomous refinement mode). This is safe because the judge always scores against the **immutable original goal** (`feature_title`), never the rewritten SPEC, so a rewind can move the work *toward* the goal but can never redefine "done" to cheat its own oracle — and the iteration budget hard-caps the loop. When the budget is spent it ships-with-warnings rather than waiting. An overnight `auto` run never pauses for input. Only the explicit human-in-loop styles (`step`/`interactive`) surface the SPEC-rewind approval gate. This generalizes loop-spec's former EXECUTE-only remediation into the full `DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE → repeat` loop.
+**Fully autonomous in `auto`/`review-only`.** No gap type blocks on a human: `execute`, `plan`, and `spec` rewinds all run on their own (the `spec` rewind re-enters DISCUSS in autonomous refinement mode). This is safe because the judge always scores against the **immutable original goal** (`feature_title`), never the rewritten SPEC, so a rewind can move the work *toward* the goal but can never redefine "done" to cheat its own oracle — and the iteration limit hard-caps the loop. When the limit is spent it ships-with-warnings rather than waiting. An overnight `auto` run never pauses for input. Only the explicit human-in-loop styles (`step`/`interactive`) surface the SPEC-rewind approval gate. This generalizes loop-spec's former EXECUTE-only remediation into the full `DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE → repeat` loop.
 
 EXECUTE dispatch is the concurrency ladder (see "EXECUTE concurrency ladder" above and `skills/shared/tier-matrix.md`): the DAG width `W` selects sequential/batched **subagent** waves, the self-claim **agent team** (up to 3 implementers, manual FIFO merge queue), or — on explicit `LOOP_SPEC_EXECUTE_WORKFLOW=1` opt-in for very wide DAGs — the deterministic **Workflow DAG** (`lib/workflows/execute-dag.js`). The **loop fleet** (`LOOP_SPEC_EXECUTE_LOOPS=1`, or automatic when agent teams are unavailable) instead compiles the tasks to a loop plan and runs them as bounded headless `claude -p` loops with per-iteration verification and SPEC/PLAN hash-locking. All rungs merge into `feat/{slug}` and return the same result shape.
 
@@ -160,7 +160,7 @@ Subsequent runs skip Step 5.5 entirely; the incremental refresh at end of VERIFY
 
 ### Resume an in-flight feature
 
-If a cycle was interrupted, re-invoke `Skill(loop-spec:cycle)`. It scans `.loop-spec/features/*/feature.json`, finds incomplete features within the staleness window (default 48h), and — on the legacy explicit-teams harness only — probes the prior phase team via `TaskList({team})` to catch a still-live orphan (on implicit/no-teams harnesses the team is treated as gone and the feature resumes directly). Before re-entering the recorded phase it re-grounds: reads `PROGRESS.md`, reviews `git log`, and runs the test command once — a broken tree is redirected to remediation instead of being built on. State writes are atomic (`.tmp` + `sync` + rename, with `.bak` rotation) so partial crashes leave the previous-good state recoverable. Loop-fleet EXECUTE state is durable too: re-entering EXECUTE resumes budget-halted tasks from `.loop/` state instead of re-paying completed iterations.
+If a cycle was interrupted, re-invoke `Skill(loop-spec:cycle)`. It scans `.loop-spec/features/*/feature.json`, finds incomplete features within the staleness window (default 48h), and — on the legacy explicit-teams harness only — probes the prior phase team via `TaskList({team})` to catch a still-live orphan (on implicit/no-teams harnesses the team is treated as gone and the feature resumes directly). Before re-entering the recorded phase it re-grounds: reads `PROGRESS.md`, reviews `git log`, and runs the test command once — a broken tree is redirected to remediation instead of being built on. State writes are atomic (`.tmp` + `sync` + rename, with `.bak` rotation) so partial crashes leave the previous-good state recoverable. Loop-fleet EXECUTE state is durable too: re-entering EXECUTE resumes halted tasks from `.loop/` state instead of re-running completed iterations.
 
 ### Refresh codebase mapping standalone
 
@@ -198,7 +198,7 @@ claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
 What changes: style is forced to `auto`; the SPEC phase runs its Socratic interview in
 **self-answered form** (the model asks and answers each perspective's questions, scoring
 honestly); the grill directive is suppressed; explicit `LOOP_SPEC_ANSWER_*` / `LOOP_SPEC_CMD_*`
-vars still win where set; safety aborts (dirty repos, budget ceilings, the code-review
+vars still win where set; safety aborts (dirty repos, the code-review
 HARD-GATE, the test-tamper scan) are never overridden. Every assumed answer lands in
 SPEC.md's `## Decisions (assumed — autonomous)` list and PLAN.md's `## User decisions
 (already made)` record suffixed `(assumed)` — the PR reviewer reads exactly what was assumed
@@ -206,14 +206,14 @@ and why, and can rerun with corrections pinned. A bare autonomous invocation wit
 description aborts (there is no goal to infer).
 
 Autonomous runs manage **every cycle of iteration themselves** — warnings are an audit
-record, never the handler. The continuation ladder: self-heal in phase (retry budgets) →
+record, never the handler. The continuation ladder: self-heal in phase (unbounded gate retries) →
 lead-authored artifact fallback when a teammate fails twice → hands-off ITERATE rewinds
-(while iterations remain, gaps always rewind — the backlog is never an in-budget
+(while iterations remain, gaps always rewind — the backlog is never an in-limit
 mechanism, in any mode) → only at the iteration limit, accepted gaps become `BACKLOG.md`
 entries and the run **chains directly into backlog drain** (bounded by
 `LOOP_SPEC_MAX_FEATURES`, never past a failure) →
-a gap that spends a second full budget goes **terminal** with its complete evidence trail
-(two budgets on one gap means the approach is wrong, not under-iterated). Full contract:
+a gap that spends a second full round of iterations goes **terminal** with its complete evidence trail
+(two spent limits on one gap means the approach is wrong, not under-iterated). Full contract:
 `skills/shared/autonomous-mode.md`.
 
 ### Net-new applications (greenfield)
@@ -237,17 +237,16 @@ existing repo is refused; workspace-mode greenfield is deferred.
 | Variable | Effect |
 |---|---|
 | `LOOP_SPEC_EXECUTE_LOOPS` | `1` = force the EXECUTE loop-fleet rung at any DAG width; `0` = never select it (kill switch). Unset = automatic when agent teams are unavailable and `claude` is on PATH. |
-| `LOOP_SPEC_LOOP_FLEET_BUDGET` / `LOOP_SPEC_LOOP_TASK_BUDGET` / `LOOP_SPEC_LOOP_MAX_ITERATIONS` | Loop-fleet spend bounds (defaults 20 / 4 USD / 10 iterations per task). |
+| `LOOP_SPEC_LOOP_MAX_ITERATIONS` | Loop-fleet iteration cap (default 10 iterations per task). |
 | `LOOP_SPEC_EXECUTE_WORKFLOW` | `1` opts into the Workflow DAG rung on very wide DAGs. |
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | `1` skips the startup model probe (also auto-skipped when probed < 24h ago). |
 | `LOOP_SPEC_TASK_GUARD` | `0` disables the task metadata / lint / typecheck completion gates. |
 | `LOOP_SPEC_PATH_GUARD` | `0` disables the agent path-restriction hook. |
-| `LOOP_SPEC_BLOCKEDBY_GUARD`, `LOOP_SPEC_USERGATE_GUARD`, `LOOP_SPEC_BUDGET_GUARD`, `LOOP_SPEC_STRATEGY_ROTATION`, `LOOP_SPEC_COMPRESSOR`, `LOOP_SPEC_DONE_CRITERIA`, `LOOP_SPEC_DEFLECTION_GUARD`, `LOOP_SPEC_LEARNINGS`, `LOOP_SPEC_DISCIPLINE` | `0` = per-hook kill switches (blockedBy enforcement, user-gate evidence, cost ceiling, failure-strategy rotation, output compression, done-criteria injection, deflection guard, learnings log, discipline injection). |
+| `LOOP_SPEC_BLOCKEDBY_GUARD`, `LOOP_SPEC_USERGATE_GUARD`, `LOOP_SPEC_STRATEGY_ROTATION`, `LOOP_SPEC_DONE_CRITERIA`, `LOOP_SPEC_DEFLECTION_GUARD`, `LOOP_SPEC_LEARNINGS`, `LOOP_SPEC_DISCIPLINE` | `0` = per-hook kill switches (blockedBy enforcement, user-gate evidence, failure-strategy rotation, done-criteria injection, deflection guard, learnings log, discipline injection). |
 | `LOOP_SPEC_GRILL` | `0` = disable the grill-mode SessionStart directive (grill is on by default; `/loop-spec:grill off` persists it). |
 | `LOOP_SPEC_SIMPLICITY` | `0` = disable the simplicity-mode (laziness-ladder) SessionStart directive (on by default at `full`; `/loop-spec:simplicity off` persists it). |
 | `LOOP_SPEC_RULES` | `0` = disable self-learning RULES.md injection (on by default, inert until rules exist). |
 | `LOOP_SPEC_REQUIRE_GRAPHIFY` | `0` = bypass the hard graphify requirement (constrained environments). Default: required; the cycle aborts at startup if graphify is missing, and the design phases fall back to Glob/Grep only in bypass mode. |
-| `LOOP_SPEC_MAX_COST_USD` | Session cost ceiling enforced by the budget-gate hook (unset = no ceiling). |
 | `LOOP_SPEC_SPEC_FILE` | Path to a pre-authored spec `.md` — headless equivalent of `/loop-spec:cycle path/to/spec.md`. |
 | `LOOP_SPEC_MAX_FEATURES` | Backlog-drain bound: features per `/loop-spec:cycle backlog` invocation (default 1). |
 | `LOOP_SPEC_PHASE_TIMEOUT_MINS` | Phase watchdog wall-clock ceiling (default 60). |
@@ -310,10 +309,10 @@ docs/loop-spec/                          # COMMITTED
 - **Critique gate keeps bouncing** (>3 retries on same gate) -- spec or plan is genuinely ambiguous. Cycle pauses and escalates. Edit the artifact manually then re-invoke cycle to resume.
 - **Merge conflict on a task branch** -- the lead's sequential merge rebases the worktree onto current `feat/{slug}` HEAD and retries once. If still fails, cycle pauses (counts against `maxRetriesPerTask`, fixed 2).
 - **Crash mid-execute** -- `feature.json` records `currentTeamName`, `mergeQueue`, and per-phase artifact paths; the harness task list owns per-task status. Resume probes whether the EXECUTE team is still live, replays the merge queue, and instructs implementers to re-claim orphaned in-flight tasks.
-- **Loop-fleet task halts** -- read `halt_reason` in `.loop/fleet-result.json`, not vibes: `no_progress` = task under-specified or too big (split it in PLAN.md); `budget`/`timeout` = raise `LOOP_SPEC_LOOP_TASK_BUDGET` and re-enter EXECUTE (state is durable, completed iterations are not re-paid); `verifier_integrity` = a worker touched SPEC.md/PLAN.md/verify targets — inspect the diff with suspicion before resuming. Full table in `skills/shared/execute-loop-fleet.md`.
+- **Loop-fleet task halts** -- read `halt_reason` in `.loop/fleet-result.json`, not vibes: `no_progress` = task under-specified or too big (split it in PLAN.md); `max_iterations`/`timeout` = raise `LOOP_SPEC_LOOP_MAX_ITERATIONS` and re-enter EXECUTE (state is durable, completed iterations are not re-run); `verifier_integrity` = a worker touched SPEC.md/PLAN.md/verify targets — inspect the diff with suspicion before resuming. Full table in `skills/shared/execute-loop-fleet.md`.
 - **Teams unavailable** -- not a failure: the cycle continues on the no-teams fallbacks (`skills/shared/no-teams-fallback.md`). Set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to restore persistent phase teams.
 
-See `docs/adopting.md` for more pitfalls and `docs/design.md` for the full architecture (phase walkthroughs, retry budgets, model matrix, fixed operating parameters, agent catalog).
+See `docs/adopting.md` for more pitfalls and `docs/design.md` for the full architecture (phase walkthroughs, iteration limits, model matrix, fixed operating parameters, agent catalog).
 
 ## Design notes — why it is built this way
 
@@ -328,13 +327,13 @@ loop-spec is what happens when you take the speed of superpowers (persistent spe
 - **Persistent phase teams**: each phase runs a team of named teammates that persist for the full phase and communicate via `SendMessage` (explicit `TeamCreate` roster on legacy harnesses; direct `Agent({name})` spawns on the modern implicit-team harness). Within a phase the lead does not re-dispatch a teammate as a fresh `Agent` call — rework rides on `SendMessage` so accumulated context is preserved across rounds.
 - **EXECUTE concurrency ladder**: EXECUTE picks its dispatch mechanism by the structural width `W` of the task DAG (`lib/dag-width.sh`), scaling the orchestration weight to the available parallelism instead of always reaching for the heaviest tool. `W == 1` runs a **subagent** sequentially; `2 <= W < t_team` fans out batched **subagent** waves (parallel one-shot `Agent` calls, no persistent team); `t_team <= W < t_wf` spins up an **agent team** (the self-claim `TeamCreate` path); `W >= t_wf` escalates to the **Workflow DAG** (`lib/workflows/execute-dag.js`) only when the operator opted in (`LOOP_SPEC_EXECUTE_WORKFLOW=1`) and the `Workflow` tool is available; and the **loop fleet** (`skills/shared/execute-loop-fleet.md`) runs at any width on `LOOP_SPEC_EXECUTE_LOOPS=1`, or replaces the team rung automatically when agent teams are unavailable. Width thresholds (`t_team`, `t_wf`) are fixed in `skills/shared/tier-matrix.md`. All rungs share the same spec-compliance + retry contract, merge each passed task branch into `feat/{slug}`, and return the identical `{merged, blocked, escalation}` result (subagent/team/workflow rungs use per-task git worktrees under `.loop-spec/worktrees/{slug}/task-NNN/`; the loop fleet uses supervisor-managed worktrees on `loop/<id>` branches). Synthetic `blockedBy` edges between tasks with overlapping `files[]` provide concurrency safety beyond the explicit DAG. This follows the Anthropic tool idiom: subagents for modest fan-out, teams for coordinated high concurrency, Workflow only on explicit opt-in for undeniable fan-out ROI.
 - **Design-for-change discipline** (`skills/shared/design-for-change.md`, "seams, not speculation"): the structural companion to simplicity mode. Every design- and code-producing dispatch carries it — DISCUSS asks the corner question ("what's the most likely next change, and is it a local diff?"), the challenger runs the corner test and coupling checks, the planner shapes tasks around boundaries, implementers inject collaborators instead of constructing them deep inside, VERIFY's `code-reviewer` runs a boundary pass (`couple:`/`corner:`/`inject:`/`iface:`), and the debug loop's mandatory sibling sweep fixes same-mechanism occurrences in the same branch. YAGNI cuts artifacts, never seams. Wiring enforced by `tests/design-coverage.test.sh`.
-- **Execution discipline for mid-tier models** (`skills/shared/execution-discipline.md`, "evidence over recall"): the design phases run on the strongest reasoning available, but EXECUTE/VERIFY run on throughput models — so every executor dispatch carries a directive that encodes frontier-model execution habits mechanically: verify don't recall (read it, run it, paste the output), surprise is signal (anomalies are evidence, not noise), re-read the acceptance criteria before DONE, depth over breadth, artifacts over memory after compaction, NEEDS_CONTEXT over confident filler. Wiring enforced by `tests/execution-discipline-coverage.test.sh`. Agent hygiene from the same pass: per-role `maxTurns` tripwires, role-family `color` coding, delegation-guard descriptions (cycle agents refuse ad-hoc auto-delegation), and `memory: project` on `code-reviewer` + `pattern-mapper` with hook-enforced write scoping to `.claude/agent-memory/**`.
+- **Execution discipline for mid-tier models** (`skills/shared/execution-discipline.md`, "evidence over recall"): the design phases run on the strongest reasoning available, but EXECUTE/VERIFY run on throughput models — so every executor dispatch carries a directive that encodes frontier-model execution habits mechanically: verify don't recall (read it, run it, paste the output), surprise is signal (anomalies are evidence, not noise), re-read the acceptance criteria before DONE, depth over breadth, artifacts over memory after compaction, NEEDS_CONTEXT over confident filler. Wiring enforced by `tests/execution-discipline-coverage.test.sh`. Agent hygiene from the same pass: role-family `color` coding, delegation-guard descriptions (cycle agents refuse ad-hoc auto-delegation), and `memory: project` on `code-reviewer` + `pattern-mapper` with hook-enforced write scoping to `.claude/agent-memory/**`.
 - **Critique gates** (advocate + challenger pair) on SPEC and PLAN. ROUND-N debate is logged to `.loop-spec/features/{slug}/gate-logs/` and a non-empty fix-list re-dispatches the upstream author via `SendMessage` with prior summaries threaded in. The SPEC critique always runs; the PLAN critique is skipped only by the structural fast-path (<=2 tasks, <=3 files, no security signal — measured from the actual plan, never inferred from the prompt).
 - **First-run codebase map** that ingests an existing GSD `.planning/codebase/` if present, then dispatches mappers only for whatever's still missing -- pay for the map once per project, never twice.
 - **Pattern-mapper** (also borrowed from GSD) that runs at PLAN Step 0 and writes per-feature `PATTERNS.md` so the planner cites real codebase analogs instead of inventing shapes.
 - **Bounded retries**: 3 per gate, per-phase ceilings, 40 global, `iterate.maxIterations = 10`. The cycle either ships or escalates -- it never loops forever.
 - **Worktrees always project-local**: per-task worktrees are created under `.loop-spec/worktrees/` (EXECUTE), always within the repo root. The `using-git-worktrees` skill (superpowers-extended-cc plugin) was updated in tandem to enforce the same constraint for general skill use, removing the former `~/.config/...` global path option. Multi-repo setups get a separate worktree dir per repo in single-repo mode; workspace mode uses in-place `feat/{slug}` branches instead (see "Workspaces (multi-repo)" below).
-- **VERIFY marker scan** (ported from GSD): before dispatching any acceptance agents, VERIFY scans changed files for unresolved `TBD`/`FIXME`/`XXX` markers and fails fast, saving agent budget on incomplete work.
+- **VERIFY marker scan** (ported from GSD): before dispatching any acceptance agents, VERIFY scans changed files for unresolved `TBD`/`FIXME`/`XXX` markers and fails fast, saving agent effort on incomplete work.
 - **Stall detection** (ported from GSD): EXECUTE resume distinguishes "done", "stalled mid-write" (re-dispatches with the partial diff as context), and "clean stall" (fresh re-dispatch). The previous heuristic of "commits exist = done" could skip review on a crashed agent.
 - **Orphaned worktree pruning** (ported from GSD): after EXECUTE completes, it prunes worktrees whose branches are already merged without destroying uncommitted work.
 - **Remediation routing**: when VERIFY's acceptance gate or code-review HARD-GATE fires, remediation tasks are persisted to `feature.json.pendingRemediationTasks[]` and consumed by EXECUTE on re-entry — they survive the verify team's teardown without requiring the verify and execute teams to share state.
@@ -343,7 +342,7 @@ loop-spec is what happens when you take the speed of superpowers (persistent spe
   three tested layers for autonomous execution: `compile_spec.py` (spec → verified task
   plan), `supervisor.py` (plan → fleet of workers in isolated worktrees with merge +
   halt policy), `loop.py` (bounded loop with verifier-integrity locking,
-  budget/iteration/stall/timeout stops, durable state, `result.json` contract). EXECUTE
+  iteration/stall/timeout stops, durable state, `result.json` contract). EXECUTE
   gains a **loop-fleet rung**: PLAN.md tasks are compiled to a loop plan
   (`lib/plan-to-loop.sh`) and run as a supervised fleet — every iteration of every
   worker mechanically re-runs the task's `verifyCommand`, and SPEC.md/PLAN.md are
@@ -519,7 +518,7 @@ stateDiagram-v2
     in_progress --> in_progress: reviewer claim<br/>(owner=reviewer-N,<br/>metadata.phase=null)
     in_progress --> in_progress: reviewer FAIL with retries<br/>(owner=null,<br/>metadata.phase=needs_rework,<br/>retries+1)
     in_progress --> completed: reviewer PASS<br/>(REVIEW PASS to lead)
-    in_progress --> completed: reviewer FAIL,<br/>retry budget exhausted<br/>(metadata.result=blocked)
+    in_progress --> completed: reviewer FAIL,<br/>rework cap exhausted<br/>(metadata.result=blocked)
     completed --> [*]: lead merges<br/>(or escalates if metadata.result=blocked)
 ```
 
@@ -597,7 +596,7 @@ loop-spec/
 │   └── checkpoint / decision-coverage / detect-test-cmd / pause-snapshot / plan-adherence / regression-scan / validate-task-metadata / worktree-commit-check
 ├── hooks/
 │   ├── restrict-agent-paths.sh      # PreToolUse Write|Edit: per-role path guard (open-dispatch caller detection, fail-open)
-│   ├── team/                        # task gates (TaskCreate/TaskCompleted, scoped to loop-spec tasks), budget gate, advisory hooks (strategy-rotation, output-compressor, done-criteria, deflection guard, learnings, discipline)
+│   ├── team/                        # task gates (TaskCreate/TaskCompleted, scoped to loop-spec tasks), advisory hooks (strategy-rotation, done-criteria, deflection guard, learnings, discipline)
 │   └── hooks.json
 ├── tests/
 │   ├── run-all.sh                   # meta runner: validators + hook + lib units + workflow syntax + loop-runner suite
@@ -614,7 +613,7 @@ loop-spec/
 ## Docs
 
 - `docs/design.md` -- full architecture
-- `docs/tier-guide.md` -- fixed gate/budget behavior + execution styles (single-tier)
+- `docs/tier-guide.md` -- fixed gate behavior + execution styles (single-tier)
 - `docs/adopting.md` -- adoption guide
 - `tests/README.md` -- test matrix
 

@@ -8,7 +8,6 @@ tools:
   - Bash
 model: opus
 color: red
-maxTurns: 50
 memory: project
 ---
 

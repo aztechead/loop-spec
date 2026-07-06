@@ -9,7 +9,6 @@ tools:
   - Glob
 model: sonnet
 color: cyan
-maxTurns: 60
 ---
 
 # mapper-domain

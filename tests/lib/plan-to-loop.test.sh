@@ -105,16 +105,16 @@ else
   fail "H: missing args -> exit 2 (got $RC)"
 fi
 
-# I: budgets and iteration caps land in the plan
+# I: iteration cap lands in the plan
 NUMS=$(printf '%s' "$TASKS_OK" | bash "$SCRIPT" --slug demo --spec S.md --plan P.md \
-  --fleet-budget 12 --task-budget 2.5 --max-iterations 6 2>/dev/null | python3 -c "
+  --max-iterations 6 2>/dev/null | python3 -c "
 import json,sys; p=json.load(sys.stdin)
 t=p['tasks'][0]
-print(p['fleet_budget_usd'], t['budget_usd'], t['max_iterations'])")
-if [[ "$NUMS" == "12.0 2.5 6" ]]; then
-  pass "I: budget/iteration overrides applied"
+print(t['max_iterations'])")
+if [[ "$NUMS" == "6" ]]; then
+  pass "I: iteration override applied"
 else
-  fail "I: budget/iteration overrides applied (got '$NUMS')"
+  fail "I: iteration override applied (got '$NUMS')"
 fi
 
 echo ""

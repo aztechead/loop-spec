@@ -7,7 +7,6 @@ that runs.
 Plan schema:
 {
   "spec": "SPEC.md",                # provenance (optional)
-  "fleet_budget_usd": 20.0,
   "base_branch": "main",            # optional; supervisor defaults to current
   "tasks": [
     {
@@ -15,7 +14,6 @@ Plan schema:
       "prompt": "...",              # scoped task prompt (goal, files in scope, don'ts)
       "verify": "pytest tests/x -q",# exits 0 only when this task is truly done
       "protected": ["tests/"],      # paths the agent must not modify (verifier integrity)
-      "budget_usd": 4.0,
       "max_iterations": 10,
       "deps": ["other-task-id"],
       "mode": "fresh",              # or "continue"
@@ -39,8 +37,6 @@ def validate_plan(plan: dict) -> list[str]:
     tasks = plan.get("tasks")
     if not isinstance(tasks, list) or not tasks:
         return ["plan has no 'tasks' list (or it is empty)"]
-    if not isinstance(plan.get("fleet_budget_usd", 1.0), (int, float)) or plan.get("fleet_budget_usd", 1.0) <= 0:
-        errs.append("fleet_budget_usd must be a positive number")
 
     ids = set()
     for i, t in enumerate(tasks):
@@ -56,9 +52,6 @@ def validate_plan(plan: dict) -> list[str]:
         if not isinstance(t.get("verify"), str) or not t.get("verify", "").strip():
             errs.append(f"{where}: verify command is required — a task without a "
                         f"done-condition cannot be looped safely")
-        b = t.get("budget_usd", 0)
-        if not isinstance(b, (int, float)) or b <= 0:
-            errs.append(f"{where}: budget_usd must be > 0")
         if t.get("mode", "fresh") not in ("fresh", "continue"):
             errs.append(f"{where}: mode must be 'fresh' or 'continue'")
         if not isinstance(t.get("deps", []), list):

@@ -53,10 +53,8 @@ checks=(
   "skills/discuss/SKILL.md	decisions.sh\" add"
   "skills/plan/SKILL.md	decisions.sh\" add"
   "skills/cycle/SKILL.md	decisions.sh\" migrate"
-  # -- debug: budget ticks + init consumed by the skill
+  # -- debug: init consumed by the skill
   "skills/debug/SKILL.md	debug-init.sh\" init"
-  "skills/debug/SKILL.md	debug-budget.sh\" hypothesis"
-  "skills/debug/SKILL.md	debug-budget.sh\" attempt"
   # -- greenfield: bootstrap in cycle, backfill invariant in execute
   "skills/cycle/SKILL.md	greenfield-bootstrap.sh\" bootstrap"
   "skills/execute/SKILL.md	greenfield-bootstrap.sh\" backfill-check"

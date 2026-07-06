@@ -7,7 +7,6 @@ tools:
   - Grep
 model: sonnet
 color: red
-maxTurns: 50
 ---
 
 # security-reviewer
@@ -80,4 +79,4 @@ Return an empty array `[]` if you find no issues. Do not include any text outsid
 ## What NOT to do
 
 - **Do NOT fabricate CVEs or vulnerability references.** If you cannot cite a concrete CVE or constraint, report what you observe and classify on the code pattern, not an assumed external reference.
-- **Do NOT omit findings under time or budget pressure.** Return all findings you identify.
+- **Do NOT omit findings under time pressure.** Return all findings you identify.

@@ -18,11 +18,6 @@ no `Workflow` tool — only the `claude` CLI on PATH and git.
 `LOOP_SPEC_EXECUTE_LOOPS=0` disables the rung entirely (kill switch; the ladder
 then behaves exactly as before this rung existed).
 
-Note (subscription plans): headless `claude -p` usage may draw from a separate
-Agent SDK credit from June 15, 2026; the fleet budget plus per-task iteration
-caps are the spend bounds, and `cost_reliable: false` in results means the
-dollar figures are not trustworthy — iteration/turn caps are the real ceiling.
-
 ## Procedure
 
 All paths below are run from the feature worktree root (`feat/{slug}` checked
@@ -40,8 +35,6 @@ printf '%s' "$tasks_json" | bash "${CLAUDE_SKILL_DIR}/../../lib/plan-to-loop.sh"
   --slug "{slug}" \
   --spec "docs/loop-spec/features/{slug}/SPEC.md" \
   --plan "docs/loop-spec/features/{slug}/PLAN.md" \
-  --fleet-budget "${LOOP_SPEC_LOOP_FLEET_BUDGET:-20}" \
-  --task-budget "${LOOP_SPEC_LOOP_TASK_BUDGET:-4}" \
   --max-iterations "${LOOP_SPEC_LOOP_MAX_ITERATIONS:-10}" \
   > "$fdir/loop-plan.json"
 ```
@@ -75,7 +68,7 @@ rc=$?
 The supervisor walks the DAG, runs each task's loop in an isolated worktree on
 branch `loop/<id>`, merges completed branches into `feat/{slug}` (the current
 branch) so dependents build on them, retries stalls/thrash once with the stall
-context appended, never retries budget/timeout halts, and kills the fleet on a
+context appended, never retries timeout halts, and kills the fleet on a
 verifier-integrity violation.
 
 This call is long-running and unattended; the lead does nothing while it runs.
@@ -94,9 +87,9 @@ fatal=$(jq -r '.fleet_fatal' "$fleet")
 - `blocked` = each id in `.failed` with `reason` mapped from its
   `tasks[id].halt_reason`:
   - `max_iterations`, `no_progress`, `verifier_thrash`, `agent_error` → `retry-exhausted`
-  - `budget`, `fleet_budget`, `timeout` → `retry-exhausted` (budget-bounded; raise
-    `LOOP_SPEC_LOOP_TASK_BUDGET` / `--fleet-budget` and re-enter EXECUTE to resume —
-    loop state is durable, completed iterations are not re-paid)
+  - `timeout` → `retry-exhausted` (raise `LOOP_SPEC_LOOP_MAX_ITERATIONS` or the
+    timeout and re-enter EXECUTE to resume — loop state is durable, completed
+    iterations are not re-run)
   - ids in `.skipped` → `reason: "dep-failed"` (upstream task failed)
 - `escalation`:
   - `.fleet_fatal == true` with any `halt_reason == "verifier_integrity"` →
@@ -119,7 +112,7 @@ Read `halt_reason`, not vibes:
 |---|---|---|
 | `no_progress` | task under-specified or too big | split it in PLAN.md, re-enter |
 | `verifier_thrash` | pass→fail flapping | inspect `.loop/<id>/iter-*.raw.json` |
-| `budget` / `timeout` | under-budgeted or thrashing | read iteration logs, raise caps, re-enter (resumes) |
+| `max_iterations` / `timeout` | too few rounds or thrashing | read iteration logs, raise caps, re-enter (resumes) |
 | `verifier_integrity` | worker touched the exam | inspect diff with suspicion |
 | `agent_error` | claude CLI failure | check `.loop/<id>.supervisor.log` |
 
@@ -130,4 +123,4 @@ output, every verifier run in full, and the worker-maintained PROGRESS.md.
 
 Re-entering EXECUTE re-runs the converter and supervisor. Loop state is durable:
 already-completed tasks are merged (their `loop/<id>` branches are no-ops), and a
-budget-halted task resumes from its saved state when re-run with a higher budget.
+halted task resumes from its saved state when re-run with a higher iteration cap.

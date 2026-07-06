@@ -5,7 +5,6 @@ tools:
   - Read
 model: opus
 color: purple
-maxTurns: 20
 ---
 
 # challenger

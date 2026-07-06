@@ -2,6 +2,43 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.9.0]
+
+### Removed — full-bore operation (the ONE bound is ITERATE's round limit)
+- **All dollar-cost machinery.** `hooks/team/budget-gate.sh` (session cost ceiling)
+  and `hooks/team/output-compressor.sh` (token-saving output compression) deleted with
+  their tests and hooks.json registrations; `LOOP_SPEC_MAX_COST_USD`,
+  `LOOP_SPEC_BUDGET_GUARD`, and `LOOP_SPEC_COMPRESSOR` are gone. loop-runner drops
+  `--budget`/`budget_usd`, `--fleet-budget`/`fleet_budget_usd`, cost accounting
+  (`cost_usd`/`cost_reliable` removed from `result.json` and `state.json`), and the
+  `budget`/`fleet_budget` halt reasons; `lib/plan-to-loop.sh` drops
+  `--fleet-budget`/`--task-budget` (`LOOP_SPEC_LOOP_FLEET_BUDGET`/`_TASK_BUDGET` gone).
+  Crash protection stays: `--max-iterations` (the loop's rounds), `--timeout`, stall
+  detection, thrash detection, verifier integrity.
+- **All per-dispatch turn caps.** `maxTurns` removed from every agent frontmatter and
+  now a validator-forbidden key (`tests/validate-agents.sh`); loop.py's `--max-turns`
+  per-tick cap removed.
+- **Gate retryBudget.** The `retryBudget` block (perGate/perPhase/global) is gone from
+  `feature.json` (`lib/feature-init.sh`), the state schema, tier-matrix, and every
+  phase skill: spec/discuss/plan/verify gates now retry unbounded until they pass,
+  with every attempt still recorded in `gateHistory[]`. ITERATE's Step 0 checks only
+  `iterate.maxIterations` (10) — the single limit the cycle respects. EXECUTE's
+  per-task rework cap (`maxRetriesPerTask`, 2) survives as escalation routing, renamed
+  in prose from "retry budget" to "rework cap".
+- **Debug 5×3 hypothesis/attempt caps.** `lib/debug-budget.sh` deleted with its test
+  and contract pins; the FIX loop is now evidence-disciplined and unbounded (every
+  hypothesis/attempt recorded in BUG.md before the next opens, REFUTED verdicts never
+  reopened without new evidence). The `budget-spent-with-evidence` terminal state is
+  gone; the loop ends in fixed-and-verified, instrumented-and-waiting, or
+  escalated-to-cycle.
+
+### Changed
+- **Verbiage sweep.** All remaining budget/token-management prose reworded across
+  README, docs (design/tier-guide), skills, agents, and lib: iterate-round wording is
+  now "iteration limit/rounds", quality-loop's cap is the "round limit". Machine
+  contract strings (`iterate-budget-spent:`, `no-budget-spent-gaps`) are unchanged —
+  they name the iterate-rounds mechanism, which stays.
+
 ## [2.8.1]
 
 ### Changed
