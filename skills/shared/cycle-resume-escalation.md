@@ -129,6 +129,11 @@ If a phase pauses + escalates (iteration limit exhausted, NEEDS_CONTEXT, etc.):
      --status escalated --reason "<escalation reason>" || true
    ```
    This also emits the `escalated` event to `events.jsonl`.
+5.6. Push branch and open/reuse a draft PR to salvage the work product (gated: on by default for autonomous runs, LOOP_SPEC_CHECKPOINT_PR overrides; never blocks escalation):
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint-pr.sh" create ".loop-spec/features/${slug}" \
+     --reason "<escalation reason>" || true
+   ```
 6. **Single-repo worktree mode only:** after snapshotting (step 5 above), call `ExitWorktree({action: "keep"})` to return the session to the main checkout. The worktree and branch are preserved on disk; the next resume will re-enter via `EnterWorktree`. Workspace features (in-place at the workspace root) skip this step.
 7. Return control to user.
 

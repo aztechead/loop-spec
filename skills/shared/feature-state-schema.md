@@ -77,6 +77,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   },
   "stalenessHours": 48,
   "prUrl": "string or null (PR URL set by VERIFY Step 10 after gh pr create; null before that point)",
+  "checkpointPrUrl": "string or null (draft PR URL set by lib/checkpoint-pr.sh on pause/escalation/terminal salvage; null otherwise)",
   "warnings": ["array of strings"],
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
   "pendingRemediationTasks": ["array of remediation task objects appended by VERIFY (lib/feature-write.sh append) and consumed+cleared by EXECUTE Step 2a; empty between phases"],
