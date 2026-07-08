@@ -16,9 +16,24 @@ All notable changes documented here. Format follows Keep a Changelog.
   re-applies dedupe), `suggestion` and `info` (never auto-applied).
 - The cycle's On-completion prints the candidate count READ-ONLY; an
   autonomous run never rewrites its own rules — the human stays the curator.
-- `docs/loop-spec/RETRO.md` gets a dated section per report. 26-check unit
+- `docs/loop-spec/RETRO.md` gets a dated section per report. 33-check unit
   suite; fixed a jq `//`-operator pitfall that collapsed `converged: false`
   to null in both `lib/retro.sh` and `lib/status.sh` (regression-tested).
+
+### Added — volatile-agent durability (containers / per-run CI)
+- Local telemetry dies with an ephemeral workspace and `.loop-spec/` is
+  gitignored — a per-run container would give retro a corpus of one, forever.
+  `lib/run-digest.sh` (never-abort contract) writes a compact per-run digest
+  to `docs/loop-spec/telemetry/runs/{slug}.json` at cycle completion —
+  COMMITTED and pushed on the feature branch, one file per slug so parallel
+  agents never conflict in git. Retro mines local telemetry MERGED with the
+  digest corpus (local wins on slug collision; `LOOP_SPEC_RETRO_DIGEST_DIR`
+  override), so a fresh clone sees full history.
+- Rules durability: the cycle's first-run gitignore setup and `retro apply`
+  both add the `!/.loop-spec/RULES.md` exception (idempotent, same pattern as
+  the PROGRESS.md exception) so applied rules survive via git instead of
+  dying with the pod. The global rules layer is per-machine by design — in
+  volatile fleets, keep everything in the project layer (documented).
 
 ## [2.11.0]
 

@@ -113,6 +113,52 @@ ec=0
 bash "$LIB" report --root "$ROOT" --json >/dev/null 2>&1 || ec=$?
 check "10: corrupt feature tolerated exit 0" "0" "$ec"
 
+# ── Case 11: VOLATILE scenario — fresh clone, digests only, no local telemetry ─
+VPROJ="$WORK/volatile"
+mkdir -p "$VPROJ/.loop-spec/features" "$VPROJ/docs/loop-spec/telemetry/runs"
+for i in 1 2 3; do
+  cat > "$VPROJ/docs/loop-spec/telemetry/runs/old-$i.json" << EOF
+{"schema":1,"slug":"old-$i","status":"completed","converged":true,
+ "iterations":{"used":2,"max":10},"gaps":["plan"],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-0${i}T00:00:00Z"}
+EOF
+done
+out="$(bash "$LIB" report --root "$VPROJ/.loop-spec" --json)"
+check "11: digest-only corpus reaches threshold" "1" "$(jq '[.[] | select(.id == "gap-plan-recurs")] | length' <<<"$out")"
+check "11: evidence from digests" "3" "$(jq '.[] | select(.id == "gap-plan-recurs") | .evidence.count' <<<"$out")"
+
+# ── Case 12: merge — local feature wins over digest with the same slug ────────
+mkfeat_v() { # local old-1 WITHOUT a plan gap (converged clean)
+  local d="$VPROJ/.loop-spec/features/old-1"
+  mkdir -p "$d"
+  echo '{"schemaVersion":7,"slug":"old-1","iterate":{"used":1,"maxIterations":10}}' > "$d/feature.json"
+  echo '{"schema":1,"slug":"old-1","status":"completed","converged":true,"iterations":{"used":1,"max":10}}' > "$d/result.json"
+  : > "$d/events.jsonl"
+}
+mkfeat_v
+out="$(bash "$LIB" report --root "$VPROJ/.loop-spec" --json)"
+check "12: local wins on slug collision (plan gaps drop to 2 < threshold)" "0" \
+  "$(jq '[.[] | select(.id == "gap-plan-recurs")] | length' <<<"$out")"
+check "12: no duplicate slugs in corpus (convergence denominator = 3)" "3" \
+  "$(jq '.[] | select(.id == "convergence-rate") | .evidence.count' <<<"$out")"
+
+# ── Case 13: apply adds the RULES.md gitignore exception (volatile durability) ─
+GPROJ="$WORK/gitproj"
+mkdir -p "$GPROJ/.loop-spec/features" "$GPROJ/docs/loop-spec/telemetry/runs"
+printf '.loop-spec/\n' > "$GPROJ/.gitignore"
+for i in 1 2 3; do
+  cat > "$GPROJ/docs/loop-spec/telemetry/runs/g-$i.json" << EOF
+{"schema":1,"slug":"g-$i","status":"completed","converged":true,
+ "iterations":{"used":2,"max":10},"gaps":["spec"],"gateCaps":[],"warnings":0,"finishedAt":null}
+EOF
+done
+LOOP_SPEC_RULES_FILE="$GPROJ/.loop-spec/RULES.md" LOOP_SPEC_GLOBAL_RULES_FILE="$WORK/g2.md" \
+  bash "$LIB" apply --root "$GPROJ/.loop-spec" >/dev/null 2>&1
+check "13: gitignore exception added" "1" "$(grep -cxF '!/.loop-spec/RULES.md' "$GPROJ/.gitignore")"
+LOOP_SPEC_RULES_FILE="$GPROJ/.loop-spec/RULES.md" LOOP_SPEC_GLOBAL_RULES_FILE="$WORK/g2.md" \
+  bash "$LIB" apply --root "$GPROJ/.loop-spec" >/dev/null 2>&1
+check "13: exception idempotent" "1" "$(grep -cxF '!/.loop-spec/RULES.md' "$GPROJ/.gitignore")"
+check "13: spec rule applied from digest corpus" "1" "$(grep -c 'SPEC scope gaps recur' "$GPROJ/.loop-spec/RULES.md")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

@@ -98,7 +98,7 @@ Each per-phase skill is directly slash-invocable (the skill is the command, no s
 - `/loop-spec:assess` -- standalone, read-only codebase fragility and health assessment; workspace-aware; dispatches bounded code-reviewer subagents at the top-N hotspots and writes `docs/loop-spec/assessment/ASSESSMENT.md`.
 - `/loop-spec:quality-loop` -- iterative pre-commit review convergence loop; workspace-aware; runs deterministic checks then parallel code-reviewer and security-reviewer passes, repeating until convergence or the round limit is exhausted.
 - `/loop-spec:revise` -- close the PR-review round trip: `/loop-spec:revise <pr#>` ingests human review feedback on an open loop-spec PR (inline comments, reviews, discussion; resolved threads filtered via `lib/pr-comments.sh`), classifies each actionable item with the iterate gap taxonomy, fixes `execute`-class items on the PR branch through the EXECUTE remediation machinery in a dedicated worktree (never switching your checkout, never force-pushing), backlogs `plan`/`spec`-class scope changes loudly, pushes, and posts ONE summary comment mapping every item to a commit, answer, or backlog entry. Interactive mode asks exactly one classification confirmation; `autonomous` asks nothing and records assumed decisions in `REVISION.md`.
-- `/loop-spec:retro` -- retrospective over accumulated telemetry: deterministically mines `events.jsonl`/`result.json` across features for repeated failure patterns (an iterate gap type recurring across >=3 features, a critique gate repeatedly at its round cap) and turns them into **rule candidates** for the self-learning RULES.md loop, plus evidence-backed suggestions (`modelTier` headroom on first-pass convergence streaks) and info (convergence rate, shipped-with-gaps, fleet cost). `report` is read-only and writes `docs/loop-spec/RETRO.md`; `apply` appends the candidates via `lib/rules.sh add` (idempotent, count-free rule texts). The cycle's On-completion prints the candidate count read-only — an autonomous run never rewrites its own rules; you stay the curator. Mechanics in `lib/retro.sh`.
+- `/loop-spec:retro` -- retrospective over accumulated telemetry: deterministically mines `events.jsonl`/`result.json` across features for repeated failure patterns (an iterate gap type recurring across >=3 features, a critique gate repeatedly at its round cap) and turns them into **rule candidates** for the self-learning RULES.md loop, plus evidence-backed suggestions (`modelTier` headroom on first-pass convergence streaks) and info (convergence rate, shipped-with-gaps, fleet cost). `report` is read-only and writes `docs/loop-spec/RETRO.md`; `apply` appends the candidates via `lib/rules.sh add` (idempotent, count-free rule texts). The cycle's On-completion prints the candidate count read-only — an autonomous run never rewrites its own rules; you stay the curator. Mechanics in `lib/retro.sh`. **Volatile-agent safe:** the corpus is not just local telemetry — every completed cycle commits a compact digest to `docs/loop-spec/telemetry/runs/{slug}.json` (`lib/run-digest.sh`, one file per slug, conflict-free for parallel agents), so retro works from a fresh clone after per-run containers are torn down, and `apply` adds the `!/.loop-spec/RULES.md` gitignore exception so applied rules travel through git too.
 - `/loop-spec:status` -- read-only run dashboard: per-feature status (phase, iterations, last event, warnings, result, PR URL) and `stats` aggregates across runs (convergence rate, gate-round counts, iterate gap histogram, dispatch counts by model/role/rung, loop-fleet cost). `--json` for machine consumers. Mechanics in `lib/status.sh`.
 - `/loop-spec:grill` -- toggle grill mode (`on`/`off`/`status`). Grill mode is **on by default**: a session-start directive makes the assistant front-load 2-4 sharp disambiguation questions right after your initial prompt to lower ambiguity before acting. Persists in `.loop-spec/grill.conf`; `LOOP_SPEC_GRILL=0` is the session kill switch.
 - `/loop-spec:discipline` -- toggle discipline mode (`on`/`off`/`status`), an opt-in set of five behavioral gates (brainstorm-before-coding, verification-before-claims, investigation-before-fixes, decision-gate, intent-gate). Persists in `.loop-spec/discipline.conf`.
@@ -335,6 +335,8 @@ docs/loop-spec/                          # COMMITTED
 │   ├── PLAN.md
 │   ├── VERIFICATION.md
 │   └── ITERATION.md                      # per-iteration convergence verdicts
+├── RETRO.md                              # dated retrospective reports (/loop-spec:retro)
+├── telemetry/runs/{slug}.json            # committed per-run digests (lib/run-digest.sh) — the retro corpus that survives volatile workspaces
 └── codebase/
     ├── TECH.md
     ├── ARCH.md
@@ -342,9 +344,9 @@ docs/loop-spec/                          # COMMITTED
     ├── CONCERNS.md
     └── DOMAIN.md
 
-.loop-spec/                              # GITIGNORED (except codebase/index.json)
+.loop-spec/                              # GITIGNORED (except codebase/index.json + the RULES.md exception below)
 ├── BACKLOG.md                            # deferred findings + iterate gaps (drain: /loop-spec:cycle backlog)
-├── RULES.md                              # self-learning rules (injected each session)
+├── RULES.md                              # self-learning rules (injected each session; gitignore-EXCEPTED + committed so rules survive ephemeral workspaces)
 ├── features/{slug}/
 │   ├── feature.json                      # schema v7, atomic-write with .bak rotation
 │   ├── feature.json.bak

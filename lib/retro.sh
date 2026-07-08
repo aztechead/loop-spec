@@ -9,6 +9,12 @@
 #   retro.sh report [--root <dir>] [--json] [--min-repeats N]
 #       Mine patterns and print findings. READ-ONLY. Default root
 #       ${CLAUDE_PROJECT_DIR:-.}/.loop-spec, default min-repeats 3.
+#       Corpus = local feature telemetry MERGED with the committed run digests
+#       at <project>/docs/loop-spec/telemetry/runs/ (lib/run-digest.sh;
+#       override dir with LOOP_SPEC_RETRO_DIGEST_DIR). Local wins on slug
+#       collision. The digests are what make retro work in VOLATILE
+#       environments (per-run containers): local telemetry dies with the
+#       workspace, the digest corpus travels through git.
 #
 #   retro.sh apply [--root <dir>] [--min-repeats N]
 #       Run the same report, then add every rule-candidate to the PROJECT
@@ -59,8 +65,14 @@ ROOT="${ROOT:-${CLAUDE_PROJECT_DIR:-.}/.loop-spec}"
 FEATURES_DIR="$ROOT/features"
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Collect one object per feature (tolerant of anything missing/corrupt) ─────
-_collect() {
+# ── Collect one FACTS object per run: {slug, converged, resultStatus,
+#    iterationsUsed, gaps[], gateCaps[]} — from two sources, merged:
+#    1. local feature dirs (rich telemetry; volatile — dies with the workspace)
+#    2. committed run digests under <project>/docs/loop-spec/telemetry/runs/
+#       (lib/run-digest.sh; what survives container/CI teardown)
+#    Local wins on slug collision (same run, richer source). This is what makes
+#    retro work for volatile agents: a fresh clone still has the digest corpus.
+_collect_local() {
   local first=1
   echo "["
   if [[ -d "$FEATURES_DIR" ]]; then
@@ -83,14 +95,51 @@ _collect() {
           converged: (if ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged else null end),
           resultStatus: ($rj.status // null),
           iterationsUsed: ($rj.iterations.used // $fj.iterate.used // 0),
-          events: $events}'
+          gaps: ([$events[] | select(.event == "iterate_verdict") | .data.gap // empty
+                  | select(. != "" and . != "none")] | unique),
+          gateCaps: ([$events[] | select(.event == "gate_round" and ((.data.round // 0) >= 2))
+                      | .data.gate // empty | select(. != "")] | unique)}'
     done
   fi
   echo "]"
 }
 
-FEATS="$(_collect | jq -cs 'add // []' 2>/dev/null)" || FEATS="[]"
-jq -e 'type == "array"' >/dev/null 2>&1 <<<"$FEATS" || FEATS="[]"
+_collect_digests() {
+  local ddir="$1"
+  local first=1
+  echo "["
+  if [[ -d "$ddir" ]]; then
+    for f in "$ddir"/*.json; do
+      [[ -f "$f" ]] || continue
+      local d
+      d="$(cat "$f" 2>/dev/null || echo '')"
+      jq -e 'type == "object" and (.slug | type == "string")' >/dev/null 2>&1 <<<"$d" || continue
+      [[ "$first" == "1" ]] || echo ","
+      first=0
+      jq -cn --argjson d "$d" \
+        '{slug: $d.slug,
+          converged: (if ($d | has("converged")) then $d.converged else null end),
+          resultStatus: ($d.status // null),
+          iterationsUsed: ($d.iterations.used // 0),
+          gaps: ($d.gaps // []),
+          gateCaps: ($d.gateCaps // [])}'
+    done
+  fi
+  echo "]"
+}
+
+LOCAL_FEATS="$(_collect_local | jq -cs 'add // []' 2>/dev/null)" || LOCAL_FEATS="[]"
+jq -e 'type == "array"' >/dev/null 2>&1 <<<"$LOCAL_FEATS" || LOCAL_FEATS="[]"
+
+DIGEST_DIR="${LOOP_SPEC_RETRO_DIGEST_DIR:-$(dirname "$ROOT")/docs/loop-spec/telemetry/runs}"
+DIGEST_FEATS="$(_collect_digests "$DIGEST_DIR" | jq -cs 'add // []' 2>/dev/null)" || DIGEST_FEATS="[]"
+jq -e 'type == "array"' >/dev/null 2>&1 <<<"$DIGEST_FEATS" || DIGEST_FEATS="[]"
+
+# Merge: local wins on slug collision.
+FEATS="$(jq -cn --argjson local "$LOCAL_FEATS" --argjson digest "$DIGEST_FEATS" '
+  ($local | map(.slug)) as $seen |
+  $local + ($digest | map(select(.slug as $s | ($seen | index($s)) | not)))
+')" || FEATS="[]"
 
 FLEET_COST="null"
 FLEET_FILE="$(dirname "$ROOT")/.loop/fleet-result.json"
@@ -99,8 +148,8 @@ if [[ -f "$FLEET_FILE" ]]; then
 fi
 
 FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleetCost "$FLEET_COST" '
-  def featsWithGap(g): [$feats[] | select([.events[] | select(.event == "iterate_verdict" and (.data.gap // "") == g)] | length > 0) | .slug];
-  def featsWithGateCap(g): [$feats[] | select([.events[] | select(.event == "gate_round" and (.data.gate // "") == g and ((.data.round // 0) >= 2))] | length > 0) | .slug];
+  def featsWithGap(g): [$feats[] | select(.gaps | index(g)) | .slug];
+  def featsWithGateCap(g): [$feats[] | select(.gateCaps | index(g)) | .slug];
 
   (featsWithGap("plan")) as $planFeats |
   (featsWithGap("execute")) as $execFeats |
@@ -209,4 +258,15 @@ while IFS= read -r text; do
   res="$(bash "$LIB_DIR/rules.sh" add "$text" 2>/dev/null || echo "error")"
   echo "  $res: $text"
 done < <(jq -r '.[] | select(.kind == "rule-candidate") | .rule.text' <<<"$FINDINGS")
+
+# Durability for volatile environments: .loop-spec/ is gitignored by default,
+# so rules written in a container die with it unless RULES.md is excepted and
+# committed. Ensure the exception (idempotent, same pattern as the cycle's
+# PROGRESS.md exception); committing is the caller's/skill's step.
+project_dir="$(dirname "$ROOT")"
+if [[ -f "$project_dir/.gitignore" ]] \
+   && ! grep -qxF '!/.loop-spec/RULES.md' "$project_dir/.gitignore" 2>/dev/null; then
+  printf '!/.loop-spec/RULES.md\n' >> "$project_dir/.gitignore" 2>/dev/null \
+    && echo "retro apply: added .gitignore exception for .loop-spec/RULES.md (commit it so rules survive ephemeral workspaces)"
+fi
 exit 0

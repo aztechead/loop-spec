@@ -66,8 +66,34 @@ contract as RULES.md itself).
 - **shipped-with-gaps** — runs keep spending the iteration limit; drain the
   backlog and read `ITERATION.md` for what keeps being accepted.
 
+## Volatile / ephemeral agents (containers, per-run CI)
+
+Local telemetry (`.loop-spec/features/*/events.jsonl`, `result.json`) dies with
+the workspace, and `.loop-spec/` is gitignored — a per-run container would give
+retro a corpus of one, forever below threshold. Three mechanisms make retro
+work anyway; all are automatic:
+
+1. **Committed run digests.** The cycle's On-completion runs
+   `lib/run-digest.sh append`, writing a compact per-run digest to
+   `docs/loop-spec/telemetry/runs/{slug}.json` (committed + pushed on the
+   feature branch, one file per slug so parallel agents never conflict in git).
+   Retro mines local telemetry MERGED with these digests (local wins on slug
+   collision; `LOOP_SPEC_RETRO_DIGEST_DIR` overrides the location) — a fresh
+   clone sees the full corpus.
+2. **Durable rules.** `retro apply` (and the cycle's first-run gitignore setup)
+   adds the `!/.loop-spec/RULES.md` exception so applied rules survive via git
+   instead of dying with the pod. Commit RULES.md after applying.
+3. **No self-mutation in autonomous mode.** The cycle only prints the read-only
+   candidate count; a volatile agent never rewrites its own rules mid-run.
+   Wire `retro apply` as an explicit pipeline step (or run it locally) when you
+   want candidates promoted.
+
+The global rules layer (`~/.loop-spec/RULES.md`) is per-machine and does NOT
+survive containers — in volatile fleets, keep everything in the project layer.
+
 ## Boundaries
 
-Read-only except: RETRO.md (report) and RULES.md (apply, explicit). No agents
-are dispatched; no dispatch telemetry applies. Workspace mode: run from the
-workspace root; `--root` points anywhere explicitly.
+Read-only except: RETRO.md (report), RULES.md + the `.gitignore` durability
+exception (apply, explicit). No agents are dispatched; no dispatch telemetry
+applies. Workspace mode: run from the workspace root; `--root` points anywhere
+explicitly.
