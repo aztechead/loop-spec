@@ -113,15 +113,16 @@ check "1: disabled message" "1" "$([[ "$out" == *"disabled"* ]] && echo 1 || ech
 check "1: no push (branch absent from bare)" \
   "0" "$(git -C "$WORK/bare" rev-parse --verify refs/heads/feat/my-feature >/dev/null 2>&1 && echo 1 || echo 0)"
 
-# ── Case 2: Non-autonomous + env unset → skipped ─────────────────────────────
+# ── Case 2: Non-autonomous + env unset → default-on (gating passes) ──────────
+# (gh not in NOGH_PATH so it exits on that precondition, proving gating passed)
 reset_fixture
 ec=0
-out=$( (cd "$REPO"; env -u LOOP_SPEC_CHECKPOINT_PR bash "$LIB" create "$FEAT_DIR") 2>&1 ) || ec=$?
+out=$( (cd "$REPO"; env -u LOOP_SPEC_CHECKPOINT_PR PATH="$NOGH_PATH" bash "$LIB" create "$FEAT_DIR") 2>&1 ) || ec=$?
 check "2: non-auto exit 0" "0" "$ec"
-check "2: skip message contains 'interactive run'" \
-  "1" "$([[ "$out" == *"skipped (interactive run"* ]] && echo 1 || echo 0)"
-check "2: no push" \
-  "0" "$(git -C "$WORK/bare" rev-parse --verify refs/heads/feat/my-feature >/dev/null 2>&1 && echo 1 || echo 0)"
+check "2: gating passed (no interactive-skip)" \
+  "0" "$([[ "$out" == *"skipped (interactive run"* ]] && echo 1 || echo 0)"
+check "2: stopped at gh precondition" \
+  "1" "$([[ "$out" == *"'gh' not on PATH"* ]] && echo 1 || echo 0)"
 
 # ── Case 3: autonomous:true + env unset → gating passes ──────────────────────
 # (gh not in NOGH_PATH so it exits on that precondition, not on the gating check)

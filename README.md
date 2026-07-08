@@ -253,7 +253,7 @@ Schema (version 1):
 
 **Process exit codes for headless composition** live at the loop-runner layer (`skills/loop-runner/` scripts exit 0 only on verified completion). The cycle skill runs inside a Claude session and cannot set the process exit code — wrappers should read `result.json` instead of scraping git or GitHub.
 
-**Checkpoint draft PRs** — interrupted cycles (pause, escalation, or terminal stop) push the feature branch and open or reuse a draft GitHub PR so a slow or headless run yields a reviewable artifact rather than a dropped cycle. The URL is written to `feature.json.checkpointPrUrl`, surfaced in `result.json.checkpointPrUrl`, and recorded as a `checkpoint_pr` event in `events.jsonl`. Enabled by default for autonomous runs; `LOOP_SPEC_CHECKPOINT_PR=1/0` overrides. Requires `gh` on PATH and an `origin` remote; degrades gracefully (skip + one-line stderr note) when either is absent.
+**Checkpoint draft PRs** — interrupted cycles (pause, escalation, or terminal stop) push the feature branch and open or reuse a draft GitHub PR so a slow or headless run yields a reviewable artifact rather than a dropped cycle. The URL is written to `feature.json.checkpointPrUrl`, surfaced in `result.json.checkpointPrUrl`, and recorded as a `checkpoint_pr` event in `events.jsonl`. Enabled by default for **all** runs (autonomous and interactive); `LOOP_SPEC_CHECKPOINT_PR=0` disables. Requires `gh` on PATH and an `origin` remote; degrades gracefully (skip + one-line stderr note) when either is absent.
 
 Both files are local telemetry, deliberately not committed to the feature branch.
 
@@ -298,7 +298,7 @@ existing repo is refused; workspace-mode greenfield is deferred.
 | `LOOP_SPEC_REGRESSION_SCAN` | `1` enables VERIFY's advisory prior-feature regression scan (off by default). |
 | `LOOP_SPEC_NON_INTERACTIVE` + `LOOP_SPEC_ANSWER_*` | CI mode, see above. |
 | `LOOP_SPEC_AUTONOMOUS` | `1` = autonomous mode (equivalent to the inline `autonomous` token): self-answer every question site with the recommended option and record it; forces style `auto`; suppresses grill. See above. |
-| `LOOP_SPEC_CHECKPOINT_PR` | `1` = always push branch + open/reuse draft PR on pause/escalation/terminal; `0` = always skip; unset = enabled only for autonomous runs (headless default-on). |
+| `LOOP_SPEC_CHECKPOINT_PR` | `0` = skip the checkpoint draft PR on pause/escalation/terminal. Default (unset): enabled for all runs, autonomous and interactive. |
 
 All hook guards additionally self-scope: they no-op outside projects with `.loop-spec/` state, and the task gates only fire on loop-spec-owned tasks (`metadata.loopSpec` / `task-NNN:` subjects).
 
@@ -666,7 +666,7 @@ loop-spec/
 bash tests/run-all.sh    # 32 suites: validators + hook + lib units + workflow syntax + the bundled loop-runner offline suite (no claude CLI required — loop tests use tests/fakeclaude)
 ```
 
-End-to-end cycle coverage is the manual matrix in `tests/README.md` (run against a live Claude Code session); there is no scripted headless e2e test. The loop-runner suite (`skills/loop-runner/tests/run_tests.sh`, 29 checks) covers every halt reason, verifier-integrity locking, resume, plan validation, compilation, and a full supervisor end-to-end with worktrees and merges.
+End-to-end cycle coverage: the scripted headless smoke `tests/e2e/run-e2e.sh` (opt-in via `tests/run-all.sh --e2e` — LIVE, runs one real autonomous cycle against a fixture repo and asserts the `result.json`/`events.jsonl` contract; see `tests/e2e/README.md`), plus the manual matrix in `tests/README.md` (run against a live Claude Code session). The loop-runner suite (`skills/loop-runner/tests/run_tests.sh`, 29 checks) covers every halt reason, verifier-integrity locking, resume, plan validation, compilation, and a full supervisor end-to-end with worktrees and merges.
 
 ## Workflows integration
 
