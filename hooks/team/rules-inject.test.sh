@@ -8,6 +8,9 @@ TMP="${TMPDIR:-/tmp}/rules-inject-test-$$"
 mkdir -p "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 
+# Pin the global layer so a developer's real ~/.loop-spec/RULES.md never leaks in.
+export LOOP_SPEC_GLOBAL_RULES_FILE="$TMP/global/RULES.md"
+
 PASS=0; FAIL=0
 ck_has() {
   local name="$1" pat="$2"; shift 2
@@ -54,6 +57,13 @@ if printf '%s' "$adv_out" | jq . >/dev/null 2>&1; then
 else
   echo "FAIL: g: adversarial RULES.md -> INVALID JSON: $adv_out"; ((FAIL++)) || true
 fi
+
+# Global rules are injected too (merged render), still gated on .loop-spec/ presence
+bash "$RULES_LIB" add --global "Cross-project: read the failing test first" >/dev/null
+ck_has "h: global rule injected in loop-spec project" "Cross-project: read the failing test first" \
+  CLAUDE_PROJECT_DIR="$WITH" LOOP_SPEC_GLOBAL_RULES_FILE="$LOOP_SPEC_GLOBAL_RULES_FILE"
+ck_absent "i: global rule NOT injected outside loop-spec projects" "additionalContext" \
+  CLAUDE_PROJECT_DIR="$NOPROJ" LOOP_SPEC_GLOBAL_RULES_FILE="$LOOP_SPEC_GLOBAL_RULES_FILE"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

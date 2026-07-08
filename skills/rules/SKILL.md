@@ -18,13 +18,16 @@ All mechanics are in `lib/rules.sh`; this skill is the thin command surface.
 
 ## Subcommands
 
-- `add "<rule text>" [--check "<command>"]` - Append a rule. Idempotent on exact text.
-  Pass `--check` with a deterministic command that fails when the rule is violated —
-  **prefer a check over a prose note** (a check the compiler/tests/lint can enforce beats
-  a sentence the model can rationalize around).
-- `list` - Print current rules (text only).
-- `render` - Print the full RULES.md body (what the hook injects). Silent when empty.
-- `path` - Print the resolved RULES.md path.
+- `add "<rule text>" [--check "<command>"] [--global]` - Append a rule. Idempotent on
+  exact text. Pass `--check` with a deterministic command that fails when the rule is
+  violated — **prefer a check over a prose note** (a check the compiler/tests/lint can
+  enforce beats a sentence the model can rationalize around). `--global` writes the
+  cross-project layer (`~/.loop-spec/RULES.md`) for lessons that travel everywhere.
+- `list [--global]` - Print current rules (text only). Default: merged project + global
+  (exact duplicates once); `--global`: global layer only.
+- `render` - Print the injectable rules body (project file + a `## Global rules` section
+  for global rules not already in the project file). Silent when both layers are empty.
+- `path [--global]` - Print the resolved RULES.md path for the chosen layer.
 
 ## Procedure
 
@@ -58,7 +61,10 @@ lesson as a rule so the next run cannot repeat it. One mistake, one permanent ch
 
 - The file is markdown and human-owned; `lib/rules.sh` never rewrites existing rule text,
   only appends new bullets.
-- Rules are per-project (`.loop-spec/RULES.md`); they do not leak across projects.
+- Two layers: per-project (`.loop-spec/RULES.md`) and cross-project global
+  (`$LOOP_SPEC_GLOBAL_RULES_FILE` else `~/.loop-spec/RULES.md`). Both are injected inside
+  loop-spec projects (project first, global rules deduped against it); a project rule can
+  restate a global one to pin phrasing. Nothing is ever injected outside loop-spec projects.
 - Complements [grill mode](../grill/SKILL.md) (front-load ambiguity) and
   [discipline mode](../discipline/SKILL.md) (behavioral gates): grill lowers ambiguity going
   in, rules lower repeat-failure rate over time.

@@ -259,6 +259,18 @@ Schema (version 1):
 
 Both files are local telemetry, deliberately not committed to the feature branch.
 
+### Issue-to-PR automation
+
+`lib/issue-intake.sh` is the glue between a GitHub issue queue and the autonomous cycle: it picks open issues labeled `loop-spec` (bounded, default 1 per invocation), runs each through `claude -p "/loop-spec:intake autonomous <issue text>"`, reads `.loop-spec/last-result.json`, and comments the PR URL (or the failure, loudly) back on the issue. Lifecycle labels (`loop-spec:in-progress`/`done`/`failed`) make re-runs idempotent — an issue is never double-processed.
+
+```bash
+cd /path/to/your/repo
+bash <plugin>/lib/issue-intake.sh run --label loop-spec --limit 1 --dry-run   # plan only
+bash <plugin>/lib/issue-intake.sh run --label loop-spec --limit 1            # do it
+```
+
+It is deliberately not a daemon and not a hook — it runs only when invoked. Schedule it with cron, `claude` `/schedule`, or the example GitHub Action at `docs/examples/issue-to-pr.yml` (nightly, one issue per night, cost warning included). Raise `--limit` only after you have cost telemetry in view (`/loop-spec:status stats`).
+
 ### Net-new applications (greenfield)
 
 ```bash
@@ -289,6 +301,8 @@ existing repo is refused; workspace-mode greenfield is deferred.
 | `LOOP_SPEC_GRILL` | `0` = disable the grill-mode SessionStart directive (grill is on by default; `/loop-spec:grill off` persists it). |
 | `LOOP_SPEC_SIMPLICITY` | `0` = disable the simplicity-mode (laziness-ladder) SessionStart directive (on by default at `full`; `/loop-spec:simplicity off` persists it). |
 | `LOOP_SPEC_RULES` | `0` = disable self-learning RULES.md injection (on by default, inert until rules exist). |
+| `LOOP_SPEC_GLOBAL_RULES_FILE` | Path of the cross-project global rules layer (default `~/.loop-spec/RULES.md`); merged into every loop-spec project's injection after the project rules. |
+| `LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS` | Flags `lib/issue-intake.sh` passes to its `claude -p` intake runs (default `--permission-mode acceptEdits`). |
 | `LOOP_SPEC_REQUIRE_GRAPHIFY` | `0` = bypass the hard graphify requirement (constrained environments). Default: required; the cycle aborts at startup if graphify is missing, and the design phases fall back to Glob/Grep only in bypass mode. |
 | `LOOP_SPEC_SPEC_FILE` | Path to a pre-authored spec `.md` — headless equivalent of `/loop-spec:cycle path/to/spec.md`. |
 | `LOOP_SPEC_MAX_FEATURES` | Backlog-drain bound: features per `/loop-spec:cycle backlog` invocation (default 1). |
@@ -306,7 +320,7 @@ All hook guards additionally self-scope: they no-op outside projects with `.loop
 
 ### Self-learning loop, commit strategy, per-task model tiers
 
-- **Self-learning loop (`RULES.md`).** A loop only improves if it carries its lessons forward. When a gate or verifier rejects the same class of mistake twice, the cycle appends a rule to `.loop-spec/RULES.md` (`lib/rules.sh add "<lesson>" --check "<cmd>"`, deterministic checks preferred over prose). `hooks/team/rules-inject.sh` injects the current rules into every session, and the escalation contract makes coordinators consult `RULES.md` (and PLAN.md's `## User decisions (already made)` record) **before** asking the user anything. You own and curate the file; manage it with `/loop-spec:rules`.
+- **Self-learning loop (`RULES.md`).** A loop only improves if it carries its lessons forward. When a gate or verifier rejects the same class of mistake twice, the cycle appends a rule to `.loop-spec/RULES.md` (`lib/rules.sh add "<lesson>" --check "<cmd>"`, deterministic checks preferred over prose). Lessons that apply everywhere go in the **global layer** (`lib/rules.sh add --global`, file `~/.loop-spec/RULES.md`, override with `LOOP_SPEC_GLOBAL_RULES_FILE`): inside any loop-spec project the hook injects the project rules plus the global rules (exact duplicates once, project first). Nothing is injected outside loop-spec projects. `hooks/team/rules-inject.sh` injects the current rules into every session, and the escalation contract makes coordinators consult `RULES.md` (and PLAN.md's `## User decisions (already made)` record) **before** asking the user anything. You own and curate the file; manage it with `/loop-spec:rules`.
 - **Commit strategy.** `.loop-spec/workflow.json` `{"commitStrategy":"at-end"}` makes EXECUTE collapse `feat/{slug}` into a single commit at phase exit; the default (`per-task`, or no file) keeps per-task commit history. Read via `lib/workflow-config.sh`; skipped in workspace mode.
 - **Per-task model tier.** A plan task may carry an optional `modelTier` (`mechanical`/`standard`/`frontier`); EXECUTE's subagent/loop rungs resolve it via `lib/model-tier.sh` to route that one task to the cheapest fitting model, overriding the fixed per-role map (a concrete `model` pin still wins). The team rung keeps role defaults since teammates are pre-spawned.
 

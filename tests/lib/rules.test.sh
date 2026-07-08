@@ -11,8 +11,10 @@ fail() { echo "FAIL: $1"; ((FAIL++)) || true; }
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 RF="$WORK/RULES.md"
+GF="$WORK/global/RULES.md"
 
-r() { LOOP_SPEC_RULES_FILE="$RF" bash "$SCRIPT" "$@"; }
+# Pin BOTH layers so a developer's real ~/.loop-spec/RULES.md never leaks in.
+r() { LOOP_SPEC_RULES_FILE="$RF" LOOP_SPEC_GLOBAL_RULES_FILE="$GF" bash "$SCRIPT" "$@"; }
 
 # Case 1: render empty before any rules -> no output, exit 0
 out="$(r render)"; rc=$?
@@ -59,6 +61,51 @@ cnt=$(grep -Fc "never log secrets" "$RF")  # matches both lines
 # But an exact repeat of the longer rule is still deduped
 out="$(r add "never log secrets in production")"
 [[ "$out" == "exists" ]] && pass "exact repeat still deduped" || fail "exact repeat still deduped (got '$out')"
+
+# ── Global layer ──────────────────────────────────────────────────────────────
+
+# Case 10: add --global writes the global file, not the project file
+out="$(r add --global "Never pass --no-verify to git commit")"
+[[ "$out" == "added" ]] && pass "global add prints added" || fail "global add prints added (got '$out')"
+grep -Fq "Never pass --no-verify" "$GF" && pass "global rule in global file" || fail "global rule in global file"
+grep -Fq "Never pass --no-verify" "$RF" && fail "global rule NOT in project file" || pass "global rule NOT in project file"
+
+# Case 11: global add is idempotent
+out="$(r add --global "Never pass --no-verify to git commit")"
+[[ "$out" == "exists" ]] && pass "global dup add -> exists" || fail "global dup add -> exists (got '$out')"
+
+# Case 12: merged list = project rules + global rules
+listout="$(r list)"
+echo "$listout" | grep -Fq "Never pass --no-verify" && pass "merged list has global rule" || fail "merged list has global rule"
+echo "$listout" | grep -Fq "Every migration must be reversible" && pass "merged list has project rule" || fail "merged list has project rule"
+
+# Case 13: list --global shows only global
+listout="$(r list --global)"
+echo "$listout" | grep -Fq "Never pass --no-verify" && pass "global list has global rule" || fail "global list has global rule"
+echo "$listout" | grep -Fq "Every migration" && fail "global list excludes project rules" || pass "global list excludes project rules"
+
+# Case 14: render includes a Global rules section
+rout="$(r render)"
+echo "$rout" | grep -q "## Global rules" && pass "render has global section" || fail "render has global section"
+echo "$rout" | grep -Fq "Never pass --no-verify" && pass "render includes global rule" || fail "render includes global rule"
+echo "$rout" | grep -q "# RULES.md" && pass "render keeps project body" || fail "render keeps project body"
+
+# Case 15: exact duplicate across layers is emitted once (project wins)
+r add "Never pass --no-verify to git commit" >/dev/null   # same text, project layer
+rout="$(r render)"
+cnt=$(echo "$rout" | grep -Fc "Never pass --no-verify to git commit")
+[[ "$cnt" -eq 1 ]] && pass "cross-layer duplicate deduped in render" || fail "cross-layer duplicate deduped in render (cnt=$cnt)"
+cnt=$(r list | grep -Fc "Never pass --no-verify to git commit")
+[[ "$cnt" -eq 1 ]] && pass "cross-layer duplicate deduped in list" || fail "cross-layer duplicate deduped in list (cnt=$cnt)"
+
+# Case 16: global-only setup renders without a project file
+RF2="$WORK/other/RULES.md"
+rout="$(LOOP_SPEC_RULES_FILE="$RF2" LOOP_SPEC_GLOBAL_RULES_FILE="$GF" bash "$SCRIPT" render)"
+echo "$rout" | grep -q "## Global rules" && pass "global-only render works" || fail "global-only render works"
+
+# Case 17: path --global resolves the global file
+[[ "$(r path --global)" == "$GF" ]] && pass "path --global resolves" || fail "path --global resolves"
+[[ "$(r path)" == "$RF" ]] && pass "path default still project" || fail "path default still project"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
