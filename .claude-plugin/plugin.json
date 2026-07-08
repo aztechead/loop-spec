@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "loop-spec",
   "description": "Loop-driven development from a spec file (or a prose description) for Claude Code. A six-phase cycle (SPEC/DISCUSS/PLAN/EXECUTE/VERIFY/ITERATE) authors and critiques a spec, plans a task DAG, executes it up a concurrency ladder (subagents, bundled loop-runner fleets, agent teams, workflow DAGs), then a convergence loop judges the result against the original goal and rewinds until converged or out of iteration rounds. Grounded by a required graphify code graph and a probe-before-assert evidence gate; ships simplicity mode, autonomous headless mode, workspace (multi-repo) and greenfield modes, and standalone assess, quality-loop, debug, and intake skills. Full capability inventory in the README.",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "author": {
     "name": "aztechead",
     "email": "nctightend@gmail.com"

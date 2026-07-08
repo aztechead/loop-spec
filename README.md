@@ -10,7 +10,7 @@ The same archetypes cover the rest of the development surface: `/loop-spec:cycle
 - **Single tier.** Gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path measured from the actual task DAG — never inferred from your prompt.
 - **Teams-optional.** Runs on both agent-team harness generations (explicit `TeamCreate` on CC < 2.1.178, implicit `Agent({name})` teams on newer, resolved by `lib/teams-capability.sh`) and degrades to one-shot subagents or a bounded loop fleet without teams.
 
-**Status:** v2.5.2 (rebranded from super-spec).
+**Status:** v2.11.0 (rebranded from super-spec at v2.5.2).
 
 ## Install
 

@@ -2,6 +2,71 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.11.0]
+
+Seven capabilities closing the observability + lifecycle gaps, in dependency
+order: safety net first, telemetry before automation, full autonomy last.
+Every item works in both autonomous and interactive modes.
+
+### Added — scripted headless e2e smoke (`tests/e2e/run-e2e.sh`)
+- Opt-in LIVE test of the machine-readable headless contract: fixture repo,
+  local-scope plugin install from the current checkout (probed: an isolated
+  `CLAUDE_CONFIG_DIR` loses OAuth credentials, so user config is never touched
+  and never exercised stale), one real `claude -p "/loop-spec:cycle autonomous"`
+  run under a portable wall-clock watchdog, jq assertions on `result.json`
+  schema 1 + `events.jsonl` + `feat/*` branch + shipped content.
+- `tests/run-all.sh --e2e` appends it; the default suite stays offline.
+  Exit 2 = missing prereq, 1 = assertion failure (CI-distinguishable).
+
+### Changed — checkpoint draft PR default-on for ALL runs
+- Interrupted cycles (pause/escalation/terminal) now push + open/reuse the
+  draft checkpoint PR in interactive runs too, not only autonomous ones.
+  `LOOP_SPEC_CHECKPOINT_PR=0` remains the only off switch.
+
+### Added — dispatch/cost telemetry
+- New canonical `dispatch` event ({role, model, rung}), contract in
+  `skills/shared/dispatch-events.md`, wired into every dispatch path and
+  enforced by `tests/dispatch-events-coverage.test.sh`.
+- `gate_round` was a canonical name with ZERO emitters — the DISCUSS and PLAN
+  critique gates now emit it each round; `iterate_verdict` carries the gap
+  classification (`execute|plan|spec|none`).
+- Loop-fleet cost accounting: `loop.py` sums the `claude -p` reported
+  `total_cost_usd` into each task's `result.json` (null = unknown, never
+  "free"); `supervisor.py` totals `fleet-result.json.total_cost_usd`.
+
+### Added — `/loop-spec:status` (read-only dashboard + stats)
+- `lib/status.sh`: per-feature table (phase, iterations, last event + age,
+  warnings, result, PR URL) and `stats` aggregates across runs — runs by
+  status, convergence rate, gate-round counts, iterate gap histogram,
+  dispatch counts by model/role/rung, loop-fleet cost. `--json` variants.
+  Tolerant of missing/corrupt telemetry; 29-check unit suite.
+
+### Added — `/loop-spec:revise` (PR-review round trip)
+- The cycle ended at PR-open; review comments were the last manual seam.
+  `revise <pr#>` fetches feedback via new `lib/pr-comments.sh` (inline review
+  comments + reviews + discussion, resolved threads filtered via GraphQL with
+  a loud all-unresolved degrade, offline fixture mode for tests), classifies
+  items with the iterate gap taxonomy, fixes execute-class items on the PR
+  branch through the existing `pendingRemediationTasks[]` EXECUTE contract in
+  a dedicated worktree (never switches your checkout, never force-pushes),
+  backlogs plan/spec-class scope changes loudly, pushes, and posts ONE
+  marker-tagged summary comment mapping every item to a commit, answer, or
+  backlog entry. Interactive = one confirmation; autonomous = none.
+
+### Added — issue-to-PR glue (`lib/issue-intake.sh`)
+- Bounded queue drain: open issues labeled `loop-spec` (default 1 per
+  invocation) run through `claude -p "/loop-spec:intake autonomous"`; the PR
+  URL (or failure, loudly) is commented back on the issue; lifecycle labels
+  make re-runs idempotent. Invocation-only by design (cron / `/schedule` /
+  the example nightly Action at `docs/examples/issue-to-pr.yml` drive it).
+
+### Added — cross-project global rules layer
+- `lib/rules.sh --global` targets `~/.loop-spec/RULES.md`
+  (`LOOP_SPEC_GLOBAL_RULES_FILE` override); `render`/`list` emit the merged
+  view (project first, exact duplicates deduped, global section labeled).
+  The SessionStart injection carries both layers, still gated on `.loop-spec/`
+  presence — lessons travel, noise does not.
+
 ## [2.10.0]
 
 ### Changed — model matrix rebalance (no output degradation)
