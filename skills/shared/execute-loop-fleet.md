@@ -73,6 +73,8 @@ verifier-integrity violation.
 
 This call is long-running and unattended; the lead does nothing while it runs.
 
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** before launching the supervisor, emit one `dispatch` event per compiled task — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "execute" --data '{"role":"implementer","model":"<feature.models.implementer>","rung":"loop-fleet"}' || true`. Worker iterations are not separate dispatches.
+
 ### 4. Consume the result (never scrape stdout)
 
 Read `.loop/fleet-result.json` and map onto the EXECUTE result contract:

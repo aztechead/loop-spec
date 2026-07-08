@@ -22,8 +22,10 @@
 # Canonical event names:
 #   phase_start       - a phase is about to run
 #   phase_end         - a phase returned (data: {"next":"<next_phase>"})
-#   gate_round        - a gate round completed
+#   gate_round        - a gate round completed (data: {"gate":..,"round":N})
 #   iterate_verdict   - an iterate judge verdict landed
+#   dispatch          - an agent was launched (data: {"role":..,"model":..,"rung":..};
+#                       contract: skills/shared/dispatch-events.md)
 #   completed         - cycle completed successfully
 #   paused            - cycle paused by user
 #   escalated         - cycle escalated due to limit/context

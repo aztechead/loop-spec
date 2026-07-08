@@ -109,6 +109,7 @@ class LoopState:
     spec_hash: str
     iteration: int = 0
     total_turns: int = 0
+    total_cost_usd: Optional[float] = None  # summed claude -p total_cost_usd; None when never reported
     session_id: Optional[str] = None
     start_sha: str = ""
     protected_hash: str = ""
@@ -291,12 +292,16 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     except json.JSONDecodeError:
         return {"ok": False, "error": "non-JSON output from claude",
                 "turns": 0, "session_id": resume, "result": proc.stdout.strip()[:1000]}
+    cost = data.get("total_cost_usd")
     return {
         "ok": not data.get("is_error", False),
         "error": None if not data.get("is_error", False) else str(data.get("subtype", "agent error")),
         "turns": int(data.get("num_turns") or 0),
         "session_id": data.get("session_id") or resume,
         "result": data.get("result", "") or "",
+        # cost accounting: None when the CLI did not report a number (older CLIs,
+        # error paths) so callers can distinguish "free" from "unknown".
+        "cost_usd": float(cost) if isinstance(cost, (int, float)) else None,
     }
 
 
@@ -473,6 +478,8 @@ def run_loop(cfg: LoopConfig) -> dict:
                          raw_log=state_dir / f"iter-{state.iteration:03d}.raw.json",
                          timeout=max(MIN_TICK_TIMEOUT, cfg.timeout_s - (time.time() - state.started_at)))
         state.total_turns += res["turns"]
+        if res.get("cost_usd") is not None:
+            state.total_cost_usd = (state.total_cost_usd or 0.0) + res["cost_usd"]
         if res["session_id"]:
             state.session_id = res["session_id"]
         if not res["ok"]:
@@ -550,6 +557,7 @@ def run_loop(cfg: LoopConfig) -> dict:
         "halt_reason": status,
         "iterations": state.iteration,
         "total_turns": state.total_turns,
+        "total_cost_usd": round(state.total_cost_usd, 6) if state.total_cost_usd is not None else None,
         "wall_clock_seconds": round(elapsed, 1),
         "verifier": {
             "command": cfg.verify or None,

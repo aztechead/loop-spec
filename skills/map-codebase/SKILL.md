@@ -104,6 +104,8 @@ In both single and workspace modes `project_id` is the basename of the detected 
 
 Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `feature.models.mapper`; standalone, use `sonnet` (the fixed mapper alias per `skills/shared/model-matrix.md`). Pass it explicitly on every mapper spawn so they never inherit the orchestrator's session model.
 
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** when invoked inside a cycle (feature dir exists), emit one `dispatch` event per mapper launched — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "map-codebase" --data '{"role":"mapper","model":"<mapper_model>","rung":"<team|subagent|workflow>"}' || true`. Standalone invocations (no feature dir) skip this.
+
 ```
 TeamCreate({
   name: "loop-spec-map-codebase-{project_id}",
