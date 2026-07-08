@@ -105,6 +105,14 @@ check "7: corrupt tolerated exit 0" "0" "$ec"
 check "7: corrupt feature still listed" "1" "$(jq '[.[] | select(.slug=="feat-corrupt")] | length' <<<"$out")"
 rm -rf "$ROOT/features/feat-corrupt"
 
+# ── Case 7b: converged:false must survive as false, not null (jq // pitfall) ──
+ROOT2="$WORK/convfalse/.loop-spec"
+mkdir -p "$ROOT2/features/nc"
+echo '{"schemaVersion":7,"slug":"nc","currentPhase":"completed","iterate":{"used":10,"maxIterations":10},"warnings":[]}' > "$ROOT2/features/nc/feature.json"
+echo '{"schema":1,"slug":"nc","status":"completed","converged":false,"iterations":{"used":10,"max":10}}' > "$ROOT2/features/nc/result.json"
+out="$(bash "$LIB" --root "$ROOT2" --json status)"
+check "7b: converged false preserved" "false" "$(jq -r '.[0].converged' <<<"$out")"
+
 # ── Case 8: bad flag → exit 2 ─────────────────────────────────────────────────
 ec=0
 bash "$LIB" --bogus >/dev/null 2>&1 || ec=$?

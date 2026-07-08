@@ -2,6 +2,24 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.12.0]
+
+### Added — `/loop-spec:retro` (the telemetry circuit, closed)
+- v2.11.0 built measurement; nothing consumed it. `lib/retro.sh` mines
+  `events.jsonl`/`result.json` across features with DETERMINISTIC thresholds
+  (default 3 repeats, never model-judged): recurring iterate gap types
+  (plan/execute/spec), critique gates repeatedly at their round cap,
+  first-pass convergence streaks (→ `modelTier: mechanical` headroom
+  suggestion), shipped-with-gaps accumulation, fleet cost.
+- Findings are typed: `rule-candidate` (applied to `.loop-spec/RULES.md` via
+  `lib/rules.sh add` on explicit `retro apply` — texts are count-free so
+  re-applies dedupe), `suggestion` and `info` (never auto-applied).
+- The cycle's On-completion prints the candidate count READ-ONLY; an
+  autonomous run never rewrites its own rules — the human stays the curator.
+- `docs/loop-spec/RETRO.md` gets a dated section per report. 26-check unit
+  suite; fixed a jq `//`-operator pitfall that collapsed `converged: false`
+  to null in both `lib/retro.sh` and `lib/status.sh` (regression-tested).
+
 ## [2.11.0]
 
 Seven capabilities closing the observability + lifecycle gaps, in dependency

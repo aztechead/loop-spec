@@ -76,7 +76,7 @@ _collect() {
           },
           warnings: (($fj.warnings // []) | length),
           resultStatus: ($rj.status // null),
-          converged: ($rj.converged // null),
+          converged: (if ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged else null end),
           prUrl: ($rj.prUrl // $fj.prUrl // null),
           checkpointPrUrl: ($fj.checkpointPrUrl // null),
           autonomous: ($fj.autonomous // false),

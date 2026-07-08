@@ -590,6 +590,15 @@ n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
 [[ "$n" -gt 0 ]] && echo "Backlog: ${n} deferred item(s) — drain with /loop-spec:cycle backlog"
 ```
 
+And the retrospective signal (READ-ONLY, one line, non-fatal — the telemetry
+loop's nudge; it never mutates rules on its own):
+
+```bash
+rc="$(bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" report --json 2>/dev/null \
+      | jq 'map(select(.kind == "rule-candidate")) | length' 2>/dev/null || echo 0)"
+[[ "${rc:-0}" -gt 0 ]] && echo "Retro: ${rc} repeated-pattern rule candidate(s) — review with /loop-spec:retro (apply with /loop-spec:retro apply)"
+```
+
 Write the machine-readable result contract and emit the `completed` event (non-fatal):
 
 ```bash
