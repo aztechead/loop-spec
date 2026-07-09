@@ -73,7 +73,7 @@ information, so the full Step 1 loop and the spec-writer revision flow stay as w
 
 ### Step 1 - Conversational clarifying loop
 
-**Autonomous fast path:** if `feature.json.autonomous == true`, skip this step's conversational loop — the lead performs the collapsed obligations per the **Autonomous fast path** section above, then continues at Step 1.5.
+**Autonomous fast path:** if `feature.json.autonomous == true`, skip this step's conversational loop — the lead performs the collapsed obligations per the **Autonomous fast path** section above, then continues at Step 1.75.
 
 **ITERATE re-entry (autonomous refinement mode):** if `feature.json.iterate.feedback` is non-null, DISCUSS was re-entered by the ITERATE convergence loop to close a `spec`-type goal gap. Read that feedback first and target only the named scope gap, then refine SPEC.md toward the **original goal** (`feature.json.feature_title`) — do not restart the whole interview, and do not redefine the goal.
 - In `auto` / `review-only` styles (and under `LOOP_SPEC_NON_INTERACTIVE=1`): run this refinement **without `AskUserQuestion`** — synthesize the SPEC change from `iterate.feedback` + the codebase, note any assumption in SPEC.md, and proceed. The loop must not block on a human here; the next VERIFY→ITERATE pass re-judges against the immutable original goal.
@@ -108,43 +108,14 @@ Facts about external systems presented in questions or `AskUserQuestion` options
 
 Save the transcript to `.loop-spec/features/{slug}/discuss-transcript.md` for spec-writer to read.
 
-### Step 1.5 - Wait for codebase bootstrap (if pending)
+### Step 1.5 - Codebase bootstrap join point (MOVED to Step 5.8)
 
-If `feature.json.bootstrapPendingDomains` is non-empty (set during cycle Step 5.5b when background mappers were fired):
-
-1. Poll for file existence with a max wait of 600 seconds (10 minutes):
-   ```bash
-   max_wait=600
-   elapsed=0
-   interval=15
-   while [[ $elapsed -lt $max_wait ]]; do
-     all_present=true
-     for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
-       [[ -f "docs/loop-spec/codebase/${d}.md" ]] || { all_present=false; break; }
-     done
-     $all_present && break
-     sleep $interval
-     elapsed=$((elapsed + interval))
-   done
-   ```
-
-2. If all 5 files are present: update `feature.json` via `lib/feature-write.sh`:
-   - `artifacts.codebaseSource.{domain} = "mapper"` for each domain in `bootstrapPendingDomains`
-   - `bootstrapPendingDomains = []`
-
-   Then commit all new codebase docs:
-   ```bash
-   git add docs/loop-spec/codebase/
-   git commit -m "docs: NO_JIRA bootstrap codebase map (background)"
-   ```
-
-3. If timeout reached with missing files: print which domains are still missing, then fall back to synchronous invocation:
-   ```
-   Skill(loop-spec:map-codebase) args: --domain {csv-of-still-missing-lowercased}
-   ```
-   This ensures correctness even if background agents failed.
-
-If `feature.json.bootstrapPendingDomains` is empty (codebase docs already existed or GSD-ingested): skip this step.
+The wait for the cycle Step 5.5b background mappers used to sit HERE, in front of all of
+DISCUSS's real work — on a first-run project that was up to 10 minutes of sleep-polling
+that overlapped with nothing. The spec critique needs SPEC.md and the code graph, not the
+five domain docs; only PLAN hard-requires them. The join therefore now runs at **Step
+5.8**, after the critique gate — by then the mappers have had the entire phase to finish
+and the poll is usually a no-op. Do NOT wait here.
 
 ### Step 1.75 - Prefetch PATTERNS.md (background, best-effort)
 
@@ -574,6 +545,44 @@ grounding_exit=$?
 ```
 
 Exit 1 BLOCKS: re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (instruct: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`); autonomous fast path: the lead applies the FLAG fixes directly. Retries are unbounded — repeat until the lint passes. On revision received, re-run ONLY this lint — lint-only failures do NOT re-run the critique gate. Exit 0: proceed to Step 6.
+
+### Step 5.8 - Join codebase bootstrap (if pending)
+
+If `feature.json.bootstrapPendingDomains` is non-empty (set during cycle Step 5.5b when background mappers were fired) — PLAN requires all 5 domain docs, so join the background work now (it has had the whole phase to run concurrently with the critique gate):
+
+1. Poll for file existence with a max wait of 600 seconds (10 minutes):
+   ```bash
+   max_wait=600
+   elapsed=0
+   interval=15
+   while [[ $elapsed -lt $max_wait ]]; do
+     all_present=true
+     for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
+       [[ -f "docs/loop-spec/codebase/${d}.md" ]] || { all_present=false; break; }
+     done
+     $all_present && break
+     sleep $interval
+     elapsed=$((elapsed + interval))
+   done
+   ```
+
+2. If all 5 files are present: update `feature.json` via `lib/feature-write.sh`:
+   - `artifacts.codebaseSource.{domain} = "mapper"` for each domain in `bootstrapPendingDomains`
+   - `bootstrapPendingDomains = []`
+
+   Then commit all new codebase docs:
+   ```bash
+   git add docs/loop-spec/codebase/
+   git commit -m "docs: NO_JIRA bootstrap codebase map (background)"
+   ```
+
+3. If timeout reached with missing files: print which domains are still missing, then fall back to synchronous invocation:
+   ```
+   Skill(loop-spec:map-codebase) args: --domain {csv-of-still-missing-lowercased}
+   ```
+   This ensures correctness even if background agents failed.
+
+If `feature.json.bootstrapPendingDomains` is empty (codebase docs already existed or GSD-ingested): skip this step.
 
 ### Step 6 - Commit SPEC.md and update feature.json
 

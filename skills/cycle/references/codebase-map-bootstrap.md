@@ -145,9 +145,9 @@ If `missing` is non-empty:
   ```
   (list only the domains that were fired as background agents)
 
-- Proceed immediately to Step 6 (do NOT wait here). The DISCUSS skill will wait for these files before dispatching the spec-writer.
+- Proceed immediately to Step 6 (do NOT wait here). The DISCUSS skill joins the background work at its END (Step 5.8), after the critique gate — PLAN is what hard-requires the docs, so the wait overlaps the whole DISCUSS phase.
 
-The DISCUSS skill waits for all 5 docs before dispatching spec-writer (see discuss/SKILL.md Step 1.5).
+The DISCUSS skill joins the background mappers before routing to PLAN (see discuss/SKILL.md Step 5.8); DISCUSS itself starts without waiting.
 
 If `missing` is empty (all ingested from GSD): no mapper dispatch, no second commit.
 
