@@ -392,7 +392,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/decision-coverage.sh" "$spec_path" "$plan_pa
 coverage_exit=$?
 ```
 
-**Exit code 1 BLOCKS** (always — single-tier operation has no advisory mode): re-dispatch planner-1 via SendMessage with the uncovered decisions in the body and return to Step 4 (debate).
+**Exit code 1 BLOCKS** (always — single-tier operation has no advisory mode): re-dispatch planner-1 via SendMessage with the uncovered decisions in the body. Coverage is a mechanical check (verbatim-string presence), so on revision received re-run ONLY this check — do NOT re-run the critique gate for a coverage-only failure (that is how a missing verbatim decision line used to cost a full redundant debate).
 
 When blocking (retries unbounded — repeat until the gate passes), send:
 
@@ -411,7 +411,7 @@ SendMessage({
 })
 ```
 
-Wait for `TeammateIdle` from `planner-1`. When the revision is received, return to Step 4 (critique debate) with the updated plan.
+Wait for `TeammateIdle` from `planner-1`. When the revision is received, re-run ONLY the decision-coverage check above (coverage-only failures never re-enter the critique gate).
 
 Exit code 0 (all decisions covered, or no `<decisions>` block present): proceed to the criteria-coverage check below.
 
@@ -422,7 +422,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/criteria-coverage.sh" "$spec_path" "$plan_pa
 criteria_exit=$?
 ```
 
-Handle exit code 1 exactly like decision-coverage above (BLOCK and re-dispatch planner-1 with the uncovered criteria list, incrementing the same retry counters). In the re-dispatch body, instruct planner-1 to add each missing criterion verbatim to the `## Spec coverage` section mapped to the task(s) that satisfy it.
+Handle exit code 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1 with the uncovered criteria list, and on revision re-run ONLY this check). In the re-dispatch body, instruct planner-1 to add each missing criterion verbatim to the `## Spec coverage` section mapped to the task(s) that satisfy it.
 
 Exit code 0 on the decision and criteria checks: run the grounding gate:
 
