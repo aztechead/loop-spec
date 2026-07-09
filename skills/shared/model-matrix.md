@@ -43,6 +43,9 @@ opus -> claude-opus-4-8, sonnet -> claude-sonnet-4-6).
   - **advocate on sonnet:** the critique gate is asymmetric by design — the
     challenger (still opus) surfaces gaps; the advocate defends. A weaker defense
     biases the gate stricter, never looser, so sonnet cannot degrade final output.
+    Since the single-critic default (`skills/shared/tier-matrix.md`, critique gate
+    ladder) the advocate is dispatched only when a gate escalates to the paired
+    debate; the strictness argument is unchanged.
   - **spec-compliance-reviewer on sonnet:** per-task diff-vs-task-spec check, the
     highest-volume opus dispatch. Checker == maker tier (sonnet implementer) still
     satisfies "the checker is never weaker than the maker", and three downstream

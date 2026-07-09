@@ -22,7 +22,7 @@ The orchestrator (this skill running on the main thread) and every phase sub-ski
 | `TaskUpdate` | Transition task status or write metadata fields (lead and teammates) |
 | `TaskList` | Query current task states (lead and teammates) |
 | `TaskGet` | Fetch a single task with full metadata (lead and teammates) |
-| `Agent` | One-shot dispatch: Step 5.5b background codebase domain mappers |
+| `Agent` | One-shot dispatch: Step 5.5b background codebase domain mappers; DISCUSS Step 1.75 background PATTERNS.md prefetch |
 | `Bash` | Invoking `lib/*.sh` scripts, git commands, file inspection |
 | `Read` | Reading SPEC / PLAN / feature.json / source files |
 | `Write`, `Edit` | Updating skill-owned artifacts only (feature.json via `lib/feature-write.sh`) |
@@ -49,7 +49,7 @@ Inter-agent communication within a phase team uses `SendMessage` in BOTH team mo
 Whenever a phase skill or this orchestrator says "instruct teammate X to revise" or "notify implementer of rework":
 - Use `SendMessage({to: "<teammate-name>", message: "..."})` to address the teammate by their assigned name (e.g., `advocate-1`, `implementer-2`, `spec-writer-1`).
 - Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`. (In `implicit` mode the *initial* spawn is an `Agent({name})` call; rework after that still goes through `SendMessage`.)
-- A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers and the ITERATE phase's one-shot `iterate-judge` dispatch (`skills/iterate/SKILL.md`); both are main-thread one-shot dispatches, not team rework.
+- A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers, the DISCUSS Step 1.75 background PATTERNS.md prefetch (`skills/discuss/SKILL.md`), and the ITERATE phase's one-shot `iterate-judge` dispatch (`skills/iterate/SKILL.md`); all are main-thread one-shot dispatches, not team rework.
 
 When a phase ends: in `explicit` mode call `TeamDelete` before the next phase's `TeamCreate`; in `implicit` mode there is nothing to delete — just clear `feature.json.currentTeamName` and stop messaging the phase's teammates.
 

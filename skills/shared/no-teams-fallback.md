@@ -23,10 +23,14 @@ prerequisite — a missing experimental flag must never make the plugin throw.
 
 ## Phase notes
 
-- **DISCUSS / PLAN critique gates:** run each round as `challenger` then
-  `advocate` one-shot Agent calls (challenger output feeds the advocate prompt).
-  Round transcripts still land in `.loop-spec/features/{slug}/gate-logs/` and
-  the convergence/fix-list rules are unchanged. What is lost without teams is
+- **DISCUSS / PLAN critique gates:** the default single-critic pass is ONE
+  one-shot `challenger` Agent call (solo-critic brief from
+  `skills/shared/team-prompts/critic.md`); each delta re-verify is a fresh
+  one-shot `challenger` call with the fix-list + diff inlined. An escalated
+  debate runs each round as `challenger` then `advocate` one-shot Agent calls
+  (challenger output feeds the advocate prompt). Round transcripts still land
+  in `.loop-spec/features/{slug}/gate-logs/` and the ladder/adjudication rules
+  (`skills/shared/tier-matrix.md`) are unchanged. What is lost without teams is
   in-context memory between rounds; compensate by inlining
   `prior_round_summaries` (already persisted to gate-logs) into each new spawn
   prompt — the same mechanism the team path uses after an author revision.

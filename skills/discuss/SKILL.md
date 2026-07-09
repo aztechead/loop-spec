@@ -1,6 +1,6 @@
 ---
 name: discuss
-description: DISCUSS phase - conversational requirements gathering, spawns a discuss team, runs advocate/challenger debate via SendMessage, writes SPEC.md. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: DISCUSS phase - conversational requirements gathering, refines SPEC.md, and runs the single-critic critique gate (escalating to an advocate/challenger debate when contested or security-signaled). Autonomous runs collapse to lead-authored refinement + the critique gate. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch
 ---
 
@@ -11,9 +11,10 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 > **No-teams fallback:** if `.loop-spec/runtime.json.teamsAvailable == false`, do NOT
 > call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run every teammate below as
 > a one-shot `Agent` call with the same agent type, model, and prompt template, per
-> `skills/shared/no-teams-fallback.md`. Critique rounds become sequential challenger →
-> advocate Agent calls with prior round summaries (from `gate-logs/`) inlined. All
-> artifacts and gates are unchanged.
+> `skills/shared/no-teams-fallback.md`. The single-critic pass and each delta re-verify
+> become one-shot challenger Agent calls (fix-list + diff inlined); an escalated debate
+> becomes sequential challenger → advocate Agent calls with prior round summaries (from
+> `gate-logs/`) inlined. All artifacts and gates are unchanged.
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
 > do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
@@ -28,9 +29,51 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 - `feature_json_path`: `.loop-spec/features/{slug}/feature.json`
 - `bootstrapPendingDomains`: list of codebase domain names fired as background mappers in cycle Step 5.5b (may be empty if codebase docs already existed or were GSD-ingested)
 
+## Autonomous fast path (`feature.json.autonomous == true`)
+
+When the run is autonomous, the SPEC phase already ran the self-answered interview
+(`skills/spec/SKILL.md`, Autonomous mode): the lead formulated the questions, answered them,
+recorded every assumption, and wrote SPEC.md. Re-running a clarifying loop against itself and
+paying an opus spec-writer to transcribe the same conversation is pure overhead, so DISCUSS
+collapses to lead-authored refinement + the critique gate:
+
+1. **Skip Step 1's conversational loop.** The lead handles Step 1's obligations directly:
+   - **Unresolved dimensions:** for each entry in SPEC.md's `unresolved_dimensions[]`,
+     resolve it as a graph-grounded assumption, record it to disk (`bash
+     "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" discuss
+     "<dimension>" "<resolution>" "<why>"`), and EDIT SPEC.md directly: the resolved
+     dimension becomes a concrete requirement (or explicit ASSUMPTION) with a testable
+     `### Good Enough` criterion, and the frontmatter drops it from
+     `unresolved_dimensions` (`gate_passed: true` once the list is empty).
+   - **The corner question** (required once per design shape, exactly as Step 1 defines
+     it): self-answer it grounded in the graph, record the decision, and fold any
+     resulting boundary into SPEC.md's `## Boundaries (what NOT to do)`.
+   - **External probes:** run any still-missing read-only probes per Step 1's
+     probe-before-assert rule (`evidence.sh` ledger) — self-run, never blocking.
+   - **ITERATE re-entry** (`iterate.feedback` non-null): the lead applies the scope-gap
+     refinement to SPEC.md directly (this was already the question-free path).
+   - Write a short `.loop-spec/features/{slug}/discuss-transcript.md` noting the collapse
+     and every resolution made.
+2. **Skip Step 3 (spec-writer) entirely.** SPEC.md from the SPEC phase IS the draft. The
+   phase's teammates are `challenger-1` only, plus `advocate-1` when the gate escalates;
+   `spec-writer-1` is never spawned.
+3. **Run the critique gate (Step 4) and adjudication (Step 5) as written**, with one
+   substitution: fix-list revisions are applied by the LEAD editing SPEC.md directly (it
+   authored the spec; a transcription teammate is a cold-start for nothing), then the
+   delta re-verify runs as written. Note `lead-authored` once in the transcript.
+4. **Grounding gate (Step 5.75):** FLAG lines are fixed by the lead directly (cite ledger
+   entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`), then the
+   lint re-runs.
+5. Every remaining step (bootstrap wait, commit, teardown, routing) runs unchanged.
+
+Interactive/step styles are untouched by this fast path — a human conversation adds real
+information, so the full Step 1 loop and the spec-writer revision flow stay as written.
+
 ## Procedure
 
 ### Step 1 - Conversational clarifying loop
+
+**Autonomous fast path:** if `feature.json.autonomous == true`, skip this step's conversational loop — the lead performs the collapsed obligations per the **Autonomous fast path** section above, then continues at Step 1.75.
 
 **ITERATE re-entry (autonomous refinement mode):** if `feature.json.iterate.feedback` is non-null, DISCUSS was re-entered by the ITERATE convergence loop to close a `spec`-type goal gap. Read that feedback first and target only the named scope gap, then refine SPEC.md toward the **original goal** (`feature.json.feature_title`) — do not restart the whole interview, and do not redefine the goal.
 - In `auto` / `review-only` styles (and under `LOOP_SPEC_NON_INTERACTIVE=1`): run this refinement **without `AskUserQuestion`** — synthesize the SPEC change from `iterate.feedback` + the codebase, note any assumption in SPEC.md, and proceed. The loop must not block on a human here; the next VERIFY→ITERATE pass re-judges against the immutable original goal.
@@ -65,45 +108,57 @@ Facts about external systems presented in questions or `AskUserQuestion` options
 
 Save the transcript to `.loop-spec/features/{slug}/discuss-transcript.md` for spec-writer to read.
 
-### Step 1.5 - Wait for codebase bootstrap (if pending)
+### Step 1.5 - Codebase bootstrap join point (MOVED to Step 5.8)
 
-If `feature.json.bootstrapPendingDomains` is non-empty (set during cycle Step 5.5b when background mappers were fired):
+The wait for the cycle Step 5.5b background mappers used to sit HERE, in front of all of
+DISCUSS's real work — on a first-run project that was up to 10 minutes of sleep-polling
+that overlapped with nothing. The spec critique needs SPEC.md and the code graph, not the
+five domain docs; only PLAN hard-requires them. The join therefore now runs at **Step
+5.8**, after the critique gate — by then the mappers have had the entire phase to finish
+and the poll is usually a no-op. Do NOT wait here.
 
-1. Poll for file existence with a max wait of 600 seconds (10 minutes):
-   ```bash
-   max_wait=600
-   elapsed=0
-   interval=15
-   while [[ $elapsed -lt $max_wait ]]; do
-     all_present=true
-     for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
-       [[ -f "docs/loop-spec/codebase/${d}.md" ]] || { all_present=false; break; }
-     done
-     $all_present && break
-     sleep $interval
-     elapsed=$((elapsed + interval))
-   done
-   ```
+### Step 1.75 - Prefetch PATTERNS.md (background, best-effort)
 
-2. If all 5 files are present: update `feature.json` via `lib/feature-write.sh`:
-   - `artifacts.codebaseSource.{domain} = "mapper"` for each domain in `bootstrapPendingDomains`
-   - `bootstrapPendingDomains = []`
+PLAN Step 0 consumes `docs/loop-spec/features/{slug}/PATTERNS.md` when it already exists — so start the analog mining NOW, overlapped with this phase's critique work, instead of paying for it serially inside PLAN. Its input (SPEC.md) is already written by the SPEC phase.
 
-   Then commit all new codebase docs:
-   ```bash
-   git add docs/loop-spec/codebase/
-   git commit -m "docs: NO_JIRA bootstrap codebase map (background)"
-   ```
+Skip this step entirely (the planner produces PATTERNS.md at PLAN time, as before) when ANY of:
 
-3. If timeout reached with missing files: print which domains are still missing, then fall back to synchronous invocation:
-   ```
-   Skill(loop-spec:map-codebase) args: --domain {csv-of-still-missing-lowercased}
-   ```
-   This ensures correctness even if background agents failed.
+- `feature.json.greenfield == true` — greenfield PATTERNS is stack conventions, authored by the planner;
+- `feature.workspace` is non-null — workspace analog mining is planner-scoped (per-repo graphs);
+- `docs/loop-spec/features/{slug}/PATTERNS.md` already exists (resume / ITERATE re-entry);
+- GSD ingestion supplies it: run `bash "${CLAUDE_SKILL_DIR}/../../lib/gsd-ingest.sh" patterns "{slug}" "docs/loop-spec/features/{slug}/PATTERNS.md"` — on `INGESTED`, set `artifacts.patterns` + `artifacts.patternsSource = "gsd-ingest"` via `lib/feature-write.sh` and skip;
+- `feature.json.bootstrapPendingDomains` is non-empty — the codebase maps the mapper grounds in do not exist yet (first-run projects keep the PLAN-time path).
 
-If `feature.json.bootstrapPendingDomains` is empty (codebase docs already existed or GSD-ingested): skip this step.
+Otherwise fire ONE background `Agent` call and do NOT wait for it (same one-shot background dispatch pattern as cycle Step 5.5b; background subagents do not inherit the worktree cwd, so resolve `WT_ROOT="$(git rev-parse --show-toplevel)"` and pass absolute paths):
+
+```
+Agent({
+  subagent_type: "loop-spec:pattern-mapper",
+  model: feature.models.patternMapper,
+  description: "Prefetch PATTERNS.md: {slug}",
+  prompt: """
+    slug: {slug}
+    spec_path: {WT_ROOT}/docs/loop-spec/features/{slug}/SPEC.md
+    codebase_mapping_paths: {WT_ROOT}/docs/loop-spec/codebase/*.md
+
+    Produce {WT_ROOT}/docs/loop-spec/features/{slug}/PATTERNS.md per your role
+    definition (agents/pattern-mapper.md). Use absolute paths throughout. Do NOT commit.
+
+    Existence guard: if PATTERNS.md already exists at the moment you are about to
+    write, STOP without writing — a planner produced it first and its version wins.
+
+    When done, reply: "DONE: patterns"
+  """
+})
+```
+
+Then record the in-flight marker via `lib/feature-write.sh` (`artifacts.patternsPrefetch = "in-flight"`) and emit the dispatch event: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"pattern-mapper","model":"<resolved alias>","rung":"background"}' || true`.
+
+SPEC.md may still be revised by the critique gate after this fires — acceptable: PATTERNS.md maps concept analogs, which are robust to spec wording changes. If the gate changes the spec's SCOPE materially, PLAN's planner amends PATTERNS.md (its brief already covers producing or extending it).
 
 ### Step 2 - TeamCreate the discuss team
+
+**Autonomous fast path:** the roster is `challenger-1` only (spawn `advocate-1` lazily if the gate escalates); `spec-writer-1` is never part of the team. Update `currentTeammates` accordingly and continue at Step 4.
 
 Create the team with three teammates:
 
@@ -124,7 +179,7 @@ Update `feature.json` via `lib/feature-write.sh`:
 - `currentTeamName = "loop-spec-discuss-{slug}"`
 - `currentTeammates = ["spec-writer-1", "advocate-1", "challenger-1"]`
 
-### Step 3 - Spawn spec-writer-1
+### Step 3 - Spawn spec-writer-1 (skipped in the autonomous fast path)
 
 Model: `feature.models.specWriter` (resolved once at cycle Step 5; do not re-derive from model-matrix).
 
@@ -142,10 +197,10 @@ SendMessage({
     output_path: docs/loop-spec/features/{slug}/SPEC.md
     evidence_path: docs/loop-spec/features/{slug}/EVIDENCE.md
 
-    Read the transcript. Read the project context (check docs/loop-spec/codebase/ for any existing domain maps).
-    Produce SPEC.md at the output path per your role definition (agents/spec-writer.md). Every fact asserted about an external system must cite an `EVID-NNN` entry from the evidence_path ledger or be written as an explicit `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md`.
+    Read the transcript. Read the EXISTING SPEC.md at the output path — the SPEC phase already wrote it.
+    REVISE SPEC.md in place with what the discussion added or changed (new requirements, resolved dimensions, boundary changes, decisions); do NOT re-author it from scratch. Keep its structure and every requirement the discussion did not touch. Read the project context (check docs/loop-spec/codebase/ for any existing domain maps) to ground the revisions. Every fact asserted about an external system must cite an `EVID-NNN` entry from the evidence_path ledger or be written as an explicit `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md`.
 
-    If SPEC.md frontmatter contains an `ambiguity_scores` block (set by spec phase), preserve it verbatim. Do not modify or recompute the scores.
+    SPEC.md's frontmatter `ambiguity_scores` block (set by spec phase): preserve it verbatim, EXCEPT that a dimension the transcript resolves is removed from `unresolved_dimensions` (set `gate_passed: true` once the list is empty). Do not recompute the scores.
 
     When done, send:
       SendMessage({to: "lead", message: "SPEC.md written"})
@@ -160,11 +215,9 @@ Wait for `TeammateIdle` from `spec-writer-1`. If spec-writer-1 goes idle without
 
 On `SPEC.md written` message received: proceed to Step 4.
 
-### Step 4 - Critique debate (ALWAYS runs)
+### Step 4 - Critique gate (ALWAYS runs; single-critic default)
 
-The SPEC critique is the cheap gate that catches building the wrong thing entirely — it is never skipped (single-tier operation; the structural fast-path applies only to the PLAN critique).
-
-`maxCritiqueRounds = 2` (fixed; `skills/shared/tier-matrix.md`).
+The SPEC critique is the cheap gate that catches building the wrong thing entirely — it is never skipped (single-tier operation; the structural fast-path applies only to the PLAN critique). It runs per the **critique gate ladder** (`skills/shared/tier-matrix.md`): single-critic by default, escalating to the paired advocate/challenger debate only when triggered.
 
 Update `feature.json` via `lib/feature-write.sh`:
 ```json
@@ -185,9 +238,64 @@ Create the gate-logs directory:
 mkdir -p .loop-spec/features/{slug}/gate-logs/
 ```
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate launched in this phase (spec-writer, advocate, challenger) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"<role>","model":"<resolved alias>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds do not re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (spec-writer, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"<role>","model":"<resolved alias>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
 
-#### Spawn advocate-1
+#### Mode selection (security signal)
+
+```bash
+if grep -qiE 'auth|authenticat|authoriz|permission|credential|secret|token|crypt|payment|billing|PII|migrat|delet' "docs/loop-spec/features/{slug}/SPEC.md"; then
+  gate_mode="debate"
+else
+  gate_mode="single-critic"
+fi
+```
+
+A security-signaled spec starts directly in the escalated debate (skip to **Escalated debate** below). Everything else runs single-critic.
+
+#### Single-critic pass (default)
+
+Model: `feature.models.challenger`. Send `challenger-1` the solo-critic brief:
+
+```
+SendMessage({
+  to: "challenger-1",
+  message: """
+    [Populate from skills/shared/team-prompts/critic.md with these substitutions:
+      {slug} = slug
+      {N} = 1
+      {phase} = discuss
+      {artifact} = SPEC.md
+    ]
+
+    Run your findings pass on SPEC.md now and report to lead.
+  """
+})
+```
+
+Wait for `TeammateIdle` from `challenger-1` and read its `FINDINGS:` / `NO-FINDINGS:` message. Write it to the gate-log:
+
+```
+Write .loop-spec/features/{slug}/gate-logs/spec-critique-round-1.md
+Contents:
+  # spec-critique Round 1 (single-critic)
+
+  ## challenger-1
+  <the FINDINGS/NO-FINDINGS message body>
+```
+
+Emit the round's telemetry event (non-fatal):
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" gate_round \
+  --phase "discuss" --data '{"gate":"spec-critique","round":1,"mode":"single-critic"}' || true
+```
+
+Proceed to Step 5 (the lead adjudicates the findings there).
+
+#### Escalated debate
+
+Runs only when a ladder trigger fires (security signal above; contested `[major]` or delta deadlock from Step 5). `maxCritiqueRounds = 2` (fixed; `skills/shared/tier-matrix.md`). When escalating from a single-critic pass, include all existing `gate-logs/spec-critique-round-*.md` content (the solo findings and any delta rounds) as `{prior_round_summaries}` in both spawn prompts.
+
+##### Spawn advocate-1
 
 Model: `feature.models.advocate` (resolved once at cycle Step 5; do not re-derive from model-matrix).
 
@@ -210,9 +318,9 @@ SendMessage({
 })
 ```
 
-#### Spawn challenger-1
+##### Spawn challenger-1
 
-Model: `feature.models.challenger` (resolved once at cycle Step 5; do not re-derive from model-matrix).
+Model: `feature.models.challenger` (resolved once at cycle Step 5; do not re-derive from model-matrix). When escalating from a single-critic pass, `challenger-1` is already live — re-send it the debate brief below via `SendMessage` instead of spawning fresh.
 
 ```
 SendMessage({
@@ -234,7 +342,7 @@ SendMessage({
 })
 ```
 
-#### Debate loop
+##### Debate loop
 
 For each round N = 1 .. maxCritiqueRounds:
 
@@ -275,19 +383,29 @@ For each round N = 1 .. maxCritiqueRounds:
      SendMessage({to: "advocate-1", message: "Round {N+1} starting. Wait for challenger-1's critique, then respond."})
      ```
 
-### Step 5 - Synthesize fix-list
+### Step 5 - Adjudicate findings and synthesize fix-list
 
 Read all files under `.loop-spec/features/{slug}/gate-logs/` matching `spec-critique-round-*.md`.
 
-Apply reconciliation rules:
+**Single-critic adjudication (default mode):**
+
+| Situation | Action |
+|-----------|--------|
+| `[major]` finding the lead agrees with | Add to fix-list. |
+| `[major]` finding the lead disputes | Do NOT drop it — ESCALATE to the full debate (Step 4, Escalated debate) with all gate-logs as prior summaries. The debate is the tiebreak; a solo gate may only bias stricter, never looser. |
+| `[minor]` finding | Lead's judgment: add to fix-list or drop. Every dropped `[minor]` is logged in the gate-log with a one-line reason — never silently. |
+| Finding depends on user intent | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it to disk (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" discuss "<dimension>" "<reading adopted>" "more reversible"` — `skills/shared/autonomous-mode.md`), and add it to the fix-list so the spec states it explicitly. |
+| Finding is an `UNGROUNDED:` line (ungrounded external claim) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it via `bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, and adds a fix-list item carrying the `EVID-NNN` + output excerpt so the revision cites it (or converts the claim to an ASSUMPTION if the probe is impossible). |
+
+**Escalated-debate reconciliation (when the debate ran):**
 
 | Situation | Action |
 |-----------|--------|
 | Challenger raises point advocate also flagged as risk | High-confidence. Add to fix-list. |
 | Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
 | Both agree | No action. |
-| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it to disk (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" discuss "<dimension>" "<reading adopted>" "more reversible"` — `skills/shared/autonomous-mode.md`), and add it to the fix-list so the spec states it explicitly. |
-| Challenger finding is an `UNGROUNDED:` line (ungrounded external claim) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it via `bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, and adds a fix-list item carrying the `EVID-NNN` + output excerpt so spec-writer-1 cites it (or converts the claim to an ASSUMPTION if the probe is impossible). |
+| Neither resolves (depends on user intent) | Same user-intent row as above. |
+| `UNGROUNDED:` line | Same probe row as above. |
 
 Build `fix_list` (may be empty).
 
@@ -303,22 +421,25 @@ Append the fail entry to `feature.json.gateHistory` via `lib/feature-write.sh` B
   "gate": "spec-critique",
   "attempt": <attempt number>,
   "result": "fail",
-  "advocateModel": "<model>",
+  "advocateModel": "<model | null when the gate never escalated>",
   "challengerModel": "<model>",
-  "rounds": <N>,
-  "convergence": "<mutual-done | cap-reached | one-sided>",
+  "rounds": <N (single-critic: 1 + delta rounds)>,
+  "convergence": "<single-critic | delta-verified | mutual-done | cap-reached | one-sided>",
   "findingsAddressed": [<fix_list items>],
   "notes": null
 }
 ```
 
-Snapshot SPEC.md before sending the fix-list (used by the no-op-revision shortcut below):
+Snapshot SPEC.md before sending the fix-list (the hash feeds the no-op-revision shortcut; the copy feeds the delta re-verify diff):
 
 ```bash
 spec_hash_before="$(git hash-object docs/loop-spec/features/{slug}/SPEC.md 2>/dev/null || echo none)"
+cp docs/loop-spec/features/{slug}/SPEC.md .loop-spec/features/{slug}/gate-logs/SPEC.pre-revision.md
 ```
 
-Re-dispatch spec-writer-1 via `SendMessage` (not a fresh Agent call):
+**Autonomous fast path:** the LEAD applies the fix-list to SPEC.md directly (Edit tool; there is no spec-writer-1), then continues at the hash comparison below.
+
+Otherwise re-dispatch spec-writer-1 via `SendMessage` (not a fresh Agent call):
 ```
 SendMessage({
   to: "spec-writer-1",
@@ -334,11 +455,11 @@ SendMessage({
 })
 ```
 
-Wait for `TeammateIdle` from `spec-writer-1`. When `SPEC.md written` is received:
+Wait for `TeammateIdle` from `spec-writer-1`. When `SPEC.md written` is received (or the lead finished its direct edit):
 
 **No-op-revision shortcut (skip the redundant re-critique).** Re-critiquing byte-identical
-text yields the same verdict, so a re-dispatch that did not actually change SPEC.md must not
-trigger another full debate round (wasted opus dispatches, and a potential loop). Compare the
+text yields the same verdict, so a revision pass that did not actually change SPEC.md must not
+trigger even a delta re-verify (a wasted dispatch, and a potential loop). Compare the
 hash:
 
 ```bash
@@ -346,13 +467,43 @@ spec_hash_after="$(git hash-object docs/loop-spec/features/{slug}/SPEC.md 2>/dev
 ```
 
 If `spec_hash_after == spec_hash_before` (the spec-writer made no substantive change — either
-it judged the fix-list non-actionable or the edits were cosmetic), do NOT re-run the debate.
+it judged the fix-list non-actionable or the edits were cosmetic), do NOT re-verify.
 Record the gate as converged with `notes: "spec-writer made no change to SPEC.md; re-critique
 skipped"` in the `gateHistory` pass entry, reset `currentGate` (as in the fix_list-empty
-branch below), and proceed to Step 6. This collapses a re-critique round only when it would be
-provably redundant; any real revision still re-runs the full debate.
+branch below), and proceed to Step 5.75. This collapses a re-check only when it would be
+provably redundant.
 
-Otherwise (SPEC.md changed): re-run the debate — reset `currentGate.round = 0`, then re-send spawn prompts to `advocate-1` and `challenger-1` with `{N_round} = 1` and `{prior_round_summaries} = (concatenated content of all existing gate-logs/spec-critique-round-*.md files)`. This resets their per-round context so they argue against the revised SPEC.md with awareness of prior debate. Then return to Step 4 (critique debate loop), starting with round 1.
+Otherwise (SPEC.md changed): run the **delta re-verify** — do NOT re-run the full gate protocol (`skills/shared/tier-matrix.md`, critique gate ladder):
+
+```bash
+diff -u .loop-spec/features/{slug}/gate-logs/SPEC.pre-revision.md \
+        docs/loop-spec/features/{slug}/SPEC.md > /tmp/spec-delta.diff || true
+```
+
+```
+SendMessage({
+  to: "challenger-1",
+  message: """
+    Delta re-verify (per your solo-critic brief). The fix-list below was applied to SPEC.md.
+    Confirm each item is addressed and check the CHANGED sections only for new issues.
+
+    Fix-list applied:
+    {fix_list items, numbered}
+
+    Diff:
+    {content of /tmp/spec-delta.diff}
+
+    Reply to lead with DELTA-VERIFIED or DELTA-FINDINGS, then go idle.
+  """
+})
+```
+
+Wait for `TeammateIdle` from `challenger-1`, append the reply to a new `gate-logs/spec-critique-round-{next}.md` (titled `(delta re-verify)`), and emit a `gate_round` event with `"mode":"delta"`:
+
+- **`DELTA-VERIFIED`**: the gate passes — append the `gateHistory` pass entry (convergence: `"delta-verified"`), reset `currentGate`, proceed to Step 5.75.
+- **`DELTA-FINDINGS`**: adjudicate the tagged findings per the Step 5 rules and start a new fix round (retries are unbounded — full bore). **Deadlock escalation:** if the same finding survives two consecutive delta rounds, the author and critic are stuck — escalate to the full debate (Step 4, Escalated debate) with all gate-logs as prior summaries.
+
+(When the escalated debate produced the fix-list, the delta re-verify above still applies — the debate does not re-run for a revision; only a deadlock or a new contested `[major]` re-enters it.)
 
 #### If fix_list empty:
 
@@ -363,10 +514,10 @@ Append to `feature.json.gateHistory` via `lib/feature-write.sh`:
   "gate": "spec-critique",
   "attempt": <attempt number>,
   "result": "pass",
-  "advocateModel": "<model>",
+  "advocateModel": "<model | null when the gate never escalated>",
   "challengerModel": "<model>",
-  "rounds": <N>,
-  "convergence": "<mutual-done | cap-reached | one-sided>",
+  "rounds": <N (single-critic: 1 + delta rounds)>,
+  "convergence": "<single-critic | delta-verified | mutual-done | cap-reached | one-sided>",
   "findingsAddressed": [],
   "notes": null
 }
@@ -393,7 +544,45 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "docs/loop-spec/features/
 grounding_exit=$?
 ```
 
-Exit 1 BLOCKS: re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (instruct: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`); retries are unbounded — repeat until the lint passes. On revision received, re-run ONLY this lint — lint-only failures do NOT re-run the critique debate. Exit 0: proceed to Step 6.
+Exit 1 BLOCKS: re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (instruct: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`); autonomous fast path: the lead applies the FLAG fixes directly. Retries are unbounded — repeat until the lint passes. On revision received, re-run ONLY this lint — lint-only failures do NOT re-run the critique gate. Exit 0: proceed to Step 6.
+
+### Step 5.8 - Join codebase bootstrap (if pending)
+
+If `feature.json.bootstrapPendingDomains` is non-empty (set during cycle Step 5.5b when background mappers were fired) — PLAN requires all 5 domain docs, so join the background work now (it has had the whole phase to run concurrently with the critique gate):
+
+1. Poll for file existence with a max wait of 600 seconds (10 minutes):
+   ```bash
+   max_wait=600
+   elapsed=0
+   interval=15
+   while [[ $elapsed -lt $max_wait ]]; do
+     all_present=true
+     for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
+       [[ -f "docs/loop-spec/codebase/${d}.md" ]] || { all_present=false; break; }
+     done
+     $all_present && break
+     sleep $interval
+     elapsed=$((elapsed + interval))
+   done
+   ```
+
+2. If all 5 files are present: update `feature.json` via `lib/feature-write.sh`:
+   - `artifacts.codebaseSource.{domain} = "mapper"` for each domain in `bootstrapPendingDomains`
+   - `bootstrapPendingDomains = []`
+
+   Then commit all new codebase docs:
+   ```bash
+   git add docs/loop-spec/codebase/
+   git commit -m "docs: NO_JIRA bootstrap codebase map (background)"
+   ```
+
+3. If timeout reached with missing files: print which domains are still missing, then fall back to synchronous invocation:
+   ```
+   Skill(loop-spec:map-codebase) args: --domain {csv-of-still-missing-lowercased}
+   ```
+   This ensures correctness even if background agents failed.
+
+If `feature.json.bootstrapPendingDomains` is empty (codebase docs already existed or GSD-ingested): skip this step.
 
 ### Step 6 - Commit SPEC.md and update feature.json
 
@@ -455,6 +644,6 @@ If invoked with `currentPhase == "discuss"` already in `feature.json`:
      - Success (team live): print orphan-cleanup message with explicit team name; require manual `TeamDelete` before resume.
    - If `currentTeamName == null`: recreate team via `TeamCreate` and replay from subphase.
 
-3. On resume with a prior debate in progress: load all existing `gate-logs/spec-critique-round-*.md` content into the spawn prompts for `advocate-1` and `challenger-1` as `{prior_round_summaries}`, then restart the debate from round `currentGate.round + 1`.
+3. On resume with a prior gate in progress: if the gate-logs show only single-critic/delta rounds (no advocate entries), re-run the gate from the single-critic findings pass — re-send `challenger-1` the solo-critic brief with the existing gate-logs content inlined as prior context. If an escalated debate was in progress (advocate entries present), load all existing `gate-logs/spec-critique-round-*.md` content into the spawn prompts for `advocate-1` and `challenger-1` as `{prior_round_summaries}`, then restart the debate from round `currentGate.round + 1`.
 
 4. Do not re-ask conversation questions the user already answered (transcript is persisted to disk).
