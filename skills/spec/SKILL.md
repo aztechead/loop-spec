@@ -316,24 +316,34 @@ orchestrator plays both roles (`skills/shared/autonomous-mode.md` self-answer ru
 
 1. Run Step 1 (scout + initial scoring) as normal. The graph scout matters MORE here —
    it is the only source of grounding.
-2. For each round N (same perspectives table, max 6 — in practice self-answering
-   converges in 2-3): formulate the round's 2-3 questions, then answer each one yourself
-   with the recommendation you would have marked as the default option — grounded first
-   in what the codebase already does (graph/map evidence), then industry best practice,
-   then the most reversible choice. Score the 4 dimensions after each round from the
-   answers, honestly — do not inflate scores because you authored the answers.
-3. Gate prompts self-answer: on gate pass take "Yes - write SPEC.md"; at round 6 with a
-   failing gate take "Write SPEC.md anyway" (`gate_passed: false`, dimensions listed in
-   `unresolved_dimensions` for DISCUSS's autonomous resolution). Never "Abandon".
-4. Record every Q → A → one-line rationale TO DISK as it is made — `bash
+2. **Run all six perspectives in ONE pass, not round-by-round.** The round structure
+   exists to pace a human's turn-taking; self-answering needs the perspectives (they are
+   the blindspot coverage), not the turns. Walk the perspectives table in order
+   (Researcher/Foundations → Simplifier → Boundary Keeper → Failure Analyst → Seed
+   Closer): for each, formulate its 2-3 questions, then answer each one yourself with
+   the recommendation you would have marked as the default option — grounded first in
+   what the codebase already does (graph/map evidence), then industry best practice,
+   then the most reversible choice. Do not skip a perspective because earlier answers
+   feel sufficient.
+3. **Score the 4 dimensions ONCE, at the end of the pass**, from the complete Q→A set —
+   honestly; do not inflate scores because you authored the answers. Display one scoring
+   block (`rounds_completed: 1`). Gate prompts self-answer: on gate pass take "Yes -
+   write SPEC.md"; on a failing gate, spend ONE targeted follow-up pass on the failing
+   dimensions (Seed Closer questions only), re-score, then take "Write SPEC.md anyway"
+   if still failing (`gate_passed: false`, dimensions listed in `unresolved_dimensions`
+   for DISCUSS's autonomous resolution). Never "Abandon".
+4. Record every Q → A → one-line rationale TO DISK — `bash
    "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" spec "<q>" "<a>"
-   "<why>"` — and mark it `(self-answered)` in the transcript. The store already holds
-   any setup decisions the cycle staged before SPEC ran (workspace repos, resume choice,
-   detected commands — migrated at Step 5). When writing SPEC.md, render the complete
-   record into a `## Decisions (assumed — autonomous)` list inside the `<decisions>`
-   block: `decisions.sh render "{feature_dir}"` emits the lines verbatim. PLAN copies
-   these forward into `## User decisions (already made)` suffixed `(assumed)`, so the
-   escalation contract treats them exactly like human answers.
+   "<why>"` — and mark it `(self-answered)` in the transcript. Batch the writes: one
+   Bash invocation chaining the `decisions.sh add` calls at the end of the pass (the
+   answers exist on disk before SPEC.md is written; there is no human turn boundary to
+   flush at). The store already holds any setup decisions the cycle staged before SPEC
+   ran (workspace repos, resume choice, detected commands — migrated at Step 5). When
+   writing SPEC.md, render the complete record into a `## Decisions (assumed —
+   autonomous)` list inside the `<decisions>` block: `decisions.sh render
+   "{feature_dir}"` emits the lines verbatim. PLAN copies these forward into `## User
+   decisions (already made)` suffixed `(assumed)`, so the escalation contract treats
+   them exactly like human answers.
 5. Proceed to Steps 3-6 unchanged.
 
 Autonomous beats non-interactive synthesis when both are set: the self-answered interview
