@@ -159,6 +159,54 @@ LOOP_SPEC_RULES_FILE="$GPROJ/.loop-spec/RULES.md" LOOP_SPEC_GLOBAL_RULES_FILE="$
 check "13: exception idempotent" "1" "$(grep -cxF '!/.loop-spec/RULES.md' "$GPROJ/.gitignore")"
 check "13: spec rule applied from digest corpus" "1" "$(grep -c 'SPEC scope gaps recur' "$GPROJ/.loop-spec/RULES.md")"
 
+# ── Case 14: `auto` — autonomous run auto-applies; interactive reports only ───
+APROJ="$WORK/autoproj"
+mkdir -p "$APROJ/.loop-spec/features/af" "$APROJ/docs/loop-spec/telemetry/runs"
+for i in 1 2 3; do
+  cat > "$APROJ/docs/loop-spec/telemetry/runs/a-$i.json" << EOF
+{"schema":1,"slug":"a-$i","status":"completed","converged":true,
+ "iterations":{"used":2,"max":10},"gaps":["plan"],"gateCaps":[],"warnings":0,"finishedAt":null}
+EOF
+done
+echo '{"schemaVersion":7,"slug":"af","autonomous":true,"iterate":{"used":0,"maxIterations":10}}' \
+  > "$APROJ/.loop-spec/features/af/feature.json"
+ARF="$APROJ/.loop-spec/RULES.md"
+
+# autonomous + env unset -> applies
+ec=0
+out="$(LOOP_SPEC_RULES_FILE="$ARF" LOOP_SPEC_GLOBAL_RULES_FILE="$WORK/g3.md" \
+  env -u LOOP_SPEC_RETRO_AUTO_APPLY bash "$LIB" auto "$APROJ/.loop-spec/features/af" --root "$APROJ/.loop-spec")" || ec=$?
+check "14: auto exit 0" "0" "$ec"
+check "14: announces auto-apply" "1" "$(grep -c 'auto-apply (autonomous run' <<<"$out")"
+check "14: rule applied" "1" "$(grep -c 'PLAN decomposition recurs' "$ARF")"
+
+# kill switch -> report-only, no rules
+rm -f "$ARF"
+out="$(LOOP_SPEC_RULES_FILE="$ARF" LOOP_SPEC_GLOBAL_RULES_FILE="$WORK/g3.md" \
+  LOOP_SPEC_RETRO_AUTO_APPLY=0 bash "$LIB" auto "$APROJ/.loop-spec/features/af" --root "$APROJ/.loop-spec")"
+check "14: kill switch -> count line only" "1" "$(grep -c 'rule candidate(s)' <<<"$out")"
+check "14: kill switch -> no rules written" "0" "$([[ -f "$ARF" ]] && echo 1 || echo 0)"
+
+# interactive (autonomous:false) + env unset -> report-only
+echo '{"schemaVersion":7,"slug":"af","autonomous":false,"iterate":{"used":0,"maxIterations":10}}' \
+  > "$APROJ/.loop-spec/features/af/feature.json"
+out="$(LOOP_SPEC_RULES_FILE="$ARF" LOOP_SPEC_GLOBAL_RULES_FILE="$WORK/g3.md" \
+  env -u LOOP_SPEC_RETRO_AUTO_APPLY bash "$LIB" auto "$APROJ/.loop-spec/features/af" --root "$APROJ/.loop-spec")"
+check "14: interactive -> no rules written" "0" "$([[ -f "$ARF" ]] && echo 1 || echo 0)"
+
+# LOOP_SPEC_RETRO_AUTO_APPLY=1 forces apply even interactive
+out="$(LOOP_SPEC_RULES_FILE="$ARF" LOOP_SPEC_GLOBAL_RULES_FILE="$WORK/g3.md" \
+  LOOP_SPEC_RETRO_AUTO_APPLY=1 bash "$LIB" auto "$APROJ/.loop-spec/features/af" --root "$APROJ/.loop-spec")"
+check "14: =1 forces apply" "1" "$(grep -c 'PLAN decomposition recurs' "$ARF")"
+
+# ── Case 15: `auto` observability contract — never fails the cycle ────────────
+ec=0; bash "$LIB" auto >/dev/null 2>&1 || ec=$?
+check "15: missing feature_dir exit 0" "0" "$ec"
+ec=0; bash "$LIB" auto "$WORK/nonexistent-feat" --root "$WORK/nonexistent/.loop-spec" >/dev/null 2>&1 || ec=$?
+check "15: nonexistent paths exit 0" "0" "$ec"
+ec=0; bash "$LIB" auto "$APROJ/.loop-spec/features/af" --bogus >/dev/null 2>&1 || ec=$?
+check "15: bad flag under auto exit 0" "0" "$ec"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

@@ -34,6 +34,14 @@ All notable changes documented here. Format follows Keep a Changelog.
   the PROGRESS.md exception) so applied rules survive via git instead of
   dying with the pod. The global rules layer is per-machine by design — in
   volatile fleets, keep everything in the project layer (documented).
+- `retro.sh auto <feature_dir>` — the cycle On-completion entry point that
+  closes the loop for UNATTENDED fleets: interactive runs get a read-only
+  candidate-count line (a human decides); autonomous runs auto-apply and the
+  cycle commits RULES.md. Safe by construction: the appliable rule texts are
+  a closed template set inside `lib/retro.sh` (the model never authors rule
+  text on this path), triggers are deterministic, and every template only
+  tightens discipline. `LOOP_SPEC_RETRO_AUTO_APPLY=0/1` overrides either
+  default; never-abort contract on the completion path (43-check suite).
 
 ## [2.11.0]
 

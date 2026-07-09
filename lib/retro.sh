@@ -22,6 +22,20 @@
 #       count-free by design so re-applies dedupe). Prints added/exists per
 #       rule. Suggestions and info findings are never auto-applied.
 #
+#   retro.sh auto <feature_dir> [--root <dir>] [--min-repeats N]
+#       The cycle On-completion entry point. Gating:
+#         LOOP_SPEC_RETRO_AUTO_APPLY=0  -> report candidate count only
+#         LOOP_SPEC_RETRO_AUTO_APPLY=1  -> apply
+#         unset                         -> apply iff feature.json.autonomous
+#       Autonomous auto-apply is SAFE BY CONSTRUCTION: the applicable rule
+#       texts are a closed set of fixed templates in this script (the model
+#       never authors rule text on this path), the thresholds are
+#       deterministic, and every template only tightens discipline — a rule
+#       can make the loop stricter, never looser. Interactive runs stay
+#       report-only because a human is present to decide.
+#       OBSERVABILITY CONTRACT: `auto` never aborts the cycle — all failures
+#       are a one-line stderr warning + exit 0.
+#
 # Finding kinds:
 #   rule-candidate  repeated failure pattern -> a rule the loop should carry
 #   suggestion      an optimization backed by evidence (e.g. modelTier), user's call
@@ -44,9 +58,19 @@ set -uo pipefail
 _die2() { echo "retro.sh: $*" >&2; exit 2; }
 
 cmd="${1:-}"
-[[ "$cmd" == "report" || "$cmd" == "apply" ]] \
-  || _die2 "unknown subcommand '${cmd:-}' (usage: retro.sh report|apply [--root <dir>] [--json] [--min-repeats N])"
-shift
+shift || true
+
+# `auto` runs on the cycle completion path: it must NEVER abort the cycle.
+_warn0() { echo "retro.sh: $*" >&2; exit 0; }
+FEATURE_DIR=""
+if [[ "$cmd" == "auto" ]]; then
+  FEATURE_DIR="${1:-}"
+  shift || true
+  [[ -n "$FEATURE_DIR" ]] || _warn0 "auto: missing <feature_dir> — skipping"
+fi
+
+[[ "$cmd" == "report" || "$cmd" == "apply" || "$cmd" == "auto" ]] \
+  || _die2 "unknown subcommand '${cmd:-}' (usage: retro.sh report|apply|auto <feature_dir> [--root <dir>] [--json] [--min-repeats N])"
 
 ROOT=""
 JSON=0
@@ -56,10 +80,30 @@ while [[ $# -gt 0 ]]; do
     --root) ROOT="${2:-}"; shift 2 || shift ;;
     --json) JSON=1; shift ;;
     --min-repeats) MIN="${2:-3}"; shift 2 || shift ;;
-    *) _die2 "unknown flag '$1'" ;;
+    *) if [[ "$cmd" == "auto" ]]; then _warn0 "auto: unknown flag '$1' — skipping"; else _die2 "unknown flag '$1'"; fi ;;
   esac
 done
-[[ "$MIN" =~ ^[0-9]+$ ]] || _die2 "--min-repeats must be a number (got '$MIN')"
+if ! [[ "$MIN" =~ ^[0-9]+$ ]]; then
+  [[ "$cmd" == "auto" ]] && _warn0 "auto: bad --min-repeats '$MIN' — skipping"
+  _die2 "--min-repeats must be a number (got '$MIN')"
+fi
+
+# Resolve the auto gate BEFORE the (comparatively expensive) mining: decide
+# whether this invocation behaves as `apply` or as a count-only report.
+if [[ "$cmd" == "auto" ]]; then
+  gate="${LOOP_SPEC_RETRO_AUTO_APPLY:-}"
+  autonomous="false"
+  if [[ -f "$FEATURE_DIR/feature.json" ]]; then
+    autonomous="$(jq -r '.autonomous // false' "$FEATURE_DIR/feature.json" 2>/dev/null || echo false)"
+  fi
+  if [[ "$gate" == "0" ]]; then
+    cmd="auto-report"
+  elif [[ "$gate" == "1" || "$autonomous" == "true" ]]; then
+    cmd="auto-apply"
+  else
+    cmd="auto-report"
+  fi
+fi
 
 ROOT="${ROOT:-${CLAUDE_PROJECT_DIR:-.}/.loop-spec}"
 FEATURES_DIR="$ROOT/features"
@@ -245,7 +289,16 @@ if [[ "$cmd" == "report" ]]; then
   exit 0
 fi
 
-# ── apply ─────────────────────────────────────────────────────────────────────
+# auto-report: the gated-off half of `auto` — one read-only line, never fatal.
+if [[ "$cmd" == "auto-report" ]]; then
+  rc="$(jq 'map(select(.kind == "rule-candidate")) | length' <<<"$FINDINGS" 2>/dev/null || echo 0)"
+  if [[ "${rc:-0}" -gt 0 ]]; then
+    echo "Retro: ${rc} repeated-pattern rule candidate(s) — review with /loop-spec:retro (apply with /loop-spec:retro apply)"
+  fi
+  exit 0
+fi
+
+# ── apply (also the auto-apply half of `auto`) ────────────────────────────────
 _render
 echo ""
 count="$(jq 'map(select(.kind == "rule-candidate")) | length' <<<"$FINDINGS")"
@@ -253,6 +306,7 @@ if [[ "$count" == "0" ]]; then
   echo "retro apply: nothing to apply"
   exit 0
 fi
+[[ "$cmd" == "auto-apply" ]] && echo "Retro auto-apply (autonomous run; kill switch LOOP_SPEC_RETRO_AUTO_APPLY=0):"
 echo "Applying $count rule candidate(s) to the project rules layer:"
 while IFS= read -r text; do
   res="$(bash "$LIB_DIR/rules.sh" add "$text" 2>/dev/null || echo "error")"

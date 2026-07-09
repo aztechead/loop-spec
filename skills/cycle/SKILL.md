@@ -595,13 +595,20 @@ n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
 [[ "$n" -gt 0 ]] && echo "Backlog: ${n} deferred item(s) — drain with /loop-spec:cycle backlog"
 ```
 
-And the retrospective signal (READ-ONLY, one line, non-fatal — the telemetry
-loop's nudge; it never mutates rules on its own):
+And the retrospective step (non-fatal). `retro.sh auto` gates itself:
+interactive runs get a READ-ONLY candidate-count line; autonomous runs
+auto-apply the candidates (safe by construction — the applicable rule texts are
+a closed template set inside `lib/retro.sh`, deterministically triggered, and
+every template only tightens discipline; `LOOP_SPEC_RETRO_AUTO_APPLY=0/1`
+overrides either default):
 
 ```bash
-rc="$(bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" report --json 2>/dev/null \
-      | jq 'map(select(.kind == "rule-candidate")) | length' 2>/dev/null || echo 0)"
-[[ "${rc:-0}" -gt 0 ]] && echo "Retro: ${rc} repeated-pattern rule candidate(s) — review with /loop-spec:retro (apply with /loop-spec:retro apply)"
+bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" auto ".loop-spec/features/${slug}" || true
+# If auto-apply added rules, commit the durable rule state so it survives
+# ephemeral workspaces (rides the same push as the run digest below):
+git add .loop-spec/RULES.md .gitignore 2>/dev/null \
+  && git diff --cached --quiet 2>/dev/null \
+  || git commit -m "chore: retro auto-applied rules for ${slug}" 2>/dev/null || true
 ```
 
 Write the machine-readable result contract and emit the `completed` event (non-fatal):

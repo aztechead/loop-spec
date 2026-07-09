@@ -48,10 +48,13 @@ After applying, remind: the rules are injected into every future session by the
 self-learning hook; curate them with `/loop-spec:rules`. Update RETRO.md's
 section for this date with which candidates were applied.
 
-**Autonomous mode note:** `apply` is always an explicit invocation — the cycle's
-On-completion hook only prints the read-only candidate count. An autonomous run
-never rewrites its own rules; the human stays the curator (same ownership
-contract as RULES.md itself).
+**Autonomous mode note:** interactive cycles only print the read-only candidate
+count at completion — the human decides. Autonomous cycles auto-apply via
+`lib/retro.sh auto` (kill switch `LOOP_SPEC_RETRO_AUTO_APPLY=0`), which is safe
+because the appliable texts are a closed, versioned template set with
+deterministic triggers that only ever tighten the loop; the model cannot author
+or weaken a rule on this path. The human remains the curator of the FILE —
+prune or reword rules any time with `/loop-spec:rules`.
 
 ## Interpreting findings
 
@@ -83,10 +86,18 @@ work anyway; all are automatic:
 2. **Durable rules.** `retro apply` (and the cycle's first-run gitignore setup)
    adds the `!/.loop-spec/RULES.md` exception so applied rules survive via git
    instead of dying with the pod. Commit RULES.md after applying.
-3. **No self-mutation in autonomous mode.** The cycle only prints the read-only
-   candidate count; a volatile agent never rewrites its own rules mid-run.
-   Wire `retro apply` as an explicit pipeline step (or run it locally) when you
-   want candidates promoted.
+3. **Gated auto-apply in autonomous mode.** The cycle's On-completion runs
+   `lib/retro.sh auto <feature_dir>`: interactive runs get a READ-ONLY
+   candidate-count line (a human is present to decide); autonomous runs
+   auto-apply the candidates and the cycle commits RULES.md, so an unattended
+   fleet actually learns without anyone running `apply`. This is safe by
+   construction: the applicable rule texts are a **closed template set inside
+   `lib/retro.sh`** — the model never authors rule text on this path, the
+   thresholds are deterministic, and every template only tightens discipline
+   (a rule can make the loop stricter, never looser). Overrides:
+   `LOOP_SPEC_RETRO_AUTO_APPLY=0` forces report-only everywhere, `=1` forces
+   apply even interactively. Applying happens only at cycle completion — never
+   mid-run.
 
 The global rules layer (`~/.loop-spec/RULES.md`) is per-machine and does NOT
 survive containers — in volatile fleets, keep everything in the project layer.

@@ -28,6 +28,12 @@ Effects, in order of precedence:
 4. **Grill mode is suppressed for the session** (`hooks/team/grill-inject.sh`
    checks `LOOP_SPEC_AUTONOMOUS`); the SPEC interview runs in self-answered
    form instead.
+5. **Retro auto-applies at completion.** `lib/retro.sh auto` promotes repeated-
+   pattern rule candidates into `.loop-spec/RULES.md` without a human (kill
+   switch `LOOP_SPEC_RETRO_AUTO_APPLY=0`). Safe by construction: the appliable
+   texts are a closed template set with deterministic triggers that only ever
+   tighten the loop — autonomous mode cannot author or weaken a rule, and the
+   apply happens only at cycle completion, never mid-run.
 
 Autonomous mode implies non-interactive semantics everywhere
 `LOOP_SPEC_NON_INTERACTIVE=1` is honored, but is strictly stronger: where
