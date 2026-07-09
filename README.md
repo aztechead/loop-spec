@@ -10,7 +10,7 @@ The same archetypes cover the rest of the development surface: `/loop-spec:cycle
 - **Single tier.** Gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path measured from the actual task DAG — never inferred from your prompt.
 - **Teams-optional.** Runs on both agent-team harness generations (explicit `TeamCreate` on CC < 2.1.178, implicit `Agent({name})` teams on newer, resolved by `lib/teams-capability.sh`) and degrades to one-shot subagents or a bounded loop fleet without teams.
 
-**Status:** v2.12.0 (rebranded from super-spec at v2.5.2).
+**Status:** v2.13.0 (rebranded from super-spec at v2.5.2).
 
 ## Install
 
@@ -471,8 +471,8 @@ flowchart LR
     user([User]) -->|"Skill(loop-spec:cycle)"| cycle[cycle skill<br/>orchestrator]
     cycle -->|"health-check + style"| init[feature.json<br/>schema v7]
     init --> spec[SPEC phase<br/>main-thread interview]
-    spec -->|SPEC.md + ambiguity_scores| discuss[DISCUSS team<br/>spec-writer + advocate + challenger]
-    discuss -->|SPEC.md| plan[PLAN team<br/>planner + advocate + challenger]
+    spec -->|SPEC.md + ambiguity_scores| discuss[DISCUSS team<br/>spec-writer + challenger<br/>advocate on escalation]
+    discuss -->|SPEC.md| plan[PLAN team<br/>planner + challenger<br/>advocate on escalation]
     plan -->|PLAN.md + task DAG| execute[EXECUTE team<br/>lead + N implementers + R reviewers]
     execute -->|merged commits on feat/&lcub;slug&rcub;| verify[VERIFY team<br/>verifier + code-reviewer]
     verify -->|VERIFICATION.md| pr([PR opened])

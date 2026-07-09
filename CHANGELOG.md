@@ -2,6 +2,55 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.13.0]
+
+### Changed — design-phase latency (SPEC/DISCUSS/PLAN were eating ~45m on medium autonomous tasks)
+
+Field telemetry showed the three design phases burning up to 45 minutes on
+medium tasks, almost all of it serialized cold-start agent turns rather than
+thinking. Six changes, all preserving what the gates check:
+
+- **Critique gate ladder** (`skills/shared/tier-matrix.md`): both critique
+  gates now run **single-critic by default** — one opus challenger reviews
+  solo (`skills/shared/team-prompts/critic.md`, `[major]`/`[minor]`-tagged
+  findings) and the lead adjudicates — escalating to the paired
+  advocate/challenger 2-round debate only on a security signal, a `[major]`
+  finding the lead disputes, or a delta deadlock. Strictness is preserved by
+  construction: a disputed `[major]` can never be dropped, only escalated.
+  The PLAN advocate warm-up is gone (wasted dispatch on the common path).
+- **Delta re-verify**: a revision no longer resets the gate to a fresh
+  2-round debate. The critic gets ONE message (fix-list + unified diff) and
+  confirms each item / checks changed sections (`DELTA-VERIFIED` /
+  `DELTA-FINDINGS`). Retries stay unbounded (full bore).
+- **Coverage-gate fix**: decision-coverage and criteria-coverage failures in
+  PLAN Step 5.5 — mechanical verbatim-string checks — re-run ONLY the failed
+  check on revision, matching the grounding lint, instead of re-entering the
+  full debate.
+- **Autonomous DISCUSS collapse** (`skills/discuss/SKILL.md`, Autonomous fast
+  path): the SPEC self-interview already covered the clarifying loop, so
+  autonomous DISCUSS skips it AND the spec-writer dispatch entirely — SPEC.md
+  is the draft, the lead resolves unresolved dimensions / the corner question
+  / probes directly (recorded via `decisions.sh`), applies gate revisions
+  itself, and only the critique gate dispatches a teammate. Interactive runs
+  keep the full loop, but the spec-writer brief now REVISES the existing
+  SPEC.md with the transcript delta instead of re-authoring from scratch.
+- **PATTERNS.md background prefetch**: DISCUSS Step 1.75 fires the
+  pattern-mapper as a one-shot background Agent (skipped for greenfield,
+  workspace mode, GSD ingest, and first-run map bootstraps); PLAN Step 0
+  joins with a bounded 120s wait. The planner no longer pays for analog
+  mining serially before it can start the task DAG.
+- **Bootstrap join moved** from DISCUSS Step 1.5 (a pre-work sleep-poll of up
+  to 600s) to Step 5.8 (post-gate): the first-run codebase mappers get the
+  whole phase to finish concurrently with the critique.
+- **One-pass autonomous SPEC interview**: all six perspectives in a single
+  pass with one end-of-pass scoring and batched `decisions.sh` writes — the
+  round structure existed to pace a human. Interactive interviews unchanged.
+
+Expected effect on a medium autonomous run: ~45m design phases → ~15-20m,
+with identical artifacts and gate semantics. Gate telemetry (`gate_round`
+events now carry `mode: single-critic|delta`) makes the before/after
+measurable via `/loop-spec:retro`.
+
 ## [2.12.0]
 
 ### Added — `/loop-spec:retro` (the telemetry circuit, closed)

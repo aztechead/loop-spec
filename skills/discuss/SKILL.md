@@ -458,8 +458,8 @@ SendMessage({
 Wait for `TeammateIdle` from `spec-writer-1`. When `SPEC.md written` is received (or the lead finished its direct edit):
 
 **No-op-revision shortcut (skip the redundant re-critique).** Re-critiquing byte-identical
-text yields the same verdict, so a re-dispatch that did not actually change SPEC.md must not
-trigger another full debate round (wasted opus dispatches, and a potential loop). Compare the
+text yields the same verdict, so a revision pass that did not actually change SPEC.md must not
+trigger even a delta re-verify (a wasted dispatch, and a potential loop). Compare the
 hash:
 
 ```bash

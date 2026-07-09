@@ -1,6 +1,6 @@
 ---
 name: advocate
-description: Makes the case for a SPEC or PLAN in the critique gate. Read-only. Argues the design is sound. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
+description: Makes the case for a SPEC or PLAN in the critique gate. Dispatched only when the gate escalates to the paired debate (skills/shared/tier-matrix.md, critique gate ladder). Read-only. Argues the design is sound. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
 tools:
   - Read
 model: sonnet
