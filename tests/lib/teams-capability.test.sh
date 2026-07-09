@@ -24,7 +24,8 @@ check() {
 # Invokes the lib in a clean env so a real exported flag can't leak in.
 run() {
   local version="$1"; shift
-  env -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS -u LOOP_SPEC_TEAMS_MODE "$@" \
+  env -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS -u LOOP_SPEC_TEAMS_MODE \
+      -u LOOP_SPEC_HARNESS -u PI_CODING_AGENT_DIR -u CLAUDECODE "$@" \
     bash "$LIB" $version
 }
 
@@ -65,6 +66,18 @@ check "E2: override none beats flag=1" "none" "$got"
 
 got=$(env CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_TEAMS_MODE=bogus bash "$LIB" "2.1.181")
 check "E3: override bogus -> none (fail safe)" "none" "$got"
+
+# Case F: pi harness -> none even with the flag exported and a modern version
+# (teams are a Claude Code surface; under pi the Agent tool does not exist)
+got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_HARNESS=pi)
+check "F: pi harness + flag=1 -> none" "none" "$got"
+
+got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 PI_CODING_AGENT_DIR=/x)
+check "F2: pi env hint + flag=1 -> none" "none" "$got"
+
+# LOOP_SPEC_TEAMS_MODE still wins over the harness gate (test escape hatch)
+got=$(run "2.1.181" LOOP_SPEC_HARNESS=pi LOOP_SPEC_TEAMS_MODE=implicit)
+check "F3: explicit mode override beats pi gate" "implicit" "$got"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

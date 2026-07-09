@@ -381,10 +381,10 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-verify
 
 ### Step 12 - Update feature.json
 
-Update `feature.json` via `lib/feature-write.sh`:
-- `completedPhases.append("verify")`
+Update `feature.json` via `lib/feature-write.sh` (nested `set`/`append` take dot paths directly, values JSON-quoted, never raw jq — `skills/shared/feature-state-schema.md` "Writing rules"):
+- `completedPhases.append("verify")` — `feature-write.sh append "$fdir" completedPhases '"verify"'`
 - `currentPhase = "iterate"` — VERIFY's gates passing means the SPEC acceptance checklist is met; the ITERATE phase then judges the integrated result against the **original goal** and decides whether to ship or loop back. (When `feature.iterate.maxIterations` is exhausted on a prior pass, ITERATE ships rather than re-entering; see `skills/iterate/SKILL.md`.)
-- `artifacts.verification = "docs/loop-spec/features/{slug}/VERIFICATION.md"`
+- `artifacts.verification = "docs/loop-spec/features/{slug}/VERIFICATION.md"` — `feature-write.sh set "$fdir" artifacts.verification '"docs/loop-spec/features/{slug}/VERIFICATION.md"'`
 
 ### Step 13 - Exit feature worktree (schema-6 only)
 

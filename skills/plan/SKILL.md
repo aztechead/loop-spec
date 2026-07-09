@@ -150,9 +150,12 @@ Wait for `TeammateIdle` from `planner-1`. If `planner-1` goes idle without produ
 - Send `SendMessage({to: "planner-1", message: "Check docs/loop-spec/features/{slug}/PATTERNS.md and docs/loop-spec/features/{slug}/PLAN.md -- one or both are missing. Produce any missing files now and include tasks[] JSON in your completion message."})` once.
 - If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors PATTERNS.md + PLAN.md itself from the same brief and continues, noting `lead-authored` in `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
 
-On `PATTERNS.md and PLAN.md written` message received: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
-- `artifacts.patternsSource = "pattern-mapper"`
+On `PATTERNS.md and PLAN.md written` message received: update `feature.json` via `lib/feature-write.sh` — nested `set` takes the dot path directly, value JSON-quoted, never raw jq (`skills/shared/feature-state-schema.md` "Writing rules"):
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patterns '"docs/loop-spec/features/'"${slug}"'/PATTERNS.md"'
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patternsSource '"pattern-mapper"'
+```
 
 Parse the `tasks[]` JSON from the message body. Store for use in Steps 3 and 4.
 

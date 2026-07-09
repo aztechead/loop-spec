@@ -6,14 +6,19 @@ team. It is the only EXECUTE path with a mechanical spec-adherence guarantee:
 every iteration of every worker re-runs the task's `verifyCommand`, and the
 feature's SPEC.md/PLAN.md are integrity-protected (hash-locked) so no worker can
 edit the requirements to match its work. It requires no agent-teams support and
-no `Workflow` tool — only the `claude` CLI on PATH and git.
+no `Workflow` tool — only the **agent CLI** on PATH and git. The agent CLI is the
+running harness's own headless binary (`claude` or `pi`), resolved by
+`bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli`; under pi every
+`supervisor.py` / `loop.py` invocation below additionally carries
+`--agent-cli pi --claude-bin pi` (see `skills/shared/pi-harness.md`).
 
 ## When this rung is selected (see execute/SKILL.md Step 3b)
 
-1. `LOOP_SPEC_EXECUTE_LOOPS=1` and `claude` CLI present — explicit opt-in, any W.
-2. Agent teams unavailable (`runtime.json.teamsAvailable == false`) and `claude`
+1. `LOOP_SPEC_EXECUTE_LOOPS=1` and the agent CLI present — explicit opt-in, any W.
+2. Agent teams unavailable (`runtime.json.teamsAvailable == false`) and the agent
    CLI present — automatic fallback that keeps EXECUTE fully functional without
-   `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`.
+   `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` (and the default at `W >= t_team`
+   under pi, where teams never exist).
 
 `LOOP_SPEC_EXECUTE_LOOPS=0` disables the rung entirely (kill switch; the ladder
 then behaves exactly as before this rung existed).
@@ -64,6 +69,11 @@ python3 "$LOOP_DIR/supervisor.py" \
   --retries "2"
 rc=$?
 ```
+
+Under pi, append `--agent-cli pi --claude-bin pi` and pass a **pi model id** (or
+omit `--model` to use the session default) — the `feature.models.*` aliases are
+Claude Code aliases and mean nothing to pi (`skills/shared/pi-harness.md`,
+"Model routing").
 
 The supervisor walks the DAG, runs each task's loop in an isolated worktree on
 branch `loop/<id>`, merges completed branches into `feat/{slug}` (the current

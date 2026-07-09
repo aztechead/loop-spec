@@ -25,6 +25,7 @@ git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 
 # Pin every probe so the test is hermetic (no `claude`, no graphify binary needed).
 run_preflight() {
+  LOOP_SPEC_HARNESS="${HARNESS:-claude}" \
   LOOP_SPEC_TEAMS_MODE=none \
   LOOP_SPEC_WORKFLOWS_AVAILABLE=0 \
   LOOP_SPEC_REQUIRE_GRAPHIFY="${REQUIRE_GRAPHIFY:-1}" \
@@ -41,6 +42,7 @@ check "missing dir exits 1" "1" "$ec"
 # clean repo: single mode, empty resume, zero backlog
 out="$(run_preflight)"
 check "workspace mode single" "single" "$(jq -r '.workspace.mode' <<<"$out")"
+check "harness reported" "claude" "$(jq -r '.harness.name' <<<"$out")"
 check "teams mode pinned" "none" "$(jq -r '.teams.mode' <<<"$out")"
 check "teams available false" "false" "$(jq -r '.teams.available' <<<"$out")"
 check "workflows pinned off" "false" "$(jq -r '.workflows.available' <<<"$out")"
@@ -54,6 +56,10 @@ check "no warnings" "0" "$(jq -r '.warnings | length' <<<"$out")"
 # graphify bypass reported (never exits non-zero either way)
 out="$(REQUIRE_GRAPHIFY=0 run_preflight)"
 check "graphify bypass reported" "false" "$(jq -r '.graphify.required' <<<"$out")"
+
+# pi harness flows through the blob
+out="$(HARNESS=pi run_preflight)"
+check "pi harness reported" "pi" "$(jq -r '.harness.name' <<<"$out")"
 
 # backlog count flows through
 LOOP_SPEC_BACKLOG_FILE="$REPO/.loop-spec/BACKLOG.md" bash "$REPO_ROOT/lib/backlog.sh" add s manual "one thing" >/dev/null

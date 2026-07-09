@@ -48,6 +48,40 @@ The same archetypes cover the rest of the development surface: `/loop-spec:cycle
 
 5. Restart Claude Code (or run `/reload-plugins`) so the new skills register.
 
+### Running under pi (pi.dev)
+
+loop-spec also ships as a [pi](https://pi.dev) package — same source tree, both
+harnesses stay fully supported:
+
+```bash
+pi install git:github.com/aztechead/loop-spec
+```
+
+That loads every skill (pi implements the same Agent Skills standard), the
+`/loop-debug` prompt template, and the bundled extension
+(`extensions/pi/loop-spec.ts`) that bridges the Claude Code surface: it exports
+`LOOP_SPEC_HARNESS=pi` / `CLAUDE_PLUGIN_ROOT` / `CLAUDE_PROJECT_DIR` /
+`CLAUDE_SKILL_DIR` into every bash command and runs the SessionStart /
+prompt-submit / session-end hooks pi has no native equivalent for. graphify and
+the `bash`/`git`/`jq`/`python3` prerequisites are identical.
+
+What changes on pi (contract: `skills/shared/pi-harness.md`):
+
+- **No subagents, teams, or Workflow tool.** Critique and verify dispatches run
+  inline by the lead with the same artifacts and gates; EXECUTE selects the
+  **inline rung** (`skills/shared/execute-inline.md`) or the **loop-fleet rung**,
+  whose bounded headless loops spawn `pi --mode json` instead of `claude -p`
+  (`loop.py --agent-cli pi`, auto-detected when the binary is named `pi`).
+- **Both run modes have parity:** the pi TUI is the interactive mode, and
+  `pi --mode json "/skill:cycle autonomous <description>"` (or `pi -p`, or the
+  pi SDK's `createAgentSession()`) is the headless/autonomous mode, mirroring
+  `claude -p`.
+- **Models:** no per-dispatch aliases; inline work uses the session model and
+  fleet dispatch takes pi model ids.
+
+Claude Code behavior is unchanged by any of this — the pi path is an additive
+branch keyed on `lib/harness.sh detect`.
+
 ## Your first feature — a 5-minute walkthrough
 
 From a repo you want to change:
@@ -608,6 +642,9 @@ loop-spec/
 ├── .claude-plugin/
 │   ├── plugin.json
 │   └── marketplace.json
+├── package.json                     # pi (pi.dev) package manifest: skills + prompts + extension
+├── extensions/
+│   └── pi/loop-spec.ts              # pi extension: env bridge + CC hook bridge (node builtins only)
 ├── agents/                          # 13 specialized agent defs (teammates + one-shot mappers/probe)
 │   ├── spec-writer.md
 │   ├── planner.md
@@ -637,7 +674,7 @@ loop-spec/
 │   ├── discipline/                  # 5-gate behavioral directive toggle
 │   ├── simplicity/                  # laziness-ladder directive toggle (ponytail-ported; lite/full/ultra)
 │   ├── checking-gates/ specifying-gates/  # user-gate verification flow
-│   └── shared/                      # model-matrix, tier-matrix, team-prompts/, model-policy, autonomous-mode, execute-loops, execute-subagent, execute-loop-fleet, no-teams-fallback, cycle-resume-escalation, dispatch-fanout, feature-state-schema
+│   └── shared/                      # model-matrix, tier-matrix, team-prompts/, model-policy, autonomous-mode, execute-loops, execute-subagent, execute-inline, execute-loop-fleet, no-teams-fallback, pi-harness, cycle-resume-escalation, dispatch-fanout, feature-state-schema
 ├── lib/                             # extracted bash with unit tests
 │   ├── feature-write.sh             # atomic feature.json writes with .bak rotation
 │   ├── git-ops.sh                   # base-branch detection, slugify, sha helpers (-C <path> for workspace mode)
@@ -655,7 +692,8 @@ loop-spec/
 │   ├── criteria-coverage.sh         # SPEC Good-Enough criteria must appear in PLAN (plan Step 5.5 gate)
 │   ├── test-tamper-scan.sh          # anti-reward-hacking: deleted tests / added skips / || true (VERIFY Step 1.5)
 │   ├── backlog.sh                   # deferred-work backlog (.loop-spec/BACKLOG.md) + drain-mode support
-│   ├── teams-capability.sh          # 3-way teamsMode probe: none / explicit / implicit (CC >= 2.1.178)
+│   ├── harness.sh                   # harness seam: detect / cli / subagents (claude vs pi)
+│   ├── teams-capability.sh          # 3-way teamsMode probe: none / explicit / implicit (CC >= 2.1.178; hard `none` under pi)
 │   ├── team-ops.sh                  # team_name_for_phase + agent-teams env assertion
 │   ├── workflows/                   # dynamic-workflow scripts (execute-dag, map-codebase, ...)
 │   └── checkpoint / decision-coverage / detect-test-cmd / pause-snapshot / plan-adherence / regression-scan / validate-task-metadata / worktree-commit-check

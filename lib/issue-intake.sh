@@ -23,10 +23,14 @@
 # the run, then `loop-spec:done` or `loop-spec:failed` after; issues already
 # carrying any lifecycle label are skipped, so re-runs never double-process.
 #
-# The claude invocation runs from the CURRENT directory (the target repo root)
-# and is: claude -p "/loop-spec:intake autonomous <text>" $LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS
-# (default flags: --permission-mode acceptEdits). The intake skill's own
-# provenance rules apply — the issue text is restructured, never invented.
+# The agent invocation runs from the CURRENT directory (the target repo root)
+# via the harness's own headless CLI (lib/harness.sh cli):
+#   claude: claude -p "/loop-spec:intake autonomous <text>" $LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS
+#           (default flags: --permission-mode acceptEdits)
+#   pi:     pi --mode json "/skill:intake autonomous <text>" (no default flags;
+#           permission modes are claude-only)
+# The intake skill's own provenance rules apply — the issue text is
+# restructured, never invented.
 #
 # Exit codes: 0 = ran (possibly zero eligible issues); 1 = a processed issue
 # failed; 2 = bad invocation / missing prerequisite.
@@ -43,7 +47,22 @@ LIMIT=1
 REPO=""
 DRY=0
 FIXTURE=""
-CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:---permission-mode acceptEdits}"
+
+# Harness seam: spawn the harness's own headless CLI with its own skill-command
+# prefix (claude: `claude -p "/loop-spec:intake ..."`; pi: `pi --mode json
+# "/skill:intake ..."`). Permission modes are claude-only, so pi defaults to no
+# extra flags; LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS still overrides verbatim.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AGENT_CLI="$(bash "$SCRIPT_DIR/harness.sh" cli)"
+if [[ "$AGENT_CLI" == "pi" ]]; then
+  AGENT_ARGS=(--mode json)
+  INTAKE_CMD="/skill:intake"
+  CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:-}"
+else
+  AGENT_ARGS=(-p)
+  INTAKE_CMD="/loop-spec:intake"
+  CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:---permission-mode acceptEdits}"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -64,7 +83,7 @@ if [[ -n "$FIXTURE" ]]; then
   issues="$(jq -c . "$FIXTURE" 2>/dev/null)" || { echo "issue-intake.sh: fixture is not valid JSON" >&2; exit 2; }
 else
   command -v gh >/dev/null 2>&1 || _die2 "'gh' not on PATH"
-  command -v claude >/dev/null 2>&1 || { [[ "$DRY" == "1" ]] || _die2 "'claude' not on PATH"; }
+  command -v "$AGENT_CLI" >/dev/null 2>&1 || { [[ "$DRY" == "1" ]] || _die2 "'$AGENT_CLI' not on PATH"; }
   repo_args=()
   [[ -n "$REPO" ]] && repo_args=(--repo "$REPO")
   issues="$(gh issue list ${repo_args[@]+"${repo_args[@]}"} --label "$LABEL" --state open \
@@ -103,7 +122,7 @@ Source: GitHub issue #${number}"
   if [[ "$DRY" == "1" ]]; then
     echo "DRY-RUN issue #${number}:"
     echo "  1. gh issue edit ${number} --add-label loop-spec:in-progress"
-    echo "  2. claude -p \"/loop-spec:intake autonomous <issue #${number} text>\" ${CLAUDE_FLAGS}"
+    echo "  2. ${AGENT_CLI} ${AGENT_ARGS[*]} \"${INTAKE_CMD} autonomous <issue #${number} text>\" ${CLAUDE_FLAGS}"
     echo "  3. read .loop-spec/last-result.json -> comment PR URL (or failure) on issue #${number}"
     echo "  4. gh issue edit ${number} --add-label loop-spec:done|loop-spec:failed --remove-label loop-spec:in-progress"
     continue
@@ -117,7 +136,7 @@ Source: GitHub issue #${number}"
     || echo "issue-intake: WARN could not add in-progress label to #${number} (continuing)" >&2
 
   # shellcheck disable=SC2086  # CLAUDE_FLAGS is intentionally word-split
-  claude -p "/loop-spec:intake autonomous ${intake_text}" $CLAUDE_FLAGS
+  "$AGENT_CLI" "${AGENT_ARGS[@]}" "${INTAKE_CMD} autonomous ${intake_text}" $CLAUDE_FLAGS
   claude_ec=$?
 
   result_file=".loop-spec/last-result.json"

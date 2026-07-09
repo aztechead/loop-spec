@@ -55,6 +55,10 @@ HALT_AGENT_ERROR = "agent_error"
 
 MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower this
 
+DEFAULT_JUDGE_MODEL = "claude-haiku-4-5-20251001"  # claude -p id; dropped under pi
+                                                   # (pi's model registry uses its own
+                                                   # ids — the session default judges)
+
 PROGRESS_BANNER = (
     "# Loop progress notes\n\n"
     "Maintained by the agent across iterations. Each iteration: append what you "
@@ -87,12 +91,44 @@ class LoopConfig:
                                       # recommended unattended-session retry mechanism
                                       # (CC 2.1.186). Empty = leave the env as inherited.
     judge: bool = False
-    judge_model: str = "claude-haiku-4-5-20251001"
+    judge_model: str = DEFAULT_JUDGE_MODEL
     state_dir: str = ""               # default .loop/<task_id>
     commit: bool = False              # scoped git commit per productive iteration
     claude_bin: str = "claude"
+    agent_cli: str = ""               # "claude" | "pi" | "" (auto: pi iff the binary
+                                      # is named `pi`). Selects the headless protocol:
+                                      # claude -p JSON object vs pi --mode json events.
     reset: bool = False
     extra_args: list = field(default_factory=list)
+
+    def resolved_agent_cli(self) -> str:
+        if self.agent_cli in ("claude", "pi"):
+            return self.agent_cli
+        return "pi" if Path(self.claude_bin).name == "pi" else "claude"
+
+    def resolved_agent_bin(self) -> str:
+        # --agent-cli pi with claude_bin left at its default means "the pi binary".
+        if self.resolved_agent_cli() == "pi" and self.claude_bin == "claude":
+            return "pi"
+        return self.claude_bin
+
+    def transport_conflict(self) -> Optional[str]:
+        """Detect a binary that is certainly the wrong protocol for the selected
+        backend. Without this, `--agent-cli pi --claude-bin /path/to/claude`
+        spawns `claude --mode json ...`, which claude rejects — and the loop
+        halts agent_error every tick with no hint the two flags fought.
+        Returns a human-readable message, or None when consistent."""
+        cli = self.resolved_agent_cli()
+        name = Path(self.resolved_agent_bin()).name
+        if cli == "pi" and name == "claude":
+            return (f"--agent-cli pi but the binary is `{self.resolved_agent_bin()}`: "
+                    "claude does not speak pi's --mode json protocol. Point "
+                    "--claude-bin at the pi binary or drop --agent-cli.")
+        if cli == "claude" and name == "pi":
+            return (f"--agent-cli claude but the binary is `{self.resolved_agent_bin()}`: "
+                    "pi does not speak claude's -p --output-format json protocol. "
+                    "Use --agent-cli pi or point --claude-bin at claude.")
+        return None
 
     def resolved_task_id(self) -> str:
         if self.task_id:
@@ -243,11 +279,46 @@ def hash_paths(paths: list[Path], ignore_dir: str) -> str:
 
 
 # =============================================================================
-# Claude Code invocation (headless)
+# Agent invocation (headless) — claude -p and pi --mode json behind one contract
 # =============================================================================
+def _spawn_agent(cmd: list, *, bin_label: str, env: Optional[dict],
+                 resume: Optional[str], raw_log: Optional[Path],
+                 timeout: Optional[float]):
+    """Shared transport scaffold for both backends: run the subprocess, persist
+    the raw log (+ stderr sidecar), and map spawn/timeout/exit failures onto the
+    common error-dict shape. Returns (proc, None) on a zero-exit run, else
+    (None, error_dict) — response parsing is the only per-backend part."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+    except FileNotFoundError:
+        return None, {"ok": False, "error": f"`{bin_label}` not found on PATH",
+                      "turns": 0, "session_id": resume, "result": ""}
+    except subprocess.TimeoutExpired as e:
+        if raw_log is not None:
+            raw_log.parent.mkdir(parents=True, exist_ok=True)
+            raw_log.write_text(e.stdout or "")
+        return None, {"ok": False, "error": f"agent tick timed out after {int(timeout)}s",
+                      "turns": 0, "session_id": resume, "result": ""}
+
+    if raw_log is not None:  # capture everything: unattended, the only record is what you kept
+        raw_log.parent.mkdir(parents=True, exist_ok=True)
+        raw_log.write_text(proc.stdout or "")
+        if proc.stderr.strip():
+            raw_log.with_suffix(".stderr.txt").write_text(proc.stderr)
+
+    if proc.returncode != 0:
+        return None, {"ok": False, "error": (proc.stderr.strip() or f"exit {proc.returncode}")[:500],
+                      "turns": 0, "session_id": resume,
+                      "result": proc.stdout.strip()[:1000]}
+    return proc, None
+
+
 def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
                permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
                timeout: Optional[float] = None) -> dict:
+    if cfg.resolved_agent_cli() == "pi":
+        return run_pi(prompt, cfg, resume=resume, permission_mode=permission_mode,
+                      raw_log=raw_log, timeout=timeout)
     cmd = [cfg.claude_bin, "-p", prompt, "--output-format", "json",
            "--permission-mode", permission_mode or cfg.permission_mode]
     if cfg.allowed_tools:
@@ -265,28 +336,10 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         env = dict(os.environ)
         env["CLAUDE_CODE_RETRY_WATCHDOG"] = cfg.retry_watchdog
 
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
-    except FileNotFoundError:
-        return {"ok": False, "error": f"`{cfg.claude_bin}` not found on PATH",
-                "turns": 0, "session_id": resume, "result": ""}
-    except subprocess.TimeoutExpired as e:
-        if raw_log is not None:
-            raw_log.parent.mkdir(parents=True, exist_ok=True)
-            raw_log.write_text(e.stdout or "")
-        return {"ok": False, "error": f"agent tick timed out after {int(timeout)}s",
-                "turns": 0, "session_id": resume, "result": ""}
-
-    if raw_log is not None:  # capture everything: unattended, the only record is what you kept
-        raw_log.parent.mkdir(parents=True, exist_ok=True)
-        raw_log.write_text(proc.stdout or "")
-        if proc.stderr.strip():
-            raw_log.with_suffix(".stderr.txt").write_text(proc.stderr)
-
-    if proc.returncode != 0:
-        return {"ok": False, "error": (proc.stderr.strip() or f"exit {proc.returncode}")[:500],
-                "turns": 0, "session_id": resume,
-                "result": proc.stdout.strip()[:1000]}
+    proc, err = _spawn_agent(cmd, bin_label=cfg.claude_bin, env=env, resume=resume,
+                             raw_log=raw_log, timeout=timeout)
+    if err:
+        return err
     try:
         data = json.loads(proc.stdout)
     except json.JSONDecodeError:
@@ -303,6 +356,104 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         # error paths) so callers can distinguish "free" from "unknown".
         "cost_usd": float(cost) if isinstance(cost, (int, float)) else None,
     }
+
+
+def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
+           permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
+           timeout: Optional[float] = None) -> dict:
+    """pi (pi.dev) headless backend, normalized to run_claude's result contract.
+
+    `pi --mode json "<prompt>"` emits one JSON event per line: a session header
+    first, then AgentSessionEvent objects (turn_start/turn_end, message_end, ...).
+    Mapping to the claude -p JSON-object contract (field names per the pi
+    session-format docs: header `{"type":"session","id":...}`, assistant
+    messages carry `usage.cost` as an OBJECT `{input,output,cacheRead,
+    cacheWrite,total}`):
+      - result:     text blocks of the LAST assistant message_end event
+      - turns:      count of turn_end events
+      - session_id: header line `id`; resume passes `--session <id>`
+      - cost_usd:   summed `usage.cost.total` (numeric `usage.cost` accepted as
+                    a fallback), else None (callers already treat None as
+                    "unknown", not "free")
+      - permission_mode "plan" (read-only judge / compiler) -> --no-builtin-tools:
+        those prompts inline everything they need (diff, verifier output, spec),
+        and zero tools is the strongest read-only guarantee pi offers headlessly
+      - claude-only knobs are ignored here: allowed_tools, fallback_model,
+        retry_watchdog. pi-specific flags go through extra_args verbatim.
+    """
+    bin_ = cfg.resolved_agent_bin()
+    mode = permission_mode or cfg.permission_mode
+    cmd = [bin_, "--mode", "json"]
+    if resume:
+        cmd += ["--session", str(resume)]
+    elif cfg.mode != "continue":
+        # fresh mode never resumes; keep the fleet from littering session files
+        cmd += ["--no-session"]
+    if cfg.model:
+        cmd += ["--model", cfg.model]
+    if mode == "plan":
+        cmd += ["--no-builtin-tools"]
+    cmd += list(cfg.extra_args)
+    cmd += [prompt]
+
+    proc, err = _spawn_agent(cmd, bin_label=bin_, env=None, resume=resume,
+                             raw_log=raw_log, timeout=timeout)
+    if err:
+        return err
+
+    events = []
+    for line in (proc.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(ev, dict):
+            events.append(ev)
+    if not events:
+        return {"ok": False, "error": "non-JSON output from pi",
+                "turns": 0, "session_id": resume, "result": proc.stdout.strip()[:1000]}
+
+    # Header line is documented as {"type":"session","id":"<uuid>",...}.
+    session_id = resume
+    v = events[0].get("id")
+    if isinstance(v, str) and v:
+        session_id = v
+
+    turns = sum(1 for ev in events if ev.get("type") == "turn_end")
+
+    result_text = ""
+    cost: Optional[float] = None
+    for ev in events:
+        if ev.get("type") != "message_end":
+            continue
+        msg = ev.get("message") or {}
+        usage = msg.get("usage") or {}
+        # Documented shape: usage.cost is an object {input, output, cacheRead,
+        # cacheWrite, total}. Accept a bare number too (cheap forward-compat).
+        c = usage.get("cost")
+        if isinstance(c, dict):
+            c = c.get("total")
+        if isinstance(c, (int, float)):
+            cost = (cost or 0.0) + float(c)
+        if msg.get("role") != "assistant":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            result_text = content
+        elif isinstance(content, list):
+            texts = [b.get("text", "") for b in content
+                     if isinstance(b, dict) and b.get("type") == "text"]
+            if texts:
+                result_text = "\n".join(t for t in texts if t)
+
+    if not result_text:
+        return {"ok": False, "error": "no assistant message in pi output",
+                "turns": turns, "session_id": session_id, "result": ""}
+    return {"ok": True, "error": None, "turns": turns,
+            "session_id": session_id, "result": result_text, "cost_usd": cost}
 
 
 def run_verifier(cmd: str, timeout: int, out_file: Path) -> tuple[bool, str]:
@@ -343,8 +494,11 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str) -> bool:
         "Answer DONE only if the diff plausibly fulfils the task as stated, not merely "
         "if the verifier passed."
     )
-    jcfg = LoopConfig(task="", claude_bin=cfg.claude_bin, model=cfg.judge_model,
-                      allowed_tools="")
+    judge_model = cfg.judge_model
+    if cfg.resolved_agent_cli() == "pi" and judge_model == DEFAULT_JUDGE_MODEL:
+        judge_model = ""  # claude-only id; let pi's session default judge
+    jcfg = LoopConfig(task="", claude_bin=cfg.claude_bin, agent_cli=cfg.agent_cli,
+                      model=judge_model, allowed_tools="")
     res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600)
     if not res["ok"]:
         print(f"⚠ judge run failed ({res['error']}); treating as NOT_DONE")
@@ -388,6 +542,9 @@ def git_commit_scoped(message: str, ignore_dir: str) -> str:
 # The loop
 # =============================================================================
 def run_loop(cfg: LoopConfig) -> dict:
+    conflict = cfg.transport_conflict()
+    if conflict:  # CLI paths catch this in build_config; guard library callers too
+        raise ValueError(f"loop.py transport conflict: {conflict}")
     task_id = cfg.resolved_task_id()
     state_dir = cfg.resolved_state_dir()
     state_path = state_dir / "state.json"
@@ -614,7 +771,11 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     p.add_argument("--judge-model", default=None)
     p.add_argument("--state-dir", default=None)
     p.add_argument("--commit", action="store_true", default=None)
-    p.add_argument("--claude-bin", default=None)
+    p.add_argument("--claude-bin", default=None,
+                   help="agent binary (default `claude`; with --agent-cli pi, `pi`)")
+    p.add_argument("--agent-cli", choices=["claude", "pi"], default=None, dest="agent_cli",
+                   help="headless protocol: claude -p JSON vs pi --mode json events "
+                        "(default: auto — pi iff the binary is named `pi`)")
     p.add_argument("--reset", action="store_true", default=None)
     args, extra = p.parse_known_args(argv)
 
@@ -637,7 +798,11 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
         p.error(f"unknown config keys: {unknown}")
     if not base.get("task"):
         p.error("a task is required (positional, --prompt-file, or 'task' in --config)")
-    return LoopConfig(**base)
+    cfg = LoopConfig(**base)
+    conflict = cfg.transport_conflict()
+    if conflict:
+        p.error(conflict)
+    return cfg
 
 
 def main() -> int:

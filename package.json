@@ -1,0 +1,30 @@
+{
+  "name": "loop-spec",
+  "version": "2.14.0",
+  "description": "Loop-driven development from a spec file (or a prose description). A six-phase cycle (SPEC/DISCUSS/PLAN/EXECUTE/VERIFY/ITERATE) authors and critiques a spec, plans a task DAG, executes it, then a convergence loop judges the result against the original goal. Ships as a Claude Code plugin and a pi (pi.dev) package.",
+  "license": "MIT",
+  "homepage": "https://github.com/aztechead/loop-spec",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aztechead/loop-spec"
+  },
+  "keywords": [
+    "pi-package",
+    "spec-driven",
+    "skills",
+    "tdd",
+    "agents",
+    "claude-code"
+  ],
+  "pi": {
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./commands/loop-debug.md"
+    ],
+    "extensions": [
+      "./extensions/pi/loop-spec.ts"
+    ]
+  }
+}

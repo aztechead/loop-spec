@@ -16,6 +16,11 @@ literal IDs like `claude-opus-4-8` with an InputValidationError. The alias
 resolves to the harness's current model for that family (as of this writing:
 opus -> claude-opus-4-8, sonnet -> claude-sonnet-4-6).
 
+These aliases are a **Claude Code** surface. Under the pi harness there is no
+per-dispatch model routing at all (inline work runs on the session model) and
+loop-fleet dispatch takes pi model **ids**, not aliases — see
+`skills/shared/pi-harness.md` "Model routing".
+
 ## Matrix
 
 | Role family | Model |

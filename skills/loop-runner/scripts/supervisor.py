@@ -126,6 +126,7 @@ class Supervisor:
                     "mode": t.get("mode", "fresh"),
                     "allowed_tools": t.get("allowed_tools", "Read,Edit,Bash"),
                     "claude_bin": self.args.claude_bin,
+                    "agent_cli": self.args.agent_cli,
                     "commit": True,           # durability: each productive tick is a commit
                     "reset": attempt > 1,     # retries start clean but keep the nudge
                 }
@@ -275,6 +276,9 @@ def main() -> int:
                    help="CLAUDE_CODE_RETRY_WATCHDOG for each unattended loop tick "
                         "(recommended unattended retry mechanism, CC 2.1.186).")
     p.add_argument("--claude-bin", default="claude")
+    p.add_argument("--agent-cli", choices=["claude", "pi"], default="", dest="agent_cli",
+                   help="Headless protocol for every loop tick: claude -p JSON vs "
+                        "pi --mode json events (default: auto from the binary name).")
     p.add_argument("--no-worktree", action="store_true",
                    help="Run tasks in the repo itself (serial use only; no isolation).")
     p.add_argument("--cleanup-worktrees", action="store_true", default=False,

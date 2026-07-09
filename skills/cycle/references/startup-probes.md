@@ -6,6 +6,11 @@ Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. App
 
 Model selection is fixed (see `skills/shared/model-matrix.md`): the unique alias set is always `{opus, sonnet}` (harness aliases — the Agent tool's `model` parameter accepts aliases, not literal IDs).
 
+**pi harness: skip this probe entirely** (`harness != "claude"` in the preflight
+blob). The probe pre-flights `Agent` dispatches and pi has no `Agent` tool; model
+failures surface loudly on the first loop-fleet dispatch instead. Do not write
+`modelsProbedAt`. See `skills/shared/pi-harness.md`.
+
 **Probe cache (speed):** the probe result is cached in `.loop-spec/runtime.json`
 (`modelsProbedAt`, ISO-8601). Skip the probe entirely — zero Agent dispatches —
 when either holds:
@@ -66,8 +71,9 @@ data['workflowsAvailable'] = sys.argv[1] == 'true'
 data['workflowExecuteOptIn'] = sys.argv[2] == 'true'
 data['teamsAvailable'] = sys.argv[3] == 'true'
 data['teamsMode'] = sys.argv[4]   # none | explicit | implicit
+data['harness'] = sys.argv[5]     # claude | pi (lib/harness.sh detect)
 json.dump(data, open(path, 'w'))
-" "$wf" "$optin" "$teams_available" "$teams_mode"
+" "$wf" "$optin" "$teams_available" "$teams_mode" "$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect)"
 ```
 
 `teamsMode` is the authoritative dispatch selector; `teamsAvailable` is kept as the

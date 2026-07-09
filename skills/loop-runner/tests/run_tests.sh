@@ -265,6 +265,77 @@ print('corrupt result.json' in r.get('error', ''))
 check "corrupt → agent_error"               "$(echo "$RR_BAD" | head -1)" "agent_error"
 check "corrupt → 'corrupt result.json'"     "$(echo "$RR_BAD" | tail -1)" "True"
 
+echo "== 16. pi backend: --agent-cli pi speaks the event-stream protocol =="
+FAKEPI="$HERE/fakepi"; chmod +x "$FAKEPI"
+
+# 16a. complete run: same result contract as the claude backend
+newrepo
+python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id pidone \
+  --agent-cli pi --claude-bin "$FAKEPI" \
+  --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 99 >/dev/null 2>&1
+check "pi exit 0"          "$?" "0"
+check "pi halt_reason"     "$(reason .loop/pidone/result.json)" "complete"
+check "pi cost from usage" "$(python3 -c "import json;c=json.load(open('.loop/pidone/result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
+check "pi raw log kept"    "$(test -f .loop/pidone/iter-001.raw.json && echo yes)" "yes"
+
+# 16b. flag shape: pi gets pi flags, never claude-only ones
+newrepo
+PILOG="$R/piargv.txt"
+FAKE_ARGV_LOG="$PILOG" python3 "$SCRIPTS/loop.py" "noop" --task-id piflags \
+  --agent-cli pi --claude-bin "$FAKEPI" --model claude-sonnet-4-5 \
+  --fallback-model some-model --retry-watchdog 5 \
+  --max-iterations 1 --verify 'true' >/dev/null 2>&1
+check "pi: --mode json"            "$(grep -c -- '--mode json' "$PILOG")" "1"
+check "pi: --no-session (fresh)"   "$(grep -c -- '--no-session' "$PILOG")" "1"
+check "pi: --model passed"         "$(grep -c -- '--model claude-sonnet-4-5' "$PILOG")" "1"
+check "pi: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permission-mode|--output-format|--allowedTools' "$PILOG")" "0"
+
+# 16c. compiler via pi backend: read-only pass = --no-builtin-tools
+newrepo
+echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md
+git add -A; git commit -qm spec
+cat > goodplan.json << 'EOF'
+{"spec":"SPEC.md",
+ "tasks":[
+  {"id":"make-a","prompt":"Create a.txt per AC1. TOUCH:a.txt",
+   "verify":"test -f a.txt","protected":[],"max_iterations":5,"deps":[]}]}
+EOF
+PILOG2="$R/piargv2.txt"
+FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$PILOG2" python3 "$SCRIPTS/compile_spec.py" SPEC.md \
+  --agent-cli pi --claude-bin "$FAKEPI" --out plan/tasks.json >/dev/null 2>&1
+check "pi compile exit 0"      "$?" "0"
+check "pi plan written"        "$(test -f plan/tasks.json && echo yes)" "yes"
+check "pi read-only compile"   "$(grep -c -- '--no-builtin-tools' "$PILOG2")" "1"
+
+# 16d. auto-detection: a binary named `pi` selects the pi protocol on its own
+newrepo
+cp "$FAKEPI" "$R/pi"; chmod +x "$R/pi"
+python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id piauto \
+  --claude-bin "$R/pi" \
+  --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 99 >/dev/null 2>&1
+check "pi auto exit 0"      "$?" "0"
+check "pi auto halt_reason" "$(reason .loop/piauto/result.json)" "complete"
+
+# 16e. supervisor passes --agent-cli through to every loop tick
+newrepo
+cat > plan.json << 'EOF'
+{"tasks":[
+ {"id":"solo","prompt":"make the file. TOUCH:s.txt",
+  "verify":"test -f s.txt","max_iterations":3,"deps":[]}]}
+EOF
+git add -A; git commit -qm plan
+python3 "$SCRIPTS/supervisor.py" --plan plan.json --agent-cli pi --claude-bin "$FAKEPI" >/dev/null 2>&1
+check "pi fleet exit 0"     "$?" "0"
+check "pi fleet completed"  "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['completed'])")" "['solo']"
+
+# 16f. transport conflict fails fast: --agent-cli pi pointed at a claude binary
+newrepo
+cp "$FAKE" "$R/claude"; chmod +x "$R/claude"
+python3 "$SCRIPTS/loop.py" "noop" --task-id conflict --agent-cli pi --claude-bin "$R/claude" \
+  --max-iterations 1 >/dev/null 2>"$R/err.txt"
+check "conflict exit 2"     "$?" "2"
+check "conflict names both flags" "$(grep -c 'does not speak' "$R/err.txt")" "1"
+
 echo
 echo "================= $PASS passed, $FAIL failed ================="
 exit $([[ $FAIL -eq 0 ]] && echo 0 || echo 1)

@@ -2,6 +2,15 @@
 
 Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json`. It is the **committed resume contract** (tracked in git so resume survives a clone / hand-off; the cycle commits it on each phase transition). `PROGRESS.md` (the phase-transition journal) is committed alongside it. The remaining siblings -- `feature.json.bak`, `gate-logs/`, transcripts -- stay gitignored as per-machine churn. Atomic write pattern: write `feature.json.tmp`, fsync, rename. Backup `feature.json.bak` updated on each successful write. All writes go through `lib/feature-write.sh`.
 
+**Writing rules (every phase, no exceptions):** never mutate `feature.json` with raw `jq`/`python3` — that bypasses the atomic write and `.bak` rotation that resume depends on. `feature-write.sh set` takes **nested dot paths** (object keys only, no array indices) and a **JSON value** (strings must be quoted):
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patterns '"docs/loop-spec/features/'"${slug}"'/PATTERNS.md"'
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" warnings '"some warning"'
+```
+
+If a `set`/`append` call errors, read the message — the common causes are an unquoted string value or an array-index path (replace the whole array via `set` on its parent instead) — and retry with the corrected call; do NOT fall back to raw jq.
+
 Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet`) per phase team, not in `feature.json`. See "Harness task list usage" below.
 
 ## Schema (v7)

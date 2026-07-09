@@ -2,6 +2,58 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.14.0]
+
+### Added — pi (pi.dev) harness support, Claude Code compatibility unchanged
+
+loop-spec now ships as a pi package from the same source tree
+(`pi install git:github.com/aztechead/loop-spec`), with parity for both run
+modes: the pi TUI mirrors interactive Claude Code, and `pi --mode json` /
+`pi -p` / the pi SDK (`createAgentSession()`) mirror `claude -p` headless and
+autonomous mode. Every pi accommodation is an additive branch keyed on a
+harness probe — the Claude Code paths are untouched.
+
+- **Packaging** (`package.json`): pi resource manifest — `skills/` load via the
+  Agent Skills standard both harnesses share, `commands/loop-debug.md` doubles
+  as a pi prompt template (same `$ARGUMENTS` substitution), and the extension
+  below is declared. Version locked to `.claude-plugin/plugin.json`
+  (`tests/validate-pi-manifest.test.sh`).
+- **Harness seam** (`lib/harness.sh`): `detect` (claude | pi, from
+  `LOOP_SPEC_HARNESS` → `CLAUDECODE` → `PI_CODING_AGENT_DIR` → claude default),
+  `cli` (which headless binary the fleet spawns), `subagents` (does the Agent
+  tool exist). `cycle-preflight.sh` reports `harness.name` in its blob.
+- **pi extension** (`extensions/pi/loop-spec.ts`, node builtins only,
+  fail-open): exports `LOOP_SPEC_HARNESS=pi` / `CLAUDE_PLUGIN_ROOT` /
+  `CLAUDE_PROJECT_DIR` into every bash call, tracks the active skill's
+  `CLAUDE_SKILL_DIR` from SKILL.md reads, and bridges the CC hooks pi lacks:
+  SessionStart injects (discipline/grill/simplicity/rules), prompt-submit
+  done-criteria, and session-end learnings.
+- **Adaptation contract** (`skills/shared/pi-harness.md`): tool substitution
+  table (no Agent/AskUserQuestion/TaskCreate/Workflow/ToolSearch under pi),
+  the inline dispatch rule (one-shot subagent briefs performed by the lead,
+  same artifacts and gates), `CLAUDE_SKILL_DIR` fallback, model routing, and
+  the TUI/headless parity map. Wired from cycle, no-teams-fallback,
+  harness-call-contracts, autonomous-mode, model-matrix, and loop-debug.
+- **EXECUTE rung 0 — inline** (`skills/shared/execute-inline.md`): when no
+  subagent harness exists, the lead executes the DAG itself on `feat/{slug}`
+  with the same `{merged, blocked, escalation}` contract and blocked-reason
+  vocabulary; ladder + tier-matrix updated (loop fleet still takes
+  `W >= t_team` when the agent CLI is present).
+- **Capability hardening**: `teams-capability.sh` returns `none` and
+  `workflow-availability.sh` returns `false` under pi even when
+  `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is exported globally and a stray
+  `claude` binary is on PATH (that combination would otherwise mis-route every
+  spawn).
+- **loop-runner pi backend** (`loop.py --agent-cli pi`, auto when the binary
+  is named `pi`): `pi --mode json` event streams normalized onto the exact
+  claude result contract (result/turns/session_id/cost); read-only passes run
+  `--no-builtin-tools`; claude-only knobs are dropped; `supervisor.py` and
+  `compile_spec.py` thread the flag through the whole spec→plan→fleet path.
+  `tests/fakepi` + 15 new offline checks (suite: 45 → 60).
+- **Tests**: `validate-pi-manifest`, `pi-extension`, `pi-harness-coverage`
+  (pins every cross-file pi coupling), `lib/harness`, plus pi cases in the
+  teams/workflow/preflight suites. Offline suite: 76 → 78 green.
+
 ## [2.13.0]
 
 ### Changed — design-phase latency (SPEC/DISCUSS/PLAN were eating ~45m on medium autonomous tasks)

@@ -226,8 +226,10 @@ fi
 workflows_available=$(jq -r '.workflowsAvailable // false' .loop-spec/runtime.json 2>/dev/null || echo false)
 workflow_optin=$(jq -r '.workflowExecuteOptIn // false' .loop-spec/runtime.json 2>/dev/null || echo false)
 teams_available=$(jq -r '.teamsAvailable // true' .loop-spec/runtime.json 2>/dev/null || echo true)
+subagents=$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" subagents) # "true" iff the Agent tool exists
+agent_cli=$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli)       # headless binary for the loop rung
 loops_available=false
-command -v claude >/dev/null 2>&1 && loops_available=true
+command -v "$agent_cli" >/dev/null 2>&1 && loops_available=true
 loops_optin="${LOOP_SPEC_EXECUTE_LOOPS:-}"
 ```
 
@@ -237,11 +239,17 @@ Using the fixed `t_team = 3` and `t_wf = 6`:
 
 ```text
 if   loops_optin == "1" AND loops_available == true:                        rung = "loop"       # explicit opt-in, any W
+elif subagents != "true":                                                   # no Agent tool (pi today): subagent/team/workflow rungs cannot exist
+    if W >= t_team AND loops_available == true AND loops_optin != "0":      rung = "loop"       # fleet spawns $agent_cli headless
+    else:                                                                   rung = "inline"     # rung 0: the lead executes tasks itself
 elif W >= t_wf AND workflows_available == true AND workflow_optin == true:  rung = "workflow"   # rung 4
 elif W >= t_team AND teams_available == true:                               rung = "team"       # rung 3
 elif W >= t_team AND loops_available == true AND loops_optin != "0":        rung = "loop"       # teams unavailable -> loop fleet
 else:                                                                       rung = "subagent"   # rung 1 (W==1) or 2 (2<=W<t_team)
 ```
+
+The gate is the **capability** (`subagents`), not the harness name — a future
+harness with its own Agent tool keeps the full ladder without touching this file.
 
 The **loop** rung runs the DAG as a fleet of bounded headless loops via the
 bundled loop-runner skill — no agent teams, no Workflow tool, mechanical
@@ -257,6 +265,7 @@ Announce the choice on one line, then dispatch the matching path below:
 echo "[EXECUTE] DAG width W=$W -> rung: $rung"
 ```
 
+- `rung == "inline"`: follow **`skills/shared/execute-inline.md`** (no subagent harness — the lead performs each task itself on `feat/{slug}`; see `skills/shared/pi-harness.md`). Same `{merged, blocked, escalation}` shape; consume it per Step 3b-exit, then go to **Phase exit**. Skip Steps 4-10.
 - `rung == "subagent"`: follow **`skills/shared/execute-subagent.md`** (lead-driven waves of one-shot `Agent` calls + inline ff-merge). It returns the same `{merged, blocked, escalation}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
 - `rung == "loop"`: follow **`skills/shared/execute-loop-fleet.md`** (plan-to-loop conversion + loop-runner supervisor fleet). It returns the same `{merged, blocked, escalation}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
 - `rung == "team"`: fall through to **Steps 4-10** (the TeamCreate self-claim team).

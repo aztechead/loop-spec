@@ -23,6 +23,14 @@ if [[ -n "${LOOP_SPEC_WORKFLOWS_AVAILABLE:-}" ]]; then
   exit 0
 fi
 
+# Harness gate: the Workflow tool is a Claude Code surface. Under pi it never
+# exists, regardless of any claude binary found on PATH.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" == "pi" ]]; then
+  echo "false"
+  exit 0
+fi
+
 ver="${1:-}"
 if [[ -z "$ver" ]]; then
   ver="$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"

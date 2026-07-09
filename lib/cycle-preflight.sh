@@ -15,6 +15,7 @@
 #
 #   {
 #     workspace:  {mode, root, repos?, source?},        # workspace.sh detect (verbatim)
+#     harness:    {name},                               # harness.sh detect: claude | pi
 #     teams:      {mode, available},                    # teams-capability.sh
 #     workflows:  {available},                          # workflow-availability.sh
 #     graphify:   {ok, required, graph},                # check + graph-status
@@ -57,11 +58,14 @@ warnings=()
 # --- workspace ---------------------------------------------------------------
 ws_json="$(bash "$SCRIPT_DIR/workspace.sh" detect "$dir")"
 
-# --- teams / workflows -------------------------------------------------------
-teams_mode="$(bash "$SCRIPT_DIR/teams-capability.sh")"
+# --- harness / teams / workflows ----------------------------------------------
+harness="$(bash "$SCRIPT_DIR/harness.sh" detect)"
+# Pass the answer down: both capability probes would otherwise re-spawn
+# harness.sh detect internally (3 forks per preflight for one constant fact).
+teams_mode="$(LOOP_SPEC_HARNESS="$harness" bash "$SCRIPT_DIR/teams-capability.sh")"
 teams_available=true
 [[ "$teams_mode" == "none" ]] && teams_available=false
-wf_available="$(bash "$SCRIPT_DIR/workflow-availability.sh")"
+wf_available="$(LOOP_SPEC_HARNESS="$harness" bash "$SCRIPT_DIR/workflow-availability.sh")"
 
 # --- graphify ----------------------------------------------------------------
 graphify_required=true
@@ -166,6 +170,7 @@ fi
 
 jq -cn \
   --argjson workspace "$ws_json" \
+  --arg harness "$harness" \
   --arg teams_mode "$teams_mode" \
   --argjson teams_available "$teams_available" \
   --argjson wf "$wf_available" \
@@ -177,6 +182,7 @@ jq -cn \
   --argjson skipped "$skipped" \
   --argjson warnings "$warnings_json" \
   '{workspace: $workspace,
+    harness: {name: $harness},
     teams: {mode: $teams_mode, available: $teams_available},
     workflows: {available: $wf},
     graphify: {ok: $g_ok, required: $g_req, graph: $g_status},

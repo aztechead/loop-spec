@@ -46,7 +46,7 @@ SPEC.md ──compile_spec.py──▶ plan/tasks.json ──supervisor.py──
 
 | Layer | Script | In → Out | Job |
 |---|---|---|---|
-| 1 | `scripts/loop.py` | one task → `result.json` | Run one bounded loop: invoke `claude -p`, verify, measure progress, halt safely. |
+| 1 | `scripts/loop.py` | one task → `result.json` | Run one bounded loop: invoke the agent CLI (`claude -p`, or `pi --mode json` with `--agent-cli pi`), verify, measure progress, halt safely. |
 | 2 | `scripts/compile_spec.py` | spec → `plan/tasks.json` | Decompose a spec into small verifiable tasks and **synthesize a verifier per task**. |
 | 3 | `scripts/supervisor.py` | plan → `fleet-result.json` | Walk the dependency DAG, run each task's loop in an isolated git worktree, merge completed work, apply halt policy. |
 
@@ -108,7 +108,21 @@ python3 scripts/supervisor.py --plan plan/tasks.json --parallel 2 \
   --fallback-model claude-haiku-4-5-20251001 --retry-watchdog 5
 ```
 
-Both default off — behavior is unchanged unless you opt in.
+Both default off — behavior is unchanged unless you opt in. Both are claude-only:
+under the pi backend (below) they are ignored.
+
+### pi backend (`--agent-cli pi`)
+
+All three layers also drive **pi** (https://pi.dev) as the headless agent:
+`--agent-cli pi` (on `loop.py`, `compile_spec.py`, and `supervisor.py`, which
+threads it into every tick) switches the invocation to `pi --mode json` and
+normalizes pi's event stream onto the same result contract — `result.json` and
+`fleet-result.json` are byte-for-byte the same shape. Auto-detection also works:
+a `--claude-bin` whose basename is `pi` selects the pi protocol. Differences:
+read-only passes (compiler, judge) run with `--no-builtin-tools` instead of
+permission modes; `--model` takes pi model ids; `--fallback-model` /
+`--retry-watchdog` / `allowed_tools` are claude-only and ignored; pi-specific
+flags pass through as extra args. See `skills/shared/pi-harness.md`.
 
 ## What makes a loop trustworthy here
 
@@ -215,6 +229,7 @@ orchestration), verifier design, anchoring discipline, and failure modes.
 ## Prerequisites
 
 - Claude Code installed and authenticated (`claude` on PATH); the harness drives it
-  via the verified headless interface (`claude -p --output-format json`).
+  via the verified headless interface (`claude -p --output-format json`). With
+  `--agent-cli pi`, pi installed and authenticated instead (`pi --mode json`).
 - A git repo: required for the supervisor (worktrees/merges) and for loop.py's
   file-change stall detection and `--commit` (loop.py degrades gracefully without).
