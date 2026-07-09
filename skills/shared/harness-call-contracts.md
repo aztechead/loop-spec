@@ -128,3 +128,15 @@ SendMessage({
 
 `TeamCreate` / `TeamDelete`: legacy explicit harness only (CC < 2.1.178).
 Deferred-schema rescue applies to all team-related tools (cycle Step 2).
+
+## pi harness (no CC tool surface)
+
+Everything above describes the Claude Code tool surface. Under pi
+(`lib/harness.sh detect` == `pi`) NONE of these tools exist — the built-in set is
+`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`, and there is no deferred-tool
+mechanism to rescue. Do not emit `Agent`, `AskUserQuestion`, `SendMessage`,
+`TaskCreate`/`TaskUpdate`, `Workflow`, or `ToolSearch` calls there; apply the
+substitution table and inline dispatch rule in `skills/shared/pi-harness.md`
+instead. Headless dispatch goes through the pi CLI
+(`pi --mode json "<prompt>" --model <pi-model-id>`), which is the same seam the
+loop-runner's `--agent-cli pi` backend drives.

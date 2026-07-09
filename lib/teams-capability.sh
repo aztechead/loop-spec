@@ -38,6 +38,17 @@ if [[ -n "${LOOP_SPEC_TEAMS_MODE:-}" ]]; then
   esac
 fi
 
+# Harness gate: agent teams are a Claude Code surface. Under pi there is no
+# Agent tool at all, so the mode is `none` even when the experimental flag is
+# exported globally (and a `claude` binary happens to be on PATH — without
+# this gate that combination would mis-resolve to `implicit` and every spawn
+# would throw). skills/shared/pi-harness.md carries the substitution rules.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" == "pi" ]]; then
+  echo "none"
+  exit 0
+fi
+
 # Necessary gate: the experimental flag must be opted in. Without it there is no
 # team surface in any harness generation, so the mode is `none` regardless of version.
 if [[ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" != "1" ]]; then

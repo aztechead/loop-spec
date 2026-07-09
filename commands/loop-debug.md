@@ -19,6 +19,11 @@ Invoke the full machinery now, in autonomous end-to-end style:
 Skill(loop-spec:debug, args: "autonomous auto $ARGUMENTS")
 ```
 
+(Under pi this file loads as a prompt template and there is no Skill tool: read the
+debug skill's `SKILL.md` — sibling `skills/debug/` in this package — and follow it
+with the same `autonomous auto` invocation args; `skills/shared/pi-harness.md` has
+the substitution rules.)
+
 Everything else — TRIAGE convergence, the red-reproduction hard gate, the recorded
 hypothesis-verdict discipline, minimal-fix discipline, the mandatory sibling sweep
 (same mechanism fixed in the same branch, new mechanisms deferred), the test-tamper

@@ -10,6 +10,14 @@ mechanism changes.
 Teams are an accelerator (persistent context across critique rounds), not a
 prerequisite — a missing experimental flag must never make the plugin throw.
 
+**pi harness (one level further down):** this table substitutes team primitives
+with one-shot `Agent` calls — but under pi (`runtime.json.harness == "pi"`) the
+`Agent` tool does not exist either. Apply this table first, then the **inline
+dispatch rule** in `skills/shared/pi-harness.md` on top: every one-shot `Agent`
+call below becomes the lead performing that same brief itself, sequentially,
+producing identical artifacts. EXECUTE is unaffected by both layers — its ladder
+already selects the loop-fleet or inline rung on that harness.
+
 ## Substitution table
 
 | Team primitive | Fallback |

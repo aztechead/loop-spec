@@ -86,14 +86,17 @@ available concurrency wins, and the heaviest (Workflow) requires explicit opt-in
 
 | W (DAG width) | Mechanism | Why |
 |---|---|---|
-| any W, `LOOP_SPEC_EXECUTE_LOOPS=1` + `claude` CLI | **loop fleet** | explicit opt-in: bounded headless loops, per-iteration verify, SPEC/PLAN hash-locked (`skills/shared/execute-loop-fleet.md`) |
+| any W, `LOOP_SPEC_EXECUTE_LOOPS=1` + agent CLI | **loop fleet** | explicit opt-in: bounded headless loops, per-iteration verify, SPEC/PLAN hash-locked (`skills/shared/execute-loop-fleet.md`) |
+| any W, no subagent harness (pi) | **inline** (rung 0) | no `Agent` tool exists; the lead executes tasks itself (`skills/shared/execute-inline.md`); at `t_team <= W` with the agent CLI on PATH the loop fleet takes it instead |
 | `W == 1` | **subagent, sequential** | no concurrency to exploit; one `Agent` per task, lead merges inline |
 | `2 <= W < t_team` | **subagent, batched** | modest fan-out; a wave of parallel `Agent` calls, no persistent team |
 | `t_team <= W < t_wf` | **agent team** | high concurrency with rework/idle-wake coordination pays for the team |
-| `t_team <= W`, teams unavailable + `claude` CLI | **loop fleet** | automatic replacement for the team rung when agent teams are unavailable |
+| `t_team <= W`, teams unavailable + agent CLI | **loop fleet** | automatic replacement for the team rung when agent teams are unavailable |
 | `W >= t_wf` **and** opted in **and** available | **workflow** | undeniable fan-out ROI; deterministic DAG via `execute-dag.js` |
 
-Thresholds (fixed): `t_team = 3`, `t_wf = 6`.
+Thresholds (fixed): `t_team = 3`, `t_wf = 6`. The "agent CLI" is the running
+harness's own headless binary (`claude` or `pi`), resolved by `lib/harness.sh cli`;
+the fleet always spawns the harness it is running under.
 
 - `W` is measured **uncapped** (independent of `maxParallelImplementers`); it
   reflects the parallelism the DAG structurally exposes. `maxParallelImplementers`

@@ -216,6 +216,11 @@ esac
 
 - `none` → no teams. Phases use **`skills/shared/no-teams-fallback.md`** (one-shot
   `Agent`; EXECUTE uses the loop-fleet or subagent rung). Phases MUST NOT call any team tool.
+  - When the preflight blob additionally reports `harness.name == "pi"` (mode is
+    always `none` there), the `Agent` tool itself does not exist either: apply
+    **`skills/shared/pi-harness.md`** on top — one-shot dispatches run inline by
+    the lead, EXECUTE selects the loop-fleet or inline rung, and the model probe
+    is skipped.
 - `implicit` → teams are live but `TeamCreate` / `TeamDelete` do **not** exist. Phases
   spawn named teammates with `Agent({name})` and message them via `SendMessage` per
   **`skills/shared/implicit-team-mode.md`**. Phases MUST NOT call `TeamCreate` / `TeamDelete`
