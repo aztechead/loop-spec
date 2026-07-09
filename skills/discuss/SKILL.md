@@ -146,6 +146,45 @@ If `feature.json.bootstrapPendingDomains` is non-empty (set during cycle Step 5.
 
 If `feature.json.bootstrapPendingDomains` is empty (codebase docs already existed or GSD-ingested): skip this step.
 
+### Step 1.75 - Prefetch PATTERNS.md (background, best-effort)
+
+PLAN Step 0 consumes `docs/loop-spec/features/{slug}/PATTERNS.md` when it already exists — so start the analog mining NOW, overlapped with this phase's critique work, instead of paying for it serially inside PLAN. Its input (SPEC.md) is already written by the SPEC phase.
+
+Skip this step entirely (the planner produces PATTERNS.md at PLAN time, as before) when ANY of:
+
+- `feature.json.greenfield == true` — greenfield PATTERNS is stack conventions, authored by the planner;
+- `feature.workspace` is non-null — workspace analog mining is planner-scoped (per-repo graphs);
+- `docs/loop-spec/features/{slug}/PATTERNS.md` already exists (resume / ITERATE re-entry);
+- GSD ingestion supplies it: run `bash "${CLAUDE_SKILL_DIR}/../../lib/gsd-ingest.sh" patterns "{slug}" "docs/loop-spec/features/{slug}/PATTERNS.md"` — on `INGESTED`, set `artifacts.patterns` + `artifacts.patternsSource = "gsd-ingest"` via `lib/feature-write.sh` and skip;
+- `feature.json.bootstrapPendingDomains` is non-empty — the codebase maps the mapper grounds in do not exist yet (first-run projects keep the PLAN-time path).
+
+Otherwise fire ONE background `Agent` call and do NOT wait for it (same one-shot background dispatch pattern as cycle Step 5.5b; background subagents do not inherit the worktree cwd, so resolve `WT_ROOT="$(git rev-parse --show-toplevel)"` and pass absolute paths):
+
+```
+Agent({
+  subagent_type: "loop-spec:pattern-mapper",
+  model: feature.models.patternMapper,
+  description: "Prefetch PATTERNS.md: {slug}",
+  prompt: """
+    slug: {slug}
+    spec_path: {WT_ROOT}/docs/loop-spec/features/{slug}/SPEC.md
+    codebase_mapping_paths: {WT_ROOT}/docs/loop-spec/codebase/*.md
+
+    Produce {WT_ROOT}/docs/loop-spec/features/{slug}/PATTERNS.md per your role
+    definition (agents/pattern-mapper.md). Use absolute paths throughout. Do NOT commit.
+
+    Existence guard: if PATTERNS.md already exists at the moment you are about to
+    write, STOP without writing — a planner produced it first and its version wins.
+
+    When done, reply: "DONE: patterns"
+  """
+})
+```
+
+Then record the in-flight marker via `lib/feature-write.sh` (`artifacts.patternsPrefetch = "in-flight"`) and emit the dispatch event: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"pattern-mapper","model":"<resolved alias>","rung":"background"}' || true`.
+
+SPEC.md may still be revised by the critique gate after this fires — acceptable: PATTERNS.md maps concept analogs, which are robust to spec wording changes. If the gate changes the spec's SCOPE materially, PLAN's planner amends PATTERNS.md (its brief already covers producing or extending it).
+
 ### Step 2 - TeamCreate the discuss team
 
 **Autonomous fast path:** the roster is `challenger-1` only (spawn `advocate-1` lazily if the gate escalates); `spec-writer-1` is never part of the team. Update `currentTeammates` accordingly and continue at Step 4.
