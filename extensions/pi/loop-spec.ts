@@ -23,7 +23,7 @@
  *                                  shift it; skills/shared/pi-harness.md
  *                                  documents the re-export rule for that)
  *   SessionStart hooks             session_start runs the same inject scripts
- *                                  (discipline/grill/simplicity/rules) — in
+ *                                  (discipline/grill/simplicity/rules/micro) — in
  *                                  parallel, async (never blocks pi's event
  *                                  loop) — and the collected additionalContext
  *                                  is delivered on the next before_agent_start
@@ -36,8 +36,10 @@
  *
  * NOT bridged (no pi equivalent exists; skills degrade by contract instead —
  * see skills/shared/pi-harness.md): the Agent/subagent tool, agent teams,
- * the Workflow tool, TaskCreate/TaskUpdate, AskUserQuestion, and
- * restrict-agent-paths.sh (only meaningful when subagents exist).
+ * the Workflow tool, TaskCreate/TaskUpdate, AskUserQuestion,
+ * restrict-agent-paths.sh (only meaningful when subagents exist), and the
+ * blocking Stop guards (stop-deflection-guard.sh, adhoc-verify-guard.sh —
+ * pi has no stop event that can veto; session_shutdown is fire-and-forget).
  *
  * Deliberately dependency-free: node builtins only, `pi` typed as `any`, so
  * loading never requires an npm install. Every bridge is wrapped fail-open —
@@ -127,6 +129,7 @@ export default function (pi: any) {
           "hooks/team/grill-inject.sh",
           "hooks/team/simplicity-inject.sh",
           "hooks/team/rules-inject.sh",
+          "hooks/team/micro-inject.sh",
         ].map((script) => runHook(script, null, cwd))
       );
       for (const c of injected) if (c) pendingContext.push(c);

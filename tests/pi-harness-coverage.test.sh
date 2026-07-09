@@ -47,6 +47,9 @@ checks=(
   "skills/shared/model-matrix.md	pi-harness.md"
   # -- the one-shot command adapts too
   "commands/loop-debug.md	pi-harness.md"
+  # -- micro mode: the SessionStart directive is bridged to pi (the Stop-time
+  #    adhoc-verify-guard is CC-only; pi has no blocking stop event)
+  "extensions/pi/loop-spec.ts	micro-inject.sh"
   # -- capability scripts are pi-gated (the bash side of the same contract)
   "lib/teams-capability.sh	harness.sh"
   "lib/workflow-availability.sh	harness.sh"
