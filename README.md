@@ -199,8 +199,10 @@ claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
 ```
 
 What changes: style is forced to `auto`; the SPEC phase runs its Socratic interview in
-**self-answered form** (the model asks and answers each perspective's questions, scoring
-honestly); the grill directive is suppressed; explicit `LOOP_SPEC_ANSWER_*` / `LOOP_SPEC_CMD_*`
+**self-answered form** (the model asks and answers each perspective's questions in a single
+pass, scoring honestly); DISCUSS **collapses** to lead-authored refinement + the critique gate
+(no clarifying loop against itself, no spec-writer transcription — SPEC.md is the draft and
+the lead applies gate revisions directly); the grill directive is suppressed; explicit `LOOP_SPEC_ANSWER_*` / `LOOP_SPEC_CMD_*`
 vars still win where set; safety aborts (dirty repos, the code-review
 HARD-GATE, the test-tamper scan) are never overridden. Every assumed answer lands in
 SPEC.md's `## Decisions (assumed — autonomous)` list and PLAN.md's `## User decisions

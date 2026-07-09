@@ -29,9 +29,51 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 - `feature_json_path`: `.loop-spec/features/{slug}/feature.json`
 - `bootstrapPendingDomains`: list of codebase domain names fired as background mappers in cycle Step 5.5b (may be empty if codebase docs already existed or were GSD-ingested)
 
+## Autonomous fast path (`feature.json.autonomous == true`)
+
+When the run is autonomous, the SPEC phase already ran the self-answered interview
+(`skills/spec/SKILL.md`, Autonomous mode): the lead formulated the questions, answered them,
+recorded every assumption, and wrote SPEC.md. Re-running a clarifying loop against itself and
+paying an opus spec-writer to transcribe the same conversation is pure overhead, so DISCUSS
+collapses to lead-authored refinement + the critique gate:
+
+1. **Skip Step 1's conversational loop.** The lead handles Step 1's obligations directly:
+   - **Unresolved dimensions:** for each entry in SPEC.md's `unresolved_dimensions[]`,
+     resolve it as a graph-grounded assumption, record it to disk (`bash
+     "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" discuss
+     "<dimension>" "<resolution>" "<why>"`), and EDIT SPEC.md directly: the resolved
+     dimension becomes a concrete requirement (or explicit ASSUMPTION) with a testable
+     `### Good Enough` criterion, and the frontmatter drops it from
+     `unresolved_dimensions` (`gate_passed: true` once the list is empty).
+   - **The corner question** (required once per design shape, exactly as Step 1 defines
+     it): self-answer it grounded in the graph, record the decision, and fold any
+     resulting boundary into SPEC.md's `## Boundaries (what NOT to do)`.
+   - **External probes:** run any still-missing read-only probes per Step 1's
+     probe-before-assert rule (`evidence.sh` ledger) — self-run, never blocking.
+   - **ITERATE re-entry** (`iterate.feedback` non-null): the lead applies the scope-gap
+     refinement to SPEC.md directly (this was already the question-free path).
+   - Write a short `.loop-spec/features/{slug}/discuss-transcript.md` noting the collapse
+     and every resolution made.
+2. **Skip Step 3 (spec-writer) entirely.** SPEC.md from the SPEC phase IS the draft. The
+   phase's teammates are `challenger-1` only, plus `advocate-1` when the gate escalates;
+   `spec-writer-1` is never spawned.
+3. **Run the critique gate (Step 4) and adjudication (Step 5) as written**, with one
+   substitution: fix-list revisions are applied by the LEAD editing SPEC.md directly (it
+   authored the spec; a transcription teammate is a cold-start for nothing), then the
+   delta re-verify runs as written. Note `lead-authored` once in the transcript.
+4. **Grounding gate (Step 5.75):** FLAG lines are fixed by the lead directly (cite ledger
+   entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`), then the
+   lint re-runs.
+5. Every remaining step (bootstrap wait, commit, teardown, routing) runs unchanged.
+
+Interactive/step styles are untouched by this fast path — a human conversation adds real
+information, so the full Step 1 loop and the spec-writer revision flow stay as written.
+
 ## Procedure
 
 ### Step 1 - Conversational clarifying loop
+
+**Autonomous fast path:** if `feature.json.autonomous == true`, skip this step's conversational loop — the lead performs the collapsed obligations per the **Autonomous fast path** section above, then continues at Step 1.5.
 
 **ITERATE re-entry (autonomous refinement mode):** if `feature.json.iterate.feedback` is non-null, DISCUSS was re-entered by the ITERATE convergence loop to close a `spec`-type goal gap. Read that feedback first and target only the named scope gap, then refine SPEC.md toward the **original goal** (`feature.json.feature_title`) — do not restart the whole interview, and do not redefine the goal.
 - In `auto` / `review-only` styles (and under `LOOP_SPEC_NON_INTERACTIVE=1`): run this refinement **without `AskUserQuestion`** — synthesize the SPEC change from `iterate.feedback` + the codebase, note any assumption in SPEC.md, and proceed. The loop must not block on a human here; the next VERIFY→ITERATE pass re-judges against the immutable original goal.
@@ -106,6 +148,8 @@ If `feature.json.bootstrapPendingDomains` is empty (codebase docs already existe
 
 ### Step 2 - TeamCreate the discuss team
 
+**Autonomous fast path:** the roster is `challenger-1` only (spawn `advocate-1` lazily if the gate escalates); `spec-writer-1` is never part of the team. Update `currentTeammates` accordingly and continue at Step 4.
+
 Create the team with three teammates:
 
 ```
@@ -125,7 +169,7 @@ Update `feature.json` via `lib/feature-write.sh`:
 - `currentTeamName = "loop-spec-discuss-{slug}"`
 - `currentTeammates = ["spec-writer-1", "advocate-1", "challenger-1"]`
 
-### Step 3 - Spawn spec-writer-1
+### Step 3 - Spawn spec-writer-1 (skipped in the autonomous fast path)
 
 Model: `feature.models.specWriter` (resolved once at cycle Step 5; do not re-derive from model-matrix).
 
@@ -143,10 +187,10 @@ SendMessage({
     output_path: docs/loop-spec/features/{slug}/SPEC.md
     evidence_path: docs/loop-spec/features/{slug}/EVIDENCE.md
 
-    Read the transcript. Read the project context (check docs/loop-spec/codebase/ for any existing domain maps).
-    Produce SPEC.md at the output path per your role definition (agents/spec-writer.md). Every fact asserted about an external system must cite an `EVID-NNN` entry from the evidence_path ledger or be written as an explicit `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md`.
+    Read the transcript. Read the EXISTING SPEC.md at the output path — the SPEC phase already wrote it.
+    REVISE SPEC.md in place with what the discussion added or changed (new requirements, resolved dimensions, boundary changes, decisions); do NOT re-author it from scratch. Keep its structure and every requirement the discussion did not touch. Read the project context (check docs/loop-spec/codebase/ for any existing domain maps) to ground the revisions. Every fact asserted about an external system must cite an `EVID-NNN` entry from the evidence_path ledger or be written as an explicit `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md`.
 
-    If SPEC.md frontmatter contains an `ambiguity_scores` block (set by spec phase), preserve it verbatim. Do not modify or recompute the scores.
+    SPEC.md's frontmatter `ambiguity_scores` block (set by spec phase): preserve it verbatim, EXCEPT that a dimension the transcript resolves is removed from `unresolved_dimensions` (set `gate_passed: true` once the list is empty). Do not recompute the scores.
 
     When done, send:
       SendMessage({to: "lead", message: "SPEC.md written"})
@@ -383,7 +427,9 @@ spec_hash_before="$(git hash-object docs/loop-spec/features/{slug}/SPEC.md 2>/de
 cp docs/loop-spec/features/{slug}/SPEC.md .loop-spec/features/{slug}/gate-logs/SPEC.pre-revision.md
 ```
 
-Re-dispatch spec-writer-1 via `SendMessage` (not a fresh Agent call):
+**Autonomous fast path:** the LEAD applies the fix-list to SPEC.md directly (Edit tool; there is no spec-writer-1), then continues at the hash comparison below.
+
+Otherwise re-dispatch spec-writer-1 via `SendMessage` (not a fresh Agent call):
 ```
 SendMessage({
   to: "spec-writer-1",
@@ -399,7 +445,7 @@ SendMessage({
 })
 ```
 
-Wait for `TeammateIdle` from `spec-writer-1`. When `SPEC.md written` is received:
+Wait for `TeammateIdle` from `spec-writer-1`. When `SPEC.md written` is received (or the lead finished its direct edit):
 
 **No-op-revision shortcut (skip the redundant re-critique).** Re-critiquing byte-identical
 text yields the same verdict, so a re-dispatch that did not actually change SPEC.md must not
@@ -488,7 +534,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "docs/loop-spec/features/
 grounding_exit=$?
 ```
 
-Exit 1 BLOCKS: re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (instruct: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`); retries are unbounded — repeat until the lint passes. On revision received, re-run ONLY this lint — lint-only failures do NOT re-run the critique debate. Exit 0: proceed to Step 6.
+Exit 1 BLOCKS: re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (instruct: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`); autonomous fast path: the lead applies the FLAG fixes directly. Retries are unbounded — repeat until the lint passes. On revision received, re-run ONLY this lint — lint-only failures do NOT re-run the critique gate. Exit 0: proceed to Step 6.
 
 ### Step 6 - Commit SPEC.md and update feature.json
 

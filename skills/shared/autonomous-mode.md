@@ -154,8 +154,9 @@ an edited spec file.
 | cycle Step 3 bare invocation | free-text question | abort with usage guidance (no goal to infer) |
 | cycle Step 4 command confirmation | AskUserQuestion | trust detection (or `LOOP_SPEC_CMD_*`); record |
 | SPEC interview (all rounds + gate prompts) | AskUserQuestion loop | self-answered interview — see `skills/spec/SKILL.md` "Autonomous mode" |
-| DISCUSS unresolved dimensions / "depends on user intent" rows | AskUserQuestion in `step`/`interactive` | graph-grounded assumption, recorded (already the `auto` path; the intent row picks the more reversible reading and records it) |
-| DISCUSS / PLAN teammate-idle | AskUserQuestion | one fresh re-dispatch, then the lead authors the artifact itself (continuation ladder rung 2) |
+| DISCUSS phase shape | clarifying loop + spec-writer + critique gate | **collapsed** (`skills/discuss/SKILL.md`, Autonomous fast path): no clarifying loop (the SPEC self-interview covered it), no spec-writer (SPEC.md is the draft; the lead applies revisions directly) — only the critique gate dispatches a teammate |
+| DISCUSS unresolved dimensions / "depends on user intent" rows | AskUserQuestion in `step`/`interactive` | graph-grounded assumption, recorded (already the `auto` path; the intent row picks the more reversible reading and records it) — applied by the lead directly under the fast path |
+| DISCUSS / PLAN teammate-idle | AskUserQuestion | one fresh re-dispatch, then the lead authors the artifact itself (continuation ladder rung 2). DISCUSS's fast path has no spec-writer, so this applies to its critique teammates and to PLAN's roster |
 | ITERATE spec-rewind approval (`step`/`interactive` only) | AskUserQuestion | moot — style is forced to `auto`, which already auto-approves |
 | ITERATE limit spent | ship-with-warnings, human drains backlog later | confirmation pass → accepted gaps become BACKLOG entries → chain into backlog drain (ladder rungs 4-5) |
 | debug skill fix-strategy and escalation choices | AskUserQuestion | recommended strategy, recorded in BUG.md |
