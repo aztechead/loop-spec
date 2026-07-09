@@ -60,10 +60,12 @@ ws_json="$(bash "$SCRIPT_DIR/workspace.sh" detect "$dir")"
 
 # --- harness / teams / workflows ----------------------------------------------
 harness="$(bash "$SCRIPT_DIR/harness.sh" detect)"
-teams_mode="$(bash "$SCRIPT_DIR/teams-capability.sh")"
+# Pass the answer down: both capability probes would otherwise re-spawn
+# harness.sh detect internally (3 forks per preflight for one constant fact).
+teams_mode="$(LOOP_SPEC_HARNESS="$harness" bash "$SCRIPT_DIR/teams-capability.sh")"
 teams_available=true
 [[ "$teams_mode" == "none" ]] && teams_available=false
-wf_available="$(bash "$SCRIPT_DIR/workflow-availability.sh")"
+wf_available="$(LOOP_SPEC_HARNESS="$harness" bash "$SCRIPT_DIR/workflow-availability.sh")"
 
 # --- graphify ----------------------------------------------------------------
 graphify_required=true

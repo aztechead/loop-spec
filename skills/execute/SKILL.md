@@ -226,7 +226,7 @@ fi
 workflows_available=$(jq -r '.workflowsAvailable // false' .loop-spec/runtime.json 2>/dev/null || echo false)
 workflow_optin=$(jq -r '.workflowExecuteOptIn // false' .loop-spec/runtime.json 2>/dev/null || echo false)
 teams_available=$(jq -r '.teamsAvailable // true' .loop-spec/runtime.json 2>/dev/null || echo true)
-harness=$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect)      # claude | pi
+subagents=$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" subagents) # "true" iff the Agent tool exists
 agent_cli=$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli)       # headless binary for the loop rung
 loops_available=false
 command -v "$agent_cli" >/dev/null 2>&1 && loops_available=true
@@ -239,7 +239,7 @@ Using the fixed `t_team = 3` and `t_wf = 6`:
 
 ```text
 if   loops_optin == "1" AND loops_available == true:                        rung = "loop"       # explicit opt-in, any W
-elif harness != "claude":                                                   # no Agent tool at all (pi): subagent/team/workflow rungs cannot exist
+elif subagents != "true":                                                   # no Agent tool (pi today): subagent/team/workflow rungs cannot exist
     if W >= t_team AND loops_available == true AND loops_optin != "0":      rung = "loop"       # fleet spawns $agent_cli headless
     else:                                                                   rung = "inline"     # rung 0: the lead executes tasks itself
 elif W >= t_wf AND workflows_available == true AND workflow_optin == true:  rung = "workflow"   # rung 4
@@ -247,6 +247,9 @@ elif W >= t_team AND teams_available == true:                               rung
 elif W >= t_team AND loops_available == true AND loops_optin != "0":        rung = "loop"       # teams unavailable -> loop fleet
 else:                                                                       rung = "subagent"   # rung 1 (W==1) or 2 (2<=W<t_team)
 ```
+
+The gate is the **capability** (`subagents`), not the harness name — a future
+harness with its own Agent tool keeps the full ladder without touching this file.
 
 The **loop** rung runs the DAG as a fleet of bounded headless loops via the
 bundled loop-runner skill — no agent teams, no Workflow tool, mechanical

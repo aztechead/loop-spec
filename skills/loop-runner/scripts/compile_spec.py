@@ -94,6 +94,9 @@ def compile_spec(spec_path: Path, *, claude_bin: str, model: str,
     )
     cfg = LoopConfig(task="", claude_bin=claude_bin, agent_cli=agent_cli, model=model,
                      allowed_tools="Read,Glob,Grep")
+    conflict = cfg.transport_conflict()
+    if conflict:
+        sys.exit(f"compile_spec: {conflict}")
 
     feedback = ""
     for attempt in (1, 2):

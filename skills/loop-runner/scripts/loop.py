@@ -112,6 +112,24 @@ class LoopConfig:
             return "pi"
         return self.claude_bin
 
+    def transport_conflict(self) -> Optional[str]:
+        """Detect a binary that is certainly the wrong protocol for the selected
+        backend. Without this, `--agent-cli pi --claude-bin /path/to/claude`
+        spawns `claude --mode json ...`, which claude rejects — and the loop
+        halts agent_error every tick with no hint the two flags fought.
+        Returns a human-readable message, or None when consistent."""
+        cli = self.resolved_agent_cli()
+        name = Path(self.resolved_agent_bin()).name
+        if cli == "pi" and name == "claude":
+            return (f"--agent-cli pi but the binary is `{self.resolved_agent_bin()}`: "
+                    "claude does not speak pi's --mode json protocol. Point "
+                    "--claude-bin at the pi binary or drop --agent-cli.")
+        if cli == "claude" and name == "pi":
+            return (f"--agent-cli claude but the binary is `{self.resolved_agent_bin()}`: "
+                    "pi does not speak claude's -p --output-format json protocol. "
+                    "Use --agent-cli pi or point --claude-bin at claude.")
+        return None
+
     def resolved_task_id(self) -> str:
         if self.task_id:
             return re.sub(r"[^a-z0-9-]+", "-", self.task_id.lower()).strip("-") or "task"
@@ -263,6 +281,38 @@ def hash_paths(paths: list[Path], ignore_dir: str) -> str:
 # =============================================================================
 # Agent invocation (headless) — claude -p and pi --mode json behind one contract
 # =============================================================================
+def _spawn_agent(cmd: list, *, bin_label: str, env: Optional[dict],
+                 resume: Optional[str], raw_log: Optional[Path],
+                 timeout: Optional[float]):
+    """Shared transport scaffold for both backends: run the subprocess, persist
+    the raw log (+ stderr sidecar), and map spawn/timeout/exit failures onto the
+    common error-dict shape. Returns (proc, None) on a zero-exit run, else
+    (None, error_dict) — response parsing is the only per-backend part."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+    except FileNotFoundError:
+        return None, {"ok": False, "error": f"`{bin_label}` not found on PATH",
+                      "turns": 0, "session_id": resume, "result": ""}
+    except subprocess.TimeoutExpired as e:
+        if raw_log is not None:
+            raw_log.parent.mkdir(parents=True, exist_ok=True)
+            raw_log.write_text(e.stdout or "")
+        return None, {"ok": False, "error": f"agent tick timed out after {int(timeout)}s",
+                      "turns": 0, "session_id": resume, "result": ""}
+
+    if raw_log is not None:  # capture everything: unattended, the only record is what you kept
+        raw_log.parent.mkdir(parents=True, exist_ok=True)
+        raw_log.write_text(proc.stdout or "")
+        if proc.stderr.strip():
+            raw_log.with_suffix(".stderr.txt").write_text(proc.stderr)
+
+    if proc.returncode != 0:
+        return None, {"ok": False, "error": (proc.stderr.strip() or f"exit {proc.returncode}")[:500],
+                      "turns": 0, "session_id": resume,
+                      "result": proc.stdout.strip()[:1000]}
+    return proc, None
+
+
 def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
                permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
                timeout: Optional[float] = None) -> dict:
@@ -286,28 +336,10 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         env = dict(os.environ)
         env["CLAUDE_CODE_RETRY_WATCHDOG"] = cfg.retry_watchdog
 
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
-    except FileNotFoundError:
-        return {"ok": False, "error": f"`{cfg.claude_bin}` not found on PATH",
-                "turns": 0, "session_id": resume, "result": ""}
-    except subprocess.TimeoutExpired as e:
-        if raw_log is not None:
-            raw_log.parent.mkdir(parents=True, exist_ok=True)
-            raw_log.write_text(e.stdout or "")
-        return {"ok": False, "error": f"agent tick timed out after {int(timeout)}s",
-                "turns": 0, "session_id": resume, "result": ""}
-
-    if raw_log is not None:  # capture everything: unattended, the only record is what you kept
-        raw_log.parent.mkdir(parents=True, exist_ok=True)
-        raw_log.write_text(proc.stdout or "")
-        if proc.stderr.strip():
-            raw_log.with_suffix(".stderr.txt").write_text(proc.stderr)
-
-    if proc.returncode != 0:
-        return {"ok": False, "error": (proc.stderr.strip() or f"exit {proc.returncode}")[:500],
-                "turns": 0, "session_id": resume,
-                "result": proc.stdout.strip()[:1000]}
+    proc, err = _spawn_agent(cmd, bin_label=cfg.claude_bin, env=env, resume=resume,
+                             raw_log=raw_log, timeout=timeout)
+    if err:
+        return err
     try:
         data = json.loads(proc.stdout)
     except json.JSONDecodeError:
@@ -333,12 +365,16 @@ def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
 
     `pi --mode json "<prompt>"` emits one JSON event per line: a session header
     first, then AgentSessionEvent objects (turn_start/turn_end, message_end, ...).
-    Mapping to the claude -p JSON-object contract:
+    Mapping to the claude -p JSON-object contract (field names per the pi
+    session-format docs: header `{"type":"session","id":...}`, assistant
+    messages carry `usage.cost` as an OBJECT `{input,output,cacheRead,
+    cacheWrite,total}`):
       - result:     text blocks of the LAST assistant message_end event
       - turns:      count of turn_end events
-      - session_id: header line id when present; resume passes `--session <id>`
-      - cost_usd:   summed from usage cost fields when pi reports them, else None
-                    (callers already treat None as "unknown", not "free")
+      - session_id: header line `id`; resume passes `--session <id>`
+      - cost_usd:   summed `usage.cost.total` (numeric `usage.cost` accepted as
+                    a fallback), else None (callers already treat None as
+                    "unknown", not "free")
       - permission_mode "plan" (read-only judge / compiler) -> --no-builtin-tools:
         those prompts inline everything they need (diff, verifier output, spec),
         and zero tools is the strongest read-only guarantee pi offers headlessly
@@ -360,28 +396,10 @@ def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     cmd += list(cfg.extra_args)
     cmd += [prompt]
 
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except FileNotFoundError:
-        return {"ok": False, "error": f"`{bin_}` not found on PATH",
-                "turns": 0, "session_id": resume, "result": ""}
-    except subprocess.TimeoutExpired as e:
-        if raw_log is not None:
-            raw_log.parent.mkdir(parents=True, exist_ok=True)
-            raw_log.write_text(e.stdout or "")
-        return {"ok": False, "error": f"agent tick timed out after {int(timeout)}s",
-                "turns": 0, "session_id": resume, "result": ""}
-
-    if raw_log is not None:
-        raw_log.parent.mkdir(parents=True, exist_ok=True)
-        raw_log.write_text(proc.stdout or "")
-        if proc.stderr.strip():
-            raw_log.with_suffix(".stderr.txt").write_text(proc.stderr)
-
-    if proc.returncode != 0:
-        return {"ok": False, "error": (proc.stderr.strip() or f"exit {proc.returncode}")[:500],
-                "turns": 0, "session_id": resume,
-                "result": proc.stdout.strip()[:1000]}
+    proc, err = _spawn_agent(cmd, bin_label=bin_, env=None, resume=resume,
+                             raw_log=raw_log, timeout=timeout)
+    if err:
+        return err
 
     events = []
     for line in (proc.stdout or "").splitlines():
@@ -398,12 +416,11 @@ def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         return {"ok": False, "error": "non-JSON output from pi",
                 "turns": 0, "session_id": resume, "result": proc.stdout.strip()[:1000]}
 
+    # Header line is documented as {"type":"session","id":"<uuid>",...}.
     session_id = resume
-    for key in ("sessionId", "session_id", "id"):
-        v = events[0].get(key)
-        if isinstance(v, str) and v:
-            session_id = v
-            break
+    v = events[0].get("id")
+    if isinstance(v, str) and v:
+        session_id = v
 
     turns = sum(1 for ev in events if ev.get("type") == "turn_end")
 
@@ -414,10 +431,13 @@ def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
             continue
         msg = ev.get("message") or {}
         usage = msg.get("usage") or {}
-        for k in ("cost", "costUsd", "totalCostUsd", "total_cost_usd"):
-            if isinstance(usage.get(k), (int, float)):
-                cost = (cost or 0.0) + float(usage[k])
-                break
+        # Documented shape: usage.cost is an object {input, output, cacheRead,
+        # cacheWrite, total}. Accept a bare number too (cheap forward-compat).
+        c = usage.get("cost")
+        if isinstance(c, dict):
+            c = c.get("total")
+        if isinstance(c, (int, float)):
+            cost = (cost or 0.0) + float(c)
         if msg.get("role") != "assistant":
             continue
         content = msg.get("content")
@@ -522,6 +542,9 @@ def git_commit_scoped(message: str, ignore_dir: str) -> str:
 # The loop
 # =============================================================================
 def run_loop(cfg: LoopConfig) -> dict:
+    conflict = cfg.transport_conflict()
+    if conflict:  # CLI paths catch this in build_config; guard library callers too
+        raise ValueError(f"loop.py transport conflict: {conflict}")
     task_id = cfg.resolved_task_id()
     state_dir = cfg.resolved_state_dir()
     state_path = state_dir / "state.json"
@@ -775,7 +798,11 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
         p.error(f"unknown config keys: {unknown}")
     if not base.get("task"):
         p.error("a task is required (positional, --prompt-file, or 'task' in --config)")
-    return LoopConfig(**base)
+    cfg = LoopConfig(**base)
+    conflict = cfg.transport_conflict()
+    if conflict:
+        p.error(conflict)
+    return cfg
 
 
 def main() -> int:

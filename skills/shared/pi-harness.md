@@ -12,10 +12,22 @@ and every skill runs exactly as written.
 
 ## Environment contract (who sets what)
 
-The pi extension exports, into every bash invocation: `LOOP_SPEC_HARNESS=pi`,
-`CLAUDE_PLUGIN_ROOT` (package root), `CLAUDE_PROJECT_DIR` (session cwd), and
-`CLAUDE_SKILL_DIR` (directory of the last SKILL.md read — under pi you enter a
-skill by reading its SKILL.md, so that IS the active skill).
+The pi extension delivers, into every bash invocation (both by setting
+`process.env` and by prepending an `export` line to each bash command — the
+prepend guarantees delivery even if pi curates the child environment):
+`LOOP_SPEC_HARNESS=pi`, `CLAUDE_PLUGIN_ROOT` (package root),
+`CLAUDE_PROJECT_DIR` (session cwd), and `CLAUDE_SKILL_DIR` (directory of the
+last SKILL.md read — under pi you enter a skill by reading its SKILL.md, so
+that IS the active skill).
+
+**Re-export rule (cross-skill reads):** the tracked `CLAUDE_SKILL_DIR` follows
+the LAST SKILL.md you read. When a skill reads another skill's SKILL.md
+mid-flow (the cycle reads phase skills; loop-debug points at debug) and you
+then need a **skill-local** path (`${CLAUDE_SKILL_DIR}/references/...`,
+`${CLAUDE_SKILL_DIR}/scripts/...`) of the skill you are still executing,
+re-export the variable to that skill's directory first. Sibling paths like
+`${CLAUDE_SKILL_DIR}/../../lib/...` are unaffected (all loop-spec skills are
+siblings).
 
 **Fallback rule (extension not loaded — e.g. skills pointed at via a settings
 `skills` path):** before running any `${CLAUDE_SKILL_DIR}/...` command, export the

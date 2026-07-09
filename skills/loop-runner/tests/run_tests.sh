@@ -328,6 +328,14 @@ python3 "$SCRIPTS/supervisor.py" --plan plan.json --agent-cli pi --claude-bin "$
 check "pi fleet exit 0"     "$?" "0"
 check "pi fleet completed"  "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['completed'])")" "['solo']"
 
+# 16f. transport conflict fails fast: --agent-cli pi pointed at a claude binary
+newrepo
+cp "$FAKE" "$R/claude"; chmod +x "$R/claude"
+python3 "$SCRIPTS/loop.py" "noop" --task-id conflict --agent-cli pi --claude-bin "$R/claude" \
+  --max-iterations 1 >/dev/null 2>"$R/err.txt"
+check "conflict exit 2"     "$?" "2"
+check "conflict names both flags" "$(grep -c 'does not speak' "$R/err.txt")" "1"
+
 echo
 echo "================= $PASS passed, $FAIL failed ================="
 exit $([[ $FAIL -eq 0 ]] && echo 0 || echo 1)

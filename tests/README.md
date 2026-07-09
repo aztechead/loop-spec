@@ -93,3 +93,10 @@ live pi install:
 3. Headless: `pi --mode json "/skill:cycle autonomous <small task>"` — cycle
    runs question-free on the inline rung; then a fleet tick via
    `python3 skills/loop-runner/scripts/loop.py "<task>" --agent-cli pi --verify <cmd>`.
+4. Pin the two doc-underspecified behaviors the offline suite cannot prove:
+   (a) `pi --mode json "<prompt>"` **exits** after the response (if it holds the
+   session open, every fleet tick runs to its timeout — add `-p` to the
+   `run_pi` invocation if so); (b) a bash command run by a skill sees
+   `LOOP_SPEC_HARNESS=pi` (the extension both sets process.env and prepends an
+   export line to each bash command — `echo $LOOP_SPEC_HARNESS` from the TUI
+   confirms delivery).
