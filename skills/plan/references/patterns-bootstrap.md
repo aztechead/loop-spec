@@ -32,9 +32,14 @@ if [[ -f "$patterns_target" ]]; then
 fi
 ```
 
-If the file exists: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
-- `artifacts.patternsSource = "pattern-mapper"`
+If the file exists: update `feature.json` via `lib/feature-write.sh` (nested `set`
+takes the dot path directly — value must be JSON-quoted; never raw jq; see
+`skills/shared/feature-state-schema.md` "Writing rules"):
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patterns '"docs/loop-spec/features/'"${slug}"'/PATTERNS.md"'
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patternsSource '"pattern-mapper"'
+```
 
 Then proceed to Step 1 (TeamCreate). Planner will detect PATTERNS.md exists and skip its Step 0 production. This applies on any resume or re-trigger where PATTERNS.md was already produced.
 
@@ -48,9 +53,8 @@ echo "$result"
 
 The script prints `INGESTED <source-path>` on success or `NONE` if no GSD PATTERNS.md matched the slug.
 
-If `INGESTED`: update `feature.json` via `lib/feature-write.sh`:
-- `artifacts.patterns = "docs/loop-spec/features/${slug}/PATTERNS.md"`
-- `artifacts.patternsSource = "gsd-ingest"`
+If `INGESTED`: update `feature.json` via `lib/feature-write.sh` (same nested-`set`
+call shape as 0a, with `artifacts.patternsSource = "gsd-ingest"`).
 
 Then proceed to Step 1 (TeamCreate). Planner will detect PATTERNS.md exists and skip its Step 0 production.
 

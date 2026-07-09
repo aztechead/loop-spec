@@ -6,6 +6,14 @@
 #   bash lib/feature-write.sh set <feature_dir> <dot_path> <value_json>
 #   bash lib/feature-write.sh append <feature_dir> <dot_path> <value_json>
 #
+# set/append notes:
+#   - <dot_path> supports NESTED object keys ("artifacts.patterns" works;
+#     intermediate objects are created by setpath). Array indices are NOT
+#     supported ("workspace.repos.0" / "[0]" are rejected) — replace the whole
+#     array via set on its parent key instead.
+#   - <value_json> must be valid JSON: quote strings ('"docs/PATTERNS.md"',
+#     not a bare docs/PATTERNS.md). null/false/numbers/objects/arrays all work.
+#
 # Contract:
 #   - Writes to feature.json.tmp first, fsyncs, rotates current feature.json -> feature.json.bak,
 #     then renames .tmp -> feature.json. On any failure mid-rotation, .bak is the recovery point.
@@ -35,6 +43,17 @@ if [[ "$1" == "set" || "$1" == "append" ]]; then
   # so the path is built inside jq with getpath/setpath rather than via string concatenation.
   if [[ ! "$dot_path" =~ ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$ ]]; then
     echo "feature-write: invalid dot_path (must be alnum/underscore segments separated by .): $dot_path" >&2
+    echo "  nested object keys are supported (artifacts.patterns); array indices are not" >&2
+    exit 1
+  fi
+  # Validate the value BEFORE jq --argjson: its own failure mode is a cryptic
+  # "Invalid JSON text passed to --argjson" that field runs have misread as
+  # "nested set is unsupported" (and then bypassed this script with raw jq,
+  # losing the atomic write + .bak rotation). `jq empty` accepts every valid
+  # JSON value including null/false, unlike `jq -e .`.
+  if ! printf '%s' "$val_json" | jq empty 2>/dev/null; then
+    echo "feature-write: value is not valid JSON: ${val_json}" >&2
+    echo "  strings must be JSON-quoted: pass '\"like this\"', not a bare word" >&2
     exit 1
   fi
   path_json=$(printf '%s' "$dot_path" | jq -R 'split(".")')
