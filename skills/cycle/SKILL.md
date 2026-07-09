@@ -524,7 +524,12 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    ```bash
    grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null \
      || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
+   grep -qxF '!/.loop-spec/RULES.md' .gitignore 2>/dev/null \
+     || printf '!/.loop-spec/RULES.md\n' >> .gitignore
    ```
+   (The RULES.md exception makes self-learning rules durable in volatile
+   workspaces — a rule written in a per-run container survives via git instead
+   of dying with the pod. Commit RULES.md whenever the loop adds a rule.)
    `events.jsonl` and `result.json` are local telemetry, deliberately not committed — the default `.loop-spec/features/*/` gitignore covers them and no exception is added.
 
    feature.json says WHERE the loop is; PROGRESS.md says WHY — it is what a fresh or compacted session reads to re-orient (Step 1 re-grounding), and the handoff document for fresh-context rewinds.
@@ -590,12 +595,40 @@ n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
 [[ "$n" -gt 0 ]] && echo "Backlog: ${n} deferred item(s) — drain with /loop-spec:cycle backlog"
 ```
 
+And the retrospective step (non-fatal). `retro.sh auto` gates itself:
+interactive runs get a READ-ONLY candidate-count line; autonomous runs
+auto-apply the candidates (safe by construction — the applicable rule texts are
+a closed template set inside `lib/retro.sh`, deterministically triggered, and
+every template only tightens discipline; `LOOP_SPEC_RETRO_AUTO_APPLY=0/1`
+overrides either default):
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" auto ".loop-spec/features/${slug}" || true
+# If auto-apply added rules, commit the durable rule state so it survives
+# ephemeral workspaces (rides the same push as the run digest below):
+git add .loop-spec/RULES.md .gitignore 2>/dev/null \
+  && git diff --cached --quiet 2>/dev/null \
+  || git commit -m "chore: retro auto-applied rules for ${slug}" 2>/dev/null || true
+```
+
 Write the machine-readable result contract and emit the `completed` event (non-fatal):
 
 ```bash
 _pr_url="$(jq -r '.prUrl // empty' ".loop-spec/features/${slug}/feature.json")"
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write ".loop-spec/features/${slug}" \
   --status completed ${_pr_url:+--pr-url "$_pr_url"} || true
+```
+
+Then persist the COMMITTED run digest — the retro corpus for volatile
+environments (containers/CI agents whose local `.loop-spec/` telemetry dies
+with the workspace). Non-fatal, committed and pushed on the feature branch so
+it rides the PR into main:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/run-digest.sh" append ".loop-spec/features/${slug}" || true
+git add "docs/loop-spec/telemetry/runs/${slug}.json" 2>/dev/null \
+  && git commit -m "docs: run digest for ${slug}" 2>/dev/null \
+  && git push 2>/dev/null || true
 ```
 
 `.loop-spec/last-result.json` is the stable pointer headless wrappers should read; it is

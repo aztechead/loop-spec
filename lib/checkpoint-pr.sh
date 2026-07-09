@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Push feature branch and open/reuse a draft GitHub PR on pause, escalation, or
-# terminal stop so an interrupted headless cycle yields a reviewable artifact.
+# terminal stop so an interrupted cycle (headless or interactive) yields a
+# reviewable artifact. Default ON for all runs; LOOP_SPEC_CHECKPOINT_PR=0 disables.
 #
 # Usage: checkpoint-pr.sh create <feature_dir> [--reason <text>]
 #
@@ -34,21 +35,12 @@ case "$cmd" in
     done
 
     # ── Step 1: Gating (before any git/gh work) ────────────────────────────────
-    cp_flag="${LOOP_SPEC_CHECKPOINT_PR:-}"
-    if [[ "$cp_flag" == "0" ]]; then
+    # Default-on for ALL runs (autonomous and interactive): an interrupted cycle
+    # should yield a reviewable draft PR regardless of how it was started.
+    # LOOP_SPEC_CHECKPOINT_PR=0 is the only off switch.
+    if [[ "${LOOP_SPEC_CHECKPOINT_PR:-}" == "0" ]]; then
       echo "checkpoint-pr: disabled (LOOP_SPEC_CHECKPOINT_PR=0)"
       exit 0
-    fi
-    if [[ "$cp_flag" != "1" ]]; then
-      # Env unset/other: only enabled for autonomous runs (headless default-on)
-      autonomous="false"
-      if [[ -f "$feature_dir/feature.json" ]]; then
-        autonomous=$(jq -r '.autonomous // false' "$feature_dir/feature.json" 2>/dev/null || echo "false")
-      fi
-      if [[ "$autonomous" != "true" ]]; then
-        echo "checkpoint-pr: skipped (interactive run; set LOOP_SPEC_CHECKPOINT_PR=1 to enable)"
-        exit 0
-      fi
     fi
 
     # ── Step 2: Read feature.json ───────────────────────────────────────────────

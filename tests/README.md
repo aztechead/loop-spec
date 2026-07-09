@@ -13,10 +13,15 @@ tests, the `lib/` unit tests, and (when a node runtime is available) the workflo
 syntax checks in `tests/workflows/smoke.sh`. It needs only bash, git, jq, python3,
 and (for the workflow checks) node. It does NOT require the Claude CLI.
 
-There is no scripted end-to-end cycle test: driving a full `loop-spec:cycle`
-headless against the installed plugin proved unreliable (it exercises a cached
-plugin snapshot and the interactive AskUserQuestion path). End-to-end coverage is
-the manual matrix below, run against a live Claude Code session.
+Scripted end-to-end: `bash tests/e2e/run-e2e.sh` (or `tests/run-all.sh --e2e`)
+runs ONE live autonomous cycle against a throwaway fixture repo — installed from
+THIS checkout via a local-scope plugin install, so it never exercises a stale
+cached snapshot, and `autonomous` mode removes the interactive AskUserQuestion
+path that made earlier headless attempts unreliable. It asserts the
+machine-readable contract (`result.json` schema 1 + `events.jsonl`); see
+`tests/e2e/README.md`. It costs real tokens and minutes, so it is opt-in and the
+default suite stays offline. Broader behavioral coverage remains the manual
+matrix below, run against a live Claude Code session.
 
 ## Manual end-to-end matrix
 

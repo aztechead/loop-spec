@@ -228,12 +228,17 @@ class Supervisor:
             self.results[tid] = {"task_id": tid, "status": "skipped",
                                  "halt_reason": "dep_failed"}
 
+        # Cost accounting: sum per-task total_cost_usd; None when no worker
+        # reported a number (older CLIs) so "unknown" never reads as "free".
+        costs = [r.get("total_cost_usd") for r in self.results.values()
+                 if isinstance(r.get("total_cost_usd"), (int, float))]
         fleet = {
             "plan": self.args.plan,
             "completed": sorted(done_merged),
             "failed": sorted(failed),
             "skipped": blocked,
             "fleet_fatal": self.fleet_fatal,
+            "total_cost_usd": round(sum(costs), 6) if costs else None,
             "tasks": self.results,
         }
         out = self.repo / ".loop" / "fleet-result.json"

@@ -39,6 +39,7 @@ check "halt_reason"       "$(reason .loop/done/result.json)" "complete"
 check "verifier.passed"   "$(python3 -c "import json;print(json.load(open('.loop/done/result.json'))['verifier']['passed'])")" "True"
 check "iter raw log kept" "$(test -f .loop/done/iter-001.raw.json && echo yes)" "yes"
 check "progress notes"    "$(test -f .loop/done/PROGRESS.md && echo yes)" "yes"
+check "cost summed"       "$(python3 -c "import json;c=json.load(open('.loop/done/result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
 
 echo "== 3. stall: no file changes =="
 newrepo
@@ -133,6 +134,7 @@ check "dep output merged into base" "$(test -f a.txt && test -f b.txt && echo ye
 check "merge commits exist" "$(git log --oneline | grep -c 'merge autonomous work')" "2"
 FLEET_OK=$(python3 -c "import json;f=json.load(open('.loop/fleet-result.json'));print(sorted(f['completed'])==['make-a','make-b'] and not f['failed'])")
 check "fleet-result.json" "$FLEET_OK" "True"
+check "fleet cost summed" "$(python3 -c "import json;c=json.load(open('.loop/fleet-result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
 
 echo "== 11. supervisor: failing task skips dependents, fleet exits 1 =="
 newrepo

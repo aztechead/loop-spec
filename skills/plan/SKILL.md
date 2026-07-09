@@ -97,6 +97,8 @@ Result: `{plan: <markdown>, angles: [...], winner}`. Skill writes `plan` to
 If `workflowsAvailable=false` OR the opt-in is unset, fall through to the
 existing single-planner Agent dispatch below.
 
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate launched in this phase (planner, pattern-mapper, advocate, challenger) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "plan" --data '{"role":"<role>","model":"<resolved alias>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds do not re-emit.
+
 ### Step 2 - Spawn planner-1
 
 Model: `feature.models.planner` (resolved once at cycle Step 5; do not re-derive from model-matrix).
@@ -256,7 +258,13 @@ For each round N = 1 .. maxCritiqueRounds:
      <challenger-1's ROUND-N DONE[...] message body>
    ```
 
-6. Convergence check:
+6. Emit the round's telemetry event (non-fatal):
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" gate_round \
+     --phase "plan" --data "{\"gate\":\"plan-critique\",\"round\":{N}}" || true
+   ```
+
+7. Convergence check:
    - **Mutual DONE**: both messages start with `ROUND-{N} DONE:` (not `DONE-WITH-ISSUES`). Break loop.
    - **One-sided DONE for two consecutive rounds**: one teammate sent `ROUND-{N} DONE:` in both round N and round N-1 while the other sent `DONE-WITH-ISSUES`. Break loop.
    - **Cap reached**: N == maxCritiqueRounds. Record `notes: "cap reached"` in gateHistory. Break loop.

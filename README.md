@@ -10,7 +10,7 @@ The same archetypes cover the rest of the development surface: `/loop-spec:cycle
 - **Single tier.** Gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path measured from the actual task DAG — never inferred from your prompt.
 - **Teams-optional.** Runs on both agent-team harness generations (explicit `TeamCreate` on CC < 2.1.178, implicit `Agent({name})` teams on newer, resolved by `lib/teams-capability.sh`) and degrades to one-shot subagents or a bounded loop fleet without teams.
 
-**Status:** v2.5.2 (rebranded from super-spec).
+**Status:** v2.12.0 (rebranded from super-spec at v2.5.2).
 
 ## Install
 
@@ -97,6 +97,9 @@ Each per-phase skill is directly slash-invocable (the skill is the command, no s
 - `/loop-spec:loop-debug` -- **one-shot** entry point to the debug loop: same machinery as `/loop-spec:debug`, but autonomous mode is forced on, so a single invocation runs TRIAGE→REPRODUCE→FIX→VERIFY end to end with no mid-run questions and reports once at the end. Terminates only in fixed-and-verified, instrumented-and-waiting, or escalated-to-cycle.
 - `/loop-spec:assess` -- standalone, read-only codebase fragility and health assessment; workspace-aware; dispatches bounded code-reviewer subagents at the top-N hotspots and writes `docs/loop-spec/assessment/ASSESSMENT.md`.
 - `/loop-spec:quality-loop` -- iterative pre-commit review convergence loop; workspace-aware; runs deterministic checks then parallel code-reviewer and security-reviewer passes, repeating until convergence or the round limit is exhausted.
+- `/loop-spec:revise` -- close the PR-review round trip: `/loop-spec:revise <pr#>` ingests human review feedback on an open loop-spec PR (inline comments, reviews, discussion; resolved threads filtered via `lib/pr-comments.sh`), classifies each actionable item with the iterate gap taxonomy, fixes `execute`-class items on the PR branch through the EXECUTE remediation machinery in a dedicated worktree (never switching your checkout, never force-pushing), backlogs `plan`/`spec`-class scope changes loudly, pushes, and posts ONE summary comment mapping every item to a commit, answer, or backlog entry. Interactive mode asks exactly one classification confirmation; `autonomous` asks nothing and records assumed decisions in `REVISION.md`.
+- `/loop-spec:retro` -- retrospective over accumulated telemetry: deterministically mines `events.jsonl`/`result.json` across features for repeated failure patterns (an iterate gap type recurring across >=3 features, a critique gate repeatedly at its round cap) and turns them into **rule candidates** for the self-learning RULES.md loop, plus evidence-backed suggestions (`modelTier` headroom on first-pass convergence streaks) and info (convergence rate, shipped-with-gaps, fleet cost). `report` is read-only and writes `docs/loop-spec/RETRO.md`; `apply` appends the candidates via `lib/rules.sh add` (idempotent, count-free rule texts). At cycle completion `lib/retro.sh auto` gates itself: interactive runs get a read-only candidate count (you decide); **autonomous runs auto-apply** — safe by construction, because the appliable rule texts are a closed template set inside `lib/retro.sh` with deterministic triggers that only ever tighten discipline (the model cannot author or weaken a rule on this path). `LOOP_SPEC_RETRO_AUTO_APPLY=0/1` overrides either default; you stay the curator of the file. Mechanics in `lib/retro.sh`. **Volatile-agent safe:** the corpus is not just local telemetry — every completed cycle commits a compact digest to `docs/loop-spec/telemetry/runs/{slug}.json` (`lib/run-digest.sh`, one file per slug, conflict-free for parallel agents), so retro works from a fresh clone after per-run containers are torn down, and `apply` adds the `!/.loop-spec/RULES.md` gitignore exception so applied rules travel through git too.
+- `/loop-spec:status` -- read-only run dashboard: per-feature status (phase, iterations, last event, warnings, result, PR URL) and `stats` aggregates across runs (convergence rate, gate-round counts, iterate gap histogram, dispatch counts by model/role/rung, loop-fleet cost). `--json` for machine consumers. Mechanics in `lib/status.sh`.
 - `/loop-spec:grill` -- toggle grill mode (`on`/`off`/`status`). Grill mode is **on by default**: a session-start directive makes the assistant front-load 2-4 sharp disambiguation questions right after your initial prompt to lower ambiguity before acting. Persists in `.loop-spec/grill.conf`; `LOOP_SPEC_GRILL=0` is the session kill switch.
 - `/loop-spec:discipline` -- toggle discipline mode (`on`/`off`/`status`), an opt-in set of five behavioral gates (brainstorm-before-coding, verification-before-claims, investigation-before-fixes, decision-gate, intent-gate). Persists in `.loop-spec/discipline.conf`.
 - `/loop-spec:simplicity` -- toggle simplicity mode (`on`/`off`/`status`) and set intensity (`lite`/`full`/`ultra`). **On by default at `full`**: a session-start directive makes the assistant climb the laziness ladder before writing code -- YAGNI, reuse, stdlib, native, installed dep, one line, then the minimum that works -- without cutting validation, error handling, security, or accessibility. VERIFY's `code-reviewer` runs the matching over-engineering pass (delete/stdlib/native/yagni/shrink). Concept and implementation ported from [ponytail](https://github.com/DietrichGebert/ponytail). Persists in `.loop-spec/simplicity.conf`; `LOOP_SPEC_SIMPLICITY=0` is the session kill switch.
@@ -246,16 +249,28 @@ Schema (version 1):
 
 `converged` is `true` only when `status == "completed"` AND `warnings[]` contains no `iterate-budget-spent:` or `iterate-terminal:` entries. A completed-but-not-converged run shipped with accepted gaps; the warnings list them.
 
-**`events.jsonl`** — one JSON object per line appended at each phase boundary. Canonical event names: `phase_start`, `phase_end`, `gate_round`, `iterate_verdict`, `completed`, `paused`, `escalated`, `checkpoint_pr`. Schema:
+**`events.jsonl`** — one JSON object per line appended at each phase boundary. Canonical event names: `phase_start`, `phase_end`, `gate_round`, `iterate_verdict`, `dispatch` (one per agent launched, with `{role, model, rung}` — contract in `skills/shared/dispatch-events.md`), `completed`, `paused`, `escalated`, `checkpoint_pr`. Read them with `/loop-spec:status` (per-run) and `/loop-spec:status stats` (aggregates). Loop-fleet runs additionally record `total_cost_usd` per task and per fleet (`.loop/*/result.json`, `.loop/fleet-result.json`) from the `claude -p` cost report. Schema:
 ```json
 {"ts":"ISO-8601 UTC","slug":"my-feature","event":"phase_end","phase":"execute","data":{"next":"verify"}}
 ```
 
 **Process exit codes for headless composition** live at the loop-runner layer (`skills/loop-runner/` scripts exit 0 only on verified completion). The cycle skill runs inside a Claude session and cannot set the process exit code — wrappers should read `result.json` instead of scraping git or GitHub.
 
-**Checkpoint draft PRs** — interrupted cycles (pause, escalation, or terminal stop) push the feature branch and open or reuse a draft GitHub PR so a slow or headless run yields a reviewable artifact rather than a dropped cycle. The URL is written to `feature.json.checkpointPrUrl`, surfaced in `result.json.checkpointPrUrl`, and recorded as a `checkpoint_pr` event in `events.jsonl`. Enabled by default for autonomous runs; `LOOP_SPEC_CHECKPOINT_PR=1/0` overrides. Requires `gh` on PATH and an `origin` remote; degrades gracefully (skip + one-line stderr note) when either is absent.
+**Checkpoint draft PRs** — interrupted cycles (pause, escalation, or terminal stop) push the feature branch and open or reuse a draft GitHub PR so a slow or headless run yields a reviewable artifact rather than a dropped cycle. The URL is written to `feature.json.checkpointPrUrl`, surfaced in `result.json.checkpointPrUrl`, and recorded as a `checkpoint_pr` event in `events.jsonl`. Enabled by default for **all** runs (autonomous and interactive); `LOOP_SPEC_CHECKPOINT_PR=0` disables. Requires `gh` on PATH and an `origin` remote; degrades gracefully (skip + one-line stderr note) when either is absent.
 
 Both files are local telemetry, deliberately not committed to the feature branch.
+
+### Issue-to-PR automation
+
+`lib/issue-intake.sh` is the glue between a GitHub issue queue and the autonomous cycle: it picks open issues labeled `loop-spec` (bounded, default 1 per invocation), runs each through `claude -p "/loop-spec:intake autonomous <issue text>"`, reads `.loop-spec/last-result.json`, and comments the PR URL (or the failure, loudly) back on the issue. Lifecycle labels (`loop-spec:in-progress`/`done`/`failed`) make re-runs idempotent — an issue is never double-processed.
+
+```bash
+cd /path/to/your/repo
+bash <plugin>/lib/issue-intake.sh run --label loop-spec --limit 1 --dry-run   # plan only
+bash <plugin>/lib/issue-intake.sh run --label loop-spec --limit 1            # do it
+```
+
+It is deliberately not a daemon and not a hook — it runs only when invoked. Schedule it with cron, `claude` `/schedule`, or the example GitHub Action at `docs/examples/issue-to-pr.yml` (nightly, one issue per night, cost warning included). Raise `--limit` only after you have cost telemetry in view (`/loop-spec:status stats`).
 
 ### Net-new applications (greenfield)
 
@@ -287,6 +302,9 @@ existing repo is refused; workspace-mode greenfield is deferred.
 | `LOOP_SPEC_GRILL` | `0` = disable the grill-mode SessionStart directive (grill is on by default; `/loop-spec:grill off` persists it). |
 | `LOOP_SPEC_SIMPLICITY` | `0` = disable the simplicity-mode (laziness-ladder) SessionStart directive (on by default at `full`; `/loop-spec:simplicity off` persists it). |
 | `LOOP_SPEC_RULES` | `0` = disable self-learning RULES.md injection (on by default, inert until rules exist). |
+| `LOOP_SPEC_GLOBAL_RULES_FILE` | Path of the cross-project global rules layer (default `~/.loop-spec/RULES.md`); merged into every loop-spec project's injection after the project rules. |
+| `LOOP_SPEC_RETRO_AUTO_APPLY` | Retro at cycle completion: unset = auto-apply rule candidates only on autonomous runs (interactive = read-only count); `1` = always apply; `0` = never (report-only everywhere). Candidates are a closed deterministic template set that only tightens the loop. |
+| `LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS` | Flags `lib/issue-intake.sh` passes to its `claude -p` intake runs (default `--permission-mode acceptEdits`). |
 | `LOOP_SPEC_REQUIRE_GRAPHIFY` | `0` = bypass the hard graphify requirement (constrained environments). Default: required; the cycle aborts at startup if graphify is missing, and the design phases fall back to Glob/Grep only in bypass mode. |
 | `LOOP_SPEC_SPEC_FILE` | Path to a pre-authored spec `.md` — headless equivalent of `/loop-spec:cycle path/to/spec.md`. |
 | `LOOP_SPEC_MAX_FEATURES` | Backlog-drain bound: features per `/loop-spec:cycle backlog` invocation (default 1). |
@@ -298,13 +316,13 @@ existing repo is refused; workspace-mode greenfield is deferred.
 | `LOOP_SPEC_REGRESSION_SCAN` | `1` enables VERIFY's advisory prior-feature regression scan (off by default). |
 | `LOOP_SPEC_NON_INTERACTIVE` + `LOOP_SPEC_ANSWER_*` | CI mode, see above. |
 | `LOOP_SPEC_AUTONOMOUS` | `1` = autonomous mode (equivalent to the inline `autonomous` token): self-answer every question site with the recommended option and record it; forces style `auto`; suppresses grill. See above. |
-| `LOOP_SPEC_CHECKPOINT_PR` | `1` = always push branch + open/reuse draft PR on pause/escalation/terminal; `0` = always skip; unset = enabled only for autonomous runs (headless default-on). |
+| `LOOP_SPEC_CHECKPOINT_PR` | `0` = skip the checkpoint draft PR on pause/escalation/terminal. Default (unset): enabled for all runs, autonomous and interactive. |
 
 All hook guards additionally self-scope: they no-op outside projects with `.loop-spec/` state, and the task gates only fire on loop-spec-owned tasks (`metadata.loopSpec` / `task-NNN:` subjects).
 
 ### Self-learning loop, commit strategy, per-task model tiers
 
-- **Self-learning loop (`RULES.md`).** A loop only improves if it carries its lessons forward. When a gate or verifier rejects the same class of mistake twice, the cycle appends a rule to `.loop-spec/RULES.md` (`lib/rules.sh add "<lesson>" --check "<cmd>"`, deterministic checks preferred over prose). `hooks/team/rules-inject.sh` injects the current rules into every session, and the escalation contract makes coordinators consult `RULES.md` (and PLAN.md's `## User decisions (already made)` record) **before** asking the user anything. You own and curate the file; manage it with `/loop-spec:rules`.
+- **Self-learning loop (`RULES.md`).** A loop only improves if it carries its lessons forward. When a gate or verifier rejects the same class of mistake twice, the cycle appends a rule to `.loop-spec/RULES.md` (`lib/rules.sh add "<lesson>" --check "<cmd>"`, deterministic checks preferred over prose). Lessons that apply everywhere go in the **global layer** (`lib/rules.sh add --global`, file `~/.loop-spec/RULES.md`, override with `LOOP_SPEC_GLOBAL_RULES_FILE`): inside any loop-spec project the hook injects the project rules plus the global rules (exact duplicates once, project first). Nothing is injected outside loop-spec projects. `/loop-spec:retro` feeds this loop from the other end: telemetry patterns that repeat become rule candidates you apply with one command. `hooks/team/rules-inject.sh` injects the current rules into every session, and the escalation contract makes coordinators consult `RULES.md` (and PLAN.md's `## User decisions (already made)` record) **before** asking the user anything. You own and curate the file; manage it with `/loop-spec:rules`.
 - **Commit strategy.** `.loop-spec/workflow.json` `{"commitStrategy":"at-end"}` makes EXECUTE collapse `feat/{slug}` into a single commit at phase exit; the default (`per-task`, or no file) keeps per-task commit history. Read via `lib/workflow-config.sh`; skipped in workspace mode.
 - **Per-task model tier.** A plan task may carry an optional `modelTier` (`mechanical`/`standard`/`frontier`); EXECUTE's subagent/loop rungs resolve it via `lib/model-tier.sh` to route that one task to the cheapest fitting model, overriding the fixed per-role map (a concrete `model` pin still wins). The team rung keeps role defaults since teammates are pre-spawned.
 
@@ -318,6 +336,8 @@ docs/loop-spec/                          # COMMITTED
 │   ├── PLAN.md
 │   ├── VERIFICATION.md
 │   └── ITERATION.md                      # per-iteration convergence verdicts
+├── RETRO.md                              # dated retrospective reports (/loop-spec:retro)
+├── telemetry/runs/{slug}.json            # committed per-run digests (lib/run-digest.sh) — the retro corpus that survives volatile workspaces
 └── codebase/
     ├── TECH.md
     ├── ARCH.md
@@ -325,9 +345,9 @@ docs/loop-spec/                          # COMMITTED
     ├── CONCERNS.md
     └── DOMAIN.md
 
-.loop-spec/                              # GITIGNORED (except codebase/index.json)
+.loop-spec/                              # GITIGNORED (except codebase/index.json + the RULES.md exception below)
 ├── BACKLOG.md                            # deferred findings + iterate gaps (drain: /loop-spec:cycle backlog)
-├── RULES.md                              # self-learning rules (injected each session)
+├── RULES.md                              # self-learning rules (injected each session; gitignore-EXCEPTED + committed so rules survive ephemeral workspaces)
 ├── features/{slug}/
 │   ├── feature.json                      # schema v7, atomic-write with .bak rotation
 │   ├── feature.json.bak
@@ -666,7 +686,7 @@ loop-spec/
 bash tests/run-all.sh    # 32 suites: validators + hook + lib units + workflow syntax + the bundled loop-runner offline suite (no claude CLI required — loop tests use tests/fakeclaude)
 ```
 
-End-to-end cycle coverage is the manual matrix in `tests/README.md` (run against a live Claude Code session); there is no scripted headless e2e test. The loop-runner suite (`skills/loop-runner/tests/run_tests.sh`, 29 checks) covers every halt reason, verifier-integrity locking, resume, plan validation, compilation, and a full supervisor end-to-end with worktrees and merges.
+End-to-end cycle coverage: the scripted headless smoke `tests/e2e/run-e2e.sh` (opt-in via `tests/run-all.sh --e2e` — LIVE, runs one real autonomous cycle against a fixture repo and asserts the `result.json`/`events.jsonl` contract; see `tests/e2e/README.md`), plus the manual matrix in `tests/README.md` (run against a live Claude Code session). The loop-runner suite (`skills/loop-runner/tests/run_tests.sh`, 29 checks) covers every halt reason, verifier-integrity locking, resume, plan validation, compilation, and a full supervisor end-to-end with worktrees and merges.
 
 ## Workflows integration
 

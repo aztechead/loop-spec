@@ -57,7 +57,7 @@ If `used >= maxit`: **stop iterating and ship — but ship LOUD, never silent.**
 
 ### Step 1 - Dispatch the judge (maker ≠ checker)
 
-One-shot `Agent` dispatch (not a team), fresh context, strict grader:
+One-shot `Agent` dispatch (not a team), fresh context, strict grader. Emit the dispatch telemetry event first (`skills/shared/dispatch-events.md`): `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "iterate" --data '{"role":"iterate-judge","model":"<resolved alias>","rung":"subagent"}' || true`.
 
 ```
 Agent({
@@ -96,10 +96,13 @@ A malformed or missing verdict must NOT be read as "converged": treat it as re-d
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.used "$((used+1))"
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.lastVerdict "<verdict json>"
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" iterate.history "<verdict json>"
-# emit iterate_verdict event (non-fatal; verdict lands in feature.json above)
+# emit iterate_verdict event (non-fatal; verdict lands in feature.json above).
+# gap = the rewind classification (execute|plan|spec, "none" when converged) —
+# /loop-spec:status --stats histograms it to show WHERE the loop loses rounds.
 _cvgd="$(echo "$verdict" | jq -r 'if .converged then "converged" else "not-converged" end')"
+_gap="$(echo "$verdict" | jq -r '.gap.type // "none"')"
 bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" iterate_verdict \
-  --phase iterate --data "{\"verdict\":\"$_cvgd\",\"iteration\":$((used+1))}" || true
+  --phase iterate --data "{\"verdict\":\"$_cvgd\",\"iteration\":$((used+1)),\"gap\":\"$_gap\"}" || true
 ```
 
 Write a human-readable `docs/loop-spec/features/{slug}/ITERATION.md` (append one section per iteration: number, converged?, per-criterion scores, weakest point, gap + fix-first, summary). Set `artifacts.iteration` to that path. Commit it:

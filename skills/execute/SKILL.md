@@ -163,6 +163,8 @@ concurrency ladder") follows the Anthropic tool idiom: the lightest mechanism th
 the available concurrency wins, and the heaviest (Workflow) fires only on explicit
 opt-in.
 
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** whichever rung is selected, emit one `dispatch` event per implementer/reviewer/worker launched — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<role>","model":"<resolved alias>","rung":"<team|subagent|loop-fleet|workflow>"}' || true`. Loop-fleet: one event per compiled task at fleet launch; worker iterations are not separate dispatches. `SendMessage` rework does not re-emit.
+
 Build the `tasks[]` array from Step 2a/2b first: each element is `{id, subject, files, blockedBy (union of explicit + synthetic edges), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` is carried through so the subagent rung can re-run each task's behavioral check against the integrated branch post-merge — see `skills/shared/execute-subagent.md` step 6/7.)
 
 **Workspace mode gate (evaluated BEFORE `featureWorktreeRoot` is resolved):**

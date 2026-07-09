@@ -161,6 +161,8 @@ that today's verifier triggers on `Test suite status: FAIL`.
 If `workflowsAvailable=false`, fall through to the existing verifier-1 spawn
 below.
 
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per agent launched in this phase (verifier, code-reviewer, security-reviewer when dispatched) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "verify" --data '{"role":"<role>","model":"<resolved alias>","rung":"<team|subagent|workflow>"}' || true`. One event per LAUNCH; `SendMessage` rework rounds do not re-emit.
+
 ### Step 4 - Spawn verifier-1
 
 Send verifier-1 its work prompt via SendMessage:

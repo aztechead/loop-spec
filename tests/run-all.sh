@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 # Run every non-CC test suite (validators + hook + lib units + workflow syntax).
 #
-# Usage: bash tests/run-all.sh
+# Usage: bash tests/run-all.sh [--e2e]
+#   --e2e  additionally run tests/e2e/run-e2e.sh (LIVE: real claude -p cycle,
+#          costs tokens and minutes; the default suite stays offline)
 # Exits 0 if all pass, 1 otherwise.
 set -euo pipefail
+
+RUN_E2E=0
+for arg in "$@"; do
+  case "$arg" in
+    --e2e) RUN_E2E=1 ;;
+    *) echo "run-all.sh: unknown flag '$arg' (supported: --e2e)" >&2; exit 2 ;;
+  esac
+done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -84,9 +94,15 @@ run_suite "lib/grounding-lint"        "bash tests/lib/grounding-lint.test.sh"
 run_suite "lib/events"                "bash tests/lib/events.test.sh"
 run_suite "lib/cycle-result"          "bash tests/lib/cycle-result.test.sh"
 run_suite "lib/checkpoint-pr"         "bash tests/lib/checkpoint-pr.test.sh"
+run_suite "lib/status"                "bash tests/lib/status.test.sh"
+run_suite "lib/pr-comments"           "bash tests/lib/pr-comments.test.sh"
+run_suite "lib/issue-intake"          "bash tests/lib/issue-intake.test.sh"
+run_suite "lib/retro"                 "bash tests/lib/retro.test.sh"
+run_suite "lib/run-digest"            "bash tests/lib/run-digest.test.sh"
 run_suite "tests/all-tests-registered" "bash tests/all-tests-registered.test.sh"
 run_suite "tests/ponytail-coverage"   "bash tests/ponytail-coverage.test.sh"
 run_suite "tests/design-coverage"     "bash tests/design-coverage.test.sh"
+run_suite "tests/dispatch-events-coverage" "bash tests/dispatch-events-coverage.test.sh"
 run_suite "tests/execution-discipline-coverage" "bash tests/execution-discipline-coverage.test.sh"
 run_suite "tests/contract-strings"    "bash tests/contract-strings.test.sh"
 run_suite "lib/workflow-availability" "bash tests/lib/workflow-availability.test.sh"
@@ -103,6 +119,10 @@ else
   echo ""
   echo "=== workflows/smoke ==="
   echo "SKIP: no node runtime found; skipping workflow syntax checks"
+fi
+
+if [[ "$RUN_E2E" == "1" ]]; then
+  run_suite "tests/e2e (LIVE)" "bash tests/e2e/run-e2e.sh"
 fi
 
 echo ""

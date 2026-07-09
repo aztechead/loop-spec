@@ -1,0 +1,63 @@
+# EXAMPLE — not active. Copy to .github/workflows/ in YOUR project (not this
+# plugin repo) to turn labeled issues into loop-spec PRs on a schedule.
+#
+# What it does: every night (or on manual dispatch) it picks at most ONE open
+# issue labeled `loop-spec`, runs the full autonomous cycle on it via
+# `lib/issue-intake.sh`, and comments the resulting PR URL back on the issue.
+# Lifecycle labels (loop-spec:in-progress/done/failed) make re-runs idempotent.
+#
+# Prerequisites in your repo/org:
+#   - ANTHROPIC_API_KEY secret (claude CLI auth for CI)
+#   - the loop-spec plugin installable in CI (marketplace add + install below)
+#   - labels created: loop-spec, loop-spec:in-progress, loop-spec:done, loop-spec:failed
+#
+# Cost warning: each picked issue is a full autonomous cycle — tokens + minutes.
+# The --limit 1 bound is deliberate; raise it only with cost telemetry in place
+# (/loop-spec:status stats).
+#
+# Local alternative (no Action at all): run the same two commands from cron or
+# `claude /schedule` on any machine that has gh + claude authenticated:
+#   cd /path/to/your/repo && bash <plugin>/lib/issue-intake.sh run --limit 1
+
+name: loop-spec issue-to-PR
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 3 * * *"   # nightly 03:00 UTC
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  issue-intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install claude CLI + loop-spec plugin
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin marketplace add https://github.com/aztechead/loop-spec.git
+          claude plugin install loop-spec@loop-spec-marketplace
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Run issue intake (bounded to 1 issue)
+        run: |
+          PLUGIN_DIR="$(claude plugin list --json 2>/dev/null | jq -r '.[] | select(.name=="loop-spec") | .path' || true)"
+          # Fallback: clone the plugin repo just for the glue script
+          if [ -z "$PLUGIN_DIR" ] || [ ! -f "$PLUGIN_DIR/lib/issue-intake.sh" ]; then
+            git clone --depth 1 https://github.com/aztechead/loop-spec.git /tmp/loop-spec
+            PLUGIN_DIR=/tmp/loop-spec
+          fi
+          bash "$PLUGIN_DIR/lib/issue-intake.sh" run --label loop-spec --limit 1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The cycle needs push + PR rights; gh uses GH_TOKEN above.
+          LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS: "--permission-mode acceptEdits"
