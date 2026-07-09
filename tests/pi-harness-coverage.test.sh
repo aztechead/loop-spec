@@ -51,6 +51,14 @@ checks=(
   "lib/teams-capability.sh	harness.sh"
   "lib/workflow-availability.sh	harness.sh"
   "lib/cycle-preflight.sh	harness.sh"
+  # -- loop-runner: the headless pi backend and its plumbing
+  "skills/loop-runner/scripts/loop.py	def run_pi"
+  "skills/loop-runner/scripts/loop.py	--agent-cli"
+  "skills/loop-runner/scripts/supervisor.py	agent_cli"
+  "skills/loop-runner/scripts/compile_spec.py	agent_cli"
+  "skills/loop-runner/SKILL.md	--agent-cli pi"
+  "skills/shared/execute-loop-fleet.md	--agent-cli pi"
+  "skills/loop-runner/tests/fakepi	message_end"
 )
 
 for entry in "${checks[@]}"; do

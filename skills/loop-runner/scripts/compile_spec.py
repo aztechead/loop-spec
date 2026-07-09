@@ -83,7 +83,7 @@ def strip_fences(text: str) -> str:
 
 
 def compile_spec(spec_path: Path, *, claude_bin: str, model: str,
-                 out_path: Path) -> dict:
+                 out_path: Path, agent_cli: str = "") -> dict:
     spec_text = spec_path.read_text()
     base_prompt = (
         "You are a plan compiler for autonomous coding loops. Read the spec below and "
@@ -92,7 +92,7 @@ def compile_spec(spec_path: Path, *, claude_bin: str, model: str,
         f"{PLAN_SCHEMA_DOC}\n\n{COMPILER_RULES}\n\n"
         f"Set \"spec\" to \"{spec_path}\".\n\n--- SPEC ({spec_path}) ---\n{spec_text}"
     )
-    cfg = LoopConfig(task="", claude_bin=claude_bin, model=model,
+    cfg = LoopConfig(task="", claude_bin=claude_bin, agent_cli=agent_cli, model=model,
                      allowed_tools="Read,Glob,Grep")
 
     feedback = ""
@@ -135,10 +135,12 @@ def main() -> int:
     p.add_argument("--out", default="plan/tasks.json")
     p.add_argument("--model", default="", help="Model for the compiler pass.")
     p.add_argument("--claude-bin", default="claude")
+    p.add_argument("--agent-cli", choices=["claude", "pi"], default="", dest="agent_cli",
+                   help="Headless protocol (default: auto from the binary name).")
     args = p.parse_args()
 
     plan = compile_spec(Path(args.spec), claude_bin=args.claude_bin, model=args.model,
-                        out_path=Path(args.out))
+                        out_path=Path(args.out), agent_cli=args.agent_cli)
 
     print(f"\n✓ Plan written to {args.out}")
     for t in plan["tasks"]:
