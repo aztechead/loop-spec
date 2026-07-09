@@ -10,8 +10,8 @@ Model selection is fixed and lives in `skills/shared/model-matrix.md`.
 
 | Gate | Behavior |
 |---|---|
-| Spec critique (advocate + challenger) | ALWAYS runs — the cheap gate that catches building the wrong thing entirely |
-| Plan critique (advocate + challenger) | Runs unless the **structural fast-path** holds (below) |
+| Spec critique | ALWAYS runs — the cheap gate that catches building the wrong thing entirely. Single-critic by default; escalates to the paired debate per the **critique gate ladder** (below) |
+| Plan critique | Runs unless the **structural fast-path** holds (below). Single-critic by default; same escalation ladder |
 | Spec-compliance gate | runs |
 | Acceptance gate | runs |
 | Test-tamper scan | runs (fail-fast) |
@@ -31,12 +31,39 @@ critique debate is skipped iff ALL hold:
 When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)`.
 Everything else (spec critique, compliance, acceptance, code review, tamper scan) still runs.
 
+## Critique gate ladder (skip → single-critic → escalated debate)
+
+Both critique gates (DISCUSS spec-critique, PLAN plan-critique) climb the same ladder —
+the lightest mode that preserves strictness wins:
+
+1. **Skip** — PLAN only, via the structural fast-path above. The spec critique never skips.
+2. **Single-critic (the default)** — one challenger (opus) reviews the artifact solo and
+   reports `[major]`/`[minor]`-tagged findings straight to the lead
+   (`skills/shared/team-prompts/critic.md`). No advocate is dispatched; the lead
+   adjudicates. Strictness is preserved by construction: the lead may accept any finding
+   into the fix-list, but may NOT unilaterally dismiss a `[major]` finding — disputing one
+   escalates to the debate instead. A solo gate can only bias stricter, never looser.
+3. **Escalated debate** — the full advocate + challenger paired protocol
+   (`maxCritiqueRounds = 2`), exactly as each phase skill writes it. Escalation triggers:
+   - **Security signal**: the artifact (SPEC.md or PLAN.md) matches the security-signal
+     pattern from the structural fast-path — start in debate mode directly.
+   - **Contested major**: the lead disputes a `[major]` finding from the solo critic.
+   - **Deadlock**: the same finding survives two consecutive delta re-verify rounds
+     (author and critic are stuck; the debate is the tiebreak).
+
+**Delta re-verify (revisions, both modes):** after the author applies a fix-list, the gate
+does NOT re-run its full protocol. The lead sends the critic ONE message — the applied
+fix-list plus a unified diff of the artifact — and the critic confirms each item is
+addressed and checks the changed sections only (`DELTA-VERIFIED` / `DELTA-FINDINGS`).
+Retries stay unbounded (full bore); only the per-revision cost collapses from a fresh
+2-round debate to a single scoped turn.
+
 ## Team coordination params (fixed)
 
 | Param | Value |
 |---|---|
-| discuss.maxCritiqueRounds | 2 |
-| plan.maxCritiqueRounds | 2 |
+| discuss.maxCritiqueRounds | 2 (escalated debate only) |
+| plan.maxCritiqueRounds | 2 (escalated debate only) |
 | execute.maxParallelImplementers | 3 |
 | execute.maxRetriesPerTask | 2 |
 

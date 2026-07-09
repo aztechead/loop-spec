@@ -1,6 +1,6 @@
 ---
 name: discuss
-description: DISCUSS phase - conversational requirements gathering, spawns a discuss team, runs advocate/challenger debate via SendMessage, writes SPEC.md. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: DISCUSS phase - conversational requirements gathering, refines SPEC.md, and runs the single-critic critique gate (escalating to an advocate/challenger debate when contested or security-signaled). Autonomous runs collapse to lead-authored refinement + the critique gate. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch
 ---
 
@@ -11,9 +11,10 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 > **No-teams fallback:** if `.loop-spec/runtime.json.teamsAvailable == false`, do NOT
 > call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run every teammate below as
 > a one-shot `Agent` call with the same agent type, model, and prompt template, per
-> `skills/shared/no-teams-fallback.md`. Critique rounds become sequential challenger →
-> advocate Agent calls with prior round summaries (from `gate-logs/`) inlined. All
-> artifacts and gates are unchanged.
+> `skills/shared/no-teams-fallback.md`. The single-critic pass and each delta re-verify
+> become one-shot challenger Agent calls (fix-list + diff inlined); an escalated debate
+> becomes sequential challenger → advocate Agent calls with prior round summaries (from
+> `gate-logs/`) inlined. All artifacts and gates are unchanged.
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
 > do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
@@ -160,11 +161,9 @@ Wait for `TeammateIdle` from `spec-writer-1`. If spec-writer-1 goes idle without
 
 On `SPEC.md written` message received: proceed to Step 4.
 
-### Step 4 - Critique debate (ALWAYS runs)
+### Step 4 - Critique gate (ALWAYS runs; single-critic default)
 
-The SPEC critique is the cheap gate that catches building the wrong thing entirely — it is never skipped (single-tier operation; the structural fast-path applies only to the PLAN critique).
-
-`maxCritiqueRounds = 2` (fixed; `skills/shared/tier-matrix.md`).
+The SPEC critique is the cheap gate that catches building the wrong thing entirely — it is never skipped (single-tier operation; the structural fast-path applies only to the PLAN critique). It runs per the **critique gate ladder** (`skills/shared/tier-matrix.md`): single-critic by default, escalating to the paired advocate/challenger debate only when triggered.
 
 Update `feature.json` via `lib/feature-write.sh`:
 ```json
@@ -185,9 +184,64 @@ Create the gate-logs directory:
 mkdir -p .loop-spec/features/{slug}/gate-logs/
 ```
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate launched in this phase (spec-writer, advocate, challenger) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"<role>","model":"<resolved alias>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds do not re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (spec-writer, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"<role>","model":"<resolved alias>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
 
-#### Spawn advocate-1
+#### Mode selection (security signal)
+
+```bash
+if grep -qiE 'auth|authenticat|authoriz|permission|credential|secret|token|crypt|payment|billing|PII|migrat|delet' "docs/loop-spec/features/{slug}/SPEC.md"; then
+  gate_mode="debate"
+else
+  gate_mode="single-critic"
+fi
+```
+
+A security-signaled spec starts directly in the escalated debate (skip to **Escalated debate** below). Everything else runs single-critic.
+
+#### Single-critic pass (default)
+
+Model: `feature.models.challenger`. Send `challenger-1` the solo-critic brief:
+
+```
+SendMessage({
+  to: "challenger-1",
+  message: """
+    [Populate from skills/shared/team-prompts/critic.md with these substitutions:
+      {slug} = slug
+      {N} = 1
+      {phase} = discuss
+      {artifact} = SPEC.md
+    ]
+
+    Run your findings pass on SPEC.md now and report to lead.
+  """
+})
+```
+
+Wait for `TeammateIdle` from `challenger-1` and read its `FINDINGS:` / `NO-FINDINGS:` message. Write it to the gate-log:
+
+```
+Write .loop-spec/features/{slug}/gate-logs/spec-critique-round-1.md
+Contents:
+  # spec-critique Round 1 (single-critic)
+
+  ## challenger-1
+  <the FINDINGS/NO-FINDINGS message body>
+```
+
+Emit the round's telemetry event (non-fatal):
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" gate_round \
+  --phase "discuss" --data '{"gate":"spec-critique","round":1,"mode":"single-critic"}' || true
+```
+
+Proceed to Step 5 (the lead adjudicates the findings there).
+
+#### Escalated debate
+
+Runs only when a ladder trigger fires (security signal above; contested `[major]` or delta deadlock from Step 5). `maxCritiqueRounds = 2` (fixed; `skills/shared/tier-matrix.md`). When escalating from a single-critic pass, include all existing `gate-logs/spec-critique-round-*.md` content (the solo findings and any delta rounds) as `{prior_round_summaries}` in both spawn prompts.
+
+##### Spawn advocate-1
 
 Model: `feature.models.advocate` (resolved once at cycle Step 5; do not re-derive from model-matrix).
 
@@ -210,9 +264,9 @@ SendMessage({
 })
 ```
 
-#### Spawn challenger-1
+##### Spawn challenger-1
 
-Model: `feature.models.challenger` (resolved once at cycle Step 5; do not re-derive from model-matrix).
+Model: `feature.models.challenger` (resolved once at cycle Step 5; do not re-derive from model-matrix). When escalating from a single-critic pass, `challenger-1` is already live — re-send it the debate brief below via `SendMessage` instead of spawning fresh.
 
 ```
 SendMessage({
@@ -234,7 +288,7 @@ SendMessage({
 })
 ```
 
-#### Debate loop
+##### Debate loop
 
 For each round N = 1 .. maxCritiqueRounds:
 
@@ -275,19 +329,29 @@ For each round N = 1 .. maxCritiqueRounds:
      SendMessage({to: "advocate-1", message: "Round {N+1} starting. Wait for challenger-1's critique, then respond."})
      ```
 
-### Step 5 - Synthesize fix-list
+### Step 5 - Adjudicate findings and synthesize fix-list
 
 Read all files under `.loop-spec/features/{slug}/gate-logs/` matching `spec-critique-round-*.md`.
 
-Apply reconciliation rules:
+**Single-critic adjudication (default mode):**
+
+| Situation | Action |
+|-----------|--------|
+| `[major]` finding the lead agrees with | Add to fix-list. |
+| `[major]` finding the lead disputes | Do NOT drop it — ESCALATE to the full debate (Step 4, Escalated debate) with all gate-logs as prior summaries. The debate is the tiebreak; a solo gate may only bias stricter, never looser. |
+| `[minor]` finding | Lead's judgment: add to fix-list or drop. Every dropped `[minor]` is logged in the gate-log with a one-line reason — never silently. |
+| Finding depends on user intent | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it to disk (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" discuss "<dimension>" "<reading adopted>" "more reversible"` — `skills/shared/autonomous-mode.md`), and add it to the fix-list so the spec states it explicitly. |
+| Finding is an `UNGROUNDED:` line (ungrounded external claim) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it via `bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, and adds a fix-list item carrying the `EVID-NNN` + output excerpt so the revision cites it (or converts the claim to an ASSUMPTION if the probe is impossible). |
+
+**Escalated-debate reconciliation (when the debate ran):**
 
 | Situation | Action |
 |-----------|--------|
 | Challenger raises point advocate also flagged as risk | High-confidence. Add to fix-list. |
 | Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
 | Both agree | No action. |
-| Neither resolves (depends on user intent) | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it to disk (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" discuss "<dimension>" "<reading adopted>" "more reversible"` — `skills/shared/autonomous-mode.md`), and add it to the fix-list so the spec states it explicitly. |
-| Challenger finding is an `UNGROUNDED:` line (ungrounded external claim) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it via `bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, and adds a fix-list item carrying the `EVID-NNN` + output excerpt so spec-writer-1 cites it (or converts the claim to an ASSUMPTION if the probe is impossible). |
+| Neither resolves (depends on user intent) | Same user-intent row as above. |
+| `UNGROUNDED:` line | Same probe row as above. |
 
 Build `fix_list` (may be empty).
 
@@ -303,19 +367,20 @@ Append the fail entry to `feature.json.gateHistory` via `lib/feature-write.sh` B
   "gate": "spec-critique",
   "attempt": <attempt number>,
   "result": "fail",
-  "advocateModel": "<model>",
+  "advocateModel": "<model | null when the gate never escalated>",
   "challengerModel": "<model>",
-  "rounds": <N>,
-  "convergence": "<mutual-done | cap-reached | one-sided>",
+  "rounds": <N (single-critic: 1 + delta rounds)>,
+  "convergence": "<single-critic | delta-verified | mutual-done | cap-reached | one-sided>",
   "findingsAddressed": [<fix_list items>],
   "notes": null
 }
 ```
 
-Snapshot SPEC.md before sending the fix-list (used by the no-op-revision shortcut below):
+Snapshot SPEC.md before sending the fix-list (the hash feeds the no-op-revision shortcut; the copy feeds the delta re-verify diff):
 
 ```bash
 spec_hash_before="$(git hash-object docs/loop-spec/features/{slug}/SPEC.md 2>/dev/null || echo none)"
+cp docs/loop-spec/features/{slug}/SPEC.md .loop-spec/features/{slug}/gate-logs/SPEC.pre-revision.md
 ```
 
 Re-dispatch spec-writer-1 via `SendMessage` (not a fresh Agent call):
@@ -346,13 +411,43 @@ spec_hash_after="$(git hash-object docs/loop-spec/features/{slug}/SPEC.md 2>/dev
 ```
 
 If `spec_hash_after == spec_hash_before` (the spec-writer made no substantive change — either
-it judged the fix-list non-actionable or the edits were cosmetic), do NOT re-run the debate.
+it judged the fix-list non-actionable or the edits were cosmetic), do NOT re-verify.
 Record the gate as converged with `notes: "spec-writer made no change to SPEC.md; re-critique
 skipped"` in the `gateHistory` pass entry, reset `currentGate` (as in the fix_list-empty
-branch below), and proceed to Step 6. This collapses a re-critique round only when it would be
-provably redundant; any real revision still re-runs the full debate.
+branch below), and proceed to Step 5.75. This collapses a re-check only when it would be
+provably redundant.
 
-Otherwise (SPEC.md changed): re-run the debate — reset `currentGate.round = 0`, then re-send spawn prompts to `advocate-1` and `challenger-1` with `{N_round} = 1` and `{prior_round_summaries} = (concatenated content of all existing gate-logs/spec-critique-round-*.md files)`. This resets their per-round context so they argue against the revised SPEC.md with awareness of prior debate. Then return to Step 4 (critique debate loop), starting with round 1.
+Otherwise (SPEC.md changed): run the **delta re-verify** — do NOT re-run the full gate protocol (`skills/shared/tier-matrix.md`, critique gate ladder):
+
+```bash
+diff -u .loop-spec/features/{slug}/gate-logs/SPEC.pre-revision.md \
+        docs/loop-spec/features/{slug}/SPEC.md > /tmp/spec-delta.diff || true
+```
+
+```
+SendMessage({
+  to: "challenger-1",
+  message: """
+    Delta re-verify (per your solo-critic brief). The fix-list below was applied to SPEC.md.
+    Confirm each item is addressed and check the CHANGED sections only for new issues.
+
+    Fix-list applied:
+    {fix_list items, numbered}
+
+    Diff:
+    {content of /tmp/spec-delta.diff}
+
+    Reply to lead with DELTA-VERIFIED or DELTA-FINDINGS, then go idle.
+  """
+})
+```
+
+Wait for `TeammateIdle` from `challenger-1`, append the reply to a new `gate-logs/spec-critique-round-{next}.md` (titled `(delta re-verify)`), and emit a `gate_round` event with `"mode":"delta"`:
+
+- **`DELTA-VERIFIED`**: the gate passes — append the `gateHistory` pass entry (convergence: `"delta-verified"`), reset `currentGate`, proceed to Step 5.75.
+- **`DELTA-FINDINGS`**: adjudicate the tagged findings per the Step 5 rules and start a new fix round (retries are unbounded — full bore). **Deadlock escalation:** if the same finding survives two consecutive delta rounds, the author and critic are stuck — escalate to the full debate (Step 4, Escalated debate) with all gate-logs as prior summaries.
+
+(When the escalated debate produced the fix-list, the delta re-verify above still applies — the debate does not re-run for a revision; only a deadlock or a new contested `[major]` re-enters it.)
 
 #### If fix_list empty:
 
@@ -363,10 +458,10 @@ Append to `feature.json.gateHistory` via `lib/feature-write.sh`:
   "gate": "spec-critique",
   "attempt": <attempt number>,
   "result": "pass",
-  "advocateModel": "<model>",
+  "advocateModel": "<model | null when the gate never escalated>",
   "challengerModel": "<model>",
-  "rounds": <N>,
-  "convergence": "<mutual-done | cap-reached | one-sided>",
+  "rounds": <N (single-critic: 1 + delta rounds)>,
+  "convergence": "<single-critic | delta-verified | mutual-done | cap-reached | one-sided>",
   "findingsAddressed": [],
   "notes": null
 }
@@ -455,6 +550,6 @@ If invoked with `currentPhase == "discuss"` already in `feature.json`:
      - Success (team live): print orphan-cleanup message with explicit team name; require manual `TeamDelete` before resume.
    - If `currentTeamName == null`: recreate team via `TeamCreate` and replay from subphase.
 
-3. On resume with a prior debate in progress: load all existing `gate-logs/spec-critique-round-*.md` content into the spawn prompts for `advocate-1` and `challenger-1` as `{prior_round_summaries}`, then restart the debate from round `currentGate.round + 1`.
+3. On resume with a prior gate in progress: if the gate-logs show only single-critic/delta rounds (no advocate entries), re-run the gate from the single-critic findings pass — re-send `challenger-1` the solo-critic brief with the existing gate-logs content inlined as prior context. If an escalated debate was in progress (advocate entries present), load all existing `gate-logs/spec-critique-round-*.md` content into the spawn prompts for `advocate-1` and `challenger-1` as `{prior_round_summaries}`, then restart the debate from round `currentGate.round + 1`.
 
 4. Do not re-ask conversation questions the user already answered (transcript is persisted to disk).
