@@ -22,6 +22,9 @@
     ],
     "prompts": [
       "./commands/loop-debug.md"
+    ],
+    "extensions": [
+      "./extensions/pi/loop-spec.ts"
     ]
   }
 }
