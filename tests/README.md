@@ -77,3 +77,19 @@ Run all 12 cells. Track failures in the CHANGELOG of the next release.
 sample agent definitions). To add a fixture for a new manual end-to-end cell,
 create `tests/fixtures/{name}/` with a `Makefile` exposing `test`, `lint`, and
 `typecheck` targets, plus a short `README.md` describing its purpose.
+
+## Manual pi-harness smoke (live, owed before each release that touches pi paths)
+
+The offline suite covers the pi protocol with `tests/fakepi` and structural
+lints; it cannot exercise a real pi runtime. Before tagging, run once against a
+live pi install:
+
+1. `pi install git:github.com/aztechead/loop-spec` — package loads, skills
+   listed under `/skill:`, `/loop-debug` prompt registered, extension loads
+   without errors.
+2. In the TUI: invoke `/skill:assess` on a small repo — verify
+   `CLAUDE_SKILL_DIR`/`CLAUDE_PLUGIN_ROOT` resolve (lib scripts run), teams and
+   Workflow report unavailable, no Agent/AskUserQuestion calls are attempted.
+3. Headless: `pi --mode json "/skill:cycle autonomous <small task>"` — cycle
+   runs question-free on the inline rung; then a fleet tick via
+   `python3 skills/loop-runner/scripts/loop.py "<task>" --agent-cli pi --verify <cmd>`.

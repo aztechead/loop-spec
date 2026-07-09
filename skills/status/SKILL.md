@@ -45,7 +45,8 @@ raw output, citing rows/fields.
   `iterate_verdict` events (gap = which phase the judge rewound to — a high
   `plan` count means decomposition is the weak link). `dispatches` counts
   `dispatch` events by model/role/rung (`skills/shared/dispatch-events.md`).
-  `loop-fleet cost` sums `claude -p` reported `total_cost_usd` from
+  `loop-fleet cost` sums the agent CLI's reported cost (`claude -p`
+  `total_cost_usd`, or pi usage cost when reported) from
   `.loop/fleet-result.json` when the loop-fleet rung ran; `n/a` = fleet never
   ran or the CLI did not report cost (unknown, not free).
 

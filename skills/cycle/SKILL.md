@@ -87,7 +87,7 @@ non-interactive: instead of requiring pre-pinned `LOOP_SPEC_ANSWER_*` values, ev
 in the decisions record. Style is forced to `auto`. Explicit `LOOP_SPEC_ANSWER_*` /
 `LOOP_SPEC_CMD_*` vars still win where set. Full contract — trigger, precedence,
 self-answer rule, decisions record, per-site map — in **`skills/shared/autonomous-mode.md`**;
-every phase skill honors it. Headless form: `claude -p "/loop-spec:cycle autonomous <description>"`.
+every phase skill honors it. Headless form: `claude -p "/loop-spec:cycle autonomous <description>"` (pi: `pi --mode json "/skill:cycle autonomous <description>"`).
 Setup answers made before SPEC.md exists (workspace repos, resume choice, commands) are
 recorded to disk immediately — `lib/decisions.sh add .loop-spec/decisions-staging cycle
 "<q>" "<a>" "<why>"` — never buffered in model memory (compaction would drop them). Step 5
@@ -201,7 +201,7 @@ teams_available="$(jq -r '.teams.available' <<<"$pf")"
 case "$teams_mode" in
   none)
     loops_hint="subagent fallback"
-    command -v claude >/dev/null 2>&1 && loops_hint="loop-fleet + subagent fallback"
+    command -v "$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli)" >/dev/null 2>&1 && loops_hint="loop-fleet + subagent fallback"
     echo "loop-spec: agent teams off (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1)."
     echo "  Continuing with ${loops_hint}. For persistent phase teams: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1." ;;
   implicit)

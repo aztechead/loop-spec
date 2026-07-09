@@ -68,6 +68,18 @@ check "4: corrupt fixture exit 2" "2" "$ec"
 out="$(LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS="--permission-mode plan" bash "$LIB" run --fixture "$FIXTURE" --dry-run)"
 check "5: custom flags in plan" "1" "$(grep -c -- '--permission-mode plan' <<<"$out")"
 
+# ── Case 6: pi harness dispatches pi --mode json with /skill: prefix, no
+#            claude-only permission flags ─────────────────────────────────────
+out="$(LOOP_SPEC_HARNESS=pi bash "$LIB" run --fixture "$FIXTURE" --dry-run)"
+check "6: pi CLI in plan" "1" "$(grep -c -- 'pi --mode json' <<<"$out")"
+check "6: /skill:intake prefix" "1" "$(grep -c -- '/skill:intake autonomous' <<<"$out")"
+check "6: no permission-mode default" "0" "$(grep -c -- '--permission-mode' <<<"$out")"
+
+# claude harness keeps the original shape
+out="$(LOOP_SPEC_HARNESS=claude bash "$LIB" run --fixture "$FIXTURE" --dry-run)"
+check "6b: claude -p in plan" "1" "$(grep -c -- 'claude -p' <<<"$out")"
+check "6b: /loop-spec:intake prefix" "1" "$(grep -c -- '/loop-spec:intake autonomous' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

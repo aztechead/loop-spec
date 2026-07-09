@@ -93,3 +93,12 @@ In workspace (multi-repo) mode, a member repo may ship its own `.claude/skills`.
 with a loop-spec skill, exposes the nested one as `<dir>:<name>` so both stay reachable.
 No loop-spec configuration is required; just be aware that a member repo's skill named,
 e.g., `verify` will appear as `<repo-dir>:verify` alongside `loop-spec:verify`.
+
+## pi harness (pi.dev)
+
+None of the above applies under pi: agent teams and the Workflow tool are Claude
+Code surfaces, and `lib/teams-capability.sh` / `lib/workflow-availability.sh`
+hard-gate them to `none` / `false` there regardless of environment variables.
+pi prerequisites are just the base runtime (`bash >= 4`, `git`, `jq >= 1.5`,
+`python3 >= 3.6`), graphify, and the `pi` CLI itself for the loop-fleet rung.
+See the README "Running under pi" section and `skills/shared/pi-harness.md`.
