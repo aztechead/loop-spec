@@ -38,11 +38,13 @@ run_suite() {
 
 run_suite "validate-agents"           "bash tests/validate-agents.sh"
 run_suite "validate-manifest"         "bash tests/validate-manifest.test.sh"
+run_suite "validate-pi-manifest"      "bash tests/validate-pi-manifest.test.sh"
 run_suite "validate-agents-frontmatter" "bash tests/validate-agents.test.sh"
 run_suite "restrict-agent-paths"      "bash hooks/restrict-agent-paths.test.sh"
 run_suite "lib/feature-write"         "bash tests/lib/feature-write.test.sh"
 run_suite "lib/team-ops"              "bash tests/lib/team-ops.test.sh"
 run_suite "lib/teams-capability"      "bash tests/lib/teams-capability.test.sh"
+run_suite "lib/harness"               "bash tests/lib/harness.test.sh"
 run_suite "lib/git-ops"               "bash tests/lib/git-ops.test.sh"
 run_suite "lib/gsd-ingest"            "bash tests/lib/gsd-ingest.test.sh"
 run_suite "hooks/team/teammate-idle"  "bash hooks/team/teammate-idle.test.sh"
