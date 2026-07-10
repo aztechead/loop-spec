@@ -21,7 +21,8 @@
 #
 # Digest schema (version 2 — additive over 1; consumers read every field with
 # defaults, so v1 digests in the corpus stay valid):
-#   {"schema": 2, "slug": ..., "status": ..., "converged": true|false|null,
+#   {"schema": 2, "slug": ..., "branch": "feat/..."|null,
+#    "status": ..., "converged": true|false|null,
 #    "iterations": {"used": N, "max": N|null},
 #    "gaps": ["plan", ...],          # unique iterate_verdict gap types (never "none")
 #    "gateCaps": ["spec-critique"],  # gates that hit round >= 2
@@ -30,7 +31,9 @@
 #    "verifyFailureClasses": ["suite-regression", ...],  # unique verify_failure classes
 #    "warnings": N, "finishedAt": "ISO-8601|null"}
 # The three convergence fields (ROADMAP-3.0 B1) feed lib/tuning.sh via the
-# lib/status.sh metrics contract.
+# lib/status.sh metrics contract. A `watch` object appended post-merge by
+# lib/watch.sh (C2) is PRESERVED across re-runs — this writer owns every other
+# field, watch.sh owns that one.
 set -uo pipefail
 
 _skip() { echo "run-digest: $*" >&2; exit 0; }
@@ -71,10 +74,20 @@ fi
 
 mkdir -p "$OUT_DIR" 2>/dev/null || _skip "cannot create $OUT_DIR"
 
-digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argjson events "$events" '
+# Preserve a post-merge watch verdict already recorded for this slug: watch.sh
+# owns .watch; this writer must not erase it when a re-run rewrites the digest.
+prev_watch="null"
+if [[ -f "$OUT_DIR/$slug.json" ]]; then
+  prev_watch="$(jq -c '.watch // null' "$OUT_DIR/$slug.json" 2>/dev/null || echo null)"
+  jq -e . >/dev/null 2>&1 <<<"$prev_watch" || prev_watch="null"
+fi
+
+digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argjson events "$events" \
+  --argjson prev_watch "$prev_watch" '
   {
     schema: 2,
     slug: $slug,
+    branch: ($fj.branch // null),
     status: ($rj.status // null),
     converged: (if ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged else null end),
     iterations: {
@@ -95,7 +108,9 @@ digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argj
                             | .data.class // empty | select(. != "")] | unique),
     warnings: (($fj.warnings // []) | length),
     finishedAt: ($rj.finishedAt // null)
-  }')" 2>/dev/null || _skip "failed to build digest for $slug"
+  }
+  + (if $prev_watch != null then {watch: $prev_watch} else {} end)')" 2>/dev/null \
+  || _skip "failed to build digest for $slug"
 
 printf '%s\n' "$digest" > "$OUT_DIR/$slug.json" 2>/dev/null \
   || _skip "cannot write $OUT_DIR/$slug.json"

@@ -108,6 +108,8 @@ run_suite "lib/retro"                 "bash tests/lib/retro.test.sh"
 run_suite "lib/run-digest"            "bash tests/lib/run-digest.test.sh"
 run_suite "lib/sentinel-sources"      "bash tests/lib/sentinel-sources.test.sh"
 run_suite "lib/sentinel-triage"       "bash tests/lib/sentinel-triage.test.sh"
+run_suite "lib/sentinel-run"          "bash tests/lib/sentinel-run.test.sh"
+run_suite "lib/watch"                 "bash tests/lib/watch.test.sh"
 run_suite "lib/trust"                 "bash tests/lib/trust.test.sh"
 run_suite "lib/tuning"                "bash tests/lib/tuning.test.sh"
 run_suite "lib/verify-live"           "bash tests/lib/verify-live.test.sh"
@@ -135,6 +137,7 @@ fi
 
 if [[ "$RUN_E2E" == "1" ]]; then
   run_suite "tests/e2e (LIVE)" "bash tests/e2e/run-e2e.sh"
+  run_suite "tests/e2e sentinel (LIVE)" "bash tests/e2e/run-e2e-sentinel.sh"
 fi
 
 echo ""

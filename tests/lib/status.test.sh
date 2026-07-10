@@ -147,11 +147,12 @@ check "9: gapCounts count runs per gap" "2" "$(jq '.gapCounts.plan' <<<"$out")"
 check "9: verify class counts" "2" "$(jq '.verifyFailureClassCounts["suite-regression"]' <<<"$out")"
 check "9: verify class counts single" "1" "$(jq '.verifyFailureClassCounts.acceptance' <<<"$out")"
 check "9: verifyFailureRate computed" "0.5" "$(jq '.verifyFailureRate' <<<"$out")"
-check "9: postMergeFixRate reserved null" "null" "$(jq '.postMergeFixRate' <<<"$out")"
-check "9: sentinelNeedsHumanRate reserved null" "null" "$(jq '.sentinelNeedsHumanRate' <<<"$out")"
+check "9: postMergeFixRate null until watch verdicts exist" "null" "$(jq '.postMergeFixRate' <<<"$out")"
+check "9: sentinelNeedsHumanRate null until sentinel history exists" "null" "$(jq '.sentinelNeedsHumanRate' <<<"$out")"
+check "9: watchWindowClean null until watch verdicts exist" "null" "$(jq '.watchWindowClean' <<<"$out")"
 # THE SCHEMA PIN: schema-1 keys are append-only; a rename/removal must bump .schema.
 check "9: schema-1 key set pinned" \
-  "consecutiveConverged consecutiveFirstPass converged convergenceRate firstPassRate gapCounts postMergeFixRate runs schema sentinelNeedsHumanRate source verifyFailureClassCounts verifyFailureRate" \
+  "consecutiveConverged consecutiveFirstPass converged convergenceRate firstPassRate gapCounts postMergeFixRate runs schema sentinelNeedsHumanRate source verifyFailureClassCounts verifyFailureRate watchWindowClean" \
   "$(jq -r 'keys | sort | join(" ")' <<<"$out")"
 
 # ── Case 10: metrics on empty/missing digests dir ─────────────────────────────
@@ -159,6 +160,42 @@ out="$(bash "$LIB" --root "$ROOT" metrics --digests "$WORK/no-such-digests")"
 check "10: empty corpus runs 0" "0" "$(jq '.runs' <<<"$out")"
 check "10: empty corpus rate null" "null" "$(jq '.convergenceRate' <<<"$out")"
 check "10: empty corpus streak 0" "0" "$(jq '.consecutiveConverged' <<<"$out")"
+
+# ── Case 11: metrics — watch + sentinel signal producers (C2/A4, 2.18) ────────
+cat > "$DIG/run5.json" << 'EOF'
+{"schema":2,"slug":"run5","status":"completed","converged":true,"iterations":{"used":1,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-05T10:00:00Z","watch":{"schema":1,"branchGreen":true,"humanFixCommits":0,"clean":true}}
+EOF
+out="$(bash "$LIB" --root "$ROOT" metrics --digests "$DIG")"
+check "11: one clean watched run -> fix rate 0" "0" "$(jq '.postMergeFixRate' <<<"$out")"
+check "11: one clean watched run -> window clean" "true" "$(jq '.watchWindowClean' <<<"$out")"
+cat > "$DIG/run6.json" << 'EOF'
+{"schema":2,"slug":"run6","status":"completed","converged":true,"iterations":{"used":1,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-06T10:00:00Z","watch":{"schema":1,"branchGreen":true,"humanFixCommits":2,"clean":false}}
+EOF
+out="$(bash "$LIB" --root "$ROOT" metrics --digests "$DIG")"
+check "11: dirty watched run -> fix rate 0.5" "0.5" "$(jq '.postMergeFixRate' <<<"$out")"
+check "11: any dirty run -> window not clean" "false" "$(jq '.watchWindowClean' <<<"$out")"
+# unwatched runs (run1-4) never enter the watch denominators
+check "11: denominator is watched runs only" "6" "$(jq '.runs' <<<"$out")"
+# a null-clean verdict (no CI) can never prove the window clean (fail-closed)
+cat > "$DIG/run7.json" << 'EOF'
+{"schema":2,"slug":"run7","status":"completed","converged":true,"iterations":{"used":1,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-07T10:00:00Z","watch":{"schema":1,"branchGreen":null,"humanFixCommits":0,"clean":null}}
+EOF
+rm "$DIG/run6.json"
+out="$(bash "$LIB" --root "$ROOT" metrics --digests "$DIG")"
+check "11: null clean verdict fails closed" "false" "$(jq '.watchWindowClean' <<<"$out")"
+rm "$DIG/run5.json" "$DIG/run7.json"
+
+# sentinel history: needs-human / (needs-human + picked) from the local ledger
+cat > "$ROOT/sentinel-events.jsonl" << 'EOF'
+{"ts":"2026-07-08T00:00:00Z","event":"needs-human","id":"a","source":"backlog","reason":"unclassifiable-kind"}
+{"ts":"2026-07-08T00:00:00Z","event":"picked","id":"b","source":"backlog","reason":null}
+{"ts":"2026-07-09T00:00:00Z","event":"picked","id":"c","source":"gh-issues","reason":null}
+{"ts":"2026-07-09T00:00:00Z","event":"skipped","id":"d","source":"gh-issues","reason":"manual"}
+{"ts":"2026-07-09T00:01:00Z","event":"needs-human","id":"a","source":"backlog","reason":"unclassifiable-kind"}
+EOF
+out="$(bash "$LIB" --root "$ROOT" metrics --digests "$DIG")"
+check "11: sentinelNeedsHumanRate 2/(2+2)" "0.5" "$(jq '.sentinelNeedsHumanRate' <<<"$out")"
+rm "$ROOT/sentinel-events.jsonl"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

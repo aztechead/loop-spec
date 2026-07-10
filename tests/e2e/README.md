@@ -1,9 +1,17 @@
-# Live e2e smoke test
+# Live e2e smoke tests
 
 `run-e2e.sh` runs ONE full autonomous cycle against a throwaway fixture repo and
 asserts the machine-readable headless contract (`result.json` schema 1 +
 `events.jsonl`). It is the scripted counterpart to the manual matrix in
 `tests/README.md`.
+
+`run-e2e-sentinel.sh` is the sentinel-scenario sibling (ROADMAP-3.0 A3+A4):
+it seeds a backlog entry in the fixture, runs `claude -p "/loop-spec:sentinel
+run"`, and asserts the drive loop scanned, recorded the pick in
+`.loop-spec/sentinel-events.jsonl`, drove a cycle to a valid terminal status
+on a `feat/*` branch, and never advanced `main` (PR-terminated — no
+auto-merge at any trust level). Same prerequisites and flags as `run-e2e.sh`;
+`tests/run-all.sh --e2e` runs both.
 
 **It is opt-in and it is not free**: a real `claude -p` autonomous cycle,
 typically 10–45 minutes of wall clock and the token cost of a small feature.

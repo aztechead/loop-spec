@@ -38,7 +38,8 @@
 #                anything else -> unknown (a human labeled it, a script must
 #                not guess the class)
 #   ci-failures: always bug (a red default branch is a defect by definition)
-#   backlog:     iterate-gap/verify-deferred -> gap; manual -> chore
+#   backlog:     iterate-gap/verify-deferred -> gap; manual -> chore;
+#                watch-regression -> bug (a dirty post-merge window is a defect)
 #   assessment:  CRITICAL/HIGH -> bug; MEDIUM -> gap; LOW -> chore
 #
 # Exit codes: 0 success (possibly []), 2 bad invocation / missing prerequisite.
@@ -174,6 +175,7 @@ $log_tail"
       url: null,
       kind: (if .type == "iterate-gap" or .type == "verify-deferred" then "gap"
              elif .type == "manual" then "chore"
+             elif .type == "watch-regression" then "bug"
              else "unknown" end),
       updatedAt: (if .date == "" then null else .date + "T00:00:00Z" end)
     }]' <<<"$entries"

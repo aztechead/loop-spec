@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# trust.sh - Graduated-trust track record, computed and read-only (ROADMAP-3.0 D1).
+# trust.sh - Graduated-trust track record and governor (ROADMAP-3.0 D1-D3).
 #
 # Answers "how much unattended authority has THIS repo earned?" from evidence,
 # never from opinion: the inputs are the committed metrics contract
 # (lib/status.sh metrics — run digests under docs/loop-spec/telemetry/runs/),
-# not self-reports. In 2.16 this script only REPORTS the level; nothing reads
-# it to authorize anything yet (the authorize verb ships with D2/D3).
+# not self-reports. `level` reports; `authorize` (D2/D3, 2.18) is the verb the
+# ACTING scripts call and obey — authority checks live in the scripts that act,
+# never in skill prose, so a skill cannot talk itself past this file.
 #
 # Levels (defaults; thresholds configurable in .loop-spec/trust.conf):
 #   L0  default forever — PR-and-wait (today's behavior)
@@ -14,23 +15,34 @@
 #   L3  L2 + >= L3_STREAK (20) streak + clean post-merge watch window
 #
 # FAIL-CLOSED is the whole design: any signal that is missing, null, or
-# unparseable resolves to the LOWER level. postMergeFixRate and the
-# live-verify / watch signals do not exist until pillars C1/C2 ship — so with
-# 2.16-era telemetry every repo computes to L0, by construction, not by
-# accident. Promotion is slow, demotion is instant (one bad signal drops the
-# level; the streak input resets because the metrics contract recomputes the
-# trailing streak from the digests).
+# unparseable resolves to the LOWER level, and an action the map does not
+# unlock resolves to DENIED. Promotion is slow, demotion is instant (one bad
+# signal drops the level; the streak input resets because the metrics contract
+# recomputes the trailing streak from the digests).
 #
 # Usage:
 #   trust.sh level [--json] [--root <dir>] [--conf <file>] [--metrics-json <file>]
 #       Print the current level AND the evidence lines that produced it.
 #       --metrics-json bypasses lib/status.sh metrics (fixture seam for tests);
 #       --root is forwarded to status.sh.
+#   trust.sh authorize --action <sentinel-batch|auto-merge> [--completed <n>]
+#                      [--json] [--root <dir>] [--conf <file>] [--metrics-json <file>]
+#       Deterministic authority check; the exit code IS the verdict (0 =
+#       authorized, 1 = denied). Level -> authority map (2.18: L1 only):
+#         sentinel-batch  L0: max batch 1 (PR-and-wait, one item per
+#                         invocation regardless of env). L1+: the user's
+#                         LOOP_SPEC_MAX_FEATURES is honored, capped at
+#                         BATCH_L1 (conf, default 5). Authorized while
+#                         --completed (default 0) < the effective max.
+#         auto-merge      ALWAYS denied in this release: unlocks at L2/L3 with
+#                         the deterministic diff classifier (ships in 3.0).
+#                         Until that exists, any doubt resolves to no-merge.
 #
 # Config (.loop-spec/trust.conf, KEY=VALUE lines, parsed never sourced):
-#   L1_STREAK=5  L2_STREAK=10  L3_STREAK=20
+#   L1_STREAK=5  L2_STREAK=10  L3_STREAK=20  BATCH_L1=5
 #
-# Exit codes: 0 level computed, 2 bad invocation / unreadable metrics.
+# Exit codes: level: 0 computed, 2 bad invocation / unreadable metrics.
+#             authorize: 0 authorized, 1 denied, 2 bad invocation.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,22 +59,31 @@ conf_get() {
 }
 
 cmd="${1:-}"
-[[ "$cmd" == "level" ]] || _die2 "unknown subcommand '${cmd:-}' (usage: trust.sh level [--json] [--root <dir>] [--conf <file>] [--metrics-json <file>])"
+case "$cmd" in level|authorize) ;; *) _die2 "unknown subcommand '${cmd:-}' (usage: trust.sh level|authorize ...)" ;; esac
 shift
 
 JSON=0
 ROOT=""
 CONF="${CLAUDE_PROJECT_DIR:-.}/.loop-spec/trust.conf"
 METRICS_FILE=""
+ACTION=""
+COMPLETED=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --json) JSON=1; shift ;;
     --root) ROOT="${2:-}"; shift 2 || shift ;;
     --conf) CONF="${2:-}"; shift 2 || shift ;;
     --metrics-json) METRICS_FILE="${2:-}"; shift 2 || shift ;;
+    --action) ACTION="${2:-}"; shift 2 || shift ;;
+    --completed) COMPLETED="${2:-}"; shift 2 || shift ;;
     *) _die2 "unknown flag '$1'" ;;
   esac
 done
+
+if [[ "$cmd" == "authorize" ]]; then
+  case "$ACTION" in sentinel-batch|auto-merge) ;; *) _die2 "authorize needs --action sentinel-batch|auto-merge (got '${ACTION:-}')" ;; esac
+  [[ "$COMPLETED" =~ ^[0-9]+$ ]] || _die2 "--completed must be a non-negative integer (got '$COMPLETED')"
+fi
 
 if [[ -n "$METRICS_FILE" ]]; then
   [[ -f "$METRICS_FILE" ]] || _die2 "metrics file not found: $METRICS_FILE"
@@ -86,9 +107,10 @@ verdict="$(jq -c \
   (.consecutiveConverged // 0) as $streak
   | .postMergeFixRate as $pmfr
   | .verifyFailureRate as $vfr
-  # Live-verify and watch signals have no producer yet (C1/C2). Reading keys
-  # that may not exist keeps this forward-compatible: when the metrics
-  # contract grows them, this script starts honoring them unchanged.
+  # watchWindowClean is produced by lib/watch.sh verdicts (C2, 2.18);
+  # liveVerifyPassing has no metrics producer until the L2 wave (3.0).
+  # Reading keys that may not exist keeps this forward-compatible: when the
+  # metrics contract grows one, this script starts honoring it unchanged.
   | (.liveVerifyPassing // null) as $live
   | (.watchWindowClean // null) as $watch
 
@@ -115,9 +137,60 @@ verdict="$(jq -c \
       ]
     }' <<<"$metrics")" || _die2 "level computation failed"
 
-if [[ "$JSON" == "1" ]]; then
-  jq . <<<"$verdict"
+if [[ "$cmd" == "level" ]]; then
+  if [[ "$JSON" == "1" ]]; then
+    jq . <<<"$verdict"
+    exit 0
+  fi
+  jq -r '"trust level: \(.level)", "evidence:", (.evidence[] | "  \(.)")' <<<"$verdict"
   exit 0
 fi
 
-jq -r '"trust level: \(.level)", "evidence:", (.evidence[] | "  \(.)")' <<<"$verdict"
+# ── authorize: the level -> authority map (fail-closed) ──────────────────────
+level="$(jq -r '.level' <<<"$verdict")"
+
+if [[ "$ACTION" == "auto-merge" ]]; then
+  # Hard-denied regardless of level: the L2/L3 authority classes and the
+  # deterministic diff classifier ship in 3.0. Until the classifier exists,
+  # nothing can prove a diff low-risk, so the answer is no-merge — by
+  # construction, not by threshold.
+  answer="$(jq -cn --arg level "$level" '{
+    schema: 1, action: "auto-merge", level: $level, authorized: false,
+    reason: "auto-merge requires L2+ and the deterministic diff classifier (ships in 3.0); fail-closed"
+  }')"
+  if [[ "$JSON" == "1" ]]; then jq . <<<"$answer"; else
+    jq -r '"authorize \(.action): DENIED (level \(.level)) — \(.reason)"' <<<"$answer"
+  fi
+  exit 1
+fi
+
+# sentinel-batch: L0 processes exactly ONE item per invocation no matter what
+# the env asks for; L1+ honors the user's LOOP_SPEC_MAX_FEATURES up to the
+# BATCH_L1 cap. Both bounds must agree — trust unlocks, it never volunteers.
+batch_l1="$(conf_get "$CONF" BATCH_L1 5)"
+max_features="${LOOP_SPEC_MAX_FEATURES:-1}"
+[[ "$max_features" =~ ^[0-9]+$ ]] || max_features=1
+if [[ "$level" == "L0" ]]; then
+  max_batch=1
+else
+  max_batch="$max_features"
+  if (( max_batch > batch_l1 )); then max_batch="$batch_l1"; fi
+fi
+
+if (( COMPLETED < max_batch )); then authorized=true; ec=0; else authorized=false; ec=1; fi
+answer="$(jq -cn --arg level "$level" --argjson authorized "$authorized" \
+  --argjson maxBatch "$max_batch" --argjson completed "$COMPLETED" \
+  --argjson maxFeatures "$max_features" --argjson batchL1 "$batch_l1" '{
+  schema: 1, action: "sentinel-batch", level: $level, authorized: $authorized,
+  maxBatch: $maxBatch, completed: $completed,
+  reason: (if $authorized then "completed \($completed) < maxBatch \($maxBatch)"
+           else "batch bound reached: completed \($completed) >= maxBatch \($maxBatch)" end),
+  evidence: [
+    "level: \($level) (L0 caps sentinel batches at 1; L1+ honors LOOP_SPEC_MAX_FEATURES up to BATCH_L1)",
+    "LOOP_SPEC_MAX_FEATURES: \($maxFeatures), BATCH_L1: \($batchL1) -> maxBatch \($maxBatch)"
+  ]
+}')"
+if [[ "$JSON" == "1" ]]; then jq . <<<"$answer"; else
+  jq -r '"authorize \(.action): \(if .authorized then "AUTHORIZED" else "DENIED" end) (level \(.level), maxBatch \(.maxBatch), completed \(.completed))"' <<<"$answer"
+fi
+exit "$ec"

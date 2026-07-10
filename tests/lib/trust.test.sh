@@ -97,9 +97,60 @@ out="$(bash "$SCRIPT" level --json --metrics-json "$WORK/metrics.json" --conf "$
 check "json: schema" "1" "$(jq '.schema' <<<"$out")"
 check "json: key set" "evidence inputs level schema" "$(jq -r 'keys | sort | join(" ")' <<<"$out")"
 
+# ── authorize: the level -> authority map (D2/D3, fail-closed) ────────────────
+unset LOOP_SPEC_MAX_FEATURES 2>/dev/null || true
+auth() { # auth <streak> <pmfr> <live> <watch> <action> [extra args...] -> exit code
+  local streak="$1" pmfr="$2" live="$3" watch="$4" action="$5"; shift 5
+  mk "$streak" "$pmfr" "$live" "$watch"
+  local ec=0
+  bash "$SCRIPT" authorize --action "$action" --metrics-json "$WORK/metrics.json" --conf "$WORK/no-conf" "$@" >/dev/null 2>&1 || ec=$?
+  echo "$ec"
+}
+
+# auto-merge: hard-denied at EVERY level in this release (unlocks with the 3.0 classifier)
+check "auto-merge denied at L0" "1" "$(auth 0 null null null auto-merge)"
+check "auto-merge denied at L1" "1" "$(auth 5 0 null null auto-merge)"
+check "auto-merge denied even at L3" "1" "$(auth 20 0 true true auto-merge)"
+
+# sentinel-batch at L0: exactly one item per invocation, env cannot raise it
+check "L0 batch: first item authorized" "0" "$(auth 0 null null null sentinel-batch --completed 0)"
+check "L0 batch: second item denied" "1" "$(auth 0 null null null sentinel-batch --completed 1)"
+mk 0 null null null
+ec=0; LOOP_SPEC_MAX_FEATURES=10 bash "$SCRIPT" authorize --action sentinel-batch --completed 1 \
+  --metrics-json "$WORK/metrics.json" --conf "$WORK/no-conf" >/dev/null 2>&1 || ec=$?
+check "L0 batch: env cannot raise the cap" "1" "$ec"
+
+# sentinel-batch at L1: LOOP_SPEC_MAX_FEATURES honored up to BATCH_L1
+check "L1 batch: default env still bounds at 1" "1" "$(auth 5 0 null null sentinel-batch --completed 1)"
+mk 5 0 null null
+ec=0; LOOP_SPEC_MAX_FEATURES=3 bash "$SCRIPT" authorize --action sentinel-batch --completed 2 \
+  --metrics-json "$WORK/metrics.json" --conf "$WORK/no-conf" >/dev/null 2>&1 || ec=$?
+check "L1 batch: raised env honored" "0" "$ec"
+ec=0; LOOP_SPEC_MAX_FEATURES=99 bash "$SCRIPT" authorize --action sentinel-batch --completed 5 \
+  --metrics-json "$WORK/metrics.json" --conf "$WORK/no-conf" >/dev/null 2>&1 || ec=$?
+check "L1 batch: BATCH_L1 default caps env at 5" "1" "$ec"
+printf 'BATCH_L1=2\n' > "$WORK/batch.conf"
+ec=0; LOOP_SPEC_MAX_FEATURES=99 bash "$SCRIPT" authorize --action sentinel-batch --completed 2 \
+  --metrics-json "$WORK/metrics.json" --conf "$WORK/batch.conf" >/dev/null 2>&1 || ec=$?
+check "L1 batch: conf lowers the cap" "1" "$ec"
+
+# json shape + evidence
+mk 5 0 null null
+out="$(LOOP_SPEC_MAX_FEATURES=3 bash "$SCRIPT" authorize --action sentinel-batch --completed 1 --json \
+  --metrics-json "$WORK/metrics.json" --conf "$WORK/no-conf")"
+check "authorize json: authorized" "true" "$(jq '.authorized' <<<"$out")"
+check "authorize json: maxBatch" "3" "$(jq '.maxBatch' <<<"$out")"
+check "authorize json: level" "L1" "$(jq -r '.level' <<<"$out")"
+
 # ── bad invocations ───────────────────────────────────────────────────────────
 ec=0; bash "$SCRIPT" authorize >/dev/null 2>&1 || ec=$?
-check "unshipped verb exits 2" "2" "$ec"
+check "authorize without --action exits 2" "2" "$ec"
+ec=0; bash "$SCRIPT" authorize --action bogus --metrics-json "$WORK/metrics.json" >/dev/null 2>&1 || ec=$?
+check "authorize unknown action exits 2" "2" "$ec"
+ec=0; bash "$SCRIPT" authorize --action sentinel-batch --completed nope --metrics-json "$WORK/metrics.json" >/dev/null 2>&1 || ec=$?
+check "authorize bad --completed exits 2" "2" "$ec"
+ec=0; bash "$SCRIPT" govern >/dev/null 2>&1 || ec=$?
+check "unknown verb exits 2" "2" "$ec"
 ec=0; bash "$SCRIPT" level --metrics-json "$WORK/absent.json" >/dev/null 2>&1 || ec=$?
 check "missing metrics file exits 2" "2" "$ec"
 echo 'not json' > "$WORK/bad.json"

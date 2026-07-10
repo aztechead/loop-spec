@@ -2,6 +2,63 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.18.0]
+
+### Added — ROADMAP-3.0 autonomy wave (sentinel run + recipes, post-merge watch, trust governor at L1)
+
+Third release-train wave: the sentinel starts ACTING (A3+A4), the loop
+observes reality past the merge (C2), and the graduated-trust governor takes
+its first enforcement seat (D2/D3 — at L1 only). Risk gate honored: every
+sentinel run is PR-terminated; L1 unlocks batching, **never** merging.
+
+- **Sentinel drive loop (A3).** `/loop-spec:sentinel run` pops the first
+  eligible queue item, converts it via the existing `/loop-spec:intake
+  --no-run` path, and drives `/loop-spec:cycle autonomous` from the draft.
+  New `lib/sentinel-run.sh` owns the deterministic mechanics: `next` picks
+  the queue head, skipping items picked within `PICK_COOLDOWN_HOURS`
+  (default 24 — a failing item cannot thrash-loop overnight; `--peek`
+  answers without recording); `record` appends any decision to the scan
+  history. Chaining beyond one item is decided by `lib/autonomous-chain.sh
+  --scope queue` — same never-chain-past-failure invariant as backlog
+  drains, with supply from the sentinel queue and the bound from the trust
+  governor. Unattended cadence is a documented recipe, not a daemon:
+  `docs/loop-spec/sentinel.md` (cron, launchd, GitHub Actions; claude and pi
+  headless forms via the `lib/harness.sh cli` seam).
+- **Safety rails (A4).** Every sentinel decision (picked / skipped /
+  needs-human) is ledgered in `.loop-spec/sentinel-events.jsonl` for
+  `/status` and `/retro`; sentinel runs are always PR-terminated (auto-merge
+  is hard-denied at every trust level in this release); the batch bound
+  fails closed when trust cannot be computed. New LIVE e2e scenario
+  (`tests/e2e/run-e2e-sentinel.sh`, opt-in via `--e2e`) proves the drive
+  loop end to end and that `main` is never advanced.
+- **Post-merge watch (C2).** New `lib/watch.sh` + `/loop-spec:watch <slug>`:
+  after the feature's PR merges, did the default branch stay green for the
+  watch window, and did any commits touch the feature's files inside it?
+  Computed from `gh`/git facts, never self-reports; the verdict (`watch`
+  object, schema 1) is appended to the feature's committed run digest
+  (`lib/run-digest.sh` now records `branch` and preserves `watch` across
+  re-runs). A dirty window queues a `watch-regression` backlog entry
+  (deduped per slug+PR) that the sentinel triages as a bug — watch never
+  reopens a cycle itself. `clean` is `true` only on green CI + zero fixups;
+  unknowable signals stay `null` and never promote trust.
+- **Metrics contract grows its producers (B3 follow-through).**
+  `lib/status.sh metrics` now computes `postMergeFixRate` and the (additive)
+  `watchWindowClean` from watch verdicts, and `sentinelNeedsHumanRate` from
+  the sentinel decision ledger; each stays `null` until its producer has
+  actually run, so `lib/trust.sh` keeps failing closed. Schema pin updated.
+- **Trust governor (D2/D3, L1 only).** `lib/trust.sh authorize --action
+  <sentinel-batch|auto-merge>` is the enforcement verb the acting scripts
+  call and obey — authority lives in scripts, never in skill prose.
+  `sentinel-batch`: an L0 repo processes exactly ONE item per invocation
+  (env cannot raise it); at L1+ the user's `LOOP_SPEC_MAX_FEATURES` is
+  honored up to `BATCH_L1` (trust.conf, default 5). `auto-merge`: denied at
+  every level until the L2/L3 classes and the deterministic diff classifier
+  ship in 3.0. `/loop-spec:status` now surfaces the trust level (with
+  distance-to-next evidence) and pending `needs-human` items.
+- **Tests:** 2 new suites (`sentinel-run`, `watch`) + authorize/queue-scope/
+  metrics cases in the trust, autonomous-chain, and status suites; new pi
+  coverage pins for the recipe doc; full offline suite green.
+
 ## [2.17.0]
 
 ### Added — ROADMAP-3.0 learning wave (corpus widening, parameter tuning, live-verify rung)

@@ -9,7 +9,8 @@
 # Usage:
 #   backlog.sh add <source-slug> <type> <text> [--id <gap-id>]
 #       Append an unchecked entry. Idempotent on exact text or gap-id (prints "exists").
-#       type: verify-deferred | iterate-gap | manual
+#       type: verify-deferred | iterate-gap | manual | watch-regression
+#       (watch-regression = queued by lib/watch.sh on a dirty post-merge window)
 #   backlog.sh next
 #       Print the first unchecked entry's text (without markup). Exit 1 when empty.
 #   backlog.sh next --json

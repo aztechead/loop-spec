@@ -47,6 +47,10 @@ checks=(
   "skills/shared/model-matrix.md	pi-harness.md"
   # -- the one-shot command adapts too
   "commands/loop-debug.md	pi-harness.md"
+  # -- unattended sentinel recipes document both headless CLIs (same seam as
+  #    lib/issue-intake.sh: lib/harness.sh cli)
+  "docs/loop-spec/sentinel.md	pi --mode json \"/skill:sentinel run\""
+  "docs/loop-spec/sentinel.md	lib/harness.sh cli"
   # -- micro mode: the SessionStart directive is bridged to pi (the Stop-time
   #    adhoc-verify-guard is CC-only; pi has no blocking stop event)
   "extensions/pi/loop-spec.ts	micro-inject.sh"

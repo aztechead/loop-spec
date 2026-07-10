@@ -19,10 +19,10 @@
 #       read THIS output instead of re-deriving from raw telemetry. Computed
 #       from the COMMITTED run digests (docs/loop-spec/telemetry/runs/*.json,
 #       lib/run-digest.sh), not local events — the contract must survive
-#       volatile agents. Keys are append-only across schema 1; signals whose
-#       producers have not shipped yet (post-merge watch, sentinel events)
-#       are present as null, so consumers can already bind to them and
-#       fail-closed on null. Always JSON (--json accepted for symmetry).
+#       volatile agents. Keys are append-only across schema 1; a signal whose
+#       producer has not run yet (no watch verdicts, no sentinel picks) is
+#       present as null, so consumers can already bind to it and fail closed
+#       on null. Always JSON (--json accepted for symmetry).
 #
 # --root defaults to ${CLAUDE_PROJECT_DIR:-.}/.loop-spec.
 # Unlike the writers (events.sh/cycle-result.sh) this is a USER-FACING reader:
@@ -225,11 +225,16 @@ case "$CMD" in
     #   schema, source, runs, converged, convergenceRate, firstPassRate,
     #   consecutiveConverged, consecutiveFirstPass, gapCounts,
     #   verifyFailureClassCounts, postMergeFixRate, verifyFailureRate,
-    #   sentinelNeedsHumanRate
+    #   sentinelNeedsHumanRate, watchWindowClean
     # Pinned by tests/lib/status.test.sh — a key change is a schema bump.
     # gapCounts / verifyFailureClassCounts count RUNS exhibiting each gap /
     # verify-failure class (digests carry them unique-per-run), which is the
     # recurrence definition lib/tuning.sh and lib/retro.sh share.
+    # postMergeFixRate / watchWindowClean are computed over runs that CARRY a
+    # watch verdict (lib/watch.sh, C2) — null until one exists, so trust.sh
+    # keeps failing closed. sentinelNeedsHumanRate reads the LOCAL scan
+    # history (<root>/sentinel-events.jsonl): needs-human / (needs-human +
+    # picked); null until the sentinel has both scanned and run.
     DIGESTS_DIR="${DIGESTS_DIR:-$(dirname "$ROOT")/docs/loop-spec/telemetry/runs}"
     DIGESTS="[]"
     if [[ -d "$DIGESTS_DIR" ]]; then
@@ -240,7 +245,11 @@ case "$CMD" in
         DIGESTS="$(jq -c --argjson d "$d" '. + [$d]' <<<"$DIGESTS")"
       done
     fi
-    jq -n --argjson runs "$DIGESTS" --arg src "$DIGESTS_DIR" '
+    SENTINEL_EVENTS="[]"
+    if [[ -f "$ROOT/sentinel-events.jsonl" ]]; then
+      SENTINEL_EVENTS="$(jq -cs 'map(select(type == "object"))' "$ROOT/sentinel-events.jsonl" 2>/dev/null || echo '[]')"
+    fi
+    jq -n --argjson runs "$DIGESTS" --arg src "$DIGESTS_DIR" --argjson sentinel "$SENTINEL_EVENTS" '
       ($runs | sort_by(.finishedAt // "")) as $ordered
       | ($ordered | length) as $n
       | ($ordered | map(select(.converged == true)) | length) as $conv
@@ -249,6 +258,10 @@ case "$CMD" in
       | ($ordered | reverse | map(.converged == true and ((.iterations.used // 0) <= 1))
          | (index(false) // length)) as $fpStreak
       | ($ordered | map(select((.verifyFailureClasses // []) | length > 0)) | length) as $vfRuns
+      | ($ordered | map(select(.watch != null))) as $watched
+      | ($watched | map(select((.watch.humanFixCommits // 0) > 0)) | length) as $fixed
+      | ($sentinel | map(select(.event == "needs-human")) | length) as $nh
+      | ($sentinel | map(select(.event == "picked")) | length) as $picked
       | {
           schema: 1,
           source: $src,
@@ -262,9 +275,13 @@ case "$CMD" in
                       | map({key: .[0], value: length}) | from_entries),
           verifyFailureClassCounts: ([$ordered[] | (.verifyFailureClasses // [])[]] | group_by(.)
                                      | map({key: .[0], value: length}) | from_entries),
-          postMergeFixRate: null,
+          postMergeFixRate: (($watched | length) as $w
+                             | if $w == 0 then null else ($fixed / $w * 100 | round / 100) end),
           verifyFailureRate: (if $n == 0 then null else ($vfRuns / $n * 100 | round / 100) end),
-          sentinelNeedsHumanRate: null
+          sentinelNeedsHumanRate: (($nh + $picked) as $d
+                                   | if $d == 0 then null else ($nh / $d * 100 | round / 100) end),
+          watchWindowClean: (if ($watched | length) == 0 then null
+                             else ($watched | all(.watch.clean == true)) end)
         }'
     exit 0
     ;;
