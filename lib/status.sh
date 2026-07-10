@@ -13,6 +13,17 @@
 #       histogram, dispatch counts by model/role/rung, and loop-fleet cost
 #       (.loop/fleet-result.json totals when present).
 #
+#   status.sh [--root <dir>] [--json] metrics [--digests <dir>]
+#       THE METRICS CONTRACT (ROADMAP-3.0 B3): the stable, schema-versioned
+#       numbers the other pillars consume — trust (lib/trust.sh) and tuning
+#       read THIS output instead of re-deriving from raw telemetry. Computed
+#       from the COMMITTED run digests (docs/loop-spec/telemetry/runs/*.json,
+#       lib/run-digest.sh), not local events — the contract must survive
+#       volatile agents. Keys are append-only across schema 1; signals whose
+#       producers have not shipped yet (post-merge watch, sentinel events)
+#       are present as null, so consumers can already bind to them and
+#       fail-closed on null. Always JSON (--json accepted for symmetry).
+#
 # --root defaults to ${CLAUDE_PROJECT_DIR:-.}/.loop-spec.
 # Unlike the writers (events.sh/cycle-result.sh) this is a USER-FACING reader:
 # it uses normal exit codes. 0 = ok (including "no features yet"), 2 = bad args.
@@ -22,13 +33,15 @@ ROOT=""
 JSON=0
 CMD="status"
 SLUG=""
+DIGESTS_DIR=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 || shift ;;
     --json) JSON=1; shift ;;
-    status|stats) CMD="$1"; shift ;;
-    -*) echo "status.sh: unknown flag '$1' (usage: status.sh [--root <dir>] [--json] [status|stats] [<slug>])" >&2; exit 2 ;;
+    --digests) DIGESTS_DIR="${2:-}"; shift 2 || shift ;;
+    status|stats|metrics) CMD="$1"; shift ;;
+    -*) echo "status.sh: unknown flag '$1' (usage: status.sh [--root <dir>] [--json] [status|stats|metrics] [<slug>])" >&2; exit 2 ;;
     *) SLUG="$1"; shift ;;
   esac
 done
@@ -204,6 +217,43 @@ case "$CMD" in
       "  by rung:  \(if (.dispatches.byRung | length) == 0 then "-" else (.dispatches.byRung | to_entries | map("\(.key)=\(.value)") | join("  ")) end)",
       "loop-fleet cost: \(if .loopFleetCostUsd != null then "$\(.loopFleetCostUsd)" else "n/a (no fleet-result.json or cost not reported)" end)"
     ' <<<"$STATS"
+    exit 0
+    ;;
+
+  metrics)
+    # The B3 contract. Schema 1 keys (append-only; never rename, never remove):
+    #   schema, source, runs, converged, convergenceRate, firstPassRate,
+    #   consecutiveConverged, postMergeFixRate, verifyFailureRate,
+    #   sentinelNeedsHumanRate
+    # Pinned by tests/lib/status.test.sh — a key change is a schema bump.
+    DIGESTS_DIR="${DIGESTS_DIR:-$(dirname "$ROOT")/docs/loop-spec/telemetry/runs}"
+    DIGESTS="[]"
+    if [[ -d "$DIGESTS_DIR" ]]; then
+      for f in "$DIGESTS_DIR"/*.json; do
+        [[ -f "$f" ]] || continue
+        d="$(cat "$f" 2>/dev/null || echo null)"
+        jq -e 'type == "object"' >/dev/null 2>&1 <<<"$d" || continue
+        DIGESTS="$(jq -c --argjson d "$d" '. + [$d]' <<<"$DIGESTS")"
+      done
+    fi
+    jq -n --argjson runs "$DIGESTS" --arg src "$DIGESTS_DIR" '
+      ($runs | sort_by(.finishedAt // "")) as $ordered
+      | ($ordered | length) as $n
+      | ($ordered | map(select(.converged == true)) | length) as $conv
+      | ($ordered | map(select(.converged == true and ((.iterations.used // 0) <= 1))) | length) as $fp
+      | ($ordered | reverse | map(.converged == true) | (index(false) // length)) as $streak
+      | {
+          schema: 1,
+          source: $src,
+          runs: $n,
+          converged: $conv,
+          convergenceRate: (if $n == 0 then null else ($conv / $n * 100 | round / 100) end),
+          firstPassRate: (if $n == 0 then null else ($fp / $n * 100 | round / 100) end),
+          consecutiveConverged: $streak,
+          postMergeFixRate: null,
+          verifyFailureRate: null,
+          sentinelNeedsHumanRate: null
+        }'
     exit 0
     ;;
 esac

@@ -15,6 +15,9 @@
 #   backlog.sh next --json
 #       Print the first unchecked entry as JSON {id, date, slug, type, text}
 #       (id null when the entry carries none). Exit 1 when empty.
+#   backlog.sh list --json
+#       Print ALL unchecked entries as a JSON array (same per-entry shape as
+#       next --json, in file order). Empty array when none. Exit 0 always.
 #   backlog.sh done <text>
 #       Check off the first unchecked entry whose text matches exactly.
 #   backlog.sh gap-id <text>
@@ -144,6 +147,23 @@ case "${1:-}" in
     done < "$BACKLOG_FILE"
     exit 1
     ;;
+  list)
+    # Only the machine-readable form exists: the human-readable list IS the file.
+    [[ "${2:-}" == "--json" ]] || { echo "usage: backlog.sh list --json" >&2; exit 2; }
+    [[ -f "$BACKLOG_FILE" ]] || { echo "[]"; exit 0; }
+    {
+      while IFS= read -r line; do
+        [[ "$line" == "- [ ] "* ]] || continue
+        meta="${line#*\(}"; meta="${meta%%\)*}"
+        read -r e_date e_slug e_type _rest <<< "$meta"
+        gid="$(entry_id "$line")"
+        jq -cn \
+          --arg id "$gid" --arg date "${e_date:-}" --arg slug "${e_slug:-}" \
+          --arg type "${e_type:-}" --arg text "$(entry_text "$line")" \
+          '{id: (if $id == "" then null else $id end), date: $date, slug: $slug, type: $type, text: $text}'
+      done < "$BACKLOG_FILE"
+    } | jq -cs .
+    ;;
   done)
     text="${2:-}"
     [[ -z "$text" ]] && { echo "usage: backlog.sh done <text>" >&2; exit 2; }
@@ -210,7 +230,7 @@ case "${1:-}" in
     echo "$BACKLOG_FILE"
     ;;
   *)
-    echo "usage: backlog.sh add|next|done|gap-id|terminal|is-terminal|count|path" >&2
+    echo "usage: backlog.sh add|next|list|done|gap-id|terminal|is-terminal|count|path" >&2
     exit 2
     ;;
 esac

@@ -118,6 +118,44 @@ ec=0
 bash "$LIB" --bogus >/dev/null 2>&1 || ec=$?
 check "8: bad flag exit 2" "2" "$ec"
 
+# ── Case 9: metrics — the B3 contract (schema pinned; committed digests) ──────
+DIG="$WORK/digests"
+mkdir -p "$DIG"
+cat > "$DIG/run1.json" << 'EOF'
+{"schema":1,"slug":"run1","status":"completed","converged":true,"iterations":{"used":1,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-01T10:00:00Z"}
+EOF
+cat > "$DIG/run2.json" << 'EOF'
+{"schema":1,"slug":"run2","status":"completed","converged":false,"iterations":{"used":10,"max":10},"gaps":["plan"],"gateCaps":[],"warnings":1,"finishedAt":"2026-07-02T10:00:00Z"}
+EOF
+cat > "$DIG/run3.json" << 'EOF'
+{"schema":1,"slug":"run3","status":"completed","converged":true,"iterations":{"used":2,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-03T10:00:00Z"}
+EOF
+cat > "$DIG/run4.json" << 'EOF'
+{"schema":1,"slug":"run4","status":"completed","converged":true,"iterations":{"used":1,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-04T10:00:00Z"}
+EOF
+echo 'not json' > "$DIG/corrupt.json"
+
+out="$(bash "$LIB" --root "$ROOT" metrics --digests "$DIG")"
+check "9: schema version 1" "1" "$(jq '.schema' <<<"$out")"
+check "9: runs counts valid digests only" "4" "$(jq '.runs' <<<"$out")"
+check "9: converged count" "3" "$(jq '.converged' <<<"$out")"
+check "9: convergence rate" "0.75" "$(jq '.convergenceRate' <<<"$out")"
+check "9: first-pass rate (used<=1 and converged)" "0.5" "$(jq '.firstPassRate' <<<"$out")"
+check "9: trailing streak stops at run2" "2" "$(jq '.consecutiveConverged' <<<"$out")"
+check "9: postMergeFixRate reserved null" "null" "$(jq '.postMergeFixRate' <<<"$out")"
+check "9: verifyFailureRate reserved null" "null" "$(jq '.verifyFailureRate' <<<"$out")"
+check "9: sentinelNeedsHumanRate reserved null" "null" "$(jq '.sentinelNeedsHumanRate' <<<"$out")"
+# THE SCHEMA PIN: schema-1 keys are append-only; a rename/removal must bump .schema.
+check "9: schema-1 key set pinned" \
+  "consecutiveConverged converged convergenceRate firstPassRate postMergeFixRate runs schema sentinelNeedsHumanRate source verifyFailureRate" \
+  "$(jq -r 'keys | sort | join(" ")' <<<"$out")"
+
+# ── Case 10: metrics on empty/missing digests dir ─────────────────────────────
+out="$(bash "$LIB" --root "$ROOT" metrics --digests "$WORK/no-such-digests")"
+check "10: empty corpus runs 0" "0" "$(jq '.runs' <<<"$out")"
+check "10: empty corpus rate null" "null" "$(jq '.convergenceRate' <<<"$out")"
+check "10: empty corpus streak 0" "0" "$(jq '.consecutiveConverged' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

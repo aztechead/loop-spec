@@ -2,6 +2,63 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.16.0]
+
+### Added — ROADMAP-3.0 observation wave (sentinel scan, metrics contract, trust read-only)
+
+The first 3.0 release-train wave: **nothing acts autonomously yet — pure
+observation**. Ships pillar A's read-only half (A1+A2), the B3 metrics
+contract, and D1's computed trust level.
+
+- **Sentinel source adapters** (`lib/sentinel-sources.sh`): one subcommand
+  per work source, each emitting the same normalized candidate shape
+  (`{source, id, title, body, url, kind, updatedAt}`). Sources: `gh-issues`
+  (open `loop-spec`-labeled issues, lifecycle-labeled ones skipped — same
+  rule as `lib/issue-intake.sh`), `ci-failures` (most recent failed run per
+  workflow on the default branch, failing log tail in the body when live),
+  `backlog` (via the new `lib/backlog.sh list --json`), and `assessment`
+  (top-N `ASSESSMENT.md` cross-repo findings when fresher than a staleness
+  bound; stale reports yield nothing rather than confidently wrong
+  candidates). The adapter list is the seam; Jira/Slack stay `/intake`-only
+  until someone needs them.
+- **Deterministic triage** (`lib/sentinel-triage.sh` +
+  `.loop-spec/sentinel.conf`): score = source weight × kind (bug > gap >
+  chore) × recency, integer arithmetic, total order (score, then recency,
+  then id) — no LLM calls, same inputs same queue. Writes
+  `.loop-spec/sentinel-queue.json` (schema 1). Items the policy cannot
+  classify (unknown kind/source, missing id) are queued as **needs-human**
+  — never silently dropped, never silently run. Disabled-by-conf sources
+  are dropped (a user decision); unrecognized sources are not (they route
+  to needs-human).
+- **`/loop-spec:sentinel scan`** (`skills/sentinel/SKILL.md`): thin,
+  read-only command surface over the two libs. `sentinel run` (A3) ships in
+  2.18.0 behind the autonomous-chain bounds.
+- **Metrics contract** (`lib/status.sh metrics`, ROADMAP-3.0 B3): the
+  stable schema-1 JSON the other pillars consume — runs, convergence rate,
+  first-pass rate, trailing converged streak — computed from the COMMITTED
+  run digests (`docs/loop-spec/telemetry/runs/`), so it survives volatile
+  agents. Keys are append-only; signals whose producers ship later
+  (post-merge fix rate, verify-failure rate, sentinel needs-human rate) are
+  present as `null` so consumers can bind now and fail closed. Key set
+  pinned by a schema test.
+- **Trust track record, read-only** (`lib/trust.sh level`, ROADMAP-3.0 D1):
+  the earned-autonomy level (L0–L3) computed from the metrics contract plus
+  `.loop-spec/trust.conf` thresholds, printed WITH the evidence lines that
+  produced it. **Fail-closed by construction**: any missing/null signal
+  resolves to the lower level, so with 2.16-era telemetry every repo is L0
+  (PR-and-wait, today's behavior). Promotion slow, demotion instant (the
+  streak is recomputed from digests every read — no hysteresis, no stored
+  opinion). Nothing consults the level for authority yet; the `authorize`
+  verb arrives with D2/D3.
+- **`lib/backlog.sh list --json`**: all unchecked entries as a JSON array
+  (the backlog adapter's seam; `next --json` shape, file order).
+- Tests: `tests/lib/sentinel-sources.test.sh` (fixture-driven, offline),
+  `tests/lib/sentinel-triage.test.sh` (pinned clock, determinism pin,
+  needs-human routing), `tests/lib/trust.test.sh` (table-driven levels,
+  fail-closed table, L0-on-empty-telemetry invariant), metrics schema pin
+  in `tests/lib/status.test.sh`, `list --json` cases in
+  `tests/lib/backlog.test.sh`.
+
 ## [2.15.0]
 
 ### Added — micro-cycle for ad-hoc tasks (`/loop-spec:micro`)

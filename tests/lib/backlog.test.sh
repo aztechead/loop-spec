@@ -96,6 +96,24 @@ check "re-add of terminal id refused" "terminal" "$(bash "$SCRIPT" add feat-c it
 grep -q -- '- \[ \] .*the same gap yet again' "$LOOP_SPEC_BACKLOG_FILE" && readded=yes || readded=no
 check "terminal id not re-queued in file" "no" "$readded"
 
+# list --json: all unchecked entries in file order (sentinel backlog adapter)
+LIST_FILE="$WORK/BACKLOG-list.md"
+LOOP_SPEC_BACKLOG_FILE="$LIST_FILE" bash "$SCRIPT" add feat-l iterate-gap "first listed gap" >/dev/null
+lgid="$(bash "$SCRIPT" gap-id "second listed gap")"
+LOOP_SPEC_BACKLOG_FILE="$LIST_FILE" bash "$SCRIPT" add feat-l verify-deferred "second listed gap" --id "$lgid" >/dev/null
+LOOP_SPEC_BACKLOG_FILE="$LIST_FILE" bash "$SCRIPT" add feat-l manual "third listed entry" >/dev/null
+LOOP_SPEC_BACKLOG_FILE="$LIST_FILE" bash "$SCRIPT" done "first listed gap" >/dev/null
+list_json="$(LOOP_SPEC_BACKLOG_FILE="$LIST_FILE" bash "$SCRIPT" list --json)"
+check "list --json is array" "true" "$(jq 'type == "array"' <<<"$list_json")"
+check "list --json unchecked only" "2" "$(jq 'length' <<<"$list_json")"
+check "list --json preserves order" "second listed gap" "$(jq -r '.[0].text' <<<"$list_json")"
+check "list --json carries id" "$lgid" "$(jq -r '.[0].id' <<<"$list_json")"
+check "list --json null id" "null" "$(jq -r '.[1].id' <<<"$list_json")"
+check "list --json carries type" "manual" "$(jq -r '.[1].type' <<<"$list_json")"
+check "list --json on missing file is []" "[]" "$(LOOP_SPEC_BACKLOG_FILE="$WORK/nope.md" bash "$SCRIPT" list --json)"
+ec=0; bash "$SCRIPT" list >/dev/null 2>&1 || ec=$?
+check "list without --json exits 2" "2" "$ec"
+
 # count is a single number even when zero unchecked remain (grep -c || echo 0 bug)
 while entry="$(bash "$SCRIPT" next 2>/dev/null)"; do bash "$SCRIPT" done "$entry" >/dev/null; done
 c="$(bash "$SCRIPT" count)"
