@@ -95,6 +95,12 @@ Micro mode controls the two hooks. State persists in `.loop-spec/micro.conf`
 Session-level kill switches (hook env vars, no conf change): `LOOP_SPEC_MICRO=0`
 disables the SessionStart directive; `LOOP_SPEC_MICRO_GUARD=0` disables the Stop gate.
 
+One more conf key: `VERIFY_CMD=<command>` declares the project's real verification
+command when its runner is not in the guard's built-in pattern (e.g.
+`VERIFY_CMD=rake spec`). A Bash command containing that string counts as evidence.
+Set it when the guard blocks a stop even though you ran the project's actual
+checks — declaring the command is always better than disabling the guard.
+
 ## Boundary with the cycle
 
 Inside a running cycle none of this applies — the phases own these invariants at

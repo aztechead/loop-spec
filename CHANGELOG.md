@@ -40,6 +40,24 @@ one-page skill defines, one ledger file audits.
   execution of one assignment to autonomous operation of the development
   loop (self-sourcing work, a closed learning loop, graduated trust).
 
+### Fixed — code-review hardening (pre-release, same PR)
+
+- adhoc-verify-guard: config-only edits (`.json`/`.yaml`/`.toml`/`.conf`/…)
+  no longer count as code edits (the false-block class a user would hit
+  daily); a tool_use with a missing `file_path` never counts as an edit; a
+  runner outside the built-in verification pattern is declared once via
+  `VERIFY_CMD=<command>` in `micro.conf` instead of disabling the guard.
+- adhoc-verify-guard internals: one python pass replaces two python spawns +
+  three jq spawns per Stop (the duplicated `stop_hook_active` one-liner is
+  gone with it), and the in-flight-feature check is a single jq pass instead
+  of one spawn per accumulated feature.
+- adhoc-ledger: a value flag with nothing after it (`add --title`) exits 2
+  with a named-flag message instead of a raw `set -u` unbound-variable death;
+  `usage()` is a heredoc instead of a sed line-range self-parse.
+- inject-hook test suites (micro/grill/simplicity) share
+  `hooks/team/inject-test-lib.sh` instead of carrying three identical copies
+  of the assertion helpers.
+
 ## [2.14.0]
 
 ### Added — pi (pi.dev) harness support, Claude Code compatibility unchanged

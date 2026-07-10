@@ -7,17 +7,8 @@
 # lines here. One file, greppable, and a future retro pass can mine it the same way
 # retro.sh mines events.jsonl (see docs/loop-spec/ROADMAP-3.0.md, pillar B).
 #
-# Usage:
-#   adhoc-ledger.sh add --title <t> --criteria <c> --verify <cmd> --result <pass|fail|partial> [--notes <n>]
-#       Append one entry. --criteria may be passed multiple times (one bullet each).
-#       Prints "added" on stdout.
-#
-#   adhoc-ledger.sh list [--limit <n>]
-#       Print entry heading lines (timestamp + title), newest last. Default limit 20.
-#
-#   adhoc-ledger.sh path
-#       Print the resolved ledger path.
-#
+# Usage: add | list | path  (run with -h for the full flag reference; usage()
+# below is the single source of truth for it).
 # File override: LOOP_SPEC_ADHOC_LEDGER (default ${CLAUDE_PROJECT_DIR:-.}/.loop-spec/adhoc-ledger.md).
 #
 # Design notes:
@@ -36,7 +27,28 @@ stated before code, the verification command actually run, and its result. Appen
 '
 
 usage() {
-  sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'
+  cat <<'EOF'
+adhoc-ledger.sh - Micro-cycle audit ledger for ad-hoc work (.loop-spec/adhoc-ledger.md).
+
+Usage:
+  adhoc-ledger.sh add --title <t> --criteria <c> --verify <cmd> --result <pass|fail|partial> [--notes <n>]
+      Append one entry. --criteria may be passed multiple times (one bullet each).
+      Prints "added" on stdout.
+
+  adhoc-ledger.sh list [--limit <n>]
+      Print entry heading lines (timestamp + title), newest last. Default limit 20.
+
+  adhoc-ledger.sh path
+      Print the resolved ledger path.
+
+File override: LOOP_SPEC_ADHOC_LEDGER (default ${CLAUDE_PROJECT_DIR:-.}/.loop-spec/adhoc-ledger.md).
+EOF
+}
+
+# require_value <flag> <argc-remaining>: a value flag with nothing after it gets
+# the usage-contract exit 2, not a raw `set -u` unbound-variable death.
+require_value() {
+  [[ "$2" -ge 2 ]] || { echo "adhoc-ledger.sh: $1 requires a value" >&2; exit 2; }
 }
 
 cmd_add() {
@@ -44,11 +56,11 @@ cmd_add() {
   local -a criteria=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --title)    title="$2"; shift 2;;
-      --criteria) criteria+=("$2"); shift 2;;
-      --verify)   verify="$2"; shift 2;;
-      --result)   result="$2"; shift 2;;
-      --notes)    notes="$2"; shift 2;;
+      --title)    require_value "$1" $#; title="$2"; shift 2;;
+      --criteria) require_value "$1" $#; criteria+=("$2"); shift 2;;
+      --verify)   require_value "$1" $#; verify="$2"; shift 2;;
+      --result)   require_value "$1" $#; result="$2"; shift 2;;
+      --notes)    require_value "$1" $#; notes="$2"; shift 2;;
       *) echo "adhoc-ledger.sh: unknown flag '$1'" >&2; exit 2;;
     esac
   done
@@ -83,7 +95,7 @@ cmd_list() {
   local limit=20
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --limit) limit="$2"; shift 2;;
+      --limit) require_value "$1" $#; limit="$2"; shift 2;;
       *) echo "adhoc-ledger.sh: unknown flag '$1'" >&2; exit 2;;
     esac
   done

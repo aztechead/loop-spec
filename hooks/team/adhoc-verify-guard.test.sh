@@ -42,8 +42,11 @@ payload() {
 
 EDIT_PY='{"type":"tool_use","name":"Edit","input":{"file_path":"/repo/src/app.py"}}'
 WRITE_MD='{"type":"tool_use","name":"Write","input":{"file_path":"/repo/README.md"}}'
+WRITE_JSON='{"type":"tool_use","name":"Write","input":{"file_path":"/repo/config/settings.json"}}'
+EDIT_NOPATH='{"type":"tool_use","name":"Edit","input":{}}'
 BASH_TEST='{"type":"tool_use","name":"Bash","input":{"command":"pytest tests/"}}'
 BASH_LS='{"type":"tool_use","name":"Bash","input":{"command":"ls -la"}}'
+BASH_RAKE='{"type":"tool_use","name":"Bash","input":{"command":"rake spec"}}'
 BASH_LEDGER='{"type":"tool_use","name":"Bash","input":{"command":"bash lib/adhoc-ledger.sh add --title t --criteria c --verify v --result pass"}}'
 
 echo "=== adhoc-verify-guard.sh tests ==="
@@ -57,6 +60,20 @@ check "e: prose-only edits (.md) -> ALLOW" 0 "$(payload "$WRITE_MD")"
 check "f: code edit + non-verify bash only -> BLOCK" 2 "$(payload "$EDIT_PY" "$BASH_LS")"
 check "g: ledger add counts as evidence -> ALLOW" 0 "$(payload "$EDIT_PY" "$BASH_LEDGER")"
 check "h: mixed prose+code edit, no verify -> BLOCK" 2 "$(payload "$WRITE_MD" "$EDIT_PY")"
+check "h2: config-only edit (.json) -> ALLOW" 0 "$(payload "$WRITE_JSON")"
+check "h3: Edit with missing file_path -> ALLOW (never counts as an edit)" 0 "$(payload "$EDIT_NOPATH")"
+check "h4: unrecognized runner without VERIFY_CMD -> BLOCK" 2 "$(payload "$EDIT_PY" "$BASH_RAKE")"
+
+# VERIFY_CMD in micro.conf: the project's declared runner counts as evidence
+VC="$TMPDIR_TEST/vc"; mkdir -p "$VC/.loop-spec"; printf 'ENABLED=1\nVERIFY_CMD=rake spec\n' > "$VC/.loop-spec/micro.conf"
+actual_exit=0
+echo "$(payload "$EDIT_PY" "$BASH_RAKE")" | env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: h5: VERIFY_CMD-declared runner -> ALLOW"; ((PASS++)) || true
+else echo "FAIL: h5: VERIFY_CMD-declared runner -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
+actual_exit=0
+echo "$(payload "$BASH_RAKE" "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: h6: VERIFY_CMD evidence predating edit -> still BLOCK"; ((PASS++)) || true
+else echo "FAIL: h6: VERIFY_CMD evidence predating edit -> still BLOCK (got $actual_exit)"; ((FAIL++)) || true; fi
 
 # --- stand-down conditions ---
 check "i: kill switch LOOP_SPEC_MICRO_GUARD=0 -> ALLOW" 0 "$(payload "$EDIT_PY")" LOOP_SPEC_MICRO_GUARD=0

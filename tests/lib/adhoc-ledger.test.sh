@@ -67,6 +67,17 @@ check "s: invalid --result exits 2" "$([[ "$rc" -eq 2 ]] && echo 1 || echo 0)"
 bash "$SCRIPT" bogus >/dev/null 2>&1; rc=$?
 check "t: unknown subcommand exits 2" "$([[ "$rc" -eq 2 ]] && echo 1 || echo 0)"
 
+# --- valueless trailing flag gets the usage contract, not a set -u death ---
+err="$(bash "$SCRIPT" add --title 2>&1 >/dev/null)"; rc=$?
+check "u: trailing valueless flag exits 2" "$([[ "$rc" -eq 2 ]] && echo 1 || echo 0)"
+check "v: error names the flag, not 'unbound variable'" "$(printf '%s' "$err" | grep -q -- '--title requires a value' && echo 1 || echo 0)"
+bash "$SCRIPT" list --limit >/dev/null 2>&1; rc=$?
+check "w: list --limit without value exits 2" "$([[ "$rc" -eq 2 ]] && echo 1 || echo 0)"
+
+# --- usage prints from the heredoc ---
+out="$(bash "$SCRIPT" -h)"
+check "x: -h prints Usage" "$(printf '%s' "$out" | grep -q '^Usage:' && echo 1 || echo 0)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1
