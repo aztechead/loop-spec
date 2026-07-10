@@ -207,6 +207,63 @@ check "15: nonexistent paths exit 0" "0" "$ec"
 ec=0; bash "$LIB" auto "$APROJ/.loop-spec/features/af" --bogus >/dev/null 2>&1 || ec=$?
 check "15: bad flag under auto exit 0" "0" "$ec"
 
+# ── Case 16: B1 — adhoc-ledger corpus (repeated fail/partial -> promote rule) ─
+LPROJ="$WORK/ledgerproj"
+mkdir -p "$LPROJ/.loop-spec/features"
+LEDGER="$LPROJ/.loop-spec/adhoc-ledger.md"
+cat > "$LEDGER" << 'EOF'
+# adhoc-ledger.md
+
+## 2026-07-01T10:00:00Z — Fix the CSV export
+- criteria: export works
+- verify: `make test` → fail
+
+## 2026-07-02T10:00:00Z — fix the CSV   export
+- criteria: export works
+- verify: `make test` → partial
+
+## 2026-07-03T10:00:00Z — Fix the CSV export
+- criteria: export works
+- verify: `make test` → fail
+
+## 2026-07-03T11:00:00Z — unrelated one-off
+- criteria: done
+- verify: `make test` → fail
+
+## 2026-07-04T10:00:00Z — a passing task
+- criteria: done
+- verify: `make test` → pass
+EOF
+out="$(bash "$LIB" report --root "$LPROJ/.loop-spec" --json)"
+check "16: adhoc recurrence candidate fires" "1" "$(jq '[.[] | select(.id | startswith("adhoc-fail-recurs:"))] | length' <<<"$out")"
+check "16: title normalized across spacing/case" "3" "$(jq '.[] | select(.id | startswith("adhoc-fail-recurs:")) | .evidence.count' <<<"$out")"
+check "16: rule text names promotion path" "1" "$(jq -r '.[] | select(.id | startswith("adhoc-fail-recurs:")) | .rule.text' <<<"$out" | grep -c 'promote it via /loop-spec:intake')"
+check "16: one-off failures stay quiet" "0" "$(jq '[.[] | select(.id == "adhoc-fail-recurs:unrelated one-off")] | length' <<<"$out")"
+# passing tasks never trigger, and a missing ledger is fine
+rm "$LEDGER"
+out="$(bash "$LIB" report --root "$LPROJ/.loop-spec" --json)"
+check "16: no ledger -> no adhoc candidates" "0" "$(jq '[.[] | select(.id | startswith("adhoc-fail-recurs:"))] | length' <<<"$out")"
+
+# ── Case 17: B1 — sentinel needs-human recurrence (policy-gap candidate) ──────
+SPROJ="$WORK/sentinelproj"
+mkdir -p "$SPROJ/.loop-spec/features"
+SEV="$SPROJ/.loop-spec/sentinel-events.jsonl"
+for d in 01 02 03; do
+  printf '{"ts":"2026-07-%sT00:00:00Z","event":"needs-human","id":"gh-15","source":"gh-issues","reason":"unclassifiable-kind"}\n' "$d" >> "$SEV"
+done
+printf '{"ts":"2026-07-01T00:00:00Z","event":"needs-human","id":"gh-77","source":"gh-issues","reason":"unclassifiable-kind"}\n' >> "$SEV"
+out="$(bash "$LIB" report --root "$SPROJ/.loop-spec" --json)"
+check "17: policy-gap candidate fires" "1" "$(jq '[.[] | select(.id == "sentinel-needs-human-recurs")] | length' <<<"$out")"
+check "17: only the recurring id in evidence" '["gh-15"]' "$(jq -c '.[] | select(.id == "sentinel-needs-human-recurs") | .evidence.features' <<<"$out")"
+# same scan repeated (same ts) is ONE scan, not recurrence
+SPROJ2="$WORK/sentinelproj2"
+mkdir -p "$SPROJ2/.loop-spec/features"
+for _ in 1 2 3; do
+  printf '{"ts":"2026-07-01T00:00:00Z","event":"needs-human","id":"gh-15","source":"gh-issues","reason":"unclassifiable-kind"}\n' >> "$SPROJ2/.loop-spec/sentinel-events.jsonl"
+done
+out="$(bash "$LIB" report --root "$SPROJ2/.loop-spec" --json)"
+check "17: same-scan duplicates do not recur" "0" "$(jq '[.[] | select(.id == "sentinel-needs-human-recurs")] | length' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

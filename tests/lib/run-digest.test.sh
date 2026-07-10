@@ -36,6 +36,9 @@ cat > "$FDIR/events.jsonl" << 'EOF'
 {"ts":"t","slug":"my-feat","event":"iterate_verdict","phase":"iterate","data":{"verdict":"converged","iteration":3,"gap":"none"}}
 {"ts":"t","slug":"my-feat","event":"gate_round","phase":"discuss","data":{"gate":"spec-critique","round":2}}
 {"ts":"t","slug":"my-feat","event":"gate_round","phase":"plan","data":{"gate":"plan-critique","round":1}}
+{"ts":"t","slug":"my-feat","event":"verify_failure","phase":"verify","data":{"class":"suite-regression"}}
+{"ts":"t","slug":"my-feat","event":"verify_failure","phase":"verify","data":{"class":"suite-regression"}}
+{"ts":"t","slug":"my-feat","event":"verify_failure","phase":"verify","data":{"class":"acceptance"}}
 EOF
 
 # ── Case 1: default out-dir resolution + digest content ───────────────────────
@@ -44,10 +47,13 @@ out="$(bash "$LIB" append "$FDIR" 2>&1)" || ec=$?
 check "1: exit 0" "0" "$ec"
 DIGEST="$PROJ/docs/loop-spec/telemetry/runs/my-feat.json"
 check "1: digest at project docs path" "1" "$([[ -f "$DIGEST" ]] && echo 1 || echo 0)"
-check "1: schema 1" "1" "$(jq -r '.schema' "$DIGEST")"
+check "1: schema 2" "2" "$(jq -r '.schema' "$DIGEST")"
 check "1: converged false preserved (not null)" "false" "$(jq -r '.converged' "$DIGEST")"
 check "1: gaps unique, none excluded" '["plan"]' "$(jq -c '.gaps' "$DIGEST")"
 check "1: gateCaps only round>=2" '["spec-critique"]' "$(jq -c '.gateCaps' "$DIGEST")"
+check "1: iterateRounds counts verdicts" "3" "$(jq -r '.iterateRounds' "$DIGEST")"
+check "1: gateRoundsByGate max per gate" '{"plan-critique":1,"spec-critique":2}' "$(jq -cS '.gateRoundsByGate' "$DIGEST")"
+check "1: verifyFailureClasses unique" '["acceptance","suite-regression"]' "$(jq -c '.verifyFailureClasses' "$DIGEST")"
 check "1: iterations used" "3" "$(jq -r '.iterations.used' "$DIGEST")"
 check "1: warnings count" "2" "$(jq -r '.warnings' "$DIGEST")"
 check "1: finishedAt carried" "2026-07-08T12:00:00Z" "$(jq -r '.finishedAt' "$DIGEST")"

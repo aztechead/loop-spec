@@ -41,13 +41,14 @@ Invoked when feature.json currentPhase == "verify".
 
 ### Step 0 - Regression gate (opt-in)
 
-This scan re-runs every prior completed feature's test commands serially and is **advisory only** (it can never block VERIFY). Because that serial cost sits in front of the fail-fast marker scan and the parallel team, it is **off by default**; enable it with `LOOP_SPEC_REGRESSION_SCAN=1`.
+This scan re-runs every prior completed feature's test commands serially and is **advisory only** (it can never block VERIFY). Because that serial cost sits in front of the fail-fast marker scan and the parallel team, it is **off by default**; enable it with `LOOP_SPEC_REGRESSION_SCAN=1` — or let the repo's tuning overlay demand it: when suite regressions have recurred in this repo, `lib/tuning.sh` records `suite-regression` as a mandatory check and the scan runs regardless of the env opt-in (`skills/shared/tier-matrix.md` "Repo tuning overlay").
 
 ```bash
-if [[ "${LOOP_SPEC_REGRESSION_SCAN:-0}" != "1" ]]; then
-  echo "Regression scan skipped (set LOOP_SPEC_REGRESSION_SCAN=1 to enable)"
-else
+if [[ "${LOOP_SPEC_REGRESSION_SCAN:-0}" == "1" ]] \
+   || bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" has-check suite-regression; then
   REGRESSION_JSON=$(bash "${CLAUDE_SKILL_DIR}/../../lib/regression-scan.sh" .)
+else
+  echo "Regression scan skipped (set LOOP_SPEC_REGRESSION_SCAN=1 to enable)"
 fi
 ```
 
@@ -86,7 +87,7 @@ git diff --diff-filter=ACMR {baseSha}..HEAD --name-only \
 
 **Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 1 - Unresolved marker scan").
 
-If any matches (in either mode): VERIFY fails immediately. List each `file:line: match` to the user.
+If any matches (in either mode): VERIFY fails immediately. List each `file:line: match` to the user, and emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"marker"}' || true`).
 Do not spawn verifier or code-reviewer until all markers are resolved.
 
 Notes:
@@ -109,7 +110,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" "{baseSha}" .
 
 **Workspace mode:** run once per participating repo with that repo's `baseSha` and absolute path.
 
-Exit 1 = signals found: VERIFY fails immediately. Print the listed signals verbatim. This is NOT auto-remediable by re-running EXECUTE with a generic brief — the remediation task must state the specific tampering (`subject = "Fix: restore tampered test — {signal}"`) so the implementer un-tampers rather than re-tampers. A legitimate skip (e.g. a platform-gated test) is the HUMAN's call: in `step`/`interactive` styles ask; in autonomous styles treat as tampering and remediate — a real platform gate will come back with justification in the task notes and can be accepted on the next pass by recording it in `warnings[]`.
+Exit 1 = signals found: VERIFY fails immediately. Print the listed signals verbatim and emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"tamper"}' || true`). This is NOT auto-remediable by re-running EXECUTE with a generic brief — the remediation task must state the specific tampering (`subject = "Fix: restore tampered test — {signal}"`) so the implementer un-tampers rather than re-tampers. A legitimate skip (e.g. a platform-gated test) is the HUMAN's call: in `step`/`interactive` styles ask; in autonomous styles treat as tampering and remediate — a real platform gate will come back with justification in the task notes and can be accepted on the next pass by recording it in `warnings[]`.
 
 ### Step 2 - TeamCreate verify team
 
@@ -232,6 +233,7 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
 **If verifier reports `ALL_PASS` AND `Test suite status: PASS` (or `N/A`):** proceed to code-reviewer gate below.
 
 **If verifier reports `ALL_PASS` but `Test suite status: FAIL`:**
+- Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"suite-regression"}' || true`
 - Generate a FULL-SHAPE remediation task: `subject = "Fix: test suite regression"`, `verifyCommand = feature.commands.test`, `blockedBy = []`, `files = []` (unknown until diagnosed), `acceptanceCriteria = ["test suite passes"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them.
 - Append the remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step, so any `TaskCreate` calls on it would be lost.
 - Update `feature.json` via `lib/feature-write.sh`:
@@ -243,6 +245,7 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
 - Route to `loop-spec:execute`.
 
 **If verifier reports `FAIL`:**
+- Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"acceptance"}' || true`
 - Discard code-reviewer output for this iteration.
 - For each failed criterion, generate a remediation task:
   ```json
@@ -271,6 +274,7 @@ Use the `CODE-REVIEWER DONE` message already received from Step 6.
 Fixed gate rule (single-tier operation): **BLOCK on Critical OR Important. PASS_WITH_MINOR proceeds; every Minor is backlogged below.**
 
 **If BLOCK:**
+- Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"code-review"}' || true`
 - Generate one remediation task per blocking finding (same remediation task shape as verifier FAIL above).
 - Append each remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry.
 - Update `feature.json` via `lib/feature-write.sh`:
@@ -299,6 +303,19 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "VERIFY repeat-fail on '{crite
 ```
 
 One rule per repeated criterion (rules.sh add is idempotent). Do not write rules for first-time failures — one failure is remediation's job; a repeat is a pattern.
+
+### Step 7.5 - Live-run verify rung (opt-in per repo; ROADMAP-3.0 C1)
+
+Probe-before-assert extended past the suite: when the repo has configured a `verifyCommands` block in `.loop-spec/workflow.json`, launch the app, wait for readiness, and run the acceptance probes — the loop ends at "observed working", not "suite green". Runs ONLY after both Step 7 gates passed (a live probe against known-failing code wastes the launch).
+
+```bash
+LIVE_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/verify-live.sh" run \
+  --evidence "docs/loop-spec/features/${slug}/EVIDENCE.md")"; LIVE_EC=$?
+```
+
+- **Unconfigured** (`configured: false`, exit 0): suite-only VERIFY, unchanged. NEVER guess a launch command here. If the user has not been offered configuration before, `bash "${CLAUDE_SKILL_DIR}/../../lib/verify-live.sh" detect .` may SUGGEST one — in interactive styles offer it once; in autonomous mode record a `decisions.sh` entry that the rung stayed off (suggestion included when detect found one) and move on.
+- **Exit 0 with `allPass: true`:** append a "## Live verification" section to VERIFICATION.md listing each probe with its `EVID-NNN` id (the verifier cites evidence ids, never bare claims — the probe outputs are already in the EVIDENCE.md ledger).
+- **Exit 1** (never became ready, or a probe failed): emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"live-probe"}' || true`), then route remediation exactly like a verifier `FAIL` (Step 7): one FULL-SHAPE remediation task per failed probe (`subject = "Fix: live probe failed — {probe cmd}"`, `verifyCommand` = the probe), `gateHistory` entry (`gate: live-verify`, `result: fail`), `currentPhase = "execute"`.
 
 ### Step 8 - TeamDelete verify team
 

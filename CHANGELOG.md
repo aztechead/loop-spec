@@ -2,6 +2,64 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.17.0]
+
+### Added — ROADMAP-3.0 learning wave (corpus widening, parameter tuning, live-verify rung)
+
+Second release-train wave: the learning loop closes (B1+B2) and VERIFY gains
+its reality-grounded rung (C1). Tuning ships behind a kill switch; the live
+rung is opt-in per repo.
+
+- **Corpus widening (B1).** `lib/retro.sh` mines two new sources: the
+  micro-cycle ledger (`.loop-spec/adhoc-ledger.md` — an ad-hoc task title
+  with >= min-repeats `fail`/`partial` verifications becomes a
+  promote-to-intake rule candidate) and the sentinel scan history
+  (`.loop-spec/sentinel-events.jsonl`, appended by every triage run — an item
+  bouncing `needs-human` across >= min-repeats DISTINCT scans becomes a
+  triage policy-gap rule candidate; the queue file is a re-derived view, so
+  recurrence lives only in the history). `lib/run-digest.sh` grows the
+  convergence fields it left implicit (schema 2, additive): `iterateRounds`,
+  `gateRoundsByGate` (max round per gate), `verifyFailureClasses`. New
+  canonical event `verify_failure` (`data.class`: marker | tamper |
+  suite-regression | acceptance | code-review | live-probe), emitted by the
+  VERIFY skill at each failure branch. The metrics contract grows (schema 1,
+  append-only): `consecutiveFirstPass`, `gapCounts`,
+  `verifyFailureClassCounts`, and `verifyFailureRate` now computes.
+- **Parameter tuning (B2, `lib/tuning.sh` + `.loop-spec/tuning.json`).**
+  Retro's sibling for parameters: a CLOSED template set — widen the PLAN
+  structural fast-path (2→3 tasks, 3→5 files) on a first-pass streak;
+  make the regression scan mandatory per verify-failure class recurrence
+  (`verifyMandatoryChecks`); raise `discuss`/`plan` critique rounds (2→3) or
+  `execute` retries (2→3) when the owning gap type recurs. Deterministic
+  triggers over `status.sh metrics`, bounded one-step deltas, every change
+  audited to `.loop-spec/tuning-audit.jsonl`, `LOOP_SPEC_TUNING=0` kill
+  switch (get/has-check return defaults, apply no-ops), and **loosening
+  demotes on the first contrary signal** (the fast-path widening is always
+  one bad run from reverting; tightening persists until the user removes it
+  — you curate the file). `tuning.sh auto` mirrors retro's completion-hook
+  gating (autonomous applies, interactive reports,
+  `LOOP_SPEC_TUNING_AUTO_APPLY` overrides, never aborts the cycle).
+  Consumers read at use time: PLAN's fast-path bounds and the tier-matrix
+  "Repo tuning overlay" section; VERIFY Step 0 runs the regression scan when
+  `tuning.sh has-check suite-regression` says the repo earned it.
+- **Live-run verify rung (C1, `lib/verify-live.sh`).** Opt-in per repo via a
+  `verifyCommands` block in `.loop-spec/workflow.json` (`launch`, `ready`,
+  `probes[]`, `readyTimeoutSec`): VERIFY Step 7.5 launches the app in its own
+  process group after both gates pass, polls readiness (bounded), runs the
+  acceptance probes, ledgers every probe into the feature's EVIDENCE.md
+  (`lib/evidence.sh`, verifier cites `EVID-NNN`), and always kills the app.
+  Failure routes remediation like a verifier FAIL (class `live-probe`).
+  Unconfigured -> one line, exit 0, suite-only VERIFY unchanged; a malformed
+  block refuses loudly; `verify-live.sh detect` (the detect-test-cmd sibling)
+  only SUGGESTS a launch command — nothing ever guesses one at run time.
+- Tests: `tests/lib/tuning.test.sh` (closed-set pin, demotion,
+  kill switch, auto gating), `tests/lib/verify-live.test.sh` (fake-server
+  fixture, degrade path, kill-after-probe, dead-on-arrival fast-fail),
+  B1 cases in `tests/lib/retro.test.sh`, scan-history cases in
+  `tests/lib/sentinel-triage.test.sh`, digest fields in
+  `tests/lib/run-digest.test.sh`, metrics keys re-pinned in
+  `tests/lib/status.test.sh`.
+
 ## [2.16.0]
 
 ### Added — ROADMAP-3.0 observation wave (sentinel scan, metrics contract, trust read-only)

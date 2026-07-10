@@ -89,6 +89,15 @@ check "needs-human: unknown kind reason" "unclassifiable-kind" "$(jq -r '.needsH
 check "needs-human: unknown source reason" "unknown-source" "$(jq -r '.needsHuman[] | select(.id=="jira-1") | .reason' <<<"$out")"
 check "needs-human: missing id reason" "missing-id-or-title" "$(jq -r '.needsHuman[] | select(.title=="no id") | .reason' <<<"$out")"
 
+# scan history: needs-human items append to sentinel-events.jsonl (recurrence corpus)
+EVENTS="$WORK/sentinel-events.jsonl"
+check "history: events file written" "1" "$([[ -f "$EVENTS" ]] && echo 1 || echo 0)"
+check "history: one line per needs-human item" "3" "$(grep -c '"needs-human"' "$EVENTS")"
+check "history: line carries id+reason" "unclassifiable-kind" "$(jq -r 'select(.id=="gh-weird") | .reason' "$EVENTS" | head -1)"
+# re-scan appends (append-only history, not a rewritten view)
+bash "$SCRIPT" run --in "$WORK/nh.json" --out "$QUEUE" --conf "$WORK/no-conf" --now "$((NOW + 86400))" >/dev/null
+check "history: re-scan appends" "6" "$(grep -c '"needs-human"' "$EVENTS")"
+
 # ── conf: weights, enable flags, queue depth ──────────────────────────────────
 printf 'WEIGHT_BACKLOG=100\nENABLE_GH_ISSUES=0\nMAX_QUEUE_DEPTH=1\n' > "$CONF"
 jq -cs . > "$WORK/conf-in.json" << EOF

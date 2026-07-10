@@ -161,6 +161,20 @@ case "$cmd" in
          needsHuman: $needs_human}
       ' <<<"$candidates" > "$OUT.tmp"
     mv "$OUT.tmp" "$OUT"
+
+    # Scan history (append-only JSONL next to the queue file): the queue is a
+    # re-derived VIEW, so recurrence — the same item bouncing needs-human scan
+    # after scan — is only visible here. lib/retro.sh mines it as a
+    # policy-gap signal (ROADMAP-3.0 B1). Observability contract: a broken
+    # history writer must never fail the scan.
+    EVENTS_FILE="$(dirname "$OUT")/sentinel-events.jsonl"
+    jq -c '.generatedAt as $ts
+           | .needsHuman[]
+           | {ts: $ts, event: "needs-human", id: (.id // null),
+              source: (.source // null), reason: (.reason // null)}' "$OUT" \
+      >> "$EVENTS_FILE" 2>/dev/null \
+      || echo "sentinel-triage.sh: WARN could not append scan history to $EVENTS_FILE" >&2
+
     jq . "$OUT"
     exit 0
     ;;

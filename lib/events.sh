@@ -26,6 +26,9 @@
 #   iterate_verdict   - an iterate judge verdict landed
 #   dispatch          - an agent was launched (data: {"role":..,"model":..,"rung":..};
 #                       contract: skills/shared/dispatch-events.md)
+#   verify_failure    - a VERIFY gate failed (data: {"class":"marker|tamper|
+#                       suite-regression|acceptance|code-review|live-probe"};
+#                       mined into the run digest's verifyFailureClasses)
 #   completed         - cycle completed successfully
 #   paused            - cycle paused by user
 #   escalated         - cycle escalated due to limit/context

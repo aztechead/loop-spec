@@ -125,10 +125,10 @@ cat > "$DIG/run1.json" << 'EOF'
 {"schema":1,"slug":"run1","status":"completed","converged":true,"iterations":{"used":1,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-01T10:00:00Z"}
 EOF
 cat > "$DIG/run2.json" << 'EOF'
-{"schema":1,"slug":"run2","status":"completed","converged":false,"iterations":{"used":10,"max":10},"gaps":["plan"],"gateCaps":[],"warnings":1,"finishedAt":"2026-07-02T10:00:00Z"}
+{"schema":2,"slug":"run2","status":"completed","converged":false,"iterations":{"used":10,"max":10},"gaps":["plan"],"gateCaps":[],"verifyFailureClasses":["suite-regression","acceptance"],"warnings":1,"finishedAt":"2026-07-02T10:00:00Z"}
 EOF
 cat > "$DIG/run3.json" << 'EOF'
-{"schema":1,"slug":"run3","status":"completed","converged":true,"iterations":{"used":2,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-03T10:00:00Z"}
+{"schema":2,"slug":"run3","status":"completed","converged":true,"iterations":{"used":2,"max":10},"gaps":["plan"],"gateCaps":[],"verifyFailureClasses":["suite-regression"],"warnings":0,"finishedAt":"2026-07-03T10:00:00Z"}
 EOF
 cat > "$DIG/run4.json" << 'EOF'
 {"schema":1,"slug":"run4","status":"completed","converged":true,"iterations":{"used":1,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-04T10:00:00Z"}
@@ -142,12 +142,16 @@ check "9: converged count" "3" "$(jq '.converged' <<<"$out")"
 check "9: convergence rate" "0.75" "$(jq '.convergenceRate' <<<"$out")"
 check "9: first-pass rate (used<=1 and converged)" "0.5" "$(jq '.firstPassRate' <<<"$out")"
 check "9: trailing streak stops at run2" "2" "$(jq '.consecutiveConverged' <<<"$out")"
+check "9: first-pass streak stops at run3" "1" "$(jq '.consecutiveFirstPass' <<<"$out")"
+check "9: gapCounts count runs per gap" "2" "$(jq '.gapCounts.plan' <<<"$out")"
+check "9: verify class counts" "2" "$(jq '.verifyFailureClassCounts["suite-regression"]' <<<"$out")"
+check "9: verify class counts single" "1" "$(jq '.verifyFailureClassCounts.acceptance' <<<"$out")"
+check "9: verifyFailureRate computed" "0.5" "$(jq '.verifyFailureRate' <<<"$out")"
 check "9: postMergeFixRate reserved null" "null" "$(jq '.postMergeFixRate' <<<"$out")"
-check "9: verifyFailureRate reserved null" "null" "$(jq '.verifyFailureRate' <<<"$out")"
 check "9: sentinelNeedsHumanRate reserved null" "null" "$(jq '.sentinelNeedsHumanRate' <<<"$out")"
 # THE SCHEMA PIN: schema-1 keys are append-only; a rename/removal must bump .schema.
 check "9: schema-1 key set pinned" \
-  "consecutiveConverged converged convergenceRate firstPassRate postMergeFixRate runs schema sentinelNeedsHumanRate source verifyFailureRate" \
+  "consecutiveConverged consecutiveFirstPass converged convergenceRate firstPassRate gapCounts postMergeFixRate runs schema sentinelNeedsHumanRate source verifyFailureClassCounts verifyFailureRate" \
   "$(jq -r 'keys | sort | join(" ")' <<<"$out")"
 
 # ── Case 10: metrics on empty/missing digests dir ─────────────────────────────

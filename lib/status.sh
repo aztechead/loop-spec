@@ -223,9 +223,13 @@ case "$CMD" in
   metrics)
     # The B3 contract. Schema 1 keys (append-only; never rename, never remove):
     #   schema, source, runs, converged, convergenceRate, firstPassRate,
-    #   consecutiveConverged, postMergeFixRate, verifyFailureRate,
+    #   consecutiveConverged, consecutiveFirstPass, gapCounts,
+    #   verifyFailureClassCounts, postMergeFixRate, verifyFailureRate,
     #   sentinelNeedsHumanRate
     # Pinned by tests/lib/status.test.sh — a key change is a schema bump.
+    # gapCounts / verifyFailureClassCounts count RUNS exhibiting each gap /
+    # verify-failure class (digests carry them unique-per-run), which is the
+    # recurrence definition lib/tuning.sh and lib/retro.sh share.
     DIGESTS_DIR="${DIGESTS_DIR:-$(dirname "$ROOT")/docs/loop-spec/telemetry/runs}"
     DIGESTS="[]"
     if [[ -d "$DIGESTS_DIR" ]]; then
@@ -242,6 +246,9 @@ case "$CMD" in
       | ($ordered | map(select(.converged == true)) | length) as $conv
       | ($ordered | map(select(.converged == true and ((.iterations.used // 0) <= 1))) | length) as $fp
       | ($ordered | reverse | map(.converged == true) | (index(false) // length)) as $streak
+      | ($ordered | reverse | map(.converged == true and ((.iterations.used // 0) <= 1))
+         | (index(false) // length)) as $fpStreak
+      | ($ordered | map(select((.verifyFailureClasses // []) | length > 0)) | length) as $vfRuns
       | {
           schema: 1,
           source: $src,
@@ -250,8 +257,13 @@ case "$CMD" in
           convergenceRate: (if $n == 0 then null else ($conv / $n * 100 | round / 100) end),
           firstPassRate: (if $n == 0 then null else ($fp / $n * 100 | round / 100) end),
           consecutiveConverged: $streak,
+          consecutiveFirstPass: $fpStreak,
+          gapCounts: ([$ordered[] | (.gaps // [])[]] | group_by(.)
+                      | map({key: .[0], value: length}) | from_entries),
+          verifyFailureClassCounts: ([$ordered[] | (.verifyFailureClasses // [])[]] | group_by(.)
+                                     | map({key: .[0], value: length}) | from_entries),
           postMergeFixRate: null,
-          verifyFailureRate: null,
+          verifyFailureRate: (if $n == 0 then null else ($vfRuns / $n * 100 | round / 100) end),
           sentinelNeedsHumanRate: null
         }'
     exit 0
