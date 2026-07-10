@@ -2,6 +2,62 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.15.0]
+
+### Added — micro-cycle for ad-hoc tasks (`/loop-spec:micro`)
+
+The cycle's five invariants — stated done-criteria, grounded claims, test-first,
+evidence-before-done, mistakes-become-rules — enforced inline for small tasks
+that would never justify a full `/loop-spec:cycle` run. Hooks enforce, a
+one-page skill defines, one ledger file audits.
+
+- **Skill** (`skills/micro/SKILL.md`): the protocol (criteria → at most one
+  question → probe-before-assert → red/green where a test fits → run the real
+  verification and show output → ledger entry → repeated mistake becomes a
+  rule) plus the `on`/`off`/`status` mode toggle (`.loop-spec/micro.conf`,
+  default ON). Lossless escalation to `/loop-spec:intake` when a task
+  outgrows ad-hoc scale (>~5 files, new seam, criteria past 3 bullets).
+- **SessionStart directive** (`hooks/team/micro-inject.sh`): makes the
+  protocol ambient in loop-spec projects; suppressed by conf `ENABLED=0`,
+  `LOOP_SPEC_MICRO=0`, autonomous mode, or a missing `.loop-spec/` dir.
+  Bridged to pi via the extension's session_start inject list.
+- **Stop gate** (`hooks/team/adhoc-verify-guard.sh`): blocks a stop when the
+  session edited code but no verification Bash command ran after the last
+  edit. Stands down for in-flight cycle features (the cycle's VERIFY owns
+  evidence at feature scale), prose-only edits, `stop_hook_active`, micro
+  mode off, or `LOOP_SPEC_MICRO_GUARD=0`. Fail-open throughout. CC-only (pi
+  has no blocking stop event).
+- **Audit ledger** (`lib/adhoc-ledger.sh`, `.loop-spec/adhoc-ledger.md`):
+  append-only ~5-line entries (title, criteria, the verification command
+  actually run, pass/fail/partial result, notes). `add`/`list`/`path`.
+- Tests: `tests/lib/adhoc-ledger.test.sh`, `hooks/team/micro-inject.test.sh`,
+  `hooks/team/adhoc-verify-guard.test.sh`; pi coupling pinned in
+  `tests/pi-harness-coverage.test.sh`.
+
+### Added — docs
+
+- `docs/loop-spec/ROADMAP-3.0.md`: the detailed 3.0 plan — from autonomous
+  execution of one assignment to autonomous operation of the development
+  loop (self-sourcing work, a closed learning loop, graduated trust).
+
+### Fixed — code-review hardening (pre-release, same PR)
+
+- adhoc-verify-guard: config-only edits (`.json`/`.yaml`/`.toml`/`.conf`/…)
+  no longer count as code edits (the false-block class a user would hit
+  daily); a tool_use with a missing `file_path` never counts as an edit; a
+  runner outside the built-in verification pattern is declared once via
+  `VERIFY_CMD=<command>` in `micro.conf` instead of disabling the guard.
+- adhoc-verify-guard internals: one python pass replaces two python spawns +
+  three jq spawns per Stop (the duplicated `stop_hook_active` one-liner is
+  gone with it), and the in-flight-feature check is a single jq pass instead
+  of one spawn per accumulated feature.
+- adhoc-ledger: a value flag with nothing after it (`add --title`) exits 2
+  with a named-flag message instead of a raw `set -u` unbound-variable death;
+  `usage()` is a heredoc instead of a sed line-range self-parse.
+- inject-hook test suites (micro/grill/simplicity) share
+  `hooks/team/inject-test-lib.sh` instead of carrying three identical copies
+  of the assertion helpers.
+
 ## [2.14.0]
 
 ### Added — pi (pi.dev) harness support, Claude Code compatibility unchanged
