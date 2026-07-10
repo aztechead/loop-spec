@@ -23,10 +23,13 @@ Model selection is fixed and lives in `skills/shared/model-matrix.md`.
 Decided AFTER planning, from measured scope — not before, from prompt vibes. The PLAN
 critique debate is skipped iff ALL hold:
 
-1. The plan has **<= 2 tasks**, AND
-2. the union of task `files[]` touches **<= 3 files**, AND
+1. The plan has **<= `fastPathMaxTasks` (default 2)** tasks, AND
+2. the union of task `files[]` touches **<= `fastPathMaxFiles` (default 3)** files, AND
 3. neither SPEC.md nor PLAN.md matches the security-signal pattern:
    `auth|authenticat|authoriz|permission|credential|secret|token|crypt|payment|billing|PII|migrat|delet`
+
+The two bounds are read through the repo tuning overlay (below); with no tuning
+they ARE 2 and 3.
 
 When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)`.
 Everything else (spec critique, compliance, acceptance, code review, tamper scan) still runs.
@@ -66,6 +69,27 @@ Retries stay unbounded (full bore); only the per-revision cost collapses from a 
 | plan.maxCritiqueRounds | 2 (escalated debate only) |
 | execute.maxParallelImplementers | 3 |
 | execute.maxRetriesPerTask | 2 |
+
+## Repo tuning overlay (`.loop-spec/tuning.json`, ROADMAP-3.0 B2)
+
+"Fixed" means fixed by default, not unadjustable: `lib/tuning.sh` may overlay a
+CLOSED set of parameter adjustments per repo, from deterministic triggers over
+the committed metrics contract (`lib/status.sh metrics`) — the model can never
+author an adjustment, deltas are one bounded step, loosening reverts on the
+first contrary signal, and `LOOP_SPEC_TUNING=0` disables the overlay entirely.
+Phase skills read the effective value at use time:
+
+```bash
+TUNE="${CLAUDE_SKILL_DIR}/../../lib/tuning.sh"
+FP_TASKS="$(bash "$TUNE" get fastPathMaxTasks 2)"       # PLAN fast-path bound (loosen)
+FP_FILES="$(bash "$TUNE" get fastPathMaxFiles 3)"       # PLAN fast-path bound (loosen)
+DISCUSS_ROUNDS="$(bash "$TUNE" get discussMaxCritiqueRounds 2)"  # tighten only
+PLAN_ROUNDS="$(bash "$TUNE" get planMaxCritiqueRounds 2)"        # tighten only
+EXEC_RETRIES="$(bash "$TUNE" get executeMaxRetriesPerTask 2)"    # tighten only
+bash "$TUNE" has-check suite-regression   # VERIFY: regression scan mandatory?
+```
+
+Anything not listed in `lib/tuning.sh`'s template set stays literally fixed.
 
 ## Iteration limit (fixed; mirrors `lib/feature-init.sh`)
 

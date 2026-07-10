@@ -48,6 +48,10 @@
 #     -> modelTier: mechanical suggestion
 #   - completed-but-not-converged runs (>= 2) -> info warning
 #   - loop-fleet cost total when present -> info
+#   - an ad-hoc (micro-cycle) task title with >= N fail/partial ledger entries
+#     (.loop-spec/adhoc-ledger.md) -> promote-to-intake rule (ROADMAP-3.0 B1)
+#   - a sentinel item bouncing needs-human across >= N distinct scans
+#     (.loop-spec/sentinel-events.jsonl) -> triage policy-gap rule (B1)
 #
 # Rule text is deliberately COUNT-FREE and stable so lib/rules.sh idempotency
 # holds as evidence accumulates; counts live in the finding's evidence field.
@@ -191,7 +195,46 @@ if [[ -f "$FLEET_FILE" ]]; then
   FLEET_COST="$(jq -c '.total_cost_usd // null' "$FLEET_FILE" 2>/dev/null || echo null)"
 fi
 
-FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleetCost "$FLEET_COST" '
+# ── B1 corpus: micro-cycle ledger — [{title, result}] per entry.
+#    Repeated fail/partial verification on the same (normalized) title means
+#    micro-scale retries are not converging: the fix is promotion, not another
+#    ad-hoc attempt. Parse is tolerant: absent/garbled ledger -> [].
+ADHOC_LEDGER="${LOOP_SPEC_ADHOC_LEDGER:-$ROOT/adhoc-ledger.md}"
+ADHOC_ENTRIES="[]"
+if [[ -f "$ADHOC_LEDGER" ]]; then
+  ADHOC_ENTRIES="$(python3 - "$ADHOC_LEDGER" <<'PYEOF' 2>/dev/null || echo '[]'
+import json, re, sys
+entries, title = [], None
+with open(sys.argv[1], encoding="utf-8") as f:
+    for line in f:
+        m = re.match(r"^## \S+ — (.+)$", line.strip())
+        if m:
+            title = re.sub(r"\s+", " ", m.group(1).strip().lower())
+            continue
+        m = re.match(r"^- verify: `.*` → (pass|fail|partial)\s*$", line.strip())
+        if m and title is not None:
+            entries.append({"title": title, "result": m.group(1)})
+print(json.dumps(entries))
+PYEOF
+)"
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$ADHOC_ENTRIES" || ADHOC_ENTRIES="[]"
+fi
+
+# ── B1 corpus: sentinel scan history — needs-human ids with the number of
+#    DISTINCT scans they bounced in (the queue file is a re-derived view; only
+#    the append-only history shows recurrence).
+SENTINEL_EVENTS="$ROOT/sentinel-events.jsonl"
+SENTINEL_BOUNCES="[]"
+if [[ -f "$SENTINEL_EVENTS" ]]; then
+  SENTINEL_BOUNCES="$(jq -cs '
+    [map(select(type == "object" and .event == "needs-human" and (.id // "") != ""))
+     | group_by(.id)[]
+     | {id: .[0].id, scans: (map(.ts) | unique | length)}]' "$SENTINEL_EVENTS" 2>/dev/null || echo '[]')"
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$SENTINEL_BOUNCES" || SENTINEL_BOUNCES="[]"
+fi
+
+FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleetCost "$FLEET_COST" \
+              --argjson adhoc "$ADHOC_ENTRIES" --argjson bounces "$SENTINEL_BOUNCES" '
   def featsWithGap(g): [$feats[] | select(.gaps | index(g)) | .slug];
   def featsWithGateCap(g): [$feats[] | select(.gateCaps | index(g)) | .slug];
 
@@ -241,6 +284,22 @@ FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleet
        pattern: "features repeatedly converge first-pass with no recurring EXECUTE gaps",
        evidence: {count: ($firstPass | length), features: $firstPass},
        rule: {text: "Consider modelTier: mechanical on low-risk plan tasks - the implementer tier has headroom (first-pass convergence streak, no recurring execute gaps). See lib/model-tier.sh.", check: null}}
+     else empty end),
+    # B1: micro-cycle ledger — one candidate per title with >= min fail/partial
+    # entries. The title is ledger data (deterministic normalization), the
+    # surrounding text is the fixed template; the model authors neither.
+    (($adhoc | map(select(.result != "pass")) | group_by(.title)
+      | map(select(length >= $min))[]
+      | {id: ("adhoc-fail-recurs:" + .[0].title), kind: "rule-candidate",
+         pattern: "an ad-hoc task repeatedly failed micro-scale verification",
+         evidence: {count: length, features: [.[0].title]},
+         rule: {text: ("Retro: ad-hoc task '" + .[0].title + "' repeatedly fails verification - stop retrying at micro scale and promote it via /loop-spec:intake"), check: null}})),
+    (if ($bounces | map(select(.scans >= $min)) | length) > 0 then
+      {id: "sentinel-needs-human-recurs", kind: "rule-candidate",
+       pattern: "sentinel items bounce needs-human across repeated scans (triage policy gap)",
+       evidence: {count: ($bounces | map(select(.scans >= $min)) | length),
+                  features: ($bounces | map(select(.scans >= $min)) | map(.id))},
+       rule: {text: "Retro: sentinel items repeatedly bounce needs-human - close the triage policy gap: label the source items (bug/enhancement/chore) or teach lib/sentinel-triage.sh their class", check: null}}
      else empty end),
     (if ($shippedGaps | length) >= 2 then
       {id: "shipped-with-gaps", kind: "info",

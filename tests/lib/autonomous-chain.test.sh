@@ -97,6 +97,63 @@ out="$(bash "$SCRIPT" should-chain "$FEAT")"
 check "id-less entry chains" "true" "$(chain_of "$out")"
 check "id-less entry null id" "null" "$(jq -r '.entry.id' <<<"$out")"
 
+# ── queue scope (ROADMAP-3.0 A3+A4: sentinel batch chaining) ─────────────────
+# Supply = sentinel queue via sentinel-run.sh --peek; bound = trust.sh
+# authorize sentinel-batch. Both are fixture-driven here.
+QDIR="$WORK/queue"
+mkdir -p "$QDIR"
+jq -n '{schema:1, generatedAt:"2026-07-10T00:00:00Z", needsHuman:[], queue:[
+  {source:"backlog", id:"q-1", title:"queued item", body:"b", url:null, kind:"gap",
+   updatedAt:"2026-07-09T00:00:00Z", score:6}]}' > "$QDIR/queue.json"
+# L1 metrics fixture (streak 5, zero post-merge fixes) and an L0 one
+jq -n '{schema:1, consecutiveConverged:5, postMergeFixRate:0, verifyFailureRate:null}' > "$QDIR/l1.json"
+jq -n '{schema:1, consecutiveConverged:0, postMergeFixRate:null, verifyFailureRate:null}' > "$QDIR/l0.json"
+qchain() { # qchain <completed> <metrics> [env...]
+  local completed="$1" metrics="$2"; shift 2
+  env "$@" bash "$SCRIPT" should-chain "$FEAT" --scope queue --completed "$completed" \
+    --queue "$QDIR/queue.json" --events "$QDIR/ev.jsonl" --conf "$QDIR/no-conf" \
+    --trust-metrics "$QDIR/$metrics" --trust-conf "$QDIR/no-conf"
+}
+
+write_feature true completed '[]'
+out="$(qchain 0 l0.json)"
+check "queue: L0 first item chains" "true" "$(chain_of "$out")"
+check "queue: entry is the queue head" "q-1" "$(jq -r '.entry.id' <<<"$out")"
+check "queue: peek does not record a pick" "0" "$([[ -f "$QDIR/ev.jsonl" ]] && echo 1 || echo 0)"
+
+out="$(qchain 1 l0.json)"
+check "queue: L0 second item denied by governor" "sentinel-batch-denied" "$(reason_of "$out")"
+out="$(qchain 1 l0.json LOOP_SPEC_MAX_FEATURES=10)"
+check "queue: L0 env cannot raise the batch" "sentinel-batch-denied" "$(reason_of "$out")"
+out="$(qchain 1 l1.json LOOP_SPEC_MAX_FEATURES=3)"
+check "queue: L1 honors raised env" "true" "$(chain_of "$out")"
+
+# never chain past a failure — same invariant as backlog scope
+write_feature true escalated '[]'
+out="$(qchain 0 l1.json)"
+check "queue: escalated feature never chains" "feature-not-completed" "$(reason_of "$out")"
+write_feature false completed '[]'
+out="$(qchain 0 l1.json)"
+check "queue: non-autonomous never chains" "not-autonomous" "$(reason_of "$out")"
+
+# trust unavailable fails CLOSED, not open
+write_feature true completed '[]'
+out="$(bash "$SCRIPT" should-chain "$FEAT" --scope queue --queue "$QDIR/queue.json" \
+  --events "$QDIR/ev.jsonl" --conf "$QDIR/no-conf" \
+  --trust-metrics "$QDIR/absent.json" --trust-conf "$QDIR/no-conf")"
+check "queue: trust error fails closed" "trust-unavailable" "$(reason_of "$out")"
+
+# supply exhaustion: item picked within cooldown -> no chain
+printf '{"ts":"%s","event":"picked","id":"q-1","source":"backlog","reason":null}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$QDIR/ev.jsonl"
+out="$(qchain 0 l1.json)"
+check "queue: cooled-down item exhausts supply" "queue-exhausted" "$(reason_of "$out")"
+rm -f "$QDIR/ev.jsonl"
+
+# bad scope value
+ec=0; bash "$SCRIPT" should-chain "$FEAT" --scope bogus >/dev/null 2>&1 || ec=$?
+check "unknown scope exits 1" "1" "$ec"
+
 # corrupted feature.json
 echo "{ not json" > "$FEAT/feature.json"
 ec=0; bash "$SCRIPT" should-chain "$FEAT" >/dev/null 2>&1 || ec=$?

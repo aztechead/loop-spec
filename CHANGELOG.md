@@ -2,6 +2,178 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.18.0]
+
+### Added — ROADMAP-3.0 autonomy wave (sentinel run + recipes, post-merge watch, trust governor at L1)
+
+Third release-train wave: the sentinel starts ACTING (A3+A4), the loop
+observes reality past the merge (C2), and the graduated-trust governor takes
+its first enforcement seat (D2/D3 — at L1 only). Risk gate honored: every
+sentinel run is PR-terminated; L1 unlocks batching, **never** merging.
+
+- **Sentinel drive loop (A3).** `/loop-spec:sentinel run` pops the first
+  eligible queue item, converts it via the existing `/loop-spec:intake
+  --no-run` path, and drives `/loop-spec:cycle autonomous` from the draft.
+  New `lib/sentinel-run.sh` owns the deterministic mechanics: `next` picks
+  the queue head, skipping items picked within `PICK_COOLDOWN_HOURS`
+  (default 24 — a failing item cannot thrash-loop overnight; `--peek`
+  answers without recording); `record` appends any decision to the scan
+  history. Chaining beyond one item is decided by `lib/autonomous-chain.sh
+  --scope queue` — same never-chain-past-failure invariant as backlog
+  drains, with supply from the sentinel queue and the bound from the trust
+  governor. Unattended cadence is a documented recipe, not a daemon:
+  `docs/loop-spec/sentinel.md` (cron, launchd, GitHub Actions; claude and pi
+  headless forms via the `lib/harness.sh cli` seam).
+- **Safety rails (A4).** Every sentinel decision (picked / skipped /
+  needs-human) is ledgered in `.loop-spec/sentinel-events.jsonl` for
+  `/status` and `/retro`; sentinel runs are always PR-terminated (auto-merge
+  is hard-denied at every trust level in this release); the batch bound
+  fails closed when trust cannot be computed. New LIVE e2e scenario
+  (`tests/e2e/run-e2e-sentinel.sh`, opt-in via `--e2e`) proves the drive
+  loop end to end and that `main` is never advanced.
+- **Post-merge watch (C2).** New `lib/watch.sh` + `/loop-spec:watch <slug>`:
+  after the feature's PR merges, did the default branch stay green for the
+  watch window, and did any commits touch the feature's files inside it?
+  Computed from `gh`/git facts, never self-reports; the verdict (`watch`
+  object, schema 1) is appended to the feature's committed run digest
+  (`lib/run-digest.sh` now records `branch` and preserves `watch` across
+  re-runs). A dirty window queues a `watch-regression` backlog entry
+  (deduped per slug+PR) that the sentinel triages as a bug — watch never
+  reopens a cycle itself. `clean` is `true` only on green CI + zero fixups;
+  unknowable signals stay `null` and never promote trust.
+- **Metrics contract grows its producers (B3 follow-through).**
+  `lib/status.sh metrics` now computes `postMergeFixRate` and the (additive)
+  `watchWindowClean` from watch verdicts, and `sentinelNeedsHumanRate` from
+  the sentinel decision ledger; each stays `null` until its producer has
+  actually run, so `lib/trust.sh` keeps failing closed. Schema pin updated.
+- **Trust governor (D2/D3, L1 only).** `lib/trust.sh authorize --action
+  <sentinel-batch|auto-merge>` is the enforcement verb the acting scripts
+  call and obey — authority lives in scripts, never in skill prose.
+  `sentinel-batch`: an L0 repo processes exactly ONE item per invocation
+  (env cannot raise it); at L1+ the user's `LOOP_SPEC_MAX_FEATURES` is
+  honored up to `BATCH_L1` (trust.conf, default 5). `auto-merge`: denied at
+  every level until the L2/L3 classes and the deterministic diff classifier
+  ship in 3.0. `/loop-spec:status` now surfaces the trust level (with
+  distance-to-next evidence) and pending `needs-human` items.
+- **Tests:** 2 new suites (`sentinel-run`, `watch`) + authorize/queue-scope/
+  metrics cases in the trust, autonomous-chain, and status suites; new pi
+  coverage pins for the recipe doc; full offline suite green.
+
+## [2.17.0]
+
+### Added — ROADMAP-3.0 learning wave (corpus widening, parameter tuning, live-verify rung)
+
+Second release-train wave: the learning loop closes (B1+B2) and VERIFY gains
+its reality-grounded rung (C1). Tuning ships behind a kill switch; the live
+rung is opt-in per repo.
+
+- **Corpus widening (B1).** `lib/retro.sh` mines two new sources: the
+  micro-cycle ledger (`.loop-spec/adhoc-ledger.md` — an ad-hoc task title
+  with >= min-repeats `fail`/`partial` verifications becomes a
+  promote-to-intake rule candidate) and the sentinel scan history
+  (`.loop-spec/sentinel-events.jsonl`, appended by every triage run — an item
+  bouncing `needs-human` across >= min-repeats DISTINCT scans becomes a
+  triage policy-gap rule candidate; the queue file is a re-derived view, so
+  recurrence lives only in the history). `lib/run-digest.sh` grows the
+  convergence fields it left implicit (schema 2, additive): `iterateRounds`,
+  `gateRoundsByGate` (max round per gate), `verifyFailureClasses`. New
+  canonical event `verify_failure` (`data.class`: marker | tamper |
+  suite-regression | acceptance | code-review | live-probe), emitted by the
+  VERIFY skill at each failure branch. The metrics contract grows (schema 1,
+  append-only): `consecutiveFirstPass`, `gapCounts`,
+  `verifyFailureClassCounts`, and `verifyFailureRate` now computes.
+- **Parameter tuning (B2, `lib/tuning.sh` + `.loop-spec/tuning.json`).**
+  Retro's sibling for parameters: a CLOSED template set — widen the PLAN
+  structural fast-path (2→3 tasks, 3→5 files) on a first-pass streak;
+  make the regression scan mandatory per verify-failure class recurrence
+  (`verifyMandatoryChecks`); raise `discuss`/`plan` critique rounds (2→3) or
+  `execute` retries (2→3) when the owning gap type recurs. Deterministic
+  triggers over `status.sh metrics`, bounded one-step deltas, every change
+  audited to `.loop-spec/tuning-audit.jsonl`, `LOOP_SPEC_TUNING=0` kill
+  switch (get/has-check return defaults, apply no-ops), and **loosening
+  demotes on the first contrary signal** (the fast-path widening is always
+  one bad run from reverting; tightening persists until the user removes it
+  — you curate the file). `tuning.sh auto` mirrors retro's completion-hook
+  gating (autonomous applies, interactive reports,
+  `LOOP_SPEC_TUNING_AUTO_APPLY` overrides, never aborts the cycle).
+  Consumers read at use time: PLAN's fast-path bounds and the tier-matrix
+  "Repo tuning overlay" section; VERIFY Step 0 runs the regression scan when
+  `tuning.sh has-check suite-regression` says the repo earned it.
+- **Live-run verify rung (C1, `lib/verify-live.sh`).** Opt-in per repo via a
+  `verifyCommands` block in `.loop-spec/workflow.json` (`launch`, `ready`,
+  `probes[]`, `readyTimeoutSec`): VERIFY Step 7.5 launches the app in its own
+  process group after both gates pass, polls readiness (bounded), runs the
+  acceptance probes, ledgers every probe into the feature's EVIDENCE.md
+  (`lib/evidence.sh`, verifier cites `EVID-NNN`), and always kills the app.
+  Failure routes remediation like a verifier FAIL (class `live-probe`).
+  Unconfigured -> one line, exit 0, suite-only VERIFY unchanged; a malformed
+  block refuses loudly; `verify-live.sh detect` (the detect-test-cmd sibling)
+  only SUGGESTS a launch command — nothing ever guesses one at run time.
+- Tests: `tests/lib/tuning.test.sh` (closed-set pin, demotion,
+  kill switch, auto gating), `tests/lib/verify-live.test.sh` (fake-server
+  fixture, degrade path, kill-after-probe, dead-on-arrival fast-fail),
+  B1 cases in `tests/lib/retro.test.sh`, scan-history cases in
+  `tests/lib/sentinel-triage.test.sh`, digest fields in
+  `tests/lib/run-digest.test.sh`, metrics keys re-pinned in
+  `tests/lib/status.test.sh`.
+
+## [2.16.0]
+
+### Added — ROADMAP-3.0 observation wave (sentinel scan, metrics contract, trust read-only)
+
+The first 3.0 release-train wave: **nothing acts autonomously yet — pure
+observation**. Ships pillar A's read-only half (A1+A2), the B3 metrics
+contract, and D1's computed trust level.
+
+- **Sentinel source adapters** (`lib/sentinel-sources.sh`): one subcommand
+  per work source, each emitting the same normalized candidate shape
+  (`{source, id, title, body, url, kind, updatedAt}`). Sources: `gh-issues`
+  (open `loop-spec`-labeled issues, lifecycle-labeled ones skipped — same
+  rule as `lib/issue-intake.sh`), `ci-failures` (most recent failed run per
+  workflow on the default branch, failing log tail in the body when live),
+  `backlog` (via the new `lib/backlog.sh list --json`), and `assessment`
+  (top-N `ASSESSMENT.md` cross-repo findings when fresher than a staleness
+  bound; stale reports yield nothing rather than confidently wrong
+  candidates). The adapter list is the seam; Jira/Slack stay `/intake`-only
+  until someone needs them.
+- **Deterministic triage** (`lib/sentinel-triage.sh` +
+  `.loop-spec/sentinel.conf`): score = source weight × kind (bug > gap >
+  chore) × recency, integer arithmetic, total order (score, then recency,
+  then id) — no LLM calls, same inputs same queue. Writes
+  `.loop-spec/sentinel-queue.json` (schema 1). Items the policy cannot
+  classify (unknown kind/source, missing id) are queued as **needs-human**
+  — never silently dropped, never silently run. Disabled-by-conf sources
+  are dropped (a user decision); unrecognized sources are not (they route
+  to needs-human).
+- **`/loop-spec:sentinel scan`** (`skills/sentinel/SKILL.md`): thin,
+  read-only command surface over the two libs. `sentinel run` (A3) ships in
+  2.18.0 behind the autonomous-chain bounds.
+- **Metrics contract** (`lib/status.sh metrics`, ROADMAP-3.0 B3): the
+  stable schema-1 JSON the other pillars consume — runs, convergence rate,
+  first-pass rate, trailing converged streak — computed from the COMMITTED
+  run digests (`docs/loop-spec/telemetry/runs/`), so it survives volatile
+  agents. Keys are append-only; signals whose producers ship later
+  (post-merge fix rate, verify-failure rate, sentinel needs-human rate) are
+  present as `null` so consumers can bind now and fail closed. Key set
+  pinned by a schema test.
+- **Trust track record, read-only** (`lib/trust.sh level`, ROADMAP-3.0 D1):
+  the earned-autonomy level (L0–L3) computed from the metrics contract plus
+  `.loop-spec/trust.conf` thresholds, printed WITH the evidence lines that
+  produced it. **Fail-closed by construction**: any missing/null signal
+  resolves to the lower level, so with 2.16-era telemetry every repo is L0
+  (PR-and-wait, today's behavior). Promotion slow, demotion instant (the
+  streak is recomputed from digests every read — no hysteresis, no stored
+  opinion). Nothing consults the level for authority yet; the `authorize`
+  verb arrives with D2/D3.
+- **`lib/backlog.sh list --json`**: all unchecked entries as a JSON array
+  (the backlog adapter's seam; `next --json` shape, file order).
+- Tests: `tests/lib/sentinel-sources.test.sh` (fixture-driven, offline),
+  `tests/lib/sentinel-triage.test.sh` (pinned clock, determinism pin,
+  needs-human routing), `tests/lib/trust.test.sh` (table-driven levels,
+  fail-closed table, L0-on-empty-telemetry invariant), metrics schema pin
+  in `tests/lib/status.test.sh`, `list --json` cases in
+  `tests/lib/backlog.test.sh`.
+
 ## [2.15.0]
 
 ### Added — micro-cycle for ad-hoc tasks (`/loop-spec:micro`)
