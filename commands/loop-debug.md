@@ -22,7 +22,10 @@ Skill(loop-spec:debug, args: "autonomous auto $ARGUMENTS")
 (Under pi this file loads as a prompt template and there is no Skill tool: read the
 debug skill's `SKILL.md` — sibling `skills/debug/` in this package — and follow it
 with the same `autonomous auto` invocation args; `skills/shared/pi-harness.md` has
-the substitution rules.)
+the substitution rules. Under opencode this file loads as the `/loop-debug`
+command and the native skill tool takes the call: `skill({name: "debug"})`, then
+the same `autonomous auto` args; `skills/shared/opencode-harness.md` has the
+substitution rules.)
 
 Everything else — TRIAGE convergence, the red-reproduction hard gate, the recorded
 hypothesis-verdict discipline, minimal-fix discipline, the mandatory sibling sweep

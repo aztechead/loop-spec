@@ -7,10 +7,12 @@ every iteration of every worker re-runs the task's `verifyCommand`, and the
 feature's SPEC.md/PLAN.md are integrity-protected (hash-locked) so no worker can
 edit the requirements to match its work. It requires no agent-teams support and
 no `Workflow` tool — only the **agent CLI** on PATH and git. The agent CLI is the
-running harness's own headless binary (`claude` or `pi`), resolved by
-`bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli`; under pi every
+running harness's own headless binary (`claude`, `pi`, or `opencode`), resolved
+by `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli`; under pi every
 `supervisor.py` / `loop.py` invocation below additionally carries
-`--agent-cli pi --claude-bin pi` (see `skills/shared/pi-harness.md`).
+`--agent-cli pi --claude-bin pi` (see `skills/shared/pi-harness.md`), and under
+opencode `--agent-cli opencode --claude-bin opencode`
+(see `skills/shared/opencode-harness.md`).
 
 ## When this rung is selected (see execute/SKILL.md Step 3b)
 
@@ -73,7 +75,9 @@ rc=$?
 Under pi, append `--agent-cli pi --claude-bin pi` and pass a **pi model id** (or
 omit `--model` to use the session default) — the `feature.models.*` aliases are
 Claude Code aliases and mean nothing to pi (`skills/shared/pi-harness.md`,
-"Model routing").
+"Model routing"). Under opencode, append `--agent-cli opencode --claude-bin
+opencode` and pass an **opencode model id** (`provider/model`) or omit `--model`
+(`skills/shared/opencode-harness.md`, "Model routing").
 
 The supervisor walks the DAG, runs each task's loop in an isolated worktree on
 branch `loop/<id>`, merges completed branches into `feat/{slug}` (the current

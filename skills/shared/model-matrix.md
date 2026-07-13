@@ -19,7 +19,10 @@ opus -> claude-opus-4-8, sonnet -> claude-sonnet-4-6).
 These aliases are a **Claude Code** surface. Under the pi harness there is no
 per-dispatch model routing at all (inline work runs on the session model) and
 loop-fleet dispatch takes pi model **ids**, not aliases — see
-`skills/shared/pi-harness.md` "Model routing".
+`skills/shared/pi-harness.md` "Model routing". Under opencode, per-role models
+come from the generated agent files (`provider/model` ids; default inherits
+the session model) and loop-fleet dispatch takes opencode ids — see
+`skills/shared/opencode-harness.md` "Model routing".
 
 ## Matrix
 

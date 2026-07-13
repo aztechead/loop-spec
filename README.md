@@ -1,6 +1,6 @@
 # loop-spec
 
-Spec-driven development loops for Claude Code (and [pi](https://pi.dev)).
+Spec-driven development loops for Claude Code (and [pi](https://pi.dev), and [opencode](https://opencode.ai)).
 
 Give the cycle a feature description, or a pre-authored spec file, and it runs six phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE. The last phase judges the integrated result against your original request and rewinds the loop until the goal is met or the iteration limit (10) is spent, then opens a PR. Every phase writes a committed markdown artifact, and every run can be resumed from its `feature.json`.
 
@@ -66,6 +66,26 @@ Differences under pi (full contract: `skills/shared/pi-harness.md`):
 - There are no per-dispatch model aliases. Inline work uses the session model; fleet dispatch takes pi model ids.
 
 The Claude Code path is not affected by any of this; pi support is an additive branch keyed on `lib/harness.sh detect`.
+
+### opencode
+
+loop-spec installs into [opencode](https://opencode.ai) (TUI, `opencode run`, and the `@opencode-ai/sdk` server) from a clone, using only opencode's native discovery surfaces:
+
+```bash
+git clone https://github.com/aztechead/loop-spec
+bash loop-spec/lib/opencode-install.sh install            # global: ~/.config/opencode
+bash loop-spec/lib/opencode-install.sh install --project . # or per-project: ./.opencode
+```
+
+The installer symlinks every skill onto opencode's skill discovery glob (loop-spec skills already carry the Agent Skills frontmatter both harnesses share), places `/loop-debug` as a native command, converts `agents/*.md` into opencode subagents named `loop-spec-<role>`, and drops a bundled plugin (`extensions/opencode/loop-spec.ts`) that bridges the rest of the Claude Code surface through documented plugin hooks: `shell.env` exports `LOOP_SPEC_HARNESS=opencode`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, and `CLAUDE_SKILL_DIR` into every bash command; `chat.message` and the event stream run the SessionStart / prompt-submit / session-end hooks. `status` and `uninstall` subcommands manage the install (manifest-driven; user files are never clobbered). graphify and the base prerequisites are the same.
+
+Differences under opencode (full contract: `skills/shared/opencode-harness.md`):
+
+- One-shot subagent dispatch is NATIVE: opencode's `task` tool takes the same `{description, prompt, subagent_type}` parameters as Claude Code's `Agent` tool, so critique/verify/execute fan-out works as written, with agent ids spelled `loop-spec-<role>`. Questions go through opencode's native `question` tool. Agent teams and the Workflow tool remain Claude Code-only; EXECUTE tops out at the subagent and loop-fleet rungs, whose headless loops spawn `opencode run --format json` instead of `claude -p`.
+- Interactive mode is the opencode TUI; headless mode is `opencode run --format json "Load the cycle skill (skill tool) and run: autonomous <description>"` — or drive the same prompt through the SDK (`createOpencode()` / `client.session.prompt()` against `opencode serve`).
+- There are no per-dispatch model aliases. Per-role models live in the generated agent files (`provider/model` ids; default inherits the session model); fleet dispatch takes opencode ids via `--model`.
+
+As with pi, the Claude Code path is untouched: opencode support is an additive branch keyed on `lib/harness.sh detect`.
 
 ## Quick start
 
@@ -680,6 +700,7 @@ loop-spec/
 ├── .claude-plugin/                  # plugin.json + marketplace.json
 ├── package.json                     # pi package manifest (skills + prompts + extension)
 ├── extensions/pi/loop-spec.ts       # pi bridge: env + CC hook equivalents (node builtins only)
+├── extensions/opencode/loop-spec.ts # opencode bridge: shell.env/chat.message/event hooks (node builtins only)
 ├── agents/                          # specialized agent definitions (teammates + mappers)
 ├── skills/
 │   ├── cycle/ spec/ discuss/ plan/ execute/ verify/ iterate/   # the six phases + orchestrator
@@ -688,7 +709,7 @@ loop-spec/
 │   ├── grill/ simplicity/ discipline/                          # session-mode toggles
 │   ├── pause/ rollback/ forensics/                             # lifecycle utilities
 │   ├── loop-runner/                 # bundled loop engine + its offline test suite
-│   └── shared/                      # cross-skill contracts (tier-matrix, model-matrix, autonomous-mode, pi-harness, ...)
+│   └── shared/                      # cross-skill contracts (tier-matrix, model-matrix, autonomous-mode, pi-harness, opencode-harness, ...)
 ├── lib/                             # extracted bash, one concern per script, unit-tested
 ├── hooks/                           # PreToolUse/Stop/SessionStart guards + hooks.json
 ├── tests/
