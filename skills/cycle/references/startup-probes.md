@@ -9,7 +9,10 @@ Model selection is fixed (see `skills/shared/model-matrix.md`): the unique alias
 **pi harness: skip this probe entirely** (`harness != "claude"` in the preflight
 blob). The probe pre-flights `Agent` dispatches and pi has no `Agent` tool; model
 failures surface loudly on the first loop-fleet dispatch instead. Do not write
-`modelsProbedAt`. See `skills/shared/pi-harness.md`.
+`modelsProbedAt`. See `skills/shared/pi-harness.md`. The same skip applies under
+opencode: the aliases are Claude Code-only (per-role models live in the generated
+agent files there), so failures surface on the first task or loop-fleet dispatch.
+See `skills/shared/opencode-harness.md`.
 
 **Probe cache (speed):** the probe result is cached in `.loop-spec/runtime.json`
 (`modelsProbedAt`, ISO-8601). Skip the probe entirely — zero Agent dispatches —

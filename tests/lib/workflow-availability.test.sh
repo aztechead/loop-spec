@@ -34,6 +34,9 @@ check "I: override=0 forces false" "false" "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=0 ba
 check "J: pi harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=pi bash "$LIB" 9.9.9)"
 check "K: explicit override beats pi gate" "true" "$(LOOP_SPEC_HARNESS=pi LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 9.9.9)"
 
+# opencode harness gate: same Claude-Code-surface rule as pi
+check "L: opencode harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=opencode bash "$LIB" 9.9.9)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

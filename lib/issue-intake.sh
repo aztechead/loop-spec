@@ -25,10 +25,13 @@
 #
 # The agent invocation runs from the CURRENT directory (the target repo root)
 # via the harness's own headless CLI (lib/harness.sh cli):
-#   claude: claude -p "/loop-spec:intake autonomous <text>" $LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS
-#           (default flags: --permission-mode acceptEdits)
-#   pi:     pi --mode json "/skill:intake autonomous <text>" (no default flags;
-#           permission modes are claude-only)
+#   claude:   claude -p "/loop-spec:intake autonomous <text>" $LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS
+#             (default flags: --permission-mode acceptEdits)
+#   pi:       pi --mode json "/skill:intake autonomous <text>" (no default flags;
+#             permission modes are claude-only)
+#   opencode: opencode run --format json "Load the intake skill (skill tool) and
+#             run: autonomous <text>" (default flags: --auto — headless opencode
+#             auto-rejects permission asks otherwise)
 # The intake skill's own provenance rules apply — the issue text is
 # restructured, never invented.
 #
@@ -50,14 +53,20 @@ FIXTURE=""
 
 # Harness seam: spawn the harness's own headless CLI with its own skill-command
 # prefix (claude: `claude -p "/loop-spec:intake ..."`; pi: `pi --mode json
-# "/skill:intake ..."`). Permission modes are claude-only, so pi defaults to no
-# extra flags; LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS still overrides verbatim.
+# "/skill:intake ..."`; opencode: `opencode run --format json` with a prompt
+# that loads the skill via the native skill tool). Permission modes are
+# claude-only (opencode uses --auto instead — headless runs auto-reject asks);
+# LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS still overrides verbatim.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_CLI="$(bash "$SCRIPT_DIR/harness.sh" cli)"
 if [[ "$AGENT_CLI" == "pi" ]]; then
   AGENT_ARGS=(--mode json)
   INTAKE_CMD="/skill:intake"
   CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:-}"
+elif [[ "$AGENT_CLI" == "opencode" ]]; then
+  AGENT_ARGS=(run --format json)
+  INTAKE_CMD="Load the intake skill (skill tool, name: intake) and run:"
+  CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:---auto}"
 else
   AGENT_ARGS=(-p)
   INTAKE_CMD="/loop-spec:intake"

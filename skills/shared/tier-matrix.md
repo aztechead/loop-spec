@@ -119,8 +119,11 @@ available concurrency wins, and the heaviest (Workflow) requires explicit opt-in
 | `W >= t_wf` **and** opted in **and** available | **workflow** | undeniable fan-out ROI; deterministic DAG via `execute-dag.js` |
 
 Thresholds (fixed): `t_team = 3`, `t_wf = 6`. The "agent CLI" is the running
-harness's own headless binary (`claude` or `pi`), resolved by `lib/harness.sh cli`;
-the fleet always spawns the harness it is running under.
+harness's own headless binary (`claude`, `pi`, or `opencode`), resolved by
+`lib/harness.sh cli`; the fleet always spawns the harness it is running under.
+Under opencode the subagent rungs stay live — its `task` tool shares the `Agent`
+call shape (`skills/shared/opencode-harness.md`); the team and workflow rungs
+remain Claude Code-only.
 
 - `W` is measured **uncapped** (independent of `maxParallelImplementers`); it
   reflects the parallelism the DAG structurally exposes. `maxParallelImplementers`

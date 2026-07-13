@@ -336,6 +336,87 @@ python3 "$SCRIPTS/loop.py" "noop" --task-id conflict --agent-cli pi --claude-bin
 check "conflict exit 2"     "$?" "2"
 check "conflict names both flags" "$(grep -c 'does not speak' "$R/err.txt")" "1"
 
+echo "== 17. opencode backend: --agent-cli opencode speaks run --format json =="
+FAKEOC="$HERE/fakeopencode"; chmod +x "$FAKEOC"
+
+# 17a. complete run: same result contract as the claude backend
+newrepo
+python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id ocdone \
+  --agent-cli opencode --claude-bin "$FAKEOC" \
+  --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 99 >/dev/null 2>&1
+check "oc exit 0"          "$?" "0"
+check "oc halt_reason"     "$(reason .loop/ocdone/result.json)" "complete"
+check "oc cost from step_finish" "$(python3 -c "import json;c=json.load(open('.loop/ocdone/result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
+check "oc raw log kept"    "$(test -f .loop/ocdone/iter-001.raw.json && echo yes)" "yes"
+
+# 17b. flag shape: opencode gets opencode flags, never claude-only ones
+newrepo
+OCLOG="$R/ocargv.txt"
+FAKE_ARGV_LOG="$OCLOG" python3 "$SCRIPTS/loop.py" "noop" --task-id ocflags \
+  --agent-cli opencode --claude-bin "$FAKEOC" --model anthropic/claude-sonnet-4-5 \
+  --fallback-model some-model --retry-watchdog 5 \
+  --max-iterations 1 --verify 'true' >/dev/null 2>&1
+check "oc: run --format json"      "$(grep -c -- 'run --format json' "$OCLOG")" "1"
+check "oc: --auto (work tick)"     "$(grep -c -- '--auto' "$OCLOG")" "1"
+check "oc: --model passed"         "$(grep -c -- '--model anthropic/claude-sonnet-4-5' "$OCLOG")" "1"
+check "oc: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permission-mode|--output-format|--allowedTools' "$OCLOG")" "0"
+
+# 17c. compiler via opencode backend: read-only pass = --agent plan, no --auto
+newrepo
+echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md
+git add -A; git commit -qm spec
+cat > goodplan.json << 'EOF'
+{"spec":"SPEC.md",
+ "tasks":[
+  {"id":"make-a","prompt":"Create a.txt per AC1. TOUCH:a.txt",
+   "verify":"test -f a.txt","protected":[],"max_iterations":5,"deps":[]}]}
+EOF
+OCLOG2="$R/ocargv2.txt"
+FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$OCLOG2" python3 "$SCRIPTS/compile_spec.py" SPEC.md \
+  --agent-cli opencode --claude-bin "$FAKEOC" --out plan/tasks.json >/dev/null 2>&1
+check "oc compile exit 0"      "$?" "0"
+check "oc plan written"        "$(test -f plan/tasks.json && echo yes)" "yes"
+check "oc read-only compile"   "$(grep -c -- '--agent plan' "$OCLOG2")" "1"
+check "oc plan tick has no --auto" "$(grep -c -- '--auto' "$OCLOG2")" "0"
+
+# 17d. auto-detection: a binary named `opencode` selects the protocol on its own
+newrepo
+cp "$FAKEOC" "$R/opencode"; chmod +x "$R/opencode"
+python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id ocauto \
+  --claude-bin "$R/opencode" \
+  --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 99 >/dev/null 2>&1
+check "oc auto exit 0"      "$?" "0"
+check "oc auto halt_reason" "$(reason .loop/ocauto/result.json)" "complete"
+
+# 17e. supervisor passes --agent-cli opencode through to every loop tick
+newrepo
+cat > plan.json << 'EOF'
+{"tasks":[
+ {"id":"solo","prompt":"make the file. TOUCH:s.txt",
+  "verify":"test -f s.txt","max_iterations":3,"deps":[]}]}
+EOF
+git add -A; git commit -qm plan
+python3 "$SCRIPTS/supervisor.py" --plan plan.json --agent-cli opencode --claude-bin "$FAKEOC" >/dev/null 2>&1
+check "oc fleet exit 0"     "$?" "0"
+check "oc fleet completed"  "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['completed'])")" "['solo']"
+
+# 17f. transport conflict fails fast: --agent-cli opencode at a claude binary
+newrepo
+cp "$FAKE" "$R/claude"; chmod +x "$R/claude"
+python3 "$SCRIPTS/loop.py" "noop" --task-id occonflict --agent-cli opencode \
+  --claude-bin "$R/claude" --max-iterations 1 >/dev/null 2>"$R/ocerr.txt"
+check "oc conflict exit 2"     "$?" "2"
+check "oc conflict names both flags" "$(grep -c 'does not speak' "$R/ocerr.txt")" "1"
+
+# 17g. resume passes --session (continue mode threads the session id through)
+newrepo
+OCLOG3="$R/ocargv3.txt"
+FAKE_ARGV_LOG="$OCLOG3" python3 "$SCRIPTS/loop.py" "two lines. TOUCH:work.txt" --task-id ocresume \
+  --mode continue --agent-cli opencode --claude-bin "$FAKEOC" \
+  --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 3 >/dev/null 2>&1
+check "oc resume exit 0"       "$?" "0"
+check "oc --session on resume" "$(grep -c -- '--session ses_opencode_abc' "$OCLOG3")" "1"
+
 echo
 echo "================= $PASS passed, $FAIL failed ================="
 exit $([[ $FAIL -eq 0 ]] && echo 0 || echo 1)

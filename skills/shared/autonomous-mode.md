@@ -8,7 +8,11 @@ proceeds. It is the headless CLI mode: `claude -p "/loop-spec:cycle autonomous
 <description>"` runs a full cycle with zero human input. Under the pi harness the
 equivalent entry points are `pi --mode json "/skill:cycle autonomous <description>"`
 (or `pi -p ...`, or the pi SDK's `createAgentSession()` prompting the same text) —
-the self-answer contract is identical; see `skills/shared/pi-harness.md`.
+the self-answer contract is identical; see `skills/shared/pi-harness.md`. Under
+opencode they are `opencode run --format json "Load the cycle skill (skill tool)
+and run: autonomous <description>"` (or the `@opencode-ai/sdk`'s
+`client.session.prompt()` against `opencode serve`, same text) — see
+`skills/shared/opencode-harness.md`.
 
 ## Trigger and precedence
 

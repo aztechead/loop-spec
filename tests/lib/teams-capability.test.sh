@@ -79,6 +79,11 @@ check "F2: pi env hint + flag=1 -> none" "none" "$got"
 got=$(run "2.1.181" LOOP_SPEC_HARNESS=pi LOOP_SPEC_TEAMS_MODE=implicit)
 check "F3: explicit mode override beats pi gate" "implicit" "$got"
 
+# Case G: opencode harness -> none (task tool is one-shot only; no named
+# teammates, no SendMessage -- same Claude-Code-surface gate as pi)
+got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_HARNESS=opencode)
+check "G: opencode harness + flag=1 -> none" "none" "$got"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

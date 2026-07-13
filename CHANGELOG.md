@@ -2,6 +2,51 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.19.0]
+
+### Added — native opencode (opencode.ai) harness support
+
+loop-spec now runs under opencode — TUI, `opencode run` headless, and the
+`@opencode-ai/sdk` server — as a third harness beside Claude Code and pi,
+grounded end to end in opencode's documented native surfaces
+(https://opencode.ai/docs).
+
+- **Harness seam** (`lib/harness.sh`): detects `opencode`
+  (`LOOP_SPEC_HARNESS=opencode`, set by the bundled plugin). `subagents`
+  answers **true** there — opencode's native `task` tool shares the `Agent`
+  tool's `{description, prompt, subagent_type}` call shape, so the one-shot
+  subagent rungs stay live. Teams/Workflow gates generalized from `pi` to
+  "any non-claude harness".
+- **Bridge plugin** (`extensions/opencode/loop-spec.ts`): documented plugin
+  hooks only — `shell.env` merges `LOOP_SPEC_HARNESS` / `CLAUDE_PLUGIN_ROOT` /
+  `CLAUDE_PROJECT_DIR` / `CLAUDE_SKILL_DIR` into every bash call;
+  `tool.execute.after` tracks the active skill dir from the native `skill`
+  tool's result metadata (realpath'd for symlinked installs); `chat.message`
+  bridges done-criteria and delivers queued context; `event` runs the
+  SessionStart injects (session.created) and the learnings pass
+  (session.idle). Node builtins only, every handler fail-open
+  (`tests/opencode-plugin.test.sh`).
+- **Installer** (`lib/opencode-install.sh` install/uninstall/status): places
+  skills (symlinked; Agent-Skills frontmatter loads unmodified), the
+  `/loop-debug` command, and the plugin onto opencode's documented discovery
+  globs, and CONVERTS `agents/*.md` into opencode subagents
+  (`loop-spec-<role>`, `mode: subagent`, CC tool lists mapped to opencode
+  tool ids). Manifest-driven; global or `--project`; never clobbers user
+  files (`tests/lib/opencode-install.test.sh`).
+- **Loop-runner backend** (`loop.py --agent-cli opencode`): drives
+  `opencode run --format json`, normalized to the shared result contract
+  (text events → result, step_finish → turns + summed cost, `--session`
+  resume). Read-only passes run `--agent plan`; work ticks pass `--auto`.
+  `supervisor.py` / `compile_spec.py` thread the new backend;
+  `fakeopencode` + run_tests section 17 mirror the pi coverage.
+- **Adaptation contract** (`skills/shared/opencode-harness.md`) + pointers in
+  cycle/no-teams-fallback/tier-matrix/model-matrix/autonomous-mode/
+  startup-probes/harness-call-contracts/loop-debug/sentinel/issue-intake,
+  pinned by `tests/opencode-harness-coverage.test.sh`.
+
+The Claude Code and pi paths are untouched: every opencode accommodation is
+an additive branch keyed on `lib/harness.sh detect`.
+
 ## [2.18.0]
 
 ### Added — ROADMAP-3.0 autonomy wave (sentinel run + recipes, post-merge watch, trust governor at L1)

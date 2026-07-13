@@ -221,6 +221,10 @@ esac
     **`skills/shared/pi-harness.md`** on top — one-shot dispatches run inline by
     the lead, EXECUTE selects the loop-fleet or inline rung, and the model probe
     is skipped.
+  - When it reports `harness.name == "opencode"` (mode is always `none` there
+    too), one-shot dispatches run natively through opencode's `task` tool: apply
+    **`skills/shared/opencode-harness.md`** on top — same call shape, agent ids
+    spelled `loop-spec-<role>`, model probe skipped.
 - `implicit` → teams are live but `TeamCreate` / `TeamDelete` do **not** exist. Phases
   spawn named teammates with `Agent({name})` and message them via `SendMessage` per
   **`skills/shared/implicit-team-mode.md`**. Phases MUST NOT call `TeamCreate` / `TeamDelete`

@@ -138,7 +138,8 @@ def main() -> int:
     p.add_argument("--out", default="plan/tasks.json")
     p.add_argument("--model", default="", help="Model for the compiler pass.")
     p.add_argument("--claude-bin", default="claude")
-    p.add_argument("--agent-cli", choices=["claude", "pi"], default="", dest="agent_cli",
+    p.add_argument("--agent-cli", choices=["claude", "pi", "opencode"], default="",
+                   dest="agent_cli",
                    help="Headless protocol (default: auto from the binary name).")
     args = p.parse_args()
 

@@ -39,12 +39,15 @@ if [[ -n "${LOOP_SPEC_TEAMS_MODE:-}" ]]; then
 fi
 
 # Harness gate: agent teams are a Claude Code surface. Under pi there is no
-# Agent tool at all, so the mode is `none` even when the experimental flag is
-# exported globally (and a `claude` binary happens to be on PATH — without
-# this gate that combination would mis-resolve to `implicit` and every spawn
-# would throw). skills/shared/pi-harness.md carries the substitution rules.
+# Agent tool at all, and opencode's task tool is one-shot only (no named
+# teammates, no SendMessage), so the mode is `none` on every non-claude
+# harness even when the experimental flag is exported globally (and a
+# `claude` binary happens to be on PATH — without this gate that combination
+# would mis-resolve to `implicit` and every spawn would throw).
+# skills/shared/pi-harness.md and skills/shared/opencode-harness.md carry the
+# substitution rules.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" == "pi" ]]; then
+if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" != "claude" ]]; then
   echo "none"
   exit 0
 fi
