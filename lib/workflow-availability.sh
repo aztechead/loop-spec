@@ -23,10 +23,10 @@ if [[ -n "${LOOP_SPEC_WORKFLOWS_AVAILABLE:-}" ]]; then
   exit 0
 fi
 
-# Harness gate: the Workflow tool is a Claude Code surface. Under pi it never
-# exists, regardless of any claude binary found on PATH.
+# Harness gate: the Workflow tool is a Claude Code surface. Under pi and
+# opencode it never exists, regardless of any claude binary found on PATH.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" == "pi" ]]; then
+if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" != "claude" ]]; then
   echo "false"
   exit 0
 fi

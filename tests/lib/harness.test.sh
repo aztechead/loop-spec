@@ -38,6 +38,15 @@ check "override claude beats pi env hint" "claude" "$got"
 got=$(run detect LOOP_SPEC_HARNESS=pi CLAUDECODE=1)
 check "override pi beats CLAUDECODE" "pi" "$got"
 
+got=$(run detect LOOP_SPEC_HARNESS=opencode)
+check "override opencode -> opencode" "opencode" "$got"
+
+got=$(run detect LOOP_SPEC_HARNESS=opencode CLAUDECODE=1)
+check "override opencode beats CLAUDECODE" "opencode" "$got"
+
+got=$(run detect LOOP_SPEC_HARNESS=opencode PI_CODING_AGENT_DIR=/x)
+check "override opencode beats pi env hint" "opencode" "$got"
+
 # --- detect: unknown override falls through ---
 got=$(run detect LOOP_SPEC_HARNESS=garbage)
 check "unknown override -> default claude" "claude" "$got"
@@ -65,12 +74,19 @@ check "cli under pi -> pi" "pi" "$got"
 got=$(run cli)
 check "cli default -> claude" "claude" "$got"
 
+got=$(run cli LOOP_SPEC_HARNESS=opencode)
+check "cli under opencode -> opencode" "opencode" "$got"
+
 # --- subagents ---
 got=$(run subagents LOOP_SPEC_HARNESS=pi)
 check "subagents under pi -> false" "false" "$got"
 
 got=$(run subagents CLAUDECODE=1)
 check "subagents under claude -> true" "true" "$got"
+
+# opencode's task tool shares the Agent call shape, so the capability holds.
+got=$(run subagents LOOP_SPEC_HARNESS=opencode)
+check "subagents under opencode -> true" "true" "$got"
 
 # --- unknown command exits 2 ---
 rc=0
