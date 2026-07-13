@@ -56,8 +56,9 @@ HALT_AGENT_ERROR = "agent_error"
 MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower this
 
 DEFAULT_JUDGE_MODEL = "claude-haiku-4-5-20251001"  # claude -p id; dropped under pi
-                                                   # (pi's model registry uses its own
-                                                   # ids — the session default judges)
+                                                   # and opencode (their model registries
+                                                   # use their own ids — the session
+                                                   # default judges there)
 
 PROGRESS_BANNER = (
     "# Loop progress notes\n\n"
@@ -95,21 +96,33 @@ class LoopConfig:
     state_dir: str = ""               # default .loop/<task_id>
     commit: bool = False              # scoped git commit per productive iteration
     claude_bin: str = "claude"
-    agent_cli: str = ""               # "claude" | "pi" | "" (auto: pi iff the binary
-                                      # is named `pi`). Selects the headless protocol:
-                                      # claude -p JSON object vs pi --mode json events.
+    agent_cli: str = ""               # "claude" | "pi" | "opencode" | "" (auto: named
+                                      # after the binary). Selects the headless protocol:
+                                      # claude -p JSON object vs pi --mode json events
+                                      # vs opencode run --format json events.
     reset: bool = False
     extra_args: list = field(default_factory=list)
 
+    # Per-backend protocol descriptions, used by auto-detection and the
+    # transport-conflict message (a new backend adds one entry here).
+    KNOWN_CLIS = {
+        "claude": "-p --output-format json (single JSON object)",
+        "pi": "--mode json (one event per line)",
+        "opencode": "run --format json (one event per line)",
+    }
+
     def resolved_agent_cli(self) -> str:
-        if self.agent_cli in ("claude", "pi"):
+        if self.agent_cli in self.KNOWN_CLIS:
             return self.agent_cli
-        return "pi" if Path(self.claude_bin).name == "pi" else "claude"
+        name = Path(self.claude_bin).name
+        return name if name in self.KNOWN_CLIS else "claude"
 
     def resolved_agent_bin(self) -> str:
-        # --agent-cli pi with claude_bin left at its default means "the pi binary".
-        if self.resolved_agent_cli() == "pi" and self.claude_bin == "claude":
-            return "pi"
+        # A non-claude --agent-cli with claude_bin left at its default means
+        # "that harness's own binary" (--agent-cli pi -> `pi`, opencode -> `opencode`).
+        cli = self.resolved_agent_cli()
+        if cli != "claude" and self.claude_bin == "claude":
+            return cli
         return self.claude_bin
 
     def transport_conflict(self) -> Optional[str]:
@@ -120,14 +133,10 @@ class LoopConfig:
         Returns a human-readable message, or None when consistent."""
         cli = self.resolved_agent_cli()
         name = Path(self.resolved_agent_bin()).name
-        if cli == "pi" and name == "claude":
-            return (f"--agent-cli pi but the binary is `{self.resolved_agent_bin()}`: "
-                    "claude does not speak pi's --mode json protocol. Point "
-                    "--claude-bin at the pi binary or drop --agent-cli.")
-        if cli == "claude" and name == "pi":
-            return (f"--agent-cli claude but the binary is `{self.resolved_agent_bin()}`: "
-                    "pi does not speak claude's -p --output-format json protocol. "
-                    "Use --agent-cli pi or point --claude-bin at claude.")
+        if name in self.KNOWN_CLIS and name != cli:
+            return (f"--agent-cli {cli} but the binary is `{self.resolved_agent_bin()}`: "
+                    f"{name} does not speak {cli}'s {self.KNOWN_CLIS[cli]} protocol. "
+                    f"Point --claude-bin at the {cli} binary or drop --agent-cli.")
         return None
 
     def resolved_task_id(self) -> str:
@@ -279,7 +288,8 @@ def hash_paths(paths: list[Path], ignore_dir: str) -> str:
 
 
 # =============================================================================
-# Agent invocation (headless) — claude -p and pi --mode json behind one contract
+# Agent invocation (headless) — claude -p, pi --mode json, and
+# opencode run --format json behind one contract
 # =============================================================================
 def _spawn_agent(cmd: list, *, bin_label: str, env: Optional[dict],
                  resume: Optional[str], raw_log: Optional[Path],
@@ -319,6 +329,9 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     if cfg.resolved_agent_cli() == "pi":
         return run_pi(prompt, cfg, resume=resume, permission_mode=permission_mode,
                       raw_log=raw_log, timeout=timeout)
+    if cfg.resolved_agent_cli() == "opencode":
+        return run_opencode(prompt, cfg, resume=resume, permission_mode=permission_mode,
+                            raw_log=raw_log, timeout=timeout)
     cmd = [cfg.claude_bin, "-p", prompt, "--output-format", "json",
            "--permission-mode", permission_mode or cfg.permission_mode]
     if cfg.allowed_tools:
@@ -456,6 +469,103 @@ def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
             "session_id": session_id, "result": result_text, "cost_usd": cost}
 
 
+def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
+                 permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
+                 timeout: Optional[float] = None) -> dict:
+    """opencode (https://opencode.ai) headless backend, normalized to
+    run_claude's result contract.
+
+    `opencode run --format json "<prompt>"` emits one JSON event per line,
+    every event carrying {type, timestamp, sessionID} (the run command's
+    `emit()`); the types this parser consumes are `text` (a message part —
+    the LAST one is the result), `step_finish` (an assistant step; its part
+    carries `cost` and `tokens` per the SDK's StepFinishPart), and `error`.
+    Mapping to the claude -p JSON-object contract:
+      - result:     part.text of the last `text` event
+      - turns:      count of `step_finish` events
+      - session_id: `sessionID` of the first event; resume passes --session <id>
+      - cost_usd:   summed step_finish part.cost, else None (callers already
+                    treat None as "unknown", not "free")
+      - permission_mode "plan" (read-only judge / compiler) -> --agent plan:
+        opencode's built-in plan agent denies edits, and headless runs
+        auto-REJECT any permission that would ask — together the strongest
+        read-only guarantee opencode offers headlessly. All other modes pass
+        --auto (auto-approve permissions not explicitly denied), the moral
+        equivalent of the fleet's acceptEdits under claude -p.
+      - claude-only knobs are ignored here: allowed_tools, fallback_model,
+        retry_watchdog. Models must be opencode ids (provider/model, e.g.
+        anthropic/claude-sonnet-4-5). opencode-specific flags go through
+        extra_args verbatim.
+    """
+    bin_ = cfg.resolved_agent_bin()
+    mode = permission_mode or cfg.permission_mode
+    cmd = [bin_, "run", "--format", "json"]
+    if resume:
+        cmd += ["--session", str(resume)]
+    if cfg.model:
+        cmd += ["--model", cfg.model]
+    if mode == "plan":
+        cmd += ["--agent", "plan"]
+    else:
+        cmd += ["--auto"]
+    cmd += list(cfg.extra_args)
+    cmd += [prompt]
+
+    proc, err = _spawn_agent(cmd, bin_label=bin_, env=None, resume=resume,
+                             raw_log=raw_log, timeout=timeout)
+    if err:
+        return err
+
+    events = []
+    for line in (proc.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(ev, dict):
+            events.append(ev)
+    if not events:
+        return {"ok": False, "error": "non-JSON output from opencode",
+                "turns": 0, "session_id": resume, "result": proc.stdout.strip()[:1000]}
+
+    session_id = resume
+    v = events[0].get("sessionID")
+    if isinstance(v, str) and v:
+        session_id = v
+
+    turns = sum(1 for ev in events if ev.get("type") == "step_finish")
+
+    result_text = ""
+    cost: Optional[float] = None
+    error_msg: Optional[str] = None
+    for ev in events:
+        etype = ev.get("type")
+        part = ev.get("part") or {}
+        if etype == "text":
+            t = part.get("text")
+            if isinstance(t, str) and t.strip():
+                result_text = t
+        elif etype == "step_finish":
+            c = part.get("cost")
+            if isinstance(c, (int, float)):
+                cost = (cost or 0.0) + float(c)
+        elif etype == "error":
+            e = ev.get("error")
+            error_msg = e if isinstance(e, str) else json.dumps(e)[:500]
+
+    if error_msg and not result_text:
+        return {"ok": False, "error": error_msg,
+                "turns": turns, "session_id": session_id, "result": ""}
+    if not result_text:
+        return {"ok": False, "error": "no assistant text in opencode output",
+                "turns": turns, "session_id": session_id, "result": ""}
+    return {"ok": True, "error": None, "turns": turns,
+            "session_id": session_id, "result": result_text, "cost_usd": cost}
+
+
 def run_verifier(cmd: str, timeout: int, out_file: Path) -> tuple[bool, str]:
     """Exit 0 == done. Full output saved to disk; the (informative) tail is what gets
     fed back into the next prompt — this feedback is what makes the loop converge."""
@@ -495,8 +605,8 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str) -> bool:
         "if the verifier passed."
     )
     judge_model = cfg.judge_model
-    if cfg.resolved_agent_cli() == "pi" and judge_model == DEFAULT_JUDGE_MODEL:
-        judge_model = ""  # claude-only id; let pi's session default judge
+    if cfg.resolved_agent_cli() != "claude" and judge_model == DEFAULT_JUDGE_MODEL:
+        judge_model = ""  # claude-only id; let the harness's session default judge
     jcfg = LoopConfig(task="", claude_bin=cfg.claude_bin, agent_cli=cfg.agent_cli,
                       model=judge_model, allowed_tools="")
     res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600)
@@ -772,10 +882,13 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     p.add_argument("--state-dir", default=None)
     p.add_argument("--commit", action="store_true", default=None)
     p.add_argument("--claude-bin", default=None,
-                   help="agent binary (default `claude`; with --agent-cli pi, `pi`)")
-    p.add_argument("--agent-cli", choices=["claude", "pi"], default=None, dest="agent_cli",
-                   help="headless protocol: claude -p JSON vs pi --mode json events "
-                        "(default: auto — pi iff the binary is named `pi`)")
+                   help="agent binary (default `claude`; with --agent-cli pi/opencode, "
+                        "that harness's own binary)")
+    p.add_argument("--agent-cli", choices=["claude", "pi", "opencode"], default=None,
+                   dest="agent_cli",
+                   help="headless protocol: claude -p JSON vs pi --mode json vs "
+                        "opencode run --format json events (default: auto — named "
+                        "after the binary)")
     p.add_argument("--reset", action="store_true", default=None)
     args, extra = p.parse_known_args(argv)
 

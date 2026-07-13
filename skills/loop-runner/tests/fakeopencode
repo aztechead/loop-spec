@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# fakeopencode — offline stand-in for `opencode run --format json`, used by
+# tests/run_tests.sh. Mirrors fakeclaude/fakepi's behaviors (same env protocol)
+# but speaks opencode's run-command event protocol: one JSON object per line,
+# every event carrying {type, timestamp, sessionID} (per the run command's
+# emit()), with `text` / `step_start` / `step_finish` events whose payload is
+# a message part (step_finish parts carry cost + tokens per StepFinishPart).
+#
+# Behaviors (env-driven so one stub covers every scenario):
+#   FAKE_COST     per-call step cost             (default 1.25)
+#   FAKE_STILL=1  change nothing (stall scenario)
+#   FAKE_TAMPER=<path>  append to that path (verifier-integrity scenario)
+#   FAKE_PLAN=<file>    return that file's contents as the result (compiler scenario)
+#   FAKE_HANG=<s>       sleep (hung-tick scenario)
+#   FAKE_ARGV_LOG=<f>   append full argv to <f> (flag-shape assertions)
+#
+# Protocol: if the prompt (any argv) contains TOUCH:<file>, create/append that file.
+set -euo pipefail
+COST="${FAKE_COST:-1.25}"
+
+if [[ -n "${FAKE_ARGV_LOG:-}" ]]; then
+  printf '%s\n' "$*" >> "$FAKE_ARGV_LOG"
+fi
+
+if [[ -n "${FAKE_HANG:-}" ]]; then
+  sleep "$FAKE_HANG"
+fi
+
+PROMPT=""
+for a in "$@"; do PROMPT="$PROMPT $a"; done
+
+emit() { # emit <result-text> <cost>
+  python3 - "$1" "$2" << 'EOF'
+import json, sys, time
+text, cost = sys.argv[1], float(sys.argv[2])
+ts = int(time.time() * 1000)
+sid = "ses_opencode_abc"
+# Shapes per opencode's run command emit(): {type, timestamp, sessionID, ...};
+# text/step events carry a message `part`; step-finish parts have cost+tokens.
+print(json.dumps({"type": "step_start", "timestamp": ts, "sessionID": sid,
+                  "part": {"type": "step-start", "sessionID": sid}}))
+print(json.dumps({"type": "text", "timestamp": ts, "sessionID": sid,
+                  "part": {"type": "text", "sessionID": sid, "text": text,
+                           "time": {"start": ts, "end": ts}}}))
+print(json.dumps({"type": "step_finish", "timestamp": ts, "sessionID": sid,
+                  "part": {"type": "step-finish", "sessionID": sid,
+                           "reason": "stop", "cost": cost,
+                           "tokens": {"input": 10, "output": 5, "reasoning": 0,
+                                      "cache": {"read": 0, "write": 0}}}}))
+EOF
+}
+
+if [[ -n "${FAKE_PLAN:-}" ]]; then
+  emit "$(cat "$FAKE_PLAN")" "$COST"
+  exit 0
+fi
+
+if [[ -n "${FAKE_TAMPER:-}" ]]; then
+  echo "tampered" >> "$FAKE_TAMPER"
+fi
+
+if [[ "$PROMPT" =~ TOUCH:([A-Za-z0-9._/-]+) ]]; then
+  f="${BASH_REMATCH[1]}"
+  mkdir -p "$(dirname "$f")" 2>/dev/null || true
+  echo "work $(date +%s%N)" >> "$f"
+elif [[ "${FAKE_STILL:-0}" != "1" ]]; then
+  echo "iter $(date +%s%N)" >> work.txt
+fi
+
+emit "did some work this iteration" "$COST"
