@@ -40,6 +40,23 @@ check "every SKILL.md dir installed" "$repo_skill_count" "$skill_count"
 check "loop-debug command placed" "yes" "$([[ -f "$CFG/commands/loop-debug.md" ]] && echo yes || echo no)"
 check "bridge plugin placed" "yes" "$([[ -f "$CFG/plugins/loop-spec.ts" ]] && echo yes || echo no)"
 
+# Skill command wrappers: opencode's TUI hides skill-sourced entries from the
+# "/" popup (packages/tui .. autocomplete skips source === "skill"), so every
+# skill also gets a real command at commands/loop-spec/<name>.md, loading as
+# /loop-spec/<name>. Namespaced to never shadow opencode built-ins (/debug,
+# /status, /skills are TUI palette slashes).
+check "cycle wrapper generated" "yes" "$([[ -f "$CFG/commands/loop-spec/cycle.md" ]] && echo yes || echo no)"
+check "wrapper is a real file (not link)" "no" "$([[ -L "$CFG/commands/loop-spec/cycle.md" ]] && echo yes || echo no)"
+check "wrapper has description frontmatter" "1" "$(grep -c '^description:' "$CFG/commands/loop-spec/cycle.md")"
+check "wrapper invokes the skill tool" "yes" "$(grep -q 'skill({ name: "cycle" })' "$CFG/commands/loop-spec/cycle.md" && echo yes || echo no)"
+check "wrapper passes \$ARGUMENTS" "yes" "$(grep -qF '$ARGUMENTS' "$CFG/commands/loop-spec/cycle.md" && echo yes || echo no)"
+wrapper_count="$(ls "$CFG/commands/loop-spec" | wc -l | tr -d ' ')"
+check "every skill has a wrapper" "$repo_skill_count" "$wrapper_count"
+# loop-runner's description is a YAML folded scalar (>-) — must not be dropped.
+check "folded description survives" "yes" "$(grep -q '^description: "Compile specs' "$CFG/commands/loop-spec/loop-runner.md" && echo yes || echo no)"
+# argument-hint carries over as prose so the wrapper documents its input.
+check "argument-hint carried into body" "yes" "$(grep -q 'Argument shape:' "$CFG/commands/loop-spec/cycle.md" && echo yes || echo no)"
+
 # Agents are converted (never linked): opencode frontmatter dialect.
 check "verifier agent generated" "yes" "$([[ -f "$CFG/agents/loop-spec-verifier.md" ]] && echo yes || echo no)"
 check "agent is a real file (not link)" "no" "$([[ -L "$CFG/agents/loop-spec-verifier.md" ]] && echo yes || echo no)"
@@ -78,6 +95,7 @@ echo "keep me" > "$CFG/skills/user-skill-marker"
 OPENCODE_CONFIG_DIR="$CFG" bash "$LIB" uninstall >/dev/null
 check "cycle skill removed" "no" "$([[ -e "$CFG/skills/cycle" || -L "$CFG/skills/cycle" ]] && echo yes || echo no)"
 check "agents removed" "0" "$(ls "$CFG/agents" 2>/dev/null | wc -l | tr -d ' ')"
+check "skill wrappers removed" "0" "$(ls "$CFG/commands/loop-spec" 2>/dev/null | wc -l | tr -d ' ')"
 check "manifest removed" "no" "$([[ -f "$CFG/loop-spec-install.json" ]] && echo yes || echo no)"
 check "unrelated user file kept" "keep me" "$(cat "$CFG/skills/user-skill-marker")"
 
