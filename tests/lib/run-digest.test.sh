@@ -24,7 +24,7 @@ FDIR="$PROJ/.loop-spec/features/my-feat"
 mkdir -p "$FDIR"
 
 cat > "$FDIR/feature.json" << 'EOF'
-{"schemaVersion":7,"slug":"my-feat","iterate":{"used":3,"maxIterations":10},"warnings":["w1","w2"]}
+{"schemaVersion":7,"slug":"my-feat","updatedAt":"2026-07-08T11:59:00Z","iterate":{"used":3,"maxIterations":10},"warnings":["w1","w2"]}
 EOF
 cat > "$FDIR/result.json" << 'EOF'
 {"schema":1,"slug":"my-feat","status":"completed","converged":false,
@@ -82,6 +82,18 @@ ec=0; bash "$LIB" append "$CDIR" >/dev/null 2>&1 || ec=$?
 check "5: corrupt inputs exit 0" "0" "$ec"
 check "5: digest written with dirname slug" "corrupt-feat" \
   "$(jq -r '.slug' "$PROJ/docs/loop-spec/telemetry/runs/corrupt-feat.json" 2>/dev/null)"
+
+# ── Case 6: pre-delivery candidate can be committed before exact-SHA delivery ─
+rm -f "$FDIR/result.json"
+printf '%s\n' "$(jq '.currentPhase="deliver" | .warnings=[]' "$FDIR/feature.json")" > "$FDIR/feature.json"
+bash "$LIB" append "$FDIR" --candidate >/dev/null 2>&1
+check "6: candidate status is completed" "completed" "$(jq -r '.status' "$DIGEST")"
+check "6: candidate convergence derived" "true" "$(jq -r '.converged' "$DIGEST")"
+check "6: candidate timestamp comes from durable state" "2026-07-08T11:59:00Z" "$(jq -r '.finishedAt' "$DIGEST")"
+candidate_first="$(<"$DIGEST")"
+sleep 1
+bash "$LIB" append "$FDIR" --candidate >/dev/null 2>&1
+check "6: candidate retry is byte-stable" "$candidate_first" "$(<"$DIGEST")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

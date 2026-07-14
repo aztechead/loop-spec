@@ -1,6 +1,6 @@
 ---
 name: verify
-description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team (explicit, implicit, or no-teams dispatch), map-codebase refresh, branch finish (push + PR). Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team (explicit, implicit, or no-teams dispatch), evidence commit, and map-codebase refresh. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
@@ -358,82 +358,38 @@ If map-codebase fails: log warning to `feature.json warnings[]` via `lib/feature
 
 **Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 9 - map-codebase refresh").
 
-### Step 10 - Branch finish
-
-**Single-repo mode (unchanged):**
-
-Push and PR creation execute from inside the feature worktree (cwd is already on `feat/{slug}`), so no branch checkout is needed. If any branch-finish step delegates to a subagent, pass the worktree's absolute path explicitly (subagents do not inherit cwd).
-
-```bash
-# Push (runs from feature worktree; cwd is already on feat/{slug})
-git push -u origin {feature.branch}
-
-# PR body: SPEC.md Problem+Goals sections + VERIFICATION.md acceptance table
-spec_summary=$(awk '/^## Problem/,/^## (Constraints|User-facing)/' docs/loop-spec/features/{slug}/SPEC.md | head -100)
-verify_table=$(awk '/^## Acceptance criteria/,/^## Verify command outputs/' docs/loop-spec/features/{slug}/VERIFICATION.md)
-pr_body="$(printf '## Spec summary\n\n%s\n\n## Verification\n\n%s\n' "$spec_summary" "$verify_table")"
-
-# Use baseBranch from feature.json (feature.baseBranch), not hardcoded main
-pr_url=$(gh pr create --base "${feature.baseBranch:-main}" --head {feature.branch} --title "feat: {feature_title}" --body "$pr_body")
-# Persist prUrl in feature.json so result.json and headless callers can read it
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" prUrl "\"$pr_url\""
-```
-
-**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 10 - Branch finish").
-
-### Step 11 - Commit VERIFICATION.md
+### Step 10 - Commit VERIFICATION.md
 
 **Single-repo mode (unchanged):**
 
 ```bash
 git add docs/loop-spec/features/{slug}/VERIFICATION.md
-git commit -m "verify: NO_JIRA {slug} (PR: {pr_url})"
+git commit -m "verify: NO_JIRA {slug}"
 ```
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-verify
 ```
 
-**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 11 - Commit VERIFICATION.md").
+**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 10 - Commit VERIFICATION.md").
 
-### Step 12 - Update feature.json
+### Step 11 - Update feature.json
 
 Update `feature.json` via `lib/feature-write.sh` (nested `set`/`append` take dot paths directly, values JSON-quoted, never raw jq — `skills/shared/feature-state-schema.md` "Writing rules"):
 - `completedPhases.append("verify")` — `feature-write.sh append "$fdir" completedPhases '"verify"'`
 - `currentPhase = "iterate"` — VERIFY's gates passing means the SPEC acceptance checklist is met; the ITERATE phase then judges the integrated result against the **original goal** and decides whether to ship or loop back. (When `feature.iterate.maxIterations` is exhausted on a prior pass, ITERATE ships rather than re-entering; see `skills/iterate/SKILL.md`.)
 - `artifacts.verification = "docs/loop-spec/features/{slug}/VERIFICATION.md"` — `feature-write.sh set "$fdir" artifacts.verification '"docs/loop-spec/features/{slug}/VERIFICATION.md"'`
 
-### Step 13 - Exit feature worktree (schema-6 only)
+### Step 12 - Return inside the active feature root
 
-**Workspace mode:** skip this step entirely when `feature.workspace` is non-null. Workspace features run in-place (no worktree was created and no `EnterWorktree` was called), so there is nothing to exit. Resume continues from the workspace root without any worktree operation.
-
-**Single-repo mode (unchanged):**
-
-In single-repo mode `feature.worktreePath` is always present (set at cycle Step 5), so the session is currently inside the feature worktree. Return to the main checkout while leaving the worktree and branch intact for the open PR:
-
-```
-ExitWorktree({ action: "keep" })
-```
-
-The worktree is kept on disk until the PR merges. Do NOT auto-remove it. Removal is manual (or handled by a future cleanup skill) once the branch is confirmed merged.
-
-### Step 14 - Summary
-
-**Single-repo mode (unchanged):**
-
-Print to user:
-- Feature slug
-- PR URL
-- Commits added
-- Files changed
-- Token usage estimate
-- Total elapsed time
-
-**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 14 - Summary").
+VERIFY does not push, open a PR, print a shipped summary, or leave the feature root.
+Return to cycle with `currentPhase = "iterate"`. ITERATE may rewind and add commits;
+only a terminal ITERATE verdict advances to DELIVER, which owns the exact-SHA push,
+PR reconciliation, required checks, and readiness transition.
 
 ## Resume
 
-If invoked with `feature.json currentPhase == "verify"`: check what completed (team created? verifier ran? acceptance gate? code-reviewer? map-codebase? push? PR?). Resume from first incomplete step.
+If invoked with `feature.json currentPhase == "verify"`: check what completed (team created? verifier ran? acceptance gate? code-reviewer? map-codebase? verification commit?). Resume from first incomplete step.
 
 On resume, if `currentTeamName` is non-null:
 - In `explicit` teams mode only: call `TaskList({team: currentTeamName})`; if it errors (team not found), clear `currentTeamName` in `feature.json` and recreate the team via Step 2. In `implicit`/`none` modes skip the probe (modern `TaskList` takes no parameters; teammates never survive the session): clear `currentTeamName` and re-run Step 2's spawn path.

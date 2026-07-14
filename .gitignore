@@ -22,6 +22,8 @@ docs/superpowers/
 .loop-spec/learnings.jsonl
 # machine-readable result pointer (lib/cycle-result.sh); local telemetry
 .loop-spec/last-result.json
+.loop-spec/runtime.json
+.loop-spec/decisions-staging/
 
 # loop-runner runtime state (skills/loop-runner; EXECUTE loop-fleet rung)
 .loop/

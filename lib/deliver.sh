@@ -1,0 +1,341 @@
+#!/usr/bin/env bash
+# Feature-level adapter for lib/pr-delivery.sh.
+#
+# Usage: deliver.sh run <feature_dir>
+#
+# Reads the schema-7 feature topology, renders the final PR body, and delivers each
+# changed repository. Successful/external delivery observations are written to the
+# ignored delivery.json sidecar so the exact checked SHA stays clean; code-remediation
+# failures atomically route tracked feature.json back to EXECUTE.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PR_DELIVERY="${LOOP_SPEC_PR_DELIVERY_BIN:-$SCRIPT_DIR/pr-delivery.sh}"
+
+cmd="${1:-}"
+feature_dir="${2:-}"
+[[ "$cmd" == "run" && -n "$feature_dir" ]] || {
+  echo "usage: deliver.sh run <feature_dir>" >&2
+  exit 2
+}
+[[ -f "$feature_dir/feature.json" ]] || {
+  echo "deliver: feature.json not found in $feature_dir" >&2
+  exit 2
+}
+[[ -x "$PR_DELIVERY" || -f "$PR_DELIVERY" ]] || {
+  echo "deliver: PR delivery controller not found: $PR_DELIVERY" >&2
+  exit 2
+}
+
+feature_dir="$(cd "$feature_dir" && pwd)"
+feature_json="$feature_dir/feature.json"
+delivery_file="$feature_dir/delivery.json"
+jq -e '.schemaVersion == 7 and (.currentPhase == "deliver")' "$feature_json" >/dev/null 2>&1 || {
+  echo "deliver: feature must be schema 7 at currentPhase=deliver" >&2
+  exit 2
+}
+
+slug="$(jq -r '.slug' "$feature_json")"
+feature_title="$(jq -r '.feature_title // .slug' "$feature_json")"
+workspace_root="$(jq -r '.workspace.root // empty' "$feature_json")"
+if [[ -n "$workspace_root" ]]; then
+  artifact_root="$workspace_root"
+else
+  artifact_root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "deliver: feature directory is not inside a git work tree" >&2
+    exit 2
+  }
+fi
+
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-deliver-XXXXXX")"
+trap 'rm -rf "$tmp_dir"' EXIT
+body_file="$tmp_dir/pr-body.md"
+
+# Render only final, durable artifacts. Cap the body below GitHub's size limit;
+# the full evidence remains committed on the branch.
+python3 - "$feature_json" "$artifact_root" "$body_file" <<'PY'
+import json, os, sys
+
+feature_path, root, output = sys.argv[1:]
+with open(feature_path) as f:
+    feature = json.load(f)
+
+parts = ["## loop-spec delivery", "", "**Goal:** " + (feature.get("feature_title") or feature.get("slug", ""))]
+artifacts = feature.get("artifacts") or {}
+for key, heading in (("spec", "Final specification"),
+                     ("verification", "Verification evidence"),
+                     ("iteration", "Convergence verdict")):
+    path = artifacts.get(key)
+    if not path:
+        continue
+    if not os.path.isabs(path):
+        path = os.path.join(root, path)
+    try:
+        with open(path, errors="replace") as f:
+            text = f.read()
+    except OSError:
+        continue
+    parts.extend(["", "## " + heading, "", text.strip()])
+
+warnings = feature.get("warnings") or []
+if warnings:
+    parts.extend(["", "## Shipped with warnings", ""])
+    parts.extend("- " + str(item) for item in warnings)
+
+body = "\n".join(parts).strip() + "\n"
+limit = 60000
+if len(body.encode("utf-8")) > limit:
+    encoded = body.encode("utf-8")[:limit - 100]
+    body = encoded.decode("utf-8", "ignore") + "\n\n[PR body truncated; full evidence is committed.]\n"
+with open(output, "w") as f:
+    f.write(body)
+PY
+
+checks_timeout="${LOOP_SPEC_CHECKS_TIMEOUT_SECONDS:-900}"
+checks_interval="${LOOP_SPEC_CHECKS_INTERVAL_SECONDS:-10}"
+attempted_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+targets="[]"
+delivered_count=0
+skipped_count=0
+failure_count=0
+first_error=""
+
+invoke_delivery() {
+  local repo_dir="$1" branch="$2" base="$3" sha="$4" title="$5" hint="$6"
+  local args result rc=0
+  args=(final -C "$repo_dir" --branch "$branch" --base "$base" --sha "$sha"
+        --title "$title" --body-file "$body_file"
+        --checks-timeout "$checks_timeout" --checks-interval "$checks_interval")
+  [[ -n "$hint" ]] && args+=(--pr-url "$hint")
+  result="$(bash "$PR_DELIVERY" "${args[@]}")" || rc=$?
+  if ! jq -e 'type == "object" and has("ok")' <<<"$result" >/dev/null 2>&1; then
+    result="$(jq -cn --arg repo "$repo_dir" --arg branch "$branch" --arg base "$base" --arg sha "$sha" \
+      --arg hint "$hint" \
+      --argjson rc "$rc" '{schema:1,ok:false,mode:"final",outcome:"blocked",repo:$repo,
+        branch:$branch,baseBranch:$base,targetSha:$sha,remoteSha:null,headSha:null,
+        prNumber:null,prUrl:(if $hint == "" then null else $hint end),prAction:"none",metadataAction:"none",
+        readinessAction:"none",isDraft:null,checks:{status:"not-run",required:[]},
+        observedAt:null,errorCode:"controller_error",error:("controller exited " + ($rc|tostring))}')"
+    rc=1
+  fi
+  printf '%s\n' "$result"
+  return "$rc"
+}
+
+append_target_failure() {
+  local name="$1" path="$2" branch="$3" base="$4" sha="$5" hint="$6" code="$7" message="$8"
+  local record
+  record="$(jq -cn --arg name "$name" --arg path "$path" --arg branch "$branch" \
+    --arg base "$base" --arg sha "$sha" --arg hint "$hint" --arg code "$code" --arg error "$message" \
+    '{schema:1,ok:false,mode:"final",outcome:"blocked",name:$name,path:$path,repo:null,
+      branch:$branch,baseBranch:$base,targetSha:(if $sha == "" then null else $sha end),
+      remoteSha:null,headSha:null,prNumber:null,prUrl:(if $hint == "" then null else $hint end),
+      prAction:"none",metadataAction:"none",readinessAction:"none",isDraft:null,
+      checks:{status:"not-run",required:[]},observedAt:null,errorCode:$code,error:$error}')"
+  targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+  failure_count=$((failure_count + 1))
+  [[ -n "$first_error" ]] || first_error="$code"
+}
+
+if [[ -z "$workspace_root" ]]; then
+  branch="$(jq -r '.branch // empty' "$feature_json")"
+  base_branch="$(jq -r '.baseBranch // "main"' "$feature_json")"
+  hint=""
+  [[ -f "$delivery_file" ]] && hint="$(jq -r '.prUrl // empty' "$delivery_file" 2>/dev/null || true)"
+  [[ -n "$hint" ]] || hint="$(jq -r '.prUrl // .checkpointPrUrl // empty' "$feature_json")"
+  target_sha="$(git -C "$artifact_root" rev-parse HEAD 2>/dev/null)" || {
+    echo "deliver: cannot resolve feature HEAD" >&2
+    exit 2
+  }
+  result_rc=0
+  result="$(invoke_delivery "$artifact_root" "$branch" "$base_branch" "$target_sha" \
+    "feat: $feature_title" "$hint")" || result_rc=$?
+  record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path}' <<<"$result")"
+  targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+  if [[ "$result_rc" -eq 0 && "$(jq -r '.ok' <<<"$result")" == "true" ]]; then
+    delivered_count=1
+  else
+    failure_count=1
+    first_error="$(jq -r '.errorCode // "delivery_failed"' <<<"$result")"
+  fi
+else
+  while IFS= read -r repo_entry; do
+    name="$(jq -r '.name' <<<"$repo_entry")"
+    rel_path="$(jq -r '.path' <<<"$repo_entry")"
+    repo_dir="$workspace_root/$rel_path"
+    branch="$(jq -r '.branch' <<<"$repo_entry")"
+    base_sha="$(jq -r '.baseSha' <<<"$repo_entry")"
+    base_branch="$(jq -r '.baseBranch // "main"' <<<"$repo_entry")"
+    hint=""
+    [[ -f "$delivery_file" ]] && hint="$(jq -r --arg name "$name" \
+      '.targets[]? | select(.name == $name) | .prUrl // empty' "$delivery_file" 2>/dev/null | head -1)"
+    [[ -n "$hint" ]] || hint="$(jq -r --arg name "$name" \
+      '.delivery.targets[]? | select(.name == $name) | .prUrl // empty' "$feature_json" | head -1)"
+
+    if [[ ! -d "$repo_dir" ]] || ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
+        "repo_invalid" "workspace target is not a git work tree"
+      continue
+    fi
+    repo_abs="$(cd "$repo_dir" && pwd -P)"
+    repo_top="$(git -C "$repo_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+    if [[ "$repo_top" != "$repo_abs" ]]; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
+        "repo_root_mismatch" "workspace target does not name the repository root"
+      continue
+    fi
+    actual_branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+    if [[ "$actual_branch" != "$branch" ]]; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
+        "branch_mismatch" "workspace target is on '$actual_branch', expected '$branch'"
+      continue
+    fi
+    if ! git -C "$repo_dir" rev-parse --verify "${base_sha}^{commit}" >/dev/null 2>&1; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
+        "base_sha_invalid" "workspace base SHA is not a local commit"
+      continue
+    fi
+    target_sha="$(git -C "$repo_dir" rev-parse --verify HEAD 2>/dev/null || true)"
+    if [[ -z "$target_sha" ]] || ! commit_count="$(git -C "$repo_dir" rev-list --count "${base_sha}..${target_sha}" 2>/dev/null)"; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
+        "git_history_failed" "cannot compare workspace target with its recorded base"
+      continue
+    fi
+    if [[ "$commit_count" -eq 0 ]]; then
+      record="$(jq -cn --arg name "$name" --arg path "$repo_dir" --arg branch "$branch" \
+        --arg base "$base_branch" --arg hint "$hint" '{schema:1,ok:true,mode:"final",outcome:"skipped-no-commits",
+          name:$name,path:$path,repo:null,branch:$branch,baseBranch:$base,targetSha:null,
+          remoteSha:null,headSha:null,prNumber:null,prUrl:(if $hint == "" then null else $hint end),prAction:"none",
+          metadataAction:"none",readinessAction:"none",isDraft:null,
+          checks:{status:"skipped",required:[]},observedAt:null,errorCode:null,error:null}')"
+      targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+      skipped_count=$((skipped_count + 1))
+      continue
+    fi
+    result_rc=0
+    result="$(invoke_delivery "$repo_dir" "$branch" "$base_branch" "$target_sha" \
+      "feat: $feature_title ($name)" "$hint")" || result_rc=$?
+    record="$(jq -c --arg name "$name" --arg path "$repo_dir" '. + {name:$name,path:$path}' <<<"$result")"
+    targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+    if [[ "$result_rc" -eq 0 && "$(jq -r '.ok' <<<"$result")" == "true" ]]; then
+      delivered_count=$((delivered_count + 1))
+    else
+      failure_count=$((failure_count + 1))
+      [[ -n "$first_error" ]] || first_error="$(jq -r '.errorCode // "delivery_failed"' <<<"$result")"
+    fi
+  done < <(jq -c '.workspace.repos[]' "$feature_json")
+fi
+
+status="ready-for-review"
+finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+ok=true
+next_phase="completed"
+ci_remediation_limit=2
+ci_remediation_attempts="$(jq -r '
+  (.delivery.ciRemediationAttempts // 0)
+  | if type == "number" and . >= 0 and floor == . then . else 0 end
+' "$feature_json")"
+if [[ "$failure_count" -gt 0 ]]; then
+  ok=false
+  finished_at=""
+  if [[ "$delivered_count" -gt 0 ]]; then
+    status="partial"
+  else
+    status="${first_error//_/-}"
+  fi
+  all_checks_failed="$(jq -r '([.[] | select(.ok == false)] | length) > 0 and
+    ([.[] | select(.ok == false) | .errorCode == "checks_failed"] | all)' <<<"$targets")"
+  if [[ "$all_checks_failed" == "true" ]]; then
+    if [[ "$ci_remediation_attempts" -lt "$ci_remediation_limit" ]]; then
+      ci_remediation_attempts=$((ci_remediation_attempts + 1))
+      next_phase="execute"
+    else
+      next_phase="deliver"
+    fi
+  else
+    next_phase="deliver"
+  fi
+elif [[ "$delivered_count" -eq 0 ]]; then
+  ok=false
+  finished_at=""
+  status="no-changes"
+  next_phase="deliver"
+fi
+
+delivery="$(jq -cn --arg status "$status" --arg attempted "$attempted_at" \
+  --arg finished "$finished_at" --arg nextPhase "$next_phase" --argjson targets "$targets" \
+  --argjson ciAttempts "$ci_remediation_attempts" --argjson ciLimit "$ci_remediation_limit" \
+  '{status:$status,attemptedAt:$attempted,
+    finishedAt:(if $finished == "" then null else $finished end),
+    nextPhase:$nextPhase,ciRemediationAttempts:$ciAttempts,
+    ciRemediationLimit:$ciLimit,targets:$targets}')"
+
+remediations="[]"
+if [[ "$next_phase" == "execute" ]]; then
+  remediations="$(jq -cn --argjson targets "$targets" --argjson feature "$(cat "$feature_json")" '
+    def test_command($name):
+      if $feature.workspace == null then ($feature.commands.test // "")
+      else ([ $feature.workspace.repos[] | select(.name == $name) | (.commands.test // "") ][0] // "")
+      end;
+    [ $targets[]
+      | select(.ok == false and .errorCode == "checks_failed")
+      | . as $target
+      | ($target.name | gsub("[^A-Za-z0-9]+"; "-") | gsub("^-|-$"; "")) as $id_name
+      | (test_command($target.name)) as $test_command
+      | {
+          id: ("task-delivery-ci-" + $id_name),
+          subject: ("Fix: required PR checks failed (" + $target.name + ")"),
+          files: [],
+          verifyCommand: (if $test_command != "" then $test_command
+                          else "gh pr checks " + ($target.prNumber | tostring) + " --required" end),
+          acceptanceCriteria: ["all required PR checks pass for the delivered SHA"],
+          blockedBy: [],
+          retries: 0,
+          notes: ([ $target.checks.required[]?
+                    | ((.name // "check") +
+                       (if (.link // "") == "" then "" else " " + .link end)) ]
+                  | join("; "))
+        }
+    ]')"
+fi
+
+pr_url_json="null"
+if [[ -z "$workspace_root" ]]; then
+  pr_url_json="$(jq -c '.[0].prUrl // null' <<<"$targets")"
+fi
+aggregate="$(jq -cn --argjson ok "$ok" --arg status "$status" --arg nextPhase "$next_phase" \
+  --argjson prUrl "$pr_url_json" --arg attempted "$attempted_at" --arg finished "$finished_at" \
+  --argjson targets "$targets" --argjson ciAttempts "$ci_remediation_attempts" \
+  --argjson ciLimit "$ci_remediation_limit" \
+  '{schema:1,ok:$ok,status:$status,nextPhase:$nextPhase,prUrl:$prUrl,attemptedAt:$attempted,
+    finishedAt:(if $finished == "" then null else $finished end),
+    ciRemediationAttempts:$ciAttempts,ciRemediationLimit:$ciLimit,targets:$targets}')"
+
+# The sidecar is the local observation record. It must not change the candidate commit.
+printf '%s\n' "$aggregate" > "$delivery_file.tmp" || exit 2
+sync
+mv "$delivery_file.tmp" "$delivery_file" || exit 2
+
+if [[ "$next_phase" == "execute" ]]; then
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  updated="$(jq --argjson delivery "$delivery" --argjson prUrl "$pr_url_json" \
+    --argjson remediations "$remediations" --arg now "$now" '
+        .delivery = $delivery
+        | .prUrl = $prUrl
+        | .updatedAt = $now
+        | .currentPhaseStartedAt = null
+        | .currentPhase = "execute"
+        | (.pendingRemediationTasks // []) as $pending
+        | .pendingRemediationTasks = reduce $remediations[] as $task
+            ($pending; if (map(.id) | index($task.id)) == null then . + [$task] else . end)
+  ' "$feature_json")" || {
+    echo "deliver: failed to build updated feature state" >&2
+    exit 2
+  }
+  bash "$SCRIPT_DIR/feature-write.sh" "$feature_dir" "$updated" || exit 2
+fi
+
+printf '%s\n' "$aggregate"
+
+[[ "$ok" == "true" ]] && exit 0
+exit 1

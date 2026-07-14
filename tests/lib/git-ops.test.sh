@@ -141,6 +141,13 @@ trap 'rm -rf "$WORK" "$OUTSIDE" "$CLEAN_REPO"' EXIT
 got=$(bash "$LIB" -C "$CLEAN_REPO" ensure-clean-or-stash)
 check "V: -C ensure-clean-or-stash reports clean (from outside cwd)" "clean" "$got"
 
+# Startup-owned local cache files do not make their own clean-base guard fail.
+mkdir -p "$CLEAN_REPO/.loop-spec/decisions-staging"
+echo '{}' > "$CLEAN_REPO/.loop-spec/runtime.json"
+echo '{}' > "$CLEAN_REPO/.loop-spec/decisions-staging/decisions.jsonl"
+got=$(bash "$LIB" -C "$CLEAN_REPO" ensure-clean-or-stash)
+check "V2: startup runtime files are ignored by clean guard" "clean" "$got"
+
 # W: ensure-clean-or-stash dirty via -C
 echo y > "$CLEAN_REPO/a"
 got=$(bash "$LIB" -C "$CLEAN_REPO" ensure-clean-or-stash)

@@ -56,7 +56,7 @@ if [[ "$current" != "{feature.json.branch}" ]]; then
 fi
 ```
 
-`baseSha` and `baseBranch` were already written by cycle Step 5 (`baseBranch` is the real base, e.g. `main`, used by VERIFY as the PR `--base`). Do not overwrite them here. The per-task ff-merge target is the literal feature branch `feat/{slug}`, never `baseBranch`.
+`baseSha` and `baseBranch` were already written by cycle Step 5 (`baseBranch` is the real base, e.g. `main`, used by DELIVER as the PR `--base`). Do not overwrite them here. The per-task ff-merge target is the literal feature branch `feat/{slug}`, never `baseBranch`.
 
 ### Step 2 - Pre-task file-conflict detection
 

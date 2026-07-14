@@ -2,6 +2,29 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.20.0]
+
+### Added - deterministic prompt-to-ready-PR delivery
+
+- Added DELIVER as the seventh cycle phase after ITERATE. VERIFY now commits local
+  evidence without pushing, and terminal ITERATE verdicts advance to DELIVER rather
+  than marking the feature complete.
+- Added `lib/pr-delivery.sh`, an exact-SHA GitHub transaction that creates or reuses
+  one PR, reconciles checkpoint metadata, rejects head drift, waits for required
+  checks with bounded polling, and marks drafts ready only after checks pass.
+- Added `lib/deliver.sh` for single- and multi-repo feature state, durable per-target
+  results, final PR body rendering, and structured CI/transport failure routing.
+- Resume discovery now scans registered feature worktrees and returns absolute roots.
+  Claude retains native worktree isolation; OpenCode and pi use a clean additive
+  in-place branch because those harnesses cannot switch a running session root.
+- Added offline unit and structural coverage for PR reconciliation, required-check
+  states, exact-SHA binding, workspace delivery, phase ordering, and worktree-only
+  resume. Live prompt-to-PR harness smoke tests remain opt-in and were not added.
+- Added OpenCode-only multi-provider agent routing through repeatable
+  `opencode-install.sh install --model role=provider/model` flags. The
+  `adversarial` shorthand routes challenger/judge/reviewer roles to a second
+  provider while the primary session and unrouted roles keep their current model.
+
 ## [2.19.2]
 
 ### Fixed - OpenCode plugin and provider compatibility

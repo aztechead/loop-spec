@@ -24,11 +24,11 @@ mkdir -p "$ROOT/features/feat-a" "$ROOT/features/feat-b"
 cat > "$ROOT/features/feat-a/feature.json" << 'EOF'
 {"schemaVersion":7,"slug":"feat-a","feature_title":"Feature A","currentPhase":"completed",
  "iterate":{"used":2,"maxIterations":10},"warnings":["w1"],"prUrl":null,
- "checkpointPrUrl":null,"autonomous":true}
+ "checkpointPrUrl":null,"delivery":{"status":"ready-for-review","targets":[]},"autonomous":true}
 EOF
 cat > "$ROOT/features/feat-a/result.json" << 'EOF'
 {"schema":1,"slug":"feat-a","status":"completed","converged":true,
- "prUrl":"https://github.com/t/r/pull/7","iterations":{"used":2,"max":10},"warnings":["w1"]}
+ "prUrl":"https://github.com/t/r/pull/7","delivery":{"status":"ready-for-review","targets":[]},"iterations":{"used":2,"max":10},"warnings":["w1"]}
 EOF
 cat > "$ROOT/features/feat-a/events.jsonl" << 'EOF'
 {"ts":"2026-07-08T10:00:00Z","slug":"feat-a","event":"phase_start","phase":"spec","data":{}}
@@ -64,6 +64,7 @@ out="$(bash "$LIB" --root "$ROOT" --json status)"
 check "2: json parses" "1" "$(jq -e 'type == "array"' >/dev/null 2>&1 <<<"$out" && echo 1 || echo 0)"
 check "2: two features" "2" "$(jq 'length' <<<"$out")"
 check "2: feat-a iterations 2/10" "2" "$(jq -r '.[] | select(.slug=="feat-a") | .iterations.used' <<<"$out")"
+check "2: delivery status exposed" "ready-for-review" "$(jq -r '.[] | select(.slug=="feat-a") | .deliveryStatus' <<<"$out")"
 check "2: raw events stripped from status" "0" "$(jq '[.[] | has("events")] | map(select(.)) | length' <<<"$out")"
 
 # ── Case 3: slug filter ───────────────────────────────────────────────────────
@@ -112,6 +113,18 @@ echo '{"schemaVersion":7,"slug":"nc","currentPhase":"completed","iterate":{"used
 echo '{"schema":1,"slug":"nc","status":"completed","converged":false,"iterations":{"used":10,"max":10}}' > "$ROOT2/features/nc/result.json"
 out="$(bash "$LIB" --root "$ROOT2" --json status)"
 check "7b: converged false preserved" "false" "$(jq -r '.[0].converged' <<<"$out")"
+
+# ── Case 7c: delivery sidecar supplies local logical completion ───────────────
+ROOT3="$WORK/sidecar/.loop-spec"
+mkdir -p "$ROOT3/features/delivered"
+echo '{"schemaVersion":7,"slug":"delivered","currentPhase":"deliver","prUrl":null,"warnings":[]}' \
+  > "$ROOT3/features/delivered/feature.json"
+echo '{"schema":1,"status":"ready-for-review","nextPhase":"completed","prUrl":"https://github.com/t/r/pull/8","targets":[]}' \
+  > "$ROOT3/features/delivered/delivery.json"
+out="$(bash "$LIB" --root "$ROOT3" --json status)"
+check "7c: sidecar phase completed" "completed" "$(jq -r '.[0].phase' <<<"$out")"
+check "7c: sidecar PR exposed" "https://github.com/t/r/pull/8" "$(jq -r '.[0].prUrl' <<<"$out")"
+check "7c: sidecar delivery exposed" "ready-for-review" "$(jq -r '.[0].deliveryStatus' <<<"$out")"
 
 # ── Case 8: bad flag → exit 2 ─────────────────────────────────────────────────
 ec=0

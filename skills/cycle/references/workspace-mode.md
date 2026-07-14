@@ -15,7 +15,8 @@ dirty_repos=()
 for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   rname="$(echo "$repo_entry" | jq -r '.name')"
   rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  if ! bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" ensure-clean-or-stash 2>/dev/null; then
+  clean_state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" ensure-clean-or-stash 2>/dev/null)"
+  if [[ "$clean_state" != "clean" ]]; then
     dirty_repos+=("$rname ($rpath)")
   fi
 done
@@ -36,8 +37,20 @@ declare -A repo_base_sha repo_base_branch
 for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   rname="$(echo "$repo_entry" | jq -r '.name')"
   rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  base_sha_r="$(git -C "$rpath" rev-parse HEAD)"
   base_branch_r="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" detect-base-branch)"
+  if git -C "$rpath" remote get-url origin >/dev/null 2>&1; then
+    git -C "$rpath" fetch --quiet origin "$base_branch_r" || {
+      echo "loop-spec: failed to fetch ${rname} origin/${base_branch_r}; refusing a stale PR base." >&2
+      exit 1
+    }
+    base_ref_r="origin/$base_branch_r"
+  else
+    base_ref_r="$base_branch_r"
+  fi
+  base_sha_r="$(git -C "$rpath" rev-parse --verify "${base_ref_r}^{commit}")" || {
+    echo "loop-spec: cannot resolve ${rname} base '${base_ref_r}'." >&2
+    exit 1
+  }
   git -C "$rpath" checkout -b "feat/${slug}" "$base_sha_r"
   repo_base_sha["$rname"]="$base_sha_r"
   repo_base_branch["$rname"]="$base_branch_r"

@@ -111,6 +111,28 @@ out="$(run_preflight)"
 first="$(jq -r '.resume.candidates[0].slug' <<<"$out")"
 check "most recent first" "freshest-one" "$first"
 
+# State created only inside a registered feature worktree is discoverable from main.
+WT="$REPO/.claude/worktrees/wt-only"
+git -C "$REPO" worktree add -q -b feat/wt-only "$WT" main
+WT="$(cd "$WT" && pwd -P)"
+mkdir -p "$WT/.loop-spec/features/wt-only"
+jq -n --arg u "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{schemaVersion:7,currentPhase:"deliver",currentTeamName:null,updatedAt:$u,
+    stalenessHours:48,worktreePath:".claude/worktrees/wt-only",workspace:null}' \
+  > "$WT/.loop-spec/features/wt-only/feature.json"
+out="$(run_preflight)"
+check "worktree-only feature discovered" "1" "$(jq -r '[.resume.candidates[] | select(.slug == "wt-only")] | length' <<<"$out")"
+check "worktree-only source recorded" "worktree" "$(jq -r '.resume.candidates[] | select(.slug == "wt-only") | .source' <<<"$out")"
+check "worktree-only absolute root recorded" "$WT" "$(jq -r '.resume.candidates[] | select(.slug == "wt-only") | .featureRoot' <<<"$out")"
+check "deliver phase is resumable" "deliver" "$(jq -r '.resume.candidates[] | select(.slug == "wt-only") | .currentPhase' <<<"$out")"
+
+# A same-machine ready sidecar is logically completed even though tracked state stays at DELIVER.
+jq -n '{schema:1,status:"ready-for-review",nextPhase:"completed",targets:[]}' \
+  > "$WT/.loop-spec/features/wt-only/delivery.json"
+out="$(run_preflight)"
+check "delivered sidecar silently dropped" "0" \
+  "$(jq -r '[.resume.candidates[], .resume.skipped[] | select(.slug == "wt-only")] | length' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

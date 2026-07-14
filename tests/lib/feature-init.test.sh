@@ -32,6 +32,7 @@ check "single is valid JSON" "$(echo "$single" | jq -e . >/dev/null 2>&1 && echo
 check "single schemaVersion==7" "$(echo "$single" | jq -e '.schemaVersion == 7' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single carries iterateJudge" "$(echo "$single" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single worktreePath set" "$(echo "$single" | jq -e '.worktreePath == ".claude/worktrees/demo"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single execution root is worktree" "$(echo "$single" | jq -e '.executionRootMode == "worktree"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single workspace null" "$(echo "$single" | jq -e '.workspace == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single tier field ABSENT (hard cutover)" "$(echo "$single" | jq -e 'has("tier") | not' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single iterate.maxIterations==10" "$(echo "$single" | jq -e '.iterate.maxIterations == 10' >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -41,10 +42,15 @@ check "single currentPhase==spec" "$(echo "$single" | jq -e '.currentPhase == "s
 check "single currentPhaseStartedAt null" "$(echo "$single" | jq -e '.currentPhaseStartedAt == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single iterate.confirmationUsed false" "$(echo "$single" | jq -e '.iterate.confirmationUsed == false' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single feature_title persisted verbatim" "$(echo "$single" | jq -e '.feature_title == "add CSV export with progress bar"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single PR fields start null" "$(echo "$single" | jq -e '.prUrl == null and .checkpointPrUrl == null' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single delivery starts pending" "$(echo "$single" | jq -e '.delivery.status == "pending" and .delivery.nextPhase == null and .delivery.ciRemediationAttempts == 0 and .delivery.ciRemediationLimit == 2 and (.delivery.targets | length) == 0' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- no-title fallback + legacy flag rejection ---
 plain="$(bash "$LIB" skeleton --mode single --slug q --now N --style auto --branch feat/q --base-sha a --base-branch main --worktree wt)"
 check "missing --title falls back to slug" "$(echo "$plain" | jq -e '.feature_title == "q"' >/dev/null 2>&1 && echo 1 || echo 0)"
+in_place="$(bash "$LIB" skeleton --mode single --slug oc --now N --style auto \
+  --branch feat/oc --base-sha a --base-branch main --worktree "")"
+check "empty worktree selects in-place root" "$(echo "$in_place" | jq -e '.worktreePath == null and .executionRootMode == "in-place"' >/dev/null 2>&1 && echo 1 || echo 0)"
 bash "$LIB" skeleton --mode single --slug x --now N --tier quick --style auto >/dev/null 2>&1
 check "legacy --tier flag is rejected (hard cutover)" "$([[ $? -ne 0 ]] && echo 1 || echo 0)"
 
@@ -54,10 +60,12 @@ ws="$(bash "$LIB" skeleton --mode workspace --slug demo --now N --style auto \
 check "workspace is valid JSON" "$(echo "$ws" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace branch null" "$(echo "$ws" | jq -e '.branch == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace worktreePath null" "$(echo "$ws" | jq -e '.worktreePath == null' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "workspace execution root mode" "$(echo "$ws" | jq -e '.executionRootMode == "workspace"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace root set" "$(echo "$ws" | jq -e '.workspace.root == "/ws"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace repo passed through" "$(echo "$ws" | jq -e '.workspace.repos[0].name == "fe"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace top commands empty" "$(echo "$ws" | jq -e '.commands.test == ""' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace carries iterateJudge" "$(echo "$ws" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "workspace delivery starts pending" "$(echo "$ws" | jq -e '.delivery.status == "pending" and .delivery.ciRemediationAttempts == 0 and .delivery.ciRemediationLimit == 2 and (.delivery.targets | length) == 0' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- feature_title backfill (cycle Step 5.9) ---
 # Pre-2.4.0 feature.json lacks feature_title; the resume path backfills it from slug

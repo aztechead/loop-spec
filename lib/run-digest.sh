@@ -11,7 +11,11 @@
 # lib/events.sh and lib/cycle-result.sh.
 #
 # Usage:
-#   run-digest.sh append <feature_dir> [--out-dir <dir>]
+#   run-digest.sh append <feature_dir> [--out-dir <dir>] [--candidate]
+#
+# --candidate derives completed/converged/finishedAt from terminal ITERATE state
+# before DELIVER. The timestamp comes from durable feature/event state rather than
+# wall-clock time, so retries are byte-stable and do not create a new candidate SHA.
 #
 # Writes <out-dir>/{slug}.json (default out-dir:
 # <project-root>/docs/loop-spec/telemetry/runs, where project root is resolved
@@ -45,10 +49,12 @@ feature_dir="${2:-}"
 [[ -d "$feature_dir" ]] || _skip "feature dir not found: $feature_dir"
 
 OUT_DIR=""
+CANDIDATE=0
 shift 2 || true
 while [[ $# -gt 0 ]]; do
   case "${1:-}" in
     --out-dir) OUT_DIR="${2:-}"; shift 2 || shift || true ;;
+    --candidate) CANDIDATE=1; shift || true ;;
     *) shift || true ;;
   esac
 done
@@ -83,13 +89,20 @@ if [[ -f "$OUT_DIR/$slug.json" ]]; then
 fi
 
 digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argjson events "$events" \
+  --argjson candidate "$CANDIDATE" \
   --argjson prev_watch "$prev_watch" '
   {
     schema: 2,
     slug: $slug,
     branch: ($fj.branch // null),
-    status: ($rj.status // null),
-    converged: (if ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged else null end),
+    status: (if $candidate == 1 then "completed" else ($rj.status // null) end),
+    converged: (if $candidate == 1 then
+                  (($fj.warnings // [])
+                   | map((type == "string") and
+                         (startswith("iterate-budget-spent:") or startswith("iterate-terminal:")))
+                   | any | not)
+                elif ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged
+                else null end),
     iterations: {
       used: ($rj.iterations.used // $fj.iterate.used // 0),
       max: ($rj.iterations.max // $fj.iterate.maxIterations // null)
@@ -107,7 +120,11 @@ digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argj
     verifyFailureClasses: ([$events[] | select(.event == "verify_failure")
                             | .data.class // empty | select(. != "")] | unique),
     warnings: (($fj.warnings // []) | length),
-    finishedAt: ($rj.finishedAt // null)
+    finishedAt: (if $candidate == 1 then
+                   ($fj.updatedAt //
+                    ([$events[] | select(.event == "iterate_verdict") | .ts // empty] | last) //
+                    null)
+                 else ($rj.finishedAt // null) end)
   }
   + (if $prev_watch != null then {watch: $prev_watch} else {} end)')" 2>/dev/null \
   || _skip "failed to build digest for $slug"

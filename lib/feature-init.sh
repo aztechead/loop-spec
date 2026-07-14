@@ -178,6 +178,17 @@ common_skeleton() {
       fileConflictExcludeGlobs: [],
       gateHistory: [],
       stalenessHours: 48,
+      prUrl: null,
+      checkpointPrUrl: null,
+      delivery: {
+        status: "pending",
+        attemptedAt: null,
+        finishedAt: null,
+        nextPhase: null,
+        ciRemediationAttempts: 0,
+        ciRemediationLimit: 2,
+        targets: []
+      },
       warnings: [],
       bootstrapPendingDomains: []
     } + $tierblocks'
@@ -224,7 +235,9 @@ case "${1:-}" in
           --arg wt "$worktree" \
           --arg test "$test_cmd" --arg lint "$lint_cmd" --arg tc "$typecheck_cmd" \
           '. + {
-            branch: $branch, baseSha: $sha, baseBranch: $bb, worktreePath: $wt,
+            branch: $branch, baseSha: $sha, baseBranch: $bb,
+            worktreePath: (if $wt == "" then null else $wt end),
+            executionRootMode: (if $wt == "" then "in-place" else "worktree" end),
             workspace: null,
             commands: {test: $test, lint: $lint, typecheck: $tc}
           }'
@@ -235,6 +248,7 @@ case "${1:-}" in
           --arg wsroot "$ws_root" --argjson repos "$repos_json" \
           '. + {
             branch: null, baseSha: null, baseBranch: null, worktreePath: null,
+            executionRootMode: "workspace",
             workspace: {root: $wsroot, repos: $repos},
             commands: {test: "", lint: "", typecheck: ""}
           }'

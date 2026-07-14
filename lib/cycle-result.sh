@@ -22,13 +22,16 @@
 #   "slug": "...",
 #   "status": "completed | paused | escalated | terminal",
 #   "reason": "<--reason text or null>",
-#   "phaseReached": "<feature.json .currentPhase>",
+#   "phaseReached": "<logical phase, including delivery.json completion>",
 #   "branch": "<.branch>",
 #   "baseBranch": "<.baseBranch>",
-#   "prUrl": "<--pr-url arg, else feature.json .prUrl, else null>",
+#   "prUrl": "<--pr-url arg, else delivery.json/feature.json .prUrl, else null>",
 #   "checkpointPrUrl": "<feature.json .checkpointPrUrl // null>",
+#   "delivery": "<delivery.json, else feature.json .delivery, else null>",
 #   "converged": <true iff status==completed AND no warnings[] entry starts
-#                 with "iterate-budget-spent:" or "iterate-terminal:">,
+#                 with "iterate-budget-spent:" or "iterate-terminal:", AND an
+#                 explicit delivery block is ready-for-review (legacy state with
+#                 no delivery block remains compatible)>,
 #   "iterations": {"used": <.iterate.used // 0>, "max": <.iterate.maxIterations // null>},
 #   "warnings": <.warnings // []>,
 #   "autonomous": <.autonomous // false>,
@@ -109,6 +112,10 @@ case "${1:-}" in
       echo "cycle-result.sh: cannot read $fj" >&2
       exit 0
     }
+    delivery_content="null"
+    if [[ -f "$feature_dir/delivery.json" ]]; then
+      delivery_content="$(jq -c . "$feature_dir/delivery.json" 2>/dev/null || echo null)"
+    fi
 
     # Build result.json with jq (never string-interpolate user text into JSON).
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -119,29 +126,36 @@ case "${1:-}" in
       --arg pr_url_arg "$pr_url" \
       --arg reason_arg "$reason" \
       --argjson fj "$fj_content" \
+      --argjson delivery "$delivery_content" \
       '
-      # prUrl: --pr-url arg wins, then feature.json .prUrl, then null
+      # prUrl: explicit arg, successful delivery sidecar, tracked fallback.
       (if $pr_url_arg != "" then $pr_url_arg
+       elif (($delivery.prUrl // "") != "") then $delivery.prUrl
        elif (($fj.prUrl // "") != "") then $fj.prUrl
        else null
        end) as $prUrl |
       # reason: --reason arg, or null
       (if $reason_arg != "" then $reason_arg else null end) as $reason |
-      # converged: status == "completed" AND no iterate-budget-spent: or iterate-terminal: warnings
+      # converged: clean goal verdict plus a successful explicit delivery when present.
       (($status == "completed") and
        (($fj.warnings // [])
-        | map(startswith("iterate-budget-spent:") or startswith("iterate-terminal:"))
-        | any | not)) as $converged |
+         | map(startswith("iterate-budget-spent:") or startswith("iterate-terminal:"))
+         | any | not) and
+       (if $delivery != null then (($delivery.status // "") == "ready-for-review")
+        else (($fj | has("delivery") | not) or (($fj.delivery.status // "") == "ready-for-review"))
+        end)) as $converged |
       {
         schema: 1,
         slug: $fj.slug,
         status: $status,
         reason: $reason,
-        phaseReached: ($fj.currentPhase // null),
+        phaseReached: (if $status == "completed" and (($delivery.status // "") == "ready-for-review")
+                       then "completed" else ($fj.currentPhase // null) end),
         branch: ($fj.branch // null),
         baseBranch: ($fj.baseBranch // null),
         prUrl: $prUrl,
         checkpointPrUrl: ($fj.checkpointPrUrl // null),
+        delivery: (if $delivery != null then $delivery else ($fj.delivery // null) end),
         converged: $converged,
         iterations: {
           used: ($fj.iterate.used // 0),

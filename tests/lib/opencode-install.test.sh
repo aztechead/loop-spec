@@ -30,6 +30,7 @@ check "manifest written" "yes" "$([[ -f "$CFG/loop-spec-install.json" ]] && echo
 # Generated namespaced skill adapters avoid shadowing a user's native `cycle`,
 # `plan`, `status`, etc. They read the source SKILL.md from this checkout.
 check "namespaced cycle skill generated" "yes" "$([[ -f "$CFG/skills/loop-spec-cycle/SKILL.md" ]] && echo yes || echo no)"
+check "namespaced deliver skill generated" "yes" "$([[ -f "$CFG/skills/loop-spec-deliver/SKILL.md" ]] && echo yes || echo no)"
 check "namespaced skill frontmatter" "1" "$(grep -c '^name: loop-spec-cycle$' "$CFG/skills/loop-spec-cycle/SKILL.md")"
 check "source skill remains unshadowed" "no" "$([[ -e "$CFG/skills/cycle" ]] && echo yes || echo no)"
 check "skill adapter embeds source" "yes" "$(grep -qF '# loop-spec:cycle' "$CFG/skills/loop-spec-cycle/SKILL.md" && echo yes || echo no)"
@@ -49,6 +50,7 @@ check "bridge plugin placed" "yes" "$([[ -f "$CFG/plugins/loop-spec.ts" ]] && ec
 # /loop-spec/<name>. Namespaced to never shadow opencode built-ins (/debug,
 # /status, /skills are TUI palette slashes).
 check "cycle wrapper generated" "yes" "$([[ -f "$CFG/commands/loop-spec/cycle.md" ]] && echo yes || echo no)"
+check "deliver wrapper generated" "yes" "$([[ -f "$CFG/commands/loop-spec/deliver.md" ]] && echo yes || echo no)"
 check "wrapper is a real file (not link)" "no" "$([[ -L "$CFG/commands/loop-spec/cycle.md" ]] && echo yes || echo no)"
 check "wrapper has description frontmatter" "1" "$(grep -c '^description:' "$CFG/commands/loop-spec/cycle.md")"
 check "wrapper invokes namespaced skill" "yes" "$(grep -q 'skill({ name: "loop-spec-cycle" })' "$CFG/commands/loop-spec/cycle.md" && echo yes || echo no)"
@@ -167,6 +169,34 @@ CFG3="$TMP/opencode3"
 rc=0; OPENCODE_CONFIG_DIR="$CFG3" bash "$LIB" install --copy >/dev/null 2>&1 || rc=$?
 check "copy mode rejected" "2" "$rc"
 check "copy mode writes no manifest" "no" "$([[ -e "$CFG3/loop-spec-install.json" ]] && echo yes || echo no)"
+
+# --- OpenCode-only cross-provider role routing ---
+CFG9="$TMP/opencode9"
+OPENCODE_CONFIG_DIR="$CFG9" bash "$LIB" install \
+  --model adversarial=github-copilot/frontier \
+  --model planner=google-vertex-anthropic/claude-opus-4-8 \
+  --model challenger=github-copilot/challenger-override >/dev/null
+check "adversarial route pins iterate judge" "1" \
+  "$(grep -c '^model: github-copilot/frontier$' "$CFG9/agents/loop-spec-iterate-judge.md")"
+check "adversarial route pins code reviewer" "1" \
+  "$(grep -c '^model: github-copilot/frontier$' "$CFG9/agents/loop-spec-code-reviewer.md")"
+check "adversarial route pins security reviewer" "1" \
+  "$(grep -c '^model: github-copilot/frontier$' "$CFG9/agents/loop-spec-security-reviewer.md")"
+check "explicit role beats adversarial route" "1" \
+  "$(grep -c '^model: github-copilot/challenger-override$' "$CFG9/agents/loop-spec-challenger.md")"
+check "other role can use another provider" "1" \
+  "$(grep -c '^model: google-vertex-anthropic/claude-opus-4-8$' "$CFG9/agents/loop-spec-planner.md")"
+check "unrouted role inherits session" "0" \
+  "$(grep -c '^model:' "$CFG9/agents/loop-spec-implementer.md" || true)"
+check "model routes persisted in manifest" "github-copilot/frontier" \
+  "$(jq -r '.modelRoutes.adversarial' "$CFG9/loop-spec-install.json")"
+
+rc=0; OPENCODE_CONFIG_DIR="$TMP/bad-model" bash "$LIB" install \
+  --model challenger=not-a-provider-model >/dev/null 2>&1 || rc=$?
+check "invalid provider/model route rejected" "2" "$rc"
+rc=0; OPENCODE_CONFIG_DIR="$TMP/bad-role" bash "$LIB" install \
+  --model unknown-role=github-copilot/frontier >/dev/null 2>&1 || rc=$?
+check "unknown role route rejected" "2" "$rc"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

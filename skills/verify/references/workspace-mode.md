@@ -15,7 +15,9 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   rbase_sha="$(echo "$repo_entry" | jq -r '.baseSha')"
   git -C "$rabs" diff --diff-filter=ACMR "${rbase_sha}..HEAD" --name-only \
     | grep -E '\.(py|ts|js|go|rs|java|rb|sh)$' \
-    | xargs grep -wn 'TBD\|FIXME\|XXX' 2>/dev/null || true
+    | while IFS= read -r changed; do
+        [[ -n "$changed" ]] && grep -Hwn 'TBD\|FIXME\|XXX' "$rabs/$changed" 2>/dev/null || true
+      done
 done
 ```
 
@@ -76,65 +78,7 @@ repo_list="${repo_list%, }"
 Skill(loop-spec:map-codebase) with mode: "incremental", workspace_repos: repo_list
 ```
 
-## Step 10 - Branch finish
-
-**Workspace mode (additive):** loop over `feature.workspace.repos[]`. For each repo, count commits over its baseSha. Repos with commits get a push and a PR; repos with zero commits are skipped and their feature branch is deleted. Push/PR failure for one repo degrades to printing the manual commands and continues with the remaining repos -- never aborts the loop.
-
-```bash
-declare -A repo_pr_urls repo_skip_reasons repo_commit_counts
-
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="${feature_workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  rbase_sha="$(echo "$repo_entry" | jq -r '.baseSha')"
-  rbase_branch="$(echo "$repo_entry" | jq -r '.baseBranch')"
-  rbranch="$(echo "$repo_entry" | jq -r '.branch')"
-
-  commit_count=$(git -C "$rpath" rev-list --count "${rbase_sha}..HEAD" 2>/dev/null || echo 0)
-  repo_commit_counts["$rname"]="$commit_count"
-
-  if [[ "$commit_count" -eq 0 ]]; then
-    # Zero-commit repo: skip push/PR, delete feature branch.
-    git -C "$rpath" checkout "$rbase_branch" 2>/dev/null || true
-    git -C "$rpath" branch -d "$rbranch" 2>/dev/null || true
-    repo_skip_reasons["$rname"]="no commits (branch deleted)"
-    continue
-  fi
-
-  # Push the feature branch from this repo.
-  if ! git -C "$rpath" push -u origin "$rbranch" 2>/dev/null; then
-    repo_skip_reasons["$rname"]="push failed -- run manually: git -C ${rpath} push -u origin ${rbranch}"
-    continue
-  fi
-
-  # Open PR for this repo (cwd = repo path).
-  spec_summary=$(awk '/^## Problem/,/^## (Constraints|User-facing)/' \
-    "${feature_workspace_root}/docs/loop-spec/features/${slug}/SPEC.md" | head -100)
-  verify_table=$(awk '/^## Acceptance criteria/,/^## Verify command outputs/' \
-    "${feature_workspace_root}/docs/loop-spec/features/${slug}/VERIFICATION.md")
-  pr_body="$(printf '## Spec summary\n\n%s\n\n## Verification\n\n%s\n' "$spec_summary" "$verify_table")"
-
-  pr_url=""
-  if ! pr_url=$(cd "$rpath" && gh pr create \
-      --base "$rbase_branch" \
-      --head "$rbranch" \
-      --title "feat: ${slug} (${rname})" \
-      --body "$pr_body" 2>/dev/null); then
-    repo_skip_reasons["$rname"]="PR creation failed -- run manually: cd ${rpath} && gh pr create --base ${rbase_branch} --head ${rbranch}"
-    continue
-  fi
-
-  repo_pr_urls["$rname"]="$pr_url"
-done
-```
-
-**Note on `result.json` in workspace mode:** the single `prUrl` field in `result.json` is
-null in workspace mode — nothing persists a per-repo URL into `feature.json.prUrl` here.
-Per-repo PR URLs live in the `repo_pr_urls` map above and the per-repo git history.
-Workspace callers that need PR URLs should read the per-repo state directly; `result.json`'s
-`prUrl` is the single-repo shortcut for simple wrappers.
-
-## Step 11 - Commit VERIFICATION.md
+## Step 10 - Commit VERIFICATION.md
 
 **Workspace mode (additive):** commit VERIFICATION.md only when the workspace root is itself a git repo. Issue a checkpoint tag per repo using `lib/checkpoint.sh -C <abs repo>`.
 
@@ -156,24 +100,7 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
 done
 ```
 
-## Step 14 - Summary
-
-**Workspace mode (additive):** print a per-repo summary table instead of a single PR URL.
-
-```
-Workspace verify summary for {slug}:
-
-| Repo     | Commits | Result                   |
-|----------|---------|--------------------------|
-| frontend |       3 | PR: https://github.com/... |
-| backend  |       0 | skipped (no commits; branch deleted) |
-| db       |       1 | PR creation failed -- run manually: ... |
-
-Token usage estimate: {N}k
-Total elapsed time: {T}
-```
-
-Columns:
-- Repo: the `workspace.repos[].name`
-- Commits: count of commits over `repo.baseSha` on `feat/{slug}`
-- Result: PR URL if created; skip reason or manual command if not
+Workspace VERIFY stops after committing evidence and checkpoint tags. DELIVER later
+counts each repo's commits, skips zero-commit repos, persists every per-repo PR result
+under ignored `delivery.json.targets[]`, and blocks readiness on each changed repo's
+required checks.

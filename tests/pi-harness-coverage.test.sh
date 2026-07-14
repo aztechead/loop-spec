@@ -20,6 +20,8 @@ checks=(
   "skills/shared/pi-harness.md	autonomous-mode.md"
   "skills/shared/pi-harness.md	--agent-cli pi"
   "skills/shared/pi-harness.md	pi install git:github.com/aztechead/loop-spec"
+  "skills/shared/pi-harness.md	executionRootMode: \"in-place\""
+  "skills/shared/pi-harness.md	lib/deliver.sh"
   # -- EXECUTE ladder: harness probe + rung 0 + its reference
   "skills/execute/SKILL.md	lib/harness.sh"
   "skills/execute/SKILL.md	rung = \"inline\""

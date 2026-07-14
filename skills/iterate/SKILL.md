@@ -1,6 +1,6 @@
 ---
 name: iterate
-description: ITERATE phase - the outer convergence loop. Judges the integrated result against the ORIGINAL goal (deterministic acceptance gate + an LLM goal re-judge), and either ships (converged or iteration limit spent) or classifies the highest-leverage gap and routes the cycle back to EXECUTE, PLAN, or (with human approval) SPEC/DISCUSS. Bounded by feature.iterate.maxIterations. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: ITERATE phase - the outer convergence loop. Judges the integrated result against the ORIGINAL goal (deterministic acceptance gate + an LLM goal re-judge), and either advances to DELIVER (converged or iteration limit spent) or classifies the highest-leverage gap and routes the cycle back to EXECUTE, PLAN, or (with human approval) SPEC/DISCUSS. Bounded by feature.iterate.maxIterations. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 
 You are the ITERATE phase orchestrator, running on the **main thread**. Invoked by `loop-spec:cycle` when `feature.json.currentPhase == "iterate"` — i.e. after VERIFY's gates passed. VERIFY proves the SPEC acceptance checklist is met; ITERATE asks the harder question the article calls the heart of a loop: **are we actually there yet, measured against the original goal — and if not, feed the result back in and repeat.**
 
-This phase runs no team. It dispatches ONE fresh `iterate-judge` subagent (maker ≠ checker) for the goal re-judge, decides on its verdict, and rewinds or advances the phase pointer. The bounded outer loop is: `... EXECUTE → VERIFY → ITERATE → (EXECUTE|PLAN|SPEC again | completed)`.
+This phase runs no team. It dispatches ONE fresh `iterate-judge` subagent (maker ≠ checker) for the goal re-judge, decides on its verdict, and rewinds or advances the phase pointer. The bounded outer loop is: `... EXECUTE → VERIFY → ITERATE → (EXECUTE|PLAN|SPEC again | DELIVER)`.
 
 Autonomous mode (`feature.json.autonomous == true`) forces style `auto`, so the spec-rewind approval gate below never fires — every rewind runs hands-off per `skills/shared/autonomous-mode.md`.
 
@@ -31,7 +31,7 @@ used=$(jq -r '.iterate.used' "$fdir/feature.json")
 maxit=$(jq -r '.iterate.maxIterations' "$fdir/feature.json")
 ```
 
-If `used >= maxit`: **stop iterating and ship — but ship LOUD, never silent.** Do NOT re-enter an upstream phase — this is the article's `STOP WHEN: ... OR N iterations reached`. Before setting `currentPhase = "completed"`:
+If `used >= maxit`: **stop iterating and advance to delivery — but report gaps LOUD, never silent.** Do NOT re-enter an upstream phase — this is the article's `STOP WHEN: ... OR N iterations reached`. Before setting `currentPhase = "deliver"`:
 
 0. **Confirmation pass (bounded to exactly one, report-only).** If a rewind fix landed after the last judge pass (`used > 0` and the phase pointer arrived here from VERIFY) AND `iterate.confirmationUsed` is not `true`: set `iterate.confirmationUsed = true` (via `lib/feature-write.sh`, BEFORE dispatching, so a crash/resume can never run it twice), then dispatch the `iterate-judge` once more exactly as in Step 1 but with `mode=confirmation` noted in the prompt. This pass does NOT increment `iterate.used` and CANNOT trigger a rewind — its verdict only decides what the ship looks like:
    - `converged == true` (and `deterministic_gate_passed`): the final fix actually closed the goal. Record the verdict in `iterate.lastVerdict` + `history`, write ITERATION.md's final section as a clean converge, and ship with NO limit warnings — this converts "shipped with unknown state" into a confirmed converge.
@@ -52,8 +52,17 @@ If `used >= maxit`: **stop iterating and ship — but ship LOUD, never silent.**
    bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "iterate limit spent on {slug} with a {gap.type}-level gap: '{gap.fix_first}' — surface this class of requirement during PLAN" --check "bash lib/criteria-coverage.sh docs/loop-spec/features/{slug}/SPEC.md docs/loop-spec/features/{slug}/PLAN.md"
    ```
 2. **If no confirmation pass could run** (already used, or the dispatch failed), append one more warning: `iterate-budget-spent: final remediation was never re-judged against the original goal`.
-3. Write the final ITERATION.md section stating the iteration limit was spent, listing the harvested warnings verbatim.
-4. Set `currentPhase = "completed"` and go to Phase exit. The cycle's On-completion summary prints `warnings[]` — the user must see the accepted gaps without opening feature.json. **Autonomous mode:** the cycle's On-completion additionally chains straight into a backlog drain for the gaps just queued (bounded — see cycle "On completion", autonomous chaining), so a limit-spent ship is a handoff to the next bounded cycle, not a stop that relies on someone reading warnings.
+3. Write the final ITERATION.md section stating the iteration limit was spent, listing the harvested warnings verbatim. Before advancing, commit the terminal evidence and backlog mutation with an explicit pathspec so they are part of the SHA DELIVER proves and unrelated staged files cannot be swept in:
+   ```bash
+   iteration_path="docs/loop-spec/features/${slug}/ITERATION.md"
+   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+     git add "$iteration_path" .loop-spec/BACKLOG.md 2>/dev/null || true
+     git diff --cached --quiet -- "$iteration_path" .loop-spec/BACKLOG.md 2>/dev/null \
+       || git commit -m "iterate: NO_JIRA ${slug} terminal evidence" -- \
+         "$iteration_path" .loop-spec/BACKLOG.md
+   fi
+   ```
+4. Set `currentPhase = "deliver"` and go to Phase exit. DELIVER creates or reconciles the final PR only after this terminal verdict. The cycle's On-completion summary prints `warnings[]` after delivery — the user must see the accepted gaps without opening feature.json. **Autonomous mode:** chaining is allowed only after DELIVER reaches `ready-for-review`, so a limit-spent handoff can never outrun a failed PR delivery.
 
 ### Step 1 - Dispatch the judge (maker ≠ checker)
 
@@ -109,12 +118,14 @@ Write a human-readable `docs/loop-spec/features/{slug}/ITERATION.md` (append one
 
 ```bash
 git add docs/loop-spec/features/{slug}/ITERATION.md
-git commit -m "iterate: NO_JIRA {slug} iteration $((used+1))"
+git diff --cached --quiet -- docs/loop-spec/features/{slug}/ITERATION.md \
+  || git commit -m "iterate: NO_JIRA {slug} iteration $((used+1))" -- \
+    docs/loop-spec/features/{slug}/ITERATION.md
 ```
 
 ### Step 3 - DECIDE
 
-**Converged** (`verdict.converged == true`): set `currentPhase = "completed"`. Clear `iterate.feedback = null`. Go to Phase exit → the cycle ships.
+**Converged** (`verdict.converged == true`): set `currentPhase = "deliver"`. Clear `iterate.feedback = null`. Go to Phase exit; DELIVER now binds the final verified commit to the PR.
 
 **Not converged:** route by `gap.type`. **The backlog is NEVER an option here, in any mode** — while iterations remain, every gap is worked by a rewind (below); deferring an in-limit gap to `BACKLOG.md` would let the loop claim convergence work it never did. The backlog is exclusively the limit-exhaustion exit (Step 0's loud-ship path). In every case, write the gap so the re-entered phase can "fix the weakest point first":
 
@@ -143,7 +154,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedba
       }]
     })
     ```
-    Re-open → `currentPhase = "discuss"`; Ship as-is → `currentPhase = "completed"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
+    Re-open → `currentPhase = "discuss"`; Ship as-is → `currentPhase = "deliver"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
   - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): treat as autonomous — re-enter DISCUSS in refinement mode (same as `auto`). `LOOP_SPEC_ANSWER_ITERATE_SPEC` ∈ {reopen, ship} overrides; default `reopen`.
 
 The autonomy guarantee: in `auto`/`review-only`, **no gap type ever blocks on a human**. The loop runs EXECUTE/PLAN/SPEC rewinds on its own until it converges or the iteration limit is spent, then it ships-with-warnings (Step 0). The only thing that ever returns control to you mid-loop is the explicit human-in-loop styles, or a hard escalation (limit-exhausted in `step`/`interactive`). An overnight `auto` run never waits for input.
@@ -154,12 +165,12 @@ Clear `currentTeamName`/`currentTeammates` are already null (ITERATE ran no team
 
 | execStyle | Action |
 |---|---|
-| `auto`, `review-only` | If `currentPhase == "completed"`: proceed to the cycle's On-completion. Else: return to cycle, which re-invokes `Skill(loop-spec:{currentPhase})` for the rewind — UNLESS `LOOP_SPEC_ITERATE_FRESH=1`, where the cycle instead commits state and returns to the user so an outer loop relaunches the rewind in a fresh session (see cycle Step 6 routing, "Fresh-context rewind"). |
+| `auto`, `review-only` | If `currentPhase == "deliver"`: return to cycle, which invokes DELIVER in the same context. Otherwise cycle invokes the selected rewind phase — UNLESS `LOOP_SPEC_ITERATE_FRESH=1`, where it commits state and returns so an outer loop relaunches the rewind in a fresh session. |
 | `step`, `interactive` | Print the iteration verdict (converged? / gap / where it routes next) and return to the user; they re-invoke `Skill(loop-spec:cycle)` to continue. |
 
 ## Phase exit
 
-ITERATE does not append itself to `completedPhases` on a rewind (it will run again after the next VERIFY). It appends `"iterate"` to `completedPhases` only on the terminal pass (converged or limit-spent), immediately before `currentPhase = "completed"`.
+ITERATE does not append itself to `completedPhases` on a rewind (it will run again after the next VERIFY). It appends `"iterate"` to `completedPhases` only on the terminal pass (converged or limit-spent), immediately before `currentPhase = "deliver"`.
 
 ## Design notes
 

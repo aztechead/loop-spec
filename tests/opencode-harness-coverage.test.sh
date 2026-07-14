@@ -26,6 +26,11 @@ checks=(
   "skills/shared/opencode-harness.md	multiple"
   "skills/shared/opencode-harness.md	providerID"
   "skills/shared/opencode-harness.md	modelID"
+  "skills/shared/opencode-harness.md	executionRootMode: \"in-place\""
+  "skills/shared/opencode-harness.md	lib/pr-delivery.sh"
+  "skills/shared/opencode-harness.md	does not pretend worktree creation changed cwd"
+  "skills/shared/opencode-harness.md	--model adversarial=github-copilot/"
+  "lib/opencode-install.sh	modelRoutes"
   # -- the harness probe knows opencode and grants the subagent capability
   "lib/harness.sh	opencode"
   # -- capability gates are non-claude-gated (the bash side of the contract)

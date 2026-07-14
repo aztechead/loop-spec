@@ -31,7 +31,9 @@ Once the repo has earned L1 (see `bash lib/trust.sh level`), exporting
 
 ### What a run can and cannot do
 
-- Every run is **PR-terminated**: the cycle ends at a draft/checkpoint PR.
+- Every successful run is **ready-PR-terminated**: DELIVER binds the exact SHA, waits
+  required checks, and marks the PR ready. Interrupted/escalated runs retain a draft
+  checkpoint PR.
   Nothing merges without a human at any trust level in this release
   (`trust.sh authorize --action auto-merge` is hard-denied).
 - It **never chains past a failure**: a paused/escalated cycle ends the batch

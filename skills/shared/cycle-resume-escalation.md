@@ -5,18 +5,20 @@ Reference procedures the `loop-spec:cycle` skill follows. Step 1 (Resume detecti
 ## Resume strategy
 
 The full resume algorithm (used at Step 1 and when the user selects a feature to resume).
-loop-spec is **schema-7 only**: a resumable feature is either single-repo **worktree mode**
-(`worktreePath` set, `workspace` null) or **workspace mode** (`workspace` block non-null,
-`worktreePath` null). Any `feature.json` with `schemaVersion != 7` is skipped with a one-line
-warning — there is no legacy in-place resume path.
+loop-spec is **schema-7 only**: a resumable feature is single-repo **worktree mode**
+(`executionRootMode=worktree`, Claude), single-repo **in-place mode**
+(`executionRootMode=in-place`, OpenCode/pi), or **workspace mode**. Any
+`feature.json` with `schemaVersion != 7` is skipped with a one-line warning.
 
 ### 1. Enumerate feature worktrees (single-repo mode)
 
-Run:
+`lib/cycle-preflight.sh` runs:
 ```bash
 bash lib/git-ops.sh list-feature-worktrees
 ```
-This prints one line per worktree under `.claude/worktrees/`: `<path>\t<branch>`. For each line, read `<path>/.loop-spec/features/*/feature.json` to discover in-progress single-repo features living in their own worktree.
+This prints one line per worktree under `.claude/worktrees/`: `<absolute-path>\t<branch>`.
+Preflight reads each `<path>/.loop-spec/features/*/feature.json` and returns the absolute
+`featureRoot`; cycle must not rescan only the control checkout.
 
 ### 2. Enumerate workspace features
 
@@ -66,14 +68,19 @@ git worktree add "{feature.worktreePath}" "{feature.branch}"   # if branch exist
 # else recreate branch + worktree from baseSha:
 bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" create-feature-worktree "{slug}" "{feature.baseSha}"
 ```
-Once the worktree is confirmed present:
+Once the worktree is confirmed present, use the absolute candidate path:
 ```
-EnterWorktree({ path: feature.worktreePath })
+EnterWorktree({ path: candidate.worktreeAbs })
 ```
 Call this BEFORE routing to the current phase. All subsequent phase work runs inside the worktree with the feature branch already checked out. Subagents dispatched from phase skills must receive absolute paths (resolve via `git rev-parse --show-toplevel` from inside the worktree).
 
 **Workspace features (`workspace` block non-null):**
 No worktree is entered. Resume proceeds in place at the workspace root (see "Workspace features" below).
+
+**OpenCode/pi in-place features (`executionRootMode == "in-place"`):**
+No worktree tool exists. Resume only when the session root equals `candidate.featureRoot`
+and the checked-out branch equals `feature.branch`; otherwise print the absolute root and
+ask for relaunch there. Never substitute another `git worktree add` for changing cwd.
 
 **Both paths then:**
 Load feature state into memory. Jump directly to Step 6 (phase routing) with `state = loaded feature.json`. Do not re-run Steps 2-4. The phase team is re-created fresh via `TeamCreate` (the harness does not support in-process teammate resume). If `currentGate` in `feature.json` is non-null with a non-zero round, load prior debate transcript from `.loop-spec/features/{slug}/gate-logs/` into the spawn prompt so the resumed advocate/challenger have prior context.
@@ -122,7 +129,9 @@ If a phase pauses + escalates (iteration limit exhausted, NEEDS_CONTEXT, etc.):
 2. Clear `currentTeamName` and `currentTeammates` in `feature.json` via `lib/feature-write.sh`.
 3. Print escalation reason.
 4. Show the `gateHistory` tail (last 3 attempts from `feature.json.gateHistory` in `.loop-spec/features/{slug}/feature.json`).
-5. Show partial artifacts (spec/plan/execution/verification paths from `feature.json.artifacts`).
+5. Show partial artifacts (spec/plan/execution/verification/iteration paths) and, when
+   DELIVER was attempted, `delivery.status`, every target PR URL/SHA/check status, and the
+   structured error/manual recovery information.
 5.5. Write the machine-readable result contract (non-fatal — must not block ExitWorktree):
    ```bash
    bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write ".loop-spec/features/${slug}" \
@@ -134,7 +143,8 @@ If a phase pauses + escalates (iteration limit exhausted, NEEDS_CONTEXT, etc.):
    bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint-pr.sh" create ".loop-spec/features/${slug}" \
      --reason "<escalation reason>" || true
    ```
-6. **Single-repo worktree mode only:** after snapshotting (step 5 above), call `ExitWorktree({action: "keep"})` to return the session to the main checkout. The worktree and branch are preserved on disk; the next resume will re-enter via `EnterWorktree`. Workspace features (in-place at the workspace root) skip this step.
+6. **Claude single-repo worktree mode only:** after snapshotting, call
+   `ExitWorktree({action: "keep"})`. Workspace and OpenCode/pi in-place features skip it.
 7. Return control to user.
 
 User options:
