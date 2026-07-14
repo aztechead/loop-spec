@@ -8,11 +8,16 @@ installs there via the bundled installer (`bash lib/opencode-install.sh
 install` from a clone — global `~/.config/opencode/` by default, `--project
 <dir>` for a per-project `.opencode/`): skills load through the Agent Skills
 standard both harnesses share (opencode's native `skill` tool),
-`commands/loop-debug.md` loads as the `/loop-debug` command, agents are
-converted to opencode subagents named `loop-spec-<role>`, and the bundled
-plugin (`extensions/opencode/loop-spec.ts`) bridges env and hooks. This file
-is ADDITIVE — when the harness is `claude`, nothing here applies and every
-skill runs exactly as written.
+`commands/loop-debug.md` loads as the `/loop-debug` command, every skill also
+gets a generated command wrapper at `commands/loop-spec/<name>.md` loading as
+`/loop-spec/<name>` (opencode's TUI hides skill-sourced entries from the "/"
+autocomplete popup, so real commands are the user-discoverable surface; the
+namespace keeps them clear of opencode's built-in `/debug`, `/status`, and
+`/skills` palette slashes), agents are converted to opencode subagents named
+`loop-spec-<role>`, and the bundled plugin
+(`extensions/opencode/loop-spec.ts`) bridges env and hooks. This file is
+ADDITIVE — when the harness is `claude`, nothing here applies and every skill
+runs exactly as written.
 
 opencode is a much closer harness than pi: skills, one-shot subagents,
 questions, and commands all have NATIVE equivalents. The deltas below are the
@@ -51,7 +56,7 @@ export CLAUDE_SKILL_DIR="<base directory the skill tool reported>"
 |---|---|
 | Read / Write / Edit / Bash | `read` / `write` / `edit` / `bash` (same semantics) |
 | Glob / Grep | `glob` / `grep` (native) |
-| Skill (invoke a skill) | the native `skill` tool: `skill({name: "<name>"})` — loop-spec skill names are unchanged; users invoke via the skill tool or `/loop-debug` for the command |
+| Skill (invoke a skill) | the native `skill` tool: `skill({name: "<name>"})` — loop-spec skill names are unchanged; users invoke via the generated `/loop-spec/<name>` commands (the CC `/loop-spec:<name>` analogue), the skill tool, or `/loop-debug` for the one-shot command |
 | Agent (one-shot subagent) | the native `task` tool — SAME parameter shape `{description, prompt, subagent_type}`; see the dispatch mapping rule below |
 | Teams (named `Agent` spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` under opencode (`lib/teams-capability.sh`); the task tool is one-shot only |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |

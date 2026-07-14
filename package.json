@@ -1,6 +1,6 @@
 {
   "name": "loop-spec",
-  "version": "2.19.0",
+  "version": "2.19.1",
   "description": "Loop-driven development from a spec file (or a prose description). A six-phase cycle (SPEC/DISCUSS/PLAN/EXECUTE/VERIFY/ITERATE) authors and critiques a spec, plans a task DAG, executes it, then a convergence loop judges the result against the original goal. Ships as a Claude Code plugin, a pi (pi.dev) package, and an opencode (opencode.ai) install.",
   "license": "MIT",
   "homepage": "https://github.com/aztechead/loop-spec",

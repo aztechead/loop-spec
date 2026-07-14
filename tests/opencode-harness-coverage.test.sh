@@ -53,6 +53,11 @@ checks=(
   "lib/opencode-install.sh	extensions/opencode/loop-spec.ts"
   "lib/opencode-install.sh	commands/loop-debug.md"
   "lib/opencode-install.sh	loop-spec-install.json"
+  # -- skill command wrappers: the TUI hides skill-sourced slash entries, so
+  #    the installer must generate /loop-spec/<name> commands and the contract
+  #    must tell users that is the invocation surface
+  "lib/opencode-install.sh	commands/loop-spec/"
+  "skills/shared/opencode-harness.md	/loop-spec/<name>"
   # -- loop-runner: the headless opencode backend and its plumbing
   "skills/loop-runner/scripts/loop.py	def run_opencode"
   "skills/loop-runner/scripts/loop.py	opencode"

@@ -2,6 +2,39 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.19.1]
+
+### Fixed — opencode: skills were invisible in the "/" slash menu
+
+Users reported that after installing into opencode, no loop-spec slash
+commands appeared (only opencode's own built-ins like `/debug`). Root cause:
+opencode maps every installed skill to a slash command **server-side**, but
+since ~v1.17 the TUI autocomplete deliberately hides commands with
+`source == "skill"` from the `/` popup
+(`packages/tui/.../autocomplete.tsx: if (serverCommand.source === "skill")
+continue`). loop-spec shipped exactly one real command file (`/loop-debug`),
+so the other 29 skills loaded fine (skill tool, `opencode debug skill`) but
+were undiscoverable in the TUI.
+
+- **`lib/opencode-install.sh`**: now GENERATES a command wrapper per skill at
+  `commands/loop-spec/<name>.md`, loading as `/loop-spec/<name>` (the
+  Claude Code `/loop-spec:<name>` analogue). Wrappers carry the skill's
+  description (JSON-quoted; folded `>-` scalars joined), its
+  `argument-hint` as prose, and a `$ARGUMENTS` template that loads the skill
+  via opencode's native `skill` tool. Namespaced under `loop-spec/` so they
+  can never shadow opencode's built-in `/debug`, `/status`, `/skills`
+  palette slashes or user commands; manifest-tracked, so uninstall removes
+  them.
+- **Docs**: `skills/shared/opencode-harness.md` and the README now name
+  `/loop-spec/<name>` as the user-facing invocation surface under opencode.
+- **Tests**: `tests/lib/opencode-install.test.sh` asserts wrapper generation
+  (per-skill coverage, folded-description survival, `$ARGUMENTS`, skill-tool
+  invocation, uninstall cleanup); `tests/opencode-harness-coverage.test.sh`
+  pins the installer↔contract coupling.
+
+Verified live against opencode v1.17.20: `GET /command` shows all 29
+wrappers with `source: "command"` (TUI-visible) alongside `/loop-debug`.
+
 ## [2.19.0]
 
 ### Added — native opencode (opencode.ai) harness support
