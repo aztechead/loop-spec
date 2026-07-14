@@ -22,6 +22,10 @@ checks=(
   "skills/shared/opencode-harness.md	loop-spec-<role>"
   "skills/shared/opencode-harness.md	subagent_type"
   "skills/shared/opencode-harness.md	question"
+  "skills/shared/opencode-harness.md	multiSelect"
+  "skills/shared/opencode-harness.md	multiple"
+  "skills/shared/opencode-harness.md	providerID"
+  "skills/shared/opencode-harness.md	modelID"
   # -- the harness probe knows opencode and grants the subagent capability
   "lib/harness.sh	opencode"
   # -- capability gates are non-claude-gated (the bash side of the contract)

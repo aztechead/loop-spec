@@ -19,7 +19,7 @@ claude -p "/loop-spec:sentinel run" --permission-mode acceptEdits
 pi --mode json "/skill:sentinel run"
 
 # opencode
-opencode run --format json --auto "Load the sentinel skill (skill tool, name: sentinel) and run: run"
+opencode run --format json "Load the loop-spec-sentinel skill and run: run"
 ```
 
 Run it from the target repo's root (the directory containing `.loop-spec/`).

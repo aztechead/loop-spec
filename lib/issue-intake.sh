@@ -30,8 +30,8 @@
 #   pi:       pi --mode json "/skill:intake autonomous <text>" (no default flags;
 #             permission modes are claude-only)
 #   opencode: opencode run --format json "Load the intake skill (skill tool) and
-#             run: autonomous <text>" (default flags: --auto — headless opencode
-#             auto-rejects permission asks otherwise)
+#             run: autonomous <text>" (no auto-approval; ordinary in-project
+#             build-agent edits remain allowed and sensitive asks fail closed)
 # The intake skill's own provenance rules apply — the issue text is
 # restructured, never invented.
 #
@@ -55,7 +55,7 @@ FIXTURE=""
 # prefix (claude: `claude -p "/loop-spec:intake ..."`; pi: `pi --mode json
 # "/skill:intake ..."`; opencode: `opencode run --format json` with a prompt
 # that loads the skill via the native skill tool). Permission modes are
-# claude-only (opencode uses --auto instead — headless runs auto-reject asks);
+# claude-only; OpenCode uses its configured permissions without auto-approval.
 # LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS still overrides verbatim.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_CLI="$(bash "$SCRIPT_DIR/harness.sh" cli)"
@@ -65,8 +65,8 @@ if [[ "$AGENT_CLI" == "pi" ]]; then
   CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:-}"
 elif [[ "$AGENT_CLI" == "opencode" ]]; then
   AGENT_ARGS=(run --format json)
-  INTAKE_CMD="Load the intake skill (skill tool, name: intake) and run:"
-  CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:---auto}"
+  INTAKE_CMD="Load the loop-spec-intake skill and run:"
+  CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:-}"
 else
   AGENT_ARGS=(-p)
   INTAKE_CMD="/loop-spec:intake"

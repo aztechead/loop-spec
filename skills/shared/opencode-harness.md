@@ -6,8 +6,8 @@ Claude Code: `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect` prints
 "opencode"` / `.loop-spec/runtime.json.harness == "opencode"`). loop-spec
 installs there via the bundled installer (`bash lib/opencode-install.sh
 install` from a clone — global `~/.config/opencode/` by default, `--project
-<dir>` for a per-project `.opencode/`): skills load through the Agent Skills
-standard both harnesses share (opencode's native `skill` tool),
+<dir>` for a per-project `.opencode/`): namespaced adapters load through
+opencode's native `skill` tool as `loop-spec-<name>`,
 `commands/loop-debug.md` loads as the `/loop-debug` command, every skill also
 gets a generated command wrapper at `commands/loop-spec/<name>.md` loading as
 `/loop-spec/<name>` (opencode's TUI hides skill-sourced entries from the "/"
@@ -56,12 +56,12 @@ export CLAUDE_SKILL_DIR="<base directory the skill tool reported>"
 |---|---|
 | Read / Write / Edit / Bash | `read` / `write` / `edit` / `bash` (same semantics) |
 | Glob / Grep | `glob` / `grep` (native) |
-| Skill (invoke a skill) | the native `skill` tool: `skill({name: "<name>"})` — loop-spec skill names are unchanged; users invoke via the generated `/loop-spec/<name>` commands (the CC `/loop-spec:<name>` analogue), the skill tool, or `/loop-debug` for the one-shot command |
-| Agent (one-shot subagent) | the native `task` tool — SAME parameter shape `{description, prompt, subagent_type}`; see the dispatch mapping rule below |
+| Skill (invoke a skill) | the native `skill` tool: `skill({name: "loop-spec-<name>"})`; generated adapters load this contract and then the source skill without occupying generic user skill names. Users normally invoke `/loop-spec/<name>` (the CC `/loop-spec:<name>` analogue) or `/loop-debug` |
+| Agent (one-shot subagent) | the native `task` tool — `{description, prompt, subagent_type}`; unlike Claude Code, `subagent_type` is REQUIRED; see the dispatch mapping rule below |
 | Teams (named `Agent` spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` under opencode (`lib/teams-capability.sh`); the task tool is one-shot only |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |
 | TaskCreate / TaskUpdate / TaskList / TaskGet | none with that shape — opencode's `todowrite` is a flat checklist (no deps/metadata). DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` (same rule as pi) |
-| AskUserQuestion | the native `question` tool (multi-question, options — near-identical shape); autonomous: self-answer per `skills/shared/autonomous-mode.md`, unchanged |
+| AskUserQuestion | the native `question` tool. Preserve `questions`, `question`, `header`, and option objects, but rename Claude Code's `multiSelect` field to OpenCode's `multiple`; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under opencode — skip rescue steps entirely |
 | EnterWorktree | `git worktree add` via bash (the skills already script this path) |
 
@@ -81,6 +81,15 @@ native `task` tool:
   from the generated agent file (default: inherit the session model; pin by
   editing `model: provider/model` there). The `model-matrix.md` aliases are
   Claude Code-only.
+
+OpenCode's `task` schema always requires `subagent_type`; it has no generic
+default-agent form. When a Claude Code dispatch intentionally omits that field,
+choose the generated agent matching the prompt's role. In particular, the
+generic EXECUTE dispatches in `execute-subagent.md` map implementer prompts to
+`loop-spec-implementer` and review prompts to
+`loop-spec-spec-compliance-reviewer`. The generated OpenCode agents do not carry
+Claude Code's `isolation: worktree`, so this does not create the nested worktree
+that the Claude Code instructions are avoiding.
 
 If a `task` call fails because the agent id is unknown, the agents were not
 installed — fall back to performing the prompt inline after reading the
@@ -107,6 +116,13 @@ overrides are still honored, but values must be opencode ids — Claude Code
 aliases like `sonnet`/`opus` mean nothing to opencode
 (`skills/shared/model-matrix.md`).
 
+Inside the Plugin API and SDK, that same selection is represented as
+`{providerID, modelID}`. The bridge injects only OpenCode's neutral text-part
+shape and never branches on either value; OpenCode performs the provider wire
+conversion. Continuations should omit `model` to inherit both values from the
+session. If a model is explicitly selected through the SDK, pass both fields —
+never treat `modelID` alone as globally unique.
+
 ## Both run modes (parity map)
 
 | Claude Code | opencode |
@@ -115,7 +131,8 @@ aliases like `sonnet`/`opus` mean nothing to opencode
 | `claude -p` headless / autonomous mode | `opencode run --format json "<prompt>"` (or the SDK: `createOpencode()` / `createOpencodeClient()` from `@opencode-ai/sdk`, then `client.session.prompt(...)` against `opencode serve`) with `LOOP_SPEC_AUTONOMOUS=1` |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `opencode run --format json` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli opencode` (see `skills/shared/execute-loop-fleet.md`) |
 
-Headless permission note: `opencode run` auto-REJECTS permission asks;
-loop-spec's fleet passes `--auto` on work ticks (approve what is not
-explicitly denied — the acceptEdits analogue) and `--agent plan` on
-read-only judge/compiler ticks.
+Headless permission note: `opencode run` rejects permission asks. Work ticks do
+not pass `--auto`: normal in-worktree build-agent edits remain allowed, while
+external-directory and other sensitive asks fail closed. Read-only
+judge/compiler ticks select the installer-provided `--agent
+loop-spec-readonly`, whose permissions deny all tools except read/glob/grep.

@@ -2,6 +2,32 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.19.2]
+
+### Fixed - OpenCode plugin and provider compatibility
+
+- Made hook context, project paths, and active skill directories session-local;
+  synchronized SessionStart context with the first prompt; parsed multiline
+  hook JSON; and excluded child sessions from root-only lifecycle hooks.
+- Kept injected messages provider-neutral and covered Anthropic, OpenAI, and
+  Google model tuples. Added safe stdin handling, unique part IDs, bounded hook
+  process groups, and fail-closed handling for unknown sessions.
+- Generated namespaced `loop-spec-<name>` skill adapters so loop-spec no longer
+  shadows user skills, and embedded the OpenCode adaptation contract so direct
+  and command-driven invocation use the documented `question`, `task`, and model
+  shapes without external-directory reads.
+- Hardened installation and removal with collision-safe generated files,
+  identity-checked manifests, traversal protection, legacy-layout migration,
+  and preservation of modified or replaced files. The incomplete `--copy` mode
+  is now rejected instead of producing a broken installation.
+- Converted generated agents to documented deny-by-default `permission` rules
+  and added a dedicated `loop-spec-readonly` agent for compiler and judge passes.
+  Headless OpenCode runs no longer auto-approve permission asks, and invalid
+  Claude model aliases are omitted so the configured provider/model is inherited.
+- Added executable plugin, installer, migration, permission, provider, and
+  headless regression coverage; validated discovery and agent permissions live
+  against OpenCode 1.17.20.
+
 ## [2.19.1]
 
 ### Fixed — opencode: skills were invisible in the "/" slash menu

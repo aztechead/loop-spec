@@ -144,10 +144,11 @@ loop-runner's `--agent-cli pi` backend drives.
 ## opencode harness (native near-equivalents)
 
 Under opencode (`lib/harness.sh detect` == `opencode`) most CC tools have
-NATIVE counterparts with near-identical shapes: `Agent` → `task` (SAME
-`{description, prompt, subagent_type}` parameters; agent ids are
-`loop-spec-<role>`, hyphen not colon), `AskUserQuestion` → `question`,
-`Skill` → `skill({name})`, Read/Write/Edit/Bash/Glob/Grep → their lowercase
+NATIVE counterparts with near-identical shapes: `Agent` → `task`
+(`{description, prompt, subagent_type}` parameters; `subagent_type` is required
+and agent ids are `loop-spec-<role>`, hyphen not colon), `AskUserQuestion` →
+`question` (rename `multiSelect` to `multiple`),
+`Skill` → `skill({name: "loop-spec-<name>"})`, Read/Write/Edit/Bash/Glob/Grep → their lowercase
 twins. Teams tools, `Workflow`, `TaskCreate`/`TaskUpdate`, and `ToolSearch`
 still do not exist — apply the substitution table and dispatch mapping rule
 in `skills/shared/opencode-harness.md`. Headless dispatch goes through

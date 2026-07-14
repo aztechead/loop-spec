@@ -486,12 +486,11 @@ def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
       - session_id: `sessionID` of the first event; resume passes --session <id>
       - cost_usd:   summed step_finish part.cost, else None (callers already
                     treat None as "unknown", not "free")
-      - permission_mode "plan" (read-only judge / compiler) -> --agent plan:
-        opencode's built-in plan agent denies edits, and headless runs
-        auto-REJECT any permission that would ask — together the strongest
-        read-only guarantee opencode offers headlessly. All other modes pass
-        --auto (auto-approve permissions not explicitly denied), the moral
-        equivalent of the fleet's acceptEdits under claude -p.
+      - permission_mode "plan" (read-only judge / compiler) selects the
+        installer-provided loop-spec-readonly agent, which denies every tool
+        except read/glob/grep. Work ticks do not pass --auto: ordinary in-tree
+        edits remain allowed by the build agent, while permission asks fail
+        closed instead of approving external-directory or other sensitive work.
       - claude-only knobs are ignored here: allowed_tools, fallback_model,
         retry_watchdog. Models must be opencode ids (provider/model, e.g.
         anthropic/claude-sonnet-4-5). opencode-specific flags go through
@@ -499,15 +498,35 @@ def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     """
     bin_ = cfg.resolved_agent_bin()
     mode = permission_mode or cfg.permission_mode
+    if mode == "plan":
+        try:
+            probe = subprocess.run(
+                [bin_, "debug", "agent", "loop-spec-readonly"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"ok": False,
+                    "error": f"cannot validate required loop-spec-readonly agent: {exc}",
+                    "turns": 0, "session_id": resume, "result": ""}
+        if probe.returncode != 0:
+            detail = (probe.stderr or "").strip()
+            suffix = f": {detail[:500]}" if detail else ""
+            return {"ok": False,
+                    "error": "required OpenCode agent loop-spec-readonly is not installed" + suffix,
+                    "turns": 0, "session_id": resume, "result": ""}
     cmd = [bin_, "run", "--format", "json"]
     if resume:
         cmd += ["--session", str(resume)]
-    if cfg.model:
+    # OpenCode IDs are provider/model. Claude aliases from feature.models are
+    # invalid here; omit them to inherit the configured session/default model.
+    if cfg.model and "/" in cfg.model:
         cmd += ["--model", cfg.model]
     if mode == "plan":
-        cmd += ["--agent", "plan"]
-    else:
-        cmd += ["--auto"]
+        cmd += ["--agent", "loop-spec-readonly"]
     cmd += list(cfg.extra_args)
     cmd += [prompt]
 

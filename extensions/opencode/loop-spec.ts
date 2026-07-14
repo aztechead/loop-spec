@@ -1,116 +1,117 @@
 /**
- * loop-spec opencode plugin — bridges the Claude Code plugin surface onto
- * opencode (https://opencode.ai), so the same bash/jq/python3 machinery runs
- * under both harnesses from one source tree.
+ * loop-spec OpenCode plugin.
  *
- * Unlike pi, opencode natively provides most of what loop-spec needs: skills
- * load through the Agent Skills standard (`skill` tool; `.opencode/skills/`
- * and `~/.config/opencode/skills/` discovery), one-shot subagents exist
- * (`task` tool with the same {description, prompt, subagent_type} shape as
- * Claude Code's Agent tool), commands live in `commands/`, and questions go
- * through the `question` tool. What this plugin bridges is the remaining CC
- * plugin surface, each via a hook documented at https://opencode.ai/docs/plugins/:
+ * Bridges the Claude Code environment and lifecycle hooks used by loop-spec
+ * onto OpenCode's documented Plugin API:
  *
- *   CC surface                     opencode bridge here
- *   ---------------------------   ------------------------------------------
- *   ${CLAUDE_PLUGIN_ROOT}          `shell.env` hook: opencode merges the
- *                                  returned env into EVERY bash invocation
- *                                  (packages/opencode/src/tool/shell.ts
- *                                  spreads it over process.env) — the native
- *                                  equivalent of pi's command-prepend bridge
- *   ${CLAUDE_PROJECT_DIR}          same hook; the plugin input's `directory`
- *   ${CLAUDE_SKILL_DIR}            tracked: a `skill` tool call reports the
- *                                  loaded skill's dir in its result metadata
- *                                  (`tool.execute.after`), and a `read` of a
- *                                  SKILL.md sets it to that file's directory;
- *                                  both are realpath'd so a symlinked install
- *                                  (lib/opencode-install.sh) still resolves
- *                                  `${CLAUDE_SKILL_DIR}/../../lib/...`
- *   SessionStart hooks             `event` hook, session.created (top-level
- *                                  sessions only): runs the same inject
- *                                  scripts (discipline/grill/simplicity/
- *                                  rules/micro) in parallel and queues the
- *                                  collected additionalContext
- *   UserPromptSubmit hook          `chat.message` hook pipes the prompt
- *                                  through done-criteria.sh; queued context
- *                                  (inject + done-criteria) is delivered by
- *                                  appending a synthetic text part to the
- *                                  user message parts
- *   Stop hook                      `event` hook, session.idle: runs
- *                                  session-end-learnings.sh (best-effort;
- *                                  opencode has no blocking stop event)
- *   harness identity               LOOP_SPEC_HARNESS=opencode, which
- *                                  lib/harness.sh treats as authoritative
+ *   Claude Code surface       OpenCode bridge
+ *   -----------------------   -----------------------------------------------
+ *   CLAUDE_* environment      shell.env
+ *   active skill directory    tool.execute.after metadata from skill/read
+ *   SessionStart              session.created + first chat.message barrier
+ *   UserPromptSubmit          chat.message
+ *   Stop (best effort)        session.idle
  *
- * NOT bridged (no opencode equivalent exists; skills degrade by contract
- * instead — see skills/shared/opencode-harness.md): agent teams (SendMessage,
- * named teammates), the Workflow tool, TaskCreate/TaskUpdate task lists, and
- * the blocking Stop guards (stop-deflection-guard.sh, adhoc-verify-guard.sh —
- * session.idle is fire-and-forget and cannot veto).
+ * OpenCode can run root and child sessions concurrently, and event callback
+ * promises are not awaited by the runtime. Mutable state is therefore keyed by
+ * sessionID, and chat.message awaits its own SessionStart initialization.
+ * Injected context is an OpenCode text part, not provider wire-format content,
+ * so OpenCode can translate it for Anthropic, OpenAI, Google, local models,
+ * gateways, and other providers.
  *
- * Deliberately dependency-free: node builtins only, hook inputs typed as
- * `any`, so loading never requires an npm/bun install. Every bridge is
- * wrapped fail-open — a broken hook script must never take the session down
- * (same trap-'exit 0' contract the bash hooks follow under Claude Code).
+ * Deliberately dependency-free: node builtins only. This .ts file also remains
+ * valid JavaScript so the offline suite can execute it with stock node.
  */
 
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-// realpathSync: the installer symlinks this file into
-// <config>/plugins/loop-spec.ts; resolving the link recovers the real
-// package root so hook-script paths and CLAUDE_PLUGIN_ROOT stay correct.
+// The installer symlinks this file into the OpenCode config directory.
+// Resolving that link recovers the package root for bundled hook paths.
 const SELF = (() => {
-  const p = fileURLToPath(import.meta.url);
+  const filename = fileURLToPath(import.meta.url);
   try {
-    return fs.realpathSync(p);
+    return fs.realpathSync(filename);
   } catch {
-    return p;
+    return filename;
   }
 })();
 const PKG_ROOT = path.resolve(path.dirname(SELF), "..", "..");
 const HOOK_TIMEOUT_MS = 15000;
+const SESSION_START_SCRIPTS = [
+  "hooks/team/discipline-inject.sh",
+  "hooks/team/grill-inject.sh",
+  "hooks/team/simplicity-inject.sh",
+  "hooks/team/rules-inject.sh",
+  "hooks/team/micro-inject.sh",
+];
 
-/** Run one bundled CC hook script (async — never blocks opencode's event
- *  loop) and resolve to its additionalContext, or null on any failure
- *  (fail-open). */
-function runHook(
-  scriptRel: string,
-  stdinPayload: object | null,
-  cwd: string
-): Promise<string | null> {
+/** Run a bundled hook and return additionalContext, failing open. */
+function runHook(scriptRel, stdinPayload, cwd, env = {}) {
   return new Promise((resolve) => {
     try {
       const script = path.join(PKG_ROOT, scriptRel);
-      const proc = spawn("bash", [script], { cwd, env: process.env });
+      const proc = spawn("bash", [script], {
+        cwd,
+        env: { ...process.env, ...env },
+        detached: process.platform !== "win32",
+      });
       let out = "";
-      const timer = setTimeout(() => {
+      let settled = false;
+      let timer;
+      const settle = (value) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolve(value);
+      };
+      timer = setTimeout(() => {
         try {
-          proc.kill("SIGKILL");
+          if (process.platform !== "win32" && proc.pid) {
+            process.kill(-proc.pid, "SIGKILL");
+          } else {
+            proc.kill("SIGKILL");
+          }
         } catch {
           /* already gone */
         }
-        resolve(null);
+        settle(null);
       }, HOOK_TIMEOUT_MS);
-      proc.stdout.on("data", (d: unknown) => (out += String(d)));
-      proc.on("error", () => {
-        clearTimeout(timer);
-        resolve(null);
-      });
-      proc.on("close", (code: number | null) => {
-        clearTimeout(timer);
-        if (code !== 0 || !out.trim()) return resolve(null);
+      proc.stdout.on("data", (data) => (out += String(data)));
+      // Some hooks exit before reading stdin. Swallow EPIPE but keep the
+      // close/timeout lifecycle active so a child that merely closed stdin
+      // cannot outlive the 15-second bound.
+      proc.stdin.on("error", () => {});
+      proc.on("error", () => settle(null));
+      proc.on("close", (code) => {
+        if (settled) return;
+        if (code !== 0 || !out.trim()) return settle(null);
         try {
-          // Hooks emit a single JSON object; tolerate leading noise by parsing
-          // the last non-empty line (matches how CC consumes hook stdout).
-          const lines = out.trim().split("\n");
-          const parsed = JSON.parse(lines[lines.length - 1]);
-          const ctx = parsed?.hookSpecificOutput?.additionalContext;
-          resolve(typeof ctx === "string" && ctx.length > 0 ? ctx : null);
+          // jq emits pretty-printed multiline JSON. If a hook logged first,
+          // retry from each line that could begin the final JSON object.
+          const trimmed = out.trim();
+          let parsed;
+          try {
+            parsed = JSON.parse(trimmed);
+          } catch {
+            const lines = trimmed.split("\n");
+            for (let i = lines.length - 1; i >= 0; i -= 1) {
+              if (!lines[i].trimStart().startsWith("{")) continue;
+              try {
+                parsed = JSON.parse(lines.slice(i).join("\n"));
+                break;
+              } catch {
+                /* keep looking */
+              }
+            }
+          }
+          const context = parsed?.hookSpecificOutput?.additionalContext;
+          settle(typeof context === "string" && context ? context : null);
         } catch {
-          resolve(null); // fail-open: injection is an accelerator, never a gate
+          settle(null);
         }
       });
       if (stdinPayload) proc.stdin.write(JSON.stringify(stdinPayload));
@@ -121,96 +122,170 @@ function runHook(
   });
 }
 
-export const LoopSpecPlugin = async (input: any) => {
-  const projectDir: string = input?.directory || process.cwd();
+export const LoopSpecPlugin = async (input) => {
+  const projectDir = input?.directory || process.cwd();
 
-  // Harness identity + plugin root on our own process env too (opencode
-  // spawns bash from this process; shell.env below is the guaranteed path).
+  // Immutable package identity is safe process-wide. Project and skill values
+  // are intentionally supplied per subprocess through hookEnv below.
   process.env.LOOP_SPEC_HARNESS = "opencode";
   process.env.CLAUDE_PLUGIN_ROOT = PKG_ROOT;
-  process.env.CLAUDE_PROJECT_DIR = projectDir;
 
-  // Context queued by bridged hooks, delivered on the next user message
-  // (opencode's equivalent of CC's additionalContext injection point).
-  let pendingContext: string[] = [];
-  // Sessions this plugin has already run the SessionStart bridge for.
-  const startedSessions = new Set<string>();
+  const sessionStates = new Map();
+  let partSequence = 0;
 
-  /** Track the active skill directory. Under opencode a skill loads through
-   *  the native `skill` tool (result metadata carries the dir) or by reading
-   *  its SKILL.md; the last one wins — exactly what ${CLAUDE_SKILL_DIR} means
-   *  in the skill bodies. realpath resolves symlinked installs. */
-  function setSkillDir(dir: string) {
+  function stateFor(sessionID) {
+    const key = typeof sessionID === "string" && sessionID
+      ? sessionID
+      : "__default__";
+    let state = sessionStates.get(key);
+    if (!state) {
+      state = {
+        id: key,
+        projectDir,
+        skillDir: null,
+        topLevel: undefined,
+        initPromise: null,
+        pendingContext: [],
+      };
+      sessionStates.set(key, state);
+    }
+    return state;
+  }
+
+  function applySessionInfo(state, info) {
+    if (!info || typeof info !== "object") return;
+    if (typeof info.directory === "string" && info.directory) {
+      state.projectDir = info.directory;
+    }
+    state.topLevel = !info.parentID;
+  }
+
+  async function resolveState(sessionID) {
+    const state = stateFor(sessionID);
+    if (state.topLevel !== undefined || state.id === "__default__") return state;
     try {
-      process.env.CLAUDE_SKILL_DIR = fs.realpathSync(dir);
+      const response = await input?.client?.session?.get?.({
+        path: { id: state.id },
+      });
+      const info = response?.data;
+      if (info?.id === state.id) applySessionInfo(state, info);
     } catch {
-      process.env.CLAUDE_SKILL_DIR = dir;
+      /* event data is preferred; leave root/child classification unknown */
+    }
+    return state;
+  }
+
+  function hookEnv(state, sessionID) {
+    const env = {
+      LOOP_SPEC_HARNESS: "opencode",
+      CLAUDE_PLUGIN_ROOT: PKG_ROOT,
+      CLAUDE_PROJECT_DIR: state.projectDir,
+    };
+    if (state.skillDir) env.CLAUDE_SKILL_DIR = state.skillDir;
+    if (sessionID) {
+      env.CLAUDE_CODE_SESSION_ID = sessionID;
+      env.CLAUDE_SESSION_ID = sessionID;
+    }
+    return env;
+  }
+
+  function initializeSession(state) {
+    if (state.topLevel === false) return Promise.resolve();
+    if (state.initPromise) return state.initPromise;
+    state.topLevel = true;
+    state.initPromise = Promise.all(
+      SESSION_START_SCRIPTS.map((script) =>
+        runHook(script, null, state.projectDir, hookEnv(state, state.id))
+      ),
+    ).then((injected) => {
+      for (const context of injected) {
+        if (context) state.pendingContext.push(context);
+      }
+    }).catch(() => {
+      /* fail-open */
+    });
+    return state.initPromise;
+  }
+
+  function setSkillDir(state, dir) {
+    try {
+      state.skillDir = fs.realpathSync(dir);
+    } catch {
+      state.skillDir = dir;
     }
   }
 
   return {
-    /** Env delivery into every bash call — the documented `shell.env` plugin
-     *  hook; opencode merges output.env over process.env for the child. */
-    "shell.env": async (_input: any, output: any) => {
+    // OpenCode mutates this output object into each shell process environment.
+    "shell.env": async (hookInput, output) => {
       try {
-        output.env.LOOP_SPEC_HARNESS = "opencode";
-        output.env.CLAUDE_PLUGIN_ROOT = PKG_ROOT;
-        output.env.CLAUDE_PROJECT_DIR =
-          process.env.CLAUDE_PROJECT_DIR || projectDir;
-        if (process.env.CLAUDE_SKILL_DIR) {
-          output.env.CLAUDE_SKILL_DIR = process.env.CLAUDE_SKILL_DIR;
-        }
+        const state = await resolveState(hookInput?.sessionID);
+        Object.assign(output.env, hookEnv(state, hookInput?.sessionID));
       } catch {
         /* fail-open */
       }
     },
 
-    "tool.execute.after": async (inp: any, output: any) => {
+    "tool.execute.after": async (hookInput, output) => {
       try {
-        // Native skill tool: metadata is {name, dir} (opencode's SkillTool).
-        if (inp?.tool === "skill") {
+        const state = await resolveState(hookInput?.sessionID);
+        if (hookInput?.tool === "skill") {
           const dir = output?.metadata?.dir;
-          if (typeof dir === "string" && dir) setSkillDir(dir);
+          const name = output?.metadata?.name;
+          if (typeof name === "string" && name.startsWith("loop-spec-")) {
+            const sourceDir = path.join(PKG_ROOT, "skills", name.slice("loop-spec-".length));
+            if (fs.existsSync(path.join(sourceDir, "SKILL.md"))) {
+              setSkillDir(state, sourceDir);
+              return;
+            }
+          }
+          if (typeof dir === "string" && dir) setSkillDir(state, dir);
           return;
         }
-        // Cross-skill SKILL.md reads shift the active dir, same as under pi
-        // (skills/shared/pi-harness.md documents the re-export rule).
-        if (inp?.tool === "read") {
-          const p = inp?.args?.filePath ?? inp?.args?.path;
-          if (typeof p !== "string" || path.basename(p) !== "SKILL.md") return;
-          const abs = path.isAbsolute(p)
-            ? p
-            : path.resolve(process.env.CLAUDE_PROJECT_DIR || projectDir, p);
-          setSkillDir(path.dirname(abs));
+        if (hookInput?.tool === "read") {
+          const filename = hookInput?.args?.filePath ?? hookInput?.args?.path;
+          if (typeof filename !== "string" || path.basename(filename) !== "SKILL.md") return;
+          const absolute = path.isAbsolute(filename)
+            ? filename
+            : path.resolve(state.projectDir, filename);
+          setSkillDir(state, path.dirname(absolute));
         }
       } catch {
         /* fail-open */
       }
     },
 
-    /** UserPromptSubmit bridge + queued-context delivery. */
-    "chat.message": async (inp: any, output: any) => {
+    "chat.message": async (hookInput, output) => {
       try {
-        const parts: any[] = Array.isArray(output?.parts) ? output.parts : [];
-        const promptText = parts
-          .filter((p) => p?.type === "text" && typeof p?.text === "string")
-          .map((p) => p.text)
+        const state = await resolveState(hookInput?.sessionID);
+        // OpenCode does not await event hooks. This is the ordering barrier that
+        // guarantees SessionStart context reaches the first root-session turn.
+        if (state.topLevel === true) await initializeSession(state);
+
+        const parts = Array.isArray(output?.parts) ? output.parts : [];
+        const prompt = parts
+          .filter((part) =>
+            part?.type === "text" &&
+            part?.synthetic !== true &&
+            typeof part?.text === "string"
+          )
+          .map((part) => part.text)
           .join("\n");
         const injected = await runHook(
           "hooks/team/done-criteria.sh",
-          { prompt: promptText },
-          process.env.CLAUDE_PROJECT_DIR || projectDir
+          { prompt },
+          state.projectDir,
+          hookEnv(state, hookInput?.sessionID),
         );
-        if (injected) pendingContext.push(injected);
+        if (injected) state.pendingContext.push(injected);
 
-        if (pendingContext.length === 0) return;
-        const content = pendingContext.join("\n\n");
-        pendingContext = [];
-        // Synthetic text part appended to the user message — directives for
-        // the model, marked synthetic so UIs can de-emphasize it.
+        if (state.pendingContext.length === 0) return;
+        const content = state.pendingContext.splice(0).join("\n\n");
+        // This is OpenCode's provider-neutral persisted Part shape. Do not
+        // construct Anthropic, OpenAI, Google, or gateway messages directly.
         parts.push({
-          id: `prt_loopspec${Date.now().toString(36)}`,
-          sessionID: inp?.sessionID ?? output?.message?.sessionID ?? "",
+          id: `prt_loopspec${randomBytes(12).toString("hex")}${(partSequence += 1).toString(36)}`,
+          sessionID: hookInput?.sessionID ?? output?.message?.sessionID ?? "",
           messageID: output?.message?.id ?? "",
           type: "text",
           text: `<loop-spec-context>\n${content}\n</loop-spec-context>`,
@@ -221,43 +296,33 @@ export const LoopSpecPlugin = async (input: any) => {
       }
     },
 
-    event: async ({ event }: any) => {
+    event: async ({ event }) => {
       try {
-        // SessionStart bridge: top-level sessions only (subagent sessions
-        // carry parentID and must not re-trigger the inject scripts).
         if (event?.type === "session.created") {
           const info = event?.properties?.info ?? {};
-          if (info?.parentID) return;
-          const id = typeof info?.id === "string" ? info.id : "";
-          if (id && startedSessions.has(id)) return;
-          if (id) startedSessions.add(id);
-          const cwd =
-            typeof info?.directory === "string" && info.directory
-              ? info.directory
-              : projectDir;
-          process.env.CLAUDE_PROJECT_DIR = cwd;
-          // Parallel: session start pays for the slowest hook, not the sum.
-          const injected = await Promise.all(
-            [
-              "hooks/team/discipline-inject.sh",
-              "hooks/team/grill-inject.sh",
-              "hooks/team/simplicity-inject.sh",
-              "hooks/team/rules-inject.sh",
-              "hooks/team/micro-inject.sh",
-            ].map((script) => runHook(script, null, cwd))
-          );
-          for (const c of injected) if (c) pendingContext.push(c);
+          const state = stateFor(info?.id);
+          applySessionInfo(state, info);
+          if (state.topLevel === false) return;
+          // Store the promise synchronously before the first await. A concurrent
+          // chat.message call will await this exact initialization.
+          await initializeSession(state);
           return;
         }
 
-        // Stop bridge: fire-and-forget learnings pass when a top-level
-        // session goes idle (opencode's closest analogue to CC's Stop hook).
+        if (event?.type === "session.deleted") {
+          sessionStates.delete(event?.properties?.info?.id);
+          return;
+        }
+
         if (event?.type === "session.idle") {
           const sessionID = event?.properties?.sessionID ?? "opencode-session";
+          const state = await resolveState(sessionID);
+          if (state.topLevel !== true) return;
           await runHook(
             "hooks/team/session-end-learnings.sh",
             { session_id: sessionID, transcript_path: "" },
-            process.env.CLAUDE_PROJECT_DIR || projectDir
+            state.projectDir,
+            hookEnv(state, sessionID),
           );
         }
       } catch {
