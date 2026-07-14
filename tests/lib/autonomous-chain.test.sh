@@ -27,6 +27,7 @@ FEAT="$WORK/feat"
 
 write_feature() {
   # write_feature <autonomous> <phase> <warnings_json>
+  rm -f "$FEAT/delivery.json"
   jq -n --argjson a "$1" --arg p "$2" --argjson w "$3" \
     '{autonomous: $a, currentPhase: $p, warnings: $w}' > "$FEAT/feature.json"
 }
@@ -57,6 +58,17 @@ write_feature true completed '["some-other-warning: x"]'
 out="$(bash "$SCRIPT" should-chain "$FEAT")"
 check "no gaps reason" "no-budget-spent-gaps" "$(reason_of "$out")"
 
+# New delivery-aware state fails closed unless the PR reached ready-for-review.
+write_feature true completed '["iterate-budget-spent: gap"]'
+jq '.delivery = {status:"checks-failed", targets:[]}' "$FEAT/feature.json" > "$FEAT/feature.json.tmp"
+mv "$FEAT/feature.json.tmp" "$FEAT/feature.json"
+out="$(bash "$SCRIPT" should-chain "$FEAT")"
+check "incomplete delivery does not chain" "false" "$(chain_of "$out")"
+check "incomplete delivery reason" "delivery-incomplete" "$(reason_of "$out")"
+
+# Missing delivery remains compatible with completed schema-7 runs created before DELIVER.
+write_feature true completed '["iterate-budget-spent: gap"]'
+
 # gaps present but backlog empty
 write_feature true completed '["iterate-budget-spent: csv gap"]'
 out="$(bash "$SCRIPT" should-chain "$FEAT")"
@@ -65,10 +77,18 @@ check "empty backlog reason" "backlog-empty" "$(reason_of "$out")"
 # happy path: gap queued, chain with the entry
 gid="$(bash "$BACKLOG" gap-id "close the csv gap")"
 bash "$BACKLOG" add feat-x iterate-gap "close the csv gap" --id "$gid" >/dev/null
+jq '.delivery = {status:"ready-for-review", targets:[]}' "$FEAT/feature.json" > "$FEAT/feature.json.tmp"
+mv "$FEAT/feature.json.tmp" "$FEAT/feature.json"
 out="$(bash "$SCRIPT" should-chain "$FEAT")"
 check "chains when eligible" "true" "$(chain_of "$out")"
 check "chain carries entry text" "close the csv gap" "$(jq -r '.entry.text' <<<"$out")"
 check "chain carries entry id" "$gid" "$(jq -r '.entry.id' <<<"$out")"
+
+# Successful delivery is local sidecar state; tracked feature.json remains at DELIVER.
+write_feature true deliver '["iterate-budget-spent: csv gap"]'
+jq -n '{schema:1,status:"ready-for-review",nextPhase:"completed",targets:[]}' > "$FEAT/delivery.json"
+out="$(bash "$SCRIPT" should-chain "$FEAT")"
+check "sidecar completion chains" "true" "$(chain_of "$out")"
 
 # bound: completed >= LOOP_SPEC_MAX_FEATURES stops the chain
 out="$(bash "$SCRIPT" should-chain "$FEAT" --completed 1)"
@@ -116,6 +136,8 @@ qchain() { # qchain <completed> <metrics> [env...]
 }
 
 write_feature true completed '[]'
+jq '.delivery = {status:"ready-for-review", targets:[]}' "$FEAT/feature.json" > "$FEAT/feature.json.tmp"
+mv "$FEAT/feature.json.tmp" "$FEAT/feature.json"
 out="$(qchain 0 l0.json)"
 check "queue: L0 first item chains" "true" "$(chain_of "$out")"
 check "queue: entry is the queue head" "q-1" "$(jq -r '.entry.id' <<<"$out")"

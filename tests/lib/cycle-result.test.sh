@@ -28,11 +28,15 @@ FIXTURE_FJ="$(jq -n '{
   schemaVersion: 7,
   slug: "my-feature",
   feature_title: "Add rate limiting",
-  currentPhase: "iterate",
+  currentPhase: "completed",
   branch: "feat/my-feature",
   baseBranch: "main",
-  prUrl: null,
+  prUrl: "https://github.com/test/repo/pull/1",
   checkpointPrUrl: null,
+  delivery: {status:"ready-for-review",attemptedAt:"2026-01-01T01:00:00Z",
+    finishedAt:"2026-01-01T01:05:00Z",targets:[{name:"my-feature",ok:true,
+      outcome:"delivered",targetSha:"abc",remoteSha:"abc",headSha:"abc",
+      prUrl:"https://github.com/test/repo/pull/1",checks:{status:"passed"}}]},
   autonomous: false,
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T01:00:00Z",
@@ -54,6 +58,7 @@ check "A: iterations.max=10" "10" "$(jq '.iterations.max' "$FEAT_DIR/result.json
 check "A: branch" "feat/my-feature" "$(jq -r '.branch' "$FEAT_DIR/result.json")"
 check "A: baseBranch" "main" "$(jq -r '.baseBranch' "$FEAT_DIR/result.json")"
 check "A: finishedAt present" "1" "$([[ "$(jq -r '.finishedAt' "$FEAT_DIR/result.json")" != "null" ]] && echo 1 || echo 0)"
+check "A: delivery status exposed" "ready-for-review" "$(jq -r '.delivery.status' "$FEAT_DIR/result.json")"
 
 # Case B: converged=true with empty warnings
 check "B: converged=true on clean completion" "true" "$(jq '.converged' "$FEAT_DIR/result.json")"
@@ -130,6 +135,18 @@ printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 ec=0
 bash "$LIB" write "$FEAT_DIR" >/dev/null 2>&1 || ec=$?
 check "L: missing --status exits 0" "0" "$ec"
+
+# Case M: successful DELIVER sidecar supplies logical completion without changing HEAD state.
+printf '%s\n' "$(jq '.currentPhase = "deliver" | .prUrl = null | .delivery = {status:"pending",targets:[]}' \
+  <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed",
+  prUrl:"https://github.com/sidecar/pr/9",attemptedAt:"2026-01-01T01:00:00Z",
+  finishedAt:"2026-01-01T01:05:00Z",targets:[{name:"my-feature",ok:true}]}' \
+  > "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+check "M: sidecar advances logical phase" "completed" "$(jq -r '.phaseReached' "$FEAT_DIR/result.json")"
+check "M: sidecar PR exposed" "https://github.com/sidecar/pr/9" "$(jq -r '.prUrl' "$FEAT_DIR/result.json")"
+check "M: sidecar delivery exposed" "ready-for-review" "$(jq -r '.delivery.status' "$FEAT_DIR/result.json")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

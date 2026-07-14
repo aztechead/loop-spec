@@ -70,7 +70,7 @@ Non-interactive: set `LOOP_SPEC_ANSWER_REPOS=frontend,backend` to skip the confi
 - State and artifacts land at the workspace root (`.loop-spec/` and `docs/loop-spec/features/{slug}/`).
 - PLAN tasks each carry a `repo` field; `files[]` paths are workspace-relative (`<repo>/<path>`). Cross-repo work splits across multiple tasks with `blockedBy` edges.
 - EXECUTE is capped at the subagent rung (team/loop-fleet/Workflow rungs are single-repo only in v1).
-- VERIFY pushes and opens one PR per repo that has commits; repos with no commits are left untouched.
+- VERIFY commits evidence without pushing. DELIVER then opens or reuses one PR per changed repo, binds it to the exact checked SHA, waits for required checks, and persists every per-repo result; repos with no commits are recorded as skipped.
 
 ### In-place branch caveat
 

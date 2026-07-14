@@ -63,7 +63,7 @@ export CLAUDE_SKILL_DIR="<base directory the skill tool reported>"
 | TaskCreate / TaskUpdate / TaskList / TaskGet | none with that shape — opencode's `todowrite` is a flat checklist (no deps/metadata). DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` (same rule as pi) |
 | AskUserQuestion | the native `question` tool. Preserve `questions`, `question`, `header`, and option objects, but rename Claude Code's `multiSelect` field to OpenCode's `multiple`; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under opencode — skip rescue steps entirely |
-| EnterWorktree | `git worktree add` via bash (the skills already script this path) |
+| EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd. |
 
 ## Dispatch mapping rule (every one-shot `Agent` call)
 
@@ -96,8 +96,11 @@ installed — fall back to performing the prompt inline after reading the
 role's charter (`agents/<role>.md`), exactly like the pi inline dispatch
 rule, and tell the user to run `bash lib/opencode-install.sh install`.
 
-Gates, artifacts, worktree layout, and the `feature.json` schema DO NOT
-CHANGE — only the tool name and agent id spelling do.
+Gates, artifacts, and delivery semantics do not change. The additive OpenCode
+execution-root branch is intentionally in-place because its tools remain rooted at the
+session directory; `feature.json.executionRootMode` records that difference. DELIVER
+still calls the same explicit-path `lib/deliver.sh` / `lib/pr-delivery.sh` controller as
+Claude Code.
 
 ## Startup probes
 
@@ -110,13 +113,42 @@ on their own.
 
 ## Model routing
 
-opencode model ids are `provider/model` (e.g. `anthropic/claude-sonnet-4-5`).
-Loop-fleet rungs pass them via `--model`; the `LOOP_SPEC_MODEL_<ROLE>`
-overrides are still honored, but values must be opencode ids — Claude Code
-aliases like `sonnet`/`opus` mean nothing to opencode
-(`skills/shared/model-matrix.md`).
+OpenCode model ids are `provider/model`. Generated loop-spec subagents inherit the
+current session model unless explicitly routed, so one run can use multiple logged-in
+providers without changing its primary model. Install-wide routes are OpenCode-only:
 
-Inside the Plugin API and SDK, that same selection is represented as
+```bash
+bash lib/opencode-install.sh install \
+  --model adversarial=github-copilot/<frontier-model> \
+  --model planner=google-vertex-anthropic/<opus-model>
+```
+
+`adversarial` pins `challenger`, `iterate-judge`, `code-reviewer`, and
+`security-reviewer`. Any agent role name is accepted as an explicit route; an explicit
+role wins over the group shorthand. Unrouted roles continue inheriting the session
+provider/model. Routes are persisted in `loop-spec-install.json.modelRoutes` and written
+as native `model: provider/model` fields in generated agent files.
+
+For a project-only override, OpenCode's normal config merge can override those generated
+agents without reinstalling globally:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "loop-spec-challenger": {"model": "github-copilot/<frontier-model>"},
+    "loop-spec-iterate-judge": {"model": "github-copilot/<frontier-model>"}
+  }
+}
+```
+
+The main-thread cycle/phase lead remains on the model that launched the OpenCode session;
+these routes apply to native `task` subagents. Loop-fleet subprocesses retain their
+separate `--model` routing. `LOOP_SPEC_MODEL_<ROLE>` is the Claude alias mechanism and
+must not be used for OpenCode provider selection. Restart OpenCode after reinstalling
+agents or changing project configuration; config-time files are not hot-reloaded.
+
+Inside the Plugin API and SDK, a selected model is represented as
 `{providerID, modelID}`. The bridge injects only OpenCode's neutral text-part
 shape and never branches on either value; OpenCode performs the provider wire
 conversion. Continuations should omit `model` to inherit both values from the

@@ -1,6 +1,6 @@
 ---
 name: cycle
-description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE, where ITERATE judges the result against the original goal and loops back until converged or the iteration limit is spent). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model selection is fixed. Resumes incomplete features automatically.
+description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER, where ITERATE judges against the original goal and DELIVER binds the final SHA to one CI-green PR). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model selection is fixed. Resumes incomplete features automatically.
 argument-hint: "[new] [feature description | path/to/spec.md | backlog]  (optional inline overrides: style:auto|step|interactive|review-only, autonomous)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
@@ -40,7 +40,10 @@ If a step you're about to take requires a tool not on the whitelist, stop and re
 
 ## Dispatch convention (CRITICAL)
 
-Every phase runs inside a persistent **team** of named teammates. Teammates are spawned at phase start and persist for the full phase; they are NOT one-shot dispatches that die after one reply. How the team is created depends on `.loop-spec/runtime.json.teamsMode` (set in Step 2):
+Team-capable phases run inside a persistent **team** of named teammates. SPEC, ITERATE,
+and DELIVER are main-thread phases and create no team. Teammates in the other phases are
+spawned at phase start and persist for the full phase. How the team is created depends on
+`.loop-spec/runtime.json.teamsMode` (set in Step 2):
 - **`explicit`** (CC < 2.1.178): the lead creates the roster with `TeamCreate` and tears it down with `TeamDelete` at the phase boundary.
 - **`implicit`** (CC >= 2.1.178): the session already has one team. The lead spawns each teammate directly with `Agent({name: "<teammate-name>", description, subagent_type, model, prompt})` — no `TeamCreate`, no `TeamDelete`. See **`skills/shared/implicit-team-mode.md`**.
 
@@ -53,7 +56,7 @@ Whenever a phase skill or this orchestrator says "instruct teammate X to revise"
 
 When a phase ends: in `explicit` mode call `TeamDelete` before the next phase's `TeamCreate`; in `implicit` mode there is nothing to delete — just clear `feature.json.currentTeamName` and stop messaging the phase's teammates.
 
-This rule applies in DISCUSS, PLAN, EXECUTE, VERIFY, MAP-CODEBASE, and any sub-skill called from this cycle.
+This rule applies in DISCUSS, PLAN, EXECUTE, VERIFY, MAP-CODEBASE, and their sub-skills.
 
 **Subagent depth (CC caps nested subagents at 5 levels; forked subagents count toward the cap).** loop-spec's dispatch stays well inside this: the orchestrator (depth 0) spawns phase teammates (depth 1), and a teammate may spawn at most one helper (e.g. a background mapper, depth 2). Phase teammates MUST NOT build their own deep subagent chains — if a teammate needs more fan-out, surface it to the lead rather than nesting. EXECUTE's loop-fleet rung sidesteps the cap entirely (each loop is a separate top-level `claude -p` process, not a nested subagent).
 
@@ -150,8 +153,9 @@ Announce the discovered repos, confirm participation (interactive `AskUserQuesti
 
 The mechanical scan is DONE — `.resume.candidates` in the preflight blob holds every
 schema-7, non-completed, non-stale feature, most-recently-updated first (each with
-`{slug, currentPhase, updatedAt, currentTeamName, needs_probe, worktreePath, workspace,
-teamsMode, parse_source}`); `.resume.skipped` and `.warnings` hold what was dropped and
+`{slug, currentPhase, updatedAt, currentTeamName, needs_probe, source, featureRoot,
+worktreePath, worktreeAbs, workspace, teamsMode, parse_source}`); `.resume.skipped`
+and `.warnings` hold what was dropped and
 why (unparseable both ways, `schemaVersion != 7` — loop-spec is **schema-7 only** —
 staleness). Do not re-scan the directory. What remains is the judgment the script cannot
 make:
@@ -169,16 +173,25 @@ If resumable list non-empty: present via AskUserQuestion (or skip if `LOOP_SPEC_
 - Options: each resumable feature + "New feature"
 - Autonomous mode: no question — resume the most recently updated resumable feature; if the invocation carries a new description that matches none of them, start the new feature instead. Record the choice.
 
-If user picks resume: load feature.json into memory, skip Steps 2-5, route to Step 6 — **after the re-grounding protocol below.**
+If the user picks resume, use the candidate's absolute `featureRoot` before reading any
+feature-relative path. The preflight already discovered whether state came from the
+invocation checkout or a registered feature worktree.
 
-**Resume re-grounding (MANDATORY before re-entering any phase).** A resumed session knows nothing the previous one learned, and the tree may be silently broken. Re-orient from durable state before building on it:
+1. **Adopt the execution root first.** Workspace and `executionRootMode == "in-place"`
+   features require the session cwd to equal `featureRoot`; otherwise print the absolute
+   path and stop so the harness can be relaunched there. For a Claude feature-worktree
+   candidate, call `EnterWorktree({path: worktreeAbs})`. OpenCode/pi features use the
+   clean in-place branch path and never emulate a cwd switch with `git worktree add`.
+2. Load `feature.json` from the adopted root, refresh `.loop-spec/runtime.json` with the
+   current harness probes, skip Steps 2-5, and route to Step 6 after re-grounding.
+3. Read `.loop-spec/features/{slug}/PROGRESS.md`, then run `git log --oneline -10` on the
+   feature branch (workspace mode: per repo).
+4. Run `feature.commands.test` once (workspace mode: each configured repo command). On
+   failure append the existing FULL-SHAPE resume remediation task, set
+   `currentPhase = "execute"`, and announce the redirect. Otherwise resume the recorded
+   phase, including `deliver`.
 
-1. Read `.loop-spec/features/{slug}/PROGRESS.md` (the narrative journal: what happened, what's next, gotchas). If absent (pre-2.5.0 feature), skip without warning.
-2. `git log --oneline -10` on the feature branch (workspace mode: per participating repo) — reconcile against the journal.
-3. Run `feature.commands.test` once (workspace mode: per repo with a non-empty test command). **If it fails:** do NOT re-enter the recorded phase on top of a broken tree — append a FULL-SHAPE remediation task (`subject = "Fix: test suite broken at resume"`, `verifyCommand = feature.commands.test`, `blockedBy = []`, `files = []` (unknown until diagnosed), `acceptanceCriteria = ["test suite passes"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them) to `pendingRemediationTasks[]`, set `currentPhase = "execute"`, and print one line saying resume was redirected to remediation. If it passes (or no test command is configured): continue to the recorded phase.
-- **Workspace resume (`workspace` block non-null):** resume IN PLACE at the workspace root. No worktree probe; do NOT call `EnterWorktree`. Assert that the current session cwd equals `feature.workspace.root`; if it does not, tell the user: `"cd to {feature.workspace.root} and re-invoke cycle to resume this feature."` and abort. All phase work proceeds from `workspace.root` using per-repo absolute paths.
-- **Worktree resume (`workspace == null`, `worktreePath` present):** run `git-ops.sh list-feature-worktrees` to confirm it exists, then `EnterWorktree({ path: feature.worktreePath })` before Step 6. If the worktree is gone, warn and offer to re-create or continue in-place.
-- Full algorithm: `skills/shared/cycle-resume-escalation.md`.
+Full algorithm: `skills/shared/cycle-resume-escalation.md`.
 
 ### Step 2 - Startup health-check
 
@@ -361,18 +374,58 @@ Auto-detect test/lint/typecheck commands (best effort) and confirm with the user
 
 If resuming: load feature.json into memory.
 
-If new feature: compute slug + base_sha + base_branch in the MAIN checkout, create the feature worktree, enter it, then write feature.json INSIDE the worktree:
+If new feature: resolve a clean, current base in the control checkout, then choose the
+execution-root strategy from the deterministic harness probe. Claude Code keeps native
+feature-worktree isolation. OpenCode and pi have no session-root switch, so their additive
+branch uses a clean in-place feature branch instead of pretending `git worktree add`
+changed the running session's cwd.
 
 ```bash
 slug="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" slugify "$title")"
-base_sha="$(git rev-parse HEAD)"
-base_branch="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" detect-base-branch)"
+repo_root="$workspace_root"
+harness_name="$(jq -r '.harness.name' <<<"$pf")"
 
-# a. Create worktree on feat/{slug}; b. Enter it (all writes now land on feat/{slug}).
-bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" create-feature-worktree "$slug" "$base_sha"
-EnterWorktree({ path: ".claude/worktrees/${slug}" })
-# c. Create dirs and write feature.json INSIDE the worktree.
+# Never build a feature from an unrelated dirty checkout or stale feature HEAD.
+clean_state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" ensure-clean-or-stash)"
+[[ "$clean_state" == "clean" ]] || {
+  echo "loop-spec: source checkout is dirty; commit or stash changes before starting autonomous delivery." >&2
+  exit 1
+}
+base_branch="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" detect-base-branch)"
+if git -C "$repo_root" remote get-url origin >/dev/null 2>&1; then
+  git -C "$repo_root" fetch --quiet origin "$base_branch" || {
+    echo "loop-spec: failed to fetch origin/$base_branch; refusing a stale PR base." >&2
+    exit 1
+  }
+  base_ref="origin/$base_branch"
+else
+  base_ref="$base_branch"
+fi
+base_sha="$(git -C "$repo_root" rev-parse --verify "${base_ref}^{commit}")" || {
+  echo "loop-spec: cannot resolve base branch '$base_ref'." >&2
+  exit 1
+}
+
+worktree_state_path=""
+case "$harness_name" in
+  claude)
+    worktree_abs="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" create-feature-worktree "$slug" "$base_sha")"
+    worktree_state_path=".claude/worktrees/${slug}"
+    EnterWorktree({ path: worktree_abs })
+    ;;
+  opencode|pi)
+    git -C "$repo_root" checkout -b "feat/${slug}" "$base_sha"
+    # Session cwd stays at repo_root; every later relative path remains valid.
+    ;;
+esac
+
+# Create dirs and write feature.json inside the now-active execution root.
 mkdir -p ".loop-spec/features/${slug}" .loop-spec/codebase "docs/loop-spec/features/${slug}"
+# Startup probes ran in the control checkout. Copy their local runtime cache into
+# a Claude feature worktree; in-place harnesses already point at the same file.
+if [[ -f "$repo_root/.loop-spec/runtime.json" && "$(pwd -P)" != "$(cd "$repo_root" && pwd -P)" ]]; then
+  cp "$repo_root/.loop-spec/runtime.json" .loop-spec/runtime.json
+fi
 
 # Build the full schema-7 skeleton from the single source of truth (lib/feature-init.sh).
 # Model IDs, the fixed iterate block, and the artifact scaffold all
@@ -384,7 +437,7 @@ feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --m
   --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --style "$execStyle" --title "$title" \
   --branch "feat/${slug}" --base-sha "$base_sha" --base-branch "$base_branch" \
-  --worktree ".claude/worktrees/${slug}" \
+  --worktree "$worktree_state_path" \
   --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
 
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$feature_json"
@@ -397,7 +450,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slu
 
 # Move any pre-SPEC assumed decisions (recorded during Steps 0-4) into the feature dir
 # so SPEC can render them; no-op when nothing was staged.
-bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" migrate ".loop-spec/decisions-staging" ".loop-spec/features/${slug}"
+bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" migrate \
+  "$repo_root/.loop-spec/decisions-staging" ".loop-spec/features/${slug}"
 
 #### Workspace mode Step 5 variant
 
@@ -499,30 +553,80 @@ fi
 
 The cycle does NOT create the phase team. Each phase skill owns its own team lifecycle: `TeamCreate` at phase start, `TeamDelete` + clear `currentTeamName` at phase end. This keeps team rosters phase-specific (each phase has different teammates) and avoids double-`TeamCreate` errors.
 
-For new features, `currentPhase` is initialized to `"spec"` (Step 5), so `Skill(loop-spec:spec)` is invoked first. After spec completes, `currentPhase` advances to `"discuss"`, then `"plan"`, `"execute"`, `"verify"`, then `"iterate"`, and finally `"completed"`. The `iterate` phase is the outer convergence loop: it judges the result against the original goal and may route `currentPhase` **back** to `"execute"`, `"plan"`, or (with your approval) `"spec"`/`"discuss"` to fix a gap, or forward to `"completed"` when converged or the iteration limit is spent. Because ITERATE can rewind the phase pointer, the cycle's phase loop (below) naturally re-invokes the upstream phase.
+For new features, `currentPhase` is initialized to `"spec"`. The forward chain is
+`SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER -> completed`.
+ITERATE may rewind to `execute`, `plan`, `spec`, or `discuss`; only a terminal verdict
+advances to `deliver`. DELIVER is the sole owner of push, PR reconciliation, required
+checks, and readiness.
 
 Cycle's only responsibility here is to invoke the phase skill and react to its return:
 
 1. **Invoke phase skill** (with the watchdog stamp):
+   Before invoking `deliver`, finalize every tracked pre-delivery artifact. This is the
+   final allowed branch mutation; DELIVER captures `HEAD` afterward. The guard also runs
+   on resume, so a crash immediately after ITERATE cannot bypass the final digest:
    ```bash
-   # Phase watchdog: stamp the phase start so a hung phase is detectable (resume + exit check).
-   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" currentPhaseStartedAt "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+   if [[ "$currentPhase" == "deliver" ]]; then
+     bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" auto ".loop-spec/features/${slug}" || true
+     git add .loop-spec/RULES.md .gitignore 2>/dev/null || true
+     git diff --cached --quiet -- .loop-spec/RULES.md .gitignore 2>/dev/null \
+       || git commit -m "chore: NO_JIRA retro rules for ${slug}" -- \
+         .loop-spec/RULES.md .gitignore 2>/dev/null || true
+     bash "${CLAUDE_SKILL_DIR}/../../lib/run-digest.sh" append \
+       ".loop-spec/features/${slug}" --candidate || true
+     git add "docs/loop-spec/telemetry/runs/${slug}.json" 2>/dev/null || true
+     git diff --cached --quiet -- "docs/loop-spec/telemetry/runs/${slug}.json" 2>/dev/null \
+       || git commit -m "docs: NO_JIRA run digest for ${slug}" -- \
+         "docs/loop-spec/telemetry/runs/${slug}.json" 2>/dev/null || true
+   fi
+   ```
+   ```bash
+   # DELIVER has deterministic per-command and total check timeouts; avoid a
+   # tracked watchdog write after its candidate SHA was finalized.
+   if [[ "$currentPhase" != "deliver" ]]; then
+     bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set \
+       ".loop-spec/features/${slug}" currentPhaseStartedAt "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+   fi
    bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" phase_start --phase "${currentPhase}" || true
    ```
    ```
    Skill(loop-spec:{currentPhase})
    ```
-   `{currentPhase}` is read from the in-memory `feature_json` loaded earlier (`feature_json.currentPhase`). The phase skill runs inside its own team, writes `currentTeamName` on entry, advances `currentPhase`, and clears `currentTeamName` on exit (all via `lib/feature-write.sh`).
+   `{currentPhase}` is read from the in-memory `feature_json`. Team-capable phases own
+   their team lifecycle; SPEC, ITERATE, and DELIVER run on the main thread. Every phase
+   advances `currentPhase` through `lib/feature-write.sh`.
 
 2. **Re-load feature.json** after the skill returns (the skill may have advanced `currentPhase` and updated artifacts):
    ```bash
    feature_json=$(cat ".loop-spec/features/${slug}/feature.json")
    next_phase=$(echo "$feature_json" | jq -r '.currentPhase')
+   if [[ "$currentPhase" == "deliver" \
+         && -f ".loop-spec/features/${slug}/delivery.json" ]]; then
+     next_phase="$(jq -r '.nextPhase // "deliver"' \
+       ".loop-spec/features/${slug}/delivery.json")"
+   fi
    ```
 
    **Phase watchdog check:** compare now against `currentPhaseStartedAt` and the phase ceiling — 60 minutes default, overridable via `LOOP_SPEC_PHASE_TIMEOUT_MINS`. If the phase that just returned exceeded its ceiling, print a one-line warning (`phase {name} took {N}m, ceiling {M}m`) and append it to `warnings[]`; if a RESUMED feature's `currentPhaseStartedAt` is already past the ceiling before re-invoking (the previous session hung or died mid-phase), do NOT blindly re-enter — surface it: `phase {name} exceeded its {M}m ceiling in a prior session; resuming from last durable state` and let the phase skill's own resume logic pick up from artifacts. The watchdog never kills work; it makes a wedged loop visible instead of silently eternal.
 
-   **Progress journal (append-only narrative — the machine state's "why").** Append one short block to `.loop-spec/features/{slug}/PROGRESS.md` (create with a `# Progress — {slug}` heading if absent):
+   Refresh `updatedAt` through `feature-write.sh` on every durable transition so a long
+   phase sequence remains resumable past the staleness window.
+   ```bash
+   if [[ "$currentPhase" != "deliver" || "$next_phase" != "completed" ]]; then
+     bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set \
+       ".loop-spec/features/${slug}" updatedAt "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+   fi
+   ```
+
+   **Successful DELIVER exception:** when the phase that returned was `deliver` and
+   `next_phase == "completed"`, emit `phase_end` but skip the tracked progress/state
+   commit below. DELIVER just proved the exact PR head SHA; any new commit would make
+   that proof stale. The local atomic completed state and result are retained, while
+   the committed branch remains safely resumable at `deliver`.
+
+   **Progress journal (append-only narrative — the machine state's "why").** For every
+   other transition, append one short block to `.loop-spec/features/{slug}/PROGRESS.md`
+   (create with a `# Progress — {slug}` heading if absent):
    ```
    ## {ISO timestamp} — {phase} → {next_phase}
    - did: <1-2 lines: what this phase produced/decided>
@@ -556,15 +660,25 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    repo) is a safe no-op:
    ```bash
    fj=".loop-spec/features/${slug}/feature.json"
-   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-     git add "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null
-     git diff --cached --quiet 2>/dev/null || git commit -q -m "chore: NO_JIRA ${slug} state @ ${next_phase}" || true
+   if [[ "$currentPhase" != "deliver" || "$next_phase" != "completed" ]] \
+      && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      git add "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null
+      git diff --cached --quiet -- "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null \
+        || git commit -q -m "chore: NO_JIRA ${slug} state @ ${next_phase}" -- \
+          "$fj" ".loop-spec/features/${slug}/PROGRESS.md" || true
    fi
    ```
 
 3. **Route to next iteration:**
    - If `next_phase == "completed"`: jump to the "On completion" section below.
-   - **Fresh-context rewind (opt-in, `LOOP_SPEC_ITERATE_FRESH=1`):** if the phase that just returned was `iterate` AND `next_phase` is a rewind (not `completed`) AND the env var is set: do NOT continue inline. The Ralph-loop bet is that a fresh context beats an accumulated one — the durable state (feature.json + PROGRESS.md + iterate.feedback) IS the handoff. Print:
+   - If the phase that returned was `deliver`, `next_phase == "deliver"`, and
+     `delivery.nextPhase == "deliver"`: write an escalated result using the first
+     structured target error and return control. Never immediately invoke DELIVER again;
+     transport/identity/timeouts need an external condition to change.
+   - **Fresh-context rewind (opt-in, `LOOP_SPEC_ITERATE_FRESH=1`):** only when the phase
+     that returned was `iterate` and `next_phase` matches the explicit rewind set
+     `execute|plan|spec|discuss`. `deliver` is forward progress and MUST run in the same
+     context. If enabled for a rewind, commit the handoff and return with:
      `fresh-context rewind: state committed; relaunch with /loop-spec:cycle (or let your outer loop do it) to re-enter {next_phase} in a clean session.`
      and return to the user. An outer `while :; do claude -p "/loop-spec:cycle"; done` (or the loop-runner) drives the relaunch; resume detection re-enters at `{next_phase}` with a fresh window.
    - If `execStyle` is `auto` or `review-only`: continue the loop -- invoke `Skill(loop-spec:{next_phase})`.
@@ -576,99 +690,47 @@ Full algorithm and escalation handling (iteration limit exhausted, NEEDS_CONTEXT
 
 ## On completion
 
-Phase chain finishes when verify completes successfully. Before marking completed:
+This section is reachable only after DELIVER wrote `delivery.json.nextPhase =
+"completed"`. Assert sidecar `status == "ready-for-review"`; otherwise stop with
+`delivery-incomplete` and leave tracked `feature.json.currentPhase = "deliver"`.
+Never overwrite or commit the tracked phase pointer here.
 
-1. Call `TeamDelete({name: feature_json.currentTeamName})` (if `currentTeamName` is non-null) to tear down the final phase team.
-2. Update `feature.json` via `lib/feature-write.sh`:
-   ```bash
-   completed_json="$(echo "$feature_json" | jq \
-     '.currentPhase = "completed" | .currentTeamName = null | .currentTeammates = [] | .currentGate = {round: 0, phase: null} | .updatedAt = now | strftime("%Y-%m-%dT%H:%M:%SZ")')"
-   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$completed_json"
-   ```
-
-Then print final summary (PR URL, commits, time, cost) — **and `warnings[]`, always checked:**
+Write the machine-readable result and completed event while the active feature root is
+still available:
 
 ```bash
-jq -r '.warnings[]?' ".loop-spec/features/${slug}/feature.json"
-```
-
-If non-empty, print them under a `## Shipped with warnings` heading, one bullet each, before
-the PR URL. `iterate-budget-spent:` entries are accepted goal gaps — a completion that hides
-them is indistinguishable from a clean converge, which is precisely how an unmet requirement
-ships unnoticed. If empty, print nothing extra.
-
-Also print the backlog state (one line, always):
-
-```bash
-n="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" count)"
-[[ "$n" -gt 0 ]] && echo "Backlog: ${n} deferred item(s) — drain with /loop-spec:cycle backlog"
-```
-
-And the retrospective step (non-fatal). `retro.sh auto` gates itself:
-interactive runs get a READ-ONLY candidate-count line; autonomous runs
-auto-apply the candidates (safe by construction — the applicable rule texts are
-a closed template set inside `lib/retro.sh`, deterministically triggered, and
-every template only tightens discipline; `LOOP_SPEC_RETRO_AUTO_APPLY=0/1`
-overrides either default):
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" auto ".loop-spec/features/${slug}" || true
-# If auto-apply added rules, commit the durable rule state so it survives
-# ephemeral workspaces (rides the same push as the run digest below):
-git add .loop-spec/RULES.md .gitignore 2>/dev/null \
-  && git diff --cached --quiet 2>/dev/null \
-  || git commit -m "chore: retro auto-applied rules for ${slug}" 2>/dev/null || true
-```
-
-Write the machine-readable result contract and emit the `completed` event (non-fatal):
-
-```bash
-_pr_url="$(jq -r '.prUrl // empty' ".loop-spec/features/${slug}/feature.json")"
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write ".loop-spec/features/${slug}" \
+feature_dir=".loop-spec/features/${slug}"
+_pr_url="$(jq -r '.prUrl // empty' "$feature_dir/feature.json")"
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
   --status completed ${_pr_url:+--pr-url "$_pr_url"} || true
 ```
 
-Then persist the COMMITTED run digest — the retro corpus for volatile
-environments (containers/CI agents whose local `.loop-spec/` telemetry dies
-with the workspace). Non-fatal, committed and pushed on the feature branch so
-it rides the PR into main:
+The committed run digest was finalized immediately before DELIVER and is part of the
+checked SHA. Do not rewrite or recommit it here: DELIVER's successful target SHA is now
+immutable.
 
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/run-digest.sh" append ".loop-spec/features/${slug}" || true
-git add "docs/loop-spec/telemetry/runs/${slug}.json" 2>/dev/null \
-  && git commit -m "docs: run digest for ${slug}" 2>/dev/null \
-  && git push 2>/dev/null || true
-```
+Print warnings first, then a durable per-target delivery summary from
+`delivery.json.targets[]` (repo/name, PR URL, exact target SHA, checks status),
+followed by elapsed time/cost and backlog count. Workspace mode prints every changed and
+skipped repository. A single-repo run also prints top-level `prUrl`.
 
-`.loop-spec/last-result.json` is the stable pointer headless wrappers should read; it is
-overwritten on each cycle completion. `events.jsonl` (one JSON object per line, canonical
-event names) records the full phase trace. Both are local telemetry and are not committed.
+`.loop-spec/last-result.json` and `events.jsonl` are local telemetry and are not committed.
+The PR body already contains the final SPEC, VERIFICATION, ITERATION, and warnings
+captured before the exact-SHA check.
 
-**Autonomous chaining (`feature.json.autonomous == true`).** An autonomous run manages its
-own iteration cycles end-to-end — it does not complete by leaving `iterate-budget-spent`
-gaps for a human to read (`skills/shared/autonomous-mode.md`, continuation ladder). The
-chain decision is DETERMINISTIC — do not re-derive it from the ladder prose; call the
-predicate and obey its verdict:
+**Autonomous chaining (`feature.json.autonomous == true`).** The chain decision remains
+deterministic:
 
 ```bash
 verdict="$(bash "${CLAUDE_SKILL_DIR}/../../lib/autonomous-chain.sh" should-chain "$feature_dir" --completed "$features_completed_this_invocation")"
 ```
 
-- `{"chain": true, "entry": {...}}` → chain directly into backlog-drain mode (Step 3
-  branch 4) with that entry. The chained feature inherits `autonomous` and carries
-  `backlogEntry` + `backlogEntryId` from the entry JSON, so a gap that spends a second
-  full round of iterations goes terminal instead of looping forever. After the chained cycle
-  completes, re-run the predicate with the incremented `--completed` count.
-- `{"chain": false, "reason": ...}` → stop chaining. The reasons encode the bounds that
-  keep drain mode finite: `max-features-reached` (`LOOP_SPEC_MAX_FEATURES`, default 1),
-  `feature-not-completed` (never chain past a paused/escalated cycle),
-  `next-entry-terminal` (ITERATE's autonomous terminal rule), `backlog-empty`,
-  `no-budget-spent-gaps`, `not-autonomous`.
+Only sidecar `delivery.status == "ready-for-review"` can chain. Stable no-chain reasons include
+`delivery-incomplete`, `max-features-reached`, `feature-not-completed`,
+`next-entry-terminal`, `backlog-empty`, `no-budget-spent-gaps`, and `not-autonomous`.
 
-When the verdict is `max-features-reached` with entries still queued (`backlog.sh count`
-> 0), print the overnight form — `while :; do claude -p "/loop-spec:cycle backlog
-autonomous"; done` — which drains the rest one bounded fresh-session cycle at a time.
-Warnings stay in the PR as the audit trail; the backlog + chain is what actually handles
-them.
-
-**Note:** `TeamDelete` is called explicitly here at the orchestration layer. It is NOT implemented as a bash `trap` because `TeamDelete` is a harness MCP tool callable only from the lead's tool-using context, not from a shell signal handler. See the resume strategy orphan-detection path for killed-session cleanup.
+For a Claude single-repo feature worktree, `ExitWorktree({action:"keep"})` is the final
+operation after DELIVER, result writing, summary, and chain-decision capture. Keep the
+worktree until merge. OpenCode/pi in-place features and workspace mode do not call an
+exit tool. If the captured verdict chains, leave/adopt the next feature root only after
+this final operation after DELIVER.

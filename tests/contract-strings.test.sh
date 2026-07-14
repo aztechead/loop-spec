@@ -27,6 +27,9 @@ checks=(
   "skills/cycle/SKILL.md	next-entry-terminal"
   "lib/autonomous-chain.sh	max-features-reached"
   "lib/autonomous-chain.sh	next-entry-terminal"
+  # -- delivery must finish before unattended chaining continues
+  "skills/cycle/SKILL.md	delivery-incomplete"
+  "lib/autonomous-chain.sh	delivery-incomplete"
   # -- backlogEntryId: written by cycle drain, matched by iterate terminal rule
   "skills/cycle/SKILL.md	backlogEntryId"
   "skills/iterate/SKILL.md	backlogEntryId"

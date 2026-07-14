@@ -15,7 +15,7 @@
 #
 #   {
 #     workspace:  {mode, root, repos?, source?},        # workspace.sh detect (verbatim)
-#     harness:    {name},                               # harness.sh detect: claude | pi
+#     harness:    {name},                               # claude | pi | opencode
 #     teams:      {mode, available},                    # teams-capability.sh
 #     workflows:  {available},                          # workflow-availability.sh
 #     graphify:   {ok, required, graph},                # check + graph-status
@@ -24,11 +24,12 @@
 #     warnings:   [ ... ]                               # one line per anomaly
 #   }
 #
-# Resume scan (the mechanical part of cycle Step 1): for each
-# .loop-spec/features/*/feature.json under <dir> —
+# Resume scan (the mechanical part of cycle Step 1): for each feature.json
+# under <dir> and every registered .claude/worktrees/* worktree —
 #   - parse feature.json, falling back to feature.json.bak on a parse failure
 #     (parse_source records which); both unreadable -> skipped + warning
-#   - skip currentPhase == "completed" (silently)
+#   - skip currentPhase == "completed", or a DELIVER sidecar whose logical
+#     nextPhase is completed and status is ready-for-review (silently)
 #   - skip schemaVersion != 7 -> skipped + the one-line warning the skill specifies
 #   - currentTeamName != null -> candidate with needs_probe: true (liveness probing
 #     needs the harness TaskList tool; the ORCHESTRATOR resolves it per
@@ -82,8 +83,13 @@ candidates="[]"
 skipped="[]"
 now="$(date +%s)"
 
-features_dir="$dir/.loop-spec/features"
-if [[ -d "$features_dir" ]]; then
+scan_feature_root() {
+  local root="$1" source="$2" branch_hint="${3:-}"
+  local features_dir="$root/.loop-spec/features"
+  local fj fslug parse_source doc schema phase team updated_at staleness_hours delivery_file
+  local updated_epoch age needs_probe candidate_branch worktree_abs
+  [[ -d "$features_dir" ]] || return 0
+
   for fj in "$features_dir"/*/feature.json; do
     [[ -f "$fj" ]] || continue
     fslug="$(basename "$(dirname "$fj")")"
@@ -104,6 +110,12 @@ if [[ -d "$features_dir" ]]; then
     phase="$(jq -r '.currentPhase // ""' <<<"$doc")"
 
     [[ "$phase" == "completed" ]] && continue
+    delivery_file="$(dirname "$fj")/delivery.json"
+    if [[ "$phase" == "deliver" && -f "$delivery_file" ]] \
+      && jq -e '.nextPhase == "completed" and .status == "ready-for-review"' \
+        "$delivery_file" >/dev/null 2>&1; then
+      continue
+    fi
 
     if [[ "$schema" != "7" ]]; then
       skipped="$(jq -c --arg slug "$fslug" --arg why "schema-version" '. + [{slug: $slug, why: $why}]' <<<"$skipped")"
@@ -150,18 +162,42 @@ print(int(dt.timestamp()) if dt else 0)
     candidates="$(jq -c \
       --arg slug "$fslug" --arg phase "$phase" --arg updatedAt "$updated_at" \
       --arg team "$team" --argjson probe "$needs_probe" --argjson age "$age" \
-      --arg src "$parse_source" \
+      --arg src "$parse_source" --arg source "$source" --arg root "$root" \
+      --arg jsonPath "$fj" --arg branchHint "$branch_hint" \
+      --arg currentTeamsMode "$teams_mode" \
       --argjson f "$doc" \
       '. + [{slug: $slug, currentPhase: $phase, updatedAt: $updatedAt, age_seconds: $age,
-             currentTeamName: (if $team == "" then null else $team end),
-             needs_probe: $probe, parse_source: $src,
-             worktreePath: ($f.worktreePath // null),
-             workspace: ($f.workspace // null),
-             teamsMode: ($f.teamsMode // null)}]' <<<"$candidates")"
+              currentTeamName: (if $team == "" then null else $team end),
+              needs_probe: $probe, parse_source: $src,
+              source: $source, featureRoot: $root, featureJsonPath: $jsonPath,
+              worktreeAbs: (if $source == "worktree" then $root else null end),
+              branch: (if $branchHint != "" then $branchHint else ($f.branch // null) end),
+              worktreePath: ($f.worktreePath // null),
+              workspace: ($f.workspace // null),
+              teamsMode: $currentTeamsMode}]' <<<"$candidates")"
   done
+}
+
+dir_abs="$(cd "$dir" && pwd)"
+scan_feature_root "$dir_abs" "invocation" ""
+
+# Single-repo feature state is created inside its registered feature worktree,
+# not in the control checkout. Enumerate those worktrees from git rather than
+# assuming the invoking checkout contains every in-flight feature.
+if git -C "$dir_abs" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  while IFS=$'\t' read -r wt_path wt_branch; do
+    [[ -n "$wt_path" && -d "$wt_path" ]] || continue
+    [[ "$wt_path" == "$dir_abs" ]] && continue
+    scan_feature_root "$wt_path" "worktree" "$wt_branch"
+  done < <(bash "$SCRIPT_DIR/git-ops.sh" -C "$dir_abs" list-feature-worktrees 2>/dev/null || true)
 fi
 
-candidates="$(jq -c 'sort_by(.age_seconds)' <<<"$candidates")"
+# A feature may be visible from both the invocation root and a worktree. Keep
+# the freshest copy, preferring the live worktree on an exact timestamp tie.
+candidates="$(jq -c '
+  sort_by([.slug, .age_seconds, (if .source == "worktree" then 0 else 1 end)])
+  | group_by(.slug) | map(.[0]) | sort_by(.age_seconds)
+' <<<"$candidates")"
 
 warnings_json="[]"
 if [[ "${#warnings[@]}" -gt 0 ]]; then

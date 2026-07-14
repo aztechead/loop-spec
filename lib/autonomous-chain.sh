@@ -29,7 +29,7 @@
 #   {"chain": false, "reason": "<why>"}
 #
 # Reasons (stable strings, in check order):
-#   both scopes:  not-autonomous, feature-not-completed
+#   both scopes:  not-autonomous, feature-not-completed, delivery-incomplete
 #   backlog:      no-budget-spent-gaps, max-features-reached, backlog-empty,
 #                 next-entry-terminal
 #   queue:        sentinel-batch-denied  trust.sh said no (bound reached)
@@ -96,7 +96,30 @@ jq -e . "$fj" >/dev/null 2>&1 || {
 # Check order mirrors the ladder: eligibility, then safety, then bounds, then supply.
 [[ "$(jq -r '.autonomous // false' "$fj")" == "true" ]] || no_chain "not-autonomous"
 
-[[ "$(jq -r '.currentPhase // ""' "$fj")" == "completed" ]] || no_chain "feature-not-completed"
+delivery_file="$feature_dir/delivery.json"
+sidecar_delivery="null"
+if [[ -f "$delivery_file" ]]; then
+  sidecar_delivery="$(jq -c . "$delivery_file" 2>/dev/null || echo null)"
+fi
+tracked_phase="$(jq -r '.currentPhase // ""' "$fj")"
+if [[ "$tracked_phase" != "completed" ]]; then
+  [[ "$(jq -r '.nextPhase == "completed" and .status == "ready-for-review"' \
+      <<<"$sidecar_delivery" 2>/dev/null)" == "true" ]] || no_chain "feature-not-completed"
+fi
+
+# New seven-phase runs may chain only after DELIVER reached a review-ready PR.
+# A missing delivery block is accepted for completed schema-7 state created by
+# older plugin versions; an explicit non-ready state fails closed.
+if [[ "$sidecar_delivery" != "null" ]]; then
+  [[ "$(jq -r '.status // ""' <<<"$sidecar_delivery")" == "ready-for-review" ]] \
+    || no_chain "delivery-incomplete"
+else
+  has_delivery="$(jq -r 'has("delivery")' "$fj")"
+  if [[ "$has_delivery" == "true" ]]; then
+    [[ "$(jq -r '.delivery.status // ""' "$fj")" == "ready-for-review" ]] \
+      || no_chain "delivery-incomplete"
+  fi
+fi
 
 if [[ "$scope" == "queue" ]]; then
   # Bound: the governor decides, this predicate obeys (D3: authority checks

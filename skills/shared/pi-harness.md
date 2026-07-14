@@ -51,7 +51,7 @@ export CLAUDE_SKILL_DIR="<absolute dir of the SKILL.md you are following>"
 | TaskCreate / TaskUpdate / TaskList / TaskGet | none — DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json`; no harness task list exists or is needed |
 | AskUserQuestion | interactive (TUI): ask in plain chat text — lettered options, one question block, wait for the reply; autonomous: self-answer per `skills/shared/autonomous-mode.md`, unchanged |
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under pi — skip rescue steps entirely |
-| EnterWorktree | `git worktree add` via bash (the skills already script this path) |
+| EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses its clean in-place feature branch (`executionRootMode: "in-place"`) and never fakes a cwd change with `git worktree add`. |
 
 ## Inline dispatch rule (replaces every one-shot `Agent` call)
 
@@ -67,8 +67,9 @@ sequential loop over the same prompts.
 Role boundaries become self-discipline rather than process isolation: when acting
 as challenger or critic, argue against the draft you just wrote honestly and record
 the verdict before continuing; when acting as reviewer, evaluate against the
-acceptance criteria, not against effort. The gates, artifacts, worktree layout, and
-`feature.json` schema DO NOT CHANGE — only the dispatch mechanism does (the same
+acceptance criteria, not against effort. The gates and artifacts do not change; the
+recorded execution root is in-place because pi cannot switch the session cwd. DELIVER
+uses the same explicit-path `lib/deliver.sh` controller. Only the dispatch mechanism does (the same
 invariant `no-teams-fallback.md` maintains one level up).
 
 Exception: EXECUTE does not use this rule directly — its ladder selects the

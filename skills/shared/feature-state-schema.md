@@ -19,13 +19,15 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 {
   "schemaVersion": 7,
   "slug": "string (kebab-case)",
+  "feature_title": "immutable original goal in the user's words",
   "createdAt": "ISO-8601 timestamp",
   "updatedAt": "ISO-8601 timestamp",
   "execStyle": "auto | step | interactive | review-only",
-  "currentPhase": "spec | discuss | plan | execute | verify | completed",
+  "currentPhase": "spec | discuss | plan | execute | verify | iterate | deliver | completed",
   "completedPhases": ["array of phase names"],
   "branch": "string (feat/{slug})",
   "worktreePath": "string (.claude/worktrees/{slug}) in single-repo mode; null in workspace mode",
+  "executionRootMode": "worktree | in-place | workspace",
   "baseSha": "git sha at branch creation",
   "baseBranch": "string (e.g., main)",
   "models": {
@@ -34,6 +36,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "advocate": "opus (fixed alias)",
     "challenger": "opus (fixed alias)",
     "specComplianceReviewer": "opus (fixed alias; Ralph loop)",
+    "iterateJudge": "opus (fixed alias)",
     "implementer": "sonnet (fixed alias)",
     "codeReviewer": "opus (fixed alias)",
     "verifier": "sonnet (fixed alias)",
@@ -48,6 +51,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "plan": "path or null",
     "execution": "path or null",
     "verification": "path or null",
+    "iteration": "path or null",
     "codebaseSource": {
       "tech": "gsd-ingest | mapper | manual | null",
       "arch": "gsd-ingest | mapper | manual | null",
@@ -85,8 +89,34 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     ]
   },
   "stalenessHours": 48,
-  "prUrl": "string or null (PR URL set by VERIFY Step 10 after gh pr create; null before that point)",
+  "prUrl": "string or null (legacy/tracked remediation shortcut; successful delivery URLs live in ignored delivery.json)",
   "checkpointPrUrl": "string or null (draft PR URL set by lib/checkpoint-pr.sh on pause/escalation/terminal salvage; null otherwise)",
+  "delivery": {
+    "status": "pending | ready-for-review | checks-failed | checks-timeout | partial | no-changes | another structured delivery error",
+    "attemptedAt": "ISO-8601 timestamp or null",
+    "finishedAt": "ISO-8601 timestamp or null",
+    "nextPhase": "null before delivery; completed | execute | deliver after an attempt",
+    "ciRemediationAttempts": "integer, required-check failures routed to EXECUTE (maximum 2)",
+    "ciRemediationLimit": "integer, fixed at 2 in DELIVER observations",
+    "targets": [
+      {
+        "name": "feature slug or workspace repo name",
+        "path": "absolute repository path",
+        "ok": "boolean",
+        "outcome": "delivered | skipped-no-commits | blocked",
+        "branch": "feature branch",
+        "baseBranch": "PR base branch",
+        "targetSha": "exact local candidate SHA or null",
+        "remoteSha": "observed remote SHA or null",
+        "headSha": "observed PR head SHA or null",
+        "prNumber": "number or null",
+        "prUrl": "URL or null",
+        "isDraft": "boolean or null",
+        "checks": "required-check observation object",
+        "errorCode": "stable structured failure code or null"
+      }
+    ]
+  },
   "warnings": ["array of strings"],
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
   "pendingRemediationTasks": ["array of remediation task objects appended by VERIFY (lib/feature-write.sh append) and consumed+cleared by EXECUTE Step 2a; empty between phases"],
@@ -131,6 +161,8 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base.
 - `models` is a fixed per-role map (no preset axis), built ONCE at cycle Step 5 from `lib/feature-init.sh` (the single source of truth, mirroring `skills/shared/model-matrix.md`). Every phase skill passes `model: feature.models.<role>` on each spawn rather than re-deriving, so teammates never silently inherit the orchestrator's session model. opus runs spec-writer, planner, advocate, challenger, spec-compliance-reviewer, and iterate-judge; sonnet runs implementer, code-reviewer, verifier, mapper-*, and pattern-mapper. Cycle Step 5.9 re-normalizes this block idempotently on every resume from the same `feature-init.sh` source (forcing canonical IDs, dropping any vestigial `preset` field), so the two construction sites cannot drift.
 - `worktreePath` (single-repo mode) points at the dedicated git worktree created at cycle Step 5 via `lib/git-ops.sh create-feature-worktree`; all state, docs, and code live on `feat/{slug}` inside it. Resume discovers feature worktrees via `git-ops.sh list-feature-worktrees`.
+- `executionRootMode` is `worktree` for Claude's native feature worktree, `in-place` for the additive OpenCode/pi path (those harnesses cannot switch a live session root), and `workspace` for multi-repo mode.
+- Tracked `delivery` is absent on completed schema-7 features created before the DELIVER phase and is tolerated for backward compatibility. New features initialize it to `pending`; DELIVER updates it only when failed checks route durable remediation back to EXECUTE. At most two required-check failures are routed back; a third fails closed at DELIVER instead of creating an infinite CI-remediation loop. Successful or external-failure observations live in ignored `.loop-spec/features/{slug}/delivery.json`, schema 1, with top-level `ok`, `status`, `nextPhase`, `prUrl`, timestamps, CI-remediation counters, and the same `targets[]` records. Keeping success out of tracked state prevents a post-CI commit from changing the exact checked SHA. `ready-for-review` means every changed target has `targetSha == remoteSha == headSha`, required checks passed or none were configured, and the PR is ready rather than draft.
 - The optional `workspace` block enables multi-root workspace mode. Rules: (1) `workspace` absent or null means single-repo mode (`worktreePath` set). (2) In workspace mode the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` are null; per-repo values in `workspace.repos[]` are authoritative. (3) The top-level `commands` block holds empty strings (per-repo commands live in `workspace.repos[].commands`). (4) State and artifact dirs are rooted at `workspace.root`. (5) Resume requires the session cwd to be `workspace.root`; the cycle skill instructs the user to cd there before re-invoking.
 - **Schema is 7-only.** A `feature.json` with `schemaVersion != 7` is unsupported and skipped on resume with a warning; there is no in-place migration path for older schemas. New features are always created at schema 7 by `lib/feature-init.sh`.
 

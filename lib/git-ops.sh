@@ -14,7 +14,8 @@
 # Subcommands:
 #   detect-base-branch                  Print the project's base branch (origin/HEAD or fallback).
 #   slugify <text>                      Print kebab-case slug of <text>.
-#   ensure-clean-or-stash               Print "clean" if working tree clean, else "dirty".
+#   ensure-clean-or-stash               Print "clean" if working tree clean apart from
+#                                       loop-spec's pre-feature runtime cache, else "dirty".
 #   current-sha                         Print HEAD short sha.
 #   create-feature-worktree <slug> <base_sha>
 #                                       Create a worktree at .claude/worktrees/<slug> (relative,
@@ -63,7 +64,11 @@ case "$cmd" in
     printf '\n'
     ;;
   ensure-clean-or-stash)
-    if [[ -z "$("${G[@]}" status --porcelain)" ]]; then
+    # Startup writes these local files before the feature branch/worktree exists.
+    # They are not user work and must not make the clean-base guard reject itself.
+    if [[ -z "$("${G[@]}" status --porcelain --untracked-files=all -- . \
+      ':(top,exclude).loop-spec/runtime.json' \
+      ':(top,exclude).loop-spec/decisions-staging/**')" ]]; then
       printf 'clean\n'
     else
       printf 'dirty\n'

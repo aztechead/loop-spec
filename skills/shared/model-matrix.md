@@ -20,8 +20,9 @@ These aliases are a **Claude Code** surface. Under the pi harness there is no
 per-dispatch model routing at all (inline work runs on the session model) and
 loop-fleet dispatch takes pi model **ids**, not aliases — see
 `skills/shared/pi-harness.md` "Model routing". Under opencode, per-role models
-come from the generated agent files (`provider/model` ids; default inherits
-the session model) and loop-fleet dispatch takes opencode ids — see
+come from generated agent files (`provider/model` ids; default inherits the
+session model); use `opencode-install.sh install --model` or native project agent
+overrides for cross-provider routing. Loop-fleet dispatch takes opencode ids — see
 `skills/shared/opencode-harness.md` "Model routing".
 
 ## Matrix
@@ -67,10 +68,10 @@ the session model) and loop-fleet dispatch takes opencode ids — see
   `skills/shared/execution-discipline.md` (evidence over recall), which every
   EXECUTE/VERIFY dispatch carries.
 
-## Per-role override
+## Claude Code per-role override
 
-Set `LOOP_SPEC_MODEL_<ROLE>` (SCREAMING_SNAKE of the JSON key) to reroute a single
-role without editing `lib/feature-init.sh`:
+Under Claude Code, set `LOOP_SPEC_MODEL_<ROLE>` (SCREAMING_SNAKE of the JSON key)
+to reroute a single role without editing `lib/feature-init.sh`:
 
 ```
 LOOP_SPEC_MODEL_ITERATE_JUDGE=fable   # promote the judge to fable

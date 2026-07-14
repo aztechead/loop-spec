@@ -2,7 +2,7 @@
 
 Spec-driven development loops for Claude Code (and [pi](https://pi.dev), and [opencode](https://opencode.ai)).
 
-Give the cycle a feature description, or a pre-authored spec file, and it runs six phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE. The last phase judges the integrated result against your original request and rewinds the loop until the goal is met or the iteration limit (10) is spent, then opens a PR. Every phase writes a committed markdown artifact, and every run can be resumed from its `feature.json`.
+Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
 
 The same machinery covers adjacent workflows:
 
@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/safishamsi/graphify), the code graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.18.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.20.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -41,7 +41,7 @@ Current version: 2.18.0 (renamed from super-spec at v2.5.2). Direction: [docs/lo
 
    The first cycle in a project builds `graphify-out/graph.json` (deterministic AST extraction, offline, no API key) and commits it. Constrained environments can set `LOOP_SPEC_REQUIRE_GRAPHIFY=0` to skip the requirement; design phases then fall back to Glob/Grep.
 
-3. Check the base prerequisites: `bash >= 4`, `git`, `jq >= 1.5`, `python3 >= 3.6`. macOS ships all of them. Minimal Linux images may need `apk add jq python3` or equivalent.
+3. Check the base prerequisites: `bash >= 4`, `git`, `jq >= 1.5`, `python3 >= 3.6`. Prompt-to-PR delivery additionally requires an authenticated GitHub CLI (`gh auth status`) and an `origin` remote. Minimal Linux images may need `apk add jq python3` or equivalent.
 
 4. Optional: set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to enable agent teams (see [docs/loop-spec/PREREQUISITES.md](docs/loop-spec/PREREQUISITES.md)). Without it the cycle uses one-shot subagents for critique/verify and the loop-fleet rung for EXECUTE, which needs the `claude` CLI on PATH.
 
@@ -84,6 +84,8 @@ Differences under opencode (full contract: `skills/shared/opencode-harness.md`):
 - One-shot subagent dispatch is NATIVE: opencode's `task` tool requires `{description, prompt, subagent_type}`, with agent ids spelled `loop-spec-<role>`. Questions use `multiple` rather than Claude Code's `multiSelect`. Agent teams and the Workflow tool remain Claude Code-only; EXECUTE tops out at the subagent and loop-fleet rungs, whose headless loops spawn `opencode run --format json` instead of `claude -p`.
 - Interactive mode is the opencode TUI; headless mode is `opencode run --format json "Load the loop-spec-cycle skill and run: autonomous <description>"` — or drive the same prompt through the SDK (`createOpencode()` / `client.session.prompt()` against `opencode serve`).
 - There are no per-dispatch model aliases. Per-role models live in the generated agent files (`provider/model` ids; default inherits the session model); fleet dispatch takes opencode ids via `--model`.
+- Multiple logged-in providers can be mixed in one cycle. Keep the primary session on Vertex Anthropic, for example, and install `--model adversarial=github-copilot/<frontier-model>` to route challenger, iterate-judge, code-reviewer, and security-reviewer tasks through GitHub Copilot. Any role can be pinned with another `--model role=provider/model`; explicit roles override the shorthand. Project `opencode.json` agent overrides provide the same routing per repo. Restart OpenCode after changing installed agents or config.
+- OpenCode cannot switch a running session's project root. After a clean-base guard, cycle creates the feature branch in place (`executionRootMode: in-place`) rather than pretending worktree creation changed cwd. DELIVER itself is identical across harnesses because it uses explicit repository paths.
 
 As with pi, the Claude Code path is untouched: opencode support is an additive branch keyed on `lib/harness.sh detect`.
 
@@ -98,12 +100,13 @@ From a repo you want to change:
 What happens:
 
 1. Startup probes run silently (teams, models, Workflow availability) and cache to `.loop-spec/runtime.json`. The first run in a project also builds the graphify graph and a 5-domain codebase map under `docs/loop-spec/codebase/`. That cost is paid once.
-2. A feature worktree is created at `.claude/worktrees/{slug}` on branch `feat/{slug}`. Your checkout is never switched.
+2. Claude Code creates a feature worktree at `.claude/worktrees/{slug}` on branch `feat/{slug}`. OpenCode/pi create the same branch in place after requiring a clean checkout.
 3. SPEC interviews you (up to 6 rounds, one perspective per round) until its ambiguity gate passes, then writes `docs/loop-spec/features/{slug}/SPEC.md`. Answering these questions is your main involvement in the default style.
 4. DISCUSS runs the spec critique. PLAN writes `PATTERNS.md` (real codebase analogs for the planner to follow) and `PLAN.md` (a task DAG with per-task verify commands), gated by its own critique, feasibility, and coverage checks.
 5. EXECUTE implements the tasks, in parallel where the DAG allows, one commit per task on `feat/{slug}`.
-6. VERIFY runs the marker scan, the test-tamper scan, every acceptance criterion's verify command, and a blocking code review, then pushes the branch and opens the PR.
-7. ITERATE judges the integrated result against your original request, not the spec the loop wrote for itself. If the goal is not met it classifies the gap and rewinds to the right phase. When it converges, or spends its 10 rounds, the run completes and prints the PR URL, any warnings, and the backlog count.
+6. VERIFY runs the marker scan, test-tamper scan, every acceptance criterion's verify command, and a blocking code review, then commits the evidence without pushing.
+7. ITERATE judges the integrated result against your original request, not the spec the loop wrote for itself. If the goal is not met it classifies the gap and rewinds to the right phase.
+8. DELIVER pushes the terminal commit by explicit SHA, reconciles an existing checkpoint PR or creates one draft, waits for required checks, verifies the remote and PR still point at that SHA, then marks the PR ready and prints its URL.
 
 You review the PR.
 
@@ -115,11 +118,11 @@ Variations:
 
 ## Skills
 
-All skills are invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). The per-phase skills (`spec`, `discuss`, `plan`, `execute`, `verify`, `iterate`, `map-codebase`) can be run individually; `cycle` chains them.
+All skills are invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). The per-phase skills (`spec`, `discuss`, `plan`, `execute`, `verify`, `iterate`, `deliver`, `map-codebase`) can be run individually; `cycle` chains them.
 
 | Skill | Purpose |
 |---|---|
-| `cycle` | The full six-phase loop. Also: `new` (greenfield), `backlog` (drain deferred work), spec-file ingest, resume. |
+| `cycle` | The full seven-phase prompt-to-ready-PR loop. Also: `new` (greenfield), `backlog` (drain deferred work), spec-file ingest, resume. |
 | `intake` | Convert any input (Slack, Jira, email, file, prompt) into a spec draft and start the cycle. `--no-run` stops after the draft. |
 | `debug` | Bounded debugging loop: triage, red reproduction, fix, verify. Writes a committed `BUG.md` audit trail. |
 | `loop-debug` | One-shot debug entry: same machinery with autonomous mode forced on, reports once at the end. |
@@ -160,8 +163,9 @@ Notes on the ones with more surface:
 | DISCUSS | revised SPEC.md | spec critique (always runs; single critic by default, debate on escalation) |
 | PLAN | `PATTERNS.md` + `PLAN.md` (task DAG with verify commands) | plan critique + feasibility + criteria coverage |
 | EXECUTE | per-task commits on `feat/{slug}` | per-task spec-compliance review with retries; dispatch chosen by DAG width |
-| VERIFY | `VERIFICATION.md`, codebase map refresh, PR | marker scan, test-tamper scan, acceptance gate, blocking code review |
-| ITERATE | `ITERATION.md` (per-iteration verdicts) | goal re-judge; converged ships, otherwise classify the gap and rewind |
+| VERIFY | `VERIFICATION.md`, codebase map refresh | marker scan, test-tamper scan, acceptance gate, blocking code review |
+| ITERATE | `ITERATION.md` (per-iteration verdicts) | goal re-judge; terminal verdict advances, otherwise classify the gap and rewind |
+| DELIVER | durable `delivery.targets[]`, final PR | exact-SHA push, one-PR reconciliation, required checks, head-drift guard, draft-to-ready |
 
 Some mechanics worth knowing:
 
@@ -173,9 +177,11 @@ Some mechanics worth knowing:
 
 **VERIFY defends the oracle.** The test-tamper scan (`lib/test-tamper-scan.sh`) fails the phase if the diff deletes tests, adds skip/focus annotations, or swallows a test command's exit code. The marker scan rejects unresolved `TBD`/`FIXME`/`XXX` in changed files before any acceptance agent is dispatched. Optionally, the live-run rung launches the built application, waits for readiness, executes acceptance probes, and records each probe in the feature's `EVIDENCE.md` ledger (see `verifyCommands` in Configuration); repos without that config run suite-only, and a launch command is never guessed.
 
+**DELIVER owns the final mile.** `lib/pr-delivery.sh` pushes an explicit commit SHA, proves the remote ref and PR head match it, reconciles checkpoint/final metadata idempotently, polls required checks with bounded command and total timeouts, treats pending/cancel/fail distinctly, and marks the draft ready only after success. It never force-pushes, merges, or enables auto-merge. CI failure routes through EXECUTE -> VERIFY -> ITERATE; transport, identity, or check-oracle failures stop resumably rather than claiming completion.
+
 **Design phases probe before asserting.** During SPEC/DISCUSS/PLAN the lead runs read-only probes (`bq show`, `gcloud describe`, `curl -s`, `psql -c '\d'`, and similar) on any external-system premise before treating it as fact. Each result is appended to a committed `EVIDENCE.md` ledger with a sequential `EVID-NNN` id and cited in the artifact's `## Grounding` section. Claims that cannot be probed are written as `ASSUMPTION: <claim> | verify: <command>` instead of asserted from memory. A deterministic lint (`lib/grounding-lint.sh`) blocks the DISCUSS commit and PLAN's task-cluster step when the grounding section is missing or references an unresolved id. Protocol: `skills/shared/grounding-protocol.md`.
 
-**Every run is resumable.** Each phase transition appends what happened, what is next, and gotchas to `PROGRESS.md`. State writes are atomic (`.tmp` + rename with `.bak` rotation). Resume re-grounds before re-entering a phase: it reads the journal, reviews `git log`, and runs the test command once; a broken tree is routed to remediation instead of being built on. Loop-fleet state is durable too: re-entering EXECUTE resumes halted tasks without re-running completed iterations. A phase watchdog stamps `currentPhaseStartedAt` and flags any phase that exceeds its wall-clock ceiling (60 minutes by default).
+**Every run is resumable.** Each phase transition appends what happened, what is next, and gotchas to `PROGRESS.md`. State writes are atomic (`.tmp` + rename with `.bak` rotation). Resume scans both the invoking checkout and registered feature worktrees, adopts the absolute execution root before reading relative state, reviews `git log`, and runs the test command once; a broken tree is routed to remediation. DELIVER is idempotent, so an interrupted push/check wait reuses the same PR. Loop-fleet state is durable too. A phase watchdog stamps `currentPhaseStartedAt` and flags phases exceeding the wall-clock ceiling.
 
 **Interrupted runs still produce an artifact.** On pause, escalation, or terminal stop, the cycle pushes the feature branch and opens (or reuses) a draft PR, so a failed overnight run is reviewable rather than lost. Requires `gh` and an `origin` remote; skips quietly otherwise. `LOOP_SPEC_CHECKPOINT_PR=0` disables.
 
@@ -255,6 +261,10 @@ Wrappers should not scrape git or GitHub for cycle state. Two local files provid
   "baseBranch": "main",
   "prUrl": "https://github.com/... or null",
   "checkpointPrUrl": "url or null",
+  "delivery": {
+    "status": "ready-for-review",
+    "targets": [{"targetSha":"...","remoteSha":"...","headSha":"...","checks":{"status":"passed"}}]
+  },
   "converged": true,
   "iterations": {"used": 1, "max": 10},
   "warnings": [],
@@ -265,7 +275,7 @@ Wrappers should not scrape git or GitHub for cycle state. Two local files provid
 }
 ```
 
-`converged` is `true` only when the status is `completed` and `warnings[]` contains no `iterate-budget-spent:` or `iterate-terminal:` entries. Completed but not converged means the run shipped with accepted gaps, which the warnings list.
+`converged` is `true` only when the status is `completed`, `warnings[]` contains no `iterate-budget-spent:` or `iterate-terminal:` entries, and an explicit delivery block is `ready-for-review`. Completed schema-7 results from older versions without a delivery block remain readable.
 
 `events.jsonl`, one JSON object per line at each phase boundary:
 
@@ -329,6 +339,9 @@ Cycle behavior:
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | unset | `1` skips the startup model probe (also skipped automatically when probed within 24h). |
 | `LOOP_SPEC_REQUIRE_GRAPHIFY` | required | `0` bypasses the graphify requirement; design phases fall back to Glob/Grep. |
 | `LOOP_SPEC_CHECKPOINT_PR` | on | `0` disables the draft checkpoint PR on pause/escalation/terminal stop. |
+| `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | `900` | Total time DELIVER waits for required PR checks. |
+| `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | `10` | Required-check polling interval. |
+| `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | `60` | Per-call timeout for GitHub CLI operations, including hung network requests. |
 | `LOOP_SPEC_CMD_TEST` (and the `LOOP_SPEC_CMD_*` family) | detected | Pin the project's test/lint/typecheck commands instead of auto-detection. Wins in every mode, including autonomous. |
 | `LOOP_SPEC_REGRESSION_SCAN` | off | `1` enables VERIFY's advisory prior-feature regression scan. |
 | `LOOP_SPEC_RALPH_THRESHOLD` | `3` | VERIFY remediation loop: consecutive no-progress rounds before escalating. |
@@ -530,14 +543,14 @@ How workspace mode differs:
 - Each participating repo gets an in-place `feat/{slug}` branch; there are no feature worktrees. Before touching anything, a two-phase dirty check scans all repos and aborts, listing every dirty repo, before any branch is created.
 - Test/lint/typecheck commands are detected per repo. PLAN tasks each carry a `repo` field and workspace-relative paths; one task belongs to one repo, and cross-repo work becomes multiple tasks with `blockedBy` edges.
 - EXECUTE is capped at the subagent rung, one implementer per repo concurrently. The team, loop-fleet, and Workflow rungs are single-repo only in this release; `LOOP_SPEC_EXECUTE_LOOPS=1` is refused with an escalation.
-- VERIFY pushes and opens one PR per repo that has commits; untouched repos have their branch deleted on completion.
+- DELIVER opens or reuses one PR per repo that has commits, persists every target result, and requires every changed repo's checks to pass; untouched repos are recorded as `skipped-no-commits`.
 - Resume requires invoking from the workspace root.
 
 ## Architecture
 
 The cycle skill is a thin orchestrator; each phase skill owns its own dispatches. When agent teams are available, teammates persist for the whole phase and communicate over `SendMessage`, so rework rides on accumulated context instead of fresh spawns. `lib/teams-capability.sh` resolves the team mechanism per Claude Code version: explicit `TeamCreate`/`TeamDelete` on older builds, direct named `Agent({name})` spawns on 2.1.178 and later, and a documented fallback per phase (`skills/shared/no-teams-fallback.md`) when teams are off, with the same artifacts, gates, and result contracts on every path.
 
-Each feature runs in its own git worktree (`.claude/worktrees/{slug}`, branch `feat/{slug}` from the base SHA). All phase work happens inside it; your checkout is never switched. Resume scans `.loop-spec/features/*/feature.json` for incomplete features inside the staleness window (48h) and re-enters the recorded worktree.
+Under Claude Code each feature runs in its own git worktree (`.claude/worktrees/{slug}`, branch `feat/{slug}` from the fetched base SHA). OpenCode/pi use a clean in-place branch because those harnesses cannot switch a live session root. Resume scans both the invocation root and registered feature worktrees for incomplete features inside the staleness window (48h), then adopts the recorded absolute root before reading phase state.
 
 ```mermaid
 flowchart LR
@@ -548,13 +561,16 @@ flowchart LR
     discuss -->|SPEC.md| plan[PLAN team<br/>planner + challenger<br/>advocate on escalation]
     plan -->|PLAN.md + task DAG| execute[EXECUTE team<br/>lead + N implementers + R reviewers]
     execute -->|merged commits on feat/&lcub;slug&rcub;| verify[VERIFY team<br/>verifier + code-reviewer]
-    verify -->|VERIFICATION.md| pr([PR opened])
+    verify -->|VERIFICATION.md| iterate[ITERATE<br/>goal judge]
+    iterate -->|terminal verdict| deliver[DELIVER<br/>exact SHA + required checks]
+    deliver -->|ready-for-review| pr([PR ready])
+    iterate -.->|goal gap| execute
     verify -.->|remediation tasks<br/>via feature.json| execute
     plan -.->|fix-list<br/>via SendMessage| plan
     discuss -.->|fix-list<br/>via SendMessage| discuss
 ```
 
-Solid arrows are forward progression; dotted arrows are gate-failure retries. Each phase commits its artifact before handoff, so a crash at any boundary is resumable.
+Solid arrows are forward progression; dotted arrows are gate-failure retries. Design and verification artifacts are committed before handoff; DELIVER persists its external observation locally without creating a post-check commit that would invalidate the checked SHA.
 
 ### Per-phase team lifecycle
 
@@ -703,7 +719,7 @@ loop-spec/
 ├── extensions/opencode/loop-spec.ts # opencode bridge: shell.env/chat.message/event hooks (node builtins only)
 ├── agents/                          # specialized agent definitions (teammates + mappers)
 ├── skills/
-│   ├── cycle/ spec/ discuss/ plan/ execute/ verify/ iterate/   # the six phases + orchestrator
+│   ├── cycle/ spec/ discuss/ plan/ execute/ verify/ iterate/ deliver/ # seven phases + orchestrator
 │   ├── map-codebase/ assess/ debug/ intake/ quality-loop/ revise/ retro/
 │   ├── status/ sentinel/ watch/ micro/ rules/ onboard/
 │   ├── grill/ simplicity/ discipline/                          # session-mode toggles

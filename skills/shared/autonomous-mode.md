@@ -75,6 +75,7 @@ stay hard failures exactly as written in their skills:
 - dirty-repo aborts (workspace Step 5 two-phase check, worktree creation)
 - graphify hard requirement, schema-version guards, the iteration ceiling
 - VERIFY's code-review HARD-GATE and the test-tamper scan
+- DELIVER's exact-SHA identity, required-check, and unique-PR gates
 - anything the skill marks abort/escalate-with-evidence rather than ask
 
 ## The continuation ladder (warnings are a record, not a handler)
@@ -101,11 +102,12 @@ escalation path fires, climb this ladder instead of stopping:
 4. **Iteration limit hit (the ONLY backlog entry point)** — run ITERATE's
    confirmation pass as written, then convert EVERY accepted gap into a
    concrete `BACKLOG.md` entry (`lib/backlog.sh add`, one self-contained
-   feature description per gap). On cycle completion the autonomous run
-   **chains directly into backlog drain** (cycle Step 3 branch 4 semantics,
-   bounded by `LOOP_SPEC_MAX_FEATURES`) so the gaps become worked items in the
-   same run, not notes for a human. Record the same facts in `warnings[]` for
-   the PR audit trail.
+   feature description per gap). After DELIVER's sidecar reaches
+   `delivery.json.status == "ready-for-review"`, the autonomous run **chains directly
+   into backlog drain** (cycle Step 3 branch 4 semantics, bounded by
+   `LOOP_SPEC_MAX_FEATURES`) so the gaps become worked items in the same run,
+   not notes for a human. `delivery-incomplete` stops chaining. Record the same
+   facts in `warnings[]` for the PR audit trail.
 5. **Terminal** — a gap that re-enters via backlog drain and spends its rounds
    AGAIN is not re-backlogged: mark it terminal (`iterate-terminal:` prefix in
    `warnings[]` and the backlog entry closed via `lib/backlog.sh terminal
@@ -167,6 +169,7 @@ an edited spec file.
 | DISCUSS / PLAN teammate-idle | AskUserQuestion | one fresh re-dispatch, then the lead authors the artifact itself (continuation ladder rung 2). DISCUSS's fast path has no spec-writer, so this applies to its critique teammates and to PLAN's roster |
 | ITERATE spec-rewind approval (`step`/`interactive` only) | AskUserQuestion | moot — style is forced to `auto`, which already auto-approves |
 | ITERATE limit spent | ship-with-warnings, human drains backlog later | confirmation pass → accepted gaps become BACKLOG entries → chain into backlog drain (ladder rungs 4-5) |
+| DELIVER transport / identity / CI gate | stop or manual repair | failed required checks route to EXECUTE; ambiguous PR, moved head, timeout, missing auth/remote, or partial workspace delivery fail closed and stop chaining |
 | debug skill fix-strategy and escalation choices | AskUserQuestion | recommended strategy, recorded in BUG.md |
 
 Sites not listed follow the general rule: recommended option, recorded, proceed.

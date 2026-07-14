@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # status.sh - Read-only consumer of loop-spec telemetry (feature.json,
-# events.jsonl, result.json). The command surface behind /loop-spec:status.
+# delivery.json, events.jsonl, result.json). The command surface behind /loop-spec:status.
 #
 # Usage:
 #   status.sh [--root <dir>] [--json] [status] [<slug>]
@@ -61,9 +61,11 @@ _collect() {
       local slug; slug="$(basename "$fdir")"
       [[ -n "$SLUG" && "$slug" != "$SLUG" ]] && continue
 
-      local fj="{}" rj="null" last_event="null" events="[]"
+      local fj="{}" dj="null" rj="null" last_event="null" events="[]"
       [[ -f "$fdir/feature.json" ]] && fj="$(cat "$fdir/feature.json" 2>/dev/null || echo '{}')"
       jq -e . >/dev/null 2>&1 <<<"$fj" || fj="{}"
+      [[ -f "$fdir/delivery.json" ]] && dj="$(cat "$fdir/delivery.json" 2>/dev/null || echo 'null')"
+      jq -e . >/dev/null 2>&1 <<<"$dj" || dj="null"
       [[ -f "$fdir/result.json" ]] && rj="$(cat "$fdir/result.json" 2>/dev/null || echo 'null')"
       jq -e . >/dev/null 2>&1 <<<"$rj" || rj="null"
       if [[ -f "$fdir/events.jsonl" ]]; then
@@ -77,12 +79,16 @@ _collect() {
         --arg slug "$slug" \
         --argjson now "$now" \
         --argjson fj "$fj" \
+        --argjson dj "$dj" \
         --argjson rj "$rj" \
         --argjson last_event "$last_event" \
         --argjson events "$events" \
         '{
           slug: $slug,
-          phase: ($fj.currentPhase // null),
+          phase: (if ($rj.status // "") == "completed" or
+                         (($dj.nextPhase // "") == "completed" and
+                          ($dj.status // "") == "ready-for-review")
+                  then "completed" else ($fj.currentPhase // null) end),
           iterations: {
             used: ($fj.iterate.used // 0),
             max: ($fj.iterate.maxIterations // null)
@@ -90,8 +96,9 @@ _collect() {
           warnings: (($fj.warnings // []) | length),
           resultStatus: ($rj.status // null),
           converged: (if ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged else null end),
-          prUrl: ($rj.prUrl // $fj.prUrl // null),
+          prUrl: ($rj.prUrl // $dj.prUrl // $fj.prUrl // null),
           checkpointPrUrl: ($fj.checkpointPrUrl // null),
+          deliveryStatus: ($rj.delivery.status // $dj.status // $fj.delivery.status // null),
           autonomous: ($fj.autonomous // false),
           lastEvent: (if $last_event == null then null else {
             event: $last_event.event,

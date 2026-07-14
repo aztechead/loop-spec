@@ -142,19 +142,21 @@ docs/loop-spec/codebase/                # COMMITTED, auto-refreshed
 
 ```
 User -> Skill(loop-spec:cycle)
-         ├─ asks tier (quality | balanced | quick)
          ├─ asks exec style (auto | step | interactive | review-only)
-         ├─ writes feature slug + state.json
-         ├─ invokes loop-spec:discuss   -> SPEC.md committed
+         ├─ writes schema-7 feature.json
+         ├─ invokes loop-spec:spec      -> SPEC.md committed
+         ├─ invokes loop-spec:discuss   -> SPEC.md critiqued
          ├─ invokes loop-spec:plan      -> PLAN.md committed
          ├─ invokes loop-spec:execute   -> EXECUTION.md (gitignored) + per-task commits
-         └─ invokes loop-spec:verify    -> VERIFICATION.md committed + map refresh + PR opened
+         ├─ invokes loop-spec:verify    -> VERIFICATION.md committed + map refresh
+         ├─ invokes loop-spec:iterate   -> goal verdict or upstream rewind
+         └─ invokes loop-spec:deliver   -> exact-SHA PR + required checks + ready-for-review
 
 Each phase skill:
-  - reads state.json -> knows tier
-  - dispatches subagents from agents/ dir with model = tier-matrix[role][tier]
+  - reads feature.json and its fixed per-role model map
+  - dispatches subagents from agents/ where the phase needs them
   - HARD-GATE on critique-gate / code review findings
-  - writes phase artifact + updates state.json atomically
+  - writes phase artifact + updates feature.json atomically
   - returns control to loop-spec:cycle
 ```
 
@@ -424,13 +426,24 @@ Notes:
    - Each updates docs/loop-spec/codebase/{TOPIC}.md
    - Update .loop-spec/codebase/index.json
    - Commit: "docs: NO_JIRA refresh codebase mapping (feature: {slug})"
-7. Branch finish
-   - Ensure tests pass
-   - Push branch
-   - Open PR with body = SPEC.md summary + VERIFICATION.md acceptance table
-8. Commit final VERIFICATION.md, set state.currentPhase="completed"
-9. Print summary to user with PR URL
+7. Commit final VERIFICATION.md and set currentPhase="iterate"
+8. Do not push or leave the active feature root
 ```
+
+### ITERATE (`loop-spec:iterate`)
+
+Judges the integrated result against the immutable original goal. A gap rewinds to
+EXECUTE, PLAN, or DISCUSS; a terminal verdict advances to DELIVER, never directly to
+completed.
+
+### DELIVER (`loop-spec:deliver`)
+
+`lib/deliver.sh` maps single/workspace feature state onto `lib/pr-delivery.sh`. For each
+changed repository it pushes an explicit commit SHA, proves the remote ref and PR head
+match, creates or reuses exactly one draft PR, reconciles final metadata, waits for all
+required checks with bounded polling, and marks the PR ready only after success. Failed
+checks route to EXECUTE; transport, identity, timeout, or ambiguous-PR failures stop
+resumably. DELIVER never merges or enables auto-merge.
 
 ### Phase transitions
 
@@ -439,7 +452,9 @@ Notes:
 | DISCUSS -> PLAN | gate pass | auto | pause | pause | auto |
 | PLAN -> EXECUTE | gate pass | auto | pause | pause | auto |
 | EXECUTE -> VERIFY | all waves done | auto | pause | pause-per-task | auto |
-| VERIFY -> done | gate pass | auto | pause | pause | auto |
+| VERIFY -> ITERATE | gate pass | auto | pause | pause | auto |
+| ITERATE -> DELIVER | terminal goal verdict | auto | pause | pause | auto |
+| DELIVER -> done | exact SHA + required checks + ready PR | auto | pause | pause | auto |
 
 **Pause mechanism:** all "pause" cells use `AskUserQuestion` with options `[Continue, Review artifact first, Abort]`. State persisted to `state.json` before pause so user can leave session and resume later. "Continue" routes to next phase skill. "Review artifact first" prints artifact path and re-prompts after user acks.
 

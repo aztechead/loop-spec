@@ -7,7 +7,7 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete 
 
 # map-codebase
 
-Standalone skill that builds or refreshes `docs/loop-spec/codebase/*.md`. Also auto-invoked by `loop-spec:verify` at end of feature cycle.
+Standalone skill that builds or refreshes `docs/loop-spec/codebase/*.md`. Also auto-invoked by `loop-spec:verify` after its gates, before ITERATE and DELIVER.
 
 > **Team-mode adaptation (Step 3–5):** read `.loop-spec/runtime.json.teamsMode`.
 > - `none` → no team: run each mapper as a one-shot `Agent` call (`skills/shared/no-teams-fallback.md`); skip the `TeamCreate`/`TeamDelete` steps and collect each mapper's returned report directly.
