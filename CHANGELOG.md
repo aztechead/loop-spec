@@ -25,6 +25,25 @@ All notable changes documented here. Format follows Keep a Changelog.
   `adversarial` shorthand routes challenger/judge/reviewer roles to a second
   provider while the primary session and unrouted roles keep their current model.
 
+### Hardened - delivery preflight, retries, and staged readiness
+
+- `lib/deliver.sh` now runs the same candidate preflight on the single-repo path that
+  the workspace path already had: the checkout must be a git work tree at the repo
+  root, on the recorded feature branch, with commits past its base, before any push.
+- Hard delivery failures (transport, identity, timeout) bind their retry to the exact
+  `targetSha` they recorded. A resumed attempt re-delivers that SHA and fails closed
+  with `candidate_sha_drift` if `HEAD` moved, instead of silently delivering a
+  different commit. Remediation routes still produce and deliver a fresh SHA.
+- Multi-repo workspace delivery stages readiness: with two or more changed repos each
+  PR is held as a draft (`pr-delivery.sh --hold-ready`) until every repo's required
+  checks are green, then all are promoted, so one repo's CI failure never leaves a
+  half-ready set of PRs.
+- Fixed the CI-remediation task's `verifyCommand` fallback (no longer emits
+  `gh pr checks null`; adds the `--repo` selector) and populated a representative PR
+  URL in workspace delivery results instead of always null.
+- Scoped the VERIFY `VERIFICATION.md` commit to its pathspec in both single-repo and
+  workspace modes so it cannot sweep unrelated staged changes.
+
 ## [2.19.2]
 
 ### Fixed - OpenCode plugin and provider compatibility

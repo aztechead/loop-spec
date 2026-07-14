@@ -28,6 +28,23 @@ The deterministic implementation is `lib/deliver.sh`, which delegates each chang
 repository to `lib/pr-delivery.sh`. Both use explicit repository paths, so this phase
 is identical under Claude Code, pi, and OpenCode.
 
+Three invariants the controller enforces so retries and multi-repo features stay safe:
+
+- **Candidate preflight.** Every target — single-repo and each workspace repo — must be
+  a git work tree at the repository root, on the recorded feature branch, with at least
+  one commit past its recorded base, before any push. A mismatch is a structured block,
+  never a silent delivery of the wrong `HEAD`.
+- **SHA-bound hard retries.** A hard failure (transport, identity, timeout) leaves
+  `delivery.json.nextPhase = "deliver"` with the exact `targetSha` it tried. A resumed
+  attempt re-delivers that same SHA; if `HEAD` has drifted it fails closed with
+  `candidate_sha_drift` rather than delivering an unverified commit. A remediation route
+  (`nextPhase = "execute"`) intentionally produces a new SHA, so binding is skipped there.
+- **Staged workspace readiness.** With two or more changed repos, the controller holds
+  every repo's draft (push + reconcile + green required checks, `--hold-ready`) and
+  promotes them to ready only after all repos have cleared checks. One repo's CI failure
+  therefore never leaves a half-ready set of PRs; the feature routes to remediation with
+  the passing repos still held as drafts.
+
 ## Procedure
 
 ### Step 1 - Final-candidate guard

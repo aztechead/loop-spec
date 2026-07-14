@@ -88,7 +88,8 @@ if git -C "$feature_workspace_root" rev-parse --is-inside-work-tree >/dev/null 2
   git -C "$feature_workspace_root" add \
     "docs/loop-spec/features/${slug}/VERIFICATION.md"
   git -C "$feature_workspace_root" commit \
-    -m "verify: NO_JIRA ${slug} (workspace)"
+    -m "verify: NO_JIRA ${slug} (workspace)" \
+    -- "docs/loop-spec/features/${slug}/VERIFICATION.md"
 else
   echo "workspace root not a git repo; leaving VERIFICATION.md uncommitted"
 fi

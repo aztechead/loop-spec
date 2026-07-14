@@ -24,7 +24,7 @@ cat > "$WORK/shims/pr-delivery" <<'SHIM'
 #!/usr/bin/env bash
 set -uo pipefail
 printf '%s\n' "$*" >> "${FAKE_DELIVERY_LOG:?}"
-repo=""; branch=""; base=""; sha=""; body=""
+repo=""; branch=""; base=""; sha=""; body=""; hold=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -C) repo="$2"; shift 2 ;;
@@ -32,16 +32,25 @@ while [[ $# -gt 0 ]]; do
     --base) base="$2"; shift 2 ;;
     --sha) sha="$2"; shift 2 ;;
     --body-file) body="$2"; shift 2 ;;
+    --hold-ready) hold=1; shift ;;
     *) shift ;;
   esac
 done
 cp "$body" "${FAKE_DELIVERY_BODY:?}"
-url="https://github.com/test/repo/pull/7"
+# Distinct URL per repo so workspace aggregates can be checked.
+url="https://github.com/test/$(basename "$repo")/pull/7"
+[[ "$(basename "$repo")" == "repo" || "$(basename "$repo")" == "single" ]] \
+  && url="https://github.com/test/repo/pull/7"
 if [[ "${FAKE_DELIVERY_MALFORMED:-0}" == "1" ]]; then
   printf 'not-json\n'
   exit 1
 fi
-if [[ "${FAKE_DELIVERY_FAIL:-0}" == "1" ]]; then
+# FAKE_DELIVERY_FAIL fails every call; FAKE_DELIVERY_FAIL_MATCH fails only repos whose
+# path contains the substring (a single repo's checks failing inside a workspace).
+fail=0
+[[ "${FAKE_DELIVERY_FAIL:-0}" == "1" ]] && fail=1
+[[ -n "${FAKE_DELIVERY_FAIL_MATCH:-}" && "$repo" == *"$FAKE_DELIVERY_FAIL_MATCH"* ]] && fail=1
+if [[ "$fail" == "1" ]]; then
   jq -cn --arg repo "$repo" --arg branch "$branch" --arg base "$base" --arg sha "$sha" --arg url "$url" \
     '{schema:1,ok:false,mode:"final",outcome:"blocked",repo:$repo,branch:$branch,
       baseBranch:$base,targetSha:$sha,remoteSha:$sha,headSha:$sha,prNumber:7,prUrl:$url,
@@ -49,6 +58,15 @@ if [[ "${FAKE_DELIVERY_FAIL:-0}" == "1" ]]; then
       checks:{status:"failed",required:[{name:"test",bucket:"fail"}]},
       observedAt:"2026-01-01T00:00:00Z",errorCode:"checks_failed",error:"failed"}'
   exit 1
+fi
+if [[ "$hold" == "1" ]]; then
+  jq -cn --arg repo "$repo" --arg branch "$branch" --arg base "$base" --arg sha "$sha" --arg url "$url" \
+    '{schema:1,ok:true,mode:"final",outcome:"ready-pending",repo:$repo,branch:$branch,
+      baseBranch:$base,targetSha:$sha,remoteSha:$sha,headSha:$sha,prNumber:7,prUrl:$url,
+      prAction:"reused",metadataAction:"unchanged",readinessAction:"held",isDraft:true,
+      checks:{status:"passed",required:[{name:"test",bucket:"pass"}]},
+      observedAt:"2026-01-01T00:00:00Z",errorCode:null,error:null}'
+  exit 0
 fi
 jq -cn --arg repo "$repo" --arg branch "$branch" --arg base "$base" --arg sha "$sha" --arg url "$url" \
   '{schema:1,ok:true,mode:"final",outcome:"delivered",repo:$repo,branch:$branch,
@@ -181,6 +199,8 @@ check "workspace: two durable targets" "2" "$(jq -r '.targets | length' "$WFDIR/
 check "workspace: changed delivered" "delivered" "$(jq -r '.targets[] | select(.name=="changed") | .outcome' "$WFDIR/delivery.json")"
 check "workspace: unchanged skipped" "skipped-no-commits" "$(jq -r '.targets[] | select(.name=="unchanged") | .outcome' "$WFDIR/delivery.json")"
 check "workspace: one controller call" "1" "$(wc -l < "$LOG" | tr -d ' ')"
+check "workspace: representative PR url surfaced" "https://github.com/test/changed/pull/7" \
+  "$(jq -r '.prUrl' "$WFDIR/delivery.json")"
 
 # A repo on the wrong branch is blocked, never misreported as no changes.
 git -C "$WS/changed" checkout -q main
@@ -192,7 +212,7 @@ check "workspace wrong branch: structured error" "branch_mismatch" \
   "$(jq -r '.targets[] | select(.name=="changed") | .errorCode' "$WFDIR/delivery.json")"
 check "workspace wrong branch: not skipped" "blocked" \
   "$(jq -r '.targets[] | select(.name=="changed") | .outcome' "$WFDIR/delivery.json")"
-check "workspace wrong branch: PR hint retained" "https://github.com/test/repo/pull/7" \
+check "workspace wrong branch: PR hint retained" "https://github.com/test/changed/pull/7" \
   "$(jq -r '.targets[] | select(.name=="changed") | .prUrl' "$WFDIR/delivery.json")"
 check "workspace wrong branch: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 
@@ -209,6 +229,94 @@ check "workspace missing repo: structured error" "repo_invalid" \
   "$(jq -r '.targets[] | select(.name=="changed") | .errorCode' "$WFDIR/delivery.json")"
 check "workspace missing repo: not skipped" "blocked" \
   "$(jq -r '.targets[] | select(.name=="changed") | .outcome' "$WFDIR/delivery.json")"
+
+# Single-repo candidate preflight: a checkout on the wrong branch is blocked before
+# any controller call, exactly like the workspace path.
+PF="$WORK/preflight"; init_repo "$PF"
+PF_BASE="$(git -C "$PF" rev-parse HEAD)"
+PFDIR="$PF/.loop-spec/features/pf"; mkdir -p "$PFDIR"
+jq -n --arg base "$PF_BASE" '{schemaVersion:7,slug:"pf",feature_title:"PF",currentPhase:"deliver",
+  branch:"feat/pf",baseSha:$base,baseBranch:"main",workspace:null,prUrl:null,checkpointPrUrl:null,
+  warnings:[],artifacts:{}}' > "$PFDIR/feature.json"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$PFDIR")" || ec=$?
+check "single preflight wrong branch: exit 1" "1" "$ec"
+check "single preflight wrong branch: structured error" "branch_mismatch" \
+  "$(jq -r '.targets[0].errorCode' "$PFDIR/delivery.json")"
+check "single preflight wrong branch: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+
+# Hard-failure retries bind to the recorded SHA: a controller error leaves
+# nextPhase=deliver with the exact targetSha, and a drifted HEAD then fails closed
+# instead of silently delivering a different commit.
+BIND="$WORK/bind"; init_repo "$BIND"
+BIND_BASE="$(git -C "$BIND" rev-parse HEAD)"
+git -C "$BIND" checkout -q -b feat/bind
+printf 'one\n' > "$BIND/one"; git -C "$BIND" add one; git -C "$BIND" commit -q -m one
+BINDDIR="$BIND/.loop-spec/features/bind"; mkdir -p "$BINDDIR"
+jq -n --arg base "$BIND_BASE" '{schemaVersion:7,slug:"bind",feature_title:"Bind",currentPhase:"deliver",
+  branch:"feat/bind",baseSha:$base,baseBranch:"main",workspace:null,prUrl:null,checkpointPrUrl:null,
+  warnings:[],artifacts:{}}' > "$BINDDIR/feature.json"
+SHA1="$(git -C "$BIND" rev-parse HEAD)"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_MALFORMED=1 \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$BINDDIR")" || ec=$?
+check "bind: hard failure routes to deliver" "deliver" "$(jq -r '.nextPhase' "$BINDDIR/delivery.json")"
+check "bind: recorded the tried SHA" "$SHA1" "$(jq -r '.targets[0].targetSha' "$BINDDIR/delivery.json")"
+printf 'two\n' > "$BIND/two"; git -C "$BIND" add two; git -C "$BIND" commit -q -m two
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$BINDDIR")" || ec=$?
+check "bind: drift fails closed" "1" "$ec"
+check "bind: drift structured error" "candidate_sha_drift" \
+  "$(jq -r '.targets[0].errorCode' "$BINDDIR/delivery.json")"
+check "bind: no controller call on drift" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+
+# Staged workspace readiness: with two changed repos, every repo is held until all
+# checks are green, then all are promoted (2 holds + 2 promotions).
+STAGE="$WORK/stage"; mkdir -p "$STAGE"
+init_repo "$STAGE/a"; init_repo "$STAGE/b"
+A_BASE="$(git -C "$STAGE/a" rev-parse HEAD)"; B_BASE="$(git -C "$STAGE/b" rev-parse HEAD)"
+for r in a b; do
+  git -C "$STAGE/$r" checkout -q -b feat/stage
+  printf 'x\n' > "$STAGE/$r/x"; git -C "$STAGE/$r" add x; git -C "$STAGE/$r" commit -q -m x
+done
+SFDIR="$STAGE/.loop-spec/features/stage"; SDocs="$STAGE/docs/loop-spec/features/stage"
+mkdir -p "$SFDIR" "$SDocs"
+printf '# Iteration\nConverged.\n' > "$SDocs/ITERATION.md"
+jq -n --arg root "$STAGE" --arg ab "$A_BASE" --arg bb "$B_BASE" \
+  '{schemaVersion:7,slug:"stage",feature_title:"Stage",currentPhase:"deliver",
+    branch:null,baseSha:null,baseBranch:null,prUrl:null,checkpointPrUrl:null,warnings:[],
+    artifacts:{iteration:"docs/loop-spec/features/stage/ITERATION.md"},
+    workspace:{root:$root,repos:[
+      {name:"a",path:"a",branch:"feat/stage",baseSha:$ab,baseBranch:"main"},
+      {name:"b",path:"b",branch:"feat/stage",baseSha:$bb,baseBranch:"main"}]},
+    delivery:{status:"pending",attemptedAt:null,finishedAt:null,targets:[]}}' > "$SFDIR/feature.json"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$SFDIR")" || ec=$?
+check "stage: exit 0" "0" "$ec"
+check "stage: ready-for-review" "ready-for-review" "$(jq -r '.status' "$SFDIR/delivery.json")"
+check "stage: both delivered" "2" "$(jq '[.targets[]|select(.outcome=="delivered")]|length' "$SFDIR/delivery.json")"
+check "stage: two holds then two promotions" "4" "$(wc -l < "$LOG" | tr -d ' ')"
+check "stage: exactly two hold calls" "2" "$(grep -c -- '--hold-ready' "$LOG" || true)"
+check "stage: representative PR url populated" "https://github.com/test/a/pull/7" \
+  "$(jq -r '.prUrl' "$SFDIR/delivery.json")"
+
+# Staged workspace with one repo's checks failing: no repo is promoted, the passing
+# repo stays held, and the feature routes to remediation rather than half-ready PRs.
+jq '.delivery = {status:"pending",attemptedAt:null,finishedAt:null,targets:[]}' \
+  "$SFDIR/feature.json" > "$SFDIR/feature.json.tmp" && mv "$SFDIR/feature.json.tmp" "$SFDIR/feature.json"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_FAIL_MATCH="$STAGE/b" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$SFDIR")" || ec=$?
+check "stage fail: exit 1" "1" "$ec"
+check "stage fail: no promotion, two hold calls only" "2" "$(wc -l < "$LOG" | tr -d ' ')"
+check "stage fail: passing repo held not delivered" "ready-pending" \
+  "$(jq -r '.targets[]|select(.name=="a")|.outcome' "$SFDIR/delivery.json")"
+check "stage fail: routes to remediation" "execute" "$(jq -r '.delivery.nextPhase' "$SFDIR/feature.json")"
+check "stage fail: remediation task for failing repo" "task-delivery-ci-b" \
+  "$(jq -r '.pendingRemediationTasks[]|select(.subject|contains("(b)"))|.id' "$SFDIR/feature.json")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

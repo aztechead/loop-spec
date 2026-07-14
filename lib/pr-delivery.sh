@@ -5,7 +5,12 @@
 #   pr-delivery.sh checkpoint|final -C <repo> \
 #     --branch <head> --base <base> --sha <full-sha> \
 #     --title <title> --body-file <path> [--pr-url <url>] \
-#     [--remote origin] [--checks-timeout 900] [--checks-interval 10]
+#     [--remote origin] [--checks-timeout 900] [--checks-interval 10] [--hold-ready]
+#
+# --hold-ready (final only): push, reconcile the PR, and wait for green required
+# checks, but stop before the draft->ready flip (outcome "ready-pending"). A second,
+# plain final call promotes it. Callers use this to stage multi-repo readiness so no
+# PR is marked ready until every repo in the feature has cleared its checks.
 #
 # stdout is exactly one JSON result. Diagnostics go to stderr.
 # Exit 0: delivered/checkpointed; 1: operational or policy failure; 2: bad input.
@@ -37,10 +42,12 @@ checks_timeout="${LOOP_SPEC_CHECKS_TIMEOUT_SECONDS:-900}"
 checks_interval="${LOOP_SPEC_CHECKS_INTERVAL_SECONDS:-10}"
 command_timeout="${LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS:-60}"
 registration_grace="${LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS:-30}"
+hold_ready=0
 unknown_arg=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --hold-ready) hold_ready=1; shift ;;
     --branch|--base|--sha|--title|--body-file|--pr-url|--remote|--checks-timeout|--checks-interval)
       if [[ $# -lt 2 ]]; then
         parse_error="$1 requires a value"
@@ -514,6 +521,15 @@ validate_pr_snapshot "pre-readiness refresh"
 refresh_remote_sha || fail_delivery "remote_query_failed" "cannot read remote branch before readiness transition"
 [[ "$remote_sha" == "$target_sha" ]] \
   || fail_delivery "remote_sha_mismatch" "remote branch moved to '$remote_sha' before readiness transition"
+
+# Staged delivery (multi-repo workspaces): prove push + identity + green required
+# checks, but hold the draft->ready flip so no PR in the set is promoted until every
+# repo has cleared its checks. The caller promotes with a second, plain final call.
+if [[ "$hold_ready" == "1" ]]; then
+  readiness_action="held"
+  emit_result true "ready-pending" "" ""
+  exit 0
+fi
 
 if [[ "$is_draft" == "true" ]]; then
   run_gh "$gh_out" "$gh_err" gh pr ready "$pr_number" --repo "$repo_selector" \

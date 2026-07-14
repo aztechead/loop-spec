@@ -94,18 +94,17 @@ PY
 checks_timeout="${LOOP_SPEC_CHECKS_TIMEOUT_SECONDS:-900}"
 checks_interval="${LOOP_SPEC_CHECKS_INTERVAL_SECONDS:-10}"
 attempted_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# Every observation is appended here; the delivered/skipped/held/failure counts are
+# derived from this set after all targets are processed.
 targets="[]"
-delivered_count=0
-skipped_count=0
-failure_count=0
-first_error=""
 
 invoke_delivery() {
-  local repo_dir="$1" branch="$2" base="$3" sha="$4" title="$5" hint="$6"
+  local repo_dir="$1" branch="$2" base="$3" sha="$4" title="$5" hint="$6" hold="${7:-0}"
   local args result rc=0
   args=(final -C "$repo_dir" --branch "$branch" --base "$base" --sha "$sha"
         --title "$title" --body-file "$body_file"
         --checks-timeout "$checks_timeout" --checks-interval "$checks_interval")
+  [[ "$hold" == "1" ]] && args+=(--hold-ready)
   [[ -n "$hint" ]] && args+=(--pr-url "$hint")
   result="$(bash "$PR_DELIVERY" "${args[@]}")" || rc=$?
   if ! jq -e 'type == "object" and has("ok")' <<<"$result" >/dev/null 2>&1; then
@@ -133,32 +132,81 @@ append_target_failure() {
       prAction:"none",metadataAction:"none",readinessAction:"none",isDraft:null,
       checks:{status:"not-run",required:[]},observedAt:null,errorCode:$code,error:$error}')"
   targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
-  failure_count=$((failure_count + 1))
-  [[ -n "$first_error" ]] || first_error="$code"
+}
+
+# The prior attempt's sidecar. A hard delivery failure leaves nextPhase="deliver"
+# and records the exact targetSha it tried; a resumed retry must re-deliver that
+# same SHA (not whatever HEAD now is) so the push, checks, and readiness all bind
+# to the verified commit. A remediation route (nextPhase="execute") intentionally
+# produces a new SHA, so binding is skipped there.
+prior_next=""
+prior_targets="[]"
+if [[ -f "$delivery_file" ]]; then
+  prior_next="$(jq -r '.nextPhase // ""' "$delivery_file" 2>/dev/null || echo "")"
+  prior_targets="$(jq -c '.targets // []' "$delivery_file" 2>/dev/null || echo "[]")"
+fi
+bound_target_sha() {
+  local name="$1"
+  [[ "$prior_next" == "deliver" ]] || return 0
+  jq -r --arg n "$name" \
+    '[.[] | select(.name == $n and (.targetSha // "") != "") | .targetSha] | first // empty' \
+    <<<"$prior_targets"
 }
 
 if [[ -z "$workspace_root" ]]; then
   branch="$(jq -r '.branch // empty' "$feature_json")"
   base_branch="$(jq -r '.baseBranch // "main"' "$feature_json")"
+  base_sha="$(jq -r '.baseSha // empty' "$feature_json")"
   hint=""
   [[ -f "$delivery_file" ]] && hint="$(jq -r '.prUrl // empty' "$delivery_file" 2>/dev/null || true)"
   [[ -n "$hint" ]] || hint="$(jq -r '.prUrl // .checkpointPrUrl // empty' "$feature_json")"
-  target_sha="$(git -C "$artifact_root" rev-parse HEAD 2>/dev/null)" || {
-    echo "deliver: cannot resolve feature HEAD" >&2
-    exit 2
-  }
-  result_rc=0
-  result="$(invoke_delivery "$artifact_root" "$branch" "$base_branch" "$target_sha" \
-    "feat: $feature_title" "$hint")" || result_rc=$?
-  record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path}' <<<"$result")"
-  targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
-  if [[ "$result_rc" -eq 0 && "$(jq -r '.ok' <<<"$result")" == "true" ]]; then
-    delivered_count=1
-  else
-    failure_count=1
-    first_error="$(jq -r '.errorCode // "delivery_failed"' <<<"$result")"
+
+  # Candidate preflight (parity with the workspace path): the artifact root must be
+  # a git work tree at the repository root, on the recorded feature branch, with at
+  # least one commit past the recorded base.
+  preflight_ok=1
+  repo_top="$(git -C "$artifact_root" rev-parse --show-toplevel 2>/dev/null || true)"
+  actual_branch="$(git -C "$artifact_root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  target_sha="$(git -C "$artifact_root" rev-parse --verify HEAD 2>/dev/null || true)"
+  if [[ -z "$target_sha" ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "" "$hint" \
+      "git_history_failed" "cannot resolve feature HEAD"
+    preflight_ok=0
+  elif [[ "$repo_top" != "$artifact_root" ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "repo_root_mismatch" "feature directory does not name the repository root"
+    preflight_ok=0
+  elif [[ -n "$branch" && "$actual_branch" != "$branch" ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "branch_mismatch" "checkout is on '$actual_branch', expected '$branch'"
+    preflight_ok=0
+  elif [[ -n "$base_sha" ]] && ! git -C "$artifact_root" rev-parse --verify "${base_sha}^{commit}" >/dev/null 2>&1; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "base_sha_invalid" "recorded base SHA is not a local commit"
+    preflight_ok=0
+  elif [[ -n "$base_sha" ]] && [[ "$(git -C "$artifact_root" rev-list --count "${base_sha}..${target_sha}" 2>/dev/null || echo 0)" -eq 0 ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "no_commits" "feature branch has no commits past its recorded base"
+    preflight_ok=0
+  fi
+
+  if [[ "$preflight_ok" -eq 1 ]]; then
+    bound="$(bound_target_sha "$slug")"
+    if [[ -n "$bound" && "$bound" != "$target_sha" ]]; then
+      append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+        "candidate_sha_drift" "HEAD '$target_sha' drifted from the SHA the prior attempt verified '$bound'"
+    else
+      result_rc=0
+      result="$(invoke_delivery "$artifact_root" "$branch" "$base_branch" "$target_sha" \
+        "feat: $feature_title" "$hint")" || result_rc=$?
+      record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path}' <<<"$result")"
+      targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+    fi
   fi
 else
+  # Pass 1 - preflight every configured repo. Blocked/zero-commit repos are recorded
+  # now; repos with real commits are collected as deliverables for pass 2.
+  deliverables="[]"
   while IFS= read -r repo_entry; do
     name="$(jq -r '.name' <<<"$repo_entry")"
     rel_path="$(jq -r '.path' <<<"$repo_entry")"
@@ -209,22 +257,65 @@ else
           metadataAction:"none",readinessAction:"none",isDraft:null,
           checks:{status:"skipped",required:[]},observedAt:null,errorCode:null,error:null}')"
       targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
-      skipped_count=$((skipped_count + 1))
       continue
     fi
-    result_rc=0
-    result="$(invoke_delivery "$repo_dir" "$branch" "$base_branch" "$target_sha" \
-      "feat: $feature_title ($name)" "$hint")" || result_rc=$?
-    record="$(jq -c --arg name "$name" --arg path "$repo_dir" '. + {name:$name,path:$path}' <<<"$result")"
-    targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
-    if [[ "$result_rc" -eq 0 && "$(jq -r '.ok' <<<"$result")" == "true" ]]; then
-      delivered_count=$((delivered_count + 1))
-    else
-      failure_count=$((failure_count + 1))
-      [[ -n "$first_error" ]] || first_error="$(jq -r '.errorCode // "delivery_failed"' <<<"$result")"
+    bound="$(bound_target_sha "$name")"
+    if [[ -n "$bound" && "$bound" != "$target_sha" ]]; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
+        "candidate_sha_drift" "HEAD '$target_sha' drifted from the SHA the prior attempt verified '$bound'"
+      continue
     fi
+    deliverables="$(jq -c --arg name "$name" --arg path "$repo_dir" --arg branch "$branch" \
+      --arg base "$base_branch" --arg sha "$target_sha" --arg hint "$hint" \
+      '. + [{name:$name,path:$path,branch:$branch,base:$base,sha:$sha,hint:$hint}]' <<<"$deliverables")"
   done < <(jq -c '.workspace.repos[]' "$feature_json")
+
+  # Pass 2 - deliver. With two or more changed repos, stage readiness: prove every
+  # repo's checks are green (held as drafts) before promoting any, so a single repo's
+  # CI failure never leaves a half-ready set of PRs. One changed repo needs no staging.
+  deliverable_count="$(jq 'length' <<<"$deliverables")"
+  run_target() {
+    local entry="$1" hold="$2" result_rc=0 result record
+    local name path branch base sha hint
+    name="$(jq -r '.name' <<<"$entry")"; path="$(jq -r '.path' <<<"$entry")"
+    branch="$(jq -r '.branch' <<<"$entry")"; base="$(jq -r '.base' <<<"$entry")"
+    sha="$(jq -r '.sha' <<<"$entry")"; hint="$(jq -r '.hint' <<<"$entry")"
+    result="$(invoke_delivery "$path" "$branch" "$base" "$sha" \
+      "feat: $feature_title ($name)" "$hint" "$hold")" || result_rc=$?
+    record="$(jq -c --arg name "$name" --arg path "$path" '. + {name:$name,path:$path}' <<<"$result")"
+    targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
+    return "$result_rc"
+  }
+
+  if [[ "$deliverable_count" -ge 2 ]]; then
+    all_held=1
+    while IFS= read -r entry; do
+      run_target "$entry" 1 || all_held=0
+    done < <(jq -c '.[]' <<<"$deliverables")
+    if [[ "$all_held" -eq 1 ]]; then
+      # Every repo cleared its checks. Promote each with a plain (idempotent) call.
+      while IFS= read -r entry; do
+        run_target "$entry" 0 || true
+      done < <(jq -c '.[]' <<<"$deliverables")
+      # Each promoted repo now has both its held and its delivered record; keep the
+      # last (delivered) observation per repo.
+      targets="$(jq -c 'group_by(.name) | map(.[-1])' <<<"$targets")"
+    fi
+  else
+    while IFS= read -r entry; do
+      run_target "$entry" 0 || true
+    done < <(jq -c '.[]' <<<"$deliverables")
+  fi
 fi
+
+# Derive counts from the final target set. A "ready-pending" target is a staged repo
+# that cleared its checks but was held back because a sibling repo failed; it is not
+# delivered, so it keeps the feature out of ready-for-review.
+delivered_count="$(jq '[.[] | select(.outcome == "delivered")] | length' <<<"$targets")"
+skipped_count="$(jq '[.[] | select(.outcome == "skipped-no-commits")] | length' <<<"$targets")"
+held_count="$(jq '[.[] | select(.outcome == "ready-pending")] | length' <<<"$targets")"
+failure_count="$(jq '[.[] | select(.ok == false)] | length' <<<"$targets")"
+first_error="$(jq -r '[.[] | select(.ok == false) | .errorCode // "delivery_failed"] | first // ""' <<<"$targets")"
 
 status="ready-for-review"
 finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -235,10 +326,13 @@ ci_remediation_attempts="$(jq -r '
   (.delivery.ciRemediationAttempts // 0)
   | if type == "number" and . >= 0 and floor == . then . else 0 end
 ' "$feature_json")"
-if [[ "$failure_count" -gt 0 ]]; then
+if [[ "$failure_count" -gt 0 || "$held_count" -gt 0 ]]; then
   ok=false
   finished_at=""
-  if [[ "$delivered_count" -gt 0 ]]; then
+  if [[ "$failure_count" -eq 0 ]]; then
+    # Every repo cleared checks but promotion did not complete; resume re-promotes.
+    status="ready-pending"
+  elif [[ "$delivered_count" -gt 0 || "$held_count" -gt 0 ]]; then
     status="partial"
   else
     status="${first_error//_/-}"
@@ -287,7 +381,10 @@ if [[ "$next_phase" == "execute" ]]; then
           subject: ("Fix: required PR checks failed (" + $target.name + ")"),
           files: [],
           verifyCommand: (if $test_command != "" then $test_command
-                          else "gh pr checks " + ($target.prNumber | tostring) + " --required" end),
+                          elif ($target.prNumber != null and (($target.repo // "") != ""))
+                            then ("gh pr checks " + ($target.prNumber | tostring)
+                                  + " --repo " + $target.repo + " --required")
+                          else "all required PR checks pass for the delivered SHA" end),
           acceptanceCriteria: ["all required PR checks pass for the delivered SHA"],
           blockedBy: [],
           retries: 0,
@@ -299,9 +396,16 @@ if [[ "$next_phase" == "execute" ]]; then
     ]')"
 fi
 
-pr_url_json="null"
+# Surface a clickable PR. Single-repo has one; a workspace has one per changed repo,
+# so report the first delivered repo's PR as the representative (the full set lives in
+# targets[].prUrl), falling back to any target that carries a URL.
 if [[ -z "$workspace_root" ]]; then
   pr_url_json="$(jq -c '.[0].prUrl // null' <<<"$targets")"
+else
+  pr_url_json="$(jq -c '
+    ([.[] | select(.outcome == "delivered") | .prUrl | select(. != null)] | first)
+    // ([.[] | .prUrl | select(. != null)] | first)
+    // null' <<<"$targets")"
 fi
 aggregate="$(jq -cn --argjson ok "$ok" --arg status "$status" --arg nextPhase "$next_phase" \
   --argjson prUrl "$pr_url_json" --arg attempted "$attempted_at" --arg finished "$finished_at" \

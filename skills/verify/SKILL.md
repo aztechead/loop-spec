@@ -364,7 +364,7 @@ If map-codebase fails: log warning to `feature.json warnings[]` via `lib/feature
 
 ```bash
 git add docs/loop-spec/features/{slug}/VERIFICATION.md
-git commit -m "verify: NO_JIRA {slug}"
+git commit -m "verify: NO_JIRA {slug}" -- docs/loop-spec/features/{slug}/VERIFICATION.md
 ```
 
 ```bash

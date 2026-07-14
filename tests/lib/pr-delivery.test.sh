@@ -254,6 +254,21 @@ check "registration lag: exit 0" "0" "$ec"
 check "registration lag: waits for checks" "2" "$(grep -c '^pr checks ' "$GH_LOG" || true)"
 check "registration lag: eventual pass" "passed" "$(jq -r '.checks.status' <<<"$out" 2>/dev/null)"
 
+# --hold-ready proves green checks but holds the draft->ready flip for staged delivery.
+checkpoint="$(jq -c '.isDraft=true' <<<"$checkpoint")"
+reset_gh "[$checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  FAKE_GH_HEAD_SHA="$TARGET_SHA" bash "$SCRIPT" final -C "$WORK/repo" \
+  --branch feat/delivery --base main --sha "$TARGET_SHA" --title "feat: delivery" \
+  --body-file "$BODY" --hold-ready --checks-timeout 2 --checks-interval 0 2>"$WORK/err")" || ec=$?
+check "hold-ready: exit 0" "0" "$ec"
+check "hold-ready: outcome ready-pending" "ready-pending" "$(jq -r '.outcome' <<<"$out")"
+check "hold-ready: readiness held" "held" "$(jq -r '.readinessAction' <<<"$out")"
+check "hold-ready: checks proven passed" "passed" "$(jq -r '.checks.status' <<<"$out")"
+check "hold-ready: PR left as draft" "true" "$(jq -r '.prs[0].isDraft' "$GH_STATE")"
+check "hold-ready: no ready mutation" "0" "$(grep -c '^pr ready ' "$GH_LOG" || true)"
+
 # A failed required check is a structured failure and the draft stays draft.
 checkpoint="$(jq -cn --arg sha "$TARGET_SHA" '{number:10,url:"https://github.com/test/repo/pull/10",isDraft:true,
   headRefOid:$sha,headRefName:"feat/delivery",headRepository:{nameWithOwner:"test/repo"},
