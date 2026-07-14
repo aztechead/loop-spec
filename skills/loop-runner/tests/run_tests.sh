@@ -357,11 +357,11 @@ FAKE_ARGV_LOG="$OCLOG" python3 "$SCRIPTS/loop.py" "noop" --task-id ocflags \
   --fallback-model some-model --retry-watchdog 5 \
   --max-iterations 1 --verify 'true' >/dev/null 2>&1
 check "oc: run --format json"      "$(grep -c -- 'run --format json' "$OCLOG")" "1"
-check "oc: --auto (work tick)"     "$(grep -c -- '--auto' "$OCLOG")" "1"
+check "oc: work tick does not auto-approve asks" "$(grep -c -- '--auto' "$OCLOG")" "0"
 check "oc: --model passed"         "$(grep -c -- '--model anthropic/claude-sonnet-4-5' "$OCLOG")" "1"
 check "oc: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permission-mode|--output-format|--allowedTools' "$OCLOG")" "0"
 
-# 17c. compiler via opencode backend: read-only pass = --agent plan, no --auto
+# 17c. compiler via opencode backend: dedicated read-only agent, no --auto
 newrepo
 echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md
 git add -A; git commit -qm spec
@@ -376,7 +376,7 @@ FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$OCLOG2" python3 "$SCRIPTS/compile_s
   --agent-cli opencode --claude-bin "$FAKEOC" --out plan/tasks.json >/dev/null 2>&1
 check "oc compile exit 0"      "$?" "0"
 check "oc plan written"        "$(test -f plan/tasks.json && echo yes)" "yes"
-check "oc read-only compile"   "$(grep -c -- '--agent plan' "$OCLOG2")" "1"
+check "oc read-only compile"   "$(grep -c -- '--agent loop-spec-readonly' "$OCLOG2")" "1"
 check "oc plan tick has no --auto" "$(grep -c -- '--auto' "$OCLOG2")" "0"
 
 # 17d. auto-detection: a binary named `opencode` selects the protocol on its own
@@ -416,6 +416,25 @@ FAKE_ARGV_LOG="$OCLOG3" python3 "$SCRIPTS/loop.py" "two lines. TOUCH:work.txt" -
   --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 3 >/dev/null 2>&1
 check "oc resume exit 0"       "$?" "0"
 check "oc --session on resume" "$(grep -c -- '--session ses_opencode_abc' "$OCLOG3")" "1"
+
+# 17h. Claude aliases are not valid OpenCode IDs; omit them and inherit the
+# current/default provider+model instead of sending a broken --model value.
+newrepo
+OCLOG4="$R/ocargv4.txt"
+FAKE_ARGV_LOG="$OCLOG4" python3 "$SCRIPTS/loop.py" "noop" --task-id ocalias \
+  --agent-cli opencode --claude-bin "$FAKEOC" --model sonnet \
+  --max-iterations 1 --verify 'true' >/dev/null 2>&1
+check "oc alias model omitted" "$(grep -c -- '--model' "$OCLOG4")" "0"
+
+# 17i. OpenCode falls back to build when --agent is unknown. Preflight the
+# dedicated read-only agent so compiler/judge passes fail closed instead.
+newrepo
+echo "Build a greeter." > SPEC.md
+FAKE_READONLY_MISSING=1 python3 "$SCRIPTS/compile_spec.py" SPEC.md \
+  --agent-cli opencode --claude-bin "$FAKEOC" --out plan/tasks.json \
+  >/dev/null 2>&1
+check "oc missing readonly agent fails closed" "$?" "1"
+check "oc missing readonly agent writes no plan" "$(test -f plan/tasks.json && echo yes || echo no)" "no"
 
 echo
 echo "================= $PASS passed, $FAIL failed ================="

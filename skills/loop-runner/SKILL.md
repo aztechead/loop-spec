@@ -130,11 +130,12 @@ The same three layers drive **opencode** (https://opencode.ai):
 `--agent-cli opencode` switches the invocation to `opencode run --format json`
 and normalizes its event stream (text / step_finish / error events) onto the
 same result contract. Auto-detection also works: a `--claude-bin` whose
-basename is `opencode` selects the protocol. Differences: work ticks pass
-`--auto` (approve permissions not explicitly denied — the acceptEdits
-analogue; headless opencode otherwise auto-rejects asks); read-only passes
-(compiler, judge) run with `--agent plan` and no `--auto`; `--model` takes
-opencode ids (`provider/model`); `--fallback-model` / `--retry-watchdog` /
+basename is `opencode` selects the protocol. Differences: work ticks do not
+auto-approve permission asks (ordinary in-worktree build-agent edits remain
+allowed); read-only passes (compiler, judge) run with the installer-provided
+`--agent loop-spec-readonly`; `--model` takes opencode ids (`provider/model`),
+while Claude aliases are omitted to inherit the configured model;
+`--fallback-model` / `--retry-watchdog` /
 `allowed_tools` are claude-only and ignored; opencode-specific flags pass
 through as extra args. See `skills/shared/opencode-harness.md`.
 

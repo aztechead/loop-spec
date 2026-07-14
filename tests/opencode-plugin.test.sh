@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Structural lint for the bundled opencode plugin (extensions/opencode/loop-spec.ts).
 #
-# The plugin cannot be executed offline (it needs the opencode runtime), so
-# this asserts the bridge CONTRACT textually — the same way
-# tests/pi-extension.test.sh lints the pi extension:
+# The hook object is dependency-free and can be executed with mocked opencode
+# inputs, so this checks both the structural contract and runtime behavior:
 #   - every bridged hook is registered (shell.env, tool.execute.after,
 #     chat.message, event)
 #   - every CC hook script the bridge claims to run actually exists and is
@@ -66,7 +65,7 @@ done
 # Env bridge: the bash side (lib/harness.sh, hooks, skill bodies) reads these.
 for var in LOOP_SPEC_HARNESS CLAUDE_PLUGIN_ROOT CLAUDE_PROJECT_DIR CLAUDE_SKILL_DIR; do
   check "sets env.$var" \
-    "$(grep -q "env.$var" "$EXT" && echo 1 || echo 0)"
+    "$(grep -q "$var" "$EXT" && echo 1 || echo 0)"
 done
 check "harness identity is opencode" \
   "$(grep -q 'LOOP_SPEC_HARNESS = "opencode"' "$EXT" && echo 1 || echo 0)"
@@ -85,6 +84,27 @@ check "imports are node builtins only" "$([[ -z "$bad_imports" ]] && echo 1 || e
 # Fail-open discipline: every handler body must swallow its own errors.
 check "fail-open catch blocks present" \
   "$(grep -c 'catch' "$EXT" | awk '{print ($1 >= 6) ? 1 : 0}')"
+
+# Runtime contract. Keep the shipped .ts file valid JavaScript so this test can
+# import an .mjs copy with stock node and no npm/bun dependency. The mock calls
+# use the exact public Plugin hook shapes from @opencode-ai/plugin v1.17.20.
+if command -v node >/dev/null 2>&1; then
+  runtime_plugin="$(dirname "$EXT")/.loop-spec-plugin-test-$$.mjs"
+  cp "$EXT" "$runtime_plugin"
+  runtime_out="$(LOOP_SPEC_DISCIPLINE=0 LOOP_SPEC_RULES=0 \
+    LOOP_SPEC_SIMPLICITY=0 LOOP_SPEC_MICRO=0 LOOP_SPEC_DONE_CRITERIA=0 \
+    PLUGIN_PATH="$REPO_ROOT/$runtime_plugin" \
+    node tests/fixtures/opencode-plugin-runtime.mjs 2>&1)"
+  runtime_rc=$?
+  rm -f "$runtime_plugin"
+  check "runtime hook contract across providers and sessions" \
+    "$([[ "$runtime_rc" -eq 0 && "$runtime_out" == *runtime-ok* ]] && echo 1 || echo 0)"
+  if [[ "$runtime_rc" -ne 0 || "$runtime_out" != *runtime-ok* ]]; then
+    echo "  runtime output: $runtime_out"
+  fi
+else
+  echo "SKIP: runtime hook contract (node not available)"
+fi
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -22,6 +22,12 @@ if [[ -n "${FAKE_ARGV_LOG:-}" ]]; then
   printf '%s\n' "$*" >> "$FAKE_ARGV_LOG"
 fi
 
+if [[ "${1:-}" == "debug" && "${2:-}" == "agent" ]]; then
+  [[ "${FAKE_READONLY_MISSING:-0}" == "1" ]] && exit 1
+  printf '{"name":"%s","mode":"primary"}\n' "${3:-}"
+  exit 0
+fi
+
 if [[ -n "${FAKE_HANG:-}" ]]; then
   sleep "$FAKE_HANG"
 fi

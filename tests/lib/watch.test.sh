@@ -28,12 +28,15 @@ GIT="git -C $WORK/repo"
 $GIT init -q -b main .
 $GIT config user.email watch@test && $GIT config user.name watch
 echo a > "$WORK/repo/app.txt"; echo o > "$WORK/repo/other.txt"
-$GIT add -A && $GIT commit -qm "merge: feature x"
+$GIT add -A && GIT_AUTHOR_DATE="2026-07-10T00:00:00Z" \
+  GIT_COMMITTER_DATE="2026-07-10T00:00:00Z" $GIT commit -qm "merge: feature x"
 MERGE_OID="$($GIT rev-parse HEAD)"
 echo fix >> "$WORK/repo/app.txt"
-$GIT add -A && $GIT commit -qm "fix: post-merge regression"
+$GIT add -A && GIT_AUTHOR_DATE="2026-07-10T03:00:00Z" \
+  GIT_COMMITTER_DATE="2026-07-10T03:00:00Z" $GIT commit -qm "fix: post-merge regression"
 echo unrelated >> "$WORK/repo/other.txt"
-$GIT add -A && $GIT commit -qm "chore: unrelated"
+$GIT add -A && GIT_AUTHOR_DATE="2026-07-10T04:00:00Z" \
+  GIT_COMMITTER_DATE="2026-07-10T04:00:00Z" $GIT commit -qm "chore: unrelated"
 
 DIG="$WORK/digests"
 mk_digest() {
