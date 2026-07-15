@@ -59,7 +59,7 @@ check "1: warnings count" "2" "$(jq -r '.warnings' "$DIGEST")"
 check "1: finishedAt carried" "2026-07-08T12:00:00Z" "$(jq -r '.finishedAt' "$DIGEST")"
 
 # ── Case 2: idempotent overwrite (latest run wins, single file per slug) ──────
-printf '%s\n' "$(jq '.iterations.used = 5' "$FDIR/feature.json")" > "$FDIR/feature.json"
+printf '%s\n' "$(jq '.iterate.used = 5' "$FDIR/feature.json")" > "$FDIR/feature.json"
 bash "$LIB" append "$FDIR" >/dev/null 2>&1
 check "2: single file per slug" "1" "$(ls "$PROJ/docs/loop-spec/telemetry/runs" | wc -l | tr -d ' ')"
 
@@ -84,11 +84,11 @@ check "5: digest written with dirname slug" "corrupt-feat" \
   "$(jq -r '.slug' "$PROJ/docs/loop-spec/telemetry/runs/corrupt-feat.json" 2>/dev/null)"
 
 # ── Case 6: pre-delivery candidate can be committed before exact-SHA delivery ─
-rm -f "$FDIR/result.json"
 printf '%s\n' "$(jq '.currentPhase="deliver" | .warnings=[]' "$FDIR/feature.json")" > "$FDIR/feature.json"
 bash "$LIB" append "$FDIR" --candidate >/dev/null 2>&1
 check "6: candidate status is completed" "completed" "$(jq -r '.status' "$DIGEST")"
 check "6: candidate convergence derived" "true" "$(jq -r '.converged' "$DIGEST")"
+check "6: candidate ignores stale result iterations" "5" "$(jq -r '.iterations.used' "$DIGEST")"
 check "6: candidate timestamp comes from durable state" "2026-07-08T11:59:00Z" "$(jq -r '.finishedAt' "$DIGEST")"
 candidate_first="$(<"$DIGEST")"
 sleep 1

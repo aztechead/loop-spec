@@ -186,7 +186,11 @@ invocation checkout or a registered feature worktree.
    current harness probes, skip Steps 2-5, and route to Step 6 after re-grounding.
 3. Read `.loop-spec/features/{slug}/PROGRESS.md`, then run `git log --oneline -10` on the
    feature branch (workspace mode: per repo).
-4. Run `feature.commands.test` once (workspace mode: each configured repo command). On
+4. If ignored `delivery.json` has `nextPhase == "completed"` and `status ==
+   "ready-for-review"`, this is interrupted completion finalization: **skip project tests
+   and phase invocation and jump directly to On completion**. The exact SHA and checks
+   were already proven; a flaky local environment must not reopen delivered work.
+5. Otherwise run `feature.commands.test` once (workspace mode: each configured repo command). On
    failure append the existing FULL-SHAPE resume remediation task, set
    `currentPhase = "execute"`, and announce the redirect. Otherwise resume the recorded
    phase, including `deliver`.
@@ -564,9 +568,18 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
 1. **Invoke phase skill** (with the watchdog stamp):
    Before invoking `deliver`, finalize every tracked pre-delivery artifact. This is the
    final allowed branch mutation; DELIVER captures `HEAD` afterward. The guard also runs
-   on resume, so a crash immediately after ITERATE cannot bypass the final digest:
+   on resume after ITERATE, but skips every mutation when a sidecar already binds a hard
+   retry or completion recovery to an exact target SHA:
    ```bash
-   if [[ "$currentPhase" == "deliver" ]]; then
+    delivery_has_bound_candidate=false
+    if [[ -f ".loop-spec/features/${slug}/delivery.json" ]] \
+       && jq -e '(.nextPhase == "deliver" or .nextPhase == "completed") and
+                 any(.targets[]?; (.targetSha // "") != "")' \
+         ".loop-spec/features/${slug}/delivery.json" >/dev/null 2>&1; then
+      delivery_has_bound_candidate=true
+    fi
+    if [[ "$currentPhase" == "deliver" && "$workspaceMode" != "workspace" \
+          && "$delivery_has_bound_candidate" != "true" ]]; then
      bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" auto ".loop-spec/features/${slug}" || true
      git add .loop-spec/RULES.md .gitignore 2>/dev/null || true
      git diff --cached --quiet -- .loop-spec/RULES.md .gitignore 2>/dev/null \
@@ -612,17 +625,18 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    Refresh `updatedAt` through `feature-write.sh` on every durable transition so a long
    phase sequence remains resumable past the staleness window.
    ```bash
-   if [[ "$currentPhase" != "deliver" || "$next_phase" != "completed" ]]; then
+   if [[ "$currentPhase" != "deliver" || "$next_phase" == "execute" ]]; then
      bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set \
        ".loop-spec/features/${slug}" updatedAt "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
    fi
    ```
 
-   **Successful DELIVER exception:** when the phase that returned was `deliver` and
-   `next_phase == "completed"`, emit `phase_end` but skip the tracked progress/state
-   commit below. DELIVER just proved the exact PR head SHA; any new commit would make
-   that proof stale. The local atomic completed state and result are retained, while
-   the committed branch remains safely resumable at `deliver`.
+   **DELIVER external-observation exception:** when the phase that returned was
+   `deliver` and `next_phase` is `completed` or `deliver`, emit `phase_end` but skip the
+   tracked timestamp/progress/state commit below. Success proved the exact PR head SHA;
+   a hard transport/identity/timeout failure also binds its retry to the exact attempted
+   SHA. Any new commit would invalidate either invariant. Only `next_phase == "execute"`
+   mutates and commits tracked remediation state.
 
    **Progress journal (append-only narrative — the machine state's "why").** For every
    other transition, append one short block to `.loop-spec/features/{slug}/PROGRESS.md`
@@ -635,10 +649,12 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    ```
    Commit it together with feature.json below — and ensure the gitignore exception exists first (the feature dir is ignored except named files; without this line the add silently no-ops):
    ```bash
-   grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null \
-     || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
-   grep -qxF '!/.loop-spec/RULES.md' .gitignore 2>/dev/null \
-     || printf '!/.loop-spec/RULES.md\n' >> .gitignore
+    if [[ "$workspaceMode" != "workspace" ]]; then
+      grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null \
+        || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
+      grep -qxF '!/.loop-spec/RULES.md' .gitignore 2>/dev/null \
+        || printf '!/.loop-spec/RULES.md\n' >> .gitignore
+    fi
    ```
    (The RULES.md exception makes self-learning rules durable in volatile
    workspaces — a rule written in a per-run container survives via git instead
@@ -660,7 +676,8 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    repo) is a safe no-op:
    ```bash
    fj=".loop-spec/features/${slug}/feature.json"
-   if [[ "$currentPhase" != "deliver" || "$next_phase" != "completed" ]] \
+    if [[ "$workspaceMode" != "workspace" ]] \
+       && [[ "$currentPhase" != "deliver" || "$next_phase" == "execute" ]] \
       && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       git add "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null
       git diff --cached --quiet -- "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null \

@@ -126,12 +126,13 @@ check "worktree-only source recorded" "worktree" "$(jq -r '.resume.candidates[] 
 check "worktree-only absolute root recorded" "$WT" "$(jq -r '.resume.candidates[] | select(.slug == "wt-only") | .featureRoot' <<<"$out")"
 check "deliver phase is resumable" "deliver" "$(jq -r '.resume.candidates[] | select(.slug == "wt-only") | .currentPhase' <<<"$out")"
 
-# A same-machine ready sidecar is logically completed even though tracked state stays at DELIVER.
+# A ready sidecar still resumes DELIVER so cycle completion finalization (result,
+# summary, autonomous chaining, worktree exit) can recover after a crash.
 jq -n '{schema:1,status:"ready-for-review",nextPhase:"completed",targets:[]}' \
   > "$WT/.loop-spec/features/wt-only/delivery.json"
 out="$(run_preflight)"
-check "delivered sidecar silently dropped" "0" \
-  "$(jq -r '[.resume.candidates[], .resume.skipped[] | select(.slug == "wt-only")] | length' <<<"$out")"
+check "delivered sidecar remains resumable" "1" \
+  "$(jq -r '[.resume.candidates[] | select(.slug == "wt-only")] | length' <<<"$out")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

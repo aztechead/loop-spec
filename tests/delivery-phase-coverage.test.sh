@@ -41,10 +41,16 @@ present "digest commit is path scoped" skills/cycle/SKILL.md 'git diff --cached 
 present "terminal iteration evidence is committed" skills/iterate/SKILL.md 'iterate: NO_JIRA ${slug} terminal evidence'
 present "terminal backlog commit is path scoped" skills/iterate/SKILL.md 'git diff --cached --quiet -- "$iteration_path" .loop-spec/BACKLOG.md'
 present "VERIFY commit is path scoped" skills/verify/SKILL.md 'git commit -m "verify: NO_JIRA {slug}" -- docs/loop-spec/features/{slug}/VERIFICATION.md'
-present "workspace VERIFY commit is path scoped" skills/verify/references/workspace-mode.md '-- "docs/loop-spec/features/${slug}/VERIFICATION.md"'
+present "workspace VERIFY avoids parent commit" skills/verify/references/workspace-mode.md 'workspace root is not a delivery target'
+absent "workspace VERIFY does not commit parent" skills/verify/references/workspace-mode.md 'git -C "$feature_workspace_root" commit'
 present "single-repo delivery has candidate preflight" lib/deliver.sh "Candidate preflight"
 present "hard retries bind to the recorded SHA" lib/deliver.sh "candidate_sha_drift"
+present "hard delivery failure skips tracked commit" skills/cycle/SKILL.md '[[ "$currentPhase" != "deliver" || "$next_phase" == "execute" ]]'
+present "hard delivery retry skips finalization commits" skills/cycle/SKILL.md 'delivery_has_bound_candidate'
+present "completion recovery bypasses project tests" skills/cycle/SKILL.md 'skip project tests'
 present "workspace readiness is staged" lib/deliver.sh "stage readiness"
+present "workspace promotion rollback is supported" lib/pr-delivery.sh "restore_draft"
+present "workspace lifecycle avoids parent commits" skills/cycle/SKILL.md '[[ "$workspaceMode" != "workspace" ]]'
 present "controller supports held readiness" lib/pr-delivery.sh "hold_ready"
 present "workspace surfaces a representative PR url" lib/deliver.sh 'select(.outcome == "delivered")'
 absent "VERIFY does not create PRs" skills/verify/SKILL.md "gh pr create"

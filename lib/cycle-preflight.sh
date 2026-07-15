@@ -28,8 +28,8 @@
 # under <dir> and every registered .claude/worktrees/* worktree —
 #   - parse feature.json, falling back to feature.json.bak on a parse failure
 #     (parse_source records which); both unreadable -> skipped + warning
-#   - skip currentPhase == "completed", or a DELIVER sidecar whose logical
-#     nextPhase is completed and status is ready-for-review (silently)
+#   - skip currentPhase == "completed"; a ready DELIVER sidecar remains resumable
+#     so completion finalization can recover after a crash
 #   - skip schemaVersion != 7 -> skipped + the one-line warning the skill specifies
 #   - currentTeamName != null -> candidate with needs_probe: true (liveness probing
 #     needs the harness TaskList tool; the ORCHESTRATOR resolves it per
@@ -86,7 +86,7 @@ now="$(date +%s)"
 scan_feature_root() {
   local root="$1" source="$2" branch_hint="${3:-}"
   local features_dir="$root/.loop-spec/features"
-  local fj fslug parse_source doc schema phase team updated_at staleness_hours delivery_file
+  local fj fslug parse_source doc schema phase team updated_at staleness_hours
   local updated_epoch age needs_probe candidate_branch worktree_abs
   [[ -d "$features_dir" ]] || return 0
 
@@ -110,13 +110,6 @@ scan_feature_root() {
     phase="$(jq -r '.currentPhase // ""' <<<"$doc")"
 
     [[ "$phase" == "completed" ]] && continue
-    delivery_file="$(dirname "$fj")/delivery.json"
-    if [[ "$phase" == "deliver" && -f "$delivery_file" ]] \
-      && jq -e '.nextPhase == "completed" and .status == "ready-for-review"' \
-        "$delivery_file" >/dev/null 2>&1; then
-      continue
-    fi
-
     if [[ "$schema" != "7" ]]; then
       skipped="$(jq -c --arg slug "$fslug" --arg why "schema-version" '. + [{slug: $slug, why: $why}]' <<<"$skipped")"
       warnings+=("feature ${fslug}: unsupported schemaVersion ${schema} (schema 7 only); skipping")

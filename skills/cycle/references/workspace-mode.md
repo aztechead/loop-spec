@@ -8,7 +8,7 @@ Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stubs point here. App
 
 In workspace mode (`workspaceMode == "workspace"`), do NOT call `create-feature-worktree` and do NOT call `EnterWorktree`. All work stays at the workspace root. Replace the single-repo branch setup above with the following two-phase procedure.
 
-**Phase 1 -- pre-flight cleanliness check (ALL repos, before ANY branch is created):**
+**Phase 1 -- pre-flight every repository (ALL repos, before ANY branch is created):**
 
 ```bash
 dirty_repos=()
@@ -26,13 +26,8 @@ if [[ ${#dirty_repos[@]} -gt 0 ]]; then
   echo "Please commit or stash changes in each repo above, then re-invoke cycle."
   exit 1
 fi
-```
 
-If any repo is dirty, abort with the message above. No branches are created.
-
-**Phase 2 -- per-repo branch creation (only when all repos are clean):**
-
-```bash
+# Resolve every base and reject branch collisions before switching any repo.
 declare -A repo_base_sha repo_base_branch
 for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   rname="$(echo "$repo_entry" | jq -r '.name')"
@@ -40,7 +35,7 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   base_branch_r="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" detect-base-branch)"
   if git -C "$rpath" remote get-url origin >/dev/null 2>&1; then
     git -C "$rpath" fetch --quiet origin "$base_branch_r" || {
-      echo "loop-spec: failed to fetch ${rname} origin/${base_branch_r}; refusing a stale PR base." >&2
+      echo "loop-spec: failed to fetch ${rname} origin/${base_branch_r}; no feature branches were created." >&2
       exit 1
     }
     base_ref_r="origin/$base_branch_r"
@@ -48,12 +43,28 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
     base_ref_r="$base_branch_r"
   fi
   base_sha_r="$(git -C "$rpath" rev-parse --verify "${base_ref_r}^{commit}")" || {
-    echo "loop-spec: cannot resolve ${rname} base '${base_ref_r}'." >&2
+    echo "loop-spec: cannot resolve ${rname} base '${base_ref_r}'; no feature branches were created." >&2
     exit 1
   }
-  git -C "$rpath" checkout -b "feat/${slug}" "$base_sha_r"
+  if git -C "$rpath" show-ref --verify --quiet "refs/heads/feat/${slug}"; then
+    echo "loop-spec: ${rname} already has branch feat/${slug}; no feature branches were created." >&2
+    exit 1
+  fi
   repo_base_sha["$rname"]="$base_sha_r"
   repo_base_branch["$rname"]="$base_branch_r"
+done
+```
+
+If any repo is dirty, unfetchable, missing its base, or already has the feature branch,
+abort before switching any repository.
+
+**Phase 2 -- per-repo branch creation (only when all repos are clean):**
+
+```bash
+for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
+  rname="$(echo "$repo_entry" | jq -r '.name')"
+  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
+  git -C "$rpath" checkout -b "feat/${slug}" "${repo_base_sha[$rname]}"
 done
 ```
 

@@ -5,7 +5,8 @@
 #   pr-delivery.sh checkpoint|final -C <repo> \
 #     --branch <head> --base <base> --sha <full-sha> \
 #     --title <title> --body-file <path> [--pr-url <url>] \
-#     [--remote origin] [--checks-timeout 900] [--checks-interval 10] [--hold-ready]
+#     [--remote origin] [--checks-timeout 900] [--checks-interval 10]
+#     [--hold-ready | --restore-draft]
 #
 # --hold-ready (final only): push, reconcile the PR, and wait for green required
 # checks, but stop before the draft->ready flip (outcome "ready-pending"). A second,
@@ -43,11 +44,13 @@ checks_interval="${LOOP_SPEC_CHECKS_INTERVAL_SECONDS:-10}"
 command_timeout="${LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS:-60}"
 registration_grace="${LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS:-30}"
 hold_ready=0
+restore_draft=0
 unknown_arg=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --hold-ready) hold_ready=1; shift ;;
+    --restore-draft) restore_draft=1; shift ;;
     --branch|--base|--sha|--title|--body-file|--pr-url|--remote|--checks-timeout|--checks-interval)
       if [[ $# -lt 2 ]]; then
         parse_error="$1 requires a value"
@@ -87,6 +90,7 @@ pr_action="none"
 metadata_action="none"
 readiness_action="none"
 is_draft="null"
+rollback_on_failure=0
 checks_json='{"status":"not-run","timeoutSeconds":0,"elapsedSeconds":0,"counts":{"pass":0,"skipping":0,"pending":0,"fail":0,"cancel":0},"required":[]}'
 
 emit_result() {
@@ -137,12 +141,19 @@ fail_bad() {
 
 fail_delivery() {
   echo "pr-delivery: $2" >&2
+  if [[ "$rollback_on_failure" == "1" ]] && type rollback_readiness >/dev/null 2>&1; then
+    rollback_readiness
+  fi
   emit_result false "blocked" "$1" "$2"
   exit 1
 }
 
 [[ "$mode" == "checkpoint" || "$mode" == "final" ]] \
   || fail_bad "bad_mode" "mode must be checkpoint or final"
+[[ "$hold_ready" -eq 0 || "$restore_draft" -eq 0 ]] \
+  || fail_bad "bad_readiness_mode" "--hold-ready and --restore-draft are mutually exclusive"
+[[ "$mode" == "final" || ("$hold_ready" -eq 0 && "$restore_draft" -eq 0) ]] \
+  || fail_bad "bad_readiness_mode" "readiness flags are valid only in final mode"
 [[ -z "$parse_error" ]] || fail_bad "missing_argument" "$parse_error"
 [[ -z "$unknown_arg" ]] || fail_bad "unknown_argument" "unknown argument: $unknown_arg"
 [[ -d "$repo_dir" ]] || fail_bad "repo_missing" "repository directory does not exist: $repo_dir"
@@ -154,10 +165,18 @@ repo_dir="$(cd "$repo_dir" && pwd -P)"
 [[ "$checks_interval" =~ ^[0-9]+$ ]] || fail_bad "bad_interval" "--checks-interval must be a non-negative integer"
 [[ "$command_timeout" =~ ^[1-9][0-9]*$ ]] || fail_bad "bad_command_timeout" "LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS must be a positive integer"
 [[ "$registration_grace" =~ ^[0-9]+$ ]] || fail_bad "bad_registration_grace" "LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS must be a non-negative integer"
+[[ "${#checks_timeout}" -le 9 ]] || fail_bad "bad_timeout" "--checks-timeout is too large"
+[[ "${#checks_interval}" -le 9 ]] || fail_bad "bad_interval" "--checks-interval is too large"
+[[ "${#command_timeout}" -le 9 ]] || fail_bad "bad_command_timeout" "LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS is too large"
+[[ "${#registration_grace}" -le 9 ]] || fail_bad "bad_registration_grace" "LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS is too large"
 checks_timeout=$((10#$checks_timeout))
 checks_interval=$((10#$checks_interval))
 command_timeout=$((10#$command_timeout))
 registration_grace=$((10#$registration_grace))
+[[ "$checks_timeout" -le 86400 ]] || fail_bad "bad_timeout" "--checks-timeout must not exceed 86400 seconds"
+[[ "$checks_interval" -le 3600 ]] || fail_bad "bad_interval" "--checks-interval must not exceed 3600 seconds"
+[[ "$command_timeout" -le 3600 ]] || fail_bad "bad_command_timeout" "LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS must not exceed 3600 seconds"
+[[ "$registration_grace" -le 3600 ]] || fail_bad "bad_registration_grace" "LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS must not exceed 3600 seconds"
 checks_json="$(jq -cn --argjson timeout "$checks_timeout" \
   '{status:"not-run",timeoutSeconds:$timeout,elapsedSeconds:0,
     counts:{pass:0,skipping:0,pending:0,fail:0,cancel:0},required:[]}')"
@@ -231,6 +250,14 @@ refresh_remote_sha() {
     git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch" || rc=$?
   [[ "$rc" -eq 0 ]] || return "$rc"
   remote_sha="$(awk 'NR == 1 {print $1}' "$tmp_dir/git-ls-remote.out")"
+}
+
+rollback_readiness() {
+  [[ "$readiness_action" == "marked_ready" ]] || return 0
+  if run_gh "$gh_out" "$gh_err" gh pr ready "$pr_number" --undo --repo "$repo_selector"; then
+    readiness_action="rolled_back"
+    is_draft="true"
+  fi
 }
 
 # Resolve GitHub identity from the exact push URL, not whichever remote gh happens
@@ -444,6 +471,8 @@ while :; do
 
   jq -e 'all(.[];
     type == "object" and (.bucket | type == "string") and
+    (.name | type == "string") and (.workflow | type == "string") and
+    (.state | type == "string") and (.link | type == "string") and
     (.bucket == "pass" or .bucket == "skipping" or .bucket == "pending" or
      .bucket == "fail" or .bucket == "cancel"))' <<<"$checks_payload" >/dev/null 2>&1 \
     || fail_delivery "checks_unsupported" "required checks returned malformed fields or an unknown bucket"
@@ -521,12 +550,34 @@ validate_pr_snapshot "pre-readiness refresh"
 refresh_remote_sha || fail_delivery "remote_query_failed" "cannot read remote branch before readiness transition"
 [[ "$remote_sha" == "$target_sha" ]] \
   || fail_delivery "remote_sha_mismatch" "remote branch moved to '$remote_sha' before readiness transition"
+actual_title="$(jq -r '.title' <<<"$pr_json")"
+actual_base="$(jq -r '.baseRefName' <<<"$pr_json")"
+actual_body="$(jq -r '.body' <<<"$pr_json")"
+[[ "$actual_title" == "$title" && "$actual_base" == "$base_branch" && "$actual_body" == "$expected_body" ]] \
+  || fail_delivery "metadata_drift" "PR title, body, or base changed before readiness transition"
 
 # Staged delivery (multi-repo workspaces): prove push + identity + green required
 # checks, but hold the draft->ready flip so no PR in the set is promoted until every
 # repo has cleared its checks. The caller promotes with a second, plain final call.
 if [[ "$hold_ready" == "1" ]]; then
+  [[ "$is_draft" == "true" ]] \
+    || fail_delivery "pr_already_ready" "staged readiness requires the PR to remain a draft"
   readiness_action="held"
+  emit_result true "ready-pending" "" ""
+  exit 0
+fi
+
+if [[ "$restore_draft" == "1" ]]; then
+  if [[ "$is_draft" == "false" ]]; then
+    run_gh "$gh_out" "$gh_err" gh pr ready "$pr_number" --undo --repo "$repo_selector" \
+      || fail_delivery "draft_restore_failed" "could not restore the PR to draft"
+  fi
+  view_pr "$pr_number" || fail_delivery "pr_lookup_failed" "cannot verify restored draft state"
+  pr_json="$(jq -c . "$gh_out")"
+  validate_pr_snapshot "draft restore observation"
+  is_draft="$(jq -r '.isDraft' <<<"$pr_json")"
+  [[ "$is_draft" == "true" ]] || fail_delivery "draft_restore_failed" "PR remains ready after draft restore"
+  readiness_action="rolled_back"
   emit_result true "ready-pending" "" ""
   exit 0
 fi
@@ -539,17 +590,36 @@ else
   readiness_action="unchanged"
 fi
 
-view_pr "$pr_number" || fail_delivery "pr_lookup_failed" "cannot perform final PR observation"
+[[ "$readiness_action" == "marked_ready" ]] && rollback_on_failure=1
+
+if ! view_pr "$pr_number"; then
+  rollback_readiness
+  fail_delivery "pr_lookup_failed" "cannot perform final PR observation"
+fi
 pr_json="$(jq -c . "$gh_out")"
+final_head="$(jq -r '.headRefOid // empty' <<<"$pr_json")"
+if [[ "$final_head" != "$target_sha" ]]; then
+  head_sha="$final_head"
+  rollback_readiness
+  fail_delivery "pr_head_moved" "PR head moved to '$final_head' during readiness transition"
+fi
 validate_pr_snapshot "final PR observation"
-refresh_remote_sha || fail_delivery "remote_query_failed" "cannot read remote branch for final observation"
-[[ "$remote_sha" == "$target_sha" ]] \
-  || fail_delivery "remote_sha_mismatch" "final remote SHA no longer matches '$target_sha'"
+if ! refresh_remote_sha; then
+  rollback_readiness
+  fail_delivery "remote_query_failed" "cannot read remote branch for final observation"
+fi
+if [[ "$remote_sha" != "$target_sha" ]]; then
+  rollback_readiness
+  fail_delivery "remote_sha_mismatch" "final remote SHA no longer matches '$target_sha'"
+fi
 [[ "$is_draft" == "false" ]] || fail_delivery "ready_failed" "PR remains a draft after readiness transition"
 actual_title="$(jq -r '.title' <<<"$pr_json")"
 actual_base="$(jq -r '.baseRefName' <<<"$pr_json")"
 actual_body="$(jq -r '.body' <<<"$pr_json")"
-[[ "$actual_title" == "$title" && "$actual_base" == "$base_branch" && "$actual_body" == "$expected_body" ]] \
-  || fail_delivery "metadata_drift" "PR title, body, or base changed during required-check polling"
+if [[ "$actual_title" != "$title" || "$actual_base" != "$base_branch" || "$actual_body" != "$expected_body" ]]; then
+  rollback_readiness
+  fail_delivery "metadata_drift" "PR title, body, or base changed during required-check polling"
+fi
 
+rollback_on_failure=0
 emit_result true "delivered" "" ""

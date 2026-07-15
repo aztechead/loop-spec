@@ -24,7 +24,7 @@ cat > "$WORK/shims/pr-delivery" <<'SHIM'
 #!/usr/bin/env bash
 set -uo pipefail
 printf '%s\n' "$*" >> "${FAKE_DELIVERY_LOG:?}"
-repo=""; branch=""; base=""; sha=""; body=""; hold=0
+repo=""; branch=""; base=""; sha=""; body=""; hold=0; restore=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -C) repo="$2"; shift 2 ;;
@@ -33,6 +33,7 @@ while [[ $# -gt 0 ]]; do
     --sha) sha="$2"; shift 2 ;;
     --body-file) body="$2"; shift 2 ;;
     --hold-ready) hold=1; shift ;;
+    --restore-draft) restore=1; shift ;;
     *) shift ;;
   esac
 done
@@ -47,17 +48,30 @@ if [[ "${FAKE_DELIVERY_MALFORMED:-0}" == "1" ]]; then
 fi
 # FAKE_DELIVERY_FAIL fails every call; FAKE_DELIVERY_FAIL_MATCH fails only repos whose
 # path contains the substring (a single repo's checks failing inside a workspace).
-fail=0
+fail=0; fail_code="checks_failed"
 [[ "${FAKE_DELIVERY_FAIL:-0}" == "1" ]] && fail=1
 [[ -n "${FAKE_DELIVERY_FAIL_MATCH:-}" && "$repo" == *"$FAKE_DELIVERY_FAIL_MATCH"* ]] && fail=1
+if [[ "$hold" == "0" && "$restore" == "0" && -n "${FAKE_DELIVERY_PROMOTE_FAIL_MATCH:-}" \
+      && "$repo" == *"$FAKE_DELIVERY_PROMOTE_FAIL_MATCH"* ]]; then
+  fail=1; fail_code="ready_failed"
+fi
 if [[ "$fail" == "1" ]]; then
-  jq -cn --arg repo "$repo" --arg branch "$branch" --arg base "$base" --arg sha "$sha" --arg url "$url" \
+  jq -cn --arg repo "$repo" --arg branch "$branch" --arg base "$base" --arg sha "$sha" --arg url "$url" --arg code "$fail_code" \
     '{schema:1,ok:false,mode:"final",outcome:"blocked",repo:$repo,branch:$branch,
       baseBranch:$base,targetSha:$sha,remoteSha:$sha,headSha:$sha,prNumber:7,prUrl:$url,
       prAction:"reused",metadataAction:"unchanged",readinessAction:"none",isDraft:true,
       checks:{status:"failed",required:[{name:"test",bucket:"fail"}]},
-      observedAt:"2026-01-01T00:00:00Z",errorCode:"checks_failed",error:"failed"}'
+      observedAt:"2026-01-01T00:00:00Z",errorCode:$code,error:"failed"}'
   exit 1
+fi
+if [[ "$restore" == "1" ]]; then
+  jq -cn --arg repo "$repo" --arg branch "$branch" --arg base "$base" --arg sha "$sha" --arg url "$url" \
+    '{schema:1,ok:true,mode:"final",outcome:"ready-pending",repo:$repo,branch:$branch,
+      baseBranch:$base,targetSha:$sha,remoteSha:$sha,headSha:$sha,prNumber:7,prUrl:$url,
+      prAction:"reused",metadataAction:"unchanged",readinessAction:"rolled_back",isDraft:true,
+      checks:{status:"passed",required:[{name:"test",bucket:"pass"}]},
+      observedAt:"2026-01-01T00:00:00Z",errorCode:null,error:null}'
+  exit 0
 fi
 if [[ "$hold" == "1" ]]; then
   jq -cn --arg repo "$repo" --arg branch "$branch" --arg base "$base" --arg sha "$sha" --arg url "$url" \
@@ -149,6 +163,8 @@ check "failure: PR URL retained" "https://github.com/test/repo/pull/7" "$(jq -r 
 jq '.currentPhase = "deliver" | .delivery.ciRemediationAttempts = 2 | .pendingRemediationTasks = []' \
   "$FDIR/feature.json" > "$FDIR/feature.json.tmp"
 mv "$FDIR/feature.json.tmp" "$FDIR/feature.json"
+git -C "$SINGLE" add ".loop-spec/features/demo/feature.json"
+git -C "$SINGLE" commit -q -m "route back to deliver"
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_FAIL=1 \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$FDIR")" || ec=$?
@@ -246,6 +262,51 @@ check "single preflight wrong branch: structured error" "branch_mismatch" \
   "$(jq -r '.targets[0].errorCode' "$PFDIR/delivery.json")"
 check "single preflight wrong branch: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 
+# Dirty source is not part of the candidate SHA and must block before PR body/rendered
+# evidence can diverge from the pushed commit.
+DIRTY="$WORK/dirty"; init_repo "$DIRTY"
+DIRTY_BASE="$(git -C "$DIRTY" rev-parse HEAD)"
+git -C "$DIRTY" checkout -q -b feat/dirty
+printf 'feature\n' > "$DIRTY/b"; git -C "$DIRTY" add b; git -C "$DIRTY" commit -q -m feature
+DDIR="$DIRTY/.loop-spec/features/dirty"; mkdir -p "$DDIR"
+printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$DIRTY/.gitignore"
+jq -n --arg base "$DIRTY_BASE" '{schemaVersion:7,slug:"dirty",feature_title:"Dirty",currentPhase:"deliver",
+  branch:"feat/dirty",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{}}' > "$DDIR/feature.json"
+git -C "$DIRTY" add .gitignore ".loop-spec/features/dirty/feature.json"; git -C "$DIRTY" commit -q -m state
+printf 'uncommitted\n' >> "$DIRTY/b"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DDIR")" || ec=$?
+check "single dirty: exit 1" "1" "$ec"
+check "single dirty: structured error" "dirty_worktree" "$(jq -r '.targets[0].errorCode' "$DDIR/delivery.json")"
+check "single dirty: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+
+git -C "$DIRTY" checkout -q -- b
+jq 'del(.baseSha)' "$DDIR/feature.json" > "$DDIR/feature.json.tmp" && mv "$DDIR/feature.json.tmp" "$DDIR/feature.json"
+git -C "$DIRTY" add ".loop-spec/features/dirty/feature.json"; git -C "$DIRTY" commit -q -m "remove base"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DDIR")" || ec=$?
+check "single missing base: exit 1" "1" "$ec"
+check "single missing base: structured error" "base_sha_missing" "$(jq -r '.targets[0].errorCode' "$DDIR/delivery.json")"
+
+# A recorded base must be an ancestor, not merely an existing commit.
+DIV="$WORK/divergent"; init_repo "$DIV"
+DIV_BASE="$(git -C "$DIV" rev-parse HEAD)"
+git -C "$DIV" checkout -q --orphan feat/div
+git -C "$DIV" rm -q -rf .
+printf 'orphan\n' > "$DIV/orphan"; git -C "$DIV" add orphan; git -C "$DIV" commit -q -m orphan
+VDIR="$DIV/.loop-spec/features/div"; mkdir -p "$VDIR"
+printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$DIV/.gitignore"
+jq -n --arg base "$DIV_BASE" '{schemaVersion:7,slug:"div",feature_title:"Div",currentPhase:"deliver",
+  branch:"feat/div",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{}}' > "$VDIR/feature.json"
+git -C "$DIV" add .gitignore ".loop-spec/features/div/feature.json"; git -C "$DIV" commit -q -m state
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$VDIR")" || ec=$?
+check "single divergent: exit 1" "1" "$ec"
+check "single divergent: structured error" "base_not_ancestor" "$(jq -r '.targets[0].errorCode' "$VDIR/delivery.json")"
+
 # Hard-failure retries bind to the recorded SHA: a controller error leaves
 # nextPhase=deliver with the exact targetSha, and a drifted HEAD then fails closed
 # instead of silently delivering a different commit.
@@ -254,9 +315,11 @@ BIND_BASE="$(git -C "$BIND" rev-parse HEAD)"
 git -C "$BIND" checkout -q -b feat/bind
 printf 'one\n' > "$BIND/one"; git -C "$BIND" add one; git -C "$BIND" commit -q -m one
 BINDDIR="$BIND/.loop-spec/features/bind"; mkdir -p "$BINDDIR"
+printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$BIND/.gitignore"
 jq -n --arg base "$BIND_BASE" '{schemaVersion:7,slug:"bind",feature_title:"Bind",currentPhase:"deliver",
   branch:"feat/bind",baseSha:$base,baseBranch:"main",workspace:null,prUrl:null,checkpointPrUrl:null,
   warnings:[],artifacts:{}}' > "$BINDDIR/feature.json"
+git -C "$BIND" add .gitignore ".loop-spec/features/bind/feature.json"; git -C "$BIND" commit -q -m state
 SHA1="$(git -C "$BIND" rev-parse HEAD)"
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_MALFORMED=1 \
@@ -317,6 +380,38 @@ check "stage fail: passing repo held not delivered" "ready-pending" \
 check "stage fail: routes to remediation" "execute" "$(jq -r '.delivery.nextPhase' "$SFDIR/feature.json")"
 check "stage fail: remediation task for failing repo" "task-delivery-ci-b" \
   "$(jq -r '.pendingRemediationTasks[]|select(.subject|contains("(b)"))|.id' "$SFDIR/feature.json")"
+check "stage fail: remediation carries workspace repo" "b" \
+  "$(jq -r '.pendingRemediationTasks[]|select(.id=="task-delivery-ci-b")|.repo' "$SFDIR/feature.json")"
+check "stage fail: local fallback is executable" "git diff --check" \
+  "$(jq -r '.pendingRemediationTasks[]|select(.id=="task-delivery-ci-b")|.verifyCommand' "$SFDIR/feature.json")"
+
+# Any local preflight failure aborts the whole workspace before a sibling PR is held
+# or promoted.
+jq '.currentPhase="deliver" | .delivery={status:"pending",attemptedAt:null,finishedAt:null,targets:[]} | .pendingRemediationTasks=[]' \
+  "$SFDIR/feature.json" > "$SFDIR/feature.json.tmp" && mv "$SFDIR/feature.json.tmp" "$SFDIR/feature.json"
+git -C "$STAGE/b" checkout -q main
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$SFDIR")" || ec=$?
+check "stage preflight fail: exit 1" "1" "$ec"
+check "stage preflight fail: no controller calls" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+check "stage preflight fail: valid sibling blocked" "workspace_preflight_failed" \
+  "$(jq -r '.targets[]|select(.name=="a")|.errorCode' "$SFDIR/delivery.json")"
+
+# If promotion fails after an earlier sibling was promoted, restore that sibling to
+# draft so the next staged retry is not permanently blocked by an already-ready PR.
+git -C "$STAGE/b" checkout -q feat/stage
+jq '.currentPhase="deliver" | .delivery={status:"pending",attemptedAt:null,finishedAt:null,targets:[]} | .pendingRemediationTasks=[]' \
+  "$SFDIR/feature.json" > "$SFDIR/feature.json.tmp" && mv "$SFDIR/feature.json.tmp" "$SFDIR/feature.json"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_PROMOTE_FAIL_MATCH="$STAGE/b" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$SFDIR")" || ec=$?
+check "stage promotion fail: exit 1" "1" "$ec"
+check "stage promotion fail: prior sibling rolled back" "rolled_back" \
+  "$(jq -r '.targets[]|select(.name=="a")|.readinessAction' "$SFDIR/delivery.json")"
+check "stage promotion fail: no delivered siblings" "0" \
+  "$(jq '[.targets[]|select(.outcome=="delivered")]|length' "$SFDIR/delivery.json")"
+check "stage promotion fail: restore call made" "1" "$(grep -c -- '--restore-draft' "$LOG" || true)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

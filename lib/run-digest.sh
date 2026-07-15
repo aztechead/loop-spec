@@ -104,8 +104,10 @@ digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argj
                 elif ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged
                 else null end),
     iterations: {
-      used: ($rj.iterations.used // $fj.iterate.used // 0),
-      max: ($rj.iterations.max // $fj.iterate.maxIterations // null)
+      used: (if $candidate == 1 then ($fj.iterate.used // 0)
+             else ($rj.iterations.used // $fj.iterate.used // 0) end),
+      max: (if $candidate == 1 then ($fj.iterate.maxIterations // null)
+            else ($rj.iterations.max // $fj.iterate.maxIterations // null) end)
     },
     gaps: ([$events[] | select(.event == "iterate_verdict") | .data.gap // empty
             | select(. != "" and . != "none")] | unique),

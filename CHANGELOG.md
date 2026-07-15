@@ -43,6 +43,18 @@ All notable changes documented here. Format follows Keep a Changelog.
   URL in workspace delivery results instead of always null.
 - Scoped the VERIFY `VERIFICATION.md` commit to its pathspec in both single-repo and
   workspace modes so it cannot sweep unrelated staged changes.
+- Follow-up hardening makes candidate preflight enforce clean trees and base ancestry,
+  and aborts all workspace GitHub operations when any sibling fails local preflight.
+- Hard delivery failures and completion recovery no longer create post-observation
+  commits; ready sidecars remain resumable so interrupted result/chaining finalization
+  can complete without changing the checked SHA.
+- Staged readiness now rejects already-ready PRs, revalidates metadata immediately
+  before promotion, rolls back a draft promotion when a final head race or sibling
+  promotion failure is observed, and bounds oversized timeout inputs before starting
+  network processes.
+- Workspace pins must name repository roots, branch prerequisites are resolved for all
+  repos before any checkout, CI remediation carries its repo and an executable local
+  fallback, and orchestration evidence is never committed to an unbranched parent repo.
 
 ## [2.19.2]
 

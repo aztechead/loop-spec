@@ -80,19 +80,13 @@ Skill(loop-spec:map-codebase) with mode: "incremental", workspace_repos: repo_li
 
 ## Step 10 - Commit VERIFICATION.md
 
-**Workspace mode (additive):** commit VERIFICATION.md only when the workspace root is itself a git repo. Issue a checkpoint tag per repo using `lib/checkpoint.sh -C <abs repo>`.
+**Workspace mode (additive):** the workspace root is orchestration state, not a delivery
+target. Leave VERIFICATION.md local there even when the parent happens to be a git repo;
+never commit to an unbranched parent. Issue a checkpoint tag per participating repo using
+`lib/checkpoint.sh -C <abs repo>`.
 
 ```bash
-# Commit VERIFICATION.md at workspace root if it is a git repo.
-if git -C "$feature_workspace_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git -C "$feature_workspace_root" add \
-    "docs/loop-spec/features/${slug}/VERIFICATION.md"
-  git -C "$feature_workspace_root" commit \
-    -m "verify: NO_JIRA ${slug} (workspace)" \
-    -- "docs/loop-spec/features/${slug}/VERIFICATION.md"
-else
-  echo "workspace root not a git repo; leaving VERIFICATION.md uncommitted"
-fi
+echo "workspace root is not a delivery target; leaving VERIFICATION.md as local orchestration evidence"
 
 # Checkpoint tag per repo.
 for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
