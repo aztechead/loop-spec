@@ -55,7 +55,8 @@ If `used >= maxit`: **stop iterating and advance to delivery — but report gaps
 3. Write the final ITERATION.md section stating the iteration limit was spent, listing the harvested warnings verbatim. Before advancing, commit the terminal evidence and backlog mutation with an explicit pathspec so they are part of the SHA DELIVER proves and unrelated staged files cannot be swept in:
    ```bash
    iteration_path="docs/loop-spec/features/${slug}/ITERATION.md"
-   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+   if jq -e '.workspace == null' "$fdir/feature.json" >/dev/null 2>&1 \
+      && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
      git add "$iteration_path" .loop-spec/BACKLOG.md 2>/dev/null || true
      git diff --cached --quiet -- "$iteration_path" .loop-spec/BACKLOG.md 2>/dev/null \
        || git commit -m "iterate: NO_JIRA ${slug} terminal evidence" -- \
@@ -114,13 +115,15 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" iterate_verdict \
   --phase iterate --data "{\"verdict\":\"$_cvgd\",\"iteration\":$((used+1)),\"gap\":\"$_gap\"}" || true
 ```
 
-Write a human-readable `docs/loop-spec/features/{slug}/ITERATION.md` (append one section per iteration: number, converged?, per-criterion scores, weakest point, gap + fix-first, summary). Set `artifacts.iteration` to that path. Commit it:
+Write a human-readable `docs/loop-spec/features/{slug}/ITERATION.md` (append one section per iteration: number, converged?, per-criterion scores, weakest point, gap + fix-first, summary). Set `artifacts.iteration` to that path. Commit it only in single-repo mode; a workspace parent is orchestration state and may be an unrelated, unbranched git repository:
 
 ```bash
-git add docs/loop-spec/features/{slug}/ITERATION.md
-git diff --cached --quiet -- docs/loop-spec/features/{slug}/ITERATION.md \
-  || git commit -m "iterate: NO_JIRA {slug} iteration $((used+1))" -- \
-    docs/loop-spec/features/{slug}/ITERATION.md
+if jq -e '.workspace == null' "$fdir/feature.json" >/dev/null 2>&1; then
+  git add docs/loop-spec/features/{slug}/ITERATION.md
+  git diff --cached --quiet -- docs/loop-spec/features/{slug}/ITERATION.md \
+    || git commit -m "iterate: NO_JIRA {slug} iteration $((used+1))" -- \
+      docs/loop-spec/features/{slug}/ITERATION.md
+fi
 ```
 
 ### Step 3 - DECIDE

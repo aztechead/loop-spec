@@ -80,6 +80,10 @@ case "${1:-} ${2:-}" in
       || pr="$(jq -c --arg repo "$FAKE_GH_HEAD_REPO" '.headRepository.nameWithOwner = $repo | .isCrossRepository = true' <<<"$pr")"
     [[ "${FAKE_GH_BAD_DRAFT_TYPE:-0}" != "1" ]] \
       || pr="$(jq -c '.isDraft = "unknown"' <<<"$pr")"
+    if [[ "${FAKE_GH_METADATA_OVERRIDE_AFTER_CHECKS:-0}" == "1" \
+          && "$(jq -r '.checkIndex // 0' "$state")" -gt 0 ]]; then
+      pr="$(jq -c '.title = "concurrent edit"' <<<"$pr")"
+    fi
     printf '%s\n' "$pr"
     ;;
   "pr create")
@@ -123,7 +127,13 @@ case "${1:-} ${2:-}" in
       '.prs[0].title=$t | .prs[0].baseRefName=$b | .prs[0].body=$body' "$state")"
     ;;
   "pr ready")
-    write_state "$(jq -c '.prs[0].isDraft = false' "$state")"
+    if [[ "$*" == *"--undo"* ]]; then
+      write_state "$(jq -c '.prs[0].isDraft = true' "$state")"
+    elif [[ "${FAKE_GH_MOVE_HEAD_ON_READY:-0}" == "1" ]]; then
+      write_state "$(jq -c '.prs[0].isDraft = false | .prs[0].headRefOid = "0000000000000000000000000000000000000000"' "$state")"
+    else
+      write_state "$(jq -c '.prs[0].isDraft = false' "$state")"
+    fi
     ;;
   "pr checks")
     if [[ "${FAKE_GH_PARTIAL_HANG_ON_CHECKS:-0}" == "1" ]]; then
@@ -269,6 +279,28 @@ check "hold-ready: checks proven passed" "passed" "$(jq -r '.checks.status' <<<"
 check "hold-ready: PR left as draft" "true" "$(jq -r '.prs[0].isDraft' "$GH_STATE")"
 check "hold-ready: no ready mutation" "0" "$(grep -c '^pr ready ' "$GH_LOG" || true)"
 
+# A staged call cannot claim to hold a PR that is already externally ready.
+ready_checkpoint="$(jq -c '.isDraft=false' <<<"$checkpoint")"
+reset_gh "[$ready_checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  FAKE_GH_HEAD_SHA="$TARGET_SHA" bash "$SCRIPT" final -C "$WORK/repo" \
+  --branch feat/delivery --base main --sha "$TARGET_SHA" --title "feat: delivery" \
+  --body-file "$BODY" --hold-ready --checks-timeout 2 --checks-interval 0 2>"$WORK/err")" || ec=$?
+check "hold-ready already ready: exit 1" "1" "$ec"
+check "hold-ready already ready: structured code" "pr_already_ready" "$(jq -r '.errorCode' <<<"$out")"
+
+# Workspace rollback uses the same bounded controller to restore an already-promoted PR.
+reset_gh "[$ready_checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  FAKE_GH_HEAD_SHA="$TARGET_SHA" bash "$SCRIPT" final -C "$WORK/repo" \
+  --branch feat/delivery --base main --sha "$TARGET_SHA" --title "feat: delivery" \
+  --body-file "$BODY" --restore-draft --checks-timeout 2 --checks-interval 0 2>"$WORK/err")" || ec=$?
+check "restore-draft: exit 0" "0" "$ec"
+check "restore-draft: outcome ready-pending" "ready-pending" "$(jq -r '.outcome' <<<"$out")"
+check "restore-draft: rolled back" "true" "$(jq -r '.prs[0].isDraft' "$GH_STATE")"
+
 # A failed required check is a structured failure and the draft stays draft.
 checkpoint="$(jq -cn --arg sha "$TARGET_SHA" '{number:10,url:"https://github.com/test/repo/pull/10",isDraft:true,
   headRefOid:$sha,headRefName:"feat/delivery",headRepository:{nameWithOwner:"test/repo"},
@@ -337,6 +369,30 @@ out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" 
 check "pre-ready drift: exit 1" "1" "$ec"
 check "pre-ready drift: structured code" "pr_head_moved" "$(jq -r '.errorCode' <<<"$out" 2>/dev/null)"
 check "pre-ready drift: no promotion" "0" "$(grep -c '^pr ready ' "$GH_LOG" || true)"
+
+# Metadata is revalidated before promotion, not only afterward.
+reset_gh "[$checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  FAKE_GH_HEAD_SHA="$TARGET_SHA" FAKE_GH_METADATA_OVERRIDE_AFTER_CHECKS=1 \
+  bash "$SCRIPT" final -C "$WORK/repo" --branch feat/delivery --base main \
+  --sha "$TARGET_SHA" --title "feat: delivery" --body-file "$BODY" \
+  --checks-timeout 1 --checks-interval 0 2>"$WORK/err")" || ec=$?
+check "pre-ready metadata drift: exit 1" "1" "$ec"
+check "pre-ready metadata drift: structured code" "metadata_drift" "$(jq -r '.errorCode' <<<"$out")"
+check "pre-ready metadata drift: no promotion" "0" "$(grep -c '^pr ready ' "$GH_LOG" || true)"
+
+# If the head races after promotion, best-effort rollback restores draft state.
+reset_gh "[$checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  FAKE_GH_HEAD_SHA="$TARGET_SHA" FAKE_GH_MOVE_HEAD_ON_READY=1 \
+  bash "$SCRIPT" final -C "$WORK/repo" --branch feat/delivery --base main \
+  --sha "$TARGET_SHA" --title "feat: delivery" --body-file "$BODY" \
+  --checks-timeout 1 --checks-interval 0 2>"$WORK/err")" || ec=$?
+check "post-ready race: exit 1" "1" "$ec"
+check "post-ready race: structured code" "pr_head_moved" "$(jq -r '.errorCode' <<<"$out")"
+check "post-ready race: rolled back to draft" "true" "$(jq -r '.prs[0].isDraft' "$GH_STATE")"
 
 # A hinted PR from another repository cannot be reconciled against this remote.
 wrong_repo="$(jq -c '.url="https://github.com/other/repo/pull/10"' <<<"$checkpoint")"
@@ -410,6 +466,11 @@ out="$(bash "$SCRIPT" final -C "$WORK/repo" --branch feat/delivery --base main -
 check "bad timeout: exit 2" "2" "$ec"
 check "bad timeout: one JSON document" "1" "$(jq -s 'length' <<<"$out")"
 check "bad timeout: structured code" "bad_timeout" "$(jq -r '.errorCode' <<<"$out")"
+ec=0
+out="$(bash "$SCRIPT" final -C "$WORK/repo" --branch feat/delivery --base main --sha "$TARGET_SHA" \
+  --title t --body-file "$BODY" --checks-timeout 999999999999999999999 2>/dev/null)" || ec=$?
+check "oversized timeout: exit 2" "2" "$ec"
+check "oversized timeout: structured code" "bad_timeout" "$(jq -r '.errorCode' <<<"$out")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

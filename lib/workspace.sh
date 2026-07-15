@@ -92,7 +92,8 @@ _detect_impl() {
     fi
 
     # Validate each repo entry.
-    local i name path abs_path
+    local i name path abs_path resolved_path repo_top workspace_abs
+    workspace_abs="$(cd "$dir" && pwd -P)"
     for (( i=0; i<n_repos; i++ )); do
       name="$(jq -r ".[$i].name" <<< "$repos_json")"
       path="$(jq -r ".[$i].path" <<< "$repos_json")"
@@ -111,6 +112,17 @@ _detect_impl() {
 
       if ! git -C "$abs_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         echo "workspace.json: repo '$name' invalid: path '$path' is not inside a git work tree" >&2
+        exit 1
+      fi
+      resolved_path="$(cd "$abs_path" && pwd -P)"
+      repo_top="$(git -C "$abs_path" rev-parse --show-toplevel 2>/dev/null)"
+      repo_top="$(cd "$repo_top" && pwd -P)"
+      if [[ "$resolved_path" == "$workspace_abs" ]]; then
+        echo "workspace.json: repo '$name' invalid: workspace root cannot also be a workspace target; use single-repo mode for the root" >&2
+        exit 1
+      fi
+      if [[ "$resolved_path" != "$repo_top" ]]; then
+        echo "workspace.json: repo '$name' invalid: path '$path' must name the git repository root" >&2
         exit 1
       fi
     done

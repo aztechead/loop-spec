@@ -31,9 +31,10 @@ is identical under Claude Code, pi, and OpenCode.
 Three invariants the controller enforces so retries and multi-repo features stay safe:
 
 - **Candidate preflight.** Every target — single-repo and each workspace repo — must be
-  a git work tree at the repository root, on the recorded feature branch, with at least
-  one commit past its recorded base, before any push. A mismatch is a structured block,
-  never a silent delivery of the wrong `HEAD`.
+  a clean git work tree at the repository root, on the recorded feature branch, with its
+  recorded base as an ancestor and at least one commit past it, before any push. All
+  workspace targets preflight before any sibling touches GitHub. A mismatch is a
+  structured block, never a silent delivery of the wrong or incomplete `HEAD`.
 - **SHA-bound hard retries.** A hard failure (transport, identity, timeout) leaves
   `delivery.json.nextPhase = "deliver"` with the exact `targetSha` it tried. A resumed
   attempt re-delivers that same SHA; if `HEAD` has drifted it fails closed with
@@ -43,7 +44,9 @@ Three invariants the controller enforces so retries and multi-repo features stay
   every repo's draft (push + reconcile + green required checks, `--hold-ready`) and
   promotes them to ready only after all repos have cleared checks. One repo's CI failure
   therefore never leaves a half-ready set of PRs; the feature routes to remediation with
-  the passing repos still held as drafts.
+  the passing repos still held as drafts. If a held PR was externally promoted, staging
+  fails closed instead of falsely claiming it remains draft. If a later promotion fails,
+  the controller restores already-promoted siblings to draft before the retry.
 
 ## Procedure
 
@@ -54,10 +57,10 @@ not modify source, artifacts, state, rules, telemetry digests, or commits before
 controller call. If intended tracked changes remain uncommitted, stop and route back
 to the owning phase instead of delivering an incomplete `HEAD`.
 
-For single-repo mode, inspect `git status --short`. The only tolerated dirt after a
-resumed delivery attempt is the controller-owned update to
-`.loop-spec/features/{slug}/feature.json`; every implementation/artifact change must
-already be committed. In workspace mode apply the same check to every changed repo.
+`lib/deliver.sh` enforces the clean-tree, branch, root, and ancestry checks. No tracked or
+untracked dirt is tolerated in a delivery target; every implementation/artifact change
+must already be committed. In workspace mode it validates every repo before calling any
+controller.
 
 ### Step 2 - Run the controller
 
@@ -109,6 +112,7 @@ idempotent FULL-SHAPE task per failed target to `pendingRemediationTasks[]`, and
   "files": [],
   "verifyCommand": "<feature.commands.test, or the relevant repo test command>",
   "acceptanceCriteria": ["all required PR checks pass for the delivered SHA"],
+  "repo": "<workspace repo name, or null in single mode>",
   "blockedBy": [],
   "retries": 0
 }
@@ -128,7 +132,9 @@ When `delivery.nextPhase == "deliver"`, failures such as `push_failed`,
 `no-changes`, do not claim completion and do not spin by invoking DELIVER again in
 the same phase loop. Leave `currentPhase = "deliver"`, write an escalated cycle result
 with the structured error, and return control. Resume re-runs the transaction
-idempotently after the external condition is corrected.
+idempotently after the external condition is corrected. Cycle must not update timestamps,
+progress, or tracked state on this route: the sidecar owns the observation and the retry
+is bound to the same candidate SHA.
 
 Autonomous mode follows the same fail-closed rule. It may remediate an actual failed
 check, but it cannot self-approve a missing remote, ambiguous PR identity, moved head,

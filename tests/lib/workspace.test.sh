@@ -221,6 +221,33 @@ JSON
   bash "$SCRIPT" detect "$D" >/dev/null 2>&1 || rc=$?
   [[ "$rc" -eq 1 ]] && pass "pin-invalid: non-git dir -> exit 1" || fail "pin-invalid: non-git dir -> exit 1 (got rc=$rc)"
 
+  # Sub-case: a nested directory inside a repo is not a repository target root.
+  mkdir -p "$D/valid-repo/nested"
+  cat > "$D/.loop-spec/workspace.json" <<'JSON'
+{
+  "repos": [
+    {"name": "nested", "path": "valid-repo/nested"}
+  ]
+}
+JSON
+  rc=0
+  bash "$SCRIPT" detect "$D" >/dev/null 2>&1 || rc=$?
+  [[ "$rc" -eq 1 ]] && pass "pin-invalid: nested repo path -> exit 1" || fail "pin-invalid: nested repo path -> exit 1 (got rc=$rc)"
+
+  # Sub-case: the orchestration root cannot also be a workspace delivery target.
+  make_git_repo "$D/root-repo"
+  mkdir -p "$D/root-repo/.loop-spec"
+  cat > "$D/root-repo/.loop-spec/workspace.json" <<'JSON'
+{
+  "repos": [
+    {"name": "root", "path": "."}
+  ]
+}
+JSON
+  rc=0
+  bash "$SCRIPT" detect "$D/root-repo" >/dev/null 2>&1 || rc=$?
+  [[ "$rc" -eq 1 ]] && pass "pin-invalid: workspace root target -> exit 1" || fail "pin-invalid: workspace root target -> exit 1 (got rc=$rc)"
+
   rm -rf "$D"
   trap - EXIT
 }

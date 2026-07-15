@@ -99,12 +99,13 @@ attempted_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 targets="[]"
 
 invoke_delivery() {
-  local repo_dir="$1" branch="$2" base="$3" sha="$4" title="$5" hint="$6" hold="${7:-0}"
+  local repo_dir="$1" branch="$2" base="$3" sha="$4" title="$5" hint="$6" hold="${7:-0}" restore="${8:-0}"
   local args result rc=0
   args=(final -C "$repo_dir" --branch "$branch" --base "$base" --sha "$sha"
         --title "$title" --body-file "$body_file"
         --checks-timeout "$checks_timeout" --checks-interval "$checks_interval")
   [[ "$hold" == "1" ]] && args+=(--hold-ready)
+  [[ "$restore" == "1" ]] && args+=(--restore-draft)
   [[ -n "$hint" ]] && args+=(--pr-url "$hint")
   result="$(bash "$PR_DELIVERY" "${args[@]}")" || rc=$?
   if ! jq -e 'type == "object" and has("ok")' <<<"$result" >/dev/null 2>&1; then
@@ -147,7 +148,7 @@ if [[ -f "$delivery_file" ]]; then
 fi
 bound_target_sha() {
   local name="$1"
-  [[ "$prior_next" == "deliver" ]] || return 0
+  [[ "$prior_next" == "deliver" || "$prior_next" == "completed" ]] || return 0
   jq -r --arg n "$name" \
     '[.[] | select(.name == $n and (.targetSha // "") != "") | .targetSha] | first // empty' \
     <<<"$prior_targets"
@@ -168,6 +169,7 @@ if [[ -z "$workspace_root" ]]; then
   repo_top="$(git -C "$artifact_root" rev-parse --show-toplevel 2>/dev/null || true)"
   actual_branch="$(git -C "$artifact_root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
   target_sha="$(git -C "$artifact_root" rev-parse --verify HEAD 2>/dev/null || true)"
+  dirty_state="$(git -C "$artifact_root" status --porcelain --untracked-files=all 2>/dev/null || true)"
   if [[ -z "$target_sha" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "" "$hint" \
       "git_history_failed" "cannot resolve feature HEAD"
@@ -180,9 +182,21 @@ if [[ -z "$workspace_root" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
       "branch_mismatch" "checkout is on '$actual_branch', expected '$branch'"
     preflight_ok=0
+  elif [[ -n "$dirty_state" ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "dirty_worktree" "candidate repository has uncommitted changes"
+    preflight_ok=0
+  elif [[ -z "$base_sha" ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "base_sha_missing" "feature state has no recorded base SHA"
+    preflight_ok=0
   elif [[ -n "$base_sha" ]] && ! git -C "$artifact_root" rev-parse --verify "${base_sha}^{commit}" >/dev/null 2>&1; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
       "base_sha_invalid" "recorded base SHA is not a local commit"
+    preflight_ok=0
+  elif [[ -n "$base_sha" ]] && ! git -C "$artifact_root" merge-base --is-ancestor "$base_sha" "$target_sha"; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "base_not_ancestor" "recorded base SHA is not an ancestor of the candidate"
     preflight_ok=0
   elif [[ -n "$base_sha" ]] && [[ "$(git -C "$artifact_root" rev-list --count "${base_sha}..${target_sha}" 2>/dev/null || echo 0)" -eq 0 ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
@@ -238,12 +252,23 @@ else
         "branch_mismatch" "workspace target is on '$actual_branch', expected '$branch'"
       continue
     fi
+    dirty_state="$(git -C "$repo_dir" status --porcelain --untracked-files=all 2>/dev/null || true)"
+    if [[ -n "$dirty_state" ]]; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
+        "dirty_worktree" "workspace target has uncommitted changes"
+      continue
+    fi
     if ! git -C "$repo_dir" rev-parse --verify "${base_sha}^{commit}" >/dev/null 2>&1; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
         "base_sha_invalid" "workspace base SHA is not a local commit"
       continue
     fi
     target_sha="$(git -C "$repo_dir" rev-parse --verify HEAD 2>/dev/null || true)"
+    if [[ -n "$target_sha" ]] && ! git -C "$repo_dir" merge-base --is-ancestor "$base_sha" "$target_sha"; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
+        "base_not_ancestor" "workspace base SHA is not an ancestor of the candidate"
+      continue
+    fi
     if [[ -z "$target_sha" ]] || ! commit_count="$(git -C "$repo_dir" rev-list --count "${base_sha}..${target_sha}" 2>/dev/null)"; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
         "git_history_failed" "cannot compare workspace target with its recorded base"
@@ -270,18 +295,30 @@ else
       '. + [{name:$name,path:$path,branch:$branch,base:$base,sha:$sha,hint:$hint}]' <<<"$deliverables")"
   done < <(jq -c '.workspace.repos[]' "$feature_json")
 
+  # Readiness is a feature-level invariant. If any configured target failed local
+  # preflight, do not touch GitHub for otherwise-valid siblings.
+  if [[ "$(jq '[.[] | select(.ok == false)] | length' <<<"$targets")" -gt 0 ]]; then
+    while IFS= read -r entry; do
+      append_target_failure "$(jq -r '.name' <<<"$entry")" "$(jq -r '.path' <<<"$entry")" \
+        "$(jq -r '.branch' <<<"$entry")" "$(jq -r '.base' <<<"$entry")" \
+        "$(jq -r '.sha' <<<"$entry")" "$(jq -r '.hint' <<<"$entry")" \
+        "workspace_preflight_failed" "another workspace target failed local preflight"
+    done < <(jq -c '.[]' <<<"$deliverables")
+    deliverables="[]"
+  fi
+
   # Pass 2 - deliver. With two or more changed repos, stage readiness: prove every
   # repo's checks are green (held as drafts) before promoting any, so a single repo's
   # CI failure never leaves a half-ready set of PRs. One changed repo needs no staging.
   deliverable_count="$(jq 'length' <<<"$deliverables")"
   run_target() {
-    local entry="$1" hold="$2" result_rc=0 result record
+    local entry="$1" hold="$2" restore="${3:-0}" result_rc=0 result record
     local name path branch base sha hint
     name="$(jq -r '.name' <<<"$entry")"; path="$(jq -r '.path' <<<"$entry")"
     branch="$(jq -r '.branch' <<<"$entry")"; base="$(jq -r '.base' <<<"$entry")"
     sha="$(jq -r '.sha' <<<"$entry")"; hint="$(jq -r '.hint' <<<"$entry")"
     result="$(invoke_delivery "$path" "$branch" "$base" "$sha" \
-      "feat: $feature_title ($name)" "$hint" "$hold")" || result_rc=$?
+      "feat: $feature_title ($name)" "$hint" "$hold" "$restore")" || result_rc=$?
     record="$(jq -c --arg name "$name" --arg path "$path" '. + {name:$name,path:$path}' <<<"$result")"
     targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
     return "$result_rc"
@@ -294,11 +331,23 @@ else
     done < <(jq -c '.[]' <<<"$deliverables")
     if [[ "$all_held" -eq 1 ]]; then
       # Every repo cleared its checks. Promote each with a plain (idempotent) call.
+      promoted="[]"
+      promotion_failed=0
       while IFS= read -r entry; do
-        run_target "$entry" 0 || true
+        if run_target "$entry" 0; then
+          promoted="$(jq -c --argjson entry "$entry" '. + [$entry]' <<<"$promoted")"
+        else
+          promotion_failed=1
+          break
+        fi
       done < <(jq -c '.[]' <<<"$deliverables")
+      if [[ "$promotion_failed" -eq 1 ]]; then
+        while IFS= read -r entry; do
+          run_target "$entry" 0 1 || true
+        done < <(jq -c '.[]' <<<"$promoted")
+      fi
       # Each promoted repo now has both its held and its delivered record; keep the
-      # last (delivered) observation per repo.
+      # last delivered/rollback/failure observation per repo.
       targets="$(jq -c 'group_by(.name) | map(.[-1])' <<<"$targets")"
     fi
   else
@@ -380,12 +429,9 @@ if [[ "$next_phase" == "execute" ]]; then
           id: ("task-delivery-ci-" + $id_name),
           subject: ("Fix: required PR checks failed (" + $target.name + ")"),
           files: [],
-          verifyCommand: (if $test_command != "" then $test_command
-                          elif ($target.prNumber != null and (($target.repo // "") != ""))
-                            then ("gh pr checks " + ($target.prNumber | tostring)
-                                  + " --repo " + $target.repo + " --required")
-                          else "all required PR checks pass for the delivered SHA" end),
+          verifyCommand: (if $test_command != "" then $test_command else "git diff --check" end),
           acceptanceCriteria: ["all required PR checks pass for the delivered SHA"],
+          repo: (if $feature.workspace == null then null else $target.name end),
           blockedBy: [],
           retries: 0,
           notes: ([ $target.checks.required[]?

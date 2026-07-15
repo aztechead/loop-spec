@@ -183,8 +183,8 @@ When a workspace parent directory is itself a git repo, or when the user wants t
 Field notes:
 - `schemaVersion`: currently `1`. Unknown extra fields at the top level are tolerated. Missing `schemaVersion` is tolerated (treated as v1).
 - `repos[].name`: short identifier used in PLAN task `repo` fields and in summary tables. Must be unique within the list.
-- `repos[].path`: path to the repo, relative to the workspace root. The resolved path must exist, be a directory, and pass `git -C <abs-path> rev-parse --is-inside-work-tree`; invalid entries cause `lib/workspace.sh detect` to exit 1 with a clear message.
-- When to pin: (a) the workspace parent directory is itself a git repo (detection defaults to single mode; the pin overrides this), or (b) you want to use only a subset of the child repos discovered by depth-1 scan.
+- `repos[].path`: path to the repo, relative to the workspace root. The resolved path must exist and equal that repository's git toplevel (a nested directory is rejected); invalid entries cause `lib/workspace.sh detect` to exit 1 with a clear message.
+- When to pin: (a) the workspace parent directory is itself a git repo (detection defaults to single mode; the pin overrides this), or (b) you want to use only a subset of the child repos discovered by depth-1 scan. The workspace root is always orchestration-only and cannot be listed as a target; use single-repo mode when the root itself is the delivery repository. Cycle/VERIFY/ITERATE never commit workspace state or evidence to the parent.
 - When not to pin: the workspace parent is not a git repo and you want all immediate child git repos included (auto-discovery covers this without a pin file).
 
 ## Harness task list usage
