@@ -101,13 +101,20 @@ inside one repository are forbidden.
 9. Commit only staged Graphify outputs when they changed:
 
    ```bash
+   if ! git -C "$repo" diff --cached --quiet -- . ':(exclude)graphify-out/**'; then
+     echo "loop-spec: unexpected staged path outside graphify-out; refusing graph commit" >&2
+     exit 1  # Do not sweep another phase's staged work.
+   fi
    if ! git -C "$repo" diff --cached --quiet -- graphify-out/; then
-     git -C "$repo" commit -m "$commit_message" -- graphify-out/
+     git -C "$repo" commit -m "$commit_message"
    fi
    ```
 
-   The staging helper excludes machine paths, cost history, caches, dated backups,
-   locks, and partial assistant intermediates. Never replace it with blanket `git add`.
+   The first guard must abort rather than continue when it prints the error. Committing
+   the prepared index, without a pathspec, preserves staged removals of previously tracked
+   local artifacts. The staging helper excludes machine paths, cost history, caches, dated
+   backups, locks, and partial assistant intermediates. Never replace it with blanket
+   `git add` or a pathspec commit.
 
 ## Installation Failure
 

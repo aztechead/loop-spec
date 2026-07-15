@@ -94,7 +94,7 @@ graph_is_usable() {
 }
 
 stage_graph() {
-  local dir="${1%/}" git_dir exclude marker
+  local dir="${1%/}" exclude marker
   [[ -d "$dir/graphify-out" ]] || {
     echo "loop-spec: no graphify-out directory to stage under $dir" >&2
     return 1
@@ -107,8 +107,7 @@ stage_graph() {
   # Graphify recommends committing its outputs, but these paths are explicitly
   # local or disposable. Keep the policy clone-local so loop-spec does not
   # rewrite a consumer repository's .gitignore.
-  git_dir="$(git -C "$dir" rev-parse --absolute-git-dir)"
-  exclude="$git_dir/info/exclude"
+  exclude="$(git -C "$dir" rev-parse --path-format=absolute --git-path info/exclude)"
   marker="# loop-spec graphify local artifacts"
   if [[ ! -f "$exclude" ]] || [[ "$(<"$exclude")" != *"$marker"* ]]; then
     printf '%s\n' \

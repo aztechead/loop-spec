@@ -91,5 +91,23 @@ ignored="$(git -C "$REPO" status --short --ignored)"
 echo "$ignored" | grep -q '!! graphify-out/.graphify_python' && pass "stage ignores machine interpreter" || fail "stage ignores machine interpreter"
 echo "$ignored" | grep -q '!! graphify-out/cache/' && pass "stage ignores cache" || fail "stage ignores cache"
 
+# stage: linked worktrees must use the common repository's info/exclude path
+LINKED="$WORK/linked"
+git -C "$REPO" worktree add -q -b linked "$LINKED"
+rc=0; bash "$SCRIPT" stage "$LINKED" >/dev/null 2>&1 || rc=$?
+[[ "$rc" -eq 0 ]] && pass "stage works in linked worktree" || fail "stage works in linked worktree (rc=$rc)"
+linked_exclude="$(git -C "$LINKED" rev-parse --path-format=absolute --git-path info/exclude)"
+grep -q '# loop-spec graphify local artifacts' "$linked_exclude" && pass "linked worktree uses common exclude" || fail "linked worktree uses common exclude"
+
+# A normal index commit must preserve removals of previously tracked local artifacts.
+git -C "$REPO" commit -qm graph
+if git -C "$REPO" ls-files --error-unmatch graphify-out/cost.json >/dev/null 2>&1; then
+  fail "commit keeps local cost untracked"
+else
+  pass "commit keeps local cost untracked"
+fi
+git -C "$REPO" ls-files --error-unmatch graphify-out/graph.json >/dev/null 2>&1 \
+  && pass "commit keeps shared graph tracked" || fail "commit keeps shared graph tracked"
+
 echo ""; echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0
