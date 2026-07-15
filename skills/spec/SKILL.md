@@ -121,6 +121,7 @@ Before asking any questions, read for grounding context:
   - `graphify query "<feature area>"` — does an implementation already exist? What does it touch?
   - `graphify-out/GRAPH_REPORT.md` — "god nodes" and cross-module connections reveal which subsystems a change will ripple through, so you can ask sharper boundary/constraint questions.
   - `graphify explain "<entity>"` / `graphify path "<A>" "<B>"` — confirm how the target area connects to the rest of the system.
+  - **Workspace mode:** there is no graph at the workspace root. Query each participating repository with `--graph "<repo>/graphify-out/graph.json"` (or run from that repo), and preserve the repository name in every finding.
   Use the graph to ask precise questions ("this would touch `X` which also feeds `Y` — in scope?") instead of generic ones. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode; then use flat-file reads. **Greenfield:** the graph build is deferred until source exists — skip the graph scout and ground in the stated goal and the chosen stack's conventions instead.)
 
 **External-reality scout (probe-before-assert).** Before treating any factual premise about an external system as fact (in synthesis, ambiguity scoring, or interview questions):

@@ -29,6 +29,9 @@ checks=(
   "skills/shared/opencode-harness.md	executionRootMode: \"in-place\""
   "skills/shared/opencode-harness.md	lib/pr-delivery.sh"
   "skills/shared/opencode-harness.md	does not pretend worktree creation changed cwd"
+  "skills/shared/opencode-harness.md	graphify install --platform opencode"
+  "skills/shared/opencode-harness.md	skill({name: \"graphify\"})"
+  "skills/shared/opencode-harness.md	graphify-lifecycle.md"
   "skills/shared/opencode-harness.md	--model adversarial=github-copilot/"
   "lib/opencode-install.sh	modelRoutes"
   # -- the harness probe knows opencode and grants the subagent capability

@@ -480,10 +480,9 @@ Gate failure detected
 
 ## Map-codebase
 
-### Roles (5 mappers)
+### Coverage (Graphify + 3 mappers)
 
-- TECH: languages, frameworks, deps
-- ARCH: modules, boundaries, data flow
+- TECH / ARCH: Graphify's refreshed AST + semantic knowledge graph
 - QUALITY: test coverage, lint state, type safety
 - CONCERNS: security, perf hotspots, tech debt
 - DOMAIN: business concepts, glossary, entity model
@@ -492,9 +491,10 @@ Gate failure detected
 
 ```
 verify phase complete
+  -> invoke Graphify's assistant skill, then validate, stage, and commit shared graphify-out/ artifacts
   -> read .loop-spec/codebase/index.json
   -> compute changedFiles = git diff base..HEAD --name-only
-  -> staleDomains = unique(index[file] for file in changedFiles) U "arch" if new files added
+  -> staleDomains = unique(index.files[file] for file in changedFiles) U "arch" if new files added
   -> dispatch mapper-{domain} agents in parallel (only stale ones)
   -> each appends/updates its TOPIC.md section for the new feature
   -> update index.json with new file -> domain mappings

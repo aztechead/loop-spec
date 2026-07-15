@@ -102,6 +102,23 @@ session directory; `feature.json.executionRootMode` records that difference. DEL
 still calls the same explicit-path `lib/deliver.sh` / `lib/pr-delivery.sh` controller as
 Claude Code.
 
+## Graphify assistant integration
+
+Register Graphify's OpenCode-specific external skill separately:
+
+```bash
+graphify install --platform opencode
+```
+
+`skills/shared/graphify-lifecycle.md` is authoritative. Load the unnamespaced external
+skill with `skill({name: "graphify"})`; the native skill tool has no argument field, so
+the calling prompt supplies `.` or `. --update` and the selected repository working
+directory. Translate Graphify's semantic Agent or `@agent` fan-out to native `task`
+calls with `subagent_type: "general"`, or process chunks inline if generic dispatch is
+unavailable. Capture and restore loop-spec's `CLAUDE_SKILL_DIR` before validation because
+loading Graphify changes the active skill directory. Embedded Graphify never asks
+corpus-narrowing or post-build exploration questions.
+
 ## Startup probes
 
 Skip the cycle's model probe (Step 3.5) entirely — it pre-flights Claude Code

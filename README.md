@@ -16,10 +16,10 @@ Design constraints that hold throughout:
 
 - Shipped code is bash, jq, python3, and markdown. No package manager, no daemon, no database. Scheduling means cron/launchd/CI recipes that invoke normal entry points.
 - Decisions about whether the loop may act without a human are made by tested shell scripts, not by prose in a skill. The model proposes; scripts authorize.
-- One external tool is required: [graphify](https://github.com/safishamsi/graphify), the code graph the design phases query.
+- One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.20.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.20.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -39,7 +39,19 @@ Current version: 2.20.0 (renamed from super-spec at v2.5.2). Direction: [docs/lo
    graphify install              # register the skill; `graphify --help` to verify
    ```
 
-   The first cycle in a project builds `graphify-out/graph.json` (deterministic AST extraction, offline, no API key) and commits it. Constrained environments can set `LOOP_SPEC_REQUIRE_GRAPHIFY=0` to skip the requirement; design phases then fall back to Glob/Grep.
+   Every cycle invokes Graphify's assistant skill before design: `.` performs the first full build and `. --update` incrementally refreshes code plus changed semantic inputs. Code remains local AST extraction; docs, papers, and images use the current assistant model and its existing authentication, including Vertex/Agent Platform ADC supplied by the host. loop-spec then validates named nodes and the complete output set before committing shared artifacts. Constrained environments can set `LOOP_SPEC_REQUIRE_GRAPHIFY=0`; design phases then fall back to Glob/Grep.
+
+### Graphify artifacts
+
+loop-spec follows Graphify's team workflow: generated graph outputs are committed so a clone can query the graph immediately. `skills/shared/graphify-lifecycle.md` invokes the external assistant skill; `lib/graphify-preflight.sh validate` requires human-readable node labels plus `graph.json`, `GRAPH_REPORT.md`, `graph.html`, and `manifest.json`. Its `stage` command stages those shared files and portable analysis/label sidecars while excluding local-only or disposable files through the clone's Git exclude file:
+
+- `graphify-out/cost.json`
+- `graphify-out/cache/` (content-addressed acceleration data)
+- `graphify-out/.graphify_python` and `.graphify_root` (machine-specific paths)
+- temporary/lock files and dated safety-backup directories
+- partial assistant extraction intermediates
+
+Graphify node IDs in `graph.json` are deterministic, path-qualified identifiers; consumers should still treat them as opaque because the upstream ID scheme can evolve. Random-looking hexadecimal filenames under `graphify-out/cache/` are expected content hashes, not unnamed graph nodes, and loop-spec does not commit them. The standard visualization is the fixed file `graphify-out/graph.html`; per-node Markdown/Obsidian or other HTML exports are optional Graphify exports and are not required by loop-spec.
 
 3. Check the base prerequisites: `bash >= 4`, `git`, `jq >= 1.5`, `python3 >= 3.6`. Prompt-to-PR delivery additionally requires an authenticated GitHub CLI (`gh auth status`) and an `origin` remote. Minimal Linux images may need `apk add jq python3` or equivalent.
 
@@ -55,6 +67,8 @@ loop-spec ships as a pi package from the same source tree:
 
 ```bash
 pi install git:github.com/aztechead/loop-spec
+uv tool install graphifyy
+graphify install --platform pi
 ```
 
 This loads every skill, the `/loop-debug` prompt template, and a bundled extension (`extensions/pi/loop-spec.ts`) that bridges the Claude Code surface: it exports `LOOP_SPEC_HARNESS=pi`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, and `CLAUDE_SKILL_DIR` into every bash command and runs the SessionStart / prompt-submit / session-end hooks that pi has no native equivalent for. graphify and the base prerequisites are the same.
@@ -75,6 +89,8 @@ loop-spec installs into [opencode](https://opencode.ai) (TUI, `opencode run`, an
 git clone https://github.com/aztechead/loop-spec
 bash loop-spec/lib/opencode-install.sh install            # global: ~/.config/opencode
 bash loop-spec/lib/opencode-install.sh install --project . # or per-project: ./.opencode
+uv tool install graphifyy
+graphify install --platform opencode
 ```
 
 The installer generates namespaced `loop-spec-<name>` skill adapters so common names such as `cycle`, `plan`, and `status` never shadow user/project skills, places `/loop-debug` as a native command, and generates a `/loop-spec/<name>` command wrapper for every skill (opencode's TUI hides skill-sourced entries from the `/` autocomplete popup, so these real commands are how you discover and launch the skills — `/loop-spec/cycle` is the entry point). It also converts `agents/*.md` into opencode subagents named `loop-spec-<role>`, creates a deny-by-default `loop-spec-readonly` primary agent for compiler/judge passes, and drops a bundled plugin (`extensions/opencode/loop-spec.ts`) that bridges the rest of the Claude Code surface through documented plugin hooks: `shell.env` exports `LOOP_SPEC_HARNESS=opencode`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, and `CLAUDE_SKILL_DIR` into every bash command; `chat.message` and the event stream run the SessionStart / prompt-submit / session-end hooks. `status` and `uninstall` use an identity-checked manifest and preserve modified/replaced files. graphify and the base prerequisites are the same.

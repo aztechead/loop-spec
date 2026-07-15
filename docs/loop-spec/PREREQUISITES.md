@@ -1,5 +1,29 @@
 # Prerequisites
 
+## Graphify assistant skill
+
+Graphify is the one hard external dependency. Install its Python 3.10+ package, then
+register the platform-specific assistant skill:
+
+```bash
+uv tool install graphifyy
+graphify install                         # Claude Code
+graphify install --platform pi           # pi
+graphify install --platform opencode     # OpenCode
+```
+
+Restart the harness after registration. loop-spec invokes the external skill through
+`skills/shared/graphify-lifecycle.md`; it does not use Graphify's headless provider
+backend for construction. Semantic extraction therefore runs through the current host
+assistant and inherits its authentication. On GCP Agent Platform/Vertex deployments,
+that means the harness's attached service account, Workload Identity, or other ADC
+configuration remains the authentication boundary; no separate Gemini or Anthropic API
+key is required by loop-spec. Graphify's local AST extraction still handles code.
+
+The lifecycle fails closed if the skill cannot be loaded, semantic chunks are skipped,
+or outputs fail validation. `LOOP_SPEC_REQUIRE_GRAPHIFY=0` is the explicit degraded
+Glob/Grep escape hatch.
+
 ## CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
 
 The cycle skill's agent-teams mode requires the experimental agent teams feature to be enabled in Claude Code.

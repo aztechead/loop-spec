@@ -64,6 +64,8 @@ graphify is a hard requirement, so `graphify-out/graph.json` is guaranteed prese
 
 Prefer these over flat ARCH.md / TECH.md for structural and architectural questions; QUALITY.md, CONCERNS.md, and DOMAIN.md reads are unchanged. The graph is absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode) — then fall back to flat-file reads.
 
+In workspace mode, query each participating repository with `--graph "<repo>/graphify-out/graph.json"` (or run from that repository) and attach the repo name to every result. The workspace root has no implicit graph.
+
 ## Role boundary
 
 - Read `patterns_path` (PATTERNS.md) before drafting tasks. For each task whose Steps implement a concept covered there, cite the analog path+lines in the Step description (e.g. `Step 2: Apply OAuth refresh pattern from app/auth/oauth.py:42-78`). Implementers will follow those references.

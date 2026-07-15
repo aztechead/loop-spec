@@ -2,6 +2,28 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.20.1]
+
+### Added - assistant-authenticated Graphify lifecycle
+
+- Made Graphify's external assistant skill the first-class graph construction path.
+  Fresh repositories run the full assistant build and existing graphs run semantic
+  `--update`, so documentation and media extraction inherit the host model and
+  authentication, including GCP Agent Platform/Vertex ADC.
+- Added one shared lifecycle contract for Claude Code, pi, and OpenCode, including
+  platform-specific skill loading, selected-repository workspace isolation, autonomous
+  no-question behavior, resume refreshes, and deterministic graph-only commits.
+- Retired terminal CLI graph construction from `graphify-preflight.sh`. The library now
+  checks installation, validates the assistant outputs, and stages portable artifacts.
+- Graph validation now requires non-empty `graph.json`, `GRAPH_REPORT.md`, `manifest.json`,
+  and fixed `graph.html`, and rejects nodes without human-readable labels or with opaque
+  hexadecimal labels.
+- Hardened the commit policy to retain portable graph/report/HTML/manifest and analysis
+  sidecars while excluding machine paths, costs, caches, backups, locks, and partial
+  assistant extraction intermediates.
+- Added platform-specific Graphify registration guidance and offline lifecycle coverage;
+  the complete offline suite remains green without invoking cloud models.
+
 ## [2.20.0]
 
 ### Added - deterministic prompt-to-ready-PR delivery

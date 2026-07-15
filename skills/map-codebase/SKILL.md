@@ -35,15 +35,26 @@ Mapper model is fixed at the `sonnet` alias (see `skills/shared/model-matrix.md`
 
 ### Step 0 - Graphify pre-flight (required)
 
-graphify is a hard requirement. Refresh (or first-build) the code graph deterministically via the preflight lib — `graphify <dir>` builds, `graphify <dir> --update` re-extracts only changed files; both run on AST and need no LLM/API key. Do NOT use the `--update --wiki` slash-skill form here (it requires an LLM key and errors out in CLI context).
+graphify is a hard requirement. Read `${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it to each selected repository with commit message `chore: NO_JIRA refresh graphify knowledge graph`. The external assistant skill performs a full semantic build or incremental semantic update using the current host model/authentication. The shell preflight only checks the package, requires named nodes and the complete output set, and stages portable artifacts.
 
 ```bash
-if ! bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" check; then
-  # Prints install instructions (uv tool install graphifyy). Hard requirement.
-  exit 1
+ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect 2>/dev/null)"
+ws_mode="$(echo "$ws_json" | jq -r '.mode // "single"')"
+ws_root="$(echo "$ws_json" | jq -r '.root')"
+if [[ "$ws_mode" == "workspace" ]]; then
+  selected_repos_json="$(echo "$ws_json" | jq -c '.repos')"
+  # A cycle may select only part of a discovered workspace. Never refresh a
+  # sibling that is outside this feature's committed participating-repo set.
+  if [[ -n "${slug:-}" && -f "$ws_root/.loop-spec/features/${slug}/feature.json" ]]; then
+    selected_repos_json="$(jq -c '.workspace.repos // []' "$ws_root/.loop-spec/features/${slug}/feature.json")"
+  fi
+  while IFS= read -r repo_entry; do
+    rpath="$ws_root/$(echo "$repo_entry" | jq -r '.path')"
+    # Apply skills/shared/graphify-lifecycle.md to $rpath here.
+  done < <(echo "$selected_repos_json" | jq -c '.[]')
+else
+  # Apply skills/shared/graphify-lifecycle.md to this repository here.
 fi
-bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" build . \
-  || echo "warn: graphify build failed (set LOOP_SPEC_REQUIRE_GRAPHIFY=0 to bypass)" >&2
 ```
 
 ### Step 1 - Determine stale domains
@@ -54,9 +65,9 @@ Else (incremental):
 ```bash
 changedFiles=$(git diff {since_sha} HEAD --name-only)
 # Read .loop-spec/codebase/index.json
-# index.json structure: {"file_path": ["domain1", "domain2", ...], ...}
+# index.json structure: {"files": {"file_path": ["domain1", ...]}, ...}
 stale_domains=$(jq -r --argjson files "$(echo "$changedFiles" | jq -R . | jq -s .)" \
-  '[.[$files[]] // [] | .[]] | unique' .loop-spec/codebase/index.json 2>/dev/null || echo '["arch"]')
+  '[.files[$files[]] // [] | .[]] | unique' .loop-spec/codebase/index.json 2>/dev/null || echo '["arch"]')
 
 # Always include "arch" if any new files added (changedFiles contains paths not in index)
 ```
@@ -150,10 +161,10 @@ For each report received, extract the list of inspected files and update the fil
 
 ```
 for file in mapper.inspected_files:
-  index[file].add(domain)
+  index.files[file].add(domain)
 ```
 
-Also update `index.json` field `last_refreshed_at.{domain}` to the current ISO-8601 timestamp.
+Also update `index.json` field `last_refreshed_at.{domain}` to the current ISO-8601 timestamp. After a successful Graphify refresh, set `graphify.graph_json_path` to `graphify-out/graph.json`, set `graphify.wiki_path` only when that optional export exists, and set `graphify.last_updated` to the refresh timestamp.
 
 Atomic write to `.loop-spec/codebase/index.json`.
 
