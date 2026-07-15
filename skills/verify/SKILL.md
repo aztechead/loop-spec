@@ -329,16 +329,9 @@ Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `cur
 
 **Single-repo mode (unchanged):**
 
-Before invoking the map-codebase skill, run an incremental graphify update via the preflight lib (`graphify . --update`). graphify is a hard requirement, so it is present; this post-merge refresh is nonetheless best-effort:
+The map-codebase skill owns the post-change Graphify assistant refresh, validation, staging, and commit through `skills/shared/graphify-lifecycle.md`. Do not invoke Graphify separately here: duplicate updates create needless graph churn and previously left generated files outside both the map and verification commits.
 
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" build . \
-  || echo "Warning: graphify refresh failed; continuing (non-blocking at verify stage)" >&2
-```
-
-Failure of the graphify refresh is non-blocking here: VERIFY runs after the design phases, so a stale graph does not affect this phase's gates. Log a warning and continue.
-
-**Greenfield (`feature.json.greenfield == true`):** this is where the project's FIRST graph and FIRST codebase map get built (cycle Steps 5.4/5.5 deferred them — an empty repo grounds nothing). The `graphify-preflight.sh build` above creates the initial graph; then invoke map-codebase with `--full` instead of incremental, since there are no existing domain docs to refresh.
+**Greenfield (`feature.json.greenfield == true`):** this is where the project's FIRST graph and FIRST codebase map get built (cycle Steps 5.4/5.5 deferred them — an empty repo grounds nothing). map-codebase Step 0 creates and commits the initial graph; invoke it with `--full` instead of incremental, since there are no existing domain docs to refresh.
 
 Invoke the map-codebase skill for an incremental refresh:
 

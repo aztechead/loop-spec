@@ -77,6 +77,23 @@ Exception: EXECUTE does not use this rule directly — its ladder selects the
 (`skills/shared/execute-loop-fleet.md` with `agent_cli = pi`); see the rung rule in
 `skills/execute/SKILL.md` Step 3b.
 
+## Graphify assistant integration
+
+Register Graphify's pi-specific external skill separately:
+
+```bash
+graphify install --platform pi
+```
+
+`skills/shared/graphify-lifecycle.md` is authoritative. When cycle or map-codebase
+requests Graphify, read the SKILL.md for pi's discovered external graphify skill;
+do not look for it as a sibling of loop-spec. Follow it with `.` for a first build or
+`. --update` for an existing graph. Graphify's semantic Agent fan-out follows the
+inline dispatch rule above: process every chunk sequentially with the current pi model
+and its existing authentication. Capture and restore loop-spec's `CLAUDE_SKILL_DIR`
+before validation because reading Graphify's SKILL.md changes the active directory.
+Embedded Graphify never asks corpus-narrowing or post-build exploration questions.
+
 ## Startup probes
 
 Skip the cycle's model probe (Step 3.5) entirely — it exists to pre-flight `Agent`

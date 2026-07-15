@@ -57,11 +57,7 @@ code-reviewer-1 works independently in parallel with verifier-1. Lead waits for 
 
 ## Step 9 - map-codebase refresh
 
-**Workspace mode (additive):** skip the graphify step entirely (graphify operates on a single repo root; it has no multi-repo mode) and log one line:
-
-```
-workspace mode: skipping graphify update (single-repo only)
-```
+**Workspace mode (additive):** do not run a separate Graphify workflow in VERIFY. The invoked map-codebase skill detects workspace mode and applies `skills/shared/graphify-lifecycle.md` to every selected participating repository before committing each repository's refreshed shared graph outputs.
 
 Do NOT resolve `WORKTREE_ABS` via `git rev-parse --show-toplevel` in workspace mode; the workspace root may not be a git repo and that command would abort. Instead, pass the per-repo absolute paths to the map-codebase skill:
 

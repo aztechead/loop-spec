@@ -22,6 +22,9 @@ checks=(
   "skills/shared/pi-harness.md	pi install git:github.com/aztechead/loop-spec"
   "skills/shared/pi-harness.md	executionRootMode: \"in-place\""
   "skills/shared/pi-harness.md	lib/deliver.sh"
+  "skills/shared/pi-harness.md	graphify install --platform pi"
+  "skills/shared/pi-harness.md	discovered external graphify skill"
+  "skills/shared/pi-harness.md	graphify-lifecycle.md"
   # -- EXECUTE ladder: harness probe + rung 0 + its reference
   "skills/execute/SKILL.md	lib/harness.sh"
   "skills/execute/SKILL.md	rung = \"inline\""

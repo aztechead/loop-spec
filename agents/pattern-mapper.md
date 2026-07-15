@@ -48,6 +48,8 @@ graphify is a hard requirement, so `graphify-out/graph.json` is guaranteed prese
 
 Prefer these over flat ARCH.md / TECH.md for structural/architectural questions; QUALITY.md, CONCERNS.md, DOMAIN.md reads are unchanged. The graph is absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode) — then fall back to Glob/Grep.
 
+In workspace mode, query each participating repository with `--graph "<repo>/graphify-out/graph.json"` (or run from that repository) and attach the repo name to every analog. The workspace root has no implicit graph.
+
 ## Procedure
 
 1. **Read inputs.** Parse SPEC.md for the user-facing capability and acceptance criteria. Read every `docs/loop-spec/codebase/*.md` to ground yourself in the project's stack and conventions.
