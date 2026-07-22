@@ -248,7 +248,7 @@ claude -p "/loop-spec:auto update CLAUDE.md with relevant changes"
 claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
 ```
 
-`/loop-spec:auto` first inspects the likely files and tests, then proposes a structured route. `lib/task-route.sh` validates that proposal: malformed, uncertain, oversized, security-sensitive, destructive, interface/dependency, multi-repo, or conflicting-worktree classifications all promote to the full cycle. Semantic risk labels come from grounded model judgment rather than keyword matching; the script independently measures canonical clean-base state and enforces the declared risk, confidence, scope, and route constraints. Small clear maintenance uses micro; bounded investigation-shaped bugs use the existing debug loop as the middle route; everything else uses the full cycle. The explicit `/loop-spec:cycle autonomous ...` contract is unchanged and always runs all seven phases.
+`/loop-spec:auto` first inspects the likely files and tests, then proposes a structured route. `lib/task-route.sh` validates that proposal: malformed, uncertain, oversized, security-sensitive, destructive, interface/dependency, multi-repo, or conflicting-worktree classifications all promote to the full cycle. Semantic risk labels come from grounded model judgment rather than keyword matching; the script independently measures canonical clean-base state and enforces the declared risk, confidence, scope, and route constraints. Small clear maintenance uses micro; under Claude Code that delegated skill turn is pinned to `sonnet`, so an Opus parent pays for classification only rather than running the entire trivial task on Opus. Pi and OpenCode cannot dynamically change an already-running skill turn; select the desired session/provider model when launching those harnesses. Bounded investigation-shaped bugs use the existing debug loop as the middle route; everything else uses the full cycle. The explicit `/loop-spec:cycle autonomous ...` contract is unchanged and always runs all seven phases.
 
 Every delegated route is question-free and ends with verification and PR delivery. Full-cycle assumptions still land in SPEC.md and PLAN.md; debug records them in BUG.md; micro records its outcome in the ad-hoc ledger. SDK callers receive the normalized decision as one `AUTONOMOUS_ROUTE {...}` output line; route selection writes nothing into the target repository. A bare autonomous invocation with no description aborts. Full contract: `skills/shared/autonomous-mode.md`.
 
@@ -266,15 +266,25 @@ The cycle skips every question and reads the `LOOP_SPEC_ANSWER_*` variables list
 
 ### Machine-readable results
 
-Wrappers should not scrape git or GitHub for cycle state. Two local files provide the contract (both intentionally uncommitted):
+Wrappers should not scrape git or GitHub for cycle state. The complete owned and
+observed-backend compatibility profile is documented in
+[`docs/loop-spec/agent-output-contract.md`](docs/loop-spec/agent-output-contract.md).
+Every full, micro, and debug terminal path emits `LOOP_SPEC_RESULT {...}` and atomically
+updates one stable control-checkout pointer. Two local files provide the full-cycle
+detail (both intentionally uncommitted):
 
-`result.json`, written at the end of every cycle. Stable pointer: `.loop-spec/last-result.json`; per-feature copies at `.loop-spec/features/{slug}/result.json`. Schema version 1:
+`.loop-spec/last-result.json` is the stable pointer for every cycle type. Full cycles
+also keep per-feature copies at `.loop-spec/features/{slug}/result.json`. Claude
+worktrees copy the terminal object back to the original control checkout, so removing
+the worktree does not remove the pointer. Schema version 1:
 
 ```json
 {
   "schema": 1,
+  "cycleType": "full | micro | debug",
   "slug": "my-feature",
-  "status": "completed | paused | escalated | terminal",
+  "status": "completed | paused | escalated | terminal | failed",
+  "outcome": "cycle-specific terminal outcome",
   "reason": "string or null",
   "phaseReached": "last currentPhase value",
   "branch": "feat/my-feature",
@@ -291,7 +301,8 @@ Wrappers should not scrape git or GitHub for cycle state. Two local files provid
   "autonomous": false,
   "feature_title": "original goal string",
   "createdAt": "ISO-8601",
-  "finishedAt": "ISO-8601"
+  "finishedAt": "ISO-8601",
+  "verification": {"status":"passed | failed | not-run","command":"string or null"}
 }
 ```
 
@@ -362,9 +373,21 @@ Cycle behavior:
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | `900` | Total time DELIVER waits for required PR checks. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | `10` | Required-check polling interval. |
 | `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | `60` | Per-call timeout for GitHub CLI operations, including hung network requests. |
+| `LOOP_SPEC_PR_FEEDBACK_MODE` | `local` | `local` runs loop-spec's terminal PR feedback observation. `external` delegates it without claiming clean, for an orchestrator that already owns review polling. There is no silent off mode. |
+| `LOOP_SPEC_PR_FEEDBACK_OWNER` | `external-orchestrator` | Owner recorded when feedback mode is `external`. |
 | `LOOP_SPEC_CMD_TEST` (and the `LOOP_SPEC_CMD_*` family) | detected | Pin the project's test/lint/typecheck commands instead of auto-detection. Wins in every mode, including autonomous. |
 | `LOOP_SPEC_REGRESSION_SCAN` | off | `1` enables VERIFY's advisory prior-feature regression scan. |
 | `LOOP_SPEC_RALPH_THRESHOLD` | `3` | VERIFY remediation loop: consecutive no-progress rounds before escalating. |
+
+PR attribution is host-owned, not rendered by loop-spec. To remove Claude Code's
+`Generated with Claude Code` footer/session link, configure Claude Code itself:
+
+```json
+{"attribution":{"pr":"","sessionUrl":false}}
+```
+
+loop-spec therefore does not add a second footer toggle that could conflict with the
+host setting.
 
 EXECUTE dispatch:
 

@@ -24,6 +24,8 @@ source_path="${2:-}"
 [[ -n "$source_path" ]] || usage
 repo_path="."
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$script_dir/cycle-result.sh" clear --result-root "$PWD"
+bash "$script_dir/runtime-preflight.sh" check-jq
 
 if [[ "$source_path" == "-" ]]; then
   raw="$(cat)"

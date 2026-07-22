@@ -43,6 +43,8 @@ if [[ "${1:-}" == "--dir" ]]; then
   [[ -d "$repo_dir" ]] || { echo "debug-init: no such directory: $repo_dir" >&2; exit 1; }
   shift 2
 fi
+bash "$SCRIPT_DIR/cycle-result.sh" clear --result-root "$repo_dir"
+bash "$SCRIPT_DIR/runtime-preflight.sh" check-jq
 [[ "${1:-}" == "--" ]] && shift
 
 symptom="$*"

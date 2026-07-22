@@ -97,7 +97,7 @@ git -C "$REPO" worktree add -q -b linked "$LINKED"
 rc=0; bash "$SCRIPT" stage "$LINKED" >/dev/null 2>&1 || rc=$?
 [[ "$rc" -eq 0 ]] && pass "stage works in linked worktree" || fail "stage works in linked worktree (rc=$rc)"
 linked_exclude="$(git -C "$LINKED" rev-parse --path-format=absolute --git-path info/exclude)"
-grep -q '# loop-spec graphify local artifacts' "$linked_exclude" && pass "linked worktree uses common exclude" || fail "linked worktree uses common exclude"
+grep -q '# loop-spec managed local artifacts' "$linked_exclude" && pass "linked worktree uses common exclude" || fail "linked worktree uses common exclude"
 
 # A normal index commit must preserve removals of previously tracked local artifacts.
 git -C "$REPO" commit -qm graph

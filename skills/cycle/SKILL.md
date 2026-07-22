@@ -196,8 +196,10 @@ invocation checkout or a registered feature worktree.
    feature branch (workspace mode: per repo).
 4. If ignored `delivery.json` has `nextPhase == "completed"` and `status ==
    "ready-for-review"`, this is interrupted completion finalization: **skip project tests
-   and phase invocation and jump directly to On completion**. The exact SHA and checks
-   were already proven; a flaky local environment must not reopen delivered work.
+   and the delivery controller, run DELIVER Step 4's feedback check against the existing
+   PR targets, then jump directly to On completion**. The exact SHA and checks were
+   already proven; a flaky local environment must not reopen delivered work, but recovery
+   must not skip terminal feedback observation.
 5. Otherwise run `feature.commands.test` once (workspace mode: each configured repo command). On
    failure append the existing FULL-SHAPE resume remediation task, set
    `currentPhase = "execute"`, and announce the redirect. Otherwise resume the recorded
@@ -398,6 +400,7 @@ repo_root="$workspace_root"
 harness_name="$(jq -r '.harness.name' <<<"$pf")"
 
 # Never build a feature from an unrelated dirty checkout or stale feature HEAD.
+bash "${CLAUDE_SKILL_DIR}/../../lib/runtime-ignore.sh" ensure "$repo_root"
 clean_state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" ensure-clean-or-stash)"
 [[ "$clean_state" == "clean" ]] || {
   echo "loop-spec: source checkout is dirty; commit or stash changes before starting autonomous delivery." >&2

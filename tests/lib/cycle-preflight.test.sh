@@ -22,6 +22,8 @@ mkdir -p "$WORK/repo"
 REPO="$WORK/repo"
 git -C "$REPO" init -q -b main
 git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+mkdir -p "$REPO/.loop-spec"
+printf '{}\n' > "$REPO/.loop-spec/last-result.json"
 
 # Pin every probe so the test is hermetic (no `claude`, no graphify binary needed).
 run_preflight() {
@@ -41,6 +43,7 @@ check "missing dir exits 1" "1" "$ec"
 
 # clean repo: single mode, empty resume, zero backlog
 out="$(run_preflight)"
+check "entry clears stale terminal result" "0" "$([[ -f "$REPO/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 check "workspace mode single" "single" "$(jq -r '.workspace.mode' <<<"$out")"
 check "harness reported" "claude" "$(jq -r '.harness.name' <<<"$out")"
 check "teams mode pinned" "none" "$(jq -r '.teams.mode' <<<"$out")"

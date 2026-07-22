@@ -20,6 +20,21 @@ All notable changes documented here. Format follows Keep a Changelog.
   coverage, and cross-harness routing contract tests. Routing writes no target-repo
   state before clean-base guards run.
 
+### Added - plugin-user reliability contracts
+
+- Added schema-1 `LOOP_SPEC_RESULT` terminal records for full, micro, and debug runs,
+  with an atomic `.loop-spec/last-result.json` pointer, stale-pointer clearing at run
+  entry, relational success validation, linked-worktree resolution, and a documented
+  agent-output compatibility contract.
+- Added an explicit jq 1.5+ runtime preflight across cycle, auto, debug, micro, intake,
+  and OpenCode installation paths. PR feedback normalization remains jq 1.5 compatible
+  and now reports degraded metadata observations instead of silently treating them as
+  complete.
+- Added consumer-local runtime exclusions for loop-spec telemetry and Graphify output,
+  reused by Graphify staging and DELIVER without changing tracked `.gitignore` files.
+- Added local/external PR feedback ownership through `lib/pr-feedback.sh`, including
+  durable observation sidecars and documented host-owned Claude review attribution.
+
 ### Changed
 
 - Headless and SDK documentation now recommends semantic auto routing for arbitrary
@@ -28,6 +43,11 @@ All notable changes documented here. Format follows Keep a Changelog.
 - The existing debug loop is the middle route for investigation-shaped bugs. A new
   general compact lifecycle is intentionally deferred until routing feedback shows a
   repeated non-bug gap that micro and full do not cover.
+- DELIVER now fails closed on dirty or unreadable worktrees, preserves immutable retry
+  SHA bindings only after local candidate validation, and applies the same branch/base/
+  history checks to single-repository and workspace delivery paths.
+- Claude micro runs request the `sonnet` alias through skill frontmatter; host model
+  availability and deployment-level alias remapping still apply.
 
 ## [2.21.0]
 

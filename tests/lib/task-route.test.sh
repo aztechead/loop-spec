@@ -23,6 +23,7 @@ touch "$DIRTY_REPO/uncommitted.txt"
 git -C "$CORRUPT_REPO" init -q
 git -C "$CORRUPT_REPO" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
 printf 'corrupt-index' > "$CORRUPT_REPO/.git/index"
+printf '{}\n' > "$CLEAN_REPO/.loop-spec/last-result.json"
 
 pass() { echo "PASS: $1"; ((PASS++)) || true; }
 fail() { echo "FAIL: $1"; ((FAIL++)) || true; }
@@ -72,6 +73,9 @@ assert_route() {
 }
 
 assert_route "small maintenance task remains micro" "micro" "$(candidate micro maintenance)"
+[[ ! -f "$CLEAN_REPO/.loop-spec/last-result.json" ]] \
+  && pass "route entry clears stale terminal result" \
+  || fail "route entry clears stale terminal result"
 assert_route "canonical loop-spec runtime files do not force full" "micro" "$(candidate micro maintenance)"
 assert_route "concrete bounded bug uses debug" "debug" "$(candidate debug bug 0.85 4 2 medium)"
 assert_route "explicit full proposal remains full" "full" "$(candidate full feature 0.95 2 2 low)"

@@ -27,7 +27,8 @@ check "models includes implementer=sonnet" "$(echo "$models" | jq -e '.implement
 single="$(bash "$LIB" skeleton --mode single --slug demo --now 2026-06-29T00:00:00Z \
   --style auto --title "add CSV export with progress bar" \
   --branch feat/demo --base-sha abc --base-branch main \
-  --worktree .claude/worktrees/demo --test "npm test" --lint "" --typecheck "tsc")"
+  --worktree .claude/worktrees/demo \
+  --test "npm test" --lint "" --typecheck "tsc")"
 check "single is valid JSON" "$(echo "$single" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single schemaVersion==7" "$(echo "$single" | jq -e '.schemaVersion == 7' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single carries iterateJudge" "$(echo "$single" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"

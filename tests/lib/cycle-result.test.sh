@@ -147,6 +147,99 @@ bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
 check "M: sidecar advances logical phase" "completed" "$(jq -r '.phaseReached' "$FEAT_DIR/result.json")"
 check "M: sidecar PR exposed" "https://github.com/sidecar/pr/9" "$(jq -r '.prUrl' "$FEAT_DIR/result.json")"
 check "M: sidecar delivery exposed" "ready-for-review" "$(jq -r '.delivery.status' "$FEAT_DIR/result.json")"
+jq '(.targets[0].feedback) = {observationStatus:"complete",changesRequested:true}' \
+  "$FEAT_DIR/delivery.json" > "$FEAT_DIR/delivery.json.tmp"
+mv "$FEAT_DIR/delivery.json.tmp" "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+check "M2: blocking feedback prevents convergence" "false" "$(jq '.converged' "$FEAT_DIR/result.json")"
+check "M2: blocking feedback becomes a warning" "pr-feedback-changes-requested:my-feature" \
+  "$(jq -r '.warnings[] | select(startswith("pr-feedback-changes-requested:"))' "$FEAT_DIR/result.json")"
+
+# Case N: an explicit control root receives the stable pointer even when the
+# feature state lives under a separate Claude worktree.
+CONTROL="$WORK/control"
+WT_FEAT="$WORK/worktree/.loop-spec/features/wt-feature"
+mkdir -p "$CONTROL/.loop-spec" "$WT_FEAT"
+printf '%s\n' "$(jq '.slug = "wt-feature"' <<<"$FIXTURE_FJ")" > "$WT_FEAT/feature.json"
+LOOP_SPEC_RESULT_ROOT="$CONTROL" bash "$LIB" write "$WT_FEAT" --status completed >/dev/null 2>&1
+check "N: control-root pointer created" "1" "$([[ -f "$CONTROL/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+check "N: worktree pointer not substituted" "0" "$([[ -f "$WORK/worktree/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+
+# Legacy feature states without resultRoot recover the control checkout from Git's
+# linked-worktree registry.
+LEGACY_CONTROL="$WORK/legacy-control"
+mkdir -p "$LEGACY_CONTROL"
+git -C "$LEGACY_CONTROL" init -q
+git -C "$LEGACY_CONTROL" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
+LEGACY_WT="$WORK/legacy-worktree"
+git -C "$LEGACY_CONTROL" worktree add -q -b legacy-feature "$LEGACY_WT"
+LEGACY_FEAT="$LEGACY_WT/.loop-spec/features/legacy"
+mkdir -p "$LEGACY_FEAT"
+printf '%s\n' "$(jq 'del(.resultRoot) | .slug = "legacy"' <<<"$FIXTURE_FJ")" > "$LEGACY_FEAT/feature.json"
+bash "$LIB" write "$LEGACY_FEAT" --status completed >/dev/null 2>&1
+check "N2: legacy worktree finds control pointer" "1" \
+  "$([[ -f "$LEGACY_CONTROL/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+rm -f "$LEGACY_CONTROL/.loop-spec/last-result.json"
+bash "$LIB" write-terminal --result-root "$LEGACY_WT" --cycle-type micro \
+  --status completed --outcome verified --title "Linked micro" --pr-url https://example/pr/3 \
+  --converged true --verification-status passed >/dev/null
+check "N3: reduced cycle resolves linked worktree control pointer" "1" \
+  "$([[ -f "$LEGACY_CONTROL/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+check "N3: reduced cycle leaves no disposable pointer" "0" \
+  "$([[ -f "$LEGACY_WT/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+
+# Case O: micro/debug use the same compatibility keys at the stable root.
+GENERIC_ROOT="$WORK/generic"
+mkdir -p "$GENERIC_ROOT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
+  --status completed --outcome verified --slug doc-refresh --title "Refresh docs" \
+  --branch micro/doc-refresh --base-branch main --pr-url https://github.com/test/repo/pull/8 \
+  --converged true --verification-status passed --verification-command "bash tests/run-all.sh" \
+  --autonomous true >/dev/null
+GENERIC_RESULT="$GENERIC_ROOT/.loop-spec/last-result.json"
+check "O: generic pointer created" "1" "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
+check "O: cycle type" "micro" "$(jq -r '.cycleType' "$GENERIC_RESULT")"
+check "O: compatibility branch" "micro/doc-refresh" "$(jq -r '.branch' "$GENERIC_RESULT")"
+check "O: compatibility PR" "https://github.com/test/repo/pull/8" "$(jq -r '.prUrl' "$GENERIC_RESULT")"
+check "O: explicit convergence" "true" "$(jq -r '.converged' "$GENERIC_RESULT")"
+check "O: verification command" "bash tests/run-all.sh" "$(jq -r '.verification.command' "$GENERIC_RESULT")"
+check "O: no temporary pointer remains" "0" "$([[ -f "$GENERIC_RESULT.tmp" ]] && echo 1 || echo 0)"
+
+# Case P: contradictory success claims are rejected and clear removes stale pointers.
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
+  --status failed --outcome verification-failed --title "Bad claim" --pr-url https://example/pr/1 \
+  --converged true --verification-status passed >/dev/null 2>&1
+check "P: contradictory convergence rejected" "0" "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type debug \
+  --status completed --outcome fixed --title "Fixed" --pr-url https://example/pr/2 \
+  --converged true --verification-status passed >/dev/null
+bash "$LIB" clear --result-root "$GENERIC_ROOT"
+check "P: clear removes stale pointer" "0" "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
+
+# Case Q: result operations never follow a symlinked .loop-spec directory.
+SYMLINK_ROOT="$WORK/symlink-root"
+EXTERNAL_ROOT="$WORK/external-loop-spec"
+mkdir -p "$SYMLINK_ROOT" "$EXTERNAL_ROOT"
+printf 'keep\n' > "$EXTERNAL_ROOT/last-result.json"
+ln -s "$EXTERNAL_ROOT" "$SYMLINK_ROOT/.loop-spec"
+ec=0
+bash "$LIB" clear --result-root "$SYMLINK_ROOT" >/dev/null 2>&1 || ec=$?
+check "Q: unsafe clear fails loudly" "1" "$ec"
+check "Q: unsafe clear preserves external pointer" "keep" "$(<"$EXTERNAL_ROOT/last-result.json")"
+bash "$LIB" write-terminal --result-root "$SYMLINK_ROOT" --cycle-type micro \
+  --status completed --outcome verified --title "Unsafe" --pr-url https://example/pr/4 \
+  --converged true --verification-status passed >/dev/null 2>&1
+check "Q: unsafe write preserves external pointer" "keep" "$(<"$EXTERNAL_ROOT/last-result.json")"
+SYMLINK_FEATURE="$SYMLINK_ROOT/.loop-spec/features/unsafe"
+mkdir -p "$SYMLINK_FEATURE"
+printf '%s\n' "$(jq '.slug = "unsafe"' <<<"$FIXTURE_FJ")" > "$SYMLINK_FEATURE/feature.json"
+bash "$LIB" write "$SYMLINK_FEATURE" --status completed >/dev/null 2>&1
+check "Q: unsafe full write preserves external pointer" "keep" "$(<"$EXTERNAL_ROOT/last-result.json")"
+check "Q: unsafe full write creates no external result" "0" \
+  "$([[ -f "$SYMLINK_FEATURE/result.json" ]] && echo 1 || echo 0)"
+check "Q: unsafe full write creates no external events" "0" \
+  "$([[ -f "$SYMLINK_FEATURE/events.jsonl" ]] && echo 1 || echo 0)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

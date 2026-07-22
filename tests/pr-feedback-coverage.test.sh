@@ -13,17 +13,21 @@ FAIL=0
 
 # file<TAB>regex(any-case) that must match at least once.
 checks=(
-  "skills/shared/pr-feedback-check.md	pr-comments.sh.* summary"
+  "skills/shared/pr-feedback-check.md	pr-feedback.sh.* check"
   "skills/shared/pr-feedback-check.md	changesRequested"
   "skills/shared/pr-feedback-check.md	loud"
   "skills/deliver/SKILL.md	pr-feedback-check"
-  "skills/deliver/SKILL.md	pr-comments.sh"
+  "skills/deliver/SKILL.md	pr-feedback.sh"
+  "skills/deliver/SKILL.md	feedback persistence failed"
   "skills/cycle/SKILL.md	feedback check"
+  "skills/cycle/SKILL.md	must not skip terminal feedback"
   "skills/micro/SKILL.md	pr-feedback-check"
   "skills/micro/SKILL.md	--pr"
   "skills/debug/SKILL.md	pr-feedback-check"
+  "skills/debug/SKILL.md	before delegation"
   "commands/loop-debug.md	pr-feedback-check"
   "lib/pr-comments.sh	summary"
+  "lib/pr-feedback.sh	observationStatus"
   "lib/adhoc-ledger.sh	--pr"
   "lib/deliver.sh	pr-body.sh"
   "lib/pr-body.sh	concise"

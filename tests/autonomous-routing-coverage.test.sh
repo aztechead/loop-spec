@@ -14,6 +14,7 @@ checks=(
   "skills/auto/SKILL.md	Skill(loop-spec:debug)"
   "skills/auto/SKILL.md	Skill(loop-spec:cycle)"
   "skills/auto/SKILL.md	AUTONOMOUS_ROUTE"
+  "skills/micro/SKILL.md	model: sonnet"
   "lib/task-route.sh	invalid-classification"
   "lib/task-route.sh	micro-requires-low-ambiguity"
   "lib/task-route.sh	debug-task-kind-mismatch"

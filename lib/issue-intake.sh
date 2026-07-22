@@ -58,6 +58,8 @@ FIXTURE=""
 # claude-only; OpenCode uses its configured permissions without auto-approval.
 # LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS still overrides verbatim.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$SCRIPT_DIR/runtime-preflight.sh" check-jq || exit 2
+RESULT_ROOT="$(bash "$SCRIPT_DIR/cycle-result.sh" resolve-root "$PWD")" || exit 2
 AGENT_CLI="$(bash "$SCRIPT_DIR/harness.sh" cli)"
 if [[ "$AGENT_CLI" == "pi" ]]; then
   AGENT_ARGS=(--mode json)
@@ -144,13 +146,21 @@ Source: GitHub issue #${number}"
   gh issue edit "$number" ${repo_args[@]+"${repo_args[@]}"} --add-label "loop-spec:in-progress" >/dev/null 2>&1 \
     || echo "issue-intake: WARN could not add in-progress label to #${number} (continuing)" >&2
 
-  # shellcheck disable=SC2086  # CLAUDE_FLAGS is intentionally word-split
-  "$AGENT_CLI" "${AGENT_ARGS[@]}" "${INTAKE_CMD} autonomous ${intake_text}" $CLAUDE_FLAGS
-  claude_ec=$?
+  # A failed invocation must not inherit a prior issue's successful pointer.
+  result_file="$RESULT_ROOT/.loop-spec/last-result.json"
+  result_is_current=0
+  if bash "$SCRIPT_DIR/cycle-result.sh" clear --result-root "$RESULT_ROOT"; then
+    result_is_current=1
+    # shellcheck disable=SC2086  # CLAUDE_FLAGS is intentionally word-split
+    "$AGENT_CLI" "${AGENT_ARGS[@]}" "${INTAKE_CMD} autonomous ${intake_text}" $CLAUDE_FLAGS
+    claude_ec=$?
+  else
+    echo "issue-intake: cannot safely clear the prior terminal result" >&2
+    claude_ec=2
+  fi
 
-  result_file=".loop-spec/last-result.json"
   status="unknown"; pr_url=""; slug=""
-  if [[ -f "$result_file" ]]; then
+  if [[ "$result_is_current" -eq 1 && -f "$result_file" ]]; then
     status="$(jq -r '.status // "unknown"' "$result_file" 2>/dev/null || echo unknown)"
     pr_url="$(jq -r '.prUrl // .checkpointPrUrl // empty' "$result_file" 2>/dev/null || true)"
     slug="$(jq -r '.slug // empty' "$result_file" 2>/dev/null || true)"
