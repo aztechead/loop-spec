@@ -90,7 +90,11 @@ non-interactive: instead of requiring pre-pinned `LOOP_SPEC_ANSWER_*` values, ev
 in the decisions record. Style is forced to `auto`. Explicit `LOOP_SPEC_ANSWER_*` /
 `LOOP_SPEC_CMD_*` vars still win where set. Full contract — trigger, precedence,
 self-answer rule, decisions record, per-site map — in **`skills/shared/autonomous-mode.md`**;
-every phase skill honors it. Headless form: `claude -p "/loop-spec:cycle autonomous <description>"` (pi: `pi --mode json "/skill:cycle autonomous <description>"`).
+every phase skill honors it. Headless form for an explicitly full run:
+`claude -p "/loop-spec:cycle autonomous <description>"` (pi: `pi --mode json
+"/skill:cycle autonomous <description>"`). Use `/loop-spec:auto <description>` when
+the autonomous entry should semantically choose micro, debug, or the full cycle before
+paying the full-cycle startup cost.
 Setup answers made before SPEC.md exists (workspace repos, resume choice, commands) are
 recorded to disk immediately — `lib/decisions.sh add .loop-spec/decisions-staging cycle
 "<q>" "<a>" "<why>"` — never buffered in model memory (compaction would drop them). Step 5

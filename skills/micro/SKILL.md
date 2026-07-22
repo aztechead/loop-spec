@@ -1,7 +1,7 @@
 ---
 name: micro
-description: Micro-cycle for small, ad-hoc tasks — the cycle's five invariants (stated done-criteria, grounded claims, test-first, evidence-before-done, mistakes-become-rules) enforced inline on the main thread with zero agent ceremony. Give it a small task and it runs the protocol directly, ending like every cycle type — work delivered as a PR that is then checked for reviews/comments/requested changes; or toggle micro mode (on/off/status), which controls the micro-inject SessionStart directive and the adhoc-verify-guard Stop hook. Escalates to /loop-spec:intake when the task outgrows ad-hoc scale.
-argument-hint: "[small task description | on | off | status]"
+description: Micro-cycle for small, ad-hoc tasks — the cycle's five invariants (stated done-criteria, grounded claims, test-first, evidence-before-done, mistakes-become-rules) enforced inline on the main thread with zero agent ceremony. Give it a small task and it runs the protocol directly, ending like every cycle type — work delivered as a PR that is then checked for reviews/comments/requested changes; or toggle micro mode (on/off/status), which controls the micro-inject SessionStart directive and the adhoc-verify-guard Stop hook. Honors inline autonomous mode and escalates to /loop-spec:intake when the task outgrows ad-hoc scale.
+argument-hint: "[autonomous] [small task description | on | off | status]"
 allowed-tools: Bash Read Write Edit Glob Grep Skill AskUserQuestion
 ---
 
@@ -16,6 +16,8 @@ Stop gate) are the enforcement.
 ## Invocation
 
 - `/loop-spec:micro <small task description>` — run the micro-cycle protocol on the task.
+- `/loop-spec:micro autonomous <small task description>` — run question-free; strip
+  `autonomous` from the task text before deriving its title and criteria.
 - `/loop-spec:micro on|off|status` — toggle micro mode for the project (see Mode toggle).
 - Bare `/loop-spec:micro` — ask one free-text question for the task, then run the protocol.
 
@@ -39,7 +41,7 @@ task is compound (multiple asks), enumerate criteria per ask.
 
 **2. One question, not zero, not five.** If the highest-leverage unknown would change
 what you build, ask exactly one sharp question (grill mode's single-shot form). In
-autonomous runs (`LOOP_SPEC_AUTONOMOUS=1`), self-answer with the recommended option and
+autonomous runs (inline `autonomous` token or `LOOP_SPEC_AUTONOMOUS=1`), self-answer with the recommended option and
 say so — never block.
 
 **3. Ground claims.** Any premise about external systems or unfamiliar code gets a
@@ -101,6 +103,8 @@ When a "When this skill applies" bound is crossed mid-task, stop expanding scope
 promote losslessly: write what you have (the stated done-criteria, probe results,
 open questions) into a short prose brief and invoke `Skill(loop-spec:intake)` with it —
 the intake skill converts it into a cycle-ready spec draft and starts `/loop-spec:cycle`.
+When this micro run is autonomous (inline token or environment), pass `autonomous` before
+the brief so intake and the resulting full cycle remain question-free.
 Record a `partial` ledger entry with `--notes "escalated to cycle"` before handing off.
 
 ## Mode toggle

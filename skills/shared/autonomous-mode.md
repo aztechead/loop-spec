@@ -4,14 +4,18 @@ Autonomous mode makes a run **question-free**: every point where loop-spec would
 normally call `AskUserQuestion`, the orchestrator instead takes the answer it
 would have recommended — the option grounded in the code graph, the codebase
 map, and general best practice — records it as an assumed decision, and
-proceeds. It is the headless CLI mode: `claude -p "/loop-spec:cycle autonomous
-<description>"` runs a full cycle with zero human input. Under the pi harness the
-equivalent entry points are `pi --mode json "/skill:cycle autonomous <description>"`
-(or `pi -p ...`, or the pi SDK's `createAgentSession()` prompting the same text) —
-the self-answer contract is identical; see `skills/shared/pi-harness.md`. Under
-opencode they are `opencode run --format json "Load the loop-spec-cycle skill
-and run: autonomous <description>"` (or the `@opencode-ai/sdk`'s
-`client.session.prompt()` against `opencode serve`, same text) — see
+proceeds. The preferred headless/SDK entry is `claude -p "/loop-spec:auto
+<description>"`: the auto skill performs a grounded semantic decision and validates
+it through `lib/task-route.sh` before delegating to micro, debug, or the full cycle.
+An explicit `claude -p "/loop-spec:cycle autonomous <description>"` still means the
+full seven-phase cycle with zero human input.
+
+Under the pi harness the preferred entry is `pi --mode json "/skill:auto
+<description>"` (or `pi -p ...`, or the pi SDK's `createAgentSession()` prompting the
+same text). Under opencode it is `opencode run --format json "Load the loop-spec-auto
+skill and run: <description>"` (or the `@opencode-ai/sdk`'s
+`client.session.prompt()` against `opencode serve`, same text). The self-answer and
+fail-closed routing contracts are identical; see `skills/shared/pi-harness.md` and
 `skills/shared/opencode-harness.md`.
 
 ## Trigger and precedence
@@ -159,6 +163,7 @@ an edited spec file.
 
 | Site | Normal behavior | Autonomous behavior |
 |---|---|---|
+| auto route selection | explicit cycle choice | grounded semantic proposal -> `lib/task-route.sh` validation -> micro/debug/full; uncertainty and risk promote to full |
 | cycle Step 0 workspace repo confirmation | AskUserQuestion | all discovered repos participate (or `LOOP_SPEC_ANSWER_REPOS`) |
 | cycle Step 1 resume choice | AskUserQuestion | resume the most recently updated resumable feature; if none, new feature |
 | cycle Step 3 bare invocation | free-text question | abort with usage guidance (no goal to infer) |

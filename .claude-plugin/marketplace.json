@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "loop-spec",
-      "description": "Loop-driven development from a spec file or prose prompt for Claude Code. A seven-phase cycle (SPEC/DISCUSS/PLAN/EXECUTE/VERIFY/ITERATE/DELIVER) builds and judges the feature, then reconciles one exact-SHA PR and waits for required checks before marking it ready. Includes autonomous headless, workspace, greenfield, graph-grounded design, and bounded execution modes.",
-      "version": "2.21.0",
+      "description": "Loop-driven development from a spec file or prose prompt for Claude Code. Semantic autonomous routing selects micro, bounded debug, or the full seven-phase cycle, then delivers a verified PR.",
+      "version": "2.22.0",
       "source": "./",
       "author": {
         "name": "aztechead",

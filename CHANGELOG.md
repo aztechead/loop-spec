@@ -2,6 +2,33 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.22.0]
+
+### Added - semantic autonomous task routing
+
+- Added `/loop-spec:auto` as the preferred Claude Code, pi, and OpenCode
+  headless/SDK entry. It grounds the likely edit surface, proposes a structured
+  semantic route, then delegates once to micro, bounded debug, or the unchanged
+  full seven-phase cycle.
+- Added `lib/task-route.sh`, the deterministic authorization boundary for routing.
+  Malformed, low-confidence, oversized, ambiguous, security/data/interface/
+  dependency-sensitive, multi-repo, destructive, or conflicting-worktree
+  proposals fail upward to the full cycle. Semantic labels remain grounded model
+  judgments; canonical working-tree cleanliness is measured script-side.
+- Added one `AUTONOMOUS_ROUTE {...}` output record for SDK callers, inline autonomous
+  support for micro delegation and promotion, OpenCode-generated auto skill/command
+  coverage, and cross-harness routing contract tests. Routing writes no target-repo
+  state before clean-base guards run.
+
+### Changed
+
+- Headless and SDK documentation now recommends semantic auto routing for arbitrary
+  requests. Explicit `/loop-spec:cycle autonomous ...` retains its existing meaning:
+  always run the full cycle.
+- The existing debug loop is the middle route for investigation-shaped bugs. A new
+  general compact lifecycle is intentionally deferred until routing feedback shows a
+  repeated non-bug gap that micro and full do not cover.
+
 ## [2.21.0]
 
 ### Added - terminal PR feedback check across every cycle type

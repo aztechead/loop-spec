@@ -61,7 +61,7 @@ After the user'"'"'s initial substantive prompt, and before writing code, planni
 2. Ask 2-4 sharp clarifying questions in a single AskUserQuestion call. When a question has discernible answers (a scope cut, a data shape, an integration point, a yes/no), present structured multiple-choice options with explicit tradeoffs and a recommended default first. Reserve free-text for genuinely open prompts.
 3. Carry the answers forward as locked decisions - do not re-ask what is already answered.
 
-Skip the grill pass only when the request is already unambiguous, purely informational, or trivially reversible. Inside the loop-spec cycle, the SPEC phase Socratic interview is the in-cycle realization of this directive; do not double-grill once SPEC is running.
+Skip the grill pass when the request is already unambiguous, purely informational, trivially reversible, or explicitly invokes autonomous routing (`/loop-spec:auto`, `/skill:auto`, `loop-spec-auto`, or an `autonomous` token). Inside the loop-spec cycle, the SPEC phase Socratic interview is the in-cycle realization of this directive; do not double-grill once SPEC is running.
 
 Grill mode is ON by default. Disable it with /loop-spec:grill off or LOOP_SPEC_GRILL=0.'
 

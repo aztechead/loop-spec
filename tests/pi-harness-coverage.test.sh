@@ -49,6 +49,8 @@ checks=(
   "skills/shared/harness-call-contracts.md	pi-harness.md"
   # -- headless parity documented for autonomous mode + models
   "skills/shared/autonomous-mode.md	pi --mode json"
+  "skills/shared/pi-harness.md	/skill:auto"
+  "skills/auto/SKILL.md	Skill(loop-spec:micro)"
   "skills/shared/model-matrix.md	pi-harness.md"
   # -- the one-shot command adapts too
   "commands/loop-debug.md	pi-harness.md"

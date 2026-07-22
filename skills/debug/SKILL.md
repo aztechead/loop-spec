@@ -136,7 +136,8 @@ For each hypothesis, in ranked order:
    work (schema change, cross-cutting redesign, new dependency), stop fixing. BUG.md
    becomes the spec draft: `Skill(loop-spec:cycle)` with
    `docs/loop-spec/debug/{slug}/BUG.md` as the spec-file argument (interactive: confirm
-   first; autonomous: hand off and record). The debug loop fixes bugs; it does not
+   first; autonomous: pass the `autonomous` token with the path, hand off, and record).
+   The debug loop fixes bugs; it does not
    smuggle features.
 
 ## Step 3b - SIBLING SWEEP (mandatory after CONFIRMED)

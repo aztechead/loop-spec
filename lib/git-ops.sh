@@ -66,9 +66,12 @@ case "$cmd" in
   ensure-clean-or-stash)
     # Startup writes these local files before the feature branch/worktree exists.
     # They are not user work and must not make the clean-base guard reject itself.
-    if [[ -z "$("${G[@]}" status --porcelain --untracked-files=all -- . \
+    status_output=""
+    if ! status_output="$("${G[@]}" status --porcelain --untracked-files=all -- . \
       ':(top,exclude).loop-spec/runtime.json' \
-      ':(top,exclude).loop-spec/decisions-staging/**')" ]]; then
+      ':(top,exclude).loop-spec/decisions-staging/**')"; then
+      printf 'dirty\n'
+    elif [[ -z "$status_output" ]]; then
       printf 'clean\n'
     else
       printf 'dirty\n'

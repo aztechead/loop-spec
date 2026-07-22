@@ -50,6 +50,8 @@ checks=(
   "skills/shared/harness-call-contracts.md	opencode-harness.md"
   # -- headless parity documented for autonomous mode + models
   "skills/shared/autonomous-mode.md	opencode run --format json"
+  "skills/shared/opencode-harness.md	loop-spec-auto"
+  "skills/auto/SKILL.md	Skill(loop-spec:debug)"
   "skills/shared/model-matrix.md	opencode-harness.md"
   # -- the one-shot command adapts too
   "commands/loop-debug.md	opencode-harness.md"

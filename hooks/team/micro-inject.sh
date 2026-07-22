@@ -68,7 +68,7 @@ DIRECTIVE="MICRO MODE ACTIVE (default): for small ad-hoc tasks outside a running
 6. If the task outgrows ad-hoc scale (>~5 files, a new seam or dependency, criteria will not fit in 3 bullets, ambiguity survives one question), stop expanding scope and promote it via /loop-spec:intake.
 7. A repeated mistake becomes a permanent rule: bash \"${PLUGIN_ROOT}/lib/rules.sh\" add.
 
-Inside a running cycle this protocol stands down - the phases own these invariants at feature scale. Micro mode is ON by default; disable with /loop-spec:micro off or LOOP_SPEC_MICRO=0."
+During explicit autonomous routing (/loop-spec:auto, /skill:auto, or loop-spec-auto) this ambient directive stands down until the router delegates; the selected protocol owns the task. Inside a running cycle this protocol also stands down - the phases own these invariants at feature scale. Micro mode is ON by default; disable with /loop-spec:micro off or LOOP_SPEC_MICRO=0."
 
 # Emit valid JSON via jq (hard dependency) rather than a hand-rolled escaper.
 jq -n --arg ctx "$DIRECTIVE" \

@@ -153,6 +153,14 @@ echo y > "$CLEAN_REPO/a"
 got=$(bash "$LIB" -C "$CLEAN_REPO" ensure-clean-or-stash)
 check "W: -C ensure-clean-or-stash reports dirty (from outside cwd)" "dirty" "$got"
 
+# A failed status probe is unknown state and must fail closed as dirty.
+git -C "$CLEAN_REPO" checkout -- a
+cp "$CLEAN_REPO/.git/index" "$CLEAN_REPO/.git/index.saved"
+printf 'corrupt-index' > "$CLEAN_REPO/.git/index"
+got=$(bash "$LIB" -C "$CLEAN_REPO" ensure-clean-or-stash 2>/dev/null)
+check "W2: status failure reports dirty" "dirty" "$got"
+mv "$CLEAN_REPO/.git/index.saved" "$CLEAN_REPO/.git/index"
+
 # X: create-feature-worktree via -C prints absolute path inside the target repo
 base_sha_clean=$(git -C "$CLEAN_REPO" rev-parse HEAD)
 # Reset the dirty file first so create-feature-worktree works
