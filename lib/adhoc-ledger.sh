@@ -36,6 +36,11 @@ Usage:
       Append one entry. --criteria may be passed multiple times (one bullet each).
       --grounding may be repeated for post-change repository evidence; pass requires
       exactly one grounding entry per criterion. Failed/partial outcomes may omit it.
+      For pass, copy each --criteria value byte-for-byte at the start of its grounding:
+        --criteria "<criterion>" \
+        --grounding "<criterion> | repo: <file>:<positive line> | integration: <file>:<positive line>"
+      With no separate integration site, use:
+        --grounding "<criterion> | repo: <file>:<positive line> | integration: none - <reason of at least 10 characters>"
       --pr records the delivery PR URL (terminal feedback check contract).
       Prints "added" on stdout.
 
@@ -53,6 +58,13 @@ EOF
 # the usage-contract exit 2, not a raw `set -u` unbound-variable death.
 require_value() {
   [[ "$2" -ge 2 ]] || { echo "adhoc-ledger.sh: $1 requires a value" >&2; exit 2; }
+}
+
+grounding_contract_error() {
+  echo "adhoc-ledger.sh add: $1" >&2
+  echo "copy each --criteria value byte-for-byte as its --grounding prefix." >&2
+  echo "Accepted: '<criterion> | repo: <file>:<positive line> | integration: <file>:<positive line>'" >&2
+  echo "Or: '<criterion> | repo: <file>:<positive line> | integration: none - <reason of at least 10 characters>'" >&2
 }
 
 cmd_add() {
@@ -80,14 +92,14 @@ cmd_add() {
     *) echo "adhoc-ledger.sh add: --result must be pass, fail, or partial (got '${result}')" >&2; exit 2;;
   esac
   if [[ "$result" == "pass" && "$grounding_count" -ne "${#criteria[@]}" ]]; then
-    echo "adhoc-ledger.sh add: pass requires exactly one --grounding per --criteria" >&2
+    grounding_contract_error "pass requires exactly one --grounding per --criteria"
     exit 2
   fi
   if [[ "$result" == "pass" ]]; then
     grounding_re='^.+ \| repo: .+:[1-9][0-9]* \| integration: (.+:[1-9][0-9]*|none - .{10,})$'
     for grounding_entry in "${grounding[@]}"; do
       if [[ ! "$grounding_entry" =~ $grounding_re ]]; then
-        echo "adhoc-ledger.sh add: grounding must be '<criterion> | repo: <file:line> | integration: <file:line or none - reason>'" >&2
+        grounding_contract_error "rejected grounding: '$grounding_entry'"
         exit 2
       fi
     done
@@ -102,7 +114,7 @@ cmd_add() {
         [[ "$grounding_criterion" == "$criterion_entry" ]] && grounding_seen=$((grounding_seen+1))
       done
       if [[ "$criterion_seen" -ne "$grounding_seen" ]]; then
-        echo "adhoc-ledger.sh add: each --criteria value requires exactly one matching --grounding prefix" >&2
+        grounding_contract_error "each --criteria value requires exactly one matching --grounding prefix"
         exit 2
       fi
     done
@@ -113,7 +125,7 @@ cmd_add() {
         [[ "$criterion_entry" == "$grounding_criterion" ]] && known=1
       done
       if [[ "$known" -ne 1 ]]; then
-        echo "adhoc-ledger.sh add: grounding criterion '$grounding_criterion' is not declared by --criteria" >&2
+        grounding_contract_error "grounding criterion '$grounding_criterion' is not declared by --criteria"
         exit 2
       fi
     done

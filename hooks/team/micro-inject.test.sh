@@ -55,6 +55,8 @@ check_no_pattern "p: pi directive omits Claude micro command" 0 "/loop-spec:micr
 check_output "q: opencode directive uses native micro command" 0 "/loop-spec/micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
 check_output "r: opencode directive uses native intake command" 0 "/loop-spec/intake" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
 check_no_pattern "s: opencode directive omits Claude micro command" 0 "/loop-spec:micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
+check_output "t: directive names exact criterion copy rule" 0 "copy each --criteria value byte-for-byte" CLAUDE_PROJECT_DIR="$LS"
+check_output "u: directive shows no-integration grammar" 0 "integration: none - <reason of at least 10 characters>" CLAUDE_PROJECT_DIR="$LS"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

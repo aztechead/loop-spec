@@ -245,7 +245,7 @@ IFS='|' read -r DECISION REASON EDITS <<<"$VERDICT"
 
 if [[ "$DECISION" == "block" ]]; then
   trace "deny" "$REASON edits=${EDITS:-?}"
-  echo "DENY: ${EDITS:-?} file edit(s) this session but ${REASON}. Micro VERIFY requires both a post-change grounding review (re-read changed files and relevant callers/tests/contracts, then inspect the final git diff) and the project's real verification command after the final edit. Record repository evidence with lib/adhoc-ledger.sh add --title ... --criteria ... --grounding \"<criterion | repo: file:line | integration: file:line>\" --verify \"<command>\" --result pass|fail|partial. A 'fail' result with the output shown is a valid ending." >&2
+  echo "DENY: ${EDITS:-?} file edit(s) this session but ${REASON}. Micro VERIFY requires both a post-change grounding review (re-read changed files and relevant callers/tests/contracts, then inspect the final git diff) and the project's real verification command after the final edit. For a pass, copy each --criteria value byte-for-byte into exactly one grounding: lib/adhoc-ledger.sh add --title ... --criteria \"<criterion>\" --grounding \"<criterion> | repo: <file>:<positive line> | integration: <file>:<positive line>\" --verify \"<command>\" --result pass. With no integration site use \"integration: none - <reason of at least 10 characters>\". A fail/partial result may omit grounding." >&2
   echo "(If this project's verification command isn't recognized, declare it: add VERIFY_CMD=<command> to .loop-spec/micro.conf. To disable this check: /loop-spec:micro off, or LOOP_SPEC_MICRO_GUARD=0.)" >&2
   exit 2
 fi

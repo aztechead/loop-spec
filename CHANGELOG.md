@@ -2,6 +2,17 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.23.1]
+
+### Fixed
+
+- Aligned every micro-cycle ledger prompt with the strict `adhoc-ledger.sh` grounding
+  grammar. Passed entries now tell implementers to copy criterion text exactly, use
+  positive single-line references, and spell no-integration evidence as
+  `integration: none - <reason>`.
+- Expanded CLI help and rejection diagnostics with complete accepted forms so malformed
+  grounding arguments self-correct in one attempt instead of relying on parser discovery.
+
 ## [2.23.0]
 
 ### Added - grounded verification across every cycle
