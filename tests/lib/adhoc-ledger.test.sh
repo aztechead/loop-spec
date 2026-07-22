@@ -44,6 +44,13 @@ check "i: multiple criteria bullets" "$([[ "$(grep -cF -- '- criteria:' "$LEDGER
 check "j: notes bullet present" "$(grep -qF -- '- notes: one caller deferred' "$LEDGER" && echo 1 || echo 0)"
 check "k: header written once" "$([[ "$(grep -c '^# adhoc-ledger.md' "$LEDGER")" -eq 1 ]] && echo 1 || echo 0)"
 
+# --- --pr records the delivery PR; absent flag leaves no pr bullet ---
+PR_LEDGER="$TMPDIR_TEST/.loop-spec/pr-ledger.md"
+LOOP_SPEC_ADHOC_LEDGER="$PR_LEDGER" bash "$SCRIPT" add --title "pr-linked task" --criteria "c" \
+  --verify "true" --result pass --pr "https://github.com/o/r/pull/7" >/dev/null
+check "h2: pr bullet present" "$(grep -qF -- '- pr: https://github.com/o/r/pull/7' "$PR_LEDGER" && echo 1 || echo 0)"
+check "h3: entries without --pr carry no pr bullet" "$([[ "$(grep -cF -- '- pr: ' "$LEDGER")" -eq 0 ]] && echo 1 || echo 0)"
+
 # --- list shows headings, newest last, respects --limit ---
 out="$(bash "$SCRIPT" list)"
 check "l: list shows both entries" "$([[ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" -eq 2 ]] && echo 1 || echo 0)"

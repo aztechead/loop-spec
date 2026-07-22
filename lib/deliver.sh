@@ -51,45 +51,13 @@ tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-deliver-XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
 body_file="$tmp_dir/pr-body.md"
 
-# Render only final, durable artifacts. Cap the body below GitHub's size limit;
-# the full evidence remains committed on the branch.
-python3 - "$feature_json" "$artifact_root" "$body_file" <<'PY'
-import json, os, sys
-
-feature_path, root, output = sys.argv[1:]
-with open(feature_path) as f:
-    feature = json.load(f)
-
-parts = ["## loop-spec delivery", "", "**Goal:** " + (feature.get("feature_title") or feature.get("slug", ""))]
-artifacts = feature.get("artifacts") or {}
-for key, heading in (("spec", "Final specification"),
-                     ("verification", "Verification evidence"),
-                     ("iteration", "Convergence verdict")):
-    path = artifacts.get(key)
-    if not path:
-        continue
-    if not os.path.isabs(path):
-        path = os.path.join(root, path)
-    try:
-        with open(path, errors="replace") as f:
-            text = f.read()
-    except OSError:
-        continue
-    parts.extend(["", "## " + heading, "", text.strip()])
-
-warnings = feature.get("warnings") or []
-if warnings:
-    parts.extend(["", "## Shipped with warnings", ""])
-    parts.extend("- " + str(item) for item in warnings)
-
-body = "\n".join(parts).strip() + "\n"
-limit = 60000
-if len(body.encode("utf-8")) > limit:
-    encoded = body.encode("utf-8")[:limit - 100]
-    body = encoded.decode("utf-8", "ignore") + "\n\n[PR body truncated; full evidence is committed.]\n"
-with open(output, "w") as f:
-    f.write(body)
-PY
+# Concise GFM body — bounded excerpts + artifact links, never whole artifacts.
+# Formatting policy lives in lib/pr-body.sh (one home; also the reference for
+# micro/debug PR bodies).
+bash "$SCRIPT_DIR/pr-body.sh" render "$feature_json" "$artifact_root" "$body_file" || {
+  echo "deliver: PR body render failed" >&2
+  exit 1
+}
 
 checks_timeout="${LOOP_SPEC_CHECKS_TIMEOUT_SECONDS:-900}"
 checks_interval="${LOOP_SPEC_CHECKS_INTERVAL_SECONDS:-10}"

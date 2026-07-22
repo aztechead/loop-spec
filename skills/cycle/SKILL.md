@@ -702,13 +702,18 @@ checked SHA. Do not rewrite or recommit it here: DELIVER's successful target SHA
 immutable.
 
 Print warnings first, then a durable per-target delivery summary from
-`delivery.json.targets[]` (repo/name, PR URL, exact target SHA, checks status),
+`delivery.json.targets[]` (repo/name, PR URL, exact target SHA, checks status, and the
+DELIVER Step 4 terminal PR feedback check result — review decision + unresolved count
+per `skills/shared/pr-feedback-check.md`),
 followed by elapsed time/cost and backlog count. Workspace mode prints every changed and
-skipped repository. A single-repo run also prints top-level `prUrl`.
+skipped repository. A single-repo run also prints top-level `prUrl`. If the feedback
+check reported `changesRequested`, the summary's last line recommends
+`/loop-spec:revise <pr-number>` as the next command.
 
 `.loop-spec/last-result.json` and `events.jsonl` are local telemetry and are not committed.
-The PR body already contains the final SPEC, VERIFICATION, ITERATION, and warnings
-captured before the exact-SHA check.
+The PR body (rendered by `lib/pr-body.sh`) is concise GitHub-flavored markdown: goal,
+bounded Summary/Acceptance/Verification/Convergence excerpts, warnings, and links to
+the committed full artifacts — captured before the exact-SHA check.
 
 **Autonomous chaining (`feature.json.autonomous == true`).** The chain decision remains
 deterministic:

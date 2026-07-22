@@ -80,6 +80,33 @@ echo '{}' > "$WORK/empty.json"
 out="$(bash "$LIB" fetch --fixture "$WORK/empty.json")"
 check "5: empty object -> []" "0" "$(jq 'length' <<<"$out")"
 
+# ── Case 6: summary — feedback check for terminal PR delivery ────────────────
+SUMFIX="$WORK/pr-summary.json"
+jq '. + {"reviewDecision": "CHANGES_REQUESTED", "reviewRequests": [{"login": "frank"}, {"slug": "core-team"}]}' \
+  "$FIXTURE" > "$SUMFIX"
+out="$(bash "$LIB" summary --fixture "$SUMFIX")"
+check "6: valid JSON object" "1" "$(jq -e 'type == "object"' >/dev/null 2>&1 <<<"$out" && echo 1 || echo 0)"
+check "6: reviewDecision surfaced" "CHANGES_REQUESTED" "$(jq -r '.reviewDecision' <<<"$out")"
+check "6: changesRequested flag" "true" "$(jq -r '.changesRequested' <<<"$out")"
+check "6: requested reviewers mapped (login + team slug)" '["frank","core-team"]' "$(jq -c '.requestedReviewers' <<<"$out")"
+check "6: unresolved counts filtered items" "4" "$(jq '.unresolved' <<<"$out")"
+check "6: items match fetch shape" "4" "$(jq '.items | length' <<<"$out")"
+check "6: resolved thread excluded from items" "0" "$(jq '[.items[] | select(.id == 103)] | length' <<<"$out")"
+
+# ── Case 7: summary on a quiet PR is clean ───────────────────────────────────
+echo '{}' > "$WORK/quiet.json"
+out="$(bash "$LIB" summary --fixture "$WORK/quiet.json")"
+check "7: empty decision normalized to NONE" "NONE" "$(jq -r '.reviewDecision' <<<"$out")"
+check "7: changesRequested false" "false" "$(jq -r '.changesRequested' <<<"$out")"
+check "7: no requested reviewers" "0" "$(jq '.requestedReviewers | length' <<<"$out")"
+check "7: zero unresolved" "0" "$(jq '.unresolved' <<<"$out")"
+
+# ── Case 8: summary bad invocations mirror fetch's contract ──────────────────
+ec=0; bash "$LIB" summary >/dev/null 2>&1 || ec=$?
+check "8: summary without pr number exit 2" "2" "$ec"
+ec=0; bash "$LIB" summary --fixture "$WORK/nope.json" >/dev/null 2>&1 || ec=$?
+check "8: summary missing fixture exit 1" "1" "$ec"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

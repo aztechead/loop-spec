@@ -1,6 +1,6 @@
 ---
 name: micro
-description: Micro-cycle for small, ad-hoc tasks — the cycle's five invariants (stated done-criteria, grounded claims, test-first, evidence-before-done, mistakes-become-rules) enforced inline on the main thread with zero agent ceremony. Give it a small task and it runs the protocol directly; or toggle micro mode (on/off/status), which controls the micro-inject SessionStart directive and the adhoc-verify-guard Stop hook. Escalates to /loop-spec:intake when the task outgrows ad-hoc scale.
+description: Micro-cycle for small, ad-hoc tasks — the cycle's five invariants (stated done-criteria, grounded claims, test-first, evidence-before-done, mistakes-become-rules) enforced inline on the main thread with zero agent ceremony. Give it a small task and it runs the protocol directly, ending like every cycle type — work delivered as a PR that is then checked for reviews/comments/requested changes; or toggle micro mode (on/off/status), which controls the micro-inject SessionStart directive and the adhoc-verify-guard Stop hook. Escalates to /loop-spec:intake when the task outgrows ad-hoc scale.
 argument-hint: "[small task description | on | off | status]"
 allowed-tools: Bash Read Write Edit Glob Grep Skill AskUserQuestion
 ---
@@ -56,7 +56,26 @@ command (test suite, lint, build — `lib/detect-test-cmd.sh` can find it) and s
 output. "Should work" is not a result. Simplicity mode still applies: ship the
 shortest diff that passes.
 
-**6. Record the ledger entry.** Append one entry to `.loop-spec/adhoc-ledger.md`:
+**6. Deliver as a PR, then check it for feedback.** Micro work ends the same way every
+cycle type ends: on a branch, behind a PR, with the PR checked for reviews/comments/
+requested changes (`skills/shared/pr-feedback-check.md`). Still zero ceremony — no
+worktree, no DELIVER controller:
+
+- On the default branch? Move the work to a branch first: `git checkout -b micro/<slug>`
+  (uncommitted changes travel). Already on a topic branch: stay on it.
+- Commit (project commit conventions apply), `git push -u origin <branch>`, then reuse
+  the branch's existing PR if one exists (`gh pr view --json number,url`) or open one
+  (`gh pr create`). Keep the body to the micro scale: title, the done-criteria bullets,
+  the verification command + result. GitHub-flavored markdown, no phase-artifact dumps.
+- Run the terminal feedback check on the PR (`lib/pr-comments.sh summary <number>`) and
+  route the result per the shared contract: requested changes at micro scale get fixed
+  now (new commit, re-check); larger asks hand off to `/loop-spec:revise` or
+  `/loop-spec:intake` — say which.
+- No origin remote, or `gh` missing/unauthenticated? Degrade loudly: state exactly what
+  blocked the PR, leave the branch in place, and record the gap in the ledger `--notes`.
+  Never silently skip the PR step.
+
+**7. Record the ledger entry.** Append one entry to `.loop-spec/adhoc-ledger.md`:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/adhoc-ledger.sh" add \
@@ -64,14 +83,16 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/adhoc-ledger.sh" add \
   --criteria "<criterion 1>" [--criteria "<criterion 2>" ...] \
   --verify "<the verification command you actually ran>" \
   --result pass|fail|partial \
-  [--notes "<deferred work, caveats>"]
+  [--pr "<PR url from step 6>"] \
+  [--notes "<deferred work, caveats, unaddressed PR feedback>"]
 ```
 
 `--result` reflects what the verification actually showed. A `fail` entry is a valid
 ending when you are handing the failure back to the user — never record `pass` without
-the output to back it.
+the output to back it. `--pr` binds the entry to its delivery PR; when step 6 could not
+open one, the `--notes` say why instead.
 
-**7. Repeated mistake → rule.** If this task exposed a mistake you (or the loop) have
+**8. Repeated mistake → rule.** If this task exposed a mistake you (or the loop) have
 made before, make it permanent: `bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "<rule>" [--check "<cmd>"]`.
 
 ## Escalation
@@ -104,6 +125,9 @@ checks — declaring the command is always better than disabling the guard.
 ## Boundary with the cycle
 
 Inside a running cycle none of this applies — the phases own these invariants at
-feature scale (SPEC states criteria, EXECUTE is test-first, VERIFY gathers evidence).
+feature scale (SPEC states criteria, EXECUTE is test-first, VERIFY gathers evidence,
+DELIVER owns the PR and its terminal feedback check).
 The adhoc-verify-guard stands down automatically while a feature is in flight, and you
 should not write ledger entries for cycle work (the feature tree is its audit trail).
+Step 6's PR delivery likewise stands down there — never open a side PR from inside a
+feature worktree.
