@@ -6,23 +6,21 @@
 #   exit 2  = block (with stderr message shown to user)
 #
 # The enforcement half of micro mode (skills/micro/SKILL.md invariant 5): a session
-# that edited code files must have run a verification command AFTER the last edit
-# before it is allowed to stop. One python pass over the Stop payload does all the
-# work: Write/Edit/NotebookEdit tool_use items mark edits (non-code paths — docs
-# and config — are exempt); a Bash command matching the verification pattern
-# (tests, lint, build, run-all.sh, adhoc-ledger.sh) or containing the project's
-# declared VERIFY_CMD (from .loop-spec/micro.conf) marks evidence.
+# that edited files must have completed a post-change grounding review AND run a
+# verification command AFTER the last edit before it is allowed to stop. One python
+# pass over the Stop payload does all the work: Write/Edit/NotebookEdit mark edits;
+# an exact Read of every edited file plus a final `git diff` mark repository grounding; a Bash command matching
+# the verification pattern or the project's declared VERIFY_CMD marks validation.
 #
 # Stands down (exit 0) when:
 #   - LOOP_SPEC_MICRO_GUARD=0 (kill switch), or micro.conf pins ENABLED=0
 #   - the project has no .loop-spec/ dir (never hijack unrelated projects)
-#   - stop_hook_active (never re-block; CC force-overrides after 8 anyway)
 #   - a cycle feature is in flight (any .loop-spec/features/*/feature.json with
 #     currentPhase != "completed") - the cycle's VERIFY phase owns evidence at
 #     feature scale, and blocking between phases would fight the orchestrator.
 #     Trade-off: a paused feature also disarms the guard; guards here are
 #     accelerators, never blockers, so we err on allow.
-#   - no edits in the transcript, or every edited path is non-code (docs/config)
+#   - no edits in the transcript
 #
 # Fail-open: missing/malformed payload, no python3, empty transcript -> exit 0.
 #
@@ -88,70 +86,156 @@ fi
 
 INPUT=$(cat)
 
-# One python pass: stop_hook_active short-circuit, then scan the transcript for
-# the position of the last edit, the last verification Bash command, and whether
-# any edited path is a code (non-doc, non-config) file. Output is a single
+# One python pass scans Claude Code's transcript_path JSONL for final edits,
+# path-correlated grounding reads, content diffs, and validation commands. The
+# legacy inline transcript shape remains a fail-open compatibility fallback.
+# Output is a single
 # pipe-delimited line: verdict|reason|edit_count.
-VERDICT=$(printf '%s' "$INPUT" | LOOP_SPEC_PROJ_VERIFY_CMD="$PROJ_VERIFY_CMD" python3 -c "
-import json, os, re, sys
+VERDICT=$(printf '%s' "$INPUT" | LOOP_SPEC_PROJ_VERIFY_CMD="$PROJ_VERIFY_CMD" LOOP_SPEC_PROJECT_DIR="$PROJECT_DIR" python3 -c "
+import json, os, re, shlex, sys
 
-VERIFY_RE = re.compile(
-    r'(\btests?\b|pytest|unittest|jest|vitest|mocha|go test|cargo (test|check|build)'
-    r'|npm (test|run)|pnpm|yarn|make\b|tox|rspec|phpunit|gradle|mvn'
-    r'|lint|ruff|eslint|flake8|mypy|tsc\b|typecheck|shellcheck'
-    r'|build|compile|run-all\.sh|adhoc-ledger\.sh)', re.I)
-NONCODE_RE = re.compile(r'\.(md|markdown|txt|rst|adoc|json|ya?ml|toml|ini|cfg|conf|env|example)$', re.I)
 EDIT_TOOLS = {'Write', 'Edit', 'NotebookEdit'}
+SUMMARY_FLAGS = {'--check', '--stat', '--shortstat', '--numstat', '--name-only', '--name-status', '--quiet'}
+VERIFY_RE = re.compile(
+    r'(pytest|unittest|jest|vitest|mocha|go\s+test|cargo\s+(test|check|build)'
+    r'|npm\s+(test|run)|pnpm\s+(test|run|lint|build)|yarn\s+(test|run|lint|build)'
+    r'|make\b|tox|rspec|phpunit|gradle|mvn|ruff|eslint|flake8|mypy|tsc\b'
+    r'|typecheck|shellcheck|\blint\b|\bbuild\b|\bcompile\b|run-all\.sh'
+    r'|(^|\s)(bash\s+)?[^\s]*(tests?/[^\s]+\.sh|\.test\.sh)(\s|$)'
+    r'|git\s+diff\s+--check)', re.I)
 
 def out(verdict, reason, edits=0):
     print('%s|%s|%s' % (verdict, reason, edits))
     sys.exit(0)
 
+def norm(path, base):
+    path = str(path or '').strip()
+    if not path:
+        return ''
+    return os.path.normpath(path if os.path.isabs(path) else os.path.join(base, path))
+
+def contains(scope, path):
+    try:
+        return os.path.commonpath([scope, path]) == scope
+    except Exception:
+        return False
+
+def command_parts(command):
+    return [p.strip() for p in re.split(r'\s*(?:&&|\|\||;)\s*', command) if p.strip()]
+
+def diff_targets(part, project):
+    try:
+        tokens = shlex.split(part)
+    except Exception:
+        return None
+    try:
+        git_i = next(i for i, t in enumerate(tokens) if os.path.basename(t) == 'git')
+        diff_i = tokens.index('diff', git_i + 1)
+    except (StopIteration, ValueError):
+        return None
+    if any(flag in tokens for flag in SUMMARY_FLAGS):
+        return None
+    base = project
+    if '-C' in tokens[git_i + 1:diff_i]:
+        ci = tokens.index('-C', git_i + 1, diff_i)
+        if ci + 1 < diff_i:
+            base = norm(tokens[ci + 1], project)
+    if '--' not in tokens[diff_i + 1:]:
+        return []  # no pathspec means the content diff covers every edited path
+    sep = tokens.index('--', diff_i + 1)
+    return [norm(t, base) for t in tokens[sep + 1:] if t]
+
+def is_verify(part, project_cmd):
+    if 'adhoc-ledger.sh' in part:
+        return False
+    if project_cmd and project_cmd in part:
+        return True
+    return bool(VERIFY_RE.search(part))
+
 try:
-    d = json.load(sys.stdin)
+    payload = json.load(sys.stdin)
 except Exception:
     out('allow', 'unparseable payload')
 
-if d.get('stop_hook_active'):
-    out('allow', 'stop_hook_active')
+entries = []
+transcript_path = str(payload.get('transcript_path') or '')
+if transcript_path and os.path.isfile(transcript_path):
+    try:
+        with open(transcript_path) as transcript:
+            for line in transcript:
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                if entry.get('type') == 'assistant':
+                    entries.append((entry.get('message') or {}).get('content') or [])
+    except Exception:
+        out('allow', 'unreadable transcript')
+else:
+    for entry in (payload.get('transcript') or []):
+        if isinstance(entry, dict) and entry.get('role') == 'assistant':
+            entries.append(entry.get('content') or [])
+    if not entries:
+        out('allow', 'no transcript')
 
-proj_cmd = (os.environ.get('LOOP_SPEC_PROJ_VERIFY_CMD') or '').strip()
+project = os.path.abspath(os.environ.get('LOOP_SPEC_PROJECT_DIR') or '.')
+project_cmd = (os.environ.get('LOOP_SPEC_PROJ_VERIFY_CMD') or '').strip()
 idx = 0
-last_edit = -1
-last_verify = -1
+edits = {}
+contexts = []
+diffs = []
+verifies = []
 edit_count = 0
-code_edit = False
-for entry in (d.get('transcript') or []):
-    if not isinstance(entry, dict):
-        continue
-    for item in (entry.get('content') or []):
+
+for content in entries:
+    for item in content:
         if not isinstance(item, dict) or item.get('type') != 'tool_use':
             continue
         idx += 1
         name = item.get('name', '')
         inp = item.get('input') or {}
         if name in EDIT_TOOLS:
-            path = str(inp.get('file_path', '') or inp.get('notebook_path', ''))
-            if not path:
-                continue  # malformed/rejected call in history; never count as an edit
-            last_edit = idx
-            edit_count += 1
-            if not NONCODE_RE.search(path):
-                code_edit = True
+            path = norm(inp.get('file_path') or inp.get('notebook_path'), project)
+            if path:
+                edits[path] = idx
+                edit_count += 1
+        elif name == 'Read':
+            path = norm(inp.get('file_path'), project)
+            if path:
+                contexts.append((idx, path))
         elif name == 'Bash':
-            cmd = str(inp.get('command', ''))
-            if VERIFY_RE.search(cmd) or (proj_cmd and proj_cmd in cmd):
-                last_verify = idx
+            command = str(inp.get('command', ''))
+            for part in command_parts(command):
+                targets = diff_targets(part, project)
+                if targets is not None:
+                    diffs.append((idx, targets))
+                if is_verify(part, project_cmd):
+                    verifies.append(idx)
 
 if edit_count == 0:
     out('allow', 'no edits')
-if not code_edit:
-    out('allow', 'noncode-only edits')
-if last_verify > last_edit:
-    out('allow', 'verification after last edit')
-out('block',
-    'no verification command ran' if last_verify < 0 else 'last verification predates last edit',
-    edit_count)
+
+last_edit = max(edits.values())
+context_indexes = []
+for path, edit_idx in edits.items():
+    matches = [i for i, read_path in contexts if i > last_edit and read_path == path]
+    if not matches:
+        out('block', 'post-change grounding review did not re-read every edited path', edit_count)
+    context_indexes.append(max(matches))
+
+covering_diffs = []
+for diff_idx, targets in diffs:
+    if diff_idx <= last_edit:
+        continue
+    if not targets or all(any(t == path or contains(t, path) for t in targets) for path in edits):
+        covering_diffs.append(diff_idx)
+if not covering_diffs:
+    out('block', 'post-change grounding review did not inspect a content diff covering every edited path', edit_count)
+
+grounded_at = max(context_indexes + [max(covering_diffs)])
+if not any(i > grounded_at for i in verifies):
+    out('block', 'no verification command ran after the post-change grounding review', edit_count)
+out('allow', 'grounding and verification completed after final edit', edit_count)
 " 2>/dev/null || echo "")
 
 # Fail-open when python produced nothing.
@@ -161,7 +245,7 @@ IFS='|' read -r DECISION REASON EDITS <<<"$VERDICT"
 
 if [[ "$DECISION" == "block" ]]; then
   trace "deny" "$REASON edits=${EDITS:-?}"
-  echo "DENY: ${EDITS:-?} file edit(s) this session but ${REASON}. Micro-cycle invariant 5: run the project's real verification command (tests/lint/build), show the output, and record the entry with lib/adhoc-ledger.sh add --title ... --criteria ... --verify \"<command>\" --result pass|fail|partial. A 'fail' result with the output shown is a valid ending." >&2
+  echo "DENY: ${EDITS:-?} file edit(s) this session but ${REASON}. Micro VERIFY requires both a post-change grounding review (re-read changed files and relevant callers/tests/contracts, then inspect the final git diff) and the project's real verification command after the final edit. Record repository evidence with lib/adhoc-ledger.sh add --title ... --criteria ... --grounding \"<criterion | repo: file:line | integration: file:line>\" --verify \"<command>\" --result pass|fail|partial. A 'fail' result with the output shown is a valid ending." >&2
   echo "(If this project's verification command isn't recognized, declare it: add VERIFY_CMD=<command> to .loop-spec/micro.conf. To disable this check: /loop-spec:micro off, or LOOP_SPEC_MICRO_GUARD=0.)" >&2
   exit 2
 fi

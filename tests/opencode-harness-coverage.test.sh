@@ -63,6 +63,7 @@ checks=(
   "extensions/opencode/loop-spec.ts	shell.env"
   "extensions/opencode/loop-spec.ts	micro-inject.sh"
   "extensions/opencode/loop-spec.ts	LOOP_SPEC_HARNESS"
+  "skills/shared/opencode-harness.md	directive-only"
   # -- installer places every native surface and is documented by the contract
   "lib/opencode-install.sh	extensions/opencode/loop-spec.ts"
   "lib/opencode-install.sh	commands/loop-debug.md"

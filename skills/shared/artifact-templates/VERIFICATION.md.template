@@ -3,6 +3,14 @@
 **Spec:** `docs/loop-spec/features/{slug}/SPEC.md`
 **Plan:** `docs/loop-spec/features/{slug}/PLAN.md`
 
+## Repository grounding
+
+One exact row per Good Enough criterion, identified by SPEC order as `GE-001`, `GE-002`,
+and so on. Paths are repository-relative; workspace paths are relative to the workspace
+root. `integration: none` requires a concrete reason.
+
+- criterion: GE-001 | implementation: {path}:{line} - {what it proves} | integration: {path}:{line} - {what it proves}
+
 ## Acceptance criteria
 
 | # | Criterion | Status | Evidence |

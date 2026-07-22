@@ -105,6 +105,9 @@ creation/reconciliation, and terminal PR feedback checking:
 - `debug` -> `Skill(loop-spec:debug)` with `autonomous <verbatim request>`.
 - `full` -> `Skill(loop-spec:cycle)` with `autonomous <verbatim request>`.
 
+Every selected route owns the same `skills/shared/verification-grounding.md` post-change
+gate. Routing changes ceremony and orchestration, never the shared verification-grounding contract.
+
 Do not call intake first; cycle already accepts prose. Do not perform implementation
 work in this skill. The delegated protocol owns runtime scope tripwires: micro promotes
 losslessly when its bounds are crossed, and debug promotes when the confirmed fix is

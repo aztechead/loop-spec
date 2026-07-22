@@ -2,7 +2,7 @@
 # adhoc-ledger.sh - Micro-cycle audit ledger for ad-hoc work (.loop-spec/adhoc-ledger.md).
 #
 # The full cycle's core value that survives at ad-hoc scale is the committed audit
-# trail: what was asked, what "done" meant, how it was verified. Feature-scale work
+# trail: what was asked, what "done" meant, how it was grounded and verified. Feature-scale work
 # gets a whole docs/loop-spec/features/{slug}/ tree; ad-hoc work gets ~5 appended
 # lines here. One file, greppable, and a future retro pass can mine it the same way
 # retro.sh mines events.jsonl (see docs/loop-spec/ROADMAP-3.0.md, pillar B).
@@ -22,8 +22,9 @@ LEDGER_FILE="${LOOP_SPEC_ADHOC_LEDGER:-${CLAUDE_PROJECT_DIR:-.}/.loop-spec/adhoc
 HEADER='# adhoc-ledger.md
 
 Micro-cycle audit ledger. One entry per ad-hoc task: what was asked, the done-criteria
-stated before code, the verification command actually run, and its result. Appended by
-`lib/adhoc-ledger.sh add`; you own and curate this file.
+stated before code, the repository grounding checked after code, the verification
+command actually run, and its result. Appended by `lib/adhoc-ledger.sh add`; you own
+and curate this file.
 '
 
 usage() {
@@ -31,8 +32,10 @@ usage() {
 adhoc-ledger.sh - Micro-cycle audit ledger for ad-hoc work (.loop-spec/adhoc-ledger.md).
 
 Usage:
-  adhoc-ledger.sh add --title <t> --criteria <c> --verify <cmd> --result <pass|fail|partial> [--pr <url>] [--notes <n>]
+  adhoc-ledger.sh add --title <t> --criteria <c> [--grounding <evidence>] --verify <cmd> --result <pass|fail|partial> [--pr <url>] [--notes <n>]
       Append one entry. --criteria may be passed multiple times (one bullet each).
+      --grounding may be repeated for post-change repository evidence; pass requires
+      exactly one grounding entry per criterion. Failed/partial outcomes may omit it.
       --pr records the delivery PR URL (terminal feedback check contract).
       Prints "added" on stdout.
 
@@ -54,11 +57,13 @@ require_value() {
 
 cmd_add() {
   local title="" verify="" result="" notes="" pr=""
-  local -a criteria=()
+  local -a criteria=() grounding=()
+  local grounding_count=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --title)    require_value "$1" $#; title="$2"; shift 2;;
       --criteria) require_value "$1" $#; criteria+=("$2"); shift 2;;
+      --grounding) require_value "$1" $#; grounding[$grounding_count]="$2"; grounding_count=$((grounding_count+1)); shift 2;;
       --verify)   require_value "$1" $#; verify="$2"; shift 2;;
       --result)   require_value "$1" $#; result="$2"; shift 2;;
       --notes)    require_value "$1" $#; notes="$2"; shift 2;;
@@ -74,6 +79,45 @@ cmd_add() {
     pass|fail|partial) ;;
     *) echo "adhoc-ledger.sh add: --result must be pass, fail, or partial (got '${result}')" >&2; exit 2;;
   esac
+  if [[ "$result" == "pass" && "$grounding_count" -ne "${#criteria[@]}" ]]; then
+    echo "adhoc-ledger.sh add: pass requires exactly one --grounding per --criteria" >&2
+    exit 2
+  fi
+  if [[ "$result" == "pass" ]]; then
+    grounding_re='^.+ \| repo: .+:[1-9][0-9]* \| integration: (.+:[1-9][0-9]*|none - .{10,})$'
+    for grounding_entry in "${grounding[@]}"; do
+      if [[ ! "$grounding_entry" =~ $grounding_re ]]; then
+        echo "adhoc-ledger.sh add: grounding must be '<criterion> | repo: <file:line> | integration: <file:line or none - reason>'" >&2
+        exit 2
+      fi
+    done
+    for criterion_entry in "${criteria[@]}"; do
+      criterion_seen=0
+      grounding_seen=0
+      for candidate in "${criteria[@]}"; do
+        [[ "$candidate" == "$criterion_entry" ]] && criterion_seen=$((criterion_seen+1))
+      done
+      for grounding_entry in "${grounding[@]}"; do
+        grounding_criterion="${grounding_entry%% | repo:*}"
+        [[ "$grounding_criterion" == "$criterion_entry" ]] && grounding_seen=$((grounding_seen+1))
+      done
+      if [[ "$criterion_seen" -ne "$grounding_seen" ]]; then
+        echo "adhoc-ledger.sh add: each --criteria value requires exactly one matching --grounding prefix" >&2
+        exit 2
+      fi
+    done
+    for grounding_entry in "${grounding[@]}"; do
+      grounding_criterion="${grounding_entry%% | repo:*}"
+      known=0
+      for criterion_entry in "${criteria[@]}"; do
+        [[ "$criterion_entry" == "$grounding_criterion" ]] && known=1
+      done
+      if [[ "$known" -ne 1 ]]; then
+        echo "adhoc-ledger.sh add: grounding criterion '$grounding_criterion' is not declared by --criteria" >&2
+        exit 2
+      fi
+    done
+  fi
 
   mkdir -p "$(dirname "$LEDGER_FILE")"
   [[ -f "$LEDGER_FILE" ]] || printf '%s\n' "$HEADER" > "$LEDGER_FILE"
@@ -86,6 +130,11 @@ cmd_add() {
     for c in "${criteria[@]}"; do
       printf -- '- criteria: %s\n' "$c"
     done
+    if [[ "$grounding_count" -gt 0 ]]; then
+      for c in "${grounding[@]}"; do
+        printf -- '- grounding: %s\n' "$c"
+      done
+    fi
     printf -- '- verify: `%s` → %s\n' "$verify" "$result"
     [[ -n "$pr" ]] && printf -- '- pr: %s\n' "$pr"
     [[ -n "$notes" ]] && printf -- '- notes: %s\n' "$notes"

@@ -61,10 +61,24 @@ at micro scale the probe result goes in your narration, not an EVIDENCE.md.)
 extend the failing test before the fix (red → green). If it genuinely has no test
 surface (docs, config), say so explicitly instead of silently skipping.
 
-**5. Verify with evidence.** Before claiming done, run the project's real verification
-command (test suite, lint, build — `lib/detect-test-cmd.sh` can find it) and show the
-output. "Should work" is not a result. Simplicity mode still applies: ship the
-shortest diff that passes.
+**5. VERIFY phase: ground, then validate.** Apply
+`skills/shared/verification-grounding.md` after the final edit. This is one explicit
+phase with two hard gates:
+
+- **Grounding gate:** inspect the final diff; re-read every changed file in its final
+  state and the nearest affected caller, test, configuration, interface, or documented
+  contract. For each done-criterion, capture concrete repository evidence as
+  `file:line` references for both implementation and integration (or state why there is
+  no separate integration site). Re-probe affected external premises. An unsupported
+  assumption or stale pre-edit read fails the gate; correct or escalate, then repeat it.
+- **Validation gate:** only after grounding passes, run the project's real verification
+  command (test suite, lint, build — `lib/detect-test-cmd.sh` can find it) and show the
+  output. With no behavioral runner, use the strongest static check available, at
+  minimum `git diff --check`, and state the limitation.
+
+A green command cannot substitute for repository grounding, and repository reads cannot
+substitute for an executed command. "Should work" is not a result. Simplicity mode still
+applies: ship the shortest grounded diff that passes.
 
 **6. Deliver as a PR, then check it for feedback.** Micro work ends the same way every
 cycle type ends: on a branch, behind a PR, with the PR checked for reviews/comments/
@@ -79,7 +93,9 @@ worktree, no DELIVER controller:
   the verification command + result. GitHub-flavored markdown, no phase-artifact dumps.
 - Run the terminal feedback check on the PR (`lib/pr-feedback.sh check <number>`) and
   route the result per the shared contract: requested changes at micro scale get fixed
-  now (new commit, re-check); larger asks hand off to `/loop-spec:revise` or
+  now. Every feedback-driven edit returns to Step 5: repeat the post-change grounding
+  gate and validation gate against the new final diff before creating the new commit,
+  pushing, and re-checking feedback. Evidence from before that edit is stale. Larger asks hand off to `/loop-spec:revise` or
   `/loop-spec:intake` — say which.
 - No origin remote, or `gh` missing/unauthenticated? Degrade loudly: state exactly what
   blocked the PR, leave the branch in place, and record the gap in the ledger `--notes`.
@@ -91,16 +107,18 @@ worktree, no DELIVER controller:
 bash "${CLAUDE_SKILL_DIR}/../../lib/adhoc-ledger.sh" add \
   --title "<task title>" \
   --criteria "<criterion 1>" [--criteria "<criterion 2>" ...] \
+  --grounding "<criterion 1> | repo: <file:line> | integration: <file:line or reason>" \
+  [--grounding "<criterion 2> | repo: ..." ...] \
   --verify "<the verification command you actually ran>" \
   --result pass|fail|partial \
   [--pr "<PR url from step 6>"] \
   [--notes "<deferred work, caveats, unaddressed PR feedback>"]
 ```
 
-`--result` reflects what the verification actually showed. A `fail` entry is a valid
-ending when you are handing the failure back to the user — never record `pass` without
-the output to back it. `--pr` binds the entry to its delivery PR; when step 6 could not
-open one, the `--notes` say why instead.
+`--result` reflects both VERIFY gates. A `fail` entry is a valid ending when you are
+handing the failure back to the user — never record `pass` without post-change grounding
+and command output to back it. `--pr` binds the entry to its delivery PR; when step 6
+could not open one, the `--notes` say why instead.
 
 **8. Repeated mistake → rule.** If this task exposed a mistake you (or the loop) have
 made before, make it permanent: `bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "<rule>" [--check "<cmd>"]`.
@@ -120,7 +138,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
   --autonomous "<true|false>"
 ```
 
-`converged=true` requires both passed verification and a PR URL. The writer emits one
+`verification-status=passed` requires both VERIFY gates. `converged=true` additionally
+requires a PR URL. The writer emits one
 `LOOP_SPEC_RESULT {...}` line and atomically updates `.loop-spec/last-result.json`.
 Do not claim success if result emission warns; report the observability failure.
 

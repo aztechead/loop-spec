@@ -169,6 +169,13 @@ CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
 
 ## Step 4 - VERIFY and land
 
+Apply `skills/shared/verification-grounding.md`; the debug loop is not exempt because it
+is smaller. Before running the suite, inspect the final diff, re-read every changed file
+and the nearest caller/test/contract, and record `file:line` evidence in BUG.md `## Fix`
+that ties the confirmed mechanism and each expected behavior to the repository. Re-probe
+affected external premises. An unsupported assumption, stale pre-edit read, or mismatch
+returns to the FIX loop; a green repro cannot substitute for this grounding gate.
+
 1. **Keep the repro as a regression test** — it lands in the test suite, named after
    the bug, asserting the fixed behavior. A fix without its regression test is half a
    fix. (Command-style repros get distilled into a test where feasible; where not,
@@ -184,8 +191,10 @@ CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
 4. Deliver as a PR, then check it for feedback: push `fix/{slug}`, open the PR
    (`gh pr create` — or reuse the branch's existing PR), and run the terminal feedback
    check per `skills/shared/pr-feedback-check.md`
-   (`lib/pr-feedback.sh check <number>`). Requested changes still at bug scale get
-   fixed in this loop (new commit, re-check); new-mechanism asks go to `## Deferred`
+    (`lib/pr-feedback.sh check <number>`). Requested changes still at bug scale get
+    fixed in this loop. Every feedback-driven edit returns to Step 4: repeat repository
+    grounding, the repro, the full suite, and tamper scan before the new commit/push and
+    feedback re-check. Evidence from before that edit is stale. New-mechanism asks go to `## Deferred`
    / `/loop-spec:intake`. Keep the PR body short GitHub-flavored markdown: symptom,
    root cause, fix summary, regression test — link BUG.md rather than inlining it.
    No origin remote or no `gh`: degrade loudly — leave the branch, state exactly what
