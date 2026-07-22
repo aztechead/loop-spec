@@ -53,6 +53,14 @@ export CLAUDE_SKILL_DIR="<absolute dir of the SKILL.md you are following>"
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under pi — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses its clean in-place feature branch (`executionRootMode: "in-place"`) and never fakes a cwd change with `git worktree add`. |
 
+## Ambient verification enforcement
+
+Pi receives the harness-specific micro SessionStart directive (`/skill:micro`,
+`/skill:intake`), but its ambient enforcement is directive-only: pi has no vetoable Stop
+event, so `adhoc-verify-guard.sh` cannot block termination. Explicit micro runs still own
+the full grounding/validation protocol, and full cycles use the deterministic
+`lib/verification-grounding-lint.sh` gate through the inline verifier fallback.
+
 ## Inline dispatch rule (replaces every one-shot `Agent` call)
 
 Under pi, every one-shot `Agent` dispatch a phase skill (or

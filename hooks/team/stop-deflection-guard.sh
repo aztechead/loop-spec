@@ -5,14 +5,15 @@
 #   exit 0  = allow
 #   exit 2  = block (with stderr message shown to user)
 #
-# Reads context usage from the Stop payload's top-level 'usage' object:
+# Reads context usage and the final assistant text from transcript_path JSONL.
+# The legacy inline Stop payload remains supported:
 #   total_used = input_tokens + cache_read_input_tokens + cache_creation_input_tokens
 #
 # Blocks the stop (exit 2) when:
 #   1. The last assistant text contains a known deflection phrase, AND
 #   2. Computed usage percentage is below LOOP_SPEC_DEFLECTION_THRESHOLD_PCT.
 #
-# Fail-open: if payload is missing, malformed, or the 'usage' field is absent,
+# Fail-open: if payload is missing, malformed, or usage cannot be resolved,
 # the hook always exits 0. Errors never cascade into the user's session.
 #
 # Environment variables (all optional):
@@ -60,9 +61,10 @@ if printf '%s' "$INPUT" | python3 -c "import json,sys; sys.exit(0 if json.load(s
   exit 0
 fi
 
-# Parse last assistant text and usage tokens from the payload.
+# Parse last assistant text and usage tokens from production transcript_path JSONL,
+# falling back to the legacy inline payload used by older harnesses/tests.
 PARSE_RESULT=$(printf '%s' "$INPUT" | python3 -c "
-import json, sys
+import json, os, sys
 
 try:
     d = json.load(sys.stdin)
@@ -71,34 +73,48 @@ except Exception:
     sys.exit(0)
 
 usage = d.get('usage')
+text = ''
+transcript_path = str(d.get('transcript_path') or '')
+if transcript_path and os.path.isfile(transcript_path):
+    try:
+        with open(transcript_path) as transcript:
+            entries = []
+            for line in transcript:
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                if entry.get('type') == 'assistant':
+                    entries.append(entry)
+        for entry in reversed(entries):
+            message = entry.get('message') or {}
+            parts = [c.get('text', '') for c in (message.get('content') or [])
+                     if isinstance(c, dict) and c.get('type') == 'text']
+            if parts and not text:
+                text = '\n'.join(parts)
+            if usage is None and message.get('usage') is not None:
+                usage = message.get('usage')
+            if text and usage is not None:
+                break
+    except Exception:
+        pass
+else:
+    for entry in reversed(d.get('transcript') or []):
+        if not isinstance(entry, dict) or entry.get('role') != 'assistant':
+            continue
+        parts = [c.get('text', '') for c in (entry.get('content') or [])
+                 if isinstance(c, dict) and c.get('type') == 'text']
+        if parts:
+            text = '\n'.join(parts)
+            break
+
 if usage is None:
-    # No usage field present: fail-open signal
-    print(json.dumps({'text': '', 'tokens': -1, 'has_usage': False}))
+    print(json.dumps({'text': text, 'tokens': -1, 'has_usage': False}))
     sys.exit(0)
 
-tokens = (
-    (usage.get('input_tokens') or 0)
-    + (usage.get('cache_read_input_tokens') or 0)
-    + (usage.get('cache_creation_input_tokens') or 0)
-)
-
-# Extract last assistant text from transcript array if present.
-text = ''
-transcript = d.get('transcript') or []
-for entry in reversed(transcript):
-    if not isinstance(entry, dict):
-        continue
-    if entry.get('role') != 'assistant':
-        continue
-    content = entry.get('content') or []
-    parts = [
-        c.get('text', '')
-        for c in content
-        if isinstance(c, dict) and c.get('type') == 'text'
-    ]
-    if parts:
-        text = '\n'.join(parts)
-        break
+tokens = ((usage.get('input_tokens') or 0)
+          + (usage.get('cache_read_input_tokens') or 0)
+          + (usage.get('cache_creation_input_tokens') or 0))
 
 print(json.dumps({'text': text, 'tokens': tokens, 'has_usage': True}))
 " 2>/dev/null || echo "")

@@ -2,6 +2,27 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.23.0]
+
+### Added - grounded verification across every cycle
+
+- Added one post-change grounding contract for full, micro, and debug cycles. A green
+  validation command no longer substitutes for repository evidence: each criterion must
+  cite its implementation and integration points after the final edit.
+- Added deterministic `VERIFICATION.md` grounding linting with SPEC-derived `GE-NNN`
+  criteria, repository path and line validation, workspace support, and fail-closed
+  workflow/fallback handling.
+- Added production-shaped Stop-hook enforcement for ambient micro work, including exact
+  rereads of every edited file, content-diff coverage, and validation after grounding.
+
+### Changed
+
+- Micro ledger success now requires one well-formed grounding record per done criterion,
+  and feedback-driven micro/debug edits invalidate prior evidence and rerun VERIFY.
+- Pi and OpenCode receive harness-native ambient command names and document that their
+  non-vetoable session endings make ambient enforcement directive-only; explicit cycles
+  retain the deterministic gates.
+
 ## [2.22.0]
 
 ### Added - semantic autonomous task routing

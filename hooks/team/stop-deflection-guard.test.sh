@@ -49,6 +49,17 @@ payload_no_usage() {
     "$text"
 }
 
+# Production Stop payload: transcript_path points at Claude Code JSONL, where
+# assistant text and usage live under message.
+payload_file_with_usage() {
+  local text="$1"
+  local input_tokens="${2:-0}"
+  local transcript="$(dirname "$TRACE_LOG")/transcript-${RANDOM}-${RANDOM}.jsonl"
+  printf '{"type":"assistant","message":{"usage":{"input_tokens":%d,"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"content":[{"type":"text","text":"%s"}]}}\n' \
+    "$input_tokens" "$text" > "$transcript"
+  printf '{"stop_reason":"end_turn","transcript_path":"%s"}' "$transcript"
+}
+
 mkdir -p "$(dirname "$TRACE_LOG")"
 
 echo "=== stop-deflection-guard.sh tests ==="
@@ -95,6 +106,9 @@ check "i: fresh-session phrase DENY" 2 \
 #     (must not re-block a Stop-hook continuation, per Claude Code docs)
 check "i2: stop_hook_active continuation ALLOW (no re-block)" 0 \
   "$(printf '{"stop_hook_active":true,"stop_reason":"end_turn","usage":{"input_tokens":5000,"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"transcript":[{"role":"assistant","content":[{"type":"text","text":"Let us start a fresh session to tackle this cleanly."}]}]}')"
+
+check "i3: production transcript_path payload DENY" 2 \
+  "$(payload_file_with_usage "Let us start a fresh session to tackle this cleanly." 5000)"
 
 # j: trace-log line written: after invocations, the log file must exist and contain a pipe-separated line
 if [[ -f "$TRACE_LOG" ]]; then

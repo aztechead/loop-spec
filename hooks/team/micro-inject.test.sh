@@ -48,6 +48,13 @@ check_output "j: LOOP_SPEC_AUTONOMOUS=0 -> still injects" 0 "MICRO MODE ACTIVE" 
 # --- directive carries a runnable ledger path (plugin-root resolved) ---
 check_output "k: directive embeds adhoc-ledger.sh path" 0 "adhoc-ledger.sh" CLAUDE_PROJECT_DIR="$LS"
 check_output "l: CLAUDE_PLUGIN_ROOT honored in path" 0 "/opt/fake-root/lib/adhoc-ledger.sh" CLAUDE_PROJECT_DIR="$LS" CLAUDE_PLUGIN_ROOT="/opt/fake-root"
+check_output "m: directive requires post-change grounding review" 0 "post-change grounding review" CLAUDE_PROJECT_DIR="$LS"
+check_output "n: pi directive uses pi micro command" 0 "/skill:micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=pi
+check_output "o: pi directive uses pi intake command" 0 "/skill:intake" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=pi
+check_no_pattern "p: pi directive omits Claude micro command" 0 "/loop-spec:micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=pi
+check_output "q: opencode directive uses native micro command" 0 "/loop-spec/micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
+check_output "r: opencode directive uses native intake command" 0 "/loop-spec/intake" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
+check_no_pattern "s: opencode directive omits Claude micro command" 0 "/loop-spec:micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

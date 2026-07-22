@@ -39,6 +39,10 @@ Invoked when feature.json currentPhase == "verify".
 
 ## Procedure
 
+VERIFY enforces `skills/shared/verification-grounding.md`: repository grounding and
+executed validation are separate mandatory gates. Neither a green command nor a refreshed
+Graphify map substitutes for post-change `file:line` evidence tied to each criterion.
+
 ### Step 0 - Regression gate (opt-in)
 
 This scan re-runs every prior completed feature's test commands serially and is **advisory only** (it can never block VERIFY). Because that serial cost sits in front of the fail-fast marker scan and the parallel team, it is **off by default**; enable it with `LOOP_SPEC_REGRESSION_SCAN=1` — or let the repo's tuning overlay demand it: when suite regressions have recurred in this repo, `lib/tuning.sh` records `suite-regression` as a mandatory check and the scan runs regardless of the env opt-in (`skills/shared/tier-matrix.md` "Repo tuning overlay").
@@ -142,18 +146,33 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 Read `.loop-spec/runtime.json`. If `workflowsAvailable=true`, dispatch:
 
+**Workspace mode:** do not use the workflow path. A workspace root may not be a Git
+repository and each participating repository has its own base SHA. Use the verifier
+fallback with the per-repository contract in `references/workspace-mode.md`.
+
 ```text
 Workflow({
   scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/acceptance-verify.js",
   args: {
-    criteria: <parsed from PLAN.md acceptance section>,
+    criteria: <SPEC Good Enough bullets normalized by order to GE-001, GE-002, ... and matched to their PLAN.md verify commands>,
+    baseSha: feature.baseSha,
+    repositoryRoot: <absolute current repository root>,
+    specPath: <absolute spec_path>,
+    planPath: <absolute plan_path>,
   }
 })
 ```
 
 Persist `feature.json.activeWorkflow` before the call; clear after.
-Result shape: `{criteria: [{id, verdict, evidence, testSuiteStatus, refutes, upheld}], allPass}`.
+Result shape: `{criteria: [{id, verdict, repositoryEvidence, evidence, testSuiteStatus, refutes, upheld}], allPass}`.
 Skill writes VERIFICATION.md from this structure (one section per criterion).
+For each criterion, combine its exact `implementation: ...` and `integration: ...`
+entries into the canonical artifact row:
+`- criterion: <GE-NNN> | implementation: ... | integration: ...`.
+An empty `repositoryEvidence`, evidence without concrete `file:line` implementation and
+integration references (or an explicit reason no separate integration site exists), or
+an unsupported implementation assumption forces that criterion to `FAIL` before
+`allPass` is evaluated.
 
 Test-regression remediation routing is preserved by reading
 `criteria[].testSuiteStatus`: any `"FAIL"` → trigger the same remediation branch
@@ -175,7 +194,7 @@ Resolve the test/lint/typecheck commands from `feature.json.commands` and pass t
 ```
 SendMessage({
   to: "verifier-1",
-  message: "Run every acceptance criterion's verify command from PLAN.md. Gate ONLY on the SPEC 'Good Enough' success criteria; report 'Exceptional' (stretch) criteria as informational, never as a FAIL. Write VERIFICATION.md to docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', message: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
+  message: "Apply skills/shared/verification-grounding.md, then run every acceptance criterion's verify command from PLAN.md. Inspect git diff {baseSha}..HEAD and current files. For every Good Enough criterion write exactly one VERIFICATION.md row: '- criterion: <id> | implementation: <repo-relative-file>:<line> - <what it proves> | integration: <repo-relative-file>:<line> - <what it proves>'; only use 'integration: none - <concrete reason>' when no separate integration site exists. Missing/mismatched grounding is FAIL even when the command passes. Gate ONLY on Good Enough; Exceptional is informational. When complete, SendMessage({to: 'lead', message: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
   // also include: slug, spec_path, plan_path, branch, baseSha,
   //   and the resolved commands: test="<feature.commands.test>", lint="<feature.commands.lint>", typecheck="<feature.commands.typecheck>"
 })
@@ -228,6 +247,25 @@ SendMessage({
 
 Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates before proceeding.
 
+Before trusting either the workflow result or `VERIFIER DONE`, run the deterministic
+artifact gate. The linter derives `GE-001`, `GE-002`, and so on directly from SPEC's
+ordered Good Enough bullets. In single-repo mode use the current repository root; in
+workspace mode use the workspace root so evidence paths can include each repository's
+relative path:
+
+```bash
+grounding_args=(--repo "${feature_workspace_root:-$(git rev-parse --show-toplevel)}")
+
+bash "${CLAUDE_SKILL_DIR}/../../lib/verification-grounding-lint.sh" \
+  "docs/loop-spec/features/${slug}/VERIFICATION.md" "${grounding_args[@]}" \
+  --spec "$spec_path"
+```
+
+Exit 1 is a verifier `FAIL` regardless of the reported status or green commands. Preserve
+the emitted `FLAG` lines as the failure evidence and route through the normal acceptance
+remediation branch. This gate is mandatory when workflows are unavailable, which is the
+normal pi/OpenCode path; prompt compliance alone never clears VERIFY.
+
 #### verifier-1 gate
 
 **If verifier reports `ALL_PASS` AND `Test suite status: PASS` (or `N/A`):** proceed to code-reviewer gate below.
@@ -245,6 +283,8 @@ Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates b
 - Route to `loop-spec:execute`.
 
 **If verifier reports `FAIL`:**
+- This includes any failed grounding gate: absent/stale `repositoryEvidence`, an
+  unsupported assumption, or repository evidence that contradicts the implementation.
 - Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"acceptance"}' || true`
 - Discard code-reviewer output for this iteration.
 - For each failed criterion, generate a remediation task:

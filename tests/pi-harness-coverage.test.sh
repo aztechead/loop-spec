@@ -61,6 +61,7 @@ checks=(
   # -- micro mode: the SessionStart directive is bridged to pi (the Stop-time
   #    adhoc-verify-guard is CC-only; pi has no blocking stop event)
   "extensions/pi/loop-spec.ts	micro-inject.sh"
+  "skills/shared/pi-harness.md	directive-only"
   # -- capability scripts are pi-gated (the bash side of the same contract)
   "lib/teams-capability.sh	harness.sh"
   "lib/workflow-availability.sh	harness.sh"

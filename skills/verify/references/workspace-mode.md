@@ -30,7 +30,7 @@ done
 ```
 SendMessage({
   to: "verifier-1",
-  message: "Run every acceptance criterion's verify command from PLAN.md. This is a workspace feature. For each repo listed below, run its own commands with cwd set to that repo's absolute path. Gate ONLY on the SPEC 'Good Enough' success criteria. Write VERIFICATION.md to {workspace_root}/docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', message: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
+  message: "Apply skills/shared/verification-grounding.md, then run every acceptance criterion's verify command from PLAN.md. This is a workspace feature. For each repo inspect git -C <abs-path> diff <baseSha>..HEAD, re-read changed files and integration context, then run its commands with cwd set to that repo. For every Good Enough criterion write exactly one VERIFICATION.md row: '- criterion: <id> | implementation: <workspace-relative-file>:<line> - <what it proves> | integration: <workspace-relative-file>:<line> - <what it proves>'; only use 'integration: none - <concrete reason>' when no separate site exists. Gate ONLY on Good Enough. Write VERIFICATION.md to {workspace_root}/docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', message: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
   // also include: slug, spec_path, plan_path, workspace_root,
   //   and per-repo entries for each workspace.repos[]:
   //     repo name, abs path ({workspace_root}/{repo.path}), branch (repo.branch), baseSha (repo.baseSha),
@@ -39,6 +39,8 @@ SendMessage({
 ```
 
 verifier-1 works independently. Lead waits for its completion signal.
+The lead then runs `lib/verification-grounding-lint.sh` with `--repo {workspace_root}`
+and `--spec {spec_path}` so `GE-NNN` rows derive from SPEC order before accepting `ALL_PASS`.
 
 ## Step 6 - Spawn code-reviewer-1
 

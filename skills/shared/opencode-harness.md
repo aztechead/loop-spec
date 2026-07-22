@@ -65,6 +65,14 @@ export CLAUDE_SKILL_DIR="<base directory the skill tool reported>"
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under opencode — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd. |
 
+## Ambient verification enforcement
+
+OpenCode receives the harness-specific micro SessionStart directive
+(`/loop-spec/micro`, `/loop-spec/intake`), but its ambient enforcement is directive-only:
+`session.idle` cannot veto termination, so `adhoc-verify-guard.sh` is not bridged.
+Explicit micro runs still own the full grounding/validation protocol, and full cycles use
+the deterministic `lib/verification-grounding-lint.sh` gate through the task fallback.
+
 ## Dispatch mapping rule (every one-shot `Agent` call)
 
 Under opencode, `harness.sh subagents` prints `true`: the full EXECUTE ladder
