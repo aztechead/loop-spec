@@ -31,8 +31,9 @@ usage() {
 adhoc-ledger.sh - Micro-cycle audit ledger for ad-hoc work (.loop-spec/adhoc-ledger.md).
 
 Usage:
-  adhoc-ledger.sh add --title <t> --criteria <c> --verify <cmd> --result <pass|fail|partial> [--notes <n>]
+  adhoc-ledger.sh add --title <t> --criteria <c> --verify <cmd> --result <pass|fail|partial> [--pr <url>] [--notes <n>]
       Append one entry. --criteria may be passed multiple times (one bullet each).
+      --pr records the delivery PR URL (terminal feedback check contract).
       Prints "added" on stdout.
 
   adhoc-ledger.sh list [--limit <n>]
@@ -52,7 +53,7 @@ require_value() {
 }
 
 cmd_add() {
-  local title="" verify="" result="" notes=""
+  local title="" verify="" result="" notes="" pr=""
   local -a criteria=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -61,6 +62,7 @@ cmd_add() {
       --verify)   require_value "$1" $#; verify="$2"; shift 2;;
       --result)   require_value "$1" $#; result="$2"; shift 2;;
       --notes)    require_value "$1" $#; notes="$2"; shift 2;;
+      --pr)       require_value "$1" $#; pr="$2"; shift 2;;
       *) echo "adhoc-ledger.sh: unknown flag '$1'" >&2; exit 2;;
     esac
   done
@@ -85,6 +87,7 @@ cmd_add() {
       printf -- '- criteria: %s\n' "$c"
     done
     printf -- '- verify: `%s` → %s\n' "$verify" "$result"
+    [[ -n "$pr" ]] && printf -- '- pr: %s\n' "$pr"
     [[ -n "$notes" ]] && printf -- '- notes: %s\n' "$notes"
   } >> "$LEDGER_FILE"
 

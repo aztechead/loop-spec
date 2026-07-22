@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # pr-comments.sh - Fetch and normalize GitHub PR review feedback into a stable
-# JSON shape for /loop-spec:revise. Read-only; never mutates the PR.
+# JSON shape for /loop-spec:revise and the terminal PR feedback check
+# (skills/shared/pr-feedback-check.md). Read-only; never mutates the PR.
 #
 # Usage:
 #   pr-comments.sh fetch <pr-number> [--repo <owner/repo>] [--include-resolved]
 #   pr-comments.sh fetch --fixture <file> [--include-resolved]
+#   pr-comments.sh summary <pr-number> [--repo <owner/repo>]
+#   pr-comments.sh summary --fixture <file>
 #
 # Output: a JSON array on stdout, one element per feedback item:
 #   [{
@@ -17,6 +20,15 @@
 #     "resolved": true|false,           # review threads only; false when unknown
 #     "url":      "<html url or null>"
 #   }]
+#
+# `summary` wraps the same items in one feedback-check object (the shape every
+# cycle type's terminal PR check consumes):
+#   {"reviewDecision": "APPROVED|CHANGES_REQUESTED|REVIEW_REQUIRED|NONE",
+#    "changesRequested": bool, "requestedReviewers": ["<login-or-team-slug>"],
+#    "unresolved": <count of items>, "items": [...]}
+# Live decision/requests come from `gh pr view --json reviewDecision,reviewRequests`;
+# a failed metadata call degrades loudly to reviewDecision "NONE" on stderr.
+# Fixture mode reads optional top-level "reviewDecision" / "reviewRequests" keys.
 #
 # Resolved detection: review-comment thread state comes from the GraphQL
 # reviewThreads API. When that call fails (no auth scope, GHE, offline) the
@@ -35,7 +47,10 @@ set -uo pipefail
 _die2() { echo "pr-comments.sh: $*" >&2; exit 2; }
 
 cmd="${1:-}"
-[[ "$cmd" == "fetch" ]] || _die2 "unknown subcommand '${cmd:-}' (usage: pr-comments.sh fetch <pr-number> [--repo <o/r>] [--include-resolved] | fetch --fixture <file>)"
+case "$cmd" in
+  fetch|summary) ;;
+  *) _die2 "unknown subcommand '${cmd:-}' (usage: pr-comments.sh fetch|summary <pr-number> [--repo <o/r>] [--include-resolved] | fetch|summary --fixture <file>)" ;;
+esac
 shift
 
 PR=""
@@ -94,9 +109,31 @@ _normalize() {
   '
 }
 
+# _summarize <items-json> <meta-json>: compose the terminal feedback-check object.
+# meta carries {reviewDecision, reviewRequests} from gh pr view or the fixture.
+_summarize() {
+  jq -cn --argjson items "$1" --argjson meta "$2" '
+    (($meta.reviewDecision // "") | if . == "" then "NONE" else . end) as $decision |
+    {
+      reviewDecision: $decision,
+      changesRequested: ($decision == "CHANGES_REQUESTED"),
+      requestedReviewers: [($meta.reviewRequests // [])[] | (.login // .name // .slug // "unknown")],
+      unresolved: ($items | length),
+      items: $items
+    }
+  '
+}
+
 if [[ -n "$FIXTURE" ]]; then
   [[ -f "$FIXTURE" ]] || { echo "pr-comments.sh: fixture file not found: $FIXTURE" >&2; exit 1; }
-  _normalize < "$FIXTURE" || { echo "pr-comments.sh: fixture is not valid JSON" >&2; exit 1; }
+  items="$(_normalize < "$FIXTURE")" || { echo "pr-comments.sh: fixture is not valid JSON" >&2; exit 1; }
+  if [[ "$cmd" == "summary" ]]; then
+    meta="$(jq -c '{reviewDecision: (.reviewDecision // ""), reviewRequests: (.reviewRequests // [])}' "$FIXTURE")" \
+      || { echo "pr-comments.sh: fixture is not valid JSON" >&2; exit 1; }
+    _summarize "$items" "$meta"
+  else
+    printf '%s\n' "$items"
+  fi
   exit 0
 fi
 
@@ -136,10 +173,24 @@ else
   echo "pr-comments.sh: reviewThreads GraphQL unavailable — treating every thread as unresolved" >&2
 fi
 
-jq -cn \
+items="$(jq -cn \
   --argjson reviewComments "$review_comments" \
   --argjson reviews "$reviews" \
   --argjson issueComments "$issue_comments" \
   --argjson resolvedIds "$resolved_ids" \
   '{reviewComments: $reviewComments, reviews: $reviews,
-    issueComments: $issueComments, resolvedIds: $resolvedIds}' | _normalize
+    issueComments: $issueComments, resolvedIds: $resolvedIds}' | _normalize)"
+
+if [[ "$cmd" == "summary" ]]; then
+  # Review decision + requested reviewers; degrade loudly, never silently.
+  meta="$(gh pr view "$PR" --repo "$REPO" --json reviewDecision,reviewRequests 2>/dev/null \
+    | jq -c '{reviewDecision: (.reviewDecision // ""), reviewRequests: (.reviewRequests // [])}')" \
+    || meta=""
+  if [[ -z "$meta" ]]; then
+    echo "pr-comments.sh: gh pr view metadata unavailable — reporting reviewDecision NONE" >&2
+    meta='{"reviewDecision":"","reviewRequests":[]}'
+  fi
+  _summarize "$items" "$meta"
+else
+  printf '%s\n' "$items"
+fi
