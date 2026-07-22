@@ -177,10 +177,18 @@ CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
 3. Complete BUG.md (`## Fix` — root cause, mechanism, why this change is sufficient)
    and commit: BUG.md + fix + regression test on `fix/{slug}`, message
    `fix: {symptom summary}` with body naming the root cause.
-4. Report: root cause, the fix diffstat, the regression test, and anything in
-   `## Deferred` (offer `bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add` for deferred findings). PR opening is the
-   user's call (interactive offer; autonomous: push + PR only when the repo already has
-   an origin and prior loop-spec PRs — otherwise leave the branch and say so).
+4. Deliver as a PR, then check it for feedback: push `fix/{slug}`, open the PR
+   (`gh pr create` — or reuse the branch's existing PR), and run the terminal feedback
+   check per `skills/shared/pr-feedback-check.md`
+   (`lib/pr-comments.sh summary <number>`). Requested changes still at bug scale get
+   fixed in this loop (new commit, re-check); new-mechanism asks go to `## Deferred`
+   / `/loop-spec:intake`. Keep the PR body short GitHub-flavored markdown: symptom,
+   root cause, fix summary, regression test — link BUG.md rather than inlining it.
+   No origin remote or no `gh`: degrade loudly — leave the branch, state exactly what
+   blocked the PR. Record the PR URL and check outcome in BUG.md `## Fix`.
+5. Report: root cause, the fix diffstat, the regression test, the PR URL + feedback
+   check result, and anything in
+   `## Deferred` (offer `bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add` for deferred findings).
 
 ## BUG.md format
 

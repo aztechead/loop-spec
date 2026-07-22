@@ -34,5 +34,6 @@ scan, the regression test, and BUG.md as the audit trail — is the debug skill'
 (`skills/debug/SKILL.md`). The only thing this wrapper adds is the one-shot framing:
 autonomous mode is non-negotiable here, so every strategy question self-answers with
 the recommended option and lands in BUG.md `## Decisions`, and the run reports once,
-at the end: root cause, fix diffstat, regression test, verification evidence, and any
+at the end: root cause, fix diffstat, regression test, verification evidence, the
+delivery PR + its feedback-check result (`skills/shared/pr-feedback-check.md`), and any
 deferred findings.

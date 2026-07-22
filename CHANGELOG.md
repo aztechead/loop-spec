@@ -2,6 +2,32 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.21.0]
+
+### Added - terminal PR feedback check across every cycle type
+
+- New shared contract `skills/shared/pr-feedback-check.md`: every cycle type
+  (`/loop-spec:cycle` via DELIVER Step 4, `/loop-spec:micro` protocol step 6,
+  `/loop-spec:debug` Step 4) now ends by opening a PR and checking it for
+  reviews, comments, and requested changes. `changesRequested` routes to
+  `/loop-spec:revise` (cycle) or an in-loop fix (micro/debug); degradation is
+  loud, never silent. Pinned by `tests/pr-feedback-coverage.test.sh`.
+- `lib/pr-comments.sh summary` — one JSON feedback-check object per PR
+  (reviewDecision, changesRequested, requestedReviewers, unresolved, items),
+  fixture-testable offline like `fetch`.
+- Micro-cycle now delivers as a PR (branch, push, create/reuse) with the ledger
+  binding the entry to it (`lib/adhoc-ledger.sh add --pr <url>`); debug always
+  pushes `fix/{slug}` and opens the PR instead of leaving it to a per-run choice.
+
+### Changed - concise GFM PR bodies
+
+- Extracted the delivery PR body renderer to `lib/pr-body.sh`: bounded
+  Summary/Acceptance/Verification/Convergence excerpts plus links to the
+  committed artifacts, instead of inlining whole SPEC/VERIFICATION/ITERATION
+  files. Artifact headings are demoted so the body keeps one clean H2 outline,
+  code fences are always balanced, and the hard cap (~10 KB, down from 60 KB)
+  truncates at a line boundary with an explicit notice.
+
 ## [2.20.1]
 
 ### Added - assistant-authenticated Graphify lifecycle

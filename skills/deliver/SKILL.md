@@ -90,8 +90,9 @@ When `delivery_rc == 0`, `.status == "ready-for-review"`, and
 `.nextPhase == "completed"`:
 
 The adapter leaves tracked `feature.json.currentPhase = "deliver"` and writes logical
-completion to `delivery.json`, keeping the checked branch clean. Return to cycle; its
-router treats sidecar `nextPhase=completed` as the terminal transition. **Do not commit
+completion to `delivery.json`, keeping the checked branch clean. Run the Step 4
+feedback check, then return to cycle; its router treats sidecar `nextPhase=completed`
+as the terminal transition. **Do not commit
 or push after the controller succeeds.** The PR head just proved is the immutable delivered SHA;
 any post-delivery commit would invalidate both its local verification and CI result.
 The local sidecar/result are the observation record. The committed branch remains
@@ -140,9 +141,32 @@ Autonomous mode follows the same fail-closed rule. It may remediate an actual fa
 check, but it cannot self-approve a missing remote, ambiguous PR identity, moved head,
 or unavailable required-check oracle.
 
+### Step 4 - Terminal PR feedback check (ready-for-review only)
+
+Every cycle type ends by opening a PR **and checking it for reviews, comments, and
+requested changes** — the shared contract is `skills/shared/pr-feedback-check.md`.
+After the ready-for-review route (and only there), run the check once per delivered
+target:
+
+```bash
+jq -c '.targets[] | select(.prNumber != null)' "$fdir/delivery.json" | while read -r t; do
+  pr_number="$(jq -r '.prNumber' <<<"$t")"
+  repo="$(jq -r '.repo // empty' <<<"$t")"
+  bash "${CLAUDE_SKILL_DIR}/../../lib/pr-comments.sh" summary "$pr_number" ${repo:+--repo "$repo"}
+done
+```
+
+Route the result per the shared contract: `changesRequested` → print the items and
+recommend `/loop-spec:revise <pr-number>` (autonomous: record in result warnings, never
+self-approve); unresolved items without a blocking decision → list them; clean → the
+one-line clean report. The check is read-only and never mutates the delivered SHA or
+the sidecar's `nextPhase`. A metadata failure degrades loudly per the contract — relay
+the stderr note, never claim clean.
+
 ## Resume
 
 Re-run Step 2. The controller pushes the same explicit SHA, finds the existing PR by
 branch or persisted URL, updates metadata only when changed, and never creates a
 duplicate. A ready PR with the same verified SHA and green required checks is a no-op
-success.
+success (Step 4's feedback check still runs — a resumed completion is exactly when
+review feedback is likely to have arrived).
