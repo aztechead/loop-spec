@@ -1,8 +1,15 @@
 # Prerequisites
 
+## Base runtime
+
+Every harness requires `bash >= 4`, `git`, `jq >= 1.5`, and `python3 >= 3.6`.
+`lib/runtime-preflight.sh` checks jq before cycle, auto, debug, micro, and OpenCode
+installer paths use it, so a missing or old binary fails once with installation guidance
+instead of producing mid-run command errors.
+
 ## Graphify assistant skill
 
-Graphify is the one hard external dependency. Install its Python 3.10+ package, then
+Graphify is the one hard external assistant dependency. Install its Python 3.10+ package, then
 register the platform-specific assistant skill:
 
 ```bash
@@ -49,7 +56,8 @@ Set this before launching `claude` or add it to the `env` section of your `.clau
 > **Agent teams are an accelerator, not a hard requirement.** When the flag is
 > unset (or its tools are unavailable), the cycle still runs end-to-end on the
 > no-teams fallback (one-shot `Agent` dispatch; EXECUTE uses the loop-fleet or
-> subagent rung). Only graphify is a hard startup requirement.
+> subagent rung). Graphify remains the only hard assistant startup requirement; the base
+> runtime dependencies above are also mandatory.
 
 ### Two harness generations (the cycle auto-detects)
 

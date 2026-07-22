@@ -53,6 +53,8 @@ cmd="${1:-}"
 }
 dir="${2:-$PWD}"
 [[ -d "$dir" ]] || { echo "cycle-preflight: no such directory: $dir" >&2; exit 1; }
+bash "$SCRIPT_DIR/cycle-result.sh" clear --result-root "$dir"
+bash "$SCRIPT_DIR/runtime-preflight.sh" check-jq
 
 warnings=()
 

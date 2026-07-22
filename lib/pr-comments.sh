@@ -72,14 +72,14 @@ _normalize() {
   jq -c --argjson include_resolved "$INCLUDE_RESOLVED" '
     (.resolvedIds // []) as $resolved |
     (
-      ((.reviewComments // []) | map({
-        id: .id,
+      ((.reviewComments // []) | map(.id as $id | {
+        id: $id,
         kind: "review_comment",
         path: (.path // null),
         line: (.line // .original_line // null),
         author: (.user.login // "unknown"),
         body: (.body // ""),
-        resolved: (IN(.id; $resolved[])),
+        resolved: (($resolved | index($id)) != null),
         url: (.html_url // null)
       }))
       +
@@ -110,12 +110,13 @@ _normalize() {
 }
 
 # _summarize <items-json> <meta-json>: compose the terminal feedback-check object.
-# meta carries {reviewDecision, reviewRequests} from gh pr view or the fixture.
+# meta carries {reviewDecision, reviewRequests, metadataStatus} from gh pr view or the fixture.
 _summarize() {
   jq -cn --argjson items "$1" --argjson meta "$2" '
     (($meta.reviewDecision // "") | if . == "" then "NONE" else . end) as $decision |
     {
       reviewDecision: $decision,
+      metadataStatus: ($meta.metadataStatus // "complete"),
       changesRequested: ($decision == "CHANGES_REQUESTED"),
       requestedReviewers: [($meta.reviewRequests // [])[] | (.login // .name // .slug // "unknown")],
       unresolved: ($items | length),
@@ -128,7 +129,7 @@ if [[ -n "$FIXTURE" ]]; then
   [[ -f "$FIXTURE" ]] || { echo "pr-comments.sh: fixture file not found: $FIXTURE" >&2; exit 1; }
   items="$(_normalize < "$FIXTURE")" || { echo "pr-comments.sh: fixture is not valid JSON" >&2; exit 1; }
   if [[ "$cmd" == "summary" ]]; then
-    meta="$(jq -c '{reviewDecision: (.reviewDecision // ""), reviewRequests: (.reviewRequests // [])}' "$FIXTURE")" \
+    meta="$(jq -c '{reviewDecision: (.reviewDecision // ""), reviewRequests: (.reviewRequests // []), metadataStatus:"complete"}' "$FIXTURE")" \
       || { echo "pr-comments.sh: fixture is not valid JSON" >&2; exit 1; }
     _summarize "$items" "$meta"
   else
@@ -184,11 +185,11 @@ items="$(jq -cn \
 if [[ "$cmd" == "summary" ]]; then
   # Review decision + requested reviewers; degrade loudly, never silently.
   meta="$(gh pr view "$PR" --repo "$REPO" --json reviewDecision,reviewRequests 2>/dev/null \
-    | jq -c '{reviewDecision: (.reviewDecision // ""), reviewRequests: (.reviewRequests // [])}')" \
+    | jq -c '{reviewDecision: (.reviewDecision // ""), reviewRequests: (.reviewRequests // []), metadataStatus:"complete"}')" \
     || meta=""
   if [[ -z "$meta" ]]; then
     echo "pr-comments.sh: gh pr view metadata unavailable — reporting reviewDecision NONE" >&2
-    meta='{"reviewDecision":"","reviewRequests":[]}'
+    meta='{"reviewDecision":"","reviewRequests":[],"metadataStatus":"degraded"}'
   fi
   _summarize "$items" "$meta"
 else

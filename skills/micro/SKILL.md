@@ -1,8 +1,9 @@
 ---
 name: micro
-description: Micro-cycle for small, ad-hoc tasks — the cycle's five invariants (stated done-criteria, grounded claims, test-first, evidence-before-done, mistakes-become-rules) enforced inline on the main thread with zero agent ceremony. Give it a small task and it runs the protocol directly, ending like every cycle type — work delivered as a PR that is then checked for reviews/comments/requested changes; or toggle micro mode (on/off/status), which controls the micro-inject SessionStart directive and the adhoc-verify-guard Stop hook. Escalates to /loop-spec:intake when the task outgrows ad-hoc scale.
-argument-hint: "[small task description | on | off | status]"
+description: Micro-cycle for small, ad-hoc tasks — the cycle's five invariants (stated done-criteria, grounded claims, test-first, evidence-before-done, mistakes-become-rules) enforced inline on the main thread with zero agent ceremony. Give it a small task and it runs the protocol directly, ending like every cycle type — work delivered as a PR that is then checked for reviews/comments/requested changes; or toggle micro mode (on/off/status), which controls the micro-inject SessionStart directive and the adhoc-verify-guard Stop hook. Honors inline autonomous mode and escalates to /loop-spec:intake when the task outgrows ad-hoc scale.
+argument-hint: "[autonomous] [small task description | on | off | status]"
 allowed-tools: Bash Read Write Edit Glob Grep Skill AskUserQuestion
+model: sonnet
 ---
 
 # loop-spec:micro
@@ -16,6 +17,8 @@ Stop gate) are the enforcement.
 ## Invocation
 
 - `/loop-spec:micro <small task description>` — run the micro-cycle protocol on the task.
+- `/loop-spec:micro autonomous <small task description>` — run question-free; strip
+  `autonomous` from the task text before deriving its title and criteria.
 - `/loop-spec:micro on|off|status` — toggle micro mode for the project (see Mode toggle).
 - Bare `/loop-spec:micro` — ask one free-text question for the task, then run the protocol.
 
@@ -31,6 +34,13 @@ hold, the task is NOT micro-scale; escalate (see Escalation):
 
 ## The protocol
 
+First, before any jq-backed hook or helper can fail mid-run:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$(git rev-parse --show-toplevel)"
+bash "${CLAUDE_SKILL_DIR}/../../lib/runtime-preflight.sh" check-jq
+```
+
 Execute directly on the main thread with base tools. Do not dispatch subagents.
 
 **1. Done-criteria first.** Before touching any file, state 1–3 bullets of what "done"
@@ -39,7 +49,7 @@ task is compound (multiple asks), enumerate criteria per ask.
 
 **2. One question, not zero, not five.** If the highest-leverage unknown would change
 what you build, ask exactly one sharp question (grill mode's single-shot form). In
-autonomous runs (`LOOP_SPEC_AUTONOMOUS=1`), self-answer with the recommended option and
+autonomous runs (inline `autonomous` token or `LOOP_SPEC_AUTONOMOUS=1`), self-answer with the recommended option and
 say so — never block.
 
 **3. Ground claims.** Any premise about external systems or unfamiliar code gets a
@@ -67,7 +77,7 @@ worktree, no DELIVER controller:
   the branch's existing PR if one exists (`gh pr view --json number,url`) or open one
   (`gh pr create`). Keep the body to the micro scale: title, the done-criteria bullets,
   the verification command + result. GitHub-flavored markdown, no phase-artifact dumps.
-- Run the terminal feedback check on the PR (`lib/pr-comments.sh summary <number>`) and
+- Run the terminal feedback check on the PR (`lib/pr-feedback.sh check <number>`) and
   route the result per the shared contract: requested changes at micro scale get fixed
   now (new commit, re-check); larger asks hand off to `/loop-spec:revise` or
   `/loop-spec:intake` — say which.
@@ -95,13 +105,36 @@ open one, the `--notes` say why instead.
 **8. Repeated mistake → rule.** If this task exposed a mistake you (or the loop) have
 made before, make it permanent: `bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "<rule>" [--check "<cmd>"]`.
 
+**9. Emit the terminal result.** Every terminal path writes the shared compatibility
+record after ledger/PR/feedback side effects finish. Resolve `result_root` with
+`git rev-parse --show-toplevel`, the current `branch`, detected `base_branch`, task
+slug/title, actual verification command, and PR URL. Then call:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+  --result-root "$result_root" --cycle-type micro \
+  --status "<completed|failed|escalated>" --outcome "<verified|verification-failed|delivery-blocked|promoted-to-full>" \
+  --slug "$slug" --title "$title" --branch "$branch" --base-branch "$base_branch" \
+  --pr-url "$pr_url" --converged "<true|false>" \
+  --verification-status "<passed|failed|not-run>" --verification-command "$verify_command" \
+  --autonomous "<true|false>"
+```
+
+`converged=true` requires both passed verification and a PR URL. The writer emits one
+`LOOP_SPEC_RESULT {...}` line and atomically updates `.loop-spec/last-result.json`.
+Do not claim success if result emission warns; report the observability failure.
+
 ## Escalation
 
 When a "When this skill applies" bound is crossed mid-task, stop expanding scope and
 promote losslessly: write what you have (the stated done-criteria, probe results,
 open questions) into a short prose brief and invoke `Skill(loop-spec:intake)` with it —
 the intake skill converts it into a cycle-ready spec draft and starts `/loop-spec:cycle`.
+When this micro run is autonomous (inline token or environment), pass `autonomous` before
+the brief so intake and the resulting full cycle remain question-free.
 Record a `partial` ledger entry with `--notes "escalated to cycle"` before handing off.
+Emit the Step 9 `escalated/promoted-to-full` result before delegation; the full cycle
+will replace the stable pointer with its final terminal result.
 
 ## Mode toggle
 

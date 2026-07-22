@@ -15,6 +15,7 @@ dirty_repos=()
 for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   rname="$(echo "$repo_entry" | jq -r '.name')"
   rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
+  bash "${CLAUDE_SKILL_DIR}/../../lib/runtime-ignore.sh" ensure "$rpath"
   clean_state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$rpath" ensure-clean-or-stash 2>/dev/null)"
   if [[ "$clean_state" != "clean" ]]; then
     dirty_repos+=("$rname ($rpath)")

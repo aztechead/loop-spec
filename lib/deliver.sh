@@ -91,12 +91,14 @@ invoke_delivery() {
 }
 
 append_target_failure() {
-  local name="$1" path="$2" branch="$3" base="$4" sha="$5" hint="$6" code="$7" message="$8"
+  local name="$1" path="$2" branch="$3" base="$4" sha="$5" hint="$6" code="$7" message="$8" observed="${9:-}" bindable="${10:-false}"
   local record
   record="$(jq -cn --arg name "$name" --arg path "$path" --arg branch "$branch" \
-    --arg base "$base" --arg sha "$sha" --arg hint "$hint" --arg code "$code" --arg error "$message" \
+    --arg base "$base" --arg sha "$sha" --arg hint "$hint" --arg code "$code" --arg error "$message" --arg observed "$observed" --argjson bindable "$bindable" \
     '{schema:1,ok:false,mode:"final",outcome:"blocked",name:$name,path:$path,repo:null,
       branch:$branch,baseBranch:$base,targetSha:(if $sha == "" then null else $sha end),
+      observedSha:(if $observed == "" then null else $observed end),
+      bindingEligible:$bindable,
       remoteSha:null,headSha:null,prNumber:null,prUrl:(if $hint == "" then null else $hint end),
       prAction:"none",metadataAction:"none",readinessAction:"none",isDraft:null,
       checks:{status:"not-run",required:[]},observedAt:null,errorCode:$code,error:$error}')"
@@ -118,11 +120,21 @@ bound_target_sha() {
   local name="$1"
   [[ "$prior_next" == "deliver" || "$prior_next" == "completed" ]] || return 0
   jq -r --arg n "$name" \
-    '[.[] | select(.name == $n and (.targetSha // "") != "") | .targetSha] | first // empty' \
+    'def local_error: ["repo_invalid","repo_root_mismatch","branch_mismatch","git_status_failed",
+       "dirty_worktree","base_sha_missing","base_sha_invalid","base_not_ancestor","no_commits",
+       "git_history_failed","local_artifact_policy_failed"];
+     [.[] | select(.name == $n and (.targetSha // "") != "") as $target
+      | select($target.bindingEligible == true or
+          (($target | has("bindingEligible") | not) and ((local_error | index($target.errorCode // "")) == null)))
+      | .targetSha] | first // empty' \
     <<<"$prior_targets"
 }
 
 if [[ -z "$workspace_root" ]]; then
+  bash "$SCRIPT_DIR/runtime-ignore.sh" ensure "$artifact_root" >/dev/null || {
+    echo "deliver: failed to install local-artifact exclusions" >&2
+    exit 2
+  }
   branch="$(jq -r '.branch // empty' "$feature_json")"
   base_branch="$(jq -r '.baseBranch // "main"' "$feature_json")"
   base_sha="$(jq -r '.baseSha // empty' "$feature_json")"
@@ -137,7 +149,9 @@ if [[ -z "$workspace_root" ]]; then
   repo_top="$(git -C "$artifact_root" rev-parse --show-toplevel 2>/dev/null || true)"
   actual_branch="$(git -C "$artifact_root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
   target_sha="$(git -C "$artifact_root" rev-parse --verify HEAD 2>/dev/null || true)"
-  dirty_state="$(git -C "$artifact_root" status --porcelain --untracked-files=all 2>/dev/null || true)"
+  dirty_state=""
+  status_ok=1
+  dirty_state="$(git -C "$artifact_root" status --porcelain --untracked-files=all 2>/dev/null)" || status_ok=0
   if [[ -z "$target_sha" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "" "$hint" \
       "git_history_failed" "cannot resolve feature HEAD"
@@ -149,10 +163,6 @@ if [[ -z "$workspace_root" ]]; then
   elif [[ -n "$branch" && "$actual_branch" != "$branch" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
       "branch_mismatch" "checkout is on '$actual_branch', expected '$branch'"
-    preflight_ok=0
-  elif [[ -n "$dirty_state" ]]; then
-    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
-      "dirty_worktree" "candidate repository has uncommitted changes"
     preflight_ok=0
   elif [[ -z "$base_sha" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
@@ -170,18 +180,26 @@ if [[ -z "$workspace_root" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
       "no_commits" "feature branch has no commits past its recorded base"
     preflight_ok=0
+  elif [[ "$status_ok" -ne 1 ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "git_status_failed" "cannot establish candidate worktree cleanliness" "" true
+    preflight_ok=0
+  elif [[ -n "$dirty_state" ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "dirty_worktree" "candidate repository has uncommitted changes" "" true
+    preflight_ok=0
   fi
 
   if [[ "$preflight_ok" -eq 1 ]]; then
     bound="$(bound_target_sha "$slug")"
     if [[ -n "$bound" && "$bound" != "$target_sha" ]]; then
-      append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
-        "candidate_sha_drift" "HEAD '$target_sha' drifted from the SHA the prior attempt verified '$bound'"
+      append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$bound" "$hint" \
+        "candidate_sha_drift" "HEAD '$target_sha' drifted from the SHA the prior attempt verified '$bound'" "$target_sha" true
     else
       result_rc=0
       result="$(invoke_delivery "$artifact_root" "$branch" "$base_branch" "$target_sha" \
         "feat: $feature_title" "$hint")" || result_rc=$?
-      record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path}' <<<"$result")"
+      record="$(jq -c --arg name "$slug" --arg path "$artifact_root" '. + {name:$name,path:$path,bindingEligible:true}' <<<"$result")"
       targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
     fi
   fi
@@ -208,6 +226,11 @@ else
       continue
     fi
     repo_abs="$(cd "$repo_dir" && pwd -P)"
+    if ! bash "$SCRIPT_DIR/runtime-ignore.sh" ensure "$repo_dir" >/dev/null; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
+        "local_artifact_policy_failed" "cannot install local-artifact exclusions"
+      continue
+    fi
     repo_top="$(git -C "$repo_dir" rev-parse --show-toplevel 2>/dev/null || true)"
     if [[ "$repo_top" != "$repo_abs" ]]; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
@@ -220,18 +243,15 @@ else
         "branch_mismatch" "workspace target is on '$actual_branch', expected '$branch'"
       continue
     fi
-    dirty_state="$(git -C "$repo_dir" status --porcelain --untracked-files=all 2>/dev/null || true)"
-    if [[ -n "$dirty_state" ]]; then
-      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
-        "dirty_worktree" "workspace target has uncommitted changes"
-      continue
-    fi
+    target_sha="$(git -C "$repo_dir" rev-parse --verify HEAD 2>/dev/null || true)"
+    dirty_state=""
+    status_ok=1
+    dirty_state="$(git -C "$repo_dir" status --porcelain --untracked-files=all 2>/dev/null)" || status_ok=0
     if ! git -C "$repo_dir" rev-parse --verify "${base_sha}^{commit}" >/dev/null 2>&1; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
         "base_sha_invalid" "workspace base SHA is not a local commit"
       continue
     fi
-    target_sha="$(git -C "$repo_dir" rev-parse --verify HEAD 2>/dev/null || true)"
     if [[ -n "$target_sha" ]] && ! git -C "$repo_dir" merge-base --is-ancestor "$base_sha" "$target_sha"; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
         "base_not_ancestor" "workspace base SHA is not an ancestor of the candidate"
@@ -240,6 +260,16 @@ else
     if [[ -z "$target_sha" ]] || ! commit_count="$(git -C "$repo_dir" rev-list --count "${base_sha}..${target_sha}" 2>/dev/null)"; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
         "git_history_failed" "cannot compare workspace target with its recorded base"
+      continue
+    fi
+    if [[ "$status_ok" -ne 1 ]]; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
+        "git_status_failed" "cannot establish workspace worktree cleanliness" "" true
+      continue
+    fi
+    if [[ -n "$dirty_state" ]]; then
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
+        "dirty_worktree" "workspace target has uncommitted changes" "" true
       continue
     fi
     if [[ "$commit_count" -eq 0 ]]; then
@@ -254,8 +284,8 @@ else
     fi
     bound="$(bound_target_sha "$name")"
     if [[ -n "$bound" && "$bound" != "$target_sha" ]]; then
-      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
-        "candidate_sha_drift" "HEAD '$target_sha' drifted from the SHA the prior attempt verified '$bound'"
+      append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$bound" "$hint" \
+        "candidate_sha_drift" "HEAD '$target_sha' drifted from the SHA the prior attempt verified '$bound'" "$target_sha" true
       continue
     fi
     deliverables="$(jq -c --arg name "$name" --arg path "$repo_dir" --arg branch "$branch" \
@@ -270,7 +300,7 @@ else
       append_target_failure "$(jq -r '.name' <<<"$entry")" "$(jq -r '.path' <<<"$entry")" \
         "$(jq -r '.branch' <<<"$entry")" "$(jq -r '.base' <<<"$entry")" \
         "$(jq -r '.sha' <<<"$entry")" "$(jq -r '.hint' <<<"$entry")" \
-        "workspace_preflight_failed" "another workspace target failed local preflight"
+        "workspace_preflight_failed" "another workspace target failed local preflight" "" true
     done < <(jq -c '.[]' <<<"$deliverables")
     deliverables="[]"
   fi
@@ -287,7 +317,7 @@ else
     sha="$(jq -r '.sha' <<<"$entry")"; hint="$(jq -r '.hint' <<<"$entry")"
     result="$(invoke_delivery "$path" "$branch" "$base" "$sha" \
       "feat: $feature_title ($name)" "$hint" "$hold" "$restore")" || result_rc=$?
-    record="$(jq -c --arg name "$name" --arg path "$path" '. + {name:$name,path:$path}' <<<"$result")"
+    record="$(jq -c --arg name "$name" --arg path "$path" '. + {name:$name,path:$path,bindingEligible:true}' <<<"$result")"
     targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
     return "$result_rc"
   }

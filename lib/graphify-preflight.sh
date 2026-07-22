@@ -30,6 +30,7 @@
 #                              hatch for constrained environments). Default: required.
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 GRAPHIFY_BIN="${GRAPHIFY_BIN:-graphify}"
 
@@ -94,7 +95,7 @@ graph_is_usable() {
 }
 
 stage_graph() {
-  local dir="${1%/}" exclude marker
+  local dir="${1%/}"
   [[ -d "$dir/graphify-out" ]] || {
     echo "loop-spec: no graphify-out directory to stage under $dir" >&2
     return 1
@@ -104,33 +105,9 @@ stage_graph() {
     return 1
   }
 
-  # Graphify recommends committing its outputs, but these paths are explicitly
-  # local or disposable. Keep the policy clone-local so loop-spec does not
-  # rewrite a consumer repository's .gitignore.
-  exclude="$(git -C "$dir" rev-parse --path-format=absolute --git-path info/exclude)"
-  marker="# loop-spec graphify local artifacts"
-  if [[ ! -f "$exclude" ]] || [[ "$(<"$exclude")" != *"$marker"* ]]; then
-    printf '%s\n' \
-      "$marker" \
-      '/graphify-out/cost.json' \
-      '/graphify-out/cache/' \
-      '/graphify-out/.graphify_python' \
-      '/graphify-out/.graphify_root' \
-      '/graphify-out/.graphify_chunk_*.json' \
-      '/graphify-out/.graphify_detect*.json' \
-      '/graphify-out/.graphify_extract*.json' \
-      '/graphify-out/.graphify_ast*.json' \
-      '/graphify-out/.graphify_semantic*.json' \
-      '/graphify-out/.graphify_cached*.json' \
-      '/graphify-out/.graphify_incremental*.json' \
-      '/graphify-out/.graphify_old*.json' \
-      '/graphify-out/.graphify_uncached.txt' \
-      '/graphify-out/.graphify_pending*' \
-      '/graphify-out/.needs_update' \
-      '/graphify-out/*.tmp' \
-      '/graphify-out/*.lock' \
-      '/graphify-out/????-??-??/' >> "$exclude"
-  fi
+  # Graphify recommends committing portable outputs; one shared clone-local policy
+  # excludes disposable Graphify and loop-spec runtime artifacts idempotently.
+  bash "$SCRIPT_DIR/runtime-ignore.sh" ensure "$dir"
 
   # Migrate repositories bootstrapped by the old blanket `git add graphify-out/`.
   git -C "$dir" rm -r --cached --ignore-unmatch -q -- \

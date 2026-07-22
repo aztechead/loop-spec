@@ -134,9 +134,13 @@ For each hypothesis, in ranked order:
    re-rank hypotheses.
 5. **Scope tripwire:** the moment a correct fix demonstrably requires feature-scale
    work (schema change, cross-cutting redesign, new dependency), stop fixing. BUG.md
-   becomes the spec draft: `Skill(loop-spec:cycle)` with
+   becomes the spec draft. Emit the `escalated/promoted-to-full` terminal result described
+   below immediately before `Skill(loop-spec:cycle)` with
    `docs/loop-spec/debug/{slug}/BUG.md` as the spec-file argument (interactive: confirm
-   first; autonomous: hand off and record). The debug loop fixes bugs; it does not
+   first; autonomous: pass the `autonomous` token with the path, hand off, and record).
+   Do not emit a second debug result after delegation returns; the full cycle owns the
+   stable pointer from that point.
+   The debug loop fixes bugs; it does not
    smuggle features.
 
 ## Step 3b - SIBLING SWEEP (mandatory after CONFIRMED)
@@ -180,7 +184,7 @@ CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
 4. Deliver as a PR, then check it for feedback: push `fix/{slug}`, open the PR
    (`gh pr create` — or reuse the branch's existing PR), and run the terminal feedback
    check per `skills/shared/pr-feedback-check.md`
-   (`lib/pr-comments.sh summary <number>`). Requested changes still at bug scale get
+   (`lib/pr-feedback.sh check <number>`). Requested changes still at bug scale get
    fixed in this loop (new commit, re-check); new-mechanism asks go to `## Deferred`
    / `/loop-spec:intake`. Keep the PR body short GitHub-flavored markdown: symptom,
    root cause, fix summary, regression test — link BUG.md rather than inlining it.
@@ -189,6 +193,28 @@ CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
 5. Report: root cause, the fix diffstat, the regression test, the PR URL + feedback
    check result, and anything in
    `## Deferred` (offer `bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add` for deferred findings).
+
+## Terminal result (every exit)
+
+After the terminal BUG.md/commit/PR side effects for the selected outcome, emit the same
+machine-readable compatibility record as the full and micro cycles. Promotion is the
+exception described above: emit before delegation so the full cycle can replace it.
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+  --result-root "$(git rev-parse --show-toplevel)" --cycle-type debug \
+  --status "<completed|failed|escalated>" \
+  --outcome "<fixed|instrumented-and-waiting|promoted-to-full|verification-failed|delivery-blocked>" \
+  --slug "$slug" --title "<symptom summary>" --branch "$branch" --base-branch "$default_branch" \
+  --pr-url "$pr_url" --converged "<true|false>" \
+  --verification-status "<passed|failed|not-run>" --verification-command "$test_cmd" \
+  --autonomous "<true|false>"
+```
+
+Only `fixed` with passed verification and a PR URL is converged. Instrumented waiting,
+promotion, verification failure, and delivery failure are explicitly non-converged.
+The writer emits `LOOP_SPEC_RESULT {...}` and atomically updates the stable
+`.loop-spec/last-result.json` pointer.
 
 ## BUG.md format
 

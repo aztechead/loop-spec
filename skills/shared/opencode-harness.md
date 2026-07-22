@@ -177,7 +177,7 @@ never treat `modelID` alone as globally unique.
 | Claude Code | opencode |
 |---|---|
 | interactive session | opencode TUI (`opencode`) |
-| `claude -p` headless / autonomous mode | `opencode run --format json "<prompt>"` (or the SDK: `createOpencode()` / `createOpencodeClient()` from `@opencode-ai/sdk`, then `client.session.prompt(...)` against `opencode serve`) with `LOOP_SPEC_AUTONOMOUS=1` |
+| `claude -p` headless / autonomous mode | `opencode run --format json "Load the loop-spec-auto skill and run: <description>"` (or the SDK: `createOpencode()` / `createOpencodeClient()` from `@opencode-ai/sdk`, then `client.session.prompt(...)` against `opencode serve`; load `loop-spec-cycle` with `autonomous` to force the full cycle) |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `opencode run --format json` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli opencode` (see `skills/shared/execute-loop-fleet.md`) |
 
 Headless permission note: `opencode run` rejects permission asks. Work ticks do

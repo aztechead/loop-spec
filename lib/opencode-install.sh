@@ -45,6 +45,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+bash "$SCRIPT_DIR/runtime-preflight.sh" check-jq || exit 2
 
 _die2() { echo "opencode-install.sh: $*" >&2; exit 2; }
 

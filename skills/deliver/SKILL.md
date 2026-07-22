@@ -149,11 +149,20 @@ After the ready-for-review route (and only there), run the check once per delive
 target:
 
 ```bash
-jq -c '.targets[] | select(.prNumber != null)' "$fdir/delivery.json" | while read -r t; do
+feedback_rc=0
+while read -r t; do
+  target_name="$(jq -r '.name' <<<"$t")"
   pr_number="$(jq -r '.prNumber' <<<"$t")"
   repo="$(jq -r '.repo // empty' <<<"$t")"
-  bash "${CLAUDE_SKILL_DIR}/../../lib/pr-comments.sh" summary "$pr_number" ${repo:+--repo "$repo"}
-done
+  feedback_args=("$pr_number")
+  [[ -n "$repo" ]] && feedback_args+=(--repo "$repo")
+  fb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/pr-feedback.sh" check "${feedback_args[@]}")" \
+    || { feedback_rc=1; break; }
+  bash "${CLAUDE_SKILL_DIR}/../../lib/pr-feedback.sh" record "$fdir/delivery.json" "$target_name" "$fb" \
+    || { feedback_rc=1; break; }
+  printf '%s\n' "$fb"
+done < <(jq -c '.targets[] | select(.prNumber != null)' "$fdir/delivery.json")
+[[ "$feedback_rc" -eq 0 ]] || { echo "DELIVER: feedback persistence failed; completion blocked" >&2; false; }
 ```
 
 Route the result per the shared contract: `changesRequested` → print the items and
@@ -161,7 +170,8 @@ recommend `/loop-spec:revise <pr-number>` (autonomous: record in result warnings
 self-approve); unresolved items without a blocking decision → list them; clean → the
 one-line clean report. The check is read-only and never mutates the delivered SHA or
 the sidecar's `nextPhase`. A metadata failure degrades loudly per the contract — relay
-the stderr note, never claim clean.
+the stderr note, never claim clean. Any check or recording failure blocks completion;
+never emit a result from a sidecar that did not durably capture the observation.
 
 ## Resume
 

@@ -25,10 +25,13 @@ REPO="$WORK/repo"
 
 git -C "$REPO" init -q -b main
 git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "init"
+mkdir -p "$REPO/.loop-spec"
+printf '{}\n' > "$REPO/.loop-spec/last-result.json"
 
 # bad invocation
 ec=0; bash "$SCRIPT" init --dir "$REPO" -- >/dev/null 2>&1 || ec=$?
 check "empty symptom exits 1" "1" "$ec"
+check "entry clears stale terminal result" "0" "$([[ -f "$REPO/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 ec=0; bash "$SCRIPT" init --dir "$WORK" -- "some bug" >/dev/null 2>&1 || ec=$?
 check "non-repo exits 1" "1" "$ec"
 mkdir -p "$WORK/norepo-commits"; git -C "$WORK/norepo-commits" init -q -b main

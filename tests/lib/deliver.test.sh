@@ -262,6 +262,17 @@ check "single preflight wrong branch: structured error" "branch_mismatch" \
   "$(jq -r '.targets[0].errorCode' "$PFDIR/delivery.json")"
 check "single preflight wrong branch: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 
+# A local preflight failure does not bind an ineligible SHA. Once the branch is fixed
+# and has a valid candidate, retry may deliver it.
+git -C "$PF" checkout -q -b feat/pf
+git -C "$PF" add ".loop-spec/features/pf/feature.json"
+git -C "$PF" commit -q -m candidate
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$PFDIR")" || ec=$?
+check "single preflight retry: corrected candidate delivers" "0" "$ec"
+check "single preflight retry: controller called once" "1" "$(wc -l < "$LOG" | tr -d ' ')"
+
 # Dirty source is not part of the candidate SHA and must block before PR body/rendered
 # evidence can diverge from the pushed commit.
 DIRTY="$WORK/dirty"; init_repo "$DIRTY"
@@ -282,6 +293,13 @@ check "single dirty: structured error" "dirty_worktree" "$(jq -r '.targets[0].er
 check "single dirty: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 
 git -C "$DIRTY" checkout -q -- b
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DDIR")" || ec=$?
+check "single dirty retry: exit 0 after cleanup" "0" "$ec"
+check "single dirty retry: ready" "ready-for-review" "$(jq -r '.status' "$DDIR/delivery.json")"
+check "single dirty retry: controller called once" "1" "$(wc -l < "$LOG" | tr -d ' ')"
+
 jq 'del(.baseSha)' "$DDIR/feature.json" > "$DDIR/feature.json.tmp" && mv "$DDIR/feature.json.tmp" "$DDIR/feature.json"
 git -C "$DIRTY" add ".loop-spec/features/dirty/feature.json"; git -C "$DIRTY" commit -q -m "remove base"
 : > "$LOG"; ec=0
@@ -326,6 +344,8 @@ out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_MALFORM
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$BINDDIR")" || ec=$?
 check "bind: hard failure routes to deliver" "deliver" "$(jq -r '.nextPhase' "$BINDDIR/delivery.json")"
 check "bind: recorded the tried SHA" "$SHA1" "$(jq -r '.targets[0].targetSha' "$BINDDIR/delivery.json")"
+jq '(.targets[0]) |= del(.bindingEligible)' "$BINDDIR/delivery.json" > "$BINDDIR/delivery.json.tmp"
+mv "$BINDDIR/delivery.json.tmp" "$BINDDIR/delivery.json"
 printf 'two\n' > "$BIND/two"; git -C "$BIND" add two; git -C "$BIND" commit -q -m two
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
@@ -333,7 +353,55 @@ out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
 check "bind: drift fails closed" "1" "$ec"
 check "bind: drift structured error" "candidate_sha_drift" \
   "$(jq -r '.targets[0].errorCode' "$BINDDIR/delivery.json")"
+check "bind: drift retains original target" "$SHA1" "$(jq -r '.targets[0].targetSha' "$BINDDIR/delivery.json")"
+check "bind: drift records observed head" "$(git -C "$BIND" rev-parse HEAD)" \
+  "$(jq -r '.targets[0].observedSha' "$BINDDIR/delivery.json")"
 check "bind: no controller call on drift" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$BINDDIR")" || ec=$?
+check "bind: repeated retry still blocked" "candidate_sha_drift" \
+  "$(jq -r '.targets[0].errorCode' "$BINDDIR/delivery.json")"
+check "bind: repeated retry keeps original target" "$SHA1" "$(jq -r '.targets[0].targetSha' "$BINDDIR/delivery.json")"
+check "bind: repeated retry has no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+
+# Runtime artifacts are excluded locally even when the consumer has no tracked
+# loop-spec .gitignore policy.
+RUNTIME="$WORK/runtime-artifacts"; init_repo "$RUNTIME"
+RUNTIME_BASE="$(git -C "$RUNTIME" rev-parse HEAD)"
+git -C "$RUNTIME" checkout -q -b feat/runtime
+printf 'feature\n' > "$RUNTIME/b"; git -C "$RUNTIME" add b; git -C "$RUNTIME" commit -q -m feature
+RDIR="$RUNTIME/.loop-spec/features/runtime"; mkdir -p "$RDIR"
+jq -n --arg base "$RUNTIME_BASE" '{schemaVersion:7,slug:"runtime",feature_title:"Runtime",currentPhase:"deliver",
+  branch:"feat/runtime",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{}}' > "$RDIR/feature.json"
+git -C "$RUNTIME" add "$RDIR/feature.json"; git -C "$RUNTIME" commit -q -m state
+printf '{}\n' > "$RDIR/feature.json.bak"
+printf '{}\n' > "$RDIR/events.jsonl"
+printf '{}\n' > "$RUNTIME/.loop-spec/runtime.json"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$RDIR")" || ec=$?
+check "runtime artifacts: delivery succeeds" "0" "$ec"
+check "runtime artifacts: checkout remains clean" "0" \
+  "$(git -C "$RUNTIME" status --porcelain --untracked-files=all | wc -l | tr -d ' ')"
+
+# Unknown cleanliness fails closed instead of treating an empty failed status as clean.
+STATUS="$WORK/status-failure"; init_repo "$STATUS"
+STATUS_BASE="$(git -C "$STATUS" rev-parse HEAD)"
+git -C "$STATUS" checkout -q -b feat/status
+printf 'feature\n' > "$STATUS/b"; git -C "$STATUS" add b; git -C "$STATUS" commit -q -m feature
+STDIR="$STATUS/.loop-spec/features/status"; mkdir -p "$STDIR"
+jq -n --arg base "$STATUS_BASE" '{schemaVersion:7,slug:"status",feature_title:"Status",currentPhase:"deliver",
+  branch:"feat/status",baseSha:$base,baseBranch:"main",workspace:null,warnings:[],artifacts:{}}' > "$STDIR/feature.json"
+git -C "$STATUS" add "$STDIR/feature.json"; git -C "$STATUS" commit -q -m state
+cp "$STATUS/.git/index" "$STATUS/.git/index.saved"
+printf 'corrupt-index' > "$STATUS/.git/index"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$STDIR" 2>/dev/null)" || ec=$?
+check "status failure: blocked" "git_status_failed" "$(jq -r '.targets[0].errorCode' "$STDIR/delivery.json")"
+check "status failure: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+mv "$STATUS/.git/index.saved" "$STATUS/.git/index"
 
 # Staged workspace readiness: with two changed repos, every repo is held until all
 # checks are green, then all are promoted (2 holds + 2 promotions).
@@ -398,9 +466,25 @@ check "stage preflight fail: no controller calls" "0" "$(wc -l < "$LOG" | tr -d 
 check "stage preflight fail: valid sibling blocked" "workspace_preflight_failed" \
   "$(jq -r '.targets[]|select(.name=="a")|.errorCode' "$SFDIR/delivery.json")"
 
+# Legacy workspace sidecars did not carry bindingEligible. A sibling that passed local
+# preflight still retains its exact candidate binding across upgrade.
+jq '(.targets[] | select(.name == "a")) |= del(.bindingEligible)' \
+  "$SFDIR/delivery.json" > "$SFDIR/delivery.json.tmp"
+mv "$SFDIR/delivery.json.tmp" "$SFDIR/delivery.json"
+printf 'later\n' > "$STAGE/a/later"
+git -C "$STAGE/a" add later
+git -C "$STAGE/a" commit -q -m later
+git -C "$STAGE/b" checkout -q feat/stage
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$SFDIR")" || ec=$?
+check "legacy workspace bind: drift fails closed" "candidate_sha_drift" \
+  "$(jq -r '.targets[]|select(.name=="a")|.errorCode' "$SFDIR/delivery.json")"
+check "legacy workspace bind: no controller calls" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+rm -f "$SFDIR/delivery.json"
+
 # If promotion fails after an earlier sibling was promoted, restore that sibling to
 # draft so the next staged retry is not permanently blocked by an already-ready PR.
-git -C "$STAGE/b" checkout -q feat/stage
 jq '.currentPhase="deliver" | .delivery={status:"pending",attemptedAt:null,finishedAt:null,targets:[]} | .pendingRemediationTasks=[]' \
   "$SFDIR/feature.json" > "$SFDIR/feature.json.tmp" && mv "$SFDIR/feature.json.tmp" "$SFDIR/feature.json"
 : > "$LOG"; ec=0

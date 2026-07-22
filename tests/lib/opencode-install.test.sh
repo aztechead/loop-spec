@@ -30,6 +30,7 @@ check "manifest written" "yes" "$([[ -f "$CFG/loop-spec-install.json" ]] && echo
 # Generated namespaced skill adapters avoid shadowing a user's native `cycle`,
 # `plan`, `status`, etc. They read the source SKILL.md from this checkout.
 check "namespaced cycle skill generated" "yes" "$([[ -f "$CFG/skills/loop-spec-cycle/SKILL.md" ]] && echo yes || echo no)"
+check "namespaced auto skill generated" "yes" "$([[ -f "$CFG/skills/loop-spec-auto/SKILL.md" ]] && echo yes || echo no)"
 check "namespaced deliver skill generated" "yes" "$([[ -f "$CFG/skills/loop-spec-deliver/SKILL.md" ]] && echo yes || echo no)"
 check "namespaced skill frontmatter" "1" "$(grep -c '^name: loop-spec-cycle$' "$CFG/skills/loop-spec-cycle/SKILL.md")"
 check "source skill remains unshadowed" "no" "$([[ -e "$CFG/skills/cycle" ]] && echo yes || echo no)"
@@ -50,6 +51,7 @@ check "bridge plugin placed" "yes" "$([[ -f "$CFG/plugins/loop-spec.ts" ]] && ec
 # /loop-spec/<name>. Namespaced to never shadow opencode built-ins (/debug,
 # /status, /skills are TUI palette slashes).
 check "cycle wrapper generated" "yes" "$([[ -f "$CFG/commands/loop-spec/cycle.md" ]] && echo yes || echo no)"
+check "auto wrapper generated" "yes" "$([[ -f "$CFG/commands/loop-spec/auto.md" ]] && echo yes || echo no)"
 check "deliver wrapper generated" "yes" "$([[ -f "$CFG/commands/loop-spec/deliver.md" ]] && echo yes || echo no)"
 check "wrapper is a real file (not link)" "no" "$([[ -L "$CFG/commands/loop-spec/cycle.md" ]] && echo yes || echo no)"
 check "wrapper has description frontmatter" "1" "$(grep -c '^description:' "$CFG/commands/loop-spec/cycle.md")"

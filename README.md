@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.20.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.22.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -76,7 +76,7 @@ This loads every skill, the `/loop-debug` prompt template, and a bundled extensi
 Differences under pi (full contract: `skills/shared/pi-harness.md`):
 
 - pi has no subagents, teams, or Workflow tool. Critique and verify run inline on the lead thread with the same artifacts and gates. EXECUTE selects the inline rung or the loop-fleet rung, whose headless loops spawn `pi --mode json` instead of `claude -p`.
-- Interactive mode is the pi TUI; headless mode is `pi --mode json "/skill:cycle autonomous <description>"` (or the pi SDK's `createAgentSession()`), mirroring `claude -p`.
+- Interactive mode is the pi TUI; the preferred headless/SDK entry is `pi --mode json "/skill:auto <description>"` (or the pi SDK's `createAgentSession()`), which routes simple maintenance to micro, bounded bugs to debug, and feature-scale work to the full cycle. `/skill:cycle autonomous ...` forces the full cycle.
 - There are no per-dispatch model aliases. Inline work uses the session model; fleet dispatch takes pi model ids.
 
 The Claude Code path is not affected by any of this; pi support is an additive branch keyed on `lib/harness.sh detect`.
@@ -93,12 +93,12 @@ uv tool install graphifyy
 graphify install --platform opencode
 ```
 
-The installer generates namespaced `loop-spec-<name>` skill adapters so common names such as `cycle`, `plan`, and `status` never shadow user/project skills, places `/loop-debug` as a native command, and generates a `/loop-spec/<name>` command wrapper for every skill (opencode's TUI hides skill-sourced entries from the `/` autocomplete popup, so these real commands are how you discover and launch the skills — `/loop-spec/cycle` is the entry point). It also converts `agents/*.md` into opencode subagents named `loop-spec-<role>`, creates a deny-by-default `loop-spec-readonly` primary agent for compiler/judge passes, and drops a bundled plugin (`extensions/opencode/loop-spec.ts`) that bridges the rest of the Claude Code surface through documented plugin hooks: `shell.env` exports `LOOP_SPEC_HARNESS=opencode`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, and `CLAUDE_SKILL_DIR` into every bash command; `chat.message` and the event stream run the SessionStart / prompt-submit / session-end hooks. `status` and `uninstall` use an identity-checked manifest and preserve modified/replaced files. graphify and the base prerequisites are the same.
+The installer generates namespaced `loop-spec-<name>` skill adapters so common names such as `cycle`, `plan`, and `status` never shadow user/project skills, places `/loop-debug` as a native command, and generates a `/loop-spec/<name>` command wrapper for every skill (opencode's TUI hides skill-sourced entries from the `/` autocomplete popup, so these real commands are how you discover and launch the skills — `/loop-spec/auto` is the preferred autonomous entry and `/loop-spec/cycle` explicitly forces the full cycle). It also converts `agents/*.md` into opencode subagents named `loop-spec-<role>`, creates a deny-by-default `loop-spec-readonly` primary agent for compiler/judge passes, and drops a bundled plugin (`extensions/opencode/loop-spec.ts`) that bridges the rest of the Claude Code surface through documented plugin hooks: `shell.env` exports `LOOP_SPEC_HARNESS=opencode`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, and `CLAUDE_SKILL_DIR` into every bash command; `chat.message` and the event stream run the SessionStart / prompt-submit / session-end hooks. `status` and `uninstall` use an identity-checked manifest and preserve modified/replaced files. graphify and the base prerequisites are the same.
 
 Differences under opencode (full contract: `skills/shared/opencode-harness.md`):
 
 - One-shot subagent dispatch is NATIVE: opencode's `task` tool requires `{description, prompt, subagent_type}`, with agent ids spelled `loop-spec-<role>`. Questions use `multiple` rather than Claude Code's `multiSelect`. Agent teams and the Workflow tool remain Claude Code-only; EXECUTE tops out at the subagent and loop-fleet rungs, whose headless loops spawn `opencode run --format json` instead of `claude -p`.
-- Interactive mode is the opencode TUI; headless mode is `opencode run --format json "Load the loop-spec-cycle skill and run: autonomous <description>"` — or drive the same prompt through the SDK (`createOpencode()` / `client.session.prompt()` against `opencode serve`).
+- Interactive mode is the opencode TUI; the preferred headless/SDK prompt is `opencode run --format json "Load the loop-spec-auto skill and run: <description>"` — or drive the same prompt through `createOpencode()` / `client.session.prompt()` against `opencode serve`. Load `loop-spec-cycle` with `autonomous` to force all seven phases.
 - There are no per-dispatch model aliases. Per-role models live in the generated agent files (`provider/model` ids; default inherits the session model); fleet dispatch takes opencode ids via `--model`.
 - Multiple logged-in providers can be mixed in one cycle. Keep the primary session on Vertex Anthropic, for example, and install `--model adversarial=github-copilot/<frontier-model>` to route challenger, iterate-judge, code-reviewer, and security-reviewer tasks through GitHub Copilot. Any role can be pinned with another `--model role=provider/model`; explicit roles override the shorthand. Project `opencode.json` agent overrides provide the same routing per repo. Restart OpenCode after changing installed agents or config.
 - OpenCode cannot switch a running session's project root. After a clean-base guard, cycle creates the feature branch in place (`executionRootMode: in-place`) rather than pretending worktree creation changed cwd. DELIVER itself is identical across harnesses because it uses explicit repository paths.
@@ -138,6 +138,7 @@ All skills are invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Th
 
 | Skill | Purpose |
 |---|---|
+| `auto` | Preferred headless/SDK entry. Grounds the request, validates a semantic micro/debug/full decision fail-closed, then delegates once. |
 | `cycle` | The full seven-phase prompt-to-ready-PR loop. Also: `new` (greenfield), `backlog` (drain deferred work), spec-file ingest, resume. |
 | `intake` | Convert any input (Slack, Jira, email, file, prompt) into a spec draft and start the cycle. `--no-run` stops after the draft. |
 | `debug` | Bounded debugging loop: triage, red reproduction, fix, verify. Writes a committed `BUG.md` audit trail. |
@@ -242,11 +243,14 @@ Autonomous runs chain into backlog drain on their own when they finish with acce
 ### Autonomous mode
 
 ```bash
+claude -p "/loop-spec:auto update CLAUDE.md with relevant changes"
+# Force the full cycle when that is explicitly desired:
 claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
-# or: export LOOP_SPEC_AUTONOMOUS=1
 ```
 
-Every point that would ask a question takes the model's recommended answer, grounded in the code graph and codebase map, and records it. Style is forced to `auto`. The SPEC interview runs in self-answered form; DISCUSS collapses to lead-authored refinement plus the critique gate. Explicit `LOOP_SPEC_ANSWER_*` / `LOOP_SPEC_CMD_*` variables still win where set. Safety aborts (dirty repos, the code-review gate, the test-tamper scan) are never overridden. Every assumed answer lands in SPEC.md under `## Decisions (assumed — autonomous)` and in PLAN.md's user-decisions record, so the PR reviewer can see exactly what was assumed and rerun with corrections pinned. A bare autonomous invocation with no description aborts, since there is no goal to infer. Full contract: `skills/shared/autonomous-mode.md`.
+`/loop-spec:auto` first inspects the likely files and tests, then proposes a structured route. `lib/task-route.sh` validates that proposal: malformed, uncertain, oversized, security-sensitive, destructive, interface/dependency, multi-repo, or conflicting-worktree classifications all promote to the full cycle. Semantic risk labels come from grounded model judgment rather than keyword matching; the script independently measures canonical clean-base state and enforces the declared risk, confidence, scope, and route constraints. Small clear maintenance uses micro; under Claude Code that delegated skill turn is pinned to `sonnet`, so an Opus parent pays for classification only rather than running the entire trivial task on Opus. Pi and OpenCode cannot dynamically change an already-running skill turn; select the desired session/provider model when launching those harnesses. Bounded investigation-shaped bugs use the existing debug loop as the middle route; everything else uses the full cycle. The explicit `/loop-spec:cycle autonomous ...` contract is unchanged and always runs all seven phases.
+
+Every delegated route is question-free and ends with verification and PR delivery. Full-cycle assumptions still land in SPEC.md and PLAN.md; debug records them in BUG.md; micro records its outcome in the ad-hoc ledger. SDK callers receive the normalized decision as one `AUTONOMOUS_ROUTE {...}` output line; route selection writes nothing into the target repository. A bare autonomous invocation with no description aborts. Full contract: `skills/shared/autonomous-mode.md`.
 
 ### Non-interactive mode (CI)
 
@@ -262,15 +266,25 @@ The cycle skips every question and reads the `LOOP_SPEC_ANSWER_*` variables list
 
 ### Machine-readable results
 
-Wrappers should not scrape git or GitHub for cycle state. Two local files provide the contract (both intentionally uncommitted):
+Wrappers should not scrape git or GitHub for cycle state. The complete owned and
+observed-backend compatibility profile is documented in
+[`docs/loop-spec/agent-output-contract.md`](docs/loop-spec/agent-output-contract.md).
+Every full, micro, and debug terminal path emits `LOOP_SPEC_RESULT {...}` and atomically
+updates one stable control-checkout pointer. Two local files provide the full-cycle
+detail (both intentionally uncommitted):
 
-`result.json`, written at the end of every cycle. Stable pointer: `.loop-spec/last-result.json`; per-feature copies at `.loop-spec/features/{slug}/result.json`. Schema version 1:
+`.loop-spec/last-result.json` is the stable pointer for every cycle type. Full cycles
+also keep per-feature copies at `.loop-spec/features/{slug}/result.json`. Claude
+worktrees copy the terminal object back to the original control checkout, so removing
+the worktree does not remove the pointer. Schema version 1:
 
 ```json
 {
   "schema": 1,
+  "cycleType": "full | micro | debug",
   "slug": "my-feature",
-  "status": "completed | paused | escalated | terminal",
+  "status": "completed | paused | escalated | terminal | failed",
+  "outcome": "cycle-specific terminal outcome",
   "reason": "string or null",
   "phaseReached": "last currentPhase value",
   "branch": "feat/my-feature",
@@ -287,7 +301,8 @@ Wrappers should not scrape git or GitHub for cycle state. Two local files provid
   "autonomous": false,
   "feature_title": "original goal string",
   "createdAt": "ISO-8601",
-  "finishedAt": "ISO-8601"
+  "finishedAt": "ISO-8601",
+  "verification": {"status":"passed | failed | not-run","command":"string or null"}
 }
 ```
 
@@ -358,9 +373,21 @@ Cycle behavior:
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | `900` | Total time DELIVER waits for required PR checks. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | `10` | Required-check polling interval. |
 | `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | `60` | Per-call timeout for GitHub CLI operations, including hung network requests. |
+| `LOOP_SPEC_PR_FEEDBACK_MODE` | `local` | `local` runs loop-spec's terminal PR feedback observation. `external` delegates it without claiming clean, for an orchestrator that already owns review polling. There is no silent off mode. |
+| `LOOP_SPEC_PR_FEEDBACK_OWNER` | `external-orchestrator` | Owner recorded when feedback mode is `external`. |
 | `LOOP_SPEC_CMD_TEST` (and the `LOOP_SPEC_CMD_*` family) | detected | Pin the project's test/lint/typecheck commands instead of auto-detection. Wins in every mode, including autonomous. |
 | `LOOP_SPEC_REGRESSION_SCAN` | off | `1` enables VERIFY's advisory prior-feature regression scan. |
 | `LOOP_SPEC_RALPH_THRESHOLD` | `3` | VERIFY remediation loop: consecutive no-progress rounds before escalating. |
+
+PR attribution is host-owned, not rendered by loop-spec. To remove Claude Code's
+`Generated with Claude Code` footer/session link, configure Claude Code itself:
+
+```json
+{"attribution":{"pr":"","sessionUrl":false}}
+```
+
+loop-spec therefore does not add a second footer toggle that could conflict with the
+host setting.
 
 EXECUTE dispatch:
 

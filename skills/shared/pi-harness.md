@@ -114,5 +114,5 @@ must be **pi model ids** (e.g. `claude-sonnet-4-5`), not Claude Code aliases —
 | Claude Code | pi |
 |---|---|
 | interactive session | pi TUI (`pi`) |
-| `claude -p` headless / autonomous mode | `pi --mode json "<prompt>"` (or `pi -p`, or the SDK's `createAgentSession()` from `@earendil-works/pi-coding-agent`) with `LOOP_SPEC_AUTONOMOUS=1` |
+| `claude -p` headless / autonomous mode | `pi --mode json "/skill:auto <description>"` (or `pi -p`, or the SDK's `createAgentSession()` from `@earendil-works/pi-coding-agent`; use `/skill:cycle autonomous ...` to force the full cycle) |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `pi --mode json` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli pi` |

@@ -19,13 +19,21 @@ the PR, never re-runs checks, and never invalidates a delivered SHA.
 One call per delivered PR:
 
 ```bash
-fb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/pr-comments.sh" summary "$pr_number" ${repo:+--repo "$repo"})"
-# {reviewDecision, changesRequested, requestedReviewers, unresolved, items: [...]}
+feedback_args=("$pr_number")
+[[ -n "$repo" ]] && feedback_args+=(--repo "$repo")
+fb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/pr-feedback.sh" check "${feedback_args[@]}")"
+# {schema, observationStatus: complete|degraded|delegated, owner,
+#  reviewDecision, changesRequested, requestedReviewers, unresolved, items, error}
 ```
 
 `reviewDecision` is GitHub's aggregate (`APPROVED` / `CHANGES_REQUESTED` /
 `REVIEW_REQUIRED` / `NONE`); `items` are the unresolved review comments, non-empty
 reviews, and issue comments in the `/loop-spec:revise` shape.
+
+Default ownership is `LOOP_SPEC_PR_FEEDBACK_MODE=local`. An external orchestrator that
+already owns the review round trip may set `LOOP_SPEC_PR_FEEDBACK_MODE=external` and
+`LOOP_SPEC_PR_FEEDBACK_OWNER=<name>`. That returns `observationStatus:"delegated"` and
+never claims the PR is clean. There is intentionally no silent `off` mode.
 
 ## Routing the result
 
@@ -43,6 +51,9 @@ reviews, and issue comments in the `/loop-spec:revise` shape.
 - **Clean** (`unresolved == 0`, decision `NONE`/`APPROVED`/`REVIEW_REQUIRED` with no
   items) — print one line: `PR feedback check: clean (decision: <decision>, 0 unresolved items)`.
   A just-opened PR is usually clean; the value is that the claim is checked, not assumed.
+- **Delegated** (`observationStatus == "delegated"`) — print the external owner and do
+  not run, post, or act on a second review round trip.
+- **Degraded** (`observationStatus == "degraded"`) — report the error and never label it clean.
 
 ## Degradation (loud, never silent)
 
@@ -50,8 +61,9 @@ reviews, and issue comments in the `/loop-spec:revise` shape.
   print what blocked it, leave the branch pushed/local as far as you got, and record
   the gap (cycle result warnings; micro ledger `--notes`; debug report). Never claim
   a feedback check ran when it could not.
-- `gh pr view` metadata failure mid-check: `pr-comments.sh summary` degrades loudly
-  to `reviewDecision: "NONE"` on stderr — relay that stderr line instead of dropping it.
+- `gh pr view` metadata failure mid-check: `pr-feedback.sh check` returns a
+  machine-readable `observationStatus:"degraded"` record — relay it, never reinterpret
+  it as a clean `NONE` decision.
 
 ## Recording
 
