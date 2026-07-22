@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.23.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.23.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 

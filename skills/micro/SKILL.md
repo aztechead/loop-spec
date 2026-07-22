@@ -106,14 +106,20 @@ worktree, no DELIVER controller:
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/adhoc-ledger.sh" add \
   --title "<task title>" \
-  --criteria "<criterion 1>" [--criteria "<criterion 2>" ...] \
-  --grounding "<criterion 1> | repo: <file:line> | integration: <file:line or reason>" \
-  [--grounding "<criterion 2> | repo: ..." ...] \
+  --criteria "<exact criterion 1 text>" \
+  --grounding "<exact criterion 1 text> | repo: <file>:<positive line> | integration: <file>:<positive line>" \
+  [--criteria "<exact criterion 2 text>" \
+   --grounding "<exact criterion 2 text> | repo: <file>:<positive line> | integration: <file>:<positive line>"] \
   --verify "<the verification command you actually ran>" \
   --result pass|fail|partial \
   [--pr "<PR url from step 6>"] \
   [--notes "<deferred work, caveats, unaddressed PR feedback>"]
 ```
+
+For a passed result, copy each `--criteria` value byte-for-byte as the prefix of
+exactly one `--grounding` value. Use a single positive line number, not a line range.
+When no separate integration site exists, the only accepted alternative is
+`integration: none - <reason of at least 10 characters>`.
 
 `--result` reflects both VERIFY gates. A `fail` entry is a valid ending when you are
 handing the failure back to the user — never record `pass` without post-change grounding

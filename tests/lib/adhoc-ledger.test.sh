@@ -84,6 +84,9 @@ bash "$SCRIPT" add --title t --criteria "c1" --criteria "c2" --grounding "g1" --
 check "s3: pass requires one grounding per criterion" "$([[ "$rc" -eq 2 ]] && echo 1 || echo 0)"
 bash "$SCRIPT" add --title t --criteria "c" --grounding "g" --verify "v" --result pass >/dev/null 2>&1; rc=$?
 check "s3b: pass rejects malformed grounding" "$([[ "$rc" -eq 2 ]] && echo 1 || echo 0)"
+err="$(bash "$SCRIPT" add --title t --criteria "c" --grounding "g" --verify "v" --result pass 2>&1 >/dev/null)"; rc=$?
+check "s3b2: malformed grounding error shows accepted no-integration form" "$(printf '%s' "$err" | grep -qF 'integration: none - <reason of at least 10 characters>' && echo 1 || echo 0)"
+check "s3b3: malformed grounding error names exact criterion copy rule" "$(printf '%s' "$err" | grep -qF 'copy each --criteria value byte-for-byte' && echo 1 || echo 0)"
 bash "$SCRIPT" add --title t --criteria "c" --grounding "" --verify "v" --result pass >/dev/null 2>&1; rc=$?
 check "s3c: pass rejects empty grounding" "$([[ "$rc" -eq 2 ]] && echo 1 || echo 0)"
 bash "$SCRIPT" add --title t --criteria "c1" --criteria "c2" \
@@ -110,6 +113,8 @@ check "w: list --limit without value exits 2" "$([[ "$rc" -eq 2 ]] && echo 1 || 
 # --- usage prints from the heredoc ---
 out="$(bash "$SCRIPT" -h)"
 check "x: -h prints Usage" "$(printf '%s' "$out" | grep -q '^Usage:' && echo 1 || echo 0)"
+check "x2: help shows accepted no-integration form" "$(printf '%s' "$out" | grep -qF 'integration: none - <reason of at least 10 characters>' && echo 1 || echo 0)"
+check "x3: help names exact criterion copy rule" "$(printf '%s' "$out" | grep -qF 'copy each --criteria value byte-for-byte' && echo 1 || echo 0)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
