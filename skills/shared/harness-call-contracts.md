@@ -6,12 +6,12 @@ cycle (that is exactly how pinned model IDs broke every implicit-team spawn; v2.
 This file is the recorded contract; `tests/lib/harness-call-shapes.test.sh` lints the
 skill corpus against it.
 
-**Verification method:** schemas re-fetched from live Claude Code sessions (ToolSearch /
-system tool definitions), CC 2.1.187, 2026-07-03 — in BOTH a teams-off session and a
-`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` session, plus a live implicit-team e2e (named
-spawns, shared-TaskList self-claim, peer SendMessage, teammate→main relay). Re-verify
-after harness upgrades: `ToolSearch("select:<Tool>")` in a live session and diff against
-this file.
+**Verification method:** schemas re-fetched from the public Agent SDK types, tools
+reference, and changelog through CC 2.1.218, 2026-07-22. Named spawn, shared-TaskList,
+and peer SendMessage behavior was previously live-verified in both teams-off and
+teams-enabled sessions on CC 2.1.187. Re-verify after harness upgrades with the
+authoritative SDK types and `ToolSearch("select:<Tool>")` in a live session, then diff
+against this file.
 
 ## Agent
 
@@ -22,19 +22,20 @@ Agent({
   subagent_type: "loop-spec:<role>",       // optional; omit = general-purpose
   model: "sonnet" | "opus" | "haiku" | "fable",  // optional; ALIAS ENUM — literal IDs REJECTED
   name: "<teammate-name>",                 // optional; named = persistent, SendMessage-addressable
-  mode: "acceptEdits" | ... | "plan",     // optional permission mode for the spawned agent
+  run_in_background: true | false,          // optional; see portability rule below
+  mode: "acceptEdits" | ... | "plan",      // deprecated and ignored since CC 2.1.212
   isolation: "worktree" | "remote",        // optional
 })
 ```
 
 - `description` and `prompt` are required. Every skill example must carry both.
 - `model` takes harness aliases only (see `model-matrix.md`).
-- `run_in_background`: never emit it. It is absent from the teams-off schema but
-  ACCEPTED on a teams-enabled CC 2.1.187 (verified by live spawn) — i.e. it exists on
-  some harness generations and not others, and is redundant everywhere: subagents are
-  backgrounded by the harness itself (background-by-default rollout, CC changelog
-  2.1.198). Parallel fan-out means issuing multiple Agent calls in one message, NOT
-  setting a background flag.
+- `run_in_background` is part of the current public schema, but loop-spec never emits it
+  because older supported harness generations omitted it and modern subagents are
+  backgrounded by default (CC 2.1.198). Parallel fan-out means issuing multiple Agent
+  calls in one message, not setting a background flag.
+- `mode` is deprecated and ignored since CC 2.1.212. Subagents inherit the parent
+  session's permission mode, subject to their agent-definition tool restrictions.
 - `name` is live on the core tool as of CC 2.1.187 — verified in a session WITHOUT
   `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` by an actual named spawn + `SendMessage` by
   name (the teams surface merged into core; the flag remains loop-spec's routing gate
@@ -148,8 +149,9 @@ loop-runner's `--agent-cli pi` backend drives.
 
 Under opencode (`lib/harness.sh detect` == `opencode`) most CC tools have
 NATIVE counterparts with near-identical shapes: `Agent` → `task`
-(`{description, prompt, subagent_type}` parameters; `subagent_type` is required
-and agent ids are `loop-spec-<role>`, hyphen not colon), `AskUserQuestion` →
+(`{description, prompt, subagent_type, task_id?, command?}` parameters;
+`subagent_type` is required and agent ids are `loop-spec-<role>`, hyphen not
+colon; `task_id` resumes a prior child session), `AskUserQuestion` →
 `question` (rename `multiSelect` to `multiple`),
 `Skill` → `skill({name: "loop-spec-<name>"})`, Read/Write/Edit/Bash/Glob/Grep → their lowercase
 twins. Teams tools, `Workflow`, `TaskCreate`/`TaskUpdate`, and `ToolSearch`

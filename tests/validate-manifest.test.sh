@@ -34,14 +34,24 @@ else
   fail "CHANGELOG top version [$CHANGELOG_VER] != plugin.json $PLUGIN_VER"
 fi
 
-# 3. hooks.json is valid JSON
+# 3. README advertised version matches plugin.json version
+README_LINE=$(grep -m1 '^Current version:' README.md || true)
+README_VER="${README_LINE#Current version: }"
+README_VER="${README_VER%% *}"
+if [[ "$README_VER" == "$PLUGIN_VER" ]]; then
+  pass "README current version ($README_VER) == plugin.json ($PLUGIN_VER)"
+else
+  fail "README current version $README_VER != plugin.json $PLUGIN_VER"
+fi
+
+# 4. hooks.json is valid JSON
 if jq -e . hooks/hooks.json >/dev/null 2>&1; then
   pass "hooks/hooks.json is valid JSON"
 else
   fail "hooks/hooks.json is not valid JSON"
 fi
 
-# 4. No retired opus model id in shipped agents/skills/README (allow CHANGELOG history).
+# 5. No retired opus model id in shipped agents/skills/README (allow CHANGELOG history).
 if grep -rn 'claude-opus-4-7' agents skills README.md 2>/dev/null | grep -v '/docs/loop-spec/' >/tmp/loop-spec-opus47.$$; then
   fail "retired claude-opus-4-7 referenced in shipped docs:"
   cat /tmp/loop-spec-opus47.$$
