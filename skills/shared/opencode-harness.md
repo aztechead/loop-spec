@@ -19,7 +19,7 @@ namespace keeps them clear of opencode's built-in `/debug`, `/status`, and
 ADDITIVE — when the harness is `claude`, nothing here applies and every skill
 runs exactly as written.
 
-opencode is a much closer harness than pi: skills, one-shot subagents,
+opencode is a much closer harness than pi: skills, resumable subagents,
 questions, and commands all have NATIVE equivalents. The deltas below are the
 complete list.
 
@@ -57,8 +57,8 @@ export CLAUDE_SKILL_DIR="<base directory the skill tool reported>"
 | Read / Write / Edit / Bash | `read` / `write` / `edit` / `bash` (same semantics) |
 | Glob / Grep | `glob` / `grep` (native) |
 | Skill (invoke a skill) | the native `skill` tool: `skill({name: "loop-spec-<name>"})`; generated adapters load this contract and then the source skill without occupying generic user skill names. Users normally invoke `/loop-spec/<name>` (the CC `/loop-spec:<name>` analogue) or `/loop-debug` |
-| Agent (one-shot subagent) | the native `task` tool — `{description, prompt, subagent_type}`; unlike Claude Code, `subagent_type` is REQUIRED; see the dispatch mapping rule below |
-| Teams (named `Agent` spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` under opencode (`lib/teams-capability.sh`); the task tool is one-shot only |
+| Agent (subagent) | the native `task` tool — `{description, prompt, subagent_type, task_id?, command?}`; unlike Claude Code, `subagent_type` is REQUIRED; see the dispatch mapping rule below |
+| Teams (named `Agent` spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` under opencode (`lib/teams-capability.sh`); resumable task sessions do not provide named teammates, shared task lists, or peer messaging |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |
 | TaskCreate / TaskUpdate / TaskList / TaskGet | none with that shape — opencode's `todowrite` is a flat checklist (no deps/metadata). DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` (same rule as pi) |
 | AskUserQuestion | the native `question` tool. Preserve `questions`, `question`, `header`, and option objects, but rename Claude Code's `multiSelect` field to OpenCode's `multiple`; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
@@ -85,6 +85,12 @@ native `task` tool:
   config dir; colons are Claude Code plugin namespacing, hyphens are the
   opencode agent id).
 - `prompt` and `description` pass through verbatim.
+- `task_id` resumes the child session returned by an earlier `task` call. Use it
+  for follow-up work by the same logical reviewer or implementer when that id is
+  still available; omit it for a fresh dispatch. `subagent_type` remains required
+  on resumed calls.
+- `command` is optional provenance for the slash command that triggered the
+  dispatch. Pass it only when the invoking command is known; otherwise omit it.
 - There is NO per-dispatch `model` parameter — omit it. Per-role models come
   from the generated agent file (default: inherit the session model; pin by
   editing `model: provider/model` there). The `model-matrix.md` aliases are
@@ -98,6 +104,11 @@ generic EXECUTE dispatches in `execute-subagent.md` map implementer prompts to
 `loop-spec-spec-compliance-reviewer`. The generated OpenCode agents do not carry
 Claude Code's `isolation: worktree`, so this does not create the nested worktree
 that the Claude Code instructions are avoiding.
+
+OpenCode also exposes `background: true` only when
+`OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`. loop-spec does not emit this
+experimental field: foreground is the portable default, and independent fan-out
+still uses parallel `task` calls.
 
 If a `task` call fails because the agent id is unknown, the agents were not
 installed — fall back to performing the prompt inline after reading the

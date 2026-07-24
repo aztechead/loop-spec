@@ -87,7 +87,8 @@ check "fail-open catch blocks present" \
 
 # Runtime contract. Keep the shipped .ts file valid JavaScript so this test can
 # import an .mjs copy with stock node and no npm/bun dependency. The mock calls
-# use the exact public Plugin hook shapes from @opencode-ai/plugin v1.17.20.
+# exercise every hook field this bridge uses against the public
+# @opencode-ai/plugin v1.18.4 shapes; this is not a compile-time type check.
 if command -v node >/dev/null 2>&1; then
   runtime_plugin="$(dirname "$EXT")/.loop-spec-plugin-test-$$.mjs"
   cp "$EXT" "$runtime_plugin"

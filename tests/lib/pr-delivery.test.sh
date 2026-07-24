@@ -417,6 +417,43 @@ out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" 
 check "PR host mismatch: exit 1" "1" "$ec"
 check "PR host mismatch: structured code" "pr_identity_mismatch" "$(jq -r '.errorCode' <<<"$out")"
 
+# GitHub Enterprise can omit the same-repository head identity. The canonical
+# PR URL, non-cross-repository flag, branch, and exact SHA still bind the PR.
+ghe_checkpoint="$(jq -c '
+  .url="https://ghe.example/test/repo/pull/10"
+  | .headRepository.nameWithOwner=""
+' <<<"$checkpoint")"
+reset_gh "[$ghe_checkpoint]" '[[]]' true
+ec=0
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  FAKE_GH_HEAD_SHA="$TARGET_SHA" FAKE_GH_REPO_URL="https://ghe.example/test/repo" \
+  bash "$SCRIPT" final -C "$WORK/repo" --branch feat/delivery --base main \
+  --sha "$TARGET_SHA" --title "feat: delivery" --body-file "$BODY" \
+  --checks-timeout 2 --checks-interval 0 2>"$WORK/err")" || ec=$?
+check "GHE empty head repo: exit 0" "0" "$ec"
+check "GHE empty head repo: delivered" "delivered" "$(jq -r '.outcome' <<<"$out")"
+
+# An empty head identity is never sufficient for a cross-repository PR.
+ghe_fork="$(jq -c '.isCrossRepository=true' <<<"$ghe_checkpoint")"
+reset_gh "[$ghe_fork]" '[[]]' true
+ec=0
+out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+  FAKE_GH_HEAD_SHA="$TARGET_SHA" FAKE_GH_REPO_URL="https://ghe.example/test/repo" \
+  bash "$SCRIPT" final -C "$WORK/repo" --branch feat/delivery --base main \
+  --sha "$TARGET_SHA" --title "feat: delivery" --body-file "$BODY" \
+  --checks-timeout 2 --checks-interval 0 2>"$WORK/err")" || ec=$?
+check "GHE empty fork head repo: exit 1" "1" "$ec"
+check "GHE empty fork head repo: identity mismatch" "pr_identity_mismatch" "$(jq -r '.errorCode' <<<"$out")"
+
+# A populated head identity must still equal the pushed repository even when gh
+# reports that the PR is not cross-repository.
+same_repo_mismatch="$(jq -c '.headRepository.nameWithOwner="other/repo"' <<<"$checkpoint")"
+reset_gh "[$same_repo_mismatch]" '[[]]' true
+ec=0
+out="$(run_delivery 2>"$WORK/err")" || ec=$?
+check "same-repo head mismatch: exit 1" "1" "$ec"
+check "same-repo head mismatch: identity mismatch" "pr_identity_mismatch" "$(jq -r '.errorCode' <<<"$out")"
+
 reset_gh "[$checkpoint]" '[[]]' true
 ec=0
 out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \

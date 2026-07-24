@@ -58,7 +58,12 @@ When a phase ends: in `explicit` mode call `TeamDelete` before the next phase's 
 
 This rule applies in DISCUSS, PLAN, EXECUTE, VERIFY, MAP-CODEBASE, and their sub-skills.
 
-**Subagent depth (CC caps nested subagents at 5 levels; forked subagents count toward the cap).** loop-spec's dispatch stays well inside this: the orchestrator (depth 0) spawns phase teammates (depth 1), and a teammate may spawn at most one helper (e.g. a background mapper, depth 2). Phase teammates MUST NOT build their own deep subagent chains — if a teammate needs more fan-out, surface it to the lead rather than nesting. EXECUTE's loop-fleet rung sidesteps the cap entirely (each loop is a separate top-level `claude -p` process, not a nested subagent).
+**Subagent depth.** CC 2.1.217 disables nested subagent spawning by default (hosts may
+opt in with `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`). loop-spec does not depend on that
+opt-in: the main-thread orchestrator spawns every phase teammate and background mapper,
+and agent role definitions do not grant `Agent`. A teammate needing more fan-out must
+surface it to the lead. EXECUTE's loop-fleet rung remains separate top-level `claude -p`
+processes, not nested subagents.
 
 **No-teams fallback:** when `.loop-spec/runtime.json.teamsMode == "none"` (equivalently
 `teamsAvailable == false`), every rule above degrades per the substitution table in

@@ -309,7 +309,7 @@ view_pr() {
 }
 
 validate_pr_snapshot() {
-  local context="$1" pr_repo_identity pr_url_host head_repo
+  local context="$1" pr_repo_identity pr_url_host head_repo is_cross_repository
   local parsed=()
   jq -e '
     type == "object"
@@ -324,7 +324,7 @@ validate_pr_snapshot() {
     and (.state | type == "string")
     and (.isCrossRepository | type == "boolean")
     and (.headRepository | type == "object")
-    and (.headRepository.nameWithOwner | type == "string" and length > 0)
+    and (.headRepository.nameWithOwner | type == "string")
   ' <<<"$pr_json" >/dev/null 2>&1 \
     || fail_delivery "pr_lookup_failed" "$context returned malformed PR fields"
 
@@ -335,6 +335,7 @@ validate_pr_snapshot() {
   pr_state="$(jq -r '.state' <<<"$pr_json")"
   pr_head="$(jq -r '.headRefName' <<<"$pr_json")"
   head_repo="$(jq -r '.headRepository.nameWithOwner' <<<"$pr_json")"
+  is_cross_repository="$(jq -r '.isCrossRepository' <<<"$pr_json")"
 
   while IFS= read -r parsed_value; do
     parsed+=("$parsed_value")
@@ -362,7 +363,10 @@ PY
   pr_repo_identity="${parsed[1]}"
   [[ "$pr_url_host" == "$repo_host" && "$pr_repo_identity" == "$repo_identity" ]] \
     || fail_delivery "pr_identity_mismatch" "PR '$pr_url_host/$pr_repo_identity' does not match pushed repository '$repo_selector'"
-  [[ "$head_repo" == "$repo_identity" && "$(jq -r '.isCrossRepository' <<<"$pr_json")" == "false" ]] \
+  # GHE may omit nameWithOwner for a same-repository PR. The canonical PR URL
+  # above still binds the base repository; never accept an omitted fork identity.
+  [[ "$is_cross_repository" == "false" \
+      && ( -z "$head_repo" || "$head_repo" == "$repo_identity" ) ]] \
     || fail_delivery "pr_identity_mismatch" "PR head repository '$head_repo' does not match pushed repository '$repo_identity'"
   [[ "$pr_state" == "OPEN" ]] || fail_delivery "pr_closed" "PR is not open"
   [[ "$pr_head" == "$branch" ]] \

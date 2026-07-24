@@ -2,6 +2,17 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.23.2]
+
+### Fixed
+
+- Accepted GitHub Enterprise's empty `headRepository.nameWithOwner` for same-repository
+  PRs while retaining canonical host/repository URL, non-fork, branch, and exact-SHA
+  identity checks.
+- Updated the harness call contracts through Claude Code 2.1.218 and OpenCode 1.18.4,
+  including ignored Claude `Agent.mode`, nested-subagent defaults, and OpenCode's
+  resumable `task_id` interface and gated background field.
+
 ## [2.23.1]
 
 ### Fixed
