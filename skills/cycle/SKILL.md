@@ -205,10 +205,13 @@ invocation checkout or a registered feature worktree.
    PR targets, then jump directly to On completion**. The exact SHA and checks were
    already proven; a flaky local environment must not reopen delivered work, but recovery
    must not skip terminal feedback observation.
-5. Otherwise run `feature.commands.test` once (workspace mode: each configured repo command). On
-   failure append the existing FULL-SHAPE resume remediation task, set
-   `currentPhase = "execute"`, and announce the redirect. Otherwise resume the recorded
-   phase, including `deliver`.
+5. Otherwise run the shared candidate check once:
+   `bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" compare ".loop-spec/features/${slug}"`.
+   It prepares each repository and compares test/lint/typecheck failures with the exact-base
+   baseline. Exit 20 means new failures: append the existing FULL-SHAPE resume remediation
+   task, set `currentPhase = "execute"`, and announce the redirect. Exit 21 is an
+   environment/infrastructure stop, not implementation remediation. Exit 0 resumes the
+   recorded phase, including `deliver`. Never recapture a baseline on resume.
 
 Full algorithm: `skills/shared/cycle-resume-escalation.md`.
 
@@ -439,6 +442,41 @@ case "$harness_name" in
     ;;
 esac
 
+# Prepare the untouched exact-base checkout before any loop-spec files or feature edits
+# exist, then capture repository-wide validation as the no-new-failures oracle. Setup
+# and baseline commands must leave both HEAD and the worktree unchanged.
+execution_root="$(pwd -P)"
+prepare_rc=0
+prepare_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run \
+  --root "$execution_root" --command "$cmd_prepare")" || prepare_rc=$?
+[[ "$prepare_rc" -eq 0 ]] || {
+  echo "loop-spec: environment preparation failed before feature initialization (exit $prepare_rc)." >&2
+  exit 1
+}
+prepare_key="$(jq -r '.key // ""' <<<"$prepare_json")"
+cmd_prepare="$(jq -r '.command // ""' <<<"$prepare_json")"
+# Preparation may create an isolated Python runner. Upgrade only the generic auto-detected
+# command; never overwrite a user-pinned LOOP_SPEC_CMD_TEST value.
+if [[ "$cmd_test" == "python -m pytest" && -z "${LOOP_SPEC_CMD_TEST+x}" ]]; then
+  cmd_test="$(bash "${CLAUDE_SKILL_DIR}/../../lib/detect-test-cmd.sh" "$execution_root")"
+fi
+
+baseline_json=null
+if [[ "${greenfield:-0}" != "1" ]]; then
+  baseline_git_path="$(git -C "$execution_root" rev-parse --git-path "loop-spec/validation/${slug}/base")"
+  [[ "$baseline_git_path" == /* ]] || baseline_git_path="$execution_root/$baseline_git_path"
+  mkdir -p "$baseline_git_path"
+  baseline_rc=0
+  baseline_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/verification-baseline.sh" capture \
+    --root "$execution_root" --base-sha "$base_sha" --prepare-key "$prepare_key" \
+    --log-dir "$baseline_git_path" --test "$cmd_test" --lint "$cmd_lint" \
+    --typecheck "$cmd_typecheck")" || baseline_rc=$?
+  [[ "$baseline_rc" -eq 0 ]] || {
+    echo "loop-spec: exact-base validation baseline could not be captured (exit $baseline_rc)." >&2
+    exit 1
+  }
+fi
+
 # Create dirs and write feature.json inside the now-active execution root.
 mkdir -p ".loop-spec/features/${slug}" .loop-spec/codebase "docs/loop-spec/features/${slug}"
 # Startup probes ran in the control checkout. Copy their local runtime cache into
@@ -458,7 +496,9 @@ feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --m
   --style "$execStyle" --title "$title" \
   --branch "feat/${slug}" --base-sha "$base_sha" --base-branch "$base_branch" \
   --worktree "$worktree_state_path" \
-  --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
+  --prepare "$cmd_prepare" --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
+feature_json="$(jq --argjson baseline "$baseline_json" \
+  '.verificationBaseline = $baseline' <<<"$feature_json")"
 
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$feature_json"
 
@@ -553,33 +593,11 @@ checks, and readiness.
 Cycle's only responsibility here is to invoke the phase skill and react to its return:
 
 1. **Invoke phase skill** (with the watchdog stamp):
-   Before invoking `deliver`, finalize every tracked pre-delivery artifact. This is the
-   final allowed branch mutation; DELIVER captures `HEAD` afterward. The guard also runs
-   on resume after ITERATE, but skips every mutation when a sidecar already binds a hard
-   retry or completion recovery to an exact target SHA:
-   ```bash
-    delivery_has_bound_candidate=false
-    if [[ -f ".loop-spec/features/${slug}/delivery.json" ]] \
-       && jq -e '(.nextPhase == "deliver" or .nextPhase == "completed") and
-                 any(.targets[]?; (.targetSha // "") != "")' \
-         ".loop-spec/features/${slug}/delivery.json" >/dev/null 2>&1; then
-      delivery_has_bound_candidate=true
-    fi
-    if [[ "$currentPhase" == "deliver" && "$workspaceMode" != "workspace" \
-          && "$delivery_has_bound_candidate" != "true" ]]; then
-     bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" auto ".loop-spec/features/${slug}" || true
-     git add .loop-spec/RULES.md .gitignore 2>/dev/null || true
-     git diff --cached --quiet -- .loop-spec/RULES.md .gitignore 2>/dev/null \
-       || git commit -m "chore: NO_JIRA retro rules for ${slug}" -- \
-         .loop-spec/RULES.md .gitignore 2>/dev/null || true
-     bash "${CLAUDE_SKILL_DIR}/../../lib/run-digest.sh" append \
-       ".loop-spec/features/${slug}" --candidate || true
-     git add "docs/loop-spec/telemetry/runs/${slug}.json" 2>/dev/null || true
-     git diff --cached --quiet -- "docs/loop-spec/telemetry/runs/${slug}.json" 2>/dev/null \
-       || git commit -m "docs: NO_JIRA run digest for ${slug}" -- \
-         "docs/loop-spec/telemetry/runs/${slug}.json" 2>/dev/null || true
-   fi
-   ```
+   DELIVER owns all pre-delivery candidate mutation through
+   `lib/finalize-delivery-candidate.sh`, called by `lib/deliver.sh`. The helper finalizes
+   only the named retro/rules/digest artifacts before first observation and becomes a
+   strict no-op when an eligible sidecar target already binds the retry SHA. The cycle
+   must not create its own pre-DELIVER commits or duplicate the binding predicate.
    ```bash
    # DELIVER has deterministic per-command and total check timeouts; avoid a
    # tracked watchdog write after its candidate SHA was finalized.
@@ -637,6 +655,10 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    Commit it together with feature.json below — and ensure the gitignore exception exists first (the feature dir is ignored except named files; without this line the add silently no-ops):
    ```bash
     if [[ "$workspaceMode" != "workspace" ]]; then
+      if ! bash "${CLAUDE_SKILL_DIR}/../../lib/owned-gitignore.sh" check .; then
+        echo "cycle: refusing to mix pre-existing .gitignore changes with loop-spec policy" >&2
+        exit 2
+      fi
       grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null \
         || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
       grep -qxF '!/.loop-spec/RULES.md' .gitignore 2>/dev/null \
@@ -666,18 +688,22 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
     if [[ "$workspaceMode" != "workspace" ]] \
        && [[ "$currentPhase" != "deliver" || "$next_phase" == "execute" ]] \
       && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-      git add "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null
-      git diff --cached --quiet -- "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null \
+      state_paths=("$fj" ".loop-spec/features/${slug}/PROGRESS.md" ".gitignore")
+      git add -- "${state_paths[@]}" 2>/dev/null
+      git diff --cached --quiet -- "${state_paths[@]}" 2>/dev/null \
         || git commit -q -m "chore: NO_JIRA ${slug} state @ ${next_phase}" -- \
-          "$fj" ".loop-spec/features/${slug}/PROGRESS.md" || true
+          "${state_paths[@]}" || true
    fi
    ```
 
 3. **Route to next iteration:**
    - If `next_phase == "completed"`: jump to the "On completion" section below.
-   - If the phase that returned was `deliver`, `next_phase == "deliver"`, and
-     `delivery.nextPhase == "deliver"`: write an escalated result using the first
-     structured target error and return control. Never immediately invoke DELIVER again;
+    - If the phase that returned was `deliver`, `next_phase == "deliver"`, and
+      `delivery.nextPhase == "deliver"`: write the terminal result using the first
+      structured target error:
+      `bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write ".loop-spec/features/${slug}" --status escalated --reason "<target error>"`.
+      Eligible immutable targets normalize to `delivery-blocked`; local preflight errors
+      remain escalations. Return control. Never immediately invoke DELIVER again;
      transport/identity/timeouts need an external condition to change.
    - **Fresh-context rewind (opt-in, `LOOP_SPEC_ITERATE_FRESH=1`):** only when the phase
      that returned was `iterate` and `next_phase` matches the explicit rewind set

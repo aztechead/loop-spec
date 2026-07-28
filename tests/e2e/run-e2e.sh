@@ -163,7 +163,7 @@ if [[ -f "$RESULT" ]]; then
 
   STATUS="$(jq -r '.status // empty' "$RESULT" 2>/dev/null)"
   check "result status is a valid terminal status" "1" \
-    "$([[ "$STATUS" =~ ^(completed|paused|escalated|terminal)$ ]] && echo 1 || echo 0)"
+    "$([[ "$STATUS" =~ ^(completed|paused|escalated|terminal|failed)$ ]] && echo 1 || echo 0)"
 
   SLUG="$(jq -r '.slug // empty' "$RESULT" 2>/dev/null)"
   check "result slug non-empty" "1" "$([[ -n "$SLUG" ]] && echo 1 || echo 0)"

@@ -16,6 +16,10 @@ checks=(
   "lib/cycle-result.sh	cycleType: \"full\""
   "lib/cycle-result.sh	LOOP_SPEC_RESULT"
   "lib/cycle-result.sh	worktree list --porcelain"
+  "lib/cycle-result.sh	delivery-blocked"
+  "lib/cycle-result.sh	implementationConverged"
+  "lib/events.sh	LOOP_SPEC_PHASE_START"
+  "lib/events.sh	LOOP_SPEC_PHASE_END"
 )
 
 for entry in "${checks[@]}"; do

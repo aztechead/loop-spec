@@ -17,7 +17,7 @@
 #   bash lib/feature-init.sh skeleton --mode single \
 #       --slug S --now ISO --style ST --title "ORIGINAL GOAL" \
 #       --branch feat/S --base-sha SHA --base-branch BB --worktree PATH \
-#       --test CMD --lint CMD --typecheck CMD
+#       --prepare CMD --test CMD --lint CMD --typecheck CMD
 #       -> prints a complete single-repo schema-7 feature.json.
 #
 #   bash lib/feature-init.sh skeleton --mode workspace \
@@ -190,7 +190,8 @@ common_skeleton() {
         targets: []
       },
       warnings: [],
-      bootstrapPendingDomains: []
+      bootstrapPendingDomains: [],
+      verificationBaseline: null
     } + $tierblocks'
 }
 
@@ -202,7 +203,7 @@ case "${1:-}" in
     shift
     mode="" slug="" now="" style="" title=""
     branch="" base_sha="" base_branch="" worktree=""
-    test_cmd="" lint_cmd="" typecheck_cmd=""
+    prepare_cmd="" test_cmd="" lint_cmd="" typecheck_cmd=""
     ws_root="" repos_json="[]"
     while [[ $# -gt 0 ]]; do
       case "$1" in
@@ -215,6 +216,7 @@ case "${1:-}" in
         --base-sha)    base_sha="$2"; shift 2;;
         --base-branch) base_branch="$2"; shift 2;;
         --worktree)    worktree="$2"; shift 2;;
+        --prepare)     prepare_cmd="$2"; shift 2;;
         --test)        test_cmd="$2"; shift 2;;
         --lint)        lint_cmd="$2"; shift 2;;
         --typecheck)   typecheck_cmd="$2"; shift 2;;
@@ -233,13 +235,13 @@ case "${1:-}" in
         echo "$base" | jq \
           --arg branch "$branch" --arg sha "$base_sha" --arg bb "$base_branch" \
           --arg wt "$worktree" \
-          --arg test "$test_cmd" --arg lint "$lint_cmd" --arg tc "$typecheck_cmd" \
+          --arg prepare "$prepare_cmd" --arg test "$test_cmd" --arg lint "$lint_cmd" --arg tc "$typecheck_cmd" \
           '. + {
             branch: $branch, baseSha: $sha, baseBranch: $bb,
             worktreePath: (if $wt == "" then null else $wt end),
             executionRootMode: (if $wt == "" then "in-place" else "worktree" end),
             workspace: null,
-            commands: {test: $test, lint: $lint, typecheck: $tc}
+            commands: {prepare: $prepare, test: $test, lint: $lint, typecheck: $tc}
           }'
         ;;
       workspace)
@@ -249,8 +251,18 @@ case "${1:-}" in
           '. + {
             branch: null, baseSha: null, baseBranch: null, worktreePath: null,
             executionRootMode: "workspace",
-            workspace: {root: $wsroot, repos: $repos},
-            commands: {test: "", lint: "", typecheck: ""}
+            workspace: {
+              root: $wsroot,
+              repos: ($repos | map(
+                (.commands // {}) as $c
+                | .commands = ($c * {
+                    prepare: ($c.prepare // ""), test: ($c.test // ""),
+                    lint: ($c.lint // ""), typecheck: ($c.typecheck // "")
+                  })
+                | .verificationBaseline = (.verificationBaseline // null)
+              ))
+            },
+            commands: {prepare: "", test: "", lint: "", typecheck: ""}
           }'
         ;;
       *)

@@ -6,7 +6,9 @@ team. It is the only EXECUTE path with a mechanical spec-adherence guarantee:
 every iteration of every worker re-runs the task's `verifyCommand`, and the
 feature's SPEC.md/PLAN.md are integrity-protected (hash-locked) so no worker can
 edit the requirements to match its work. It requires no agent-teams support and
-no `Workflow` tool — only the **agent CLI** on PATH and git. The agent CLI is the
+no `Workflow` tool, but it does require the **agent CLI** on PATH, git, and a
+persistent harness runtime that can keep one synchronous long-running tool call alive.
+The agent CLI is the
 running harness's own headless binary (`claude`, `pi`, or `opencode`), resolved
 by `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli`; under pi every
 `supervisor.py` / `loop.py` invocation below additionally carries
@@ -17,13 +19,22 @@ opencode `--agent-cli opencode --claude-bin opencode`
 ## When this rung is selected (see execute/SKILL.md Step 3b)
 
 1. `LOOP_SPEC_EXECUTE_LOOPS=1` and the agent CLI present — explicit opt-in, any W.
-2. Agent teams unavailable (`runtime.json.teamsAvailable == false`) and the agent
-   CLI present — automatic fallback that keeps EXECUTE fully functional without
-   `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` (and the default at `W >= t_team`
-   under pi, where teams never exist).
+2. Agent teams unavailable (`runtime.json.teamsAvailable == false`), the agent
+   CLI present, and `harness.sh loop-runtime == true` — automatic fallback.
 
 `LOOP_SPEC_EXECUTE_LOOPS=0` disables the rung entirely (kill switch; the ladder
 then behaves exactly as before this rung existed).
+
+`LOOP_SPEC_NON_INTERACTIVE=1` or `LOOP_SPEC_EXECUTION_PROFILE=headless` makes the
+runtime probe false, so one-shot `claude -p`, cron, CI, and SDK jobs use subagent
+waves at any width. `LOOP_SPEC_LOOP_RUNTIME=1` is the explicit integrator assertion
+that a headless wrapper can keep the foreground call alive. Never background the
+supervisor and never use `ScheduleWakeup`; a forced loop without this capability is
+a loud EXECUTE error rather than a silent exit.
+
+An unset profile is deliberately `unproven-runtime` and also falls back. Persistent
+interactive operators may set `LOOP_SPEC_EXECUTION_PROFILE=interactive`; this is an
+explicit capability assertion, not an LLM-authored judgment.
 
 ## Procedure
 
@@ -66,6 +77,8 @@ every worker).
 parallel=$(( W < maxParallelImplementers ? W : maxParallelImplementers ))
 python3 "$LOOP_DIR/supervisor.py" \
   --plan "$fdir/loop-plan.json" \
+  --feature-dir "$fdir" \
+  --prepare-command "$(jq -r '.commands.prepare // ""' "$fdir/feature.json")" \
   --parallel "$parallel" \
   --model "{feature.models.implementer}" \
   --retries "2"
@@ -84,8 +97,15 @@ branch `loop/<id>`, merges completed branches into `feat/{slug}` (the current
 branch) so dependents build on them, retries stalls/thrash once with the stall
 context appended, never retries timeout halts, and kills the fleet on a
 verifier-integrity violation.
+Before each merge, the supervisor rebases and verifies the immutable candidate through
+`integrate-task.sh`, combining the task command with `feature-validation.sh compare` from
+that task worktree. Only a candidate with no new exact-base failures can merge.
 
-This call is long-running and unattended; the lead does nothing while it runs.
+This call is long-running and unattended; run it in the foreground. The supervisor
+prints and flushes `FLEET_START` before environment preparation, bounds every worker
+subprocess by the task timeout plus shutdown grace, and writes an initial
+`.loop/fleet-result.json` before dispatch. If the call returns without a terminal fleet
+result, escalate with `loop-fleet supervisor made no progress` and do not advance.
 
 **Dispatch telemetry (`skills/shared/dispatch-events.md`):** before launching the supervisor, emit one `dispatch` event per compiled task — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "execute" --data '{"role":"implementer","model":"<feature.models.implementer>","rung":"loop-fleet"}' || true`. Worker iterations are not separate dispatches.
 
@@ -95,14 +115,27 @@ Read `.loop/fleet-result.json` and map onto the EXECUTE result contract:
 
 ```bash
 fleet=".loop/fleet-result.json"
+if [[ "$rc" -ne 0 && "$rc" -ne 1 ]]; then
+  echo "EXECUTE: loop-fleet supervisor failed before a consumable result (rc=$rc)" >&2
+  exit 2
+fi
+fleet_status=$(jq -r '.status // "missing"' "$fleet" 2>/dev/null || echo missing)
+if [[ "$fleet_status" != "complete" && "$fleet_status" != "incomplete" ]]; then
+  echo "EXECUTE: loop-fleet supervisor made no progress; terminal result missing (status=$fleet_status, rc=$rc)" >&2
+  exit 2
+fi
 merged=$(jq -c '.completed' "$fleet")
 fatal=$(jq -r '.fleet_fatal' "$fleet")
 ```
 
 - `merged` = `.completed` (task ids already merged into `feat/{slug}`).
+- `.status == "running"`, a missing result, or malformed JSON is a supervisor
+  escalation regardless of process exit code; never interpret empty arrays as success.
 - `blocked` = each id in `.failed` with `reason` mapped from its
   `tasks[id].halt_reason`:
   - `max_iterations`, `no_progress`, `verifier_thrash`, `agent_error` → `retry-exhausted`
+  - `environment_error`, `supervisor_error`, `supervisor_timeout`,
+    `integration_error`, `fleet_aborted` → `retry-exhausted` with the recorded error detail
   - `timeout` → `retry-exhausted` (raise `LOOP_SPEC_LOOP_MAX_ITERATIONS` or the
     timeout and re-enter EXECUTE to resume — loop state is durable, completed
     iterations are not re-run)
@@ -111,6 +144,8 @@ fatal=$(jq -r '.fleet_fatal' "$fleet")
   - `.fleet_fatal == true` with any `halt_reason == "verifier_integrity"` →
     `{reason: "verifier-integrity"}`. Inspect the diff with suspicion before
     resuming; a worker touched the spec, the plan, or the verify targets.
+  - `.fleet_fatal == true` with any `halt_reason == "supervisor_error"` →
+    `{reason: "supervisor-error"}` with the recorded detail.
   - `.fleet_fatal == true` otherwise (merge conflict) → `{reason: "rebase-conflict"}`.
     Two tasks the plan called independent touched the same code; add the missing
     `blockedBy` edge in PLAN.md or resolve by hand.
@@ -131,6 +166,9 @@ Read `halt_reason`, not vibes:
 | `max_iterations` / `timeout` | too few rounds or thrashing | read iteration logs, raise caps, re-enter (resumes) |
 | `verifier_integrity` | worker touched the exam | inspect diff with suspicion |
 | `agent_error` | claude CLI failure | check `.loop/<id>.supervisor.log` |
+| `environment_error` | target environment preparation failed | fix the declared prepare command |
+| `supervisor_error` / `supervisor_timeout` | fleet infrastructure failed or exceeded its bound | inspect the flushed fleet output and task supervisor log |
+| `integration_error` | exact-candidate rebase/verification failed | inspect helper detail; add a missing dependency edge for conflicts |
 
 Per-task state lives under `<worktree>/.loop/<id>/`: every iteration's raw
 output, every verifier run in full, and the worker-maintained PROGRESS.md.

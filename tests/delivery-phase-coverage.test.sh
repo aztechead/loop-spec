@@ -36,8 +36,8 @@ present "blocked delivery cannot spin" skills/cycle/SKILL.md "Never immediately 
 present "single-repo base is fetched" skills/cycle/SKILL.md 'fetch --quiet origin "$base_branch"'
 present "workspace cleanliness checks output" skills/cycle/references/workspace-mode.md '[[ "$clean_state" != "clean" ]]'
 present "workspace bases are fetched" skills/cycle/references/workspace-mode.md 'fetch --quiet origin "$base_branch_r"'
-present "retro commit is path scoped" skills/cycle/SKILL.md 'git diff --cached --quiet -- .loop-spec/RULES.md .gitignore'
-present "digest commit is path scoped" skills/cycle/SKILL.md 'git diff --cached --quiet -- "docs/loop-spec/telemetry/runs/${slug}.json"'
+present "candidate finalization is deterministic" lib/deliver.sh 'finalize-delivery-candidate.sh'
+present "candidate finalizer scopes digest" lib/finalize-delivery-candidate.sh 'docs/loop-spec/telemetry/runs/$slug.json'
 present "terminal iteration evidence is committed" skills/iterate/SKILL.md 'iterate: NO_JIRA ${slug} terminal evidence'
 present "terminal backlog commit is path scoped" skills/iterate/SKILL.md 'git diff --cached --quiet -- "$iteration_path" .loop-spec/BACKLOG.md'
 present "VERIFY commit is path scoped" skills/verify/SKILL.md 'git commit -m "verify: NO_JIRA {slug}" -- docs/loop-spec/features/{slug}/VERIFICATION.md'
@@ -46,7 +46,10 @@ absent "workspace VERIFY does not commit parent" skills/verify/references/worksp
 present "single-repo delivery has candidate preflight" lib/deliver.sh "Candidate preflight"
 present "hard retries bind to the recorded SHA" lib/deliver.sh "candidate_sha_drift"
 present "hard delivery failure skips tracked commit" skills/cycle/SKILL.md '[[ "$currentPhase" != "deliver" || "$next_phase" == "execute" ]]'
-present "hard delivery retry skips finalization commits" skills/cycle/SKILL.md 'delivery_has_bound_candidate'
+present "hard delivery retry skips finalization commits" lib/finalize-delivery-candidate.sh 'Exact-SHA retries and completion recovery are observation-only'
+present "cycle commits its own ignore mutation" skills/cycle/SKILL.md 'state_paths=("$fj" ".loop-spec/features/${slug}/PROGRESS.md" ".gitignore")'
+present "cycle rejects pre-existing ignore dirt" skills/cycle/SKILL.md 'refusing to mix pre-existing .gitignore changes'
+present "fleet consumer rejects startup failures" skills/shared/execute-loop-fleet.md 'rc" -ne 0 && "$rc" -ne 1'
 present "completion recovery bypasses project tests" skills/cycle/SKILL.md 'skip project tests'
 present "workspace readiness is staged" lib/deliver.sh "stage readiness"
 present "workspace promotion rollback is supported" lib/pr-delivery.sh "restore_draft"

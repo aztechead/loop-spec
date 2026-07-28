@@ -147,6 +147,51 @@ echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$DONE" bash "$HOOK" >/dev
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n: completed feature only -> guard still BLOCKS"; ((PASS++)) || true
 else echo "FAIL: n: completed feature only -> guard still BLOCKS (got $actual_exit)"; ((FAIL++)) || true; fi
 
+# DELIVER remains the tracked resume pointer after external delivery. The ignored
+# sidecar is authoritative for logical completion and must re-arm the ambient guard.
+LOGICAL_DONE="$TMPDIR_TEST/logical-done"; mkdir -p "$LOGICAL_DONE/.loop-spec/features/final"
+printf '{"currentPhase":"deliver"}\n' > "$LOGICAL_DONE/.loop-spec/features/final/feature.json"
+printf '{"nextPhase":"completed"}\n' > "$LOGICAL_DONE/.loop-spec/features/final/delivery.json"
+actual_exit=0
+echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$LOGICAL_DONE" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n2: logically completed retained feature -> guard still BLOCKS"; ((PASS++)) || true
+else echo "FAIL: n2: logically completed retained feature -> guard still BLOCKS (got $actual_exit)"; ((FAIL++)) || true; fi
+
+# The control checkout does not contain feature state: it exists only in a registered
+# linked feature worktree. Stops from either root must still stand down mid-cycle and
+# in the final DELIVER phase, while a retained completed worktree must not disarm the
+# control checkout forever.
+CONTROL="$TMPDIR_TEST/control"; mkdir -p "$CONTROL"
+git -C "$CONTROL" init -q -b main
+git -C "$CONTROL" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm base
+LINKED="$TMPDIR_TEST/linked-feature"
+git -C "$CONTROL" worktree add -q -b feat/linked "$LINKED"
+mkdir -p "$CONTROL/.loop-spec" "$LINKED/.loop-spec/features/linked"
+printf '{"currentPhase":"execute"}\n' > "$LINKED/.loop-spec/features/linked/feature.json"
+actual_exit=0
+echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n3: control checkout sees active linked feature -> ALLOW"; ((PASS++)) || true
+else echo "FAIL: n3: control checkout sees active linked feature -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
+actual_exit=0
+echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$LINKED' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n4: feature-root mid-cycle Stop -> ALLOW"; ((PASS++)) || true
+else echo "FAIL: n4: feature-root mid-cycle Stop -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
+printf '{"currentPhase":"deliver"}\n' > "$LINKED/.loop-spec/features/linked/feature.json"
+actual_exit=0
+echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$LINKED' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n5: feature-root final-phase Stop -> ALLOW"; ((PASS++)) || true
+else echo "FAIL: n5: feature-root final-phase Stop -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
+printf '{"nextPhase":"completed"}\n' > "$LINKED/.loop-spec/features/linked/delivery.json"
+actual_exit=0
+echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n6: completed retained worktree re-arms ambient guard"; ((PASS++)) || true
+else echo "FAIL: n6: completed retained worktree re-arms ambient guard (got $actual_exit)"; ((FAIL++)) || true; fi
+
+# Resolver faults are fail-open at the hook boundary.
+BROKEN_RESOLVER="$TMPDIR_TEST/broken-resolver"
+printf '#!/usr/bin/env bash\nexit 2\n' > "$BROKEN_RESOLVER"; chmod +x "$BROKEN_RESOLVER"
+check "n7: active-cycle resolver failure -> ALLOW" 0 "$(payload "$EDIT_PY")" LOOP_SPEC_ACTIVE_CYCLE_BIN="$BROKEN_RESOLVER"
+
 # --- fail-open on malformed input ---
 check "o: malformed JSON payload -> ALLOW" 0 'this is not json'
 check "p: empty payload -> ALLOW" 0 ''

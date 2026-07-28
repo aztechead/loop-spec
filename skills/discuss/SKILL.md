@@ -243,8 +243,16 @@ mkdir -p .loop-spec/features/{slug}/gate-logs/
 #### Mode selection (security signal)
 
 ```bash
-if grep -qiE 'auth|authenticat|authoriz|permission|credential|secret|token|crypt|payment|billing|PII|migrat|delet' "docs/loop-spec/features/{slug}/SPEC.md"; then
+security_signal=""
+signal_rc=0
+security_signal="$(bash "${CLAUDE_SKILL_DIR}/../../lib/security-signal.sh" first \
+  "docs/loop-spec/features/{slug}/SPEC.md")" || signal_rc=$?
+if [[ "$signal_rc" -eq 2 ]]; then
+  echo "DISCUSS: security-signal scan failed" >&2
+  exit 2
+elif [[ -n "$security_signal" ]]; then
   gate_mode="debate"
+  echo "[DISCUSS] critique gate escalated: security signal ($security_signal)"
 else
   gate_mode="single-critic"
 fi

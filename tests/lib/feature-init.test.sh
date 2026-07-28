@@ -28,7 +28,7 @@ single="$(bash "$LIB" skeleton --mode single --slug demo --now 2026-06-29T00:00:
   --style auto --title "add CSV export with progress bar" \
   --branch feat/demo --base-sha abc --base-branch main \
   --worktree .claude/worktrees/demo \
-  --test "npm test" --lint "" --typecheck "tsc")"
+  --prepare "npm ci" --test "npm test" --lint "" --typecheck "tsc")"
 check "single is valid JSON" "$(echo "$single" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single schemaVersion==7" "$(echo "$single" | jq -e '.schemaVersion == 7' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single carries iterateJudge" "$(echo "$single" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -39,6 +39,8 @@ check "single tier field ABSENT (hard cutover)" "$(echo "$single" | jq -e 'has("
 check "single iterate.maxIterations==10" "$(echo "$single" | jq -e '.iterate.maxIterations == 10' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single retryBudget ABSENT (full bore)" "$(echo "$single" | jq -e 'has("retryBudget") | not' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single commands.test set" "$(echo "$single" | jq -e '.commands.test == "npm test"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single commands.prepare set" "$(echo "$single" | jq -e '.commands.prepare == "npm ci"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single verification baseline starts null" "$(echo "$single" | jq -e '.verificationBaseline == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single currentPhase==spec" "$(echo "$single" | jq -e '.currentPhase == "spec"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single currentPhaseStartedAt null" "$(echo "$single" | jq -e '.currentPhaseStartedAt == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single iterate.confirmationUsed false" "$(echo "$single" | jq -e '.iterate.confirmationUsed == false' >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -64,7 +66,11 @@ check "workspace worktreePath null" "$(echo "$ws" | jq -e '.worktreePath == null
 check "workspace execution root mode" "$(echo "$ws" | jq -e '.executionRootMode == "workspace"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace root set" "$(echo "$ws" | jq -e '.workspace.root == "/ws"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace repo passed through" "$(echo "$ws" | jq -e '.workspace.repos[0].name == "fe"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "workspace repo commands normalize prepare" "$(echo "$ws" | jq -e '.workspace.repos[0].commands.prepare == ""' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "workspace repo baseline starts null" "$(echo "$ws" | jq -e '.workspace.repos[0].verificationBaseline == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace top commands empty" "$(echo "$ws" | jq -e '.commands.test == ""' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "workspace top prepare empty" "$(echo "$ws" | jq -e '.commands.prepare == ""' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "workspace verification baseline starts empty" "$(echo "$ws" | jq -e '.verificationBaseline == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace carries iterateJudge" "$(echo "$ws" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace delivery starts pending" "$(echo "$ws" | jq -e '.delivery.status == "pending" and .delivery.ciRemediationAttempts == 0 and .delivery.ciRemediationLimit == 2 and (.delivery.targets | length) == 0' >/dev/null 2>&1 && echo 1 || echo 0)"
 

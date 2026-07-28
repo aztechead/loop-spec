@@ -27,7 +27,9 @@ checks=(
   "skills/shared/pi-harness.md	graphify-lifecycle.md"
   # -- EXECUTE ladder: harness probe + rung 0 + its reference
   "skills/execute/SKILL.md	lib/harness.sh"
-  "skills/execute/SKILL.md	rung = \"inline\""
+  "skills/execute/SKILL.md	lib/execute-rung.sh"
+  "lib/execute-rung.sh	rung=\"inline\""
+  "lib/execute-rung.sh	harness.sh"
   "skills/execute/SKILL.md	skills/shared/execute-inline.md"
   # -- inline path keeps the shared result vocabulary (consumed by Step 3b-exit)
   "skills/shared/execute-inline.md	retry-exhausted"

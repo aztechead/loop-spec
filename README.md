@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.23.2 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.24.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -188,9 +188,9 @@ Some mechanics worth knowing:
 
 **ITERATE is the outer loop.** VERIFY proves the acceptance checklist; ITERATE asks whether the result satisfies the original request. A fresh judge (different agent from the one that did the work) scores the integrated result against the immutable original goal (`feature_title`), never against the rewritten spec, so a rewind can move the work toward the goal but cannot redefine "done". Gap classes are `execute` (implementation), `plan` (decomposition), and `spec` (wrong scope), each rewinding to its phase. In the `auto` and `review-only` styles all three rewind without human input; `step` and `interactive` surface the spec rewind for approval. When the limit is spent, the run ships with warnings rather than waiting: accepted gaps land in `warnings[]` and `BACKLOG.md`.
 
-**Critique gates climb a ladder.** Skip (PLAN only, via a structural fast-path: at most 2 tasks and 3 files, no security signal, measured from the actual plan, never inferred from your prompt), then single critic (one opus challenger reports `[major]`/`[minor]` findings and the lead adjudicates), then a paired advocate/challenger debate (triggered by a security signal, a disputed major finding, or a deadlock). The lead may accept any finding but cannot unilaterally dismiss a major one; disputing it escalates. Revisions get a one-turn delta re-verify over the diff instead of a fresh full protocol. Rounds are logged to `.loop-spec/features/{slug}/gate-logs/`.
+**Critique gates climb a ladder.** Skip (PLAN only, via a structural fast-path: at most 2 tasks and 3 files, no security signal, measured from the actual plan, never inferred from your prompt), then single critic (one opus challenger reports `[major]`/`[minor]` findings and the lead adjudicates), then a paired advocate/challenger debate (triggered by a security signal, a disputed major finding, or a deadlock). Security detection uses bounded terms and logs the exact file, line, and matched term; `authoritative` no longer matches bare `auth`. The lead may accept any finding but cannot unilaterally dismiss a major one; disputing it escalates. Revisions get a one-turn delta re-verify over the diff instead of a fresh full protocol. Rounds are logged to `.loop-spec/features/{slug}/gate-logs/`.
 
-**EXECUTE picks its dispatch by DAG width** (`lib/dag-width.sh`). Width 1 runs a single subagent sequentially. Modest widths fan out batched subagent waves. Higher widths use an agent team where implementers claim tasks from the shared task list (when teams are available). Very wide DAGs can escalate to the Workflow DAG, but only on explicit opt-in (`LOOP_SPEC_EXECUTE_WORKFLOW=1`). The loop fleet (`LOOP_SPEC_EXECUTE_LOOPS=1`, and the automatic path when teams are unavailable) instead compiles the tasks into a plan of bounded headless loops: every iteration of every worker re-runs the task's verify command, and SPEC.md/PLAN.md are hash-locked so a worker cannot edit the requirements to match its work. All rungs enforce the same spec-compliance contract, merge into `feat/{slug}`, and return the same result shape. Tasks with overlapping `files[]` get synthetic `blockedBy` edges as a concurrency guard beyond the explicit DAG.
+**EXECUTE picks its dispatch by DAG width and probed capability** (`lib/dag-width.sh`, `lib/execute-rung.sh`). Width 1 runs a single subagent sequentially. Modest widths fan out batched subagent waves. Higher widths use an agent team where implementers claim tasks from the shared task list (when teams are available). Very wide DAGs can escalate to the Workflow DAG, but only on explicit opt-in (`LOOP_SPEC_EXECUTE_WORKFLOW=1`). The loop fleet compiles tasks into bounded headless workers, but is selected only when the harness can keep its synchronous supervisor call alive. One-shot/headless runs fall back to subagent waves at every width. Every loop iteration re-runs the task verify command, and SPEC.md/PLAN.md are hash-locked so a worker cannot edit requirements to match its work. All rungs enforce the same spec-compliance contract, merge into `feat/{slug}`, and return the same result shape. Tasks with overlapping `files[]` get synthetic `blockedBy` edges as a concurrency guard beyond the explicit DAG.
 
 **VERIFY defends the oracle.** The test-tamper scan (`lib/test-tamper-scan.sh`) fails the phase if the diff deletes tests, adds skip/focus annotations, or swallows a test command's exit code. The marker scan rejects unresolved `TBD`/`FIXME`/`XXX` in changed files before any acceptance agent is dispatched. Optionally, the live-run rung launches the built application, waits for readiness, executes acceptance probes, and records each probe in the feature's `EVIDENCE.md` ledger (see `verifyCommands` in Configuration); repos without that config run suite-only, and a launch command is never guessed.
 
@@ -198,7 +198,7 @@ Some mechanics worth knowing:
 
 **Design phases probe before asserting.** During SPEC/DISCUSS/PLAN the lead runs read-only probes (`bq show`, `gcloud describe`, `curl -s`, `psql -c '\d'`, and similar) on any external-system premise before treating it as fact. Each result is appended to a committed `EVIDENCE.md` ledger with a sequential `EVID-NNN` id and cited in the artifact's `## Grounding` section. Claims that cannot be probed are written as `ASSUMPTION: <claim> | verify: <command>` instead of asserted from memory. A deterministic lint (`lib/grounding-lint.sh`) blocks the DISCUSS commit and PLAN's task-cluster step when the grounding section is missing or references an unresolved id. Protocol: `skills/shared/grounding-protocol.md`.
 
-**Every run is resumable.** Each phase transition appends what happened, what is next, and gotchas to `PROGRESS.md`. State writes are atomic (`.tmp` + rename with `.bak` rotation). Resume scans both the invoking checkout and registered feature worktrees, adopts the absolute execution root before reading relative state, reviews `git log`, and runs the test command once; a broken tree is routed to remediation. DELIVER is idempotent, so an interrupted push/check wait reuses the same PR. Loop-fleet state is durable too. A phase watchdog stamps `currentPhaseStartedAt` and flags phases exceeding the wall-clock ceiling.
+**Every run is resumable.** Each phase transition appends what happened, what is next, and gotchas to `PROGRESS.md`. State writes are atomic (`.tmp` + rename with `.bak` rotation). Resume scans both the invoking checkout and registered feature worktrees, adopts the absolute execution root before reading relative state, reviews `git log`, prepares the declared test environment, and compares test/lint/typecheck results with the exact-base baseline; only new failures route to remediation. DELIVER is idempotent, so an interrupted push/check wait reuses the same PR. Loop-fleet state is durable too. A phase watchdog stamps `currentPhaseStartedAt` and flags phases exceeding the wall-clock ceiling.
 
 **Interrupted runs still produce an artifact.** On pause, escalation, or terminal stop, the cycle pushes the feature branch and opens (or reuses) a draft PR, so a failed overnight run is reviewable rather than lost. Requires `gh` and an `origin` remote; skips quietly otherwise. `LOOP_SPEC_CHECKPOINT_PR=0` disables.
 
@@ -295,7 +295,12 @@ the worktree does not remove the pointer. Schema version 1:
     "status": "ready-for-review",
     "targets": [{"targetSha":"...","remoteSha":"...","headSha":"...","checks":{"status":"passed"}}]
   },
+  "eligibleTargets": [{"branch":"feat/my-feature","targetSha":"..."}],
+  "implementationConverged": true,
   "converged": true,
+  "retryable": false,
+  "retryPhase": null,
+  "verifiedSha": "exact local verified SHA or null",
   "iterations": {"used": 1, "max": 10},
   "warnings": [],
   "autonomous": false,
@@ -308,13 +313,25 @@ the worktree does not remove the pointer. Schema version 1:
 
 `converged` is `true` only when the status is `completed`, `warnings[]` contains no `iterate-budget-spent:` or `iterate-terminal:` entries, and an explicit delivery block is `ready-for-review`. Completed schema-7 results from older versions without a delivery block remain readable.
 
+When implementation and VERIFY converge but authenticated delivery cannot complete, the
+result uses `status: "failed"`, `outcome: "delivery-blocked"`,
+`implementationConverged: true`, `verification.status: "passed"`, `retryable: true`, and
+`retryPhase: "deliver"`. `verifiedSha` and `eligibleTargets[]` come from the immutable
+delivery binding, never live `HEAD`. A harness can refresh credentials and resume only
+DELIVER without repeating the cycle.
+
 `events.jsonl`, one JSON object per line at each phase boundary:
 
 ```json
-{"ts":"ISO-8601 UTC","slug":"my-feature","event":"phase_end","phase":"execute","data":{"next":"verify"}}
+{"ts":"ISO-8601 UTC","slug":"my-feature","event":"phase_end","phase":"execute","data":{"next":"verify"},"attemptId":"my-feature:execute:1","elapsedSeconds":42,"verdict":"advanced","next":"verify"}
 ```
 
 Event names: `phase_start`, `phase_end`, `gate_round`, `iterate_verdict`, `dispatch` (one per agent launched, with role/model/rung), `verify_failure`, `completed`, `paused`, `escalated`, `checkpoint_pr`. Read them with `/loop-spec:status` and `/loop-spec:status stats`. Loop-fleet runs additionally record `total_cost_usd` per task and per fleet under `.loop/`.
+
+Phase boundaries also print `LOOP_SPEC_PHASE_START {...}` and
+`LOOP_SPEC_PHASE_END {...}` lines. These stable prefixes are intended for grepping
+`stream-json`/JSONL operator logs; the end marker includes elapsed seconds, next phase,
+and a fixed `advanced|rewind|blocked|completed` verdict.
 
 Process exit codes live at the loop-runner layer (`skills/loop-runner/` scripts exit 0 only on verified completion). The cycle skill runs inside a Claude session and cannot set the process exit code; read `result.json` instead.
 
@@ -373,9 +390,11 @@ Cycle behavior:
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | `900` | Total time DELIVER waits for required PR checks. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | `10` | Required-check polling interval. |
 | `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | `60` | Per-call timeout for GitHub CLI operations, including hung network requests. |
+| `LOOP_SPEC_CREDENTIAL_REFRESH_CMD` | unset | Trusted command run immediately before DELIVER/checkpoint push and GitHub API stages, and once more after a 401/403 before one retry. Receives stage/reason/host/repo environment variables; stdout is empty for side effects or an allow-listed token JSON object and is never logged. |
 | `LOOP_SPEC_PR_FEEDBACK_MODE` | `local` | `local` runs loop-spec's terminal PR feedback observation. `external` delegates it without claiming clean, for an orchestrator that already owns review polling. There is no silent off mode. |
 | `LOOP_SPEC_PR_FEEDBACK_OWNER` | `external-orchestrator` | Owner recorded when feedback mode is `external`. |
 | `LOOP_SPEC_CMD_TEST` (and the `LOOP_SPEC_CMD_*` family) | detected | Pin the project's test/lint/typecheck commands instead of auto-detection. Wins in every mode, including autonomous. |
+| `LOOP_SPEC_CMD_PREPARE` | detected | Pin dependency/test-environment preparation. Runs at the untouched base, in isolated task worktrees, on resume, and before VERIFY comparisons. Empty disables preparation explicitly. |
 | `LOOP_SPEC_REGRESSION_SCAN` | off | `1` enables VERIFY's advisory prior-feature regression scan. |
 | `LOOP_SPEC_RALPH_THRESHOLD` | `3` | VERIFY remediation loop: consecutive no-progress rounds before escalating. |
 
@@ -393,7 +412,9 @@ EXECUTE dispatch:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `LOOP_SPEC_EXECUTE_LOOPS` | auto | `1` forces the loop-fleet rung at any DAG width; `0` forbids it. Unset: automatic when agent teams are unavailable and `claude` is on PATH. |
+| `LOOP_SPEC_EXECUTE_LOOPS` | auto | `1` requests loop-fleet at any DAG width; `0` forbids it. Selection still requires the agent CLI and persistent-runtime capability. |
+| `LOOP_SPEC_EXECUTION_PROFILE` | unproven | `interactive` asserts that the invocation can keep a foreground fleet call alive; `headless` disables loop-fleet. Unset fails safe to no loop runtime, and `LOOP_SPEC_NON_INTERACTIVE=1` implies headless behavior. |
+| `LOOP_SPEC_LOOP_RUNTIME` | probed | `1` explicitly asserts that the wrapper can keep a foreground fleet call alive; `0` disables that capability. Required to force loops from a headless profile. |
 | `LOOP_SPEC_LOOP_MAX_ITERATIONS` | `10` | Iteration cap per loop-fleet task. |
 | `LOOP_SPEC_EXECUTE_WORKFLOW` | off | `1` opts very wide DAGs into the Workflow DAG rung. |
 | `LOOP_SPEC_PLAN_MULTI_ANGLE` | off | `1` opts PLAN into multi-angle authoring via the Workflow tool. |
@@ -482,6 +503,7 @@ All under `.loop-spec/` in the project (gitignored except where noted). `.conf` 
 ```json
 {
   "commitStrategy": "per-task",
+  "prepareCommand": "npm ci",
   "verifyCommands": {
     "launch": "npm start",
     "ready": "curl -sf http://localhost:3000/health",
@@ -492,7 +514,20 @@ All under `.loop-spec/` in the project (gitignored except where noted). `.conf` 
 ```
 
 - `commitStrategy`: `per-task` (default) commits each task separately; `at-end` collapses `feat/{slug}` into a single commit at EXECUTE exit. Ignored in workspace mode.
+- `prepareCommand`: deterministic dev/test dependency setup. Explicit configuration wins;
+  otherwise loop-spec detects unambiguous lock-aware Node/Python installs (pip requirements
+  use an isolated `.venv`; frozen lock modes are used when available). Preparation is
+  cached by command plus manifest/lockfile content and must leave Git state unchanged.
 - `verifyCommands`: opt-in live-run verification. VERIFY launches the app after the suite, waits for `ready` to exit 0 (up to `readyTimeoutSec`, default 30), runs each probe, records the output in `EVIDENCE.md`, and kills the app. Absent block: suite-only, unchanged. `bash lib/verify-live.sh detect` suggests a launch command from repo markers but never writes config.
+
+### Credential TTL contract
+
+Autonomous harnesses must assume credentials can expire between clone and DELIVER. Supply
+`LOOP_SPEC_CREDENTIAL_REFRESH_CMD` whenever Git, GitHub App, OIDC, STS, or Vault credentials
+have a bounded lease. The hook must either update the repository's credential helper/remote
+as a side effect or print a JSON object containing only `GH_TOKEN`, `GITHUB_TOKEN`,
+`GH_ENTERPRISE_TOKEN`, or `GITHUB_ENTERPRISE_TOKEN`. Hook output and errors are redacted.
+DELIVER refreshes proactively and retries one authentication failure; it never spins.
 
 **`workspace.json`** — multi-repo pin; see Workspaces below.
 

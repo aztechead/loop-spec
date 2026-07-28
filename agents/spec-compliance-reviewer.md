@@ -6,6 +6,10 @@ tools:
   - Grep
   - Glob
   - Bash
+  - TaskList
+  - TaskGet
+  - TaskUpdate
+  - SendMessage
 model: sonnet
 color: red
 ---

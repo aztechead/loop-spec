@@ -19,6 +19,9 @@
 #                             prompt, subagent_type}: claude has Agent,
 #                             opencode has task (same parameter shape),
 #                             pi has none)
+#   harness.sh loop-runtime -> "true" | "false" (can this invocation keep a
+#                              synchronous, long-running fleet tool call alive?)
+#   harness.sh loop-runtime-reason -> stable reason for rung telemetry
 #
 # Detection order (first match wins):
 #   1. LOOP_SPEC_HARNESS=claude|pi|opencode   explicit override. The bundled
@@ -74,8 +77,28 @@ case "$cmd" in
       *) echo "false" ;;
     esac
     ;;
+  loop-runtime|loop-runtime-reason)
+    runtime="false"
+    reason="unproven-runtime"
+    case "${LOOP_SPEC_LOOP_RUNTIME:-}" in
+      1) runtime="true"; reason="operator-enabled" ;;
+      0) runtime="false"; reason="operator-disabled" ;;
+      *)
+        if [[ "${LOOP_SPEC_NON_INTERACTIVE:-}" == "1" ]]; then
+          runtime="false"
+          reason="headless/non-interactive"
+        else
+          case "${LOOP_SPEC_EXECUTION_PROFILE:-}" in
+            interactive) runtime="true"; reason="interactive-profile" ;;
+            headless) runtime="false"; reason="headless/non-interactive" ;;
+          esac
+        fi
+        ;;
+    esac
+    if [[ "$cmd" == "loop-runtime" ]]; then echo "$runtime"; else echo "$reason"; fi
+    ;;
   *)
-    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents)" >&2
+    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|loop-runtime|loop-runtime-reason)" >&2
     exit 2
     ;;
 esac

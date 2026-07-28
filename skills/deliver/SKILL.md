@@ -52,10 +52,11 @@ Three invariants the controller enforces so retries and multi-repo features stay
 
 ### Step 1 - Final-candidate guard
 
-The cycle committed the terminal ITERATE transition before entering this phase. Do
-not modify source, artifacts, state, rules, telemetry digests, or commits before the
-controller call. If intended tracked changes remain uncommitted, stop and route back
-to the owning phase instead of delivering an incomplete `HEAD`.
+DELIVER is the sole owner of final candidate mutation. At controller entry,
+`lib/finalize-delivery-candidate.sh` installs runtime exclusions and commits only the
+named rules, ignore, and run-digest artifacts before first observation. If an eligible
+prior sidecar already binds a hard retry or completion SHA, finalization is a strict
+no-op. Do not add another finalization path in cycle prose.
 
 `lib/deliver.sh` enforces the clean-tree, branch, root, and ancestry checks. No tracked or
 untracked dirt is tolerated in a delivery target; every implementation/artifact change
@@ -75,6 +76,14 @@ delivery_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/deliver.sh" run "$fdir")" \
 900); `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` controls polling (default 10). Each `gh`
 request also has a bounded command timeout via
 `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` (default 60).
+
+Short-lived credentials may expire during earlier phases. When
+`LOOP_SPEC_CREDENTIAL_REFRESH_CMD` is configured, every push and GitHub API/PR stage
+runs it immediately beforehand with `LOOP_SPEC_CREDENTIAL_REFRESH_STAGE`, `..._REASON`,
+`..._HOST`, and `..._REPO`. Empty stdout means side-effect-only refresh; JSON stdout may
+set allow-listed GitHub token variables and is never logged. A 401/403/authentication
+failure refreshes and retries once, with mutation reconciliation preventing duplicate PRs
+or incorrect readiness state. A second auth failure stops at DELIVER.
 
 The adapter atomically persists the observation to ignored
 `.loop-spec/features/{slug}/delivery.json`. That sidecar's `nextPhase` is the
@@ -135,7 +144,9 @@ the same phase loop. Leave `currentPhase = "deliver"`, write an escalated cycle 
 with the structured error, and return control. Resume re-runs the transaction
 idempotently after the external condition is corrected. Cycle must not update timestamps,
 progress, or tracked state on this route: the sidecar owns the observation and the retry
-is bound to the same candidate SHA.
+is bound to the same candidate SHA. Eligible SHA-bound failures emit terminal outcome
+`delivery-blocked`, `implementationConverged: true`, and `retryPhase: "deliver"`; local
+preflight failures without an eligible binding remain ordinary escalations.
 
 Autonomous mode follows the same fail-closed rule. It may remediate an actual failed
 check, but it cannot self-approve a missing remote, ambiguous PR identity, moved head,

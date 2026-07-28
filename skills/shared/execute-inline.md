@@ -42,7 +42,7 @@ merge.
 Same as `execute-subagent.md`: `tasks[]` (`{id, subject, files, blockedBy,
 specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`),
 `maxRetriesPerTask` (2), `featureBranch = feat/{slug}`, `commands`
-(`{lint, test, typecheck}` from `feature.json.commands`).
+(`{prepare, lint, test, typecheck}` from `feature.json.commands`).
 `maxParallelImplementers` is moot (executor count is 1).
 
 ## Lead task loop
@@ -59,17 +59,21 @@ Maintain `mergedSet` and `blocked[]`. Repeat until `remaining` is empty:
 3. **Execute the task yourself** under the implementer charter
    (`agents/implementer.md`): read `readFirst`, TDD (failing test first where
    the task admits one), touch only `files`, keep to the brief.
-4. **Verify:** run the task's `verifyCommand`, then `commands.test` (and lint /
-   typecheck when configured). Not green after fixes → retry the task up to
-   `maxRetriesPerTask` attempts total, then `blocked += {taskId, reason:
-   "retry-exhausted"}` and `git checkout -- .` to clear the failed attempt.
-5. **Commit** on `feat/{slug}` with the task id in the message (same message
+4. **Task verify:** run `lib/prepare-environment.sh` with `commands.prepare`, then the
+   task's `verifyCommand`. A task-command failure remains uncommitted and may be fixed in
+   place up to `maxRetriesPerTask` attempts.
+5. **Commit candidate** on `feat/{slug}` with the task id in the message (same message
    contract as the implementer prompt). Nothing staged → `blocked += {taskId,
    reason: "commit-missing"}`.
-6. **Inline spec-compliance review** against `acceptanceCriteria` (reviewer
+6. **Candidate suite gate:** run `lib/feature-validation.sh compare` against the now-clean
+   committed feature candidate. Exit 20 means a new baseline failure: revert the task's
+   candidate commit(s) with `git revert --no-edit`, then retry or mark `retry-exhausted`.
+   Exit 21 is environment/infrastructure escalation, not product remediation. Never leave
+   a failed candidate commit active on `feat/{slug}`.
+7. **Inline spec-compliance review** against `acceptanceCriteria` (reviewer
    brief semantics; verdict `pass | rework | block`):
    - `pass` → add the task id to `mergedSet`, log the verdict, continue.
-   - `rework` with attempts remaining → fix in place, re-run step 4, re-review.
+    - `rework` with attempts remaining → revert the candidate, fix in place, re-run steps 4-7.
    - `rework` exhausted → `blocked += {taskId, reason: "retry-exhausted"}`
      (revert the task's commits: `git revert --no-edit <shas>`).
    - `block` → `blocked += {taskId, reason: "spec-compliance-block"}` (revert

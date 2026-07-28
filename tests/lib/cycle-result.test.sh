@@ -241,6 +241,95 @@ check "Q: unsafe full write creates no external result" "0" \
 check "Q: unsafe full write creates no external events" "0" \
   "$([[ -f "$SYMLINK_FEATURE/events.jsonl" ]] && echo 1 || echo 0)"
 
+# Case R: a SHA-bound DELIVER failure is a retryable delivery block, not an
+# implementation failure or successful end-to-end convergence.
+printf '%s\n' "$(jq '.currentPhase = "deliver" | .delivery = {status:"pending",targets:[]}' \
+  <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+jq -n '{schema:1,ok:false,status:"push-failed",nextPhase:"deliver",
+  attemptedAt:"2026-01-01T01:00:00Z",finishedAt:null,
+  targets:[
+    {name:"my-feature",ok:false,branch:"feat/delivery-target",
+      targetSha:"immutable123",checks:{status:"not-run"},errorCode:"push_failed",
+      error:"push failed"},
+    {name:"auth-target",ok:false,branch:"feat/auth",targetSha:"auth456",
+      bindingEligible:true,checks:{status:"not-run"},errorCode:"authentication_failed",
+      error:"authentication failed"}
+  ]}' > "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status escalated --reason "push failed" >/dev/null 2>&1
+check "R: delivery block status is failed" "failed" "$(jq -r '.status' "$FEAT_DIR/result.json")"
+check "R: delivery block outcome" "delivery-blocked" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "R: delivery phase reached" "deliver" "$(jq -r '.phaseReached' "$FEAT_DIR/result.json")"
+check "R: implementation converged" "true" "$(jq -r '.implementationConverged' "$FEAT_DIR/result.json")"
+check "R: end-to-end convergence remains false" "false" "$(jq -r '.converged' "$FEAT_DIR/result.json")"
+check "R: pre-delivery verification passed" "passed" "$(jq -r '.verification.status' "$FEAT_DIR/result.json")"
+check "R: delivery block is retryable" "true" "$(jq -r '.retryable' "$FEAT_DIR/result.json")"
+check "R: retry phase" "deliver" "$(jq -r '.retryPhase' "$FEAT_DIR/result.json")"
+check "R: branch comes from bound delivery target" "feat/delivery-target" "$(jq -r '.branch' "$FEAT_DIR/result.json")"
+check "R: verified SHA is the immutable delivery target" "immutable123" "$(jq -r '.verifiedSha' "$FEAT_DIR/result.json")"
+check "R: legacy transport target is exposed as eligible" "immutable123" \
+  "$(jq -r '.eligibleTargets[0].targetSha' "$FEAT_DIR/result.json")"
+check "R: explicit eligible auth target is exposed" "auth456" \
+  "$(jq -r '.eligibleTargets[] | select(.name == "auth-target") | .targetSha' "$FEAT_DIR/result.json")"
+check "R: matching event uses normalized failed status" "failed" "$(tail -1 "$FEAT_DIR/events.jsonl" | jq -r '.event')"
+
+# nextPhase=execute is remediation, not a terminal delivery block.
+jq '.nextPhase = "execute"' "$FEAT_DIR/delivery.json" > "$FEAT_DIR/delivery.json.tmp"
+mv "$FEAT_DIR/delivery.json.tmp" "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status escalated --reason "checks failed" >/dev/null 2>&1
+check "R2: execute rewind is not delivery-blocked" "escalated" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "R2: execute rewind is not marked retryable delivery" "false" "$(jq -r '.retryable' "$FEAT_DIR/result.json")"
+
+# A nextPhase=deliver sidecar containing only local-preflight failures has no
+# immutable delivery candidate and must remain a conservative escalation.
+jq -n '{schema:1,ok:false,status:"no-changes",nextPhase:"deliver",
+  attemptedAt:"2026-01-01T01:00:00Z",finishedAt:null,
+  targets:[
+    {name:"my-feature",ok:false,branch:"feat/my-feature",targetSha:"local123",
+      errorCode:"no_commits",error:"no commits"},
+    {name:"dirty-sibling",ok:false,branch:"feat/dirty",targetSha:"dirty456",
+      bindingEligible:false,errorCode:"dirty_worktree",error:"dirty"},
+    {name:"explicitly-ineligible",ok:false,branch:"feat/no-bind",targetSha:"noBind789",
+      bindingEligible:false,errorCode:"push_failed",error:"not eligible"}
+  ]}' > "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status failed --reason "local preflight failed" >/dev/null 2>&1
+check "R3: local-only failure remains escalated" "escalated" "$(jq -r '.status' "$FEAT_DIR/result.json")"
+check "R3: local-only outcome remains escalated" "escalated" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "R3: local-only failure is not implementation-converged" "false" \
+  "$(jq -r '.implementationConverged' "$FEAT_DIR/result.json")"
+check "R3: delivery phase still records passed verification" "passed" \
+  "$(jq -r '.verification.status' "$FEAT_DIR/result.json")"
+check "R3: local-only failure is not retryable" "false" "$(jq -r '.retryable' "$FEAT_DIR/result.json")"
+check "R3: local-only failure has no retry phase" "null" "$(jq -r '.retryPhase' "$FEAT_DIR/result.json")"
+check "R3: local-only failure has no verified SHA" "null" "$(jq -r '.verifiedSha' "$FEAT_DIR/result.json")"
+check "R3: local-only failure exposes no eligible targets" "0" \
+  "$(jq '.eligibleTargets | length' "$FEAT_DIR/result.json")"
+check "R3: matching event remains escalated" "escalated" \
+  "$(tail -1 "$FEAT_DIR/events.jsonl" | jq -r '.event')"
+
+# Case S: workspace delivery records retain each target's own branch and bound SHA.
+printf '%s\n' "$(jq '.currentPhase = "deliver" | .branch = null |
+  .workspace = {root:"/workspace",repos:[{name:"api",path:"api"},{name:"web",path:"web"}]}' \
+  <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+jq -n '{schema:1,ok:false,status:"partial",nextPhase:"deliver",
+  attemptedAt:"2026-01-01T01:00:00Z",finishedAt:null,
+  targets:[
+    {name:"api",ok:false,branch:"feat/api",targetSha:"api123",errorCode:"push_failed"},
+    {name:"web",ok:false,branch:"feat/web",targetSha:"web456",errorCode:"branch_mismatch"}
+  ]}' > "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status escalated >/dev/null 2>&1
+check "S: workspace top-level branch remains null" "null" "$(jq -r '.branch' "$FEAT_DIR/result.json")"
+check "S: workspace top-level SHA remains null" "null" "$(jq -r '.verifiedSha' "$FEAT_DIR/result.json")"
+check "S: workspace target branches preserved" 'api:feat/api,web:feat/web' \
+  "$(jq -r '.delivery.targets | map(.name + ":" + .branch) | join(",")' "$FEAT_DIR/result.json")"
+check "S: workspace target SHAs preserved" 'api:api123,web:web456' \
+  "$(jq -r '.delivery.targets | map(.name + ":" + .targetSha) | join(",")' "$FEAT_DIR/result.json")"
+check "S: workspace exposes only eligible immutable targets" 'api:feat/api:api123' \
+  "$(jq -r '.eligibleTargets | map(.name + ":" + .branch + ":" + .targetSha) | join(",")' "$FEAT_DIR/result.json")"
+check "S: mixed local and transport failure remains escalation" "escalated" \
+  "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "S: mixed local and transport failure is not retryable" "false" \
+  "$(jq -r '.retryable' "$FEAT_DIR/result.json")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

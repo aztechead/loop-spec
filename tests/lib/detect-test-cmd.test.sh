@@ -77,6 +77,26 @@ printf 'module example.com/foo\n\ngo 1.21\n' > "$DIR/go.mod"
 got=$(cd "$DIR" && bash "$LIB")
 check "F: go.mod -> go test ./..." "go test ./..." "$got"
 
+# F2-F4: prepared Python environments use their owning runner.
+DIR="$WORK/uv-python"
+mkdir -p "$DIR"
+touch "$DIR/pyproject.toml" "$DIR/uv.lock"
+got=$(cd "$DIR" && bash "$LIB")
+check "F2: uv.lock -> uv run pytest" "uv run pytest" "$got"
+
+DIR="$WORK/poetry-python"
+mkdir -p "$DIR"
+touch "$DIR/pyproject.toml" "$DIR/poetry.lock"
+got=$(cd "$DIR" && bash "$LIB")
+check "F3: poetry.lock -> poetry run pytest" "poetry run pytest" "$got"
+
+DIR="$WORK/venv-python"
+mkdir -p "$DIR/.venv/bin"
+touch "$DIR/pyproject.toml" "$DIR/.venv/bin/python"
+chmod +x "$DIR/.venv/bin/python"
+got=$(cd "$DIR" && bash "$LIB")
+check "F4: prepared venv -> venv pytest" ".venv/bin/python -m pytest" "$got"
+
 # G: Makefile without test: target -> falls through to next marker; if only Makefile present and no test: target, should not emit make test
 DIR="$WORK/makefile-no-test"
 mkdir -p "$DIR"
@@ -116,7 +136,7 @@ got=$(bash "$LIB" "$DIR")
 check "K: explicit directory argument" "go test ./..." "$got"
 
 # L: exit 0 in all cases
-for case_name in "makefile-test" "package-json" "cargo" "pyproject" "setup-py" "go-mod" "empty"; do
+for case_name in "makefile-test" "package-json" "cargo" "pyproject" "setup-py" "go-mod" "uv-python" "poetry-python" "venv-python" "empty"; do
   exit_code=0
   (cd "$WORK/$case_name" && bash "$LIB") || exit_code=$?
   check_exit "L: exit 0 for $case_name" "0" "$exit_code"

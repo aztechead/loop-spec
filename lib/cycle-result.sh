@@ -33,10 +33,16 @@
 #   "prUrl": "<--pr-url arg, else delivery.json/feature.json .prUrl, else null>",
 #   "checkpointPrUrl": "<feature.json .checkpointPrUrl // null>",
 #   "delivery": "<delivery.json, else feature.json .delivery, else null>",
+#   "eligibleTargets": <delivery targets with an immutable retry binding>,
+#   "implementationConverged": <true once the full cycle reached delivery,
+#                               except local-preflight-only delivery failures>,
 #   "converged": <true iff status==completed AND no warnings[] entry starts
 #                 with "iterate-budget-spent:" or "iterate-terminal:", AND an
 #                 explicit delivery block is ready-for-review (legacy state with
 #                 no delivery block remains compatible)>,
+#   "retryable": <true for a SHA-bound delivery block>,
+#   "retryPhase": <"deliver" for a SHA-bound delivery block, else null>,
+#   "verifiedSha": <single-repo delivery targetSha, else null>,
 #   "iterations": {"used": <.iterate.used // 0>, "max": <.iterate.maxIterations // null>},
 #   "warnings": <.warnings // []>,
 #   "autonomous": <.autonomous // false>,
@@ -319,31 +325,66 @@ case "${1:-}" in
        ([$delivery.targets[]?
           | select((.feedback.changesRequested // false) == true)] | length > 0) as $feedbackBlocking |
        ($stateWarnings + $feedbackWarnings) as $warnings |
-       # converged: clean goal verdict plus a successful explicit delivery when present.
-       (($status == "completed") and
-        ($feedbackBlocking | not) and
-        ($warnings
-         | map(startswith("iterate-budget-spent:") or startswith("iterate-terminal:"))
-         | any | not) and
+         def local_delivery_error: ["repo_invalid","repo_root_mismatch","branch_mismatch",
+           "git_status_failed","dirty_worktree","base_sha_missing","base_sha_invalid",
+           "base_not_ancestor","no_commits","git_history_failed","local_artifact_policy_failed"];
+         def delivery_target_eligible:
+           . as $target |
+           (($target.targetSha // "") != "") and
+           ($target.bindingEligible == true or
+             (($target | has("bindingEligible") | not) and
+              ((local_delivery_error | index($target.errorCode // "")) == null)));
+        # converged: clean goal verdict plus a successful explicit delivery when present.
+         (if $delivery != null then $delivery else ($fj.delivery // null) end) as $deliveryRecord |
+         ([$deliveryRecord.targets[]? | select(delivery_target_eligible)]) as $eligibleTargets |
+         ([$deliveryRecord.targets[]?
+           | select(.ok == false and (delivery_target_eligible | not))] | length > 0)
+           as $hasLocalFailure |
+         (($fj.currentPhase // "") == "deliver" or
+          ($fj.currentPhase // "") == "completed" or
+          ($delivery.nextPhase // "") == "completed") as $reachedDelivery |
+         (($fj.currentPhase // "") == "deliver" and
+          ($delivery.nextPhase // "") == "deliver") as $stoppedAtDelivery |
+         ($stoppedAtDelivery and ($eligibleTargets | length) > 0 and ($hasLocalFailure | not)) as $deliveryBlocked |
+         ($stoppedAtDelivery and (($eligibleTargets | length) == 0 or $hasLocalFailure)) as $localDeliveryEscalation |
+         (if $deliveryBlocked then "failed"
+          elif $localDeliveryEscalation then "escalated"
+          else $status end) as $effectiveStatus |
+         ($reachedDelivery and ($localDeliveryEscalation | not))
+           as $implementationConverged |
+         (if ($fj.workspace // null) == null
+          then ($eligibleTargets | first // null)
+          else null end) as $primaryTarget |
+        (($effectiveStatus == "completed") and
+         ($feedbackBlocking | not) and
+         ($warnings
+          | map(startswith("iterate-budget-spent:") or startswith("iterate-terminal:"))
+          | any | not) and
        (if $delivery != null then (($delivery.status // "") == "ready-for-review")
         else (($fj | has("delivery") | not) or (($fj.delivery.status // "") == "ready-for-review"))
         end)) as $converged |
       {
-        schema: 1,
-        cycleType: "full",
-        slug: $fj.slug,
-        status: $status,
-        outcome: (if $converged then "delivered" elif $status == "completed" then "completed-with-gaps" else $status end),
-        reason: $reason,
-        phaseReached: (if $status == "completed" and (($delivery.status // "") == "ready-for-review")
-                       then "completed" else ($fj.currentPhase // null) end),
-        branch: ($fj.branch // null),
-        baseBranch: ($fj.baseBranch // null),
-        prUrl: $prUrl,
-        checkpointPrUrl: ($fj.checkpointPrUrl // null),
-        delivery: (if $delivery != null then $delivery else ($fj.delivery // null) end),
-        converged: $converged,
-        iterations: {
+         schema: 1,
+         cycleType: "full",
+         slug: $fj.slug,
+         status: $effectiveStatus,
+         outcome: (if $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
+         reason: $reason,
+         phaseReached: (if $effectiveStatus == "completed" and (($delivery.status // "") == "ready-for-review")
+                        then "completed" else ($fj.currentPhase // null) end),
+         branch: (if $primaryTarget != null then ($primaryTarget.branch // $fj.branch // null)
+                  else ($fj.branch // null) end),
+         baseBranch: ($fj.baseBranch // null),
+         prUrl: $prUrl,
+         checkpointPrUrl: ($fj.checkpointPrUrl // null),
+         delivery: $deliveryRecord,
+         eligibleTargets: $eligibleTargets,
+         implementationConverged: $implementationConverged,
+         converged: $converged,
+         retryable: $deliveryBlocked,
+         retryPhase: (if $deliveryBlocked then "deliver" else null end),
+         verifiedSha: (if $primaryTarget != null then $primaryTarget.targetSha else null end),
+         iterations: {
           used: ($fj.iterate.used // 0),
           max: ($fj.iterate.maxIterations // null)
         },
@@ -351,11 +392,11 @@ case "${1:-}" in
         autonomous: ($fj.autonomous // false),
         feature_title: ($fj.feature_title // $fj.slug),
         createdAt: ($fj.createdAt // null),
-        finishedAt: $now,
-        verification: {
-          status: (if $status == "completed" then "passed" else "not-run" end),
-          command: ($fj.commands.test // null)
-        }
+         finishedAt: $now,
+         verification: {
+           status: (if $reachedDelivery then "passed" else "not-run" end),
+           command: ($fj.commands.test // null)
+         }
       }
       ')" 2>/dev/null || {
       echo "cycle-result.sh: failed to build result.json from feature.json in $feature_dir" >&2
@@ -403,7 +444,8 @@ case "${1:-}" in
 
     # Emit matching event via lib/events.sh so events.jsonl and result.json can't disagree.
     EVENTS_SH="$(dirname "${BASH_SOURCE[0]}")/events.sh"
-    bash "$EVENTS_SH" emit "$feature_dir" "$status" 2>/dev/null || true
+    result_status="$(jq -r '.status' <<<"$result_json" 2>/dev/null || printf '%s' "$status")"
+    bash "$EVENTS_SH" emit "$feature_dir" "$result_status" 2>/dev/null || true
 
     printf 'LOOP_SPEC_RESULT %s\n' "$result_json"
 
