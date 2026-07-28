@@ -107,7 +107,10 @@ class LoopConfig:
                                       # additionally capped at the REMAINING budget via
                                       # `claude -p --max-budget-usd` so one runaway tick
                                       # cannot overshoot. Iterations and wall clock do
-                                      # not bound spend on their own.
+                                      # not bound spend on their own. Judge calls bill
+                                      # to the same total. The per-tick cap is a claude
+                                      # flag; under pi/opencode only the cumulative
+                                      # check applies.
     judge: bool = False
     judge_model: str = DEFAULT_JUDGE_MODEL
     state_dir: str = ""               # default .loop/<task_id>
@@ -645,10 +648,15 @@ def run_verifier(cmd: str, timeout: int, out_file: Path) -> tuple[bool, str]:
     return ok, output
 
 
-def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str) -> bool:
+def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str, *,
+               budget_usd: Optional[float] = None) -> tuple[bool, Optional[float]]:
     """Optional cheap second opinion AFTER the verifier passes. The judge sees the
     actual diff of the work, not just the verifier's say-so — otherwise it is
-    rubber-stamping the verifier rather than validating the work."""
+    rubber-stamping the verifier rather than validating the work.
+
+    Returns (done, cost_usd). The cost is reported rather than swallowed so the
+    caller can bill it to the loop's cumulative spend: a judge call is a real
+    priced invocation, and a total that silently omits it is wrong."""
     diff_stat = diff_full = ""
     if start_sha:
         try:
@@ -674,12 +682,14 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str) -> bool:
         judge_model = ""  # claude-only id; let the harness's session default judge
     jcfg = LoopConfig(task="", claude_bin=cfg.claude_bin, agent_cli=cfg.agent_cli,
                       model=judge_model, allowed_tools="")
-    res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600)
+    res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600,
+                     budget_usd=budget_usd)
+    cost = res.get("cost_usd")
     if not res["ok"]:
         print(f"⚠ judge run failed ({res['error']}); treating as NOT_DONE")
-        return False
+        return False, cost
     up = res["result"].upper()
-    return "DONE" in up and "NOT_DONE" not in up
+    return ("DONE" in up and "NOT_DONE" not in up), cost
 
 
 def git_commit_scoped(message: str, ignore_dir: str) -> str:
@@ -882,11 +892,29 @@ def run_loop(cfg: LoopConfig) -> dict:
 
         # --- Completion ----------------------------------------------------------
         if verified:
-            if cfg.judge and not judge_done(cfg, verifier_output, state.start_sha):
-                print("   verifier passed but judge said NOT_DONE — continuing.")
-            else:
+            judge_ok = True
+            if cfg.judge:
+                judge_budget = None
+                if cfg.max_budget_usd > 0:
+                    judge_budget = cfg.max_budget_usd - (state.total_cost_usd or 0.0)
+                    if judge_budget <= 0:
+                        # With --judge on, "verified" means verifier AND judge. We
+                        # cannot afford the second half, so completion is unproven —
+                        # halt on budget rather than claim a completion we did not
+                        # validate. verifier.passed is still recorded in the result.
+                        print("   verifier passed but no budget left for the judge "
+                              "— halting; completion is unvalidated.")
+                        status = HALT_BUDGET
+                        break
+                judge_ok, judge_cost = judge_done(cfg, verifier_output, state.start_sha,
+                                                  budget_usd=judge_budget)
+                if judge_cost is not None:
+                    state.total_cost_usd = (state.total_cost_usd or 0.0) + judge_cost
+                    state.save(state_path)
+            if judge_ok:
                 status = HALT_COMPLETE
                 break
+            print("   verifier passed but judge said NOT_DONE — continuing.")
 
     # -------------------------------------------------------------------------
     # Machine-readable result — the supervisor contract

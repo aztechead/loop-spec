@@ -18,6 +18,9 @@ All notable changes documented here. Format follows Keep a Changelog.
 - Added a cumulative spend guardrail to the bundled loop runner: `loop.py --max-budget-usd`
   halts `budget_exhausted` at the cap and caps each tick at the remaining budget via
   `claude -p --max-budget-usd`; `supervisor.py --max-budget-usd` applies it per fleet task.
+  `--judge` calls bill to the same total and are capped at the remaining budget; a loop
+  that cannot afford its judge halts on budget rather than reporting an unvalidated
+  completion.
 - Added `docs/loop-spec/claude-invocation-contract.md` documenting the entrypoint contract,
   the CLI-versus-Agent-SDK `permission_mode` divergence, the spend controls, and how to
   drive loop-spec from the Python Agent SDK.
@@ -28,6 +31,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   `LOOP_SPEC_EXECUTION_PROFILE=interactive`, which could previously claim a persistent
   runtime a one-shot job does not have and route it onto the unrunnable loop-fleet rung.
   `LOOP_SPEC_LOOP_RUNTIME` remains the integrator's absolute override.
+- `loop.py --judge` no longer discards the judge invocation's cost. Judge spend was
+  omitted from `total_cost_usd` entirely, so the reported total under-counted every
+  judged loop and the new cumulative cap could not see it.
 - `loop.py` now rejects permission modes the Claude CLI does not accept before starting.
   `--permission-mode default` is valid in the Agent SDK but not on the CLI, so it
   previously failed every tick as an opaque `agent_error` and consumed the whole iteration

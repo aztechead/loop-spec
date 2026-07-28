@@ -689,6 +689,44 @@ FAKE_ARGV_LOG="$NOBUDLOG" python3 "$SCRIPTS/loop.py" "noop" --task-id nobudget \
 check "no budget flag by default" "$(grep -c -- '--max-budget-usd' "$NOBUDLOG")" "0"
 check "null cap in result"        "$(python3 -c "import json;print(json.load(open('.loop/nobudget/result.json'))['max_budget_usd'])")" "None"
 
+echo "== 20. judge spend is billed to the loop total =="
+# A judge call is a real priced invocation. Billing it to total_cost_usd is what
+# makes the reported total honest and the cumulative cap enforceable.
+newrepo
+FAKE_COST=0.5 python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id judgecost \
+  --claude-bin "$FAKE" --verify 'test "$(wc -l < work.txt)" -ge 2' \
+  --judge --max-iterations 99 >/dev/null 2>&1
+check "judge DONE completes"      "$?" "0"
+check "halt_reason"               "$(reason .loop/judgecost/result.json)" "complete"
+# 2 work ticks to reach two lines, then 1 judge call = 3 * 0.5
+check "judge cost included"       "$(python3 -c "import json;print(json.load(open('.loop/judgecost/result.json'))['total_cost_usd'])")" "1.5"
+
+# NOT_DONE keeps the loop going, and each judge call is still billed.
+newrepo
+FAKE_COST=0.5 FAKE_JUDGE=NOT_DONE python3 "$SCRIPTS/loop.py" "spin" --task-id judgeno \
+  --claude-bin "$FAKE" --verify 'true' --judge --max-iterations 2 --no-progress 99 \
+  >/dev/null 2>&1
+check "judge NOT_DONE keeps going" "$(reason .loop/judgeno/result.json)" "max_iterations"
+check "every judge call billed"    "$(python3 -c "import json;print(json.load(open('.loop/judgeno/result.json'))['total_cost_usd'])")" "2.0"
+
+# The judge is capped at what the loop has left, not run unbounded.
+newrepo
+JUDGELOG="$R/judgeargv.txt"
+FAKE_COST=0.5 FAKE_ARGV_LOG="$JUDGELOG" python3 "$SCRIPTS/loop.py" "noop" \
+  --task-id judgebudget --claude-bin "$FAKE" --verify 'true' --judge \
+  --max-budget-usd 3 --max-iterations 1 >/dev/null 2>&1
+check "judge tick gets the remainder" "$(grep -c -- '--max-budget-usd 2.500000' "$JUDGELOG")" "1"
+
+# With --judge on, "verified" means verifier AND judge. If the judge is
+# unaffordable, completion is unproven — halt on budget, never claim complete.
+newrepo
+FAKE_COST=1.0 python3 "$SCRIPTS/loop.py" "noop" --task-id judgebroke \
+  --claude-bin "$FAKE" --verify 'true' --judge --max-budget-usd 1 --max-iterations 5 \
+  >/dev/null 2>&1
+check "unaffordable judge exit 1"   "$?" "1"
+check "unaffordable judge halts on budget" "$(reason .loop/judgebroke/result.json)" "budget_exhausted"
+check "verifier verdict still recorded"    "$(python3 -c "import json;print(json.load(open('.loop/judgebroke/result.json'))['verifier']['passed'])")" "True"
+
 echo
 echo "================= $PASS passed, $FAIL failed ================="
 exit $([[ $FAIL -eq 0 ]] && echo 0 || echo 1)

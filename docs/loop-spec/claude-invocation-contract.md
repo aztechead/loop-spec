@@ -95,8 +95,14 @@ per-tick `total_cost_usd` is checked before each iteration and halts
 runaway turn cannot overshoot between checks. `supervisor.py --max-budget-usd`
 applies the cap per task; the fleet-wide worst case is that times the task count.
 
+`--judge` calls bill to the same total and are capped at the loop's remaining
+budget. With a judge configured, "verified" means verifier *and* judge, so a loop
+that cannot afford the judge halts `budget_exhausted` rather than claiming a
+completion it never validated — `verifier.passed` is still recorded in the result.
+
 Unset means unbounded and passes no flag — iteration, wall-clock and stall caps
-do not bound cost on their own.
+do not bound cost on their own. The per-tick cap is a claude flag; under pi and
+opencode only the cumulative check applies.
 
 ## Driving loop-spec from the Python Agent SDK
 
