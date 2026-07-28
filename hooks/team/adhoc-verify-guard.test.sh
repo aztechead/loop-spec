@@ -12,8 +12,17 @@ trap 'rm -rf "$TMPDIR_TEST"' EXIT
 TRACE_LOG="$TMPDIR_TEST/trace.log"
 export LOOP_SPEC_MICRO_GUARD_TRACE_LOG="$TRACE_LOG"
 
+# Edited paths must exist on disk: a path that is gone is exempt from grounding
+# (see t1/t2), so every fixture project seeds the files the payloads edit.
+seed_edits() {
+  local dir="$1"
+  mkdir -p "$dir/src" "$dir/config"
+  : > "$dir/src/app.py"; : > "$dir/src/other.js"
+  : > "$dir/README.md"; : > "$dir/config/settings.json"
+}
+
 # Baseline loop-spec project (guard is scoped to .loop-spec projects).
-PROJ="$TMPDIR_TEST/proj"; mkdir -p "$PROJ/.loop-spec"
+PROJ="$TMPDIR_TEST/proj"; mkdir -p "$PROJ/.loop-spec"; seed_edits "$PROJ"
 
 PASS=0
 FAIL=0
@@ -58,6 +67,11 @@ BASH_DIFF_OTHER='{"type":"tool_use","name":"Bash","input":{"command":"git diff -
 BASH_DIFF_CHECK='{"type":"tool_use","name":"Bash","input":{"command":"git diff --check"}}'
 BASH_DIFF_STAT='{"type":"tool_use","name":"Bash","input":{"command":"git diff --stat"}}'
 BASH_DIFF_COMPOUND='{"type":"tool_use","name":"Bash","input":{"command":"git diff --stat && git diff -- src/app.py"}}'
+BASH_SHOW='{"type":"tool_use","name":"Bash","input":{"command":"git show HEAD"}}'
+BASH_SHOW_PATH='{"type":"tool_use","name":"Bash","input":{"command":"git show HEAD -- src/app.py"}}'
+BASH_SHOW_SHA='{"type":"tool_use","name":"Bash","input":{"command":"git show -s --format=%H HEAD"}}'
+BASH_SHOW_STAT='{"type":"tool_use","name":"Bash","input":{"command":"git show --stat HEAD"}}'
+WRITE_GONE='{"type":"tool_use","name":"Write","input":{"file_path":"scratch/tmp-notes.md"}}'
 BASH_LS='{"type":"tool_use","name":"Bash","input":{"command":"ls -la"}}'
 BASH_TEST_TEXT='{"type":"tool_use","name":"Bash","input":{"command":"printf tests"}}'
 BASH_RAKE='{"type":"tool_use","name":"Bash","input":{"command":"rake spec"}}'
@@ -71,17 +85,17 @@ check "b: verification without grounding review -> BLOCK" 2 "$(payload "$EDIT_PY
 check "b2: grounding review without verification -> BLOCK" 2 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF")"
 check "b3: grounding review and verification after edit -> ALLOW" 0 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF" "$BASH_TEST")"
 check "b4: grounding review before last edit is stale -> BLOCK" 2 "$(payload "$READ_PY" "$BASH_DIFF" "$EDIT_PY" "$BASH_TEST")"
-check "b5: diff alone is not repository-context grounding -> BLOCK" 2 "$(payload "$EDIT_PY" "$BASH_DIFF" "$BASH_TEST")"
-check "b6: reread alone is not final-diff grounding -> BLOCK" 2 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_TEST")"
-check "b7: diff summary is not final-diff grounding -> BLOCK" 2 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF_STAT" "$BASH_TEST")"
+check "b5: content diff naming the edited path grounds it -> ALLOW" 0 "$(payload "$EDIT_PY" "$BASH_DIFF" "$BASH_TEST")"
+check "b6: reread alone is not a content review -> BLOCK" 2 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_TEST")"
+check "b7: diff summary is not a content review -> BLOCK" 2 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF_STAT" "$BASH_TEST")"
 check "b8: validation before grounding review -> BLOCK" 2 "$(payload "$EDIT_PY" "$BASH_TEST" "$READ_PY" "$BASH_DIFF")"
-check "b9: unrelated read cannot ground edited path -> BLOCK" 2 "$(payload "$EDIT_PY" "$READ_OTHER" "$BASH_DIFF" "$BASH_TEST")"
-check "b10: unrelated diff cannot ground edited path -> BLOCK" 2 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF_OTHER" "$BASH_TEST")"
+check "b9: content diff grounds a path the reads missed -> ALLOW" 0 "$(payload "$EDIT_PY" "$READ_OTHER" "$BASH_DIFF" "$BASH_TEST")"
+check "b10: re-read grounds a path the diff pathspec missed -> ALLOW" 0 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF_OTHER" "$BASH_TEST")"
 check "b11: compound summary then content diff -> ALLOW" 0 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF_COMPOUND" "$BASH_TEST")"
 check "b12: bare tests text is not validation -> BLOCK" 2 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF" "$BASH_TEST_TEXT")"
-check "b13: every read must follow global final edit -> BLOCK" 2 "$(payload "$EDIT_PY" "$READ_PY" "$EDIT_JS" "$READ_JS" "$BASH_DIFF_ALL" "$BASH_TEST")"
+check "b13: whole-tree diff grounds a path read before a later edit -> ALLOW" 0 "$(payload "$EDIT_PY" "$READ_PY" "$EDIT_JS" "$READ_JS" "$BASH_DIFF_ALL" "$BASH_TEST")"
 check "b14: all files reread after global final edit -> ALLOW" 0 "$(payload "$EDIT_PY" "$EDIT_JS" "$READ_PY" "$READ_JS" "$BASH_DIFF_ALL" "$BASH_TEST")"
-check "b15: directory Grep cannot substitute for rereading edited files -> BLOCK" 2 "$(payload "$EDIT_PY" "$GREP_ROOT" "$BASH_DIFF_ALL" "$BASH_TEST")"
+check "b15: directory Grep is not a content review -> BLOCK" 2 "$(payload "$EDIT_PY" "$GREP_ROOT" "$BASH_TEST")"
 check "c: verification BEFORE last edit -> BLOCK (stale evidence)" 2 "$(payload "$BASH_TEST" "$EDIT_PY")"
 check "d: no edits at all -> ALLOW" 0 "$(payload "$BASH_LS")"
 check "e: prose-only edits still require due diligence -> BLOCK" 2 "$(payload "$WRITE_MD")"
@@ -93,7 +107,8 @@ check "h3: Edit with missing file_path -> ALLOW (never counts as an edit)" 0 "$(
 check "h4: unrecognized runner without VERIFY_CMD -> BLOCK" 2 "$(payload "$EDIT_PY" "$BASH_RAKE")"
 
 # VERIFY_CMD in micro.conf: the project's declared runner counts as evidence
-VC="$TMPDIR_TEST/vc"; mkdir -p "$VC/.loop-spec"; printf 'ENABLED=1\nVERIFY_CMD=rake spec\n' > "$VC/.loop-spec/micro.conf"
+VC="$TMPDIR_TEST/vc"; mkdir -p "$VC/.loop-spec"; seed_edits "$VC"
+printf 'ENABLED=1\nVERIFY_CMD=rake spec\n' > "$VC/.loop-spec/micro.conf"
 actual_exit=0
 echo "$(payload "$EDIT_PY" "$BASH_RAKE")" | env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: h5: VERIFY_CMD without grounding review -> BLOCK"; ((PASS++)) || true
@@ -106,6 +121,21 @@ actual_exit=0
 echo "$(payload "$BASH_RAKE" "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: h6: VERIFY_CMD evidence predating edit -> still BLOCK"; ((PASS++)) || true
 else echo "FAIL: h6: VERIFY_CMD evidence predating edit -> still BLOCK (got $actual_exit)"; ((FAIL++)) || true; fi
+
+# --- unsatisfiable grounding must never strand a session ---
+# A path that no longer exists cannot be re-read, and an untracked one never shows up
+# in a diff either: requiring evidence for it would block every stop with no way out.
+check "t1: edited path deleted before stop is exempt -> ALLOW" 0 "$(payload "$EDIT_PY" "$WRITE_GONE" "$READ_PY" "$BASH_DIFF" "$BASH_TEST")"
+check "t2: every edited path deleted -> ALLOW (nothing left to review)" 0 "$(payload "$WRITE_GONE")"
+check "t3: git show is a content review for committed work -> ALLOW" 0 "$(payload "$EDIT_PY" "$BASH_SHOW" "$BASH_TEST")"
+check "t4: git show with pathspec grounds that path -> ALLOW" 0 "$(payload "$EDIT_PY" "$BASH_SHOW_PATH" "$BASH_TEST")"
+check "t5: git show -s (sha lookup) is not a content review -> BLOCK" 2 "$(payload "$EDIT_PY" "$BASH_SHOW_SHA" "$BASH_TEST")"
+check "t6: git show --stat is not a content review -> BLOCK" 2 "$(payload "$EDIT_PY" "$BASH_SHOW_STAT" "$BASH_TEST")"
+check "t7: pathspec diff leaves a second edited path ungrounded -> BLOCK" 2 "$(payload "$EDIT_PY" "$EDIT_JS" "$BASH_DIFF" "$BASH_TEST")"
+check "t8: read and diff can ground different paths -> ALLOW" 0 "$(payload "$EDIT_PY" "$EDIT_JS" "$READ_JS" "$BASH_DIFF" "$BASH_TEST")"
+# Grounding only has to be complete BEFORE a verification, not last: showing the diff
+# once more when summarizing the work must not retract the verification that preceded it.
+check "t9: a repeat diff after verification does not retract it -> ALLOW" 0 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF" "$BASH_TEST" "$BASH_DIFF_ALL")"
 
 # --- stand-down conditions ---
 check "i: kill switch LOOP_SPEC_MICRO_GUARD=0 -> ALLOW" 0 "$(payload "$EDIT_PY")" LOOP_SPEC_MICRO_GUARD=0
@@ -140,7 +170,7 @@ if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: m: in-flight feature -> ALLOW"; 
 else echo "FAIL: m: in-flight feature -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
 
 # completed feature does NOT disarm the guard
-DONE="$TMPDIR_TEST/done"; mkdir -p "$DONE/.loop-spec/features/old-feat"
+DONE="$TMPDIR_TEST/done"; mkdir -p "$DONE/.loop-spec/features/old-feat"; seed_edits "$DONE"
 printf '{"currentPhase":"completed"}\n' > "$DONE/.loop-spec/features/old-feat/feature.json"
 actual_exit=0
 echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$DONE" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
@@ -149,7 +179,7 @@ else echo "FAIL: n: completed feature only -> guard still BLOCKS (got $actual_ex
 
 # DELIVER remains the tracked resume pointer after external delivery. The ignored
 # sidecar is authoritative for logical completion and must re-arm the ambient guard.
-LOGICAL_DONE="$TMPDIR_TEST/logical-done"; mkdir -p "$LOGICAL_DONE/.loop-spec/features/final"
+LOGICAL_DONE="$TMPDIR_TEST/logical-done"; mkdir -p "$LOGICAL_DONE/.loop-spec/features/final"; seed_edits "$LOGICAL_DONE"
 printf '{"currentPhase":"deliver"}\n' > "$LOGICAL_DONE/.loop-spec/features/final/feature.json"
 printf '{"nextPhase":"completed"}\n' > "$LOGICAL_DONE/.loop-spec/features/final/delivery.json"
 actual_exit=0
@@ -166,7 +196,7 @@ git -C "$CONTROL" init -q -b main
 git -C "$CONTROL" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm base
 LINKED="$TMPDIR_TEST/linked-feature"
 git -C "$CONTROL" worktree add -q -b feat/linked "$LINKED"
-mkdir -p "$CONTROL/.loop-spec" "$LINKED/.loop-spec/features/linked"
+mkdir -p "$CONTROL/.loop-spec" "$LINKED/.loop-spec/features/linked"; seed_edits "$CONTROL"
 printf '{"currentPhase":"execute"}\n' > "$LINKED/.loop-spec/features/linked/feature.json"
 actual_exit=0
 echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?

@@ -8,9 +8,12 @@
 # The enforcement half of micro mode (skills/micro/SKILL.md invariant 5): a session
 # that edited files must have completed a post-change grounding review AND run a
 # verification command AFTER the last edit before it is allowed to stop. One python
-# pass over the Stop payload does all the work: Write/Edit/NotebookEdit mark edits;
-# an exact Read of every edited file plus a final `git diff` mark repository grounding; a Bash command matching
-# the verification pattern or the project's declared VERIFY_CMD marks validation.
+# pass over the Stop payload does all the work: Write/Edit/NotebookEdit mark edits; a
+# content review (`git diff` or `git show`, never a `--stat`/`-s` summary) grounds every
+# path its pathspec covers, and an exact Read grounds that one path -- either form
+# grounds a given file, and at least one content review must follow the final edit; a
+# Bash command matching the verification pattern or the project's declared VERIFY_CMD
+# marks validation.
 #
 # Stands down (exit 0) when:
 #   - LOOP_SPEC_MICRO_GUARD=0 (kill switch), or micro.conf pins ENABLED=0
@@ -20,7 +23,9 @@
 #     feature scale, and blocking between phases would fight the orchestrator.
 #     Trade-off: a paused feature also disarms the guard; guards here are
 #     accelerators, never blockers, so we err on allow.
-#   - no edits in the transcript
+#   - no edits in the transcript, or every edited path is gone from disk by Stop time
+#     (a deleted path can be neither re-read nor diffed, so requiring evidence for it
+#     would strand the session with no way to satisfy the gate)
 #
 # Fail-open: missing/malformed payload, no python3, empty transcript -> exit 0.
 #
@@ -98,7 +103,9 @@ VERDICT=$(printf '%s' "$INPUT" | LOOP_SPEC_PROJ_VERIFY_CMD="$PROJ_VERIFY_CMD" LO
 import json, os, re, shlex, sys
 
 EDIT_TOOLS = {'Write', 'Edit', 'NotebookEdit'}
-SUMMARY_FLAGS = {'--check', '--stat', '--shortstat', '--numstat', '--name-only', '--name-status', '--quiet'}
+REVIEW_SUBCOMMANDS = {'diff', 'show'}
+SUMMARY_FLAGS = {'--check', '--stat', '--shortstat', '--numstat', '--name-only', '--name-status',
+                 '--quiet', '--no-patch', '-s'}
 VERIFY_RE = re.compile(
     r'(pytest|unittest|jest|vitest|mocha|go\s+test|cargo\s+(test|check|build)'
     r'|npm\s+(test|run)|pnpm\s+(test|run|lint|build)|yarn\s+(test|run|lint|build)'
@@ -126,27 +133,43 @@ def contains(scope, path):
 def command_parts(command):
     return [p.strip() for p in re.split(r'\s*(?:&&|\|\||;)\s*', command) if p.strip()]
 
-def diff_targets(part, project):
+def review_targets(part, project):
+    '''Paths a content-review command shows: [] = the whole change, None = not a review.
+
+    Both git diff (uncommitted work) and git show (work already committed) print the
+    content of a change; summary forms (--stat, -s, --name-only) print no content.'''
     try:
         tokens = shlex.split(part)
     except Exception:
         return None
     try:
         git_i = next(i for i, t in enumerate(tokens) if os.path.basename(t) == 'git')
-        diff_i = tokens.index('diff', git_i + 1)
-    except (StopIteration, ValueError):
+    except StopIteration:
+        return None
+    base = project
+    sub_i = git_i + 1
+    while sub_i < len(tokens):  # skip git's global options to reach the subcommand
+        token = tokens[sub_i]
+        if token in ('-C', '-c') and sub_i + 1 < len(tokens):
+            if token == '-C':
+                base = norm(tokens[sub_i + 1], project)
+            sub_i += 2
+            continue
+        if token.startswith('-'):
+            sub_i += 1
+            continue
+        break
+    if sub_i >= len(tokens) or tokens[sub_i] not in REVIEW_SUBCOMMANDS:
         return None
     if any(flag in tokens for flag in SUMMARY_FLAGS):
         return None
-    base = project
-    if '-C' in tokens[git_i + 1:diff_i]:
-        ci = tokens.index('-C', git_i + 1, diff_i)
-        if ci + 1 < diff_i:
-            base = norm(tokens[ci + 1], project)
-    if '--' not in tokens[diff_i + 1:]:
-        return []  # no pathspec means the content diff covers every edited path
-    sep = tokens.index('--', diff_i + 1)
+    if '--' not in tokens[sub_i + 1:]:
+        return []  # no pathspec means the content review covers every edited path
+    sep = tokens.index('--', sub_i + 1)
     return [norm(t, base) for t in tokens[sep + 1:] if t]
+
+def covers(targets, path):
+    return not targets or any(t == path or contains(t, path) for t in targets)
 
 def is_verify(part, project_cmd):
     if 'adhoc-ledger.sh' in part:
@@ -209,7 +232,7 @@ for content in entries:
         elif name == 'Bash':
             command = str(inp.get('command', ''))
             for part in command_parts(command):
-                targets = diff_targets(part, project)
+                targets = review_targets(part, project)
                 if targets is not None:
                     diffs.append((idx, targets))
                 if is_verify(part, project_cmd):
@@ -218,24 +241,33 @@ for content in entries:
 if edit_count == 0:
     out('allow', 'no edits')
 
-last_edit = max(edits.values())
-context_indexes = []
-for path, edit_idx in edits.items():
-    matches = [i for i, read_path in contexts if i > last_edit and read_path == path]
-    if not matches:
-        out('block', 'post-change grounding review did not re-read every edited path', edit_count)
-    context_indexes.append(max(matches))
+# A path that is gone cannot be re-read, and an untracked one never reaches a diff
+# either: demanding evidence for it strands the session with no way to satisfy the
+# gate. Exempt it, and order the gate by the last edit that survived to Stop.
+live_edits = {path: i for path, i in edits.items() if os.path.exists(path)}
+if not live_edits:
+    out('allow', 'every edited path was removed before stop', edit_count)
 
-covering_diffs = []
-for diff_idx, targets in diffs:
-    if diff_idx <= last_edit:
-        continue
-    if not targets or all(any(t == path or contains(t, path) for t in targets) for path in edits):
-        covering_diffs.append(diff_idx)
-if not covering_diffs:
-    out('block', 'post-change grounding review did not inspect a content diff covering every edited path', edit_count)
+last_edit = max(live_edits.values())
+reviews = [(i, targets) for i, targets in diffs if i > last_edit]
+if not reviews:
+    out('block', 'no content diff was inspected after the final edit', edit_count)
 
-grounded_at = max(context_indexes + [max(covering_diffs)])
+# Either form of content evidence grounds a path: an exact re-read of it, or a content
+# review whose pathspec covers it. Requiring both made a wide diff-reviewed change
+# (docs sweeps, generated files) pay a per-file re-read that showed nothing new.
+grounded_indexes = []
+for path in live_edits:
+    evidence = [i for i, read_path in contexts if i > last_edit and read_path == path]
+    evidence += [i for i, targets in reviews if covers(targets, path)]
+    if not evidence:
+        out('block', 'an edited path was neither re-read nor covered by a content diff after the final edit', edit_count)
+    grounded_indexes.append(min(evidence))
+
+# Earliest point at which every path was grounded: evidence only accumulates, so
+# repeating a diff while summarizing the work must not retract the verification that
+# already followed a complete grounding.
+grounded_at = max(grounded_indexes)
 if not any(i > grounded_at for i in verifies):
     out('block', 'no verification command ran after the post-change grounding review', edit_count)
 out('allow', 'grounding and verification completed after final edit', edit_count)
@@ -248,7 +280,7 @@ IFS='|' read -r DECISION REASON EDITS <<<"$VERDICT"
 
 if [[ "$DECISION" == "block" ]]; then
   trace "deny" "$REASON edits=${EDITS:-?}"
-  echo "DENY: ${EDITS:-?} file edit(s) this session but ${REASON}. Micro VERIFY requires both a post-change grounding review (re-read changed files and relevant callers/tests/contracts, then inspect the final git diff) and the project's real verification command after the final edit. For a pass, copy each --criteria value byte-for-byte into exactly one grounding: lib/adhoc-ledger.sh add --title ... --criteria \"<criterion>\" --grounding \"<criterion> | repo: <file>:<positive line> | integration: <file>:<positive line>\" --verify \"<command>\" --result pass. With no integration site use \"integration: none - <reason of at least 10 characters>\". A fail/partial result may omit grounding." >&2
+  echo "DENY: ${EDITS:-?} file edit(s) this session but ${REASON}. Micro VERIFY requires both a post-change grounding review and the project's real verification command after the final edit. Grounding: inspect the final content diff -- \`git diff\` for uncommitted work, \`git show HEAD\` once it is committed (a --stat/-s summary does not count) -- and re-read any edited path that diff does not cover, plus the relevant callers/tests/contracts. For a pass, copy each --criteria value byte-for-byte into exactly one grounding: lib/adhoc-ledger.sh add --title ... --criteria \"<criterion>\" --grounding \"<criterion> | repo: <file>:<positive line> | integration: <file>:<positive line>\" --verify \"<command>\" --result pass. With no integration site use \"integration: none - <reason of at least 10 characters>\". A fail/partial result may omit grounding." >&2
   echo "(If this project's verification command isn't recognized, declare it: add VERIFY_CMD=<command> to .loop-spec/micro.conf. To disable this check: /loop-spec:micro off, or LOOP_SPEC_MICRO_GUARD=0.)" >&2
   exit 2
 fi

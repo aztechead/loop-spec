@@ -29,6 +29,27 @@ All notable changes documented here. Format follows Keep a Changelog.
   gitignored by the existing `/.loop-spec/features/*/*` rule in both this repo and
   `lib/runtime-ignore.sh` target installs.
 
+### Fixed
+
+- **`adhoc-verify-guard.sh` no longer blocks stops it cannot let you out of.** The Stop
+  gate required an exact re-Read of *every* edited path AND a content diff covering all
+  of them. Two field reports hit dead ends: a scratch file written and then deleted can
+  never be re-read (and, untracked, never appears in a diff either), so the session was
+  blocked with no action able to satisfy the gate; and a wide diff-reviewed change (docs
+  sweeps, generated files, subagent edits) paid a per-file re-read that showed nothing
+  the diff had not already shown. Grounding is now per-path and either/or — an exact
+  re-Read of the path, or a content review whose pathspec covers it — with one content
+  review still required after the final edit, and edited paths that are gone from disk
+  by Stop time exempt. `git show` joins `git diff` as a content review so committed work
+  can be grounded (`git show HEAD`), while summary forms that print no content
+  (`--stat`, `--name-only`, and now `-s`/`--no-patch`, which `git show -s --format=%H`
+  uses for SHA lookups) still do not count. Ordering is judged against the *earliest*
+  point at which every path was grounded, so re-showing the diff while summarizing the
+  work no longer retracts the verification that already followed a complete grounding.
+  What still blocks is unchanged: no content review after the final edit, an edited path
+  with neither form of evidence, and a verification command that ran before the
+  grounding it claims to follow.
+
 ## [2.25.0] - 2026-07-28
 
 ### Added
