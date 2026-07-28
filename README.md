@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.24.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.25.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -413,9 +413,11 @@ EXECUTE dispatch:
 | Variable | Default | Effect |
 |---|---|---|
 | `LOOP_SPEC_EXECUTE_LOOPS` | auto | `1` requests loop-fleet at any DAG width; `0` forbids it. Selection still requires the agent CLI and persistent-runtime capability. |
-| `LOOP_SPEC_EXECUTION_PROFILE` | unproven | `interactive` asserts that the invocation can keep a foreground fleet call alive; `headless` disables loop-fleet. Unset fails safe to no loop runtime, and `LOOP_SPEC_NON_INTERACTIVE=1` implies headless behavior. |
-| `LOOP_SPEC_LOOP_RUNTIME` | probed | `1` explicitly asserts that the wrapper can keep a foreground fleet call alive; `0` disables that capability. Required to force loops from a headless profile. |
+| `LOOP_SPEC_EXECUTION_PROFILE` | probed | `interactive` asserts that the invocation can keep a foreground fleet call alive; `headless` disables loop-fleet. A headless `CLAUDE_CODE_ENTRYPOINT` stamp overrides `interactive`; unset falls back to no loop runtime, and `LOOP_SPEC_NON_INTERACTIVE=1` implies headless behavior. |
+| `LOOP_SPEC_LOOP_RUNTIME` | probed | `1` explicitly asserts that the wrapper can keep a foreground fleet call alive; `0` disables that capability. Required to force loops from a headless profile, and the only setting that outranks the entrypoint stamp. |
+| `CLAUDE_CODE_ENTRYPOINT` | set by the harness | Read, never set by loop-spec. `sdk-cli` (`claude -p`), `sdk-py` (Python Agent SDK) and `sdk-ts` prove a one-shot invocation, so loop-fleet is skipped with reason `headless/<stamp>`. See [`docs/loop-spec/claude-invocation-contract.md`](docs/loop-spec/claude-invocation-contract.md). |
 | `LOOP_SPEC_LOOP_MAX_ITERATIONS` | `10` | Iteration cap per loop-fleet task. |
+| `LOOP_SPEC_LOOP_MAX_BUDGET_USD` | unbounded | Cumulative USD cap per loop-fleet task; the task halts `budget_exhausted` at the cap and each tick is capped at what remains. Fleet worst case is this times the task count. |
 | `LOOP_SPEC_EXECUTE_WORKFLOW` | off | `1` opts very wide DAGs into the Workflow DAG rung. |
 | `LOOP_SPEC_PLAN_MULTI_ANGLE` | off | `1` opts PLAN into multi-angle authoring via the Workflow tool. |
 | `LOOP_SPEC_TEAMS_MODE` | probed | Force the teams capability (`none`/`explicit`/`implicit`), overriding the version probe. |
@@ -755,7 +757,7 @@ Status transitions stay within the three harness-documented values; handoffs and
 - A critique gate keeps bouncing (more than 3 retries on the same gate): the spec or plan is genuinely ambiguous. The cycle pauses; edit the artifact and re-invoke to resume.
 - Merge conflict on a task branch: the lead rebases the worktree onto the current `feat/{slug}` head and retries once, then pauses (counts against the per-task retry cap of 2).
 - Crash mid-EXECUTE: `feature.json` records the team name, merge queue, and artifact paths; the harness task list owns per-task status. Resume replays the merge queue and re-claims orphaned tasks.
-- A loop-fleet task halts: read `halt_reason` in `.loop/fleet-result.json`. `no_progress` means the task is under-specified or too big (split it in PLAN.md). `max_iterations`/`timeout`: raise `LOOP_SPEC_LOOP_MAX_ITERATIONS` and re-enter EXECUTE; completed iterations are not re-run. `verifier_integrity` means a worker touched SPEC.md/PLAN.md or the verify targets; inspect that diff before resuming. Full table: `skills/shared/execute-loop-fleet.md`.
+- A loop-fleet task halts: read `halt_reason` in `.loop/fleet-result.json`. `no_progress` means the task is under-specified or too big (split it in PLAN.md). `max_iterations`/`timeout`: raise `LOOP_SPEC_LOOP_MAX_ITERATIONS` and re-enter EXECUTE; completed iterations are not re-run. `verifier_integrity` means a worker touched SPEC.md/PLAN.md or the verify targets; inspect that diff before resuming. `budget_exhausted` means the task hit the `--max-budget-usd` cap; the work so far is committed, so raise the cap and re-enter. Full table: `skills/shared/execute-loop-fleet.md`.
 - Teams unavailable: not a failure. The cycle continues on the fallbacks; set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to restore persistent phase teams.
 
 More in `docs/adopting.md`; the full architecture, including the fixed operating parameters and the agent catalog, is in `docs/design.md`.

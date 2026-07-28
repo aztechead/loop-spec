@@ -19,6 +19,11 @@
 #                             prompt, subagent_type}: claude has Agent,
 #                             opencode has task (same parameter shape),
 #                             pi has none)
+#   harness.sh entrypoint  -> the raw CLAUDE_CODE_ENTRYPOINT stamp, or
+#                             "unknown" when unset (see below)
+#   harness.sh headless    -> "true" | "false" (is this a one-shot, unattended
+#                             invocation with no human and no persistent
+#                             session? the single execution-profile answer)
 #   harness.sh loop-runtime -> "true" | "false" (can this invocation keep a
 #                              synchronous, long-running fleet tool call alive?)
 #   harness.sh loop-runtime-reason -> stable reason for rung telemetry
@@ -39,9 +44,43 @@
 #   4. default                       -> claude (back-compat: every pre-2.14
 #                                     install is a Claude Code plugin)
 #
-# detect/cli/subagents always exit 0 with the answer on stdout; an unknown
-# command exits 2.
+# Headless proof (`entrypoint` / `headless`):
+#   Claude Code stamps CLAUDE_CODE_ENTRYPOINT into every child process it spawns,
+#   naming how the session was launched. Three of its values are one-shot agent
+#   invocations with no interactive session behind them:
+#     sdk-cli  `claude -p` / `--print` (the CLI rewrites the `cli` stamp to
+#              `sdk-cli` when print mode is on)
+#     sdk-py   the Claude Agent SDK for Python (`claude-agent-sdk`)
+#     sdk-ts   the Claude Agent SDK for TypeScript
+#   `cli` is the interactive TUI; the remaining values (mcp, bench, remote,
+#   claude-desktop, claude-code-github-action, ...) are neither proven headless
+#   nor proven interactive here, so they stay unknown and fail safe.
+#
+#   This matters because it is DETERMINISTIC. Before it, an unattended run had to
+#   remember to export LOOP_SPEC_NON_INTERACTIVE=1; forgetting it left the
+#   execution profile "unproven", and a stale LOOP_SPEC_EXECUTION_PROFILE=interactive
+#   export could actively claim a persistent runtime that a `claude -p` job does
+#   not have — which is how a headless run gets routed onto the loop-fleet rung it
+#   cannot execute. A stamped headless entrypoint is a fact and outranks that claim.
+#
+# detect/cli/subagents/entrypoint/headless always exit 0 with the answer on
+# stdout; an unknown command exits 2.
 set -euo pipefail
+
+# Entrypoint stamps that prove a one-shot, unattended invocation.
+HEADLESS_ENTRYPOINTS=" sdk-cli sdk-py sdk-ts "
+
+entrypoint() {
+  local ep="${CLAUDE_CODE_ENTRYPOINT:-}"
+  if [[ -n "$ep" ]]; then echo "$ep"; else echo "unknown"; fi
+}
+
+# "true" when the entrypoint stamp itself proves a headless invocation.
+entrypoint_headless() {
+  local ep
+  ep="$(entrypoint)"
+  if [[ "$HEADLESS_ENTRYPOINTS" == *" $ep "* ]]; then echo "true"; else echo "false"; fi
+}
 
 detect() {
   case "${LOOP_SPEC_HARNESS:-}" in
@@ -77,16 +116,38 @@ case "$cmd" in
       *) echo "false" ;;
     esac
     ;;
+  entrypoint)
+    entrypoint
+    ;;
+  headless)
+    # One execution-profile answer, from strongest evidence down:
+    #   1. operator assertion (LOOP_SPEC_NON_INTERACTIVE / EXECUTION_PROFILE=headless)
+    #   2. the harness's own entrypoint stamp
+    #   3. EXECUTION_PROFILE=interactive, or no evidence -> not headless
+    if [[ "${LOOP_SPEC_NON_INTERACTIVE:-}" == "1" || "${LOOP_SPEC_EXECUTION_PROFILE:-}" == "headless" ]]; then
+      echo "true"
+    else
+      entrypoint_headless
+    fi
+    ;;
   loop-runtime|loop-runtime-reason)
     runtime="false"
     reason="unproven-runtime"
     case "${LOOP_SPEC_LOOP_RUNTIME:-}" in
+      # Absolute: the integrator asserting their wrapper can (or cannot) hold a
+      # foreground call open. Outranks every probe below, including the stamp.
       1) runtime="true"; reason="operator-enabled" ;;
       0) runtime="false"; reason="operator-disabled" ;;
       *)
         if [[ "${LOOP_SPEC_NON_INTERACTIVE:-}" == "1" ]]; then
           runtime="false"
           reason="headless/non-interactive"
+        elif [[ "$(entrypoint_headless)" == "true" ]]; then
+          # Proven headless by the harness itself. Deliberately checked BEFORE
+          # EXECUTION_PROFILE: a stamped `claude -p` / SDK job has no persistent
+          # runtime no matter what an inherited `interactive` export claims.
+          runtime="false"
+          reason="headless/$(entrypoint)"
         else
           case "${LOOP_SPEC_EXECUTION_PROFILE:-}" in
             interactive) runtime="true"; reason="interactive-profile" ;;
@@ -98,7 +159,7 @@ case "$cmd" in
     if [[ "$cmd" == "loop-runtime" ]]; then echo "$runtime"; else echo "$reason"; fi
     ;;
   *)
-    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|loop-runtime|loop-runtime-reason)" >&2
+    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|entrypoint|headless|loop-runtime|loop-runtime-reason)" >&2
     exit 2
     ;;
 esac

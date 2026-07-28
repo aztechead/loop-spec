@@ -316,6 +316,8 @@ class Supervisor:
                     cfg["fallback_model"] = self.args.fallback_model
                 if self.args.retry_watchdog:
                     cfg["retry_watchdog"] = self.args.retry_watchdog
+                if self.args.max_budget_usd > 0:
+                    cfg["max_budget_usd"] = self.args.max_budget_usd
                 cfg_path = wt / ".loop" / f"{tid}.config.json"
                 cfg_path.parent.mkdir(parents=True, exist_ok=True)
                 cfg_path.write_text(json.dumps(cfg, indent=2))
@@ -496,6 +498,10 @@ def main() -> int:
     p.add_argument("--retry-watchdog", default="", dest="retry_watchdog",
                    help="CLAUDE_CODE_RETRY_WATCHDOG for each unattended loop tick "
                         "(recommended unattended retry mechanism, CC 2.1.186).")
+    p.add_argument("--max-budget-usd", type=float, default=0.0, dest="max_budget_usd",
+                   help="PER-TASK cumulative USD cap handed to each loop; a task "
+                        "halts budget_exhausted at the cap. Fleet-wide worst case "
+                        "is this times the number of tasks (0 = unbounded).")
     p.add_argument("--claude-bin", default="claude")
     p.add_argument("--agent-cli", choices=["claude", "pi", "opencode"], default="",
                    dest="agent_cli",

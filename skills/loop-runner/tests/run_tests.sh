@@ -189,6 +189,7 @@ class Args:
     model = ""
     fallback_model = ""
     retry_watchdog = ""
+    max_budget_usd = 0.0
     claude_bin = "claude"
     agent_cli = "claude"
 
@@ -623,6 +624,108 @@ FAKE_READONLY_MISSING=1 python3 "$SCRIPTS/compile_spec.py" SPEC.md \
   >/dev/null 2>&1
 check "oc missing readonly agent fails closed" "$?" "1"
 check "oc missing readonly agent writes no plan" "$(test -f plan/tasks.json && echo yes || echo no)" "no"
+
+echo "== 18. permission-mode is validated against the real claude CLI choice set =="
+# `default` is an Agent SDK PermissionMode but NOT a `claude --permission-mode`
+# value. Unvalidated it reaches the CLI, which rejects it on every tick — the
+# loop then burns its whole iteration budget on opaque agent_error.
+newrepo
+python3 "$SCRIPTS/loop.py" "noop" --task-id permdefault --claude-bin "$FAKE" \
+  --permission-mode default --max-iterations 1 >/dev/null 2>"$R/permerr.txt"
+check "sdk-only mode exit 2"      "$?" "2"
+check "sdk-only mode names the CLI set" "$(grep -c 'acceptEdits' "$R/permerr.txt")" "1"
+check "sdk-only mode names the SDK"     "$(grep -c 'Agent SDK PermissionMode' "$R/permerr.txt")" "1"
+check "no result written"         "$(test -f .loop/permdefault/result.json && echo yes || echo no)" "no"
+
+newrepo
+python3 "$SCRIPTS/loop.py" "noop" --task-id permtypo --claude-bin "$FAKE" \
+  --permission-mode acceptEdit --max-iterations 1 >/dev/null 2>"$R/permerr2.txt"
+check "typo mode exit 2"          "$?" "2"
+check "typo mode lists valid modes" "$(grep -c 'bypassPermissions' "$R/permerr2.txt")" "1"
+
+# Every mode the CLI documents is accepted.
+newrepo
+PERMOK=0
+for m in acceptEdits auto bypassPermissions manual dontAsk plan; do
+  python3 "$SCRIPTS/loop.py" "noop" --task-id "perm-$m" --claude-bin "$FAKE" \
+    --permission-mode "$m" --max-iterations 1 >/dev/null 2>&1
+  [[ -f ".loop/perm-$m/result.json" ]] && PERMOK=$((PERMOK+1))
+done
+check "all CLI modes accepted"    "$PERMOK" "6"
+
+# pi/opencode keep their own permission vocabulary — the claude set must not gate them.
+newrepo
+python3 "$SCRIPTS/loop.py" "noop" --task-id permpi --agent-cli pi --claude-bin "$FAKEPI" \
+  --permission-mode default --max-iterations 1 >/dev/null 2>&1
+check "pi backend not gated by claude modes" "$(test -f .loop/permpi/result.json && echo yes || echo no)" "yes"
+
+echo "== 19. spend is a hard stop: --max-budget-usd =="
+# Iteration and wall-clock caps do not bound cost. A cumulative cap does.
+newrepo
+FAKE_COST=0.75 python3 "$SCRIPTS/loop.py" "spend forever" --task-id budget \
+  --claude-bin "$FAKE" --max-budget-usd 2 --max-iterations 99 --no-progress 99 \
+  >/dev/null 2>&1
+check "budget exit 1"             "$?" "1"
+check "halt_reason"               "$(reason .loop/budget/result.json)" "budget_exhausted"
+check "stopped at the cap"        "$(python3 -c "import json;r=json.load(open('.loop/budget/result.json'));print(r['total_cost_usd']>=2.0)")" "True"
+check "cap echoed in result"      "$(python3 -c "import json;print(json.load(open('.loop/budget/result.json'))['max_budget_usd'])")" "2.0"
+check "cap bounds the overshoot"  "$(python3 -c "import json;r=json.load(open('.loop/budget/result.json'));print(r['iterations']==3)")" "True"
+
+# Each tick is additionally capped at the REMAINING budget, so one runaway turn
+# cannot blow past the cumulative cap between checks.
+newrepo
+BUDLOG="$R/budgetargv.txt"
+FAKE_COST=0.75 FAKE_ARGV_LOG="$BUDLOG" python3 "$SCRIPTS/loop.py" "spend" \
+  --task-id budgetflag --claude-bin "$FAKE" --max-budget-usd 2 --max-iterations 2 \
+  --no-progress 99 >/dev/null 2>&1
+check "first tick gets full budget"  "$(grep -c -- '--max-budget-usd 2.000000' "$BUDLOG")" "1"
+check "second tick gets remainder"   "$(grep -c -- '--max-budget-usd 1.250000' "$BUDLOG")" "1"
+
+# Unbounded by default: no flag, no budget plumbing.
+newrepo
+NOBUDLOG="$R/nobudgetargv.txt"
+FAKE_ARGV_LOG="$NOBUDLOG" python3 "$SCRIPTS/loop.py" "noop" --task-id nobudget \
+  --claude-bin "$FAKE" --max-iterations 1 >/dev/null 2>&1
+check "no budget flag by default" "$(grep -c -- '--max-budget-usd' "$NOBUDLOG")" "0"
+check "null cap in result"        "$(python3 -c "import json;print(json.load(open('.loop/nobudget/result.json'))['max_budget_usd'])")" "None"
+
+echo "== 20. judge spend is billed to the loop total =="
+# A judge call is a real priced invocation. Billing it to total_cost_usd is what
+# makes the reported total honest and the cumulative cap enforceable.
+newrepo
+FAKE_COST=0.5 python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id judgecost \
+  --claude-bin "$FAKE" --verify 'test "$(wc -l < work.txt)" -ge 2' \
+  --judge --max-iterations 99 >/dev/null 2>&1
+check "judge DONE completes"      "$?" "0"
+check "halt_reason"               "$(reason .loop/judgecost/result.json)" "complete"
+# 2 work ticks to reach two lines, then 1 judge call = 3 * 0.5
+check "judge cost included"       "$(python3 -c "import json;print(json.load(open('.loop/judgecost/result.json'))['total_cost_usd'])")" "1.5"
+
+# NOT_DONE keeps the loop going, and each judge call is still billed.
+newrepo
+FAKE_COST=0.5 FAKE_JUDGE=NOT_DONE python3 "$SCRIPTS/loop.py" "spin" --task-id judgeno \
+  --claude-bin "$FAKE" --verify 'true' --judge --max-iterations 2 --no-progress 99 \
+  >/dev/null 2>&1
+check "judge NOT_DONE keeps going" "$(reason .loop/judgeno/result.json)" "max_iterations"
+check "every judge call billed"    "$(python3 -c "import json;print(json.load(open('.loop/judgeno/result.json'))['total_cost_usd'])")" "2.0"
+
+# The judge is capped at what the loop has left, not run unbounded.
+newrepo
+JUDGELOG="$R/judgeargv.txt"
+FAKE_COST=0.5 FAKE_ARGV_LOG="$JUDGELOG" python3 "$SCRIPTS/loop.py" "noop" \
+  --task-id judgebudget --claude-bin "$FAKE" --verify 'true' --judge \
+  --max-budget-usd 3 --max-iterations 1 >/dev/null 2>&1
+check "judge tick gets the remainder" "$(grep -c -- '--max-budget-usd 2.500000' "$JUDGELOG")" "1"
+
+# With --judge on, "verified" means verifier AND judge. If the judge is
+# unaffordable, completion is unproven — halt on budget, never claim complete.
+newrepo
+FAKE_COST=1.0 python3 "$SCRIPTS/loop.py" "noop" --task-id judgebroke \
+  --claude-bin "$FAKE" --verify 'true' --judge --max-budget-usd 1 --max-iterations 5 \
+  >/dev/null 2>&1
+check "unaffordable judge exit 1"   "$?" "1"
+check "unaffordable judge halts on budget" "$(reason .loop/judgebroke/result.json)" "budget_exhausted"
+check "verifier verdict still recorded"    "$(python3 -c "import json;print(json.load(open('.loop/judgebroke/result.json'))['verifier']['passed'])")" "True"
 
 echo
 echo "================= $PASS passed, $FAIL failed ================="

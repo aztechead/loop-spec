@@ -32,3 +32,9 @@ docs/superpowers/
 # python bytecode caches (loop-runner test runs)
 __pycache__/
 *.pyc
+
+# Scratch and inbox: hand-off notes, external feedback dumps, working files.
+# Anything here is untracked BY CONSTRUCTION, so a `git add -A` cannot sweep it
+# into a commit -- keep external reports and scratch files in inbox/ rather than
+# loose at the repo root.
+inbox/

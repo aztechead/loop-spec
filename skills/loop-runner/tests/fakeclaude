@@ -6,11 +6,19 @@
 #   FAKE_STILL=1  change nothing (stall scenario)
 #   FAKE_TAMPER=<path>  append to that path (verifier-integrity scenario)
 #   FAKE_PLAN=<file>    return that file's contents as the result (compiler scenario)
+#   FAKE_ARGV_LOG=<f>   append full argv to <f> (flag-shape assertions)
+#   FAKE_JUDGE=<word>   verdict returned for loop.py's judge prompt (default DONE).
+#                       The judge branch returns before any file is touched, so a
+#                       judge call never counts as workspace progress.
 #
 # Protocol: if the prompt (any argv) contains TOUCH:<file>, create/append that file —
 # lets plan tasks "do work" that their verifiers can check.
 set -euo pipefail
 COST="${FAKE_COST:-1.25}"
+
+if [[ -n "${FAKE_ARGV_LOG:-}" ]]; then
+  printf '%s\n' "$*" >> "$FAKE_ARGV_LOG"
+fi
 
 if [[ -n "${FAKE_HANG:-}" ]]; then
   sleep "$FAKE_HANG"
@@ -25,6 +33,16 @@ import json, sys, pathlib
 print(json.dumps({"type":"result","subtype":"success","is_error":False,
   "total_cost_usd":float(sys.argv[2]),"session_id":"sess-compile","num_turns":2,
   "result":pathlib.Path(sys.argv[1]).read_text()}))
+EOF
+  exit 0
+fi
+
+if [[ "$PROMPT" == *"strict completion validator"* ]]; then
+  python3 - "$COST" "${FAKE_JUDGE:-DONE}" << 'EOF'
+import json, sys
+print(json.dumps({"type":"result","subtype":"success","is_error":False,
+  "total_cost_usd":float(sys.argv[1]),"session_id":"sess-judge","num_turns":1,
+  "result":sys.argv[2]}))
 EOF
   exit 0
 fi
