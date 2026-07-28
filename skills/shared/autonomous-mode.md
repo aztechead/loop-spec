@@ -8,7 +8,17 @@ proceeds. The preferred headless/SDK entry is `claude -p "/loop-spec:auto
 <description>"`: the auto skill performs a grounded semantic decision and validates
 it through `lib/task-route.sh` before delegating to micro, debug, or the full cycle.
 An explicit `claude -p "/loop-spec:cycle autonomous <description>"` still means the
-full seven-phase cycle with zero human input.
+full seven-phase cycle with zero human input. The Claude Agent SDK for Python
+(`claude-agent-sdk`) is the same entry from a job runner — prompt
+`/loop-spec:auto <description>` through `query()` with loop-spec loaded via
+`ClaudeAgentOptions(plugins=[...], setting_sources=["project"])`; see
+`docs/loop-spec/claude-invocation-contract.md` for the full call and the
+CLI-vs-SDK `permission_mode` divergence.
+
+All three stamp `CLAUDE_CODE_ENTRYPOINT` (`sdk-cli`, `sdk-py`, `sdk-ts`), so the
+headless execution profile is detected without operator configuration:
+`bash lib/harness.sh headless` answers it, and the cycle's startup preflight
+reports it as `execution:{entrypoint,headless}`.
 
 Under the pi harness the preferred entry is `pi --mode json "/skill:auto
 <description>"` (or `pi -p ...`, or the pi SDK's `createAgentSession()` prompting the

@@ -2,6 +2,37 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.25.0] - 2026-07-28
+
+### Added
+
+- Added deterministic headless detection from the `CLAUDE_CODE_ENTRYPOINT` stamp Claude
+  Code sets on every child process: `sdk-cli` (`claude -p`), `sdk-py` (Python Agent SDK)
+  and `sdk-ts` prove a one-shot invocation. `harness.sh` gains `entrypoint` and `headless`
+  verbs, and the loop-runtime probe reports `headless/<stamp>` instead of
+  `unproven-runtime`, so unattended runs no longer depend on the operator remembering
+  `LOOP_SPEC_NON_INTERACTIVE=1`.
+- Added an `execution:{entrypoint,headless}` block to the cycle startup preflight, plus a
+  startup warning when a proven-headless invocation runs with neither autonomous mode nor
+  `LOOP_SPEC_NON_INTERACTIVE=1` and would block on an absent human.
+- Added a cumulative spend guardrail to the bundled loop runner: `loop.py --max-budget-usd`
+  halts `budget_exhausted` at the cap and caps each tick at the remaining budget via
+  `claude -p --max-budget-usd`; `supervisor.py --max-budget-usd` applies it per fleet task.
+- Added `docs/loop-spec/claude-invocation-contract.md` documenting the entrypoint contract,
+  the CLI-versus-Agent-SDK `permission_mode` divergence, the spend controls, and how to
+  drive loop-spec from the Python Agent SDK.
+
+### Fixed
+
+- A headless `CLAUDE_CODE_ENTRYPOINT` stamp now outranks a stale inherited
+  `LOOP_SPEC_EXECUTION_PROFILE=interactive`, which could previously claim a persistent
+  runtime a one-shot job does not have and route it onto the unrunnable loop-fleet rung.
+  `LOOP_SPEC_LOOP_RUNTIME` remains the integrator's absolute override.
+- `loop.py` now rejects permission modes the Claude CLI does not accept before starting.
+  `--permission-mode default` is valid in the Agent SDK but not on the CLI, so it
+  previously failed every tick as an opaque `agent_error` and consumed the whole iteration
+  budget. pi and opencode keep their own permission vocabulary.
+
 ## [2.24.0] - 2026-07-28
 
 ### Added

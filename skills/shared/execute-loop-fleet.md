@@ -32,9 +32,18 @@ that a headless wrapper can keep the foreground call alive. Never background the
 supervisor and never use `ScheduleWakeup`; a forced loop without this capability is
 a loud EXECUTE error rather than a silent exit.
 
-An unset profile is deliberately `unproven-runtime` and also falls back. Persistent
-interactive operators may set `LOOP_SPEC_EXECUTION_PROFILE=interactive`; this is an
-explicit capability assertion, not an LLM-authored judgment.
+Under Claude Code no operator env is needed for the common case: the harness stamps
+`CLAUDE_CODE_ENTRYPOINT`, and the values `sdk-cli` (`claude -p`), `sdk-py` (Python
+Agent SDK) and `sdk-ts` (TypeScript SDK) are proven one-shot invocations. The probe
+reads that stamp and reports `headless/<stamp>`. A stamped headless entrypoint
+outranks `LOOP_SPEC_EXECUTION_PROFILE=interactive` — a stale inherited export cannot
+claim a runtime the job demonstrably does not have — but never outranks
+`LOOP_SPEC_LOOP_RUNTIME`. See `docs/loop-spec/claude-invocation-contract.md`.
+
+An unset profile on an unrecognized entrypoint is deliberately `unproven-runtime`
+and also falls back. Persistent interactive operators may set
+`LOOP_SPEC_EXECUTION_PROFILE=interactive`; this is an explicit capability assertion,
+not an LLM-authored judgment.
 
 ## Procedure
 
@@ -84,6 +93,11 @@ python3 "$LOOP_DIR/supervisor.py" \
   --retries "2"
 rc=$?
 ```
+
+Add `--max-budget-usd "$LOOP_SPEC_LOOP_MAX_BUDGET_USD"` when that variable is set:
+it caps each task's cumulative spend (halting `budget_exhausted`) and caps every
+tick at the task's remaining budget. Unset means unbounded — iteration and
+wall-clock caps do not bound cost.
 
 Under pi, append `--agent-cli pi --claude-bin pi` and pass a **pi model id** (or
 omit `--model` to use the session default) — the `feature.models.*` aliases are
@@ -136,9 +150,10 @@ fatal=$(jq -r '.fleet_fatal' "$fleet")
   - `max_iterations`, `no_progress`, `verifier_thrash`, `agent_error` → `retry-exhausted`
   - `environment_error`, `supervisor_error`, `supervisor_timeout`,
     `integration_error`, `fleet_aborted` → `retry-exhausted` with the recorded error detail
-  - `timeout` → `retry-exhausted` (raise `LOOP_SPEC_LOOP_MAX_ITERATIONS` or the
-    timeout and re-enter EXECUTE to resume — loop state is durable, completed
-    iterations are not re-run)
+  - `timeout`, `budget_exhausted` → `retry-exhausted` (raise
+    `LOOP_SPEC_LOOP_MAX_ITERATIONS`, the timeout, or `--max-budget-usd` and
+    re-enter EXECUTE to resume — loop state is durable, completed iterations are
+    not re-run)
   - ids in `.skipped` → `reason: "dep-failed"` (upstream task failed)
 - `escalation`:
   - `.fleet_fatal == true` with any `halt_reason == "verifier_integrity"` →
@@ -165,6 +180,7 @@ Read `halt_reason`, not vibes:
 | `verifier_thrash` | pass→fail flapping | inspect `.loop/<id>/iter-*.raw.json` |
 | `max_iterations` / `timeout` | too few rounds or thrashing | read iteration logs, raise caps, re-enter (resumes) |
 | `verifier_integrity` | worker touched the exam | inspect diff with suspicion |
+| `budget_exhausted` | task reached its `--max-budget-usd` cap | work so far is committed; raise the cap and re-enter (resumes) |
 | `agent_error` | claude CLI failure | check `.loop/<id>.supervisor.log` |
 | `environment_error` | target environment preparation failed | fix the declared prepare command |
 | `supervisor_error` / `supervisor_timeout` | fleet infrastructure failed or exceeded its bound | inspect the flushed fleet output and task supervisor log |
