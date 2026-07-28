@@ -2,6 +2,54 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.26.0] - 2026-07-28
+
+### Added
+
+- Added `lib/artifact-lint.sh`, a deterministic structural format gate for every
+  model-authored phase artifact (SPEC.md, PLAN.md, PATTERNS.md, VERIFICATION.md, the
+  tasks[] JSON, and generic JSON files). Field runs in both the Claude Code and OpenCode
+  harnesses showed artifacts arriving at the next phase misformatted — drifted section
+  headings, task blocks missing `**Verify:**`/`**Acceptance criteria:**`, whole files
+  wrapped in a stray code fence, CRLF endings, unfilled template placeholder lines,
+  invalid or field-dropping tasks JSON — and the consuming phase burned cycles repairing
+  them. The lint pins the repair on the PRODUCER at its own phase exit: SPEC Step 3 and
+  DISCUSS Step 5.75 gate SPEC.md, PLAN Step 4b gates PLAN.md + PATTERNS.md + the tasks[]
+  JSON (flags join the existing infeasibility re-dispatch loop), VERIFY Step 10 gates
+  VERIFICATION.md before commit. It also closes a fail-open hole: a drifted
+  `### Good Enough` heading used to make criteria-coverage skip silently, shipping every
+  criterion unverified.
+- Added a machine-readable task handoff: PLAN Step 6 persists the gate-validated
+  `tasks[]` to `.loop-spec/features/{slug}/tasks.json` (recorded as
+  `feature.json.artifacts.tasks`), and EXECUTE Step 2a consumes that sidecar directly —
+  validated by `artifact-lint tasks` and id-cross-checked against PLAN.md — instead of
+  re-deriving structured tasks from PLAN.md prose. PLAN.md remains the reviewed,
+  human-auditable artifact; an id mismatch (PLAN.md revised after the sidecar was
+  written) falls back to the existing PLAN.md parse with a one-line log. The sidecar is
+  gitignored by the existing `/.loop-spec/features/*/*` rule in both this repo and
+  `lib/runtime-ignore.sh` target installs.
+
+### Fixed
+
+- **`adhoc-verify-guard.sh` no longer blocks stops it cannot let you out of.** The Stop
+  gate required an exact re-Read of *every* edited path AND a content diff covering all
+  of them. Two field reports hit dead ends: a scratch file written and then deleted can
+  never be re-read (and, untracked, never appears in a diff either), so the session was
+  blocked with no action able to satisfy the gate; and a wide diff-reviewed change (docs
+  sweeps, generated files, subagent edits) paid a per-file re-read that showed nothing
+  the diff had not already shown. Grounding is now per-path and either/or — an exact
+  re-Read of the path, or a content review whose pathspec covers it — with one content
+  review still required after the final edit, and edited paths that are gone from disk
+  by Stop time exempt. `git show` joins `git diff` as a content review so committed work
+  can be grounded (`git show HEAD`), while summary forms that print no content
+  (`--stat`, `--name-only`, and now `-s`/`--no-patch`, which `git show -s --format=%H`
+  uses for SHA lookups) still do not count. Ordering is judged against the *earliest*
+  point at which every path was grounded, so re-showing the diff while summarizing the
+  work no longer retracts the verification that already followed a complete grounding.
+  What still blocks is unchanged: no content review after the final edit, an edited path
+  with neither form of evidence, and a verification command that ran before the
+  grounding it claims to follow.
+
 ## [2.25.0] - 2026-07-28
 
 ### Added

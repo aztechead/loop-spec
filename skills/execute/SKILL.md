@@ -64,9 +64,31 @@ Run on **every EXECUTE entry**: both the first entry from PLAN and any re-entry 
 
 **Workspace mode note:** Conflict detection logic is unchanged. In workspace mode, task `files[]` are workspace-relative paths of the form `<repo>/<path>` (e.g., `frontend/src/app.ts`). Because each task targets exactly one repo, file paths from different repos are disjoint by their repo prefix -- cross-repo overlaps are naturally impossible. The synthetic `blockedBy` edge logic of Step 2b still applies within a single repo's tasks.
 
-#### Step 2a - Read planned tasks from PLAN.md
+#### Step 2a - Read planned tasks (sidecar first, PLAN.md fallback)
 
-Parse every task block from `docs/loop-spec/features/{slug}/PLAN.md`. Each task block must contain:
+PLAN Step 6 persists the gate-validated `tasks[]` as machine-readable JSON at
+`feature.json.artifacts.tasks` (`.loop-spec/features/{slug}/tasks.json`). Prefer it — it is
+the exact structure the PLAN gates validated, so nothing needs to be re-derived from
+markdown prose:
+
+```bash
+tasks_sidecar="$(jq -r '.artifacts.tasks // ""' .loop-spec/features/{slug}/feature.json)"
+if [[ -n "$tasks_sidecar" && -f "$tasks_sidecar" ]] \
+   && bash "${CLAUDE_SKILL_DIR}/../../lib/artifact-lint.sh" tasks "$tasks_sidecar"; then
+  echo "[EXECUTE] task source: sidecar ($tasks_sidecar)"
+else
+  echo "[EXECUTE] task source: PLAN.md parse (sidecar missing or failed artifact-lint)"
+fi
+```
+
+When using the sidecar, cross-check its task ids against the `### task-` headings in
+PLAN.md: an id set mismatch means PLAN.md was revised after the sidecar was written —
+log one line naming the mismatched ids and fall back to the PLAN.md parse below
+(PLAN.md is the reviewed artifact; it wins).
+
+**Fallback — parse PLAN.md directly** (sidecar missing, stale, or flagged; also the path
+for features planned before the sidecar existed): parse every task block from
+`docs/loop-spec/features/{slug}/PLAN.md`. Each task block must contain:
 - `id` (e.g., `task-001`)
 - `files[]` — list of files the task modifies
 - `blockedBy[]` — explicit dependency edges declared in PLAN.md (may be empty)

@@ -416,6 +416,17 @@ If map-codebase fails: log warning to `feature.json warnings[]` via `lib/feature
 
 ### Step 10 - Commit VERIFICATION.md
 
+Before committing, run the structural format gate — the iterate judge and
+`lib/regression-scan.sh` parse VERIFICATION.md by its template sections:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/artifact-lint.sh" verification "docs/loop-spec/features/{slug}/VERIFICATION.md"
+```
+
+Exit 1 BLOCKS: fix VERIFICATION.md in place per the FLAG lines (the lead authored it;
+`skills/shared/artifact-templates/VERIFICATION.md.template` is the shape) and re-run
+until it prints `artifact-lint: ok`.
+
 **Single-repo mode (unchanged):**
 
 ```bash

@@ -180,6 +180,12 @@ command when its runner is not in the guard's built-in pattern (e.g.
 Set it when the guard blocks a stop even though you ran the project's actual
 checks — declaring the command is always better than disabling the guard.
 
+What the guard mechanically requires after the final edit is narrower than the
+invariant above: one content review (`git diff`, or `git show HEAD` for committed
+work — summaries like `--stat`/`-s` show no content), a re-read of any edited path
+that review's pathspec does not cover, then the verification command. Paths deleted
+before the stop are exempt, since neither evidence form can reach them.
+
 ## Boundary with the cycle
 
 Inside a running cycle none of this applies — the phases own these invariants at

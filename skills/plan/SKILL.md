@@ -464,6 +464,16 @@ Proceed to Step 4b.
 
 Validate the plan locally using the `tasks[]` data from Step 2 (or the latest planner-1 revision):
 
+0. **Artifacts structurally well-formed.** EXECUTE Step 2a parses PLAN.md task blocks by
+   the template shape, and the planner reads PATTERNS.md sections — a drifted heading or a
+   fence-wrapped file makes the next phase spend cycles repairing instead of executing:
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/artifact-lint.sh" plan "$plan_path"
+   bash "${CLAUDE_SKILL_DIR}/../../lib/artifact-lint.sh" patterns "docs/loop-spec/features/{slug}/PATTERNS.md"
+   printf '%s' "$tasks_json" | bash "${CLAUDE_SKILL_DIR}/../../lib/artifact-lint.sh" tasks -
+   ```
+   Any exit 1 -> add the FLAG lines to `infeasibility_list` (the tasks check also catches a
+   planner message whose tasks[] JSON dropped a required field before it can poison EXECUTE).
 1. **All verifyCommands syntactically runnable.** Try `bash -n -c "$cmd"` for each task. Empty or malformed -> fail.
 2. **Task DAG acyclic.** Build graph from `blockedBy`; topological sort; if cycle -> fail.
 3. **Each task has >= 1 acceptance criterion.** Empty array -> fail.
@@ -532,6 +542,20 @@ Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1
 
 ### Step 6 - Commit PLAN.md and update feature.json
 
+First persist the final `tasks[]` as the machine-readable handoff. EXECUTE consumes this
+sidecar directly instead of re-deriving structured tasks from PLAN.md prose — the JSON the
+gates just validated IS the contract, so no formatting drift can cost EXECUTE a repair
+round. Write it only now, after every gate has passed, so it always matches the final
+PLAN.md revision:
+
+```bash
+printf '%s' "$tasks_json" | bash "${CLAUDE_SKILL_DIR}/../../lib/artifact-lint.sh" tasks - \
+  && printf '%s' "$tasks_json" | jq . > ".loop-spec/features/{slug}/tasks.json"
+```
+
+(If the lint fails here, the in-memory tasks[] drifted from the gated revision — re-request
+tasks[] from planner-1 and re-run Step 4b before proceeding.)
+
 ```bash
 git add docs/loop-spec/features/{slug}/PLAN.md
 [ -f "docs/loop-spec/features/{slug}/EVIDENCE.md" ] && git add "docs/loop-spec/features/{slug}/EVIDENCE.md"
@@ -544,6 +568,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-plan
 
 Update `feature.json` via `lib/feature-write.sh`:
 - `artifacts.plan = "docs/loop-spec/features/{slug}/PLAN.md"`
+- `artifacts.tasks = ".loop-spec/features/{slug}/tasks.json"`
 - `completedPhases` append `"plan"`
 - `currentPhase = "execute"`
 

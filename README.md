@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.25.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.26.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -772,7 +772,7 @@ Three open-source projects shaped this one:
 
 Positions the codebase takes:
 
-- Deterministic predicates for autonomous decisions. Anything that decides whether the loop may act without a human is a unit-tested script (`autonomous-chain.sh`, `trust.sh`, `test-tamper-scan.sh`, `grounding-lint.sh`), never prose in a skill. Telemetry and accelerator hooks fail open; authority checks fail closed.
+- Deterministic predicates for autonomous decisions. Anything that decides whether the loop may act without a human is a unit-tested script (`autonomous-chain.sh`, `trust.sh`, `test-tamper-scan.sh`, `grounding-lint.sh`, `artifact-lint.sh`), never prose in a skill. Phase artifacts (SPEC.md, PLAN.md, PATTERNS.md, VERIFICATION.md, the tasks[] handoff JSON) are structurally linted at the PRODUCING phase's exit, so the next phase never spends cycles repairing a misformatted handoff — and PLAN persists its gate-validated tasks[] as machine-readable `tasks.json` that EXECUTE consumes directly instead of re-parsing markdown prose. Telemetry and accelerator hooks fail open; authority checks fail closed.
 - Bounded everything. 3 retries per gate, 40 global, 10 iterations, cooldowns on sentinel picks, wall-clock watchdogs on phases. The cycle ships or escalates; it does not loop forever.
 - Maker/checker separation. The iterate judge is never the agent that did the work, verify workers cannot edit the spec they are verified against, and trust is computed from git/CI facts rather than self-reports.
 - Design for change ("seams, not speculation", `skills/shared/design-for-change.md`): design to interfaces, give units their collaborators instead of constructing them internally, put boundaries where change is likely, and never build speculative artifacts behind a seam. Every design- and code-producing dispatch carries this directive, and VERIFY's reviewer runs a boundary pass. Enforced by `tests/design-coverage.test.sh`.
