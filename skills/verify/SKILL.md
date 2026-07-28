@@ -116,6 +116,25 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" "{baseSha}" .
 
 Exit 1 = signals found: VERIFY fails immediately. Print the listed signals verbatim and emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"tamper"}' || true`). This is NOT auto-remediable by re-running EXECUTE with a generic brief — the remediation task must state the specific tampering (`subject = "Fix: restore tampered test — {signal}"`) so the implementer un-tampers rather than re-tampers. A legitimate skip (e.g. a platform-gated test) is the HUMAN's call: in `step`/`interactive` styles ask; in autonomous styles treat as tampering and remediate — a real platform gate will come back with justification in the task notes and can be accepted on the next pass by recording it in `warnings[]`.
 
+### Step 1.75 - Prepared no-new-failures gate
+
+Before creating the VERIFY team, run the shared feature-level adapter:
+
+```bash
+validation_rc=0
+VALIDATION_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" compare \
+  ".loop-spec/features/${slug}")" || validation_rc=$?
+```
+
+It runs the persisted preparation command in every participating repository, then compares
+test/lint/typecheck results with the exact-base baseline. Exit 0 means no new failures;
+pre-existing fingerprints may remain and must be reported as known baseline failures rather
+than repaired. Exit 20 is a real suite regression: emit `suite-regression`, append the normal
+FULL-SHAPE remediation task, set `currentPhase = "execute"`, and route to EXECUTE without
+spawning VERIFY agents. Exit 21 is environment/infrastructure failure: preserve the JSON and
+logs, escalate, and do not mislabel setup repair as implementation work. Acceptance criterion
+commands remain absolute pass/fail, and DELIVER's required GitHub checks remain absolute green.
+
 ### Step 2 - TeamCreate verify team
 
 Create the verify team with verifier and code-reviewer as parallel teammates:
@@ -187,16 +206,18 @@ below.
 
 Send verifier-1 its work prompt via SendMessage:
 
-Resolve the test/lint/typecheck commands from `feature.json.commands` and pass them in the brief so the verifier (the authoritative test runner) never has to guess or report a false "no command found" FAIL.
+Pass `VALIDATION_JSON` in the brief. The deterministic adapter is authoritative for the
+repository-wide test/lint/typecheck regression status; the verifier owns criterion commands
+and grounding and must not rerun the repository-wide commands independently.
 
 **Single-repo mode (unchanged):**
 
 ```
 SendMessage({
   to: "verifier-1",
-  message: "Apply skills/shared/verification-grounding.md, then run every acceptance criterion's verify command from PLAN.md. Inspect git diff {baseSha}..HEAD and current files. For every Good Enough criterion write exactly one VERIFICATION.md row: '- criterion: <id> | implementation: <repo-relative-file>:<line> - <what it proves> | integration: <repo-relative-file>:<line> - <what it proves>'; only use 'integration: none - <concrete reason>' when no separate integration site exists. Missing/mismatched grounding is FAIL even when the command passes. Gate ONLY on Good Enough; Exceptional is informational. When complete, SendMessage({to: 'lead', message: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
+  message: "Apply skills/shared/verification-grounding.md, then run every acceptance criterion's verify command from PLAN.md. Inspect git diff {baseSha}..HEAD and current files. Repository-wide validation already ran through lib/feature-validation.sh; record the supplied VALIDATION_JSON, report Test suite status PASS when its outcome is accepted (including explicitly labeled known baseline failures), and do not rerun those project commands. For every Good Enough criterion write exactly one VERIFICATION.md row: '- criterion: <id> | implementation: <repo-relative-file>:<line> - <what it proves> | integration: <repo-relative-file>:<line> - <what it proves>'; only use 'integration: none - <concrete reason>' when no separate integration site exists. Missing/mismatched grounding is FAIL even when the command passes. Gate ONLY on Good Enough; Exceptional is informational. When complete, SendMessage({to: 'lead', message: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
   // also include: slug, spec_path, plan_path, branch, baseSha,
-  //   and the resolved commands: test="<feature.commands.test>", lint="<feature.commands.lint>", typecheck="<feature.commands.typecheck>"
+  //   and VALIDATION_JSON from Step 1.75
 })
 ```
 
@@ -268,9 +289,11 @@ normal pi/OpenCode path; prompt compliance alone never clears VERIFY.
 
 #### verifier-1 gate
 
-**If verifier reports `ALL_PASS` AND `Test suite status: PASS` (or `N/A`):** proceed to code-reviewer gate below.
+**If verifier reports `ALL_PASS` AND `Test suite status: PASS` (or `N/A`):** proceed to code-reviewer gate below. `PASS` means Step 1.75 found no new repository-wide failures; VERIFICATION.md may list unchanged known baseline failures.
 
-**If verifier reports `ALL_PASS` but `Test suite status: FAIL`:**
+**If verifier reports `ALL_PASS` but `Test suite status: FAIL`:** this now means a
+criterion-specific command failed after Step 1.75; repository-wide regressions already
+returned to EXECUTE before team creation.
 - Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"suite-regression"}' || true`
 - Generate a FULL-SHAPE remediation task: `subject = "Fix: test suite regression"`, `verifyCommand = feature.commands.test`, `blockedBy = []`, `files = []` (unknown until diagnosed), `acceptanceCriteria = ["test suite passes"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them.
 - Append the remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step, so any `TaskCreate` calls on it would be lost.

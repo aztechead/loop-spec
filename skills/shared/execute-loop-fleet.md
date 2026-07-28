@@ -66,6 +66,8 @@ every worker).
 parallel=$(( W < maxParallelImplementers ? W : maxParallelImplementers ))
 python3 "$LOOP_DIR/supervisor.py" \
   --plan "$fdir/loop-plan.json" \
+  --feature-dir "$fdir" \
+  --prepare-command "$(jq -r '.commands.prepare // ""' "$fdir/feature.json")" \
   --parallel "$parallel" \
   --model "{feature.models.implementer}" \
   --retries "2"
@@ -84,6 +86,9 @@ branch `loop/<id>`, merges completed branches into `feat/{slug}` (the current
 branch) so dependents build on them, retries stalls/thrash once with the stall
 context appended, never retries timeout halts, and kills the fleet on a
 verifier-integrity violation.
+Before each merge, the supervisor rebases and verifies the immutable candidate through
+`integrate-task.sh`, combining the task command with `feature-validation.sh compare` from
+that task worktree. Only a candidate with no new exact-base failures can merge.
 
 This call is long-running and unattended; the lead does nothing while it runs.
 

@@ -16,6 +16,10 @@
 # lib/events.sh and lib/cycle-result.sh.
 set -uo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=credential-refresh.sh
+. "$script_dir/credential-refresh.sh"
+
 _warn() { echo "checkpoint-pr: $*" >&2; }
 _skip() { _warn "$*"; exit 0; }
 
@@ -70,6 +74,69 @@ case "$cmd" in
       _skip "'gh' not on PATH"
     fi
 
+    repo_dir="$(pwd -P)"
+    remote_url="$(git remote get-url --push origin 2>/dev/null || git remote get-url origin 2>/dev/null)"
+    credential_host="$(python3 - "$remote_url" <<'PY'
+import re, sys
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
+
+value = sys.argv[1]
+match = re.match(r'^[^@/]+@([^:/]+):', value)
+if match:
+    print(match.group(1).lower())
+else:
+    print((urlparse(value).hostname or '').lower())
+PY
+)"
+    [[ -n "$credential_host" ]] || credential_host="${GH_HOST:-github.com}"
+
+    command_tmp="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-checkpoint-pr-XXXXXX")" \
+      || _skip "cannot allocate command output"
+    trap 'rm -rf "$command_tmp"' EXIT
+    trap 'exit 0' HUP INT TERM
+    command_out="$command_tmp/stdout"
+    command_err="$command_tmp/stderr"
+
+    run_once() {
+      local stdout_file="$1" stderr_file="$2"
+      shift 2
+      "$@" >"$stdout_file" 2>"$stderr_file"
+    }
+
+    run_authenticated() {
+      local stage="$1"
+      shift
+      loop_spec_run_authenticated "$repo_dir" "$stage" "$credential_host" \
+        "$command_out" "$command_err" run_once "$command_out" "$command_err" "$@"
+    }
+
+    run_without_auth_retry() {
+      local stage="$1"
+      shift
+      LOOP_SPEC_AUTH_ERROR_CODE=""
+      LOOP_SPEC_AUTH_ERROR_MESSAGE=""
+      loop_spec_credential_refresh "$repo_dir" "$stage" "pre-stage" "$credential_host" || return 125
+      run_once "$command_out" "$command_err" "$@"
+    }
+
+    auth_skip() {
+      if [[ -n "$LOOP_SPEC_AUTH_ERROR_CODE" ]]; then
+        _skip "$LOOP_SPEC_AUTH_ERROR_CODE: $LOOP_SPEC_AUTH_ERROR_MESSAGE"
+      fi
+      _skip "$1"
+    }
+
+    list_open_pr_once() {
+      local rc=0
+      run_once "$command_out" "$command_err" gh pr list --head "$branch" --state open \
+        --json url --jq '.[0].url' || rc=$?
+      [[ "$rc" -eq 0 ]] || return "$rc"
+      existing_url="$(tr -d '\r\n' < "$command_out")"
+    }
+
     # Determine push form: when cwd is not on the feature branch use explicit ref
     current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
     use_explicit_ref=0
@@ -82,17 +149,25 @@ case "$cmd" in
 
     # ── Step 4: Push ────────────────────────────────────────────────────────────
     if [[ "$use_explicit_ref" -eq 1 ]]; then
-      if ! git push -u origin "${branch}:${branch}" 2>/dev/null; then
-        _skip "push failed for branch '${branch}'"
+      push_rc=0
+      run_authenticated push git push -u origin "${branch}:${branch}" || push_rc=$?
+      if [[ "$push_rc" -ne 0 ]]; then
+        auth_skip "push failed for branch '${branch}'"
       fi
     else
-      if ! git push -u origin "$branch" 2>/dev/null; then
-        _skip "push failed for branch '${branch}'"
+      push_rc=0
+      run_authenticated push git push -u origin "$branch" || push_rc=$?
+      if [[ "$push_rc" -ne 0 ]]; then
+        auth_skip "push failed for branch '${branch}'"
       fi
     fi
 
     # ── Step 5: Idempotency — check for existing open PR ───────────────────────
-    existing_url=$(gh pr list --head "$branch" --state open --json url --jq '.[0].url' 2>/dev/null || echo "")
+    list_rc=0
+    run_authenticated github-pr gh pr list --head "$branch" --state open \
+      --json url --jq '.[0].url' || list_rc=$?
+    [[ "$list_rc" -eq 0 ]] || auth_skip "gh pr list failed"
+    existing_url="$(tr -d '\r\n' < "$command_out")"
 
     if [[ -n "$existing_url" && "$existing_url" != "null" ]]; then
       pr_url="$existing_url"
@@ -124,14 +199,59 @@ ${progress_tail}"
 
 Resuming \`/loop-spec:cycle\` on this branch continues the run. Re-review this PR after cycle completion."
 
-      pr_url=$(gh pr create --draft \
+      create_rc=0
+      run_without_auth_retry github-pr gh pr create --draft \
         --base "${base_branch:-main}" \
         --head "$branch" \
         --title "$pr_title" \
-        --body "$pr_body" 2>/dev/null) || {
-        _skip "gh pr create failed"
-      }
-      pr_kind="draft"
+        --body "$pr_body" || create_rc=$?
+
+      if [[ "$create_rc" -eq 0 ]]; then
+        pr_url="$(tr -d '\r\n' < "$command_out")"
+        pr_kind="draft"
+      elif loop_spec_is_auth_failure "$create_rc" "$command_out" "$command_err"; then
+        loop_spec_credential_refresh "$repo_dir" "github-pr" "auth-retry" "$credential_host" \
+          || auth_skip "credential refresh failed before PR create reconciliation"
+
+        relist_rc=0
+        list_open_pr_once || relist_rc=$?
+        [[ "$relist_rc" -eq 0 ]] || auth_skip "cannot re-list after gh pr create authentication failure"
+        if [[ -n "$existing_url" && "$existing_url" != "null" ]]; then
+          pr_url="$existing_url"
+          pr_kind="existing"
+        else
+          create_rc=0
+          run_once "$command_out" "$command_err" gh pr create --draft \
+            --base "${base_branch:-main}" --head "$branch" --title "$pr_title" --body "$pr_body" \
+            || create_rc=$?
+          if [[ "$create_rc" -eq 0 ]]; then
+            pr_url="$(tr -d '\r\n' < "$command_out")"
+            pr_kind="draft"
+          else
+            relist_rc=0
+            list_open_pr_once || relist_rc=$?
+            if [[ "$relist_rc" -eq 0 && -n "$existing_url" && "$existing_url" != "null" ]]; then
+              pr_url="$existing_url"
+              pr_kind="existing"
+            else
+              if loop_spec_is_auth_failure "$create_rc" "$command_out" "$command_err"; then
+                LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
+                LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
+              fi
+              auth_skip "gh pr create failed after credential refresh"
+            fi
+          fi
+        fi
+      else
+        relist_rc=0
+        list_open_pr_once || relist_rc=$?
+        if [[ "$relist_rc" -eq 0 && -n "$existing_url" && "$existing_url" != "null" ]]; then
+          pr_url="$existing_url"
+          pr_kind="existing"
+        else
+          _skip "gh pr create failed"
+        fi
+      fi
     fi
 
     # ── Step 7: Persist + emit (both best-effort) ───────────────────────────────

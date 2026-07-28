@@ -11,6 +11,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PR_DELIVERY="${LOOP_SPEC_PR_DELIVERY_BIN:-$SCRIPT_DIR/pr-delivery.sh}"
+FINALIZE_CANDIDATE="${LOOP_SPEC_FINALIZE_CANDIDATE_BIN:-$SCRIPT_DIR/finalize-delivery-candidate.sh}"
 
 cmd="${1:-}"
 feature_dir="${2:-}"
@@ -105,32 +106,16 @@ append_target_failure() {
   targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
 }
 
-# The prior attempt's sidecar. A hard delivery failure leaves nextPhase="deliver"
-# and records the exact targetSha it tried; a resumed retry must re-deliver that
-# same SHA (not whatever HEAD now is) so the push, checks, and readiness all bind
-# to the verified commit. A remediation route (nextPhase="execute") intentionally
-# produces a new SHA, so binding is skipped there.
-prior_next=""
-prior_targets="[]"
-if [[ -f "$delivery_file" ]]; then
-  prior_next="$(jq -r '.nextPhase // ""' "$delivery_file" 2>/dev/null || echo "")"
-  prior_targets="$(jq -c '.targets // []' "$delivery_file" 2>/dev/null || echo "[]")"
-fi
+# A hard delivery failure or completion recovery stays bound to the exact eligible
+# SHA selected by the shared candidate policy. Remediation routes intentionally do not.
 bound_target_sha() {
   local name="$1"
-  [[ "$prior_next" == "deliver" || "$prior_next" == "completed" ]] || return 0
-  jq -r --arg n "$name" \
-    'def local_error: ["repo_invalid","repo_root_mismatch","branch_mismatch","git_status_failed",
-       "dirty_worktree","base_sha_missing","base_sha_invalid","base_not_ancestor","no_commits",
-       "git_history_failed","local_artifact_policy_failed"];
-     [.[] | select(.name == $n and (.targetSha // "") != "") as $target
-      | select($target.bindingEligible == true or
-          (($target | has("bindingEligible") | not) and ((local_error | index($target.errorCode // "")) == null)))
-      | .targetSha] | first // empty' \
-    <<<"$prior_targets"
+  bash "$FINALIZE_CANDIDATE" bound-sha "$delivery_file" "$name" 2>/dev/null || true
 }
 
 if [[ -z "$workspace_root" ]]; then
+  finalize_rc=0
+  bash "$FINALIZE_CANDIDATE" run "$feature_dir" --commit >/dev/null || finalize_rc=$?
   bash "$SCRIPT_DIR/runtime-ignore.sh" ensure "$artifact_root" >/dev/null || {
     echo "deliver: failed to install local-artifact exclusions" >&2
     exit 2
@@ -182,11 +167,15 @@ if [[ -z "$workspace_root" ]]; then
     preflight_ok=0
   elif [[ "$status_ok" -ne 1 ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
-      "git_status_failed" "cannot establish candidate worktree cleanliness" "" true
+      "git_status_failed" "cannot establish candidate worktree cleanliness"
     preflight_ok=0
   elif [[ -n "$dirty_state" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
-      "dirty_worktree" "candidate repository has uncommitted changes" "" true
+      "dirty_worktree" "candidate repository has uncommitted changes"
+    preflight_ok=0
+  elif [[ "$finalize_rc" -ne 0 ]]; then
+    append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
+      "candidate_finalization_failed" "deterministic pre-delivery candidate finalization failed"
     preflight_ok=0
   fi
 
@@ -264,12 +253,12 @@ else
     fi
     if [[ "$status_ok" -ne 1 ]]; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
-        "git_status_failed" "cannot establish workspace worktree cleanliness" "" true
+        "git_status_failed" "cannot establish workspace worktree cleanliness"
       continue
     fi
     if [[ -n "$dirty_state" ]]; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
-        "dirty_worktree" "workspace target has uncommitted changes" "" true
+        "dirty_worktree" "workspace target has uncommitted changes"
       continue
     fi
     if [[ "$commit_count" -eq 0 ]]; then
@@ -300,7 +289,7 @@ else
       append_target_failure "$(jq -r '.name' <<<"$entry")" "$(jq -r '.path' <<<"$entry")" \
         "$(jq -r '.branch' <<<"$entry")" "$(jq -r '.base' <<<"$entry")" \
         "$(jq -r '.sha' <<<"$entry")" "$(jq -r '.hint' <<<"$entry")" \
-        "workspace_preflight_failed" "another workspace target failed local preflight" "" true
+        "workspace_preflight_failed" "another workspace target failed local preflight"
     done < <(jq -c '.[]' <<<"$deliverables")
     deliverables="[]"
   fi

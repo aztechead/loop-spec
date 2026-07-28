@@ -66,57 +66,38 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    - `rework` with attempts exhausted: `blocked.push({taskId, reason: "retry-exhausted"})`.
    - `block`: `blocked.push({taskId, reason: "spec-compliance-block"})`.
    - implementer `committed == false`: `blocked.push({taskId, reason: "commit-missing"})`.
-6. **Merge the passed tasks** (inline, serial, in `wave` order). For each task that
-   reached `pass`:
+6. **Integrate the passed tasks** (inline, serial, in `wave` order). For each task
+   that reached `pass`, use the transactional helper. It checks for commits and
+   clean worktrees, rebases a divergent task once, verifies the exact prospective
+   candidate, fast-forwards the feature branch only after all checks pass, and
+   cleans up only after publication:
 
    ```bash
    worktree_branch="task/{taskId}-{slug}"
    worktree_path="${featureWorktreeRoot}/.loop-spec/worktrees/{slug}/task-{taskId}"
 
-   if ! bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-commit-check.sh" "feat/{slug}" "$worktree_branch"; then
-     # no commits over the feature branch -> not mergeable
-     blocked+=("{taskId}:zero-commit")
-     continue
-   fi
-
-   git checkout "feat/{slug}"
-   git merge --ff-only "$worktree_branch"
-   # On non-ff: rebase the task branch onto feat/{slug}, retry --ff-only.
-   # On rebase conflict: set escalation = {reason: "rebase-conflict", detail: "..."} and exit the loop.
-   git worktree remove "$worktree_path"
-   git branch -D "$worktree_branch"
+   integration_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/integrate-task.sh" \
+     --feature-root "$featureWorktreeRoot" \
+     --feature-branch "feat/{slug}" \
+     --task-worktree "$worktree_path" \
+     --task-branch "$worktree_branch" \
+     --verify "{task.verifyCommand} && bash '${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh' compare '$worktree_path/.loop-spec/features/{slug}'" \
+     --cleanup)
+   integration_rc=$?
    ```
 
-   On a successful merge add the task id to `mergedSet`.
-
-   **Post-merge re-verify (all tiers) — trust the INTEGRATED branch, not the implementer's
-   worktree.** The implementer's own "TASK PASS" / verify output came from inside its task
-   worktree, which is removed immediately above. That signal describes an environment that no
-   longer exists and may have been branched from a stale base; it is NOT trustworthy on its
-   own. So, right after the worktree is removed and the task is in `mergedSet`, re-run that
-   task's `verifyCommand` from the **feature worktree** (`feat/{slug}` with the merge applied):
-
-   ```bash
-   if [[ -n "{task.verifyCommand}" ]]; then
-     ( cd "$featureWorktreeRoot" && git checkout "feat/{slug}" >/dev/null 2>&1 && eval "{task.verifyCommand}" )
-     if [[ $? -ne 0 ]]; then
-       # The merged, integrated code fails the task's own behavioral check.
-       blocked+=("{taskId}:retry-exhausted")   # surface for re-queue / escalation
-       # (Do NOT leave it silently in mergedSet as "passed".)
-     fi
-   fi
-   ```
-
-   A task is only genuinely done when its `verifyCommand` passes against the integrated
-   feature branch. This mirrors the team rung's post-merge test gate (`execute` SKILL Step 8)
-   but at per-task granularity, and it is the safety net for finding #2/#8: even if an
-   implementer ran isolated-from-base and its green check was for a discarded worktree, the
-   post-merge re-verify here catches code that never actually integrated.
-7. **Post-merge test gate**: run
-   `feature.json.commands.test` (or `lib/detect-test-cmd.sh` if unset) from the feature
-   worktree. On failure, record a remediation note and surface it via `escalation` or a
-   `blocked` entry rather than silently proceeding. (The per-task re-verify above asserts each
-   task's own behavior; this whole-suite gate catches cross-task regressions.)
+   Parse `integration_json`, never command prose. If `.published == true`, add the
+   task id to `mergedSet` even when cleanup reports a failure. Otherwise map
+   `zero-commit` to the existing `zero-commit` blocked reason, `verify-failed` or
+   `prepare-failed` to `retry-exhausted`, and any rebase/publication/cleanliness
+   failure to `escalation.reason = "rebase-conflict"` with the helper's `reason`
+   and `detail`, then stop. Never remove or reset a failed task worktree manually.
+   The helper runs `verifyCommand` after any required rebase and before publication,
+   so the verified commit is exactly the commit that fast-forwards the feature branch.
+7. **Post-merge suite gate**: run `lib/feature-validation.sh compare` against the
+   feature directory. Exit 20 is a new regression; exit 21 is preparation/infrastructure
+   failure. Unchanged baseline failures do not block. This repeats the candidate check on
+   the published feature branch to catch cross-task regressions.
 8. Loop back to step 1.
 
 ## Agent dispatch convention
@@ -178,6 +159,10 @@ load-bearing file completely instead of skimming five. "Should work" / "probably
 Step 1 - Create the task worktree (skip if it already exists):
   git -C "{featureWorktreeRoot}" worktree add "{worktree_path}" -b "task/{taskId}-{slug}" "feat/{slug}"
 
+Step 1.5 - Prepare declared dev/test dependencies inside the task worktree:
+  bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{worktree_path}" --command "{commands.prepare}"
+Preparation failure is infrastructure failure; do not edit around it.
+
 Step 2 - {readFirst clause} Read the assigned files: {task.files}.
 {specPath clause}
 
@@ -190,10 +175,10 @@ Acceptance criteria:
 
 Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.
 
-Step 4 - Run the configured quality commands INSIDE the worktree (skip blanks):
-  Lint: {commands.lint}
-  Test: {commands.test}
-  Typecheck: {commands.typecheck}
+Step 4 - Run the task's feature-specific verify command inside the worktree:
+  {task.verifyCommand}
+The integration helper runs the repository-wide no-new-failures comparison after commit
+and any required rebase, against the exact candidate that may be published.
 
 Step 5 - Stage and commit inside the worktree branch:
   git -C "{worktree_path}" add <files>
@@ -318,10 +303,9 @@ Acceptance criteria:
 Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.
 Do NOT create a git worktree. Edit files directly in {abs_repo}.
 
-Step 3 - Run the configured quality commands with cwd = {abs_repo} (skip blanks):
-  Lint: {repo.commands.lint}
-  Test: {repo.commands.test}
-  Typecheck: {repo.commands.typecheck}
+Step 3 - Prepare dependencies, then run the task-specific verify command with cwd = {abs_repo}:
+  bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{abs_repo}" --command "{repo.commands.prepare}"
+  {task.verifyCommand}
 
 Step 4 - Stage and commit using git -C so git does not depend on cwd:
   git -C "{abs_repo}" add <files>
@@ -339,9 +323,9 @@ commit directly on `feat/{slug}` in the repo; there is no task branch and no per
 worktree to merge. The lead does not run `git merge` or `git worktree remove` for
 workspace tasks.
 
-The post-wave test gate (step 7) still applies: run each participating repo's detected
-test command (`repo.commands.test`) from `abs_repo` after the wave completes; on
-failure, record a remediation note and surface via `escalation` or `blocked`.
+The post-wave suite gate (step 7) still applies: run
+`lib/feature-validation.sh compare {workspace_root}/.loop-spec/features/{slug}` once.
+It prepares and compares every participating repo; only new failures block.
 
 ### Completion verification (workspace mode)
 

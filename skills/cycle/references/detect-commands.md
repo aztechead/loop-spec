@@ -7,6 +7,9 @@ Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. App
 **Single-repo mode (unchanged):**
 
 Auto-detect (best effort):
+- prepare: `LOOP_SPEC_CMD_PREPARE`, then `.loop-spec/workflow.json.prepareCommand`,
+  then lock-aware npm/pnpm/yarn, uv/poetry, or isolated pip requirements setup through
+  `lib/prepare-environment.sh resolve`
 - test: parse package.json scripts.test, Makefile `test` target, pyproject.toml [tool.pytest], go.mod presence (`go test ./...`)
 - lint: scripts.lint, Makefile lint, ruff/eslint config files
 - typecheck: scripts.typecheck, mypy.ini, tsconfig.json + tsc
@@ -30,8 +33,8 @@ verify silently fail:
 ```bash
 # For each detected runner the commands depend on (node, npx, python, etc.), confirm a
 # real binary resolves; if it does, prefer that absolute path in the generated command.
-for tool in node npx python python3; do
-  case "$cmd_test$cmd_lint$cmd_typecheck" in
+for tool in node npm npx pnpm python python3; do
+  case "$cmd_prepare$cmd_test$cmd_lint$cmd_typecheck" in
     *"$tool"*)
       if ! bash "${CLAUDE_SKILL_DIR}/../../lib/resolve-bin.sh" "$tool" . >/dev/null 2>&1; then
         echo "loop-spec: '$tool' does not resolve to a real executable in this shell" >&2
@@ -42,26 +45,35 @@ for tool in node npx python python3; do
 done
 ```
 
+Resolve preparation against the selected repository before confirmation:
+
+```bash
+prepare_resolution="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" resolve --root "$repo_root")"
+cmd_prepare="$(jq -r '.command // ""' <<<"$prepare_resolution")"
+```
+
 Confirm with user via AskUserQuestion (one Q with options):
-- "Detected commands: test=`{X}`, lint=`{Y}`, typecheck=`{Z}`. Use these?"
+- "Detected commands: prepare=`{P}`, test=`{X}`, lint=`{Y}`, typecheck=`{Z}`. Use these?"
 - Options: "Yes", "Customize"
 
 If customize: ask each separately.
 
 Skip this confirmation step when `LOOP_SPEC_NON_INTERACTIVE=1` (use auto-detected values as-is).
 
-Normalize all three to strings so `feature.commands` always carries `test`/`lint`/`typecheck` keys (undetected = empty string, never null; phases treat empty as "skip this check"): `cmd_test="${cmd_test:-}"; cmd_lint="${cmd_lint:-}"; cmd_typecheck="${cmd_typecheck:-}"`.
+Normalize all four to strings so `feature.commands` always carries `prepare`/`test`/`lint`/`typecheck` keys (undetected = empty string, never null): `cmd_prepare="${cmd_prepare:-}"; cmd_test="${cmd_test:-}"; cmd_lint="${cmd_lint:-}"; cmd_typecheck="${cmd_typecheck:-}"`.
 
 **Workspace mode (additive):**
 
 Run the same auto-detection per participating repo using the repo's absolute path as the probe dir. Collect per-repo command maps:
 
 ```bash
-declare -A repo_cmds_test repo_cmds_lint repo_cmds_typecheck
+declare -A repo_cmds_prepare repo_cmds_test repo_cmds_lint repo_cmds_typecheck
 for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   rname="$(echo "$repo_entry" | jq -r '.name')"
   rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
   # run same detection logic against "$rpath"
+  repo_prepare="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" resolve --root "$rpath")"
+  repo_cmds_prepare["$rname"]="$(jq -r '.command // ""' <<<"$repo_prepare")"
   repo_cmds_test["$rname"]="${detected_test:-}"
   repo_cmds_lint["$rname"]="${detected_lint:-}"
   repo_cmds_typecheck["$rname"]="${detected_typecheck:-}"

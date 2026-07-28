@@ -17,6 +17,10 @@
 # Exit 0: delivered/checkpointed; 1: operational or policy failure; 2: bad input.
 set -uo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=credential-refresh.sh
+. "$script_dir/credential-refresh.sh"
+
 mode="${1:-}"
 shift || true
 
@@ -140,11 +144,16 @@ fail_bad() {
 }
 
 fail_delivery() {
-  echo "pr-delivery: $2" >&2
+  local error_code="$1" error_message="$2"
+  if [[ -n "$LOOP_SPEC_AUTH_ERROR_CODE" ]]; then
+    error_code="$LOOP_SPEC_AUTH_ERROR_CODE"
+    error_message="$LOOP_SPEC_AUTH_ERROR_MESSAGE"
+  fi
+  echo "pr-delivery: $error_message" >&2
   if [[ "$rollback_on_failure" == "1" ]] && type rollback_readiness >/dev/null 2>&1; then
     rollback_readiness
   fi
-  emit_result false "blocked" "$1" "$2"
+  emit_result false "blocked" "$error_code" "$error_message"
   exit 1
 }
 
@@ -201,13 +210,29 @@ done < <(git -C "$repo_dir" remote get-url --push --all "$remote" 2>/dev/null)
 remote_url="${push_urls[0]}"
 command -v gh >/dev/null 2>&1 || fail_bad "gh_missing" "gh is not on PATH"
 
+credential_host="$(python3 - "$remote_url" <<'PY'
+import re, sys
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
+
+value = sys.argv[1]
+match = re.match(r'^[^@/]+@([^:/]+):', value)
+if match:
+    print(match.group(1).lower())
+else:
+    print((urlparse(value).hostname or '').lower())
+PY
+)"
+
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-pr-delivery-XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
 export GH_PROMPT_DISABLED=1 GIT_TERMINAL_PROMPT=0
 export LOOP_SPEC_PR_DELIVERY_CWD="$repo_dir"
 
 # Run a network command with a per-call timeout. Python 3.6 supports communicate(timeout=).
-run_gh() {
+run_gh_once() {
   local stdout_file="$1" stderr_file="$2"
   shift 2
   python3 - "$command_timeout" "$stdout_file" "$stderr_file" "$@" <<'PY'
@@ -242,8 +267,37 @@ sys.exit(rc)
 PY
 }
 
+run_gh() {
+  local stdout_file="$1" stderr_file="$2" stage="github"
+  shift 2
+  if [[ "${1:-}" == "git" && " $* " == *" push "* ]]; then
+    stage="push"
+  elif [[ "${1:-}" == "git" ]]; then
+    stage="git-query"
+  elif [[ "${1:-}" == "gh" && "${2:-}" == "repo" ]]; then
+    stage="github-repo"
+  elif [[ "${1:-}" == "gh" && "${2:-}" == "pr" ]]; then
+    stage="github-pr"
+  elif [[ "${1:-}" == "gh" && "${2:-}" == "api" ]]; then
+    stage="github-api"
+  fi
+  loop_spec_run_authenticated "$repo_dir" "$stage" "$credential_host" \
+    "$stdout_file" "$stderr_file" run_gh_once "$stdout_file" "$stderr_file" "$@"
+}
+
+run_gh_no_auth_retry() {
+  local stdout_file="$1" stderr_file="$2" stage="$3"
+  shift 3
+  LOOP_SPEC_AUTH_ERROR_CODE=""
+  LOOP_SPEC_AUTH_ERROR_MESSAGE=""
+  loop_spec_credential_refresh "$repo_dir" "$stage" "pre-stage" "$credential_host" || return 125
+  run_gh_once "$stdout_file" "$stderr_file" "$@"
+}
+
 gh_out="$tmp_dir/gh.out"
 gh_err="$tmp_dir/gh.err"
+readiness_out="$tmp_dir/readiness.out"
+readiness_err="$tmp_dir/readiness.err"
 refresh_remote_sha() {
   local rc=0
   run_gh "$tmp_dir/git-ls-remote.out" "$tmp_dir/git-ls-remote.err" \
@@ -252,9 +306,50 @@ refresh_remote_sha() {
   remote_sha="$(awk 'NR == 1 {print $1}' "$tmp_dir/git-ls-remote.out")"
 }
 
+observe_readiness_after_refresh() {
+  local rc=0
+  run_gh_once "$readiness_out" "$readiness_err" gh pr view "$pr_number" \
+    --repo "$repo_selector" --json isDraft || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    if loop_spec_is_auth_failure "$rc" "$readiness_out" "$readiness_err"; then
+      LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
+      LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
+    fi
+    return "$rc"
+  fi
+  observed_is_draft="$(jq -r 'if (.isDraft | type) == "boolean" then .isDraft else "invalid" end' \
+    "$readiness_out" 2>/dev/null)"
+  [[ "$observed_is_draft" != "invalid" ]]
+}
+
+set_readiness_idempotent() {
+  local desired_is_draft="$1"
+  shift
+  local rc=0 observed_is_draft="invalid"
+
+  run_gh_no_auth_retry "$readiness_out" "$readiness_err" github-pr "$@" || rc=$?
+  [[ "$rc" -ne 0 ]] || return 0
+  loop_spec_is_auth_failure "$rc" "$readiness_out" "$readiness_err" || return "$rc"
+
+  loop_spec_credential_refresh "$repo_dir" "github-pr" "auth-retry" "$credential_host" || return 125
+  observe_readiness_after_refresh || return $?
+  [[ "$observed_is_draft" != "$desired_is_draft" ]] || return 0
+
+  rc=0
+  run_gh_once "$readiness_out" "$readiness_err" "$@" || rc=$?
+  [[ "$rc" -ne 0 ]] || return 0
+  if loop_spec_is_auth_failure "$rc" "$readiness_out" "$readiness_err"; then
+    observe_readiness_after_refresh || return $?
+    [[ "$observed_is_draft" != "$desired_is_draft" ]] || return 0
+    LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
+    LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
+  fi
+  return "$rc"
+}
+
 rollback_readiness() {
   [[ "$readiness_action" == "marked_ready" ]] || return 0
-  if run_gh "$gh_out" "$gh_err" gh pr ready "$pr_number" --undo --repo "$repo_selector"; then
+  if set_readiness_idempotent true gh pr ready "$pr_number" --undo --repo "$repo_selector"; then
     readiness_action="rolled_back"
     is_draft="true"
   fi
@@ -285,6 +380,7 @@ print(host)
 PY
 )" || fail_delivery "gh_error" "cannot derive repository selector from '$canonical_repo_url'"
 repo_selector="$repo_host/$repo_identity"
+credential_host="$repo_host"
 
 # Push the requested commit, not HEAD, then prove the remote ref is identical.
 push_rc=0
@@ -392,9 +488,44 @@ else
     pr_action="reused"
   else
     create_rc=0
-    run_gh "$gh_out" "$gh_err" gh pr create --draft --repo "$repo_selector" \
+    run_gh_no_auth_retry "$gh_out" "$gh_err" github-pr gh pr create --draft --repo "$repo_selector" \
       --base "$base_branch" --head "$branch" --title "$title" --body-file "$body_file" \
       || create_rc=$?
+    if loop_spec_is_auth_failure "$create_rc" "$gh_out" "$gh_err"; then
+      loop_spec_credential_refresh "$repo_dir" "github-pr" "auth-retry" "$credential_host" \
+        || fail_delivery "credential_refresh_failed" "credential refresh hook failed"
+
+      # The first create may have reached GitHub despite its auth-looking error.
+      # Re-list before the only permitted create retry to preserve idempotency.
+      relist_rc=0
+      run_gh_once "$gh_out" "$gh_err" gh pr list --repo "$repo_selector" --head "$branch" \
+        --state open --json "$pr_fields" || relist_rc=$?
+      if [[ "$relist_rc" -ne 0 ]]; then
+        if loop_spec_is_auth_failure "$relist_rc" "$gh_out" "$gh_err"; then
+          LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
+          LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
+        fi
+        fail_delivery "pr_create_failed" "cannot re-list PRs after an authentication failure"
+      fi
+      list_count="$(jq -r 'if type == "array" then length else -1 end' "$gh_out" 2>/dev/null || echo -1)"
+      [[ "$list_count" -ge 0 && "$list_count" -le 1 ]] \
+        || fail_delivery "pr_create_failed" "cannot safely reconcile PR create after authentication failure"
+      if [[ "$list_count" -eq 1 ]]; then
+        pr_json="$(jq -c '.[0]' "$gh_out")"
+        pr_action="reused"
+        create_rc=0
+      else
+        create_rc=0
+        run_gh_once "$gh_out" "$gh_err" gh pr create --draft --repo "$repo_selector" \
+          --base "$base_branch" --head "$branch" --title "$title" --body-file "$body_file" \
+          || create_rc=$?
+        if loop_spec_is_auth_failure "$create_rc" "$gh_out" "$gh_err"; then
+          LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
+          LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
+          fail_delivery "authentication_failed" "authentication failed after credential refresh"
+        fi
+      fi
+    fi
     if [[ "$create_rc" -ne 0 ]]; then
       # A concurrent delivery may have won the create race. Re-list once.
       run_gh "$gh_out" "$gh_err" gh pr list --repo "$repo_selector" --head "$branch" \
@@ -404,7 +535,7 @@ else
         || fail_delivery "pr_create_failed" "gh pr create failed and no unique PR appeared"
       pr_json="$(jq -c '.[0]' "$gh_out")"
       pr_action="reused"
-    else
+    elif [[ -z "$pr_json" ]]; then
       created_ref="$(tr -d '\r\n' < "$gh_out")"
       [[ -n "$created_ref" ]] || fail_delivery "pr_create_failed" "gh pr create returned no PR URL"
       view_pr "$created_ref" || fail_delivery "pr_create_failed" "created PR could not be loaded"
@@ -573,7 +704,7 @@ fi
 
 if [[ "$restore_draft" == "1" ]]; then
   if [[ "$is_draft" == "false" ]]; then
-    run_gh "$gh_out" "$gh_err" gh pr ready "$pr_number" --undo --repo "$repo_selector" \
+    set_readiness_idempotent true gh pr ready "$pr_number" --undo --repo "$repo_selector" \
       || fail_delivery "draft_restore_failed" "could not restore the PR to draft"
   fi
   view_pr "$pr_number" || fail_delivery "pr_lookup_failed" "cannot verify restored draft state"
@@ -587,7 +718,7 @@ if [[ "$restore_draft" == "1" ]]; then
 fi
 
 if [[ "$is_draft" == "true" ]]; then
-  run_gh "$gh_out" "$gh_err" gh pr ready "$pr_number" --repo "$repo_selector" \
+  set_readiness_idempotent false gh pr ready "$pr_number" --repo "$repo_selector" \
     || fail_delivery "ready_failed" "required checks passed but the draft PR could not be marked ready"
   readiness_action="marked_ready"
 else

@@ -69,6 +69,41 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
 done
 ```
 
+Prepare and baseline every repository now, while each feature branch `HEAD` is still its
+exact untouched base and before the workspace state directories exist. Setup and
+validation must leave each repository clean. A failure aborts initialization; never
+record setup failure as a known test failure.
+
+```bash
+declare -A repo_prepare_key repo_baseline_json
+for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
+  rname="$(echo "$repo_entry" | jq -r '.name')"
+  rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
+  prepare_rc=0
+  prepare_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run \
+    --root "$rpath" --command "${repo_cmds_prepare[$rname]:-}")" || prepare_rc=$?
+  [[ "$prepare_rc" -eq 0 ]] || {
+    echo "loop-spec: environment preparation failed for $rname (exit $prepare_rc)." >&2
+    exit 1
+  }
+  repo_cmds_prepare["$rname"]="$(jq -r '.command // ""' <<<"$prepare_json")"
+  repo_prepare_key["$rname"]="$(jq -r '.key // ""' <<<"$prepare_json")"
+  baseline_path="$(git -C "$rpath" rev-parse --git-path "loop-spec/validation/${slug}/base")"
+  [[ "$baseline_path" == /* ]] || baseline_path="$rpath/$baseline_path"
+  mkdir -p "$baseline_path"
+  baseline_rc=0
+  repo_baseline_json["$rname"]="$(bash "${CLAUDE_SKILL_DIR}/../../lib/verification-baseline.sh" capture \
+    --root "$rpath" --base-sha "${repo_base_sha[$rname]}" \
+    --prepare-key "${repo_prepare_key[$rname]}" --log-dir "$baseline_path" \
+    --test "${repo_cmds_test[$rname]:-}" --lint "${repo_cmds_lint[$rname]:-}" \
+    --typecheck "${repo_cmds_typecheck[$rname]:-}")" || baseline_rc=$?
+  [[ "$baseline_rc" -eq 0 ]] || {
+    echo "loop-spec: exact-base validation baseline failed for $rname (exit $baseline_rc)." >&2
+    exit 1
+  }
+done
+```
+
 **State dirs** are created at the workspace root:
 
 ```bash
@@ -88,29 +123,20 @@ cp "$spec_draft_abs" "${workspace_root}/.loop-spec/features/${slug}/spec-draft.m
 Build the `workspace.repos` array from the per-repo data collected above, then write feature.json:
 
 ```bash
-repos_json_array="$(echo "$workspace_repos_json" | jq -c \
-  --argjson base_shas "$(for rname in "${!repo_base_sha[@]}"; do
-      echo "{\"name\":\"$rname\",\"sha\":\"${repo_base_sha[$rname]}\"}"; done | jq -s .)" \
-  --argjson base_branches "$(for rname in "${!repo_base_branch[@]}"; do
-      echo "{\"name\":\"$rname\",\"branch\":\"${repo_base_branch[$rname]}\"}"; done | jq -s .)" \
-  '[.[] | . as $r |
-    ($base_shas[] | select(.name == $r.name) | .sha) as $sha |
-    ($base_branches[] | select(.name == $r.name) | .branch) as $bb |
-    {
-      name: $r.name,
-      path: $r.path,
-      branch: ("feat/" + env.slug),
-      baseSha: $sha,
-      baseBranch: $bb,
-      commands: {
-        test: (env["REPO_TEST_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // ""),
-        lint: (env["REPO_LINT_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // ""),
-        typecheck: (env["REPO_TYPECHECK_" + ($r.name | gsub("[^A-Za-z0-9]"; "_"))] // "")
-      }
-    }
-  ]')"
-# (In practice, per-repo commands detected in Step 4 are substituted in directly
-#  rather than via env vars; the structure above is illustrative of the shape.)
+repos_json_array='[]'
+while IFS= read -r repo_entry; do
+  rname="$(jq -r '.name' <<<"$repo_entry")"
+  entry="$(jq -cn --arg name "$rname" --arg path "$(jq -r '.path' <<<"$repo_entry")" \
+    --arg branch "feat/${slug}" --arg sha "${repo_base_sha[$rname]}" \
+    --arg base "${repo_base_branch[$rname]}" --arg prepare "${repo_cmds_prepare[$rname]:-}" \
+    --arg test "${repo_cmds_test[$rname]:-}" --arg lint "${repo_cmds_lint[$rname]:-}" \
+    --arg typecheck "${repo_cmds_typecheck[$rname]:-}" \
+    --argjson baseline "${repo_baseline_json[$rname]}" \
+    '{name:$name,path:$path,branch:$branch,baseSha:$sha,baseBranch:$base,
+      commands:{prepare:$prepare,test:$test,lint:$lint,typecheck:$typecheck},
+      verificationBaseline:$baseline}')"
+  repos_json_array="$(jq -c --argjson entry "$entry" '. + [$entry]' <<<"$repos_json_array")"
+done < <(jq -c '.[]' <<<"$workspace_repos_json")
 
 # Same single source of truth (lib/feature-init.sh), workspace mode: top-level
 # branch/baseSha/baseBranch/worktreePath are null, top-level commands are empty, and the
@@ -128,7 +154,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" \
 Schema notes for workspace feature.json:
 - `schemaVersion: 7`; top-level `branch`, `baseSha`, `baseBranch`, `worktreePath` are `null`; top-level `commands` holds empty strings.
 - `workspace.root` is the absolute workspace parent path.
-- `workspace.repos[]` carries `name`, `path` (relative to workspace root), `branch` (`feat/{slug}`), `baseSha`, `baseBranch`, and `commands` (per-repo detected commands) -- matching the schema in `skills/shared/feature-state-schema.md`.
+- `workspace.repos[]` carries `name`, `path` (relative to workspace root), `branch` (`feat/{slug}`), `baseSha`, `baseBranch`, `commands` (including prepare), and its exact-base `verificationBaseline` -- matching the schema in `skills/shared/feature-state-schema.md`.
 ```
 
 No initial commit of `feature.json` is forced here: `create-feature-worktree` already pointed `feat/{slug}` at a real commit (`base_sha`), and the first state commit lands at the first phase transition (Step 6). Phase artifacts under `docs/loop-spec/features/{slug}/` are committed by each phase as it writes them (SPEC, PLAN, VERIFY).

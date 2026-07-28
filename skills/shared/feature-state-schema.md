@@ -71,6 +71,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "startedAt": "ISO-8601 timestamp or null"
   },
   "commands": {
+    "prepare": "string (deterministic environment setup; empty means no setup)",
     "test": "string (e.g., npm test)",
     "lint": "string",
     "typecheck": "string"
@@ -84,7 +85,8 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
         "branch": "feat/{slug}",
         "baseSha": "git sha at branch creation for this repo",
         "baseBranch": "main",
-        "commands": {"test": "", "lint": "", "typecheck": ""}
+        "commands": {"prepare": "", "test": "", "lint": "", "typecheck": ""},
+        "verificationBaseline": "same compact baseline object as the top-level field, or null"
       }
     ]
   },
@@ -116,6 +118,16 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
         "errorCode": "stable structured failure code or null"
       }
     ]
+  },
+  "verificationBaseline": {
+    "schemaVersion": 1,
+    "baseSha": "exact full base commit ID",
+    "prepareKey": "preparation key from lib/prepare-environment.sh",
+    "commands": {
+      "test": {"command": "", "status": "pass | fail | skipped | infra_error", "exitCode": 0, "fingerprints": []},
+      "lint": {"command": "", "status": "pass | fail | skipped | infra_error", "exitCode": 0, "fingerprints": []},
+      "typecheck": {"command": "", "status": "pass | fail | skipped | infra_error", "exitCode": 0, "fingerprints": []}
+    }
   },
   "warnings": ["array of strings"],
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
@@ -158,6 +170,8 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null` unless the cycle's Step 2 capability probe signals a specific mode.
 - `artifacts.specInterview` is a nullable path to the SPEC-phase interview transcript (written by the spec orchestrator on the main thread). `currentPhase` includes `"spec"` as its first value.
 - `pendingRemediationTasks`, `bootstrapPendingDomains`, and `activeWorkflow` are runtime-only working fields written by the code (VERIFY remediation routing, cycle Step 5.5b background mapping, and the workflow dispatch contract in `dispatch-fanout.md`); all three are absent or empty/null between phases.
+- `commands.prepare` is persisted beside the quality commands. Resolution precedence is an already-persisted explicit command, `LOOP_SPEC_CMD_PREPARE` (including an explicit empty value), `.loop-spec/workflow.json.prepareCommand`, then conservative lockfile detection by `lib/prepare-environment.sh`; ambiguous lockfiles produce an empty command rather than a mutable install guess. In workspace mode each repo owns its command and preparation key independently.
+- `verificationBaseline` is `null` until a clean, exact `HEAD == baseSha` capture. Single-repo mode uses the top-level field; workspace mode leaves that field null and uses `workspace.repos[].verificationBaseline`. Its compact JSON is committed with feature state, but command logs remain machine-local. Comparison requires matching `baseSha`, preparation key, and test/lint/typecheck command strings. Pass-to-fail and added fingerprints are regressions; unchanged or subset known failures are accepted; command/runtime infrastructure errors are distinct. Criterion-specific acceptance commands are never included. A missing baseline on an older feature is strict: current failures regress and are never learned from the modified feature head.
 - `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base.
 - `models` is a fixed per-role map (no preset axis), built ONCE at cycle Step 5 from `lib/feature-init.sh` (the single source of truth, mirroring `skills/shared/model-matrix.md`). Every phase skill passes `model: feature.models.<role>` on each spawn rather than re-deriving, so teammates never silently inherit the orchestrator's session model. opus runs spec-writer, planner, advocate, challenger, spec-compliance-reviewer, and iterate-judge; sonnet runs implementer, code-reviewer, verifier, mapper-*, and pattern-mapper. Cycle Step 5.9 re-normalizes this block idempotently on every resume from the same `feature-init.sh` source (forcing canonical IDs, dropping any vestigial `preset` field), so the two construction sites cannot drift.
 - `worktreePath` (single-repo mode) points at the dedicated git worktree created at cycle Step 5 via `lib/git-ops.sh create-feature-worktree`; all state, docs, and code live on `feat/{slug}` inside it. Resume discovers feature worktrees via `git-ops.sh list-feature-worktrees`.

@@ -25,16 +25,18 @@ done
 
 ## Step 4 - Spawn verifier-1
 
-**Workspace mode (additive):** include the per-repo command map and per-repo absolute paths. The verifier runs each repo's commands with cwd = that repo's absolute path.
+**Workspace mode (additive):** include the per-repo paths and the Step 1.75
+`VALIDATION_JSON`. The feature-level adapter already prepared and compared every repo;
+the verifier runs only criterion-specific commands with the appropriate repo cwd.
 
 ```
 SendMessage({
   to: "verifier-1",
-  message: "Apply skills/shared/verification-grounding.md, then run every acceptance criterion's verify command from PLAN.md. This is a workspace feature. For each repo inspect git -C <abs-path> diff <baseSha>..HEAD, re-read changed files and integration context, then run its commands with cwd set to that repo. For every Good Enough criterion write exactly one VERIFICATION.md row: '- criterion: <id> | implementation: <workspace-relative-file>:<line> - <what it proves> | integration: <workspace-relative-file>:<line> - <what it proves>'; only use 'integration: none - <concrete reason>' when no separate site exists. Gate ONLY on Good Enough. Write VERIFICATION.md to {workspace_root}/docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', message: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
+  message: "Apply skills/shared/verification-grounding.md, then run every acceptance criterion's verify command from PLAN.md. This is a workspace feature. For each repo inspect git -C <abs-path> diff <baseSha>..HEAD and re-read changed files and integration context. Repository-wide preparation and baseline comparison already ran; record VALIDATION_JSON and do not rerun those commands. For every Good Enough criterion write exactly one VERIFICATION.md row: '- criterion: <id> | implementation: <workspace-relative-file>:<line> - <what it proves> | integration: <workspace-relative-file>:<line> - <what it proves>'; only use 'integration: none - <concrete reason>' when no separate site exists. Gate ONLY on Good Enough. Write VERIFICATION.md to {workspace_root}/docs/loop-spec/features/{slug}/VERIFICATION.md. When complete, SendMessage({to: 'lead', message: 'VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>'})."
   // also include: slug, spec_path, plan_path, workspace_root,
   //   and per-repo entries for each workspace.repos[]:
   //     repo name, abs path ({workspace_root}/{repo.path}), branch (repo.branch), baseSha (repo.baseSha),
-  //     commands: test=<repo.commands.test>, lint=<repo.commands.lint>, typecheck=<repo.commands.typecheck>
+  //   and VALIDATION_JSON from Step 1.75
 })
 ```
 

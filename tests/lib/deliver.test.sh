@@ -4,6 +4,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT="$ROOT/lib/deliver.sh"
+FINALIZER="$ROOT/lib/finalize-delivery-candidate.sh"
 PASS=0
 FAIL=0
 
@@ -128,7 +129,7 @@ jq -n --arg base "$BASE" '{schemaVersion:7,slug:"demo",feature_title:"Demo featu
 git -C "$SINGLE" add .gitignore ".loop-spec/features/demo/feature.json" \
   "docs/loop-spec/features/demo"
 git -C "$SINGLE" commit -q -m "final candidate"
-SHA="$(git -C "$SINGLE" rev-parse HEAD)"
+PRE_FINALIZE_SHA="$(git -C "$SINGLE" rev-parse HEAD)"
 
 LOG="$WORK/calls.log"; BODY="$WORK/body.md"; : > "$LOG"
 ec=0
@@ -140,10 +141,27 @@ check "single: sidecar ready" "ready-for-review" "$(jq -r '.status' "$FDIR/deliv
 check "single: deterministic next phase" "completed" "$(jq -r '.nextPhase' "$FDIR/delivery.json")"
 check "single: committed phase remains resumable" "deliver" "$(jq -r '.currentPhase' "$FDIR/feature.json")"
 check "single: URL persisted locally" "https://github.com/test/repo/pull/7" "$(jq -r '.prUrl' "$FDIR/delivery.json")"
-check "single: exact HEAD delegated" "$SHA" "$(jq -r '.targets[0].targetSha' "$FDIR/delivery.json")"
+FINALIZED_SHA="$(git -C "$SINGLE" rev-parse HEAD)"
+check "single: finalizer added candidate commit" "0" "$([[ "$PRE_FINALIZE_SHA" != "$FINALIZED_SHA" ]] && echo 0 || echo 1)"
+check "single: candidate digest committed" "1" \
+  "$(git -C "$SINGLE" ls-files --error-unmatch docs/loop-spec/telemetry/runs/demo.json >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single: exact finalized HEAD delegated" "$FINALIZED_SHA" "$(jq -r '.targets[0].targetSha' "$FDIR/delivery.json")"
 check "single: checkout remains clean" "0" "$(git -C "$SINGLE" status --porcelain | wc -l | tr -d ' ')"
 check "single: checkpoint hint reused" "1" "$(grep -c -- '--pr-url https://github.com/test/repo/pull/7' "$LOG" || true)"
 check "single: final iteration in body" "1" "$(grep -c 'Converged' "$BODY" || true)"
+
+# Completion recovery has an eligible exact-SHA binding. Re-entering DELIVER may
+# refresh external observations, but candidate finalization must create no commit or
+# SHA drift even when ignored runtime telemetry changed in the meantime.
+printf '{"event":"iterate_verdict","ts":"2026-01-02T00:00:00Z","data":{"gap":"plan"}}\n' > "$FDIR/events.jsonl"
+BOUND_COMMIT_COUNT="$(git -C "$SINGLE" rev-list --count HEAD)"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$FDIR")" || ec=$?
+check "bound resume: exit 0" "0" "$ec"
+check "bound resume: HEAD does not drift" "$FINALIZED_SHA" "$(git -C "$SINGLE" rev-parse HEAD)"
+check "bound resume: creates no commit" "$BOUND_COMMIT_COUNT" "$(git -C "$SINGLE" rev-list --count HEAD)"
+check "bound resume: exact SHA remains delegated" "$FINALIZED_SHA" "$(jq -r '.targets[0].targetSha' "$FDIR/delivery.json")"
 
 # CI failure persists the PR identity but does not claim readiness.
 : > "$LOG"
@@ -180,6 +198,52 @@ out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_MALFORM
 check "controller error: exit 1" "1" "$ec"
 check "controller error: PR hint retained" "https://github.com/test/repo/pull/7" \
   "$(jq -r '.prUrl' "$FDIR/delivery.json")"
+
+# Candidate policy is independently invocable by cycle orchestration. An eligible
+# sidecar causes a byte-level no-op before runtime-ignore mutation; an explicitly
+# ineligible target does not trigger the old broad any-target shortcut.
+CAND="$WORK/candidate-policy"; init_repo "$CAND"
+CAND_BASE="$(git -C "$CAND" rev-parse HEAD)"
+git -C "$CAND" checkout -q -b feat/candidate
+CDIR="$CAND/.loop-spec/features/candidate"; mkdir -p "$CDIR"
+printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$CAND/.gitignore"
+jq -n --arg base "$CAND_BASE" '{schemaVersion:7,slug:"candidate",feature_title:"Candidate",
+  currentPhase:"deliver",branch:"feat/candidate",baseSha:$base,baseBranch:"main",workspace:null,
+  updatedAt:"2026-01-01T00:00:00Z",warnings:[],iterate:{used:1,maxIterations:2},artifacts:{}}' > "$CDIR/feature.json"
+git -C "$CAND" add .gitignore ".loop-spec/features/candidate/feature.json"
+git -C "$CAND" commit -q -m candidate
+CAND_SHA="$(git -C "$CAND" rev-parse HEAD)"
+jq -n --arg sha "$CAND_SHA" '{nextPhase:"deliver",targets:[{name:"candidate",targetSha:$sha,
+  bindingEligible:true,errorCode:"controller_error"}]}' > "$CDIR/delivery.json"
+CAND_EXCLUDE="$(git -C "$CAND" rev-parse --git-path info/exclude)"
+[[ "$CAND_EXCLUDE" == /* ]] || CAND_EXCLUDE="$CAND/$CAND_EXCLUDE"
+EXCLUDE_BEFORE="$(git hash-object "$CAND_EXCLUDE")"
+ec=0; bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: eligible binding exits 0" "0" "$ec"
+check "candidate policy: eligible binding preserves HEAD" "$CAND_SHA" "$(git -C "$CAND" rev-parse HEAD)"
+check "candidate policy: eligible binding does not install ignores" "$EXCLUDE_BEFORE" "$(git hash-object "$CAND_EXCLUDE")"
+check "candidate policy: eligible binding writes no digest" "0" "$([[ -e "$CAND/docs/loop-spec/telemetry/runs/candidate.json" ]] && echo 1 || echo 0)"
+check "candidate policy: shared binding resolves eligible SHA" "$CAND_SHA" \
+  "$(bash "$FINALIZER" bound-sha "$CDIR/delivery.json" candidate)"
+
+jq '(.targets[0].bindingEligible) = false' "$CDIR/delivery.json" > "$CDIR/delivery.json.tmp"
+mv "$CDIR/delivery.json.tmp" "$CDIR/delivery.json"
+ec=0; bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
+CAND_FINAL_SHA="$(git -C "$CAND" rev-parse HEAD)"
+check "candidate policy: ineligible target finalizes" "0" "$ec"
+check "candidate policy: ineligible target creates candidate commit" "0" \
+  "$([[ "$CAND_SHA" != "$CAND_FINAL_SHA" ]] && echo 0 || echo 1)"
+check "candidate policy: commit contains only named digest" "docs/loop-spec/telemetry/runs/candidate.json" \
+  "$(git -C "$CAND" diff-tree --no-commit-id --name-only -r HEAD)"
+ineligible_bound="$(bash "$FINALIZER" bound-sha "$CDIR/delivery.json" candidate 2>/dev/null || true)"
+check "candidate policy: shared binding rejects explicit false" "" "$ineligible_bound"
+
+printf 'unexpected\n' > "$CAND/unrelated.txt"
+DIRTY_HEAD="$(git -C "$CAND" rev-parse HEAD)"
+ec=0; bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: unexpected dirt fails" "1" "$ec"
+check "candidate policy: unexpected dirt creates no commit" "$DIRTY_HEAD" "$(git -C "$CAND" rev-parse HEAD)"
+rm -f "$CAND/unrelated.txt"
 
 # Workspace mode processes changed repos and records zero-commit repos explicitly.
 WS="$WORK/workspace"; mkdir -p "$WS"
@@ -299,6 +363,8 @@ out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
 check "single dirty retry: exit 0 after cleanup" "0" "$ec"
 check "single dirty retry: ready" "ready-for-review" "$(jq -r '.status' "$DDIR/delivery.json")"
 check "single dirty retry: controller called once" "1" "$(wc -l < "$LOG" | tr -d ' ')"
+check "single dirty retry: finalization was not bypassed" "1" \
+  "$([[ -f "$DIRTY/docs/loop-spec/telemetry/runs/dirty.json" ]] && echo 1 || echo 0)"
 
 jq 'del(.baseSha)' "$DDIR/feature.json" > "$DDIR/feature.json.tmp" && mv "$DDIR/feature.json.tmp" "$DDIR/feature.json"
 git -C "$DIRTY" add ".loop-spec/features/dirty/feature.json"; git -C "$DIRTY" commit -q -m "remove base"
@@ -338,10 +404,13 @@ jq -n --arg base "$BIND_BASE" '{schemaVersion:7,slug:"bind",feature_title:"Bind"
   branch:"feat/bind",baseSha:$base,baseBranch:"main",workspace:null,prUrl:null,checkpointPrUrl:null,
   warnings:[],artifacts:{}}' > "$BINDDIR/feature.json"
 git -C "$BIND" add .gitignore ".loop-spec/features/bind/feature.json"; git -C "$BIND" commit -q -m state
-SHA1="$(git -C "$BIND" rev-parse HEAD)"
+PRE_BIND_SHA="$(git -C "$BIND" rev-parse HEAD)"
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_MALFORMED=1 \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$BINDDIR")" || ec=$?
+SHA1="$(git -C "$BIND" rev-parse HEAD)"
+check "bind: candidate was finalized before binding" "0" \
+  "$([[ "$PRE_BIND_SHA" != "$SHA1" ]] && echo 0 || echo 1)"
 check "bind: hard failure routes to deliver" "deliver" "$(jq -r '.nextPhase' "$BINDDIR/delivery.json")"
 check "bind: recorded the tried SHA" "$SHA1" "$(jq -r '.targets[0].targetSha' "$BINDDIR/delivery.json")"
 jq '(.targets[0]) |= del(.bindingEligible)' "$BINDDIR/delivery.json" > "$BINDDIR/delivery.json.tmp"

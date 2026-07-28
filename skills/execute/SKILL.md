@@ -138,11 +138,13 @@ real project and persist it:
 
 ```bash
 cmd_test="$(bash "${CLAUDE_SKILL_DIR}/../../lib/detect-test-cmd.sh" . 2>/dev/null || true)"
+prepare_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root .)"
+cmd_prepare="$(jq -r '.command // ""' <<<"$prepare_json")"
 ```
 
 Cross-check against the canonical commands SPEC.md's Foundations requirements name (they
 should agree; if they differ, prefer what actually runs and append a one-line note to
-`warnings[]`), then write `commands.test` / `commands.lint` / `commands.typecheck` into
+`warnings[]`), then write `commands.prepare` / `commands.test` / `commands.lint` / `commands.typecheck` into
 feature.json via `lib/feature-write.sh`. Every later task's verify, the resume re-grounding
 test run, and VERIFY's acceptance gate depend on this backfill — an empty test command in a
 greenfield feature past task-001 is a bug, not a degraded mode. The invariant is ENFORCED,
@@ -154,6 +156,10 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/greenfield-bootstrap.sh" backfill-check "$fe
 
 exit 3 means the backfill is missing — fix it before dispatching anything else (re-run
 detection, or take the command from SPEC.md's Foundations requirements).
+
+Greenfield features intentionally retain `verificationBaseline: null`: no untouched
+project suite existed before scaffold creation. `feature-validation.sh` therefore uses
+strict mode and requires every configured repository-wide command to pass.
 
 ### Step 3 - Dispatch (concurrency ladder)
 

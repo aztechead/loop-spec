@@ -87,6 +87,45 @@ ec=0
 bash "$LIB" bogus >/dev/null 2>&1 || ec=$?
 check "L: unknown subcommand exits 0" "0" "$ec"
 
+# Case M: phase markers are greppable JSON and phase_end pairs to phase_start
+# without requiring the caller to retain an attempt id.
+mkdir -p "$WORK/markers"
+start_out="$(bash "$LIB" emit "$WORK/markers" phase_start --phase execute)"
+check "M: start marker prefix" "1" "$([[ "$start_out" == LOOP_SPEC_PHASE_START\ * ]] && echo 1 || echo 0)"
+start_marker="${start_out#LOOP_SPEC_PHASE_START }"
+check "M: start marker is JSON" "0" "$(jq . <<<"$start_marker" >/dev/null 2>&1; echo $?)"
+attempt_id="$(jq -r '.attemptId' <<<"$start_marker")"
+check "M: start attempt id present" "1" "$([[ -n "$attempt_id" && "$attempt_id" != null ]] && echo 1 || echo 0)"
+check "M: start timestamp present" "true" "$(jq -r '.timestamp | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T")' <<<"$start_marker")"
+end_out="$(bash "$LIB" emit "$WORK/markers" phase_end --phase execute --data '{"next":"verify"}')"
+check "M: end marker prefix" "1" "$([[ "$end_out" == LOOP_SPEC_PHASE_END\ * ]] && echo 1 || echo 0)"
+end_marker="${end_out#LOOP_SPEC_PHASE_END }"
+check "M: end uses matching attempt" "$attempt_id" "$(jq -r '.attemptId' <<<"$end_marker")"
+check "M: end elapsed is numeric" "number" "$(jq -r '.elapsedSeconds | type' <<<"$end_marker")"
+check "M: end verdict advanced" "advanced" "$(jq -r '.verdict' <<<"$end_marker")"
+check "M: end next exposed" "verify" "$(jq -r '.next' <<<"$end_marker")"
+last="$(tail -1 "$WORK/markers/events.jsonl")"
+check "M: JSONL keeps legacy data.next" "verify" "$(jq -r '.data.next' <<<"$last")"
+check "M: JSONL includes matching attempt" "$attempt_id" "$(jq -r '.attemptId' <<<"$last")"
+
+# Case N: verdict derivation is fixed and deterministic.
+bash "$LIB" emit "$WORK/markers" phase_start --phase iterate >/dev/null
+rewind_out="$(bash "$LIB" emit "$WORK/markers" phase_end --phase iterate --data '{"next":"execute"}')"
+check "N: rewind verdict" "rewind" "$(jq -r '.verdict' <<<"${rewind_out#LOOP_SPEC_PHASE_END }")"
+bash "$LIB" emit "$WORK/markers" phase_start --phase deliver >/dev/null
+blocked_out="$(bash "$LIB" emit "$WORK/markers" phase_end --phase deliver --data '{"next":"deliver"}')"
+check "N: blocked verdict" "blocked" "$(jq -r '.verdict' <<<"${blocked_out#LOOP_SPEC_PHASE_END }")"
+bash "$LIB" emit "$WORK/markers" phase_start --phase deliver >/dev/null
+completed_out="$(bash "$LIB" emit "$WORK/markers" phase_end --phase deliver --data '{"next":"completed"}')"
+check "N: completed verdict" "completed" "$(jq -r '.verdict' <<<"${completed_out#LOOP_SPEC_PHASE_END }")"
+
+# Case O: generic events retain the original shape and print no phase marker.
+generic_out="$(bash "$LIB" emit "$WORK/markers" gate_round --phase verify --data '{"round":2}')"
+check "O: generic event has no stdout marker" "" "$generic_out"
+last="$(tail -1 "$WORK/markers/events.jsonl")"
+check "O: generic event keys unchanged" '["data","event","phase","slug","ts"]' \
+  "$(jq -c 'keys | sort' <<<"$last")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

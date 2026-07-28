@@ -107,6 +107,71 @@ check "8: summary without pr number exit 2" "2" "$ec"
 ec=0; bash "$LIB" summary --fixture "$WORK/nope.json" >/dev/null 2>&1 || ec=$?
 check "8: summary missing fixture exit 1" "1" "$ec"
 
+# ── Case 9: live API auth failure refreshes and retries exactly once ──────────
+mkdir -p "$WORK/shims" "$WORK/repo"
+TARGET_REPO="$(cd "$WORK/repo" && pwd -P)"
+GH_LOG="$WORK/gh.log"
+AUTH_MARKER="$WORK/auth-failed-once"
+REFRESH_LOG="$WORK/refresh.log"
+cat > "$WORK/shims/gh" <<'GH'
+#!/usr/bin/env bash
+set -uo pipefail
+printf '%s\n' "$*" >> "${FAKE_GH_LOG:?}"
+case "${1:-} ${2:-}" in
+  "api repos/test/repo/pulls/7/comments")
+    if [[ ! -f "${FAKE_AUTH_MARKER:?}" ]]; then
+      : > "$FAKE_AUTH_MARKER"
+      echo "HTTP 401: Bad credentials" >&2
+      exit 1
+    fi
+    [[ "${GH_TOKEN:-}" == "comments-refreshed-token" ]] \
+      || { echo "HTTP 403: stale credential" >&2; exit 1; }
+    printf '[]\n'
+    ;;
+  "api repos/test/repo/pulls/7/reviews"|"api repos/test/repo/issues/7/comments")
+    printf '[]\n'
+    ;;
+  "api graphql")
+    printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}\n'
+    ;;
+  *)
+    echo "fake gh: unhandled $*" >&2
+    exit 1
+    ;;
+esac
+GH
+chmod +x "$WORK/shims/gh"
+
+REFRESH_HOOK="$WORK/refresh-comments.sh"
+cat > "$REFRESH_HOOK" <<'REFRESH'
+#!/usr/bin/env bash
+set -uo pipefail
+printf '%s|%s|%s|%s\n' "$LOOP_SPEC_CREDENTIAL_REFRESH_STAGE" \
+  "$LOOP_SPEC_CREDENTIAL_REFRESH_REASON" "$LOOP_SPEC_CREDENTIAL_REFRESH_HOST" "$PWD" \
+  >> "${FAKE_REFRESH_LOG:?}"
+if [[ "$LOOP_SPEC_CREDENTIAL_REFRESH_REASON" == "auth-retry" ]]; then
+  printf '{"GH_TOKEN":"comments-refreshed-token"}\n'
+else
+  printf '{"GH_TOKEN":"comments-initial-token"}\n'
+fi
+REFRESH
+chmod +x "$REFRESH_HOOK"
+
+: > "$GH_LOG"; : > "$REFRESH_LOG"; rm -f "$AUTH_MARKER"
+ec=0
+out="$(cd "$WORK/repo" && PATH="$WORK/shims:$PATH" FAKE_GH_LOG="$GH_LOG" \
+  FAKE_AUTH_MARKER="$AUTH_MARKER" FAKE_REFRESH_LOG="$REFRESH_LOG" \
+  LOOP_SPEC_CREDENTIAL_REFRESH_CMD="$REFRESH_HOOK" bash "$LIB" fetch 7 --repo test/repo \
+  2>"$WORK/live.err")" || ec=$?
+check "9: comments auth refresh exit 0" "0" "$ec"
+check "9: comments auth refresh result" "0" "$(jq 'length' <<<"$out")"
+check "9: comments API attempted twice" "2" \
+  "$(grep -c '^api repos/test/repo/pulls/7/comments ' "$GH_LOG" || true)"
+check "9: comments auth refresh once" "1" \
+  "$(grep -c '^github-api|auth-retry|github.com|' "$REFRESH_LOG" || true)"
+check "9: comments hook target repo" "1" \
+  "$([[ "$(grep -cF "github-api|pre-stage|github.com|$TARGET_REPO" "$REFRESH_LOG" || true)" -gt 0 ]] && echo 1 || echo 0)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

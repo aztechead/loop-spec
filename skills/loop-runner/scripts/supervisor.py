@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 import threading
@@ -39,6 +40,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from planlib import validate_plan, topo_order  # noqa: E402
 
 LOOP_PY = Path(__file__).resolve().parent / "loop.py"
+INTEGRATE_TASK = Path(__file__).resolve().parents[3] / "lib" / "integrate-task.sh"
+PREPARE_ENVIRONMENT = Path(__file__).resolve().parents[3] / "lib" / "prepare-environment.sh"
+FEATURE_VALIDATION = Path(__file__).resolve().parents[3] / "lib" / "feature-validation.sh"
 
 RETRYABLE = {"no_progress", "verifier_thrash", "agent_error"}
 FLEET_FATAL = {"verifier_integrity"}
@@ -92,8 +96,58 @@ class Supervisor:
         """Merge a completed task's branch into base so dependents build on it.
         A conflict here means two 'independent' tasks weren't — that's a planning
         error a model shouldn't paper over, so it halts the fleet for the human."""
+        feature_branch = sh(["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+                            self.repo).stdout.strip()
+        wt = self.wt_root / tid
+        verify_command = self.tasks[tid]["verify"]
+        feature_dir = getattr(self.args, "feature_dir", "")
+        if feature_dir:
+            candidate_feature_dir = wt / feature_dir
+            verify_command += (f" && bash {shlex.quote(str(FEATURE_VALIDATION))} compare "
+                               f"{shlex.quote(str(candidate_feature_dir))}")
+        preflight = sh([
+            "bash", str(INTEGRATE_TASK),
+            "--feature-root", str(self.repo),
+            "--feature-branch", feature_branch,
+            "--task-worktree", str(wt),
+            "--task-branch", f"loop/{tid}",
+            "--verify", verify_command,
+            "--preflight-only",
+        ], self.repo)
+        try:
+            integration = json.loads(preflight.stdout)
+        except json.JSONDecodeError:
+            integration = {"reason": "invalid-helper-result", "detail": "non-JSON output"}
+        candidate = integration.get("candidate")
+        feature_before = integration.get("featureBefore")
+        candidate_valid = (isinstance(candidate, str) and len(candidate) in (40, 64)
+                           and all(c in "0123456789abcdef" for c in candidate))
+        feature_before_valid = (isinstance(feature_before, str)
+                                and len(feature_before) in (40, 64)
+                                and all(c in "0123456789abcdef" for c in feature_before))
+        if (preflight.returncode != 0 or integration.get("status") != "success"
+                or not candidate_valid or not feature_before_valid):
+            reason = integration.get("reason", "integration-preflight-failed")
+            detail = integration.get("detail", "unknown")
+            if not candidate_valid or not feature_before_valid:
+                reason, detail = "invalid-helper-result", "missing immutable candidate contract"
+            print(f"⛔ integration preflight for loop/{tid} failed: {reason}: {detail}")
+            if preflight.stderr.strip():
+                print(preflight.stderr.strip())
+            if reason == "rebase-conflict":
+                self.fleet_fatal = True
+            return False
+
+        current_feature = sh(["git", "rev-parse", "HEAD"], self.repo)
+        if (current_feature.returncode != 0
+                or current_feature.stdout.strip() != feature_before):
+            print(f"⛔ feature branch moved after integration preflight for loop/{tid}")
+            return False
+
+        # Preserve loop-fleet's merge-commit history contract after the shared
+        # helper has rebased and verified the exact prospective candidate.
         r = sh(["git", "merge", "--no-ff", "-m", f"loop({tid}): merge autonomous work",
-                f"loop/{tid}"], self.repo)
+                candidate], self.repo)
         if r.returncode != 0:
             ra = sh(["git", "merge", "--abort"], self.repo)
             if ra.returncode != 0:
@@ -111,6 +165,15 @@ class Supervisor:
         try:
             t = self.tasks[tid]
             wt = self.repo if self.args.no_worktree else self.worktree_for(tid)
+
+            prepare_args = ["bash", str(PREPARE_ENVIRONMENT), "run", "--root", str(wt)]
+            prepare_command = getattr(self.args, "prepare_command", None)
+            if prepare_command is not None:
+                prepare_args.extend(["--command", prepare_command])
+            prepared = sh(prepare_args, wt)
+            if prepared.returncode != 0:
+                return {"task_id": tid, "status": "halted", "halt_reason": "environment_error",
+                        "iterations": 0, "error": prepared.stderr.strip() or prepared.stdout.strip()}
 
             attempt, nudge = 0, ""
             while True:
@@ -280,7 +343,11 @@ def main() -> int:
                    dest="agent_cli",
                    help="Headless protocol for every loop tick: claude -p JSON vs "
                         "pi --mode json vs opencode run --format json events "
-                        "(default: auto from the binary name).")
+                         "(default: auto from the binary name).")
+    p.add_argument("--feature-dir", default="",
+                   help="Feature-state path relative to the repository; enables exact-candidate baseline comparison.")
+    p.add_argument("--prepare-command", default=None,
+                   help="Persisted feature preparation command (empty explicitly disables detection).")
     p.add_argument("--no-worktree", action="store_true",
                    help="Run tasks in the repo itself (serial use only; no isolation).")
     p.add_argument("--cleanup-worktrees", action="store_true", default=False,

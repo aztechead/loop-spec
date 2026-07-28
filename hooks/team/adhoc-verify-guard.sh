@@ -15,8 +15,8 @@
 # Stands down (exit 0) when:
 #   - LOOP_SPEC_MICRO_GUARD=0 (kill switch), or micro.conf pins ENABLED=0
 #   - the project has no .loop-spec/ dir (never hijack unrelated projects)
-#   - a cycle feature is in flight (any .loop-spec/features/*/feature.json with
-#     currentPhase != "completed") - the cycle's VERIFY phase owns evidence at
+#   - a cycle feature is in flight in this checkout or a registered linked worktree
+#     (logical completion comes from delivery.json.nextPhase=completed) - the cycle's VERIFY phase owns evidence at
 #     feature scale, and blocking between phases would fight the orchestrator.
 #     Trade-off: a paused feature also disarms the guard; guards here are
 #     accelerators, never blockers, so we err on allow.
@@ -42,6 +42,8 @@ if [[ "${LOOP_SPEC_MICRO_GUARD:-1}" == "0" ]]; then
 fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ACTIVE_CYCLE_BIN="${LOOP_SPEC_ACTIVE_CYCLE_BIN:-$SCRIPT_DIR/../../lib/active-cycle.sh}"
 
 # Scope: only active in projects that use loop-spec.
 if [[ ! -d "${PROJECT_DIR}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then
@@ -73,15 +75,16 @@ trace() {
 
 command -v python3 &>/dev/null || { trace "fail-open" "no python3"; exit 0; }
 
-# Cycle stand-down: any in-flight feature means the cycle owns verification.
-# Single jq pass over every feature.json (they accumulate; one spawn, not N).
-FEATURES_DIR="${PROJECT_DIR}/.loop-spec/features"
-if [[ -d "$FEATURES_DIR" ]]; then
-  phases="$(jq -r '.currentPhase // "completed"' "$FEATURES_DIR"/*/feature.json 2>/dev/null || true)"
-  if printf '%s\n' "$phases" | grep -qv -e '^completed$' -e '^$'; then
-    trace "skip" "in-flight feature present"
-    exit 0
-  fi
+# Cycle stand-down: resolve both ambient roots and all linked worktrees. Resolver
+# failures allow Stop because this hook is an accelerator, never a lifecycle blocker.
+active_rc=0
+bash "$ACTIVE_CYCLE_BIN" has-active "$PWD" "$PROJECT_DIR" >/dev/null 2>&1 || active_rc=$?
+if [[ "$active_rc" -eq 0 ]]; then
+  trace "skip" "in-flight feature present"
+  exit 0
+elif [[ "$active_rc" -ne 1 ]]; then
+  trace "fail-open" "active cycle resolution failed"
+  exit 0
 fi
 
 INPUT=$(cat)

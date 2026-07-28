@@ -53,6 +53,44 @@ Compatibility fields present for every cycle type:
 Full-cycle per-feature `result.json` remains available. `last-result.json` is a copied
 record, not a symlink into a disposable Claude worktree.
 
+Full-cycle results add these schema-1 fields:
+
+```json
+{
+  "implementationConverged": true,
+  "eligibleTargets": [{"branch":"feat/example","targetSha":"..."}],
+  "retryable": false,
+  "retryPhase": null,
+  "verifiedSha": "immutable single-repository delivery target SHA or null"
+}
+```
+
+`converged` retains end-to-end meaning. A full cycle that completed implementation and
+verification but hit a SHA-bound delivery failure (`delivery.json.nextPhase ==
+"deliver"`) reports `status: "failed"`, `outcome: "delivery-blocked"`,
+`phaseReached: "deliver"`, `implementationConverged: true`, `converged: false`, passed
+verification, and a retry at `deliver`. In single-repository mode, `branch` and
+`verifiedSha` come from that delivery target. In workspace mode, top-level `branch` and
+`verifiedSha` remain null and `eligibleTargets[]` retains each SHA-bound repository's
+branch and `targetSha`. A delivery `nextPhase` of `execute` is a remediation rewind, not a terminal
+delivery block.
+
+## Phase Boundary Markers
+
+`lib/events.sh` continues to append the existing JSONL event shape. `phase_start` and
+`phase_end` add fields and also print one greppable line:
+
+```text
+LOOP_SPEC_PHASE_START {"event":"phase_start","attemptId":"...","timestamp":"...",...}
+LOOP_SPEC_PHASE_END {"event":"phase_end","attemptId":"...","timestamp":"...","elapsedSeconds":4,"verdict":"advanced","next":"verify",...}
+```
+
+The fixed phase-end verdicts are `advanced`, `rewind`, `blocked`, and `completed`.
+`data.next` remains present for compatibility; `next` is its phase-marker projection.
+Attempt pairing is maintained in an ignored local sidecar, so phase callers do not pass
+or remember attempt IDs. Generic events retain their original JSONL shape and print no
+marker.
+
 ## Headless Agent Normalization
 
 `skills/loop-runner/scripts/loop.py` normalizes successful backend responses to:

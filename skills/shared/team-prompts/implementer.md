@@ -62,6 +62,7 @@ Repeat until idle:
    ```
    Load `metadata.files`, `metadata.verifyCommand`, `metadata.acceptanceCriteria`, `metadata.readFirst`, and `metadata.specPath`.
 5. **Implement** the task in the worktree at `.loop-spec/worktrees/{slug}/task-<id>/`. (Create the worktree on first claim; the worktree persists across rework rounds for the same task.)
+   - Immediately after first creation, run `bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root <absolute-worktree> --command "<feature.commands.prepare>"`. Preparation failure is infrastructure failure; do not repair it by changing product code.
    - Read every path in `metadata.readFirst` before writing code -- these are the concept analogs and files the planner anchored this task on.
    - For exact requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
    - Modify only the files listed in `metadata.files`.

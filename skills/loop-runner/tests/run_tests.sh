@@ -136,6 +136,44 @@ FLEET_OK=$(python3 -c "import json;f=json.load(open('.loop/fleet-result.json'));
 check "fleet-result.json" "$FLEET_OK" "True"
 check "fleet cost summed" "$(python3 -c "import json;c=json.load(open('.loop/fleet-result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
 
+SUPERVISOR_CANDIDATE=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
+import json
+import subprocess
+from pathlib import Path
+import supervisor
+
+candidate = "b" * 40
+feature_before = "a" * 40
+commands = []
+
+def fake_sh(cmd, cwd, timeout=300):
+    commands.append(cmd)
+    if cmd[:4] == ["git", "symbolic-ref", "--quiet", "--short"]:
+        return subprocess.CompletedProcess(cmd, 0, "main\n", "")
+    if cmd and cmd[0] == "bash":
+        result = {"status": "success", "reason": "ready", "detail": "preflight-complete",
+                  "candidate": candidate, "featureBefore": feature_before}
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(result), "")
+    if cmd == ["git", "rev-parse", "HEAD"]:
+        return subprocess.CompletedProcess(cmd, 0, feature_before + "\n", "")
+    if cmd[:2] == ["git", "merge"]:
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    return subprocess.CompletedProcess(cmd, 1, "", "unexpected command")
+
+supervisor.sh = fake_sh
+class Args:
+    feature_dir = ".loop-spec/features/demo"
+s = supervisor.Supervisor({"tasks": [{"id": "immutable", "verify": "true"}]},
+                          Path("/tmp/repo"), Args())
+ok = s.merge("immutable")
+merge_cmd = next(cmd for cmd in commands if cmd[:2] == ["git", "merge"])
+preflight_cmd = next(cmd for cmd in commands if cmd and cmd[0] == "bash")
+print(ok and merge_cmd[-1] == candidate and "loop/immutable" not in merge_cmd
+      and "--no-ff" in merge_cmd and "feature-validation.sh" in preflight_cmd[preflight_cmd.index("--verify") + 1])
+EOF
+)
+check "supervisor merges immutable preflight candidate with no-ff" "$SUPERVISOR_CANDIDATE" "True"
+
 echo "== 11. supervisor: failing task skips dependents, fleet exits 1 =="
 newrepo
 cat > plan.json << 'EOF'

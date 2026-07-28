@@ -38,26 +38,34 @@ The lead serializes worktree merges through a FIFO dependency-aware merge queue.
 
 **Process loop:** For each task id at the head of the queue, check that every blockedBy entry is already merged onto `feat/{slug}`. If any blocker is not yet merged, rotate to back of queue. If all blockers merged, proceed with merge then restart from head.
 
-**Merge procedure:**
+**Integration procedure:**
 
 ```bash
 worktree_path="$WT_ROOT/.loop-spec/worktrees/{slug}/task-{taskId}/"
 worktree_branch="task/{taskId}-{slug}"
 
-if ! bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-commit-check.sh" "feat/{slug}" "{worktree_branch}"; then
-  echo "[TEAM-EXECUTE] task-{taskId} worktree has no commits over feat/{slug}; not merging" >&2
-  exit_merge_for_task=1
-fi
-
-git checkout feat/{slug}
-git merge --ff-only {worktree_branch}
-# On non-ff: rebase task branch onto feat/{slug}, retry ff-merge.
-# On rebase conflict: escalate to user; do not auto-resolve.
+integration_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/integrate-task.sh" \
+  --feature-root "$WT_ROOT" \
+  --feature-branch "feat/{slug}" \
+  --task-worktree "$worktree_path" \
+  --task-branch "$worktree_branch" \
+  --verify "{task.metadata.verifyCommand} && bash '${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh' compare '$worktree_path/.loop-spec/features/{slug}'" \
+  --cleanup)
+integration_rc=$?
 ```
 
-**Post-merge cleanup:** `git worktree remove "$worktree_path"` and `git branch -D {worktree_branch}`. Remove task id from `mergeQueue` via `lib/feature-write.sh`.
+Parse `integration_json` rather than inferring state from `integration_rc`. A result
+with `.published == true` is merged; remove its task id from `mergeQueue` via
+`lib/feature-write.sh` (and surface a `cleanup-failed` result for manual cleanup).
+For `.published == false`, retain the queue entry and worktree. `zero-commit` is not
+mergeable; `verify-failed` returns to remediation; `rebase-conflict`,
+`check-dirty-worktree`, `feature-moved`, and `publish-failed` escalate to the user.
+Do not stash, reset, remove, or delete anything after a failed result. The helper
+performs cleanup itself, and only after a successful fast-forward publication.
 
-**Post-merge test gate:** run `feature.json.commands.test` (or `lib/detect-test-cmd.sh` if unset). On failure: create a remediation task and re-enter Step 2.
+**Post-merge suite gate:** run `lib/feature-validation.sh compare` against the feature
+directory. Exit 20 creates suite-regression remediation; exit 21 escalates environment
+preparation/infrastructure. Unchanged exact-base failures do not block.
 
 For full detail on the self-claim loop, reviewer loop, rework re-entry, and race-claim serialization, see **`skills/shared/execute-loops.md`**.
 

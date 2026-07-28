@@ -4,6 +4,8 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT="$REPO_ROOT/lib/pr-delivery.sh"
+REAL_GIT="$(command -v git)"
+export REAL_GIT
 PASS=0
 FAIL=0
 
@@ -19,6 +21,7 @@ check() {
 WORK="${TMPDIR:-/tmp}/loop-spec-pr-delivery.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/repo" "$WORK/shims"
+TARGET_REPO="$(cd "$WORK/repo" && pwd -P)"
 
 git -C "$WORK/repo" init -q -b main
 git -C "$WORK/repo" config user.email t@t
@@ -107,6 +110,11 @@ case "${1:-} ${2:-}" in
         headRefOid:$sha,headRefName:$head,headRepository:{nameWithOwner:"test/repo"},
         isCrossRepository:false,baseRefName:$base,title:$title,body:$body,state:"OPEN"}')"
     write_state "$(jq -c --argjson pr "$pr" '.prs = [$pr]' "$state")"
+    if [[ "${FAKE_GH_CREATE_AUTH_ONCE:-0}" == "1" && ! -f "${FAKE_GH_CREATE_AUTH_MARKER:?}" ]]; then
+      : > "$FAKE_GH_CREATE_AUTH_MARKER"
+      echo "HTTP 401: Bad credentials" >&2
+      exit 1
+    fi
     printf 'https://github.com/test/repo/pull/1\n'
     ;;
   "pr edit")
@@ -129,10 +137,18 @@ case "${1:-} ${2:-}" in
   "pr ready")
     if [[ "$*" == *"--undo"* ]]; then
       write_state "$(jq -c '.prs[0].isDraft = true' "$state")"
+      if [[ "${FAKE_GH_READY_AUTH_AFTER_APPLY:-}" == "undo" ]]; then
+        echo "HTTP 401: readiness response lost" >&2
+        exit 1
+      fi
     elif [[ "${FAKE_GH_MOVE_HEAD_ON_READY:-0}" == "1" ]]; then
       write_state "$(jq -c '.prs[0].isDraft = false | .prs[0].headRefOid = "0000000000000000000000000000000000000000"' "$state")"
     else
       write_state "$(jq -c '.prs[0].isDraft = false' "$state")"
+      if [[ "${FAKE_GH_READY_AUTH_AFTER_APPLY:-}" == "ready" ]]; then
+        echo "HTTP 403: readiness response lost" >&2
+        exit 1
+      fi
     fi
     ;;
   "pr checks")
@@ -170,6 +186,65 @@ esac
 GH
 chmod +x "$WORK/shims/gh"
 
+cat > "$WORK/shims/git" <<'GIT'
+#!/usr/bin/env bash
+set -uo pipefail
+if [[ " $* " == *" push "* && -n "${FAKE_GIT_AUTH_MODE:-}" ]]; then
+  count=0
+  [[ ! -f "${FAKE_GIT_COUNT:?}" ]] || count="$(<"$FAKE_GIT_COUNT")"
+  count=$((count + 1))
+  printf '%s\n' "$count" > "$FAKE_GIT_COUNT"
+  case "$FAKE_GIT_AUTH_MODE" in
+    once)
+      if [[ "$count" -eq 1 ]]; then
+        echo "remote: HTTP 401: Bad credentials" >&2
+        exit 128
+      fi
+      [[ "${GH_TOKEN:-}" == "refreshed-token" ]] \
+        || { echo "remote: HTTP 403: stale token" >&2; exit 128; }
+      ;;
+    always)
+      echo "fatal: Authentication failed for remote" >&2
+      exit 128
+      ;;
+    nonauth)
+      echo "remote rejected: protected branch" >&2
+      exit 1
+      ;;
+  esac
+fi
+exec "${REAL_GIT:?}" "$@"
+GIT
+chmod +x "$WORK/shims/git"
+
+REFRESH_LOG="$WORK/refresh.log"
+REFRESH_HOOK="$WORK/credential-refresh.sh"
+cat > "$REFRESH_HOOK" <<'REFRESH'
+#!/usr/bin/env bash
+set -uo pipefail
+printf '%s|%s|%s|%s\n' "$LOOP_SPEC_CREDENTIAL_REFRESH_STAGE" \
+  "$LOOP_SPEC_CREDENTIAL_REFRESH_REASON" "$LOOP_SPEC_CREDENTIAL_REFRESH_HOST" "$PWD" \
+  >> "${FAKE_REFRESH_LOG:?}"
+if [[ "${FAKE_REFRESH_FAIL:-0}" == "1" ]]; then
+  echo "hook stdout secret: ${FAKE_REFRESH_SECRET:?}"
+  echo "hook stderr secret: ${FAKE_REFRESH_SECRET:?}" >&2
+  exit 9
+fi
+if [[ "${FAKE_REFRESH_SIGNAL:-0}" == "1" ]]; then
+  printf '{"GH_TOKEN":"signal-secret-token"}\n'
+  kill -TERM "$PPID"
+  sleep 1
+  exit 0
+fi
+[[ "${FAKE_REFRESH_SIDE_EFFECT_ONLY:-0}" != "1" ]] || exit 0
+if [[ "$LOOP_SPEC_CREDENTIAL_REFRESH_REASON" == "auth-retry" ]]; then
+  printf '{"GH_TOKEN":"refreshed-token"}\n'
+else
+  printf '{"GH_TOKEN":"initial-token"}\n'
+fi
+REFRESH
+chmod +x "$REFRESH_HOOK"
+
 reset_gh() {
   local prs="${1:-[]}" checks="${2:-[]}" no_required="${3:-false}" no_checks="${4:-false}"
   jq -n --argjson prs "$prs" --argjson checks "$checks" --argjson noRequired "$no_required" \
@@ -184,6 +259,16 @@ run_delivery() {
       --branch feat/delivery --base main --sha "$TARGET_SHA" \
       --title "feat: delivery" --body-file "$BODY" \
       --checks-timeout 2 --checks-interval 0
+}
+
+run_delivery_with_refresh() {
+  PATH="$WORK/shims:$PATH" REAL_GIT="$REAL_GIT" \
+    FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" FAKE_GH_HEAD_SHA="$TARGET_SHA" \
+    FAKE_GIT_COUNT="$WORK/git-push-count" FAKE_REFRESH_LOG="$REFRESH_LOG" \
+    LOOP_SPEC_CREDENTIAL_REFRESH_CMD="$REFRESH_HOOK" bash "$SCRIPT" final -C "$WORK/repo" \
+      --branch feat/delivery --base main --sha "$TARGET_SHA" \
+      --title "feat: delivery" --body-file "$BODY" \
+      --checks-timeout 2 --checks-interval 0 "$@"
 }
 
 # Create one draft, wait pending -> pass, then mark ready.
@@ -488,6 +573,107 @@ out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" 
 check "early failure hint: exit 1" "1" "$ec"
 check "early failure hint: URL retained" "$hint_url" "$(jq -r '.prUrl' <<<"$out" 2>/dev/null)"
 check "early failure hint: number retained" "77" "$(jq -r '.prNumber' <<<"$out" 2>/dev/null)"
+
+# Credential hooks run in the target repository before authenticated stages.
+reset_gh "[$ready_checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+: > "$REFRESH_LOG"; rm -f "$WORK/git-push-count"
+ec=0; out="$(FAKE_REFRESH_SIDE_EFFECT_ONLY=1 run_delivery_with_refresh 2>"$WORK/err")" || ec=$?
+check "credential pre-stage: exit 0" "0" "$ec"
+check "credential pre-stage: push context" "1" \
+  "$(grep -cF "push|pre-stage|github.com|$TARGET_REPO" "$REFRESH_LOG" || true)"
+check "credential pre-stage: GitHub context" "1" \
+  "$([[ "$(grep -c '^github-.*|pre-stage|' "$REFRESH_LOG" || true)" -gt 0 ]] && echo 1 || echo 0)"
+
+# A git authentication failure refreshes credentials and retries the exact push once.
+reset_gh "[$ready_checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+: > "$REFRESH_LOG"; rm -f "$WORK/git-push-count"
+ec=0
+out="$(FAKE_GIT_AUTH_MODE=once run_delivery_with_refresh 2>"$WORK/err")" || ec=$?
+check "credential retry: exit 0" "0" "$ec"
+check "credential retry: push attempted twice" "2" "$(<"$WORK/git-push-count")"
+check "credential retry: one auth refresh" "1" \
+  "$(grep -c '^push|auth-retry|' "$REFRESH_LOG" || true)"
+
+# A second authentication failure is terminal; there is no third attempt.
+reset_gh "[$ready_checkpoint]" '[]'
+: > "$REFRESH_LOG"; rm -f "$WORK/git-push-count"
+ec=0
+out="$(FAKE_GIT_AUTH_MODE=always run_delivery_with_refresh 2>"$WORK/err")" || ec=$?
+check "credential second failure: exit 1" "1" "$ec"
+check "credential second failure: stable code" "authentication_failed" "$(jq -r '.errorCode' <<<"$out")"
+check "credential second failure: exactly two attempts" "2" "$(<"$WORK/git-push-count")"
+
+# Non-auth transport failures are not retried.
+reset_gh "[$ready_checkpoint]" '[]'
+: > "$REFRESH_LOG"; rm -f "$WORK/git-push-count"
+ec=0
+out="$(FAKE_GIT_AUTH_MODE=nonauth run_delivery_with_refresh 2>"$WORK/err")" || ec=$?
+check "credential non-auth: exit 1" "1" "$ec"
+check "credential non-auth: push code retained" "push_failed" "$(jq -r '.errorCode' <<<"$out")"
+check "credential non-auth: one attempt" "1" "$(<"$WORK/git-push-count")"
+check "credential non-auth: no auth refresh" "0" \
+  "$(grep -c '^push|auth-retry|' "$REFRESH_LOG" || true)"
+
+# Hook failures are structured and neither output stream exposes hook secrets.
+reset_gh "[$ready_checkpoint]" '[]'
+: > "$REFRESH_LOG"; secret="refresh-secret-value"
+ec=0
+out="$(FAKE_REFRESH_FAIL=1 FAKE_REFRESH_SECRET="$secret" run_delivery_with_refresh 2>"$WORK/err")" || ec=$?
+check "credential hook failure: exit 1" "1" "$ec"
+check "credential hook failure: stable code" "credential_refresh_failed" "$(jq -r '.errorCode' <<<"$out")"
+check "credential hook failure: stdout redacted" "0" "$(grep -cF "$secret" <<<"$out" || true)"
+check "credential hook failure: stderr redacted" "0" "$(grep -cF "$secret" "$WORK/err" || true)"
+
+# An auth-looking create failure is re-listed before create could be repeated.
+reset_gh '[]' '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+: > "$REFRESH_LOG"; rm -f "$WORK/create-auth-once"
+ec=0
+out="$(FAKE_GH_CREATE_AUTH_ONCE=1 FAKE_GH_CREATE_AUTH_MARKER="$WORK/create-auth-once" \
+  run_delivery_with_refresh 2>"$WORK/err")" || ec=$?
+check "credential create reconcile: exit 0" "0" "$ec"
+check "credential create reconcile: one create" "1" "$(grep -c '^pr create ' "$GH_LOG" || true)"
+check "credential create reconcile: re-listed" "2" "$(grep -c '^pr list ' "$GH_LOG" || true)"
+check "credential create reconcile: PR reused" "reused" "$(jq -r '.prAction' <<<"$out")"
+
+# Ambiguous readiness success is observed before any retry.
+checkpoint="$(jq -c '.isDraft=true' <<<"$checkpoint")"
+reset_gh "[$checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+: > "$REFRESH_LOG"
+ec=0
+out="$(FAKE_GH_READY_AUTH_AFTER_APPLY=ready run_delivery_with_refresh 2>"$WORK/err")" || ec=$?
+check "ready ambiguity: exit 0" "0" "$ec"
+check "ready ambiguity: delivered" "delivered" "$(jq -r '.outcome' <<<"$out")"
+check "ready ambiguity: desired state accepted" "false" "$(jq -r '.prs[0].isDraft' "$GH_STATE")"
+check "ready ambiguity: mutation not repeated" "1" "$(grep -c '^pr ready ' "$GH_LOG" || true)"
+check "ready ambiguity: credentials refreshed" "1" \
+  "$(grep -c '^github-pr|auth-retry|' "$REFRESH_LOG" || true)"
+
+# The same reconciliation applies to --undo readiness mutations.
+reset_gh "[$ready_checkpoint]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+: > "$REFRESH_LOG"
+ec=0
+out="$(FAKE_GH_READY_AUTH_AFTER_APPLY=undo run_delivery_with_refresh --restore-draft \
+  2>"$WORK/err")" || ec=$?
+check "undo ambiguity: exit 0" "0" "$ec"
+check "undo ambiguity: desired state accepted" "true" "$(jq -r '.prs[0].isDraft' "$GH_STATE")"
+check "undo ambiguity: mutation not repeated" "1" "$(grep -c '^pr ready ' "$GH_LOG" || true)"
+check "undo ambiguity: credentials refreshed" "1" \
+  "$(grep -c '^github-pr|auth-retry|' "$REFRESH_LOG" || true)"
+
+# A signal during token output leaves no private credential files behind.
+mkdir -p "$WORK/refresh-tmp"
+reset_gh "[$ready_checkpoint]" '[]'
+: > "$REFRESH_LOG"
+ec=0
+out="$(TMPDIR="$WORK/refresh-tmp" FAKE_REFRESH_SIGNAL=1 run_delivery_with_refresh \
+  2>"$WORK/err")" || ec=$?
+refresh_leftovers=("$WORK/refresh-tmp"/loop-spec-credential-refresh-*)
+[[ -e "${refresh_leftovers[0]}" ]] || refresh_leftovers=()
+check "credential signal cleanup: exit 1" "1" "$ec"
+check "credential signal cleanup: stable code" "credential_refresh_failed" "$(jq -r '.errorCode' <<<"$out")"
+check "credential signal cleanup: no token files" "0" "${#refresh_leftovers[@]}"
+check "credential signal cleanup: secret redacted" "0" \
+  "$(grep -cF 'signal-secret-token' <<<"$out$(<"$WORK/err")" || true)"
 
 # Bad invocation is distinct from an operational delivery failure.
 ec=0; out="$(bash "$SCRIPT" final -C "$WORK/repo" 2>/dev/null)" || ec=$?

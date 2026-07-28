@@ -44,6 +44,10 @@
 # Exit codes: 0 ok; 1 fetch/parse failure; 2 bad invocation.
 set -uo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=credential-refresh.sh
+. "$script_dir/credential-refresh.sh"
+
 _die2() { echo "pr-comments.sh: $*" >&2; exit 2; }
 
 cmd="${1:-}"
@@ -141,23 +145,78 @@ fi
 [[ -n "$PR" ]] || _die2 "missing <pr-number>"
 command -v gh >/dev/null 2>&1 || { echo "pr-comments.sh: 'gh' not on PATH" >&2; exit 1; }
 
+repo_dir="$(pwd -P)"
+credential_host="${GH_HOST:-github.com}"
+auth_tmp="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-pr-comments-XXXXXX")" \
+  || { echo "pr-comments.sh: cannot allocate temporary files" >&2; exit 1; }
+trap 'rm -rf "$auth_tmp"' EXIT
+
+_run_gh_once() {
+  local stdout_file="$1" stderr_file="$2"
+  shift 2
+  "$@" >"$stdout_file" 2>"$stderr_file"
+}
+
+_run_gh() {
+  local stage="$1" stdout_file="$2" stderr_file="$3"
+  shift 3
+  loop_spec_run_authenticated "$repo_dir" "$stage" "$credential_host" \
+    "$stdout_file" "$stderr_file" _run_gh_once "$stdout_file" "$stderr_file" "$@"
+}
+
+_die_auth() {
+  jq -cn --arg code "$LOOP_SPEC_AUTH_ERROR_CODE" \
+    --arg error "$LOOP_SPEC_AUTH_ERROR_MESSAGE" \
+    --arg host "$credential_host" \
+    '{schema:1,ok:false,errorCode:$code,error:$error,host:$host}' >&2
+  exit 1
+}
+
+gh_out="$auth_tmp/gh.out"
+gh_err="$auth_tmp/gh.err"
+
 if [[ -z "$REPO" ]]; then
-  REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)" \
+  resolve_rc=0
+  _run_gh "github-repo" "$gh_out" "$gh_err" gh repo view --json nameWithOwner \
+    || resolve_rc=$?
+  [[ -z "$LOOP_SPEC_AUTH_ERROR_CODE" ]] || _die_auth
+  [[ "$resolve_rc" -eq 0 ]] \
+    || { echo "pr-comments.sh: cannot resolve repo (pass --repo <owner/repo>)" >&2; exit 1; }
+  REPO="$(jq -r '.nameWithOwner // empty' "$gh_out" 2>/dev/null)"
+  [[ -n "$REPO" ]] \
     || { echo "pr-comments.sh: cannot resolve repo (pass --repo <owner/repo>)" >&2; exit 1; }
 fi
 OWNER="${REPO%%/*}"
 NAME="${REPO##*/}"
 
-review_comments="$(gh api "repos/$REPO/pulls/$PR/comments" --paginate 2>/dev/null | jq -cs 'add // []')" \
-  || { echo "pr-comments.sh: failed to fetch review comments for $REPO#$PR" >&2; exit 1; }
-reviews="$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate 2>/dev/null | jq -cs 'add // []')" \
-  || { echo "pr-comments.sh: failed to fetch reviews for $REPO#$PR" >&2; exit 1; }
-issue_comments="$(gh api "repos/$REPO/issues/$PR/comments" --paginate 2>/dev/null | jq -cs 'add // []')" \
-  || { echo "pr-comments.sh: failed to fetch issue comments for $REPO#$PR" >&2; exit 1; }
+fetch_rc=0
+_run_gh "github-api" "$gh_out" "$gh_err" gh api "repos/$REPO/pulls/$PR/comments" --paginate \
+  || fetch_rc=$?
+[[ -z "$LOOP_SPEC_AUTH_ERROR_CODE" ]] || _die_auth
+[[ "$fetch_rc" -eq 0 ]] || { echo "pr-comments.sh: failed to fetch review comments for $REPO#$PR" >&2; exit 1; }
+review_comments="$(jq -cs 'add // []' "$gh_out")" \
+  || { echo "pr-comments.sh: failed to parse review comments for $REPO#$PR" >&2; exit 1; }
+
+fetch_rc=0
+_run_gh "github-api" "$gh_out" "$gh_err" gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+  || fetch_rc=$?
+[[ -z "$LOOP_SPEC_AUTH_ERROR_CODE" ]] || _die_auth
+[[ "$fetch_rc" -eq 0 ]] || { echo "pr-comments.sh: failed to fetch reviews for $REPO#$PR" >&2; exit 1; }
+reviews="$(jq -cs 'add // []' "$gh_out")" \
+  || { echo "pr-comments.sh: failed to parse reviews for $REPO#$PR" >&2; exit 1; }
+
+fetch_rc=0
+_run_gh "github-api" "$gh_out" "$gh_err" gh api "repos/$REPO/issues/$PR/comments" --paginate \
+  || fetch_rc=$?
+[[ -z "$LOOP_SPEC_AUTH_ERROR_CODE" ]] || _die_auth
+[[ "$fetch_rc" -eq 0 ]] || { echo "pr-comments.sh: failed to fetch issue comments for $REPO#$PR" >&2; exit 1; }
+issue_comments="$(jq -cs 'add // []' "$gh_out")" \
+  || { echo "pr-comments.sh: failed to parse issue comments for $REPO#$PR" >&2; exit 1; }
 
 # Resolved thread ids via GraphQL; degrade loudly to "all unresolved" on failure.
 resolved_ids="[]"
-gql_out="$(gh api graphql \
+gql_rc=0
+_run_gh "github-api" "$gh_out" "$gh_err" gh api graphql \
   -f query='query($owner:String!,$name:String!,$pr:Int!){
     repository(owner:$owner,name:$name){
       pullRequest(number:$pr){
@@ -166,7 +225,10 @@ gql_out="$(gh api graphql \
         }
       }
     }
-  }' -F owner="$OWNER" -F name="$NAME" -F pr="$PR" 2>/dev/null)" || gql_out=""
+  }' -F owner="$OWNER" -F name="$NAME" -F pr="$PR" || gql_rc=$?
+[[ -z "$LOOP_SPEC_AUTH_ERROR_CODE" ]] || _die_auth
+gql_out=""
+[[ "$gql_rc" -ne 0 ]] || gql_out="$(<"$gh_out")"
 if [[ -n "$gql_out" ]]; then
   resolved_ids="$(jq -c '[.data.repository.pullRequest.reviewThreads.nodes[]?
     | select(.isResolved) | .comments.nodes[]?.databaseId] // []' <<<"$gql_out" 2>/dev/null || echo '[]')"
@@ -184,9 +246,15 @@ items="$(jq -cn \
 
 if [[ "$cmd" == "summary" ]]; then
   # Review decision + requested reviewers; degrade loudly, never silently.
-  meta="$(gh pr view "$PR" --repo "$REPO" --json reviewDecision,reviewRequests 2>/dev/null \
-    | jq -c '{reviewDecision: (.reviewDecision // ""), reviewRequests: (.reviewRequests // []), metadataStatus:"complete"}')" \
-    || meta=""
+  meta_rc=0
+  _run_gh "github-pr" "$gh_out" "$gh_err" gh pr view "$PR" --repo "$REPO" \
+    --json reviewDecision,reviewRequests || meta_rc=$?
+  [[ -z "$LOOP_SPEC_AUTH_ERROR_CODE" ]] || _die_auth
+  meta=""
+  if [[ "$meta_rc" -eq 0 ]]; then
+    meta="$(jq -c '{reviewDecision: (.reviewDecision // ""), reviewRequests: (.reviewRequests // []), metadataStatus:"complete"}' "$gh_out" 2>/dev/null)" \
+      || meta=""
+  fi
   if [[ -z "$meta" ]]; then
     echo "pr-comments.sh: gh pr view metadata unavailable — reporting reviewDecision NONE" >&2
     meta='{"reviewDecision":"","reviewRequests":[],"metadataStatus":"degraded"}'

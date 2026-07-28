@@ -2,6 +2,30 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [Unreleased]
+
+### Added
+
+- Added a redacted credential-refresh seam for short-lived GitHub credentials, proactive
+  refresh before push/API stages, one authentication retry, and idempotent PR/readiness
+  reconciliation across final and checkpoint delivery.
+- Added deterministic environment preparation and exact-base test/lint/typecheck baselines.
+  VERIFY and resume now distinguish unchanged known failures from feature regressions.
+- Added transactional task integration with clean-worktree checks, exact candidate
+  verification before publication, recoverable rebase conflicts, and shared behavior across
+  subagent, team, Workflow, and loop-fleet execution.
+- Added greppable `LOOP_SPEC_PHASE_START`/`LOOP_SPEC_PHASE_END` markers with attempts,
+  elapsed time, next phase, and fixed verdicts.
+
+### Fixed
+
+- Resolved active full cycles across control checkouts and linked feature worktrees so the
+  ambient micro Stop guard no longer fires between full-cycle phases.
+- Moved pre-delivery candidate finalization into deterministic shell policy and preserved
+  eligible exact-SHA bindings without post-observation loop-spec commits.
+- Full cycles now report verified, SHA-bound authentication/transport failures as
+  machine-readable `delivery-blocked` results that can resume at DELIVER only.
+
 ## [2.23.2]
 
 ### Fixed
