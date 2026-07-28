@@ -117,10 +117,22 @@ initial_status="$(git -C "$repo_root" status --porcelain --untracked-files=all 2
   echo "finalize-delivery-candidate: cannot establish candidate cleanliness" >&2
   exit 2
 }
-if [[ -n "$initial_status" ]]; then
-  echo "finalize-delivery-candidate: unexpected pre-existing worktree changes" >&2
-  exit 1
-fi
+while IFS= read -r line; do
+  [[ -n "$line" ]] || continue
+  path="${line:3}"
+  case "$path" in
+    ".gitignore")
+      bash "$SCRIPT_DIR/owned-gitignore.sh" check "$repo_root" || {
+        echo "finalize-delivery-candidate: pre-existing .gitignore change is not loop-spec-owned" >&2
+        exit 1
+      }
+      ;;
+    *)
+      echo "finalize-delivery-candidate: unexpected pre-existing worktree change: $path" >&2
+      exit 1
+      ;;
+  esac
+done <<<"$initial_status"
 
 CLAUDE_PROJECT_DIR="$repo_root" bash "$SCRIPT_DIR/retro.sh" auto "$feature_dir" >/dev/null || {
   echo "finalize-delivery-candidate: retrospective finalization failed" >&2

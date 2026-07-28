@@ -47,6 +47,9 @@ present "single-repo delivery has candidate preflight" lib/deliver.sh "Candidate
 present "hard retries bind to the recorded SHA" lib/deliver.sh "candidate_sha_drift"
 present "hard delivery failure skips tracked commit" skills/cycle/SKILL.md '[[ "$currentPhase" != "deliver" || "$next_phase" == "execute" ]]'
 present "hard delivery retry skips finalization commits" lib/finalize-delivery-candidate.sh 'Exact-SHA retries and completion recovery are observation-only'
+present "cycle commits its own ignore mutation" skills/cycle/SKILL.md 'state_paths=("$fj" ".loop-spec/features/${slug}/PROGRESS.md" ".gitignore")'
+present "cycle rejects pre-existing ignore dirt" skills/cycle/SKILL.md 'refusing to mix pre-existing .gitignore changes'
+present "fleet consumer rejects startup failures" skills/shared/execute-loop-fleet.md 'rc" -ne 0 && "$rc" -ne 1'
 present "completion recovery bypasses project tests" skills/cycle/SKILL.md 'skip project tests'
 present "workspace readiness is staged" lib/deliver.sh "stage readiness"
 present "workspace promotion rollback is supported" lib/pr-delivery.sh "restore_draft"

@@ -8,6 +8,10 @@ tools:
   - Bash
   - Grep
   - Glob
+  - TaskList
+  - TaskGet
+  - TaskUpdate
+  - SendMessage
 model: sonnet
 effort: high
 disallowedTools:

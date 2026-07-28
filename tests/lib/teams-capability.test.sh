@@ -53,9 +53,9 @@ check "C: flag=1 + 2.1.177 -> explicit" "explicit" "$got"
 got=$(run "2.1.40" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
 check "C2: flag=1 + 2.1.40 -> explicit" "explicit" "$got"
 
-# Case D: flag=1 + unknown version -> implicit (modern default, degrades safely)
-got=$(run "" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
-check "D: flag=1 + unknown version -> implicit" "implicit" "$got"
+# Case D: flag=1 + unknown version -> none (safe universal fallback)
+got=$(run "unknown" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
+check "D: flag=1 + unknown version -> none" "none" "$got"
 
 # Case E: LOOP_SPEC_TEAMS_MODE override wins over flag + version
 got=$(env -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS LOOP_SPEC_TEAMS_MODE=explicit bash "$LIB" "2.1.181")

@@ -655,6 +655,10 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    Commit it together with feature.json below — and ensure the gitignore exception exists first (the feature dir is ignored except named files; without this line the add silently no-ops):
    ```bash
     if [[ "$workspaceMode" != "workspace" ]]; then
+      if ! bash "${CLAUDE_SKILL_DIR}/../../lib/owned-gitignore.sh" check .; then
+        echo "cycle: refusing to mix pre-existing .gitignore changes with loop-spec policy" >&2
+        exit 2
+      fi
       grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null \
         || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
       grep -qxF '!/.loop-spec/RULES.md' .gitignore 2>/dev/null \
@@ -684,10 +688,11 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
     if [[ "$workspaceMode" != "workspace" ]] \
        && [[ "$currentPhase" != "deliver" || "$next_phase" == "execute" ]] \
       && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-      git add "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null
-      git diff --cached --quiet -- "$fj" ".loop-spec/features/${slug}/PROGRESS.md" 2>/dev/null \
+      state_paths=("$fj" ".loop-spec/features/${slug}/PROGRESS.md" ".gitignore")
+      git add -- "${state_paths[@]}" 2>/dev/null
+      git diff --cached --quiet -- "${state_paths[@]}" 2>/dev/null \
         || git commit -q -m "chore: NO_JIRA ${slug} state @ ${next_phase}" -- \
-          "$fj" ".loop-spec/features/${slug}/PROGRESS.md" || true
+          "${state_paths[@]}" || true
    fi
    ```
 

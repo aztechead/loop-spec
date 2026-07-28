@@ -16,6 +16,8 @@ All notable changes documented here. Format follows Keep a Changelog.
   subagent, team, Workflow, and loop-fleet execution.
 - Added greppable `LOOP_SPEC_PHASE_START`/`LOOP_SPEC_PHASE_END` markers with attempts,
   elapsed time, next phase, and fixed verdicts.
+- Added deterministic EXECUTE rung selection with a persistent-runtime capability probe,
+  an any-width subagent fallback for headless runs, and auditable selection reasons.
 
 ### Fixed
 
@@ -25,6 +27,14 @@ All notable changes documented here. Format follows Keep a Changelog.
   eligible exact-SHA bindings without post-observation loop-spec commits.
 - Full cycles now report verified, SHA-bound authentication/transport failures as
   machine-readable `delivery-blocked` results that can resume at DELIVER only.
+- Headless runs no longer auto-select loop-fleet, explicit fleets publish immediate
+  progress and bounded supervisor failures, and unknown team capability fails safe.
+- Security-signal matching no longer treats `authoritative` as bare `auth`; critique
+  escalation now reports the exact evidence location and normalized term.
+- Phase commits include loop-spec-owned `.gitignore` mutations so integration and
+  delivery do not encounter self-generated dirt. DELIVER narrowly recovers the known
+  ignore additions from already-in-flight cycles while rejecting staged or human-owned
+  rules changes.
 
 ## [2.23.2]
 

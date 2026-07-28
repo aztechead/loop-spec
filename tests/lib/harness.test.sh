@@ -24,7 +24,9 @@ check() {
 # Invokes the lib in a clean env so the real session's harness vars can't leak in.
 run() {
   local verb="$1"; shift
-  env -u LOOP_SPEC_HARNESS -u CLAUDECODE -u PI_CODING_AGENT_DIR "$@" \
+  env -u LOOP_SPEC_HARNESS -u CLAUDECODE -u PI_CODING_AGENT_DIR \
+    -u LOOP_SPEC_NON_INTERACTIVE -u LOOP_SPEC_EXECUTION_PROFILE \
+    -u LOOP_SPEC_LOOP_RUNTIME "$@" \
     bash "$LIB" "$verb"
 }
 
@@ -87,6 +89,28 @@ check "subagents under claude -> true" "true" "$got"
 # opencode's task tool shares the Agent call shape, so the capability holds.
 got=$(run subagents LOOP_SPEC_HARNESS=opencode)
 check "subagents under opencode -> true" "true" "$got"
+
+# --- loop runtime ---
+got=$(run loop-runtime LOOP_SPEC_NON_INTERACTIVE=1)
+check "non-interactive has no persistent loop runtime" "false" "$got"
+
+got=$(run loop-runtime-reason LOOP_SPEC_EXECUTION_PROFILE=headless)
+check "headless runtime reason is stable" "headless/non-interactive" "$got"
+
+got=$(run loop-runtime)
+check "unmarked invocation fails safe" "false" "$got"
+
+got=$(run loop-runtime LOOP_SPEC_EXECUTION_PROFILE=interactive)
+check "interactive profile asserts persistent runtime" "true" "$got"
+
+got=$(run loop-runtime LOOP_SPEC_EXECUTION_PROFILE=interactive LOOP_SPEC_NON_INTERACTIVE=1)
+check "non-interactive overrides contradictory profile" "false" "$got"
+
+got=$(run loop-runtime LOOP_SPEC_NON_INTERACTIVE=1 LOOP_SPEC_LOOP_RUNTIME=1)
+check "explicit runtime override wins" "true" "$got"
+
+got=$(run loop-runtime LOOP_SPEC_LOOP_RUNTIME=0)
+check "runtime kill switch wins" "false" "$got"
 
 # --- unknown command exits 2 ---
 rc=0

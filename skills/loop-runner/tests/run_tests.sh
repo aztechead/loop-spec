@@ -134,6 +134,7 @@ check "dep output merged into base" "$(test -f a.txt && test -f b.txt && echo ye
 check "merge commits exist" "$(git log --oneline | grep -c 'merge autonomous work')" "2"
 FLEET_OK=$(python3 -c "import json;f=json.load(open('.loop/fleet-result.json'));print(sorted(f['completed'])==['make-a','make-b'] and not f['failed'])")
 check "fleet-result.json" "$FLEET_OK" "True"
+check "fleet terminal status" "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['status'])")" "complete"
 check "fleet cost summed" "$(python3 -c "import json;c=json.load(open('.loop/fleet-result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
 
 SUPERVISOR_CANDIDATE=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
@@ -174,6 +175,146 @@ EOF
 )
 check "supervisor merges immutable preflight candidate with no-ff" "$SUPERVISOR_CANDIDATE" "True"
 
+SUPERVISOR_TIMEOUT=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
+import subprocess
+from pathlib import Path
+from unittest.mock import patch
+import supervisor
+
+class Args:
+    no_worktree = True
+    prepare_command = ""
+    task_timeout = 1
+    retries = 0
+    model = ""
+    fallback_model = ""
+    retry_watchdog = ""
+    claude_bin = "claude"
+    agent_cli = "claude"
+
+plan = {"tasks": [{"id": "hung", "prompt": "long enough task prompt",
+                   "verify": "true", "deps": []}]}
+s = supervisor.Supervisor(plan, Path("/tmp"), Args())
+completed = subprocess.CompletedProcess([], 0, "", "")
+with patch.object(supervisor, "sh", return_value=completed), \
+     patch.object(supervisor, "run_bounded_process", side_effect=[0, subprocess.TimeoutExpired("loop", 31)]):
+    result = s.run_task("hung")
+print(result["halt_reason"])
+print("made no progress" in result["error"])
+EOF
+)
+check "supervisor outer timeout is structured" "$(echo "$SUPERVISOR_TIMEOUT" | tail -2 | head -1)" "supervisor_timeout"
+check "supervisor timeout is loud" "$(echo "$SUPERVISOR_TIMEOUT" | tail -1)" "True"
+
+PROCESS_GROUP=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
+import signal
+import subprocess
+import tempfile
+from pathlib import Path
+from unittest.mock import Mock, patch
+import supervisor
+
+proc = Mock(pid=123)
+proc.wait.side_effect = [subprocess.TimeoutExpired("worker", 1), 0]
+with tempfile.TemporaryDirectory() as td, \
+     patch.object(supervisor.subprocess, "Popen", return_value=proc) as popen, \
+     patch.object(supervisor.os, "killpg") as killpg:
+    supervisor.CANCEL_EVENT.clear()
+    try:
+        supervisor.run_bounded_process(["worker"], Path(td), Path(td) / "worker.log", 1)
+    except subprocess.TimeoutExpired:
+        pass
+    print(popen.call_args.kwargs.get("start_new_session") is True)
+    print(killpg.call_args_list[0].args == (123, signal.SIGTERM))
+EOF
+)
+check "worker starts in isolated process group" "$(echo "$PROCESS_GROUP" | head -1)" "True"
+check "timeout terminates worker process group" "$(echo "$PROCESS_GROUP" | tail -1)" "True"
+
+CANCEL_START=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+import supervisor
+
+with tempfile.TemporaryDirectory() as td, \
+     patch.object(supervisor.subprocess, "Popen") as popen:
+    supervisor.CANCEL_EVENT.set()
+    try:
+        supervisor.run_bounded_process(["worker"], Path(td), Path(td) / "worker.log", 1)
+    except supervisor.FleetCancelled:
+        pass
+    print(not popen.called)
+EOF
+)
+check "cancelled fleet starts no late worker" "$(echo "$CANCEL_START" | tail -1)" "True"
+
+SUPERVISOR_CRASH=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+import supervisor
+
+class Args:
+    plan = "plan.json"
+
+with tempfile.TemporaryDirectory() as td:
+    s = supervisor.Supervisor({"tasks": []}, Path(td), Args())
+    s.done_merged.add("done")
+    s.results["done"] = {"task_id": "done", "status": "complete"}
+    try:
+        with patch.object(s, "_run", side_effect=RuntimeError("boom")):
+            s.run()
+    except RuntimeError:
+        pass
+    result = json.load(open(Path(td) / ".loop" / "fleet-result.json"))
+    print(result["status"])
+    print(result["tasks"]["__supervisor__"]["halt_reason"])
+    print(result["completed"] == ["done"])
+EOF
+)
+check "supervisor crash terminalizes fleet" "$(echo "$SUPERVISOR_CRASH" | tail -3 | head -1)" "incomplete"
+check "supervisor crash records halt reason" "$(echo "$SUPERVISOR_CRASH" | tail -2 | head -1)" "supervisor_error"
+check "supervisor crash preserves merged progress" "$(echo "$SUPERVISOR_CRASH" | tail -1)" "True"
+
+FATAL_CANCEL=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+import supervisor
+
+class Args:
+    plan = "plan.json"
+    parallel = 2
+    no_worktree = True
+    cleanup_worktrees = False
+
+plan = {"tasks": [
+    {"id": "fatal", "prompt": "fatal task long enough", "verify": "true", "deps": []},
+    {"id": "peer", "prompt": "peer task long enough", "verify": "true", "deps": []},
+]}
+
+with tempfile.TemporaryDirectory() as td:
+    s = supervisor.Supervisor(plan, Path(td), Args())
+    def result(tid):
+        if tid == "fatal":
+            s.fleet_fatal = True
+            return {"task_id": tid, "status": "halted", "halt_reason": "verifier_integrity"}
+        return {"task_id": tid, "status": "complete", "halt_reason": "complete", "iterations": 1}
+    with patch.object(s, "run_task", side_effect=result), \
+         patch.object(supervisor, "terminate_active_workers") as terminate:
+        rc = s.run()
+    fleet = __import__("json").load(open(Path(td) / ".loop" / "fleet-result.json"))
+    print(rc)
+    print("peer" not in fleet["completed"])
+    print(terminate.called)
+EOF
+)
+check "integrity fatal returns incomplete" "$(echo "$FATAL_CANCEL" | tail -3 | head -1)" "1"
+check "integrity fatal merges no concurrent peer" "$(echo "$FATAL_CANCEL" | tail -2 | head -1)" "True"
+check "integrity fatal terminates active workers" "$(echo "$FATAL_CANCEL" | tail -1)" "True"
+
 echo "== 11. supervisor: failing task skips dependents, fleet exits 1 =="
 newrepo
 cat > plan.json << 'EOF'
@@ -188,6 +329,15 @@ python3 "$SCRIPTS/supervisor.py" --plan plan.json --claude-bin "$FAKE" --retries
 check "fleet exit 1"      "$?" "1"
 check "dependent skipped" "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['skipped'])")" "['child']"
 check "child never ran"   "$(test ! -f c.txt && echo yes)" "yes"
+
+echo "== 11b. startup failure cannot reuse a stale terminal fleet result =="
+newrepo
+mkdir -p .loop
+printf '{"status":"complete","completed":[],"failed":[],"skipped":[]}\n' > .loop/fleet-result.json
+printf '{"tasks":[]}\n' > invalid-plan.json
+python3 "$SCRIPTS/supervisor.py" --plan invalid-plan.json >/dev/null 2>&1
+check "invalid plan exits 2" "$?" "2"
+check "stale fleet result cleared" "$(test ! -f .loop/fleet-result.json && echo yes)" "yes"
 
 echo "== 12. --fallback-model flag + --retry-watchdog env reach the claude invocation =="
 newrepo

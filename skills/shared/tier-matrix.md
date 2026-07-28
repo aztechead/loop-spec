@@ -25,8 +25,10 @@ critique debate is skipped iff ALL hold:
 
 1. The plan has **<= `fastPathMaxTasks` (default 2)** tasks, AND
 2. the union of task `files[]` touches **<= `fastPathMaxFiles` (default 3)** files, AND
-3. neither SPEC.md nor PLAN.md matches the security-signal pattern:
-   `auth|authenticat|authoriz|permission|credential|secret|token|crypt|payment|billing|PII|migrat|delet`
+3. `lib/security-signal.sh first SPEC.md PLAN.md` finds no bounded security or
+   destructive-change term. The helper reports the exact file, line, and matched term;
+   a bare `auth` must be a complete word, so benign prose such as `authoritative` does
+   not escalate.
 
 The two bounds are read through the repo tuning overlay (below); with no tuning
 they ARE 2 and 3.
@@ -48,8 +50,8 @@ the lightest mode that preserves strictness wins:
    escalates to the debate instead. A solo gate can only bias stricter, never looser.
 3. **Escalated debate** — the full advocate + challenger paired protocol
    (`maxCritiqueRounds = 2`), exactly as each phase skill writes it. Escalation triggers:
-   - **Security signal**: the artifact (SPEC.md or PLAN.md) matches the security-signal
-     pattern from the structural fast-path — start in debate mode directly.
+   - **Security signal**: `lib/security-signal.sh` reports evidence in SPEC.md or
+     PLAN.md — log that evidence and start in debate mode directly.
    - **Contested major**: the lead disputes a `[major]` finding from the solo critic.
    - **Deadlock**: the same finding survives two consecutive delta re-verify rounds
      (author and critic are stuck; the debate is the tiebreak).
@@ -110,17 +112,20 @@ available concurrency wins, and the heaviest (Workflow) requires explicit opt-in
 
 | W (DAG width) | Mechanism | Why |
 |---|---|---|
-| any W, `LOOP_SPEC_EXECUTE_LOOPS=1` + agent CLI | **loop fleet** | explicit opt-in: bounded headless loops, per-iteration verify, SPEC/PLAN hash-locked (`skills/shared/execute-loop-fleet.md`) |
-| any W, no subagent harness (pi) | **inline** (rung 0) | no `Agent` tool exists; the lead executes tasks itself (`skills/shared/execute-inline.md`); at `t_team <= W` with the agent CLI on PATH the loop fleet takes it instead |
+| any W, `LOOP_SPEC_EXECUTE_LOOPS=1` + agent CLI + persistent runtime | **loop fleet** | explicit opt-in: bounded headless workers, per-iteration verify, SPEC/PLAN hash-locked (`skills/shared/execute-loop-fleet.md`) |
+| any W, no subagent harness (pi) | **inline** (rung 0) | no `Agent` tool exists; the lead executes tasks itself (`skills/shared/execute-inline.md`); at `t_team <= W` with both the agent CLI and persistent runtime the loop fleet takes it instead |
 | `W == 1` | **subagent, sequential** | no concurrency to exploit; one `Agent` per task, lead merges inline |
 | `2 <= W < t_team` | **subagent, batched** | modest fan-out; a wave of parallel `Agent` calls, no persistent team |
 | `t_team <= W < t_wf` | **agent team** | high concurrency with rework/idle-wake coordination pays for the team |
-| `t_team <= W`, teams unavailable + agent CLI | **loop fleet** | automatic replacement for the team rung when agent teams are unavailable |
+| `t_team <= W`, teams unavailable + agent CLI + persistent runtime | **loop fleet** | automatic replacement only when a long-running synchronous tool call is supported |
+| `t_team <= W`, teams and loop runtime unavailable | **subagent, batched** | safe universal fallback; waves remain bounded by `maxParallelImplementers` |
 | `W >= t_wf` **and** opted in **and** available | **workflow** | undeniable fan-out ROI; deterministic DAG via `execute-dag.js` |
 
 Thresholds (fixed): `t_team = 3`, `t_wf = 6`. The "agent CLI" is the running
 harness's own headless binary (`claude`, `pi`, or `opencode`), resolved by
 `lib/harness.sh cli`; the fleet always spawns the harness it is running under.
+The persistent-runtime probe is separate: one-shot/headless invocations cannot keep
+the supervising tool call alive and therefore fall back rather than selecting a fleet.
 Under opencode the subagent rungs stay live — its `task` tool shares the `Agent`
 call shape (`skills/shared/opencode-harness.md`); the team and workflow rungs
 remain Claude Code-only.

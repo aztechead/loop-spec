@@ -228,15 +228,33 @@ check "candidate policy: shared binding resolves eligible SHA" "$CAND_SHA" \
 
 jq '(.targets[0].bindingEligible) = false' "$CDIR/delivery.json" > "$CDIR/delivery.json.tmp"
 mv "$CDIR/delivery.json.tmp" "$CDIR/delivery.json"
+# Recover an in-flight cycle created before phase commits included loop-spec's own
+# ignore mutation. Candidate finalization owns and commits this exact policy file.
+printf '!/.loop-spec/features/*/PROGRESS.md\n' >> "$CAND/.gitignore"
 ec=0; bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
 CAND_FINAL_SHA="$(git -C "$CAND" rev-parse HEAD)"
 check "candidate policy: ineligible target finalizes" "0" "$ec"
 check "candidate policy: ineligible target creates candidate commit" "0" \
   "$([[ "$CAND_SHA" != "$CAND_FINAL_SHA" ]] && echo 0 || echo 1)"
-check "candidate policy: commit contains only named digest" "docs/loop-spec/telemetry/runs/candidate.json" \
-  "$(git -C "$CAND" diff-tree --no-commit-id --name-only -r HEAD)"
+check "candidate policy: commits prior loop-spec ignore dirt and named digest" \
+  $'.gitignore\ndocs/loop-spec/telemetry/runs/candidate.json' \
+  "$(git -C "$CAND" diff-tree --no-commit-id --name-only -r HEAD | sort)"
 ineligible_bound="$(bash "$FINALIZER" bound-sha "$CDIR/delivery.json" candidate 2>/dev/null || true)"
 check "candidate policy: shared binding rejects explicit false" "" "$ineligible_bound"
+
+printf 'human-owned\n' >> "$CAND/.gitignore"
+git -C "$CAND" add .gitignore
+DIRTY_HEAD="$(git -C "$CAND" rev-parse HEAD)"
+ec=0; bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: staged ignore dirt fails" "1" "$ec"
+check "candidate policy: staged ignore dirt creates no commit" "$DIRTY_HEAD" "$(git -C "$CAND" rev-parse HEAD)"
+git -C "$CAND" restore --staged --worktree .gitignore
+
+mkdir -p "$CAND/.loop-spec"
+printf '# RULES.md\n\nHuman edit.\n' > "$CAND/.loop-spec/RULES.md"
+ec=0; bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: pre-existing human rules dirt fails" "1" "$ec"
+rm -f "$CAND/.loop-spec/RULES.md"
 
 printf 'unexpected\n' > "$CAND/unrelated.txt"
 DIRTY_HEAD="$(git -C "$CAND" rev-parse HEAD)"

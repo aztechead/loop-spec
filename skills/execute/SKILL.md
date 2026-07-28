@@ -1,6 +1,6 @@
 ---
 name: execute
-description: EXECUTE phase - concurrency ladder picks dispatch by DAG width W. Rung 1/2 subagent (lead-driven Agent waves), rung 3 agent team (self-claim), rung 4 workflow DAG (execute-dag.js, opt-in only). Loop-fleet rung (bundled loop-runner, headless bounded loops with verifier integrity) replaces the team rung on opt-in or when agent teams are unavailable. Fixed width thresholds in tier-matrix. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: EXECUTE phase - deterministic capability-aware dispatch by DAG width W. Rung 1/2 subagent (lead-driven Agent waves), rung 3 agent team (self-claim), rung 4 workflow DAG (execute-dag.js, opt-in only). Loop-fleet is available only when its persistent runtime capability is present. Fixed width thresholds in tier-matrix. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet Workflow ToolSearch
 ---
 
@@ -213,7 +213,7 @@ Fixed operating params (`skills/shared/tier-matrix.md`):
 |---|---|---|---|---|
 | 3 | 2 | true | 3 | 6 |
 
-#### Step 3a - Compute DAG width W and read runtime flags
+#### Step 3a - Compute DAG width W and read runtime capabilities
 
 `W` is the peak antichain width of the DAG, measured uncapped (independent of
 `maxParallelImplementers`). Serialize the `tasks[]` array built above to JSON
@@ -231,44 +231,47 @@ fi
 
 workflows_available=$(jq -r '.workflowsAvailable // false' .loop-spec/runtime.json 2>/dev/null || echo false)
 workflow_optin=$(jq -r '.workflowExecuteOptIn // false' .loop-spec/runtime.json 2>/dev/null || echo false)
-teams_available=$(jq -r '.teamsAvailable // true' .loop-spec/runtime.json 2>/dev/null || echo true)
-subagents=$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" subagents) # "true" iff the Agent tool exists
-agent_cli=$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli)       # headless binary for the loop rung
-loops_available=false
-command -v "$agent_cli" >/dev/null 2>&1 && loops_available=true
-loops_optin="${LOOP_SPEC_EXECUTE_LOOPS:-}"
+teams_mode=$(jq -r '.teamsMode // "none"' .loop-spec/runtime.json 2>/dev/null || echo none)
 ```
 
 #### Step 3b - Select the rung
 
-Using the fixed `t_team = 3` and `t_wf = 6`:
+Run the deterministic selector. Missing/corrupt runtime state fails safe to no teams;
+the model never authors a capability boolean or reconstructs this ladder:
 
-```text
-if   loops_optin == "1" AND loops_available == true:                        rung = "loop"       # explicit opt-in, any W
-elif subagents != "true":                                                   # no Agent tool (pi today): subagent/team/workflow rungs cannot exist
-    if W >= t_team AND loops_available == true AND loops_optin != "0":      rung = "loop"       # fleet spawns $agent_cli headless
-    else:                                                                   rung = "inline"     # rung 0: the lead executes tasks itself
-elif W >= t_wf AND workflows_available == true AND workflow_optin == true:  rung = "workflow"   # rung 4
-elif W >= t_team AND teams_available == true:                               rung = "team"       # rung 3
-elif W >= t_team AND loops_available == true AND loops_optin != "0":        rung = "loop"       # teams unavailable -> loop fleet
-else:                                                                       rung = "subagent"   # rung 1 (W==1) or 2 (2<=W<t_team)
+```bash
+rung_rc=0
+rung_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/execute-rung.sh" select \
+  --width "$W" --teams-mode "$teams_mode" \
+  --workflows-available "$workflows_available" --workflow-optin "$workflow_optin")" \
+  || rung_rc=$?
+if [[ "$rung_rc" -ne 0 ]]; then
+  echo "[EXECUTE] ERROR: $(jq -r '.message // "dispatch capability probe failed"' <<<"$rung_json")" >&2
+  exit 2
+fi
+rung="$(jq -r '.rung' <<<"$rung_json")"
+rung_reason="$(jq -r '.reason' <<<"$rung_json")"
 ```
 
 The gate is the **capability** (`subagents`), not the harness name — a future
 harness with its own Agent tool keeps the full ladder without touching this file.
 
-The **loop** rung runs the DAG as a fleet of bounded headless loops via the
+The **loop** rung runs the DAG as a fleet of bounded headless workers via the
 bundled loop-runner skill — no agent teams, no Workflow tool, mechanical
 verifier enforcement per iteration, SPEC.md/PLAN.md integrity-protected.
 `LOOP_SPEC_EXECUTE_LOOPS=1` forces it at any width; `LOOP_SPEC_EXECUTE_LOOPS=0`
-disables it (kill switch). When agent teams are unavailable it replaces the team
-rung automatically so EXECUTE keeps working without
-`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`.
+disables it (kill switch). Selection additionally requires the persistent runtime
+capability from `lib/harness.sh loop-runtime`. `LOOP_SPEC_NON_INTERACTIVE=1` and
+`LOOP_SPEC_EXECUTION_PROFILE=headless` disable that capability unless the operator
+explicitly guarantees it with `LOOP_SPEC_LOOP_RUNTIME=1`. When both teams and loops
+are unavailable, the subagent rung handles any width in bounded waves. An unmarked
+invocation also fails safe; set `LOOP_SPEC_EXECUTION_PROFILE=interactive` to enable
+automatic loop selection in a persistent session.
 
 Announce the choice on one line, then dispatch the matching path below:
 
 ```
-echo "[EXECUTE] DAG width W=$W -> rung: $rung"
+echo "[EXECUTE] DAG width W=$W -> rung: $rung ($rung_reason)"
 ```
 
 - `rung == "inline"`: follow **`skills/shared/execute-inline.md`** (no subagent harness — the lead performs each task itself on `feat/{slug}`; see `skills/shared/pi-harness.md`). Same `{merged, blocked, escalation}` shape; consume it per Step 3b-exit, then go to **Phase exit**. Skip Steps 4-10.

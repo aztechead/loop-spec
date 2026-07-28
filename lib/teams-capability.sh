@@ -63,13 +63,13 @@ ver="${1:-}"
 if [[ -z "$ver" ]]; then
   ver="$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 fi
+[[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ver=""
 
-# Unknown version: assume the modern (implicit) harness. New installs are the
-# common case, and `implicit` degrades safely -- if the explicit tools turn out
-# to still exist, the lead simply never calls TeamCreate. Guessing `explicit`
-# on an unknown-but-modern harness would instead throw on the removed tools.
+# Unknown version: fail safe to no teams. Team dispatch requires named agents,
+# shared task metadata, messaging, and claim serialization; guessing either
+# generation can strand EXECUTE. The one-shot subagent path works at any width.
 if [[ -z "$ver" ]]; then
-  echo "implicit"
+  echo "none"
   exit 0
 fi
 

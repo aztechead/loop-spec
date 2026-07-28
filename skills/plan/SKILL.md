@@ -163,7 +163,7 @@ Proceed to Step 3.
 
 ### Step 3 - Critique gate (structural fast-path may skip; single-critic default)
 
-**Structural fast-path (replaces the old quick tier — measured scope, decided AFTER planning):** resolve the two bounds through the repo tuning overlay first (`FP_TASKS="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxTasks 2)"`, `FP_FILES="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxFiles 3)"` — defaults 2/3 unless `lib/tuning.sh` widened them for this repo; `skills/shared/tier-matrix.md` "Repo tuning overlay"). Skip this critique gate iff ALL hold: the plan has <= {FP_TASKS} tasks, AND the union of task `files[]` touches <= {FP_FILES} files, AND neither SPEC.md nor PLAN.md matches the security-signal pattern `auth|authenticat|authoriz|permission|credential|secret|token|crypt|payment|billing|PII|migrat|delet` (case-insensitive grep). When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)` and go to Step 4b (feasibility still runs).
+**Structural fast-path (replaces the old quick tier — measured scope, decided AFTER planning):** resolve the two bounds through the repo tuning overlay first (`FP_TASKS="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxTasks 2)"`, `FP_FILES="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxFiles 3)"` — defaults 2/3 unless `lib/tuning.sh` widened them for this repo; `skills/shared/tier-matrix.md` "Repo tuning overlay"). Run `security_signal="$(bash "${CLAUDE_SKILL_DIR}/../../lib/security-signal.sh" first "docs/loop-spec/features/{slug}/SPEC.md" "docs/loop-spec/features/{slug}/PLAN.md")"` while preserving exit 1 as the normal no-match result and treating exit 2 as an error. Skip this critique gate iff ALL hold: the plan has <= {FP_TASKS} tasks, AND the union of task `files[]` touches <= {FP_FILES} files, AND `security_signal` is empty. When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)` and go to Step 4b (feasibility still runs).
 
 When not skipped, the gate runs per the **critique gate ladder** (`skills/shared/tier-matrix.md`): single-critic by default, escalating to the paired debate only when triggered.
 
@@ -188,7 +188,11 @@ mkdir -p .loop-spec/features/{slug}/gate-logs/
 
 #### Mode selection (security signal)
 
-The fast-path check above already grepped SPEC.md and PLAN.md for the security-signal pattern. If it matched (which is why the fast-path did not fire on an otherwise small plan, or on any larger plan): `gate_mode="debate"` — start directly in the **Escalated debate** below. Otherwise `gate_mode="single-critic"`.
+The fast-path check above already ran the deterministic security-signal helper. If
+`security_signal` is non-empty: log `[PLAN] critique gate escalated: security signal
+($security_signal)`, set `gate_mode="debate"`, and start directly in the **Escalated
+debate** below. Otherwise set `gate_mode="single-critic"`. The evidence string contains
+the exact file, line, and normalized term, so escalation is auditable.
 
 #### Single-critic pass (default)
 

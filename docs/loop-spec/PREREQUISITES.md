@@ -92,7 +92,11 @@ The cycle's team path assumes the harness supports:
 - **SendMessage** - lead-to-teammate and teammate-to-teammate messaging
 - **Concurrent `TaskUpdate` serialization** - only one of N concurrent self-claims for the same task id succeeds
 
-These are exercised by `tests/smoke.sh`. If the harness lacks any of them, the team path degrades to the no-teams fallback (`teamsMode == "none"`).
+These are exercised by the live `tests/smoke.sh` matrix. Startup deterministically gates
+on the harness, opt-in flag, and known Claude Code generation; an unknown version fails
+safe to `teamsMode == "none"`. The packaged implementer and reviewer grants include the
+task-list and messaging tools above. Any unavailable or disabled team path degrades to
+one-shot subagent waves at every DAG width.
 
 ## Optional hardening — model/type permission rules (CC >= 2.1.178)
 
