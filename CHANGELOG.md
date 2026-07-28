@@ -2,7 +2,7 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
-## [Unreleased]
+## [2.24.0] - 2026-07-28
 
 ### Added
 
