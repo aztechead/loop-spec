@@ -20,7 +20,7 @@ check() {
 }
 
 select_rung() {
-  env -u LOOP_SPEC_EXECUTE_LOOPS -u LOOP_SPEC_LOOP_RUNTIME \
+  env -u LOOP_SPEC_EXECUTE_LOOPS -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT \
     PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude "$@" bash "$SCRIPT" select \
     --width 3 --teams-mode none --workflows-available false --workflow-optin false
 }
@@ -37,6 +37,19 @@ check "unmarked one-shot-safe default uses subagent" "subagent" "$(jq -r '.rung'
 
 out="$(select_rung LOOP_SPEC_NON_INTERACTIVE=1 LOOP_SPEC_LOOP_RUNTIME=1 LOOP_SPEC_EXECUTE_LOOPS=1)"
 check "runtime override permits explicit loop" "loop" "$(jq -r '.rung' <<<"$out")"
+
+# A headless entrypoint alone is enough to keep a wide DAG off the loop rung —
+# no operator env required. This is the run that previously reached EXECUTE,
+# selected loop, and exited 0 with no work done.
+out="$(select_rung CLAUDE_CODE_ENTRYPOINT=sdk-cli)"
+check "claude -p wide DAG uses subagent" "subagent" "$(jq -r '.rung' <<<"$out")"
+check "claude -p reason names the entrypoint" "headless/sdk-cli" "$(jq -r '.loop.runtimeReason' <<<"$out")"
+
+out="$(select_rung CLAUDE_CODE_ENTRYPOINT=sdk-py)"
+check "python SDK wide DAG uses subagent" "subagent" "$(jq -r '.rung' <<<"$out")"
+
+out="$(select_rung CLAUDE_CODE_ENTRYPOINT=sdk-py LOOP_SPEC_EXECUTION_PROFILE=interactive)"
+check "stale interactive export cannot force loop" "subagent" "$(jq -r '.rung' <<<"$out")"
 
 rc=0
 out="$(select_rung LOOP_SPEC_NON_INTERACTIVE=1 LOOP_SPEC_EXECUTE_LOOPS=1)" || rc=$?

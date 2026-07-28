@@ -16,6 +16,7 @@
 #   {
 #     workspace:  {mode, root, repos?, source?},        # workspace.sh detect (verbatim)
 #     harness:    {name},                               # claude | pi | opencode
+#     execution:  {entrypoint, headless},               # harness.sh entrypoint/headless
 #     teams:      {mode, available},                    # teams-capability.sh
 #     workflows:  {available},                          # workflow-availability.sh
 #     graphify:   {ok, required, graph},                # check + graph-status
@@ -69,6 +70,19 @@ teams_mode="$(LOOP_SPEC_HARNESS="$harness" bash "$SCRIPT_DIR/teams-capability.sh
 teams_available=true
 [[ "$teams_mode" == "none" ]] && teams_available=false
 wf_available="$(LOOP_SPEC_HARNESS="$harness" bash "$SCRIPT_DIR/workflow-availability.sh")"
+
+# --- execution profile --------------------------------------------------------
+# One deterministic answer to "is anyone there?", resolved once at startup so no
+# phase has to re-derive it. A proven-headless entrypoint (claude -p, the Python
+# or TypeScript Agent SDK) with neither autonomous mode nor LOOP_SPEC_NON_INTERACTIVE
+# set means every AskUserQuestion site will block on a human who does not exist —
+# warn at startup rather than stalling mid-phase.
+entrypoint="$(bash "$SCRIPT_DIR/harness.sh" entrypoint)"
+headless="$(bash "$SCRIPT_DIR/harness.sh" headless)"
+if [[ "$headless" == "true" && "${LOOP_SPEC_AUTONOMOUS:-}" != "1" \
+      && "${LOOP_SPEC_NON_INTERACTIVE:-}" != "1" ]]; then
+  warnings+=("headless invocation (entrypoint ${entrypoint}) without autonomous mode or LOOP_SPEC_NON_INTERACTIVE=1: interactive questions have no one to answer them — prefer '/loop-spec:auto <description>' or the 'autonomous' token")
+fi
 
 # --- graphify ----------------------------------------------------------------
 graphify_required=true
@@ -202,6 +216,8 @@ fi
 jq -cn \
   --argjson workspace "$ws_json" \
   --arg harness "$harness" \
+  --arg entrypoint "$entrypoint" \
+  --argjson headless "$headless" \
   --arg teams_mode "$teams_mode" \
   --argjson teams_available "$teams_available" \
   --argjson wf "$wf_available" \
@@ -214,6 +230,7 @@ jq -cn \
   --argjson warnings "$warnings_json" \
   '{workspace: $workspace,
     harness: {name: $harness},
+    execution: {entrypoint: $entrypoint, headless: $headless},
     teams: {mode: $teams_mode, available: $teams_available},
     workflows: {available: $wf},
     graphify: {ok: $g_ok, required: $g_req, graph: $g_status},

@@ -26,7 +26,7 @@ run() {
   local verb="$1"; shift
   env -u LOOP_SPEC_HARNESS -u CLAUDECODE -u PI_CODING_AGENT_DIR \
     -u LOOP_SPEC_NON_INTERACTIVE -u LOOP_SPEC_EXECUTION_PROFILE \
-    -u LOOP_SPEC_LOOP_RUNTIME "$@" \
+    -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT "$@" \
     bash "$LIB" "$verb"
 }
 
@@ -111,6 +111,72 @@ check "explicit runtime override wins" "true" "$got"
 
 got=$(run loop-runtime LOOP_SPEC_LOOP_RUNTIME=0)
 check "runtime kill switch wins" "false" "$got"
+
+# --- entrypoint: the harness's own headless proof ---
+# Claude Code stamps CLAUDE_CODE_ENTRYPOINT on every child process. `claude -p`
+# rewrites cli -> sdk-cli; the Python Agent SDK sets sdk-py and the TypeScript
+# SDK sets sdk-ts. Those three are one-shot invocations with no persistent
+# runtime, so they are PROVEN headless rather than merely unproven.
+got=$(run entrypoint CLAUDE_CODE_ENTRYPOINT=sdk-py)
+check "entrypoint echoes the stamped value" "sdk-py" "$got"
+
+got=$(run entrypoint)
+check "unstamped entrypoint -> unknown" "unknown" "$got"
+
+got=$(run headless CLAUDE_CODE_ENTRYPOINT=sdk-cli)
+check "claude -p entrypoint is headless" "true" "$got"
+
+got=$(run headless CLAUDE_CODE_ENTRYPOINT=sdk-py)
+check "python SDK entrypoint is headless" "true" "$got"
+
+got=$(run headless CLAUDE_CODE_ENTRYPOINT=sdk-ts)
+check "typescript SDK entrypoint is headless" "true" "$got"
+
+got=$(run headless CLAUDE_CODE_ENTRYPOINT=cli)
+check "interactive CLI entrypoint is not headless" "false" "$got"
+
+got=$(run headless)
+check "unknown entrypoint is not assumed headless" "false" "$got"
+
+got=$(run headless LOOP_SPEC_NON_INTERACTIVE=1)
+check "operator non-interactive is headless" "true" "$got"
+
+got=$(run headless LOOP_SPEC_EXECUTION_PROFILE=headless)
+check "operator headless profile is headless" "true" "$got"
+
+got=$(run headless LOOP_SPEC_EXECUTION_PROFILE=interactive CLAUDE_CODE_ENTRYPOINT=cli)
+check "interactive profile is not headless" "false" "$got"
+
+# --- entrypoint feeds loop-runtime ---
+got=$(run loop-runtime CLAUDE_CODE_ENTRYPOINT=sdk-cli)
+check "claude -p has no persistent loop runtime" "false" "$got"
+
+got=$(run loop-runtime-reason CLAUDE_CODE_ENTRYPOINT=sdk-cli)
+check "claude -p reason names the entrypoint" "headless/sdk-cli" "$got"
+
+got=$(run loop-runtime-reason CLAUDE_CODE_ENTRYPOINT=sdk-py)
+check "python SDK reason names the entrypoint" "headless/sdk-py" "$got"
+
+# A stamped headless entrypoint is a fact; EXECUTION_PROFILE=interactive is an
+# unverified claim (commonly a stale global export). The fact wins, which is the
+# case that stranded a headless run on the loop rung.
+got=$(run loop-runtime CLAUDE_CODE_ENTRYPOINT=sdk-py LOOP_SPEC_EXECUTION_PROFILE=interactive)
+check "proven headless beats an interactive claim" "false" "$got"
+
+got=$(run loop-runtime-reason CLAUDE_CODE_ENTRYPOINT=sdk-py LOOP_SPEC_EXECUTION_PROFILE=interactive)
+check "proven headless reason beats an interactive claim" "headless/sdk-py" "$got"
+
+# LOOP_SPEC_LOOP_RUNTIME stays absolute: it is the integrator's assertion that
+# their headless wrapper CAN hold a foreground call open.
+got=$(run loop-runtime CLAUDE_CODE_ENTRYPOINT=sdk-cli LOOP_SPEC_LOOP_RUNTIME=1)
+check "integrator override still beats a headless entrypoint" "true" "$got"
+
+# The interactive TUI keeps requiring an explicit opt-in (unchanged, deliberate).
+got=$(run loop-runtime CLAUDE_CODE_ENTRYPOINT=cli)
+check "interactive entrypoint alone stays unproven" "false" "$got"
+
+got=$(run loop-runtime-reason CLAUDE_CODE_ENTRYPOINT=cli)
+check "interactive entrypoint alone stays unproven (reason)" "unproven-runtime" "$got"
 
 # --- unknown command exits 2 ---
 rc=0

@@ -27,12 +27,21 @@ printf '{}\n' > "$REPO/.loop-spec/last-result.json"
 
 # Pin every probe so the test is hermetic (no `claude`, no graphify binary needed).
 run_preflight() {
-  LOOP_SPEC_HARNESS="${HARNESS:-claude}" \
-  LOOP_SPEC_TEAMS_MODE=none \
-  LOOP_SPEC_WORKFLOWS_AVAILABLE=0 \
-  LOOP_SPEC_REQUIRE_GRAPHIFY="${REQUIRE_GRAPHIFY:-1}" \
-  GRAPHIFY_BIN="${GRAPHIFY_BIN:-definitely-not-a-real-binary}" \
-  bash "$SCRIPT" run "$REPO"
+  # The execution-profile probe reads the ambient CLAUDE_CODE_ENTRYPOINT stamp,
+  # so clear it (and the mode flags) and let each case opt in explicitly.
+  env -u CLAUDE_CODE_ENTRYPOINT -u LOOP_SPEC_AUTONOMOUS -u LOOP_SPEC_NON_INTERACTIVE \
+    ${ENTRYPOINT:+CLAUDE_CODE_ENTRYPOINT="$ENTRYPOINT"} \
+    ${AUTONOMOUS:+LOOP_SPEC_AUTONOMOUS="$AUTONOMOUS"} \
+    LOOP_SPEC_HARNESS="${HARNESS:-claude}" \
+    LOOP_SPEC_TEAMS_MODE=none \
+    LOOP_SPEC_WORKFLOWS_AVAILABLE=0 \
+    LOOP_SPEC_REQUIRE_GRAPHIFY="${REQUIRE_GRAPHIFY:-1}" \
+    GRAPHIFY_BIN="${GRAPHIFY_BIN:-definitely-not-a-real-binary}" \
+    bash "$SCRIPT" run "$REPO"
+}
+
+headless_warnings() {
+  jq -r '[.warnings[] | select(startswith("headless invocation"))] | length' <<<"$1"
 }
 
 # bad invocation
@@ -63,6 +72,28 @@ check "graphify bypass reported" "false" "$(jq -r '.graphify.required' <<<"$out"
 # pi harness flows through the blob
 out="$(HARNESS=pi run_preflight)"
 check "pi harness reported" "pi" "$(jq -r '.harness.name' <<<"$out")"
+
+# --- execution profile ---------------------------------------------------------
+out="$(run_preflight)"
+check "unstamped entrypoint reported" "unknown" "$(jq -r '.execution.entrypoint' <<<"$out")"
+check "unstamped run is not headless" "false" "$(jq -r '.execution.headless' <<<"$out")"
+check "no headless warning when interactive" "0" "$(headless_warnings "$out")"
+
+out="$(ENTRYPOINT=cli run_preflight)"
+check "interactive entrypoint reported" "cli" "$(jq -r '.execution.entrypoint' <<<"$out")"
+check "interactive TUI is not headless" "false" "$(jq -r '.execution.headless' <<<"$out")"
+
+out="$(ENTRYPOINT=sdk-cli run_preflight)"
+check "claude -p entrypoint reported" "sdk-cli" "$(jq -r '.execution.entrypoint' <<<"$out")"
+check "claude -p is headless" "true" "$(jq -r '.execution.headless' <<<"$out")"
+check "unattended run without a mode warns" "1" "$(headless_warnings "$out")"
+
+out="$(ENTRYPOINT=sdk-py run_preflight)"
+check "python SDK is headless" "true" "$(jq -r '.execution.headless' <<<"$out")"
+
+# Autonomous mode self-answers every question, so a headless run is expected there.
+out="$(ENTRYPOINT=sdk-py AUTONOMOUS=1 run_preflight)"
+check "autonomous headless run does not warn" "0" "$(headless_warnings "$out")"
 
 # backlog count flows through
 LOOP_SPEC_BACKLOG_FILE="$REPO/.loop-spec/BACKLOG.md" bash "$REPO_ROOT/lib/backlog.sh" add s manual "one thing" >/dev/null
