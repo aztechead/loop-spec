@@ -13,7 +13,7 @@ Trust anchors, in order of importance:
      halts immediately with halt_reason=verifier_integrity. A loop that can edit its
      own exam is not verified, it's grading itself.
   2. HARD STOPS — max iterations (the loop's iterate rounds), wall-clock timeout,
-     and stall detection.
+     stall detection, and an optional cumulative spend cap (--max-budget-usd).
   3. REAL PROGRESS, not motion — stall counts both "no file changes" AND "verifier
      failing with the same fingerprint", so an agent churning files in circles still
      halts. Pass/fail oscillation (with --judge) halts as verifier_thrash.
@@ -52,8 +52,18 @@ HALT_STALL = "no_progress"
 HALT_INTEGRITY = "verifier_integrity"
 HALT_THRASH = "verifier_thrash"
 HALT_AGENT_ERROR = "agent_error"
+HALT_BUDGET = "budget_exhausted"
 
 MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower this
+
+# Values `claude --permission-mode` accepts (verified against the shipped CLI).
+# This set is deliberately NOT the Agent SDK's PermissionMode literal: the SDK
+# accepts "default" — which the CLI rejects — and has no "manual". Copying a
+# permission_mode out of SDK code into a CLI flag is the trap this guards, since
+# the CLI's rejection surfaces only as a nonzero exit on every single tick.
+CLAUDE_PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions",
+                           "manual", "dontAsk", "plan")
+SDK_ONLY_PERMISSION_MODES = ("default",)
 
 DEFAULT_JUDGE_MODEL = "claude-haiku-4-5-20251001"  # claude -p id; dropped under pi
                                                    # and opencode (their model registries
@@ -91,6 +101,13 @@ class LoopConfig:
     retry_watchdog: str = ""          # CLAUDE_CODE_RETRY_WATCHDOG for the child: the
                                       # recommended unattended-session retry mechanism
                                       # (CC 2.1.186). Empty = leave the env as inherited.
+    max_budget_usd: float = 0.0       # 0 = unbounded. Cumulative spend cap for the
+                                      # whole loop: halts budget_exhausted when the
+                                      # summed tick cost reaches it, and each tick is
+                                      # additionally capped at the REMAINING budget via
+                                      # `claude -p --max-budget-usd` so one runaway tick
+                                      # cannot overshoot. Iterations and wall clock do
+                                      # not bound spend on their own.
     judge: bool = False
     judge_model: str = DEFAULT_JUDGE_MODEL
     state_dir: str = ""               # default .loop/<task_id>
@@ -138,6 +155,29 @@ class LoopConfig:
                     f"{name} does not speak {cli}'s {self.KNOWN_CLIS[cli]} protocol. "
                     f"Point --claude-bin at the {cli} binary or drop --agent-cli.")
         return None
+
+    def permission_conflict(self) -> Optional[str]:
+        """Detect a permission mode the claude CLI will reject. Without this,
+        `--permission-mode default` (valid in the Agent SDK, absent from the CLI)
+        makes claude exit nonzero on EVERY tick, so the loop burns its whole
+        iteration budget on agent_error with nothing naming the real cause.
+        Same failure shape as transport_conflict(), same fail-fast treatment.
+        Returns a human-readable message, or None when the mode is accepted.
+
+        Only the claude backend is checked: pi and opencode give special meaning
+        to "plan" alone and pass other values through their own surfaces."""
+        if self.resolved_agent_cli() != "claude":
+            return None
+        mode = self.permission_mode
+        if mode in CLAUDE_PERMISSION_MODES:
+            return None
+        hint = ""
+        if mode in SDK_ONLY_PERMISSION_MODES:
+            hint = (f" `{mode}` is an Agent SDK PermissionMode; the CLI has no such "
+                    f"mode. Unattended loops want `acceptEdits`.")
+        return (f"--permission-mode {mode!r} is not accepted by `claude "
+                f"--permission-mode` (valid: {', '.join(CLAUDE_PERMISSION_MODES)})."
+                + hint)
 
     def resolved_task_id(self) -> str:
         if self.task_id:
@@ -325,7 +365,8 @@ def _spawn_agent(cmd: list, *, bin_label: str, env: Optional[dict],
 
 def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
                permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
-               timeout: Optional[float] = None) -> dict:
+               timeout: Optional[float] = None,
+               budget_usd: Optional[float] = None) -> dict:
     if cfg.resolved_agent_cli() == "pi":
         return run_pi(prompt, cfg, resume=resume, permission_mode=permission_mode,
                       raw_log=raw_log, timeout=timeout)
@@ -342,6 +383,11 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         cmd += ["--model", cfg.model]
     if cfg.fallback_model:
         cmd += ["--fallback-model", cfg.fallback_model]
+    if budget_usd is not None and budget_usd > 0:
+        # --max-budget-usd is print-mode only, which is exactly this call. Caps THIS
+        # tick at the loop's remaining budget so a single runaway turn cannot
+        # overshoot the cumulative cap enforced in run_loop().
+        cmd += ["--max-budget-usd", f"{budget_usd:.6f}"]
     cmd += list(cfg.extra_args)
 
     env = None
@@ -674,6 +720,9 @@ def run_loop(cfg: LoopConfig) -> dict:
     conflict = cfg.transport_conflict()
     if conflict:  # CLI paths catch this in build_config; guard library callers too
         raise ValueError(f"loop.py transport conflict: {conflict}")
+    bad_mode = cfg.permission_conflict()
+    if bad_mode:
+        raise ValueError(f"loop.py permission mode: {bad_mode}")
     task_id = cfg.resolved_task_id()
     state_dir = cfg.resolved_state_dir()
     state_path = state_dir / "state.json"
@@ -720,6 +769,10 @@ def run_loop(cfg: LoopConfig) -> dict:
             status = HALT_TIMEOUT; break
         if cfg.no_progress and state.stale_streak >= cfg.no_progress:
             status = HALT_STALL; break
+        # Spend is its own axis: a loop can stay well inside its iteration and
+        # wall-clock caps and still run up an unbounded bill unattended.
+        if cfg.max_budget_usd > 0 and (state.total_cost_usd or 0.0) >= cfg.max_budget_usd:
+            status = HALT_BUDGET; break
         # Thrash: pass→fail flapping (possible when a judge sends passes back to work)
         if len(state.verdicts) >= 4 and sum(
                 1 for a, b in zip(state.verdicts, state.verdicts[1:]) if a and not b) >= 2:
@@ -760,9 +813,12 @@ def run_loop(cfg: LoopConfig) -> dict:
             resume = state.session_id
 
         # --- Invoke the agent --------------------------------------------------
+        budget_left = (cfg.max_budget_usd - (state.total_cost_usd or 0.0)
+                       if cfg.max_budget_usd > 0 else None)
         res = run_claude(prompt, cfg, resume=resume,
                          raw_log=state_dir / f"iter-{state.iteration:03d}.raw.json",
-                         timeout=max(MIN_TICK_TIMEOUT, cfg.timeout_s - (time.time() - state.started_at)))
+                         timeout=max(MIN_TICK_TIMEOUT, cfg.timeout_s - (time.time() - state.started_at)),
+                         budget_usd=budget_left)
         state.total_turns += res["turns"]
         if res.get("cost_usd") is not None:
             state.total_cost_usd = (state.total_cost_usd or 0.0) + res["cost_usd"]
@@ -844,6 +900,7 @@ def run_loop(cfg: LoopConfig) -> dict:
         "iterations": state.iteration,
         "total_turns": state.total_turns,
         "total_cost_usd": round(state.total_cost_usd, 6) if state.total_cost_usd is not None else None,
+        "max_budget_usd": cfg.max_budget_usd or None,
         "wall_clock_seconds": round(elapsed, 1),
         "verifier": {
             "command": cfg.verify or None,
@@ -891,7 +948,13 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     p.add_argument("--no-progress", type=int, default=None)
     p.add_argument("--verify-timeout", type=int, default=None, dest="verify_timeout_s")
     p.add_argument("--mode", choices=["fresh", "continue"], default=None)
-    p.add_argument("--permission-mode", default=None)
+    p.add_argument("--permission-mode", default=None,
+                   help="claude: one of " + "|".join(CLAUDE_PERMISSION_MODES) +
+                        " (the Agent SDK's `default` is not a CLI mode)")
+    p.add_argument("--max-budget-usd", type=float, default=None, dest="max_budget_usd",
+                   help="cumulative USD cap for the whole loop; halts "
+                        "budget_exhausted and caps each tick at what is left "
+                        "(0/unset = unbounded)")
     p.add_argument("--allowed-tools", default=None)
     p.add_argument("--model", default=None)
     p.add_argument("--fallback-model", default=None, dest="fallback_model")
@@ -934,6 +997,9 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     conflict = cfg.transport_conflict()
     if conflict:
         p.error(conflict)
+    bad_mode = cfg.permission_conflict()
+    if bad_mode:
+        p.error(bad_mode)
     return cfg
 
 

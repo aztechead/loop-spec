@@ -6,11 +6,16 @@
 #   FAKE_STILL=1  change nothing (stall scenario)
 #   FAKE_TAMPER=<path>  append to that path (verifier-integrity scenario)
 #   FAKE_PLAN=<file>    return that file's contents as the result (compiler scenario)
+#   FAKE_ARGV_LOG=<f>   append full argv to <f> (flag-shape assertions)
 #
 # Protocol: if the prompt (any argv) contains TOUCH:<file>, create/append that file —
 # lets plan tasks "do work" that their verifiers can check.
 set -euo pipefail
 COST="${FAKE_COST:-1.25}"
+
+if [[ -n "${FAKE_ARGV_LOG:-}" ]]; then
+  printf '%s\n' "$*" >> "$FAKE_ARGV_LOG"
+fi
 
 if [[ -n "${FAKE_HANG:-}" ]]; then
   sleep "$FAKE_HANG"
