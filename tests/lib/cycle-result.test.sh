@@ -2,7 +2,8 @@
 # Tests for lib/cycle-result.sh
 set -uo pipefail
 
-LIB="$(cd "$(dirname "$0")/../.." && pwd)/lib/cycle-result.sh"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LIB="$REPO_ROOT/lib/cycle-result.sh"
 PASS=0
 FAIL=0
 
@@ -50,6 +51,11 @@ bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
 check "A: result.json created" "1" "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"
 check "A: valid JSON" "0" "$(jq . "$FEAT_DIR/result.json" >/dev/null 2>&1; echo $?)"
 check "A: schema=1" "1" "$(jq '.schema' "$FEAT_DIR/result.json")"
+# Every terminal result dates itself, so a report from an unattended harness can
+# be checked against the version that fixed what it describes.
+check "A: loopSpecVersion matches manifest" \
+  "$(jq -r '.version' "$REPO_ROOT/.claude-plugin/plugin.json")" \
+  "$(jq -r '.loopSpecVersion' "$FEAT_DIR/result.json")"
 check "A: status=completed" "completed" "$(jq -r '.status' "$FEAT_DIR/result.json")"
 check "A: slug" "my-feature" "$(jq -r '.slug' "$FEAT_DIR/result.json")"
 check "A: feature_title" "Add rate limiting" "$(jq -r '.feature_title' "$FEAT_DIR/result.json")"

@@ -23,11 +23,20 @@ before starting. They fail loudly rather than following a symlinked `.loop-spec`
 leaving a pointer they could not remove. Its absence means the current run did not reach
 a terminal emission; callers must never reuse an older successful result.
 
+`loopSpecVersion` is the version that produced the run (`"unknown"` when the
+manifest is unreadable). It is what lets a consumer date a result: a report from an
+unattended harness is otherwise impossible to check against the version that fixed
+the behavior it describes, and findings arrive already stale with no way to tell.
+The same field is stamped into every `docs/loop-spec/telemetry/runs/{slug}.json`
+digest. Both are additive — consumers read every field with a default, so older
+artifacts without it stay valid and the schema numbers do not change.
+
 Compatibility fields present for every cycle type:
 
 ```json
 {
   "schema": 1,
+  "loopSpecVersion": "2.25.0",
   "cycleType": "full | micro | debug",
   "slug": "string or null",
   "status": "completed | paused | escalated | terminal | failed",

@@ -25,7 +25,7 @@
 #
 # Digest schema (version 2 — additive over 1; consumers read every field with
 # defaults, so v1 digests in the corpus stay valid):
-#   {"schema": 2, "slug": ..., "branch": "feat/..."|null,
+#   {"schema": 2, "loopSpecVersion": "2.25.0"|"unknown", "slug": ..., "branch": "feat/..."|null,
 #    "status": ..., "converged": true|false|null,
 #    "iterations": {"used": N, "max": N|null},
 #    "gaps": ["plan", ...],          # unique iterate_verdict gap types (never "none")
@@ -39,6 +39,11 @@
 # lib/watch.sh (C2) is PRESERVED across re-runs — this writer owns every other
 # field, watch.sh owns that one.
 set -uo pipefail
+
+DIGEST_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Dates every entry in the telemetry corpus, so a digest can be read against the
+# version that produced it rather than assumed current.
+loop_spec_version="$(bash "$DIGEST_SCRIPT_DIR/plugin-version.sh")"
 
 _skip() { echo "run-digest: $*" >&2; exit 0; }
 
@@ -90,9 +95,11 @@ fi
 
 digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argjson events "$events" \
   --argjson candidate "$CANDIDATE" \
-  --argjson prev_watch "$prev_watch" '
+  --argjson prev_watch "$prev_watch" \
+  --arg loopSpecVersion "$loop_spec_version" '
   {
     schema: 2,
+    loopSpecVersion: $loopSpecVersion,
     slug: $slug,
     branch: ($fj.branch // null),
     status: (if $candidate == 1 then "completed" else ($rj.status // null) end),

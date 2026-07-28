@@ -24,6 +24,7 @@
 # result.json schema (schema version 1):
 # {
 #   "schema": 1,
+#   "loopSpecVersion": "<version that produced this run, else \"unknown\">",
 #   "slug": "...",
 #   "status": "completed | paused | escalated | terminal",
 #   "reason": "<--reason text or null>",
@@ -71,6 +72,10 @@ _is_valid_status() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Stamped into every terminal result so a consumer can date the run against the
+# version that produced it. Resolved once; never fails (degrades to "unknown").
+loop_spec_version="$(bash "$SCRIPT_DIR/plugin-version.sh")"
 
 _write_atomic() {
   local content="$1" destination="$2" tmp
@@ -215,8 +220,10 @@ case "${1:-}" in
       --arg reason "$reason" --arg verifyStatus "$verification_status" \
       --arg verifyCommand "$verification_command" --arg now "$now" \
       --argjson converged "$converged" --argjson autonomous "$autonomous" \
+      --arg loopSpecVersion "$loop_spec_version" \
       --argjson warnings "$warnings_json" '
-      {schema:1,cycleType:$cycleType,slug:(if $slug == "" then null else $slug end),
+      {schema:1,loopSpecVersion:$loopSpecVersion,
+       cycleType:$cycleType,slug:(if $slug == "" then null else $slug end),
        status:$status,outcome:$outcome,reason:(if $reason == "" then null else $reason end),
        phaseReached:$cycleType,branch:(if $branch == "" then null else $branch end),
        baseBranch:(if $base == "" then null else $base end),
@@ -303,6 +310,7 @@ case "${1:-}" in
       --arg status "$status" \
       --arg pr_url_arg "$pr_url" \
       --arg reason_arg "$reason" \
+      --arg loopSpecVersion "$loop_spec_version" \
       --argjson fj "$fj_content" \
       --argjson delivery "$delivery_content" \
       '
@@ -365,6 +373,7 @@ case "${1:-}" in
         end)) as $converged |
       {
          schema: 1,
+         loopSpecVersion: $loopSpecVersion,
          cycleType: "full",
          slug: $fj.slug,
          status: $effectiveStatus,

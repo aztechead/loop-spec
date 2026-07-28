@@ -21,6 +21,12 @@ All notable changes documented here. Format follows Keep a Changelog.
   `--judge` calls bill to the same total and are capped at the remaining budget; a loop
   that cannot afford its judge halts on budget rather than reporting an unvalidated
   completion.
+- Added `loopSpecVersion` to the terminal cycle result and to every committed run digest,
+  so an artifact from an unattended harness can be dated against the version that produced
+  it instead of assumed current. Additive: consumers read every field with a default, so
+  existing artifacts stay valid and the schema numbers are unchanged.
+- Added `lib/bump-version.sh` — sets the version in all four declaration sites (three
+  manifests plus the README line) at once, with `--check` to report drift.
 - Added `docs/loop-spec/claude-invocation-contract.md` documenting the entrypoint contract,
   the CLI-versus-Agent-SDK `permission_mode` divergence, the spend controls, and how to
   drive loop-spec from the Python Agent SDK.

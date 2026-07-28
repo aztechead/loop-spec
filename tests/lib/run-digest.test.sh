@@ -2,7 +2,8 @@
 # Tests for lib/run-digest.sh (committed per-run telemetry digest)
 set -uo pipefail
 
-LIB="$(cd "$(dirname "$0")/../.." && pwd)/lib/run-digest.sh"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LIB="$REPO_ROOT/lib/run-digest.sh"
 PASS=0
 FAIL=0
 
@@ -48,6 +49,10 @@ check "1: exit 0" "0" "$ec"
 DIGEST="$PROJ/docs/loop-spec/telemetry/runs/my-feat.json"
 check "1: digest at project docs path" "1" "$([[ -f "$DIGEST" ]] && echo 1 || echo 0)"
 check "1: schema 2" "2" "$(jq -r '.schema' "$DIGEST")"
+# The corpus is read long after it is written; each entry dates itself.
+check "1: loopSpecVersion stamped" \
+  "$(jq -r '.version' "$REPO_ROOT/.claude-plugin/plugin.json")" \
+  "$(jq -r '.loopSpecVersion' "$DIGEST")"
 check "1: converged false preserved (not null)" "false" "$(jq -r '.converged' "$DIGEST")"
 check "1: gaps unique, none excluded" '["plan"]' "$(jq -c '.gaps' "$DIGEST")"
 check "1: gateCaps only round>=2" '["spec-critique"]' "$(jq -c '.gateCaps' "$DIGEST")"
