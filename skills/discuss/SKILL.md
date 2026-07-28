@@ -545,14 +545,25 @@ Reset `currentGate` to zeroed state via `lib/feature-write.sh`:
 }
 ```
 
-### Step 5.75 - Grounding gate (deterministic, ALWAYS runs)
+### Step 5.75 - Format + grounding gates (deterministic, ALWAYS run)
+
+Structural format first — PLAN, VERIFY, and the iterate judge parse SPEC.md by its
+template headings (`### Good Enough` checkboxes especially: criteria-coverage silently
+skips when the heading drifts, and every criterion then ships unverified):
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/artifact-lint.sh" spec "docs/loop-spec/features/{slug}/SPEC.md"
+format_exit=$?
+```
+
+Then the grounding gate:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "docs/loop-spec/features/{slug}/SPEC.md"
 grounding_exit=$?
 ```
 
-Exit 1 BLOCKS: re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (instruct: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`); autonomous fast path: the lead applies the FLAG fixes directly. Retries are unbounded — repeat until the lint passes. On revision received, re-run ONLY this lint — lint-only failures do NOT re-run the critique gate. Exit 0: proceed to Step 6.
+Exit 1 from either BLOCKS: re-dispatch spec-writer-1 via `SendMessage` with the FLAG lines (format flags: fix the structure per `skills/shared/artifact-templates/SPEC.md.template`; grounding flags: cite ledger entries or rewrite as ASSUMPTION per `skills/shared/grounding-protocol.md`); autonomous fast path: the lead applies the FLAG fixes directly. Retries are unbounded — repeat until both lints pass. On revision received, re-run ONLY these lints — lint-only failures do NOT re-run the critique gate. Both exit 0: proceed to Step 6.
 
 ### Step 5.8 - Join codebase bootstrap (if pending)
 

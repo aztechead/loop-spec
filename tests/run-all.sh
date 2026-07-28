@@ -112,6 +112,7 @@ run_suite "lib/feature-validation"    "bash tests/lib/feature-validation.test.sh
 run_suite "lib/model-overrides"       "bash tests/model-overrides.test.sh"
 run_suite "lib/resolve-bin"           "bash tests/lib/resolve-bin.test.sh"
 run_suite "lib/acceptance-lint"       "bash tests/lib/acceptance-lint.test.sh"
+run_suite "lib/artifact-lint"         "bash tests/lib/artifact-lint.test.sh"
 run_suite "lib/evidence"              "bash tests/lib/evidence.test.sh"
 run_suite "lib/grounding-lint"        "bash tests/lib/grounding-lint.test.sh"
 run_suite "lib/verification-grounding-lint" "bash tests/lib/verification-grounding-lint.test.sh"

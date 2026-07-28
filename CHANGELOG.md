@@ -2,6 +2,33 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.26.0] - 2026-07-28
+
+### Added
+
+- Added `lib/artifact-lint.sh`, a deterministic structural format gate for every
+  model-authored phase artifact (SPEC.md, PLAN.md, PATTERNS.md, VERIFICATION.md, the
+  tasks[] JSON, and generic JSON files). Field runs in both the Claude Code and OpenCode
+  harnesses showed artifacts arriving at the next phase misformatted — drifted section
+  headings, task blocks missing `**Verify:**`/`**Acceptance criteria:**`, whole files
+  wrapped in a stray code fence, CRLF endings, unfilled template placeholder lines,
+  invalid or field-dropping tasks JSON — and the consuming phase burned cycles repairing
+  them. The lint pins the repair on the PRODUCER at its own phase exit: SPEC Step 3 and
+  DISCUSS Step 5.75 gate SPEC.md, PLAN Step 4b gates PLAN.md + PATTERNS.md + the tasks[]
+  JSON (flags join the existing infeasibility re-dispatch loop), VERIFY Step 10 gates
+  VERIFICATION.md before commit. It also closes a fail-open hole: a drifted
+  `### Good Enough` heading used to make criteria-coverage skip silently, shipping every
+  criterion unverified.
+- Added a machine-readable task handoff: PLAN Step 6 persists the gate-validated
+  `tasks[]` to `.loop-spec/features/{slug}/tasks.json` (recorded as
+  `feature.json.artifacts.tasks`), and EXECUTE Step 2a consumes that sidecar directly —
+  validated by `artifact-lint tasks` and id-cross-checked against PLAN.md — instead of
+  re-deriving structured tasks from PLAN.md prose. PLAN.md remains the reviewed,
+  human-auditable artifact; an id mismatch (PLAN.md revised after the sidecar was
+  written) falls back to the existing PLAN.md parse with a one-line log. The sidecar is
+  gitignored by the existing `/.loop-spec/features/*/*` rule in both this repo and
+  `lib/runtime-ignore.sh` target installs.
+
 ## [2.25.0] - 2026-07-28
 
 ### Added

@@ -221,6 +221,18 @@ Write SPEC.md directly (the main thread is unrestricted by `hooks/restrict-agent
 - SPEC.md to `docs/loop-spec/features/{slug}/SPEC.md` (must begin with the `ambiguity_scores` frontmatter block - see SPEC.md Output Format below).
 - Interview transcript (all rounds, all questions, all scores) to `.loop-spec/features/{slug}/spec-interview-transcript.md`.
 
+Then run the structural format gate — DISCUSS and every later phase parse SPEC.md by its
+template headings, so a drifted section name or a fence-wrapped file costs the next phase
+cycles it should not spend:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/artifact-lint.sh" spec "docs/loop-spec/features/{slug}/SPEC.md"
+```
+
+Exit 1 BLOCKS: fix SPEC.md in place per the FLAG lines (you wrote it; use
+`skills/shared/artifact-templates/SPEC.md.template` as the shape) and re-run until it
+prints `artifact-lint: ok`.
+
 ### Step 4 - Update feature.json
 
 Update `feature.json` via `lib/feature-write.sh`:
