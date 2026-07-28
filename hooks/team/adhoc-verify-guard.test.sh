@@ -64,6 +64,7 @@ BASH_TEST='{"type":"tool_use","name":"Bash","input":{"command":"pytest tests/"}}
 BASH_DIFF='{"type":"tool_use","name":"Bash","input":{"command":"git diff -- src/app.py"}}'
 BASH_DIFF_ALL='{"type":"tool_use","name":"Bash","input":{"command":"git diff"}}'
 BASH_DIFF_OTHER='{"type":"tool_use","name":"Bash","input":{"command":"git diff -- README.md"}}'
+BASH_DIFF_JS='{"type":"tool_use","name":"Bash","input":{"command":"git diff -- src/other.js"}}'
 BASH_DIFF_CHECK='{"type":"tool_use","name":"Bash","input":{"command":"git diff --check"}}'
 BASH_DIFF_STAT='{"type":"tool_use","name":"Bash","input":{"command":"git diff --stat"}}'
 BASH_DIFF_COMPOUND='{"type":"tool_use","name":"Bash","input":{"command":"git diff --stat && git diff -- src/app.py"}}'
@@ -136,6 +137,9 @@ check "t8: read and diff can ground different paths -> ALLOW" 0 "$(payload "$EDI
 # Grounding only has to be complete BEFORE a verification, not last: showing the diff
 # once more when summarizing the work must not retract the verification that preceded it.
 check "t9: a repeat diff after verification does not retract it -> ALLOW" 0 "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF" "$BASH_TEST" "$BASH_DIFF_ALL")"
+# Reported block: "did not inspect a content diff covering every edited path". Reviewing
+# each path in its own diff covers the change; no single diff has to name all of them.
+check "t10: per-path diffs together cover the change -> ALLOW" 0 "$(payload "$EDIT_PY" "$EDIT_JS" "$READ_PY" "$READ_JS" "$BASH_DIFF" "$BASH_DIFF_JS" "$BASH_TEST")"
 
 # --- stand-down conditions ---
 check "i: kill switch LOOP_SPEC_MICRO_GUARD=0 -> ALLOW" 0 "$(payload "$EDIT_PY")" LOOP_SPEC_MICRO_GUARD=0
