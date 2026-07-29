@@ -54,7 +54,9 @@ Three invariants the controller enforces so retries and multi-repo features stay
 
 DELIVER is the sole owner of final candidate mutation. At controller entry,
 `lib/finalize-delivery-candidate.sh` installs runtime exclusions and commits only the
-named rules, ignore, and run-digest artifacts before first observation. If an eligible
+named rules and ignore artifacts before first observation (the run digest joins that
+commit set only under `LOOP_SPEC_COMMIT_TELEMETRY=1` or when the repo already tracks
+it — a resuming session needs feature state and artifacts, not telemetry). If an eligible
 prior sidecar already binds a hard retry or completion SHA, finalization is a strict
 no-op. Do not add another finalization path in cycle prose.
 

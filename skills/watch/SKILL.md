@@ -40,8 +40,10 @@ digest's `branch` field (else `feat/<slug>`).
 
 The verdict lands in `docs/loop-spec/telemetry/runs/<slug>.json` as the
 `watch` object (re-runs overwrite it — latest wins, so run it again after the
-window closes if you ran early). Commit the digest change so the signal
-survives volatile agents — the metrics contract reads committed digests.
+window closes if you ran early). The digest is machine-local by default; on a
+volatile agent set `LOOP_SPEC_COMMIT_TELEMETRY=1` and commit the digest change
+(`git add -f` — the path is runtime-ignored) so the signal survives the
+workspace.
 
 ## Unattended
 

@@ -142,8 +142,10 @@ check "single: deterministic next phase" "completed" "$(jq -r '.nextPhase' "$FDI
 check "single: committed phase remains resumable" "deliver" "$(jq -r '.currentPhase' "$FDIR/feature.json")"
 check "single: URL persisted locally" "https://github.com/test/repo/pull/7" "$(jq -r '.prUrl' "$FDIR/delivery.json")"
 FINALIZED_SHA="$(git -C "$SINGLE" rev-parse HEAD)"
-check "single: finalizer added candidate commit" "0" "$([[ "$PRE_FINALIZE_SHA" != "$FINALIZED_SHA" ]] && echo 0 || echo 1)"
-check "single: candidate digest committed" "1" \
+check "single: no telemetry commit by default" "$PRE_FINALIZE_SHA" "$FINALIZED_SHA"
+check "single: candidate digest written locally" "1" \
+  "$([[ -f "$SINGLE/docs/loop-spec/telemetry/runs/demo.json" ]] && echo 1 || echo 0)"
+check "single: candidate digest NOT tracked" "0" \
   "$(git -C "$SINGLE" ls-files --error-unmatch docs/loop-spec/telemetry/runs/demo.json >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single: exact finalized HEAD delegated" "$FINALIZED_SHA" "$(jq -r '.targets[0].targetSha' "$FDIR/delivery.json")"
 check "single: checkout remains clean" "0" "$(git -C "$SINGLE" status --porcelain | wc -l | tr -d ' ')"
@@ -236,11 +238,29 @@ CAND_FINAL_SHA="$(git -C "$CAND" rev-parse HEAD)"
 check "candidate policy: ineligible target finalizes" "0" "$ec"
 check "candidate policy: ineligible target creates candidate commit" "0" \
   "$([[ "$CAND_SHA" != "$CAND_FINAL_SHA" ]] && echo 0 || echo 1)"
-check "candidate policy: commits prior loop-spec ignore dirt and named digest" \
-  $'.gitignore\ndocs/loop-spec/telemetry/runs/candidate.json' \
+check "candidate policy: commits prior loop-spec ignore dirt, digest stays local" \
+  ".gitignore" \
   "$(git -C "$CAND" diff-tree --no-commit-id --name-only -r HEAD | sort)"
 ineligible_bound="$(bash "$FINALIZER" bound-sha "$CDIR/delivery.json" candidate 2>/dev/null || true)"
 check "candidate policy: shared binding rejects explicit false" "" "$ineligible_bound"
+
+# Opt-in: LOOP_SPEC_COMMIT_TELEMETRY=1 commits the digest (ephemeral workspaces).
+jq '(.targets[0].bindingEligible) = false' "$CDIR/delivery.json" > "$CDIR/delivery.json.tmp"
+mv "$CDIR/delivery.json.tmp" "$CDIR/delivery.json"
+rm -f "$CAND/docs/loop-spec/telemetry/runs/candidate.json"
+ec=0; LOOP_SPEC_COMMIT_TELEMETRY=1 bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: telemetry opt-in exits 0" "0" "$ec"
+check "candidate policy: telemetry opt-in commits the digest" "1" \
+  "$(git -C "$CAND" ls-files --error-unmatch docs/loop-spec/telemetry/runs/candidate.json >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Legacy: a repo already tracking its digest keeps it committed without the env
+# (a tracked corpus must never become permanent dirty state).
+ec=0; bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: legacy tracked digest exits 0" "0" "$ec"
+check "candidate policy: legacy tracked digest stays committed clean" "0" \
+  "$(git -C "$CAND" status --porcelain --untracked-files=all | wc -l | tr -d ' ')"
+check "candidate policy: legacy digest still tracked" "1" \
+  "$(git -C "$CAND" ls-files --error-unmatch docs/loop-spec/telemetry/runs/candidate.json >/dev/null 2>&1 && echo 1 || echo 0)"
 
 printf 'human-owned\n' >> "$CAND/.gitignore"
 git -C "$CAND" add .gitignore
@@ -427,8 +447,7 @@ PRE_BIND_SHA="$(git -C "$BIND" rev-parse HEAD)"
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_MALFORMED=1 \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$BINDDIR")" || ec=$?
 SHA1="$(git -C "$BIND" rev-parse HEAD)"
-check "bind: candidate was finalized before binding" "0" \
-  "$([[ "$PRE_BIND_SHA" != "$SHA1" ]] && echo 0 || echo 1)"
+check "bind: no telemetry commit before binding (digest local)" "$PRE_BIND_SHA" "$SHA1"
 check "bind: hard failure routes to deliver" "deliver" "$(jq -r '.nextPhase' "$BINDDIR/delivery.json")"
 check "bind: recorded the tried SHA" "$SHA1" "$(jq -r '.targets[0].targetSha' "$BINDDIR/delivery.json")"
 jq '(.targets[0]) |= del(.bindingEligible)' "$BINDDIR/delivery.json" > "$BINDDIR/delivery.json.tmp"

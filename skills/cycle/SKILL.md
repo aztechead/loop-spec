@@ -738,9 +738,10 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
   --status completed ${_pr_url:+--pr-url "$_pr_url"} || true
 ```
 
-The committed run digest was finalized immediately before DELIVER and is part of the
-checked SHA. Do not rewrite or recommit it here: DELIVER's successful target SHA is now
-immutable.
+The run digest was finalized immediately before DELIVER (machine-local by default;
+part of the checked SHA only when `LOOP_SPEC_COMMIT_TELEMETRY=1` or the repo already
+tracks its digest corpus). Do not rewrite or recommit it here: DELIVER's successful
+target SHA is now immutable.
 
 The summary follows `skills/shared/report-style.md`: outcome first, state restated,
 wins marked, no preamble/closers, scores in percentages.
