@@ -91,6 +91,13 @@ worktree, no DELIVER controller:
   the branch's existing PR if one exists (`gh pr view --json number,url`) or open one
   (`gh pr create`). Keep the body to the micro scale: title, the done-criteria bullets,
   the verification command + result. GitHub-flavored markdown, no phase-artifact dumps.
+  Write the body to a file and gate it before creating/updating the PR — micro PRs get
+  the same no-deferral guarantee as full-cycle DELIVER (`skills/shared/no-deferral.md`):
+  ```bash
+  bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text "$body_file"
+  ```
+  A flag means the task is not done: do the flagged work or promote to a full cycle;
+  never reword past the probe. Then `gh pr create --body-file "$body_file"`.
 - Run the terminal feedback check on the PR (`lib/pr-feedback.sh check <number>`) and
   route the result per the shared contract: requested changes at micro scale get fixed
   now. Every feedback-driven edit returns to Step 5: repeat the post-change grounding

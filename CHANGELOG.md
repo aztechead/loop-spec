@@ -31,6 +31,14 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `skills/shared/report-style.md`: greppable `[PHASE] start` / `[PHASE] done
   (elapsed) — verdict` boundary lines for unattended operators, plus action-first
   report rules (outcome first, state restated, wins marked, no preamble/closers).
+- `lib/converged-floor.sh`: a deterministic floor under ITERATE's converged
+  verdict — `converged: true` is vetoed unless every SPEC Good Enough criterion
+  has a `- criterion: GE-NNN` grounding row in VERIFICATION.md and no
+  acceptance-table row is FAIL. The judge cannot out-vote the verification
+  record; a vetoed verdict becomes an `execute`-type gap.
+- Micro and debug PRs now run the same `deferral-lint` gate on their body file
+  before `gh pr create` that full-cycle DELIVER runs — no cycle type can open a
+  PR carrying self-authored deferred items.
 - `docs/determinism-audit.md`: the converted-probe ledger and every remaining
   judgment-selected branch with a concrete probe candidate.
 

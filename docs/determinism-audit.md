@@ -19,6 +19,7 @@ everywhere it is not selecting a branch. Ordered by how much still rides on pros
 | artifact well-formedness at handoffs | `lib/artifact-lint.sh` |
 | pre-existing vs introduced failures | `lib/verification-baseline.sh` |
 | PR body composition and score formatting | `lib/pr-body.sh` (percentage table, GFM, frontmatter never leaks) |
+| "the loop has converged" | `lib/converged-floor.sh` — the judge's `converged: true` is vetoed unless every SPEC Good Enough criterion has a VERIFICATION grounding row and no acceptance-table row is FAIL |
 
 ## Remaining judgment-selected branches (probe candidates)
 
@@ -31,38 +32,32 @@ everywhere it is not selecting a branch. Ordered by how much still rides on pros
    bind score to structure). The score itself stays judgment; the probe would only
    catch a score the artifact cannot support.
 
-2. **ITERATE judge verdict** (`skills/iterate/SKILL.md`): `converged == true` is a
-   model judgment that ends the loop. Partially bounded today (fresh-context judge,
-   immutable original goal, VERIFY must be green first). Probe candidate: converged
-   requires zero unchecked Good Enough boxes in VERIFICATION.md rows — a mechanical
-   floor under the judgment, same shape as the deferral gate.
-
-3. **`gap.type` routing** (`skills/iterate/SKILL.md` Step 3): the judge's
+2. **`gap.type` routing** (`skills/iterate/SKILL.md` Step 3): the judge's
    classification (`execute|plan|spec|discuss`) selects the rewind target. Probe
    candidate: validate the classification against required evidence fields (an
    `execute` gap must name a failing criterion/file; a `spec` gap must name the
    ambiguous requirement) and reject the verdict JSON otherwise — classification
    stays judgment, but an unevidenced classification cannot route.
 
-4. **`/loop-spec:auto` task routing** (`lib/task-route.sh`): the router is
+3. **`/loop-spec:auto` task routing** (`lib/task-route.sh`): the router is
    deterministic, but its `ambiguity: low|medium|high` INPUT is model-declared.
    Probe candidate: deterministic floors from the request itself (contains a
    concrete error/stack → debug; names ≤2 files and a verb → micro candidate),
    with the model only able to escalate, never de-escalate, the floor.
 
-5. **Critique-gate verdicts** (DISCUSS/PLAN single critic, VERIFY code review):
+4. **Critique-gate verdicts** (DISCUSS/PLAN single critic, VERIFY code review):
    PASS/FAIL is judgment by design (maker≠checker). Bounded by the gate ladder,
    delta re-verify, and blocking-severity rules; the remaining prose branch is the
    critic's severity assignment (Critical/Important/Minor selects blocking). Probe
    candidate: a severity rubric lint — findings whose text matches the objective
    patterns (data loss, auth bypass, spec-boundary violation) may not be filed Minor.
 
-6. **Debug hypothesis verdicts** (`skills/debug/SKILL.md`): CONFIRMED/REFUTED per
+5. **Debug hypothesis verdicts** (`skills/debug/SKILL.md`): CONFIRMED/REFUTED per
    hypothesis is judgment; the red-repro-first rule is the existing floor (no fix
    without a failing reproduction). Residual risk is low because the oracle is a
    command exit code.
 
-7. **Graphify grounding claims**: design phases cite graph queries, but whether a
+6. **Graphify grounding claims**: design phases cite graph queries, but whether a
    claim REQUIRED a citation is judged. `lib/grounding-lint.sh` and EVIDENCE.md ids
    bound this; the residual branch is the model deciding a fact is "not load-bearing".
    Probe candidate (TDAD-style): for any task whose files sit in the graph, require

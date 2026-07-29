@@ -198,6 +198,10 @@ returns to the FIX loop; a green repro cannot substitute for this grounding gate
     feedback re-check. Evidence from before that edit is stale. New-mechanism asks go to `## Deferred`
    / `/loop-spec:intake`. Keep the PR body short GitHub-flavored markdown: symptom,
    root cause, fix summary, regression test — link BUG.md rather than inlining it.
+   Write the body to a file and gate it before creating the PR
+   (`bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text "$body_file"`) —
+   debug PRs get the same no-deferral guarantee as DELIVER; sibling-sweep entries
+   pass only with their `new-mechanism:` marker. Then `gh pr create --body-file`.
    No origin remote or no `gh`: degrade loudly — leave the branch, state exactly what
    blocked the PR. Record the PR URL and check outcome in BUG.md `## Fix`.
 5. Report: root cause, the fix diffstat, the regression test, the PR URL + feedback
