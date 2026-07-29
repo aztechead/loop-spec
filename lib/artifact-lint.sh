@@ -247,7 +247,10 @@ def lint_plan(display, data):
         block_text = [line.strip() for _, line in block]
 
         def has_marker(marker):
-            return any(t.startswith(marker) for t in block_text)
+            # Accept the colon-outside-the-bold variant too ('**Files**:'),
+            # a common model rendering of the same marker.
+            alt = marker[:-3] + '**:'
+            return any(t.startswith(marker) or t.startswith(alt) for t in block_text)
 
         for marker in ('**Files:**', '**Verify:**', '**Acceptance criteria:**'):
             if not has_marker(marker):
@@ -256,7 +259,8 @@ def lint_plan(display, data):
             in_ac = False
             ac_items = 0
             for t in block_text:
-                if t.startswith('**Acceptance criteria:**'):
+                if (t.startswith('**Acceptance criteria:**')
+                        or t.startswith('**Acceptance criteria**:')):
                     in_ac = True
                     continue
                 if in_ac:

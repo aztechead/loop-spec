@@ -208,6 +208,12 @@ Two tasks. Note: prose may mention `.loop-spec/features/{slug}/` paths legitimat
 EOF
 check "well-formed plan passes" 0 plan "$WORK/plan-good.md"
 
+# colon-outside-the-bold marker variant ('**Files**:') must not force a repair round
+sed -e 's/\*\*Files:\*\*/**Files**:/' -e 's/\*\*Verify:\*\* /**Verify**: /' \
+    -e 's/\*\*Acceptance criteria:\*\*/**Acceptance criteria**:/' \
+    "$WORK/plan-good.md" > "$WORK/plan-colon-outside.md"
+check "colon-outside-bold markers pass" 0 plan "$WORK/plan-colon-outside.md"
+
 grep -v '^\*\*Verify:\*\*' "$WORK/plan-good.md" > "$WORK/plan-noverify.md"
 check "task block without Verify flags" 1 plan "$WORK/plan-noverify.md"
 check_output "missing Verify names the task" \
