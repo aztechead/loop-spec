@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.26.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.27.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -467,6 +467,8 @@ Session modes and hook guards (each is a kill switch; all hooks no-op outside pr
 | `LOOP_SPEC_SIMPLICITY` | on | Simplicity mode: prefer deletion, reuse, stdlib, and the minimum diff before custom code. |
 | `LOOP_SPEC_MICRO` | on | Micro-mode SessionStart directive. |
 | `LOOP_SPEC_MICRO_GUARD` | on | Stop guard: block ending a session that edited code without a verification run. Stands down during cycle features and for docs/config-only edits. |
+| `LOOP_SPEC_DEFERRAL_GUARD` | on | Stop guard: block a completion claim that carries self-authored deferred/follow-up items (`skills/shared/no-deferral.md`). Gate-marked lines (`iterate-budget-spent:` / `iterate-terminal:` / `verify-deferred`) pass. |
+| `LOOP_SPEC_DEFERRAL_LINT` | on | DELIVER's deferral gate on the PR body and warnings; `0` is the explicit operator override for a feature legitimately about deferral. |
 | `LOOP_SPEC_DISCIPLINE` | off (opt-in) | Discipline mode: five behavioral gates (brainstorm-before-coding, verification-before-claims, investigation-before-fixes, decision gate, intent gate). |
 | `LOOP_SPEC_TASK_GUARD` | on | Task metadata / lint / typecheck completion gates. |
 | `LOOP_SPEC_PATH_GUARD` | on | Per-role agent write-path restrictions (`LOOP_SPEC_PATH_GUARD_FORCE=1` applies them to open dispatches too). |
