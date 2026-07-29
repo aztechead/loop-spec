@@ -154,7 +154,10 @@ the actual output. Surprise is signal: output contradicting your expectation is
 information — stop, re-read, revise; never explain it away. Re-read the acceptance
 criteria before DONE and check each against actual output. Depth over breadth: read the
 load-bearing file completely instead of skimming five. "Should work" / "probably fine" /
-"tests likely pass" each mean run it now.
+"tests likely pass" each mean run it now. Scope is closed: the acceptance criteria are
+the whole job — never skip, trim, or defer an item, and never write
+follow-up/deferred/future-work notes; a criterion you cannot meet is a loud failure
+with evidence, never a note.
 
 Step 1 - Create the task worktree (skip if it already exists):
   git -C "{featureWorktreeRoot}" worktree add "{worktree_path}" -b "task/{taskId}-{slug}" "feat/{slug}"
@@ -169,6 +172,10 @@ Step 2 - {readFirst clause} Read the assigned files: {task.files}.
 Step 3 - Implement the task in the worktree at {worktree_path}.
 Task subject: {task.subject}
 Brief: {task.brief}
+Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
+{global constraints lines, or "- none"}
+Interfaces (from the task block; contracts your neighbors consume/produce):
+{task Interfaces lines, or "- none"}
 Acceptance criteria:
 {numbered acceptanceCriteria}
 {prior-findings clause on rework attempts}
@@ -282,7 +289,10 @@ EXECUTION DISCIPLINE (evidence over recall — on by default). Verify, don't rec
 assert what a file/command does from memory — read it, run it, paste the actual output.
 Surprise is signal: output contradicting expectation means stop and revise, never explain
 away. Re-read the acceptance criteria before DONE and check each against actual output.
-"Should work" / "probably fine" / "tests likely pass" each mean run it now.
+"Should work" / "probably fine" / "tests likely pass" each mean run it now. Scope is
+closed: the acceptance criteria are the whole job — never skip, trim, or defer an item,
+and never write follow-up/deferred/future-work notes; a criterion you cannot meet is a
+loud failure with evidence, never a note.
 
 Repo: {repo}
 Repo path: {abs_repo}   (absolute; all git and file operations target this directory)
@@ -296,6 +306,10 @@ Step 1 - Read the assigned files. Files are workspace-relative ({repo}/{path}); 
 Step 2 - Implement the task directly in the repo at {abs_repo}.
 Task subject: {task.subject}
 Brief: {task.brief}
+Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
+{global constraints lines, or "- none"}
+Interfaces (from the task block; contracts your neighbors consume/produce):
+{task Interfaces lines, or "- none"}
 Acceptance criteria:
 {numbered acceptanceCriteria}
 {prior-findings clause on rework attempts}

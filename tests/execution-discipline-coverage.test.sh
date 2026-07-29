@@ -19,12 +19,19 @@ checks=(
   "skills/shared/execution-discipline.md	evidence over recall"
   "skills/shared/execution-discipline.md	surprise is signal"
   "skills/shared/execution-discipline.md	NEEDS_CONTEXT"
+  "skills/shared/execution-discipline.md	scope is closed"
   "agents/implementer.md	evidence over recall"
+  "agents/implementer.md	scope is closed"
   "agents/verifier.md	evidence over recall"
+  "agents/verifier.md	scope is closed"
   "skills/shared/team-prompts/implementer.md	evidence over recall"
+  "skills/shared/team-prompts/implementer.md	scope is closed"
   "skills/shared/execute-subagent.md	evidence over recall"
+  "skills/shared/execute-subagent.md	scope is closed"
   "lib/plan-to-loop.sh	evidence over recall"
+  "lib/plan-to-loop.sh	scope is closed"
   "lib/workflows/execute-dag.js	evidence over recall"
+  "lib/workflows/execute-dag.js	scope is closed"
 )
 
 for entry in "${checks[@]}"; do

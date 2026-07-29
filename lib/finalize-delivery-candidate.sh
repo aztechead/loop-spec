@@ -146,6 +146,17 @@ bash "$SCRIPT_DIR/run-digest.sh" append "$feature_dir" --candidate >/dev/null ||
 rules_path=".loop-spec/RULES.md"
 ignore_path=".gitignore"
 digest_path="docs/loop-spec/telemetry/runs/$slug.json"
+
+# Telemetry is machine-local by default: another session needs the FEATURE
+# artifacts and state, not the run digest (retro/status/trust/watch all read the
+# local file). Committing the digest is opt-in for ephemeral workspaces
+# (LOOP_SPEC_COMMIT_TELEMETRY=1), and stays on for repos that already track it
+# so a legacy corpus never turns into permanent dirty state.
+commit_telemetry=0
+if [[ "${LOOP_SPEC_COMMIT_TELEMETRY:-0}" == "1" ]] \
+   || git -C "$repo_root" ls-files --error-unmatch -- "$digest_path" >/dev/null 2>&1; then
+  commit_telemetry=1
+fi
 if ! jq -e --arg slug "$slug" '.slug == $slug and .status == "completed"' \
     "$repo_root/$digest_path" >/dev/null 2>&1; then
   echo "finalize-delivery-candidate: candidate run digest was not produced" >&2
@@ -169,14 +180,18 @@ while IFS= read -r line; do
 done <<<"$status"
 
 if [[ "$commit_requested" -eq 1 ]]; then
+  finalize_paths=("$rules_path" "$ignore_path")
+  [[ "$commit_telemetry" -eq 1 ]] && finalize_paths+=("$digest_path")
   stage_paths=()
-  for path in "$rules_path" "$ignore_path" "$digest_path"; do
+  for path in "${finalize_paths[@]}"; do
     if [[ -e "$repo_root/$path" ]] || git -C "$repo_root" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
       stage_paths+=("$path")
     fi
   done
   if [[ -n "${stage_paths[*]-}" ]]; then
-    git -C "$repo_root" add -- "${stage_paths[@]}" || exit 2
+    # -f: the digest is runtime-ignored by default; an opt-in commit must not
+    # be silently refused by that exclusion.
+    git -C "$repo_root" add -f -- "${stage_paths[@]}" || exit 2
     if ! git -C "$repo_root" diff --cached --quiet -- "${stage_paths[@]}"; then
       git -C "$repo_root" commit -q -m "chore: NO_JIRA finalize delivery candidate for $slug" -- \
         "${stage_paths[@]}" || exit 2

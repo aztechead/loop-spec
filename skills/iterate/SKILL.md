@@ -128,9 +128,25 @@ fi
 
 ### Step 3 - DECIDE
 
-**Converged** (`verdict.converged == true`): set `currentPhase = "deliver"`. Clear `iterate.feedback = null`. Go to Phase exit; DELIVER now binds the final verified commit to the PR.
+**Converged** (`verdict.converged == true`): the judge's verdict is a judgment; the
+deterministic floor beneath it runs first — convergence cannot be claimed over
+unverified scope:
 
-**Not converged:** route by `gap.type`. **The backlog is NEVER an option here, in any mode** — while iterations remain, every gap is worked by a rewind (below); deferring an in-limit gap to `BACKLOG.md` would let the loop claim convergence work it never did. The backlog is exclusively the limit-exhaustion exit (Step 0's loud-ship path). In every case, write the gap so the re-entered phase can "fix the weakest point first":
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/converged-floor.sh" \
+  "docs/loop-spec/features/${slug}/SPEC.md" \
+  "docs/loop-spec/features/${slug}/VERIFICATION.md"
+```
+
+(Workspace mode: artifact paths are under `${workspace_root}/`.) Exit 1 VETOES the
+verdict: print the `FLOOR` lines verbatim and treat the round as **not converged**
+with an `execute`-type gap — `fix_first` = the first FLOOR line (a missing `GE-NNN`
+grounding row means VERIFY must re-prove that criterion; a FAIL table row means the
+criterion is simply not met). The judge cannot out-vote the verification record.
+
+On exit 0: set `currentPhase = "deliver"`. Clear `iterate.feedback = null`. Go to Phase exit; DELIVER now binds the final verified commit to the PR.
+
+**Not converged:** route by `gap.type`. **The backlog is NEVER an option here, in any mode** — while iterations remain, every gap is worked by a rewind (below); deferring an in-limit gap to `BACKLOG.md` would let the loop claim convergence work it never did. Neither is prose: a gap "noted as a follow-up" instead of routed is self-authored deferral, the one thing a successful conclusion can never contain (`skills/shared/no-deferral.md`). The backlog is exclusively the limit-exhaustion exit (Step 0's loud-ship path). In every case, write the gap so the re-entered phase can "fix the weakest point first":
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedback "<gap json>"

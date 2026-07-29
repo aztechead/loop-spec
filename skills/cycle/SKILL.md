@@ -607,6 +607,9 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    fi
    bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" phase_start --phase "${currentPhase}" || true
    ```
+   Print the greppable boundary line before invoking (and its `done` twin with elapsed
+   time + headline verdict after the skill returns) — `skills/shared/report-style.md`:
+   `[{CURRENTPHASE}] start` / `[{CURRENTPHASE}] done ({elapsed}) — {verdict}`.
    ```
    Skill(loop-spec:{currentPhase})
    ```
@@ -735,9 +738,26 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
   --status completed ${_pr_url:+--pr-url "$_pr_url"} || true
 ```
 
-The committed run digest was finalized immediately before DELIVER and is part of the
-checked SHA. Do not rewrite or recommit it here: DELIVER's successful target SHA is now
-immutable.
+The run digest was finalized immediately before DELIVER (machine-local by default;
+part of the checked SHA only when `LOOP_SPEC_COMMIT_TELEMETRY=1` or the repo already
+tracks its digest corpus). Do not rewrite or recommit it here: DELIVER's successful
+target SHA is now immutable.
+
+The summary follows `skills/shared/report-style.md`: outcome first, state restated,
+wins marked, no preamble/closers, scores in percentages.
+
+**The completion report contains no self-authored deferrals** — no "deferred items",
+"follow-ups", "future work", or "next steps" the model chose on its own; everything
+in the spec shipped or the run is not complete (`skills/shared/no-deferral.md`).
+Draft the summary, then probe it before printing:
+
+```bash
+printf '%s' "$summary" | bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text -
+```
+
+A flag means dropped scope, not bad wording: resume the cycle and ship the flagged
+item (gate-marked `iterate-budget-spent:` / `iterate-terminal:` / `verify-deferred`
+lines are the only exemptions and pass the probe as written).
 
 Print warnings first, then a durable per-target delivery summary from
 `delivery.json.targets[]` (repo/name, PR URL, exact target SHA, checks status, and the

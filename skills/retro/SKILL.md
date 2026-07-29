@@ -76,13 +76,14 @@ the workspace, and `.loop-spec/` is gitignored — a per-run container would giv
 retro a corpus of one, forever below threshold. Three mechanisms make retro
 work anyway; all are automatic:
 
-1. **Committed run digests.** The cycle's On-completion runs
+1. **Run digests.** The cycle's On-completion runs
    `lib/run-digest.sh append`, writing a compact per-run digest to
-   `docs/loop-spec/telemetry/runs/{slug}.json` (committed + pushed on the
-   feature branch, one file per slug so parallel agents never conflict in git).
-   Retro mines local telemetry MERGED with these digests (local wins on slug
-   collision; `LOOP_SPEC_RETRO_DIGEST_DIR` overrides the location) — a fresh
-   clone sees the full corpus.
+   `docs/loop-spec/telemetry/runs/{slug}.json` (one file per slug so parallel
+   agents never conflict). Machine-local by default; ephemeral workspaces set
+   `LOOP_SPEC_COMMIT_TELEMETRY=1` so the digest is committed + pushed on the
+   feature branch and a fresh clone sees the full corpus. Retro mines local
+   telemetry MERGED with any committed digests (local wins on slug collision;
+   `LOOP_SPEC_RETRO_DIGEST_DIR` overrides the location).
 2. **Durable rules.** `retro apply` (and the cycle's first-run gitignore setup)
    adds the `!/.loop-spec/RULES.md` exception so applied rules survive via git
    instead of dying with the pod. Commit RULES.md after applying.

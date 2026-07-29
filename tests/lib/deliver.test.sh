@@ -142,8 +142,10 @@ check "single: deterministic next phase" "completed" "$(jq -r '.nextPhase' "$FDI
 check "single: committed phase remains resumable" "deliver" "$(jq -r '.currentPhase' "$FDIR/feature.json")"
 check "single: URL persisted locally" "https://github.com/test/repo/pull/7" "$(jq -r '.prUrl' "$FDIR/delivery.json")"
 FINALIZED_SHA="$(git -C "$SINGLE" rev-parse HEAD)"
-check "single: finalizer added candidate commit" "0" "$([[ "$PRE_FINALIZE_SHA" != "$FINALIZED_SHA" ]] && echo 0 || echo 1)"
-check "single: candidate digest committed" "1" \
+check "single: no telemetry commit by default" "$PRE_FINALIZE_SHA" "$FINALIZED_SHA"
+check "single: candidate digest written locally" "1" \
+  "$([[ -f "$SINGLE/docs/loop-spec/telemetry/runs/demo.json" ]] && echo 1 || echo 0)"
+check "single: candidate digest NOT tracked" "0" \
   "$(git -C "$SINGLE" ls-files --error-unmatch docs/loop-spec/telemetry/runs/demo.json >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single: exact finalized HEAD delegated" "$FINALIZED_SHA" "$(jq -r '.targets[0].targetSha' "$FDIR/delivery.json")"
 check "single: checkout remains clean" "0" "$(git -C "$SINGLE" status --porcelain | wc -l | tr -d ' ')"
@@ -236,11 +238,29 @@ CAND_FINAL_SHA="$(git -C "$CAND" rev-parse HEAD)"
 check "candidate policy: ineligible target finalizes" "0" "$ec"
 check "candidate policy: ineligible target creates candidate commit" "0" \
   "$([[ "$CAND_SHA" != "$CAND_FINAL_SHA" ]] && echo 0 || echo 1)"
-check "candidate policy: commits prior loop-spec ignore dirt and named digest" \
-  $'.gitignore\ndocs/loop-spec/telemetry/runs/candidate.json' \
+check "candidate policy: commits prior loop-spec ignore dirt, digest stays local" \
+  ".gitignore" \
   "$(git -C "$CAND" diff-tree --no-commit-id --name-only -r HEAD | sort)"
 ineligible_bound="$(bash "$FINALIZER" bound-sha "$CDIR/delivery.json" candidate 2>/dev/null || true)"
 check "candidate policy: shared binding rejects explicit false" "" "$ineligible_bound"
+
+# Opt-in: LOOP_SPEC_COMMIT_TELEMETRY=1 commits the digest (ephemeral workspaces).
+jq '(.targets[0].bindingEligible) = false' "$CDIR/delivery.json" > "$CDIR/delivery.json.tmp"
+mv "$CDIR/delivery.json.tmp" "$CDIR/delivery.json"
+rm -f "$CAND/docs/loop-spec/telemetry/runs/candidate.json"
+ec=0; LOOP_SPEC_COMMIT_TELEMETRY=1 bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: telemetry opt-in exits 0" "0" "$ec"
+check "candidate policy: telemetry opt-in commits the digest" "1" \
+  "$(git -C "$CAND" ls-files --error-unmatch docs/loop-spec/telemetry/runs/candidate.json >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Legacy: a repo already tracking its digest keeps it committed without the env
+# (a tracked corpus must never become permanent dirty state).
+ec=0; bash "$FINALIZER" run "$CDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: legacy tracked digest exits 0" "0" "$ec"
+check "candidate policy: legacy tracked digest stays committed clean" "0" \
+  "$(git -C "$CAND" status --porcelain --untracked-files=all | wc -l | tr -d ' ')"
+check "candidate policy: legacy digest still tracked" "1" \
+  "$(git -C "$CAND" ls-files --error-unmatch docs/loop-spec/telemetry/runs/candidate.json >/dev/null 2>&1 && echo 1 || echo 0)"
 
 printf 'human-owned\n' >> "$CAND/.gitignore"
 git -C "$CAND" add .gitignore
@@ -427,8 +447,7 @@ PRE_BIND_SHA="$(git -C "$BIND" rev-parse HEAD)"
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_MALFORMED=1 \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$BINDDIR")" || ec=$?
 SHA1="$(git -C "$BIND" rev-parse HEAD)"
-check "bind: candidate was finalized before binding" "0" \
-  "$([[ "$PRE_BIND_SHA" != "$SHA1" ]] && echo 0 || echo 1)"
+check "bind: no telemetry commit before binding (digest local)" "$PRE_BIND_SHA" "$SHA1"
 check "bind: hard failure routes to deliver" "deliver" "$(jq -r '.nextPhase' "$BINDDIR/delivery.json")"
 check "bind: recorded the tried SHA" "$SHA1" "$(jq -r '.targets[0].targetSha' "$BINDDIR/delivery.json")"
 jq '(.targets[0]) |= del(.bindingEligible)' "$BINDDIR/delivery.json" > "$BINDDIR/delivery.json.tmp"
@@ -583,6 +602,52 @@ check "stage promotion fail: prior sibling rolled back" "rolled_back" \
 check "stage promotion fail: no delivered siblings" "0" \
   "$(jq '[.targets[]|select(.outcome=="delivered")]|length' "$SFDIR/delivery.json")"
 check "stage promotion fail: restore call made" "1" "$(grep -c -- '--restore-draft' "$LOG" || true)"
+
+# No self-authored deferral ships: a free-form deferral warning (no bounded-gate
+# prefix) must block delivery with exit 3 BEFORE any controller/GitHub call.
+DEFER="$WORK/defer"
+init_repo "$DEFER"
+DBASE="$(git -C "$DEFER" rev-parse HEAD)"
+git -C "$DEFER" checkout -q -b feat/defer
+printf 'feature\n' > "$DEFER/b"
+git -C "$DEFER" add b
+git -C "$DEFER" commit -q -m feature
+DFDIR="$DEFER/.loop-spec/features/defer"
+DDOCS="$DEFER/docs/loop-spec/features/defer"
+mkdir -p "$DFDIR" "$DDOCS"
+cat > "$DEFER/.gitignore" <<'EOF'
+/.loop-spec/features/*/*
+!/.loop-spec/features/*/feature.json
+EOF
+printf '# Spec\nThe goal.\n' > "$DDOCS/SPEC.md"
+printf '# Verification\nAll pass.\n' > "$DDOCS/VERIFICATION.md"
+printf '# Iteration\nConverged.\n' > "$DDOCS/ITERATION.md"
+jq -n --arg base "$DBASE" '{schemaVersion:7,slug:"defer",feature_title:"Gated warning feature",
+  currentPhase:"deliver",branch:"feat/defer",baseSha:$base,baseBranch:"main",workspace:null,
+  prUrl:null,checkpointPrUrl:null,warnings:["chose to defer the cleanup to a later PR"],
+  artifacts:{spec:"docs/loop-spec/features/defer/SPEC.md",verification:"docs/loop-spec/features/defer/VERIFICATION.md",iteration:"docs/loop-spec/features/defer/ITERATION.md"},
+  delivery:{status:"pending",attemptedAt:null,finishedAt:null,targets:[]}}' > "$DFDIR/feature.json"
+git -C "$DEFER" add .gitignore ".loop-spec/features/defer/feature.json" \
+  "docs/loop-spec/features/defer"
+git -C "$DEFER" commit -q -m "final candidate"
+: > "$LOG"; ec=0
+err="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DFDIR" 2>&1 >/dev/null)" || ec=$?
+check "deferral gate: exit 3" "3" "$ec"
+check "deferral gate: no controller calls" "0" "$(wc -l < "$LOG" | tr -d ' ')"
+check "deferral gate: stderr names the violation" "1" "$(grep -q 'self-authored deferral' <<<"$err" && echo 1 || echo 0)"
+
+# Gate-prefixed warnings (rule-driven deferral) still deliver.
+jq '.warnings=["iterate-budget-spent: gap X recorded to backlog after limit"] | .delivery={status:"pending",attemptedAt:null,finishedAt:null,targets:[]}' \
+  "$DFDIR/feature.json" > "$DFDIR/feature.json.tmp" && mv "$DFDIR/feature.json.tmp" "$DFDIR/feature.json"
+git -C "$DEFER" add ".loop-spec/features/defer/feature.json"
+git -C "$DEFER" commit -q -m "gate-marked warning"
+rm -f "$DFDIR/delivery.json"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DFDIR")" || ec=$?
+check "deferral gate: gate-marked warning delivers" "0" "$ec"
+check "deferral gate: gate-marked warning ready" "ready-for-review" "$(jq -r '.status' "$DFDIR/delivery.json")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

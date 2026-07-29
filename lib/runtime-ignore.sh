@@ -40,6 +40,7 @@ patterns=(
   '/.loop-spec/results/'
   '/.loop-spec/worktrees/'
   '/.loop-spec/learnings.jsonl'
+  '/docs/loop-spec/telemetry/'
   '/.loop/'
   '/graphify-out/cost.json'
   '/graphify-out/cache/'

@@ -96,11 +96,53 @@ bash "$LIB" render "$WORK/bare.json" "$WORK" "$OUT"
 check "4: renders without artifacts" "0" "$?"
 check "4: goal still present" "1" "$(grep -c '^\*\*Goal:\*\* Bare' "$OUT")"
 
-# ── Case 5: bad invocation ───────────────────────────────────────────────────
+# ── Case 5: ambiguity_scores frontmatter → percentage table, no decimal leak ─
+cat > "$DOCS/SPEC.md" <<'EOF'
+---
+ambiguity_scores:
+  goal_clarity: 0.85
+  boundary_clarity: 0.80
+  constraint_clarity: 0.45
+  acceptance_clarity: 0.80
+  ambiguity: 0.18
+  rounds_completed: 3
+  gate_passed: true
+  unresolved_dimensions: []
+---
+
+# Spec: Demo feature
+
+The demo feature adds a demo capability.
+
+## Acceptance criteria
+
+- demo command exits 0
+EOF
+printf '# Verification\n\nAll pass.\n' > "$DOCS/VERIFICATION.md"
+bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
+check "5: renders with frontmatter" "0" "$?"
+check "5: no raw decimal scores leak" "0" "$(grep -c '0\.18\|goal_clarity' "$OUT")"
+check "5: no frontmatter delimiter leaks" "0" "$(grep -c '^---$' "$OUT")"
+check "5: spec quality section present" "1" "$(grep -c '^## Spec quality' "$OUT")"
+check "5: percentages rendered" "1" "$(grep -c '| \*\*18%\*\* |' "$OUT")"
+check "5: per-dimension gate marks" "1" "$(grep -c '| Goal clarity | 85% | >= 60% | ✅ |' "$OUT")"
+check "5: rounds note rendered" "1" "$(grep -c 'Gate passed after 3 interview round' "$OUT")"
+check "5: summary fallback skips frontmatter" "1" "$(grep -c 'adds a demo capability' "$OUT")"
+
+# Failing dimension shows ❌ and 'not passed'.
+sed -i '' -e 's/gate_passed: true/gate_passed: false/' -e 's/ambiguity: 0.18/ambiguity: 0.35/' "$DOCS/SPEC.md"
+bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
+check "5: failing ambiguity gets ❌" "1" "$(grep -c '| \*\*35%\*\* | <= 20% | ❌ |' "$OUT")"
+check "5: gate not passed note" "1" "$(grep -c 'not passed' "$OUT")"
+
+# Warnings render as a GFM alert.
+check "5: warnings as GFM alert" "1" "$(grep -c '> \[!WARNING\]' "$OUT")"
+
+# ── Case 6: bad invocation ───────────────────────────────────────────────────
 ec=0; bash "$LIB" render >/dev/null 2>&1 || ec=$?
-check "5: missing args exit 2" "2" "$ec"
+check "6: missing args exit 2" "2" "$ec"
 ec=0; bash "$LIB" bogus a b c >/dev/null 2>&1 || ec=$?
-check "5: unknown subcommand exit 2" "2" "$ec"
+check "6: unknown subcommand exit 2" "2" "$ec"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

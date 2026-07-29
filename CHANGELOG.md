@@ -2,6 +2,63 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.27.0] - 2026-07-29
+
+### Added
+
+- **No self-authored deferrals, enforced.** A successful conclusion can no longer
+  include deferred items, follow-ups, or "future work" the model chose on its own —
+  spec scope ships in full, in every harness. `lib/deferral-lint.sh` is the single
+  deterministic probe (completion text + `warnings[]` surfaces; only the bounded gate
+  markers `iterate-budget-spent:`, `iterate-terminal:`, `verify-deferred`, and debug's
+  `new-mechanism:` are exempt; inline code and fenced blocks never flag).
+  `lib/deliver.sh` lints the rendered PR body and feature warnings before any push —
+  exit 3 is a scope violation routed back to EXECUTE, never a rewording exercise
+  (`LOOP_SPEC_DEFERRAL_LINT=0` is the explicit operator override). A new Stop hook
+  (`hooks/team/deferral-guard.sh`, kill switch `LOOP_SPEC_DEFERRAL_GUARD=0`) blocks
+  any final message that combines a completion claim with unmarked deferral language.
+  The execution-discipline directive gains clause (8) "scope is closed" in all seven
+  dispatch paths (coverage-tested), and `skills/shared/no-deferral.md` is the shared
+  contract wired into cycle, deliver, iterate, micro, and debug.
+- `lib/placeholder-scan.sh`: VERIFY's Step 1 now scans only ADDED lines for stub
+  markers (TODO/FIXME/XXX/HACK, `NotImplementedError`, "not implemented" throws) —
+  a placeholder is deferred scope written into code. Replaces the inline whole-file
+  marker grep, so pre-existing markers on not-green repos never false-positive.
+- PLAN.md gains a `## Global constraints` section (binding rules verbatim) and
+  per-task `**Interfaces:**` blocks (consumed/produced contracts); subagent,
+  workspace, and loop-fleet dispatch briefs inline them so wave implementers see
+  the rules without shared context.
+- `skills/shared/report-style.md`: greppable `[PHASE] start` / `[PHASE] done
+  (elapsed) — verdict` boundary lines for unattended operators, plus action-first
+  report rules (outcome first, state restated, wins marked, no preamble/closers).
+- `lib/converged-floor.sh`: a deterministic floor under ITERATE's converged
+  verdict — `converged: true` is vetoed unless every SPEC Good Enough criterion
+  has a `- criterion: GE-NNN` grounding row in VERIFICATION.md and no
+  acceptance-table row is FAIL. The judge cannot out-vote the verification
+  record; a vetoed verdict becomes an `execute`-type gap.
+- Micro and debug PRs now run the same `deferral-lint` gate on their body file
+  before `gh pr create` that full-cycle DELIVER runs — no cycle type can open a
+  PR carrying self-authored deferred items.
+- `docs/determinism-audit.md`: the converted-probe ledger and every remaining
+  judgment-selected branch with a concrete probe candidate.
+
+### Changed
+
+- **Delivery PR bodies render spec scores as percentages.** SPEC frontmatter no
+  longer leaks into the PR as raw decimals; `lib/pr-body.sh` strips the YAML block
+  and renders a `## Spec quality` GFM table — score, gate, and pass/fail mark per
+  dimension plus the interview-rounds note. Warnings render as a GFM `[!WARNING]`
+  alert.
+- **Run telemetry is machine-local by default.** The per-run digest
+  (`docs/loop-spec/telemetry/runs/{slug}.json`) is still written — retro, status
+  metrics, trust, and watch read the local file — but it joins the delivery
+  candidate commit only under `LOOP_SPEC_COMMIT_TELEMETRY=1` (ephemeral
+  workspaces) or when the repo already tracks its corpus. A resuming session
+  needs feature state and artifacts, not telemetry.
+- `lib/security-signal.sh` is two-tier: ambiguous terms (token/migration/deletion)
+  need a second distinct signal term to escalate the heavy critique gate; strong
+  security terms fire alone, and corroborating terms join the evidence line.
+
 ## [2.26.0] - 2026-07-28
 
 ### Added

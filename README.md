@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.26.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.27.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -164,7 +164,7 @@ Notes on the ones with more surface:
 
 **revise.** `/loop-spec:revise <pr#>` reads inline comments, reviews, and discussion (resolved threads filtered out), classifies each actionable item, fixes implementation-class items on the PR branch in a dedicated worktree (your checkout is untouched and nothing is force-pushed), backlogs scope changes, and posts one comment mapping every item to a commit, an answer, or a backlog entry.
 
-**retro.** `report` is read-only and writes `docs/loop-spec/RETRO.md`; `apply` appends rule candidates to `.loop-spec/RULES.md`. At cycle completion the retro gates itself: interactive runs get a candidate count to act on, autonomous runs auto-apply. Auto-apply is restricted to a closed set of rule templates with deterministic triggers that only tighten discipline; the model cannot author or weaken a rule on this path. The corpus includes committed per-run digests (`docs/loop-spec/telemetry/runs/`), so retro works from a fresh clone after ephemeral CI workspaces are gone, plus the micro-cycle ledger and the sentinel decision history. The parameter analog is `lib/tuning.sh`, which writes bounded, template-only adjustments to `.loop-spec/tuning.json` (see Configuration).
+**retro.** `report` is read-only and writes `docs/loop-spec/RETRO.md`; `apply` appends rule candidates to `.loop-spec/RULES.md`. At cycle completion the retro gates itself: interactive runs get a candidate count to act on, autonomous runs auto-apply. Auto-apply is restricted to a closed set of rule templates with deterministic triggers that only tighten discipline; the model cannot author or weaken a rule on this path. The corpus includes per-run digests (`docs/loop-spec/telemetry/runs/`; committed under `LOOP_SPEC_COMMIT_TELEMETRY=1` so retro works from a fresh clone after ephemeral CI workspaces are gone), plus the micro-cycle ledger and the sentinel decision history. The parameter analog is `lib/tuning.sh`, which writes bounded, template-only adjustments to `.loop-spec/tuning.json` (see Configuration).
 
 **status.** `status` lists features (phase, iterations, last event, result, PR). `stats` aggregates across runs: convergence rate, gate rounds, iterate-gap histogram, dispatch counts, loop-fleet cost. `metrics` prints the schema-versioned metrics contract computed from committed run digests; signals whose producer has not run yet are `null`, and consumers treat `null` as a denial. `trust` prints the repo's autonomy level (L0–L3) with the evidence for it and what the next level requires.
 
@@ -335,7 +335,7 @@ and a fixed `advanced|rewind|blocked|completed` verdict.
 
 Process exit codes live at the loop-runner layer (`skills/loop-runner/` scripts exit 0 only on verified completion). The cycle skill runs inside a Claude session and cannot set the process exit code; read `result.json` instead.
 
-A compact digest of every completed run is also committed to `docs/loop-spec/telemetry/runs/{slug}.json` (one file per slug, conflict-free for parallel agents). This is the durable corpus behind `/loop-spec:retro`, the metrics contract, and the trust level; it survives workspaces that are destroyed after each run.
+A compact digest of every completed run is also written to `docs/loop-spec/telemetry/runs/{slug}.json` (one file per slug, conflict-free for parallel agents). This is the corpus behind `/loop-spec:retro`, the metrics contract, and the trust level. It is machine-local by default — a resuming session needs feature state and artifacts, not telemetry — and is only committed with the feature branch when `LOOP_SPEC_COMMIT_TELEMETRY=1` (set it on ephemeral workspaces that are destroyed after each run) or when the repo already tracks its digest corpus.
 
 ### Issue-to-PR automation
 
@@ -449,7 +449,8 @@ Learning and telemetry:
 | Variable | Default | Effect |
 |---|---|---|
 | `LOOP_SPEC_RETRO_AUTO_APPLY` | mode-dependent | Retro at cycle completion. Unset: auto-apply rule candidates on autonomous runs only. `1`: always apply. `0`: report-only everywhere. |
-| `LOOP_SPEC_RETRO_DIGEST_DIR` | `docs/loop-spec/telemetry/runs` | Override the committed digest corpus location. |
+| `LOOP_SPEC_RETRO_DIGEST_DIR` | `docs/loop-spec/telemetry/runs` | Override the digest corpus location. |
+| `LOOP_SPEC_COMMIT_TELEMETRY` | `0` | Commit the per-run digest with the feature branch (for ephemeral workspaces). Default keeps telemetry machine-local; repos already tracking digests keep committing them. |
 | `LOOP_SPEC_TUNING` | on | `0` disables parameter tuning entirely (kill switch). |
 | `LOOP_SPEC_TUNING_AUTO_APPLY` | mode-dependent | Unset: apply adjustments on autonomous runs, count-only on interactive. `0`: count-only everywhere. |
 | `LOOP_SPEC_RULES` | on | `0` disables RULES.md injection at session start. |
@@ -466,6 +467,8 @@ Session modes and hook guards (each is a kill switch; all hooks no-op outside pr
 | `LOOP_SPEC_SIMPLICITY` | on | Simplicity mode: prefer deletion, reuse, stdlib, and the minimum diff before custom code. |
 | `LOOP_SPEC_MICRO` | on | Micro-mode SessionStart directive. |
 | `LOOP_SPEC_MICRO_GUARD` | on | Stop guard: block ending a session that edited code without a verification run. Stands down during cycle features and for docs/config-only edits. |
+| `LOOP_SPEC_DEFERRAL_GUARD` | on | Stop guard: block a completion claim that carries self-authored deferred/follow-up items (`skills/shared/no-deferral.md`). Gate-marked lines (`iterate-budget-spent:` / `iterate-terminal:` / `verify-deferred`) pass. |
+| `LOOP_SPEC_DEFERRAL_LINT` | on | DELIVER's deferral gate on the PR body and warnings; `0` is the explicit operator override for a feature legitimately about deferral. |
 | `LOOP_SPEC_DISCIPLINE` | off (opt-in) | Discipline mode: five behavioral gates (brainstorm-before-coding, verification-before-claims, investigation-before-fixes, decision gate, intent gate). |
 | `LOOP_SPEC_TASK_GUARD` | on | Task metadata / lint / typecheck completion gates. |
 | `LOOP_SPEC_PATH_GUARD` | on | Per-role agent write-path restrictions (`LOOP_SPEC_PATH_GUARD_FORCE=1` applies them to open dispatches too). |
@@ -571,7 +574,7 @@ docs/loop-spec/                          # committed
 │   ├── EVIDENCE.md                       # probe ledger (EVID-NNN ids)
 │   └── ITERATION.md                      # per-iteration convergence verdicts
 ├── RETRO.md                              # dated retrospective reports
-├── telemetry/runs/{slug}.json            # per-run digests: the durable telemetry corpus
+├── telemetry/runs/{slug}.json            # per-run digests (local by default; committed only under LOOP_SPEC_COMMIT_TELEMETRY=1)
 ├── assessment/ASSESSMENT.md              # /loop-spec:assess output
 └── codebase/
     ├── TECH.md ARCH.md QUALITY.md CONCERNS.md DOMAIN.md

@@ -117,6 +117,32 @@ else
   fail "I: iteration override applied (got '$NUMS')"
 fi
 
+# J: PLAN "## Global constraints" lines travel verbatim into every worker prompt
+PLAN_GC="${TMPDIR:-/tmp}/plan-to-loop-gc.$$.md"
+printf '# t\n\n## Global constraints\n\n- never log credentials\n- python3 stdlib only\n\n## Tasks\n' > "$PLAN_GC"
+GC=$(printf '%s' "$TASKS_OK" | bash "$SCRIPT" --slug demo --spec S.md --plan "$PLAN_GC" \
+  --max-iterations 3 2>/dev/null | python3 -c "
+import json,sys; p=json.load(sys.stdin)
+t=p['tasks'][0]
+print(('never log credentials' in t['prompt']) and ('python3 stdlib only' in t['prompt']))")
+rm -f "$PLAN_GC"
+if [[ "$GC" == "True" ]]; then
+  pass "J: global constraints inlined verbatim"
+else
+  fail "J: global constraints inlined verbatim (got '$GC')"
+fi
+
+# J2: absent section (or '- none') adds no constraints block
+GC2=$(printf '%s' "$TASKS_OK" | bash "$SCRIPT" --slug demo --spec S.md --plan P.md \
+  --max-iterations 3 2>/dev/null | python3 -c "
+import json,sys; p=json.load(sys.stdin)
+print('Global constraints' in p['tasks'][0]['prompt'])")
+if [[ "$GC2" == "False" ]]; then
+  pass "J2: no constraints block when section absent"
+else
+  fail "J2: no constraints block when section absent (got '$GC2')"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0
