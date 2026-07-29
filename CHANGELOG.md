@@ -2,6 +2,26 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.27.1] - 2026-07-29
+
+### Fixed
+
+- **Lint-vs-writer format collisions no longer burn repair rounds.** The format
+  gates now normalize natural markdown before validating instead of rejecting it:
+  `lib/grounding-lint.sh` joins indented wrapped continuation lines onto their
+  bullet and accepts a parenthetical qualifier (`- ASSUMPTION (SPEC): ...`,
+  `- EVID-001 (PLAN): ...` — the qualifier form `skills/discuss/SKILL.md` itself
+  teaches for transcripts); `lib/verification-grounding-lint.sh` joins wrapped
+  `- criterion: ...` rows; `lib/artifact-lint.sh` accepts colon-outside-bold task
+  markers (`**Files**:`). Grammar is not weakened — `| verify:` is still required
+  and syntax-checked, and FLAGs keep the bullet's first physical line number.
+- **JSON artifact defects are named precisely.** Fence-wrapped JSON and a UTF-8
+  BOM now get an exact one-shot repair instruction instead of a raw
+  `JSONDecodeError`.
+- The SPEC/PLAN template grounding comments now show the exact bullet grammar at
+  the point of writing; `skills/shared/grounding-protocol.md` documents the
+  tolerated variants.
+
 ## [2.27.0] - 2026-07-29
 
 ### Added

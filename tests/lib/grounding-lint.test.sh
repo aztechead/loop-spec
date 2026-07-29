@@ -46,10 +46,13 @@ cat > "$WORK/template-block.md" <<'EOF'
 <!-- Probe-before-assert (skills/shared/grounding-protocol.md): every load-bearing
      fact about an external system (dataset, API, service, infra) must cite an
      EVIDENCE.md entry (EVID-NNN) or be an explicit ASSUMPTION with a verify probe.
+     Bullet grammar, one logical bullet per line (indent any wrapped continuation):
+       - EVID-NNN: <what the probe confirmed>
+       - ASSUMPTION: <claim> | verify: <read-only command>
      Keep the single `- none` line if nothing external is load-bearing. -->
 - none
 EOF
-check "template block (4-line comment + - none) exits 0" \
+check "template block (comment + - none) exits 0" \
   "$([[ "$(lint_exit "$WORK/template-block.md")" == "0" ]] && echo 1 || echo 0)"
 
 # ─── Fixture 3: ASSUMPTION with | inside the verify command ─────────────────
@@ -234,6 +237,79 @@ check "FLAG line carries line number 7" "$(echo "$out12" | grep -q 'FLAG.*:7:' &
 # ─── Fixture 13: missing artifact -> stderr + exit 1 ────────────────────────
 ec13=$(lint_exit "$WORK/does-not-exist.md")
 check "missing artifact exits 1" "$([[ "$ec13" == "1" ]] && echo 1 || echo 0)"
+
+# ─── Fixture 15: parenthetical qualifier after ASSUMPTION / EVID ────────────
+# Writers carry 'ASSUMPTION ({dimension}):' over from the DISCUSS transcript
+# convention; the lint must accept the qualifier, not force a repair round.
+ledger15="$WORK/EVIDENCE-15.md"
+cat > "$ledger15" <<'EOF'
+# Evidence ledger
+- EVID-001 | 2026-07-29T12:00:00Z | claim: test | cmd: echo test | out: test
+EOF
+cat > "$WORK/qualifier.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- ASSUMPTION (SPEC): the table has a date column | verify: echo ok
+- EVID-001 (PLAN): qualifier on an evidenced fact
+EOF
+check "ASSUMPTION (SPEC): qualifier exits 0" \
+  "$([[ "$(lint_exit "$WORK/qualifier.md" "$ledger15")" == "0" ]] && echo 1 || echo 0)"
+
+# Qualifier does not weaken the grammar: verify still required, syntax still checked.
+cat > "$WORK/qualifier-bad.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- ASSUMPTION (SPEC): claim with no verify command at all
+EOF
+check "qualifier without | verify: still exits 1" \
+  "$([[ "$(lint_exit "$WORK/qualifier-bad.md")" == "1" ]] && echo 1 || echo 0)"
+
+# ─── Fixture 16: wrapped bullet with indented continuation lines ────────────
+# Standard markdown reflow: the logical bullet spans physical lines; the lint
+# joins indented continuations before grammar checks.
+cat > "$WORK/wrapped.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- ASSUMPTION: the upstream dataset keeps a full ninety days of history
+  available for backfill queries
+  | verify: echo ok
+EOF
+check "wrapped ASSUMPTION continuation exits 0" \
+  "$([[ "$(lint_exit "$WORK/wrapped.md")" == "0" ]] && echo 1 || echo 0)"
+
+# A wrapped bullet that is STILL malformed after joining must flag, and the
+# FLAG must carry the bullet's first physical line number (line 5).
+cat > "$WORK/wrapped-bad.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- ASSUMPTION: a wrapped claim that never
+  supplies a verify command
+EOF
+check "wrapped but still malformed exits 1" \
+  "$([[ "$(lint_exit "$WORK/wrapped-bad.md")" == "1" ]] && echo 1 || echo 0)"
+out16=$(lint_stdout "$WORK/wrapped-bad.md")
+check "wrapped FLAG carries the bullet's first line number" \
+  "$(echo "$out16" | grep -q 'FLAG.*:5:' && echo 1 || echo 0)"
+
+# Column-0 prose after a bullet is NOT a continuation — still ignored as prose.
+cat > "$WORK/prose-after.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- none
+This unindented prose line must not merge into the bullet.
+EOF
+check "column-0 prose after bullet does not merge (exits 0)" \
+  "$([[ "$(lint_exit "$WORK/prose-after.md")" == "0" ]] && echo 1 || echo 0)"
 
 # ─── Fixture 14: list also prints 'grounding-lint: ok' on stdout on success ─
 stdout14=$(bash "$LIB" "$WORK/plain-none.md" 2>/dev/null)

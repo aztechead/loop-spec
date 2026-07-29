@@ -74,6 +74,18 @@ cat > "$WORK/workspace.md" <<'EOF'
 - criterion: SC-1 | implementation: repo-a/src/a.py:1 - implementation repository | integration: repo-b/tests/a.test.py:1 - integration repository
 EOF
 
+cat > "$WORK/wrapped.md" <<'EOF'
+## Repository grounding
+- criterion: SC-1 | implementation: src/app.py:2 - implements the behavior
+  | integration: tests/app.test.py:1 - exercises the behavior
+EOF
+
+cat > "$WORK/wrapped-bad.md" <<'EOF'
+## Repository grounding
+- criterion: SC-1 | implementation: src/app.py:2 - implements the behavior
+  but never names an integration reference
+EOF
+
 printf '# Verification\n' > "$WORK/no-section.md"
 
 echo "=== verification-grounding-lint.sh tests ==="
@@ -88,6 +100,8 @@ check "out-of-range line fails" 1 "$WORK/bad-line.md" --repo "$WORK" --criterion
 check "path traversal fails" 1 "$WORK/traversal.md" --repo "$WORK" --criterion SC-1
 check "duplicate criterion fails" 1 "$WORK/duplicate.md" --repo "$WORK" --criterion SC-1
 check "workspace-relative evidence passes" 0 "$WORK/workspace.md" --repo "$WORK/workspace" --criterion SC-1
+check "wrapped row joins and passes" 0 "$WORK/wrapped.md" --repo "$WORK" --criterion SC-1
+check "wrapped row still malformed fails" 1 "$WORK/wrapped-bad.md" --repo "$WORK" --criterion SC-1
 check "missing artifact fails" 1 "$WORK/absent.md" --repo "$WORK" --criterion SC-1
 
 out="$(bash "$SCRIPT" "$WORK/valid.md" --repo "$WORK" --criterion SC-1)"

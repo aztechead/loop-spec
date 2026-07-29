@@ -247,7 +247,10 @@ def lint_plan(display, data):
         block_text = [line.strip() for _, line in block]
 
         def has_marker(marker):
-            return any(t.startswith(marker) for t in block_text)
+            # Accept the colon-outside-the-bold variant too ('**Files**:'),
+            # a common model rendering of the same marker.
+            alt = marker[:-3] + '**:'
+            return any(t.startswith(marker) or t.startswith(alt) for t in block_text)
 
         for marker in ('**Files:**', '**Verify:**', '**Acceptance criteria:**'):
             if not has_marker(marker):
@@ -256,7 +259,8 @@ def lint_plan(display, data):
             in_ac = False
             ac_items = 0
             for t in block_text:
-                if t.startswith('**Acceptance criteria:**'):
+                if (t.startswith('**Acceptance criteria:**')
+                        or t.startswith('**Acceptance criteria**:')):
                     in_ac = True
                     continue
                 if in_ac:
@@ -300,10 +304,35 @@ def lint_verification(display, data):
                  'judge and regression-scan read this table')
 
 
-def lint_tasks(display, data):
+def decode_json_source(display, data):
+    """Decode a JSON artifact, flagging the two common model formatting failures
+    (markdown code-fence wrap, UTF-8 BOM) with an exact repair instruction instead
+    of surfacing a raw parse error the producer must reverse-engineer."""
     try:
-        tasks = json.loads(data.decode('utf-8'))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        text = data.decode('utf-8')
+    except UnicodeDecodeError as exc:
+        flag(display, 0, 'not valid UTF-8: %s' % exc)
+        return None
+    if text.startswith('\ufeff'):
+        flag(display, 1, 'file starts with a UTF-8 BOM — jq consumers reject it; '
+             'write plain UTF-8 with no BOM')
+        return None
+    stripped = text.lstrip()
+    if stripped.startswith('```'):
+        line_no = text[:len(text) - len(stripped)].count('\n') + 1
+        flag(display, line_no, 'JSON artifact is wrapped in a markdown code fence — '
+             'write the raw JSON directly, no ``` fences')
+        return None
+    return text
+
+
+def lint_tasks(display, data):
+    text = decode_json_source(display, data)
+    if text is None:
+        return
+    try:
+        tasks = json.loads(text)
+    except json.JSONDecodeError as exc:
         flag(display, 0, 'tasks artifact is not valid JSON: %s' % exc)
         return
     if not isinstance(tasks, list) or not tasks:
@@ -358,9 +387,12 @@ def lint_tasks(display, data):
 
 
 def lint_json(display, data):
+    text = decode_json_source(display, data)
+    if text is None:
+        return
     try:
-        json.loads(data.decode('utf-8'))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        json.loads(text)
+    except json.JSONDecodeError as exc:
         flag(display, 0, 'not valid JSON: %s' % exc)
 
 

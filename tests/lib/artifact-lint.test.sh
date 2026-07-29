@@ -208,6 +208,12 @@ Two tasks. Note: prose may mention `.loop-spec/features/{slug}/` paths legitimat
 EOF
 check "well-formed plan passes" 0 plan "$WORK/plan-good.md"
 
+# colon-outside-the-bold marker variant ('**Files**:') must not force a repair round
+sed -e 's/\*\*Files:\*\*/**Files**:/' -e 's/\*\*Verify:\*\* /**Verify**: /' \
+    -e 's/\*\*Acceptance criteria:\*\*/**Acceptance criteria**:/' \
+    "$WORK/plan-good.md" > "$WORK/plan-colon-outside.md"
+check "colon-outside-bold markers pass" 0 plan "$WORK/plan-colon-outside.md"
+
 grep -v '^\*\*Verify:\*\*' "$WORK/plan-good.md" > "$WORK/plan-noverify.md"
 check "task block without Verify flags" 1 plan "$WORK/plan-noverify.md"
 check_output "missing Verify names the task" \
@@ -323,6 +329,15 @@ check "whitespace-only verifyCommand flags" 1 tasks "$WORK/tasks-blankvc.json"
 
 printf 'not json' > "$WORK/tasks-bad.json"
 check "invalid tasks JSON flags (not crash)" 1 tasks "$WORK/tasks-bad.json"
+
+# fence-wrapped JSON (a real model failure mode) gets a precise, one-shot-fixable flag
+{ echo '```json'; cat "$WORK/tasks-good.json"; echo '```'; } > "$WORK/tasks-fenced.json"
+check "fence-wrapped tasks JSON flags" 1 tasks "$WORK/tasks-fenced.json"
+check_output "fence wrap on JSON is named" "markdown code fence" tasks "$WORK/tasks-fenced.json"
+
+printf '\xef\xbb\xbf{"a": 1}' > "$WORK/tasks-bom.json"
+check "BOM-prefixed JSON flags" 1 json "$WORK/tasks-bom.json"
+check_output "BOM is named" "UTF-8 BOM" json "$WORK/tasks-bom.json"
 
 # --- json ---
 printf '{"a": 1}' > "$WORK/ok.json"

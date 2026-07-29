@@ -98,15 +98,39 @@ for ((i=grounding_start+1; i<grounding_end; i++)); do
   vis_texts+=("$line")
 done
 
+# ── Step 3b: reflow — join indented continuation lines onto their bullet ────
+# Model-authored markdown legitimately wraps a long bullet across lines with
+# indented continuations. Grammar checks run on the JOINED logical bullet;
+# FLAG line numbers point at the bullet's first physical line.
+mrg_lnos=()
+mrg_texts=()
+for ((j=0; j<${#vis_lnos[@]}; j++)); do
+  line="${vis_texts[$j]}"
+  n="${#mrg_texts[@]}"
+  if [[ $n -gt 0 && "${mrg_texts[$((n-1))]}" =~ ^-[[:space:]] \
+        && "$line" =~ ^[[:space:]]+[^[:space:]] ]]; then
+    trimmed="${line#"${line%%[![:space:]]*}"}"
+    mrg_texts[$((n-1))]="${mrg_texts[$((n-1))]} $trimmed"
+    continue
+  fi
+  mrg_lnos+=("${vis_lnos[$j]}")
+  mrg_texts+=("$line")
+done
+
 # ── Step 4: validate visible lines ──────────────────────────────────────────
 has_none=0
 none_lineno=0
 has_evidence=0  # set when any EVID-NNN or ASSUMPTION bullet is found
 
-nvis="${#vis_lnos[@]}"
+# Optional parenthetical qualifier after the keyword — writers carry tags like
+# 'ASSUMPTION (SPEC):' over from the DISCUSS transcript convention; accept them.
+evid_re='^- EVID-[0-9][0-9][0-9]( ?\([^)]*\))?: .+'
+assumption_re='^- ASSUMPTION( ?\([^)]*\))?: (.+)$'
+
+nvis="${#mrg_lnos[@]}"
 for ((j=0; j<nvis; j++)); do
-  lineno="${vis_lnos[$j]}"
-  line="${vis_texts[$j]}"
+  lineno="${mrg_lnos[$j]}"
+  line="${mrg_texts[$j]}"
 
   # 4a. Whole-word UNVERIFIED anywhere in visible section lines.
   if echo "$line" | grep -qw 'UNVERIFIED'; then
@@ -126,17 +150,18 @@ for ((j=0; j<nvis; j++)); do
     continue
   fi
 
-  # Pattern 2: - EVID-NNN: non-empty text
-  if [[ "$line" =~ ^-\ EVID-[0-9][0-9][0-9]:\ .+ ]]; then
+  # Pattern 2: - EVID-NNN: non-empty text (optional qualifier: - EVID-NNN (X): ...)
+  if [[ "$line" =~ $evid_re ]]; then
     has_evidence=1
     continue
   fi
 
   # Pattern 3: - ASSUMPTION: <text> | verify: <command>
+  # (optional qualifier: - ASSUMPTION (X): ...)
   # Split on the LAST occurrence of " | verify: " so a literal | in the
   # verify command or claim is safe.
-  if [[ "$line" == "- ASSUMPTION: "* ]]; then
-    rest="${line#- ASSUMPTION: }"
+  if [[ "$line" =~ $assumption_re ]]; then
+    rest="${BASH_REMATCH[2]}"
     claim_part="${rest% | verify: *}"
     if [[ "$claim_part" == "$rest" ]]; then
       # No " | verify: " found at all.

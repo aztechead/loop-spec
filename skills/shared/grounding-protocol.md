@@ -147,6 +147,16 @@ match one of three forms exactly:
 
 `- none` may not coexist with `EVID-` or `ASSUMPTION` bullets in the same section.
 
+Two natural markdown variants are tolerated by the lint (canonical forms above
+are still preferred):
+
+- **Parenthetical qualifier** after the keyword — `- ASSUMPTION (SPEC): ...`,
+  `- EVID-001 (PLAN): ...` — as writers carry the `ASSUMPTION ({dimension}):`
+  transcript convention from DISCUSS into artifacts.
+- **Wrapped bullets** — a long bullet may continue on following lines if each
+  continuation line is indented; the lint joins them into one logical bullet
+  before validating. Column-0 lines are prose, never continuations.
+
 `lib/grounding-lint.sh` is the deterministic gate. It runs before the DISCUSS
 Step 6 commit and before the PLAN Step 5.5 gate cluster clears. Exit 1 (with
 `FLAG <artifact>:<lineno>:` lines) blocks the commit and re-dispatches the writer.
