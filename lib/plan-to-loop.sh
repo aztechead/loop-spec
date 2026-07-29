@@ -130,7 +130,10 @@ for t in tasks:
         'paste the actual output. Surprise is signal: output contradicting expectation means '
         'stop and revise, never explain away. Re-read the acceptance criteria before DONE and '
         'check each against actual output. \"Should work\" / \"probably fine\" / \"tests likely '
-        'pass\" each mean run it now.'
+        'pass\" each mean run it now. Scope is closed: the acceptance criteria are the whole '
+        'job — never skip, trim, or defer an item, and never write follow-up/deferred/'
+        'future-work notes; a criterion you cannot meet is a loud failure with evidence, '
+        'never a note.'
     )
     lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', discipline, '', f'TASK {raw}: {brief}', '']
     if criteria:

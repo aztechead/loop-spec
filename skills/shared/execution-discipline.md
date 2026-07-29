@@ -54,4 +54,8 @@ machinery catches less, not more.
 > the task spec and state files instead of trusting recollection. (6) Uncertainty is a
 > status, not a gap to fill: return NEEDS_CONTEXT naming the exact missing fact; never
 > bridge it with confident prose. (7) Tripwires: "should work", "probably fine", "tests
-> likely pass" — each of these phrases means run it now.
+> likely pass" — each of these phrases means run it now. (8) Scope is closed: the brief's
+> acceptance criteria are the whole job — never skip, trim, or defer an item, and never
+> write "follow-up", "deferred", or "future work" notes; a criterion you cannot meet is
+> NEEDS_CONTEXT or a loud failure with evidence, never a note
+> (`skills/shared/no-deferral.md`).

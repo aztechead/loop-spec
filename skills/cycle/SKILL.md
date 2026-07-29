@@ -739,6 +739,19 @@ The committed run digest was finalized immediately before DELIVER and is part of
 checked SHA. Do not rewrite or recommit it here: DELIVER's successful target SHA is now
 immutable.
 
+**The completion report contains no self-authored deferrals** — no "deferred items",
+"follow-ups", "future work", or "next steps" the model chose on its own; everything
+in the spec shipped or the run is not complete (`skills/shared/no-deferral.md`).
+Draft the summary, then probe it before printing:
+
+```bash
+printf '%s' "$summary" | bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text -
+```
+
+A flag means dropped scope, not bad wording: resume the cycle and ship the flagged
+item (gate-marked `iterate-budget-spent:` / `iterate-terminal:` / `verify-deferred`
+lines are the only exemptions and pass the probe as written).
+
 Print warnings first, then a durable per-target delivery summary from
 `delivery.json.targets[]` (repo/name, PR URL, exact target SHA, checks status, and the
 DELIVER Step 4 terminal PR feedback check result — review decision + unresolved count

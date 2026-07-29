@@ -149,6 +149,12 @@ requires a PR URL. The writer emits one
 `LOOP_SPEC_RESULT {...}` line and atomically updates `.loop-spec/last-result.json`.
 Do not claim success if result emission warns; report the observability failure.
 
+The final report you print contains **no self-authored deferrals** — no "follow-ups",
+"deferred items", or "future work" you chose on your own (`skills/shared/no-deferral.md`).
+Probe the draft before printing: `printf '%s' "$report" |
+bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text -`. A flag means the task
+is not done — do the flagged work (or promote to a full cycle), never reword past it.
+
 ## Escalation
 
 When a "When this skill applies" bound is crossed mid-task, stop expanding scope and

@@ -72,6 +72,17 @@ delivery_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/deliver.sh" run "$fdir")" \
   || delivery_rc=$?
 ```
 
+**Exit 3 = self-authored deferral in the delivery surface** (`skills/shared/no-deferral.md`).
+Before touching GitHub, the controller runs `lib/deferral-lint.sh` on the rendered PR
+body and on `feature.json.warnings[]`. A flag is a SCOPE violation, not a transport
+failure: the model recorded deferred/follow-up items it chose on its own, which means
+spec scope was silently dropped. Do not reword anything to pass the probe. Route by
+the flag's source: unimplemented spec scope → append a FULL-SHAPE remediation task for
+it and set `currentPhase = "execute"` (same shape as the failed-checks route); a
+bounded-gate line missing its marker → restore the `iterate-budget-spent:` /
+`iterate-terminal:` / `verify-deferred` marker at the source artifact or warning entry,
+then re-run DELIVER.
+
 `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` controls the total required-check wait (default
 900); `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` controls polling (default 10). Each `gh`
 request also has a bounded command timeout via

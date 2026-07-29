@@ -130,7 +130,7 @@ fi
 
 **Converged** (`verdict.converged == true`): set `currentPhase = "deliver"`. Clear `iterate.feedback = null`. Go to Phase exit; DELIVER now binds the final verified commit to the PR.
 
-**Not converged:** route by `gap.type`. **The backlog is NEVER an option here, in any mode** — while iterations remain, every gap is worked by a rewind (below); deferring an in-limit gap to `BACKLOG.md` would let the loop claim convergence work it never did. The backlog is exclusively the limit-exhaustion exit (Step 0's loud-ship path). In every case, write the gap so the re-entered phase can "fix the weakest point first":
+**Not converged:** route by `gap.type`. **The backlog is NEVER an option here, in any mode** — while iterations remain, every gap is worked by a rewind (below); deferring an in-limit gap to `BACKLOG.md` would let the loop claim convergence work it never did. Neither is prose: a gap "noted as a follow-up" instead of routed is self-authored deferral, the one thing a successful conclusion can never contain (`skills/shared/no-deferral.md`). The backlog is exclusively the limit-exhaustion exit (Step 0's loud-ship path). In every case, write the gap so the re-entered phase can "fix the weakest point first":
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedback "<gap json>"

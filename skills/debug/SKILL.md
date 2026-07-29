@@ -125,8 +125,8 @@ For each hypothesis, in ranked order:
    move to the next hypothesis WITHOUT changing code. This is what keeps the loop from
    shotgun-patching.
 3. **Fix minimally** (simplicity mode applies): the smallest change that corrects the
-   mechanism. Not the refactor the area deserves — note that in `## Deferred` for the
-   backlog instead.
+   mechanism. Not the refactor the area deserves — record that as a
+   `new-mechanism:` entry in `## Deferred` and backlog it (`lib/backlog.sh add`).
 4. **Verify:** repro goes green AND the full test suite passes AND nothing else changed
    behavior (`git diff` review — the diff should read as exactly the mechanism fix).
    Record `CONFIRMED` with the green output. If the repro stays red: record the
@@ -159,8 +159,9 @@ CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
    verify battery from Step 3.4. The scope tripwire (Step 3.5) still applies: siblings
    that push the fix to feature scale escalate to the cycle instead.
 3. **Different mechanism found during the sweep → it is a new bug, not a sibling.**
-   Record it under `## Deferred` (offer `lib/backlog.sh add`); do not fix it in this
-   branch — mixing mechanisms makes the diff unreviewable.
+   Record it under `## Deferred` as a `new-mechanism:` entry and backlog it
+   (`lib/backlog.sh add "$slug" new-mechanism "..."` — mandatory); do not fix it in
+   this branch — mixing mechanisms makes the diff unreviewable.
 4. **Record the sweep in BUG.md `## Sibling sweep`:** the commands run, every site
    examined, and the verdict per site (`FIXED-SIBLING: <file:line>`,
    `CLEAN: <file:line>`, or `DEFERRED-NEW-BUG: <file:line>`). An empty sweep section is
@@ -200,8 +201,12 @@ returns to the FIX loop; a green repro cannot substitute for this grounding gate
    No origin remote or no `gh`: degrade loudly — leave the branch, state exactly what
    blocked the PR. Record the PR URL and check outcome in BUG.md `## Fix`.
 5. Report: root cause, the fix diffstat, the regression test, the PR URL + feedback
-   check result, and anything in
-   `## Deferred` (offer `bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add` for deferred findings).
+   check result, and anything in `## Deferred` — each line keeps its `new-mechanism:`
+   marker and MUST already be backlogged
+   (`bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "$slug" new-mechanism "..."` —
+   recording is mandatory, not offered; nothing evaporates). No other deferral
+   language belongs in the report (`skills/shared/no-deferral.md`); probe the draft
+   with `lib/deferral-lint.sh text -` before printing.
 
 ## Terminal result (every exit)
 
@@ -238,7 +243,12 @@ The writer emits `LOOP_SPEC_RESULT {...}` and atomically updates the stable
 ## Hypothesis log       <- H1..Hn: mechanism, evidence, verdict (REFUTED/CONFIRMED), attempts
 ## Fix                  <- root cause, change, why sufficient
 ## Sibling sweep        <- commands run, sites examined, verdict per site (FIXED-SIBLING/CLEAN/DEFERRED-NEW-BUG)
-## Deferred             <- findings out of scope for this fix (backlog candidates)
+## Deferred             <- sibling-sweep DEFERRED-NEW-BUG findings ONLY; every entry
+                           starts with `new-mechanism:` and gets a backlog entry
+                           (`lib/backlog.sh add {slug} new-mechanism "..."`). A distinct
+                           root-cause mechanism is a NEW bug — that rule is the only
+                           thing allowed to land here. Never self-chosen scope
+                           narrowing of THIS fix (skills/shared/no-deferral.md).
 ```
 
 BUG.md is committed with the fix — it is the audit trail (the SPEC.md analog), and the
