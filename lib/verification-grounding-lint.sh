@@ -81,12 +81,21 @@ for index, line in enumerate(lines):
 if start is None:
     fail(0, 'missing ## Repository grounding section')
 
+# Rows are long (criterion + two file:line refs + proofs) and model-authored
+# markdown legitimately wraps them; join indented continuation lines onto the
+# preceding row before matching. FLAG line numbers keep the row's first line.
 section = []
 for index in range(start, len(lines)):
-    if lines[index].startswith('## '):
+    line = lines[index]
+    if line.startswith('## '):
         break
-    if lines[index].strip():
-        section.append((index + 1, lines[index].strip()))
+    if not line.strip():
+        continue
+    if section and line[:1] in (' ', '\t') and section[-1][1].startswith('- '):
+        prev_no, prev_text = section[-1]
+        section[-1] = (prev_no, prev_text + ' ' + line.strip())
+        continue
+    section.append((index + 1, line.strip()))
 
 row_re = re.compile(
     r'^- criterion:\s*(.+?)\s*\|\s*implementation:\s*(.+?)\s*'
