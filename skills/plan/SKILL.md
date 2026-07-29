@@ -138,6 +138,12 @@ SendMessage({
          (the part after the "- "/"Decision: " prefix) somewhere in PLAN.md -- a "## Decisions"
          or "## Assumptions" section is fine -- so the automated decision-coverage check
          (fixed-string grep) matches.
+      6. "## Global constraints" lists every binding rule VERBATIM (SPEC boundaries,
+         <decisions> constraints, repo rules) or the single line "- none" -- dispatch
+         briefs inline it, so a paraphrase here becomes a drifted rule in every wave.
+      7. Each task block carries an "**Interfaces:**" entry (consumes/produces contracts,
+         or "none") -- parallel-wave implementers see only their own brief, so a task's
+         neighbors' contracts must travel in the plan, not in shared context.
 
     When done, send:
       SendMessage({to: "lead", message: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})

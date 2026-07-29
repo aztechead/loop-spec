@@ -61,6 +61,29 @@ if not isinstance(tasks, list) or not tasks:
 
 ID_RE = re.compile(r'^[a-z0-9][a-z0-9-]{1,63}$')
 
+# Global constraints travel VERBATIM into every worker prompt (a loop-runner worker
+# sees only its prompt, never the plan). Absent section or '- none' => no block.
+def read_global_constraints(plan_path):
+    try:
+        with open(plan_path, errors='replace') as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return []
+    block, in_section = [], False
+    for line in lines:
+        if re.match(r'^##\s+Global constraints\s*$', line):
+            in_section = True
+            continue
+        if in_section:
+            if re.match(r'^#{1,6}\s', line):
+                break
+            s = line.strip()
+            if s and not s.startswith('<!--') and s != '- none':
+                block.append(s)
+    return block
+
+global_constraints = read_global_constraints(plan)
+
 def norm_id(raw):
     s = re.sub(r'[^a-z0-9-]+', '-', str(raw).lower()).strip('-')
     return s[:64]
@@ -136,6 +159,10 @@ for t in tasks:
         'never a note.'
     )
     lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', discipline, '', f'TASK {raw}: {brief}', '']
+    if global_constraints:
+        lines.append('Global constraints (from the plan, verbatim; every one binds):')
+        lines += [f'{c}' for c in global_constraints]
+        lines.append('')
     if criteria:
         lines.append('Acceptance criteria (ALL must hold; the verify command is the contract):')
         lines += [f'- {c}' for c in criteria]

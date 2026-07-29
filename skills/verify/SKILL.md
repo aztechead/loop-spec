@@ -77,30 +77,35 @@ If `regression-scan.sh` itself fails (exits non-zero or produces invalid JSON), 
 Warning: regression-scan.sh failed to run; skipping advisory regression gate
 ```
 
-### Step 1 - Unresolved marker scan
+### Step 1 - Placeholder scan (no stub implementations)
 
-Before spawning any teammates, scan source files on `branch` for unresolved markers:
+Before spawning any teammates, scan the diff for placeholder/stub markers — the
+code-level form of self-authored deferral (`skills/shared/no-deferral.md`): a TODO,
+FIXME, `NotImplementedError`, or "not implemented" throw in an ADDED line means a
+stub shipped where the design promised a full implementation.
 
-**Single-repo mode (unchanged):**
+**Single-repo mode:**
 
 ```bash
-git diff --diff-filter=ACMR {baseSha}..HEAD --name-only \
-  | grep -E '\.(py|ts|js|go|rs|java|rb|sh)$' \
-  | xargs grep -wn 'TBD\|FIXME\|XXX' 2>/dev/null || true
+bash "${CLAUDE_SKILL_DIR}/../../lib/placeholder-scan.sh" "{baseSha}" .
 ```
 
-**Workspace mode (additive):** apply the workspace variant for this step verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 1 - Unresolved marker scan").
+**Workspace mode:** run once per participating repo with that repo's `baseSha` and absolute path.
 
-If any matches (in either mode): VERIFY fails immediately. List each `file:line: match` to the user, and emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"marker"}' || true`).
+Exit 1 = signals found: VERIFY fails immediately. Print the listed `file:line: signal`
+lines verbatim, and emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"marker"}' || true`).
 Do not spawn verifier or code-reviewer until all markers are resolved.
 
 Notes:
-- `--diff-filter=ACMR` excludes deleted files (avoids "no such file" errors on xargs)
-- `.md` excluded from filter: prose descriptions of markers are not unresolved code
-- `-w` (word boundary) avoids false positives on identifiers like `STBD`, `XXXL`
+- Only ADDED lines are scanned (diff vs `{baseSha}`), so pre-existing markers in a
+  not-green repo never fire — the scan reports what THIS feature introduced.
+- Markdown/docs files are exempt: prose descriptions of markers are not stub code.
+- The marker set and exemptions live in `lib/placeholder-scan.sh` (one home); do not
+  re-derive them as inline grep pipelines here.
 
-Rationale: unresolved markers indicate incomplete implementation; running acceptance
-gates against incomplete code wastes agent effort.
+Rationale: placeholder markers are incomplete implementation; running acceptance
+gates against incomplete code wastes agent effort, and a stub that survives to the
+PR is deferred scope the model chose on its own.
 
 ### Step 1.5 - Test-tamper scan (anti-reward-hacking, fail-fast)
 

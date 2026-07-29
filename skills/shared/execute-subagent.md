@@ -172,6 +172,10 @@ Step 2 - {readFirst clause} Read the assigned files: {task.files}.
 Step 3 - Implement the task in the worktree at {worktree_path}.
 Task subject: {task.subject}
 Brief: {task.brief}
+Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
+{global constraints lines, or "- none"}
+Interfaces (from the task block; contracts your neighbors consume/produce):
+{task Interfaces lines, or "- none"}
 Acceptance criteria:
 {numbered acceptanceCriteria}
 {prior-findings clause on rework attempts}
@@ -302,6 +306,10 @@ Step 1 - Read the assigned files. Files are workspace-relative ({repo}/{path}); 
 Step 2 - Implement the task directly in the repo at {abs_repo}.
 Task subject: {task.subject}
 Brief: {task.brief}
+Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
+{global constraints lines, or "- none"}
+Interfaces (from the task block; contracts your neighbors consume/produce):
+{task Interfaces lines, or "- none"}
 Acceptance criteria:
 {numbered acceptanceCriteria}
 {prior-findings clause on rework attempts}

@@ -3,7 +3,7 @@
 Extracted verbatim from `skills/verify/SKILL.md`; the per-step stubs point here.
 Single-repo mode is unchanged in the SKILL; apply these only when `feature.workspace` is non-null.
 
-## Step 1 - Unresolved marker scan
+## Step 1 - Placeholder scan
 
 **Workspace mode (additive):** loop over `feature.workspace.repos[]` and run the scan per repo. The abs repo path is `feature.workspace.root + "/" + repo.path`.
 
@@ -13,11 +13,7 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   rpath="$(echo "$repo_entry" | jq -r '.path')"
   rabs="${feature_workspace_root}/${rpath}"
   rbase_sha="$(echo "$repo_entry" | jq -r '.baseSha')"
-  git -C "$rabs" diff --diff-filter=ACMR "${rbase_sha}..HEAD" --name-only \
-    | grep -E '\.(py|ts|js|go|rs|java|rb|sh)$' \
-    | while IFS= read -r changed; do
-        [[ -n "$changed" ]] && grep -Hwn 'TBD\|FIXME\|XXX' "$rabs/$changed" 2>/dev/null || true
-      done
+  bash "${CLAUDE_SKILL_DIR}/../../lib/placeholder-scan.sh" "$rbase_sha" "$rabs" || echo "PLACEHOLDER-FAIL ${rname}"
 done
 ```
 

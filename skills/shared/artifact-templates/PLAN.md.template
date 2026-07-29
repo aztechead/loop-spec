@@ -7,6 +7,14 @@
 
 {2-3 sentences on approach.}
 
+## Global constraints
+
+<!-- Binding rules every task must respect, stated VERBATIM (copied from SPEC
+     boundaries/<decisions>, repo rules, or the tuning overlay) — never paraphrased.
+     Execute dispatch briefs inline this section, so a wave implementer sees the
+     rules without reading the spec. Keep `- none` if nothing binds globally. -->
+- none
+
 ## File map
 
 - Create: `{path}` - {responsibility}
@@ -30,6 +38,10 @@
 
 **read_first:**
 - {path or path:line-range or path (section)}
+
+**Interfaces:**
+- consumes: {contract this task depends on — signature/endpoint/schema, and which task produces it; `none` if independent}
+- produces: {contract other tasks consume from this one; `none` if leaf}
 
 **Verify:** `{exact command}` -> {expected output}
 

@@ -607,6 +607,9 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    fi
    bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" phase_start --phase "${currentPhase}" || true
    ```
+   Print the greppable boundary line before invoking (and its `done` twin with elapsed
+   time + headline verdict after the skill returns) — `skills/shared/report-style.md`:
+   `[{CURRENTPHASE}] start` / `[{CURRENTPHASE}] done ({elapsed}) — {verdict}`.
    ```
    Skill(loop-spec:{currentPhase})
    ```
@@ -738,6 +741,9 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
 The committed run digest was finalized immediately before DELIVER and is part of the
 checked SHA. Do not rewrite or recommit it here: DELIVER's successful target SHA is now
 immutable.
+
+The summary follows `skills/shared/report-style.md`: outcome first, state restated,
+wins marked, no preamble/closers, scores in percentages.
 
 **The completion report contains no self-authored deferrals** — no "deferred items",
 "follow-ups", "future work", or "next steps" the model chose on its own; everything
