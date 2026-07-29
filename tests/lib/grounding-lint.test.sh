@@ -46,10 +46,13 @@ cat > "$WORK/template-block.md" <<'EOF'
 <!-- Probe-before-assert (skills/shared/grounding-protocol.md): every load-bearing
      fact about an external system (dataset, API, service, infra) must cite an
      EVIDENCE.md entry (EVID-NNN) or be an explicit ASSUMPTION with a verify probe.
+     Bullet grammar, one logical bullet per line (indent any wrapped continuation):
+       - EVID-NNN: <what the probe confirmed>
+       - ASSUMPTION: <claim> | verify: <read-only command>
      Keep the single `- none` line if nothing external is load-bearing. -->
 - none
 EOF
-check "template block (4-line comment + - none) exits 0" \
+check "template block (comment + - none) exits 0" \
   "$([[ "$(lint_exit "$WORK/template-block.md")" == "0" ]] && echo 1 || echo 0)"
 
 # ─── Fixture 3: ASSUMPTION with | inside the verify command ─────────────────
