@@ -83,7 +83,9 @@ _collect() {
         --argjson rj "$rj" \
         --argjson last_event "$last_event" \
         --argjson events "$events" \
-        '{
+        '($rj.status == "completed" and $rj.outcome == "no-change-needed" and
+          $rj.noChangeReason != null) as $intentionalNoChange |
+        {
           slug: $slug,
           phase: (if ($rj.status // "") == "completed" or
                          (($dj.nextPhase // "") == "completed" and
@@ -96,8 +98,8 @@ _collect() {
           warnings: (($fj.warnings // []) | length),
           resultStatus: ($rj.status // null),
           converged: (if ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged else null end),
-          prUrl: ($rj.prUrl // $dj.prUrl // $fj.prUrl // null),
-          checkpointPrUrl: ($fj.checkpointPrUrl // null),
+          prUrl: (if $intentionalNoChange then null else ($rj.prUrl // $dj.prUrl // $fj.prUrl // null) end),
+          checkpointPrUrl: (if $intentionalNoChange then null else ($rj.checkpointPrUrl // $fj.checkpointPrUrl // null) end),
           deliveryStatus: ($rj.delivery.status // $dj.status // $fj.delivery.status // null),
           autonomous: ($fj.autonomous // false),
           lastEvent: (if $last_event == null then null else {

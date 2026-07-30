@@ -90,6 +90,10 @@ SHIM
 cat > "$WORK/shims/claude" <<'SHIM'
 #!/usr/bin/env bash
 printf 'called\n' >> "${FAKE_CLAUDE_LOG:?}"
+if [[ -n "${FAKE_AGENT_RESULT:-}" ]]; then
+  mkdir -p "${FAKE_RESULT_ROOT:?}/.loop-spec"
+  printf '%s\n' "$FAKE_AGENT_RESULT" > "${FAKE_RESULT_ROOT}/.loop-spec/last-result.json"
+fi
 exit 0
 SHIM
 chmod +x "$WORK/shims/gh" "$WORK/shims/claude"
@@ -127,6 +131,66 @@ check "8: external pointer preserved" "$stale_external" "$(<"$EXTERNAL/last-resu
 check "8: unsafe run does not invoke agent" "0" "$(wc -l < "$CLAUDE_LOG" | tr -d ' ')"
 check "8: failure report does not attribute stale PR" "0" \
   "$(grep -c -- 'stale-external' "$GH_LOG" || true)"
+
+# Case 9: an explicitly intentional no-change conclusion completes without a PR
+# and surfaces the human synthesis in the issue comment.
+NOCHANGE="$WORK/nochange"
+mkdir -p "$NOCHANGE"
+git -C "$NOCHANGE" init -q
+git -C "$NOCHANGE" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
+: > "$GH_LOG"; : > "$CLAUDE_LOG"; ec=0
+nochange_result='{"schema":1,"cycleType":"full","slug":"already-done","status":"completed","outcome":"no-change-needed","summary":"Rate limiting was already configured and verified.","noChangeReason":"already-satisfied","prUrl":null,"checkpointPrUrl":null,"converged":true,"verification":{"status":"passed","command":"bash tests/run-all.sh"}}'
+(cd "$NOCHANGE" && PATH="$WORK/shims:$PATH" LOOP_SPEC_HARNESS=claude \
+  FAKE_GH_LOG="$GH_LOG" FAKE_CLAUDE_LOG="$CLAUDE_LOG" \
+  FAKE_RESULT_ROOT="$NOCHANGE" FAKE_AGENT_RESULT="$nochange_result" \
+  bash "$LIB" run --fixture "$FIXTURE" --limit 1 >/dev/null) || ec=$?
+check "9: intentional no-change exits 0" "0" "$ec"
+check "9: no-change receives done label" "1" "$(grep -c -- 'loop-spec:done' "$GH_LOG" || true)"
+check "9: no-change summary reaches comment" "1" \
+  "$(grep -c -- 'Rate limiting was already configured and verified.' "$GH_LOG" || true)"
+check "9: no-change code reaches comment" "1" "$(grep -c -- 'already-satisfied' "$GH_LOG" || true)"
+
+# An unknown code is not accepted as a successful no-PR completion.
+: > "$GH_LOG"; : > "$CLAUDE_LOG"; ec=0
+invalid_result="${nochange_result/already-satisfied/unknown-code}"
+(cd "$NOCHANGE" && PATH="$WORK/shims:$PATH" LOOP_SPEC_HARNESS=claude \
+  FAKE_GH_LOG="$GH_LOG" FAKE_CLAUDE_LOG="$CLAUDE_LOG" \
+  FAKE_RESULT_ROOT="$NOCHANGE" FAKE_AGENT_RESULT="$invalid_result" \
+  bash "$LIB" run --fixture "$FIXTURE" --limit 1 >/dev/null) || ec=$?
+check "9b: unknown no-change code fails closed" "1" "$ec"
+check "9b: unknown code receives failed label" "1" "$(grep -c -- 'loop-spec:failed' "$GH_LOG" || true)"
+
+# A checkpoint is salvage, not a delivered implementation PR, and diagnostics
+# cannot close an implementation issue as done.
+: > "$GH_LOG"; : > "$CLAUDE_LOG"; ec=0
+checkpoint_result="$(jq -c '.checkpointPrUrl = "https://example/checkpoint"' <<<"$nochange_result")"
+(cd "$NOCHANGE" && PATH="$WORK/shims:$PATH" LOOP_SPEC_HARNESS=claude \
+  FAKE_GH_LOG="$GH_LOG" FAKE_CLAUDE_LOG="$CLAUDE_LOG" \
+  FAKE_RESULT_ROOT="$NOCHANGE" FAKE_AGENT_RESULT="$checkpoint_result" \
+  bash "$LIB" run --fixture "$FIXTURE" --limit 1 >/dev/null) || ec=$?
+check "9c: checkpoint does not satisfy no-change completion" "1" "$ec"
+check "9c: checkpoint receives failed label" "1" "$(grep -c -- 'loop-spec:failed' "$GH_LOG" || true)"
+
+: > "$GH_LOG"; : > "$CLAUDE_LOG"; ec=0
+diagnostic_result="$(jq -c '.cycleType = "diagnostic" | .noChangeReason = "diagnostic-only" |
+  .verification.status = "not-run"' <<<"$nochange_result")"
+(cd "$NOCHANGE" && PATH="$WORK/shims:$PATH" LOOP_SPEC_HARNESS=claude \
+  FAKE_GH_LOG="$GH_LOG" FAKE_CLAUDE_LOG="$CLAUDE_LOG" \
+  FAKE_RESULT_ROOT="$NOCHANGE" FAKE_AGENT_RESULT="$diagnostic_result" \
+  bash "$LIB" run --fixture "$FIXTURE" --limit 1 >/dev/null) || ec=$?
+check "9d: diagnostic cannot close implementation issue" "1" "$ec"
+check "9d: diagnostic receives failed label" "1" "$(grep -c -- 'loop-spec:failed' "$GH_LOG" || true)"
+
+: > "$GH_LOG"; : > "$CLAUDE_LOG"; ec=0
+contradictory_pr_result="$(jq -c '.outcome = "delivery-blocked" |
+  .prUrl = "https://example/not-delivered" | .noChangeReason = null' <<<"$nochange_result")"
+(cd "$NOCHANGE" && PATH="$WORK/shims:$PATH" LOOP_SPEC_HARNESS=claude \
+  FAKE_GH_LOG="$GH_LOG" FAKE_CLAUDE_LOG="$CLAUDE_LOG" \
+  FAKE_RESULT_ROOT="$NOCHANGE" FAKE_AGENT_RESULT="$contradictory_pr_result" \
+  bash "$LIB" run --fixture "$FIXTURE" --limit 1 >/dev/null) || ec=$?
+check "9e: contradictory PR outcome fails closed" "1" "$ec"
+check "9e: contradictory PR receives failed label" "1" \
+  "$(grep -c -- 'loop-spec:failed' "$GH_LOG" || true)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

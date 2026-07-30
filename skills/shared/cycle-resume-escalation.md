@@ -134,8 +134,9 @@ If a phase pauses + escalates (iteration limit exhausted, NEEDS_CONTEXT, etc.):
    structured error/manual recovery information.
 5.5. Write the machine-readable result contract (non-fatal — must not block ExitWorktree):
    ```bash
-   bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write ".loop-spec/features/${slug}" \
-     --status escalated --reason "<escalation reason>" || true
+    bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write ".loop-spec/features/${slug}" \
+      --status escalated --reason "<escalation reason>" \
+      --summary "Cycle stopped during <current phase>: <escalation reason>" || true
    ```
    This also emits the `escalated` event to `events.jsonl`.
 5.6. Push branch and open/reuse a draft PR to salvage the work product (gated: on by default for autonomous runs, LOOP_SPEC_CHECKPOINT_PR overrides; never blocks escalation):

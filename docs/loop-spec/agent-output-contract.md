@@ -6,7 +6,8 @@ Claude Code, pi, or OpenCode CLI event protocols.
 
 ## Terminal Cycle Result
 
-Every full, micro, and debug terminal path emits one line:
+Every full, micro, and debug terminal path, plus standalone forensics, assessment, and
+retrospective diagnostics, emits one line:
 
 ```text
 LOOP_SPEC_RESULT {"schema":1,...}
@@ -31,17 +32,21 @@ The same field is stamped into every `docs/loop-spec/telemetry/runs/{slug}.json`
 digest. Both are additive — consumers read every field with a default, so older
 artifacts without it stay valid and the schema numbers do not change.
 
-Compatibility fields present for every cycle type:
+Compatibility fields present for every cycle type. New writers require a non-empty
+`summary`; consumers still tolerate older schema-1 records where the additive field is
+absent:
 
 ```json
 {
   "schema": 1,
   "loopSpecVersion": "2.25.0",
-  "cycleType": "full | micro | debug",
+  "cycleType": "full | micro | debug | diagnostic",
   "slug": "string or null",
   "status": "completed | paused | escalated | terminal | failed",
   "outcome": "cycle-specific string",
   "reason": "string or null",
+  "summary": "non-empty concise terminal synthesis",
+  "noChangeReason": "already-satisfied | diagnostic-only | null",
   "phaseReached": "string or null",
   "branch": "string or null",
   "baseBranch": "string or null",
@@ -62,6 +67,26 @@ Compatibility fields present for every cycle type:
 Full-cycle per-feature `result.json` remains available. `last-result.json` is a copied
 record, not a symlink into a disposable Claude worktree.
 
+`summary` is the conclusion a human should see without scraping streamed output or
+opening workflow artifacts: the finding for a no-change/diagnostic run, the change and
+verification synthesis for delivered work, or the stopping condition for a failed,
+paused, or escalated run. `reason` remains the failure/pause detail and does not carry
+intentional no-change semantics.
+
+`noChangeReason` is null unless no implementation PR was intentional:
+
+- `already-satisfied`: the requested end state was present. Full cycles require a
+  converged ITERATE verdict, its passed deterministic floor, no unresolved iteration
+  warnings, plus `no_commits`/`skipped-no-commits` evidence for every delivery target;
+  micro/debug must have grounded and validated the unchanged baseline.
+- `diagnostic-only`: the invocation was explicitly read-only/reporting. It means no
+  implementation was requested, not that the diagnostic found no problems.
+
+Both successful cases use `status: "completed"`, `outcome: "no-change-needed"`,
+`converged: true`, `prUrl: null`, and `checkpointPrUrl: null`. Zero commits without one of these explicit,
+validated declarations remains failed/escalated, so inability to progress cannot look
+like a successful no-change conclusion.
+
 Full-cycle results add these schema-1 fields:
 
 ```json
@@ -74,7 +99,8 @@ Full-cycle results add these schema-1 fields:
 }
 ```
 
-`converged` retains end-to-end meaning. A full cycle that completed implementation and
+`converged` retains end-to-end meaning, including an explicitly validated no-change
+conclusion. A full cycle that completed implementation and
 verification but hit a SHA-bound delivery failure (`delivery.json.nextPhase ==
 "deliver"`) reports `status: "failed"`, `outcome: "delivery-blocked"`,
 `phaseReached: "deliver"`, `implementationConverged: true`, `converged: false`, passed

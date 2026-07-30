@@ -1,6 +1,6 @@
 ---
 name: retro
-description: Retrospective over accumulated loop telemetry - mine events.jsonl/result.json across features for repeated failure patterns (recurring iterate gaps, critique gates at round cap), turn them into rule candidates for the self-learning RULES.md loop, surface evidence-backed suggestions (modelTier headroom) and info (convergence rate, fleet cost). Report is read-only; "apply" writes the rule candidates. Deterministic thresholds, never model-judged.
+description: Retrospective over accumulated loop telemetry - mine events.jsonl/result.json across features for repeated failure patterns (recurring iterate gaps, critique gates at round cap), turn them into rule candidates for the self-learning RULES.md loop, surface evidence-backed suggestions (modelTier headroom) and info (convergence rate, fleet cost), and emit the shared terminal result. Report is read-only; "apply" writes the rule candidates. Deterministic thresholds, never model-judged.
 argument-hint: '[report | apply] [--min-repeats N]'
 ---
 
@@ -24,6 +24,15 @@ Finding kinds and what happens to them:
 
 ## Procedure
 
+Before `report` or `apply`, resolve the invocation root and clear the stale terminal
+pointer. The cycle-internal `lib/retro.sh auto` path does not do this because the owning
+full cycle will emit its own result:
+
+```bash
+result_root="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" resolve-root "$PWD")"
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$result_root"
+```
+
 ### report (default)
 
 ```bash
@@ -36,6 +45,15 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" report [--min-repeats N]
    per rule candidate. Commit it when inside a git repo (`docs: retro <date>`);
    skip the commit silently when the tree is dirty with unrelated changes.
 3. If there are rule candidates, end with: "apply with `/loop-spec:retro apply`".
+4. Summarize the exact candidate/suggestion/info counts and strongest repeated pattern
+   in one non-empty sentence, then emit:
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+     --result-root "$result_root" --cycle-type diagnostic \
+     --status completed --outcome no-change-needed --slug retro-report \
+     --title "Loop retrospective" --converged true --verification-status not-run \
+     --summary "$summary" --no-change-reason diagnostic-only
+   ```
 
 ### apply
 
@@ -47,6 +65,12 @@ Prints `added`/`exists` per rule candidate (idempotent — re-applying is safe).
 After applying, remind: the rules are injected into every future session by the
 self-learning hook; curate them with `/loop-spec:rules`. Update RETRO.md's
 section for this date with which candidates were applied.
+
+Emit the same diagnostic result after apply with `slug retro-apply`; the summary states
+how many candidates were added versus already present. `diagnostic-only` means no
+implementation was requested, even though explicit apply may update rules. If report or
+apply fails, emit `--status failed --outcome diagnostic-failed --converged false` with a
+concise `reason` and non-empty failure `summary`, omitting `noChangeReason`.
 
 **Autonomous mode note:** interactive cycles only print the read-only candidate
 count at completion — the human decides. Autonomous cycles auto-apply via

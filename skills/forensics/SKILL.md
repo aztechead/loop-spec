@@ -1,6 +1,6 @@
 ---
 name: forensics
-description: Read-only diagnostic that detects 7 anomaly patterns in a stuck or failed feature workflow and writes a structured report to .loop-spec/forensics/.
+description: Read-only diagnostic that detects 7 anomaly patterns in a stuck or failed feature workflow, writes a structured report to .loop-spec/forensics/, and emits the shared terminal result contract.
 argument-hint: "[feature slug or description of the stuck/failed workflow]"
 ---
 
@@ -8,9 +8,10 @@ argument-hint: "[feature slug or description of the stuck/failed workflow]"
 
 Invoked as `/loop-spec:forensics [problem description]`.
 
-This skill is strictly read-only. It makes no changes to project state, feature.json,
-PLAN.md, SPEC.md, or any other file. The only write is the structured report at
-`.loop-spec/forensics/report-{ISO-8601}.md`.
+This skill is strictly read-only with respect to project state and source. It makes no
+changes to feature.json, PLAN.md, SPEC.md, or any other project file. Its only writes are
+the structured report at `.loop-spec/forensics/report-{ISO-8601}.md` and the ignored
+`.loop-spec/last-result.json` terminal pointer.
 
 ## Inputs
 
@@ -25,9 +26,18 @@ All bash commands below use read-only git operations (`git log`, `git diff --nam
 `git reset`, or any write operation during this skill. Do NOT modify feature.json,
 PLAN.md, SPEC.md, VERIFICATION.md, or any project file.
 
-Permitted writes: `.loop-spec/forensics/report-{ISO-8601}.md` only.
+Permitted writes: `.loop-spec/forensics/report-{ISO-8601}.md` and
+`.loop-spec/last-result.json` only.
 
 ## Procedure
+
+Before collecting evidence, resolve the stable result root and clear any stale terminal
+pointer. If clearing fails, stop rather than allowing a caller to reuse an old result:
+
+```bash
+result_root="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" resolve-root "$PWD")"
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$result_root"
+```
 
 ### Step 1 - Detect anomalies
 
@@ -299,6 +309,24 @@ Anomalies found: {count}
 
 Do not offer to auto-remediate. Offer to explain any finding in more detail if the user
 asks follow-up questions.
+
+Use the report's `Root Cause Hypothesis` as a concise, non-empty `summary`; it must state
+the actual finding, not merely that a report was written. After the report is durable,
+emit the shared terminal result:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+  --result-root "$result_root" --cycle-type diagnostic \
+  --status completed --outcome no-change-needed --slug forensics \
+  --title "Forensic diagnosis" --converged true --verification-status not-run \
+  --summary "$summary" --no-change-reason diagnostic-only
+```
+
+`diagnostic-only` means the invocation intentionally produced findings rather than an
+implementation; it does not mean the report found no problems. If the diagnostic cannot
+finish, emit `--status failed --outcome diagnostic-failed --converged false --reason
+"<failure>" --summary "Forensic diagnosis failed: <failure>"` without a no-change reason.
+The writer emits `LOOP_SPEC_RESULT {...}` and updates `.loop-spec/last-result.json`.
 
 ## Output path format
 

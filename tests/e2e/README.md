@@ -41,7 +41,8 @@ Prerequisites: `claude` (logged in), `git`, `jq` on PATH. Missing prereqs exit 2
    `LOOP_SPEC_REQUIRE_GRAPHIFY=0 LOOP_SPEC_SKIP_HEALTHCHECK=1
    LOOP_SPEC_CHECKPOINT_PR=0` under a portable wall-clock watchdog.
 4. Asserts: `last-result.json` exists, schema 1, valid terminal status, non-empty
-   slug, boolean `converged`; `events.jsonl` parses, has a `phase_start`, and its
+   slug and `summary`, compatible `noChangeReason`, boolean `converged`;
+   `events.jsonl` parses, has a `phase_start`, and its
    terminal event matches the result status; a `feat/*` branch exists; and on
    `status == completed` the subtract function is actually in the tree.
 

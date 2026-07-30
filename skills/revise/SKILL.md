@@ -142,7 +142,9 @@ Emit `phase_end` and refresh the result contract:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" phase_end --phase revise --data '{"next":"done"}' || true
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$fdir" --status completed --pr-url "<pr url>" || true
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$fdir" --status completed \
+  --pr-url "<pr url>" \
+  --summary "Processed <count> review items: <fixed count> fixed, <answered count> answered, <backlogged count> classified as scope changes." || true
 ```
 
 ### Step 9 - One summary comment

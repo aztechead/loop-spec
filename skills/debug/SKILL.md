@@ -219,18 +219,24 @@ machine-readable compatibility record as the full and micro cycles. Promotion is
 exception described above: emit before delegation so the full cycle can replace it.
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
-  --result-root "$(git rev-parse --show-toplevel)" --cycle-type debug \
-  --status "<completed|failed|escalated>" \
-  --outcome "<fixed|instrumented-and-waiting|promoted-to-full|verification-failed|delivery-blocked>" \
-  --slug "$slug" --title "<symptom summary>" --branch "$branch" --base-branch "$default_branch" \
-  --pr-url "$pr_url" --converged "<true|false>" \
-  --verification-status "<passed|failed|not-run>" --verification-command "$test_cmd" \
-  --autonomous "<true|false>"
+result_args=(
+  --result-root "$(git rev-parse --show-toplevel)" --cycle-type debug
+  --status "$status" --outcome "$outcome"
+  --slug "$slug" --title "$title" --branch "$branch" --base-branch "$default_branch"
+  --pr-url "$pr_url" --converged "$converged"
+  --verification-status "$verification_status" --verification-command "$test_cmd"
+  --autonomous "$autonomous" --summary "$summary"
+)
+[[ -n "$no_change_reason" ]] && result_args+=(--no-change-reason "$no_change_reason")
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal "${result_args[@]}"
 ```
 
-Only `fixed` with passed verification and a PR URL is converged. Instrumented waiting,
-promotion, verification failure, and delivery failure are explicitly non-converged.
+`summary` is the concise root-cause/fix conclusion for every exit. `fixed` requires passed
+verification and a PR URL. If the reproduction proves the reported defect is already
+absent in the unmodified baseline, `no-change-needed` may converge without a PR only with
+`no_change_reason=already-satisfied`; inability to reproduce without proving absence stays
+`instrumented-and-waiting`. Promotion, verification failure, and delivery failure are
+explicitly non-converged.
 The writer emits `LOOP_SPEC_RESULT {...}` and atomically updates the stable
 `.loop-spec/last-result.json` pointer.
 

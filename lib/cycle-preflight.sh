@@ -103,6 +103,7 @@ scan_feature_root() {
   local root="$1" source="$2" branch_hint="${3:-}"
   local features_dir="$root/.loop-spec/features"
   local fj fslug parse_source doc schema phase team updated_at staleness_hours
+  local result_file delivery_file result_doc delivery_doc
   local updated_epoch age needs_probe candidate_branch worktree_abs
   [[ -d "$features_dir" ]] || return 0
 
@@ -131,7 +132,41 @@ scan_feature_root() {
       warnings+=("feature ${fslug}: unsupported schemaVersion ${schema} (schema 7 only); skipping")
       continue
     fi
-
+    if [[ "$phase" == "deliver" ]]; then
+      result_file="$(dirname "$fj")/result.json"
+      delivery_file="$(dirname "$fj")/delivery.json"
+      if [[ -f "$result_file" && -f "$delivery_file" ]]; then
+        result_doc="$(jq -c . "$result_file" 2>/dev/null || echo null)"
+        delivery_doc="$(jq -c . "$delivery_file" 2>/dev/null || echo null)"
+        if jq -en --arg slug "$fslug" --argjson result "$result_doc" --argjson delivery "$delivery_doc" '
+          $result.schema == 1 and
+          $result.cycleType == "full" and
+          $result.slug == $slug and
+          $result.status == "completed" and
+          $result.outcome == "no-change-needed" and
+          $result.noChangeReason == "already-satisfied" and
+          $result.converged == true and
+          ($result.summary | type == "string" and test("\\S")) and
+          $result.prUrl == null and
+          $result.checkpointPrUrl == null and
+          $result.verification.status == "passed" and
+          $result.delivery.status == "no-changes" and
+          $result.delivery.nextPhase == "deliver" and
+          (($result.delivery.targets // []) | length > 0) and
+          (($result.delivery.targets // []) |
+            all(.errorCode == "no_commits" or .outcome == "skipped-no-commits")) and
+          $delivery.status == "no-changes" and
+          $delivery.nextPhase == "deliver" and
+          (($delivery.targets // []) | length > 0) and
+          (($delivery.targets // []) |
+            all(.errorCode == "no_commits" or .outcome == "skipped-no-commits")) and
+          (($result.delivery.attemptedAt // "") != "") and
+          $result.delivery.attemptedAt == $delivery.attemptedAt
+        ' >/dev/null 2>&1; then
+          continue
+        fi
+      fi
+    fi
     team="$(jq -r '.currentTeamName // ""' <<<"$doc")"
     updated_at="$(jq -r '.updatedAt // ""' <<<"$doc")"
     staleness_hours="$(jq -r '.stalenessHours // 48' <<<"$doc")"

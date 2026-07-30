@@ -47,7 +47,7 @@ FIXTURE_FJ="$(jq -n '{
 printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 
 # Case A: write --status completed produces valid result.json
-bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Rate limiting was implemented and verified." >/dev/null 2>&1
 check "A: result.json created" "1" "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"
 check "A: valid JSON" "0" "$(jq . "$FEAT_DIR/result.json" >/dev/null 2>&1; echo $?)"
 check "A: schema=1" "1" "$(jq '.schema' "$FEAT_DIR/result.json")"
@@ -65,13 +65,15 @@ check "A: branch" "feat/my-feature" "$(jq -r '.branch' "$FEAT_DIR/result.json")"
 check "A: baseBranch" "main" "$(jq -r '.baseBranch' "$FEAT_DIR/result.json")"
 check "A: finishedAt present" "1" "$([[ "$(jq -r '.finishedAt' "$FEAT_DIR/result.json")" != "null" ]] && echo 1 || echo 0)"
 check "A: delivery status exposed" "ready-for-review" "$(jq -r '.delivery.status' "$FEAT_DIR/result.json")"
+check "A: summary exposed" "Rate limiting was implemented and verified." "$(jq -r '.summary' "$FEAT_DIR/result.json")"
+check "A: no-change reason defaults null" "null" "$(jq -r '.noChangeReason' "$FEAT_DIR/result.json")"
 
 # Case B: converged=true with empty warnings
 check "B: converged=true on clean completion" "true" "$(jq '.converged' "$FEAT_DIR/result.json")"
 
 # Case C: converged=false when warnings contains iterate-budget-spent:
 printf '%s\n' "$(jq '.warnings = ["iterate-budget-spent: foo gap"]' "$FEAT_DIR/feature.json")" > "$FEAT_DIR/feature.json"
-bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Completed with iteration warnings." >/dev/null 2>&1
 check "C: converged=false with iterate-budget-spent warning" "false" "$(jq '.converged' "$FEAT_DIR/result.json")"
 check "C: warnings array present" "1" "$(jq '.warnings | length' "$FEAT_DIR/result.json")"
 
@@ -80,7 +82,8 @@ printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 
 # Case D: --pr-url wins over feature.json .prUrl
 printf '%s\n' "$(jq '.prUrl = "https://github.com/old/pr/1"' "$FEAT_DIR/feature.json")" > "$FEAT_DIR/feature.json"
-bash "$LIB" write "$FEAT_DIR" --status completed --pr-url "https://github.com/new/pr/2" >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --pr-url "https://github.com/new/pr/2" \
+  --summary "Completed through the replacement PR." >/dev/null 2>&1
 check "D: --pr-url wins over feature.json prUrl" "https://github.com/new/pr/2" "$(jq -r '.prUrl' "$FEAT_DIR/result.json")"
 
 # Restore fixture
@@ -88,14 +91,14 @@ printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 
 # Case E: feature.json .prUrl used when no --pr-url arg
 printf '%s\n' "$(jq '.prUrl = "https://github.com/feat/pr/5"' "$FEAT_DIR/feature.json")" > "$FEAT_DIR/feature.json"
-bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Completed through the feature PR." >/dev/null 2>&1
 check "E: feature.json prUrl used when no arg" "https://github.com/feat/pr/5" "$(jq -r '.prUrl' "$FEAT_DIR/result.json")"
 
 # Restore fixture
 printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 
 # Case F: last-result.json copy created at the right relative location
-bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Completed and copied to the stable pointer." >/dev/null 2>&1
 check "F: last-result.json created" "1" "$([[ -f "$LOOP_DIR/last-result.json" ]] && echo 1 || echo 0)"
 check "F: last-result.json has same slug" "my-feature" "$(jq -r '.slug' "$LOOP_DIR/last-result.json")"
 
@@ -103,7 +106,7 @@ check "F: last-result.json has same slug" "my-feature" "$(jq -r '.slug' "$LOOP_D
 mkdir -p "$WORK/empty-feat"
 rm -f "$WORK/empty-feat/result.json"
 ec=0
-bash "$LIB" write "$WORK/empty-feat" --status completed >/dev/null 2>&1 || ec=$?
+bash "$LIB" write "$WORK/empty-feat" --status completed --summary "Missing fixture." >/dev/null 2>&1 || ec=$?
 check "G: missing feature.json exits 0" "0" "$ec"
 check "G: no result.json on missing feature.json" "0" "$([[ -f "$WORK/empty-feat/result.json" ]] && echo 1 || echo 0)"
 
@@ -111,29 +114,30 @@ check "G: no result.json on missing feature.json" "0" "$([[ -f "$WORK/empty-feat
 printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 rm -f "$FEAT_DIR/result.json"
 ec=0
-bash "$LIB" write "$FEAT_DIR" --status invalid_status >/dev/null 2>&1 || ec=$?
+bash "$LIB" write "$FEAT_DIR" --status invalid_status --summary "Invalid status." >/dev/null 2>&1 || ec=$?
 check "H: bad --status exits 0" "0" "$ec"
 check "H: no result.json on bad status" "0" "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"
 
 # Case I: the matching event line appears in events.jsonl
 printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 rm -f "$FEAT_DIR/events.jsonl"
-bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Completed with a matching event." >/dev/null 2>&1
 check "I: events.jsonl written" "1" "$([[ -f "$FEAT_DIR/events.jsonl" ]] && echo 1 || echo 0)"
 evt_event="$(tail -1 "$FEAT_DIR/events.jsonl" | jq -r '.event' 2>/dev/null || echo MISSING)"
 check "I: event matches status" "completed" "$evt_event"
 
 # Case J: --reason persisted in result.json; no --reason arg produces null
 printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
-bash "$LIB" write "$FEAT_DIR" --status paused --reason "user pause" >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status paused --reason "user pause" \
+  --summary "The run paused at the user's request." >/dev/null 2>&1
 check "J: reason in result.json" "user pause" "$(jq -r '.reason' "$FEAT_DIR/result.json")"
 printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
-bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Completed without a failure reason." >/dev/null 2>&1
 check "J2: no reason arg → reason is null" "null" "$(jq -r '.reason' "$FEAT_DIR/result.json")"
 
 # Case K: converged=false for iterate-terminal: warning
 printf '%s\n' "$(jq '.warnings = ["iterate-terminal: gap closed as terminal"]' "$FEAT_DIR/feature.json")" > "$FEAT_DIR/feature.json"
-bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Completed with a terminal iteration warning." >/dev/null 2>&1
 check "K: converged=false with iterate-terminal warning" "false" "$(jq '.converged' "$FEAT_DIR/result.json")"
 
 # Case L: no --status → exit 0
@@ -149,14 +153,14 @@ jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed",
   prUrl:"https://github.com/sidecar/pr/9",attemptedAt:"2026-01-01T01:00:00Z",
   finishedAt:"2026-01-01T01:05:00Z",targets:[{name:"my-feature",ok:true}]}' \
   > "$FEAT_DIR/delivery.json"
-bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Delivery completed from the sidecar." >/dev/null 2>&1
 check "M: sidecar advances logical phase" "completed" "$(jq -r '.phaseReached' "$FEAT_DIR/result.json")"
 check "M: sidecar PR exposed" "https://github.com/sidecar/pr/9" "$(jq -r '.prUrl' "$FEAT_DIR/result.json")"
 check "M: sidecar delivery exposed" "ready-for-review" "$(jq -r '.delivery.status' "$FEAT_DIR/result.json")"
 jq '(.targets[0].feedback) = {observationStatus:"complete",changesRequested:true}' \
   "$FEAT_DIR/delivery.json" > "$FEAT_DIR/delivery.json.tmp"
 mv "$FEAT_DIR/delivery.json.tmp" "$FEAT_DIR/delivery.json"
-bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Delivery completed with requested changes." >/dev/null 2>&1
 check "M2: blocking feedback prevents convergence" "false" "$(jq '.converged' "$FEAT_DIR/result.json")"
 check "M2: blocking feedback becomes a warning" "pr-feedback-changes-requested:my-feature" \
   "$(jq -r '.warnings[] | select(startswith("pr-feedback-changes-requested:"))' "$FEAT_DIR/result.json")"
@@ -167,7 +171,8 @@ CONTROL="$WORK/control"
 WT_FEAT="$WORK/worktree/.loop-spec/features/wt-feature"
 mkdir -p "$CONTROL/.loop-spec" "$WT_FEAT"
 printf '%s\n' "$(jq '.slug = "wt-feature"' <<<"$FIXTURE_FJ")" > "$WT_FEAT/feature.json"
-LOOP_SPEC_RESULT_ROOT="$CONTROL" bash "$LIB" write "$WT_FEAT" --status completed >/dev/null 2>&1
+LOOP_SPEC_RESULT_ROOT="$CONTROL" bash "$LIB" write "$WT_FEAT" --status completed \
+  --summary "Worktree delivery completed." >/dev/null 2>&1
 check "N: control-root pointer created" "1" "$([[ -f "$CONTROL/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 check "N: worktree pointer not substituted" "0" "$([[ -f "$WORK/worktree/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 
@@ -182,13 +187,13 @@ git -C "$LEGACY_CONTROL" worktree add -q -b legacy-feature "$LEGACY_WT"
 LEGACY_FEAT="$LEGACY_WT/.loop-spec/features/legacy"
 mkdir -p "$LEGACY_FEAT"
 printf '%s\n' "$(jq 'del(.resultRoot) | .slug = "legacy"' <<<"$FIXTURE_FJ")" > "$LEGACY_FEAT/feature.json"
-bash "$LIB" write "$LEGACY_FEAT" --status completed >/dev/null 2>&1
+bash "$LIB" write "$LEGACY_FEAT" --status completed --summary "Legacy worktree delivery completed." >/dev/null 2>&1
 check "N2: legacy worktree finds control pointer" "1" \
   "$([[ -f "$LEGACY_CONTROL/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 rm -f "$LEGACY_CONTROL/.loop-spec/last-result.json"
 bash "$LIB" write-terminal --result-root "$LEGACY_WT" --cycle-type micro \
   --status completed --outcome verified --title "Linked micro" --pr-url https://example/pr/3 \
-  --converged true --verification-status passed >/dev/null
+  --converged true --verification-status passed --summary "The linked micro task was delivered." >/dev/null
 check "N3: reduced cycle resolves linked worktree control pointer" "1" \
   "$([[ -f "$LEGACY_CONTROL/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 check "N3: reduced cycle leaves no disposable pointer" "0" \
@@ -201,7 +206,7 @@ bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
   --status completed --outcome verified --slug doc-refresh --title "Refresh docs" \
   --branch micro/doc-refresh --base-branch main --pr-url https://github.com/test/repo/pull/8 \
   --converged true --verification-status passed --verification-command "bash tests/run-all.sh" \
-  --autonomous true >/dev/null
+  --autonomous true --summary "Documentation was refreshed and verified." >/dev/null
 GENERIC_RESULT="$GENERIC_ROOT/.loop-spec/last-result.json"
 check "O: generic pointer created" "1" "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
 check "O: cycle type" "micro" "$(jq -r '.cycleType' "$GENERIC_RESULT")"
@@ -209,17 +214,19 @@ check "O: compatibility branch" "micro/doc-refresh" "$(jq -r '.branch' "$GENERIC
 check "O: compatibility PR" "https://github.com/test/repo/pull/8" "$(jq -r '.prUrl' "$GENERIC_RESULT")"
 check "O: explicit convergence" "true" "$(jq -r '.converged' "$GENERIC_RESULT")"
 check "O: verification command" "bash tests/run-all.sh" "$(jq -r '.verification.command' "$GENERIC_RESULT")"
+check "O: reduced summary exposed" "Documentation was refreshed and verified." "$(jq -r '.summary' "$GENERIC_RESULT")"
+check "O: reduced no-change reason defaults null" "null" "$(jq -r '.noChangeReason' "$GENERIC_RESULT")"
 check "O: no temporary pointer remains" "0" "$([[ -f "$GENERIC_RESULT.tmp" ]] && echo 1 || echo 0)"
 
 # Case P: contradictory success claims are rejected and clear removes stale pointers.
 rm -f "$GENERIC_RESULT"
 bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
   --status failed --outcome verification-failed --title "Bad claim" --pr-url https://example/pr/1 \
-  --converged true --verification-status passed >/dev/null 2>&1
+  --converged true --verification-status passed --summary "Contradictory claim." >/dev/null 2>&1
 check "P: contradictory convergence rejected" "0" "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
 bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type debug \
   --status completed --outcome fixed --title "Fixed" --pr-url https://example/pr/2 \
-  --converged true --verification-status passed >/dev/null
+  --converged true --verification-status passed --summary "The defect was fixed and verified." >/dev/null
 bash "$LIB" clear --result-root "$GENERIC_ROOT"
 check "P: clear removes stale pointer" "0" "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
 
@@ -235,12 +242,12 @@ check "Q: unsafe clear fails loudly" "1" "$ec"
 check "Q: unsafe clear preserves external pointer" "keep" "$(<"$EXTERNAL_ROOT/last-result.json")"
 bash "$LIB" write-terminal --result-root "$SYMLINK_ROOT" --cycle-type micro \
   --status completed --outcome verified --title "Unsafe" --pr-url https://example/pr/4 \
-  --converged true --verification-status passed >/dev/null 2>&1
+  --converged true --verification-status passed --summary "Unsafe destination test." >/dev/null 2>&1
 check "Q: unsafe write preserves external pointer" "keep" "$(<"$EXTERNAL_ROOT/last-result.json")"
 SYMLINK_FEATURE="$SYMLINK_ROOT/.loop-spec/features/unsafe"
 mkdir -p "$SYMLINK_FEATURE"
 printf '%s\n' "$(jq '.slug = "unsafe"' <<<"$FIXTURE_FJ")" > "$SYMLINK_FEATURE/feature.json"
-bash "$LIB" write "$SYMLINK_FEATURE" --status completed >/dev/null 2>&1
+bash "$LIB" write "$SYMLINK_FEATURE" --status completed --summary "Unsafe full destination test." >/dev/null 2>&1
 check "Q: unsafe full write preserves external pointer" "keep" "$(<"$EXTERNAL_ROOT/last-result.json")"
 check "Q: unsafe full write creates no external result" "0" \
   "$([[ -f "$SYMLINK_FEATURE/result.json" ]] && echo 1 || echo 0)"
@@ -261,7 +268,8 @@ jq -n '{schema:1,ok:false,status:"push-failed",nextPhase:"deliver",
       bindingEligible:true,checks:{status:"not-run"},errorCode:"authentication_failed",
       error:"authentication failed"}
   ]}' > "$FEAT_DIR/delivery.json"
-bash "$LIB" write "$FEAT_DIR" --status escalated --reason "push failed" >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status escalated --reason "push failed" \
+  --summary "Implementation verified, but delivery was blocked by the push failure." >/dev/null 2>&1
 check "R: delivery block status is failed" "failed" "$(jq -r '.status' "$FEAT_DIR/result.json")"
 check "R: delivery block outcome" "delivery-blocked" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
 check "R: delivery phase reached" "deliver" "$(jq -r '.phaseReached' "$FEAT_DIR/result.json")"
@@ -281,7 +289,8 @@ check "R: matching event uses normalized failed status" "failed" "$(tail -1 "$FE
 # nextPhase=execute is remediation, not a terminal delivery block.
 jq '.nextPhase = "execute"' "$FEAT_DIR/delivery.json" > "$FEAT_DIR/delivery.json.tmp"
 mv "$FEAT_DIR/delivery.json.tmp" "$FEAT_DIR/delivery.json"
-bash "$LIB" write "$FEAT_DIR" --status escalated --reason "checks failed" >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status escalated --reason "checks failed" \
+  --summary "Required checks failed and need remediation." >/dev/null 2>&1
 check "R2: execute rewind is not delivery-blocked" "escalated" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
 check "R2: execute rewind is not marked retryable delivery" "false" "$(jq -r '.retryable' "$FEAT_DIR/result.json")"
 
@@ -297,7 +306,8 @@ jq -n '{schema:1,ok:false,status:"no-changes",nextPhase:"deliver",
     {name:"explicitly-ineligible",ok:false,branch:"feat/no-bind",targetSha:"noBind789",
       bindingEligible:false,errorCode:"push_failed",error:"not eligible"}
   ]}' > "$FEAT_DIR/delivery.json"
-bash "$LIB" write "$FEAT_DIR" --status failed --reason "local preflight failed" >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status failed --reason "local preflight failed" \
+  --summary "Local delivery preflight could not establish a deliverable candidate." >/dev/null 2>&1
 check "R3: local-only failure remains escalated" "escalated" "$(jq -r '.status' "$FEAT_DIR/result.json")"
 check "R3: local-only outcome remains escalated" "escalated" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
 check "R3: local-only failure is not implementation-converged" "false" \
@@ -322,7 +332,8 @@ jq -n '{schema:1,ok:false,status:"partial",nextPhase:"deliver",
     {name:"api",ok:false,branch:"feat/api",targetSha:"api123",errorCode:"push_failed"},
     {name:"web",ok:false,branch:"feat/web",targetSha:"web456",errorCode:"branch_mismatch"}
   ]}' > "$FEAT_DIR/delivery.json"
-bash "$LIB" write "$FEAT_DIR" --status escalated >/dev/null 2>&1
+bash "$LIB" write "$FEAT_DIR" --status escalated \
+  --summary "Workspace delivery was blocked before all targets were eligible." >/dev/null 2>&1
 check "S: workspace top-level branch remains null" "null" "$(jq -r '.branch' "$FEAT_DIR/result.json")"
 check "S: workspace top-level SHA remains null" "null" "$(jq -r '.verifiedSha' "$FEAT_DIR/result.json")"
 check "S: workspace target branches preserved" 'api:feat/api,web:feat/web' \
@@ -335,6 +346,112 @@ check "S: mixed local and transport failure remains escalation" "escalated" \
   "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
 check "S: mixed local and transport failure is not retryable" "false" \
   "$(jq -r '.retryable' "$FEAT_DIR/result.json")"
+
+# Case T: every newly written record requires a non-empty human synthesis.
+rm -f "$FEAT_DIR/result.json"
+bash "$LIB" write "$FEAT_DIR" --status completed >/dev/null 2>&1
+check "T: full result without summary rejected" "0" \
+  "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
+  --status completed --outcome verified --title "Missing summary" --pr-url https://example/pr/5 \
+  --converged true --verification-status passed >/dev/null 2>&1
+check "T2: reduced result without summary rejected" "0" \
+  "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
+
+# Case U: an explicit already-satisfied conclusion converts deterministic
+# no-commit delivery evidence into a successful no-change result.
+printf '%s\n' "$(jq '.currentPhase = "deliver" | .prUrl = null |
+  .checkpointPrUrl = "https://example/stale-checkpoint" |
+  .iterate.lastVerdict = {converged:true,deterministic_gate_passed:true,summary:"The requested behavior was already present."} |
+  .delivery = {status:"pending",targets:[]}' <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+jq -n '{schema:1,ok:false,status:"no-changes",nextPhase:"deliver",prUrl:null,
+  attemptedAt:"2026-01-01T01:00:00Z",finishedAt:null,
+  targets:[{name:"my-feature",ok:false,branch:"feat/my-feature",targetSha:"local123",
+    bindingEligible:false,errorCode:"no_commits",error:"no commits"}]}' > "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status completed \
+  --summary "The requested behavior was already present; verification found no implementation gap." \
+  --no-change-reason already-satisfied >/dev/null 2>&1
+check "U: intentional no-change is completed" "completed" "$(jq -r '.status' "$FEAT_DIR/result.json")"
+check "U: intentional no-change outcome" "no-change-needed" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "U: intentional no-change converged" "true" "$(jq -r '.converged' "$FEAT_DIR/result.json")"
+check "U: intentional no-change reason code" "already-satisfied" "$(jq -r '.noChangeReason' "$FEAT_DIR/result.json")"
+check "U: intentional no-change has no PR" "null" "$(jq -r '.prUrl' "$FEAT_DIR/result.json")"
+check "U: intentional no-change has no checkpoint PR" "null" \
+  "$(jq -r '.checkpointPrUrl' "$FEAT_DIR/result.json")"
+
+rm -f "$FEAT_DIR/result.json"
+jq '.targets[0].errorCode = "dirty_worktree"' "$FEAT_DIR/delivery.json" > "$FEAT_DIR/delivery.json.tmp"
+mv "$FEAT_DIR/delivery.json.tmp" "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Invalid no-change claim." \
+  --no-change-reason already-satisfied >/dev/null 2>&1
+check "U2: no-change without no-commit evidence rejected" "0" \
+  "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"
+
+jq '.targets[0].errorCode = "no_commits"' "$FEAT_DIR/delivery.json" > "$FEAT_DIR/delivery.json.tmp"
+mv "$FEAT_DIR/delivery.json.tmp" "$FEAT_DIR/delivery.json"
+printf '%s\n' "$(jq '.iterate.lastVerdict.deterministic_gate_passed = false' \
+  "$FEAT_DIR/feature.json")" > "$FEAT_DIR/feature.json"
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Model-only convergence." \
+  --no-change-reason already-satisfied >/dev/null 2>&1
+check "U3: no-change with failed deterministic gate rejected" "0" \
+  "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"
+
+printf '%s\n' "$(jq '.iterate.lastVerdict.deterministic_gate_passed = true |
+  .warnings = ["iterate-budget-spent: unresolved behavior"]' "$FEAT_DIR/feature.json")" \
+  > "$FEAT_DIR/feature.json"
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "Warning-bearing no-change." \
+  --no-change-reason already-satisfied >/dev/null 2>&1
+check "U4: no-change with unresolved iteration warning rejected" "0" \
+  "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"
+
+# Case V: reduced work and diagnostics share the common no-change shape while
+# preserving a small, cycle-appropriate reason-code vocabulary.
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
+  --status completed --outcome no-change-needed --slug existing-config --title "Check config" \
+  --converged true --verification-status passed \
+  --summary "The requested configuration was already present and passed validation." \
+  --no-change-reason already-satisfied >/dev/null
+check "V: reduced no-change completed" "completed" "$(jq -r '.status' "$GENERIC_RESULT")"
+check "V: reduced no-change reason" "already-satisfied" "$(jq -r '.noChangeReason' "$GENERIC_RESULT")"
+check "V: reduced no-change has no PR" "null" "$(jq -r '.prUrl' "$GENERIC_RESULT")"
+
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type diagnostic \
+  --status completed --outcome no-change-needed --slug forensics --title "Forensic diagnosis" \
+  --converged true --verification-status not-run \
+  --summary "No workflow anomalies were detected; recorded state is internally consistent." \
+  --no-change-reason diagnostic-only >/dev/null
+check "V2: diagnostic result created" "1" "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
+check "V2: diagnostic cycle type" "diagnostic" "$(jq -r '.cycleType' "$GENERIC_RESULT")"
+check "V2: diagnostic summary" "No workflow anomalies were detected; recorded state is internally consistent." \
+  "$(jq -r '.summary' "$GENERIC_RESULT")"
+check "V2: diagnostic reason code" "diagnostic-only" "$(jq -r '.noChangeReason' "$GENERIC_RESULT")"
+
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type diagnostic \
+  --status completed --outcome no-change-needed --slug assess --title "Assessment" \
+  --converged true --verification-status not-run --summary "Assessment completed." \
+  --no-change-reason already-satisfied >/dev/null 2>&1
+check "V3: diagnostic rejects work-cycle reason" "0" \
+  "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
+
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
+  --status completed --outcome no-change-needed --title "Unverified no-change" \
+  --converged true --verification-status not-run --summary "No verification was run." \
+  --no-change-reason already-satisfied >/dev/null 2>&1
+check "V4: work no-change requires passed verification" "0" \
+  "$([[ -f "$GENERIC_RESULT" ]] && echo 1 || echo 0)"
+
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type diagnostic \
+  --status failed --outcome diagnostic-failed --title "Failed diagnosis" \
+  --converged false --verification-status not-run --reason "report write failed" \
+  --summary "Forensic diagnosis failed because the report could not be written." >/dev/null
+check "V5: diagnostic failure recorded" "failed" "$(jq -r '.status' "$GENERIC_RESULT")"
+check "V5: diagnostic failure has no no-change reason" "null" \
+  "$(jq -r '.noChangeReason' "$GENERIC_RESULT")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

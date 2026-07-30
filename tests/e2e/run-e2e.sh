@@ -171,6 +171,12 @@ if [[ -f "$RESULT" ]]; then
   check "result converged is boolean" "1" \
     "$(jq -r '.converged | type == "boolean"' "$RESULT" 2>/dev/null | grep -c true)"
 
+  check "result summary is non-empty" "1" \
+    "$(jq -r '(.summary | type == "string") and (.summary | test("\\S"))' "$RESULT" 2>/dev/null | grep -c true)"
+
+  check "result noChangeReason has the compatibility type" "1" \
+    "$(jq -r '(.noChangeReason == null) or (.noChangeReason == "already-satisfied") or (.noChangeReason == "diagnostic-only")' "$RESULT" 2>/dev/null | grep -c true)"
+
   check "result iterations.used is a number" "number" \
     "$(jq -r '.iterations.used | type' "$RESULT" 2>/dev/null)"
 
