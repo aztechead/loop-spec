@@ -2,6 +2,30 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.28.0] - 2026-07-30
+
+### Added
+
+- Schema-1 terminal results now include a required, non-empty `summary` with the
+  run's human-readable conclusion and a nullable stable `noChangeReason`. Consumers
+  can surface delivered changes, diagnostic findings, pauses, and failures without
+  scraping streamed output or committed workflow artifacts.
+- Standalone forensics, assessment, and retrospective runs now emit the shared
+  `LOOP_SPEC_RESULT` / `.loop-spec/last-result.json` contract with
+  `cycleType: "diagnostic"`.
+
+### Changed
+
+- Intentional no-PR runs use `status: "completed"`,
+  `outcome: "no-change-needed"`, and one of two reason codes: `already-satisfied` for a
+  verified unchanged baseline, or `diagnostic-only` for read-only/reporting work.
+  Full cycles require deterministic ITERATE convergence and no-commit evidence for
+  every target; unverified zero-commit runs remain failed or escalated.
+- Issue automation, status output, resume detection, and Claude worktree cleanup now
+  understand intentional no-change results while failing closed on stale checkpoints,
+  contradictory outcomes, copied records, and diagnostics used as implementation
+  completion claims. The contract remains additive schema 1 for older readers.
+
 ## [2.27.1] - 2026-07-29
 
 ### Fixed
