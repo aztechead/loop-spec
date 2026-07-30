@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.28.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.29.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -252,6 +252,13 @@ claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
 
 Every delegated route is question-free and ends with verification and PR delivery. Full-cycle assumptions still land in SPEC.md and PLAN.md; debug records them in BUG.md; micro records its outcome in the ad-hoc ledger. SDK callers receive the normalized decision as one `AUTONOMOUS_ROUTE {...}` output line; route selection writes nothing into the target repository. A bare autonomous invocation with no description aborts. Full contract: `skills/shared/autonomous-mode.md`.
 
+For ephemeral containers of any configured size, use the bounded
+[Cloud Run autonomous profile](docs/loop-spec/cloud-run-autonomous.md). It documents
+operator-set concurrency, serial in-place execution with one-shot subagents
+(`LOOP_SPEC_WORKTREES=0`), fresh-agent phase handoffs, setup/baseline watchdogs,
+Agent SDK turn/spend/effort limits, phase checkpoint PRs, and out-of-band fatal-exit
+reconciliation.
+
 ### Non-interactive mode (CI)
 
 Weaker than autonomous: pre-pin the answers instead of letting the model choose.
@@ -277,6 +284,12 @@ local files provide the full-cycle detail (both intentionally uncommitted):
 also keep per-feature copies at `.loop-spec/features/{slug}/result.json`. Claude
 worktrees copy the terminal object back to the original control checkout, so removing
 the worktree does not remove the pointer. Schema version 1:
+
+While a full cycle is running, `.loop-spec/active-run.json` points at its latest durable
+phase and feature state. `lib/cycle-reconcile.sh` consumes that pointer after an
+interrupted process, salvages a draft checkpoint PR when committed work exists, and
+completes `last-result.json`. A supervisor must persist or mirror this file because no
+in-container handler can run after `SIGKILL`, OOM termination, or host loss.
 
 ```json
 {
@@ -400,7 +413,13 @@ Cycle behavior:
 | `LOOP_SPEC_SPEC_FILE` | unset | Path to a pre-authored spec `.md`; headless equivalent of `/loop-spec:cycle path/to/spec.md`. |
 | `LOOP_SPEC_MAX_FEATURES` | `1` | Features per backlog-drain invocation, and the requested sentinel batch size (granted only at trust L1+). |
 | `LOOP_SPEC_PHASE_TIMEOUT_MINS` | `60` | Phase watchdog wall-clock ceiling. |
+| `LOOP_SPEC_PHASE_HANDOFF` | unset | `1` completes one durable phase per invocation, emits `status=paused` / `reason=phase-handoff`, and resumes the next phase in a fresh main-agent session. `0` keeps continuous routing. Inline equivalents: `phase:fresh` and `phase:continuous`. |
 | `LOOP_SPEC_ITERATE_FRESH` | unset | `1` makes ITERATE rewinds hand off through committed state and relaunch in a clean session instead of continuing inline. |
+| `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | autonomous | `1` pushes/reuses a draft checkpoint PR after each non-DELIVER phase; `0` disables phase checkpoints. |
+| `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | `1800` | Wall-clock deadline for dependency/environment preparation. |
+| `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | `300` | No-output deadline for dependency/environment preparation. |
+| `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | `1800` | Wall-clock deadline for each exact-base baseline command. |
+| `LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS` | `300` | No-output deadline for each exact-base baseline command. |
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | unset | `1` skips the startup model probe (also skipped automatically when probed within 24h). |
 | `LOOP_SPEC_REQUIRE_GRAPHIFY` | required | `0` bypasses the graphify requirement; design phases fall back to Glob/Grep. |
 | `LOOP_SPEC_CHECKPOINT_PR` | on | `0` disables the draft checkpoint PR on pause/escalation/terminal stop. |
@@ -430,6 +449,10 @@ EXECUTE dispatch:
 | Variable | Default | Effect |
 |---|---|---|
 | `LOOP_SPEC_EXECUTE_LOOPS` | auto | `1` requests loop-fleet at any DAG width; `0` forbids it. Selection still requires the agent CLI and persistent-runtime capability. |
+| `LOOP_SPEC_WORKTREES` | `1` | `0` uses the in-place feature branch and serial EXECUTE. One-shot implementer/reviewer subagents are retained when available; only task/feature worktree isolation is disabled. |
+| `LOOP_SPEC_SHARE_DEPENDENCIES` | `1` | With worktrees enabled, link a matching successfully prepared `node_modules` from the feature checkout; `0` installs independently. |
+| `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` | `3` | Positive integer cap, clamped to 3. `LOOP_SPEC_WORKTREES=0` forces an effective cap of 1. |
+| `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` | unset | Positive integer deployment-wide cap on simultaneous one-shot Agent calls. When set, teams, Workflow fan-out, and loop fleets are disabled in favor of enforceable bounded waves. `1` keeps role agents but runs them serially. |
 | `LOOP_SPEC_EXECUTION_PROFILE` | probed | `interactive` asserts that the invocation can keep a foreground fleet call alive; `headless` disables loop-fleet. A headless `CLAUDE_CODE_ENTRYPOINT` stamp overrides `interactive`; unset falls back to no loop runtime, and `LOOP_SPEC_NON_INTERACTIVE=1` implies headless behavior. |
 | `LOOP_SPEC_LOOP_RUNTIME` | probed | `1` explicitly asserts that the wrapper can keep a foreground fleet call alive; `0` disables that capability. Required to force loops from a headless profile, and the only setting that outranks the entrypoint stamp. |
 | `CLAUDE_CODE_ENTRYPOINT` | set by the harness | Read, never set by loop-spec. `sdk-cli` (`claude -p`), `sdk-py` (Python Agent SDK) and `sdk-ts` prove a one-shot invocation, so loop-fleet is skipped with reason `headless/<stamp>`. See [`docs/loop-spec/claude-invocation-contract.md`](docs/loop-spec/claude-invocation-contract.md). |

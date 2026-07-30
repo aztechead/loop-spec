@@ -4,7 +4,8 @@ How loop-spec drives Claude Code, and the places where the CLI and the Agent SDK
 disagree in ways that break an unattended run. Companion to
 `agent-output-contract.md`, which covers what comes back out.
 
-Verified against Claude Code 2.1.212. loop-spec owns only the surfaces named
+Re-verified against the live Claude Code and Python Agent SDK references on
+2026-07-30. loop-spec owns only the surfaces named
 here; everything else about the CLI and the SDKs is Anthropic's to change.
 
 ## Execution profile: `CLAUDE_CODE_ENTRYPOINT`
@@ -59,11 +60,7 @@ Precedence in `harness.sh loop-runtime`, strongest first:
 The interactive TUI still requires the explicit `interactive` opt-in. Being at a
 terminal is not by itself proof the invocation will stay alive.
 
-## `--permission-mode`: the CLI and the SDK are not the same set
-
-This is the trap most likely to burn a whole unattended run, because the CLI
-rejects the bad value on *every* tick and the rejection surfaces only as a
-nonzero exit.
+## `--permission-mode`
 
 | Mode | `claude --permission-mode` | SDK `permission_mode` |
 |---|---|---|
@@ -72,22 +69,22 @@ nonzero exit.
 | `bypassPermissions` | yes | yes |
 | `dontAsk` | yes | yes |
 | `plan` | yes | yes |
-| `manual` | **yes** | no |
-| `default` | **no** | **yes** |
+| `manual` | yes (CLI alias for `default`) | no |
+| `default` | yes | yes |
 
-Copying `permission_mode="default"` out of Agent SDK code into a CLI flag is
-therefore a silent, total failure. `loop.py` rejects it up front
-(`LoopConfig.permission_conflict()`, exit 2) and names both the valid CLI set and
-the SDK origin of the mistake. Unattended loops want `acceptEdits`.
+Older Claude Code releases rejected CLI `default`; current releases accept it.
+`loop.py` validates the current CLI set up front. Unattended edit-capable loops
+normally want `acceptEdits`; `dontAsk` is the fail-closed choice when any
+unapproved tool call should be denied instead of waiting for a human.
 
 Only the claude backend is validated — pi and opencode give special meaning to
 `plan` alone and keep their own vocabulary.
 
 ## Spend
 
-`claude -p --max-budget-usd <amount>` caps a single print-mode invocation. It is
-the only CLI-level spend control; `--max-turns` does not exist on the CLI (it is
-SDK-only, `ClaudeAgentOptions.max_turns`).
+`claude -p --max-budget-usd <amount>` caps a single print-mode invocation.
+`--max-turns` separately caps agentic tool-use round trips. Both also exist in
+the Python SDK as `ClaudeAgentOptions.max_budget_usd` and `max_turns`.
 
 `loop.py --max-budget-usd` builds a loop-level cap on top of it: the summed
 per-tick `total_cost_usd` is checked before each iteration and halts
@@ -116,8 +113,14 @@ from claude_agent_sdk import query, ClaudeAgentOptions
 options = ClaudeAgentOptions(
     plugins=[{"type": "local", "path": "/path/to/loop-spec"}],
     setting_sources=["project"],
-    permission_mode="acceptEdits",   # NOT "default" if you also shell out to the CLI
+    permission_mode="acceptEdits",
     cwd="/path/to/target/repo",
+    max_turns=80,
+    max_budget_usd=20.0,
+    effort="medium",
+    fallback_model="haiku",
+    include_partial_messages=True,
+    max_buffer_size=8 * 1024 * 1024,
 )
 
 async def main():
@@ -138,6 +141,10 @@ autonomous by construction).
 Set `LOOP_SPEC_NON_INTERACTIVE=1` as well if you invoke a non-autonomous entry
 point, and `LOOP_SPEC_LOOP_RUNTIME=1` only if your wrapper genuinely keeps a
 foreground call alive for the life of a fleet.
+
+For resource-constrained or ephemeral Cloud Run jobs of any configured size, use
+the parameterized wrapper, signal/reconciliation contract, and example policy in
+`docs/loop-spec/cloud-run-autonomous.md`.
 
 ## Credential TTL
 

@@ -104,6 +104,13 @@ ec=0
 bash "$SCRIPT" run --root "$REPO" --command 'exit 7' >/dev/null 2>&1 || ec=$?
 check "setup command failure has a distinct exit" "10" "$ec"
 
+ec=0
+out="$(LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS=1 bash "$SCRIPT" run --root "$REPO" \
+  --command 'sleep 3 # idle-timeout')" || ec=$?
+check "silent setup is bounded" "10" "$ec"
+check "silent setup keeps structured failure" "setup_failed:idle_timeout:124" \
+  "$(jq -r '.status + ":" + .failureKind + ":" + (.exitCode | tostring)' <<<"$out")"
+
 FAKE_BIN="$WORK/fake-bin"
 mkdir -p "$FAKE_BIN"
 REAL_GIT="$(command -v git)"
@@ -133,6 +140,29 @@ git -C "$REPO" commit -qm ignore
 out="$(bash "$SCRIPT" run --root "$REPO" --command 'printf local > ignored.txt')"
 check "ignored setup output remains allowed" "prepared" "$(jq -r '.status' <<<"$out")"
 check "ignored setup output remains present" "1" "$([[ -f "$REPO/ignored.txt" ]] && echo 1 || echo 0)"
+
+SHARE_REPO="$WORK/share-repo"
+new_repo "$SHARE_REPO"
+printf '{}\n' > "$SHARE_REPO/package.json"
+printf '{"lockfileVersion":3}\n' > "$SHARE_REPO/package-lock.json"
+printf 'node_modules/\n' > "$SHARE_REPO/.gitignore"
+git -C "$SHARE_REPO" add package.json package-lock.json .gitignore
+git -C "$SHARE_REPO" commit -qm node-manifest
+SHARE_BIN="$WORK/share-bin"
+mkdir -p "$SHARE_BIN"
+printf '%s\n' '#!/usr/bin/env bash' \
+  'mkdir -p node_modules/example' \
+  'printf installed > node_modules/example/value' > "$SHARE_BIN/npm"
+chmod +x "$SHARE_BIN/npm"
+out="$(PATH="$SHARE_BIN:$PATH" bash "$SCRIPT" run --root "$SHARE_REPO" --command 'npm ci')"
+check "source dependency tree prepared once" "prepared" "$(jq -r '.status' <<<"$out")"
+SHARE_WT="$WORK/share-worktree"
+git -C "$SHARE_REPO" worktree add -q -b share-task "$SHARE_WT"
+out="$(PATH="$SHARE_BIN:$PATH" bash "$SCRIPT" run --root "$SHARE_WT" \
+  --command 'npm ci' --reuse-from "$SHARE_REPO")"
+check "task worktree reuses dependency tree" "shared" "$(jq -r '.status' <<<"$out")"
+check "task node_modules is a symlink" "1" "$([[ -L "$SHARE_WT/node_modules" ]] && echo 1 || echo 0)"
+check "shared dependencies resolve" "installed" "$(<"$SHARE_WT/node_modules/example/value")"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

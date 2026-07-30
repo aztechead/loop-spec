@@ -61,9 +61,8 @@ MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower 
 # accepts "default" — which the CLI rejects — and has no "manual". Copying a
 # permission_mode out of SDK code into a CLI flag is the trap this guards, since
 # the CLI's rejection surfaces only as a nonzero exit on every single tick.
-CLAUDE_PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions",
+CLAUDE_PERMISSION_MODES = ("default", "acceptEdits", "auto", "bypassPermissions",
                            "manual", "dontAsk", "plan")
-SDK_ONLY_PERMISSION_MODES = ("default",)
 
 DEFAULT_JUDGE_MODEL = "claude-haiku-4-5-20251001"  # claude -p id; dropped under pi
                                                    # and opencode (their model registries
@@ -88,6 +87,7 @@ class LoopConfig:
     verify: str = ""                  # shell cmd, exit 0 == done. Strongly recommended.
     protected: list = field(default_factory=list)  # paths the agent must not modify
     max_iterations: int = 10
+    max_turns: int = 0                  # per claude tick; 0 leaves the CLI default
     timeout_s: int = 3600
     no_progress: int = 3
     verify_timeout_s: int = 600
@@ -95,6 +95,7 @@ class LoopConfig:
     permission_mode: str = "acceptEdits"
     allowed_tools: str = ""
     model: str = ""
+    effort: str = ""                  # low|medium|high|xhigh|max; claude-only
     fallback_model: str = ""          # --fallback-model: on overload / model-unavailable
                                       # the headless tick falls back to this model instead
                                       # of dying — matters for unattended fleet loops
@@ -161,9 +162,8 @@ class LoopConfig:
 
     def permission_conflict(self) -> Optional[str]:
         """Detect a permission mode the claude CLI will reject. Without this,
-        `--permission-mode default` (valid in the Agent SDK, absent from the CLI)
-        makes claude exit nonzero on EVERY tick, so the loop burns its whole
-        iteration budget on agent_error with nothing naming the real cause.
+        a typo makes claude exit nonzero on EVERY tick, so the loop burns its
+        whole iteration budget on agent_error with nothing naming the real cause.
         Same failure shape as transport_conflict(), same fail-fast treatment.
         Returns a human-readable message, or None when the mode is accepted.
 
@@ -174,13 +174,8 @@ class LoopConfig:
         mode = self.permission_mode
         if mode in CLAUDE_PERMISSION_MODES:
             return None
-        hint = ""
-        if mode in SDK_ONLY_PERMISSION_MODES:
-            hint = (f" `{mode}` is an Agent SDK PermissionMode; the CLI has no such "
-                    f"mode. Unattended loops want `acceptEdits`.")
         return (f"--permission-mode {mode!r} is not accepted by `claude "
-                f"--permission-mode` (valid: {', '.join(CLAUDE_PERMISSION_MODES)})."
-                + hint)
+                f"--permission-mode` (valid: {', '.join(CLAUDE_PERMISSION_MODES)}).")
 
     def resolved_task_id(self) -> str:
         if self.task_id:
@@ -384,8 +379,12 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         cmd += ["--resume", resume]
     if cfg.model:
         cmd += ["--model", cfg.model]
+    if cfg.effort:
+        cmd += ["--effort", cfg.effort]
     if cfg.fallback_model:
         cmd += ["--fallback-model", cfg.fallback_model]
+    if cfg.max_turns > 0:
+        cmd += ["--max-turns", str(cfg.max_turns)]
     if budget_usd is not None and budget_usd > 0:
         # --max-budget-usd is print-mode only, which is exactly this call. Caps THIS
         # tick at the loop's remaining budget so a single runaway turn cannot
@@ -927,6 +926,8 @@ def run_loop(cfg: LoopConfig) -> dict:
         "halt_reason": status,
         "iterations": state.iteration,
         "total_turns": state.total_turns,
+        "max_turns_per_tick": cfg.max_turns or None,
+        "effort": cfg.effort or None,
         "total_cost_usd": round(state.total_cost_usd, 6) if state.total_cost_usd is not None else None,
         "max_budget_usd": cfg.max_budget_usd or None,
         "wall_clock_seconds": round(elapsed, 1),
@@ -972,19 +973,22 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
                    help="Path the agent must not modify (repeatable). Tokens in the "
                         "verify command that exist on disk are auto-protected too.")
     p.add_argument("--max-iterations", type=int, default=None)
+    p.add_argument("--max-turns", type=int, default=None,
+                   help="maximum agentic turns in each claude tick (0/unset = CLI default)")
     p.add_argument("--timeout", type=int, default=None, dest="timeout_s")
     p.add_argument("--no-progress", type=int, default=None)
     p.add_argument("--verify-timeout", type=int, default=None, dest="verify_timeout_s")
     p.add_argument("--mode", choices=["fresh", "continue"], default=None)
     p.add_argument("--permission-mode", default=None,
-                   help="claude: one of " + "|".join(CLAUDE_PERMISSION_MODES) +
-                        " (the Agent SDK's `default` is not a CLI mode)")
+                   help="claude: one of " + "|".join(CLAUDE_PERMISSION_MODES))
     p.add_argument("--max-budget-usd", type=float, default=None, dest="max_budget_usd",
                    help="cumulative USD cap for the whole loop; halts "
                         "budget_exhausted and caps each tick at what is left "
                         "(0/unset = unbounded)")
     p.add_argument("--allowed-tools", default=None)
     p.add_argument("--model", default=None)
+    p.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"],
+                   default=None)
     p.add_argument("--fallback-model", default=None, dest="fallback_model")
     p.add_argument("--retry-watchdog", default=None, dest="retry_watchdog")
     p.add_argument("--judge", action="store_true", default=None)

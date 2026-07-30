@@ -10,6 +10,10 @@ mechanism changes.
 Teams are an accelerator (persistent context across critique rounds), not a
 prerequisite — a missing experimental flag must never make the plugin throw.
 
+Apply `skills/shared/subagent-concurrency.md` to every one-shot dispatch.
+`LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1` keeps these role calls sequential and
+context-isolated; no call is left running in the background.
+
 **pi harness (one level further down):** this table substitutes team primitives
 with one-shot `Agent` calls — but under pi (`runtime.json.harness == "pi"`) the
 `Agent` tool does not exist either. Apply this table first, then the **inline

@@ -36,6 +36,7 @@ touch "$WORK/.loop-spec/features/demo/feature.json" \
   "$WORK/.loop-spec/features/demo/events.jsonl" \
   "$WORK/.loop-spec/features/demo/gate-logs/round.json" \
   "$WORK/.loop-spec/runtime.json" \
+  "$WORK/.loop-spec/active-run.json" \
   "$WORK/.loop-spec/last-result.json" \
   "$WORK/.loop-spec/results/run.json" \
   "$WORK/.loop-spec/decisions-staging/decisions.jsonl" \
@@ -51,6 +52,7 @@ for path in \
   .loop-spec/features/demo/events.jsonl \
   .loop-spec/features/demo/gate-logs/round.json \
   .loop-spec/runtime.json \
+  .loop-spec/active-run.json \
   .loop-spec/last-result.json \
   .loop-spec/results/run.json \
   .loop-spec/decisions-staging/decisions.jsonl \

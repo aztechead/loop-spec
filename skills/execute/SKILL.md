@@ -235,6 +235,35 @@ Fixed operating params (`skills/shared/tier-matrix.md`):
 |---|---|---|---|---|
 | 3 | 2 | true | 3 | 6 |
 
+For constrained containers, `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` may lower the
+implementer cap without changing DAG semantics. It must be a positive integer and is
+clamped to the tier maximum. `LOOP_SPEC_WORKTREES=0` is stronger than that cap: it
+forces `maxParallelImplementers=1` and disables task worktrees. When the harness has
+an Agent tool, EXECUTE still uses sequential one-shot implementer/reviewer subagents
+to bound the lead's context; only a harness without subagents falls back to inline
+lead execution.
+
+```bash
+maxParallelImplementers=3
+if [[ -n "${LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS:-}" ]]; then
+  [[ "$LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS" =~ ^[1-9][0-9]*$ ]] || {
+    echo "EXECUTE: LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS must be a positive integer" >&2
+    exit 2
+  }
+  (( LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS < maxParallelImplementers )) \
+    && maxParallelImplementers="$LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS"
+fi
+if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
+  [[ "$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS" =~ ^[1-9][0-9]*$ ]] || {
+    echo "EXECUTE: LOOP_SPEC_MAX_PARALLEL_SUBAGENTS must be a positive integer" >&2
+    exit 2
+  }
+  (( LOOP_SPEC_MAX_PARALLEL_SUBAGENTS < maxParallelImplementers )) \
+    && maxParallelImplementers="$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS"
+fi
+[[ "${LOOP_SPEC_WORKTREES:-1}" == "0" ]] && maxParallelImplementers=1
+```
+
 #### Step 3a - Compute DAG width W and read runtime capabilities
 
 `W` is the peak antichain width of the DAG, measured uncapped (independent of
@@ -333,7 +362,7 @@ Workflow({
       implementer: feature.models.implementer,
       specComplianceReviewer: feature.models.specComplianceReviewer
     },
-    maxParallelImplementers: 3,
+    maxParallelImplementers: maxParallelImplementers,
     maxRetriesPerTask: 2,
     reviewersEnabled: true,
     commands: feature.commands,
@@ -434,7 +463,8 @@ lib/feature-write.sh set currentTeamName "loop-spec-execute-{slug}"
 
 ### Step 5 - Fallback: TeamCreate for the EXECUTE team
 
-Size the team from the fixed params: `M = min(plannedTaskCount, 3)`, `R = ceil(M / 2)`.
+Size the team from the effective params:
+`M = min(plannedTaskCount, maxParallelImplementers)`, `R = ceil(M / 2)`.
 
 Models are read literally from `feature.json.models` (resolved once at cycle Step 5):
 implementers use `feature.models.implementer` (sonnet), the spec-compliance gate uses

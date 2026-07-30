@@ -72,6 +72,9 @@ result in `.loop-spec/runtime.json.teamsMode`:
 | `implicit` | flag=1 **and** CC `>= 2.1.178` | One implicit team; teammates spawned via `Agent({name})`, **no `TeamCreate`/`TeamDelete`** (`skills/shared/implicit-team-mode.md`) |
 
 Force the mode with `LOOP_SPEC_TEAMS_MODE=none|explicit|implicit` (testing / constrained environments).
+Setting `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` forces `teamsMode=none` and runs
+one-shot role agents in bounded waves so the operator's concurrency cap is
+enforceable.
 
 ### Minimum Claude Code version
 

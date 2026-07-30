@@ -351,9 +351,11 @@ EOF
 chmod +x recstub.sh
 python3 "$SCRIPTS/loop.py" "noop" --task-id fb --claude-bin "$R/recstub.sh" \
   --fallback-model claude-haiku-4-5-20251001 --retry-watchdog 5 \
-  --max-iterations 1 --verify 'true' >/dev/null 2>&1
+  --max-turns 12 --effort medium --max-iterations 1 --verify 'true' >/dev/null 2>&1
 check "fallback-model flag passed" "$(grep -c -- '--fallback-model claude-haiku-4-5-20251001' "$REC")" "1"
 check "retry-watchdog env set"      "$(grep -c 'WATCHDOG: 5' "$REC")" "1"
+check "max-turns flag passed"       "$(grep -c -- '--max-turns 12' "$REC")" "1"
+check "effort flag passed"          "$(grep -c -- '--effort medium' "$REC")" "1"
 
 # Default (flags omitted): no fallback flag, watchdog inherited (unset here)
 newrepo
@@ -626,16 +628,13 @@ check "oc missing readonly agent fails closed" "$?" "1"
 check "oc missing readonly agent writes no plan" "$(test -f plan/tasks.json && echo yes || echo no)" "no"
 
 echo "== 18. permission-mode is validated against the real claude CLI choice set =="
-# `default` is an Agent SDK PermissionMode but NOT a `claude --permission-mode`
-# value. Unvalidated it reaches the CLI, which rejects it on every tick — the
-# loop then burns its whole iteration budget on opaque agent_error.
+# Current Claude Code accepts `default`; older releases did not.
 newrepo
 python3 "$SCRIPTS/loop.py" "noop" --task-id permdefault --claude-bin "$FAKE" \
   --permission-mode default --max-iterations 1 >/dev/null 2>"$R/permerr.txt"
-check "sdk-only mode exit 2"      "$?" "2"
-check "sdk-only mode names the CLI set" "$(grep -c 'acceptEdits' "$R/permerr.txt")" "1"
-check "sdk-only mode names the SDK"     "$(grep -c 'Agent SDK PermissionMode' "$R/permerr.txt")" "1"
-check "no result written"         "$(test -f .loop/permdefault/result.json && echo yes || echo no)" "no"
+check "default mode reaches the runner" "$?" "1"
+check "default mode writes a result" \
+  "$(test -f .loop/permdefault/result.json && echo yes || echo no)" "yes"
 
 newrepo
 python3 "$SCRIPTS/loop.py" "noop" --task-id permtypo --claude-bin "$FAKE" \
@@ -646,12 +645,12 @@ check "typo mode lists valid modes" "$(grep -c 'bypassPermissions' "$R/permerr2.
 # Every mode the CLI documents is accepted.
 newrepo
 PERMOK=0
-for m in acceptEdits auto bypassPermissions manual dontAsk plan; do
+for m in default acceptEdits auto bypassPermissions manual dontAsk plan; do
   python3 "$SCRIPTS/loop.py" "noop" --task-id "perm-$m" --claude-bin "$FAKE" \
     --permission-mode "$m" --max-iterations 1 >/dev/null 2>&1
   [[ -f ".loop/perm-$m/result.json" ]] && PERMOK=$((PERMOK+1))
 done
-check "all CLI modes accepted"    "$PERMOK" "6"
+check "all CLI modes accepted"    "$PERMOK" "7"
 
 # pi/opencode keep their own permission vocabulary — the claude set must not gate them.
 newrepo

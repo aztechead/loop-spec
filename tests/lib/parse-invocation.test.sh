@@ -40,6 +40,13 @@ out="$(bash "$SCRIPT" parse "add csv export style:step to reports")"
 check "style parsed mid-text" "step" "$(field "$out" style)"
 check "style stripped from title" "add csv export to reports" "$(field "$out" title)"
 
+# phase mode tokens are execution controls, never goal text
+out="$(bash "$SCRIPT" parse "phase:fresh autonomous add csv export")"
+check "fresh phase mode parsed" "fresh" "$(field "$out" phase_mode)"
+check "phase mode stripped from title" "add csv export" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "phase:continuous add csv export")"
+check "continuous phase mode parsed" "continuous" "$(field "$out" phase_mode)"
+
 # legacy tokens stripped, reported, never in the title (the oracle-pollution bug)
 out="$(bash "$SCRIPT" parse "tier:quality add csv export preset:full")"
 check "legacy stripped from title" "add csv export" "$(field "$out" title)"

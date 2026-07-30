@@ -65,6 +65,11 @@ If `missing` is non-empty:
 
 - Print: `First loop-spec run. Bootstrapping {N} codebase domain(s) in background: {csv}...`
 
+- If `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` is set, validate it as a positive integer,
+  dispatch at most that many mappers in one message, and await each wave before
+  starting the next. In this bounded mode these are foreground waves: do not carry
+  mapper tasks into SPEC. Update the announcement to `in bounded waves`.
+
 - Model for mappers: `model_mapper = feature.models.mapper` (resolved once at Step 5; do not re-derive from model-matrix).
 
 - **Single-repo mode:** background mappers are subagents and do NOT inherit the worktree cwd. Resolve the repo root once and pass ABSOLUTE paths in every Agent prompt:

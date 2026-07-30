@@ -7,11 +7,15 @@
 #
 # Usage:
 #   cycle-result.sh clear [--result-root <root>]
+#   cycle-result.sh begin --result-root <root> --cycle-type full --title <title>
+#                         [--slug <slug>] [--branch <branch>] [--base-branch <branch>]
+#                         [--feature-dir <absolute path>] [--phase <phase>]
+#                         [--autonomous <true|false>]
 #   cycle-result.sh resolve-root [<path>]
 #   cycle-result.sh write <feature_dir> --status <completed|paused|escalated|terminal|failed>
 #                        --summary <text> [--pr-url <url>] [--reason <text>]
 #                        [--no-change-reason <already-satisfied>]
-#   cycle-result.sh write-terminal --result-root <root> --cycle-type <micro|debug|diagnostic>
+#   cycle-result.sh write-terminal --result-root <root> --cycle-type <full|micro|debug|diagnostic>
 #                        --status <status> --outcome <outcome> --title <title>
 #                        --converged <true|false> --summary <text>
 #                        [--no-change-reason <already-satisfied|diagnostic-only>]
@@ -157,10 +161,58 @@ case "${1:-}" in
     }
     exit 0
     ;;
+  begin)
+    shift
+    result_root="" cycle_type="" title="" slug="" branch="" base_branch=""
+    feature_dir="" phase="startup" autonomous="false"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --result-root) result_root="${2:-}"; shift 2 || true ;;
+        --cycle-type) cycle_type="${2:-}"; shift 2 || true ;;
+        --title) title="${2:-}"; shift 2 || true ;;
+        --slug) slug="${2:-}"; shift 2 || true ;;
+        --branch) branch="${2:-}"; shift 2 || true ;;
+        --base-branch) base_branch="${2:-}"; shift 2 || true ;;
+        --feature-dir) feature_dir="${2:-}"; shift 2 || true ;;
+        --phase) phase="${2:-}"; shift 2 || true ;;
+        --autonomous) autonomous="${2:-}"; shift 2 || true ;;
+        *) shift || true ;;
+      esac
+    done
+    [[ -n "$result_root" && "$cycle_type" == "full" ]] || {
+      echo "cycle-result.sh: begin requires --result-root and --cycle-type full" >&2
+      exit 0
+    }
+    _is_nonblank "$title" || {
+      echo "cycle-result.sh: begin requires a non-empty --title" >&2; exit 0; }
+    [[ "$autonomous" == "true" || "$autonomous" == "false" ]] || autonomous="false"
+    result_root_abs="$(_resolve_result_root "$result_root")" || {
+      echo "cycle-result.sh: cannot resolve active result root: $result_root" >&2; exit 0; }
+    _prepare_result_root "$result_root_abs" || {
+      echo "cycle-result.sh: cannot prepare active result root: $result_root_abs" >&2; exit 0; }
+    active_path="$result_root_abs/.loop-spec/active-run.json"
+    started_at="$(jq -r '.startedAt // empty' "$active_path" 2>/dev/null || true)"
+    [[ -n "$started_at" ]] || started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    active_json="$(jq -cn --arg cycleType "$cycle_type" --arg title "$title" \
+      --arg slug "$slug" --arg branch "$branch" --arg base "$base_branch" \
+      --arg featureDir "$feature_dir" --arg phase "$phase" --arg startedAt "$started_at" \
+      --arg updatedAt "$now" --argjson autonomous "$autonomous" \
+      '{schema:1,cycleType:$cycleType,title:$title,
+        slug:(if $slug == "" then null else $slug end),
+        branch:(if $branch == "" then null else $branch end),
+        baseBranch:(if $base == "" then null else $base end),
+        featureDir:(if $featureDir == "" then null else $featureDir end),
+        phase:$phase,autonomous:$autonomous,startedAt:$startedAt,updatedAt:$updatedAt}')"
+    _write_atomic "$active_json" "$active_path" || {
+      echo "cycle-result.sh: failed to write $active_path" >&2; exit 0; }
+    exit 0
+    ;;
   write-terminal)
     shift
     result_root="" cycle_type="" status="" outcome="" slug="" title=""
-    branch="" base_branch="" pr_url="" reason="" summary="" no_change_reason="" converged=""
+    branch="" base_branch="" pr_url="" checkpoint_pr_url="" reason="" summary="" no_change_reason="" converged=""
+    phase_reached=""
     verification_status="not-run" verification_command="" autonomous="false"
     warnings_json="[]"
     while [[ $# -gt 0 ]]; do
@@ -174,6 +226,8 @@ case "${1:-}" in
         --branch) branch="${2:-}"; shift 2 || true ;;
         --base-branch) base_branch="${2:-}"; shift 2 || true ;;
         --pr-url) pr_url="${2:-}"; shift 2 || true ;;
+        --checkpoint-pr-url) checkpoint_pr_url="${2:-}"; shift 2 || true ;;
+        --phase-reached) phase_reached="${2:-}"; shift 2 || true ;;
         --reason) reason="${2:-}"; shift 2 || true ;;
         --summary) summary="${2:-}"; shift 2 || true ;;
         --no-change-reason) no_change_reason="${2:-}"; shift 2 || true ;;
@@ -192,7 +246,7 @@ case "${1:-}" in
     _is_nonblank "$summary" || {
       echo "cycle-result.sh: write-terminal requires a non-empty --summary" >&2; exit 0; }
     _is_valid_status "$status" || { echo "cycle-result.sh: invalid --status '$status'" >&2; exit 0; }
-    [[ "$cycle_type" == "micro" || "$cycle_type" == "debug" || "$cycle_type" == "diagnostic" ]] || {
+    [[ "$cycle_type" == "full" || "$cycle_type" == "micro" || "$cycle_type" == "debug" || "$cycle_type" == "diagnostic" ]] || {
       echo "cycle-result.sh: invalid --cycle-type '$cycle_type'" >&2; exit 0; }
     [[ "$converged" == "true" || "$converged" == "false" ]] || {
       echo "cycle-result.sh: --converged must be true or false" >&2; exit 0; }
@@ -206,6 +260,9 @@ case "${1:-}" in
     elif [[ "$cycle_type" == "diagnostic" ]]; then
       success_outcome=""
       allowed_outcomes="no-change-needed diagnostic-failed"
+    elif [[ "$cycle_type" == "full" ]]; then
+      success_outcome=""
+      allowed_outcomes="infrastructure-failed interrupted"
     fi
     case " $allowed_outcomes " in *" $outcome "*) ;; *)
       echo "cycle-result.sh: invalid $cycle_type --outcome '$outcome'" >&2; exit 0;; esac
@@ -257,6 +314,9 @@ case "${1:-}" in
     elif [[ "$outcome" == "diagnostic-failed" && "$status" != "failed" ]]; then
       echo "cycle-result.sh: diagnostic-failed requires failed status" >&2
       exit 0
+    elif [[ "$cycle_type" == "full" && "$status" != "failed" ]]; then
+      echo "cycle-result.sh: full terminal fallback requires failed status" >&2
+      exit 0
     fi
     [[ "$autonomous" == "true" || "$autonomous" == "false" ]] || autonomous="false"
     jq -e 'type == "array"' <<<"$warnings_json" >/dev/null 2>&1 || warnings_json="[]"
@@ -268,6 +328,7 @@ case "${1:-}" in
     result_json="$(jq -cn --arg cycleType "$cycle_type" --arg status "$status" \
       --arg outcome "$outcome" --arg slug "$slug" --arg title "$title" \
       --arg branch "$branch" --arg base "$base_branch" --arg pr "$pr_url" \
+      --arg checkpointPr "$checkpoint_pr_url" --arg phaseReached "$phase_reached" \
       --arg reason "$reason" --arg summary "$summary" --arg noChangeReason "$no_change_reason" \
       --arg verifyStatus "$verification_status" \
       --arg verifyCommand "$verification_command" --arg now "$now" \
@@ -279,9 +340,11 @@ case "${1:-}" in
        status:$status,outcome:$outcome,reason:(if $reason == "" then null else $reason end),
        summary:$summary,
        noChangeReason:(if $noChangeReason == "" then null else $noChangeReason end),
-       phaseReached:$cycleType,branch:(if $branch == "" then null else $branch end),
+       phaseReached:(if $phaseReached == "" then $cycleType else $phaseReached end),
+       branch:(if $branch == "" then null else $branch end),
        baseBranch:(if $base == "" then null else $base end),
-       prUrl:(if $pr == "" then null else $pr end),checkpointPrUrl:null,delivery:null,
+       prUrl:(if $pr == "" then null else $pr end),
+       checkpointPrUrl:(if $checkpointPr == "" then null else $checkpointPr end),delivery:null,
        converged:$converged,iterations:{used:0,max:null},warnings:$warnings,
        autonomous:$autonomous,feature_title:$title,createdAt:null,finishedAt:$now,
        verification:{status:$verifyStatus,command:(if $verifyCommand == "" then null else $verifyCommand end)}}')" || {
@@ -289,6 +352,7 @@ case "${1:-}" in
     destination="$result_root_abs/.loop-spec/last-result.json"
     _write_atomic "$result_json" "$destination" || {
       echo "cycle-result.sh: failed to write $destination" >&2; exit 0; }
+    rm -f "$result_root_abs/.loop-spec/active-run.json" 2>/dev/null || true
     printf 'LOOP_SPEC_RESULT %s\n' "$result_json"
     exit 0
     ;;
@@ -550,6 +614,7 @@ case "${1:-}" in
         elif ! _write_atomic "$result_json" "$loop_spec_dir/last-result.json"; then
           echo "cycle-result.sh: failed to write last-result.json to $loop_spec_dir" >&2
         fi
+        rm -f "$loop_spec_dir/active-run.json" 2>/dev/null || true
       else
         echo "cycle-result.sh: cannot resolve .loop-spec dir; last-result.json not written" >&2
       fi

@@ -25,6 +25,7 @@ check() {
 run() {
   local version="$1"; shift
   env -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS -u LOOP_SPEC_TEAMS_MODE \
+      -u LOOP_SPEC_MAX_PARALLEL_SUBAGENTS \
       -u LOOP_SPEC_HARNESS -u PI_CODING_AGENT_DIR -u CLAUDECODE "$@" \
     bash "$LIB" $version
 }
@@ -83,6 +84,15 @@ check "F3: explicit mode override beats pi gate" "implicit" "$got"
 # peer messaging, or shared task list -- same Claude-Code-surface gate as pi)
 got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_HARNESS=opencode)
 check "G: opencode harness + flag=1 -> none" "none" "$got"
+
+# An explicit global cap selects enforceable one-shot waves, even if teams were
+# otherwise available or explicitly requested.
+got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
+  LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1)
+check "H: global subagent cap disables teams" "none" "$got"
+got=$(run "2.1.181" LOOP_SPEC_TEAMS_MODE=implicit \
+  LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2)
+check "H2: cap beats explicit team mode" "none" "$got"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -22,13 +22,25 @@
 #     [version]  Optional explicit version string (e.g. "2.1.181") for testing.
 #                When omitted, the version is read from `claude --version`.
 #
-# Overrides (checked in order, first wins):
+# Policy and overrides (checked in order, first wins):
+#   LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=N            forces no-teams bounded waves.
 #   LOOP_SPEC_TEAMS_MODE=none|explicit|implicit   forces the mode verbatim.
 #
 # Always exits 0; the answer is on stdout.
 set -euo pipefail
 
 MIN_IMPLICIT="2.1.178"
+
+# A deployment-wide one-shot cap cannot be enforced inside a persistent team.
+# Force the bounded no-teams path whenever the operator supplies it.
+if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
+  [[ "$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS" =~ ^[1-9][0-9]*$ ]] || {
+    echo "none"
+    exit 0
+  }
+  echo "none"
+  exit 0
+fi
 
 # Hard override for constrained / test environments.
 if [[ -n "${LOOP_SPEC_TEAMS_MODE:-}" ]]; then

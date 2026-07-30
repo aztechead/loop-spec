@@ -159,6 +159,7 @@ common_skeleton() {
       feature_title: (if $title == "" then $slug else $title end),
       createdAt: $now, updatedAt: $now,
       execStyle: $style,
+      phaseHandoff: false,
       models: $models,
       currentPhase: "spec",
       currentPhaseStartedAt: null,

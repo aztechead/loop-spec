@@ -9,14 +9,21 @@
 #     [version]  Optional explicit version string (e.g. "2.1.159") for testing.
 #                When omitted, the version is read from `claude --version`.
 #
-# Override:
-#   LOOP_SPEC_WORKFLOWS_AVAILABLE=1|0  forces the result (1 -> true, else false),
-#   bypassing version detection entirely.
+# Policy and override:
+#   LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=N forces false so bounded one-shot waves own fan-out.
+#   LOOP_SPEC_WORKFLOWS_AVAILABLE=1|0 forces the result when no global cap is set.
 #
 # Always exits 0; the answer is on stdout ("true" or "false").
 set -euo pipefail
 
 MIN="2.1.154"
+
+# Workflow internals own their fan-out, so an operator-set global Agent cap uses
+# the one-shot fallback where loop-spec can enforce bounded waves.
+if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
+  echo "false"
+  exit 0
+fi
 
 if [[ -n "${LOOP_SPEC_WORKFLOWS_AVAILABLE:-}" ]]; then
   [[ "$LOOP_SPEC_WORKFLOWS_AVAILABLE" == "1" ]] && echo "true" || echo "false"
