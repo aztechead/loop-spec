@@ -23,6 +23,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "createdAt": "ISO-8601 timestamp",
   "updatedAt": "ISO-8601 timestamp",
   "execStyle": "auto | step | interactive | review-only",
+  "phaseHandoff": "boolean; return after each durable phase for a fresh main-agent context",
   "currentPhase": "spec | discuss | plan | execute | verify | iterate | deliver | completed",
   "completedPhases": ["array of phase names"],
   "branch": "string (feat/{slug})",
@@ -166,6 +167,9 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - The `tasks` and `waves` arrays from v2 are gone. Live task state lives in the harness task list, not in `feature.json`.
 - There is no `retryBudget` block (full-bore operation): gate retries are unbounded, and every attempt is recorded in `gateHistory[]`. The only bound the cycle respects is `iterate.maxIterations`. During EXECUTE, the per-task rework cap (`maxRetriesPerTask`, fixed 2) routes a repeatedly-failing task to the lead for escalation rather than looping it forever between the same implementer and reviewer.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. All three are reset (`null` / `[]` / zeroed) after `TeamDelete`.
+- `phaseHandoff` is independent of `execStyle` and subagent dispatch. When true,
+  cycle writes a paused `phase-handoff` result after a phase transition and a fresh
+  invocation resumes at `currentPhase`.
 - `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
 - `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null` unless the cycle's Step 2 capability probe signals a specific mode.

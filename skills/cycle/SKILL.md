@@ -217,6 +217,16 @@ Full algorithm: `skills/shared/cycle-resume-escalation.md`.
 
 ### Step 2 - Startup health-check
 
+Validate deployment fan-out policy before probing capabilities:
+
+```bash
+if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" \
+      && ! "$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "loop-spec: LOOP_SPEC_MAX_PARALLEL_SUBAGENTS must be a positive integer." >&2
+  exit 2
+fi
+```
+
 Probe agent-teams availability. Teams are an ACCELERATOR, not a prerequisite:
 when they are unavailable the cycle still runs end-to-end on the documented
 fallbacks (DISCUSS/PLAN/VERIFY: one-shot subagent fallback per the **No-teams
@@ -338,12 +348,13 @@ this script exists):
 ```bash
 inv="$(bash "${CLAUDE_SKILL_DIR}/../../lib/parse-invocation.sh" parse -- "$ARGUMENTS")"
 # {mode: description|spec-file|backlog|bare, title, slug, style, autonomous,
-#  greenfield, no_run, spec_path, legacy: []}
+#  greenfield, phase_mode: fresh|continuous|null, no_run, spec_path, legacy: []}
 ```
 
 `.mode` selects the branch below; `.style` defaults to `auto`; `.autonomous` /
-`.greenfield` feed the autonomous contract and Step 0's greenfield branch; `.legacy`
-non-empty gets the one-line "ignored legacy token" notice.
+`.greenfield` feed the autonomous contract and Step 0's greenfield branch.
+`.phase_mode` controls fresh-main-context handoffs and is stripped from the feature
+title. `.legacy` non-empty gets the one-line "ignored legacy token" notice.
 
 Resolution order:
 
@@ -429,12 +440,29 @@ base_sha="$(git -C "$repo_root" rev-parse --verify "${base_ref}^{commit}")" || {
   exit 1
 }
 
+active_autonomous=false
+[[ "${autonomous:-0}" == "1" ]] && active_autonomous=true
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" begin \
+  --result-root "$repo_root" --cycle-type full --title "$title" --slug "$slug" \
+  --branch "feat/${slug}" --base-branch "$base_branch" --phase startup \
+  --autonomous "$active_autonomous"
+
 worktree_state_path=""
+worktrees_enabled="${LOOP_SPEC_WORKTREES:-1}"
+case "$worktrees_enabled" in
+  0|1) ;;
+  *) echo "loop-spec: LOOP_SPEC_WORKTREES must be 0 or 1." >&2; exit 2 ;;
+esac
 case "$harness_name" in
   claude)
-    worktree_abs="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" create-feature-worktree "$slug" "$base_sha")"
-    worktree_state_path=".claude/worktrees/${slug}"
-    EnterWorktree({ path: worktree_abs })
+    if [[ "$worktrees_enabled" == "0" ]]; then
+      git -C "$repo_root" checkout -b "feat/${slug}" "$base_sha"
+      echo "loop-spec: LOOP_SPEC_WORKTREES=0; using the in-place feature branch with serial one-shot subagents."
+    else
+      worktree_abs="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" create-feature-worktree "$slug" "$base_sha")"
+      worktree_state_path=".claude/worktrees/${slug}"
+      EnterWorktree({ path: worktree_abs })
+    fi
     ;;
   opencode|pi)
     git -C "$repo_root" checkout -b "feat/${slug}" "$base_sha"
@@ -445,12 +473,25 @@ esac
 # Prepare the untouched exact-base checkout before any loop-spec files or feature edits
 # exist, then capture repository-wide validation as the no-new-failures oracle. Setup
 # and baseline commands must leave both HEAD and the worktree unchanged.
+# Both helpers own foreground process watchdogs. Never background either command, never
+# poll a log with sleep/cat, and never use ps or /proc to infer liveness.
 execution_root="$(pwd -P)"
 prepare_rc=0
 prepare_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run \
   --root "$execution_root" --command "$cmd_prepare")" || prepare_rc=$?
 [[ "$prepare_rc" -eq 0 ]] || {
-  echo "loop-spec: environment preparation failed before feature initialization (exit $prepare_rc)." >&2
+  prepare_reason="$(jq -r --arg fallback "$prepare_rc" \
+    '(.failureKind // .status // "unknown") + " (exit " +
+     ((.exitCode // ($fallback | tonumber)) | tostring) + ")"' \
+    <<<"${prepare_json:-{}}" 2>/dev/null \
+    || printf 'environment preparation failed (exit %s)' "$prepare_rc")"
+  bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+    --result-root "$repo_root" --cycle-type full --status failed \
+    --outcome infrastructure-failed --title "$title" --slug "$slug" \
+    --branch "feat/${slug}" --base-branch "$base_branch" --phase-reached startup \
+    --reason "$prepare_reason" --summary "Environment preparation failed: $prepare_reason" \
+    --converged false --verification-status not-run --autonomous "$active_autonomous"
+  echo "loop-spec: environment preparation failed before feature initialization: $prepare_reason." >&2
   exit 1
 }
 prepare_key="$(jq -r '.key // ""' <<<"$prepare_json")"
@@ -472,7 +513,16 @@ if [[ "${greenfield:-0}" != "1" ]]; then
     --log-dir "$baseline_git_path" --test "$cmd_test" --lint "$cmd_lint" \
     --typecheck "$cmd_typecheck")" || baseline_rc=$?
   [[ "$baseline_rc" -eq 0 ]] || {
-    echo "loop-spec: exact-base validation baseline could not be captured (exit $baseline_rc)." >&2
+    baseline_reason="$(jq -r '.reason // "exact-base validation baseline could not be captured"' \
+      <<<"${baseline_json:-{}}" 2>/dev/null || printf 'exact-base validation baseline failed')"
+    bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+      --result-root "$repo_root" --cycle-type full --status failed \
+      --outcome infrastructure-failed --title "$title" --slug "$slug" \
+      --branch "feat/${slug}" --base-branch "$base_branch" --phase-reached startup \
+      --reason "$baseline_reason" --summary "Validation baseline failed: $baseline_reason" \
+      --converged false --verification-status failed --verification-command "$cmd_test" \
+      --autonomous "$active_autonomous"
+    echo "loop-spec: exact-base validation baseline could not be captured (exit $baseline_rc): $baseline_reason." >&2
     exit 1
   }
 fi
@@ -501,6 +551,11 @@ feature_json="$(jq --argjson baseline "$baseline_json" \
   '.verificationBaseline = $baseline' <<<"$feature_json")"
 
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$feature_json"
+feature_dir_abs="$(cd ".loop-spec/features/${slug}" && pwd -P)"
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" begin \
+  --result-root "$repo_root" --cycle-type full --title "$title" --slug "$slug" \
+  --branch "feat/${slug}" --base-branch "$base_branch" --feature-dir "$feature_dir_abs" \
+  --phase spec --autonomous "$active_autonomous"
 
 # Autonomous mode: persist the flag so phase skills and resumed sessions see it
 # without re-parsing the invocation (skills/shared/autonomous-mode.md).
@@ -547,6 +602,11 @@ After the shared lifecycle succeeds, supersede GSD codebase docs exactly as befo
 
 One-time per project: ingest an existing GSD `.planning/codebase/` if present (Step 5.5a), then fire background mappers only for the domains still missing (Step 5.5b). Skip only when all 5 domain docs already exist in `docs/loop-spec/codebase/` — **or when greenfield** (an empty repo has nothing to map; VERIFY's end-of-cycle refresh writes the first map from the shipped code). Apply the full procedure verbatim from `${CLAUDE_SKILL_DIR}/references/codebase-map-bootstrap.md` (GSD ingest rules, mapper dispatch, commit discipline, `bootstrapPendingDomains` bookkeeping, workspace-mode behavior).
 
+When `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` is set, apply
+`skills/shared/subagent-concurrency.md`: dispatch missing-domain mappers in bounded
+waves and await them before entering SPEC. Do not leave bootstrap mappers running
+across the phase boundary.
+
 ### Step 5.9 - Normalize feature.models (resume backfill + migration)
 
 Phase skills read `model: feature.models.<role>` literally and do NOT re-derive from `model-matrix.md`. Model selection is fixed, so the canonical map is the same for every feature. Older features either lack a `models` block (pre-v2.3.0) or carry a stale one from the removed preset scheme. Before routing to any phase, write the canonical fixed map idempotently and drop the vestigial `preset` and `tier` fields (single-tier hard cutover: any legacy retryBudget block in the file is simply ignored, and the tier axis no longer exists). This is the single fallback point, so no individual phase skill needs its own:
@@ -584,6 +644,31 @@ fi
 
 The cycle does NOT create the phase team. Each phase skill owns its own team lifecycle: `TeamCreate` at phase start, `TeamDelete` + clear `currentTeamName` at phase end. This keeps team rosters phase-specific (each phase has different teammates) and avoids double-`TeamCreate` errors.
 
+Resolve and persist the main-context policy before invoking a phase. The inline token
+(`phase:fresh` or `phase:continuous`) wins, then `LOOP_SPEC_PHASE_HANDOFF=0|1`, then
+the value already stored in `feature.json.phaseHandoff`; the default is `false`.
+Reject any other environment value. Persist the resolved boolean with
+`feature-write.sh` so a bare resume command keeps the same policy. This policy is
+orthogonal to subagents: it replaces the phase orchestrator between phases, while
+one-shot role agents may still run inside each phase.
+
+```bash
+feature_dir=".loop-spec/features/${slug}"
+phase_handoff="$(jq -r '.phaseHandoff // false' "$feature_dir/feature.json")"
+case "${LOOP_SPEC_PHASE_HANDOFF:-}" in
+  "") ;;
+  0) phase_handoff=false ;;
+  1) phase_handoff=true ;;
+  *) echo "loop-spec: LOOP_SPEC_PHASE_HANDOFF must be 0 or 1." >&2; exit 2 ;;
+esac
+case "$(jq -r '.phase_mode // empty' <<<"$inv")" in
+  fresh) phase_handoff=true ;;
+  continuous) phase_handoff=false ;;
+esac
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set \
+  "$feature_dir" phaseHandoff "$phase_handoff"
+```
+
 For new features, `currentPhase` is initialized to `"spec"`. The forward chain is
 `SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER -> completed`.
 ITERATE may rewind to `execute`, `plan`, `spec`, or `discuss`; only a terminal verdict
@@ -606,6 +691,11 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
        ".loop-spec/features/${slug}" currentPhaseStartedAt "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
    fi
    bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" phase_start --phase "${currentPhase}" || true
+   bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" begin \
+     --result-root "$repo_root" --cycle-type full --title "$title" --slug "$slug" \
+     --branch "feat/${slug}" --base-branch "$base_branch" \
+     --feature-dir "$(cd ".loop-spec/features/${slug}" && pwd -P)" \
+     --phase "$currentPhase" --autonomous "$active_autonomous"
    ```
    Print the greppable boundary line before invoking (and its `done` twin with elapsed
    time + headline verdict after the skill returns) — `skills/shared/report-style.md`:
@@ -699,6 +789,25 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    fi
    ```
 
+   **Autonomous remote checkpoint:** after the state commit and before routing onward,
+   push the current branch and create/reuse its draft PR. This runs at every non-DELIVER
+   phase boundary so a container death loses at most the current uncommitted phase. It is
+   default-on only for autonomous single-repository runs; set
+   `LOOP_SPEC_CHECKPOINT_EACH_PHASE=0` to disable.
+
+   ```bash
+   feature_autonomous="$(jq -r '.autonomous // false' \
+     ".loop-spec/features/${slug}/feature.json")"
+   checkpoint_default=0
+   [[ "$feature_autonomous" == "true" ]] && checkpoint_default=1
+   checkpoint_each="${LOOP_SPEC_CHECKPOINT_EACH_PHASE:-$checkpoint_default}"
+   if [[ "$workspaceMode" != "workspace" && "$currentPhase" != "deliver" \
+         && "$checkpoint_each" == "1" ]]; then
+     bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint-pr.sh" create \
+       ".loop-spec/features/${slug}" --reason "autonomous phase checkpoint: ${next_phase}"
+   fi
+   ```
+
 3. **Route to next iteration:**
    - If `next_phase == "completed"`: jump to the "On completion" section below.
     - If the phase that returned was `deliver`, `next_phase == "deliver"`, and
@@ -743,6 +852,24 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
       Eligible immutable targets normalize to `delivery-blocked`; local preflight errors
       remain escalations. Return control. Never immediately invoke DELIVER again;
      transport/identity/timeouts need an external condition to change.
+   - **Fresh phase orchestrator (opt-in):** when
+     `feature.json.phaseHandoff == true`, `next_phase != currentPhase`, and the run is
+     not already routing to terminal completion, write a paused machine result before
+     returning:
+     ```bash
+     feature_dir=".loop-spec/features/${slug}"
+     summary="Phase ${currentPhase} completed; ${next_phase} is ready in durable state."
+     bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
+       --status paused --reason phase-handoff --summary "$summary"
+     printf 'LOOP_SPEC_PHASE_HANDOFF {"slug":"%s","completed":"%s","next":"%s"}\n' \
+       "$slug" "$currentPhase" "$next_phase"
+     ```
+     The result clears `active-run.json`, so the current invocation is terminal from
+     the container's perspective even though the feature is resumable. Re-running
+     `/loop-spec:cycle phase:fresh` (or the original autonomous command with
+     `LOOP_SPEC_PHASE_HANDOFF=1`) selects the latest resumable feature and enters
+     `next_phase` with a fresh main-agent context. A supervisor may repeat until
+     `last-result.json` is not `status=paused, reason=phase-handoff`.
    - **Fresh-context rewind (opt-in, `LOOP_SPEC_ITERATE_FRESH=1`):** only when the phase
      that returned was `iterate` and `next_phase` matches the explicit rewind set
      `execute|plan|spec|discuss`. `deliver` is forward progress and MUST run in the same

@@ -102,10 +102,16 @@ threads them into every loop's config):
   model (`claude -p --fallback-model`) instead of dying, e.g. `--fallback-model claude-haiku-4-5-20251001`.
 - `--retry-watchdog <n>` — sets `CLAUDE_CODE_RETRY_WATCHDOG` for the child, the recommended
   unattended retry mechanism (replaces relying on `CLAUDE_CODE_MAX_RETRIES`, capped at 15).
+- `--max-turns <n>` — caps tool-use round trips inside each headless tick. The loop's
+  iteration cap remains the outer bound; use both.
+- `--effort <low|medium|high|xhigh|max>` — explicitly controls Claude's reasoning/tool-use
+  effort per tick. `medium` is the constrained-container starting point; raise it only
+  when evals show the quality tradeoff is unacceptable.
 
 ```bash
 python3 scripts/supervisor.py --plan plan/tasks.json --parallel 2 \
-  --fallback-model claude-haiku-4-5-20251001 --retry-watchdog 5
+  --fallback-model claude-haiku-4-5-20251001 --retry-watchdog 5 \
+  --max-turns 40 --effort medium
 ```
 
 Both default off — behavior is unchanged unless you opt in. Both are claude-only:

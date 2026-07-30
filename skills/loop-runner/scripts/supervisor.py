@@ -268,6 +268,8 @@ class Supervisor:
             print(f"TASK_START id={tid} worktree={wt}", flush=True)
 
             prepare_args = ["bash", str(PREPARE_ENVIRONMENT), "run", "--root", str(wt)]
+            if not self.args.no_worktree:
+                prepare_args.extend(["--reuse-from", str(self.repo)])
             prepare_command = getattr(self.args, "prepare_command", None)
             if prepare_command is not None:
                 prepare_args.extend(["--command", prepare_command])
@@ -312,6 +314,10 @@ class Supervisor:
                 }
                 if self.args.model:
                     cfg["model"] = self.args.model
+                if getattr(self.args, "effort", ""):
+                    cfg["effort"] = self.args.effort
+                if getattr(self.args, "max_turns", 0) > 0:
+                    cfg["max_turns"] = self.args.max_turns
                 if self.args.fallback_model:
                     cfg["fallback_model"] = self.args.fallback_model
                 if self.args.retry_watchdog:
@@ -491,7 +497,11 @@ def main() -> int:
     p.add_argument("--retries", type=int, default=1,
                    help="Retries for stalls/thrash/agent errors. Timeout halts never retry.")
     p.add_argument("--task-timeout", type=int, default=3600)
+    p.add_argument("--max-turns", type=int, default=0,
+                   help="Maximum agentic turns per worker tick (0 = CLI default).")
     p.add_argument("--model", default="")
+    p.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"],
+                   default="", help="Claude reasoning effort for every worker tick.")
     p.add_argument("--fallback-model", default="", dest="fallback_model",
                    help="Per-tick fallback model on overload / model-unavailable "
                         "(passed to each loop's `claude -p --fallback-model`).")

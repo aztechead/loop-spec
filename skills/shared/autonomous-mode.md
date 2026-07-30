@@ -20,6 +20,13 @@ headless execution profile is detected without operator configuration:
 `bash lib/harness.sh headless` answers it, and the cycle's startup preflight
 reports it as `execution:{entrypoint,headless}`.
 
+For bounded main-thread context, set `LOOP_SPEC_PHASE_HANDOFF=1` or include the
+`phase:fresh` token in the cycle invocation. The cycle completes one phase, commits
+its resume state, writes a paused `last-result.json` with `reason=phase-handoff`, and
+returns. A user or durable supervisor then invokes the cycle again; resume detection
+enters the recorded next phase in a new agent session. This does not disable one-shot
+subagents inside a phase.
+
 Under the pi harness the preferred entry is `pi --mode json "/skill:auto
 <description>"` (or `pi -p ...`, or the pi SDK's `createAgentSession()` prompting the
 same text). Under opencode it is `opencode run --format json "Load the loop-spec-auto

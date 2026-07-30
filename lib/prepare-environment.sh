@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Resolve and run deterministic dependency preparation for one repository root.
-# Exit: 0 prepared/cached/noop; 2 invocation; 10 setup command failed;
+# Exit: 0 prepared/shared/cached/noop; 2 invocation; 10 setup command failed;
 # 11 setup left non-ignored worktree changes; 12 Git state unreadable.
 set -uo pipefail
 
 die2() { echo "prepare-environment: $*" >&2; exit 2; }
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 root=""
 explicit_set=0
 explicit_command=""
+reuse_from=""
 subcommand="${1:-}"
 shift || true
 
@@ -16,12 +18,13 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) root="${2:-}"; shift 2 ;;
     --command) explicit_set=1; explicit_command="${2:-}"; shift 2 ;;
+    --reuse-from) reuse_from="${2:-}"; shift 2 ;;
     *) die2 "unknown argument '$1'" ;;
   esac
 done
 
 [[ "$subcommand" == "resolve" || "$subcommand" == "run" ]] \
-  || die2 "usage: prepare-environment.sh {resolve|run} --root ROOT [--command COMMAND]"
+  || die2 "usage: prepare-environment.sh {resolve|run} --root ROOT [--command COMMAND] [--reuse-from ROOT]"
 [[ -n "$root" && -d "$root" ]] || die2 "--root must name a directory"
 root="$(cd "$root" && pwd -P)"
 git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
@@ -29,6 +32,12 @@ git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
 top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)"
 top="$(cd "$top" && pwd -P)"
 [[ "$top" == "$root" ]] || die2 "--root must be the repository root: $top"
+if [[ -n "$reuse_from" ]]; then
+  [[ -d "$reuse_from" ]] || die2 "--reuse-from must name a directory"
+  reuse_from="$(cd "$reuse_from" && pwd -P)"
+  git -C "$reuse_from" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || die2 "--reuse-from is not a git worktree: $reuse_from"
+fi
 
 resolve_command() {
   local workflow="$root/.loop-spec/workflow.json"
@@ -178,7 +187,53 @@ if [[ -f "$record" ]]; then
   exit 0
 fi
 
-(cd "$root" && bash -c "$command") >"$log" 2>&1
+can_reuse_node_modules=false
+case "$command" in
+  "npm ci"|"pnpm install --frozen-lockfile"|"yarn install --frozen-lockfile"|"yarn install --immutable")
+    can_reuse_node_modules=true ;;
+esac
+
+if [[ -n "$reuse_from" && "${LOOP_SPEC_SHARE_DEPENDENCIES:-1}" != "0" \
+      && "$can_reuse_node_modules" == "true" && -d "$reuse_from/node_modules" \
+      && ! -e "$root/node_modules" && ! -L "$root/node_modules" ]] \
+    && git -C "$root" check-ignore -q --no-index node_modules/ 2>/dev/null; then
+  source_git_path="$(git -C "$reuse_from" rev-parse --git-path loop-spec/prepare)"
+  [[ "$source_git_path" == /* ]] || source_git_path="$reuse_from/$source_git_path"
+  source_record="$source_git_path/$key.done"
+  if [[ -f "$source_record" ]]; then
+    common_dir="$(git -C "$root" rev-parse --git-common-dir)"
+    [[ "$common_dir" == /* ]] || common_dir="$(cd "$root" && cd "$common_dir" && pwd -P)"
+    exclude_file="$common_dir/info/exclude"
+    mkdir -p "$(dirname "$exclude_file")"
+    touch "$exclude_file"
+    grep -qxF '/node_modules' "$exclude_file" 2>/dev/null \
+      || printf '%s\n' '/node_modules' >> "$exclude_file"
+    ln -s "$reuse_from/node_modules" "$root/node_modules" || die2 "cannot link shared node_modules"
+    if ! worktree_status="$(read_worktree_status)"; then
+      rm -f "$root/node_modules"
+      state_unreadable "infrastructure_error"
+    fi
+    if [[ -n "$worktree_status" ]]; then
+      rm -f "$root/node_modules"
+      echo "prepare-environment: shared node_modules would dirty the worktree" >&2
+      jq -cn --arg command "$command" --arg source "$source" --arg key "$key" \
+        '{status: "dirty", command: $command, source: $source, key: $key}'
+      exit 11
+    fi
+    printf '%s\n' "$command" > "$record"
+    jq -cn --arg command "$command" --arg source "$source" --arg key "$key" \
+      --arg reusedFrom "$reuse_from" \
+      '{status: "shared", command: $command, source: $source, key: $key,
+        reusedFrom: $reusedFrom, sharedPaths: ["node_modules"]}'
+    exit 0
+  fi
+fi
+
+watchdog="$script_dir/run-with-watchdog.sh"
+prepare_timeout="${LOOP_SPEC_PREPARE_TIMEOUT_SECS:-1800}"
+prepare_idle_timeout="${LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS:-300}"
+bash "$watchdog" --root "$root" --command "$command" --log "$log" \
+  --timeout-secs "$prepare_timeout" --idle-timeout-secs "$prepare_idle_timeout"
 rc=$?
 if [[ "$rc" -ne 0 ]]; then
   if ! worktree_status="$(read_worktree_status)"; then
@@ -186,10 +241,14 @@ if [[ "$rc" -ne 0 ]]; then
   fi
   worktree_clean=true
   [[ -z "$worktree_status" ]] || worktree_clean=false
-  echo "prepare-environment: setup command failed (exit $rc); log: $log" >&2
+  failure_kind="$(jq -r '.status // "command_failed"' "$log.watchdog.json" 2>/dev/null \
+    || printf 'command_failed')"
+  echo "prepare-environment: setup command failed (exit $rc, $failure_kind); log: $log" >&2
   jq -cn --arg command "$command" --arg source "$source" --arg key "$key" \
-    --argjson exitCode "$rc" --argjson worktreeClean "$worktree_clean" \
-    '{status: "setup_failed", command: $command, source: $source, key: $key, exitCode: $exitCode, worktreeClean: $worktreeClean}'
+    --arg failureKind "$failure_kind" --argjson exitCode "$rc" \
+    --argjson worktreeClean "$worktree_clean" \
+    '{status: "setup_failed", command: $command, source: $source, key: $key,
+      exitCode: $exitCode, failureKind: $failureKind, worktreeClean: $worktreeClean}'
   exit 10
 fi
 

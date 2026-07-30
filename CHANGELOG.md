@@ -2,6 +2,50 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.29.0] - 2026-07-30
+
+### Added
+
+- Setup and exact-base verification commands now run through a process-group watchdog
+  with independent wall-clock and no-output deadlines. Timeouts exit deterministically,
+  retain logs plus a structured reason sidecar, and surface as terminal infrastructure
+  failures instead of inviting unbounded `sleep`/`cat` recovery.
+- Full cycles write `.loop-spec/active-run.json` before environment setup and refresh it
+  at phase boundaries. `lib/cycle-reconcile.sh` lets an out-of-band supervisor salvage
+  committed work to a draft PR and complete `.loop-spec/last-result.json` after an
+  interrupted Agent SDK or Cloud Run process.
+- Added a resource-size-independent Cloud Run profile with operator-set Agent SDK
+  turn/spend/effort bounds, concurrency controls, durable-state requirements, signal
+  handling, and fatal-exit reconciliation.
+- `LOOP_SPEC_PHASE_HANDOFF=1` and the inline `phase:fresh` token let a full cycle
+  complete one durable phase per main-agent invocation. Each handoff emits a resumable
+  paused terminal result so a user or supervisor can launch the next phase with fresh
+  context.
+- `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` caps simultaneous one-shot role agents across
+  phases. Setting it selects bounded waves and disables teams, workflows, and loop
+  fleets whose internal fan-out cannot honor the cap.
+
+### Changed
+
+- EXECUTE task worktrees reuse a matching successfully prepared `node_modules` from the
+  feature checkout. `LOOP_SPEC_SHARE_DEPENDENCIES=0` disables linking.
+- `LOOP_SPEC_WORKTREES=0` selects clean in-place feature execution and forces EXECUTE's
+  serial rung. Sequential one-shot implementer and reviewer subagents remain enabled
+  when supported, protecting the lead context without concurrent writers.
+  `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` can independently lower the tier concurrency cap.
+- Autonomous full cycles push a draft checkpoint PR at every non-DELIVER phase boundary
+  by default (`LOOP_SPEC_CHECKPOINT_EACH_PHASE=0` disables).
+- The bundled loop runner now passes current Claude `--max-turns` and `--effort` controls,
+  and its permission-mode validation matches the current CLI.
+
+### Fixed
+
+- The ad-hoc verification Stop guard now recognizes the same repository-relative path
+  across a feature worktree and its control checkout. A transcript that invoked a full
+  cycle also remains owned by that cycle after terminal delivery, using timestamped
+  `last-result.json`, `result.json`, or `delivery.json` evidence from registered
+  worktrees. Edits made after completion still re-arm the ad-hoc guard.
+
 ## [2.28.0] - 2026-07-30
 
 ### Added

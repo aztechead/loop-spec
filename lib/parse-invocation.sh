@@ -18,6 +18,8 @@
 #                            ordinary title text ("add new export button")
 #   style:X               -> .style = X when X in auto|step|interactive|review-only;
 #                            unknown style values are kept with a notice
+#   phase:fresh           -> .phase_mode = "fresh"; return after each durable phase
+#   phase:continuous      -> .phase_mode = "continuous"; keep routing in one session
 #   --no-run              -> .no_run = true (intake only; harmless elsewhere)
 #   tier:X, preset:X      -> ignored, listed in .legacy[] (caller prints the notice)
 #
@@ -28,7 +30,8 @@
 #   empty                                  -> .mode = "bare"
 #
 # Output: one JSON object:
-#   {mode, title, slug, style, autonomous, greenfield, no_run, spec_path, legacy: []}
+#   {mode, title, slug, style, phase_mode, autonomous, greenfield, no_run,
+#    spec_path, legacy: []}
 #   .title is the token-stripped text ("" for bare/backlog; spec-file title is
 #   resolved by the caller from the file's first heading). .slug is the kebab-case
 #   of .title ("" when title is empty). .style defaults to "auto".
@@ -50,6 +53,7 @@ autonomous=false
 greenfield=false
 no_run=false
 style="auto"
+phase_mode=""
 legacy=()
 remaining=()
 
@@ -74,6 +78,10 @@ for tok in "$@"; do
         no_run=true ;;
       style:*)
         style="${w#style:}" ;;  # unknown value still stripped from title; caller validates
+      phase:fresh)
+        phase_mode="fresh" ;;
+      phase:continuous)
+        phase_mode="continuous" ;;
       tier:*|preset:*)
         legacy+=("$w") ;;
       *)
@@ -112,12 +120,14 @@ jq -cn \
   --arg title "$text" \
   --arg slug "$slug" \
   --arg style "$style" \
+  --arg phase_mode "$phase_mode" \
   --argjson autonomous "$autonomous" \
   --argjson greenfield "$greenfield" \
   --argjson no_run "$no_run" \
   --arg spec_path "$spec_path" \
   --argjson legacy "$legacy_json" \
   '{mode: $mode, title: $title, slug: $slug, style: $style,
+    phase_mode: (if $phase_mode == "" then null else $phase_mode end),
     autonomous: $autonomous, greenfield: $greenfield, no_run: $no_run,
     spec_path: (if $spec_path == "" then null else $spec_path end),
     legacy: $legacy}'

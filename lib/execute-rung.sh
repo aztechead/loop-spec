@@ -40,8 +40,22 @@ loops_available="false"
 [[ "$cli_available" == "true" && "$loop_runtime" == "true" ]] && loops_available="true"
 loops_optin="${LOOP_SPEC_EXECUTE_LOOPS:-auto}"
 case "$loops_optin" in 0|1|auto) ;; *) loops_optin="auto" ;; esac
+subagent_cap="${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}"
+if [[ -n "$subagent_cap" ]]; then
+  [[ "$subagent_cap" =~ ^[1-9][0-9]*$ ]] || {
+    echo "execute-rung: LOOP_SPEC_MAX_PARALLEL_SUBAGENTS must be a positive integer" >&2
+    exit 2
+  }
+  teams_mode="none"
+  workflows_available="false"
+  loops_optin="0"
+fi
+worktrees_enabled="${LOOP_SPEC_WORKTREES:-1}"
+case "$worktrees_enabled" in 0|1) ;; *) worktrees_enabled="1" ;; esac
+worktrees_json=true
+[[ "$worktrees_enabled" == "1" ]] || worktrees_json=false
 
-if [[ "$loops_optin" == "1" && "$loops_available" != "true" ]]; then
+if [[ "$worktrees_enabled" != "0" && "$loops_optin" == "1" && "$loops_available" != "true" ]]; then
   jq -cn --arg cli "$agent_cli" --argjson cliAvailable "$cli_available" \
     --arg runtimeReason "$loop_runtime_reason" \
     '{error:"loop-runtime-unavailable", cli:$cli, cliAvailable:$cliAvailable,
@@ -52,7 +66,15 @@ fi
 
 rung=""
 reason=""
-if [[ "$loops_optin" == "1" ]]; then
+if [[ "$worktrees_enabled" == "0" ]]; then
+  if [[ "$subagents" == "true" ]]; then
+    rung="subagent"
+    reason="LOOP_SPEC_WORKTREES=0; serial in-place one-shot subagents"
+  else
+    rung="inline"
+    reason="LOOP_SPEC_WORKTREES=0; no subagent tool; serial in-place lead execution"
+  fi
+elif [[ "$loops_optin" == "1" ]]; then
   rung="loop"
   reason="explicit loop opt-in; runtime ${loop_runtime_reason}"
 elif [[ "$subagents" != "true" ]]; then
@@ -85,8 +107,11 @@ jq -cn --arg rung "$rung" --argjson width "$width" --arg reason "$reason" \
   --arg teamsMode "$teams_mode" --argjson subagents "$subagents" \
   --arg cli "$agent_cli" --argjson cliAvailable "$cli_available" \
   --argjson loopRuntime "$loop_runtime" --arg loopRuntimeReason "$loop_runtime_reason" \
-  --arg loopOptIn "$loops_optin" \
+  --arg loopOptIn "$loops_optin" --argjson worktreesEnabled "$worktrees_json" \
+  --arg subagentCap "$subagent_cap" \
   '{rung:$rung,width:$width,reason:$reason,teamsMode:$teamsMode,
     subagentsAvailable:$subagents,
+    maxParallelSubagents:(if $subagentCap == "" then null else ($subagentCap | tonumber) end),
+    worktreesEnabled:$worktreesEnabled,
     loop:{cli:$cli,cliAvailable:$cliAvailable,runtimeAvailable:$loopRuntime,
       runtimeReason:$loopRuntimeReason,optIn:$loopOptIn}}'

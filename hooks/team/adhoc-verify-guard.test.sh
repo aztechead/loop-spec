@@ -51,6 +51,23 @@ payload() {
   printf '{"stop_reason":"end_turn","transcript_path":"%s"}' "$transcript"
 }
 
+# Full-cycle transcript with an explicit timestamp on its edit-bearing assistant
+# entry. The Stop hook uses this to bind a terminal result to this session only.
+cycle_payload_at() {
+  local timestamp="$1"; shift
+  local items=""
+  local transcript="$TMPDIR_TEST/transcript-${RANDOM}-${RANDOM}.jsonl"
+  for it in "$@"; do
+    [[ -n "$items" ]] && items+=","
+    items+="$it"
+  done
+  printf '%s\n' \
+    '{"type":"user","timestamp":"2026-01-01T12:00:00Z","message":{"content":"/loop-spec:cycle autonomous test"}}' \
+    "{\"type\":\"assistant\",\"timestamp\":\"$timestamp\",\"message\":{\"content\":[$items]}}" \
+    > "$transcript"
+  printf '{"stop_reason":"end_turn","transcript_path":"%s"}' "$transcript"
+}
+
 EDIT_PY='{"type":"tool_use","name":"Edit","input":{"file_path":"src/app.py"}}'
 EDIT_JS='{"type":"tool_use","name":"Edit","input":{"file_path":"src/other.js"}}'
 WRITE_MD='{"type":"tool_use","name":"Write","input":{"file_path":"README.md"}}'
@@ -191,6 +208,22 @@ echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$LOGICAL_DONE" bash "$HOO
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n2: logically completed retained feature -> guard still BLOCKS"; ((PASS++)) || true
 else echo "FAIL: n2: logically completed retained feature -> guard still BLOCKS (got $actual_exit)"; ((FAIL++)) || true; fi
 
+# A terminal result exempts the cycle transcript that produced it, but its timestamp
+# cannot excuse a later ad-hoc edit in the same long-running session.
+CYCLE_DONE="$TMPDIR_TEST/cycle-done"; mkdir -p "$CYCLE_DONE/.loop-spec"; seed_edits "$CYCLE_DONE"
+printf '%s\n' '{"cycleType":"full","status":"completed","finishedAt":"2026-01-01T12:05:00Z"}' \
+  > "$CYCLE_DONE/.loop-spec/last-result.json"
+actual_exit=0
+echo "$(cycle_payload_at "2026-01-01T12:04:00Z" "$EDIT_PY")" \
+  | env CLAUDE_PROJECT_DIR="$CYCLE_DONE" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n2b: completed cycle owns its transcript evidence -> ALLOW"; ((PASS++)) || true
+else echo "FAIL: n2b: completed cycle owns its transcript evidence -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
+actual_exit=0
+echo "$(cycle_payload_at "2026-01-01T12:06:00Z" "$EDIT_PY")" \
+  | env CLAUDE_PROJECT_DIR="$CYCLE_DONE" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n2c: post-cycle ad-hoc edit re-arms guard"; ((PASS++)) || true
+else echo "FAIL: n2c: post-cycle ad-hoc edit re-arms guard (got $actual_exit)"; ((FAIL++)) || true; fi
+
 # The control checkout does not contain feature state: it exists only in a registered
 # linked feature worktree. Stops from either root must still stand down mid-cycle and
 # in the final DELIVER phase, while a retained completed worktree must not disarm the
@@ -215,11 +248,37 @@ actual_exit=0
 echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$LINKED' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n5: feature-root final-phase Stop -> ALLOW"; ((PASS++)) || true
 else echo "FAIL: n5: feature-root final-phase Stop -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
-printf '{"nextPhase":"completed"}\n' > "$LINKED/.loop-spec/features/linked/delivery.json"
+printf '{"nextPhase":"completed","finishedAt":"2026-01-01T12:05:00Z"}\n' \
+  > "$LINKED/.loop-spec/features/linked/delivery.json"
 actual_exit=0
 echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n6: completed retained worktree re-arms ambient guard"; ((PASS++)) || true
 else echo "FAIL: n6: completed retained worktree re-arms ambient guard (got $actual_exit)"; ((FAIL++)) || true; fi
+
+# The same repository-relative file has different absolute prefixes in the control
+# checkout and a linked worktree. A main-checkout pathspec must still ground an edit
+# recorded while the session was inside that worktree.
+seed_edits "$LINKED"
+WT_EDIT="$(jq -cn --arg path "$LINKED/src/app.py" \
+  '{type:"tool_use",name:"Edit",input:{file_path:$path}}')"
+CONTROL_DIFF="$(jq -cn --arg command "git -C $CONTROL diff -- src/app.py" \
+  '{type:"tool_use",name:"Bash",input:{command:$command}}')"
+actual_exit=0
+guard_output="$(echo "$(payload "$WT_EDIT" "$CONTROL_DIFF" "$BASH_TEST")" \
+  | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" \
+    2>&1 >/dev/null)" || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n6b: control pathspec grounds linked-worktree edit"; ((PASS++)) || true
+else echo "FAIL: n6b: control pathspec grounds linked-worktree edit (got $actual_exit: $guard_output)"; ((FAIL++)) || true; fi
+
+# The control root may have no last-result pointer (for example, an older cycle or a
+# partially salvaged delivery). The completed delivery sidecar in its retained linked
+# worktree still proves that this cycle transcript is no longer ad hoc.
+actual_exit=0
+echo "$(cycle_payload_at "2026-01-01T12:04:00Z" "$WT_EDIT")" \
+  | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" \
+    >/dev/null 2>&1 || actual_exit=$?
+if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n6c: linked completion owns cycle transcript from control root"; ((PASS++)) || true
+else echo "FAIL: n6c: linked completion owns cycle transcript from control root (got $actual_exit)"; ((FAIL++)) || true; fi
 
 # Resolver faults are fail-open at the hook boundary.
 BROKEN_RESOLVER="$TMPDIR_TEST/broken-resolver"

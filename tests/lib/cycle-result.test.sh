@@ -453,6 +453,50 @@ check "V5: diagnostic failure recorded" "failed" "$(jq -r '.status' "$GENERIC_RE
 check "V5: diagnostic failure has no no-change reason" "null" \
   "$(jq -r '.noChangeReason' "$GENERIC_RESULT")"
 
+# Case W: a full cycle publishes an active pointer before feature state exists,
+# and an out-of-band reconciler can turn it into a terminal result.
+ACTIVE_RESULT="$GENERIC_ROOT/.loop-spec/active-run.json"
+bash "$LIB" begin --result-root "$GENERIC_ROOT" --cycle-type full \
+  --title "Cloud task" --slug cloud-task --branch feat/cloud-task --base-branch main \
+  --phase startup --autonomous true
+check "W: active pointer created" "1" "$([[ -f "$ACTIVE_RESULT" ]] && echo 1 || echo 0)"
+check "W: active pointer names phase" "startup:true" \
+  "$(jq -r '.phase + ":" + (.autonomous | tostring)' "$ACTIVE_RESULT")"
+bash "$REPO_ROOT/lib/cycle-reconcile.sh" --result-root "$GENERIC_ROOT" \
+  --reason "container terminated" >/dev/null
+check "W2: reconciler writes full result" "full:failed:interrupted" \
+  "$(jq -r '.cycleType + ":" + .status + ":" + .outcome' "$GENERIC_RESULT")"
+check "W2: reconciler keeps phase" "startup" "$(jq -r '.phaseReached' "$GENERIC_RESULT")"
+check "W2: terminal write clears active pointer" "0" \
+  "$([[ -f "$ACTIVE_RESULT" ]] && echo 1 || echo 0)"
+
+bash "$LIB" begin --result-root "$GENERIC_ROOT" --cycle-type full \
+  --title "Setup task" --slug setup-task --phase startup
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type full \
+  --status failed --outcome infrastructure-failed --title "Setup task" \
+  --slug setup-task --phase-reached startup --converged false \
+  --verification-status not-run --reason "idle_timeout" \
+  --summary "Environment preparation failed: idle_timeout." >/dev/null
+check "W3: startup failure has terminal outcome" "infrastructure-failed:idle_timeout" \
+  "$(jq -r '.outcome + ":" + .reason' "$GENERIC_RESULT")"
+check "W3: startup failure clears active pointer" "0" \
+  "$([[ -f "$ACTIVE_RESULT" ]] && echo 1 || echo 0)"
+
+# Case X: a phase handoff is terminal for one invocation while preserving
+# resumable feature state for the next fresh agent.
+printf '%s\n' "$(jq '.currentPhase = "plan"' <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+bash "$LIB" begin --result-root "$WORK" --cycle-type full \
+  --title "Phase handoff" --slug my-feature --branch feat/my-feature \
+  --base-branch main --feature-dir "$FEAT_DIR" --phase discuss
+LOOP_SPEC_RESULT_ROOT="$WORK" bash "$LIB" write "$FEAT_DIR" --status paused \
+  --reason phase-handoff \
+  --summary "Phase discuss completed; plan is ready in durable state." >/dev/null
+check "X: phase handoff is a paused result" "paused:phase-handoff:plan" \
+  "$(jq -r '.status + ":" + .reason + ":" + .phaseReached' "$LOOP_DIR/last-result.json")"
+check "X: phase handoff clears active pointer" "0" \
+  "$([[ -f "$LOOP_DIR/active-run.json" ]] && echo 1 || echo 0)"
+check "X: feature remains resumable" "plan" "$(jq -r '.currentPhase' "$FEAT_DIR/feature.json")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

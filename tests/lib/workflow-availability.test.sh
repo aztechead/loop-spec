@@ -17,7 +17,8 @@ check() {
 
 # Version gating (explicit version arg; unset override + harness signals so the
 # detection path runs even when this suite itself executes under pi)
-unset LOOP_SPEC_WORKFLOWS_AVAILABLE LOOP_SPEC_HARNESS PI_CODING_AGENT_DIR
+unset LOOP_SPEC_WORKFLOWS_AVAILABLE LOOP_SPEC_MAX_PARALLEL_SUBAGENTS \
+  LOOP_SPEC_HARNESS PI_CODING_AGENT_DIR
 check "A: exact minimum 2.1.154 -> true"      "true"  "$(bash "$LIB" 2.1.154)"
 check "B: above minimum 2.1.159 -> true"      "true"  "$(bash "$LIB" 2.1.159)"
 check "C: newer minor 2.2.0 -> true"          "true"  "$(bash "$LIB" 2.2.0)"
@@ -36,6 +37,8 @@ check "K: explicit override beats pi gate" "true" "$(LOOP_SPEC_HARNESS=pi LOOP_S
 
 # opencode harness gate: same Claude-Code-surface rule as pi
 check "L: opencode harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=opencode bash "$LIB" 9.9.9)"
+check "M: global subagent cap disables workflow fan-out" "false" \
+  "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" 9.9.9)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

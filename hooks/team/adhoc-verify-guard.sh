@@ -19,8 +19,11 @@
 #   - LOOP_SPEC_MICRO_GUARD=0 (kill switch), or micro.conf pins ENABLED=0
 #   - the project has no .loop-spec/ dir (never hijack unrelated projects)
 #   - a cycle feature is in flight in this checkout or a registered linked worktree
-#     (logical completion comes from delivery.json.nextPhase=completed) - the cycle's VERIFY phase owns evidence at
-#     feature scale, and blocking between phases would fight the orchestrator.
+#     (logical completion comes from delivery.json.nextPhase=completed), or this
+#     transcript invoked a full cycle whose terminal result was written after its
+#     final edit. The cycle's VERIFY phase owns evidence at feature scale, and
+#     blocking between phases or immediately after completion would fight the
+#     orchestrator. A later ad-hoc edit re-arms this guard.
 #     Trade-off: a paused feature also disarms the guard; guards here are
 #     accelerators, never blockers, so we err on allow.
 #   - no edits in the transcript, or every edited path is gone from disk by Stop time
@@ -49,6 +52,7 @@ fi
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ACTIVE_CYCLE_BIN="${LOOP_SPEC_ACTIVE_CYCLE_BIN:-$SCRIPT_DIR/../../lib/active-cycle.sh}"
+CYCLE_RESULT_BIN="${LOOP_SPEC_CYCLE_RESULT_BIN:-$SCRIPT_DIR/../../lib/cycle-result.sh}"
 
 # Scope: only active in projects that use loop-spec.
 if [[ ! -d "${PROJECT_DIR}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then
@@ -94,13 +98,20 @@ fi
 
 INPUT=$(cat)
 
+# Completed-cycle stand-down is transcript-scoped rather than checkout-scoped. Resolve
+# the stable control-root result pointer even when Stop fires from a linked worktree.
+RESULT_ROOT="$(bash "$CYCLE_RESULT_BIN" resolve-root "$PROJECT_DIR" 2>/dev/null || true)"
+LAST_RESULT_FILE=""
+[[ -z "$RESULT_ROOT" ]] || LAST_RESULT_FILE="$RESULT_ROOT/.loop-spec/last-result.json"
+
 # One python pass scans Claude Code's transcript_path JSONL for final edits,
 # path-correlated grounding reads, content diffs, and validation commands. The
 # legacy inline transcript shape remains a fail-open compatibility fallback.
 # Output is a single
 # pipe-delimited line: verdict|reason|edit_count.
-VERDICT=$(printf '%s' "$INPUT" | LOOP_SPEC_PROJ_VERIFY_CMD="$PROJ_VERIFY_CMD" LOOP_SPEC_PROJECT_DIR="$PROJECT_DIR" python3 -c "
-import json, os, re, shlex, sys
+VERDICT=$(printf '%s' "$INPUT" | LOOP_SPEC_PROJ_VERIFY_CMD="$PROJ_VERIFY_CMD" \
+  LOOP_SPEC_PROJECT_DIR="$PROJECT_DIR" LOOP_SPEC_LAST_RESULT_FILE="$LAST_RESULT_FILE" python3 -c "
+import datetime, json, os, re, shlex, subprocess, sys
 
 EDIT_TOOLS = {'Write', 'Edit', 'NotebookEdit'}
 REVIEW_SUBCOMMANDS = {'diff', 'show'}
@@ -124,11 +135,129 @@ def norm(path, base):
         return ''
     return os.path.normpath(path if os.path.isabs(path) else os.path.join(base, path))
 
+repo_cache = {}
+
+def logical_path(path):
+    '''Stable identity for one path across a repository's linked worktrees.'''
+    # Git reports physical roots. Resolve aliases such as macOS /var -> /private/var
+    # before deriving a repository-relative identity.
+    path = os.path.realpath(os.path.abspath(path))
+    probe = path if os.path.isdir(path) else os.path.dirname(path)
+    while probe and not os.path.isdir(probe):
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            break
+        probe = parent
+    if probe in repo_cache:
+        root, common = repo_cache[probe]
+    else:
+        try:
+            root = subprocess.check_output(
+                ['git', '-C', probe, 'rev-parse', '--show-toplevel'],
+                stderr=subprocess.DEVNULL, text=True).strip()
+            common = subprocess.check_output(
+                ['git', '-C', root, 'rev-parse', '--git-common-dir'],
+                stderr=subprocess.DEVNULL, text=True).strip()
+            if not os.path.isabs(common):
+                common = os.path.join(root, common)
+            common = os.path.realpath(common)
+        except Exception:
+            root, common = '', ''
+        repo_cache[probe] = (root, common)
+    if root:
+        try:
+            relative = os.path.normpath(os.path.relpath(path, root))
+            if relative != '..' and not relative.startswith('..' + os.sep):
+                return ('git', common, relative)
+        except Exception:
+            pass
+    return ('fs', '', path)
+
 def contains(scope, path):
+    if scope[:2] != path[:2]:
+        return False
     try:
-        return os.path.commonpath([scope, path]) == scope
+        return os.path.commonpath([scope[2], path[2]]) == scope[2]
     except Exception:
         return False
+
+def parse_time(value):
+    if isinstance(value, (int, float)):
+        return float(value)
+    value = str(value or '').strip()
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(
+            value.replace('Z', '+00:00')).timestamp()
+    except Exception:
+        return None
+
+def contains_cycle_invocation(value):
+    if isinstance(value, str):
+        return bool(re.search(r'(^|[\\s>\"\\x27])/?loop-spec:cycle(?=\\s|$|[<\"\\x27])', value))
+    if isinstance(value, list):
+        return any(contains_cycle_invocation(item) for item in value)
+    if isinstance(value, dict):
+        return any(contains_cycle_invocation(item) for item in value.values())
+    return False
+
+def terminal_cycle_finished_at(project, stable_result):
+    '''Newest trustworthy full-cycle terminal time in this repository/worktree set.'''
+    roots = {os.path.realpath(project)}
+    try:
+        listing = subprocess.check_output(
+            ['git', '-C', project, '-c', 'core.quotePath=false',
+             'worktree', 'list', '--porcelain'],
+            stderr=subprocess.DEVNULL, text=True)
+        for line in listing.splitlines():
+            if line.startswith('worktree '):
+                roots.add(os.path.realpath(line[len('worktree '):]))
+    except Exception:
+        pass
+
+    candidates = []
+    if stable_result:
+        candidates.append(('result', stable_result))
+    for root in roots:
+        candidates.append(('result', os.path.join(root, '.loop-spec', 'last-result.json')))
+        features = os.path.join(root, '.loop-spec', 'features')
+        try:
+            feature_names = os.listdir(features)
+        except Exception:
+            continue
+        for name in feature_names:
+            feature_dir = os.path.join(features, name)
+            candidates.append(('result', os.path.join(feature_dir, 'result.json')))
+            candidates.append(('delivery', os.path.join(feature_dir, 'delivery.json')))
+
+    newest = None
+    seen = set()
+    for kind, candidate in candidates:
+        candidate = os.path.realpath(candidate)
+        if candidate in seen or not os.path.isfile(candidate):
+            continue
+        seen.add(candidate)
+        try:
+            with open(candidate) as stream:
+                record = json.load(stream)
+            if kind == 'result':
+                if (record.get('cycleType') != 'full'
+                        or record.get('status') not in
+                        {'completed', 'paused', 'escalated', 'terminal', 'failed'}):
+                    continue
+                finished = parse_time(record.get('finishedAt'))
+            else:
+                if record.get('nextPhase') != 'completed':
+                    continue
+                finished = parse_time(
+                    record.get('finishedAt') or record.get('updatedAt')
+                    or record.get('observedAt') or record.get('attemptedAt'))
+            if finished is not None and (newest is None or finished > newest):
+                newest = finished
+        except Exception:
+            continue
+    return newest
 
 def command_parts(command):
     return [p.strip() for p in re.split(r'\s*(?:&&|\|\||;)\s*', command) if p.strip()]
@@ -166,7 +295,7 @@ def review_targets(part, project):
     if '--' not in tokens[sub_i + 1:]:
         return []  # no pathspec means the content review covers every edited path
     sep = tokens.index('--', sub_i + 1)
-    return [norm(t, base) for t in tokens[sep + 1:] if t]
+    return [logical_path(norm(t, base)) for t in tokens[sep + 1:] if t]
 
 def covers(targets, path):
     return not targets or any(t == path or contains(t, path) for t in targets)
@@ -184,6 +313,7 @@ except Exception:
     out('allow', 'unparseable payload')
 
 entries = []
+cycle_invoked = False
 transcript_path = str(payload.get('transcript_path') or '')
 if transcript_path and os.path.isfile(transcript_path):
     try:
@@ -193,14 +323,22 @@ if transcript_path and os.path.isfile(transcript_path):
                     entry = json.loads(line)
                 except Exception:
                     continue
+                if entry.get('type') == 'user' and contains_cycle_invocation(
+                        (entry.get('message') or {}).get('content')):
+                    cycle_invoked = True
                 if entry.get('type') == 'assistant':
-                    entries.append((entry.get('message') or {}).get('content') or [])
+                    entries.append((
+                        (entry.get('message') or {}).get('content') or [],
+                        parse_time(entry.get('timestamp'))))
     except Exception:
         out('allow', 'unreadable transcript')
 else:
     for entry in (payload.get('transcript') or []):
+        if isinstance(entry, dict) and entry.get('role') == 'user' and contains_cycle_invocation(
+                entry.get('content')):
+            cycle_invoked = True
         if isinstance(entry, dict) and entry.get('role') == 'assistant':
-            entries.append(entry.get('content') or [])
+            entries.append((entry.get('content') or [], parse_time(entry.get('timestamp'))))
     if not entries:
         out('allow', 'no transcript')
 
@@ -208,12 +346,13 @@ project = os.path.abspath(os.environ.get('LOOP_SPEC_PROJECT_DIR') or '.')
 project_cmd = (os.environ.get('LOOP_SPEC_PROJ_VERIFY_CMD') or '').strip()
 idx = 0
 edits = {}
+edit_times = {}
 contexts = []
 diffs = []
 verifies = []
 edit_count = 0
 
-for content in entries:
+for content, entry_time in entries:
     for item in content:
         if not isinstance(item, dict) or item.get('type') != 'tool_use':
             continue
@@ -224,11 +363,15 @@ for content in entries:
             path = norm(inp.get('file_path') or inp.get('notebook_path'), project)
             if path:
                 edits[path] = idx
+                edit_times[path] = entry_time
                 edit_count += 1
         elif name == 'Read':
             path = norm(inp.get('file_path'), project)
             if path:
-                contexts.append((idx, path))
+                contexts.append((idx, logical_path(path)))
+        elif name == 'Skill':
+            if contains_cycle_invocation(inp.get('skill')):
+                cycle_invoked = True
         elif name == 'Bash':
             command = str(inp.get('command', ''))
             for part in command_parts(command):
@@ -248,6 +391,18 @@ live_edits = {path: i for path, i in edits.items() if os.path.exists(path)}
 if not live_edits:
     out('allow', 'every edited path was removed before stop', edit_count)
 
+# A terminal full-cycle result exempts only the transcript that produced it. The
+# invocation marker prevents an old or concurrent cycle from excusing unrelated
+# work, and the timestamp comparison re-arms the guard for edits made after delivery.
+last_edit_time = max(
+    (edit_times.get(path) for path in live_edits if edit_times.get(path) is not None),
+    default=None)
+result_file = os.environ.get('LOOP_SPEC_LAST_RESULT_FILE') or ''
+if cycle_invoked and last_edit_time is not None:
+    finished_at = terminal_cycle_finished_at(project, result_file)
+    if finished_at is not None and finished_at >= last_edit_time:
+        out('allow', 'terminal full cycle owns verification for this transcript', edit_count)
+
 last_edit = max(live_edits.values())
 reviews = [(i, targets) for i, targets in diffs if i > last_edit]
 if not reviews:
@@ -258,8 +413,9 @@ if not reviews:
 # (docs sweeps, generated files) pay a per-file re-read that showed nothing new.
 grounded_indexes = []
 for path in live_edits:
-    evidence = [i for i, read_path in contexts if i > last_edit and read_path == path]
-    evidence += [i for i, targets in reviews if covers(targets, path)]
+    logical_edit = logical_path(path)
+    evidence = [i for i, read_path in contexts if i > last_edit and read_path == logical_edit]
+    evidence += [i for i, targets in reviews if covers(targets, logical_edit)]
     if not evidence:
         out('block', 'an edited path was neither re-read nor covered by a content diff after the final edit', edit_count)
     grounded_indexes.append(min(evidence))

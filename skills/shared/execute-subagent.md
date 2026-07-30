@@ -6,6 +6,8 @@ width `W < t_team`. The lead (the main thread running `execute`) drives the wave
 itself with one-shot `Agent` dispatches and inline `git` merges. No `TeamCreate`, no
 `Workflow`, no `SendMessage`, no harness task list.
 
+All waves also obey `skills/shared/subagent-concurrency.md`.
+
 This path returns the **same** result object as the workflow and team paths so the
 consuming code in `execute` SKILL Step 3 is shape-identical:
 
@@ -39,6 +41,52 @@ wave (`min(|ready|, maxParallelImplementers)`).
 - `featureWorktreeRoot = $(git rev-parse --show-toplevel)`, `featureBranch = feat/{slug}`.
 - `models.implementer`, `models.specComplianceReviewer` — passed as the `Agent` `model`.
 - `commands` — `{lint, test, typecheck}` from `feature.json.commands`.
+
+## In-place single-repository mode
+
+When the rung result has `worktreesEnabled == false`, retain the one-shot Agent
+boundary but serialize every task on the checked-out `feat/{slug}` branch. This is the
+`LOOP_SPEC_WORKTREES=0` mode: it protects the lead's context without paying for task
+worktrees or allowing concurrent writers.
+
+Apply these replacements to the lead wave loop:
+
+1. Force every wave to one ready task. Before dispatch, require the feature root to be
+   clean, on `feat/{slug}`, and record `taskBaseSha="$(git rev-parse HEAD)"`.
+2. The implementer prompt keeps the same brief, constraints, criteria, scope, and
+   verification requirements, but targets the absolute `featureWorktreeRoot` directly.
+   It must not create a worktree, branch, or commit. It edits only `task.files`, runs
+   `task.verifyCommand`, and returns `{taskId, ready, notes}`.
+3. Require `git diff --quiet` to be false and reject any changed path outside
+   `task.files`. Dispatch the reviewer against the uncommitted diff:
+   `git -C "{featureWorktreeRoot}" diff -- {task.files}`. Rework agents edit the same
+   working tree serially; no other task starts while it is dirty.
+4. On reviewer `pass`, the lead reruns `task.verifyCommand`, stages exactly
+   `task.files`, and commits `feat: NO_JIRA {task.subject}`. Verify that HEAD advanced
+   from `taskBaseSha` and the checkout is clean, then add the task to `mergedSet`.
+   There is no `integrate-task.sh` call because the accepted commit is already on the
+   feature branch.
+5. On `block`, retry exhaustion, out-of-scope dirt, verification failure, missing
+   commit, or an unreadable Git state, stop with the existing structured blocked or
+   escalation reason. Preserve the working tree for diagnosis; never reset or clean it.
+6. Run the normal post-merge `feature-validation.sh compare` after each accepted
+   commit before selecting the next ready task.
+
+The direct implementer prompt replaces only the worktree/commit mechanics in the
+template below with:
+
+```text
+Repository root: {featureWorktreeRoot}
+Branch: feat/{slug} (already checked out)
+
+Do not create a branch, worktree, commit, or push. Edit only {task.files} directly
+under the repository root, run {task.verifyCommand}, and leave the verified diff for
+the lead and a fresh reviewer agent. Return:
+{ taskId: "{taskId}", ready: <true|false>, notes: "<notes>" }
+```
+
+All reasoning, simplicity, design-for-change, evidence, and acceptance-criteria text
+from the normal prompt remains mandatory.
 
 ## Lead wave loop
 
@@ -163,7 +211,7 @@ Step 1 - Create the task worktree (skip if it already exists):
   git -C "{featureWorktreeRoot}" worktree add "{worktree_path}" -b "task/{taskId}-{slug}" "feat/{slug}"
 
 Step 1.5 - Prepare declared dev/test dependencies inside the task worktree:
-  bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{worktree_path}" --command "{commands.prepare}"
+  bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{worktree_path}" --command "{commands.prepare}" --reuse-from "{featureWorktreeRoot}"
 Preparation failure is infrastructure failure; do not edit around it.
 
 Step 2 - {readFirst clause} Read the assigned files: {task.files}.

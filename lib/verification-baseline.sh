@@ -4,6 +4,7 @@
 set -uo pipefail
 
 die2() { echo "verification-baseline: $*" >&2; exit 2; }
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 infra() {
   echo "verification-baseline: $1" >&2
   jq -cn --arg reason "$1" '{outcome: "infra_error", reason: $reason}'
@@ -121,28 +122,36 @@ run_command() {
   local command="$2"
   local expected_head="$3"
   local log="$log_dir/$name.log"
-  local rc status fps
+  local rc status fps failure_kind
   if [[ -z "$command" ]]; then
     : > "$log"
     jq -cn --arg command "$command" '{command: $command, status: "skipped", exitCode: null, fingerprints: []}'
     return
   fi
   assert_repo_state "$expected_head" "before $name command" || return 21
-  (cd "$root" && bash -c "$command") >"$log" 2>&1
+  bash "$script_dir/run-with-watchdog.sh" --root "$root" --command "$command" --log "$log" \
+    --timeout-secs "${LOOP_SPEC_BASELINE_TIMEOUT_SECS:-1800}" \
+    --idle-timeout-secs "${LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS:-300}"
   rc=$?
+  failure_kind="$(jq -r '.status // "command_failed"' "$log.watchdog.json" 2>/dev/null \
+    || printf 'command_failed')"
   assert_repo_state "$expected_head" "after $name command" || return 21
   if [[ "$rc" -eq 0 ]]; then
     status="pass"
     fps="[]"
-  elif [[ "$rc" -eq 126 || "$rc" -eq 127 || "$rc" -ge 128 ]]; then
+  elif [[ "$failure_kind" == "timeout" || "$failure_kind" == "idle_timeout" \
+          || "$failure_kind" == "signal" || "$failure_kind" == "spawn_failed" \
+          || "$rc" -eq 126 || "$rc" -eq 127 || "$rc" -ge 128 ]]; then
     status="infra_error"
     fps="$(fingerprints "$log")"
   else
     status="fail"
     fps="$(fingerprints "$log")"
   fi
-  jq -cn --arg command "$command" --arg status "$status" --argjson exitCode "$rc" --argjson fps "$fps" \
-    '{command: $command, status: $status, exitCode: $exitCode, fingerprints: $fps}'
+  jq -cn --arg command "$command" --arg status "$status" --arg failureKind "$failure_kind" \
+    --argjson exitCode "$rc" --argjson fps "$fps" \
+    '{command: $command, status: $status, exitCode: $exitCode,
+      failureKind: $failureKind, fingerprints: $fps}'
 }
 
 run_all() {

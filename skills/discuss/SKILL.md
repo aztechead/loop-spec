@@ -131,6 +131,10 @@ Skip this step entirely (the planner produces PATTERNS.md at PLAN time, as befor
 
 Otherwise fire ONE background `Agent` call and do NOT wait for it (same one-shot background dispatch pattern as cycle Step 5.5b; background subagents do not inherit the worktree cwd, so resolve `WT_ROOT="$(git rev-parse --show-toplevel)"` and pass absolute paths):
 
+When `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` is set, do not background this optional
+prefetch across the critique dispatch. Run and await it now within the cap, or skip
+the prefetch and let PLAN produce PATTERNS.md at its normal Step 0.
+
 ```
 Agent({
   subagent_type: "loop-spec:pattern-mapper",

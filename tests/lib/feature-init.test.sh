@@ -43,6 +43,7 @@ check "single commands.prepare set" "$(echo "$single" | jq -e '.commands.prepare
 check "single verification baseline starts null" "$(echo "$single" | jq -e '.verificationBaseline == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single currentPhase==spec" "$(echo "$single" | jq -e '.currentPhase == "spec"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single currentPhaseStartedAt null" "$(echo "$single" | jq -e '.currentPhaseStartedAt == null' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single phase handoff starts disabled" "$(echo "$single" | jq -e '.phaseHandoff == false' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single iterate.confirmationUsed false" "$(echo "$single" | jq -e '.iterate.confirmationUsed == false' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single feature_title persisted verbatim" "$(echo "$single" | jq -e '.feature_title == "add CSV export with progress bar"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single PR fields start null" "$(echo "$single" | jq -e '.prUrl == null and .checkpointPrUrl == null' >/dev/null 2>&1 && echo 1 || echo 0)"
