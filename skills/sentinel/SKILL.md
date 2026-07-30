@@ -73,8 +73,10 @@ The drive loop (ROADMAP-3.0 A3). Sentinel runs are autonomous by construction
    scope. Note the draft path it prints.
 5. **Cycle** — `Skill(loop-spec:cycle)` with arguments:
    `autonomous <draft path>`.
-6. **Close out the source (gh-issues items only)** — comment the PR URL (from
-   `.loop-spec/last-result.json`) on the issue, then swap the lifecycle label:
+6. **Close out the source (gh-issues items only)** — read
+   `.loop-spec/last-result.json`; comment its PR URL or, for a validated
+   `outcome: no-change-needed`, its `summary` plus `noChangeReason`. A completed
+   no-PR record without a known no-change code fails closed. Then swap the lifecycle label:
    `--add-label loop-spec:done|loop-spec:failed --remove-label loop-spec:in-progress`.
    Backlog-sourced items are checked off by the cycle itself; ci-failures and
    assessment items have nothing to mutate.
@@ -89,7 +91,8 @@ The drive loop (ROADMAP-3.0 A3). Sentinel runs are autonomous by construction
    governor: L0 repos process exactly ONE item per invocation;
    `LOOP_SPEC_MAX_FEATURES` is honored (capped) only once the repo has earned
    L1 (`lib/trust.sh level` shows the evidence).
-8. **Report** — one summary: items processed with their PR URLs, decisions
+8. **Report** — one summary: items processed with their PR URLs or intentional
+   no-change conclusions, decisions
    recorded, why the batch stopped, and what now sits at the head of the queue.
 
 Unattended cadence (cron/launchd/GitHub Actions invoking this skill headlessly)

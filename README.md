@@ -269,9 +269,9 @@ The cycle skips every question and reads the `LOOP_SPEC_ANSWER_*` variables list
 Wrappers should not scrape git or GitHub for cycle state. The complete owned and
 observed-backend compatibility profile is documented in
 [`docs/loop-spec/agent-output-contract.md`](docs/loop-spec/agent-output-contract.md).
-Every full, micro, and debug terminal path emits `LOOP_SPEC_RESULT {...}` and atomically
-updates one stable control-checkout pointer. Two local files provide the full-cycle
-detail (both intentionally uncommitted):
+Every full, micro, and debug terminal path and each standalone diagnostic emits
+`LOOP_SPEC_RESULT {...}` and atomically updates one stable control-checkout pointer. Two
+local files provide the full-cycle detail (both intentionally uncommitted):
 
 `.loop-spec/last-result.json` is the stable pointer for every cycle type. Full cycles
 also keep per-feature copies at `.loop-spec/features/{slug}/result.json`. Claude
@@ -281,11 +281,13 @@ the worktree does not remove the pointer. Schema version 1:
 ```json
 {
   "schema": 1,
-  "cycleType": "full | micro | debug",
+  "cycleType": "full | micro | debug | diagnostic",
   "slug": "my-feature",
   "status": "completed | paused | escalated | terminal | failed",
   "outcome": "cycle-specific terminal outcome",
   "reason": "string or null",
+  "summary": "concise finding, change synthesis, or stopping condition",
+  "noChangeReason": "already-satisfied | diagnostic-only | null",
   "phaseReached": "last currentPhase value",
   "branch": "feat/my-feature",
   "baseBranch": "main",
@@ -311,7 +313,22 @@ the worktree does not remove the pointer. Schema version 1:
 }
 ```
 
-`converged` is `true` only when the status is `completed`, `warnings[]` contains no `iterate-budget-spent:` or `iterate-terminal:` entries, and an explicit delivery block is `ready-for-review`. Completed schema-7 results from older versions without a delivery block remain readable.
+New schema-1 records always carry a non-empty `summary`, so consumers can surface the
+actual conclusion without parsing streamed output or committed artifacts. Older
+schema-1 records without this additive field remain readable.
+
+An intentional no-PR result uses `status: "completed"`, `outcome:
+"no-change-needed"`, `converged: true`, and one stable `noChangeReason` code.
+`already-satisfied` requires proof that the requested state was already present;
+`diagnostic-only` says the run intentionally reported findings instead of implementing
+them and does not mean the diagnostic found no problems. Zero commits without that
+explicit proof remains failed/escalated. Intentional no-change records expose neither a
+delivery PR nor a checkpoint PR.
+
+`converged` is `true` only when the status is `completed`, `warnings[]` contains no
+`iterate-budget-spent:` or `iterate-terminal:` entries, and delivery is either
+`ready-for-review` or explicitly validated as no-change. Completed schema-7 results from
+older versions without a delivery block remain readable.
 
 When implementation and VERIFY converge but authenticated delivery cannot complete, the
 result uses `status: "failed"`, `outcome: "delivery-blocked"`,
@@ -339,7 +356,7 @@ A compact digest of every completed run is also written to `docs/loop-spec/telem
 
 ### Issue-to-PR automation
 
-`lib/issue-intake.sh` connects a GitHub issue queue to the autonomous cycle: it picks open issues labeled `loop-spec` (default 1 per invocation), runs each through `claude -p "/loop-spec:intake autonomous <issue text>"`, reads `.loop-spec/last-result.json`, and comments the PR URL (or the failure) back on the issue. Lifecycle labels (`loop-spec:in-progress`/`done`/`failed`) make re-runs idempotent.
+`lib/issue-intake.sh` connects a GitHub issue queue to the autonomous cycle: it picks open issues labeled `loop-spec` (default 1 per invocation), runs each through `claude -p "/loop-spec:intake autonomous <issue text>"`, reads `.loop-spec/last-result.json`, and comments the PR URL, intentional no-change conclusion, or failure back on the issue. Lifecycle labels (`loop-spec:in-progress`/`done`/`failed`) make re-runs idempotent.
 
 ```bash
 cd /path/to/your/repo

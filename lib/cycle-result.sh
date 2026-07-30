@@ -9,10 +9,13 @@
 #   cycle-result.sh clear [--result-root <root>]
 #   cycle-result.sh resolve-root [<path>]
 #   cycle-result.sh write <feature_dir> --status <completed|paused|escalated|terminal|failed>
-#                        [--pr-url <url>] [--reason <text>]
-#   cycle-result.sh write-terminal --result-root <root> --cycle-type <micro|debug>
+#                        --summary <text> [--pr-url <url>] [--reason <text>]
+#                        [--no-change-reason <already-satisfied>]
+#   cycle-result.sh write-terminal --result-root <root> --cycle-type <micro|debug|diagnostic>
 #                        --status <status> --outcome <outcome> --title <title>
-#                        --converged <true|false> [compatibility/result fields...]
+#                        --converged <true|false> --summary <text>
+#                        [--no-change-reason <already-satisfied|diagnostic-only>]
+#                        [compatibility/result fields...]
 #
 # Reads <feature_dir>/feature.json and writes <feature_dir>/result.json, then
 # copies it to <feature_dir>/../../last-result.json (i.e., .loop-spec/last-result.json,
@@ -28,6 +31,8 @@
 #   "slug": "...",
 #   "status": "completed | paused | escalated | terminal",
 #   "reason": "<--reason text or null>",
+#   "summary": "<required concise terminal synthesis>",
+#   "noChangeReason": "already-satisfied | diagnostic-only | null",
 #   "phaseReached": "<logical phase, including delivery.json completion>",
 #   "branch": "<.branch>",
 #   "baseBranch": "<.baseBranch>",
@@ -62,6 +67,7 @@
 set -uo pipefail
 
 VALID_STATUSES="completed paused escalated terminal failed"
+VALID_NO_CHANGE_REASONS="already-satisfied diagnostic-only"
 
 _is_valid_status() {
   local s="$1"
@@ -69,6 +75,18 @@ _is_valid_status() {
     [[ "$s" == "$v" ]] && return 0
   done
   return 1
+}
+
+_is_valid_no_change_reason() {
+  local reason="$1"
+  for valid in $VALID_NO_CHANGE_REASONS; do
+    [[ "$reason" == "$valid" ]] && return 0
+  done
+  return 1
+}
+
+_is_nonblank() {
+  jq -en --arg value "$1" '$value | test("\\S")' >/dev/null 2>&1
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -142,7 +160,7 @@ case "${1:-}" in
   write-terminal)
     shift
     result_root="" cycle_type="" status="" outcome="" slug="" title=""
-    branch="" base_branch="" pr_url="" reason="" converged=""
+    branch="" base_branch="" pr_url="" reason="" summary="" no_change_reason="" converged=""
     verification_status="not-run" verification_command="" autonomous="false"
     warnings_json="[]"
     while [[ $# -gt 0 ]]; do
@@ -157,6 +175,8 @@ case "${1:-}" in
         --base-branch) base_branch="${2:-}"; shift 2 || true ;;
         --pr-url) pr_url="${2:-}"; shift 2 || true ;;
         --reason) reason="${2:-}"; shift 2 || true ;;
+        --summary) summary="${2:-}"; shift 2 || true ;;
+        --no-change-reason) no_change_reason="${2:-}"; shift 2 || true ;;
         --converged) converged="${2:-}"; shift 2 || true ;;
         --verification-status) verification_status="${2:-}"; shift 2 || true ;;
         --verification-command) verification_command="${2:-}"; shift 2 || true ;;
@@ -169,22 +189,50 @@ case "${1:-}" in
       echo "cycle-result.sh: write-terminal requires --result-root --cycle-type --status --outcome --title" >&2
       exit 0
     fi
+    _is_nonblank "$summary" || {
+      echo "cycle-result.sh: write-terminal requires a non-empty --summary" >&2; exit 0; }
     _is_valid_status "$status" || { echo "cycle-result.sh: invalid --status '$status'" >&2; exit 0; }
-    [[ "$cycle_type" == "micro" || "$cycle_type" == "debug" ]] || {
+    [[ "$cycle_type" == "micro" || "$cycle_type" == "debug" || "$cycle_type" == "diagnostic" ]] || {
       echo "cycle-result.sh: invalid --cycle-type '$cycle_type'" >&2; exit 0; }
     [[ "$converged" == "true" || "$converged" == "false" ]] || {
       echo "cycle-result.sh: --converged must be true or false" >&2; exit 0; }
     case "$verification_status" in passed|failed|not-run) ;; *)
       echo "cycle-result.sh: invalid --verification-status '$verification_status'" >&2; exit 0;; esac
     success_outcome="verified"
-    allowed_outcomes="verified verification-failed delivery-blocked promoted-to-full"
+    allowed_outcomes="verified no-change-needed verification-failed delivery-blocked promoted-to-full"
     if [[ "$cycle_type" == "debug" ]]; then
       success_outcome="fixed"
-      allowed_outcomes="fixed instrumented-and-waiting promoted-to-full verification-failed delivery-blocked"
+      allowed_outcomes="fixed no-change-needed instrumented-and-waiting promoted-to-full verification-failed delivery-blocked"
+    elif [[ "$cycle_type" == "diagnostic" ]]; then
+      success_outcome=""
+      allowed_outcomes="no-change-needed diagnostic-failed"
     fi
     case " $allowed_outcomes " in *" $outcome "*) ;; *)
       echo "cycle-result.sh: invalid $cycle_type --outcome '$outcome'" >&2; exit 0;; esac
-    if [[ "$outcome" == "$success_outcome" ]]; then
+    if [[ -n "$no_change_reason" ]] && ! _is_valid_no_change_reason "$no_change_reason"; then
+      echo "cycle-result.sh: invalid --no-change-reason '$no_change_reason'" >&2
+      exit 0
+    fi
+    if [[ "$outcome" == "no-change-needed" ]]; then
+      [[ "$status" == "completed" && "$converged" == "true" && -z "$pr_url" && -n "$no_change_reason" ]] || {
+        echo "cycle-result.sh: no-change-needed requires completed/converged without a PR and with --no-change-reason" >&2; exit 0; }
+      if [[ "$cycle_type" == "diagnostic" && "$no_change_reason" != "diagnostic-only" ]]; then
+        echo "cycle-result.sh: diagnostic no-change requires --no-change-reason diagnostic-only" >&2
+        exit 0
+      elif [[ "$cycle_type" == "diagnostic" && "$verification_status" != "not-run" ]]; then
+        echo "cycle-result.sh: diagnostic no-change requires verification-status not-run" >&2
+        exit 0
+      elif [[ "$cycle_type" != "diagnostic" && "$no_change_reason" != "already-satisfied" ]]; then
+        echo "cycle-result.sh: work-cycle no-change requires --no-change-reason already-satisfied" >&2
+        exit 0
+      elif [[ "$cycle_type" != "diagnostic" && "$verification_status" != "passed" ]]; then
+        echo "cycle-result.sh: work-cycle no-change requires passed verification" >&2
+        exit 0
+      fi
+    elif [[ -n "$no_change_reason" ]]; then
+      echo "cycle-result.sh: --no-change-reason requires outcome no-change-needed" >&2
+      exit 0
+    elif [[ -n "$success_outcome" && "$outcome" == "$success_outcome" ]]; then
       [[ "$status" == "completed" && "$converged" == "true" &&
          "$verification_status" == "passed" && -n "$pr_url" ]] || {
         echo "cycle-result.sh: successful outcome requires completed/passed/converged with a PR" >&2; exit 0; }
@@ -206,6 +254,9 @@ case "${1:-}" in
             ( "$status" != "failed" || "$verification_status" != "not-run" ) ]]; then
       echo "cycle-result.sh: instrumented-and-waiting requires failed status without verification" >&2
       exit 0
+    elif [[ "$outcome" == "diagnostic-failed" && "$status" != "failed" ]]; then
+      echo "cycle-result.sh: diagnostic-failed requires failed status" >&2
+      exit 0
     fi
     [[ "$autonomous" == "true" || "$autonomous" == "false" ]] || autonomous="false"
     jq -e 'type == "array"' <<<"$warnings_json" >/dev/null 2>&1 || warnings_json="[]"
@@ -217,7 +268,8 @@ case "${1:-}" in
     result_json="$(jq -cn --arg cycleType "$cycle_type" --arg status "$status" \
       --arg outcome "$outcome" --arg slug "$slug" --arg title "$title" \
       --arg branch "$branch" --arg base "$base_branch" --arg pr "$pr_url" \
-      --arg reason "$reason" --arg verifyStatus "$verification_status" \
+      --arg reason "$reason" --arg summary "$summary" --arg noChangeReason "$no_change_reason" \
+      --arg verifyStatus "$verification_status" \
       --arg verifyCommand "$verification_command" --arg now "$now" \
       --argjson converged "$converged" --argjson autonomous "$autonomous" \
       --arg loopSpecVersion "$loop_spec_version" \
@@ -225,6 +277,8 @@ case "${1:-}" in
       {schema:1,loopSpecVersion:$loopSpecVersion,
        cycleType:$cycleType,slug:(if $slug == "" then null else $slug end),
        status:$status,outcome:$outcome,reason:(if $reason == "" then null else $reason end),
+       summary:$summary,
+       noChangeReason:(if $noChangeReason == "" then null else $noChangeReason end),
        phaseReached:$cycleType,branch:(if $branch == "" then null else $branch end),
        baseBranch:(if $base == "" then null else $base end),
        prUrl:(if $pr == "" then null else $pr end),checkpointPrUrl:null,delivery:null,
@@ -241,7 +295,7 @@ case "${1:-}" in
   write)
     feature_dir="${2:-}"
     if [[ -z "$feature_dir" ]]; then
-      echo "cycle-result.sh: bad invocation — usage: cycle-result.sh write <feature_dir> --status <status> [--pr-url <url>] [--reason <text>]" >&2
+      echo "cycle-result.sh: bad invocation — usage: cycle-result.sh write <feature_dir> --status <status> --summary <text> [--pr-url <url>] [--reason <text>] [--no-change-reason <code>]" >&2
       exit 0
     fi
     features_dir="$(dirname "$feature_dir")"
@@ -255,6 +309,8 @@ case "${1:-}" in
     status=""
     pr_url=""
     reason=""
+    summary=""
+    no_change_reason=""
     shift 2 || true
     while [[ $# -gt 0 ]]; do
       case "${1:-}" in
@@ -270,6 +326,14 @@ case "${1:-}" in
           reason="${2:-}"
           shift 2 || shift || true
           ;;
+        --summary)
+          summary="${2:-}"
+          shift 2 || shift || true
+          ;;
+        --no-change-reason)
+          no_change_reason="${2:-}"
+          shift 2 || shift || true
+          ;;
         *)
           shift || true
           ;;
@@ -283,6 +347,18 @@ case "${1:-}" in
     fi
     if ! _is_valid_status "$status"; then
       echo "cycle-result.sh: invalid --status '$status'; must be one of: $VALID_STATUSES" >&2
+      exit 0
+    fi
+    if ! _is_nonblank "$summary"; then
+      echo "cycle-result.sh: a non-empty --summary is required" >&2
+      exit 0
+    fi
+    if [[ -n "$no_change_reason" && "$no_change_reason" != "already-satisfied" ]]; then
+      echo "cycle-result.sh: full-cycle --no-change-reason must be already-satisfied" >&2
+      exit 0
+    fi
+    if [[ -n "$no_change_reason" && "$status" != "completed" ]]; then
+      echo "cycle-result.sh: full-cycle no-change requires --status completed" >&2
       exit 0
     fi
 
@@ -301,6 +377,28 @@ case "${1:-}" in
     if [[ -f "$feature_dir/delivery.json" ]]; then
       delivery_content="$(jq -c . "$feature_dir/delivery.json" 2>/dev/null || echo null)"
     fi
+    if [[ -n "$no_change_reason" ]] && ! jq -e '
+      .iterate.lastVerdict.converged == true and
+      .iterate.lastVerdict.deterministic_gate_passed == true and
+      ((.warnings // []) |
+        map(type == "string" and
+          (startswith("iterate-budget-spent:") or startswith("iterate-terminal:"))) |
+        any | not)
+    ' \
+      <<<"$fj_content" >/dev/null 2>&1; then
+      echo "cycle-result.sh: already-satisfied requires clean deterministic ITERATE convergence" >&2
+      exit 0
+    fi
+    if [[ -n "$no_change_reason" ]] && ! jq -e '
+      . != null and .status == "no-changes" and
+      ((.targets // []) | length > 0) and
+      ((.targets // []) | all(
+        (.errorCode == "no_commits" or .outcome == "skipped-no-commits") and
+        ((.feedback.changesRequested // false) == false)))
+    ' <<<"$delivery_content" >/dev/null 2>&1; then
+      echo "cycle-result.sh: already-satisfied requires delivery no-commit evidence for every target" >&2
+      exit 0
+    fi
 
     # Build result.json with jq (never string-interpolate user text into JSON).
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -310,6 +408,8 @@ case "${1:-}" in
       --arg status "$status" \
       --arg pr_url_arg "$pr_url" \
       --arg reason_arg "$reason" \
+      --arg summary_arg "$summary" \
+      --arg no_change_reason_arg "$no_change_reason" \
       --arg loopSpecVersion "$loop_spec_version" \
       --argjson fj "$fj_content" \
       --argjson delivery "$delivery_content" \
@@ -321,7 +421,8 @@ case "${1:-}" in
        else null
        end) as $prUrl |
       # reason: --reason arg, or null
-      (if $reason_arg != "" then $reason_arg else null end) as $reason |
+       (if $reason_arg != "" then $reason_arg else null end) as $reason |
+       ($no_change_reason_arg != "") as $intentionalNoChange |
        ($fj.warnings // []) as $stateWarnings |
        ([$delivery.targets[]?
           | select((.feedback.changesRequested // false) == true)
@@ -355,11 +456,12 @@ case "${1:-}" in
           ($delivery.nextPhase // "") == "deliver") as $stoppedAtDelivery |
          ($stoppedAtDelivery and ($eligibleTargets | length) > 0 and ($hasLocalFailure | not)) as $deliveryBlocked |
          ($stoppedAtDelivery and (($eligibleTargets | length) == 0 or $hasLocalFailure)) as $localDeliveryEscalation |
-         (if $deliveryBlocked then "failed"
-          elif $localDeliveryEscalation then "escalated"
-          else $status end) as $effectiveStatus |
-         ($reachedDelivery and ($localDeliveryEscalation | not))
-           as $implementationConverged |
+          (if $intentionalNoChange then "completed"
+           elif $deliveryBlocked then "failed"
+           elif $localDeliveryEscalation then "escalated"
+           else $status end) as $effectiveStatus |
+         ($reachedDelivery and (($localDeliveryEscalation | not) or $intentionalNoChange))
+            as $implementationConverged |
          (if ($fj.workspace // null) == null
           then ($eligibleTargets | first // null)
           else null end) as $primaryTarget |
@@ -368,7 +470,7 @@ case "${1:-}" in
          ($warnings
           | map(startswith("iterate-budget-spent:") or startswith("iterate-terminal:"))
           | any | not) and
-       (if $delivery != null then (($delivery.status // "") == "ready-for-review")
+       (if $delivery != null then ((($delivery.status // "") == "ready-for-review") or $intentionalNoChange)
         else (($fj | has("delivery") | not) or (($fj.delivery.status // "") == "ready-for-review"))
         end)) as $converged |
       {
@@ -376,16 +478,18 @@ case "${1:-}" in
          loopSpecVersion: $loopSpecVersion,
          cycleType: "full",
          slug: $fj.slug,
-         status: $effectiveStatus,
-         outcome: (if $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
-         reason: $reason,
-         phaseReached: (if $effectiveStatus == "completed" and (($delivery.status // "") == "ready-for-review")
-                        then "completed" else ($fj.currentPhase // null) end),
+          status: $effectiveStatus,
+          outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
+          reason: $reason,
+          summary: $summary_arg,
+          noChangeReason: (if $intentionalNoChange then $no_change_reason_arg else null end),
+          phaseReached: (if $effectiveStatus == "completed" and ((($delivery.status // "") == "ready-for-review") or $intentionalNoChange)
+                         then "completed" else ($fj.currentPhase // null) end),
          branch: (if $primaryTarget != null then ($primaryTarget.branch // $fj.branch // null)
                   else ($fj.branch // null) end),
          baseBranch: ($fj.baseBranch // null),
-         prUrl: $prUrl,
-         checkpointPrUrl: ($fj.checkpointPrUrl // null),
+          prUrl: (if $intentionalNoChange then null else $prUrl end),
+         checkpointPrUrl: (if $intentionalNoChange then null else ($fj.checkpointPrUrl // null) end),
          delivery: $deliveryRecord,
          eligibleTargets: $eligibleTargets,
          implementationConverged: $implementationConverged,

@@ -1,12 +1,14 @@
 ---
 name: assess
-description: Standalone, read-only codebase fragility and health assessment. Workspace-aware -- in workspace mode scans every configured repo; in single mode, just the one. Dispatches bounded code-reviewer subagents at the top-N hotspots, then synthesizes docs/loop-spec/assessment/ASSESSMENT.md with per-repo fragility heat maps, reviewer findings, cross-repo ranked findings, and prioritized fix recommendations. Only that one file is written; nothing is committed.
+description: Standalone, read-only codebase fragility and health assessment. Workspace-aware -- in workspace mode scans every configured repo; in single mode, just the one. Dispatches bounded code-reviewer subagents at the top-N hotspots, then synthesizes docs/loop-spec/assessment/ASSESSMENT.md with per-repo fragility heat maps, reviewer findings, cross-repo ranked findings, and prioritized fix recommendations. Nothing is committed; the shared terminal result records the conclusion.
 allowed-tools: Bash Read Glob Grep Agent AskUserQuestion Write
 ---
 
 # assess
 
-Standalone skill for codebase fragility and health assessment. Read-only with respect to source code. Writes one output file: `docs/loop-spec/assessment/ASSESSMENT.md`.
+Standalone skill for codebase fragility and health assessment. Read-only with respect to
+source code. Writes `docs/loop-spec/assessment/ASSESSMENT.md` plus the ignored
+`.loop-spec/last-result.json` terminal pointer.
 
 ## Inputs
 
@@ -18,6 +20,14 @@ None required. Optional environment variables:
 ## Procedure
 
 ### Step 1 -- Workspace detection
+
+Before scanning, clear the stable terminal pointer from the invocation root. A clear
+failure stops the assessment so consumers cannot reuse a stale result:
+
+```bash
+result_root="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" resolve-root "$PWD")"
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$result_root"
+```
 
 Run the workspace resolver to determine the scope:
 
@@ -281,9 +291,25 @@ assess: complete.
 No source files were edited. Nothing was committed.
 ```
 
+Build a concise, non-empty `summary` from the actual highest-severity finding and counts;
+when there are no findings, say that explicitly. Then emit the shared terminal result:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+  --result-root "$result_root" --cycle-type diagnostic \
+  --status completed --outcome no-change-needed --slug assess \
+  --title "Codebase assessment" --converged true --verification-status not-run \
+  --summary "$summary" --no-change-reason diagnostic-only
+```
+
+`diagnostic-only` means this invocation intentionally assessed rather than implemented;
+it does not assert that the assessment has no recommendations. If assessment aborts or
+cannot synthesize its report, emit `diagnostic-failed` with `status failed`, `converged
+false`, a concise `reason`, and a non-empty failure `summary`; omit `noChangeReason`.
+
 ## What NOT to do
 
-- **Do not edit any source file.** The only file written is `docs/loop-spec/assessment/ASSESSMENT.md`.
+- **Do not edit any source file.** The only writes are `docs/loop-spec/assessment/ASSESSMENT.md` and ignored terminal-result telemetry.
 - **Do not commit.** The skill explicitly does not commit. The assessment doc is intentionally left uncommitted for the user to review and optionally commit separately.
 - **Do not run unbounded reviewer dispatch.** The number of files sent to reviewers is always capped by `LOOP_SPEC_ASSESS_TOP_N` (default 5) per repo. Do not dispatch one agent per file from the full 20-file scan list.
 - **Do not read `feature.json` or `feature.models`.** This skill runs standalone. The model is hardcoded to the `sonnet` alias as noted in Step 3.

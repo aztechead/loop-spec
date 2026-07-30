@@ -80,10 +80,13 @@ A green command cannot substitute for repository grounding, and repository reads
 substitute for an executed command. "Should work" is not a result. Simplicity mode still
 applies: ship the shortest grounded diff that passes.
 
-**6. Deliver as a PR, then check it for feedback.** Micro work ends the same way every
-cycle type ends: on a branch, behind a PR, with the PR checked for reviews/comments/
-requested changes (`skills/shared/pr-feedback-check.md`). Still zero ceremony — no
-worktree, no DELIVER controller:
+**6. Deliver as a PR, then check it for feedback.** Changed micro work ends on a branch,
+behind a PR, with the PR checked for reviews/comments/requested changes
+(`skills/shared/pr-feedback-check.md`). If the grounding and validation gates instead
+prove every criterion was already satisfied before this run, make no empty commit and
+open no PR: select `no-change-needed` with reason code `already-satisfied`. A clean diff
+alone is not enough; unsupported or blocked work is a failure, not intentional no-change.
+Still zero ceremony — no worktree, no DELIVER controller:
 
 - On the default branch? Move the work to a branch first: `git checkout -b micro/<slug>`
   (uncommitted changes travel). Already on a topic branch: stay on it.
@@ -142,17 +145,22 @@ record after ledger/PR/feedback side effects finish. Resolve `result_root` with
 slug/title, actual verification command, and PR URL. Then call:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
-  --result-root "$result_root" --cycle-type micro \
-  --status "<completed|failed|escalated>" --outcome "<verified|verification-failed|delivery-blocked|promoted-to-full>" \
-  --slug "$slug" --title "$title" --branch "$branch" --base-branch "$base_branch" \
-  --pr-url "$pr_url" --converged "<true|false>" \
-  --verification-status "<passed|failed|not-run>" --verification-command "$verify_command" \
-  --autonomous "<true|false>"
+result_args=(
+  --result-root "$result_root" --cycle-type micro
+  --status "$status" --outcome "$outcome"
+  --slug "$slug" --title "$title" --branch "$branch" --base-branch "$base_branch"
+  --pr-url "$pr_url" --converged "$converged"
+  --verification-status "$verification_status" --verification-command "$verify_command"
+  --autonomous "$autonomous" --summary "$summary"
+)
+[[ -n "$no_change_reason" ]] && result_args+=(--no-change-reason "$no_change_reason")
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal "${result_args[@]}"
 ```
 
-`verification-status=passed` requires both VERIFY gates. `converged=true` additionally
-requires a PR URL. The writer emits one
+`summary` is a non-empty, concise synthesis of the actual change and verification result,
+or the already-satisfied finding. `verification-status=passed` requires both VERIFY gates.
+`converged=true` requires a PR URL except for validated `no-change-needed`, which requires
+no PR and `no_change_reason=already-satisfied`. The writer emits one
 `LOOP_SPEC_RESULT {...}` line and atomically updates `.loop-spec/last-result.json`.
 Do not claim success if result emission warns; report the observability failure.
 

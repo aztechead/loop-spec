@@ -168,6 +168,30 @@ out="$(run_preflight)"
 check "delivered sidecar remains resumable" "1" \
   "$(jq -r '[.resume.candidates[] | select(.slug == "wt-only")] | length' <<<"$out")"
 
+# Once a matching no-change result has been emitted, the otherwise resumable
+# deliver state is terminal and must not be offered again.
+jq -n '{schema:1,status:"no-changes",nextPhase:"deliver",
+  attemptedAt:"2026-07-30T10:00:00Z",targets:[{errorCode:"no_commits"}]}' \
+  > "$WT/.loop-spec/features/wt-only/delivery.json"
+jq -n '{schema:1,cycleType:"full",slug:"wt-only",status:"completed",outcome:"no-change-needed",
+  summary:"The requested state was already present.",noChangeReason:"already-satisfied",
+  converged:true,prUrl:null,checkpointPrUrl:null,
+  verification:{status:"passed",command:"bash tests/run-all.sh"},
+  finishedAt:"2026-07-30T10:01:00Z",
+  delivery:{status:"no-changes",nextPhase:"deliver",attemptedAt:"2026-07-30T10:00:00Z",
+    targets:[{errorCode:"no_commits"}]}}' \
+  > "$WT/.loop-spec/features/wt-only/result.json"
+out="$(run_preflight)"
+check "terminal no-change sidecar is not resumable" "0" \
+  "$(jq -r '[.resume.candidates[] | select(.slug == "wt-only")] | length' <<<"$out")"
+
+jq '.slug = "copied-from-another-feature"' "$WT/.loop-spec/features/wt-only/result.json" \
+  > "$WT/.loop-spec/features/wt-only/result.json.tmp"
+mv "$WT/.loop-spec/features/wt-only/result.json.tmp" "$WT/.loop-spec/features/wt-only/result.json"
+out="$(run_preflight)"
+check "mismatched no-change result cannot hide feature" "1" \
+  "$(jq -r '[.resume.candidates[] | select(.slug == "wt-only")] | length' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

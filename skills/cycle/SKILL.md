@@ -702,9 +702,44 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
 3. **Route to next iteration:**
    - If `next_phase == "completed"`: jump to the "On completion" section below.
     - If the phase that returned was `deliver`, `next_phase == "deliver"`, and
-      `delivery.nextPhase == "deliver"`: write the terminal result using the first
-      structured target error:
-      `bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write ".loop-spec/features/${slug}" --status escalated --reason "<target error>"`.
+      `delivery.nextPhase == "deliver"`, branch on the deterministic delivery record.
+      When `delivery.status == "no-changes"`, every target is `no_commits` or
+      `skipped-no-commits`, and the last ITERATE verdict has both `converged == true`
+      and `deterministic_gate_passed == true` with no unresolved iteration warnings,
+      pass `--status completed`, the verdict's non-empty `.summary`, and
+      `--no-change-reason already-satisfied`; the writer normalizes the output to
+      `outcome: no-change-needed` and re-validates all three facts. Use this exact probe:
+      ```bash
+      feature_dir=".loop-spec/features/${slug}"
+      delivery_file="$feature_dir/delivery.json"
+      if jq -e '.status == "no-changes" and ((.targets // []) | length > 0) and
+          ((.targets // []) | all(.errorCode == "no_commits" or .outcome == "skipped-no-commits"))' \
+          "$delivery_file" >/dev/null 2>&1 \
+        && jq -e '.iterate.lastVerdict.converged == true and
+          .iterate.lastVerdict.deterministic_gate_passed == true and
+          ((.warnings // []) | map(type == "string" and
+            (startswith("iterate-budget-spent:") or startswith("iterate-terminal:"))) |
+            any | not) and
+          ((.iterate.lastVerdict.summary // "") | test("\\S"))' \
+          "$feature_dir/feature.json" >/dev/null 2>&1; then
+        _summary="$(jq -r '.iterate.lastVerdict.summary' "$feature_dir/feature.json")"
+        bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
+          --status completed --summary "$_summary" \
+          --no-change-reason already-satisfied
+      else
+        _reason="$(jq -r '(.status // "unknown") as $status |
+          ([.targets[]?.error // empty] | first //
+            ("delivery stopped with status " + $status))' "$delivery_file")"
+        bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
+          --status escalated --reason "$_reason" --summary "Delivery stopped: $_reason"
+      fi
+      ```
+      **No-change completion cleanup:** after the `already-satisfied` result is emitted,
+      print its summary and do not run PR feedback or autonomous chaining. For a Claude
+      single-repository feature worktree, call `ExitWorktree({action:"keep"})` before
+      returning; OpenCode/pi in-place execution and workspace mode skip that tool. This
+      is the terminal cleanup for this path, so it must happen before preflight begins
+      suppressing the completed local result on later invocations.
       Eligible immutable targets normalize to `delivery-blocked`; local preflight errors
       remain escalations. Return control. Never immediately invoke DELIVER again;
      transport/identity/timeouts need an external condition to change.
@@ -734,8 +769,13 @@ still available:
 ```bash
 feature_dir=".loop-spec/features/${slug}"
 _pr_url="$(jq -r '.prUrl // empty' "$feature_dir/feature.json")"
+_summary="$(jq -r '.iterate.lastVerdict.summary // empty' "$feature_dir/feature.json")"
+[[ -n "${_summary//[[:space:]]/}" ]] || {
+  echo "cycle completion has no iterate summary; terminal result not emitted" >&2
+  false
+}
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
-  --status completed ${_pr_url:+--pr-url "$_pr_url"} || true
+  --status completed --summary "$_summary" ${_pr_url:+--pr-url "$_pr_url"} || true
 ```
 
 The run digest was finalized immediately before DELIVER (machine-local by default;

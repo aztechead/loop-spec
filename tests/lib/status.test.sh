@@ -126,6 +126,18 @@ check "7c: sidecar phase completed" "completed" "$(jq -r '.[0].phase' <<<"$out")
 check "7c: sidecar PR exposed" "https://github.com/t/r/pull/8" "$(jq -r '.[0].prUrl' <<<"$out")"
 check "7c: sidecar delivery exposed" "ready-for-review" "$(jq -r '.[0].deliveryStatus' <<<"$out")"
 
+# ── Case 7d: terminal no-change suppresses stale tracked PR hints ─────────────
+ROOT4="$WORK/nochange/.loop-spec"
+mkdir -p "$ROOT4/features/already-done"
+echo '{"schemaVersion":7,"slug":"already-done","currentPhase":"deliver","prUrl":"https://example/stale-pr","checkpointPrUrl":"https://example/stale-checkpoint","warnings":[]}' \
+  > "$ROOT4/features/already-done/feature.json"
+echo '{"schema":1,"cycleType":"full","slug":"already-done","status":"completed","outcome":"no-change-needed","summary":"Already present.","noChangeReason":"already-satisfied","prUrl":null,"checkpointPrUrl":null,"converged":true,"iterations":{"used":1,"max":10}}' \
+  > "$ROOT4/features/already-done/result.json"
+out="$(bash "$LIB" --root "$ROOT4" --json status)"
+check "7d: no-change status suppresses stale PR" "null" "$(jq -r '.[0].prUrl' <<<"$out")"
+check "7d: no-change status suppresses stale checkpoint" "null" \
+  "$(jq -r '.[0].checkpointPrUrl' <<<"$out")"
+
 # ── Case 8: bad flag → exit 2 ─────────────────────────────────────────────────
 ec=0
 bash "$LIB" --bogus >/dev/null 2>&1 || ec=$?
