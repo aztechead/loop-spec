@@ -113,7 +113,9 @@ For wider EXECUTE concurrency:
   export LOOP_SPEC_EXECUTE_LOOPS=1     # bounded headless loop fleet (needs the `claude` CLI)
   export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1   # persistent phase teams
   export LOOP_SPEC_EXECUTE_WORKFLOW=1  # opt into the Workflow DAG rung on very wide plans
-Model selection is fixed (opus + sonnet); there is no preset to choose.
+Canonical role defaults are opus + sonnet and there is no preset to choose.
+Operators may still pin a phase or role through the documented environment
+contracts.
 ```
 
 ### Step 6 - Summary

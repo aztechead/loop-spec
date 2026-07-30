@@ -259,14 +259,12 @@ fi
 
 ### Step 6 - Phase routing
 
-| execStyle    | Action                                                                          |
-|--------------|---------------------------------------------------------------------------------|
-| auto         | Invoke `Skill(loop-spec:discuss)` immediately                                  |
-| step         | Print "SPEC complete. SPEC.md at docs/loop-spec/features/{slug}/SPEC.md." Return to user. |
-| interactive  | Same as step.                                                                   |
-| review-only  | Invoke `Skill(loop-spec:discuss)` (gate already paused for human if findings)  |
-
-Return.
+Always return to the cycle orchestrator after persisting `currentPhase = "discuss"`;
+never invoke DISCUSS directly. Cycle owns the phase boundary: continuous mode invokes
+DISCUSS immediately, while `phaseHandoff == true` writes the paused result and ends the
+main-agent invocation. For `step` / `interactive`, include
+`SPEC complete. SPEC.md at docs/loop-spec/features/{slug}/SPEC.md.` in the returned
+phase summary.
 
 ## SPEC.md Output Format
 
@@ -312,14 +310,30 @@ When `LOOP_SPEC_NON_INTERACTIVE=1` is set there is no user to interview. The orc
 | `LOOP_SPEC_ANSWER_SPEC_OVERRIDE` | `yes`, `no`  | Write SPEC.md despite a failing synthesized gate (default: `yes`) |
 
 Synthesis procedure (non-interactive):
-1. Run Step 1 (scout + initial scoring) only.
-2. Derive the best SPEC.md you can from the feature title and codebase context. Score the 4 dimensions honestly from that text.
-3. If the synthesized gate passes (or `LOOP_SPEC_ANSWER_SPEC_CONFIRM` is unset/`yes`): write SPEC.md with `gate_passed: true`.
-4. If the synthesized gate fails: write SPEC.md anyway (default, or when `LOOP_SPEC_ANSWER_SPEC_OVERRIDE` is unset/`yes`) with `gate_passed: false` and the failing dimensions listed in `unresolved_dimensions`.
-5. Write the transcript (a short note that the spec was synthesized non-interactively, with the scores).
-6. Proceed to Step 4 (update feature.json), Step 5 (commit), Step 6 (route).
+1. Resolve both answers and reject invalid values before scouting:
+   ```bash
+   spec_confirm="${LOOP_SPEC_ANSWER_SPEC_CONFIRM:-yes}"
+   spec_override="${LOOP_SPEC_ANSWER_SPEC_OVERRIDE:-yes}"
+   case "$spec_confirm" in yes|no) ;; *) echo "SPEC: LOOP_SPEC_ANSWER_SPEC_CONFIRM must be yes or no" >&2; exit 2 ;; esac
+   case "$spec_override" in yes|no) ;; *) echo "SPEC: LOOP_SPEC_ANSWER_SPEC_OVERRIDE must be yes or no" >&2; exit 2 ;; esac
+   ```
+2. Run Step 1 (scout + initial scoring) only.
+3. Derive the best SPEC.md you can from the feature title and codebase context. Score the 4 dimensions honestly from that text.
+4. If the synthesized gate passes and `spec_confirm == yes`, write SPEC.md with
+   `gate_passed: true`. If it passes and `spec_confirm == no`, do not write or advance
+   the phase: write a paused cycle result with reason `spec-confirmation-declined` and
+   summary `SPEC synthesis passed, but LOOP_SPEC_ANSWER_SPEC_CONFIRM=no declined the write.`,
+   then return to cycle.
+5. If the synthesized gate fails and `spec_override == yes`, write SPEC.md with
+   `gate_passed: false` and list the failing dimensions in `unresolved_dimensions`.
+   If it fails and `spec_override == no`, do not write or advance the phase: write a
+   paused cycle result with reason `spec-override-declined` and a summary naming the
+   failing dimensions, then return to cycle.
+6. Write the transcript (a short note that the spec was synthesized non-interactively, with the scores).
+7. Proceed to Step 4 (update feature.json), Step 5 (commit), Step 6 (route).
 
-Non-interactive mode never selects "Abandon": SPEC.md is always written.
+The defaults always write, preserving unattended behavior. An explicit `no` is an
+operator-requested durable pause, not an ignored answer and not a completion claim.
 
 ## Autonomous mode (self-answered interview)
 

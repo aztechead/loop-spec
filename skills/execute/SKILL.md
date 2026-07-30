@@ -23,7 +23,12 @@ return the same `{merged, blocked, escalation}` result shape.
 
 ### Step 1 - Branch check
 
-loop-spec is schema-7 only. A feature is either workspace mode (`workspace` block non-null) or single-repo worktree mode (`workspace == null`, `worktreePath` set). There is no legacy in-place path.
+loop-spec is schema-7 only. A feature is either workspace mode (`workspace` block
+non-null) or single-repo mode (`workspace == null`). Single-repo mode has two explicit
+execution roots: the default feature worktree (`executionRootMode == "worktree"`,
+`worktreePath` set), or the clean in-place feature branch selected by
+`LOOP_SPEC_WORKTREES=0` (`executionRootMode == "in-place"`, `worktreePath == null`).
+The latter is the supported single-instance/cloud path, not a legacy fallback.
 
 **Workspace mode (`feature.workspace` non-null):** Each participating repo must be on `feat/{slug}`. Assert this before any other work:
 
@@ -52,6 +57,20 @@ current=$(git branch --show-current)
 if [[ "$current" != "{feature.json.branch}" ]]; then
   echo "ERROR: expected branch {feature.json.branch} but current branch is '$current'." >&2
   echo "The cycle resume did not EnterWorktree the feature worktree. Aborting." >&2
+  exit 2
+fi
+```
+
+**Single-repo in-place mode (`executionRootMode == "in-place"`):** Cycle startup
+already required a clean checkout and created `feat/{slug}` directly in that checkout.
+Assert the same branch, but never call `EnterWorktree` and never create a feature or
+task worktree:
+
+```bash
+current=$(git branch --show-current)
+if [[ "$current" != "{feature.json.branch}" ]]; then
+  echo "ERROR: in-place execution expected branch {feature.json.branch} but current branch is '$current'." >&2
+  echo "Relaunch from the recorded featureRoot; do not create a worktree to compensate." >&2
   exit 2
 fi
 ```
@@ -466,9 +485,10 @@ lib/feature-write.sh set currentTeamName "loop-spec-execute-{slug}"
 Size the team from the effective params:
 `M = min(plannedTaskCount, maxParallelImplementers)`, `R = ceil(M / 2)`.
 
-Models are read literally from `feature.json.models` (resolved once at cycle Step 5):
-implementers use `feature.models.implementer` (sonnet), the spec-compliance gate uses
-`feature.models.specComplianceReviewer` (opus). Every teammate object MUST carry an explicit `model:`.
+Models are read literally from `feature.json.models` (activated for EXECUTE immediately before entry):
+implementers use `feature.models.implementer`, and the spec-compliance gate uses
+`feature.models.specComplianceReviewer`. These are the already-activated EXECUTE
+values, not assumed defaults. Every teammate object MUST carry an explicit `model:`.
 
 ```
 TeamCreate({
@@ -534,7 +554,11 @@ commit_strategy="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workflow-config.sh" commi
   git reset --soft "$(git merge-base "$base" HEAD)"
   git commit -m "feat: NO_JIRA {slug}"
   ```
-  The per-task worktree commits are still required for the merge mechanics; `at-end` only rewrites the final history on `feat/{slug}`, never the per-task worktrees. Skip silently in workspace mode (in-place branches across repos make a cross-repo squash ambiguous; v1 keeps per-task there).
+  In normal single-repo mode, `at-end` rewrites the final history after per-task
+  worktree merges. Under `LOOP_SPEC_WORKTREES=0`, sequential implementers commit
+  directly on `feat/{slug}` and the same final squash applies without task worktrees.
+  Skip silently in workspace mode (in-place branches across repos make a cross-repo
+  squash ambiguous; v1 keeps per-task there).
 
   **Caveat (per Anthropic long-running-agent guidance):** for long unsupervised / overnight runs, prefer `per-task` (the default). Anthropic recommends committing after every meaningful unit so history is recoverable and progress is not lost if the run dies partway; `at-end` trades that recoverability for a clean single commit and is best reserved for short, supervised features.
 
@@ -548,5 +572,8 @@ lib/feature-write.sh set currentTeammates "[]"
 
 #### Phase routing
 
-- `execStyle == "auto"`: proceed immediately to VERIFY (invoke `skills/verify/SKILL.md`).
-- `execStyle == "step"` or `execStyle == "interactive"`: return control to the user with a summary of completed tasks and the next phase (`verify`).
+Always return to the cycle orchestrator after persisting `currentPhase = "verify"`;
+never invoke VERIFY directly. Cycle owns the phase boundary: continuous mode invokes
+VERIFY immediately, while `phaseHandoff == true` writes the paused result and ends
+the main-agent invocation. For `step` / `interactive`, include the completed-task
+summary and the next phase (`verify`) in the returned phase summary.

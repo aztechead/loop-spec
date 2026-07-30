@@ -20,8 +20,11 @@ mode asks exactly ONE confirmation (the classification table) before acting.
 
 ## Hard rules
 
-- **Never switch the user's checkout.** All work happens in a dedicated worktree
-  at `.loop-spec/worktrees/{slug}-revise` on the PR head branch.
+- **Checkout isolation follows `LOOP_SPEC_WORKTREES`.** Default mode never switches
+  the user's checkout: all work happens in a dedicated worktree at
+  `.loop-spec/worktrees/{slug}-revise`. With `LOOP_SPEC_WORKTREES=0`, the checkout
+  must be clean and dedicated to this run; revise checks out the PR branch in place,
+  creates no worktree, and leaves that branch checked out.
 - **Never force-push.** If the remote branch has moved past the local ref, fetch
   and rebase the worktree onto `origin/<branch>` first; if that fails, abort
   loudly with the conflict list. A diverged history is the user's call.
@@ -67,12 +70,28 @@ Emit `phase_start`:
 bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" phase_start --phase revise || true
 ```
 
-### Step 3 - Worktree on the PR head
+### Step 3 - Execution root on the PR head
 
 ```bash
 git fetch origin "$branch"
-git worktree add ".loop-spec/worktrees/{slug}-revise" -B "$branch" "origin/$branch" 2>/dev/null \
-  || # branch checked out elsewhere: abort with the worktree list — never steal a checkout
+case "${LOOP_SPEC_WORKTREES:-1}" in
+  1)
+    revision_root=".loop-spec/worktrees/{slug}-revise"
+    git worktree add "$revision_root" -B "$branch" "origin/$branch" 2>/dev/null \
+      || # branch checked out elsewhere: abort with the worktree list — never steal a checkout
+    ;;
+  0)
+    revision_root="$(git rev-parse --show-toplevel)"
+    [[ -z "$(git -C "$revision_root" status --porcelain --untracked-files=all)" ]] \
+      || # abort: "LOOP_SPEC_WORKTREES=0 requires a clean dedicated checkout for revise"
+    git -C "$revision_root" checkout -B "$branch" "origin/$branch"
+    bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" worktreePath null
+    bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" executionRootMode '"in-place"'
+    ;;
+  *)
+    # abort: "LOOP_SPEC_WORKTREES must be 0 or 1"
+    ;;
+esac
 ```
 
 If a local `feat/{slug}` exists and has commits NOT on `origin/$branch`, abort
@@ -115,10 +134,10 @@ re-entry contract — same normalization it already enforces):
 ```
 
 Append them via `lib/feature-write.sh append "$fdir" pendingRemediationTasks <task>`,
-then invoke `Skill(loop-spec:execute)` with the revise worktree as the feature
-worktree root. EXECUTE's own dispatch, spec-compliance gate, retry, and
+then invoke `Skill(loop-spec:execute)` with `revision_root` as the feature execution
+root. EXECUTE's own dispatch, spec-compliance gate, retry, and
 dispatch-telemetry contracts apply unchanged. After it returns, run the test
-command once in the worktree and confirm each item's acceptance criterion.
+command once in `revision_root` and confirm each item's acceptance criterion.
 
 ### Step 7 - plan/spec-class items are NOT silently fixed
 
@@ -132,7 +151,7 @@ limit-spent contract: gaps are recorded loudly, never absorbed silently.
 ### Step 8 - Push + artifacts
 
 ```bash
-git -C ".loop-spec/worktrees/{slug}-revise" push origin "$branch"   # never --force
+git -C "$revision_root" push origin "$branch"   # never --force
 ```
 
 Write `docs/loop-spec/features/{slug}/REVISION.md` (append one section per
@@ -164,11 +183,12 @@ gh pr comment "$pr" --body "<!-- loop-spec:revise -->
 
 ### Step 10 - Cleanup
 
-Remove the revise worktree (`git worktree remove`), keep the branch. Print the
-PR URL and the per-item outcome table to the user.
+When `LOOP_SPEC_WORKTREES != 0`, remove the revise worktree (`git worktree remove`)
+and keep the branch. In no-worktree mode there is nothing to remove; leave the
+in-place PR branch checked out. Print the PR URL and the per-item outcome table.
 
 ## Failure behavior
 
-Any abort (diverged branch, gh failure, EXECUTE escalation) leaves the worktree
-in place, reports the exact step and error verbatim, and posts NO comment —
+Any abort (diverged branch, gh failure, EXECUTE escalation) leaves the execution
+root in place, reports the exact step and error verbatim, and posts NO comment —
 a partial revise must never present itself on the PR as a complete one.

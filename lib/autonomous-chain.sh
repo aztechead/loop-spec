@@ -148,7 +148,7 @@ n_gaps="$(jq -r '[(.warnings // [])[] | select(type == "string" and startswith("
 [[ "$n_gaps" -gt 0 ]] || no_chain "no-budget-spent-gaps"
 
 max_features="${LOOP_SPEC_MAX_FEATURES:-1}"
-[[ "$max_features" =~ ^[0-9]+$ ]] || max_features=1
+[[ "$max_features" =~ ^[1-9][0-9]*$ ]] || max_features=1
 [[ "$completed" -lt "$max_features" ]] || no_chain "max-features-reached"
 
 entry_json="$(bash "$BACKLOG" next --json 2>/dev/null)" || no_chain "backlog-empty"

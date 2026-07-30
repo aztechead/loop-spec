@@ -194,7 +194,10 @@ AskUserQuestion({
 
 If "Customize": ask the user to list repo names (comma-separated); filter `workspace_repos_json` to only those named.
 
-Non-interactive (`LOOP_SPEC_NON_INTERACTIVE=1`): read `LOOP_SPEC_ANSWER_REPOS` (comma-separated repo names, default = all). Skip AskUserQuestion.
+Non-interactive (`LOOP_SPEC_NON_INTERACTIVE=1`): read `LOOP_SPEC_ANSWER_REPOS`
+(comma-separated repo names, default = all). Trim surrounding whitespace, reject any
+name not present in the discovered set, reject an empty resulting selection, preserve
+discovery order, and skip AskUserQuestion. Do not silently drop misspelled names.
 
 After confirmation, `workspace_repos_json` holds only the participating repos.
 

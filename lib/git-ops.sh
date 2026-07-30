@@ -87,6 +87,17 @@ case "$cmd" in
       echo "create-feature-worktree: usage: git-ops.sh create-feature-worktree <slug> <base_sha>" >&2
       exit 1
     fi
+    case "${LOOP_SPEC_WORKTREES:-1}" in
+      0)
+        echo "create-feature-worktree: LOOP_SPEC_WORKTREES=0 forbids worktree creation; use the clean in-place feature branch" >&2
+        exit 1
+        ;;
+      1) ;;
+      *)
+        echo "create-feature-worktree: LOOP_SPEC_WORKTREES must be 0 or 1" >&2
+        exit 1
+        ;;
+    esac
     branch="feat/${slug}"
     if [[ "${#G[@]}" -gt 1 ]]; then
       # -C mode: build absolute path inside the target repo dir

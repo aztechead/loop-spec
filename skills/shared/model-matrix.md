@@ -1,12 +1,13 @@
 # Model Matrix
 
-Maps each agent role to a fixed model ID. There is no model preset axis: model
-selection is fixed and identical for every feature. Gate behavior,
-and fan-out width are also fixed (single-tier operation); see `tier-matrix.md`.
+Maps each agent role to its default model alias and defines optional per-phase
+routing. There is no model preset axis. Gate behavior and fan-out width are
+fixed (single-tier operation); see `tier-matrix.md`.
 
-The concrete IDs are resolved once at cycle Step 5 into `feature.models.<role>`,
-and every spawn passes `model: feature.models.<role>` explicitly. This file is the
-source of truth that Step 5 mirrors.
+Immediately before every phase invocation, `lib/feature-init.sh activate` writes
+the effective route into `feature.models.<role>`, and every spawn passes that
+literal value. It also persists configured phase defaults in
+`feature.phaseModels.<phase>`.
 
 ## Resolution
 
@@ -68,6 +69,44 @@ overrides for cross-provider routing. Loop-fleet dispatch takes opencode ids —
   `skills/shared/execution-discipline.md` (evidence over recall), which every
   EXECUTE/VERIFY dispatch carries.
 
+## Claude Code per-phase override
+
+Set `LOOP_SPEC_PHASE_MODEL_<PHASE>` to make one alias the default for the phase's
+main orchestrator and every subagent launched inside it:
+
+```bash
+LOOP_SPEC_PHASE_MODEL_SPEC=opus
+LOOP_SPEC_PHASE_MODEL_DISCUSS=sonnet
+LOOP_SPEC_PHASE_MODEL_PLAN=sonnet
+LOOP_SPEC_PHASE_MODEL_EXECUTE=sonnet
+LOOP_SPEC_PHASE_MODEL_VERIFY=opus
+LOOP_SPEC_PHASE_MODEL_ITERATE=opus
+LOOP_SPEC_PHASE_MODEL_DELIVER=sonnet
+```
+
+Supported phase suffixes are exactly `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`,
+`VERIFY`, `ITERATE`, and `DELIVER`. Values are the same Claude Code Agent aliases:
+`sonnet | opus | haiku | fable`. Empty/unset means no phase override. Any other
+value fails startup/phase activation; there is no silent fallback.
+
+The phase default reaches all phase gates because those reviewers consume the
+same activated map:
+
+- DISCUSS: spec-writer, pattern-mapper, advocate, challenger;
+- PLAN: pattern-mapper, planner, advocate, challenger;
+- EXECUTE: implementer and spec-compliance-reviewer on every supported rung;
+- VERIFY: verifier, code-reviewer, and map-refresh agents;
+- ITERATE: iterate-judge;
+- SPEC: startup/codebase mapper agents; the interview itself is main-context;
+- DELIVER: no role subagent currently launches.
+
+For the main orchestrator, a running Claude session cannot change its own model.
+Continuous mode therefore applies phase routing to subagents only. To change the
+main model too, enable `LOOP_SPEC_PHASE_HANDOFF=1` and have the Claude CLI or Agent
+SDK launcher start each fresh phase query with the alias in
+`feature.phaseModels.<nextPhase>` (or resolve it directly with
+`lib/feature-init.sh phase-model <phase>`). The bundled cloud SDK recipe does this.
+
 ## Claude Code per-role override
 
 Under Claude Code, set `LOOP_SPEC_MODEL_<ROLE>` (SCREAMING_SNAKE of the JSON key)
@@ -83,14 +122,14 @@ literal model ID like `claude-opus-4-8` — causes `feature-init.sh` to print a 
 error to stderr naming the offending var, the bad value, and the allowed enum, then
 exit 1. No silent fallback.
 
-**Precedence:** env override > canonical default. A per-task `model` pin or
-`modelTier` in plan metadata still wins at task level and is unaffected by this
-mechanism.
+**Precedence:** per-task `model`/`modelTier` where supported > explicit
+`LOOP_SPEC_MODEL_<ROLE>` > explicit `LOOP_SPEC_PHASE_MODEL_<PHASE>` > canonical
+role default. This makes a phase setting comprehensive without preventing a
+single gate or implementer role from being promoted.
 
-**Scope:** because cycle Step 5 (state init) and Step 5.9 (resume normalization)
-both call `feature-init.sh models`, overrides resolve into `feature.models.<role>`
-at that point and propagate to every downstream phase skill automatically — phase
-skills need no changes.
+**Scope:** cycle activates the map immediately before every phase invocation,
+including continuous in-process transitions and resumed phase handoffs. Phase
+skills consume the activated values and never re-derive them.
 
 Role suffixes (SCREAMING_SNAKE → JSON key):
 `SPEC_WRITER` → `specWriter`, `PLANNER` → `planner`, `ADVOCATE` → `advocate`,
@@ -101,9 +140,9 @@ Role suffixes (SCREAMING_SNAKE → JSON key):
 
 ## Dispatch rule
 
-Phase skills read literal IDs from `feature.models.<role>` (resolved once at cycle
-Step 5). They MUST NOT re-derive from this file per spawn. Pass the resolved model
-on every spawn:
+Phase skills read the activated alias from `feature.models.<role>`. They MUST NOT
+re-derive from this file or read the environment per spawn. Pass the resolved
+model on every spawn:
 
 ```
 TeamCreate({
@@ -118,7 +157,9 @@ TeamCreate({
 The one-shot `Agent({description, subagent_type, model, prompt})` form (reserved for Step 5.5b
 background codebase mappers) also requires an explicit `model:` parameter.
 
-Never rely on agent frontmatter default. Never omit the `model:` parameter.
+Never rely on agent frontmatter default. Never omit the `model:` parameter. The
+explicit-team roster, implicit named-Agent path, no-teams one-shot fallback,
+loop-fleet conversion, and Workflow arguments must all carry the activated value.
 
 ## Standalone (no feature.json)
 
@@ -128,5 +169,7 @@ alias.
 
 ## Unique model set
 
-Two distinct aliases are used across all roles: `opus` and `sonnet`. The cycle
-startup health-check probes both.
+The canonical set is `opus` and `sonnet`. Startup calls
+`lib/feature-init.sh all-models` and probes the complete effective union, so
+phase/role routes to `haiku` or `fable` are also tested before work begins. The
+24-hour cache is reused only when that exact sorted alias set matches.

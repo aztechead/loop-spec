@@ -2,6 +2,37 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.29.1] - 2026-07-30
+
+### Added
+
+- Added a canonical, exhaustive configuration reference covering precedence, every
+  shipped `LOOP_SPEC_*` environment name, host capability inputs, every public skill
+  argument, and every loop-runner CLI flag. A coverage test fails when a shipped
+  environment name or public flag is not classified. The accompanying utilization
+  audit also requires every documented input to have a shipped consumer.
+- Added `LOOP_SPEC_PHASE_MODEL_<PHASE>` routing for all seven cycle phases. The
+  cycle activates the selected alias before every phase so explicit teams, implicit
+  named Agents, one-shot fallbacks, and gate reviewers consume it. Per-role and
+  per-task routes remain more specific. The Claude CLI and Python Agent SDK handoff
+  recipes now launch each fresh main phase query with its configured phase model.
+
+### Fixed
+
+- The deferral Stop guard now persists a transcript-scoped scope obligation after
+  denial. `stop_hook_active` is no longer an unconditional one-retry bypass, and
+  deleting the trigger words cannot pass: completion requires a post-denial
+  repository change, implementation activity followed by verification, and an
+  explicit `Resolved scope:` evidence line.
+- `LOOP_SPEC_WORKTREES=0` is now enforced at the tool and helper boundaries. It
+  denies accidental raw worktree creation/entry, supports in-place PR revision,
+  documents single-repo in-place EXECUTE as a first-class mode, and makes standalone
+  loop-runner execution automatically use its serial no-worktree path.
+- `LOOP_SPEC_PHASE_HANDOFF=1` is now enforced at the phase-skill tool boundary.
+  Phase skills always return to cycle instead of chaining directly; if an agent still
+  attempts a second phase in one transcript, the guard writes the paused handoff result
+  and denies the invocation.
+
 ## [2.29.0] - 2026-07-30
 
 ### Added

@@ -51,7 +51,13 @@ if [[ -n "$subagent_cap" ]]; then
   loops_optin="0"
 fi
 worktrees_enabled="${LOOP_SPEC_WORKTREES:-1}"
-case "$worktrees_enabled" in 0|1) ;; *) worktrees_enabled="1" ;; esac
+case "$worktrees_enabled" in
+  0|1) ;;
+  *)
+    echo "execute-rung: LOOP_SPEC_WORKTREES must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
 worktrees_json=true
 [[ "$worktrees_enabled" == "1" ]] || worktrees_json=false
 

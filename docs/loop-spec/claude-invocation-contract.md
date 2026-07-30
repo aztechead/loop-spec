@@ -138,6 +138,16 @@ configuration: EXECUTE stays on the subagent rung at any DAG width and the
 startup warning about absent humans is suppressed by `/loop-spec:auto` (which is
 autonomous by construction).
 
+For phase-specific models, pass
+`LOOP_SPEC_PHASE_MODEL_SPEC`/`DISCUSS`/`PLAN`/`EXECUTE`/`VERIFY`/`ITERATE`/`DELIVER`
+through `ClaudeAgentOptions.env`. loop-spec activates each phase value on every
+subagent and gate launch. To move the main SDK query between those models too,
+set `LOOP_SPEC_PHASE_HANDOFF=1` and construct a fresh `ClaudeAgentOptions` for
+each paused handoff with `model` set to the next phase alias. The complete,
+bounded controller is in
+[`cloud-run-autonomous.md`](cloud-run-autonomous.md); a continuous `query()`
+cannot change its already-running main model.
+
 Set `LOOP_SPEC_NON_INTERACTIVE=1` as well if you invoke a non-autonomous entry
 point, and `LOOP_SPEC_LOOP_RUNTIME=1` only if your wrapper genuinely keeps a
 foreground call alive for the life of a fleet.

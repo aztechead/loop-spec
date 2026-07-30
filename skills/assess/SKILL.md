@@ -62,9 +62,13 @@ For each repo in `REPOS`, run `fragility-scan.sh` with `--top 20`:
 
 ```bash
 TOP_N="${LOOP_SPEC_ASSESS_TOP_N:-5}"
-SINCE_FLAG=""
+[[ "$TOP_N" =~ ^[1-9][0-9]*$ ]] || {
+  echo "assess: LOOP_SPEC_ASSESS_TOP_N must be a positive integer" >&2
+  exit 2
+}
+SINCE_ARGS=()
 if [[ -n "${LOOP_SPEC_ASSESS_SINCE:-}" ]]; then
-  SINCE_FLAG="--since ${LOOP_SPEC_ASSESS_SINCE}"
+  SINCE_ARGS=(--since "$LOOP_SPEC_ASSESS_SINCE")
 fi
 
 for repo in $(echo "$REPOS" | jq -c '.[]'); do
@@ -72,7 +76,7 @@ for repo in $(echo "$REPOS" | jq -c '.[]'); do
   REPO_ABS=$(echo "$repo" | jq -r '.abs')
 
   SCAN_JSON=$(bash "${CLAUDE_SKILL_DIR}/../../lib/fragility-scan.sh" \
-    "$REPO_ABS" --top 20 ${SINCE_FLAG})
+    "$REPO_ABS" --top 20 "${SINCE_ARGS[@]}")
 
   # Store scan result keyed by repo name for use in subsequent steps.
   # Print a summary table for the user.

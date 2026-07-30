@@ -40,6 +40,9 @@ check "worktree opt-out retains sequential context-isolating subagents" "subagen
   "$(jq -r '.rung + ":" + (.worktreesEnabled | tostring)' <<<"$out")"
 check "worktree opt-out reason is auditable" "LOOP_SPEC_WORKTREES=0; serial in-place one-shot subagents" \
   "$(jq -r '.reason' <<<"$out")"
+rc=0
+select_rung LOOP_SPEC_WORKTREES=invalid >/dev/null 2>&1 || rc=$?
+check "invalid worktree setting fails closed" "2" "$rc"
 
 out="$(select_rung LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1 \
   LOOP_SPEC_EXECUTION_PROFILE=interactive LOOP_SPEC_EXECUTE_LOOPS=1)"

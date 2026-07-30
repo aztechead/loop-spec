@@ -122,8 +122,11 @@ was fixed in 2.1.186). Add to your user or project `.claude/settings.json`:
 
 This blocks any teammate or one-shot dispatch (including the implicit-team `Agent({name})`
 spawns) from running a retired/off-policy model, regardless of what a prompt asks for.
-loop-spec's fixed model set is `{claude-opus-4-8, claude-sonnet-4-6}` plus
-`claude-haiku-4-5` for the loop-runner judge — deny anything outside that to fail closed.
+The canonical role set resolves through the harness's `opus` and `sonnet`
+aliases. Phase/role overrides may also route `haiku` or `fable`; run
+`bash /path/to/loop-spec/lib/feature-init.sh all-models` in the deployment
+environment and permit exactly the returned alias families. The cycle probes
+that complete effective set before work begins.
 
 ## Optional — nested per-repo skills (workspace mode, CC >= 2.1.178)
 

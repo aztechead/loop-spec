@@ -20,6 +20,17 @@ Environment variables:
 - `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` -- maximum review rounds before escalating (default: 3).
 - `LOOP_SPEC_QL_STATE` -- override path for the quality-loop state file (default: `.loop-spec/quality-loop.json`).
 
+Resolve the round limit once at entry and fail before dispatch on invalid input:
+
+```bash
+MAX_ROUNDS="${LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS:-3}"
+[[ "$MAX_ROUNDS" =~ ^[1-9][0-9]*$ ]] || {
+  echo "quality-loop: LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS must be a positive integer" >&2
+  exit 2
+}
+echo "quality-loop: max rounds = $MAX_ROUNDS"
+```
+
 ## Step 0 -- Scope resolution
 
 Determine the set of files to review.
@@ -296,7 +307,7 @@ If blocking findings exist and no systemic issue was detected and the round limi
 2. Increment the round counter.
 3. Loop back to Step 1 (deterministic checks).
 
-**Round limit:** loop while `ROUND_NUM <= LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` (default 3). When the round limit is exhausted before convergence, escalate:
+**Round limit:** loop while `ROUND_NUM <= MAX_ROUNDS`. When the round limit is exhausted before convergence, escalate:
 
 ```
 quality-loop: ESCALATE -- round limit exhausted (LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS=N).
@@ -356,10 +367,8 @@ The skill exits 0. Advisory findings are NOT suppressed from this summary. They 
 - **Do NOT suppress security findings.** MEDIUM and LOW security findings must appear in output at every round and in the final summary. They are advisory, not invisible.
 - **Do NOT continue the loop after systemic detection.** Systemic categories require human inspection. Looping further wastes effort without resolving the root cause.
 - **Do NOT skip the deterministic checks.** Lint, typecheck, and the unresolved-marker grep run every round before persona dispatch. Personas should not see files that still have marker or lint issues.
-- **Do NOT use `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` as a hidden variable.** Print its effective value at the start of the loop so the user knows the limit:
-  ```
-  quality-loop: max rounds = ${LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS:-3}
-  ```
+- **Do NOT use `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` as a hidden variable.** Resolve,
+  validate, and print `MAX_ROUNDS` at entry as specified above.
 - **Do NOT call mark-clean while blocking findings remain.** The state CLI enforces this (exit 2), but the skill must not attempt it prematurely.
 - **Do NOT commit.** This skill does not commit. It prepares files for commit; committing is the user's action.
 - **Do NOT read `quality-loop-state.sh` as a library.** Always invoke it as a subprocess: `bash "${CLAUDE_SKILL_DIR}/../../lib/quality-loop-state.sh" <subcommand>`.

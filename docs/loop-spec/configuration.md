@@ -1,0 +1,386 @@
+# loop-spec configuration and command reference
+
+This is the exhaustive configuration contract for loop-spec 2.29.1. A setting not
+listed as a supported input below is not a supported operator control. Variables in
+the final “injected and internal variables” table are published so wrappers and
+implementers do not mistake them for controls, but callers must not set them unless
+the table explicitly says otherwise.
+
+The release’s source-to-contract utilization review is recorded in
+[`configuration-audit.md`](configuration-audit.md).
+
+## Value and precedence rules
+
+- Boolean environment variables accept only `0` or `1` when the consuming command
+  validates them. `1` means enabled and `0` means disabled. Do not use
+  `true`/`false`. Safety-critical controls (`LOOP_SPEC_WORKTREES` and
+  `LOOP_SPEC_PHASE_HANDOFF`) reject any other non-empty value.
+- An explicit command token or CLI flag wins over an environment variable for the
+  same invocation. An explicit environment variable wins over persisted project or feature state.
+  Persisted state wins over the built-in default.
+- The one exception is a host fact: a headless `CLAUDE_CODE_ENTRYPOINT` overrides
+  `LOOP_SPEC_EXECUTION_PROFILE=interactive`. An explicit
+  `LOOP_SPEC_LOOP_RUNTIME=1` is required to assert that a headless wrapper can keep a
+  foreground loop alive.
+- Empty is not generally the same as `0`. The documented exception is
+  `LOOP_SPEC_CMD_PREPARE=""`, which explicitly disables preparation.
+- `phase:fresh` and `phase:continuous` are persisted in `feature.json`. On a later
+  bare resume, that stored policy remains active unless another inline phase token
+  or `LOOP_SPEC_PHASE_HANDOFF` overrides it.
+- `LOOP_SPEC_WORKTREES=0` is not advisory. It selects the in-place feature branch,
+  forces serial implementation, makes loop-runner imply `--no-worktree`, and blocks
+  worktree creation or entry at the tool boundary.
+- Model routing precedence is task-level `model`/`modelTier` where supported,
+  `LOOP_SPEC_MODEL_<ROLE>`, `LOOP_SPEC_PHASE_MODEL_<PHASE>`, then the canonical
+  role default. Phase activation occurs before every phase skill invocation.
+
+## Supported environment variables
+
+### Cycle and phase control
+
+| Variable | Accepted values / default | Exact effect |
+|---|---|---|
+| `LOOP_SPEC_AUTONOMOUS` | `0`/`1`; unset | `1` self-answers cycle questions, forces `style:auto`, and records assumptions. Equivalent to the `autonomous` cycle token. |
+| `LOOP_SPEC_NON_INTERACTIVE` | `0`/`1`; unset | `1` forbids interactive questions and reads the `LOOP_SPEC_ANSWER_*` inputs below. It also implies a headless execution profile. |
+| `LOOP_SPEC_SPEC_FILE` | path; unset | Uses the specified pre-authored Markdown spec instead of collecting a new one. |
+| `LOOP_SPEC_MAX_FEATURES` | positive integer; `1` | Maximum backlog features selected per invocation. Sentinel batch requests above one are still restricted by the trust level. |
+| `LOOP_SPEC_PHASE_TIMEOUT_MINS` | positive number; `60` | Wall-clock watchdog ceiling for a phase. |
+| `LOOP_SPEC_PHASE_HANDOFF` | `0`/`1`; unset | `1` permits one phase per main-agent invocation, persists the next phase, and returns `status=paused`, `reason=phase-handoff`. `0` runs phase routing continuously. The environment overrides persisted state; inline `phase:fresh`/`phase:continuous` overrides the environment. A tool-boundary guard enforces the boundary. |
+| `LOOP_SPEC_ITERATE_FRESH` | `0`/`1`; unset | `1` makes an ITERATE rewind persist state and relaunch instead of continuing in the current main-agent context. |
+| `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
+| `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
+| `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective alias set is unchanged. |
+| `LOOP_SPEC_REQUIRE_GRAPHIFY` | `0`/`1`; `1` | `0` permits design phases to use Glob/Grep when graphify is unavailable. |
+| `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
+| `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
+| `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for each exact-base baseline command. `0` disables the wall-clock deadline. |
+| `LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for each exact-base baseline command. `0` disables the idle deadline. |
+| `LOOP_SPEC_COMMAND_TIMEOUT_SECS` | non-negative integer; `1800` | Default wall-clock timeout used by generic managed command execution. A more specific timeout wins; `0` disables the wall-clock deadline. |
+| `LOOP_SPEC_COMMAND_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | Default no-output timeout used by generic managed command execution. A more specific idle timeout wins; `0` disables the idle deadline. |
+
+### Worktrees, dispatch, and runtime capability
+
+| Variable | Accepted values / default | Exact effect |
+|---|---|---|
+| `LOOP_SPEC_WORKTREES` | `0`/`1`; `1` | `0` prohibits all feature/task/revise worktree creation and entry. Cycle creates `feat/<slug>` in the current clean checkout, EXECUTE is serial, revise checks out the PR branch in place, supervisor implies `--no-worktree`, and a PreToolUse guard denies `git worktree add`, `create-feature-worktree`, and `EnterWorktree`. `1` enables normal isolated worktrees. |
+| `LOOP_SPEC_SHARE_DEPENDENCIES` | `0`/`1`; `1` | With worktrees enabled, links a matching, successfully prepared `node_modules` into task worktrees. `0` prepares each worktree independently. No effect when worktrees are disabled. |
+| `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` | positive integer, clamped to `3`; `3` | Caps simultaneous implementers. `LOOP_SPEC_WORKTREES=0` forces the effective value to `1`. |
+| `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` | positive integer; unset | Deployment-wide cap on simultaneous one-shot agents. When set, teams, Workflow fan-out, and loop fleets are replaced by bounded waves. `1` retains role agents but runs them serially. |
+| `LOOP_SPEC_EXECUTE_LOOPS` | `0`/`1`; automatic | `1` requests loop-fleet regardless of DAG width, subject to agent-CLI and persistent-runtime capability. `0` forbids loop-fleet. |
+| `LOOP_SPEC_EXECUTE_WORKFLOW` | `0`/`1`; `0` | `1` opts sufficiently wide EXECUTE DAGs into the Workflow rung when the Workflow tool is available. |
+| `LOOP_SPEC_PLAN_MULTI_ANGLE` | `0`/`1`; `0` | `1` enables PLAN multi-angle authoring through Workflow when available. |
+| `LOOP_SPEC_EXECUTION_PROFILE` | `interactive`/`headless`; probed | Declares whether the invocation can retain a foreground fleet call. `headless` disables loop-fleet. A headless host entrypoint overrides `interactive`. |
+| `LOOP_SPEC_LOOP_RUNTIME` | `0`/`1`; probed | Explicit capability assertion for a persistent foreground loop. `0` disables it. `1` is the only loop-spec setting that can override a headless entrypoint stamp. |
+| `LOOP_SPEC_LOOP_MAX_ITERATIONS` | positive integer; `10` | Iteration cap for each loop-fleet task. |
+| `LOOP_SPEC_LOOP_MAX_BUDGET_USD` | positive decimal; unlimited | Cumulative model-cost cap for each loop-fleet task. A fleet’s worst-case cap is this value times its task count. |
+| `LOOP_SPEC_TEAMS_MODE` | `none`/`explicit`/`implicit`; probed | Overrides agent-team capability detection. |
+| `LOOP_SPEC_WORKFLOWS_AVAILABLE` | `0`/`1`; probed | Overrides Workflow-tool capability detection. |
+| `LOOP_SPEC_HARNESS` | `claude`/`pi`/`opencode`; detected | Forces the host adapter. The pi and OpenCode extensions normally set this themselves. An unknown value falls through to detection. |
+
+### Host and installer environment
+
+These are not loop-spec-owned controls, but they are read by the plugin or its
+installers and therefore are part of the integration contract.
+
+| Variable | Owner / default | Exact effect in loop-spec |
+|---|---|---|
+| `CLAUDE_CODE_ENTRYPOINT` | Claude Code | Read-only host fact. `sdk-cli`, `sdk-py`, and `sdk-ts` prove a one-shot invocation and suppress loop-fleet unless `LOOP_SPEC_LOOP_RUNTIME=1`. |
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | Claude Code; unset | `1` permits loop-spec’s version probe to select explicit or implicit teams. Any other value selects the no-teams route. |
+| `CLAUDE_CODE_DISABLE_WORKFLOWS` | Claude Code; unset | `1` forces Workflow fallbacks. |
+| `CLAUDE_CODE_RETRY_WATCHDOG` | Claude Code; inherited | Native unattended retry watchdog. Loop-runner inherits it unless `--retry-watchdog` supplies a child-specific value. |
+| `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | Claude Code; inherited | Native opt-in for nested subagents. loop-spec does not depend on it and does not alter it. |
+| `CLAUDE_CODE_MAX_RETRIES` | Claude Code legacy control; inherited | Not configured by loop-spec. Prefer `CLAUDE_CODE_RETRY_WATCHDOG`; Claude Code caps the legacy value at 15. |
+| `CLAUDECODE` | Claude Code | `1` is a fallback harness-detection signal when `LOOP_SPEC_HARNESS` is unset. |
+| `CLAUDE_PLUGIN_ROOT` | host adapter | Absolute installed plugin root used to resolve hooks and bundled assets. The pi/OpenCode adapters set it. Operator override is unsupported. |
+| `CLAUDE_PROJECT_DIR` | host adapter; current directory | Project root used for `.loop-spec` discovery. The pi/OpenCode adapters set it from the session directory. |
+| `CLAUDE_SKILL_DIR` | host adapter | Directory of the active skill, used for bundled relative paths. The pi/OpenCode adapters update it as skills are read. |
+| `CLAUDE_CODE_SESSION_ID`, `CLAUDE_SESSION_ID` | host adapter; process ID fallback | Session identity used to scope learnings and hook failure counters. |
+| `PI_CODING_AGENT_DIR` | pi | pi configuration directory. When the adapter signal is missing, a non-empty value is a weak pi harness-detection hint. |
+| `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | OpenCode; unset | OpenCode-native opt-in for background subagents. loop-spec does not set it and does not depend on it; the OpenCode adapter’s bounded dispatch rules still apply. |
+| `OPENCODE_CONFIG_DIR` | operator/installer; unset | Explicit OpenCode install target. |
+| `XDG_CONFIG_HOME` | operating system/user; `~/.config` | Base for the default OpenCode install target when `OPENCODE_CONFIG_DIR` is unset. |
+| `GH_HOST` | GitHub CLI; `github.com` | GitHub host used for credential refresh context and PR API calls. |
+| `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN` | GitHub CLI | Authentication inherited by GitHub operations. They are also the only keys a credential-refresh command may return in its private JSON output. |
+| `ANTHROPIC_API_KEY` | Claude/Agent SDK | Model authentication for headless examples. loop-spec passes the process environment through and never logs this value. |
+| `HOME` | operating system | Locates global rules, runtime-manager shims, and default user config. |
+| `TMPDIR` | operating system; platform temp directory | Base for transient private files where a helper uses the platform temp directory. |
+
+### Cloud Agent SDK recipe environment
+
+The reference controller in
+[`cloud-run-autonomous.md`](cloud-run-autonomous.md) consumes these wrapper-owned
+variables. They configure that published recipe, not plugin internals:
+
+| Variable | Accepted values / default | Exact effect |
+|---|---|---|
+| `REPO_ROOT` | absolute/relative path; required | Repository used as the Agent SDK `cwd` and reconciliation root. |
+| `LOOP_SPEC_PLUGIN` | plugin directory path; required | Local plugin path passed to `ClaudeAgentOptions.plugins`. |
+| `TASK_PROMPT` | text; required | Appended to `/loop-spec:cycle autonomous` for each phase invocation. |
+| `CYCLE_TIMEOUT_SECONDS` | positive integer; `10800` | Outer asyncio timeout for each fresh Agent SDK query. |
+| `MAX_PHASE_INVOCATIONS` | positive integer; `12` | Maximum fresh phase queries made by the reference controller. |
+| `CLAUDE_MAX_TURNS` | positive integer; SDK default | Passed as `ClaudeAgentOptions.max_turns` for each query. |
+| `CLAUDE_MAX_BUDGET_USD` | positive decimal; SDK default | Passed as the per-query `max_budget_usd`; the controller must separately enforce a whole-job spend limit. |
+| `CLAUDE_EFFORT` | SDK-supported effort; SDK default | Passed as `ClaudeAgentOptions.effort`. |
+| `CLAUDE_MODEL` | model/alias; SDK default | Default primary Agent SDK model. In the published phase-handoff controller, a non-empty `LOOP_SPEC_PHASE_MODEL_<PHASE>` replaces it for that fresh phase query. |
+| `CLAUDE_FALLBACK_MODEL` | model/alias; SDK default | Passed as the Agent SDK fallback model. |
+| `CLAUDE_PERMISSION_MODE` | SDK permission mode; `acceptEdits` | Passed as `ClaudeAgentOptions.permission_mode`. |
+| `CLAUDE_MAX_BUFFER_BYTES` | positive integer; `8388608` | Maximum buffered SDK subprocess stdout bytes. |
+
+### Project commands, GitHub, and credentials
+
+| Variable | Accepted values / default | Exact effect |
+|---|---|---|
+| `LOOP_SPEC_CMD_PREPARE` | shell command; detected | Pins dependency/environment preparation. It runs on the untouched base, in isolated task roots, on resume, and before VERIFY comparisons. An explicitly empty value disables preparation. |
+| `LOOP_SPEC_CMD_TEST` | shell command; detected | Pins the project test command and wins over auto-detection in every mode. An explicitly empty value disables the test slot. |
+| `LOOP_SPEC_CMD_LINT` | shell command; detected | Pins the project lint command and wins over auto-detection in every mode. An explicitly empty value disables the lint slot. |
+| `LOOP_SPEC_CMD_TYPECHECK` | shell command; detected | Pins the project typecheck command and wins over auto-detection in every mode. An explicitly empty value disables the typecheck slot. |
+| `LOOP_SPEC_CMD_*` | shell command; detected | Reserved command-family namespace. Only command names consumed by the installed release have an effect; unknown suffixes are ignored. |
+| `LOOP_SPEC_REGRESSION_SCAN` | `0`/`1`; `0` | `1` adds VERIFY’s advisory prior-feature regression scan. |
+| `LOOP_SPEC_RALPH_THRESHOLD` | positive integer; `3` | Consecutive no-progress VERIFY remediation rounds before escalation. |
+| `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | integer `0..86400`; `900` | Total DELIVER wait for required PR checks. `0` performs no extended wait. |
+| `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
+| `LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS` | non-negative integer; `30` | Grace period after push during which a missing check is treated as not-yet-registered rather than absent. |
+| `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | positive integer; `60` | Timeout for each GitHub CLI/API subprocess. |
+| `LOOP_SPEC_CREDENTIAL_REFRESH_CMD` | trusted shell command; unset | Runs before push/API stages and once after a 401/403 before one retry. It receives the four `LOOP_SPEC_CREDENTIAL_REFRESH_*` variables documented below. Stdout must be empty or an allow-listed token JSON object and is never logged. |
+| `LOOP_SPEC_PR_FEEDBACK_MODE` | `local`/`external`; `local` | `local` runs loop-spec’s terminal PR-feedback observation. `external` delegates polling without claiming a clean result. There is deliberately no off mode. |
+| `LOOP_SPEC_PR_FEEDBACK_OWNER` | text; `external-orchestrator` | Attribution persisted when PR feedback mode is `external`. |
+| `LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS` | CLI fragment; unset | Extra flags passed only to `claude -p` subprocesses started by `lib/issue-intake.sh`. |
+
+### Models and non-interactive answers
+
+| Variable | Accepted values / default | Exact effect |
+|---|---|---|
+| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `sonnet`/`opus`/`haiku`/`fable`; unset | Sets the phase default for the phase’s main context and every role agent/gate launched inside it. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. The cycle activates the effective role map before every phase invocation. Main-context switching requires a fresh process/query (`LOOP_SPEC_PHASE_HANDOFF=1`); continuous mode still applies the value to subagents. Literal provider IDs are rejected because the value is passed to Agent’s alias-only `model:` field. |
+| `LOOP_SPEC_MODEL_<ROLE>` | `sonnet`/`opus`/`haiku`/`fable`; role map | Overrides a role’s model alias and wins over the phase default. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. Literal provider model IDs are rejected. |
+| `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
+| `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
+| `LOOP_SPEC_ANSWER_REPOS` | comma-separated repo names; all | Supplies workspace repo selection. |
+| `LOOP_SPEC_ANSWER_SPEC_CONFIRM` | `yes`/`no`; `yes` | After a passing synthesized gate, `yes` writes SPEC.md; `no` leaves the phase at SPEC and returns a durable `spec-confirmation-declined` pause. |
+| `LOOP_SPEC_ANSWER_SPEC_OVERRIDE` | `yes`/`no`; `yes` | After a failing synthesized gate, `yes` writes SPEC.md with failing dimensions recorded; `no` leaves the phase at SPEC and returns a durable `spec-override-declined` pause. |
+| `LOOP_SPEC_ANSWER_ITERATE_SPEC` | `reopen`/`ship`; `reopen` | On a non-interactive SPEC-level iteration gap, `reopen` returns to DISCUSS refinement; `ship` advances to DELIVER and records the accepted gap. |
+| `LOOP_SPEC_ANSWER_TIER` | ignored | Removed compatibility input. A notice is emitted; it cannot change behavior. |
+| `LOOP_SPEC_ANSWER_PRESET` | ignored | Removed compatibility input. A notice is emitted; it cannot change behavior. |
+| `LOOP_SPEC_ANSWER_*` | family | Namespace used by non-interactive answers. Unknown suffixes are ignored. |
+
+Concrete variables such as `LOOP_SPEC_MODEL_PLANNER` and
+`LOOP_SPEC_MODEL_ITERATE_JUDGE` follow the `LOOP_SPEC_MODEL_<ROLE>` contract; the
+family form is canonical for every supported role. Likewise,
+`LOOP_SPEC_PHASE_MODEL_SPEC`, `LOOP_SPEC_PHASE_MODEL_DISCUSS`,
+`LOOP_SPEC_PHASE_MODEL_PLAN`, `LOOP_SPEC_PHASE_MODEL_EXECUTE`,
+`LOOP_SPEC_PHASE_MODEL_VERIFY`, `LOOP_SPEC_PHASE_MODEL_ITERATE`, and
+`LOOP_SPEC_PHASE_MODEL_DELIVER` follow the phase-family contract.
+`lib/feature-init.sh phase-model <phase>` exposes the validated value to Claude
+CLI/Agent SDK supervisors, and
+`feature.phaseModels.<phase>` persists it in durable state.
+
+### Learning, paths, quality, and modes
+
+| Variable | Accepted values / default | Exact effect |
+|---|---|---|
+| `LOOP_SPEC_RETRO_AUTO_APPLY` | `0`/`1`; autonomous=`1`, interactive=`0` | Applies retro rule candidates automatically when enabled; otherwise produces a report only. |
+| `LOOP_SPEC_RETRO_DIGEST_DIR` | path; `docs/loop-spec/telemetry/runs` | Overrides the run-digest corpus. |
+| `LOOP_SPEC_COMMIT_TELEMETRY` | `0`/`1`; `0` | Commits run digests with the feature branch. Already tracked digest directories continue to be committed. |
+| `LOOP_SPEC_TUNING` | `0`/`1`; `1` | Master switch for parameter tuning. |
+| `LOOP_SPEC_TUNING_AUTO_APPLY` | `0`/`1`; autonomous=`1`, interactive=`0` | Applies tuning adjustments when enabled; otherwise counts candidates only. |
+| `LOOP_SPEC_RULES` | `0`/`1`; `1` | Controls RULES.md injection at session start. |
+| `LOOP_SPEC_RULES_FILE` | path; `.loop-spec/RULES.md` | Overrides the project rules file. |
+| `LOOP_SPEC_GLOBAL_RULES_FILE` | path; `~/.loop-spec/RULES.md` | Overrides the cross-project rules layer. |
+| `LOOP_SPEC_ADHOC_LEDGER` | path; `.loop-spec/adhoc-ledger.md` | Overrides the micro-cycle ledger. |
+| `LOOP_SPEC_BACKLOG_FILE` | path; `.loop-spec/BACKLOG.md` | Overrides the backlog. |
+| `LOOP_SPEC_WORKFLOW_CONFIG` | path; `.loop-spec/workflow.json` | Overrides workflow configuration. |
+| `LOOP_SPEC_ASSESS_TOP_N` | positive integer; `5` | Fragility hotspots per repository sent to assess reviewers. |
+| `LOOP_SPEC_ASSESS_SINCE` | git `--since` value; all history | Limits the assess fragility scan history. |
+| `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` | positive integer; `3` | Review rounds before quality-loop escalates. |
+| `LOOP_SPEC_QL_STATE` | path; `.loop-spec/quality-loop.json` | Overrides quality-loop state. |
+| `LOOP_SPEC_ROLLBACK_CONFIRMED` | `1`; unset | Safety interlock: `lib/checkpoint.sh rollback` refuses to restore files unless this is exactly `1`. |
+
+### Session directives and guards
+
+Unless stated otherwise, these are `0`/`1` switches. Guards only act in projects
+with loop-spec state, and task guards only act on loop-spec-owned tasks.
+
+| Variable | Default | Exact effect |
+|---|---|---|
+| `LOOP_SPEC_GRILL` | `1` | Asks 2–4 clarifying questions immediately after an opening prompt. |
+| `LOOP_SPEC_SIMPLICITY` | `1` | Injects the minimum-diff/deletion/reuse/stdlib directive. |
+| `LOOP_SPEC_MICRO` | `1` | Enables the micro-mode SessionStart directive. |
+| `LOOP_SPEC_MICRO_GUARD` | `1` | Blocks stopping after code edits without a verification run; stands down for active feature cycles and docs/config-only edits. |
+| `LOOP_SPEC_DEFERRAL_GUARD` | `1` | Blocks completion with self-authored omitted/deferred scope. After denial, rewording alone remains blocked; repository work, a later verification action, and `Resolved scope: <item> — <evidence>` are required. |
+| `LOOP_SPEC_DEFERRAL_LINT` | `1` | DELIVER gate for deferred-scope language in PR bodies and warnings. `0` is the explicit override for a feature whose subject is deferral detection. |
+| `LOOP_SPEC_DISCIPLINE` | `0` | Enables brainstorm, verification, investigation, decision, and intent gates. |
+| `LOOP_SPEC_TASK_GUARD` | `1` | Enforces task metadata and required lint/typecheck completion. |
+| `LOOP_SPEC_PATH_GUARD` | `1` | Enforces role-specific write paths. |
+| `LOOP_SPEC_PATH_GUARD_FORCE` | `0` | Applies path restrictions to otherwise open dispatches. |
+| `LOOP_SPEC_BLOCKEDBY_GUARD` | `1` | Refuses completion or claim of tasks with unfinished `blockedBy` dependencies. |
+| `LOOP_SPEC_USERGATE_GUARD` | `1` | Enforces user-gate evidence at task completion. |
+| `LOOP_SPEC_USERGATE_STOP_GUARD` | `1` | Enforces user-gate evidence at Stop. |
+| `LOOP_SPEC_STRATEGY_ROTATION` | `1` | Injects a strategy-change directive after repeated failures. |
+| `LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD` | `2` | Consecutive failures before strategy rotation. |
+| `LOOP_SPEC_DONE_CRITERIA` | `1` | Injects done-criteria reminders when tasks are created. |
+| `LOOP_SPEC_DEFLECTION_GUARD` | `1` | Blocks premature “out of context” stops below the configured usage threshold. |
+| `LOOP_SPEC_DEFLECTION_THRESHOLD_PCT` | `50` | Percent of context that must be consumed before a context-exhaustion stop is accepted. |
+| `LOOP_SPEC_CONTEXT_LIMIT` | `200000` | Token context size used to compute the deflection threshold. |
+| `LOOP_SPEC_LEARNINGS` | `1` | Writes session-end learnings to `.loop-spec/learnings.jsonl`. |
+| `LOOP_SPEC_PAUSE` | `1` | Controls pause snapshot writing. |
+
+### Guard diagnostics
+
+These optional paths cause the named guard to append decision diagnostics. They do
+not enable the guard; its switch above must also be enabled.
+
+| Variable | Built-in path when applicable |
+|---|---|
+| `LOOP_SPEC_BLOCKEDBY_TRACE_LOG` | no file unless set |
+| `LOOP_SPEC_USERGATE_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-user-gate-trace.log` |
+| `LOOP_SPEC_DEFLECTION_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-deflection-trace.log` |
+| `LOOP_SPEC_MICRO_GUARD_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-micro-guard-trace.log` |
+| `LOOP_SPEC_DEFERRAL_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-deferral-trace.log` |
+| `LOOP_SPEC_DEFERRAL_STATE_DIR` | `/tmp/claude-hooks/loop-spec-deferral-state`; transcript-scoped pending-obligation records |
+
+## Skill command arguments
+
+Tokens below are arguments after `/loop-spec:<skill>`. Brackets mean optional;
+angle brackets mean required. Inline words are tokens, not GNU flags.
+
+| Command | Arguments | Exact behavior |
+|---|---|---|
+| `auto` | `<task description>` | Chooses micro or full-cycle routing from task scope. |
+| `cycle` | `[new] [description \| path/to/spec.md \| backlog] [style:auto\|step\|interactive\|review-only] [autonomous] [phase:fresh\|phase:continuous]` | Starts or resumes a cycle. `new` prevents automatic resume. `backlog` selects queued work. `phase:fresh` persists one-phase-per-invocation; `phase:continuous` persists same-session routing. |
+| `debug` | `<error text \| stack trace \| failing test \| symptom>` | Starts evidence-first debugging. |
+| `discipline` | `[on\|off\|status]` | Changes or reports the session discipline directive. |
+| `forensics` | `[feature slug \| failed-workflow description]` | Reconstructs a stuck/failed run. |
+| `grill` | `[on\|off\|status]` | Changes or reports grill mode. |
+| `intake` | `<file path \| pasted text> [autonomous] [new] [style:…] [--no-run]` | Normalizes intake into a draft spec and normally forwards tokens to cycle. `--no-run` stops after writing the draft. |
+| `map-codebase` | `[--full] [--domain tech,arch,…]` | Refreshes codebase maps. `--full` ignores incremental scope; `--domain` limits map domains. |
+| `micro` | `[autonomous] [task \| on \| off \| status]` | Runs a small-task workflow or changes/reports micro mode. |
+| `onboard` | none | Installs project-local loop-spec state/config. |
+| `pause` | `[path/to/feature.json]` | Writes a resumable pause snapshot for the explicit or active feature. |
+| `quality-loop` | `[file paths]` | Reviews supplied paths, or modified files when omitted. |
+| `retro` | `[report\|apply] [--min-repeats N]` | Reports or applies recurring-rule candidates; the flag sets the minimum observation count. |
+| `revise` | `<PR number \| PR URL> [autonomous]` | Applies actionable PR feedback. `autonomous` removes interactive confirmations but not safety gates. |
+| `rollback` | `[checkpoint tag \| checkpoint type]` | Selects a checkpoint; file restoration still requires `LOOP_SPEC_ROLLBACK_CONFIRMED=1`. |
+| `rules` | `add "<rule>" [--check "<cmd>"] \| list \| render \| path` | Manages project rules. `--check` associates a verification command with a rule. |
+| `sentinel` | `scan\|run` | `scan` reports candidates; `run` selects authorized backlog work. |
+| `simplicity` | `[on\|off\|status\|lite\|full\|ultra]` | Changes, reports, or selects simplicity intensity. |
+| `status` | `[status [slug]\|stats\|trust] [--json]` | Reports active state, metrics, or trust; `--json` emits machine-readable output. |
+| `watch` | `<slug> [--window-hours N]` | Evaluates post-merge stability over the requested window (default 24 hours). |
+
+`spec`, `discuss`, `plan`, `execute`, `verify`, `iterate`, and `deliver` are cycle
+phase skills. They have no public arguments and are normally invoked only by
+`cycle`; directly chaining them bypasses lifecycle setup and is unsupported.
+
+## Loop-runner CLI flags
+
+These scripts are an advanced standalone interface under
+`skills/loop-runner/scripts/`.
+
+### `loop.py`
+
+Usage: `loop.py [task] [flags]`. Supply either the positional task or
+`--prompt-file`.
+
+| Flag | Meaning |
+|---|---|
+| `--prompt-file PATH` | Read the task prompt from a file. |
+| `--config PATH` | Load JSON `LoopConfig` fields; explicit CLI flags override the file. |
+| `--task-id ID` | Stable task/state identifier (default derived from the prompt). |
+| `--verify CMD` | Verification command run between agent iterations. |
+| `--protected PATH` | Protect a path from edits; repeatable. |
+| `--max-iterations N` | Maximum agent iterations (default `10`). |
+| `--max-turns N` | Maximum turns per agent invocation (default `0`, host default/unlimited). |
+| `--timeout SECONDS` | Wall-clock timeout per agent invocation (default `3600`). |
+| `--no-progress N` | Consecutive no-progress iterations before watchdog termination (default `3`). |
+| `--verify-timeout SECONDS` | Timeout for the verification command (default `600`). |
+| `--mode fresh\|continue` | Start each iteration fresh or continue the agent session (default `fresh`). |
+| `--permission-mode MODE` | Permission mode passed to Claude (default `acceptEdits`; validated against the supported Claude modes). |
+| `--max-budget-usd AMOUNT` | Non-negative cumulative task cost cap; `0`/unset is unlimited. |
+| `--allowed-tools LIST` | Allowed-tools value passed to Claude. |
+| `--model MODEL` | Primary model or alias. |
+| `--effort low\|medium\|high\|xhigh\|max` | Reasoning effort. |
+| `--fallback-model MODEL` | Model used after a retryable primary-model failure. |
+| `--retry-watchdog CMD` | Command used to decide whether a failed iteration may retry. |
+| `--judge` | Enable the completion-judge pass. |
+| `--judge-model MODEL` | Model for the completion judge (default is the runner’s fixed judge model). |
+| `--state-dir PATH` | Override persisted runner state (default `.loop/<task-id>`). |
+| `--commit` | Commit a successful task result. |
+| `--claude-bin PATH` | Agent executable (default `claude`; changes to the selected adapter binary when appropriate). |
+| `--agent-cli claude\|pi\|opencode` | Agent CLI adapter (default inferred from the executable name, then Claude). |
+| `--reset` | Discard prior state for this task ID and start again. |
+
+After `--`, additional arguments are forwarded verbatim to the selected agent CLI on
+each work tick. These are backend-native options rather than loop-spec flags; use them
+only when the chosen `--agent-cli` supports them. The JSON `extra_args` array is the
+equivalent config-file field.
+
+### `supervisor.py`
+
+| Flag | Meaning |
+|---|---|
+| `--plan PATH` | Compiled task plan (default `plan/tasks.json`). |
+| `--parallel N` | Worker count (default `1`). Must be `1` with `--no-worktree` or `LOOP_SPEC_WORKTREES=0`. |
+| `--retries N` | Retry count per failed task (default `1`; timeouts do not retry). |
+| `--task-timeout SECONDS` | Wall-clock timeout per task (default `3600`). |
+| `--max-turns N` | Maximum turns per agent invocation (default `0`, host default/unlimited). |
+| `--model MODEL` | Primary worker model. |
+| `--effort low\|medium\|high\|xhigh\|max` | Worker reasoning effort. |
+| `--fallback-model MODEL` | Worker fallback model. |
+| `--retry-watchdog CMD` | Retry authorization command. |
+| `--max-budget-usd AMOUNT` | Non-negative cost cap per task (default `0`, unlimited). |
+| `--claude-bin PATH` | Agent executable (default `claude`). |
+| `--agent-cli claude\|pi\|opencode` | Agent CLI adapter (default inferred from the executable). |
+| `--feature-dir PATH` | Feature-state path used for exact-candidate baseline comparison. |
+| `--prepare-command CMD` | Persisted preparation command; an empty value disables detection. |
+| `--no-worktree` | Run serially in the supplied repository instead of creating task worktrees. `LOOP_SPEC_WORKTREES=0` implies this flag. |
+| `--cleanup-worktrees` | Remove successful task worktrees and branches after integration. |
+| `--dry-run` | Validate and print the schedule without executing tasks. |
+
+### `compile_spec.py`
+
+Usage: `compile_spec.py <spec> [flags]`.
+
+| Flag | Meaning |
+|---|---|
+| `--out PATH` | Compiled plan destination (default `plan/tasks.json`). |
+| `--model MODEL` | Compiler-pass model. |
+| `--claude-bin PATH` | Agent executable (default `claude`). |
+| `--agent-cli claude\|pi\|opencode` | Agent CLI adapter (default inferred from the executable). |
+
+All three scripts also accept argparse’s `-h` / `--help`. Flags on scripts under
+`lib/` and `hooks/` are implementation interfaces used by skills and tests; they are
+not public plugin CLI and carry no compatibility promise.
+
+## Names found only in historical design artifacts
+
+Committed feature records preserve old proposals and examples. They are not runtime
+configuration. In particular, `LOOP_SPEC_BUDGET_GUARD`,
+`LOOP_SPEC_CURRENT_COST_USD`, `LOOP_SPEC_MAX_COST_USD`, `LOOP_SPEC_COMPRESSOR`, and
+`LOOP_SPEC_ANSWER_MIGRATE_SCHEMA` are unshipped historical proposals.
+`LOOP_SPEC_FOO` and `LOOP_SPEC_SOME_GUARD` are documentation placeholders. Setting
+any of these names has no effect in 2.29.1.
+
+## Injected and internal variables
+
+These names exist in shipped code but are not general operator configuration.
+They are listed to remove ambiguity in wrappers and integrations.
+
+| Variable | Owner and meaning |
+|---|---|
+| `LOOP_SPEC_CREDENTIAL_REFRESH_STAGE`, `LOOP_SPEC_CREDENTIAL_REFRESH_REASON`, `LOOP_SPEC_CREDENTIAL_REFRESH_HOST`, `LOOP_SPEC_CREDENTIAL_REFRESH_REPO` | Injected into `LOOP_SPEC_CREDENTIAL_REFRESH_CMD`; safe for that command to read. |
+| `LOOP_SPEC_AUTH_ERROR_CODE`, `LOOP_SPEC_AUTH_ERROR_MESSAGE`, `LOOP_SPEC_CREDENTIAL_PREPARED_STAGES` | Mutable credential-library status; do not set. |
+| `LOOP_SPEC_INTEGRATION_CANDIDATE` | Injected candidate commit for prepare/verify integration commands; safe for those commands to read. |
+| `LOOP_SPEC_RESULT` | Machine-output marker printed to stdout, not an input variable. |
+| `LOOP_SPEC_PHASE_START`, `LOOP_SPEC_PHASE_END` | Event marker names printed to output, not input variables. |
+| `LOOP_SPEC_ACTIVE_CYCLE_BIN`, `LOOP_SPEC_CYCLE_RESULT_BIN`, `LOOP_SPEC_DEFERRAL_LINT_BIN`, `LOOP_SPEC_FINALIZE_CANDIDATE_BIN`, `LOOP_SPEC_PR_COMMENTS_BIN`, `LOOP_SPEC_PR_DELIVERY_BIN` | Test seams that replace internal executables. Unsupported in production wrappers. |
+| `LOOP_SPEC_FEATURE_DIR` | Hook-scoped feature-directory override used by team hooks/tests. Normal runs discover the active feature. |
+| `LOOP_SPEC_RESULT_ROOT` | Reconciliation-only destination override for cycle result state. |
+| `LOOP_SPEC_PR_DELIVERY_CWD` | Internal subprocess transport for PR delivery’s working directory. |
+| `LOOP_SPEC_PROJECT_DIR`, `LOOP_SPEC_PWD`, `LOOP_SPEC_PROJ_VERIFY_CMD`, `LOOP_SPEC_LAST_RESULT_FILE` | Internal values passed into embedded hook parsers. |
+| `LOOP_SPEC_GROUNDING_SPEC` | Internal transport for the verification-grounding linter. |
+| `LOOP_SPEC_BASE_CURSOR`, `LOOP_SPEC_STATE_CURSOR`, `LOOP_SPEC_STATE_FINGERPRINT`, `LOOP_SPEC_STATE_FLAGS`, `LOOP_SPEC_STATE_REPORT` | Internal deferral-guard state serialization. |
+| `LOOP_SPEC_DIR` | Internal session-learnings path variable. |
+| `LOOP_SPEC_VERSION` | Packaging/test override for plugin-version detection. Production reads the installed manifest. |
+| `LOOP_SPEC_PLUGIN` | Deployment-wrapper path used by the documented cloud recipe; plugin runtime itself does not read it. |
+
+When integrating loop-spec, depend only on the supported inputs and documented
+machine-result files/lines. Internal variables may change without compatibility
+guarantees.

@@ -62,6 +62,25 @@ Skip this confirmation step when `LOOP_SPEC_NON_INTERACTIVE=1` (use auto-detecte
 
 Normalize all four to strings so `feature.commands` always carries `prepare`/`test`/`lint`/`typecheck` keys (undetected = empty string, never null): `cmd_prepare="${cmd_prepare:-}"; cmd_test="${cmd_test:-}"; cmd_lint="${cmd_lint:-}"; cmd_typecheck="${cmd_typecheck:-}"`.
 
+Then apply environment overrides through the deterministic resolver. Do not read or
+reinterpret the variables independently in the skill:
+
+```bash
+resolved_commands="$(bash "${CLAUDE_SKILL_DIR}/../../lib/project-commands.sh" resolve \
+  --prepare "$cmd_prepare" --test "$cmd_test" \
+  --lint "$cmd_lint" --typecheck "$cmd_typecheck")"
+cmd_prepare="$(jq -r '.prepare' <<<"$resolved_commands")"
+cmd_test="$(jq -r '.test' <<<"$resolved_commands")"
+cmd_lint="$(jq -r '.lint' <<<"$resolved_commands")"
+cmd_typecheck="$(jq -r '.typecheck' <<<"$resolved_commands")"
+```
+
+Presence is authoritative, including an empty value. Thus
+`LOOP_SPEC_CMD_PREPARE=""`, `LOOP_SPEC_CMD_TEST=""`, `LOOP_SPEC_CMD_LINT=""`, or
+`LOOP_SPEC_CMD_TYPECHECK=""` explicitly disables that slot. Apply this before command
+confirmation; non-interactive/autonomous paths skip confirmation but use the same
+resolved values.
+
 **Workspace mode (additive):**
 
 Run the same auto-detection per participating repo using the repo's absolute path as the probe dir. Collect per-repo command maps:
@@ -80,4 +99,10 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
 done
 ```
 
-Present a single AskUserQuestion listing all repos and detected commands; user confirms or customizes per-repo. Skip when `LOOP_SPEC_NON_INTERACTIVE=1`. Top-level `commands` in feature.json will carry empty strings (workspace mode per-repo commands are authoritative in `workspace.repos[].commands`).
+For each repository, pass those four detected values through
+`lib/project-commands.sh resolve` exactly as in single-repo mode before storing them.
+An environment override therefore applies consistently to every participating
+repository. Present a single AskUserQuestion listing all repos and resolved commands;
+the user confirms or customizes per-repo. Skip when `LOOP_SPEC_NON_INTERACTIVE=1`.
+Top-level `commands` in feature.json will carry empty strings (workspace mode per-repo
+commands are authoritative in `workspace.repos[].commands`).

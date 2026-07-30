@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
-# Single source of truth for the schema-7 feature.json skeleton and the canonical
-# models map. cycle Step 5 (state init) and Step 5.9 (resume normalization) both call
-# this so the two can never drift -- that drift is what previously dropped iterateJudge
-# from the normalized models map.
+# Single source of truth for the schema-7 feature.json skeleton and model routing.
+# cycle Step 5 (state init) and the phase-entry activation step both call this so
+# persisted routing and actual Agent dispatches cannot drift.
 #
-# Env overrides: LOOP_SPEC_MODEL_<ROLE> (SCREAMING_SNAKE of the JSON key, e.g.
-# LOOP_SPEC_MODEL_PLANNER) lets an operator reroute any role to a different alias
-# without editing this file. Because Step 5 AND Step 5.9 both call
-# `feature-init.sh models`, overrides apply automatically to new features and to
-# every resume normalization -- phase skills need no changes.
+# Env overrides:
+#   LOOP_SPEC_PHASE_MODEL_<PHASE> sets the default for every Agent launched in a
+#   phase and for a fresh Claude Code / Agent SDK phase orchestrator.
+#   LOOP_SPEC_MODEL_<ROLE> is the more-specific role override and wins when both
+#   are set. Per-task model/modelTier metadata remains more specific still.
 #
 # Usage:
-#   bash lib/feature-init.sh models
-#       -> prints the canonical models map (JSON object). The ONE place model roles live.
+#   bash lib/feature-init.sh models [--phase PHASE]
+#       -> prints the effective role map for PHASE.
+#   bash lib/feature-init.sh phase-model PHASE
+#       -> prints the configured phase alias, or an empty line when unset.
+#   bash lib/feature-init.sh phase-models
+#       -> prints all persisted phase overrides as a JSON object (unset = null).
+#   bash lib/feature-init.sh all-models
+#       -> prints the unique aliases that startup must health-check.
+#   bash lib/feature-init.sh activate FEATURE_DIR PHASE
+#       -> atomically writes the effective `.models` and `.phaseModels` maps before
+#          the phase skill is invoked.
 #
 #   bash lib/feature-init.sh skeleton --mode single \
 #       --slug S --now ISO --style ST --title "ORIGINAL GOAL" \
@@ -37,6 +45,66 @@ set -euo pipefail
 OPUS="opus"
 SONNET="sonnet"
 
+# validate_model_alias <variable-name> <value>
+#
+# Empty is accepted by callers as "not configured". Non-empty values must be a
+# Claude Code Agent-tool alias. The main Claude Code CLI / Agent SDK accepts full
+# IDs too, but phase values also feed subagent `model:` fields, whose contract is
+# the alias enum; one portable value therefore has to satisfy the stricter surface.
+validate_model_alias() {
+  local var="$1"
+  local val="$2"
+  case "$val" in
+    ""|sonnet|opus|haiku|fable)
+      return 0
+      ;;
+    *)
+      echo "feature-init: ${var}='${val}' is not a valid harness alias." \
+           "Allowed: sonnet | opus | haiku | fable." \
+           "Literal model IDs (e.g. claude-opus-4-8) are rejected because phase" \
+           "models are also passed to the Agent tool's alias-only model parameter." >&2
+      return 1
+      ;;
+  esac
+}
+
+validate_phase() {
+  case "${1:-}" in
+    spec|discuss|plan|execute|verify|iterate|deliver) return 0 ;;
+    *)
+      echo "feature-init: phase must be one of: spec | discuss | plan | execute | verify | iterate | deliver." >&2
+      return 1
+      ;;
+  esac
+}
+
+phase_env_suffix() {
+  case "$1" in
+    spec) echo SPEC ;;
+    discuss) echo DISCUSS ;;
+    plan) echo PLAN ;;
+    execute) echo EXECUTE ;;
+    verify) echo VERIFY ;;
+    iterate) echo ITERATE ;;
+    deliver) echo DELIVER ;;
+    *) validate_phase "$1"; return 1 ;;
+  esac
+}
+
+# resolve_phase_model <phase>
+#
+# Prints the configured phase alias. An empty line means the phase inherits the
+# session model for its main context and canonical role models for its Agents.
+resolve_phase_model() {
+  local phase="$1"
+  local suffix var val
+  suffix="$(phase_env_suffix "$phase")" || return 1
+  var="LOOP_SPEC_PHASE_MODEL_${suffix}"
+  val="${!var:-}"
+  validate_model_alias "$var" "$val" || return 1
+  echo "$val"
+}
+
 # resolve_role_model <ENV_SUFFIX> <default>
 #
 # Prints the resolved alias for a role. If LOOP_SPEC_MODEL_<ENV_SUFFIX> is set and
@@ -54,44 +122,41 @@ resolve_role_model() {
     echo "$default"
     return 0
   fi
-  case "$val" in
-    sonnet|opus|haiku|fable)
-      echo "$val"
-      ;;
-    *)
-      echo "feature-init: ${var}='${val}' is not a valid harness alias." \
-           "Allowed: sonnet | opus | haiku | fable." \
-           "Literal model IDs (e.g. claude-opus-4-8) are rejected because the Agent tool's" \
-           "model param is an alias enum; literal IDs fail InputValidationError at dispatch." >&2
-      exit 1
-      ;;
-  esac
+  validate_model_alias "$var" "$val" || return 1
+  echo "$val"
 }
 
-# Canonical models map -- the only definition of which model each role uses.
+# Effective models map -- the only definition of which model each role uses.
 # Mirrors skills/shared/model-matrix.md. When a role is added, add it HERE only.
-# Per-role env overrides (LOOP_SPEC_MODEL_<ROLE>) are resolved here so they propagate
-# automatically to every new feature and every Step 5.9 resume normalization.
+# Precedence is task override (consumed by the dispatch rung), explicit role env,
+# explicit phase env, then the canonical role default.
 #
 # Each role is resolved into a local variable before the jq call so that a failed
 # resolve_role_model (invalid env value) returns a non-zero exit from this function
 # before jq ever runs. The pattern `local v; v=$(cmd) || return 1` is required
 # because `local v=$(cmd)` masks the exit code (local is its own command).
 canonical_models() {
+  local phase="${1:-}"
+  local phase_default=""
   local v_specWriter v_planner v_advocate v_challenger v_specComplianceReviewer
   local v_iterateJudge v_codeReviewer v_implementer v_verifier v_mapper v_patternMapper
 
-  v_specWriter=$(resolve_role_model SPEC_WRITER "$OPUS")                        || return 1
-  v_planner=$(resolve_role_model PLANNER "$OPUS")                               || return 1
-  v_advocate=$(resolve_role_model ADVOCATE "$SONNET")                           || return 1
-  v_challenger=$(resolve_role_model CHALLENGER "$OPUS")                         || return 1
-  v_specComplianceReviewer=$(resolve_role_model SPEC_COMPLIANCE_REVIEWER "$SONNET") || return 1
-  v_iterateJudge=$(resolve_role_model ITERATE_JUDGE "$OPUS")                    || return 1
-  v_codeReviewer=$(resolve_role_model CODE_REVIEWER "$OPUS")                    || return 1
-  v_implementer=$(resolve_role_model IMPLEMENTER "$SONNET")                     || return 1
-  v_verifier=$(resolve_role_model VERIFIER "$SONNET")                           || return 1
-  v_mapper=$(resolve_role_model MAPPER "$SONNET")                               || return 1
-  v_patternMapper=$(resolve_role_model PATTERN_MAPPER "$SONNET")                || return 1
+  if [[ -n "$phase" ]]; then
+    validate_phase "$phase" || return 1
+    phase_default="$(resolve_phase_model "$phase")" || return 1
+  fi
+
+  v_specWriter=$(resolve_role_model SPEC_WRITER "${phase_default:-$OPUS}")                        || return 1
+  v_planner=$(resolve_role_model PLANNER "${phase_default:-$OPUS}")                               || return 1
+  v_advocate=$(resolve_role_model ADVOCATE "${phase_default:-$SONNET}")                           || return 1
+  v_challenger=$(resolve_role_model CHALLENGER "${phase_default:-$OPUS}")                         || return 1
+  v_specComplianceReviewer=$(resolve_role_model SPEC_COMPLIANCE_REVIEWER "${phase_default:-$SONNET}") || return 1
+  v_iterateJudge=$(resolve_role_model ITERATE_JUDGE "${phase_default:-$OPUS}")                    || return 1
+  v_codeReviewer=$(resolve_role_model CODE_REVIEWER "${phase_default:-$OPUS}")                    || return 1
+  v_implementer=$(resolve_role_model IMPLEMENTER "${phase_default:-$SONNET}")                     || return 1
+  v_verifier=$(resolve_role_model VERIFIER "${phase_default:-$SONNET}")                           || return 1
+  v_mapper=$(resolve_role_model MAPPER "${phase_default:-$SONNET}")                               || return 1
+  v_patternMapper=$(resolve_role_model PATTERN_MAPPER "${phase_default:-$SONNET}")                || return 1
 
   jq -n \
     --arg specWriter             "$v_specWriter" \
@@ -120,6 +185,41 @@ canonical_models() {
     }'
 }
 
+canonical_phase_models() {
+  local spec discuss plan execute verify iterate deliver
+  spec="$(resolve_phase_model spec)" || return 1
+  discuss="$(resolve_phase_model discuss)" || return 1
+  plan="$(resolve_phase_model plan)" || return 1
+  execute="$(resolve_phase_model execute)" || return 1
+  verify="$(resolve_phase_model verify)" || return 1
+  iterate="$(resolve_phase_model iterate)" || return 1
+  deliver="$(resolve_phase_model deliver)" || return 1
+
+  jq -n \
+    --arg spec "$spec" --arg discuss "$discuss" --arg plan "$plan" \
+    --arg execute "$execute" --arg verify "$verify" --arg iterate "$iterate" \
+    --arg deliver "$deliver" \
+    '{
+      spec: (if $spec == "" then null else $spec end),
+      discuss: (if $discuss == "" then null else $discuss end),
+      plan: (if $plan == "" then null else $plan end),
+      execute: (if $execute == "" then null else $execute end),
+      verify: (if $verify == "" then null else $verify end),
+      iterate: (if $iterate == "" then null else $iterate end),
+      deliver: (if $deliver == "" then null else $deliver end)
+    }'
+}
+
+all_effective_models() {
+  local phase
+  {
+    canonical_models
+    for phase in spec discuss plan execute verify iterate deliver; do
+      canonical_models "$phase"
+    done
+  } | jq -s '[.[] | .[]] | unique'
+}
+
 # Fixed operating block (iterate), identical for single and workspace modes.
 # Full-bore operation: gate retries are unbounded (attempts still land in gateHistory);
 # iterate.maxIterations=10 — the convergence loop ceiling — is the ONLY bound the
@@ -146,12 +246,14 @@ common_skeleton() {
   # Resolve models before the jq call: an invalid LOOP_SPEC_MODEL_<ROLE> must abort
   # with only the resolve error, not a trailing "invalid JSON" jq error from a failed
   # $(...) inside --argjson.
-  local models_json
-  models_json="$(canonical_models)" || return 1
+  local models_json phase_models_json
+  models_json="$(canonical_models spec)" || return 1
+  phase_models_json="$(canonical_phase_models)" || return 1
   jq -n \
     --arg slug "$slug" --arg now "$now" --arg style "$style" \
     --arg title "$title" \
     --argjson models "$models_json" \
+    --argjson phaseModels "$phase_models_json" \
     --argjson tierblocks "$(fixed_blocks)" \
     '{
       schemaVersion: 7,
@@ -161,6 +263,7 @@ common_skeleton() {
       execStyle: $style,
       phaseHandoff: false,
       models: $models,
+      phaseModels: $phaseModels,
       currentPhase: "spec",
       currentPhaseStartedAt: null,
       completedPhases: [],
@@ -198,7 +301,58 @@ common_skeleton() {
 
 case "${1:-}" in
   models)
-    canonical_models
+    shift
+    phase=""
+    if [[ $# -gt 0 ]]; then
+      [[ "${1:-}" == "--phase" && $# -eq 2 ]] || {
+        echo "usage: feature-init.sh models [--phase PHASE]" >&2
+        exit 1
+      }
+      phase="$2"
+    fi
+    canonical_models "$phase"
+    ;;
+  phase-model)
+    [[ $# -eq 2 ]] || {
+      echo "usage: feature-init.sh phase-model PHASE" >&2
+      exit 1
+    }
+    resolve_phase_model "$2"
+    ;;
+  phase-models)
+    [[ $# -eq 1 ]] || {
+      echo "usage: feature-init.sh phase-models" >&2
+      exit 1
+    }
+    canonical_phase_models
+    ;;
+  all-models)
+    [[ $# -eq 1 ]] || {
+      echo "usage: feature-init.sh all-models" >&2
+      exit 1
+    }
+    all_effective_models
+    ;;
+  activate)
+    [[ $# -eq 3 ]] || {
+      echo "usage: feature-init.sh activate FEATURE_DIR PHASE" >&2
+      exit 1
+    }
+    feature_dir="$2"
+    phase="$3"
+    [[ -f "$feature_dir/feature.json" ]] || {
+      echo "feature-init: feature.json not found in '$feature_dir'." >&2
+      exit 1
+    }
+    effective_models="$(canonical_models "$phase")" || exit 1
+    effective_phases="$(canonical_phase_models)" || exit 1
+    updated_json="$(jq \
+      --argjson models "$effective_models" \
+      --argjson phaseModels "$effective_phases" \
+      '.models = ((.models // {}) * $models) | .phaseModels = $phaseModels' \
+      "$feature_dir/feature.json")" || exit 1
+    bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/feature-write.sh" \
+      "$feature_dir" "$updated_json"
     ;;
   skeleton)
     shift
@@ -271,7 +425,7 @@ case "${1:-}" in
     esac
     ;;
   *)
-    echo "usage: feature-init.sh models | skeleton --mode single|workspace ..." >&2
+    echo "usage: feature-init.sh models [--phase PHASE] | phase-model PHASE | phase-models | all-models | activate FEATURE_DIR PHASE | skeleton --mode single|workspace ..." >&2
     exit 1
     ;;
 esac

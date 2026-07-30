@@ -17,7 +17,7 @@ Autonomous mode (`feature.json.autonomous == true`) forces style `auto`, so the 
 - `slug`, `feature_dir`, `feature_title` (the **original goal**, in the user's words).
 - `iterate`: `{maxIterations, used, confirmationUsed, lastVerdict, feedback, history[]}`.
 - `artifacts`: `spec`, `plan`, `verification` paths.
-- `models.iterateJudge` (opus).
+- `models.iterateJudge` (the activated ITERATE alias; canonical default `opus`).
 
 ## Procedure
 
@@ -73,7 +73,7 @@ One-shot `Agent` dispatch (not a team), fresh context, strict grader. Emit the d
 Agent({
   description: "Iterate goal re-judge",
   subagent_type: "loop-spec:iterate-judge",
-  model: feature.models.iterateJudge,   // opus
+  model: feature.models.iterateJudge,
   prompt: "<iterate-judge.md inputs: slug, iteration=(used+1), original_goal=feature_title,
             paths to SPEC.md / VERIFICATION.md / PLAN.md, feat/{slug} diff, and prior_feedback=feature.iterate.feedback>"
 })
@@ -174,7 +174,11 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedba
     })
     ```
     Re-open → `currentPhase = "discuss"`; Ship as-is → `currentPhase = "deliver"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
-  - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): treat as autonomous — re-enter DISCUSS in refinement mode (same as `auto`). `LOOP_SPEC_ANSWER_ITERATE_SPEC` ∈ {reopen, ship} overrides; default `reopen`.
+  - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): resolve
+    `iterate_answer="${LOOP_SPEC_ANSWER_ITERATE_SPEC:-reopen}"`, reject values other
+    than `reopen|ship` with exit 2, then treat `reopen` as autonomous DISCUSS
+    refinement and `ship` as `currentPhase = "deliver"` plus the accepted gap in
+    `warnings[]`.
 
 The autonomy guarantee: in `auto`/`review-only`, **no gap type ever blocks on a human**. The loop runs EXECUTE/PLAN/SPEC rewinds on its own until it converges or the iteration limit is spent, then it ships-with-warnings (Step 0). The only thing that ever returns control to you mid-loop is the explicit human-in-loop styles, or a hard escalation (limit-exhausted in `step`/`interactive`). An overnight `auto` run never waits for input.
 

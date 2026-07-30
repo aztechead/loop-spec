@@ -1,6 +1,6 @@
 ---
 name: cycle
-description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER, where ITERATE judges against the original goal and DELIVER binds the final SHA to one CI-green PR). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model selection is fixed. Resumes incomplete features automatically.
+description: ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER, where ITERATE judges against the original goal and DELIVER binds the final SHA to one CI-green PR). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model defaults are fixed and may be overridden per phase or role. Resumes incomplete features automatically.
 argument-hint: "[new] [feature description | path/to/spec.md | backlog]  (optional inline overrides: style:auto|step|interactive|review-only, autonomous)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
@@ -331,7 +331,8 @@ fi
 The only escape hatch is `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (constrained environments); with it
 set, the design phases fall back to Glob/Grep grounding and emit a degraded-mode warning.
 
-Model availability is probed in Step 3.5. Model selection is fixed (no preset), so the probe always covers the same two models.
+Model availability is probed in Step 3.5. There is no preset axis; the probe
+covers the complete effective alias set after phase and role overrides.
 
 ### Step 3 - Resolve style + feature
 
@@ -358,7 +359,31 @@ title. `.legacy` non-empty gets the one-line "ignored legacy token" notice.
 
 Resolution order:
 
-1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Defaults when unset: `LOOP_SPEC_ANSWER_STYLE` → `auto`, `LOOP_SPEC_ANSWER_TITLE` → required (abort if unset — EXCEPT when `LOOP_SPEC_SPEC_FILE` is set, where the title falls back to the spec file's first `# ` heading, else its filename). If `LOOP_SPEC_SPEC_FILE` points to an existing readable `.md`, apply the spec-file invocation branch (3) below with that path (abort if set but unreadable). Legacy `LOOP_SPEC_ANSWER_TIER` / `LOOP_SPEC_ANSWER_PRESET` env vars, if set, are ignored with a one-line notice (single-tier operation; model selection is fixed).
+1. **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): read env vars. Resolve and
+   validate them before creating feature state:
+   ```bash
+   style="${LOOP_SPEC_ANSWER_STYLE:-auto}"
+   case "$style" in
+     auto|step|interactive|review-only) ;;
+     *) echo "loop-spec: LOOP_SPEC_ANSWER_STYLE must be auto, step, interactive, or review-only" >&2; exit 2 ;;
+   esac
+   title="${LOOP_SPEC_ANSWER_TITLE:-}"
+   spec_file="${LOOP_SPEC_SPEC_FILE:-}"
+   if [[ -n "$spec_file" ]]; then
+     [[ -r "$spec_file" && "$spec_file" == *.md ]] || {
+       echo "loop-spec: LOOP_SPEC_SPEC_FILE must name a readable .md file" >&2
+       exit 2
+     }
+   elif [[ -z "$title" ]]; then
+     echo "loop-spec: LOOP_SPEC_ANSWER_TITLE is required when LOOP_SPEC_SPEC_FILE is unset" >&2
+     exit 2
+   fi
+   ```
+   When a spec file is present and title is empty, title falls back to its first `# `
+   heading, then its filename. Apply the spec-file invocation branch (3) below.
+   Legacy `LOOP_SPEC_ANSWER_TIER` / `LOOP_SPEC_ANSWER_PRESET` env vars, if set, are
+   ignored with a one-line notice (single-tier operation; model routing uses the
+   explicit phase/role env contracts instead of presets).
 
 2. **`mode == "description"`** (the user typed `/loop-spec:cycle <description>`): this is the default fast path.
    - Title = `.title`, slug = `.slug`, style = `.style` — all token-stripped by the parser. `autonomous` forces style `auto` (`skills/shared/autonomous-mode.md`); `greenfield` routes through Step 0's greenfield branch.
@@ -395,7 +420,15 @@ Slug = the parser's `.slug` (kebab-case of title); for titles resolved after par
 
 ### Step 3.5 - Model probe + Workflow availability probe
 
-Model selection is fixed (aliases `{opus, sonnet}`); probe results are cached 24h in `.loop-spec/runtime.json` (`LOOP_SPEC_SKIP_HEALTHCHECK=1` skips). Run the model dispatch probe now, verbatim per `${CLAUDE_SKILL_DIR}/references/startup-probes.md` (probe mechanics, cache format, degraded-mode handling). The `Workflow` availability answer is already in the preflight blob (`jq -r '.workflows.available' <<<"$pf"`) — do not re-probe; persist it as `workflowsAvailable` per the same reference. The cycle proceeds regardless of probe outcomes; fan-out skills read `runtime.json` to pick their dispatch path (`skills/shared/dispatch-fanout.md`).
+Canonical aliases are `{opus, sonnet}`, with optional phase/role routes to any
+allowed alias. Probe results are cached 24h only for an identical resolved alias
+set (`LOOP_SPEC_SKIP_HEALTHCHECK=1` skips). Run the model dispatch probe now,
+verbatim per `${CLAUDE_SKILL_DIR}/references/startup-probes.md` (probe mechanics,
+cache format, degraded-mode handling). The `Workflow` availability answer is
+already in the preflight blob (`jq -r '.workflows.available' <<<"$pf"`) — do not
+re-probe; persist it as `workflowsAvailable` per the same reference. The cycle
+proceeds regardless of probe outcomes; fan-out skills read `runtime.json` to
+pick their dispatch path (`skills/shared/dispatch-fanout.md`).
 
 ### Step 4 - Detect project commands
 
@@ -536,10 +569,10 @@ if [[ -f "$repo_root/.loop-spec/runtime.json" && "$(pwd -P)" != "$(cd "$repo_roo
 fi
 
 # Build the full schema-7 skeleton from the single source of truth (lib/feature-init.sh).
-# Model IDs, the fixed iterate block, and the artifact scaffold all
+# Model routes, configured phase defaults, the fixed iterate block, and the artifact scaffold all
 # live in that one script -- never hand-build feature.json inline (that drift is what
 # previously dropped iterateJudge from the normalized models map). Every phase skill reads
-# literal model IDs from feature.models.<role>, which guarantees teammates never silently
+# the activated alias from feature.models.<role>, which guarantees teammates never silently
 # inherit the orchestrator's session model.
 feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode single \
   --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -607,26 +640,37 @@ When `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` is set, apply
 waves and await them before entering SPEC. Do not leave bootstrap mappers running
 across the phase boundary.
 
-### Step 5.9 - Normalize feature.models (resume backfill + migration)
+### Step 5.9 - Activate the current phase's model routing
 
-Phase skills read `model: feature.models.<role>` literally and do NOT re-derive from `model-matrix.md`. Model selection is fixed, so the canonical map is the same for every feature. Older features either lack a `models` block (pre-v2.3.0) or carry a stale one from the removed preset scheme. Before routing to any phase, write the canonical fixed map idempotently and drop the vestigial `preset` and `tier` fields (single-tier hard cutover: any legacy retryBudget block in the file is simply ignored, and the tier axis no longer exists). This is the single fallback point, so no individual phase skill needs its own:
+Every phase skill reads `model: feature.models.<role>` literally. Immediately
+before a phase launch, `feature-init.sh activate` resolves and persists the exact
+map those Agent calls consume:
+
+1. task-level `model` / `modelTier` (where that rung supports it);
+2. explicit `LOOP_SPEC_MODEL_<ROLE>`;
+3. explicit `LOOP_SPEC_PHASE_MODEL_<PHASE>`;
+4. canonical role default.
+
+The activation also persists all seven configured phase overrides in
+`feature.phaseModels`. This is the handoff contract used by a Claude Code CLI or
+Python Agent SDK supervisor to select the main model for the next fresh phase
+query. An unset phase entry is `null` and leaves that query on its ordinary
+`CLAUDE_MODEL` / session default.
+
+Older features either lack these blocks or carry a stale map from the removed
+preset scheme. Activate the recorded current phase on every new run/resume and
+drop vestigial `preset` and `tier` fields:
 
 ```bash
 feat_dir=".loop-spec/features/${slug}"
 fjson="${feat_dir}/feature.json"
-# Canonical map comes from the SAME source Step 5 uses (lib/feature-init.sh models), so
-# the two can never drift -- this drift is what previously dropped iterateJudge here.
-canonical="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" models)"
-# Normalize by MERGE, not replace: force canonical IDs for known roles while preserving
-# any extra role the skeleton may carry. Rewrite only when the merged result differs from
-# the current map, or a vestigial preset field lingers. Only .models and .preset are
-# touched; all other fields (including worktreePath) are preserved.
-merged="$(jq -c --argjson m "$canonical" '(.models // {}) * $m' "$fjson")"
-if [[ "$(jq -c '.models // {}' "$fjson")" != "$merged" \
-      || "$(jq 'has("preset") or has("tier")' "$fjson")" == "true" ]]; then
-  new_json="$(jq --argjson m "$canonical" '.models = ((.models // {}) * $m) | del(.preset) | del(.tier)' "$fjson")"
+current_phase="$(jq -r '.currentPhase' "$fjson")"
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" activate \
+  "$feat_dir" "$current_phase"
+if [[ "$(jq 'has("preset") or has("tier")' "$fjson")" == "true" ]]; then
+  new_json="$(jq 'del(.preset) | del(.tier)' "$fjson")"
   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" "$feat_dir" "$new_json"
-  echo "Normalized feature.models to the fixed model map (and dropped legacy tier/preset)."
+  echo "Dropped legacy tier/preset fields."
 fi
 
 # Backfill feature_title (pre-2.4.0 features lack it). It is the IMMUTABLE original
@@ -678,6 +722,18 @@ checks, and readiness.
 Cycle's only responsibility here is to invoke the phase skill and react to its return:
 
 1. **Invoke phase skill** (with the watchdog stamp):
+   Before every invocation—including continuous routing after a prior phase
+   returns—activate that phase's effective model map. This call is mandatory; do
+   not invoke a phase against the previous phase's map. Since every team,
+   implicit-team, and one-shot fallback launch reads `feature.models.<role>`,
+   this is the enforcement point that makes phase routing apply to authors,
+   implementers, verifiers, and phase-gate reviewers alike.
+   ```bash
+   feature_dir=".loop-spec/features/${slug}"
+   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" activate \
+     "$feature_dir" "$currentPhase"
+   feature_json="$(cat "$feature_dir/feature.json")"
+   ```
    DELIVER owns all pre-delivery candidate mutation through
    `lib/finalize-delivery-candidate.sh`, called by `lib/deliver.sh`. The helper finalizes
    only the named retro/rules/digest artifacts before first observation and becomes a
@@ -716,9 +772,36 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
      next_phase="$(jq -r '.nextPhase // "deliver"' \
        ".loop-spec/features/${slug}/delivery.json")"
    fi
+   phase_result=".loop-spec/features/${slug}/result.json"
+   if [[ -f "$phase_result" \
+         && "$(jq -r '.status // empty' "$phase_result")" == "paused" ]]; then
+     pause_reason="$(jq -r '.reason // empty' "$phase_result")"
+     case "$pause_reason" in
+       spec-confirmation-declined|spec-override-declined)
+         cat "$phase_result"
+         return
+         ;;
+     esac
+   fi
    ```
 
-   **Phase watchdog check:** compare now against `currentPhaseStartedAt` and the phase ceiling — 60 minutes default, overridable via `LOOP_SPEC_PHASE_TIMEOUT_MINS`. If the phase that just returned exceeded its ceiling, print a one-line warning (`phase {name} took {N}m, ceiling {M}m`) and append it to `warnings[]`; if a RESUMED feature's `currentPhaseStartedAt` is already past the ceiling before re-invoking (the previous session hung or died mid-phase), do NOT blindly re-enter — surface it: `phase {name} exceeded its {M}m ceiling in a prior session; resuming from last durable state` and let the phase skill's own resume logic pick up from artifacts. The watchdog never kills work; it makes a wedged loop visible instead of silently eternal.
+   **Phase watchdog check:** resolve the ceiling once before comparison and reject an
+   invalid value:
+   ```bash
+   phase_timeout_mins="${LOOP_SPEC_PHASE_TIMEOUT_MINS:-60}"
+   [[ "$phase_timeout_mins" =~ ^[1-9][0-9]*$ ]] || {
+     echo "loop-spec: LOOP_SPEC_PHASE_TIMEOUT_MINS must be a positive integer" >&2
+     exit 2
+   }
+   ```
+   Compare now against `currentPhaseStartedAt` and `phase_timeout_mins`. If the phase
+   that just returned exceeded its ceiling, print a one-line warning
+   (`phase {name} took {N}m, ceiling {M}m`) and append it to `warnings[]`; if a RESUMED
+   feature's `currentPhaseStartedAt` is already past the ceiling before re-invoking
+   (the previous session hung or died mid-phase), do NOT blindly re-enter — surface it:
+   `phase {name} exceeded its {M}m ceiling in a prior session; resuming from last durable
+   state` and let the phase skill's own resume logic pick up from artifacts. The
+   watchdog never kills work; it makes a wedged loop visible instead of silently eternal.
 
    Refresh `updatedAt` through `feature-write.sh` on every durable transition so a long
    phase sequence remains resumable past the staleness window.
@@ -801,6 +884,10 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
    checkpoint_default=0
    [[ "$feature_autonomous" == "true" ]] && checkpoint_default=1
    checkpoint_each="${LOOP_SPEC_CHECKPOINT_EACH_PHASE:-$checkpoint_default}"
+   case "$checkpoint_each" in
+     0|1) ;;
+     *) echo "loop-spec: LOOP_SPEC_CHECKPOINT_EACH_PHASE must be 0 or 1" >&2; exit 2 ;;
+   esac
    if [[ "$workspaceMode" != "workspace" && "$currentPhase" != "deliver" \
          && "$checkpoint_each" == "1" ]]; then
      bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint-pr.sh" create \
@@ -861,8 +948,10 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
      summary="Phase ${currentPhase} completed; ${next_phase} is ready in durable state."
      bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
        --status paused --reason phase-handoff --summary "$summary"
-     printf 'LOOP_SPEC_PHASE_HANDOFF {"slug":"%s","completed":"%s","next":"%s"}\n' \
-       "$slug" "$currentPhase" "$next_phase"
+     next_model="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" \
+       phase-model "$next_phase")"
+     printf 'LOOP_SPEC_PHASE_HANDOFF {"slug":"%s","completed":"%s","next":"%s","model":"%s"}\n' \
+       "$slug" "$currentPhase" "$next_phase" "${next_model:-inherit}"
      ```
      The result clears `active-run.json`, so the current invocation is terminal from
      the container's perspective even though the feature is resumable. Re-running

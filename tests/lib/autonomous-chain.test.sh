@@ -93,6 +93,8 @@ check "sidecar completion chains" "true" "$(chain_of "$out")"
 # bound: completed >= LOOP_SPEC_MAX_FEATURES stops the chain
 out="$(bash "$SCRIPT" should-chain "$FEAT" --completed 1)"
 check "default max-features bound" "max-features-reached" "$(reason_of "$out")"
+out="$(LOOP_SPEC_MAX_FEATURES=0 bash "$SCRIPT" should-chain "$FEAT" --completed 1)"
+check "zero max-features falls back to one" "max-features-reached" "$(reason_of "$out")"
 out="$(LOOP_SPEC_MAX_FEATURES=3 bash "$SCRIPT" should-chain "$FEAT" --completed 1)"
 check "raised bound allows chain" "true" "$(chain_of "$out")"
 out="$(LOOP_SPEC_MAX_FEATURES=3 bash "$SCRIPT" should-chain "$FEAT" --completed 3)"

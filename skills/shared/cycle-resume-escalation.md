@@ -61,7 +61,15 @@ The resume option label is: `"Resume {slug} - phase {currentPhase} (last updated
 
 **Single-repo worktree features (worktreePath present):**
 
-First confirm the worktree still exists on disk before entering it. Step 1 already ran `git-ops.sh list-feature-worktrees`; the chosen feature's `worktreePath` MUST appear in that listing. If it does NOT (the directory was deleted or `git worktree prune`d), do not call `EnterWorktree` (it would error). Instead warn the user and offer to recreate it from the recorded base:
+First confirm the worktree still exists on disk before entering it. Step 1 already ran `git-ops.sh list-feature-worktrees`; the chosen feature's `worktreePath` MUST appear in that listing. If it does NOT (the directory was deleted or `git worktree prune`d), do not call `EnterWorktree` (it would error).
+
+If `LOOP_SPEC_WORKTREES=0`, do not offer or perform worktree recreation. Stop with:
+`The recorded feature requires a worktree, but LOOP_SPEC_WORKTREES=0 forbids creating
+or entering one. Resume once with worktrees enabled, or start a new in-place cycle
+from a clean checkout.` The opt-out is a hard runtime invariant, not permission to
+silently migrate a partially completed branch.
+
+Otherwise warn the user and offer to recreate it from the recorded base:
 ```
 # recovery: branch feat/{slug} may still exist; recreate the worktree dir
 git worktree add "{feature.worktreePath}" "{feature.branch}"   # if branch exists

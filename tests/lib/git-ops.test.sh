@@ -65,6 +65,15 @@ check "H: current-sha returns short sha (7-12 chars)" "ok" "$short"
 # --- Feature worktree subcommands (create-feature-worktree, list-feature-worktrees) ---
 base_sha=$(git rev-parse HEAD)
 
+exit_code=0
+LOOP_SPEC_WORKTREES=0 bash "$LIB" create-feature-worktree disabled "$base_sha" >/dev/null 2>&1 || exit_code=$?
+check "K0: worktree opt-out rejects feature worktree creation" "1" "$exit_code"
+[[ ! -e ".claude/worktrees/disabled" ]] && r=ok || r=bad
+check "K1: worktree opt-out creates no directory" "ok" "$r"
+exit_code=0
+LOOP_SPEC_WORKTREES=invalid bash "$LIB" create-feature-worktree invalid "$base_sha" >/dev/null 2>&1 || exit_code=$?
+check "K2: invalid worktree setting is rejected" "1" "$exit_code"
+
 got=$(bash "$LIB" create-feature-worktree my-slug "$base_sha")
 check "K: create-feature-worktree prints relative path" ".claude/worktrees/my-slug" "$got"
 
