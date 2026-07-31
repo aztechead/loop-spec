@@ -44,7 +44,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_NON_INTERACTIVE` | `0`/`1`; unset | `1` forbids interactive questions and reads the `LOOP_SPEC_ANSWER_*` inputs below. It also implies a headless execution profile. |
 | `LOOP_SPEC_SPEC_FILE` | path; unset | Uses the specified pre-authored Markdown spec instead of collecting a new one. |
 | `LOOP_SPEC_MAX_FEATURES` | positive integer; `1` | Maximum backlog features selected per invocation. Sentinel batch requests above one are still restricted by the trust level. |
-| `LOOP_SPEC_PHASE_TIMEOUT_MINS` | positive number; `60` | Wall-clock watchdog ceiling for a phase. |
+| `LOOP_SPEC_PHASE_TIMEOUT_MINS` | positive integer; `60` | Wall-clock watchdog ceiling for a phase. A non-integer or non-positive value is a configuration error, not a fallback. |
 | `LOOP_SPEC_PHASE_HANDOFF` | `0`/`1`; unset | `1` permits one phase per main-agent invocation, persists the next phase, and returns `status=paused`, `reason=phase-handoff`. `0` runs phase routing continuously. The environment overrides persisted state; inline `phase:fresh`/`phase:continuous` overrides the environment. A tool-boundary guard enforces the boundary. |
 | `LOOP_SPEC_ITERATE_FRESH` | `0`/`1`; unset | `1` makes an ITERATE rewind persist state and relaunch instead of continuing in the current main-agent context. |
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
@@ -88,7 +88,7 @@ installers and therefore are part of the integration contract.
 | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | Claude Code; unset | `1` permits loop-spec’s version probe to select explicit or implicit teams. Any other value selects the no-teams route. |
 | `CLAUDE_CODE_DISABLE_WORKFLOWS` | Claude Code; unset | `1` forces Workflow fallbacks. |
 | `CLAUDE_CODE_RETRY_WATCHDOG` | Claude Code; inherited | Native unattended retry watchdog. Loop-runner inherits it unless `--retry-watchdog` supplies a child-specific value. |
-| `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | Claude Code; inherited | Native opt-in for nested subagents. loop-spec does not depend on it and does not alter it. |
+| `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` | Claude Code; `8` | Maximum consecutive Stop-hook blocks before Claude Code force-completes the turn with a warning. This is what bounds `LOOP_SPEC_DEFERRAL_GUARD` and `LOOP_SPEC_MICRO_GUARD`, which deliberately do not treat `stop_hook_active` as an override. loop-spec never sets it. |
 | `CLAUDE_CODE_MAX_RETRIES` | Claude Code legacy control; inherited | Not configured by loop-spec. Prefer `CLAUDE_CODE_RETRY_WATCHDOG`; Claude Code caps the legacy value at 15. |
 | `CLAUDECODE` | Claude Code | `1` is a fallback harness-detection signal when `LOOP_SPEC_HARNESS` is unset. |
 | `CLAUDE_PLUGIN_ROOT` | host adapter | Absolute installed plugin root used to resolve hooks and bundled assets. The pi/OpenCode adapters set it. Operator override is unsupported. |

@@ -80,6 +80,25 @@ out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=c
   --workflows-available true --workflow-optin true)"
 check "leading-zero width is decimal" "workflow" "$(jq -r '.rung' <<<"$out")"
 
+# Configuration rejections exit 2 with stdout EMPTY and the message on stderr. The
+# EXECUTE relay must therefore read stderr: `jq` on empty stdin prints nothing, so a
+# stdout-only relay reports a blank error for every one of these paths.
+cfg_rc=0
+cfg_err="$WORK/cfg.err"
+cfg_out="$(select_rung LOOP_SPEC_WORKTREES=maybe 2>"$cfg_err")" || cfg_rc=$?
+check "invalid worktrees setting exits 2" "2" "$cfg_rc"
+check "invalid worktrees setting writes no stdout JSON" "" "$cfg_out"
+check "invalid worktrees message lands on stderr" "1" \
+  "$(grep -q 'LOOP_SPEC_WORKTREES must be 0 or 1' "$cfg_err" && echo 1 || echo 0)"
+check "stdout-only relay would lose the message" "" \
+  "$(jq -r '.message // empty' <<<"$cfg_out" 2>/dev/null || true)"
+
+EXEC_SKILL="$ROOT/skills/execute/SKILL.md"
+check "EXECUTE rung relay captures stderr" "1" \
+  "$(grep -Fq '2>"$rung_err"' "$EXEC_SKILL" && echo 1 || echo 0)"
+check "EXECUTE rung relay falls back to the stderr text" "1" \
+  "$(grep -Fq 'rung_msg="$(cat "$rung_err")"' "$EXEC_SKILL" && echo 1 || echo 0)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

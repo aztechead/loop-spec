@@ -32,6 +32,26 @@ All notable changes documented here. Format follows Keep a Changelog.
   Phase skills always return to cycle instead of chaining directly; if an agent still
   attempts a second phase in one transcript, the guard writes the paused handoff result
   and denies the invocation.
+- `feature-init.sh all-models` no longer prints the aliases that happened to resolve
+  when a later route is invalid. It now emits nothing and exits non-zero, and the
+  startup probe checks that status — an invalid `LOOP_SPEC_PHASE_MODEL_<PHASE>` or
+  `LOOP_SPEC_MODEL_<ROLE>` can no longer produce a green health check over a partial
+  alias set.
+- EXECUTE's rung-selection error relay now captures stderr. `execute-rung.sh` reports
+  configuration rejections (invalid `LOOP_SPEC_WORKTREES`, invalid
+  `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS`, bad width) on stderr with empty stdout, where
+  `jq` printed nothing and the operator saw a blank `ERROR:` line.
+- Corrected two Claude Code host-contract claims verified against the shipped CLI:
+  `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` does not exist (subagent nesting is capped at
+  a fixed depth with no environment override), and `Agent(model:...)` permission rules
+  are inert (the `Agent` tool implements no permission matcher, so a rule with
+  parenthesised content never matches). `PREREQUISITES.md` now documents the controls
+  that are actually enforced. Documented `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`, which is
+  what bounds the deferral and micro Stop guards.
+- The no-worktrees guard now matches an *invocation* of the feature-worktree helper
+  rather than any mention of its name, so read-only searches are no longer denied.
+- Replaced a `return` with `exit 0` in cycle's declined-SPEC-gate branch; these blocks
+  run as standalone Bash invocations, where `return` is a shell error.
 
 ## [2.29.0] - 2026-07-30
 

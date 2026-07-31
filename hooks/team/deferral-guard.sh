@@ -28,6 +28,13 @@
 # `stop_hook_active` is NOT an override. Claude Code sets it on the continuation
 # after a Stop hook blocks; treating it as an unconditional allow turns every Stop
 # guard into a one-retry wording gate.
+#
+# Ignoring it is safe because the host already bounds the loop: Claude Code counts
+# consecutive Stop-hook blocks and force-completes the turn once the count reaches
+# CLAUDE_CODE_STOP_HOOK_BLOCK_CAP (default 8), warning the user rather than looping
+# forever. So the worst case here is a bounded push-back, not a wedged session --
+# and the operator kill switch below is always available.
+#
 # Ordinary conversation (including design discussion of scope) never matches
 # condition 1, so the guard cannot fire outside a completion report.
 #

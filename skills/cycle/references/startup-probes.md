@@ -10,8 +10,17 @@ override, so a configured `haiku` or `fable` route cannot bypass the health
 check:
 
 ```bash
-required_models="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" all-models)"
+required_models="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" all-models)" || {
+  echo "loop-spec: model routing is misconfigured; startup cannot resolve the alias set." >&2
+  exit 2
+}
 ```
+
+The exit status is load-bearing. `all-models` prints nothing and exits non-zero when
+any `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>` value is not a harness
+alias. Relay that configuration error verbatim and stop; never continue with a partial
+alias set, because the phase-entry `activate` call would fail later anyway — after the
+health check already reported green.
 
 **pi harness: skip this probe entirely** (`harness != "claude"` in the preflight
 blob). The probe pre-flights `Agent` dispatches and pi has no `Agent` tool; model

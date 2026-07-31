@@ -210,14 +210,18 @@ canonical_phase_models() {
     }'
 }
 
+# Every map is resolved BEFORE anything is printed. A brace-group pipeline would
+# emit the maps that resolved successfully and then fail, handing a caller that
+# reads stdout without checking $? a plausible-looking-but-short alias set — the
+# exact silent fallback the startup health check is supposed to make impossible.
 all_effective_models() {
-  local phase
-  {
-    canonical_models
-    for phase in spec discuss plan execute verify iterate deliver; do
-      canonical_models "$phase"
-    done
-  } | jq -s '[.[] | .[]] | unique'
+  local phase maps map
+  maps="$(canonical_models)" || return 1
+  for phase in spec discuss plan execute verify iterate deliver; do
+    map="$(canonical_models "$phase")" || return 1
+    maps="${maps}"$'\n'"${map}"
+  done
+  printf '%s\n' "$maps" | jq -s '[.[] | .[]] | unique'
 }
 
 # Fixed operating block (iterate), identical for single and workspace modes.

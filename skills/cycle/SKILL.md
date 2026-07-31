@@ -58,10 +58,11 @@ When a phase ends: in `explicit` mode call `TeamDelete` before the next phase's 
 
 This rule applies in DISCUSS, PLAN, EXECUTE, VERIFY, MAP-CODEBASE, and their sub-skills.
 
-**Subagent depth.** CC 2.1.217 disables nested subagent spawning by default (hosts may
-opt in with `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`). loop-spec does not depend on that
-opt-in: the main-thread orchestrator spawns every phase teammate and background mapper,
-and agent role definitions do not grant `Agent`. A teammate needing more fan-out must
+**Subagent depth.** Claude Code caps subagent nesting at a fixed depth (5 in the 2.1.x
+line) and rejects a deeper spawn with `Subagent nesting limit reached`. That ceiling is
+built in — there is no environment variable that raises it. loop-spec never approaches
+it: the main-thread orchestrator spawns every phase teammate and background mapper, and
+agent role definitions do not grant `Agent`. A teammate needing more fan-out must
 surface it to the lead. EXECUTE's loop-fleet rung remains separate top-level `claude -p`
 processes, not nested subagents.
 
@@ -779,11 +780,17 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
      case "$pause_reason" in
        spec-confirmation-declined|spec-override-declined)
          cat "$phase_result"
-         return
+         echo "loop-spec: declined SPEC gate is terminal for this invocation." >&2
+         exit 0
          ;;
      esac
    fi
    ```
+
+   A declined SPEC gate ends the phase loop: surface the printed `result.json` to the
+   caller and do NOT route to another phase. (`exit 0`, not `return` — these blocks run
+   as standalone Bash invocations, where `return` is a shell error rather than a
+   control-flow instruction.)
 
    **Phase watchdog check:** resolve the ceiling once before comparison and reject an
    invalid value:

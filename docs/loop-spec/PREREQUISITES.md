@@ -101,32 +101,33 @@ safe to `teamsMode == "none"`. The packaged implementer and reviewer grants incl
 task-list and messaging tools above. Any unavailable or disabled team path degrades to
 one-shot subagent waves at every DAG width.
 
-## Optional hardening — model/type permission rules (CC >= 2.1.178)
+## Optional hardening — constraining which models roles may use
 
-loop-spec pins each role's model in agent frontmatter and passes an explicit `model:`
-on every spawn, so off-policy models never appear under normal operation. On CC
-**>= 2.1.178** you can enforce that natively as defense-in-depth with the
-`Tool(param:value)` permission syntax (parameter matching for named subagent spawns
-was fixed in 2.1.186). Add to your user or project `.claude/settings.json`:
+loop-spec passes an explicit `model:` on every spawn, resolved from
+`feature.models.<role>`, so off-policy models never appear under normal operation.
 
-```json
-{
-  "permissions": {
-    "deny": [
-      "Agent(model:claude-opus-4-7)",
-      "Agent(model:claude-3-5-sonnet-20241022)"
-    ]
-  }
-}
-```
+**Claude Code permission rules cannot enforce this.** A `Tool(specifier)` rule only
+matches when the tool implements a permission matcher for that specifier, and the
+`Agent` tool does not: it has no `ruleContentField`, so `Agent(model:...)` parses
+without error and then matches nothing. A deny rule written that way is silently inert.
+(A bare `Agent` deny rule is matched — but it blocks *every* subagent, which disables
+loop-spec entirely.) `Agent(<type>,<type>)` is a real form, but its content is a list of
+**agent types**, not models, and it is read by tool narrowing rather than deny rules.
 
-This blocks any teammate or one-shot dispatch (including the implicit-team `Agent({name})`
-spawns) from running a retired/off-policy model, regardless of what a prompt asks for.
-The canonical role set resolves through the harness's `opus` and `sonnet`
-aliases. Phase/role overrides may also route `haiku` or `fable`; run
-`bash /path/to/loop-spec/lib/feature-init.sh all-models` in the deployment
-environment and permit exactly the returned alias families. The cycle probes
-that complete effective set before work begins.
+Enforce the model policy where it is actually checked instead:
+
+1. **Pin the routes.** Set `LOOP_SPEC_PHASE_MODEL_<PHASE>` and/or `LOOP_SPEC_MODEL_<ROLE>`
+   in the deployment environment. Both are validated against the alias enum
+   (`sonnet | opus | haiku | fable`) and reject literal model IDs, and cycle activates
+   the resolved map into `feature.models.<role>` before every phase.
+2. **Constrain what the aliases resolve to.** Alias → concrete model is a harness/provider
+   decision (`ANTHROPIC_MODEL`, Bedrock/Vertex model mappings, gateway policy). That layer
+   is the only place a retired or off-policy model ID can be excluded outright.
+3. **Verify the effective set.** Run
+   `bash /path/to/loop-spec/lib/feature-init.sh all-models` in the deployment environment;
+   it prints the exact sorted alias set after phase and role overrides, and exits non-zero
+   with no output if any override is invalid. The cycle probes that same set before work
+   begins and fails loud on any error.
 
 ## Optional — nested per-repo skills (workspace mode, CC >= 2.1.178)
 

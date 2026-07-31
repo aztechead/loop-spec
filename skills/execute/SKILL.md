@@ -309,16 +309,28 @@ teams_mode=$(jq -r '.teamsMode // "none"' .loop-spec/runtime.json 2>/dev/null ||
 Run the deterministic selector. Missing/corrupt runtime state fails safe to no teams;
 the model never authors a capability boolean or reconstructs this ladder:
 
+Only the `loop-runtime-unavailable` path (exit 1) reports itself as JSON on stdout.
+Configuration rejections (invalid `LOOP_SPEC_WORKTREES`, invalid
+`LOOP_SPEC_MAX_PARALLEL_SUBAGENTS`, bad width) exit 2 with a plain message on stderr,
+so the relay must capture stderr too — `jq` on empty stdin prints nothing, which would
+otherwise turn a precise configuration error into a blank `ERROR:` line.
+
 ```bash
 rung_rc=0
+rung_err="$(mktemp)"
 rung_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/execute-rung.sh" select \
   --width "$W" --teams-mode "$teams_mode" \
-  --workflows-available "$workflows_available" --workflow-optin "$workflow_optin")" \
-  || rung_rc=$?
+  --workflows-available "$workflows_available" --workflow-optin "$workflow_optin" \
+  2>"$rung_err")" || rung_rc=$?
 if [[ "$rung_rc" -ne 0 ]]; then
-  echo "[EXECUTE] ERROR: $(jq -r '.message // "dispatch capability probe failed"' <<<"$rung_json")" >&2
+  rung_msg="$(jq -r '.message // empty' <<<"$rung_json" 2>/dev/null || true)"
+  [[ -n "$rung_msg" ]] || rung_msg="$(cat "$rung_err")"
+  [[ -n "$rung_msg" ]] || rung_msg="dispatch capability probe failed"
+  rm -f "$rung_err"
+  echo "[EXECUTE] ERROR: $rung_msg" >&2
   exit 2
 fi
+rm -f "$rung_err"
 rung="$(jq -r '.rung' <<<"$rung_json")"
 rung_reason="$(jq -r '.reason' <<<"$rung_json")"
 ```

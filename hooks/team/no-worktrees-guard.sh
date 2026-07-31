@@ -52,7 +52,15 @@ if tool == "Bash":
     if re.search(r"\bgit\b[^\n;&|]*\bworktree\s+add\b", command, re.I):
         print("git-worktree-add")
         raise SystemExit(0)
-    if re.search(r"\bcreate-feature-worktree\b", command):
+    # Match an INVOCATION of the helper, not a mention of its name. A bare
+    # substring match also denies `rg create-feature-worktree` and every other
+    # read-only inspection, which is noise: lib/git-ops.sh refuses the subcommand
+    # itself under this setting, so the tool boundary only has to catch the call.
+    if re.search(
+        r"git-ops\.sh[^\n;&|]*\bcreate-feature-worktree\b"
+        r"|(?:^|[\n;&|(]|&&|\|\|)\s*create-feature-worktree\b",
+        command,
+    ):
         print("feature-worktree-helper")
         raise SystemExit(0)
 

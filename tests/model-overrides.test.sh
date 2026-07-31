@@ -121,6 +121,25 @@ bash "$LIB" models --phase bogus >/dev/null 2>/dev/null || unknown_exit=$?
 check "unknown phase: models command fails" \
   "$([[ "$unknown_exit" -ne 0 ]] && echo 1 || echo 0)"
 
+# --- Test 10b: all-models emits NOTHING when any route is invalid ---
+# The startup health check reads this on stdout. Printing the aliases that happened
+# to resolve would hand a caller a short-but-plausible set -- the silent fallback the
+# "no silent fallback" contract forbids.
+allmodels_exit=0
+allmodels_stdout="$(LOOP_SPEC_PHASE_MODEL_PLAN=bogus \
+  bash "$LIB" all-models 2>/dev/null)" || allmodels_exit=$?
+check "all-models: non-zero exit when a phase route is invalid" \
+  "$([[ "$allmodels_exit" -ne 0 ]] && echo 1 || echo 0)"
+check "all-models: no partial alias set on stdout for an invalid phase route" \
+  "$([[ -z "$allmodels_stdout" ]] && echo 1 || echo 0)"
+allrole_exit=0
+allrole_stdout="$(LOOP_SPEC_MODEL_PLANNER=claude-opus-4-8 \
+  bash "$LIB" all-models 2>/dev/null)" || allrole_exit=$?
+check "all-models: non-zero exit when a role route is invalid" \
+  "$([[ "$allrole_exit" -ne 0 ]] && echo 1 || echo 0)"
+check "all-models: no partial alias set on stdout for an invalid role route" \
+  "$([[ -z "$allrole_stdout" ]] && echo 1 || echo 0)"
+
 # --- Test 11: Instruction/SDK boundaries call the executable router ---
 CYCLE="$REPO_ROOT/skills/cycle/SKILL.md"
 CLOUD="$REPO_ROOT/docs/loop-spec/cloud-run-autonomous.md"
