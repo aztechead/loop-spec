@@ -2,6 +2,60 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.30.0] - 2026-07-31
+
+### Added
+
+- Added `lib/worktree-base.sh`, the single seam that resolves WHERE every loop-spec
+  worktree may be created — feature, per-task, and revise. It answers with the base
+  directory, whether that base is outside the repository, whether it is usable at all,
+  and a one-line reason. The answer is a probe, not a guess: when the repository tracks
+  files under a `.claude/` directory, the resolver writes those same relative
+  directories at each candidate base and takes the first one that accepts them, which
+  is exactly the operation `git worktree add` performs at exactly the location it
+  performs it. Repositories that track nothing under `.claude/` skip the probe entirely
+  and keep the historical layout untouched. Candidates, in order: the in-repo default,
+  the `<repo>-worktrees/` sibling, then `$HOME/.loop-spec/worktrees/<repo>-<sum>/`.
+- Added `LOOP_SPEC_WORKTREE_DIR`. It sets the base directory for every worktree
+  loop-spec creates (`<dir>/features/<slug>`, `<dir>/tasks/…`), takes an absolute path
+  or one relative to the repository, and is used verbatim — an operator override
+  outranks the automatic resolution rather than competing with it.
+- `git-ops.sh list-feature-worktrees` now discovers feature worktrees wherever they
+  live: under any candidate base for the repository, or on the `feat/<slug>` branch
+  that is loop-spec's feature-branch contract. A worktree created under an override
+  that is no longer exported stays resumable.
+- EXECUTE resolves one task-worktree base per feature and injects it into whichever
+  rung runs — the Workflow DAG (`taskWorktreeBase` argument), the team prompts (new
+  `{worktreeBase}` placeholder), and the one-shot subagent dispatch — so lead,
+  implementer, reviewer, and the integration call cannot disagree about where a task
+  worktree is.
+
+### Fixed
+
+- Worktree creation no longer fails when the repository tracks files that the running
+  harness refuses to write inside it. A sandboxed Bash tool can deny writes to
+  harness-config paths such as `.claude/commands/**` at any depth within the active
+  repository; `git worktree add` checks out every tracked file, so a repository that
+  tracks such a path could not be checked out into an in-repo worktree at all. The
+  location is now verified before use and moved outside the repository when the
+  in-repo base cannot hold the checkout. Relocating within the repository does not
+  help — the deny follows the path segment, not the directory — so the fallback leaves
+  the repository entirely.
+- A failed `git worktree add` no longer strands debris. `create-feature-worktree`
+  removes the partial worktree, prunes its registration, and deletes the branch it
+  created, so a retry is not blocked by the wreckage of the previous attempt.
+- `create-feature-worktree` now refuses with an actionable diagnostic — naming
+  `LOOP_SPEC_WORKTREE_DIR` and `LOOP_SPEC_WORKTREES=0` — when no candidate base can
+  hold the checkout, instead of surfacing a bare `Operation not permitted` from git.
+- `feature.json.worktreePath` now records the path the helper actually created rather
+  than an assumed `.claude/worktrees/{slug}`, so resume enters the worktree that
+  exists. The legacy repo-relative form is still accepted.
+- Corrected the documented `EnterWorktree({path})` contract. First entry from the
+  launch directory — which is every entry loop-spec makes — only requires the path to
+  appear in `git worktree list`; the `.claude/worktrees/` restriction applies to
+  switching while already inside a worktree or from a cwd-pinned agent. A relocated
+  feature worktree is therefore enterable.
+
 ## [2.29.1] - 2026-07-30
 
 ### Added

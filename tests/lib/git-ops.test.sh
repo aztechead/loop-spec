@@ -194,6 +194,62 @@ exit_code=0
 bash "$LIB" -C >/dev/null 2>&1 || exit_code=$?
 check "AB: -C with no path argument exits 1" "1" "$exit_code"
 
+# ---------------------------------------------------------------------------
+# Worktree location: operator override, discovery, and failure cleanup
+# ---------------------------------------------------------------------------
+ALT="${TMPDIR:-/tmp}/loop-spec-git-ops-alt.$$"
+trap 'chmod -R u+rwX "$ALT" 2>/dev/null; rm -rf "$WORK" "$OUTSIDE" "$CLEAN_REPO" "$ALT"' EXIT
+mkdir -p "$ALT"
+ALT="$(cd "$ALT" && pwd -P)"
+
+got=$(LOOP_SPEC_WORKTREE_DIR="$ALT/wt" bash "$LIB" -C "$CLEAN_REPO" create-feature-worktree o-slug "$base_sha_clean")
+check "AC: LOOP_SPEC_WORKTREE_DIR relocates the feature worktree out of the repo" \
+  "$ALT/wt/features/o-slug" "$got"
+[[ -d "$ALT/wt/features/o-slug" ]] && r=ok || r=bad
+check "AC2: the relocated worktree exists on disk" "ok" "$r"
+git -C "$CLEAN_REPO" show-ref --verify --quiet refs/heads/feat/o-slug && r=ok || r=bad
+check "AC3: the relocated worktree still gets branch feat/o-slug" "ok" "$r"
+
+list_o=$(bash "$LIB" -C "$CLEAN_REPO" list-feature-worktrees)
+echo "$list_o" | grep -q "feat/o-slug" && r=ok || r=bad
+check "AD: list-feature-worktrees discovers an out-of-repo feature worktree" "ok" "$r"
+echo "$list_o" | grep -q "feat/c-slug" && r=ok || r=bad
+check "AD2: in-repo worktrees stay discoverable alongside relocated ones" "ok" "$r"
+
+# A failed checkout must not strand a partial worktree or an orphan branch.
+exit_code=0
+bash "$LIB" -C "$CLEAN_REPO" create-feature-worktree fail-slug deadbeefdeadbeef >/dev/null 2>&1 || exit_code=$?
+check "AE: create-feature-worktree fails on an unresolvable base (exit 1)" "1" "$exit_code"
+[[ -e "$CLEAN_REPO/.claude/worktrees/fail-slug" ]] && r=bad || r=ok
+check "AE2: a failed create leaves no partial worktree behind" "ok" "$r"
+git -C "$CLEAN_REPO" show-ref --verify --quiet refs/heads/feat/fail-slug && r=bad || r=ok
+check "AE3: a failed create leaves no orphan branch behind" "ok" "$r"
+
+if [[ "$(id -u)" == "0" ]]; then
+  echo "SKIP: AF unwritable-base diagnostic (running as root)"
+else
+  # No candidate base can hold the checkout: refuse with an actionable message
+  # instead of letting git die on a bare permission error.
+  BOX="$ALT/box"
+  mkdir -p "$BOX/repo"
+  git -C "$BOX/repo" init -q
+  git -C "$BOX/repo" config user.email t@t
+  git -C "$BOX/repo" config user.name t
+  mkdir -p "$BOX/repo/.claude/commands"
+  echo "# setup" > "$BOX/repo/.claude/commands/setup.md"
+  git -C "$BOX/repo" add .claude/commands/setup.md
+  git -C "$BOX/repo" commit -q -m init
+  box_sha=$(git -C "$BOX/repo" rev-parse HEAD)
+  chmod 500 "$BOX/repo/.claude"
+  chmod 500 "$BOX"
+  exit_code=0
+  err=$(HOME="$BOX" bash "$LIB" -C "$BOX/repo" create-feature-worktree boxed "$box_sha" 2>&1 >/dev/null) || exit_code=$?
+  chmod 700 "$BOX"
+  check "AF: create-feature-worktree refuses when no base is writable (exit 1)" "1" "$exit_code"
+  grep -q "LOOP_SPEC_WORKTREE_DIR" <<<"$err" && r=ok || r=missing
+  check "AF2: the refusal names the operator escape hatch" "ok" "$r"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

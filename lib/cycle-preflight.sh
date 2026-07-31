@@ -26,7 +26,8 @@
 #   }
 #
 # Resume scan (the mechanical part of cycle Step 1): for each feature.json
-# under <dir> and every registered .claude/worktrees/* worktree —
+# under <dir> and every registered feature worktree (git-ops.sh list-feature-worktrees,
+# which finds them wherever lib/worktree-base.sh placed them) —
 #   - parse feature.json, falling back to feature.json.bak on a parse failure
 #     (parse_source records which); both unreadable -> skipped + warning
 #   - skip currentPhase == "completed"; a ready DELIVER sidecar remains resumable

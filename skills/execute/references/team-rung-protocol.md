@@ -41,7 +41,8 @@ The lead serializes worktree merges through a FIFO dependency-aware merge queue.
 **Integration procedure:**
 
 ```bash
-worktree_path="$WT_ROOT/.loop-spec/worktrees/{slug}/task-{taskId}/"
+worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+  resolve "$WT_ROOT" task "{slug}/task-{taskId}" | jq -r '.path')"
 worktree_branch="task/{taskId}-{slug}"
 
 integration_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/integrate-task.sh" \

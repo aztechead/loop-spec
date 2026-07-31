@@ -9,7 +9,7 @@
     {
       "name": "loop-spec",
       "description": "Loop-driven development from a spec file or prose prompt for Claude Code. Semantic autonomous routing selects micro, bounded debug, or the full seven-phase cycle, then delivers a verified PR.",
-      "version": "2.29.1",
+      "version": "2.30.0",
       "source": "./",
       "author": {
         "name": "aztechead",
