@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.29.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.30.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -457,6 +457,7 @@ EXECUTE dispatch:
 |---|---|---|
 | `LOOP_SPEC_EXECUTE_LOOPS` | auto | `1` requests loop-fleet at any DAG width; `0` forbids it. Selection still requires the agent CLI and persistent-runtime capability. |
 | `LOOP_SPEC_WORKTREES` | `1` | `0` prohibits feature and task worktree creation/entry, uses the in-place feature branch, and selects serial EXECUTE. One-shot implementer/reviewer subagents are retained when available. A PreToolUse guard denies all three tool-reachable worktree entry points: `git worktree add` / the feature-worktree helper, `EnterWorktree`, and `Agent({isolation: "worktree"})`. Standalone revise also works in place. |
+| `LOOP_SPEC_WORKTREE_DIR` | unset | Base directory for every worktree loop-spec creates (`<dir>/features/<slug>`, `<dir>/tasks/…`); absolute or relative to the repo. Set it outside the repository when a sandboxed harness refuses to write harness-config paths into an in-repo worktree. Unset keeps the in-repo default and relocates automatically only when that default cannot hold the checkout. |
 | `LOOP_SPEC_SHARE_DEPENDENCIES` | `1` | With worktrees enabled, link a matching successfully prepared `node_modules` from the feature checkout; `0` installs independently. |
 | `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` | `3` | Positive integer cap, clamped to 3. `LOOP_SPEC_WORKTREES=0` forces an effective cap of 1. |
 | `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` | unset | Positive integer deployment-wide cap on simultaneous one-shot Agent calls. When set, teams, Workflow fan-out, and loop fleets are disabled in favor of enforceable bounded waves. `1` keeps role agents but runs them serially. |
@@ -687,6 +688,11 @@ The cycle skill is a thin orchestrator; each phase skill owns its own dispatches
 
 Under Claude Code each feature runs in its own git worktree by default
 (`.claude/worktrees/{slug}`, branch `feat/{slug}` from the fetched base SHA).
+`lib/worktree-base.sh` verifies that location can actually hold the checkout before it
+is used — a sandboxed harness may deny writing harness-config paths such as
+`.claude/commands/**` anywhere inside the repository, which aborts `git worktree add`
+part-way through — and relocates the worktree outside the repository when it cannot.
+`LOOP_SPEC_WORKTREE_DIR` sets that base explicitly.
 `LOOP_SPEC_WORKTREES=0` instead uses a clean in-place feature branch and
 deterministically blocks later worktree creation/entry. OpenCode/pi always use a clean
 in-place branch because those harnesses cannot switch a live session root. Resume scans

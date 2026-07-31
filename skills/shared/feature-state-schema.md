@@ -27,7 +27,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "currentPhase": "spec | discuss | plan | execute | verify | iterate | deliver | completed",
   "completedPhases": ["array of phase names"],
   "branch": "string (feat/{slug})",
-  "worktreePath": "string (.claude/worktrees/{slug}) in single-repo mode; null in workspace mode",
+  "worktreePath": "string (absolute path of the created feature worktree, .claude/worktrees/{slug} by default) in single-repo mode; null in workspace mode",
   "executionRootMode": "worktree | in-place | workspace",
   "baseSha": "git sha at branch creation",
   "baseBranch": "string (e.g., main)",
@@ -199,9 +199,14 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   the same phase default reaches explicit teams, implicit named Agents,
   one-shot fallbacks, and phase gates. Both maps come from `feature-init.sh`.
 - `worktreePath` points at the dedicated single-repo git worktree created at cycle
-  Step 5 via `lib/git-ops.sh create-feature-worktree`. It is null for
-  `LOOP_SPEC_WORKTREES=0`, OpenCode/pi, and workspace execution. Resume discovers
-  recorded feature worktrees via `git-ops.sh list-feature-worktrees`.
+  Step 5 via `lib/git-ops.sh create-feature-worktree`. Its location is resolved by
+  `lib/worktree-base.sh`: `<repo>/.claude/worktrees/{slug}` by default, relocated
+  outside the repository when that base cannot hold the checkout or when
+  `LOOP_SPEC_WORKTREE_DIR` is set. Record what the helper printed; never assume the
+  default. Features created before 2.30.0 may carry the repo-relative
+  `.claude/worktrees/{slug}` form, which still resolves against the repo root. It is
+  null for `LOOP_SPEC_WORKTREES=0`, OpenCode/pi, and workspace execution. Resume
+  discovers recorded feature worktrees via `git-ops.sh list-feature-worktrees`.
 - `executionRootMode` is `worktree` for Claude's default native feature worktree,
   `in-place` for `LOOP_SPEC_WORKTREES=0` and the additive OpenCode/pi path (those
   harnesses cannot switch a live session root), and `workspace` for multi-repo mode.

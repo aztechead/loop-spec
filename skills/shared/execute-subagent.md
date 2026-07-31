@@ -39,6 +39,20 @@ wave (`min(|ready|, maxParallelImplementers)`).
 - `tasks[]` — each `{id, subject, files, blockedBy (union), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` comes straight from the PLAN task block; it is the per-task behavioral assertion re-run post-merge in step 7.)
 - `maxParallelImplementers` (3), `maxRetriesPerTask` (2), `reviewersEnabled` (true) — fixed (`skills/shared/tier-matrix.md`).
 - `featureWorktreeRoot = $(git rev-parse --show-toplevel)`, `featureBranch = feat/{slug}`.
+- `worktree_path` — **resolved per task, never hard-coded.** Compute it once and
+  substitute the same absolute value into the implementer prompt, the reviewer prompt,
+  and the integration call:
+
+  ```bash
+  worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+    resolve "$featureWorktreeRoot" task "{slug}/task-{taskId}" | jq -r '.path')"
+  ```
+
+  The resolver keeps the historical `{featureWorktreeRoot}/.loop-spec/worktrees/{slug}/task-{taskId}`
+  location whenever that base can hold a checkout, and moves the worktree outside the
+  repository when it cannot — a sandboxed harness that denies harness-config paths
+  (`.claude/commands/**`) inside the repo makes an in-repo checkout impossible — or when
+  the operator sets `LOOP_SPEC_WORKTREE_DIR`.
 - `models.implementer`, `models.specComplianceReviewer` — passed as the `Agent` `model`.
 - `commands` — `{lint, test, typecheck}` from `feature.json.commands`.
 
@@ -122,7 +136,8 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
 
    ```bash
    worktree_branch="task/{taskId}-{slug}"
-   worktree_path="${featureWorktreeRoot}/.loop-spec/worktrees/{slug}/task-{taskId}"
+   worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+     resolve "$featureWorktreeRoot" task "{slug}/task-{taskId}" | jq -r '.path')"
 
    integration_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/integrate-task.sh" \
      --feature-root "$featureWorktreeRoot" \

@@ -21,8 +21,9 @@ mode asks exactly ONE confirmation (the classification table) before acting.
 ## Hard rules
 
 - **Checkout isolation follows `LOOP_SPEC_WORKTREES`.** Default mode never switches
-  the user's checkout: all work happens in a dedicated worktree at
-  `.loop-spec/worktrees/{slug}-revise`. With `LOOP_SPEC_WORKTREES=0`, the checkout
+  the user's checkout: all work happens in a dedicated worktree whose location comes
+  from `lib/worktree-base.sh` (`.loop-spec/worktrees/{slug}-revise` unless that base
+  cannot hold a checkout or `LOOP_SPEC_WORKTREE_DIR` says otherwise). With `LOOP_SPEC_WORKTREES=0`, the checkout
   must be clean and dedicated to this run; revise checks out the PR branch in place,
   creates no worktree, and leaves that branch checked out.
 - **Never force-push.** If the remote branch has moved past the local ref, fetch
@@ -76,7 +77,11 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" phase_start --phase 
 git fetch origin "$branch"
 case "${LOOP_SPEC_WORKTREES:-1}" in
   1)
-    revision_root=".loop-spec/worktrees/{slug}-revise"
+    # Resolved, not hard-coded: the default stays .loop-spec/worktrees/{slug}-revise and
+    # moves outside the repository when that base cannot hold a checkout (a sandboxed
+    # harness denying in-repo harness-config paths) or LOOP_SPEC_WORKTREE_DIR is set.
+    revision_root="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+      resolve "$(git rev-parse --show-toplevel)" task "{slug}-revise" | jq -r '.path')"
     git worktree add "$revision_root" -B "$branch" "origin/$branch" 2>/dev/null \
       || # branch checked out elsewhere: abort with the worktree list — never steal a checkout
     ;;

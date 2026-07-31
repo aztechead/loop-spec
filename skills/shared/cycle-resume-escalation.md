@@ -80,6 +80,11 @@ Once the worktree is confirmed present, use the absolute candidate path:
 ```
 EnterWorktree({ path: candidate.worktreeAbs })
 ```
+`worktreePath` is the location `lib/worktree-base.sh` resolved when the feature was
+created, which may be OUTSIDE the repository. That is still enterable: on first entry
+from the launch directory `EnterWorktree({path})` only requires the path to appear in
+`git worktree list` for this repository. Do not rewrite a recorded path to
+`.claude/worktrees/` — recreate it where it was recorded.
 Call this BEFORE routing to the current phase. All subsequent phase work runs inside the worktree with the feature branch already checked out. Subagents dispatched from phase skills must receive absolute paths (resolve via `git rev-parse --show-toplevel` from inside the worktree).
 
 **Workspace features (`workspace` block non-null):**

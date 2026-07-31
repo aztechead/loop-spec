@@ -23,11 +23,17 @@ Repeat until idle:
 After step 4, the implementer creates its worktree:
 
 ```bash
-worktree_path=".loop-spec/worktrees/{slug}/task-{taskId}/"
+worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+  resolve "$(git rev-parse --show-toplevel)" task "{slug}/task-{taskId}" | jq -r '.path')"
 worktree_branch="task/{taskId}-{slug}"
 
 git worktree add -b {worktree_branch} {worktree_path} {branch}
 ```
+
+The resolver keeps the historical `.loop-spec/worktrees/{slug}/task-{taskId}` location
+when the feature root can hold the checkout and relocates the worktree outside the
+repository when it cannot (sandboxed harness-config paths) or when
+`LOOP_SPEC_WORKTREE_DIR` is set. Never hard-code the path.
 
 The implementer then:
 

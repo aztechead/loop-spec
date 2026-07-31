@@ -243,6 +243,10 @@ Close the else block after the ladder resolves:
   # --- single-repo path below ---
   featureWorktreeRoot=$(git rev-parse --show-toplevel)
   skillDir="${CLAUDE_SKILL_DIR}"
+  # One resolution for every task worktree of this feature, passed to whichever rung
+  # runs (Workflow DAG arg, team-prompt {worktreeBase}, subagent worktree_path).
+  taskWorktreeBase="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+    resolve "$featureWorktreeRoot" task "{slug}" | jq -r '.path')"
 fi
 ```
 
@@ -398,6 +402,8 @@ Workflow({
     reviewersEnabled: true,
     commands: feature.commands,
     skillDir: skillDir,
+    // bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" resolve "$featureWorktreeRoot" task "{slug}" | jq -r '.path'
+    taskWorktreeBase: taskWorktreeBase,
     tasks: <tasks[] array from Step 2a/2b>
   }
 })
@@ -510,7 +516,7 @@ TeamCreate({
       name: "implementer-1",
       subagent_type: "loop-spec:implementer",
       model: feature.models.implementer,
-      prompt: "<implementer.md template with {slug}, {N}=1, {maxRetriesPerTask} substituted>"
+      prompt: "<implementer.md template with {slug}, {N}=1, {maxRetriesPerTask}, {worktreeBase} substituted>"
     },
     // ... implementer-2 through implementer-M
     // R reviewers:
@@ -527,6 +533,14 @@ TeamCreate({
 
 The implementer spawn prompt is the `skills/shared/team-prompts/implementer.md` template with all placeholders substituted. Pass the full teammate roster in the prompt so implementers and reviewers can address each other by name.
 
+`{worktreeBase}` is resolved ONCE by the lead before spawning and substituted into both
+the implementer and reviewer prompts, so every teammate agrees on where task worktrees live:
+
+```bash
+worktreeBase="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+  resolve "$WT_ROOT" task "{slug}" | jq -r '.path')"
+```
+
 Record the full roster in `feature.json.currentTeammates`:
 
 ```bash
@@ -538,7 +552,7 @@ lib/feature-write.sh set currentTeammates '["implementer-1", ..., "implementer-{
 Each `implementer-{N}` runs the following self-claim loop autonomously (as documented in `skills/shared/team-prompts/implementer.md`). The full step-by-step implementer self-claim loop (query, filter unblocked, claim, worktree, implement, verify, commit, hand off), the reviewer self-claim loop, the race-claim serialization contract, and the rework re-entry path are documented in **`skills/shared/execute-loops.md`**.
 
 Contract the lead depends on (the rest is teammate-internal):
-- Implementers create a worktree per task at an **absolute path**: `$WT_ROOT/.loop-spec/worktrees/{slug}/task-{taskId}/` (where `WT_ROOT=$(git rev-parse --show-toplevel)` is resolved inside the feature worktree before spawning). The worktree is created on branch `task/{taskId}-{slug}`. The implementer commits there, then sets `metadata.phase = "awaiting_review"`.
+- Implementers create a worktree per task at an **absolute path**, resolved by `lib/worktree-base.sh resolve "$WT_ROOT" task "{slug}/task-{taskId}"` (where `WT_ROOT=$(git rev-parse --show-toplevel)` is resolved inside the feature worktree before spawning). That keeps the historical `$WT_ROOT/.loop-spec/worktrees/{slug}/task-{taskId}/` location when the feature root can hold the checkout, and relocates it outside the repository when a sandboxed harness denies harness-config paths in-repo or `LOOP_SPEC_WORKTREE_DIR` is set. The lead resolves the path once and passes it to the implementer; never hard-code it. The worktree is created on branch `task/{taskId}-{slug}`. The implementer commits there, then sets `metadata.phase = "awaiting_review"`.
 - Reviewers flip a task to `completed` on pass and `SendMessage` `REVIEW PASS: task-{taskId}` to the lead; on terminal failure they mark it `completed` with `metadata.result = "blocked"`.
 
 ### Steps 7-10 - Fallback: idle/wake, merge queue, log emission, phase exit

@@ -96,6 +96,14 @@ TaskCreate({
   `git worktree list` (loop-spec's Step 5 flow: `git-ops.sh` creates, then enter by
   path). `EnterWorktree({name})` creates fresh — not the loop-spec flow. `name`/`path`
   mutually exclusive.
+- The `path` form has TWO different requirements, and loop-spec only ever uses the
+  first: on first entry **from the launch directory** the path merely has to appear in
+  `git worktree list` for this repository (or a repository nested inside it), so a
+  worktree that `lib/worktree-base.sh` placed outside the repository is enterable.
+  Switching **while already inside a worktree**, or from an agent with a pinned cwd,
+  additionally requires the target to be under `.claude/worktrees/` of the same repo.
+  Every loop-spec entry (Step 5, resume, post-pause re-entry after `ExitWorktree`)
+  happens from the launch directory.
 - `ExitWorktree({action: "keep" | "remove", discard_changes?})` — `action` REQUIRED.
 
 ## Skill

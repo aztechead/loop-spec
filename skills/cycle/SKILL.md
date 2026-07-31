@@ -493,8 +493,15 @@ case "$harness_name" in
       git -C "$repo_root" checkout -b "feat/${slug}" "$base_sha"
       echo "loop-spec: LOOP_SPEC_WORKTREES=0; using the in-place feature branch with serial one-shot subagents."
     else
-      worktree_abs="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" create-feature-worktree "$slug" "$base_sha")"
-      worktree_state_path=".claude/worktrees/${slug}"
+      worktree_abs="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" create-feature-worktree "$slug" "$base_sha")" || {
+        echo "loop-spec: could not create the feature worktree (see the helper's diagnostic above)." >&2
+        exit 1
+      }
+      # Record the path the helper actually used. The default is
+      # <repo>/.claude/worktrees/{slug}; lib/worktree-base.sh relocates it outside the
+      # repository when that base cannot hold the checkout (a sandboxed harness denying
+      # harness-config paths in-repo) or when LOOP_SPEC_WORKTREE_DIR is set.
+      worktree_state_path="$worktree_abs"
       EnterWorktree({ path: worktree_abs })
     fi
     ;;
