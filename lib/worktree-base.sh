@@ -176,6 +176,8 @@ prune_created() {
 
 # Write the checkout's own harness-config directories at the candidate. This is the
 # exact operation `git worktree add` performs, at the exact location it performs it.
+# Both the extensionless and Markdown probe files are written: harness sandboxes may
+# restrict either filename pattern.
 probe_base() {
   local base="$1"
   local keep probe d ok=1
@@ -184,6 +186,7 @@ probe_base() {
   for d in "${probe_dirs[@]}"; do
     if ! mkdir -p "${probe}/${d}" 2>/dev/null; then ok=0; break; fi
     if ! : > "${probe}/${d}/.probe" 2>/dev/null; then ok=0; break; fi
+    if ! : > "${probe}/${d}/.probe.md" 2>/dev/null; then ok=0; break; fi
   done
   rm -rf "$probe" 2>/dev/null || true
   prune_created "$base" "$keep"
