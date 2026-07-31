@@ -79,6 +79,8 @@ check "F: writable in-repo base is kept (no needless relocation)" \
 check "F2: kept in-repo base is not relocated" "false" "$(jq -r '.relocated' <<<"$out")"
 probe_left="$(find "$TRACKED" -name '.loop-spec-write-probe*' 2>/dev/null | wc -l | tr -d ' ')"
 check "F3: the write probe leaves no residue" "0" "$probe_left"
+grep -Fq ': > "${probe}/${d}/.probe.md"' "$LIB" && r=ok || r=missing
+check "F4: the write probe covers restricted .probe.md files" "ok" "$r"
 
 if [[ "$(id -u)" == "0" ]]; then
   echo "SKIP: E/I permission cases (running as root)"

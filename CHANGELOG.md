@@ -2,6 +2,14 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.30.1] - 2026-07-31
+
+### Fixed
+
+- The worktree write probe now tests both `.probe` and `.probe.md` files in every
+  tracked `.claude/` directory. This detects harness restrictions that target
+  Markdown probe files before `git worktree add` begins a checkout.
+
 ## [2.30.0] - 2026-07-31
 
 ### Added
