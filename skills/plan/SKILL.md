@@ -98,7 +98,7 @@ existing single-planner Agent dispatch below.
 
 ### Step 2 - Spawn planner-1
 
-Model: `feature.models.planner` (resolved once at cycle Step 5; do not re-derive from model-matrix).
+Model: `feature.models.planner` (activated for PLAN immediately before entry; do not re-derive from model-matrix).
 
 ```
 SendMessage({
@@ -590,14 +590,12 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 ### Step 8 - Phase routing
 
-| execStyle | Action |
-|-----------|--------|
-| auto | Invoke `loop-spec:execute` immediately |
-| step | Print "PLAN complete. PLAN.md at docs/loop-spec/features/{slug}/PLAN.md." Return to user. |
-| interactive | Same as step. |
-| review-only | Invoke `loop-spec:execute` (gate already paused for human if findings) |
-
-Return.
+Always return to the cycle orchestrator after persisting `currentPhase = "execute"`;
+never invoke EXECUTE directly. Cycle owns the phase boundary: continuous mode invokes
+EXECUTE immediately, while `phaseHandoff == true` writes the paused result and ends
+the main-agent invocation. For `step` / `interactive`, include
+`PLAN complete. PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.` in the returned
+phase summary.
 
 ## Non-interactive mode
 

@@ -4,7 +4,8 @@ Single-tier operation (v2.5.0 hard cutover): the quick/balanced/quality axis is 
 Gate behavior, severity thresholds, and fan-out width are FIXED. Trivially-scoped work
 is handled structurally — by the measured plan (the fast-path
 below) and the DAG-width ladder — never by an intent tier inferred from the prompt.
-Model selection is fixed and lives in `skills/shared/model-matrix.md`.
+Canonical role defaults and phase/role override precedence live in
+`skills/shared/model-matrix.md`.
 
 ## Gate behavior (fixed)
 
@@ -42,7 +43,7 @@ Both critique gates (DISCUSS spec-critique, PLAN plan-critique) climb the same l
 the lightest mode that preserves strictness wins:
 
 1. **Skip** — PLAN only, via the structural fast-path above. The spec critique never skips.
-2. **Single-critic (the default)** — one challenger (opus) reviews the artifact solo and
+2. **Single-critic (the default)** — one challenger (canonical default: opus) reviews the artifact solo and
    reports `[major]`/`[minor]`-tagged findings straight to the lead
    (`skills/shared/team-prompts/critic.md`). No advocate is dispatched; the lead
    adjudicates. Strictness is preserved by construction: the lead may accept any finding

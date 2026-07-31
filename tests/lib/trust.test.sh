@@ -119,6 +119,9 @@ mk 0 null null null
 ec=0; LOOP_SPEC_MAX_FEATURES=10 bash "$SCRIPT" authorize --action sentinel-batch --completed 1 \
   --metrics-json "$WORK/metrics.json" --conf "$WORK/no-conf" >/dev/null 2>&1 || ec=$?
 check "L0 batch: env cannot raise the cap" "1" "$ec"
+ec=0; LOOP_SPEC_MAX_FEATURES=0 bash "$SCRIPT" authorize --action sentinel-batch --completed 1 \
+  --metrics-json "$WORK/metrics.json" --conf "$WORK/no-conf" >/dev/null 2>&1 || ec=$?
+check "L0 batch: zero env falls back to one" "1" "$ec"
 
 # sentinel-batch at L1: LOOP_SPEC_MAX_FEATURES honored up to BATCH_L1
 check "L1 batch: default env still bounds at 1" "1" "$(auth 5 0 null null sentinel-batch --completed 1)"

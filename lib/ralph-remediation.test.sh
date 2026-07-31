@@ -75,6 +75,18 @@ else
 fi
 rm -rf "$FDIR"
 
+FDIR=$(make_feature_dir_small)
+set +e
+LOOP_SPEC_RALPH_THRESHOLD=invalid bash "$SCRIPT" "$FDIR" > /dev/null 2>&1
+EXITCODE=$?
+set -e
+if [[ "$EXITCODE" -eq 2 ]]; then
+  pass "invalid threshold exits 2"
+else
+  fail "invalid threshold exits 2 (got exit $EXITCODE)"
+fi
+rm -rf "$FDIR"
+
 # Test 3: At-threshold runs loop (2 tasks, threshold 3) - exits 1 since no COMPLETE signal from echo
 FDIR=$(make_feature_dir_small)
 LOGFILE="${TMPDIR:-/tmp}/ralph-remediation-small-feature.log"

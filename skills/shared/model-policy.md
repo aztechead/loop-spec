@@ -4,16 +4,22 @@
 
 ## Allowed models
 
-Model selection is fixed per role (no preset axis); the authoritative role -> model map is `skills/shared/model-matrix.md`. The two tiers below are the only models any role runs on.
+Canonical selection is fixed per role (no preset axis); the authoritative
+routing and override contract is `skills/shared/model-matrix.md`.
 
 | Family | Alias | Roles |
 |--------|-------|-------|
 | Heavy | `opus` | spec-writer, planner, challenger, iterate-judge, code-reviewer |
 | Standard | `sonnet` | advocate, spec-compliance-reviewer, implementer, verifier, mapper-*, pattern-mapper (1M-ctx flag when available) |
 
-Dispatch uses harness ALIASES, not pinned IDs: the modern Agent tool's `model` parameter is an alias enum and rejects literal IDs. `haiku` is allowed by policy but no longer assigned to any role.
+Dispatch uses harness ALIASES, not pinned IDs: the modern Agent tool's `model`
+parameter is an alias enum and rejects literal IDs. `haiku` and `fable` are
+accepted override values but are not canonical defaults.
 
-Per-role canonical defaults can be overridden at deployment time via `LOOP_SPEC_MODEL_<ROLE>` env vars (SCREAMING_SNAKE of the JSON key); see `skills/shared/model-matrix.md` "Per-role override" for the full contract. Overrides must be harness aliases; literal model IDs are rejected at startup.
+Per-phase defaults can be overridden with
+`LOOP_SPEC_PHASE_MODEL_<SPEC|DISCUSS|PLAN|EXECUTE|VERIFY|ITERATE|DELIVER>`, and
+per-role defaults with `LOOP_SPEC_MODEL_<ROLE>`. Role overrides win over phase
+overrides; task metadata wins where supported. All must be harness aliases.
 
 ## Consuming-project compatibility
 
@@ -21,7 +27,9 @@ Some projects' `CLAUDE.md` hard-codes earlier model IDs (e.g., chrisbobrowitz/su
 
 ## Health check (cycle startup)
 
-The cycle skill probes the fixed model set at startup with a 1-token completion. Retries 3x with 2s backoff. Failure prints:
+The cycle skill calls `feature-init.sh all-models` and probes every effective
+alias at startup. The 24-hour cache is valid only for the same sorted alias set.
+Retries 3x with 2s backoff. Failure prints:
 
 ```
 loop-spec health check FAILED
@@ -38,8 +46,16 @@ Sonnet 4.6 supports 1M context with the `context-1m-2025-08-07` beta flag (or eq
 
 ## Dispatch rule
 
-Phase skills MUST pass `model:` explicitly on every teammate spawn and every one-shot `Agent` dispatch, reading the resolved ID from `feature.models.<role>`. Never rely on the agent frontmatter default. See `skills/shared/model-matrix.md` "Dispatch rule" for the canonical `TeamCreate` shape and the Step 5.5b background-mapper exception.
+Cycle MUST run `feature-init.sh activate` before every phase invocation. Phase
+skills MUST pass `model:` explicitly on every teammate spawn and every one-shot
+`Agent` dispatch, reading the activated alias from `feature.models.<role>`.
+Never rely on the agent frontmatter default.
 
 ## Deployment alias mapping (Bedrock/Vertex)
 
-Harness aliases (`opus`, `sonnet`, etc.) resolve to concrete model IDs inside the harness layer; loop-spec deliberately does not carry its own model-ID catalog because the Agent tool rejects literal IDs with InputValidationError. A deployment environment missing a model family (e.g. a Bedrock deployment without sonnet) must remap at the harness level via `ANTHROPIC_MODEL` / provider settings, or route affected roles to an available alias using `LOOP_SPEC_MODEL_<ROLE>`. The cycle startup health-check probes the resolved aliases and fails loud on any error — there is no silent fallback.
+Harness aliases (`opus`, `sonnet`, etc.) resolve to concrete model IDs inside
+the harness layer; loop-spec deliberately does not carry its own model-ID
+catalog because the Agent tool rejects literal IDs with InputValidationError. A
+deployment environment missing a model family must remap at the harness level
+or route affected phases/roles to an available alias. The startup health-check
+probes the effective union and fails loud.

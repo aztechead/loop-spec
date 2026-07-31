@@ -40,6 +40,9 @@ check "worktree opt-out retains sequential context-isolating subagents" "subagen
   "$(jq -r '.rung + ":" + (.worktreesEnabled | tostring)' <<<"$out")"
 check "worktree opt-out reason is auditable" "LOOP_SPEC_WORKTREES=0; serial in-place one-shot subagents" \
   "$(jq -r '.reason' <<<"$out")"
+rc=0
+select_rung LOOP_SPEC_WORKTREES=invalid >/dev/null 2>&1 || rc=$?
+check "invalid worktree setting fails closed" "2" "$rc"
 
 out="$(select_rung LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1 \
   LOOP_SPEC_EXECUTION_PROFILE=interactive LOOP_SPEC_EXECUTE_LOOPS=1)"
@@ -76,6 +79,25 @@ out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=c
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 08 --teams-mode implicit \
   --workflows-available true --workflow-optin true)"
 check "leading-zero width is decimal" "workflow" "$(jq -r '.rung' <<<"$out")"
+
+# Configuration rejections exit 2 with stdout EMPTY and the message on stderr. The
+# EXECUTE relay must therefore read stderr: `jq` on empty stdin prints nothing, so a
+# stdout-only relay reports a blank error for every one of these paths.
+cfg_rc=0
+cfg_err="$WORK/cfg.err"
+cfg_out="$(select_rung LOOP_SPEC_WORKTREES=maybe 2>"$cfg_err")" || cfg_rc=$?
+check "invalid worktrees setting exits 2" "2" "$cfg_rc"
+check "invalid worktrees setting writes no stdout JSON" "" "$cfg_out"
+check "invalid worktrees message lands on stderr" "1" \
+  "$(grep -q 'LOOP_SPEC_WORKTREES must be 0 or 1' "$cfg_err" && echo 1 || echo 0)"
+check "stdout-only relay would lose the message" "" \
+  "$(jq -r '.message // empty' <<<"$cfg_out" 2>/dev/null || true)"
+
+EXEC_SKILL="$ROOT/skills/execute/SKILL.md"
+check "EXECUTE rung relay captures stderr" "1" \
+  "$(grep -Fq '2>"$rung_err"' "$EXEC_SKILL" && echo 1 || echo 0)"
+check "EXECUTE rung relay falls back to the stderr text" "1" \
+  "$(grep -Fq 'rung_msg="$(cat "$rung_err")"' "$EXEC_SKILL" && echo 1 || echo 0)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

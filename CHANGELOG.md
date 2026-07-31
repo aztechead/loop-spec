@@ -2,6 +2,64 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.29.1] - 2026-07-30
+
+### Added
+
+- Added a canonical, exhaustive configuration reference covering precedence, every
+  shipped `LOOP_SPEC_*` environment name, host capability inputs, every public skill
+  argument, and every loop-runner CLI flag. A coverage test fails when a shipped
+  environment name or public flag is not classified. The accompanying utilization
+  audit also requires every documented input to have a shipped consumer.
+- Added `LOOP_SPEC_PHASE_MODEL_<PHASE>` routing for all seven cycle phases. The
+  cycle activates the selected alias before every phase so explicit teams, implicit
+  named Agents, one-shot fallbacks, and gate reviewers consume it. Per-role and
+  per-task routes remain more specific. The Claude CLI and Python Agent SDK handoff
+  recipes now launch each fresh main phase query with its configured phase model.
+
+### Fixed
+
+- The deferral Stop guard now persists a transcript-scoped scope obligation after
+  denial. `stop_hook_active` is no longer an unconditional one-retry bypass, and
+  deleting the trigger words cannot pass: completion requires a post-denial
+  repository change, implementation activity followed by verification, and an
+  explicit `Resolved scope:` evidence line.
+- `LOOP_SPEC_WORKTREES=0` is now enforced at the tool and helper boundaries. It
+  denies accidental raw worktree creation/entry, supports in-place PR revision,
+  documents single-repo in-place EXECUTE as a first-class mode, and makes standalone
+  loop-runner execution automatically use its serial no-worktree path.
+- `LOOP_SPEC_PHASE_HANDOFF=1` is now enforced at the phase-skill tool boundary.
+  Phase skills always return to cycle instead of chaining directly; if an agent still
+  attempts a second phase in one transcript, the guard writes the paused handoff result
+  and denies the invocation.
+- `feature-init.sh all-models` no longer prints the aliases that happened to resolve
+  when a later route is invalid. It now emits nothing and exits non-zero, and the
+  startup probe checks that status — an invalid `LOOP_SPEC_PHASE_MODEL_<PHASE>` or
+  `LOOP_SPEC_MODEL_<ROLE>` can no longer produce a green health check over a partial
+  alias set.
+- EXECUTE's rung-selection error relay now captures stderr. `execute-rung.sh` reports
+  configuration rejections (invalid `LOOP_SPEC_WORKTREES`, invalid
+  `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS`, bad width) on stderr with empty stdout, where
+  `jq` printed nothing and the operator saw a blank `ERROR:` line.
+- Corrected two Claude Code host-contract claims verified against the shipped CLI:
+  `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` does not exist (subagent nesting is capped at
+  a fixed depth with no environment override), and `Agent(model:...)` permission rules
+  are inert (the `Agent` tool implements no permission matcher, so a rule with
+  parenthesised content never matches). `PREREQUISITES.md` now documents the controls
+  that are actually enforced. Documented `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`, which is
+  what bounds the deferral and micro Stop guards.
+- The no-worktrees guard now covers `Agent({isolation: "worktree"})`. Claude Code names
+  three worktree entry points — "Applies to `--worktree`, `EnterWorktree`, and agent
+  isolation" — and the guard previously covered only two, leaving a documented Agent
+  parameter as an open bypass of `LOOP_SPEC_WORKTREES=0`. Agent *frontmatter*
+  `isolation` cannot be seen by any hook (it never reaches `tool_input`), so
+  `tests/validate-agents.sh` now forbids the key outright and `agents/README.md`
+  documents why rather than advertising it as supported.
+- The no-worktrees guard now matches an *invocation* of the feature-worktree helper
+  rather than any mention of its name, so read-only searches are no longer denied.
+- Replaced a `return` with `exit 0` in cycle's declined-SPEC-gate branch; these blocks
+  run as standalone Bash invocations, where `return` is a shell error.
+
 ## [2.29.0] - 2026-07-30
 
 ### Added

@@ -70,7 +70,7 @@ If `missing` is non-empty:
   starting the next. In this bounded mode these are foreground waves: do not carry
   mapper tasks into SPEC. Update the announcement to `in bounded waves`.
 
-- Model for mappers: `model_mapper = feature.models.mapper` (resolved once at Step 5; do not re-derive from model-matrix).
+- Model for mappers: `model_mapper = feature.models.mapper` (activated for SPEC before bootstrap; do not re-derive from model-matrix).
 
 - **Single-repo mode:** background mappers are subagents and do NOT inherit the worktree cwd. Resolve the repo root once and pass ABSOLUTE paths in every Agent prompt:
   ```bash

@@ -43,8 +43,13 @@ Anything else that speaks deferral language on a completion surface is a violati
   never "reword the PR body": either ship the flagged work (route back through
   EXECUTE) or correct a mislabeled gate line at its source, then re-run DELIVER.
 - `hooks/team/deferral-guard.sh` (Claude Code Stop hook) blocks any final message
-  that combines a completion claim with unmarked deferral language. pi/OpenCode
-  harnesses get the same protection from the `deliver.sh` gate and this contract.
+  that combines a completion claim with unmarked deferral language. The first denial
+  records the transcript cursor and repository fingerprint; removing the words on the
+  retry remains blocked. Clearing the obligation requires a later material repository
+  change, implementation activity followed by verification, and a grounded
+  `Resolved scope: <item> — <files and verification evidence>` line. pi/OpenCode
+  harnesses get delivery-surface protection from the `deliver.sh` gate and this
+  contract.
 
 ## Before you print a completion report
 

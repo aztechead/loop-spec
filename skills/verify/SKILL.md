@@ -351,7 +351,9 @@ Fixed gate rule (single-tier operation): **BLOCK on Critical OR Important. PASS_
 - Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
 - **Ralph remediation routing:** Check `pendingRemediationTasks.length` from `feature.json`.
-  - `RALPH_THRESHOLD="${LOOP_SPEC_RALPH_THRESHOLD:-3}"` (default 3).
+  - `RALPH_THRESHOLD="${LOOP_SPEC_RALPH_THRESHOLD:-3}"` (default 3). The
+    deterministic helper rejects non-positive/non-integer values with exit 2; relay
+    that configuration error rather than falling through to another dispatch rung.
   - If `pendingRemediationTasks.length <= RALPH_THRESHOLD`: invoke `bash "${CLAUDE_SKILL_DIR}/../../lib/ralph-remediation.sh" "$feature_dir"` and use its output to drive the remediation loop instead of the full EXECUTE team. If `ralph-remediation.sh` exits 1 (max iterations reached), fall through to the full EXECUTE team path.
   - Else (task count exceeds threshold): route to `loop-spec:execute` (existing behavior). When execute completes, re-invoke verify from Step 1.
 

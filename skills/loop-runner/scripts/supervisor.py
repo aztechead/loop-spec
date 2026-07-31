@@ -530,6 +530,28 @@ def main() -> int:
                    help="Validate the plan and print the schedule without running.")
     args = p.parse_args()
 
+    bounds = (
+        ("--parallel", args.parallel, 1, "positive"),
+        ("--retries", args.retries, 0, "non-negative"),
+        ("--task-timeout", args.task_timeout, 1, "positive"),
+        ("--max-turns", args.max_turns, 0, "non-negative"),
+    )
+    for flag, value, minimum, wording in bounds:
+        if value < minimum:
+            p.error(f"{flag} must be a {wording} integer")
+    if args.max_budget_usd < 0:
+        p.error("--max-budget-usd must be a non-negative number")
+
+    worktrees = os.environ.get("LOOP_SPEC_WORKTREES", "1")
+    if worktrees not in ("0", "1"):
+        p.error("LOOP_SPEC_WORKTREES must be 0 or 1")
+    if worktrees == "0":
+        args.no_worktree = True
+        if args.parallel != 1:
+            print("✗ LOOP_SPEC_WORKTREES=0 requires --parallel 1; "
+                  "multiple workers cannot share one checkout.")
+            return 2
+
     signal.signal(signal.SIGTERM, handle_termination)
     signal.signal(signal.SIGINT, handle_termination)
 

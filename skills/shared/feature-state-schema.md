@@ -32,17 +32,26 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "baseSha": "git sha at branch creation",
   "baseBranch": "string (e.g., main)",
   "models": {
-    "specWriter": "opus (fixed alias)",
-    "planner": "opus (fixed alias)",
-    "advocate": "opus (fixed alias)",
-    "challenger": "opus (fixed alias)",
-    "specComplianceReviewer": "opus (fixed alias; Ralph loop)",
-    "iterateJudge": "opus (fixed alias)",
-    "implementer": "sonnet (fixed alias)",
-    "codeReviewer": "opus (fixed alias)",
-    "verifier": "sonnet (fixed alias)",
-    "mapper": "sonnet (fixed alias)",
-    "patternMapper": "sonnet (fixed alias)"
+    "specWriter": "effective alias for the active phase",
+    "planner": "effective alias for the active phase",
+    "advocate": "effective alias for the active phase",
+    "challenger": "effective alias for the active phase",
+    "specComplianceReviewer": "effective alias for the active phase",
+    "iterateJudge": "effective alias for the active phase",
+    "implementer": "effective alias for the active phase",
+    "codeReviewer": "effective alias for the active phase",
+    "verifier": "effective alias for the active phase",
+    "mapper": "effective alias for the active phase",
+    "patternMapper": "effective alias for the active phase"
+  },
+  "phaseModels": {
+    "spec": "sonnet | opus | haiku | fable | null",
+    "discuss": "sonnet | opus | haiku | fable | null",
+    "plan": "sonnet | opus | haiku | fable | null",
+    "execute": "sonnet | opus | haiku | fable | null",
+    "verify": "sonnet | opus | haiku | fable | null",
+    "iterate": "sonnet | opus | haiku | fable | null",
+    "deliver": "sonnet | opus | haiku | fable | null"
   },
   "artifacts": {
     "specInterview": "path or null (.loop-spec/features/{slug}/spec-interview-transcript.md)",
@@ -178,9 +187,24 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `commands.prepare` is persisted beside the quality commands. Resolution precedence is an already-persisted explicit command, `LOOP_SPEC_CMD_PREPARE` (including an explicit empty value), `.loop-spec/workflow.json.prepareCommand`, then conservative lockfile detection by `lib/prepare-environment.sh`; ambiguous lockfiles produce an empty command rather than a mutable install guess. In workspace mode each repo owns its command and preparation key independently.
 - `verificationBaseline` is `null` until a clean, exact `HEAD == baseSha` capture. Single-repo mode uses the top-level field; workspace mode leaves that field null and uses `workspace.repos[].verificationBaseline`. Its compact JSON is committed with feature state, but command logs remain machine-local. Comparison requires matching `baseSha`, preparation key, and test/lint/typecheck command strings. Pass-to-fail and added fingerprints are regressions; unchanged or subset known failures are accepted; command/runtime infrastructure errors are distinct. Criterion-specific acceptance commands are never included. A missing baseline on an older feature is strict: current failures regress and are never learned from the modified feature head.
 - `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base.
-- `models` is a fixed per-role map (no preset axis), built ONCE at cycle Step 5 from `lib/feature-init.sh` (the single source of truth, mirroring `skills/shared/model-matrix.md`). Every phase skill passes `model: feature.models.<role>` on each spawn rather than re-deriving, so teammates never silently inherit the orchestrator's session model. opus runs spec-writer, planner, advocate, challenger, spec-compliance-reviewer, and iterate-judge; sonnet runs implementer, code-reviewer, verifier, mapper-*, and pattern-mapper. Cycle Step 5.9 re-normalizes this block idempotently on every resume from the same `feature-init.sh` source (forcing canonical IDs, dropping any vestigial `preset` field), so the two construction sites cannot drift.
-- `worktreePath` (single-repo mode) points at the dedicated git worktree created at cycle Step 5 via `lib/git-ops.sh create-feature-worktree`; all state, docs, and code live on `feat/{slug}` inside it. Resume discovers feature worktrees via `git-ops.sh list-feature-worktrees`.
-- `executionRootMode` is `worktree` for Claude's native feature worktree, `in-place` for the additive OpenCode/pi path (those harnesses cannot switch a live session root), and `workspace` for multi-repo mode.
+- `models` is the effective per-role map for the active phase (no preset axis).
+  `lib/feature-init.sh activate <feature-dir> <phase>` rewrites it immediately
+  before every phase invocation, including continuous transitions and resumes.
+  Every phase skill passes `model: feature.models.<role>` on each spawn rather
+  than re-deriving or inheriting frontmatter. Precedence is task override, role
+  env, phase env, canonical role default.
+- `phaseModels` is the persisted seven-phase override map from
+  `LOOP_SPEC_PHASE_MODEL_<PHASE>`; null means no override. It lets a fresh Claude
+  CLI/Agent SDK phase handoff choose its main model, while `models` guarantees
+  the same phase default reaches explicit teams, implicit named Agents,
+  one-shot fallbacks, and phase gates. Both maps come from `feature-init.sh`.
+- `worktreePath` points at the dedicated single-repo git worktree created at cycle
+  Step 5 via `lib/git-ops.sh create-feature-worktree`. It is null for
+  `LOOP_SPEC_WORKTREES=0`, OpenCode/pi, and workspace execution. Resume discovers
+  recorded feature worktrees via `git-ops.sh list-feature-worktrees`.
+- `executionRootMode` is `worktree` for Claude's default native feature worktree,
+  `in-place` for `LOOP_SPEC_WORKTREES=0` and the additive OpenCode/pi path (those
+  harnesses cannot switch a live session root), and `workspace` for multi-repo mode.
 - Tracked `delivery` is absent on completed schema-7 features created before the DELIVER phase and is tolerated for backward compatibility. New features initialize it to `pending`; DELIVER updates it only when failed checks route durable remediation back to EXECUTE. At most two required-check failures are routed back; a third fails closed at DELIVER instead of creating an infinite CI-remediation loop. Successful or external-failure observations live in ignored `.loop-spec/features/{slug}/delivery.json`, schema 1, with top-level `ok`, `status`, `nextPhase`, `prUrl`, timestamps, CI-remediation counters, and the same `targets[]` records. Keeping success out of tracked state prevents a post-CI commit from changing the exact checked SHA. `ready-for-review` means every changed target has `targetSha == remoteSha == headSha`, required checks passed or none were configured, and the PR is ready rather than draft.
 - The optional `workspace` block enables multi-root workspace mode. Rules: (1) `workspace` absent or null means single-repo mode (`worktreePath` set). (2) In workspace mode the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` are null; per-repo values in `workspace.repos[]` are authoritative. (3) The top-level `commands` block holds empty strings (per-repo commands live in `workspace.repos[].commands`). (4) State and artifact dirs are rooted at `workspace.root`. (5) Resume requires the session cwd to be `workspace.root`; the cycle skill instructs the user to cd there before re-invoking.
 - **Schema is 7-only.** A `feature.json` with `schemaVersion != 7` is unsupported and skipped on resume with a warning; there is no in-place migration path for older schemas. New features are always created at schema 7 by `lib/feature-init.sh`.

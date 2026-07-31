@@ -45,7 +45,8 @@ load the schema and retry the op once. Treat it as a missing capability only whe
 - **DISCUSS / PLAN / VERIFY:** spawn each roster member (e.g. `spec-writer-1`,
   `challenger-1`, `verifier-1`, `code-reviewer-1` — and `advocate-1` lazily, only when a
   critique gate escalates to the paired debate) with one
-  `Agent({name, description, ...})` call carrying its first work prompt, then drive critique
+  `Agent({name, description, subagent_type, model: feature.models.<role>, prompt})`
+  call carrying its first work prompt, then drive critique
   rounds and rework with `SendMessage` exactly as the explicit path describes.
   The only edits to those phases are: skip the `TeamCreate` block, fold its
   per-teammate prompt into the spawn, and skip the closing `TeamDelete`.

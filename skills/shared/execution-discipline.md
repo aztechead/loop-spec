@@ -7,7 +7,8 @@ mirroring `tests/ponytail-coverage.test.sh` and `tests/design-coverage.test.sh`.
 ## Why this exists
 
 The cycle's design phases run on the strongest available reasoning, but EXECUTE and
-VERIFY run on throughput models (sonnet) and gates on opus. The failure modes that
+VERIFY canonically uses throughput models (sonnet) and gates on opus, subject to
+explicit phase/role routes. The failure modes that
 separate a frontier reasoning pass from a mid-tier execution pass are consistent and
 predictable:
 

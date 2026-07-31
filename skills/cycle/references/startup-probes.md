@@ -4,7 +4,23 @@ Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. App
 
 ### Step 3.5 - Model probe
 
-Model selection is fixed (see `skills/shared/model-matrix.md`): the unique alias set is always `{opus, sonnet}` (harness aliases — the Agent tool's `model` parameter accepts aliases, not literal IDs).
+Resolve the complete alias set from the same executable source used at phase
+entry. This includes canonical defaults plus every per-role and per-phase
+override, so a configured `haiku` or `fable` route cannot bypass the health
+check:
+
+```bash
+required_models="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" all-models)" || {
+  echo "loop-spec: model routing is misconfigured; startup cannot resolve the alias set." >&2
+  exit 2
+}
+```
+
+The exit status is load-bearing. `all-models` prints nothing and exits non-zero when
+any `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>` value is not a harness
+alias. Relay that configuration error verbatim and stop; never continue with a partial
+alias set, because the phase-entry `activate` call would fail later anyway — after the
+health check already reported green.
 
 **pi harness: skip this probe entirely** (`harness != "claude"` in the preflight
 blob). The probe pre-flights `Agent` dispatches and pi has no `Agent` tool; model
@@ -15,14 +31,16 @@ agent files there), so failures surface on the first task or loop-fleet dispatch
 See `skills/shared/opencode-harness.md`.
 
 **Probe cache (speed):** the probe result is cached in `.loop-spec/runtime.json`
-(`modelsProbedAt`, ISO-8601). Skip the probe entirely — zero Agent dispatches —
-when either holds:
+(`modelsProbedAt`, ISO-8601, and `modelsProbed`, the sorted alias array). Skip the
+probe entirely—zero Agent dispatches—when the explicit kill switch is set, or
+when both the age and exact alias set match:
 
 ```bash
 skip_probe=false
 [[ "${LOOP_SPEC_SKIP_HEALTHCHECK:-}" == "1" ]] && skip_probe=true
 probed_at=$(jq -r '.modelsProbedAt // empty' .loop-spec/runtime.json 2>/dev/null || true)
-if [[ -n "$probed_at" ]]; then
+probed_models=$(jq -c '.modelsProbed // []' .loop-spec/runtime.json 2>/dev/null || echo '[]')
+if [[ -n "$probed_at" && "$probed_models" == "$(jq -c . <<<"$required_models")" ]]; then
   age=$(( $(date -u +%s) - $(python3 -c "import sys,datetime;print(int(datetime.datetime.strptime(sys.argv[1],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()))" "$probed_at" 2>/dev/null || echo 0) ))
   [[ "$age" -lt 86400 ]] && skip_probe=true   # probed within the last 24h
 fi
@@ -30,14 +48,22 @@ fi
 
 A model-policy failure surfaces identically on the first real dispatch, so the
 cache trades nothing for the saved startup latency. On probe success, write
-`modelsProbedAt` into `runtime.json` (merged with the workflow probe below).
+`modelsProbedAt` and `modelsProbed = required_models` into `runtime.json` (merged
+with the workflow probe below).
 
-When not skipped, dispatch one probe Agent per unique model (parallel, single tool message):
+When not skipped, read the aliases from `required_models` and dispatch one probe
+Agent per value (parallel, single tool message). Every call must pass that value
+in its actual `model:` field:
 
 ```
 Parallel:
-  Agent({description: "Model probe: opus", subagent_type: "loop-spec:spec-writer", model: "opus",   prompt: "Reply with the single word: ok"})
-  Agent({description: "Model probe: sonnet", subagent_type: "loop-spec:implementer", model: "sonnet", prompt: "Reply with the single word: ok"})
+  for model_alias in required_models:
+    Agent({
+      description: "Model probe: {model_alias}",
+      subagent_type: "loop-spec:spec-writer",
+      model: model_alias,
+      prompt: "Reply with the single word: ok"
+    })
 ```
 
 Retry each on transient error (2x, 2s backoff). On hard failure:
@@ -48,6 +74,19 @@ loop-spec health check FAILED
   Suggested fix: update CLAUDE.md model policy to allow {model_id}
 ```
 Then abort.
+
+After every probe succeeds, persist the exact cache key atomically:
+
+```bash
+mkdir -p .loop-spec
+runtime_tmp=".loop-spec/runtime.json.tmp"
+jq -n \
+  --argjson prior "$(cat .loop-spec/runtime.json 2>/dev/null || echo '{}')" \
+  --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --argjson models "$required_models" \
+  '$prior + {modelsProbedAt:$now, modelsProbed:$models}' > "$runtime_tmp"
+mv "$runtime_tmp" .loop-spec/runtime.json
+```
 
 Set `sonnet_1m_available = false` (1M context probe removed; defaults to false; the skill will use standard context windows).
 

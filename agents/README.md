@@ -47,21 +47,21 @@ disallowedTools:
   - WebSearch
 ```
 
-### `isolation`
+### `isolation` — forbidden (`tests/validate-agents.sh` enforces this)
 
-Declares the execution environment the orchestrator must set up before dispatching this agent.
+Claude Code supports `isolation: worktree` in agent frontmatter, and the harness (not
+the orchestrator) creates the worktree. loop-spec does not use it, for two reasons:
 
-Valid values:
+1. **It is invisible to the tool boundary.** Frontmatter isolation never appears in the
+   Agent call's `tool_input`, so `hooks/team/no-worktrees-guard.sh` cannot see it and
+   `LOOP_SPEC_WORKTREES=0` could not be enforced for that agent. The equivalent
+   *parameter* form, `Agent({isolation: "worktree"})`, is visible and is denied.
+2. **It branches from the base commit,** which hides prior tasks' committed changes in a
+   sequential DAG and strands work in a throwaway worktree (see `agents/implementer.md`).
 
-| Value | Meaning |
-|-------|---------|
-| `worktree` | Orchestrator creates a fresh `git worktree` for this agent. The agent receives `worktree_path` and `worktree_branch` in its input and must confine all writes to that path. Prevents cross-task file conflicts during parallel execution. |
-
-Example:
-
-```yaml
-isolation: worktree
-```
+Task worktrees are created explicitly by the EXECUTE dispatch contract
+(`git worktree add <path> -b task/<id>-<slug> feat/<slug>`), which branches from the
+feature-branch HEAD and is a single, auditable mechanism.
 
 ### `color`
 

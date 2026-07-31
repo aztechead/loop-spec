@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Tests for lib/feature-init.sh -- the single source of truth for the schema-7
-# feature.json skeleton + canonical models map. Also exercises the cycle Step 5.9
-# normalize merge against this same source: this is the path that previously dropped
-# iterateJudge, so it is asserted explicitly here (regression guard for finding #5).
+# feature.json skeleton + phase-aware models map. Also exercises the activation
+# merge used at each phase boundary.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -42,6 +41,8 @@ check "single commands.test set" "$(echo "$single" | jq -e '.commands.test == "n
 check "single commands.prepare set" "$(echo "$single" | jq -e '.commands.prepare == "npm ci"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single verification baseline starts null" "$(echo "$single" | jq -e '.verificationBaseline == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single currentPhase==spec" "$(echo "$single" | jq -e '.currentPhase == "spec"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single has all seven phase model slots" "$(echo "$single" | jq -e '(.phaseModels | keys | sort) == ["deliver","discuss","execute","iterate","plan","spec","verify"]' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single phase model slots default null" "$(echo "$single" | jq -e '[.phaseModels[]] | all(. == null)' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single currentPhaseStartedAt null" "$(echo "$single" | jq -e '.currentPhaseStartedAt == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single phase handoff starts disabled" "$(echo "$single" | jq -e '.phaseHandoff == false' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single iterate.confirmationUsed false" "$(echo "$single" | jq -e '.iterate.confirmationUsed == false' >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -85,17 +86,20 @@ keep='{"slug":"s","feature_title":"the real goal"}'
 kept="$(echo "$keep" | jq 'if (.feature_title // "") == "" then .feature_title = .slug else . end')"
 check "backfill never overwrites existing title" "$(echo "$kept" | jq -e '.feature_title == "the real goal"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
-# --- Step 5.9 normalize regression (finding #5) ---
-# A stale feature.json whose models map LACKS iterateJudge and carries an extra role +
-# a vestigial preset field. The Step 5.9 merge must (a) restore iterateJudge, (b) keep
-# the extra role, (c) force canonical IDs, (d) drop preset.
-canonical="$(bash "$LIB" models)"
-stale='{"models":{"implementer":"old-model","extraRole":"keep"},"preset":"balanced","slug":"x"}'
-normalized="$(echo "$stale" | jq --argjson m "$canonical" '.models = ((.models // {}) * $m) | del(.preset)')"
+# --- phase activation regression ---
+activate_root="$(mktemp -d)"
+mkdir -p "$activate_root/feature"
+printf '%s\n' \
+  '{"models":{"implementer":"old-model","extraRole":"keep"},"preset":"balanced","slug":"x"}' \
+  > "$activate_root/feature/feature.json"
+LOOP_SPEC_PHASE_MODEL_EXECUTE=opus \
+  bash "$LIB" activate "$activate_root/feature" execute
+normalized="$(cat "$activate_root/feature/feature.json")"
 check "normalize restores iterateJudge" "$(echo "$normalized" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "normalize forces canonical implementer" "$(echo "$normalized" | jq -e '.models.implementer == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "normalize applies phase model to implementer" "$(echo "$normalized" | jq -e '.models.implementer == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "normalize preserves extra role" "$(echo "$normalized" | jq -e '.models.extraRole == "keep"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "normalize drops preset" "$(echo "$normalized" | jq -e 'has("preset") == false' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "normalize persists phase map" "$(echo "$normalized" | jq -e '.phaseModels.execute == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+rm -rf "$activate_root"
 
 # --- invalid invocation ---
 bash "$LIB" skeleton --mode bogus --slug x --now N --style auto >/dev/null 2>&1

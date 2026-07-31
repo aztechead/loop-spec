@@ -185,7 +185,7 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 ### Step 3 - Spawn spec-writer-1 (skipped in the autonomous fast path)
 
-Model: `feature.models.specWriter` (resolved once at cycle Step 5; do not re-derive from model-matrix).
+Model: `feature.models.specWriter` (activated for DISCUSS immediately before entry; do not re-derive from model-matrix).
 
 Send spec-writer-1 its prompt via `SendMessage`:
 
@@ -309,7 +309,7 @@ Runs only when a ladder trigger fires (security signal above; contested `[major]
 
 ##### Spawn advocate-1
 
-Model: `feature.models.advocate` (resolved once at cycle Step 5; do not re-derive from model-matrix).
+Model: `feature.models.advocate` (activated for DISCUSS immediately before entry; do not re-derive from model-matrix).
 
 ```
 SendMessage({
@@ -332,7 +332,7 @@ SendMessage({
 
 ##### Spawn challenger-1
 
-Model: `feature.models.challenger` (resolved once at cycle Step 5; do not re-derive from model-matrix). When escalating from a single-critic pass, `challenger-1` is already live — re-send it the debate brief below via `SendMessage` instead of spawning fresh.
+Model: `feature.models.challenger` (activated for DISCUSS immediately before entry; do not re-derive from model-matrix). When escalating from a single-critic pass, `challenger-1` is already live — re-send it the debate brief below via `SendMessage` instead of spawning fresh.
 
 ```
 SendMessage({
@@ -636,12 +636,12 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 ### Step 8 - Phase routing
 
-| execStyle | Action |
-|-----------|--------|
-| auto | Invoke `loop-spec:plan` immediately |
-| step | Print "DISCUSS complete. SPEC at docs/loop-spec/features/{slug}/SPEC.md." Return to user. |
-| interactive | Same as step. |
-| review-only | Invoke `loop-spec:plan` (gate already paused for human if findings) |
+Always return to the cycle orchestrator after persisting `currentPhase = "plan"`;
+never invoke PLAN directly. Cycle owns the phase boundary: continuous mode invokes
+PLAN immediately, while `phaseHandoff == true` writes the paused result and ends the
+main-agent invocation. For `step` / `interactive`, include
+`DISCUSS complete. SPEC at docs/loop-spec/features/{slug}/SPEC.md.` in the returned
+phase summary.
 
 Return.
 

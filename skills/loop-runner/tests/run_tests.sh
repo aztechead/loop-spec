@@ -17,6 +17,8 @@ check() { # check <name> <got> <want>
 }
 reason() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['halt_reason'])" "$1" 2>/dev/null || echo "MISSING"; }
 
+python3 "$HERE/config_flags.py" || exit 1
+
 newrepo() {
   R="$(mktemp -d)"; cd "$R"
   git init -q -b main; git config user.email t@t.t; git config user.name t
@@ -125,6 +127,16 @@ FAKE_PLAN="$R/goodplan.json" python3 "$SCRIPTS/compile_spec.py" SPEC.md \
 check "compile exit 0"    "$?" "0"
 check "plan written"      "$(test -f plan/tasks.json && echo yes)" "yes"
 check "spec auto-protected" "$(python3 -c "import json;p=json.load(open('plan/tasks.json'));print(all('SPEC.md' in t['protected'] for t in p['tasks']))")" "True"
+
+LOOP_SPEC_WORKTREES=0 python3 "$SCRIPTS/supervisor.py" --plan plan/tasks.json \
+  --dry-run >/dev/null 2>&1
+check "worktree opt-out supports serial supervisor" "$?" "0"
+LOOP_SPEC_WORKTREES=0 python3 "$SCRIPTS/supervisor.py" --plan plan/tasks.json \
+  --dry-run --parallel 2 >/dev/null 2>&1
+check "worktree opt-out rejects parallel supervisor" "$?" "2"
+LOOP_SPEC_WORKTREES=invalid python3 "$SCRIPTS/supervisor.py" --plan plan/tasks.json \
+  --dry-run >/dev/null 2>&1
+check "invalid worktree env rejects supervisor" "$?" "2"
 
 echo "== 10. supervisor e2e: worktrees, dep order, merge, fleet result =="
 git add -A; git commit -qm plan
@@ -339,6 +351,24 @@ printf '{"tasks":[]}\n' > invalid-plan.json
 python3 "$SCRIPTS/supervisor.py" --plan invalid-plan.json >/dev/null 2>&1
 check "invalid plan exits 2" "$?" "2"
 check "stale fleet result cleared" "$(test ! -f .loop/fleet-result.json && echo yes)" "yes"
+
+echo "== 11c. CLI and JSON limits reject values outside the documented bounds =="
+python3 "$SCRIPTS/loop.py" "bad bounds" --max-iterations 0 >/dev/null 2>&1
+rc=$?
+check "loop rejects zero max-iterations" "$rc" "2"
+
+printf '{"task":"bad config","timeout_s":-1}\n' > bad-bounds.json
+python3 "$SCRIPTS/loop.py" --config bad-bounds.json >/dev/null 2>&1
+rc=$?
+check "loop rejects negative JSON timeout" "$rc" "2"
+
+python3 "$SCRIPTS/supervisor.py" --plan invalid-plan.json --parallel 0 --dry-run >/dev/null 2>&1
+rc=$?
+check "supervisor rejects zero parallelism" "$rc" "2"
+
+python3 "$SCRIPTS/supervisor.py" --plan invalid-plan.json --max-budget-usd -1 --dry-run >/dev/null 2>&1
+rc=$?
+check "supervisor rejects negative budget" "$rc" "2"
 
 echo "== 12. --fallback-model flag + --retry-watchdog env reach the claude invocation =="
 newrepo

@@ -169,7 +169,7 @@ fi
 # BATCH_L1 cap. Both bounds must agree — trust unlocks, it never volunteers.
 batch_l1="$(conf_get "$CONF" BATCH_L1 5)"
 max_features="${LOOP_SPEC_MAX_FEATURES:-1}"
-[[ "$max_features" =~ ^[0-9]+$ ]] || max_features=1
+[[ "$max_features" =~ ^[1-9][0-9]*$ ]] || max_features=1
 if [[ "$level" == "L0" ]]; then
   max_batch=1
 else

@@ -25,7 +25,9 @@ size; operators select the controls below for each deployment shape.
   teams, workflows, and fleets automatically.
 - Use `LOOP_SPEC_PHASE_HANDOFF=1` to run one durable phase per main-agent
   invocation. A user or supervisor reissues the cycle command and resume
-  detection starts the next phase in a fresh context.
+  detection starts the next phase in a fresh context. The plugin enforces this at
+  the phase-skill tool boundary: a second phase invocation is denied and the paused
+  handoff result is written deterministically.
 - If worktrees stay enabled, leave `LOOP_SPEC_SHARE_DEPENDENCIES=1` so task
   worktrees link a matching successfully prepared `node_modules`.
 - Set the Cloud Run task timeout above the SDK timeout. Keep enough margin for
@@ -47,6 +49,13 @@ LOOP_SPEC_EXECUTE_LOOPS=0
 LOOP_SPEC_EXECUTE_WORKFLOW=0
 LOOP_SPEC_PLAN_MULTI_ANGLE=0
 LOOP_SPEC_PHASE_HANDOFF=1
+LOOP_SPEC_PHASE_MODEL_SPEC=opus
+LOOP_SPEC_PHASE_MODEL_DISCUSS=sonnet
+LOOP_SPEC_PHASE_MODEL_PLAN=sonnet
+LOOP_SPEC_PHASE_MODEL_EXECUTE=sonnet
+LOOP_SPEC_PHASE_MODEL_VERIFY=opus
+LOOP_SPEC_PHASE_MODEL_ITERATE=opus
+LOOP_SPEC_PHASE_MODEL_DELIVER=sonnet
 LOOP_SPEC_SHARE_DEPENDENCIES=1
 LOOP_SPEC_PREPARE_TIMEOUT_SECS=1200
 LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS=300
@@ -64,6 +73,36 @@ LOOP_SPEC_PHASE_HANDOFF=1 \
 claude -p "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}"
 ```
 
+To switch the Claude Code main model as well as the phase’s subagents, the CLI
+supervisor must create a fresh process per handoff and pass the validated phase
+alias to `--model`. The plugin cannot mutate the model of an already-running
+main session:
+
+```bash
+phase=spec
+for _ in $(seq 1 "${MAX_PHASE_INVOCATIONS:-12}"); do
+  phase_model="$(
+    bash "${LOOP_SPEC_PLUGIN}/lib/feature-init.sh" phase-model "$phase"
+  )"
+  model_args=()
+  [[ -n "$phase_model" ]] && model_args=(--model "$phase_model")
+  claude "${model_args[@]}" -p \
+    "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}"
+  result="${REPO_ROOT}/.loop-spec/last-result.json"
+  if [[ "$(jq -r '.status + \":\" + (.reason // \"\")' "$result")" \
+        != "paused:phase-handoff" ]]; then
+    break
+  fi
+  phase="$(jq -r '.phaseReached' "$result")"
+done
+```
+
+Regardless of whether handoff is enabled, cycle phase activation writes the
+effective map before it launches any explicit-team teammate, implicit named
+Agent, one-shot fallback, gate reviewer, or ITERATE judge. Thus continuous mode
+still honors phase routing for subagents; handoff is required only to change the
+main orchestrator model.
+
 ## SDK policy
 
 Use all four independent bounds:
@@ -73,8 +112,8 @@ Use all four independent bounds:
 3. `effort` controls reasoning/tool-call volume; choose it from workload evals.
 4. An outer wall timeout bounds the SDK subprocess and local tools.
 
-With phase handoffs, `max_turns`, `max_budget_usd`, and the SDK timeout apply to
-each fresh phase query. Bound the whole job separately with
+With phase handoffs, `max_turns`, `max_budget_usd`, the selected phase model, and
+the SDK timeout apply to each fresh phase query. Bound the whole job separately with
 `MAX_PHASE_INVOCATIONS`, the Cloud Run task timeout, and a controller-level
 cumulative spend policy.
 
@@ -92,46 +131,88 @@ from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions, query
 
+
+def positive_int(name: str, default: int | None = None) -> int | None:
+    raw = os.environ.get(name)
+    value = int(raw) if raw else default
+    if value is not None and value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def positive_float(name: str) -> float | None:
+    raw = os.environ.get(name)
+    value = float(raw) if raw else None
+    if value is not None and value <= 0:
+        raise ValueError(f"{name} must be a positive number")
+    return value
+
+
+PHASES = ("spec", "discuss", "plan", "execute", "verify", "iterate", "deliver")
+PHASE_ALIASES = {"sonnet", "opus", "haiku", "fable"}
+
+
+def configured_phase_model(phase: str) -> str | None:
+    if phase not in PHASES:
+        raise ValueError(f"unsupported loop-spec phase: {phase}")
+    name = f"LOOP_SPEC_PHASE_MODEL_{phase.upper()}"
+    value = os.environ.get(name)
+    if not value:
+        return os.environ.get("CLAUDE_MODEL")
+    if value not in PHASE_ALIASES:
+        raise ValueError(
+            f"{name} must be one of: sonnet, opus, haiku, fable"
+        )
+    return value
+
+
+def resumable_phase(root: Path) -> str:
+    candidates: list[tuple[str, str]] = []
+    for path in (root / ".loop-spec" / "features").glob("*/feature.json"):
+        try:
+            state = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        phase = state.get("currentPhase")
+        if phase in PHASES:
+            candidates.append((str(state.get("updatedAt", "")), phase))
+    return max(candidates, default=("", "spec"))[1]
+
+
 ROOT = Path(os.environ["REPO_ROOT"]).resolve()
 PLUGIN = Path(os.environ["LOOP_SPEC_PLUGIN"]).resolve()
-CYCLE_TIMEOUT_SECONDS = int(os.environ.get("CYCLE_TIMEOUT_SECONDS", "10800"))
-MAX_PHASE_INVOCATIONS = int(os.environ.get("MAX_PHASE_INVOCATIONS", "12"))
-
-
-def optional_int(name: str) -> int | None:
-    return int(os.environ[name]) if os.environ.get(name) else None
-
-
-def optional_float(name: str) -> float | None:
-    return float(os.environ[name]) if os.environ.get(name) else None
+CYCLE_TIMEOUT_SECONDS = positive_int("CYCLE_TIMEOUT_SECONDS", 10800)
+MAX_PHASE_INVOCATIONS = positive_int("MAX_PHASE_INVOCATIONS", 12)
 
 
 async def run() -> None:
     option_overrides = {}
-    if (value := optional_int("CLAUDE_MAX_TURNS")) is not None:
+    if (value := positive_int("CLAUDE_MAX_TURNS")) is not None:
         option_overrides["max_turns"] = value
-    if (value := optional_float("CLAUDE_MAX_BUDGET_USD")) is not None:
+    if (value := positive_float("CLAUDE_MAX_BUDGET_USD")) is not None:
         option_overrides["max_budget_usd"] = value
     if (value := os.environ.get("CLAUDE_EFFORT")):
         option_overrides["effort"] = value
-    if (value := os.environ.get("CLAUDE_MODEL")):
-        option_overrides["model"] = value
     if (value := os.environ.get("CLAUDE_FALLBACK_MODEL")):
         option_overrides["fallback_model"] = value
 
     for _ in range(MAX_PHASE_INVOCATIONS):
+        phase = resumable_phase(ROOT)
+        query_overrides = dict(option_overrides)
+        if (value := configured_phase_model(phase)):
+            query_overrides["model"] = value
         options = ClaudeAgentOptions(
             plugins=[{"type": "local", "path": str(PLUGIN)}],
             setting_sources=["project"],
             permission_mode=os.environ.get("CLAUDE_PERMISSION_MODE", "acceptEdits"),
             cwd=str(ROOT),
             include_partial_messages=True,
-            max_buffer_size=int(os.environ.get(
-                "CLAUDE_MAX_BUFFER_BYTES", str(8 * 1024 * 1024)
-            )),
+            max_buffer_size=positive_int(
+                "CLAUDE_MAX_BUFFER_BYTES", 8 * 1024 * 1024
+            ),
             stderr=lambda line: print(line, flush=True),
             env=dict(os.environ),
-            **option_overrides,
+            **query_overrides,
         )
         phase_token = (
             " phase:fresh"

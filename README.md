@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.29.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.29.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -217,7 +217,7 @@ Legacy `tier:` tokens are accepted and ignored; gate behavior is fixed (`skills/
 
 ### Model selection
 
-Opus runs the reasoning-heavy roles (spec-writer, planner, challenger, iterate-judge, code-reviewer). Sonnet runs the throughput and defense roles (advocate, spec-compliance-reviewer, implementer, verifier, mappers). Override per role with `LOOP_SPEC_MODEL_<ROLE>` (see Configuration). A plan task may also carry a `modelTier` (`mechanical`/`standard`/`frontier`) that routes that one task to the cheapest fitting model on the subagent and loop rungs.
+Opus runs the reasoning-heavy roles (spec-writer, planner, challenger, iterate-judge, code-reviewer). Sonnet runs the throughput and defense roles (advocate, spec-compliance-reviewer, implementer, verifier, mappers). Override a whole phase with `LOOP_SPEC_PHASE_MODEL_<PHASE>` or one role with `LOOP_SPEC_MODEL_<ROLE>`; role overrides win over phase defaults, and supported task pins win over both. Cycle activates the effective map before every phase so explicit teams, implicit named Agents, one-shot fallbacks, and gate reviewers receive the selected `model:` value. With `LOOP_SPEC_PHASE_HANDOFF=1`, Claude CLI/Agent SDK supervisors can also launch each fresh main phase query on that phase model (see Configuration and the cloud controller recipe).
 
 ### Greenfield
 
@@ -403,6 +403,13 @@ Any missing or unknown signal resolves to the lower level, and one non-converged
 
 Everything is optional; an empty project gets working defaults. Configuration comes in two forms: environment variables (per session or per invocation) and files under `.loop-spec/` (per project, persistent).
 
+The canonical, exhaustive contract—including precedence, every supported environment
+variable, every skill argument and loop-runner CLI flag, plus names that are internal
+and must not be treated as controls—is
+[`docs/loop-spec/configuration.md`](docs/loop-spec/configuration.md). The tables below
+are the quick reference. The 2.29.1 source/utilization evidence is in the
+[`configuration audit`](docs/loop-spec/configuration-audit.md).
+
 ### Environment variables
 
 Cycle behavior:
@@ -413,14 +420,14 @@ Cycle behavior:
 | `LOOP_SPEC_SPEC_FILE` | unset | Path to a pre-authored spec `.md`; headless equivalent of `/loop-spec:cycle path/to/spec.md`. |
 | `LOOP_SPEC_MAX_FEATURES` | `1` | Features per backlog-drain invocation, and the requested sentinel batch size (granted only at trust L1+). |
 | `LOOP_SPEC_PHASE_TIMEOUT_MINS` | `60` | Phase watchdog wall-clock ceiling. |
-| `LOOP_SPEC_PHASE_HANDOFF` | unset | `1` completes one durable phase per invocation, emits `status=paused` / `reason=phase-handoff`, and resumes the next phase in a fresh main-agent session. `0` keeps continuous routing. Inline equivalents: `phase:fresh` and `phase:continuous`. |
+| `LOOP_SPEC_PHASE_HANDOFF` | unset | `1` completes one durable phase per invocation, emits `status=paused` / `reason=phase-handoff`, and resumes the next phase in a fresh main-agent session. A PreToolUse guard denies a second phase skill in the same transcript and writes the paused result itself. `0` keeps continuous routing. Inline equivalents: `phase:fresh` and `phase:continuous`. |
 | `LOOP_SPEC_ITERATE_FRESH` | unset | `1` makes ITERATE rewinds hand off through committed state and relaunch in a clean session instead of continuing inline. |
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | autonomous | `1` pushes/reuses a draft checkpoint PR after each non-DELIVER phase; `0` disables phase checkpoints. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | `1800` | Wall-clock deadline for dependency/environment preparation. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | `300` | No-output deadline for dependency/environment preparation. |
 | `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | `1800` | Wall-clock deadline for each exact-base baseline command. |
 | `LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS` | `300` | No-output deadline for each exact-base baseline command. |
-| `LOOP_SPEC_SKIP_HEALTHCHECK` | unset | `1` skips the startup model probe (also skipped automatically when probed within 24h). |
+| `LOOP_SPEC_SKIP_HEALTHCHECK` | unset | `1` skips the startup model probe (also skipped for 24h when the exact effective alias set is unchanged). |
 | `LOOP_SPEC_REQUIRE_GRAPHIFY` | required | `0` bypasses the graphify requirement; design phases fall back to Glob/Grep. |
 | `LOOP_SPEC_CHECKPOINT_PR` | on | `0` disables the draft checkpoint PR on pause/escalation/terminal stop. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | `900` | Total time DELIVER waits for required PR checks. |
@@ -449,7 +456,7 @@ EXECUTE dispatch:
 | Variable | Default | Effect |
 |---|---|---|
 | `LOOP_SPEC_EXECUTE_LOOPS` | auto | `1` requests loop-fleet at any DAG width; `0` forbids it. Selection still requires the agent CLI and persistent-runtime capability. |
-| `LOOP_SPEC_WORKTREES` | `1` | `0` uses the in-place feature branch and serial EXECUTE. One-shot implementer/reviewer subagents are retained when available; only task/feature worktree isolation is disabled. |
+| `LOOP_SPEC_WORKTREES` | `1` | `0` prohibits feature and task worktree creation/entry, uses the in-place feature branch, and selects serial EXECUTE. One-shot implementer/reviewer subagents are retained when available. A PreToolUse guard denies all three tool-reachable worktree entry points: `git worktree add` / the feature-worktree helper, `EnterWorktree`, and `Agent({isolation: "worktree"})`. Standalone revise also works in place. |
 | `LOOP_SPEC_SHARE_DEPENDENCIES` | `1` | With worktrees enabled, link a matching successfully prepared `node_modules` from the feature checkout; `0` installs independently. |
 | `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` | `3` | Positive integer cap, clamped to 3. `LOOP_SPEC_WORKTREES=0` forces an effective cap of 1. |
 | `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` | unset | Positive integer deployment-wide cap on simultaneous one-shot Agent calls. When set, teams, Workflow fan-out, and loop fleets are disabled in favor of enforceable bounded waves. `1` keeps role agents but runs them serially. |
@@ -469,9 +476,11 @@ Models:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `LOOP_SPEC_MODEL_<ROLE>` | fixed map | Per-role model alias override. Roles: `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, `PATTERN_MAPPER`. Values: `sonnet`, `opus`, `haiku`, `fable`. A literal model ID is rejected with exit 1. Resolved at cycle startup into `feature.models.<role>`. |
+| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | unset | Per-phase default for the main orchestrator and every Agent/gate launched in `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, or `DELIVER`. Values: `sonnet`, `opus`, `haiku`, `fable`. Main-context switching requires `LOOP_SPEC_PHASE_HANDOFF=1` plus a CLI/SDK supervisor that starts each query with the persisted phase model; subagents honor it in both continuous and handoff modes. |
+| `LOOP_SPEC_MODEL_<ROLE>` | fixed role map | More-specific per-role model alias override. Roles: `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, `PATTERN_MAPPER`. Values: `sonnet`, `opus`, `haiku`, `fable`. Literal model IDs are rejected. The activated values are persisted in `feature.models.<role>` before each phase. |
 
-Headless answers (`LOOP_SPEC_NON_INTERACTIVE=1` reads these; explicit values also win in autonomous mode):
+Headless answers (`LOOP_SPEC_NON_INTERACTIVE=1` reads these; autonomous mode
+forces style `auto` but honors the explicit decision answers below):
 
 | Variable | Values | Answers |
 |---|---|---|
@@ -507,7 +516,7 @@ Session modes and hook guards (each is a kill switch; all hooks no-op outside pr
 | `LOOP_SPEC_SIMPLICITY` | on | Simplicity mode: prefer deletion, reuse, stdlib, and the minimum diff before custom code. |
 | `LOOP_SPEC_MICRO` | on | Micro-mode SessionStart directive. |
 | `LOOP_SPEC_MICRO_GUARD` | on | Stop guard: block ending a session that edited code without a verification run. Stands down during cycle features and for docs/config-only edits. |
-| `LOOP_SPEC_DEFERRAL_GUARD` | on | Stop guard: block a completion claim that carries self-authored deferred/follow-up items (`skills/shared/no-deferral.md`). Gate-marked lines (`iterate-budget-spent:` / `iterate-terminal:` / `verify-deferred`) pass. |
+| `LOOP_SPEC_DEFERRAL_GUARD` | on | Stop guard: block a completion claim that carries self-authored deferred/follow-up items (`skills/shared/no-deferral.md`). A denial persists for that transcript: a wording-only retry remains blocked until repository work, ordered verification, and a `Resolved scope:` evidence line are present. Gate-marked lines (`iterate-budget-spent:` / `iterate-terminal:` / `verify-deferred`) pass. |
 | `LOOP_SPEC_DEFERRAL_LINT` | on | DELIVER's deferral gate on the PR body and warnings; `0` is the explicit operator override for a feature legitimately about deferral. |
 | `LOOP_SPEC_DISCIPLINE` | off (opt-in) | Discipline mode: five behavioral gates (brainstorm-before-coding, verification-before-claims, investigation-before-fixes, decision gate, intent gate). |
 | `LOOP_SPEC_TASK_GUARD` | on | Task metadata / lint / typecheck completion gates. |
@@ -520,7 +529,10 @@ Session modes and hook guards (each is a kill switch; all hooks no-op outside pr
 | `LOOP_SPEC_LEARNINGS` | on | Session-end learnings log (`.loop-spec/learnings.jsonl`). |
 | `LOOP_SPEC_PAUSE` | on | `0` disables the pause snapshot writer. |
 
-Hook debugging: `LOOP_SPEC_BLOCKEDBY_TRACE_LOG`, `LOOP_SPEC_DEFLECTION_TRACE_LOG`, `LOOP_SPEC_MICRO_GUARD_TRACE_LOG`, and `LOOP_SPEC_USERGATE_TRACE_LOG` each take a file path and record that hook's decisions.
+Hook debugging: `LOOP_SPEC_BLOCKEDBY_TRACE_LOG`, `LOOP_SPEC_DEFLECTION_TRACE_LOG`,
+`LOOP_SPEC_MICRO_GUARD_TRACE_LOG`, `LOOP_SPEC_USERGATE_TRACE_LOG`, and
+`LOOP_SPEC_DEFERRAL_TRACE_LOG` each take a file path and record that hook's decisions.
+`LOOP_SPEC_DEFERRAL_STATE_DIR` overrides the transcript-obligation state directory.
 
 Standalone skills:
 
@@ -536,7 +548,7 @@ Harness:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `LOOP_SPEC_HARNESS` | detected | Force `claude` or `pi`. The pi extension sets this automatically. |
+| `LOOP_SPEC_HARNESS` | detected | Force `claude`, `pi`, or `opencode`. The pi and OpenCode extensions set this automatically. |
 | `LOOP_SPEC_WORKFLOW_CONFIG` | `.loop-spec/workflow.json` | Per-project workflow config path override. |
 
 ### Config files
@@ -673,7 +685,14 @@ How workspace mode differs:
 
 The cycle skill is a thin orchestrator; each phase skill owns its own dispatches. When agent teams are available, teammates persist for the whole phase and communicate over `SendMessage`, so rework rides on accumulated context instead of fresh spawns. `lib/teams-capability.sh` resolves the team mechanism per Claude Code version: explicit `TeamCreate`/`TeamDelete` on older builds, direct named `Agent({name})` spawns on 2.1.178 and later, and a documented fallback per phase (`skills/shared/no-teams-fallback.md`) when teams are off, with the same artifacts, gates, and result contracts on every path.
 
-Under Claude Code each feature runs in its own git worktree (`.claude/worktrees/{slug}`, branch `feat/{slug}` from the fetched base SHA). OpenCode/pi use a clean in-place branch because those harnesses cannot switch a live session root. Resume scans both the invocation root and registered feature worktrees for incomplete features inside the staleness window (48h), then adopts the recorded absolute root before reading phase state.
+Under Claude Code each feature runs in its own git worktree by default
+(`.claude/worktrees/{slug}`, branch `feat/{slug}` from the fetched base SHA).
+`LOOP_SPEC_WORKTREES=0` instead uses a clean in-place feature branch and
+deterministically blocks later worktree creation/entry. OpenCode/pi always use a clean
+in-place branch because those harnesses cannot switch a live session root. Resume scans
+both the invocation root and registered feature worktrees for incomplete features
+inside the staleness window (48h), then adopts the recorded absolute root before
+reading phase state.
 
 ```mermaid
 flowchart LR
@@ -796,7 +815,7 @@ Status transitions stay within the three harness-documented values; handoffs and
 
 ## Troubleshooting
 
-- Health check fails: your `CLAUDE.md` model policy probably blocks one of the two model families the fixed map targets. Allow what the `opus` and `sonnet` aliases resolve to.
+- Health check fails: your `CLAUDE.md` model policy probably blocks one of the effective aliases. Allow every alias returned by `bash lib/feature-init.sh all-models`, including phase/role overrides.
 - A critique gate keeps bouncing (more than 3 retries on the same gate): the spec or plan is genuinely ambiguous. The cycle pauses; edit the artifact and re-invoke to resume.
 - Merge conflict on a task branch: the lead rebases the worktree onto the current `feat/{slug}` head and retries once, then pauses (counts against the per-task retry cap of 2).
 - Crash mid-EXECUTE: `feature.json` records the team name, merge queue, and artifact paths; the harness task list owns per-task status. Resume replays the merge queue and re-claims orphaned tasks.

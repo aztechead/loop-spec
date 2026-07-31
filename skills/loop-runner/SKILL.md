@@ -17,6 +17,12 @@ description: >-
 
 # Loop Runner
 
+With `LOOP_SPEC_WORKTREES=0`, `supervisor.py` automatically selects its existing
+`--no-worktree` path and requires `--parallel 1`; it creates and enters no worktree.
+The full-cycle EXECUTE selector normally chooses the serial subagent/inline rung
+instead of launching a fleet, but direct loop-runner use still honors the same
+operator setting.
+
 ## In loop-spec (read this first when invoked as a plugin skill)
 
 This skill ships bundled inside the loop-spec plugin and is the engine of the

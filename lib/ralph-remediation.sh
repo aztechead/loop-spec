@@ -22,6 +22,10 @@ set -euo pipefail
 
 MAX_ITERATIONS=5
 RALPH_THRESHOLD="${LOOP_SPEC_RALPH_THRESHOLD:-3}"
+if [[ ! "$RALPH_THRESHOLD" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ralph-remediation: LOOP_SPEC_RALPH_THRESHOLD must be a positive integer" >&2
+  exit 2
+fi
 
 usage() {
   echo "usage: ralph-remediation.sh <feature-dir>" >&2

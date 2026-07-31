@@ -177,6 +177,24 @@ class LoopConfig:
         return (f"--permission-mode {mode!r} is not accepted by `claude "
                 f"--permission-mode` (valid: {', '.join(CLAUDE_PERMISSION_MODES)}).")
 
+    def bounds_conflict(self) -> Optional[str]:
+        """Reject limit values whose runtime meaning contradicts the CLI contract."""
+        checks = (
+            ("max_iterations", self.max_iterations, 1, "positive"),
+            ("max_turns", self.max_turns, 0, "non-negative"),
+            ("timeout_s", self.timeout_s, 1, "positive"),
+            ("no_progress", self.no_progress, 0, "non-negative"),
+            ("verify_timeout_s", self.verify_timeout_s, 1, "positive"),
+        )
+        for name, value, minimum, wording in checks:
+            if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+                return f"{name} must be a {wording} integer"
+        if (not isinstance(self.max_budget_usd, (int, float))
+                or isinstance(self.max_budget_usd, bool)
+                or self.max_budget_usd < 0):
+            return "max_budget_usd must be a non-negative number"
+        return None
+
     def resolved_task_id(self) -> str:
         if self.task_id:
             return re.sub(r"[^a-z0-9-]+", "-", self.task_id.lower()).strip("-") or "task"
@@ -1005,6 +1023,8 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
                         "after the binary)")
     p.add_argument("--reset", action="store_true", default=None)
     args, extra = p.parse_known_args(argv)
+    if extra[:1] == ["--"]:
+        extra = extra[1:]
 
     base: dict = {}
     if args.config:
@@ -1032,6 +1052,9 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     bad_mode = cfg.permission_conflict()
     if bad_mode:
         p.error(bad_mode)
+    bad_bounds = cfg.bounds_conflict()
+    if bad_bounds:
+        p.error(bad_bounds)
     return cfg
 
 
