@@ -57,6 +57,16 @@ for f in agents/*.md; do
     exit 1
   fi
 
+  # isolation: forbidden. Frontmatter isolation never appears in a tool call's input,
+  # so hooks/team/no-worktrees-guard.sh cannot see it and LOOP_SPEC_WORKTREES=0 could
+  # not be enforced for that agent. It also branches from the base commit, hiding prior
+  # tasks' commits in a sequential DAG (see agents/implementer.md). Worktrees are
+  # created explicitly by the dispatch contract, never by the harness.
+  if echo "$fm" | grep -q '^isolation:'; then
+    echo "FAIL: $f contains forbidden frontmatter key isolation (invisible to the LOOP_SPEC_WORKTREES=0 tool-boundary guard; create worktrees explicitly)"
+    exit 1
+  fi
+
   # Restricted agents must have NO Write/Edit
   role="$basename"
   if echo "$RESTRICTED_AGENTS" | grep -wq "$role"; then

@@ -48,6 +48,13 @@ All notable changes documented here. Format follows Keep a Changelog.
   parenthesised content never matches). `PREREQUISITES.md` now documents the controls
   that are actually enforced. Documented `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`, which is
   what bounds the deferral and micro Stop guards.
+- The no-worktrees guard now covers `Agent({isolation: "worktree"})`. Claude Code names
+  three worktree entry points — "Applies to `--worktree`, `EnterWorktree`, and agent
+  isolation" — and the guard previously covered only two, leaving a documented Agent
+  parameter as an open bypass of `LOOP_SPEC_WORKTREES=0`. Agent *frontmatter*
+  `isolation` cannot be seen by any hook (it never reaches `tool_input`), so
+  `tests/validate-agents.sh` now forbids the key outright and `agents/README.md`
+  documents why rather than advertising it as supported.
 - The no-worktrees guard now matches an *invocation* of the feature-worktree helper
   rather than any mention of its name, so read-only searches are no longer denied.
 - Replaced a `return` with `exit 0` in cycle's declined-SPEC-gate branch; these blocks

@@ -456,7 +456,7 @@ EXECUTE dispatch:
 | Variable | Default | Effect |
 |---|---|---|
 | `LOOP_SPEC_EXECUTE_LOOPS` | auto | `1` requests loop-fleet at any DAG width; `0` forbids it. Selection still requires the agent CLI and persistent-runtime capability. |
-| `LOOP_SPEC_WORKTREES` | `1` | `0` prohibits feature and task worktree creation/entry, uses the in-place feature branch, and selects serial EXECUTE. One-shot implementer/reviewer subagents are retained when available. A PreToolUse guard denies accidental `git worktree add`, feature-worktree helper, or `EnterWorktree` calls. Standalone revise also works in place. |
+| `LOOP_SPEC_WORKTREES` | `1` | `0` prohibits feature and task worktree creation/entry, uses the in-place feature branch, and selects serial EXECUTE. One-shot implementer/reviewer subagents are retained when available. A PreToolUse guard denies all three tool-reachable worktree entry points: `git worktree add` / the feature-worktree helper, `EnterWorktree`, and `Agent({isolation: "worktree"})`. Standalone revise also works in place. |
 | `LOOP_SPEC_SHARE_DEPENDENCIES` | `1` | With worktrees enabled, link a matching successfully prepared `node_modules` from the feature checkout; `0` installs independently. |
 | `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` | `3` | Positive integer cap, clamped to 3. `LOOP_SPEC_WORKTREES=0` forces an effective cap of 1. |
 | `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` | unset | Positive integer deployment-wide cap on simultaneous one-shot Agent calls. When set, teams, Workflow fan-out, and loop fleets are disabled in favor of enforceable bounded waves. `1` keeps role agents but runs them serially. |

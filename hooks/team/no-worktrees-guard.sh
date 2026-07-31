@@ -2,9 +2,19 @@
 # PreToolUse hook: enforce LOOP_SPEC_WORKTREES=0 at the tool boundary.
 #
 # The cycle and EXECUTE selectors route this mode through an in-place feature branch
-# with serial implementation. This hook is the fail-closed backstop: an agent cannot
-# bypass that route by issuing a raw `git worktree add`, calling loop-spec's feature
-# worktree helper, or invoking Claude Code's EnterWorktree tool.
+# with serial implementation. This hook is the fail-closed backstop for every worktree
+# entry point reachable from a tool call. Claude Code names three:
+#   "Applies to --worktree, EnterWorktree, and agent isolation."
+# so covering only the first two would leave `Agent({isolation: "worktree"})` -- a
+# documented parameter in skills/shared/harness-call-contracts.md -- as an open bypass.
+# Also caught: a raw `git worktree add` and loop-spec's own feature-worktree helper.
+#
+# Two worktree paths are deliberately NOT handled here, because neither is a tool call:
+#   - `claude --worktree` is the operator establishing the checkout at launch, not an
+#     agent routing around the setting.
+#   - agent frontmatter `isolation: worktree` is resolved from the agent definition and
+#     never appears in tool_input, so no hook can see it. tests/validate-agents.sh
+#     forbids the key in loop-spec's own agents instead.
 #
 # Claude Code contract:
 #   exit 0 = allow
@@ -45,6 +55,13 @@ tool = str(payload.get("tool_name") or "")
 tool_input = payload.get("tool_input") or {}
 if tool == "EnterWorktree":
     print("enter-worktree")
+    raise SystemExit(0)
+
+if tool == "Agent":
+    if str(tool_input.get("isolation") or "").strip().lower() == "worktree":
+        print("agent-worktree-isolation")
+        raise SystemExit(0)
+    print("allow")
     raise SystemExit(0)
 
 if tool == "Bash":
