@@ -106,6 +106,43 @@ printf 'not json' > "$tmp/f5.json"
 bash "$LIB" warnings "$tmp/f5.json" >/dev/null 2>&1
 check "malformed feature.json fails safe" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 
+# --- completeness assertions are not deferrals -----------------------------------
+# This gate is TERMINAL at DELIVER: lib/deliver.sh exits 3 with no rewrite loop, and
+# its only override is an env var an unattended run has nobody to set. A false
+# positive on ordinary completion prose therefore fails a feature that shipped
+# everything, and reports it as a scope violation.
+ok_text() {
+  printf '%s\n' "$2" > "$tmp/ok.md"
+  bash "$LIB" text "$tmp/ok.md" >/dev/null 2>&1
+  check "$1" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
+}
+flag_text() {
+  printf '%s\n' "$2" > "$tmp/flag.md"
+  bash "$LIB" text "$tmp/flag.md" >/dev/null 2>&1
+  check "$1" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
+}
+
+ok_text "zero remaining gaps is a completeness claim" \
+  "0 remaining gaps; every acceptance criterion is met."
+ok_text "no remaining work is a completeness claim" \
+  "No remaining work: the spec ships in full."
+ok_text "remaining tasks: none is a completeness claim" \
+  "remaining tasks: none"
+ok_text "past-tense defect description with a repair clause" \
+  "Config validation was not implemented for the OpenCode harness; this PR adds it."
+
+# The exemptions must stay narrow -- these are still real deferrals.
+flag_text "counted remaining tasks still flags" \
+  "There are 3 remaining tasks we will pick up next sprint."
+flag_text "bare 'not implemented' still flags" \
+  "Rate limiting is not implemented."
+flag_text "'is not yet implemented' still flags" \
+  "Auth is not yet implemented; tracking separately."
+flag_text "explicit deferral still flags" \
+  "Deferred the retry logic to a future PR."
+flag_text "remaining work with a real count still flags" \
+  "Remaining work: wire up the second provider."
+
 # --- invocation ---
 bash "$LIB" bogus x >/dev/null 2>&1
 check "bad subcommand exits 2" "$([[ $? -eq 2 ]] && echo 1 || echo 0)"

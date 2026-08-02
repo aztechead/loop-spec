@@ -101,12 +101,57 @@ flags = []
 # so inline code spans are stripped and fenced blocks are skipped before scanning.
 INLINE_CODE_RE = re.compile(r"`[^`]*`")
 
+# Two vocabulary entries are also the natural way to ASSERT completeness or to
+# describe the defect a change repairs. Both readings are common in a fully
+# compliant PR body, and this gate is terminal at DELIVER -- lib/deliver.sh exits 3
+# with no rewrite loop, and its only override is an env var an unattended run has
+# nobody to set. A false positive there fails a feature that shipped everything.
+#
+# Each exemption is narrow and must be POSITIVELY evidenced on the same line; the
+# default is still to flag. Nothing here weakens the deferral reading of the phrase.
+EXEMPTIONS = [
+    # "0 remaining gaps", "no remaining work", "remaining tasks: none"
+    (
+        re.compile(r"\bremaining (?:work|items?|tasks?|gaps?)\b", re.I),
+        re.compile(
+            r"\b(?:0|no|zero|none|nothing)\s+remaining\b"
+            r"|\bremaining\s+(?:work|items?|tasks?|gaps?)\s*[:=]?\s*(?:0|none|nothing)\b",
+            re.I,
+        ),
+    ),
+    # "X was not implemented; this PR adds it" -- past-tense problem statement WITH
+    # an explicit repair clause. "is not yet implemented" stays a deferral.
+    (
+        re.compile(r"\bnot (?:yet )?implemented\b", re.I),
+        re.compile(
+            r"\b(?:was|were|had been|had not been|previously)\b[^.;]{0,80}"
+            r"\bnot (?:yet )?implemented\b"
+            r"|\bnot (?:yet )?implemented\b[^.;]{0,80}"
+            r"\b(?:this (?:pr|change|commit|patch)|now)\b[^.;]{0,40}"
+            r"\b(?:adds?|added|implements?|implemented|fixes|fixed|closes?)\b",
+            re.I,
+        ),
+    ),
+]
+
+
+def exempt(term, line):
+    """True when this match is a completeness assertion, not a deferral."""
+    for term_re, evidence_re in EXEMPTIONS:
+        if term_re.fullmatch(term) and evidence_re.search(line):
+            return True
+    return False
+
 
 def scan_line(lineno, line):
     if GATE_MARKERS.search(line):
         return
     line = INLINE_CODE_RE.sub("", line)
-    m = VOCAB_RE.search(line)
+    m = None
+    for candidate in VOCAB_RE.finditer(line):
+        if not exempt(candidate.group(0), line):
+            m = candidate
+            break
     if m:
         flags.append(
             (
