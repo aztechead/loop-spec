@@ -2,6 +2,9 @@
 # Shared credential refresh and one-retry authentication seam.
 # Source this file, then call loop_spec_run_authenticated with a command runner.
 
+# shellcheck source=bounded-run.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/bounded-run.sh"
+
 LOOP_SPEC_AUTH_ERROR_CODE=""
 LOOP_SPEC_AUTH_ERROR_MESSAGE=""
 LOOP_SPEC_CREDENTIAL_PREPARED_STAGES=()
@@ -29,9 +32,24 @@ loop_spec_credential_refresh() {
     export LOOP_SPEC_CREDENTIAL_REFRESH_HOST="$host"
     export LOOP_SPEC_CREDENTIAL_REFRESH_REPO="$repo_dir"
 
-    # Keep the configured shell fragment and any embedded values out of argv.
+    # Keep the configured shell fragment and any embedded values out of argv, and
+    # off disk -- loop_spec_run_bounded_stdin passes it through a pipe.
+    #
+    # Bounded: this hook is the first thing every gh/git stage runs, so a token-mint
+    # call that STALLS -- a network partition to a metadata or token-broker service,
+    # as opposed to failing fast -- blocks pr-delivery, checkpoint-pr and pr-comments
+    # alike. A refresh is a short round trip; if it has not answered within the
+    # deadline it is not going to, and the caller's existing non-zero path turns that
+    # into a retryable authentication_failed instead of an unattended hang.
+    #
+    # NB: no parentheses in comments here. This block sits inside a $. . .
+    # command substitution, and bash's parser counts parens in comments when it
+    # scans for the closing delimiter -- an unmatched one is a syntax error.
     hook_rc=0
-    bash -s >"$private_dir/stdout" 2>"$private_dir/stderr" <<<"$command_text" || hook_rc=$?
+    hook_timeout="$(loop_spec_resolve_timeout "${LOOP_SPEC_CREDENTIAL_REFRESH_TIMEOUT_SECONDS:-}" 60)" \
+      || hook_timeout=60
+    loop_spec_run_bounded_stdin "$hook_timeout" \
+      "$private_dir/stdout" "$private_dir/stderr" "$command_text" bash -s || hook_rc=$?
     [[ "$hook_rc" -eq 0 ]] || exit 10
 
     if LC_ALL=C grep -q '[^[:space:]]' "$private_dir/stdout" 2>/dev/null; then

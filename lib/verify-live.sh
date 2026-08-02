@@ -41,6 +41,16 @@ set -uo pipefail
 _die2() { echo "verify-live.sh: $*" >&2; exit 2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=bounded-run.sh
+. "$SCRIPT_DIR/bounded-run.sh"
+
+# Per-attempt deadline for the readiness probe, and per-probe deadline for the
+# acceptance probes. Both are single round trips against a local app.
+READY_PROBE_TIMEOUT="$(loop_spec_resolve_timeout \
+  "${LOOP_SPEC_LIVE_READY_PROBE_TIMEOUT_SECONDS:-}" 10)" || READY_PROBE_TIMEOUT=10
+PROBE_TIMEOUT="$(loop_spec_resolve_timeout \
+  "${LOOP_SPEC_LIVE_PROBE_TIMEOUT_SECONDS:-}" 120)" || PROBE_TIMEOUT=120
+
 DEFAULT_FILE="${LOOP_SPEC_WORKFLOW_CONFIG:-${CLAUDE_PROJECT_DIR:-.}/.loop-spec/workflow.json}"
 
 _config_of() { # _config_of <file> -> prints block, rc 1 when unconfigured
@@ -133,7 +143,12 @@ case "$cmd" in
       if ! kill -0 "$app_pid" 2>/dev/null; then
         break  # app died before becoming ready
       fi
-      if bash -c "$ready" >/dev/null 2>&1; then
+      # Bounded per attempt. readyTimeoutSec counts ATTEMPTS, so an unbounded probe
+      # defeats the whole loop: one `ready` command that never returns means the
+      # deadline is never re-checked and the wait becomes infinite. Cap each attempt
+      # so the loop keeps its own promise.
+      if loop_spec_run_bounded "$READY_PROBE_TIMEOUT" /dev/null /dev/null \
+        bash -c "$ready" >/dev/null 2>&1; then
         is_ready=true
         break
       fi
@@ -153,7 +168,14 @@ case "$cmd" in
     all_pass=true
     while IFS= read -r probe; do
       [[ -n "$probe" ]] || continue
-      p_out="$(bash -c "$probe" 2>&1)"; p_rc=$?
+      _probe_out="$(mktemp "${TMPDIR:-/tmp}/loop-spec-live-probe-XXXXXX")"
+      p_rc=0
+      loop_spec_run_bounded_shell "$PROBE_TIMEOUT" "$_probe_out" "$probe" || p_rc=$?
+      p_out="$(cat "$_probe_out" 2>/dev/null || true)"
+      rm -f "$_probe_out"
+      if [[ "$p_rc" -eq 124 ]]; then
+        p_out="${p_out}"$'\n'"live-verify: probe exceeded ${PROBE_TIMEOUT}s and was terminated"
+      fi
       p_pass=true; [[ "$p_rc" -eq 0 ]] || { p_pass=false; all_pass=false; }
       evid="null"
       if [[ -n "$EVIDENCE" ]]; then

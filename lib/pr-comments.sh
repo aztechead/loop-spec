@@ -47,6 +47,14 @@ set -uo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=credential-refresh.sh
 . "$script_dir/credential-refresh.sh"
+# shellcheck source=bounded-run.sh
+. "$script_dir/bounded-run.sh"
+
+# Every gh call below reaches the network; several are --paginate loops. Unbounded,
+# any one of them can stall an unattended run indefinitely.
+loop_spec_disable_interactive_prompts
+_pr_comments_timeout="$(loop_spec_resolve_timeout "${LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS:-}" 60)" \
+  || _pr_comments_timeout=60
 
 _die2() { echo "pr-comments.sh: $*" >&2; exit 2; }
 
@@ -154,7 +162,7 @@ trap 'rm -rf "$auth_tmp"' EXIT
 _run_gh_once() {
   local stdout_file="$1" stderr_file="$2"
   shift 2
-  "$@" >"$stdout_file" 2>"$stderr_file"
+  loop_spec_run_bounded "$_pr_comments_timeout" "$stdout_file" "$stderr_file" "$@"
 }
 
 _run_gh() {

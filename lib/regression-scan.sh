@@ -15,6 +15,13 @@
 #   0 always (fail-open advisory script)
 set -euo pipefail
 
+# shellcheck source=bounded-run.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/bounded-run.sh"
+
+# Per-command deadline for the recorded test commands this script replays.
+REGRESSION_CMD_TIMEOUT="$(loop_spec_resolve_timeout \
+  "${LOOP_SPEC_REGRESSION_CMD_TIMEOUT_SECONDS:-}" 300)" || REGRESSION_CMD_TIMEOUT=300
+
 EMPTY_JSON='{"prior_features":[],"failed_tests":[]}'
 
 # Validate argument.
@@ -129,7 +136,17 @@ for VERIF_FILE in "${VERIF_FILES[@]}"; do
     [[ -z "$CMD" ]] && continue
     actual_exit=0
     actual_output=""
-    actual_output=$(bash -c "$CMD" 2>&1) || actual_exit=$?
+    # Bounded: these are test commands parsed out of PRIOR features' VERIFICATION.md,
+    # so this script runs arbitrary recorded commands. "Advisory result" bounds the
+    # verdict, not the runtime -- a wedged command still stalls VERIFY Step 0 before
+    # any of the real work starts.
+    _rs_out="$(mktemp "${TMPDIR:-/tmp}/loop-spec-regression-XXXXXX")"
+    loop_spec_run_bounded_shell "$REGRESSION_CMD_TIMEOUT" "$_rs_out" "$CMD" || actual_exit=$?
+    actual_output="$(cat "$_rs_out" 2>/dev/null || true)"
+    rm -f "$_rs_out"
+    if [[ "$actual_exit" -eq 124 ]]; then
+      actual_output="${actual_output}"$'\n'"regression-scan: command exceeded ${REGRESSION_CMD_TIMEOUT}s and was terminated"
+    fi
     if [[ "$actual_exit" -ne 0 ]]; then
       FEATURE_STATUS="fail"
       FEATURE_FAILED+=("$SLUG")

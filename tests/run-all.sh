@@ -51,6 +51,7 @@ run_suite "hooks/team/phase-handoff-guard" "bash hooks/team/phase-handoff-guard.
 run_suite "lib/feature-write"         "bash tests/lib/feature-write.test.sh"
 run_suite "lib/team-ops"              "bash tests/lib/team-ops.test.sh"
 run_suite "lib/teams-capability"      "bash tests/lib/teams-capability.test.sh"
+run_suite "lib/bounded-run"           "bash tests/lib/bounded-run.test.sh"
 run_suite "lib/harness"               "bash tests/lib/harness.test.sh"
 run_suite "lib/plugin-version"        "bash tests/lib/plugin-version.test.sh"
 run_suite "lib/bump-version"          "bash tests/lib/bump-version.test.sh"

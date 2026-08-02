@@ -33,6 +33,13 @@ done
 [[ -n "$log" ]] || die2 "--log is required"
 [[ "$timeout_secs" =~ ^[0-9]+$ ]] || die2 "--timeout-secs must be a non-negative integer"
 [[ "$idle_timeout_secs" =~ ^[0-9]+$ ]] || die2 "--idle-timeout-secs must be a non-negative integer"
+# 0 passed validation and then disabled the deadline entirely -- a watchdog that
+# does not watch, which is worse than no watchdog because the sidecar still reports
+# a bound. An unattended command could hang forever behind an apparently armed
+# deadline. Refuse it: an operator who genuinely wants a very long ceiling can say
+# so with a large number.
+[[ "$timeout_secs" -gt 0 ]] || die2 "--timeout-secs must be greater than 0 (0 disabled the deadline entirely)"
+[[ "$idle_timeout_secs" -gt 0 ]] || die2 "--idle-timeout-secs must be greater than 0 (0 disabled the deadline entirely)"
 
 root="$(cd "$root" && pwd -P)"
 case "$log" in
