@@ -21,19 +21,30 @@
 #   exit 2 = deny (stderr shown to the model)
 set -euo pipefail
 
-case "${LOOP_SPEC_WORKTREES:-1}" in
-  1) exit 0 ;;
-  0) ;;
-  *)
-    echo "DENY: LOOP_SPEC_WORKTREES must be 0 or 1; refusing tool use until the invalid configuration is corrected." >&2
-    exit 2
-    ;;
-esac
-
+# Scope FIRST, value second. This hook is registered on "Agent|Bash|EnterWorktree",
+# so it sees every Bash call in every project the operator ever opens -- including
+# repositories that have nothing to do with loop-spec. Validating the setting before
+# the project-scope check meant one stray export (LOOP_SPEC_WORKTREES=true, the most
+# natural typo for a boolean) denied EVERY tool call EVERYWHERE, with no recovery: the
+# session could not run `echo` to diagnose itself, and an unattended run has no operator
+# to notice. Scope is cheap and has no failure mode; check it first.
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 if [[ ! -d "$PROJECT_DIR/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then
   exit 0
 fi
+
+# An unrecognized value is a misconfiguration, not an authorization. Resolve it to the
+# RESTRICTIVE mode (0) rather than denying the whole tool surface: the setting's own
+# safe direction is "no worktrees", so treating an unknown value as 0 still honors the
+# conservative reading while bounding the blast radius to worktree-creating calls. The
+# session keeps enough tool access to read the environment and correct it.
+case "${LOOP_SPEC_WORKTREES:-1}" in
+  1) exit 0 ;;
+  0) ;;
+  *)
+    echo "loop-spec: LOOP_SPEC_WORKTREES must be 0 or 1 (got '${LOOP_SPEC_WORKTREES}'); treating it as 0 (no worktrees) for this call. Set it to 0 or 1 explicitly." >&2
+    ;;
+esac
 
 # Malformed hook input must not strand the session.
 trap 'exit 0' ERR

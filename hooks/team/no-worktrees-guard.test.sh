@@ -2,7 +2,8 @@
 # Tests for hooks/team/no-worktrees-guard.sh.
 set -euo pipefail
 
-HOOK="$(dirname "$0")/no-worktrees-guard.sh"
+# Absolute: the out-of-scope cases below run the hook from a different directory.
+HOOK="$(cd "$(dirname "$0")" && pwd)/no-worktrees-guard.sh"
 PASS=0
 FAIL=0
 
@@ -69,8 +70,45 @@ check "unrelated Bash allowed" 0 "$TEST" \
   CLAUDE_PROJECT_DIR="$PROJECT" LOOP_SPEC_WORKTREES=0
 check "malformed payload fails open" 0 "not json" \
   CLAUDE_PROJECT_DIR="$PROJECT" LOOP_SPEC_WORKTREES=0
-check "invalid setting fails closed" 2 "$TEST" \
+# An invalid value is a misconfiguration, not an authorization: it resolves to the
+# restrictive mode (0) so worktree creation is still denied, but it must NOT take the
+# whole tool surface down with it. Before this, one stray `LOOP_SPEC_WORKTREES=true`
+# denied every Bash call in every project and the session could not diagnose itself.
+check "invalid setting still denies worktree creation" 2 "$ADD" \
   CLAUDE_PROJECT_DIR="$PROJECT" LOOP_SPEC_WORKTREES=invalid
+check "invalid setting does not block unrelated Bash" 0 "$TEST" \
+  CLAUDE_PROJECT_DIR="$PROJECT" LOOP_SPEC_WORKTREES=invalid
+check "boolean-typo setting does not block unrelated Bash" 0 "$TEST" \
+  CLAUDE_PROJECT_DIR="$PROJECT" LOOP_SPEC_WORKTREES=true
+
+# Blast radius: a project with no .loop-spec/ must never be affected by this setting,
+# valid or not. The scope check runs before the value check for exactly this reason.
+# The hook consults BOTH CLAUDE_PROJECT_DIR and $PWD, so a genuine out-of-scope check
+# has to leave this repository -- running from the loop-spec checkout keeps it in scope.
+check_outside() {
+  local name="$1" expected="$2" payload="$3"
+  shift 3
+  local outside actual=0
+  outside="$(mktemp -d "${TMPDIR:-/tmp}/no-worktrees-guard-outside-XXXXXX")"
+  printf '%s' "$payload" \
+    | (cd "$outside" && env CLAUDE_PROJECT_DIR="$outside" "$@" bash "$HOOK") >/dev/null 2>&1 \
+    || actual=$?
+  rm -rf "$outside"
+  if [[ "$actual" -eq "$expected" ]]; then
+    echo "PASS: $name"
+    ((PASS++)) || true
+  else
+    echo "FAIL: $name (expected exit $expected, got $actual)"
+    ((FAIL++)) || true
+  fi
+}
+
+check_outside "invalid setting is inert outside a loop-spec project" 0 "$TEST" \
+  LOOP_SPEC_WORKTREES=true
+check_outside "worktree add outside a loop-spec project is not this hook's business" 0 "$ADD" \
+  LOOP_SPEC_WORKTREES=invalid
+check_outside "worktrees=0 outside a loop-spec project stays inert" 0 "$ADD" \
+  LOOP_SPEC_WORKTREES=0
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
