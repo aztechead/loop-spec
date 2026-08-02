@@ -33,7 +33,13 @@ check "I: override=0 forces false" "false" "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=0 ba
 
 # pi harness gate: Workflow is a Claude Code tool; never available under pi
 check "J: pi harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=pi bash "$LIB" 9.9.9)"
-check "K: explicit override beats pi gate" "true" "$(LOOP_SPEC_HARNESS=pi LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 9.9.9)"
+# A positive override must not claim a tool the harness does not ship: forcing
+# availability under pi/opencode used to answer "true" and let EXECUTE select the
+# workflow rung at width 6 on a harness with no Workflow tool at all.
+check "K: positive override cannot beat the pi gate" "false" "$(LOOP_SPEC_HARNESS=pi LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 9.9.9)"
+check "K2: positive override cannot beat the opencode gate" "false" "$(LOOP_SPEC_HARNESS=opencode LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 9.9.9)"
+check "K3: negative override still honored on claude" "false" "$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_WORKFLOWS_AVAILABLE=0 bash "$LIB" 9.9.9)"
+check "K4: positive override still honored on claude" "true" "$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 1.0.0)"
 
 # opencode harness gate: same Claude-Code-surface rule as pi
 check "L: opencode harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=opencode bash "$LIB" 9.9.9)"
