@@ -59,7 +59,11 @@ What is **not**:
   which is exactly when an operator most wants to know the run is alive.
 
 By this repo's own "probes, not judgments" rule a greppable-boundary contract that
-depends on model compliance is not a mechanism. Converting it is listed in Part 3.
+depends on model compliance is not a mechanism.
+
+**Converted in this change** — see "Observability is now a mechanism" below. Item 10
+is closed on the second pass, for the reason it should have been closed the first
+time: there is now a deterministic emitter and a test, not a document asking nicely.
 
 ## Part 2 — fixed in this change
 
@@ -141,6 +145,48 @@ acceptance criterion is met"* failed the whole cycle on word choice — reported
 scope violation. Verified before and after; the exemptions are narrow and every real
 deferral still flags.
 
+### Observability is now a mechanism
+
+The fix for item 10. `lib/events.sh` prints one `[PHASE] ...` line to **stderr** for
+every event it records, alongside its existing JSONL write:
+
+```text
+[SPEC] start
+[DISCUSS] gate critique round 2 - escalated
+[PLAN] dispatch planner [opus, team]
+[EXECUTE] task 2/5 start - task-002: Surface Airline in the Routes table
+[EXECUTE] task 2/5 done - task-002 [merged]
+[VERIFY] FAILURE: code-review
+[ITERATE] verdict: converged
+[DELIVER] waiting on required checks (120s/900s elapsed, 3 pass, 1 pending, 0 failed of 4)
+[DELIVER] done (115s) - completed -> completed
+```
+
+EXECUTE is the longest phase and used to report only `[EXECUTE] start`, so a log
+watcher could not tell task 1 of 6 from task 5 of 6, nor progress from a stall. The
+`task_start` / `task_end` pair closes that: `total` counts the whole DAG rather than
+the current wave, so the ratio advances monotonically across waves, and a `task_start`
+with no matching `task_end` is precisely what a stall looks like.
+
+Three deliberate choices:
+
+- **stderr, not stdout.** stdout carries the machine contract — the
+  `LOOP_SPEC_PHASE_START`/`_END` markers and their JSON, which callers parse and tests
+  assert on. Putting a human line there would have broken both. Both streams land in a
+  streamed log, so the operator gains everything and no consumer loses anything.
+- **In the emitter, not in the skills.** 26 `events.sh emit` call sites already exist
+  at the right moments. Emitting the console line where the event is recorded means
+  observability follows from the event, and a missing boundary line is now a missing
+  *event* — a real, findable bug rather than a model that forgot to narrate.
+- **`pr-delivery.sh` prints its own heartbeat.** It has no feature dir and so cannot
+  use `events.sh`, but its required-checks loop is exactly where a run goes quiet for
+  up to 900s. It now emits progress in the same format under the same kill switch.
+
+`report-style.md` no longer instructs the model to print boundary lines; it documents
+what the mechanism emits and what remains genuinely model-authored (EXECUTE's
+rung-decision line, a domain detail with no corresponding event).
+`LOOP_SPEC_CONSOLE_EVENTS=0` silences the console without touching the ledger.
+
 ### Contract: `${CLAUDE_PLUGIN_ROOT}` in agent bodies
 
 `agents/planner.md` and `agents/pattern-mapper.md` instructed the agent to read a
@@ -182,12 +228,7 @@ and shipping them unreviewed alongside the above would be the wrong trade.
 7. **`cycle-result.sh` terminal writers can exit 0 without publishing a pointer.**
 8. **Micro/debug direct-invocation scope bounds are prose-only** and are absent from
    `docs/determinism-audit.md`'s own ledger.
-9. **Make the phase-boundary console contract a mechanism.** Per the item-10 correction
-   above: give `lib/events.sh` a stdout marker for the non-phase events an operator
-   actually needs mid-phase, emit events from DELIVER during its CI wait, and replace
-   `report-style.md`'s prose instruction with a bash-echoed line plus a test. This is
-   the largest remaining gap for the unattended operator, and it is pure addition.
-10. **No test proves a `TeamCreate`-spawned teammate receives its frontmatter tools.**
+9. **No test proves a `TeamCreate`-spawned teammate receives its frontmatter tools.**
     All five call sites pass `{name, subagent_type, model, prompt}` with no explicit
     `tools`, relying entirely on `subagent_type` → agent-file resolution; only
     frontmatter *shape* is tested. If that resolution ever degrades in a harness
@@ -213,4 +254,4 @@ as one that passes.
   over-granted for what its own prompt instructs. The reported symptom matches no file
   on disk, and the mechanism that actually killed that run was the capability-override
   ordering bug fixed above. The *runtime* question is not withdrawn — it is Part 3
-  item 10, because nothing proves the grant survives `TeamCreate` resolution.
+  item 9, because nothing proves the grant survives `TeamCreate` resolution.

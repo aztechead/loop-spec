@@ -175,6 +175,26 @@ on top of the explicit `git worktree add` in the prompt. Pass the role model via
 
 **Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved alias>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
 
+**Task progress (required).** EXECUTE is the longest phase; without this it reports
+only `[EXECUTE] start` and an operator watching a streamed log cannot tell task 1 of 6
+from task 5 of 6, or steady progress from a stall. Emit one `task_start` before
+dispatching each task and one `task_end` after its merge/failure is decided:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" \
+  task_start --phase execute \
+  --data '{"index":<1-based position>,"total":<total tasks in the DAG>,"id":"<task id>","subject":"<task subject>"}' || true
+# ... dispatch, verify, merge ...
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" \
+  task_end --phase execute \
+  --data '{"index":<same>,"total":<same>,"id":"<task id>","result":"<merged|failed|skipped>"}' || true
+```
+
+`total` is the task count for the whole DAG, not the current wave, so the ratio
+advances monotonically across waves. In a parallel wave emit every `task_start` as the
+wave launches; `index` is the task's position in the DAG order. `lib/events.sh` renders
+these as `[EXECUTE] task 2/5 start - task-002: <subject>`. Retries re-emit.
+
 ## Implementer Agent prompt (per task, per attempt)
 
 Substitute the runtime values. This mirrors the implementer contract in

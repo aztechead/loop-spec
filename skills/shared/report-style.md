@@ -5,28 +5,43 @@ record at every phase boundary for the unattended operator, and action-first pro
 the human reading a report. Verbosity is not thoroughness — the artifacts carry the
 detail; the console carries the signal.
 
-## Phase-boundary lines (machine-greppable)
+## Phase-boundary lines (machine-greppable) — emitted for you
 
-Print exactly one line at every phase start and end, prefixed with the phase tag in
-brackets — the same treatment as EXECUTE's rung-decision line, which is the pattern
-operators grep for:
+**`lib/events.sh` prints these. You do not have to.** Every `events.sh emit` call
+writes one `[PHASE] ...` line to **stderr** in addition to its durable JSONL record,
+so the whole lifecycle is greppable from a streamed log:
 
 ```text
 [SPEC] start
-[SPEC] done (4m12s) — ambiguity 18%, gate passed
+[DISCUSS] gate critique round 2 - escalated
+[PLAN] dispatch planner [opus, team]
 [EXECUTE] DAG width W=2 -> rung: subagent (teams unavailable: no TeamCreate)
-[VERIFY] done (11m03s) — verifier ALL_PASS, code-review PASS_WITH_MINOR
-[ITERATE] done (2m40s) — converged on round 1
-[DELIVER] done (1m55s) — PR #42 ready-for-review, checks green
+[VERIFY] FAILURE: code-review
+[ITERATE] verdict: converged
+[DELIVER] waiting on required checks (120s/900s elapsed, 3 pass, 1 pending, 0 failed of 4)
+[DELIVER] done (115s) - completed -> completed
 ```
 
-Rules:
+This used to be an instruction to *you* to print such lines. That made the only window
+into a long unattended run depend on model compliance, with no test — and in practice
+only EXECUTE and DISCUSS ever printed them, while gate rounds, dispatches and verify
+failures reached no console at all. It is a mechanism now, pinned by
+`tests/lib/events.test.sh` case P.
 
-- Tag = the phase name in caps, in square brackets. One line per boundary, stdout.
-- The `done` line carries elapsed time and the phase's headline verdict (gate result,
-  rung decision, converged/not, PR state). Scores in percentages, never bare decimals.
-- These lines complement `lib/events.sh` (the durable record); the console line is for
-  live `grep '^\[' `-style tailing of a streamed run.
+What this means in practice:
+
+- **Emit the event and the line follows.** The observability you owe an operator is
+  discharged by calling `events.sh emit` at the right moments — not by writing console
+  prose. A missing boundary line is now a missing *event*, which is a real bug.
+- **stdout is unchanged.** `LOOP_SPEC_PHASE_START` / `LOOP_SPEC_PHASE_END` plus their
+  JSON still go to stdout for machine consumers; the human line goes to stderr. Both
+  land in a streamed log.
+- **Kill switch:** `LOOP_SPEC_CONSOLE_EVENTS=0` silences the console lines without
+  touching the JSONL ledger.
+- **Still write prose the mechanism cannot know**, such as EXECUTE's rung-decision
+  line: a domain-specific detail with no corresponding event. Use the same
+  `[PHASE] ...` shape so it greps alongside the rest. Scores in percentages, never
+  bare decimals.
 
 ## Report prose (action-first)
 

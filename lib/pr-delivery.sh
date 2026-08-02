@@ -623,6 +623,16 @@ while :; do
   pending="$(jq -r '.pending' <<<"$counts")"
   total="$(jq -r 'length' <<<"$checks_payload")"
 
+  # Heartbeat. This loop can run for LOOP_SPEC_CHECKS_TIMEOUT_SECONDS -- 900s by
+  # default -- and DELIVER emitted nothing at all while it did, so an unattended
+  # operator watching a streamed log could not tell a healthy CI wait from a wedged
+  # run. Same `[PHASE] ...` console contract as lib/events.sh, and the same kill
+  # switch; this script has no feature dir, so it prints the line directly.
+  if [[ "${LOOP_SPEC_CONSOLE_EVENTS:-1}" != "0" ]]; then
+    printf '[DELIVER] waiting on required checks (%ss/%ss elapsed, %s pass, %s pending, %s failed of %s)\n' \
+      "$elapsed" "$checks_timeout" "$(jq -r '.pass' <<<"$counts")" "$pending" "$failed" "$total" >&2
+  fi
+
   if [[ "$elapsed" -gt "$checks_timeout" ]]; then
     checks_json="$(jq -cn --argjson timeout "$checks_timeout" --argjson elapsed "$elapsed" \
       --argjson counts "$counts" --argjson required "$checks_payload" \

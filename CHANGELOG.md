@@ -8,6 +8,27 @@ Unattended-operation hardening. Full-plugin audit scoped to headless `claude -p`
 the Agent SDK, cron, and the OpenCode SDK — the modes that run with nobody watching.
 Findings and the deliberately-deferred remainder: `docs/loop-spec/unattended-audit-2026-08.md`.
 
+### Added
+
+- **Phase-boundary observability is a mechanism, not a request.** `lib/events.sh` now
+  prints one greppable `[PHASE] ...` line to stderr for every event it records, so an
+  operator tailing a streamed log sees the whole lifecycle — including gate rounds,
+  dispatches and verify failures, which were previously JSONL-only and invisible.
+  `lib/pr-delivery.sh` emits a heartbeat through its required-checks wait, which could
+  previously run 900s in total silence. stdout's `LOOP_SPEC_PHASE_START`/`_END`
+  machine contract is unchanged; `LOOP_SPEC_CONSOLE_EVENTS=0` silences the console
+  without touching the ledger. `skills/shared/report-style.md` now documents what the
+  mechanism emits instead of asking the model to print it — the previous arrangement
+  had no test, and in practice only EXECUTE and DISCUSS complied. Closes the last open
+  item from the v2.23.1 dogfooding backlog.
+- **EXECUTE reports which task it is on, out of how many.** New `task_start` /
+  `task_end` events render as `[EXECUTE] task 2/5 start - task-002: <subject>` and
+  `[EXECUTE] task 2/5 done - task-002 [merged]`, emitted by the subagent and inline
+  rungs. EXECUTE is the longest phase and previously reported only `[EXECUTE] start`,
+  so a log watcher could not distinguish task 1 of 6 from task 5 of 6, nor steady
+  progress from a stall. `total` counts the whole DAG rather than the current wave, so
+  the ratio advances monotonically.
+
 ### Fixed
 
 - **An invalid `LOOP_SPEC_WORKTREES` no longer wedges every session.** `no-worktrees-guard.sh`
