@@ -80,22 +80,42 @@ main session:
 
 ```bash
 phase=spec
+result="${REPO_ROOT}/.loop-spec/last-result.json"
 for _ in $(seq 1 "${MAX_PHASE_INVOCATIONS:-12}"); do
   phase_model="$(
     bash "${LOOP_SPEC_PLUGIN}/lib/feature-init.sh" phase-model "$phase"
   )"
   model_args=()
   [[ -n "$phase_model" ]] && model_args=(--model "$phase_model")
+
+  # Check the child's status. A phase that dies -- OOM, a killed container, an
+  # expired credential, a crashed harness -- exits non-zero and may write nothing.
+  claude_rc=0
   claude "${model_args[@]}" -p \
-    "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}"
-  result="${REPO_ROOT}/.loop-spec/last-result.json"
-  if [[ "$(jq -r '.status + \":\" + (.reason // \"\")' "$result")" \
-        != "paused:phase-handoff" ]]; then
-    break
+    "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}" || claude_rc=$?
+
+  # A missing or unparseable result is a FAILED run, not a finished one. Without
+  # this check the jq below errors, the "not a handoff" branch is taken, the loop
+  # breaks, and the supervisor exits 0 -- reporting success for a lost run.
+  if [[ "$claude_rc" -ne 0 ]] || ! jq -e . "$result" >/dev/null 2>&1; then
+    echo "loop-spec: phase '${phase}' failed (exit ${claude_rc}); reconciling" >&2
+    bash "${LOOP_SPEC_PLUGIN}/lib/cycle-reconcile.sh" "${REPO_ROOT}" || true
+    exit 1
   fi
+
+  status_reason="$(jq -r '.status + ":" + (.reason // "")' "$result")"
+  [[ "$status_reason" == "paused:phase-handoff" ]] || break
   phase="$(jq -r '.phaseReached' "$result")"
 done
+
+# Terminal state is whatever the last result says. `converged` is the single
+# authoritative success signal; `retryable` marks a delivery-only retry.
+jq -e '.converged == true' "$result" >/dev/null 2>&1 || exit 1
 ```
+
+The exit-status and result-existence checks are not optional. `claude -p` exiting
+non-zero, or exiting 0 having written no result, is precisely how an unattended run
+is lost silently — the supervisor has no other way to tell "finished" from "died".
 
 Regardless of whether handoff is enabled, cycle phase activation writes the
 effective map before it launches any explicit-team teammate, implicit named

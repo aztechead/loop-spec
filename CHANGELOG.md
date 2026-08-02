@@ -2,6 +2,45 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.31.0] - 2026-08-02
+
+Unattended-operation hardening. Full-plugin audit scoped to headless `claude -p`,
+the Agent SDK, cron, and the OpenCode SDK — the modes that run with nobody watching.
+Findings and the deliberately-deferred remainder: `docs/loop-spec/unattended-audit-2026-08.md`.
+
+### Fixed
+
+- **An invalid `LOOP_SPEC_WORKTREES` no longer wedges every session.** `no-worktrees-guard.sh`
+  validated its setting before the `.loop-spec` scope check and is registered on
+  `Agent|Bash|EnterWorktree`, so one stray `=true` denied every tool call in every
+  project, with no way for the session to diagnose itself. Scope is checked first, and
+  an unrecognized value resolves to the restrictive mode instead of denying everything.
+- **Every external command an unattended run can block on is now bounded.** New
+  `lib/bounded-run.sh` seam, wired into `checkpoint-pr.sh` (the crash-rescue path,
+  whose caller's `|| true` absorbed failures but not hangs), `pr-comments.sh`,
+  `credential-refresh.sh` (the token-mint hook that gated all three), `regression-scan.sh`,
+  and both `verify-live.sh` probe sites — including the readiness probe, where an
+  unbounded attempt defeated `readyTimeoutSec` entirely.
+- **`run-with-watchdog.sh` no longer accepts `--timeout-secs 0`**, which disabled the
+  deadline while the sidecar still advertised a bound.
+- **Positive capability overrides can no longer claim absent harness surfaces.**
+  `LOOP_SPEC_HARNESS=pi LOOP_SPEC_TEAMS_MODE=implicit` returned `implicit` and routed
+  EXECUTE onto a team rung where every spawn throws. The harness gate now precedes the
+  override in `teams-capability.sh` and `workflow-availability.sh`; negative overrides
+  still work everywhere.
+- **A resumed feature is pointed at its own plan.** `pause-snapshot.sh` hardcoded
+  `resilience-ops/PLAN.md` into every `.continue-here.md`, so every other paused feature
+  told the resuming session to ground itself in a different feature's spec.
+- **DELIVER no longer rejects a feature that shipped everything.** `deferral-lint.sh`
+  flagged completion prose such as "0 remaining gaps", and `deliver.sh` treats a flag as
+  terminal with an override an unattended run cannot set.
+- **The documented Cloud Run supervisor checks its child.** The example loop ignored
+  `claude`'s exit status and result existence, so a dead phase exited the loop cleanly
+  and reported success.
+- **Harness contracts:** `${CLAUDE_PLUGIN_ROOT}` removed from agent prompt bodies (it
+  does not expand there; `validate-agents.sh` now rejects it), and the pi bridge guards
+  stdin EPIPE like the OpenCode bridge already did.
+
 ## [2.30.1] - 2026-07-31
 
 ### Fixed
