@@ -28,8 +28,38 @@ the file can be retired rather than re-litigated.
 | 7 | DELIVER SHA binding tripped on loop-spec's own commits | Local artifacts live in untracked `info/exclude` (`lib/runtime-ignore.sh`); `finalize-delivery-candidate.sh` commits before `deliver.sh` reads `target_sha` |
 | 8 | Micro guard fired inside a full cycle | `hooks/team/adhoc-verify-guard.sh:87-97` — deterministic `active-cycle.sh has-active` stand-down |
 | 9 | Security-signal false positive on "authoritative" | `lib/security-signal.sh` two-tier strong/weak vocabulary |
-| 10 | Phase-boundary observability | `lib/events.sh:212-233` — `LOOP_SPEC_PHASE_START` markers with `elapsedSeconds` |
+| 10 | Phase-boundary observability | **PARTIAL — see below** |
 | 11 | Dirty worktree before rebase | `lib/integrate-task.sh:159` `check_clean` precedes the only `git rebase` call site |
+
+### Item 10 is PARTIAL, not closed
+
+An earlier revision of this document listed item 10 as closed on the strength of
+`lib/events.sh` emitting phase markers. A closer read does not support that, and the
+correction is recorded here rather than quietly amended.
+
+What **is** done, and is genuinely deterministic: `phase_start` / `phase_end` write a
+greppable `LOOP_SPEC_PHASE_START` / `LOOP_SPEC_PHASE_END` line to stdout carrying the
+full event JSON including `elapsedSeconds` and a verdict, from one generic call site
+that covers all seven phases.
+
+What is **not**:
+
+- `lib/events.sh:236-241` sets no marker in its `else` branch, so **every non-phase
+  event is JSONL-only**. `gate_round`, `dispatch`, `iterate_verdict`, `verify_failure`
+  and `checkpoint_pr` never reach stdout — critique-gate rounds, teammate dispatches
+  and verify failures are invisible in a streamed log.
+- The `[PHASE] start` / `[PHASE] done (elapsed) — verdict` treatment the original
+  report actually asked for — the one modelled on EXECUTE's praised rung-decision line
+  — is stated as **prose** in `skills/shared/report-style.md` and instructed at
+  `skills/cycle/SKILL.md:764-766`. It is not a bash echo and has no test. Actual
+  bash-echoed `[TAG]` lines exist only in EXECUTE (6) and DISCUSS (1); INTAKE, SPEC,
+  PLAN, VERIFY, ITERATE and DELIVER have none.
+- `skills/deliver/SKILL.md` contains **zero** `events.sh emit` calls, so DELIVER is
+  silent between its phase boundaries — including a CI-checks wait of up to 900s,
+  which is exactly when an operator most wants to know the run is alive.
+
+By this repo's own "probes, not judgments" rule a greppable-boundary contract that
+depends on model compliance is not a mechanism. Converting it is listed in Part 3.
 
 ## Part 2 — fixed in this change
 
@@ -152,6 +182,17 @@ and shipping them unreviewed alongside the above would be the wrong trade.
 7. **`cycle-result.sh` terminal writers can exit 0 without publishing a pointer.**
 8. **Micro/debug direct-invocation scope bounds are prose-only** and are absent from
    `docs/determinism-audit.md`'s own ledger.
+9. **Make the phase-boundary console contract a mechanism.** Per the item-10 correction
+   above: give `lib/events.sh` a stdout marker for the non-phase events an operator
+   actually needs mid-phase, emit events from DELIVER during its CI wait, and replace
+   `report-style.md`'s prose instruction with a bash-echoed line plus a test. This is
+   the largest remaining gap for the unattended operator, and it is pure addition.
+10. **No test proves a `TeamCreate`-spawned teammate receives its frontmatter tools.**
+    All five call sites pass `{name, subagent_type, model, prompt}` with no explicit
+    `tools`, relying entirely on `subagent_type` → agent-file resolution; only
+    frontmatter *shape* is tested. If that resolution ever degrades in a harness
+    version, it reproduces the original "teammates can only read" report with a
+    perfectly correct agent file on disk. Needs a live smoke test, not an offline one.
 
 Items 6 and 7 are the closest to defects and should lead the next pass; they touch the
 one file every unattended run depends on for its success signal, so they deserve their
@@ -167,6 +208,9 @@ as one that passes.
   `PLAN.md` specs plus two variables `configuration.md:359` explicitly declares as
   documentation placeholders. No drift.
 - **"Agent tool grants are insufficient for their roles."** The original run-2 report
-  blamed a lost run on teammates that "only have {Read, Write}". Not reproducible at
-  HEAD at the agent-file level; the real mechanism was the capability-override
-  ordering bug above.
+  blamed a lost run on teammates that "only have {Read, Write}". Withdrawn **at the
+  agent-file level only**: all 14 `agents/*.md` were read and none is under- or
+  over-granted for what its own prompt instructs. The reported symptom matches no file
+  on disk, and the mechanism that actually killed that run was the capability-override
+  ordering bug fixed above. The *runtime* question is not withdrawn — it is Part 3
+  item 10, because nothing proves the grant survives `TeamCreate` resolution.
