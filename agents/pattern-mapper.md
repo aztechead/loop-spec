@@ -35,7 +35,7 @@ under `docs/loop-spec/features/**` and `.claude/agent-memory/**`.
 
 ## Output
 
-`docs/loop-spec/features/{slug}/PATTERNS.md`. Use the template at `${CLAUDE_PLUGIN_ROOT}/skills/shared/artifact-templates/PATTERNS.md.template`.
+`docs/loop-spec/features/{slug}/PATTERNS.md`, using `skills/shared/artifact-templates/PATTERNS.md.template` as the shape.
 
 ## Graphify-first navigation (required)
 

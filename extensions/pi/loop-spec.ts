@@ -81,6 +81,13 @@ function runHook(
         resolve(null);
       }, HOOK_TIMEOUT_MS);
       proc.stdout.on("data", (d: unknown) => (out += String(d)));
+      // Some hooks exit before reading stdin. The write below then emits an
+      // asynchronous EPIPE on this stream, and Node treats an unhandled stream
+      // "error" event as process-fatal -- the surrounding try/catch cannot see it,
+      // because the throw happens on a later tick. The opencode bridge already
+      // guards this exact condition; pi must too. Swallow it and let the
+      // close/timeout lifecycle below decide the outcome.
+      proc.stdin.on("error", () => {});
       proc.on("error", () => {
         clearTimeout(timer);
         resolve(null);

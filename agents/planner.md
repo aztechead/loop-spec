@@ -45,7 +45,7 @@ Otherwise, produce PATTERNS.md by following the pattern-mapper role definition a
 4. For each chosen analog, capture: path+lines, imports, the 5-30 line core pattern verbatim, surrounding error handling, and a test analog if one exists.
 5. Note gotchas: 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells flagged in `docs/loop-spec/codebase/CONCERNS.md`, etc.).
 6. If no clear analog exists for a concept, list it under `## Concepts with no clear analog`. Do not invent a plausible-looking analog.
-7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md` using the template at `${CLAUDE_PLUGIN_ROOT}/skills/shared/artifact-templates/PATTERNS.md.template`.
+7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md`, using `skills/shared/artifact-templates/PATTERNS.md.template` as the shape.
 
 Top-2 analogs per concept with rationale.
 
