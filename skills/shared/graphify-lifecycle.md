@@ -3,13 +3,12 @@
 This is the single construction and refresh contract for Graphify inside loop-spec.
 Cycle Step 5.4 and map-codebase Step 0 call it once per selected repository. Graph
 construction is assistant-owned so semantic extraction uses the host session's model
-and authentication; shell code only checks the package, validates outputs, and stages
-the portable artifacts.
+and authentication; shell code only checks the package and validates outputs. Graph
+output is local navigation state during feature work, never delivery-PR content.
 
 ## Inputs
 
 - `repo`: absolute path to one selected Git repository root.
-- `commit_message`: graph-only commit message chosen by the caller.
 - `required`: `LOOP_SPEC_REQUIRE_GRAPHIFY` semantics; default is required.
 
 Run repositories sequentially. Graphify writes shared intermediates, so parallel builds
@@ -87,34 +86,40 @@ inside one repository are forbidden.
    this invocation succeeded. When required, fail with the harness-specific registration
    hint. Under `LOOP_SPEC_REQUIRE_GRAPHIFY=0`, warn and use the degraded Glob/Grep path.
 
-8. Restore loop-spec's captured skill path, then validate and stage:
+8. Restore loop-spec's captured skill path, then validate and keep the generated graph
+   local to this checkout:
 
    ```bash
    export CLAUDE_SKILL_DIR="$loop_spec_skill_dir"
    bash "$graphify_lib" validate "$repo"
-   bash "$graphify_lib" stage "$repo"
+   bash "$graphify_lib" localize "$repo"
    ```
 
    Validation requires named, non-opaque nodes and the complete shared output set:
    `graph.json`, `GRAPH_REPORT.md`, `manifest.json`, and `graph.html`.
 
-9. Commit only staged Graphify outputs when they changed:
+9. **Do not stage or commit `graphify-out/` on a feature branch.** A semantic update
+   can legitimately regenerate most of `graph.json`, `manifest.json`, and report
+   artifacts after a small source change; including that derived churn in a feature PR
+   obscures the actual implementation. `localize` adds the directory to the clone-local
+   ignore policy, de-stages any previously staged graph paths, and protects historical
+   tracked outputs from accidental feature commits. The graph remains available to this
+   run's mappers and queries.
+
+   After the feature merges, refresh Graphify from the default branch or a dedicated
+   graph-maintenance checkout and review/publish that generated-data change separately:
 
    ```bash
-   if ! git -C "$repo" diff --cached --quiet -- . ':(exclude)graphify-out/**'; then
-     echo "loop-spec: unexpected staged path outside graphify-out; refusing graph commit" >&2
-     exit 1  # Do not sweep another phase's staged work.
-   fi
-   if ! git -C "$repo" diff --cached --quiet -- graphify-out/; then
-     git -C "$repo" commit -m "$commit_message"
-   fi
+   bash "$graphify_lib" publish "$repo"
+   git -C "$repo" diff --cached -- graphify-out/
+   # after reviewing the generated-data diff:
+   git -C "$repo" commit -m "chore: refresh graphify knowledge graph"
    ```
 
-   The first guard must abort rather than continue when it prints the error. Committing
-   the prepared index, without a pathspec, preserves staged removals of previously tracked
-   local artifacts. The staging helper excludes machine paths, cost history, caches, dated
-   backups, locks, and partial assistant intermediates. Never replace it with blanket
-   `git add` or a pathspec commit.
+   `publish` is an explicit maintenance operation: it reverses localize's
+   skip-worktree protection and stages only portable output, leaving caches and host
+   files out. A feature delivery must never be held hostage by a graph refresh or made
+   unreviewable by it.
 
 ## Installation Failure
 

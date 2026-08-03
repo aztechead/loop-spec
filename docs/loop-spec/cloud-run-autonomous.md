@@ -99,7 +99,7 @@ for _ in $(seq 1 "${MAX_PHASE_INVOCATIONS:-12}"); do
   # breaks, and the supervisor exits 0 -- reporting success for a lost run.
   if [[ "$claude_rc" -ne 0 ]] || ! jq -e . "$result" >/dev/null 2>&1; then
     echo "loop-spec: phase '${phase}' failed (exit ${claude_rc}); reconciling" >&2
-    bash "${LOOP_SPEC_PLUGIN}/lib/cycle-reconcile.sh" "${REPO_ROOT}" || true
+    bash "${LOOP_SPEC_PLUGIN}/lib/cycle-reconcile.sh" --result-root "${REPO_ROOT}" || true
     exit 1
   fi
 

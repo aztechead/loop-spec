@@ -491,7 +491,7 @@ Gate failure detected
 
 ```
 verify phase complete
-  -> invoke Graphify's assistant skill, then validate, stage, and commit shared graphify-out/ artifacts
+  -> invoke Graphify's assistant skill, validate, and retain local graphify-out/ navigation state
   -> read .loop-spec/codebase/index.json
   -> compute changedFiles = git diff base..HEAD --name-only
   -> staleDomains = unique(index.files[file] for file in changedFiles) U "arch" if new files added

@@ -38,7 +38,7 @@ Mapper model is fixed at the `sonnet` alias (see `skills/shared/model-matrix.md`
 
 ### Step 0 - Graphify pre-flight (required)
 
-graphify is a hard requirement. Read `${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it to each selected repository with commit message `chore: NO_JIRA refresh graphify knowledge graph`. The external assistant skill performs a full semantic build or incremental semantic update using the current host model/authentication. The shell preflight only checks the package, requires named nodes and the complete output set, and stages portable artifacts.
+graphify is a hard requirement. Read `${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it to each selected repository. The external assistant skill performs a full semantic build or incremental semantic update using the current host model/authentication. The shell preflight checks the package and validates the complete output set; generated `graphify-out/` stays local and is never staged into the feature PR.
 
 ```bash
 ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect 2>/dev/null)"

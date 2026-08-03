@@ -60,7 +60,18 @@ EOF
 jq -n '{schemaVersion:7,slug:"demo",feature_title:"Demo feature",warnings:["one warning"],
   artifacts:{spec:"docs/loop-spec/features/demo/SPEC.md",
              verification:"docs/loop-spec/features/demo/VERIFICATION.md",
-             iteration:"docs/loop-spec/features/demo/ITERATION.md"}}' > "$WORK/feature.json"
+             iteration:"docs/loop-spec/features/demo/ITERATION.md",
+             patternsSource:"pattern-mapper",
+             codebaseSource:{tech:null,arch:null,quality:null,concerns:null,domain:null},
+             tasks:".loop-spec/features/demo/tasks.json"}}' > "$WORK/feature.json"
+
+# "Committed on this branch" is a literal contract. The renderer must consult the
+# repository index rather than dumping the heterogeneous feature.artifacts object.
+git -C "$WORK" init -q
+git -C "$WORK" config user.name "PR body test"
+git -C "$WORK" config user.email "pr-body@example.invalid"
+git -C "$WORK" add docs
+git -C "$WORK" commit -qm "artifacts"
 
 # ── Case 1: concise, well-formed body ────────────────────────────────────────
 OUT="$WORK/body.md"
@@ -73,6 +84,9 @@ check "1: verification excerpt present" "1" "$(grep -c '42 tests' "$OUT")"
 check "1: convergence excerpt present" "1" "$(grep -c 'Converged' "$OUT")"
 check "1: warning bullet present" "1" "$(grep -c -- '- one warning' "$OUT")"
 check "1: artifact paths listed" "1" "$(grep -c 'docs/loop-spec/features/demo/SPEC.md' "$OUT")"
+check "1: provenance role is not rendered as a path" "0" "$(grep -c 'pattern-mapper' "$OUT")"
+check "1: metadata object is not rendered as a path" "0" "$(grep -c "'tech': None" "$OUT")"
+check "1: runtime task sidecar is not rendered as a path" "0" "$(grep -c 'tasks.json' "$OUT")"
 check "1: no artifact H1 leaks" "0" "$(grep -c '^# ' "$OUT")"
 check "1: deep sections not inlined" "0" "$(grep -c 'Deep design notes' "$OUT")"
 check "1: balanced code fences" "0" "$(( $(grep -c '^```' "$OUT") % 2 ))"

@@ -38,16 +38,16 @@ check() {
 
 payload_with_text() {
   local text="$1"
-  printf '{"stop_reason":"end_turn","transcript":[{"role":"assistant","content":[{"type":"text","text":"%s"}]}]}' \
-    "$text"
+  jq -cn --arg text "$text" \
+    '{stop_reason:"end_turn",transcript:[{role:"assistant",content:[{type:"text",text:$text}]}]}'
 }
 
 # Production Stop payload: transcript_path points at Claude Code JSONL.
 payload_file_with_text() {
   local text="$1"
   local transcript="$(dirname "$TRACE_LOG")/transcript-${RANDOM}-${RANDOM}.jsonl"
-  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"%s"}]}}\n' \
-    "$text" > "$transcript"
+  jq -cn --arg text "$text" \
+    '{type:"assistant",message:{content:[{type:"text",text:$text}]}}' > "$transcript"
   printf '{"stop_reason":"end_turn","transcript_path":"%s"}' "$transcript"
 }
 
@@ -69,15 +69,28 @@ check "c: fail-open malformed JSON ALLOW" 0 "not-valid-json {"
 
 # d: the canonical sin: completion claim + "Deferred items:" -> exit 2
 check "d: completion + deferred items DENY" 2 \
-  "$(payload_with_text "Cycle complete. Deferred items: tighten validation.")"
+  "$(payload_with_text $'Cycle complete.\nDeferred items: tighten validation.')"
 
 # e: completion claim + follow-ups -> exit 2
 check "e: completion + follow-ups DENY" 2 \
-  "$(payload_with_text "All acceptance criteria pass. Follow-ups: add caching in a later PR.")"
+  "$(payload_with_text $'All acceptance criteria pass.\nFollow-ups: add caching in a later PR.')"
 
 # f: clean completion claim -> exit 0
 check "f: clean completion ALLOW" 0 \
   "$(payload_with_text "Converged. PR opened and ready for review. All acceptance criteria pass.")"
+
+# The guard delegates polarity/context to the structured lint. Naming the concept,
+# a negation, or a template's empty value cannot create a scope obligation.
+check "f2: negated follow-up ALLOW" 0 \
+  "$(payload_with_text "Feature complete. No follow-up action required.")"
+check "f3: empty deferred template ALLOW" 0 \
+  "$(payload_with_text "Feature complete. #### Minor (deferred)\nnone")"
+check "f4: reported guard behavior ALLOW" 0 \
+  "$(payload_with_text "Feature complete. This report explains how the deferral guard matched a word.")"
+
+# A real declaration remains blocked.
+check "f5: structured deferred scope DENY" 2 \
+  "$(payload_with_text $'Feature complete.\nDeferred scope: retry timeout handling.')"
 
 # g: deferral language WITHOUT a completion claim (design conversation) -> exit 0
 check "g: design discussion of scope ALLOW" 0 \
@@ -89,11 +102,11 @@ check "h: gate-marked deferral ALLOW" 0 \
 
 # i: stop_hook_active is not a bypass for a direct violation.
 check "i: stop_hook_active direct violation DENY" 2 \
-  '{"stop_hook_active":true,"stop_reason":"end_turn","transcript":[{"role":"assistant","content":[{"type":"text","text":"Cycle complete. Deferred items: x."}]}]}'
+  "$(jq -cn --arg text $'Cycle complete.\nDeferred items: x.' '{stop_hook_active:true,stop_reason:"end_turn",transcript:[{role:"assistant",content:[{type:"text",text:$text}]}]}')"
 
 # j: production transcript_path payload -> exit 2
 check "j: production transcript_path DENY" 2 \
-  "$(payload_file_with_text "Feature complete and shipped. Future work: better errors.")"
+  "$(payload_file_with_text $'Feature complete and shipped.\nFuture work: better errors.')"
 
 # k: no assistant text -> exit 0
 check "k: no assistant text ALLOW" 0 '{"stop_reason":"end_turn","transcript":[]}'
@@ -110,9 +123,8 @@ printf 'base\n' > "$REMEDIATION_REPO/app.txt"
 git -C "$REMEDIATION_REPO" add app.txt
 git -C "$REMEDIATION_REPO" commit -qm "base"
 
-printf '%s\n' \
-  '{"type":"assistant","message":{"content":[{"type":"text","text":"Cycle complete. Follow-up: tighten validation."}]}}' \
-  > "$REMEDIATION_TRANSCRIPT"
+jq -cn --arg text $'Cycle complete.\nFollow-up: tighten validation.' \
+  '{type:"assistant",message:{content:[{type:"text",text:$text}]}}' > "$REMEDIATION_TRANSCRIPT"
 REMEDIATION_PAYLOAD="$(printf '{"stop_reason":"end_turn","transcript_path":"%s"}' "$REMEDIATION_TRANSCRIPT")"
 ACTIVE_REMEDIATION_PAYLOAD="$(printf '{"stop_hook_active":true,"stop_reason":"end_turn","transcript_path":"%s"}' "$REMEDIATION_TRANSCRIPT")"
 

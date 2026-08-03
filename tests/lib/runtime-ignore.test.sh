@@ -41,7 +41,8 @@ touch "$WORK/.loop-spec/features/demo/feature.json" \
   "$WORK/.loop-spec/results/run.json" \
   "$WORK/.loop-spec/decisions-staging/decisions.jsonl" \
   "$WORK/graphify-out/cache/deadbeef.json" \
-  "$WORK/graphify-out/cost.json"
+  "$WORK/graphify-out/cost.json" \
+  "$WORK/graphify-out/graph.json"
 
 check "feature state remains trackable" "not-ignored" \
   "$(git -C "$WORK" check-ignore -q .loop-spec/features/demo/feature.json && echo ignored || echo not-ignored)"
@@ -57,10 +58,26 @@ for path in \
   .loop-spec/results/run.json \
   .loop-spec/decisions-staging/decisions.jsonl \
   graphify-out/cache/deadbeef.json \
-  graphify-out/cost.json; do
+  graphify-out/cost.json \
+  graphify-out/graph.json; do
   check "$path ignored" "ignored" \
     "$(git -C "$WORK" check-ignore -q "$path" && echo ignored || echo not-ignored)"
 done
+
+# /revise must reuse feature-shaped runtime state without allowing it to enter a
+# remediation commit, even in repositories that historically tracked it.
+git -C "$WORK" add .loop-spec/features/demo/feature.json .loop-spec/features/demo/PROGRESS.md
+git -C "$WORK" commit -qm "legacy feature state"
+printf 'changed\n' >> "$WORK/.loop-spec/features/demo/feature.json"
+printf 'changed\n' >> "$WORK/.loop-spec/features/demo/PROGRESS.md"
+bash "$SCRIPT" revise-state "$WORK" demo
+check "revise state hides historical tracked feature.json" "clean" \
+  "$(git -C "$WORK" status --porcelain -- .loop-spec/features/demo/feature.json | grep -q . && echo dirty || echo clean)"
+check "revise state hides historical tracked progress" "clean" \
+  "$(git -C "$WORK" status --porcelain -- .loop-spec/features/demo/PROGRESS.md | grep -q . && echo dirty || echo clean)"
+touch "$WORK/.loop-spec/features/demo/events.jsonl"
+check "revise state ignores new runtime entries" "ignored" \
+  "$(git -C "$WORK" check-ignore -q .loop-spec/features/demo/events.jsonl && echo ignored || echo not-ignored)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

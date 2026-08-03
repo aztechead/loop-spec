@@ -19,10 +19,16 @@
 #       Validate the complete assistant-skill output contract and print a
 #       specific error on failure.
 #
-#   graphify-preflight.sh stage [dir]
-#       Stage shared graph artifacts in the repository at <dir>. Local cache,
-#       cost, interpreter, root, temporary, and backup files are excluded and
-#       removed from the index if an older loop-spec run tracked them.
+#   graphify-preflight.sh localize [dir]
+#       Keep generated graph output local to this checkout. Graphify is valuable
+#       navigation state while a cycle runs, but a semantic refresh can rewrite the
+#       entire graph for a tiny feature. Never stage it on a feature branch: refresh
+#       it after merge or from a dedicated graph-maintenance checkout instead.
+#
+#   graphify-preflight.sh publish [dir]
+#       Explicit out-of-band operation: re-enable tracked graph paths and stage only
+#       portable Graphify output for review on a default/maintenance branch. This is
+#       never called by a feature cycle.
 #
 # Env:
 #   GRAPHIFY_BIN               Binary name/path (default "graphify"). For testing.
@@ -94,29 +100,57 @@ graph_is_usable() {
   validate_graph "$1" >/dev/null 2>&1
 }
 
-stage_graph() {
+localize_graph() {
   local dir="${1%/}"
   [[ -d "$dir/graphify-out" ]] || {
-    echo "loop-spec: no graphify-out directory to stage under $dir" >&2
+    echo "loop-spec: no graphify-out directory to localize under $dir" >&2
     return 1
   }
   git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
-    echo "loop-spec: cannot stage graphify outputs outside a git repository: $dir" >&2
+    echo "loop-spec: cannot localize graphify outputs outside a git repository: $dir" >&2
     return 1
   }
 
-  # Graphify recommends committing portable outputs; one shared clone-local policy
-  # excludes disposable Graphify and loop-spec runtime artifacts idempotently.
+  # Keep every newly generated file ignored. Existing repositories may still track a
+  # historical graph; mark those paths skip-worktree so a feature branch cannot
+  # accidentally add a massive rewrite to its delivery commit. This is deliberately
+  # local repository metadata, not a tracked .gitignore policy imposed on consumers.
   bash "$SCRIPT_DIR/runtime-ignore.sh" ensure "$dir"
+  # If an older instruction already staged Graphify output, remove it from the
+  # index before DELIVER sees it. Do not touch any other staged path.
+  git -C "$dir" restore --staged --source=HEAD -- graphify-out/ 2>/dev/null || true
 
-  # Migrate repositories bootstrapped by the old blanket `git add graphify-out/`.
-  git -C "$dir" rm -r --cached --ignore-unmatch -q -- \
+  while IFS= read -r -d '' path; do
+    git -C "$dir" update-index --skip-worktree -- "$path"
+  done < <(git -C "$dir" ls-files -z -- graphify-out/ 2>/dev/null || true)
+}
+
+publish_graph() {
+  local dir="${1%/}"
+  [[ -d "$dir/graphify-out" ]] || {
+    echo "loop-spec: no graphify-out directory to publish under $dir" >&2
+    return 1
+  }
+  git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    echo "loop-spec: cannot publish graphify outputs outside a git repository: $dir" >&2
+    return 1
+  }
+
+  # This is the intentional inverse of localize for a dedicated generated-data
+  # review. Do not run it from the feature lifecycle.
+  while IFS= read -r -d '' path; do
+    git -C "$dir" update-index --no-skip-worktree -- "$path"
+  done < <(git -C "$dir" ls-files -z -- graphify-out/ 2>/dev/null || true)
+  git -C "$dir" add -f -A -- graphify-out/
+
+  # Retain the portable graph and analysis outputs, but never stage host/cache/temp
+  # files even when the caller used the explicit publish command.
+  git -C "$dir" reset -q HEAD -- \
     graphify-out/cost.json \
     graphify-out/cache \
     graphify-out/.graphify_python \
     graphify-out/.graphify_root \
-    graphify-out/.graphify_uncached.txt
-  git -C "$dir" rm -r --cached --ignore-unmatch -q -- \
+    graphify-out/.graphify_uncached.txt \
     ':(glob)graphify-out/.graphify_chunk_*.json' \
     ':(glob)graphify-out/.graphify_detect*.json' \
     ':(glob)graphify-out/.graphify_extract*.json' \
@@ -129,8 +163,8 @@ stage_graph() {
     graphify-out/.needs_update \
     ':(glob)graphify-out/*.tmp' \
     ':(glob)graphify-out/*.lock' \
-    ':(glob)graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/**'
-  git -C "$dir" add -A -- graphify-out/
+    ':(glob)graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/**' \
+    2>/dev/null || true
 }
 
 cmd="${1:-}"
@@ -157,11 +191,14 @@ case "$cmd" in
   validate)
     validate_graph "${2:-.}"
     ;;
-  stage)
-    stage_graph "${2:-.}"
+  localize)
+    localize_graph "${2:-.}"
+    ;;
+  publish)
+    publish_graph "${2:-.}"
     ;;
   *)
-    echo "graphify-preflight.sh: unknown command '${cmd}' (check|graph-status|validate|stage)" >&2
+    echo "graphify-preflight.sh: unknown command '${cmd}' (check|graph-status|validate|localize|publish)" >&2
     exit 2
     ;;
 esac

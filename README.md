@@ -43,7 +43,7 @@ Current version: 2.31.0 (renamed from super-spec at v2.5.2). Direction: [docs/lo
 
 ### Graphify artifacts
 
-loop-spec follows Graphify's team workflow: generated graph outputs are committed so a clone can query the graph immediately. `skills/shared/graphify-lifecycle.md` invokes the external assistant skill; `lib/graphify-preflight.sh validate` requires human-readable node labels plus `graph.json`, `GRAPH_REPORT.md`, `graph.html`, and `manifest.json`. Its `stage` command stages those shared files and portable analysis/label sidecars while excluding local-only or disposable files through the clone's Git exclude file:
+loop-spec uses generated Graphify output as local navigation state during a cycle. `skills/shared/graphify-lifecycle.md` invokes the external assistant skill; `lib/graphify-preflight.sh validate` requires human-readable node labels plus `graph.json`, `GRAPH_REPORT.md`, `graph.html`, and `manifest.json`. The output is deliberately excluded from feature branches: a small code change can rewrite most of a semantic graph, and that generated churn must not dominate a feature PR. Refresh it after merge or from a dedicated graph-maintenance checkout when the generated-data diff can be reviewed on its own. The clone-local ignore policy excludes the entire `graphify-out/` tree, including:
 
 - `graphify-out/cost.json`
 - `graphify-out/cache/` (content-addressed acceleration data)
@@ -517,8 +517,8 @@ Session modes and hook guards (each is a kill switch; all hooks no-op outside pr
 | `LOOP_SPEC_SIMPLICITY` | on | Simplicity mode: prefer deletion, reuse, stdlib, and the minimum diff before custom code. |
 | `LOOP_SPEC_MICRO` | on | Micro-mode SessionStart directive. |
 | `LOOP_SPEC_MICRO_GUARD` | on | Stop guard: block ending a session that edited code without a verification run. Stands down during cycle features and for docs/config-only edits. |
-| `LOOP_SPEC_DEFERRAL_GUARD` | on | Stop guard: block a completion claim that carries self-authored deferred/follow-up items (`skills/shared/no-deferral.md`). A denial persists for that transcript: a wording-only retry remains blocked until repository work, ordered verification, and a `Resolved scope:` evidence line are present. Gate-marked lines (`iterate-budget-spent:` / `iterate-terminal:` / `verify-deferred`) pass. |
-| `LOOP_SPEC_DEFERRAL_LINT` | on | DELIVER's deferral gate on the PR body and warnings; `0` is the explicit operator override for a feature legitimately about deferral. |
+| `LOOP_SPEC_DEFERRAL_GUARD` | on | Stop guard: block a completion claim that carries an explicit self-authored deferred-scope declaration (`skills/shared/no-deferral.md`). A denial persists for that transcript: a wording-only retry remains blocked until repository work, ordered verification, and a `Resolved scope:` evidence line are present. Gate-marked lines (`iterate-budget-spent:` / `iterate-terminal:` / `verify-deferred`) pass. |
+| `LOOP_SPEC_DEFERRAL_LINT` | on | DELIVER's structured deferred-scope gate on the PR body. It does not scan runtime warnings or ordinary mentions; `0` is the explicit operator override for a feature legitimately about deferral. |
 | `LOOP_SPEC_DISCIPLINE` | off (opt-in) | Discipline mode: five behavioral gates (brainstorm-before-coding, verification-before-claims, investigation-before-fixes, decision gate, intent gate). |
 | `LOOP_SPEC_TASK_GUARD` | on | Task metadata / lint / typecheck completion gates. |
 | `LOOP_SPEC_PATH_GUARD` | on | Per-role agent write-path restrictions (`LOOP_SPEC_PATH_GUARD_FORCE=1` applies them to open dispatches too). |

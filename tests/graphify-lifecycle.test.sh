@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pin the skill-to-library Graphify lifecycle: refresh, stage, commit, and workspace parity.
+# Pin the skill-to-library Graphify lifecycle: refresh, localize, and workspace parity.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,11 +24,11 @@ contains skills/shared/graphify-lifecycle.md 'arguments = "."' "fresh graph uses
 contains skills/shared/graphify-lifecycle.md 'arguments = ". --update"' "existing graph uses semantic update"
 contains skills/shared/graphify-lifecycle.md 'never ask a follow-up question' "embedded Graphify never pauses cycle"
 contains skills/shared/graphify-lifecycle.md '"$graphify_lib" validate "$repo"' "assistant output is validated"
-contains skills/shared/graphify-lifecycle.md '"$graphify_lib" stage "$repo"' "assistant output is staged"
-contains skills/shared/graphify-lifecycle.md 'unexpected staged path outside graphify-out' "graph commit rejects unrelated staged paths"
-contains skills/shared/graphify-lifecycle.md 'exit 1  # Do not sweep another phase' "unrelated staged path aborts graph commit"
-contains skills/shared/graphify-lifecycle.md 'git -C "$repo" commit -m "$commit_message"' "graph commit uses prepared index"
-absent skills/shared/graphify-lifecycle.md 'commit -m "$commit_message" -- graphify-out/' "graph commit does not bypass prepared index"
+contains skills/shared/graphify-lifecycle.md '"$graphify_lib" localize "$repo"' "assistant output stays local"
+contains skills/shared/graphify-lifecycle.md 'Do not stage or commit `graphify-out/` on a feature branch' "feature PR graph exclusion is explicit"
+contains skills/shared/graphify-lifecycle.md 'graph-maintenance checkout' "out-of-band graph refresh is documented"
+contains skills/shared/graphify-lifecycle.md '"$graphify_lib" publish "$repo"' "maintenance publishing is explicit"
+absent skills/shared/graphify-lifecycle.md 'git -C "$repo" commit -m "$commit_message"' "feature lifecycle never commits graph output"
 contains skills/cycle/SKILL.md 'skills/shared/graphify-lifecycle.md' "cycle delegates graph refresh"
 contains skills/map-codebase/SKILL.md 'skills/shared/graphify-lifecycle.md' "map-codebase delegates graph refresh"
 absent skills/cycle/SKILL.md 'graphify-preflight.sh" build' "cycle has no CLI graph build"

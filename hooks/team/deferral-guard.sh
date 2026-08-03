@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Stop hook: block completion claims that carry unresolved self-authored deferred
-# items.
+# Stop hook: block completion claims that carry an explicit unresolved
+# self-authored deferred-scope declaration.
 #
 # loop-spec's contract: once the design exists, the model runs it to completion.
-# "Done — deferred items: ..." is not a valid successful conclusion; neither are
-# model-chosen follow-ups or "future work" notes. The only legitimate deferral
-# writers are the bounded gates, whose lines carry their own markers
+# "Done — Deferred scope: ..." is not a valid successful conclusion. The only
+# legitimate deferral writers are the bounded gates, whose lines carry their own markers
 # (iterate-budget-spent: / iterate-terminal: / verify-deferred) and are exempt
-# in lib/deferral-lint.sh — the single home of the vocabulary this hook applies.
+# in lib/deferral-lint.sh — the single home of the structured declaration rules this
+# hook applies.
 #
 # Claude Code contract:
 #   exit 0 = allow
@@ -16,7 +16,7 @@
 # Blocks the first stop (exit 2) when BOTH hold in the final assistant text:
 #   1. a completion claim is present (converged / ready for review / PR opened /
 #      "<phase|work|cycle...> complete" / all acceptance criteria pass), AND
-#   2. lib/deferral-lint.sh flags self-authored deferral language.
+#   2. lib/deferral-lint.sh flags an explicit self-authored scope declaration.
 # That denial creates a transcript-scoped obligation record. Rewording the next
 # completion message does not clear it. A later completion is allowed only after:
 #   1. repository state changed after the denial,
