@@ -628,6 +628,13 @@ while :; do
   # operator watching a streamed log could not tell a healthy CI wait from a wedged
   # run. Same `[PHASE] ...` console contract as lib/events.sh, and the same kill
   # switch; this script has no feature dir, so it prints the line directly.
+  #
+  # ALWAYS stderr -- this one deliberately does NOT honour
+  # LOOP_SPEC_CONSOLE_STREAM=stdout. events.sh's stdout is a line-oriented marker
+  # stream a consumer can prefix-select, but THIS script's stdout is a single JSON
+  # document written by emit_result and parsed whole by its caller. A progress line
+  # there would corrupt the delivery result, which is a far worse failure than the
+  # log-severity problem the stdout mode exists to solve.
   if [[ "${LOOP_SPEC_CONSOLE_EVENTS:-1}" != "0" ]]; then
     printf '[DELIVER] waiting on required checks (%ss/%ss elapsed, %s pass, %s pending, %s failed of %s)\n' \
       "$elapsed" "$checks_timeout" "$(jq -r '.pass' <<<"$counts")" "$pending" "$failed" "$total" >&2

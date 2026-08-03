@@ -142,6 +142,12 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
 | `LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS` | non-negative integer; `30` | Grace period after push during which a missing check is treated as not-yet-registered rather than absent. |
 | `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | positive integer; `60` | Timeout for each GitHub CLI/API subprocess. |
+| `LOOP_SPEC_CREDENTIAL_REFRESH_TIMEOUT_SECONDS` | integer `1..3600`; `60` | Deadline for the credential-refresh hook itself. A token mint that stalls rather than failing fast would otherwise block every gh/git stage. |
+| `LOOP_SPEC_REGRESSION_CMD_TIMEOUT_SECONDS` | integer `1..3600`; `300` | Per-command deadline for the prior-feature regression scan's replayed test commands. |
+| `LOOP_SPEC_LIVE_READY_PROBE_TIMEOUT_SECONDS` | integer `1..3600`; `10` | Per-attempt deadline for live-verify's readiness probe. `readyTimeoutSec` counts attempts, so an unbounded probe would make the bounded wait infinite. |
+| `LOOP_SPEC_LIVE_PROBE_TIMEOUT_SECONDS` | integer `1..3600`; `120` | Per-probe deadline for live-verify's acceptance probes. |
+| `LOOP_SPEC_CONSOLE_EVENTS` | `0`/`1`; `1` | `0` silences the greppable `[PHASE] …` console lines. The JSONL event ledger is unaffected. |
+| `LOOP_SPEC_CONSOLE_STREAM` | `stderr`/`stdout`; `stderr` | Which stream the console lines use. Set `stdout` on hosts that grade stderr as errors (Cloud Run assigns stderr ERROR severity). In `stdout` mode two lines share the stream, so a consumer must prefix-select its record (`grep '^LOOP_SPEC_PHASE_'`) rather than pipe all of stdout to `jq`. `lib/pr-delivery.sh`'s heartbeat ignores this setting — its stdout is a single JSON document. Unknown values fall back to `stderr`. |
 | `LOOP_SPEC_CREDENTIAL_REFRESH_CMD` | trusted shell command; unset | Runs before push/API stages and once after a 401/403 before one retry. It receives the four `LOOP_SPEC_CREDENTIAL_REFRESH_*` variables documented below. Stdout must be empty or an allow-listed token JSON object and is never logged. |
 | `LOOP_SPEC_PR_FEEDBACK_MODE` | `local`/`external`; `local` | `local` runs loop-spec’s terminal PR-feedback observation. `external` delegates polling without claiming a clean result. There is deliberately no off mode. |
 | `LOOP_SPEC_PR_FEEDBACK_OWNER` | text; `external-orchestrator` | Attribution persisted when PR feedback mode is `external`. |

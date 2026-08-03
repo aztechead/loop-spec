@@ -34,6 +34,12 @@ expect "console lines go to stderr, not the machine stdout contract" \
   lib/events.sh "printf '\[%s\] %s\\\\n'.*>&2"
 expect "console emitter is invoked for every event" lib/events.sh '^ *_console_line "\$event"'
 expect "console output has an operator kill switch" lib/events.sh 'LOOP_SPEC_CONSOLE_EVENTS'
+expect "console stream is selectable for hosts that grade stderr as errors" \
+  lib/events.sh 'LOOP_SPEC_CONSOLE_STREAM'
+# pr-delivery's stdout is a single JSON document parsed whole by its caller, not a
+# prefix-selectable marker stream, so its heartbeat must never follow the stdout mode.
+expect "delivery heartbeat is pinned to stderr, whatever the stream setting" \
+  lib/pr-delivery.sh 'does NOT honour'
 expect "task_start is a documented canonical event" lib/events.sh 'task_start *- an EXECUTE task began'
 expect "task_end is a documented canonical event" lib/events.sh 'task_end *- an EXECUTE task finished'
 

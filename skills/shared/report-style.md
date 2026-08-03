@@ -36,6 +36,13 @@ What this means in practice:
 - **stdout is unchanged.** `LOOP_SPEC_PHASE_START` / `LOOP_SPEC_PHASE_END` plus their
   JSON still go to stdout for machine consumers; the human line goes to stderr. Both
   land in a streamed log.
+- **`LOOP_SPEC_CONSOLE_STREAM=stdout`** moves the console lines to stdout for hosts
+  that grade the two streams differently — Cloud Run assigns stderr output ERROR
+  severity, so routine progress otherwise shows up in Cloud Logging as errors. It is
+  opt-in because it is contract-affecting: with two lines on stdout, a consumer must
+  select its record by prefix (`grep '^LOOP_SPEC_PHASE_'`) rather than pipe the whole
+  stream to `jq`. `lib/pr-delivery.sh`'s heartbeat deliberately ignores this setting —
+  its stdout is a single JSON document parsed whole by its caller, not a marker stream.
 - **Kill switch:** `LOOP_SPEC_CONSOLE_EVENTS=0` silences the console lines without
   touching the JSONL ledger.
 - **Still write prose the mechanism cannot know**, such as EXECUTE's rung-decision

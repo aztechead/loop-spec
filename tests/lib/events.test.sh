@@ -189,6 +189,24 @@ check "P: stdout marker is still parseable JSON" "0" \
 check "P: generic event still prints no stdout" "" \
   "$(bash "$LIB" emit "$WORK/console" gate_round --phase verify --data '{"round":1}' 2>/dev/null)"
 
+# Stream selection. Cloud Run assigns stderr ERROR severity, so an operator may want
+# routine progress on stdout instead. That is contract-affecting, hence opt-in.
+check "P: stdout mode moves the console line to stdout" "[SPEC] start" \
+  "$(LOOP_SPEC_CONSOLE_STREAM=stdout bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>/dev/null | tail -1)"
+check "P: stdout mode leaves nothing on stderr" "" \
+  "$(LOOP_SPEC_CONSOLE_STREAM=stdout bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>&1 >/dev/null)"
+# In stdout mode the marker must still come FIRST and stay prefix-selectable, which is
+# how a robust consumer reads it. A naive whole-stdout jq is what breaks here.
+stdout_mode="$(LOOP_SPEC_CONSOLE_STREAM=stdout bash "$LIB" emit "$WORK/console" phase_start --phase plan 2>/dev/null)"
+check "P: stdout mode keeps the marker on the first line" "1" \
+  "$([[ "$(head -1 <<<"$stdout_mode")" == LOOP_SPEC_PHASE_START\ * ]] && echo 1 || echo 0)"
+check "P: stdout mode marker stays parseable when prefix-selected" "plan" \
+  "$(grep '^LOOP_SPEC_PHASE_START ' <<<"$stdout_mode" | sed 's/^LOOP_SPEC_PHASE_START //' | jq -r '.phase')"
+check "P: an unknown stream value falls back to stderr" "[SPEC] start" \
+  "$(LOOP_SPEC_CONSOLE_STREAM=carrier-pigeon bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>&1 >/dev/null)"
+check "P: default is still stderr" "" \
+  "$(bash "$LIB" emit "$WORK/console" gate_round --phase spec --data '{"round":1}' 2>/dev/null)"
+
 # Kill switch, per the repo's probe contract: an operator override outranks it.
 check "P: LOOP_SPEC_CONSOLE_EVENTS=0 silences the console" "" \
   "$(LOOP_SPEC_CONSOLE_EVENTS=0 bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>&1 >/dev/null)"

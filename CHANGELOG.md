@@ -28,6 +28,13 @@ Findings and the deliberately-deferred remainder: `docs/loop-spec/unattended-aud
   so a log watcher could not distinguish task 1 of 6 from task 5 of 6, nor steady
   progress from a stall. `total` counts the whole DAG rather than the current wave, so
   the ratio advances monotonically.
+- **`LOOP_SPEC_CONSOLE_STREAM=stdout`** routes the console lines to stdout for hosts
+  that grade the two streams differently — Cloud Run assigns stderr output ERROR
+  severity, so routine progress otherwise appears in Cloud Logging as errors. Opt-in,
+  because with two lines sharing stdout a consumer must prefix-select its record
+  rather than pipe the whole stream to `jq`. `lib/pr-delivery.sh`'s heartbeat
+  deliberately ignores the setting: its stdout is a single JSON document parsed whole
+  by its caller, so a progress line there would corrupt the delivery result.
 
 ### Fixed
 

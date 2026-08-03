@@ -169,10 +169,18 @@ _phase_verdict() {
 # events reached no console at all. A boundary record an operator relies on is not a
 # judgment call, so it is emitted here, deterministically, for every event.
 #
-# stderr, deliberately. stdout carries the machine contract -- the
-# LOOP_SPEC_PHASE_START/END marker plus its JSON, which callers parse -- and must
-# stay exactly as it was. Both streams land in a streamed log, so the operator sees
-# these either way while no machine consumer is disturbed.
+# stderr by DEFAULT, because stdout carries the machine contract -- the
+# LOOP_SPEC_PHASE_START/END marker plus its JSON. A consumer that does
+# `out=$(events.sh emit ...)` and then `jq <<<"${out#LOOP_SPEC_PHASE_START }"` gets a
+# parse error the moment a second line shares that stream, so defaulting to stdout
+# would break existing callers.
+#
+# LOOP_SPEC_CONSOLE_STREAM=stdout moves them anyway, for hosts that treat the two
+# streams differently. Cloud Run is the motivating case: it assigns stderr output
+# ERROR severity, so routine progress lines surface in Cloud Logging as errors. In
+# that mode the console line is printed AFTER the marker, and a consumer must select
+# its record by prefix (`grep '^LOOP_SPEC_PHASE_'`) instead of assuming stdout holds
+# exactly one line -- which is how a robust consumer should read it either way.
 #
 # Format follows EXECUTE's rung-decision line, the one operators already grep:
 #   [VERIFY] failure: code-review
@@ -247,7 +255,13 @@ _console_line() {
       summary="$event"
       ;;
   esac
-  printf '[%s] %s\n' "$tag" "$summary" >&2
+  # Unknown values fall back to the safe default rather than silently choosing a
+  # stream: only stdout is a deliberate, contract-affecting choice.
+  if [[ "${LOOP_SPEC_CONSOLE_STREAM:-stderr}" == "stdout" ]]; then
+    printf '[%s] %s\n' "$tag" "$summary"
+  else
+    printf '[%s] %s\n' "$tag" "$summary" >&2
+  fi
 }
 
 case "${1:-}" in
