@@ -255,9 +255,25 @@ _console_line() {
       summary="$event"
       ;;
   esac
-  # Unknown values fall back to the safe default rather than silently choosing a
-  # stream: only stdout is a deliberate, contract-affecting choice.
-  if [[ "${LOOP_SPEC_CONSOLE_STREAM:-stderr}" == "stdout" ]]; then
+  # Stream resolution, strongest evidence first (probe contract: an explicit
+  # operator override outranks the probe; unknown values fall back to the safe
+  # default rather than silently choosing a stream):
+  #   1. LOOP_SPEC_CONSOLE_STREAM=stdout|stderr  operator says so.
+  #   2. Cloud Run's own stamps (CLOUD_RUN_JOB for jobs, K_SERVICE for services)
+  #      -> stdout. Cloud Run assigns stderr output ERROR severity, so on the
+  #      harness this plugin most often runs unattended on, routine progress on
+  #      stderr surfaces in Cloud Logging as a stream of errors. The platform
+  #      stamps these variables itself; this is a fact, not a judgment.
+  #   3. default stderr: stdout carries the marker JSON that callers parse.
+  local stream="${LOOP_SPEC_CONSOLE_STREAM:-}"
+  if [[ "$stream" != "stdout" && "$stream" != "stderr" ]]; then
+    if [[ -n "${CLOUD_RUN_JOB:-}" || -n "${K_SERVICE:-}" ]]; then
+      stream="stdout"
+    else
+      stream="stderr"
+    fi
+  fi
+  if [[ "$stream" == "stdout" ]]; then
     printf '[%s] %s\n' "$tag" "$summary"
   else
     printf '[%s] %s\n' "$tag" "$summary" >&2

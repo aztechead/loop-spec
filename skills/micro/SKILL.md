@@ -39,6 +39,11 @@ First, before any jq-backed hook or helper can fail mid-run:
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$(git rev-parse --show-toplevel)"
 bash "${CLAUDE_SKILL_DIR}/../../lib/runtime-preflight.sh" check-jq
+# Observability: micro is a favorite target of the autonomous router, and it used to
+# emit NOTHING -- an unattended run routed here was silent end to end. Events go to
+# the adhoc dir (no feature dir exists at micro scale); the console line follows.
+mkdir -p .loop-spec/adhoc
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit .loop-spec/adhoc phase_start --phase micro || true
 ```
 
 Execute directly on the main thread with base tools. Do not dispatch subagents.
@@ -111,7 +116,12 @@ Still zero ceremony — no worktree, no DELIVER controller:
   blocked the PR, leave the branch in place, and record the gap in the ledger `--notes`.
   Never silently skip the PR step.
 
-**7. Record the ledger entry.** Append one entry to `.loop-spec/adhoc-ledger.md`:
+**7. Record the ledger entry and close the run out.** After the ledger entry below,
+emit the matching end event — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit
+.loop-spec/adhoc phase_end --phase micro --data '{"next":"completed"}' || true`
+(on escalation to intake, use `'{"next":"escalated"}'`). A `[MICRO] start` with no
+`[MICRO] done` is what a stall looks like to a log watcher. Append one entry to
+`.loop-spec/adhoc-ledger.md`:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/adhoc-ledger.sh" add \

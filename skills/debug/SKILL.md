@@ -32,6 +32,8 @@ into BUG.md before any change is made.
    slug, BUG.md dir, branch discipline, branch-point SHA capture, test-cmd detection):
    ```bash
    dbg="$(bash "${CLAUDE_SKILL_DIR}/../../lib/debug-init.sh" init -- "$ARGUMENTS")"
+   # Observability: debug is an autonomous-router target and used to emit nothing.
+   bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$(jq -r '.bug_dir' <<<"$dbg")" phase_start --phase debug || true
    # {slug, bug_dir, branch, branch_action: created|switched|kept, default_branch,
    #  dirty, sha_before, test_cmd, autonomous, style}
    ```
@@ -229,6 +231,9 @@ result_args=(
 )
 [[ -n "$no_change_reason" ]] && result_args+=(--no-change-reason "$no_change_reason")
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal "${result_args[@]}"
+# Close the observability pair opened at Step 0 -- a [DEBUG] start with no [DEBUG]
+# done is what a stall looks like to a log watcher. $outcome is the terminal outcome.
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$bug_dir" phase_end --phase debug --data "{\"next\":\"$outcome\"}" || true
 ```
 
 `summary` is the concise root-cause/fix conclusion for every exit. `fixed` requires passed

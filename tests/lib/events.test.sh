@@ -205,7 +205,17 @@ check "P: stdout mode marker stays parseable when prefix-selected" "plan" \
 check "P: an unknown stream value falls back to stderr" "[SPEC] start" \
   "$(LOOP_SPEC_CONSOLE_STREAM=carrier-pigeon bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>&1 >/dev/null)"
 check "P: default is still stderr" "" \
-  "$(bash "$LIB" emit "$WORK/console" gate_round --phase spec --data '{"round":1}' 2>/dev/null)"
+  "$(env -u CLOUD_RUN_JOB -u K_SERVICE bash "$LIB" emit "$WORK/console" gate_round --phase spec --data '{"round":1}' 2>/dev/null)"
+
+# Cloud Run stamps CLOUD_RUN_JOB (jobs) / K_SERVICE (services) into every container.
+# It grades stderr as ERROR severity, so on the platform's own evidence the lines move
+# to stdout -- a probe, not a judgment. The operator override still outranks it.
+check "P: Cloud Run job stamp routes console to stdout" "[SPEC] start" \
+  "$(CLOUD_RUN_JOB=coder bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>/dev/null | tail -1)"
+check "P: Cloud Run service stamp routes console to stdout" "[SPEC] start" \
+  "$(K_SERVICE=api bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>/dev/null | tail -1)"
+check "P: explicit stderr override outranks the Cloud Run stamp" "[SPEC] start" \
+  "$(CLOUD_RUN_JOB=coder LOOP_SPEC_CONSOLE_STREAM=stderr bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>&1 >/dev/null)"
 
 # Kill switch, per the repo's probe contract: an operator override outranks it.
 check "P: LOOP_SPEC_CONSOLE_EVENTS=0 silences the console" "" \

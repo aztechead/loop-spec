@@ -51,6 +51,17 @@ expect "subagent rung counts against the whole DAG, not the wave" \
 expect "inline rung emits task_start" skills/shared/execute-inline.md 'task_start --phase execute'
 expect "inline rung emits task_end" skills/shared/execute-inline.md 'task_end --phase execute'
 
+# micro and debug are the autonomous router's favorite targets and used to emit
+# NOTHING -- an unattended run routed to either was silent end to end.
+expect "micro opens with phase_start" skills/micro/SKILL.md 'phase_start --phase micro'
+expect "micro closes with phase_end" skills/micro/SKILL.md 'phase_end --phase micro'
+expect "debug opens with phase_start" skills/debug/SKILL.md 'phase_start --phase debug'
+expect "debug closes with phase_end" skills/debug/SKILL.md 'phase_end --phase debug'
+
+# The Cloud Run stream probe: platform stamps route the console to stdout, because
+# Cloud Run grades stderr as ERROR severity.
+expect "Cloud Run stamps are probed for stream selection" lib/events.sh 'CLOUD_RUN_JOB'
+
 # DELIVER's required-checks wait can run 900s; it must not do so silently.
 expect "pr-delivery heartbeats during the checks wait" \
   lib/pr-delivery.sh '\[DELIVER\] waiting on required checks'
