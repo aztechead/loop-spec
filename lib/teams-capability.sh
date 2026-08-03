@@ -42,14 +42,6 @@ if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
   exit 0
 fi
 
-# Hard override for constrained / test environments.
-if [[ -n "${LOOP_SPEC_TEAMS_MODE:-}" ]]; then
-  case "${LOOP_SPEC_TEAMS_MODE}" in
-    none|explicit|implicit) echo "${LOOP_SPEC_TEAMS_MODE}"; exit 0 ;;
-    *) echo "none"; exit 0 ;;
-  esac
-fi
-
 # Harness gate: agent teams are a Claude Code surface. Under pi there is no
 # Agent tool at all, and opencode's resumable task sessions have no named
 # teammates, peer messaging, or shared task list, so the mode is `none` on
@@ -58,10 +50,25 @@ fi
 # would mis-resolve to `implicit` and every spawn would throw).
 # skills/shared/pi-harness.md and skills/shared/opencode-harness.md carry the
 # substitution rules.
+#
+# This gate runs BEFORE LOOP_SPEC_TEAMS_MODE. An operator override can turn a
+# capability OFF anywhere, but it cannot conjure one that the harness does not
+# have: `LOOP_SPEC_HARNESS=pi LOOP_SPEC_TEAMS_MODE=implicit` used to answer
+# `implicit` and route EXECUTE onto a team rung whose every spawn throws, which
+# is precisely the mis-resolution the comment above says this gate exists to
+# prevent. Absence of a surface is a fact; only a negative override is honored here.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" != "claude" ]]; then
   echo "none"
   exit 0
+fi
+
+# Hard override for constrained / test environments.
+if [[ -n "${LOOP_SPEC_TEAMS_MODE:-}" ]]; then
+  case "${LOOP_SPEC_TEAMS_MODE}" in
+    none|explicit|implicit) echo "${LOOP_SPEC_TEAMS_MODE}"; exit 0 ;;
+    *) echo "none"; exit 0 ;;
+  esac
 fi
 
 # Necessary gate: the experimental flag must be opted in. Without it there is no

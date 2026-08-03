@@ -142,6 +142,12 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
 | `LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS` | non-negative integer; `30` | Grace period after push during which a missing check is treated as not-yet-registered rather than absent. |
 | `LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` | positive integer; `60` | Timeout for each GitHub CLI/API subprocess. |
+| `LOOP_SPEC_CREDENTIAL_REFRESH_TIMEOUT_SECONDS` | integer `1..3600`; `60` | Deadline for the credential-refresh hook itself. A token mint that stalls rather than failing fast would otherwise block every gh/git stage. |
+| `LOOP_SPEC_REGRESSION_CMD_TIMEOUT_SECONDS` | integer `1..3600`; `300` | Per-command deadline for the prior-feature regression scan's replayed test commands. |
+| `LOOP_SPEC_LIVE_READY_PROBE_TIMEOUT_SECONDS` | integer `1..3600`; `10` | Per-attempt deadline for live-verify's readiness probe. `readyTimeoutSec` counts attempts, so an unbounded probe would make the bounded wait infinite. |
+| `LOOP_SPEC_LIVE_PROBE_TIMEOUT_SECONDS` | integer `1..3600`; `120` | Per-probe deadline for live-verify's acceptance probes. |
+| `LOOP_SPEC_CONSOLE_EVENTS` | `0`/`1`; `1` | `0` silences the greppable `[PHASE] …` console lines. The JSONL event ledger is unaffected. |
+| `LOOP_SPEC_CONSOLE_STREAM` | `stderr`/`stdout`; probed | Which stream the console lines use. When unset, a deterministic probe decides: Cloud Run's own stamps (`CLOUD_RUN_JOB` for jobs, `K_SERVICE` for services) select `stdout`, because Cloud Run assigns stderr output ERROR severity; everywhere else `stderr`, because stdout carries the marker JSON that callers parse. An explicit value outranks the probe. In `stdout` mode two lines share the stream, so a consumer must prefix-select its record (`grep '^LOOP_SPEC_PHASE_'`) rather than pipe all of stdout to `jq`. `lib/pr-delivery.sh`'s heartbeat always stays on stderr — its stdout is a single JSON document. Unknown values fall back to the probe's answer. |
 | `LOOP_SPEC_CREDENTIAL_REFRESH_CMD` | trusted shell command; unset | Runs before push/API stages and once after a 401/403 before one retry. It receives the four `LOOP_SPEC_CREDENTIAL_REFRESH_*` variables documented below. Stdout must be empty or an allow-listed token JSON object and is never logged. |
 | `LOOP_SPEC_PR_FEEDBACK_MODE` | `local`/`external`; `local` | `local` runs loop-spec’s terminal PR-feedback observation. `external` delegates polling without claiming a clean result. There is deliberately no off mode. |
 | `LOOP_SPEC_PR_FEEDBACK_OWNER` | text; `external-orchestrator` | Attribution persisted when PR feedback mode is `external`. |
@@ -207,7 +213,7 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_MICRO` | `1` | Enables the micro-mode SessionStart directive. |
 | `LOOP_SPEC_MICRO_GUARD` | `1` | Blocks stopping after code edits without a verification run; stands down for active feature cycles and docs/config-only edits. |
 | `LOOP_SPEC_DEFERRAL_GUARD` | `1` | Blocks completion with self-authored omitted/deferred scope. After denial, rewording alone remains blocked; repository work, a later verification action, and `Resolved scope: <item> — <evidence>` are required. |
-| `LOOP_SPEC_DEFERRAL_LINT` | `1` | DELIVER gate for deferred-scope language in PR bodies and warnings. `0` is the explicit override for a feature whose subject is deferral detection. |
+| `LOOP_SPEC_DEFERRAL_LINT` | `1` | DELIVER gate for explicit deferred-scope declarations in a PR body (`Deferred scope:`, `Follow-ups:`, etc.). Runtime warnings, negations, template defaults, quoted reports, and ordinary mentions are not scope declarations. `0` is the explicit override for a feature whose subject is deferral detection. |
 | `LOOP_SPEC_DISCIPLINE` | `0` | Enables brainstorm, verification, investigation, decision, and intent gates. |
 | `LOOP_SPEC_TASK_GUARD` | `1` | Enforces task metadata and required lint/typecheck completion. |
 | `LOOP_SPEC_PATH_GUARD` | `1` | Enforces role-specific write paths. |
@@ -375,6 +381,7 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_FEATURE_DIR` | Hook-scoped feature-directory override used by team hooks/tests. Normal runs discover the active feature. |
 | `LOOP_SPEC_RESULT_ROOT` | Reconciliation-only destination override for cycle result state. |
 | `LOOP_SPEC_PR_DELIVERY_CWD` | Internal subprocess transport for PR delivery’s working directory. |
+| `LOOP_SPEC_BOUNDED_RUN_CWD`, `LOOP_SPEC_BOUNDED_RUN_STDIN` | Internal subprocess transport used by `lib/bounded-run.sh`; callers set these only while spawning the bounded child. |
 | `LOOP_SPEC_PROJECT_DIR`, `LOOP_SPEC_PWD`, `LOOP_SPEC_PROJ_VERIFY_CMD`, `LOOP_SPEC_LAST_RESULT_FILE` | Internal values passed into embedded hook parsers. |
 | `LOOP_SPEC_GROUNDING_SPEC` | Internal transport for the verification-grounding linter. |
 | `LOOP_SPEC_BASE_CURSOR`, `LOOP_SPEC_STATE_CURSOR`, `LOOP_SPEC_STATE_FINGERPRINT`, `LOOP_SPEC_STATE_FLAGS`, `LOOP_SPEC_STATE_REPORT` | Internal deferral-guard state serialization. |

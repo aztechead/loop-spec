@@ -25,16 +25,22 @@ if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
   exit 0
 fi
 
-if [[ -n "${LOOP_SPEC_WORKFLOWS_AVAILABLE:-}" ]]; then
-  [[ "$LOOP_SPEC_WORKFLOWS_AVAILABLE" == "1" ]] && echo "true" || echo "false"
-  exit 0
-fi
-
 # Harness gate: the Workflow tool is a Claude Code surface. Under pi and
 # opencode it never exists, regardless of any claude binary found on PATH.
+#
+# Ordered before LOOP_SPEC_WORKFLOWS_AVAILABLE for the same reason as the team
+# gate in teams-capability.sh: a positive override must not be able to claim a
+# tool the harness does not ship. `LOOP_SPEC_HARNESS=opencode
+# LOOP_SPEC_WORKFLOWS_AVAILABLE=1` used to answer `true` and let EXECUTE select
+# the workflow rung at width 6 on a harness with no Workflow tool at all.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" != "claude" ]]; then
   echo "false"
+  exit 0
+fi
+
+if [[ -n "${LOOP_SPEC_WORKFLOWS_AVAILABLE:-}" ]]; then
+  [[ "$LOOP_SPEC_WORKFLOWS_AVAILABLE" == "1" ]] && echo "true" || echo "false"
   exit 0
 fi
 

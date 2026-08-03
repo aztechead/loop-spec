@@ -36,9 +36,36 @@ Mapper model is fixed at the `sonnet` alias (see `skills/shared/model-matrix.md`
 
 ## Procedure
 
-### Step 0 - Graphify pre-flight (required)
+### Step 0 - Decide whether a map refresh exists (before Graphify)
 
-graphify is a hard requirement. Read `${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it to each selected repository with commit message `chore: NO_JIRA refresh graphify knowledge graph`. The external assistant skill performs a full semantic build or incremental semantic update using the current host model/authentication. The shell preflight only checks the package, requires named nodes and the complete output set, and stages portable artifacts.
+In single-repository incremental mode, this deterministic decision is mandatory:
+
+```bash
+refresh_decision="$(bash "${CLAUDE_SKILL_DIR}/../../lib/map-refresh.sh" decide \
+  "$repo_root" "$since_sha" --mode "$mode")"
+if [[ "$(jq -r '.refresh' <<<"$refresh_decision")" != "true" ]]; then
+  echo "map-codebase: skip ($(jq -r '.reason' <<<"$refresh_decision")); existing complete map remains authoritative."
+  return
+fi
+stale_domains="$(jq -c '.domains' <<<"$refresh_decision")"
+```
+
+`map-refresh.sh` returns `refresh: false` only when all five map artifacts plus the
+index are complete and the feature diff has no map-relevant source changes. Feature
+state, telemetry, previous map output, and Graphify output are ignored; an unknown
+source path, a missing/corrupt map, an unreadable base, `--full`, or `--domain` fails
+closed to a refresh. In workspace mode, retain the existing per-repository stale-domain
+calculation until the shared workspace index has the same deterministic helper; never
+borrow a single-repo no-op verdict for a workspace.
+
+### Step 1 - Graphify pre-flight (only when a refresh exists)
+
+graphify is a hard requirement only for a refresh that Step 0 proved necessary. Read
+`${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it to each selected
+repository. The external assistant skill performs a full semantic build or incremental
+semantic update only when that lifecycle's source-freshness proof is stale; otherwise it
+revalidates/reuses the local graph. Generated `graphify-out/` stays local and is never
+staged into the feature PR.
 
 ```bash
 ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect 2>/dev/null)"
@@ -59,23 +86,6 @@ else
   # Apply skills/shared/graphify-lifecycle.md to this repository here.
 fi
 ```
-
-### Step 1 - Determine stale domains
-
-If `mode == "full"` or `--domain` specified: stale_domains = explicit list (or all 5)
-
-Else (incremental):
-```bash
-changedFiles=$(git diff {since_sha} HEAD --name-only)
-# Read .loop-spec/codebase/index.json
-# index.json structure: {"files": {"file_path": ["domain1", ...]}, ...}
-stale_domains=$(jq -r --argjson files "$(echo "$changedFiles" | jq -R . | jq -s .)" \
-  '[.files[$files[]] // [] | .[]] | unique' .loop-spec/codebase/index.json 2>/dev/null || echo '["arch"]')
-
-# Always include "arch" if any new files added (changedFiles contains paths not in index)
-```
-
-If `stale_domains` empty: print "No stale domains, nothing to refresh." Exit.
 
 ### Step 2 - Dispatch (workflow path or fallback)
 

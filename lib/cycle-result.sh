@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 # Machine-readable cycle result contract for headless/programmatic callers.
 #
-# OBSERVABILITY CONTRACT: this script must NEVER abort a cycle. All internal
-# failures print a one-line warning to stderr and exit 0. A broken telemetry
-# writer must not kill a 2-hour run.
+# OBSERVABILITY CONTRACT: this script must NEVER abort a cycle mid-run. Invocation
+# and validation failures print a one-line warning to stderr and exit 0. A broken
+# telemetry writer must not kill a 2-hour run.
+#
+# PUBLICATION EXCEPTION: failures to PUBLISH the authoritative pointer
+# (.loop-spec/last-result.json) from write / write-terminal exit NON-ZERO and
+# preserve active-run.json. At publication time the cycle's work is already done,
+# so a loud exit cannot kill it -- but a silent one loses the run: exit 0 with no
+# pointer is indistinguishable from success to a headless supervisor, and removing
+# active-run.json on that path deletes the only state reconciliation can recover
+# from. Exit 3 = the result could not be published; the recovery record remains.
 #
 # Usage:
 #   cycle-result.sh clear [--result-root <root>]
@@ -320,10 +328,13 @@ case "${1:-}" in
     fi
     [[ "$autonomous" == "true" || "$autonomous" == "false" ]] || autonomous="false"
     jq -e 'type == "array"' <<<"$warnings_json" >/dev/null 2>&1 || warnings_json="[]"
+    # Publication path: from here on, failure exits 3 (see header). Exiting 0 with
+    # no pointer written is how an unattended run gets lost -- the supervisor reads
+    # "success, no result", which looks identical to a dozen other causes.
     result_root_abs="$(_resolve_result_root "$result_root")" || {
-      echo "cycle-result.sh: cannot resolve result root: $result_root" >&2; exit 0; }
+      echo "cycle-result.sh: TERMINAL RESULT NOT PUBLISHED - cannot resolve result root: $result_root" >&2; exit 3; }
     _prepare_result_root "$result_root_abs" || {
-      echo "cycle-result.sh: cannot prepare result root: $result_root_abs" >&2; exit 0; }
+      echo "cycle-result.sh: TERMINAL RESULT NOT PUBLISHED - cannot prepare result root: $result_root_abs" >&2; exit 3; }
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     result_json="$(jq -cn --arg cycleType "$cycle_type" --arg status "$status" \
       --arg outcome "$outcome" --arg slug "$slug" --arg title "$title" \
@@ -348,10 +359,13 @@ case "${1:-}" in
        converged:$converged,iterations:{used:0,max:null},warnings:$warnings,
        autonomous:$autonomous,feature_title:$title,createdAt:null,finishedAt:$now,
        verification:{status:$verifyStatus,command:(if $verifyCommand == "" then null else $verifyCommand end)}}')" || {
-      echo "cycle-result.sh: failed to build terminal result" >&2; exit 0; }
+      echo "cycle-result.sh: TERMINAL RESULT NOT PUBLISHED - failed to build terminal result" >&2; exit 3; }
     destination="$result_root_abs/.loop-spec/last-result.json"
     _write_atomic "$result_json" "$destination" || {
-      echo "cycle-result.sh: failed to write $destination" >&2; exit 0; }
+      echo "cycle-result.sh: TERMINAL RESULT NOT PUBLISHED - failed to write $destination" >&2; exit 3; }
+    # Only after the pointer is durably published may the recovery record go: it is
+    # the one artifact cycle-reconcile.sh can turn an interrupted run into a failed
+    # terminal result with. Removing it before publication burned both.
     rm -f "$result_root_abs/.loop-spec/active-run.json" 2>/dev/null || true
     printf 'LOOP_SPEC_RESULT %s\n' "$result_json"
     exit 0
@@ -608,15 +622,28 @@ case "${1:-}" in
           result_root="$(dirname "$loop_spec_dir")"
         fi
       fi
+      # Publication path (see header): the pointer either lands or this exits 3,
+      # and active-run.json survives until it lands. The old shape removed the
+      # recovery record even when the pointer write had just failed, leaving a
+      # headless supervisor with neither a terminal result nor anything for
+      # cycle-reconcile.sh to recover from -- exit 0 made it look finished.
+      pointer_published=false
       if [[ -n "$loop_spec_dir" ]]; then
         if ! _prepare_result_root "$result_root" >/dev/null 2>&1; then
-          echo "cycle-result.sh: cannot safely prepare result root: $result_root" >&2
+          echo "cycle-result.sh: RESULT POINTER NOT PUBLISHED - cannot safely prepare result root: $result_root" >&2
         elif ! _write_atomic "$result_json" "$loop_spec_dir/last-result.json"; then
-          echo "cycle-result.sh: failed to write last-result.json to $loop_spec_dir" >&2
+          echo "cycle-result.sh: RESULT POINTER NOT PUBLISHED - failed to write last-result.json to $loop_spec_dir" >&2
+        else
+          pointer_published=true
+          rm -f "$loop_spec_dir/active-run.json" 2>/dev/null || true
         fi
-        rm -f "$loop_spec_dir/active-run.json" 2>/dev/null || true
       else
-        echo "cycle-result.sh: cannot resolve .loop-spec dir; last-result.json not written" >&2
+        echo "cycle-result.sh: RESULT POINTER NOT PUBLISHED - cannot resolve .loop-spec dir" >&2
+      fi
+      if [[ "$pointer_published" != "true" ]]; then
+        # result.json in the feature dir did land; say so, then fail loudly.
+        printf 'LOOP_SPEC_RESULT %s\n' "$result_json"
+        exit 3
       fi
     fi
 

@@ -603,8 +603,8 @@ check "stage promotion fail: no delivered siblings" "0" \
   "$(jq '[.targets[]|select(.outcome=="delivered")]|length' "$SFDIR/delivery.json")"
 check "stage promotion fail: restore call made" "1" "$(grep -c -- '--restore-draft' "$LOG" || true)"
 
-# No self-authored deferral ships: a free-form deferral warning (no bounded-gate
-# prefix) must block delivery with exit 3 BEFORE any controller/GitHub call.
+# No self-authored deferred-scope declaration ships: a structured declaration in a
+# rendered artifact must block delivery with exit 3 BEFORE any controller/GitHub call.
 DEFER="$WORK/defer"
 init_repo "$DEFER"
 DBASE="$(git -C "$DEFER" rev-parse HEAD)"
@@ -619,12 +619,12 @@ cat > "$DEFER/.gitignore" <<'EOF'
 /.loop-spec/features/*/*
 !/.loop-spec/features/*/feature.json
 EOF
-printf '# Spec\nThe goal.\n' > "$DDOCS/SPEC.md"
+printf '# Spec\n\n## Summary\n\nDeferred scope: retry timeout handling.\n' > "$DDOCS/SPEC.md"
 printf '# Verification\nAll pass.\n' > "$DDOCS/VERIFICATION.md"
 printf '# Iteration\nConverged.\n' > "$DDOCS/ITERATION.md"
 jq -n --arg base "$DBASE" '{schemaVersion:7,slug:"defer",feature_title:"Gated warning feature",
   currentPhase:"deliver",branch:"feat/defer",baseSha:$base,baseBranch:"main",workspace:null,
-  prUrl:null,checkpointPrUrl:null,warnings:["chose to defer the cleanup to a later PR"],
+  prUrl:null,checkpointPrUrl:null,warnings:["codebase-map refresh deferred; feature verification passed"],
   artifacts:{spec:"docs/loop-spec/features/defer/SPEC.md",verification:"docs/loop-spec/features/defer/VERIFICATION.md",iteration:"docs/loop-spec/features/defer/ITERATION.md"},
   delivery:{status:"pending",attemptedAt:null,finishedAt:null,targets:[]}}' > "$DFDIR/feature.json"
 git -C "$DEFER" add .gitignore ".loop-spec/features/defer/feature.json" \
@@ -637,17 +637,19 @@ check "deferral gate: exit 3" "3" "$ec"
 check "deferral gate: no controller calls" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 check "deferral gate: stderr names the violation" "1" "$(grep -q 'self-authored deferral' <<<"$err" && echo 1 || echo 0)"
 
-# Gate-prefixed warnings (rule-driven deferral) still deliver.
-jq '.warnings=["iterate-budget-spent: gap X recorded to backlog after limit"] | .delivery={status:"pending",attemptedAt:null,finishedAt:null,targets:[]}' \
+# Runtime warnings may name a non-blocking deferred map refresh; they do not declare
+# dropped feature scope. Remove the actual declaration and delivery proceeds.
+printf '# Spec\n\n## Summary\n\nThe goal.\n' > "$DDOCS/SPEC.md"
+jq '.warnings=["VERIFY Step 9: codebase-map refresh deferred; feature verification passed"] | .delivery={status:"pending",attemptedAt:null,finishedAt:null,targets:[]}' \
   "$DFDIR/feature.json" > "$DFDIR/feature.json.tmp" && mv "$DFDIR/feature.json.tmp" "$DFDIR/feature.json"
-git -C "$DEFER" add ".loop-spec/features/defer/feature.json"
-git -C "$DEFER" commit -q -m "gate-marked warning"
+git -C "$DEFER" add ".loop-spec/features/defer/feature.json" "$DDOCS/SPEC.md"
+git -C "$DEFER" commit -q -m "clear deferred scope declaration"
 rm -f "$DFDIR/delivery.json"
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DFDIR")" || ec=$?
-check "deferral gate: gate-marked warning delivers" "0" "$ec"
-check "deferral gate: gate-marked warning ready" "ready-for-review" "$(jq -r '.status' "$DFDIR/delivery.json")"
+check "deferral gate: map warning delivers" "0" "$ec"
+check "deferral gate: map warning ready" "ready-for-review" "$(jq -r '.status' "$DFDIR/delivery.json")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

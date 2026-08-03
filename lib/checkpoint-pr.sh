@@ -19,6 +19,17 @@ set -uo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=credential-refresh.sh
 . "$script_dir/credential-refresh.sh"
+# shellcheck source=bounded-run.sh
+. "$script_dir/bounded-run.sh"
+
+# This script is the crash-rescue path: lib/cycle-reconcile.sh runs it out of band
+# AFTER the agent process has exited, as the last chance to leave a reviewable PR.
+# Its caller wraps it in `|| true`, which absorbs a failure but not a hang -- so an
+# unbounded git/gh call here silently strands the one safety net that was supposed
+# to catch everything else.
+loop_spec_disable_interactive_prompts
+_checkpoint_timeout="$(loop_spec_resolve_timeout "${LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS:-}" 60)" \
+  || _checkpoint_timeout=60
 
 _warn() { echo "checkpoint-pr: $*" >&2; }
 _skip() { _warn "$*"; exit 0; }
@@ -103,7 +114,8 @@ PY
     run_once() {
       local stdout_file="$1" stderr_file="$2"
       shift 2
-      "$@" >"$stdout_file" 2>"$stderr_file"
+      LOOP_SPEC_BOUNDED_RUN_CWD="$repo_dir" \
+        loop_spec_run_bounded "$_checkpoint_timeout" "$stdout_file" "$stderr_file" "$@"
     }
 
     run_authenticated() {

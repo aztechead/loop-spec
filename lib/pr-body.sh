@@ -27,7 +27,7 @@ shift
 [[ $# -eq 3 ]] || { echo "pr-body.sh: render requires <feature.json> <artifact-root> <output-file>" >&2; exit 2; }
 
 python3 - "$1" "$2" "$3" <<'PY'
-import json, os, re, sys
+import json, os, re, subprocess, sys
 
 feature_path, root, output = sys.argv[1:]
 with open(feature_path) as f:
@@ -47,6 +47,39 @@ def read_artifact(key):
             return f.read()
     except OSError:
         return None
+
+
+# `artifacts` mixes reader-facing artifact paths with provenance and runtime state
+# (for example, patternsSource = "pattern-mapper" and codebaseSource = {...}).
+# A PR body is a public, committed-file index, not a serialization of that internal
+# object. Keep the allow-list deliberately small and prove each entry resolves to a
+# tracked regular file in this repository before calling it "committed".
+PUBLIC_ARTIFACT_KEYS = (
+    "spec", "patterns", "plan", "execution", "verification", "iteration",
+)
+
+
+def committed_artifact_paths():
+    paths = []
+    artifacts = feature.get("artifacts") or {}
+    for key in PUBLIC_ARTIFACT_KEYS:
+        value = artifacts.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        path = value.strip()
+        normalized = os.path.normpath(path)
+        if os.path.isabs(path) or normalized == ".." or normalized.startswith(".." + os.sep):
+            continue
+        full_path = os.path.join(root, normalized)
+        if not os.path.isfile(full_path):
+            continue
+        tracked = subprocess.run(
+            ["git", "-C", root, "ls-files", "--error-unmatch", "--", normalized],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        ).returncode == 0
+        if tracked and normalized not in paths:
+            paths.append(normalized)
+    return paths
 
 
 def balance_fences(lines):
@@ -216,7 +249,7 @@ if warnings:
     parts += ["", "## Shipped with warnings", "", "> [!WARNING]"]
     parts += ["> - " + str(item) for item in warnings]
 
-artifact_paths = [p for p in (feature.get("artifacts") or {}).values() if p]
+artifact_paths = committed_artifact_paths()
 if artifact_paths:
     parts += ["", "## Full artifacts", "", "Committed on this branch:"]
     parts += ["- `%s`" % p for p in artifact_paths]

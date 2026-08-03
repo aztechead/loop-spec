@@ -32,6 +32,7 @@ cat > "$ROOT/features/feat-a/result.json" << 'EOF'
 EOF
 cat > "$ROOT/features/feat-a/events.jsonl" << 'EOF'
 {"ts":"2026-07-08T10:00:00Z","slug":"feat-a","event":"phase_start","phase":"spec","data":{}}
+{"ts":"2026-07-08T10:04:00Z","slug":"feat-a","event":"phase_end","phase":"spec","data":{"next":"discuss"},"elapsedSeconds":240}
 {"ts":"2026-07-08T10:05:00Z","slug":"feat-a","event":"dispatch","phase":"discuss","data":{"role":"advocate","model":"sonnet","rung":"team"}}
 {"ts":"2026-07-08T10:05:01Z","slug":"feat-a","event":"dispatch","phase":"discuss","data":{"role":"challenger","model":"opus","rung":"team"}}
 {"ts":"2026-07-08T10:06:00Z","slug":"feat-a","event":"gate_round","phase":"discuss","data":{"gate":"spec-critique","round":1}}
@@ -84,11 +85,13 @@ check "4: dispatches total=3" "3" "$(jq '.dispatches.total' <<<"$out")"
 check "4: dispatches sonnet=2" "2" "$(jq '.dispatches.byModel.sonnet' <<<"$out")"
 check "4: dispatches opus=1" "1" "$(jq '.dispatches.byModel.opus' <<<"$out")"
 check "4: dispatches byRung team=2" "2" "$(jq '.dispatches.byRung.team' <<<"$out")"
+check "4: live phase timing is aggregated" "240" "$(jq '.phaseTimings.spec.totalSeconds' <<<"$out")"
 check "4: fleet cost surfaced" "1.25" "$(jq '.loopFleetCostUsd' <<<"$out")"
 
 # ── Case 5: human stats renders ───────────────────────────────────────────────
 out="$(bash "$LIB" --root "$ROOT" stats)"
 check "5: mentions dispatches" "1" "$(grep -c 'dispatches: 3 total' <<<"$out")"
+check "5: mentions phase timing" "1" "$(grep -c 'phase timing: spec=avg 240s, max 240s, n=1' <<<"$out")"
 check "5: mentions fleet cost" "1" "$(grep -c '\$1.25' <<<"$out")"
 
 # ── Case 6: empty root is not an error ────────────────────────────────────────
@@ -150,10 +153,10 @@ cat > "$DIG/run1.json" << 'EOF'
 {"schema":1,"slug":"run1","status":"completed","converged":true,"iterations":{"used":1,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-01T10:00:00Z"}
 EOF
 cat > "$DIG/run2.json" << 'EOF'
-{"schema":2,"slug":"run2","status":"completed","converged":false,"iterations":{"used":10,"max":10},"gaps":["plan"],"gateCaps":[],"verifyFailureClasses":["suite-regression","acceptance"],"warnings":1,"finishedAt":"2026-07-02T10:00:00Z"}
+{"schema":2,"slug":"run2","status":"completed","converged":false,"iterations":{"used":10,"max":10},"gaps":["plan"],"gateCaps":[],"verifyFailureClasses":["suite-regression","acceptance"],"phaseDurations":{"execute":{"attempts":2,"totalSeconds":120,"maxSeconds":75}},"warnings":1,"finishedAt":"2026-07-02T10:00:00Z"}
 EOF
 cat > "$DIG/run3.json" << 'EOF'
-{"schema":2,"slug":"run3","status":"completed","converged":true,"iterations":{"used":2,"max":10},"gaps":["plan"],"gateCaps":[],"verifyFailureClasses":["suite-regression"],"warnings":0,"finishedAt":"2026-07-03T10:00:00Z"}
+{"schema":2,"slug":"run3","status":"completed","converged":true,"iterations":{"used":2,"max":10},"gaps":["plan"],"gateCaps":[],"verifyFailureClasses":["suite-regression"],"phaseDurations":{"execute":{"attempts":1,"totalSeconds":30,"maxSeconds":30},"verify":{"attempts":1,"totalSeconds":10,"maxSeconds":10}},"warnings":0,"finishedAt":"2026-07-03T10:00:00Z"}
 EOF
 cat > "$DIG/run4.json" << 'EOF'
 {"schema":1,"slug":"run4","status":"completed","converged":true,"iterations":{"used":1,"max":10},"gaps":[],"gateCaps":[],"warnings":0,"finishedAt":"2026-07-04T10:00:00Z"}
@@ -172,12 +175,17 @@ check "9: gapCounts count runs per gap" "2" "$(jq '.gapCounts.plan' <<<"$out")"
 check "9: verify class counts" "2" "$(jq '.verifyFailureClassCounts["suite-regression"]' <<<"$out")"
 check "9: verify class counts single" "1" "$(jq '.verifyFailureClassCounts.acceptance' <<<"$out")"
 check "9: verifyFailureRate computed" "0.5" "$(jq '.verifyFailureRate' <<<"$out")"
+check "9: phase timing attempts aggregate" "3" "$(jq '.phaseTimings.execute.attempts' <<<"$out")"
+check "9: phase timing total aggregates" "150" "$(jq '.phaseTimings.execute.totalSeconds' <<<"$out")"
+check "9: phase timing average is per attempt" "50" "$(jq '.phaseTimings.execute.avgSeconds' <<<"$out")"
+check "9: phase timing max retains slow attempt" "75" "$(jq '.phaseTimings.execute.maxSeconds' <<<"$out")"
+check "9: second phase captured" "10" "$(jq '.phaseTimings.verify.totalSeconds' <<<"$out")"
 check "9: postMergeFixRate null until watch verdicts exist" "null" "$(jq '.postMergeFixRate' <<<"$out")"
 check "9: sentinelNeedsHumanRate null until sentinel history exists" "null" "$(jq '.sentinelNeedsHumanRate' <<<"$out")"
 check "9: watchWindowClean null until watch verdicts exist" "null" "$(jq '.watchWindowClean' <<<"$out")"
 # THE SCHEMA PIN: schema-1 keys are append-only; a rename/removal must bump .schema.
 check "9: schema-1 key set pinned" \
-  "consecutiveConverged consecutiveFirstPass converged convergenceRate firstPassRate gapCounts postMergeFixRate runs schema sentinelNeedsHumanRate source verifyFailureClassCounts verifyFailureRate watchWindowClean" \
+  "consecutiveConverged consecutiveFirstPass converged convergenceRate firstPassRate gapCounts phaseTimings postMergeFixRate runs schema sentinelNeedsHumanRate source verifyFailureClassCounts verifyFailureRate watchWindowClean" \
   "$(jq -r 'keys | sort | join(" ")' <<<"$out")"
 
 # ── Case 10: metrics on empty/missing digests dir ─────────────────────────────

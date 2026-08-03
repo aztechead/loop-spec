@@ -4,21 +4,24 @@
 #
 # Why: loop-spec's contract is that once SPEC/DISCUSS/PLAN fix the design, the
 # model runs it to completion. Everything in the spec ships. There is no valid
-# successful conclusion that includes deferred items, follow-ups, or "future
-# work" the MODEL chose on its own — that is scope the design promised and the
-# run silently dropped. The only legitimate deferral writers are the bounded
-# gates, and each stamps a recognizable marker on the line it writes:
+# successful conclusion that includes an explicit model-chosen deferred-scope
+# declaration — that is scope the design promised and the run silently dropped.
+# This is deliberately a STRUCTURED check, not a forbidden-word scanner: reports,
+# negations, template defaults, and runtime warnings may all accurately mention the
+# word "deferred" without dropping any feature scope. The only legitimate deferral
+# writers are the bounded gates, and each stamps a recognizable marker on the line it
+# writes:
 #   iterate-budget-spent:   ITERATE's iteration limit was exhausted (rule-driven)
 #   iterate-terminal:       two full iteration limits spent on the same gap
 #   verify-deferred         VERIFY's Minor-finding backlog rule (PASS_WITH_MINOR)
 # A line carrying one of those markers (or PASS_WITH_MINOR, the verdict that
-# produces verify-deferred entries) is gate-authored and exempt. Every other
-# line that speaks deferral language on a completion surface is a violation.
+# produces verify-deferred entries) is gate-authored and exempt. Every other explicit
+# deferred-scope declaration on a completion surface is a violation.
 #
 # Usage:
 #   deferral-lint.sh text     <path | ->        # scan a completion surface
 #                                               # (PR body, final report draft)
-#   deferral-lint.sh warnings <feature.json | -> # scan feature warnings[]
+#   deferral-lint.sh warnings <feature.json | -> # validate warning JSON shape only
 #
 # Output: one `FLAG <path>:<line>: <message>` per violation, then a final
 # one-line answer with the reason: `deferral-lint: ok (<type>: <path>)` or
@@ -27,8 +30,10 @@
 # Exit codes: 0 clean, 1 any FLAG (including unreadable input — fail safe),
 # 2 bad invocation.
 #
-# Scope guard: this lints COMPLETION SURFACES (PR bodies, terminal reports,
-# warnings[]) — never SPEC.md. A spec's "Out of scope" boundary is the design
+# Scope guard: this lints explicit deferred-scope declarations in completion
+# surfaces (PR bodies, terminal reports). Runtime `warnings[]` are observations, not
+# an assertion that feature scope was dropped, and therefore never trigger this gate.
+# It never scans SPEC.md. A spec's "Out of scope" boundary is the design
 # deciding scope up front, which is exactly what this probe protects.
 set -uo pipefail
 
@@ -62,61 +67,96 @@ lint_type, target, display = sys.argv[1], sys.argv[2], sys.argv[3]
 # root-cause mechanism is a NEW bug, never this fix's scope) — rule-driven,
 # not model-chosen.
 GATE_MARKERS = re.compile(
-    r"iterate-budget-spent:|iterate-terminal:|verify-deferred|PASS_WITH_MINOR"
-    r"|new-mechanism:|DEFERRED-NEW-BUG"
+    r"^\s*(?:[-*+]\s*)?(?:iterate-budget-spent:|iterate-terminal:|verify-deferred"
+    r"|PASS_WITH_MINOR|new-mechanism:|DEFERRED-NEW-BUG)",
+    re.I,
 )
-
-# Warnings entries must START with a bounded-gate prefix to carry deferral
-# language (free-form model warnings do not get to smuggle scope out).
-WARNING_GATE_PREFIX = re.compile(r"^(iterate-budget-spent|iterate-terminal):")
-
-# Self-authored deferral vocabulary (case-insensitive, word-boundary). Each
-# pattern names the phrase family so the FLAG reports the exact matched term.
-VOCABULARY = [
-    r"\bdefer(?:red|ral|ring|s)?\b",
-    r"\bfollow[- ]?ups?\b",
-    r"\bfuture (?:work|prs?|pull requests?|iterations?|cycles?|enhancements?|improvements?|releases?|versions?)\b",
-    r"\b(?:later|subsequent|separate|follow-on) (?:prs?|pull requests?|iterations?|cycles?|changes?|commits?|tasks?|passes|efforts?)\b",
-    r"\bout of scope for now\b",
-    r"\b(?:left|leave|leaving) (?:it |this |them )?(?:for|to|until) (?:later|a future)\b",
-    r"\bpunt(?:ed|ing|s)?\b",
-    r"\bremaining (?:work|items?|tasks?|gaps?)\b",
-    r"\bnext steps?\b",
-    r"\bnice[- ]to[- ]haves?\b",
-    r"\bstretch goals?\b",
-    r"\btime permit(?:s|ting)\b",
-    r"\bif time allows\b",
-    r"\bfast[- ]follow(?:s|-up)?\b",
-    r"\bat a later (?:date|time|point)\b",
-    r"\bdown the (?:road|line)\b",
-    r"\bbacklogged\b",
-    r"\bnot (?:yet )?implemented\b",
-]
-VOCAB_RE = re.compile("|".join(VOCABULARY), re.IGNORECASE)
 
 flags = []
 
-# The policy governs PROSE. File paths, commands, and code legitimately contain
-# vocabulary words (a slug named "defer-token-refresh", a `verify-deferred` path),
-# so inline code spans are stripped and fenced blocks are skipped before scanning.
+# The policy governs declared scope. File paths, commands, quoted reports, and code
+# legitimately contain this vocabulary, so inline code spans, fenced blocks, and
+# Markdown blockquotes are ignored before looking for a declaration.
 INLINE_CODE_RE = re.compile(r"`[^`]*`")
+NONE_RE = re.compile(r"^(?:none|no(?:ne)?|n/?a|nothing|0|not applicable|no action required)\.?$", re.I)
+DECLARATION_RE = re.compile(
+    r"^\s*(?:[-*+]\s*)?(?:\*\*)?"
+    r"(deferred(?:\s+(?:scope|items?|work))?|follow[- ]?ups?|future work|remaining work)"
+    r"(?:\*\*)?\s*:\s*(.*\S)\s*$",
+    re.I,
+)
+HEADING_RE = re.compile(
+    r"^\s{0,3}(#{1,6})\s+"
+    r"(deferred(?:\s+(?:scope|items?|work))?|follow[- ]?ups?|future work|remaining work)"
+    r"\s*#*\s*$",
+    re.I,
+)
+# A direct first-person commitment is also structured enough to be meaningful.
+# It deliberately does not match third-party reports such as "the guard matched
+# deferred" or negations such as "no follow-up action required".
+COMMITMENT_RE = re.compile(
+    r"\b(?:we|i)\s+(?:will\s+)?(?:defer|leave|punt)\b.*"
+    r"\b(?:later|future|follow[- ]?on|separate)\b",
+    re.I,
+)
+BARE_PAST_DEFERRAL_RE = re.compile(
+    r"^\s*(?:[-*+]\s*)?deferred\b.*\b(?:later|future|follow[- ]?on|separate)\b",
+    re.I,
+)
 
 
-def scan_line(lineno, line):
-    if GATE_MARKERS.search(line):
-        return
-    line = INLINE_CODE_RE.sub("", line)
-    m = VOCAB_RE.search(line)
-    if m:
-        flags.append(
-            (
-                lineno,
-                "self-authored deferral %r — spec scope ships in full; implement it "
-                "now, or if a bounded gate produced this line it must carry its gate "
-                "marker (iterate-budget-spent: / iterate-terminal: / verify-deferred)"
-                % m.group(0),
-            )
-        )
+def declaration_has_scope(value):
+    value = INLINE_CODE_RE.sub("", value).strip()
+    return bool(value) and not NONE_RE.fullmatch(value)
+
+
+def flag(lineno, label):
+    flags.append((
+        lineno,
+        "self-authored deferred scope declaration (%s) — implement the named scope "
+        "now, or use a bounded-gate marker (iterate-budget-spent: / iterate-terminal: "
+        "/ verify-deferred) when the gate, rather than the model, created it" % label,
+    ))
+
+
+def scan_text(content):
+    lines = content.splitlines()
+    in_fence = False
+    index = 0
+    while index < len(lines):
+        raw = lines[index]
+        lineno = index + 1
+        if raw.lstrip().startswith("```"):
+            in_fence = not in_fence
+            index += 1
+            continue
+        if in_fence or raw.lstrip().startswith(">") or GATE_MARKERS.search(raw):
+            index += 1
+            continue
+        line = INLINE_CODE_RE.sub("", raw)
+        heading = HEADING_RE.match(line)
+        if heading:
+            level = len(heading.group(1))
+            values = []
+            index += 1
+            while index < len(lines):
+                candidate = lines[index]
+                next_heading = re.match(r"^\s{0,3}(#{1,6})\s+", candidate)
+                if next_heading and len(next_heading.group(1)) <= level:
+                    break
+                if not candidate.lstrip().startswith(">") and not candidate.lstrip().startswith("```"):
+                    values.append(candidate.strip().lstrip("-*+ ").strip())
+                index += 1
+            meaningful = [value for value in values if value and not NONE_RE.fullmatch(value)]
+            if meaningful:
+                flag(lineno, heading.group(2))
+            continue
+        declaration = DECLARATION_RE.match(line)
+        if declaration and declaration_has_scope(declaration.group(2)):
+            flag(lineno, declaration.group(1))
+        elif COMMITMENT_RE.search(line) or BARE_PAST_DEFERRAL_RE.search(line):
+            flag(lineno, "first-person commitment")
+        index += 1
 
 
 if lint_type == "text":
@@ -127,14 +167,7 @@ if lint_type == "text":
         print("FLAG %s:0: unreadable input (%s)" % (display, e))
         print("deferral-lint: 1 flag(s) (text: %s)" % display)
         sys.exit(1)
-    in_fence = False
-    for i, line in enumerate(content.splitlines(), 1):
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        scan_line(i, line)
+    scan_text(content)
 else:  # warnings
     try:
         with open(target, errors="replace") as f:
@@ -146,22 +179,9 @@ else:  # warnings
     warnings = data.get("warnings") or []
     if not isinstance(warnings, list):
         flags.append((0, "warnings is not a list"))
-        warnings = []
-    for i, entry in enumerate(warnings):
-        entry = str(entry)
-        if WARNING_GATE_PREFIX.match(entry):
-            continue
-        m = VOCAB_RE.search(entry)
-        if m:
-            flags.append(
-                (
-                    i,
-                    "warnings[%d] carries self-authored deferral %r without a "
-                    "bounded-gate prefix (iterate-budget-spent: / iterate-terminal:) "
-                    "— a warning is an audit record, not a place to drop scope"
-                    % (i, m.group(0)),
-                )
-            )
+    # Runtime warnings describe observations such as a non-blocking map refresh;
+    # they are not a declaration that feature scope was dropped. Never infer scope
+    # from a reserved word in this unstructured diagnostics channel.
 
 for lineno, message in flags:
     print("FLAG %s:%d: %s" % (display, lineno, message))

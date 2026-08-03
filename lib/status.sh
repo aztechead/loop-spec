@@ -15,7 +15,8 @@
 #
 #   status.sh [--root <dir>] [--json] metrics [--digests <dir>]
 #       THE METRICS CONTRACT (ROADMAP-3.0 B3): the stable, schema-versioned
-#       numbers the other pillars consume — trust (lib/trust.sh) and tuning
+#       numbers the other pillars consume — trust (lib/trust.sh), tuning,
+#       and phase-cost review
 #       read THIS output instead of re-deriving from raw telemetry. Computed
 #       from the COMMITTED run digests (docs/loop-spec/telemetry/runs/*.json,
 #       lib/run-digest.sh), not local events — the contract must survive
@@ -203,8 +204,22 @@ case "$CMD" in
           byRole: ($d | group_by(.data.role // "unknown")
                    | map({key: (.[0].data.role // "unknown"), value: length}) | from_entries),
           byRung: ($d | group_by(.data.rung // "unknown")
-                   | map({key: (.[0].data.rung // "unknown"), value: length}) | from_entries)
+                    | map({key: (.[0].data.rung // "unknown"), value: length}) | from_entries)
         }),
+        phaseTimings: ($all_events
+                       | map(select(.event == "phase_end"
+                                    and (.phase | type) == "string"
+                                    and (.elapsedSeconds | type) == "number"
+                                    and .elapsedSeconds >= 0)
+                             | {phase: .phase, elapsedSeconds: .elapsedSeconds})
+                       | group_by(.phase)
+                       | map({key: .[0].phase, value: {
+                           attempts: length,
+                           totalSeconds: (map(.elapsedSeconds) | add),
+                           avgSeconds: ((map(.elapsedSeconds) | add) / length),
+                           maxSeconds: (map(.elapsedSeconds) | max)
+                         }})
+                       | from_entries),
         loopFleetCostUsd: $fleetCost
       }')"
 
@@ -224,6 +239,7 @@ case "$CMD" in
       "  by model: \(if (.dispatches.byModel | length) == 0 then "-" else (.dispatches.byModel | to_entries | map("\(.key)=\(.value)") | join("  ")) end)",
       "  by role:  \(if (.dispatches.byRole | length) == 0 then "-" else (.dispatches.byRole | to_entries | map("\(.key)=\(.value)") | join("  ")) end)",
       "  by rung:  \(if (.dispatches.byRung | length) == 0 then "-" else (.dispatches.byRung | to_entries | map("\(.key)=\(.value)") | join("  ")) end)",
+      "phase timing: \(if (.phaseTimings | length) == 0 then "none recorded" else (.phaseTimings | to_entries | map("\(.key)=avg \(.value.avgSeconds)s, max \(.value.maxSeconds)s, n=\(.value.attempts)") | join("  ")) end)",
       "loop-fleet cost: \(if .loopFleetCostUsd != null then "$\(.loopFleetCostUsd)" else "n/a (no fleet-result.json or cost not reported)" end)"
     ' <<<"$STATS"
     exit 0
@@ -234,7 +250,7 @@ case "$CMD" in
     #   schema, source, runs, converged, convergenceRate, firstPassRate,
     #   consecutiveConverged, consecutiveFirstPass, gapCounts,
     #   verifyFailureClassCounts, postMergeFixRate, verifyFailureRate,
-    #   sentinelNeedsHumanRate, watchWindowClean
+    #   sentinelNeedsHumanRate, watchWindowClean, phaseTimings
     # Pinned by tests/lib/status.test.sh — a key change is a schema bump.
     # gapCounts / verifyFailureClassCounts count RUNS exhibiting each gap /
     # verify-failure class (digests carry them unique-per-run), which is the
@@ -290,7 +306,24 @@ case "$CMD" in
           sentinelNeedsHumanRate: (($nh + $picked) as $d
                                    | if $d == 0 then null else ($nh / $d * 100 | round / 100) end),
           watchWindowClean: (if ($watched | length) == 0 then null
-                             else ($watched | all(.watch.clean == true)) end)
+                             else ($watched | all(.watch.clean == true)) end),
+          phaseTimings: ([$ordered[]
+                          | (.phaseDurations // {})
+                          | to_entries[]?
+                          | select((.value.attempts | type) == "number"
+                                   and (.value.attempts > 0)
+                                   and (.value.totalSeconds | type) == "number"
+                                   and (.value.maxSeconds | type) == "number")
+                          | {phase: .key, attempts: .value.attempts,
+                             totalSeconds: .value.totalSeconds, maxSeconds: .value.maxSeconds}]
+                         | group_by(.phase)
+                         | map({key: .[0].phase, value: {
+                             attempts: (map(.attempts) | add),
+                             totalSeconds: (map(.totalSeconds) | add),
+                             avgSeconds: ((map(.totalSeconds) | add) / (map(.attempts) | add)),
+                             maxSeconds: (map(.maxSeconds) | max)
+                           }})
+                         | from_entries)
         }'
     exit 0
     ;;

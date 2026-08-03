@@ -83,8 +83,10 @@ Apply these replacements to the lead wave loop:
 5. On `block`, retry exhaustion, out-of-scope dirt, verification failure, missing
    commit, or an unreadable Git state, stop with the existing structured blocked or
    escalation reason. Preserve the working tree for diagnosis; never reset or clean it.
-6. Run the normal post-merge `feature-validation.sh compare` after each accepted
-   commit before selecting the next ready task.
+6. Run the normal post-merge `feature-validation.sh compare` once for the completed
+   serialized wave (Step 7 below). Each task still runs its own `verifyCommand` before
+   publication; the wave gate validates the exact integrated feature candidate before
+   another wave begins.
 
 The direct implementer prompt replaces only the worktree/commit mechanics in the
 template below with:
@@ -144,7 +146,7 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
      --feature-branch "feat/{slug}" \
      --task-worktree "$worktree_path" \
      --task-branch "$worktree_branch" \
-     --verify "{task.verifyCommand} && bash '${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh' compare '$worktree_path/.loop-spec/features/{slug}'" \
+   --verify "{task.verifyCommand}" \
      --cleanup)
    integration_rc=$?
    ```
@@ -156,11 +158,13 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    failure to `escalation.reason = "rebase-conflict"` with the helper's `reason`
    and `detail`, then stop. Never remove or reset a failed task worktree manually.
    The helper runs `verifyCommand` after any required rebase and before publication,
-   so the verified commit is exactly the commit that fast-forwards the feature branch.
-7. **Post-merge suite gate**: run `lib/feature-validation.sh compare` against the
-   feature directory. Exit 20 is a new regression; exit 21 is preparation/infrastructure
-   failure. Unchanged baseline failures do not block. This repeats the candidate check on
-   the published feature branch to catch cross-task regressions.
+   so each task's focused proof covers exactly the commit that fast-forwards the feature
+   branch. It deliberately does not run the repository-wide suite here.
+7. **Post-wave candidate suite gate**: after every passed task in the wave has been
+   published, run `lib/feature-validation.sh compare` once against the feature directory.
+   Exit 20 is a new regression; exit 21 is preparation/infrastructure failure. Unchanged
+   baseline failures do not block. This validates the exact integrated wave candidate and
+   catches cross-task regressions without repeating the same full suite once per task.
 8. Loop back to step 1.
 
 ## Agent dispatch convention
@@ -174,6 +178,26 @@ on top of the explicit `git worktree add` in the prompt. Pass the role model via
 `Agent` `model` field (`models.implementer` / `models.specComplianceReviewer`).
 
 **Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved alias>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
+
+**Task progress (required).** EXECUTE is the longest phase; without this it reports
+only `[EXECUTE] start` and an operator watching a streamed log cannot tell task 1 of 6
+from task 5 of 6, or steady progress from a stall. Emit one `task_start` before
+dispatching each task and one `task_end` after its merge/failure is decided:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" \
+  task_start --phase execute \
+  --data '{"index":<1-based position>,"total":<total tasks in the DAG>,"id":"<task id>","subject":"<task subject>"}' || true
+# ... dispatch, verify, merge ...
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" \
+  task_end --phase execute \
+  --data '{"index":<same>,"total":<same>,"id":"<task id>","result":"<merged|failed|skipped>"}' || true
+```
+
+`total` is the task count for the whole DAG, not the current wave, so the ratio
+advances monotonically across waves. In a parallel wave emit every `task_start` as the
+wave launches; `index` is the task's position in the DAG order. `lib/events.sh` renders
+these as `[EXECUTE] task 2/5 start - task-002: <subject>`. Retries re-emit.
 
 ## Implementer Agent prompt (per task, per attempt)
 
@@ -247,8 +271,8 @@ Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.
 
 Step 4 - Run the task's feature-specific verify command inside the worktree:
   {task.verifyCommand}
-The integration helper runs the repository-wide no-new-failures comparison after commit
-and any required rebase, against the exact candidate that may be published.
+The integration helper reruns this focused command after any required rebase. The lead
+runs the repository-wide no-new-failures comparison once after the integrated wave.
 
 Step 5 - Stage and commit inside the worktree branch:
   git -C "{worktree_path}" add <files>

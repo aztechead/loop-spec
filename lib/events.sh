@@ -28,6 +28,9 @@
 #   iterate_verdict   - an iterate judge verdict landed
 #   dispatch          - an agent was launched (data: {"role":..,"model":..,"rung":..};
 #                       contract: skills/shared/dispatch-events.md)
+#   task_start        - an EXECUTE task began (data: {"index":N,"total":M,
+#                       "id":"task-003","subject":"..."}) -> "[EXECUTE] task 2/5 start"
+#   task_end          - an EXECUTE task finished (same, plus {"result":"merged|failed|..."})
 #   verify_failure    - a VERIFY gate failed (data: {"class":"marker|tamper|
 #                       suite-regression|acceptance|code-review|live-probe"};
 #                       mined into the run digest's verifyFailureClasses)
@@ -157,6 +160,126 @@ _phase_verdict() {
   fi
 }
 
+# One greppable console line per event, for the operator watching a streamed log.
+#
+# This is the MECHANISM behind skills/shared/report-style.md's phase-boundary
+# contract. It used to be prose asking the model to print these lines, which meant
+# the only window into a long unattended run depended on model compliance and had no
+# test -- in practice only EXECUTE and DISCUSS ever printed them, and non-phase
+# events reached no console at all. A boundary record an operator relies on is not a
+# judgment call, so it is emitted here, deterministically, for every event.
+#
+# stderr by DEFAULT, because stdout carries the machine contract -- the
+# LOOP_SPEC_PHASE_START/END marker plus its JSON. A consumer that does
+# `out=$(events.sh emit ...)` and then `jq <<<"${out#LOOP_SPEC_PHASE_START }"` gets a
+# parse error the moment a second line shares that stream, so defaulting to stdout
+# would break existing callers.
+#
+# LOOP_SPEC_CONSOLE_STREAM=stdout moves them anyway, for hosts that treat the two
+# streams differently. Cloud Run is the motivating case: it assigns stderr output
+# ERROR severity, so routine progress lines surface in Cloud Logging as errors. In
+# that mode the console line is printed AFTER the marker, and a consumer must select
+# its record by prefix (`grep '^LOOP_SPEC_PHASE_'`) instead of assuming stdout holds
+# exactly one line -- which is how a robust consumer should read it either way.
+#
+# Format follows EXECUTE's rung-decision line, the one operators already grep:
+#   [VERIFY] failure: code-review
+_console_line() {
+  local event="$1" phase="$2" data="$3" elapsed="${4:-}" verdict="${5:-}"
+  [[ "${LOOP_SPEC_CONSOLE_EVENTS:-1}" == "0" ]] && return 0
+  local tag summary field extra
+  if [[ -n "$phase" ]]; then
+    tag="$(printf '%s' "$phase" | tr '[:lower:]' '[:upper:]')"
+  else
+    tag="LOOP-SPEC"
+  fi
+  _d() { jq -r "$1 // empty" <<<"$data" 2>/dev/null || true; }
+  case "$event" in
+    phase_start)
+      summary="start"
+      ;;
+    phase_end)
+      summary="done"
+      [[ -n "$elapsed" ]] && summary="$summary (${elapsed}s)"
+      [[ -n "$verdict" ]] && summary="$summary - $verdict"
+      field="$(_d '.next')"
+      [[ -n "$field" ]] && summary="$summary -> $field"
+      ;;
+    gate_round)
+      field="$(_d '.gate')"; extra="$(_d '.round')"
+      summary="gate ${field:-critique}${extra:+ round $extra}"
+      field="$(_d '.result')"
+      [[ -n "$field" ]] && summary="$summary - $field"
+      ;;
+    dispatch)
+      field="$(_d '.role')"; summary="dispatch ${field:-agent}"
+      field="$(_d '.model')"; extra="$(_d '.rung')"
+      [[ -n "$field$extra" ]] && summary="$summary [${field}${field:+${extra:+, }}${extra}]"
+      ;;
+    task_start|task_end)
+      # Where a long EXECUTE actually is. A phase that runs for an hour used to
+      # report only "[EXECUTE] start", so an operator watching a streamed log could
+      # not tell task 1 of 6 from task 5 of 6, or progress from a stall.
+      local index total
+      index="$(_d '.index')"; total="$(_d '.total')"
+      if [[ -n "$index" && -n "$total" ]]; then
+        summary="task ${index}/${total}"
+      else
+        summary="task"
+      fi
+      [[ "$event" == "task_start" ]] && summary="$summary start" || summary="$summary done"
+      field="$(_d '.id')"; extra="$(_d '.subject')"
+      [[ -n "$field" ]] && summary="$summary - $field"
+      [[ -n "$extra" ]] && summary="$summary: $extra"
+      field="$(_d '.result')"
+      [[ -n "$field" ]] && summary="$summary [$field]"
+      ;;
+    verify_failure)
+      field="$(_d '.class')"
+      summary="FAILURE: ${field:-unclassified}"
+      ;;
+    iterate_verdict)
+      field="$(_d '.verdict')"; [[ -n "$field" ]] || field="$(_d '.result')"
+      summary="verdict: ${field:-unknown}"
+      ;;
+    checkpoint_pr)
+      field="$(_d '.url')"
+      summary="checkpoint PR${field:+ $field}"
+      ;;
+    completed|paused|escalated)
+      summary="$event"
+      field="$(_d '.reason')"
+      [[ -n "$field" ]] && summary="$summary - $field"
+      ;;
+    *)
+      summary="$event"
+      ;;
+  esac
+  # Stream resolution, strongest evidence first (probe contract: an explicit
+  # operator override outranks the probe; unknown values fall back to the safe
+  # default rather than silently choosing a stream):
+  #   1. LOOP_SPEC_CONSOLE_STREAM=stdout|stderr  operator says so.
+  #   2. Cloud Run's own stamps (CLOUD_RUN_JOB for jobs, K_SERVICE for services)
+  #      -> stdout. Cloud Run assigns stderr output ERROR severity, so on the
+  #      harness this plugin most often runs unattended on, routine progress on
+  #      stderr surfaces in Cloud Logging as a stream of errors. The platform
+  #      stamps these variables itself; this is a fact, not a judgment.
+  #   3. default stderr: stdout carries the marker JSON that callers parse.
+  local stream="${LOOP_SPEC_CONSOLE_STREAM:-}"
+  if [[ "$stream" != "stdout" && "$stream" != "stderr" ]]; then
+    if [[ -n "${CLOUD_RUN_JOB:-}" || -n "${K_SERVICE:-}" ]]; then
+      stream="stdout"
+    else
+      stream="stderr"
+    fi
+  fi
+  if [[ "$stream" == "stdout" ]]; then
+    printf '[%s] %s\n' "$tag" "$summary"
+  else
+    printf '[%s] %s\n' "$tag" "$summary" >&2
+  fi
+}
+
 case "${1:-}" in
   emit)
     feature_dir="${2:-}"
@@ -243,6 +366,7 @@ case "${1:-}" in
       echo "events.sh: failed to append event '$event' to $feature_dir/$EVENTS_FILE" >&2
     fi
     [[ -z "$marker" ]] || printf '%s %s\n' "$marker" "$event_json"
+    _console_line "$event" "$phase_str" "$data_val" "${elapsed:-}" "${verdict:-}"
     exit 0
     ;;
   *)

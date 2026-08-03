@@ -59,7 +59,7 @@ if bash "$SCRIPT" validate "$STATUS_DIR" >/dev/null 2>&1; then
 rc=0; GRAPHIFY_BIN="$STUBDIR/graphify" bash "$SCRIPT" build "$STATUS_DIR" >/dev/null 2>&1 || rc=$?
 [[ "$rc" -eq 2 ]] && pass "build command is retired" || fail "build command is retired (rc=$rc)"
 
-# stage: commit shared outputs, ignore local-only churn, and untrack old local artifacts
+# localize: graph output stays useful locally but is never staged in a feature PR.
 REPO="$WORK/repo"; mkdir -p "$REPO/graphify-out/cache"
 git -C "$REPO" init -q
 git -C "$REPO" config user.name test
@@ -71,6 +71,7 @@ printf '%s\n' old > "$REPO/graphify-out/cache/deadbeef.json"
 printf '%s\n' old > "$REPO/graphify-out/.graphify_detect.json"
 printf '%s\n' old > "$REPO/graphify-out/.graphify_semantic_1.json"
 printf '%s\n' old > "$REPO/graphify-out/.needs_update"
+printf '%s\n' '{"nodes":[{"id":"old","label":"Old Graph"}],"links":[]}' > "$REPO/graphify-out/graph.json"
 git -C "$REPO" add graphify-out
 git -C "$REPO" commit -qm initial
 printf '%s\n' '{"nodes":[{"id":"example","label":"Example Service"}],"links":[]}' > "$REPO/graphify-out/graph.json"
@@ -79,35 +80,67 @@ printf '%s\n' '{}' > "$REPO/graphify-out/manifest.json"
 printf '%s\n' '<html></html>' > "$REPO/graphify-out/graph.html"
 printf '%s\n' local > "$REPO/graphify-out/.graphify_python"
 printf '%s\n' '{}' > "$REPO/graphify-out/.graphify_analysis.json"
-bash "$SCRIPT" stage "$REPO"
+printf '%s\n' local > "$REPO/graphify-out/cache/new-local.json"
+git -C "$REPO" add graphify-out/graph.json
+printf '%s\n' staged > "$REPO/other.txt"
+git -C "$REPO" add other.txt
+bash "$SCRIPT" localize "$REPO"
 staged="$(git -C "$REPO" diff --cached --name-only)"
-for artifact in graph.json GRAPH_REPORT.md manifest.json graph.html .graphify_analysis.json; do
-  echo "$staged" | grep -q "graphify-out/$artifact" && pass "stage includes $artifact" || fail "stage includes $artifact"
-done
-for artifact in cost.json .graphify_root .graphify_uncached.txt cache/deadbeef.json .graphify_detect.json .graphify_semantic_1.json .needs_update; do
-  echo "$staged" | grep -q "graphify-out/$artifact" && pass "stage removes tracked $artifact" || fail "stage removes tracked $artifact"
-done
+[[ "$staged" == "other.txt" ]] && pass "localize leaves unrelated staged work alone" || fail "localize leaves unrelated staged work alone ($staged)"
+if echo "$staged" | grep -q 'graphify-out/'; then
+  fail "localize stages no graph output"
+else
+  pass "localize stages no graph output"
+fi
+[[ -s "$REPO/graphify-out/graph.json" ]] && pass "local graph remains queryable" || fail "local graph remains queryable"
 ignored="$(git -C "$REPO" status --short --ignored)"
 echo "$ignored" | grep -q '!! graphify-out/.graphify_python' && pass "stage ignores machine interpreter" || fail "stage ignores machine interpreter"
-echo "$ignored" | grep -q '!! graphify-out/cache/' && pass "stage ignores cache" || fail "stage ignores cache"
+echo "$ignored" | grep -q '!! graphify-out/cache/new-local.json' && pass "localize ignores new cache output" || fail "localize ignores new cache output"
+echo "$ignored" | grep -q '!! graphify-out/.graphify_analysis.json' && pass "localize ignores generated graph sidecars" || fail "localize ignores generated graph sidecars"
 
 # stage: linked worktrees must use the common repository's info/exclude path
 LINKED="$WORK/linked"
 git -C "$REPO" worktree add -q -b linked "$LINKED"
-rc=0; bash "$SCRIPT" stage "$LINKED" >/dev/null 2>&1 || rc=$?
-[[ "$rc" -eq 0 ]] && pass "stage works in linked worktree" || fail "stage works in linked worktree (rc=$rc)"
+rc=0; bash "$SCRIPT" localize "$LINKED" >/dev/null 2>&1 || rc=$?
+[[ "$rc" -eq 0 ]] && pass "localize works in linked worktree" || fail "localize works in linked worktree (rc=$rc)"
 linked_exclude="$(git -C "$LINKED" rev-parse --path-format=absolute --git-path info/exclude)"
 grep -q '# loop-spec managed local artifacts' "$linked_exclude" && pass "linked worktree uses common exclude" || fail "linked worktree uses common exclude"
 
-# A normal index commit must preserve removals of previously tracked local artifacts.
-git -C "$REPO" commit -qm graph
-if git -C "$REPO" ls-files --error-unmatch graphify-out/cost.json >/dev/null 2>&1; then
-  fail "commit keeps local cost untracked"
+# A normal feature commit cannot sweep the generated graph into its diff.
+git -C "$REPO" commit -qm feature
+if git -C "$REPO" diff HEAD~1 --name-only | grep -q 'graphify-out/'; then
+  fail "feature commit excludes graphify output"
 else
-  pass "commit keeps local cost untracked"
+  pass "feature commit excludes graphify output"
 fi
-git -C "$REPO" ls-files --error-unmatch graphify-out/graph.json >/dev/null 2>&1 \
-  && pass "commit keeps shared graph tracked" || fail "commit keeps shared graph tracked"
+
+# A valid graph is reusable only with a matching source snapshot. The local
+# stamp is intentionally stricter than graph-status: a missing/corrupt stamp or
+# any tracked source edit returns stale and forces the assistant lifecycle.
+bash "$SCRIPT" stamp "$REPO"
+[[ "$(bash "$SCRIPT" freshness "$REPO")" == "fresh" ]] \
+  && pass "matching source stamp is fresh" || fail "matching source stamp is fresh"
+printf 'changed\n' >> "$REPO/other.txt"
+[[ "$(bash "$SCRIPT" freshness "$REPO")" == "stale" ]] \
+  && pass "tracked source change invalidates stamp" || fail "tracked source change invalidates stamp"
+git -C "$REPO" restore other.txt
+printf 'not-json\n' > "$REPO/graphify-out/.loop-spec-source-fingerprint.json"
+[[ "$(bash "$SCRIPT" freshness "$REPO")" == "stale" ]] \
+  && pass "corrupt stamp never reuses graph" || fail "corrupt stamp never reuses graph"
+bash "$SCRIPT" stamp "$REPO"
+[[ "$(bash "$SCRIPT" freshness "$REPO")" == "fresh" ]] \
+  && pass "restamped clean graph is fresh" || fail "restamped clean graph is fresh"
+
+# Explicit maintenance publishing is the inverse of feature localize: it re-enables
+# graph paths and stages portable generated output for its own review, never cache.
+bash "$SCRIPT" publish "$REPO"
+published="$(git -C "$REPO" diff --cached --name-only)"
+echo "$published" | grep -q 'graphify-out/graph.json' && pass "publish stages graph for maintenance review" || fail "publish stages graph for maintenance review"
+if echo "$published" | grep -q 'graphify-out/cache/'; then
+  fail "publish excludes cache"
+else
+  pass "publish excludes cache"
+fi
 
 echo ""; echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

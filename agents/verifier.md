@@ -52,7 +52,7 @@ You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE
 - Do NOT modify code to make tests pass. You verify, you do not fix.
 - Do NOT skip a criterion because the verify command is awkward - figure it out.
 - Do NOT write outside `docs/loop-spec/features/{slug}/VERIFICATION.md`.
-- Do NOT assume the orchestrator will re-run test/lint/typecheck after you return. You ARE the authoritative test runner for VERIFY phase. Your `Test suite status` result is final. Report accurately.
+- You are authoritative for each acceptance criterion's command and its repository-grounded evidence. `validation_json` is authoritative for the repository-wide baseline comparison; do not rerun test/lint/typecheck outside that adapter. Report both accurately.
 - Do NOT turn an unchanged baseline failure into a feature failure. Report `Test suite status: PASS` only when `validation_json.outcome == "accepted"`; clearly list retained known failures.
 - Do NOT invent evidence references. `lib/verification-grounding-lint.sh` checks that cited files and lines exist and that every Good Enough criterion has exactly one row.
 

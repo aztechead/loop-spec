@@ -55,6 +55,16 @@ cmd="${1:-}"
 }
 dir="${2:-$PWD}"
 [[ -d "$dir" ]] || { echo "cycle-preflight: no such directory: $dir" >&2; exit 1; }
+# Breadcrumb BEFORE the clear. The clear erases the previous run's terminal
+# pointer (a stale pointer would masquerade as this run's result), but preflight
+# can still abort after it -- the graphify gate below exits hard. Without an
+# active-run.json in place first, that abort left NEITHER a terminal result NOR
+# a recovery record, and cycle-reconcile.sh had nothing to reconcile: the exact
+# "exit, no state" hole this file exists to prevent. The real `begin` later
+# overwrites this with the actual title/slug and preserves startedAt.
+bash "$SCRIPT_DIR/cycle-result.sh" begin --result-root "$dir" --cycle-type full \
+  --title "(preflight)" --phase preflight \
+  --autonomous "$([[ "${LOOP_SPEC_AUTONOMOUS:-}" == "1" ]] && echo true || echo false)" || true
 bash "$SCRIPT_DIR/cycle-result.sh" clear --result-root "$dir"
 bash "$SCRIPT_DIR/runtime-preflight.sh" check-jq
 

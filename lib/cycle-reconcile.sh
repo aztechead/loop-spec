@@ -72,8 +72,17 @@ if [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]]; then
       bash "$script_dir/checkpoint-pr.sh" create "$feature_dir" --reason "$reason"
     ) || true
   fi
+  # Propagate a publication failure. Reconciliation exists to leave exactly one
+  # authoritative terminal result behind; if the pointer could not be published,
+  # reporting success would tell the supervisor the run was accounted for when it
+  # was not -- the same silent loss this script is the backstop against.
+  final_rc=0
   LOOP_SPEC_RESULT_ROOT="$result_root" bash "$script_dir/cycle-result.sh" write "$feature_dir" \
-    --status failed --reason "$reason" --summary "$summary"
+    --status failed --reason "$reason" --summary "$summary" || final_rc=$?
+  if [[ "$final_rc" -ne 0 ]]; then
+    echo "cycle-reconcile: terminal result could not be published (rc=$final_rc)" >&2
+    exit "$final_rc"
+  fi
   exit 0
 fi
 

@@ -194,8 +194,9 @@ invocation checkout or a registered feature worktree.
    clean in-place branch path and never emulate a cwd switch with `git worktree add`.
 2. Load `feature.json` from the adopted root and refresh `.loop-spec/runtime.json` with the
    current harness probes. Before skipping Steps 2-5, rerun the Graphify requirement check
-   and the Step 5.4 assistant refresh/validate/stage/commit procedure for every non-greenfield source
-   repository. Workspace resumes refresh each participating repo. A resume directly into
+   and the Step 5.4 freshness decision for every non-greenfield source repository. A matching
+   validated source stamp reuses the local graph; every changed or unprovable input refreshes it.
+   Workspace resumes apply the same decision to each participating repo. A resume directly into
    DELIVER is the exception: do not mutate its terminal verified candidate. Then route to
    Step 6 after re-grounding.
 3. Read `.loop-spec/features/{slug}/PROGRESS.md`, then run `git log --oneline -10` on the
@@ -622,22 +623,35 @@ Print cost estimate based on expected scope:
 Estimated cost: ~{N}k tokens
 ```
 
-### Step 5.4 - Graphify bootstrap pre-flight (always; before the codebase-map skip)
+### Step 5.4 - Graphify bootstrap pre-flight (always decide; refresh only when stale)
 
 **Workspace mode:** graphify operates on a single repo root, so workspace mode builds one graph **per participating repo** (see the workspace block at the end of this step) rather than skipping. graphify is still required in workspace mode.
 
 ---
 
-Runs on EVERY cycle (single-repo mode). graphify is a hard requirement (enforced at Step 2), so the graph is refreshed before design and a build failure aborts — the design phases depend on current structure, not merely an existing file. It must NOT be gated behind the Step 5.5 "all 5 docs exist" skip. Read `${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it as written: Graphify's external assistant skill owns full construction and semantic updates using the current host model/authentication; the shell library only validates and stages outputs.
+Runs on EVERY cycle (single-repo mode), but the expensive assistant refresh runs only
+when the deterministic Step 5.4 freshness decision is `stale`. graphify is a hard
+requirement (enforced at Step 2): a missing, corrupt, dirty, or source-mismatched graph
+refreshes before design and a build failure aborts. A complete validated graph stamped from
+the exact current tracked inputs is reused after a fresh validation/localize pass. It must
+NOT be gated behind the Step 5.5 "all 5 docs exist" skip. Read
+`${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it as written: Graphify's
+external assistant skill owns full construction and semantic updates using the current host
+model/authentication; the shell library validates provenance and keeps generated output local,
+never staged in the feature PR.
 
 Decision tree:
 - **Greenfield (`feature.json.greenfield` / `$greenfield == 1`) with no source files yet** -> defer: a graph of an empty repo grounds nothing. Print `greenfield: graphify build deferred until source exists (VERIFY refresh builds it)` and continue — the design phases ground in the stated goal and stack conventions instead, and VERIFY's map-refresh step builds the graph once EXECUTE has landed code. graphify itself must still be installed (Step 2 gate is unchanged).
-- Otherwise -> apply the shared assistant lifecycle to the repository with commit message `chore: NO_JIRA refresh graphify knowledge graph`. A missing prior graph invokes the full assistant build; a usable prior graph invokes the assistant `--update` path. A skill, extraction, validation, or staging failure aborts unless `LOOP_SPEC_REQUIRE_GRAPHIFY=0`.
+- Otherwise -> apply the shared assistant lifecycle to the repository. A complete graph with
+  a matching source stamp is revalidated and reused; a missing prior graph invokes the full
+  assistant build, and a usable stale graph invokes the assistant `--update` path. A skill,
+  extraction, provenance, or validation failure aborts unless `LOOP_SPEC_REQUIRE_GRAPHIFY=0`.
+  The resulting graph stays local to the checkout and is never staged in the feature PR.
 - GSD `.planning/codebase/` present -> after the successful refresh, supersede the GSD docs: fold their content into `docs/loop-spec/codebase/` (gsd-ingest) and remove the raw GSD source (committed, recoverable).
 
 After the shared lifecycle succeeds, supersede GSD codebase docs exactly as before: ingest `.planning/codebase/` into `docs/loop-spec/codebase/`, commit the preserved docs, remove the raw GSD directory, and commit that removal. Do not run supersession after a degraded or failed Graphify invocation.
 
-**Workspace mode:** Graphify operates on one repository root at a time. Loop over only `workspace_repos_json`, resolve each absolute repo path, and apply `skills/shared/graphify-lifecycle.md` sequentially with the same graph commit message. A per-repo skill or validation failure aborts unless bypassed. The design phases must run queries from that repository or pass `--graph "$repo_abs/graphify-out/graph.json"`; never query an implicit graph at the non-repository workspace root.
+**Workspace mode:** Graphify operates on one repository root at a time. Loop over only `workspace_repos_json`, resolve each absolute repo path, and apply `skills/shared/graphify-lifecycle.md` sequentially. A per-repo skill or validation failure aborts unless bypassed. The design phases must run queries from that repository or pass `--graph "$repo_abs/graphify-out/graph.json"`; never query an implicit graph at the non-repository workspace root.
 
 ### Step 5.5 - First-run codebase map (one-time per project)
 

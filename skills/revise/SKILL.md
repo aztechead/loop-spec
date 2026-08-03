@@ -26,9 +26,10 @@ mode asks exactly ONE confirmation (the classification table) before acting.
   cannot hold a checkout or `LOOP_SPEC_WORKTREE_DIR` says otherwise). With `LOOP_SPEC_WORKTREES=0`, the checkout
   must be clean and dedicated to this run; revise checks out the PR branch in place,
   creates no worktree, and leaves that branch checked out.
-- **Never force-push.** If the remote branch has moved past the local ref, fetch
-  and rebase the worktree onto `origin/<branch>` first; if that fails, abort
-  loudly with the conflict list. A diverged history is the user's call.
+- **Never force-push or reset a branch.** A local branch merely ahead of origin is
+  reconciled by an ordinary fast-forward `git push`; a local branch behind origin is
+  fast-forwarded in the revision root. Only histories with unique commits on both
+  sides are a divergence, and that remains the user's call.
 - **Answer, don't guess.** A comment that is a pure question (no change request)
   gets a reply in the summary comment, not a code change.
 
@@ -47,11 +48,62 @@ Abort unless `state == "OPEN"`. Derive:
 - `slug`: strip a leading `feat/` from `branch`; otherwise sanitize the branch
   name (non-alphanumerics → `-`).
 
-### Step 2 - Feature dir (locate or reconstruct)
+### Step 2 - Resolve identity only (no state writes)
 
-`fdir = .loop-spec/features/{slug}`. If `feature.json` is missing (gitignored
-state lost, different machine), reconstruct the minimal record the machinery
-needs — and mark it:
+Derive `fdir = .loop-spec/features/{slug}`, but do **not** create it, restore a
+backup, change `currentPhase`, emit events, or otherwise write `.loop-spec/*` yet.
+The branch must first be proven safe. This ordering prevents a failed revise
+precondition from recreating runtime state on the delivered PR branch.
+
+### Step 3 - Reconcile and prepare the execution root before writing state
+
+Use the deterministic helper. It fetches first, distinguishes a safe local-ahead
+branch from a true divergence, never uses `checkout -B` or force-push, and returns
+the root only after the branch is safe:
+
+```bash
+repo_root="$(git rev-parse --show-toplevel)"
+case "${LOOP_SPEC_WORKTREES:-1}" in
+  1)
+    # Resolved, not hard-coded: default remains .loop-spec/worktrees/{slug}-revise
+    # and relocates when that base cannot hold a checkout.
+    requested_root="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+      resolve "$repo_root" task "{slug}-revise" | jq -r '.path')"
+    prep="$(bash "${CLAUDE_SKILL_DIR}/../../lib/revise-branch.sh" \
+      prepare "$repo_root" "$branch" 1 "$requested_root")"
+    ;;
+  0)
+    # The helper requires this checkout to be clean before it can switch branches.
+    prep="$(bash "${CLAUDE_SKILL_DIR}/../../lib/revise-branch.sh" \
+      prepare "$repo_root" "$branch" 0)"
+    ;;
+  *)
+    # abort: "LOOP_SPEC_WORKTREES must be 0 or 1"
+    ;;
+esac
+revision_root="$(jq -r '.revisionRoot' <<<"$prep")"
+sync="$(jq -r '.sync' <<<"$prep")" # already-current | pushed-local-ahead | fast-forwarded-remote
+```
+
+On a true divergence the helper exits 3 before it checks out a branch or touches
+`.loop-spec`; report its message verbatim. A local branch with unpushed commits is
+not a divergence when `origin/$branch` is its ancestor: it is pushed normally, then
+revision proceeds. A remote-ahead local branch is fast-forwarded only (`merge
+--ff-only`) inside the selected revision root.
+
+### Step 3.5 - Feature runtime state (only after preparation succeeds)
+
+Now set `fdir="$revision_root/.loop-spec/features/$slug"`. If `feature.json` is
+missing (gitignored state lost, different machine), reconstruct the minimal runtime
+record the machinery needs — and mark it. First isolate this exact runtime directory
+from the revision index; this is required even if a prior cycle tracked
+`feature.json` or `PROGRESS.md`:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/runtime-ignore.sh" revise-state "$revision_root" "$slug"
+```
+
+Then reconstruct only when missing:
 
 ```bash
 mkdir -p "$fdir"
@@ -65,42 +117,18 @@ jq -n --arg slug "$slug" --arg branch "$branch" --arg base "<baseRefName>" \
 
 Detect the test command (`lib/detect-test-cmd.sh`) and record it at
 `feature.json.commands.test` if absent — remediation tasks need a verifyCommand.
+Emit `phase_start` only now:
 
-Emit `phase_start`:
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" phase_start --phase revise || true
 ```
 
-### Step 3 - Execution root on the PR head
-
-```bash
-git fetch origin "$branch"
-case "${LOOP_SPEC_WORKTREES:-1}" in
-  1)
-    # Resolved, not hard-coded: the default stays .loop-spec/worktrees/{slug}-revise and
-    # moves outside the repository when that base cannot hold a checkout (a sandboxed
-    # harness denying in-repo harness-config paths) or LOOP_SPEC_WORKTREE_DIR is set.
-    revision_root="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
-      resolve "$(git rev-parse --show-toplevel)" task "{slug}-revise" | jq -r '.path')"
-    git worktree add "$revision_root" -B "$branch" "origin/$branch" 2>/dev/null \
-      || # branch checked out elsewhere: abort with the worktree list — never steal a checkout
-    ;;
-  0)
-    revision_root="$(git rev-parse --show-toplevel)"
-    [[ -z "$(git -C "$revision_root" status --porcelain --untracked-files=all)" ]] \
-      || # abort: "LOOP_SPEC_WORKTREES=0 requires a clean dedicated checkout for revise"
-    git -C "$revision_root" checkout -B "$branch" "origin/$branch"
-    bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" worktreePath null
-    bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" executionRootMode '"in-place"'
-    ;;
-  *)
-    # abort: "LOOP_SPEC_WORKTREES must be 0 or 1"
-    ;;
-esac
-```
-
-If a local `feat/{slug}` exists and has commits NOT on `origin/$branch`, abort
-loudly (divergence is the user's call; never force-push over it).
+`feature.json`, its `.bak`, event ledger, and every other `.loop-spec` runtime file
+remain local state. `revise-state` ignores newly reconstructed state and marks legacy
+tracked state skip-worktree in the revision checkout. Never stage it manually. Every
+revise code commit names its reviewed source/test paths explicitly; the only revise
+artifact that may be committed is the explicit
+`docs/loop-spec/features/{slug}/REVISION.md` path in Step 8.
 
 ### Step 4 - Fetch and triage feedback
 
@@ -161,7 +189,9 @@ git -C "$revision_root" push origin "$branch"   # never --force
 
 Write `docs/loop-spec/features/{slug}/REVISION.md` (append one section per
 revise run): PR, date, items table with class + outcome (commit SHA / replied /
-backlogged), assumed decisions when autonomous. Commit it on the PR branch.
+backlogged), assumed decisions when autonomous. Commit **only this explicit path**
+on the PR branch; do not use `git add -A`, and never include `.loop-spec/*` runtime
+state in a revise commit.
 Emit `phase_end` and refresh the result contract:
 
 ```bash

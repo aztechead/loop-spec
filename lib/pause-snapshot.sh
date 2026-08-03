@@ -73,6 +73,22 @@ fi
 # Determine the feature dir from the path (needed for writing artifacts).
 RESOLVED_FEATURE_DIR="$(dirname "$FEATURE_JSON_PATH")"
 
+# The resumed session's required reading must name THIS feature's plan. feature.json
+# records the authoritative path in artifacts.plan; fall back to the conventional
+# docs path derived from the feature dir's own slug when it has not been written yet
+# (a feature paused before PLAN has no artifacts.plan).
+PLAN_DOC_PATH=$(python3 -c "
+import json, os, sys
+fallback = 'docs/loop-spec/features/%s/PLAN.md' % os.path.basename(sys.argv[2].rstrip('/'))
+try:
+    with open(sys.argv[1]) as f:
+        d = json.load(f)
+    plan = (d.get('artifacts') or {}).get('plan')
+    print(plan if isinstance(plan, str) and plan.strip() else fallback)
+except Exception:
+    print(fallback)
+" "$FEATURE_JSON_PATH" "$RESOLVED_FEATURE_DIR")
+
 # Extract fields from feature.json using python3 inline pattern.
 CURRENT_PHASE=$(python3 -c "
 import json, sys
@@ -269,7 +285,7 @@ printf '%s\n' ""
 printf '%s\n' "Ordered list of files to read before writing any code in a resumed session."
 printf '%s\n' ""
 printf '%s\n' "1. HANDOFF.json (this feature dir) - current phase, pending tasks, blockers"
-printf '%s\n' "2. docs/loop-spec/features/resilience-ops/PLAN.md - full task DAG and acceptance criteria"
+printf '%s\n' "2. $PLAN_DOC_PATH - full task DAG and acceptance criteria"
 printf '%s\n' "3. feature.json (this feature dir) - gate history, branch info"
 } > "$CONTINUE_PATH" 2>/dev/null || true
 

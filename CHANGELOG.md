@@ -2,6 +2,94 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.31.0] - 2026-08-02
+
+Unattended-operation hardening. Full-plugin audit scoped to headless `claude -p`,
+the Agent SDK, cron, and the OpenCode SDK — the modes that run with nobody watching.
+Findings and the deliberately-deferred remainder: `docs/loop-spec/unattended-audit-2026-08.md`.
+
+### Added
+
+- **Phase-boundary observability is a mechanism, not a request.** `lib/events.sh` now
+  prints one greppable `[PHASE] ...` line to stderr for every event it records, so an
+  operator tailing a streamed log sees the whole lifecycle — including gate rounds,
+  dispatches and verify failures, which were previously JSONL-only and invisible.
+  `lib/pr-delivery.sh` emits a heartbeat through its required-checks wait, which could
+  previously run 900s in total silence. stdout's `LOOP_SPEC_PHASE_START`/`_END`
+  machine contract is unchanged; `LOOP_SPEC_CONSOLE_EVENTS=0` silences the console
+  without touching the ledger. `skills/shared/report-style.md` now documents what the
+  mechanism emits instead of asking the model to print it — the previous arrangement
+  had no test, and in practice only EXECUTE and DISCUSS complied. Closes the last open
+  item from the v2.23.1 dogfooding backlog.
+- **EXECUTE reports which task it is on, out of how many.** New `task_start` /
+  `task_end` events render as `[EXECUTE] task 2/5 start - task-002: <subject>` and
+  `[EXECUTE] task 2/5 done - task-002 [merged]`, emitted by the subagent and inline
+  rungs. EXECUTE is the longest phase and previously reported only `[EXECUTE] start`,
+  so a log watcher could not distinguish task 1 of 6 from task 5 of 6, nor steady
+  progress from a stall. `total` counts the whole DAG rather than the current wave, so
+  the ratio advances monotonically.
+- **Console stream is probed, not guessed.** Cloud Run assigns stderr output ERROR
+  severity, so routine progress on stderr appears in Cloud Logging as errors. When
+  `LOOP_SPEC_CONSOLE_STREAM` is unset, the platform's own stamps (`CLOUD_RUN_JOB`,
+  `K_SERVICE`) route console lines to stdout; everywhere else they stay on stderr,
+  because stdout carries the marker JSON callers parse. An explicit value outranks
+  the probe. `lib/pr-delivery.sh`'s heartbeat always stays on stderr: its stdout is
+  a single JSON document parsed whole by its caller.
+- **micro and debug are no longer silent.** Both are the autonomous router's primary
+  targets and emitted no events at all — an unattended run routed to either was
+  invisible end to end. Micro emits `phase_start`/`phase_end` to `.loop-spec/adhoc`;
+  debug pairs them around its Step 0 init and terminal result, so `[MICRO]`/`[DEBUG]`
+  start/done lines now reach the streamed log like every cycle phase.
+
+### Fixed
+
+- **A lost run no longer looks like a finished one.** `cycle-result.sh`'s
+  observability contract gains an explicit publication exception: invocation and
+  validation failures still exit 0 (a telemetry writer must never kill a running
+  cycle), but failing to publish `.loop-spec/last-result.json` now exits 3 with
+  `TERMINAL RESULT NOT PUBLISHED` and **preserves `active-run.json`**. Previously
+  every path exited 0 — "exit 0, no result" is indistinguishable from success to a
+  headless supervisor — and `write` removed the recovery record unconditionally, even
+  when the pointer write had just failed, leaving `cycle-reconcile.sh` nothing to
+  reconcile. Reconcile now propagates the same code instead of reporting success for a
+  run it could not account for.
+- **`cycle-preflight.sh` writes a recovery breadcrumb before clearing the prior
+  pointer.** The clear is correct — a stale pointer would masquerade as this run's
+  result — but preflight can still abort afterwards (the graphify hard gate), and an
+  abort in that window left neither a terminal result nor an `active-run.json`. The
+  real `begin` supersedes the placeholder and preserves `startedAt`, so elapsed time
+  still measures the whole run.
+- **An invalid `LOOP_SPEC_WORKTREES` no longer wedges every session.** `no-worktrees-guard.sh`
+  validated its setting before the `.loop-spec` scope check and is registered on
+  `Agent|Bash|EnterWorktree`, so one stray `=true` denied every tool call in every
+  project, with no way for the session to diagnose itself. Scope is checked first, and
+  an unrecognized value resolves to the restrictive mode instead of denying everything.
+- **Every external command an unattended run can block on is now bounded.** New
+  `lib/bounded-run.sh` seam, wired into `checkpoint-pr.sh` (the crash-rescue path,
+  whose caller's `|| true` absorbed failures but not hangs), `pr-comments.sh`,
+  `credential-refresh.sh` (the token-mint hook that gated all three), `regression-scan.sh`,
+  and both `verify-live.sh` probe sites — including the readiness probe, where an
+  unbounded attempt defeated `readyTimeoutSec` entirely.
+- **`run-with-watchdog.sh` no longer accepts `--timeout-secs 0`**, which disabled the
+  deadline while the sidecar still advertised a bound.
+- **Positive capability overrides can no longer claim absent harness surfaces.**
+  `LOOP_SPEC_HARNESS=pi LOOP_SPEC_TEAMS_MODE=implicit` returned `implicit` and routed
+  EXECUTE onto a team rung where every spawn throws. The harness gate now precedes the
+  override in `teams-capability.sh` and `workflow-availability.sh`; negative overrides
+  still work everywhere.
+- **A resumed feature is pointed at its own plan.** `pause-snapshot.sh` hardcoded
+  `resilience-ops/PLAN.md` into every `.continue-here.md`, so every other paused feature
+  told the resuming session to ground itself in a different feature's spec.
+- **DELIVER no longer rejects a feature that shipped everything.** `deferral-lint.sh`
+  flagged completion prose such as "0 remaining gaps", and `deliver.sh` treats a flag as
+  terminal with an override an unattended run cannot set.
+- **The documented Cloud Run supervisor checks its child.** The example loop ignored
+  `claude`'s exit status and result existence, so a dead phase exited the loop cleanly
+  and reported success.
+- **Harness contracts:** `${CLAUDE_PLUGIN_ROOT}` removed from agent prompt bodies (it
+  does not expand there; `validate-agents.sh` now rejects it), and the pi bridge guards
+  stdin EPIPE like the OpenCode bridge already did.
+
 ## [2.30.1] - 2026-07-31
 
 ### Fixed

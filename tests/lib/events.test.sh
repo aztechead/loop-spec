@@ -126,6 +126,110 @@ last="$(tail -1 "$WORK/markers/events.jsonl")"
 check "O: generic event keys unchanged" '["data","event","phase","slug","ts"]' \
   "$(jq -c 'keys | sort' <<<"$last")"
 
+# Case P: every event prints ONE greppable operator line on stderr.
+#
+# This is the only window into a long unattended run. It used to be prose in
+# report-style.md asking the model to print these, so in practice only EXECUTE and
+# DISCUSS ever did, and non-phase events reached no console at all. It is a mechanism
+# now, so it gets pinned like one.
+mkdir -p "$WORK/console"
+con() { bash "$LIB" emit "$WORK/console" "$@" 2>&1 >/dev/null; }
+
+check "P: phase_start line" "[SPEC] start" "$(con phase_start --phase spec)"
+check "P: gate_round line" "[DISCUSS] gate critique round 2 - escalated" \
+  "$(con gate_round --phase discuss --data '{"gate":"critique","round":2,"result":"escalated"}')"
+check "P: dispatch line" "[PLAN] dispatch planner [opus, team]" \
+  "$(con dispatch --phase plan --data '{"role":"planner","model":"opus","rung":"team"}')"
+check "P: verify_failure line" "[VERIFY] FAILURE: code-review" \
+  "$(con verify_failure --phase verify --data '{"class":"code-review"}')"
+check "P: iterate_verdict line" "[ITERATE] verdict: converged" \
+  "$(con iterate_verdict --phase iterate --data '{"verdict":"converged"}')"
+check "P: checkpoint_pr line" "[DELIVER] checkpoint PR https://x/pr/9" \
+  "$(con checkpoint_pr --phase deliver --data '{"url":"https://x/pr/9"}')"
+check "P: phaseless event still tagged" "[LOOP-SPEC] completed" "$(con completed)"
+
+# Case Q: EXECUTE task progress. The longest phase used to report only "[EXECUTE]
+# start", so a streamed log could not distinguish task 1 of 6 from task 5 of 6, nor
+# progress from a stall.
+check "Q: task_start reports position out of total" \
+  "[EXECUTE] task 2/5 start - task-002: Add airline column" \
+  "$(con task_start --phase execute --data '{"index":2,"total":5,"id":"task-002","subject":"Add airline column"}')"
+check "Q: task_end reports the outcome" \
+  "[EXECUTE] task 2/5 done - task-002 [merged]" \
+  "$(con task_end --phase execute --data '{"index":2,"total":5,"id":"task-002","result":"merged"}')"
+check "Q: a failed task is visible as such" \
+  "[EXECUTE] task 3/5 done - task-003 [failed]" \
+  "$(con task_end --phase execute --data '{"index":3,"total":5,"id":"task-003","result":"failed"}')"
+check "Q: counts alone are enough" "[EXECUTE] task 1/4 start" \
+  "$(con task_start --phase execute --data '{"index":1,"total":4}')"
+check "Q: missing counts still produce a usable line" "[EXECUTE] task start - task-009" \
+  "$(con task_start --phase execute --data '{"id":"task-009"}')"
+check "Q: task events stay off stdout" "" \
+  "$(bash "$LIB" emit "$WORK/console" task_start --phase execute --data '{"index":1,"total":2}' 2>/dev/null)"
+check "Q: task events are recorded in the ledger" "task_start" \
+  "$(bash "$LIB" emit "$WORK/console" task_start --phase execute --data '{"index":1,"total":2}' >/dev/null 2>&1
+     tail -1 "$WORK/console/events.jsonl" | jq -r '.event')"
+
+# phase_end carries the elapsed time and verdict the operator needs.
+bash "$LIB" emit "$WORK/console" phase_start --phase execute >/dev/null 2>&1
+end_line="$(con phase_end --phase execute --data '{"next":"verify"}')"
+check "P: phase_end reports elapsed + verdict + next" "1" \
+  "$([[ "$end_line" == "[EXECUTE] done ("*"s) - advanced -> verify" ]] && echo 1 || echo 0)"
+
+# Exactly one line per event -- a noisy console is one nobody reads.
+check "P: one line per event" "1" \
+  "$(con dispatch --phase plan --data '{"role":"x"}' | wc -l | tr -d ' ')"
+
+# The machine contract on stdout must be untouched by any of this.
+stdout_only="$(bash "$LIB" emit "$WORK/console" phase_start --phase verify 2>/dev/null)"
+check "P: stdout still starts with the marker" "1" \
+  "$([[ "$stdout_only" == LOOP_SPEC_PHASE_START\ * ]] && echo 1 || echo 0)"
+check "P: stdout marker is still parseable JSON" "0" \
+  "$(jq . <<<"${stdout_only#LOOP_SPEC_PHASE_START }" >/dev/null 2>&1; echo $?)"
+check "P: generic event still prints no stdout" "" \
+  "$(bash "$LIB" emit "$WORK/console" gate_round --phase verify --data '{"round":1}' 2>/dev/null)"
+
+# Stream selection. Cloud Run assigns stderr ERROR severity, so an operator may want
+# routine progress on stdout instead. That is contract-affecting, hence opt-in.
+check "P: stdout mode moves the console line to stdout" "[SPEC] start" \
+  "$(LOOP_SPEC_CONSOLE_STREAM=stdout bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>/dev/null | tail -1)"
+check "P: stdout mode leaves nothing on stderr" "" \
+  "$(LOOP_SPEC_CONSOLE_STREAM=stdout bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>&1 >/dev/null)"
+# In stdout mode the marker must still come FIRST and stay prefix-selectable, which is
+# how a robust consumer reads it. A naive whole-stdout jq is what breaks here.
+stdout_mode="$(LOOP_SPEC_CONSOLE_STREAM=stdout bash "$LIB" emit "$WORK/console" phase_start --phase plan 2>/dev/null)"
+check "P: stdout mode keeps the marker on the first line" "1" \
+  "$([[ "$(head -1 <<<"$stdout_mode")" == LOOP_SPEC_PHASE_START\ * ]] && echo 1 || echo 0)"
+check "P: stdout mode marker stays parseable when prefix-selected" "plan" \
+  "$(grep '^LOOP_SPEC_PHASE_START ' <<<"$stdout_mode" | sed 's/^LOOP_SPEC_PHASE_START //' | jq -r '.phase')"
+check "P: an unknown stream value falls back to stderr" "[SPEC] start" \
+  "$(LOOP_SPEC_CONSOLE_STREAM=carrier-pigeon bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>&1 >/dev/null)"
+check "P: default is still stderr" "" \
+  "$(env -u CLOUD_RUN_JOB -u K_SERVICE bash "$LIB" emit "$WORK/console" gate_round --phase spec --data '{"round":1}' 2>/dev/null)"
+
+# Cloud Run stamps CLOUD_RUN_JOB (jobs) / K_SERVICE (services) into every container.
+# It grades stderr as ERROR severity, so on the platform's own evidence the lines move
+# to stdout -- a probe, not a judgment. The operator override still outranks it.
+check "P: Cloud Run job stamp routes console to stdout" "[SPEC] start" \
+  "$(CLOUD_RUN_JOB=coder bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>/dev/null | tail -1)"
+check "P: Cloud Run service stamp routes console to stdout" "[SPEC] start" \
+  "$(K_SERVICE=api bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>/dev/null | tail -1)"
+check "P: explicit stderr override outranks the Cloud Run stamp" "[SPEC] start" \
+  "$(CLOUD_RUN_JOB=coder LOOP_SPEC_CONSOLE_STREAM=stderr bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>&1 >/dev/null)"
+
+# Kill switch, per the repo's probe contract: an operator override outranks it.
+check "P: LOOP_SPEC_CONSOLE_EVENTS=0 silences the console" "" \
+  "$(LOOP_SPEC_CONSOLE_EVENTS=0 bash "$LIB" emit "$WORK/console" phase_start --phase spec 2>&1 >/dev/null)"
+check "P: kill switch does not affect the JSONL ledger" "1" \
+  "$(LOOP_SPEC_CONSOLE_EVENTS=0 bash "$LIB" emit "$WORK/console" gate_round --phase spec >/dev/null 2>&1
+     tail -1 "$WORK/console/events.jsonl" | jq -r 'if .event == "gate_round" then 1 else 0 end')"
+
+# Malformed data must not break the line or the run -- telemetry never aborts.
+check "P: missing data fields degrade gracefully" "[VERIFY] FAILURE: unclassified" \
+  "$(con verify_failure --phase verify --data '{}')"
+check "P: malformed data does not break the line" "[PLAN] dispatch agent" \
+  "$(con dispatch --phase plan --data 'not-json' 2>/dev/null | tail -1)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

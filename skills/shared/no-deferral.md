@@ -2,10 +2,11 @@
 
 Once SPEC/DISCUSS/PLAN fix the design, the run's only job is to complete it.
 **Everything in the spec ships.** There is no valid successful conclusion — in any
-harness, any style, any cycle type — that includes deferred items, follow-ups,
-"future work", "next steps", or scope notes the MODEL chose on its own. A "done"
-report with a deferral list is a failed run wearing a green checkmark: it claims the
-design's scope while silently narrowing it.
+harness, any style, any cycle type — that includes an explicit model-authored
+deferred-scope declaration. A "done" report with a `Deferred scope:` list is a failed
+run wearing a green checkmark: it claims the design's scope while silently narrowing
+it. Naming the concept in a negation, a template default, a quoted report, or a
+runtime warning is not itself evidence that scope was dropped.
 
 ## The rule
 
@@ -29,21 +30,25 @@ the line it writes — that marker is what the probes exempt:
 | `iterate-terminal:` | ITERATE, when a re-drained gap spends a second full limit | two limits, exact gap-id match |
 | `verify-deferred` | VERIFY's Minor-finding backlog rule on PASS_WITH_MINOR | code-review severity gate |
 
-Anything else that speaks deferral language on a completion surface is a violation.
+Anything else that explicitly declares unshipped scope on a completion surface is a
+violation.
 
 ## Enforcement (deterministic probes, not prose hope)
 
 - `lib/deferral-lint.sh text <path|->` — scans a completion surface (PR body, final
-  report draft) for self-authored deferral vocabulary; gate-marked lines are exempt.
-  Exit 0 clean, 1 flagged.
-- `lib/deferral-lint.sh warnings <feature.json>` — `warnings[]` entries carrying
-  deferral language must START with a bounded-gate prefix.
-- `lib/deliver.sh` runs both on the rendered PR body and feature warnings before any
-  push; **exit 3** is the scope-violation route — the feature is NOT complete. Fix is
-  never "reword the PR body": either ship the flagged work (route back through
-  EXECUTE) or correct a mislabeled gate line at its source, then re-run DELIVER.
+  report draft) for structured `Deferred scope:`, `Follow-ups:`, `Future work:`, or
+  `Remaining work:` declarations and direct first-person commitments to defer. Empty
+  (`none`) sections, negations, quoted/reported text, and code are ignored. Exit 0
+  clean, 1 flagged.
+- `lib/deferral-lint.sh warnings <feature.json>` validates warning shape only.
+  `warnings[]` is an unstructured diagnostics channel and never proves scope was
+  dropped.
+- `lib/deliver.sh` runs the text lint on the rendered PR body before any push; **exit
+  3** is the scope-violation route — the feature is NOT complete. Fix is never
+  "reword the PR body": either ship the explicitly declared work (route back through
+  EXECUTE) or remove an inaccurate scope declaration, then re-run DELIVER.
 - `hooks/team/deferral-guard.sh` (Claude Code Stop hook) blocks any final message
-  that combines a completion claim with unmarked deferral language. The first denial
+  that combines a completion claim with an explicit unmarked scope declaration. The first denial
   records the transcript cursor and repository fingerprint; removing the words on the
   retry remains blocked. Clearing the obligation requires a later material repository
   change, implementation activity followed by verification, and a grounded
@@ -59,5 +64,5 @@ Draft it, then probe it:
 printf '%s' "$report" | bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text -
 ```
 
-If it flags, do not soften the wording to slip past the probe — the vocabulary is the
-symptom, the dropped scope is the defect. Ship the work.
+If it flags, do not soften the wording to slip past the probe — the declared dropped
+scope is the defect. Ship the work.

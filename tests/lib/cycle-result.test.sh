@@ -497,6 +497,40 @@ check "X: phase handoff clears active pointer" "0" \
   "$([[ -f "$LOOP_DIR/active-run.json" ]] && echo 1 || echo 0)"
 check "X: feature remains resumable" "plan" "$(jq -r '.currentPhase' "$FEAT_DIR/feature.json")"
 
+# --- Case Y: publication failure is LOUD and preserves the recovery record -------
+# Exit 0 with no pointer is how an unattended run gets lost: the supervisor reads
+# "success, no result". Publication failures exit 3 and keep active-run.json so
+# cycle-reconcile.sh still has something to recover from.
+Y="$WORK/pubfail"; mkdir -p "$Y/.loop-spec/features/f1"
+git -C "$Y" init -q 2>/dev/null
+printf '%s' "$FIXTURE_FJ" | jq '.slug="f1"' > "$Y/.loop-spec/features/f1/feature.json"
+printf '{"schema":1,"title":"t"}' > "$Y/.loop-spec/active-run.json"
+term_args=(--cycle-type micro --status failed --outcome verification-failed
+  --title t --converged false --summary s --verification-status failed)
+
+chmod 555 "$Y/.loop-spec"
+ec=0; bash "$LIB" write-terminal --result-root "$Y" "${term_args[@]}" >/dev/null 2>&1 || ec=$?
+check "Y: write-terminal publication failure exits 3" "3" "$ec"
+err="$(bash "$LIB" write-terminal --result-root "$Y" "${term_args[@]}" 2>&1 >/dev/null | grep -c 'TERMINAL RESULT NOT PUBLISHED' || true)"
+check "Y: write-terminal failure is loud" "1" "$err"
+check "Y: write-terminal failure preserves active-run.json" "1" \
+  "$([[ -f "$Y/.loop-spec/active-run.json" ]] && echo 1 || echo 0)"
+
+ec=0; LOOP_SPEC_RESULT_ROOT="$Y" bash "$LIB" write "$Y/.loop-spec/features/f1" \
+  --status failed --summary s --reason r >/dev/null 2>&1 || ec=$?
+check "Y: write pointer-publication failure exits 3" "3" "$ec"
+check "Y: write failure preserves active-run.json" "1" \
+  "$([[ -f "$Y/.loop-spec/active-run.json" ]] && echo 1 || echo 0)"
+chmod 755 "$Y/.loop-spec"
+
+# Success afterwards: pointer lands, exit 0, recovery record consumed.
+ec=0; bash "$LIB" write-terminal --result-root "$Y" "${term_args[@]}" >/dev/null 2>&1 || ec=$?
+check "Y: publication success still exits 0" "0" "$ec"
+check "Y: publication success writes the pointer" "1" \
+  "$([[ -f "$Y/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+check "Y: publication success consumes active-run.json" "0" \
+  "$([[ -f "$Y/.loop-spec/active-run.json" ]] && echo 1 || echo 0)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

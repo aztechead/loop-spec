@@ -125,7 +125,7 @@ is_known_runtime_path() {
     .loop-spec/features/*/feature.json|.loop-spec/features/*/PROGRESS.md) return 1 ;;
     .loop-spec/features/*/*|.loop-spec/runtime.json|.loop-spec/decisions-staging/*|\
     .loop-spec/last-result.json|.loop-spec/results/*|.loop-spec/worktrees/*|\
-    .loop-spec/learnings.jsonl|.loop/*|graphify-out/cost.json|graphify-out/cache/*|\
+    .loop-spec/learnings.jsonl|.loop/*|graphify-out/*|\
     graphify-out/.graphify_python|graphify-out/.graphify_root|\
     graphify-out/.graphify_chunk_*.json|graphify-out/.graphify_detect*.json|\
     graphify-out/.graphify_extract*.json|graphify-out/.graphify_ast*.json|\

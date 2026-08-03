@@ -67,6 +67,16 @@ for f in agents/*.md; do
     exit 1
   fi
 
+  # ${CLAUDE_PLUGIN_ROOT} is a hooks/MCP variable (CLAUDE.md). It is not exported into
+  # an agent's prompt context, and unlike skills there is no per-agent equivalent of
+  # ${CLAUDE_SKILL_DIR}. An agent instructed to read a path built from it gets a
+  # literal, non-existent path and fails outright -- or silently free-forms the
+  # artifact it was supposed to template. Reference bundled files repo-relatively.
+  if grep -q 'CLAUDE_PLUGIN_ROOT' "$f"; then
+    echo "FAIL: $f references \${CLAUDE_PLUGIN_ROOT}, which does not expand in an agent prompt (use a repo-relative path)"
+    exit 1
+  fi
+
   # Restricted agents must have NO Write/Edit
   role="$basename"
   if echo "$RESTRICTED_AGENTS" | grep -wq "$role"; then

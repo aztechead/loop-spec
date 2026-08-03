@@ -60,14 +60,13 @@ bash "$SCRIPT_DIR/pr-body.sh" render "$feature_json" "$artifact_root" "$body_fil
   exit 1
 }
 
-# No self-authored deferral ships. A successful conclusion never includes
-# deferred/follow-up items the model chose on its own — only the bounded gates
-# (iterate-budget-spent:/iterate-terminal:/verify-deferred) may speak deferral
-# language, and their lines carry those markers. Exit 3 is a SCOPE violation,
-# not a transport failure: the feature is not complete until the flagged work
-# ships or the offending warning/artifact line is corrected at its source.
+# No self-authored deferred-scope declaration ships. The structured lint rejects
+# a real "Deferred scope"/"Follow-ups" declaration, not ordinary prose that names
+# the tooling or reports a benign runtime warning. Exit 3 is a SCOPE violation,
+# not a transport failure: the feature is not complete until the named scope ships.
 # Explicit operator override outranks the probe (CLAUDE.md probe contract) — for
-# the rare feature legitimately ABOUT deferral whose prose trips the vocabulary.
+# the rare feature legitimately ABOUT deferral whose explicit declaration is part of
+# its intended output.
 DEFERRAL_LINT="${LOOP_SPEC_DEFERRAL_LINT_BIN:-$SCRIPT_DIR/deferral-lint.sh}"
 if [[ "${LOOP_SPEC_DEFERRAL_LINT:-1}" == "0" ]]; then
   echo "deliver: deferral lint SKIPPED (LOOP_SPEC_DEFERRAL_LINT=0 operator override)" >&2
@@ -75,8 +74,6 @@ fi
 deferral_flags=""
 if [[ "${LOOP_SPEC_DEFERRAL_LINT:-1}" != "0" ]]; then
   deferral_flags+="$(bash "$DEFERRAL_LINT" text "$body_file" 2>/dev/null | grep '^FLAG' || true)"
-  warn_flags="$(bash "$DEFERRAL_LINT" warnings "$feature_json" 2>/dev/null | grep '^FLAG' || true)"
-  [[ -n "$warn_flags" ]] && deferral_flags+="${deferral_flags:+$'\n'}$warn_flags"
 fi
 if [[ -n "$deferral_flags" ]]; then
   echo "deliver: self-authored deferral detected — everything in the spec ships; implement the flagged items (route back through EXECUTE) or fix mislabeled gate entries at their source, then re-run DELIVER:" >&2

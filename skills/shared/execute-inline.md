@@ -55,7 +55,11 @@ Maintain `mergedSet` and `blocked[]`. Repeat until `remaining` is empty:
    "unmergeable dependency cycle or all remaining blocked"}`; exit.
 2. **Pick ONE task** (`ready[0]` in DAG order) and confirm `git status` is
    clean — uncommitted drift from a previous task must be committed or reverted
-   before the next task starts, or task attribution dissolves.
+   before the next task starts, or task attribution dissolves. Then announce it, so a
+   streamed log shows where a long EXECUTE actually is rather than just
+   `[EXECUTE] start`:
+   `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" task_start --phase execute --data '{"index":<1-based DAG position>,"total":<total tasks>,"id":"<task id>","subject":"<task subject>"}' || true`
+   — rendered as `[EXECUTE] task 2/5 start - task-002: <subject>`.
 3. **Execute the task yourself** under the implementer charter
    (`agents/implementer.md`): read `readFirst`, TDD (failing test first where
    the task admits one), touch only `files`, keep to the brief.
@@ -78,6 +82,11 @@ Maintain `mergedSet` and `blocked[]`. Repeat until `remaining` is empty:
      (revert the task's commits: `git revert --no-edit <shas>`).
    - `block` → `blocked += {taskId, reason: "spec-compliance-block"}` (revert
      likewise).
+
+8. **Close the task out** once its outcome is decided:
+   `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" task_end --phase execute --data '{"index":<same>,"total":<same>,"id":"<task id>","result":"<merged|failed|skipped>"}' || true`
+   — a `task_start` with no matching `task_end` is exactly what a stall looks like to
+   someone watching the log, so always emit it, including on the blocked paths above.
 
 Dispatch telemetry (`skills/shared/dispatch-events.md`) still fires per task
 with the rung recorded as `inline`.

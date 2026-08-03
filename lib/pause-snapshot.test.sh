@@ -92,6 +92,40 @@ else
   fail ".continue-here.md missing required sections; content: $(cat "$FEATURE_DIR/.continue-here.md")"
 fi
 
+# Test 8b: REQUIRED READING must name THIS feature's plan, not a literal.
+# It hardcoded docs/loop-spec/features/resilience-ops/PLAN.md -- the slug this script
+# was originally written for -- so every other paused feature sent the resuming
+# session, often unattended, to read a different feature's plan before touching code.
+if grep -q "docs/loop-spec/features/test-feature/PLAN.md" "$FEATURE_DIR/.continue-here.md"; then
+  ok "REQUIRED READING names the paused feature's own plan"
+else
+  fail "REQUIRED READING does not name this feature's plan; got: $(grep '^2\.' "$FEATURE_DIR/.continue-here.md")"
+fi
+if grep -q "resilience-ops" "$FEATURE_DIR/.continue-here.md"; then
+  fail "REQUIRED READING still points at the hardcoded resilience-ops plan"
+else
+  ok "REQUIRED READING carries no hardcoded feature slug"
+fi
+
+# Test 8c: an explicit artifacts.plan is authoritative over the derived path.
+PLAN_DIR="$TMPDIR_TEST/.loop-spec/features/with-artifact"
+mkdir -p "$PLAN_DIR"
+cat > "$PLAN_DIR/feature.json" <<'EOF'
+{
+  "slug": "with-artifact",
+  "currentPhase": "execute",
+  "completedPhases": ["plan"],
+  "branch": "feat/with-artifact",
+  "artifacts": { "plan": "docs/loop-spec/features/custom-location/PLAN.md" }
+}
+EOF
+bash "$SCRIPT" --feature-dir "$PLAN_DIR" >/dev/null 2>&1 || true
+if grep -q "docs/loop-spec/features/custom-location/PLAN.md" "$PLAN_DIR/.continue-here.md" 2>/dev/null; then
+  ok "artifacts.plan is used when feature.json records one"
+else
+  fail "artifacts.plan ignored; got: $(grep '^2\.' "$PLAN_DIR/.continue-here.md" 2>/dev/null || echo '<no file>')"
+fi
+
 # Test 9: .continue-here.md has severity tags
 if grep -qE "blocking:|advisory:" "$FEATURE_DIR/.continue-here.md"; then
   ok ".continue-here.md has severity tags (blocking: or advisory:)"

@@ -163,5 +163,5 @@ these params are unused and the fallback team path runs.
 ## Model selection
 
 Fixed; see `skills/shared/model-matrix.md`. Opus authors and judges (spec-writer,
-planner, advocate, challenger, spec-compliance-reviewer, iterate-judge, code-reviewer);
-sonnet implements, verifies mechanically, and maps.
+planner, advocate, challenger, iterate-judge, code-reviewer); sonnet implements,
+verifies mechanically, checks per-task spec compliance, and maps.
