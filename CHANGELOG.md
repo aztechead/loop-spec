@@ -43,6 +43,22 @@ Findings and the deliberately-deferred remainder: `docs/loop-spec/unattended-aud
 
 ### Fixed
 
+- **A lost run no longer looks like a finished one.** `cycle-result.sh`'s
+  observability contract gains an explicit publication exception: invocation and
+  validation failures still exit 0 (a telemetry writer must never kill a running
+  cycle), but failing to publish `.loop-spec/last-result.json` now exits 3 with
+  `TERMINAL RESULT NOT PUBLISHED` and **preserves `active-run.json`**. Previously
+  every path exited 0 — "exit 0, no result" is indistinguishable from success to a
+  headless supervisor — and `write` removed the recovery record unconditionally, even
+  when the pointer write had just failed, leaving `cycle-reconcile.sh` nothing to
+  reconcile. Reconcile now propagates the same code instead of reporting success for a
+  run it could not account for.
+- **`cycle-preflight.sh` writes a recovery breadcrumb before clearing the prior
+  pointer.** The clear is correct — a stale pointer would masquerade as this run's
+  result — but preflight can still abort afterwards (the graphify hard gate), and an
+  abort in that window left neither a terminal result nor an `active-run.json`. The
+  real `begin` supersedes the placeholder and preserves `startedAt`, so elapsed time
+  still measures the whole run.
 - **An invalid `LOOP_SPEC_WORKTREES` no longer wedges every session.** `no-worktrees-guard.sh`
   validated its setting before the `.loop-spec` scope check and is registered on
   `Agent|Bash|EnterWorktree`, so one stray `=true` denied every tool call in every

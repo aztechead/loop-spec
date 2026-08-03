@@ -192,6 +192,39 @@ out="$(run_preflight)"
 check "mismatched no-change result cannot hide feature" "1" \
   "$(jq -r '[.resume.candidates[] | select(.slug == "wt-only")] | length' <<<"$out")"
 
+# --- Recovery breadcrumb is placed BEFORE the stale pointer is cleared -----------
+# Preflight clears the previous run's terminal pointer, then can still abort (the
+# graphify hard gate). Without a breadcrumb first, that abort left NEITHER a
+# terminal result NOR a recovery record, and cycle-reconcile.sh had nothing to
+# reconcile -- the exact "process exits, no state" hole this file exists to close.
+BC="$WORK/breadcrumb"
+mkdir -p "$BC/.loop-spec"
+git -C "$BC" init -q 2>/dev/null
+printf '{"status":"completed","stale":true}' > "$BC/.loop-spec/last-result.json"
+REPO="$BC" run_preflight >/dev/null 2>&1 || true
+check "stale terminal pointer is still cleared" "0" \
+  "$([[ -f "$BC/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+check "a recovery breadcrumb exists after preflight" "1" \
+  "$([[ -f "$BC/.loop-spec/active-run.json" ]] && echo 1 || echo 0)"
+check "breadcrumb names the preflight phase" "preflight" \
+  "$(jq -r '.phase' "$BC/.loop-spec/active-run.json" 2>/dev/null)"
+
+# The real `begin` must supersede the placeholder while preserving startedAt, so
+# elapsed time still measures the whole run.
+bc_started="$(jq -r '.startedAt' "$BC/.loop-spec/active-run.json")"
+bash "$REPO_ROOT/lib/cycle-result.sh" begin --result-root "$BC" --cycle-type full \
+  --title "Real feature" --slug real --phase spec >/dev/null 2>&1
+check "real begin supersedes the placeholder title" "Real feature" \
+  "$(jq -r '.title' "$BC/.loop-spec/active-run.json")"
+check "real begin preserves startedAt" "$bc_started" \
+  "$(jq -r '.startedAt' "$BC/.loop-spec/active-run.json")"
+
+# End to end: an abort right after preflight is now recoverable.
+recon="$(bash "$REPO_ROOT/lib/cycle-reconcile.sh" --result-root "$BC" \
+  --reason "graphify gate abort" 2>/dev/null | head -1)"
+check "reconcile turns a preflight abort into a failed terminal result" "failed" \
+  "$(jq -r '.status' <<<"${recon#LOOP_SPEC_RESULT }" 2>/dev/null)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

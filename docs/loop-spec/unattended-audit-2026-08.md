@@ -187,6 +187,36 @@ what the mechanism emits and what remains genuinely model-authored (EXECUTE's
 rung-decision line, a domain detail with no corresponding event).
 `LOOP_SPEC_CONSOLE_EVENTS=0` silences the console without touching the ledger.
 
+### Terminal state: a lost run no longer looks like a finished one
+
+The two findings this audit rated closest to defects, both in the files every
+unattended run depends on for its success signal.
+
+**`cycle-result.sh` could exit 0 without publishing a pointer.** Every failure path
+in `write` and `write-terminal` warned and exited 0, including the ones that failed to
+write `.loop-spec/last-result.json` itself. To a headless supervisor "exit 0, no
+result" is indistinguishable from a dozen benign causes, so the run was silently lost.
+Worse, `write` removed `active-run.json` *unconditionally* — even when the pointer
+write had just failed — destroying the one artifact `cycle-reconcile.sh` needs.
+
+The observability contract now has an explicit publication exception. Invocation and
+validation failures still exit 0, because they happen while the cycle is running and a
+telemetry writer must never kill a two-hour run. But **publication** failures exit 3,
+say `TERMINAL RESULT NOT PUBLISHED`, and preserve `active-run.json`. At publication
+time the work is already done, so a loud exit cannot destroy it — while a silent one
+loses everything. `cycle-reconcile.sh` propagates the same code rather than reporting
+success for a run it could not account for.
+
+**`cycle-preflight.sh` cleared the prior pointer before any recovery record existed.**
+The clear is correct — a stale pointer would masquerade as this run's result — but
+preflight can still abort afterwards (the graphify hard gate), and an abort in that
+window left neither a terminal result nor an `active-run.json`. Reconciliation found
+nothing to reconcile: exactly the "process exits, no state" hole these files exist to
+close. Preflight now writes a `(preflight)` breadcrumb *before* clearing; the real
+`begin` supersedes it later and preserves `startedAt`, so elapsed time still measures
+the whole run. Verified end to end: an abort right after preflight now reconciles into
+a proper `failed` terminal result.
+
 ### Contract: `${CLAUDE_PLUGIN_ROOT}` in agent bodies
 
 `agents/planner.md` and `agents/pattern-mapper.md` instructed the agent to read a
@@ -223,21 +253,19 @@ and shipping them unreviewed alongside the above would be the wrong trade.
    OpenCode CLI's own non-interactive path auto-rejects; loop-spec has no equivalent.
 5. **`opencode-install.sh` can publish a manifest after a partial failure**, listing
    only successfully created paths, so `status` later reports a clean install.
-6. **`cycle-preflight.sh:58` clears the prior result pointer before an active record
-   exists** — a Graphify abort right after leaves neither terminal nor recovery state.
-7. **`cycle-result.sh` terminal writers can exit 0 without publishing a pointer.**
-8. **Micro/debug direct-invocation scope bounds are prose-only** and are absent from
+6. **Micro/debug direct-invocation scope bounds are prose-only** and are absent from
    `docs/determinism-audit.md`'s own ledger.
-9. **No test proves a `TeamCreate`-spawned teammate receives its frontmatter tools.**
-    All five call sites pass `{name, subagent_type, model, prompt}` with no explicit
-    `tools`, relying entirely on `subagent_type` → agent-file resolution; only
-    frontmatter *shape* is tested. If that resolution ever degrades in a harness
-    version, it reproduces the original "teammates can only read" report with a
-    perfectly correct agent file on disk. Needs a live smoke test, not an offline one.
+7. **No test proves a `TeamCreate`-spawned teammate receives its frontmatter tools.**
+   All five call sites pass `{name, subagent_type, model, prompt}` with no explicit
+   `tools`, relying entirely on `subagent_type` → agent-file resolution; only
+   frontmatter *shape* is tested. If that resolution ever degrades in a harness
+   version, it reproduces the original "teammates can only read" report with a
+   perfectly correct agent file on disk. Needs a live smoke test, not an offline one.
 
-Items 6 and 7 are the closest to defects and should lead the next pass; they touch the
-one file every unattended run depends on for its success signal, so they deserve their
-own change with focused tests.
+The two terminal-state findings that previously led this list — preflight clearing the
+pointer before a recovery record existed, and terminal writers exiting 0 without
+publishing — were **fixed in this change**; see "Terminal state" above. What remains
+here is genuinely design work or needs a live harness, not offline patching.
 
 ## Withdrawn
 
