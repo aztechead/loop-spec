@@ -40,6 +40,9 @@ cat > "$FDIR/events.jsonl" << 'EOF'
 {"ts":"t","slug":"my-feat","event":"verify_failure","phase":"verify","data":{"class":"suite-regression"}}
 {"ts":"t","slug":"my-feat","event":"verify_failure","phase":"verify","data":{"class":"suite-regression"}}
 {"ts":"t","slug":"my-feat","event":"verify_failure","phase":"verify","data":{"class":"acceptance"}}
+{"ts":"t","slug":"my-feat","event":"phase_end","phase":"execute","data":{"next":"verify"},"elapsedSeconds":42}
+{"ts":"t","slug":"my-feat","event":"phase_end","phase":"execute","data":{"next":"verify"},"elapsedSeconds":18}
+{"ts":"t","slug":"my-feat","event":"phase_end","phase":"verify","data":{"next":"iterate"},"elapsedSeconds":9}
 EOF
 
 # ── Case 1: default out-dir resolution + digest content ───────────────────────
@@ -59,6 +62,10 @@ check "1: gateCaps only round>=2" '["spec-critique"]' "$(jq -c '.gateCaps' "$DIG
 check "1: iterateRounds counts verdicts" "3" "$(jq -r '.iterateRounds' "$DIGEST")"
 check "1: gateRoundsByGate max per gate" '{"plan-critique":1,"spec-critique":2}' "$(jq -cS '.gateRoundsByGate' "$DIGEST")"
 check "1: verifyFailureClasses unique" '["acceptance","suite-regression"]' "$(jq -c '.verifyFailureClasses' "$DIGEST")"
+check "1: execute phase timings aggregate attempts" "2" "$(jq -r '.phaseDurations.execute.attempts' "$DIGEST")"
+check "1: execute phase timings aggregate total" "60" "$(jq -r '.phaseDurations.execute.totalSeconds' "$DIGEST")"
+check "1: execute phase timings retain max" "42" "$(jq -r '.phaseDurations.execute.maxSeconds' "$DIGEST")"
+check "1: verify phase timing captured" "9" "$(jq -r '.phaseDurations.verify.totalSeconds' "$DIGEST")"
 check "1: iterations used" "3" "$(jq -r '.iterations.used' "$DIGEST")"
 check "1: warnings count" "2" "$(jq -r '.warnings' "$DIGEST")"
 check "1: finishedAt carried" "2026-07-08T12:00:00Z" "$(jq -r '.finishedAt' "$DIGEST")"

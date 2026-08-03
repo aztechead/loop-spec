@@ -1,7 +1,7 @@
 ---
 name: status
-description: Show loop-spec run status and aggregate telemetry stats. Default lists every feature (phase, iterations, last event, warnings, result, PR); "stats" aggregates across runs — convergence rate, gate rounds, iterate gap histogram, dispatch counts by model/role/rung, loop-fleet cost; "trust" shows the repo's earned-autonomy level (L0-L3) with the evidence and distance to the next level; sentinel needs-human items are surfaced alongside. Read-only consumer of feature.json + events.jsonl + result.json + the committed metrics contract.
-argument-hint: '[status [<slug>] | stats | trust] [--json]'
+description: Show loop-spec run status and aggregate telemetry stats. Default lists every feature (phase, iterations, last event, warnings, result, PR); "stats" aggregates across runs — convergence rate, gate rounds, iterate gap histogram, dispatch counts by model/role/rung, loop-fleet cost; "metrics" adds persisted phase timing by phase; "trust" shows the repo's earned-autonomy level (L0-L3) with the evidence and distance to the next level; sentinel needs-human items are surfaced alongside. Read-only consumer of feature.json + events.jsonl + result.json + the committed metrics contract.
+argument-hint: '[status [<slug>] | stats | metrics | trust] [--json]'
 ---
 
 # Status Skill
@@ -24,12 +24,16 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" status my-feature
 # Aggregate stats across all runs
 bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" stats
 
+# Persisted phase timing across committed run digests (seconds per phase attempt)
+bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" metrics
+
 # Earned-autonomy level with the evidence that produced it (D1/D2)
 bash "${CLAUDE_SKILL_DIR}/../../lib/trust.sh" level
 
 # Machine-readable variants
 bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" --json status
 bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" --json stats
+bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" metrics
 bash "${CLAUDE_SKILL_DIR}/../../lib/trust.sh" level --json
 ```
 
@@ -41,7 +45,7 @@ Q="${CLAUDE_PROJECT_DIR:-.}/.loop-spec/sentinel-queue.json"
 [[ -f "$Q" ]] && jq -r '.needsHuman[]? | "needs-human: \(.id // "?") [\(.source // "?")] \(.reason // "?") — \(.title // "")"' "$Q"
 ```
 
-Pass the user's arguments through verbatim (`status`, `stats`, a slug, `--json`).
+Pass the user's arguments through verbatim (`status`, `stats`, `metrics`, a slug, `--json`).
 Print the script output as-is — do not paraphrase numbers. If the user asked a
 question about the output (e.g. "why is this stuck?"), answer AFTER showing the
 raw output, citing rows/fields.
@@ -67,7 +71,12 @@ raw output, citing rows/fields.
   `loop-fleet cost` sums the agent CLI's reported cost (`claude -p`
   `total_cost_usd`, or pi usage cost when reported) from
   `.loop/fleet-result.json` when the loop-fleet rung ran; `n/a` = fleet never
-  ran or the CLI did not report cost (unknown, not free).
+  ran or the CLI did not report cost (unknown, not free). `phase timing` is the
+  live event aggregate, so it includes current local runs.
+- **metrics**: committed digests retain `phaseTimings` by phase. `attempts` counts
+  completed phase attempts, `totalSeconds` is their sum, `avgSeconds` is per attempt,
+  and `maxSeconds` reveals the slowest attempt. Missing timing means an older digest,
+  not a zero-cost phase.
 
 ## Workspace note
 

@@ -33,6 +33,7 @@
 #    "iterateRounds": N,             # iterate_verdict events (rounds to converge/stop)
 #    "gateRoundsByGate": {"spec-critique": maxRound, ...},
 #    "verifyFailureClasses": ["suite-regression", ...],  # unique verify_failure classes
+#    "phaseDurations": {"execute": {"attempts": N, "totalSeconds": N, "maxSeconds": N}, ...},
 #    "warnings": N, "finishedAt": "ISO-8601|null"}
 # The three convergence fields (ROADMAP-3.0 B1) feed lib/tuning.sh via the
 # lib/status.sh metrics contract. A `watch` object appended post-merge by
@@ -128,6 +129,19 @@ digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argj
                        | from_entries),
     verifyFailureClasses: ([$events[] | select(.event == "verify_failure")
                             | .data.class // empty | select(. != "")] | unique),
+    phaseDurations: ([$events[]
+                      | select(.event == "phase_end"
+                               and (.phase | type) == "string"
+                               and (.elapsedSeconds | type) == "number"
+                               and .elapsedSeconds >= 0)
+                      | {phase: .phase, elapsedSeconds: .elapsedSeconds}]
+                     | group_by(.phase)
+                     | map({key: .[0].phase, value: {
+                         attempts: length,
+                         totalSeconds: (map(.elapsedSeconds) | add),
+                         maxSeconds: (map(.elapsedSeconds) | max)
+                       }})
+                     | from_entries),
     warnings: (($fj.warnings // []) | length),
     finishedAt: (if $candidate == 1 then
                    ($fj.updatedAt //

@@ -114,6 +114,23 @@ else
   pass "feature commit excludes graphify output"
 fi
 
+# A valid graph is reusable only with a matching source snapshot. The local
+# stamp is intentionally stricter than graph-status: a missing/corrupt stamp or
+# any tracked source edit returns stale and forces the assistant lifecycle.
+bash "$SCRIPT" stamp "$REPO"
+[[ "$(bash "$SCRIPT" freshness "$REPO")" == "fresh" ]] \
+  && pass "matching source stamp is fresh" || fail "matching source stamp is fresh"
+printf 'changed\n' >> "$REPO/other.txt"
+[[ "$(bash "$SCRIPT" freshness "$REPO")" == "stale" ]] \
+  && pass "tracked source change invalidates stamp" || fail "tracked source change invalidates stamp"
+git -C "$REPO" restore other.txt
+printf 'not-json\n' > "$REPO/graphify-out/.loop-spec-source-fingerprint.json"
+[[ "$(bash "$SCRIPT" freshness "$REPO")" == "stale" ]] \
+  && pass "corrupt stamp never reuses graph" || fail "corrupt stamp never reuses graph"
+bash "$SCRIPT" stamp "$REPO"
+[[ "$(bash "$SCRIPT" freshness "$REPO")" == "fresh" ]] \
+  && pass "restamped clean graph is fresh" || fail "restamped clean graph is fresh"
+
 # Explicit maintenance publishing is the inverse of feature localize: it re-enables
 # graph paths and stages portable generated output for its own review, never cache.
 bash "$SCRIPT" publish "$REPO"

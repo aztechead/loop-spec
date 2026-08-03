@@ -123,6 +123,34 @@ Agent, one-shot fallback, gate reviewer, or ITERATE judge. Thus continuous mode
 still honors phase routing for subagents; handoff is required only to change the
 main orchestrator model.
 
+## Performance tuning without weaker outcomes
+
+Do not tune from total wall time alone. First inspect `bash
+<plugin>/lib/status.sh stats` for current-run phase timing, then inspect `metrics`
+when committed run digests are retained. Change one control at a time and compare
+the same task class; a slow EXECUTE wave and a slow external command need different
+remedies.
+
+- `LOOP_SPEC_WORKTREES=0` plus a cap of `1` is a **resource-conservative serial
+  profile**, not a quality requirement. If observed DAG width is at least two and
+  the instance has measured headroom for independent checkouts, enable worktrees
+  and set a bounded subagent cap (normally `2` first). Every task still has its
+  focused proof, the integrated wave still has one repository-wide comparison,
+  and VERIFY remains mandatory.
+- `LOOP_SPEC_PHASE_HANDOFF=1` trades speed for a fresh main context, per-phase
+  main-model selection, and a durable recovery point after every phase. Set it to
+  `0` only when those operational benefits are not required; continuous mode keeps
+  the same SPEC/PLAN/verification/delivery artifacts and hard gates.
+- Keep `LOOP_SPEC_CHECKPOINT_EACH_PHASE=1` unless an operator has separately
+  accepted a larger recovery window. Network checkpoint cost is intentional crash
+  protection, not a candidate for a silent default bypass.
+
+Never cut the candidate comparison, VERIFY acceptance/code-review gates, ITERATE
+judge, or delivery identity/CI checks to improve elapsed time. The runtime now skips
+Graphify only with a validated all-source provenance stamp and skips codebase mapping
+only with a complete-map/no-relevant-change proof; missing or uncertain evidence
+refreshes normally.
+
 ## SDK policy
 
 Use all four independent bounds:

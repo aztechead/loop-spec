@@ -29,17 +29,23 @@ inside one repository are forbidden.
    absent and `LOOP_SPEC_REQUIRE_GRAPHIFY=0`, log the degraded Glob/Grep fallback and
    return without invoking or staging. Otherwise failure is fatal.
 
-3. Select assistant arguments from the validated prior state:
+3. Ask the deterministic freshness helper before selecting assistant arguments:
 
    ```text
-   missing or invalid graph: arguments = "."
-   usable existing graph:    arguments = ". --update"
+   freshness = bash "$graphify_lib" freshness "$repo"
+   fresh:                    validate + localize only; do NOT invoke Graphify
+   stale/missing/invalid:    invoke Graphify ("." for a missing graph,
+                             ". --update" for a usable but stale graph)
    ```
 
-   The first form runs Graphify's complete assistant build. The second runs its
-   incremental assistant update: code changes use local AST extraction, while changed
-   docs, papers, images, and other semantic inputs use the current host model. Never
-   substitute the AST-only terminal command `graphify update .`.
+   A `fresh` verdict is strict: complete output validation plus an ignored provenance
+   stamp whose SHA-256 covers every tracked input except runtime state and Graphify's
+   own output. Changed code, docs, papers, images, mode bits, renamed paths, a dirty
+   tree, a missing stamp, or a malformed stamp all return `stale`. The first form runs
+   Graphify's complete assistant build. The second runs its incremental assistant
+   update: code changes use local AST extraction, while changed docs, papers, images,
+   and other semantic inputs use the current host model. Never substitute the AST-only
+   terminal command `graphify update .`.
 
 4. Treat `repo` as Graphify's effective working directory. The argument remains `.`;
    every Bash/Python action prescribed by Graphify must execute from `repo`, and every
@@ -80,19 +86,22 @@ inside one repository are forbidden.
    query. Autonomous and interactive loop-spec runs follow the same rule because the
    cycle owns all user interaction.
 
-7. The assistant invocation must return successfully. "Nothing to update" is success;
-   a missing skill, extraction error, skipped semantic chunk, shrink refusal, or other
-   failed/incomplete result is failure. Do not accept an older valid graph as proof that
-   this invocation succeeded. When required, fail with the harness-specific registration
-   hint. Under `LOOP_SPEC_REQUIRE_GRAPHIFY=0`, warn and use the degraded Glob/Grep path.
+7. On a `stale` verdict, the assistant invocation must return successfully. "Nothing to
+   update" is success; a missing skill, extraction error, skipped semantic chunk, shrink
+   refusal, or other failed/incomplete result is failure. Do not accept an older valid
+   graph as proof that this invocation succeeded. A `fresh` verdict is the only allowed
+   reuse proof. When required, fail with the harness-specific registration hint. Under
+   `LOOP_SPEC_REQUIRE_GRAPHIFY=0`, warn and use the degraded Glob/Grep path.
 
 8. Restore loop-spec's captured skill path, then validate and keep the generated graph
-   local to this checkout:
+   local to this checkout. After a successful assistant build/update, write the matching
+   local provenance stamp. Reused graphs are revalidated but not restamped.
 
    ```bash
    export CLAUDE_SKILL_DIR="$loop_spec_skill_dir"
    bash "$graphify_lib" validate "$repo"
    bash "$graphify_lib" localize "$repo"
+   [[ "$freshness" == "fresh" ]] || bash "$graphify_lib" stamp "$repo"
    ```
 
    Validation requires named, non-opaque nodes and the complete shared output set:

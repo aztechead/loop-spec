@@ -90,7 +90,7 @@ Persistent memory scope (`user` | `project` | `local`, validated). Grants the ag
 | `pattern-mapper` | Maps feature concepts to existing-codebase analogs (imports, core pattern, error handling) so the planner can write house-style-conformant tasks. Writes only to docs/loop-spec/features/{slug}/PATTERNS.md. | sonnet |
 | `planner` | Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. | opus |
 | `security-reviewer` | Adversarial security review persona. Checks input handling, authz, injection, secrets exposure, and unsafe defaults. Returns severity-ranked findings (CRITICAL/HIGH/MEDIUM/LOW). Never suppresses its own findings. | sonnet |
-| `spec-compliance-reviewer` | Verifies one implementer's commit matches its task spec. Read-only. | opus |
+| `spec-compliance-reviewer` | Verifies one implementer's commit matches its task spec. Read-only. | sonnet |
 | `spec-writer` | Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**. | opus |
 | `verifier` | Runs every acceptance criterion's verify command, writes VERIFICATION.md. | sonnet |
 

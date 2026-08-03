@@ -131,9 +131,9 @@ SendMessage({
       2. The blockedBy graph is acyclic.
       3. Every task has at least one acceptance criterion in the REQUIRED CONCRETE FORM from
          your role definition (an exact value, regex, exit code, file path, or grep/jq check).
-      4. Each task's files[] is scoped to what that task actually edits; declare a logical
-         blockedBy edge wherever two tasks would otherwise need the same file (EXECUTE derives
-         file-overlap edges automatically, so you only declare the logical ones).
+      4. Each task's files[] is scoped to what that task actually edits. Declare `blockedBy`
+         only for logical ordering; do not add file-overlap edges, because EXECUTE derives
+         those automatically from `files[]`.
       5. For each entry in the SPEC <decisions> block, reproduce the decision text verbatim
          (the part after the "- "/"Decision: " prefix) somewhere in PLAN.md -- a "## Decisions"
          or "## Assumptions" section is fine -- so the automated decision-coverage check
