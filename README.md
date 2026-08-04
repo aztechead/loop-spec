@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.31.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.32.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -574,8 +574,12 @@ All under `.loop-spec/` in the project (gitignored except where noted). `.conf` 
 - `commitStrategy`: `per-task` (default) commits each task separately; `at-end` collapses `feat/{slug}` into a single commit at EXECUTE exit. Ignored in workspace mode.
 - `prepareCommand`: deterministic dev/test dependency setup. Explicit configuration wins;
   otherwise loop-spec detects unambiguous lock-aware Node/Python installs (pip requirements
-  use an isolated `.venv`; frozen lock modes are used when available). Preparation is
-  cached by command plus manifest/lockfile content and must leave Git state unchanged.
+  use an isolated `.venv`; frozen lock modes are used when available). Workspace layouts
+  count: when the root has no lockfile for an ecosystem, a single tracked manifest+lockfile
+  pair below it resolves to the same frozen install scoped to that directory
+  (`(cd webapp/frontend && npm ci)`), and its `node_modules` is what task worktrees reuse.
+  Preparation is cached by command plus manifest/lockfile content (root and prepared
+  subdirectory) and must leave Git state unchanged.
 - `verifyCommands`: opt-in live-run verification. VERIFY launches the app after the suite, waits for `ready` to exit 0 (up to `readyTimeoutSec`, default 30), runs each probe, records the output in `EVIDENCE.md`, and kills the app. Absent block: suite-only, unchanged. `bash lib/verify-live.sh detect` suggests a launch command from repo markers but never writes config.
 
 ### Credential TTL contract

@@ -162,6 +162,7 @@ run_suite "tests/verification-grounding-coverage" "bash tests/verification-groun
 run_suite "tests/configuration-coverage" "bash tests/configuration-coverage.test.sh"
 run_suite "tests/contract-strings"    "bash tests/contract-strings.test.sh"
 run_suite "tests/delivery-phase-coverage" "bash tests/delivery-phase-coverage.test.sh"
+run_suite "tests/prepare-resolution-coverage" "bash tests/prepare-resolution-coverage.test.sh"
 run_suite "workflows/acceptance-verify" "bash tests/workflows/acceptance-verify.test.sh"
 run_suite "lib/workflow-availability" "bash tests/lib/workflow-availability.test.sh"
 run_suite "lib/dag-width"             "bash tests/lib/dag-width.test.sh"

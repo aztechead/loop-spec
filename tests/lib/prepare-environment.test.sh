@@ -164,5 +164,97 @@ check "task worktree reuses dependency tree" "shared" "$(jq -r '.status' <<<"$ou
 check "task node_modules is a symlink" "1" "$([[ -L "$SHARE_WT/node_modules" ]] && echo 1 || echo 0)"
 check "shared dependencies resolve" "installed" "$(<"$SHARE_WT/node_modules/example/value")"
 
+SUB_REPO="$WORK/subdir-repo"
+new_repo "$SUB_REPO"
+mkdir -p "$SUB_REPO/webapp/frontend"
+printf '[project]\nname="demo"\n' > "$SUB_REPO/pyproject.toml"
+printf 'version = 1\n' > "$SUB_REPO/uv.lock"
+printf '{}\n' > "$SUB_REPO/webapp/frontend/package.json"
+printf '{"lockfileVersion":3}\n' > "$SUB_REPO/webapp/frontend/package-lock.json"
+out="$(bash "$SCRIPT" resolve --root "$SUB_REPO")"
+check "untracked subdir lockfile is not the declared ecosystem" "uv sync --frozen" \
+  "$(jq -r '.command' <<<"$out")"
+git -C "$SUB_REPO" add -A
+git -C "$SUB_REPO" commit -qm workspace
+out="$(bash "$SCRIPT" resolve --root "$SUB_REPO")"
+check "workspace frontend gets a lock-preserving install" \
+  "(cd webapp/frontend && npm ci) && uv sync --frozen" "$(jq -r '.command' <<<"$out")"
+check "subdir detection reports where it resolved" "node=subdir:webapp/frontend:npm python=root:uv" \
+  "$(jq -r '.reason' <<<"$out")"
+sub_key="$(jq -r '.key' <<<"$out")"
+printf '{"lockfileVersion":3,"packages":{}}\n' > "$SUB_REPO/webapp/frontend/package-lock.json"
+out="$(bash "$SCRIPT" resolve --root "$SUB_REPO")"
+check "subdir lockfile change invalidates the preparation key" "1" \
+  "$([[ "$(jq -r '.key' <<<"$out")" != "$sub_key" ]] && echo 1 || echo 0)"
+out="$(bash "$SCRIPT" resolve --root "$SUB_REPO" --command '(cd webapp/frontend && npm ci)')"
+check "a persisted subdir command keys off the same manifests" "1" \
+  "$([[ "$(jq -r '.key' <<<"$out")" != "" ]] && echo 1 || echo 0)"
+replayed_key="$(jq -r '.key' <<<"$out")"
+git -C "$SUB_REPO" checkout -- webapp/frontend/package-lock.json
+out="$(bash "$SCRIPT" resolve --root "$SUB_REPO" --command '(cd webapp/frontend && npm ci)')"
+check "a persisted subdir command tracks the subdir lockfile" "1" \
+  "$([[ "$(jq -r '.key' <<<"$out")" != "$replayed_key" ]] && echo 1 || echo 0)"
+
+mkdir -p "$SUB_REPO/webapp/frontend/node_modules/vendored"
+printf '{}\n' > "$SUB_REPO/webapp/frontend/node_modules/vendored/package.json"
+printf '{"lockfileVersion":3}\n' > "$SUB_REPO/webapp/frontend/node_modules/vendored/package-lock.json"
+mkdir -p "$SUB_REPO/deep/one/two/three"
+printf '{}\n' > "$SUB_REPO/deep/one/two/three/package.json"
+printf '{"lockfileVersion":3}\n' > "$SUB_REPO/deep/one/two/three/package-lock.json"
+git -C "$SUB_REPO" add -Af
+git -C "$SUB_REPO" commit -qm noise
+out="$(bash "$SCRIPT" resolve --root "$SUB_REPO")"
+check "vendored and deeply nested lockfiles do not compete" \
+  "(cd webapp/frontend && npm ci) && uv sync --frozen" "$(jq -r '.command' <<<"$out")"
+
+AMBIG_REPO="$WORK/ambiguous-repo"
+new_repo "$AMBIG_REPO"
+mkdir -p "$AMBIG_REPO/apps/web" "$AMBIG_REPO/apps/admin"
+printf '{}\n' > "$AMBIG_REPO/apps/web/package.json"
+printf '{"lockfileVersion":3}\n' > "$AMBIG_REPO/apps/web/package-lock.json"
+printf '{}\n' > "$AMBIG_REPO/apps/admin/package.json"
+printf 'lockfileVersion: 9\n' > "$AMBIG_REPO/apps/admin/pnpm-lock.yaml"
+git -C "$AMBIG_REPO" add -A
+git -C "$AMBIG_REPO" commit -qm two-apps
+out="$(bash "$SCRIPT" resolve --root "$AMBIG_REPO")"
+check "two candidate subdirs stay unresolved" "none:" "$(jq -r '.source + ":" + .command' <<<"$out")"
+check "ambiguity is reported, not guessed" "node=ambiguous-subdir:2 python=none" \
+  "$(jq -r '.reason' <<<"$out")"
+
+PY_SUB_REPO="$WORK/python-subdir-repo"
+new_repo "$PY_SUB_REPO"
+mkdir -p "$PY_SUB_REPO/services/api"
+printf '[project]\nname="api"\n' > "$PY_SUB_REPO/services/api/pyproject.toml"
+printf 'version = 1\n' > "$PY_SUB_REPO/services/api/uv.lock"
+git -C "$PY_SUB_REPO" add -A
+git -C "$PY_SUB_REPO" commit -qm service
+out="$(bash "$SCRIPT" resolve --root "$PY_SUB_REPO")"
+check "a subdir Python project gets a frozen sync" "(cd services/api && uv sync --frozen)" \
+  "$(jq -r '.command' <<<"$out")"
+
+SUB_SHARE_REPO="$WORK/subdir-share-repo"
+new_repo "$SUB_SHARE_REPO"
+mkdir -p "$SUB_SHARE_REPO/webapp/frontend"
+printf '{}\n' > "$SUB_SHARE_REPO/webapp/frontend/package.json"
+printf '{"lockfileVersion":3}\n' > "$SUB_SHARE_REPO/webapp/frontend/package-lock.json"
+printf 'node_modules/\n' > "$SUB_SHARE_REPO/.gitignore"
+git -C "$SUB_SHARE_REPO" add -A
+git -C "$SUB_SHARE_REPO" commit -qm frontend
+sub_command="$(jq -r '.command' <<<"$(bash "$SCRIPT" resolve --root "$SUB_SHARE_REPO")")"
+check "frontend-only workspace resolves the subdir install" "(cd webapp/frontend && npm ci)" "$sub_command"
+out="$(PATH="$SHARE_BIN:$PATH" bash "$SCRIPT" run --root "$SUB_SHARE_REPO" --command "$sub_command")"
+check "subdir dependency tree prepared once" "prepared" "$(jq -r '.status' <<<"$out")"
+SUB_SHARE_WT="$WORK/subdir-share-worktree"
+git -C "$SUB_SHARE_REPO" worktree add -q -b subdir-task "$SUB_SHARE_WT"
+out="$(PATH="$SHARE_BIN:$PATH" bash "$SCRIPT" run --root "$SUB_SHARE_WT" \
+  --command "$sub_command" --reuse-from "$SUB_SHARE_REPO")"
+check "subdir worktree reuses the dependency tree" "shared" "$(jq -r '.status' <<<"$out")"
+check "shared path names the subdirectory" "webapp/frontend/node_modules" \
+  "$(jq -r '.sharedPaths[0]' <<<"$out")"
+check "subdir node_modules is a symlink" "1" \
+  "$([[ -L "$SUB_SHARE_WT/webapp/frontend/node_modules" ]] && echo 1 || echo 0)"
+check "shared subdir dependencies resolve" "installed" \
+  "$(<"$SUB_SHARE_WT/webapp/frontend/node_modules/example/value")"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

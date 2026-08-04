@@ -9,7 +9,9 @@ Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. App
 Auto-detect (best effort):
 - prepare: `LOOP_SPEC_CMD_PREPARE`, then `.loop-spec/workflow.json.prepareCommand`,
   then lock-aware npm/pnpm/yarn, uv/poetry, or isolated pip requirements setup through
-  `lib/prepare-environment.sh resolve`
+  `lib/prepare-environment.sh resolve` — including workspace layouts where the lockfile
+  sits below the root (a uv root with the frontend in `webapp/frontend/` resolves to
+  `(cd webapp/frontend && npm ci) && uv sync --frozen`)
 - test: parse package.json scripts.test, Makefile `test` target, pyproject.toml [tool.pytest], go.mod presence (`go test ./...`)
 - lint: scripts.lint, Makefile lint, ruff/eslint config files
 - typecheck: scripts.typecheck, mypy.ini, tsconfig.json + tsc
@@ -23,6 +25,19 @@ resolve to a shell function that prints help instead of executing non-interactiv
 would make every generated verify command fail as written. `node_modules/.bin/*` invokes the
 binary directly and sidesteps the shim. (If a script is genuinely only reachable via
 `npm run <name>`, keep it but note the dependency on a working `npm` in the shell.)
+
+**Never hand-roll a lockfile-mutating install.** Preparation runs under a "leaves the tree
+unchanged" guard. `npm install`, `yarn add`, `pnpm install` without a frozen flag,
+`poetry lock`, and `uv sync` without `--frozen` all rewrite the lockfile, so preparation
+fails the guard and the lockfile has to be restored before the install is redone the
+correct way. If the resolver returned no prepare command and dependencies genuinely must
+be installed, emit the lock-preserving form: `npm ci`,
+`pnpm install --frozen-lockfile`, `yarn install --immutable` (v1: `--frozen-lockfile`),
+`uv sync --frozen`; for pip, install into an isolated `.venv` rather than the ambient
+interpreter. For a lockfile in a subdirectory the resolver declined to pick (several
+candidates, so it refused to guess), scope the same frozen form:
+`(cd <subdir> && npm ci)`. This applies to feasibility probes too — probe with the frozen
+install itself or something read-only (`npm --version`), never with a mutating install.
 
 **Probe that the detected commands actually execute** via `lib/resolve-bin.sh`, which
 resolves the REAL on-disk executable past shell-function shims (nvm/pyenv/rbenv/asdf) and
