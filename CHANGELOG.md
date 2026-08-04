@@ -2,6 +2,45 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.32.0] - 2026-08-04
+
+Workspace-aware dependency preparation.
+
+### Added
+
+- **Preparation resolves ecosystems that live below the repository root.** A workspace
+  whose root carries `pyproject.toml` + `uv.lock` while the frontend sits in
+  `webapp/frontend/` with its own `package.json` + `package-lock.json` now resolves to
+  `(cd webapp/frontend && npm ci) && uv sync --frozen` — the same lock-preserving install
+  a root-level project already got, scoped to the directory that declares it.
+  `lib/prepare-environment.sh` probes for a subdirectory ecosystem only when the root has
+  no lockfile for that ecosystem, and only where the answer is deterministic: tracked
+  files (an untracked or ignored lockfile is not the project's declared state), within
+  three directories of the root, `node_modules` and dotted paths excluded, and exactly one
+  candidate across all package managers. Two candidates, or two managers in one directory,
+  keep the empty command rather than guess an install. `resolve` now reports its reasoning
+  in a `reason` field (`node=subdir:webapp/frontend:npm python=root:uv`,
+  `node=ambiguous-subdir:2`) so the branch it selected is auditable after the fact. Node
+  and Python are probed independently, so a workspace can compose one command per
+  ecosystem exactly as a root-level repository does.
+- **Preparation caching and `node_modules` sharing follow the subdirectory.** The
+  preparation key hashes the prepared subdirectory's manifests alongside the root's, so a
+  workspace lockfile edit invalidates the cached preparation instead of silently reusing
+  it — including when the command is replayed from persisted feature state through
+  `--command`. Task worktrees link `webapp/frontend/node_modules` from the feature
+  checkout under `LOOP_SPEC_SHARE_DEPENDENCIES=1`, so a monorepo frontend keeps the reuse
+  that a root-level project already had; `sharedPaths` names the linked directory.
+- **Cycle Step 4 forbids hand-rolled lockfile-mutating installs.**
+  `skills/cycle/references/detect-commands.md` now states the rule directly: when
+  dependencies must be installed by hand, emit `npm ci`,
+  `pnpm install --frozen-lockfile`, `yarn install --immutable`, or `uv sync --frozen`
+  (and for a subdirectory, `(cd <subdir> && npm ci)`) — never `npm install`, `yarn add`,
+  an unfrozen `pnpm install`/`uv sync`, or `poetry lock`, which rewrite the lockfile and
+  fail preparation's tree-unchanged guard. Feasibility probes take the same rule: probe
+  with the frozen install or a read-only command, never with a mutating one.
+  `tests/prepare-resolution-coverage.test.sh` keeps the resolver behaviour and the
+  guidance wired together.
+
 ## [2.31.0] - 2026-08-02
 
 Unattended-operation hardening. Full-plugin audit scoped to headless `claude -p`,
