@@ -129,6 +129,19 @@ git commit -qm noisy
 rc=0; out="$(bash "$SCRIPT" "$BASE" HEAD)" || rc=$?
 check "L: ubiquitous names are not reported as symbols" "1" "$rc"
 
+# Regression: running the probe on its own diff answered covered=yes for `read`
+# and `report` purely because unrelated tests use the words.
+git checkout -q -b generic "$BASE"
+cat > src/app.js <<'EOF'
+export function read(path) { return path; }
+export function report(finding) { return finding; }
+EOF
+git add -A
+git commit -qm generic
+rc=0; out="$(bash "$SCRIPT" "$BASE" HEAD)" || rc=$?
+check "L2: word-like generic names are skipped too" "1" "$rc"
+absent "L3: no coverage verdict is invented for a generic name" "covered=yes" "$out"
+
 # A pure edit with no definition change is a distinct, non-crashing answer.
 git checkout -q -b prose "$BASE"
 printf 'just prose\n' > src/app.js

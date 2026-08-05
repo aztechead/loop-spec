@@ -79,6 +79,11 @@ test_files = [path for path in os.environ.get("TEST_FILES", "").splitlines() if 
 TOO_COMMON = {
     "main", "run", "init", "setup", "teardown", "test", "check", "usage",
     "get", "set", "add", "new", "handler", "callback", "value", "data",
+    # Measured, not guessed: running this probe on its own diff answered
+    # covered=yes for `read`, `report`, and `budget` by matching unrelated test
+    # files that happen to use the word. A name that ubiquitous cannot answer
+    # the question either way.
+    "read", "write", "report", "load", "parse", "emit", "open", "close",
 }
 
 found = []          # (symbol, path) in first-seen order
