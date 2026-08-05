@@ -508,20 +508,28 @@ printf '{"schema":1,"title":"t"}' > "$Y/.loop-spec/active-run.json"
 term_args=(--cycle-type micro --status failed --outcome verification-failed
   --title t --converged false --summary s --verification-status failed)
 
-chmod 555 "$Y/.loop-spec"
-ec=0; bash "$LIB" write-terminal --result-root "$Y" "${term_args[@]}" >/dev/null 2>&1 || ec=$?
-check "Y: write-terminal publication failure exits 3" "3" "$ec"
-err="$(bash "$LIB" write-terminal --result-root "$Y" "${term_args[@]}" 2>&1 >/dev/null | grep -c 'TERMINAL RESULT NOT PUBLISHED' || true)"
-check "Y: write-terminal failure is loud" "1" "$err"
-check "Y: write-terminal failure preserves active-run.json" "1" \
-  "$([[ -f "$Y/.loop-spec/active-run.json" ]] && echo 1 || echo 0)"
+# An unwritable directory is how this case simulates a publication failure, and
+# root ignores the mode bits entirely -- the writes would succeed and every
+# assertion below would report a product bug that does not exist. CI containers
+# routinely run as root, so detect it and skip loudly rather than fail falsely.
+if [[ "$(id -u)" -eq 0 ]]; then
+  echo "SKIP: Y: publication-failure cases (running as root; chmod 555 does not deny uid 0)"
+else
+  chmod 555 "$Y/.loop-spec"
+  ec=0; bash "$LIB" write-terminal --result-root "$Y" "${term_args[@]}" >/dev/null 2>&1 || ec=$?
+  check "Y: write-terminal publication failure exits 3" "3" "$ec"
+  err="$(bash "$LIB" write-terminal --result-root "$Y" "${term_args[@]}" 2>&1 >/dev/null | grep -c 'TERMINAL RESULT NOT PUBLISHED' || true)"
+  check "Y: write-terminal failure is loud" "1" "$err"
+  check "Y: write-terminal failure preserves active-run.json" "1" \
+    "$([[ -f "$Y/.loop-spec/active-run.json" ]] && echo 1 || echo 0)"
 
-ec=0; LOOP_SPEC_RESULT_ROOT="$Y" bash "$LIB" write "$Y/.loop-spec/features/f1" \
-  --status failed --summary s --reason r >/dev/null 2>&1 || ec=$?
-check "Y: write pointer-publication failure exits 3" "3" "$ec"
-check "Y: write failure preserves active-run.json" "1" \
-  "$([[ -f "$Y/.loop-spec/active-run.json" ]] && echo 1 || echo 0)"
-chmod 755 "$Y/.loop-spec"
+  ec=0; LOOP_SPEC_RESULT_ROOT="$Y" bash "$LIB" write "$Y/.loop-spec/features/f1" \
+    --status failed --summary s --reason r >/dev/null 2>&1 || ec=$?
+  check "Y: write pointer-publication failure exits 3" "3" "$ec"
+  check "Y: write failure preserves active-run.json" "1" \
+    "$([[ -f "$Y/.loop-spec/active-run.json" ]] && echo 1 || echo 0)"
+  chmod 755 "$Y/.loop-spec"
+fi
 
 # Success afterwards: pointer lands, exit 0, recovery record consumed.
 ec=0; bash "$LIB" write-terminal --result-root "$Y" "${term_args[@]}" >/dev/null 2>&1 || ec=$?

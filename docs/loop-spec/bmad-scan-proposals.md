@@ -268,19 +268,51 @@ mechanism than a roundtable for the same purpose.
 
 ## Defects surfaced by this audit
 
-Not BMAD imports — things the comparison exposed in loop-spec. Each needs its own change.
+Not BMAD imports — things the comparison exposed in loop-spec.
 
-- **F1. A declared review dimension is never dispatched.**
-  `lib/workflows/code-review-dimensions.js:91` declares `correctness`, `security`,
-  `performance`, `style`; line 92 slices to `params.dimensionReviewers`, fixed at 3. `style`
-  is dead code that the findings schema still accepts. Either the fan-out or the list is
-  wrong, and the file does not say which.
-- **F2. `learnings.jsonl` is write-only.** `hooks/team/session-end-learnings.sh` appends and
-  FIFO-trims to 50 lines; no reader exists anywhere in the repository — `lib/retro.sh` does
-  not consult it. It is a cost with no consumer.
+**Fixed in this change:**
+
+- **F1. A declared review dimension was never dispatched.** *(fixed)*
+  `lib/workflows/code-review-dimensions.js` declared `correctness`, `security`,
+  `performance`, `style` and sliced to `params.dimensionReviewers`, fixed at 3, so `style`
+  was dead code that read like coverage. The list is now exactly the three dispatched
+  dimensions, with a guard that throws if the list and the fan-out ever disagree again.
+  `style` stays out deliberately: the code-for-humans pass owns it and is probe-backed by
+  `lib/house-style.sh`, which measures the house convention rather than asking a fourth
+  agent's taste.
+- **F2. `learnings.jsonl` was write-only.** *(fixed)* The SessionEnd hook had appended to it
+  since 2.x and nothing ever read it. `lib/retro.sh` now mines it as a third B1 corpus
+  alongside the micro-cycle ledger and sentinel history: task types whose sessions
+  repeatedly end partial or errored, counted across *distinct* sessions, become a rule
+  candidate from a fixed template.
+
+**Open — each needs its own change:**
+
 - **F3. The map index never prunes.** `skills/map-codebase/SKILL.md` updates the index by
   adding domains to a file's entry; there is no removal step, so deleted files keep voting
   on which domains are stale. 28 of 76 entries in this repo are orphans.
+  `lib/map-audit.sh orphans` now *detects* this and the map skill is instructed to drop the
+  keys, but nothing enforces it — the pruning itself should be a script, not an instruction.
 - **F4. `CONCERNS.md` and `index.json` disagree about staleness** (detected by
   `map-audit.sh staleness`); the map is 85 days old against a documented 90-day advisory
-  that only warns.
+  that only warns. Not fixed here on purpose: the honest repair is re-deriving that domain
+  with the mappers, and editing the timestamp to match the prose would launder the very
+  claim the check exists to catch.
+
+## Portability defects found by running the suite on Linux
+
+Unrelated to BMAD, found because this audit ran `tests/run-all.sh` on a Linux container
+and compared against the merge base. All three are fixed; the suite is now green.
+
+- **`skills/loop-runner/tests/run_tests.sh`** probed `.loop/perm-<mode>/result.json` using
+  the raw camelCase task id, but `loop.py` slugifies task ids to lowercase
+  (`LoopState.resolved_task_id`). The directory was found only on a case-insensitive
+  filesystem, so the check passed on macOS and failed on Linux for exactly the three
+  camelCase permission modes. The test now resolves the id the way the runner does.
+- **`tests/lib/revise-branch.test.sh`** cloned an empty bare repo and pushed `main`, which
+  only works when the host has `init.defaultBranch=main`; git still defaults to `master`
+  when that config is unset. The fixture now names the branch explicitly.
+- **`tests/lib/cycle-result.test.sh`** simulated a publication failure with `chmod 555`,
+  which does not constrain uid 0. Under root — the normal case in CI containers — the
+  writes succeeded and five assertions reported a product bug that did not exist. Those
+  cases now skip loudly when running as root.

@@ -233,8 +233,26 @@ if [[ -f "$SENTINEL_EVENTS" ]]; then
   jq -e 'type == "array"' >/dev/null 2>&1 <<<"$SENTINEL_BOUNCES" || SENTINEL_BOUNCES="[]"
 fi
 
+# ── B1 corpus: session learnings — non-success session outcomes grouped by the
+#    task type the SessionEnd hook inferred. The hook has written this file since
+#    2.x and nothing ever read it; an append-only log with no consumer is a cost
+#    the repo was paying for nothing. Recurrence across DISTINCT sessions is the
+#    signal — one bad session is noise.
+LEARNINGS_FILE="${LOOP_SPEC_LEARNINGS_FILE:-$ROOT/learnings.jsonl}"
+LEARNING_PATTERNS="[]"
+if [[ -f "$LEARNINGS_FILE" ]]; then
+  LEARNING_PATTERNS="$(jq -cs '
+    [map(select(type == "object" and (.outcome // "") != "success" and (.taskType // "") != ""))
+     | group_by(.taskType)[]
+     | {taskType: .[0].taskType,
+        sessions: (map(.sessionId // .timestamp // "") | unique | length)}]' \
+    "$LEARNINGS_FILE" 2>/dev/null || echo '[]')"
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$LEARNING_PATTERNS" || LEARNING_PATTERNS="[]"
+fi
+
 FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleetCost "$FLEET_COST" \
-              --argjson adhoc "$ADHOC_ENTRIES" --argjson bounces "$SENTINEL_BOUNCES" '
+              --argjson adhoc "$ADHOC_ENTRIES" --argjson bounces "$SENTINEL_BOUNCES" \
+              --argjson learnings "$LEARNING_PATTERNS" '
   def featsWithGap(g): [$feats[] | select(.gaps | index(g)) | .slug];
   def featsWithGateCap(g): [$feats[] | select(.gateCaps | index(g)) | .slug];
 
@@ -301,6 +319,14 @@ FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleet
                   features: ($bounces | map(select(.scans >= $min)) | map(.id))},
        rule: {text: "Retro: sentinel items repeatedly bounce needs-human - close the triage policy gap: label the source items (bug/enhancement/chore) or teach lib/sentinel-triage.sh their class", check: null}}
      else empty end),
+    # B1: session learnings — one candidate per task type whose sessions repeatedly
+    # ended non-success. taskType and the count are corpus data; the surrounding
+    # text is the fixed template, so this stays inside the closed auto-apply set.
+    (($learnings | map(select(.sessions >= $min))[]
+      | {id: ("session-outcome-recurs:" + .taskType), kind: "rule-candidate",
+         pattern: "sessions of one task type repeatedly ended without success",
+         evidence: {count: .sessions, features: [.taskType]},
+         rule: {text: ("Retro: '" + .taskType + "' sessions repeatedly end partial or errored - state done-criteria up front and run a verification command before claiming done (/loop-spec:micro protocol)"), check: null}})),
     (if ($shippedGaps | length) >= 2 then
       {id: "shipped-with-gaps", kind: "info",
        pattern: "completed runs shipped without converging (accepted gaps)",

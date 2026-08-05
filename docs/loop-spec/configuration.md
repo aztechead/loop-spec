@@ -198,6 +198,7 @@ CLI/Agent SDK supervisors, and
 | `LOOP_SPEC_RULES_FILE` | path; `.loop-spec/RULES.md` | Overrides the project rules file. |
 | `LOOP_SPEC_GLOBAL_RULES_FILE` | path; `~/.loop-spec/RULES.md` | Overrides the cross-project rules layer. |
 | `LOOP_SPEC_ADHOC_LEDGER` | path; `.loop-spec/adhoc-ledger.md` | Overrides the micro-cycle ledger. |
+| `LOOP_SPEC_LEARNINGS_FILE` | path; `.loop-spec/learnings.jsonl` | Overrides the session-learnings log that `lib/retro.sh` mines for recurring non-success session outcomes. Distinct from `LOOP_SPEC_LEARNINGS`, which enables or disables the SessionEnd writer. |
 | `LOOP_SPEC_BACKLOG_FILE` | path; `.loop-spec/BACKLOG.md` | Overrides the backlog. |
 | `LOOP_SPEC_WORKFLOW_CONFIG` | path; `.loop-spec/workflow.json` | Overrides workflow configuration. |
 | `LOOP_SPEC_ASSESS_TOP_N` | positive integer; `5` | Fragility hotspots per repository sent to assess reviewers. |

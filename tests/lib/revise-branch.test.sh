@@ -13,9 +13,13 @@ check() { [[ "$2" == "$3" ]] && pass "$1" || fail "$1 (expected $2, got $3)"; }
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/revise-branch-test-XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 REMOTE="$WORK/remote.git"
-git init -q --bare "$REMOTE"
+# `main` explicitly, not whatever init.defaultBranch happens to be on this machine:
+# git still defaults to `master` when the config is unset, so every `push origin main`
+# below failed with "src refspec main does not match any" on an unconfigured host.
+git init -q --bare -b main "$REMOTE"
 SEED="$WORK/seed"
 git clone -q "$REMOTE" "$SEED"
+git -C "$SEED" symbolic-ref HEAD refs/heads/main
 git -C "$SEED" config user.name test
 git -C "$SEED" config user.email test@example.invalid
 printf 'base\n' > "$SEED/app.txt"

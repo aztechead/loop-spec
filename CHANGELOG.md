@@ -76,6 +76,27 @@ exposed — is `docs/loop-spec/bmad-scan-proposals.md`.
 
 - `lib/pr-body.sh` gained a `## Suggested review order` section above the evidence sections,
   with its own line cap and H1 stripping, and `reviewOrder` joined the public artifact keys.
+- **A declared code-review dimension was never dispatched.**
+  `lib/workflows/code-review-dimensions.js` listed four dimensions and sliced to
+  `dimensionReviewers`, fixed at 3, so `style` was dead code that read like coverage. The
+  list is now exactly what gets dispatched, with a guard that throws if the list and the
+  fan-out disagree. `style` stays out on purpose: the code-for-humans pass owns it and is
+  probe-backed by `lib/house-style.sh`, which measures the convention rather than asking a
+  fourth agent's taste.
+- **`learnings.jsonl` had no reader.** The SessionEnd hook wrote it from 2.x onward and
+  nothing ever consumed it. `lib/retro.sh` now mines it as a third B1 corpus beside the
+  micro-cycle ledger and sentinel history: task types whose sessions repeatedly end partial
+  or errored — counted across distinct sessions, so one bad session is noise — produce a
+  rule candidate from a fixed template, inside the existing closed auto-apply set.
+  `LOOP_SPEC_LEARNINGS_FILE` overrides the path.
+- **Three test-suite portability defects, found by running the suite on Linux.**
+  `skills/loop-runner/tests/run_tests.sh` probed a task-state directory using the raw
+  camelCase task id while `loop.py` slugifies ids to lowercase, so the check passed only on
+  case-insensitive filesystems and failed on Linux for the three camelCase permission
+  modes. `tests/lib/revise-branch.test.sh` depended on the host having
+  `init.defaultBranch=main`. `tests/lib/cycle-result.test.sh` simulated a publication
+  failure with `chmod 555`, which does not constrain uid 0, so five assertions reported a
+  nonexistent product bug whenever the suite ran as root. `tests/run-all.sh` is green.
 
 
 
