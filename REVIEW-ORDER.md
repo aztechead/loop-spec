@@ -46,6 +46,13 @@ Read this one against BMAD's `customize.toml`: the divergence is deliberate.
 - doc says STALE, index says fresh — believe the doc
   `lib/map-audit.sh:186`
 
+**Defects the audit surfaced (fixed here)**
+
+- four dimensions declared, three dispatched — `style` was dead code
+  `lib/workflows/code-review-dimensions.js:91`
+- the log the SessionEnd hook wrote since 2.x finally gets a reader
+  `lib/retro.sh:236`
+
 **Version lockstep**
 
 - four declaration sites move together via `lib/bump-version.sh`
@@ -75,6 +82,10 @@ Read this one against BMAD's `customize.toml`: the divergence is deliberate.
   `tests/lib/pr-body.test.sh:107`
 - five new suites registered
   `tests/run-all.sh:62`
+- rule candidate from the newly-read learnings corpus
+  `tests/lib/retro.test.sh:267`
+- fixture named its branch instead of trusting host git config
+  `tests/lib/revise-branch.test.sh:16`
 - config contract entries for every new control
   `docs/loop-spec/configuration.md:141`
 - per-phase extension loading
