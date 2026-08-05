@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.32.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.33.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -152,7 +152,7 @@ All skills are invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Th
 | `watch` | Post-merge check for a shipped feature: did the default branch stay green, did anyone patch the feature's files? |
 | `micro` | Lightweight protocol for ad-hoc tasks: stated done-criteria, test-first, evidence before done. On by default as a session mode. |
 | `loop-runner` | The bundled loop engine, standalone: bounded autonomous loops for "implement this spec" or overnight runs. |
-| `grill` / `simplicity` / `discipline` / `rules` | Session-mode toggles; see Configuration below. |
+| `grill` / `simplicity` / `human-code` / `discipline` / `rules` | Session-mode toggles; see Configuration below. |
 | `onboard` | Guided one-time setup for the optional modes. Re-runnable; everything it writes is documented here. |
 | `pause` / `rollback` / `forensics` | Cycle lifecycle utilities: snapshot a paused run, restore a checkpoint, inspect a finished one. |
 
@@ -613,7 +613,7 @@ DELIVER refreshes proactively and retries one authentication failure; it never s
 
 **`micro.conf`** — `ENABLED=0` turns micro mode off (on by default). `VERIFY_CMD=<command>` declares the project's verification command when it does not match the built-in pattern (for example `VERIFY_CMD=rake spec`), so the Stop guard recognizes it as evidence.
 
-**`grill.conf`, `simplicity.conf`, `discipline.conf`** — session-mode persistence, written by their toggle skills. `ENABLED=0/1`; `simplicity.conf` also takes `LEVEL=lite|full|ultra` (default `full`). Grill and simplicity are on by default; discipline is opt-in.
+**`grill.conf`, `simplicity.conf`, `human-code.conf`, `discipline.conf`** — session-mode persistence, written by their toggle skills. `ENABLED=0/1`; `simplicity.conf` also takes `LEVEL=lite|full|ultra` (default `full`). Grill, simplicity, and human-code are on by default; discipline is opt-in.
 
 **`RULES.md`** — the self-learning rules file, injected into every session. Gitignore-excepted and committed, so rules survive ephemeral workspaces. Managed with `/loop-spec:rules` (`add`, `list`, `render`, `path`; `--check "<cmd>"` backs a rule with a deterministic check; `--global` writes to the cross-project layer at `~/.loop-spec/RULES.md`). The escalation contract makes coordinators consult this file, and PLAN.md's recorded decisions, before asking you anything.
 
@@ -847,6 +847,7 @@ Positions the codebase takes:
 - Deterministic predicates for autonomous decisions. Anything that decides whether the loop may act without a human is a unit-tested script (`autonomous-chain.sh`, `trust.sh`, `test-tamper-scan.sh`, `grounding-lint.sh`, `artifact-lint.sh`), never prose in a skill. Phase artifacts (SPEC.md, PLAN.md, PATTERNS.md, VERIFICATION.md, the tasks[] handoff JSON) are structurally linted at the PRODUCING phase's exit, so the next phase never spends cycles repairing a misformatted handoff — and PLAN persists its gate-validated tasks[] as machine-readable `tasks.json` that EXECUTE consumes directly instead of re-parsing markdown prose. Telemetry and accelerator hooks fail open; authority checks fail closed.
 - Bounded everything. 3 retries per gate, 40 global, 10 iterations, cooldowns on sentinel picks, wall-clock watchdogs on phases. The cycle ships or escalates; it does not loop forever.
 - Maker/checker separation. The iterate judge is never the agent that did the work, verify workers cannot edit the spec they are verified against, and trust is computed from git/CI facts rather than self-reports.
+- Code for humans ("house style over habit", `skills/shared/human-code.md`): read the neighbors before writing a line and match them — naming, error idiom, test structure, layout — because generated code fails its reader in a specific way: it is correct, and it looks nothing like the code around it. Comments carry why, never what, and comment *density* is set by the file rather than an absolute, so a module that documents nothing does not acquire a docstring convention from one diff. The convention is measured, not recalled: `lib/house-style.sh probe <files>` reports density, doc-comment usage, indentation, and naming case from the actual neighbors (or, for a file that does not exist yet, from its future neighbors), and `lib/comment-tells.sh` flags added comments that narrate the edit, narrate history, or restate the next line. Every code-producing dispatch carries the directive, a SessionStart hook covers the main thread, and VERIFY's reviewer runs both probes: a deviation a probe can demonstrate blocks; a convention you believe in but cannot show is taste, and taste stays Minor. Carve-outs never cut: `simplicity:` markers, file-header purpose blocks, TODO/FIXME/NOTE/HACK/SAFETY markers, spec-required contract docs. Enforced by `tests/human-code-coverage.test.sh`.
 - Design for change ("seams, not speculation", `skills/shared/design-for-change.md`): design to interfaces, give units their collaborators instead of constructing them internally, put boundaries where change is likely, and never build speculative artifacts behind a seam. Every design- and code-producing dispatch carries this directive, and VERIFY's reviewer runs a boundary pass. Enforced by `tests/design-coverage.test.sh`.
 - Execution discipline for throughput models (`skills/shared/execution-discipline.md`): the design phases run on the strongest reasoning models, EXECUTE/VERIFY on faster ones, so every executor dispatch carries mechanical habits: read it and run it instead of recalling it, treat anomalies as signal, re-read the acceptance criteria before claiming done, prefer `NEEDS_CONTEXT` over confident filler.
 - Loop engineering as a first-class layer: `compile_spec.py` (spec to verified task plan), `supervisor.py` (plan to a fleet of workers in isolated worktrees with merge and halt policy), and `loop.py` (bounded loop with verifier-integrity locking and durable state) ship with their own offline regression suite and power both the standalone loop-runner skill and EXECUTE's loop-fleet rung.
@@ -874,7 +875,7 @@ loop-spec/
 │   ├── cycle/ spec/ discuss/ plan/ execute/ verify/ iterate/ deliver/ # seven phases + orchestrator
 │   ├── map-codebase/ assess/ debug/ intake/ quality-loop/ revise/ retro/
 │   ├── status/ sentinel/ watch/ micro/ rules/ onboard/
-│   ├── grill/ simplicity/ discipline/                          # session-mode toggles
+│   ├── grill/ simplicity/ human-code/ discipline/               # session-mode toggles
 │   ├── pause/ rollback/ forensics/                             # lifecycle utilities
 │   ├── loop-runner/                 # bundled loop engine + its offline test suite
 │   └── shared/                      # cross-skill contracts (tier-matrix, model-matrix, autonomous-mode, pi-harness, opencode-harness, ...)

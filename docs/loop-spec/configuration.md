@@ -210,6 +210,7 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 |---|---|---|
 | `LOOP_SPEC_GRILL` | `1` | Asks 2–4 clarifying questions immediately after an opening prompt. |
 | `LOOP_SPEC_SIMPLICITY` | `1` | Injects the minimum-diff/deletion/reuse/stdlib directive. |
+| `LOOP_SPEC_HUMAN_CODE` | `1` | Injects the house-style directive: match the neighbors' conventions, comments carry why not what, comment density follows the file. Suppresses the SessionStart injection only; dispatch-rung copies travel in the prompt and are unaffected. |
 | `LOOP_SPEC_MICRO` | `1` | Enables the micro-mode SessionStart directive. |
 | `LOOP_SPEC_MICRO_GUARD` | `1` | Blocks stopping after code edits without a verification run; stands down for active feature cycles and docs/config-only edits. |
 | `LOOP_SPEC_DEFERRAL_GUARD` | `1` | Blocks completion with self-authored omitted/deferred scope. After denial, rewording alone remains blocked; repository work, a later verification action, and `Resolved scope: <item> — <evidence>` are required. |
@@ -269,6 +270,7 @@ angle brackets mean required. Inline words are tokens, not GNU flags.
 | `rules` | `add "<rule>" [--check "<cmd>"] \| list \| render \| path` | Manages project rules. `--check` associates a verification command with a rule. |
 | `sentinel` | `scan\|run` | `scan` reports candidates; `run` selects authorized backlog work. |
 | `simplicity` | `[on\|off\|status\|lite\|full\|ultra]` | Changes, reports, or selects simplicity intensity. |
+| `human-code` | `[on\|off\|status\|probe]` | Changes or reports code-for-humans mode; `probe` reports the conventions `lib/house-style.sh` measures for the given paths without changing state. |
 | `status` | `[status [slug]\|stats\|trust] [--json]` | Reports active state, metrics, or trust; `--json` emits machine-readable output. |
 | `watch` | `<slug> [--window-hours N]` | Evaluates post-merge stability over the requested window (default 24 hours). |
 

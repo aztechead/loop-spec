@@ -234,6 +234,23 @@ Bug-fix tasks: after the root cause is fixed, sweep callers, copy-pasted pattern
 parallel paths for the same mechanism; fix same-cause siblings within the task's files
 scope, report the rest.
 
+CODE FOR HUMANS (house style over habit — on by default). Code is read far more than it
+is written; your diff must read like the code around it. Read the neighbors of every file
+in the task's files list FIRST and match them: naming, error idiom, test structure, file
+layout, import order. The house convention outranks your defaults even where you would
+have chosen differently — disagreeing with it is a self-review finding, never a licence to
+deviate. Where the convention is unclear, measure it: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe
+<files>` reports comment density, doc-comment usage, indentation, and naming case from the
+actual neighbors. Comments carry WHY, never what: a constraint not visible locally, a
+decision and the alternative it beat, a workaround and its reason. Never narrate the code,
+restate a signature, announce the edit ("Added...", "Updated..."), or narrate history
+("previously...", "renamed from...") — `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` catches
+those three before you report DONE. Comment DENSITY matches the file, not an absolute: no
+docstrings added to a module that has none. A good name deletes a comment. No drive-by
+reformatting or renames that bury the change. NEVER cut `simplicity:` markers, file-header
+purpose blocks where the codebase uses them, TODO/FIXME/NOTE/HACK/SAFETY markers, or any
+comment encoding a non-obvious why.
+
 EXECUTION DISCIPLINE (evidence over recall — on by default). You execute a brief a
 stronger reasoning pass produced; your job is fidelity, not improvisation. Verify, don't
 recall: never assert what a file/command/API does from memory — read it, run it, paste
@@ -371,6 +388,18 @@ interface; one unit, one reason to change; new units receive collaborators (para
 never construct them deep inside. Never cut a seam to save lines, never build speculation
 behind one. Bug-fix tasks: sweep for the same mechanism (callers, copies, parallel paths)
 and fix same-cause siblings in scope; report the rest.
+
+CODE FOR HUMANS (house style over habit — on by default). Your diff must read like the
+code around it. Read the neighbors of every file in the task's files list FIRST and match
+them: naming, error idiom, test structure, layout, import order. The house convention
+outranks your defaults; disagreeing with it is a self-review finding, never a licence to
+deviate. Measure rather than guess: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <files>`. Comments carry
+WHY, never what. Never narrate the code, announce the edit ("Added...", "Updated..."), or
+narrate history ("previously...") — `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` catches those
+three. Comment DENSITY matches the file, not an absolute. A good name deletes a comment.
+No drive-by reformatting or renames that bury the change. NEVER cut `simplicity:` markers,
+file-header purpose blocks the codebase uses, TODO/FIXME/NOTE/HACK/SAFETY markers, or any
+comment encoding a non-obvious why.
 
 EXECUTION DISCIPLINE (evidence over recall — on by default). Verify, don't recall: never
 assert what a file/command does from memory — read it, run it, paste the actual output.

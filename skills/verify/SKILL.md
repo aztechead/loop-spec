@@ -255,7 +255,7 @@ spawn below.
 
 Send code-reviewer-1 its work prompt via SendMessage:
 
-Pass `spec_path` so the reviewer can check each SPEC Boundary / anti-goal against the diff (the "must never produce" behaviors most worth catching at a HARD gate), and echo the blocking-severity rule (Critical + Important block; Minor is recorded, backlogged, and never blocks) so the reviewer self-prioritizes blocking findings.
+Pass `probe_dir` (the absolute `${CLAUDE_SKILL_DIR}/../../lib`) so the code-for-humans pass can measure the diff's conventions instead of judging them — without it that pass degrades to reading neighbors and can only report Minor. Pass `spec_path` so the reviewer can check each SPEC Boundary / anti-goal against the diff (the "must never produce" behaviors most worth catching at a HARD gate), and echo the blocking-severity rule (Critical + Important block; Minor is recorded, backlogged, and never blocks) so the reviewer self-prioritizes blocking findings.
 
 **Single-repo mode (unchanged):**
 
@@ -263,7 +263,9 @@ Pass `spec_path` so the reviewer can check each SPEC Boundary / anti-goal agains
 SendMessage({
   to: "code-reviewer-1",
   message: "Review the feature branch diff against SPEC.md and PLAN.md acceptance criteria. Check each SPEC '## Boundaries (what NOT to do)' anti-goal against the diff; flag any violation Critical. Rank findings by the fixed rule: Critical + Important block; Minor is recorded but never blocks. When complete, SendMessage({to: 'lead', message: 'CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <summary of findings>'})."
-  // also include: slug, branch, baseSha, spec_path, plan_path
+  // also include: slug, branch, baseSha, spec_path, plan_path,
+  // and probe_dir = "${CLAUDE_SKILL_DIR}/../../lib" (absolute) so the code-for-humans
+  // pass can run its probes; the reviewer's cwd is the repo, not the plugin.
 })
 ```
 

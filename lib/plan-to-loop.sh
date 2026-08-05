@@ -20,6 +20,11 @@
 # Exit codes: 0 ok, 1 invalid tasks input, 2 bad invocation.
 set -euo pipefail
 
+# The probes the code-for-humans directive names ship beside this script, and the
+# loop-runner worker they are handed to runs with the target repository as its cwd.
+# Resolving the absolute path here is what makes the directive executable there.
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 SLUG="" SPEC="" PLAN="" MAX_ITER="10" TASKS_FILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -47,7 +52,7 @@ fi
 printf '%s' "$TASKS_JSON" | python3 -c "
 import json, re, sys
 
-slug, spec, plan, max_iter = sys.argv[1:5]
+slug, spec, plan, max_iter, lib_dir = sys.argv[1:6]
 
 try:
     tasks = json.load(sys.stdin)
@@ -144,6 +149,27 @@ for t in tasks:
         'fix same-cause siblings within the task files scope, report the rest.'
     )
 
+    # Code-for-humans directive (canonical: skills/shared/human-code.md).
+    # Travels with the ladder: the loop-runner worker sees only its prompt.
+    human = (
+        'CODE FOR HUMANS (house style over habit — on by default). Code is read far more '
+        'than it is written; your diff must read like the code around it. Read the '
+        'neighbors of every file in the task files list FIRST and match them: naming, '
+        'error idiom, test structure, layout, import order. The house convention outranks '
+        'your defaults even where you would have chosen differently — disagreeing with it '
+        'is a self-review finding, never a licence to deviate. Where the convention is '
+        f'unclear, measure it: run bash {lib_dir}/house-style.sh probe <files> for comment '
+        'density, doc-comment usage, indentation, and naming case from the actual '
+        'neighbors. Comments carry WHY, never what: a constraint not visible locally, a '
+        'decision and the alternative it beat, a workaround and its reason. Never narrate '
+        'the code, announce the edit ("Added...", "Updated..."), or narrate history '
+        f'("previously..."); bash {lib_dir}/comment-tells.sh scan <files> catches those three. '
+        'Comment density matches the file, not an absolute. A good name deletes a comment. '
+        'No drive-by reformatting or renames that bury the change. NEVER cut simplicity: '
+        'markers, file-header purpose blocks the codebase uses, TODO/FIXME/NOTE/HACK/'
+        'SAFETY markers, or any comment encoding a non-obvious why.'
+    )
+
     # Execution-discipline directive (canonical: skills/shared/execution-discipline.md).
     # Travels with the ladder: the loop-runner worker sees only its prompt.
     discipline = (
@@ -158,7 +184,7 @@ for t in tasks:
         'future-work notes; a criterion you cannot meet is a loud failure with evidence, '
         'never a note.'
     )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', discipline, '', f'TASK {raw}: {brief}', '']
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', human, '', discipline, '', f'TASK {raw}: {brief}', '']
     if global_constraints:
         lines.append('Global constraints (from the plan, verbatim; every one binds):')
         lines += [f'{c}' for c in global_constraints]
@@ -206,4 +232,4 @@ json.dump({
     'tasks': out_tasks,
 }, sys.stdout, indent=2)
 print()
-" "$SLUG" "$SPEC" "$PLAN" "$MAX_ITER"
+" "$SLUG" "$SPEC" "$PLAN" "$MAX_ITER" "$LIB_DIR"
