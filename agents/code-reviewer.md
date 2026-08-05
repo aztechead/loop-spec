@@ -57,10 +57,21 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
    - `inject:` a dependency constructed deep inside a unit (hardcoded path, command, collaborator) that should be received via params/args/env — untestable in isolation.
    - `iface:` a consumer depending on an implementation detail (internal field, private helper, output format quirk) rather than the stated interface.
    This pass lists; it never rewrites. Findings here and in step 6 must not contradict: do not demand a seam be cut as bloat (step 6) and added as a boundary (this step) — the seam stays.
-8. Classify remaining findings:
+8. **Code-for-humans pass** (canonical reference `skills/shared/human-code.md`). Step 6 asks "is there too much code?", step 7 asks "are the boundaries wrong?"; this pass asks "will the next person be able to read this?". Run the two probes first and quote them — this pass is grounded in what the neighbors actually do, never in your own style preferences:
+   - `bash lib/house-style.sh probe <changed files>` — comment density, doc-comment usage, indentation, naming case, line length, measured from the files the diff touches (or their neighbors). A `sample=none` or `unknown` answer means the convention is undemonstrated; report nothing on that axis.
+   - `bash lib/comment-tells.sh diff {base_sha} {branch}` — flags added comments that narrate the edit, narrate history, or restate the next line. Exit 1 means findings; exit 0 means clean.
+
+   Report each as **Important** with file:line, one line per finding. Tags:
+   - `house:` the diff deviates from a convention the probe measured — snake_case added to a camelCase module, a docstring convention invented in a module the probe reports as `doc_comments=no`, tabs in a `indent=spaces:2` file, an error idiom unlike its neighbors.
+   - `noise:` a comment tell from the scan, or comment density visibly outside what the probe measured for the file. Quote the tell name.
+   - `name:` an identifier whose meaning needs a comment that a better name would delete.
+   - `churn:` drive-by reformatting, unrelated renames, or reordering that buries the real change in the diff.
+
+   Never flag the carve-outs: `simplicity:` shortcut markers, file-header purpose blocks where the codebase uses them, TODO/FIXME/NOTE/HACK/SAFETY markers, spec- or API-required contract docs, and any comment encoding a non-obvious why are all intentional — leave them. Section banners and "Step N:" narration are judged against the file's neighbors, never banned outright. This pass lists; it never rewrites.
+9. Classify remaining findings:
    - **Critical**: security vulns (injection, auth bypass, secret leak), data loss risks, broken core invariants, SPEC Boundary/anti-goal violations, and any shortcut from step 5
-   - **Important**: bugs, perf regressions, missed test coverage, brittle code, over-engineering findings from step 6, design-for-change findings from step 7
-   - **Minor**: style, clarity, naming, todo cleanup
+   - **Important**: bugs, perf regressions, missed test coverage, brittle code, over-engineering findings from step 6, design-for-change findings from step 7, and the measurable code-for-humans findings from step 8 (`house:`, `noise:`, `churn:`)
+   - **Minor**: subjective clarity and naming preferences, todo cleanup, and `name:` findings — taste never blocks
 
 ## Tier-modulated severity threshold
 
@@ -70,7 +81,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 ## What NOT to do
 
 - Do NOT modify code. Your Write/Edit access is memory-scoped: the path hook denies any write outside `.claude/agent-memory/`.
-- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor.
+- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `lib/house-style.sh` measured, or a tell `lib/comment-tells.sh` flagged, is Important and blocks — you can point at the probe output. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
 - Do NOT review code that's pre-existing on `base_sha` - only the diff.
 
 ## Report format
@@ -80,5 +91,6 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 - **Important**: list
 - **Over-engineering**: tagged delete/stdlib/native/yagni/shrink lines + `net: -<N> lines possible` (`Lean already` if nothing cuts)
 - **Design-for-change**: tagged couple/corner/inject/iface lines (`Boundaries sound` if nothing flags)
+- **Code-for-humans**: the `house-style.sh` fact lines you measured, the `comment-tells.sh` verdict, then tagged house/noise/name/churn lines (`Reads like its neighbors` if nothing flags)
 - **Minor (deferred)**: list of follow-up suggestions
 - **Security summary**: 1-paragraph

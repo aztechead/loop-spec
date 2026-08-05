@@ -2,6 +2,80 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.33.0] - 2026-08-05
+
+Code for humans: generated code that reads like the codebase it lands in.
+
+### Added
+
+- **A third canonical prompt directive, `skills/shared/human-code.md` ("house style over
+  habit").** It joins the laziness ladder (how much code exists) and design-for-change
+  (where its boundaries sit) to govern how the code reads to the next person who opens the
+  file. Generated code fails its reader in a specific, recognisable way: it is correct, and
+  it looks nothing like the code around it — different naming, a different error idiom, a
+  docstring on every function in a module that has none, a comment above every line
+  restating the line. The directive makes the neighbors the style guide: read them first
+  and match them, and treat disagreement with a convention as a finding to report rather
+  than a licence to deviate mid-diff. Comments carry why, never what, and comment *density*
+  follows the file rather than an absolute, so a module that documents nothing does not
+  acquire a docstring convention from one diff. Carried verbatim by every code-producing
+  dispatch — `agents/implementer.md`, `skills/shared/team-prompts/implementer.md`, both
+  `skills/shared/execute-subagent.md` prompts, `lib/plan-to-loop.sh`, and
+  `lib/workflows/execute-dag.js` — because a SessionStart hook does not reach a dispatched
+  agent, which is exactly where code gets written. `agents/planner.md` shapes tasks with
+  it, and `tests/human-code-coverage.test.sh` fails the build when any wiring site loses it.
+- **`lib/house-style.sh` — the conventions, measured rather than recalled.** "Honor the
+  existing conventions" is the kind of prose criterion that rots: two runs read the same
+  repo and reach different conclusions, and nothing catches the drift. The probe samples
+  the files a task touches and reports comment density, doc-comment usage, indentation,
+  naming case, quote style, and line length, each answer on one line with the evidence that
+  produced it. A file that does not exist yet is answered by its future neighbors — sibling
+  files in the same directory sharing its extension — which is exactly the code a new file
+  has to sit beside. It answers `unknown` when the evidence is too thin and `sample=none`
+  (exit 1) when nothing readable was found, so a caller never receives an invented
+  convention.
+- **`lib/comment-tells.sh` — the three comment shapes that are wrong in any codebase.** A
+  comment narrating the edit ("Added error handling…"), a comment narrating history
+  ("Previously this used a global cache"), and a one-line comment whose next line of code
+  says the same thing. Comments are judged as blocks, not lines, so a sentence inside a
+  longer explanation is not mistaken for a changelog entry; comment syntax is keyed on the
+  file's extension, so `--- section ---` inside a shell string is not read as a SQL comment.
+  `scan` takes files, `diff` takes a base ref and reads only added lines. Section banners
+  and "Step N:" narration are deliberately absent: run against this repository they fired
+  178 times and every hit was correct house convention, so both stay judgments for the
+  reviewer against the file's own neighbors — a lint that fires on correct code teaches
+  people to ignore it.
+- **`hooks/team/human-code-inject.sh` and the `human-code` skill.** SessionStart injection,
+  default ON and self-scoped to loop-spec projects, so main-thread edits carry the
+  directive too. `/loop-spec:human-code on|off|status` persists to
+  `.loop-spec/human-code.conf`, `probe` reports the measured conventions for a path without
+  changing state, and `LOOP_SPEC_HUMAN_CODE=0` is the session-level kill switch (the
+  dispatch-rung copies travel in the prompt and are unaffected).
+
+### Changed
+
+- **VERIFY's reviewer runs a code-for-humans pass, and part of it blocks.** Step 6 asks "is
+  there too much code?", step 7 asks "are the boundaries wrong?", and the new step 8 asks
+  "will the next person be able to read this?". The reviewer runs both probes over the
+  feature diff and quotes them, then reports `house:` (deviation from a measured
+  convention), `noise:` (a comment tell, or density outside what the probe measured),
+  `name:` (an identifier needing a comment a better name would delete), and `churn:`
+  (drive-by reformatting that buries the change). The severity line moved with it: findings
+  a probe can demonstrate are **Important** and block, while a convention the reviewer
+  believes in but cannot show in the probe output is taste and stays **Minor**. The
+  long-standing "do not block on style preferences" rule survives intact — the probe output
+  is what separates a preference from a fact.
+
+### Notes
+
+- The directive's carve-outs are load-bearing, not politeness: `simplicity:` shortcut
+  markers (required by the ladder), file-header purpose blocks where the codebase uses
+  them, TODO/FIXME/NOTE/HACK/SAFETY/SECURITY markers, spec- or API-required contract docs,
+  and any comment encoding a non-obvious why are never cut and never counted against a
+  file's comment budget. Without them a "comment less" rule would order the deletion of
+  comments two other disciplines require. `tests/human-code-coverage.test.sh` asserts the
+  carve-out survives in the canonical file, the implementer agent, and the hook.
+
 ## [2.32.0] - 2026-08-04
 
 Workspace-aware dependency preparation.
