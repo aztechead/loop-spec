@@ -389,6 +389,43 @@ LIVE_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/verify-live.sh" run \
 - **Exit 0 with `allPass: true`:** append a "## Live verification" section to VERIFICATION.md listing each probe with its `EVID-NNN` id (the verifier cites evidence ids, never bare claims — the probe outputs are already in the EVIDENCE.md ledger).
 - **Exit 1** (never became ready, or a probe failed): emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"live-probe"}' || true`), then route remediation exactly like a verifier `FAIL` (Step 7): one FULL-SHAPE remediation task per failed probe (`subject = "Fix: live probe failed — {probe cmd}"`, `verifyCommand` = the probe), `gateHistory` entry (`gate: live-verify`, `result: fail`), `currentPhase = "execute"`.
 
+### Step 7.6 - Verification-gap pass
+
+Asks the one question the gates above do not: if the behavior this change produces broke where it is actually used, would any verification fail? Step 1.5 defends the tests that already exist; Step 3 checks that criteria carry verify commands; neither traces NEW behavior out to the sites that observe it.
+
+Ground it in the probe before dispatching, so the reviewer reasons from a measured symbol search rather than recalling one:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/verification-gap-scan.sh" "$baseSha" HEAD || true
+```
+
+Exit 1 means no definition changed in a non-test file — record that and skip the pass. Otherwise dispatch one reviewer carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/verification-gap.md` verbatim plus the probe output, on the same maker≠checker terms as Step 6 (never the agent that wrote the code).
+
+Findings are **advisory in this release**: record them in VERIFICATION.md under `## Verification gaps` and append each to `.loop-spec/BACKLOG.md`. They do not block delivery. A gap class this new blocking a verified change would cost more than it catches until the false-positive rate is measured on real runs; promoting it to blocking is a tuning decision backed by telemetry, not a default.
+
+### Step 7.7 - Project review layers (opt-in per repo)
+
+Any layer the project declared in `.loop-spec/extensions.json` runs here, after the built-in gates:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/extension-points.sh" layers verify
+```
+
+Each emitted line names a layer and its `promptFile`. Dispatch one reviewer per layer with that file's contents, and record findings alongside the verification-gap findings. Extensions ADD only: a declared layer can never disable, reorder, or shadow a built-in gate, and `extension-points.sh validate` refuses a layer claiming a built-in gate id. No output, a missing file, or a malformed file means no extra layers and no error — this path fails open.
+
+### Step 7.8 - Write the reviewer's guide
+
+The change is verified; now make it reviewable. Follow `skills/walkthrough/SKILL.md` in `--write` mode to produce `docs/loop-spec/features/{slug}/REVIEW-ORDER.md`, then lint it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/review-trail.sh" lint \
+  "docs/loop-spec/features/${slug}/REVIEW-ORDER.md" "$baseSha" HEAD
+```
+
+Fix every finding and re-run until clean. Record the artifact path in `feature.json` as `artifacts.reviewOrder` so DELIVER inlines it into the PR body.
+
+This never gates delivery. If the trail cannot be produced or will not lint after a reasonable attempt, note it in VERIFICATION.md and continue — a verified change held back over prose costs the reviewer more time than the guide saves.
+
 ### Step 8 - TeamDelete verify team
 
 ```

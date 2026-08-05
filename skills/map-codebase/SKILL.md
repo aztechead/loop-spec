@@ -211,12 +211,41 @@ fi
 
 Note: `.loop-spec/codebase/index.json` is NOT gitignored (it's a tracking file the mapping needs across machines). Only `.loop-spec/features/` and `.loop-spec/worktrees/` are gitignored. Update `.gitignore` accordingly if needed (this should already be correct from Task 0).
 
+### Step 6.5 - Audit the map that was just written
+
+A regenerated map is not automatically a true one. Measure it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/map-audit.sh" audit || true
+```
+
+Four facts, none of them judgments: total size against the ceiling
+(`LOOP_SPEC_MAP_MAX_LINES`, default 1000 lines), cited paths that no longer exist in the
+tree, `index.json` entries whose file is gone, and per-domain age plus any document that
+declares itself stale while the index records it as fresh.
+
+Report every finding in Step 7 and act on what this refresh owns:
+
+- `stale-claim` in a domain you just refreshed is a defect in the refresh — fix the claim
+  or cut it before committing.
+- `orphan-index-entry` means a deleted file still maps to a domain and still votes on
+  staleness. Drop those keys from `index.json` in Step 4.
+- `over-budget` means the map must shrink, never that the ceiling should rise. The whole
+  point of a budget is that it is not negotiated by the thing being measured.
+- `trust-disagreement` means the prose and the machine state disagree about freshness.
+  Believe the prose and re-derive that domain.
+
+Findings outside this refresh's scope are reported, not silently carried: append them to
+`.loop-spec/BACKLOG.md`. This never blocks the commit — an audit that could refuse to
+record a refreshed map would leave the map staler than the one it rejected.
+
 ### Step 7 - Report
 
 Print:
 - Domains refreshed: list
 - Files inspected: count
 - New domains added (if any new files)
+- Audit findings from Step 6.5: count by kind, or "clean"
 
 ## Standalone CLI
 

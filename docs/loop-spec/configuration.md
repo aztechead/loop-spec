@@ -138,6 +138,11 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_CMD_*` | shell command; detected | Reserved command-family namespace. Only command names consumed by the installed release have an effect; unknown suffixes are ignored. |
 | `LOOP_SPEC_REGRESSION_SCAN` | `0`/`1`; `0` | `1` adds VERIFY’s advisory prior-feature regression scan. |
 | `LOOP_SPEC_RALPH_THRESHOLD` | positive integer; `3` | Consecutive no-progress VERIFY remediation rounds before escalation. |
+| `LOOP_SPEC_EXTENSIONS` | path; `.loop-spec/extensions.json` | Project extension declarations read by `lib/extension-points.sh`: additional review layers, per-phase prepend/append instructions, and standing facts. Extensions add only — a declared layer can never disable, reorder, or shadow a built-in gate, and no authority script reads this file. Read paths fail open; `extension-points.sh validate` fails closed. |
+| `LOOP_SPEC_MAP_MAX_LINES` | positive integer; `1000` | Ceiling for the total size of the codebase map, measured by `lib/map-audit.sh budget` (~20k tokens across the five domains). Exceeding it is a finding to cut against, never a reason to raise the ceiling. |
+| `LOOP_SPEC_MAP_MAX_AGE_DAYS` | positive integer; `90` | Age at which `lib/map-audit.sh staleness` reports a map domain as stale, matching the existing refresh advisory. |
+| `LOOP_SPEC_MAP_DIR` | path; `docs/loop-spec/codebase` | Codebase-map location read by `lib/map-audit.sh`. |
+| `LOOP_SPEC_MAP_INDEX` | path; `.loop-spec/codebase/index.json` | Map index location read by `lib/map-audit.sh orphans` and `staleness`. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | integer `0..86400`; `900` | Total DELIVER wait for required PR checks. `0` performs no extended wait. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
 | `LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS` | non-negative integer; `30` | Grace period after push during which a missing check is treated as not-yet-registered rather than absent. |
@@ -272,6 +277,7 @@ angle brackets mean required. Inline words are tokens, not GNU flags.
 | `simplicity` | `[on\|off\|status\|lite\|full\|ultra]` | Changes, reports, or selects simplicity intensity. |
 | `human-code` | `[on\|off\|status\|probe]` | Changes or reports code-for-humans mode; `probe` reports the conventions `lib/house-style.sh` measures for the given paths without changing state. |
 | `status` | `[status [slug]\|stats\|trust] [--json]` | Reports active state, metrics, or trust; `--json` emits machine-readable output. |
+| `walkthrough` | `[<slug> \| <base-ref>] [--write \| --walk]` | Builds the reviewer's guide for a change. `--write` (default inside a cycle) produces and lints `REVIEW-ORDER.md` and stops; `--walk` presents the trail one concern at a time for a human reviewer. |
 | `watch` | `<slug> [--window-hours N]` | Evaluates post-merge stability over the requested window (default 24 hours). |
 
 `spec`, `discuss`, `plan`, `execute`, `verify`, `iterate`, and `deliver` are cycle

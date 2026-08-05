@@ -34,6 +34,7 @@ with open(feature_path) as f:
     feature = json.load(f)
 
 HARD_CAP = 10_000  # bytes; concise by construction, this is a backstop
+REVIEW_ORDER_MAX_LINES = 30  # ~5 concerns of stops; the full trail is on the branch
 
 
 def read_artifact(key):
@@ -56,6 +57,7 @@ def read_artifact(key):
 # tracked regular file in this repository before calling it "committed".
 PUBLIC_ARTIFACT_KEYS = (
     "spec", "patterns", "plan", "execution", "verification", "iteration",
+    "reviewOrder",
 )
 
 
@@ -230,6 +232,19 @@ if spec:
         parts += ["", "## Acceptance criteria", "", criteria]
     if quality:
         parts += ["", "## Spec quality", "", quality]
+
+# The trail earns its place above the evidence sections: a reviewer needs the
+# reading order before the proof, because the proof is what they are checking.
+review_order = read_artifact("reviewOrder")
+if review_order:
+    stops = [line for line in review_order.splitlines() if not line.startswith("# ")]
+    while stops and not stops[0].strip():
+        stops.pop(0)
+    if stops:
+        parts += ["", "## Suggested review order", ""]
+        parts += stops[:REVIEW_ORDER_MAX_LINES]
+        if len(stops) > REVIEW_ORDER_MAX_LINES:
+            parts += ["", "_Trail truncated; the full order is committed on the branch._"]
 
 verification = read_artifact("verification")
 if verification:

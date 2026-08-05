@@ -775,6 +775,17 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
      --feature-dir "$(cd ".loop-spec/features/${slug}" && pwd -P)" \
      --phase "$currentPhase" --autonomous "$active_autonomous"
    ```
+   Then load anything this project declared for the phase. Both calls are silent in a
+   project that declared nothing, which is the normal case:
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/extension-points.sh" instructions "$currentPhase" prepend
+   bash "${CLAUDE_SKILL_DIR}/../../lib/extension-points.sh" facts
+   ```
+   Treat each emitted instruction as a directive for this phase, and each `fact=file`
+   path as standing context to read before the phase begins. Run the `append` instructions
+   after the skill returns. These are accelerators: they may shape how work is done, never
+   whether a gate passes, and the path fails open — no output means no extensions.
+
    Print the greppable boundary line before invoking (and its `done` twin with elapsed
    time + headline verdict after the skill returns) — `skills/shared/report-style.md`:
    `[{CURRENTPHASE}] start` / `[{CURRENTPHASE}] done ({elapsed}) — {verdict}`.

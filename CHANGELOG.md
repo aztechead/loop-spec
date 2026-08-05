@@ -2,7 +2,82 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
-## [2.33.0] - 2026-08-05
+## [2.34.0] - 2026-08-05
+
+BMAD-METHOD scan: four imports, all of them on the human's side of the seam.
+
+A full audit against [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) v6.10.0
+(read from source, not documentation) found the two projects optimizing opposite ends of
+the same problem. BMAD optimizes the human–AI collaboration surface; loop-spec optimizes
+unattended correctness. Everything loop-spec was missing turned out to be on the human's
+side: what the reviewer receives, what a team can change without forking, and whether the
+context loaded into every design phase is still true. The full comparison — including
+where loop-spec is ahead, four proposals not implemented, and four defects the comparison
+exposed — is `docs/loop-spec/bmad-scan-proposals.md`.
+
+### Added
+
+- **The reviewer's guide (`lib/review-trail.sh`, `skills/walkthrough/`).** The cycle spent
+  seven phases proving a change to itself and then handed a human a flat diff, discarding
+  everything it knew about the change's shape at the moment a reviewer needed it. VERIFY
+  now writes `REVIEW-ORDER.md`: ordered `path:line` stops grouped by concern, entry point
+  first, tests and config last, at most fifteen words of framing each. The script owns the
+  facts — which files changed, which are peripheral by path rules, the anchor line of each
+  first change — and the model owns the concern grouping and the prose, which is the right
+  split. `lint` then measures the finished trail against the diff: every core file has a
+  stop, every stop resolves to a real line inside the change surface, framing is within the
+  cap, and no peripheral stop precedes the last core stop. The `uncovered` finding is the
+  one that matters, because a guide that silently omits part of the change reads as
+  complete. DELIVER inlines the trail above the PR body's evidence sections;
+  `/loop-spec:walkthrough --walk` presents it conversationally. In a repo whose product is
+  markdown or config — this plugin is one — every file would classify peripheral, so the
+  classification stands down and says so rather than reporting a change with no substance.
+  Nothing here gates delivery: a verified change is never held back over prose.
+- **The verification-gap pass (`lib/verification-gap-scan.sh` +
+  `skills/shared/review-prompts/verification-gap.md`).** Asks the one question the existing
+  gates do not: if the behavior this change produces broke where it is actually used, would
+  any verification fail? The tamper scan defends tests that already exist, the acceptance
+  gate checks that criteria carry verify commands, and the code reviewer lists missed
+  coverage as one Important-bucket item — none traces *new* behavior out to the sites that
+  observe it. BMAD's prompt instructs the reviewer to search the repo by symbol before
+  claiming no test exists; that is a model performing a search from memory to select a
+  finding, so it became a probe instead. The scan reports, per definition the diff added or
+  edited in a non-test file, which test files name that symbol, searching the post-change
+  tree so a test added by the same diff counts as the evidence that closes the gap. The
+  prompt is explicit that `covered=no` is a starting point rather than a finding and
+  `covered=yes` is not proof. Findings are advisory in this release — recorded in
+  VERIFICATION.md and the backlog, never blocking — until the false-positive rate is
+  measured on real runs.
+- **Project extension points as data (`lib/extension-points.sh`,
+  `.loop-spec/extensions.json`).** loop-spec was configurable through some sixty
+  environment variables but not extensible: a team wanting one review layer of its own, or
+  one standing fact in front of every planner, had no move short of forking the skill
+  markdown. Projects can now declare `reviewLayers[]`, per-phase
+  `phaseInstructions.{prepend,append}`, and `persistentFacts[]` with globs resolved before
+  a phase sees them. Where this deliberately diverges from BMAD's `customize.toml`:
+  **extensions add, they never subtract.** BMAD lets a user switch a review layer off;
+  loop-spec must not, because its gates are what let the loop act without a human, and a
+  config that could disable one would be an authority control wearing an accelerator's
+  clothes. `validate` refuses any layer claiming a built-in gate id, layer count and
+  instruction length are capped so a config cannot quietly become a context budget, and a
+  test asserts that no authority script reads the file. Read paths fail open; `validate`
+  fails closed.
+- **Map audit (`lib/map-audit.sh`).** The codebase map is loop-spec's one regenerated
+  artifact and nothing measured it. Four measurements, no rewriting: total size against a
+  ceiling (`LOOP_SPEC_MAP_MAX_LINES`, default 1000 lines), cited paths that no longer exist
+  (skipping globs, placeholders, URLs, and `e.g.` illustrations, because a pattern is not a
+  claim), index entries whose file is gone, and per-domain age plus any document declaring
+  itself stale while the index records it as fresh. Run against this repository's own map it
+  reports nine dead path citations, 28 orphaned index entries out of 76, and one
+  document/index disagreement — which is the evidence for BMAD's thesis, not against it.
+  Wired into `map-codebase` as Step 6.5, advisory, and it never blocks recording a refresh.
+
+### Fixed
+
+- `lib/pr-body.sh` gained a `## Suggested review order` section above the evidence sections,
+  with its own line cap and H1 stripping, and `reviewOrder` joined the public artifact keys.
+
+
 
 Code for humans: generated code that reads like the codebase it lands in.
 

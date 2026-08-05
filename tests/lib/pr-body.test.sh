@@ -104,6 +104,35 @@ printf '# Verification\n\nresult ok\n\n```text\nunclosed fence\n' > "$DOCS/VERIF
 bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
 check "3: fences balanced after render" "0" "$(( $(grep -c '^```' "$OUT") % 2 ))"
 
+# ── Case 3b: the reviewer's guide is inlined, bounded, and H1-free ───────────
+printf '# Verification\n\nresult ok\n' > "$DOCS/VERIFICATION.md"
+{
+  echo '# Suggested review order'
+  echo
+  echo '**The seam**'
+  echo
+  echo '- decides which branch runs'
+  echo '  `lib/thing.sh:12`'
+} > "$DOCS/REVIEW-ORDER.md"
+git -C "$WORK" add docs >/dev/null 2>&1
+git -C "$WORK" commit -qm "review order" >/dev/null 2>&1
+jq '.artifacts.reviewOrder = "docs/loop-spec/features/demo/REVIEW-ORDER.md"' \
+  "$WORK/feature.json" > "$WORK/feature-trail.json"
+bash "$LIB" render "$WORK/feature-trail.json" "$WORK" "$OUT"
+check "3b: review order section rendered" "1" "$(grep -c '^## Suggested review order' "$OUT")"
+check "3b: stop anchor survives" "1" "$(grep -c 'lib/thing.sh:12' "$OUT")"
+check "3b: trail H1 does not leak" "0" "$(grep -c '^# ' "$OUT")"
+check "3b: trail is listed as a committed artifact" "1" \
+  "$(grep -c 'docs/loop-spec/features/demo/REVIEW-ORDER.md' "$OUT")"
+check "3b: guide precedes the verification evidence" "1" \
+  "$(awk '/^## Suggested review order/{g=NR} /^## Verification/{v=NR} END{print (g && v && g<v)?1:0}' "$OUT")"
+
+# A trail longer than the cap is truncated, never dumped whole.
+{ echo '# Suggested review order'; echo; for i in $(seq 1 80); do echo "- framing $i"; echo "  \`lib/f$i.sh:$i\`"; done; } > "$DOCS/REVIEW-ORDER.md"
+bash "$LIB" render "$WORK/feature-trail.json" "$WORK" "$OUT"
+check "3b: long trail is capped" "1" \
+  "$(awk '/^## Suggested review order/{c=1;next} /^## /{c=0} c&&/^- framing/{n++} END{print (n<=30)?1:0}' "$OUT")"
+
 # ── Case 4: missing artifacts degrade to a minimal body ──────────────────────
 jq -n '{schemaVersion:7,slug:"bare",feature_title:"Bare",warnings:[],artifacts:{}}' > "$WORK/bare.json"
 bash "$LIB" render "$WORK/bare.json" "$WORK" "$OUT"

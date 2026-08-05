@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.33.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.34.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -124,7 +124,7 @@ What happens:
 7. ITERATE judges the integrated result against your original request, not the spec the loop wrote for itself. If the goal is not met it classifies the gap and rewinds to the right phase.
 8. DELIVER pushes the terminal commit by explicit SHA, reconciles an existing checkpoint PR or creates one draft, waits for required checks, verifies the remote and PR still point at that SHA, then marks the PR ready and prints its URL.
 
-You review the PR.
+You review the PR — with a reading order. Before DELIVER, VERIFY writes `REVIEW-ORDER.md`: the change as ordered `path:line` stops grouped by concern, entry point first, tests and config last, one line of framing each. `lib/review-trail.sh` classifies the surface and then lints the finished trail against the actual diff, so a guide cannot silently omit a changed file, cite a line that does not exist, or bury the logic behind its fixtures. DELIVER inlines it above the evidence sections of the PR body. `/loop-spec:walkthrough --walk` presents the same trail conversationally. None of it gates delivery: a verified change is never held back over prose.
 
 Variations:
 
@@ -150,6 +150,7 @@ All skills are invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Th
 | `status` | Read-only dashboard: per-feature status, aggregate stats, the metrics contract, trust level, pending needs-human items. |
 | `sentinel` | Watch work sources and triage them into a queue (`scan`); drive the queue through the cycle within trust-governed bounds (`run`). |
 | `watch` | Post-merge check for a shipped feature: did the default branch stay green, did anyone patch the feature's files? |
+| `walkthrough` | Build the reviewer's guide for a change: ordered `path:line` stops grouped by concern, entry point first, supporting files last. Writes `REVIEW-ORDER.md`, lints it against the diff, and can walk a human through it (`--walk`). |
 | `micro` | Lightweight protocol for ad-hoc tasks: stated done-criteria, test-first, evidence before done. On by default as a session mode. |
 | `loop-runner` | The bundled loop engine, standalone: bounded autonomous loops for "implement this spec" or overnight runs. |
 | `grill` / `simplicity` / `human-code` / `discipline` / `rules` | Session-mode toggles; see Configuration below. |
@@ -180,7 +181,7 @@ Notes on the ones with more surface:
 | DISCUSS | revised SPEC.md | spec critique (always runs; single critic by default, debate on escalation) |
 | PLAN | `PATTERNS.md` + `PLAN.md` (task DAG with verify commands) | plan critique + feasibility + criteria coverage |
 | EXECUTE | per-task commits on `feat/{slug}` | per-task spec-compliance review with retries; dispatch chosen by DAG width |
-| VERIFY | `VERIFICATION.md`, codebase map refresh | marker scan, test-tamper scan, acceptance gate, blocking code review |
+| VERIFY | `VERIFICATION.md`, `REVIEW-ORDER.md`, codebase map refresh | marker scan, test-tamper scan, acceptance gate, blocking code review; advisory verification-gap pass |
 | ITERATE | `ITERATION.md` (per-iteration verdicts) | goal re-judge; terminal verdict advances, otherwise classify the gap and rewind |
 | DELIVER | durable `delivery.targets[]`, final PR | exact-SHA push, one-PR reconciliation, required checks, head-drift guard, draft-to-ready |
 
@@ -193,6 +194,8 @@ Some mechanics worth knowing:
 **EXECUTE picks its dispatch by DAG width and probed capability** (`lib/dag-width.sh`, `lib/execute-rung.sh`). Width 1 runs a single subagent sequentially. Modest widths fan out batched subagent waves. Higher widths use an agent team where implementers claim tasks from the shared task list (when teams are available). Very wide DAGs can escalate to the Workflow DAG, but only on explicit opt-in (`LOOP_SPEC_EXECUTE_WORKFLOW=1`). The loop fleet compiles tasks into bounded headless workers, but is selected only when the harness can keep its synchronous supervisor call alive. One-shot/headless runs fall back to subagent waves at every width. Every loop iteration re-runs the task verify command, and SPEC.md/PLAN.md are hash-locked so a worker cannot edit requirements to match its work. All rungs enforce the same spec-compliance contract, merge into `feat/{slug}`, and return the same result shape. Tasks with overlapping `files[]` get synthetic `blockedBy` edges as a concurrency guard beyond the explicit DAG.
 
 **VERIFY defends the oracle.** The test-tamper scan (`lib/test-tamper-scan.sh`) fails the phase if the diff deletes tests, adds skip/focus annotations, or swallows a test command's exit code. The marker scan rejects unresolved `TBD`/`FIXME`/`XXX` in changed files before any acceptance agent is dispatched. Optionally, the live-run rung launches the built application, waits for readiness, executes acceptance probes, and records each probe in the feature's `EVIDENCE.md` ledger (see `verifyCommands` in Configuration); repos without that config run suite-only, and a launch command is never guessed.
+
+A separate **verification-gap pass** asks what the other gates do not: if the behavior this change produces broke where it is actually used, would any verification fail? The tamper scan defends the tests that already exist and the acceptance gate checks that criteria carry verify commands; neither traces *new* behavior out to the sites that observe it. `lib/verification-gap-scan.sh` reports, per definition the diff added or edited, which test files name that symbol across the post-change tree — the repo-wide symbol search a reviewer would otherwise do from memory. The reviewer (`skills/shared/review-prompts/verification-gap.md`) classifies real gaps as regression, missing-adoption, or broken-verification, under evidence rules that require reading a test before claiming what it covers. `covered=no` is a starting point, never a finding; `covered=yes` is not proof. Findings are advisory in this release: recorded in VERIFICATION.md and the backlog, never blocking, until the false-positive rate is measured on real runs.
 
 **DELIVER owns the final mile.** `lib/pr-delivery.sh` pushes an explicit commit SHA, proves the remote ref and PR head match it, reconciles checkpoint/final metadata idempotently, polls required checks with bounded command and total timeouts, treats pending/cancel/fail distinctly, and marks the draft ready only after success. It never force-pushes, merges, or enables auto-merge. CI failure routes through EXECUTE -> VERIFY -> ITERATE; transport, identity, or check-oracle failures stop resumably rather than claiming completion.
 
@@ -615,6 +618,28 @@ DELIVER refreshes proactively and retries one authentication failure; it never s
 
 **`grill.conf`, `simplicity.conf`, `human-code.conf`, `discipline.conf`** — session-mode persistence, written by their toggle skills. `ENABLED=0/1`; `simplicity.conf` also takes `LEVEL=lite|full|ultra` (default `full`). Grill, simplicity, and human-code are on by default; discipline is opt-in.
 
+**`extensions.json`** — what this project adds to the pipeline, read by `lib/extension-points.sh`. Committed, not gitignored:
+
+```json
+{
+  "schemaVersion": 1,
+  "reviewLayers": [
+    {"id": "domain-invariants", "name": "Domain invariants",
+     "promptFile": ".loop-spec/prompts/invariants.md", "phase": "verify"}
+  ],
+  "phaseInstructions": {
+    "plan": {"prepend": ["Prefer the existing queue abstraction."]}
+  },
+  "persistentFacts": ["file:docs/context/*.md", "The staging database is read-only."]
+}
+```
+
+- `reviewLayers[]` run after the built-in gates in their phase; each gets one reviewer carrying `promptFile`. Capped at 5.
+- `phaseInstructions.<phase>.{prepend,append}` are directives for that phase only, unlike `RULES.md` which is session-global.
+- `persistentFacts[]` are standing context; `file:` entries take globs and are resolved to real paths before a phase sees them.
+
+**Extensions add; they never subtract.** A declared layer cannot disable, reorder, or shadow a built-in gate — `extension-points.sh validate` refuses any layer claiming a built-in gate id, because the gates are what let the loop act without a human, and a config that could switch one off would be an authority control wearing an accelerator's clothes. No authority script (`trust.sh`, `autonomous-chain.sh`, `task-route.sh`, `execute-rung.sh`) reads this file, and a test enforces that. Read paths fail open — a malformed file means no extensions and a stderr note, never a blocked phase — while `validate` fails closed so you can check it deliberately.
+
 **`RULES.md`** — the self-learning rules file, injected into every session. Gitignore-excepted and committed, so rules survive ephemeral workspaces. Managed with `/loop-spec:rules` (`add`, `list`, `render`, `path`; `--check "<cmd>"` backs a rule with a deterministic check; `--global` writes to the cross-project layer at `~/.loop-spec/RULES.md`). The escalation contract makes coordinators consult this file, and PLAN.md's recorded decisions, before asking you anything.
 
 **Runtime state you normally leave alone:** `runtime.json` (probe cache), `sentinel-queue.json` (re-derived view), `sentinel-events.jsonl` (append-only decision ledger), `BACKLOG.md`, `adhoc-ledger.md`, `learnings.jsonl`, `quality-loop.json`, and per-feature state under `features/{slug}/`.
@@ -629,6 +654,7 @@ docs/loop-spec/                          # committed
 │   ├── PLAN.md
 │   ├── VERIFICATION.md
 │   ├── EVIDENCE.md                       # probe ledger (EVID-NNN ids)
+│   ├── REVIEW-ORDER.md                   # the reviewer's guide (ordered path:line stops)
 │   └── ITERATION.md                      # per-iteration convergence verdicts
 ├── RETRO.md                              # dated retrospective reports
 ├── telemetry/runs/{slug}.json            # per-run digests (local by default; committed only under LOOP_SPEC_COMMIT_TELEMETRY=1)
@@ -639,6 +665,7 @@ docs/loop-spec/                          # committed
 .loop-spec/                              # gitignored (exceptions noted)
 ├── BACKLOG.md                            # deferred findings + iterate gaps
 ├── RULES.md                              # self-learning rules (gitignore-excepted, committed)
+├── extensions.json                       # project review layers / phase instructions / facts (committed)
 ├── features/{slug}/
 │   ├── feature.json (+ .bak)             # schema v7, atomic writes
 │   ├── PROGRESS.md                       # phase-transition journal
@@ -839,6 +866,7 @@ More in `docs/adopting.md`; the full architecture, including the fixed operating
 Three open-source projects shaped this one:
 
 - [superpowers](https://github.com/obra/superpowers): a curated bundle of skills that turns Claude Code into a disciplined collaborator. Its lesson here: skills are how you encode workflow.
+- [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD): agile AI-driven development, also skill-based since v6. Its lesson: the two projects optimize opposite ends of the same problem — BMAD the human collaboration surface, loop-spec unattended correctness — so what loop-spec was missing was all on the human's side of the seam. Four mechanisms are ported, with the full comparison and the measurements behind it in [docs/loop-spec/bmad-scan-proposals.md](docs/loop-spec/bmad-scan-proposals.md): the reviewer's guide (BMAD's "Suggested Review Order" and checkpoint walkthrough), the verification-gap review pass, project extension points as data (BMAD's `customize.toml`), and a map audit built on BMAD's measured thesis that *generated documentation makes agents worse while a curated minimum of verified truths makes them better*. Run against this repo's own map, that audit found nine cited paths that no longer exist and 28 orphaned index entries — the argument landed.
 - [get-shit-done](https://github.com/gsd-build/get-shit-done): a multi-phase workflow that captures every decision in markdown artifacts. Its lesson: spec-driven beats prompt-driven as soon as a task is bigger than one commit, because the spec catches design errors that re-rolls cannot. Several mechanisms are ported directly: the first-run codebase map (with GSD `.planning/` ingest), the pattern-mapper, the VERIFY marker scan, stall detection on resume, and orphaned-worktree pruning.
 - [ponytail](https://github.com/DietrichGebert/ponytail): a "lazy senior dev" skill that climbs a ladder (YAGNI, reuse, stdlib, native, installed dep, one line, minimum) before writing code, without cutting validation, error handling, security, or accessibility. Ported here as simplicity mode plus an over-engineering pass in VERIFY's code review.
 
