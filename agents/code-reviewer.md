@@ -32,6 +32,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 - `base_sha`
 - `spec_path`: SPEC.md (for the Boundaries / anti-goals the diff must not violate)
 - `plan_path`: PLAN.md (for context on what was supposed to be built)
+- `probe_dir`: absolute path to the plugin's `lib/` directory, supplied by the dispatching skill (`${CLAUDE_SKILL_DIR}/../../lib`). The code-for-humans pass runs its probes from here; absent, that pass degrades to reading neighbors and reports Minor only.
 
 ## Procedure
 
@@ -58,8 +59,10 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
    - `iface:` a consumer depending on an implementation detail (internal field, private helper, output format quirk) rather than the stated interface.
    This pass lists; it never rewrites. Findings here and in step 6 must not contradict: do not demand a seam be cut as bloat (step 6) and added as a boundary (this step) — the seam stays.
 8. **Code-for-humans pass** (canonical reference `skills/shared/human-code.md`). Step 6 asks "is there too much code?", step 7 asks "are the boundaries wrong?"; this pass asks "will the next person be able to read this?". Run the two probes first and quote them — this pass is grounded in what the neighbors actually do, never in your own style preferences:
-   - `bash lib/house-style.sh probe <changed files>` — comment density, doc-comment usage, indentation, naming case, line length, measured from the files the diff touches (or their neighbors). A `sample=none` or `unknown` answer means the convention is undemonstrated; report nothing on that axis.
-   - `bash lib/comment-tells.sh diff {base_sha} {branch}` — flags added comments that narrate the edit, narrate history, or restate the next line. Exit 1 means findings; exit 0 means clean.
+   - `bash {probe_dir}/house-style.sh probe <changed files>` — comment density, doc-comment usage, indentation, naming case, line length, measured from the files the diff touches (or their neighbors). A `sample=none` or `unknown` answer means the convention is undemonstrated; report nothing on that axis.
+   - `bash {probe_dir}/comment-tells.sh diff {base_sha} {branch}` — flags added comments that narrate the edit, narrate history, or restate the next line. Exit 1 means findings; exit 0 means clean.
+
+   `probe_dir` is an input, not a guess: the probes ship with the plugin while your cwd is the target repository, so a bare `lib/...` path does not resolve. If your brief did not supply `probe_dir`, or the scripts are not there, say so once in the report and run this pass by reading three neighboring files end to end instead — findings you cannot ground in probe output are **Minor**, per the severity rule below.
 
    Report each as **Important** with file:line, one line per finding. Tags:
    - `house:` the diff deviates from a convention the probe measured — snake_case added to a camelCase module, a docstring convention invented in a module the probe reports as `doc_comments=no`, tabs in a `indent=spaces:2` file, an error idiom unlike its neighbors.
@@ -81,7 +84,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 ## What NOT to do
 
 - Do NOT modify code. Your Write/Edit access is memory-scoped: the path hook denies any write outside `.claude/agent-memory/`.
-- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `lib/house-style.sh` measured, or a tell `lib/comment-tells.sh` flagged, is Important and blocks — you can point at the probe output. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
+- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `house-style.sh` measured, or a tell `comment-tells.sh` flagged, is Important and blocks — you can point at the probe output. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
 - Do NOT review code that's pre-existing on `base_sha` - only the diff.
 
 ## Report format

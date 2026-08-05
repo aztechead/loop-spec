@@ -72,6 +72,43 @@ for f in agents/implementer.md agents/code-reviewer.md \
   fi
 done
 
+# The probes ship inside the plugin; a dispatched agent's cwd is the target repository.
+# A bare `lib/...` invocation resolves to nothing there, so no dispatch site may carry one
+# -- each must substitute a real path (CLAUDE_SKILL_DIR, an injected arg, BASH_SOURCE, or
+# the probe_dir brief input) before the directive goes out.
+for f in skills/shared/human-code.md agents/implementer.md agents/code-reviewer.md \
+         agents/planner.md skills/shared/team-prompts/implementer.md \
+         skills/shared/execute-subagent.md lib/plan-to-loop.sh \
+         lib/workflows/execute-dag.js hooks/team/human-code-inject.sh; do
+  if grep -qE 'bash (")?lib/(house-style|comment-tells)\.sh' "$f"; then
+    echo "FAIL: $f invokes the probes by bare relative path -- unreachable outside this repo"
+    FAIL=$((FAIL+1))
+  else
+    echo "PASS: $f has no bare-relative probe invocation"; PASS=$((PASS+1))
+  fi
+done
+
+# Each site must resolve the path by its own available mechanism.
+resolvers=(
+  "skills/shared/execute-subagent.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib/house-style\.sh"
+  "skills/shared/team-prompts/implementer.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib/house-style\.sh"
+  "lib/plan-to-loop.sh	LIB_DIR=\"\\\$\(cd"
+  "lib/workflows/execute-dag.js	skillDir \? "
+  "hooks/team/human-code-inject.sh	LIB_DIR=\"\\\$\(cd"
+  "agents/implementer.md	probe_dir"
+  "agents/code-reviewer.md	probe_dir"
+  "skills/verify/SKILL.md	probe_dir"
+)
+for entry in "${resolvers[@]}"; do
+  f="${entry%%	*}"
+  rx="${entry##*	}"
+  if grep -qE "$rx" "$f"; then
+    echo "PASS: $f resolves the probe path (/$rx/)"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f lost its probe-path resolution (/$rx/)"; FAIL=$((FAIL+1))
+  fi
+done
+
 # The probes are the deterministic half of the directive; they must exist, be executable,
 # and be wired into the offline suite.
 for probe in lib/house-style.sh lib/comment-tells.sh; do

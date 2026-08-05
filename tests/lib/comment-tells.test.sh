@@ -178,26 +178,69 @@ mkdir -p "$GITREPO"
   fi
 ) && PASS=$((PASS+1)) || FAIL=$((FAIL+1))
 
+# Diff mode streams the added lines of every hunk together, so list neighbors can
+# be far apart in the file. A comment judged against code it does not sit above is
+# a finding invented out of that gap -- and under the reviewer's severity rule it
+# would block. Contiguity is by line number, never by array position.
+(
+  cd "$GITREPO"
+  python3 - <<'PY'
+lines = ["import os", ""] + ["filler_%d = %d" % (i, i) for i in range(1, 60)]
+open("far.py", "w").write("\n".join(lines) + "\n")
+PY
+  git add -A && git commit -qm far >/dev/null
+  python3 - <<'PY'
+lines = open("far.py").read().splitlines()
+lines.insert(2, "# retry the count only when the cache is cold")
+lines.append("retry_count = count")
+open("far.py", "w").write("\n".join(lines) + "\n")
+PY
+  git add -A && git commit -qm far-change >/dev/null
+  out="$(bash "$LINT" diff HEAD~1 HEAD 2>&1)"; rc=$?
+  if [[ "$rc" -eq 0 ]] && grep -q "clean" <<<"$out"; then
+    echo "PASS: o: distant added lines are not treated as adjacent"
+  else
+    echo "FAIL: o: a comment was judged against code 60 lines away (exit $rc)"
+    echo "$out" | sed 's/^/      /'
+    exit 1
+  fi
+) && PASS=$((PASS+1)) || FAIL=$((FAIL+1))
+
+# ...and the genuinely adjacent echo still fires in diff mode.
+(
+  cd "$GITREPO"
+  printf 'import os\n\nvalue = 1\n\n# set the retry count\nretry_count = count\n' > adj.py
+  git add -A && git commit -qm adj >/dev/null
+  out="$(bash "$LINT" diff HEAD~1 HEAD 2>&1)"; rc=$?
+  if [[ "$rc" -eq 1 ]] && grep -q "tell=echoes-code" <<<"$out"; then
+    echo "PASS: p: an adjacent echo still fires in diff mode"
+  else
+    echo "FAIL: p: adjacent echo missed in diff mode (exit $rc)"
+    echo "$out" | sed 's/^/      /'
+    exit 1
+  fi
+) && PASS=$((PASS+1)) || FAIL=$((FAIL+1))
+
 (
   cd "$GITREPO"
   out="$(bash "$LINT" diff HEAD HEAD 2>&1)"; rc=$?
   if [[ "$rc" -eq 0 ]] && grep -q "clean" <<<"$out"; then
-    echo "PASS: o: diff mode is clean on an empty diff"
+    echo "PASS: q: diff mode is clean on an empty diff"
   else
-    echo "FAIL: o: empty diff (exit $rc)"; echo "$out" | sed 's/^/      /'
+    echo "FAIL: q: empty diff (exit $rc)"; echo "$out" | sed 's/^/      /'
     exit 1
   fi
 ) && PASS=$((PASS+1)) || FAIL=$((FAIL+1))
 
 # --- usage ---
-check "p: bad mode exits 2" 2 "usage: comment-tells.sh" bogus "$WORK/clean.sh"
-check "q: scan with no file exits 2" 2 "usage: comment-tells.sh scan" scan
-check "r: unreadable file exits 2" 2 "cannot read" scan "$WORK/absent.py"
+check "r: bad mode exits 2" 2 "usage: comment-tells.sh" bogus "$WORK/clean.sh"
+check "s: scan with no file exits 2" 2 "usage: comment-tells.sh scan" scan
+check "t: unreadable file exits 2" 2 "cannot read" scan "$WORK/absent.py"
 
 if [[ -x "$LINT" ]]; then
-  echo "PASS: s: lint is executable"; PASS=$((PASS+1))
+  echo "PASS: u: lint is executable"; PASS=$((PASS+1))
 else
-  echo "FAIL: s: lint is not executable"; FAIL=$((FAIL+1))
+  echo "FAIL: u: lint is not executable"; FAIL=$((FAIL+1))
 fi
 
 echo "Results: $PASS passed, $FAIL failed"

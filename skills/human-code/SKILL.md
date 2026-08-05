@@ -83,11 +83,11 @@ suppresses injection.
 Two deterministic scripts back this mode, so "honor the existing conventions" is
 measured rather than recalled:
 
-- `lib/house-style.sh probe <paths>` — comment density, doc-comment usage, indentation,
+- `"${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <paths>` — comment density, doc-comment usage, indentation,
   naming case, quote style, and line length, sampled from the target files or (for a file
   that does not exist yet) from its future neighbors. Answers `unknown` when the evidence
   is too thin, and `sample=none` (exit 1) when nothing readable was found.
-- `lib/comment-tells.sh scan <files>` / `comment-tells.sh diff <base> [head]` — flags added
+- `"${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` / `... diff <base> [head]` — flags added
   comments that narrate the edit, narrate history, or restate the next line of code. Exit 1
   means findings, exit 0 means clean.
 

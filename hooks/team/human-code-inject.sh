@@ -39,6 +39,11 @@ fi
 
 CONF_FILE="${PROJECT_DIR}/.loop-spec/human-code.conf"
 
+# The directive names two scripts the model has to RUN, and the session's cwd is the
+# user's project, not the plugin. Resolve them from this hook's own location -- the
+# probes ship beside it -- so the paths are correct wherever the plugin is installed.
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" 2>/dev/null && pwd || true)"
+
 # Opt-out: if the conf file exists AND pins ENABLED=0, stay silent.
 # Absent conf file => default ON (inject).
 if [[ -f "$CONF_FILE" ]] && grep -q "ENABLED=0" "$CONF_FILE" 2>/dev/null; then
@@ -52,9 +57,9 @@ Read the neighbors before writing a line, and match them:
 1. Naming, error idiom, test structure, file layout, import order, how they log, how they fail.
 2. The house convention outranks any external guide, and it outranks your own defaults even where you would have chosen differently.
 3. Disagreeing with a convention is a finding to report, never a licence to deviate inside your diff.
-4. Where the convention is not obvious, measure it instead of guessing: 'bash lib/house-style.sh probe <files>' reports comment density, doc-comment usage, indentation, naming case, and line length from the actual neighbors, and says unknown rather than inventing an answer.
+4. Where the convention is not obvious, measure it instead of guessing: 'bash ${LIB_DIR}/house-style.sh probe <files>' reports comment density, doc-comment usage, indentation, naming case, and line length from the actual neighbors, and says unknown rather than inventing an answer.
 
-Comments carry WHY, never what. The code already says what it does; a comment restating it goes stale on the first edit and misleads from then on. Spend a comment on what the code cannot say: a constraint not visible locally, a decision and the alternative it beat, a workaround and its reason, a landmine for the next reader. Never narrate the code, restate a signature, announce the edit ('Added...', 'Updated...'), or narrate history ('previously...', 'renamed from...') -- 'bash lib/comment-tells.sh scan <files>' catches those three shapes.
+Comments carry WHY, never what. The code already says what it does; a comment restating it goes stale on the first edit and misleads from then on. Spend a comment on what the code cannot say: a constraint not visible locally, a decision and the alternative it beat, a workaround and its reason, a landmine for the next reader. Never narrate the code, restate a signature, announce the edit ('Added...', 'Updated...'), or narrate history ('previously...', 'renamed from...') -- 'bash ${LIB_DIR}/comment-tells.sh scan <files>' catches those three shapes.
 
 Comment DENSITY matches the file, not an absolute: do not add docstrings to a module that has none, or strip them from one that documents everything. A good name deletes a comment -- reach for the name first. Early return over nested branch, one idea per function. Keep the diff readable: no drive-by reformatting, no unrelated renames, no churn that buries the real change.
 

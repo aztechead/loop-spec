@@ -92,23 +92,37 @@ check "o: unknown is explained, not silent" 1 "reason=no readable file or neighb
 # --- too little evidence yields unknown rather than a made-up answer ---
 mkdir -p "$WORK/tiny"
 printf 'x = 1\n' > "$WORK/tiny/a.py"
-check "p: a near-empty sample reports unknown density" 0 "comment_density=unknown" \
+check "p: a near-empty sample with no neighbors reports unknown density" 0 "comment_density=unknown" \
   probe "$WORK/tiny/a.py"
 
+# A file that exists but is three lines long demonstrates nothing -- the module
+# around it demonstrates everything. This is the state right after an implementer
+# creates a file and re-probes it, so shrugging there would waste the probe.
+cp "$WORK/heavy/mod.py" "$WORK/tiny/rich.py"
+check "q: a thin existing target widens to its neighbors" 0 "comment_density=heavy" \
+  probe "$WORK/tiny/a.py"
+check "r: widening names the neighbor it borrowed from" 0 "sample=2 files:.*rich\.py" \
+  probe "$WORK/tiny/a.py"
+
+# Widening is a fallback, never the default: a target with enough evidence of its
+# own is answered by itself, so a file is never judged against its siblings' style.
+check "s: a rich target is not widened" 0 "sample=1 files: .*mod\.py" \
+  probe "$WORK/heavy/mod.py"
+
 # --- a directory target samples the directory ---
-check "q: directory target is sampled" 0 "sample=1 files" probe "$WORK/heavy"
+check "t: directory target is sampled" 0 "sample=1 files" probe "$WORK/heavy"
 
 # --- usage ---
-check "r: bad invocation exits 2" 2 "usage: house-style.sh" bogus
-check "s: probe with no path exits 2" 2 "usage: house-style.sh" probe
+check "u: bad invocation exits 2" 2 "usage: house-style.sh" bogus
+check "v: probe with no path exits 2" 2 "usage: house-style.sh" probe
 
 # --- the probe is executable and runs on this repo's own tree ---
 if [[ -x "$PROBE" ]]; then
-  echo "PASS: t: probe is executable"; PASS=$((PASS+1))
+  echo "PASS: w: probe is executable"; PASS=$((PASS+1))
 else
-  echo "FAIL: t: probe is not executable"; FAIL=$((FAIL+1))
+  echo "FAIL: w: probe is not executable"; FAIL=$((FAIL+1))
 fi
-check "u: probes this repo's own lib without error" 0 "sample=[0-9]+ files" \
+check "x: probes this repo's own lib without error" 0 "sample=[0-9]+ files" \
   probe "$REPO_ROOT/lib/security-signal.sh"
 
 echo "Results: $PASS passed, $FAIL failed"

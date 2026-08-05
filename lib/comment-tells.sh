@@ -190,8 +190,13 @@ def echoes(body, code_line):
 
 
 def blocks(numbered, is_comment):
-    """Group the file into contiguous comment runs. Yields
-    (start_index, [(lineno, text)], next_code_line_or_None)."""
+    """Group the input into contiguous comment runs. Yields
+    (start_index, [(lineno, text)], next_code_line_or_None).
+
+    Contiguity is by LINE NUMBER, not array position. Diff mode hands over the
+    added lines of every hunk in one stream, so neighbors in the list can be
+    sixty lines apart in the file -- and a comment judged against code it does
+    not actually sit above is a finding invented out of the gap."""
     index = 0
     total = len(numbered)
     while index < total:
@@ -199,15 +204,19 @@ def blocks(numbered, is_comment):
             index += 1
             continue
         start = index
-        run = []
-        while index < total and is_comment(numbered[index][1]):
+        run = [numbered[index]]
+        index += 1
+        while (index < total and is_comment(numbered[index][1])
+               and numbered[index][0] == numbered[index - 1][0] + 1):
             run.append(numbered[index])
             index += 1
         following = None
-        for _, text in numbered[index:index + 2]:
-            if text.strip():
+        for lineno, text in numbered[index:index + 2]:
+            if not text.strip():
+                continue
+            if lineno - run[-1][0] <= 2:
                 following = text
-                break
+            break
         yield start, run, following
 
 

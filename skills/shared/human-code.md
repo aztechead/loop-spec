@@ -28,7 +28,7 @@ Relevant phases:
    fail. The house convention outranks any external guide, and it outranks your defaults
    even when you would have chosen differently. Disagreeing with a convention is a review
    finding, never a licence to deviate inside your diff. Where the convention is not
-   obvious, measure it: `lib/house-style.sh probe <files>` reports comment density,
+   obvious, measure it: `<probe_dir>/house-style.sh probe <files>` reports comment density,
    doc-comment usage, indentation, naming case, and line length from the actual neighbors,
    and says `unknown` rather than guessing.
 2. **Comments carry why, never what.** The code already says what it does; a comment that
@@ -52,6 +52,25 @@ Relevant phases:
 6. **The diff is written for the reviewer.** No drive-by reformatting, no unrelated
    renames, no churn that buries the real change. A reviewer should be able to read the
    diff and see only the decision you made.
+
+## Resolving the probes (`<probe_dir>`)
+
+The probes ship inside the plugin; a dispatched agent's working directory is the target
+repository. A bare `lib/house-style.sh` therefore resolves to nothing, so every dispatch
+site substitutes a real absolute path before the directive goes out:
+
+| Site | How it resolves |
+|---|---|
+| Skill-context prompts (`execute-subagent.md`, `team-prompts/implementer.md`) | `${CLAUDE_SKILL_DIR}/../../lib` |
+| `lib/plan-to-loop.sh` | its own directory, from `BASH_SOURCE` |
+| `lib/workflows/execute-dag.js` | the injected `skillDir` arg |
+| `hooks/team/human-code-inject.sh` | its own directory, from `BASH_SOURCE` |
+| `agents/implementer.md`, `agents/code-reviewer.md` | the `probe_dir` brief input |
+
+When no path is available the sentence naming the probe drops out and the directive stands
+on its own: read three neighboring files end to end and follow them. The measurement is
+what makes a convention *demonstrable* (and therefore blocking at VERIFY); the principle
+does not depend on it.
 
 ## Named carve-outs
 
@@ -92,12 +111,12 @@ collide the resolution is fixed:
 > match them: naming, error idiom, test structure, file layout, import order — the house
 > convention outranks your defaults even when you would have chosen differently, and
 > disagreeing with it is a review finding, never a licence to deviate. Where the convention
-> is unclear, measure it: `bash lib/house-style.sh probe <your files>` reports comment
+> is unclear, measure it: `bash <probe_dir>/house-style.sh probe <your files>` reports comment
 > density, doc-comment usage, indentation, and naming case from the actual neighbors.
 > Comments carry WHY, never what: a constraint that is not visible locally, a decision and
 > the alternative it beat, a workaround and its reason. Never narrate the code, restate a
 > signature, announce the edit ("Added…", "Updated…"), or narrate history ("previously…",
-> "renamed from…") — `bash lib/comment-tells.sh scan <files>` catches those three. Comment
+> "renamed from…") — `bash <probe_dir>/comment-tells.sh scan <files>` catches those three. Comment
 > DENSITY matches the file, not an absolute: do not add docstrings to a module that has
 > none, or strip them from one that documents everything. A good name deletes a comment —
 > reach for the name first. Early return over nested branch; one idea per function. Keep

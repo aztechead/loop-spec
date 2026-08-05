@@ -239,12 +239,12 @@ is written; your diff must read like the code around it. Read the neighbors of e
 in the task's files list FIRST and match them: naming, error idiom, test structure, file
 layout, import order. The house convention outranks your defaults even where you would
 have chosen differently — disagreeing with it is a self-review finding, never a licence to
-deviate. Where the convention is unclear, measure it: `bash lib/house-style.sh probe
+deviate. Where the convention is unclear, measure it: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe
 <files>` reports comment density, doc-comment usage, indentation, and naming case from the
 actual neighbors. Comments carry WHY, never what: a constraint not visible locally, a
 decision and the alternative it beat, a workaround and its reason. Never narrate the code,
 restate a signature, announce the edit ("Added...", "Updated..."), or narrate history
-("previously...", "renamed from...") — `bash lib/comment-tells.sh scan <files>` catches
+("previously...", "renamed from...") — `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` catches
 those three before you report DONE. Comment DENSITY matches the file, not an absolute: no
 docstrings added to a module that has none. A good name deletes a comment. No drive-by
 reformatting or renames that bury the change. NEVER cut `simplicity:` markers, file-header
@@ -393,9 +393,9 @@ CODE FOR HUMANS (house style over habit — on by default). Your diff must read 
 code around it. Read the neighbors of every file in the task's files list FIRST and match
 them: naming, error idiom, test structure, layout, import order. The house convention
 outranks your defaults; disagreeing with it is a self-review finding, never a licence to
-deviate. Measure rather than guess: `bash lib/house-style.sh probe <files>`. Comments carry
+deviate. Measure rather than guess: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <files>`. Comments carry
 WHY, never what. Never narrate the code, announce the edit ("Added...", "Updated..."), or
-narrate history ("previously...") — `bash lib/comment-tells.sh scan <files>` catches those
+narrate history ("previously...") — `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` catches those
 three. Comment DENSITY matches the file, not an absolute. A good name deletes a comment.
 No drive-by reformatting or renames that bury the change. NEVER cut `simplicity:` markers,
 file-header purpose blocks the codebase uses, TODO/FIXME/NOTE/HACK/SAFETY markers, or any

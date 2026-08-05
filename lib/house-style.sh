@@ -68,10 +68,13 @@ DEF_RE = re.compile(
 )
 
 
-def sample_paths(targets):
+def sample_paths(targets, widen=False):
     """Resolve targets to real files. A missing target is answered by its
     future neighbors -- same directory, same extension -- because that is the
-    code it will have to sit beside."""
+    code it will have to sit beside. `widen` adds the neighbors of targets that
+    DO exist, which is what rescues a freshly created file: three lines of its
+    own demonstrate no convention, while the module around it demonstrates all
+    of them."""
     picked = []
     seen = set()
 
@@ -83,7 +86,8 @@ def sample_paths(targets):
     for target in targets:
         if os.path.isfile(target):
             add(target)
-            continue
+            if not widen:
+                continue
         directory = target if os.path.isdir(target) else (os.path.dirname(target) or ".")
         want_ext = "" if os.path.isdir(target) else os.path.splitext(target)[1]
         try:
@@ -196,11 +200,26 @@ def majority(counts, floor=3):
     return winner, counts[winner], total
 
 
+MIN_LINES = 20       # below this, every answer would be "unknown"
+
+
+def measure(paths):
+    tally = Tally()
+    for path in paths:
+        scan(path, tally)
+    return tally
+
+
 targets = sys.argv[1:]
-paths = sample_paths(targets)
-tally = Tally()
-for path in paths:
-    scan(path, tally)
+tally = measure(sample_paths(targets))
+
+# A target that exists but is nearly empty demonstrates nothing. Widening to its
+# neighbors answers from the module instead of shrugging -- the same fallback a
+# not-yet-created target already gets.
+if tally.code + tally.comment < MIN_LINES:
+    widened = measure(sample_paths(targets, widen=True))
+    if widened.code + widened.comment > tally.code + tally.comment:
+        tally = widened
 
 if not tally.readable:
     print("sample=none reason=no readable file or neighbor for: {}".format(", ".join(targets)))

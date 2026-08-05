@@ -68,6 +68,27 @@ Code for humans: generated code that reads like the codebase it lands in.
 
 ### Notes
 
+- **The probe paths are resolved per dispatch site, never hardcoded.** The probes ship
+  inside the plugin while every agent that runs them has the target repository as its cwd,
+  so a bare `lib/house-style.sh` resolves to nothing outside this repository. Skill-context
+  prompts use `${CLAUDE_SKILL_DIR}/../../lib`, `lib/plan-to-loop.sh` and the SessionStart
+  hook resolve their own directory from `BASH_SOURCE`, `lib/workflows/execute-dag.js` uses
+  the `skillDir` arg it already receives, and the two agents take a `probe_dir` brief input
+  that `skills/verify/SKILL.md` supplies. Where no path is available the sentence naming
+  the probe drops out and the directive stands on its own — the measurement is what makes a
+  convention demonstrable (and therefore blocking at VERIFY), not what makes it true.
+  `tests/human-code-coverage.test.sh` fails on any bare-relative probe invocation and
+  asserts each site's resolver individually.
+- **`comment-tells.sh` judges adjacency by line number, not list position.** Diff mode
+  streams the added lines of every hunk together, so two entries next to each other in that
+  stream can be sixty lines apart in the file. Comparing a comment against code it does not
+  sit above invents a finding out of the gap — and under the new severity rule that finding
+  would block.
+- **`house-style.sh` widens to the neighbors when a target is too thin to demonstrate
+  anything.** A file that exists but is three lines long answered `unknown` on every axis,
+  which is exactly the state right after an implementer creates a file and re-probes it.
+  Widening is a fallback, never the default: a target with enough evidence of its own is
+  still answered by itself.
 - The directive's carve-outs are load-bearing, not politeness: `simplicity:` shortcut
   markers (required by the ladder), file-header purpose blocks where the codebase uses
   them, TODO/FIXME/NOTE/HACK/SAFETY/SECURITY markers, spec- or API-required contract docs,
