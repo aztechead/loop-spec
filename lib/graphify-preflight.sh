@@ -240,15 +240,20 @@ publish_graph() {
 cmd="${1:-}"
 case "$cmd" in
   check)
-    if [[ "${LOOP_SPEC_REQUIRE_GRAPHIFY:-1}" == "0" ]]; then
-      echo "graphify requirement bypassed (LOOP_SPEC_REQUIRE_GRAPHIFY=0)" >&2
-      exit 0
-    fi
     if has_graphify; then
       exit 0
     fi
-    install_hint
-    exit 1
+    # The graph serves the ripple layer (hotspots, cross-module reach). Structural
+    # lookups have other answers -- see lib/code-graph.sh -- so a missing graph
+    # degrades one layer instead of ending the run. Operators who want the old
+    # hard gate ask for it with LOOP_SPEC_REQUIRE_GRAPHIFY=1.
+    if [[ "${LOOP_SPEC_REQUIRE_GRAPHIFY:-}" == "1" ]]; then
+      install_hint
+      exit 1
+    fi
+    echo "graphify absent: ripple layer degraded (hotspots and cross-module reach unavailable);" \
+         "set LOOP_SPEC_REQUIRE_GRAPHIFY=1 to make this fatal" >&2
+    exit 0
     ;;
   graph-status)
     dir="${2:-.}"

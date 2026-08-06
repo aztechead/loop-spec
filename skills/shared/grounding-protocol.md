@@ -8,10 +8,41 @@ gathered, recorded, cited, and checked.
 
 | Claim type | What it covers | How to back it |
 |---|---|---|
-| **Codebase claim** | File existence, function signature, line content, dependency version inside the repo | Cite `file:line` or quote graphify query output (`graphify query`, `graphify path`, `graphify explain`); no probe needed. |
+| **Codebase claim** | File existence, function signature, line content, dependency version inside the repo | Cite `file:line`; no probe needed. |
+| **Code-graph claim** | What calls what, how two entities connect, which subsystems a change ripples through | Cite the graph **with the confidence the graph itself reported** — see "Graph confidence" below. An `EXTRACTED` edge stands alone; `INFERRED` and `AMBIGUOUS` do not. |
 | **External-system claim** | Dataset schema, API capability or limitation, service config, infra state, cloud resource attributes | Run the cheapest read-only probe, record the result in the evidence ledger, cite `EVID-NNN`. |
 | **Ecosystem / library claim** | Version, API surface, behavior of a third-party package or CLI already installed locally | Probe local install (`<tool> --version`, `pip show`, `npm list`, local docs); if unavailable, write `ASSUMPTION`. |
 | **User-stated fact** | Something the user asserted in the transcript | Cite the transcript ("user stated in session that …"); no probe needed, but do not extend the claim beyond what was said. |
+
+## Graph confidence
+
+The code graph labels every edge with how it was derived. Graphify emits three:
+
+| Tag | Means | Citable alone? |
+|---|---|---|
+| `EXTRACTED` | parsed from the AST / call graph — a fact about the tree | yes |
+| `INFERRED` | the tool guessed the connection | **no** |
+| `AMBIGUOUS` | the tool found more than one plausible reading | **no** |
+
+This gate exists to refuse unverified claims. A graph that has already told you an
+edge is a guess cannot then launder that guess into an artifact — so the confidence
+tag travels with the citation, and `lib/grounding-lint.sh` enforces it:
+
+```markdown
+- GRAPH[EXTRACTED]: renderBody is reached only from deliver.sh | query: graphify query "renderBody"
+- GRAPH[INFERRED]: the queue has one consumer | query: graphify path "a" "b" | confirmed: lib/queue.sh:88
+```
+
+An `INFERRED` or `AMBIGUOUS` edge needs one of two things before it can be cited:
+`| confirmed: <file>:<line>` proving it against the tree, or a rewrite as
+`- ASSUMPTION: <claim> | verify: <command>` like any other unverified claim. Dropping
+the tag entirely is the worst case and is flagged hardest, because an untagged graph
+citation reads exactly like a probed fact.
+
+A lookup you resolved by opening the file is a **codebase claim**, not a graph claim:
+cite the `file:line` you read. That is always the stronger citation, because it
+describes the tree as it is rather than as the last graph build found it — and it is
+what an `INFERRED` edge needs before it can be cited at all.
 
 ## Probe-before-assert rule
 

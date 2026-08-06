@@ -19,14 +19,21 @@ chmod +x "$STUBDIR/graphify"
 if GRAPHIFY_BIN="$STUBDIR/graphify" bash "$SCRIPT" check >/dev/null 2>&1; then
   pass "check passes when graphify present"; else fail "check passes when graphify present"; fi
 
-# check: missing -> exit 1 + install hint on stderr
-err="$(GRAPHIFY_BIN="$WORK/nope-graphify" bash "$SCRIPT" check 2>&1 >/dev/null || true)"
-rc=0; GRAPHIFY_BIN="$WORK/nope-graphify" bash "$SCRIPT" check >/dev/null 2>&1 || rc=$?
-[[ "$rc" -eq 1 ]] && pass "check fails (exit 1) when missing" || fail "check fails when missing (rc=$rc)"
+# check: missing -> degrade by default. The graph serves the ripple layer only;
+# structural lookups have other answers, so an absent graph must not end the run.
+rc=0; deg_err="$(GRAPHIFY_BIN="$WORK/nope-graphify" bash "$SCRIPT" check 2>&1 >/dev/null)" || rc=$?
+[[ "$rc" -eq 0 ]] && pass "check degrades (exit 0) when missing" || fail "check degrades when missing (rc=$rc)"
+echo "$deg_err" | grep -q "ripple layer degraded" && pass "degradation names the layer lost" || fail "degradation names the layer lost"
+echo "$deg_err" | grep -q "LOOP_SPEC_REQUIRE_GRAPHIFY=1" && pass "degradation names the escalation switch" || fail "degradation names the escalation switch"
+
+# check: missing + explicitly required -> exit 1 + install hint on stderr
+err="$(LOOP_SPEC_REQUIRE_GRAPHIFY=1 GRAPHIFY_BIN="$WORK/nope-graphify" bash "$SCRIPT" check 2>&1 >/dev/null || true)"
+rc=0; LOOP_SPEC_REQUIRE_GRAPHIFY=1 GRAPHIFY_BIN="$WORK/nope-graphify" bash "$SCRIPT" check >/dev/null 2>&1 || rc=$?
+[[ "$rc" -eq 1 ]] && pass "check fails (exit 1) when missing and required" || fail "check fails when missing and required (rc=$rc)"
 echo "$err" | grep -q "uv tool install graphifyy" && pass "install hint shown" || fail "install hint shown"
-pi_err="$(LOOP_SPEC_HARNESS=pi GRAPHIFY_BIN="$WORK/nope-graphify" bash "$SCRIPT" check 2>&1 >/dev/null || true)"
+pi_err="$(LOOP_SPEC_REQUIRE_GRAPHIFY=1 LOOP_SPEC_HARNESS=pi GRAPHIFY_BIN="$WORK/nope-graphify" bash "$SCRIPT" check 2>&1 >/dev/null || true)"
 echo "$pi_err" | grep -q 'graphify install --platform pi' && pass "pi registration hint shown" || fail "pi registration hint shown"
-oc_err="$(LOOP_SPEC_HARNESS=opencode GRAPHIFY_BIN="$WORK/nope-graphify" bash "$SCRIPT" check 2>&1 >/dev/null || true)"
+oc_err="$(LOOP_SPEC_REQUIRE_GRAPHIFY=1 LOOP_SPEC_HARNESS=opencode GRAPHIFY_BIN="$WORK/nope-graphify" bash "$SCRIPT" check 2>&1 >/dev/null || true)"
 echo "$oc_err" | grep -q 'graphify install --platform opencode' && pass "OpenCode registration hint shown" || fail "OpenCode registration hint shown"
 
 # check: bypass env -> exit 0 even when missing

@@ -315,5 +315,99 @@ check "column-0 prose after bullet does not merge (exits 0)" \
 stdout14=$(bash "$LIB" "$WORK/plain-none.md" 2>/dev/null)
 check "exit 0 prints 'grounding-lint: ok'" "$(echo "$stdout14" | grep -q 'grounding-lint: ok' && echo 1 || echo 0)"
 
+# ─── Fixture 15: graph citations must carry the graph's own confidence tag ──
+# graphify labels every edge EXTRACTED (parsed from an AST), INFERRED (guessed),
+# or AMBIGUOUS. The protocol used to accept any graph output unprobed, so a guess
+# could enter an artifact wearing the authority of a probe.
+cat > "$WORK/graph-extracted.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- GRAPH[EXTRACTED]: renderBody is reached only from deliver.sh | query: graphify query "renderBody"
+EOF
+check "EXTRACTED graph citation is self-sufficient (exits 0)" \
+  "$([[ "$(lint_exit "$WORK/graph-extracted.md")" == "0" ]] && echo 1 || echo 0)"
+
+cat > "$WORK/graph-inferred.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- GRAPH[INFERRED]: renderBody is reached only from deliver.sh | query: graphify query "renderBody"
+EOF
+check "INFERRED graph citation alone exits 1" \
+  "$([[ "$(lint_exit "$WORK/graph-inferred.md")" == "1" ]] && echo 1 || echo 0)"
+out15=$(lint_stdout "$WORK/graph-inferred.md")
+check "INFERRED FLAG says the graph called it unverified" \
+  "$(echo "$out15" | grep -q 'labelled this edge unverified' && echo 1 || echo 0)"
+
+cat > "$WORK/graph-ambiguous.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- GRAPH[AMBIGUOUS]: the queue is drained by one consumer | query: graphify path "a" "b"
+EOF
+check "AMBIGUOUS graph citation alone exits 1" \
+  "$([[ "$(lint_exit "$WORK/graph-ambiguous.md")" == "1" ]] && echo 1 || echo 0)"
+
+# Confirming an unverified edge against the tree restores it to citable.
+cat > "$WORK/graph-confirmed.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- GRAPH[INFERRED]: renderBody is reached from deliver.sh | query: graphify query "x" | confirmed: lib/deliver.sh:53
+EOF
+check "INFERRED plus a file:line confirmation exits 0" \
+  "$([[ "$(lint_exit "$WORK/graph-confirmed.md")" == "0" ]] && echo 1 || echo 0)"
+
+# Dropping the tag is the failure mode that matters most: it looks like evidence.
+cat > "$WORK/graph-untagged.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- GRAPH: renderBody is reached only from deliver.sh | query: graphify query "renderBody"
+EOF
+check "untagged graph citation exits 1" \
+  "$([[ "$(lint_exit "$WORK/graph-untagged.md")" == "1" ]] && echo 1 || echo 0)"
+out15b=$(lint_stdout "$WORK/graph-untagged.md")
+check "untagged FLAG names the three accepted tags" \
+  "$(echo "$out15b" | grep -q 'EXTRACTED|INFERRED|AMBIGUOUS' && echo 1 || echo 0)"
+
+cat > "$WORK/graph-badtag.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- GRAPH[PROBABLY]: renderBody is reached only from deliver.sh | query: graphify query "x"
+EOF
+check "unknown confidence tag exits 1" \
+  "$([[ "$(lint_exit "$WORK/graph-badtag.md")" == "1" ]] && echo 1 || echo 0)"
+
+cat > "$WORK/graph-noquery.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- GRAPH[EXTRACTED]: renderBody is reached only from deliver.sh
+EOF
+check "EXTRACTED without the query that produced it exits 1" \
+  "$([[ "$(lint_exit "$WORK/graph-noquery.md")" == "1" ]] && echo 1 || echo 0)"
+
+# A graph bullet must not silently satisfy the '- none' contradiction check.
+cat > "$WORK/graph-none.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- none
+- GRAPH[EXTRACTED]: renderBody is reached only from deliver.sh | query: graphify query "x"
+EOF
+check "'- none' beside a graph citation is still a contradiction" \
+  "$([[ "$(lint_exit "$WORK/graph-none.md")" == "1" ]] && echo 1 || echo 0)"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

@@ -96,8 +96,10 @@ if [[ "$headless" == "true" && "${LOOP_SPEC_AUTONOMOUS:-}" != "1" \
 fi
 
 # --- graphify ----------------------------------------------------------------
-graphify_required=true
-[[ "${LOOP_SPEC_REQUIRE_GRAPHIFY:-1}" == "0" ]] && graphify_required=false
+# The graph is one layer, not the gate. Absent, the ripple job degrades and the
+# run continues; LOOP_SPEC_REQUIRE_GRAPHIFY=1 restores the hard requirement.
+graphify_required=false
+[[ "${LOOP_SPEC_REQUIRE_GRAPHIFY:-}" == "1" ]] && graphify_required=true
 graphify_ok=true
 bash "$SCRIPT_DIR/graphify-preflight.sh" check >/dev/null 2>&1 || graphify_ok=false
 graph_status="$(bash "$SCRIPT_DIR/graphify-preflight.sh" graph-status "$dir")"

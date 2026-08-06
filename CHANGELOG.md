@@ -2,6 +2,37 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [2.35.0] - 2026-08-06
+
+The code graph stops being a gate, and starts telling the truth about itself.
+
+### Changed
+
+- **A missing graph no longer aborts the cycle.** `LOOP_SPEC_REQUIRE_GRAPHIFY` inverted:
+  the default now degrades, and `1` restores the old hard requirement. One tool was gating
+  three jobs whose needs differ — structural lookups want currency, ripple analysis
+  tolerates staleness, non-derivable truths want curation and are not derived at all — so
+  a missing install failed all three. `lib/code-graph.sh` names the jobs, reports which
+  layer answers each and why, and `require <job>` fails only for the job that actually lost
+  its answer. An absent graphify costs ripple (hotspots, cross-module reach, which nothing
+  substitutes for) and the run continues. `LOOP_SPEC_STRUCTURAL_TOOL` forces the structural
+  layer when the probe picks wrong.
+
+### Fixed
+
+- **The grounding gate accepted the graph's own guesses as facts.** graphify labels every
+  edge `EXTRACTED` (parsed from the AST), `INFERRED` (guessed), or `AMBIGUOUS`. loop-spec
+  read none of them — a repository-wide grep for those tokens returned nothing — while the
+  grounding protocol accepted graph output with "no probe needed", so an `INFERRED` edge
+  cleared the gate identically to a probed fact. Graph citations are now their own claim
+  type carrying the tag: `- GRAPH[EXTRACTED]: <claim> | query: <cmd>` stands alone,
+  `INFERRED`/`AMBIGUOUS` need `| confirmed: <file>:<line>` or a rewrite as an `ASSUMPTION`,
+  an unknown tag is rejected, and an **untagged** citation is flagged hardest because it
+  reads exactly like a probed fact. Enforced by `lib/grounding-lint.sh`; nine new cases.
+
+  A gate that exists to refuse unverified claims cannot make an exception for a source that
+  has already told you it was guessing.
+
 ## [2.34.0] - 2026-08-05
 
 BMAD-METHOD scan: four imports, all of them on the human's side of the seam.

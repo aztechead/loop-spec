@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.34.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.35.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -32,14 +32,16 @@ Current version: 2.34.0 (renamed from super-spec at v2.5.2). Direction: [docs/lo
    claude plugin install loop-spec@loop-spec-marketplace
    ```
 
-2. Install graphify (required). The cycle aborts at startup without it, because SPEC/DISCUSS/PLAN ground their work in the code graph:
+2. Install graphify. It is no longer a hard gate — a missing graph degrades the job it serves and the cycle continues — but it is the only thing that answers **ripple**: hotspots, god nodes, which subsystems a change reaches. Structural lookups (where a symbol is defined, what references it) fall back to Glob/Grep without it, and `bash lib/code-graph.sh layers` reports who answers what and why:
 
    ```bash
    uv tool install graphifyy     # or pipx/pip install graphifyy (needs Python 3.10+)
    graphify install              # register the skill; `graphify --help` to verify
    ```
 
-   Every cycle invokes Graphify's assistant skill before design: `.` performs the first full build and `. --update` incrementally refreshes code plus changed semantic inputs. Code remains local AST extraction; docs, papers, and images use the current assistant model and its existing authentication, including Vertex/Agent Platform ADC supplied by the host. loop-spec then validates named nodes and the complete output set before committing shared artifacts. Constrained environments can set `LOOP_SPEC_REQUIRE_GRAPHIFY=0`; design phases then fall back to Glob/Grep.
+   Every cycle invokes Graphify's assistant skill before design: `.` performs the first full build and `. --update` incrementally refreshes code plus changed semantic inputs. Code remains local AST extraction; docs, papers, and images use the current assistant model and its existing authentication, including Vertex/Agent Platform ADC supplied by the host. loop-spec then validates named nodes and the complete output set before committing shared artifacts.
+
+   Graphify labels every edge `EXTRACTED` (parsed from the AST), `INFERRED` (guessed), or `AMBIGUOUS`. loop-spec carries that label into the grounding gate: only `EXTRACTED` is citable on its own, and an `INFERRED` or `AMBIGUOUS` edge needs a `file:line` confirmation or must be written as an `ASSUMPTION` (`skills/shared/grounding-protocol.md`, enforced by `lib/grounding-lint.sh`). A gate whose purpose is refusing unverified claims cannot make an exception for a source that has already told you it was guessing.
 
 ### Graphify artifacts
 
@@ -431,7 +433,7 @@ Cycle behavior:
 | `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | `1800` | Wall-clock deadline for each exact-base baseline command. |
 | `LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS` | `300` | No-output deadline for each exact-base baseline command. |
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | unset | `1` skips the startup model probe (also skipped for 24h when the exact effective alias set is unchanged). |
-| `LOOP_SPEC_REQUIRE_GRAPHIFY` | required | `0` bypasses the graphify requirement; design phases fall back to Glob/Grep. |
+| `LOOP_SPEC_REQUIRE_GRAPHIFY` | unset | Default: an absent graph degrades the ripple layer and the run continues. `1` restores the hard requirement (missing graph aborts the cycle). |
 | `LOOP_SPEC_CHECKPOINT_PR` | on | `0` disables the draft checkpoint PR on pause/escalation/terminal stop. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | `900` | Total time DELIVER waits for required PR checks. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | `10` | Required-check polling interval. |

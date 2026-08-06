@@ -25,9 +25,24 @@ inside one repository are forbidden.
    harness="$(bash "${loop_spec_skill_dir}/../../lib/harness.sh" detect)"
    ```
 
-2. Check the Graphify package with `bash "$graphify_lib" check`. If the binary is
-   absent and `LOOP_SPEC_REQUIRE_GRAPHIFY=0`, log the degraded Glob/Grep fallback and
-   return without invoking or staging. Otherwise failure is fatal.
+2. Check the Graphify package with `bash "$graphify_lib" check`. The graph serves the
+   **ripple layer** — hotspots, god nodes, cross-module reach — and nothing else
+   substitutes for it. It is not the gate for the whole run: structural lookups have
+   other answers, so an absent graph degrades one layer and the cycle continues.
+
+   ```text
+   exit 0, graphify present    build/refresh as below
+   exit 0, graphify absent     ripple layer unavailable; log it, skip invocation and
+                               staging, and let the design phases proceed on the
+                               structural layer (bash lib/code-graph.sh layers)
+   exit 1                      operator set LOOP_SPEC_REQUIRE_GRAPHIFY=1 and meant it
+                               — fatal
+   ```
+
+   When the ripple layer is unavailable, SPEC and DISCUSS lose the "which subsystems
+   will this ripple through" input. Say so in the phase report rather than
+   substituting a guess: a boundary question the graph would have sharpened is one
+   the human should be asked instead.
 
 3. Ask the deterministic freshness helper before selecting assistant arguments:
 
