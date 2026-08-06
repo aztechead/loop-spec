@@ -60,6 +60,8 @@ The evidence is in `bmad-scan-proposals.md` B9: six weeks mandatory, zero citati
   `lib/grounding-lint.sh:184`
 - stale comment about the old external build
   `lib/map-refresh.sh:4`
+- the index the replacement mappers rewrote when they re-covered the graph's domains
+  `.loop-spec/codebase/index.json:1`
 
 **Source-pinned staleness — the BMAD callout**
 
