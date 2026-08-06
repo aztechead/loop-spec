@@ -33,6 +33,15 @@ Graphify is removed. Structure is derived fresh, and grounded by citing `file:li
   unreachable enforcement in place would have reproduced the dead-dimension defect fixed in
   2.34.0.
 
+### Changed
+
+- **Declared Python floor raised to 3.7**, matching what the code already requires.
+  `skills/loop-runner/scripts/loop.py:43` imports `dataclasses` (3.7+), three loop-runner
+  scripts use `from __future__ import annotations` (3.7+), and `lib/map-audit.sh` calls
+  `subprocess.run(capture_output=…)` (3.7+). The docs claimed `>= 3.6` in four places. Found
+  by running the new `mapper-tech` against this repo — the mapper's first real output caught
+  a defect in the prerequisites it was inventorying.
+
 ### Added
 
 - **`agents/mapper-arch.md` and `agents/mapper-tech.md`.** The ARCH and TECH domains had no
@@ -41,7 +50,10 @@ Graphify is removed. Structure is derived fresh, and grounded by citing `file:li
   team/subagent path spawned three mappers for five tracked domains; only the Workflow path
   covered the gap, using generic agents. All five domains now have a named mapper on every
   dispatch path, each grounding its claims in `file:line` and told plainly not to record
-  what a single read of the code already shows.
+  what a single read of the code already shows. Both were then run against this
+  repository to prove they work: ARCH.md and TECH.md are refreshed here, `index.json`
+  orphans dropped from 28 to 0, and the map-audit findings against those two domains fell
+  to the three documented false-positive classes.
 
 - **Source-pinned map staleness**, ported from BMAD's `context.py sweep`. `map-audit.sh
   sweep` now resolves each cited path's last change with `git log -1 --format=%cI` and

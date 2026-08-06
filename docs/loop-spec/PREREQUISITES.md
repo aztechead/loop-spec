@@ -2,7 +2,7 @@
 
 ## Base runtime
 
-Every harness requires `bash >= 4`, `git`, `jq >= 1.5`, and `python3 >= 3.6`.
+Every harness requires `bash >= 4`, `git`, `jq >= 1.5`, and `python3 >= 3.7`.
 `lib/runtime-preflight.sh` checks jq before cycle, auto, debug, micro, and OpenCode
 installer paths use it, so a missing or old binary fails once with installation guidance
 instead of producing mid-run command errors.
@@ -119,5 +119,5 @@ None of the above applies under pi: agent teams and the Workflow tool are Claude
 Code surfaces, and `lib/teams-capability.sh` / `lib/workflow-availability.sh`
 hard-gate them to `none` / `false` there regardless of environment variables.
 pi prerequisites are just the base runtime (`bash >= 4`, `git`, `jq >= 1.5`,
-`python3 >= 3.6`) and the `pi` CLI itself for the loop-fleet rung.
+`python3 >= 3.7`) and the `pi` CLI itself for the loop-fleet rung.
 See the README "Running under pi" section and `skills/shared/pi-harness.md`.

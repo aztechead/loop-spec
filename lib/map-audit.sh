@@ -13,6 +13,12 @@
 # This measures. It never rewrites the map: what to cut is a judgment, and the
 # refresh path owns it.
 #
+# Known false positives in `sweep`, all advisory rather than blocking: a doc that
+# documents a REMOVAL cites a path that is correctly absent, and a doc naming a
+# runtime output (`.loop-spec/sentinel-queue.json`) names a path that does not
+# exist until something produces it. Judge a stale-claim finding before acting on
+# it; the probe reports where the citation is so you can.
+#
 # Usage:
 #   map-audit.sh budget      # total size against the ceiling
 #   map-audit.sh sweep       # cited paths that are gone, or changed since the refresh
@@ -102,7 +108,9 @@ def budget():
 # A path-shaped token the map asserts exists. Deliberately narrow: it must carry
 # a directory separator and an extension, so ordinary prose ("the verify phase")
 # and bare words are never mistaken for a claim about the tree.
-CITED = re.compile(r"(?<![A-Za-z0-9_./-])((?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)")
+# The leading `$` exclusion matters: a doc quoting `$HOME/.nvm/.../node` from a
+# script is reporting a shell expression, not asserting the literal path exists.
+CITED = re.compile(r"(?<![A-Za-z0-9_./$-])((?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)")
 # Globs and placeholders are patterns, not claims -- {slug}, *.sh, `.../SPEC.md`
 # and `round-N.md` name no single file, so their absence proves nothing.
 PLACEHOLDER = re.compile(r"[*{}<>]|\.\.\.|(?:^|[/-])N\.[A-Za-z0-9]+$")

@@ -1,362 +1,382 @@
 # ARCH
 
-> Mapped by loop-spec-mapper-arch on 2026-05-11. Incremental mode (since e4fea421). Sections updated: lib/, hooks/, Key Abstractions, Module Dependencies, Data Flow Summary, .loop-spec/ runtime state.
+> Mapped by loop-spec-mapper-arch on 2026-08-06. Full refresh — the prior version
+> (2026-05-11, incremental) was verified stale in multiple places (see note at
+> bottom of this run's report) and is not carried forward without re-checking.
 
 ## Modules
 
-loop-spec is a Claude Code plugin. There are no compiled source modules. The functional units are markdown files interpreted by the Claude Code harness. The layout below treats each directory as a logical module with its own boundary and responsibility.
+loop-spec is a Claude Code plugin that also ships as a pi (pi.dev) package and an
+opencode (opencode.ai) install from the same tree (`package.json:20-30`,
+`extensions/pi/loop-spec.ts`, `extensions/opencode/loop-spec.ts`). There are no
+compiled modules; the functional units are markdown skills/agents interpreted by
+the harness, plus bash/jq/python3 libs they shell out to.
 
-### `.claude-plugin/` - Plugin Manifest
+### `.claude-plugin/` — Plugin manifest
+`plugin.json` declares identity/version (`.claude-plugin/plugin.json:1-22`, version
+`2.35.0`) and `marketplace.json` is the marketplace descriptor. Version must stay
+in lockstep with `package.json` (also `2.35.0`) — `bash lib/bump-version.sh` sets
+both plus the README line; `tests/validate-pi-manifest.test.sh` enforces it.
 
-Declares the plugin identity (`name`, `version`, `author`, `homepage`) in `plugin.json` and a marketplace descriptor in `marketplace.json`. This is the install boundary: the CC harness reads `plugin.json` to register skills, agents, hooks, and commands from the repo.
+### `skills/` — 34 directories, one shared, 33 invocable skills
+Slash-command shims are gone (see Entrypoints); a skill's own `SKILL.md`
+frontmatter (`name`, `description`, `argument-hint`, `allowed-tools`) is what
+Claude Code registers as `/loop-spec:<name>`. Grouped by role (verified by
+reading every `SKILL.md` frontmatter this run):
 
-### `skills/` - Phase Orchestration
-
-Each subdirectory is a named skill invocable via `Skill(loop-spec:<name>)`. Skills are stateful orchestrators; they issue `TeamCreate`/`SendMessage` calls, read/write `feature.json` via `lib/feature-write.sh`, and drive phase transitions.
-
-| Skill | Responsibility |
+| Group | Skills |
 |---|---|
-| `cycle/` | Top-level entry point. Step 2 resolves the agent-team capability mode via `lib/teams-capability.sh` (`none`/`explicit`/`implicit`, version-gated on the 2.1.178 `TeamCreate`/`TeamDelete` removal) and records `teamsMode`+`teamsAvailable` in `runtime.json`. Collects tier/preset/style/title, initializes `feature.json` (schemaVersion 3), triggers Step 5.5 codebase bootstrap on first run, drives the phase team per the resolved mode (explicit `TeamCreate`, implicit `Agent({name})`, or no-teams fallback), and routes to the current phase skill. Owns resume detection and orphan team cleanup. |
-| `discuss/` | DISCUSS phase. Conversational requirements loop; creates a persistent team (spec-writer-1, advocate-1, challenger-1); drives spec-writer via SendMessage; runs advocate/challenger debate loop via SendMessage; commits SPEC.md; advances `feature.json` to `plan`. |
-| `plan/` | PLAN phase. Creates a persistent team (pattern-mapper-1, planner-1, advocate-1, challenger-1); drives pattern-mapper and planner via SendMessage; runs critique/feasibility gates; commits PLAN.md; advances `feature.json` to `execute`. |
-| `execute/` | EXECUTE phase. Pre-task file-conflict detection with synthetic `blockedBy` edges; TaskCreate for all tasks; parallel self-claim dispatch (implementers poll and claim via TaskUpdate); per-task spec-compliance review; FIFO merge queue; commits per task. |
-| `verify/` | VERIFY phase. Creates a persistent team (verifier-1, code-reviewer-1); runs verifier and code-reviewer in parallel via SendMessage; acceptance gate; code-review hard gate; incremental map-codebase refresh; pushes branch; opens PR via `gh pr create`; commits VERIFICATION.md; marks `feature.json` `completed`. |
-| `map-codebase/` | Standalone and auto-invoked skill. Determines stale domains from git diff against index.json; creates a mapper team; dispatches mapper-*-1 teammates via SendMessage; updates index.json; commits. |
-| `shared/` | Shared reference data read by all skills and agents. Not invoked directly. |
+| Cycle phases (forward chain, see Data Flow) | `spec`, `discuss`, `plan`, `execute`, `verify`, `iterate`, `deliver` |
+| Cycle orchestrator + auto-routing | `cycle` (top-level entry), `auto` (routes to micro/debug/cycle), `intake` (any input → spec draft → cycle) |
+| Autonomous work-source loop | `sentinel` (scan sources, run one item via intake+cycle under `lib/trust.sh`), `watch` (post-merge bounded watch, never reopens a cycle) |
+| Ad-hoc / small-scope | `micro` (five invariants, zero ceremony, escalates to intake when it outgrows ad-hoc scale), `debug` (TRIAGE→REPRODUCE→FIX→SIBLING SWEEP→VERIFY) |
+| User-gate machinery | `checking-gates`, `specifying-gates` (opt-in; inert unless a hook routes into them) |
+| Session-mode toggles (SessionStart-injected) | `discipline`, `grill`, `human-code`, `simplicity` |
+| Diagnostics / ops | `status`, `retro`, `forensics`, `pause`, `rollback`, `walkthrough`, `assess`, `quality-loop`, `revise`, `rules`, `onboard` |
+| Codebase map | `map-codebase` (this doc's producer) |
+| Base automation layer | `loop-runner` — the only skill with its own Python (`skills/loop-runner/scripts/{loop,planlib,compile_spec,supervisor}.py`) and test harness (`skills/loop-runner/tests/run_tests.sh`, fake claude/pi/opencode CLIs) |
+| Shared, not invoked | `shared/` — policy docs read by other skills |
 
-### `skills/shared/` - Shared Policy and Templates
+### `skills/shared/` — shared policy (no templates dir claim carried forward; verified list)
+Confirmed present: `model-matrix.md` (role→model alias map, replaces the removed
+preset axis — see Key Abstractions), `tier-matrix.md` (fixed single-tier gate
+behavior), `feature-state-schema.md` (schema for `feature.json`), `model-policy.md`,
+`harness-call-contracts.md`, `pi-harness.md` / `opencode-harness.md` (adaptation
+contracts, per CLAUDE.md), `no-teams-fallback.md`, `implicit-team-mode.md`,
+`execute-subagent.md` / `execute-loops.md` / `execute-loop-fleet.md` /
+`execute-inline.md` (one doc per EXECUTE rung), `human-code.md`,
+`design-for-change.md`, `grounding-protocol.md`, `report-style.md`, plus
+`artifact-templates/`, `review-prompts/`, `team-prompts/`. `preset-matrix.md`
+(cited by the prior ARCH.md) does not exist in this tree.
 
-| File | Responsibility |
-|---|---|
-| `preset-matrix.md` | Table mapping role families to model IDs per preset (quality/balanced/fast). Single source of truth for all model selection. Opus is reserved for spec/plan authoring only. |
-| `tier-matrix.md` | Gate behavior by tier (quality/balanced/quick): which gates run, round caps, severity thresholds. Tier and preset are orthogonal axes. |
-| `feature-state-schema.md` | Canonical JSON schema for `feature.json` (schemaVersion 3): fields, harness task list usage per phase, atomic write contract. No migration from v2 (clean break). |
-| `model-policy.md` | Allowed model IDs, 1M-context probe behavior, consuming-project compatibility notes. |
-| `artifact-templates/` | Mustache-style templates for SPEC.md, PLAN.md, VERIFICATION.md, PATTERNS.md. Read by spec-writer, planner, verifier, pattern-mapper at artifact creation time. |
+### `agents/` — 16 definition files
+Each has `name`/`description`/`tools`/`model` frontmatter (all 16 verified this
+run). Write-scoped agents: `spec-writer`, `planner`, `pattern-mapper` (all three
+→ `docs/loop-spec/features/**`), `mapper-{tech,arch,quality,concerns,domain}`
+(each → its own `docs/loop-spec/codebase/*.md`), `implementer` (worktree code +
+commit), `verifier` (`VERIFICATION.md`). Read-only agents (no Write/Edit in
+`tools:`): `advocate`, `challenger`, `code-reviewer`, `security-reviewer`,
+`spec-compliance-reviewer`, `iterate-judge` (judges the integrated result against
+the *original* goal, not the frozen SPEC — `agents/iterate-judge.md:3`).
 
-### `agents/` - Subagent Definitions
+### `hooks/` — event enforcement
+`hooks/hooks.json` wires 8 event types to 20 scripts under `hooks/team/` plus
+`hooks/restrict-agent-paths.sh` (Write|Edit) and `hooks/pre-cycle-permission-check.sh`
+(unregistered here; a `/permissions` advisory). Verified registrations
+(`hooks/hooks.json:1-172`):
 
-14 agent definition files. Each declares `name`, `description`, `tools` (allow-list), and `model` (default, overridden at dispatch by preset-matrix). In v1.0.0+ most agents run as persistent teammates spawned inside a `TeamCreate` call (the lead routes work to them via `SendMessage`); only the cycle Step 2 capability probe and Step 5.5b background codebase mappers still use one-shot `Agent({subagent_type, model, prompt})` dispatches.
-
-**Phase agents** (write artifacts, called by phase skills):
-
-| Agent | Writes | Tools |
+| Event | Script(s) | Purpose (verified from file header) |
 |---|---|---|
-| `loop-spec-spec-writer` | `docs/loop-spec/features/{slug}/SPEC.md` | Read, Write, Edit, Grep, Glob |
-| `loop-spec-planner` | `docs/loop-spec/features/{slug}/PLAN.md` | Read, Write, Edit, Grep, Glob, Bash (read-only) |
-| `loop-spec-implementer` | Code files in worktree, commits to `task/NNN-{slug}` branch | Read, Write, Edit, Bash, Grep, Glob |
-| `loop-spec-verifier` | `docs/loop-spec/features/{slug}/VERIFICATION.md` | Read, Write, Edit, Bash, Grep, Glob |
-| `loop-spec-pattern-mapper` | `docs/loop-spec/features/{slug}/PATTERNS.md` | Read, Write, Edit, Grep, Glob, Bash (read-only) |
+| SessionStart | `hooks/team/{discipline,grill,simplicity,human-code,rules,micro}-inject.sh` | Inject mode directives; grill/simplicity/human-code/micro default ON, discipline defaults OFF |
+| PreToolUse: Skill | phase-handoff-guard.sh | Blocks a second distinct phase skill invoked directly in one main-agent turn (enforces cycle-mediated phase transitions) |
+| PreToolUse: Agent\|Bash\|EnterWorktree | no-worktrees-guard.sh | Fail-closed backstop for `LOOP_SPEC_WORKTREES=0` |
+| PreToolUse: Write\|Edit | restrict-agent-paths.sh | Path-glob enforcement, see below |
+| PreToolUse: TaskCreate | task-created.sh | Required-metadata validation |
+| PreToolUse: TaskUpdate | pre-task-blockedby-enforce.sh | Blocks claiming a task whose `blockedBy` isn't fully complete |
+| PostToolUse: Bash\|Edit\|Write | strategy-rotation.sh | Advisory: nudges strategy after consecutive failures |
+| UserPromptSubmit | done-criteria.sh | Compound-task heuristic detection |
+| TaskCompleted | task-completed.sh, post-task-complete-revalidate.sh | Phase-aware lint/typecheck gate; user-gate evidence scan |
+| TeammateIdle | teammate-idle.sh | Advisory only, never blocks |
+| Stop | stop-revalidate-user-gates.sh, stop-deflection-guard.sh, adhoc-verify-guard.sh, deferral-guard.sh, session-end-learnings.sh | Safety-net gates + JSONL learning entry |
 
-**Gate agents** (read-only, no Write/Edit in tool list):
+`hooks/restrict-agent-paths.sh` (read in full this run,
+`hooks/restrict-agent-paths.sh:1-197`) identifies the caller by parsing the
+transcript for the most recent **still-open** `Agent` dispatch (no matching
+`tool_result` yet) — a closed dispatch's writes belong to the main thread, not
+the finished subagent; this is the mechanism, not a name-based guess. Rules
+verified in the case statement: `spec-writer`/`planner` → `docs/loop-spec/features/**`;
+`pattern-mapper` → that or `.claude/agent-memory/**`; `mapper-*` (glob) →
+`docs/loop-spec/codebase/**`; `code-reviewer` → `.claude/agent-memory/**` **only**
+(the `memory: project` frontmatter auto-enables Write/Edit, so this closes the
+gap that would otherwise let a read-only reviewer persona write code);
+`implementer`/`verifier`/empty caller → unrestricted; unknown types → allowed
+(fail-open by design).
 
-| Agent | Role |
+### `lib/` — 90 non-test bash/python scripts
+Not skills; invoked as `bash lib/<name>.sh <args>` from skill markdown. Given the
+count, grouped by verified responsibility rather than enumerated; scripts marked
+✓ were opened this run, the rest are grouped from filename + `run-all.sh`
+registration only (not independently verified):
+
+| Group | Representative scripts |
 |---|---|
-| `loop-spec-advocate` | Defends SPEC.md or PLAN.md in critique gate |
-| `loop-spec-challenger` | Critiques SPEC.md or PLAN.md in critique gate |
-| `loop-spec-spec-compliance-reviewer` | Verifies one implementer commit matches task spec |
-| `loop-spec-code-reviewer` | Quality and security review of feature branch diff |
+| Harness/capability probes | `harness.sh` ✓ (claude/pi/opencode + headless/loop-runtime detection, deterministic, `LOOP_SPEC_HARNESS` override), `teams-capability.sh`, `workflow-availability.sh`, `execute-rung.sh` ✓ (concurrency-ladder selector, see Key Abstractions), `dag-width.sh` ✓ (Kahn's-algorithm peak-parallelism), `model-tier.sh` ✓ |
+| Feature state | `feature-write.sh` (atomic write: tmp→sync→bak→rename), `feature-init.sh`, `feature-validation.sh`, `team-ops.sh` |
+| EXECUTE support | `validate-task-metadata.sh`, `integrate-task.sh`, `worktree-base.sh`, `worktree-commit-check.sh`, `task-route.sh` |
+| Delivery / PR | `deliver.sh` ✓ (thin adapter, `lib/deliver.sh:2,13`), `pr-delivery.sh` ✓ (owns every `gh pr` call), `pr-comments.sh`, `pr-feedback.sh`, `pr-body.sh`, `checkpoint-pr.sh`, `revise-branch.sh` |
+| Quality / security probes | `security-signal.sh`, `house-style.sh`, `comment-tells.sh`, `fragility-scan.sh`, `test-tamper-scan.sh`, `placeholder-scan.sh`, `regression-scan.sh`, `verification-baseline.sh`, `verification-gap-scan.sh`, `grounding-lint.sh`, `verification-grounding-lint.sh`, `acceptance-lint.sh`, `artifact-lint.sh`, `criteria-coverage.sh`, `decision-coverage.sh` |
+| Telemetry / trust | `events.sh`, `cycle-result.sh`, `run-digest.sh`, `status.sh`, `trust.sh` ✓ (graduated L0–L3 autonomy governor, fail-closed, `lib/trust.sh:1-20`), `tuning.sh` |
+| Autonomous chain | `sentinel-sources.sh`, `sentinel-triage.sh`, `sentinel-run.sh`, `issue-intake.sh`, `autonomous-chain.sh`, `backlog.sh`, `bounded-run.sh`, `watch.sh` |
+| Codebase map | `map-refresh.sh`, `map-audit.sh` ✓ (measures, never rewrites, the map; `budget` caps total lines at `LOOP_SPEC_MAP_MAX_LINES` default 1000, `lib/map-audit.sh:26,43`), `gsd-ingest.sh` ✓ (still present, still maps GSD's 4 files to loop-spec's TECH/ARCH/QUALITY/CONCERNS; DOMAIN.md has no GSD analog) |
+| Git / environment | `git-ops.sh`, `prepare-environment.sh`, `worktree-base.sh`, `credential-refresh.sh`, `resolve-bin.sh`, `run-with-watchdog.sh` |
+| Misc/version | `bump-version.sh`, `plugin-version.sh`, `owned-gitignore.sh`, `runtime-ignore.sh`, `debug-init.sh`, `greenfield-bootstrap.sh`, `retro.sh`, `rules.sh`, `decisions.sh`, `converged-floor.sh`, `plan-adherence.sh`, `deferral-lint.sh`, `detect-test-cmd.sh`, `quality-loop-state.sh`, `workspace.sh`, `workflow-config.sh`, `project-commands.sh`, `active-cycle.sh`, `cycle-preflight.sh`, `cycle-reconcile.sh`, `finalize-delivery-candidate.sh`, `opencode-install.sh`, `plan-to-loop.sh`, `runtime-preflight.sh`, `sentinel-run.sh`, `extension-points.sh`, `verify-live.sh` |
 
-**Mapper agents** (write codebase docs only):
+`lib/workflows/*.js` (`execute-dag.js`, `map-codebase.js`, `acceptance-verify.js`,
+`plan-multi-angle.js`, `code-review-dimensions.js`) are Workflow-tool DAG
+definitions consumed by the `workflow` EXECUTE rung — the one place JS appears
+outside the two `extensions/*.ts` files CLAUDE.md carves out; `hooks/install-bundled-workflows.sh`
+installs them and `tests/run-all.sh` only syntax-checks them when `node` is
+resolvable (`tests/run-all.sh:179-188`).
 
-| Agent | Writes |
-|---|---|
-| `loop-spec-mapper-tech` | `docs/loop-spec/codebase/TECH.md` |
-| `loop-spec-mapper-arch` | `docs/loop-spec/codebase/ARCH.md` |
-| `loop-spec-mapper-quality` | `docs/loop-spec/codebase/QUALITY.md` |
-| `loop-spec-mapper-concerns` | `docs/loop-spec/codebase/CONCERNS.md` |
-| `loop-spec-mapper-domain` | `docs/loop-spec/codebase/DOMAIN.md` |
+### `extensions/` — non-Claude harness bridges
+`extensions/pi/loop-spec.ts` (231 lines) and `extensions/opencode/loop-spec.ts`
+(333 lines), both read this run. Node-builtins-only by contract (`extensions/opencode/loop-spec.ts:22-26`
+states it deliberately, and stays valid plain JS so the offline suite runs it
+under stock node). Each re-implements the CC-native surfaces (`${CLAUDE_PLUGIN_ROOT}`,
+`${CLAUDE_SKILL_DIR}`, SessionStart/UserPromptSubmit/Stop) as harness-native
+hooks, so the same skill markdown runs unmodified under all three harnesses.
 
-### `commands/` - Slash Command Shims
+### `commands/` — one file, not six
+Only `commands/loop-debug.md` exists. It is a one-shot alias
+(`Skill(loop-spec:debug, args: "autonomous auto $ARGUMENTS")`) for pre-authored
+"$ARGUMENTS" bug reports, not a shim layer for the phase skills — those are
+invoked as `/loop-spec:<skill-name>` directly, no `commands/*.md` wrapper needed.
 
-Six thin command files (`cycle.md`, `discuss.md`, `plan.md`, `execute.md`, `verify.md`, `map-codebase.md`). Each is a one-line shim that tells the CC main thread to invoke the corresponding `Skill(loop-spec:<name>)`. They expose individual phases as standalone slash commands so users can invoke any phase directly without going through cycle.
+### `.loop-spec/` — runtime state (gitignored except `.loop-spec/codebase/index.json`)
+Only `.loop-spec/codebase/index.json` exists in this checkout (no active feature
+mid-run). Confirmed still committed and used by `map-codebase` to compute stale
+domains from `git diff`.
 
-### `hooks/` - PreToolUse / Event Enforcement
+### `docs/loop-spec/` — committed artifacts
+`docs/loop-spec/codebase/{TECH,ARCH,QUALITY,CONCERNS,DOMAIN}.md` (this doc's
+siblings, budget-capped in aggregate by `lib/map-audit.sh budget`) and
+`docs/loop-spec/features/{slug}/` — 9 feature dirs present at time of mapping
+(`multi-root-workspace`, `harness-alignment-graphify`, `grounded-claims`,
+`resilience-ops`, `spec-phase`, `cycle-agent-teams`, `user-gate-flow`,
+`v26-capabilities`, `planner-execute-discipline`).
 
-Three hook registration points in `hooks.json`:
-
-**`hooks/restrict-agent-paths.sh`** (PreToolUse: Write|Edit): path-glob enforcement for agent write access.
-
-- `loop-spec-spec-writer`, `loop-spec-planner`, `loop-spec-pattern-mapper`: write allowed only under `docs/loop-spec/features/**`
-- `loop-spec-mapper-*`: write allowed only under `docs/loop-spec/codebase/**`
-- `loop-spec-implementer`, `loop-spec-verifier`, main thread: unrestricted
-
-Returns exit 0 (allow) or exit 2 (block with error message).
-
-**`hooks/team/task-created.sh`** (PreToolUse: TaskCreate): validates required metadata fields on every `TaskCreate` call. Required fields: `blockedBy`, `files`, `verifyCommand` (non-empty string), `acceptanceCriteria` (non-empty array). Returns exit 0 or exit 2 with a `DENY:` message.
-
-**`hooks/team/task-completed.sh`** (PostToolUse: TaskUpdate): phase-aware quality gate on task completion (fires when `tool_input.status == "completed"`). Reads `feature.json` to determine `currentPhase`:
-- `execute`: runs `commands.lint` and `commands.typecheck` from `feature.json` if configured; blocks on failure (exit 2).
-- `discuss` / `plan`: re-validates task metadata has all required fields; blocks if missing.
-- Other phases: allow (exit 0).
-
-**`hooks/team/teammate-idle.sh`** (TeammateIdle event): advisory-only (always exit 0). Emits a phase-contextual message to stderr when a teammate goes idle, derived from `currentPhase` in `feature.json`. Never blocks.
-
-### `lib/` - Shared Bash Scripts
-
-Called via `Bash` tool from skills. Not invokable as skills themselves.
-
-| Script | Responsibility |
-|---|---|
-| `feature-write.sh` | Atomic write of `.loop-spec/features/{slug}/feature.json`. Three calling modes: (1) `<feature_dir> <json>` -- full replace; (2) `set <feature_dir> <dot_path> <value_json>` -- targeted key set via jq; (3) `append <feature_dir> <dot_path> <value_json>` -- array append via jq. Validates JSON, writes `.tmp`, fsyncs, rotates `.bak`, renames. Replaces the removed `lib/state-write.sh`. |
-| `team-ops.sh` | Team name helpers. Functions: `team_name_for_phase <phase> <slug>` (returns `"loop-spec-{phase}-{slug}"`), `assert_team_env` (exits 2 if `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != "1"`), `feature_json_path <slug>` (returns canonical path). Supports CLI dispatch (`bash lib/team-ops.sh <function_name> [args]`). |
-| `teams-capability.sh` | Resolves the agent-team capability mode to one word: `none` (flag unset), `explicit` (flag=1, CC < 2.1.178, legacy `TeamCreate`/`TeamDelete`), or `implicit` (flag=1, CC >= 2.1.178, implicit team via `Agent({name})`). Deterministic + version-gated like `workflow-availability.sh`; unknown version defaults to `implicit`. Override: `LOOP_SPEC_TEAMS_MODE`. Consumed by cycle Step 2. |
-| `git-ops.sh` | Git helpers: `detect-base-branch`, `slugify <text>`, `ensure-clean-or-stash`, `current-sha`. |
-| `gsd-ingest.sh` | Ingests existing get-shit-done artifacts into loop-spec format. Two subcommands: `codebase` (maps `.planning/codebase/` files to the 5 codebase docs) and `patterns <slug> <target>` (copies GSD PATTERNS.md if present). Prints `INGESTED`/`SKIPPED`/`NONE` lines; caller parses stdout. |
-
-### `.loop-spec/` - Runtime State (gitignored except index.json)
-
-Per-feature runtime state and temporary worktrees. Not committed except `.loop-spec/codebase/index.json`.
-
-| Path | Responsibility |
-|---|---|
-| `.loop-spec/features/{slug}/feature.json` | Feature lifecycle state (schemaVersion 3): phase, currentTeamName, currentTeammates, currentGate, gateHistory[], retryBudget, artifact paths, commands, mergeQueue, warnings. Replaces `state.json` (v2). Tasks and waves are no longer stored here; they live in the harness task list. |
-| `.loop-spec/features/{slug}/feature.json.bak` | Last-good backup; used by cycle on parse failure. |
-| `.loop-spec/features/{slug}/discuss-transcript.md` | Conversational transcript from DISCUSS Step 1. Read by spec-writer at dispatch. |
-| `.loop-spec/features/{slug}/gate-logs/` | Per-round debate transcripts (`spec-critique-round-N.md`, `plan-critique-round-N.md`). Written by lead after each round; read on resume to populate advocate/challenger prior context. |
-| `.loop-spec/features/{slug}/tasks/task-NNN.spec.md` | Per-task spec files; created by EXECUTE only when a task is complex enough to warrant a dedicated spec (set by planner). |
-| `.loop-spec/worktrees/{slug}/task-NNN/` | Git worktrees; one per in-flight task, lifecycle = task (created on claim, pruned after the task's commit merges into `feat/{slug}`). |
-| `.loop-spec/codebase/index.json` | Committed. Maps file paths to domain names for incremental refresh. Records `last_refreshed_at` per domain. |
-
-### `docs/loop-spec/` - Committed Artifacts (in consuming project)
-
-| Path | Responsibility |
-|---|---|
-| `docs/loop-spec/codebase/{TECH,ARCH,QUALITY,CONCERNS,DOMAIN}.md` | Five-domain codebase map. Written by mapper agents or ingested from GSD. Auto-refreshed incrementally at end of each VERIFY. |
-| `docs/loop-spec/features/{slug}/SPEC.md` | Feature specification. Committed at end of DISCUSS. |
-| `docs/loop-spec/features/{slug}/PATTERNS.md` | Code pattern analogs for this feature. Written by pattern-mapper at start of PLAN. |
-| `docs/loop-spec/features/{slug}/PLAN.md` | Task DAG with files, verify commands, acceptance criteria, and explicit `blockedBy` edges. Committed at end of PLAN. |
-| `docs/loop-spec/features/{slug}/VERIFICATION.md` | Acceptance criteria results, code-review findings, test suite output. Committed at end of VERIFY. |
-
-### `tests/` - Test Infrastructure
-
-| File | Responsibility |
-|---|---|
-| `smoke.sh` | Zero-dep bash smoke test. Copies `tests/fixtures/minimal-py` to a temp dir, runs `claude --print "Skill(loop-spec:cycle)"` in non-interactive mode, asserts SPEC/PLAN/VERIFICATION exist, `feature.json` `currentPhase` is `completed`, `schemaVersion` is 3, and at least 4 commits landed. |
-| `validate-agents.sh` | Validates all 14 agent files: filename matches `name:` frontmatter, `description` non-empty, `tools` list present, `model` is an allowed ID, restricted agents have no Write/Edit. |
-| `run-all.sh` | Runs smoke.sh and validate-agents.sh. |
-| `README.md` | 36-cell smoke matrix (3 features x 3 tiers x 4 styles). Defines what full coverage looks like. |
+### `tests/` — test infrastructure
+`tests/run-all.sh` (read in full, 200 lines) runs **~120 suites**, not the two
+(`smoke.sh`, `validate-agents.sh`) the prior ARCH.md claimed — that file no
+longer exists. Categories: manifest/agent validators, hook units (all 20
+`hooks/team/*.test.sh`), ~90 `lib/*.test.sh` unit suites, coverage-lock tests
+(`*-coverage.test.sh`, one per cross-cutting contract CLAUDE.md calls out —
+`design-coverage`, `human-code-coverage`, `pi-harness-coverage`,
+`opencode-harness-coverage`, etc.), a Node-gated workflow syntax check, and
+`skills/loop-runner/tests/run_tests.sh`. `tests/e2e/` (live `claude -p` runs) is
+opt-in only via `--e2e`, never part of the default suite (`tests/run-all.sh:190-193`).
 
 ---
 
 ## Module Dependencies
 
-Dependencies flow top-down. No circular dependencies.
-
 ```
-commands/           ->  skills/cycle (shim, no logic)
-                    ->  skills/{discuss,plan,execute,verify,map-codebase} (phase shims)
+skills/{spec,discuss,plan,execute,verify,iterate,deliver}
+                      <-  Skill(loop-spec:{currentPhase}) dynamic dispatch from skills/cycle
+                          (skills/cycle/SKILL.md:746 — literal skill name is read from
+                          feature_json.currentPhase, not hardcoded per-phase)
 
-skills/cycle        ->  skills/discuss, skills/plan, skills/execute, skills/verify (Skill invocations)
-                    ->  skills/map-codebase (Step 5.5)
-                    ->  lib/git-ops.sh, lib/feature-write.sh, lib/team-ops.sh, lib/gsd-ingest.sh
-                    ->  skills/shared/preset-matrix.md, tier-matrix.md, feature-state-schema.md
-                    ->  TeamCreate, TeamDelete, SendMessage, TaskCreate, TaskList (harness tools, Step 2 probe + Step 6 routing)
+skills/cycle        ->  lib/feature-init.sh activate (per-phase model routing, Step 6)
+                     ->  lib/feature-write.sh, lib/events.sh, lib/cycle-result.sh
+                     ->  lib/extension-points.sh (project-declared phase instructions/facts)
+                     ->  lib/teams-capability.sh (Step 2: none/explicit/implicit)
+                     ->  skills/shared/model-matrix.md, tier-matrix.md
 
-skills/discuss      ->  TeamCreate, TeamDelete, SendMessage (persistent team: spec-writer-1, advocate-1, challenger-1)
-                    ->  lib/feature-write.sh
-                    ->  skills/shared/preset-matrix.md
+skills/execute       ->  lib/dag-width.sh (Step 2: compute W from tasks[] + conflict edges)
+                     ->  lib/execute-rung.sh select (Step 3: rung = f(W, teams-capability.sh,
+                          workflow-availability.sh, harness.sh loop-runtime))
+                     ->  rung "team": TeamCreate/SendMessage/TaskCreate/TaskUpdate (skills/execute/
+                          skills/execute/references/team-rung-protocol.md)
+                     ->  rung "subagent"/"inline"/"loop"/"workflow": skills/shared/execute-{subagent,
+                          inline,loops,loop-fleet}.md / lib/workflows/execute-dag.js
+                     ->  lib/validate-task-metadata.sh, lib/integrate-task.sh, lib/worktree-base.sh
 
-skills/plan         ->  TeamCreate, TeamDelete, SendMessage (persistent team: pattern-mapper-1, planner-1, advocate-1, challenger-1)
-                    ->  lib/feature-write.sh, lib/gsd-ingest.sh
-                    ->  skills/shared/preset-matrix.md
+skills/verify        ->  Skill(loop-spec:map-codebase) incremental (skills/verify/SKILL.md:448)
+                     ->  lib/feature-write.sh append pendingRemediationTasks (read back by execute)
 
-skills/execute      ->  TeamCreate, TeamDelete, SendMessage, TaskCreate, TaskUpdate, TaskList, TaskGet
-                    ->  (implementer-N, reviewer-N teammates; self-claim via TaskUpdate)
-                    ->  lib/feature-write.sh, lib/git-ops.sh
-                    ->  skills/shared/preset-matrix.md
+skills/deliver       ->  lib/deliver.sh run  ->  lib/pr-delivery.sh (every `gh pr *` call)
+                                             ->  lib/finalize-delivery-candidate.sh
+                     ->  lib/pr-feedback.sh check/record
 
-skills/verify       ->  TeamCreate, TeamDelete, SendMessage (persistent team: verifier-1, code-reviewer-1)
-                    ->  skills/map-codebase (Skill invocation, incremental; map team: mapper-*-1 teammates)
-                    ->  lib/feature-write.sh
-                    ->  skills/shared/preset-matrix.md
+skills/sentinel      ->  lib/sentinel-sources.sh, lib/sentinel-triage.sh, lib/trust.sh (batch bound)
+                     ->  Skill(loop-spec:intake)  ->  Skill(loop-spec:cycle) (skills/sentinel/SKILL.md:70-74)
 
-skills/map-codebase ->  TeamCreate, TeamDelete, SendMessage, TaskCreate, TaskUpdate (mapper team: one task per stale domain)
-                    ->  lib/feature-write.sh (via index.json write)
-                    ->  skills/shared/preset-matrix.md
+skills/map-codebase  ->  TeamCreate; SendMessage per stale domain -> mapper-{tech,arch,quality,
+                          concerns,domain}-1 teammates -> docs/loop-spec/codebase/*.md
+                     ->  .loop-spec/codebase/index.json (git-diff-driven staleness)
 
-agents/*            ->  skills/shared/artifact-templates/*.template (read at runtime)
-                    ->  docs/loop-spec/codebase/*.md (read for context)
-                    ->  docs/loop-spec/features/{slug}/*.md (read/write own artifact)
+agents/*             ->  skills/shared/artifact-templates/* (read at write time)
+                     ->  docs/loop-spec/codebase/*.md (read for context)
 
-lib/team-ops.sh     ->  (no deps; pure bash helpers)
-lib/feature-write.sh ->  jq (JSON validation + key mutation subcommands)
-
-hooks/restrict-agent-paths.sh  ->  (no internal deps; reads CC session transcript via stdin)
-hooks/team/task-created.sh     ->  python3 (JSON parsing of tool payload)
-hooks/team/task-completed.sh   ->  python3, .loop-spec/features/*/feature.json (reads currentPhase + commands)
-hooks/team/teammate-idle.sh    ->  jq or python3, .loop-spec/features/*/feature.json (reads currentPhase)
+hooks/restrict-agent-paths.sh  ->  python3 (transcript parse for open Agent dispatch)
+hooks/team/task-created.sh     ->  python3 (payload parse)
+hooks/team/*-inject.sh         ->  .loop-spec/{discipline,grill,simplicity,human-code}.conf,
+                                     lib/rules.sh render (rules-inject.sh only)
+lib/execute-rung.sh            ->  lib/harness.sh subagents|cli|loop-runtime|loop-runtime-reason
+lib/deliver.sh                 ->  lib/pr-delivery.sh (LOOP_SPEC_PR_DELIVERY_BIN override point)
 ```
+
+No circular dependencies found. `lib/harness.sh` is the one seam everything
+harness-conditional passes through — `execute-rung.sh`, `dag-width.sh`
+(indirectly, via width thresholds), and the pi/opencode extensions all read it
+or its stamped env vars rather than sniffing tools themselves.
 
 ---
 
 ## Entrypoints
 
-There are three ways a user enters loop-spec:
-
-1. **`/loop-spec:cycle`** (commands/cycle.md) - Full 4-phase pipeline from any starting state. This is the primary entrypoint. Checks for resumable features first. Collects tier, preset, style, and feature title before dispatching.
-
-2. **`/loop-spec:{discuss,plan,execute,verify}`** (commands/*.md) - Phase-direct entrypoints. Each invokes the corresponding skill without going through cycle. Require `feature.json` to exist and `currentPhase` to match (except discuss, which can start fresh).
-
-3. **`/loop-spec:map-codebase`** (commands/map-codebase.md) - Standalone codebase map refresh. Supports `--full`, `--domain`, `--preset` flags. Operates with or without an active feature.
+1. **`/loop-spec:cycle`** — top-level orchestrator; resumes an in-progress
+   feature or starts fresh from a description or a pre-authored spec file.
+2. **`/loop-spec:auto`** — question-free autonomous router; classifies a request
+   to `micro`, `debug`, or `cycle` and never asks (`skills/auto/SKILL.md:1-8`).
+   Preferred entry for SDK/headless callers.
+3. **`/loop-spec:{spec,discuss,plan,execute,verify,iterate,deliver}`** —
+   individually invocable, but each expects `feature.json.currentPhase` to
+   already match; `phase-handoff-guard.sh` blocks a second phase skill firing
+   directly in the same main-agent turn, so in practice these are cycle-internal.
+4. **`/loop-spec:{micro,debug,intake,sentinel,assess,quality-loop,status,retro,
+   watch,forensics,pause,rollback,walkthrough,revise,rules,onboard,discipline,
+   grill,human-code,simplicity,map-codebase}`** — standalone skills, each usable
+   without an active cycle.
+5. **`/loop-debug`** (`commands/loop-debug.md`) — the only slash command outside
+   the skill-name convention; one-shot alias into `debug` for a bug report.
+6. **Hook-triggered**: SessionStart mode injections run on every session start
+   regardless of user action; `UserPromptSubmit`'s `done-criteria.sh` and the
+   five `Stop` hooks fire on ordinary turns, not just cycle runs.
+7. **pi / opencode**: same skill set, entered via each harness's native
+   skill-invocation surface, bridged by `extensions/{pi,opencode}/loop-spec.ts`.
 
 ---
 
 ## External Integrations
 
-loop-spec has zero runtime external dependencies by design. The only external surface is the Claude Code harness itself.
-
 | Integration | How accessed | Notes |
 |---|---|---|
-| Claude Code harness | Implicit (skill invocation, `TeamCreate`/`SendMessage`/`TaskCreate` etc., `AskUserQuestion`) | Harness interprets skills, runs persistent phase teams, serializes concurrent task claims, fires hook events |
-| GitHub / git remote | `gh pr create` via Bash in VERIFY Step 5 | Only network call; used to open the PR. Requires `gh` CLI authenticated. |
-| GSD (get-shit-done) artifacts | `lib/gsd-ingest.sh` reads `.planning/codebase/` and `.planning/phases/{slug}/` | Optional; if `.planning/` absent, ingest prints NONE and mappers run instead. No network. |
-| Git | `git worktree`, `git merge`, `git push`, `git diff` via Bash throughout EXECUTE and VERIFY | Local git operations only |
-| `jq` | Used by `lib/feature-write.sh` for JSON validation and key mutation, and by `lib/gsd-ingest.sh` implicitly | Assumed present; `hooks/team/teammate-idle.sh` falls back to python3 if absent |
+| Claude Code / pi / opencode harness | `Skill`, `Agent`, `TeamCreate`, `TaskCreate`, `Workflow`, `AskUserQuestion`, `EnterWorktree` | Which surfaces exist is probed, never assumed — `lib/harness.sh` |
+| GitHub (`gh` CLI) | `lib/pr-delivery.sh` — `gh pr view/list/create/edit/ready/checks`, `gh repo view` | All PR lifecycle now lives in DELIVER via this one file, not scattered across VERIFY as the prior ARCH.md claimed |
+| Git | `git worktree`, `git merge --ff-only`, `git push`, `git diff` throughout EXECUTE/DELIVER/watch | Local + the one `git push` in delivery |
+| `jq` | `lib/feature-write.sh` and the large majority of `lib/*.sh` | Assumed present; CLAUDE.md requires `jq >= 1.5` |
+| `python3` | JSON parsing in hooks (`restrict-agent-paths.sh`, `task-created.sh`) and several `lib/*.sh` | Required runtime dep per CLAUDE.md |
+| `node` | Syntax-checks `lib/workflows/*.js`; required at runtime only if the `workflow` EXECUTE rung is opted into and available | Optional — `tests/run-all.sh` skips its check when absent |
+| GSD (get-shit-done) artifacts | `lib/gsd-ingest.sh` reads `.planning/{codebase,phases}/` | Optional, no network; prints `NONE` and mapper agents run instead when absent |
+
+No other network calls found this run.
 
 ---
 
 ## Data Flow Summary
 
-The central data object is `feature.json`. Every phase reads it on entry, writes it atomically via `lib/feature-write.sh` after each significant transition, and hands off to the next phase by setting `currentPhase`. Live task state during EXECUTE and VERIFY lives in the harness task list, not in `feature.json`.
-
-### Feature lifecycle data flow
-
-```
-User input (tier, preset, style, title)
-    |
-    v
-skills/cycle  -->  feature.json initialized  (schemaVersion:3, currentPhase:"discuss")
-               -->  lib/team-ops.sh team_name_for_phase -> team name
-               -->  TeamCreate (phase team) + lib/feature-write.sh (currentTeamName)
-    |
-    v
-skills/discuss
-    |-- AskUserQuestion (conversational loop) -> discuss-transcript.md
-    |-- TeamCreate: {spec-writer-1, advocate-1, challenger-1}
-    |-- SendMessage -> spec-writer-1          -->  docs/.../SPEC.md
-    |-- TeammateIdle (spec-writer-1 done)
-    |-- Debate loop (advocate-1 <-> challenger-1 via SendMessage):
-    |     SendMessage challenger-1 -> advocate-1 (critique)
-    |     SendMessage advocate-1 -> challenger-1 (defense)
-    |     Both send ROUND-N DONE[...] to lead
-    |     Lead writes gate-logs/spec-critique-round-N.md
-    |     Convergence or cap -> synthesize fix_list
-    |-- If fix_list non-empty: SendMessage -> spec-writer-1 (revise); repeat debate
-    |-- lib/feature-write.sh: gateHistory append, currentGate zeroed
-    |-- git commit SPEC.md
-    |-- lib/feature-write.sh: currentPhase = "plan", artifacts.spec = path
-    |-- TeamDelete
-    v
-skills/plan
-    |-- lib/gsd-ingest.sh patterns     -->  PATTERNS.md (if GSD present, skip pattern-mapper)
-    |-- TeamCreate: {pattern-mapper-1, planner-1, advocate-1, challenger-1}
-    |-- SendMessage -> pattern-mapper-1   -->  docs/.../PATTERNS.md
-    |-- SendMessage -> planner-1          -->  docs/.../PLAN.md (task DAG with metadata)
-    |-- Debate loop (advocate-1 <-> challenger-1, plan-critique gate)
-    |-- Local feasibility check (lead reads PLAN.md, no agent dispatch)
-    |-- git commit PLAN.md
-    |-- lib/feature-write.sh: currentPhase = "execute"
-    |-- TeamDelete
-    v
-skills/execute
-    |-- Step 2: pre-task file-conflict detection (synthetic blockedBy edges)
-    |-- Step 3: lib/validate-task-metadata.sh per task, then TaskCreate
-    |           (metadata: blockedBy, files, verifyCommand, acceptanceCriteria, specPath)
-    |-- TeamCreate: {implementer-1..N, reviewer-1..N}
-    |
-    | Implementers self-claim: TaskUpdate(status:"in_progress", owner:"implementer-N",
-    |                                     metadata:{claimedBy, phase:null})
-    |   (harness serializes concurrent claims; loser must retry)
-    |   git worktree add .loop-spec/worktrees/{slug}/task-NNN/
-    |   implementer commits to task/NNN-{slug} branch in worktree
-    |   Hand off: TaskUpdate(owner:null, metadata:{phase:"awaiting_review"})
-    |             (status stays "in_progress"; harness has 3 documented statuses,
-    |              implementer/reviewer handoff lives in metadata.phase)
-    |
-    | Reviewer claims (filter: status=in_progress, metadata.phase="awaiting_review", owner=null):
-    |   TaskUpdate(owner:"reviewer-N", metadata:{phase:null})
-    |   TaskGet -> reads claimedBy, files, acceptanceCriteria, specPath, retries
-    |   Runs spec-compliance check
-    |   -> PASS:  TaskUpdate(status:"completed")
-    |   -> FAIL (retries left): TaskUpdate(owner:null,
-    |                                       metadata:{phase:"needs_rework", retries:R+1})
-    |                            SendMessage({to: claimedBy, body:"REWORK NEEDED..."})
-    |   -> FAIL (budget exhausted): TaskUpdate(status:"completed",
-    |                                            metadata:{result:"blocked"})
-    |                                SendMessage({to: lead, body:"TASK BLOCKED..."})
-    |   hooks/team/task-completed.sh (PostToolUse:TaskUpdate matcher) runs lint + typecheck
-    |   when status flips to "completed"
-    |
-    | Lead: mergeQueue FIFO (TaskList poll)
-    |   Sequential merge: git merge --ff-only task/NNN-{slug}
-    |   git worktree remove
-    |
-    |-- lib/feature-write.sh: currentPhase = "verify"
-    |-- TeamDelete
-    v
-skills/verify
-    |-- Scan source files for TBD/FIXME/XXX markers (Bash, fail-fast if found)
-    |-- TeamCreate: {verifier-1, code-reviewer-1}
-    |-- SendMessage -> verifier-1 + code-reviewer-1 (parallel)
-    |     verifier-1    -->  docs/.../VERIFICATION.md (acceptance table)
-    |     code-reviewer-1 -->  findings (in-memory, reported to lead via SendMessage)
-    |-- TeammateIdle (both done)
-    |-- acceptance gate: FAIL -> generate remediation tasks -> loop back to execute
-    |-- code-review hard gate: BLOCK -> generate remediation tasks -> loop back to execute
-    |-- TeamDelete
-    |-- skills/map-codebase (incremental, own TeamCreate inside)
-    |   |-- git diff baseSha..HEAD --name-only
-    |   |-- index.json lookup -> stale domains
-    |   |-- TeamCreate mapper team; SendMessage per stale domain -> mapper-*-1 teammates
-    |   |-- mapper-*-1 teammates write docs/loop-spec/codebase/*.md
-    |   |-- index.json updated, committed
-    |-- git push branch
-    |-- gh pr create  -->  PR URL
-    |-- git commit VERIFICATION.md
-    |-- lib/feature-write.sh: currentPhase = "completed", currentTeamName = null
-```
-
-### Codebase map data flow (first run)
+`feature.json` is still the central per-feature object, written only through
+`lib/feature-write.sh`'s atomic protocol (validate → `.tmp` → `sync` → rotate
+`.bak` → rename). What's different from the prior map: the lifecycle is now
+**seven** phases, not four, and it can rewind.
 
 ```
-skills/cycle Step 5.5
-    |-- lib/gsd-ingest.sh codebase  -->  docs/loop-spec/codebase/{TECH,ARCH,QUALITY,CONCERNS}.md (if .planning/ exists)
-    |-- lib/feature-write.sh: codebaseSource.{domain} = "gsd-ingest" for ingested domains
-    |-- git commit ingested docs (if any)
-    |-- skills/map-codebase --domain <missing>
-    |   |-- TeamCreate mapper team; SendMessage per domain -> mapper-*-1 teammates (parallel)
-    |   |-- mapper-*-1 teammates write remaining docs/loop-spec/codebase/*.md
-    |   |-- .loop-spec/codebase/index.json created
-    |   |-- git commit
-    |-- lib/feature-write.sh: codebaseSource.{domain} = "mapper" for mapped domains
+currentPhase:  spec -> discuss -> plan -> execute -> verify -> iterate -> deliver -> completed
+                                                          ^                   |
+                                                          |__ iterate may rewind to
+                                                              execute, plan, spec, or discuss
+                                                              (human approval required to
+                                                              rewind into spec/discuss)
 ```
 
-### Feature state write protocol
+- **SPEC**: Socratic interview, gated on a quantitative ambiguity score ≤ 0.20
+  across 4 dimensions (not a single critique gate).
+- **DISCUSS → PLAN**: single-critic critique gate by default, escalating to a
+  full advocate/challenger debate only when contested or security-signaled
+  (`lib/security-signal.sh`) — the always-on debate team the prior ARCH.md
+  described is gone; single-tier operation fixed this.
+- **PLAN Step 6** persists the gate-validated task DAG to
+  `feature.json.artifacts.tasks` (`.loop-spec/features/{slug}/tasks.json`) —
+  EXECUTE reads this, not a re-derivation from `PLAN.md` prose.
+- **EXECUTE**: computes DAG width `W` (`lib/dag-width.sh`, Kahn's algorithm peak
+  ready-set size) over PLAN's edges unioned with synthetic file-conflict edges,
+  then `lib/execute-rung.sh select` picks one of five rungs — `inline` (serial,
+  no subagent tool), `subagent` (lead-driven `Agent` waves), `team` (self-claim
+  via `TaskUpdate`, harness `TaskList` is authoritative for *live status* here
+  only), `loop` (loop-fleet, requires a persistent runtime), `workflow`
+  (`execute-dag.js`, opt-in) — from measured width plus the harness capability
+  probes, never a model judgment.
+- **VERIFY**: acceptance gate + code-review hard gate, then triggers
+  `map-codebase` incrementally before returning.
+- **ITERATE**: `iterate-judge` (fresh agent, read-only) checks the integrated
+  result against the *original* goal, not just VERIFY's frozen acceptance
+  checklist; converged or budget-exhausted → DELIVER, otherwise classifies the
+  highest-leverage gap and rewinds.
+- **DELIVER**: sole owner of push / PR reconciliation / required-check wait /
+  draft→ready transition, entirely through `lib/deliver.sh` → `lib/pr-delivery.sh`.
+  Runs on the main thread; no team.
 
-All feature state mutations go through `lib/feature-write.sh <feature_dir> <json_string>` (or `set`/`append` subcommands):
-1. Validate JSON (`jq -e .`)
-2. Write to `feature.json.tmp`
-3. `sync`
-4. `mv feature.json -> feature.json.bak`
-5. `mv feature.json.tmp -> feature.json`
+### Autonomous work-source loop (new since the prior map)
+```
+skills/sentinel scan  ->  source adapters (labeled issues, CI failures, backlog,
+                           assessment findings) -> deterministic triage ->
+                           .loop-spec/sentinel-queue.json (read-only)
+skills/sentinel run    ->  pop first eligible item -> Skill(loop-spec:intake) ->
+                           Skill(loop-spec:cycle) autonomous -> always PR-terminated,
+                           batch-bounded by lib/trust.sh (never chains past a failure)
+```
 
-On resume after crash: cycle parses `feature.json`; on parse failure, tries `feature.json.bak`. Cycle then probes team liveness via `TaskList({team: currentTeamName})` before offering resume. Tasks are re-created from `PLAN.md` at EXECUTE entry (not read from `feature.json`, which no longer stores them).
+### Codebase map refresh (incremental, VERIFY-triggered or standalone)
+```
+git diff baseSha..HEAD --name-only -> .loop-spec/codebase/index.json lookup ->
+stale domains -> TeamCreate mapper team -> mapper-*-1 teammates write
+docs/loop-spec/codebase/*.md -> index.json updated -> lib/map-audit.sh budget/sweep
+(measures the result; never rewrites it) -> git commit
+```
 
 ---
 
 ## Key Abstractions
 
-**Tier vs Preset.** Tier (`quality`/`balanced`/`quick`) controls gate behavior: which critique gates run and code-review severity thresholds. Preset (`quality`/`balanced`/`fast`) controls model selection via `preset-matrix.md`. They are orthogonal; a user can pick `tier=quick + preset=quality` (quick gates, opus for spec/plan authoring) or `tier=quality + preset=fast` (full gates, haiku for everything except authoring).
+**Single-tier operation (the tier/preset axis is gone).** The prior ARCH.md's
+"Tier vs Preset" abstraction is false as of this run: `skills/shared/tier-matrix.md`
+states the quick/balanced/quality axis was removed in a v2.5.0 hard cutover.
+Gate behavior, severity thresholds, and fan-out width are now FIXED; trivially
+scoped work is handled structurally (the plan critique's structural fast-path,
+the DAG-width ladder) rather than by an inferred intent tier. Model routing is a
+separate, still-live axis: `skills/shared/model-matrix.md` maps role → model
+alias, with `lib/feature-init.sh activate` writing the resolved
+`feature.models.<role>` before every phase invocation.
 
-**Persistent phase teams.** Every phase runs inside a `TeamCreate` team. Teammates are spawned once and persist for the full phase; rework is routed via `SendMessage` to the existing teammate rather than a new `Agent` call. `Agent` is reserved for the Step 2 capability probe only. Teams are torn down via `TeamDelete` at each phase boundary and between phases.
+**Probes, not judgments (CLAUDE.md's rule, verified in the code).** Every
+consequential branch this run traced back to a deterministic script, never
+prose: harness identity (`lib/harness.sh`), team capability
+(`lib/teams-capability.sh`), EXECUTE's rung (`lib/execute-rung.sh`, which itself
+composes `harness.sh` + DAG width + two more capability flags), and security
+escalation (`lib/security-signal.sh`, word-boundary term match). Each emits its
+answer plus its reason on one stdout line and fails toward the safer branch.
 
-**Self-claim parallelism in EXECUTE.** Implementers use `TaskUpdate(status:"in_progress", owner:"<name>")` to claim tasks from the shared harness task list. The harness serializes concurrent claims; the losing implementer re-queries and retries. This replaces the old wave-based parallel `Agent` dispatch. Merges are driven by the lead from a FIFO `mergeQueue` in `feature.json`.
+**The harness triad seam.** `lib/harness.sh` is the one place `claude`/`pi`/
+`opencode` branching happens; `execute-rung.sh` and both `extensions/*.ts`
+bridges read its output (or the env vars it documents) rather than re-detecting.
+Per CLAUDE.md, every non-Claude accommodation is required to be an additive
+branch keyed on this probe.
 
-**Harness task list as the source of truth for tasks.** `feature.json` no longer stores `tasks[]` or `waves[]`. Live task state (status, owner, metadata) lives exclusively in the harness task list (`TaskCreate`/`TaskUpdate`/`TaskList`/`TaskGet`). On EXECUTE resume the lead recreates the task list from `PLAN.md`; on DISCUSS/PLAN resume there is no task list to restore.
+**Trust governor (new since the prior map).** `lib/trust.sh` computes a
+graduated autonomy level L0–L3 from the committed metrics contract only — never
+a self-report — and is fail-closed: any missing/null/unparseable signal resolves
+to the lower level, demotion is instant, promotion requires a streak
+(`lib/trust.sh:10-19`). `sentinel run` and the autonomous chain call its
+`authorize` verb before acting; the check lives in the acting script, not in
+skill prose, so a skill cannot talk itself past it.
 
-**Retry budget hierarchy.** Gate failures consume budget at three levels simultaneously: per-gate (3 retries max), per-phase (3-4 depending on phase), and global (30 across the feature). EXECUTE uses per-task budget (3) instead of per-phase. The most restrictive limit wins.
+**Path enforcement, re-verified.** Still three layers (agent `tools:`
+frontmatter, `restrict-agent-paths.sh` PreToolUse glob check,
+`task-created.sh`/`pre-task-blockedby-enforce.sh` PreToolUse task-integrity
+checks), but the caller-identity mechanism in `restrict-agent-paths.sh` is worth
+naming explicitly: it walks the transcript for the most recent *open* `Agent`
+dispatch, so a finished subagent's writes are never misattributed once its
+`tool_result` lands.
 
-**Path enforcement layering.** Three complementary mechanisms: agent `tools:` frontmatter excludes Write/Edit from read-only agents entirely; `hooks/restrict-agent-paths.sh` (PreToolUse Write|Edit) enforces path globs for agents that do have Write/Edit; `hooks/team/task-created.sh` (PreToolUse TaskCreate) ensures all task metadata is structurally valid before a task enters the harness task list.
+**The map audits itself.** `lib/map-audit.sh` is unusual among the `lib/`
+scripts: it never rewrites `docs/loop-spec/codebase/*.md`, it only measures it —
+total size against a 1000-line ceiling (`budget`), cited paths that vanished or
+changed since the doc was written (`sweep`), index entries whose source file is
+gone (`orphans`), and per-domain staleness. This document's own line count is
+subject to that ceiling.
 
-**Provenance tracking.** `feature.json.artifacts.codebaseSource.{domain}` records whether each codebase doc came from `gsd-ingest`, `mapper`, or `manual`. `feature.json.artifacts.patternsSource` records the same for PATTERNS.md.
+---
+
+## Verification notes (this run)
+
+Claims in the prior (2026-05-11) ARCH.md found **false** and not carried
+forward: `lib/state-write.sh` (replaced by `lib/feature-write.sh`, which was
+already true then and is still true), `skills/shared/preset-matrix.md` (no
+preset axis exists any more — see Key Abstractions), `commands/{cycle,discuss,
+plan,execute,verify,map-codebase}.md` (none exist; only `commands/loop-debug.md`
+remains), the four-phase `DISCUSS -> PLAN -> EXECUTE -> VERIFY` cycle (it is now
+seven phases, `SPEC` through `DELIVER`, with `ITERATE` rewind), "gh pr create
+via Bash in VERIFY Step 5" (PR creation now lives entirely in DELIVER via
+`lib/pr-delivery.sh`), and `tests/run-all.sh` running only `smoke.sh` +
+`validate-agents.sh` (it now runs on the order of 120 suites).
