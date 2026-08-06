@@ -544,7 +544,32 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "$plan_path"
 grounding_exit=$?
 ```
 
-Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1 with the FLAG lines in the body; retries unbounded). On revision received, re-run ONLY this lint. Exit 0 on all three checks: proceed to Step 6.
+Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1 with the FLAG lines in the body; retries unbounded). On revision received, re-run ONLY this lint. Exit 0 on all three checks: proceed to Step 5.7.
+
+### Step 5.7 - Fresh-eyes pruning pass (advisory)
+
+The critique gate judged the plan's substance with the spec and maps in hand; nobody has
+yet judged its surplus, and everyone still in this phase has heard every line justified.
+Dispatch ONE context-free reviewer (a fresh subagent — never planner-1 or challenger-1)
+carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
+verbatim, plus ONLY the final PLAN.md and
+`skills/shared/artifact-templates/PLAN.md.template` — no spec, no gate-logs, no
+critique history.
+
+Skip the dispatch when PLAN.md is under 60 lines (`wc -l`).
+
+The lead adjudicates the returned list, then re-runs the three mechanical gates on the
+pruned file before proceeding — a cut that breaks decision coverage, criteria coverage,
+or grounding is reverted, not argued with:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/decision-coverage.sh" "$spec_path" "$plan_path" \
+  && bash "${CLAUDE_SKILL_DIR}/../../lib/criteria-coverage.sh" "$spec_path" "$plan_path" \
+  && bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "$plan_path"
+```
+
+Declined proposals and `out-of-scope:` lines go to `.loop-spec/BACKLOG.md`. Advisory:
+nothing here blocks Step 6.
 
 ### Step 6 - Commit PLAN.md and update feature.json
 

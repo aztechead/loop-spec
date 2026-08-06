@@ -234,6 +234,31 @@ Exit 1 BLOCKS: fix SPEC.md in place per the FLAG lines (you wrote it; use
 `skills/shared/artifact-templates/SPEC.md.template` as the shape) and re-run until it
 prints `artifact-lint: ok`.
 
+### Step 3.5 - Fresh-eyes pruning pass (advisory)
+
+The lints above catch malformed and ungrounded content, never surplus content — and the
+orchestrator that just ran the interview cannot honestly judge surplus, because it heard
+every line justified. Dispatch ONE context-free reviewer (a fresh subagent, not this
+thread) carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
+verbatim, plus ONLY the written SPEC.md and
+`skills/shared/artifact-templates/SPEC.md.template` — never the interview transcript.
+
+Skip the dispatch when SPEC.md is under 60 lines (`wc -l`): a spec that small cannot
+repay a subagent.
+
+Adjudicate the returned `cut:`/`merge:`/`shrink:` list yourself, as the maker:
+
+- Apply proposals failing `duplicate` or `narrative` — those tests are near-mechanical.
+- Judge `derivable`/`speculative`/`over-template` proposals on their merits; the prompt's
+  carve-outs are hard limits (`### Good Enough` criteria, decisions, `ambiguity_scores`,
+  grounding lines are NEVER cut here — an `out-of-scope:` line goes to the user in
+  interactive styles and to `.loop-spec/BACKLOG.md` in autonomous ones).
+- Re-run the Step 3 `artifact-lint.sh spec` after applying any cut.
+- Record the full proposal list and each disposition in the interview transcript.
+
+Advisory means advisory: an empty list, a declined list, or a failed dispatch never
+blocks Step 4.
+
 ### Step 4 - Update feature.json
 
 Update `feature.json` via `lib/feature-write.sh`:
