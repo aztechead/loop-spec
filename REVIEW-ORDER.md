@@ -70,6 +70,15 @@ The evidence is in `bmad-scan-proposals.md` B9: six weeks mandatory, zero citati
 - the claim is suspect when its source moved after the refresh
   `lib/map-audit.sh:162`
 
+**Trust marking — what makes the decay numbers actionable**
+
+- regeneration voids a ratification: the human confirmed the old prose, not the new
+  `lib/map-trust.sh:22`
+- the one trust state worth flagging: the doc outgrew its promise
+  `lib/map-audit.sh:289`
+- pruning is a script, never an instruction (F3)
+  `lib/map-index-prune.sh:38`
+
 **Self-review fixes**
 
 - a truncated search reports unknown, never absence
@@ -101,6 +110,14 @@ The evidence is in `bmad-scan-proposals.md` B9: six weeks mandatory, zero citati
   `docs/loop-spec/bmad-scan-proposals.md:1`
 - where each mechanism runs inside VERIFY
   `skills/verify/SKILL.md:392`
+- the fresh-eyes pruning contract: only the artifact and its template, listing only
+  `skills/shared/review-prompts/prose-pruning.md:19`
+- promotion to verified is an operator action, never autonomous
+  `skills/map-codebase/SKILL.md:164`
+- the pruning pass on the spec, before commit
+  `skills/spec/SKILL.md:237`
+- the pruning pass on the plan, with the mechanical gates re-run after cuts
+  `skills/plan/SKILL.md:549`
 - cross-file wiring pinned so it cannot regress silently
   `tests/bmad-import-coverage.test.sh:1`
 - the trail lint's own tests, including the ordering and coverage findings
@@ -124,7 +141,7 @@ The evidence is in `bmad-scan-proposals.md` B9: six weeks mandatory, zero citati
 - per-phase extension loading
   `skills/cycle/SKILL.md:778`
 - map audit wired as Step 6.5
-  `skills/map-codebase/SKILL.md:214`
+  `skills/map-codebase/SKILL.md:220`
 - the verification-gap reviewer prompt
   `skills/shared/review-prompts/verification-gap.md:1`
 - the walkthrough skill

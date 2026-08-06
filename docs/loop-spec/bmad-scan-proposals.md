@@ -195,11 +195,12 @@ grounding protocol makes external-system premises probe-before-assert with a com
 `EVIDENCE.md` ledger. The map is a navigational aid on top of a real index, not the index.
 BMAD has no graph.
 
-Where BMAD is ahead and loop-spec should follow: the **verified/generated distinction**. BMAD
+Where BMAD is ahead and loop-spec followed: the **verified/generated distinction**. BMAD
 writes `verified` only when a human confirmed the claim, and its auto mode marks everything
-`generated` no matter how confident. loop-spec has no such field at any granularity, so a
-claim a human ratified and a claim a mapper inferred at 2 a.m. are indistinguishable
-forever. B4 measures decay; it does not yet mark trust. That is B6.
+`generated` no matter how confident. loop-spec had no such field at any granularity, so a
+claim a human ratified and a claim a mapper inferred at 2 a.m. were indistinguishable
+forever. B4 measures decay; B6 (shipped below) marks the trust that makes those numbers
+actionable.
 
 **Not proposed:** deleting the map. It is 17.5k tokens against a 200k window, it is the only
 artifact carrying cross-cutting concerns the graph cannot express, and the fix for a stale
@@ -267,6 +268,61 @@ Run against this repository's own map: **39 of 49 cited paths are outdated**, on
 10 that no longer exist. Four fifths of the map rests on files that changed after it was
 written.
 
+### B6. Trust marking on map claims *(shipped)*
+
+**Source:** the `verified` / `generated` frontmatter split from *The map challenge* above —
+BMAD writes `verified` only when a human confirmed the claim, and its auto mode marks
+everything `generated` no matter how confident.
+
+**Gap:** loop-spec had no trust field at any granularity, so a claim a human ratified and
+a claim a mapper inferred at 2 a.m. were indistinguishable forever. B4 measures decay; a
+decay number without a trust split is alarming but not actionable — a `generated` domain
+with outdated claims is routine refresh work, a `verified` one is a broken promise.
+
+**Mechanism:** per-document YAML frontmatter (`trust`, `verified_at`, `verified_by`),
+owned by `lib/map-trust.sh`. The map skill stamps every refreshed domain `generated`
+unconditionally (Step 4.5), and a `generated` mark DROPS any prior ratification — the
+human confirmed the old prose, not the new. Promotion to `verified` is an operator
+action: interactive sessions may offer it for a domain the user just reviewed, and no
+skill may run it in autonomous mode, for the same reason a model does not grade its own
+gate. `lib/map-audit.sh trust` reports the split and flags exactly two states:
+`trust-invalid` (a value the schema does not know, or `verified` without a date) and
+`trust-expired` (the document changed after its ratification — the promise must be
+re-earned, never re-dated). Unmarked is the migration state: reported, never flagged.
+
+All five domains in this repository are marked `generated`. That is the honest baseline —
+nothing here has ever been human-ratified.
+
+**Also fixed with it — F3:** index pruning is now a script, `lib/map-index-prune.sh`,
+paired with the `orphans` probe (`map-audit` detects, the prune repairs, and the only
+edit it makes is removing keys whose path is verifiably absent). The map skill calls it
+in Step 4 instead of instructing the lead to hand-edit JSON.
+
+### B7. Fresh-eyes pruning pass over prose artifacts *(shipped)*
+
+**Source:** BMAD's ingest closes with a subagent holding only the written artifacts and
+the contracts — none of the authoring conversation — returning proposed cuts, on the
+stated grounds that *"the writer who just heard every line justified cannot honestly run
+the pruning test on it."*
+
+**Gap:** loop-spec had exactly this pass for code (the over-engineering pass, pinned by
+`tests/ponytail-coverage.test.sh`) and nothing for prose. SPEC.md, PLAN.md, and the map
+get structural and grounding lints, which catch malformed and ungrounded content but
+never *surplus* content.
+
+**Mechanism:** one canonical prompt, `skills/shared/review-prompts/prose-pruning.md` —
+five named pruning tests (`derivable`, `duplicate`, `speculative`, `narrative`,
+`over-template`), each proposal a `cut:`/`merge:`/`shrink:` line naming the one test the
+prose fails, listing only, never rewriting. The reviewer receives the artifact and its
+template contract and nothing else; hard carve-outs protect what other machinery matches
+verbatim (acceptance criteria, decisions, grounding lines, frontmatter, markers). Wired
+at three points: SPEC Step 3.5 (after the structural lint, before commit), PLAN Step 5.7
+(after the coverage and grounding gates, which are re-run on the pruned file — a cut
+that breaks a mechanical gate is reverted, not argued with), and map-codebase Step 6.6
+(dispatched only on a measured `over-budget` finding, so the map pass costs nothing
+while the map is within budget). Advisory at all three: a prune proposal never blocks a
+phase.
+
 ## Proposals — not implemented
 
 ### B5. Skill catalog as data *(proposal)*
@@ -285,34 +341,6 @@ ordering-free `case` guard in `lib/feature-init.sh`.
 `lib/skill-catalog.sh` reader, and a `/loop-spec:status next` that names the next action
 from durable state. A validator test keeps the catalog in step with the directory, the way
 `tests/validate-pi-manifest.test.sh` keeps the manifests in lockstep.
-
-### B6. Trust marking on map claims *(proposal)*
-
-**Source:** the `verified` / `generated` frontmatter split above.
-
-**Mechanism:** per-domain frontmatter carrying `trust`, `verifiedAt`, and `verifiedBy`;
-mappers write `generated` unconditionally; a human ratifying a domain during `map-codebase`
-or `assess` promotes it. `lib/map-audit.sh` grows a `trust` subcommand and reports the
-generated share. This is the field that makes B4's decay numbers actionable rather than
-merely alarming.
-
-### B7. Fresh-eyes pruning pass over prose artifacts *(proposal)*
-
-**Source:** BMAD's ingest closes with a subagent holding only the written artifacts and the
-contracts — none of the authoring conversation — returning proposed cuts, on the stated
-grounds that "the writer who just heard every line justified cannot honestly run the pruning
-test on it."
-
-**Gap:** loop-spec already has exactly this pass for code. `agents/code-reviewer.md`'s
-over-engineering pass ("the diff's best outcome is getting shorter") lists cuts and never
-rewrites, and `tests/ponytail-coverage.test.sh` pins it into every code-producing dispatch.
-Nothing equivalent exists for SPEC.md, PLAN.md, or the map: those get structural and
-grounding lints, which catch malformed and ungrounded content but never *surplus* content.
-
-**Mechanism:** reuse the ponytail construction on prose — a context-free reviewer holding
-only the artifact and its template contract, returning `cut:` / `merge:` / `shrink:` lines
-with the test each line fails, listing only. It fits the existing maker/checker rule and
-needs no new authority.
 
 ### B8. Elicitation method catalog *(proposal)*
 
@@ -348,13 +376,15 @@ Not BMAD imports — things the comparison exposed in loop-spec.
   repeatedly end partial or errored, counted across *distinct* sessions, become a rule
   candidate from a fixed template.
 
-**Open — each needs its own change:**
+- **F3. The map index never pruned.** *(fixed, with B6)* `skills/map-codebase/SKILL.md`
+  updated the index by adding domains to a file's entry with no removal step, so deleted
+  files kept voting on which domains are stale — 28 of 76 entries were orphans when this
+  audit started. `lib/map-index-prune.sh` now owns the removal (a script, not an
+  instruction), the map skill calls it in Step 4, and `lib/map-audit.sh orphans` remains
+  the paired detector.
 
-- **F3. The map index never prunes.** `skills/map-codebase/SKILL.md` updates the index by
-  adding domains to a file's entry; there is no removal step, so deleted files keep voting
-  on which domains are stale. 28 of 76 entries in this repo are orphans.
-  `lib/map-audit.sh orphans` now *detects* this and the map skill is instructed to drop the
-  keys, but nothing enforces it — the pruning itself should be a script, not an instruction.
+**Open — needs its own change:**
+
 - **F4. `CONCERNS.md` and `index.json` disagree about staleness** (detected by
   `map-audit.sh staleness`); the map is 85 days old against a documented 90-day advisory
   that only warns. Not fixed here on purpose: the honest repair is re-deriving that domain

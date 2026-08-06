@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# BMAD-import coverage: the four imports from docs/loop-spec/bmad-scan-proposals.md are
+# BMAD-import coverage: the imports from docs/loop-spec/bmad-scan-proposals.md are
 # cross-file mechanisms -- a script plus the phase that calls it plus the docs that
 # describe it. Each coupling below broke silently at least once while it was being built,
 # so each is pinned here.
@@ -34,6 +34,18 @@ checks=(
 
   # B4 -- map audit
   "skills/map-codebase/SKILL.md	map-audit\.sh	the map skill must be able to measure its own output"
+
+  # B6 -- trust marking (plus F3, the index prune that pairs with the orphans probe)
+  "skills/map-codebase/SKILL.md	map-trust\.sh.? mark .* generated	every refresh must stamp its documents generated"
+  "skills/map-codebase/SKILL.md	map-trust\.sh.? mark .* verified --by	the skill must know promotion is an operator action"
+  "skills/map-codebase/SKILL.md	map-index-prune\.sh	pruning is a script, never an instruction (F3)"
+  "lib/map-audit.sh	trust-expired	the audit must flag a ratification the doc outgrew"
+
+  # B7 -- fresh-eyes prose pruning
+  "skills/spec/SKILL.md	review-prompts/prose-pruning\.md	SPEC must run the fresh-eyes pass on its own artifact"
+  "skills/plan/SKILL.md	review-prompts/prose-pruning\.md	PLAN must run the fresh-eyes pass on its own artifact"
+  "skills/map-codebase/SKILL.md	review-prompts/prose-pruning\.md	an over-budget map needs the pass that names the cuts"
+  "skills/shared/review-prompts/prose-pruning.md	never rewrite	the pass lists; the maker applies"
 )
 
 for entry in "${checks[@]}"; do
@@ -76,7 +88,8 @@ else
 fi
 
 # Every new script carries the house probe shape: an ANSWER and its REASON on one line.
-for script in lib/review-trail.sh lib/verification-gap-scan.sh lib/map-audit.sh; do
+for script in lib/review-trail.sh lib/verification-gap-scan.sh lib/map-audit.sh \
+              lib/map-trust.sh lib/map-index-prune.sh; do
   if grep -q 'reason=' "$script"; then
     echo "PASS: $script reports the reason behind its answer"; PASS=$((PASS+1))
   else

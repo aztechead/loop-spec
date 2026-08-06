@@ -55,6 +55,29 @@ Graphify is removed. Structure is derived fresh, and grounded by citing `file:li
   orphans dropped from 28 to 0, and the map-audit findings against those two domains fell
   to the three documented false-positive classes.
 
+- **Trust marking on map claims (B6).** Per-document frontmatter (`trust`, `verified_at`,
+  `verified_by`) owned by `lib/map-trust.sh`: every refresh stamps its documents
+  `generated` (voiding any prior ratification — the human confirmed the old prose, not
+  the new), and promotion to `verified` is an operator action no skill may run in
+  autonomous mode. `lib/map-audit.sh trust` reports the verified/generated/unmarked split
+  and flags `trust-expired` (a verified document that changed after its ratification) and
+  `trust-invalid`. All five domains in this repository are marked `generated` — the
+  honest baseline; nothing here has ever been human-ratified.
+
+- **`lib/map-index-prune.sh` (F3).** Index pruning is a script, no longer an instruction:
+  it removes `files` keys whose path is verifiably absent, refuses to rewrite a corrupt
+  index, and pairs with the `map-audit.sh orphans` detector. Called from the map skill's
+  Step 4.
+
+- **Fresh-eyes prose pruning (B7).** `skills/shared/review-prompts/prose-pruning.md` — a
+  context-free reviewer holding only the artifact and its template contract (never the
+  authoring conversation) returns `cut:`/`merge:`/`shrink:` lines, each naming the one
+  test the prose fails (`derivable`, `duplicate`, `speculative`, `narrative`,
+  `over-template`), listing only. Wired advisory at SPEC Step 3.5, PLAN Step 5.7 (the
+  mechanical gates re-run on the pruned file; a cut that breaks one is reverted), and
+  map-codebase Step 6.6 (dispatched only on a measured `over-budget` finding). Hard
+  carve-outs protect everything other machinery matches verbatim.
+
 - **Source-pinned map staleness**, ported from BMAD's `context.py sweep`. `map-audit.sh
   sweep` now resolves each cited path's last change with `git log -1 --format=%cI` and
   reports `outdated-claim` when the source changed after that domain was refreshed, with
