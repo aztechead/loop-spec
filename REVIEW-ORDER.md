@@ -68,6 +68,11 @@ The evidence is in `bmad-scan-proposals.md` B9: six weeks mandatory, zero citati
 - the claim is suspect when its source moved after the refresh
   `lib/map-audit.sh:162`
 
+**Self-review fixes**
+
+- a truncated search reports unknown, never absence
+  `lib/verification-gap-scan.sh:152`
+
 **Defects the audit surfaced (fixed here)**
 
 - four dimensions declared, three dispatched — `style` was dead code
@@ -86,6 +91,10 @@ The evidence is in `bmad-scan-proposals.md` B9: six weeks mandatory, zero citati
 
 **Peripherals**
 
+- the domain the removed graph used to cover, now mapped
+  `agents/mapper-arch.md:1`
+- same for the tech inventory
+  `agents/mapper-tech.md:1`
 - the audit itself: comparison, four proposals not built, four defects found
   `docs/loop-spec/bmad-scan-proposals.md:1`
 - where each mechanism runs inside VERIFY
