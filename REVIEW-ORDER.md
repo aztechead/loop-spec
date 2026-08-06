@@ -13,7 +13,7 @@ The entry point for the whole change. Everything else is a sibling mechanism.
 - the fail-safe that matters in this repo: a markdown-only change is not "no substance"
   `lib/review-trail.sh:146`
 - omitting a core file is worse than no guide at all
-  `lib/review-trail.sh:229`
+  `lib/review-trail.sh:230`
 - framing cap; length is measurable, quality is not, so only length is checked
   `lib/review-trail.sh:170`
 - the trail lands above the PR body's evidence sections, capped and H1-stripped
