@@ -141,8 +141,8 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_EXTENSIONS` | path; `.loop-spec/extensions.json` | Project extension declarations read by `lib/extension-points.sh`: additional review layers, per-phase prepend/append instructions, and standing facts. Extensions add only — a declared layer can never disable, reorder, or shadow a built-in gate, and no authority script reads this file. Read paths fail open; `extension-points.sh validate` fails closed. |
 | `LOOP_SPEC_MAP_MAX_LINES` | positive integer; `1000` | Ceiling for the total size of the codebase map, measured by `lib/map-audit.sh budget` (~20k tokens across the five domains). Exceeding it is a finding to cut against, never a reason to raise the ceiling. |
 | `LOOP_SPEC_MAP_MAX_AGE_DAYS` | positive integer; `90` | Age at which `lib/map-audit.sh staleness` reports a map domain as stale, matching the existing refresh advisory. |
-| `LOOP_SPEC_MAP_DIR` | path; `docs/loop-spec/codebase` | Codebase-map location read by `lib/map-audit.sh`. |
-| `LOOP_SPEC_MAP_INDEX` | path; `.loop-spec/codebase/index.json` | Map index location read by `lib/map-audit.sh orphans` and `staleness`. |
+| `LOOP_SPEC_MAP_DIR` | path; `docs/loop-spec/codebase` | Codebase-map location read by `lib/map-audit.sh` and `lib/map-trust.sh`. |
+| `LOOP_SPEC_MAP_INDEX` | path; `.loop-spec/codebase/index.json` | Map index location read by `lib/map-audit.sh orphans` and `staleness`, and pruned by `lib/map-index-prune.sh`. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | integer `0..86400`; `900` | Total DELIVER wait for required PR checks. `0` performs no extended wait. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
 | `LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS` | non-negative integer; `30` | Grace period after push during which a missing check is treated as not-yet-registered rather than absent. |

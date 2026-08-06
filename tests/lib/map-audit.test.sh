@@ -192,6 +192,55 @@ cat > state/index.json <<EOF
 {"last_refreshed_at": {"arch": "$TODAY"}, "files": {"lib/present.sh": ["arch"]}}
 EOF
 
+# Trust marking (B6): the split is reported; only a broken promise is a finding.
+rc=0; out="$(bash "$SCRIPT" trust)" || rc=$?
+check "T1: an unmarked map is the migration state, not a finding" "0" "$rc"
+contains "T2: the unmarked doc is reported as such" "doc=map/ARCH.md trust=unmarked" "$out"
+contains "T3: trust reports the split" "trust=checked verified=0 generated=0 unmarked=1" "$out"
+
+printf -- '---\ntrust: generated\n---\n\n# Architecture\n\nOnly real claims.\n' > map/ARCH.md
+rc=0; out="$(bash "$SCRIPT" trust)" || rc=$?
+check "T4: a generated doc is clean" "0" "$rc"
+contains "T5: generated is counted" "verified=0 generated=1 unmarked=0" "$out"
+
+printf -- '---\ntrust: ratified\n---\n\n# Architecture\n' > map/ARCH.md
+rc=0; out="$(bash "$SCRIPT" trust)" || rc=$?
+check "T6: an unknown trust value is a finding" "1" "$rc"
+contains "T7: the invalid finding names the value" "finding=trust-invalid path=map/ARCH.md" "$out"
+
+printf -- '---\ntrust: verified\n---\n\n# Architecture\n' > map/ARCH.md
+rc=0; out="$(bash "$SCRIPT" trust)" || rc=$?
+check "T8: verified without a date is a finding" "1" "$rc"
+contains "T9: the finding says what is missing" "verified without a verified_at date" "$out"
+
+# The one state worth flagging: the doc changed after a human ratified it, so the
+# promise now covers prose the human never saw.
+printf -- '---\ntrust: verified\nverified_at: 2020-01-01\nverified_by: operator\n---\n\n# Architecture\n' > map/ARCH.md
+git add map/ARCH.md
+git commit -qm "regenerate after ratification"
+rc=0; out="$(bash "$SCRIPT" trust)" || rc=$?
+check "T10: a doc regenerated after ratification is a finding" "1" "$rc"
+contains "T11: the expired finding carries both dates" \
+  "finding=trust-expired path=map/ARCH.md" "$out"
+
+# A ratification at least as fresh as the doc's last change holds.
+printf -- '---\ntrust: verified\nverified_at: %s\nverified_by: operator\n---\n\n# Architecture\n' \
+  "$(date -u +%Y-%m-%d)" > map/ARCH.md
+git add map/ARCH.md
+git commit -qm "ratify today"
+rc=0; out="$(bash "$SCRIPT" trust)" || rc=$?
+check "T12: a current ratification is clean" "0" "$rc"
+contains "T13: the verified doc reports its ratifier" "verified_by=operator" "$out"
+
+cat > map/ARCH.md <<'EOF'
+# Architecture
+
+The orchestrator lives in lib/present.sh and the phase skill in skills/thing.md.
+Feature state is written per slug under docs/loop-spec/features/{slug}/SPEC.md.
+Every helper matches lib/*.sh by convention.
+The retired helper is at lib/deleted.sh today.
+EOF
+
 # audit runs every check in one pass.
 rc=0; out="$(bash "$SCRIPT" audit)" || rc=$?
 check "X: audit surfaces the outstanding stale claim" "1" "$rc"
@@ -199,6 +248,7 @@ contains "Y: audit includes the budget measurement" "budget=under" "$out"
 contains "Z: audit includes the sweep measurement" "sweep=stale" "$out"
 contains "AA: audit includes the orphan measurement" "orphans=0" "$out"
 contains "AB: audit includes the staleness measurement" "staleness=checked" "$out"
+contains "AB2: audit includes the trust measurement" "trust=checked" "$out"
 
 # A missing index is unknown, never silently clean.
 rm state/index.json

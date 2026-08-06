@@ -150,9 +150,42 @@ for file in mapper.inspected_files:
   index.files[file].add(domain)
 ```
 
-Also update `index.json` field `last_refreshed_at.{domain}` to the current ISO-8601 timestamp, and drop any `files` entry whose path no longer exists (`lib/map-audit.sh orphans` lists them) so a deleted file stops voting on which domains are stale.
+Also update `index.json` field `last_refreshed_at.{domain}` to the current ISO-8601 timestamp.
 
 Atomic write to `.loop-spec/codebase/index.json`.
+
+Then prune the index — a deleted file must stop voting on which domains are stale, and
+pruning is a script, never an instruction someone remembers:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/map-index-prune.sh"
+```
+
+### Step 4.5 - Mark trust on every refreshed domain
+
+Every document this refresh wrote is machine-inferred prose until a human says otherwise.
+Stamp each refreshed domain unconditionally:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/map-trust.sh" mark "docs/loop-spec/codebase/{DOMAIN}.md" generated
+```
+
+This also VOIDS any prior `verified` ratification on that document — the human confirmed
+the old prose, not the new (`lib/map-trust.sh` drops `verified_at`/`verified_by` on a
+`generated` mark).
+
+**Promotion is an operator action.** When a human has walked a domain document and
+confirmed its claims, they (or an interactive session acting on their explicit
+confirmation) promote it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/map-trust.sh" mark "docs/loop-spec/codebase/{DOMAIN}.md" verified --by "{user}"
+```
+
+NEVER run the promotion in autonomous mode or on your own judgment — a model promoting
+its own map to `verified` is a model grading its own gate. In interactive standalone
+runs you may OFFER the promotion for a domain the user has just reviewed; the user's
+explicit yes is the trigger, and their name goes in `--by`.
 
 ### Step 5 - Delete map-codebase team
 
@@ -192,25 +225,45 @@ A regenerated map is not automatically a true one. Measure it:
 bash "${CLAUDE_SKILL_DIR}/../../lib/map-audit.sh" audit || true
 ```
 
-Four facts, none of them judgments: total size against the ceiling
+Five facts, none of them judgments: total size against the ceiling
 (`LOOP_SPEC_MAP_MAX_LINES`, default 1000 lines), cited paths that no longer exist in the
-tree, `index.json` entries whose file is gone, and per-domain age plus any document that
-declares itself stale while the index records it as fresh.
+tree, `index.json` entries whose file is gone, per-domain age plus any document that
+declares itself stale while the index records it as fresh, and the trust split — how much
+of the map a human has actually ratified, and any `verified` document that changed after
+its ratification.
 
 Report every finding in Step 7 and act on what this refresh owns:
 
 - `stale-claim` in a domain you just refreshed is a defect in the refresh — fix the claim
   or cut it before committing.
 - `orphan-index-entry` means a deleted file still maps to a domain and still votes on
-  staleness. Drop those keys from `index.json` in Step 4.
+  staleness. Re-run `lib/map-index-prune.sh` (Step 4) — an orphan surviving it means the
+  entry's path exists but is untracked-weird; investigate rather than hand-edit.
 - `over-budget` means the map must shrink, never that the ceiling should rise. The whole
-  point of a budget is that it is not negotiated by the thing being measured.
+  point of a budget is that it is not negotiated by the thing being measured. Step 6.6
+  names the cuts.
 - `trust-disagreement` means the prose and the machine state disagree about freshness.
   Believe the prose and re-derive that domain.
+- `trust-expired` means a `verified` document changed after its ratification. Re-mark it
+  `generated` (Step 4.5 does this for domains this refresh wrote) — the promise must be
+  re-earned, never re-dated.
 
 Findings outside this refresh's scope are reported, not silently carried: append them to
 `.loop-spec/BACKLOG.md`. This never blocks the commit — an audit that could refuse to
 record a refreshed map would leave the map staler than the one it rejected.
+
+### Step 6.6 - Fresh-eyes pruning pass (only when over budget)
+
+Runs iff Step 6.5 reported `finding=over-budget` — the budget probe says the map must
+shrink; this pass names what. Dispatch ONE context-free reviewer (never a mapper that
+wrote a domain this refresh) carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
+verbatim, plus the domain documents under `docs/loop-spec/codebase/` and nothing else —
+no mapper reports, no refresh conversation.
+
+The reviewer lists `cut:`/`merge:`/`shrink:` proposals; the lead applies the ones it
+accepts, re-runs `lib/map-audit.sh budget`, and commits the shrunken map (a follow-up
+commit — never amend). Proposals declined and the reason go to `.loop-spec/BACKLOG.md`.
+Carve-outs in the prompt are hard: trust frontmatter and STALE banners are never cuts.
 
 ### Step 7 - Report
 

@@ -1,3 +1,7 @@
+---
+trust: generated
+---
+
 # ARCH
 
 > Mapped by loop-spec-mapper-arch on 2026-08-06. Full refresh — the prior version

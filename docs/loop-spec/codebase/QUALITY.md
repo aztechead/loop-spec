@@ -1,3 +1,7 @@
+---
+trust: generated
+---
+
 # QUALITY
 
 ## Test Framework

@@ -24,7 +24,8 @@
 #   map-audit.sh sweep       # cited paths that are gone, or changed since the refresh
 #   map-audit.sh orphans     # index entries whose file is gone
 #   map-audit.sh staleness   # per-domain age, and doc/index disagreement
-#   map-audit.sh audit       # all four; exit 1 if anything is found
+#   map-audit.sh trust       # verified/generated split, expired ratifications
+#   map-audit.sh audit       # all five; exit 1 if anything is found
 #
 # Environment:
 #   LOOP_SPEC_MAP_DIR        default docs/loop-spec/codebase
@@ -40,8 +41,8 @@ set -euo pipefail
 
 command="${1:-}"
 case "$command" in
-  budget|sweep|orphans|staleness|audit) [[ $# -eq 1 ]] || { echo "usage: map-audit.sh $command" >&2; exit 2; } ;;
-  *) echo "usage: map-audit.sh budget|sweep|orphans|staleness|audit" >&2; exit 2 ;;
+  budget|sweep|orphans|staleness|trust|audit) [[ $# -eq 1 ]] || { echo "usage: map-audit.sh $command" >&2; exit 2; } ;;
+  *) echo "usage: map-audit.sh budget|sweep|orphans|staleness|trust|audit" >&2; exit 2 ;;
 esac
 
 map_dir="${LOOP_SPEC_MAP_DIR:-docs/loop-spec/codebase}"
@@ -243,9 +244,58 @@ def staleness():
     print("staleness=checked domains={} ceiling_days={}".format(len(stamps), max_age_days))
 
 
-steps = {"budget": budget, "sweep": sweep, "orphans": orphans, "staleness": staleness}
+# Trust marking, written by lib/map-trust.sh: every refresh stamps `generated`,
+# a human ratification promotes to `verified`. This reports the split and the
+# one state that is a finding -- a doc that changed after it was ratified, so
+# the promise on it now covers prose the human never saw. Unmarked is the
+# migration state and is reported, never flagged.
+FRONT_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$")
+
+
+def read_trust(path):
+    lines = read(path).splitlines()
+    if not lines or lines[0] != "---":
+        return {}
+    values = {}
+    for line in lines[1:]:
+        if line == "---":
+            return values
+        match = FRONT_KEY.match(line)
+        if match:
+            values[match.group(1)] = match.group(2)
+    return {}
+
+
+def trust():
+    counts = {"verified": 0, "generated": 0, "unmarked": 0}
+    for path in docs:
+        values = read_trust(path)
+        level = values.get("trust", "unmarked")
+        if level not in counts:
+            findings.append("finding=trust-invalid path={} reason=trust must be generated or verified (got {!r})".format(
+                path, level))
+            level = "unmarked"
+        counts[level] += 1
+        print("doc={} trust={} verified_at={} verified_by={}".format(
+            path, level, values.get("verified_at", "-") or "-", values.get("verified_by", "-") or "-"))
+        if level != "verified":
+            continue
+        verified_at = values.get("verified_at", "")
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", verified_at):
+            findings.append("finding=trust-invalid path={} reason=verified without a verified_at date".format(path))
+            continue
+        changed = last_changed(path)
+        if changed and changed > verified_at:
+            findings.append("finding=trust-expired path={} reason=doc changed {} after it was verified {}".format(
+                path, changed, verified_at))
+    print("trust=checked verified={} generated={} unmarked={} reason={} documents in {}".format(
+        counts["verified"], counts["generated"], counts["unmarked"], len(docs), map_dir))
+
+
+steps = {"budget": budget, "sweep": sweep, "orphans": orphans,
+         "staleness": staleness, "trust": trust}
 if command == "audit":
-    for name in ("budget", "sweep", "orphans", "staleness"):
+    for name in ("budget", "sweep", "orphans", "staleness", "trust"):
         steps[name]()
 else:
     steps[command]()
