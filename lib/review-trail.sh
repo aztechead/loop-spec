@@ -169,7 +169,10 @@ if command == "surface":
 
 MAX_FRAMING_WORDS = 15
 
-STOP = re.compile(r"`?([A-Za-z0-9_./\-]+\.[A-Za-z0-9_]+):(\d+)`?")
+# A stop names a repository path followed by a line number. Do not require a
+# filename extension: Makefile, Dockerfile, and executable entry points are
+# ordinary core files and must be reviewable too.
+STOP = re.compile(r"`?([A-Za-z0-9_./\-]+):(\d+)`?")
 
 try:
     with open(os.environ["TRAIL_FILE"], "r", encoding="utf-8", errors="replace") as handle:

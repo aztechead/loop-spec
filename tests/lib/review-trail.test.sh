@@ -187,6 +187,26 @@ contains "AD: cross-directory rename resolves to the post-image path" \
   "path=src/nested/app.js" "$out"
 absent "AE: the brace form never leaks into a path" "{" "$out"
 
+# Extensionless core files are common build and runtime entry points. A lint that
+# cannot parse their stops makes a clean review trail impossible for the change.
+git checkout -q -b extensionless "$BASE"
+printf 'base:\n\t@true\n' > Makefile
+git add Makefile
+git commit -qm makefile-base
+MAKE_BASE="$(git rev-parse HEAD)"
+printf 'changed:\n\t@true\n' >> Makefile
+git add Makefile
+git commit -qm makefile-change
+out="$(bash "$SCRIPT" surface "$MAKE_BASE" HEAD)"
+contains "AF: extensionless file is part of the surface" "role=core path=Makefile" "$out"
+cat > EXTENSIONLESS.md <<'EOF_TRAIL'
+- build entry point
+  `Makefile:3`
+EOF_TRAIL
+rc=0; out="$(bash "$SCRIPT" lint EXTENSIONLESS.md "$MAKE_BASE" HEAD)" || rc=$?
+check "AG: extensionless stop lints clean" "0" "$rc"
+contains "AH: extensionless stop is counted" "stops=1 core_files=1 findings=0" "$out"
+
 # An unreadable trail is an operator error, not a finding.
 rc=0; bash "$SCRIPT" lint /nonexistent/trail.md "$BASE" HEAD >/dev/null 2>&1 || rc=$?
 check "AB: unreadable trail exits 2" "2" "$rc"
