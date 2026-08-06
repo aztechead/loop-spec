@@ -7,30 +7,6 @@ Every harness requires `bash >= 4`, `git`, `jq >= 1.5`, and `python3 >= 3.6`.
 installer paths use it, so a missing or old binary fails once with installation guidance
 instead of producing mid-run command errors.
 
-## Graphify assistant skill
-
-Graphify is the one hard external assistant dependency. Install its Python 3.10+ package, then
-register the platform-specific assistant skill:
-
-```bash
-uv tool install graphifyy
-graphify install                         # Claude Code
-graphify install --platform pi           # pi
-graphify install --platform opencode     # OpenCode
-```
-
-Restart the harness after registration. loop-spec invokes the external skill through
-`skills/shared/graphify-lifecycle.md`; it does not use Graphify's headless provider
-backend for construction. Semantic extraction therefore runs through the current host
-assistant and inherits its authentication. On GCP Agent Platform/Vertex deployments,
-that means the harness's attached service account, Workload Identity, or other ADC
-configuration remains the authentication boundary; no separate Gemini or Anthropic API
-key is required by loop-spec. Graphify's local AST extraction still handles code.
-
-The lifecycle fails closed if the skill cannot be loaded, semantic chunks are skipped,
-or outputs fail validation. `LOOP_SPEC_REQUIRE_GRAPHIFY=0` is the explicit degraded
-Glob/Grep escape hatch.
-
 ## CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
 
 The cycle skill's agent-teams mode requires the experimental agent teams feature to be enabled in Claude Code.
@@ -56,7 +32,7 @@ Set this before launching `claude` or add it to the `env` section of your `.clau
 > **Agent teams are an accelerator, not a hard requirement.** When the flag is
 > unset (or its tools are unavailable), the cycle still runs end-to-end on the
 > no-teams fallback (one-shot `Agent` dispatch; EXECUTE uses the loop-fleet or
-> subagent rung). Graphify remains the only hard assistant startup requirement; the base
+> subagent rung). There is no external assistant startup requirement; the base
 > runtime dependencies above are also mandatory.
 
 ### Two harness generations (the cycle auto-detects)
@@ -143,5 +119,5 @@ None of the above applies under pi: agent teams and the Workflow tool are Claude
 Code surfaces, and `lib/teams-capability.sh` / `lib/workflow-availability.sh`
 hard-gate them to `none` / `false` there regardless of environment variables.
 pi prerequisites are just the base runtime (`bash >= 4`, `git`, `jq >= 1.5`,
-`python3 >= 3.6`), graphify, and the `pi` CLI itself for the loop-fleet rung.
+`python3 >= 3.6`) and the `pi` CLI itself for the loop-fleet rung.
 See the README "Running under pi" section and `skills/shared/pi-harness.md`.

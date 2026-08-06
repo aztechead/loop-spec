@@ -126,8 +126,6 @@ has_evidence=0  # set when any EVID-NNN or ASSUMPTION bullet is found
 # 'ASSUMPTION (SPEC):' over from the DISCUSS transcript convention; accept them.
 evid_re='^- EVID-[0-9][0-9][0-9]( ?\([^)]*\))?: .+'
 assumption_re='^- ASSUMPTION( ?\([^)]*\))?: (.+)$'
-graph_tagged_re='^- GRAPH\[([A-Z_]+)\]( ?\([^)]*\))?: (.+)$'
-graph_bare_re='^- GRAPH( ?\([^)]*\))?: '
 
 nvis="${#mrg_lnos[@]}"
 for ((j=0; j<nvis; j++)); do
@@ -183,52 +181,8 @@ for ((j=0; j<nvis; j++)); do
     continue
   fi
 
-  # Pattern 4: - GRAPH[<TAG>]: <claim> | query: <command>
-  # The code graph labels every edge with its own confidence -- graphify emits
-  # EXTRACTED (parsed from an AST), INFERRED (the tool guessed), or AMBIGUOUS.
-  # A citation must carry that label, because only EXTRACTED is a fact. Accepting
-  # an unlabelled graph citation is how a guess enters an artifact wearing the
-  # authority of a probe, which is the exact failure this whole gate exists to
-  # prevent.
-  if [[ "$line" =~ $graph_tagged_re ]]; then
-    tag="${BASH_REMATCH[1]}"
-    rest="${BASH_REMATCH[3]}"
-    case "$tag" in
-      EXTRACTED)
-        if [[ "$rest" != *" | query: "* || -z "${rest##* | query: }" ]]; then
-          echo "FLAG $artifact:$lineno: malformed GRAPH bullet — missing '| query: <command>' naming the graph call that produced it"
-          flags=$((flags+1))
-        fi
-        ;;
-      INFERRED|AMBIGUOUS)
-        # The graph told you it was not sure. Confirm it against the tree, or
-        # demote it to an ASSUMPTION with a verify command like any other
-        # unverified claim.
-        if [[ ! "$rest" =~ \|[[:space:]]confirmed:[[:space:]]*[^[:space:]]+:[0-9]+ ]]; then
-          echo "FLAG $artifact:$lineno: GRAPH[$tag] citation is not self-sufficient — the graph labelled this edge unverified; add '| confirmed: <file>:<line>' or rewrite as '- ASSUMPTION: <claim> | verify: <cmd>'"
-          flags=$((flags+1))
-        fi
-        ;;
-      *)
-        echo "FLAG $artifact:$lineno: unknown graph confidence tag '$tag' — expected EXTRACTED, INFERRED, or AMBIGUOUS"
-        flags=$((flags+1))
-        ;;
-    esac
-    has_evidence=1
-    continue
-  fi
-
-  # A graph citation with no confidence tag at all: the writer read the graph but
-  # dropped the one field that says whether to believe it. Fail closed.
-  if [[ "$line" =~ $graph_bare_re ]]; then
-    echo "FLAG $artifact:$lineno: GRAPH citation carries no confidence tag — write '- GRAPH[EXTRACTED|INFERRED|AMBIGUOUS]: <claim> | query: <command>'"
-    flags=$((flags+1))
-    has_evidence=1
-    continue
-  fi
-
   # None of the valid patterns matched.
-  echo "FLAG $artifact:$lineno: malformed grounding bullet — expected one of: '- none', '- EVID-NNN: text', '- ASSUMPTION: <claim> | verify: <cmd>', '- GRAPH[<TAG>]: <claim> | query: <cmd>'"
+  echo "FLAG $artifact:$lineno: malformed grounding bullet — expected one of: '- none', '- EVID-NNN: text', '- ASSUMPTION: <claim> | verify: <cmd>'"
   flags=$((flags+1))
 done
 

@@ -110,8 +110,8 @@ TaskCreate({
 
 `Skill({skill: "loop-spec:<name>", args: "…"})`. Prose shorthand `Skill(loop-spec:plan)`
 in skill bodies is an instruction to the orchestrating model, which must expand it to
-the real shape. External skills remain unnamespaced: Graphify is
-`Skill({skill: "graphify", args: ". --update"})`, never `loop-spec:graphify`.
+the real shape. Any external skill remains unnamespaced:
+`Skill({skill: "<name>", args: "..."})`, never `loop-spec:<name>`.
 
 ## SendMessage
 
@@ -168,5 +168,5 @@ in `skills/shared/opencode-harness.md`. Headless dispatch goes through
 `opencode run --format json "<prompt>" --model <provider/model>`, the same
 seam the loop-runner's `--agent-cli opencode` backend drives.
 
-External skills use their own names. Graphify is `skill({name: "graphify"})`; OpenCode's
+External skills use their own names — `skill({name: "<name>"})`. OpenCode's
 skill tool accepts no arguments, so the surrounding prompt carries `. --update`.

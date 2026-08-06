@@ -57,11 +57,11 @@ everywhere it is not selecting a branch. Ordered by how much still rides on pros
    without a failing reproduction). Residual risk is low because the oracle is a
    command exit code.
 
-6. **Graphify grounding claims**: design phases cite graph queries, but whether a
+6. **Structural grounding claims**: design phases cite what they read, but whether a
    claim REQUIRED a citation is judged. `lib/grounding-lint.sh` and EVIDENCE.md ids
    bound this; the residual branch is the model deciding a fact is "not load-bearing".
    Probe candidate (TDAD-style): for any task whose files sit in the graph, require
-   at least one `graphify path`/blast-radius citation in the plan's task block.
+   at least one blast-radius `file:line` citation in the plan's task block.
 
 ## Review cadence
 

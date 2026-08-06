@@ -38,7 +38,7 @@ Prerequisites: `claude` (logged in), `git`, `jq` on PATH. Missing prereqs exit 2
    `CLAUDE_CONFIG_DIR` was probed and rejected: the CLI loses OAuth credentials
    outside the default config dir.)
 3. Runs `claude -p "/loop-spec:cycle autonomous <add a subtract function>"` with
-   `LOOP_SPEC_REQUIRE_GRAPHIFY=0 LOOP_SPEC_SKIP_HEALTHCHECK=1
+   `LOOP_SPEC_SKIP_HEALTHCHECK=1
    LOOP_SPEC_CHECKPOINT_PR=0` under a portable wall-clock watchdog.
 4. Asserts: `last-result.json` exists, schema 1, valid terminal status, non-empty
    slug and `summary`, compatible `noChangeReason`, boolean `converged`;

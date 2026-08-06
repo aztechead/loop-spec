@@ -15,7 +15,7 @@
 #
 # Usage:
 #   map-audit.sh budget      # total size against the ceiling
-#   map-audit.sh sweep       # cited paths that no longer exist
+#   map-audit.sh sweep       # cited paths that are gone, or changed since the refresh
 #   map-audit.sh orphans     # index entries whose file is gone
 #   map-audit.sh staleness   # per-domain age, and doc/index disagreement
 #   map-audit.sh audit       # all four; exit 1 if anything is found
@@ -56,6 +56,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 
 command = sys.argv[1]
@@ -110,11 +111,40 @@ PLACEHOLDER = re.compile(r"[*{}<>]|\.\.\.|(?:^|[/-])N\.[A-Za-z0-9]+$")
 URL_CONTEXT = re.compile(r"(?:https?://|github\.com|\.git\b|e\.g\.[^.]*$)")
 
 
+def last_changed(path):
+    """The date a cited file last changed, from git. A claim can only be as fresh
+    as the file it rests on, and git already knows when that was."""
+    try:
+        proc = subprocess.run(["git", "log", "-1", "--format=%cI", "--", path],
+                              capture_output=True, text=True)
+    except OSError:
+        return None
+    if proc.returncode == 0 and proc.stdout.strip():
+        return proc.stdout.strip()[:10]
+    return None
+
+
+def domain_refreshed():
+    """Per-domain refresh dates from the index, keyed by document basename."""
+    if not os.path.exists(index_path):
+        return {}
+    try:
+        with open(index_path, "r", encoding="utf-8", errors="replace") as handle:
+            stamps = (json.load(handle) or {}).get("last_refreshed_at") or {}
+    except (OSError, ValueError):
+        return {}
+    return {str(k).lower(): str(v)[:10] for k, v in stamps.items()}
+
+
 def sweep():
     missing = 0
+    outdated = 0
     checked = 0
     seen = set()
+    refreshed = domain_refreshed()
     for path in docs:
+        domain = os.path.splitext(os.path.basename(path))[0].lower()
+        refreshed_on = refreshed.get(domain)
         for number, line in enumerate(read(path).splitlines(), 1):
             for cited in CITED.findall(line):
                 if PLACEHOLDER.search(cited) or cited in seen:
@@ -128,8 +158,23 @@ def sweep():
                     missing += 1
                     findings.append("finding=stale-claim path={} reason=cited at {}:{} but not in the tree".format(
                         cited, path, number))
-    print("sweep={} checked={} reason=distinct cited paths across {} documents".format(
-        "clean" if missing == 0 else "stale", checked, len(docs)))
+                    continue
+                # Source-pinned staleness, ported from BMAD's context.py sweep: the
+                # claim is suspect when the file it rests on changed after the claim
+                # was last refreshed. A whole-domain age check cannot see this --
+                # a map refreshed last week still lies about a file changed
+                # yesterday.
+                if not refreshed_on:
+                    continue
+                changed = last_changed(cited)
+                if changed and changed > refreshed_on:
+                    outdated += 1
+                    findings.append(
+                        "finding=outdated-claim path={} reason=source changed {} after {} was refreshed {} (cited at {}:{})".format(
+                            cited, changed, domain, refreshed_on, path, number))
+    answer = "clean" if (missing == 0 and outdated == 0) else "stale"
+    print("sweep={} checked={} missing={} outdated={} reason=distinct cited paths across {} documents".format(
+        answer, checked, missing, outdated, len(docs)))
 
 
 def orphans():

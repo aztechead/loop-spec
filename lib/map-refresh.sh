@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Decide whether an incremental codebase-map refresh has work to do.
 #
-# The map skill used to invoke the expensive Graphify lifecycle before learning
+# The map skill used to invoke an expensive external graph build before learning
 # whether the codebase index named any stale domain. This helper owns that
 # decision so the phase can bypass only proven no-op work; it never bypasses a
 # missing/corrupt map or an unknown source change.

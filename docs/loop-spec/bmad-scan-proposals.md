@@ -205,56 +205,67 @@ forever. B4 measures decay; it does not yet mark trust. That is B6.
 artifact carrying cross-cutting concerns the graph cannot express, and the fix for a stale
 map is refreshing and pruning it, not removing the navigation.
 
-### B9. Graph confidence reaches the grounding gate *(shipped)*
+### B9. The code graph is gone *(shipped)*
 
-**Source:** BMAD's `verified` vs `generated` split, applied to the tool loop-spec already
-had rather than to a new one.
+**Source:** BMAD's stated position, which it enforces in its own bundle contract —
+*"Repo maps (structure, symbols) are never stored here or anywhere — derive them fresh when
+needed; stored maps rot"* — and its kernel contract, which lists a structural fact as
+something that never enters: `✗ "The API layer calls the service layer"` ← *visible in
+code*.
 
-**Gap:** graphify labels every edge `EXTRACTED` (parsed from the AST), `INFERRED` (the
-tool guessed), or `AMBIGUOUS`. loop-spec read none of them — a repository-wide grep for
-those tokens returned nothing — while `skills/shared/grounding-protocol.md` accepted graph
-output as a citable fact with "no probe needed". An `INFERRED` edge therefore satisfied the
-grounding gate identically to a probed one. That is the same defect as F4, one layer down:
-a source reporting its own uncertainty, and a consumer discarding the report.
+**What we found:** graphify was a hard, cycle-aborting requirement from 2.29 to 2.34. The
+record over that period, in this repository:
 
-**Mechanism:** graph citations became their own claim type carrying the tag:
+- Two features were authored after it became mandatory. One grounds itself `- none`
+  ("every factual premise above cites a repo file/line"); the other has no `## Grounding`
+  section at all.
+- The only artifacts citing `graphify query|path|explain` belong to the feature that *built
+  the integration* — the graph as subject matter, never as a source.
+- `.loop-spec/codebase/index.json` carries no `graphify` block, though the map skill was
+  instructed to write one after every successful refresh. No refresh was ever recorded.
+- No `EVIDENCE.md` ledger was ever committed.
 
-```markdown
-- GRAPH[EXTRACTED]: renderBody is reached only from deliver.sh | query: graphify query "renderBody"
-- GRAPH[INFERRED]: the queue has one consumer | query: graphify path "a" "b" | confirmed: lib/queue.sh:88
-```
+Zero citations, zero recorded refreshes, zero evidence entries, against a Python 3.10+/uv
+dependency and a startup gate that could abort a run.
 
-`lib/grounding-lint.sh` enforces it: `EXTRACTED` stands alone but must name the query that
-produced it; `INFERRED` and `AMBIGUOUS` need a `| confirmed: <file>:<line>` or a rewrite as
-an `ASSUMPTION`; an unknown tag is rejected; and an **untagged** graph citation is flagged
-hardest, because that is the one that reads exactly like a probed fact.
+**Mechanism:** removed — the lifecycle contract, the preflight, the map integration, the
+per-phase query instructions, the harness registration for pi and OpenCode, and the
+`LOOP_SPEC_REQUIRE_GRAPHIFY` control. The design phases now derive structure by reading the
+tree, fanned out to subagents that return `file:line` evidence, and the grounding protocol's
+code-structure claim type says so plainly: *read it and cite `file:line`; a claim nobody can
+point at is an `ASSUMPTION`.*
 
-### B10. The graph is a layer, not a gate *(shipped)*
+The `graphify-out/` ignore patterns stay in `lib/runtime-ignore.sh` and
+`lib/integrate-task.sh` on purpose: an upgrading checkout still has that tree on disk, and
+dropping the ignores would start committing a large generated cache on the next `git add -A`.
 
-**Gap:** one tool was a hard, cycle-aborting requirement while serving three jobs whose
-needs differ. Structural lookups want currency; ripple analysis tolerates staleness;
-non-derivable truths want curation and are not derived at all. Bundling them meant a
-missing install failed all three, and it meant a stale snapshot answered questions that
-deserved a current source.
+**Honest caveat:** this is one repository, and an unrepresentative one — loop-spec is bash
+and markdown, where "what calls this" is nearly free to derive. A graph could well earn its
+place on a large typed service. What it could not do here was demonstrate that it had.
 
-**Mechanism:** `lib/code-graph.sh` names the three jobs, reports which layer answers each
-and why, and `require <job>` fails only for the job that actually lost its answer. The
-graph's own preflight now degrades instead of aborting: an absent graphify costs the ripple
-layer — hotspots and cross-module reach, which nothing substitutes for — while the run
-continues. `LOOP_SPEC_REQUIRE_GRAPHIFY=1` restores the old hard requirement for operators
-who want it; the default inverted.
+**Also removed with it:** the `GRAPH[EXTRACTED|INFERRED|AMBIGUOUS]` citation type added
+earlier in this same PR, and `lib/code-graph.sh`, the layer seam that arbitrated between
+graph and fallback. Both existed only to serve graphify. Keeping unreachable enforcement
+would have reproduced F1 — a declared dimension that never runs.
 
-The `semantic` layer reports `none` honestly, because nothing in this release curates
-non-derivable truths. That is B6, still open.
+### B10. Source-pinned map staleness *(shipped)*
 
-**Considered and rejected: bundling an LSP-backed structural tool.** Serena would answer
-structural lookups from the language server, so its results could not go stale, and it
-installs through the same `uv` mechanism graphify already needs. It was prototyped and
-removed: shipping a second external tool inside the plugin trades a real dependency for a
-theoretical precision gain, and the seam exists precisely so that choice can be revisited
-without touching a phase skill. Structural work falls back to Glob/Grep, which is always
-current if imprecise — and the honest caveat on the graph's precision is now carried by the
-confidence tags in B9 rather than by a second binary.
+**Source:** `context.py sweep` — for every entry, BMAD runs
+`git log -1 --format=%cI -- <source>` and marks the claim stale when its source changed
+*after* the claim's `verified` date.
+
+**Gap:** `map-audit.sh staleness` compared a whole domain against a 90-day ceiling. That
+cannot see the case that actually matters: a map refreshed last week still lying about a
+file changed yesterday.
+
+**Mechanism:** `sweep` now resolves each cited path's last change from git and compares it
+against that domain's `last_refreshed_at`, reporting `outdated-claim` with both dates and
+the citing line. `missing` and `outdated` are counted separately, and a domain with no
+refresh date yields no finding — there is no basis to judge, so it does not guess.
+
+Run against this repository's own map: **39 of 49 cited paths are outdated**, on top of the
+10 that no longer exist. Four fifths of the map rests on files that changed after it was
+written.
 
 ## Proposals — not implemented
 

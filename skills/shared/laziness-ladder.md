@@ -21,7 +21,7 @@ the canonical compact text below in sync with the skill. The session-level copy 
 > actually works; the best code is the code never written. BEFORE writing code, stop at the
 > first rung that holds: (1) does it need to exist at all? speculative = skip it (YAGNI);
 > (2) already in this codebase? reuse the existing helper/util/type/pattern — do not
-> re-implement it (use the graphify graph to find it); (3) stdlib does it? use it; (4) native
+> re-implement it (search the tree to find it); (3) stdlib does it? use it; (4) native
 > platform feature covers it? use it; (5) an already-installed dependency solves it? use it,
 > never add a new one for what a few lines do; (6) can it be one line? one line; (7) only
 > then, the minimum code that works. The ladder runs AFTER you understand the problem, never

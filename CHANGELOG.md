@@ -4,34 +4,45 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [2.35.0] - 2026-08-06
 
-The code graph stops being a gate, and starts telling the truth about itself.
+Graphify is removed. Structure is derived fresh, and grounded by citing `file:line`.
 
-### Changed
+### Removed
 
-- **A missing graph no longer aborts the cycle.** `LOOP_SPEC_REQUIRE_GRAPHIFY` inverted:
-  the default now degrades, and `1` restores the old hard requirement. One tool was gating
-  three jobs whose needs differ — structural lookups want currency, ripple analysis
-  tolerates staleness, non-derivable truths want curation and are not derived at all — so
-  a missing install failed all three. `lib/code-graph.sh` names the jobs, reports which
-  layer answers each and why, and `require <job>` fails only for the job that actually lost
-  its answer. An absent graphify costs ripple (hotspots, cross-module reach, which nothing
-  substitutes for) and the run continues. `LOOP_SPEC_STRUCTURAL_TOOL` forces the structural
-  layer when the probe picks wrong.
+- **The code graph, and its hard requirement.** graphify was a cycle-aborting dependency
+  from 2.29 to 2.34. Over that period, in this repository, it produced **zero citations in
+  any artifact, zero recorded refreshes, and zero evidence entries**: the two features
+  authored after it became mandatory ground themselves `- none` and "cites a repo
+  file/line", `index.json` never gained the `graphify` block the map skill was told to
+  write, and the only artifacts naming `graphify query|path|explain` belong to the feature
+  that built the integration. That bought a Python 3.10+/uv dependency and a startup gate
+  that could end a run.
 
-### Fixed
+  Removed: the lifecycle contract, `lib/graphify-preflight.sh`, the map integration, the
+  per-phase query instructions in SPEC/DISCUSS/PLAN/debug, the pi and OpenCode registration
+  steps, and `LOOP_SPEC_REQUIRE_GRAPHIFY`. The design phases now read the tree — fanned out
+  to subagents returning `file:line` evidence — and the grounding protocol's code-structure
+  claim type says it plainly: read it and cite `file:line`; a claim nobody can point at is
+  an `ASSUMPTION`. The `graphify-out/` ignore patterns stay on purpose, so an upgrading
+  checkout does not start committing a stale generated cache.
 
-- **The grounding gate accepted the graph's own guesses as facts.** graphify labels every
-  edge `EXTRACTED` (parsed from the AST), `INFERRED` (guessed), or `AMBIGUOUS`. loop-spec
-  read none of them — a repository-wide grep for those tokens returned nothing — while the
-  grounding protocol accepted graph output with "no probe needed", so an `INFERRED` edge
-  cleared the gate identically to a probed fact. Graph citations are now their own claim
-  type carrying the tag: `- GRAPH[EXTRACTED]: <claim> | query: <cmd>` stands alone,
-  `INFERRED`/`AMBIGUOUS` need `| confirmed: <file>:<line>` or a rewrite as an `ASSUMPTION`,
-  an unknown tag is rejected, and an **untagged** citation is flagged hardest because it
-  reads exactly like a probed fact. Enforced by `lib/grounding-lint.sh`; nine new cases.
+  One repository is thin evidence and this one is unrepresentative — bash and markdown, where
+  deriving structure is nearly free. What the graph could not do here was show its work.
 
-  A gate that exists to refuse unverified claims cannot make an exception for a source that
-  has already told you it was guessing.
+  Also removed, both added earlier in this same PR and both serving only graphify: the
+  `GRAPH[EXTRACTED|INFERRED|AMBIGUOUS]` citation type, and `lib/code-graph.sh`. Leaving
+  unreachable enforcement in place would have reproduced the dead-dimension defect fixed in
+  2.34.0.
+
+### Added
+
+- **Source-pinned map staleness**, ported from BMAD's `context.py sweep`. `map-audit.sh
+  sweep` now resolves each cited path's last change with `git log -1 --format=%cI` and
+  reports `outdated-claim` when the source changed after that domain was refreshed, with
+  both dates and the citing line. The previous whole-domain age check could not see a map
+  refreshed last week lying about a file changed yesterday. `missing` and `outdated` are
+  counted separately, and a domain with no refresh date yields no finding rather than a
+  guess. Against this repository's own map: 39 of 49 cited paths are outdated, on top of
+  the 10 that no longer exist.
 
 ## [2.34.0] - 2026-08-05
 

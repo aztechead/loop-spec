@@ -209,7 +209,7 @@ success for a run it could not account for.
 
 **`cycle-preflight.sh` cleared the prior pointer before any recovery record existed.**
 The clear is correct — a stale pointer would masquerade as this run's result — but
-preflight can still abort afterwards (the graphify hard gate), and an abort in that
+preflight can still abort afterwards, and an abort in that
 window left neither a terminal result nor an `active-run.json`. Reconciliation found
 nothing to reconcile: exactly the "process exits, no state" hole these files exist to
 close. Preflight now writes a `(preflight)` breadcrumb *before* clearing; the real

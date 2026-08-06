@@ -10,7 +10,7 @@ Before behavioral validation:
 
 1. Inspect the final diff, then re-read every changed file in its final state.
 2. Read the nearest affected caller, test, configuration, interface, or documented
-   contract. Use Graphify queries too when the full cycle has a graph, but never use a
+   contract. Search and read as widely as you need, but never use a
    graph as a substitute for reading the current files.
 3. For every done/acceptance criterion, record repository evidence as `file:line`
    references that show where the behavior is implemented and where it integrates with

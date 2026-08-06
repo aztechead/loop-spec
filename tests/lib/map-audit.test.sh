@@ -81,6 +81,57 @@ check "L: a citation to a missing file is a finding" "1" "$rc"
 contains "M: the stale-claim finding names path and source line" \
   "finding=stale-claim path=lib/deleted.sh" "$out"
 
+# Source-pinned staleness (ported from BMAD's context.py sweep): a claim is suspect
+# when the file it rests on changed AFTER the domain was refreshed. A whole-domain
+# age check cannot see this — the map can be days old and still lie about a file
+# that changed yesterday.
+git init -q .
+git config user.email t@example.com
+git config user.name Test
+git add -A
+git commit -qm base
+cat > map/ARCH.md <<'EOF'
+# Architecture
+
+The orchestrator lives in lib/present.sh.
+EOF
+cat > state/index.json <<'EOF'
+{"last_refreshed_at": {"arch": "2020-01-01T00:00:00Z"}, "files": {}}
+EOF
+printf 'changed after the refresh\n' >> lib/present.sh
+git add -A
+git commit -qm "touch the cited source"
+rc=0; out="$(bash "$SCRIPT" sweep)" || rc=$?
+check "L2: a source that changed after the refresh is a finding" "1" "$rc"
+contains "L3: the outdated finding names source and refresh dates" \
+  "finding=outdated-claim path=lib/present.sh" "$out"
+contains "L4: the outdated finding explains the comparison" "after arch was refreshed" "$out"
+contains "L5: sweep counts missing and outdated separately" "missing=0 outdated=1" "$out"
+
+# A source untouched since the refresh is not a finding.
+cat > state/index.json <<EOF
+{"last_refreshed_at": {"arch": "$(date -u +%Y-%m-%d)T23:59:59Z"}, "files": {}}
+EOF
+rc=0; out="$(bash "$SCRIPT" sweep)" || rc=$?
+check "L6: a source older than the refresh sweeps clean" "0" "$rc"
+contains "L7: clean sweep reports both counters" "missing=0 outdated=0" "$out"
+
+# No refresh date for a domain means no basis to judge — never a false positive.
+cat > state/index.json <<'EOF'
+{"last_refreshed_at": {}, "files": {}}
+EOF
+rc=0; bash "$SCRIPT" sweep >/dev/null 2>&1 || rc=$?
+check "L8: an unrefreshed domain yields no outdated findings" "0" "$rc"
+
+cat > map/ARCH.md <<'EOF'
+# Architecture
+
+The orchestrator lives in lib/present.sh and the phase skill in skills/thing.md.
+Feature state is written per slug under docs/loop-spec/features/{slug}/SPEC.md.
+Every helper matches lib/*.sh by convention.
+The retired helper is at lib/deleted.sh today.
+EOF
+
 # The append-only index leak: a deleted file keeps voting on domain staleness.
 cat > state/index.json <<EOF
 {"last_refreshed_at": {"arch": "$TODAY"},

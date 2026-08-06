@@ -36,7 +36,7 @@ Mapper model is fixed at the `sonnet` alias (see `skills/shared/model-matrix.md`
 
 ## Procedure
 
-### Step 0 - Decide whether a map refresh exists (before Graphify)
+### Step 0 - Decide whether a map refresh is needed
 
 In single-repository incremental mode, this deterministic decision is mandatory:
 
@@ -52,40 +52,11 @@ stale_domains="$(jq -c '.domains' <<<"$refresh_decision")"
 
 `map-refresh.sh` returns `refresh: false` only when all five map artifacts plus the
 index are complete and the feature diff has no map-relevant source changes. Feature
-state, telemetry, previous map output, and Graphify output are ignored; an unknown
+state, telemetry, and previous map output are ignored; an unknown
 source path, a missing/corrupt map, an unreadable base, `--full`, or `--domain` fails
 closed to a refresh. In workspace mode, retain the existing per-repository stale-domain
 calculation until the shared workspace index has the same deterministic helper; never
 borrow a single-repo no-op verdict for a workspace.
-
-### Step 1 - Graphify pre-flight (only when a refresh exists)
-
-graphify is a hard requirement only for a refresh that Step 0 proved necessary. Read
-`${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it to each selected
-repository. The external assistant skill performs a full semantic build or incremental
-semantic update only when that lifecycle's source-freshness proof is stale; otherwise it
-revalidates/reuses the local graph. Generated `graphify-out/` stays local and is never
-staged into the feature PR.
-
-```bash
-ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect 2>/dev/null)"
-ws_mode="$(echo "$ws_json" | jq -r '.mode // "single"')"
-ws_root="$(echo "$ws_json" | jq -r '.root')"
-if [[ "$ws_mode" == "workspace" ]]; then
-  selected_repos_json="$(echo "$ws_json" | jq -c '.repos')"
-  # A cycle may select only part of a discovered workspace. Never refresh a
-  # sibling that is outside this feature's committed participating-repo set.
-  if [[ -n "${slug:-}" && -f "$ws_root/.loop-spec/features/${slug}/feature.json" ]]; then
-    selected_repos_json="$(jq -c '.workspace.repos // []' "$ws_root/.loop-spec/features/${slug}/feature.json")"
-  fi
-  while IFS= read -r repo_entry; do
-    rpath="$ws_root/$(echo "$repo_entry" | jq -r '.path')"
-    # Apply skills/shared/graphify-lifecycle.md to $rpath here.
-  done < <(echo "$selected_repos_json" | jq -c '.[]')
-else
-  # Apply skills/shared/graphify-lifecycle.md to this repository here.
-fi
-```
 
 ### Step 2 - Dispatch (workflow path or fallback)
 
@@ -143,7 +114,7 @@ TeamCreate({
 
 Only include teammates whose domain is in `stale_domains`.
 
-graphify is a hard requirement, so ARCH and TECH domains are graph-backed by default. In the `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode only, ARCH and TECH are not refreshed by this skill invocation (quality, concerns, and domain mapping continue normally); install graphify to restore full coverage.
+Every domain is derived by reading the tree; there is no stored graph behind ARCH or TECH. Mappers fan out, cite `file:line`, and a claim nobody can point at does not get written.
 
 Send each spawned mapper its work prompt via `SendMessage`:
 
@@ -177,7 +148,7 @@ for file in mapper.inspected_files:
   index.files[file].add(domain)
 ```
 
-Also update `index.json` field `last_refreshed_at.{domain}` to the current ISO-8601 timestamp. After a successful Graphify refresh, set `graphify.graph_json_path` to `graphify-out/graph.json`, set `graphify.wiki_path` only when that optional export exists, and set `graphify.last_updated` to the refresh timestamp.
+Also update `index.json` field `last_refreshed_at.{domain}` to the current ISO-8601 timestamp, and drop any `files` entry whose path no longer exists (`lib/map-audit.sh orphans` lists them) so a deleted file stops voting on which domains are stale.
 
 Atomic write to `.loop-spec/codebase/index.json`.
 

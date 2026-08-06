@@ -41,7 +41,7 @@ Invoked when feature.json currentPhase == "verify".
 
 VERIFY enforces `skills/shared/verification-grounding.md`: repository grounding and
 executed validation are separate mandatory gates. Neither a green command nor a refreshed
-Graphify map substitutes for post-change `file:line` evidence tied to each criterion.
+codebase map substitutes for post-change `file:line` evidence tied to each criterion.
 
 ### Step 0 - Regression gate (opt-in)
 
@@ -438,7 +438,7 @@ Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `cur
 
 **Single-repo mode (unchanged):**
 
-The map-codebase skill owns the post-change Graphify assistant refresh, validation, staging, and commit through `skills/shared/graphify-lifecycle.md`. Do not invoke Graphify separately here: duplicate updates create needless graph churn and previously left generated files outside both the map and verification commits.
+The map-codebase skill owns the post-change map refresh and its commit. Do not duplicate that work here.
 
 **Greenfield (`feature.json.greenfield == true`):** this is where the project's FIRST graph and FIRST codebase map get built (cycle Steps 5.4/5.5 deferred them — an empty repo grounds nothing). map-codebase Step 0 creates and commits the initial graph; invoke it with `--full` instead of incremental, since there are no existing domain docs to refresh.
 

@@ -116,7 +116,6 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LOOP_SPEC_REQUIRE_GRAPHIFY: "0"
         run: claude -p "/loop-spec:sentinel run" --dangerously-skip-permissions
 ```
 

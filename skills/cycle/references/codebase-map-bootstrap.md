@@ -28,7 +28,7 @@ Mapping (used by `lib/gsd-ingest.sh codebase`):
 | `CONCERNS.md` | `CONCERNS.md` |
 | (no GSD analog) | `DOMAIN.md` -- always mapped by `mapper-domain` |
 
-Graphify (and GSD supersession when graphify is present) is handled in Step 5.4 above, which always runs. The remaining sub-steps below build any loop-spec codebase docs that are still missing.
+GSD supersession is handled by the cycle before this point. The sub-steps below build any loop-spec codebase docs that are still missing.
 
 #### Step 5.5a - GSD ingestion (if applicable)
 

@@ -117,12 +117,13 @@ Before asking any questions, read for grounding context:
 - `.loop-spec/features/{slug}/` - feature.json and any prior `spec-interview-transcript.md` (resume context)
 - `docs/loop-spec/features/{slug}/` - any prior SPEC.md or committed artifacts
 - `docs/loop-spec/codebase/` - domain maps (TECH, ARCH, QUALITY, CONCERNS, DOMAIN) if present
-- **The code graph (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Ground yourself in what already exists for this feature area before interviewing:
-  - `graphify query "<feature area>"` — does an implementation already exist? What does it touch?
-  - `graphify-out/GRAPH_REPORT.md` — "god nodes" and cross-module connections reveal which subsystems a change will ripple through, so you can ask sharper boundary/constraint questions.
-  - `graphify explain "<entity>"` / `graphify path "<A>" "<B>"` — confirm how the target area connects to the rest of the system.
-  - **Workspace mode:** there is no graph at the workspace root. Query each participating repository with `--graph "<repo>/graphify-out/graph.json"` (or run from that repo), and preserve the repository name in every finding.
-  Use the graph to ask precise questions ("this would touch `X` which also feeds `Y` — in scope?") instead of generic ones. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode; then use flat-file reads. **Greenfield:** the graph build is deferred until source exists — skip the graph scout and ground in the stated goal and the chosen stack's conventions instead.)
+- **Read the code that already exists.** Before interviewing, find out what is there — there is no stored map to consult, so derive it:
+  - Search for the feature area by name, by the vocabulary the user used, and by the obvious symbol names. Does an implementation already exist? What does it touch?
+  - Read the entry points you find, not just the matches. A hit tells you where to look; the surrounding file tells you what it does.
+  - Follow the imports and callers of anything you will change, far enough to name the boundaries the change crosses. Those boundaries are what turn a generic interview question into a precise one ("this would touch `X` which also feeds `Y` — in scope?").
+  - **Fan this out.** Send subagents to scan and return findings with `file:line` evidence rather than pulling a large tree through your own context. Interrogate what they return; do not adopt it unread.
+  - **Workspace mode:** scan each participating repository separately and preserve the repository name in every finding.
+  Every claim you carry into SPEC.md cites `file:line`. (**Greenfield:** there is no code yet — ground in the stated goal and the chosen stack's conventions instead.)
 
 **External-reality scout (probe-before-assert).** Before treating any factual premise about an external system as fact (in synthesis, ambiguity scoring, or interview questions):
 

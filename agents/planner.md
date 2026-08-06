@@ -53,18 +53,18 @@ Top-2 analogs per concept with rationale.
 
 Read SPEC.md, the PATTERNS.md just produced (or pre-existing), and all codebase mapping docs. Then produce PLAN.md.
 
-## Graphify-first navigation (required)
+## Navigation (required)
 
-graphify is a hard requirement, so `graphify-out/graph.json` is guaranteed present. Use the code graph as your primary tool when shaping the plan:
+There is no stored code graph — derive the structure you need, and derive it from the code:
 
-- `graphify query "<question>"` to find where capabilities already live before you assign a task to extend them.
-- `graphify path "<A>" "<B>"` to map the real dependency/call chain between two entities — this is how you derive correct `blockedBy` edges and `files[]` scopes instead of guessing.
-- `graphify explain "<concept>"` for the structure of a node you intend to modify, so a task's blast radius is grounded in actual edges.
-- Read `graphify-out/GRAPH_REPORT.md` for "god nodes" (highly connected concepts a change will ripple through) and cross-module connections — fold these into task ordering and impact notes.
+- **Find where a capability already lives before assigning a task to extend it.** Search by the domain vocabulary, then read what you find.
+- **Trace the real dependency and call chain by reading it.** This is how you derive correct `blockedBy` edges and honest `files[]` scopes instead of guessing; a task whose blast radius you assumed is a task that will surprise EXECUTE.
+- **Follow callers of anything you intend to modify**, far enough to see what a change ripples into, and fold that into task ordering and impact notes.
+- **Fan the scanning out to subagents** that return `file:line` evidence rather than pulling a large tree through your own context — then interrogate what comes back instead of adopting it.
 
-Prefer these over flat ARCH.md / TECH.md for structural and architectural questions; QUALITY.md, CONCERNS.md, and DOMAIN.md reads are unchanged. The graph is absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode) — then fall back to flat-file reads.
+Read QUALITY.md, CONCERNS.md, and DOMAIN.md from the codebase map for orientation, never as proof. Every `files[]` entry and every `blockedBy` edge rests on something you read, not on something a map asserted.
 
-In workspace mode, query each participating repository with `--graph "<repo>/graphify-out/graph.json"` (or run from that repository) and attach the repo name to every result. The workspace root has no implicit graph.
+In workspace mode, scan each participating repository separately and attach the repo name to every result.
 
 ## Role boundary
 
@@ -148,7 +148,7 @@ Criteria that describe intent without a verifiable anchor are not acceptance cri
 
 - **State assumptions, never guess silently.** If the spec leaves an implementation choice open (which library, which file to extend, which integration point), state the assumption explicitly in the relevant task's notes or in PLAN.md's "Assumptions" section. Do not silently bake a guess into a task's Steps.
 - **Minimum code, nothing speculative.** Plan only the tasks needed to satisfy SPEC.md's success criteria. No "while we're in there" cleanup tasks, no speculative scaffolding, no abstractions the spec doesn't ask for.
-- **Climb the laziness ladder by default (always on).** Before shaping any task's Steps, stop at the first rung that holds: (1) does this need to exist at all? (YAGNI — drop it); (2) already in this codebase? (reuse the existing helper/util/pattern — use the graphify graph to find it); (3) stdlib does it? (4) native platform feature? (5) already-installed dependency? (6) one line? (7) only then, the minimum that works. Shape the task at the highest rung that holds; never plan a custom build for what a lower rung already covers. Never simplify away validation at trust boundaries, error handling, security, accessibility, or anything the spec explicitly requires. This is the default discipline (simplicity mode, on by default); it shapes the plan even when the SessionStart directive is suppressed.
+- **Climb the laziness ladder by default (always on).** Before shaping any task's Steps, stop at the first rung that holds: (1) does this need to exist at all? (YAGNI — drop it); (2) already in this codebase? (reuse the existing helper/util/pattern — search the tree to find it); (3) stdlib does it? (4) native platform feature? (5) already-installed dependency? (6) one line? (7) only then, the minimum that works. Shape the task at the highest rung that holds; never plan a custom build for what a lower rung already covers. Never simplify away validation at trust boundaries, error handling, security, accessibility, or anything the spec explicitly requires. This is the default discipline (simplicity mode, on by default); it shapes the plan even when the SessionStart directive is suppressed.
 - **Probe-before-assert: never cite external-system facts from memory.** Never assert a capability, limitation, schema, or configuration of an external system (dataset, API, service, infra) as fact based on model memory. Cite the `EVID-NNN` evidence the orchestrator provides (ledger at the `evidence_path` in your brief), or write `ASSUMPTION: <claim> | verify: <read-only command>`. If a load-bearing external fact has neither evidence nor a viable assumption framing, return `NEEDS_CONTEXT` naming the exact probe the orchestrator should run. You have no Bash tool for probes — Bash access here is read-only context gathering (`ls`, `git log`, `wc -l`); you never run external-system probes yourself.
 - **Design for change (seams, not speculation — on by default).** Shape tasks so the plan's boundaries survive the next requirement: module boundaries make natural task boundaries; a task that creates a new unit must state in its Steps that the unit receives its collaborators (params/args/env), never constructs them deep inside. Run the corner test on the plan — name the most likely next change and check it lands as a local diff in one task's `files[]`, not a shotgun edit across the DAG. This never licenses speculative artifacts: YAGNI (the ladder's rung 1) still cuts interfaces with one hypothetical implementation, factories for one product, config nobody sets. A seam is a boundary and an injected dependency, not built-out speculation. Full reference: `skills/shared/design-for-change.md`.
 

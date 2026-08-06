@@ -50,7 +50,6 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective alias set is unchanged. |
-| `LOOP_SPEC_REQUIRE_GRAPHIFY` | `0`/`1`; unset | Default (unset or `0`): an absent graph degrades the ripple layer — hotspots and cross-module reach — and the run continues on the structural layer. `1` restores the pre-2.35 behavior where a missing graph aborts the cycle. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
 | `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for each exact-base baseline command. `0` disables the wall-clock deadline. |
@@ -138,7 +137,6 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_CMD_*` | shell command; detected | Reserved command-family namespace. Only command names consumed by the installed release have an effect; unknown suffixes are ignored. |
 | `LOOP_SPEC_REGRESSION_SCAN` | `0`/`1`; `0` | `1` adds VERIFY’s advisory prior-feature regression scan. |
 | `LOOP_SPEC_RALPH_THRESHOLD` | positive integer; `3` | Consecutive no-progress VERIFY remediation rounds before escalation. |
-| `LOOP_SPEC_STRUCTURAL_TOOL` | `graphify`/`grep`; probed | Forces which layer answers structural lookups (where a symbol is defined, what references it), overriding `lib/code-graph.sh`'s probe. Unknown values are ignored with a stderr note rather than obeyed. |
 | `LOOP_SPEC_EXTENSIONS` | path; `.loop-spec/extensions.json` | Project extension declarations read by `lib/extension-points.sh`: additional review layers, per-phase prepend/append instructions, and standing facts. Extensions add only — a declared layer can never disable, reorder, or shadow a built-in gate, and no authority script reads this file. Read paths fail open; `extension-points.sh validate` fails closed. |
 | `LOOP_SPEC_MAP_MAX_LINES` | positive integer; `1000` | Ceiling for the total size of the codebase map, measured by `lib/map-audit.sh budget` (~20k tokens across the five domains). Exceeding it is a finding to cut against, never a reason to raise the ceiling. |
 | `LOOP_SPEC_MAP_MAX_AGE_DAYS` | positive integer; `90` | Age at which `lib/map-audit.sh staleness` reports a map domain as stale, matching the existing refresh advisory. |

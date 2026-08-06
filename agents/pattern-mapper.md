@@ -37,24 +37,24 @@ under `docs/loop-spec/features/**` and `.claude/agent-memory/**`.
 
 `docs/loop-spec/features/{slug}/PATTERNS.md`, using `skills/shared/artifact-templates/PATTERNS.md.template` as the shape.
 
-## Graphify-first navigation (required)
+## Navigation (required)
 
-graphify is a hard requirement, so `graphify-out/graph.json` is guaranteed present (the cycle aborts otherwise). The code graph is your **primary** navigation tool — use it before flat-file reads or grep:
+There is no stored code graph and no symbol index — structure is derived fresh, because a stored map rots and a rotted map is wrong with authority. Work outward from the code:
 
-- `graphify query "<question>"` — semantic search for where a concept lives (your main analog-finding tool).
-- `graphify path "<A>" "<B>"` — shortest dependency/call path between two entities, to see how they already connect.
-- `graphify explain "<concept>"` — detailed structure of a single node and its neighbors.
-- Read `graphify-out/GRAPH_REPORT.md` first — its "god nodes" (highly connected concepts) and surprising cross-module connections show which implementations are canonical and which modules the feature will touch.
+- **Search by the concept's vocabulary, not just its likely name.** The analog you want is often named for the domain, not the mechanism.
+- **Read the candidates in full.** A grep hit tells you where to look; the file around it tells you whether it is really the analog, and reading the whole thing is what separates a pattern from a coincidence.
+- **Follow imports and callers** from each candidate far enough to see how it already connects — that is what makes an analog usable rather than merely similar.
+- **Prefer the convention with the most instances.** Three files doing it one way outrank one doing it another, and the count is the evidence you cite.
 
-Prefer these over flat ARCH.md / TECH.md for structural/architectural questions; QUALITY.md, CONCERNS.md, DOMAIN.md reads are unchanged. The graph is absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (degraded mode) — then fall back to Glob/Grep.
+Read QUALITY.md, CONCERNS.md, and DOMAIN.md from the codebase map for orientation, but never cite them as proof: every analog you report carries a `file:line` you actually read. A map claim and the tree can disagree, and the tree wins.
 
-In workspace mode, query each participating repository with `--graph "<repo>/graphify-out/graph.json"` (or run from that repository) and attach the repo name to every analog. The workspace root has no implicit graph.
+In workspace mode, scan each participating repository separately and attach the repo name to every analog.
 
 ## Procedure
 
 1. **Read inputs.** Parse SPEC.md for the user-facing capability and acceptance criteria. Read every `docs/loop-spec/codebase/*.md` to ground yourself in the project's stack and conventions.
 2. **Extract concepts.** Derive 3-10 distinct system-design nouns/verbs the feature needs (e.g. "OAuth token refresh", "JSON request validation", "background job retry"). Not file paths.
-3. **Find analogs.** For each concept, run `graphify query "<concept>"` to locate the closest existing implementation, and `graphify explain`/`graphify path` to confirm it is the canonical / most-connected instance. Use Glob+Grep only to pull exact line ranges once the graph has pointed you at the file (or as the fallback in degraded mode).
+3. **Find analogs.** For each concept, search the tree for the closest existing implementation, read the candidates in full, and follow their callers to confirm you have the canonical instance rather than a stray one. Cite the `file:line` range you actually read.
 4. **Extract excerpts.** For each chosen analog, capture: path+lines, imports, the 5-30 line core pattern verbatim, surrounding error handling, and a test analog if one exists.
 5. **Note gotchas.** 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells flagged in `docs/loop-spec/codebase/CONCERNS.md`, etc.).
 6. **Write `PATTERNS.md`.** Atomic write to a temp path under the same directory, then rename.

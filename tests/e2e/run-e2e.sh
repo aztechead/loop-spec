@@ -127,7 +127,7 @@ echo "e2e: running autonomous cycle in $PROJ (ceiling ${TIMEOUT_MINS}m)..."
 RUN_LOG="$WORK/cycle-run.log"
 (
   cd "$PROJ" && \
-  env LOOP_SPEC_REQUIRE_GRAPHIFY=0 \
+  env \
       LOOP_SPEC_SKIP_HEALTHCHECK=1 \
       LOOP_SPEC_CHECKPOINT_PR=0 \
       claude -p "/loop-spec:cycle autonomous $GOAL" $PERMISSION_FLAGS
