@@ -203,7 +203,9 @@ def orphans():
     print("orphans={} indexed={} reason={}".format(len(gone), len(files), index_path))
 
 
-STALE_BANNER = re.compile(r"^\s*>?\s*\**\s*STALE\b", re.I | re.M)
+# Case-sensitive on purpose: the banner is a deliberate all-caps marker, while
+# prose about staleness ("stale domains -> mapper team") is ordinary map content.
+STALE_BANNER = re.compile(r"^\s*>?\s*\**\s*STALE\b", re.M)
 
 
 def staleness():
@@ -214,7 +216,7 @@ def staleness():
                 stamps = (json.load(handle) or {}).get("last_refreshed_at") or {}
         except (OSError, ValueError):
             stamps = {}
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     for domain in sorted(stamps):
         raw = stamps[domain]
         try:

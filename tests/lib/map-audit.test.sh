@@ -175,6 +175,18 @@ check "V: a doc declaring STALE while the index says fresh is a finding" "1" "$r
 contains "W: the disagreement finding names the document" \
   "finding=trust-disagreement path=map/CONCERNS.md" "$out"
 
+# The banner is a deliberate all-caps marker; prose that merely discusses
+# staleness at the start of a line must not read as a declaration.
+cat > map/CONCERNS.md <<'EOF'
+# Concerns
+
+stale domains -> TeamCreate mapper team -> mapper writes
+
+Ordinary flow description, not a banner.
+EOF
+rc=0; out="$(bash "$SCRIPT" staleness)" || rc=$?
+check "V2: lowercase prose about staleness is not a STALE banner" "0" "$rc"
+
 rm map/CONCERNS.md
 cat > state/index.json <<EOF
 {"last_refreshed_at": {"arch": "$TODAY"}, "files": {"lib/present.sh": ["arch"]}}
