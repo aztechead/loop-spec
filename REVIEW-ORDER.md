@@ -46,6 +46,28 @@ Read this one against BMAD's `customize.toml`: the divergence is deliberate.
 - doc says STALE, index says fresh — believe the doc
   `lib/map-audit.sh:186`
 
+**The code graph, removed**
+
+The evidence is in `bmad-scan-proposals.md` B9: six weeks mandatory, zero citations.
+
+- the whole preflight, deleted
+  `lib/graphify-preflight.sh:1`
+- the startup gate it fed, gone from the batch
+  `lib/cycle-preflight.sh:5`
+- ignores kept on purpose so an upgrade does not commit a stale cache
+  `lib/runtime-ignore.sh:48`
+- the citation type that only graphify could satisfy, removed
+  `lib/grounding-lint.sh:184`
+- stale comment about the old external build
+  `lib/map-refresh.sh:4`
+
+**Source-pinned staleness — the BMAD callout**
+
+- each cited path's last change, from git
+  `lib/map-audit.sh:114`
+- the claim is suspect when its source moved after the refresh
+  `lib/map-audit.sh:162`
+
 **Defects the audit surfaced (fixed here)**
 
 - four dimensions declared, three dispatched — `style` was dead code
