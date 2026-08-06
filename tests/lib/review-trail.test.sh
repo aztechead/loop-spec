@@ -207,6 +207,16 @@ rc=0; out="$(bash "$SCRIPT" lint EXTENSIONLESS.md "$MAKE_BASE" HEAD)" || rc=$?
 check "AG: extensionless stop lints clean" "0" "$rc"
 contains "AH: extensionless stop is counted" "stops=1 core_files=1 findings=0" "$out"
 
+# Dropping the extension requirement must not let bare numbers in prose become
+# stops: a clock time or a ratio is framing, never a path.
+cat > PROSE.md <<'EOF_TRAIL'
+- brings the 3:1 fan-out under the 12:30 deadline
+  `Makefile:3`
+EOF_TRAIL
+rc=0; out="$(bash "$SCRIPT" lint PROSE.md "$MAKE_BASE" HEAD)" || rc=$?
+check "AI: numeric tokens in framing are not stops" "0" "$rc"
+contains "AJ: only the real stop is counted" "stops=1 core_files=1 findings=0" "$out"
+
 # An unreadable trail is an operator error, not a finding.
 rc=0; bash "$SCRIPT" lint /nonexistent/trail.md "$BASE" HEAD >/dev/null 2>&1 || rc=$?
 check "AB: unreadable trail exits 2" "2" "$rc"
