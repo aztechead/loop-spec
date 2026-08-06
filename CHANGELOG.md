@@ -35,6 +35,14 @@ Graphify is removed. Structure is derived fresh, and grounded by citing `file:li
 
 ### Added
 
+- **`agents/mapper-arch.md` and `agents/mapper-tech.md`.** The ARCH and TECH domains had no
+  mapper — an external code graph covered them, and removing it would have left both
+  permanently unrefreshable while `map-refresh.sh` kept reporting them stale. The
+  team/subagent path spawned three mappers for five tracked domains; only the Workflow path
+  covered the gap, using generic agents. All five domains now have a named mapper on every
+  dispatch path, each grounding its claims in `file:line` and told plainly not to record
+  what a single read of the code already shows.
+
 - **Source-pinned map staleness**, ported from BMAD's `context.py sweep`. `map-audit.sh
   sweep` now resolves each cited path's last change with `git log -1 --format=%cI` and
   reports `outdated-claim` when the source changed after that domain was refreshed, with
@@ -43,6 +51,11 @@ Graphify is removed. Structure is derived fresh, and grounded by citing `file:li
   counted separately, and a domain with no refresh date yields no finding rather than a
   guess. Against this repository's own map: 39 of 49 cited paths are outdated, on top of
   the 10 that no longer exist.
+- **A bounded test corpus for the verification-gap probe** (`LOOP_SPEC_VGAP_MAX_FILES`,
+  default 2000). It previously read every test file in the repo into memory on each VERIFY.
+  When the corpus is truncated a symbol with no hit now reports `covered=unknown`, never
+  `covered=no` — a partial search cannot establish absence, and reporting one as the other
+  would hand the reviewer a finding the search never earned.
 
 ## [2.34.0] - 2026-08-05
 

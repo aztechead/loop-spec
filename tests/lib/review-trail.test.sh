@@ -176,6 +176,17 @@ git commit -qm rename
 out="$(bash "$SCRIPT" surface "$BASE" HEAD)"
 contains "AA: rename records the post-image path" "path=src/renamed.js" "$out"
 
+# A cross-directory rename carries `{old => new}` braces in numstat; the post-image
+# path must survive that, or the moved file reads as uncovered.
+git checkout -q -b moved "$BASE"
+mkdir -p src/nested
+git mv src/app.js src/nested/app.js
+git commit -qm crossdir
+out="$(bash "$SCRIPT" surface "$BASE" HEAD)"
+contains "AD: cross-directory rename resolves to the post-image path" \
+  "path=src/nested/app.js" "$out"
+absent "AE: the brace form never leaks into a path" "{" "$out"
+
 # An unreadable trail is an operator error, not a finding.
 rc=0; bash "$SCRIPT" lint /nonexistent/trail.md "$BASE" HEAD >/dev/null 2>&1 || rc=$?
 check "AB: unreadable trail exits 2" "2" "$rc"

@@ -105,6 +105,8 @@ Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `
 TeamCreate({
   name: "loop-spec-map-codebase-{project_id}",
   teammates: [
+    { name: "mapper-tech-1",      subagent_type: "loop-spec:mapper-tech",     model: mapper_model },
+    { name: "mapper-arch-1",      subagent_type: "loop-spec:mapper-arch",     model: mapper_model },
     { name: "mapper-quality-1",   subagent_type: "loop-spec:mapper-quality",  model: mapper_model },
     { name: "mapper-concerns-1",  subagent_type: "loop-spec:mapper-concerns", model: mapper_model },
     { name: "mapper-domain-1",    subagent_type: "loop-spec:mapper-domain",   model: mapper_model }
@@ -114,7 +116,7 @@ TeamCreate({
 
 Only include teammates whose domain is in `stale_domains`.
 
-Every domain is derived by reading the tree; there is no stored graph behind ARCH or TECH. Mappers fan out, cite `file:line`, and a claim nobody can point at does not get written.
+All five domains are derived by reading the tree — `tech` and `arch` included. They were covered by an external code graph until 2.35.0; `agents/mapper-tech.md` and `agents/mapper-arch.md` now derive them like every other domain. Mappers fan out, cite `file:line`, and a claim nobody can point at does not get written.
 
 Send each spawned mapper its work prompt via `SendMessage`:
 
@@ -125,7 +127,7 @@ SendMessage({
     mode: {full | incremental}
     since_sha: {since_sha if incremental}
     target_path: docs/loop-spec/codebase/{DOMAIN}.md
-    teammates: [mapper-quality-1, mapper-concerns-1, mapper-domain-1]
+    teammates: [mapper-tech-1, mapper-arch-1, mapper-quality-1, mapper-concerns-1, mapper-domain-1]
 
     Run your mapping. You may SendMessage any other mapper by name to share intermediate
     findings (e.g. module boundaries, tech-stack observations) that would improve their

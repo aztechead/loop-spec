@@ -17,10 +17,14 @@
 # Usage:
 #   verification-gap-scan.sh <base-ref> [head-ref]
 #
+# Environment:
+#   LOOP_SPEC_VGAP_MAX_FILES  test-corpus file cap (default 2000). A miss against a
+#                             truncated corpus reports covered=unknown, never covered=no.
+#
 # Output, ANSWER first:
 #   symbol=render_body path=lib/pr-body.sh covered=no reason=named by 0 of 84 test files
 #   symbol=lint path=lib/deliver.sh covered=yes reason=tests/lib/deliver.test.sh
-#   scanned=2 uncovered=1 reason=main..HEAD across 84 test files
+#   scanned=2 uncovered=1 unknown=0 reason=main..HEAD across 84 test files
 #
 # Exit codes:
 #   0  facts emitted
@@ -115,16 +119,28 @@ if not found:
     sys.exit(1)
 
 # One read per test file, not one per symbol: the corpus is scanned once and
-# every symbol answered from it.
+# every symbol answered from it. Bounded like every other probe here -- a
+# monorepo's test tree would otherwise be pulled into memory on every VERIFY.
+MAX_CORPUS_FILES = int(os.environ.get("LOOP_SPEC_VGAP_MAX_FILES") or 2000)
+MAX_CORPUS_BYTES = 64 * 1024 * 1024
+
 corpus = []
+corpus_bytes = 0
+truncated = False
 for test_path in test_files:
+    if len(corpus) >= MAX_CORPUS_FILES or corpus_bytes >= MAX_CORPUS_BYTES:
+        truncated = True
+        break
     try:
         with open(test_path, "r", encoding="utf-8", errors="replace") as handle:
-            corpus.append((test_path, handle.read()))
+            body = handle.read()
     except OSError:
         continue
+    corpus_bytes += len(body)
+    corpus.append((test_path, body))
 
 uncovered = 0
+unknown = 0
 for symbol, source_path in found:
     word = re.compile(r"\b{}\b".format(re.escape(symbol)))
     hits = [test_path for test_path, body in corpus if word.search(body)]
@@ -133,11 +149,19 @@ for symbol, source_path in found:
         if len(hits) > 3:
             shown += ", +{} more".format(len(hits) - 3)
         print("symbol={} path={} covered=yes reason={}".format(symbol, source_path, shown))
+    elif truncated:
+        # A miss against a partial corpus is not evidence of absence. Saying
+        # covered=no here would hand the reviewer a finding the search never
+        # earned, which is the exact overclaim the prompt warns against.
+        unknown += 1
+        print("symbol={} path={} covered=unknown reason=corpus truncated at {} of {} test files; absence not established".format(
+            symbol, source_path, len(corpus), len(test_files)))
     else:
         uncovered += 1
         print("symbol={} path={} covered=no reason=named by 0 of {} test files".format(
             symbol, source_path, len(corpus)))
 
-print("scanned={} uncovered={} reason={}..{} across {} test files".format(
-    len(found), uncovered, base, head, len(corpus)))
+print("scanned={} uncovered={} unknown={} reason={}..{} across {} test files{}".format(
+    len(found), uncovered, unknown, base, head, len(corpus),
+    " (truncated from {})".format(len(test_files)) if truncated else ""))
 PY

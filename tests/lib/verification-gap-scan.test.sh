@@ -153,6 +153,28 @@ check "M: no definition changed exits 1" "1" "$rc"
 rc=0; bash "$SCRIPT" no-such-ref HEAD >/dev/null 2>&1 || rc=$?
 check "N: unknown ref exits 2" "2" "$rc"
 
+# A miss against a truncated corpus is not evidence of absence. The scan must say
+# unknown rather than hand the reviewer a finding the search never earned.
+git checkout -q -b bigcorpus "$BASE"
+mkdir -p tests/many
+for i in $(seq 1 12); do printf 'placeholder %s\n' "$i" > "tests/many/t$i.test.js"; done
+cat > src/app.js <<'EOF'
+export function needleSymbol(order) { return order; }
+EOF
+git add -A
+git commit -qm bigcorpus
+out="$(LOOP_SPEC_VGAP_MAX_FILES=3 bash "$SCRIPT" "$BASE" HEAD)"
+contains "O: a miss against a truncated corpus is unknown, not no" \
+  "symbol=needleSymbol path=src/app.js covered=unknown" "$out"
+contains "P: the unknown answer says the search was partial" "absence not established" "$out"
+contains "Q: the summary reports the truncation" "(truncated from" "$out"
+absent "R: a truncated search never claims covered=no" "covered=no" "$out"
+
+# Untruncated, the same change answers definitively.
+out="$(bash "$SCRIPT" "$BASE" HEAD)"
+contains "S: a full corpus answers covered=no" "symbol=needleSymbol path=src/app.js covered=no" "$out"
+absent "T: a full corpus reports no truncation" "truncated from" "$out"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
