@@ -113,7 +113,7 @@ echo "e2e-sentinel: running sentinel drive loop in $PROJ (ceiling ${TIMEOUT_MINS
 RUN_LOG="$WORK/sentinel-run.log"
 (
   cd "$PROJ" && \
-  env LOOP_SPEC_REQUIRE_GRAPHIFY=0 \
+  env \
       LOOP_SPEC_SKIP_HEALTHCHECK=1 \
       claude -p "/loop-spec:sentinel run" $PERMISSION_FLAGS
 ) > "$RUN_LOG" 2>&1 &

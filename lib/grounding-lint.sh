@@ -181,7 +181,7 @@ for ((j=0; j<nvis; j++)); do
     continue
   fi
 
-  # None of the three valid patterns matched.
+  # None of the valid patterns matched.
   echo "FLAG $artifact:$lineno: malformed grounding bullet — expected one of: '- none', '- EVID-NNN: text', '- ASSUMPTION: <claim> | verify: <cmd>'"
   flags=$((flags+1))
 done

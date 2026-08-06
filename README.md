@@ -16,10 +16,10 @@ Design constraints that hold throughout:
 
 - Shipped code is bash, jq, python3, and markdown. No package manager, no daemon, no database. Scheduling means cron/launchd/CI recipes that invoke normal entry points.
 - Decisions about whether the loop may act without a human are made by tested shell scripts, not by prose in a skill. The model proposes; scripts authorize.
-- One external tool is required: [graphify](https://github.com/Graphify-Labs/graphify), the knowledge graph the design phases query.
+- No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`; loop-spec ships no graph, symbol index, or embedding store. A stored map rots, and a rotted map is worse than none because it is wrong with authority.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.33.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 2.35.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
 
 ## Install
 
@@ -32,34 +32,13 @@ Current version: 2.33.0 (renamed from super-spec at v2.5.2). Direction: [docs/lo
    claude plugin install loop-spec@loop-spec-marketplace
    ```
 
-2. Install graphify (required). The cycle aborts at startup without it, because SPEC/DISCUSS/PLAN ground their work in the code graph:
+2. Check the base prerequisites: `bash >= 4`, `git`, `jq >= 1.5`, `python3 >= 3.7`. Prompt-to-PR delivery additionally requires an authenticated GitHub CLI (`gh auth status`) and an `origin` remote. Minimal Linux images may need `apk add jq python3` or equivalent.
 
-   ```bash
-   uv tool install graphifyy     # or pipx/pip install graphifyy (needs Python 3.10+)
-   graphify install              # register the skill; `graphify --help` to verify
-   ```
+3. Optional: set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to enable agent teams (see [docs/loop-spec/PREREQUISITES.md](docs/loop-spec/PREREQUISITES.md)). Without it the cycle uses one-shot subagents for critique/verify and the loop-fleet rung for EXECUTE, which needs the `claude` CLI on PATH.
 
-   Every cycle invokes Graphify's assistant skill before design: `.` performs the first full build and `. --update` incrementally refreshes code plus changed semantic inputs. Code remains local AST extraction; docs, papers, and images use the current assistant model and its existing authentication, including Vertex/Agent Platform ADC supplied by the host. loop-spec then validates named nodes and the complete output set before committing shared artifacts. Constrained environments can set `LOOP_SPEC_REQUIRE_GRAPHIFY=0`; design phases then fall back to Glob/Grep.
+4. Make sure your `CLAUDE.md` model policy allows whatever the harness `opus` and `sonnet` aliases resolve to. Dispatch targets these two aliases (`skills/shared/model-matrix.md`).
 
-### Graphify artifacts
-
-loop-spec uses generated Graphify output as local navigation state during a cycle. `skills/shared/graphify-lifecycle.md` invokes the external assistant skill; `lib/graphify-preflight.sh validate` requires human-readable node labels plus `graph.json`, `GRAPH_REPORT.md`, `graph.html`, and `manifest.json`. The output is deliberately excluded from feature branches: a small code change can rewrite most of a semantic graph, and that generated churn must not dominate a feature PR. Refresh it after merge or from a dedicated graph-maintenance checkout when the generated-data diff can be reviewed on its own. The clone-local ignore policy excludes the entire `graphify-out/` tree, including:
-
-- `graphify-out/cost.json`
-- `graphify-out/cache/` (content-addressed acceleration data)
-- `graphify-out/.graphify_python` and `.graphify_root` (machine-specific paths)
-- temporary/lock files and dated safety-backup directories
-- partial assistant extraction intermediates
-
-Graphify node IDs in `graph.json` are deterministic, path-qualified identifiers; consumers should still treat them as opaque because the upstream ID scheme can evolve. Random-looking hexadecimal filenames under `graphify-out/cache/` are expected content hashes, not unnamed graph nodes, and loop-spec does not commit them. The standard visualization is the fixed file `graphify-out/graph.html`; per-node Markdown/Obsidian or other HTML exports are optional Graphify exports and are not required by loop-spec.
-
-3. Check the base prerequisites: `bash >= 4`, `git`, `jq >= 1.5`, `python3 >= 3.6`. Prompt-to-PR delivery additionally requires an authenticated GitHub CLI (`gh auth status`) and an `origin` remote. Minimal Linux images may need `apk add jq python3` or equivalent.
-
-4. Optional: set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to enable agent teams (see [docs/loop-spec/PREREQUISITES.md](docs/loop-spec/PREREQUISITES.md)). Without it the cycle uses one-shot subagents for critique/verify and the loop-fleet rung for EXECUTE, which needs the `claude` CLI on PATH.
-
-5. Make sure your `CLAUDE.md` model policy allows whatever the harness `opus` and `sonnet` aliases resolve to. Dispatch targets these two aliases (`skills/shared/model-matrix.md`).
-
-6. Restart Claude Code (or run `/reload-plugins`).
+5. Restart Claude Code (or run `/reload-plugins`).
 
 ### pi
 
@@ -67,11 +46,9 @@ loop-spec ships as a pi package from the same source tree:
 
 ```bash
 pi install git:github.com/aztechead/loop-spec
-uv tool install graphifyy
-graphify install --platform pi
 ```
 
-This loads every skill, the `/loop-debug` prompt template, and a bundled extension (`extensions/pi/loop-spec.ts`) that bridges the Claude Code surface: it exports `LOOP_SPEC_HARNESS=pi`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, and `CLAUDE_SKILL_DIR` into every bash command and runs the SessionStart / prompt-submit / session-end hooks that pi has no native equivalent for. graphify and the base prerequisites are the same.
+This loads every skill, the `/loop-debug` prompt template, and a bundled extension (`extensions/pi/loop-spec.ts`) that bridges the Claude Code surface: it exports `LOOP_SPEC_HARNESS=pi`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, and `CLAUDE_SKILL_DIR` into every bash command and runs the SessionStart / prompt-submit / session-end hooks that pi has no native equivalent for. The base prerequisites are the same.
 
 Differences under pi (full contract: `skills/shared/pi-harness.md`):
 
@@ -89,11 +66,9 @@ loop-spec installs into [opencode](https://opencode.ai) (TUI, `opencode run`, an
 git clone https://github.com/aztechead/loop-spec
 bash loop-spec/lib/opencode-install.sh install            # global: ~/.config/opencode
 bash loop-spec/lib/opencode-install.sh install --project . # or per-project: ./.opencode
-uv tool install graphifyy
-graphify install --platform opencode
 ```
 
-The installer generates namespaced `loop-spec-<name>` skill adapters so common names such as `cycle`, `plan`, and `status` never shadow user/project skills, places `/loop-debug` as a native command, and generates a `/loop-spec/<name>` command wrapper for every skill (opencode's TUI hides skill-sourced entries from the `/` autocomplete popup, so these real commands are how you discover and launch the skills — `/loop-spec/auto` is the preferred autonomous entry and `/loop-spec/cycle` explicitly forces the full cycle). It also converts `agents/*.md` into opencode subagents named `loop-spec-<role>`, creates a deny-by-default `loop-spec-readonly` primary agent for compiler/judge passes, and drops a bundled plugin (`extensions/opencode/loop-spec.ts`) that bridges the rest of the Claude Code surface through documented plugin hooks: `shell.env` exports `LOOP_SPEC_HARNESS=opencode`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, and `CLAUDE_SKILL_DIR` into every bash command; `chat.message` and the event stream run the SessionStart / prompt-submit / session-end hooks. `status` and `uninstall` use an identity-checked manifest and preserve modified/replaced files. graphify and the base prerequisites are the same.
+The installer generates namespaced `loop-spec-<name>` skill adapters so common names such as `cycle`, `plan`, and `status` never shadow user/project skills, places `/loop-debug` as a native command, and generates a `/loop-spec/<name>` command wrapper for every skill (opencode's TUI hides skill-sourced entries from the `/` autocomplete popup, so these real commands are how you discover and launch the skills — `/loop-spec/auto` is the preferred autonomous entry and `/loop-spec/cycle` explicitly forces the full cycle). It also converts `agents/*.md` into opencode subagents named `loop-spec-<role>`, creates a deny-by-default `loop-spec-readonly` primary agent for compiler/judge passes, and drops a bundled plugin (`extensions/opencode/loop-spec.ts`) that bridges the rest of the Claude Code surface through documented plugin hooks: `shell.env` exports `LOOP_SPEC_HARNESS=opencode`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, and `CLAUDE_SKILL_DIR` into every bash command; `chat.message` and the event stream run the SessionStart / prompt-submit / session-end hooks. `status` and `uninstall` use an identity-checked manifest and preserve modified/replaced files. The base prerequisites are the same.
 
 Differences under opencode (full contract: `skills/shared/opencode-harness.md`):
 
@@ -115,7 +90,7 @@ From a repo you want to change:
 
 What happens:
 
-1. Startup probes run silently (teams, models, Workflow availability) and cache to `.loop-spec/runtime.json`. The first run in a project also builds the graphify graph and a 5-domain codebase map under `docs/loop-spec/codebase/`. That cost is paid once.
+1. Startup probes run silently (teams, models, Workflow availability) and cache to `.loop-spec/runtime.json`. The first run in a project also builds a 5-domain codebase map under `docs/loop-spec/codebase/`. That cost is paid once.
 2. Claude Code creates a feature worktree at `.claude/worktrees/{slug}` on branch `feat/{slug}`. OpenCode/pi create the same branch in place after requiring a clean checkout.
 3. SPEC interviews you (up to 6 rounds, one perspective per round) until its ambiguity gate passes, then writes `docs/loop-spec/features/{slug}/SPEC.md`. Answering these questions is your main involvement in the default style.
 4. DISCUSS runs the spec critique. PLAN writes `PATTERNS.md` (real codebase analogs for the planner to follow) and `PLAN.md` (a task DAG with per-task verify commands), gated by its own critique, feasibility, and coverage checks.
@@ -124,7 +99,7 @@ What happens:
 7. ITERATE judges the integrated result against your original request, not the spec the loop wrote for itself. If the goal is not met it classifies the gap and rewinds to the right phase.
 8. DELIVER pushes the terminal commit by explicit SHA, reconciles an existing checkpoint PR or creates one draft, waits for required checks, verifies the remote and PR still point at that SHA, then marks the PR ready and prints its URL.
 
-You review the PR.
+You review the PR — with a reading order. Before DELIVER, VERIFY writes `REVIEW-ORDER.md`: the change as ordered `path:line` stops grouped by concern, entry point first, tests and config last, one line of framing each. `lib/review-trail.sh` classifies the surface and then lints the finished trail against the actual diff, so a guide cannot silently omit a changed file, cite a line that does not exist, or bury the logic behind its fixtures. DELIVER inlines it above the evidence sections of the PR body. `/loop-spec:walkthrough --walk` presents the same trail conversationally. None of it gates delivery: a verified change is never held back over prose.
 
 Variations:
 
@@ -150,6 +125,7 @@ All skills are invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Th
 | `status` | Read-only dashboard: per-feature status, aggregate stats, the metrics contract, trust level, pending needs-human items. |
 | `sentinel` | Watch work sources and triage them into a queue (`scan`); drive the queue through the cycle within trust-governed bounds (`run`). |
 | `watch` | Post-merge check for a shipped feature: did the default branch stay green, did anyone patch the feature's files? |
+| `walkthrough` | Build the reviewer's guide for a change: ordered `path:line` stops grouped by concern, entry point first, supporting files last. Writes `REVIEW-ORDER.md`, lints it against the diff, and can walk a human through it (`--walk`). |
 | `micro` | Lightweight protocol for ad-hoc tasks: stated done-criteria, test-first, evidence before done. On by default as a session mode. |
 | `loop-runner` | The bundled loop engine, standalone: bounded autonomous loops for "implement this spec" or overnight runs. |
 | `grill` / `simplicity` / `human-code` / `discipline` / `rules` | Session-mode toggles; see Configuration below. |
@@ -164,7 +140,7 @@ Notes on the ones with more surface:
 
 **revise.** `/loop-spec:revise <pr#>` reads inline comments, reviews, and discussion (resolved threads filtered out), classifies each actionable item, fixes implementation-class items on the PR branch in a dedicated worktree (your checkout is untouched and nothing is force-pushed), backlogs scope changes, and posts one comment mapping every item to a commit, an answer, or a backlog entry.
 
-**retro.** `report` is read-only and writes `docs/loop-spec/RETRO.md`; `apply` appends rule candidates to `.loop-spec/RULES.md`. At cycle completion the retro gates itself: interactive runs get a candidate count to act on, autonomous runs auto-apply. Auto-apply is restricted to a closed set of rule templates with deterministic triggers that only tighten discipline; the model cannot author or weaken a rule on this path. The corpus includes per-run digests (`docs/loop-spec/telemetry/runs/`; committed under `LOOP_SPEC_COMMIT_TELEMETRY=1` so retro works from a fresh clone after ephemeral CI workspaces are gone), plus the micro-cycle ledger and the sentinel decision history. The parameter analog is `lib/tuning.sh`, which writes bounded, template-only adjustments to `.loop-spec/tuning.json` (see Configuration).
+**retro.** `report` is read-only and writes `docs/loop-spec/RETRO.md`; `apply` appends rule candidates to `.loop-spec/RULES.md`. At cycle completion the retro gates itself: interactive runs get a candidate count to act on, autonomous runs auto-apply. Auto-apply is restricted to a closed set of rule templates with deterministic triggers that only tighten discipline; the model cannot author or weaken a rule on this path. The corpus includes per-run digests (`docs/loop-spec/telemetry/runs/`; committed under `LOOP_SPEC_COMMIT_TELEMETRY=1` so retro works from a fresh clone after ephemeral CI workspaces are gone), plus the micro-cycle ledger, the sentinel decision history, and the session-learnings log. The parameter analog is `lib/tuning.sh`, which writes bounded, template-only adjustments to `.loop-spec/tuning.json` (see Configuration).
 
 **status.** `status` lists features (phase, iterations, last event, result, PR). `stats` aggregates across runs: convergence rate, gate rounds, iterate-gap histogram, dispatch counts, loop-fleet cost. `metrics` prints the schema-versioned metrics contract computed from committed run digests; signals whose producer has not run yet are `null`, and consumers treat `null` as a denial. `trust` prints the repo's autonomy level (L0–L3) with the evidence for it and what the next level requires.
 
@@ -180,7 +156,7 @@ Notes on the ones with more surface:
 | DISCUSS | revised SPEC.md | spec critique (always runs; single critic by default, debate on escalation) |
 | PLAN | `PATTERNS.md` + `PLAN.md` (task DAG with verify commands) | plan critique + feasibility + criteria coverage |
 | EXECUTE | per-task commits on `feat/{slug}` | per-task spec-compliance review with retries; dispatch chosen by DAG width |
-| VERIFY | `VERIFICATION.md`, codebase map refresh | marker scan, test-tamper scan, acceptance gate, blocking code review |
+| VERIFY | `VERIFICATION.md`, `REVIEW-ORDER.md`, codebase map refresh | marker scan, test-tamper scan, acceptance gate, blocking code review; advisory verification-gap pass |
 | ITERATE | `ITERATION.md` (per-iteration verdicts) | goal re-judge; terminal verdict advances, otherwise classify the gap and rewind |
 | DELIVER | durable `delivery.targets[]`, final PR | exact-SHA push, one-PR reconciliation, required checks, head-drift guard, draft-to-ready |
 
@@ -193,6 +169,8 @@ Some mechanics worth knowing:
 **EXECUTE picks its dispatch by DAG width and probed capability** (`lib/dag-width.sh`, `lib/execute-rung.sh`). Width 1 runs a single subagent sequentially. Modest widths fan out batched subagent waves. Higher widths use an agent team where implementers claim tasks from the shared task list (when teams are available). Very wide DAGs can escalate to the Workflow DAG, but only on explicit opt-in (`LOOP_SPEC_EXECUTE_WORKFLOW=1`). The loop fleet compiles tasks into bounded headless workers, but is selected only when the harness can keep its synchronous supervisor call alive. One-shot/headless runs fall back to subagent waves at every width. Every loop iteration re-runs the task verify command, and SPEC.md/PLAN.md are hash-locked so a worker cannot edit requirements to match its work. All rungs enforce the same spec-compliance contract, merge into `feat/{slug}`, and return the same result shape. Tasks with overlapping `files[]` get synthetic `blockedBy` edges as a concurrency guard beyond the explicit DAG.
 
 **VERIFY defends the oracle.** The test-tamper scan (`lib/test-tamper-scan.sh`) fails the phase if the diff deletes tests, adds skip/focus annotations, or swallows a test command's exit code. The marker scan rejects unresolved `TBD`/`FIXME`/`XXX` in changed files before any acceptance agent is dispatched. Optionally, the live-run rung launches the built application, waits for readiness, executes acceptance probes, and records each probe in the feature's `EVIDENCE.md` ledger (see `verifyCommands` in Configuration); repos without that config run suite-only, and a launch command is never guessed.
+
+A separate **verification-gap pass** asks what the other gates do not: if the behavior this change produces broke where it is actually used, would any verification fail? The tamper scan defends the tests that already exist and the acceptance gate checks that criteria carry verify commands; neither traces *new* behavior out to the sites that observe it. `lib/verification-gap-scan.sh` reports, per definition the diff added or edited, which test files name that symbol across the post-change tree — the repo-wide symbol search a reviewer would otherwise do from memory. The reviewer (`skills/shared/review-prompts/verification-gap.md`) classifies real gaps as regression, missing-adoption, or broken-verification, under evidence rules that require reading a test before claiming what it covers. `covered=no` is a starting point, never a finding; `covered=yes` is not proof. Findings are advisory in this release: recorded in VERIFICATION.md and the backlog, never blocking, until the false-positive rate is measured on real runs.
 
 **DELIVER owns the final mile.** `lib/pr-delivery.sh` pushes an explicit commit SHA, proves the remote ref and PR head match it, reconciles checkpoint/final metadata idempotently, polls required checks with bounded command and total timeouts, treats pending/cancel/fail distinctly, and marks the draft ready only after success. It never force-pushes, merges, or enables auto-merge. CI failure routes through EXECUTE -> VERIFY -> ITERATE; transport, identity, or check-oracle failures stop resumably rather than claiming completion.
 
@@ -428,7 +406,6 @@ Cycle behavior:
 | `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | `1800` | Wall-clock deadline for each exact-base baseline command. |
 | `LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS` | `300` | No-output deadline for each exact-base baseline command. |
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | unset | `1` skips the startup model probe (also skipped for 24h when the exact effective alias set is unchanged). |
-| `LOOP_SPEC_REQUIRE_GRAPHIFY` | required | `0` bypasses the graphify requirement; design phases fall back to Glob/Grep. |
 | `LOOP_SPEC_CHECKPOINT_PR` | on | `0` disables the draft checkpoint PR on pause/escalation/terminal stop. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | `900` | Total time DELIVER waits for required PR checks. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | `10` | Required-check polling interval. |
@@ -527,7 +504,7 @@ Session modes and hook guards (each is a kill switch; all hooks no-op outside pr
 | `LOOP_SPEC_STRATEGY_ROTATION` | on | After N consecutive failures on a task, inject a strategy-change directive (`LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD`, default 2). |
 | `LOOP_SPEC_DONE_CRITERIA` | on | Inject done-criteria reminders at task creation. |
 | `LOOP_SPEC_DEFLECTION_GUARD` | on | Block premature "out of context" stops below a usage threshold (`LOOP_SPEC_DEFLECTION_THRESHOLD_PCT`, default 50; `LOOP_SPEC_CONTEXT_LIMIT`, default 200000). |
-| `LOOP_SPEC_LEARNINGS` | on | Session-end learnings log (`.loop-spec/learnings.jsonl`). |
+| `LOOP_SPEC_LEARNINGS` | on | Session-end learnings log (`.loop-spec/learnings.jsonl`), mined by retro for task types whose sessions repeatedly end partial or errored. `LOOP_SPEC_LEARNINGS_FILE` overrides the path. |
 | `LOOP_SPEC_PAUSE` | on | `0` disables the pause snapshot writer. |
 
 Hook debugging: `LOOP_SPEC_BLOCKEDBY_TRACE_LOG`, `LOOP_SPEC_DEFLECTION_TRACE_LOG`,
@@ -615,6 +592,28 @@ DELIVER refreshes proactively and retries one authentication failure; it never s
 
 **`grill.conf`, `simplicity.conf`, `human-code.conf`, `discipline.conf`** — session-mode persistence, written by their toggle skills. `ENABLED=0/1`; `simplicity.conf` also takes `LEVEL=lite|full|ultra` (default `full`). Grill, simplicity, and human-code are on by default; discipline is opt-in.
 
+**`extensions.json`** — what this project adds to the pipeline, read by `lib/extension-points.sh`. Committed, not gitignored:
+
+```json
+{
+  "schemaVersion": 1,
+  "reviewLayers": [
+    {"id": "domain-invariants", "name": "Domain invariants",
+     "promptFile": ".loop-spec/prompts/invariants.md", "phase": "verify"}
+  ],
+  "phaseInstructions": {
+    "plan": {"prepend": ["Prefer the existing queue abstraction."]}
+  },
+  "persistentFacts": ["file:docs/context/*.md", "The staging database is read-only."]
+}
+```
+
+- `reviewLayers[]` run after the built-in gates in their phase; each gets one reviewer carrying `promptFile`. Capped at 5.
+- `phaseInstructions.<phase>.{prepend,append}` are directives for that phase only, unlike `RULES.md` which is session-global.
+- `persistentFacts[]` are standing context; `file:` entries take globs and are resolved to real paths before a phase sees them.
+
+**Extensions add; they never subtract.** A declared layer cannot disable, reorder, or shadow a built-in gate — `extension-points.sh validate` refuses any layer claiming a built-in gate id, because the gates are what let the loop act without a human, and a config that could switch one off would be an authority control wearing an accelerator's clothes. No authority script (`trust.sh`, `autonomous-chain.sh`, `task-route.sh`, `execute-rung.sh`) reads this file, and a test enforces that. Read paths fail open — a malformed file means no extensions and a stderr note, never a blocked phase — while `validate` fails closed so you can check it deliberately.
+
 **`RULES.md`** — the self-learning rules file, injected into every session. Gitignore-excepted and committed, so rules survive ephemeral workspaces. Managed with `/loop-spec:rules` (`add`, `list`, `render`, `path`; `--check "<cmd>"` backs a rule with a deterministic check; `--global` writes to the cross-project layer at `~/.loop-spec/RULES.md`). The escalation contract makes coordinators consult this file, and PLAN.md's recorded decisions, before asking you anything.
 
 **Runtime state you normally leave alone:** `runtime.json` (probe cache), `sentinel-queue.json` (re-derived view), `sentinel-events.jsonl` (append-only decision ledger), `BACKLOG.md`, `adhoc-ledger.md`, `learnings.jsonl`, `quality-loop.json`, and per-feature state under `features/{slug}/`.
@@ -629,6 +628,7 @@ docs/loop-spec/                          # committed
 │   ├── PLAN.md
 │   ├── VERIFICATION.md
 │   ├── EVIDENCE.md                       # probe ledger (EVID-NNN ids)
+│   ├── REVIEW-ORDER.md                   # the reviewer's guide (ordered path:line stops)
 │   └── ITERATION.md                      # per-iteration convergence verdicts
 ├── RETRO.md                              # dated retrospective reports
 ├── telemetry/runs/{slug}.json            # per-run digests (local by default; committed only under LOOP_SPEC_COMMIT_TELEMETRY=1)
@@ -639,6 +639,7 @@ docs/loop-spec/                          # committed
 .loop-spec/                              # gitignored (exceptions noted)
 ├── BACKLOG.md                            # deferred findings + iterate gaps
 ├── RULES.md                              # self-learning rules (gitignore-excepted, committed)
+├── extensions.json                       # project review layers / phase instructions / facts (committed)
 ├── features/{slug}/
 │   ├── feature.json (+ .bak)             # schema v7, atomic writes
 │   ├── PROGRESS.md                       # phase-transition journal
@@ -839,6 +840,7 @@ More in `docs/adopting.md`; the full architecture, including the fixed operating
 Three open-source projects shaped this one:
 
 - [superpowers](https://github.com/obra/superpowers): a curated bundle of skills that turns Claude Code into a disciplined collaborator. Its lesson here: skills are how you encode workflow.
+- [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD): agile AI-driven development, also skill-based since v6. Its lesson: the two projects optimize opposite ends of the same problem — BMAD the human collaboration surface, loop-spec unattended correctness — so what loop-spec was missing was all on the human's side of the seam. Four mechanisms are ported, with the full comparison and the measurements behind it in [docs/loop-spec/bmad-scan-proposals.md](docs/loop-spec/bmad-scan-proposals.md): the reviewer's guide (BMAD's "Suggested Review Order" and checkpoint walkthrough), the verification-gap review pass, project extension points as data (BMAD's `customize.toml`), and a map audit built on BMAD's measured thesis that *generated documentation makes agents worse while a curated minimum of verified truths makes them better*. Run against this repo's own map, that audit found nine cited paths that no longer exist and 28 orphaned index entries — the argument landed.
 - [get-shit-done](https://github.com/gsd-build/get-shit-done): a multi-phase workflow that captures every decision in markdown artifacts. Its lesson: spec-driven beats prompt-driven as soon as a task is bigger than one commit, because the spec catches design errors that re-rolls cannot. Several mechanisms are ported directly: the first-run codebase map (with GSD `.planning/` ingest), the pattern-mapper, the VERIFY marker scan, stall detection on resume, and orphaned-worktree pruning.
 - [ponytail](https://github.com/DietrichGebert/ponytail): a "lazy senior dev" skill that climbs a ladder (YAGNI, reuse, stdlib, native, installed dep, one line, minimum) before writing code, without cutting validation, error handling, security, or accessibility. Ported here as simplicity mode plus an over-engineering pass in VERIFY's code review.
 

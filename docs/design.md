@@ -480,9 +480,9 @@ Gate failure detected
 
 ## Map-codebase
 
-### Coverage (Graphify + 3 mappers)
+### Coverage (5 mappers)
 
-- TECH / ARCH: Graphify's refreshed AST + semantic knowledge graph
+- TECH / ARCH: derived by their mappers from the current tree
 - QUALITY: test coverage, lint state, type safety
 - CONCERNS: security, perf hotspots, tech debt
 - DOMAIN: business concepts, glossary, entity model
@@ -491,7 +491,7 @@ Gate failure detected
 
 ```
 verify phase complete
-  -> invoke Graphify's assistant skill, validate, and retain local graphify-out/ navigation state
+  -> dispatch the mappers and commit the refreshed domain docs
   -> read .loop-spec/codebase/index.json
   -> compute changedFiles = git diff base..HEAD --name-only
   -> staleDomains = unique(index.files[file] for file in changedFiles) U "arch" if new files added

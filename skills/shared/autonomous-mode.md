@@ -94,7 +94,7 @@ Self-answering collapses *preference* questions, never *safety* aborts. These
 stay hard failures exactly as written in their skills:
 
 - dirty-repo aborts (workspace Step 5 two-phase check, worktree creation)
-- graphify hard requirement, schema-version guards, the iteration ceiling
+- schema-version guards, the iteration ceiling
 - VERIFY's code-review HARD-GATE and the test-tamper scan
 - DELIVER's exact-SHA identity, required-check, and unique-PR gates
 - anything the skill marks abort/escalate-with-evidence rather than ask

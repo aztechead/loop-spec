@@ -45,7 +45,12 @@ patterns=(
   '/.loop-spec/learnings.jsonl'
   '/docs/loop-spec/telemetry/'
   '/.loop/'
-  # Graphify output is a local, derived navigation cache. It is intentionally
+  # Graphify was removed in 2.35.0 and loop-spec no longer produces any of this.
+  # The patterns stay as a safety net: a checkout that used the earlier releases
+  # still has the tree on disk, and dropping the ignores would start committing a
+  # large generated cache on the user's next `git add -A`.
+  #
+  # Graphify output was a local, derived navigation cache. It is intentionally
   # excluded from feature branches: semantic updates can rewrite the whole graph
   # for a small source change, which makes a delivery PR unreviewable. Refresh it
   # after merge or from a dedicated maintenance checkout instead.

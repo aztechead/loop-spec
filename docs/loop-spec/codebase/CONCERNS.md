@@ -1,3 +1,7 @@
+---
+trust: generated
+---
+
 # CONCERNS
 
 > **STALE — pre-v1.0.0 snapshot.** Last regenerated 2026-05-11, before the v1.0.0 agent-teams migration. References to `lib/state-write.sh`, `state.json`, "Post-wave cleanup", and "plugin version 0.3.2" are pre-migration; v1.0.0 replaced them with `lib/feature-write.sh`, `feature.json` (schema v3), per-task self-claim parallelism, and v1.0.1.

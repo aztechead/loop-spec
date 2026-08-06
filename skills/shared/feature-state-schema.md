@@ -283,11 +283,6 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
     "concerns": "ISO-8601 timestamp or null",
     "domain": "ISO-8601 timestamp or null"
   },
-  "graphify": {
-    "graph_json_path": "graphify-out/graph.json or null",
-    "wiki_path": "graphify-out/wiki/index.md or null",
-    "last_updated": "ISO-8601 timestamp or null"
-  },
   "files": {
     "file/path.ext": ["arch", "tech", "quality"],
     "another/file.ext": ["domain"]
@@ -299,8 +294,6 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 - `files` maps repository-relative paths to arrays of domain names.
 - `last_refreshed_at.{domain}` is set by the map-codebase skill after each mapper completes and reports `DOMAIN_DONE`.
-- The `graphify` block is populated after the first cycle run. graphify is a hard requirement (cycle Step 2 aborts without it unless `LOOP_SPEC_REQUIRE_GRAPHIFY=0`), so the block is absent only before the first run or in the bypass/degraded mode. Set `graph_json_path` to the `graphify-out/graph.json` written by the external assistant skill through `skills/shared/graphify-lifecycle.md`. Set `wiki_path` to `graphify-out/wiki/index.md` only when that optional export exists. Set `last_updated` to the ISO-8601 timestamp of the last successful validated assistant build or update.
-- In graphify-present mode, only `quality`, `concerns`, and `domain` are updated in `last_refreshed_at` by the map-codebase skill (the `arch` and `tech` mapper agents are removed; their domains are covered by graphify). `last_refreshed_at.arch` and `last_refreshed_at.tech` remain at their last pre-graphify values and are not refreshed by map-codebase.
 
 ## Atomic write
 

@@ -117,12 +117,13 @@ Before asking any questions, read for grounding context:
 - `.loop-spec/features/{slug}/` - feature.json and any prior `spec-interview-transcript.md` (resume context)
 - `docs/loop-spec/features/{slug}/` - any prior SPEC.md or committed artifacts
 - `docs/loop-spec/codebase/` - domain maps (TECH, ARCH, QUALITY, CONCERNS, DOMAIN) if present
-- **The code graph (required).** graphify is a hard requirement, so `graphify-out/graph.json` is present. Ground yourself in what already exists for this feature area before interviewing:
-  - `graphify query "<feature area>"` — does an implementation already exist? What does it touch?
-  - `graphify-out/GRAPH_REPORT.md` — "god nodes" and cross-module connections reveal which subsystems a change will ripple through, so you can ask sharper boundary/constraint questions.
-  - `graphify explain "<entity>"` / `graphify path "<A>" "<B>"` — confirm how the target area connects to the rest of the system.
-  - **Workspace mode:** there is no graph at the workspace root. Query each participating repository with `--graph "<repo>/graphify-out/graph.json"` (or run from that repo), and preserve the repository name in every finding.
-  Use the graph to ask precise questions ("this would touch `X` which also feeds `Y` — in scope?") instead of generic ones. (Absent only under `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode; then use flat-file reads. **Greenfield:** the graph build is deferred until source exists — skip the graph scout and ground in the stated goal and the chosen stack's conventions instead.)
+- **Read the code that already exists.** Before interviewing, find out what is there — there is no stored map to consult, so derive it:
+  - Search for the feature area by name, by the vocabulary the user used, and by the obvious symbol names. Does an implementation already exist? What does it touch?
+  - Read the entry points you find, not just the matches. A hit tells you where to look; the surrounding file tells you what it does.
+  - Follow the imports and callers of anything you will change, far enough to name the boundaries the change crosses. Those boundaries are what turn a generic interview question into a precise one ("this would touch `X` which also feeds `Y` — in scope?").
+  - **Fan this out.** Send subagents to scan and return findings with `file:line` evidence rather than pulling a large tree through your own context. Interrogate what they return; do not adopt it unread.
+  - **Workspace mode:** scan each participating repository separately and preserve the repository name in every finding.
+  Every claim you carry into SPEC.md cites `file:line`. (**Greenfield:** there is no code yet — ground in the stated goal and the chosen stack's conventions instead.)
 
 **External-reality scout (probe-before-assert).** Before treating any factual premise about an external system as fact (in synthesis, ambiguity scoring, or interview questions):
 
@@ -232,6 +233,31 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/artifact-lint.sh" spec "docs/loop-spec/featu
 Exit 1 BLOCKS: fix SPEC.md in place per the FLAG lines (you wrote it; use
 `skills/shared/artifact-templates/SPEC.md.template` as the shape) and re-run until it
 prints `artifact-lint: ok`.
+
+### Step 3.5 - Fresh-eyes pruning pass (advisory)
+
+The lints above catch malformed and ungrounded content, never surplus content — and the
+orchestrator that just ran the interview cannot honestly judge surplus, because it heard
+every line justified. Dispatch ONE context-free reviewer (a fresh subagent, not this
+thread) carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
+verbatim, plus ONLY the written SPEC.md and
+`skills/shared/artifact-templates/SPEC.md.template` — never the interview transcript.
+
+Skip the dispatch when SPEC.md is under 60 lines (`wc -l`): a spec that small cannot
+repay a subagent.
+
+Adjudicate the returned `cut:`/`merge:`/`shrink:` list yourself, as the maker:
+
+- Apply proposals failing `duplicate` or `narrative` — those tests are near-mechanical.
+- Judge `derivable`/`speculative`/`over-template` proposals on their merits; the prompt's
+  carve-outs are hard limits (`### Good Enough` criteria, decisions, `ambiguity_scores`,
+  grounding lines are NEVER cut here — an `out-of-scope:` line goes to the user in
+  interactive styles and to `.loop-spec/BACKLOG.md` in autonomous ones).
+- Re-run the Step 3 `artifact-lint.sh spec` after applying any cut.
+- Record the full proposal list and each disposition in the interview transcript.
+
+Advisory means advisory: an empty list, a declined list, or a failed dispatch never
+blocks Step 4.
 
 ### Step 4 - Update feature.json
 

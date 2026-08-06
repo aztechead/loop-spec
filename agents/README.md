@@ -84,6 +84,8 @@ Persistent memory scope (`user` | `project` | `local`, validated). Grants the ag
 | `code-reviewer` | Quality + security review of feature branch diff. Read-only. | sonnet |
 | `implementer` | Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. | sonnet |
 | `iterate-judge` | Judges the integrated result against the original goal (not just the SPEC checklist) in the ITERATE phase and classifies the highest-leverage gap (execute/plan/spec). Read-only; returns verdict JSON. | opus |
+| `mapper-arch` | Maps modules, dependencies, entrypoints, and data flow. Writes only to docs/loop-spec/codebase/ARCH.md. | sonnet |
+| `mapper-tech` | Maps languages, dependencies, runtime requirements, tools, and build/run commands. Writes only to docs/loop-spec/codebase/TECH.md. | sonnet |
 | `mapper-concerns` | Maps security, perf hotspots, tech debt. Writes only to docs/loop-spec/codebase/CONCERNS.md. | sonnet |
 | `mapper-domain` | Maps business concepts, glossary, entity model. Writes only to docs/loop-spec/codebase/DOMAIN.md. | sonnet |
 | `mapper-quality` | Maps test coverage, lint state, type safety. Writes only to docs/loop-spec/codebase/QUALITY.md. | sonnet |

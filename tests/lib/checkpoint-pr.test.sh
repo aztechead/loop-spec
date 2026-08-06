@@ -120,15 +120,17 @@ fi
 REFRESH
 chmod +x "$REFRESH_HOOK"
 
-# Build a PATH that has git and jq but no gh (for case 6)
-# We symlink the required binaries into a private dir so the test works even
-# when system gh lives in the same bin directory as jq/git.
+# Build a PATH that has everything the script touches before its gh probe, but
+# no gh (for cases 2, 3, 6). The private dir is the WHOLE path: re-appending
+# /usr/bin would silently reintroduce gh on hosts that install it there, and the
+# three gh-precondition checks would pass the probe they exist to stop at.
 NOGH_BIN="$WORK/nogh-bin"
 mkdir -p "$NOGH_BIN"
 ln -sf "$(command -v git)" "$NOGH_BIN/git"
 ln -sf "$(command -v jq)"  "$NOGH_BIN/jq"
 ln -sf "$(command -v bash)" "$NOGH_BIN/bash"
-NOGH_PATH="$NOGH_BIN:/usr/bin:/bin"
+ln -sf "$(command -v dirname)" "$NOGH_BIN/dirname"
+NOGH_PATH="$NOGH_BIN"
 
 # Feature dir + fixture
 FEAT_DIR="$REPO/.loop-spec/features/my-feature"

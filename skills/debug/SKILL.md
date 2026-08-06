@@ -68,8 +68,8 @@ gathering, cheapest first — record every finding in BUG.md `## Triage evidence
    symptom with an onset date has a suspect commit range. If the range is small and
    the symptom is checkable by command, `git bisect` with that command is the fastest
    convergence tool there is; use it.
-4. **The graph + hotspots.** `graphify query "<symptom area>"` to find what implements
-   the behavior (skip if no graph); `bash "${CLAUDE_SKILL_DIR}/../../lib/fragility-scan.sh" . --top 10`
+4. **Hotspots.** Search the symptom area to find what implements the behavior, then
+   `bash "${CLAUDE_SKILL_DIR}/../../lib/fragility-scan.sh" . --top 10`
    — entries overlapping that area rank where bugs historically cluster.
 5. **Logs/artifacts the user named.** Read them for the first concrete error, timeout,
    or anomaly around the symptom.
@@ -118,9 +118,9 @@ new evidence.
 For each hypothesis, in ranked order:
 
 1. **State the mechanism, not the location:** "X returns a stale value when Y because
-   Z" — falsifiable, not "something in X". Ground it: read the implicated code, walk
-   `graphify path` between symptom site and suspect, check `git log -p` on the suspect
-   for the introducing change.
+   Z" — falsifiable, not "something in X". Ground it: read the implicated code, trace the
+   call path from symptom site to suspect by reading it, check `git log -p` on the
+   suspect for the introducing change.
 2. **Confirm before changing:** find the cheapest observation that would falsify the
    hypothesis (a log line in the repro run, an inspected intermediate value, a
    narrower assertion). If falsified — record the verdict `REFUTED: <evidence>` and
@@ -153,8 +153,8 @@ CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
 
 1. **Sweep for the same mechanism** (canonical reference
    `skills/shared/design-for-change.md`): grep every caller of the fixed function,
-   grep for copy-pasted instances of the flawed pattern, and walk `graphify query` /
-   `graphify path` from the fixed site to parallel code paths that share the mechanism.
+   grep for copy-pasted instances of the flawed pattern, and follow imports from the
+   fixed site to parallel code paths that share the mechanism.
 2. **Same mechanism found elsewhere → fix it in the same branch.** A sibling is covered
    by the already-confirmed hypothesis; apply the same minimal fix, extend the
    regression coverage where the sibling is independently reachable, and re-run the

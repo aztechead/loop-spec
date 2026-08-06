@@ -8,7 +8,8 @@ gathered, recorded, cited, and checked.
 
 | Claim type | What it covers | How to back it |
 |---|---|---|
-| **Codebase claim** | File existence, function signature, line content, dependency version inside the repo | Cite `file:line` or quote graphify query output (`graphify query`, `graphify path`, `graphify explain`); no probe needed. |
+| **Codebase claim** | File existence, function signature, line content, dependency version inside the repo | Cite `file:line`; no probe needed. |
+| **Code-structure claim** | What calls what, how two entities connect, which subsystems a change ripples through | Read it and cite `file:line`. There is no stored graph to quote; a claim nobody can point at is an `ASSUMPTION`. |
 | **External-system claim** | Dataset schema, API capability or limitation, service config, infra state, cloud resource attributes | Run the cheapest read-only probe, record the result in the evidence ledger, cite `EVID-NNN`. |
 | **Ecosystem / library claim** | Version, API surface, behavior of a third-party package or CLI already installed locally | Probe local install (`<tool> --version`, `pip show`, `npm list`, local docs); if unavailable, write `ASSUMPTION`. |
 | **User-stated fact** | Something the user asserted in the transcript | Cite the transcript ("user stated in session that …"); no probe needed, but do not extend the claim beyond what was said. |

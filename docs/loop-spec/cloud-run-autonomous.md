@@ -147,7 +147,7 @@ remedies.
 
 Never cut the candidate comparison, VERIFY acceptance/code-review gates, ITERATE
 judge, or delivery identity/CI checks to improve elapsed time. The runtime now skips
-Graphify only with a validated all-source provenance stamp and skips codebase mapping
+the codebase map only when it is stale, and skips mapping
 only with a complete-map/no-relevant-change proof; missing or uncertain evidence
 refreshes normally.
 

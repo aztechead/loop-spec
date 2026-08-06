@@ -25,7 +25,7 @@ git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 mkdir -p "$REPO/.loop-spec"
 printf '{}\n' > "$REPO/.loop-spec/last-result.json"
 
-# Pin every probe so the test is hermetic (no `claude`, no graphify binary needed).
+# Pin every probe so the test is hermetic (no `claude` binary needed).
 run_preflight() {
   # The execution-profile probe reads the ambient CLAUDE_CODE_ENTRYPOINT stamp,
   # so clear it (and the mode flags) and let each case opt in explicitly.
@@ -35,8 +35,6 @@ run_preflight() {
     LOOP_SPEC_HARNESS="${HARNESS:-claude}" \
     LOOP_SPEC_TEAMS_MODE=none \
     LOOP_SPEC_WORKFLOWS_AVAILABLE=0 \
-    LOOP_SPEC_REQUIRE_GRAPHIFY="${REQUIRE_GRAPHIFY:-1}" \
-    GRAPHIFY_BIN="${GRAPHIFY_BIN:-definitely-not-a-real-binary}" \
     bash "$SCRIPT" run "$REPO"
 }
 
@@ -58,16 +56,10 @@ check "harness reported" "claude" "$(jq -r '.harness.name' <<<"$out")"
 check "teams mode pinned" "none" "$(jq -r '.teams.mode' <<<"$out")"
 check "teams available false" "false" "$(jq -r '.teams.available' <<<"$out")"
 check "workflows pinned off" "false" "$(jq -r '.workflows.available' <<<"$out")"
-check "graphify missing reported" "false" "$(jq -r '.graphify.ok' <<<"$out")"
-check "graphify required by default" "true" "$(jq -r '.graphify.required' <<<"$out")"
-check "graph status missing" "missing" "$(jq -r '.graphify.graph' <<<"$out")"
 check "backlog zero" "0" "$(jq -r '.backlog.count' <<<"$out")"
 check "no resume candidates" "0" "$(jq -r '.resume.candidates | length' <<<"$out")"
 check "no warnings" "0" "$(jq -r '.warnings | length' <<<"$out")"
 
-# graphify bypass reported (never exits non-zero either way)
-out="$(REQUIRE_GRAPHIFY=0 run_preflight)"
-check "graphify bypass reported" "false" "$(jq -r '.graphify.required' <<<"$out")"
 
 # pi harness flows through the blob
 out="$(HARNESS=pi run_preflight)"
@@ -194,7 +186,7 @@ check "mismatched no-change result cannot hide feature" "1" \
 
 # --- Recovery breadcrumb is placed BEFORE the stale pointer is cleared -----------
 # Preflight clears the previous run's terminal pointer, then can still abort (the
-# graphify hard gate). Without a breadcrumb first, that abort left NEITHER a
+# a preflight abort). Without a breadcrumb first, that abort left NEITHER a
 # terminal result NOR a recovery record, and cycle-reconcile.sh had nothing to
 # reconcile -- the exact "process exits, no state" hole this file exists to close.
 BC="$WORK/breadcrumb"
@@ -221,7 +213,7 @@ check "real begin preserves startedAt" "$bc_started" \
 
 # End to end: an abort right after preflight is now recoverable.
 recon="$(bash "$REPO_ROOT/lib/cycle-reconcile.sh" --result-root "$BC" \
-  --reason "graphify gate abort" 2>/dev/null | head -1)"
+  --reason "preflight abort" 2>/dev/null | head -1)"
 check "reconcile turns a preflight abort into a failed terminal result" "failed" \
   "$(jq -r '.status' <<<"${recon#LOOP_SPEC_RESULT }" 2>/dev/null)"
 

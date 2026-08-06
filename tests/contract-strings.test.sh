@@ -42,7 +42,6 @@ checks=(
   "skills/cycle/SKILL.md	cycle-preflight.sh\" run"
   "skills/cycle/SKILL.md	.workspace.mode"
   "skills/cycle/SKILL.md	.teams.mode"
-  "skills/cycle/SKILL.md	.graphify.ok"
   "skills/cycle/SKILL.md	.workflows.available"
   "lib/cycle-preflight.sh	needs_probe"
   "skills/cycle/SKILL.md	needs_probe"

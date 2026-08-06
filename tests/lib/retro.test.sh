@@ -264,6 +264,48 @@ done
 out="$(bash "$LIB" report --root "$SPROJ2/.loop-spec" --json)"
 check "17: same-scan duplicates do not recur" "0" "$(jq '[.[] | select(.id == "sentinel-needs-human-recurs")] | length' <<<"$out")"
 
+# ── Case 18: B1 — session learnings recurrence ────────────────────────────────
+# The SessionEnd hook wrote this file from 2.x onward and nothing read it. A log
+# with no consumer cannot become a rule, so recurrence here now produces one.
+LPROJ="$WORK/learnproj"
+mkdir -p "$LPROJ/.loop-spec/features"
+LEARN="$LPROJ/.loop-spec/learnings.jsonl"
+for s in s1 s2 s3; do
+  printf '{"timestamp":"2026-07-01T00:00:00Z","sessionId":"%s","taskType":"refactor","approach":"a","outcome":"partial","lesson":"partial outcome detected"}\n' "$s" >> "$LEARN"
+done
+printf '{"timestamp":"2026-07-04T00:00:00Z","sessionId":"s4","taskType":"docs","approach":"a","outcome":"partial","lesson":"x"}\n' >> "$LEARN"
+printf '{"timestamp":"2026-07-05T00:00:00Z","sessionId":"s5","taskType":"refactor","approach":"a","outcome":"success","lesson":"x"}\n' >> "$LEARN"
+out="$(bash "$LIB" report --root "$LPROJ/.loop-spec" --json)"
+check "18: recurring non-success task type fires" "1" \
+  "$(jq '[.[] | select(.id == "session-outcome-recurs:refactor")] | length' <<<"$out")"
+check "18: only distinct sessions count" "3" \
+  "$(jq '.[] | select(.id == "session-outcome-recurs:refactor") | .evidence.count' <<<"$out")"
+check "18: a one-off task type stays quiet" "0" \
+  "$(jq '[.[] | select(.id == "session-outcome-recurs:docs")] | length' <<<"$out")"
+check "18: successful sessions are not a signal" "0" \
+  "$(jq '[.[] | select(.id | startswith("session-outcome-recurs")) | select(.evidence.count > 3)] | length' <<<"$out")"
+check "18: rule text is the fixed template" "1" \
+  "$(jq -r '.[] | select(.id == "session-outcome-recurs:refactor") | .rule.text' <<<"$out" | grep -c 'verification command before claiming done')"
+
+# The same session logged twice is one session, not recurrence.
+LPROJ2="$WORK/learnproj2"
+mkdir -p "$LPROJ2/.loop-spec/features"
+for _ in 1 2 3; do
+  printf '{"timestamp":"2026-07-01T00:00:00Z","sessionId":"same","taskType":"refactor","outcome":"error","lesson":"x"}\n' >> "$LPROJ2/.loop-spec/learnings.jsonl"
+done
+out="$(bash "$LIB" report --root "$LPROJ2/.loop-spec" --json)"
+check "18: duplicate session ids do not recur" "0" \
+  "$(jq '[.[] | select(.id == "session-outcome-recurs:refactor")] | length' <<<"$out")"
+
+# A garbled log must never break the report; the corpus degrades to empty.
+LPROJ3="$WORK/learnproj3"
+mkdir -p "$LPROJ3/.loop-spec/features"
+printf 'not json at all\n' > "$LPROJ3/.loop-spec/learnings.jsonl"
+rc=0; out="$(bash "$LIB" report --root "$LPROJ3/.loop-spec" --json)" || rc=$?
+check "18: garbled log does not break the report" "0" "$rc"
+check "18: garbled log yields no candidates" "0" \
+  "$(jq '[.[] | select(.id | startswith("session-outcome-recurs"))] | length' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

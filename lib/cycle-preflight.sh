@@ -2,7 +2,7 @@
 # cycle-preflight.sh - The cycle's silent startup batch, in one deterministic call.
 #
 # Cycle Steps 0-2 + probes ("Startup is silent... batch their checks") are individually
-# scripted (workspace.sh, teams-capability.sh, graphify-preflight.sh,
+# scripted (workspace.sh, teams-capability.sh,
 # workflow-availability.sh, backlog.sh) but the orchestration between them was prose —
 # five separate tool calls narrated by the model. This script IS the batch: one call,
 # one JSON blob, and the only decision points left for the orchestrator are the ones
@@ -19,7 +19,6 @@
 #     execution:  {entrypoint, headless},               # harness.sh entrypoint/headless
 #     teams:      {mode, available},                    # teams-capability.sh
 #     workflows:  {available},                          # workflow-availability.sh
-#     graphify:   {ok, required, graph},                # check + graph-status
 #     backlog:    {count},
 #     resume:     {candidates: [...], skipped: [...]},  # mechanical scan (below)
 #     warnings:   [ ... ]                               # one line per anomaly
@@ -39,8 +38,6 @@
 #   - currentTeamName == null && age >= stalenessHours*3600 -> skipped (too stale)
 #   - else -> candidate, sorted most-recently-updated first
 #
-# The graphify hard-gate VERDICT stays with the caller: graphify.ok == false &&
-# graphify.required == true -> abort per the skill. This script reports; it does not
 # exit non-zero for that (a batch reporter that half-aborts is two contracts in one).
 #
 # Exit codes: 0 (report on stdout), 1 bad invocation.
@@ -57,7 +54,7 @@ dir="${2:-$PWD}"
 [[ -d "$dir" ]] || { echo "cycle-preflight: no such directory: $dir" >&2; exit 1; }
 # Breadcrumb BEFORE the clear. The clear erases the previous run's terminal
 # pointer (a stale pointer would masquerade as this run's result), but preflight
-# can still abort after it -- the graphify gate below exits hard. Without an
+# can still abort after it. Without an
 # active-run.json in place first, that abort left NEITHER a terminal result NOR
 # a recovery record, and cycle-reconcile.sh had nothing to reconcile: the exact
 # "exit, no state" hole this file exists to prevent. The real `begin` later
@@ -94,13 +91,6 @@ if [[ "$headless" == "true" && "${LOOP_SPEC_AUTONOMOUS:-}" != "1" \
       && "${LOOP_SPEC_NON_INTERACTIVE:-}" != "1" ]]; then
   warnings+=("headless invocation (entrypoint ${entrypoint}) without autonomous mode or LOOP_SPEC_NON_INTERACTIVE=1: interactive questions have no one to answer them — prefer '/loop-spec:auto <description>' or the 'autonomous' token")
 fi
-
-# --- graphify ----------------------------------------------------------------
-graphify_required=true
-[[ "${LOOP_SPEC_REQUIRE_GRAPHIFY:-1}" == "0" ]] && graphify_required=false
-graphify_ok=true
-bash "$SCRIPT_DIR/graphify-preflight.sh" check >/dev/null 2>&1 || graphify_ok=false
-graph_status="$(bash "$SCRIPT_DIR/graphify-preflight.sh" graph-status "$dir")"
 
 # --- backlog -----------------------------------------------------------------
 backlog_count="$(CLAUDE_PROJECT_DIR="$dir" bash "$SCRIPT_DIR/backlog.sh" count)"
@@ -267,9 +257,6 @@ jq -cn \
   --arg teams_mode "$teams_mode" \
   --argjson teams_available "$teams_available" \
   --argjson wf "$wf_available" \
-  --argjson g_ok "$graphify_ok" \
-  --argjson g_req "$graphify_required" \
-  --arg g_status "$graph_status" \
   --argjson backlog "$backlog_count" \
   --argjson candidates "$candidates" \
   --argjson skipped "$skipped" \
@@ -279,7 +266,6 @@ jq -cn \
     execution: {entrypoint: $entrypoint, headless: $headless},
     teams: {mode: $teams_mode, available: $teams_available},
     workflows: {available: $wf},
-    graphify: {ok: $g_ok, required: $g_req, graph: $g_status},
     backlog: {count: $backlog},
     resume: {candidates: $candidates, skipped: $skipped},
     warnings: $warnings}'

@@ -36,7 +36,7 @@ Mapper model is fixed at the `sonnet` alias (see `skills/shared/model-matrix.md`
 
 ## Procedure
 
-### Step 0 - Decide whether a map refresh exists (before Graphify)
+### Step 0 - Decide whether a map refresh is needed
 
 In single-repository incremental mode, this deterministic decision is mandatory:
 
@@ -52,40 +52,11 @@ stale_domains="$(jq -c '.domains' <<<"$refresh_decision")"
 
 `map-refresh.sh` returns `refresh: false` only when all five map artifacts plus the
 index are complete and the feature diff has no map-relevant source changes. Feature
-state, telemetry, previous map output, and Graphify output are ignored; an unknown
+state, telemetry, and previous map output are ignored; an unknown
 source path, a missing/corrupt map, an unreadable base, `--full`, or `--domain` fails
 closed to a refresh. In workspace mode, retain the existing per-repository stale-domain
 calculation until the shared workspace index has the same deterministic helper; never
 borrow a single-repo no-op verdict for a workspace.
-
-### Step 1 - Graphify pre-flight (only when a refresh exists)
-
-graphify is a hard requirement only for a refresh that Step 0 proved necessary. Read
-`${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it to each selected
-repository. The external assistant skill performs a full semantic build or incremental
-semantic update only when that lifecycle's source-freshness proof is stale; otherwise it
-revalidates/reuses the local graph. Generated `graphify-out/` stays local and is never
-staged into the feature PR.
-
-```bash
-ws_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect 2>/dev/null)"
-ws_mode="$(echo "$ws_json" | jq -r '.mode // "single"')"
-ws_root="$(echo "$ws_json" | jq -r '.root')"
-if [[ "$ws_mode" == "workspace" ]]; then
-  selected_repos_json="$(echo "$ws_json" | jq -c '.repos')"
-  # A cycle may select only part of a discovered workspace. Never refresh a
-  # sibling that is outside this feature's committed participating-repo set.
-  if [[ -n "${slug:-}" && -f "$ws_root/.loop-spec/features/${slug}/feature.json" ]]; then
-    selected_repos_json="$(jq -c '.workspace.repos // []' "$ws_root/.loop-spec/features/${slug}/feature.json")"
-  fi
-  while IFS= read -r repo_entry; do
-    rpath="$ws_root/$(echo "$repo_entry" | jq -r '.path')"
-    # Apply skills/shared/graphify-lifecycle.md to $rpath here.
-  done < <(echo "$selected_repos_json" | jq -c '.[]')
-else
-  # Apply skills/shared/graphify-lifecycle.md to this repository here.
-fi
-```
 
 ### Step 2 - Dispatch (workflow path or fallback)
 
@@ -134,6 +105,8 @@ Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `
 TeamCreate({
   name: "loop-spec-map-codebase-{project_id}",
   teammates: [
+    { name: "mapper-tech-1",      subagent_type: "loop-spec:mapper-tech",     model: mapper_model },
+    { name: "mapper-arch-1",      subagent_type: "loop-spec:mapper-arch",     model: mapper_model },
     { name: "mapper-quality-1",   subagent_type: "loop-spec:mapper-quality",  model: mapper_model },
     { name: "mapper-concerns-1",  subagent_type: "loop-spec:mapper-concerns", model: mapper_model },
     { name: "mapper-domain-1",    subagent_type: "loop-spec:mapper-domain",   model: mapper_model }
@@ -143,7 +116,7 @@ TeamCreate({
 
 Only include teammates whose domain is in `stale_domains`.
 
-graphify is a hard requirement, so ARCH and TECH domains are graph-backed by default. In the `LOOP_SPEC_REQUIRE_GRAPHIFY=0` degraded mode only, ARCH and TECH are not refreshed by this skill invocation (quality, concerns, and domain mapping continue normally); install graphify to restore full coverage.
+All five domains are derived by reading the tree — `tech` and `arch` included. They were covered by an external code graph until 2.35.0; `agents/mapper-tech.md` and `agents/mapper-arch.md` now derive them like every other domain. Mappers fan out, cite `file:line`, and a claim nobody can point at does not get written.
 
 Send each spawned mapper its work prompt via `SendMessage`:
 
@@ -154,7 +127,7 @@ SendMessage({
     mode: {full | incremental}
     since_sha: {since_sha if incremental}
     target_path: docs/loop-spec/codebase/{DOMAIN}.md
-    teammates: [mapper-quality-1, mapper-concerns-1, mapper-domain-1]
+    teammates: [mapper-tech-1, mapper-arch-1, mapper-quality-1, mapper-concerns-1, mapper-domain-1]
 
     Run your mapping. You may SendMessage any other mapper by name to share intermediate
     findings (e.g. module boundaries, tech-stack observations) that would improve their
@@ -177,9 +150,42 @@ for file in mapper.inspected_files:
   index.files[file].add(domain)
 ```
 
-Also update `index.json` field `last_refreshed_at.{domain}` to the current ISO-8601 timestamp. After a successful Graphify refresh, set `graphify.graph_json_path` to `graphify-out/graph.json`, set `graphify.wiki_path` only when that optional export exists, and set `graphify.last_updated` to the refresh timestamp.
+Also update `index.json` field `last_refreshed_at.{domain}` to the current ISO-8601 timestamp.
 
 Atomic write to `.loop-spec/codebase/index.json`.
+
+Then prune the index — a deleted file must stop voting on which domains are stale, and
+pruning is a script, never an instruction someone remembers:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/map-index-prune.sh"
+```
+
+### Step 4.5 - Mark trust on every refreshed domain
+
+Every document this refresh wrote is machine-inferred prose until a human says otherwise.
+Stamp each refreshed domain unconditionally:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/map-trust.sh" mark "docs/loop-spec/codebase/{DOMAIN}.md" generated
+```
+
+This also VOIDS any prior `verified` ratification on that document — the human confirmed
+the old prose, not the new (`lib/map-trust.sh` drops `verified_at`/`verified_by` on a
+`generated` mark).
+
+**Promotion is an operator action.** When a human has walked a domain document and
+confirmed its claims, they (or an interactive session acting on their explicit
+confirmation) promote it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/map-trust.sh" mark "docs/loop-spec/codebase/{DOMAIN}.md" verified --by "{user}"
+```
+
+NEVER run the promotion in autonomous mode or on your own judgment — a model promoting
+its own map to `verified` is a model grading its own gate. In interactive standalone
+runs you may OFFER the promotion for a domain the user has just reviewed; the user's
+explicit yes is the trigger, and their name goes in `--by`.
 
 ### Step 5 - Delete map-codebase team
 
@@ -211,12 +217,61 @@ fi
 
 Note: `.loop-spec/codebase/index.json` is NOT gitignored (it's a tracking file the mapping needs across machines). Only `.loop-spec/features/` and `.loop-spec/worktrees/` are gitignored. Update `.gitignore` accordingly if needed (this should already be correct from Task 0).
 
+### Step 6.5 - Audit the map that was just written
+
+A regenerated map is not automatically a true one. Measure it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/map-audit.sh" audit || true
+```
+
+Five facts, none of them judgments: total size against the ceiling
+(`LOOP_SPEC_MAP_MAX_LINES`, default 1000 lines), cited paths that no longer exist in the
+tree, `index.json` entries whose file is gone, per-domain age plus any document that
+declares itself stale while the index records it as fresh, and the trust split — how much
+of the map a human has actually ratified, and any `verified` document that changed after
+its ratification.
+
+Report every finding in Step 7 and act on what this refresh owns:
+
+- `stale-claim` in a domain you just refreshed is a defect in the refresh — fix the claim
+  or cut it before committing.
+- `orphan-index-entry` means a deleted file still maps to a domain and still votes on
+  staleness. Re-run `lib/map-index-prune.sh` (Step 4) — an orphan surviving it means the
+  entry's path exists but is untracked-weird; investigate rather than hand-edit.
+- `over-budget` means the map must shrink, never that the ceiling should rise. The whole
+  point of a budget is that it is not negotiated by the thing being measured. Step 6.6
+  names the cuts.
+- `trust-disagreement` means the prose and the machine state disagree about freshness.
+  Believe the prose and re-derive that domain.
+- `trust-expired` means a `verified` document changed after its ratification. Re-mark it
+  `generated` (Step 4.5 does this for domains this refresh wrote) — the promise must be
+  re-earned, never re-dated.
+
+Findings outside this refresh's scope are reported, not silently carried: append them to
+`.loop-spec/BACKLOG.md`. This never blocks the commit — an audit that could refuse to
+record a refreshed map would leave the map staler than the one it rejected.
+
+### Step 6.6 - Fresh-eyes pruning pass (only when over budget)
+
+Runs iff Step 6.5 reported `finding=over-budget` — the budget probe says the map must
+shrink; this pass names what. Dispatch ONE context-free reviewer (never a mapper that
+wrote a domain this refresh) carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
+verbatim, plus the domain documents under `docs/loop-spec/codebase/` and nothing else —
+no mapper reports, no refresh conversation.
+
+The reviewer lists `cut:`/`merge:`/`shrink:` proposals; the lead applies the ones it
+accepts, re-runs `lib/map-audit.sh budget`, and commits the shrunken map (a follow-up
+commit — never amend). Proposals declined and the reason go to `.loop-spec/BACKLOG.md`.
+Carve-outs in the prompt are hard: trust frontmatter and STALE banners are never cuts.
+
 ### Step 7 - Report
 
 Print:
 - Domains refreshed: list
 - Files inspected: count
 - New domains added (if any new files)
+- Audit findings from Step 6.5: count by kind, or "clean"
 
 ## Standalone CLI
 

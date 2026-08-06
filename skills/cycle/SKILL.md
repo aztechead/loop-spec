@@ -27,7 +27,7 @@ The orchestrator (this skill running on the main thread) and every phase sub-ski
 | `Read` | Reading SPEC / PLAN / feature.json / source files |
 | `Write`, `Edit` | Updating skill-owned artifacts only (feature.json via `lib/feature-write.sh`) |
 | `AskUserQuestion` | Style / title prompts; pause-and-escalate decisions |
-| `Skill` | Invoking another loop-spec skill (`Skill(loop-spec:plan)`) or the required external `graphify` skill |
+| `Skill` | Invoking another loop-spec skill (`Skill(loop-spec:plan)`) |
 | `Glob`, `Grep` | Code exploration |
 | `EnterWorktree` | Switch the session into the feature worktree (Step 5 create; Step 1 resume) |
 | `ExitWorktree` | Leave the feature worktree on pause or completion (action: "keep") |
@@ -111,13 +111,13 @@ migrates the staging record into the feature dir; SPEC renders it into SPEC.md's
 
 **Startup is silent — and batched in ONE call.** The mechanical checks behind Steps 0
 (workspace detection), 1 (resume scan), 2 (health-check) and the workflow probe run as a
-single script; do NOT invoke workspace.sh / teams-capability.sh / graphify-preflight.sh /
+single script; do NOT invoke workspace.sh / teams-capability.sh /
 workflow-availability.sh / backlog.sh individually, and do NOT narrate:
 
 ```bash
 pf="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-preflight.sh" run)"
 # {workspace: {mode, root, repos?}, teams: {mode, available}, workflows: {available},
-#  graphify: {ok, required, graph}, backlog: {count},
+#  backlog: {count},
 #  resume: {candidates: [...], skipped: [...]}, warnings: [...]}
 ```
 
@@ -153,7 +153,7 @@ application starts. Resolve it:
 2. **Interactive, no `new` token:** ask ONE AskUserQuestion — "Not a git repo. Start a net-new application here (`git init`), or abort?" Options: `Start new project here` / `Abort`. On start, run the bootstrap above.
 3. **Non-interactive without autonomous, or no description to build from:** abort with the original message (`loop-spec: not a git repo and no child repos found. cd into a repo, create .loop-spec/workspace.json, or start a net-new app with /loop-spec:cycle new <description>.`).
 
-Greenfield consequences downstream (each step carries its own branch): Step 4 skips command detection (commands are backfilled by EXECUTE after the scaffold task lands), Step 5.4 defers the graphify build until source exists, Step 5.5 skips the codebase map (VERIFY's refresh writes the first one), SPEC round 1 runs the **Foundations** perspective (stack/structure/tooling — `skills/spec/SKILL.md`), and PLAN must emit a scaffold-first task DAG (`skills/plan/SKILL.md`, "Greenfield plans"). Persist the flag as `feature.json.greenfield = true` (Step 5).
+Greenfield consequences downstream (each step carries its own branch): Step 4 skips command detection (commands are backfilled by EXECUTE after the scaffold task lands), Step 5.5 skips the codebase map (VERIFY's refresh writes the first one), SPEC round 1 runs the **Foundations** perspective (stack/structure/tooling — `skills/spec/SKILL.md`), and PLAN must emit a scaffold-first task DAG (`skills/plan/SKILL.md`, "Greenfield plans"). Persist the flag as `feature.json.greenfield = true` (Step 5).
 
 The `new` token inside an EXISTING repo (mode `single`) is refused — `greenfield-bootstrap.sh` exits 4 with `already a git repo — greenfield is for empty directories. Run the normal cycle, or cd into an empty directory for a new app.` Workspace mode has no greenfield variant (exit 5; multi-repo bootstrap is out of scope; deferred). Relay the script's message verbatim and stop the greenfield path.
 
@@ -193,7 +193,6 @@ invocation checkout or a registered feature worktree.
    candidate, call `EnterWorktree({path: worktreeAbs})`. OpenCode/pi features use the
    clean in-place branch path and never emulate a cwd switch with `git worktree add`.
 2. Load `feature.json` from the adopted root and refresh `.loop-spec/runtime.json` with the
-   current harness probes. Before skipping Steps 2-5, rerun the Graphify requirement check
    and the Step 5.4 freshness decision for every non-greenfield source repository. A matching
    validated source stamp reuses the local graph; every changed or unprovable input refreshes it.
    Workspace resumes apply the same decision to each participating repo. A resume directly into
@@ -316,22 +315,6 @@ a teams-capable harness to the no-teams fallback — rescue first, refute second
 `teams_mode` and `teams_available` are persisted into `.loop-spec/runtime.json` together with
 the workflow probe below; phase skills read them to pick their dispatch path.
 
-**Graphify is a HARD requirement** (unlike teams). graphify is loop-spec's de-facto
-code-graph solution; the design phases (SPEC / DISCUSS / PLAN) query the graph to ground
-their work, so the cycle aborts when it is missing rather than degrading. This gate runs as
-part of the silent startup batch:
-
-```bash
-if [[ "$(jq -r '.graphify.ok' <<<"$pf")" != "true" && "$(jq -r '.graphify.required' <<<"$pf")" == "true" ]]; then
-  # Print install instructions (graphify-preflight.sh check emits them on stderr).
-  bash "${CLAUDE_SKILL_DIR}/../../lib/graphify-preflight.sh" check || true
-  echo "loop-spec: aborting -- graphify is required. Install it, or set LOOP_SPEC_REQUIRE_GRAPHIFY=0 to bypass (not recommended)." >&2
-  exit 1
-fi
-```
-
-The only escape hatch is `LOOP_SPEC_REQUIRE_GRAPHIFY=0` (constrained environments); with it
-set, the design phases fall back to Glob/Grep grounding and emit a degraded-mode warning.
 
 Model availability is probed in Step 3.5. There is no preset axis; the probe
 covers the complete effective alias set after phase and role overrides.
@@ -623,36 +606,6 @@ Print cost estimate based on expected scope:
 Estimated cost: ~{N}k tokens
 ```
 
-### Step 5.4 - Graphify bootstrap pre-flight (always decide; refresh only when stale)
-
-**Workspace mode:** graphify operates on a single repo root, so workspace mode builds one graph **per participating repo** (see the workspace block at the end of this step) rather than skipping. graphify is still required in workspace mode.
-
----
-
-Runs on EVERY cycle (single-repo mode), but the expensive assistant refresh runs only
-when the deterministic Step 5.4 freshness decision is `stale`. graphify is a hard
-requirement (enforced at Step 2): a missing, corrupt, dirty, or source-mismatched graph
-refreshes before design and a build failure aborts. A complete validated graph stamped from
-the exact current tracked inputs is reused after a fresh validation/localize pass. It must
-NOT be gated behind the Step 5.5 "all 5 docs exist" skip. Read
-`${CLAUDE_SKILL_DIR}/../shared/graphify-lifecycle.md` and apply it as written: Graphify's
-external assistant skill owns full construction and semantic updates using the current host
-model/authentication; the shell library validates provenance and keeps generated output local,
-never staged in the feature PR.
-
-Decision tree:
-- **Greenfield (`feature.json.greenfield` / `$greenfield == 1`) with no source files yet** -> defer: a graph of an empty repo grounds nothing. Print `greenfield: graphify build deferred until source exists (VERIFY refresh builds it)` and continue — the design phases ground in the stated goal and stack conventions instead, and VERIFY's map-refresh step builds the graph once EXECUTE has landed code. graphify itself must still be installed (Step 2 gate is unchanged).
-- Otherwise -> apply the shared assistant lifecycle to the repository. A complete graph with
-  a matching source stamp is revalidated and reused; a missing prior graph invokes the full
-  assistant build, and a usable stale graph invokes the assistant `--update` path. A skill,
-  extraction, provenance, or validation failure aborts unless `LOOP_SPEC_REQUIRE_GRAPHIFY=0`.
-  The resulting graph stays local to the checkout and is never staged in the feature PR.
-- GSD `.planning/codebase/` present -> after the successful refresh, supersede the GSD docs: fold their content into `docs/loop-spec/codebase/` (gsd-ingest) and remove the raw GSD source (committed, recoverable).
-
-After the shared lifecycle succeeds, supersede GSD codebase docs exactly as before: ingest `.planning/codebase/` into `docs/loop-spec/codebase/`, commit the preserved docs, remove the raw GSD directory, and commit that removal. Do not run supersession after a degraded or failed Graphify invocation.
-
-**Workspace mode:** Graphify operates on one repository root at a time. Loop over only `workspace_repos_json`, resolve each absolute repo path, and apply `skills/shared/graphify-lifecycle.md` sequentially. A per-repo skill or validation failure aborts unless bypassed. The design phases must run queries from that repository or pass `--graph "$repo_abs/graphify-out/graph.json"`; never query an implicit graph at the non-repository workspace root.
-
 ### Step 5.5 - First-run codebase map (one-time per project)
 
 One-time per project: ingest an existing GSD `.planning/codebase/` if present (Step 5.5a), then fire background mappers only for the domains still missing (Step 5.5b). Skip only when all 5 domain docs already exist in `docs/loop-spec/codebase/` — **or when greenfield** (an empty repo has nothing to map; VERIFY's end-of-cycle refresh writes the first map from the shipped code). Apply the full procedure verbatim from `${CLAUDE_SKILL_DIR}/references/codebase-map-bootstrap.md` (GSD ingest rules, mapper dispatch, commit discipline, `bootstrapPendingDomains` bookkeeping, workspace-mode behavior).
@@ -775,6 +728,17 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
      --feature-dir "$(cd ".loop-spec/features/${slug}" && pwd -P)" \
      --phase "$currentPhase" --autonomous "$active_autonomous"
    ```
+   Then load anything this project declared for the phase. Both calls are silent in a
+   project that declared nothing, which is the normal case:
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/extension-points.sh" instructions "$currentPhase" prepend
+   bash "${CLAUDE_SKILL_DIR}/../../lib/extension-points.sh" facts
+   ```
+   Treat each emitted instruction as a directive for this phase, and each `fact=file`
+   path as standing context to read before the phase begins. Run the `append` instructions
+   after the skill returns. These are accelerators: they may shape how work is done, never
+   whether a gate passes, and the path fails open — no output means no extensions.
+
    Print the greppable boundary line before invoking (and its `done` twin with elapsed
    time + headline verdict after the skill returns) — `skills/shared/report-style.md`:
    `[{CURRENTPHASE}] start` / `[{CURRENTPHASE}] done ({elapsed}) — {verdict}`.

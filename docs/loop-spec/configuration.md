@@ -1,6 +1,6 @@
 # loop-spec configuration and command reference
 
-This is the exhaustive configuration contract for loop-spec 2.29.1. A setting not
+This is the exhaustive configuration contract for loop-spec 2.35.0. A setting not
 listed as a supported input below is not a supported operator control. Variables in
 the final “injected and internal variables” table are published so wrappers and
 implementers do not mistake them for controls, but callers must not set them unless
@@ -50,7 +50,6 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective alias set is unchanged. |
-| `LOOP_SPEC_REQUIRE_GRAPHIFY` | `0`/`1`; `1` | `0` permits design phases to use Glob/Grep when graphify is unavailable. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
 | `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for each exact-base baseline command. `0` disables the wall-clock deadline. |
@@ -138,6 +137,12 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_CMD_*` | shell command; detected | Reserved command-family namespace. Only command names consumed by the installed release have an effect; unknown suffixes are ignored. |
 | `LOOP_SPEC_REGRESSION_SCAN` | `0`/`1`; `0` | `1` adds VERIFY’s advisory prior-feature regression scan. |
 | `LOOP_SPEC_RALPH_THRESHOLD` | positive integer; `3` | Consecutive no-progress VERIFY remediation rounds before escalation. |
+| `LOOP_SPEC_VGAP_MAX_FILES` | positive integer; `2000` | Caps how many test files `lib/verification-gap-scan.sh` reads when answering whether a changed definition is named by any test. When the corpus is truncated, a symbol with no hit is reported `covered=unknown` rather than `covered=no` — a partial search cannot establish absence. |
+| `LOOP_SPEC_EXTENSIONS` | path; `.loop-spec/extensions.json` | Project extension declarations read by `lib/extension-points.sh`: additional review layers, per-phase prepend/append instructions, and standing facts. Extensions add only — a declared layer can never disable, reorder, or shadow a built-in gate, and no authority script reads this file. Read paths fail open; `extension-points.sh validate` fails closed. |
+| `LOOP_SPEC_MAP_MAX_LINES` | positive integer; `1000` | Ceiling for the total size of the codebase map, measured by `lib/map-audit.sh budget` (~20k tokens across the five domains). Exceeding it is a finding to cut against, never a reason to raise the ceiling. |
+| `LOOP_SPEC_MAP_MAX_AGE_DAYS` | positive integer; `90` | Age at which `lib/map-audit.sh staleness` reports a map domain as stale, matching the existing refresh advisory. |
+| `LOOP_SPEC_MAP_DIR` | path; `docs/loop-spec/codebase` | Codebase-map location read by `lib/map-audit.sh` and `lib/map-trust.sh`. |
+| `LOOP_SPEC_MAP_INDEX` | path; `.loop-spec/codebase/index.json` | Map index location read by `lib/map-audit.sh orphans` and `staleness`, and pruned by `lib/map-index-prune.sh`. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | integer `0..86400`; `900` | Total DELIVER wait for required PR checks. `0` performs no extended wait. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
 | `LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS` | non-negative integer; `30` | Grace period after push during which a missing check is treated as not-yet-registered rather than absent. |
@@ -193,6 +198,7 @@ CLI/Agent SDK supervisors, and
 | `LOOP_SPEC_RULES_FILE` | path; `.loop-spec/RULES.md` | Overrides the project rules file. |
 | `LOOP_SPEC_GLOBAL_RULES_FILE` | path; `~/.loop-spec/RULES.md` | Overrides the cross-project rules layer. |
 | `LOOP_SPEC_ADHOC_LEDGER` | path; `.loop-spec/adhoc-ledger.md` | Overrides the micro-cycle ledger. |
+| `LOOP_SPEC_LEARNINGS_FILE` | path; `.loop-spec/learnings.jsonl` | Overrides the session-learnings log that `lib/retro.sh` mines for recurring non-success session outcomes. Distinct from `LOOP_SPEC_LEARNINGS`, which enables or disables the SessionEnd writer. |
 | `LOOP_SPEC_BACKLOG_FILE` | path; `.loop-spec/BACKLOG.md` | Overrides the backlog. |
 | `LOOP_SPEC_WORKFLOW_CONFIG` | path; `.loop-spec/workflow.json` | Overrides workflow configuration. |
 | `LOOP_SPEC_ASSESS_TOP_N` | positive integer; `5` | Fragility hotspots per repository sent to assess reviewers. |
@@ -272,6 +278,7 @@ angle brackets mean required. Inline words are tokens, not GNU flags.
 | `simplicity` | `[on\|off\|status\|lite\|full\|ultra]` | Changes, reports, or selects simplicity intensity. |
 | `human-code` | `[on\|off\|status\|probe]` | Changes or reports code-for-humans mode; `probe` reports the conventions `lib/house-style.sh` measures for the given paths without changing state. |
 | `status` | `[status [slug]\|stats\|trust] [--json]` | Reports active state, metrics, or trust; `--json` emits machine-readable output. |
+| `walkthrough` | `[<slug> \| <base-ref>] [--write \| --walk]` | Builds the reviewer's guide for a change. `--write` (default inside a cycle) produces and lints `REVIEW-ORDER.md` and stops; `--walk` presents the trail one concern at a time for a human reviewer. |
 | `watch` | `<slug> [--window-hours N]` | Evaluates post-merge stability over the requested window (default 24 hours). |
 
 `spec`, `discuss`, `plan`, `execute`, `verify`, `iterate`, and `deliver` are cycle

@@ -673,12 +673,17 @@ check "typo mode exit 2"          "$?" "2"
 check "typo mode lists valid modes" "$(grep -c 'bypassPermissions' "$R/permerr2.txt")" "1"
 
 # Every mode the CLI documents is accepted.
+# The state directory is the RESOLVED task id, which loop.py slugifies to lowercase
+# (LoopState.resolved_task_id). Probing the raw camelCase id passed here found the
+# directory only on a case-insensitive filesystem, so this check silently passed on
+# macOS and failed on Linux for the three camelCase modes.
 newrepo
 PERMOK=0
 for m in default acceptEdits auto bypassPermissions manual dontAsk plan; do
   python3 "$SCRIPTS/loop.py" "noop" --task-id "perm-$m" --claude-bin "$FAKE" \
     --permission-mode "$m" --max-iterations 1 >/dev/null 2>&1
-  [[ -f ".loop/perm-$m/result.json" ]] && PERMOK=$((PERMOK+1))
+  resolved="$(printf 'perm-%s' "$m" | tr '[:upper:]' '[:lower:]')"
+  [[ -f ".loop/$resolved/result.json" ]] && PERMOK=$((PERMOK+1))
 done
 check "all CLI modes accepted"    "$PERMOK" "7"
 

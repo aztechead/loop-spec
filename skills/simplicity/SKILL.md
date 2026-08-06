@@ -84,7 +84,7 @@ rung that holds:
 7. **Only then:** the minimum code that works.
 
 The ladder runs *after* you understand the problem, not instead of it. Read the
-task and the code it touches, trace the real flow end to end (use the graphify
+task and the code it touches, trace the real flow end to end (read the
 code graph the design phases already query), then climb. Two rungs work → take
 the higher one and move on.
 

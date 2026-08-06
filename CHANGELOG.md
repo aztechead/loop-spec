@@ -2,7 +2,193 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
-## [2.33.0] - 2026-08-05
+## [2.35.0] - 2026-08-06
+
+Graphify is removed. Structure is derived fresh, and grounded by citing `file:line`.
+
+### Removed
+
+- **The code graph, and its hard requirement.** graphify was a cycle-aborting dependency
+  from 2.29 to 2.34. Over that period, in this repository, it produced **zero citations in
+  any artifact, zero recorded refreshes, and zero evidence entries**: the two features
+  authored after it became mandatory ground themselves `- none` and "cites a repo
+  file/line", `index.json` never gained the `graphify` block the map skill was told to
+  write, and the only artifacts naming `graphify query|path|explain` belong to the feature
+  that built the integration. That bought a Python 3.10+/uv dependency and a startup gate
+  that could end a run.
+
+  Removed: the lifecycle contract, `lib/graphify-preflight.sh`, the map integration, the
+  per-phase query instructions in SPEC/DISCUSS/PLAN/debug, the pi and OpenCode registration
+  steps, and `LOOP_SPEC_REQUIRE_GRAPHIFY`. The design phases now read the tree — fanned out
+  to subagents returning `file:line` evidence — and the grounding protocol's code-structure
+  claim type says it plainly: read it and cite `file:line`; a claim nobody can point at is
+  an `ASSUMPTION`. The `graphify-out/` ignore patterns stay on purpose, so an upgrading
+  checkout does not start committing a stale generated cache.
+
+  One repository is thin evidence and this one is unrepresentative — bash and markdown, where
+  deriving structure is nearly free. What the graph could not do here was show its work.
+
+  Also removed, both added earlier in this same PR and both serving only graphify: the
+  `GRAPH[EXTRACTED|INFERRED|AMBIGUOUS]` citation type, and `lib/code-graph.sh`. Leaving
+  unreachable enforcement in place would have reproduced the dead-dimension defect fixed in
+  2.34.0.
+
+### Changed
+
+- **Declared Python floor raised to 3.7**, matching what the code already requires.
+  `skills/loop-runner/scripts/loop.py:43` imports `dataclasses` (3.7+), three loop-runner
+  scripts use `from __future__ import annotations` (3.7+), and `lib/map-audit.sh` calls
+  `subprocess.run(capture_output=…)` (3.7+). The docs claimed `>= 3.6` in four places. Found
+  by running the new `mapper-tech` against this repo — the mapper's first real output caught
+  a defect in the prerequisites it was inventorying.
+
+### Added
+
+- **`agents/mapper-arch.md` and `agents/mapper-tech.md`.** The ARCH and TECH domains had no
+  mapper — an external code graph covered them, and removing it would have left both
+  permanently unrefreshable while `map-refresh.sh` kept reporting them stale. The
+  team/subagent path spawned three mappers for five tracked domains; only the Workflow path
+  covered the gap, using generic agents. All five domains now have a named mapper on every
+  dispatch path, each grounding its claims in `file:line` and told plainly not to record
+  what a single read of the code already shows. Both were then run against this
+  repository to prove they work: ARCH.md and TECH.md are refreshed here, `index.json`
+  orphans dropped from 28 to 0, and the map-audit findings against those two domains fell
+  to the three documented false-positive classes.
+
+- **Trust marking on map claims (B6).** Per-document frontmatter (`trust`, `verified_at`,
+  `verified_by`) owned by `lib/map-trust.sh`: every refresh stamps its documents
+  `generated` (voiding any prior ratification — the human confirmed the old prose, not
+  the new), and promotion to `verified` is an operator action no skill may run in
+  autonomous mode. `lib/map-audit.sh trust` reports the verified/generated/unmarked split
+  and flags `trust-expired` (a verified document that changed after its ratification) and
+  `trust-invalid`. All five domains in this repository are marked `generated` — the
+  honest baseline; nothing here has ever been human-ratified.
+
+- **`lib/map-index-prune.sh` (F3).** Index pruning is a script, no longer an instruction:
+  it removes `files` keys whose path is verifiably absent, refuses to rewrite a corrupt
+  index, and pairs with the `map-audit.sh orphans` detector. Called from the map skill's
+  Step 4.
+
+- **Fresh-eyes prose pruning (B7).** `skills/shared/review-prompts/prose-pruning.md` — a
+  context-free reviewer holding only the artifact and its template contract (never the
+  authoring conversation) returns `cut:`/`merge:`/`shrink:` lines, each naming the one
+  test the prose fails (`derivable`, `duplicate`, `speculative`, `narrative`,
+  `over-template`), listing only. Wired advisory at SPEC Step 3.5, PLAN Step 5.7 (the
+  mechanical gates re-run on the pruned file; a cut that breaks one is reverted), and
+  map-codebase Step 6.6 (dispatched only on a measured `over-budget` finding). Hard
+  carve-outs protect everything other machinery matches verbatim.
+
+- **Source-pinned map staleness**, ported from BMAD's `context.py sweep`. `map-audit.sh
+  sweep` now resolves each cited path's last change with `git log -1 --format=%cI` and
+  reports `outdated-claim` when the source changed after that domain was refreshed, with
+  both dates and the citing line. The previous whole-domain age check could not see a map
+  refreshed last week lying about a file changed yesterday. `missing` and `outdated` are
+  counted separately, and a domain with no refresh date yields no finding rather than a
+  guess. Against this repository's own map: 39 of 49 cited paths are outdated, on top of
+  the 10 that no longer exist.
+- **A bounded test corpus for the verification-gap probe** (`LOOP_SPEC_VGAP_MAX_FILES`,
+  default 2000). It previously read every test file in the repo into memory on each VERIFY.
+  When the corpus is truncated a symbol with no hit now reports `covered=unknown`, never
+  `covered=no` — a partial search cannot establish absence, and reporting one as the other
+  would hand the reviewer a finding the search never earned.
+
+## [2.34.0] - 2026-08-05
+
+BMAD-METHOD scan: four imports, all of them on the human's side of the seam.
+
+A full audit against [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) v6.10.0
+(read from source, not documentation) found the two projects optimizing opposite ends of
+the same problem. BMAD optimizes the human–AI collaboration surface; loop-spec optimizes
+unattended correctness. Everything loop-spec was missing turned out to be on the human's
+side: what the reviewer receives, what a team can change without forking, and whether the
+context loaded into every design phase is still true. The full comparison — including
+where loop-spec is ahead, four proposals not implemented, and four defects the comparison
+exposed — is `docs/loop-spec/bmad-scan-proposals.md`.
+
+### Added
+
+- **The reviewer's guide (`lib/review-trail.sh`, `skills/walkthrough/`).** The cycle spent
+  seven phases proving a change to itself and then handed a human a flat diff, discarding
+  everything it knew about the change's shape at the moment a reviewer needed it. VERIFY
+  now writes `REVIEW-ORDER.md`: ordered `path:line` stops grouped by concern, entry point
+  first, tests and config last, at most fifteen words of framing each. The script owns the
+  facts — which files changed, which are peripheral by path rules, the anchor line of each
+  first change — and the model owns the concern grouping and the prose, which is the right
+  split. `lint` then measures the finished trail against the diff: every core file has a
+  stop, every stop resolves to a real line inside the change surface, framing is within the
+  cap, and no peripheral stop precedes the last core stop. The `uncovered` finding is the
+  one that matters, because a guide that silently omits part of the change reads as
+  complete. DELIVER inlines the trail above the PR body's evidence sections;
+  `/loop-spec:walkthrough --walk` presents it conversationally. In a repo whose product is
+  markdown or config — this plugin is one — every file would classify peripheral, so the
+  classification stands down and says so rather than reporting a change with no substance.
+  Nothing here gates delivery: a verified change is never held back over prose.
+- **The verification-gap pass (`lib/verification-gap-scan.sh` +
+  `skills/shared/review-prompts/verification-gap.md`).** Asks the one question the existing
+  gates do not: if the behavior this change produces broke where it is actually used, would
+  any verification fail? The tamper scan defends tests that already exist, the acceptance
+  gate checks that criteria carry verify commands, and the code reviewer lists missed
+  coverage as one Important-bucket item — none traces *new* behavior out to the sites that
+  observe it. BMAD's prompt instructs the reviewer to search the repo by symbol before
+  claiming no test exists; that is a model performing a search from memory to select a
+  finding, so it became a probe instead. The scan reports, per definition the diff added or
+  edited in a non-test file, which test files name that symbol, searching the post-change
+  tree so a test added by the same diff counts as the evidence that closes the gap. The
+  prompt is explicit that `covered=no` is a starting point rather than a finding and
+  `covered=yes` is not proof. Findings are advisory in this release — recorded in
+  VERIFICATION.md and the backlog, never blocking — until the false-positive rate is
+  measured on real runs.
+- **Project extension points as data (`lib/extension-points.sh`,
+  `.loop-spec/extensions.json`).** loop-spec was configurable through some sixty
+  environment variables but not extensible: a team wanting one review layer of its own, or
+  one standing fact in front of every planner, had no move short of forking the skill
+  markdown. Projects can now declare `reviewLayers[]`, per-phase
+  `phaseInstructions.{prepend,append}`, and `persistentFacts[]` with globs resolved before
+  a phase sees them. Where this deliberately diverges from BMAD's `customize.toml`:
+  **extensions add, they never subtract.** BMAD lets a user switch a review layer off;
+  loop-spec must not, because its gates are what let the loop act without a human, and a
+  config that could disable one would be an authority control wearing an accelerator's
+  clothes. `validate` refuses any layer claiming a built-in gate id, layer count and
+  instruction length are capped so a config cannot quietly become a context budget, and a
+  test asserts that no authority script reads the file. Read paths fail open; `validate`
+  fails closed.
+- **Map audit (`lib/map-audit.sh`).** The codebase map is loop-spec's one regenerated
+  artifact and nothing measured it. Four measurements, no rewriting: total size against a
+  ceiling (`LOOP_SPEC_MAP_MAX_LINES`, default 1000 lines), cited paths that no longer exist
+  (skipping globs, placeholders, URLs, and `e.g.` illustrations, because a pattern is not a
+  claim), index entries whose file is gone, and per-domain age plus any document declaring
+  itself stale while the index records it as fresh. Run against this repository's own map it
+  reports nine dead path citations, 28 orphaned index entries out of 76, and one
+  document/index disagreement — which is the evidence for BMAD's thesis, not against it.
+  Wired into `map-codebase` as Step 6.5, advisory, and it never blocks recording a refresh.
+
+### Fixed
+
+- `lib/pr-body.sh` gained a `## Suggested review order` section above the evidence sections,
+  with its own line cap and H1 stripping, and `reviewOrder` joined the public artifact keys.
+- **A declared code-review dimension was never dispatched.**
+  `lib/workflows/code-review-dimensions.js` listed four dimensions and sliced to
+  `dimensionReviewers`, fixed at 3, so `style` was dead code that read like coverage. The
+  list is now exactly what gets dispatched, with a guard that throws if the list and the
+  fan-out disagree. `style` stays out on purpose: the code-for-humans pass owns it and is
+  probe-backed by `lib/house-style.sh`, which measures the convention rather than asking a
+  fourth agent's taste.
+- **`learnings.jsonl` had no reader.** The SessionEnd hook wrote it from 2.x onward and
+  nothing ever consumed it. `lib/retro.sh` now mines it as a third B1 corpus beside the
+  micro-cycle ledger and sentinel history: task types whose sessions repeatedly end partial
+  or errored — counted across distinct sessions, so one bad session is noise — produce a
+  rule candidate from a fixed template, inside the existing closed auto-apply set.
+  `LOOP_SPEC_LEARNINGS_FILE` overrides the path.
+- **Three test-suite portability defects, found by running the suite on Linux.**
+  `skills/loop-runner/tests/run_tests.sh` probed a task-state directory using the raw
+  camelCase task id while `loop.py` slugifies ids to lowercase, so the check passed only on
+  case-insensitive filesystems and failed on Linux for the three camelCase permission
+  modes. `tests/lib/revise-branch.test.sh` depended on the host having
+  `init.defaultBranch=main`. `tests/lib/cycle-result.test.sh` simulated a publication
+  failure with `chmod 555`, which does not constrain uid 0, so five assertions reported a
+  nonexistent product bug whenever the suite ran as root. `tests/run-all.sh` is green.
+
+
 
 Code for humans: generated code that reads like the codebase it lands in.
 

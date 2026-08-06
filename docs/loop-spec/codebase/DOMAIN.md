@@ -1,3 +1,7 @@
+---
+trust: generated
+---
+
 # DOMAIN
 
 > Produced by `loop-spec-mapper-domain`. Last refreshed: 2026-05-11.
