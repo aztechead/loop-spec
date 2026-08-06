@@ -1,6 +1,6 @@
 # loop-spec configuration and command reference
 
-This is the exhaustive configuration contract for loop-spec 2.29.1. A setting not
+This is the exhaustive configuration contract for loop-spec 2.35.0. A setting not
 listed as a supported input below is not a supported operator control. Variables in
 the final “injected and internal variables” table are published so wrappers and
 implementers do not mistake them for controls, but callers must not set them unless
