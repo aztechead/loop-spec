@@ -689,6 +689,12 @@ How workspace mode differs:
 
 ## Architecture
 
+From 3.0 the cycle's **sequencing** is a declared graph (`graph/cycle.graph.json`)
+run by `lib/graph/run.sh`: typed `reads[]`/`writes[]` over `feature.json`, per-node
+checkpoints, probe-conditioned `route` edges, dual-process effort
+(`lib/effort-probe.sh` / `lib/conflict-monitor.sh`), and a handoff port for foreign
+claimants. Phase *content* is unchanged. Details: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+
 The cycle skill is a thin orchestrator; each phase skill owns its own dispatches. When agent teams are available, teammates persist for the whole phase and communicate over `SendMessage`, so rework rides on accumulated context instead of fresh spawns. `lib/teams-capability.sh` resolves the team mechanism per Claude Code version: explicit `TeamCreate`/`TeamDelete` on older builds, direct named `Agent({name})` spawns on 2.1.178 and later, and a documented fallback per phase (`skills/shared/no-teams-fallback.md`) when teams are off, with the same artifacts, gates, and result contracts on every path.
 
 Under Claude Code each feature runs in its own git worktree by default
