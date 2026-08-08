@@ -661,6 +661,31 @@ fi
 
 ### Step 6 - Route to phase
 
+Sequencing is owned by the declared graph. Hand control to the engine:
+
+```bash
+feature_dir=".loop-spec/features/${slug}"
+bash "${CLAUDE_SKILL_DIR}/../../lib/graph/run.sh" \
+  --feature-dir "$feature_dir" \
+  "${CLAUDE_SKILL_DIR}/../../graph/cycle.graph.json"
+```
+
+`graph/cycle.graph.json` is the single authority for phase successors, ITERATE
+rewind targets, DELIVER's CI-remediation path, critique subgraphs, and human
+pauses. Resume is a checkpoint lookup — not a prose scan-and-infer:
+
+```bash
+latest="$(bash "${CLAUDE_SKILL_DIR}/../../lib/graph/checkpoint.sh" latest \
+  --feature-dir "$feature_dir")"
+# When latest.empty is absent, continue at latest.node with latest.edge.
+bash "${CLAUDE_SKILL_DIR}/../../lib/graph/run.sh" --resume \
+  --feature-dir "$feature_dir" \
+  "${CLAUDE_SKILL_DIR}/../../graph/cycle.graph.json"
+```
+
+Exit 4 from the engine is a human-node pause (resumable). Exit 0 is a completed
+traversal; the terminal result object keys match `lib/cycle-result.sh`.
+
 The cycle does NOT create the phase team. Each phase skill owns its own team lifecycle: `TeamCreate` at phase start, `TeamDelete` + clear `currentTeamName` at phase end. This keeps team rosters phase-specific (each phase has different teammates) and avoids double-`TeamCreate` errors.
 
 Resolve and persist the main-context policy before invoking a phase. The inline token
@@ -688,13 +713,12 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set \
   "$feature_dir" phaseHandoff "$phase_handoff"
 ```
 
-For new features, `currentPhase` is initialized to `"spec"`. The forward chain is
-`SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER -> completed`.
-ITERATE may rewind to `execute`, `plan`, `spec`, or `discuss`; only a terminal verdict
-advances to `deliver`. DELIVER is the sole owner of push, PR reconciliation, required
+Node bodies remain the phase skills. The engine selects the next node; the lead
+dispatches `Skill(loop-spec:{currentPhase})` for agent nodes and reacts to the
+return. DELIVER remains the sole owner of push, PR reconciliation, required
 checks, and readiness.
 
-Cycle's only responsibility here is to invoke the phase skill and react to its return:
+Cycle's responsibility after the engine names a node is to invoke that phase skill and react to its return:
 
 1. **Invoke phase skill** (with the watchdog stamp):
    Before every invocation—including continuous routing after a prior phase
