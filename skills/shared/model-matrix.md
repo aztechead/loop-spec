@@ -28,17 +28,27 @@ overrides for cross-provider routing. Loop-fleet dispatch takes opencode ids —
 
 ## Matrix
 
-| Role family | Model |
+Effort mode (`lib/effort-probe.sh`) selects the column. The **system2** column
+is identical to the 2.35 role map — nothing is less capable by default. The
+**system1** column is the throughput alias for habitual nodes. See
+`skills/shared/dual-process.md`.
+
+| Effort column | Meaning |
 |---|---|
-| spec-writer, planner | opus |
-| challenger | opus |
-| iterate-judge | opus |
-| code-reviewer | opus |
-| advocate | sonnet |
-| spec-compliance-reviewer | sonnet |
-| verifier | sonnet |
-| implementer | sonnet |
-| mapper-*, pattern-mapper | sonnet |
+| system1 | throughput alias for habitual nodes |
+| system2 | deliberate alias; equals the 2.35 role map |
+
+| Role family | system1 | system2 |
+|---|---|---|
+| spec-writer, planner | sonnet | opus |
+| challenger | sonnet | opus |
+| iterate-judge | sonnet | opus |
+| code-reviewer | sonnet | opus |
+| advocate | sonnet | sonnet |
+| spec-compliance-reviewer | sonnet | sonnet |
+| verifier | sonnet | sonnet |
+| implementer | sonnet | sonnet |
+| mapper-*, pattern-mapper | sonnet | sonnet |
 
 ## Design rules
 
