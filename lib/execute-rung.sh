@@ -91,6 +91,13 @@ elif [[ "$subagents" != "true" ]]; then
     rung="inline"
     reason="no subagent tool; loop unavailable (${loop_runtime_reason})"
   fi
+elif [[ "${LOOP_SPEC_FOREIGN_CLAIMANTS:-0}" == "1" ]] \
+  && { [[ -n "${LOOP_SPEC_PORT:-}" && -x "${LOOP_SPEC_PORT}" ]] \
+    || [[ -x "${SCRIPT_DIR}/graph/port-local.sh" ]]; }; then
+  # Opt-in foreign claimants over the handoff port. Same graph nodes; width
+  # selects this rung and never removes a node.
+  rung="foreign"
+  reason="foreign claimants opted in; handoff port reachable"
 elif (( width >= 6 )) && [[ "$workflows_available" == "true" && "$workflow_optin" == "true" ]]; then
   rung="workflow"
   reason="workflow opted in and available"
