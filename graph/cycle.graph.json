@@ -379,15 +379,21 @@
     {
       "from": "plan.critique.gate",
       "to": "plan.critique",
-      "kind": "chain"
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/plan-critique.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "signal=matched"
+      }
     },
     {
       "from": "plan.critique.gate",
       "to": "human.after-plan",
       "kind": "route",
       "condition": {
-        "probe": "lib/security-signal.sh",
-        "expects": "none"
+        "probe": "lib/graph/probes/plan-critique.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "signal=none"
       }
     },
     {
@@ -458,7 +464,8 @@
       "to": "execute",
       "kind": "route",
       "condition": {
-        "probe": "lib/ralph-remediation.sh",
+        "probe": "lib/graph/probes/iterate-gap.sh",
+        "args": ["--feature-dir", "{featureDir}"],
         "expects": "gap=execute"
       }
     },
@@ -467,7 +474,8 @@
       "to": "plan",
       "kind": "route",
       "condition": {
-        "probe": "lib/plan-adherence.sh",
+        "probe": "lib/graph/probes/iterate-gap.sh",
+        "args": ["--feature-dir", "{featureDir}"],
         "expects": "gap=plan"
       }
     },
@@ -476,7 +484,8 @@
       "to": "spec",
       "kind": "route",
       "condition": {
-        "probe": "lib/criteria-coverage.sh",
+        "probe": "lib/graph/probes/iterate-gap.sh",
+        "args": ["--feature-dir", "{featureDir}"],
         "expects": "gap=spec"
       }
     },
@@ -485,8 +494,19 @@
       "to": "human.iterate-spec-approval",
       "kind": "route",
       "condition": {
-        "probe": "lib/parse-invocation.sh",
-        "expects": "style=step|interactive"
+        "probe": "lib/graph/probes/exec-style.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "style=step"
+      }
+    },
+    {
+      "from": "iterate",
+      "to": "human.iterate-spec-approval",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/exec-style.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "style=interactive"
       }
     },
     {
@@ -497,11 +517,37 @@
     {
       "from": "iterate",
       "to": "deliver",
-      "kind": "chain"
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/iterate-gap.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "gap=none"
+      }
     },
     {
       "from": "iterate",
-      "to": "verify",
+      "to": "execute",
+      "kind": "loop",
+      "ceiling": 10,
+      "strategy": "contain"
+    },
+    {
+      "from": "iterate",
+      "to": "plan",
+      "kind": "loop",
+      "ceiling": 10,
+      "strategy": "contain"
+    },
+    {
+      "from": "iterate",
+      "to": "spec",
+      "kind": "loop",
+      "ceiling": 10,
+      "strategy": "contain"
+    },
+    {
+      "from": "iterate",
+      "to": "human.iterate-spec-approval",
       "kind": "loop",
       "ceiling": 10,
       "strategy": "contain"
@@ -511,7 +557,8 @@
       "to": "execute",
       "kind": "route",
       "condition": {
-        "probe": "lib/deliver.sh",
+        "probe": "lib/graph/probes/deliver-next.sh",
+        "args": ["--feature-dir", "{featureDir}"],
         "expects": "nextPhase=execute"
       }
     },
@@ -525,7 +572,12 @@
     {
       "from": "deliver",
       "to": "completed",
-      "kind": "chain"
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/deliver-next.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "nextPhase=completed"
+      }
     }
   ]
 }

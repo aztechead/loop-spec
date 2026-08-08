@@ -34,10 +34,21 @@ edge_enum="$(jq -c '(.definitions.edge.properties.kind.enum | sort)' "$SCHEMA")"
 check "edge kind enum" '["chain","fanin","fanout","loop","route"]' "$edge_enum"
 
 cond_req="$(jq -c '(.definitions.routeCondition.required | sort)' "$SCHEMA")"
-check "route condition requires probe+expects" '["expects","probe"]' "$cond_req"
+check "route condition requires probe+args+expects" '["args","expects","probe"]' "$cond_req"
 
 cond_add="$(jq -r '.definitions.routeCondition.additionalProperties' "$SCHEMA")"
 check "route condition closed" "false" "$cond_add"
+
+expects_pattern="$(jq -r '.definitions.routeCondition.properties.expects.pattern' "$SCHEMA")"
+check_rc "expects pattern rejects '|' alternation" "1" \
+  "printf '%s' 'style=step|interactive' | grep -qE '$expects_pattern'"
+
+# admit reuses the routeCondition shape; routeDefault is an optional node id
+admit_ref="$(jq -r '.definitions.node.properties.admit["$ref"] // empty' "$SCHEMA")"
+check "human admit reuses routeCondition shape" "#/definitions/routeCondition" "$admit_ref"
+
+route_default_type="$(jq -r '.definitions.node.properties.routeDefault.type // empty' "$SCHEMA")"
+check "routeDefault is a string node id" "string" "$route_default_type"
 
 ceiling_type="$(jq -r '
   .definitions.edge.properties.ceiling.type
