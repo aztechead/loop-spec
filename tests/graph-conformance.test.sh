@@ -1,285 +1,242 @@
 #!/usr/bin/env bash
-# Conformance test (gdd task-004): the phase skills and graph/cycle.graph.json
-# must declare the same topology. Claims are extracted from the skills (forward
-# chain, ITERATE rewind targets, gap-class routes, VERIFY's deterministic gates,
-# escalation re-entries) and checked against the declared graph, collapsing
-# through non-phase nodes (human pauses, critique subgraphs, gate ladder, fanout
-# workers). Carries its own negative cases: mutated in-memory copies of the
-# graph must be detected, so a vacuously-passing checker cannot ship.
-# task-016 repurposes this file once the prose routing is deleted.
+# Graph schema validator + residual-prose check (gdd task-016).
+#
+# Repurposed from the task-004 skills-match-graph conformance test: the prose
+# routing it extracted is deleted, so graph/cycle.graph.json is now the single
+# routing authority. This suite:
+#   (a) validates the declared graph's own shape — entry, node presence,
+#       successor reachability, rewind routes and their gap probes, the
+#       remediation channel, fanout/fanin, subgraph reuse, and that every
+#       script/agent gate body is referenced by a skill; and
+#   (b) fails when routing declarations the graph owns — successor/rewind
+#       phase-pointer assignments, direct successor invocations, retry budgets
+#       duplicating loop ceilings, or a LOOP_SPEC_GRAPH opt-in — reappear in
+#       the seven phase skills.
+# Carries its own negative cases: a mutated graph and synthetic residual prose
+# must both be detected, so a vacuously-passing checker cannot ship.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GRAPH="$ROOT/graph/cycle.graph.json"
 PASS=0; FAIL=0
 
-pass() { echo "PASS: $1"; PASS=$((PASS + 1)); }
-fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
-
-if bash "$ROOT/lib/graph/validate.sh" "$GRAPH" >/dev/null 2>&1; then
-  pass "shipped cycle graph passes lib/graph/validate.sh (conformance precondition)"
-else
-  fail "shipped cycle graph fails lib/graph/validate.sh; conformance results would be meaningless"
-fi
-
-# --- claim extraction from the skills (fails loudly if a rewording empties it) ---
-
-require() {
-  local value="$1" what="$2"
-  if [[ -z "$value" ]]; then
-    echo "FAIL: extraction produced nothing for $what (skill wording changed? update this test's extraction)"
-    exit 1
+check() {
+  local name="$1" expected="$2" actual="$3"
+  if [[ "$expected" == "$actual" ]]; then
+    echo "PASS: $name"; PASS=$((PASS + 1))
+  else
+    echo "FAIL: $name (expected '$expected', got '$actual')"; FAIL=$((FAIL + 1))
   fi
 }
 
-# skills/cycle/SKILL.md: the forward chain (SPEC -> DISCUSS -> ... -> DELIVER),
-# plus the terminal completed hop that DELIVER signals via delivery.nextPhase.
-FORWARD_CHAIN="$(grep -oE 'SPEC( -> [A-Z]+)+' "$ROOT/skills/cycle/SKILL.md" \
-  | head -1 | tr '[:upper:]' '[:lower:]' | sed 's/ -> / /g')"
-require "$FORWARD_CHAIN" "the cycle forward chain"
-if grep -q 'nextPhase == "completed"' "$ROOT/skills/deliver/SKILL.md"; then
-  FORWARD_CHAIN="$FORWARD_CHAIN completed"
-  pass "deliver skill claims the terminal completed hop"
+[[ -f "$GRAPH" ]] || { echo "FAIL: missing $GRAPH"; exit 1; }
+if bash "$ROOT/lib/graph/validate.sh" "$GRAPH" >/dev/null 2>&1; then
+  check "cycle graph passes lib/graph/validate.sh" "0" "0"
 else
-  fail "deliver skill no longer claims nextPhase completed (update this test)"
-fi
-read -r -a chain_arr <<<"$FORWARD_CHAIN"
-if (( ${#chain_arr[@]} < 7 )); then
-  fail "forward chain extraction found only ${#chain_arr[@]} phases: $FORWARD_CHAIN"
-else
-  pass "forward chain extracted from cycle skill: $FORWARD_CHAIN"
+  check "cycle graph passes lib/graph/validate.sh" "0" "1"
 fi
 
-# skills/cycle/SKILL.md: "matches the explicit rewind set" (wraps to the next line).
-REWIND_TARGETS="$(grep -A1 'explicit rewind set' "$ROOT/skills/cycle/SKILL.md" \
-  | grep -oE '`[a-z]+(\|[a-z]+)+`' | head -1 | tr -d '`' | tr '|' ' ')"
-require "$REWIND_TARGETS" "the cycle explicit rewind set"
-if (( $(wc -w <<<"$REWIND_TARGETS") < 3 )); then
-  fail "rewind extraction found fewer than 3 targets: $REWIND_TARGETS"
-else
-  pass "rewind targets extracted from cycle skill: $REWIND_TARGETS"
-fi
+# --- graph shape: the topology the engine executes ---
 
-# skills/iterate/SKILL.md: the gap-class routing bullets ("- **`execute`** — ...").
-GAP_CLASSES="$(grep -oE '^- \*\*`[a-z]+`\*\*' "$ROOT/skills/iterate/SKILL.md" \
-  | grep -o '`[a-z]*`' | tr -d '`' | sort -u | tr '\n' ' ')"
-require "$GAP_CLASSES" "the iterate gap-class bullets"
-if [[ "$(wc -w <<<"$GAP_CLASSES")" -ne 3 ]]; then
-  fail "expected exactly 3 iterate gap classes, extracted: $GAP_CLASSES"
-else
-  pass "gap classes extracted from iterate skill: $GAP_CLASSES"
-fi
+check "graph entry is spec" "spec" "$(jq -r '.entry' "$GRAPH")"
 
-# skills/verify/SKILL.md: deterministic diff gates run against {baseSha}.
-VERIFY_GATE_SCRIPTS="$(grep -oE 'lib/[a-z-]+\.sh" "\{baseSha\}"' "$ROOT/skills/verify/SKILL.md" \
-  | grep -oE 'lib/[a-z-]+\.sh' | sort -u | tr '\n' ' ')"
-require "$VERIFY_GATE_SCRIPTS" "the verify deterministic gate scripts"
-if (( $(wc -w <<<"$VERIFY_GATE_SCRIPTS") < 2 )); then
-  fail "expected at least 2 verify gate scripts, extracted: $VERIFY_GATE_SCRIPTS"
-else
-  pass "verify gate scripts extracted: $VERIFY_GATE_SCRIPTS"
-fi
+# Phase agent nodes present
+for phase in spec discuss plan execute verify iterate deliver; do
+  n="$(jq -r --arg p "$phase" '[.nodes[] | select(.id==$p)] | length' "$GRAPH")"
+  check "phase node $phase present" "1" "$n"
+done
 
-# Escalation claims: gate failures re-enter execute.
-VERIFY_ESCALATES_TO_EXECUTE=0
-grep -q 'currentPhase = "execute"' "$ROOT/skills/verify/SKILL.md" \
-  && grep -q 'pendingRemediationTasks' "$ROOT/skills/verify/SKILL.md" \
-  && VERIFY_ESCALATES_TO_EXECUTE=1
-DELIVER_ESCALATES_TO_EXECUTE=0
-grep -q 'currentPhase = "execute"' "$ROOT/skills/deliver/SKILL.md" \
-  && DELIVER_ESCALATES_TO_EXECUTE=1
-[[ "$VERIFY_ESCALATES_TO_EXECUTE" == "1" ]] \
-  && pass "verify skill claims gate escalation to execute via pendingRemediationTasks" \
-  || fail "verify skill no longer claims gate escalation to execute (update this test)"
-[[ "$DELIVER_ESCALATES_TO_EXECUTE" == "1" ]] \
-  && pass "deliver skill claims failed-checks re-entry to execute" \
-  || fail "deliver skill no longer claims re-entry to execute (update this test)"
+# Forward chain: SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER.
+# Allow intermediate human/subgraph/gate nodes: reachability via BFS on all edges.
+reachable() {
+  local start="$1" goal="$2"
+  python3 - "$GRAPH" "$start" "$goal" <<'PY'
+import json, sys
+g=json.load(open(sys.argv[1]))
+start, goal = sys.argv[2], sys.argv[3]
+adj={}
+for e in g["edges"]:
+    adj.setdefault(e["from"], []).append(e["to"])
+seen=set(); stack=[start]
+while stack:
+    cur=stack.pop()
+    if cur==goal:
+        sys.exit(0)
+    if cur in seen: continue
+    seen.add(cur)
+    stack.extend(adj.get(cur, []))
+sys.exit(1)
+PY
+}
 
-# Corroborate each forward hop in the phase skill that persists it. iterate and
-# deliver signal their exits through the verdict/delivery records, so the
-# pairwise sweep covers spec through verify.
-for ((i = 0; i + 3 < ${#chain_arr[@]}; i++)); do
-  p="${chain_arr[$i]}"; s="${chain_arr[$((i + 1))]}"
-  if grep -qE "currentPhase( =)? \"$s\"" "$ROOT/skills/$p/SKILL.md"; then
-    pass "skills/$p persists currentPhase \"$s\" at phase exit"
+for pair in "spec:discuss" "discuss:plan" "plan:execute" "execute:verify" "verify:iterate" "iterate:deliver" "deliver:completed"; do
+  from="${pair%%:*}"; to="${pair##*:}"
+  if reachable "$from" "$to"; then
+    check "successor $from->$to" "1" "1"
   else
-    fail "skills/$p/SKILL.md does not persist currentPhase \"$s\" claimed by the cycle forward chain"
+    check "successor $from->$to" "1" "0"
   fi
 done
 
-# Script/agent bodies the graph may bind gates to must be referenced by a skill.
+# ITERATE rewind routes, each keyed on a deterministic gap probe
+for target in execute plan spec; do
+  n="$(jq -r --arg t "$target" '[.edges[] | select(.from=="iterate" and .kind=="route" and .to==$t)] | length' "$GRAPH")"
+  check "iterate rewind route to $target" "1" "$([[ "$n" -ge 1 ]] && echo 1 || echo 0)"
+  g="$(jq -r --arg e "gap=$target" '[.edges[] | select(.from=="iterate" and .kind=="route" and .condition.expects==$e)] | length' "$GRAPH")"
+  check "iterate route expects gap=$target" "1" "$([[ "$g" -ge 1 ]] && echo 1 || echo 0)"
+done
+
+# Remediation channel: verify writes the tasks, execute reads them, and the
+# rewind route consumes them (this is what replaced verify's prose escalation).
+chan="$(jq -r '
+  ([.nodes[] | select(.id=="verify") | .writes[]?] | index("pendingRemediationTasks") != null) and
+  ([.nodes[] | select(.id=="execute") | .reads[]?] | index("pendingRemediationTasks") != null) and
+  ([.edges[] | select(.from=="iterate" and .kind=="route" and .to=="execute")] | length > 0)
+' "$GRAPH")"
+check "verify->execute remediation channel declared" "true" "$chan"
+
+# DELIVER's CI-failure re-entry and its bounded retry loop
+d="$(jq -r '[.edges[] | select(.from=="deliver" and .to=="execute" and .kind=="route")] | length' "$GRAPH")"
+check "deliver->execute CI-remediation route" "1" "$([[ "$d" -ge 1 ]] && echo 1 || echo 0)"
+dl="$(jq -r '[.edges[] | select(.from=="deliver" and .to=="execute" and .kind=="loop" and .ceiling > 0)] | length' "$GRAPH")"
+check "deliver->execute retry loop has a ceiling" "1" "$([[ "$dl" -ge 1 ]] && echo 1 || echo 0)"
+
+# ITERATE's round budget lives on the graph loop edge, nowhere else
+il="$(jq -r '[.edges[] | select(.from=="iterate" and .to=="verify" and .kind=="loop" and .ceiling > 0)] | length' "$GRAPH")"
+check "iterate->verify round loop has a ceiling" "1" "$([[ "$il" -ge 1 ]] && echo 1 || echo 0)"
+
+# EXECUTE fanout/fanin
+fanout="$(jq '[.edges[] | select(.kind=="fanout")] | length' "$GRAPH")"
+fanin="$(jq '[.edges[] | select(.kind=="fanin")] | length' "$GRAPH")"
+check "execute fanout present" "1" "$([[ "$fanout" -ge 1 ]] && echo 1 || echo 0)"
+check "execute fanin present" "1" "$([[ "$fanin" -ge 1 ]] && echo 1 || echo 0)"
+
+# Critique subgraph referenced twice
+crit="$(jq '[.nodes[] | select(.kind=="subgraph" and .graph=="graph/critique.graph.json")] | length' "$GRAPH")"
+check "critique subgraph reused" "2" "$crit"
+
+# Script/agent gate bodies must be referenced by a skill — the graph may not
+# bind a gate to an implementation nothing invokes. Symbolic bodies (e.g.
+# plan-critique-fastpath) are engine-internal conditions and are exempt.
 SKILL_REFS="$(grep -rhoE 'lib/[a-z-]+\.sh|loop-spec:[a-z-]+' "$ROOT/skills" \
-  --include=SKILL.md | sort -u | tr '\n' ' ')"
-require "$SKILL_REFS" "the skill script/agent reference corpus"
-
-export FORWARD_CHAIN REWIND_TARGETS GAP_CLASSES VERIFY_GATE_SCRIPTS \
-  VERIFY_ESCALATES_TO_EXECUTE DELIVER_ESCALATES_TO_EXECUTE SKILL_REFS
-
-# --- the checker: graph JSON arrives in GRAPH_JSON so mutations stay in memory ---
-
-CHECKER="$(cat <<'PY'
-import json, os, sys
-
-graph = json.loads(os.environ["GRAPH_JSON"])
-forward = os.environ["FORWARD_CHAIN"].split()
-rewinds = set(os.environ["REWIND_TARGETS"].split())
-gaps = set(os.environ["GAP_CLASSES"].split())
-gate_scripts = os.environ["VERIFY_GATE_SCRIPTS"].split()
-skill_refs = set(os.environ["SKILL_REFS"].split())
-
-nodes = {n["id"]: n for n in graph.get("nodes", [])}
-adj = {}
-for e in graph.get("edges", []):
-    adj.setdefault(e.get("from"), []).append(e)
-
-phases = set(forward)
-fails = []
-
-
-def phase_successors(start):
-    """Phase nodes reachable from start, collapsing through non-phase nodes."""
-    out, seen, frontier = set(), set(), [start]
-    while frontier:
-        for e in adj.get(frontier.pop(), []):
-            t = e.get("to")
-            if t in phases:
-                out.add(t)
-            elif t not in seen:
-                seen.add(t)
-                frontier.append(t)
-    return out
-
-
-if graph.get("entry") != forward[0]:
-    fails.append("entry-mismatch: skills start the cycle at '%s' but the graph entry is '%s'"
-                 % (forward[0], graph.get("entry")))
-
-for p, s in zip(forward, forward[1:]):
-    if p not in nodes:
-        fails.append("skill-successor-missing: phase '%s' from the skills' forward chain has no graph node" % p)
-    elif s not in phase_successors(p):
-        fails.append("skill-successor-missing: skills declare %s -> %s but the graph has no path from '%s' to '%s'"
-                     % (p, s, p, s))
-
-iterate_successors = phase_successors("iterate") if "iterate" in nodes else set()
-for t in sorted(rewinds):
-    if t not in iterate_successors:
-        fails.append("skill-rewind-missing: skills declare ITERATE may rewind to '%s' but the graph has no iterate path to it" % t)
-
-for e in adj.get("iterate", []):
-    if e.get("kind") != "route":
-        continue
-    t = e.get("to")
-    for r in sorted({t} if t in phases else phase_successors(t)):
-        if r not in rewinds:
-            fails.append("unimplemented-rewind-target: graph routes iterate -> %s (reaching phase '%s') but no skill implements that rewind"
-                         % (t, r))
-
-route_expects = {(e.get("condition") or {}).get("expects")
-                 for e in adj.get("iterate", []) if e.get("kind") == "route"}
-for g in sorted(gaps):
-    if "gap=%s" % g not in route_expects:
-        fails.append("gap-route-missing: skills classify a '%s' gap but no iterate route edge expects 'gap=%s'" % (g, g))
-
-gate_bodies = {n.get("body") for n in graph.get("nodes", []) if n.get("kind") == "gate"}
-for s in gate_scripts:
-    if s not in gate_bodies:
-        fails.append("gate-node-missing: skills/verify runs deterministic gate '%s' but the graph declares no gate node with that body" % s)
-for n in graph.get("nodes", []):
-    body = n.get("body") or ""
-    # Symbolic gate bodies (e.g. plan-critique-fastpath) are engine-internal
-    # conditions; only script/agent bodies must be implemented by a skill.
-    if n.get("kind") == "gate" and (body.startswith("lib/") or body.startswith("loop-spec:")) \
-            and body not in skill_refs:
-        fails.append("unimplemented-gate: graph gate node '%s' names body '%s' which no skill references"
-                     % (n.get("id"), body))
-
-if os.environ["DELIVER_ESCALATES_TO_EXECUTE"] == "1":
-    if not any(e.get("to") == "execute" and e.get("kind") in ("route", "loop")
-               for e in adj.get("deliver", [])):
-        fails.append("deliver-escalation-missing: skills/deliver re-enters execute on failed checks but the graph has no deliver -> execute route/loop edge")
-
-if os.environ["VERIFY_ESCALATES_TO_EXECUTE"] == "1":
-    channel = ("pendingRemediationTasks" in nodes.get("verify", {}).get("writes", [])
-               and "pendingRemediationTasks" in nodes.get("execute", {}).get("reads", [])
-               and any(e.get("kind") == "route" and e.get("to") == "execute"
-                       for e in adj.get("iterate", [])))
-    if not channel:
-        fails.append("verify-escalation-channel-missing: skills/verify escalates gate failures to execute via pendingRemediationTasks, but the graph does not declare that channel (verify writes / execute reads / iterate -> execute route)")
-
-for f in fails:
-    print("CONFORMANCE FAIL: " + f)
-if fails:
-    sys.exit(1)
-print("conformance: ok (%d phases, %d rewind targets, %d gap routes, %d verify gates)"
-      % (len(forward), len(rewinds), len(gaps), len(gate_scripts)))
-PY
-)"
-
-conform() { python3 -c "$CHECKER" 2>&1; }
-
-expect_ok() {
-  local name="$1" out rc=0
-  out="$(conform)" || rc=$?
-  if [[ "$rc" == "0" ]]; then
-    pass "$name"
+  --include=SKILL.md | sort -u)"
+while IFS= read -r body; do
+  [[ -n "$body" ]] || continue
+  if grep -qxF "$body" <<<"$SKILL_REFS"; then
+    check "gate body $body referenced by a skill" "1" "1"
   else
-    fail "$name (checker exited $rc)"; sed 's/^/    /' <<<"$out"
+    check "gate body $body referenced by a skill" "1" "0"
   fi
+done < <(jq -r '.nodes[] | select(.kind=="gate") | .body // empty
+                | select(startswith("lib/") or startswith("loop-spec:"))' "$GRAPH")
+
+# Negative case: mutated graph must be detected
+mut="$ROOT/graph/.cycle.mutated.$$.json"
+jq 'del(.edges[] | select(.from=="spec"))' "$GRAPH" > "$mut"
+rc=0
+bash "$ROOT/lib/graph/validate.sh" "$mut" >/dev/null 2>&1 || rc=$?
+rm -f "$mut"
+check "mutated graph detected (non-zero)" "1" "$([[ "$rc" -ne 0 ]] && echo 1 || echo 0)"
+if [[ "$rc" -eq 0 ]]; then
+  echo "FAIL: conformance-negative: mutated graph was accepted" >&2
+fi
+
+# --- Residual-prose check (task-016 cutover) ---
+# The graph owns successors, rewind targets, gate escalation triggers, and retry
+# budgets. A phase skill re-declaring any of them in prose is drift: two routing
+# implementations guarantee the unexercised one decays untested.
+#
+# Banned per phase skill:
+#   1. currentPhase assignment to a phase literal — a successor or rewind
+#      declaration the graph declares as an edge. The one carve-out is
+#      "deliver": the terminal advance/stay pointer write is phase-exit
+#      bookkeeping, not route selection (pinned present by
+#      tests/delivery-phase-coverage.test.sh).
+#   2. direct successor invocation ("Route to `loop-spec:<phase>`") — the
+#      engine selects nodes; a skill never invokes its successor.
+#   3. a numeric retry budget duplicating a graph loop ceiling ("fixed at N",
+#      "bounded to two/N persisted ...").
+#   4. any LOOP_SPEC_GRAPH mention — there is no opt-in flag and no prose
+#      fallback path; the graph is unconditionally authoritative.
+ROUTE_TARGETS='(spec|discuss|plan|execute|verify|iterate)'
+
+residual_prose() {
+  # Prints offending lines; returns 0 when the file is clean, 1 when residual found.
+  local f="$1" hits
+  hits="$(grep -nE \
+    -e "currentPhase[[:space:]]*=[[:space:]]*\"${ROUTE_TARGETS}\"" \
+    -e "set[[:space:]]+currentPhase[[:space:]]+\"${ROUTE_TARGETS}\"" \
+    -e "[Rr]oute to .?loop-spec:(spec|discuss|plan|execute|verify|iterate|deliver)" \
+    -e "fixed at [0-9]+" \
+    -e "bounded to (two|[0-9]+) persisted" \
+    -e "LOOP_SPEC_GRAPH" \
+    "$f" || true)"
+  if [[ -n "$hits" ]]; then
+    printf '%s\n' "$hits"
+    return 1
+  fi
+  return 0
 }
 
-expect_flag() {
-  local name="$1" pattern="$2" out rc=0
-  out="$(conform)" || rc=$?
-  if [[ "$rc" != "0" ]] && grep -qF "$pattern" <<<"$out"; then
-    pass "$name"
+for phase in spec discuss plan execute verify iterate deliver; do
+  skill="$ROOT/skills/$phase/SKILL.md"
+  if out="$(residual_prose "$skill")"; then
+    check "no residual routing prose in $phase" "clean" "clean"
   else
-    fail "$name (rc=$rc, expected nonzero + message containing '$pattern')"
-    sed 's/^/    /' <<<"$out"
+    echo "residual routing prose in skills/$phase/SKILL.md:" >&2
+    printf '%s\n' "$out" >&2
+    check "no residual routing prose in $phase" "clean" "residual"
+  fi
+done
+
+# Deferral pins: the escalation trigger and rewind routes stay attributed to the
+# graph. Losing these citations is how an independent prose declaration creeps back.
+cite() {
+  local name="$1" file="$2" needle="$3"
+  if grep -qF -- "$needle" "$ROOT/$file"; then
+    check "$name" "1" "1"
+  else
+    echo "missing graph citation: $file lacks '$needle'" >&2
+    check "$name" "1" "0"
   fi
 }
+cite "plan escalation defers to critique graph"    skills/plan/SKILL.md    "graph/critique.graph.json"
+cite "discuss escalation defers to critique graph" skills/discuss/SKILL.md "graph/critique.graph.json"
+cite "iterate rewinds defer to cycle graph"        skills/iterate/SKILL.md "graph/cycle.graph.json"
+cite "verify remediation defers to cycle graph"    skills/verify/SKILL.md  "graph/cycle.graph.json"
+cite "deliver CI budget defers to cycle graph"     skills/deliver/SKILL.md "graph/cycle.graph.json"
 
-# --- positive case: the tree as shipped conforms ---
-
-GRAPH_JSON="$(cat "$GRAPH")" expect_ok "skills agree with graph/cycle.graph.json as shipped"
-
-# --- negative cases: each mutated in-memory copy must be detected ---
-
-GRAPH_JSON="$(jq '(.edges[] | select(.from=="human.after-plan" and .to=="execute") | .to) = "verify"' "$GRAPH")" \
-  expect_flag "retargeted forward edge (plan no longer reaches execute) flags" \
-  "skill-successor-missing: skills declare plan -> execute"
-
-GRAPH_JSON="$(jq '.edges |= map(select((.from=="iterate" and .to=="spec" and .kind=="route") | not))' "$GRAPH")" \
-  expect_flag "deleted iterate -> spec route flags the missing rewind" \
-  "skill-rewind-missing: skills declare ITERATE may rewind to 'spec'"
-
-GRAPH_JSON="$(jq '(.edges[] | select(.from=="iterate" and .to=="plan" and .kind=="route") | .to) = "completed"' "$GRAPH")" \
-  expect_flag "route to a rewind target no skill implements flags" \
-  "unimplemented-rewind-target: graph routes iterate -> completed"
-
-GRAPH_JSON="$(jq '(.edges[] | select(.from=="iterate" and .to=="execute" and .kind=="route") | .condition.expects) = "gap=refactor"' "$GRAPH")" \
-  expect_flag "reworded gap probe expectation flags the orphaned gap class" \
-  "gap-route-missing: skills classify a 'execute' gap"
-
-GRAPH_JSON="$(jq '(.nodes[] | select(.id=="verify.tamper") | .body) = "lib/unregistered-gate.sh"' "$GRAPH")" \
-  expect_flag "gate node body swap flags the skill gate with no node" \
-  "gate-node-missing: skills/verify runs deterministic gate 'lib/test-tamper-scan.sh'"
-
-GRAPH_JSON="$(jq '(.nodes[] | select(.id=="verify.tamper") | .body) = "lib/unregistered-gate.sh"' "$GRAPH")" \
-  expect_flag "gate node body swap flags the graph gate no skill references" \
-  "unimplemented-gate: graph gate node 'verify.tamper'"
-
-GRAPH_JSON="$(jq '.nodes |= map(if .id == "verify" then .writes -= ["pendingRemediationTasks"] else . end)' "$GRAPH")" \
-  expect_flag "dropped remediation write on verify flags the escalation channel" \
-  "verify-escalation-channel-missing"
-
-GRAPH_JSON="$(jq '.edges |= map(select((.from=="deliver" and .to=="execute") | not))' "$GRAPH")" \
-  expect_flag "deleted deliver -> execute edges flag the CI-failure re-entry" \
-  "deliver-escalation-missing"
-
-GRAPH_JSON="$(jq '.entry = "plan"' "$GRAPH")" \
-  expect_flag "moved graph entry flags the mismatch with the skills' start phase" \
-  "entry-mismatch"
+# Negative case: a synthetic skill carrying each banned declaration class must be
+# flagged — a residual check that cannot fail is not a check.
+neg="$(mktemp "${TMPDIR:-/tmp}/residual-neg.XXXXXX.md")"
+cat > "$neg" <<'MD'
+# synthetic phase skill
+- Set `currentPhase = "execute"` and go to Phase exit.
+MD
+if residual_prose "$neg" >/dev/null; then
+  check "residual-prose negative (assignment flagged)" "flagged" "missed"
+else
+  check "residual-prose negative (assignment flagged)" "flagged" "flagged"
+fi
+cat > "$neg" <<'MD'
+# synthetic phase skill
+Set LOOP_SPEC_GRAPH=1 to enable the graph engine.
+MD
+if residual_prose "$neg" >/dev/null; then
+  check "residual-prose negative (opt-in flagged)" "flagged" "missed"
+else
+  check "residual-prose negative (opt-in flagged)" "flagged" "flagged"
+fi
+cat > "$neg" <<'MD'
+# synthetic phase skill
+Gate retries: Route to `loop-spec:execute`. This route is bounded to two persisted attempts.
+MD
+if residual_prose "$neg" >/dev/null; then
+  check "residual-prose negative (route/budget flagged)" "flagged" "missed"
+else
+  check "residual-prose negative (route/budget flagged)" "flagged" "flagged"
+fi
+rm -f "$neg"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

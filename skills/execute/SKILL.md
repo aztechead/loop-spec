@@ -591,15 +591,16 @@ commit_strategy="$(bash "${CLAUDE_SKILL_DIR}/../../lib/workflow-config.sh" commi
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-execute
 lib/feature-write.sh append completedPhases "execute"
-lib/feature-write.sh set currentPhase "verify"
 lib/feature-write.sh set mergeQueue "[]"
 lib/feature-write.sh set currentTeammates "[]"
 ```
 
 #### Phase routing
 
-Always return to the cycle orchestrator after persisting `currentPhase = "verify"`;
-never invoke VERIFY directly. Cycle owns the phase boundary: continuous mode invokes
-VERIFY immediately, while `phaseHandoff == true` writes the paused result and ends
-the main-agent invocation. For `step` / `interactive`, include the completed-task
-summary and the next phase (`verify`) in the returned phase summary.
+Always return to the cycle orchestrator; never invoke a successor phase directly.
+EXECUTE declares no successor — `graph/cycle.graph.json` does, and the engine
+(`lib/graph/run.sh`, cycle Step 6) selects the next node. Cycle owns the phase
+boundary: continuous mode enters the engine-selected node immediately, while
+`phaseHandoff == true` writes the paused result and ends the main-agent invocation.
+For `step` / `interactive`, include the completed-task summary and the
+engine-selected next node in the returned phase summary.

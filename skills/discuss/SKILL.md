@@ -246,6 +246,10 @@ mkdir -p .loop-spec/features/{slug}/gate-logs/
 
 #### Mode selection (security signal)
 
+The escalation trigger is declared on the critique graph, not here:
+`graph/critique.graph.json` routes `critique.escalate -> critique.debate` when
+`lib/security-signal.sh` reports a match. This gate obeys that declaration:
+
 ```bash
 security_signal=""
 signal_rc=0
@@ -622,7 +626,6 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-discuss
 Update `feature.json` via `lib/feature-write.sh`:
 - `artifacts.spec = "docs/loop-spec/features/{slug}/SPEC.md"`
 - `completedPhases` append `"discuss"`
-- `currentPhase = "plan"`
 
 ### Step 7 - TeamDelete and clear team state
 
@@ -636,10 +639,12 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 ### Step 8 - Phase routing
 
-Always return to the cycle orchestrator after persisting `currentPhase = "plan"`;
-never invoke PLAN directly. Cycle owns the phase boundary: continuous mode invokes
-PLAN immediately, while `phaseHandoff == true` writes the paused result and ends the
-main-agent invocation. For `step` / `interactive`, include
+Always return to the cycle orchestrator; never invoke a successor phase directly.
+DISCUSS declares no successor — `graph/cycle.graph.json` does, and the engine
+(`lib/graph/run.sh`, cycle Step 6) selects the next node. Cycle owns the phase
+boundary: continuous mode enters the engine-selected node immediately, while
+`phaseHandoff == true` writes the paused result and ends the main-agent invocation.
+For `step` / `interactive`, include
 `DISCUSS complete. SPEC at docs/loop-spec/features/{slug}/SPEC.md.` in the returned
 phase summary.
 

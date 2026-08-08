@@ -265,7 +265,6 @@ Update `feature.json` via `lib/feature-write.sh`:
 - `artifacts.specInterview = ".loop-spec/features/{slug}/spec-interview-transcript.md"`
 - `artifacts.spec = "docs/loop-spec/features/{slug}/SPEC.md"`
 - `completedPhases` append `"spec"`
-- `currentPhase = "discuss"`
 
 ### Step 5 - Commit SPEC.md
 
@@ -285,10 +284,12 @@ fi
 
 ### Step 6 - Phase routing
 
-Always return to the cycle orchestrator after persisting `currentPhase = "discuss"`;
-never invoke DISCUSS directly. Cycle owns the phase boundary: continuous mode invokes
-DISCUSS immediately, while `phaseHandoff == true` writes the paused result and ends the
-main-agent invocation. For `step` / `interactive`, include
+Always return to the cycle orchestrator; never invoke a successor phase directly.
+SPEC declares no successor — `graph/cycle.graph.json` does, and the engine
+(`lib/graph/run.sh`, cycle Step 6) selects the next node. Cycle owns the phase
+boundary: continuous mode enters the engine-selected node immediately, while
+`phaseHandoff == true` writes the paused result and ends the main-agent invocation.
+For `step` / `interactive`, include
 `SPEC complete. SPEC.md at docs/loop-spec/features/{slug}/SPEC.md.` in the returned
 phase summary.
 
