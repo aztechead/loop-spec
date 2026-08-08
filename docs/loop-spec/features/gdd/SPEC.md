@@ -95,7 +95,7 @@ currently a one-off.
 |---|---|---|
 | Declared data, not a derived map | Graphify rotted silently because it described a subject that drifted. A declared contract *is* the control flow, so a wrong edge breaks the next run at the node that took it. | Regenerating the graph from the skills (reintroduces derive-and-rot); leaving control flow in prose (that is the problem). |
 | Full cutover | Two control-flow implementations guarantee the unexercised one decays untested — the drift `lib/feature-init.sh` exists to prevent. | Opt-in flag with prose default (dual maintenance); graph as documentation only (nothing enforces it). |
-| Conformance test as build order | Proves the change is a refactor before it is an extension, and makes the cutover mechanical. | Cutting over directly (no evidence behavior was preserved); keeping the test as a permanent parallel check (that is dual maintenance by another name). |
+| Conformance test as build order | Proves the change is a refactor before it is an extension, and makes the cutover mechanical — the paper's own testing guidance is to assert route behavior and state transitions rather than answer quality (EVID-016), which is exactly what a conformance test checks. | Cutting over directly (no evidence behavior was preserved); keeping the test as a permanent parallel check (that is dual maintenance by another name). |
 | Probe-and-expects conditions | `CLAUDE.md`'s "probes, not judgments" applied to the whole topology instead of to four spots. | Model-evaluated conditions (unreproducible and unauditable, by house law). |
 | State channel layered over `feature.json` | `feature.json` is already the committed resume contract with atomic writes and `.bak` rotation; a second store would fork the source of truth. | A separate state file per node (forks resume). |
 | Deterministic effort probe | Matches the established probe contract: answer and reason on one line, fail safe when unknown. | A model-scored effort judgment (rejected by house law). |
@@ -176,8 +176,8 @@ currently a one-off.
 - Never let the graph describe anything it does not execute. A node in the graph that no
   engine path dispatches is a validator failure, not documentation.
 - Never express iteration as a back-edge among `chain` / `route` / `fanout` / `fanin`
-  edges. Those four kinds must form a DAG; a literal cycle deadlocks, because each node
-  waits on the other and neither becomes ready (EVID-019).
+  edges. Those four kinds must form a DAG; a literal cycle deadlocks a DAG engine, and
+  loop-spec's is one — each node waits on the other and neither becomes ready (EVID-019).
 - Never declare a `loop` edge without a numeric ceiling, and never let the engine exceed
   one. An unbounded "until it is good enough" is unbounded in practice.
 - Never treat a `system2` verdict as exempt from the gates that check it. Both processing
@@ -209,7 +209,12 @@ currently a one-off.
 ### 1. The graph vocabulary
 
 A new top-level `graph/` directory holds graph definitions as JSON, with
-`graph/schema.json` as their schema.
+`graph/schema.json` as their schema. This mirrors the shape the paper's own recipes
+converge on — typed state, nodes, conditional edges, and persistence, with auditability as
+a design concern rather than a fifth primitive (EVID-013) — and its own test for node
+granularity: "if a step would be useful in an audit log, a retry rule, or a dashboard, it
+is a candidate graph node" (EVID-015), which is what the `reads[]`/`writes[]`/checkpoint
+contract below gives every node here.
 
 **Nodes** are the units of work. Five kinds:
 
@@ -220,6 +225,15 @@ A new top-level `graph/` directory holds graph definitions as JSON, with
 | `gate` | runs a probe and admits or blocks | the acceptance gate, the test-tamper scan |
 | `subgraph` | nests another graph | the critique-gate protocol, reused by DISCUSS and PLAN |
 | `human` | interrupts and waits for a person | the `step` style's inter-phase pause |
+
+These five kinds are loop-spec's own vocabulary, not any source's. `gate` has no
+counterpart in either external system-design source: it is absent from the ADK graphs
+page's node types (which name Agent, Function, Tool, and nested Workflow agents), and
+workflowbuilder.io uses "gate" only as an informal routing flavour — "the gate around it
+is still a shape you draw" — never as a named node kind (EVID-020). `function` subsumes
+what ADK calls a `Tool` node (EVID-021) without either source naming that fold; loop-spec
+draws no line between "a tool the agent calls" and "a deterministic script the engine
+calls" because both are code with no judgment in the loop.
 
 Every node declares `id`, `kind`, `reads[]`, `writes[]`, and a default `effort`.
 
@@ -274,13 +288,16 @@ bound to the loop-spec construct that already realizes it:
 | Reflection | bounded `loop` around a `gate` | critique gates, spec-compliance review, ITERATE's judge |
 | Human-in-the-loop | `human` node | `step` / `interactive` styles, the ambiguity gate, checkpoint PRs |
 
-Two clarifications the sources are explicit about, and which the doc must preserve rather
-than smooth over. **Orchestrator-workers is not a sixth pattern**; it is a run-time variant
-of parallelization in which the worker count is decided during the run rather than drawn in
-advance — which is exactly what `lib/dag-width.sh` plus `lib/execute-rung.sh` already do.
-And the generate-evaluate-repeat shape is named **reflection**, not evaluator-optimizer; the
-distinction matters because reflection is the one shape that is intrinsically a cycle, and
-cycles are where graph engines break (§4).
+Two clarifications, one the source is explicit about and one it is silent on. **Orchestrator-
+workers is not a sixth pattern**; it is a run-time variant of parallelization in which the
+worker count is decided during the run rather than drawn in advance — which is exactly what
+`lib/dag-width.sh` plus `lib/execute-rung.sh` already do (EVID-018). And the source names
+the generate-evaluate-repeat shape **reflection** and never uses the term
+evaluator-optimizer — the string does not occur anywhere in any of the three sources
+supplied for this design, so "not evaluator-optimizer" is an absence in the sources, not a
+correction one of them states. The distinction still matters here because reflection is the
+one shape that is intrinsically a cycle, and a cycle deadlocks a DAG engine, and loop-spec's
+is one (§4).
 
 The plugin already implements all five. Each is currently a bespoke prose mechanism. The
 value here is not new capability; it is that five mechanisms collapse into one vocabulary
@@ -306,9 +323,9 @@ declaration of the cycle would therefore be a graph that validates and then dead
 So `loop` is a distinct edge kind with distinct rules, not a `chain` edge pointing backwards:
 
 - Every `loop` edge carries a numeric ceiling, and the engine stops at it. *Bound every
-  loop — an iteration cap, a stop condition, a budget* — or "until it is good enough" means
-  forever (EVID-019). loop-spec already has these ceilings in prose (3 retries per gate, 40
-  global, the ITERATE limit); the graph makes them data.
+  loop — an iteration cap, a stop condition, a budget* — or "until it is good enough" can
+  mean forever (EVID-028). loop-spec already has these ceilings in prose (3 retries per
+  gate, 40 global, the ITERATE limit); the graph makes them data.
 - A `loop` edge must be **unrolled or contained** by the engine. The validator rejects any
   cycle formed by `chain`, `route`, `fanout`, or `fanin` edges — those four kinds must form
   a DAG — so the deadlock shape cannot be declared at all.
@@ -322,54 +339,87 @@ the validator is where that equality is enforced.
 
 ### 5. When a graph is the wrong answer
 
-Both sources are emphatic that a graph is not a universal default, and the honest way to
-adopt one is to check the test rather than assume. The paper's is direct: a graph is
-probably not the right first abstraction *"if a workflow has no branch, no durable state, no
-retry semantics, no human pause, and no audit requirement"* (EVID-017). ADK makes the same
-point structurally by offering three styles — graph-based for deterministic structured
-processes, **dynamic** (ordinary code with loops, conditionals, recursion) when control flow
-is too complex or iterative for a static graph, and prebuilt sequential/parallel/loop agents
-for common shapes (EVID-022).
+The paper is the one source that states an entry test, and the test is disjunctive, not
+conjunctive: LangGraph "is usually justified when **at least one** of the following holds"
+— the process can pause and resume later, the next step depends on explicit state, failure
+should route to a repair path, the team needs a trace of which route was taken and why, or
+multiple tools or model calls must share a durable state object (paper.txt §2). The same
+section gives the negative case, and it is hedged, not absolute: if a workflow "has no
+branch, no durable state, no retry semantics, no human pause, and no audit requirement," a
+graph "is probably not the right first abstraction" (EVID-017). That hedge is the paper's
+own choice of words and this spec keeps it; the paper never states a prohibition, only a
+default to check before reaching for the structure.
 
-loop-spec meets all five of the paper's criteria, which is why this is worth doing:
-branches (three ITERATE rewinds, the critique ladder, four EXECUTE rungs), durable state
+loop-spec does not scrape by on one disjunct; it satisfies all five of the entry test's
+conditions, so the paper's own bar — clearing even one — is not in doubt here: branches
+(three ITERATE rewinds, the critique ladder, four EXECUTE rungs), durable state
 (`feature.json` as a committed resume contract), retry semantics (3 per gate, 40 global),
 human pauses (four execution styles, the ambiguity gate), and an audit requirement (every
-phase commits its artifacts, and `REVIEW-ORDER.md` exists to be read by a human). A plugin
-that met none of them should not do this.
+phase commits its artifacts, and `REVIEW-ORDER.md` exists to be read by a human).
 
-The dynamic style is the honest name for what a node *body* still is. The engine owns
+ADK is not a second source for this test, and this spec no longer attributes it one. The
+ADK graphs page (EVID-021, EVID-022) is an advocacy page: it lists advantages of
+graph-based workflows and states no disadvantages. Its closest structural analogue is
+naming three workflow styles — graph-based, **dynamic** (programmatic orchestration in your
+own code: loops, conditionals, recursion), and prebuilt sequential/parallel/loop agents —
+and recommending the dynamic style when control flow is "too complex or iterative for a
+static graph" (EVID-022). That is the opposite direction from the paper's test: the paper
+warns off a graph when a workflow is *too simple* to earn the structure; ADK's dynamic
+style is offered for workflows *too complex* for a static graph to express cleanly. The two
+are not the same test, and only the paper's is cited as the "graph is not a universal
+default" check.
+
+EVID-017 also records what the paper does not exercise — multi-agent supervisor-worker
+subgraphs, and cross-session durable checkpoints only partially. §8 addresses that gap
+directly, since this design goes there and the paper does not.
+
+The dynamic style is still the honest name for what a node *body* is here. The engine owns
 sequencing; a phase skill's interior remains ordinary orchestration, and this feature does
 not try to flatten it into nodes.
 
-### 6. Dual-process effort
+### 6. Effort as a probe, not a psychology model
 
-Three things the source insists on, which a careless reading of "System 1 / System 2" gets
-backwards and which this design must not encode.
+The Decision Lab article that supplies the names `system1`/`system2` is about human
+cognition only — "AI," "model" in the machine-learning sense, "compute," "agent," and
+"software" appear nowhere in its body. What it contributes to this design is the
+vocabulary, plus three cautions about how that vocabulary is commonly misread once it
+leaves the psychology literature. The source names these explicitly as popular-culture
+misconceptions: that the two systems are literal, separate parts of the brain — Kahneman
+himself says "there is no part of the brain that either of the systems would call home"
+(EVID-027); that System 1 always runs first with System 2 as a fallback, when in fact
+almost all processes mix both (EVID-023); and that System 1 is the source of bias while
+System 2 corrects it, when in fact "both systems are susceptible to biases and mistakes,
+such as confirmation bias" (EVID-023).
 
-**System 1 is not the bias and System 2 is not the fix.** That is named explicitly as a
-misconception: *"both systems are susceptible to biases and mistakes, such as confirmation
-bias"* (EVID-023). So the deliberate path is not a correctness oracle. Escalating a node to
+This design takes the cautions seriously and borrows the names. It does not borrow
+authority for what the probe measures. `lib/effort-probe.sh`'s inputs — node kind,
+`lib/security-signal.sh` result, measured DAG width, changed-file count, task count, prior
+attempt count for this node, and whether the node authorizes delivery — come from
+loop-spec's own measurements and from `CLAUDE.md`'s "probes, not judgments" rule, the same
+rule that produced `lib/security-signal.sh` and the static role table this probe replaces
+(EVID-010, EVID-011). The source's own observation that System 2 "is typically better
+reserved for a novel, effortful activity... [with] greater implications" while System 1
+suits repetitive habitual work (EVID-026) reads as consonant with what the probe computes,
+but it is not where the probe's input list comes from — the list above is.
+
+Where this design does not follow the source's sequencing caution, that is stated plainly
+rather than claimed away. `lib/conflict-monitor.sh` raises a node's **next attempt** to
+`system2` after a deterministic failure signal — which is, in shape, exactly "System 1
+first, then System 2 if necessary," the pattern the source names as a misconception because
+real cognition mixes both systems on almost every task. `lib/effort-probe.sh` answers with
+one of two *exclusive* values per attempt, never a blend. This design does not mirror the
+source's correction here, and does not claim to: an exclusive mode plus failure-triggered
+escalation is chosen for auditability — one mode, one reason, one line, per `CLAUDE.md`'s
+probe contract — over psychological fidelity to how mixed human processing actually works.
+
+The bias caution is one this design does follow operationally: escalating a node to
 `system2` buys more effort, not a guarantee, and nothing in this design may treat a
-`system2` verdict as exempt from the gates that check it.
-
-**They are not sequential.** "First System 1, then System 2 if needed" is also named as a
-misconception — almost all processes mix both (EVID-023). The probe therefore selects an
-*effort mode for a node*, not a stage the run passes through. There is no System 1 pass
-followed by a System 2 pass.
-
-**Deliberation has its own failure mode.** The invisible-gorilla result is that System 2 can
-dominate attention so completely that System 1 fails to register conspicuous elements
-(EVID-025). Maximal effort everywhere is not free and not strictly safer; it narrows
-attention. This is the argument for a probe that *chooses*, rather than a policy that always
-escalates.
-
-What the source does support, and what this design takes: System 2 suits novel, effortful
-work and decisions with greater implications, while System 1 suits repetitive habitual work
-(EVID-026) — that is the probe's input list. And System 2 is activated *when an event
-violates the model of the world System 1 maintains* (EVID-024) — deliberation wakes on
-surprise. That is the conflict monitor, and it is why the monitor keys on contradiction and
-failure rather than on elapsed time or cost.
+`system2` verdict as exempt from the gates that check it. Maximal effort everywhere is also
+not free: the invisible-gorilla result is that System 2 can dominate attention so
+completely that System 1 fails to register conspicuous elements (EVID-025) — context for
+why the probe *chooses* an effort level rather than a policy that always escalates, not a
+claim that `lib/effort-probe.sh` reproduces the attentional mechanism that experiment
+describes.
 
 `lib/effort-probe.sh` answers, per node, how hard to think:
 
@@ -378,11 +428,8 @@ $ bash lib/effort-probe.sh --node execute.task-002 --feature-dir .loop-spec/feat
 mode=system2 reason=security-signal:credential at lib/graph/port-local.sh:41
 ```
 
-Inputs are deterministic and enumerated: node kind, `lib/security-signal.sh` result,
-measured DAG width, changed-file count, task count, prior attempt count for this node,
-and whether the node authorizes delivery. No model judgment participates. Any input that
-cannot be resolved yields `system2` — the probe fails safe toward deliberation, never
-toward speed.
+No model judgment participates. Any input that cannot be resolved yields `system2` — the
+probe fails safe toward deliberation, never toward speed.
 
 The answer binds three things. **Model**: `system1` takes the throughput alias,
 `system2` the reasoning alias, replacing the static role table in
@@ -400,7 +447,11 @@ up*. It reports a conflict from deterministic signals only: a failing test comma
 `[major]` gate finding, contradictory outputs from two agents on the same node, or N
 consecutive identical failures. When it fires, the node's **next attempt** is raised to
 `system2` and the signal is written to the trace. It does not rewind, does not replay
-from a checkpoint, and never blocks on its own.
+from a checkpoint, and never blocks on its own. "System 2 is activated when an event
+violates the model of the world System 1 maintains" (EVID-024) is the human-cognition
+analogy for why the monitor keys on contradiction and failure rather than on elapsed time
+or cost; the monitor's actual trigger is the four deterministic signals above, not a
+reading of that analogy.
 
 ### 7. Checkpoints, interrupts, trace
 
@@ -412,6 +463,17 @@ A `human` node is a real interrupt: the engine writes a checkpoint, emits a resu
 pause record, and stops. Any later invocation — same session, a new session tomorrow, a
 different machine that cloned the repo — resumes at exactly that node with exactly that
 state. Resume stops being a scan-and-infer procedure and becomes a lookup.
+
+Checkpointing every node boundary is denser than the paper's own bar, and that gap is
+worth stating rather than leaving implicit: its guidance is to "add checkpointing only
+when pause/resume is real," since checkpointers are most valuable for HITL review,
+background jobs, and long-running processes (EVID-029). loop-spec checkpoints at *every*
+node, not only at `human` nodes, because pause/resume is real at every boundary here, not
+only at declared interrupts — the same checkpoint record is what makes a node instance
+handable to a foreign claimant over the port (§8). An EXECUTE task can be picked up by a
+different session or machine at any node, not only at a `human` pause; narrowing
+checkpoints to `human` nodes would satisfy the paper's bar for HITL alone but would leave
+distribution unable to hand off mid-graph.
 
 `lib/graph/trace.sh` wraps `lib/events.sh`, adding `node`, `edge`, `probe`, `probeReason`,
 and `effort` to every event, and inherits its never-abort contract verbatim. Because the
@@ -447,6 +509,17 @@ from the originating session. On `complete`, the state hash is re-checked; a sta
 is rejected rather than reconciled. This generalizes the SPEC/PLAN hash-lock the loop
 fleet already uses to stop a worker rewriting requirements to match its work.
 
+**Scope honesty.** No supplied source exercises this end-to-end, and neither §8 nor §9
+should read as if one does. The paper's own limitations section marks its use-case
+coverage table "No" for multi-agent supervisor-worker subgraphs and "Partial" for
+cross-session durable checkpoints, and states plainly that its three executable recipes
+"deliberately omit multi-agent supervisor–worker subgraphs, customer-support escalation
+playbooks, and cross-session memory stores" (EVID-017). The ADK graphs page does not
+address multi-agent distribution or cross-session persistence at all. The handoff port
+therefore rests on loop-spec's own requirements — the loop fleet's existing SPEC/PLAN
+hash-lock, and `CLAUDE.md`'s house rule that a design speaks to an interface with one
+shipped implementation and no speculative adapters — not on external precedent.
+
 ### 9. Solo and together
 
 The same graph runs at every width. Width selects the rung — inline, subagent waves, a
@@ -459,7 +532,9 @@ This is what makes distribution safe. When EXECUTE fans out and task-002 goes to
 in another session, that agent is not running a degraded variant of the workflow; it is
 running the same declared node under the same typed contract, and its return is checked
 against the same criteria. `lib/execute-rung.sh` keeps its job — measuring width and
-capability — and gains one more rung to select.
+capability — and gains one more rung to select. This section carries no source citation for
+the same reason §8's scope-honesty paragraph gives: no supplied source demonstrates
+cross-session, multi-agent execution of a workflow graph.
 
 ### 10. Why this is not graphify
 
@@ -617,7 +692,14 @@ There is no fourth stage in which the old path is kept around.
      Anthropic-style patterns rather than the five this source states), a graph
      visualization capability not present in the ADK document, and a System 1 / System 2
      characterisation that reproduced the exact misconception the source corrects. They
-     are replaced below, and the corrections are load-bearing in sections 3, 4 and 6. -->
+     are replaced below, and the corrections are load-bearing in sections 3, 4 and 6.
+
+     A source-fidelity audit on 2026-08-08 found EVID-021 and EVID-026 had recorded EMPTY
+     out: fields in EVIDENCE.md — both original greps died on a Unicode em dash the
+     supplied documents use. Both were re-run with em-dash-free patterns and now carry
+     verbatim out: text; EVID-027..029 were added for claims this audit surfaced with no
+     prior ledger entry. The "every EVID-013..026 output field is a verbatim quote" line
+     above is accurate as of that fix, not as originally written. -->
 
 - EVID-001: `lib/execute-rung.sh:33-46` selects the EXECUTE rung from probed subagent, CLI, and loop-runtime capability; all four rungs are in-session.
 - EVID-002: `lib/dag-width.sh:1-22` computes peak wave width by Kahn's algorithm and documents that the ladder reads W to choose subagent vs team vs workflow.

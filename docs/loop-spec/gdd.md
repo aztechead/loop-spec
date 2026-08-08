@@ -7,10 +7,19 @@ It is not a derived map of the codebase.
 ## Pattern bindings
 
 The source vocabulary is one building block (the tool-using agent) plus five
-recurring shapes (EVID-018). Orchestrator-workers is a run-time variant of
+recurring **patterns** — chaining, routing, parallelization, reflection, and
+human-in-the-loop (EVID-018). Orchestrator-workers is a run-time variant of
 parallelization, not a sixth pattern.
 
-| Pattern | Graph shape | Realized today by |
+The **shapes** each pattern binds to below — `chain`, `route`, `fanout`,
+`fanin`, `loop`, `gate`, `human` — are loop-spec's own graph vocabulary, not
+the source's. The source names the five patterns; it does not name these
+edge/node kinds, and `gate` in particular has no counterpart in any supplied
+source as a formal node kind (see `docs/loop-spec/features/gdd/SPEC.md` §1).
+Only the left column below is source-derived; the middle and right columns
+are how loop-spec expresses and already realizes each pattern.
+
+| Pattern (source) | Graph shape (loop-spec) | Realized today by |
 |---|---|---|
 | Prompt chaining | `chain` edges | SPEC → DISCUSS → PLAN → EXECUTE → VERIFY → ITERATE → DELIVER |
 | Routing | `route` edges | `skills/auto/` + `lib/task-route.sh` (micro / debug / full) |
