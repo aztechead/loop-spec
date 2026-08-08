@@ -88,7 +88,8 @@ called done while its decision is unimplemented.
 | a handoff bundle is self-contained and content-addressed, and a returning claimant whose state hash does not match is rejected rather than reconciled. | task-020 |
 | solo and multi-agent runs execute the same graph — width selects the rung and never removes a node. | task-003, task-020 |
 | this feature is the 3.0 headline and supersedes the ROADMAP-3.0 pillar sequencing, with Pillars A-D re-expressed as graphs over the new substrate. | task-024 |
-| the six named agentic workflow patterns are documented as subgraph shapes bound to the loop-spec construct that already realizes each one. | task-023 |
+| the five named agentic workflow patterns are documented as subgraph shapes bound to the loop-spec construct that already realizes each one, with orchestrator-workers recorded as a run-time variant of parallelization rather than a sixth pattern. | task-023 |
+| `chain`, `route`, `fanout` and `fanin` edges must form a DAG; iteration is expressible only as a `loop` edge carrying a numeric ceiling, which the engine either unrolls into bounded passes or contains inside a single node. | task-001, task-002, task-014 |
 
 ## File map
 
@@ -194,7 +195,8 @@ in `reads[]` or `writes[]`.
 - [ ] `graph/schema.json` parses as JSON and declares exactly the five node kinds and five edge kinds named above.
 - [ ] The schema's `route` condition definition requires both `probe` and `expects` and sets `additionalProperties: false`, so a prose or free-text condition cannot validate.
 - [ ] The schema declares a `state` key space, and every key in it is present in the schema v7 listing in `skills/shared/feature-state-schema.md`.
-- [ ] `tests/lib/graph-schema.test.sh` asserts the two enum sets, the closed condition shape, and that a graph declaring an unknown node kind fails validation.
+- [ ] The `loop` edge definition requires a numeric `ceiling` and a `strategy` of `unroll` or `contain`, so iteration cannot be declared unbounded. This is the decision that `chain`, `route`, `fanout` and `fanin` edges must form a DAG while iteration is expressible only as a bounded `loop` edge.
+- [ ] `tests/lib/graph-schema.test.sh` asserts the two enum sets, the closed condition shape, the required loop ceiling and strategy, and that a graph declaring an unknown node kind fails validation.
 - [ ] The schema file contains no executable content and no runtime templating.
 
 ---
@@ -225,8 +227,9 @@ any flag / 2 on bad invocation.
 - [ ] It exits 1 and emits a `FLAG` line when a `route` edge's condition is a free-text string rather than a `{probe, expects}` object. This is the decision that every route edge condition names a probe script and an expected value.
 - [ ] It exits 1 when a `route` condition's `probe` path does not exist in the tree or is not executable.
 - [ ] It exits 1 for an edge whose `from` or `to` names an undeclared node, for a node unreachable from any entry node, for a `loop` edge with no numeric ceiling, and for a `fanin` with no join rule.
+- [ ] It exits 1 when the subgraph of `chain`, `route`, `fanout` and `fanin` edges contains a cycle, detected by the same Kahn's-algorithm shape `lib/dag-width.sh` already uses. This is the decision that those four edge kinds must form a DAG and that iteration is expressible only as a bounded `loop` edge.
 - [ ] It exits 2 on missing or unreadable arguments, and never exits 0 on an unreadable file (fail safe).
-- [ ] `tests/lib/graph-validate.test.sh` covers one accepting case and one case per rejection rule above.
+- [ ] `tests/lib/graph-validate.test.sh` covers one accepting case and one case per rejection rule above, including a non-`loop` back-edge case.
 
 ---
 
@@ -260,6 +263,8 @@ the node set.
 - [ ] ITERATE's three gap classes appear as three distinct `route` edges targeting `execute`, `plan`, and `spec`, each with a `{probe, expects}` condition.
 - [ ] EXECUTE appears as a `fanout` node with a matching `fanin` join, so the same declaration serves width 1 and width N.
 - [ ] The critique protocol is declared once in `graph/critique.graph.json` and referenced by `subgraph` nodes from both discuss and plan — not duplicated.
+- [ ] Every declared node passes the source's node-boundary test: it is a step that would be useful in an audit log, a retry rule, or a dashboard (EVID-015). Steps failing that test stay inside a node body rather than becoming nodes.
+- [ ] Every cycle in today's behavior — gate re-dispatch, the three ITERATE rewinds, DELIVER's CI-failure path, critique rounds — is declared as a `loop` edge with a ceiling matching the limit the skills enforce today, not as a back-edge among the acyclic edge kinds.
 - [ ] No skill file is modified by this task; the declaration is additive and behavior is unchanged.
 
 ---
@@ -569,7 +574,8 @@ skill dispatch.
 - [ ] A fresh process resuming from that pause record begins traversal at exactly the interrupted node id.
 - [ ] The engine emits a terminal result object whose keys match those produced by `lib/cycle-result.sh`.
 - [ ] The engine contains no harness-specific branching; harness differences are confined to node bodies via `lib/harness.sh`.
-- [ ] A `loop` edge stops at its declared ceiling rather than running unbounded.
+- [ ] A `loop` edge stops at its declared ceiling rather than running unbounded, under both the `unroll` and `contain` strategies. This is the decision that `chain`, `route`, `fanout` and `fanin` edges must form a DAG while iteration is either unrolled into bounded passes or contained inside a single node.
+- [ ] The engine never becomes ready-starved on a valid graph: `tests/lib/graph-run.test.sh` asserts a traversal completes rather than stalling, which is the deadlock the DAG-only engines documented in the sources exhibit on a literal back-edge.
 
 ---
 
@@ -809,13 +815,14 @@ breaks the next run at the node that took it.
 - `docs/loop-spec/bmad-scan-proposals.md` (the house structure for an external-scan document, including its rejected-alternatives section)
 - `graph/cycle.graph.json`, `skills/shared/graph-contract.md`
 
-**Verify:** `grep -cE '^\| (Prompt chaining|Routing|Parallelization|Orchestrator-workers|Evaluator-optimizer|Human-in-the-loop) \|' docs/loop-spec/gdd.md` returns 6; `bash tests/graph-docs-coverage.test.sh` exits 0.
+**Verify:** `grep -cE '^\| (Prompt chaining|Routing|Parallelization|Reflection|Human-in-the-loop) \|' docs/loop-spec/gdd.md` returns 5; `grep -cE '^\| Evaluator-optimizer \|' docs/loop-spec/gdd.md` returns 0; `bash tests/graph-docs-coverage.test.sh` exits 0.
 
 **Acceptance criteria:**
-- [ ] `docs/loop-spec/gdd.md` contains a table binding all six named patterns to a graph shape and to the loop-spec construct realizing it.
+- [ ] `docs/loop-spec/gdd.md` contains a table binding all five named patterns to a graph shape and to the loop-spec construct realizing it. This is the decision that the five named agentic workflow patterns are documented as subgraph shapes bound to the loop-spec construct that already realizes each one, with orchestrator-workers recorded as a run-time variant of parallelization rather than a sixth pattern.
 - [ ] It contains a section explaining why the workflow graph is not a return of graphify, citing the measured evidence recorded in `CLAUDE.md`.
 - [ ] It records rejected alternatives with reasons, in the style of `docs/loop-spec/bmad-scan-proposals.md`, so the decisions are not relitigated.
-- [ ] It cites the four external sources and marks any claim about them that could not be probed as an assumption with a verify command.
+- [ ] It cites the four primary sources by EVID id from `docs/loop-spec/features/gdd/EVIDENCE.md`, and states which claims come from the supplied archives rather than a live fetch.
+- [ ] It records the two source corrections that shaped this design: that reflection is a cycle a DAG engine will not run, and that "System 1 creates bias, System 2 fixes it" is a named misconception.
 - [ ] `tests/graph-docs-coverage.test.sh` asserts each of `graph-contract.md`, `dual-process.md`, and `handoff-port.md` exists and has at least one referencing skill.
 
 ---
@@ -873,4 +880,3 @@ suites registered in `tests/run-all.sh`.
 - [ ] `CHANGELOG.md` records the change under 3.0.0, including the removal of prose routing and the fact that no user-facing invocation changed.
 - [ ] All twelve new test suites are registered in `tests/run-all.sh` via `run_suite`.
 - [ ] `bash tests/run-all.sh` exits 0.
-</content>
