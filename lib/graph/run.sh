@@ -13,7 +13,7 @@
 #   1  validation / runtime failure
 #   2  bad invocation
 #
-# Harness-neutral: never branches on harness; node bodies may via lib/harness.sh.
+# harness-neutral: never branches on harness; node bodies may via lib/harness.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

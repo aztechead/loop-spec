@@ -19,7 +19,7 @@ Design constraints that hold throughout:
 - No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`; loop-spec ships no graph, symbol index, or embedding store. A stored map rots, and a rotted map is worse than none because it is wrong with authority.
 - Works with or without Claude Code agent teams, and on both team harness generations. Without teams it degrades to one-shot subagents or a bounded headless loop fleet.
 
-Current version: 2.35.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 3.0.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md) — the cycle is a declared graph (`graph/cycle.graph.json`) executed by `lib/graph/run.sh`, with per-node checkpoints, dual-process effort probes, and a harness-neutral handoff port for foreign claimants. Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md) — the cycle is a declared graph (`graph/cycle.graph.json`) executed by `lib/graph/run.sh`, with per-node checkpoints, dual-process effort probes, and a harness-neutral handoff port for foreign claimants.
 
 ## Install
 

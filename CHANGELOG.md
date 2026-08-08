@@ -2,6 +2,37 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [3.0.0] - 2026-08-08
+
+Graph-driven development: the cycle is a typed, checkpointed, distributable graph.
+
+### Added
+
+- `graph/schema.json`, `graph/cycle.graph.json`, `graph/critique.graph.json` — declared
+  control flow (five node kinds, five edge kinds, probe-conditioned routes).
+- `lib/graph/{validate,state,checkpoint,trace,run,port,port-local,handoff}.sh` — schema
+  validator, typed state channel over `feature.json`, node checkpoint ledger, node-stamped
+  trace, engine (`--dry-run` / `--resume`), handoff port + reference adapter, content-addressed
+  bundles.
+- `lib/effort-probe.sh` and `lib/conflict-monitor.sh` — deterministic dual-process effort.
+- `skills/shared/{graph-contract,dual-process,handoff-port}.md` and `docs/loop-spec/gdd.md`.
+- Foreign-claimant rung in `lib/execute-rung.sh` (opt-in via `LOOP_SPEC_FOREIGN_CLAIMANTS=1`).
+
+### Changed
+
+- Cycle Step 6 hands sequencing to `lib/graph/run.sh`; resume is a checkpoint lookup.
+- Phase skills no longer declare successors, rewind targets, or gate escalation in prose —
+  the graph owns that routing. **No user-facing invocation changed.**
+- `skills/shared/model-matrix.md` exposes `system1` / `system2` columns; system2 equals the
+  2.35 map so nothing is less capable by default.
+- `docs/loop-spec/ROADMAP-3.0.md` names GDD as the 3.0 headline; Pillars A–D are graphs over
+  the new substrate.
+
+### Semver
+
+3.0 is not a breaking change to user surface. Every 2.x invocation, artifact path, config
+file, and hook keeps working; the break is internal (prose routing deleted).
+
 ## [2.35.0] - 2026-08-06
 
 Graphify is removed. Structure is derived fresh, and grounded by citing `file:line`.

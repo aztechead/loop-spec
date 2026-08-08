@@ -187,3 +187,10 @@ not pass `--auto`: normal in-worktree build-agent edits remain allowed, while
 external-directory and other sensitive asks fail closed. Read-only
 judge/compiler ticks select the installer-provided `--agent
 loop-spec-readonly`, whose permissions deny all tools except read/glob/grep.
+
+## Graph engine (GDD)
+
+`lib/graph/run.sh` sequences `graph/cycle.graph.json`. Nothing under `lib/graph/`
+branches on the harness — node bodies may call `lib/harness.sh`. Under opencode,
+agent node dispatch continues through the native `task` tool; the engine and
+handoff port stay harness-neutral.
