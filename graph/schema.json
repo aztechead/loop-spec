@@ -71,7 +71,7 @@
     },
     "routeCondition": {
       "type": "object",
-      "required": ["probe", "expects"],
+      "required": ["probe", "args", "expects"],
       "additionalProperties": false,
       "properties": {
         "probe": {
@@ -79,9 +79,15 @@
           "minLength": 1,
           "description": "Repo-relative path to an executable probe script"
         },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Probe argument vector. {featureDir}, {repoRoot}, {slug}, {node} are engine-substituted placeholders; no other placeholder is legal. May be empty."
+        },
         "expects": {
           "type": "string",
-          "description": "Exact expected probe answer token"
+          "pattern": "^[^|]+$",
+          "description": "Exact expected probe answer token. No '|' alternation -- declare separate edges instead."
         }
       }
     },
@@ -114,7 +120,16 @@
             "probe": { "type": "string", "minLength": 1 }
           }
         },
-        "authorizesDelivery": { "type": "boolean" }
+        "authorizesDelivery": { "type": "boolean" },
+        "admit": {
+          "$ref": "#/definitions/routeCondition",
+          "description": "Human-node pause gate (contract sec 4): admitted on entry writes a checkpoint and pauses; not admitted (including unresolved) skips the node. Only a human node may declare it."
+        },
+        "routeDefault": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Node id to take when this node has route edges and none is satisfied. Absent means no-route is an abort, never a silent chain fallthrough (contract sec 3)."
+        }
       }
     },
     "loopEdge": {

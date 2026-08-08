@@ -53,14 +53,20 @@
       "to": "critique.debate",
       "kind": "route",
       "condition": {
-        "probe": "lib/security-signal.sh",
-        "expects": "matched"
+        "probe": "lib/graph/probes/plan-critique.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "signal=matched"
       }
     },
     {
       "from": "critique.escalate",
       "to": "critique.adjudicate",
-      "kind": "chain"
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/plan-critique.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "signal=none"
+      }
     },
     {
       "from": "critique.debate",

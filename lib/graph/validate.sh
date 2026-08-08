@@ -10,17 +10,26 @@
 # Exit: 0 clean, 1 any flag, 2 bad invocation.
 #
 # Referential rules beyond JSON shape:
-#   - route.condition must be {probe,expects}; probe path must be an executable file
+#   - route condition (and human admit) must be {probe,args,expects}; probe path
+#     must be an executable file; expects must be a member of `<probe> --answers`
+#     (docs/loop-spec/features/gdd/REMEDIATION-CONTRACT.md sec 2 -- this is the
+#     rule that would have caught the shipped PLAN-critique-skip / lost-rewind bug)
 #   - edge endpoints must name declared nodes
 #   - every node reachable from entry
 #   - loop edges require numeric ceiling (+ strategy)
 #   - fanin edges require join
-#   - chain/route/fanout/fanin subgraph must be a DAG (loop edges excluded)
+#   - chain/route/fanout/fanin subgraph must be a DAG (loop edges excluded); a
+#     route back-edge is exempted only when its exact (from,to) pair also carries
+#     a bounded loop edge (contract sec 9)
+#   - a node body that looks like a path (contains '/') must exist in the tree
+#   - every read/write key must be in the state-key space feature-init.sh actually
+#     produces, derived at validate time rather than a third hardcoded copy
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SCHEMA="$REPO_ROOT/graph/schema.json"
+FEATURE_INIT="$REPO_ROOT/lib/feature-init.sh"
 
 if [[ $# -ne 1 ]]; then
   echo "usage: validate.sh <graph.json>" >&2
@@ -36,18 +45,40 @@ if [[ ! -f "$SCHEMA" ]]; then
   echo "graph-validate: schema missing: $SCHEMA" >&2
   exit 2
 fi
+if [[ ! -f "$FEATURE_INIT" ]]; then
+  echo "graph-validate: feature-init script missing: $FEATURE_INIT" >&2
+  exit 2
+fi
 
 # Resolve to absolute for stable FLAG paths
 GRAPH_ABS="$(cd "$(dirname "$GRAPH_PATH")" && pwd)/$(basename "$GRAPH_PATH")"
 
-python3 - "$GRAPH_ABS" "$SCHEMA" "$REPO_ROOT" <<'PY'
+# The allowed read/write key space is derived from a real skeleton, not a third
+# hardcoded copy of the schema's stateKey enum (which drifted twice: this exact
+# copy was missing currentPhaseStartedAt and iterate). The probe args are inert
+# placeholders -- feature-init.sh does not touch git or the network for `skeleton`.
+SKELETON_JSON="$(bash "$FEATURE_INIT" skeleton --mode single \
+  --slug graph-validate-probe --now 1970-01-01T00:00:00Z --style auto \
+  --title graph-validate-probe --branch graph-validate-probe \
+  --base-sha 0000000000000000000000000000000000000000 --base-branch main \
+  --worktree "" --prepare "" --test "" --lint "" --typecheck "" 2>/dev/null)" || {
+  echo "graph-validate: cannot derive skeleton keys from lib/feature-init.sh" >&2
+  exit 2
+}
+SKELETON_KEYS_JSON="$(printf '%s' "$SKELETON_JSON" | jq -c 'keys' 2>/dev/null)" || {
+  echo "graph-validate: cannot parse feature-init skeleton output" >&2
+  exit 2
+}
+
+python3 - "$GRAPH_ABS" "$SCHEMA" "$REPO_ROOT" "$SKELETON_KEYS_JSON" <<'PY'
 from __future__ import print_function
 
 import json
 import os
+import subprocess
 import sys
 
-graph_path, schema_path, repo_root = sys.argv[1], sys.argv[2], sys.argv[3]
+graph_path, schema_path, repo_root, skeleton_keys_json = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 flags = []
 
 def flag(pointer, message):
@@ -68,6 +99,12 @@ try:
         schema = json.load(fh)
 except Exception as exc:
     print("graph-validate: cannot parse schema: %s" % exc, file=sys.stderr)
+    sys.exit(2)
+
+try:
+    skeleton_keys = set(json.loads(skeleton_keys_json))
+except Exception as exc:
+    print("graph-validate: cannot parse derived skeleton keys: %s" % exc, file=sys.stderr)
     sys.exit(2)
 
 node_kinds = set(schema["definitions"]["node"]["properties"]["kind"]["enum"])
@@ -96,6 +133,79 @@ entry = graph.get("entry")
 if entry is None and nodes:
     entry = nodes[0].get("id")
 entries = entry if isinstance(entry, list) else ([entry] if entry else [])
+
+# Probe --answers results are cached: several conditions across a graph often
+# name the same probe, and each is a subprocess call.
+_answers_cache = {}
+
+def probe_answers(path):
+    """Run `<probe> --answers`. Returns (set_of_tokens, None) when resolved, or
+    (None, reason) when the probe cannot be trusted to enumerate its own answer
+    space -- either result is cached by absolute path."""
+    if path in _answers_cache:
+        return _answers_cache[path]
+    try:
+        proc = subprocess.run(["bash", path, "--answers"], cwd=repo_root,
+                               capture_output=True, text=True, timeout=15)
+    except Exception as exc:
+        result = (None, "cannot run --answers: %s" % exc)
+    else:
+        if proc.returncode != 0:
+            result = (None, "--answers exited %d" % proc.returncode)
+        else:
+            answers = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+            result = (answers, None) if answers else (None, "--answers printed no answer tokens")
+    _answers_cache[path] = result
+    return result
+
+def check_condition(cond, ptr, label):
+    """Validate a {probe, args, expects} object -- a route edge's `condition` or
+    a human node's `admit` (contract sec 1/4, same shape). Checks shape, probe
+    executability, and that `expects` is a member of the probe's own declared
+    answer set: the rule that would have caught the shipped engine naming
+    probes that never emit the token a route expected (REMEDIATION-CONTRACT.md
+    sec 2/3)."""
+    if not isinstance(cond, dict):
+        flag(ptr, "%s must be {probe, args, expects} object, not prose" % label)
+        return
+    extras = set(cond.keys()) - {"probe", "args", "expects"}
+    if extras:
+        flag(ptr, "%s additionalProperties not allowed: %s" % (label, sorted(extras)))
+    missing = {"probe", "args", "expects"} - set(cond.keys())
+    if missing:
+        flag(ptr, "%s requires probe, args, and expects (missing: %s)" % (label, sorted(missing)))
+
+    probe = cond.get("probe")
+    probe_path = None
+    if "probe" in cond:
+        if not isinstance(probe, str):
+            flag(ptr + "/probe", "probe must be a string")
+        else:
+            path = probe if os.path.isabs(probe) else os.path.join(repo_root, probe)
+            if not os.path.isfile(path):
+                flag(ptr + "/probe", "probe path does not exist: %s" % probe)
+            elif not os.access(path, os.X_OK):
+                flag(ptr + "/probe", "probe path is not executable: %s" % probe)
+            else:
+                probe_path = path
+
+    if "args" in cond:
+        args = cond.get("args")
+        if not isinstance(args, list) or any(not isinstance(a, str) for a in args):
+            flag(ptr + "/args", "args must be an array of strings")
+
+    if "expects" in cond:
+        expects = cond.get("expects")
+        if not isinstance(expects, str):
+            flag(ptr + "/expects", "expects must be a string")
+        elif "|" in expects:
+            flag(ptr + "/expects", "expects %r contains '|' -- alternation is illegal, declare separate edges" % expects)
+        elif probe_path is not None:
+            answers, err = probe_answers(probe_path)
+            if err is not None:
+                flag(ptr + "/expects", "cannot verify expects against %s --answers: %s" % (probe, err))
+            elif expects not in answers:
+                flag(ptr + "/expects", "expects %r is not a member of %s --answers" % (expects, probe))
 
 node_ids = []
 node_by_id = {}
@@ -140,11 +250,34 @@ for i, node in enumerate(nodes):
                 flag(ptr + "/skippable/probe", "licensing probe not executable: %s" % probe)
     if node.get("authorizesDelivery") is True and effort == "system1":
         flag(ptr + "/effort", "delivery-authorizing node may not default to system1")
+    # Human admit gate (contract sec 4): same {probe,args,expects} shape as a
+    # route condition, restricted to human nodes like skippable is to gates.
+    admit = node.get("admit")
+    if admit is not None:
+        if kind != "human":
+            flag(ptr + "/admit", "only human nodes may declare admit")
+        check_condition(admit, ptr + "/admit", "admit condition")
+    route_default = node.get("routeDefault")
+    if route_default is not None and not isinstance(route_default, str):
+        flag(ptr + "/routeDefault", "routeDefault must be a string node id")
+    # A body that looks like a repo path (contains '/') must actually exist --
+    # otherwise a renamed/deleted skill or lib script validates clean.
+    body = node.get("body")
+    if isinstance(body, str) and "/" in body:
+        bpath = body if os.path.isabs(body) else os.path.join(repo_root, body)
+        if not os.path.isfile(bpath):
+            flag(ptr + "/body", "body path does not exist in the tree: %s" % body)
 
 idset = set(node_ids)
 for e in entries:
     if e not in idset:
         flag("/entry", "entry names undeclared node %r" % e)
+
+# routeDefault must name a declared node, checked once idset is known.
+for i, node in enumerate(nodes):
+    if isinstance(node, dict) and isinstance(node.get("routeDefault"), str):
+        if node["routeDefault"] not in idset:
+            flag("/nodes/%d/routeDefault" % i, "routeDefault names undeclared node %r" % node["routeDefault"])
 
 for i, edge in enumerate(edges):
     ptr = "/edges/%d" % i
@@ -162,25 +295,7 @@ for i, edge in enumerate(edges):
         flag(ptr + "/to", "undeclared node %r" % to)
 
     if kind == "route":
-        cond = edge.get("condition")
-        if not isinstance(cond, dict):
-            flag(ptr + "/condition", "route condition must be {probe, expects} object, not prose")
-        else:
-            extras = set(cond.keys()) - {"probe", "expects"}
-            if extras:
-                flag(ptr + "/condition", "route condition additionalProperties not allowed: %s" % sorted(extras))
-            if "probe" not in cond or "expects" not in cond:
-                flag(ptr + "/condition", "route condition requires probe and expects")
-            else:
-                if not isinstance(cond["probe"], str) or not isinstance(cond["expects"], str):
-                    flag(ptr + "/condition", "probe and expects must be strings")
-                else:
-                    probe = cond["probe"]
-                    path = probe if os.path.isabs(probe) else os.path.join(repo_root, probe)
-                    if not os.path.isfile(path):
-                        flag(ptr + "/condition/probe", "probe path does not exist: %s" % probe)
-                    elif not os.access(path, os.X_OK):
-                        flag(ptr + "/condition/probe", "probe path is not executable: %s" % probe)
+        check_condition(edge.get("condition"), ptr + "/condition", "route condition")
 
     if kind == "loop":
         ceiling = edge.get("ceiling")
@@ -195,18 +310,9 @@ for i, edge in enumerate(edges):
             flag(ptr + "/join", "fanin edge requires a join rule")
 
 # Producer/consumer: every read key is written by some node, or is a
-# feature-init skeleton key present before any phase runs.
-skeleton_keys = {
-    "schemaVersion", "slug", "feature_title", "createdAt", "updatedAt",
-    "execStyle", "phaseHandoff", "currentPhase", "completedPhases", "branch",
-    "worktreePath", "executionRootMode", "baseSha", "baseBranch", "models",
-    "phaseModels", "artifacts", "currentTeamName", "currentTeammates",
-    "currentGate", "commands", "workspace", "stalenessHours", "prUrl",
-    "checkpointPrUrl", "delivery", "verificationBaseline", "warnings",
-    "mergeQueue", "pendingRemediationTasks", "bootstrapPendingDomains",
-    "activeWorkflow", "harnessTaskMetadataMode", "harnessStatusMode",
-    "fileConflictExcludeGlobs", "gateHistory",
-}
+# feature-init skeleton key present before any phase runs (derived above from a
+# real `feature-init.sh skeleton` run -- a hardcoded copy of this set drifted
+# twice and stopped catching the class of bug it exists for).
 written = set()
 for node in nodes:
     if isinstance(node, dict):
@@ -243,14 +349,15 @@ if idset and entries:
         if nid not in seen:
             flag("/nodes", "unreachable node %r from entry" % nid)
 
-# DAG check on chain/route/fanout/fanin. A route back-edge is permitted only when
-# the same source already declares a bounded loop edge (the iteration ceiling
-# that makes the rewind finite). Uncovered back-edges still FLAG.
-loop_sources = set()
+# DAG check on chain/route/fanout/fanin. A route back-edge is permitted only
+# when that EXACT (from,to) pair also carries a bounded loop edge (contract
+# sec 9) -- scoping on the source node alone (as shipped) would exempt every
+# route from that node, letting an uncovered cycle validate clean.
+loop_pairs = set()
 for edge in edges:
     if isinstance(edge, dict) and edge.get("kind") == "loop":
         if isinstance(edge.get("ceiling"), (int, float)) and not isinstance(edge.get("ceiling"), bool):
-            loop_sources.add(edge.get("from"))
+            loop_pairs.add((edge.get("from"), edge.get("to")))
 
 dag_edges = []
 for i, edge in enumerate(edges):
@@ -262,9 +369,9 @@ for i, edge in enumerate(edges):
     frm, to = edge.get("from"), edge.get("to")
     if frm not in idset or to not in idset:
         continue
-    # Rewind routes covered by a loop ceiling from the same source are the
-    # declared form of ITERATE/DELIVER re-entry; they are not free cycles.
-    if kind == "route" and frm in loop_sources:
+    # A rewind route covered by a loop ceiling on its own exact (from,to) pair
+    # is the declared form of ITERATE/DELIVER re-entry; it is not a free cycle.
+    if kind == "route" and (frm, to) in loop_pairs:
         continue
     dag_edges.append((frm, to, i))
 

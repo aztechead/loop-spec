@@ -65,37 +65,36 @@ case "$op" in
     id="$1"; owner="$2"; ttl="$3"
     [[ -d "$INST/$id" ]] || { echo "port-local: missing $id" >&2; exit 1; }
     [[ "$ttl" =~ ^[0-9]+$ ]] || usage
-    now="$(date -u +%s)"
     claim_file="$INST/$id/claim.json"
     lock="$INST/$id/claim.lock"
-    # Atomic claim via mkdir lock
-    if ! mkdir "$lock" 2>/dev/null; then
-      # lock held — check expiry of existing claim
-      if [[ -f "$claim_file" ]]; then
-        exp="$(jq -r '.expires // 0' "$claim_file")"
-        if (( now < exp )); then
-          echo "port-local: already claimed" >&2
-          exit 1
+    # The expiry check AND the write must happen inside the SAME mkdir critical
+    # section. Splitting them (check, release the lock, then write) is a TOCTOU:
+    # two reclaimers can both observe an expired claim before either writes,
+    # and both then "win". A holder never forces another holder's lock away —
+    # that would defeat the mutex the same way. Back off and retry instead;
+    # the critical section is one jq write, so contention is brief.
+    attempt=0
+    while true; do
+      if mkdir "$lock" 2>/dev/null; then
+        now="$(date -u +%s)"
+        if [[ -f "$claim_file" ]]; then
+          exp="$(jq -r '.expires // 0' "$claim_file")"
+          if (( now < exp )); then
+            rmdir "$lock"
+            echo "port-local: already claimed" >&2
+            exit 1
+          fi
         fi
-        rmdir "$lock" 2>/dev/null || rm -rf "$lock"
-        mkdir "$lock" 2>/dev/null || { echo "port-local: already claimed" >&2; exit 1; }
-      else
-        echo "port-local: already claimed" >&2
-        exit 1
+        expires=$((now + ttl))
+        jq -cn --arg o "$owner" --argjson e "$expires" '{owner:$o,expires:$e}' > "$claim_file"
+        rmdir "$lock"
+        printf 'claimed=%s owner=%s expires=%s\n' "$id" "$owner" "$expires"
+        exit 0
       fi
-    fi
-    if [[ -f "$claim_file" ]]; then
-      exp="$(jq -r '.expires // 0' "$claim_file")"
-      if (( now < exp )); then
-        rmdir "$lock" 2>/dev/null || true
-        echo "port-local: already claimed" >&2
-        exit 1
-      fi
-    fi
-    expires=$((now + ttl))
-    jq -cn --arg o "$owner" --argjson e "$expires" '{owner:$o,expires:$e}' > "$claim_file"
-    rmdir "$lock" 2>/dev/null || true
-    printf 'claimed=%s owner=%s expires=%s\n' "$id" "$owner" "$expires"
+      attempt=$((attempt + 1))
+      (( attempt > 50 )) && { echo "port-local: lock contention timeout for $id" >&2; exit 1; }
+      sleep 0.05
+    done
     ;;
   release)
     [[ $# -eq 1 ]] || usage
@@ -106,12 +105,24 @@ case "$op" in
     exit 0
     ;;
   complete)
-    [[ $# -eq 2 && -f "$2" ]] || usage
-    id="$1"; result="$2"
+    [[ $# -eq 3 && -f "$2" ]] || usage
+    id="$1"; result="$2"; feature_dir="$3"
     [[ -d "$INST/$id" ]] || { echo "port-local: missing $id" >&2; exit 1; }
+    [[ -f "$feature_dir/feature.json" ]] || {
+      echo "port-local: missing feature.json at $feature_dir" >&2
+      exit 1
+    }
     bundle="$INST/$id/bundle.json"
+    # Re-derived from the live feature.json at feature-dir, never trusted from
+    # result-json-file: comparing two claimant-supplied strings (the old bug)
+    # proves nothing, since a claimant who does no work can echo one into the
+    # other. expected is the state hash captured once at export time, stored
+    # in the bundle before the claimant ever saw it; actual is a fresh hash of
+    # whatever feature.json currently lives at feature-dir. This generalizes
+    # the SPEC/PLAN hash-lock: it catches a claimant that rewrote its own
+    # feature.json to match sloppy work, same as a stale return from drift.
     expected="$(jq -r '.stateHash // empty' "$bundle")"
-    actual="$(jq -r '.stateHash // empty' "$result")"
+    actual="$(cksum <"$feature_dir/feature.json" | awk '{print $1"-"$2}')"
     if [[ -z "$expected" || "$expected" != "$actual" ]]; then
       echo "port-local: state hash mismatch; rejecting stale return" >&2
       exit 1

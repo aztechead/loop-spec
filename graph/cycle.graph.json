@@ -28,7 +28,12 @@
       "writes": [
         "currentPhase"
       ],
-      "effort": "system1"
+      "effort": "system1",
+      "admit": {
+        "probe": "lib/graph/probes/exec-style.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "style=step"
+      }
     },
     {
       "id": "discuss",
@@ -71,7 +76,12 @@
       "writes": [
         "currentPhase"
       ],
-      "effort": "system1"
+      "effort": "system1",
+      "admit": {
+        "probe": "lib/graph/probes/exec-style.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "style=step"
+      }
     },
     {
       "id": "plan",
@@ -129,7 +139,12 @@
       "writes": [
         "currentPhase"
       ],
-      "effort": "system1"
+      "effort": "system1",
+      "admit": {
+        "probe": "lib/graph/probes/exec-style.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "style=step"
+      }
     },
     {
       "id": "execute",
@@ -188,7 +203,12 @@
       "writes": [
         "currentPhase"
       ],
-      "effort": "system1"
+      "effort": "system1",
+      "admit": {
+        "probe": "lib/graph/probes/exec-style.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "style=step"
+      }
     },
     {
       "id": "verify",
@@ -285,7 +305,12 @@
         "currentPhase",
         "warnings"
       ],
-      "effort": "system1"
+      "effort": "system1",
+      "admit": {
+        "probe": "lib/graph/probes/exec-style.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "style=step"
+      }
     },
     {
       "id": "deliver",

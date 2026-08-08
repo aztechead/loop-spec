@@ -19,8 +19,12 @@ bash lib/graph/port.sh <op> ...
 
 ### `put <bundle-json-file>`
 
-Store a node-instance bundle. Stdout: `id=<instance-id>`. Exit 0 on success,
-1 on invalid bundle, 2 on bad invocation.
+Store a node-instance bundle. Stdout: `id=<instance-id>`. The id is whatever
+`.id` the bundle carries (`lib/graph/handoff.sh export` derives it from
+node + task + state hash, so two task bundles under the same node never
+collide — see `export`'s doc comment); a bundle with no `.id` gets one
+assigned from its content hash. Exit 0 on success, 1 on invalid bundle, 2 on
+bad invocation.
 
 ### `get <id>`
 
@@ -38,16 +42,24 @@ Take exclusive ownership for a bounded lease. Stdout:
 `claimed=<id> owner=<owner> expires=<unix-epoch>`. Exit 0 on success, 1 if
 another unexpired claim holds the instance, 2 on bad invocation.
 
-A second claimant on an unexpired lease MUST fail (exit 1).
+A second claimant on an unexpired lease MUST fail (exit 1). Reclaiming an
+expired lease MUST be atomic across concurrent reclaimers: when two claimants
+race a lease that just expired, exactly one call returns `claimed=`, the
+other exit 1 — never both, never neither.
 
 ### `release <id>`
 
 Relinquish a claim without completing. Exit 0 if released or already free,
 1 if unknown id, 2 on bad invocation.
 
-### `complete <id> <result-json-file>`
+### `complete <id> <result-json-file> <feature-dir>`
 
-Return a contract-checked result. Re-checks the bundle state hash against
-current feature state; a mismatch is rejected (exit 1, instance left
-unmerged) rather than reconciled. Exit 0 on accepted merge, 2 on bad
-invocation.
+Return a contract-checked result. `feature-dir` is the caller's live feature
+directory (e.g. `.loop-spec/features/{slug}`); its `feature.json` is hashed
+fresh on every call and compared against the `stateHash` stored in the bundle
+at `put` time. Neither side of that comparison is read from
+`result-json-file` — a claimant cannot pass by asserting a hash, only by
+handing back a `feature.json` whose content still matches what the bundle was
+cut from. A mismatch is rejected (exit 1, instance left unmerged) rather than
+reconciled. Exit 0 on accepted merge, 1 on missing id/feature.json or state
+hash mismatch, 2 on bad invocation.

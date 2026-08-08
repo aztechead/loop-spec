@@ -365,6 +365,7 @@ echo "[EXECUTE] DAG width W=$W -> rung: $rung ($rung_reason)"
 - `rung == "loop"`: follow **`skills/shared/execute-loop-fleet.md`** (plan-to-loop conversion + loop-runner supervisor fleet). It returns the same `{merged, blocked, escalation}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
 - `rung == "team"`: fall through to **Steps 4-10** (the TeamCreate self-claim team).
 - `rung == "workflow"`: follow the **Rung 4 - workflow path** section immediately below.
+- `rung == "foreign"`: follow the **Rung 5 - foreign claimants** section immediately below.
 
 Consuming the subagent-path result (Step 3b-exit): identical to the workflow consume
 contract -- escalation non-null or blocked non-empty pauses EXECUTE and returns control
@@ -428,6 +429,80 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" currentTeammat
 ```
 
 Then proceed to the **Phase exit** section.
+
+---
+
+#### Rung 5 - foreign claimants (opt-in)
+
+Reached when Step 3b selects `rung == "foreign"` (`LOOP_SPEC_FOREIGN_CLAIMANTS=1` and a
+handoff port adapter is reachable — `lib/execute-rung.sh`, `skills/shared/handoff-port.md`).
+Each task in `tasks[]` from Step 3 becomes one claimable bundle instead of a `Task`/`Agent`
+dispatch. The graph node dispatched is still `execute.worker` (`graph/cycle.graph.json`) —
+width selects the rung, it never substitutes a different node or a different contract.
+
+Offer every task as a bundle and put it on the port:
+
+```bash
+fdir=".loop-spec/features/{slug}"
+for task in <tasks[] array from Step 2a/2b>; do
+  bash "${CLAUDE_SKILL_DIR}/../../lib/graph/handoff.sh" export \
+    --feature-dir "$fdir" --node execute.worker --task "$task.id" \
+    --verify "$task.verifyCommand" --out "$WORK/bundle-$task.id.json"
+  id="$(bash "${CLAUDE_SKILL_DIR}/../../lib/graph/port.sh" put "$WORK/bundle-$task.id.json" \
+    | sed -n 's/^id=//p')"
+  # record id alongside task.id, e.g. via feature.json.artifacts or an in-memory map
+done
+```
+
+`--task` makes the bundle id content-addressed from node + task + state hash
+(`skills/shared/handoff-port.md`), so `task-002` and `task-003` of the same EXECUTE
+never collide, and re-exporting the same task at the same feature state is idempotent.
+
+**What this rung does not automate.** There is no supervisor loop here that blocks
+EXECUTE waiting on a foreign claimant, the way the team rung's self-claim loop or the
+loop-fleet's synchronous worker call does. Claiming a bundle, doing the work, and
+calling `complete` happen on infrastructure this session does not control and may not
+share a process with — that is the entire point of the port. Say this plainly rather
+than implying a poll loop exists: after `put`-ting the outstanding bundles, EXECUTE
+returns control the same way any `step`/`interactive` phase summary does (see **Phase
+routing** at the end of this skill) rather than inventing a busy-wait. Driving claim →
+work → `complete` on the claimant side, and re-invoking EXECUTE to check for results, is
+the integrator's responsibility — a cron job, a Routine, or a human running the next
+cycle turn.
+
+**Collecting a result on re-entry.** Each time EXECUTE is (re-)entered with tasks still
+assigned to this rung, check every recorded id before re-offering it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/graph/port.sh" get "$id" > "$WORK/instance-$id.json" 2>/dev/null \
+  && jq -e 'true' "$WORK/instance-$id.json" >/dev/null 2>&1
+```
+
+`get` returns the bundle, not a separate "has it completed" flag — the port contract
+(`skills/shared/handoff-port.md`) exposes completion only through the reference
+adapter's own instance store today (`result.json` alongside the bundle) or through
+whatever equivalent an integrator's `LOOP_SPEC_PORT` adapter provides; there is no
+sixth operation for it. For every id whose result is available, merge it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/graph/handoff.sh" import \
+  --feature-dir "$fdir" --bundle "$WORK/bundle-$task.id.json"
+```
+
+`import` re-derives the state hash from the live `feature.json` at `$fdir` and rejects a
+bundle whose captured hash no longer matches (exit 1, left unmerged) — the same
+stale-return rule `complete` enforces on the claimant side
+(`skills/shared/handoff-port.md`), applied again on the merging side. A rejected import
+leaves the task `pending`; re-offer it as a fresh bundle rather than merging a return
+checked against state that has since moved. A merged import still needs
+`task.verifyCommand` re-run against the integrated branch before the task counts as
+done, exactly as the subagent rung does post-merge (`skills/shared/execute-subagent.md`
+step 6/7) — a foreign claimant's return is checked against the same criteria any other
+rung's return is, never a degraded variant.
+
+Tasks with no result yet keep EXECUTE returning control on re-entry (unchanged from the
+above). Once every task assigned to this rung has merged or exhausted its retry budget,
+continue to **Phase exit** like any other rung.
 
 ---
 
