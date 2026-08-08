@@ -30,9 +30,12 @@
       ],
       "effort": "system1",
       "admit": {
-        "probe": "lib/graph/probes/exec-style.sh",
-        "args": ["--feature-dir", "{featureDir}"],
-        "expects": "style=step"
+        "probe": "lib/graph/probes/human-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "gate=pause"
       }
     },
     {
@@ -78,9 +81,12 @@
       ],
       "effort": "system1",
       "admit": {
-        "probe": "lib/graph/probes/exec-style.sh",
-        "args": ["--feature-dir", "{featureDir}"],
-        "expects": "style=step"
+        "probe": "lib/graph/probes/human-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "gate=pause"
       }
     },
     {
@@ -141,9 +147,12 @@
       ],
       "effort": "system1",
       "admit": {
-        "probe": "lib/graph/probes/exec-style.sh",
-        "args": ["--feature-dir", "{featureDir}"],
-        "expects": "style=step"
+        "probe": "lib/graph/probes/human-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "gate=pause"
       }
     },
     {
@@ -205,9 +214,12 @@
       ],
       "effort": "system1",
       "admit": {
-        "probe": "lib/graph/probes/exec-style.sh",
-        "args": ["--feature-dir", "{featureDir}"],
-        "expects": "style=step"
+        "probe": "lib/graph/probes/human-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "gate=pause"
       }
     },
     {
@@ -307,9 +319,12 @@
       ],
       "effort": "system1",
       "admit": {
-        "probe": "lib/graph/probes/exec-style.sh",
-        "args": ["--feature-dir", "{featureDir}"],
-        "expects": "style=step"
+        "probe": "lib/graph/probes/human-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "gate=pause"
       }
     },
     {
@@ -382,7 +397,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/plan-critique.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "signal=matched"
       }
     },
@@ -392,7 +410,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/plan-critique.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "signal=none"
       }
     },
@@ -465,7 +486,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/iterate-gap.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "gap=execute"
       }
     },
@@ -475,7 +499,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/iterate-gap.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "gap=plan"
       }
     },
@@ -485,7 +512,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/iterate-gap.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "gap=spec"
       }
     },
@@ -495,7 +525,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/exec-style.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "style=step"
       }
     },
@@ -505,7 +538,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/exec-style.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "style=interactive"
       }
     },
@@ -520,7 +556,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/iterate-gap.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "gap=none"
       }
     },
@@ -558,7 +597,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/deliver-next.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "nextPhase=execute"
       }
     },
@@ -575,7 +617,10 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/deliver-next.sh",
-        "args": ["--feature-dir", "{featureDir}"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
         "expects": "nextPhase=completed"
       }
     }
