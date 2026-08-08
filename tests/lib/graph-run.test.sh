@@ -180,6 +180,38 @@ else
   check "engine harness-neutral" "0" "0"
 fi
 
+# --- engine advances currentPhase on phase-node entry (cutover: not skill prose) ---
+cat > "$WORK/phase-advance.json" <<'EOF'
+{
+  "entry": "spec",
+  "nodes": [
+    {"id":"spec","kind":"function","reads":[],"writes":["currentPhase"],"effort":"system1"},
+    {"id":"discuss","kind":"function","reads":[],"writes":["currentPhase"],"effort":"system1"}
+  ],
+  "edges": [
+    {"from":"spec","to":"discuss","kind":"chain"}
+  ]
+}
+EOF
+mkdir -p "$WORK/feat-phase"
+jq -n '{slug:"p",schemaVersion:7,currentPhase:"spec"}' > "$WORK/feat-phase/feature.json"
+bash "$SCRIPT" --feature-dir "$WORK/feat-phase" "$WORK/phase-advance.json" >/dev/null
+phase="$(jq -r '.currentPhase' "$WORK/feat-phase/feature.json")"
+check "engine sets currentPhase to discuss" "discuss" "$phase"
+
+# dry-run must not mutate currentPhase
+jq -n '{slug:"p",schemaVersion:7,currentPhase:"spec"}' > "$WORK/feat-phase/feature.json"
+bash "$SCRIPT" --dry-run --feature-dir "$WORK/feat-phase" "$WORK/phase-advance.json" >/dev/null
+phase="$(jq -r '.currentPhase' "$WORK/feat-phase/feature.json")"
+check "dry-run leaves currentPhase untouched" "spec" "$phase"
+
+# --- no LOOP_SPEC_GRAPH opt-in / path env (task-016) ---
+if grep -nE 'LOOP_SPEC_GRAPH' "$SCRIPT" "$ROOT/lib/graph/state.sh" "$ROOT/lib/graph/handoff.sh" >/dev/null; then
+  check "no LOOP_SPEC_GRAPH in engine libs" "0" "1"
+else
+  check "no LOOP_SPEC_GRAPH in engine libs" "0" "0"
+fi
+
 rm -rf "$ROOT"/.tmp-probes-*
 
 echo ""

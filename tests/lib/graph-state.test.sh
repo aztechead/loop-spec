@@ -55,12 +55,12 @@ d["executionRootMode"]="in-place"
 p.write_text(json.dumps(d, indent=2)+"\n")
 PY
 
-export LOOP_SPEC_GRAPH="$WORK/graph/cycle.graph.json"
+GRAPH_FLAG=(--graph "$WORK/graph/cycle.graph.json")
 
 # --- undeclared write rejected, no mutation ---
 cp "$WORK/feature/feature.json" "$WORK/feature/feature.json.before"
 rc=0
-bash "$SCRIPT" write --feature-dir "$WORK/feature" --node spec --key mergeQueue '[]' 2>/dev/null || rc=$?
+bash "$SCRIPT" write --feature-dir "$WORK/feature" --node spec "${GRAPH_FLAG[@]}" --key mergeQueue '[]' 2>/dev/null || rc=$?
 check "undeclared write non-zero" "1" "$rc"
 cmp -s "$WORK/feature/feature.json" "$WORK/feature/feature.json.before"
 check "undeclared write no mutation" "0" "$?"
@@ -68,7 +68,7 @@ check "undeclared write no mutation" "0" "$?"
 # --- declared write delegates to feature-write (bak rotated) ---
 rm -f "$WORK/feature/feature.json.bak"
 rc=0
-bash "$SCRIPT" write --feature-dir "$WORK/feature" --node spec --key currentPhase '"plan"' || rc=$?
+bash "$SCRIPT" write --feature-dir "$WORK/feature" --node spec "${GRAPH_FLAG[@]}" --key currentPhase '"plan"' || rc=$?
 check "declared write exit 0" "0" "$rc"
 phase="$(jq -r '.currentPhase' "$WORK/feature/feature.json")"
 check "declared write applied" "plan" "$phase"
@@ -79,13 +79,13 @@ check "bak rotated via feature-write" "0" "$?"
 # slug is present; remove it via feature-write to null
 bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" slug 'null'
 rc=0
-bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node spec 2>/dev/null || rc=$?
+bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node spec "${GRAPH_FLAG[@]}" 2>/dev/null || rc=$?
 check "unsatisfied read non-zero" "1" "$rc"
 
 # restore slug
 bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" slug '"gdd-state"'
 rc=0
-bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node spec || rc=$?
+bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node spec "${GRAPH_FLAG[@]}" || rc=$?
 check "satisfied reads exit 0" "0" "$rc"
 
 # --- delegate stub: when FEATURE_WRITE points at stub, no write without stub invoke ---
@@ -96,7 +96,7 @@ cp "$WORK/feature/feature.json" "$WORK/feature/feature.json.before"
 # Use env override if supported; else test via LOOP_SPEC_FEATURE_WRITE
 rc=0
 LOOP_SPEC_FEATURE_WRITE="$WORK/bin/feature-write.sh" \
-  bash "$SCRIPT" write --feature-dir "$WORK/feature" --node spec --key currentPhase '"verify"' || rc=$?
+  bash "$SCRIPT" write --feature-dir "$WORK/feature" --node spec "${GRAPH_FLAG[@]}" --key currentPhase '"verify"' || rc=$?
 check "stub delegate exit 0" "0" "$rc"
 grep -q STUB_CALLED "$WORK/stub.log"
 check "stub was invoked" "0" "$?"

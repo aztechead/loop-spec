@@ -26,7 +26,7 @@ cmd="$1"; shift
 
 feature_dir=""
 node_id=""
-graph_path="${LOOP_SPEC_GRAPH:-$REPO_ROOT/graph/cycle.graph.json}"
+graph_path=""
 key=""
 value=""
 
@@ -47,6 +47,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$feature_dir" && -n "$node_id" ]] || usage
+[[ -z "$graph_path" ]] && graph_path="$REPO_ROOT/graph/cycle.graph.json"
 [[ -f "$feature_dir/feature.json" ]] || {
   echo "state.sh: feature.json not found in $feature_dir" >&2
   exit 1

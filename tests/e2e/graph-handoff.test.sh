@@ -21,12 +21,12 @@ jq -n '{slug:"gdd-handoff",schemaVersion:7,baseSha:"deadbeef",currentPhase:"exec
   > "$WORK/feat/feature.json"
 
 export LOOP_SPEC_PORT_ROOT="$WORK/store"
-export LOOP_SPEC_GRAPH="$ROOT/graph/cycle.graph.json"
 
 bash "$ROOT/lib/graph/handoff.sh" export \
   --feature-dir "$WORK/feat" \
   --node execute.worker \
   --verify true \
+  --graph "$ROOT/graph/cycle.graph.json" \
   --out "$WORK/bundle.json"
 check "export wrote bundle" "0" "$([[ -f $WORK/bundle.json ]] && echo 0 || echo 1)"
 

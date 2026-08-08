@@ -46,7 +46,8 @@ done
 [[ -f "$GRAPH" ]] || { echo "run.sh: graph not found: $GRAPH" >&2; exit 2; }
 
 if [[ -z "$FEATURE_DIR" ]]; then
-  FEATURE_DIR="$REPO_ROOT/.loop-spec/features/gdd"
+  echo "run.sh: --feature-dir DIR is required" >&2
+  exit 2
 fi
 
 # Validate first
@@ -56,7 +57,6 @@ if ! bash "$SCRIPT_DIR/validate.sh" "$GRAPH" >/dev/null; then
   exit 1
 fi
 
-export LOOP_SPEC_GRAPH="$GRAPH"
 mkdir -p "$FEATURE_DIR"
 
 python3 - "$GRAPH" "$FEATURE_DIR" "$DRY_RUN" "$RESUME" "$REPO_ROOT" "$SCRIPT_DIR" <<'PY'
@@ -212,6 +212,23 @@ while current and steps < max_steps:
 
     emit_trace(current, admitting, "none", admitting, effort)
     checkpoint(current, admitting, effort)
+
+    # Phase pointer: the graph owns successors, so the engine — not phase
+    # skill prose — advances currentPhase when entering a phase node.
+    phase_ids = {
+        "spec", "discuss", "plan", "execute", "verify", "iterate", "deliver", "completed",
+    }
+    if not dry_run and current in phase_ids:
+        feat = os.path.join(feature_dir, "feature.json")
+        if os.path.isfile(feat):
+            fw = os.environ.get("LOOP_SPEC_FEATURE_WRITE") or os.path.join(
+                repo_root, "lib", "feature-write.sh"
+            )
+            subprocess.call(
+                ["bash", fw, "set", feature_dir, "currentPhase", json.dumps(current)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
     if kind == "human" and not dry_run:
         pause = {
