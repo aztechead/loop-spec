@@ -58,15 +58,15 @@ bash "$SCRIPT" emit "$WORK/feat" phase_start --phase execute \
 bash "$SCRIPT" emit "$WORK/feat" phase_end --phase execute --data '{"next":"verify"}' \
   --node execute --edge 'chain:execute->verify' --probe none --probe-reason none --effort system2 >/dev/null
 # run-digest should not choke (exit 0 always)
-rc=0
-bash "$ROOT/lib/run-digest.sh" append "$WORK/feat" --out-dir "$WORK/digests" >/dev/null 2>&1 || rc=$?
-check "run-digest parses stamped events" "0" "$rc"
+digest_rc=0
+bash "$ROOT/lib/run-digest.sh" append "$WORK/feat" --out-dir "$WORK/digests" >/dev/null 2>&1 || digest_rc=$?
+check "run-digest parses stamped events" "0" "$digest_rc"
 
 # --- reconstruction of node/edge sequence ---
 rm -f "$WORK/feat/events.jsonl"
-bash "$SCRIPT" emit "$WORK/feat" dispatch --node spec --edge entry->spec --probe none --probe-reason none --effort system2 >/dev/null
-bash "$SCRIPT" emit "$WORK/feat" dispatch --node discuss --edge chain:spec->discuss --probe none --probe-reason none --effort system2 >/dev/null
-bash "$SCRIPT" emit "$WORK/feat" dispatch --node plan --edge chain:discuss->plan --probe none --probe-reason none --effort system2 >/dev/null
+bash "$SCRIPT" emit "$WORK/feat" dispatch --node spec --edge 'entry->spec' --probe none --probe-reason none --effort system2 >/dev/null
+bash "$SCRIPT" emit "$WORK/feat" dispatch --node discuss --edge 'chain:spec->discuss' --probe none --probe-reason none --effort system2 >/dev/null
+bash "$SCRIPT" emit "$WORK/feat" dispatch --node plan --edge 'chain:discuss->plan' --probe none --probe-reason none --effort system2 >/dev/null
 seq="$(jq -r '[.node, .edge] | @tsv' "$WORK/feat/events.jsonl" | paste -sd'|' -)"
 expected="spec	entry->spec|discuss	chain:spec->discuss|plan	chain:discuss->plan"
 check "reconstruct traversed sequence" "$expected" "$seq"
