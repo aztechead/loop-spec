@@ -1,8 +1,11 @@
 # Model Matrix
 
-Maps each agent role to its default model alias and defines optional per-phase
-routing. There is no model preset axis. Gate behavior and fan-out width are
-fixed (single-tier operation); see `tier-matrix.md`.
+Maps each agent role to a model alias per effort mode and defines optional
+per-phase routing. There is no model preset axis. Gate behavior and fan-out
+width are fixed (single-tier operation); see `tier-matrix.md`. Which mode a
+node runs in is decided by the effort probe (`skills/shared/dual-process.md`);
+the `system2` column is the canonical default and is what
+`lib/feature-init.sh activate` resolves.
 
 Immediately before every phase invocation, `lib/feature-init.sh activate` writes
 the effective route into `feature.models.<role>`, and every spawn passes that
