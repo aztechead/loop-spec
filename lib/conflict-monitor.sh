@@ -83,7 +83,7 @@ if [[ "$test_exit" -ne 0 ]]; then
 fi
 
 if [[ -n "$gate_log" && -f "$gate_log" ]]; then
-  if grep -q '\[major\]' "$gate_log"; then
+  if grep -q '\[major\]' "$gate_log" 2>/dev/null; then
     echo "conflict=yes reason=major-gate:${gate_log}"
     exit 0
   fi
