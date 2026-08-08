@@ -150,6 +150,32 @@ check "entry naming an undeclared node flags" 1 "$WORK/bad-entry.json"
 # --- answer line shape on rejection ---
 check_output "rejection prints the flag-count answer line" "flag(s)" "$WORK/prose-condition.json"
 
+# --- skippable gate without licensing probe ---
+cat > "$WORK/badskip.json" <<'EOFSKIP'
+{
+  "entry": "g",
+  "nodes": [
+    {"id": "g", "kind": "gate", "reads": [], "writes": [], "effort": "system1", "skippable": {}}
+  ],
+  "edges": []
+}
+EOFSKIP
+check "skippable without probe exit 1" 1 "$WORK/badskip.json"
+check_output "skippable without probe FLAG" "skippable" "$WORK/badskip.json"
+
+# --- delivery-authorizing node with system1 ---
+cat > "$WORK/baddel.json" <<'EOFDEL'
+{
+  "entry": "d",
+  "nodes": [
+    {"id": "d", "kind": "agent", "reads": [], "writes": [], "effort": "system1", "authorizesDelivery": true}
+  ],
+  "edges": []
+}
+EOFDEL
+check "delivery system1 exit 1" 1 "$WORK/baddel.json"
+check_output "delivery system1 FLAG" "system1" "$WORK/baddel.json"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
