@@ -91,6 +91,39 @@ called done while its decision is unimplemented.
 | the five named agentic workflow patterns are documented as subgraph shapes bound to the loop-spec construct that already realizes each one, with orchestrator-workers recorded as a run-time variant of parallelization rather than a sixth pattern. | task-023 |
 | `chain`, `route`, `fanout` and `fanin` edges must form a DAG; iteration is expressible only as a `loop` edge carrying a numeric ceiling, which the engine either unrolls into bounded passes or contains inside a single node. | task-001, task-002, task-014 |
 
+## Acceptance criteria carried
+
+Every SPEC `### Good Enough` criterion, verbatim, against the task that proves it.
+VERIFY's acceptance gate runs the criteria recorded HERE, so a criterion SPEC promises
+and PLAN drops is invisible to every downstream gate — `lib/criteria-coverage.sh` closes
+that handoff the same way `lib/decision-coverage.sh` closes the decisions handoff.
+
+| Criterion | Proven by |
+|---|---|
+| `graph/schema.json` exists and defines the five node kinds and five edge kinds. | task-001 |
+| `graph/cycle.graph.json` declares a node for each of the seven phases and validates against the schema. | task-003 |
+| `lib/graph/validate.sh` rejects a route edge whose condition is not a `{probe, expects}` object naming an executable file. | task-002 |
+| `lib/graph/state.sh` rejects a write to a key the node did not declare, and rejects entry to a node with an unsatisfied declared read. | task-006 |
+| `lib/effort-probe.sh` prints exactly one line of the form `mode=<system1|system2> reason=<text>` and exits 0. | task-008 |
+| `lib/effort-probe.sh` resolves to `system2` when any input is unavailable. | task-008 |
+| `LOOP_SPEC_EFFORT` overrides the probe in both directions. | task-008 |
+| `lib/conflict-monitor.sh` reports a conflict for each of its four deterministic signals and reports none otherwise. | task-009 |
+| `lib/graph/checkpoint.sh` appends one record per node boundary carrying node id, state hash, git SHA, timestamp, and effort mode. | task-012 |
+| `lib/graph/trace.sh` stamps `node`, `edge`, `probe`, `probeReason`, and `effort` onto emitted events and never exits non-zero. | task-013 |
+| `lib/graph/port.sh` implements the six-operation contract and dispatches to the adapter named by `LOOP_SPEC_PORT`. | task-018 |
+| A second claimant cannot claim an instance already under an unexpired lease. | task-019 |
+| A `complete` whose bundle state hash does not match the current state is rejected. | task-019 |
+| `tests/graph-conformance.test.sh` fails when a skill's routing disagrees with `graph/cycle.graph.json`. | task-004 |
+| `lib/graph/run.sh` executes the declared cycle graph and produces the same terminal result contract as the 2.35 prose path. | task-014 |
+| No prose routing remains for control flow the graph owns. | task-016 |
+| `skills/shared/handoff-port.md`, `skills/shared/graph-contract.md`, and `skills/shared/dual-process.md` exist and are referenced by the skills that depend on them. | task-005, task-010, task-017 |
+| `docs/loop-spec/gdd.md` binds all five named workflow patterns to a graph shape and a loop-spec construct, and records orchestrator-workers as a run-time variant of parallelization rather than a sixth pattern. | task-023 |
+| `lib/graph/validate.sh` rejects a cycle formed by `chain`, `route`, `fanout`, or `fanin` edges, so the documented DAG-engine deadlock shape cannot be declared. | task-002 |
+| Every `loop` edge in every shipped graph carries a numeric ceiling, and the engine stops at it. | task-001, task-003, task-014 |
+| The engine, schema, state channel, and port contain no harness-specific branching. | task-022 |
+| Version is 3.0.0 in lockstep across all four declaration sites. | task-025 |
+| The full offline suite passes. | task-025 |
+
 ## File map
 
 **Create — graph data**

@@ -80,9 +80,32 @@ out="$(run_probe --node-kind agent --security-signal none --width 1 \
 check_match "delivery auth -> system2" '^mode=system2 reason=.*deliver' "$out"
 
 # --- unresolved input fails safe to system2 ---
+# One case per unresolvable input. A single representative case leaves the other
+# fail-safe branches free to flip to system1 undetected, which is the bug this
+# covers: the probe must fail toward deliberation on EVERY unresolved input.
 out="$(run_probe --node-kind function --security-signal none --width unknown \
   --changed-files 1 --task-count 1 --attempt 0 --authorizes-delivery false)"
 check_match "unresolved width -> system2" '^mode=system2 reason=.*width' "$out"
+
+out="$(run_probe --node-kind function --security-signal none --width 1 \
+  --changed-files x --task-count 1 --attempt 0 --authorizes-delivery false)"
+check_match "unresolved changed-files -> system2" '^mode=system2 reason=.*changed-files' "$out"
+
+out="$(run_probe --node-kind function --security-signal none --width 1 \
+  --changed-files 1 --task-count x --attempt 0 --authorizes-delivery false)"
+check_match "unresolved task-count -> system2" '^mode=system2 reason=.*task-count' "$out"
+
+out="$(run_probe --node-kind function --security-signal none --width 1 \
+  --changed-files 1 --task-count 1 --attempt x --authorizes-delivery false)"
+check_match "unresolved attempt -> system2" '^mode=system2 reason=.*attempt' "$out"
+
+out="$(run_probe --node-kind function --security-signal none --width 1 \
+  --changed-files 1 --task-count 1 --attempt 0 --authorizes-delivery maybe)"
+check_match "unresolved authorizes-delivery -> system2" '^mode=system2 reason=.*authorizes-delivery' "$out"
+
+out="$(run_probe --node-kind wombat --security-signal none --width 1 \
+  --changed-files 1 --task-count 1 --attempt 0 --authorizes-delivery false)"
+check_match "unresolved node-kind -> system2" '^mode=system2 reason=.*node-kind' "$out"
 
 # --- global override both directions ---
 out="$(env -u LOOP_SPEC_EFFORT_PHASE -u LOOP_SPEC_EFFORT_NODE \

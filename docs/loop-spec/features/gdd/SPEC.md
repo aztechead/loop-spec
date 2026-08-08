@@ -517,7 +517,7 @@ There is no fourth stage in which the old path is kept around.
   Verify: `bash tests/lib/effort-probe.test.sh` passes, including a case asserting the output line count is 1 and the mode is one of the two values.
 
 - [ ] `lib/effort-probe.sh` resolves to `system2` when any input is unavailable.
-  Verify: `bash tests/lib/effort-probe.test.sh` includes an unresolvable-input case whose stdout mode field equals `system2`.
+  Verify: `bash tests/lib/effort-probe.test.sh` includes ONE case per unresolvable input the probe can report — width, changed-files, task-count, attempt, authorizes-delivery, and node-kind — each asserting the mode field equals `system2`. A single representative case does not satisfy this criterion: it leaves the other fail-safe branches free to flip to `system1` undetected.
 
 - [ ] `LOOP_SPEC_EFFORT` overrides the probe in both directions.
   Verify: `bash tests/lib/effort-probe.test.sh` includes cases asserting `LOOP_SPEC_EFFORT=system1` and `LOOP_SPEC_EFFORT=system2` each win over the computed answer.
