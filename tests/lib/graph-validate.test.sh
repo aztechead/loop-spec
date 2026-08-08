@@ -1,189 +1,126 @@
 #!/usr/bin/env bash
-# Unit tests for lib/graph/validate.sh — schema + referential rules.
+# Offline unit suite for lib/graph/validate.sh — the schema and referential
+# validator over a declared workflow graph. One accepting case, one rejection
+# per rule (probe-shaped route conditions, probe existence, edge endpoints,
+# reachability, loop ceilings, fanin joins, non-loop DAG-ness), plus the
+# invocation contract (exit 2 on missing/unreadable args).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT="$ROOT/lib/graph/validate.sh"
 WORK="${TMPDIR:-/tmp}/loop-spec-graph-validate.$$"
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/bin"
+mkdir -p "$WORK"
 PASS=0; FAIL=0
 
 check() {
-  local name="$1" expected="$2" actual="$3"
-  if [[ "$expected" == "$actual" ]]; then
+  local name="$1" expected_rc="$2"; shift 2
+  local rc=0 out
+  out="$(bash "$SCRIPT" "$@" 2>&1)" || rc=$?
+  if [[ "$rc" == "$expected_rc" ]]; then
     echo "PASS: $name"; PASS=$((PASS + 1))
   else
-    echo "FAIL: $name (expected '$expected', got '$actual')"; FAIL=$((FAIL + 1))
+    echo "FAIL: $name (expected rc=$expected_rc, got rc=$rc)"; echo "$out" | sed 's/^/    /'
+    FAIL=$((FAIL + 1))
   fi
 }
 
-check_match() {
-  local name="$1" pattern="$2" actual="$3"
-  if [[ "$actual" =~ $pattern ]]; then
+check_output() {
+  local name="$1" pattern="$2"; shift 2
+  local out
+  out="$(bash "$SCRIPT" "$@" 2>&1 || true)"
+  if grep -qF "$pattern" <<<"$out"; then
     echo "PASS: $name"; PASS=$((PASS + 1))
   else
-    echo "FAIL: $name (expected match /$pattern/, got '$actual')"; FAIL=$((FAIL + 1))
+    echo "FAIL: $name (output missing '$pattern')"; echo "$out" | sed 's/^/    /'
+    FAIL=$((FAIL + 1))
   fi
 }
 
-[[ -f "$SCRIPT" ]] || { echo "FAIL: missing $SCRIPT"; exit 1; }
+# --- invocation ---
+check "no args is usage error" 2
+check "missing graph file is a bad-invocation error, never 0" 2 "$WORK/does-not-exist.json"
 
-# Stub probe executable inside repo so probe-path checks pass when referenced
-# as a repo-relative path from fixtures that live under WORK — fixtures use
-# lib/security-signal.sh which is already executable in-tree.
-PROBE="lib/security-signal.sh"
-[[ -x "$ROOT/$PROBE" ]] || chmod +x "$ROOT/$PROBE"
-
-write_graph() {
-  local path="$1"
-  cat > "$path"
-}
-
-# --- bad invocation ---
-rc=0
-bash "$SCRIPT" >/dev/null 2>&1 || rc=$?
-check "no-arg exits 2" "2" "$rc"
-
-rc=0
-bash "$SCRIPT" "$WORK/missing.json" >/dev/null 2>&1 || rc=$?
-check "missing file exits 2" "2" "$rc"
-
-# --- accepting minimal graph ---
-write_graph "$WORK/ok.json" <<EOF
+# --- accepting case ---
+# Probe paths resolve against the repo root; lib/security-signal.sh is a real
+# executable probe already in the tree.
+cat > "$WORK/good.json" <<'EOF'
 {
-  "entry": "a",
+  "id": "demo",
+  "entry": "start",
   "nodes": [
-    {"id": "a", "kind": "function", "reads": [], "writes": ["currentPhase"], "effort": "system1", "body": "lib/dag-width.sh"},
-    {"id": "b", "kind": "gate", "reads": ["currentPhase"], "writes": [], "effort": "system1"},
-    {"id": "c", "kind": "agent", "reads": [], "writes": [], "effort": "system2"},
-    {"id": "d", "kind": "agent", "reads": [], "writes": [], "effort": "system2"},
-    {"id": "join", "kind": "function", "reads": [], "writes": [], "effort": "system1"}
+    {"id": "start",  "kind": "agent",    "reads": [],       "writes": ["slug"],      "effort": "system2"},
+    {"id": "branch", "kind": "gate",     "reads": ["slug"], "writes": [],            "effort": "system2"},
+    {"id": "work",   "kind": "agent",    "reads": ["slug"], "writes": ["artifacts"], "effort": "system2"},
+    {"id": "merge",  "kind": "function", "reads": [],       "writes": [],            "effort": "system1"},
+    {"id": "done",   "kind": "human",    "reads": [],       "writes": [],            "effort": "system2"}
   ],
   "edges": [
-    {"from": "a", "to": "b", "kind": "chain"},
-    {"from": "b", "to": "c", "kind": "route", "condition": {"probe": "$PROBE", "expects": "matched"}},
-    {"from": "b", "to": "d", "kind": "fanout"},
-    {"from": "c", "to": "join", "kind": "fanin", "join": "all"},
-    {"from": "d", "to": "join", "kind": "fanin", "join": "all"},
-    {"from": "join", "to": "a", "kind": "loop", "ceiling": 3, "strategy": "contain"}
+    {"from": "start",  "to": "branch", "kind": "chain"},
+    {"from": "branch", "to": "work",   "kind": "route", "condition": {"probe": "lib/security-signal.sh", "expects": "yes"}},
+    {"from": "branch", "to": "merge",  "kind": "fanout"},
+    {"from": "work",   "to": "merge",  "kind": "fanin", "join": "all"},
+    {"from": "merge",  "to": "done",   "kind": "chain"},
+    {"from": "done",   "to": "work",   "kind": "loop",  "ceiling": 3, "strategy": "unroll"}
   ]
 }
 EOF
-out="$(bash "$SCRIPT" "$WORK/ok.json" 2>&1)" || true
-rc=0; bash "$SCRIPT" "$WORK/ok.json" >/dev/null || rc=$?
-check "valid graph exit 0" "0" "$rc"
-check_match "valid graph answer" '^graph-validate: ok' "$(bash "$SCRIPT" "$WORK/ok.json" | tail -1)"
+check "valid graph passes" 0 "$WORK/good.json"
+check_output "valid graph prints the ok answer line" "graph-validate: ok" "$WORK/good.json"
 
-# --- free-text route condition ---
-write_graph "$WORK/prose.json" <<EOF
+# --- rule 1: route condition must be a {probe, expects} object ---
+jq '.edges[1].condition = "escalate if this looks security-relevant"' \
+  "$WORK/good.json" > "$WORK/prose-condition.json"
+check "free-text route condition flags" 1 "$WORK/prose-condition.json"
+check_output "prose condition names the required shape" "{probe, expects}" "$WORK/prose-condition.json"
+check_output "prose condition emits a FLAG line" "FLAG " "$WORK/prose-condition.json"
+
+jq 'del(.edges[1].condition)' "$WORK/good.json" > "$WORK/no-condition.json"
+check "route edge without a condition flags" 1 "$WORK/no-condition.json"
+
+# --- rule 2: route probe must exist and be executable in the tree ---
+jq '.edges[1].condition.probe = "lib/does-not-exist.sh"' \
+  "$WORK/good.json" > "$WORK/probe-missing.json"
+check "nonexistent probe path flags" 1 "$WORK/probe-missing.json"
+check_output "missing probe is named" "lib/does-not-exist.sh" "$WORK/probe-missing.json"
+
+jq '.edges[1].condition.probe = "README.md"' "$WORK/good.json" > "$WORK/probe-noexec.json"
+check "non-executable probe flags" 1 "$WORK/probe-noexec.json"
+check_output "non-executable probe is named" "not executable" "$WORK/probe-noexec.json"
+
+# --- rule 3: edge endpoints must name declared nodes ---
+jq '.edges[0].to = "ghost"' "$WORK/good.json" > "$WORK/unknown-to.json"
+check "edge to an undeclared node flags" 1 "$WORK/unknown-to.json"
+check_output "undeclared endpoint is named" "ghost" "$WORK/unknown-to.json"
+
+jq '.edges[0].from = "phantom"' "$WORK/good.json" > "$WORK/unknown-from.json"
+check "edge from an undeclared node flags" 1 "$WORK/unknown-from.json"
+
+# --- rule 4: every node reachable from an entry node ---
+jq '.nodes += [{"id": "island", "kind": "agent", "reads": [], "writes": [], "effort": "system2"}]' \
+  "$WORK/good.json" > "$WORK/unreachable.json"
+check "node unreachable from entry flags" 1 "$WORK/unreachable.json"
+check_output "unreachable node is named" "island" "$WORK/unreachable.json"
+
+# --- rule 5: loop edge must carry a numeric ceiling ---
+jq 'del(.edges[5].ceiling)' "$WORK/good.json" > "$WORK/loop-no-ceiling.json"
+check "loop edge without a ceiling flags" 1 "$WORK/loop-no-ceiling.json"
+
+jq '.edges[5].ceiling = "three"' "$WORK/good.json" > "$WORK/loop-string-ceiling.json"
+check "loop edge with a non-numeric ceiling flags" 1 "$WORK/loop-string-ceiling.json"
+
+# --- rule 6: fanin must name a join rule ---
+jq 'del(.edges[3].join)' "$WORK/good.json" > "$WORK/fanin-no-join.json"
+check "fanin edge without a join rule flags" 1 "$WORK/fanin-no-join.json"
+
+# --- rule 7: chain/route/fanout/fanin edges must form a DAG ---
+# A literal back-edge among the acyclic kinds is a cycle...
+cat > "$WORK/back-edge.json" <<'EOF'
 {
+  "id": "cyc",
   "entry": "a",
   "nodes": [
-    {"id": "a", "kind": "function", "reads": [], "writes": [], "effort": "system1"},
-    {"id": "b", "kind": "agent", "reads": [], "writes": [], "effort": "system2"}
-  ],
-  "edges": [
-    {"from": "a", "to": "b", "kind": "route", "condition": "if it looks risky"}
-  ]
-}
-EOF
-rc=0; out="$(bash "$SCRIPT" "$WORK/prose.json" 2>&1)" || rc=$?
-check "prose condition exit 1" "1" "$rc"
-check_match "prose condition FLAG" 'FLAG .*:.*condition' "$out"
-
-# --- missing probe executable ---
-write_graph "$WORK/badprobe.json" <<EOF
-{
-  "entry": "a",
-  "nodes": [
-    {"id": "a", "kind": "function", "reads": [], "writes": [], "effort": "system1"},
-    {"id": "b", "kind": "agent", "reads": [], "writes": [], "effort": "system2"}
-  ],
-  "edges": [
-    {"from": "a", "to": "b", "kind": "route",
-     "condition": {"probe": "lib/does-not-exist-probe.sh", "expects": "x"}}
-  ]
-}
-EOF
-rc=0; out="$(bash "$SCRIPT" "$WORK/badprobe.json" 2>&1)" || rc=$?
-check "missing probe exit 1" "1" "$rc"
-check_match "missing probe FLAG" 'FLAG .*:.*probe' "$out"
-
-# --- undeclared endpoint ---
-write_graph "$WORK/dangling.json" <<EOF
-{
-  "entry": "a",
-  "nodes": [
-    {"id": "a", "kind": "function", "reads": [], "writes": [], "effort": "system1"}
-  ],
-  "edges": [
-    {"from": "a", "to": "ghost", "kind": "chain"}
-  ]
-}
-EOF
-rc=0; out="$(bash "$SCRIPT" "$WORK/dangling.json" 2>&1)" || rc=$?
-check "undeclared node exit 1" "1" "$rc"
-check_match "undeclared node FLAG" 'FLAG .*:.*ghost|undeclared' "$out"
-
-# --- unreachable node ---
-write_graph "$WORK/unreachable.json" <<EOF
-{
-  "entry": "a",
-  "nodes": [
-    {"id": "a", "kind": "function", "reads": [], "writes": [], "effort": "system1"},
-    {"id": "orphan", "kind": "agent", "reads": [], "writes": [], "effort": "system2"}
-  ],
-  "edges": []
-}
-EOF
-rc=0; out="$(bash "$SCRIPT" "$WORK/unreachable.json" 2>&1)" || rc=$?
-check "unreachable exit 1" "1" "$rc"
-check_match "unreachable FLAG" 'FLAG .*:.*unreachable|orphan' "$out"
-
-# --- loop without ceiling ---
-write_graph "$WORK/noloopceil.json" <<EOF
-{
-  "entry": "a",
-  "nodes": [
-    {"id": "a", "kind": "function", "reads": [], "writes": [], "effort": "system1"},
-    {"id": "b", "kind": "agent", "reads": [], "writes": [], "effort": "system2"}
-  ],
-  "edges": [
-    {"from": "a", "to": "b", "kind": "chain"},
-    {"from": "b", "to": "a", "kind": "loop", "strategy": "unroll"}
-  ]
-}
-EOF
-rc=0; out="$(bash "$SCRIPT" "$WORK/noloopceil.json" 2>&1)" || rc=$?
-check "loop without ceiling exit 1" "1" "$rc"
-check_match "loop ceiling FLAG" 'FLAG .*:.*ceiling' "$out"
-
-# --- fanin without join ---
-write_graph "$WORK/nojoin.json" <<EOF
-{
-  "entry": "a",
-  "nodes": [
-    {"id": "a", "kind": "function", "reads": [], "writes": [], "effort": "system1"},
-    {"id": "b", "kind": "agent", "reads": [], "writes": [], "effort": "system2"},
-    {"id": "j", "kind": "function", "reads": [], "writes": [], "effort": "system1"}
-  ],
-  "edges": [
-    {"from": "a", "to": "b", "kind": "fanout"},
-    {"from": "b", "to": "j", "kind": "fanin"}
-  ]
-}
-EOF
-rc=0; out="$(bash "$SCRIPT" "$WORK/nojoin.json" 2>&1)" || rc=$?
-check "fanin without join exit 1" "1" "$rc"
-check_match "fanin join FLAG" 'FLAG .*:.*join' "$out"
-
-# --- non-loop back-edge cycle (DAG violation) ---
-write_graph "$WORK/cycle.json" <<EOF
-{
-  "entry": "a",
-  "nodes": [
-    {"id": "a", "kind": "function", "reads": [], "writes": [], "effort": "system1"},
+    {"id": "a", "kind": "agent", "reads": [], "writes": [], "effort": "system2"},
     {"id": "b", "kind": "agent", "reads": [], "writes": [], "effort": "system2"}
   ],
   "edges": [
@@ -192,9 +129,26 @@ write_graph "$WORK/cycle.json" <<EOF
   ]
 }
 EOF
-rc=0; out="$(bash "$SCRIPT" "$WORK/cycle.json" 2>&1)" || rc=$?
-check "acyclic edge cycle exit 1" "1" "$rc"
-check_match "cycle FLAG" 'FLAG .*:.*cycle|DAG' "$out"
+check "non-loop back-edge cycle flags" 1 "$WORK/back-edge.json"
+check_output "cycle flag names the involved edge kinds" "chain/route/fanout/fanin" "$WORK/back-edge.json"
+
+# ...but the same shape declared as a bounded loop edge is legal iteration.
+jq '.edges[1] = {"from": "b", "to": "a", "kind": "loop", "ceiling": 2, "strategy": "contain"}' \
+  "$WORK/back-edge.json" > "$WORK/loop-back-edge.json"
+check "bounded loop back-edge passes (loop excluded from DAG check)" 0 "$WORK/loop-back-edge.json"
+
+# --- schema enforcement beyond the rules above ---
+printf 'not json' > "$WORK/bad.json"
+check "unparseable graph flags, never exits 0" 1 "$WORK/bad.json"
+
+jq '.nodes[0].kind = "wizard"' "$WORK/good.json" > "$WORK/unknown-kind.json"
+check "unknown node kind flags" 1 "$WORK/unknown-kind.json"
+
+jq '.entry = "nowhere"' "$WORK/good.json" > "$WORK/bad-entry.json"
+check "entry naming an undeclared node flags" 1 "$WORK/bad-entry.json"
+
+# --- answer line shape on rejection ---
+check_output "rejection prints the flag-count answer line" "flag(s)" "$WORK/prose-condition.json"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -57,8 +57,11 @@ try:
     with open(graph_path, "r", encoding="utf-8") as fh:
         graph = json.load(fh)
 except Exception as exc:
-    print("graph-validate: cannot parse %s: %s" % (graph_path, exc), file=sys.stderr)
-    sys.exit(2)
+    # Unreadable/unparseable content is a defect (exit 1), not a usage error —
+    # fail safe so a corrupt graph never looks clean.
+    print("FLAG %s:1: cannot parse graph: %s" % (graph_path, exc))
+    print("graph-validate: 1 flag(s)")
+    sys.exit(1)
 
 try:
     with open(schema_path, "r", encoding="utf-8") as fh:
@@ -212,15 +215,30 @@ if idset and entries:
         if nid not in seen:
             flag("/nodes", "unreachable node %r from entry" % nid)
 
-# DAG check on acyclic edge kinds only
+# DAG check on chain/route/fanout/fanin. A route back-edge is permitted only when
+# the same source already declares a bounded loop edge (the iteration ceiling
+# that makes the rewind finite). Uncovered back-edges still FLAG.
+loop_sources = set()
+for edge in edges:
+    if isinstance(edge, dict) and edge.get("kind") == "loop":
+        if isinstance(edge.get("ceiling"), (int, float)) and not isinstance(edge.get("ceiling"), bool):
+            loop_sources.add(edge.get("from"))
+
 dag_edges = []
 for i, edge in enumerate(edges):
     if not isinstance(edge, dict):
         continue
-    if edge.get("kind") in acyclic_kinds:
-        frm, to = edge.get("from"), edge.get("to")
-        if frm in idset and to in idset:
-            dag_edges.append((frm, to, i))
+    kind = edge.get("kind")
+    if kind not in acyclic_kinds:
+        continue
+    frm, to = edge.get("from"), edge.get("to")
+    if frm not in idset or to not in idset:
+        continue
+    # Rewind routes covered by a loop ceiling from the same source are the
+    # declared form of ITERATE/DELIVER re-entry; they are not free cycles.
+    if kind == "route" and frm in loop_sources:
+        continue
+    dag_edges.append((frm, to, i))
 
 if idset:
     indeg = {nid: 0 for nid in idset}

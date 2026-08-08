@@ -1,0 +1,262 @@
+{
+  "id": "cycle",
+  "entry": "spec",
+  "nodes": [
+    {
+      "id": "spec",
+      "kind": "agent",
+      "reads": ["slug", "feature_title", "execStyle"],
+      "writes": ["artifacts", "currentPhase", "warnings"],
+      "effort": "system2",
+      "body": "skills/spec/SKILL.md"
+    },
+    {
+      "id": "human.after-spec",
+      "kind": "human",
+      "reads": ["execStyle", "phaseHandoff"],
+      "writes": ["currentPhase"],
+      "effort": "system1"
+    },
+    {
+      "id": "discuss",
+      "kind": "agent",
+      "reads": ["artifacts", "execStyle", "bootstrapPendingDomains"],
+      "writes": ["artifacts", "currentPhase", "warnings"],
+      "effort": "system2",
+      "body": "skills/discuss/SKILL.md"
+    },
+    {
+      "id": "discuss.critique",
+      "kind": "subgraph",
+      "reads": ["artifacts", "currentGate"],
+      "writes": ["artifacts", "currentGate", "gateHistory"],
+      "effort": "system2",
+      "graph": "graph/critique.graph.json"
+    },
+    {
+      "id": "human.after-discuss",
+      "kind": "human",
+      "reads": ["execStyle", "phaseHandoff"],
+      "writes": ["currentPhase"],
+      "effort": "system1"
+    },
+    {
+      "id": "plan",
+      "kind": "agent",
+      "reads": ["artifacts", "commands", "warnings"],
+      "writes": ["artifacts", "currentPhase", "warnings"],
+      "effort": "system2",
+      "body": "skills/plan/SKILL.md"
+    },
+    {
+      "id": "plan.critique",
+      "kind": "subgraph",
+      "reads": ["artifacts", "currentGate"],
+      "writes": ["artifacts", "currentGate", "gateHistory"],
+      "effort": "system2",
+      "graph": "graph/critique.graph.json"
+    },
+    {
+      "id": "human.after-plan",
+      "kind": "human",
+      "reads": ["execStyle", "phaseHandoff"],
+      "writes": ["currentPhase"],
+      "effort": "system1"
+    },
+    {
+      "id": "execute",
+      "kind": "agent",
+      "reads": ["artifacts", "commands", "pendingRemediationTasks", "mergeQueue", "branch"],
+      "writes": ["artifacts", "currentPhase", "mergeQueue", "pendingRemediationTasks", "currentTeammates"],
+      "effort": "system2",
+      "body": "skills/execute/SKILL.md"
+    },
+    {
+      "id": "execute.worker",
+      "kind": "agent",
+      "reads": ["artifacts", "commands", "branch"],
+      "writes": ["mergeQueue"],
+      "effort": "system2",
+      "body": "loop-spec:implementer"
+    },
+    {
+      "id": "execute.join",
+      "kind": "function",
+      "reads": ["mergeQueue"],
+      "writes": ["mergeQueue", "currentPhase"],
+      "effort": "system1",
+      "body": "lib/integrate-task.sh"
+    },
+    {
+      "id": "human.after-execute",
+      "kind": "human",
+      "reads": ["execStyle", "phaseHandoff"],
+      "writes": ["currentPhase"],
+      "effort": "system1"
+    },
+    {
+      "id": "verify",
+      "kind": "agent",
+      "reads": ["artifacts", "commands", "verificationBaseline"],
+      "writes": ["artifacts", "currentPhase", "pendingRemediationTasks", "warnings"],
+      "effort": "system2",
+      "body": "skills/verify/SKILL.md"
+    },
+    {
+      "id": "verify.marker",
+      "kind": "gate",
+      "reads": ["artifacts"],
+      "writes": ["warnings"],
+      "effort": "system1",
+      "body": "lib/placeholder-scan.sh"
+    },
+    {
+      "id": "verify.tamper",
+      "kind": "gate",
+      "reads": ["artifacts", "commands"],
+      "writes": ["warnings"],
+      "effort": "system1",
+      "body": "lib/test-tamper-scan.sh"
+    },
+    {
+      "id": "verify.acceptance",
+      "kind": "gate",
+      "reads": ["artifacts"],
+      "writes": ["warnings"],
+      "effort": "system2",
+      "body": "lib/acceptance-lint.sh"
+    },
+    {
+      "id": "verify.code-review",
+      "kind": "gate",
+      "reads": ["artifacts", "branch"],
+      "writes": ["warnings", "pendingRemediationTasks"],
+      "effort": "system2",
+      "body": "loop-spec:code-reviewer"
+    },
+    {
+      "id": "iterate",
+      "kind": "agent",
+      "reads": ["artifacts", "feature_title", "execStyle"],
+      "writes": ["artifacts", "currentPhase", "warnings", "pendingRemediationTasks"],
+      "effort": "system2",
+      "body": "skills/iterate/SKILL.md"
+    },
+    {
+      "id": "human.iterate-spec-approval",
+      "kind": "human",
+      "reads": ["execStyle"],
+      "writes": ["currentPhase", "warnings"],
+      "effort": "system1"
+    },
+    {
+      "id": "deliver",
+      "kind": "agent",
+      "reads": ["artifacts", "branch", "baseBranch", "delivery"],
+      "writes": ["delivery", "currentPhase", "prUrl", "warnings"],
+      "effort": "system2",
+      "authorizesDelivery": true,
+      "body": "skills/deliver/SKILL.md"
+    },
+    {
+      "id": "completed",
+      "kind": "function",
+      "reads": ["delivery", "currentPhase"],
+      "writes": ["currentPhase"],
+      "effort": "system1",
+      "body": "lib/cycle-result.sh"
+    }
+  ],
+  "edges": [
+    { "from": "spec", "to": "human.after-spec", "kind": "chain" },
+    { "from": "human.after-spec", "to": "discuss", "kind": "chain" },
+    { "from": "discuss", "to": "discuss.critique", "kind": "chain" },
+    { "from": "discuss.critique", "to": "human.after-discuss", "kind": "chain" },
+    { "from": "human.after-discuss", "to": "plan", "kind": "chain" },
+    { "from": "plan", "to": "plan.critique", "kind": "chain" },
+    { "from": "plan.critique", "to": "human.after-plan", "kind": "chain" },
+    { "from": "human.after-plan", "to": "execute", "kind": "chain" },
+
+    { "from": "execute", "to": "execute.worker", "kind": "fanout" },
+    { "from": "execute.worker", "to": "execute.join", "kind": "fanin", "join": "merge-queue" },
+    {
+      "from": "execute.join",
+      "to": "execute.worker",
+      "kind": "loop",
+      "ceiling": 2,
+      "strategy": "unroll"
+    },
+    { "from": "execute.join", "to": "human.after-execute", "kind": "chain" },
+    { "from": "human.after-execute", "to": "verify", "kind": "chain" },
+
+    { "from": "verify", "to": "verify.marker", "kind": "chain" },
+    { "from": "verify.marker", "to": "verify.tamper", "kind": "chain" },
+    { "from": "verify.tamper", "to": "verify.acceptance", "kind": "chain" },
+    { "from": "verify.acceptance", "to": "verify.code-review", "kind": "chain" },
+    { "from": "verify.code-review", "to": "iterate", "kind": "chain" },
+
+    {
+      "from": "iterate",
+      "to": "execute",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/ralph-remediation.sh",
+        "expects": "gap=execute"
+      }
+    },
+    {
+      "from": "iterate",
+      "to": "plan",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/plan-adherence.sh",
+        "expects": "gap=plan"
+      }
+    },
+    {
+      "from": "iterate",
+      "to": "spec",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/criteria-coverage.sh",
+        "expects": "gap=spec"
+      }
+    },
+    {
+      "from": "iterate",
+      "to": "human.iterate-spec-approval",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/parse-invocation.sh",
+        "expects": "style=step|interactive"
+      }
+    },
+    { "from": "human.iterate-spec-approval", "to": "discuss", "kind": "chain" },
+    { "from": "iterate", "to": "deliver", "kind": "chain" },
+    {
+      "from": "iterate",
+      "to": "verify",
+      "kind": "loop",
+      "ceiling": 10,
+      "strategy": "contain"
+    },
+
+    {
+      "from": "deliver",
+      "to": "execute",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/deliver.sh",
+        "expects": "nextPhase=execute"
+      }
+    },
+    {
+      "from": "deliver",
+      "to": "execute",
+      "kind": "loop",
+      "ceiling": 2,
+      "strategy": "unroll"
+    },
+    { "from": "deliver", "to": "completed", "kind": "chain" }
+  ]
+}
