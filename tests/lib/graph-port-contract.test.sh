@@ -78,15 +78,19 @@ out="$(run complete task-002 "$WORK/result.json" "$WORK/feat")"
 check "complete matching hash" "completed=task-002" "$out"
 
 # stale complete: point complete at a feature-dir whose feature.json content
-# has since diverged from what the bundle was cut from.
-run put "$WORK/bundle.json" >/dev/null
-run claim task-002 dave 60 >/dev/null
+# has since diverged from what the bundle was cut from. Fresh id so a
+# leftover result.json from the "matching hash" case above can't mask this.
+jq -n --arg h "$state_hash" \
+  '{id:"task-002-stale",node:"execute.worker",stateHash:$h,verifyCommand:"true",baseSha:"deadbeef",inputs:{}}' \
+  > "$WORK/bundle-stale.json"
+run put "$WORK/bundle-stale.json" >/dev/null
+run claim task-002-stale dave 60 >/dev/null
 mkdir -p "$WORK/feat-stale"
 printf '{"slug":"contract-fixture","schemaVersion":7,"currentPhase":"drifted"}' > "$WORK/feat-stale/feature.json"
 rc=0
-run complete task-002 "$WORK/result.json" "$WORK/feat-stale" >/dev/null 2>&1 || rc=$?
+run complete task-002-stale "$WORK/result.json" "$WORK/feat-stale" >/dev/null 2>&1 || rc=$?
 check "stale complete rejected" "1" "$rc"
-[[ ! -f "$WORK/store/instances/task-002/result.json" ]]
+[[ ! -f "$WORK/store/instances/task-002-stale/result.json" ]]
 check "stale left unmerged" "0" "$?"
 
 # concurrent reclaimers: two claimants race an expired lease; exactly one wins

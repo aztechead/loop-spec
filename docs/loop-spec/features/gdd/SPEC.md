@@ -493,7 +493,12 @@ operations over node-instance bundles:
 | `list [--claimable]` | enumerate stored instances |
 | `claim <id> <owner> <ttl>` | take exclusive ownership for a bounded lease |
 | `release <id>` | relinquish a claim without completing |
-| `complete <id> <result>` | return a contract-checked result |
+| `complete <id> <result-json-file> <feature-dir>` | return a contract-checked result |
+
+The feature directory is an argument to `complete` rather than state the adapter carries,
+because the staleness check is only worth anything if the hash is re-derived from the live
+`feature.json` at completion time. An adapter that compares the claimant's self-reported
+hash against another value the claimant supplied checks nothing.
 
 `lib/graph/port.sh` dispatches to an adapter named by `LOOP_SPEC_PORT`, defaulting to
 `lib/graph/port-local.sh`, which implements all six against the repository. An integrator
