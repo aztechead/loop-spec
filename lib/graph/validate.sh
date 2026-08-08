@@ -194,6 +194,34 @@ for i, edge in enumerate(edges):
         if not edge.get("join"):
             flag(ptr + "/join", "fanin edge requires a join rule")
 
+# Producer/consumer: every read key is written by some node, or is a
+# feature-init skeleton key present before any phase runs.
+skeleton_keys = {
+    "schemaVersion", "slug", "feature_title", "createdAt", "updatedAt",
+    "execStyle", "phaseHandoff", "currentPhase", "completedPhases", "branch",
+    "worktreePath", "executionRootMode", "baseSha", "baseBranch", "models",
+    "phaseModels", "artifacts", "currentTeamName", "currentTeammates",
+    "currentGate", "commands", "workspace", "stalenessHours", "prUrl",
+    "checkpointPrUrl", "delivery", "verificationBaseline", "warnings",
+    "mergeQueue", "pendingRemediationTasks", "bootstrapPendingDomains",
+    "activeWorkflow", "harnessTaskMetadataMode", "harnessStatusMode",
+    "fileConflictExcludeGlobs", "gateHistory",
+}
+written = set()
+for node in nodes:
+    if isinstance(node, dict):
+        for key in node.get("writes") or []:
+            written.add(key)
+for i, node in enumerate(nodes):
+    if not isinstance(node, dict):
+        continue
+    for j, key in enumerate(node.get("reads") or []):
+        if key not in written and key not in skeleton_keys:
+            flag(
+                "/nodes/%d/reads/%d" % (i, j),
+                "read key %r is never written by any node and is not a feature-init skeleton key" % key,
+            )
+
 # Reachability from entry (following all edge kinds)
 if idset and entries:
     adj = {nid: [] for nid in idset}
