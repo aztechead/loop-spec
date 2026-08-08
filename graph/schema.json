@@ -1,0 +1,163 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aztechead/loop-spec/graph/schema.json",
+  "title": "loop-spec workflow graph",
+  "type": "object",
+  "required": ["nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string" },
+    "entry": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      ]
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/edge" }
+    }
+  },
+  "definitions": {
+    "stateKey": {
+      "type": "string",
+      "enum": [
+        "schemaVersion",
+        "slug",
+        "feature_title",
+        "createdAt",
+        "updatedAt",
+        "execStyle",
+        "phaseHandoff",
+        "currentPhase",
+        "completedPhases",
+        "branch",
+        "worktreePath",
+        "executionRootMode",
+        "baseSha",
+        "baseBranch",
+        "models",
+        "phaseModels",
+        "artifacts",
+        "currentTeamName",
+        "currentTeammates",
+        "currentGate",
+        "commands",
+        "workspace",
+        "stalenessHours",
+        "prUrl",
+        "checkpointPrUrl",
+        "delivery",
+        "verificationBaseline",
+        "warnings",
+        "mergeQueue",
+        "pendingRemediationTasks",
+        "bootstrapPendingDomains",
+        "activeWorkflow",
+        "harnessTaskMetadataMode",
+        "harnessStatusMode",
+        "fileConflictExcludeGlobs",
+        "gateHistory"
+      ]
+    },
+    "effort": {
+      "type": "string",
+      "enum": ["system1", "system2"]
+    },
+    "routeCondition": {
+      "type": "object",
+      "required": ["probe", "expects"],
+      "additionalProperties": false,
+      "properties": {
+        "probe": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repo-relative path to an executable probe script"
+        },
+        "expects": {
+          "type": "string",
+          "description": "Exact expected probe answer token"
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "reads", "writes", "effort"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": ["agent", "function", "gate", "human", "subgraph"]
+        },
+        "reads": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/stateKey" }
+        },
+        "writes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/stateKey" }
+        },
+        "effort": { "$ref": "#/definitions/effort" },
+        "body": { "type": "string" },
+        "graph": { "type": "string" },
+        "skippable": {
+          "type": "object",
+          "required": ["probe"],
+          "additionalProperties": false,
+          "properties": {
+            "probe": { "type": "string", "minLength": 1 }
+          }
+        },
+        "authorizesDelivery": { "type": "boolean" }
+      }
+    },
+    "loopEdge": {
+      "type": "object",
+      "required": ["from", "to", "kind", "ceiling", "strategy"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "kind": { "const": "loop" },
+        "ceiling": { "type": "number", "exclusiveMinimum": 0 },
+        "strategy": { "type": "string", "enum": ["unroll", "contain"] }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to", "kind"],
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": ["chain", "route", "fanout", "fanin", "loop"]
+        },
+        "condition": { "$ref": "#/definitions/routeCondition" },
+        "join": { "type": "string" },
+        "ceiling": { "type": "number", "exclusiveMinimum": 0 },
+        "strategy": { "type": "string", "enum": ["unroll", "contain"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "route" } }, "required": ["kind"] },
+          "then": { "required": ["condition"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "fanin" } }, "required": ["kind"] },
+          "then": { "required": ["join"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "loop" } }, "required": ["kind"] },
+          "then": { "required": ["ceiling", "strategy"] }
+        }
+      ]
+    }
+  }
+}
