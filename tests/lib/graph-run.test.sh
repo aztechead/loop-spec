@@ -578,6 +578,54 @@ check "engine file restored byte-identical after mutation proofs" "0" "$?"
 
 rm -rf "$ROOT"/.tmp-gate-* "$ROOT"/.tmp-probes-* 2>/dev/null || true
 
+## --- 14. effort: the probe runs, and may only RAISE the declared default ---
+## Contract sec 7. lib/verification-gap-scan.sh found this: every other wired
+## component (assert-reads, conflict-monitor, last-result, subgraph, trace) had
+## a behavioural assertion and effort had none, so nothing held run.sh:371's
+## raise-never-lower rule in place. Note --dry-run short-circuits to the
+## declared value, so these must be real steps.
+cat > "$WORK/effort.json" <<'EOF'
+{
+  "entry": "cheap",
+  "nodes": [
+    {"id":"cheap","kind":"function","reads":[],"writes":[],"effort":"system1"},
+    {"id":"careful","kind":"function","reads":[],"writes":[],"effort":"system2"}
+  ],
+  "edges": [{"from":"cheap","to":"careful","kind":"chain"}]
+}
+EOF
+bash "$ROOT/lib/graph/validate.sh" "$WORK/effort.json" >/dev/null
+check "effort graph validates" "0" "$?"
+new_feat "$WORK/feat-effort" '{slug:"effort",schemaVersion:7}'
+
+# Declared system1 + probe says system2 -> RAISED.
+raised="$(LOOP_SPEC_EFFORT=system2 bash "$SCRIPT" --step --feature-dir "$WORK/feat-effort" "$WORK/effort.json")"
+check "declared system1 is RAISED to system2 when the probe says so" \
+  "system2" "$(jq -r '.effort' <<<"$raised")"
+
+# Declared system2 + probe says system1 -> NOT lowered.
+new_feat "$WORK/feat-effort2" '{slug:"effort2",schemaVersion:7}'
+cat > "$WORK/effort2.json" <<'EOF'
+{
+  "entry": "careful",
+  "nodes": [{"id":"careful","kind":"function","reads":[],"writes":[],"effort":"system2"}],
+  "edges": []
+}
+EOF
+lowered="$(LOOP_SPEC_EFFORT=system1 bash "$SCRIPT" --step --feature-dir "$WORK/feat-effort2" "$WORK/effort2.json")"
+check "declared system2 is NOT lowered even when the probe says system1" \
+  "system2" "$(jq -r '.effort' <<<"$lowered")"
+
+# The probe is actually consulted: system1 declared + system1 probe stays system1,
+# so the raise above came from the probe rather than a blanket default.
+# A FRESH feature dir -- stepping an already-stepped one advances to the next
+# node, which would silently measure `careful` (declared system2) instead.
+new_feat "$WORK/feat-effort3" '{slug:"effort3",schemaVersion:7}'
+kept="$(LOOP_SPEC_EFFORT=system1 bash "$SCRIPT" --step --feature-dir "$WORK/feat-effort3" "$WORK/effort.json")"
+check "the kept-case really measures the system1 node" "cheap" "$(jq -r '.node' <<<"$kept")"
+check "declared system1 stays system1 when the probe agrees" \
+  "system1" "$(jq -r '.effort' <<<"$kept")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
