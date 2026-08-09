@@ -31,9 +31,9 @@ for doc in graph-contract.md dual-process.md handoff-port.md; do
 done
 
 # Pattern table has five shapes, not evaluator-optimizer
-n="$(grep -cE '^\| (Prompt chaining|Routing|Parallelization|Reflection|Human-in-the-loop) \|' "$ROOT/docs/loop-spec/gdd.md" || true)"
+n="$(grep -cE '^\| (Prompt chaining|Routing|Parallelization|Reflection|Human-in-the-loop) \|' "$ROOT/docs/loop-spec/gdd.md")" || n=0
 check "five pattern rows" "5" "$n"
-n="$(grep -cE '^\| Evaluator-optimizer \|' "$ROOT/docs/loop-spec/gdd.md" || true)"
+n="$(grep -cE '^\| Evaluator-optimizer \|' "$ROOT/docs/loop-spec/gdd.md")" || n=0
 check "no Evaluator-optimizer row" "0" "$n"
 
 echo ""

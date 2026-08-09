@@ -29,7 +29,8 @@ check() {
 check_output() {
   local name="$1" pattern="$2"; shift 2
   local out
-  out="$(bash "$@" 2>&1 || true)"
+  local rc=0
+  out="$(bash "$@" 2>&1)" || rc=$?
   if grep -qF "$pattern" <<<"$out"; then
     echo "PASS: $name"; PASS=$((PASS + 1))
   else
@@ -44,7 +45,8 @@ check_silent() {
   # to a caller that does not check the exit code.
   local name="$1"; shift
   local out
-  out="$(bash "$@" 2>/dev/null || true)"
+  local rc=0
+  out="$(bash "$@" 2>/dev/null)" || rc=$?
   if [[ -z "$out" ]]; then
     echo "PASS: $name"; PASS=$((PASS + 1))
   else

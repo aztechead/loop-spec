@@ -174,7 +174,7 @@ residual_prose() {
     -e "fixed at [0-9]+" \
     -e "bounded to (two|[0-9]+) persisted" \
     -e "LOOP_SPEC_GRAPH" \
-    "$f" || true)"
+    "$f")" || hits=""
   if [[ -n "$hits" ]]; then
     printf '%s\n' "$hits"
     return 1
