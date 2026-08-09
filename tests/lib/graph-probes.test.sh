@@ -128,9 +128,9 @@ check "exec-style usage error on an unrecognized flag" 2 "$EXEC_STYLE" --bogus
 DELIVER_NEXT="$PROBES/deliver-next.sh"
 
 out="$(bash "$DELIVER_NEXT" --answers)"
-[[ "$out" == $'nextPhase=execute\nnextPhase=completed' ]] \
-  && { echo "PASS: deliver-next --answers lists exactly the two nextPhase tokens"; PASS=$((PASS+1)); } \
-  || { echo "FAIL: deliver-next --answers lists exactly the two nextPhase tokens (got: $out)"; FAIL=$((FAIL+1)); }
+[[ "$out" == $'nextPhase=execute\nnextPhase=completed\nnextPhase=deliver' ]] \
+  && { echo "PASS: deliver-next --answers lists all three nextPhase tokens"; PASS=$((PASS+1)); } \
+  || { echo "FAIL: deliver-next --answers lists all three nextPhase tokens (got: $out)"; FAIL=$((FAIL+1)); }
 
 d="$(feature_dir next-execute '{"delivery":{"nextPhase":"execute"}}')"
 check_output "deliver-next resolves nextPhase=execute" "nextPhase=execute reason=" "$DELIVER_NEXT" --feature-dir "$d"
@@ -138,11 +138,23 @@ check_output "deliver-next resolves nextPhase=execute" "nextPhase=execute reason
 d="$(feature_dir next-completed '{"delivery":{"nextPhase":"completed"}}')"
 check_output "deliver-next resolves nextPhase=completed" "nextPhase=completed reason=" "$DELIVER_NEXT" --feature-dir "$d"
 
-# "deliver" (retry, no forward progress) is deliberately NOT in the answer set:
-# an unresolved deliver route aborts the engine rather than silently retrying.
+# "deliver" IS an answer. skills/deliver/SKILL.md sets it for push/identity/
+# check-oracle failures and documents the behaviour as "stop resumably rather
+# than claiming completion". Leaving it out of the answer set turned that
+# EXPECTED failure into an unresolved-probe abort, whose exit-5 "no route
+# satisfied" diagnostic reads as a graph defect rather than a delivery retry.
+# The graph declares a bounded self-loop for it instead; exhausting the ceiling
+# still aborts, but only after the retry the skill calls for.
 d="$(feature_dir next-retry '{"delivery":{"nextPhase":"deliver"}}')"
-check "deliver-next is unresolved on nextPhase=deliver (retry is not a route answer)" 1 "$DELIVER_NEXT" --feature-dir "$d"
-check_silent "deliver-next prints nothing on nextPhase=deliver" "$DELIVER_NEXT" --feature-dir "$d"
+check_output "deliver-next resolves nextPhase=deliver (bounded retry)" "nextPhase=deliver reason=" "$DELIVER_NEXT" --feature-dir "$d"
+
+retry_route="$(jq -r '[.edges[]|select(.from=="deliver" and .to=="deliver" and .kind=="route" and .condition.expects=="nextPhase=deliver")]|length' "$ROOT/graph/cycle.graph.json")"
+retry_loop="$(jq -r '[.edges[]|select(.from=="deliver" and .to=="deliver" and .kind=="loop" and .ceiling>0)]|length' "$ROOT/graph/cycle.graph.json")"
+if [[ "$retry_route" == "1" && "$retry_loop" == "1" ]]; then
+  echo "PASS: delivery retry is declared and bounded"; PASS=$((PASS + 1))
+else
+  echo "FAIL: delivery retry route=$retry_route loop=$retry_loop (need one of each)"; FAIL=$((FAIL + 1))
+fi
 
 d="$(feature_dir next-missing '{"delivery":{}}')"
 check "deliver-next is unresolved when delivery.nextPhase is absent" 1 "$DELIVER_NEXT" --feature-dir "$d"
@@ -226,6 +238,58 @@ if [[ "$bad_admits" == "0" ]]; then
   echo "PASS: every human node admits on gate=pause"; PASS=$((PASS + 1))
 else
   echo "FAIL: $bad_admits human node(s) admit on something other than gate=pause"; FAIL=$((FAIL + 1))
+fi
+
+# --- iterate-approval: the compound spec-rewind gate ---
+# Regression: gap and style lived in separate routes, and the engine takes the
+# first satisfied route in declaration order -- so `gap=spec` matched before the
+# style routes and the approval gate was UNREACHABLE. step/interactive silently
+# lost the approval they opted into. Also: a spec gap rewinds to DISCUSS (the
+# autonomous refinement mode), never to SPEC -- see skills/iterate/SKILL.md.
+APPROVAL="$ROOT/lib/graph/probes/iterate-approval.sh"
+IA="$WORK/ia"; mkdir -p "$IA"
+set_state() {
+  python3 -c "
+import json,sys
+fb = None if sys.argv[2]=='none' else {'type': sys.argv[2]}
+json.dump({'execStyle': sys.argv[3], 'iterate': {'feedback': fb}}, open(sys.argv[1],'w'))
+" "$IA/feature.json" "$1" "$2"
+}
+
+for style in step interactive; do
+  set_state spec "$style"
+  check_output "iterate-approval requires approval for a spec gap under $style" \
+    "approval=required reason=" "$APPROVAL" --feature-dir "$IA"
+done
+for style in auto review-only; do
+  set_state spec "$style"
+  check_output "iterate-approval is autonomous for a spec gap under $style" \
+    "approval=none reason=" "$APPROVAL" --feature-dir "$IA"
+done
+for gap in execute plan none; do
+  set_state "$gap" step
+  check_output "iterate-approval does not gate a $gap gap under step" \
+    "approval=none reason=" "$APPROVAL" --feature-dir "$IA"
+done
+
+printf '{"execStyle":"step","iterate":{}}' > "$IA/feature.json"
+check "iterate-approval is unresolved when no verdict is recorded" 1 "$APPROVAL" --feature-dir "$IA"
+check_silent "iterate-approval prints nothing when unresolved" "$APPROVAL" --feature-dir "$IA"
+
+# The spec rewind target, asserted against the graph itself.
+spec_target="$(jq -r '.edges[]|select(.from=="iterate" and .condition.expects=="gap=spec")|.to' "$ROOT/graph/cycle.graph.json")"
+if [[ "$spec_target" == "discuss" ]]; then
+  echo "PASS: spec gap rewinds to discuss"; PASS=$((PASS + 1))
+else
+  echo "FAIL: spec gap rewinds to '$spec_target', expected 'discuss'"; FAIL=$((FAIL + 1))
+fi
+
+# The approval route must be declared BEFORE the gap routes or it is dead.
+order="$(jq -r '[.edges[]|select(.from=="iterate" and .kind=="route")|.condition.expects]|index("approval=required")' "$ROOT/graph/cycle.graph.json")"
+if [[ "$order" == "0" ]]; then
+  echo "PASS: approval route is evaluated before the gap routes"; PASS=$((PASS + 1))
+else
+  echo "FAIL: approval route is at index $order; must be 0 or it is unreachable"; FAIL=$((FAIL + 1))
 fi
 
 echo ""

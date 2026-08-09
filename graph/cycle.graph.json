@@ -482,6 +482,19 @@
     },
     {
       "from": "iterate",
+      "to": "human.iterate-spec-approval",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/iterate-approval.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "approval=required"
+      }
+    },
+    {
+      "from": "iterate",
       "to": "execute",
       "kind": "route",
       "condition": {
@@ -508,7 +521,7 @@
     },
     {
       "from": "iterate",
-      "to": "spec",
+      "to": "discuss",
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/iterate-gap.sh",
@@ -518,37 +531,6 @@
         ],
         "expects": "gap=spec"
       }
-    },
-    {
-      "from": "iterate",
-      "to": "human.iterate-spec-approval",
-      "kind": "route",
-      "condition": {
-        "probe": "lib/graph/probes/exec-style.sh",
-        "args": [
-          "--feature-dir",
-          "{featureDir}"
-        ],
-        "expects": "style=step"
-      }
-    },
-    {
-      "from": "iterate",
-      "to": "human.iterate-spec-approval",
-      "kind": "route",
-      "condition": {
-        "probe": "lib/graph/probes/exec-style.sh",
-        "args": [
-          "--feature-dir",
-          "{featureDir}"
-        ],
-        "expects": "style=interactive"
-      }
-    },
-    {
-      "from": "human.iterate-spec-approval",
-      "to": "discuss",
-      "kind": "chain"
     },
     {
       "from": "iterate",
@@ -562,6 +544,11 @@
         ],
         "expects": "gap=none"
       }
+    },
+    {
+      "from": "human.iterate-spec-approval",
+      "to": "discuss",
+      "kind": "chain"
     },
     {
       "from": "iterate",
@@ -579,7 +566,7 @@
     },
     {
       "from": "iterate",
-      "to": "spec",
+      "to": "discuss",
       "kind": "loop",
       "ceiling": 10,
       "strategy": "contain"
@@ -590,6 +577,14 @@
       "kind": "loop",
       "ceiling": 10,
       "strategy": "contain"
+    },
+    {
+      "from": "iterate",
+      "to": "verify",
+      "kind": "loop",
+      "ceiling": 10,
+      "note": "ITERATE convergence round budget; mirrors feature.iterate.maxIterations (lib/feature-init.sh:234)",
+      "strategy": "unroll"
     },
     {
       "from": "deliver",
@@ -623,6 +618,28 @@
         ],
         "expects": "nextPhase=completed"
       }
+    },
+    {
+      "from": "deliver",
+      "to": "deliver",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/deliver-next.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "nextPhase=deliver"
+      },
+      "note": "transport/identity/check-oracle failure: retry delivery, bounded, rather than claiming completion"
+    },
+    {
+      "from": "deliver",
+      "to": "deliver",
+      "kind": "loop",
+      "ceiling": 2,
+      "strategy": "unroll",
+      "note": "bounds the delivery retry; exhausting it aborts resumably instead of looping forever"
     }
   ]
 }

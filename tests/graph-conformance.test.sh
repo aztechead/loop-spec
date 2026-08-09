@@ -79,11 +79,15 @@ for pair in "spec:discuss" "discuss:plan" "plan:execute" "execute:verify" "verif
 done
 
 # ITERATE rewind routes, each keyed on a deterministic gap probe
-for target in execute plan spec; do
-  n="$(jq -r --arg t "$target" '[.edges[] | select(.from=="iterate" and .kind=="route" and .to==$t)] | length' "$GRAPH")"
-  check "iterate rewind route to $target" "1" "$([[ "$n" -ge 1 ]] && echo 1 || echo 0)"
-  g="$(jq -r --arg e "gap=$target" '[.edges[] | select(.from=="iterate" and .kind=="route" and .condition.expects==$e)] | length' "$GRAPH")"
-  check "iterate route expects gap=$target" "1" "$([[ "$g" -ge 1 ]] && echo 1 || echo 0)"
+# The gap CLASS and the target PHASE are not the same thing: a spec-level gap
+# rewinds to DISCUSS (autonomous refinement mode), never to SPEC. Asserting
+# to==spec here is what let that regression through in the first place.
+for pair in "execute:execute" "plan:plan" "spec:discuss"; do
+  gap="${pair%%:*}"; target="${pair##*:}"
+  n="$(jq -r --arg t "$target" --arg e "gap=$gap" '[.edges[] | select(.from=="iterate" and .kind=="route" and .to==$t and .condition.expects==$e)] | length' "$GRAPH")"
+  check "iterate rewind route: gap=$gap -> $target" "1" "$([[ "$n" -ge 1 ]] && echo 1 || echo 0)"
+  g="$(jq -r --arg e "gap=$gap" '[.edges[] | select(.from=="iterate" and .kind=="route" and .condition.expects==$e)] | length' "$GRAPH")"
+  check "iterate route expects gap=$gap" "1" "$([[ "$g" -ge 1 ]] && echo 1 || echo 0)"
 done
 
 # Remediation channel: verify writes the tasks, execute reads them, and the

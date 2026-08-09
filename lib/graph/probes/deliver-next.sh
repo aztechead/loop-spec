@@ -27,7 +27,7 @@ usage() {
 }
 
 if [[ "${1:-}" == "--answers" ]]; then
-  printf 'nextPhase=execute\nnextPhase=completed\n'
+  printf 'nextPhase=execute\nnextPhase=completed\nnextPhase=deliver\n'
   exit 0
 fi
 
@@ -45,7 +45,7 @@ feature_json="$feature_dir/feature.json"
 
 next_phase="$(jq -r '.delivery.nextPhase // empty' "$feature_json" 2>/dev/null)" || exit 1
 case "$next_phase" in
-  execute|completed)
+  execute|completed|deliver)
     echo "nextPhase=${next_phase} reason=feature.json.delivery.nextPhase=${next_phase}"
     ;;
   *)
