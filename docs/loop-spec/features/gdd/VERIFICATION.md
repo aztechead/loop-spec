@@ -9,13 +9,25 @@ recorded here as the weakest evidence, not the headline.
 
 ## Repository grounding
 
+- criterion: route conditions receive their declared args, not an empty argv | implementation: lib/graph/run.sh:148 - substitutes {featureDir}/{repoRoot}/{slug}/{node} into each declared arg | integration: tests/lib/graph-run.test.sh:122 - route-exact graph traversal asserts the args reach the probe
+- criterion: a probe's first token must equal expects exactly, never as a substring | implementation: lib/graph/run.sh:194 - satisfied is (token == expects) | integration: tests/lib/graph-run.test.sh:122 - reintroducing substring matching flips this suite
+- criterion: an unresolved condition never satisfies an edge, expects "none" included | implementation: lib/graph/run.sh:194 - unresolved probes yield no token to compare | integration: tests/lib/graph-run.test.sh:181 - gate-none graph asserts a crashed probe does not admit
+- criterion: a node with no satisfied route aborts rather than falling through to a chain edge | implementation: lib/graph/run.sh:635 - raises RouteAbort with per-probe diagnostics, exit 5 | integration: tests/lib/graph-run.test.sh:181 - asserts the abort instead of a chain edge
+- criterion: human nodes are skipped when not admitted, so unattended runs do not deadlock | implementation: lib/graph/run.sh:508 - evaluates the node's admit condition on entry | integration: tests/lib/graph-run.test.sh:238 - execStyle auto exits 0 with no pause
+- criterion: resume prefers the pause record, then the ledger, then feature.json.currentPhase | implementation: lib/graph/run.sh:11 - documented resolution order, applied before any currentPhase write | integration: tests/lib/graph-run.test.sh:264 - resume starts at the SUCCESSOR of the paused node
+- criterion: the spec-approval gate is reachable under step and interactive | implementation: lib/graph/probes/iterate-approval.sh:31 - answers the compound gap-and-style question in one route | integration: tests/lib/graph-probes.test.sh:263 - approval required for a spec gap under both styles
+- criterion: a claimant cannot pass by echoing back its own bundle hash | implementation: lib/graph/port-local.sh:127 - re-derives the hash from the live feature.json | integration: tests/e2e/graph-handoff.test.sh:136 - claimant with forged/stale state rejected
+- criterion: the cycle hands sequencing to the engine rather than prose | implementation: skills/cycle/SKILL.md:641 - Step 6 drives agent nodes through run.sh --step | integration: tests/graph-conformance.test.sh:1 - residual-prose check fails if a skill re-declares a successor
+
+## Gate run
+
 - `lib/test-tamper-scan.sh 836ef34 .` — **rc=1**, 6 signals remaining (from 15). See "Accepted findings".
 - `lib/placeholder-scan.sh 836ef34 .` — rc=0, `placeholder-scan: ok`.
 - `lib/plan-adherence.sh docs/loop-spec/features/gdd/PLAN.md` — 25 plan task ids, `gap_message: null`.
-- `lib/comment-tells.sh scan` over `lib/graph/*.sh`, `lib/graph/probes/*.sh`, `lib/effort-probe.sh`, `lib/conflict-monitor.sh` — `comment-tells: clean`.
+- `lib/comment-tells.sh scan` over the new `lib/` sources — `comment-tells: clean`.
 - `lib/house-style.sh probe` — `comment_density=moderate (14.0%)`, `indent=spaces:2`, `naming=snake_case`, `line_length=p90:81`; consistent with neighbours.
 - `lib/security-signal.sh first <changed files>` — one match, `CHANGELOG.md:216:term=permission`, in prose describing a hook. No security signal in changed code.
-- `lib/artifact-lint.sh` (spec, plan), `lib/grounding-lint.sh`, `lib/criteria-coverage.sh`, `lib/decision-coverage.sh` — all ok.
+- `lib/artifact-lint.sh` (spec, plan, verification), `lib/grounding-lint.sh`, `lib/criteria-coverage.sh`, `lib/decision-coverage.sh` — all ok.
 - `lib/verification-gap-scan.sh 836ef34 .` — **did not run**. See "Defects found in the repo's own tooling".
 - `bash tests/run-all.sh` — 155 suites passed, 0 failed.
 
