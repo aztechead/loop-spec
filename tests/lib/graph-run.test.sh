@@ -398,7 +398,8 @@ check "conflict-monitor.sh wired (its answer appears in the diagnostic)" "0" "$?
 ##          probe="none" reason="admitting-edge" stamp — needs a route that
 ##          actually FIRES (route-args.json's probe always matches) ---
 new_feat "$WORK/feat-trace" '{slug:"tracecheck",schemaVersion:7}'
-bash "$SCRIPT" --feature-dir "$WORK/feat-trace" "$WORK/route-args.json" >/dev/null 2>&1 || true
+trace_rc=0
+bash "$SCRIPT" --feature-dir "$WORK/feat-trace" "$WORK/route-args.json" >/dev/null 2>&1 || trace_rc=$?
 route_event="$(jq -c 'select(.probe != null and .probe != "none")' "$WORK/feat-trace/events.jsonl" 2>/dev/null | tail -1)"
 check "a route-taken edge is traced with a real probe path (not \"none\")" "0" "$([[ -n "$route_event" ]] && echo 0 || echo 1)"
 check "route trace records the real answer token, not the literal \"admitting-edge\" stamp" \
@@ -477,9 +478,9 @@ EOF
 bash "$ROOT/lib/graph/validate.sh" "$WORK/loop.json" >/dev/null
 check "loop graph validates" "0" "$?"
 out="$(bash "$SCRIPT" --dry-run --feature-dir "$WORK/feat-loop" "$WORK/loop.json")"
-acount="$(echo "$out" | grep -c $'^a\t' || true)"
+acount="$(echo "$out" | grep -c $'^a\t')" || acount=0
 check "loop respects ceiling (a visited ceiling+1 = 3 times, never more)" "3" "$acount"
-bcount="$(echo "$out" | grep -c $'^b\t' || true)"
+bcount="$(echo "$out" | grep -c $'^b\t')" || bcount=0
 check "loop's target b visited once per pass" "3" "$bcount"
 
 ## --- 18. no harness branching / no LOOP_SPEC_GRAPH opt-in in the engine ---
@@ -528,7 +529,8 @@ run_check_silently() {
 echo ""
 echo "--- mutation proof 1: substring match (\"expects in text\") ---"
 sed -i 's/result\["satisfied"\] = (token == expects)/result["satisfied"] = (expects in first_line)  # MUTATED/' "$SCRIPT"
-out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-exact-mut" "$WORK/route-exact.json" 2>&1 || true)"
+mut_rc=0
+out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-exact-mut" "$WORK/route-exact.json" 2>&1)" || mut_rc=$?
 mkdir -p "$WORK/feat-exact-mut"
 out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-exact-mut" "$WORK/route-exact.json")"
 if run_check_silently "0" "$(echo "$out" | grep -c $'^b\t')"; then
