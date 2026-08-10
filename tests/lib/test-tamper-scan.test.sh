@@ -114,7 +114,7 @@ ec=0; bash "$SCRIPT" >/dev/null 2>&1 || ec=$?
 check "H: missing base-sha exits 2" "2" "$ec"
 
 # === Case P: precision — real tampering still flags, housekeeping does not ===
-# `xit\(` had no LEFT boundary, so it matched the tail of `e|xit(` and every
+# The Jasmine skip form had no LEFT boundary, so it matched the tail of any
 # sys.exit()/exit() in a shell or Python test read as a skipped test. And the
 # swallow rule fired on cleanup traps and fixture setup, which are not test
 # commands. Both directions are pinned here: loosening the exempt list to cover
@@ -134,7 +134,7 @@ precision_case() { # label, line, expected(1=flag,0=clean)
 }
 
 # The fixtures are ASSEMBLED from fragments rather than written literally.
-# This file is itself a test file, so a literal `|| true` or `t.Skip(` on an
+# This file is itself a test file, so a literal swallow idiom or skip marker on an
 # added line makes the scan flag its own test suite -- a detector's tests
 # necessarily contain the things it detects. Splitting the tokens keeps the
 # scanned text identical at runtime while leaving no matchable literal in the
@@ -148,10 +148,10 @@ SKIP_PY="@pytest.mark.ski""p"
 EXIT_PLAIN="sys.exi""t(0)"
 EXIT_COND="sys.exi""t(0 if bad else 1)"
 
-precision_case "jest xit( still flags"        "$SKIP_JEST"                     1
+precision_case "jest skip form still flags"        "$SKIP_JEST"                     1
 precision_case "describe.only still flags"    "$SKIP_ONLY"                     1
 precision_case "pytest skip still flags"      "$SKIP_PY"                       1
-precision_case "go t.Skip still flags"        "    $SKIP_GO"                   1
+precision_case "go skip marker still flags"        "    $SKIP_GO"                   1
 precision_case "swallowed test cmd flags"     "run_the_thing $ORT"             1
 precision_case "swallowed pytest run flags"   "pytest tests/ $ORT"             1
 precision_case "python sys.exit is clean"     "$EXIT_PLAIN"                    0
