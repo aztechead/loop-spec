@@ -2,7 +2,7 @@
 # Node-instance bundle export/import — content-addressed, self-contained.
 #
 # Usage:
-#   handoff.sh export --feature-dir DIR --node ID --verify CMD --out FILE [--task ID] [--graph PATH]
+#   handoff.sh export --feature-dir DIR --node ID --verify CMD --out FILE [--task ID] [--graph PATH] [--brief TEXT] [--files JSON]
 #   handoff.sh import --feature-dir DIR --bundle FILE
 set -euo pipefail
 
@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 usage() {
-  echo "usage: handoff.sh export --feature-dir DIR --node ID --verify CMD --out FILE [--task ID] [--graph PATH]" >&2
+  echo "usage: handoff.sh export --feature-dir DIR --node ID --verify CMD --out FILE [--task ID] [--graph PATH] [--brief TEXT] [--files JSON]" >&2
   echo "       handoff.sh import --feature-dir DIR --bundle FILE" >&2
   exit 2
 }
@@ -18,7 +18,7 @@ usage() {
 [[ $# -ge 1 ]] || usage
 cmd="$1"; shift
 
-feature_dir=""; node=""; verify=""; out=""; bundle=""; graph=""; task=""
+feature_dir=""; node=""; verify=""; out=""; bundle=""; graph=""; task=""; brief=""; files="[]"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --feature-dir) feature_dir="${2:-}"; shift 2 ;;
@@ -28,6 +28,8 @@ while [[ $# -gt 0 ]]; do
     --out) out="${2:-}"; shift 2 ;;
     --bundle) bundle="${2:-}"; shift 2 ;;
     --graph) graph="${2:-}"; shift 2 ;;
+    --brief) brief="${2:-}"; shift 2 ;;
+    --files) files="${2:-}"; shift 2 ;;
     *) usage ;;
   esac
 done
@@ -55,6 +57,14 @@ case "$cmd" in
     [[ -n "$task" ]] && id_base="${node}.${task}"
     content_hash="$(cksum <<<"${id_base}|${state_hash}" | awk '{print $1"-"$2}')"
     id="${id_base}.${content_hash}"
+    jq -e . <<<"$files" >/dev/null 2>&1 || { echo "handoff: --files must be a JSON array" >&2; exit 2; }
+    # brief/files close the gap a bundle otherwise leaves for a claimant that
+    # shares nothing with the originating session: inputs+verifyCommand tell
+    # it what STATE the task runs against and how to check its own output,
+    # but not what to build or where the result belongs. Both mirror fields
+    # the planner already carries per task (skills/plan/SKILL.md's
+    # {..., files, ..., brief, verifyCommand} shape) -- this just threads them
+    # onto the bundle instead of leaving them behind in the caller's session.
     jq -cn \
       --arg id "$id" \
       --arg node "$node" \
@@ -62,9 +72,11 @@ case "$cmd" in
       --arg stateHash "$state_hash" \
       --arg verifyCommand "$verify" \
       --arg baseSha "$base_sha" \
+      --arg brief "$brief" \
+      --argjson files "$files" \
       --argjson contract "$contract" \
       --argjson inputs "$inputs" \
-      '{id:$id,node:$node,task:(if $task == "" then null else $task end),stateHash:$stateHash,verifyCommand:$verifyCommand,baseSha:$baseSha,contract:$contract,inputs:$inputs}' \
+      '{id:$id,node:$node,task:(if $task == "" then null else $task end),stateHash:$stateHash,verifyCommand:$verifyCommand,baseSha:$baseSha,brief:(if $brief == "" then null else $brief end),files:$files,contract:$contract,inputs:$inputs}' \
       > "$out"
     ;;
   import)

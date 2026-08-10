@@ -447,12 +447,19 @@ fdir=".loop-spec/features/{slug}"
 for task in <tasks[] array from Step 2a/2b>; do
   bash "${CLAUDE_SKILL_DIR}/../../lib/graph/handoff.sh" export \
     --feature-dir "$fdir" --node execute.worker --task "$task.id" \
-    --verify "$task.verifyCommand" --out "$WORK/bundle-$task.id.json"
+    --verify "$task.verifyCommand" --brief "$task.brief" --files "$task.files" \
+    --out "$WORK/bundle-$task.id.json"
   id="$(bash "${CLAUDE_SKILL_DIR}/../../lib/graph/port.sh" put "$WORK/bundle-$task.id.json" \
     | sed -n 's/^id=//p')"
   # record id alongside task.id, e.g. via feature.json.artifacts or an in-memory map
 done
 ```
+
+`--brief`/`--files` carry `task.brief` and `task.files` (already computed in Step 2a/2b,
+`skills/plan/SKILL.md`) onto the bundle -- without them a claimant sharing no session
+state with EXECUTE would have `inputs`+`verifyCommand` (what state to run against, how
+to check its own output) but nothing telling it what to build or where the result
+belongs (`examples/foreign-claimant/` is a reference consumer that depends on both).
 
 `--task` makes the bundle id content-addressed from node + task + state hash
 (`skills/shared/handoff-port.md`), so `task-002` and `task-003` of the same EXECUTE

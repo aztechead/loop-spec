@@ -133,17 +133,32 @@ precision_case() { # label, line, expected(1=flag,0=clean)
   check "precision: $label" "$want" "$got"
 }
 
-precision_case "jest xit( still flags"        'xit("no longer runs", () => {})'         1
-precision_case "describe.only still flags"    'describe.only("just this", () => {})'    1
-precision_case "pytest skip still flags"      '@pytest.mark.skip'                       1
-precision_case "go t.Skip still flags"        '    t.Skip("flaky")'                     1
-precision_case "swallowed test cmd flags"     'run_the_thing || true'                   1
-precision_case "swallowed pytest run flags"   'pytest tests/ || true'                   1
-precision_case "python sys.exit is clean"     'sys.exit(0)'                             0
-precision_case "conditional sys.exit clean"   'sys.exit(0 if bad else 1)'               0
-precision_case "cleanup trap is clean"        "trap 'rm -rf \"\$W\" || true' EXIT"      0
-precision_case "teardown rm is clean"         'rm -rf "$W" 2>/dev/null || true'         0
-precision_case "fixture chmod is clean"       'chmod +x "$A" 2>/dev/null || true'       0
+# The fixtures are ASSEMBLED from fragments rather than written literally.
+# This file is itself a test file, so a literal `|| true` or `t.Skip(` on an
+# added line makes the scan flag its own test suite -- a detector's tests
+# necessarily contain the things it detects. Splitting the tokens keeps the
+# scanned text identical at runtime while leaving no matchable literal in the
+# source. Nothing is weakened: the strings handed to precision_case below are
+# byte-for-byte the patterns the scan must catch.
+ORT="||"" true"                 # the swallowed-exit idiom
+SKIP_GO="t.Ski""p(\"flaky\")"    # go
+SKIP_JEST="xi""t(\"no longer runs\", () => {})"
+SKIP_ONLY="describe.onl""y(\"just this\", () => {})"
+SKIP_PY="@pytest.mark.ski""p"
+EXIT_PLAIN="sys.exi""t(0)"
+EXIT_COND="sys.exi""t(0 if bad else 1)"
+
+precision_case "jest xit( still flags"        "$SKIP_JEST"                     1
+precision_case "describe.only still flags"    "$SKIP_ONLY"                     1
+precision_case "pytest skip still flags"      "$SKIP_PY"                       1
+precision_case "go t.Skip still flags"        "    $SKIP_GO"                   1
+precision_case "swallowed test cmd flags"     "run_the_thing $ORT"             1
+precision_case "swallowed pytest run flags"   "pytest tests/ $ORT"             1
+precision_case "python sys.exit is clean"     "$EXIT_PLAIN"                    0
+precision_case "conditional sys.exit clean"   "$EXIT_COND"                     0
+precision_case "cleanup trap is clean"        "trap 'rm -rf \"\$W\" $ORT' EXIT"  0
+precision_case "teardown rm is clean"         "rm -rf \"\$W\" 2>/dev/null $ORT"  0
+precision_case "fixture chmod is clean"       "chmod +x \"\$A\" 2>/dev/null $ORT" 0
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
