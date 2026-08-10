@@ -97,3 +97,5 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 - **Code-for-humans**: the `house-style.sh` fact lines you measured, the `comment-tells.sh` verdict, then tagged house/noise/name/churn lines (`Reads like its neighbors` if nothing flags)
 - **Minor (deferred)**: list of follow-up suggestions
 - **Security summary**: 1-paragraph
+
+**Plain language (readability contract — advisory).** Write each Critical/Important/Minor finding as one plain, active-voice sentence — no stock phrases, no hedging padding. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks); it is not a gate alongside the severity thresholds above.

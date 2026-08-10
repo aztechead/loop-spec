@@ -154,6 +154,8 @@ Criteria that describe intent without a verifiable anchor are not acceptance cri
 
 - **Code for humans (house style over habit — on by default).** A task names its files, so it can name the conventions those files already follow. Where a task creates or extends code in an established area, its Steps say to match the neighbors — naming, error idiom, test structure, layout — rather than leaving the implementer to invent a style. You do not run the convention probe yourself (your Bash is read-only context gathering and the plugin's path is not yours to resolve); the implementer runs it against the `files[]` you name, so naming those files precisely is what makes the measurement possible. Never plan a task whose Steps ask for comment scaffolding the target files do not already carry (docstrings on every function in a module that documents none, section banners, step-by-step narration): comment density is set by the file, not by the plan. A convention that is genuinely wrong is a backlog item in its own task, never a silent fix folded into an unrelated one. Full reference: `skills/shared/human-code.md`.
 
+- **Plain language (readability contract — advisory).** Write PATTERNS.md and PLAN.md prose in short sentences, active voice, and plain words. Name the actor in each Step and Decision rather than leaving it implicit. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks); cutting needless words and judging sense-over-rules are not machine-checked at all.
+
 ## Gates you will be judged against
 
 After you return, automated gates check the PLAN.md you produced. Self-check against these before sending, or you trigger a re-dispatch round:

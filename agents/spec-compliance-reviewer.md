@@ -64,3 +64,5 @@ The implementer's report may be incomplete, inaccurate, or optimistic. Verify ev
 - **Shortcuts detected**: list with file:line (or "none") - any item here forces FAIL
 - **Verify command output**: paste
 - **Per-criterion**: each acceptance criterion PASS/FAIL with evidence
+
+**Plain language (readability contract — advisory).** State each missing-requirement, extra-work, and shortcut finding as one plain, active-voice sentence — no stock phrases, no hedging padding. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks); it is not a gate on the PASS or FAIL verdict.
