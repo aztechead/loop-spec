@@ -21,14 +21,14 @@ recorded here as the weakest evidence, not the headline.
 
 ## Gate run
 
-- `lib/test-tamper-scan.sh 836ef34 .` — **rc=1**, 6 signals remaining (from 15). See "Accepted findings".
+- `lib/test-tamper-scan.sh 836ef34 .` — rc=0, clean. Fifteen signals resolved: nine real, six from two precision bugs in the scan itself (see below).
 - `lib/placeholder-scan.sh 836ef34 .` — rc=0, `placeholder-scan: ok`.
 - `lib/plan-adherence.sh docs/loop-spec/features/gdd/PLAN.md` — 25 plan task ids, `gap_message: null`.
 - `lib/comment-tells.sh scan` over the new `lib/` sources — `comment-tells: clean`.
 - `lib/house-style.sh probe` — `comment_density=moderate (14.0%)`, `indent=spaces:2`, `naming=snake_case`, `line_length=p90:81`; consistent with neighbours.
 - `lib/security-signal.sh first <changed files>` — one match, `CHANGELOG.md:216:term=permission`, in prose describing a hook. No security signal in changed code.
 - `lib/artifact-lint.sh` (spec, plan, verification), `lib/grounding-lint.sh`, `lib/criteria-coverage.sh`, `lib/decision-coverage.sh` — all ok.
-- `lib/verification-gap-scan.sh 836ef34 .` — **did not run**. See "Defects found in the repo's own tooling".
+- `lib/verification-gap-scan.sh 836ef34 .` — rc=0, `scanned=28 uncovered=25 unknown=0` across 178 test files. Verdict analysed below.
 - `bash tests/run-all.sh` — 155 suites passed, 0 failed.
 
 ## Acceptance criteria
@@ -52,40 +52,56 @@ to fail, and the file is restored. Mutations proved: substring route matching, t
 answer-set membership, the per-(from,to) loop carve-out, the human-gate admit token,
 and the approval-route ordering.
 
-## Accepted findings
+## Verification-gap verdict
 
-`lib/test-tamper-scan.sh` exits 1 with 6 remaining signals. Nine were real and fixed by
-recording exit codes instead of discarding them. The remaining six are false positives of
-a word-matching heuristic, accepted and listed here rather than suppressed:
+`scanned=28 uncovered=25`. That is not 25 gaps. Per the repo's own rule, `covered=no`
+is a starting point and never a finding: the scan reports which test files *name* a
+symbol, and 21 of the 25 are internal helpers of `lib/graph/run.sh` (`run_condition`,
+`resolve_start`, `process_node`, …) that the suite exercises through the engine's CLI
+rather than by name.
 
-| Signal | Why it is not tampering |
-|---|---|
-| `graph-conformance.test.sh: sys.exit(0)` / `sys.exit(1)` | The result of an inline Python reachability check, not a test skip |
-| `graph-schema.test.sh: sys.exit(0 if bad else 1)` | Same — a Python helper returning its verdict |
-| `graph-port-contract.test.sh: chmod +x ... \|\| true` | Fixture setup, not a test result |
-| `graph-run.test.sh: trap '... \|\| true' EXIT` | Cleanup trap; a failing cleanup must not fail the suite |
-| `graph-run.test.sh: rm -rf ... \|\| true` | Teardown of scratch dirs |
+Classifying by BEHAVIOUR instead of by symbol found exactly one real gap. Every other
+newly-wired component carried an assertion — `assert-reads`
+(`tests/lib/graph-run.test.sh:364`), `conflict-monitor` (`:395`), `last-result`
+(`:433`), `subgraph` (`:462`), `trace` — and **effort carried none**. Nothing held
+`lib/graph/run.sh:371`'s raise-never-lower rule in place, which is the whole point of
+remediation contract §7. Now covered: a node declared `system1` is raised when the
+probe says `system2`, a node declared `system2` is not lowered when the probe says
+`system1`, and a fresh-fixture case proves the probe is consulted rather than a blanket
+default applied. Mutation-proved by replacing the rule with `final = probe_mode`.
 
-**The scan was deliberately not modified to make this branch pass.** Editing the gate
-that exists to catch test-weakening, inside the change it flagged, is the behaviour the
-gate is for. The precision gap is recorded below as a follow-up instead.
+155 green suites did not find that. The gate that had never run was the only thing that did.
 
-## Defects found in the repo's own tooling
+## Defects fixed in the repo's own tooling
 
-1. **`lib/verification-gap-scan.sh` cannot run on a large diff.** It exports the full diff
-   and test-file list to Python through the environment (`DIFF_TEXT=... python3 -`), so a
-   65-file change exceeds `E2BIG` and the gate dies with
-   `/usr/local/bin/python3: Argument list too long`. It works on a one-commit diff. The
-   gate is advisory in this release, so nothing was blocked — but it fails precisely on
-   the large changes it is most needed for, and it fails loudly rather than silently only
-   because the caller checks. Fix: pass the diff on stdin or via a temp file.
+Both were pre-existing, neither was caused by this change, and both are now fixed with
+tests rather than deferred.
 
-2. **`lib/test-tamper-scan.sh` flags cleanup traps, fixture setup, and inline Python
-   `sys.exit()` as tampering.** Six false positives on this change. Fix: exclude `trap`
-   lines, `chmod`/`rm` teardown, and `sys.exit` inside a heredoc from the swallowed-exit
-   and skip heuristics.
+1. **`lib/verification-gap-scan.sh` could not run on a large diff.** It exported the
+   full diff and test-file list to Python through the *environment*, so a 65-file change
+   exceeded `E2BIG` and the gate died with `Argument list too long` — it failed on
+   exactly the diffs it is most needed for. Both inputs now go through a temp file. The
+   analysis is unchanged and the env form still works for older callers.
 
-Both are pre-existing and neither is caused by this change.
+2. **`lib/test-tamper-scan.sh` reported six false positives, from two real bugs.**
+   - `xit\(` carried no LEFT boundary, so it matched the tail of `e|xit(`. Every
+     `sys.exit()`, `os._exit()` and plain `exit()` in a shell or Python test read as a
+     skipped test — a false positive for any repo whose tests call `exit()`, not just
+     this branch. Fixed with `(^|[^A-Za-z0-9_.])`.
+   - The swallowed-exit rule fired on cleanup traps and fixture setup. The signal it
+     exists for is a *test command's* exit code being discarded; `trap 'rm -rf "$WORK"'
+     EXIT` is correct, and a cleanup that fails must not fail the suite. Housekeeping
+     commands are now exempt; anything that runs the thing under test still flags.
+
+   `tests/lib/test-tamper-scan.test.sh` pins both directions with eleven cases: `xit(`,
+   `describe.only(`, `@pytest.mark.skip`, `t.Skip(`, a swallowed `run_the_thing || true`
+   and a swallowed `pytest tests/ || true` must all still flag; `sys.exit(0)`, a
+   conditional `sys.exit`, a cleanup `trap`, a teardown `rm` and a fixture `chmod` must
+   be clean. Mutation-proved twice — dropping the `xit` boundary fails the suite, and
+   widening the exempt list to cover a real test command fails it too.
+
+   This was done only after the branch's own nine real signals had been fixed on their
+   merits, so the gate was never edited to hide a finding.
 
 ## Known gaps carried into the PR
 

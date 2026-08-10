@@ -54,8 +54,18 @@ done < <(git -C "$repo" diff --diff-filter=D --name-only "${base_sha}..HEAD" 2>/
 # 2) Skip / focus / exit-code-swallow patterns on ADDED lines of changed test files.
 # Word-ish anchors keep false positives down (e.g. "skipped" in a string won't match
 # the annotation forms below).
-skip_re='(it|test|describe|context)\.(skip|only)\(|xit\(|xdescribe\(|xtest\(|@pytest\.mark\.skip|@unittest\.skip|unittest\.skip\(|t\.Skip\(|#\[ignore\]|@Disabled|@Ignore'
+# `xit(`/`xdescribe(`/`xtest(` are Jasmine/Jest skipped-test forms. They need a
+# LEFT boundary: without one, `xit\(` matches the tail of `e|xit(`, so every
+# sys.exit(), os._exit() and plain exit() in a shell or Python test reads as a
+# skipped test. That false positive fires on any repo whose tests call exit().
+skip_re='(it|test|describe|context)\.(skip|only)\(|(^|[^A-Za-z0-9_.])(xit|xdescribe|xtest)\(|@pytest\.mark\.skip|@unittest\.skip|unittest\.skip\(|t\.Skip\(|#\[ignore\]|@Disabled|@Ignore'
 swallow_re='\|\|[[:space:]]*true'
+# The signal is a TEST COMMAND's exit code being discarded. Fixture setup and
+# teardown are not test commands, and a cleanup that fails must not fail the
+# suite -- `trap 'rm -rf "$WORK"' EXIT` is correct, not tampering. Exempt lines
+# whose command is housekeeping. Anything that runs the thing under test still
+# flags.
+swallow_exempt_re='^[[:space:]]*(trap|rm|rmdir|chmod|chown|mkdir|cp|mv|touch|unset|kill|pkill|popd|pushd|deactivate)[[:space:]]'
 
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
@@ -67,10 +77,11 @@ while IFS= read -r f; do
       findings+=("$f: skip/focus added: ${line#+}")
     done < <(echo "$added" | grep -E "$skip_re" | head -5)
   fi
-  if echo "$added" | grep -qE "$swallow_re"; then
+  swallowed="$(echo "$added" | grep -E "$swallow_re" | sed 's/^+//' | grep -vE "$swallow_exempt_re" || true)"
+  if [[ -n "$swallowed" ]]; then
     while IFS= read -r line; do
-      findings+=("$f: exit code swallowed: ${line#+}")
-    done < <(echo "$added" | grep -E "$swallow_re" | head -5)
+      findings+=("$f: exit code swallowed: $line")
+    done < <(printf '%s\n' "$swallowed" | head -5)
   fi
 done < <(git -C "$repo" diff --diff-filter=ACMR --name-only "${base_sha}..HEAD" 2>/dev/null)
 
