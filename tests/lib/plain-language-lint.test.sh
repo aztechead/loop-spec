@@ -404,7 +404,8 @@ fi
 cat > "$WORK/long-version.md" <<'EOF'
 Graphify was a hard requirement from 2.29 to 2.35 and was removed in 2.35 on the evidence because across every single feature that was authored while it was mandatory it produced zero citations and zero refreshes.
 EOF
-out="$(bash "$LINT" prose "$WORK/long-version.md" 2>&1 || true)"
+rc=0
+out="$(bash "$LINT" prose "$WORK/long-version.md" 2>&1)" || rc=$?  # the linter exits 1 when it flags; that is the expected path here
 if grep -q 'long-sentence: 33 words' <<<"$out"; then
   echo "PASS: a version number does not split the sentence"; PASS=$((PASS+1))
 else
@@ -419,7 +420,8 @@ else
 cat > "$WORK/imperative.md" <<'EOF'
 Read the neighbors before writing a line and match them, naming and error idiom and test structure and layout, because the house convention outranks your defaults here.
 EOF
-out="$(bash "$LINT" prose "$WORK/imperative.md" 2>&1 || true)"
+rc=0
+out="$(bash "$LINT" prose "$WORK/imperative.md" 2>&1)" || rc=$?  # the linter exits 1 when it flags; that is the expected path here
 if grep -q 'for an imperative sentence' <<<"$out"; then
   echo "PASS: article agrees with the sentence kind"; PASS=$((PASS+1))
 else
