@@ -13,7 +13,8 @@ WORK="${TMPDIR:-/tmp}/loop-spec-foreign-claimant-app-e2e.$$"
 SERVER_PID=""
 
 cleanup() {
-  [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  [[ -z "$SERVER_PID" ]] || kill "$SERVER_PID" 2>/dev/null
+  SERVER_PID=""
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -98,7 +99,7 @@ python3 "$APP_TARGET" --port 0 > "$WORK/server.out" 2>"$WORK/server.err" &
 SERVER_PID=$!
 port=""
 for _ in $(seq 1 50); do
-  port="$(head -n1 "$WORK/server.out" 2>/dev/null || true)"
+  port="$(head -n1 "$WORK/server.out" 2>/dev/null)" || port=""
   if [[ -n "$port" ]]; then
     break
   fi
@@ -110,8 +111,9 @@ body="$(curl -s "http://127.0.0.1:$port/")"
 echo "GET http://127.0.0.1:$port/ -> status=$status body=$body"
 check "GET / status" "200" "$status"
 check "GET / body" "hello world" "$body"
-kill "$SERVER_PID" 2>/dev/null || true
-wait "$SERVER_PID" 2>/dev/null || true
+kill "$SERVER_PID" 2>/dev/null
+wait "$SERVER_PID" 2>/dev/null
+SERVER_PID=""
 SERVER_PID=""
 
 # 6. A second claimant cannot claim the same work while a lease holds. Fresh
