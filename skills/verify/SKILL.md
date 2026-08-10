@@ -401,6 +401,33 @@ Exit 1 means no definition changed in a non-test file — record that and skip t
 
 Findings are **advisory in this release**: record them in VERIFICATION.md under `## Verification gaps` and append each to `.loop-spec/BACKLOG.md`. They do not block delivery. A gap class this new blocking a verified change would cost more than it catches until the false-positive rate is measured on real runs; promoting it to blocking is a tuning decision backed by telemetry, not a default.
 
+### Step 7.65 - Plain-language pass (advisory)
+
+Checks the prose this cycle produced against `skills/shared/plain-language.md` — Orwell's
+six rules plus the STE-informed structural rules the repo adopts. Deterministic, never a
+model judgment: `lib/plain-language-lint.sh` counts sentence length, passive
+constructions, curated long-word and foreign-phrase substitutions, stock phrases,
+`and/or` slashes, paragraph length, and gerund-headed imperatives.
+
+```bash
+lint="${CLAUDE_SKILL_DIR}/../../lib/plain-language-lint.sh"
+bash "$lint" prose docs/loop-spec/features/"$slug"/*.md --max-flags 40 || true
+bash "$lint" comments $(git diff --name-only "$baseSha" HEAD -- '*.sh' '*.py') --max-flags 20 || true
+```
+
+Findings are **advisory and stay advisory until the false-positive rate is measured**.
+On this repository's own artifacts the linter reports roughly one flag per six lines,
+dominated by long sentences and passive constructions, so a blocking gate would stop
+every run on prose that reads perfectly well. Record the counts per check in
+VERIFICATION.md under `## Plain language` and append only the flags a human agrees with
+to `.loop-spec/BACKLOG.md` — never the raw list.
+
+Two of Orwell's rules are not machine-checked and never will be: "cut every word that
+adds nothing" is a judgment about a sentence's information content, and rule 6 ("break
+any of these rules sooner than say anything barbarous") is the rule that overrides the
+others. `lib/plain-language-lint.sh` has no opinion on either. Do not treat a clean run
+as evidence the prose is good.
+
 ### Step 7.7 - Project review layers (opt-in per repo)
 
 Any layer the project declared in `.loop-spec/extensions.json` runs here, after the built-in gates:
