@@ -1,0 +1,89 @@
+{
+  "id": "critique",
+  "entry": "critique.challenge",
+  "nodes": [
+    {
+      "id": "critique.challenge",
+      "kind": "agent",
+      "reads": ["currentGate", "artifacts"],
+      "writes": ["currentGate", "gateHistory"],
+      "effort": "system2",
+      "body": "loop-spec:challenger"
+    },
+    {
+      "id": "critique.escalate",
+      "kind": "gate",
+      "reads": ["currentGate"],
+      "writes": ["currentGate"],
+      "effort": "system2"
+    },
+    {
+      "id": "critique.debate",
+      "kind": "agent",
+      "reads": ["currentGate", "artifacts"],
+      "writes": ["currentGate", "gateHistory"],
+      "effort": "system2",
+      "body": "loop-spec:advocate+challenger"
+    },
+    {
+      "id": "critique.adjudicate",
+      "kind": "agent",
+      "reads": ["currentGate", "gateHistory"],
+      "writes": ["currentGate", "gateHistory", "artifacts"],
+      "effort": "system2",
+      "body": "lead-adjudicate"
+    },
+    {
+      "id": "critique.pass",
+      "kind": "function",
+      "reads": ["currentGate"],
+      "writes": ["gateHistory"],
+      "effort": "system1",
+      "body": "lib/events.sh"
+    }
+  ],
+  "edges": [
+    {
+      "from": "critique.challenge",
+      "to": "critique.escalate",
+      "kind": "chain"
+    },
+    {
+      "from": "critique.escalate",
+      "to": "critique.debate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/plan-critique.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "signal=matched"
+      }
+    },
+    {
+      "from": "critique.escalate",
+      "to": "critique.adjudicate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/plan-critique.sh",
+        "args": ["--feature-dir", "{featureDir}"],
+        "expects": "signal=none"
+      }
+    },
+    {
+      "from": "critique.debate",
+      "to": "critique.adjudicate",
+      "kind": "chain"
+    },
+    {
+      "from": "critique.adjudicate",
+      "to": "critique.challenge",
+      "kind": "loop",
+      "ceiling": 3,
+      "strategy": "contain"
+    },
+    {
+      "from": "critique.adjudicate",
+      "to": "critique.pass",
+      "kind": "chain"
+    }
+  ]
+}

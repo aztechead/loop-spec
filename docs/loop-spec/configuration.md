@@ -76,6 +76,14 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_TEAMS_MODE` | `none`/`explicit`/`implicit`; probed | Overrides agent-team capability detection. |
 | `LOOP_SPEC_WORKFLOWS_AVAILABLE` | `0`/`1`; probed | Overrides Workflow-tool capability detection. |
 | `LOOP_SPEC_HARNESS` | `claude`/`pi`/`opencode`; detected | Forces the host adapter. The pi and OpenCode extensions normally set this themselves. An unknown value falls through to detection. |
+| `LOOP_SPEC_FOREIGN_CLAIMANTS` | `0`/`1`; `0` | `1` opts EXECUTE into the `foreign` rung when a handoff port adapter is reachable (`LOOP_SPEC_PORT` or the bundled `lib/graph/port-local.sh`). Width still selects the rung and never removes a graph node. |
+| `LOOP_SPEC_PORT` | executable path; unset | Handoff-port adapter invoked by `lib/graph/port.sh`. Unset uses `lib/graph/port-local.sh`. |
+| `LOOP_SPEC_PORT_ROOT` | directory path; platform temp | Store root for the reference `port-local` adapter. Unset defaults under the process temp directory. |
+| `LOOP_SPEC_EFFORT` | `system1`/`system2`; unset | Global operator override for `lib/effort-probe.sh`. Invalid values fail safe to `system2`. Outranked by the more-specific overrides below. |
+| `LOOP_SPEC_EFFORT_PHASE` | `system1`/`system2`; unset | Per-phase effort override. Outranks `LOOP_SPEC_EFFORT`; outranked by `LOOP_SPEC_EFFORT_NODE`. |
+| `LOOP_SPEC_EFFORT_NODE` | `system1`/`system2`; unset | Per-node effort override. Most specific form; outranks phase and global. |
+| `LOOP_SPEC_FEATURE_WRITE` | executable path; `lib/feature-write.sh` | Test/seam override for the feature-state writer. Production unset uses the bundled `lib/feature-write.sh`. |
+| `LOOP_SPEC_EVENTS` | executable path; `lib/events.sh` | Test/seam override for the event emitter used by `lib/graph/trace.sh`. Production unset uses the bundled `lib/events.sh`. |
 
 ### Host and installer environment
 

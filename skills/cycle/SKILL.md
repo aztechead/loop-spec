@@ -636,12 +636,58 @@ Older features either lack these blocks or carry a stale map from the removed
 preset scheme. Activate the recorded current phase on every new run/resume and
 drop vestigial `preset` and `tier` fields:
 
+Sequencing is owned by the declared graph (`graph/cycle.graph.json`), never a bare
+`currentPhase` read — `docs/loop-spec/features/gdd/REMEDIATION-CONTRACT.md` sec 1-6.
+`lib/graph/run.sh --step` processes exactly one node and returns its JSON dispatch
+descriptor (`{node, kind, body, model, effort, nextEdge, terminal, paused}`); it already
+resumes from wherever the last step/pause/checkpoint left off (contract sec 5), so this
+is also the resume path — there is no separate manual `checkpoint.sh latest` + `--resume`
+call to make. The engine dispatches in-process anything it can execute itself (`function`/
+`gate` bodies, a real nested `subgraph` run, an unadmitted `human` node's skip-and-route);
+this loop only stops at an `agent` node (this phase's own dispatch — the orchestrator, not
+the engine, drives an agent through `Skill(...)`), an admitted `human` node (exit 4,
+pause), a route abort (exit 5), or the graph's terminal node. This exact snippet resolves
+`currentPhase` for dispatch both here (session entry) and at the bottom of Step 6
+(continuing after a phase returns) — same snippet, same call, one authority:
+
 ```bash
 feat_dir=".loop-spec/features/${slug}"
 fjson="${feat_dir}/feature.json"
-current_phase="$(jq -r '.currentPhase' "$fjson")"
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" activate \
-  "$feat_dir" "$current_phase"
+GRAPH="${CLAUDE_SKILL_DIR}/../../graph/cycle.graph.json"
+while :; do
+  set +e
+  step_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/graph/run.sh" --step \
+    --feature-dir "$feat_dir" "$GRAPH")"
+  step_rc=$?
+  set -e
+  case "$step_rc" in
+    4)
+      echo "loop-spec: paused at human node $(jq -r '.node' <<<"$step_json") -- resumable; re-invoke /loop-spec:cycle to continue." >&2
+      exit 0
+      ;;
+    5)
+      echo "loop-spec: graph routing aborted -- a node had route edges and none was satisfied, with no routeDefault. See stderr above for the probe diagnostics." >&2
+      exit 1
+      ;;
+    0) ;;
+    *)
+      echo "loop-spec: run.sh --step failed unexpectedly (exit $step_rc)" >&2
+      exit 1
+      ;;
+  esac
+  [[ "$(jq -r '.terminal' <<<"$step_json")" == "true" ]] && break
+  [[ "$(jq -r '.kind' <<<"$step_json")" == "agent" ]] && break
+  # function/gate/subgraph/skipped-human: the engine already dispatched it
+  # in-process. Nothing for the orchestrator to do here -- step again.
+done
+currentPhase="$(jq -r '.node' <<<"$step_json")"
+current_phase="$currentPhase"
+if [[ "$(jq -r '.terminal' <<<"$step_json")" == "true" ]]; then
+  echo "loop-spec: graph traversal reached its terminal node ($currentPhase)."
+else
+  bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" activate \
+    "$feat_dir" "$current_phase"
+fi
 if [[ "$(jq 'has("preset") or has("tier")' "$fjson")" == "true" ]]; then
   new_json="$(jq 'del(.preset) | del(.tier)' "$fjson")"
   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" "$feat_dir" "$new_json"
@@ -660,6 +706,21 @@ fi
 ```
 
 ### Step 6 - Route to phase
+
+Sequencing is owned by the declared graph. `currentPhase` for this iteration was
+already resolved by the Step 5.9 `run.sh --step` snippet — that is the single
+authority for phase successors, ITERATE rewind targets, DELIVER's CI-remediation
+path, critique subgraphs, and human pauses; this step does not re-derive it. Resume
+is that same snippet's built-in pause-record/checkpoint-ledger/`currentPhase`
+resolution (contract sec 5) — not a separate prose scan-and-infer, and not a manual
+`checkpoint.sh latest` + `--resume` call made anywhere in this skill.
+
+Exit 4 from `run.sh --step` is a human-node pause (resumable; the snippet already
+returned to the user). Exit 0 with `.terminal == true` is a completed traversal —
+the graph reached its `completed` node, which the engine's own dispatch of
+`lib/cycle-result.sh` already published as the terminal result; jump to "On
+completion" below. Exit 0 with `.kind == "agent"` is this step's normal case: the
+snippet stopped at a real phase to dispatch.
 
 The cycle does NOT create the phase team. Each phase skill owns its own team lifecycle: `TeamCreate` at phase start, `TeamDelete` + clear `currentTeamName` at phase end. This keeps team rosters phase-specific (each phase has different teammates) and avoids double-`TeamCreate` errors.
 
@@ -688,13 +749,12 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set \
   "$feature_dir" phaseHandoff "$phase_handoff"
 ```
 
-For new features, `currentPhase` is initialized to `"spec"`. The forward chain is
-`SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER -> completed`.
-ITERATE may rewind to `execute`, `plan`, `spec`, or `discuss`; only a terminal verdict
-advances to `deliver`. DELIVER is the sole owner of push, PR reconciliation, required
+Node bodies remain the phase skills. The engine selects the next node; the lead
+dispatches `Skill(loop-spec:{currentPhase})` for agent nodes and reacts to the
+return. DELIVER remains the sole owner of push, PR reconciliation, required
 checks, and readiness.
 
-Cycle's only responsibility here is to invoke the phase skill and react to its return:
+Cycle's responsibility after the engine names a node is to invoke that phase skill and react to its return:
 
 1. **Invoke phase skill** (with the watchdog stamp):
    Before every invocation—including continuous routing after a prior phase
@@ -957,8 +1017,18 @@ Cycle's only responsibility here is to invoke the phase skill and react to its r
      context. If enabled for a rewind, commit the handoff and return with:
      `fresh-context rewind: state committed; relaunch with /loop-spec:cycle (or let your outer loop do it) to re-enter {next_phase} in a clean session.`
      and return to the user. An outer `while :; do claude -p "/loop-spec:cycle"; done` (or the loop-runner) drives the relaunch; resume detection re-enters at `{next_phase}` with a fresh window.
-   - If `execStyle` is `auto` or `review-only`: continue the loop -- invoke `Skill(loop-spec:{next_phase})`.
-   - If `execStyle` is `step` or `interactive`: print phase summary and return to user. User re-invokes `Skill(loop-spec:cycle)` to continue (resume detection in Step 1 picks up the in-progress state).
+   - Otherwise, re-run the Step 5.9 graph-resolution snippet verbatim (`run.sh --step`
+     in a loop until an `agent` node, a pause, an abort, or the terminal node) to obtain
+     the next `currentPhase`, then loop back to "1. Invoke phase skill" above with that
+     value. This single mechanism now covers both `execStyle` families: `auto` and
+     `review-only` resolve straight through to the next agent node and continue; `step`
+     and `interactive` land on an admitted `human.*` node, and `run.sh --step` itself
+     exits 4 (pause) there — the snippet's exit-4 branch prints the pause and returns to
+     the user exactly as the old style-branch used to, except the pause point is now the
+     graph's own declared admit condition (`lib/graph/probes/human-gate.sh`) instead of a
+     second, independently-maintained `execStyle` check in this prose. User re-invokes
+     `Skill(loop-spec:cycle)` to continue (resume detection in Step 1, and `run.sh --step`'s
+     own pause-record resolution, pick up the in-progress state — sec 5).
 
 ## Resume strategy + phase pause/escalation
 

@@ -6,7 +6,7 @@ and `lib/`; this page is the map, not the authority.
 
 ## Cycle orchestration
 
-The cycle skill is a thin orchestrator; each phase skill owns its own dispatches. When agent teams are available, teammates persist for the whole phase and communicate over `SendMessage`, so rework rides on accumulated context instead of fresh spawns. `lib/teams-capability.sh` resolves the team mechanism per Claude Code version: explicit `TeamCreate`/`TeamDelete` on older builds, direct named `Agent({name})` spawns on 2.1.178 and later, and a documented fallback per phase (`skills/shared/no-teams-fallback.md`) when teams are off, with the same artifacts, gates, and result contracts on every path.
+From 3.0 the cycle skill does not sequence the phases itself: `graph/cycle.graph.json` declares the topology and `lib/graph/run.sh` executes it, so phase successors, ITERATE's rewind targets, DELIVER's CI-remediation path and the human pause points are data rather than prose. Each phase skill still owns its own dispatches WITHIN a node — the engine owns sequencing, not content. Full model: [gdd.md](gdd.md). When agent teams are available, teammates persist for the whole phase and communicate over `SendMessage`, so rework rides on accumulated context instead of fresh spawns. `lib/teams-capability.sh` resolves the team mechanism per Claude Code version: explicit `TeamCreate`/`TeamDelete` on older builds, direct named `Agent({name})` spawns on 2.1.178 and later, and a documented fallback per phase (`skills/shared/no-teams-fallback.md`) when teams are off, with the same artifacts, gates, and result contracts on every path.
 
 Under Claude Code each feature runs in its own git worktree by default
 (`.claude/worktrees/{slug}`, branch `feat/{slug}` from the fetched base SHA).
@@ -40,7 +40,7 @@ flowchart LR
     discuss -.->|fix-list<br/>via SendMessage| discuss
 ```
 
-Solid arrows are forward progression; dotted arrows are gate-failure retries. Design and verification artifacts are committed before handoff; DELIVER persists its external observation locally without creating a post-check commit that would invalidate the checked SHA.
+Solid arrows are forward progression; dotted arrows are gate-failure retries. Every arrow shown is an edge declared in `graph/cycle.graph.json`, and the dotted rewinds are `route` edges whose conditions name a probe script and an expected token — not prose the orchestrator re-reads each run. Design and verification artifacts are committed before handoff; DELIVER persists its external observation locally without creating a post-check commit that would invalidate the checked SHA.
 
 ### Per-phase team lifecycle
 

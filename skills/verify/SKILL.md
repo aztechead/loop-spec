@@ -135,10 +135,12 @@ It runs the persisted preparation command in every participating repository, the
 test/lint/typecheck results with the exact-base baseline. Exit 0 means no new failures;
 pre-existing fingerprints may remain and must be reported as known baseline failures rather
 than repaired. Exit 20 is a real suite regression: emit `suite-regression`, append the normal
-FULL-SHAPE remediation task, set `currentPhase = "execute"`, and route to EXECUTE without
-spawning VERIFY agents. Exit 21 is environment/infrastructure failure: preserve the JSON and
-logs, escalate, and do not mislabel setup repair as implementation work. Acceptance criterion
-commands remain absolute pass/fail, and DELIVER's required GitHub checks remain absolute green.
+FULL-SHAPE remediation task, and return to the cycle orchestrator without spawning VERIFY
+agents — the pending remediation state drives the graph's declared remediation route
+(`graph/cycle.graph.json`). Exit 21 is environment/infrastructure failure: preserve the JSON
+and logs, escalate, and do not mislabel setup repair as implementation work. Acceptance
+criterion commands remain absolute pass/fail, and DELIVER's required GitHub checks remain
+absolute green.
 
 ### Step 2 - TeamCreate verify team
 
@@ -306,11 +308,10 @@ returned to EXECUTE before team creation.
 - Append the remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step, so any `TaskCreate` calls on it would be lost.
 - Update `feature.json` via `lib/feature-write.sh`:
   - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
-  - Set `currentPhase = "execute"` (gate retries are unbounded — full bore; only ITERATE's round limit bounds the cycle).
 - Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
 - Discard code-reviewer output for this iteration (will re-run when verify loops back after remediation).
-- Route to `loop-spec:execute`.
+- Return to the cycle orchestrator: the appended remediation state drives the graph's declared remediation route.
 
 **If verifier reports `FAIL`:**
 - This includes any failed grounding gate: absent/stale `repositoryEvidence`, an
@@ -332,10 +333,9 @@ returned to EXECUTE before team creation.
 - Append each remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step.
 - Update `feature.json` via `lib/feature-write.sh`:
   - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
-  - Set `currentPhase = "execute"` (gate retries unbounded).
 - Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
-- Route to `loop-spec:execute`. When execute completes, re-invoke verify from Step 1.
+- Return to the cycle orchestrator: the appended remediation state drives the graph's declared remediation route, and the graph's loop edge re-enters VERIFY from Step 1 after remediation lands.
 
 #### code-reviewer-1 HARD-GATE
 
@@ -349,15 +349,13 @@ Fixed gate rule (single-tier operation): **BLOCK on Critical OR Important. PASS_
 - Append each remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry.
 - Update `feature.json` via `lib/feature-write.sh`:
   - Append entry to `gateHistory[]` (`phase: verify`, `gate: code-review`, `result: fail`).
-  - Set `currentPhase = "execute"` (gate retries unbounded).
 - Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
 - Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
-- **Ralph remediation routing:** Check `pendingRemediationTasks.length` from `feature.json`.
-  - `RALPH_THRESHOLD="${LOOP_SPEC_RALPH_THRESHOLD:-3}"` (default 3). The
-    deterministic helper rejects non-positive/non-integer values with exit 2; relay
-    that configuration error rather than falling through to another dispatch rung.
-  - If `pendingRemediationTasks.length <= RALPH_THRESHOLD`: invoke `bash "${CLAUDE_SKILL_DIR}/../../lib/ralph-remediation.sh" "$feature_dir"` and use its output to drive the remediation loop instead of the full EXECUTE team. If `ralph-remediation.sh` exits 1 (max iterations reached), fall through to the full EXECUTE team path.
-  - Else (task count exceeds threshold): route to `loop-spec:execute` (existing behavior). When execute completes, re-invoke verify from Step 1.
+- Return to the cycle orchestrator. `lib/ralph-remediation.sh` is the graph's declared
+  route probe for pending remediation (`graph/cycle.graph.json`): the recorded tasks —
+  never this skill — select the rewind, and the probe's own threshold logic
+  (`LOOP_SPEC_RALPH_THRESHOLD`) decides between the bounded remediation loop and the
+  full EXECUTE team.
 
 **If PASS or PASS_WITH_MINOR:**
 - Append code-review section to VERIFICATION.md.
@@ -387,7 +385,7 @@ LIVE_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/verify-live.sh" run \
 
 - **Unconfigured** (`configured: false`, exit 0): suite-only VERIFY, unchanged. NEVER guess a launch command here. If the user has not been offered configuration before, `bash "${CLAUDE_SKILL_DIR}/../../lib/verify-live.sh" detect .` may SUGGEST one — in interactive styles offer it once; in autonomous mode record a `decisions.sh` entry that the rung stayed off (suggestion included when detect found one) and move on.
 - **Exit 0 with `allPass: true`:** append a "## Live verification" section to VERIFICATION.md listing each probe with its `EVID-NNN` id (the verifier cites evidence ids, never bare claims — the probe outputs are already in the EVIDENCE.md ledger).
-- **Exit 1** (never became ready, or a probe failed): emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"live-probe"}' || true`), then route remediation exactly like a verifier `FAIL` (Step 7): one FULL-SHAPE remediation task per failed probe (`subject = "Fix: live probe failed — {probe cmd}"`, `verifyCommand` = the probe), `gateHistory` entry (`gate: live-verify`, `result: fail`), `currentPhase = "execute"`.
+- **Exit 1** (never became ready, or a probe failed): emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"live-probe"}' || true`), then record remediation exactly like a verifier `FAIL` (Step 7): one FULL-SHAPE remediation task per failed probe (`subject = "Fix: live probe failed — {probe cmd}"`, `verifyCommand` = the probe) and a `gateHistory` entry (`gate: live-verify`, `result: fail`); the recorded tasks drive the graph's declared remediation route.
 
 ### Step 7.6 - Verification-gap pass
 
@@ -402,6 +400,33 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/verification-gap-scan.sh" "$baseSha" HEAD ||
 Exit 1 means no definition changed in a non-test file — record that and skip the pass. Otherwise dispatch one reviewer carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/verification-gap.md` verbatim plus the probe output, on the same maker≠checker terms as Step 6 (never the agent that wrote the code).
 
 Findings are **advisory in this release**: record them in VERIFICATION.md under `## Verification gaps` and append each to `.loop-spec/BACKLOG.md`. They do not block delivery. A gap class this new blocking a verified change would cost more than it catches until the false-positive rate is measured on real runs; promoting it to blocking is a tuning decision backed by telemetry, not a default.
+
+### Step 7.65 - Plain-language pass (advisory)
+
+Checks the prose this cycle produced against `skills/shared/plain-language.md` — Orwell's
+six rules plus the STE-informed structural rules the repo adopts. Deterministic, never a
+model judgment: `lib/plain-language-lint.sh` counts sentence length, passive
+constructions, curated long-word and foreign-phrase substitutions, stock phrases,
+`and/or` slashes, paragraph length, and gerund-headed imperatives.
+
+```bash
+lint="${CLAUDE_SKILL_DIR}/../../lib/plain-language-lint.sh"
+bash "$lint" prose docs/loop-spec/features/"$slug"/*.md --max-flags 40 || true
+bash "$lint" comments $(git diff --name-only "$baseSha" HEAD -- '*.sh' '*.py') --max-flags 20 || true
+```
+
+Findings are **advisory and stay advisory until the false-positive rate is measured**.
+On this repository's own artifacts the linter reports roughly one flag per six lines,
+dominated by long sentences and passive constructions, so a blocking gate would stop
+every run on prose that reads perfectly well. Record the counts per check in
+VERIFICATION.md under `## Plain language` and append only the flags a human agrees with
+to `.loop-spec/BACKLOG.md` — never the raw list.
+
+Two of Orwell's rules are not machine-checked and never will be: "cut every word that
+adds nothing" is a judgment about a sentence's information content, and rule 6 ("break
+any of these rules sooner than say anything barbarous") is the rule that overrides the
+others. `lib/plain-language-lint.sh` has no opinion on either. Do not treat a clean run
+as evidence the prose is good.
 
 ### Step 7.7 - Project review layers (opt-in per repo)
 
@@ -490,15 +515,18 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag post-verify
 
 Update `feature.json` via `lib/feature-write.sh` (nested `set`/`append` take dot paths directly, values JSON-quoted, never raw jq — `skills/shared/feature-state-schema.md` "Writing rules"):
 - `completedPhases.append("verify")` — `feature-write.sh append "$fdir" completedPhases '"verify"'`
-- `currentPhase = "iterate"` — VERIFY's gates passing means the SPEC acceptance checklist is met; the ITERATE phase then judges the integrated result against the **original goal** and decides whether to ship or loop back. (When `feature.iterate.maxIterations` is exhausted on a prior pass, ITERATE ships rather than re-entering; see `skills/iterate/SKILL.md`.)
 - `artifacts.verification = "docs/loop-spec/features/{slug}/VERIFICATION.md"` — `feature-write.sh set "$fdir" artifacts.verification '"docs/loop-spec/features/{slug}/VERIFICATION.md"'`
+
+VERIFY's gates passing means the SPEC acceptance checklist is met; the graph's next
+node (ITERATE) then judges the integrated result against the **original goal** and
+decides whether to ship or loop back (see `skills/iterate/SKILL.md`).
 
 ### Step 12 - Return inside the active feature root
 
 VERIFY does not push, open a PR, print a shipped summary, or leave the feature root.
-Return to cycle with `currentPhase = "iterate"`. ITERATE may rewind and add commits;
-only a terminal ITERATE verdict advances to DELIVER, which owns the exact-SHA push,
-PR reconciliation, required checks, and readiness transition.
+Return to the cycle orchestrator; the graph declares VERIFY's successor. ITERATE may
+rewind and add commits; only a terminal ITERATE verdict advances to DELIVER, which
+owns the exact-SHA push, PR reconciliation, required checks, and readiness transition.
 
 ## Resume
 

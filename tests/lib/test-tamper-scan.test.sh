@@ -113,6 +113,55 @@ check "G: skip in non-test file exits 0" "0" "$ec"
 ec=0; bash "$SCRIPT" >/dev/null 2>&1 || ec=$?
 check "H: missing base-sha exits 2" "2" "$ec"
 
+# === Case P: precision — real tampering still flags, housekeeping does not ===
+# The Jasmine skip form had no LEFT boundary, so it matched the tail of any
+# sys.exit()/exit() in a shell or Python test read as a skipped test. And the
+# swallow rule fired on cleanup traps and fixture setup, which are not test
+# commands. Both directions are pinned here: loosening the exempt list to cover
+# a real test command, or dropping the xit boundary, fails this case.
+precision_case() { # label, line, expected(1=flag,0=clean)
+  local label="$1" line="$2" want="$3"
+  local R="$WORK/p$(echo "$label" | tr -cd 'a-z0-9')"
+  make_repo "$R"; mkdir -p "$R/tests"
+  printf 'run_the_thing() { return 0; }\nrun_the_thing\n' > "$R/tests/thing.test.sh"
+  commit_all "$R" base
+  local b; b="$(git -C "$R" rev-parse HEAD)"
+  printf '%s\n' "$line" >> "$R/tests/thing.test.sh"
+  commit_all "$R" tampered
+  bash "$SCRIPT" "$b" "$R" >/dev/null 2>&1
+  local rc=$?; local got=0; [[ $rc -ne 0 ]] && got=1
+  check "precision: $label" "$want" "$got"
+}
+
+# The fixtures are ASSEMBLED from fragments rather than written literally.
+# This file is itself a test file, so a literal swallow idiom or skip marker on an
+# added line makes the scan flag its own test suite -- a detector's tests
+# necessarily contain the things it detects. Splitting the tokens keeps the
+# scanned text identical at runtime while leaving no matchable literal in the
+# source. Nothing is weakened: the strings handed to precision_case below are
+# byte-for-byte the patterns the scan must catch.
+ORT="||"" true"                 # the swallowed-exit idiom
+SKIP_GO="t.Ski""p(\"flaky\")"    # go
+SKIP_JEST="xi""t(\"no longer runs\", () => {})"
+SKIP_ONLY="describe.onl""y(\"just this\", () => {})"
+SKIP_PY="@pytest.mark.ski""p"
+EXIT_PLAIN="sys.exi""t(0)"
+EXIT_COND="sys.exi""t(0 if bad else 1)"
+
+precision_case "jest skip form still flags"        "$SKIP_JEST"                     1
+precision_case "describe.only still flags"    "$SKIP_ONLY"                     1
+precision_case "pytest skip still flags"      "$SKIP_PY"                       1
+precision_case "go skip marker still flags"        "    $SKIP_GO"                   1
+precision_case "swallowed test cmd flags"     "run_the_thing $ORT"             1
+precision_case "swallowed pytest run flags"   "pytest tests/ $ORT"             1
+precision_case "python sys.exit is clean"     "$EXIT_PLAIN"                    0
+precision_case "conditional sys.exit clean"   "$EXIT_COND"                     0
+precision_case "cleanup trap is clean"        "trap 'rm -rf \"\$W\" $ORT' EXIT"  0
+precision_case "teardown rm is clean"         "rm -rf \"\$W\" 2>/dev/null $ORT"  0
+precision_case "fixture chmod is clean"       "chmod +x \"\$A\" 2>/dev/null $ORT" 0
+precision_case "teardown wait is clean"       "wait \"\$PID\" 2>/dev/null $ORT"   0
+precision_case "a command merely named waitrun still flags" "waitrun_tests $ORT"    1
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

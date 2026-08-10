@@ -1,8 +1,11 @@
 # Model Matrix
 
-Maps each agent role to its default model alias and defines optional per-phase
-routing. There is no model preset axis. Gate behavior and fan-out width are
-fixed (single-tier operation); see `tier-matrix.md`.
+Maps each agent role to a model alias per effort mode and defines optional
+per-phase routing. There is no model preset axis. Gate behavior and fan-out
+width are fixed (single-tier operation); see `tier-matrix.md`. Which mode a
+node runs in is decided by the effort probe (`skills/shared/dual-process.md`);
+the `system2` column is the canonical default and is what
+`lib/feature-init.sh activate` resolves.
 
 Immediately before every phase invocation, `lib/feature-init.sh activate` writes
 the effective route into `feature.models.<role>`, and every spawn passes that
@@ -28,17 +31,27 @@ overrides for cross-provider routing. Loop-fleet dispatch takes opencode ids —
 
 ## Matrix
 
-| Role family | Model |
+Effort mode (`lib/effort-probe.sh`) selects the column. The **system2** column
+is identical to the 2.35 role map — nothing is less capable by default. The
+**system1** column is the throughput alias for habitual nodes. See
+`skills/shared/dual-process.md`.
+
+| Effort column | Meaning |
 |---|---|
-| spec-writer, planner | opus |
-| challenger | opus |
-| iterate-judge | opus |
-| code-reviewer | opus |
-| advocate | sonnet |
-| spec-compliance-reviewer | sonnet |
-| verifier | sonnet |
-| implementer | sonnet |
-| mapper-*, pattern-mapper | sonnet |
+| system1 | throughput alias for habitual nodes |
+| system2 | deliberate alias; equals the 2.35 role map |
+
+| Role family | system1 | system2 |
+|---|---|---|
+| spec-writer, planner | sonnet | opus |
+| challenger | sonnet | opus |
+| iterate-judge | sonnet | opus |
+| code-reviewer | sonnet | opus |
+| advocate | sonnet | sonnet |
+| spec-compliance-reviewer | sonnet | sonnet |
+| verifier | sonnet | sonnet |
+| implementer | sonnet | sonnet |
+| mapper-*, pattern-mapper | sonnet | sonnet |
 
 ## Design rules
 

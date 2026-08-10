@@ -50,7 +50,16 @@ diff_text="$(git diff --unified=0 --find-renames "$base" "$head" 2>/dev/null)" |
 test_files="$(git ls-files 2>/dev/null |
   grep -Ei '(^|/)(tests?|__tests__|spec)/|\.(test|spec)\.[A-Za-z0-9]+$|_test\.[A-Za-z0-9]+$' || true)"
 
-BASE_REF="$base" HEAD_REF="$head" DIFF_TEXT="$diff_text" TEST_FILES="$test_files" \
+# The diff and the corpus list go through FILES, not the environment. A large
+# change (65 files here) blows past E2BIG and the scan dies with "Argument list
+# too long" -- so the gate failed on exactly the diffs it is most needed for.
+scan_tmp="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-vgap.XXXXXX")"
+trap 'rm -rf "$scan_tmp"' EXIT
+printf '%s' "$diff_text" > "$scan_tmp/diff.txt"
+printf '%s' "$test_files" > "$scan_tmp/test-files.txt"
+
+BASE_REF="$base" HEAD_REF="$head" DIFF_FILE="$scan_tmp/diff.txt" \
+TEST_FILES_FILE="$scan_tmp/test-files.txt" \
 python3 - <<'PY'
 from __future__ import print_function
 
@@ -77,7 +86,16 @@ TEST_PATH = re.compile(
     re.I,
 )
 
-test_files = [path for path in os.environ.get("TEST_FILES", "").splitlines() if path.strip()]
+def _read_input(file_var, inline_var):
+    """Prefer the file form; keep the env form working for older callers."""
+    path = os.environ.get(file_var)
+    if path:
+        with open(path) as handle:
+            return handle.read()
+    return os.environ.get(inline_var, "")
+
+
+test_files = [path for path in _read_input("TEST_FILES_FILE", "TEST_FILES").splitlines() if path.strip()]
 
 # Symbols shared by half the language's files answer nothing about this change.
 TOO_COMMON = {
@@ -93,7 +111,7 @@ TOO_COMMON = {
 found = []          # (symbol, path) in first-seen order
 seen = set()
 path = None
-for line in os.environ.get("DIFF_TEXT", "").splitlines():
+for line in _read_input("DIFF_FILE", "DIFF_TEXT").splitlines():
     if line.startswith("+++ b/"):
         candidate = line[6:].strip()
         path = None if TEST_PATH.search(candidate) else candidate

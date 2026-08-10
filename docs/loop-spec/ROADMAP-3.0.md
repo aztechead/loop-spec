@@ -1,13 +1,30 @@
-# ROADMAP-3.0 — from autonomous execution to autonomous operation
+# ROADMAP-3.0 — graph-driven development as the substrate
 
-**Status:** draft plan (2026-07-09). Nothing here is committed work; every item goes
-through the cycle when it is picked up.
+**Status:** GDD is the 3.0 headline (see `docs/loop-spec/gdd.md` and
+`docs/loop-spec/features/gdd/`). Pillars A–D are re-expressed as graphs over that
+substrate rather than as independent prose subsystems.
 
-**Semver stance:** 3.0 is NOT a breaking change. Every 2.x invocation, artifact,
-config file, and hook keeps working unchanged. The major bump marks an identity
-change: the 2.x line is *a spec-driven cycle you invoke*; 3.0 is *a development
-agent that runs the loop itself, with trust it has to earn*. A user who never
-enables the new surfaces sees 2.x behavior forever.
+**Semver stance:** 3.0 is NOT a breaking change to user surface. Every 2.x
+invocation, artifact path, config file, and hook keeps working unchanged — the
+break is internal (prose routing deleted; the graph engine sequences the same
+phases). The major bump marks an identity change: the 2.x line is *a spec-driven
+cycle you invoke*; 3.0 is *a development agent that runs a declared graph, with
+trust it has to earn*. A user who never enables the new surfaces sees 2.x
+behavior forever.
+
+## Headline: graph-driven development
+
+GDD supersedes the prior pillar sequencing. Typed state, per-node checkpoints,
+deterministic effort, and the handoff port are the substrate every pillar needs
+for durable resume and cross-session work. Pillars A–D are now graphs (or node
+sets) over that substrate:
+
+| Pillar | Graph binding |
+|---|---|
+| Pillar A | Self-sourcing as a `fanout` over source adapters with a triage `gate` and `human` pause for `needs-human` |
+| Pillar B | Closed learning as a bounded `loop` around retro/`rules.sh` with probe-licensed promotion gates |
+| Pillar C | Reality-grounded VERIFY as additional `gate` nodes on the cycle graph (live probes) |
+| Pillar D | Graduated trust as `route` edges whose probes are trust-level scripts (fail closed) |
 
 ## Thesis
 
@@ -18,7 +35,7 @@ token removed mid-run questions (decisions recorded via `lib/decisions.sh`),
 volatile agents. But the plugin is still fundamentally **reactive**: a human hands
 it one assignment and it runs until PR.
 
-3.0 closes three loops that today end at a human:
+3.0 closes three loops that today end at a human — on top of the GDD substrate:
 
 | Loop | Today ends at | 3.0 closes it with |
 |---|---|---|
@@ -29,21 +46,26 @@ it one assignment and it runs until PR.
 
 ## Design constraints (carried forward, non-negotiable)
 
+Each constraint is preserved verbatim and satisfied by GDD:
+
 1. **Lean deps.** Everything ships as bash + jq + python3 + markdown. No daemons
    that require installation; "scheduling" means documented cron/launchd/CI recipes
-   invoking existing entry points.
+   invoking existing entry points. *GDD: `lib/graph/*` uses only those runtimes.*
 2. **Dual harness.** Every new capability keys on `lib/harness.sh`; pi gets the
    inline/headless equivalent or a documented degradation, pinned in
-   `tests/pi-harness-coverage.test.sh`.
+   `tests/pi-harness-coverage.test.sh`. *GDD: engine/port are harness-neutral;
+   node bodies branch through `lib/harness.sh`.*
 3. **Deterministic predicates for autonomous decisions.** Anything that decides
    *whether the loop may act without a human* is a script with unit tests, never
    prose in a skill (the `autonomous-chain.sh` precedent). The model proposes;
-   scripts authorize.
+   scripts authorize. *GDD: every route condition is `{probe, expects}`.*
 4. **Fail-open accelerators, fail-closed authority.** Directives and telemetry
    never block a session. Trust escalation (Pillar D) fails **closed**: any doubt
-   resolves to the lower trust level.
+   resolves to the lower trust level. *GDD: `lib/graph/trace.sh` never aborts;
+   effort fails safe to `system2`.*
 5. **Seams, not speculation.** Each pillar lands as an interface with one shipped
    implementation; adapters others can add later, none built "just in case".
+   *GDD: handoff port with one reference adapter (`port-local.sh`).*
 
 ---
 

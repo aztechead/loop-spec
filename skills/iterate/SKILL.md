@@ -1,6 +1,6 @@
 ---
 name: iterate
-description: ITERATE phase - the outer convergence loop. Judges the integrated result against the ORIGINAL goal (deterministic acceptance gate + an LLM goal re-judge), and either advances to DELIVER (converged or iteration limit spent) or classifies the highest-leverage gap and routes the cycle back to EXECUTE, PLAN, or (with human approval) SPEC/DISCUSS. Bounded by feature.iterate.maxIterations. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: ITERATE phase - the outer convergence loop. Judges the integrated result against the ORIGINAL goal (deterministic acceptance gate + an LLM goal re-judge), and either advances to DELIVER (converged or iteration limit spent) or classifies the highest-leverage gap so the declared graph's rewind routes send the cycle back to EXECUTE, PLAN, or (with human approval) SPEC/DISCUSS. Bounded by feature.iterate.maxIterations. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 
 You are the ITERATE phase orchestrator, running on the **main thread**. Invoked by `loop-spec:cycle` when `feature.json.currentPhase == "iterate"` — i.e. after VERIFY's gates passed. VERIFY proves the SPEC acceptance checklist is met; ITERATE asks the harder question the article calls the heart of a loop: **are we actually there yet, measured against the original goal — and if not, feed the result back in and repeat.**
 
-This phase runs no team. It dispatches ONE fresh `iterate-judge` subagent (maker ≠ checker) for the goal re-judge, decides on its verdict, and rewinds or advances the phase pointer. The bounded outer loop is: `... EXECUTE → VERIFY → ITERATE → (EXECUTE|PLAN|SPEC again | DELIVER)`.
+This phase runs no team. It dispatches ONE fresh `iterate-judge` subagent (maker ≠ checker) for the goal re-judge, decides on its verdict, and records the gap state the graph's rewind routes key on. The bounded outer loop is: `... EXECUTE → VERIFY → ITERATE → (EXECUTE|PLAN|SPEC again | DELIVER)`.
 
 Autonomous mode (`feature.json.autonomous == true`) forces style `auto`, so the spec-rewind approval gate below never fires — every rewind runs hands-off per `skills/shared/autonomous-mode.md`.
 
@@ -152,12 +152,12 @@ On exit 0: set `currentPhase = "deliver"`. Clear `iterate.feedback = null`. Go t
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedback "<gap json>"
 ```
 
-- **`execute`** — implementation gap. Convert `gap` into a FULL-SHAPE remediation task (`subject = "Iterate fix: {gap.fix_first}"`, `verifyCommand` from `feature.commands.test` or the relevant acceptance check, `blockedBy = []`, `files` = the files the verdict implicates (empty array when unknown), `acceptanceCriteria = ["{gap.fix_first}"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them) and append to `pendingRemediationTasks[]` (EXECUTE Step 2a consumes it alongside PLAN.md tasks). **Also convert every `remaining_gaps[]` entry with `type == "execute"` into its own remediation task** — the iteration limit counts judge passes, not fixes, so burning one pass per known miss when several are already identified wastes the rounds the loop needs to converge. Set `currentPhase = "execute"`.
-- **`plan`** — decomposition gap. Set `currentPhase = "plan"`. PLAN reads `iterate.feedback` and re-plans the affected slice (it does not re-author the whole plan from scratch; it addresses the gap). 
+- **`execute`** — implementation gap. Convert `gap` into a FULL-SHAPE remediation task (`subject = "Iterate fix: {gap.fix_first}"`, `verifyCommand` from `feature.commands.test` or the relevant acceptance check, `blockedBy = []`, `files` = the files the verdict implicates (empty array when unknown), `acceptanceCriteria = ["{gap.fix_first}"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them) and append to `pendingRemediationTasks[]` (EXECUTE Step 2a consumes it alongside PLAN.md tasks). **Also convert every `remaining_gaps[]` entry with `type == "execute"` into its own remediation task** — the iteration limit counts judge passes, not fixes, so burning one pass per known miss when several are already identified wastes the rounds the loop needs to converge.
+- **`plan`** — decomposition gap. PLAN reads `iterate.feedback` on re-entry and re-plans the affected slice (it does not re-author the whole plan from scratch; it addresses the gap). 
 - **`spec`** — goal unmet because the SPEC captured the wrong thing. This is the expensive rewind, but it is **autonomous in the autonomous styles** — it does NOT block on a human. The loop stays hands-off because the rewind cannot game its own oracle: the `iterate-judge` always scores against the **immutable original goal** (`feature.json.feature_title`), never the rewritten SPEC, so refining the spec can only move the work toward the original goal, not redefine "done". The iteration limit (Step 0) hard-caps the number of rewinds.
 
   Branch by `execStyle` (read from `feature.json`):
-  - **`auto` / `review-only` (autonomous):** set `currentPhase = "discuss"` and proceed WITHOUT asking. DISCUSS re-entry runs in **autonomous refinement mode** (driven by `iterate.feedback` + the immutable original goal; it does not run its interactive clarifying loop — see `skills/discuss/SKILL.md` ITERATE re-entry note). No `AskUserQuestion`. The next VERIFY→ITERATE pass re-judges against the original goal and either converges or spends another iteration.
+  - **`auto` / `review-only` (autonomous):** proceed WITHOUT asking. The rewind lands in DISCUSS's **autonomous refinement mode** (driven by `iterate.feedback` + the immutable original goal; it does not run its interactive clarifying loop — see `skills/discuss/SKILL.md` ITERATE re-entry note). No `AskUserQuestion`. The next VERIFY→ITERATE pass re-judges against the original goal and either converges or spends another iteration.
   - **`step` / `interactive` (human-in-loop by choice):** the user explicitly opted into per-phase control, so here — and ONLY here — present the approval gate:
     ```
     AskUserQuestion({
@@ -173,12 +173,18 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedba
       }]
     })
     ```
-    Re-open → `currentPhase = "discuss"`; Ship as-is → `currentPhase = "deliver"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
+    Re-open → the approval route re-enters DISCUSS refinement; Ship as-is → `currentPhase = "deliver"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
   - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): resolve
     `iterate_answer="${LOOP_SPEC_ANSWER_ITERATE_SPEC:-reopen}"`, reject values other
     than `reopen|ship` with exit 2, then treat `reopen` as autonomous DISCUSS
     refinement and `ship` as `currentPhase = "deliver"` plus the accepted gap in
     `warnings[]`.
+
+In every rewind case, ITERATE records the gap and NEVER selects the target phase
+itself: `graph/cycle.graph.json` declares the rewind routes, each keyed on a
+deterministic probe (`lib/ralph-remediation.sh`, `lib/plan-adherence.sh`,
+`lib/criteria-coverage.sh`, and the `step`/`interactive` approval node), and the
+engine selects the target from the recorded state.
 
 The autonomy guarantee: in `auto`/`review-only`, **no gap type ever blocks on a human**. The loop runs EXECUTE/PLAN/SPEC rewinds on its own until it converges or the iteration limit is spent, then it ships-with-warnings (Step 0). The only thing that ever returns control to you mid-loop is the explicit human-in-loop styles, or a hard escalation (limit-exhausted in `step`/`interactive`). An overnight `auto` run never waits for input.
 
@@ -186,10 +192,12 @@ Clear `currentTeamName`/`currentTeammates` are already null (ITERATE ran no team
 
 ### Step 4 - Phase routing
 
-| execStyle | Action |
-|---|---|
-| `auto`, `review-only` | If `currentPhase == "deliver"`: return to cycle, which invokes DELIVER in the same context. Otherwise cycle invokes the selected rewind phase — UNLESS `LOOP_SPEC_ITERATE_FRESH=1`, where it commits state and returns so an outer loop relaunches the rewind in a fresh session. |
-| `step`, `interactive` | Print the iteration verdict (converged? / gap / where it routes next) and return to the user; they re-invoke `Skill(loop-spec:cycle)` to continue. |
+Always return to the cycle orchestrator; the engine selects the next node (terminal
+DELIVER or a rewind) from the routes declared in `graph/cycle.graph.json`.
+Fresh-context rewinds are cycle's `LOOP_SPEC_ITERATE_FRESH` contract, not this
+skill's. For `step` / `interactive`, print the iteration verdict (converged? / gap /
+where the graph routes next) and return to the user; they re-invoke
+`Skill(loop-spec:cycle)` to continue.
 
 ## Phase exit
 
@@ -198,7 +206,7 @@ ITERATE does not append itself to `completedPhases` on a rewind (it will run aga
 ## Design notes
 
 - **The deterministic gate is the floor; the goal re-judge is the ceiling.** ITERATE never ships on the judge's word alone — `deterministic_gate_passed` (from VERIFICATION.md) must hold too. And it never ships on a green checklist alone — the judge must agree the *goal* is met. This is the dual oracle.
-- **Bounded by rounds, nothing else.** `maxIterations` is fixed at 10 — the ONE limit the cycle respects; everything else runs full bore. Ten iterations is headroom, not an expectation — most features converge in 1-2; the headroom exists so a legitimately hard goal is not shipped-with-warnings prematurely. The loop ships or escalates; it never spins.
+- **Bounded by rounds, nothing else.** The round ceiling is declared once, on the graph's `iterate -> verify` loop edge (`graph/cycle.graph.json`), and surfaces here as `feature.iterate.maxIterations` — the ONE limit the cycle respects; everything else runs full bore. The ceiling is headroom, not an expectation — most features converge in 1-2 rounds; the headroom exists so a legitimately hard goal is not shipped-with-warnings prematurely. The loop ships or escalates; it never spins.
 - **Don't stop to ask mid-loop**, except the one SPEC-rewind approval gate (scope changes are the user's call). Everywhere else, the judge assumes, notes it, and the loop continues — per the article's self-checking-loop rule.
 - **Fix the weakest first — but carry the whole list.** Each rewind carries `iterate.feedback` so the re-entered phase targets the single highest-leverage gap first; `remaining_gaps[]` rides along so already-identified execute-level misses are remediated in the same pass instead of costing one judge iteration each.
 - **Never ship silent.** Both terminal paths (converged, limit-spent) end in the cycle's On-completion summary; the limit-spent path must arrive there with every accepted gap in `warnings[]` so the summary shows them.

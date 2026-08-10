@@ -73,6 +73,9 @@ checks=(
   "skills/loop-runner/SKILL.md	--agent-cli pi"
   "skills/shared/execute-loop-fleet.md	--agent-cli pi"
   "skills/loop-runner/tests/fakepi	message_end"
+  "skills/shared/pi-harness.md	Graph engine (GDD)"
+  "skills/shared/pi-harness.md	lib/graph/run.sh"
+  "lib/graph/run.sh	harness-neutral"
 )
 
 for entry in "${checks[@]}"; do
@@ -84,6 +87,16 @@ for entry in "${checks[@]}"; do
     FAIL=$((FAIL+1)); echo "FAIL: $file missing '$needle'"
   fi
 done
+
+
+# lib/graph must not branch on harness-specific constructs
+while IFS= read -r f; do
+  if grep -nE 'CLAUDE_CODE_ENTRYPOINT|opencode run|pi --mode|LOOP_SPEC_HARNESS=' "$f"       | grep -vE 'harness-neutral|lib/harness|#|never branches' >/dev/null; then
+    FAIL=$((FAIL+1)); echo "FAIL: $f references a harness-specific construct"
+  else
+    PASS=$((PASS+1)); echo "PASS: $f harness-neutral"
+  fi
+done < <(find lib/graph -type f -name '*.sh' 2>/dev/null)
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

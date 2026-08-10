@@ -194,11 +194,14 @@ mkdir -p .loop-spec/features/{slug}/gate-logs/
 
 #### Mode selection (security signal)
 
-The fast-path check above already ran the deterministic security-signal helper. If
-`security_signal` is non-empty: log `[PLAN] critique gate escalated: security signal
-($security_signal)`, set `gate_mode="debate"`, and start directly in the **Escalated
-debate** below. Otherwise set `gate_mode="single-critic"`. The evidence string contains
-the exact file, line, and normalized term, so escalation is auditable.
+The escalation trigger is declared on the critique graph, not here:
+`graph/critique.graph.json` routes `critique.escalate -> critique.debate` when
+`lib/security-signal.sh` reports a match. The fast-path check above already ran that
+declared probe; this gate obeys it. If `security_signal` is non-empty: log
+`[PLAN] critique gate escalated: security signal ($security_signal)`, set
+`gate_mode="debate"`, and start directly in the **Escalated debate** below. Otherwise
+set `gate_mode="single-critic"`. The evidence string contains the exact file, line,
+and normalized term, so escalation is auditable.
 
 #### Single-critic pass (default)
 
@@ -601,7 +604,6 @@ Update `feature.json` via `lib/feature-write.sh`:
 - `artifacts.plan = "docs/loop-spec/features/{slug}/PLAN.md"`
 - `artifacts.tasks = ".loop-spec/features/{slug}/tasks.json"`
 - `completedPhases` append `"plan"`
-- `currentPhase = "execute"`
 
 ### Step 7 - TeamDelete and clear team state
 
@@ -615,10 +617,12 @@ Update `feature.json` via `lib/feature-write.sh`:
 
 ### Step 8 - Phase routing
 
-Always return to the cycle orchestrator after persisting `currentPhase = "execute"`;
-never invoke EXECUTE directly. Cycle owns the phase boundary: continuous mode invokes
-EXECUTE immediately, while `phaseHandoff == true` writes the paused result and ends
-the main-agent invocation. For `step` / `interactive`, include
+Always return to the cycle orchestrator; never invoke a successor phase directly.
+PLAN declares no successor — `graph/cycle.graph.json` does, and the engine
+(`lib/graph/run.sh`, cycle Step 6) selects the next node. Cycle owns the phase
+boundary: continuous mode enters the engine-selected node immediately, while
+`phaseHandoff == true` writes the paused result and ends the main-agent invocation.
+For `step` / `interactive`, include
 `PLAN complete. PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.` in the returned
 phase summary.
 

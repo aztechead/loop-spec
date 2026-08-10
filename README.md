@@ -19,7 +19,7 @@ Design constraints:
 - No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 2.35.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md).
+Current version: 3.0.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Install
 
@@ -116,6 +116,7 @@ Mechanics in brief:
 - **Critique** climbs skip → single critic → advocate/challenger debate (security signal, disputed major, or deadlock).
 - **EXECUTE** picks dispatch from DAG width and probed capability (`lib/execute-rung.sh`): sequential, batched subagents, agent team, optional Workflow, or loop-fleet.
 - **VERIFY** defends the oracle (test-tamper + marker scans). An advisory verification-gap pass records coverage holes without blocking.
+- **Sequencing is a declared graph** from 3.0 (`graph/cycle.graph.json`, run by `lib/graph/run.sh`): typed `reads[]`/`writes[]` over `feature.json`, per-node checkpoints, probe-conditioned `route` edges, and dual-process effort (`lib/effort-probe.sh`). Phase *content* is unchanged. Upgrading from 2.x needs no action: schema stays v7 and every new variable defaults to 2.x behaviour.
 - **DELIVER** owns the final mile (`lib/pr-delivery.sh`): never force-pushes, merges, or enables auto-merge.
 
 Styles (`style:step`, default `auto`): `auto` · `step` · `interactive` · `review-only`. Opus runs reasoning-heavy roles; sonnet runs throughput/defense roles. Override with `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>`.

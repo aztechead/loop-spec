@@ -80,7 +80,8 @@ body and on `feature.json.warnings[]`. A flag is a SCOPE violation, not a transp
 failure: the model recorded deferred/follow-up items it chose on its own, which means
 spec scope was silently dropped. Do not reword anything to pass the probe. Route by
 the flag's source: unimplemented spec scope → append a FULL-SHAPE remediation task for
-it and set `currentPhase = "execute"` (same shape as the failed-checks route); a
+it (same shape as the failed-checks route — the recorded tasks drive the graph's
+declared remediation route); a
 bounded-gate line missing its marker → restore the `iterate-budget-spent:` /
 `iterate-terminal:` / `verify-deferred` marker at the source artifact or warning entry,
 then re-run DELIVER.
@@ -124,9 +125,10 @@ re-proves the external state; same-machine completion can resume from the sideca
 #### Required checks failed
 
 When `delivery.nextPhase == "execute"`, every failed target was deterministically
-classified as `checks_failed`. The adapter keeps the PR as a draft, appends one
-idempotent FULL-SHAPE task per failed target to `pendingRemediationTasks[]`, and sets
-`currentPhase = "execute"`:
+classified as `checks_failed`. The adapter keeps the PR as a draft and appends one
+idempotent FULL-SHAPE task per failed target to `pendingRemediationTasks[]`; the
+sidecar's `nextPhase=execute` is the condition on the graph's declared CI-remediation
+route (`lib/deliver.sh` probe in `graph/cycle.graph.json`):
 
 ```json
 {
@@ -143,9 +145,11 @@ idempotent FULL-SHAPE task per failed target to `pendingRemediationTasks[]`, and
 
 Failed check names/links from `delivery.targets[].checks.required[]` are in the task
 notes. Reload the state and return to cycle. The normal
-EXECUTE -> VERIFY -> ITERATE -> DELIVER path produces and checks a new SHA. This route
-is bounded to two persisted `ciRemediationAttempts`; a third failed delivery remains at
-DELIVER and stops for external review rather than looping indefinitely.
+EXECUTE -> VERIFY -> ITERATE -> DELIVER path produces and checks a new SHA. The
+CI-remediation retry budget is declared once, on the graph's `deliver -> execute`
+loop edge (`graph/cycle.graph.json`), and enforced by the controller's persisted
+`ciRemediationAttempts` counter; a delivery that exhausts it remains at DELIVER and
+stops for external review rather than looping indefinitely.
 
 #### Transport, timeout, or identity failure
 

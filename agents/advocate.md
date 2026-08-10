@@ -28,6 +28,8 @@ Argue that this artifact is solid. Genuinely defend it - do not rubber-stamp.
 
 Keep under 500 words. Substance over formatting.
 
+**Plain language (readability contract — advisory).** State each strength and defense as one plain, active-voice sentence — no stock phrases, no hedging padding. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks); it is not a gate on your output.
+
 ## What NOT to do
 
 - Do NOT propose changes (that's the orchestrator's reconciliation job).

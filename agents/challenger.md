@@ -59,6 +59,8 @@ For PLAN reviews, also check:
 
 Keep under 500 words. Cite section names or quote the artifact.
 
+**Plain language (readability contract — advisory).** State each finding as one plain, active-voice sentence — no stock phrases, no hedging padding. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks); it is not a gate on your findings.
+
 ## What NOT to do
 
 - Do NOT raise generic critiques ("this could be more robust").

@@ -2,6 +2,57 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [3.0.0] - 2026-08-08
+
+Graph-driven development: the cycle is a typed, checkpointed, distributable graph.
+
+### Added
+
+- `graph/schema.json`, `graph/cycle.graph.json`, `graph/critique.graph.json` — declared
+  control flow (five node kinds, five edge kinds, probe-conditioned routes).
+- `lib/graph/{validate,state,checkpoint,trace,run,port,port-local,handoff}.sh` — schema
+  validator, typed state channel over `feature.json`, node checkpoint ledger, node-stamped
+  trace, engine (`--dry-run` / `--resume`), handoff port + reference adapter, content-addressed
+  bundles.
+- `lib/effort-probe.sh` and `lib/conflict-monitor.sh` — deterministic dual-process effort.
+- `skills/shared/{graph-contract,dual-process,handoff-port}.md` and `docs/loop-spec/gdd.md`.
+- Foreign-claimant rung in `lib/execute-rung.sh` (opt-in via `LOOP_SPEC_FOREIGN_CLAIMANTS=1`).
+- `examples/foreign-claimant/` — reference consumer demonstrating the handoff port
+  contract (claims bundles, executes their brief, runs verify, refuses on failure, and
+  releases the lease), accessing the port only through `lib/graph/port.sh`.
+- `tests/e2e/foreign-claimant-app.test.sh` — end-to-end proof of the foreign-claimant
+  consumer: separate process with scrubbed environment claims the bundle, produces
+  `app.py`, and verifies that `GET /` returns exactly `hello world`.
+
+### Changed
+
+- Cycle Step 6 hands sequencing to `lib/graph/run.sh`; resume is a checkpoint lookup.
+- Phase skills no longer declare successors, rewind targets, or gate escalation in prose —
+  the graph owns that routing. **No user-facing invocation changed.**
+- `skills/shared/model-matrix.md` exposes `system1` / `system2` columns; system2 equals the
+  2.35 map so nothing is less capable by default.
+- `docs/loop-spec/ROADMAP-3.0.md` names GDD as the 3.0 headline; Pillars A–D are graphs over
+  the new substrate.
+
+### Fixed
+
+- **`lib/graph/handoff.sh export` carries `--brief` and `--files`.** The contract
+  originally omitted both, making it impossible for a claimant sharing nothing with
+  the originating session to know what to build. Wired at the Rung 5 call site.
+- **`lib/verification-gap-scan.sh` could not run on a large diff.** It passed the diff
+  through the environment and died on large diffs—exactly when most needed. Both inputs
+  now go through a temp file; the analysis is unchanged and the env form still works for
+  older callers.
+- **`lib/test-tamper-scan.sh` reported six false positives from two real bugs.** `xit\(`
+  carried no left boundary, making every `exit(` look like a skipped test; fixed with
+  `(^|[^A-Za-z0-9_.])`. Housekeeping commands are now exempt from the swallowed-exit
+  rule, which applies only to test commands.
+
+### Semver
+
+3.0 is not a breaking change to user surface. Every 2.x invocation, artifact path, config
+file, and hook keeps working; the break is internal (prose routing deleted).
+
 ## [2.35.0] - 2026-08-06
 
 Graphify is removed. Structure is derived fresh, and grounded by citing `file:line`.
