@@ -105,12 +105,32 @@ tests rather than deferred.
 
 ## Known gaps carried into the PR
 
-- The handoff port has no production consumer; `execute-rung.sh` can select the `foreign`
-  rung and the skill documents it, but nothing in the shipped cycle claims a bundle.
+The handoff port gap is CLOSED. `examples/foreign-claimant/` is a working consumer: it
+lists claimable work, claims a bundle, does what the bundle's brief says, runs the
+bundle's verify command, refuses to complete when that fails, and releases the lease in a
+`finally`. It reaches the port only through `lib/graph/port.sh` — no direct storage
+access — so it exercises the seam rather than the reference adapter's internals.
+`tests/e2e/foreign-claimant-app.test.sh` proves it end to end: a separate process with a
+scrubbed environment claims the bundle, produces `app.py`, and `GET /` over 127.0.0.1
+returns exactly `hello world`.
+
+Building it exposed a real contract defect. `lib/graph/handoff.sh export` carried no
+`brief` and no `files`, so a claimant sharing nothing with the originating session could
+not know what to build — which is precisely what the port exists to make possible. No
+test caught it because every test supplied the work out of band. Fixed with
+`--brief`/`--files`, wired at the Rung 5 call site so it is reachable from production
+rather than merely available.
+
+It remains a REFERENCE consumer, not a supported product surface, and the port still has
+no consumer inside the cycle's own default path: `foreign` stays opt-in behind
+`LOOP_SPEC_FOREIGN_CLAIMANTS=1`. The gap moved from unusable-and-unproven to
+proven-and-opt-in, not to shipped-by-default.
+
+Remaining gaps:
+
 - `feature.json` stays at schema v7; pre-3.0 resume works by falling back to
   `currentPhase` rather than by a migration.
 - The bounded delivery-retry semantics for `nextPhase=deliver` were chosen without a
   critique pass, and reverse a deliberate decision by the agent that wrote the probe.
 - SPEC.md §10's "declared, therefore self-correcting" argument remains weaker than it
   reads; the validator now closes the two drift surfaces that had already drifted.
-</content>

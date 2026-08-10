@@ -17,6 +17,12 @@ Graph-driven development: the cycle is a typed, checkpointed, distributable grap
 - `lib/effort-probe.sh` and `lib/conflict-monitor.sh` — deterministic dual-process effort.
 - `skills/shared/{graph-contract,dual-process,handoff-port}.md` and `docs/loop-spec/gdd.md`.
 - Foreign-claimant rung in `lib/execute-rung.sh` (opt-in via `LOOP_SPEC_FOREIGN_CLAIMANTS=1`).
+- `examples/foreign-claimant/` — reference consumer demonstrating the handoff port
+  contract (claims bundles, executes their brief, runs verify, refuses on failure, and
+  releases the lease), accessing the port only through `lib/graph/port.sh`.
+- `tests/e2e/foreign-claimant-app.test.sh` — end-to-end proof of the foreign-claimant
+  consumer: separate process with scrubbed environment claims the bundle, produces
+  `app.py`, and verifies that `GET /` returns exactly `hello world`.
 
 ### Changed
 
@@ -27,6 +33,20 @@ Graph-driven development: the cycle is a typed, checkpointed, distributable grap
   2.35 map so nothing is less capable by default.
 - `docs/loop-spec/ROADMAP-3.0.md` names GDD as the 3.0 headline; Pillars A–D are graphs over
   the new substrate.
+
+### Fixed
+
+- **`lib/graph/handoff.sh export` carries `--brief` and `--files`.** The contract
+  originally omitted both, making it impossible for a claimant sharing nothing with
+  the originating session to know what to build. Wired at the Rung 5 call site.
+- **`lib/verification-gap-scan.sh` could not run on a large diff.** It passed the diff
+  through the environment and died on large diffs—exactly when most needed. Both inputs
+  now go through a temp file; the analysis is unchanged and the env form still works for
+  older callers.
+- **`lib/test-tamper-scan.sh` reported six false positives from two real bugs.** `xit\(`
+  carried no left boundary, making every `exit(` look like a skipped test; fixed with
+  `(^|[^A-Za-z0-9_.])`. Housekeeping commands are now exempt from the swallowed-exit
+  rule, which applies only to test commands.
 
 ### Semver
 
