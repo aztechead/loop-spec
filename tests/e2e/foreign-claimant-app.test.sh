@@ -13,7 +13,7 @@ WORK="${TMPDIR:-/tmp}/loop-spec-foreign-claimant-app-e2e.$$"
 SERVER_PID=""
 
 cleanup() {
-  [[ -z "$SERVER_PID" ]] || kill "$SERVER_PID" 2>/dev/null
+  kill "$SERVER_PID" 2>/dev/null || true
   SERVER_PID=""
   rm -rf "$WORK"
 }
@@ -111,8 +111,10 @@ body="$(curl -s "http://127.0.0.1:$port/")"
 echo "GET http://127.0.0.1:$port/ -> status=$status body=$body"
 check "GET / status" "200" "$status"
 check "GET / body" "hello world" "$body"
-kill "$SERVER_PID" 2>/dev/null
-wait "$SERVER_PID" 2>/dev/null
+# Cleanup must never fail the suite: the server may already be gone, and
+# `wait` on a killed child returns its signal status.
+kill "$SERVER_PID" 2>/dev/null || true
+wait "$SERVER_PID" 2>/dev/null || true
 SERVER_PID=""
 SERVER_PID=""
 

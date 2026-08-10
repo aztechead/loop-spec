@@ -65,7 +65,7 @@ swallow_re='\|\|[[:space:]]*true'
 # suite -- `trap 'rm -rf "$WORK"' EXIT` is correct, not tampering. Exempt lines
 # whose command is housekeeping. Anything that runs the thing under test still
 # flags.
-swallow_exempt_re='^[[:space:]]*(trap|rm|rmdir|chmod|chown|mkdir|cp|mv|touch|unset|kill|pkill|popd|pushd|deactivate)[[:space:]]'
+swallow_exempt_re='^[[:space:]]*(trap|rm|rmdir|chmod|chown|mkdir|cp|mv|touch|unset|kill|pkill|wait|popd|pushd|deactivate)[[:space:]]'
 
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue

@@ -159,6 +159,8 @@ precision_case "conditional sys.exit clean"   "$EXIT_COND"                     0
 precision_case "cleanup trap is clean"        "trap 'rm -rf \"\$W\" $ORT' EXIT"  0
 precision_case "teardown rm is clean"         "rm -rf \"\$W\" 2>/dev/null $ORT"  0
 precision_case "fixture chmod is clean"       "chmod +x \"\$A\" 2>/dev/null $ORT" 0
+precision_case "teardown wait is clean"       "wait \"\$PID\" 2>/dev/null $ORT"   0
+precision_case "a command merely named waitrun still flags" "waitrun_tests $ORT"    1
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
