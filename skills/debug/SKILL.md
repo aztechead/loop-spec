@@ -280,3 +280,12 @@ spec draft if the bug escalates to a full cycle.
 
 The loop always terminates in one of: fixed-and-verified, instrumented-and-waiting,
 or escalated-to-cycle. Never in silent thrash.
+
+## Protocol mismatch
+
+There is a fourth ending, and it is still a published one: the request is not a defect
+at all, so the reproduce/hypothesize/sweep protocol does not fit it. Report that before
+touching the repository — `--status escalated --outcome protocol-mismatch --converged
+false` with a `--reason` naming the mismatch — and stop so the caller can re-route.
+Leaving the protocol and completing the task by hand publishes nothing, which every
+headless caller reads as a failed run (**`skills/shared/route-exit-contract.md`**).

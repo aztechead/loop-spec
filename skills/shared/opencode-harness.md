@@ -73,6 +73,10 @@ OpenCode receives the harness-specific micro SessionStart directive
 Explicit micro runs still own the full grounding/validation protocol, and full cycles use
 the deterministic `lib/verification-grounding-lint.sh` gate through the task fallback.
 
+`route-terminal-guard.sh` is unbridged for the same reason, which makes the Step 4
+`lib/cycle-reconcile.sh` call in `/loop-spec/auto` the only thing holding the route-exit
+contract here (`skills/shared/route-exit-contract.md`). Run it on every route.
+
 ## Dispatch mapping rule (every one-shot `Agent` call)
 
 Under opencode, `harness.sh subagents` prints `true`: the full EXECUTE ladder

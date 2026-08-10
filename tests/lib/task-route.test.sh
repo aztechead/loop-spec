@@ -105,6 +105,26 @@ assert_route "greenfield task cannot use micro" "full" "$(candidate micro greenf
 assert_route "malformed JSON fails closed" "full" '{not-json'
 assert_route "unknown route fails closed" "full" "$(candidate compact maintenance)"
 
+# Routing arms the run: from here on, an exit with no terminal result is detectable.
+armed="$CLEAN_REPO/.loop-spec/active-run.json"
+rm -f "$armed"
+route "$(candidate micro maintenance)" >/dev/null
+[[ -f "$armed" ]] && pass "validation arms the routed run" || fail "validation arms the routed run"
+armed_type="$(jq -r '.cycleType' "$armed" 2>/dev/null || echo missing)"
+[[ "$armed_type" == "micro" ]] \
+  && pass "armed record carries the normalized route" \
+  || fail "armed record carries the normalized route (got $armed_type)"
+rm -f "$armed"
+route '{not-json' >/dev/null
+armed_type="$(jq -r '.cycleType' "$armed" 2>/dev/null || echo missing)"
+[[ "$armed_type" == "full" ]] \
+  && pass "fail-closed routing arms the full route it selected" \
+  || fail "fail-closed routing arms the full route it selected (got $armed_type)"
+[[ -z "$(git -C "$CLEAN_REPO" status --porcelain)" ]] \
+  && pass "arming leaves the tracked tree clean" \
+  || fail "arming leaves the tracked tree clean"
+rm -f "$armed"
+
 invalid_reason="$(reason_code '{not-json')"
 [[ "$invalid_reason" == "invalid-classification" ]] \
   && pass "malformed classification has an audit reason" \

@@ -11,6 +11,13 @@
 # Output is one normalized JSON object. Classification failures are represented
 # as route=full rather than process failures so autonomous callers keep moving on
 # the safest path.
+#
+# Validation also ARMS the route: it records .loop-spec/active-run.json (git-ignored,
+# never a tracked file) before the routed skill starts. Routing is the earliest point
+# a run exists, so from here on an exit without a terminal result is detectable —
+# by hooks/team/route-terminal-guard.sh during the session and by lib/cycle-reconcile.sh
+# after it. Arming a run the routed skill never begins is the point: that is exactly
+# the case this file used to leave invisible.
 
 set -euo pipefail
 
@@ -36,13 +43,24 @@ else
   exit 2
 fi
 
+# Always autonomous: /loop-spec:auto is this validator's only caller, and it is
+# autonomous by definition. The guard reads that flag to leave interactive runs alone.
+arm_route() {
+  local route="$1" title="$2"
+  bash "$script_dir/cycle-result.sh" begin --result-root "$repo_path" \
+    --cycle-type "$route" --title "$title" --phase routing \
+    --autonomous true >/dev/null 2>&1 || true
+}
+
 fallback() {
   local reason_code="$1"
-  jq -nc --arg reason_code "$reason_code" '{
+  local reason="Classification was not safe enough for a reduced cycle"
+  arm_route full "$reason"
+  jq -nc --arg reason_code "$reason_code" --arg reason "$reason" '{
     route: "full",
     candidateRoute: null,
     reasonCode: $reason_code,
-    reason: "Classification was not safe enough for a reduced cycle"
+    reason: $reason
   }'
 }
 
@@ -134,6 +152,8 @@ elif [[ "$candidate_route" == "debug" ]]; then
     reason_code="low-confidence"
   fi
 fi
+
+arm_route "$normalized_route" "$(jq -r '.reason' <<<"$raw")"
 
 jq -c \
   --arg route "$normalized_route" \

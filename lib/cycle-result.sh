@@ -15,10 +15,11 @@
 #
 # Usage:
 #   cycle-result.sh clear [--result-root <root>]
-#   cycle-result.sh begin --result-root <root> --cycle-type full --title <title>
+#   cycle-result.sh begin --result-root <root> --cycle-type <full|micro|debug> --title <title>
 #                         [--slug <slug>] [--branch <branch>] [--base-branch <branch>]
 #                         [--feature-dir <absolute path>] [--phase <phase>]
 #                         [--autonomous <true|false>]
+#   cycle-result.sh state [--result-root <root>]
 #   cycle-result.sh resolve-root [<path>]
 #   cycle-result.sh write <feature_dir> --status <completed|paused|escalated|terminal|failed>
 #                        --summary <text> [--pr-url <url>] [--reason <text>]
@@ -70,6 +71,16 @@
 # }
 #
 # events.jsonl and result.json are local telemetry, deliberately not committed.
+#
+# `state` is the probe behind the route-exit contract: a run is armed (`begin`) before
+# any protocol machinery starts and disarmed only by a published terminal result, so
+# `active-run.json` present with no fresh pointer means a route was left without one.
+# It prints ANSWER then REASON on one line and treats every unknown as `idle`, because
+# a probe that cannot read the state must not strand a session:
+#   published <reason>    a terminal result is the newest word on this root
+#   unaccounted ageSeconds=<n> autonomous=<bool> <reason>
+#                         a run was armed and never published its terminal result
+#   idle <reason>         no loop-spec run is armed here
 #
 # Missing feature.json → one-line stderr warning, exit 0 (observability never aborts).
 # Bad --status value → one-line stderr warning, exit 0, write nothing.
@@ -124,6 +135,17 @@ _prepare_result_root() {
   fi
 }
 
+# Whether the route has already changed tracked files. Untracked paths are out of
+# scope on purpose: a stray scratch file predating the run would otherwise block the
+# mismatch record entirely, which loses the very result this contract is about.
+# Committed work reads clean too, so the prose contract -- not this probe -- carries
+# the rule; this only stops the cheapest version of laundering work as "did not fit".
+_tree_unmodified() {
+  local root="$1"
+  git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  [[ -z "$(git -C "$root" status --porcelain --untracked-files=no 2>/dev/null)" ]]
+}
+
 _resolve_result_root() {
   local input="$1" abs first_worktree_line
   abs="$(cd "$input" 2>/dev/null && pwd -P)" || return 1
@@ -147,6 +169,51 @@ case "${1:-}" in
       echo "cycle-result.sh: cannot resolve result root: ${1:-$PWD}" >&2
       exit 1
     }
+    exit 0
+    ;;
+  state)
+    shift
+    result_root="$PWD"
+    if [[ "${1:-}" == "--result-root" && -n "${2:-}" ]]; then
+      result_root="$2"
+    fi
+    result_root_abs="$(_resolve_result_root "$result_root" 2>/dev/null)" || {
+      echo "idle unresolvable result root: $result_root"; exit 0; }
+    if [[ -L "$result_root_abs/.loop-spec" ]]; then
+      echo "idle refusing symlinked result directory: $result_root_abs/.loop-spec"; exit 0
+    fi
+    active_path="$result_root_abs/.loop-spec/active-run.json"
+    if [[ ! -f "$active_path" ]]; then
+      if [[ -f "$result_root_abs/.loop-spec/last-result.json" ]]; then
+        echo "published terminal result present at $result_root_abs/.loop-spec/last-result.json"
+      else
+        echo "idle no armed run and no terminal result at $result_root_abs"
+      fi
+      exit 0
+    fi
+    # An armed run outlives its process, so the guard reading this needs to know how
+    # long ago it was armed; an unparsable stamp reports 0 so a stale clock cannot
+    # silently age a live run out of the contract.
+    armed_age="$(python3 - "$active_path" <<'PY' 2>/dev/null || echo 0
+import datetime, json, sys
+try:
+    with open(sys.argv[1]) as handle:
+        record = json.load(handle)
+    stamp = record.get("updatedAt") or record.get("startedAt") or ""
+    armed = datetime.datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+    delta = (datetime.datetime.utcnow() - armed).total_seconds()
+    print(max(0, int(delta)))
+except Exception:
+    print(0)
+PY
+)"
+    [[ "$armed_age" =~ ^[0-9]+$ ]] || armed_age=0
+    armed_type="$(jq -r '.cycleType // "unknown"' "$active_path" 2>/dev/null || echo unknown)"
+    armed_phase="$(jq -r '.phase // "unknown"' "$active_path" 2>/dev/null || echo unknown)"
+    armed_autonomous="$(jq -r 'if .autonomous == true then "true" else "false" end' \
+      "$active_path" 2>/dev/null || echo false)"
+    printf 'unaccounted ageSeconds=%s autonomous=%s %s run armed at phase %s never published a terminal result\n' \
+      "$armed_age" "$armed_autonomous" "$armed_type" "$armed_phase"
     exit 0
     ;;
   clear)
@@ -187,8 +254,10 @@ case "${1:-}" in
         *) shift || true ;;
       esac
     done
-    [[ -n "$result_root" && "$cycle_type" == "full" ]] || {
-      echo "cycle-result.sh: begin requires --result-root and --cycle-type full" >&2
+    # Reduced routes arm the same record: the contract is per ROUTE, not per cycle type.
+    case "$cycle_type" in full|micro|debug) ;; *) cycle_type="" ;; esac
+    [[ -n "$result_root" && -n "$cycle_type" ]] || {
+      echo "cycle-result.sh: begin requires --result-root and --cycle-type full|micro|debug" >&2
       exit 0
     }
     _is_nonblank "$title" || {
@@ -272,6 +341,15 @@ case "${1:-}" in
       success_outcome=""
       allowed_outcomes="infrastructure-failed interrupted"
     fi
+    # Two endings belong to every route, not to one cycle type: the protocol did not
+    # fit the task, and the run stopped before it could finish. Both are honest exits
+    # that publish a result; the alternative -- leaving the route and finishing the
+    # work by hand -- publishes nothing and reads as a failed run downstream.
+    case " $allowed_outcomes " in
+      *" interrupted "*) ;;
+      *) allowed_outcomes="$allowed_outcomes interrupted" ;;
+    esac
+    allowed_outcomes="$allowed_outcomes protocol-mismatch"
     case " $allowed_outcomes " in *" $outcome "*) ;; *)
       echo "cycle-result.sh: invalid $cycle_type --outcome '$outcome'" >&2; exit 0;; esac
     if [[ -n "$no_change_reason" ]] && ! _is_valid_no_change_reason "$no_change_reason"; then
@@ -322,6 +400,20 @@ case "${1:-}" in
     elif [[ "$outcome" == "diagnostic-failed" && "$status" != "failed" ]]; then
       echo "cycle-result.sh: diagnostic-failed requires failed status" >&2
       exit 0
+    elif [[ "$outcome" == "interrupted" && "$status" != "failed" ]]; then
+      echo "cycle-result.sh: interrupted requires failed status" >&2
+      exit 0
+    elif [[ "$outcome" == "protocol-mismatch" ]]; then
+      if [[ "$status" != "escalated" ]]; then
+        echo "cycle-result.sh: protocol-mismatch requires escalated status" >&2
+        exit 0
+      elif ! _is_nonblank "$reason"; then
+        echo "cycle-result.sh: protocol-mismatch requires a --reason naming the mismatch" >&2
+        exit 0
+      elif ! _tree_unmodified "$result_root"; then
+        echo "cycle-result.sh: protocol-mismatch requires an unmodified working tree at $result_root; a route that already changed the repository must report what it did" >&2
+        exit 0
+      fi
     elif [[ "$cycle_type" == "full" && "$status" != "failed" ]]; then
       echo "cycle-result.sh: full terminal fallback requires failed status" >&2
       exit 0

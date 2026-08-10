@@ -192,6 +192,15 @@ Record a `partial` ledger entry with `--notes "escalated to cycle"` before handi
 Emit the Step 9 `escalated/promoted-to-full` result before delegation; the full cycle
 will replace the stable pointer with its final terminal result.
 
+## Protocol mismatch
+
+Escalation is for work that outgrew this protocol. A mismatch is the other direction:
+the micro protocol does not fit the request at all. Both end the same way — with a
+published result, never with the protocol abandoned and the task finished by hand
+(**`skills/shared/route-exit-contract.md`**). Before touching the repository, emit the
+Step 9 record with `--status escalated --outcome protocol-mismatch --converged false`
+and a `--reason` naming the mismatch, then stop so the caller can re-route.
+
 ## Mode toggle
 
 Micro mode controls the two hooks. State persists in `.loop-spec/micro.conf`

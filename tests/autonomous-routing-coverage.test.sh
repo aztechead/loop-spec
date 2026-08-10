@@ -30,6 +30,8 @@ checks=(
   "skills/shared/opencode-harness.md	loop-spec-auto"
   "README.md	/loop-spec:auto"
   "README.md	AUTONOMOUS_ROUTE"
+  "skills/shared/pi-harness.md	route-terminal-guard.sh"
+  "skills/shared/opencode-harness.md	route-terminal-guard.sh"
 )
 
 for entry in "${checks[@]}"; do

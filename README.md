@@ -19,7 +19,7 @@ Design constraints:
 - No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 3.0.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+Current version: 3.0.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Install
 

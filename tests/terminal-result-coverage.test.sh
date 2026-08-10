@@ -35,6 +35,19 @@ checks=(
   "lib/cycle-result.sh	implementationConverged"
   "lib/events.sh	LOOP_SPEC_PHASE_START"
   "lib/events.sh	LOOP_SPEC_PHASE_END"
+  # The route-exit contract: every route publishes a terminal result, including the
+  # one that declines the task. A route that exits without one is the false-negative
+  # failure this pins shut.
+  "skills/shared/route-exit-contract.md	protocol-mismatch"
+  "skills/auto/SKILL.md	route-exit-contract.md"
+  "skills/auto/SKILL.md	cycle-reconcile.sh"
+  "skills/cycle/SKILL.md	protocol-mismatch"
+  "skills/micro/SKILL.md	protocol-mismatch"
+  "skills/debug/SKILL.md	protocol-mismatch"
+  "lib/cycle-result.sh	protocol-mismatch"
+  "lib/task-route.sh	arm_route"
+  "hooks/hooks.json	route-terminal-guard.sh"
+  "hooks/team/route-terminal-guard.sh	LOOP_SPEC_ROUTE_GUARD"
 )
 
 for entry in "${checks[@]}"; do

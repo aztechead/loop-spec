@@ -93,8 +93,10 @@ fields remain model judgments, so uncertain evidence must lower confidence and t
 promote the request.
 
 Print exactly one concise, SDK-readable JSON line containing the normalized decision,
-prefixed with `AUTONOMOUS_ROUTE `. Do not write routing state into the target repository;
-that would dirty a clean base before cycle or delivery guards run.
+prefixed with `AUTONOMOUS_ROUTE `. Do not write routing state into the target repository's
+tracked tree; that would dirty a clean base before cycle or delivery guards run. The
+validator's own record (`.loop-spec/active-run.json`) is git-ignored: it arms the run so
+an exit without a terminal result is detectable from Step 4 on.
 
 ## Step 3 - Delegate Once
 
@@ -112,3 +114,24 @@ Do not call intake first; cycle already accepts prose. Do not perform implementa
 work in this skill. The delegated protocol owns runtime scope tripwires: micro promotes
 losslessly when its bounds are crossed, and debug promotes when the confirmed fix is
 feature-scale.
+
+The delegated protocol also owns **`skills/shared/route-exit-contract.md`**: it runs, or
+it reports a mismatch and stops. A route that judges its protocol a poor fit must publish
+`--outcome protocol-mismatch` and stop — never leave the protocol and complete the task by
+hand, which delivers work no caller can see.
+
+## Step 4 - Confirm the terminal result
+
+The routed skill publishes `.loop-spec/last-result.json`. Confirm it did, because a run
+that ends without one reads as a failure to every headless caller:
+
+```bash
+repo_root="$(git rev-parse --show-toplevel)"
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-reconcile.sh" --result-root "$repo_root" \
+  --reason "routed skill ended without emitting a terminal result"
+```
+
+Reconciliation is a no-op when the route published normally — it re-prints the existing
+`LOOP_SPEC_RESULT` line and exits 0. When the route ended without one, it writes the
+terminal result from the armed run so the contract holds anyway. Run it on every route,
+including the ones you believe succeeded, and report its output as the run's result.
