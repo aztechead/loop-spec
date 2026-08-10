@@ -539,6 +539,69 @@ check "Y: publication success writes the pointer" "1" \
 check "Y: publication success consumes active-run.json" "0" \
   "$([[ -f "$Y/.loop-spec/active-run.json" ]] && echo 1 || echo 0)"
 
+# --- Case Z: the route-exit contract --------------------------------------------
+# A route is armed before its skill starts and disarmed only by a published result,
+# so "left the protocol and finished by hand" is detectable instead of silent.
+Z="$WORK/route"; mkdir -p "$Z"
+git -C "$Z" init -q
+git -C "$Z" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
+check "Z: idle root reports idle" "idle" "$(bash "$LIB" state --result-root "$Z" | cut -d' ' -f1)"
+
+bash "$LIB" begin --result-root "$Z" --cycle-type micro --title "Sync PR #114" \
+  --phase routing --autonomous true
+check "Z: reduced routes arm the same record" "micro" "$(jq -r '.cycleType' "$Z/.loop-spec/active-run.json")"
+Z_STATE="$(bash "$LIB" state --result-root "$Z")"
+check "Z: armed run is unaccounted" "unaccounted" "$(cut -d' ' -f1 <<<"$Z_STATE")"
+check "Z: probe reports the armed autonomy" "1" \
+  "$(grep -c 'autonomous=true' <<<"$Z_STATE")"
+check "Z: probe reports an age" "1" "$(grep -cE 'ageSeconds=[0-9]+' <<<"$Z_STATE")"
+
+# The mismatch record is the honest exit from a protocol that does not fit.
+bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status escalated \
+  --outcome protocol-mismatch --title "Sync PR #114" --converged false \
+  --reason "a branch sync has no criteria to verify" \
+  --summary "The micro protocol does not fit a rebase; no repository work was done." >/dev/null
+Z_RESULT="$Z/.loop-spec/last-result.json"
+check "Z: mismatch publishes a terminal result" "escalated:protocol-mismatch:false" \
+  "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$Z_RESULT")"
+check "Z: mismatch disarms the run" "published" "$(bash "$LIB" state --result-root "$Z" | cut -d' ' -f1)"
+
+# Mismatch is a declaration about work NOT done, so its preconditions are checked.
+rm -f "$Z_RESULT"
+bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status failed \
+  --outcome protocol-mismatch --title "Bad status" --converged false --reason r \
+  --summary "Mismatch claimed without escalating." >/dev/null 2>&1
+check "Z: mismatch requires escalated status" "0" "$([[ -f "$Z_RESULT" ]] && echo 1 || echo 0)"
+bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status escalated \
+  --outcome protocol-mismatch --title "No reason" --converged false \
+  --summary "Mismatch claimed without naming it." >/dev/null 2>&1
+check "Z: mismatch requires a reason" "0" "$([[ -f "$Z_RESULT" ]] && echo 1 || echo 0)"
+printf 'tracked\n' > "$Z/tracked.txt"
+git -C "$Z" add tracked.txt
+git -C "$Z" -c user.name=Test -c user.email=test@example.com commit -qm tracked
+printf 'changed\n' >> "$Z/tracked.txt"
+bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status escalated \
+  --outcome protocol-mismatch --title "Dirty tree" --converged false \
+  --reason "claimed after editing" \
+  --summary "Mismatch claimed after changing the repository." >/dev/null 2>&1
+check "Z: mismatch refuses a modified tracked tree" "0" "$([[ -f "$Z_RESULT" ]] && echo 1 || echo 0)"
+git -C "$Z" checkout -q -- tracked.txt
+printf 'untracked\n' > "$Z/scratch.txt"
+bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status escalated \
+  --outcome protocol-mismatch --title "Scratch file" --converged false \
+  --reason "a branch sync has no criteria to verify" \
+  --summary "An unrelated untracked file must not block the record." >/dev/null 2>&1
+check "Z: mismatch ignores untracked paths" "1" "$([[ -f "$Z_RESULT" ]] && echo 1 || echo 0)"
+
+# An abandoned reduced route reconciles as its own cycle type, not as a full cycle.
+rm -f "$Z_RESULT"
+bash "$LIB" begin --result-root "$Z" --cycle-type debug --title "Abandoned debug route" \
+  --phase routing --autonomous true
+bash "$REPO_ROOT/lib/cycle-reconcile.sh" --result-root "$Z" \
+  --reason "routed skill ended without emitting a terminal result" >/dev/null
+check "Z: reconciled route keeps its cycle type" "debug:failed:interrupted" \
+  "$(jq -r '.cycleType + ":" + .status + ":" + .outcome' "$Z_RESULT")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

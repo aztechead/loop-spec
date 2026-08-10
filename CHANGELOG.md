@@ -2,6 +2,44 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [3.0.1] - 2026-08-10
+
+### Fixed
+
+- **A route can no longer exit without a terminal result.** `/loop-spec:auto` routed a
+  "sync PR #114 up to main" request into the full cycle; the model judged the
+  SPEC→DELIVER shape a poor fit, left the protocol, rebased and force-pushed the branch
+  by hand, and reported success. No route ran to completion, so nothing called
+  `lib/cycle-result.sh write-terminal` and `.loop-spec/last-result.json` was never
+  written — and a headless caller gating on that pointer's `converged` flag (the
+  documented contract) reported a fully successful run as a failure, woke a human, and
+  marked the delivered PR a draft. Four changes close it:
+  - `lib/task-route.sh validate` now **arms** the run (`cycle-result.sh begin`, into the
+    git-ignored `.loop-spec/active-run.json`) before the routed skill starts. Routing is
+    the earliest moment a run exists, so from there on an exit with no terminal result
+    leaves evidence instead of silence.
+  - `lib/cycle-result.sh state` reports `published | unaccounted | idle` for a result
+    root, and `hooks/team/route-terminal-guard.sh` (Stop) refuses to end an autonomous
+    session whose armed run published nothing, naming the command that fixes it. It
+    stands down for interactive runs (they end turns to ask the human), for records
+    older than `LOOP_SPEC_ROUTE_GUARD_MAX_AGE_MIN` (default 720), and on
+    `LOOP_SPEC_ROUTE_GUARD=0`.
+  - `/loop-spec:auto` gained Step 4: run `lib/cycle-reconcile.sh` after the delegated
+    route returns. It is a no-op when the route published normally and writes the
+    terminal result when it did not — the only enforcement under pi and OpenCode, whose
+    stop events cannot veto.
+  - New terminal outcome `protocol-mismatch` (`skills/shared/route-exit-contract.md`)
+    gives a route an honest way to decline: `status: escalated`, `converged: false`, a
+    `--reason` naming the mismatch, and an unmodified tracked tree — a route that already
+    changed the repository must report what it did. `interrupted` is likewise accepted
+    for every cycle type, so an abandoned micro/debug route reconciles as itself rather
+    than being rejected as a full-cycle-only outcome.
+
+Routing maintenance/sync work to a lighter protocol is deliberately NOT part of this
+fix: `skills/auto/SKILL.md` requires route telemetry, not prompt intuition, before a new
+reduced lifecycle exists. The mismatch record is the fitting ending until that evidence
+arrives.
+
 ## [3.0.0] - 2026-08-08
 
 Graph-driven development: the cycle is a typed, checkpointed, distributable graph.

@@ -107,6 +107,26 @@ recorded to disk immediately — `lib/decisions.sh add .loop-spec/decisions-stag
 migrates the staging record into the feature dir; SPEC renders it into SPEC.md's
 `## Decisions (assumed — autonomous)` list via `decisions.sh render`.
 
+## Route exit contract
+
+This skill is a route, and a route ends by publishing `.loop-spec/last-result.json` —
+a run that ends without one reads as a failure to every headless caller
+(**`skills/shared/route-exit-contract.md`**). If the seven-phase shape looks like a poor
+fit for the request (a rebase, a branch sync, a one-command chore), that judgment is a
+finding to report, not a licence to leave the protocol and do the task by hand:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+  --result-root "$(git rev-parse --show-toplevel)" --cycle-type full \
+  --status escalated --outcome protocol-mismatch --converged false \
+  --title "<request title>" --reason "<why the cycle does not fit this request>" \
+  --summary "<what the request actually needs; no repository work was done>"
+```
+
+Then stop, so the caller can re-route. The writer requires an unmodified tracked tree:
+once this cycle has changed the repository, mismatch is no longer the honest ending and
+the run reports what it actually did.
+
 ## Procedure
 
 **Startup is silent — and batched in ONE call.** The mechanical checks behind Steps 0

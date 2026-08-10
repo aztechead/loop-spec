@@ -38,8 +38,9 @@
  * see skills/shared/pi-harness.md): the Agent/subagent tool, agent teams,
  * the Workflow tool, TaskCreate/TaskUpdate, AskUserQuestion,
  * restrict-agent-paths.sh (only meaningful when subagents exist), and the
- * blocking Stop guards (stop-deflection-guard.sh, adhoc-verify-guard.sh —
- * pi has no stop event that can veto; session_shutdown is fire-and-forget).
+ * blocking Stop guards (stop-deflection-guard.sh, adhoc-verify-guard.sh,
+ * route-terminal-guard.sh — pi has no stop event that can veto;
+ * session_shutdown is fire-and-forget).
  *
  * Deliberately dependency-free: node builtins only, `pi` typed as `any`, so
  * loading never requires an npm install. Every bridge is wrapped fail-open —

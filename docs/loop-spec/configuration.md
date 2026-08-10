@@ -239,6 +239,8 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_STRATEGY_ROTATION` | `1` | Injects a strategy-change directive after repeated failures. |
 | `LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD` | `2` | Consecutive failures before strategy rotation. |
 | `LOOP_SPEC_DONE_CRITERIA` | `1` | Injects done-criteria reminders when tasks are created. |
+| `LOOP_SPEC_ROUTE_GUARD` | `1` | Blocks stopping an autonomous session whose routed run never published `.loop-spec/last-result.json`. Stands down for interactive runs and for armed records past the stand-down age. |
+| `LOOP_SPEC_ROUTE_GUARD_MAX_AGE_MIN` | `720` | Minutes after which an armed run is treated as a dead record rather than this session's contract. |
 | `LOOP_SPEC_DEFLECTION_GUARD` | `1` | Blocks premature “out of context” stops below the configured usage threshold. |
 | `LOOP_SPEC_DEFLECTION_THRESHOLD_PCT` | `50` | Percent of context that must be consumed before a context-exhaustion stop is accepted. |
 | `LOOP_SPEC_CONTEXT_LIMIT` | `200000` | Token context size used to compute the deflection threshold. |
@@ -257,6 +259,7 @@ not enable the guard; its switch above must also be enabled.
 | `LOOP_SPEC_DEFLECTION_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-deflection-trace.log` |
 | `LOOP_SPEC_MICRO_GUARD_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-micro-guard-trace.log` |
 | `LOOP_SPEC_DEFERRAL_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-deferral-trace.log` |
+| `LOOP_SPEC_ROUTE_GUARD_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-route-guard-trace.log` |
 | `LOOP_SPEC_DEFERRAL_STATE_DIR` | `/tmp/claude-hooks/loop-spec-deferral-state`; transcript-scoped pending-obligation records |
 
 ## Skill command arguments

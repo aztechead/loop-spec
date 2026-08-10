@@ -61,6 +61,10 @@ event, so `adhoc-verify-guard.sh` cannot block termination. Explicit micro runs 
 the full grounding/validation protocol, and full cycles use the deterministic
 `lib/verification-grounding-lint.sh` gate through the inline verifier fallback.
 
+`route-terminal-guard.sh` is unbridged for the same reason, which makes the Step 4
+`lib/cycle-reconcile.sh` call in `/skill:auto` the only thing holding the route-exit
+contract here (`skills/shared/route-exit-contract.md`). Run it on every route.
+
 ## Inline dispatch rule (replaces every one-shot `Agent` call)
 
 Under pi, every one-shot `Agent` dispatch a phase skill (or

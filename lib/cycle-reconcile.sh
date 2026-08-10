@@ -33,6 +33,8 @@ if [[ ! -f "$active" ]]; then
 fi
 
 title="$(jq -r '.title // "Interrupted loop-spec cycle"' "$active")"
+cycle_type="$(jq -r '.cycleType // "full"' "$active")"
+case "$cycle_type" in full|micro|debug) ;; *) cycle_type="full" ;; esac
 slug="$(jq -r '.slug // empty' "$active")"
 branch="$(jq -r '.branch // empty' "$active")"
 base_branch="$(jq -r '.baseBranch // empty' "$active")"
@@ -87,7 +89,7 @@ if [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]]; then
 fi
 
 bash "$script_dir/cycle-result.sh" write-terminal \
-  --result-root "$result_root" --cycle-type full --status failed \
+  --result-root "$result_root" --cycle-type "$cycle_type" --status failed \
   --outcome interrupted --title "$title" --slug "$slug" --branch "$branch" \
   --base-branch "$base_branch" --phase-reached "$phase" --reason "$reason" \
   --converged false --verification-status not-run --autonomous "$autonomous" \

@@ -24,6 +24,16 @@ before starting. They fail loudly rather than following a symlinked `.loop-spec`
 leaving a pointer they could not remove. Its absence means the current run did not reach
 a terminal emission; callers must never reuse an older successful result.
 
+**Every routed run publishes one.** `/loop-spec:auto` arms the run at routing time
+(`.loop-spec/active-run.json`, git-ignored), and only a published terminal result
+disarms it, so leaving a protocol without emitting one is detectable rather than
+silent: `lib/cycle-result.sh state` reports `published | unaccounted | idle` for a
+root, `hooks/team/route-terminal-guard.sh` refuses to end an autonomous session whose
+armed run published nothing, and `lib/cycle-reconcile.sh` converts a surviving armed
+run into a terminal result. A route that judges its protocol a poor fit reports that
+(`outcome: "protocol-mismatch"`, below) instead of completing the task off-protocol.
+Full contract: `skills/shared/route-exit-contract.md`.
+
 `loopSpecVersion` is the version that produced the run (`"unknown"` when the
 manifest is unreadable). It is what lets a consumer date a result: a report from an
 unattended harness is otherwise impossible to check against the version that fixed
@@ -81,6 +91,15 @@ intentional no-change semantics.
   micro/debug must have grounded and validated the unchanged baseline.
 - `diagnostic-only`: the invocation was explicitly read-only/reporting. It means no
   implementation was requested, not that the diagnostic found no problems.
+
+Two outcomes belong to every cycle type rather than to one:
+
+- `protocol-mismatch`: the routed protocol does not fit the request. It requires
+  `status: "escalated"`, `converged: false`, a non-empty `reason` naming the mismatch,
+  and an unmodified tracked tree — a route that already changed the repository reports
+  what it did instead. The caller's move is to re-route the request, not to retry it.
+- `interrupted`: the run stopped before it could finish. It requires `status: "failed"`
+  and is what `lib/cycle-reconcile.sh` writes for an armed run whose process is gone.
 
 Both successful cases use `status: "completed"`, `outcome: "no-change-needed"`,
 `converged: true`, `prUrl: null`, and `checkpointPrUrl: null`. Zero commits without one of these explicit,
