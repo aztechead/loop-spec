@@ -83,7 +83,7 @@ The engine MUST NOT write `currentPhase` before it has resolved the start node.
 ## 6. Node dispatch
 
 `lib/graph/run.sh --step` runs at most one node and returns a JSON dispatch descriptor on
-stdout: `{node, kind, body, model, effort, nextEdge}`. The cycle skill drives `agent` nodes
+stdout: `{node, label, kind, body, effort, nextEdge}`. The cycle skill drives `agent` nodes
 by dispatching `body` itself and calling `--step` again. Without `--step` the engine runs to
 the next pause or terminal node, dispatching only what it can execute in-process
 (`function` and `gate` bodies).
@@ -118,7 +118,7 @@ from that node and lets a real cycle validate.
 
 ## 10. Non-negotiable
 
-- Runtime stays `bash >= 4`, `git`, `jq >= 1.5`, `python3 >= 3.7`. No new dependency.
+- Runtime stays `bash >= 3.2`, `git`, `jq >= 1.5`, `python3 >= 3.7`. No new dependency.
 - Nothing under `lib/graph/` branches on the harness.
 - Every behavior above lands with a test that FAILS when the behavior is removed. A test
   that passes against a broken implementation is worse than no test — that is how the

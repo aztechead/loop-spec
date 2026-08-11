@@ -5,7 +5,7 @@ tools:
   - Read
   - Glob
   - Grep
-model: sonnet
+model: inherit
 color: red
 ---
 

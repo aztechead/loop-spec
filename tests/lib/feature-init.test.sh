@@ -18,9 +18,7 @@ check() {
 # --- models subcommand ---
 models="$(bash "$LIB" models)"
 check "models is valid JSON" "$(echo "$models" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"
-check "models includes iterateJudge=opus" "$(echo "$models" | jq -e '.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "models includes codeReviewer=opus" "$(echo "$models" | jq -e '.codeReviewer == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "models includes implementer=sonnet" "$(echo "$models" | jq -e '.implementer == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "models default every role to inherit" "$(echo "$models" | jq -e '[.[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- skeleton single ---
 single="$(bash "$LIB" skeleton --mode single --slug demo --now 2026-06-29T00:00:00Z \
@@ -30,7 +28,7 @@ single="$(bash "$LIB" skeleton --mode single --slug demo --now 2026-06-29T00:00:
   --prepare "npm ci" --test "npm test" --lint "" --typecheck "tsc")"
 check "single is valid JSON" "$(echo "$single" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single schemaVersion==7" "$(echo "$single" | jq -e '.schemaVersion == 7' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "single carries iterateJudge" "$(echo "$single" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single carries portable iterateJudge" "$(echo "$single" | jq -e '.models.iterateJudge == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single worktreePath set" "$(echo "$single" | jq -e '.worktreePath == ".claude/worktrees/demo"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single execution root is worktree" "$(echo "$single" | jq -e '.executionRootMode == "worktree"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single workspace null" "$(echo "$single" | jq -e '.workspace == null' >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -73,7 +71,7 @@ check "workspace repo baseline starts null" "$(echo "$ws" | jq -e '.workspace.re
 check "workspace top commands empty" "$(echo "$ws" | jq -e '.commands.test == ""' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace top prepare empty" "$(echo "$ws" | jq -e '.commands.prepare == ""' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace verification baseline starts empty" "$(echo "$ws" | jq -e '.verificationBaseline == null' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "workspace carries iterateJudge" "$(echo "$ws" | jq -e '.models.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "workspace carries portable iterateJudge" "$(echo "$ws" | jq -e '.models.iterateJudge == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "workspace delivery starts pending" "$(echo "$ws" | jq -e '.delivery.status == "pending" and .delivery.ciRemediationAttempts == 0 and .delivery.ciRemediationLimit == 2 and (.delivery.targets | length) == 0' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- feature_title backfill (cycle Step 5.9) ---

@@ -166,10 +166,11 @@ agents without reinstalling globally:
 ```
 
 The main-thread cycle/phase lead remains on the model that launched the OpenCode session;
-these routes apply to native `task` subagents. Loop-fleet subprocesses retain their
-separate `--model` routing. `LOOP_SPEC_MODEL_<ROLE>` is the Claude alias mechanism and
-must not be used for OpenCode provider selection. Restart OpenCode after reinstalling
-agents or changing project configuration; config-time files are not hot-reloaded.
+these routes apply to native `task` subagents. Loop-fleet subprocesses omit `--model`
+for the portable `inherit` selector; an explicit implementer value through
+`LOOP_SPEC_MODEL_<ROLE>` routes only those fleet workers and must use
+`provider/model`. Restart OpenCode after reinstalling agents or changing project
+configuration; config-time files are not hot-reloaded.
 
 Inside the Plugin API and SDK, a selected model is represented as
 `{providerID, modelID}`. The bridge injects only OpenCode's neutral text-part

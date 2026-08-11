@@ -4,6 +4,25 @@ loop-spec 3.0 expresses the cycle as a typed, checkpointed, distributable graph.
 Control flow is declared data under `graph/` and executed by `lib/graph/run.sh`.
 It is not a derived map of the codebase.
 
+## Reading the implementation
+
+The graph files are the best overview: node IDs are stable machine keys and `label`
+values are the human-facing names printed by dry runs. The implementation is split by
+responsibility:
+
+| File | Purpose |
+|---|---|
+| `graph/cycle.graph.json` | cycle topology and labels |
+| `graph/critique.graph.json` | reusable critique subgraph |
+| `lib/graph/run.sh` | portable shell entry point |
+| `lib/graph/engine.py` | traversal, routing, checkpoints, and step descriptors |
+| `lib/graph/validate.sh` | validator shell entry point |
+| `lib/graph/validate.py` | schema-independent referential and safety checks |
+
+The graph engine never selects a model. Agent dispatch consumes the descriptor and
+applies the current harness policy; the default selector is `inherit`, so the same
+topology works with whatever model Claude Code, pi, or OpenCode is already running.
+
 ## Pattern bindings
 
 The source vocabulary is one building block (the tool-using agent) plus five

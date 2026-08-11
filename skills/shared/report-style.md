@@ -14,7 +14,7 @@ so the whole lifecycle is greppable from a streamed log:
 ```text
 [SPEC] start
 [DISCUSS] gate critique round 2 - escalated
-[PLAN] dispatch planner [opus, team]
+[PLAN] dispatch planner [inherit, team]
 [EXECUTE] DAG width W=2 -> rung: subagent (teams unavailable: no TeamCreate)
 [VERIFY] FAILURE: code-review
 [ITERATE] verdict: converged

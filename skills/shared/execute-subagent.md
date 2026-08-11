@@ -177,7 +177,7 @@ declares `isolation: worktree` in its frontmatter, which would create a second w
 on top of the explicit `git worktree add` in the prompt. Pass the role model via the
 `Agent` `model` field (`models.implementer` / `models.specComplianceReviewer`).
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved alias>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved selector>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
 
 **Task progress (required).** EXECUTE is the longest phase; without this it reports
 only `[EXECUTE] start` and an operator watching a streamed log cannot tell task 1 of 6

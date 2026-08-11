@@ -12,7 +12,7 @@ tools:
   - TaskGet
   - TaskUpdate
   - SendMessage
-model: sonnet
+model: inherit
 effort: high
 disallowedTools:
   - WebFetch

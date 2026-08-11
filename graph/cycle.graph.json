@@ -4,6 +4,7 @@
   "nodes": [
     {
       "id": "spec",
+      "label": "Write the specification",
       "kind": "agent",
       "reads": [
         "slug",
@@ -20,6 +21,7 @@
     },
     {
       "id": "human.after-spec",
+      "label": "Review the specification",
       "kind": "human",
       "reads": [
         "execStyle",
@@ -40,6 +42,7 @@
     },
     {
       "id": "discuss",
+      "label": "Challenge and refine the specification",
       "kind": "agent",
       "reads": [
         "artifacts",
@@ -56,6 +59,7 @@
     },
     {
       "id": "discuss.critique",
+      "label": "Run the specification critique",
       "kind": "subgraph",
       "reads": [
         "artifacts",
@@ -71,6 +75,7 @@
     },
     {
       "id": "human.after-discuss",
+      "label": "Review the refined specification",
       "kind": "human",
       "reads": [
         "execStyle",
@@ -91,6 +96,7 @@
     },
     {
       "id": "plan",
+      "label": "Plan the implementation",
       "kind": "agent",
       "reads": [
         "artifacts",
@@ -107,6 +113,7 @@
     },
     {
       "id": "plan.critique.gate",
+      "label": "Check whether the plan needs critique",
       "kind": "gate",
       "reads": [
         "artifacts"
@@ -122,6 +129,7 @@
     },
     {
       "id": "plan.critique",
+      "label": "Run the plan critique",
       "kind": "subgraph",
       "reads": [
         "artifacts",
@@ -137,6 +145,7 @@
     },
     {
       "id": "human.after-plan",
+      "label": "Review the implementation plan",
       "kind": "human",
       "reads": [
         "execStyle",
@@ -157,6 +166,7 @@
     },
     {
       "id": "execute",
+      "label": "Execute the plan",
       "kind": "agent",
       "reads": [
         "artifacts",
@@ -177,6 +187,7 @@
     },
     {
       "id": "execute.worker",
+      "label": "Implement one task",
       "kind": "agent",
       "reads": [
         "artifacts",
@@ -191,6 +202,7 @@
     },
     {
       "id": "execute.join",
+      "label": "Integrate one completed task",
       "kind": "function",
       "reads": [
         "mergeQueue"
@@ -204,6 +216,7 @@
     },
     {
       "id": "human.after-execute",
+      "label": "Review the implementation",
       "kind": "human",
       "reads": [
         "execStyle",
@@ -224,6 +237,7 @@
     },
     {
       "id": "verify",
+      "label": "Verify the integrated change",
       "kind": "agent",
       "reads": [
         "artifacts",
@@ -241,6 +255,7 @@
     },
     {
       "id": "verify.marker",
+      "label": "Reject unresolved placeholders",
       "kind": "gate",
       "reads": [
         "artifacts"
@@ -253,6 +268,7 @@
     },
     {
       "id": "verify.tamper",
+      "label": "Reject weakened tests",
       "kind": "gate",
       "reads": [
         "artifacts",
@@ -266,6 +282,7 @@
     },
     {
       "id": "verify.acceptance",
+      "label": "Check acceptance evidence",
       "kind": "gate",
       "reads": [
         "artifacts"
@@ -278,6 +295,7 @@
     },
     {
       "id": "verify.code-review",
+      "label": "Review code quality",
       "kind": "gate",
       "reads": [
         "artifacts",
@@ -292,6 +310,7 @@
     },
     {
       "id": "iterate",
+      "label": "Judge the result against the goal",
       "kind": "agent",
       "reads": [
         "artifacts",
@@ -309,6 +328,7 @@
     },
     {
       "id": "human.iterate-spec-approval",
+      "label": "Approve a specification rewind",
       "kind": "human",
       "reads": [
         "execStyle"
@@ -329,6 +349,7 @@
     },
     {
       "id": "deliver",
+      "label": "Deliver the verified change",
       "kind": "agent",
       "reads": [
         "artifacts",
@@ -348,6 +369,7 @@
     },
     {
       "id": "completed",
+      "label": "Publish the terminal result",
       "kind": "function",
       "reads": [
         "delivery",

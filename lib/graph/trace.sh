@@ -45,8 +45,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Delegate to events.sh — never abort if it fails.
-if ! bash "$EVENTS" emit "$feature_dir" "$event" "${phase_args[@]}" --data "$data_val" >/dev/null 2>"${TMPDIR:-/tmp}/graph-trace-events.err.$$"; then
+# Delegate to events.sh — never abort if it fails. Bash 3 treats an empty array
+# expansion as an unbound variable under `set -u`, so build the command first.
+events_cmd=(bash "$EVENTS" emit "$feature_dir" "$event")
+if [[ ${#phase_args[@]} -gt 0 ]]; then
+  events_cmd+=("${phase_args[@]}")
+fi
+events_cmd+=(--data "$data_val")
+if ! "${events_cmd[@]}" >/dev/null 2>"${TMPDIR:-/tmp}/graph-trace-events.err.$$"; then
   err="$(cat "${TMPDIR:-/tmp}/graph-trace-events.err.$$" 2>/dev/null || true)"
   rm -f "${TMPDIR:-/tmp}/graph-trace-events.err.$$"
   _warn "events writer failed${err:+: $err}"

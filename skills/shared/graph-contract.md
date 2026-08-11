@@ -20,6 +20,11 @@ kind is a `FLAG` from `lib/graph/validate.sh`; the enum itself is pinned by
 useful in an audit log, a retry rule, or a dashboard. Anything below that bar stays
 inside a node body.
 
+Every shipped node also has a concise `label` for people reading dry runs, traces, and
+future visualizations. IDs remain the stable machine keys; labels may improve without
+breaking checkpoints or edge references. The schema permits labels and
+`tests/graph-conformance.test.sh` requires them on the shipped graphs.
+
 1. **`agent`.** Dispatches a role through the harness: the body names a skill
    (`skills/plan/SKILL.md`) or a namespaced subagent (`loop-spec:implementer`). The body
    performs the craft; the graph owns what happens before and after it, so an agent node
@@ -118,6 +123,11 @@ and `skills/shared/opencode-harness.md`. The enforcers are the coupling pins
 legitimate `lib/harness.sh` coupling is enumerated there, and a `lib/graph/` file
 appearing in that inventory is a contract violation to reject in review, never a pin to
 add.
+
+The step descriptor is model-neutral:
+`{node,label,kind,body,effort,nextEdge,terminal,paused}`. Model selection belongs to the
+dispatch adapter, not the control-flow engine. This keeps the same graph executable
+under Claude Code, pi, and OpenCode even when their model registries differ.
 
 ## Effort declaration
 

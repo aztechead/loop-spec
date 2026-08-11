@@ -94,7 +94,7 @@ Result: `{plan: <markdown>, angles: [...], winner}`. Skill writes `plan` to
 If `workflowsAvailable=false` OR the opt-in is unset, fall through to the
 existing single-planner Agent dispatch below.
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (planner, pattern-mapper, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "plan" --data '{"role":"<role>","model":"<resolved alias>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (planner, pattern-mapper, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "plan" --data '{"role":"<role>","model":"<resolved selector>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
 
 ### Step 2 - Spawn planner-1
 

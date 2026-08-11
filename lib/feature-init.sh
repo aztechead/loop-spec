@@ -13,11 +13,11 @@
 #   bash lib/feature-init.sh models [--phase PHASE]
 #       -> prints the effective role map for PHASE.
 #   bash lib/feature-init.sh phase-model PHASE
-#       -> prints the configured phase alias, or an empty line when unset.
+#       -> prints the configured phase selector, or an empty line when unset.
 #   bash lib/feature-init.sh phase-models
 #       -> prints all persisted phase overrides as a JSON object (unset = null).
 #   bash lib/feature-init.sh all-models
-#       -> prints the unique aliases that startup must health-check.
+#       -> prints the unique selectors that startup must health-check.
 #   bash lib/feature-init.sh activate FEATURE_DIR PHASE
 #       -> atomically writes the effective `.models` and `.phaseModels` maps before
 #          the phase skill is invoked.
@@ -38,31 +38,31 @@
 # Exit codes: 0 success; 1 bad invocation.
 set -euo pipefail
 
-# Harness model ALIASES, not pinned IDs. The modern Agent tool's `model` parameter
-# is an alias enum (sonnet | opus | haiku | fable); a literal ID like claude-opus-4-8
-# fails InputValidationError at dispatch. Aliases resolve to the harness's current
-# model for that family, which is the supported targeting mechanism.
-OPUS="opus"
-SONNET="sonnet"
+# Model routing defaults to the model that launched the session. Both Claude Code
+# and OpenCode define this inheritance behavior, so the cycle has no required
+# provider, family, or model catalog. Operators may still opt into a Claude alias
+# or full model ID for a phase or role.
+INHERIT="inherit"
 
-# validate_model_alias <variable-name> <value>
+# validate_model_selector <variable-name> <value>
 #
-# Empty is accepted by callers as "not configured". Non-empty values must be a
-# Claude Code Agent-tool alias. The main Claude Code CLI / Agent SDK accepts full
-# IDs too, but phase values also feed subagent `model:` fields, whose contract is
-# the alias enum; one portable value therefore has to satisfy the stricter surface.
-validate_model_alias() {
+# Empty is accepted by callers as "not configured". Known aliases, `inherit`, and
+# full IDs are accepted. A full ID must contain a separator (`-`, `/`, or `:`),
+# which keeps a typo such as `bogus` from becoming a plausible route.
+validate_model_selector() {
   local var="$1"
   local val="$2"
   case "$val" in
-    ""|sonnet|opus|haiku|fable)
+    ""|inherit|sonnet|opus|haiku|fable)
       return 0
       ;;
     *)
-      echo "feature-init: ${var}='${val}' is not a valid harness alias." \
-           "Allowed: sonnet | opus | haiku | fable." \
-           "Literal model IDs (e.g. claude-opus-4-8) are rejected because phase" \
-           "models are also passed to the Agent tool's alias-only model parameter." >&2
+      if [[ "$val" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*[-/:][A-Za-z0-9._:/-]*$ ]]; then
+        return 0
+      fi
+      echo "feature-init: ${var}='${val}' is not a valid model selector." \
+           "Use inherit, a Claude alias (sonnet | opus | haiku | fable)," \
+           "or a full model ID." >&2
       return 1
       ;;
   esac
@@ -93,26 +93,23 @@ phase_env_suffix() {
 
 # resolve_phase_model <phase>
 #
-# Prints the configured phase alias. An empty line means the phase inherits the
-# session model for its main context and canonical role models for its Agents.
+# Prints the configured phase selector. An empty line means the phase inherits
+# the session model for its main context and the role defaults for its agents.
 resolve_phase_model() {
   local phase="$1"
   local suffix var val
   suffix="$(phase_env_suffix "$phase")" || return 1
   var="LOOP_SPEC_PHASE_MODEL_${suffix}"
   val="${!var:-}"
-  validate_model_alias "$var" "$val" || return 1
+  validate_model_selector "$var" "$val" || return 1
   echo "$val"
 }
 
 # resolve_role_model <ENV_SUFFIX> <default>
 #
-# Prints the resolved alias for a role. If LOOP_SPEC_MODEL_<ENV_SUFFIX> is set and
+# Prints the resolved selector for a role. If LOOP_SPEC_MODEL_<ENV_SUFFIX> is set and
 # non-empty it overrides the canonical default; if unset or empty the default is used.
 #
-# The value MUST be a harness alias enum (sonnet | opus | haiku | fable). Literal IDs
-# like claude-opus-4-8 are rejected with a non-zero exit because the Agent tool's
-# `model` param is an alias enum and fails InputValidationError on a literal ID.
 resolve_role_model() {
   local env_suffix="$1"
   local default="$2"
@@ -122,7 +119,7 @@ resolve_role_model() {
     echo "$default"
     return 0
   fi
-  validate_model_alias "$var" "$val" || return 1
+  validate_model_selector "$var" "$val" || return 1
   echo "$val"
 }
 
@@ -140,23 +137,22 @@ canonical_models() {
   local phase_default=""
   local v_specWriter v_planner v_advocate v_challenger v_specComplianceReviewer
   local v_iterateJudge v_codeReviewer v_implementer v_verifier v_mapper v_patternMapper
-
   if [[ -n "$phase" ]]; then
     validate_phase "$phase" || return 1
     phase_default="$(resolve_phase_model "$phase")" || return 1
   fi
 
-  v_specWriter=$(resolve_role_model SPEC_WRITER "${phase_default:-$OPUS}")                        || return 1
-  v_planner=$(resolve_role_model PLANNER "${phase_default:-$OPUS}")                               || return 1
-  v_advocate=$(resolve_role_model ADVOCATE "${phase_default:-$SONNET}")                           || return 1
-  v_challenger=$(resolve_role_model CHALLENGER "${phase_default:-$OPUS}")                         || return 1
-  v_specComplianceReviewer=$(resolve_role_model SPEC_COMPLIANCE_REVIEWER "${phase_default:-$SONNET}") || return 1
-  v_iterateJudge=$(resolve_role_model ITERATE_JUDGE "${phase_default:-$OPUS}")                    || return 1
-  v_codeReviewer=$(resolve_role_model CODE_REVIEWER "${phase_default:-$OPUS}")                    || return 1
-  v_implementer=$(resolve_role_model IMPLEMENTER "${phase_default:-$SONNET}")                     || return 1
-  v_verifier=$(resolve_role_model VERIFIER "${phase_default:-$SONNET}")                           || return 1
-  v_mapper=$(resolve_role_model MAPPER "${phase_default:-$SONNET}")                               || return 1
-  v_patternMapper=$(resolve_role_model PATTERN_MAPPER "${phase_default:-$SONNET}")                || return 1
+  v_specWriter=$(resolve_role_model SPEC_WRITER "${phase_default:-$INHERIT}")                           || return 1
+  v_planner=$(resolve_role_model PLANNER "${phase_default:-$INHERIT}")                                  || return 1
+  v_advocate=$(resolve_role_model ADVOCATE "${phase_default:-$INHERIT}")                                || return 1
+  v_challenger=$(resolve_role_model CHALLENGER "${phase_default:-$INHERIT}")                            || return 1
+  v_specComplianceReviewer=$(resolve_role_model SPEC_COMPLIANCE_REVIEWER "${phase_default:-$INHERIT}") || return 1
+  v_iterateJudge=$(resolve_role_model ITERATE_JUDGE "${phase_default:-$INHERIT}")                       || return 1
+  v_codeReviewer=$(resolve_role_model CODE_REVIEWER "${phase_default:-$INHERIT}")                       || return 1
+  v_implementer=$(resolve_role_model IMPLEMENTER "${phase_default:-$INHERIT}")                          || return 1
+  v_verifier=$(resolve_role_model VERIFIER "${phase_default:-$INHERIT}")                                || return 1
+  v_mapper=$(resolve_role_model MAPPER "${phase_default:-$INHERIT}")                                    || return 1
+  v_patternMapper=$(resolve_role_model PATTERN_MAPPER "${phase_default:-$INHERIT}")                     || return 1
 
   jq -n \
     --arg specWriter             "$v_specWriter" \
@@ -212,7 +208,7 @@ canonical_phase_models() {
 
 # Every map is resolved BEFORE anything is printed. A brace-group pipeline would
 # emit the maps that resolved successfully and then fail, handing a caller that
-# reads stdout without checking $? a plausible-looking-but-short alias set — the
+# reads stdout without checking $? a plausible-looking-but-short selector set — the
 # exact silent fallback the startup health check is supposed to make impossible.
 all_effective_models() {
   local phase maps map

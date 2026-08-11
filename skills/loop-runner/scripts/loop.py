@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-loop.py — bounded autonomous agent loop for Claude Code. Layer 1 of loop-runner.
+loop.py — bounded autonomous agent loop for Claude Code, pi, and OpenCode.
+Layer 1 of loop-runner.
 
 A loop is cron plus a decision-maker in the body. This harness is everything wrapped
-around the decision so it halts safely: it repeatedly invokes `claude -p` (verified
-headless primitive, JSON output with is_error / session_id), runs a verifier,
-measures real progress, and stops on any guardrail.
+around the decision so it halts safely: it repeatedly invokes one supported headless
+agent protocol, normalizes the response, runs a verifier, measures real progress, and
+stops on any guardrail.
 
 Trust anchors, in order of importance:
   1. VERIFIER INTEGRITY — the verify command's inputs (tests, the script itself,
@@ -64,11 +65,6 @@ MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower 
 CLAUDE_PERMISSION_MODES = ("default", "acceptEdits", "auto", "bypassPermissions",
                            "manual", "dontAsk", "plan")
 
-DEFAULT_JUDGE_MODEL = "claude-haiku-4-5-20251001"  # claude -p id; dropped under pi
-                                                   # and opencode (their model registries
-                                                   # use their own ids — the session
-                                                   # default judges there)
-
 PROGRESS_BANNER = (
     "# Loop progress notes\n\n"
     "Maintained by the agent across iterations. Each iteration: append what you "
@@ -113,7 +109,7 @@ class LoopConfig:
                                       # flag; under pi/opencode only the cumulative
                                       # check applies.
     judge: bool = False
-    judge_model: str = DEFAULT_JUDGE_MODEL
+    judge_model: str = ""             # empty inherits the selected harness model
     state_dir: str = ""               # default .loop/<task_id>
     commit: bool = False              # scoped git commit per productive iteration
     claude_bin: str = "claude"
@@ -350,7 +346,7 @@ def hash_paths(paths: list[Path], ignore_dir: str) -> str:
 def _spawn_agent(cmd: list, *, bin_label: str, env: Optional[dict],
                  resume: Optional[str], raw_log: Optional[Path],
                  timeout: Optional[float]):
-    """Shared transport scaffold for both backends: run the subprocess, persist
+    """Shared transport scaffold for every backend: run the subprocess, persist
     the raw log (+ stderr sidecar), and map spawn/timeout/exit failures onto the
     common error-dict shape. Returns (proc, None) on a zero-exit run, else
     (None, error_dict) — response parsing is the only per-backend part."""
@@ -395,7 +391,7 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         cmd += ["--allowedTools", cfg.allowed_tools]
     if resume:
         cmd += ["--resume", resume]
-    if cfg.model:
+    if cfg.model and cfg.model != "inherit":
         cmd += ["--model", cfg.model]
     if cfg.effort:
         cmd += ["--effort", cfg.effort]
@@ -468,7 +464,7 @@ def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     elif cfg.mode != "continue":
         # fresh mode never resumes; keep the fleet from littering session files
         cmd += ["--no-session"]
-    if cfg.model:
+    if cfg.model and cfg.model != "inherit":
         cmd += ["--model", cfg.model]
     if mode == "plan":
         cmd += ["--no-builtin-tools"]
@@ -558,8 +554,8 @@ def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         edits remain allowed by the build agent, while permission asks fail
         closed instead of approving external-directory or other sensitive work.
       - claude-only knobs are ignored here: allowed_tools, fallback_model,
-        retry_watchdog. Models must be opencode ids (provider/model, e.g.
-        anthropic/claude-sonnet-4-5). opencode-specific flags go through
+        retry_watchdog. Models must be OpenCode ids (`provider/model`).
+        OpenCode-specific flags go through
         extra_args verbatim.
     """
     bin_ = cfg.resolved_agent_bin()
@@ -694,11 +690,8 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str, *,
         "Answer DONE only if the diff plausibly fulfils the task as stated, not merely "
         "if the verifier passed."
     )
-    judge_model = cfg.judge_model
-    if cfg.resolved_agent_cli() != "claude" and judge_model == DEFAULT_JUDGE_MODEL:
-        judge_model = ""  # claude-only id; let the harness's session default judge
     jcfg = LoopConfig(task="", claude_bin=cfg.claude_bin, agent_cli=cfg.agent_cli,
-                      model=judge_model, allowed_tools="")
+                      model=cfg.judge_model, allowed_tools="")
     res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600,
                      budget_usd=budget_usd)
     cost = res.get("cost_usd")

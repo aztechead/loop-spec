@@ -1,6 +1,6 @@
 ---
 name: retro
-description: Retrospective over accumulated loop telemetry - mine events.jsonl/result.json across features for repeated failure patterns (recurring iterate gaps, critique gates at round cap), turn them into rule candidates for the self-learning RULES.md loop, surface evidence-backed suggestions (modelTier headroom) and info (convergence rate, fleet cost), and emit the shared terminal result. Report is read-only; "apply" writes the rule candidates. Deterministic thresholds, never model-judged.
+description: Retrospective over accumulated loop telemetry - mine events.jsonl/result.json across features for repeated failure patterns (recurring iterate gaps, critique gates at round cap), turn them into rule candidates for the self-learning RULES.md loop, surface evidence-backed suggestions (effort headroom) and info (convergence rate, fleet cost), and emit the shared terminal result. Report is read-only; "apply" writes the rule candidates. Deterministic thresholds, never model-judged.
 argument-hint: '[report | apply] [--min-repeats N]'
 ---
 
@@ -19,7 +19,7 @@ Finding kinds and what happens to them:
 | kind | example | on `apply` |
 |---|---|---|
 | `rule-candidate` | PLAN was the iterate gap in 3+ features | appended to `.loop-spec/RULES.md` via `lib/rules.sh add` (idempotent — texts are count-free) |
-| `suggestion` | first-pass convergence streak → `modelTier: mechanical` headroom | never auto-applied; shown for your call |
+| `suggestion` | first-pass convergence streak → `system1` effort headroom | never auto-applied; shown for your call |
 | `info` | convergence rate, shipped-with-gaps count, fleet cost | never applied |
 
 ## Procedure
@@ -87,9 +87,9 @@ prune or reword rules any time with `/loop-spec:rules`.
   under-scoping; `execute` = verifyCommands too weak to catch misses in-phase.
 - **gate-cap-*** — the artifact reaching that critique gate repeatedly needs
   every round; strengthen what's produced upstream of it.
-- **model-tier-headroom** — sustained first-pass convergence with no execute
-  recurrence: cheaper models are not the bottleneck; consider `modelTier:
-  mechanical` on low-risk tasks (`lib/model-tier.sh`).
+- **effort-headroom** — sustained first-pass convergence with no execute
+  recurrence: consider `system1` guidance on low-risk plan tasks while keeping
+  the same verification gates (`skills/shared/dual-process.md`).
 - **shipped-with-gaps** — runs keep spending the iteration limit; drain the
   backlog and read `ITERATION.md` for what keeps being accepted.
 

@@ -15,46 +15,39 @@ check() {
   else FAIL=$((FAIL+1)); echo "FAIL: $name"; fi
 }
 
-# --- Test 1: Default map includes new sonnet roles and unchanged opus roles ---
+# --- Test 1: Default map has no model-family prerequisite ---
 models="$(bash "$LIB" models)"
-check "default: advocate == sonnet" \
-  "$(echo "$models" | jq -e '.advocate == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "default: specComplianceReviewer == sonnet" \
-  "$(echo "$models" | jq -e '.specComplianceReviewer == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "default: challenger == opus" \
-  "$(echo "$models" | jq -e '.challenger == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "default: iterateJudge == opus" \
-  "$(echo "$models" | jq -e '.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "default: implementer == sonnet" \
-  "$(echo "$models" | jq -e '.implementer == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: every role inherits" \
+  "$(echo "$models" | jq -e '[.[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- Test 2: Env override applies to the targeted role; others are unchanged ---
 overridden="$(LOOP_SPEC_MODEL_PLANNER=sonnet bash "$LIB" models)"
 check "override: LOOP_SPEC_MODEL_PLANNER=sonnet -> planner == sonnet" \
   "$(echo "$overridden" | jq -e '.planner == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "override: other roles unchanged (iterateJudge still opus)" \
-  "$(echo "$overridden" | jq -e '.iterateJudge == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "override: other roles unchanged (implementer still sonnet)" \
-  "$(echo "$overridden" | jq -e '.implementer == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "override: other roles still inherit" \
+  "$(echo "$overridden" | jq -e '.iterateJudge == "inherit" and .implementer == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- Test 3: fable alias is accepted ---
 fable_out="$(LOOP_SPEC_MODEL_ITERATE_JUDGE=fable bash "$LIB" models)"
 check "fable accepted: LOOP_SPEC_MODEL_ITERATE_JUDGE=fable -> iterateJudge == fable" \
   "$(echo "$fable_out" | jq -e '.iterateJudge == "fable"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
-# --- Test 4: Literal model ID fails with non-zero exit and names the var in stderr ---
-stderr_out="$(LOOP_SPEC_MODEL_ADVOCATE=claude-opus-4-8 bash "$LIB" models 2>&1 1>/dev/null || true)"
+# --- Test 4: Full IDs work; an unstructured typo still fails ---
+full_id="$(LOOP_SPEC_MODEL_ADVOCATE=claude-opus-4-8 bash "$LIB" models)"
+check "full ID: accepted for an explicit Claude role route" \
+  "$(echo "$full_id" | jq -e '.advocate == "claude-opus-4-8"' >/dev/null 2>&1 && echo 1 || echo 0)"
+stderr_out="$(LOOP_SPEC_MODEL_ADVOCATE=bogus bash "$LIB" models 2>&1 1>/dev/null || true)"
 invalid_exit=0
-LOOP_SPEC_MODEL_ADVOCATE=claude-opus-4-8 bash "$LIB" models >/dev/null 2>/dev/null || invalid_exit=$?
-check "invalid value: non-zero exit for literal model ID" \
+LOOP_SPEC_MODEL_ADVOCATE=bogus bash "$LIB" models >/dev/null 2>/dev/null || invalid_exit=$?
+check "invalid value: unstructured selector exits non-zero" \
   "$([[ "$invalid_exit" -ne 0 ]] && echo 1 || echo 0)"
 check "invalid value: stderr mentions the var name" \
   "$([[ "$stderr_out" == *"LOOP_SPEC_MODEL_ADVOCATE"* ]] && echo 1 || echo 0)"
 
 # --- Test 5: Empty value falls back to canonical default ---
 empty_out="$(LOOP_SPEC_MODEL_PLANNER="" bash "$LIB" models)"
-check "empty value: LOOP_SPEC_MODEL_PLANNER='' -> planner == opus (canonical default)" \
-  "$(echo "$empty_out" | jq -e '.planner == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "empty value: LOOP_SPEC_MODEL_PLANNER='' -> planner inherits" \
+  "$(echo "$empty_out" | jq -e '.planner == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- Test 6: A phase override becomes every role's default for that phase ---
 plan_phase="$(LOOP_SPEC_PHASE_MODEL_PLAN=sonnet bash "$LIB" models --phase plan)"
@@ -86,16 +79,20 @@ check "phase model: direct resolver supports SDK launcher" \
   "$([[ "$(LOOP_SPEC_PHASE_MODEL_VERIFY=opus bash "$LIB" phase-model verify)" == "opus" ]] && echo 1 || echo 0)"
 all_models="$(LOOP_SPEC_PHASE_MODEL_EXECUTE=haiku LOOP_SPEC_MODEL_ITERATE_JUDGE=fable \
   bash "$LIB" all-models)"
-check "health-check set: includes every phase and role alias" \
+check "health-check set: includes every phase and role selector" \
   "$(echo "$all_models" | jq -e \
-    'sort == ["fable","haiku","opus","sonnet"]' >/dev/null 2>&1 && echo 1 || echo 0)"
+    'sort == ["fable","haiku","inherit"]' >/dev/null 2>&1 && echo 1 || echo 0)"
 
-phase_stderr="$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
+phase_full_id="$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
+  bash "$LIB" models --phase discuss)"
+check "full ID: accepted for an explicit Claude phase route" \
+  "$(echo "$phase_full_id" | jq -e '[.[]] | all(. == "claude-opus-4-8")' >/dev/null 2>&1 && echo 1 || echo 0)"
+phase_stderr="$(LOOP_SPEC_PHASE_MODEL_DISCUSS=bogus \
   bash "$LIB" models --phase discuss 2>&1 1>/dev/null || true)"
 phase_invalid_exit=0
-LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
+LOOP_SPEC_PHASE_MODEL_DISCUSS=bogus \
   bash "$LIB" models --phase discuss >/dev/null 2>/dev/null || phase_invalid_exit=$?
-check "invalid phase value: non-zero exit for literal model ID" \
+check "invalid phase value: non-zero exit for unstructured selector" \
   "$([[ "$phase_invalid_exit" -ne 0 ]] && echo 1 || echo 0)"
 check "invalid phase value: stderr names the phase var" \
   "$([[ "$phase_stderr" == *"LOOP_SPEC_PHASE_MODEL_DISCUSS"* ]] && echo 1 || echo 0)"
@@ -130,14 +127,14 @@ allmodels_stdout="$(LOOP_SPEC_PHASE_MODEL_PLAN=bogus \
   bash "$LIB" all-models 2>/dev/null)" || allmodels_exit=$?
 check "all-models: non-zero exit when a phase route is invalid" \
   "$([[ "$allmodels_exit" -ne 0 ]] && echo 1 || echo 0)"
-check "all-models: no partial alias set on stdout for an invalid phase route" \
+check "all-models: no partial selector set on stdout for an invalid phase route" \
   "$([[ -z "$allmodels_stdout" ]] && echo 1 || echo 0)"
 allrole_exit=0
-allrole_stdout="$(LOOP_SPEC_MODEL_PLANNER=claude-opus-4-8 \
+allrole_stdout="$(LOOP_SPEC_MODEL_PLANNER=bogus \
   bash "$LIB" all-models 2>/dev/null)" || allrole_exit=$?
 check "all-models: non-zero exit when a role route is invalid" \
   "$([[ "$allrole_exit" -ne 0 ]] && echo 1 || echo 0)"
-check "all-models: no partial alias set on stdout for an invalid role route" \
+check "all-models: no partial selector set on stdout for an invalid role route" \
   "$([[ -z "$allrole_stdout" ]] && echo 1 || echo 0)"
 
 # --- Test 11: Instruction/SDK boundaries call the executable router ---
@@ -149,8 +146,9 @@ check "SDK controller: resolves model inside the per-phase query loop" \
   "$(grep -Fq 'phase = resumable_phase(ROOT)' "$CLOUD" \
     && grep -Fq 'query_overrides["model"] = value' "$CLOUD" \
     && echo 1 || echo 0)"
-check "CLI controller: passes resolved phase alias to --model" \
-  "$(grep -Fq 'model_args=(--model "$phase_model")' "$CLOUD" \
+check "CLI controller: passes only an explicit phase selector to --model" \
+  "$(grep -Fq '&& "$phase_model" != "inherit"' "$CLOUD" \
+    && grep -Fq 'claude_args+=(--model "$phase_model")' "$CLOUD" \
     && echo 1 || echo 0)"
 
 echo ""

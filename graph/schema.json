@@ -97,6 +97,11 @@
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short human-facing name used in step descriptors and graph readers"
+        },
         "kind": {
           "type": "string",
           "enum": ["agent", "function", "gate", "human", "subgraph"]

@@ -76,6 +76,7 @@ checks=(
   "skills/shared/pi-harness.md	Graph engine (GDD)"
   "skills/shared/pi-harness.md	lib/graph/run.sh"
   "lib/graph/run.sh	harness-neutral"
+  "lib/graph/engine.py	harness-neutral"
 )
 
 for entry in "${checks[@]}"; do
@@ -96,7 +97,7 @@ while IFS= read -r f; do
   else
     PASS=$((PASS+1)); echo "PASS: $f harness-neutral"
   fi
-done < <(find lib/graph -type f -name '*.sh' 2>/dev/null)
+done < <(find lib/graph -type f \( -name '*.sh' -o -name '*.py' \) 2>/dev/null)
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

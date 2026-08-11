@@ -40,6 +40,14 @@ fi
 
 check "graph entry is spec" "spec" "$(jq -r '.entry' "$GRAPH")"
 
+# Shipped graphs are review surfaces, not just engine input. Every production
+# node therefore carries a short label; synthetic extension graphs may fall
+# back to their id for backward compatibility.
+for published_graph in "$ROOT/graph/cycle.graph.json" "$ROOT/graph/critique.graph.json"; do
+  missing_labels="$(jq '[.nodes[] | select((.label // "") | length == 0)] | length' "$published_graph")"
+  check "$(basename "$published_graph") gives every node a human-facing label" "0" "$missing_labels"
+done
+
 # Phase agent nodes present
 for phase in spec discuss plan execute verify iterate deliver; do
   n="$(jq -r --arg p "$phase" '[.nodes[] | select(.id==$p)] | length' "$GRAPH")"

@@ -2,29 +2,55 @@
 
 ## Prerequisites
 
-- Claude Code v{minimum-required-version} or later (check release notes)
+- One supported harness: Claude Code, pi, or OpenCode
+- The [base runtime dependencies](loop-spec/PREREQUISITES.md)
 - A project where you have full git push access
-- `CLAUDE.md` model policy allowing `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`
+- An authenticated GitHub CLI and `origin` remote when the cycle should open a PR
+
+No model pin is required. Every role inherits the model active in its harness unless
+you deliberately add a harness-native route; see the
+[model matrix](../skills/shared/model-matrix.md).
 
 ## Install
 
-1. Register the marketplace:
-   ```bash
-   claude plugin marketplace add git@github.com:aztechead/loop-spec.git
-   ```
-2. Install the plugin:
-   ```bash
-   claude plugin install loop-spec@loop-spec-marketplace
-   ```
-3. Verify: open a new Claude Code session and run `Skill(loop-spec:cycle)`. You should see the entry prompt.
+Choose the instructions for the harness you already use.
+
+### Claude Code
+
+```bash
+claude plugin marketplace add https://github.com/aztechead/loop-spec.git
+claude plugin install loop-spec@loop-spec-marketplace
+```
+
+Open a new session and run `/loop-spec:cycle <goal>`. Agent teams are optional;
+without them, the same gates run through bounded one-shot agents and loop-fleet.
+
+### pi
+
+```bash
+pi install git:github.com/aztechead/loop-spec
+pi --mode json "/skill:auto <goal>"
+```
+
+### OpenCode
+
+```bash
+git clone https://github.com/aztechead/loop-spec
+bash loop-spec/lib/opencode-install.sh install
+opencode run --format json "Load the loop-spec-auto skill and run: <goal>"
+```
+
+Use `bash loop-spec/lib/opencode-install.sh install --project .` instead when the
+generated skills and agents should live only in the current project.
 
 ## First cycle
 
 1. Pick a small feature (1-3 file changes).
-2. Run `Skill(loop-spec:cycle)`.
-3. Pick `quick` tier + `auto` style for first run.
-4. Answer the discuss-phase questions (<=5 rounds).
-5. Watch the cycle proceed: SPEC -> PLAN -> EXECUTE -> VERIFY.
+2. Start it with the harness-specific command above.
+3. Pick `quick` tier + `auto` style for an interactive first run.
+4. Answer the discuss-phase questions (up to six rounds).
+5. Watch the graph proceed through SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE,
+   and DELIVER.
 6. Review the resulting PR.
 
 ## What to expect
@@ -37,11 +63,17 @@
 
 ## Common pitfalls
 
-- **Health check fails on opus-4-7**: your CLAUDE.md probably bans it. Update model policy.
+- **An explicit model route is unavailable**: remove the override to inherit the
+  session model, or replace it with a selector native to that harness. Claude accepts
+  its aliases/full IDs; pi accepts pi model IDs; OpenCode accepts `provider/model`.
+- **A Claude alias does nothing in OpenCode**: this is intentional. OpenCode generated
+  agents inherit unless installed with `--model role=provider/model`; Claude aliases
+  are never translated into guessed provider routes.
 - **Marketplace name confusion**: The marketplace name (`loop-spec-marketplace`) differs from the plugin name (`loop-spec`). Install command MUST use `plugin@marketplace` form.
 - **Critique gate keeps bouncing**: spec is genuinely ambiguous. Pick STEP style next time so you can review SPEC.md before plan starts.
 - **Worktree disk usage spikes**: EXECUTE self-claims up to `tier.execute.maxParallelImplementers` worktrees (2 on quick, 3 on balanced, 4 on quality), each a full checkout. Acceptable on modern SSDs; adjust the tier matrix if low-disk.
-- **Sonnet 1M context unavailable**: warning logged in `feature.json.warnings[]`. Plans/specs above 200k tokens fall back gracefully but planner may need decomposition help.
+- **Claude Code agent teams are unavailable**: this is not fatal. The cycle records
+  `teamsMode=none` and uses its parity fallback.
 
 ## Tier picking
 

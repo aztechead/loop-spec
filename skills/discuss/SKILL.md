@@ -34,7 +34,7 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 When the run is autonomous, the SPEC phase already ran the self-answered interview
 (`skills/spec/SKILL.md`, Autonomous mode): the lead formulated the questions, answered them,
 recorded every assumption, and wrote SPEC.md. Re-running a clarifying loop against itself and
-paying an opus spec-writer to transcribe the same conversation is pure overhead, so DISCUSS
+dispatching a second spec-writer to transcribe the same conversation is pure overhead, so DISCUSS
 collapses to lead-authored refinement + the critique gate:
 
 1. **Skip Step 1's conversational loop.** The lead handles Step 1's obligations directly:
@@ -156,7 +156,7 @@ Agent({
 })
 ```
 
-Then record the in-flight marker via `lib/feature-write.sh` (`artifacts.patternsPrefetch = "in-flight"`) and emit the dispatch event: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"pattern-mapper","model":"<resolved alias>","rung":"background"}' || true`.
+Then record the in-flight marker via `lib/feature-write.sh` (`artifacts.patternsPrefetch = "in-flight"`) and emit the dispatch event: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"pattern-mapper","model":"<resolved selector>","rung":"background"}' || true`.
 
 SPEC.md may still be revised by the critique gate after this fires — acceptable: PATTERNS.md maps concept analogs, which are robust to spec wording changes. If the gate changes the spec's SCOPE materially, PLAN's planner amends PATTERNS.md (its brief already covers producing or extending it).
 
@@ -242,7 +242,7 @@ Create the gate-logs directory:
 mkdir -p .loop-spec/features/{slug}/gate-logs/
 ```
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (spec-writer, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"<role>","model":"<resolved alias>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (spec-writer, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"<role>","model":"<resolved selector>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
 
 #### Mode selection (security signal)
 

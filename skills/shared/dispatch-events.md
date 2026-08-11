@@ -13,13 +13,13 @@ Immediately before (or right after) each spawn, run:
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch \
   --phase "<phase>" \
-  --data '{"role":"<agent role, e.g. challenger>","model":"<resolved alias, e.g. opus>","rung":"<team|subagent|loop-fleet|workflow>"}' || true
+  --data '{"role":"<agent role, e.g. challenger>","model":"<resolved selector, e.g. inherit>","rung":"<team|subagent|loop-fleet|workflow>"}' || true
 ```
 
 - `role` = the agent role name (`advocate`, `challenger`, `implementer`,
   `verifier`, `code-reviewer`, `iterate-judge`, `mapper`, `pattern-mapper`, ...).
-- `model` = the resolved model alias actually used (from `feature.models.<role>`
-  or the task's `modelTier` resolution) — never re-derived from the matrix.
+- `model` = the resolved selector actually used (from `feature.models.<role>` or
+  an explicit task override) — never re-derived from the matrix.
 - `rung` = how it was launched: `team` (persistent teammate), `subagent`
   (one-shot Agent call), `loop-fleet` (headless loop worker), `workflow`
   (Workflow DAG task).

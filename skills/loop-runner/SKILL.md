@@ -1,9 +1,9 @@
 ---
 name: loop-runner
 description: >-
-  Compile specs/goals into autonomous Claude Code loops and run them safely. The base
+  Compile specs/goals into autonomous Claude Code, pi, or OpenCode loops and run them safely. The base
   layer for spec-driven and workflow automation: bridges "a spec written normally" to
-  "loops execute it unattended." Use whenever the user wants Claude Code hands-off —
+  "loops execute it unattended." Use whenever the user wants a supported harness hands-off —
   "implement this spec", "keep going until tests pass", "break this down and execute",
   "babysit my PRs", overnight/cron/CI runs, agent fleets, orchestration, ralph or
   /goal-style loops, or worries about runaway agents. Also the base
@@ -52,7 +52,7 @@ SPEC.md ──compile_spec.py──▶ plan/tasks.json ──supervisor.py──
 
 | Layer | Script | In → Out | Job |
 |---|---|---|---|
-| 1 | `scripts/loop.py` | one task → `result.json` | Run one bounded loop: invoke the agent CLI (`claude -p`, or `pi --mode json` with `--agent-cli pi`), verify, measure progress, halt safely. |
+| 1 | `scripts/loop.py` | one task → `result.json` | Run one bounded loop through Claude Code, pi, or OpenCode; verify, measure progress, and halt safely. |
 | 2 | `scripts/compile_spec.py` | spec → `plan/tasks.json` | Decompose a spec into small verifiable tasks and **synthesize a verifier per task**. |
 | 3 | `scripts/supervisor.py` | plan → `fleet-result.json` | Walk the dependency DAG, run each task's loop in an isolated git worktree, merge completed work, apply halt policy. |
 
@@ -64,7 +64,7 @@ stdout — read `result.json`.
 ## The spec-driven path (the main road)
 
 ```bash
-# 1. Compile. One bounded, read-only claude invocation; output is validated
+# 1. Compile. One bounded, read-only agent invocation; output is validated
 #    against the plan schema before it's written, with one self-correcting retry.
 python3 scripts/compile_spec.py SPEC.md
 
@@ -105,7 +105,8 @@ against transient model failures — both on `loop.py` and `supervisor.py` (the 
 threads them into every loop's config):
 
 - `--fallback-model <id>` — on overload or model-unavailable, the tick falls back to this
-  model (`claude -p --fallback-model`) instead of dying, e.g. `--fallback-model claude-haiku-4-5-20251001`.
+  model (`claude -p --fallback-model`) instead of dying. Use an ID available in your
+  Claude deployment; loop-spec does not assume one.
 - `--retry-watchdog <n>` — sets `CLAUDE_CODE_RETRY_WATCHDOG` for the child, the recommended
   unattended retry mechanism (replaces relying on `CLAUDE_CODE_MAX_RETRIES`, capped at 15).
 - `--max-turns <n>` — caps tool-use round trips inside each headless tick. The loop's
@@ -116,12 +117,12 @@ threads them into every loop's config):
 
 ```bash
 python3 scripts/supervisor.py --plan plan/tasks.json --parallel 2 \
-  --fallback-model claude-haiku-4-5-20251001 --retry-watchdog 5 \
+  --fallback-model "$CLAUDE_FALLBACK_MODEL" --retry-watchdog 5 \
   --max-turns 40 --effort medium
 ```
 
-Both default off — behavior is unchanged unless you opt in. Both are claude-only:
-under the pi backend (below) they are ignored.
+These options default off, so behavior is unchanged unless you opt in. They are
+Claude-specific and are ignored by the pi and OpenCode backends.
 
 ### pi backend (`--agent-cli pi`)
 
@@ -255,8 +256,9 @@ orchestration), verifier design, anchoring discipline, and failure modes.
 
 ## Prerequisites
 
-- Claude Code installed and authenticated (`claude` on PATH); the harness drives it
-  via the verified headless interface (`claude -p --output-format json`). With
-  `--agent-cli pi`, pi installed and authenticated instead (`pi --mode json`).
+- One installed and authenticated headless agent CLI: Claude Code
+  (`claude -p --output-format json`), pi (`pi --mode json`), or OpenCode
+  (`opencode run --format json`). Select pi or OpenCode with `--agent-cli`; a binary
+  named `pi` or `opencode` is also auto-detected.
 - A git repo: required for the supervisor (worktrees/merges) and for loop.py's
   file-change stall detection and `--commit` (loop.py degrades gracefully without).

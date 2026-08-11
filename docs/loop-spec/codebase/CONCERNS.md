@@ -4,6 +4,13 @@ trust: generated
 
 # CONCERNS
 
+> **Generated snapshot, not a runtime contract.** This map describes the tree at its
+> recorded generation date and may retain facts from an earlier release. For current
+> harness and model behavior, use [the architecture guide](../gdd.md),
+> [model matrix](../../../skills/shared/model-matrix.md), and
+> [model policy](../../../skills/shared/model-policy.md); regenerate the map before
+> using it to plan changes.
+
 > **STALE — pre-v1.0.0 snapshot.** Last regenerated 2026-05-11, before the v1.0.0 agent-teams migration. References to `lib/state-write.sh`, `state.json`, "Post-wave cleanup", and "plugin version 0.3.2" are pre-migration; v1.0.0 replaced them with `lib/feature-write.sh`, `feature.json` (schema v3), per-task self-claim parallelism, and v1.0.1.
 > Regenerate with `Skill(loop-spec:map-codebase) args: --domain concerns --full`.
 >

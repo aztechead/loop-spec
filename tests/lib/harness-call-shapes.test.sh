@@ -77,16 +77,17 @@ for f in $CORPUS; do
 done
 check "TaskCreate calls carry required description:" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
-# 6) No pinned model IDs in dispatch examples (alias enum only).
+# 6) Shipped dispatch examples stay model-portable; explicit IDs belong to
+# operator configuration, not built-in role defaults.
 bad=$(grep -rnE 'model: "?claude-' skills agents --include='*.md' 2>/dev/null | grep -v 'harness-call-contracts\|model-matrix' | head -5 || true)
-check "no pinned model IDs in dispatch examples" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+check "no pinned model IDs in default dispatch examples" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
 # 7) Contract doc exists and records the verification method.
 check "harness-call-contracts.md present" "$([[ -f skills/shared/harness-call-contracts.md ]] && echo 1 || echo 0)"
 grep -q 'Verification method' skills/shared/harness-call-contracts.md && v=1 || v=0
 check "contract doc records verification method" "$v"
-grep -q 'CC 2.1.218' skills/shared/harness-call-contracts.md && v=1 || v=0
-check "contract doc records current Claude Code verification" "$v"
+grep -q 'code.claude.com/docs/en/sub-agents' skills/shared/model-matrix.md && v=1 || v=0
+check "contract docs cite current Claude Code model inheritance" "$v"
 grep -qF 'mode: "acceptEdits" | ... | "plan",      // deprecated and ignored since CC 2.1.212' \
   skills/shared/harness-call-contracts.md && v=1 || v=0
 check "contract doc records ignored Agent mode" "$v"

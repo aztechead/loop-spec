@@ -511,6 +511,15 @@ check "pi: --no-session (fresh)"   "$(grep -c -- '--no-session' "$PILOG")" "1"
 check "pi: --model passed"         "$(grep -c -- '--model claude-sonnet-4-5' "$PILOG")" "1"
 check "pi: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permission-mode|--output-format|--allowedTools' "$PILOG")" "0"
 
+# 16b-2. The portable selector inherits pi's current model instead of being
+# forwarded as an invalid literal model id.
+newrepo
+PILOG_INHERIT="$R/piargv-inherit.txt"
+FAKE_ARGV_LOG="$PILOG_INHERIT" python3 "$SCRIPTS/loop.py" "noop" --task-id piinherit \
+  --agent-cli pi --claude-bin "$FAKEPI" --model inherit \
+  --max-iterations 1 --verify 'true' >/dev/null 2>&1
+check "pi: inherit model omitted" "$(grep -c -- '--model' "$PILOG_INHERIT")" "0"
+
 # 16c. compiler via pi backend: read-only pass = --no-builtin-tools
 newrepo
 echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md

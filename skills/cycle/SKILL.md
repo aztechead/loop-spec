@@ -337,7 +337,7 @@ the workflow probe below; phase skills read them to pick their dispatch path.
 
 
 Model availability is probed in Step 3.5. There is no preset axis; the probe
-covers the complete effective alias set after phase and role overrides.
+covers the complete effective selector set after phase and role overrides.
 
 ### Step 3 - Resolve style + feature
 
@@ -425,8 +425,8 @@ Slug = the parser's `.slug` (kebab-case of title); for titles resolved after par
 
 ### Step 3.5 - Model probe + Workflow availability probe
 
-Canonical aliases are `{opus, sonnet}`, with optional phase/role routes to any
-allowed alias. Probe results are cached 24h only for an identical resolved alias
+The portable default is `inherit`, with optional phase/role routes to a Claude
+alias or full model ID. Probe results are cached 24h only for an identical selector
 set (`LOOP_SPEC_SKIP_HEALTHCHECK=1` skips). Run the model dispatch probe now,
 verbatim per `${CLAUDE_SKILL_DIR}/references/startup-probes.md` (probe mechanics,
 cache format, degraded-mode handling). The `Workflow` availability answer is
@@ -659,7 +659,7 @@ drop vestigial `preset` and `tier` fields:
 Sequencing is owned by the declared graph (`graph/cycle.graph.json`), never a bare
 `currentPhase` read — `docs/loop-spec/features/gdd/REMEDIATION-CONTRACT.md` sec 1-6.
 `lib/graph/run.sh --step` processes exactly one node and returns its JSON dispatch
-descriptor (`{node, kind, body, model, effort, nextEdge, terminal, paused}`); it already
+descriptor (`{node, label, kind, body, effort, nextEdge, terminal, paused}`); it already
 resumes from wherever the last step/pause/checkpoint left off (contract sec 5), so this
 is also the resume path — there is no separate manual `checkpoint.sh latest` + `--resume`
 call to make. The engine dispatches in-process anything it can execute itself (`function`/
@@ -702,6 +702,8 @@ while :; do
 done
 currentPhase="$(jq -r '.node' <<<"$step_json")"
 current_phase="$currentPhase"
+currentLabel="$(jq -r '.label' <<<"$step_json")"
+node_effort="$(jq -r '.effort' <<<"$step_json")"
 if [[ "$(jq -r '.terminal' <<<"$step_json")" == "true" ]]; then
   echo "loop-spec: graph traversal reached its terminal node ($currentPhase)."
 else
@@ -741,6 +743,12 @@ the graph reached its `completed` node, which the engine's own dispatch of
 `lib/cycle-result.sh` already published as the terminal result; jump to "On
 completion" below. Exit 0 with `.kind == "agent"` is this step's normal case: the
 snippet stopped at a real phase to dispatch.
+
+Consume the node's effort as model-independent guidance. It never chooses a model:
+Claude Code and OpenCode may expose different catalogs, and both inherit the model that
+launched the session by default. For `system1`, keep the phase direct and avoid optional
+extra review rounds. For `system2`, state the assumptions and check their evidence before
+committing to the phase result. Every declared gate runs in either mode.
 
 The cycle does NOT create the phase team. Each phase skill owns its own team lifecycle: `TeamCreate` at phase start, `TeamDelete` + clear `currentTeamName` at phase end. This keeps team rosters phase-specific (each phase has different teammates) and avoids double-`TeamCreate` errors.
 

@@ -10,7 +10,7 @@ tools:
   - TaskGet
   - TaskUpdate
   - SendMessage
-model: sonnet
+model: inherit
 color: red
 ---
 

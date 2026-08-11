@@ -26,6 +26,28 @@ contains_text() {
   grep -Fq -- "$1" "$DOC"
 }
 
+has_consumer() {
+  local name="$1"
+  if rg -Fq "$name" \
+    "$ROOT/agents" "$ROOT/commands" "$ROOT/extensions" "$ROOT/hooks" "$ROOT/lib" "$ROOT/skills" \
+    "$ROOT/docs/loop-spec/cloud-run-autonomous.md" \
+    --glob '!*.test.sh' --glob '!**/tests/**'; then
+    return 0
+  fi
+
+  case "$name" in
+    LOOP_SPEC_PHASE_MODEL_*)
+      rg -Fq 'var="LOOP_SPEC_PHASE_MODEL_${suffix}"' "$ROOT/lib/feature-init.sh"
+      ;;
+    LOOP_SPEC_MODEL_*)
+      rg -Fq 'local var="LOOP_SPEC_MODEL_${env_suffix}"' "$ROOT/lib/feature-init.sh"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 echo "configuration reference coverage"
 
 if [[ -s "$DOC" ]]; then
@@ -53,10 +75,7 @@ fi
 missing_consumers=()
 while IFS= read -r name; do
   [[ -n "$name" ]] || continue
-  if ! rg -Fq "$name" \
-    "$ROOT/agents" "$ROOT/commands" "$ROOT/extensions" "$ROOT/hooks" "$ROOT/lib" "$ROOT/skills" \
-    "$ROOT/docs/loop-spec/cloud-run-autonomous.md" \
-    --glob '!*.test.sh' --glob '!**/tests/**'; then
+  if ! has_consumer "$name"; then
     missing_consumers+=("$name")
   fi
 done < <(

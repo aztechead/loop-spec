@@ -45,13 +45,13 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "patternMapper": "effective alias for the active phase"
   },
   "phaseModels": {
-    "spec": "sonnet | opus | haiku | fable | null",
-    "discuss": "sonnet | opus | haiku | fable | null",
-    "plan": "sonnet | opus | haiku | fable | null",
-    "execute": "sonnet | opus | haiku | fable | null",
-    "verify": "sonnet | opus | haiku | fable | null",
-    "iterate": "sonnet | opus | haiku | fable | null",
-    "deliver": "sonnet | opus | haiku | fable | null"
+    "spec": "Claude selector | null",
+    "discuss": "Claude selector | null",
+    "plan": "Claude selector | null",
+    "execute": "Claude selector | null",
+    "verify": "Claude selector | null",
+    "iterate": "Claude selector | null",
+    "deliver": "Claude selector | null"
   },
   "artifacts": {
     "specInterview": "path or null (.loop-spec/features/{slug}/spec-interview-transcript.md)",
@@ -253,7 +253,7 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 | `requireEvidenceTokens` | array of arrays | Lead at `TaskCreate` | Optional. Set by the planner or `specifying-gates` skill. Each inner array is a set of token strings (e.g., `["AC:", "PROVEN BY"]`); at least one token from each inner array must appear in the transcript evidence window. |
 | `requireABCompare` | bool | Lead at `TaskCreate` | Optional. Set by the planner when the gate requires an A/B comparison between two subagent outputs before the task can close. |
 | `subagentType` | string | `specifying-gates` skill at gate specification | Optional. Identifies the type of subagent to dispatch for automated gate checking (e.g., `"checker"`, `"reviewer"`). |
-| `model` | string | `specifying-gates` skill at gate specification | Optional. Model alias for the dispatched subagent (e.g., `"sonnet"`, `"opus"`). |
+| `model` | string | `specifying-gates` skill at gate specification | Optional explicit model selector for the dispatched subagent. Omit to inherit. |
 | `dispatchBrief` | string | `specifying-gates` skill at gate specification | Optional. Freeform brief passed to the dispatched subagent describing what to verify. |
 | `failurePolicy` | string enum | Lead at `TaskCreate` or `specifying-gates` skill | Optional. Controls what happens when a gate check fails. One of: `stop-plan` (halt the plan and block further progress), `reopen-continue` (reopen the task and continue other tasks), `log-continue` (log the failure and continue without blocking). |
 | `gateScope` | string enum | `specifying-gates` skill at gate specification | Optional. Controls how many times the gate is evaluated across targets. One of: `once` (checked a single time), `per-target` (checked once per verification target), `one-then-all` (one check then all in parallel), `custom` (custom scope defined in `dispatchBrief`). |

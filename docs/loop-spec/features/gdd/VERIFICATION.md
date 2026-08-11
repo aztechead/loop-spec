@@ -9,12 +9,12 @@ recorded here as the weakest evidence, not the headline.
 
 ## Repository grounding
 
-- criterion: route conditions receive their declared args, not an empty argv | implementation: lib/graph/run.sh:148 - substitutes {featureDir}/{repoRoot}/{slug}/{node} into each declared arg | integration: tests/lib/graph-run.test.sh:122 - route-exact graph traversal asserts the args reach the probe
-- criterion: a probe's first token must equal expects exactly, never as a substring | implementation: lib/graph/run.sh:194 - satisfied is (token == expects) | integration: tests/lib/graph-run.test.sh:122 - reintroducing substring matching flips this suite
-- criterion: an unresolved condition never satisfies an edge, expects "none" included | implementation: lib/graph/run.sh:194 - unresolved probes yield no token to compare | integration: tests/lib/graph-run.test.sh:181 - gate-none graph asserts a crashed probe does not admit
-- criterion: a node with no satisfied route aborts rather than falling through to a chain edge | implementation: lib/graph/run.sh:635 - raises RouteAbort with per-probe diagnostics, exit 5 | integration: tests/lib/graph-run.test.sh:181 - asserts the abort instead of a chain edge
-- criterion: human nodes are skipped when not admitted, so unattended runs do not deadlock | implementation: lib/graph/run.sh:508 - evaluates the node's admit condition on entry | integration: tests/lib/graph-run.test.sh:238 - execStyle auto exits 0 with no pause
-- criterion: resume prefers the pause record, then the ledger, then feature.json.currentPhase | implementation: lib/graph/run.sh:11 - documented resolution order, applied before any currentPhase write | integration: tests/lib/graph-run.test.sh:264 - resume starts at the SUCCESSOR of the paused node
+- criterion: route conditions receive their declared args, not an empty argv | implementation: lib/graph/engine.py:73 - substitutes {featureDir}/{repoRoot}/{slug}/{node} into each declared arg | integration: tests/lib/graph-run.test.sh:122 - route-exact graph traversal asserts the args reach the probe
+- criterion: a probe's first token must equal expects exactly, never as a substring | implementation: lib/graph/engine.py:113 - satisfied is (token == expects) | integration: tests/lib/graph-run.test.sh:122 - reintroducing substring matching flips this suite
+- criterion: an unresolved condition never satisfies an edge, expects "none" included | implementation: lib/graph/engine.py:113 - unresolved probes yield no token to compare | integration: tests/lib/graph-run.test.sh:181 - gate-none graph asserts a crashed probe does not admit
+- criterion: a node with no satisfied route aborts rather than falling through to a chain edge | implementation: lib/graph/engine.py:149 - raises RouteAbort with per-probe diagnostics, exit 5 | integration: tests/lib/graph-run.test.sh:181 - asserts the abort instead of a chain edge
+- criterion: human nodes are skipped when not admitted, so unattended runs do not deadlock | implementation: lib/graph/engine.py:404 - evaluates the node's admit condition on entry | integration: tests/lib/graph-run.test.sh:238 - execStyle auto exits 0 with no pause
+- criterion: resume prefers the pause record, then the ledger, then feature.json.currentPhase | implementation: lib/graph/engine.py:483 - documents and applies the resolution order before any currentPhase write | integration: tests/lib/graph-run.test.sh:264 - resume starts at the SUCCESSOR of the paused node
 - criterion: the spec-approval gate is reachable under step and interactive | implementation: lib/graph/probes/iterate-approval.sh:31 - answers the compound gap-and-style question in one route | integration: tests/lib/graph-probes.test.sh:263 - approval required for a spec gap under both styles
 - criterion: a claimant cannot pass by echoing back its own bundle hash | implementation: lib/graph/port-local.sh:127 - re-derives the hash from the live feature.json | integration: tests/e2e/graph-handoff.test.sh:136 - claimant with forged/stale state rejected
 - criterion: the cycle hands sequencing to the engine rather than prose | implementation: skills/cycle/SKILL.md:641 - Step 6 drives agent nodes through run.sh --step | integration: tests/graph-conformance.test.sh:1 - residual-prose check fails if a skill re-declares a successor
@@ -56,7 +56,7 @@ and the approval-route ordering.
 
 `scanned=28 uncovered=25`. That is not 25 gaps. Per the repo's own rule, `covered=no`
 is a starting point and never a finding: the scan reports which test files *name* a
-symbol, and 21 of the 25 are internal helpers of `lib/graph/run.sh` (`run_condition`,
+symbol, and 21 of the 25 are internal helpers of `lib/graph/engine.py` (`run_condition`,
 `resolve_start`, `process_node`, …) that the suite exercises through the engine's CLI
 rather than by name.
 
@@ -64,7 +64,7 @@ Classifying by BEHAVIOUR instead of by symbol found exactly one real gap. Every 
 newly-wired component carried an assertion — `assert-reads`
 (`tests/lib/graph-run.test.sh:364`), `conflict-monitor` (`:395`), `last-result`
 (`:433`), `subgraph` (`:462`), `trace` — and **effort carried none**. Nothing held
-`lib/graph/run.sh:371`'s raise-never-lower rule in place, which is the whole point of
+`lib/graph/engine.py:290`'s raise-never-lower rule in place, which is the whole point of
 remediation contract §7. Now covered: a node declared `system1` is raised when the
 probe says `system2`, a node declared `system2` is not lowered when the probe says
 `system1`, and a fresh-fixture case proves the probe is consulted rather than a blanket

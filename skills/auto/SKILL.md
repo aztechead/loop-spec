@@ -59,9 +59,8 @@ Route semantics:
 - **micro**: direct, well-understood maintenance with at most 3 criteria and about 5
   edited files. Examples include a focused documentation refresh, config adjustment,
   rename, or localized fix whose mechanism is already known. No subagents or design
-  phases. Under Claude Code, the micro skill requests the `sonnet` alias through its
-  frontmatter; classification stays on the parent model. The host resolves model aliases,
-  so availability and deployment-level remapping still apply.
+  phases. The micro skill inherits the session model in Claude Code and OpenCode;
+  classification stays on that same parent model.
 - **debug**: a bounded bug or unexplained behavior that needs reproduction, hypotheses,
   and a sibling sweep. This is the middle route: more rigor than micro without a
   feature SPEC/PLAN DAG.

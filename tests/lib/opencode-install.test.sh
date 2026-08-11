@@ -85,7 +85,7 @@ check "implementer explicitly allows edit" "1" "$(grep -c '^  edit: allow$' "$CF
 check "read-only primary agent generated" "yes" "$([[ -f "$CFG/agents/loop-spec-readonly.md" ]] && echo yes || echo no)"
 check "read-only agent denies bash" "1" "$(grep -c '^  bash: deny$' "$CFG/agents/loop-spec-readonly.md" || true)"
 # CC-only frontmatter must not leak into the opencode dialect.
-check "no CC model alias leaks" "0" "$(grep -c '^model: sonnet\|^model: opus' "$CFG/agents/"loop-spec-*.md | awk -F: '{s+=$NF} END {print s}')"
+check "default OpenCode agents inherit without a model field" "0" "$(grep -c '^model:' "$CFG/agents/"loop-spec-*.md | awk -F: '{s+=$NF} END {print s}')"
 check "no CC effort key leaks" "0" "$(grep -c '^effort:' "$CFG/agents/"loop-spec-*.md | awk -F: '{s+=$NF} END {print s}')"
 
 # --- idempotent re-install ---

@@ -7,7 +7,7 @@ tools:
   - Edit
   - Grep
   - Glob
-model: sonnet
+model: inherit
 color: cyan
 ---
 

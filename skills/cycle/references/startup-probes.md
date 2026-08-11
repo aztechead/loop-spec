@@ -4,36 +4,34 @@ Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. App
 
 ### Step 3.5 - Model probe
 
-Resolve the complete alias set from the same executable source used at phase
-entry. This includes canonical defaults plus every per-role and per-phase
-override, so a configured `haiku` or `fable` route cannot bypass the health
-check:
+Resolve the complete selector set from the same executable source used at phase
+entry. This includes the portable `inherit` default plus every explicit
+per-role and per-phase override:
 
 ```bash
 required_models="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" all-models)" || {
-  echo "loop-spec: model routing is misconfigured; startup cannot resolve the alias set." >&2
+  echo "loop-spec: model routing is misconfigured; startup cannot resolve the selector set." >&2
   exit 2
 }
 ```
 
 The exit status is load-bearing. `all-models` prints nothing and exits non-zero when
 any `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>` value is not a harness
-alias. Relay that configuration error verbatim and stop; never continue with a partial
-alias set, because the phase-entry `activate` call would fail later anyway — after the
-health check already reported green.
+supported selector. Relay that configuration error verbatim and stop; never continue
+with a partial set, because phase-entry activation would fail later anyway.
 
 **pi harness: skip this probe entirely** (`harness != "claude"` in the preflight
 blob). The probe pre-flights `Agent` dispatches and pi has no `Agent` tool; model
 failures surface loudly on the first loop-fleet dispatch instead. Do not write
 `modelsProbedAt`. See `skills/shared/pi-harness.md`. The same skip applies under
-opencode: the aliases are Claude Code-only (per-role models live in the generated
-agent files there), so failures surface on the first task or loop-fleet dispatch.
+OpenCode: per-role models live in the generated agent files there, so failures surface
+on the first task or loop-fleet dispatch.
 See `skills/shared/opencode-harness.md`.
 
 **Probe cache (speed):** the probe result is cached in `.loop-spec/runtime.json`
-(`modelsProbedAt`, ISO-8601, and `modelsProbed`, the sorted alias array). Skip the
+(`modelsProbedAt`, ISO-8601, and `modelsProbed`, the sorted selector array). Skip the
 probe entirely—zero Agent dispatches—when the explicit kill switch is set, or
-when both the age and exact alias set match:
+when both the age and exact selector set match:
 
 ```bash
 skip_probe=false
@@ -51,17 +49,17 @@ cache trades nothing for the saved startup latency. On probe success, write
 `modelsProbedAt` and `modelsProbed = required_models` into `runtime.json` (merged
 with the workflow probe below).
 
-When not skipped, read the aliases from `required_models` and dispatch one probe
+When not skipped, read the selectors from `required_models` and dispatch one probe
 Agent per value (parallel, single tool message). Every call must pass that value
 in its actual `model:` field:
 
 ```
 Parallel:
-  for model_alias in required_models:
+  for model_selector in required_models:
     Agent({
-      description: "Model probe: {model_alias}",
+      description: "Model probe: {model_selector}",
       subagent_type: "loop-spec:spec-writer",
-      model: model_alias,
+      model: model_selector,
       prompt: "Reply with the single word: ok"
     })
 ```
