@@ -13,6 +13,10 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from paths import repo_path  # noqa: E402
 
 graph_path, feature_dir, dry_run, resume, step_mode, repo_root, script_dir = sys.argv[1:8]
 dry_run = dry_run == "1"
@@ -79,7 +83,7 @@ def run_condition(cond, node_id):
     probe = cond.get("probe", "") or ""
     expects = cond.get("expects", "") or ""
     args = cond.get("args") or []
-    path = probe if os.path.isabs(probe) else os.path.join(repo_root, probe)
+    path = repo_path(probe, repo_root)
     result = {"probe": probe, "args": args, "expects": expects,
               "resolved": False, "satisfied": False, "token": None, "reason": None}
     if not os.path.isfile(path) or not os.access(path, os.X_OK):
@@ -328,7 +332,7 @@ def dispatch_body(node_id, node, kind):
     body = node.get("body") or ""
     if not body.endswith(".sh"):
         return None
-    body_path = body if os.path.isabs(body) else os.path.join(repo_root, body)
+    body_path = repo_path(body, repo_root)
     if not os.path.isfile(body_path):
         return None
     if _is_cycle_result_body(body_path):
@@ -346,7 +350,7 @@ def dispatch_subgraph(node):
     nested = node.get("graph")
     if not nested:
         return 0
-    nested_path = nested if os.path.isabs(nested) else os.path.join(repo_root, nested)
+    nested_path = repo_path(nested, repo_root)
     cmd = ["bash", os.path.join(script_dir, "run.sh"), "--feature-dir", feature_dir, nested_path]
     if dry_run:
         cmd.insert(2, "--dry-run")
@@ -451,7 +455,7 @@ def process_node(current, admitting, defer_agent_routing):
             print("run.sh: function %s body failed (exit %d); %s" % (current, dispatch_rc, conflict_line), file=sys.stderr)
 
     if kind == "function" and dispatch_rc is None and body and _is_cycle_result_body(
-            body if os.path.isabs(body) else os.path.join(repo_root, body)) and not dry_run:
+            repo_path(body, repo_root)) and not dry_run:
         publish_result("completed", "completed at %s" % current)
 
     emit_trace(current, admitting, None, effort_reason, effort)

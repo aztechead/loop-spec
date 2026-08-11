@@ -770,6 +770,29 @@ check "unaffordable judge exit 1"   "$?" "1"
 check "unaffordable judge halts on budget" "$(reason .loop/judgebroke/result.json)" "budget_exhausted"
 check "verifier verdict still recorded"    "$(python3 -c "import json;print(json.load(open('.loop/judgebroke/result.json'))['verifier']['passed'])")" "True"
 
+# model_args is the ONE definition of "is this selector explicit?" for every
+# backend. `inherit` must produce no flag anywhere -- forwarding it as --model
+# hands the CLI a model no catalog contains.
+MODEL_ARGS=$(PYTHONPATH="$SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, '$SCRIPTS')
+from loop import model_args
+oc = lambda m: '/' in m
+print('|'.join([
+  repr(model_args('inherit')),
+  repr(model_args('')),
+  repr(model_args('sonnet')),
+  repr(model_args('inherit', consumable=oc)),
+  repr(model_args('sonnet', consumable=oc)),
+  repr(model_args('anthropic/claude-sonnet-4-5', consumable=oc)),
+]))
+")
+check "model_args: inherit emits no flag"            "$(cut -d'|' -f1 <<<"$MODEL_ARGS")" "[]"
+check "model_args: empty emits no flag"              "$(cut -d'|' -f2 <<<"$MODEL_ARGS")" "[]"
+check "model_args: explicit alias is forwarded"      "$(cut -d'|' -f3 <<<"$MODEL_ARGS")" "['--model', 'sonnet']"
+check "model_args: inherit ignores backend filter"   "$(cut -d'|' -f4 <<<"$MODEL_ARGS")" "[]"
+check "model_args: opencode drops a Claude alias"    "$(cut -d'|' -f5 <<<"$MODEL_ARGS")" "[]"
+check "model_args: opencode forwards provider/model" "$(cut -d'|' -f6 <<<"$MODEL_ARGS")" "['--model', 'anthropic/claude-sonnet-4-5']"
+
 echo
 echo "================= $PASS passed, $FAIL failed ================="
 exit $([[ $FAIL -eq 0 ]] && echo 0 || echo 1)

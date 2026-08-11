@@ -18,11 +18,14 @@ non-fleet roles inline on the session model.
 ## Explicit routes
 
 `LOOP_SPEC_PHASE_MODEL_<PHASE>` and `LOOP_SPEC_MODEL_<ROLE>` are operator-owned
-selectors stored in feature state. Role routes outrank phase routes; concrete
-task routes outrank both. Claude role routes accept `inherit` or a supported
-Agent alias. A Claude phase route may also carry a full CLI model ID when a
-fresh main-context launcher consumes it; role Agents then inherit that main
-model.
+selectors stored in feature state. Their precedence is stated once, in
+`skills/shared/model-matrix.md`, and implemented once, in `lib/feature-init.sh`
+— this file deliberately does not restate the order, so the two cannot disagree.
+
+Which VALUES each route accepts is the part that differs by consuming surface.
+Claude role routes accept `inherit` or a supported Agent alias. A Claude phase
+route may also carry a full CLI model ID when a fresh main-context launcher
+consumes it; role Agents then inherit that main model.
 
 Pi and OpenCode ignore these selectors for inline or native task dispatch. An
 implementer loop-fleet subprocess may consume an explicit native value: a pi

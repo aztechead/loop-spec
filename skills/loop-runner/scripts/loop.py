@@ -65,6 +65,27 @@ MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower 
 CLAUDE_PERMISSION_MODES = ("default", "acceptEdits", "auto", "bypassPermissions",
                            "manual", "dontAsk", "plan")
 
+# The portable selector. `feature.models.<role>` carries it when no operator route
+# applies, and every backend must translate it to "pass no --model at all" rather
+# than forwarding a model no catalog contains.
+INHERIT = "inherit"
+
+
+def model_args(model, consumable=None):
+    """`--model` argv for an explicit selector, or [] to inherit.
+
+    `consumable` is the backend's own acceptance test for a value that survived
+    the inherit check — opencode, for one, must not forward a Claude alias. It is
+    a per-backend rule layered on ONE definition of inheritance, so a new backend
+    cannot accidentally re-answer "is this inherit?" a fourth way.
+    """
+    if not model or model == INHERIT:
+        return []
+    if consumable is not None and not consumable(model):
+        return []
+    return ["--model", model]
+
+
 PROGRESS_BANNER = (
     "# Loop progress notes\n\n"
     "Maintained by the agent across iterations. Each iteration: append what you "
@@ -391,8 +412,7 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         cmd += ["--allowedTools", cfg.allowed_tools]
     if resume:
         cmd += ["--resume", resume]
-    if cfg.model and cfg.model != "inherit":
-        cmd += ["--model", cfg.model]
+    cmd += model_args(cfg.model)
     if cfg.effort:
         cmd += ["--effort", cfg.effort]
     if cfg.fallback_model:
@@ -464,8 +484,7 @@ def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     elif cfg.mode != "continue":
         # fresh mode never resumes; keep the fleet from littering session files
         cmd += ["--no-session"]
-    if cfg.model and cfg.model != "inherit":
-        cmd += ["--model", cfg.model]
+    cmd += model_args(cfg.model)
     if mode == "plan":
         cmd += ["--no-builtin-tools"]
     cmd += list(cfg.extra_args)
@@ -585,8 +604,7 @@ def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         cmd += ["--session", str(resume)]
     # OpenCode IDs are provider/model. Claude aliases from feature.models are
     # invalid here; omit them to inherit the configured session/default model.
-    if cfg.model and "/" in cfg.model:
-        cmd += ["--model", cfg.model]
+    cmd += model_args(cfg.model, consumable=lambda m: "/" in m)
     if mode == "plan":
         cmd += ["--agent", "loop-spec-readonly"]
     cmd += list(cfg.extra_args)

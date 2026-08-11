@@ -11,8 +11,16 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from paths import repo_path  # noqa: E402
 
 graph_path, schema_path, repo_root, skeleton_keys_json = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+# Strict adds the rules a PUBLISHED graph must meet on top of the rules every
+# graph must meet. A synthetic graph exercising routing or ceilings has no reader
+# to serve and stays valid without them; a graph people review does not.
+strict = len(sys.argv) > 5 and sys.argv[5] == "1"
 flags = []
 
 def flag(pointer, message):
@@ -115,7 +123,7 @@ def check_condition(cond, ptr, label):
         if not isinstance(probe, str):
             flag(ptr + "/probe", "probe must be a string")
         else:
-            path = probe if os.path.isabs(probe) else os.path.join(repo_root, probe)
+            path = repo_path(probe, repo_root)
             if not os.path.isfile(path):
                 flag(ptr + "/probe", "probe path does not exist: %s" % probe)
             elif not os.access(path, os.X_OK):
@@ -159,6 +167,13 @@ for i, node in enumerate(nodes):
     kind = node.get("kind")
     if kind not in node_kinds:
         flag(ptr + "/kind", "unknown node kind %r" % kind)
+    label = node.get("label")
+    if label is not None and (not isinstance(label, str) or not label.strip()):
+        flag(ptr + "/label", "label must be a non-empty string when present")
+    elif strict and label is None:
+        # The engine falls back to the node id, so a missing label never crashes
+        # -- it silently publishes an identifier where a reader expects a name.
+        flag(ptr + "/label", "published graph node %r has no human-facing label" % nid)
     for field in ("reads", "writes"):
         vals = node.get(field)
         if not isinstance(vals, list):
@@ -179,7 +194,7 @@ for i, node in enumerate(nodes):
             flag(ptr + "/skippable", "skippable gate must name a licensing probe")
         else:
             probe = skippable["probe"]
-            path = probe if os.path.isabs(probe) else os.path.join(repo_root, probe)
+            path = repo_path(probe, repo_root)
             if not (os.path.isfile(path) and os.access(path, os.X_OK)):
                 flag(ptr + "/skippable/probe", "licensing probe not executable: %s" % probe)
     if node.get("authorizesDelivery") is True and effort == "system1":
@@ -198,7 +213,7 @@ for i, node in enumerate(nodes):
     # otherwise a renamed/deleted skill or lib script validates clean.
     body = node.get("body")
     if isinstance(body, str) and "/" in body:
-        bpath = body if os.path.isabs(body) else os.path.join(repo_root, body)
+        bpath = repo_path(body, repo_root)
         if not os.path.isfile(bpath):
             flag(ptr + "/body", "body path does not exist in the tree: %s" % body)
 

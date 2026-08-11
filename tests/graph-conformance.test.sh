@@ -40,12 +40,13 @@ fi
 
 check "graph entry is spec" "spec" "$(jq -r '.entry' "$GRAPH")"
 
-# Shipped graphs are review surfaces, not just engine input. Every production
-# node therefore carries a short label; synthetic extension graphs may fall
-# back to their id for backward compatibility.
+# Shipped graphs are review surfaces, not just engine input. `validate.sh --strict`
+# owns that rule so an extension author can hold their own graph to it; synthetic
+# graphs still validate without labels and fall back to their id.
 for published_graph in "$ROOT/graph/cycle.graph.json" "$ROOT/graph/critique.graph.json"; do
-  missing_labels="$(jq '[.nodes[] | select((.label // "") | length == 0)] | length' "$published_graph")"
-  check "$(basename "$published_graph") gives every node a human-facing label" "0" "$missing_labels"
+  strict_rc=0
+  bash "$ROOT/lib/graph/validate.sh" --strict "$published_graph" >/dev/null 2>&1 || strict_rc=$?
+  check "$(basename "$published_graph") passes strict validation (every node labelled)" "0" "$strict_rc"
 done
 
 # Phase agent nodes present

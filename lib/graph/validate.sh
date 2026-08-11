@@ -2,7 +2,7 @@
 # Validate a loop-spec workflow graph against schema vocabulary + referential rules.
 #
 # Usage:
-#   graph/validate.sh <graph.json>
+#   graph/validate.sh [--strict] <graph.json>
 #
 # Output: one `FLAG <file>:<pointer>: <message>` per defect, then
 #   graph-validate: ok
@@ -24,6 +24,10 @@
 #   - a node body that looks like a path (contains '/') must exist in the tree
 #   - every read/write key must be in the state-key space feature-init.sh actually
 #     produces, derived at validate time rather than a third hardcoded copy
+#
+# --strict adds the rules a PUBLISHED graph must also meet (currently: every node
+# carries a human-facing `label`). The shipped graphs under graph/ are checked with
+# it by tests/graph-conformance.test.sh; extension authors can opt in the same way.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,8 +35,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SCHEMA="$REPO_ROOT/graph/schema.json"
 FEATURE_INIT="$REPO_ROOT/lib/feature-init.sh"
 
+STRICT=0
+if [[ "${1:-}" == "--strict" ]]; then
+  STRICT=1
+  shift
+fi
+
 if [[ $# -ne 1 ]]; then
-  echo "usage: validate.sh <graph.json>" >&2
+  echo "usage: validate.sh [--strict] <graph.json>" >&2
   exit 2
 fi
 
@@ -71,4 +81,4 @@ SKELETON_KEYS_JSON="$(printf '%s' "$SKELETON_JSON" | jq -c 'keys' 2>/dev/null)" 
 }
 
 exec python3 "$SCRIPT_DIR/validate.py" \
-  "$GRAPH_ABS" "$SCHEMA" "$REPO_ROOT" "$SKELETON_KEYS_JSON"
+  "$GRAPH_ABS" "$SCHEMA" "$REPO_ROOT" "$SKELETON_KEYS_JSON" "$STRICT"
