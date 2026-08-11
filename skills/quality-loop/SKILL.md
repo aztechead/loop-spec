@@ -167,7 +167,6 @@ Dispatch `loop-spec:code-reviewer` and `loop-spec:security-reviewer` in parallel
 Agent({
   description: "Quality-loop code review",
   subagent_type: "loop-spec:code-reviewer",
-  model: "inherit",
   prompt: """
 You are performing a one-shot code quality review.
 
@@ -200,7 +199,6 @@ Return [] if no issues found. Return only the JSON array -- no surrounding text.
 Agent({
   description: "Quality-loop security review",
   subagent_type: "loop-spec:security-reviewer",
-  model: "inherit",
   prompt: """
 You are performing a one-shot adversarial security review.
 

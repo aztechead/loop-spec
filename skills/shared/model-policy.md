@@ -10,8 +10,9 @@ Every phase, role agent, and standalone skill can run on the model that launched
 the session. Claude Code and OpenCode both define inheritance for subagents, so
 loop-spec requires no named model family and no fixed provider catalog.
 
-Claude dispatches pass `model: inherit` explicitly. OpenCode task calls omit a
-model and let the generated subagent inherit its primary agent. Pi performs
+Claude dispatches OMIT the Agent `model` key when the role inherits; that tool
+parameter is an alias enum and rejects the literal `inherit`. OpenCode task calls
+omit a model and let the generated subagent inherit its primary agent. Pi performs
 non-fleet roles inline on the session model.
 
 ## Explicit routes

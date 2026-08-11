@@ -43,6 +43,17 @@ check "invalid value: unstructured selector exits non-zero" \
   "$([[ "$invalid_exit" -ne 0 ]] && echo 1 || echo 0)"
 check "invalid value: stderr mentions the var name" \
   "$([[ "$stderr_out" == *"LOOP_SPEC_MODEL_ADVOCATE"* ]] && echo 1 || echo 0)"
+# A dangling separator is a truncated paste, not a model ID. It must fail at
+# validation, not at the dispatch that eventually consumes it.
+for truncated in "sonnet-" "opus:" "anthropic/"; do
+  trunc_exit=0
+  LOOP_SPEC_MODEL_ADVOCATE="$truncated" bash "$LIB" models >/dev/null 2>/dev/null || trunc_exit=$?
+  check "invalid value: '$truncated' (dangling separator) is rejected" \
+    "$([[ "$trunc_exit" -ne 0 ]] && echo 1 || echo 0)"
+done
+check "full ID with a provider prefix is still accepted" \
+  "$(LOOP_SPEC_MODEL_ADVOCATE=anthropic/claude-sonnet-4-5 bash "$LIB" models \
+    | jq -e '.advocate == "anthropic/claude-sonnet-4-5"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- Test 5: Empty value falls back to canonical default ---
 empty_out="$(LOOP_SPEC_MODEL_PLANNER="" bash "$LIB" models)"

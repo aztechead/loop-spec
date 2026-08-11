@@ -6,12 +6,15 @@ cycle (that is exactly how pinned model IDs broke every implicit-team spawn; v2.
 This file is the recorded contract; `tests/lib/harness-call-shapes.test.sh` lints the
 skill corpus against it.
 
-**Verification method:** schemas re-checked against the public Claude Code subagent
-reference on 2026-08-10. Named spawn, shared-TaskList,
-and peer SendMessage behavior was previously live-verified in both teams-off and
-teams-enabled sessions on CC 2.1.187. Re-verify after harness upgrades with the
-authoritative SDK types and `ToolSearch("select:<Tool>")` in a live session, then diff
-against this file.
+**Verification method:** the Agent `model` enum was re-verified LIVE on 2026-08-11 by
+issuing `Agent({model: "inherit", ...})`, which returns
+`InputValidationError: Invalid option: expected one of "sonnet"|"opus"|"haiku"|"fable"`.
+The public subagent reference documents `inherit` for an agent DEFINITION's frontmatter;
+that is a different surface from this tool parameter, and reading the prose instead of
+the schema is what this file exists to prevent. Named spawn, shared-TaskList, and peer
+SendMessage behavior was previously live-verified in both teams-off and teams-enabled
+sessions on CC 2.1.187. Re-verify after harness upgrades with the authoritative SDK types
+and `ToolSearch("select:<Tool>")` in a live session, then diff against this file.
 
 ## Agent
 
@@ -20,7 +23,7 @@ Agent({
   description: "<3-5 word task label>",   // REQUIRED
   prompt: "<the task>",                    // REQUIRED
   subagent_type: "loop-spec:<role>",       // optional; omit = general-purpose
-  model: "inherit" | "<alias>" | "<full model ID>", // optional; omitted means inherit
+  model: "sonnet" | "opus" | "haiku" | "fable",  // optional; ALIAS ENUM — "inherit" and literal IDs REJECTED
   name: "<teammate-name>",                 // optional; named = persistent, SendMessage-addressable
   run_in_background: true | false,          // optional; see portability rule below
   mode: "acceptEdits" | ... | "plan",      // deprecated and ignored since CC 2.1.212
@@ -29,8 +32,12 @@ Agent({
 ```
 
 - `description` and `prompt` are required. Every skill example must carry both.
-- `model` accepts `inherit`, a supported alias, or a full model ID accepted by
-  the Claude CLI. Omitted also inherits (see `model-matrix.md`).
+- `model` is an ALIAS ENUM on this tool: `sonnet`, `opus`, `haiku`, `fable`. The literal
+  string `inherit` and full model IDs are both rejected here, even though the CLI's
+  `--model` flag and an agent definition's frontmatter accept them. **Inheritance is
+  expressed by OMITTING the field** — an omitted `model` uses the agent definition's
+  model, or the parent session's. A resolved selector of `inherit` therefore means
+  "emit no `model` key", never `model: "inherit"` (see `model-matrix.md`).
 - `run_in_background` is part of the current public schema, but loop-spec never emits it
   because older supported harness generations omitted it and modern subagents are
   backgrounded by default (CC 2.1.198). Parallel fan-out means issuing multiple Agent

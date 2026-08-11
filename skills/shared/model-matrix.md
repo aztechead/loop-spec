@@ -49,6 +49,14 @@ For Claude Code, an explicit selector may be `inherit`, a host alias such as
 A selector is explicit operator policy; loop-spec does not maintain a model-ID
 catalog or silently translate one family into another.
 
+The consuming surfaces differ and a selector valid for one is not valid for all:
+
+| Surface | Accepts |
+|---|---|
+| `Agent({model:})` tool parameter | the four aliases only; `inherit` and full IDs are rejected — omit the key to inherit |
+| agent definition frontmatter (`agents/*.md`) | an alias or `inherit` |
+| `claude --model` / SDK `model` option | an alias or a full model ID; never the literal `inherit` |
+
 Supported phase suffixes are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`,
 `ITERATE`, and `DELIVER`. Supported role suffixes are `SPEC_WRITER`,
 `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`,
@@ -73,10 +81,14 @@ specific model must carry an explicit operator-approved `model` value.
 
 ## Dispatch rule
 
-Claude phase skills read `feature.models.<role>` and pass it on each Agent
-spawn. Use `inherit` rather than omitting the field so telemetry and the durable
-feature state show the effective policy. Under OpenCode, apply the native task
-mapping and omit the per-call model; under pi, perform the role inline.
+Claude phase skills read `feature.models.<role>` and pass it on each Agent spawn
+**only when it is one of the four aliases**. When it resolves to `inherit` — the
+default — OMIT the `model` key entirely: the Agent tool's `model` is an alias
+enum and rejects the literal string `inherit` with `InputValidationError`
+(`skills/shared/harness-call-contracts.md` records the live probe). The durable
+policy still shows in `feature.models.<role>`; the dispatch does not restate it.
+Under OpenCode, apply the native task mapping and omit the per-call model; under
+pi, perform the role inline.
 
 Standalone skills and agents also default to `inherit`. A user's chosen session
 model is a complete supported configuration, not a degraded mode.

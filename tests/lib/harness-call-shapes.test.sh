@@ -48,19 +48,15 @@ for f in $CORPUS; do
 done
 check "Agent calls carry required description:" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
-# 3b) loop-spec never permits a concrete Agent launch to inherit frontmatter/session
-# model accidentally. Every call template with a prompt must carry model: too.
-bad=""
-for f in $CORPUS; do
-  while IFS=: read -r ln _; do
-    [[ -z "$ln" ]] && continue
-    window=$(sed -n "${ln},$((ln+12))p" "$f")
-    if echo "$window" | grep -q 'prompt'; then
-      echo "$window" | grep -q 'model' || bad="$bad $f:$ln"
-    fi
-  done < <(grep -n 'Agent({' "$f" 2>/dev/null)
-done
-check "Agent calls carry explicit model routing" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+# 3b) The Agent tool's `model` is an alias enum: `Agent({model: "inherit"})` fails with
+# InputValidationError (live-probed 2026-08-11). Inheritance is expressed by OMITTING the
+# key, so a template that spells the placeholder out is a broken call, not a portable one.
+bad=$(grep -rn 'model: *"inherit"' skills agents --include='*.md' 2>/dev/null \
+  | grep -v 'harness-call-contracts' | head -5 || true)
+check "no literal model: \"inherit\" in Agent call templates" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+grep -qF 'ALIAS ENUM — "inherit" and literal IDs REJECTED' \
+  skills/shared/harness-call-contracts.md && v=1 || v=0
+check "contract doc records the Agent model alias enum" "$v"
 
 # 4) TaskList takes no status/filter arguments.
 bad=$(grep -rn 'TaskList({status' skills agents --include='*.md' 2>/dev/null | grep -v 'harness-call-contracts' | head -5 || true)

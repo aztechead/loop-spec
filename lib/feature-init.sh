@@ -48,7 +48,10 @@ INHERIT="inherit"
 #
 # Empty is accepted by callers as "not configured". Known aliases, `inherit`, and
 # full IDs are accepted. A full ID must contain a separator (`-`, `/`, or `:`),
-# which keeps a typo such as `bogus` from becoming a plausible route.
+# which keeps a typo such as `bogus` from becoming a plausible route, and must
+# START and END alphanumeric -- a dangling separator (`sonnet-`, `opus:`) is a
+# truncated paste, not an ID, and must fail here rather than at the dispatch that
+# consumes it.
 validate_model_selector() {
   local var="$1"
   local val="$2"
@@ -57,7 +60,7 @@ validate_model_selector() {
       return 0
       ;;
     *)
-      if [[ "$val" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*[-/:][A-Za-z0-9._:/-]*$ ]]; then
+      if [[ "$val" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*[A-Za-z0-9]$ && "$val" == *[-/:]* ]]; then
         return 0
       fi
       echo "feature-init: ${var}='${val}' is not a valid model selector." \

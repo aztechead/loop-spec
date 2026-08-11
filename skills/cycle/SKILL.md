@@ -637,7 +637,11 @@ across the phase boundary.
 
 ### Step 5.9 - Activate the current phase's model routing
 
-Every phase skill reads `model: feature.models.<role>` literally. Immediately
+Every phase skill reads `model: feature.models.<role>` literally, with one
+substitution rule that holds everywhere: when the resolved value is `inherit`,
+**emit no `model` key at all**. The Agent tool's `model` is an alias enum and
+rejects the literal string `inherit` with `InputValidationError` — inheritance is
+expressed by omission (`skills/shared/harness-call-contracts.md`). Immediately
 before a phase launch, `feature-init.sh activate` resolves and persists the exact
 map those Agent calls consume:
 
