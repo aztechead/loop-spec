@@ -58,6 +58,24 @@ grep -qF 'ALIAS ENUM — "inherit" and literal IDs REJECTED' \
   skills/shared/harness-call-contracts.md && v=1 || v=0
 check "contract doc records the Agent model alias enum" "$v"
 
+# Dynamic placeholders are just as dangerous as a quoted literal: when the
+# default resolves to inherit, `model: feature.models.role` emits the rejected
+# value. The startup probe is the one exception because it first filters its
+# loop input to the four aliases below.
+bad=$(grep -rnE 'model: *(feature\.models\.|models\.|model_mapper|mapper_model)' \
+  skills agents --include='*.md' 2>/dev/null | head -5 || true)
+check "Agent templates do not emit dynamic model placeholders" \
+  "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
+PROBES=skills/cycle/references/startup-probes.md
+grep -qF '[[ "$agent_probe_models" == "[]" ]] && skip_probe=true' "$PROBES" \
+  && v=1 || v=0
+check "inherit-only startup skips every Agent model probe" "$v"
+grep -qF 'for model_selector in agent_probe_models:' "$PROBES" \
+  && grep -qF 'feature-init.sh" agent-probe-models' "$PROBES" \
+  && v=1 || v=0
+check "startup model probes iterate only over Agent aliases" "$v"
+
 # 4) TaskList takes no status/filter arguments.
 bad=$(grep -rn 'TaskList({status' skills agents --include='*.md' 2>/dev/null | grep -v 'harness-call-contracts' | head -5 || true)
 check "no TaskList({status: ...}) filter args" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"

@@ -131,6 +131,10 @@ Skip this step entirely (the planner produces PATTERNS.md at PLAN time, as befor
 
 Otherwise fire ONE background `Agent` call and do NOT wait for it (same one-shot background dispatch pattern as cycle Step 5.5b; background subagents do not inherit the worktree cwd, so resolve `WT_ROOT="$(git rev-parse --show-toplevel)"` and pass absolute paths):
 
+Build the call without a `model` key. If `feature.models.patternMapper` is one of
+the four Agent aliases, add that key with the alias; when it is `inherit`, leave
+the key absent.
+
 When `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` is set, do not background this optional
 prefetch across the critique dispatch. Run and await it now within the cap, or skip
 the prefetch and let PLAN produce PATTERNS.md at its normal Step 0.
@@ -138,7 +142,6 @@ the prefetch and let PLAN produce PATTERNS.md at its normal Step 0.
 ```
 Agent({
   subagent_type: "loop-spec:pattern-mapper",
-  model: feature.models.patternMapper,
   description: "Prefetch PATTERNS.md: {slug}",
   prompt: """
     slug: {slug}
@@ -170,14 +173,18 @@ Create the team with three teammates:
 TeamCreate({
   name: "loop-spec-discuss-{slug}",
   teammates: [
-    { name: "spec-writer-1", subagent_type: "loop-spec:spec-writer", model: feature.models.specWriter },
-    { name: "advocate-1",    subagent_type: "loop-spec:advocate",    model: feature.models.advocate },
-    { name: "challenger-1",  subagent_type: "loop-spec:challenger",  model: feature.models.challenger }
+    { name: "spec-writer-1", subagent_type: "loop-spec:spec-writer" },
+    { name: "advocate-1",    subagent_type: "loop-spec:advocate" },
+    { name: "challenger-1",  subagent_type: "loop-spec:challenger" }
   ]
 })
 ```
 
-Each teammate object MUST include `subagent_type` (binds the teammate to its role definition in `agents/*.md`) and `model` (read literally from `feature.models.<role>`; see `skills/shared/model-matrix.md`). Spawning by name alone -- e.g., `teammates: ["spec-writer-1", ...]` -- leaves the harness with no role binding and is incorrect.
+Each teammate object MUST include `subagent_type` (binds the teammate to its role
+definition in `agents/*.md`). Add `model` only when the matching
+`feature.models.<role>` value is an Agent alias; omit it for `inherit`. Spawning
+by name alone -- e.g., `teammates: ["spec-writer-1", ...]` -- leaves the harness
+with no role binding and is incorrect.
 
 Update `feature.json` via `lib/feature-write.sh`:
 - `currentTeamName = "loop-spec-discuss-{slug}"`

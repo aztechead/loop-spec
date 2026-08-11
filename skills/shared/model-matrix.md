@@ -29,9 +29,10 @@ harnesses, regardless of which models either account exposes.
 | mapper-*, pattern-mapper | inherit |
 
 `lib/feature-init.sh activate` writes this map to
-`feature.models.<role>` before each phase. Claude dispatches pass the value
-explicitly. OpenCode maps the same logical dispatch to its generated agent and
-omits a per-call model, as required by `skills/shared/opencode-harness.md`.
+`feature.models.<role>` before each phase. Claude dispatches add a `model` key
+only for an Agent-compatible alias and omit it for `inherit`. OpenCode maps the
+same logical dispatch to its generated agent and omits a per-call model, as
+required by `skills/shared/opencode-harness.md`.
 Pi performs inline dispatch and inherits its session model as described in
 `skills/shared/pi-harness.md`.
 
@@ -44,10 +45,13 @@ Precedence stays:
 3. `LOOP_SPEC_PHASE_MODEL_<PHASE>`;
 4. `inherit`.
 
-For Claude Code, an explicit selector may be `inherit`, a host alias such as
-`sonnet`, `opus`, `haiku`, or `fable`, or a full model ID accepted by the CLI.
-A selector is explicit operator policy; loop-spec does not maintain a model-ID
-catalog or silently translate one family into another.
+For Claude Code, a role override may be `inherit` or a host alias such as
+`sonnet`, `opus`, `haiku`, or `fable`. A full model ID is valid only as a phase
+override consumed by a fresh CLI/SDK main-context launcher; its role agents omit
+the model key and inherit that main model. `feature-init.sh` rejects a full ID in
+a Claude role override because Agent cannot consume it. A selector is explicit
+operator policy; loop-spec does not maintain a model-ID catalog or silently
+translate one family into another.
 
 The consuming surfaces differ and a selector valid for one is not valid for all:
 
@@ -68,12 +72,15 @@ configured selector to a Claude CLI or SDK launcher. An unset entry remains
 `null`, which inherits the launcher's model. Continuous mode cannot replace its
 own main model, but role subagents still consume the activated map.
 
-OpenCode routes models through native generated-agent configuration, using
+OpenCode routes native role models through generated-agent configuration, using
 `provider/model` IDs. Configure those with
 `opencode-install.sh install --model` or a project agent override. Unrouted
 agents inherit the primary model. Pi performs inline work on its session model;
-its loop-fleet may receive a pi model ID explicitly. Set a native selector only
-when the selected rung will consume it; neither harness consumes Claude aliases.
+the pi and OpenCode loop-fleet rungs may receive a native implementer ID through
+the `LOOP_SPEC_MODEL_<ROLE>` family with role `IMPLEMENTER`. Other non-Claude role
+overrides reject native IDs
+because no shipped dispatch consumes them. Set a native selector only when the
+selected rung will consume it; neither harness consumes Claude aliases.
 
 Legacy task `modelTier` values remain accepted so old plans resume, but
 `lib/model-tier.sh` resolves every tier to `inherit`. A plan that truly needs a

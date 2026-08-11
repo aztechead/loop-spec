@@ -19,6 +19,8 @@ check() {
 models="$(bash "$LIB" models)"
 check "default: every role inherits" \
   "$(echo "$models" | jq -e '[.[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: inherit-only route needs zero Agent probes" \
+  "$([[ "$(bash "$LIB" agent-probe-models)" == "[]" ]] && echo 1 || echo 0)"
 
 # --- Test 2: Env override applies to the targeted role; others are unchanged ---
 overridden="$(LOOP_SPEC_MODEL_PLANNER=sonnet bash "$LIB" models)"
@@ -26,16 +28,22 @@ check "override: LOOP_SPEC_MODEL_PLANNER=sonnet -> planner == sonnet" \
   "$(echo "$overridden" | jq -e '.planner == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "override: other roles still inherit" \
   "$(echo "$overridden" | jq -e '.iterateJudge == "inherit" and .implementer == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "override: explicit Agent alias is the only probe target" \
+  "$([[ "$(LOOP_SPEC_MODEL_PLANNER=sonnet bash "$LIB" agent-probe-models)" == '["sonnet"]' ]] && echo 1 || echo 0)"
 
 # --- Test 3: fable alias is accepted ---
 fable_out="$(LOOP_SPEC_MODEL_ITERATE_JUDGE=fable bash "$LIB" models)"
 check "fable accepted: LOOP_SPEC_MODEL_ITERATE_JUDGE=fable -> iterateJudge == fable" \
   "$(echo "$fable_out" | jq -e '.iterateJudge == "fable"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
-# --- Test 4: Full IDs work; an unstructured typo still fails ---
-full_id="$(LOOP_SPEC_MODEL_ADVOCATE=claude-opus-4-8 bash "$LIB" models)"
-check "full ID: accepted for an explicit Claude role route" \
-  "$(echo "$full_id" | jq -e '.advocate == "claude-opus-4-8"' >/dev/null 2>&1 && echo 1 || echo 0)"
+# --- Test 4: Role selectors match the surface that consumes them ---
+role_full_exit=0
+role_full_stderr="$(LOOP_SPEC_MODEL_ADVOCATE=claude-opus-4-8 \
+  bash "$LIB" models 2>&1 1>/dev/null)" || role_full_exit=$?
+check "Claude role full ID: rejected before the Agent boundary" \
+  "$([[ "$role_full_exit" -ne 0 ]] && echo 1 || echo 0)"
+check "Claude role full ID: error names the Agent surface" \
+  "$([[ "$role_full_stderr" == *"Claude Agent tool"* ]] && echo 1 || echo 0)"
 stderr_out="$(LOOP_SPEC_MODEL_ADVOCATE=bogus bash "$LIB" models 2>&1 1>/dev/null || true)"
 invalid_exit=0
 LOOP_SPEC_MODEL_ADVOCATE=bogus bash "$LIB" models >/dev/null 2>/dev/null || invalid_exit=$?
@@ -51,9 +59,20 @@ for truncated in "sonnet-" "opus:" "anthropic/"; do
   check "invalid value: '$truncated' (dangling separator) is rejected" \
     "$([[ "$trunc_exit" -ne 0 ]] && echo 1 || echo 0)"
 done
-check "full ID with a provider prefix is still accepted" \
-  "$(LOOP_SPEC_MODEL_ADVOCATE=anthropic/claude-sonnet-4-5 bash "$LIB" models \
-    | jq -e '.advocate == "anthropic/claude-sonnet-4-5"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "OpenCode implementer native ID: accepted for loop-fleet" \
+  "$(LOOP_SPEC_HARNESS=opencode LOOP_SPEC_MODEL_IMPLEMENTER=anthropic/claude-sonnet-4-5 \
+    bash "$LIB" models | jq -e '.implementer == "anthropic/claude-sonnet-4-5"' \
+    >/dev/null 2>&1 && echo 1 || echo 0)"
+oc_role_exit=0
+LOOP_SPEC_HARNESS=opencode LOOP_SPEC_MODEL_ADVOCATE=anthropic/claude-sonnet-4-5 \
+  bash "$LIB" models >/dev/null 2>/dev/null || oc_role_exit=$?
+check "OpenCode non-fleet native role ID: rejected when no dispatch consumes it" \
+  "$([[ "$oc_role_exit" -ne 0 ]] && echo 1 || echo 0)"
+oc_alias_exit=0
+LOOP_SPEC_HARNESS=opencode LOOP_SPEC_MODEL_IMPLEMENTER=sonnet \
+  bash "$LIB" models >/dev/null 2>/dev/null || oc_alias_exit=$?
+check "OpenCode role Claude alias: rejected instead of silently inheriting" \
+  "$([[ "$oc_alias_exit" -ne 0 ]] && echo 1 || echo 0)"
 
 # --- Test 5: Empty value falls back to canonical default ---
 empty_out="$(LOOP_SPEC_MODEL_PLANNER="" bash "$LIB" models)"
@@ -96,8 +115,27 @@ check "health-check set: includes every phase and role selector" \
 
 phase_full_id="$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
   bash "$LIB" models --phase discuss)"
-check "full ID: accepted for an explicit Claude phase route" \
-  "$(echo "$phase_full_id" | jq -e '[.[]] | all(. == "claude-opus-4-8")' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "Claude phase full ID: role Agents inherit the fresh main model" \
+  "$(echo "$phase_full_id" | jq -e '[.[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "Claude phase full ID: launcher still receives the exact selector" \
+  "$([[ "$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
+    bash "$LIB" phase-model discuss)" == "claude-opus-4-8" ]] && echo 1 || echo 0)"
+check "Claude phase full ID: startup selector set retains launcher value" \
+  "$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 bash "$LIB" all-models \
+    | jq -e 'index("claude-opus-4-8") != null and index("inherit") != null' \
+    >/dev/null 2>&1 && echo 1 || echo 0)"
+check "Claude phase full ID: never sent to the Agent probe" \
+  "$([[ "$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
+    bash "$LIB" agent-probe-models)" == "[]" ]] && echo 1 || echo 0)"
+oc_phase_alias_exit=0
+LOOP_SPEC_HARNESS=opencode LOOP_SPEC_PHASE_MODEL_EXECUTE=sonnet \
+  bash "$LIB" models --phase execute >/dev/null 2>/dev/null || oc_phase_alias_exit=$?
+check "OpenCode phase Claude alias: rejected instead of silently inheriting" \
+  "$([[ "$oc_phase_alias_exit" -ne 0 ]] && echo 1 || echo 0)"
+check "OpenCode phase native ID: retained for the fleet consumer" \
+  "$(LOOP_SPEC_HARNESS=opencode LOOP_SPEC_PHASE_MODEL_EXECUTE=anthropic/claude-sonnet \
+    bash "$LIB" models --phase execute \
+    | jq -e '.implementer == "anthropic/claude-sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
 phase_stderr="$(LOOP_SPEC_PHASE_MODEL_DISCUSS=bogus \
   bash "$LIB" models --phase discuss 2>&1 1>/dev/null || true)"
 phase_invalid_exit=0

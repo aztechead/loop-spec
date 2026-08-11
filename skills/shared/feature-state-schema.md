@@ -190,10 +190,10 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `models` is the effective per-role map for the active phase (no preset axis).
   `lib/feature-init.sh activate <feature-dir> <phase>` rewrites it immediately
   before every phase invocation, including continuous transitions and resumes.
-  Every phase skill passes `model: feature.models.<role>` on each spawn rather
-  than re-deriving it, and OMITS the key when that value is `inherit` (the Agent
-  tool's alias enum rejects the literal). Precedence is task override, role env,
-  phase env, canonical role default.
+  Every phase skill reads `feature.models.<role>` rather than re-deriving it.
+  It adds an Agent `model` key only for one of the four aliases and omits the key
+  for `inherit` (the Agent tool rejects that literal). The authoritative
+  precedence is in `skills/shared/model-matrix.md`.
 - `phaseModels` is the persisted seven-phase override map from
   `LOOP_SPEC_PHASE_MODEL_<PHASE>`; null means no override. It lets a fresh Claude
   CLI/Agent SDK phase handoff choose its main model, while `models` guarantees

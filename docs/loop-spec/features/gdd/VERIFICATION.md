@@ -72,6 +72,27 @@ default applied. Mutation-proved by replacing the rule with `final = probe_mode`
 
 155 green suites did not find that. The gate that had never run was the only thing that did.
 
+## 3.1.0 model-portability decision
+
+Model portability means the three harnesses run the same graph, role boundaries,
+quality gates, and result contracts without requiring a named model family. It does
+not claim that every model produces identical prose or reasoning quality. A fixed-model
+quality eval would contradict the release requirement: Claude Code and OpenCode
+accounts expose different catalogs, and either catalog can change independently.
+
+The release gate therefore tests the invariant loop-spec owns:
+
+- all default role routes resolve to `inherit`;
+- Claude Agent calls omit the model key for inheritance and accept only the live
+  alias enum;
+- OpenCode and pi keep native routing at their documented boundaries;
+- every harness retains the same graph topology and blocking gates; and
+- unsupported selectors fail before a dispatch instead of degrading silently.
+
+`bash tests/run-all.sh` now covers those boundaries in 159 passing suites. Operators
+who pin a particular model may add a task-specific quality eval, but such an eval is
+deployment evidence, not a portable runtime prerequisite.
+
 ## Defects fixed in the repo's own tooling
 
 Both were pre-existing, neither was caused by this change, and both are now fixed with

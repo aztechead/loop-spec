@@ -30,9 +30,9 @@ The release’s source-to-contract utilization review is recorded in
 - `LOOP_SPEC_WORKTREES=0` is not advisory. It selects the in-place feature branch,
   forces serial implementation, makes loop-runner imply `--no-worktree`, and blocks
   worktree creation or entry at the tool boundary.
-- Model routing precedence is task-level `model`/`modelTier` where supported,
-  `LOOP_SPEC_MODEL_<ROLE>`, `LOOP_SPEC_PHASE_MODEL_<PHASE>`, then the canonical
-  role default. Phase activation occurs before every phase skill invocation.
+- Model routing precedence is defined once in
+  `skills/shared/model-matrix.md`; `lib/feature-init.sh` implements it. Phase
+  activation occurs before every phase skill invocation.
 
 ## Supported environment variables
 
@@ -170,8 +170,8 @@ variables. They configure that published recipe, not plugin internals:
 
 | Variable | Accepted values / default | Exact effect |
 |---|---|---|
-| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude consumes it for a fresh main context and role agents; pi and OpenCode consume an explicit value only on loop-fleet subprocesses. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. Claude main-context switching requires a fresh process/query (`LOOP_SPEC_PHASE_HANDOFF=1`). OpenCode native task agents use generated-agent routes instead. |
-| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a harness-native model selector; `inherit` | Wins over the phase default. Claude accepts an alias or full model ID. Pi and OpenCode consume an explicit implementer value only on a loop-fleet rung, where it must be a pi model ID or OpenCode `provider/model` ID. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
+| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and role Agents. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. Pi and OpenCode consume an explicit value only on loop-fleet subprocesses. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. OpenCode native task agents use generated-agent routes instead. |
+| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. Pi/OpenCode accept a native ID only for `IMPLEMENTER` on the loop-fleet rung (pi model ID or OpenCode `provider/model`); configure other OpenCode roles through generated agents. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
 | `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
 | `LOOP_SPEC_ANSWER_REPOS` | comma-separated repo names; all | Supplies workspace repo selection. |

@@ -19,21 +19,25 @@ non-fleet roles inline on the session model.
 
 `LOOP_SPEC_PHASE_MODEL_<PHASE>` and `LOOP_SPEC_MODEL_<ROLE>` are operator-owned
 selectors stored in feature state. Role routes outrank phase routes; concrete
-task routes outrank both. Claude accepts `inherit`, a supported alias, or a full
-model ID accepted by the installed CLI.
+task routes outrank both. Claude role routes accept `inherit` or a supported
+Agent alias. A Claude phase route may also carry a full CLI model ID when a
+fresh main-context launcher consumes it; role Agents then inherit that main
+model.
 
-Pi and OpenCode ignore these selectors for inline or native task dispatch. A
-loop-fleet subprocess may consume an explicit native value: a pi model ID or an
-OpenCode `provider/model` ID. OpenCode task agents use generated-agent routes.
+Pi and OpenCode ignore these selectors for inline or native task dispatch. An
+implementer loop-fleet subprocess may consume an explicit native value: a pi
+model ID or an OpenCode `provider/model` ID. Other native role pins fail early;
+OpenCode task agents use generated-agent routes.
 A harness never receives another harness's selector by default.
 
 ## Startup check
 
 Claude startup resolves the exact configured selector set with
-`feature-init.sh all-models` and probes it. `inherit` is the only selector in an
-unconfigured install. Invalid configuration fails before feature work begins;
-the host owns availability and its documented fallback behavior for a blocked
-alias. Pi and OpenCode skip the Claude selector probe.
+`feature-init.sh all-models`. An unconfigured install contains only `inherit`
+and performs zero Agent probes. Explicit Agent aliases are probed; full phase
+IDs are checked by the fresh CLI/SDK launcher that consumes them. Invalid
+configuration fails before feature work begins. Pi and OpenCode skip the Claude
+selector probe.
 
 This policy deliberately separates model choice from GDD effort. `system1` and
 `system2` change how a node approaches the work, not which catalog entry must

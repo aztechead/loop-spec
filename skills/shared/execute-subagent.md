@@ -53,7 +53,8 @@ wave (`min(|ready|, maxParallelImplementers)`).
   repository when it cannot — a sandboxed harness that denies harness-config paths
   (`.claude/commands/**`) inside the repo makes an in-repo checkout impossible — or when
   the operator sets `LOOP_SPEC_WORKTREE_DIR`.
-- `models.implementer`, `models.specComplianceReviewer` — passed as the `Agent` `model`.
+- `models.implementer`, `models.specComplianceReviewer` — read for each Agent
+  call; add `model` only for an alias and omit it for `inherit`.
 - `commands` — `{lint, test, typecheck}` from `feature.json.commands`.
 
 ## In-place single-repository mode
@@ -119,9 +120,13 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    1. a concrete `metadata.model` pin on the task, else
    2. `bash "${CLAUDE_SKILL_DIR}/../../lib/model-tier.sh" model "$(task.metadata.modelTier)"` when the task carries a `modelTier`, else
    3. `models.implementer` (the role default).
+   On this Agent rung, add `model` only when the result is one of the four
+   aliases and omit it for `inherit`. A full/native ID requires the loop-fleet
+   rung; fail loud if it reaches this Agent boundary.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
 5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, dispatch a
-   spec-compliance reviewer `Agent` (`model: models.specComplianceReviewer`) using the
+   spec-compliance reviewer `Agent` using the activated
+   `models.specComplianceReviewer` selector (alias → add `model`; `inherit` → omit) and the
    review prompt below. It returns `{verdict: "pass"|"rework"|"block", findings[]}`.
    - `pass`: the task is ready to merge.
    - `rework` and attempts remaining (`attempt + 1 < maxRetriesPerTask`): re-dispatch the
@@ -174,8 +179,9 @@ Dispatch every implementer and reviewer with the **default** agent (do NOT pass
 self-contained -- they carry the worktree, implement, verify, commit, and review
 instructions in full. Do NOT pass `subagent_type: "loop-spec:implementer"`: that agent
 declares `isolation: worktree` in its frontmatter, which would create a second worktree
-on top of the explicit `git worktree add` in the prompt. Pass the role model via the
-`Agent` `model` field (`models.implementer` / `models.specComplianceReviewer`).
+on top of the explicit `git worktree add` in the prompt. Read the role selector
+from `models.implementer` or `models.specComplianceReviewer`; add the Agent
+`model` field only for an alias and omit it for `inherit`.
 
 **Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved selector>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
 

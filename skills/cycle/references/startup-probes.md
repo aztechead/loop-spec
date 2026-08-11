@@ -20,6 +20,24 @@ any `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>` value is not a h
 supported selector. Relay that configuration error verbatim and stop; never continue
 with a partial set, because phase-entry activation would fail later anyway.
 
+The Agent tool can probe only its four aliases. Ask the same executable authority
+for that subset; never send `inherit` or a full ID to `Agent({model:})`:
+
+```bash
+agent_probe_models="$(
+  bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" agent-probe-models
+)" || {
+  echo "loop-spec: model routing is misconfigured; startup cannot resolve Agent probe aliases." >&2
+  exit 2
+}
+```
+
+`inherit` needs no availability probe: omission is the supported operation and
+the first real role dispatch uses the same operation. A full ID is valid only for
+a fresh Claude CLI/SDK phase launcher and is checked by that launcher; role-level
+full IDs fail in `feature-init.sh` before this step because Agent cannot consume
+them.
+
 **pi harness: skip this probe entirely** (`harness != "claude"` in the preflight
 blob). The probe pre-flights `Agent` dispatches and pi has no `Agent` tool; model
 failures surface loudly on the first loop-fleet dispatch instead. Do not write
@@ -36,6 +54,7 @@ when both the age and exact selector set match:
 ```bash
 skip_probe=false
 [[ "${LOOP_SPEC_SKIP_HEALTHCHECK:-}" == "1" ]] && skip_probe=true
+[[ "$agent_probe_models" == "[]" ]] && skip_probe=true
 probed_at=$(jq -r '.modelsProbedAt // empty' .loop-spec/runtime.json 2>/dev/null || true)
 probed_models=$(jq -c '.modelsProbed // []' .loop-spec/runtime.json 2>/dev/null || echo '[]')
 if [[ -n "$probed_at" && "$probed_models" == "$(jq -c . <<<"$required_models")" ]]; then
@@ -49,13 +68,13 @@ cache trades nothing for the saved startup latency. On probe success, write
 `modelsProbedAt` and `modelsProbed = required_models` into `runtime.json` (merged
 with the workflow probe below).
 
-When not skipped, read the selectors from `required_models` and dispatch one probe
-Agent per value (parallel, single tool message). Every call must pass that value
-in its actual `model:` field:
+When not skipped, read the aliases from `agent_probe_models` and dispatch one probe
+Agent per value (parallel, single tool message). Every call passes a value proven
+to belong to the Agent enum:
 
 ```
 Parallel:
-  for model_selector in required_models:
+  for model_selector in agent_probe_models:
     Agent({
       description: "Model probe: {model_selector}",
       subagent_type: "loop-spec:spec-writer",

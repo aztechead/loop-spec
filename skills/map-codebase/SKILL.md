@@ -97,7 +97,11 @@ In both single and workspace modes `project_id` is the basename of the detected 
 
 **Workspace mode note:** in workspace mode the repo list is available from `ws_json`. Pass each repo's absolute path and name to mappers so they can cover each repo with per-repo sections. The commit step in Step 6 is gated on the root being a git repo (see Step 6 below).
 
-Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `feature.models.mapper`; standalone, use `inherit`. Pass it explicitly on every Claude mapper spawn so the durable policy and telemetry agree. Under OpenCode, omit the per-call model and use the generated agent's native inheritance.
+Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use
+`feature.models.mapper`; standalone, use `inherit`. Start every Claude mapper
+object without `model`, adding it only when `mapper_model` is an Agent alias.
+Omit it for `inherit`. Under OpenCode, omit the per-call model and use the
+generated agent's native inheritance.
 
 **Dispatch telemetry (`skills/shared/dispatch-events.md`):** when invoked inside a cycle (feature dir exists), emit one `dispatch` event per mapper launched — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "map-codebase" --data '{"role":"mapper","model":"<mapper_model>","rung":"<team|subagent|workflow>"}' || true`. Standalone invocations (no feature dir) skip this.
 
@@ -105,11 +109,11 @@ Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `
 TeamCreate({
   name: "loop-spec-map-codebase-{project_id}",
   teammates: [
-    { name: "mapper-tech-1",      subagent_type: "loop-spec:mapper-tech",     model: mapper_model },
-    { name: "mapper-arch-1",      subagent_type: "loop-spec:mapper-arch",     model: mapper_model },
-    { name: "mapper-quality-1",   subagent_type: "loop-spec:mapper-quality",  model: mapper_model },
-    { name: "mapper-concerns-1",  subagent_type: "loop-spec:mapper-concerns", model: mapper_model },
-    { name: "mapper-domain-1",    subagent_type: "loop-spec:mapper-domain",   model: mapper_model }
+    { name: "mapper-tech-1",      subagent_type: "loop-spec:mapper-tech" },
+    { name: "mapper-arch-1",      subagent_type: "loop-spec:mapper-arch" },
+    { name: "mapper-quality-1",   subagent_type: "loop-spec:mapper-quality" },
+    { name: "mapper-concerns-1",  subagent_type: "loop-spec:mapper-concerns" },
+    { name: "mapper-domain-1",    subagent_type: "loop-spec:mapper-domain" }
   ]
 })
 ```

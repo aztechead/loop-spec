@@ -48,14 +48,16 @@ Before spawning the team: join the DISCUSS background prefetch if one is in flig
 TeamCreate({
   name: "loop-spec-plan-{slug}",
   teammates: [
-    { name: "planner-1",    subagent_type: "loop-spec:planner",    model: feature.models.planner },
-    { name: "advocate-1",   subagent_type: "loop-spec:advocate",   model: feature.models.advocate },
-    { name: "challenger-1", subagent_type: "loop-spec:challenger", model: feature.models.challenger }
+    { name: "planner-1",    subagent_type: "loop-spec:planner" },
+    { name: "advocate-1",   subagent_type: "loop-spec:advocate" },
+    { name: "challenger-1", subagent_type: "loop-spec:challenger" }
   ]
 })
 ```
 
-Each teammate object MUST include `subagent_type` (binds to the role definition in `agents/*.md`) and `model` (read literally from `feature.models.<role>`; see `skills/shared/model-matrix.md`).
+Each teammate object MUST include `subagent_type` (binds to the role definition
+in `agents/*.md`). Add `model` only when the matching
+`feature.models.<role>` value is an Agent alias; omit it for `inherit`.
 
 Update `feature.json` via `lib/feature-write.sh`:
 - `currentTeamName = "loop-spec-plan-{slug}"`

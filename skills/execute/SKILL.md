@@ -588,7 +588,8 @@ Size the team from the effective params:
 Models are read literally from `feature.json.models` (activated for EXECUTE immediately before entry):
 implementers use `feature.models.implementer`, and the spec-compliance gate uses
 `feature.models.specComplianceReviewer`. These are the already-activated EXECUTE
-values, not assumed defaults. Every teammate object MUST carry an explicit `model:`.
+values, not assumed defaults. Start each teammate object without `model`; add the
+key only when its resolved value is an Agent alias, and omit it for `inherit`.
 
 ```
 TeamCreate({
@@ -597,7 +598,6 @@ TeamCreate({
     {
       name: "implementer-1",
       subagent_type: "loop-spec:implementer",
-      model: feature.models.implementer,
       prompt: "<implementer.md template with {slug}, {N}=1, {maxRetriesPerTask}, {worktreeBase} substituted>"
     },
     // ... implementer-2 through implementer-M
@@ -605,7 +605,6 @@ TeamCreate({
     {
       name: "reviewer-1",
       subagent_type: "loop-spec:spec-compliance-reviewer",
-      model: feature.models.specComplianceReviewer,
       prompt: "<reviewer spawn prompt with slug, roster>"
     },
     // ... reviewer-2 through reviewer-R (if R > 1)

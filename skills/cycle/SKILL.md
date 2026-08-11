@@ -45,7 +45,7 @@ and DELIVER are main-thread phases and create no team. Teammates in the other ph
 spawned at phase start and persist for the full phase. How the team is created depends on
 `.loop-spec/runtime.json.teamsMode` (set in Step 2):
 - **`explicit`** (CC < 2.1.178): the lead creates the roster with `TeamCreate` and tears it down with `TeamDelete` at the phase boundary.
-- **`implicit`** (CC >= 2.1.178): the session already has one team. The lead spawns each teammate directly with `Agent({name: "<teammate-name>", description, subagent_type, model, prompt})` — no `TeamCreate`, no `TeamDelete`. See **`skills/shared/implicit-team-mode.md`**.
+- **`implicit`** (CC >= 2.1.178): the session already has one team. The lead spawns each teammate directly with `Agent({name: "<teammate-name>", description, subagent_type, prompt})` — no `TeamCreate`, no `TeamDelete`. Add `model` only for an Agent alias; omit it for `inherit`. See **`skills/shared/implicit-team-mode.md`**.
 
 Inter-agent communication within a phase team uses `SendMessage` in BOTH team modes. This is the correct tool for routing work, critique rounds, and notifications between the lead and teammates (or between teammates directly by name).
 
@@ -584,8 +584,8 @@ fi
 # Model routes, configured phase defaults, the fixed iterate block, and the artifact scaffold all
 # live in that one script -- never hand-build feature.json inline (that drift is what
 # previously dropped iterateJudge from the normalized models map). Every phase skill reads
-# the activated alias from feature.models.<role>, which guarantees teammates never silently
-# inherit the orchestrator's session model.
+# the activated selector from feature.models.<role>: an alias is explicit, while `inherit`
+# deliberately omits the Agent model key and uses the session model.
 feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode single \
   --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --style "$execStyle" --title "$title" \
@@ -637,11 +637,11 @@ across the phase boundary.
 
 ### Step 5.9 - Activate the current phase's model routing
 
-Every phase skill reads `model: feature.models.<role>` literally, with one
-substitution rule that holds everywhere: when the resolved value is `inherit`,
-**emit no `model` key at all**. The Agent tool's `model` is an alias enum and
-rejects the literal string `inherit` with `InputValidationError` — inheritance is
-expressed by omission (`skills/shared/harness-call-contracts.md`). Immediately
+Every phase skill reads `feature.models.<role>` as the selector. Add a `model`
+key only when it is one of the four Agent aliases; when it is `inherit`, **emit
+no `model` key at all**. The Agent tool rejects the literal string `inherit` with
+`InputValidationError` — inheritance is expressed by omission
+(`skills/shared/harness-call-contracts.md`). Immediately
 before a phase launch, `feature-init.sh activate` resolves and persists the exact
 map those Agent calls consume:
 

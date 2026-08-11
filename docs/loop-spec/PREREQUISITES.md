@@ -79,8 +79,9 @@ one-shot subagent waves at every DAG width.
 
 ## Optional hardening — constraining which models roles may use
 
-loop-spec passes an explicit `model:` on every spawn, resolved from
-`feature.models.<role>`, so off-policy models never appear under normal operation.
+loop-spec resolves every spawn from `feature.models.<role>`. It adds an explicit
+Agent `model` key only for a supported alias and omits the key for `inherit`, so
+the default follows the operator's session model without inventing a model ID.
 
 **Claude Code permission rules cannot enforce this.** A `Tool(specifier)` rule only
 matches when the tool implements a permission matcher for that specifier, and the
@@ -93,9 +94,10 @@ loop-spec entirely.) `Agent(<type>,<type>)` is a real form, but its content is a
 Enforce the model policy where it is actually checked instead:
 
 1. **Pin the routes.** Set `LOOP_SPEC_PHASE_MODEL_<PHASE>` and/or `LOOP_SPEC_MODEL_<ROLE>`
-   in the deployment environment. Both default to `inherit`; explicit Claude aliases
-   and full model IDs are accepted, and cycle activates
-   the resolved map into `feature.models.<role>` before every phase.
+   in the deployment environment. Both default to `inherit`. Claude role routes
+   accept Agent aliases; a full ID belongs only to a fresh phase CLI/SDK launcher.
+   Cycle activates the consumable role map into `feature.models.<role>` before
+   every phase and rejects a selector that its dispatch surface cannot use.
 2. **Constrain explicit aliases.** Alias → concrete model is a harness/provider
    decision (`ANTHROPIC_MODEL`, Bedrock/Vertex model mappings, gateway policy). That layer
    is the only place a retired or off-policy model ID can be excluded outright.

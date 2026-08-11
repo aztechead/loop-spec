@@ -146,19 +146,20 @@ absolute green.
 
 Create the verify team with verifier and code-reviewer as parallel teammates:
 
+Start both teammate objects without `model`. Add the key only when the matching
+`feature.models.<role>` value is an Agent alias; omit it for `inherit`.
+
 ```
 TeamCreate({
   name: "loop-spec-verify-{slug}",
   teammates: [
     {
       name: "verifier-1",
-      subagent_type: "loop-spec:verifier",
-      model: feature.models.verifier
+      subagent_type: "loop-spec:verifier"
     },
     {
       name: "code-reviewer-1",
-      subagent_type: "loop-spec:code-reviewer",
-      model: feature.models.codeReviewer
+      subagent_type: "loop-spec:code-reviewer"
     }
   ]
 })
