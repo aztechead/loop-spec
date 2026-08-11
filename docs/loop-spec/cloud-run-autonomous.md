@@ -195,12 +195,18 @@ PHASES = ("spec", "discuss", "plan", "execute", "verify", "iterate", "deliver")
 def configured_phase_model(phase: str) -> str | None:
     if phase not in PHASES:
         raise ValueError(f"unsupported loop-spec phase: {phase}")
-    resolved = subprocess.run(
+    proc = subprocess.run(
         ["bash", str(PLUGIN / "lib" / "feature-init.sh"), "phase-model", phase],
-        check=True,
         capture_output=True,
         text=True,
-    ).stdout.strip()
+    )
+    # feature-init.sh already explains WHICH variable is wrong and what it
+    # accepts; capture_output would otherwise swallow that and leave the
+    # controller dying on a bare non-zero exit status.
+    if proc.returncode != 0:
+        detail = proc.stderr.strip() or f"feature-init.sh exited {proc.returncode}"
+        raise ValueError(f"phase model route for {phase} is invalid: {detail}")
+    resolved = proc.stdout.strip()
     return None if resolved in ("", "inherit") else resolved
 
 

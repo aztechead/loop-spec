@@ -1,6 +1,6 @@
 # loop-spec configuration and command reference
 
-This is the exhaustive configuration contract for loop-spec 3.0.1. A setting not
+This is the exhaustive configuration contract for loop-spec 3.1.0. A setting not
 listed as a supported input below is not a supported operator control. Variables in
 the final “injected and internal variables” table are published so wrappers and
 implementers do not mistake them for controls, but callers must not set them unless
@@ -129,7 +129,7 @@ variables. They configure that published recipe, not plugin internals:
 | `CLAUDE_MAX_TURNS` | positive integer; SDK default | Passed as `ClaudeAgentOptions.max_turns` for each query. |
 | `CLAUDE_MAX_BUDGET_USD` | positive decimal; SDK default | Passed as the per-query `max_budget_usd`; the controller must separately enforce a whole-job spend limit. |
 | `CLAUDE_EFFORT` | SDK-supported effort; SDK default | Passed as `ClaudeAgentOptions.effort`. |
-| `CLAUDE_MODEL` | model/alias; SDK default | Default primary Agent SDK model. In the published phase-handoff controller, a non-empty `LOOP_SPEC_PHASE_MODEL_<PHASE>` replaces it for that fresh phase query. |
+| `CLAUDE_MODEL` | model/alias; SDK default | Default primary Agent SDK model, applied by whatever launches the SDK. The published phase-handoff controller does not read it: it asks `feature-init.sh phase-model` and overrides the query model only for a phase whose selector resolves to something other than `inherit`. |
 | `CLAUDE_FALLBACK_MODEL` | model/alias; SDK default | Passed as the Agent SDK fallback model. |
 | `CLAUDE_PERMISSION_MODE` | SDK permission mode; `acceptEdits` | Passed as `ClaudeAgentOptions.permission_mode`. |
 | `CLAUDE_MAX_BUFFER_BYTES` | positive integer; `8388608` | Maximum buffered SDK subprocess stdout bytes. |

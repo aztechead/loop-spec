@@ -77,24 +77,27 @@ Persistent memory scope (`user` | `project` | `local`, validated). Grants the ag
 
 ## Agents roster
 
-| Name | Description | Model |
-|------|-------------|-------|
-| `advocate` | Makes the case for a SPEC or PLAN in the critique gate. Read-only. Argues the design is sound. | inherit |
-| `challenger` | Critiques a SPEC or PLAN in the critique gate. Read-only. Surfaces gaps, ambiguities, and flawed assumptions. | inherit |
-| `code-reviewer` | Quality + security review of feature branch diff. Read-only. | inherit |
-| `implementer` | Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. | inherit |
-| `iterate-judge` | Judges the integrated result against the original goal (not just the SPEC checklist) in the ITERATE phase and classifies the highest-leverage gap (execute/plan/spec). Read-only; returns verdict JSON. | inherit |
-| `mapper-arch` | Maps modules, dependencies, entrypoints, and data flow. Writes only to docs/loop-spec/codebase/ARCH.md. | inherit |
-| `mapper-tech` | Maps languages, dependencies, runtime requirements, tools, and build/run commands. Writes only to docs/loop-spec/codebase/TECH.md. | inherit |
-| `mapper-concerns` | Maps security, perf hotspots, tech debt. Writes only to docs/loop-spec/codebase/CONCERNS.md. | inherit |
-| `mapper-domain` | Maps business concepts, glossary, entity model. Writes only to docs/loop-spec/codebase/DOMAIN.md. | inherit |
-| `mapper-quality` | Maps test coverage, lint state, type safety. Writes only to docs/loop-spec/codebase/QUALITY.md. | inherit |
-| `pattern-mapper` | Maps feature concepts to existing-codebase analogs (imports, core pattern, error handling) so the planner can write house-style-conformant tasks. Writes only to docs/loop-spec/features/{slug}/PATTERNS.md. | inherit |
-| `planner` | Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. | inherit |
-| `security-reviewer` | Adversarial security review persona. Checks input handling, authz, injection, secrets exposure, and unsafe defaults. Returns severity-ranked findings (CRITICAL/HIGH/MEDIUM/LOW). Never suppresses its own findings. | inherit |
-| `spec-compliance-reviewer` | Verifies one implementer's commit matches its task spec. Read-only. | inherit |
-| `spec-writer` | Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**. | inherit |
-| `verifier` | Runs every acceptance criterion's verify command, writes VERIFICATION.md. | inherit |
+| Name | Description |
+|------|-------------|
+| `advocate` | Makes the case for a SPEC or PLAN in the critique gate. Read-only. Argues the design is sound. |
+| `challenger` | Critiques a SPEC or PLAN in the critique gate. Read-only. Surfaces gaps, ambiguities, and flawed assumptions. |
+| `code-reviewer` | Quality + security review of feature branch diff. Read-only. |
+| `implementer` | Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. |
+| `iterate-judge` | Judges the integrated result against the original goal (not just the SPEC checklist) in the ITERATE phase and classifies the highest-leverage gap (execute/plan/spec). Read-only; returns verdict JSON. |
+| `mapper-arch` | Maps modules, dependencies, entrypoints, and data flow. Writes only to docs/loop-spec/codebase/ARCH.md. |
+| `mapper-tech` | Maps languages, dependencies, runtime requirements, tools, and build/run commands. Writes only to docs/loop-spec/codebase/TECH.md. |
+| `mapper-concerns` | Maps security, perf hotspots, tech debt. Writes only to docs/loop-spec/codebase/CONCERNS.md. |
+| `mapper-domain` | Maps business concepts, glossary, entity model. Writes only to docs/loop-spec/codebase/DOMAIN.md. |
+| `mapper-quality` | Maps test coverage, lint state, type safety. Writes only to docs/loop-spec/codebase/QUALITY.md. |
+| `pattern-mapper` | Maps feature concepts to existing-codebase analogs (imports, core pattern, error handling) so the planner can write house-style-conformant tasks. Writes only to docs/loop-spec/features/{slug}/PATTERNS.md. |
+| `planner` | Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. |
+| `security-reviewer` | Adversarial security review persona. Checks input handling, authz, injection, secrets exposure, and unsafe defaults. Returns severity-ranked findings (CRITICAL/HIGH/MEDIUM/LOW). Never suppresses its own findings. |
+| `spec-compliance-reviewer` | Verifies one implementer's commit matches its task spec. Read-only. |
+| `spec-writer` | Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**. |
+| `verifier` | Runs every acceptance criterion's verify command, writes VERIFICATION.md. |
+
+Every shipped agent declares `model: inherit`; there is no per-agent model column
+to keep in sync. See `skills/shared/model-matrix.md` for the override precedence.
 
 ## Validation
 

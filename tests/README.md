@@ -10,8 +10,10 @@ bash tests/run-all.sh
 
 This runs every non-interactive suite: the agent/manifest validators, the hook
 tests, the `lib/` unit tests, and (when a node runtime is available) the workflow
-syntax checks in `tests/workflows/smoke.sh`. It needs only bash, git, jq, python3,
-and (for the workflow checks) node. It does NOT require the Claude CLI.
+syntax checks in `tests/workflows/smoke.sh`. It needs bash, git, jq, python3,
+ripgrep (`rg`, used by the two coverage sweeps to enumerate the tree), and (for
+the workflow checks) node. It does NOT require the Claude CLI. `rg` is a
+test-only dependency: nothing shipped at runtime uses it.
 
 Scripted end-to-end: `bash tests/e2e/run-e2e.sh` (or `tests/run-all.sh --e2e`)
 runs ONE live autonomous cycle against a throwaway fixture repo — installed from

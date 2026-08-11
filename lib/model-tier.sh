@@ -23,10 +23,9 @@ INHERITED_MODEL="inherit"
 cmd="${1:-}"
 case "$cmd" in
   model)
-    case "${2:-}" in
-      mechanical|standard|frontier|"") printf '%s\n' "$INHERITED_MODEL" ;;
-      *) printf '%s\n' "$INHERITED_MODEL" ;;
-    esac
+    # Every tier -- known, unknown, or absent -- resolves the same way. A tier
+    # cannot name a portable model, so there is nothing here to branch on.
+    printf '%s\n' "$INHERITED_MODEL"
     ;;
   valid)
     case "${2:-}" in

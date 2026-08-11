@@ -704,9 +704,12 @@ currentPhase="$(jq -r '.node' <<<"$step_json")"
 current_phase="$currentPhase"
 currentLabel="$(jq -r '.label' <<<"$step_json")"
 node_effort="$(jq -r '.effort' <<<"$step_json")"
+# The label is what the node MEANS; the id is what the graph calls it. Announce
+# both so a resumed run reads as work rather than as a node identifier.
 if [[ "$(jq -r '.terminal' <<<"$step_json")" == "true" ]]; then
-  echo "loop-spec: graph traversal reached its terminal node ($currentPhase)."
+  echo "loop-spec: graph traversal reached its terminal node -- ${currentLabel} (${currentPhase})."
 else
+  echo "loop-spec: ${currentLabel} (${currentPhase}, effort ${node_effort})."
   bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" activate \
     "$feat_dir" "$current_phase"
 fi
@@ -744,7 +747,7 @@ the graph reached its `completed` node, which the engine's own dispatch of
 completion" below. Exit 0 with `.kind == "agent"` is this step's normal case: the
 snippet stopped at a real phase to dispatch.
 
-Consume the node's effort as model-independent guidance. It never chooses a model:
+Consume `$node_effort` as model-independent guidance. It never chooses a model:
 Claude Code and OpenCode may expose different catalogs, and both inherit the model that
 launched the session by default. For `system1`, keep the phase direct and avoid optional
 extra review rounds. For `system2`, state the assumptions and check their evidence before

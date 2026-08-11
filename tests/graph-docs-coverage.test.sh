@@ -5,6 +5,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PASS=0; FAIL=0
 
+# The reference sweep below uses `rg`. Under `set -e` a missing binary aborts the
+# suite mid-run with 127 and no diagnostic; say why instead.
+if ! command -v rg >/dev/null 2>&1; then
+  echo "graph-docs-coverage: ripgrep (rg) is required; see tests/README.md" >&2
+  exit 1
+fi
+
 check() {
   local name="$1" expected="$2" actual="$3"
   if [[ "$expected" == "$actual" ]]; then
