@@ -2,7 +2,7 @@
 
 ## Base runtime
 
-Every harness requires `bash >= 4`, `git`, `jq >= 1.5`, and `python3 >= 3.7`.
+Every harness requires `bash >= 3.2`, `git`, `jq >= 1.5`, and `python3 >= 3.7`.
 `lib/runtime-preflight.sh` checks jq before cycle, auto, debug, micro, and OpenCode
 installer paths use it, so a missing or old binary fails once with installation guidance
 instead of producing mid-run command errors.
@@ -79,8 +79,9 @@ one-shot subagent waves at every DAG width.
 
 ## Optional hardening — constraining which models roles may use
 
-loop-spec passes an explicit `model:` on every spawn, resolved from
-`feature.models.<role>`, so off-policy models never appear under normal operation.
+loop-spec resolves every spawn from `feature.models.<role>`. It adds an explicit
+Agent `model` key only for a supported alias and omits the key for `inherit`, so
+the default follows the operator's session model without inventing a model ID.
 
 **Claude Code permission rules cannot enforce this.** A `Tool(specifier)` rule only
 matches when the tool implements a permission matcher for that specifier, and the
@@ -93,15 +94,16 @@ loop-spec entirely.) `Agent(<type>,<type>)` is a real form, but its content is a
 Enforce the model policy where it is actually checked instead:
 
 1. **Pin the routes.** Set `LOOP_SPEC_PHASE_MODEL_<PHASE>` and/or `LOOP_SPEC_MODEL_<ROLE>`
-   in the deployment environment. Both are validated against the alias enum
-   (`sonnet | opus | haiku | fable`) and reject literal model IDs, and cycle activates
-   the resolved map into `feature.models.<role>` before every phase.
-2. **Constrain what the aliases resolve to.** Alias → concrete model is a harness/provider
+   in the deployment environment. Both default to `inherit`. Claude role routes
+   accept Agent aliases; a full ID belongs only to a fresh phase CLI/SDK launcher.
+   Cycle activates the consumable role map into `feature.models.<role>` before
+   every phase and rejects a selector that its dispatch surface cannot use.
+2. **Constrain explicit aliases.** Alias → concrete model is a harness/provider
    decision (`ANTHROPIC_MODEL`, Bedrock/Vertex model mappings, gateway policy). That layer
    is the only place a retired or off-policy model ID can be excluded outright.
 3. **Verify the effective set.** Run
    `bash /path/to/loop-spec/lib/feature-init.sh all-models` in the deployment environment;
-   it prints the exact sorted alias set after phase and role overrides, and exits non-zero
+   it prints the exact sorted selector set after phase and role overrides, and exits non-zero
    with no output if any override is invalid. The cycle probes that same set before work
    begins and fails loud on any error.
 
@@ -118,6 +120,6 @@ e.g., `verify` will appear as `<repo-dir>:verify` alongside `loop-spec:verify`.
 None of the above applies under pi: agent teams and the Workflow tool are Claude
 Code surfaces, and `lib/teams-capability.sh` / `lib/workflow-availability.sh`
 hard-gate them to `none` / `false` there regardless of environment variables.
-pi prerequisites are just the base runtime (`bash >= 4`, `git`, `jq >= 1.5`,
+pi prerequisites are just the base runtime (`bash >= 3.2`, `git`, `jq >= 1.5`,
 `python3 >= 3.7`) and the `pi` CLI itself for the loop-fleet rung.
 See the README "Running under pi" section and `skills/shared/pi-harness.md`.

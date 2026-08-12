@@ -84,13 +84,18 @@ every worker).
 
 ```bash
 parallel=$(( W < maxParallelImplementers ? W : maxParallelImplementers ))
-python3 "$LOOP_DIR/supervisor.py" \
-  --plan "$fdir/loop-plan.json" \
-  --feature-dir "$fdir" \
-  --prepare-command "$(jq -r '.commands.prepare // ""' "$fdir/feature.json")" \
-  --parallel "$parallel" \
-  --model "{feature.models.implementer}" \
+worker_model="{feature.models.implementer}"
+supervisor_args=(
+  --plan "$fdir/loop-plan.json"
+  --feature-dir "$fdir"
+  --prepare-command "$(jq -r '.commands.prepare // ""' "$fdir/feature.json")"
+  --parallel "$parallel"
   --retries "2"
+)
+if [[ -n "$worker_model" && "$worker_model" != "inherit" ]]; then
+  supervisor_args+=(--model "$worker_model")
+fi
+python3 "$LOOP_DIR/supervisor.py" "${supervisor_args[@]}"
 rc=$?
 ```
 
@@ -99,12 +104,11 @@ it caps each task's cumulative spend (halting `budget_exhausted`) and caps every
 tick at the task's remaining budget. Unset means unbounded — iteration and
 wall-clock caps do not bound cost.
 
-Under pi, append `--agent-cli pi --claude-bin pi` and pass a **pi model id** (or
-omit `--model` to use the session default) — the `feature.models.*` aliases are
-Claude Code aliases and mean nothing to pi (`skills/shared/pi-harness.md`,
-"Model routing"). Under opencode, append `--agent-cli opencode --claude-bin
-opencode` and pass an **opencode model id** (`provider/model`) or omit `--model`
-(`skills/shared/opencode-harness.md`, "Model routing").
+The portable `inherit` selector deliberately produces no `--model` flag. Under
+pi, append `--agent-cli pi --claude-bin pi`; an explicit override must be a pi
+model id. Under opencode, append `--agent-cli opencode --claude-bin opencode`;
+an explicit override must be an OpenCode `provider/model` id. In either harness,
+omitting `--model` inherits the configured session model.
 
 The supervisor walks the DAG, runs each task's loop in an isolated worktree on
 branch `loop/<id>`, merges completed branches into `feat/{slug}` (the current

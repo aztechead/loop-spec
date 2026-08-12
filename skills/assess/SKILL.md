@@ -118,7 +118,7 @@ ALL_SCANS[$REPO_NAME]="$SCAN_JSON"
 
 For each repo, collect the top `LOOP_SPEC_ASSESS_TOP_N` (default 5) files from the scan result and dispatch one `Agent` call per file as parallel, one-shot reviewer subagents.
 
-**Model note:** `assess` runs standalone with no `feature.json`, so there is no `feature.models` map to read. Use the `sonnet` alias hardcoded here. Keep this in sync with `skills/shared/model-matrix.md`.
+**Model note:** `assess` runs standalone with no `feature.json`, so use `inherit`. Under OpenCode, omit the per-call model and use the generated agent's native inheritance.
 
 For each file in the top-N set:
 
@@ -137,7 +137,6 @@ Dispatch prompt (read-only; ask for JSON findings in the reply):
 Agent({
   description: "Assess hotspot review",
   subagent_type: "loop-spec:code-reviewer",
-  model: "sonnet",
   prompt: """
 You are reviewing a high-fragility file for code quality and correctness issues.
 
@@ -316,7 +315,7 @@ false`, a concise `reason`, and a non-empty failure `summary`; omit `noChangeRea
 - **Do not edit any source file.** The only writes are `docs/loop-spec/assessment/ASSESSMENT.md` and ignored terminal-result telemetry.
 - **Do not commit.** The skill explicitly does not commit. The assessment doc is intentionally left uncommitted for the user to review and optionally commit separately.
 - **Do not run unbounded reviewer dispatch.** The number of files sent to reviewers is always capped by `LOOP_SPEC_ASSESS_TOP_N` (default 5) per repo. Do not dispatch one agent per file from the full 20-file scan list.
-- **Do not read `feature.json` or `feature.models`.** This skill runs standalone. The model is hardcoded to the `sonnet` alias as noted in Step 3.
+- **Do not read `feature.json` or `feature.models`.** This skill runs standalone and inherits its session model as noted in Step 3.
 - **Do not abort on a single reviewer failure.** If one Agent call returns unparseable output, record the advisory LOW finding and continue with the remaining results.
 
 ## Standalone CLI

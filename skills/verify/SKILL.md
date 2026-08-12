@@ -146,19 +146,20 @@ absolute green.
 
 Create the verify team with verifier and code-reviewer as parallel teammates:
 
+Start both teammate objects without `model`. Add the key only when the matching
+`feature.models.<role>` value is an Agent alias; omit it for `inherit`.
+
 ```
 TeamCreate({
   name: "loop-spec-verify-{slug}",
   teammates: [
     {
       name: "verifier-1",
-      subagent_type: "loop-spec:verifier",
-      model: feature.models.verifier
+      subagent_type: "loop-spec:verifier"
     },
     {
       name: "code-reviewer-1",
-      subagent_type: "loop-spec:code-reviewer",
-      model: feature.models.codeReviewer
+      subagent_type: "loop-spec:code-reviewer"
     }
   ]
 })
@@ -207,7 +208,7 @@ that today's verifier triggers on `Test suite status: FAIL`.
 If `workflowsAvailable=false`, fall through to the existing verifier-1 spawn
 below.
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per agent launched in this phase (verifier, code-reviewer, security-reviewer when dispatched) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "verify" --data '{"role":"<role>","model":"<resolved alias>","rung":"<team|subagent|workflow>"}' || true`. One event per LAUNCH; `SendMessage` rework rounds do not re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per agent launched in this phase (verifier, code-reviewer, security-reviewer when dispatched) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "verify" --data '{"role":"<role>","model":"<resolved selector>","rung":"<team|subagent|workflow>"}' || true`. One event per LAUNCH; `SendMessage` rework rounds do not re-emit.
 
 ### Step 4 - Spawn verifier-1
 

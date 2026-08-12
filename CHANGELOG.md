@@ -2,6 +2,37 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [3.1.0] - 2026-08-11
+
+### Changed
+
+- **Every role now inherits the active session model by default.** Agent frontmatter,
+  feature initialization, phase routing, standalone skills, and legacy task tiers no
+  longer require a particular provider family or premium tier. Claude role agents may
+  still receive an explicit alias, fresh phase launchers may receive a full model ID,
+  OpenCode keeps native `provider/model` routes, and pi/unrouted OpenCode agents inherit
+  their session model.
+- **Graph effort is model-independent.** `system1` and `system2` change work guidance,
+  not model selection, and the graph step descriptor no longer carries a model field.
+  The same declared topology can therefore run unchanged in Claude Code, pi, and
+  OpenCode.
+- **The GDD implementation is easier to inspect.** Large embedded Python programs moved
+  from `run.sh` and `validate.sh` into named `engine.py` and `validate.py` modules, while
+  the shell files remain small launchers. Shipped graph nodes now carry human-facing
+  labels shown by dry runs and step descriptors.
+
+### Fixed
+
+- Loop-fleet workers and completion judges omit `--model` for the portable `inherit`
+  selector, preventing pi or OpenCode from receiving a Claude-specific value. The
+  completion judge no longer defaults to a fixed Claude model ID.
+- Claude Agent calls now omit the `model` key for inheritance, because that tool
+  accepts only its four aliases and rejects the literal `inherit`. Startup performs
+  zero Agent probes for an inherit-only configuration, dynamic call templates are
+  linted, and unsupported role pins fail before dispatch.
+- Graph trace emission now handles an omitted phase on Bash with nounset enabled, and
+  the graph mutation tests no longer rely on platform-specific `sed -i` behavior.
+
 ## [3.0.1] - 2026-08-10
 
 ### Fixed

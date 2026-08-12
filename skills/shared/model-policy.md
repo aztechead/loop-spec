@@ -1,61 +1,47 @@
-# Model Policy
+# Model policy
 
-> Imported from design doc 2026-05-05.
+The portable model policy is simple: inherit unless the operator opts into a
+specific route. The executable source is `lib/feature-init.sh`; the complete
+contract and precedence rules are in `skills/shared/model-matrix.md`.
 
-## Allowed models
+## Defaults
 
-Canonical selection is fixed per role (no preset axis); the authoritative
-routing and override contract is `skills/shared/model-matrix.md`.
+Every phase, role agent, and standalone skill can run on the model that launched
+the session. Claude Code and OpenCode both define inheritance for subagents, so
+loop-spec requires no named model family and no fixed provider catalog.
 
-| Family | Alias | Roles |
-|--------|-------|-------|
-| Heavy | `opus` | spec-writer, planner, challenger, iterate-judge, code-reviewer |
-| Standard | `sonnet` | advocate, spec-compliance-reviewer, implementer, verifier, mapper-*, pattern-mapper (1M-ctx flag when available) |
+Claude dispatches OMIT the Agent `model` key when the role inherits; that tool
+parameter is an alias enum and rejects the literal `inherit`. OpenCode task calls
+omit a model and let the generated subagent inherit its primary agent. Pi performs
+non-fleet roles inline on the session model.
 
-Dispatch uses harness ALIASES, not pinned IDs: the modern Agent tool's `model`
-parameter is an alias enum and rejects literal IDs. `haiku` and `fable` are
-accepted override values but are not canonical defaults.
+## Explicit routes
 
-Per-phase defaults can be overridden with
-`LOOP_SPEC_PHASE_MODEL_<SPEC|DISCUSS|PLAN|EXECUTE|VERIFY|ITERATE|DELIVER>`, and
-per-role defaults with `LOOP_SPEC_MODEL_<ROLE>`. Role overrides win over phase
-overrides; task metadata wins where supported. All must be harness aliases.
+`LOOP_SPEC_PHASE_MODEL_<PHASE>` and `LOOP_SPEC_MODEL_<ROLE>` are operator-owned
+selectors stored in feature state. Their precedence is stated once, in
+`skills/shared/model-matrix.md`, and implemented once, in `lib/feature-init.sh`
+— this file deliberately does not restate the order, so the two cannot disagree.
 
-## Consuming-project compatibility
+Which VALUES each route accepts is the part that differs by consuming surface.
+Claude role routes accept `inherit` or a supported Agent alias. A Claude phase
+route may also carry a full CLI model ID when a fresh main-context launcher
+consumes it; role Agents then inherit that main model.
 
-Some projects' `CLAUDE.md` hard-codes earlier model IDs (e.g., chrisbobrowitz/superpowers fork bans anything other than 4.6 / 4.5). Before adopting loop-spec, that policy section MUST allow whatever the harness's `opus` and `sonnet` aliases currently resolve to. The cycle skill's startup health-check will fail loud if the policy blocks dispatches.
+Pi and OpenCode ignore these selectors for inline or native task dispatch. An
+implementer loop-fleet subprocess may consume an explicit native value: a pi
+model ID or an OpenCode `provider/model` ID. Other native role pins fail early;
+OpenCode task agents use generated-agent routes.
+A harness never receives another harness's selector by default.
 
-## Health check (cycle startup)
+## Startup check
 
-The cycle skill calls `feature-init.sh all-models` and probes every effective
-alias at startup. The 24-hour cache is valid only for the same sorted alias set.
-Retries 3x with 2s backoff. Failure prints:
+Claude startup resolves the exact configured selector set with
+`feature-init.sh all-models`. An unconfigured install contains only `inherit`
+and performs zero Agent probes. Explicit Agent aliases are probed; full phase
+IDs are checked by the fresh CLI/SDK launcher that consumes them. Invalid
+configuration fails before feature work begins. Pi and OpenCode skip the Claude
+selector probe.
 
-```
-loop-spec health check FAILED
-  Model alias: opus
-  Error: <error text>
-  Suggested fix: update CLAUDE.md model policy to allow the model the opus alias resolves to
-```
-
-Then aborts. No silent fallback.
-
-## 1M-context flag
-
-Sonnet 4.6 supports 1M context with the `context-1m-2025-08-07` beta flag (or equivalent CC harness option). Cycle skill probes with a >200k-token noop input. On rejection: fall back to standard sonnet 4.6 (200k), record warning in `feature.json.warnings[]`. Phases continue.
-
-## Dispatch rule
-
-Cycle MUST run `feature-init.sh activate` before every phase invocation. Phase
-skills MUST pass `model:` explicitly on every teammate spawn and every one-shot
-`Agent` dispatch, reading the activated alias from `feature.models.<role>`.
-Never rely on the agent frontmatter default.
-
-## Deployment alias mapping (Bedrock/Vertex)
-
-Harness aliases (`opus`, `sonnet`, etc.) resolve to concrete model IDs inside
-the harness layer; loop-spec deliberately does not carry its own model-ID
-catalog because the Agent tool rejects literal IDs with InputValidationError. A
-deployment environment missing a model family must remap at the harness level
-or route affected phases/roles to an available alias. The startup health-check
-probes the effective union and fails loud.
+This policy deliberately separates model choice from GDD effort. `system1` and
+`system2` change how a node approaches the work, not which catalog entry must
+exist. See `skills/shared/dual-process.md`.

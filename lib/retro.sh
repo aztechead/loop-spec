@@ -38,14 +38,14 @@
 #
 # Finding kinds:
 #   rule-candidate  repeated failure pattern -> a rule the loop should carry
-#   suggestion      an optimization backed by evidence (e.g. modelTier), user's call
+#   suggestion      an optimization backed by evidence (e.g. effort), user's call
 #   info            aggregate facts worth seeing (convergence, cost)
 #
 # Detected patterns (all thresholds explicit, nothing model-judged):
 #   - iterate gap type (plan/execute/spec) recurring across >= N features
 #   - a critique gate hitting its round cap across >= N features
 #   - first-pass convergence streak (>= N converged with <= 1 iteration)
-#     -> modelTier: mechanical suggestion
+#     -> system1 effort suggestion for low-risk plan tasks
 #   - completed-but-not-converged runs (>= 2) -> info warning
 #   - loop-fleet cost total when present -> info
 #   - an ad-hoc (micro-cycle) task title with >= N fail/partial ledger entries
@@ -298,10 +298,10 @@ FINDINGS="$(jq -cn --argjson feats "$FEATS" --argjson min "$MIN" --argjson fleet
        rule: {text: "Retro: plan-critique repeatedly hits its round cap - ground PLAN.md tighter in PATTERNS.md analogs before the gate", check: null}}
      else empty end),
     (if (($firstPass | length) >= $min) and (($execFeats | length) < $min) then
-      {id: "model-tier-headroom", kind: "suggestion",
+      {id: "effort-headroom", kind: "suggestion",
        pattern: "features repeatedly converge first-pass with no recurring EXECUTE gaps",
        evidence: {count: ($firstPass | length), features: $firstPass},
-       rule: {text: "Consider modelTier: mechanical on low-risk plan tasks - the implementer tier has headroom (first-pass convergence streak, no recurring execute gaps). See lib/model-tier.sh.", check: null}}
+       rule: {text: "Consider system1 effort for low-risk plan tasks - first-pass convergence is sustained with no recurring execute gaps. Keep the same verification gates. See skills/shared/dual-process.md.", check: null}}
      else empty end),
     # B1: micro-cycle ledger — one candidate per title with >= min fail/partial
     # entries. The title is ledger data (deterministic normalization), the

@@ -7,7 +7,7 @@ tools:
   - Edit
   - Grep
   - Glob
-model: opus
+model: inherit
 color: blue
 ---
 

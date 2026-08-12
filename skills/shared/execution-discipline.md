@@ -6,15 +6,12 @@ mirroring `tests/ponytail-coverage.test.sh` and `tests/design-coverage.test.sh`.
 
 ## Why this exists
 
-The cycle's design phases run on the strongest available reasoning, but EXECUTE and
-VERIFY canonically uses throughput models (sonnet) and gates on opus, subject to
-explicit phase/role routes. The failure modes that
-separate a frontier reasoning pass from a mid-tier execution pass are consistent and
-predictable:
+Every phase may run on any inherited model, subject to explicit phase or role routes.
+The execution failures this directive prevents are consistent across model catalogs:
 
-- **Pattern-completion instead of verification.** A mid-tier model asserts what a file
+- **Pattern-completion instead of verification.** A model asserts what a file
   or API "does" because it looks like something it has seen, instead of reading or
-  running it. A frontier pass continuously self-verifies: every load-bearing claim is
+  running it. Continuously self-verify: every load-bearing claim is
   checked against the artifact before it is used.
 - **Rationalizing anomalies away.** When output contradicts expectation, the weaker
   habit is to explain it away and keep going; the stronger habit treats the anomaly as

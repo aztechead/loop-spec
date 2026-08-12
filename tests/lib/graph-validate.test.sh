@@ -305,6 +305,26 @@ jq '.nodes[0].reads = ["harnessTaskMetadataMode"]' "$WORK/good.json" > "$WORK/no
 check "reading an in-enum key that is not a skeleton key and has no writer flags" 1 "$WORK/nonskeleton-read.json"
 check_output "nonskeleton read is named" "never written by any node and is not a feature-init skeleton key" "$WORK/nonskeleton-read.json"
 
+# --strict adds the published-graph rules. A synthetic graph with no labels stays
+# valid by default (the engine falls back to the node id); --strict is what an
+# author opts into to be told the graph reads as identifiers instead of names.
+jq 'del(.nodes[].label)' "$WORK/good.json" > "$WORK/nolabel.json"
+check "unlabelled nodes pass ordinary validation" 0 "$WORK/nolabel.json"
+check "unlabelled nodes fail --strict" 1 --strict "$WORK/nolabel.json"
+check_output "strict names the unlabelled node" "has no human-facing label" --strict "$WORK/nolabel.json"
+
+jq '.nodes[0].label = "Do the thing"' "$WORK/nolabel.json" > "$WORK/partial-label.json"
+check "a partially labelled graph still fails --strict" 1 --strict "$WORK/partial-label.json"
+
+jq '.nodes[].label = "   "' "$WORK/good.json" > "$WORK/blank-label.json"
+check "a blank label is rejected WITHOUT --strict" 1 "$WORK/blank-label.json"
+check_output "blank label is named" "label must be a non-empty string when present" "$WORK/blank-label.json"
+
+jq '.nodes[].label = 7' "$WORK/good.json" > "$WORK/int-label.json"
+check "a non-string label is rejected WITHOUT --strict" 1 "$WORK/int-label.json"
+
+check "--strict still rejects a bad graph for its ordinary defects" 2 --strict "$WORK/does-not-exist.json"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

@@ -41,20 +41,31 @@ read). When a skill reads another skill's SKILL.md mid-flow and then needs a
 variable to that skill's directory first. Sibling paths like
 `${CLAUDE_SKILL_DIR}/../../lib/...` are unaffected.
 
-**Fallback rule (plugin not loaded):** before running any
-`${CLAUDE_SKILL_DIR}/...` command, export the variable yourself — it is the
-"Base directory for this skill" line the skill tool printed when it loaded
-the skill (or the directory of the SKILL.md you read):
+**Fallback rule (plugin not loaded) — only when the variable is EMPTY:** an
+already-set `CLAUDE_SKILL_DIR` came from the plugin and already points into the
+package. Overwriting it with the installed skill's own directory breaks every
+sibling path, because the installed skill is a GENERATED ADAPTER at
+`<config>/skills/loop-spec-<name>/` and `<config>/lib` does not exist — the
+package's `lib/` is only reachable from the package's own `skills/<name>/`.
+Assign only into an empty value:
 
 ```bash
-export CLAUDE_SKILL_DIR="<base directory the skill tool reported>"
+: "${CLAUDE_SKILL_DIR:=<base directory the skill tool reported>}"
+```
+
+Verify before relying on it; if this fails, the plugin is not loaded and the
+adapter directory is the wrong base:
+
+```bash
+[ -f "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" ] || \
+  CLAUDE_SKILL_DIR="${CLAUDE_PLUGIN_ROOT}/skills/<name>"
 ```
 
 ## Tool substitution table
 
 | Claude Code tool | Under opencode |
 |---|---|
-| Read / Write / Edit / Bash | `read` / `write` / `edit` / `bash` (same semantics) |
+| Read / Write / Edit / Bash | `read` / `write` / `edit` / `bash` (same semantics) — EXCEPT for files inside the package (`${CLAUDE_PLUGIN_ROOT}/...`, e.g. `skills/shared/artifact-templates/*`). A symlink install leaves the package outside the project, so the `read` tool asks `external_directory` permission and `opencode run` auto-rejects it headlessly. Read package-internal files with `bash` (`cat`/`head`), which is not gated that way. |
 | Glob / Grep | `glob` / `grep` (native) |
 | Skill (invoke a skill) | the native `skill` tool: `skill({name: "loop-spec-<name>"})`; generated adapters load this contract and then the source skill without occupying generic user skill names. Users normally invoke `/loop-spec/<name>` (the CC `/loop-spec:<name>` analogue) or `/loop-debug` |
 | Agent (subagent) | the native `task` tool — `{description, prompt, subagent_type, task_id?, command?}`; unlike Claude Code, `subagent_type` is REQUIRED; see the dispatch mapping rule below |
@@ -166,10 +177,11 @@ agents without reinstalling globally:
 ```
 
 The main-thread cycle/phase lead remains on the model that launched the OpenCode session;
-these routes apply to native `task` subagents. Loop-fleet subprocesses retain their
-separate `--model` routing. `LOOP_SPEC_MODEL_<ROLE>` is the Claude alias mechanism and
-must not be used for OpenCode provider selection. Restart OpenCode after reinstalling
-agents or changing project configuration; config-time files are not hot-reloaded.
+these routes apply to native `task` subagents. Loop-fleet subprocesses omit `--model`
+for the portable `inherit` selector; an explicit implementer value through
+`LOOP_SPEC_MODEL_<ROLE>` routes only those fleet workers and must use
+`provider/model`. Restart OpenCode after reinstalling agents or changing project
+configuration; config-time files are not hot-reloaded.
 
 Inside the Plugin API and SDK, a selected model is represented as
 `{providerID, modelID}`. The bridge injects only OpenCode's neutral text-part

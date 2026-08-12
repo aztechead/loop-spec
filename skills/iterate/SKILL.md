@@ -17,7 +17,7 @@ Autonomous mode (`feature.json.autonomous == true`) forces style `auto`, so the 
 - `slug`, `feature_dir`, `feature_title` (the **original goal**, in the user's words).
 - `iterate`: `{maxIterations, used, confirmationUsed, lastVerdict, feedback, history[]}`.
 - `artifacts`: `spec`, `plan`, `verification` paths.
-- `models.iterateJudge` (the activated ITERATE alias; canonical default `opus`).
+- `models.iterateJudge` (the activated ITERATE selector; default `inherit`).
 
 ## Procedure
 
@@ -67,13 +67,16 @@ If `used >= maxit`: **stop iterating and advance to delivery — but report gaps
 
 ### Step 1 - Dispatch the judge (maker ≠ checker)
 
-One-shot `Agent` dispatch (not a team), fresh context, strict grader. Emit the dispatch telemetry event first (`skills/shared/dispatch-events.md`): `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "iterate" --data '{"role":"iterate-judge","model":"<resolved alias>","rung":"subagent"}' || true`.
+One-shot `Agent` dispatch (not a team), fresh context, strict grader. Emit the dispatch telemetry event first (`skills/shared/dispatch-events.md`): `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "iterate" --data '{"role":"iterate-judge","model":"<resolved selector>","rung":"subagent"}' || true`.
+
+Build the call without `model`. Add `model: <alias>` only when
+`feature.models.iterateJudge` is one of the four Agent aliases; omit it for
+`inherit`.
 
 ```
 Agent({
   description: "Iterate goal re-judge",
   subagent_type: "loop-spec:iterate-judge",
-  model: feature.models.iterateJudge,
   prompt: "<iterate-judge.md inputs: slug, iteration=(used+1), original_goal=feature_title,
             paths to SPEC.md / VERIFICATION.md / PLAN.md, feat/{slug} diff, and prior_feedback=feature.iterate.feedback>"
 })

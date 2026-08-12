@@ -210,7 +210,7 @@ concurrency ladder") follows the Anthropic tool idiom: the lightest mechanism th
 the available concurrency wins, and the heaviest (Workflow) fires only on explicit
 opt-in.
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** whichever rung is selected, emit one `dispatch` event per implementer/reviewer/worker launched — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<role>","model":"<resolved alias>","rung":"<team|subagent|loop-fleet|workflow>"}' || true`. Loop-fleet: one event per compiled task at fleet launch; worker iterations are not separate dispatches. `SendMessage` rework does not re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** whichever rung is selected, emit one `dispatch` event per implementer/reviewer/worker launched — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<role>","model":"<resolved selector>","rung":"<team|subagent|loop-fleet|workflow>"}' || true`. Loop-fleet: one event per compiled task at fleet launch; worker iterations are not separate dispatches. `SendMessage` rework does not re-emit.
 
 Build the `tasks[]` array from Step 2a/2b first: each element is `{id, subject, files, blockedBy (union of explicit + synthetic edges), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` is carried through so the subagent rung can re-run each task's behavioral check against the integrated branch post-merge — see `skills/shared/execute-subagent.md` step 6/7.)
 
@@ -588,7 +588,8 @@ Size the team from the effective params:
 Models are read literally from `feature.json.models` (activated for EXECUTE immediately before entry):
 implementers use `feature.models.implementer`, and the spec-compliance gate uses
 `feature.models.specComplianceReviewer`. These are the already-activated EXECUTE
-values, not assumed defaults. Every teammate object MUST carry an explicit `model:`.
+values, not assumed defaults. Start each teammate object without `model`; add the
+key only when its resolved value is an Agent alias, and omit it for `inherit`.
 
 ```
 TeamCreate({
@@ -597,7 +598,6 @@ TeamCreate({
     {
       name: "implementer-1",
       subagent_type: "loop-spec:implementer",
-      model: feature.models.implementer,
       prompt: "<implementer.md template with {slug}, {N}=1, {maxRetriesPerTask}, {worktreeBase} substituted>"
     },
     // ... implementer-2 through implementer-M
@@ -605,7 +605,6 @@ TeamCreate({
     {
       name: "reviewer-1",
       subagent_type: "loop-spec:spec-compliance-reviewer",
-      model: feature.models.specComplianceReviewer,
       prompt: "<reviewer spawn prompt with slug, roster>"
     },
     // ... reviewer-2 through reviewer-R (if R > 1)

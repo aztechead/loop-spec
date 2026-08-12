@@ -43,7 +43,7 @@ Both critique gates (DISCUSS spec-critique, PLAN plan-critique) climb the same l
 the lightest mode that preserves strictness wins:
 
 1. **Skip** — PLAN only, via the structural fast-path above. The spec critique never skips.
-2. **Single-critic (the default)** — one challenger (canonical default: opus) reviews the artifact solo and
+2. **Single-critic (the default)** — one challenger (inheriting the session model) reviews the artifact solo and
    reports `[major]`/`[minor]`-tagged findings straight to the lead
    (`skills/shared/team-prompts/critic.md`). No advocate is dispatched; the lead
    adjudicates. Strictness is preserved by construction: the lead may accept any finding
@@ -162,6 +162,5 @@ these params are unused and the fallback team path runs.
 
 ## Model selection
 
-Fixed; see `skills/shared/model-matrix.md`. Opus authors and judges (spec-writer,
-planner, advocate, challenger, iterate-judge, code-reviewer); sonnet implements,
-verifies mechanically, checks per-task spec compliance, and maps.
+Every role inherits the session model. Optional harness-native routes are described in
+`skills/shared/model-matrix.md`; tiers and GDD effort never require a model family.

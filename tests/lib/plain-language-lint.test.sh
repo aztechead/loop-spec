@@ -322,10 +322,11 @@ fi
 ALL_FIRED="$(
   for f in "$WORK"/*.md "$WORK"/*.sh "$WORK"/*.py; do
     [[ -f "$f" ]] || continue
-    case "$f" in
-      *comments*.sh|*comments*.py) bash "$LINT" comments "$f" 2>/dev/null ;;
-      *) bash "$LINT" prose "$f" 2>/dev/null ;;
-    esac
+    if [[ "$f" == *comments*.sh || "$f" == *comments*.py ]]; then
+      bash "$LINT" comments "$f" 2>/dev/null
+    else
+      bash "$LINT" prose "$f" 2>/dev/null
+    fi
   done | grep '^FLAG' | sed -E 's/^FLAG [^:]+:[0-9]+: ([a-z-]+):.*/\1/' | sort -u
 )"
 MISSING=0

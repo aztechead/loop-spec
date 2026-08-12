@@ -71,6 +71,8 @@ If `missing` is non-empty:
   mapper tasks into SPEC. Update the announcement to `in bounded waves`.
 
 - Model for mappers: `model_mapper = feature.models.mapper` (activated for SPEC before bootstrap; do not re-derive from model-matrix).
+  Build every Agent call without `model`; add the key only when `model_mapper`
+  is an Agent alias, and omit it for `inherit`.
 
 - **Single-repo mode:** background mappers are subagents and do NOT inherit the worktree cwd. Resolve the repo root once and pass ABSOLUTE paths in every Agent prompt:
   ```bash
@@ -95,7 +97,6 @@ If `missing` is non-empty:
   All Agent calls in ONE message (parallel; the harness runs subagents in the background):
     Agent({
       subagent_type: "loop-spec:mapper-{domain-1}",
-      model: model_mapper,
       description: "Bootstrap codebase map: {domain-1}",
       prompt: """
         You are bootstrapping the codebase map for this workspace.
@@ -129,7 +130,6 @@ If `missing` is non-empty:
   All Agent calls in ONE message (parallel; the harness runs subagents in the background):
     Agent({
       subagent_type: "loop-spec:mapper-{domain-1}",
-      model: model_mapper,
       description: "Bootstrap codebase map: {domain-1}",
       prompt: """
         You are bootstrapping the codebase map for this project.

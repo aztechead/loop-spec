@@ -48,14 +48,16 @@ Before spawning the team: join the DISCUSS background prefetch if one is in flig
 TeamCreate({
   name: "loop-spec-plan-{slug}",
   teammates: [
-    { name: "planner-1",    subagent_type: "loop-spec:planner",    model: feature.models.planner },
-    { name: "advocate-1",   subagent_type: "loop-spec:advocate",   model: feature.models.advocate },
-    { name: "challenger-1", subagent_type: "loop-spec:challenger", model: feature.models.challenger }
+    { name: "planner-1",    subagent_type: "loop-spec:planner" },
+    { name: "advocate-1",   subagent_type: "loop-spec:advocate" },
+    { name: "challenger-1", subagent_type: "loop-spec:challenger" }
   ]
 })
 ```
 
-Each teammate object MUST include `subagent_type` (binds to the role definition in `agents/*.md`) and `model` (read literally from `feature.models.<role>`; see `skills/shared/model-matrix.md`).
+Each teammate object MUST include `subagent_type` (binds to the role definition
+in `agents/*.md`). Add `model` only when the matching
+`feature.models.<role>` value is an Agent alias; omit it for `inherit`.
 
 Update `feature.json` via `lib/feature-write.sh`:
 - `currentTeamName = "loop-spec-plan-{slug}"`
@@ -94,7 +96,7 @@ Result: `{plan: <markdown>, angles: [...], winner}`. Skill writes `plan` to
 If `workflowsAvailable=false` OR the opt-in is unset, fall through to the
 existing single-planner Agent dispatch below.
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (planner, pattern-mapper, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "plan" --data '{"role":"<role>","model":"<resolved alias>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (planner, pattern-mapper, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "plan" --data '{"role":"<role>","model":"<resolved selector>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
 
 ### Step 2 - Spawn planner-1
 

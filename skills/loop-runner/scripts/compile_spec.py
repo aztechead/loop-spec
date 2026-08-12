@@ -2,7 +2,7 @@
 """
 compile_spec.py — spec → plan. Layer 2 of loop-runner, and the bridge this whole
 skill exists for: you write a goal or spec the way you normally would; this turns
-it into loops Claude Code will run.
+it into loops that Claude Code, pi, or OpenCode can run.
 
 A spec is a bundle of testable claims. Compilation makes that explicit:
   1. Read the spec (plus a look at the repo for context).
@@ -13,10 +13,10 @@ A spec is a bundle of testable claims. Compilation makes that explicit:
   4. Emit plan/tasks.json (schema in planlib.py), validated before it's written —
      a plan that compiles is a plan the supervisor can run.
 
-Compilation itself is one `claude -p` invocation (read-only tools), so the compiler
-is subject to the same discipline as the loops it produces. On schema/validation
-failure it retries once, feeding the errors back — the compiler eats its own
-dogfood: act, verify, correct.
+Compilation itself is one read-only agent invocation through the selected harness,
+so the compiler is subject to the same discipline as the loops it produces. On
+schema/validation failure it retries once, feeding the errors back — the compiler
+eats its own dogfood: act, verify, correct.
 """
 
 from __future__ import annotations

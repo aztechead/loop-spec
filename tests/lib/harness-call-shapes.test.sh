@@ -48,19 +48,33 @@ for f in $CORPUS; do
 done
 check "Agent calls carry required description:" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
-# 3b) loop-spec never permits a concrete Agent launch to inherit frontmatter/session
-# model accidentally. Every call template with a prompt must carry model: too.
-bad=""
-for f in $CORPUS; do
-  while IFS=: read -r ln _; do
-    [[ -z "$ln" ]] && continue
-    window=$(sed -n "${ln},$((ln+12))p" "$f")
-    if echo "$window" | grep -q 'prompt'; then
-      echo "$window" | grep -q 'model' || bad="$bad $f:$ln"
-    fi
-  done < <(grep -n 'Agent({' "$f" 2>/dev/null)
-done
-check "Agent calls carry explicit model routing" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+# 3b) The Agent tool's `model` is an alias enum: `Agent({model: "inherit"})` fails with
+# InputValidationError (live-probed 2026-08-11). Inheritance is expressed by OMITTING the
+# key, so a template that spells the placeholder out is a broken call, not a portable one.
+bad=$(grep -rn 'model: *"inherit"' skills agents --include='*.md' 2>/dev/null \
+  | grep -v 'harness-call-contracts' | head -5 || true)
+check "no literal model: \"inherit\" in Agent call templates" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+grep -qF 'ALIAS ENUM — "inherit" and literal IDs REJECTED' \
+  skills/shared/harness-call-contracts.md && v=1 || v=0
+check "contract doc records the Agent model alias enum" "$v"
+
+# Dynamic placeholders are just as dangerous as a quoted literal: when the
+# default resolves to inherit, `model: feature.models.role` emits the rejected
+# value. The startup probe is the one exception because it first filters its
+# loop input to the four aliases below.
+bad=$(grep -rnE 'model: *(feature\.models\.|models\.|model_mapper|mapper_model)' \
+  skills agents --include='*.md' 2>/dev/null | head -5 || true)
+check "Agent templates do not emit dynamic model placeholders" \
+  "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
+PROBES=skills/cycle/references/startup-probes.md
+grep -qF '[[ "$agent_probe_models" == "[]" ]] && skip_probe=true' "$PROBES" \
+  && v=1 || v=0
+check "inherit-only startup skips every Agent model probe" "$v"
+grep -qF 'for model_selector in agent_probe_models:' "$PROBES" \
+  && grep -qF 'feature-init.sh" agent-probe-models' "$PROBES" \
+  && v=1 || v=0
+check "startup model probes iterate only over Agent aliases" "$v"
 
 # 4) TaskList takes no status/filter arguments.
 bad=$(grep -rn 'TaskList({status' skills agents --include='*.md' 2>/dev/null | grep -v 'harness-call-contracts' | head -5 || true)
@@ -77,16 +91,17 @@ for f in $CORPUS; do
 done
 check "TaskCreate calls carry required description:" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
-# 6) No pinned model IDs in dispatch examples (alias enum only).
+# 6) Shipped dispatch examples stay model-portable; explicit IDs belong to
+# operator configuration, not built-in role defaults.
 bad=$(grep -rnE 'model: "?claude-' skills agents --include='*.md' 2>/dev/null | grep -v 'harness-call-contracts\|model-matrix' | head -5 || true)
-check "no pinned model IDs in dispatch examples" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+check "no pinned model IDs in default dispatch examples" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
 # 7) Contract doc exists and records the verification method.
 check "harness-call-contracts.md present" "$([[ -f skills/shared/harness-call-contracts.md ]] && echo 1 || echo 0)"
 grep -q 'Verification method' skills/shared/harness-call-contracts.md && v=1 || v=0
 check "contract doc records verification method" "$v"
-grep -q 'CC 2.1.218' skills/shared/harness-call-contracts.md && v=1 || v=0
-check "contract doc records current Claude Code verification" "$v"
+grep -q 'code.claude.com/docs/en/sub-agents' skills/shared/model-matrix.md && v=1 || v=0
+check "contract docs cite current Claude Code model inheritance" "$v"
 grep -qF 'mode: "acceptEdits" | ... | "plan",      // deprecated and ignored since CC 2.1.212' \
   skills/shared/harness-call-contracts.md && v=1 || v=0
 check "contract doc records ignored Agent mode" "$v"

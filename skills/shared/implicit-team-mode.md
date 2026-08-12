@@ -25,7 +25,7 @@ teammate and teammate→main `SendMessage({to, message, summary})` all deliver.
 | Explicit-team primitive | Implicit-team equivalent |
 |---|---|
 | `TeamCreate({name, agents:[{name, subagent_type, model}, ...]})` | **No call.** The team already exists. Do not declare a roster up front. Record `feature.json.currentTeamName` (for resume bookkeeping) but create nothing. |
-| Spawn a teammate + send its first work prompt | One `Agent({name: "<teammate-name>", description: "<short task label>", subagent_type, model, prompt: "<work prompt>"})` call. Passing `name` makes the teammate persistent and addressable; the prompt that the explicit path delivered via the post-`TeamCreate` `SendMessage` becomes this spawn's `prompt`. |
+| Spawn a teammate + send its first work prompt | One `Agent({name: "<teammate-name>", description: "<short task label>", subagent_type, prompt: "<work prompt>"})` call. Add `model` only for an Agent alias; omit it for `inherit`. Passing `name` makes the teammate persistent and addressable; the prompt that the explicit path delivered via the post-`TeamCreate` `SendMessage` becomes this spawn's `prompt`. |
 | `SendMessage({to, message})` rework / critique / notify | **Unchanged.** `SendMessage` still exists and addresses any live named teammate (lead-to-teammate and teammate-to-teammate). |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | **Unchanged.** All teammates in the session-implicit team share the same task list; the EXECUTE self-claim model and the `team:`-scoped `TaskList` liveness probe work as written. |
 | `TeammateIdle` wake / idle protocol | **Unchanged.** Idle named teammates wake on `SendMessage` exactly as documented. |
@@ -45,8 +45,9 @@ load the schema and retry the op once. Treat it as a missing capability only whe
 - **DISCUSS / PLAN / VERIFY:** spawn each roster member (e.g. `spec-writer-1`,
   `challenger-1`, `verifier-1`, `code-reviewer-1` — and `advocate-1` lazily, only when a
   critique gate escalates to the paired debate) with one
-  `Agent({name, description, subagent_type, model: feature.models.<role>, prompt})`
-  call carrying its first work prompt, then drive critique
+  `Agent({name, description, subagent_type, prompt})` call carrying its first work
+  prompt. Add `model` only when `feature.models.<role>` is an Agent alias; omit it
+  for `inherit`. Then drive critique
   rounds and rework with `SendMessage` exactly as the explicit path describes.
   The only edits to those phases are: skip the `TeamCreate` block, fold its
   per-teammate prompt into the spawn, and skip the closing `TeamDelete`.

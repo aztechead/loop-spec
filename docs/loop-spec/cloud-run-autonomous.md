@@ -49,13 +49,6 @@ LOOP_SPEC_EXECUTE_LOOPS=0
 LOOP_SPEC_EXECUTE_WORKFLOW=0
 LOOP_SPEC_PLAN_MULTI_ANGLE=0
 LOOP_SPEC_PHASE_HANDOFF=1
-LOOP_SPEC_PHASE_MODEL_SPEC=opus
-LOOP_SPEC_PHASE_MODEL_DISCUSS=sonnet
-LOOP_SPEC_PHASE_MODEL_PLAN=sonnet
-LOOP_SPEC_PHASE_MODEL_EXECUTE=sonnet
-LOOP_SPEC_PHASE_MODEL_VERIFY=opus
-LOOP_SPEC_PHASE_MODEL_ITERATE=opus
-LOOP_SPEC_PHASE_MODEL_DELIVER=sonnet
 LOOP_SPEC_SHARE_DEPENDENCIES=1
 LOOP_SPEC_PREPARE_TIMEOUT_SECS=1200
 LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS=300
@@ -75,7 +68,7 @@ claude -p "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}"
 
 To switch the Claude Code main model as well as the phase’s subagents, the CLI
 supervisor must create a fresh process per handoff and pass the validated phase
-alias to `--model`. The plugin cannot mutate the model of an already-running
+selector to `--model`. The plugin cannot mutate the model of an already-running
 main session:
 
 ```bash
@@ -85,14 +78,14 @@ for _ in $(seq 1 "${MAX_PHASE_INVOCATIONS:-12}"); do
   phase_model="$(
     bash "${LOOP_SPEC_PLUGIN}/lib/feature-init.sh" phase-model "$phase"
   )"
-  model_args=()
-  [[ -n "$phase_model" ]] && model_args=(--model "$phase_model")
+  claude_args=(-p "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}")
+  [[ -n "$phase_model" && "$phase_model" != "inherit" ]] \
+    && claude_args+=(--model "$phase_model")
 
   # Check the child's status. A phase that dies -- OOM, a killed container, an
   # expired credential, a crashed harness -- exits non-zero and may write nothing.
   claude_rc=0
-  claude "${model_args[@]}" -p \
-    "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}" || claude_rc=$?
+  claude "${claude_args[@]}" || claude_rc=$?
 
   # A missing or unparseable result is a FAILED run, not a finished one. Without
   # this check the jq below errors, the "not a handoff" branch is taken, the loop
@@ -197,21 +190,24 @@ def positive_float(name: str) -> float | None:
 
 
 PHASES = ("spec", "discuss", "plan", "execute", "verify", "iterate", "deliver")
-PHASE_ALIASES = {"sonnet", "opus", "haiku", "fable"}
 
 
 def configured_phase_model(phase: str) -> str | None:
     if phase not in PHASES:
         raise ValueError(f"unsupported loop-spec phase: {phase}")
-    name = f"LOOP_SPEC_PHASE_MODEL_{phase.upper()}"
-    value = os.environ.get(name)
-    if not value:
-        return os.environ.get("CLAUDE_MODEL")
-    if value not in PHASE_ALIASES:
-        raise ValueError(
-            f"{name} must be one of: sonnet, opus, haiku, fable"
-        )
-    return value
+    proc = subprocess.run(
+        ["bash", str(PLUGIN / "lib" / "feature-init.sh"), "phase-model", phase],
+        capture_output=True,
+        text=True,
+    )
+    # feature-init.sh already explains WHICH variable is wrong and what it
+    # accepts; capture_output would otherwise swallow that and leave the
+    # controller dying on a bare non-zero exit status.
+    if proc.returncode != 0:
+        detail = proc.stderr.strip() or f"feature-init.sh exited {proc.returncode}"
+        raise ValueError(f"phase model route for {phase} is invalid: {detail}")
+    resolved = proc.stdout.strip()
+    return None if resolved in ("", "inherit") else resolved
 
 
 def resumable_phase(root: Path) -> str:

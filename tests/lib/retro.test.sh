@@ -61,8 +61,8 @@ check "2: gate cap fires at min-repeats 2" "1" "$(jq '[.[] | select(.id == "gate
 
 # ── Case 3: model-tier suggestion (3 first-pass converged, no exec recurrence) ─
 out="$(bash "$LIB" report --root "$ROOT" --json)"
-check "3: model-tier suggestion present" "1" "$(jq '[.[] | select(.id == "model-tier-headroom")] | length' <<<"$out")"
-check "3: suggestion kind is suggestion" "suggestion" "$(jq -r '.[] | select(.id == "model-tier-headroom") | .kind' <<<"$out")"
+check "3: effort suggestion present" "1" "$(jq '[.[] | select(.id == "effort-headroom")] | length' <<<"$out")"
+check "3: suggestion kind is suggestion" "suggestion" "$(jq -r '.[] | select(.id == "effort-headroom") | .kind' <<<"$out")"
 
 # ── Case 4: shipped-with-gaps info (f3 + f7) ──────────────────────────────────
 check "4: shipped-with-gaps info" "2" "$(jq '.[] | select(.id == "shipped-with-gaps") | .evidence.count' <<<"$out")"

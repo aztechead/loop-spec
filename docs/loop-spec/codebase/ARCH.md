@@ -4,6 +4,13 @@ trust: generated
 
 # ARCH
 
+> **Generated snapshot, not a runtime contract.** This map describes the tree at its
+> recorded generation date and may retain facts from an earlier release. For current
+> harness and model behavior, use [the architecture guide](../gdd.md),
+> [model matrix](../../../skills/shared/model-matrix.md), and
+> [model policy](../../../skills/shared/model-policy.md); regenerate the map before
+> using it to plan changes.
+
 > Mapped by loop-spec-mapper-arch on 2026-08-06. Full refresh — the prior version
 > (2026-05-11, incremental) was verified stale in multiple places (see note at
 > bottom of this run's report) and is not carried forward without re-checking.

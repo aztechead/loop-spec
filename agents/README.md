@@ -9,7 +9,7 @@ This directory contains agent definitions for the loop-spec system. Each agent i
 | `name` | Must match the filename without the `.md` extension. |
 | `description` | One-line summary of the agent's role. Must be non-empty. Claude Code uses this field to decide **automatic delegation**, so every loop-spec agent description ends with the guard clause "Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation." — these agents assume a structured brief (paths, SHAs, slugs) and misbehave when auto-delegated a bare user request. |
 | `tools` | YAML list of allowed tool names. |
-| `model` | Harness model alias. Allowed values: `opus`, `sonnet`, `haiku`. (Aliases, not literal IDs — the Agent tool's `model` parameter is an alias enum and rejects pinned IDs.) |
+| `model` | Claude model selector. Every shipped agent uses `inherit`; explicit aliases and full IDs are supported by current Claude Code. OpenCode's generated agents omit Claude selectors and inherit natively. |
 
 ## Optional fields
 
@@ -77,24 +77,27 @@ Persistent memory scope (`user` | `project` | `local`, validated). Grants the ag
 
 ## Agents roster
 
-| Name | Description | Model |
-|------|-------------|-------|
-| `advocate` | Makes the case for a SPEC or PLAN in the critique gate. Read-only. Argues the design is sound. | opus |
-| `challenger` | Critiques a SPEC or PLAN in the critique gate. Read-only. Surfaces gaps, ambiguities, and flawed assumptions. | opus |
-| `code-reviewer` | Quality + security review of feature branch diff. Read-only. | sonnet |
-| `implementer` | Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. | sonnet |
-| `iterate-judge` | Judges the integrated result against the original goal (not just the SPEC checklist) in the ITERATE phase and classifies the highest-leverage gap (execute/plan/spec). Read-only; returns verdict JSON. | opus |
-| `mapper-arch` | Maps modules, dependencies, entrypoints, and data flow. Writes only to docs/loop-spec/codebase/ARCH.md. | sonnet |
-| `mapper-tech` | Maps languages, dependencies, runtime requirements, tools, and build/run commands. Writes only to docs/loop-spec/codebase/TECH.md. | sonnet |
-| `mapper-concerns` | Maps security, perf hotspots, tech debt. Writes only to docs/loop-spec/codebase/CONCERNS.md. | sonnet |
-| `mapper-domain` | Maps business concepts, glossary, entity model. Writes only to docs/loop-spec/codebase/DOMAIN.md. | sonnet |
-| `mapper-quality` | Maps test coverage, lint state, type safety. Writes only to docs/loop-spec/codebase/QUALITY.md. | sonnet |
-| `pattern-mapper` | Maps feature concepts to existing-codebase analogs (imports, core pattern, error handling) so the planner can write house-style-conformant tasks. Writes only to docs/loop-spec/features/{slug}/PATTERNS.md. | sonnet |
-| `planner` | Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. | opus |
-| `security-reviewer` | Adversarial security review persona. Checks input handling, authz, injection, secrets exposure, and unsafe defaults. Returns severity-ranked findings (CRITICAL/HIGH/MEDIUM/LOW). Never suppresses its own findings. | sonnet |
-| `spec-compliance-reviewer` | Verifies one implementer's commit matches its task spec. Read-only. | sonnet |
-| `spec-writer` | Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**. | opus |
-| `verifier` | Runs every acceptance criterion's verify command, writes VERIFICATION.md. | sonnet |
+| Name | Description |
+|------|-------------|
+| `advocate` | Makes the case for a SPEC or PLAN in the critique gate. Read-only. Argues the design is sound. |
+| `challenger` | Critiques a SPEC or PLAN in the critique gate. Read-only. Surfaces gaps, ambiguities, and flawed assumptions. |
+| `code-reviewer` | Quality + security review of feature branch diff. Read-only. |
+| `implementer` | Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. |
+| `iterate-judge` | Judges the integrated result against the original goal (not just the SPEC checklist) in the ITERATE phase and classifies the highest-leverage gap (execute/plan/spec). Read-only; returns verdict JSON. |
+| `mapper-arch` | Maps modules, dependencies, entrypoints, and data flow. Writes only to docs/loop-spec/codebase/ARCH.md. |
+| `mapper-tech` | Maps languages, dependencies, runtime requirements, tools, and build/run commands. Writes only to docs/loop-spec/codebase/TECH.md. |
+| `mapper-concerns` | Maps security, perf hotspots, tech debt. Writes only to docs/loop-spec/codebase/CONCERNS.md. |
+| `mapper-domain` | Maps business concepts, glossary, entity model. Writes only to docs/loop-spec/codebase/DOMAIN.md. |
+| `mapper-quality` | Maps test coverage, lint state, type safety. Writes only to docs/loop-spec/codebase/QUALITY.md. |
+| `pattern-mapper` | Maps feature concepts to existing-codebase analogs (imports, core pattern, error handling) so the planner can write house-style-conformant tasks. Writes only to docs/loop-spec/features/{slug}/PATTERNS.md. |
+| `planner` | Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. |
+| `security-reviewer` | Adversarial security review persona. Checks input handling, authz, injection, secrets exposure, and unsafe defaults. Returns severity-ranked findings (CRITICAL/HIGH/MEDIUM/LOW). Never suppresses its own findings. |
+| `spec-compliance-reviewer` | Verifies one implementer's commit matches its task spec. Read-only. |
+| `spec-writer` | Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**. |
+| `verifier` | Runs every acceptance criterion's verify command, writes VERIFICATION.md. |
+
+Every shipped agent declares `model: inherit`; there is no per-agent model column
+to keep in sync. See `skills/shared/model-matrix.md` for the override precedence.
 
 ## Validation
 

@@ -3,21 +3,15 @@
 # and mutation proofs for the two shipped-3.0 route-evaluation bugs
 # (docs/loop-spec/features/gdd/REMEDIATION-CONTRACT.md).
 #
-# graph/cycle.graph.json is owned by another agent and mid-rewire (its ITERATE
-# and DELIVER routes are missing `args` and name probes that don't match this
-# contract yet, and plan.critique.gate still uses the pre-remediation
-# chain-as-fallback shape instead of `routeDefault`) — bash lib/graph/validate.sh
-# graph/cycle.graph.json currently fails on this branch. Every scenario below
-# therefore uses a small synthetic graph shaped to the contract instead of the
-# real cycle graph, so this suite is not coupled to that parallel work landing
-# first. Section 0 opportunistically exercises graph/cycle.graph.json's
-# structural dry-run IF it already validates, and skips (not fails) otherwise.
+# Synthetic graphs isolate each routing contract below. Section 0 also requires
+# the shipped cycle graph to validate and traverse its primary phases.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT="$ROOT/lib/graph/run.sh"
+ENGINE="$ROOT/lib/graph/engine.py"
 WORK="${TMPDIR:-/tmp}/loop-spec-graph-run.$$"
-trap 'rm -rf "$WORK"; cp "$BACKUP" "$SCRIPT" 2>/dev/null || true' EXIT
+trap 'cp "$BACKUP" "$ENGINE" 2>/dev/null || true; rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/feat" "$WORK/bin"
 PASS=0; FAIL=0
 
@@ -30,10 +24,10 @@ check() {
   fi
 }
 
-[[ -f "$SCRIPT" ]] || { echo "FAIL: missing $SCRIPT"; exit 1; }
+[[ -f "$SCRIPT" && -f "$ENGINE" ]] || { echo "FAIL: missing graph launcher or engine"; exit 1; }
 chmod +x "$SCRIPT"
-BACKUP="$WORK/run.sh.orig"
-cp "$SCRIPT" "$BACKUP"
+BACKUP="$WORK/engine.py.orig"
+cp "$ENGINE" "$BACKUP"
 
 new_feat() {
   local dir="$1"; shift
@@ -41,7 +35,7 @@ new_feat() {
   jq -n "$@" > "$dir/feature.json"
 }
 
-## --- 0. cycle.graph.json (opportunistic; skip cleanly while it's mid-rewire).
+## --- 0. cycle.graph.json.
 ##      Route conditions ARE evaluated during --dry-run (only body dispatch is
 ##      skipped), so a real feature.json is seeded to route past every gate
 ##      cleanly: no security signal, no iterate gap, delivery complete, auto
@@ -74,7 +68,7 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
     check "cycle.graph.json dry-run visits $phase" "0" "$?"
   done
 else
-  echo "SKIP: graph/cycle.graph.json does not validate yet (owned by another agent, mid-rewire) — synthetic-graph coverage below stands in for it"
+  check "cycle.graph.json validates" "0" "1"
 fi
 
 ## --- 1. dry-run: structural walk, no state/dispatch side effects ---
@@ -90,9 +84,9 @@ cat > "$WORK/basic.json" <<'EOF'
 EOF
 out="$(bash "$SCRIPT" --dry-run --feature-dir "$WORK/feat-basic" "$WORK/basic.json")"
 check "dry-run exit 0" "0" "$?"
-echo "$out" | grep -q $'^a\tentry\tfunction$'
+echo "$out" | grep -q $'^a\tentry\tfunction\ta$'
 check "dry-run prints node/edge/kind for a" "0" "$?"
-echo "$out" | grep -q $'^b\tchain:a->b\tfunction$'
+echo "$out" | grep -q $'^b\tchain:a->b\tfunction\tb$'
 check "dry-run prints node/edge/kind for b" "0" "$?"
 check "dry-run writes no checkpoint ledger" "1" "$([[ -f "$WORK/feat-basic/graph-checkpoints.jsonl" ]] && echo 0 || echo 1)"
 
@@ -321,6 +315,8 @@ check "step-agent graph validates" "0" "$?"
 new_feat "$WORK/feat-step-agent" '{slug:"stepagent",schemaVersion:7,iterate:{used:0,feedback:null}}'
 step1="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-step-agent" "$WORK/step-agent.json")"
 check "step 1: descriptor names the agent node" "iterate" "$(jq -r '.node' <<<"$step1")"
+check "step 1: descriptor has a human-facing label" "iterate" "$(jq -r '.label' <<<"$step1")"
+check "step 1: graph descriptor stays model-neutral" "false" "$(jq 'has("model")' <<<"$step1")"
 check "step 1: agent kind never dispatches body itself" "agent" "$(jq -r '.kind' <<<"$step1")"
 check "step 1: nextEdge deferred (null) — routing depends on state the caller hasn't written yet" "null" "$(jq -r '.nextEdge' <<<"$step1")"
 
@@ -441,7 +437,9 @@ cat > "$WORK/nested.json" <<'EOF'
   "edges": []
 }
 EOF
-sed -i "s#lib/events.sh#$WORK/bin/inner-marker.sh#" "$WORK/nested.json"
+jq --arg body "$WORK/bin/inner-marker.sh" '.nodes[0].body = $body' \
+  "$WORK/nested.json" > "$WORK/nested.json.tmp"
+mv "$WORK/nested.json.tmp" "$WORK/nested.json"
 cat > "$WORK/bin/inner-marker.sh" <<EOF
 #!/usr/bin/env bash
 : > "$WORK/inner-ran.marker"
@@ -484,12 +482,14 @@ bcount="$(echo "$out" | grep -c $'^b\t')" || bcount=0
 check "loop's target b visited once per pass" "3" "$bcount"
 
 ## --- 18. no harness branching / no LOOP_SPEC_GRAPH opt-in in the engine ---
-if grep -nE 'CLAUDE_CODE|opencode|pi\.dev|LOOP_SPEC_HARNESS' "$SCRIPT" | grep -v 'harness-neutral\|lib/harness' >/dev/null; then
+if grep -nE 'CLAUDE_CODE|opencode|pi\.dev|LOOP_SPEC_HARNESS' "$SCRIPT" "$ENGINE" \
+    | grep -v 'harness-neutral\|lib/harness' >/dev/null; then
   check "engine harness-neutral" "0" "1"
 else
   check "engine harness-neutral" "0" "0"
 fi
-if grep -nE 'LOOP_SPEC_GRAPH' "$SCRIPT" "$ROOT/lib/graph/state.sh" "$ROOT/lib/graph/handoff.sh" >/dev/null; then
+if grep -nE 'LOOP_SPEC_GRAPH' "$SCRIPT" "$ENGINE" "$ROOT/lib/graph/state.sh" \
+    "$ROOT/lib/graph/handoff.sh" >/dev/null; then
   check "no LOOP_SPEC_GRAPH in engine libs" "0" "1"
 else
   check "no LOOP_SPEC_GRAPH in engine libs" "0" "0"
@@ -528,9 +528,19 @@ run_check_silently() {
 
 echo ""
 echo "--- mutation proof 1: substring match (\"expects in text\") ---"
-sed -i 's/result\["satisfied"\] = (token == expects)/result["satisfied"] = (expects in first_line)  # MUTATED/' "$SCRIPT"
-mut_rc=0
-out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-exact-mut" "$WORK/route-exact.json" 2>&1)" || mut_rc=$?
+python3 - "$ENGINE" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as fh:
+    source = fh.read()
+source = source.replace(
+    'result["satisfied"] = (token == expects)',
+    'result["satisfied"] = (expects in first_line)  # MUTATED',
+)
+with open(path, "w", encoding="utf-8") as fh:
+    fh.write(source)
+PYEOF
 mkdir -p "$WORK/feat-exact-mut"
 out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-exact-mut" "$WORK/route-exact.json")"
 if run_check_silently "0" "$(echo "$out" | grep -c $'^b\t')"; then
@@ -540,10 +550,10 @@ else
   echo "PASS: mutation 1 (substring match) makes the exact-match test fail, as required"
   PASS=$((PASS + 1))
 fi
-cp "$BACKUP" "$SCRIPT"
+cp "$BACKUP" "$ENGINE"
 
 echo "--- mutation proof 2: fail-open for expects==\"none\" on probe crash ---"
-python3 - "$SCRIPT" <<'PYEOF'
+python3 - "$ENGINE" <<'PYEOF'
 import re, sys
 path = sys.argv[1]
 with open(path) as fh:
@@ -572,8 +582,8 @@ else
   echo "PASS: mutation 2 (fail-open expects=none) makes the fail-closed test fail, as required"
   PASS=$((PASS + 1))
 fi
-cp "$BACKUP" "$SCRIPT"
-diff -q "$BACKUP" "$SCRIPT" >/dev/null
+cp "$BACKUP" "$ENGINE"
+diff -q "$BACKUP" "$ENGINE" >/dev/null
 check "engine file restored byte-identical after mutation proofs" "0" "$?"
 
 rm -rf "$ROOT"/.tmp-gate-* "$ROOT"/.tmp-probes-* 2>/dev/null || true
@@ -581,7 +591,7 @@ rm -rf "$ROOT"/.tmp-gate-* "$ROOT"/.tmp-probes-* 2>/dev/null || true
 ## --- 14. effort: the probe runs, and may only RAISE the declared default ---
 ## Contract sec 7. lib/verification-gap-scan.sh found this: every other wired
 ## component (assert-reads, conflict-monitor, last-result, subgraph, trace) had
-## a behavioural assertion and effort had none, so nothing held run.sh:371's
+## a behavioural assertion and effort had none, so nothing held engine.py's
 ## raise-never-lower rule in place. Note --dry-run short-circuits to the
 ## declared value, so these must be real steps.
 cat > "$WORK/effort.json" <<'EOF'

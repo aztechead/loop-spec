@@ -4,6 +4,13 @@ trust: generated
 
 # DOMAIN
 
+> **Generated snapshot, not a runtime contract.** This map describes the tree at its
+> recorded generation date and may retain facts from an earlier release. For current
+> harness and model behavior, use [the architecture guide](../gdd.md),
+> [model matrix](../../../skills/shared/model-matrix.md), and
+> [model policy](../../../skills/shared/model-policy.md); regenerate the map before
+> using it to plan changes.
+
 > Produced by `loop-spec-mapper-domain`. Last refreshed: 2026-05-11.
 
 ## Glossary

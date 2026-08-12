@@ -2,8 +2,8 @@
 
 Per-node effort selection: two deterministic probes decide, node by node, how
 hard to think (`lib/effort-probe.sh`) and when deliberation wakes up
-(`lib/conflict-monitor.sh`). This is the canonical contract; the per-mode model
-columns live in `skills/shared/model-matrix.md`.
+(`lib/conflict-monitor.sh`). This is the canonical contract. Effort changes the
+guidance for a node; it never selects a model.
 
 Two misreadings this design must not encode: the modes are not sequential (there
 is no System 1 pass followed by a System 2 pass — the probe picks an effort mode
@@ -57,23 +57,23 @@ node's *next attempt* to `system2` and is written to the trace. The monitor
 never rewinds, never replays from a checkpoint, and never blocks on its own —
 the run always moves forward at higher effort.
 
-## System 1 authority bound
+## Authority bound
 
-`system1` controls exactly three things:
+Effort controls one thing today: the guidance the cycle lead applies to the
+node named by the step descriptor.
 
-1. **Model alias** — the role's `system1` column in
-   `skills/shared/model-matrix.md` instead of its `system2` column.
-2. **Reasoning depth** — how many rounds a bounded loop is allowed.
-3. **Gate presence, probe-licensed skips only** — `system1` may skip only a gate
-   that a probe already licenses skipping. Exactly one such skip exists today:
-   **PLAN's structural fast-path** (at most `fastPathMaxTasks`/`fastPathMaxFiles`
-   — defaults 2 tasks, 3 files — and no `lib/security-signal.sh` match, measured
-   from the actual plan; see `skills/shared/tier-matrix.md`). No other gate may
-   be skipped by effort.
+- `system1`: work directly and do not add optional review rounds.
+- `system2`: state assumptions and check their evidence before committing to
+  the node result.
 
-**System 1 may never skip a gate on a judgment.** A skip must trace to a
-deterministic probe answer, per CLAUDE.md "Probes, not judgments". When in
-doubt there is no doubt: unknown probe inputs already resolve to `system2`.
+Every declared gate, route, and loop ceiling stays unchanged. A gate may be
+skipped only when its own deterministic licensing probe says so; effort does
+not license the skip. Model routing is also independent. Claude Code and
+OpenCode can therefore execute the same effort decision on any inherited model.
+
+The descriptor, checkpoint, and trace all record the final effort and its
+reason. That makes the instruction reviewable without pretending a provider's
+model catalog or reasoning controls are portable.
 
 ## Binding to the graph
 

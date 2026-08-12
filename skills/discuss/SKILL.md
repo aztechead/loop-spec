@@ -34,7 +34,7 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 When the run is autonomous, the SPEC phase already ran the self-answered interview
 (`skills/spec/SKILL.md`, Autonomous mode): the lead formulated the questions, answered them,
 recorded every assumption, and wrote SPEC.md. Re-running a clarifying loop against itself and
-paying an opus spec-writer to transcribe the same conversation is pure overhead, so DISCUSS
+dispatching a second spec-writer to transcribe the same conversation is pure overhead, so DISCUSS
 collapses to lead-authored refinement + the critique gate:
 
 1. **Skip Step 1's conversational loop.** The lead handles Step 1's obligations directly:
@@ -131,6 +131,10 @@ Skip this step entirely (the planner produces PATTERNS.md at PLAN time, as befor
 
 Otherwise fire ONE background `Agent` call and do NOT wait for it (same one-shot background dispatch pattern as cycle Step 5.5b; background subagents do not inherit the worktree cwd, so resolve `WT_ROOT="$(git rev-parse --show-toplevel)"` and pass absolute paths):
 
+Build the call without a `model` key. If `feature.models.patternMapper` is one of
+the four Agent aliases, add that key with the alias; when it is `inherit`, leave
+the key absent.
+
 When `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` is set, do not background this optional
 prefetch across the critique dispatch. Run and await it now within the cap, or skip
 the prefetch and let PLAN produce PATTERNS.md at its normal Step 0.
@@ -138,7 +142,6 @@ the prefetch and let PLAN produce PATTERNS.md at its normal Step 0.
 ```
 Agent({
   subagent_type: "loop-spec:pattern-mapper",
-  model: feature.models.patternMapper,
   description: "Prefetch PATTERNS.md: {slug}",
   prompt: """
     slug: {slug}
@@ -156,7 +159,7 @@ Agent({
 })
 ```
 
-Then record the in-flight marker via `lib/feature-write.sh` (`artifacts.patternsPrefetch = "in-flight"`) and emit the dispatch event: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"pattern-mapper","model":"<resolved alias>","rung":"background"}' || true`.
+Then record the in-flight marker via `lib/feature-write.sh` (`artifacts.patternsPrefetch = "in-flight"`) and emit the dispatch event: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"pattern-mapper","model":"<resolved selector>","rung":"background"}' || true`.
 
 SPEC.md may still be revised by the critique gate after this fires — acceptable: PATTERNS.md maps concept analogs, which are robust to spec wording changes. If the gate changes the spec's SCOPE materially, PLAN's planner amends PATTERNS.md (its brief already covers producing or extending it).
 
@@ -170,14 +173,18 @@ Create the team with three teammates:
 TeamCreate({
   name: "loop-spec-discuss-{slug}",
   teammates: [
-    { name: "spec-writer-1", subagent_type: "loop-spec:spec-writer", model: feature.models.specWriter },
-    { name: "advocate-1",    subagent_type: "loop-spec:advocate",    model: feature.models.advocate },
-    { name: "challenger-1",  subagent_type: "loop-spec:challenger",  model: feature.models.challenger }
+    { name: "spec-writer-1", subagent_type: "loop-spec:spec-writer" },
+    { name: "advocate-1",    subagent_type: "loop-spec:advocate" },
+    { name: "challenger-1",  subagent_type: "loop-spec:challenger" }
   ]
 })
 ```
 
-Each teammate object MUST include `subagent_type` (binds the teammate to its role definition in `agents/*.md`) and `model` (read literally from `feature.models.<role>`; see `skills/shared/model-matrix.md`). Spawning by name alone -- e.g., `teammates: ["spec-writer-1", ...]` -- leaves the harness with no role binding and is incorrect.
+Each teammate object MUST include `subagent_type` (binds the teammate to its role
+definition in `agents/*.md`). Add `model` only when the matching
+`feature.models.<role>` value is an Agent alias; omit it for `inherit`. Spawning
+by name alone -- e.g., `teammates: ["spec-writer-1", ...]` -- leaves the harness
+with no role binding and is incorrect.
 
 Update `feature.json` via `lib/feature-write.sh`:
 - `currentTeamName = "loop-spec-discuss-{slug}"`
@@ -242,7 +249,7 @@ Create the gate-logs directory:
 mkdir -p .loop-spec/features/{slug}/gate-logs/
 ```
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (spec-writer, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"<role>","model":"<resolved alias>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (spec-writer, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "discuss" --data '{"role":"<role>","model":"<resolved selector>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
 
 #### Mode selection (security signal)
 

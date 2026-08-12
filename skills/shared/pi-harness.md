@@ -99,10 +99,10 @@ capability scripts return `none` / `false` under pi on their own.
 ## Model routing
 
 There is no per-dispatch `model` parameter — all inline work runs on the session
-model the user launched pi with. Loop-fleet rungs pass models to `pi` headless via
-`--model`; the `LOOP_SPEC_MODEL_<ROLE>` overrides are still honored, but values
-must be **pi model ids** (e.g. `claude-sonnet-4-5`), not Claude Code aliases —
-`skills/shared/model-matrix.md` aliases like `sonnet`/`opus` mean nothing to pi.
+model the user launched pi with. The default `inherit` selector also omits
+`--model` from loop-fleet calls. An explicit implementer value through
+`LOOP_SPEC_MODEL_<ROLE>` routes only loop-fleet workers and must use a pi model
+ID; it is not a per-dispatch route for inline pi work.
 
 ## Both run modes (parity map)
 

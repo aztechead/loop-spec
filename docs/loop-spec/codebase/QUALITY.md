@@ -4,6 +4,13 @@ trust: generated
 
 # QUALITY
 
+> **Generated snapshot, not a runtime contract.** This map describes the tree at its
+> recorded generation date and may retain facts from an earlier release. For current
+> harness and model behavior, use [the architecture guide](../gdd.md),
+> [model matrix](../../../skills/shared/model-matrix.md), and
+> [model policy](../../../skills/shared/model-policy.md); regenerate the map before
+> using it to plan changes.
+
 ## Test Framework
 
 The project uses hand-rolled bash test harnesses. There is no third-party test framework. Each test file implements a `check()` helper that compares expected vs actual values and accumulates PASS/FAIL counts, then exits 1 if any failures occurred. Tests have no external dependencies beyond bash, git, jq, and python3 (python3 is used only in `task-created.sh`'s test helper to strip JSON fields, not in the harness itself).

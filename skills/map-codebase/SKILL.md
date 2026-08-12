@@ -32,7 +32,7 @@ When standalone (`Skill(loop-spec:map-codebase)`):
 - Optional args: `--full` (forces full mode), `--domain tech,arch` (filter to subset)
 - `since_sha`: derived from latest "refresh codebase mapping" commit, or HEAD~1 if none
 
-Mapper model is fixed at the `sonnet` alias (see `skills/shared/model-matrix.md`); there is no preset input.
+Mapper agents inherit the session model (see `skills/shared/model-matrix.md`); there is no preset input.
 
 ## Procedure
 
@@ -97,7 +97,11 @@ In both single and workspace modes `project_id` is the basename of the detected 
 
 **Workspace mode note:** in workspace mode the repo list is available from `ws_json`. Pass each repo's absolute path and name to mappers so they can cover each repo with per-repo sections. The commit step in Step 6 is gated on the root being a git repo (see Step 6 below).
 
-Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `feature.models.mapper`; standalone, use `sonnet` (the fixed mapper alias per `skills/shared/model-matrix.md`). Pass it explicitly on every mapper spawn so they never inherit the orchestrator's session model.
+Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use
+`feature.models.mapper`; standalone, use `inherit`. Start every Claude mapper
+object without `model`, adding it only when `mapper_model` is an Agent alias.
+Omit it for `inherit`. Under OpenCode, omit the per-call model and use the
+generated agent's native inheritance.
 
 **Dispatch telemetry (`skills/shared/dispatch-events.md`):** when invoked inside a cycle (feature dir exists), emit one `dispatch` event per mapper launched — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "map-codebase" --data '{"role":"mapper","model":"<mapper_model>","rung":"<team|subagent|workflow>"}' || true`. Standalone invocations (no feature dir) skip this.
 
@@ -105,11 +109,11 @@ Resolve `mapper_model`: when invoked inside a cycle (feature.json present) use `
 TeamCreate({
   name: "loop-spec-map-codebase-{project_id}",
   teammates: [
-    { name: "mapper-tech-1",      subagent_type: "loop-spec:mapper-tech",     model: mapper_model },
-    { name: "mapper-arch-1",      subagent_type: "loop-spec:mapper-arch",     model: mapper_model },
-    { name: "mapper-quality-1",   subagent_type: "loop-spec:mapper-quality",  model: mapper_model },
-    { name: "mapper-concerns-1",  subagent_type: "loop-spec:mapper-concerns", model: mapper_model },
-    { name: "mapper-domain-1",    subagent_type: "loop-spec:mapper-domain",   model: mapper_model }
+    { name: "mapper-tech-1",      subagent_type: "loop-spec:mapper-tech" },
+    { name: "mapper-arch-1",      subagent_type: "loop-spec:mapper-arch" },
+    { name: "mapper-quality-1",   subagent_type: "loop-spec:mapper-quality" },
+    { name: "mapper-concerns-1",  subagent_type: "loop-spec:mapper-concerns" },
+    { name: "mapper-domain-1",    subagent_type: "loop-spec:mapper-domain" }
   ]
 })
 ```
@@ -281,7 +285,7 @@ Skill(loop-spec:map-codebase) args: --full # all domains
 Skill(loop-spec:map-codebase) args: --domain tech,arch
 ```
 
-Mappers always run on the `sonnet` alias (fixed; see `skills/shared/model-matrix.md`).
+Mappers inherit the session model unless the operator configured a route (see `skills/shared/model-matrix.md`).
 
 ## Quarterly forced full re-map
 

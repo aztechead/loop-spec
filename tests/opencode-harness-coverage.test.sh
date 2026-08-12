@@ -85,6 +85,7 @@ checks=(
   "skills/shared/opencode-harness.md	Graph engine (GDD)"
   "skills/shared/opencode-harness.md	lib/graph/run.sh"
   "lib/graph/run.sh	harness-neutral"
+  "lib/graph/engine.py	harness-neutral"
 )
 
 for entry in "${checks[@]}"; do
@@ -105,7 +106,35 @@ while IFS= read -r f; do
   else
     PASS=$((PASS+1)); echo "PASS: $f harness-neutral"
   fi
-done < <(find lib/graph -type f -name '*.sh' 2>/dev/null)
+done < <(find lib/graph -type f \( -name '*.sh' -o -name '*.py' \) 2>/dev/null)
+
+# The OpenCode install generates an ADAPTER at <config>/skills/loop-spec-<name>/;
+# its `../../lib` does not exist. A live cycle died here: the model followed an
+# unconditional "export CLAUDE_SKILL_DIR yourself" instruction, clobbered the
+# correct plugin-provided path with the adapter directory, then hunted the user's
+# home directory for lib/ and was permission-denied. The fallback must only ever
+# fill an EMPTY value.
+OC_DOC="skills/shared/opencode-harness.md"
+if grep -qE '^export CLAUDE_SKILL_DIR=' "$OC_DOC"; then
+  FAIL=$((FAIL+1)); echo "FAIL: $OC_DOC tells the model to overwrite CLAUDE_SKILL_DIR unconditionally"
+else
+  PASS=$((PASS+1)); echo "PASS: $OC_DOC never overwrites CLAUDE_SKILL_DIR unconditionally"
+fi
+if grep -qF ': "${CLAUDE_SKILL_DIR:=' "$OC_DOC"; then
+  PASS=$((PASS+1)); echo "PASS: $OC_DOC assigns CLAUDE_SKILL_DIR only when empty"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: $OC_DOC lost the assign-only-when-empty fallback"
+fi
+
+# Same live run, next failure: SPEC read its own artifact templates with the
+# `read` tool. The package sits outside the project in a symlink install, so
+# opencode asked external_directory permission and headless auto-rejected it --
+# while `bash cat` on the identical path succeeds.
+if grep -qF 'external_directory' "$OC_DOC"; then
+  PASS=$((PASS+1)); echo "PASS: $OC_DOC records the external_directory read gate"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: $OC_DOC does not warn that reading package files needs bash"
+fi
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

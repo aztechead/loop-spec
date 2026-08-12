@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-loop.py — bounded autonomous agent loop for Claude Code. Layer 1 of loop-runner.
+loop.py — bounded autonomous agent loop for Claude Code, pi, and OpenCode.
+Layer 1 of loop-runner.
 
 A loop is cron plus a decision-maker in the body. This harness is everything wrapped
-around the decision so it halts safely: it repeatedly invokes `claude -p` (verified
-headless primitive, JSON output with is_error / session_id), runs a verifier,
-measures real progress, and stops on any guardrail.
+around the decision so it halts safely: it repeatedly invokes one supported headless
+agent protocol, normalizes the response, runs a verifier, measures real progress, and
+stops on any guardrail.
 
 Trust anchors, in order of importance:
   1. VERIFIER INTEGRITY — the verify command's inputs (tests, the script itself,
@@ -64,10 +65,26 @@ MIN_TICK_TIMEOUT = 60.0  # minimum per-tick subprocess timeout; tests may lower 
 CLAUDE_PERMISSION_MODES = ("default", "acceptEdits", "auto", "bypassPermissions",
                            "manual", "dontAsk", "plan")
 
-DEFAULT_JUDGE_MODEL = "claude-haiku-4-5-20251001"  # claude -p id; dropped under pi
-                                                   # and opencode (their model registries
-                                                   # use their own ids — the session
-                                                   # default judges there)
+# The portable selector. `feature.models.<role>` carries it when no operator route
+# applies, and every backend must translate it to "pass no --model at all" rather
+# than forwarding a model no catalog contains.
+INHERIT = "inherit"
+
+
+def model_args(model, consumable=None):
+    """`--model` argv for an explicit selector, or [] to inherit.
+
+    `consumable` is the backend's own acceptance test for a value that survived
+    the inherit check — opencode, for one, must not forward a Claude alias. It is
+    a per-backend rule layered on ONE definition of inheritance, so a new backend
+    cannot accidentally re-answer "is this inherit?" a fourth way.
+    """
+    if not model or model == INHERIT:
+        return []
+    if consumable is not None and not consumable(model):
+        return []
+    return ["--model", model]
+
 
 PROGRESS_BANNER = (
     "# Loop progress notes\n\n"
@@ -113,7 +130,7 @@ class LoopConfig:
                                       # flag; under pi/opencode only the cumulative
                                       # check applies.
     judge: bool = False
-    judge_model: str = DEFAULT_JUDGE_MODEL
+    judge_model: str = ""             # empty inherits the selected harness model
     state_dir: str = ""               # default .loop/<task_id>
     commit: bool = False              # scoped git commit per productive iteration
     claude_bin: str = "claude"
@@ -350,7 +367,7 @@ def hash_paths(paths: list[Path], ignore_dir: str) -> str:
 def _spawn_agent(cmd: list, *, bin_label: str, env: Optional[dict],
                  resume: Optional[str], raw_log: Optional[Path],
                  timeout: Optional[float]):
-    """Shared transport scaffold for both backends: run the subprocess, persist
+    """Shared transport scaffold for every backend: run the subprocess, persist
     the raw log (+ stderr sidecar), and map spawn/timeout/exit failures onto the
     common error-dict shape. Returns (proc, None) on a zero-exit run, else
     (None, error_dict) — response parsing is the only per-backend part."""
@@ -395,8 +412,7 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         cmd += ["--allowedTools", cfg.allowed_tools]
     if resume:
         cmd += ["--resume", resume]
-    if cfg.model:
-        cmd += ["--model", cfg.model]
+    cmd += model_args(cfg.model)
     if cfg.effort:
         cmd += ["--effort", cfg.effort]
     if cfg.fallback_model:
@@ -468,8 +484,7 @@ def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     elif cfg.mode != "continue":
         # fresh mode never resumes; keep the fleet from littering session files
         cmd += ["--no-session"]
-    if cfg.model:
-        cmd += ["--model", cfg.model]
+    cmd += model_args(cfg.model)
     if mode == "plan":
         cmd += ["--no-builtin-tools"]
     cmd += list(cfg.extra_args)
@@ -558,8 +573,8 @@ def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         edits remain allowed by the build agent, while permission asks fail
         closed instead of approving external-directory or other sensitive work.
       - claude-only knobs are ignored here: allowed_tools, fallback_model,
-        retry_watchdog. Models must be opencode ids (provider/model, e.g.
-        anthropic/claude-sonnet-4-5). opencode-specific flags go through
+        retry_watchdog. Models must be OpenCode ids (`provider/model`).
+        OpenCode-specific flags go through
         extra_args verbatim.
     """
     bin_ = cfg.resolved_agent_bin()
@@ -589,8 +604,7 @@ def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         cmd += ["--session", str(resume)]
     # OpenCode IDs are provider/model. Claude aliases from feature.models are
     # invalid here; omit them to inherit the configured session/default model.
-    if cfg.model and "/" in cfg.model:
-        cmd += ["--model", cfg.model]
+    cmd += model_args(cfg.model, consumable=lambda m: "/" in m)
     if mode == "plan":
         cmd += ["--agent", "loop-spec-readonly"]
     cmd += list(cfg.extra_args)
@@ -694,11 +708,8 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str, *,
         "Answer DONE only if the diff plausibly fulfils the task as stated, not merely "
         "if the verifier passed."
     )
-    judge_model = cfg.judge_model
-    if cfg.resolved_agent_cli() != "claude" and judge_model == DEFAULT_JUDGE_MODEL:
-        judge_model = ""  # claude-only id; let the harness's session default judge
     jcfg = LoopConfig(task="", claude_bin=cfg.claude_bin, agent_cli=cfg.agent_cli,
-                      model=judge_model, allowed_tools="")
+                      model=cfg.judge_model, allowed_tools="")
     res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600,
                      budget_usd=budget_usd)
     cost = res.get("cost_usd")

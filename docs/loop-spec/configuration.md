@@ -1,6 +1,6 @@
 # loop-spec configuration and command reference
 
-This is the exhaustive configuration contract for loop-spec 2.35.0. A setting not
+This is the exhaustive configuration contract for loop-spec 3.1.0. A setting not
 listed as a supported input below is not a supported operator control. Variables in
 the final “injected and internal variables” table are published so wrappers and
 implementers do not mistake them for controls, but callers must not set them unless
@@ -30,9 +30,9 @@ The release’s source-to-contract utilization review is recorded in
 - `LOOP_SPEC_WORKTREES=0` is not advisory. It selects the in-place feature branch,
   forces serial implementation, makes loop-runner imply `--no-worktree`, and blocks
   worktree creation or entry at the tool boundary.
-- Model routing precedence is task-level `model`/`modelTier` where supported,
-  `LOOP_SPEC_MODEL_<ROLE>`, `LOOP_SPEC_PHASE_MODEL_<PHASE>`, then the canonical
-  role default. Phase activation occurs before every phase skill invocation.
+- Model routing precedence is defined once in
+  `skills/shared/model-matrix.md`; `lib/feature-init.sh` implements it. Phase
+  activation occurs before every phase skill invocation.
 
 ## Supported environment variables
 
@@ -49,7 +49,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_ITERATE_FRESH` | `0`/`1`; unset | `1` makes an ITERATE rewind persist state and relaunch instead of continuing in the current main-agent context. |
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
-| `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective alias set is unchanged. |
+| `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective selector set is unchanged. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
 | `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for each exact-base baseline command. `0` disables the wall-clock deadline. |
@@ -129,7 +129,7 @@ variables. They configure that published recipe, not plugin internals:
 | `CLAUDE_MAX_TURNS` | positive integer; SDK default | Passed as `ClaudeAgentOptions.max_turns` for each query. |
 | `CLAUDE_MAX_BUDGET_USD` | positive decimal; SDK default | Passed as the per-query `max_budget_usd`; the controller must separately enforce a whole-job spend limit. |
 | `CLAUDE_EFFORT` | SDK-supported effort; SDK default | Passed as `ClaudeAgentOptions.effort`. |
-| `CLAUDE_MODEL` | model/alias; SDK default | Default primary Agent SDK model. In the published phase-handoff controller, a non-empty `LOOP_SPEC_PHASE_MODEL_<PHASE>` replaces it for that fresh phase query. |
+| `CLAUDE_MODEL` | model/alias; SDK default | Default primary Agent SDK model, applied by whatever launches the SDK. The published phase-handoff controller does not read it: it asks `feature-init.sh phase-model` and overrides the query model only for a phase whose selector resolves to something other than `inherit`. |
 | `CLAUDE_FALLBACK_MODEL` | model/alias; SDK default | Passed as the Agent SDK fallback model. |
 | `CLAUDE_PERMISSION_MODE` | SDK permission mode; `acceptEdits` | Passed as `ClaudeAgentOptions.permission_mode`. |
 | `CLAUDE_MAX_BUFFER_BYTES` | positive integer; `8388608` | Maximum buffered SDK subprocess stdout bytes. |
@@ -170,8 +170,8 @@ variables. They configure that published recipe, not plugin internals:
 
 | Variable | Accepted values / default | Exact effect |
 |---|---|---|
-| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `sonnet`/`opus`/`haiku`/`fable`; unset | Sets the phase default for the phase’s main context and every role agent/gate launched inside it. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. The cycle activates the effective role map before every phase invocation. Main-context switching requires a fresh process/query (`LOOP_SPEC_PHASE_HANDOFF=1`); continuous mode still applies the value to subagents. Literal provider IDs are rejected because the value is passed to Agent’s alias-only `model:` field. |
-| `LOOP_SPEC_MODEL_<ROLE>` | `sonnet`/`opus`/`haiku`/`fable`; role map | Overrides a role’s model alias and wins over the phase default. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. Literal provider model IDs are rejected. |
+| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and role Agents. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. Pi and OpenCode consume an explicit value only on loop-fleet subprocesses. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. OpenCode native task agents use generated-agent routes instead. |
+| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. Pi/OpenCode accept a native ID only for `IMPLEMENTER` on the loop-fleet rung (pi model ID or OpenCode `provider/model`); configure other OpenCode roles through generated agents. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
 | `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
 | `LOOP_SPEC_ANSWER_REPOS` | comma-separated repo names; all | Supplies workspace repo selection. |
@@ -327,7 +327,7 @@ Usage: `loop.py [task] [flags]`. Supply either the positional task or
 | `--fallback-model MODEL` | Model used after a retryable primary-model failure. |
 | `--retry-watchdog CMD` | Command used to decide whether a failed iteration may retry. |
 | `--judge` | Enable the completion-judge pass. |
-| `--judge-model MODEL` | Model for the completion judge (default is the runner’s fixed judge model). |
+| `--judge-model MODEL` | Optional completion-judge model; omitted inherits the selected harness model. |
 | `--state-dir PATH` | Override persisted runner state (default `.loop/<task-id>`). |
 | `--commit` | Commit a successful task result. |
 | `--claude-bin PATH` | Agent executable (default `claude`; changes to the selected adapter binary when appropriate). |

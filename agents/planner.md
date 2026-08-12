@@ -8,7 +8,7 @@ tools:
   - Grep
   - Glob
   - Bash
-model: opus
+model: inherit
 effort: medium
 color: blue
 ---
@@ -179,7 +179,7 @@ This record is the authority during EXECUTE: a coordinator that hits a question 
 
 ### Optional per-task model tier
 
-A task whose work is clearly mechanical (rote scaffolding, a contained rename) or clearly judgment-heavy may carry an optional `modelTier` in its metadata: `mechanical`, `standard`, or `frontier`. EXECUTE resolves it via `lib/model-tier.sh` to route that one task to the cheapest model that fits, overriding the role default. Omit it to use the fixed per-role map (the common case). A concrete `model` pin still wins over `modelTier`.
+Do not assign a model based on your estimate of task difficulty. Every task inherits the operator's chosen session model by default. Legacy `modelTier` metadata remains readable but resolves to `inherit`; only an explicit operator-approved concrete `model` may override it.
 
 ## What NOT to do
 
@@ -197,4 +197,4 @@ Same as spec-writer: apply fix-list via Edit, preserve untouched content.
 - **Status**: DONE | NEEDS_CONTEXT
 - **Plan path**: ...
 - **Task count**: N
-- **Tasks JSON**: full tasks[] for the lead to seed the EXECUTE harness task list via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst` (from each task's `read_first` list), `specPath` (a per-task spec file path if you wrote one for a complex task, else `null`), and optionally `modelTier` (`mechanical`/`standard`/`frontier`) when a task should override its role's default model)
+- **Tasks JSON**: full tasks[] for the lead to seed the EXECUTE harness task list via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst` (from each task's `read_first` list), and `specPath` (a per-task spec file path if you wrote one for a complex task, else `null`))

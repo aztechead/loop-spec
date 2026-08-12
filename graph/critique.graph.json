@@ -4,6 +4,7 @@
   "nodes": [
     {
       "id": "critique.challenge",
+      "label": "Challenge the draft",
       "kind": "agent",
       "reads": ["currentGate", "artifacts"],
       "writes": ["currentGate", "gateHistory"],
@@ -12,6 +13,7 @@
     },
     {
       "id": "critique.escalate",
+      "label": "Decide whether to debate",
       "kind": "gate",
       "reads": ["currentGate"],
       "writes": ["currentGate"],
@@ -19,6 +21,7 @@
     },
     {
       "id": "critique.debate",
+      "label": "Debate the major findings",
       "kind": "agent",
       "reads": ["currentGate", "artifacts"],
       "writes": ["currentGate", "gateHistory"],
@@ -27,6 +30,7 @@
     },
     {
       "id": "critique.adjudicate",
+      "label": "Adjudicate the critique",
       "kind": "agent",
       "reads": ["currentGate", "gateHistory"],
       "writes": ["currentGate", "gateHistory", "artifacts"],
@@ -35,6 +39,7 @@
     },
     {
       "id": "critique.pass",
+      "label": "Record the critique result",
       "kind": "function",
       "reads": ["currentGate"],
       "writes": ["gateHistory"],
