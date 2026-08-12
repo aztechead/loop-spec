@@ -168,7 +168,9 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
 7. **Post-wave candidate suite gate**: after every passed task in the wave has been
    published, run `lib/feature-validation.sh compare` once against the feature directory.
    Exit 20 is a new regression; exit 21 is preparation/infrastructure failure. Unchanged
-   baseline failures do not block. This validates the exact integrated wave candidate and
+   failures do not block only when a startup baseline was captured
+   (`LOOP_SPEC_STARTUP_BASELINE=1`); with none recorded any failure blocks.
+   This validates the exact integrated wave candidate and
    catches cross-task regressions without repeating the same full suite once per task.
 8. Loop back to step 1.
 

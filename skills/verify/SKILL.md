@@ -131,10 +131,13 @@ VALIDATION_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" co
   ".loop-spec/features/${slug}")" || validation_rc=$?
 ```
 
-It runs the persisted preparation command in every participating repository, then compares
-test/lint/typecheck results with the exact-base baseline. Exit 0 means no new failures;
-pre-existing fingerprints may remain and must be reported as known baseline failures rather
-than repaired. Exit 20 is a real suite regression: emit `suite-regression`, append the normal
+It runs the persisted preparation command in every participating repository, then runs
+test/lint/typecheck against the candidate. This is where the cycle's repository-wide suite
+cost is paid — startup does not run it. With no recorded baseline (the default, since
+`LOOP_SPEC_STARTUP_BASELINE` is off) every failure blocks. With a captured baseline the
+comparison is relative: exit 0 means no new failures, and pre-existing fingerprints may
+remain and must be reported as known baseline failures rather than repaired. Exit 20 is a
+real suite regression: emit `suite-regression`, append the normal
 FULL-SHAPE remediation task, and return to the cycle orchestrator without spawning VERIFY
 agents — the pending remediation state drives the graph's declared remediation route
 (`graph/cycle.graph.json`). Exit 21 is environment/infrastructure failure: preserve the JSON

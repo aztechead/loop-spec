@@ -198,9 +198,10 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/greenfield-bootstrap.sh" backfill-check "$fe
 exit 3 means the backfill is missing — fix it before dispatching anything else (re-run
 detection, or take the command from SPEC.md's Foundations requirements).
 
-Greenfield features intentionally retain `verificationBaseline: null`: no untouched
-project suite existed before scaffold creation. `feature-validation.sh` therefore uses
-strict mode and requires every configured repository-wide command to pass.
+`verificationBaseline` is `null` for every feature unless `LOOP_SPEC_STARTUP_BASELINE=1`
+captured one at startup, and greenfield never captures one — no untouched project suite
+existed before scaffold creation. `feature-validation.sh` therefore uses strict mode by
+default and requires every configured repository-wide command to pass.
 
 ### Step 3 - Dispatch (concurrency ladder)
 

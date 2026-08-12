@@ -228,8 +228,9 @@ invocation checkout or a registered feature worktree.
    must not skip terminal feedback observation.
 5. Otherwise run the shared candidate check once:
    `bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" compare ".loop-spec/features/${slug}"`.
-   It prepares each repository and compares test/lint/typecheck failures with the exact-base
-   baseline. Exit 20 means new failures: append the existing FULL-SHAPE resume remediation
+   It prepares each repository and compares test/lint/typecheck failures with the recorded
+   exact-base baseline; with no baseline recorded (the default) every failure counts.
+   Exit 20 means new failures: append the existing FULL-SHAPE resume remediation
    task, set `currentPhase = "execute"`, and announce the redirect. Exit 21 is an
    environment/infrastructure stop, not implementation remediation. Exit 0 resumes the
    recorded phase, including `deliver`. Never recapture a baseline on resume.
@@ -516,10 +517,11 @@ case "$harness_name" in
 esac
 
 # Prepare the untouched exact-base checkout before any loop-spec files or feature edits
-# exist, then capture repository-wide validation as the no-new-failures oracle. Setup
-# and baseline commands must leave both HEAD and the worktree unchanged.
-# Both helpers own foreground process watchdogs. Never background either command, never
-# poll a log with sleep/cat, and never use ps or /proc to infer liveness.
+# exist. Repository-wide test/lint/typecheck runs at the END of the cycle (VERIFY Step
+# 1.75); startup no longer pays for a full suite on a fresh checkout before a single line
+# of the feature exists. Setup must leave both HEAD and the worktree unchanged.
+# prepare-environment.sh owns a foreground process watchdog. Never background the command,
+# never poll a log with sleep/cat, and never use ps or /proc to infer liveness.
 execution_root="$(pwd -P)"
 prepare_rc=0
 prepare_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run \
@@ -547,8 +549,13 @@ if [[ "$cmd_test" == "python -m pytest" && -z "${LOOP_SPEC_CMD_TEST+x}" ]]; then
   cmd_test="$(bash "${CLAUDE_SKILL_DIR}/../../lib/detect-test-cmd.sh" "$execution_root")"
 fi
 
+# Opt-in startup baseline (LOOP_SPEC_STARTUP_BASELINE=1). Default off: no capture runs,
+# `verificationBaseline` stays null, and VERIFY's end-of-cycle comparison treats every
+# failure it observes as blocking. Turn it on only where the base commit is already red
+# and the known-failure oracle is what stops VERIFY from chasing pre-existing failures.
+# The capture owns a foreground watchdog and must leave HEAD and the worktree unchanged.
 baseline_json=null
-if [[ "${greenfield:-0}" != "1" ]]; then
+if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then
   baseline_git_path="$(git -C "$execution_root" rev-parse --git-path "loop-spec/validation/${slug}/base")"
   [[ "$baseline_git_path" == /* ]] || baseline_git_path="$execution_root/$baseline_git_path"
   mkdir -p "$baseline_git_path"

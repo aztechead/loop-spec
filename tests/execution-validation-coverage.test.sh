@@ -42,5 +42,14 @@ check_contains "workflow has one post-wave candidate gate" \
 check_not_contains "workflow no longer appends full suite to every task proof" \
   lib/workflows/execute-dag.js '&& bash ${shellQuote(`${skillDir}/../../lib/feature-validation.sh`)}'
 
+# Startup must not pay for a repository-wide suite on the untouched base. The capture
+# survives only as an opt-in for repositories whose base commit is already red.
+check_contains "startup baseline capture is opt-in" \
+  skills/cycle/SKILL.md 'if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then'
+check_contains "workspace startup baseline capture is opt-in" \
+  skills/cycle/references/workspace-mode.md '[[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" ]] || continue'
+check_contains "the opt-in is documented" \
+  docs/loop-spec/configuration.md '`LOOP_SPEC_STARTUP_BASELINE`'
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
