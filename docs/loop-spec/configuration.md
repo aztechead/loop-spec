@@ -52,8 +52,9 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective selector set is unchanged. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
-| `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for each exact-base baseline command. `0` disables the wall-clock deadline. |
-| `LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for each exact-base baseline command. `0` disables the idle deadline. |
+| `LOOP_SPEC_STARTUP_BASELINE` | `0`/`1`; `0` | `1` captures the exact-base test/lint/typecheck baseline during cycle startup, before the feature exists. Default `0` skips that fresh-checkout suite run entirely: `verificationBaseline` stays `null` and every repository-wide failure observed later in the cycle blocks. Enable it only where the base commit is already red and the known-failure oracle is what keeps EXECUTE and VERIFY from chasing failures the feature did not cause. Greenfield never captures a baseline regardless. |
+| `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for each baseline/candidate validation command. `0` disables the wall-clock deadline. |
+| `LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for each baseline/candidate validation command. `0` disables the idle deadline. |
 | `LOOP_SPEC_COMMAND_TIMEOUT_SECS` | non-negative integer; `1800` | Default wall-clock timeout used by generic managed command execution. A more specific timeout wins; `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_COMMAND_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | Default no-output timeout used by generic managed command execution. A more specific idle timeout wins; `0` disables the idle deadline. |
 

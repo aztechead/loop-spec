@@ -2,6 +2,22 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [3.2.0] - 2026-08-12
+
+### Changed
+
+- **Cycle startup no longer runs the repository-wide test/lint/typecheck baseline.** A
+  fresh checkout paid for a full suite on the untouched base before a single line of the
+  feature existed, and the cycle runs that suite again at the integrated-wave boundary and
+  in VERIFY Step 1.75 anyway. Startup now only prepares the environment;
+  `verificationBaseline` stays `null` and the end-of-cycle comparison blocks on every
+  repository-wide failure it observes.
+- **The exact-base capture survives as an opt-in.** `LOOP_SPEC_STARTUP_BASELINE=1`
+  restores the old startup capture for repositories whose base commit is already red,
+  where the known-failure oracle is what stops EXECUTE and VERIFY from chasing failures
+  the feature did not cause. Single-repo and workspace mode share the gate; greenfield
+  never captures a baseline either way.
+
 ## [3.1.0] - 2026-08-11
 
 ### Changed

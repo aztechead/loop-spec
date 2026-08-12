@@ -69,10 +69,12 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
 done
 ```
 
-Prepare and baseline every repository now, while each feature branch `HEAD` is still its
-exact untouched base and before the workspace state directories exist. Setup and
-validation must leave each repository clean. A failure aborts initialization; never
-record setup failure as a known test failure.
+Prepare every repository now, while each feature branch `HEAD` is still its exact
+untouched base and before the workspace state directories exist. Setup must leave each
+repository clean. A failure aborts initialization; never record setup failure as a known
+test failure. Repository-wide validation runs at the end of the cycle, not here; the
+per-repo baseline capture is opt-in under the same `LOOP_SPEC_STARTUP_BASELINE=1` gate as
+single-repo mode, and each `repo_baseline_json` entry stays `null` when it is off.
 
 ```bash
 declare -A repo_prepare_key repo_baseline_json
@@ -88,6 +90,8 @@ for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   }
   repo_cmds_prepare["$rname"]="$(jq -r '.command // ""' <<<"$prepare_json")"
   repo_prepare_key["$rname"]="$(jq -r '.key // ""' <<<"$prepare_json")"
+  repo_baseline_json["$rname"]=null
+  [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" ]] || continue
   baseline_path="$(git -C "$rpath" rev-parse --git-path "loop-spec/validation/${slug}/base")"
   [[ "$baseline_path" == /* ]] || baseline_path="$rpath/$baseline_path"
   mkdir -p "$baseline_path"
@@ -154,7 +158,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" \
 Schema notes for workspace feature.json:
 - `schemaVersion: 7`; top-level `branch`, `baseSha`, `baseBranch`, `worktreePath` are `null`; top-level `commands` holds empty strings.
 - `workspace.root` is the absolute workspace parent path.
-- `workspace.repos[]` carries `name`, `path` (relative to workspace root), `branch` (`feat/{slug}`), `baseSha`, `baseBranch`, `commands` (including prepare), and its exact-base `verificationBaseline` -- matching the schema in `skills/shared/feature-state-schema.md`.
+- `workspace.repos[]` carries `name`, `path` (relative to workspace root), `branch` (`feat/{slug}`), `baseSha`, `baseBranch`, `commands` (including prepare), and its `verificationBaseline` (`null` unless `LOOP_SPEC_STARTUP_BASELINE=1` captured one) -- matching the schema in `skills/shared/feature-state-schema.md`.
 ```
 
 No initial commit of `feature.json` is forced here: `create-feature-worktree` already pointed `feat/{slug}` at a real commit (`base_sha`), and the first state commit lands at the first phase transition (Step 6). Phase artifacts under `docs/loop-spec/features/{slug}/` are committed by each phase as it writes them (SPEC, PLAN, VERIFY).
