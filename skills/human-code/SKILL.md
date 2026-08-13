@@ -87,6 +87,12 @@ measured rather than recalled:
   naming case, quote style, and line length, sampled from the target files or (for a file
   that does not exist yet) from its future neighbors. Answers `unknown` when the evidence
   is too thin, and `sample=none` (exit 1) when nothing readable was found.
+- `"${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files>` — names where each file
+  deviates from its same-language neighbors: indent, naming, quotes, semicolons, module
+  system. Unlike `probe`, the file is held out of its own baseline, which is what lets it
+  report a deviation at all — pooled in, a file that breaks every convention around it
+  reports as the convention. Exit 1 means deviations, exit 0 means it reads like its
+  neighbors, `baseline=0 files` means there was nothing to compare against.
 - `"${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` / `... diff <base> [head]` — flags added
   comments that narrate the edit, narrate history, or restate the next line of code. Exit 1
   means findings, exit 0 means clean.

@@ -213,6 +213,7 @@ CLI/Agent SDK supervisors, and
 | `LOOP_SPEC_ASSESS_TOP_N` | positive integer; `5` | Fragility hotspots per repository sent to assess reviewers. |
 | `LOOP_SPEC_ASSESS_SINCE` | git `--since` value; all history | Limits the assess fragility scan history. |
 | `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` | positive integer; `3` | Review rounds before quality-loop escalates. |
+| `LOOP_SPEC_INDIRECTION_MAX_BODY` | integer >= 1; `5` | Body size, in significant lines, below which a private single-caller definition counts as a pass-through wrapper for `lib/indirection-scan.sh`. Raise it to catch larger wrappers, at the cost of reporting legitimate decomposition; an unreadable value falls back to the default. |
 | `LOOP_SPEC_DUP_MIN_LINES` | integer >= 3; `6` | Verbatim window `lib/duplication-scan.sh` matches on, in significant lines (blank lines, comments, and lone block terminators are not counted). The shape window — same lines with identifiers and literals replaced — is always this plus two. Lower finds shorter clones and reports more; an unreadable value falls back to the default rather than scanning with a window of one. |
 | `LOOP_SPEC_QL_STATE` | path; `.loop-spec/quality-loop.json` | Overrides quality-loop state. |
 | `LOOP_SPEC_ROLLBACK_CONFIRMED` | `1`; unset | Safety interlock: `lib/checkpoint.sh rollback` refuses to restore files unless this is exactly `1`. |

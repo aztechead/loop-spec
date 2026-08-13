@@ -94,19 +94,7 @@ TARGETS="${TMPDIR:-/tmp}/duplication-scan-$$.tsv"
 trap 'rm -f "$TARGETS"' EXIT
 if [[ "$MODE" == "diff" ]]; then
   git diff --unified=0 --no-color "$1" ${2:+"$2"} \
-    | python3 -c '
-import re, sys
-path, lineno = None, 0
-for line in sys.stdin:
-    if line.startswith("+++ b/"):
-        path = line[6:].rstrip("\n")
-    elif line.startswith("@@"):
-        m = re.search(r"\+(\d+)", line)
-        lineno = int(m.group(1)) if m else 0
-    elif line.startswith("+") and not line.startswith("+++") and path:
-        sys.stdout.write("{}\t{}\n".format(path, lineno))
-        lineno += 1
-' > "$TARGETS"
+    | python3 "$(dirname "${BASH_SOURCE[0]}")/diff-added-lines.py" > "$TARGETS"
 else
   printf '%s\n' "$@" > "$TARGETS"
 fi
@@ -376,7 +364,7 @@ with open(target_list, "r", encoding="utf-8", errors="replace") as handle:
         if added is None:
             targets.append(row.strip())
             continue
-        path, _, lineno = row.partition("\t")
+        path, lineno = row.split("\t")[:2]
         added.setdefault(path, set()).add(int(lineno))
 if added is not None:
     targets = sorted(added)

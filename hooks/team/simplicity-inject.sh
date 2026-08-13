@@ -58,6 +58,12 @@ fi
 # it is working in. Resolved from this hook's own location, empty when the lib is
 # not reachable -- the rung then stands on its own, same as the other injectors.
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" 2>/dev/null && pwd || true)"
+if [[ -n "$LIB_DIR" && -x "$LIB_DIR/indirection-scan.sh" ]]; then
+  RUNG_ONE_PROBE="bash ${LIB_DIR}/indirection-scan.sh scan <files you touched> names each small private helper you added that is called exactly once -- inline it or say why the name earns its hop. It leaves decomposition alone: a long function with one caller, an exported symbol, and dead code are all silent."
+else
+  RUNG_ONE_PROBE="after writing, count the callers of every helper you added; one caller and a body of a few lines is a hop the reader pays for and you should inline."
+fi
+
 if [[ -n "$LIB_DIR" && -x "$LIB_DIR/duplication-scan.sh" ]]; then
   RUNG_TWO_PROBE="Rung 2 is measured, not recalled: you cannot find a helper in a file you never opened. Before you call anything you wrote new, run 'bash ${LIB_DIR}/duplication-scan.sh scan <files you touched>' -- it names each duplicated block and the file that block already lives in. It reports two kinds and both count: 'duplicate=' is the same lines, 'similar=' is the same lines with every name changed, which is what writing one module beside a similar one produces and the kind you are least likely to notice yourself."
 else
@@ -73,7 +79,7 @@ esac
 DIRECTIVE="SIMPLICITY MODE ACTIVE (default, ${LEVEL}): write the shortest solution that actually works. Lazy means efficient, not careless. The best code is the code never written.
 
 Before writing any code, stop at the first rung that holds:
-1. Does this need to exist at all? Speculative need = skip it, say so in one line. (YAGNI)
+1. Does this need to exist at all? Speculative need = skip it, say so in one line. (YAGNI) The layer nobody needed always looks justified while you are writing it and is only countable afterwards, so count it: '${RUNG_ONE_PROBE}'
 2. DRY -- already in this codebase? Reuse the helper, util, type, or pattern that already lives here; do not re-implement it. Reuse means calling it, or lifting the shared part into one place both callers use -- never a second copy that drifts. Two blocks that merely look alike but change for different reasons are not duplication; merging those is a coupling bug.
 3. Stdlib does it? Use it.
 4. Native platform feature covers it? Use it.

@@ -2,6 +2,47 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [3.4.0] - 2026-08-13
+
+### Added
+
+- **`house-style.sh compare`: the code-for-humans directive can now demonstrate a
+  deviation.** `probe` folds the target into its own sample, so a file that breaks every
+  convention around it reports AS the convention — its deviation averages into the baseline
+  it is being measured against. Probing only a hand-written offender returned output
+  identical to probing its neighbors. The severity rule ("a deviation the probe measured is
+  Important and blocks; taste is Minor") had nothing behind it. `compare` holds each file
+  out of its own baseline and names where it deviates, both sides measured. Two rules keep
+  it honest: the baseline is per-target and same-extension (judging a `.js` file against the
+  `.sh` files beside it reports camelCase as a deviation from snake_case, which is two
+  languages rather than a violation), and embedded languages are skipped — a shell heredoc
+  or multi-line single-quoted string usually holds jq or Python, whose conventions are not
+  the shell file's.
+- **Two new style axes, and a naming rule that does not fire on correct code.**
+  `semicolons` and `module_style` (CommonJS vs ESM) join the measured set — both are loud
+  tells that a file was written somewhere else. Naming is checked name by name against the
+  neighbors' convention rather than by the file's own majority, since a file holding one
+  definition can never form one; and a single-word name like `checkout` is valid camelCase
+  and valid snake_case alike, so only the unambiguous crossover is reported.
+- **`lib/indirection-scan.sh`: rung 1 (YAGNI) is counted instead of exhorted.** "No
+  abstraction with one caller" has been in the ladder from the start, and one-caller
+  wrappers keep landing, because at the moment of writing a wrapper always looks like good
+  decomposition — the cost is only visible, and only countable, afterwards. The probe names
+  each small, private definition a change added that is referenced exactly once. All four
+  conditions are load-bearing: it is silent on a long single-caller function (decomposition,
+  which is what functions are for), on exported symbols (callers it cannot see), on dead
+  code (zero callers is a different finding), and on wrappers that predate the diff. The
+  reviewer's `yagni:` tag now rests on that count.
+
+### Changed
+
+- Both probes reach every code-producing dispatch path — implementer, code-reviewer,
+  team prompt, both subagent prompts, loop-fleet, workflow, and the SessionStart hooks —
+  each resolving the probe path by its own mechanism. Enforced by
+  `tests/human-code-coverage.test.sh` and `tests/ponytail-coverage.test.sh`, including the
+  carve-outs: a dispatch copy that omits "decomposition is not indirection" would order
+  every helper inlined, which is the opposite of the design-for-change companion.
+
 ## [3.3.0] - 2026-08-13
 
 ### Added

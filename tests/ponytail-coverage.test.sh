@@ -177,6 +177,45 @@ for f in agents/implementer.md agents/code-reviewer.md \
   fi
 done
 
+# Rung 1 (YAGNI) is the other rung prose could not enforce: the one-caller wrapper looks
+# justified while it is being written and is only countable afterwards. lib/indirection-scan.sh
+# is that count, and it has to reach the same dispatch paths as the ladder itself.
+for f in agents/implementer.md agents/code-reviewer.md \
+         skills/shared/team-prompts/implementer.md skills/shared/execute-subagent.md \
+         lib/plan-to-loop.sh lib/workflows/execute-dag.js hooks/team/simplicity-inject.sh \
+         skills/shared/laziness-ladder.md; do
+  if grep -qF "indirection-scan.sh" "$f"; then
+    echo "PASS: $f names the indirection probe"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f does not name indirection-scan.sh -- rung 1 is prose again there"
+    FAIL=$((FAIL+1))
+  fi
+done
+
+# The probe must exist, be executable, and be wired into the offline suite.
+if [[ -x lib/indirection-scan.sh ]]; then
+  echo "PASS: lib/indirection-scan.sh exists and is executable"; PASS=$((PASS+1))
+else
+  echo "FAIL: lib/indirection-scan.sh missing or not executable"; FAIL=$((FAIL+1))
+fi
+if grep -qF "tests/lib/indirection-scan.test.sh" tests/run-all.sh; then
+  echo "PASS: tests/lib/indirection-scan.test.sh registered in run-all.sh"; PASS=$((PASS+1))
+else
+  echo "FAIL: tests/lib/indirection-scan.test.sh is not registered"; FAIL=$((FAIL+1))
+fi
+
+# Decomposition is not indirection. Without that carve-out the directive tells implementers
+# to inline every helper, which is the opposite of the design-for-change companion.
+for f in agents/implementer.md agents/code-reviewer.md skills/shared/laziness-ladder.md \
+         hooks/team/simplicity-inject.sh; do
+  if grep -qiE "decomposition|earns its hop|long function with one caller" "$f"; then
+    echo "PASS: $f keeps the decomposition carve-out"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f omits the decomposition carve-out -- rung 1 becomes an inline-everything order"
+    FAIL=$((FAIL+1))
+  fi
+done
+
 # The reviewer must not turn the probe into a licence to merge lookalikes: two blocks that
 # change for different reasons are not duplication, and merging them couples them.
 for f in agents/implementer.md agents/code-reviewer.md hooks/team/simplicity-inject.sh; do

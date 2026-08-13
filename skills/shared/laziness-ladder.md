@@ -20,7 +20,12 @@ the canonical compact text below in sync with the skill. The session-level copy 
 
 > SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
 > actually works; the best code is the code never written. BEFORE writing code, stop at the
-> first rung that holds: (1) does it need to exist at all? speculative = skip it (YAGNI);
+> first rung that holds: (1) does it need to exist at all? speculative = skip it (YAGNI) —
+> and the layer nobody needed always looks justified while you write it, so count it
+> afterwards: `bash <probe_dir>/indirection-scan.sh scan <your files>` names each small
+> private helper you added that is called exactly once. Inline it, or say why the name
+> earns its hop. It leaves decomposition alone (a long function with one caller is what
+> functions are for), and stays silent on exported symbols and dead code;
 > (2) DRY — already in this codebase? reuse the existing helper/util/type/pattern, do not
 > re-implement it: search the tree for it BEFORE you write, and check what you wrote after
 > with `bash <probe_dir>/duplication-scan.sh scan <your files>`, which reports any block
@@ -39,6 +44,21 @@ the canonical compact text below in sync with the skill. The session-level copy 
 > is the same *reason to change* expressed twice, so leave alone what coincidentally
 > resembles. Non-trivial logic leaves ONE runnable check behind. Mark deliberate shortcuts
 > with a `simplicity:` comment naming the ceiling and upgrade path.
+
+## Rungs 1 and 2 are the two the prose could never enforce
+
+Rungs 3–7 are decidable from the task alone: either the stdlib has it or it does not. The
+first two are not, and each fails in its own way.
+
+**Rung 1 (YAGNI)** fails at the moment of writing. A wrapper always looks like good
+decomposition while you are producing it — that is why "no abstraction with one caller" has
+been in this directive from the beginning and one-caller wrappers keep landing. The cost is
+only visible afterwards, to a reader following three hops to reach four lines, and it is
+only *countable* afterwards. `lib/indirection-scan.sh` counts it: small, private, added by
+this change, called exactly once. All four conditions matter, because each alone is ordinary
+good code — which is why the probe is silent on a long single-caller function
+(decomposition, and the point of functions), on an exported symbol (callers it cannot see),
+and on dead code (zero callers is a different finding).
 
 ## Rung 2 is the rung a fresh context cannot climb
 
