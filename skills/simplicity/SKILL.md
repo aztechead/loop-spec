@@ -76,7 +76,7 @@ Lazy means efficient, not careless. Before writing any code, stop at the first
 rung that holds:
 
 1. **Does this need to exist at all?** Speculative need = skip it, say so in one line. (YAGNI)
-2. **Already in this codebase?** A helper, util, type, or pattern that already lives here → reuse it. Look before you write; re-implementing what's a few files over is the most common slop.
+2. **DRY — already in this codebase?** A helper, util, type, or pattern that already lives here → reuse it. Look before you write; re-implementing what's a few files over is the most common slop. This is the one rung that resists diligence: you cannot find a helper in a file you never opened, so it is measured rather than recalled — `lib/duplication-scan.sh scan <files>` names each block you duplicated and the file it already lives in, and `diff <base> [head]` reports only the clones a change introduced. Reuse means *calling* the existing thing, or lifting the shared part into one place both callers use. A second copy that drifts is the failure mode, and the drift is silent.
 3. **Stdlib does it?** Use it.
 4. **Native platform feature covers it?** `<input type="date">` over a picker lib, CSS over JS, a DB constraint over app code.
 5. **Already-installed dependency solves it?** Use it. Never add a new one for what a few lines can do (in loop-spec terms: no npm/pip/brew for shipped code).
@@ -97,6 +97,7 @@ path the ticket names leaves every sibling caller still broken.
 
 - No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a value that never changes. A seam is the exception: a clean boundary or an injected dependency (a unit receiving its collaborators as params/args/env) is not bloat, and cutting it is not simplification — see `skills/shared/design-for-change.md`. YAGNI cuts artifacts, never seams.
 - No boilerplate or scaffolding "for later" — later can scaffold for itself.
+- DRY is about *reasons to change*, not about matching text. Two blocks that look alike but change for different reasons are not duplication, and merging them couples two things that wanted to move independently — the probe locates candidates, you decide which are real. When one is real, fix it once in the shared place rather than in each copy.
 - Deletion over addition. Boring over clever. Fewest files possible.
 - Shortest working diff wins — but only once you understand the problem. The smallest change in the wrong place isn't lazy, it's a second bug.
 - Complex request? Ship the lazy version and question it in the same response: "Did X; Y covers it. Need full X? Say so." Never stall on an answer you can default.
@@ -134,7 +135,7 @@ ladder in its OWN dispatch prompt — canonical text in `skills/shared/laziness-
 enforced every time by `tests/ponytail-coverage.test.sh`:
 - **PLAN / planner** climbs the ladder when shaping tasks — no speculative abstractions in the plan (`agents/planner.md`).
 - **EXECUTE / implementer** carries the ladder on **every rung** — team (`agents/implementer.md`), subagent (`skills/shared/execute-subagent.md`), loop-fleet (`lib/plan-to-loop.sh`), and workflow (`lib/workflows/execute-dag.js`) — since the lighter rungs dispatch the default agent / a loop worker / a Workflow agent that the agent-definition ladder and the SessionStart hook do not reach.
-- **VERIFY / code-reviewer** runs the over-engineering pass (delete / stdlib / native / yagni / shrink) on the diff (`agents/code-reviewer.md`); the per-task reviewers in the EXECUTE subagent/workflow rungs run the same pass on each task diff.
+- **VERIFY / code-reviewer** runs the over-engineering pass (delete / stdlib / native / yagni / shrink / dry) on the diff (`agents/code-reviewer.md`); the per-task reviewers in the EXECUTE subagent/workflow rungs run the same pass on each task diff. The `dry:` tag is the only one grounded in a probe rather than a reading, and it blocks on the same rule as the other measured findings: what `duplication-scan.sh` locates by file:line is Important, what the reviewer merely suspects is Minor.
 
 ## Notes
 

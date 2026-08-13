@@ -27,6 +27,15 @@ check_output "b: default on -> SIMPLICITY MODE ACTIVE" 0 "SIMPLICITY MODE ACTIVE
 check_output "c: default level is full" 0 "LEVEL full" CLAUDE_PROJECT_DIR="$LS"
 check_valid_json "d: default on -> valid JSON" CLAUDE_PROJECT_DIR="$LS"
 
+# --- rung 2 is named and measured ---
+# The main thread is the one code-producing path a dispatch prompt does not reach, so the
+# DRY rung and its probe have to arrive here or ad-hoc work climbs a ladder missing a rung.
+check_output "d2: rung 2 is named DRY" 0 "DRY" CLAUDE_PROJECT_DIR="$LS"
+check_output "d3: rung 2 names the probe" 0 "duplication-scan.sh" CLAUDE_PROJECT_DIR="$LS"
+# The plugin is not the project it works in: a bare lib/ path would resolve to nothing.
+check_output "d4: the probe path is absolute" 0 "bash /.*/duplication-scan.sh" CLAUDE_PROJECT_DIR="$LS"
+check_output "d5: lookalikes are carved out, not ordered merged" 0 "coupling bug" CLAUDE_PROJECT_DIR="$LS"
+
 # --- self-scoping: NO .loop-spec dir -> silent ---
 NOPROJ="$TMPDIR_TEST/noproj"; mkdir -p "$NOPROJ"
 check_no_pattern "e: no .loop-spec dir -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$NOPROJ"

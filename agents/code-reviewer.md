@@ -51,6 +51,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
    - `native:` a dependency or code doing what the platform/shell/git already does. Name the feature.
    - `yagni:` abstraction with one implementation, factory with one product, config nobody sets, layer with one caller.
    - `shrink:` same logic, fewer lines. Show the shorter form.
+   - `dry:` a block the diff added that already exists elsewhere. This one is measured, not eyeballed: run `bash {probe_dir}/duplication-scan.sh diff {base_sha} {branch}` and quote it — each finding names the added span and the file the block already lives in. `duplicate=` is the same lines; `similar=` is the same lines with every identifier and literal changed, which is the shape copy-paste usually ships in — treat both as findings. Exit 1 means findings; exit 0 means clean. The probe reports only clones this diff introduced, so a hit is this author's to resolve, and the fix is to call the existing thing or lift the shared part out. Do NOT report a `dry:` finding the probe did not produce unless you can cite both locations by file:line, and do NOT demand a merge of two blocks that merely resemble each other — duplication is one reason to change expressed twice, and merging coincidental lookalikes is a coupling bug.
    Do NOT flag the ponytail minimum as bloat: a single smoke test or `assert`-based self-check, or an accepted `simplicity:`-marked shortcut, is intentional — leave it. A seam is NOT bloat: a clean boundary or an injected dependency (a unit receiving its collaborators as params/args/env) is exempt from `yagni:` — only built-out speculation behind a seam (a second implementation nobody asked for, a factory for one product, config nobody sets) gets flagged. End this pass with `net: -<N> lines possible` (or `Lean already` if nothing cuts). This pass lists; it never rewrites.
 7. **Design-for-change pass** (companion to step 6; canonical reference `skills/shared/design-for-change.md`). The over-engineering pass asks "is there too much code?"; this pass asks "are the boundaries in the wrong place?". Report each as **Important** with file:line, one line per finding. Tags:
    - `couple:` a unit reaching into another unit's internals instead of its boundary, or one unit carrying two reasons to change (separation-of-concerns violation).
@@ -84,7 +85,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 ## What NOT to do
 
 - Do NOT modify code. Your Write/Edit access is memory-scoped: the path hook denies any write outside `.claude/agent-memory/`.
-- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `house-style.sh` measured, or a tell `comment-tells.sh` flagged, is Important and blocks — you can point at the probe output. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
+- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `house-style.sh` measured, a tell `comment-tells.sh` flagged, or a clone `duplication-scan.sh` located in another file, is Important and blocks — you can point at the probe output. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
 - Do NOT review code that's pre-existing on `base_sha` - only the diff.
 
 ## Report format
@@ -92,7 +93,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 - **Status**: BLOCK ({n} critical/important findings) | PASS_WITH_MINOR | PASS
 - **Critical**: list with file:line + description + suggested fix
 - **Important**: list
-- **Over-engineering**: tagged delete/stdlib/native/yagni/shrink lines + `net: -<N> lines possible` (`Lean already` if nothing cuts)
+- **Over-engineering**: the `duplication-scan.sh` verdict, then tagged delete/stdlib/native/yagni/shrink/dry lines + `net: -<N> lines possible` (`Lean already` if nothing cuts)
 - **Design-for-change**: tagged couple/corner/inject/iface lines (`Boundaries sound` if nothing flags)
 - **Code-for-humans**: the `house-style.sh` fact lines you measured, the `comment-tells.sh` verdict, then tagged house/noise/name/churn lines (`Reads like its neighbors` if nothing flags)
 - **Minor (deferred)**: list of follow-up suggestions

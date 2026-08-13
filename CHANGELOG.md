@@ -2,6 +2,51 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [3.3.0] - 2026-08-13
+
+### Added
+
+- **Rung 2 of the ponytail ladder (DRY) is now measured instead of exhorted.**
+  `lib/duplication-scan.sh` compares the code a run just wrote against the rest of the
+  tree and names the file each duplicated block already lives in. `scan <files>` answers
+  "does this already exist?" before DONE; `diff <base> [head]` reports only the clones a
+  change introduced, so a reviewer sees this author's duplication rather than the
+  repository's standing debt. Findings carry `file:line` and are therefore blocking at
+  VERIFY under the existing severity rule; the reviewer's over-engineering pass gains a
+  `dry:` tag grounded in the probe.
+- **The probe matches at two tiers, because the second is the one produced code trips.**
+  `duplicate=` is the same lines verbatim; `similar=` is the same lines with every
+  identifier and literal replaced. Writing `orders.ts` beside `users.ts` yields the same
+  twelve lines with one noun swapped throughout — a verbatim matcher reports that clean, so
+  a probe with only the first tier would pass exactly the diffs it exists to catch. The
+  shape tier carries its own fences to stay usable: a wider window, rejection of windows
+  whose lines are mostly identical to each other (a table of uniform rows otherwise matches
+  a shifted copy of itself at every offset), and suppression of any shape finding
+  overlapping a verbatim one. Both tiers reach every dispatch prompt, enforced by
+  `tests/ponytail-coverage.test.sh`.
+- **The directive reaches every code-producing dispatch, not just the canonical doc.**
+  Rung 2 now names DRY and the probe in `agents/implementer.md`, `agents/code-reviewer.md`,
+  `agents/planner.md` (which records the existing file in `readFirst` rather than running a
+  probe it has no Bash for), `skills/shared/team-prompts/implementer.md`, both
+  `skills/shared/execute-subagent.md` prompts, `lib/plan-to-loop.sh`,
+  `lib/workflows/execute-dag.js`, and `hooks/team/simplicity-inject.sh` — each resolving the
+  probe path by its own mechanism, since a dispatched agent's cwd is the target repository
+  and a bare `lib/...` path resolves to nothing there.
+  `tests/ponytail-coverage.test.sh` enforces the wiring, mirroring the code-for-humans suite.
+
+### Changed
+
+- **The ladder, design-for-change, and code-for-humans are documented as one set of three.**
+  `CLAUDE.md` gained the ponytail bullet it was missing while carrying the other two, and
+  `docs/loop-spec/architecture.md` states the position: six of the seven rungs are decidable
+  from the task alone, and the one that is not gets a probe rather than a firmer instruction.
+- **Duplication stays a judgment where it should be.** The probe locates candidates; it never
+  orders a merge. Two blocks that resemble each other but change for different reasons are
+  not duplication, and every dispatch copy carries that carve-out so `dry:` cannot become an
+  instruction to couple unrelated code. The probe reads code only (prose and data repeat by
+  nature), skips generated files and marked generated regions, and leaves identifiers and
+  literals intact — structural matching would double the recall and destroy the signal.
+
 ## [3.2.0] - 2026-08-12
 
 ### Changed

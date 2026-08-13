@@ -225,7 +225,7 @@ IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-
 SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
 actually works; the best code is the code never written. BEFORE writing code, stop at the
 first rung that holds: (1) does it need to exist at all? speculative = skip it (YAGNI);
-(2) already in this codebase? reuse the existing helper/util/type/pattern, do not
+(2) DRY — already in this codebase? reuse the existing helper/util/type/pattern, do not
 re-implement it; (3) stdlib does it? use it; (4) native platform feature covers it? use it;
 (5) an already-installed dependency solves it? use it, never add a new one for what a few
 lines do; (6) can it be one line? one line; (7) only then, the minimum code that works. The
@@ -233,6 +233,16 @@ ladder runs AFTER you understand the problem. Bug fix = root cause, not symptom.
 input validation at trust boundaries, error handling that prevents data loss, security,
 accessibility, or anything the spec requires. Non-trivial logic leaves ONE runnable check
 behind. Mark deliberate shortcuts with a `simplicity:` comment naming the ceiling.
+
+Rung 2 is measured, not recalled: you cannot find a helper in a file you never opened, so
+before reporting DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan
+<files you touched>`. It names each block you duplicated and the file that block already
+lives in: `duplicate=` for the same lines, `similar=` for the same lines with every name
+changed — the latter is what writing one module beside a similar one actually produces, so
+it counts the same. Resolve every finding — call the existing thing, or lift the shared part
+into one place both callers use. Never leave a second copy that drifts. The one exception is a
+coincidental resemblance (two blocks that look alike but change for different reasons);
+say so once in your report rather than merging them, because that merge is a coupling bug.
 
 DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task's stated
 interface, not an implementation detail; one unit, one reason to change. New units receive
@@ -384,12 +394,17 @@ IMPORTANT: All paths must be ABSOLUTE. Do not use em-dashes.
 
 SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
 actually works. BEFORE writing code, stop at the first rung that holds: (1) needed at all?
-speculative = skip (YAGNI); (2) already in this codebase? reuse it; (3) stdlib does it?
-use it; (4) native platform feature? use it; (5) installed dependency solves it? use it,
+speculative = skip (YAGNI); (2) DRY — already in this codebase? reuse it; (3) stdlib does
+it? use it; (4) native platform feature? use it; (5) installed dependency solves it? use it,
 add no new one for what a few lines do; (6) one line? one line; (7) only then the minimum
 that works. Ladder runs AFTER understanding the problem; bug fix = root cause not symptom.
 NEVER cut validation at trust boundaries, data-loss error handling, security, accessibility,
 or anything the spec requires. Non-trivial logic leaves ONE runnable check behind.
+Rung 2 is measured: before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh"
+scan <files you touched>` — it names each duplicated block and the file it already lives in
+(`duplicate=` same lines, `similar=` same lines with every name changed; both count).
+Call the existing thing or lift the shared part out; never leave a second copy that drifts.
+A coincidental resemblance is the one exception — report it rather than merging it.
 
 DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task's stated
 interface; one unit, one reason to change; new units receive collaborators (params/args/env),

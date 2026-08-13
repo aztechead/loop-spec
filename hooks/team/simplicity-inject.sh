@@ -54,6 +54,16 @@ if [[ -f "$CONF_FILE" ]]; then
   esac
 fi
 
+# Rung 2 names a probe the session has to run, and the plugin is not the project
+# it is working in. Resolved from this hook's own location, empty when the lib is
+# not reachable -- the rung then stands on its own, same as the other injectors.
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" 2>/dev/null && pwd || true)"
+if [[ -n "$LIB_DIR" && -x "$LIB_DIR/duplication-scan.sh" ]]; then
+  RUNG_TWO_PROBE="Rung 2 is measured, not recalled: you cannot find a helper in a file you never opened. Before you call anything you wrote new, run 'bash ${LIB_DIR}/duplication-scan.sh scan <files you touched>' -- it names each duplicated block and the file that block already lives in. It reports two kinds and both count: 'duplicate=' is the same lines, 'similar=' is the same lines with every name changed, which is what writing one module beside a similar one produces and the kind you are least likely to notice yourself."
+else
+  RUNG_TWO_PROBE="Rung 2 is measured, not recalled: you cannot find a helper in a file you never opened. Grep the tree for the distinctive line of anything you wrote from scratch before you call it new."
+fi
+
 case "$LEVEL" in
   lite)  INTENSITY='LEVEL lite: build what is asked, but name the lazier alternative in one line so the user can pick it.' ;;
   ultra) INTENSITY='LEVEL ultra: YAGNI extremist. Deletion before addition. Ship the one-liner and challenge the rest of the requirement in the same breath.' ;;
@@ -64,7 +74,7 @@ DIRECTIVE="SIMPLICITY MODE ACTIVE (default, ${LEVEL}): write the shortest soluti
 
 Before writing any code, stop at the first rung that holds:
 1. Does this need to exist at all? Speculative need = skip it, say so in one line. (YAGNI)
-2. Already in this codebase? Reuse the helper, util, type, or pattern that already lives here; do not re-implement it.
+2. DRY -- already in this codebase? Reuse the helper, util, type, or pattern that already lives here; do not re-implement it. Reuse means calling it, or lifting the shared part into one place both callers use -- never a second copy that drifts. Two blocks that merely look alike but change for different reasons are not duplication; merging those is a coupling bug.
 3. Stdlib does it? Use it.
 4. Native platform feature covers it? Use it.
 5. Already-installed dependency solves it? Use it; never add a new one for what a few lines can do.
@@ -72,6 +82,8 @@ Before writing any code, stop at the first rung that holds:
 7. Only then: the minimum code that works.
 
 The ladder runs AFTER you understand the problem, not instead of it: read the task and the code it touches, trace the real flow end to end, then climb. Bug fix = root cause not symptom: grep every caller and fix the shared function once.
+
+${RUNG_TWO_PROBE}
 
 ${INTENSITY}
 

@@ -57,7 +57,9 @@ Relevant phases:
 
 The probes ship inside the plugin; a dispatched agent's working directory is the target
 repository. A bare `lib/house-style.sh` therefore resolves to nothing, so every dispatch
-site substitutes a real absolute path before the directive goes out:
+site substitutes a real absolute path before the directive goes out. The same table governs
+the ladder's `duplication-scan.sh` (`skills/shared/laziness-ladder.md`), which every one of
+these sites carries alongside these two:
 
 | Site | How it resolves |
 |---|---|
@@ -97,6 +99,9 @@ protects *legibility*. None of the three overrides the others, and where they ap
 collide the resolution is fixed:
 
 - Matching the house style never justifies duplicating a helper the ladder would reuse.
+  When the neighbors themselves hold a second copy, the house style is the *shape* to
+  match, never a licence to add a third — `lib/duplication-scan.sh` names the file the
+  block already lives in, and reuse means calling it or lifting the shared part out.
 - Matching the house style never justifies cutting a seam, and a seam's boundary is not
   "extra indirection" because the neighbors lack one.
 - The ladder's `simplicity:` marker and this directive's comment budget do not conflict:
