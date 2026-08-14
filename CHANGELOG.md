@@ -15,9 +15,14 @@ All notable changes documented here. Format follows Keep a Changelog.
   out of its own baseline and names where it deviates, both sides measured. Two rules keep
   it honest: the baseline is per-target and same-extension (judging a `.js` file against the
   `.sh` files beside it reports camelCase as a deviation from snake_case, which is two
-  languages rather than a violation), and embedded languages are skipped — a shell heredoc
-  or multi-line single-quoted string usually holds jq or Python, whose conventions are not
-  the shell file's.
+  languages rather than a violation), and the definition regex is per-language so another
+  language's keyword is not read as this file's — jq's `def name(g):` embedded in a shell
+  script is jq, not a snake_case-violating shell definition. A shell heredoc's body is
+  skipped for the same reason. (An earlier draft tracked shell single-quote state across
+  lines to skip embedded `'...'` programs; that was removed after audit — an apostrophe in
+  a comment or a double-quoted literal defeated it and silently swallowed the rest of the
+  file, turning a false positive into a worse false negative. The per-language regex fixes
+  the naming hazard at its source without that fragility.)
 - **Two new style axes, and a naming rule that does not fire on correct code.**
   `semicolons` and `module_style` (CommonJS vs ESM) join the measured set — both are loud
   tells that a file was written somewhere else. Naming is checked name by name against the

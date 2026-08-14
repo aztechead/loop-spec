@@ -260,6 +260,46 @@ EOF
 check "u8b: an apostrophe in a comment does not swallow the file" 0 \
   "matches its neighbors" compare "$CMP/src/prose.sh"
 
+# The decisive case: the apostrophe (here in an INLINE comment, the hardest kind)
+# must not swallow a real deviation that sits BELOW it. This file is uniformly
+# 4-space against 2-space neighbors; if the apostrophe swallows the body, the
+# probe reports clean -- a false negative on a blocking style probe.
+cat > "$CMP/src/deviant.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+emit() {
+    local x="$1"    # don't drop the caller's value
+    local y="deep"
+    printf '%s\n' "$x$y"
+}
+EOF
+check "u8c: an inline apostrophe does not hide a deviation below it" 1 \
+  "deviation=indent: file is spaces:4" compare "$CMP/src/deviant.sh"
+
+# jq's `def name(g):` inside a single-quoted shell program is jq, not a shell
+# definition -- shell has no `def`. The per-language def regex must not read it
+# as camelCase creeping into a snake_case shell file (the retro.sh regression).
+cat > "$CMP/src/embed_jq.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+collect_slugs() {
+  local feats="$1"
+  jq -cn --argjson feats "$feats" '
+  def featsWithGap(g): [$feats[] | select(.gaps | index(g)) | .slug];
+  def featsWithGateCap(g): [$feats[] | select(.gateCaps | index(g)) | .slug];
+  (featsWithGap("plan")) as $planFeats | $planFeats'
+}
+
+report_slugs() {
+  local feats="$1"
+  collect_slugs "$feats"
+}
+EOF
+check "u8d: jq def in a single-quoted program is not shell naming" 0 \
+  "matches its neighbors" compare "$CMP/src/embed_jq.sh"
+
 # Nothing to compare against is an answer, not a finding.
 mkdir -p "$CMP/lonely"
 printf 'const a = 1\n' > "$CMP/lonely/only.js"

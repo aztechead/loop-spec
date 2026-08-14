@@ -96,13 +96,37 @@ MODULE_ESM = re.compile(r"^(?:import\s|export\s|export\{|import\{)")
 SHELL_LANGS = {".sh", ".bash"}
 HEREDOC_OPEN = re.compile(r"<<-?\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?")
 
-DEF_RE = re.compile(
+# Definition syntax per language. Keyed on the extension because a single global
+# regex reads another language's keyword as this file's definition -- jq's
+# `def featsWithGap(g):` inside a shell heredoc-less `'...'` program matched the
+# `def` branch and reported camelCase creeping into a snake_case shell codebase.
+# Shell has no `def`; only `name()` and `function name` are definitions there.
+SHELL_DEF = re.compile(r"^\s*(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{"
+                       r"|^\s*function\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+JS_DEF = re.compile(
+    r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_][A-Za-z0-9_]*)\s*\("
+    r"|^\s*(?:export\s+)?(?:public\s+|private\s+|protected\s+|static\s+|readonly\s+)*"
+    r"(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)"
+    r"|^\s*(?:export\s+)?(?:abstract\s+)?(?:class|interface|type|enum)\s+([A-Za-z_][A-Za-z0-9_]*)")
+PY_DEF = re.compile(r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)"
+                    r"|^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)")
+GO_DEF = re.compile(r"^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\("
+                    r"|^\s*type\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+# The fallback for a language without its own entry -- Ruby, Rust, Java, Perl,
+# and so on. It keeps `def` (Ruby/Perl methods): the jq-def-in-shell hazard that
+# `def` used to cause is gone, because shell now uses SHELL_DEF and this fallback
+# is never applied to a `.sh` file.
+GENERIC_DEF = re.compile(
     r"^\s*(?:export\s+)?(?:async\s+)?(?:public\s+|private\s+|protected\s+|static\s+)*"
-    r"(?:def|func|function|fn|class|interface|type)\s+([A-Za-z_][A-Za-z0-9_]*)"
-    r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"
-    r"(?:async\s+)?(?:function\b|\([^)]*\)\s*=>)"
-    r"|^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{"          # bash: name() {
-)
+    r"(?:def|func|fn|class|interface|type|struct|impl|sub|module)\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+DEF_RE_BY_EXT = {
+    ".sh": SHELL_DEF, ".bash": SHELL_DEF,
+    ".py": PY_DEF,
+    ".go": GO_DEF,
+}
+for _ext in (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"):
+    DEF_RE_BY_EXT[_ext] = JS_DEF
 
 
 def sample_paths(targets, widen=False):
@@ -171,14 +195,21 @@ def scan(path, tally):
         return
     tally.readable.append(path)
 
+    def_re = DEF_RE_BY_EXT.get(ext, GENERIC_DEF)
     in_block = False
     previous_was_comment = False
     heredoc = None
-    in_squote = False
     for raw in lines[:MAX_LINES]:
         line = raw.rstrip("\n")
         stripped = line.strip()
 
+        # A shell heredoc holds another language -- this repo's scripts carry
+        # whole Python and jq programs in them. Skip its body so the embedded
+        # code does not set the shell file's style. (An embedded program passed
+        # as a single-quoted `'...'` string is left in: tracking that state
+        # across lines is defeated by any apostrophe in a comment, and the real
+        # damage it did -- reading jq's `def` as a shell definition -- is now
+        # prevented at the source by the per-language def regex above.)
         if heredoc is not None:
             if stripped == heredoc:
                 heredoc = None
@@ -188,20 +219,6 @@ def scan(path, tally):
             if opener:
                 heredoc = opener.group(1)
                 continue
-            # The other place an embedded program hides: a single-quoted string
-            # spanning lines, which is how jq and awk programs are passed. Shell
-            # cannot escape a single quote inside one, so counting is exact --
-            # but only over code. An apostrophe in a comment ("the language's own
-            # tooling") is not a string delimiter, and counting it opens a quote
-            # that never closes, which silently swallows the rest of the file.
-            if stripped.startswith("#"):
-                continue
-            odd = line.count("'") % 2 == 1
-            if in_squote:
-                in_squote = not odd
-                continue
-            if odd:
-                in_squote = True
 
         if not stripped:
             previous_was_comment = False
@@ -235,12 +252,13 @@ def scan(path, tally):
             width = len(line) - len(line.lstrip(" "))
             tally.indent_widths[width] = tally.indent_widths.get(width, 0) + 1
 
-        match = DEF_RE.match(line)
+        match = def_re.match(line)
         if match:
-            name = next(g for g in match.groups() if g)
-            tally.defs.append(name)
-            if previous_was_comment:
-                tally.documented += 1
+            name = next((g for g in match.groups() if g), None)
+            if name:
+                tally.defs.append(name)
+                if previous_was_comment:
+                    tally.documented += 1
 
         if ext in QUOTED:
             tally.single += len(re.findall(r"'[^'\n]*'", line))
