@@ -225,7 +225,7 @@ IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-
 SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
 actually works; the best code is the code never written. BEFORE writing code, stop at the
 first rung that holds: (1) does it need to exist at all? speculative = skip it (YAGNI);
-(2) already in this codebase? reuse the existing helper/util/type/pattern, do not
+(2) DRY — already in this codebase? reuse the existing helper/util/type/pattern, do not
 re-implement it; (3) stdlib does it? use it; (4) native platform feature covers it? use it;
 (5) an already-installed dependency solves it? use it, never add a new one for what a few
 lines do; (6) can it be one line? one line; (7) only then, the minimum code that works. The
@@ -233,6 +233,22 @@ ladder runs AFTER you understand the problem. Bug fix = root cause, not symptom.
 input validation at trust boundaries, error handling that prevents data loss, security,
 accessibility, or anything the spec requires. Non-trivial logic leaves ONE runnable check
 behind. Mark deliberate shortcuts with a `simplicity:` comment naming the ceiling.
+
+Rung 1 is measured too: the layer nobody needed always looks justified while you write it.
+Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you
+touched>` — it names each small private helper you added that is called exactly once. Inline
+it, or say why the name earns its hop. It stays silent on a long function with one caller
+(decomposition), on exported symbols, and on dead code.
+
+Rung 2 is measured, not recalled: you cannot find a helper in a file you never opened, so
+before reporting DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan
+<files you touched>`. It names each block you duplicated and the file that block already
+lives in: `duplicate=` for the same lines, `similar=` for the same lines with every name
+changed — the latter is what writing one module beside a similar one actually produces, so
+it counts the same. Resolve every finding — call the existing thing, or lift the shared part
+into one place both callers use. Never leave a second copy that drifts. The one exception is a
+coincidental resemblance (two blocks that look alike but change for different reasons);
+say so once in your report rather than merging them, because that merge is a coupling bug.
 
 DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task's stated
 interface, not an implementation detail; one unit, one reason to change. New units receive
@@ -249,7 +265,12 @@ layout, import order. The house convention outranks your defaults even where you
 have chosen differently — disagreeing with it is a self-review finding, never a licence to
 deviate. Where the convention is unclear, measure it: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe
 <files>` reports comment density, doc-comment usage, indentation, and naming case from the
-actual neighbors. Comments carry WHY, never what: a constraint not visible locally, a
+actual neighbors. Before DONE, check your own work with `bash
+"${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`: it holds each
+file out of its own baseline and names where it deviates from its same-language neighbors
+(indent, naming, quotes, semicolons, module system). `probe` pools your file into the
+sample, so it can never show you a deviation — only `compare` can.
+Comments carry WHY, never what: a constraint not visible locally, a
 decision and the alternative it beat, a workaround and its reason. Never narrate the code,
 restate a signature, announce the edit ("Added...", "Updated..."), or narrate history
 ("previously...", "renamed from...") — `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` catches
@@ -384,12 +405,19 @@ IMPORTANT: All paths must be ABSOLUTE. Do not use em-dashes.
 
 SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
 actually works. BEFORE writing code, stop at the first rung that holds: (1) needed at all?
-speculative = skip (YAGNI); (2) already in this codebase? reuse it; (3) stdlib does it?
-use it; (4) native platform feature? use it; (5) installed dependency solves it? use it,
+speculative = skip (YAGNI); (2) DRY — already in this codebase? reuse it; (3) stdlib does
+it? use it; (4) native platform feature? use it; (5) installed dependency solves it? use it,
 add no new one for what a few lines do; (6) one line? one line; (7) only then the minimum
 that works. Ladder runs AFTER understanding the problem; bug fix = root cause not symptom.
 NEVER cut validation at trust boundaries, data-loss error handling, security, accessibility,
 or anything the spec requires. Non-trivial logic leaves ONE runnable check behind.
+Rung 1 is measured too: `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>`
+names each small private helper called exactly once; inline it or justify the hop.
+Rung 2 is measured: before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh"
+scan <files you touched>` — it names each duplicated block and the file it already lives in
+(`duplicate=` same lines, `similar=` same lines with every name changed; both count).
+Call the existing thing or lift the shared part out; never leave a second copy that drifts.
+A coincidental resemblance is the one exception — report it rather than merging it.
 
 DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task's stated
 interface; one unit, one reason to change; new units receive collaborators (params/args/env),
@@ -401,7 +429,9 @@ CODE FOR HUMANS (house style over habit — on by default). Your diff must read 
 code around it. Read the neighbors of every file in the task's files list FIRST and match
 them: naming, error idiom, test structure, layout, import order. The house convention
 outranks your defaults; disagreeing with it is a self-review finding, never a licence to
-deviate. Measure rather than guess: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <files>`. Comments carry
+deviate. Measure rather than guess: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <files>`, and before
+DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>` — it holds each file out of
+its own baseline and names where it deviates from its same-language neighbors; `probe` pools your file in and cannot. Comments carry
 WHY, never what. Never narrate the code, announce the edit ("Added...", "Updated..."), or
 narrate history ("previously...") — `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` catches those
 three. Comment DENSITY matches the file, not an absolute. A good name deletes a comment.

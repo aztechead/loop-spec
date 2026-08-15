@@ -30,7 +30,14 @@ Relevant phases:
    finding, never a licence to deviate inside your diff. Where the convention is not
    obvious, measure it: `<probe_dir>/house-style.sh probe <files>` reports comment density,
    doc-comment usage, indentation, naming case, and line length from the actual neighbors,
-   and says `unknown` rather than guessing.
+   and says `unknown` rather than guessing. Then judge the result:
+   `<probe_dir>/house-style.sh compare <files>` holds each file out of its own baseline and
+   names where it deviates from its same-language neighbors — indent, naming, quotes,
+   semicolons, module system. The two modes answer different questions and are not
+   interchangeable: `probe` describes the neighbourhood *including* the target, so a file
+   that breaks every convention around it reports AS the convention, its deviation averaged
+   into the baseline it is measured against. Only `compare` can name a deviation, which is
+   what the severity rule below depends on.
 2. **Comments carry why, never what.** The code already says what it does; a comment that
    restates it goes stale the first time the line changes and misleads the reader after
    that. Spend a comment on what the code cannot say: a constraint that is not visible
@@ -57,7 +64,9 @@ Relevant phases:
 
 The probes ship inside the plugin; a dispatched agent's working directory is the target
 repository. A bare `lib/house-style.sh` therefore resolves to nothing, so every dispatch
-site substitutes a real absolute path before the directive goes out:
+site substitutes a real absolute path before the directive goes out. The same table governs
+the ladder's `duplication-scan.sh` (`skills/shared/laziness-ladder.md`), which every one of
+these sites carries alongside these two:
 
 | Site | How it resolves |
 |---|---|
@@ -97,6 +106,9 @@ protects *legibility*. None of the three overrides the others, and where they ap
 collide the resolution is fixed:
 
 - Matching the house style never justifies duplicating a helper the ladder would reuse.
+  When the neighbors themselves hold a second copy, the house style is the *shape* to
+  match, never a licence to add a third — `lib/duplication-scan.sh` names the file the
+  block already lives in, and reuse means calling it or lifting the shared part out.
 - Matching the house style never justifies cutting a seam, and a seam's boundary is not
   "extra indirection" because the neighbors lack one.
 - The ladder's `simplicity:` marker and this directive's comment budget do not conflict:
@@ -112,7 +124,12 @@ collide the resolution is fixed:
 > convention outranks your defaults even when you would have chosen differently, and
 > disagreeing with it is a review finding, never a licence to deviate. Where the convention
 > is unclear, measure it: `bash <probe_dir>/house-style.sh probe <your files>` reports comment
-> density, doc-comment usage, indentation, and naming case from the actual neighbors.
+> density, doc-comment usage, indentation, and naming case from the actual neighbors. Before
+> you report DONE, judge your own work with `bash <probe_dir>/house-style.sh compare <files
+> you touched>`: it holds each file out of its own baseline and names where it deviates from
+> its same-language neighbors (indent, naming, quotes, semicolons, module system). `probe`
+> pools your file into the sample and therefore can never show you a deviation — only
+> `compare` can.
 > Comments carry WHY, never what: a constraint that is not visible locally, a decision and
 > the alternative it beat, a workaround and its reason. Never narrate the code, restate a
 > signature, announce the edit ("Added…", "Updated…"), or narrate history ("previously…",

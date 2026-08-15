@@ -112,9 +112,227 @@ check "s: a rich target is not widened" 0 "sample=1 files: .*mod\.py" \
 # --- a directory target samples the directory ---
 check "t: directory target is sampled" 0 "sample=1 files" probe "$WORK/heavy"
 
+# --- compare: the probe must name a deviation, not just describe a pool ---
+#
+# `probe` folds the target into its own sample, so a file breaking every
+# convention around it reports as the convention: the deviation averages into its
+# own baseline. `compare` holds the file out and answers the question the
+# directive actually asks -- does this read like its neighbors?
+CMP="$WORK/compare"
+mkdir -p "$CMP/src"
+cat > "$CMP/src/users.js" <<'EOF'
+const { db } = require('./db')
+
+function loadUser(id) {
+  const row = db.get('users', id)
+  if (!row) return null
+  return { id: row.id, name: row.name }
+}
+
+function saveUser(user) {
+  if (!user.id) return null
+  db.put('users', user.id, user)
+  return user
+}
+
+module.exports = { loadUser, saveUser }
+EOF
+cat > "$CMP/src/carts.js" <<'EOF'
+const { db } = require('./db')
+
+function loadCart(id) {
+  const row = db.get('carts', id)
+  if (!row) return null
+  return { id: row.id, items: row.items }
+}
+
+function saveCart(cart) {
+  if (!cart.id) return null
+  db.put('carts', cart.id, cart)
+  return cart
+}
+
+module.exports = { loadCart, saveCart }
+EOF
+# Correct, and nothing like its neighbours: ESM, 4-space, snake_case.
+cat > "$CMP/src/orders.js" <<'EOF'
+import { db } from "./db";
+
+export function load_order(id) {
+    const row = db.get("orders", id);
+    if (!row) {
+        return null;
+    }
+    return { id: row.id, total: row.total };
+}
+EOF
+
+check "u1: a deviating file is caught" 1 "deviation=" compare "$CMP/src/orders.js"
+check "u2: naming crossover is named with the offending identifier" 1 \
+  "deviation=naming.*load_order" compare "$CMP/src/orders.js"
+check "u3: indent deviation is measured both ways" 1 \
+  "deviation=indent: file is spaces:4.*neighbors are spaces:2" compare "$CMP/src/orders.js"
+check "u4: module system is measured" 1 "deviation=module_style.*esm.*commonjs" \
+  compare "$CMP/src/orders.js"
+check "u5: a conforming file stays silent" 0 "matches its neighbors" \
+  compare "$CMP/src/carts.js"
+
+# A single-word name is valid camelCase and valid snake_case alike, so it must
+# never be reported -- this is the false positive that makes a naming lint noise.
+cat > "$CMP/src/checkout.js" <<'EOF'
+const { db } = require('./db')
+
+function checkout(id) {
+  const row = db.get('carts', id)
+  if (!row) return null
+  return row
+}
+
+module.exports = { checkout }
+EOF
+check "u6: a single-word name is not a naming deviation" 0 "matches its neighbors" \
+  compare "$CMP/src/checkout.js"
+
+# Conventions are language-scoped. Judging a .js file against the .sh files beside
+# it reports camelCase as a deviation from snake_case -- two languages, not a
+# violation.
+cat > "$CMP/src/tool.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+run_tool() {
+  local target="$1"
+  printf '%s\n' "$target"
+}
+
+emit_report() {
+  local path="$1"
+  printf 'report %s\n' "$path"
+}
+EOF
+check "u7: a baseline never mixes languages" 0 "matches its neighbors" \
+  compare "$CMP/src/users.js"
+
+# A shell heredoc or multi-line single-quoted string carries another language.
+# Measuring the shell file's conventions from that text answers about jq or
+# Python instead, and reports their naming as the shell file's.
+cat > "$CMP/src/embed.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+emit_json() {
+  local feats="$1"
+  jq -cn --argjson feats "$feats" '
+  def featsWithGap(g): [$feats[] | select(.gaps | index(g)) | .slug];
+  {gaps: featsWithGap("plan")}'
+}
+
+read_config() {
+  python3 - <<'PY'
+def loadUserConfig(path):
+    return open(path).read()
+PY
+}
+EOF
+check "u8: embedded languages do not set the shell file's conventions" 0 \
+  "matches its neighbors" compare "$CMP/src/embed.sh"
+
+# An apostrophe in an English comment is not a string delimiter. Counted as one it
+# opens a quote that never closes, and the rest of the file is silently swallowed --
+# which showed up as a 4-space indent finding on a 2-space file, measured from the
+# only lines that survived.
+cat > "$CMP/src/prose.sh" <<'EOF'
+#!/usr/bin/env bash
+# Why: the language's own tooling reports this, and it isn't worth duplicating.
+# A second line with the author's apostrophe and the reader's expectations.
+set -euo pipefail
+
+emit_one() {
+  local target="$1"
+  printf '%s\n' "$target"
+}
+
+emit_two() {
+  local target="$1"
+  printf 'two %s\n' "$target"
+}
+EOF
+check "u8b: an apostrophe in a comment does not swallow the file" 0 \
+  "matches its neighbors" compare "$CMP/src/prose.sh"
+
+# The decisive case: the apostrophe (here in an INLINE comment, the hardest kind)
+# must not swallow a real deviation that sits BELOW it. This file is uniformly
+# 4-space against 2-space neighbors; if the apostrophe swallows the body, the
+# probe reports clean -- a false negative on a blocking style probe.
+cat > "$CMP/src/deviant.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+emit() {
+    local x="$1"    # don't drop the caller's value
+    local y="deep"
+    printf '%s\n' "$x$y"
+}
+EOF
+check "u8c: an inline apostrophe does not hide a deviation below it" 1 \
+  "deviation=indent: file is spaces:4" compare "$CMP/src/deviant.sh"
+
+# jq's `def name(g):` inside a single-quoted shell program is jq, not a shell
+# definition -- shell has no `def`. The per-language def regex must not read it
+# as camelCase creeping into a snake_case shell file (the retro.sh regression).
+cat > "$CMP/src/embed_jq.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+collect_slugs() {
+  local feats="$1"
+  jq -cn --argjson feats "$feats" '
+  def featsWithGap(g): [$feats[] | select(.gaps | index(g)) | .slug];
+  def featsWithGateCap(g): [$feats[] | select(.gateCaps | index(g)) | .slug];
+  (featsWithGap("plan")) as $planFeats | $planFeats'
+}
+
+report_slugs() {
+  local feats="$1"
+  collect_slugs "$feats"
+}
+EOF
+check "u8d: jq def in a single-quoted program is not shell naming" 0 \
+  "matches its neighbors" compare "$CMP/src/embed_jq.sh"
+
+# Nothing to compare against is an answer, not a finding.
+mkdir -p "$CMP/lonely"
+printf 'const a = 1\n' > "$CMP/lonely/only.js"
+check "u9: no neighbour means no deviation claimed" 0 "baseline=0 files" \
+  compare "$CMP/lonely/only.js"
+
+# Outside the fixed language set the probe must answer unknown instead of
+# guessing from indentation and a generic definition regex. A guessed compare
+# result is especially dangerous because style findings block review.
+mkdir -p "$CMP/unknown"
+cat > "$CMP/unknown/neighbor.widget" <<'EOF'
+module neighbor
+  item one
+  item two
+  item three
+EOF
+cat > "$CMP/unknown/target.widget" <<'EOF'
+module target
+    item one
+    item two
+    item three
+EOF
+check "u10: an unknown language does not invent an indent deviation" 0 \
+  "matches its neighbors" compare "$CMP/unknown/target.widget"
+check "u11: an unknown language reports its indent as unknown" 0 \
+  "indent=unknown" probe "$CMP/unknown/target.widget"
+
 # --- usage ---
 check "u: bad invocation exits 2" 2 "usage: house-style.sh" bogus
 check "v: probe with no path exits 2" 2 "usage: house-style.sh" probe
+check "v2: compare with no path exits 2" 2 "usage: house-style.sh compare" compare
+check "v3: compare of a missing file exits 2" 2 "no readable target" \
+  compare "$CMP/src/absent.js"
 
 # --- the probe is executable and runs on this repo's own tree ---
 if [[ -x "$PROBE" ]]; then

@@ -57,19 +57,7 @@ if [[ "$MODE" == "diff" ]]; then
   ADDED="${TMPDIR:-/tmp}/comment-tells-$$.tsv"
   trap 'rm -f "$ADDED"' EXIT
   git diff --unified=0 --no-color "$1" ${2:+"$2"} \
-    | python3 -c '
-import re, sys
-path, lineno = None, 0
-for line in sys.stdin:
-    if line.startswith("+++ b/"):
-        path = line[6:].rstrip("\n")
-    elif line.startswith("@@"):
-        m = re.search(r"\+(\d+)", line)
-        lineno = int(m.group(1)) if m else 0
-    elif line.startswith("+") and not line.startswith("+++") and path:
-        sys.stdout.write("{}\t{}\t{}".format(path, lineno, line[1:]))
-        lineno += 1
-' > "$ADDED"
+    | python3 "$(dirname "${BASH_SOURCE[0]}")/diff-added-lines.py" > "$ADDED"
   set -- "--tsv" "$ADDED"
 fi
 

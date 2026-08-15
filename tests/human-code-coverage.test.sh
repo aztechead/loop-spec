@@ -109,6 +109,33 @@ for entry in "${resolvers[@]}"; do
   fi
 done
 
+# `probe` describes the neighbourhood WITH the target pooled into it, so it can never show
+# a deviation -- a file breaking every convention around it reports as the convention. The
+# severity rule ("a deviation the probe measured is Important and blocks") therefore rests
+# entirely on `compare`, which holds the file out of its own baseline. A dispatch path that
+# names only `probe` has the directive without the thing that makes it enforceable.
+for f in agents/implementer.md agents/code-reviewer.md \
+         skills/shared/team-prompts/implementer.md skills/shared/execute-subagent.md \
+         lib/plan-to-loop.sh lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
+         skills/shared/human-code.md skills/human-code/SKILL.md; do
+  if grep -qE 'house-style\.sh"? compare|house-style\.sh compare' "$f"; then
+    echo "PASS: $f carries the compare mode"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f names only house-style probe -- it cannot demonstrate a deviation"
+    FAIL=$((FAIL+1))
+  fi
+done
+
+# Both subagent implementer prompts, same as every other directive half.
+cmp_count="$(grep -cF "house-style.sh\" compare" skills/shared/execute-subagent.md)"
+if [[ "$cmp_count" -ge 2 ]]; then
+  echo "PASS: execute-subagent.md carries compare in both prompts ($cmp_count occurrences)"
+  PASS=$((PASS+1))
+else
+  echo "FAIL: execute-subagent.md has $cmp_count compare references; expected >= 2"
+  FAIL=$((FAIL+1))
+fi
+
 # The probes are the deterministic half of the directive; they must exist, be executable,
 # and be wired into the offline suite.
 for probe in lib/house-style.sh lib/comment-tells.sh; do
