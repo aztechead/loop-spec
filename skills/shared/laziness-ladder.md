@@ -62,10 +62,11 @@ and on dead code (zero callers is a different finding).
 
 ## Rung 2 is the rung a fresh context cannot climb
 
-Rungs 1 and 3–7 are decidable from the task alone. Rung 2 is not: it asks whether something
-already exists somewhere the run has never looked, and "search the tree first" has been in
-this directive from the beginning while second copies kept shipping anyway. A run that never
-opens the file holding the helper concludes, honestly, that it does not exist.
+Rung 1 can at least be counted from the changed files after writing, and rungs 3–7 can be
+answered from the task and available platform. Rung 2 uniquely needs the rest of the tree: it
+asks whether something already exists somewhere the run has never looked, and "search the tree
+first" has been in this directive from the beginning while second copies kept shipping anyway.
+A run that never opens the file holding the helper concludes, honestly, that it does not exist.
 
 `lib/duplication-scan.sh` closes that gap the way `house-style.sh` closed "honor the
 conventions": it measures the answer instead of asking for more diligence. `scan <files>`

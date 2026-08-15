@@ -198,6 +198,11 @@ EOF
 git add -A && git commit -qm base
 check "f: unrelated files are clean" 0 "duplication-scan: clean" scan two.sh
 
+# Dispatch prompts require absolute paths, while git's corpus is relative. The
+# same inode under those two spellings must not become its own clone partner.
+check "f5: an absolute target is not compared with its relative alias" 0 \
+  "duplication-scan: clean" scan "$PWD/two.sh"
+
 # --- comments are not code: a shared header is not a clone ---
 fixture headers
 header='#!/usr/bin/env bash

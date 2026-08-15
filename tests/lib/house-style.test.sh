@@ -306,6 +306,27 @@ printf 'const a = 1\n' > "$CMP/lonely/only.js"
 check "u9: no neighbour means no deviation claimed" 0 "baseline=0 files" \
   compare "$CMP/lonely/only.js"
 
+# Outside the fixed language set the probe must answer unknown instead of
+# guessing from indentation and a generic definition regex. A guessed compare
+# result is especially dangerous because style findings block review.
+mkdir -p "$CMP/unknown"
+cat > "$CMP/unknown/neighbor.widget" <<'EOF'
+module neighbor
+  item one
+  item two
+  item three
+EOF
+cat > "$CMP/unknown/target.widget" <<'EOF'
+module target
+    item one
+    item two
+    item three
+EOF
+check "u10: an unknown language does not invent an indent deviation" 0 \
+  "matches its neighbors" compare "$CMP/unknown/target.widget"
+check "u11: an unknown language reports its indent as unknown" 0 \
+  "indent=unknown" probe "$CMP/unknown/target.widget"
+
 # --- usage ---
 check "u: bad invocation exits 2" 2 "usage: house-style.sh" bogus
 check "v: probe with no path exits 2" 2 "usage: house-style.sh" probe

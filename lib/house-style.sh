@@ -83,6 +83,7 @@ LINE_COMMENT = {
 BLOCK_COMMENT = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".java",
                  ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".rs", ".swift",
                  ".kt", ".scala", ".php", ".css", ".scss"}
+SUPPORTED_EXTENSIONS = set(LINE_COMMENT).union(BLOCK_COMMENT)
 QUOTED = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".rb"}
 SEMICOLON_LANGS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 MODULE_COMMONJS = re.compile(r"\brequire\s*\(|\bmodule\.exports\b|\bexports\.\w")
@@ -194,6 +195,11 @@ def scan(path, tally):
     if not lines:
         return
     tally.readable.append(path)
+    # Unknown languages contribute to the sample count but not to any style
+    # axis. Guessing their comment, definition, or statement syntax would turn
+    # the documented `unknown` answer into a blocking false positive.
+    if ext not in SUPPORTED_EXTENSIONS:
+        return
 
     def_re = DEF_RE_BY_EXT.get(ext, GENERIC_DEF)
     in_block = False

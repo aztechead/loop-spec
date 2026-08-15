@@ -26,9 +26,8 @@
 # This is the rung the ladder cannot check by asking harder: at the moment of
 # writing, the wrapper always looks justified. It is only countable afterwards.
 #
-# Calibration, over the last 12 non-merge commits of this repo: every one clean.
-# Scanning whole files instead reports 3 across 319 tracked files, each a genuine
-# single-use helper.
+# Calibration, over the last 12 non-merge commits of this repo: 9 clean, with
+# every finding in the other 3 a genuine single-use helper.
 #
 # Usage:
 #   indirection-scan.sh scan <file> [file ...]     # definitions in these files
@@ -100,7 +99,7 @@ DEF_PATTERNS = {
     ".py": re.compile(r"^(?P<indent>\s*)def\s+(?P<name>[A-Za-z_]\w*)\s*\("),
     ".js": re.compile(
         r"^(?P<indent>\s*)(?:(?P<export>export\s+)?(?:async\s+)?function\s+(?P<name>[A-Za-z_]\w*)\s*\("
-        r"|(?P<export2>export\s+)?const\s+(?P<name2>[A-Za-z_]\w*)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>)"),
+        r"|(?P<export2>export\s+)?const\s+(?P<name2>[A-Za-z_]\w*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"),
     ".sh": re.compile(r"^(?P<indent>)(?P<name>[A-Za-z_]\w*)\s*\(\)\s*\{"),
     ".go": re.compile(r"^(?P<indent>)func\s+(?:\([^)]*\)\s*)?(?P<name>[A-Za-z_]\w*)\s*\("),
 }
@@ -114,7 +113,8 @@ HEREDOC_OPEN = re.compile(r"<<-?\s*[\"']?([A-Za-z_]\w*)[\"']?")
 # A symbol reachable from outside the file has callers this probe cannot count.
 EXPORTED = {
     ".py": lambda name, text: (
-        "__all__" in text and '"{}"'.format(name) in text or "'{}'".format(name) in text),
+        "__all__" in text
+        and ('"{}"'.format(name) in text or "'{}'".format(name) in text)),
     ".js": lambda name, text: bool(
         re.search(r"\bexport\b[^\n]*\b{}\b".format(re.escape(name)), text)
         or re.search(r"\bmodule\.exports\b[\s\S]{{0,200}}\b{}\b".format(re.escape(name)), text)
@@ -230,13 +230,19 @@ def corpus_text(targets):
             listing.extend(os.path.join(root, n)[2:] for n in names)
 
     chunks = {}
-    for path in listing[:MAX_CORPUS * 4]:
+    target_by_identity = {os.path.realpath(path): path for path in targets}
+    for path in listing:
         if os.path.splitext(path)[1].lower() not in wanted:
             continue
         lines = read(path)
         if lines is None:
             continue
-        chunks[path] = lines
+        # git spells tracked files relative to the repository, but dispatched
+        # agents commonly supply absolute target paths. Keep one identity under
+        # the caller's spelling so the definition itself is not counted as an
+        # extra reference from a second alias of the same file.
+        key = target_by_identity.get(os.path.realpath(path), path)
+        chunks[key] = lines
         if len(chunks) >= MAX_CORPUS:
             break
     return chunks
@@ -263,7 +269,17 @@ if missing and mode == "scan":
     for path in missing:
         print("indirection-scan: cannot read {}".format(path), file=sys.stderr)
     sys.exit(2)
-targets = [t for t in targets if os.path.isfile(t)]
+picked = []
+seen_targets = set()
+for target in targets:
+    if not os.path.isfile(target):
+        continue
+    identity = os.path.realpath(target)
+    if identity in seen_targets:
+        continue
+    seen_targets.add(identity)
+    picked.append(target)
+targets = picked
 
 corpus = corpus_text(targets)
 for path in targets:

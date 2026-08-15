@@ -64,6 +64,20 @@ check "a: a one-caller wrapper is caught" 1 "single-caller=buildCartKey" scan ch
 check "b: the finding carries the definition line" 1 "^checkout\.js:3:" scan checkout.js
 check "c: the finding names the call site" 1 "called once at line 8" scan checkout.js
 check "d: findings are counted with the body bound" 1 "1 finding\(s\) defs=[0-9]+ body<=5" scan checkout.js
+check "d2: an absolute target still counts one caller once" 1 \
+  "single-caller=buildCartKey" scan "$PWD/checkout.js"
+
+# A single unparenthesized parameter is the common compact arrow spelling. It
+# is still a definition with a measurable block body, not an unknown shape.
+cat > compact.js <<'EOF'
+const keyFor = value => {
+  return `key:${value}`
+}
+
+keyFor('cart')
+EOF
+check "d3: a one-argument block arrow is measured" 1 \
+  "single-caller=keyFor" scan compact.js
 
 # --- decomposition is not indirection ---
 #
@@ -128,6 +142,21 @@ def main():
 EOF
 git add -A && git commit -qm base
 check "g: a python __all__ export is not reported" 0 "indirection-scan: clean" scan api.py
+
+# A quoted default that happens to equal the function name is not an export.
+# The __all__ heuristic must require the name and __all__ together.
+fixture private-py
+cat > private.py <<'EOF'
+def normalize(value='normalize'):
+    return value.strip()
+
+
+def main(value):
+    return normalize(value)
+EOF
+git add -A && git commit -qm base
+check "g2: a quoted Python name without __all__ stays private" 1 \
+  "single-caller=normalize" scan private.py
 
 # Go spells "exported" with a capital, and the probe must read that rather than
 # looking for a keyword that does not exist in the language.

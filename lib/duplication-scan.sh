@@ -271,24 +271,31 @@ def corpus_paths(targets):
                        and d not in ("node_modules", "vendor", "dist", "build")]
             listing.extend(os.path.join(root, n)[2:] for n in names)
 
-    seen = set(os.path.normpath(t) for t in targets)
+    # Callers are encouraged to pass absolute paths, while git ls-files emits
+    # paths relative to the repository root. Compare identities rather than
+    # spellings or the target is admitted to its own corpus and reported as a
+    # full-file duplicate of itself.
+    seen = set(os.path.realpath(t) for t in targets)
     candidates = [path for path in listing
                   if os.path.splitext(path)[1].lower() in wanted
-                  and os.path.normpath(path) not in seen
+                  and os.path.realpath(path) not in seen
                   and os.path.isfile(path)]
 
     # MAX_CORPUS truncates, so the order decides what a large repository gets
     # compared against. Nearest first: the helper a run should have reused is far
     # likelier to be a sibling of the file it is writing than a file picked by
     # where it happens to sort.
-    dirs = set(os.path.dirname(os.path.normpath(t)) for t in targets)
-    roots = set(d.split(os.sep)[0] for d in dirs)
+    cwd = os.path.realpath(".")
+    dirs = set(os.path.dirname(os.path.realpath(t)) for t in targets)
+    roots = set(os.path.relpath(os.path.realpath(t), cwd).split(os.sep)[0]
+                for t in targets)
 
     def distance(path):
-        directory = os.path.dirname(os.path.normpath(path))
+        absolute = os.path.realpath(path)
+        directory = os.path.dirname(absolute)
         if directory in dirs:
             return 0
-        if directory.split(os.sep)[0] in roots:
+        if os.path.relpath(absolute, cwd).split(os.sep)[0] in roots:
             return 1
         return 2
 
@@ -303,6 +310,18 @@ def read_all(paths, lines_by_path, unreadable):
             unreadable.append(path)
         else:
             lines_by_path[path] = lines
+
+
+def unique_paths(paths):
+    """Preserve the caller's spelling while collapsing aliases of one file."""
+    picked = []
+    seen = set()
+    for path in paths:
+        identity = os.path.realpath(path)
+        if identity not in seen:
+            seen.add(identity)
+            picked.append(path)
+    return picked
 
 
 def build_index(lines_by_path, tier, size):
@@ -376,7 +395,7 @@ if missing and mode == "scan":
     for path in missing:
         print("duplication-scan: cannot read {}".format(path), file=sys.stderr)
     sys.exit(2)
-targets = [t for t in targets if os.path.isfile(t)]
+targets = unique_paths([t for t in targets if os.path.isfile(t)])
 
 unreadable = []
 target_lines = {}

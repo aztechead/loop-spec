@@ -90,8 +90,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   orders a merge. Two blocks that resemble each other but change for different reasons are
   not duplication, and every dispatch copy carries that carve-out so `dry:` cannot become an
   instruction to couple unrelated code. The probe reads code only (prose and data repeat by
-  nature), skips generated files and marked generated regions, and leaves identifiers and
-  literals intact — structural matching would double the recall and destroy the signal.
+  nature) and skips generated files and marked generated regions. Its `similar=` tier
+  deliberately replaces identifiers and literals, then uses the wider-window and
+  uniform-block fences above to preserve the signal.
 
 ## [3.2.0] - 2026-08-12
 
