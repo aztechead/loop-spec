@@ -26,7 +26,8 @@
 #   LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=N            forces no-teams bounded waves.
 #   LOOP_SPEC_TEAMS_MODE=none|explicit|implicit   forces the mode verbatim.
 #
-# Always exits 0; the answer is on stdout.
+# Exits 0 with the answer on stdout, or propagates an invalid explicit harness
+# as a usage error.
 set -euo pipefail
 
 MIN_IMPLICIT="2.1.178"
@@ -58,7 +59,8 @@ fi
 # is precisely the mis-resolution the comment above says this gate exists to
 # prevent. Absence of a surface is a fact; only a negative override is honored here.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" != "claude" ]]; then
+harness="$(bash "$SCRIPT_DIR/harness.sh" detect)" || exit $?
+if [[ "$harness" != "claude" ]]; then
   echo "none"
   exit 0
 fi

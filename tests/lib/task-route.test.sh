@@ -82,6 +82,15 @@ assert_route "explicit full proposal remains full" "full" "$(candidate full feat
 
 assert_route "security work promotes to full" "full" "$(candidate micro config 0.95 1 1 low false false false true)"
 assert_route "dependency work promotes to full" "full" "$(candidate micro maintenance 0.95 2 2 low false true)"
+version_update="$(candidate micro maintenance 0.95 2 2 low false true | jq '. + {
+  introducesNewDependency:false, updatesDependencyVersion:true}')"
+assert_route "existing dependency version update remains micro" "micro" "$version_update"
+generated_lockfiles="$(candidate micro maintenance 0.95 8 2 low | jq '. + {generatedFiles:6}')"
+assert_route "generated lockfiles do not inflate reviewable scope" "micro" "$generated_lockfiles"
+reviewable_count="$(normalized "$generated_lockfiles" | jq -r '.reviewableEstimatedFiles')"
+[[ "$reviewable_count" == "2" ]] \
+  && pass "normalized route records reviewable file count" \
+  || fail "normalized route records reviewable file count (got $reviewable_count)"
 assert_route "interface work promotes to full" "full" "$(candidate micro maintenance 0.95 2 2 low false false true)"
 assert_route "data migration promotes to full" "full" "$(candidate micro maintenance 0.95 2 2 low false false false false true)"
 assert_route "multi-repo work promotes to full" "full" "$(candidate micro maintenance 0.95 2 2 low false false false false false true)"
@@ -104,6 +113,11 @@ assert_route "unknown task kind cannot use micro" "full" "$(candidate micro unkn
 assert_route "greenfield task cannot use micro" "full" "$(candidate micro greenfield 0.95 1 1 low)"
 assert_route "malformed JSON fails closed" "full" '{not-json'
 assert_route "unknown route fails closed" "full" "$(candidate compact maintenance)"
+assert_route "generated file count cannot exceed total estimate" "full" \
+  "$(candidate micro maintenance | jq '. + {generatedFiles:3}')"
+assert_route "dependency detail fields must agree with compatibility field" "full" \
+  "$(candidate micro maintenance | jq '. + {
+    introducesNewDependency:false, updatesDependencyVersion:true}')"
 
 # Routing arms the run: from here on, an exit with no terminal result is detectable.
 armed="$CLEAN_REPO/.loop-spec/active-run.json"

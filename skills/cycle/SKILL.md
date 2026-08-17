@@ -636,7 +636,13 @@ Estimated cost: ~{N}k tokens
 
 ### Step 5.5 - First-run codebase map (one-time per project)
 
-One-time per project: ingest an existing GSD `.planning/codebase/` if present (Step 5.5a), then fire background mappers only for the domains still missing (Step 5.5b). Skip only when all 5 domain docs already exist in `docs/loop-spec/codebase/` — **or when greenfield** (an empty repo has nothing to map; VERIFY's end-of-cycle refresh writes the first map from the shipped code). Apply the full procedure verbatim from `${CLAUDE_SKILL_DIR}/references/codebase-map-bootstrap.md` (GSD ingest rules, mapper dispatch, commit discipline, `bootstrapPendingDomains` bookkeeping, workspace-mode behavior).
+Resolve the automatic bootstrap policy first:
+
+```bash
+map_bootstrap="$(bash "${CLAUDE_SKILL_DIR}/../../lib/map-policy.sh" bootstrap)"
+```
+
+When it returns `skip`, print `codebase map bootstrap skipped by LOOP_SPEC_MAP_BOOTSTRAP=0` and continue to Step 5.9 without ingest or mapper dispatch. Otherwise, one time per project: ingest an existing GSD `.planning/codebase/` if present (Step 5.5a), then fire background mappers only for the domains still missing (Step 5.5b). Skip when all 5 domain docs already exist in `docs/loop-spec/codebase/` — **or when greenfield** (an empty repo has nothing to map; VERIFY's end-of-cycle refresh writes the first map from the shipped code). Apply the full procedure verbatim from `${CLAUDE_SKILL_DIR}/references/codebase-map-bootstrap.md` (GSD ingest rules, mapper dispatch, commit discipline, `bootstrapPendingDomains` bookkeeping, workspace-mode behavior).
 
 When `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` is set, apply
 `skills/shared/subagent-concurrency.md`: dispatch missing-domain mappers in bounded
@@ -949,14 +955,23 @@ Cycle's responsibility after the engine names a node is to invoke that phase ski
      --phase "{phase}" --data "{\"next\":\"${next_phase}\"}" || true
    ```
 
-   **Commit the resume contract (single point).** feature.json is committed (not gitignored)
+   **Commit the resume contract (single point).** Resolve the state commit policy with
+   `bash "${CLAUDE_SKILL_DIR}/../../lib/state-commit-policy.sh" mode`. The default
+   `phase` mode commits feature.json at every boundary so clone-based resume remains
+   available. `LOOP_SPEC_SQUASH_STATE_COMMITS=1` returns `final`: leave feature.json
+   and PROGRESS.md in the working tree and let DELIVER create one final state commit.
+   Final mode intentionally disables remote phase checkpoints because their pushed
+   state would require a history rewrite later.
+
+   In `phase` mode, feature.json is committed (not gitignored)
    so resume survives a clone or hand-off to another machine. The cycle is the one place
    that observes every phase transition, so it snapshots state here -- phase skills do NOT
    each commit feature.json. Guarded so workspace-mode (where the root may not be a git
    repo) is a safe no-op:
    ```bash
    fj=".loop-spec/features/${slug}/feature.json"
-    if [[ "$workspaceMode" != "workspace" ]] \
+    state_commit_mode="$(bash "${CLAUDE_SKILL_DIR}/../../lib/state-commit-policy.sh" mode)"
+    if [[ "$state_commit_mode" == "phase" && "$workspaceMode" != "workspace" ]] \
        && [[ "$currentPhase" != "deliver" || "$next_phase" == "execute" ]] \
       && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       state_paths=("$fj" ".loop-spec/features/${slug}/PROGRESS.md" ".gitignore")
@@ -983,7 +998,7 @@ Cycle's responsibility after the engine names a node is to invoke that phase ski
      0|1) ;;
      *) echo "loop-spec: LOOP_SPEC_CHECKPOINT_EACH_PHASE must be 0 or 1" >&2; exit 2 ;;
    esac
-   if [[ "$workspaceMode" != "workspace" && "$currentPhase" != "deliver" \
+   if [[ "$state_commit_mode" == "phase" && "$workspaceMode" != "workspace" && "$currentPhase" != "deliver" \
          && "$checkpoint_each" == "1" ]]; then
      bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint-pr.sh" create \
        ".loop-spec/features/${slug}" --reason "autonomous phase checkpoint: ${next_phase}"

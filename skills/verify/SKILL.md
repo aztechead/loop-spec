@@ -466,6 +466,16 @@ Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `cur
 
 ### Step 9 - map-codebase refresh
 
+Resolve the automatic refresh policy first:
+
+```bash
+map_refresh="$(bash "${CLAUDE_SKILL_DIR}/../../lib/map-policy.sh" refresh)"
+```
+
+When it returns `skip`, print `codebase map refresh skipped by LOOP_SPEC_MAP_REFRESH=0`
+and continue to Step 10 without invoking map-codebase. The override also applies to
+greenfield runs; use it only when the caller accepts having no generated map.
+
 **Single-repo mode (unchanged):**
 
 The map-codebase skill owns the post-change map refresh and its commit. Do not duplicate that work here.

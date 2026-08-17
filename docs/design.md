@@ -467,8 +467,9 @@ resumably. DELIVER never merges or enables auto-merge.
 
 ### Self-heal loop (AUTO)
 
-Full-bore operation: gate retries are unbounded. The ONE limit the cycle respects is
-ITERATE's round limit (`iterate.maxIterations`, fixed 10). Within EXECUTE, the per-task
+Full-bore operation: gate retries are unbounded. The cycle-wide limit is ITERATE's
+persisted round ceiling (`iterate.maxIterations`, default 10 and configurable through
+`LOOP_SPEC_ITERATE_MAX_ITERATIONS`). Within EXECUTE, the per-task
 rework cap (`maxRetriesPerTask`, fixed 2) routes a repeatedly-failing task to the lead
 for escalation instead of ping-ponging it between the same implementer and reviewer.
 

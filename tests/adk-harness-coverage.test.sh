@@ -37,7 +37,7 @@ checks=(
   # -- the bridge: env delivery, skill dir tracking, SessionStart scripts
   "extensions/adk/loop_spec_adk/bridge.py	LOOP_SPEC_HARNESS"
   "extensions/adk/loop_spec_adk/bridge.py	CLAUDE_SKILL_DIR"
-  "extensions/adk/loop_spec_adk/bridge.py	micro-inject.sh"
+  "extensions/adk/loop_spec_adk/bridge.py	SESSION_START_HOOKS"
   "extensions/adk/loop_spec_adk/bridge.py	LocalEnvironment"
   "extensions/adk/loop_spec_adk/plugin.py	load_skill"
   "extensions/adk/loop_spec_adk/plugin.py	loop_spec:session_started"
@@ -99,7 +99,8 @@ done
 pi_hits="$(git grep -n -i -E '(^|[^[:alnum:]_])pi([^[:alnum:]_]|$)|fakepi|PI_CODING|extensions/pi|pi-harness|/skill:' \
              -- README.md REVIEW-ORDER.md CLAUDE.md docs/adopting.md \
                 docs/loop-spec/PREREQUISITES.md skills lib hooks agents commands extensions \
-             2>/dev/null | grep -v '^skills/shared/claude-harness.md:' || true)"
+             2>/dev/null | grep -v '^skills/shared/claude-harness.md:' \
+             | grep -v 'retired-harness-diagnostic' || true)"
 if [[ -z "$pi_hits" ]]; then
   PASS=$((PASS+1)); echo "PASS: no tracked active contract references the removed pi harness"
 else

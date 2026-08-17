@@ -80,6 +80,12 @@ check "F: adk harness + flag=1 -> none" "none" "$got"
 got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 PI_CODING_AGENT_DIR=/x)
 check "F2: retired pi env hint no longer suppresses teams" "implicit" "$got"
 
+set +e
+run "2.1.181" LOOP_SPEC_HARNESS=pi >/dev/null 2>&1
+pi_rc=$?
+set -e
+check "F2b: explicit retired harness propagates usage error" "2" "$pi_rc"
+
 # An override may turn a capability OFF anywhere, but it must not conjure one the
 # harness does not have. ADK has no named teammates at all, so `implicit` there is a state
 # that cannot exist: it used to answer "implicit" and route EXECUTE onto a team rung

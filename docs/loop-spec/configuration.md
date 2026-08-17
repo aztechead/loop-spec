@@ -47,8 +47,10 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_PHASE_TIMEOUT_MINS` | positive integer; `60` | Wall-clock watchdog ceiling for a phase. A non-integer or non-positive value is a configuration error, not a fallback. |
 | `LOOP_SPEC_PHASE_HANDOFF` | `0`/`1`; unset | `1` permits one phase per main-agent invocation, persists the next phase, and returns `status=paused`, `reason=phase-handoff`. `0` runs phase routing continuously. The environment overrides persisted state; inline `phase:fresh`/`phase:continuous` overrides the environment. A tool-boundary guard enforces the boundary. |
 | `LOOP_SPEC_ITERATE_FRESH` | `0`/`1`; unset | `1` makes an ITERATE rewind persist state and relaunch instead of continuing in the current main-agent context. |
+| `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | integer `1..100`; `10` | Sets the full cycle's persisted ITERATE convergence ceiling. This is independent of `LOOP_SPEC_LOOP_MAX_ITERATIONS`, which bounds each loop-fleet task. |
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
+| `LOOP_SPEC_SQUASH_STATE_COMMITS` | `0`/`1`; `0` | `1` defers pure feature.json/PROGRESS phase-state commits and writes one final state commit during DELIVER. It also disables per-phase remote checkpoints because pushed intermediate state would require a later history rewrite. |
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective selector set is unchanged. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
@@ -153,6 +155,11 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_MAP_MAX_AGE_DAYS` | positive integer; `90` | Age at which `lib/map-audit.sh staleness` reports a map domain as stale, matching the existing refresh advisory. |
 | `LOOP_SPEC_MAP_DIR` | path; `docs/loop-spec/codebase` | Codebase-map location read by `lib/map-audit.sh` and `lib/map-trust.sh`. |
 | `LOOP_SPEC_MAP_INDEX` | path; `.loop-spec/codebase/index.json` | Map index location read by `lib/map-audit.sh orphans` and `staleness`, and pruned by `lib/map-index-prune.sh`. |
+| `LOOP_SPEC_MAP_BOOTSTRAP` | `0`/`1`; `1` | `0` skips first-run GSD codebase-map ingestion and mapper dispatch. Existing maps are left untouched. |
+| `LOOP_SPEC_MAP_REFRESH` | `0`/`1`; `1` | `0` skips VERIFY's automatic incremental or greenfield codebase-map refresh. |
+| `LOOP_SPEC_ARTIFACTS_IN_PR` | `0`/`1`; `1` | `0` copies `docs/loop-spec/features/<slug>/` and feature state to the artifact store during candidate finalization, then restores that document directory to its base image so run documents do not enter the PR diff. |
+| `LOOP_SPEC_ARTIFACT_DIR` | directory outside the working tree; Git private storage | Store root used when `LOOP_SPEC_ARTIFACTS_IN_PR=0`. The default is the repository's private Git path under `loop-spec/artifacts`; set an external mounted directory for ephemeral jobs. A working-tree path is rejected because it would reintroduce the audit payload into the candidate. |
+| `LOOP_SPEC_PR_BODY_VERBOSE` | `0`/`1`; `0` | `0` keeps reviewer-facing summary and verification sections expanded while putting spec scores, convergence prose, and artifact metadata in a collapsed Run details block. `1` expands those sections. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | integer `0..86400`; `900` | Total DELIVER wait for required PR checks. `0` performs no extended wait. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
 | `LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS` | non-negative integer; `30` | Grace period after push during which a missing check is treated as not-yet-registered rather than absent. |

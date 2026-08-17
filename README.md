@@ -1,8 +1,8 @@
 # loop-spec
 
-Spec-driven development loops for [Claude Code](https://claude.com/claude-code), [opencode](https://opencode.ai), and [Google ADK](https://google.github.io/adk-docs/) — three peer harnesses from one source tree.
+Spec-driven development loops for [Claude Code](https://claude.com/claude-code), [opencode](https://opencode.ai), and an experimental [Google ADK](https://google.github.io/adk-docs/) adapter — three peer harness contracts from one source tree.
 
-Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
+Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
 
 Adjacent entry points on the same machinery:
 
@@ -63,7 +63,10 @@ Mounts two agents — a working agent and a read-only judge — over
 `dispatch_subagent` over ADK's `AgentTool`). Preferred headless entry:
 `LOOP_SPEC_NON_INTERACTIVE=1 adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl`.
 The shell inherits the ADK process user's host permissions; use an isolated
-container or restricted service account for untrusted repositories.
+container or restricted service account for untrusted repositories. ADK
+sessions share the mounted working tree even though their bridge state is
+isolated, so do not expose the working agent to untrusted or multi-tenant
+`adk web` / `adk api_server` clients.
 Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 [`skills/shared/adk-harness.md`](skills/shared/adk-harness.md).
 

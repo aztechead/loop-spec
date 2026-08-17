@@ -179,6 +179,7 @@ get() { echo "$OUT" | "$PY" -c "import json,sys;print(json.load(sys.stdin)[sys.a
 
 SKILL_COUNT="$(find skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')"
 ROLE_COUNT="$(find agents -maxdepth 1 -name '*.md' ! -name README.md | wc -l | tr -d ' ')"
+SESSION_HOOK_COUNT="$(jq '[.hooks.SessionStart[].hooks[]] | length' hooks/hooks.json)"
 
 echo "== ADK bridge against real google-adk =="
 check "tested ADK major is 2"          "$(get adk_version | cut -d. -f1)" "2"
@@ -210,7 +211,7 @@ check "read-only app wraps its agent" "$(get readonly_app_agent)" "loop_spec_rea
 check "plugin sets the skill dir"     "$(get plugin_sets_skill_dir)" "True"
 check "persistent profile stays interactive" "$(get persistent_not_headless)" "True"
 check "explicit headless marker is set" "$(get explicit_headless)" "1"
-check "session hooks run once"          "$(get session_hooks_once)" "5"
+check "session hooks run once"          "$(get session_hooks_once)" "$SESSION_HOOK_COUNT"
 check "prompt hook runs every message" "$(get prompt_hook_each_time)" "2"
 
 echo

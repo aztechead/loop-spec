@@ -18,8 +18,11 @@ written against.
 Claude Code's Bash tool sets `CLAUDECODE=1`, which is the positive signal.
 `claude` is also the back-compat DEFAULT when no harness signal is present at
 all, because every install predating the multi-harness seam is a Claude Code
-plugin. An unknown `LOOP_SPEC_HARNESS` value therefore resolves here rather than
-failing — including `pi`, which was removed in 4.0.0.
+plugin. Unknown override values still resolve here for compatibility. The
+retired explicit value `LOOP_SPEC_HARNESS=pi` is the exception: it exits with a
+migration error rather than silently running a different harness. A stale
+`PI_CODING_AGENT_DIR` alone remains ignored so it cannot disable Claude Code
+capabilities.
 
 ## Environment contract (who sets what)
 

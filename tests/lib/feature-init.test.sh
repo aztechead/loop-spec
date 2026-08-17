@@ -34,6 +34,15 @@ check "single execution root is worktree" "$(echo "$single" | jq -e '.executionR
 check "single workspace null" "$(echo "$single" | jq -e '.workspace == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single tier field ABSENT (hard cutover)" "$(echo "$single" | jq -e 'has("tier") | not' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single iterate.maxIterations==10" "$(echo "$single" | jq -e '.iterate.maxIterations == 10' >/dev/null 2>&1 && echo 1 || echo 0)"
+bounded="$(LOOP_SPEC_ITERATE_MAX_ITERATIONS=2 bash "$LIB" skeleton --mode single \
+  --slug bounded --now N --style auto --branch feat/bounded --base-sha a --base-branch main --worktree wt)"
+check "cycle iteration override is persisted" "$(echo "$bounded" | jq -e '.iterate.maxIterations == 2' >/dev/null 2>&1 && echo 1 || echo 0)"
+LOOP_SPEC_ITERATE_MAX_ITERATIONS=0 bash "$LIB" skeleton --mode single \
+  --slug invalid --now N --style auto --branch feat/invalid --base-sha a --base-branch main --worktree wt >/dev/null 2>&1
+check "zero cycle iteration override is rejected" "$([[ $? -ne 0 ]] && echo 1 || echo 0)"
+LOOP_SPEC_ITERATE_MAX_ITERATIONS=101 bash "$LIB" skeleton --mode single \
+  --slug invalid --now N --style auto --branch feat/invalid --base-sha a --base-branch main --worktree wt >/dev/null 2>&1
+check "oversized cycle iteration override is rejected" "$([[ $? -ne 0 ]] && echo 1 || echo 0)"
 check "single retryBudget ABSENT (full bore)" "$(echo "$single" | jq -e 'has("retryBudget") | not' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single commands.test set" "$(echo "$single" | jq -e '.commands.test == "npm test"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single commands.prepare set" "$(echo "$single" | jq -e '.commands.prepare == "npm ci"' >/dev/null 2>&1 && echo 1 || echo 0)"

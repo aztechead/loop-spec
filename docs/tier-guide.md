@@ -15,7 +15,8 @@ Every feature gets the same treatment (`skills/shared/tier-matrix.md`):
   appended to `.loop-spec/BACKLOG.md`, never silently dropped.
 - Test-tamper scan, marker scan, acceptance gate, coverage gates: always on,
   always blocking.
-- The one limit: `iterate.maxIterations = 10`. Gate retries are unbounded (full bore).
+- The one limit: `iterate.maxIterations` defaults to 10 and may be set from 1 to 100
+  with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`. Gate retries are unbounded (full bore).
 
 **Why no tiers:** the tier was chosen from prompt wording before anyone knew the
 real scope, and every gate it skipped became a shipped defect class (unjudged

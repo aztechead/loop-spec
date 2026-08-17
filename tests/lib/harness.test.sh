@@ -50,10 +50,21 @@ check "override claude -> claude" "claude" "$got"
 got=$(run detect LOOP_SPEC_HARNESS=garbage)
 check "unknown override -> default claude" "claude" "$got"
 
-# The removed pi harness is now just an unknown value: it must not resolve to a
-# harness with no contract, no backend, and no extension.
-got=$(run detect LOOP_SPEC_HARNESS=pi)
-check "retired pi override -> default claude" "claude" "$got"
+# An explicit retired harness is an operator request, not a stale ambient hint.
+# Fail it loudly instead of running a different harness than the one requested.
+set +e
+pi_err="$(run detect LOOP_SPEC_HARNESS=pi 2>&1 >/dev/null)"
+pi_rc=$?
+set -e
+check "retired pi override exits 2" "2" "$pi_rc"
+check "retired pi override names migration" "1" \
+  "$(grep -c 'choose claude, opencode, or adk' <<< "$pi_err")"
+
+set +e
+run subagents LOOP_SPEC_HARNESS=pi >/dev/null 2>&1
+pi_subagents_rc=$?
+set -e
+check "retired pi failure propagates through capability probe" "2" "$pi_subagents_rc"
 
 got=$(run detect PI_CODING_AGENT_DIR=/x)
 check "retired pi env hint -> default claude" "claude" "$got"

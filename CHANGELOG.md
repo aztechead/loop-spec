@@ -4,8 +4,9 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [4.0.0] - 2026-08-17
 
-Three peer harnesses, no reference harness: Claude Code (including the Claude
-Agent SDK), OpenCode, and Google ADK. pi is removed.
+Three peer harness contracts, no reference harness: Claude Code (including the
+Claude Agent SDK), OpenCode, and an experimental Google ADK adapter. pi is
+removed.
 
 ### Removed
 
@@ -14,15 +15,19 @@ Agent SDK), OpenCode, and Google ADK. pi is removed.
   manifest), `tests/pi-extension.test.sh`,
   `tests/pi-harness-coverage.test.sh`, `tests/validate-pi-manifest.test.sh`, the
   `--agent-cli pi` backend and its `fakepi` fixture, and every branch keyed on
-  it. `LOOP_SPEC_HARNESS=pi` and `PI_CODING_AGENT_DIR` are now unrecognized
-  signals that resolve to `claude` through the existing back-compat default —
-  pinned by a test, because a stale `PI_CODING_AGENT_DIR` in a Claude Code user's
-  environment must not silently disable their agent teams.
+  it. An explicit `LOOP_SPEC_HARNESS=pi` now exits with migration guidance
+  instead of silently running Claude Code. A stale `PI_CODING_AGENT_DIR` remains
+  ignored so it cannot disable agent teams for a Claude Code user.
 - `bash lib/bump-version.sh` now has three declaration sites, not four.
 
 ### Added
 
-- **Google ADK as a first-party harness.** `extensions/adk/loop_spec_adk/` is the
+- **Operator controls for low-overhead maintenance runs.** Existing dependency
+  version updates can take the micro lane without treating generated lockfiles as
+  reviewable source files. Operators can store feature documents outside the PR,
+  collapse run metadata in PR bodies, skip automatic map work, set the cycle
+  iteration ceiling, and consolidate pure phase-state commits at DELIVER.
+- **Google ADK as an experimental first-party adapter.** `extensions/adk/loop_spec_adk/` is the
   bridge: a `LocalEnvironment` carries the static harness/project paths, while
   session state carries `CLAUDE_SKILL_DIR` into each Execute call without
   cross-session leakage. `SkillToolset` serves all 33 skills, and
@@ -66,8 +71,17 @@ Agent SDK), OpenCode, and Google ADK. pi is removed.
   with an empty version; it now reads `.claude-plugin/plugin.json`.
 - Active skills and runtime comments no longer retain pi branches. The removal
   guard scans tracked files, so local bytecode cannot create a false failure.
+- ADK and OpenCode now carry Claude Code's full ordered SessionStart injection
+  list, including `human-code-inject.sh`. A cross-harness parity test derives the
+  canonical list from `hooks/hooks.json`, so adapter tests can no longer bless
+  matching stale copies.
 
 ### Changed
+
+- Full-cycle terminal-result rejections now name the `write <feature_dir>` success
+  contract and list the outcomes accepted by `write-terminal`. The cycle's
+  `LOOP_SPEC_WORKTREES=0` branch remains a direct in-place checkout and never
+  attempts a guarded worktree first.
 
 - **No harness is the reference implementation.** Claude Code-only capabilities
   (agent teams, `Workflow`, harness task lists, worktree execution roots) are

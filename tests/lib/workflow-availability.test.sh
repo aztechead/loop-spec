@@ -33,6 +33,11 @@ check "I: override=0 forces false" "false" "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=0 ba
 
 # adk harness gate: Workflow is a Claude Code tool; never available under ADK
 check "J: adk harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=adk bash "$LIB" 9.9.9)"
+set +e
+LOOP_SPEC_HARNESS=pi bash "$LIB" 9.9.9 >/dev/null 2>&1
+pi_rc=$?
+set -e
+check "J2: explicit retired harness propagates usage error" "2" "$pi_rc"
 # A positive override must not claim a tool the harness does not ship: forcing
 # availability under opencode/adk used to answer "true" and let EXECUTE select the
 # workflow rung at width 6 on a harness with no Workflow tool at all.

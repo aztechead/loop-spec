@@ -262,6 +262,60 @@ check "candidate policy: legacy tracked digest stays committed clean" "0" \
 check "candidate policy: legacy digest still tracked" "1" \
   "$(git -C "$CAND" ls-files --error-unmatch docs/loop-spec/telemetry/runs/candidate.json >/dev/null 2>&1 && echo 1 || echo 0)"
 
+# State-squash mode leaves phase state uncommitted until candidate finalization,
+# which creates one clean final state commit instead of rewriting pushed history.
+STATE="$WORK/state-policy"; init_repo "$STATE"
+STATE_BASE="$(git -C "$STATE" rev-parse HEAD)"
+git -C "$STATE" checkout -qb feat/state
+SDIR="$STATE/.loop-spec/features/state"; mkdir -p "$SDIR"
+printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n!/.loop-spec/features/*/PROGRESS.md\n' > "$STATE/.gitignore"
+jq -n --arg base "$STATE_BASE" '{schemaVersion:7,slug:"state",feature_title:"State",
+  currentPhase:"deliver",branch:"feat/state",baseSha:$base,baseBranch:"main",workspace:null,
+  updatedAt:"old",warnings:[],iterate:{used:0,maxIterations:10},artifacts:{}}' > "$SDIR/feature.json"
+git -C "$STATE" add .gitignore "$SDIR/feature.json"
+git -C "$STATE" commit -qm implementation
+jq '.updatedAt = "new"' "$SDIR/feature.json" > "$SDIR/feature.json.tmp"
+mv "$SDIR/feature.json.tmp" "$SDIR/feature.json"
+printf '# Progress\nready for delivery\n' > "$SDIR/PROGRESS.md"
+state_before="$(git -C "$STATE" rev-list --count HEAD)"
+ec=0; LOOP_SPEC_SQUASH_STATE_COMMITS=1 bash "$FINALIZER" run "$SDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: final-state mode exits 0" "0" "$ec"
+check "candidate policy: final-state mode creates one commit" "$((state_before + 1))" \
+  "$(git -C "$STATE" rev-list --count HEAD)"
+check "candidate policy: final-state commit carries feature state" "1" \
+  "$(git -C "$STATE" diff-tree --no-commit-id --name-only -r HEAD | grep -qx '.loop-spec/features/state/feature.json' && echo 1 || echo 0)"
+check "candidate policy: final-state checkout is clean" "0" \
+  "$(git -C "$STATE" status --porcelain | wc -l | tr -d ' ')"
+
+# External artifact mode copies the audit trail before removing the generated
+# document directory from the exact delivery candidate.
+STORE_REPO="$WORK/artifact-policy"; init_repo "$STORE_REPO"
+STORE_BASE="$(git -C "$STORE_REPO" rev-parse HEAD)"
+git -C "$STORE_REPO" checkout -qb feat/store
+STORE_FDIR="$STORE_REPO/.loop-spec/features/store"
+STORE_DOCS="$STORE_REPO/docs/loop-spec/features/store"
+mkdir -p "$STORE_FDIR" "$STORE_DOCS"
+printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n' > "$STORE_REPO/.gitignore"
+printf '# Spec\nStored.\n' > "$STORE_DOCS/SPEC.md"
+jq -n --arg base "$STORE_BASE" '{schemaVersion:7,slug:"store",feature_title:"Store",
+  currentPhase:"deliver",branch:"feat/store",baseSha:$base,baseBranch:"main",workspace:null,
+  updatedAt:"now",warnings:[],iterate:{used:0,maxIterations:10},
+  artifacts:{spec:"docs/loop-spec/features/store/SPEC.md"}}' > "$STORE_FDIR/feature.json"
+git -C "$STORE_REPO" add .gitignore "$STORE_FDIR/feature.json" "$STORE_DOCS/SPEC.md"
+git -C "$STORE_REPO" commit -qm implementation
+STORE_DIR="$WORK/external-artifacts"
+STORE_ERR="$WORK/external-artifacts.err"
+ec=0; LOOP_SPEC_ARTIFACTS_IN_PR=0 LOOP_SPEC_ARTIFACT_DIR="$STORE_DIR" \
+  bash "$FINALIZER" run "$STORE_FDIR" --commit >/dev/null 2>"$STORE_ERR" || ec=$?
+[[ "$ec" -eq 0 ]] || sed 's/^/DIAG: /' "$STORE_ERR"
+check "candidate policy: external artifact mode exits 0" "0" "$ec"
+check "candidate policy: generated docs leave candidate" "0" \
+  "$(git -C "$STORE_REPO" ls-files --error-unmatch docs/loop-spec/features/store/SPEC.md >/dev/null 2>&1 && echo 1 || echo 0)"
+check "candidate policy: generated docs survive in store" "1" \
+  "$([[ -n "$(find "$STORE_DIR" -path '*/artifacts/SPEC.md' -print -quit)" ]] && echo 1 || echo 0)"
+check "candidate policy: external artifact checkout is clean" "0" \
+  "$(git -C "$STORE_REPO" status --porcelain | wc -l | tr -d ' ')"
+
 printf 'human-owned\n' >> "$CAND/.gitignore"
 git -C "$CAND" add .gitignore
 DIRTY_HEAD="$(git -C "$CAND" rev-parse HEAD)"

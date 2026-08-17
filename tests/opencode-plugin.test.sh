@@ -49,13 +49,9 @@ check "tracks skill tool metadata.dir" \
 check "read bridge uses filePath arg" \
   "$(grep -q 'filePath' "$EXT" && echo 1 || echo 0)"
 
-# Bridged hook scripts: referenced in the plugin AND present on disk.
+# Non-SessionStart hook scripts: the exact SessionStart list is owned by
+# tests/session-start-hook-parity.test.sh so this suite cannot bless a stale copy.
 for script in \
-  hooks/team/discipline-inject.sh \
-  hooks/team/grill-inject.sh \
-  hooks/team/simplicity-inject.sh \
-  hooks/team/rules-inject.sh \
-  hooks/team/micro-inject.sh \
   hooks/team/done-criteria.sh \
   hooks/team/session-end-learnings.sh; do
   check "bridges $script" \
@@ -93,6 +89,7 @@ if command -v node >/dev/null 2>&1; then
   runtime_plugin="$(dirname "$EXT")/.loop-spec-plugin-test-$$.mjs"
   cp "$EXT" "$runtime_plugin"
   runtime_out="$(LOOP_SPEC_DISCIPLINE=0 LOOP_SPEC_RULES=0 \
+    LOOP_SPEC_HUMAN_CODE=0 \
     LOOP_SPEC_SIMPLICITY=0 LOOP_SPEC_MICRO=0 LOOP_SPEC_DONE_CRITERIA=0 \
     PLUGIN_PATH="$REPO_ROOT/$runtime_plugin" \
     node tests/fixtures/opencode-plugin-runtime.mjs 2>&1)"

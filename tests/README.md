@@ -82,12 +82,13 @@ sample agent definitions). To add a fixture for a new manual end-to-end cell,
 create `tests/fixtures/{name}/` with a `Makefile` exposing `test`, `lint`, and
 `typecheck` targets, plus a short `README.md` describing its purpose.
 
-## Manual ADK-harness smoke (live, owed before each release that touches ADK paths)
+## Manual ADK-harness smoke (live merge gate for ADK changes)
 
 `tests/adk-extension.test.sh` exercises the bridge against the REAL `google-adk`
 package (skills load, `CLAUDE_*` reaches the shell, tool surfaces are exact), and
 `tests/adk-harness-coverage.test.sh` pins the cross-file couplings — but neither
-calls a model. Before tagging, run once against live credentials:
+calls a model. A PR that changes ADK behavior remains draft until this run is
+recorded against live credentials; passing offline tests alone is not enough:
 
 1. `python3 -m pip install 'google-adk>=2.7,<3'` and
    `bash lib/adk-install.sh install --project <dir>`
@@ -104,3 +105,13 @@ calls a model. Before tagging, run once against live credentials:
 5. Confirm the read-only agent refuses to write: dispatch a judge tick
    (`--permission-mode plan`) and verify it holds only `ReadFile` plus the skill
    tools.
+6. Continue the fleet with its emitted session id and confirm the next tick uses
+   `--session_id`, retains context, and completes without replaying a fresh
+   session.
+7. Record the ADK version, model/provider, commands, sanitized output, and final
+   result path in the PR. Have a reviewer who did not author the bridge inspect
+   that evidence and the unsandboxed-shell boundary before marking it ready.
+
+The supported range also needs compatibility evidence at both ends: the oldest
+resolvable `google-adk>=2.7` release and the newest available `<3` release. If
+that matrix is not automated in CI, record both local runs on the PR.

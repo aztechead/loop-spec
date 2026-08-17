@@ -308,13 +308,17 @@ agent_probe_models() {
 }
 
 # Fixed operating block (iterate), identical for single and workspace modes.
-# Full-bore operation: gate retries are unbounded (attempts still land in gateHistory);
-# iterate.maxIterations=10 — the convergence loop ceiling — is the ONLY bound the
-# cycle respects.
+# Gate retries are unbounded (attempts still land in gateHistory). The operator may
+# lower or raise the cycle convergence ceiling without changing loop-fleet limits.
 fixed_blocks() {
-  jq -n '{
+  local max_iterations="${LOOP_SPEC_ITERATE_MAX_ITERATIONS:-10}"
+  [[ "$max_iterations" =~ ^[1-9][0-9]*$ && "$max_iterations" -le 100 ]] || {
+    echo "feature-init.sh: LOOP_SPEC_ITERATE_MAX_ITERATIONS must be an integer from 1 to 100" >&2
+    return 2
+  }
+  jq -n --argjson max_iterations "$max_iterations" '{
     iterate: {
-      maxIterations: 10,
+      maxIterations: $max_iterations,
       used: 0,
       confirmationUsed: false,
       lastVerdict: null,
@@ -333,15 +337,16 @@ common_skeleton() {
   # Resolve models before the jq call: an invalid LOOP_SPEC_MODEL_<ROLE> must abort
   # with only the resolve error, not a trailing "invalid JSON" jq error from a failed
   # $(...) inside --argjson.
-  local models_json phase_models_json
+  local models_json phase_models_json tier_blocks_json
   models_json="$(canonical_models spec)" || return 1
   phase_models_json="$(canonical_phase_models)" || return 1
+  tier_blocks_json="$(fixed_blocks)" || return $?
   jq -n \
     --arg slug "$slug" --arg now "$now" --arg style "$style" \
     --arg title "$title" \
     --argjson models "$models_json" \
     --argjson phaseModels "$phase_models_json" \
-    --argjson tierblocks "$(fixed_blocks)" \
+    --argjson tierblocks "$tier_blocks_json" \
     '{
       schemaVersion: 7,
       slug: $slug,

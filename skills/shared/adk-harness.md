@@ -1,4 +1,4 @@
-# ADK harness adaptation (reference)
+# ADK harness adaptation (experimental reference)
 
 Applies when loop-spec runs under **Google's Agent Development Kit**
 (https://google.github.io/adk-docs/): `bash
@@ -78,7 +78,10 @@ is not sandboxed there, and it inherits every filesystem/network permission of
 the OS user running ADK. Use an isolated container or restricted service account
 for untrusted repositories. `LocalEnvironment` is also marked experimental by
 ADK, which is why the real-package compatibility suite is part of release
-verification.
+verification. Session-scoped skill state prevents environment leakage, but all
+sessions still edit the same mounted working tree. This is not tenant isolation:
+never expose the working agent through `adk web` or `adk api_server` to
+untrusted users.
 
 ## Ambient verification enforcement
 

@@ -15,8 +15,8 @@
 #     hierarchy (an inlined "# Spec" H1 breaks GitHub's rendering outline).
 #   - Code fences are balanced per excerpt and after the final cap; a cut never
 #     leaves an open ``` block.
-#   - Hard cap ~10 KB at a line boundary with an explicit truncation notice. Full
-#     evidence stays committed on the branch and is linked in "Full artifacts".
+#   - Hard cap ~10 KB at a line boundary with an explicit truncation notice. The
+#     run-details block links committed evidence or records that an external store owns it.
 #
 # Exit codes: 0 ok; 1 render failure; 2 bad invocation.
 set -uo pipefail
@@ -25,6 +25,10 @@ cmd="${1:-}"
 [[ "$cmd" == "render" ]] || { echo "pr-body.sh: unknown subcommand '${cmd:-}' (usage: pr-body.sh render <feature.json> <artifact-root> <output-file>)" >&2; exit 2; }
 shift
 [[ $# -eq 3 ]] || { echo "pr-body.sh: render requires <feature.json> <artifact-root> <output-file>" >&2; exit 2; }
+case "${LOOP_SPEC_PR_BODY_VERBOSE:-0}" in 0|1) ;; *)
+  echo "pr-body.sh: LOOP_SPEC_PR_BODY_VERBOSE must be 0 or 1" >&2; exit 2;; esac
+case "${LOOP_SPEC_ARTIFACTS_IN_PR:-1}" in 0|1) ;; *)
+  echo "pr-body.sh: LOOP_SPEC_ARTIFACTS_IN_PR must be 0 or 1" >&2; exit 2;; esac
 
 python3 - "$1" "$2" "$3" <<'PY'
 import json, os, re, subprocess, sys
@@ -35,6 +39,8 @@ with open(feature_path) as f:
 
 HARD_CAP = 10_000  # bytes; concise by construction, this is a backstop
 REVIEW_ORDER_MAX_LINES = 30  # ~5 concerns of stops; the full trail is on the branch
+VERBOSE = os.environ.get("LOOP_SPEC_PR_BODY_VERBOSE", "0") == "1"
+ARTIFACTS_IN_PR = os.environ.get("LOOP_SPEC_ARTIFACTS_IN_PR", "1") == "1"
 
 
 def read_artifact(key):
@@ -99,7 +105,7 @@ def sanitize(text, max_lines):
         if len(out) >= max_lines:
             out = balance_fences(out)
             out.append("")
-            out.append("_…truncated; full text in the committed artifact._")
+            out.append("_…truncated; full text remains in the run artifact._")
             break
     return "\n".join(balance_fences(out)).strip()
 
@@ -218,6 +224,7 @@ def spec_quality_table(frontmatter):
 
 
 parts = ["**Goal:** " + (feature.get("feature_title") or feature.get("slug", ""))]
+run_details = []
 
 spec = read_artifact("spec")
 quality = None
@@ -231,7 +238,7 @@ if spec:
     if criteria and criteria != summary:
         parts += ["", "## Acceptance criteria", "", criteria]
     if quality:
-        parts += ["", "## Spec quality", "", quality]
+        run_details.append(("Spec quality", quality))
 
 # The trail earns its place above the evidence sections: a reviewer needs the
 # reading order before the proof, because the proof is what they are checking.
@@ -256,7 +263,7 @@ iteration = read_artifact("iteration")
 if iteration:
     verdict = section(iteration, ("verdict", "convergence", "summary"), 10)
     if verdict:
-        parts += ["", "## Convergence", "", verdict]
+        run_details.append(("Convergence", verdict))
 
 warnings = feature.get("warnings") or []
 if warnings:
@@ -265,9 +272,22 @@ if warnings:
     parts += ["> - " + str(item) for item in warnings]
 
 artifact_paths = committed_artifact_paths()
-if artifact_paths:
-    parts += ["", "## Full artifacts", "", "Committed on this branch:"]
-    parts += ["- `%s`" % p for p in artifact_paths]
+if artifact_paths and ARTIFACTS_IN_PR:
+    run_details.append(("Full artifacts", "Committed on this branch:\n" +
+                        "\n".join("- `%s`" % p for p in artifact_paths)))
+elif not ARTIFACTS_IN_PR:
+    run_details.append(("Artifact audit trail",
+                        "Stored outside the PR by `LOOP_SPEC_ARTIFACTS_IN_PR=0`."))
+
+if run_details:
+    if VERBOSE:
+        for title, content in run_details:
+            parts += ["", "## " + title, "", content]
+    else:
+        parts += ["", "<details>", "<summary>Run details</summary>", ""]
+        for title, content in run_details:
+            parts += ["### " + title, "", content, ""]
+        parts += ["</details>"]
 
 body = "\n".join(parts).strip() + "\n"
 if len(body.encode("utf-8")) > HARD_CAP:
@@ -278,7 +298,8 @@ if len(body.encode("utf-8")) > HARD_CAP:
             break
         kept.append(line)
     kept = balance_fences(kept)
-    kept += ["", "_PR body truncated; full evidence is committed on the branch._"]
+    location = "committed on the branch" if ARTIFACTS_IN_PR else "available in the external artifact store"
+    kept += ["", "_PR body truncated; full evidence is %s._" % location]
     body = "\n".join(kept) + "\n"
 
 with open(output, "w") as f:

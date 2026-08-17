@@ -57,6 +57,23 @@ LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS=300
 LOOP_SPEC_CHECKPOINT_EACH_PHASE=1
 ```
 
+For maintenance jobs where the runtime volume is preserved separately from the
+checkout, these optional controls reduce reviewer and model overhead:
+
+```bash
+LOOP_SPEC_ARTIFACTS_IN_PR=0
+LOOP_SPEC_ARTIFACT_DIR=/mounted-run-artifacts
+LOOP_SPEC_MAP_BOOTSTRAP=0
+LOOP_SPEC_MAP_REFRESH=0
+LOOP_SPEC_ITERATE_MAX_ITERATIONS=2
+LOOP_SPEC_SQUASH_STATE_COMMITS=1
+```
+
+The final setting consolidates state into one DELIVER commit and therefore disables
+per-phase checkpoint pushes; do not combine it with a requirement to recover every
+phase from the remote PR branch. Map opt-outs also mean this job will not create or
+refresh codebase-map documents.
+
 The same controls can be scoped to one CLI invocation:
 
 ```bash

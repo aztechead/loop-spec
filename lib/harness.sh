@@ -31,7 +31,9 @@
 #   harness.sh loop-runtime-reason -> stable reason for rung telemetry
 #
 # Detection order (first match wins):
-#   1. LOOP_SPEC_HARNESS=claude|opencode|adk   explicit override. The bundled
+#   1. LOOP_SPEC_HARNESS=claude|opencode|adk   explicit override. The retired
+#      value `pi` is an error instead of silently selecting another harness. # retired-harness-diagnostic
+#      The bundled
 #      opencode plugin (extensions/opencode/loop-spec.ts) and ADK bridge
 #      (extensions/adk/loop_spec_adk/bridge.py) both export it into every shell
 #      invocation — opencode through the documented `shell.env` plugin hook,
@@ -97,6 +99,10 @@ entrypoint_headless() {
 detect() {
   case "${LOOP_SPEC_HARNESS:-}" in
     claude|opencode|adk) echo "${LOOP_SPEC_HARNESS}"; return ;;
+    pi) # retired-harness-diagnostic
+      echo "harness.sh: LOOP_SPEC_HARNESS=pi was removed in 4.0.0; choose claude, opencode, or adk" >&2 # retired-harness-diagnostic
+      return 2
+      ;;
   esac
   if [[ "${CLAUDECODE:-}" == "1" ]]; then
     echo "claude"; return
@@ -123,7 +129,8 @@ case "$cmd" in
     # AgentTool — so the subagent rungs stay live everywhere. This stays a verb
     # rather than a constant because it is a CAPABILITY question: a harness that
     # cannot dispatch must answer false and fall back to the inline rung.
-    case "$(detect)" in
+    harness="$(detect)" || exit $?
+    case "$harness" in
       claude|opencode|adk) echo "true" ;;
       *) echo "false" ;;
     esac
