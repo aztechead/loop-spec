@@ -12,12 +12,16 @@
 #   FAKE_PLAN=<file>    return that file's contents as the result (compiler scenario)
 #   FAKE_HANG=<s>       sleep (hung-tick scenario)
 #   FAKE_ARGV_LOG=<f>   append full argv to <f> (flag-shape assertions)
+#   FAKE_ENV_LOG=<f>    append LOOP_SPEC_NON_INTERACTIVE to <f>
 #
 # Protocol: if the prompt (any argv) contains TOUCH:<file>, create/append that file.
 set -euo pipefail
 
 if [[ -n "${FAKE_ARGV_LOG:-}" ]]; then
   printf '%s\n' "$*" >> "$FAKE_ARGV_LOG"
+fi
+if [[ -n "${FAKE_ENV_LOG:-}" ]]; then
+  printf '%s\n' "${LOOP_SPEC_NON_INTERACTIVE:-}" >> "$FAKE_ENV_LOG"
 fi
 
 if [[ -n "${FAKE_HANG:-}" ]]; then
@@ -51,6 +55,11 @@ EOF
 
 if [[ -n "${FAKE_PLAN:-}" ]]; then
   emit "$(cat "$FAKE_PLAN")"
+  exit 0
+fi
+
+if [[ "$PROMPT" == *"strict completion validator"* ]]; then
+  emit "DONE"
   exit 0
 fi
 

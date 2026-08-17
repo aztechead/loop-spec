@@ -130,8 +130,10 @@ class LoopConfig:
                                       # cannot overshoot. Iterations and wall clock do
                                       # not bound spend on their own. Judge calls bill
                                       # to the same total. The per-tick cap is a claude
-                                      # flag; under opencode/adk only the cumulative
-                                      # check applies.
+                                      # flag. OpenCode reports cost for cumulative
+                                      # enforcement; ADK does not report money, so a
+                                      # requested cap is rejected instead of silently
+                                      # running unbounded.
     judge: bool = False
     judge_model: str = ""             # empty inherits the selected harness model
     state_dir: str = ""               # default .loop/<task_id>
@@ -216,6 +218,10 @@ class LoopConfig:
                 or isinstance(self.max_budget_usd, bool)
                 or self.max_budget_usd < 0):
             return "max_budget_usd must be a non-negative number"
+        if self.resolved_agent_cli() == "adk" and self.max_budget_usd > 0:
+            return ("max_budget_usd cannot be enforced by the adk backend because "
+                    "ADK JSONL reports tokens, not monetary cost; omit the cap or "
+                    "use a backend that reports cost")
         return None
 
     def resolved_task_id(self) -> str:
@@ -459,6 +465,35 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     }
 
 
+def parse_jsonl(text: str) -> list[dict]:
+    """Return JSON objects from a mixed JSONL stream, ignoring other lines."""
+    events = []
+    for line in text.splitlines():
+        try:
+            event = json.loads(line.strip())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+
+def _run_jsonl_agent(cmd: list, *, backend: str, bin_label: str,
+                     env: Optional[dict], resume: Optional[str],
+                     raw_log: Optional[Path], timeout: Optional[float]):
+    """Spawn a JSONL backend and normalize transport and parse failures."""
+    proc, err = _spawn_agent(cmd, bin_label=bin_label, env=env, resume=resume,
+                             raw_log=raw_log, timeout=timeout)
+    if err:
+        return [], err
+    events = parse_jsonl(proc.stdout or "")
+    if not events:
+        return [], {"ok": False, "error": f"non-JSON output from {backend}",
+                    "turns": 0, "session_id": resume,
+                    "result": proc.stdout.strip()[:1000]}
+    return events, None
+
+
 def run_adk(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
             permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
             timeout: Optional[float] = None) -> dict:
@@ -472,7 +507,8 @@ def run_adk(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
       - result:     text parts of the LAST event authored by a non-user agent
       - turns:      count of events carrying assistant text (ADK has no turn_end
                     event; one model response per turn is the closest true analogue)
-      - session_id: the events' `session_id`, reported for logs only (see below)
+      - session_id: the events' `session_id`; continuation passes it back through
+                    ADK's one-shot `--session_id` option
       - cost_usd:   None — ADK reports token usage, not money, and the price
                     depends on a model/provider pairing this process cannot see.
                     None already means "unknown" to callers, never "free".
@@ -482,12 +518,9 @@ def run_adk(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     LOOP_SPEC_ADK_AGENT_DIR). A missing directory is a prerequisite failure, not
     a fallback.
 
-    NO RESUME: one-shot `adk run` cannot rejoin a prior session — its `--resume`
-    is interactive-only and `--session_id` merely names a file that
-    `--save_session` writes on exit. Every tick therefore starts a fresh session
-    and carries its context in the prompt, which is what the loop already does
-    through the progress notes and verifier feedback. `resume` is accepted and
-    ignored so the caller contract stays uniform.
+    RESUME: current ADK one-shot runs restore or create the session named by
+    `--session_id`. That is distinct from interactive `--resume <file>`, which
+    loads an exported session file. Continue mode uses the former.
 
     Claude-only knobs are ignored here: allowed_tools, fallback_model,
     retry_watchdog, and the per-tick budget cap. ADK-specific flags go through
@@ -524,28 +557,17 @@ def run_adk(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     cmd += model_args(cfg.model,
                       consumable=lambda m: m.startswith("gemini") or "/" in m,
                       flag="--default_llm_model")
+    if resume:
+        cmd += ["--session_id", resume]
     cmd += list(cfg.extra_args)
     cmd += [prompt, "--jsonl"]
 
-    proc, err = _spawn_agent(cmd, bin_label=bin_, env=None, resume=resume,
-                             raw_log=raw_log, timeout=timeout)
+    env = dict(os.environ)
+    env["LOOP_SPEC_NON_INTERACTIVE"] = "1"
+    events, err = _run_jsonl_agent(cmd, backend="adk", bin_label=bin_, env=env,
+                                   resume=resume, raw_log=raw_log, timeout=timeout)
     if err:
         return err
-
-    events = []
-    for line in (proc.stdout or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(ev, dict):
-            events.append(ev)
-    if not events:
-        return {"ok": False, "error": "non-JSON output from adk",
-                "turns": 0, "session_id": resume, "result": proc.stdout.strip()[:1000]}
 
     session_id = resume
     v = events[0].get("session_id")
@@ -645,25 +667,10 @@ def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     cmd += list(cfg.extra_args)
     cmd += [prompt]
 
-    proc, err = _spawn_agent(cmd, bin_label=bin_, env=None, resume=resume,
-                             raw_log=raw_log, timeout=timeout)
+    events, err = _run_jsonl_agent(cmd, backend="opencode", bin_label=bin_, env=None,
+                                   resume=resume, raw_log=raw_log, timeout=timeout)
     if err:
         return err
-
-    events = []
-    for line in (proc.stdout or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(ev, dict):
-            events.append(ev)
-    if not events:
-        return {"ok": False, "error": "non-JSON output from opencode",
-                "turns": 0, "session_id": resume, "result": proc.stdout.strip()[:1000]}
 
     session_id = resume
     v = events[0].get("sessionID")
@@ -744,7 +751,8 @@ def judge_done(cfg: LoopConfig, verifier_output: str, start_sha: str, *,
         "if the verifier passed."
     )
     jcfg = LoopConfig(task="", claude_bin=cfg.claude_bin, agent_cli=cfg.agent_cli,
-                      model=cfg.judge_model, allowed_tools="")
+                      model=cfg.judge_model, allowed_tools="",
+                      adk_agent_dir=cfg.adk_agent_dir)
     res = run_claude(prompt, jcfg, resume=None, permission_mode="plan", timeout=600,
                      budget_usd=budget_usd)
     cost = res.get("cost_usd")

@@ -30,13 +30,15 @@ package root has moved.
 ## Environment contract (who sets what)
 
 `extensions/adk/loop_spec_adk/bridge.py` builds a `LocalEnvironment` whose
-`env_vars` mapping delivers, into every shell command: `LOOP_SPEC_HARNESS=adk`,
-`CLAUDE_PLUGIN_ROOT` (package root), `CLAUDE_PROJECT_DIR` (the project the agent
-was mounted for), and `CLAUDE_SKILL_DIR` (the active skill's real directory).
+static environment delivers `LOOP_SPEC_HARNESS=adk`, `CLAUDE_PLUGIN_ROOT`
+(package root), and `CLAUDE_PROJECT_DIR` (the mounted project). The plugin's
+`after_tool_callback` records the active skill's real directory in ADK session
+state whenever `load_skill` runs. The custom Execute tool creates each shell
+environment from that state and exports it as `CLAUDE_SKILL_DIR`.
 
-`LocalEnvironment.execute()` reads that mapping at call time, so the bridge
-updates `CLAUDE_SKILL_DIR` live — no rebuild, no session restart. The plugin's
-`after_tool_callback` sets it whenever `load_skill` runs.
+The state is per session. Concurrent sessions in one `adk web` or
+`adk api_server` process therefore cannot overwrite one global active-skill
+directory and send another session's command through the wrong skill.
 
 **Skill-directory rule:** ADK's `Skill` model holds instructions and resources in
 memory and carries NO source path, so the name→directory map comes from
@@ -58,7 +60,7 @@ vector).
 
 | Claude Code tool | Under ADK |
 |---|---|
-| Bash | `Execute` (`EnvironmentToolset` over `LocalEnvironment`) — a REAL shell via `create_subprocess_shell`, so pipes, `&&`, and `$( )` all work |
+| Bash | session-aware `Execute` over `LocalEnvironment` — a REAL shell via `create_subprocess_shell`, so pipes, `&&`, and `$( )` all work |
 | Read / Write / Edit | `ReadFile` / `WriteFile` / `EditFile` (same semantics) |
 | Glob / Grep | no native tools — use `Execute` with `find` / `grep` / `rg` |
 | Skill (invoke a skill) | `load_skill({skill_name: "<name>"})`; `list_skills` enumerates. Skill names are UNPREFIXED here (`cycle`, not `loop-spec-cycle`) because the toolset holds only loop-spec's skills |
@@ -69,6 +71,14 @@ vector).
 | AskUserQuestion | `get_user_choice` (ADK's long-running HITL tool) when a human is attached; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under ADK — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd |
+
+**Security boundary:** ReadFile/EditFile/WriteFile reject paths that resolve
+outside the project. Execute is different: its shell starts in the project but
+is not sandboxed there, and it inherits every filesystem/network permission of
+the OS user running ADK. Use an isolated container or restricted service account
+for untrusted repositories. `LocalEnvironment` is also marked experimental by
+ADK, which is why the real-package compatibility suite is part of release
+verification.
 
 ## Ambient verification enforcement
 
@@ -124,7 +134,8 @@ ADK model ids are `gemini-*` natively or `provider/model` through LiteLLM, so on
 mount can drive Gemini, Claude, or a local model without changing this contract.
 The mounted default is set at install time (`--model`, or `$LOOP_SPEC_ADK_MODEL`,
 default `gemini-2.5-pro`) and written into the generated shim, where it is the
-one line intended for hand-editing.
+runtime default. Re-run the installer to change it; generated shims are owned by
+the installer and are replaced on reinstall.
 
 The portable `inherit` selector means "use the mounted agent's model" — it is
 never forwarded as a literal id. `LOOP_SPEC_MODEL_<ROLE>` routes fleet workers
@@ -136,30 +147,32 @@ forwarded, the same rule `loop.py`'s `model_args()` applies.
 | Claude Code | ADK |
 |---|---|
 | interactive session | `adk web` / `adk api_server` against the mounted agent, or your own `Runner` over `build_app()` |
-| `claude -p` headless / autonomous mode | `adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl` |
+| `claude -p` headless / autonomous mode | `LOOP_SPEC_NON_INTERACTIVE=1 adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl` |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `adk run <agent-dir> --jsonl` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli adk` (see `skills/shared/execute-loop-fleet.md`) |
 
 Two ADK CLI facts the fleet backend encodes, both worth knowing before debugging
 a run: dispatch targets a mounted agent DIRECTORY (hence
-`LOOP_SPEC_ADK_AGENT_DIR` / `--adk-agent-dir`), and one-shot `adk run` CANNOT
-resume a session — its `--resume` is interactive-only and `--session_id` merely
-names the file `--save_session` writes on exit. Every tick therefore starts a
-fresh session and carries context in the prompt, which is what the loop already
-does through PROGRESS notes and verifier feedback. Read-only ticks
+`LOOP_SPEC_ADK_AGENT_DIR` / `--adk-agent-dir`), and current one-shot `adk run`
+restores the session passed with `--session_id`. (Interactive `--resume <file>`
+is a separate exported-session path.) Continue-mode ticks therefore retain ADK
+conversation state as well as loop-spec's durable PROGRESS notes. Read-only ticks
 (`--permission-mode plan`) select the `_readonly` sibling agent; a missing one
 fails closed rather than handing a judge the writable agent's edit tools.
 
 Cost accounting is unavailable: ADK reports token counts, not money, so the
-fleet records `cost_usd: None` ("unknown", never "free") and a
-`--max-budget-usd` cap cannot bind here.
+fleet records `cost_usd: None` ("unknown", never "free"). A requested
+`--max-budget-usd` fails at configuration time instead of pretending a hard cap
+can bind.
 
 ## Headless profile
 
-ADK publishes no entrypoint stamp, so the bridge asserts the profile instead:
-under `adk run` (one-shot, nobody attached) it exports
-`LOOP_SPEC_NON_INTERACTIVE=1`; `adk web` and `adk api_server` are persistent and
-leave it unset. `lib/harness.sh` ranks that assertion below Claude Code's stamp
-and above an inherited `LOOP_SPEC_EXECUTION_PROFILE` claim.
+ADK publishes no entrypoint stamp, so one-shot launchers assert the profile:
+loop.py and `lib/issue-intake.sh` export `LOOP_SPEC_NON_INTERACTIVE=1`, and direct
+`adk run` commands must set it as shown above. The bridge does not infer a profile
+from the executable name because persistent `adk web` and `adk api_server` use
+the same executable and must remain interactive. `lib/harness.sh` ranks the
+explicit assertion below Claude Code's stamp and above an inherited
+`LOOP_SPEC_EXECUTION_PROFILE` claim.
 
 ## Graph engine (GDD)
 

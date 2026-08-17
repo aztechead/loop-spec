@@ -98,7 +98,7 @@ TaskCreate({
 
 ## EnterWorktree / ExitWorktree
 
-- These are Claude Code-only session-root operations. OpenCode and pi follow their
+- These are Claude Code-only session-root operations. OpenCode and ADK follow their
   additive `executionRootMode: "in-place"` contracts and never emulate either tool.
 - `EnterWorktree({path})` to switch into an EXISTING worktree registered in
   `git worktree list` (loop-spec's Step 5 flow: `git-ops.sh` creates, then enter by

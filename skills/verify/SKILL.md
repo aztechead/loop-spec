@@ -299,7 +299,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/verification-grounding-lint.sh" \
 Exit 1 is a verifier `FAIL` regardless of the reported status or green commands. Preserve
 the emitted `FLAG` lines as the failure evidence and route through the normal acceptance
 remediation branch. This gate is mandatory when workflows are unavailable, which is the
-normal pi/OpenCode path; prompt compliance alone never clears VERIFY.
+normal OpenCode/ADK path; prompt compliance alone never clears VERIFY.
 
 #### verifier-1 gate
 

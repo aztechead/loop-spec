@@ -25,6 +25,17 @@ newrepo() {
   echo base > base.txt; git add -A; git commit -qm init
 }
 
+write_compiler_fixture() {
+  echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md
+  git add -A; git commit -qm spec
+  cat > goodplan.json << 'EOF'
+{"spec":"SPEC.md",
+ "tasks":[
+  {"id":"make-a","prompt":"Create a.txt per AC1. TOUCH:a.txt",
+   "verify":"test -f a.txt","protected":[],"max_iterations":5,"deps":[]}]}
+EOF
+}
+
 echo "== 1. max-iterations ceiling halts and reports =="
 newrepo
 python3 "$SCRIPTS/loop.py" "do the thing forever" --task-id iters --claude-bin "$FAKE" \
@@ -515,6 +526,19 @@ check "adk: agent dir positional"   "$(grep -c -- "run $R/loop_spec " "$ADKLOG")
 check "adk: gemini model passed"    "$(grep -c -- '--default_llm_model gemini-2.5-flash' "$ADKLOG")" "1"
 check "adk: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permission-mode|--output-format|--allowedTools' "$ADKLOG")" "0"
 
+# 16b-1. One-shot ADK runs are explicitly non-interactive and continue mode
+# restores the session emitted by the first tick.
+newrepo; mkadkagent
+ADKLOG_RESUME="$R/adkargv-resume.txt"
+ADKENV="$R/adkenv.txt"
+FAKE_ARGV_LOG="$ADKLOG_RESUME" FAKE_ENV_LOG="$ADKENV" \
+  python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id adkresume \
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --mode continue --verify 'test "$(wc -l < work.txt)" -ge 2' \
+  --max-iterations 3 >/dev/null 2>&1
+check "adk: continue resumes session" "$(grep -c -- '--session_id adksess-abc' "$ADKLOG_RESUME")" "1"
+check "adk: one-shot marker reaches child" "$(grep -cv '^1$' "$ADKENV")" "0"
+
 # 16b-2. A Claude alias is not an ADK model id; it must be dropped, not forwarded.
 newrepo; mkadkagent
 ADKLOG_ALIAS="$R/adkargv-alias.txt"
@@ -552,18 +576,12 @@ check "adk: missing dir points at installer" "$(grep -c 'adk-install.sh' "$R/nod
 
 # 16c. compiler via adk backend: read-only pass selects the _readonly agent
 newrepo; mkadkagent
-echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md
-git add -A; git commit -qm spec
-cat > goodplan.json << 'EOF'
-{"spec":"SPEC.md",
- "tasks":[
-  {"id":"make-a","prompt":"Create a.txt per AC1. TOUCH:a.txt",
-   "verify":"test -f a.txt","protected":[],"max_iterations":5,"deps":[]}]}
-EOF
+write_compiler_fixture
 ADKLOG2="$R/adkargv2.txt"
-FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$ADKLOG2" LOOP_SPEC_ADK_AGENT_DIR="$R/loop_spec" \
+FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$ADKLOG2" \
   python3 "$SCRIPTS/compile_spec.py" SPEC.md \
-  --agent-cli adk --claude-bin "$FAKEADK" --out plan/tasks.json >/dev/null 2>&1
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --out plan/tasks.json >/dev/null 2>&1
 check "adk compile exit 0"      "$?" "0"
 check "adk plan written"        "$(test -f plan/tasks.json && echo yes)" "yes"
 check "adk read-only agent"     "$(grep -c -- "run ${R}/loop_spec_readonly " "$ADKLOG2")" "1"
@@ -596,10 +614,31 @@ cat > plan.json << 'EOF'
   "verify":"test -f s.txt","max_iterations":3,"deps":[]}]}
 EOF
 git add -A; git commit -qm plan
-LOOP_SPEC_ADK_AGENT_DIR="$R/loop_spec" python3 "$SCRIPTS/supervisor.py" \
-  --plan plan.json --agent-cli adk --claude-bin "$FAKEADK" >/dev/null 2>&1
+python3 "$SCRIPTS/supervisor.py" \
+  --plan plan.json --agent-cli adk --claude-bin "$FAKEADK" \
+  --adk-agent-dir "$R/loop_spec" >/dev/null 2>&1
 check "adk fleet exit 0"     "$?" "0"
 check "adk fleet completed"  "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['completed'])")" "['solo']"
+
+# 16e-2. An ADK judge inherits the explicit mount and selects its read-only sibling.
+newrepo; mkadkagent
+ADKLOG_JUDGE="$R/adkargv-judge.txt"
+FAKE_ARGV_LOG="$ADKLOG_JUDGE" python3 "$SCRIPTS/loop.py" "noop" --task-id adkjudge \
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --verify 'true' --judge --max-iterations 1 >/dev/null 2>&1
+check "adk judge completes" "$?" "0"
+check "adk judge uses read-only mount" \
+  "$(grep -c -- "run $R/loop_spec_readonly " "$ADKLOG_JUDGE")" "1"
+
+# ADK exposes token counts but no money. Reject a requested hard cap rather
+# than accepting a safety promise the backend cannot enforce.
+newrepo; mkadkagent
+python3 "$SCRIPTS/loop.py" "noop" --task-id adkbudget --agent-cli adk \
+  --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --max-budget-usd 1 >/dev/null 2>"$R/adkbudget.txt"
+check "adk budget exits 2" "$?" "2"
+check "adk budget explains unsupported cap" \
+  "$(grep -c 'cannot be enforced by the adk backend' "$R/adkbudget.txt")" "1"
 
 # 16f. transport conflict fails fast: --agent-cli adk pointed at a claude binary
 newrepo
@@ -637,14 +676,7 @@ check "oc: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permiss
 
 # 17c. compiler via opencode backend: dedicated read-only agent, no --auto
 newrepo
-echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md
-git add -A; git commit -qm spec
-cat > goodplan.json << 'EOF'
-{"spec":"SPEC.md",
- "tasks":[
-  {"id":"make-a","prompt":"Create a.txt per AC1. TOUCH:a.txt",
-   "verify":"test -f a.txt","protected":[],"max_iterations":5,"deps":[]}]}
-EOF
+write_compiler_fixture
 OCLOG2="$R/ocargv2.txt"
 FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$OCLOG2" python3 "$SCRIPTS/compile_spec.py" SPEC.md \
   --agent-cli opencode --claude-bin "$FAKEOC" --out plan/tasks.json >/dev/null 2>&1

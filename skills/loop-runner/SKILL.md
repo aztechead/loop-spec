@@ -1,7 +1,7 @@
 ---
 name: loop-runner
 description: >-
-  Compile specs/goals into autonomous Claude Code, pi, or OpenCode loops and run them safely. The base
+  Compile specs/goals into autonomous Claude Code, OpenCode, or Google ADK loops and run them safely. The base
   layer for spec-driven and workflow automation: bridges "a spec written normally" to
   "loops execute it unattended." Use whenever the user wants a supported harness hands-off —
   "implement this spec", "keep going until tests pass", "break this down and execute",
@@ -52,7 +52,7 @@ SPEC.md ──compile_spec.py──▶ plan/tasks.json ──supervisor.py──
 
 | Layer | Script | In → Out | Job |
 |---|---|---|---|
-| 1 | `scripts/loop.py` | one task → `result.json` | Run one bounded loop through Claude Code, pi, or OpenCode; verify, measure progress, and halt safely. |
+| 1 | `scripts/loop.py` | one task → `result.json` | Run one bounded loop through Claude Code, OpenCode, or Google ADK; verify, measure progress, and halt safely. |
 | 2 | `scripts/compile_spec.py` | spec → `plan/tasks.json` | Decompose a spec into small verifiable tasks and **synthesize a verifier per task**. |
 | 3 | `scripts/supervisor.py` | plan → `fleet-result.json` | Walk the dependency DAG, run each task's loop in an isolated git worktree, merge completed work, apply halt policy. |
 
@@ -136,9 +136,9 @@ ADK protocol. Differences: dispatch targets a mounted agent DIRECTORY
 (`--adk-agent-dir`, or `$LOOP_SPEC_ADK_AGENT_DIR`) rather than a bare prompt;
 read-only passes (compiler, judge) select the `_readonly` sibling agent and fail
 closed when it is missing; the model flag is `--default_llm_model` and takes ADK
-ids; one-shot `adk run` cannot resume a session, so every tick starts fresh and
-carries context in the prompt; cost is unavailable because ADK reports tokens,
-not money. `--fallback-model` / `--retry-watchdog` / `allowed_tools` are
+ids; continue mode restores one-shot sessions through `--session_id`; cost is
+unavailable because ADK reports tokens, not money, so `--max-budget-usd` is
+rejected rather than silently ignored. `--fallback-model` / `--retry-watchdog` / `allowed_tools` are
 claude-only and ignored. See `skills/shared/adk-harness.md`.
 
 ### opencode backend (`--agent-cli opencode`)
@@ -261,8 +261,10 @@ orchestration), verifier design, anchoring discipline, and failure modes.
 ## Prerequisites
 
 - One installed and authenticated headless agent CLI: Claude Code
-  (`claude -p --output-format json`), pi (`pi --mode json`), or OpenCode
-  (`opencode run --format json`). Select pi or OpenCode with `--agent-cli`; a binary
-  named `pi` or `opencode` is also auto-detected.
+  (`claude -p --output-format json`), OpenCode (`opencode run --format json`),
+  or Google ADK (`adk run <agent-dir> --jsonl`). Select the protocol with
+  `--agent-cli`; binaries named `claude`, `opencode`, and `adk` are auto-detected.
+  ADK also needs a mount from `lib/adk-install.sh` and `--adk-agent-dir` (or
+  `LOOP_SPEC_ADK_AGENT_DIR`).
 - A git repo: required for the supervisor (worktrees/merges) and for loop.py's
   file-change stall detection and `--commit` (loop.py degrades gracefully without).

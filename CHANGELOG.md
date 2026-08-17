@@ -23,10 +23,9 @@ Agent SDK), OpenCode, and Google ADK. pi is removed.
 ### Added
 
 - **Google ADK as a first-party harness.** `extensions/adk/loop_spec_adk/` is the
-  bridge: a `LocalEnvironment` carries `LOOP_SPEC_HARNESS` / `CLAUDE_PLUGIN_ROOT`
-  / `CLAUDE_PROJECT_DIR` / `CLAUDE_SKILL_DIR` into every shell command — and
-  because ADK reads that mapping at execute() time, `CLAUDE_SKILL_DIR` advances
-  live as skills load. `SkillToolset` serves all 33 skills, and
+  bridge: a `LocalEnvironment` carries the static harness/project paths, while
+  session state carries `CLAUDE_SKILL_DIR` into each Execute call without
+  cross-session leakage. `SkillToolset` serves all 33 skills, and
   `dispatch_subagent` maps Claude Code's `{subagent_type, description, prompt}`
   onto `AgentTool` over the 17 agent charters, so `harness.sh subagents` answers
   `true` on all three harnesses and the full EXECUTE ladder survives.
@@ -52,6 +51,21 @@ Agent SDK), OpenCode, and Google ADK. pi is removed.
   strict YAML — which is what ADK's skill loader uses, so `skills/cycle` and 16
   of 17 agent charters failed to load at all. The scalars are now quoted, with
   the parsed values proven byte-identical to what was read before.
+- The bridge now uses ADK 2.x's public `load_skill_from_dir` API, exposes the
+  documented `get_user_choice` HITL tool, keeps persistent sessions isolated,
+  and reaps timed-out lifecycle hooks. The compatibility suite runs against
+  `google-adk>=2.7,<3` (Python >=3.10) and reports driver tracebacks instead of
+  swallowing them.
+- Continue-mode fleet ticks restore ADK sessions through `--session_id`; direct
+  `--adk-agent-dir` now reaches compiler, supervisor, and judge paths. A monetary
+  budget is rejected under ADK because its JSONL reports tokens but no cost.
+- `lib/adk-install.sh` rejects mount traversal and user-file collisions, quotes
+  generated Python values safely, validates both shims, and uninstalls only its
+  marked files. Unrelated mount content is preserved.
+- Removing the pi-only root manifest no longer leaves OpenCode install metadata
+  with an empty version; it now reads `.claude-plugin/plugin.json`.
+- Active skills and runtime comments no longer retain pi branches. The removal
+  guard scans tracked files, so local bytecode cannot create a false failure.
 
 ### Changed
 

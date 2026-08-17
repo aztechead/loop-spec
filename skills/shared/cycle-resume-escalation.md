@@ -7,7 +7,7 @@ Reference procedures the `loop-spec:cycle` skill follows. Step 1 (Resume detecti
 The full resume algorithm (used at Step 1 and when the user selects a feature to resume).
 loop-spec is **schema-7 only**: a resumable feature is single-repo **worktree mode**
 (`executionRootMode=worktree`, Claude), single-repo **in-place mode**
-(`executionRootMode=in-place`, OpenCode/pi), or **workspace mode**. Any
+(`executionRootMode=in-place`, OpenCode/ADK), or **workspace mode**. Any
 `feature.json` with `schemaVersion != 7` is skipped with a one-line warning.
 
 ### 1. Enumerate feature worktrees (single-repo mode)
@@ -90,7 +90,7 @@ Call this BEFORE routing to the current phase. All subsequent phase work runs in
 **Workspace features (`workspace` block non-null):**
 No worktree is entered. Resume proceeds in place at the workspace root (see "Workspace features" below).
 
-**OpenCode/pi in-place features (`executionRootMode == "in-place"`):**
+**OpenCode/ADK in-place features (`executionRootMode == "in-place"`):**
 No worktree tool exists. Resume only when the session root equals `candidate.featureRoot`
 and the checked-out branch equals `feature.branch`; otherwise print the absolute root and
 ask for relaunch there. Never substitute another `git worktree add` for changing cwd.
@@ -158,7 +158,7 @@ If a phase pauses + escalates (iteration limit exhausted, NEEDS_CONTEXT, etc.):
      --reason "<escalation reason>" || true
    ```
 6. **Claude single-repo worktree mode only:** after snapshotting, call
-   `ExitWorktree({action: "keep"})`. Workspace and OpenCode/pi in-place features skip it.
+   `ExitWorktree({action: "keep"})`. Workspace and OpenCode/ADK in-place features skip it.
 7. Return control to user.
 
 User options:

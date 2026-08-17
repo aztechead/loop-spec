@@ -128,7 +128,7 @@ add.
 The step descriptor is model-neutral:
 `{node,label,kind,body,effort,nextEdge,terminal,paused}`. Model selection belongs to the
 dispatch adapter, not the control-flow engine. This keeps the same graph executable
-under Claude Code, pi, and OpenCode even when their model registries differ.
+under Claude Code, OpenCode, and ADK even when their model registries differ.
 
 ## Effort declaration
 

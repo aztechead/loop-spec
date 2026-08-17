@@ -97,8 +97,9 @@ in the decisions record. Style is forced to `auto`. Explicit `LOOP_SPEC_ANSWER_*
 `LOOP_SPEC_CMD_*` vars still win where set. Full contract — trigger, precedence,
 self-answer rule, decisions record, per-site map — in **`skills/shared/autonomous-mode.md`**;
 every phase skill honors it. Headless form for an explicitly full run:
-`claude -p "/loop-spec:cycle autonomous <description>"` (pi: `pi --mode json
-`load_skill({skill_name: "cycle"})` with `autonomous <description>`). Use `/loop-spec:auto <description>` when
+`claude -p "/loop-spec:cycle autonomous <description>"`; under OpenCode or ADK,
+load the `cycle` skill with the native skill tool and send `autonomous <description>`.
+Use `/loop-spec:auto <description>` when
 the autonomous entry should semantically choose micro, debug, or the full cycle before
 paying the full-cycle startup cost.
 Setup answers made before SPEC.md exists (workspace repos, resume choice, commands) are
@@ -210,7 +211,7 @@ invocation checkout or a registered feature worktree.
 1. **Adopt the execution root first.** Workspace and `executionRootMode == "in-place"`
    features require the session cwd to equal `featureRoot`; otherwise print the absolute
    path and stop so the harness can be relaunched there. For a Claude feature-worktree
-   candidate, call `EnterWorktree({path: worktreeAbs})`. OpenCode/pi features use the
+   candidate, call `EnterWorktree({path: worktreeAbs})`. OpenCode/ADK features use the
    clean in-place branch path and never emulate a cwd switch with `git worktree add`.
 2. Load `feature.json` from the adopted root and refresh `.loop-spec/runtime.json` with the
    and the Step 5.4 freshness decision for every non-greenfield source repository. A matching
@@ -448,7 +449,7 @@ If resuming: load feature.json into memory.
 
 If new feature: resolve a clean, current base in the control checkout, then choose the
 execution-root strategy from the deterministic harness probe. Claude Code keeps native
-feature-worktree isolation. OpenCode and pi have no session-root switch, so their additive
+feature-worktree isolation. OpenCode and ADK have no session-root switch, so their additive
 branch uses a clean in-place feature branch instead of pretending `git worktree add`
 changed the running session's cwd.
 
@@ -510,7 +511,7 @@ case "$harness_name" in
       EnterWorktree({ path: worktree_abs })
     fi
     ;;
-  opencode|pi)
+  opencode|adk)
     git -C "$repo_root" checkout -b "feat/${slug}" "$base_sha"
     # Session cwd stays at repo_root; every later relative path remains valid.
     ;;
@@ -1027,7 +1028,7 @@ Cycle's responsibility after the engine names a node is to invoke that phase ski
       **No-change completion cleanup:** after the `already-satisfied` result is emitted,
       print its summary and do not run PR feedback or autonomous chaining. For a Claude
       single-repository feature worktree, call `ExitWorktree({action:"keep"})` before
-      returning; OpenCode/pi in-place execution and workspace mode skip that tool. This
+      returning; OpenCode/ADK in-place execution and workspace mode skip that tool. This
       is the terminal cleanup for this path, so it must happen before preflight begins
       suppressing the completed local result on later invocations.
       Eligible immutable targets normalize to `delivery-blocked`; local preflight errors
@@ -1146,6 +1147,6 @@ Only sidecar `delivery.status == "ready-for-review"` can chain. Stable no-chain 
 
 For a Claude single-repo feature worktree, `ExitWorktree({action:"keep"})` is the final
 operation after DELIVER, result writing, summary, and chain-decision capture. Keep the
-worktree until merge. OpenCode/pi in-place features and workspace mode do not call an
+worktree until merge. OpenCode/ADK in-place features and workspace mode do not call an
 exit tool. If the captured verdict chains, leave/adopt the next feature root only after
 this final operation after DELIVER.

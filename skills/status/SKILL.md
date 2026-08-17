@@ -69,7 +69,7 @@ raw output, citing rows/fields.
   `plan` count means decomposition is the weak link). `dispatches` counts
   `dispatch` events by model/role/rung (`skills/shared/dispatch-events.md`).
   `loop-fleet cost` sums the agent CLI's reported cost (`claude -p`
-  `total_cost_usd`, or pi usage cost when reported) from
+  `total_cost_usd`, or harness usage cost when reported) from
   `.loop/fleet-result.json` when the loop-fleet rung ran; `n/a` = fleet never
   ran or the CLI did not report cost (unknown, not free). `phase timing` is the
   live event aggregate, so it includes current local runs.

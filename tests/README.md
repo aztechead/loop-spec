@@ -89,7 +89,8 @@ package (skills load, `CLAUDE_*` reaches the shell, tool surfaces are exact), an
 `tests/adk-harness-coverage.test.sh` pins the cross-file couplings — but neither
 calls a model. Before tagging, run once against live credentials:
 
-1. `pip install google-adk` and `bash lib/adk-install.sh install --project <dir>`
+1. `python3 -m pip install 'google-adk>=2.7,<3'` and
+   `bash lib/adk-install.sh install --project <dir>`
    — both agent directories written, `check` clean.
 2. `adk run <dir>/adk_agents/loop_spec "list your skills" --jsonl` — the agent
    enumerates loop-spec's skills and the JSONL stream parses.

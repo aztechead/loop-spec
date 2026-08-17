@@ -78,6 +78,7 @@ elif [[ "$AGENT_CLI" == "adk" ]]; then
   AGENT_ARGS=(run "${LOOP_SPEC_ADK_AGENT_DIR}")
   INTAKE_CMD="Load the loop-spec-intake skill and run:"
   CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:---jsonl}"
+  export LOOP_SPEC_NON_INTERACTIVE=1
 else
   AGENT_ARGS=(-p)
   INTAKE_CMD="/loop-spec:intake"

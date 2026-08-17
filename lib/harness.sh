@@ -33,9 +33,9 @@
 # Detection order (first match wins):
 #   1. LOOP_SPEC_HARNESS=claude|opencode|adk   explicit override. The bundled
 #      opencode plugin (extensions/opencode/loop-spec.ts) and ADK bridge
-#      (extensions/adk/environment.py) both export it into every shell
+#      (extensions/adk/loop_spec_adk/bridge.py) both export it into every shell
 #      invocation — opencode through the documented `shell.env` plugin hook,
-#      ADK through LocalEnvironment's `env_vars` — so under those harnesses
+#      ADK through its session-aware Execute wrapper — so under those harnesses
 #      this is the NORMAL signal, not just the escape hatch. Unknown values
 #      fall through.
 #   2. CLAUDECODE=1                  set by Claude Code's Bash tool -> claude
@@ -70,9 +70,9 @@
 #
 #   opencode and ADK publish no equivalent stamp, so they assert the profile on the
 #   channel that already exists: `opencode run` and `adk run` are one-shot, and the
-#   bundled bridges export LOOP_SPEC_NON_INTERACTIVE=1 when they detect they were
-#   constructed under one (ADK: `adk run`, as opposed to the persistent `adk web` /
-#   `adk api_server`). That is an assertion rather than a proof, which is why it
+#   bundled launch paths export LOOP_SPEC_NON_INTERACTIVE=1 for one-shot runs
+#   (ADK: loop.py and issue-intake.sh; direct `adk run` callers set it explicitly,
+#   unlike persistent `adk web` / `adk api_server`). That is an assertion rather than a proof, which is why it
 #   ranks below a stamp and above an inherited EXECUTION_PROFILE claim.
 #
 # detect/cli/subagents/entrypoint/headless always exit 0 with the answer on

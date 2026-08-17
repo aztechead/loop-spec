@@ -19,7 +19,7 @@ namespace keeps them clear of opencode's built-in `/debug`, `/status`, and
 ADDITIVE — when the harness is `claude`, nothing here applies and every skill
 runs exactly as written.
 
-opencode is a much closer harness than pi: skills, resumable subagents,
+OpenCode provides skills, resumable subagents,
 questions, and commands all have NATIVE equivalents. The deltas below are the
 complete list.
 
@@ -34,7 +34,7 @@ set from the native `skill` tool's result metadata, or from the last SKILL.md
 `read`, and realpath'd so symlinked installs still resolve
 `${CLAUDE_SKILL_DIR}/../../lib/...`).
 
-**Re-export rule (cross-skill reads):** identical to pi — the tracked
+**Re-export rule (cross-skill reads):** the tracked
 `CLAUDE_SKILL_DIR` follows the LAST skill loaded (skill tool call or SKILL.md
 read). When a skill reads another skill's SKILL.md mid-flow and then needs a
 **skill-local** path of the skill it is still executing, re-export the
@@ -71,7 +71,7 @@ adapter directory is the wrong base:
 | Agent (subagent) | the native `task` tool — `{description, prompt, subagent_type, task_id?, command?}`; unlike Claude Code, `subagent_type` is REQUIRED; see the dispatch mapping rule below |
 | Teams (named `Agent` spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` under opencode (`lib/teams-capability.sh`); resumable task sessions do not provide named teammates, shared task lists, or peer messaging |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |
-| TaskCreate / TaskUpdate / TaskList / TaskGet | none with that shape — opencode's `todowrite` is a flat checklist (no deps/metadata). DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` (same rule as pi) |
+| TaskCreate / TaskUpdate / TaskList / TaskGet | none with that shape — opencode's `todowrite` is a flat checklist (no deps/metadata). DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` |
 | AskUserQuestion | the native `question` tool. Preserve `questions`, `question`, `header`, and option objects, but rename Claude Code's `multiSelect` field to OpenCode's `multiple`; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under opencode — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd. |
@@ -127,7 +127,7 @@ still uses parallel `task` calls.
 
 If a `task` call fails because the agent id is unknown, the agents were not
 installed — fall back to performing the prompt inline after reading the
-role's charter (`agents/<role>.md`), exactly like the pi inline dispatch
+role's charter (`agents/<role>.md`), matching the portable inline dispatch
 rule, and tell the user to run `bash lib/opencode-install.sh install`.
 
 Gates, artifacts, and delivery semantics do not change. The additive OpenCode

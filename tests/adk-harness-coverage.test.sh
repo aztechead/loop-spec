@@ -7,12 +7,7 @@
 #
 # It also guards the removal: pi is gone, and a reference that survives points
 # at a harness with no contract, no backend, and no extension.
-set -uo pipefail
-
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
-PASS=0
-FAIL=0
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 # file<TAB>fixed-string that must be present.
 checks=(
@@ -29,7 +24,7 @@ checks=(
   "skills/shared/adk-harness.md	lib/pr-delivery.sh"
   "skills/shared/adk-harness.md	directive-only"
   # -- the two facts a fleet debugger needs, recorded where they are found
-  "skills/shared/adk-harness.md	CANNOT"
+  "skills/shared/adk-harness.md	--session_id"
   "skills/shared/adk-harness.md	_readonly"
   "skills/shared/adk-harness.md	token counts, not money"
   # -- the harness probe knows adk and grants the subagent capability
@@ -45,9 +40,11 @@ checks=(
   "extensions/adk/loop_spec_adk/bridge.py	micro-inject.sh"
   "extensions/adk/loop_spec_adk/bridge.py	LocalEnvironment"
   "extensions/adk/loop_spec_adk/plugin.py	load_skill"
+  "extensions/adk/loop_spec_adk/plugin.py	loop_spec:session_started"
   "extensions/adk/loop_spec_adk/plugin.py	on_user_message_callback"
   "extensions/adk/loop_spec_adk/agent.py	AgentTool"
   "extensions/adk/loop_spec_adk/agent.py	dispatch_subagent"
+  "extensions/adk/loop_spec_adk/agent.py	get_user_choice"
   # -- installer places both agents and records the mount
   "lib/adk-install.sh	loop_spec_readonly"
   "lib/adk-install.sh	adk-install.json"
@@ -67,15 +64,7 @@ checks=(
   "skills/shared/adk-harness.md	lib/graph/run.sh"
 )
 
-for entry in "${checks[@]}"; do
-  file="${entry%%	*}"
-  needle="${entry#*	}"
-  if [[ -f "$file" ]] && grep -qF -e "$needle" "$file"; then
-    PASS=$((PASS+1)); echo "PASS: $file contains '$needle'"
-  else
-    FAIL=$((FAIL+1)); echo "FAIL: $file missing '$needle'"
-  fi
-done
+check_fixed_strings "${checks[@]}"
 
 # -- behavioural: the probe itself, driven through the documented override.
 probe() { # probe <label> <expected> <verb>
@@ -103,16 +92,18 @@ for gate in "teams-capability.sh	none" "workflow-availability.sh	false"; do
   fi
 done
 
-# -- pi is gone: no shipped file may still reference it.
-# Shipped content only: the test suite legitimately names the retired harness in
-# its removal guards (tests/lib/harness.test.sh pins that `pi` now resolves to
-# claude), and scanning itself would make this check permanently red.
-pi_hits="$(grep -rlE 'pi-harness|--agent-cli pi\b|PI_CODING_AGENT_DIR|extensions/pi|pi\.dev|/skill:' \
-             skills lib hooks agents commands extensions 2>/dev/null || true)"
+# -- pi is gone: no tracked active contract may still reference it. Use git's
+# tracked corpus so local __pycache__ and other generated files cannot make this
+# guard fail. claude-harness.md owns one explicit migration note saying that the
+# old harness was removed; it is history, not an active contract.
+pi_hits="$(git grep -n -i -E '(^|[^[:alnum:]_])pi([^[:alnum:]_]|$)|fakepi|PI_CODING|extensions/pi|pi-harness|/skill:' \
+             -- README.md REVIEW-ORDER.md CLAUDE.md docs/adopting.md \
+                docs/loop-spec/PREREQUISITES.md skills lib hooks agents commands extensions \
+             2>/dev/null | grep -v '^skills/shared/claude-harness.md:' || true)"
 if [[ -z "$pi_hits" ]]; then
-  PASS=$((PASS+1)); echo "PASS: no shipped file references the removed pi harness"
+  PASS=$((PASS+1)); echo "PASS: no tracked active contract references the removed pi harness"
 else
-  FAIL=$((FAIL+1)); echo "FAIL: pi references survive in:"; echo "$pi_hits" | sed 's/^/    /'
+  FAIL=$((FAIL+1)); echo "FAIL: active pi references survive in:"; echo "$pi_hits" | sed 's/^/    /'
 fi
 
 for gone in "extensions/pi" "skills/shared/pi-harness.md" "package.json" \
@@ -153,7 +144,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL: read-only shim does not request readonly"
 fi
 # check must catch a mount whose package root moved out from under it.
-sed -i.bak 's|^_PACKAGE_PATH = r".*"$|_PACKAGE_PATH = r"/nonexistent/loop-spec/extensions/adk"|' \
+sed -i.bak "s|^_PACKAGE_PATH = .*$|_PACKAGE_PATH = '/nonexistent/loop-spec/extensions/adk'|" \
   "$TMP/adk_agents/loop_spec/agent.py"
 if bash lib/adk-install.sh check --project "$TMP" >/dev/null 2>&1; then
   FAIL=$((FAIL+1)); echo "FAIL: adk-install check passed a shim pointing at a missing package"
@@ -161,6 +152,45 @@ else
   PASS=$((PASS+1)); echo "PASS: adk-install check catches a moved package root"
 fi
 
-echo ""
-echo "Results: $PASS passed, $FAIL failed"
-[[ "$FAIL" -eq 0 ]] || exit 1
+# Mounts cannot escape the project, and existing user files are never clobbered.
+if bash lib/adk-install.sh install --project "$TMP" --mount ../escaped >/dev/null 2>&1; then
+  FAIL=$((FAIL+1)); echo "FAIL: installer accepted a mount outside the project"
+else
+  PASS=$((PASS+1)); echo "PASS: installer rejects mount traversal"
+fi
+COLLISION="$TMP/collision/loop_spec"
+mkdir -p "$COLLISION"
+echo "user owned" > "$COLLISION/agent.py"
+if bash lib/adk-install.sh install --project "$TMP" --mount collision >/dev/null 2>&1; then
+  FAIL=$((FAIL+1)); echo "FAIL: installer overwrote an existing agent.py"
+elif grep -qF "user owned" "$COLLISION/agent.py"; then
+  PASS=$((PASS+1)); echo "PASS: installer preserves existing agent.py"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: installer damaged existing agent.py"
+fi
+
+# Values are serialized as Python literals, so quotes in a configured model do
+# not corrupt or inject into the generated shim.
+QUOTED="$TMP/quoted"
+mkdir -p "$QUOTED"
+if bash lib/adk-install.sh install --project "$QUOTED" --model "gemini-'quoted" >/dev/null 2>&1 \
+   && python3 -m py_compile "$QUOTED/adk_agents/loop_spec/agent.py"; then
+  PASS=$((PASS+1)); echo "PASS: installer safely quotes generated Python values"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: quoted model produced an invalid shim"
+fi
+
+# Uninstall removes only marked generated files. Anything else in the mount is
+# preserved and makes the incomplete uninstall visible to the caller.
+bash lib/adk-install.sh install --project "$QUOTED" >/dev/null 2>&1
+echo "keep me" > "$QUOTED/adk_agents/loop_spec/notes.txt"
+if bash lib/adk-install.sh uninstall --project "$QUOTED" >/dev/null 2>&1; then
+  FAIL=$((FAIL+1)); echo "FAIL: uninstall claimed complete with unrelated files present"
+elif [[ -f "$QUOTED/adk_agents/loop_spec/notes.txt" \
+        && ! -e "$QUOTED/adk_agents/loop_spec/agent.py" ]]; then
+  PASS=$((PASS+1)); echo "PASS: uninstall preserves unrelated mount content"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: uninstall removed unrelated mount content"
+fi
+
+finish_fixed_string_coverage

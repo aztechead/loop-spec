@@ -28,9 +28,10 @@ without them, the same gates run through bounded one-shot agents and loop-fleet.
 ### Google ADK
 
 ```bash
-pip install google-adk
+python3 -m pip install 'google-adk>=2.7,<3'
 bash loop-spec/lib/adk-install.sh install --project .
-adk run "$PWD/adk_agents/loop_spec" "Load the loop-spec auto skill and run: <goal>" --jsonl
+LOOP_SPEC_NON_INTERACTIVE=1 adk run "$PWD/adk_agents/loop_spec" \
+  "Load the loop-spec auto skill and run: <goal>" --jsonl
 ```
 
 ### OpenCode

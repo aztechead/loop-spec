@@ -129,7 +129,7 @@ data['workflowsAvailable'] = sys.argv[1] == 'true'
 data['workflowExecuteOptIn'] = sys.argv[2] == 'true'
 data['teamsAvailable'] = sys.argv[3] == 'true'
 data['teamsMode'] = sys.argv[4]   # none | explicit | implicit
-data['harness'] = sys.argv[5]     # claude | pi (lib/harness.sh detect)
+data['harness'] = sys.argv[5]     # claude | opencode | adk (lib/harness.sh detect)
 json.dump(data, open(path, 'w'))
 " "$wf" "$optin" "$teams_available" "$teams_mode" "$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect)"
 ```

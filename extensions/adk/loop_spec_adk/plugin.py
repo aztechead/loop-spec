@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import Any, Optional
 
 from google.adk.plugins.base_plugin import BasePlugin
@@ -39,7 +40,7 @@ async def run_hook(script_rel: str, payload: Optional[dict], bridge: LoopSpecBri
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(bridge.project_dir),
-            env={**dict(__import__("os").environ), **bridge.env_vars},
+            env={**os.environ, **bridge.env_vars},
         )
     except OSError:
         return None
@@ -51,6 +52,7 @@ async def run_hook(script_rel: str, payload: Optional[dict], bridge: LoopSpecBri
             proc.kill()
         except ProcessLookupError:
             pass
+        await proc.communicate()
         return None
     if proc.returncode != 0:
         return None
@@ -78,16 +80,19 @@ class LoopSpecPlugin(BasePlugin):
     def __init__(self, bridge: LoopSpecBridge, name: str = "loop_spec") -> None:
         super().__init__(name=name)
         self._bridge = bridge
-        self._started: set[str] = set()
 
     async def on_user_message_callback(self, *, invocation_context: Any,
                                        user_message: types.Content) -> Optional[types.Content]:
-        session_id = getattr(getattr(invocation_context, "session", None), "id", "") or ""
+        session = getattr(invocation_context, "session", None)
+        state = getattr(session, "state", None)
         pending: list[str] = []
-        if session_id not in self._started:
-            self._started.add(session_id)
-            for context in await asyncio.gather(
-                    *(run_hook(script, None, self._bridge) for script in SESSION_START_HOOKS)):
+        if state is None or not state.get("loop_spec:session_started"):
+            if state is not None:
+                state["loop_spec:session_started"] = True
+            # Hook order is part of Claude Code's hooks.json contract. Run them
+            # sequentially so side effects and injected text observe that order.
+            for script in SESSION_START_HOOKS:
+                context = await run_hook(script, None, self._bridge)
                 if context:
                     pending.append(context)
 
@@ -112,5 +117,5 @@ class LoopSpecPlugin(BasePlugin):
         if getattr(tool, "name", "") == "load_skill":
             skill_name = tool_args.get("skill_name")
             if isinstance(skill_name, str):
-                self._bridge.set_skill_dir(skill_name)
+                self._bridge.set_skill_dir(skill_name, tool_context.state)
         return None

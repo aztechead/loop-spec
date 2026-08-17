@@ -21,7 +21,7 @@ from typing import Any, Optional
 import yaml
 from google.adk.agents import LlmAgent
 from google.adk.apps import App
-from google.adk.tools import ToolContext
+from google.adk.tools import ToolContext, get_user_choice
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.tools.environment import EnvironmentToolset
 from google.adk.tools.skill_toolset import SkillToolset
@@ -57,7 +57,9 @@ Work through loop-spec's skills: call list_skills to see them, load_skill to rea
 one, and then follow it exactly as written. The skill bodies are the process;
 they are not advisory.
 
-Shell and file access is real and rooted at the project directory. Skills invoke
+File tools are restricted to the project directory. Shell commands start there
+but inherit the permissions of the operating-system user running ADK; they are
+not a sandbox and can reach paths that user can reach. Skills invoke
 their shared code as `bash "${CLAUDE_SKILL_DIR}/../../lib/<script>.sh"` — those
 paths resolve because CLAUDE_SKILL_DIR, CLAUDE_PLUGIN_ROOT, and
 CLAUDE_PROJECT_DIR are exported into every command you run.
@@ -103,8 +105,8 @@ def build_agent(project_dir: Optional[Path | str] = None, *,
     """The loop-spec working agent.
 
     Pass an existing `bridge` when the caller also registers `LoopSpecPlugin`:
-    both must hold the SAME bridge, because the plugin updates the very env
-    mapping the agent's shell tools read. `build_app()` does that pairing for
+    both must hold the SAME bridge, because the plugin records active-skill state
+    consumed by the bridge's Execute tool. `build_app()` does that pairing for
     you and is what a mounted agent should use.
     """
     bridge = bridge or LoopSpecBridge(project_dir)
@@ -117,7 +119,7 @@ def build_agent(project_dir: Optional[Path | str] = None, *,
             model=adk_model(spec["model"], model),
             description=spec["description"],
             instruction=spec["instruction"],
-            tools=list(bridge.toolsets()),
+            tools=[*bridge.toolsets(), bridge.execute_tool()],
         )
 
     async def dispatch_subagent(subagent_type: str, description: str, prompt: str,
@@ -146,7 +148,8 @@ def build_agent(project_dir: Optional[Path | str] = None, *,
         model=model,
         description="Loop-driven development: spec, plan, execute, verify, deliver.",
         instruction=ROOT_INSTRUCTION,
-        tools=[*bridge.toolsets(), dispatch_subagent],
+        tools=[*bridge.toolsets(), bridge.execute_tool(), get_user_choice,
+               dispatch_subagent],
     )
 
 

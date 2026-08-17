@@ -15,7 +15,7 @@
 #
 #   {
 #     workspace:  {mode, root, repos?, source?},        # workspace.sh detect (verbatim)
-#     harness:    {name},                               # claude | pi | opencode
+#     harness:    {name},                               # claude | opencode | adk
 #     execution:  {entrypoint, headless},               # harness.sh entrypoint/headless
 #     teams:      {mode, available},                    # teams-capability.sh
 #     workflows:  {available},                          # workflow-availability.sh

@@ -4,12 +4,7 @@
 # mapping -> installer -> loop-runner backend). A rename or dropped pointer on
 # any edge silently strands opencode runs on a tool or path that does not
 # exist there. This pins every edge, mirroring tests/pi-harness-coverage.test.sh.
-set -uo pipefail
-
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
-PASS=0
-FAIL=0
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 # file<TAB>fixed-string that must be present.
 checks=(
@@ -88,15 +83,7 @@ checks=(
   "lib/graph/engine.py	harness-neutral"
 )
 
-for entry in "${checks[@]}"; do
-  file="${entry%%	*}"
-  needle="${entry#*	}"
-  if [[ -f "$file" ]] && grep -qF -e "$needle" "$file"; then
-    PASS=$((PASS+1)); echo "PASS: $file contains '$needle'"
-  else
-    FAIL=$((FAIL+1)); echo "FAIL: $file missing '$needle'"
-  fi
-done
+check_fixed_strings "${checks[@]}"
 
 
 # lib/graph must not branch on harness-specific constructs
@@ -136,6 +123,4 @@ else
   FAIL=$((FAIL+1)); echo "FAIL: $OC_DOC does not warn that reading package files needs bash"
 fi
 
-echo ""
-echo "Results: $PASS passed, $FAIL failed"
-[[ "$FAIL" -eq 0 ]] || exit 1
+finish_fixed_string_coverage

@@ -14,7 +14,8 @@ Adjacent entry points on the same machinery:
 
 Design constraints:
 
-- Shipped code is bash, jq, python3, and markdown. No package manager, no daemon, no database.
+- The base runtime is bash, jq, python3, and markdown. The optional ADK harness
+  installs Google's Python package; no loop-spec daemon or database is required.
 - Whether the loop may act without a human is decided by tested shell scripts, not skill prose.
 - No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`.
 - Works with or without Claude Code agent teams, and on both team harness generations.
@@ -23,7 +24,7 @@ Current version: 4.0.0 (renamed from super-spec at v2.5.2). Direction: [docs/loo
 
 ## Install
 
-Base prerequisites for every harness: `bash >= 3.2`, `git`, `jq >= 1.5`, `python3 >= 3.7`. Prompt-to-PR delivery also needs an authenticated GitHub CLI (`gh auth status`) and an `origin` remote. Details: [docs/loop-spec/PREREQUISITES.md](docs/loop-spec/PREREQUISITES.md).
+Base prerequisites for every harness: `bash >= 3.2`, `git`, `jq >= 1.5`, `python3 >= 3.7`. Google ADK additionally requires Python >=3.10. Prompt-to-PR delivery also needs an authenticated GitHub CLI (`gh auth status`) and an `origin` remote. Details: [docs/loop-spec/PREREQUISITES.md](docs/loop-spec/PREREQUISITES.md).
 
 ### Claude Code
 
@@ -51,16 +52,18 @@ Generates namespaced skills/commands/agents and installs `extensions/opencode/lo
 ### Google ADK
 
 ```bash
-pip install google-adk
+python3 -m pip install 'google-adk>=2.7,<3'
 git clone https://github.com/aztechead/loop-spec
 bash loop-spec/lib/adk-install.sh install --project .    # writes ./adk_agents/
 export LOOP_SPEC_ADK_AGENT_DIR="$PWD/adk_agents/loop_spec"
 ```
 
 Mounts two agents — a working agent and a read-only judge — over
-`extensions/adk/loop_spec_adk/` (skills, a real shell rooted at your project, and
+`extensions/adk/loop_spec_adk/` (skills, a real shell starting in your project, and
 `dispatch_subagent` over ADK's `AgentTool`). Preferred headless entry:
-`adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl`.
+`LOOP_SPEC_NON_INTERACTIVE=1 adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl`.
+The shell inherits the ADK process user's host permissions; use an isolated
+container or restricted service account for untrusted repositories.
 Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 [`skills/shared/adk-harness.md`](skills/shared/adk-harness.md).
 

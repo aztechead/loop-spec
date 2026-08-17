@@ -206,10 +206,10 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   `LOOP_SPEC_WORKTREE_DIR` is set. Record what the helper printed; never assume the
   default. Features created before 2.30.0 may carry the repo-relative
   `.claude/worktrees/{slug}` form, which still resolves against the repo root. It is
-  null for `LOOP_SPEC_WORKTREES=0`, OpenCode/pi, and workspace execution. Resume
+  null for `LOOP_SPEC_WORKTREES=0`, OpenCode/ADK, and workspace execution. Resume
   discovers recorded feature worktrees via `git-ops.sh list-feature-worktrees`.
 - `executionRootMode` is `worktree` for Claude's default native feature worktree,
-  `in-place` for `LOOP_SPEC_WORKTREES=0` and the additive OpenCode/pi path (those
+  `in-place` for `LOOP_SPEC_WORKTREES=0` and the additive OpenCode/ADK path (those
   harnesses cannot switch a live session root), and `workspace` for multi-repo mode.
 - Tracked `delivery` is absent on completed schema-7 features created before the DELIVER phase and is tolerated for backward compatibility. New features initialize it to `pending`; DELIVER updates it only when failed checks route durable remediation back to EXECUTE. At most two required-check failures are routed back; a third fails closed at DELIVER instead of creating an infinite CI-remediation loop. Successful or external-failure observations live in ignored `.loop-spec/features/{slug}/delivery.json`, schema 1, with top-level `ok`, `status`, `nextPhase`, `prUrl`, timestamps, CI-remediation counters, and the same `targets[]` records. Keeping success out of tracked state prevents a post-CI commit from changing the exact checked SHA. `ready-for-review` means every changed target has `targetSha == remoteSha == headSha`, required checks passed or none were configured, and the PR is ready rather than draft.
 - The optional `workspace` block enables multi-root workspace mode. Rules: (1) `workspace` absent or null means single-repo mode (`worktreePath` set). (2) In workspace mode the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` are null; per-repo values in `workspace.repos[]` are authoritative. (3) The top-level `commands` block holds empty strings (per-repo commands live in `workspace.repos[].commands`). (4) State and artifact dirs are rooted at `workspace.root`. (5) Resume requires the session cwd to be `workspace.root`; the cycle skill instructs the user to cd there before re-invoking.

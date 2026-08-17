@@ -44,10 +44,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HARNESS="$(bash "$SCRIPT_DIR/harness.sh" detect)"
 
-# Model routing defaults to the model that launched the session. Both Claude Code
-# and OpenCode define this inheritance behavior, so the cycle has no required
+# Model routing defaults to the model that launched the session. Claude Code,
+# OpenCode, and ADK define this inheritance behavior, so the cycle has no required
 # provider, family, or model catalog. Claude role overrides may use Agent aliases;
-# a fresh phase launcher may use an alias or full CLI model ID. Pi/OpenCode native
+# a fresh phase launcher may use an alias or full CLI model ID. OpenCode/ADK native
 # implementer IDs are accepted only for their loop-fleet rung.
 INHERIT="inherit"
 
@@ -81,7 +81,7 @@ validate_model_selector() {
 # validate_role_model_selector <role-suffix> <variable-name> <value>
 #
 # Role selectors eventually cross a subagent boundary. Claude's Agent tool accepts
-# aliases only; a full CLI model ID cannot be forwarded there. Pi and OpenCode have
+# aliases only; a full CLI model ID cannot be forwarded there. OpenCode and ADK have
 # no native per-role Agent parameter in this path, so only the implementer fleet may
 # carry a harness-native ID. Reject unsupported pins here instead of silently
 # dropping them at dispatch time.
@@ -116,7 +116,7 @@ validate_role_model_selector() {
 }
 
 # Phase selectors use the main CLI/fleet surface. Claude accepts aliases and full
-# IDs there. Pi and OpenCode accept only their native IDs; silently treating a
+# IDs there. OpenCode and ADK accept only their native IDs; silently treating a
 # Claude alias as inheritance would violate an explicit operator route.
 validate_phase_model_selector() {
   local var="$1"
