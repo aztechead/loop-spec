@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Runs every acceptance criterion's verify command, writes VERIFICATION.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
+description: "Runs every acceptance criterion's verify command, writes VERIFICATION.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Write

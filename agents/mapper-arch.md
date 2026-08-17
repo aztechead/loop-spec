@@ -1,6 +1,6 @@
 ---
 name: mapper-arch
-description: Maps modules, dependencies, entrypoints, and data flow. Writes only to docs/loop-spec/codebase/ARCH.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
+description: "Maps modules, dependencies, entrypoints, and data flow. Writes only to docs/loop-spec/codebase/ARCH.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Write

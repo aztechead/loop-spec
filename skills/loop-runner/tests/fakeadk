@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# fakeadk — offline stand-in for `adk run <agent-dir> "<prompt>" --jsonl`, used by
+# tests/run_tests.sh. Mirrors fakeclaude/fakeopencode's behaviors (same env
+# protocol) but speaks ADK's JSONL event protocol: one serialized Event per line,
+# each carrying {author, session_id, node_path, id} followed by the rest of the
+# event, with assistant text at content.parts[].text (per google/adk/cli/cli.py).
+#
+# Behaviors (env-driven so one stub covers every scenario):
+#   FAKE_COST     accepted and ignored — ADK reports tokens, not money
+#   FAKE_STILL=1  change nothing (stall scenario)
+#   FAKE_TAMPER=<path>  append to that path (verifier-integrity scenario)
+#   FAKE_PLAN=<file>    return that file's contents as the result (compiler scenario)
+#   FAKE_HANG=<s>       sleep (hung-tick scenario)
+#   FAKE_ARGV_LOG=<f>   append full argv to <f> (flag-shape assertions)
+#
+# Protocol: if the prompt (any argv) contains TOUCH:<file>, create/append that file.
+set -euo pipefail
+
+if [[ -n "${FAKE_ARGV_LOG:-}" ]]; then
+  printf '%s\n' "$*" >> "$FAKE_ARGV_LOG"
+fi
+
+if [[ -n "${FAKE_HANG:-}" ]]; then
+  sleep "$FAKE_HANG"
+fi
+
+PROMPT=""
+for a in "$@"; do PROMPT="$PROMPT $a"; done
+
+emit() { # emit <result-text>
+  python3 - "$1" << 'EOF'
+import json, sys
+text = sys.argv[1]
+# Key order mirrors ADK's JSONL writer, which fronts author/session_id/node_path/id
+# for readability and then appends the remaining event fields.
+def event(author, parts, **extra):
+    ev = {"author": author, "session_id": "adksess-abc",
+          "node_path": "", "id": "ev-%d" % event.n}
+    event.n += 1
+    ev["content"] = {"parts": parts, "role": "user" if author == "user" else "model"}
+    ev.update(extra)
+    return json.dumps(ev)
+event.n = 0
+
+print(event("user", [{"text": "prompt"}]))
+print(event("loop_spec", [{"text": text}],
+            usage_metadata={"prompt_token_count": 10, "candidates_token_count": 5,
+                            "total_token_count": 15}))
+EOF
+}
+
+if [[ -n "${FAKE_PLAN:-}" ]]; then
+  emit "$(cat "$FAKE_PLAN")"
+  exit 0
+fi
+
+if [[ -n "${FAKE_TAMPER:-}" ]]; then
+  echo "tampered" >> "$FAKE_TAMPER"
+fi
+
+if [[ "$PROMPT" =~ TOUCH:([A-Za-z0-9._/-]+) ]]; then
+  f="${BASH_REMATCH[1]}"
+  mkdir -p "$(dirname "$f")" 2>/dev/null || true
+  echo "work $(date +%s%N)" >> "$f"
+elif [[ "${FAKE_STILL:-0}" != "1" ]]; then
+  echo "iter $(date +%s%N)" >> work.txt
+fi
+
+emit "did some work this iteration"

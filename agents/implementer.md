@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
+description: "Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Write

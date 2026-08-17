@@ -25,8 +25,8 @@ if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
   exit 0
 fi
 
-# Harness gate: the Workflow tool is a Claude Code surface. Under pi and
-# opencode it never exists, regardless of any claude binary found on PATH.
+# Harness gate: the Workflow tool is a Claude Code surface. Under opencode and
+# ADK it never exists, regardless of any claude binary found on PATH.
 #
 # Ordered before LOOP_SPEC_WORKFLOWS_AVAILABLE for the same reason as the team
 # gate in teams-capability.sh: a positive override must not be able to claim a

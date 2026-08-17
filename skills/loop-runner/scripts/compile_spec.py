@@ -2,7 +2,7 @@
 """
 compile_spec.py — spec → plan. Layer 2 of loop-runner, and the bridge this whole
 skill exists for: you write a goal or spec the way you normally would; this turns
-it into loops that Claude Code, pi, or OpenCode can run.
+it into loops that Claude Code, OpenCode, or Google ADK can run.
 
 A spec is a bundle of testable claims. Compilation makes that explicit:
   1. Read the spec (plus a look at the repo for context).
@@ -138,7 +138,7 @@ def main() -> int:
     p.add_argument("--out", default="plan/tasks.json")
     p.add_argument("--model", default="", help="Model for the compiler pass.")
     p.add_argument("--claude-bin", default="claude")
-    p.add_argument("--agent-cli", choices=["claude", "pi", "opencode"], default="",
+    p.add_argument("--agent-cli", choices=["claude", "opencode", "adk"], default="",
                    dest="agent_cli",
                    help="Headless protocol (default: auto from the binary name).")
     args = p.parse_args()

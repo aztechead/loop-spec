@@ -513,10 +513,10 @@ def main() -> int:
                         "halts budget_exhausted at the cap. Fleet-wide worst case "
                         "is this times the number of tasks (0 = unbounded).")
     p.add_argument("--claude-bin", default="claude")
-    p.add_argument("--agent-cli", choices=["claude", "pi", "opencode"], default="",
+    p.add_argument("--agent-cli", choices=["claude", "opencode", "adk"], default="",
                    dest="agent_cli",
                    help="Headless protocol for every loop tick: claude -p JSON vs "
-                        "pi --mode json vs opencode run --format json events "
+                        "adk run --jsonl vs opencode run --format json events "
                          "(default: auto from the binary name).")
     p.add_argument("--feature-dir", default="",
                    help="Feature-state path relative to the repository; enables exact-candidate baseline comparison.")

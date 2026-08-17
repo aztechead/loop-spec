@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-loop.py — bounded autonomous agent loop for Claude Code, pi, and OpenCode.
+loop.py — bounded autonomous agent loop for Claude Code, OpenCode, and Google ADK.
 Layer 1 of loop-runner.
 
 A loop is cron plus a decision-maker in the body. This harness is everything wrapped
@@ -71,19 +71,22 @@ CLAUDE_PERMISSION_MODES = ("default", "acceptEdits", "auto", "bypassPermissions"
 INHERIT = "inherit"
 
 
-def model_args(model, consumable=None):
-    """`--model` argv for an explicit selector, or [] to inherit.
+def model_args(model, consumable=None, flag="--model"):
+    """Model-selection argv for an explicit selector, or [] to inherit.
 
     `consumable` is the backend's own acceptance test for a value that survived
     the inherit check — opencode, for one, must not forward a Claude alias. It is
     a per-backend rule layered on ONE definition of inheritance, so a new backend
     cannot accidentally re-answer "is this inherit?" a fourth way.
+
+    `flag` is the backend's spelling of the option (ADK names it
+    `--default_llm_model`). Inheritance stays one rule; only the spelling moves.
     """
     if not model or model == INHERIT:
         return []
     if consumable is not None and not consumable(model):
         return []
-    return ["--model", model]
+    return [flag, model]
 
 
 PROGRESS_BANNER = (
@@ -127,17 +130,20 @@ class LoopConfig:
                                       # cannot overshoot. Iterations and wall clock do
                                       # not bound spend on their own. Judge calls bill
                                       # to the same total. The per-tick cap is a claude
-                                      # flag; under pi/opencode only the cumulative
+                                      # flag; under opencode/adk only the cumulative
                                       # check applies.
     judge: bool = False
     judge_model: str = ""             # empty inherits the selected harness model
     state_dir: str = ""               # default .loop/<task_id>
     commit: bool = False              # scoped git commit per productive iteration
     claude_bin: str = "claude"
-    agent_cli: str = ""               # "claude" | "pi" | "opencode" | "" (auto: named
+    agent_cli: str = ""               # "claude" | "opencode" | "adk" | "" (auto: named
                                       # after the binary). Selects the headless protocol:
-                                      # claude -p JSON object vs pi --mode json events
-                                      # vs opencode run --format json events.
+                                      # claude -p JSON object vs opencode run --format
+                                      # json events vs adk run --jsonl events.
+    adk_agent_dir: str = ""           # ADK dispatches at a mounted agent DIRECTORY, not a
+                                      # bare prompt. Written by lib/adk-install.sh and
+                                      # passed through LOOP_SPEC_ADK_AGENT_DIR.
     reset: bool = False
     extra_args: list = field(default_factory=list)
 
@@ -145,8 +151,8 @@ class LoopConfig:
     # transport-conflict message (a new backend adds one entry here).
     KNOWN_CLIS = {
         "claude": "-p --output-format json (single JSON object)",
-        "pi": "--mode json (one event per line)",
         "opencode": "run --format json (one event per line)",
+        "adk": "run <agent-dir> --jsonl (one event per line)",
     }
 
     def resolved_agent_cli(self) -> str:
@@ -157,7 +163,7 @@ class LoopConfig:
 
     def resolved_agent_bin(self) -> str:
         # A non-claude --agent-cli with claude_bin left at its default means
-        # "that harness's own binary" (--agent-cli pi -> `pi`, opencode -> `opencode`).
+        # "that harness's own binary" (--agent-cli adk -> `adk`, opencode -> `opencode`).
         cli = self.resolved_agent_cli()
         if cli != "claude" and self.claude_bin == "claude":
             return cli
@@ -165,8 +171,8 @@ class LoopConfig:
 
     def transport_conflict(self) -> Optional[str]:
         """Detect a binary that is certainly the wrong protocol for the selected
-        backend. Without this, `--agent-cli pi --claude-bin /path/to/claude`
-        spawns `claude --mode json ...`, which claude rejects — and the loop
+        backend. Without this, `--agent-cli adk --claude-bin /path/to/claude`
+        spawns `claude run <dir> --jsonl ...`, which claude rejects — and the loop
         halts agent_error every tick with no hint the two flags fought.
         Returns a human-readable message, or None when consistent."""
         cli = self.resolved_agent_cli()
@@ -184,7 +190,7 @@ class LoopConfig:
         Same failure shape as transport_conflict(), same fail-fast treatment.
         Returns a human-readable message, or None when the mode is accepted.
 
-        Only the claude backend is checked: pi and opencode give special meaning
+        Only the claude backend is checked: opencode and ADK give special meaning
         to "plan" alone and pass other values through their own surfaces."""
         if self.resolved_agent_cli() != "claude":
             return None
@@ -361,7 +367,7 @@ def hash_paths(paths: list[Path], ignore_dir: str) -> str:
 
 
 # =============================================================================
-# Agent invocation (headless) — claude -p, pi --mode json, and
+# Agent invocation (headless) — claude -p, adk run --jsonl, and
 # opencode run --format json behind one contract
 # =============================================================================
 def _spawn_agent(cmd: list, *, bin_label: str, env: Optional[dict],
@@ -400,9 +406,9 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
                permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
                timeout: Optional[float] = None,
                budget_usd: Optional[float] = None) -> dict:
-    if cfg.resolved_agent_cli() == "pi":
-        return run_pi(prompt, cfg, resume=resume, permission_mode=permission_mode,
-                      raw_log=raw_log, timeout=timeout)
+    if cfg.resolved_agent_cli() == "adk":
+        return run_adk(prompt, cfg, resume=resume, permission_mode=permission_mode,
+                       raw_log=raw_log, timeout=timeout)
     if cfg.resolved_agent_cli() == "opencode":
         return run_opencode(prompt, cfg, resume=resume, permission_mode=permission_mode,
                             raw_log=raw_log, timeout=timeout)
@@ -453,42 +459,73 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     }
 
 
-def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
-           permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
-           timeout: Optional[float] = None) -> dict:
-    """pi (pi.dev) headless backend, normalized to run_claude's result contract.
+def run_adk(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
+            permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
+            timeout: Optional[float] = None) -> dict:
+    """Google ADK (https://google.github.io/adk-docs/) headless backend, normalized
+    to run_claude's result contract.
 
-    `pi --mode json "<prompt>"` emits one JSON event per line: a session header
-    first, then AgentSessionEvent objects (turn_start/turn_end, message_end, ...).
-    Mapping to the claude -p JSON-object contract (field names per the pi
-    session-format docs: header `{"type":"session","id":...}`, assistant
-    messages carry `usage.cost` as an OBJECT `{input,output,cacheRead,
-    cacheWrite,total}`):
-      - result:     text blocks of the LAST assistant message_end event
-      - turns:      count of turn_end events
-      - session_id: header line `id`; resume passes `--session <id>`
-      - cost_usd:   summed `usage.cost.total` (numeric `usage.cost` accepted as
-                    a fallback), else None (callers already treat None as
-                    "unknown", not "free")
-      - permission_mode "plan" (read-only judge / compiler) -> --no-builtin-tools:
-        those prompts inline everything they need (diff, verifier output, spec),
-        and zero tools is the strongest read-only guarantee pi offers headlessly
-      - claude-only knobs are ignored here: allowed_tools, fallback_model,
-        retry_watchdog. pi-specific flags go through extra_args verbatim.
+    `adk run <agent-dir> "<prompt>" --jsonl` emits one JSON Event per line. Each
+    line carries {author, session_id, node_path, id} followed by the rest of the
+    event, where assistant text lives at content.parts[].text and token counts at
+    usage_metadata. Mapping to the claude -p JSON-object contract:
+      - result:     text parts of the LAST event authored by a non-user agent
+      - turns:      count of events carrying assistant text (ADK has no turn_end
+                    event; one model response per turn is the closest true analogue)
+      - session_id: the events' `session_id`, reported for logs only (see below)
+      - cost_usd:   None — ADK reports token usage, not money, and the price
+                    depends on a model/provider pairing this process cannot see.
+                    None already means "unknown" to callers, never "free".
+
+    ADK dispatches at a mounted agent DIRECTORY rather than a bare prompt, so
+    cfg.adk_agent_dir must be set (lib/adk-install.sh writes it and exports
+    LOOP_SPEC_ADK_AGENT_DIR). A missing directory is a prerequisite failure, not
+    a fallback.
+
+    NO RESUME: one-shot `adk run` cannot rejoin a prior session — its `--resume`
+    is interactive-only and `--session_id` merely names a file that
+    `--save_session` writes on exit. Every tick therefore starts a fresh session
+    and carries its context in the prompt, which is what the loop already does
+    through the progress notes and verifier feedback. `resume` is accepted and
+    ignored so the caller contract stays uniform.
+
+    Claude-only knobs are ignored here: allowed_tools, fallback_model,
+    retry_watchdog, and the per-tick budget cap. ADK-specific flags go through
+    extra_args verbatim.
     """
     bin_ = cfg.resolved_agent_bin()
     mode = permission_mode or cfg.permission_mode
-    cmd = [bin_, "--mode", "json"]
-    if resume:
-        cmd += ["--session", str(resume)]
-    elif cfg.mode != "continue":
-        # fresh mode never resumes; keep the fleet from littering session files
-        cmd += ["--no-session"]
-    cmd += model_args(cfg.model)
+    agent_dir = cfg.adk_agent_dir or os.environ.get("LOOP_SPEC_ADK_AGENT_DIR", "")
+    if not agent_dir:
+        return {"ok": False,
+                "error": "adk backend requires --adk-agent-dir or LOOP_SPEC_ADK_AGENT_DIR "
+                         "(run: bash lib/adk-install.sh install --project <dir>)",
+                "turns": 0, "session_id": resume, "result": ""}
+    # Read-only ticks (judge / compiler) select the sibling agent the installer
+    # generates with only the read/glob/grep tools attached — the ADK analogue of
+    # opencode's loop-spec-readonly agent. Falling back to the writable agent
+    # would hand a judge the edit tools it is defined not to have.
     if mode == "plan":
-        cmd += ["--no-builtin-tools"]
+        readonly = Path(agent_dir).parent / (Path(agent_dir).name + "_readonly")
+        if not readonly.is_dir():
+            return {"ok": False,
+                    "error": f"read-only ADK agent {readonly} is not installed "
+                             "(re-run: bash lib/adk-install.sh install)",
+                    "turns": 0, "session_id": resume, "result": ""}
+        agent_dir = str(readonly)
+    if not Path(agent_dir).is_dir():
+        return {"ok": False, "error": f"ADK agent directory {agent_dir} does not exist",
+                "turns": 0, "session_id": resume, "result": ""}
+
+    cmd = [bin_, "run", agent_dir]
+    # ADK ids are `gemini-*` natively or `provider/model` through LiteLLM. Claude
+    # aliases from feature.models are invalid here; omit them to inherit the
+    # model the mounted agent declares.
+    cmd += model_args(cfg.model,
+                      consumable=lambda m: m.startswith("gemini") or "/" in m,
+                      flag="--default_llm_model")
     cmd += list(cfg.extra_args)
-    cmd += [prompt]
+    cmd += [prompt, "--jsonl"]
 
     proc, err = _spawn_agent(cmd, bin_label=bin_, env=None, resume=resume,
                              raw_log=raw_log, timeout=timeout)
@@ -507,47 +544,45 @@ def run_pi(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
         if isinstance(ev, dict):
             events.append(ev)
     if not events:
-        return {"ok": False, "error": "non-JSON output from pi",
+        return {"ok": False, "error": "non-JSON output from adk",
                 "turns": 0, "session_id": resume, "result": proc.stdout.strip()[:1000]}
 
-    # Header line is documented as {"type":"session","id":"<uuid>",...}.
     session_id = resume
-    v = events[0].get("id")
+    v = events[0].get("session_id")
     if isinstance(v, str) and v:
         session_id = v
 
-    turns = sum(1 for ev in events if ev.get("type") == "turn_end")
+    def event_text(ev: dict) -> str:
+        content = ev.get("content") or {}
+        parts = content.get("parts")
+        if not isinstance(parts, list):
+            return ""
+        texts = [p.get("text", "") for p in parts
+                 if isinstance(p, dict) and isinstance(p.get("text"), str)]
+        return "\n".join(t for t in texts if t)
 
+    turns = 0
     result_text = ""
-    cost: Optional[float] = None
+    error_msg: Optional[str] = None
     for ev in events:
-        if ev.get("type") != "message_end":
+        if ev.get("author") == "user":
             continue
-        msg = ev.get("message") or {}
-        usage = msg.get("usage") or {}
-        # Documented shape: usage.cost is an object {input, output, cacheRead,
-        # cacheWrite, total}. Accept a bare number too (cheap forward-compat).
-        c = usage.get("cost")
-        if isinstance(c, dict):
-            c = c.get("total")
-        if isinstance(c, (int, float)):
-            cost = (cost or 0.0) + float(c)
-        if msg.get("role") != "assistant":
-            continue
-        content = msg.get("content")
-        if isinstance(content, str):
-            result_text = content
-        elif isinstance(content, list):
-            texts = [b.get("text", "") for b in content
-                     if isinstance(b, dict) and b.get("type") == "text"]
-            if texts:
-                result_text = "\n".join(t for t in texts if t)
+        code = ev.get("error_code")
+        if code:
+            error_msg = str(ev.get("error_message") or code)[:500]
+        text = event_text(ev)
+        if text.strip():
+            turns += 1
+            result_text = text
 
+    if error_msg and not result_text:
+        return {"ok": False, "error": error_msg,
+                "turns": turns, "session_id": session_id, "result": ""}
     if not result_text:
-        return {"ok": False, "error": "no assistant message in pi output",
+        return {"ok": False, "error": "no assistant text in adk output",
                 "turns": turns, "session_id": session_id, "result": ""}
     return {"ok": True, "error": None, "turns": turns,
-            "session_id": session_id, "result": result_text, "cost_usd": cost}
+            "session_id": session_id, "result": result_text, "cost_usd": None}
 
 
 def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
@@ -1025,13 +1060,16 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     p.add_argument("--state-dir", default=None)
     p.add_argument("--commit", action="store_true", default=None)
     p.add_argument("--claude-bin", default=None,
-                   help="agent binary (default `claude`; with --agent-cli pi/opencode, "
+                   help="agent binary (default `claude`; with --agent-cli opencode/adk, "
                         "that harness's own binary)")
-    p.add_argument("--agent-cli", choices=["claude", "pi", "opencode"], default=None,
+    p.add_argument("--agent-cli", choices=["claude", "opencode", "adk"], default=None,
                    dest="agent_cli",
-                   help="headless protocol: claude -p JSON vs pi --mode json vs "
+                   help="headless protocol: claude -p JSON vs adk run --jsonl vs "
                         "opencode run --format json events (default: auto — named "
                         "after the binary)")
+    p.add_argument("--adk-agent-dir", default=None, dest="adk_agent_dir",
+                   help="mounted ADK agent directory for --agent-cli adk "
+                        "(default: $LOOP_SPEC_ADK_AGENT_DIR)")
     p.add_argument("--reset", action="store_true", default=None)
     args, extra = p.parse_known_args(argv)
     if extra[:1] == ["--"]:

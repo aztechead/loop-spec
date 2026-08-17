@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-description: Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
+description: "Produces SPEC.md from a discuss-phase conversation. Writes only to docs/loop-spec/features/**. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Write
