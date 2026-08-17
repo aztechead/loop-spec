@@ -2,6 +2,76 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [4.0.0] - 2026-08-17
+
+Three peer harnesses, no reference harness: Claude Code (including the Claude
+Agent SDK), OpenCode, and Google ADK. pi is removed.
+
+### Removed
+
+- **The pi harness, in full.** `extensions/pi/loop-spec.ts`,
+  `skills/shared/pi-harness.md`, `package.json` (which existed only as the pi
+  manifest), `tests/pi-extension.test.sh`,
+  `tests/pi-harness-coverage.test.sh`, `tests/validate-pi-manifest.test.sh`, the
+  `--agent-cli pi` backend and its `fakepi` fixture, and every branch keyed on
+  it. `LOOP_SPEC_HARNESS=pi` and `PI_CODING_AGENT_DIR` are now unrecognized
+  signals that resolve to `claude` through the existing back-compat default —
+  pinned by a test, because a stale `PI_CODING_AGENT_DIR` in a Claude Code user's
+  environment must not silently disable their agent teams.
+- `bash lib/bump-version.sh` now has three declaration sites, not four.
+
+### Added
+
+- **Google ADK as a first-party harness.** `extensions/adk/loop_spec_adk/` is the
+  bridge: a `LocalEnvironment` carries `LOOP_SPEC_HARNESS` / `CLAUDE_PLUGIN_ROOT`
+  / `CLAUDE_PROJECT_DIR` / `CLAUDE_SKILL_DIR` into every shell command — and
+  because ADK reads that mapping at execute() time, `CLAUDE_SKILL_DIR` advances
+  live as skills load. `SkillToolset` serves all 33 skills, and
+  `dispatch_subagent` maps Claude Code's `{subagent_type, description, prompt}`
+  onto `AgentTool` over the 17 agent charters, so `harness.sh subagents` answers
+  `true` on all three harnesses and the full EXECUTE ladder survives.
+- **`lib/adk-install.sh`** mounts a working agent and a read-only judge agent
+  into an ADK project. Both expose an ADK `App` (which `adk run` loads before
+  `root_agent`, and which is the only form carrying the lifecycle plugin) and
+  reference the clone by path, so `git pull` updates behavior instead of forking
+  it. `check` catches a mount whose package root moved.
+- **`--agent-cli adk`** in the loop-runner: `adk run <agent-dir> "<prompt>"
+  --jsonl`, normalized onto the same `result.json` contract. Read-only ticks
+  select the `_readonly` sibling agent and fail closed when it is missing.
+- **`skills/shared/adk-harness.md`** and **`skills/shared/claude-harness.md`** —
+  every harness now has an adaptation contract, including Claude Code, which
+  previously served as an unstated norm the other contracts read as deviations
+  from.
+- `tests/adk-extension.test.sh` (against the REAL `google-adk`; skips cleanly
+  when absent) and `tests/adk-harness-coverage.test.sh`.
+
+### Fixed
+
+- **17 files had invalid YAML frontmatter.** Unquoted `description:` scalars
+  containing `": "` parse under Claude Code's lenient reader but raise under
+  strict YAML — which is what ADK's skill loader uses, so `skills/cycle` and 16
+  of 17 agent charters failed to load at all. The scalars are now quoted, with
+  the parsed values proven byte-identical to what was read before.
+
+### Changed
+
+- **No harness is the reference implementation.** Claude Code-only capabilities
+  (agent teams, `Workflow`, harness task lists, worktree execution roots) are
+  kept, not deleted — but each is selected by a deterministic probe that answers
+  for every harness and fails safe, and an operator override may turn a
+  capability off anywhere while never conjuring one a harness lacks. Docs,
+  README, and `CLAUDE.md` lead multi-harness.
+- `CLAUDE.md`'s lean-deps carve-out now covers `extensions/adk/loop_spec_adk/*.py`
+  importing `google-adk` — the tree's only third-party import, confined to that
+  directory, adding no dependency to any other harness.
+
+### Known follow-up
+
+- `docs/loop-spec/codebase/{ARCH,TECH}.md` still describe pi. They are
+  `trust: generated` maps whose `file:line` citations this change invalidated
+  wholesale; they are left for the next `map-codebase` refresh rather than
+  hand-patched with citations nobody re-verified.
+
 ## [3.4.0] - 2026-08-13
 
 ### Added

@@ -15,8 +15,8 @@ Use the harness's own headless CLI (`lib/harness.sh cli` — the same seam
 # Claude Code
 claude -p "/loop-spec:sentinel run" --permission-mode acceptEdits
 
-# pi
-pi --mode json "/skill:sentinel run"
+# adk
+adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec sentinel skill and run" --jsonl
 
 # opencode
 opencode run --format json "Load the loop-spec-sentinel skill and run: run"

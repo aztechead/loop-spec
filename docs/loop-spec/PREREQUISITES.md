@@ -115,11 +115,13 @@ with a loop-spec skill, exposes the nested one as `<dir>:<name>` so both stay re
 No loop-spec configuration is required; just be aware that a member repo's skill named,
 e.g., `verify` will appear as `<repo-dir>:verify` alongside `loop-spec:verify`.
 
-## pi harness (pi.dev)
+## OpenCode and ADK harnesses
 
-None of the above applies under pi: agent teams and the Workflow tool are Claude
+None of the above applies there: agent teams and the Workflow tool are Claude
 Code surfaces, and `lib/teams-capability.sh` / `lib/workflow-availability.sh`
 hard-gate them to `none` / `false` there regardless of environment variables.
-pi prerequisites are just the base runtime (`bash >= 3.2`, `git`, `jq >= 1.5`,
-`python3 >= 3.7`) and the `pi` CLI itself for the loop-fleet rung.
-See the README "Running under pi" section and `skills/shared/pi-harness.md`.
+OpenCode prerequisites are the base runtime (`bash >= 3.2`, `git`, `jq >= 1.5`,
+`python3 >= 3.7`) plus the `opencode` CLI for the loop-fleet rung. ADK adds
+`pip install google-adk` and a mounted agent (`bash lib/adk-install.sh install`),
+with the `adk` CLI needed for the loop-fleet rung.
+See `skills/shared/opencode-harness.md` and `skills/shared/adk-harness.md`.

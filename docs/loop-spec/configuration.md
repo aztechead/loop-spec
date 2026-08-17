@@ -76,7 +76,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_LOOP_MAX_BUDGET_USD` | positive decimal; unlimited | Cumulative model-cost cap for each loop-fleet task. A fleet’s worst-case cap is this value times its task count. |
 | `LOOP_SPEC_TEAMS_MODE` | `none`/`explicit`/`implicit`; probed | Overrides agent-team capability detection. |
 | `LOOP_SPEC_WORKFLOWS_AVAILABLE` | `0`/`1`; probed | Overrides Workflow-tool capability detection. |
-| `LOOP_SPEC_HARNESS` | `claude`/`pi`/`opencode`; detected | Forces the host adapter. The pi and OpenCode extensions normally set this themselves. An unknown value falls through to detection. |
+| `LOOP_SPEC_HARNESS` | `claude`/`opencode`/`adk`; detected | Forces the host adapter. The OpenCode plugin and ADK bridge normally set this themselves. An unknown value falls through to detection, which defaults to `claude`. |
 | `LOOP_SPEC_FOREIGN_CLAIMANTS` | `0`/`1`; `0` | `1` opts EXECUTE into the `foreign` rung when a handoff port adapter is reachable (`LOOP_SPEC_PORT` or the bundled `lib/graph/port-local.sh`). Width still selects the rung and never removes a graph node. |
 | `LOOP_SPEC_PORT` | executable path; unset | Handoff-port adapter invoked by `lib/graph/port.sh`. Unset uses `lib/graph/port-local.sh`. |
 | `LOOP_SPEC_PORT_ROOT` | directory path; platform temp | Store root for the reference `port-local` adapter. Unset defaults under the process temp directory. |
@@ -100,11 +100,10 @@ installers and therefore are part of the integration contract.
 | `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` | Claude Code; `8` | Maximum consecutive Stop-hook blocks before Claude Code force-completes the turn with a warning. This is what bounds `LOOP_SPEC_DEFERRAL_GUARD` and `LOOP_SPEC_MICRO_GUARD`, which deliberately do not treat `stop_hook_active` as an override. loop-spec never sets it. |
 | `CLAUDE_CODE_MAX_RETRIES` | Claude Code legacy control; inherited | Not configured by loop-spec. Prefer `CLAUDE_CODE_RETRY_WATCHDOG`; Claude Code caps the legacy value at 15. |
 | `CLAUDECODE` | Claude Code | `1` is a fallback harness-detection signal when `LOOP_SPEC_HARNESS` is unset. |
-| `CLAUDE_PLUGIN_ROOT` | host adapter | Absolute installed plugin root used to resolve hooks and bundled assets. The pi/OpenCode adapters set it. Operator override is unsupported. |
-| `CLAUDE_PROJECT_DIR` | host adapter; current directory | Project root used for `.loop-spec` discovery. The pi/OpenCode adapters set it from the session directory. |
-| `CLAUDE_SKILL_DIR` | host adapter | Directory of the active skill, used for bundled relative paths. The pi/OpenCode adapters update it as skills are read. |
+| `CLAUDE_PLUGIN_ROOT` | host adapter | Absolute installed plugin root used to resolve hooks and bundled assets. The OpenCode plugin and ADK bridge set it. Operator override is unsupported. |
+| `CLAUDE_PROJECT_DIR` | host adapter; current directory | Project root used for `.loop-spec` discovery. The OpenCode plugin and ADK bridge set it from the session/project directory. |
+| `CLAUDE_SKILL_DIR` | host adapter | Directory of the active skill, used for bundled relative paths. The OpenCode plugin and ADK bridge update it as skills are loaded. |
 | `CLAUDE_CODE_SESSION_ID`, `CLAUDE_SESSION_ID` | host adapter; process ID fallback | Session identity used to scope learnings and hook failure counters. |
-| `PI_CODING_AGENT_DIR` | pi | pi configuration directory. When the adapter signal is missing, a non-empty value is a weak pi harness-detection hint. |
 | `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | OpenCode; unset | OpenCode-native opt-in for background subagents. loop-spec does not set it and does not depend on it; the OpenCode adapter’s bounded dispatch rules still apply. |
 | `OPENCODE_CONFIG_DIR` | operator/installer; unset | Explicit OpenCode install target. |
 | `LOOP_SPEC_ADK_AGENT_DIR` | operator/installer; unset | Mounted ADK agent directory (written by `lib/adk-install.sh`). Required by the `adk` fleet backend and `lib/issue-intake.sh`, which dispatch at a directory rather than a bare prompt. |
@@ -174,7 +173,7 @@ variables. They configure that published recipe, not plugin internals:
 | Variable | Accepted values / default | Exact effect |
 |---|---|---|
 | `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and role Agents. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. Pi and OpenCode consume an explicit value only on loop-fleet subprocesses. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. OpenCode native task agents use generated-agent routes instead. |
-| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. Pi/OpenCode accept a native ID only for `IMPLEMENTER` on the loop-fleet rung (pi model ID or OpenCode `provider/model`); configure other OpenCode roles through generated agents. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
+| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. OpenCode and ADK accept a native ID only for `IMPLEMENTER` on the loop-fleet rung (OpenCode `provider/model`, ADK `gemini-*` or `provider/model`); configure other OpenCode roles through generated agents and ADK roles through the mounted agent. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
 | `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
 | `LOOP_SPEC_ANSWER_REPOS` | comma-separated repo names; all | Supplies workspace repo selection. |

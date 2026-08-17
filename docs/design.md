@@ -5,7 +5,7 @@
 > current runtime contract. See [the GDD architecture](loop-spec/gdd.md),
 > [model matrix](../skills/shared/model-matrix.md), and
 > [model policy](../skills/shared/model-policy.md) for the portable implementation
-> shared by Claude Code, pi, and OpenCode.
+> shared by Claude Code, OpenCode, and Google ADK.
 
 **Date:** 2026-05-05
 **Status:** Design approved, planning next
