@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
+description: "Produces PATTERNS.md then PLAN.md (task DAG, files, verify cmds) from SPEC.md. Writes only to docs/loop-spec/features/**. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Write

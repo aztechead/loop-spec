@@ -1,11 +1,17 @@
 # EXECUTE inline path (rung 0 — no subagent harness)
 
-Selected by `execute` SKILL Step 3b when the harness has no `Agent` tool at all
-(`bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" subagents` prints `false` —
-today that means pi, per `skills/shared/pi-harness.md`) and the loop-fleet rung
-was not selected. The lead performs every task itself. This is one rung BELOW
-the subagent path: `execute-subagent.md` still fans out one-shot `Agent` calls;
-here even those do not exist.
+Selected by `execute` SKILL Step 3b when the harness has no one-shot dispatch
+tool (`bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" subagents` prints `false`)
+and the loop-fleet rung was not selected. The lead performs every task itself.
+This is one rung BELOW the subagent path: `execute-subagent.md` still fans out
+one-shot dispatches; here even those do not exist.
+
+All three supported harnesses currently answer `true` — Claude Code's `Agent`,
+opencode's `task`, and the ADK bridge's `dispatch_subagent` share the
+`{description, prompt, subagent_type}` shape — so no harness selects this rung
+today. It stays because the rung is keyed on a CAPABILITY, not on a harness
+name: it is what a harness without dispatch gets, and what a phase falls back to
+when dispatch is unavailable at runtime.
 
 This path returns the **same** result object as every other rung, so the
 consuming code in `execute` SKILL Step 3b-exit is shape-identical:
@@ -28,7 +34,7 @@ merge.
 - **No separate reviewer dispatch.** The spec-compliance review still happens
   (same brief, same verdict vocabulary), performed by the lead against the
   task's acceptance criteria immediately after the task's verify passes. Review
-  discipline per the inline dispatch rule in `pi-harness.md`: judge against the
+  discipline per the inline dispatch rule: judge against the
   criteria, record the verdict in gate-logs, THEN proceed.
 - **Post-merge re-verify collapses into the task loop.** The subagent path
   re-runs `verifyCommand` on the integrated branch because the implementer's

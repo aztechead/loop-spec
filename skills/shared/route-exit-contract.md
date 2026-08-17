@@ -56,6 +56,6 @@ re-route it; that is a smaller loss than an unaccounted run.
   terminal result after the fact. It is the out-of-band backstop and the in-band
   confirmation `/loop-spec:auto` runs after its delegated route returns.
 
-Under pi and OpenCode no Stop event can veto (`skills/shared/pi-harness.md`,
-`skills/shared/opencode-harness.md`), so the reconcile call in `/loop-spec:auto` is the
-only enforcement there. Run it.
+Under OpenCode and ADK no Stop event can veto
+(`skills/shared/opencode-harness.md`, `skills/shared/adk-harness.md`), so the
+reconcile call in `/loop-spec:auto` is the only enforcement there. Run it.

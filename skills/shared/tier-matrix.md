@@ -114,7 +114,7 @@ available concurrency wins, and the heaviest (Workflow) requires explicit opt-in
 | W (DAG width) | Mechanism | Why |
 |---|---|---|
 | any W, `LOOP_SPEC_EXECUTE_LOOPS=1` + agent CLI + persistent runtime | **loop fleet** | explicit opt-in: bounded headless workers, per-iteration verify, SPEC/PLAN hash-locked (`skills/shared/execute-loop-fleet.md`) |
-| any W, no subagent harness (pi) | **inline** (rung 0) | no `Agent` tool exists; the lead executes tasks itself (`skills/shared/execute-inline.md`); at `t_team <= W` with both the agent CLI and persistent runtime the loop fleet takes it instead |
+| any W, no subagent harness | **inline** (rung 0) | no subagent tool exists; the lead executes tasks itself (`skills/shared/execute-inline.md`); at `t_team <= W` with both the agent CLI and persistent runtime the loop fleet takes it instead |
 | `W == 1` | **subagent, sequential** | no concurrency to exploit; one `Agent` per task, lead merges inline |
 | `2 <= W < t_team` | **subagent, batched** | modest fan-out; a wave of parallel `Agent` calls, no persistent team |
 | `t_team <= W < t_wf` | **agent team** | high concurrency with rework/idle-wake coordination pays for the team |
@@ -123,7 +123,7 @@ available concurrency wins, and the heaviest (Workflow) requires explicit opt-in
 | `W >= t_wf` **and** opted in **and** available | **workflow** | undeniable fan-out ROI; deterministic DAG via `execute-dag.js` |
 
 Thresholds (fixed): `t_team = 3`, `t_wf = 6`. The "agent CLI" is the running
-harness's own headless binary (`claude`, `pi`, or `opencode`), resolved by
+harness's own headless binary (`claude`, `opencode`, or `adk`), resolved by
 `lib/harness.sh cli`; the fleet always spawns the harness it is running under.
 The persistent-runtime probe is separate: one-shot/headless invocations cannot keep
 the supervising tool call alive and therefore fall back rather than selecting a fleet.

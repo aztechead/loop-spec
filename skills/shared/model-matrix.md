@@ -33,8 +33,9 @@ harnesses, regardless of which models either account exposes.
 only for an Agent-compatible alias and omit it for `inherit`. OpenCode maps the
 same logical dispatch to its generated agent and omits a per-call model, as
 required by `skills/shared/opencode-harness.md`.
-Pi performs inline dispatch and inherits its session model as described in
-`skills/shared/pi-harness.md`.
+ADK resolves a role's model from its charter only when that names an ADK id and
+otherwise inherits the mounted agent's model, as required by
+`skills/shared/adk-harness.md`.
 
 ## Resolution and overrides
 
@@ -75,8 +76,8 @@ own main model, but role subagents still consume the activated map.
 OpenCode routes native role models through generated-agent configuration, using
 `provider/model` IDs. Configure those with
 `opencode-install.sh install --model` or a project agent override. Unrouted
-agents inherit the primary model. Pi performs inline work on its session model;
-the pi and OpenCode loop-fleet rungs may receive a native implementer ID through
+agents inherit the primary model. ADK role agents inherit the mounted app model;
+the ADK and OpenCode loop-fleet rungs may receive a native implementer ID through
 the `LOOP_SPEC_MODEL_<ROLE>` family with role `IMPLEMENTER`. Other non-Claude role
 overrides reject native IDs
 because no shipped dispatch consumes them. Set a native selector only when the
@@ -94,8 +95,9 @@ default — OMIT the `model` key entirely: the Agent tool's `model` is an alias
 enum and rejects the literal string `inherit` with `InputValidationError`
 (`skills/shared/harness-call-contracts.md` records the live probe). The durable
 policy still shows in `feature.models.<role>`; the dispatch does not restate it.
-Under OpenCode, apply the native task mapping and omit the per-call model; under
-pi, perform the role inline.
+Under OpenCode, apply the native task mapping and omit the per-call model. Under
+ADK, `dispatch_subagent` applies the role charter and inherits the app model when
+the charter's model is `inherit` or a Claude-only alias.
 
 Standalone skills and agents also default to `inherit`. A user's chosen session
 model is a complete supported configuration, not a degraded mode.

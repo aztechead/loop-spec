@@ -59,8 +59,11 @@ fi
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
 case "${LOOP_SPEC_HARNESS:-claude}" in
-  pi)
-    MICRO_CMD="/skill:micro"; INTAKE_CMD="/skill:intake"; AUTO_CMD="/skill:auto";;
+  adk)
+    # ADK has no slash commands: skills are entered through the skill tool.
+    MICRO_CMD='load_skill({skill_name: "micro"})'
+    INTAKE_CMD='load_skill({skill_name: "intake"})'
+    AUTO_CMD='load_skill({skill_name: "auto"})';;
   opencode)
     MICRO_CMD="/loop-spec/micro"; INTAKE_CMD="/loop-spec/intake"; AUTO_CMD="/loop-spec/auto";;
   *)

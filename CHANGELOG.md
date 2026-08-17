@@ -2,6 +2,105 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [4.0.0] - 2026-08-17
+
+Three peer harness contracts, no reference harness: Claude Code (including the
+Claude Agent SDK), OpenCode, and an experimental Google ADK adapter. pi is
+removed.
+
+### Removed
+
+- **The pi harness, in full.** `extensions/pi/loop-spec.ts`,
+  `skills/shared/pi-harness.md`, `package.json` (which existed only as the pi
+  manifest), `tests/pi-extension.test.sh`,
+  `tests/pi-harness-coverage.test.sh`, `tests/validate-pi-manifest.test.sh`, the
+  `--agent-cli pi` backend and its `fakepi` fixture, and every branch keyed on
+  it. An explicit `LOOP_SPEC_HARNESS=pi` now exits with migration guidance
+  instead of silently running Claude Code. A stale `PI_CODING_AGENT_DIR` remains
+  ignored so it cannot disable agent teams for a Claude Code user.
+- `bash lib/bump-version.sh` now has three declaration sites, not four.
+
+### Added
+
+- **Operator controls for low-overhead maintenance runs.** Existing dependency
+  version updates can take the micro lane without treating generated lockfiles as
+  reviewable source files. Operators can store feature documents outside the PR,
+  collapse run metadata in PR bodies, skip automatic map work, set the cycle
+  iteration ceiling, and consolidate pure phase-state commits at DELIVER.
+- **Google ADK as an experimental first-party adapter.** `extensions/adk/loop_spec_adk/` is the
+  bridge: a `LocalEnvironment` carries the static harness/project paths, while
+  session state carries `CLAUDE_SKILL_DIR` into each Execute call without
+  cross-session leakage. `SkillToolset` serves all 33 skills, and
+  `dispatch_subagent` maps Claude Code's `{subagent_type, description, prompt}`
+  onto `AgentTool` over the 17 agent charters, so `harness.sh subagents` answers
+  `true` on all three harnesses and the full EXECUTE ladder survives.
+- **`lib/adk-install.sh`** mounts a working agent and a read-only judge agent
+  into an ADK project. Both expose an ADK `App` (which `adk run` loads before
+  `root_agent`, and which is the only form carrying the lifecycle plugin) and
+  reference the clone by path, so `git pull` updates behavior instead of forking
+  it. `check` catches a mount whose package root moved.
+- **`--agent-cli adk`** in the loop-runner: `adk run <agent-dir> "<prompt>"
+  --jsonl`, normalized onto the same `result.json` contract. Read-only ticks
+  select the `_readonly` sibling agent and fail closed when it is missing.
+- **`skills/shared/adk-harness.md`** and **`skills/shared/claude-harness.md`** —
+  every harness now has an adaptation contract, including Claude Code, which
+  previously served as an unstated norm the other contracts read as deviations
+  from.
+- `tests/adk-extension.test.sh` (against the REAL `google-adk`; skips cleanly
+  when absent) and `tests/adk-harness-coverage.test.sh`.
+
+### Fixed
+
+- **17 files had invalid YAML frontmatter.** Unquoted `description:` scalars
+  containing `": "` parse under Claude Code's lenient reader but raise under
+  strict YAML — which is what ADK's skill loader uses, so `skills/cycle` and 16
+  of 17 agent charters failed to load at all. The scalars are now quoted, with
+  the parsed values proven byte-identical to what was read before.
+- The bridge now uses ADK 2.x's public `load_skill_from_dir` API, exposes the
+  documented `get_user_choice` HITL tool, keeps persistent sessions isolated,
+  and reaps timed-out lifecycle hooks. The compatibility suite runs against
+  `google-adk>=2.7,<3` (Python >=3.10) and reports driver tracebacks instead of
+  swallowing them.
+- Continue-mode fleet ticks restore ADK sessions through `--session_id`; direct
+  `--adk-agent-dir` now reaches compiler, supervisor, and judge paths. A monetary
+  budget is rejected under ADK because its JSONL reports tokens but no cost.
+- `lib/adk-install.sh` rejects mount traversal and user-file collisions, quotes
+  generated Python values safely, enforces and records `google-adk>=2.7,<3`,
+  validates both shims, and uninstalls only its marked files. Unrelated mount
+  content is preserved.
+- Removing the pi-only root manifest no longer leaves OpenCode install metadata
+  with an empty version; it now reads `.claude-plugin/plugin.json`.
+- Active skills and runtime comments no longer retain pi branches. The removal
+  guard scans tracked files, so local bytecode cannot create a false failure.
+- ADK and OpenCode now carry Claude Code's full ordered SessionStart injection
+  list, including `human-code-inject.sh`. A cross-harness parity test derives the
+  canonical list from `hooks/hooks.json`, so adapter tests can no longer bless
+  matching stale copies.
+
+### Changed
+
+- Full-cycle terminal-result rejections now name the `write <feature_dir>` success
+  contract and list the outcomes accepted by `write-terminal`. The cycle's
+  `LOOP_SPEC_WORKTREES=0` branch remains a direct in-place checkout and never
+  attempts a guarded worktree first.
+
+- **No harness is the reference implementation.** Claude Code-only capabilities
+  (agent teams, `Workflow`, harness task lists, worktree execution roots) are
+  kept, not deleted — but each is selected by a deterministic probe that answers
+  for every harness and fails safe, and an operator override may turn a
+  capability off anywhere while never conjuring one a harness lacks. Docs,
+  README, and `CLAUDE.md` lead multi-harness.
+- `CLAUDE.md`'s lean-deps carve-out now covers `extensions/adk/loop_spec_adk/*.py`
+  importing `google-adk` — the tree's only third-party import, confined to that
+  directory, adding no dependency to any other harness.
+
+### Known follow-up
+
+- `docs/loop-spec/codebase/{ARCH,TECH}.md` still describe pi. They are
+  `trust: generated` maps whose `file:line` citations this change invalidated
+  wholesale; they are left for the next `map-codebase` refresh rather than
+  hand-patched with citations nobody re-verified.
+
 ## [3.4.0] - 2026-08-13
 
 ### Added

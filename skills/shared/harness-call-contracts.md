@@ -98,7 +98,7 @@ TaskCreate({
 
 ## EnterWorktree / ExitWorktree
 
-- These are Claude Code-only session-root operations. OpenCode and pi follow their
+- These are Claude Code-only session-root operations. OpenCode and ADK follow their
   additive `executionRootMode: "in-place"` contracts and never emulate either tool.
 - `EnterWorktree({path})` to switch into an EXISTING worktree registered in
   `git worktree list` (loop-spec's Step 5 flow: `git-ops.sh` creates, then enter by
@@ -149,17 +149,18 @@ SendMessage({
 `TeamCreate` / `TeamDelete`: legacy explicit harness only (CC < 2.1.178).
 Deferred-schema rescue applies to all team-related tools (cycle Step 2).
 
-## pi harness (no CC tool surface)
+## ADK harness (a framework, not a coding agent)
 
-Everything above describes the Claude Code tool surface. Under pi
-(`lib/harness.sh detect` == `pi`) NONE of these tools exist — the built-in set is
-`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`, and there is no deferred-tool
-mechanism to rescue. Do not emit `Agent`, `AskUserQuestion`, `SendMessage`,
-`TaskCreate`/`TaskUpdate`, `Workflow`, or `ToolSearch` calls there; apply the
-substitution table and inline dispatch rule in `skills/shared/pi-harness.md`
-instead. Headless dispatch goes through the pi CLI
-(`pi --mode json "<prompt>" --model <pi-model-id>`), which is the same seam the
-loop-runner's `--agent-cli pi` backend drives.
+Under ADK (`lib/harness.sh detect` == `adk`) the tool surface is the one the
+bundled bridge builds: `Execute` / `ReadFile` / `WriteFile` / `EditFile` from
+`EnvironmentToolset`, `list_skills` / `load_skill` / `load_skill_resource` from
+`SkillToolset`, and `dispatch_subagent` over `AgentTool` — which takes the same
+`{description, prompt, subagent_type}` shape as `Agent`. Glob and Grep have no
+native tools; use `Execute`. Team tools, `Workflow`, `TaskCreate`/`TaskUpdate`,
+and `ToolSearch` do not exist — apply the substitution table and dispatch mapping
+rule in `skills/shared/adk-harness.md`. Headless dispatch goes through
+`adk run <agent-dir> "<prompt>" --jsonl`, the same seam the loop-runner's
+`--agent-cli adk` backend drives.
 
 ## opencode harness (native near-equivalents)
 

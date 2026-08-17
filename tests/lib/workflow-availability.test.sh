@@ -16,7 +16,7 @@ check() {
 }
 
 # Version gating (explicit version arg; unset override + harness signals so the
-# detection path runs even when this suite itself executes under pi)
+# detection path runs even when this suite itself executes under another harness)
 unset LOOP_SPEC_WORKFLOWS_AVAILABLE LOOP_SPEC_MAX_PARALLEL_SUBAGENTS \
   LOOP_SPEC_HARNESS PI_CODING_AGENT_DIR
 check "A: exact minimum 2.1.154 -> true"      "true"  "$(bash "$LIB" 2.1.154)"
@@ -31,17 +31,22 @@ check "G: older major 1.9.9 -> false"         "false" "$(bash "$LIB" 1.9.9)"
 check "H: override=1 forces true"  "true"  "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 1.0.0)"
 check "I: override=0 forces false" "false" "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=0 bash "$LIB" 9.9.9)"
 
-# pi harness gate: Workflow is a Claude Code tool; never available under pi
-check "J: pi harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=pi bash "$LIB" 9.9.9)"
+# adk harness gate: Workflow is a Claude Code tool; never available under ADK
+check "J: adk harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=adk bash "$LIB" 9.9.9)"
+set +e
+LOOP_SPEC_HARNESS=pi bash "$LIB" 9.9.9 >/dev/null 2>&1
+pi_rc=$?
+set -e
+check "J2: explicit retired harness propagates usage error" "2" "$pi_rc"
 # A positive override must not claim a tool the harness does not ship: forcing
-# availability under pi/opencode used to answer "true" and let EXECUTE select the
+# availability under opencode/adk used to answer "true" and let EXECUTE select the
 # workflow rung at width 6 on a harness with no Workflow tool at all.
-check "K: positive override cannot beat the pi gate" "false" "$(LOOP_SPEC_HARNESS=pi LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 9.9.9)"
+check "K: positive override cannot beat the adk gate" "false" "$(LOOP_SPEC_HARNESS=adk LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 9.9.9)"
 check "K2: positive override cannot beat the opencode gate" "false" "$(LOOP_SPEC_HARNESS=opencode LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 9.9.9)"
 check "K3: negative override still honored on claude" "false" "$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_WORKFLOWS_AVAILABLE=0 bash "$LIB" 9.9.9)"
 check "K4: positive override still honored on claude" "true" "$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_WORKFLOWS_AVAILABLE=1 bash "$LIB" 1.0.0)"
 
-# opencode harness gate: same Claude-Code-surface rule as pi
+# opencode harness gate: same Claude-Code-surface rule as ADK
 check "L: opencode harness -> false at any version" "false" "$(LOOP_SPEC_HARNESS=opencode bash "$LIB" 9.9.9)"
 check "M: global subagent cap disables workflow fan-out" "false" \
   "$(LOOP_SPEC_WORKFLOWS_AVAILABLE=1 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=2 bash "$LIB" 9.9.9)"

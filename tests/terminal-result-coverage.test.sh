@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # Pin common terminal result emission into every user-facing cycle type.
-set -uo pipefail
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
-PASS=0
-FAIL=0
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 checks=(
   "skills/cycle/SKILL.md	cycle-result.sh"
@@ -50,16 +45,6 @@ checks=(
   "hooks/team/route-terminal-guard.sh	LOOP_SPEC_ROUTE_GUARD"
 )
 
-for entry in "${checks[@]}"; do
-  file="${entry%%	*}"
-  needle="${entry#*	}"
-  if [[ -f "$file" ]] && grep -qF -- "$needle" "$file"; then
-    PASS=$((PASS+1)); echo "PASS: $file contains '$needle'"
-  else
-    FAIL=$((FAIL+1)); echo "FAIL: $file missing '$needle'"
-  fi
-done
+check_fixed_strings "${checks[@]}"
 
-echo ""
-echo "Results: $PASS passed, $FAIL failed"
-[[ "$FAIL" -eq 0 ]] || exit 1
+finish_fixed_string_coverage

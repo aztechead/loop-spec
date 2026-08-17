@@ -14,13 +14,11 @@ Apply `skills/shared/subagent-concurrency.md` to every one-shot dispatch.
 `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1` keeps these role calls sequential and
 context-isolated; no call is left running in the background.
 
-**pi harness (one level further down):** this table substitutes team primitives
-with one-shot `Agent` calls — but under pi (`runtime.json.harness == "pi"`) the
-`Agent` tool does not exist either. Apply this table first, then the **inline
-dispatch rule** in `skills/shared/pi-harness.md` on top: every one-shot `Agent`
-call below becomes the lead performing that same brief itself, sequentially,
-producing identical artifacts. EXECUTE is unaffected by both layers — its ladder
-already selects the loop-fleet or inline rung on that harness.
+**ADK harness:** this table applies as written — the one-shot dispatches run
+through the bridge's `dispatch_subagent` tool, which shares the `Agent` call
+shape. Apply this table first, then the **dispatch mapping rule** in
+`skills/shared/adk-harness.md` on top: role names lose the `loop-spec:` prefix
+and there is no per-dispatch model parameter.
 
 **opencode harness:** this table applies as written — the one-shot dispatches
 run natively through opencode's `task` tool, which shares the `Agent` call

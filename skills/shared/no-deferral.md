@@ -52,7 +52,7 @@ violation.
   records the transcript cursor and repository fingerprint; removing the words on the
   retry remains blocked. Clearing the obligation requires a later material repository
   change, implementation activity followed by verification, and a grounded
-  `Resolved scope: <item> — <files and verification evidence>` line. pi/OpenCode
+  `Resolved scope: <item> — <files and verification evidence>` line. OpenCode/ADK
   harnesses get delivery-surface protection from the `deliver.sh` gate and this
   contract.
 

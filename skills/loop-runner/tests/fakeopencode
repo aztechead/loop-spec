@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # fakeopencode — offline stand-in for `opencode run --format json`, used by
-# tests/run_tests.sh. Mirrors fakeclaude/fakepi's behaviors (same env protocol)
+# tests/run_tests.sh. Mirrors fakeclaude/fakeadk's behaviors (same env protocol)
 # but speaks opencode's run-command event protocol: one JSON object per line,
 # every event carrying {type, timestamp, sessionID} (per the run command's
 # emit()), with `text` / `step_start` / `step_finish` events whose payload is

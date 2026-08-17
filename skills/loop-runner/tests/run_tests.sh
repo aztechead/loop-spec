@@ -25,6 +25,17 @@ newrepo() {
   echo base > base.txt; git add -A; git commit -qm init
 }
 
+write_compiler_fixture() {
+  echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md
+  git add -A; git commit -qm spec
+  cat > goodplan.json << 'EOF'
+{"spec":"SPEC.md",
+ "tasks":[
+  {"id":"make-a","prompt":"Create a.txt per AC1. TOUCH:a.txt",
+   "verify":"test -f a.txt","protected":[],"max_iterations":5,"deps":[]}]}
+EOF
+}
+
 echo "== 1. max-iterations ceiling halts and reports =="
 newrepo
 python3 "$SCRIPTS/loop.py" "do the thing forever" --task-id iters --claude-bin "$FAKE" \
@@ -486,85 +497,157 @@ print('corrupt result.json' in r.get('error', ''))
 check "corrupt → agent_error"               "$(echo "$RR_BAD" | head -1)" "agent_error"
 check "corrupt → 'corrupt result.json'"     "$(echo "$RR_BAD" | tail -1)" "True"
 
-echo "== 16. pi backend: --agent-cli pi speaks the event-stream protocol =="
-FAKEPI="$HERE/fakepi"; chmod +x "$FAKEPI"
+echo "== 16. adk backend: --agent-cli adk speaks the JSONL event protocol =="
+FAKEADK="$HERE/fakeadk"; chmod +x "$FAKEADK"
+# ADK dispatches at a mounted agent DIRECTORY; the read-only sibling is what
+# plan-mode ticks select, so both must exist for the backend to run.
+mkadkagent() { mkdir -p "$R/loop_spec" "$R/loop_spec_readonly"; }
 
 # 16a. complete run: same result contract as the claude backend
-newrepo
-python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id pidone \
-  --agent-cli pi --claude-bin "$FAKEPI" \
+newrepo; mkadkagent
+python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id adkdone \
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
   --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 99 >/dev/null 2>&1
-check "pi exit 0"          "$?" "0"
-check "pi halt_reason"     "$(reason .loop/pidone/result.json)" "complete"
-check "pi cost from usage" "$(python3 -c "import json;c=json.load(open('.loop/pidone/result.json'))['total_cost_usd'];print(isinstance(c,float) and c>0)")" "True"
-check "pi raw log kept"    "$(test -f .loop/pidone/iter-001.raw.json && echo yes)" "yes"
+check "adk exit 0"          "$?" "0"
+check "adk halt_reason"     "$(reason .loop/adkdone/result.json)" "complete"
+check "adk raw log kept"    "$(test -f .loop/adkdone/iter-001.raw.json && echo yes)" "yes"
+# ADK reports tokens, not money: cost stays unknown rather than being invented.
+check "adk cost unknown"    "$(python3 -c "import json;print(json.load(open('.loop/adkdone/result.json'))['total_cost_usd'])")" "None"
 
-# 16b. flag shape: pi gets pi flags, never claude-only ones
-newrepo
-PILOG="$R/piargv.txt"
-FAKE_ARGV_LOG="$PILOG" python3 "$SCRIPTS/loop.py" "noop" --task-id piflags \
-  --agent-cli pi --claude-bin "$FAKEPI" --model claude-sonnet-4-5 \
-  --fallback-model some-model --retry-watchdog 5 \
+# 16b. flag shape: adk gets adk flags, never claude-only ones
+newrepo; mkadkagent
+ADKLOG="$R/adkargv.txt"
+FAKE_ARGV_LOG="$ADKLOG" python3 "$SCRIPTS/loop.py" "noop" --task-id adkflags \
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --model gemini-2.5-flash --fallback-model some-model --retry-watchdog 5 \
   --max-iterations 1 --verify 'true' >/dev/null 2>&1
-check "pi: --mode json"            "$(grep -c -- '--mode json' "$PILOG")" "1"
-check "pi: --no-session (fresh)"   "$(grep -c -- '--no-session' "$PILOG")" "1"
-check "pi: --model passed"         "$(grep -c -- '--model claude-sonnet-4-5' "$PILOG")" "1"
-check "pi: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permission-mode|--output-format|--allowedTools' "$PILOG")" "0"
+check "adk: --jsonl"                "$(grep -c -- '--jsonl' "$ADKLOG")" "1"
+check "adk: agent dir positional"   "$(grep -c -- "run $R/loop_spec " "$ADKLOG")" "1"
+check "adk: gemini model passed"    "$(grep -c -- '--default_llm_model gemini-2.5-flash' "$ADKLOG")" "1"
+check "adk: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permission-mode|--output-format|--allowedTools' "$ADKLOG")" "0"
 
-# 16b-2. The portable selector inherits pi's current model instead of being
-# forwarded as an invalid literal model id.
-newrepo
-PILOG_INHERIT="$R/piargv-inherit.txt"
-FAKE_ARGV_LOG="$PILOG_INHERIT" python3 "$SCRIPTS/loop.py" "noop" --task-id piinherit \
-  --agent-cli pi --claude-bin "$FAKEPI" --model inherit \
+# 16b-1. One-shot ADK runs are explicitly non-interactive and continue mode
+# restores the session emitted by the first tick.
+newrepo; mkadkagent
+ADKLOG_RESUME="$R/adkargv-resume.txt"
+ADKENV="$R/adkenv.txt"
+FAKE_ARGV_LOG="$ADKLOG_RESUME" FAKE_ENV_LOG="$ADKENV" \
+  python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id adkresume \
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --mode continue --verify 'test "$(wc -l < work.txt)" -ge 2' \
+  --max-iterations 3 >/dev/null 2>&1
+check "adk: continue resumes session" "$(grep -c -- '--session_id adksess-abc' "$ADKLOG_RESUME")" "1"
+check "adk: one-shot marker reaches child" "$(grep -cv '^1$' "$ADKENV")" "0"
+
+# 16b-2. A Claude alias is not an ADK model id; it must be dropped, not forwarded.
+newrepo; mkadkagent
+ADKLOG_ALIAS="$R/adkargv-alias.txt"
+FAKE_ARGV_LOG="$ADKLOG_ALIAS" python3 "$SCRIPTS/loop.py" "noop" --task-id adkalias \
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --model claude-sonnet-4-5 --max-iterations 1 --verify 'true' >/dev/null 2>&1
+check "adk: claude alias dropped"   "$(grep -c -- '--default_llm_model' "$ADKLOG_ALIAS")" "0"
+
+# 16b-3. The portable selector inherits the mounted agent's model.
+newrepo; mkadkagent
+ADKLOG_INHERIT="$R/adkargv-inherit.txt"
+FAKE_ARGV_LOG="$ADKLOG_INHERIT" python3 "$SCRIPTS/loop.py" "noop" --task-id adkinherit \
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --model inherit --max-iterations 1 --verify 'true' >/dev/null 2>&1
+check "adk: inherit model omitted"  "$(grep -c -- '--default_llm_model' "$ADKLOG_INHERIT")" "0"
+
+# 16b-4. LOOP_SPEC_ADK_AGENT_DIR is the installer's channel for the same value.
+newrepo; mkadkagent
+ADKLOG_ENV="$R/adkargv-env.txt"
+LOOP_SPEC_ADK_AGENT_DIR="$R/loop_spec" FAKE_ARGV_LOG="$ADKLOG_ENV" \
+  python3 "$SCRIPTS/loop.py" "noop" --task-id adkenv \
+  --agent-cli adk --claude-bin "$FAKEADK" \
   --max-iterations 1 --verify 'true' >/dev/null 2>&1
-check "pi: inherit model omitted" "$(grep -c -- '--model' "$PILOG_INHERIT")" "0"
+check "adk: agent dir from env"     "$(grep -c -- "run $R/loop_spec " "$ADKLOG_ENV")" "1"
 
-# 16c. compiler via pi backend: read-only pass = --no-builtin-tools
+# 16b-5. No agent directory at all names the missing prerequisite. A bad tick is
+# retried rather than halted (see run_loop), so the proof is the reported reason,
+# not the halt_reason — what must never happen is a bare crash or a silent dispatch.
 newrepo
-echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md
-git add -A; git commit -qm spec
-cat > goodplan.json << 'EOF'
-{"spec":"SPEC.md",
- "tasks":[
-  {"id":"make-a","prompt":"Create a.txt per AC1. TOUCH:a.txt",
-   "verify":"test -f a.txt","protected":[],"max_iterations":5,"deps":[]}]}
-EOF
-PILOG2="$R/piargv2.txt"
-FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$PILOG2" python3 "$SCRIPTS/compile_spec.py" SPEC.md \
-  --agent-cli pi --claude-bin "$FAKEPI" --out plan/tasks.json >/dev/null 2>&1
-check "pi compile exit 0"      "$?" "0"
-check "pi plan written"        "$(test -f plan/tasks.json && echo yes)" "yes"
-check "pi read-only compile"   "$(grep -c -- '--no-builtin-tools' "$PILOG2")" "1"
+python3 "$SCRIPTS/loop.py" "noop" --task-id adknodir \
+  --agent-cli adk --claude-bin "$FAKEADK" \
+  --max-iterations 1 --verify 'false' >"$R/nodir.txt" 2>&1
+check "adk: missing dir named"  "$(grep -c 'LOOP_SPEC_ADK_AGENT_DIR' "$R/nodir.txt")" "1"
+check "adk: missing dir points at installer" "$(grep -c 'adk-install.sh' "$R/nodir.txt")" "1"
 
-# 16d. auto-detection: a binary named `pi` selects the pi protocol on its own
-newrepo
-cp "$FAKEPI" "$R/pi"; chmod +x "$R/pi"
-python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id piauto \
-  --claude-bin "$R/pi" \
+# 16c. compiler via adk backend: read-only pass selects the _readonly agent
+newrepo; mkadkagent
+write_compiler_fixture
+ADKLOG2="$R/adkargv2.txt"
+FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$ADKLOG2" \
+  python3 "$SCRIPTS/compile_spec.py" SPEC.md \
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --out plan/tasks.json >/dev/null 2>&1
+check "adk compile exit 0"      "$?" "0"
+check "adk plan written"        "$(test -f plan/tasks.json && echo yes)" "yes"
+check "adk read-only agent"     "$(grep -c -- "run ${R}/loop_spec_readonly " "$ADKLOG2")" "1"
+
+# 16c-2. A missing read-only agent fails loudly instead of silently handing a
+# judge the writable agent's edit tools.
+newrepo; mkdir -p "$R/loop_spec"
+ADKLOG3="$R/adkargv3.txt"
+FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$ADKLOG3" LOOP_SPEC_ADK_AGENT_DIR="$R/loop_spec" \
+  python3 "$SCRIPTS/compile_spec.py" SPEC.md \
+  --agent-cli adk --claude-bin "$FAKEADK" --out plan/tasks.json >/dev/null 2>&1
+check "adk missing readonly fails closed"   "$?" "1"
+check "adk missing readonly writes no plan" "$(test -f plan/tasks.json && echo yes || echo no)" "no"
+check "adk missing readonly dispatched none" "$(test -f "$ADKLOG3" && echo yes || echo no)" "no"
+
+# 16d. auto-detection: a binary named `adk` selects the adk protocol on its own
+newrepo; mkadkagent
+cp "$FAKEADK" "$R/adk"; chmod +x "$R/adk"
+LOOP_SPEC_ADK_AGENT_DIR="$R/loop_spec" python3 "$SCRIPTS/loop.py" \
+  "make work.txt have two lines" --task-id adkauto --claude-bin "$R/adk" \
   --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 99 >/dev/null 2>&1
-check "pi auto exit 0"      "$?" "0"
-check "pi auto halt_reason" "$(reason .loop/piauto/result.json)" "complete"
+check "adk auto exit 0"      "$?" "0"
+check "adk auto halt_reason" "$(reason .loop/adkauto/result.json)" "complete"
 
 # 16e. supervisor passes --agent-cli through to every loop tick
-newrepo
+newrepo; mkadkagent
 cat > plan.json << 'EOF'
 {"tasks":[
  {"id":"solo","prompt":"make the file. TOUCH:s.txt",
   "verify":"test -f s.txt","max_iterations":3,"deps":[]}]}
 EOF
 git add -A; git commit -qm plan
-python3 "$SCRIPTS/supervisor.py" --plan plan.json --agent-cli pi --claude-bin "$FAKEPI" >/dev/null 2>&1
-check "pi fleet exit 0"     "$?" "0"
-check "pi fleet completed"  "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['completed'])")" "['solo']"
+python3 "$SCRIPTS/supervisor.py" \
+  --plan plan.json --agent-cli adk --claude-bin "$FAKEADK" \
+  --adk-agent-dir "$R/loop_spec" >/dev/null 2>&1
+check "adk fleet exit 0"     "$?" "0"
+check "adk fleet completed"  "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['completed'])")" "['solo']"
 
-# 16f. transport conflict fails fast: --agent-cli pi pointed at a claude binary
+# 16e-2. An ADK judge inherits the explicit mount and selects its read-only sibling.
+newrepo; mkadkagent
+ADKLOG_JUDGE="$R/adkargv-judge.txt"
+FAKE_ARGV_LOG="$ADKLOG_JUDGE" python3 "$SCRIPTS/loop.py" "noop" --task-id adkjudge \
+  --agent-cli adk --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --verify 'true' --judge --max-iterations 1 >/dev/null 2>&1
+check "adk judge completes" "$?" "0"
+check "adk judge uses read-only mount" \
+  "$(grep -c -- "run $R/loop_spec_readonly " "$ADKLOG_JUDGE")" "1"
+
+# ADK exposes token counts but no money. Reject a requested hard cap rather
+# than accepting a safety promise the backend cannot enforce.
+newrepo; mkadkagent
+python3 "$SCRIPTS/loop.py" "noop" --task-id adkbudget --agent-cli adk \
+  --claude-bin "$FAKEADK" --adk-agent-dir "$R/loop_spec" \
+  --max-budget-usd 1 >/dev/null 2>"$R/adkbudget.txt"
+check "adk budget exits 2" "$?" "2"
+check "adk budget explains unsupported cap" \
+  "$(grep -c 'cannot be enforced by the adk backend' "$R/adkbudget.txt")" "1"
+
+# 16f. transport conflict fails fast: --agent-cli adk pointed at a claude binary
 newrepo
 cp "$FAKE" "$R/claude"; chmod +x "$R/claude"
-python3 "$SCRIPTS/loop.py" "noop" --task-id conflict --agent-cli pi --claude-bin "$R/claude" \
+python3 "$SCRIPTS/loop.py" "noop" --task-id conflict --agent-cli adk --claude-bin "$R/claude" \
   --max-iterations 1 >/dev/null 2>"$R/err.txt"
 check "conflict exit 2"     "$?" "2"
 check "conflict names both flags" "$(grep -c 'does not speak' "$R/err.txt")" "1"
+
 
 echo "== 17. opencode backend: --agent-cli opencode speaks run --format json =="
 FAKEOC="$HERE/fakeopencode"; chmod +x "$FAKEOC"
@@ -593,14 +676,7 @@ check "oc: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permiss
 
 # 17c. compiler via opencode backend: dedicated read-only agent, no --auto
 newrepo
-echo "Build a greeter. AC1: a exists. AC2: b exists." > SPEC.md
-git add -A; git commit -qm spec
-cat > goodplan.json << 'EOF'
-{"spec":"SPEC.md",
- "tasks":[
-  {"id":"make-a","prompt":"Create a.txt per AC1. TOUCH:a.txt",
-   "verify":"test -f a.txt","protected":[],"max_iterations":5,"deps":[]}]}
-EOF
+write_compiler_fixture
 OCLOG2="$R/ocargv2.txt"
 FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$OCLOG2" python3 "$SCRIPTS/compile_spec.py" SPEC.md \
   --agent-cli opencode --claude-bin "$FAKEOC" --out plan/tasks.json >/dev/null 2>&1
@@ -696,11 +772,12 @@ for m in default acceptEdits auto bypassPermissions manual dontAsk plan; do
 done
 check "all CLI modes accepted"    "$PERMOK" "7"
 
-# pi/opencode keep their own permission vocabulary — the claude set must not gate them.
-newrepo
-python3 "$SCRIPTS/loop.py" "noop" --task-id permpi --agent-cli pi --claude-bin "$FAKEPI" \
+# opencode/adk keep their own permission vocabulary — the claude set must not gate them.
+newrepo; mkdir -p "$R/loop_spec" "$R/loop_spec_readonly"
+python3 "$SCRIPTS/loop.py" "noop" --task-id permadk --agent-cli adk --claude-bin "$FAKEADK" \
+  --adk-agent-dir "$R/loop_spec" \
   --permission-mode default --max-iterations 1 >/dev/null 2>&1
-check "pi backend not gated by claude modes" "$(test -f .loop/permpi/result.json && echo yes || echo no)" "yes"
+check "adk backend not gated by claude modes" "$(test -f .loop/permadk/result.json && echo yes || echo no)" "yes"
 
 echo "== 19. spend is a hard stop: --max-budget-usd =="
 # Iteration and wall-clock caps do not bound cost. A cumulative cap does.

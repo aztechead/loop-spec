@@ -21,7 +21,7 @@ responsibility:
 
 The graph engine never selects a model. Agent dispatch consumes the descriptor and
 applies the current harness policy; the default selector is `inherit`, so the same
-topology works with whatever model Claude Code, pi, or OpenCode is already running.
+topology works with whatever model Claude Code, OpenCode, or ADK is already running.
 
 ## Pattern bindings
 

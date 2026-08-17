@@ -482,6 +482,14 @@ check "W3: startup failure has terminal outcome" "infrastructure-failed:idle_tim
 check "W3: startup failure clears active pointer" "0" \
   "$([[ -f "$ACTIVE_RESULT" ]] && echo 1 || echo 0)"
 
+full_success_hint="$(bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" \
+  --cycle-type full --status completed --outcome verified --title "Wrong writer" \
+  --converged true --verification-status passed --summary "Done." 2>&1 >/dev/null)"
+check "W4: rejected full success names the correct writer" "1" \
+  "$(grep -c 'write <feature_dir> --status completed' <<<"$full_success_hint")"
+check "W4: rejected full success lists terminal outcomes" "1" \
+  "$(grep -c 'infrastructure-failed, interrupted, protocol-mismatch' <<<"$full_success_hint")"
+
 # Case X: a phase handoff is terminal for one invocation while preserving
 # resumable feature state for the next fresh agent.
 printf '%s\n' "$(jq '.currentPhase = "plan"' <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"

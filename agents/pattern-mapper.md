@@ -1,6 +1,6 @@
 ---
 name: pattern-mapper
-description: Maps feature concepts to existing-codebase analogs (imports, core pattern, error handling) so the planner can write house-style-conformant tasks. Writes only to docs/loop-spec/features/{slug}/PATTERNS.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
+description: "Maps feature concepts to existing-codebase analogs (imports, core pattern, error handling) so the planner can write house-style-conformant tasks. Writes only to docs/loop-spec/features/{slug}/PATTERNS.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Write

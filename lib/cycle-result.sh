@@ -351,7 +351,12 @@ PY
     esac
     allowed_outcomes="$allowed_outcomes protocol-mismatch"
     case " $allowed_outcomes " in *" $outcome "*) ;; *)
-      echo "cycle-result.sh: invalid $cycle_type --outcome '$outcome'" >&2; exit 0;; esac
+      if [[ "$cycle_type" == "full" ]]; then
+        echo "cycle-result.sh: invalid full --outcome '$outcome'; completed full cycles use 'cycle-result.sh write <feature_dir> --status completed --summary <text>'. write-terminal accepts: infrastructure-failed, interrupted, protocol-mismatch" >&2
+      else
+        echo "cycle-result.sh: invalid $cycle_type --outcome '$outcome'; accepted: $allowed_outcomes" >&2
+      fi
+      exit 0;; esac
     if [[ -n "$no_change_reason" ]] && ! _is_valid_no_change_reason "$no_change_reason"; then
       echo "cycle-result.sh: invalid --no-change-reason '$no_change_reason'" >&2
       exit 0

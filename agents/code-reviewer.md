@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: Quality + security review of feature branch diff. Read-only. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
+description: "Quality + security review of feature branch diff. Read-only. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Grep

@@ -45,6 +45,7 @@ const SESSION_START_SCRIPTS = [
   "hooks/team/discipline-inject.sh",
   "hooks/team/grill-inject.sh",
   "hooks/team/simplicity-inject.sh",
+  "hooks/team/human-code-inject.sh",
   "hooks/team/rules-inject.sh",
   "hooks/team/micro-inject.sh",
 ];

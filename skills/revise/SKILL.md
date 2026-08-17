@@ -107,11 +107,16 @@ Then reconstruct only when missing:
 
 ```bash
 mkdir -p "$fdir"
+iterate_max="${LOOP_SPEC_ITERATE_MAX_ITERATIONS:-10}"
+[[ "$iterate_max" =~ ^[1-9][0-9]*$ && "$iterate_max" -le 100 ]] || {
+  echo "revise: LOOP_SPEC_ITERATE_MAX_ITERATIONS must be an integer from 1 to 100" >&2
+  exit 2
+}
 jq -n --arg slug "$slug" --arg branch "$branch" --arg base "<baseRefName>" \
-      --arg title "<PR title>" \
+      --arg title "<PR title>" --argjson iterate_max "$iterate_max" \
   '{schemaVersion: 7, slug: $slug, feature_title: $title, branch: $branch,
     baseBranch: $base, currentPhase: "revise", reconstructed: true,
-    iterate: {used: 0, maxIterations: 10}, warnings: [],
+    iterate: {used: 0, maxIterations: $iterate_max}, warnings: [],
     pendingRemediationTasks: [], autonomous: <true|false>}' > "$fdir/feature.json"
 ```
 

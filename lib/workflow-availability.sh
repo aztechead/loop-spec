@@ -13,7 +13,8 @@
 #   LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=N forces false so bounded one-shot waves own fan-out.
 #   LOOP_SPEC_WORKFLOWS_AVAILABLE=1|0 forces the result when no global cap is set.
 #
-# Always exits 0; the answer is on stdout ("true" or "false").
+# Exits 0 with the answer on stdout, or propagates an invalid explicit harness
+# as a usage error.
 set -euo pipefail
 
 MIN="2.1.154"
@@ -25,8 +26,8 @@ if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
   exit 0
 fi
 
-# Harness gate: the Workflow tool is a Claude Code surface. Under pi and
-# opencode it never exists, regardless of any claude binary found on PATH.
+# Harness gate: the Workflow tool is a Claude Code surface. Under opencode and
+# ADK it never exists, regardless of any claude binary found on PATH.
 #
 # Ordered before LOOP_SPEC_WORKFLOWS_AVAILABLE for the same reason as the team
 # gate in teams-capability.sh: a positive override must not be able to claim a
@@ -34,7 +35,8 @@ fi
 # LOOP_SPEC_WORKFLOWS_AVAILABLE=1` used to answer `true` and let EXECUTE select
 # the workflow rung at width 6 on a harness with no Workflow tool at all.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" != "claude" ]]; then
+harness="$(bash "$SCRIPT_DIR/harness.sh" detect)" || exit $?
+if [[ "$harness" != "claude" ]]; then
   echo "false"
   exit 0
 fi

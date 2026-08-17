@@ -555,7 +555,7 @@ PYEOF
 
   # 5. Manifest — versioned so future installs can tell their files apart.
   local version manifest_tmp
-  version="$(jq -r '.version' "$REPO_ROOT/package.json")"
+  version="$(jq -r '.version' "$REPO_ROOT/.claude-plugin/plugin.json")"
   manifest_tmp="$generated_root/loop-spec-install.json"
   python3 - "$version" "$manifest_tmp" "$MODEL_ROUTES_JSON" "${CREATED[@]}" <<'PYEOF' || _die2 "manifest generation failed"
 import hashlib, json, os, sys

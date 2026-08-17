@@ -97,8 +97,7 @@ The evidence is in `bmad-scan-proposals.md` B9: six weeks mandatory, zero citati
   `.claude-plugin/plugin.json:5`
 - marketplace copy of the same version
   `.claude-plugin/marketplace.json:12`
-- pi manifest copy, pinned by validate-pi-manifest
-  `package.json:3`
+- harness manifests and installers, pinned by their harness coverage suites
 
 **Peripherals**
 

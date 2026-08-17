@@ -68,12 +68,21 @@ check "4: corrupt fixture exit 2" "2" "$ec"
 out="$(LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS="--permission-mode plan" bash "$LIB" run --fixture "$FIXTURE" --dry-run)"
 check "5: custom flags in plan" "1" "$(grep -c -- '--permission-mode plan' <<<"$out")"
 
-# ── Case 6: pi harness dispatches pi --mode json with /skill: prefix, no
-#            claude-only permission flags ─────────────────────────────────────
-out="$(LOOP_SPEC_HARNESS=pi bash "$LIB" run --fixture "$FIXTURE" --dry-run)"
-check "6: pi CLI in plan" "1" "$(grep -c -- 'pi --mode json' <<<"$out")"
-check "6: /skill:intake prefix" "1" "$(grep -c -- '/skill:intake autonomous' <<<"$out")"
+# ── Case 6: adk harness dispatches `adk run <agent-dir> ... --jsonl` at the
+#            mounted agent, with no claude-only permission flags ──────────────
+ADKDIR="$(mktemp -d)"
+out="$(LOOP_SPEC_HARNESS=adk LOOP_SPEC_ADK_AGENT_DIR="$ADKDIR" bash "$LIB" run --fixture "$FIXTURE" --dry-run)"
+check "6: adk CLI in plan" "1" "$(grep -c -- "adk run $ADKDIR" <<<"$out")"
+check "6: skill-tool intake prompt" "1" "$(grep -c -- 'Load the loop-spec-intake skill and run: autonomous' <<<"$out")"
+check "6: --jsonl default" "1" "$(grep -c -- '--jsonl' <<<"$out")"
 check "6: no permission-mode default" "0" "$(grep -c -- '--permission-mode' <<<"$out")"
+
+# ADK dispatches at a directory only the installer knows. Absence is a named
+# prerequisite failure (exit 2), never a silent fallback to another harness.
+LOOP_SPEC_HARNESS=adk bash "$LIB" run --fixture "$FIXTURE" --dry-run >/dev/null 2>"$ADKDIR/err.txt"
+check "6c: unset agent dir exits 2" "2" "$?"
+check "6c: names the installer" "1" "$(grep -c 'adk-install.sh' "$ADKDIR/err.txt")"
+rm -rf "$ADKDIR"
 
 # claude harness keeps the original shape
 out="$(LOOP_SPEC_HARNESS=claude bash "$LIB" run --fixture "$FIXTURE" --dry-run)"

@@ -77,7 +77,7 @@ Older Claude Code releases rejected CLI `default`; current releases accept it.
 normally want `acceptEdits`; `dontAsk` is the fail-closed choice when any
 unapproved tool call should be denied instead of waiting for a human.
 
-Only the claude backend is validated — pi and opencode give special meaning to
+Only the claude backend is validated — opencode and adk give special meaning to
 `plan` alone and keep their own vocabulary.
 
 ## Spend
@@ -98,7 +98,7 @@ that cannot afford the judge halts `budget_exhausted` rather than claiming a
 completion it never validated — `verifier.passed` is still recorded in the result.
 
 Unset means unbounded and passes no flag — iteration, wall-clock and stall caps
-do not bound cost on their own. The per-tick cap is a claude flag; under pi and
+do not bound cost on their own. The per-tick cap is a claude flag; under adk and
 opencode only the cumulative check applies.
 
 ## Driving loop-spec from the Python Agent SDK

@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 # Pin the semantic autonomous router across its prompt, validator, harness docs,
 # SDK examples, and machine-readable output.
-set -uo pipefail
-
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
-PASS=0
-FAIL=0
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 checks=(
   "skills/auto/SKILL.md	lib/task-route.sh"
@@ -26,24 +21,14 @@ checks=(
   "hooks/team/micro-inject.sh	/loop-spec:auto"
   "skills/shared/autonomous-mode.md	/loop-spec:auto"
   "skills/shared/autonomous-mode.md	loop-spec-auto"
-  "skills/shared/pi-harness.md	/skill:auto"
+  "skills/shared/adk-harness.md	adk run"
   "skills/shared/opencode-harness.md	loop-spec-auto"
   "README.md	/loop-spec:auto"
   "README.md	AUTONOMOUS_ROUTE"
-  "skills/shared/pi-harness.md	route-terminal-guard.sh"
+  "skills/shared/adk-harness.md	route-terminal-guard.sh"
   "skills/shared/opencode-harness.md	route-terminal-guard.sh"
 )
 
-for entry in "${checks[@]}"; do
-  file="${entry%%	*}"
-  needle="${entry#*	}"
-  if [[ -f "$file" ]] && grep -qF -- "$needle" "$file"; then
-    PASS=$((PASS+1)); echo "PASS: $file contains '$needle'"
-  else
-    FAIL=$((FAIL+1)); echo "FAIL: $file missing '$needle'"
-  fi
-done
+check_fixed_strings "${checks[@]}"
 
-echo ""
-echo "Results: $PASS passed, $FAIL failed"
-[[ "$FAIL" -eq 0 ]] || exit 1
+finish_fixed_string_coverage

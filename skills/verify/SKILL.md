@@ -299,7 +299,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/verification-grounding-lint.sh" \
 Exit 1 is a verifier `FAIL` regardless of the reported status or green commands. Preserve
 the emitted `FLAG` lines as the failure evidence and route through the normal acceptance
 remediation branch. This gate is mandatory when workflows are unavailable, which is the
-normal pi/OpenCode path; prompt compliance alone never clears VERIFY.
+normal OpenCode/ADK path; prompt compliance alone never clears VERIFY.
 
 #### verifier-1 gate
 
@@ -465,6 +465,16 @@ TeamDelete({name: "loop-spec-verify-{slug}"})
 Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
 
 ### Step 9 - map-codebase refresh
+
+Resolve the automatic refresh policy first:
+
+```bash
+map_refresh="$(bash "${CLAUDE_SKILL_DIR}/../../lib/map-policy.sh" refresh)"
+```
+
+When it returns `skip`, print `codebase map refresh skipped by LOOP_SPEC_MAP_REFRESH=0`
+and continue to Step 10 without invoking map-codebase. The override also applies to
+greenfield runs; use it only when the caller accepts having no generated map.
 
 **Single-repo mode (unchanged):**
 

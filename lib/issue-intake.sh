@@ -28,11 +28,12 @@
 # via the harness's own headless CLI (lib/harness.sh cli):
 #   claude:   claude -p "/loop-spec:intake autonomous <text>" $LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS
 #             (default flags: --permission-mode acceptEdits)
-#   pi:       pi --mode json "/skill:intake autonomous <text>" (no default flags;
-#             permission modes are claude-only)
 #   opencode: opencode run --format json "Load the intake skill (skill tool) and
 #             run: autonomous <text>" (no auto-approval; ordinary in-project
 #             build-agent edits remain allowed and sensitive asks fail closed)
+#   adk:      adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec-intake skill
+#             and run: autonomous <text>" --jsonl (the agent directory is written
+#             by lib/adk-install.sh; unset means no mounted agent to dispatch to)
 # The intake skill's own provenance rules apply — the issue text is
 # restructured, never invented.
 #
@@ -53,23 +54,31 @@ DRY=0
 FIXTURE=""
 
 # Harness seam: spawn the harness's own headless CLI with its own skill-command
-# prefix (claude: `claude -p "/loop-spec:intake ..."`; pi: `pi --mode json
-# "/skill:intake ..."`; opencode: `opencode run --format json` with a prompt
-# that loads the skill via the native skill tool). Permission modes are
-# claude-only; OpenCode uses its configured permissions without auto-approval.
-# LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS still overrides verbatim.
+# prefix (claude: `claude -p "/loop-spec:intake ..."`; opencode: `opencode run
+# --format json` with a prompt that loads the skill via the native skill tool;
+# adk: `adk run <agent-dir> "<prompt>" --jsonl`). Permission modes are
+# claude-only; OpenCode and ADK use their configured permissions without
+# auto-approval. LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS still overrides verbatim.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "$SCRIPT_DIR/runtime-preflight.sh" check-jq || exit 2
 RESULT_ROOT="$(bash "$SCRIPT_DIR/cycle-result.sh" resolve-root "$PWD")" || exit 2
 AGENT_CLI="$(bash "$SCRIPT_DIR/harness.sh" cli)"
-if [[ "$AGENT_CLI" == "pi" ]]; then
-  AGENT_ARGS=(--mode json)
-  INTAKE_CMD="/skill:intake"
-  CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:-}"
-elif [[ "$AGENT_CLI" == "opencode" ]]; then
+if [[ "$AGENT_CLI" == "opencode" ]]; then
   AGENT_ARGS=(run --format json)
   INTAKE_CMD="Load the loop-spec-intake skill and run:"
   CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:-}"
+elif [[ "$AGENT_CLI" == "adk" ]]; then
+  # ADK dispatches at a mounted agent directory rather than a bare prompt, and
+  # only lib/adk-install.sh knows where the caller mounted it. Absence is a
+  # missing prerequisite, not a fallback to another harness's flags.
+  [[ -n "${LOOP_SPEC_ADK_AGENT_DIR:-}" ]] || \
+    _die2 "harness is adk but LOOP_SPEC_ADK_AGENT_DIR is unset (run: bash lib/adk-install.sh install --project <dir>)"
+  [[ -d "${LOOP_SPEC_ADK_AGENT_DIR}" ]] || \
+    _die2 "LOOP_SPEC_ADK_AGENT_DIR='${LOOP_SPEC_ADK_AGENT_DIR}' is not a directory"
+  AGENT_ARGS=(run "${LOOP_SPEC_ADK_AGENT_DIR}")
+  INTAKE_CMD="Load the loop-spec-intake skill and run:"
+  CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:---jsonl}"
+  export LOOP_SPEC_NON_INTERACTIVE=1
 else
   AGENT_ARGS=(-p)
   INTAKE_CMD="/loop-spec:intake"

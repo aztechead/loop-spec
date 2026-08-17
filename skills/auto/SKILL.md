@@ -1,6 +1,6 @@
 ---
 name: auto
-description: Preferred autonomous entry point for Claude Code, pi, and OpenCode SDK/headless requests. Semantically routes a grounded task to the micro cycle, bounded debug loop, or full seven-phase cycle; uncertain or risky work always fails upward to the full cycle.
+description: Preferred autonomous entry point for Claude Code, OpenCode, and Google ADK SDK/headless requests. Semantically routes a grounded task to the micro cycle, bounded debug loop, or full seven-phase cycle; uncertain or risky work always fails upward to the full cycle.
 argument-hint: "<task description>"
 allowed-tools: Bash Read Glob Grep Skill
 ---
@@ -41,10 +41,13 @@ Propose exactly one JSON object with this schema:
   "taskKind": "docs | config | maintenance | bug | feature | refactor | greenfield | unknown",
   "confidence": 0.0,
   "estimatedFiles": 0,
+  "generatedFiles": 0,
   "criteriaCount": 1,
   "ambiguity": "low | medium | high",
   "introducesSeam": false,
   "introducesDependency": false,
+  "introducesNewDependency": false,
+  "updatesDependencyVersion": false,
   "changesInterface": false,
   "securitySensitive": false,
   "dataMigration": false,
@@ -57,15 +60,17 @@ Propose exactly one JSON object with this schema:
 Route semantics:
 
 - **micro**: direct, well-understood maintenance with at most 3 criteria and about 5
-  edited files. Examples include a focused documentation refresh, config adjustment,
-  rename, or localized fix whose mechanism is already known. No subagents or design
+  reviewable edited files. Generated lockfiles do not count toward that edit surface.
+  Examples include a focused documentation refresh, config adjustment, an update to
+  already-present dependency versions, a rename, or a localized fix whose mechanism is
+  already known. No subagents or design
   phases. The micro skill inherits the session model in Claude Code and OpenCode;
   classification stays on that same parent model.
 - **debug**: a bounded bug or unexplained behavior that needs reproduction, hypotheses,
   and a sibling sweep. This is the middle route: more rigor than micro without a
   feature SPEC/PLAN DAG.
 - **full**: features, refactors, greenfield work, broad or unclear requests, or any
-  work involving a new seam/dependency, interface or schema behavior, security,
+  work involving a new seam or dependency edge, interface or schema behavior, security,
   destructive/data migration operations, multiple repositories, or conflicting
   uncommitted changes.
 
@@ -90,6 +95,11 @@ by the script from the current execution root with the cycle's canonical clean-b
 rules; it is not accepted as a path or field from the semantic proposal. Other semantic
 fields remain model judgments, so uncertain evidence must lower confidence and therefore
 promote the request.
+
+Set `introducesDependency` for compatibility whenever either dependency field is true.
+Set `introducesNewDependency` only when the change adds a dependency edge; a version-only
+change sets `updatesDependencyVersion` instead. `generatedFiles` counts generated outputs
+such as lockfiles within `estimatedFiles`, never hand-maintained manifests.
 
 Print exactly one concise, SDK-readable JSON line containing the normalized decision,
 prefixed with `AUTONOMOUS_ROUTE `. Do not write routing state into the target repository's

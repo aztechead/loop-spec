@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Print the agent-team capability MODE for the running Claude Code harness.
+# Print the agent-team capability MODE for the running harness.
 #
 # Output is exactly one word on stdout:
 #   none      Agent teams are off. CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1.
@@ -26,7 +26,8 @@
 #   LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=N            forces no-teams bounded waves.
 #   LOOP_SPEC_TEAMS_MODE=none|explicit|implicit   forces the mode verbatim.
 #
-# Always exits 0; the answer is on stdout.
+# Exits 0 with the answer on stdout, or propagates an invalid explicit harness
+# as a usage error.
 set -euo pipefail
 
 MIN_IMPLICIT="2.1.178"
@@ -42,23 +43,24 @@ if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
   exit 0
 fi
 
-# Harness gate: agent teams are a Claude Code surface. Under pi there is no
-# Agent tool at all, and opencode's resumable task sessions have no named
-# teammates, peer messaging, or shared task list, so the mode is `none` on
-# every non-claude harness even when the experimental flag is exported globally (and a
-# `claude` binary happens to be on PATH — without this gate that combination
-# would mis-resolve to `implicit` and every spawn would throw).
-# skills/shared/pi-harness.md and skills/shared/opencode-harness.md carry the
-# substitution rules.
+# Harness gate: named, addressable teammates are a Claude Code surface today.
+# opencode's resumable task sessions and ADK's AgentTool dispatch both return a
+# result to the caller and nothing more — no named peers, no peer messaging, no
+# shared task list — so the mode is `none` on every non-claude harness even when
+# the experimental flag is exported globally (and a `claude` binary happens to be
+# on PATH; without this gate that combination would mis-resolve to `implicit` and
+# every spawn would throw). skills/shared/opencode-harness.md and
+# skills/shared/adk-harness.md carry the substitution rules.
 #
 # This gate runs BEFORE LOOP_SPEC_TEAMS_MODE. An operator override can turn a
 # capability OFF anywhere, but it cannot conjure one that the harness does not
-# have: `LOOP_SPEC_HARNESS=pi LOOP_SPEC_TEAMS_MODE=implicit` used to answer
+# have: `LOOP_SPEC_HARNESS=adk LOOP_SPEC_TEAMS_MODE=implicit` must not answer
 # `implicit` and route EXECUTE onto a team rung whose every spawn throws, which
 # is precisely the mis-resolution the comment above says this gate exists to
 # prevent. Absence of a surface is a fact; only a negative override is honored here.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "$(bash "$SCRIPT_DIR/harness.sh" detect)" != "claude" ]]; then
+harness="$(bash "$SCRIPT_DIR/harness.sh" detect)" || exit $?
+if [[ "$harness" != "claude" ]]; then
   echo "none"
   exit 0
 fi

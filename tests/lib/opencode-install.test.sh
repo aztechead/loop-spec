@@ -26,6 +26,9 @@ CFG="$TMP/opencode"
 # --- install (global-style, via OPENCODE_CONFIG_DIR override) ---
 OPENCODE_CONFIG_DIR="$CFG" bash "$LIB" install >/dev/null
 check "manifest written" "yes" "$([[ -f "$CFG/loop-spec-install.json" ]] && echo yes || echo no)"
+check "manifest uses plugin version" \
+  "$(jq -r '.version' "$REPO/.claude-plugin/plugin.json")" \
+  "$(jq -r '.version' "$CFG/loop-spec-install.json")"
 
 # Generated namespaced skill adapters avoid shadowing a user's native `cycle`,
 # `plan`, `status`, etc. They read the source SKILL.md from this checkout.

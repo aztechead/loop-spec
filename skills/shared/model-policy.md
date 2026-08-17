@@ -12,8 +12,8 @@ loop-spec requires no named model family and no fixed provider catalog.
 
 Claude dispatches OMIT the Agent `model` key when the role inherits; that tool
 parameter is an alias enum and rejects the literal `inherit`. OpenCode task calls
-omit a model and let the generated subagent inherit its primary agent. Pi performs
-non-fleet roles inline on the session model.
+omit a model and let the generated subagent inherit its primary agent. ADK role
+agents inherit the mounted app's model unless their charter names an ADK model ID.
 
 ## Explicit routes
 
@@ -27,10 +27,10 @@ Claude role routes accept `inherit` or a supported Agent alias. A Claude phase
 route may also carry a full CLI model ID when a fresh main-context launcher
 consumes it; role Agents then inherit that main model.
 
-Pi and OpenCode ignore these selectors for inline or native task dispatch. An
-implementer loop-fleet subprocess may consume an explicit native value: a pi
-model ID or an OpenCode `provider/model` ID. Other native role pins fail early;
-OpenCode task agents use generated-agent routes.
+OpenCode and ADK do not consume Claude aliases. An implementer loop-fleet
+subprocess may consume an explicit native value: an OpenCode `provider/model` ID,
+or a Gemini / LiteLLM ID under ADK. Other native role pins fail early; OpenCode
+task agents use generated-agent routes and ADK role agents use their charters.
 A harness never receives another harness's selector by default.
 
 ## Startup check
@@ -39,7 +39,7 @@ Claude startup resolves the exact configured selector set with
 `feature-init.sh all-models`. An unconfigured install contains only `inherit`
 and performs zero Agent probes. Explicit Agent aliases are probed; full phase
 IDs are checked by the fresh CLI/SDK launcher that consumes them. Invalid
-configuration fails before feature work begins. Pi and OpenCode skip the Claude
+configuration fails before feature work begins. OpenCode and ADK skip the Claude
 selector probe.
 
 This policy deliberately separates model choice from GDD effort. `system1` and

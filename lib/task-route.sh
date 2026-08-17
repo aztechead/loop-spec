@@ -82,6 +82,15 @@ if ! jq -e '
   (.ambiguity == "low" or .ambiguity == "medium" or .ambiguity == "high") and
   (.introducesSeam | type == "boolean") and
   (.introducesDependency | type == "boolean") and
+  ((has("introducesNewDependency") | not) or (.introducesNewDependency | type == "boolean")) and
+  ((has("updatesDependencyVersion") | not) or (.updatesDependencyVersion | type == "boolean")) and
+  (((has("introducesNewDependency") or has("updatesDependencyVersion")) | not) or
+    (has("introducesNewDependency") and has("updatesDependencyVersion") and
+     (.introducesDependency == (.introducesNewDependency or .updatesDependencyVersion)))) and
+  ((has("generatedFiles") | not) or
+    (.generatedFiles as $generated |
+      ($generated | type == "number") and ($generated | floor == .) and
+      $generated >= 0 and $generated <= .estimatedFiles)) and
   (.changesInterface | type == "boolean") and
   (.securitySensitive | type == "boolean") and
   (.dataMigration | type == "boolean") and
@@ -93,10 +102,24 @@ if ! jq -e '
   exit 0
 fi
 
+# New classifiers distinguish an added dependency edge from a version update and
+# identify generated lockfiles. Older callers retain the conservative behavior:
+# introducesDependency means a new edge and every estimated file counts.
+raw="$(jq -c '
+  . + {
+    introducesNewDependency:
+      (if has("introducesNewDependency") then .introducesNewDependency else .introducesDependency end),
+    updatesDependencyVersion: (.updatesDependencyVersion // false),
+    generatedFiles: (.generatedFiles // 0)
+  }
+' <<<"$raw")"
+
 candidate_route="$(jq -r '.route' <<<"$raw")"
 task_kind="$(jq -r '.taskKind' <<<"$raw")"
 confidence="$(jq -r '.confidence' <<<"$raw")"
 estimated_files="$(jq -r '.estimatedFiles' <<<"$raw")"
+generated_files="$(jq -r '.generatedFiles' <<<"$raw")"
+reviewable_files=$((estimated_files - generated_files))
 criteria_count="$(jq -r '.criteriaCount' <<<"$raw")"
 ambiguity="$(jq -r '.ambiguity' <<<"$raw")"
 
@@ -117,13 +140,13 @@ reason_code="validated"
 if [[ "$candidate_route" == "full" ]]; then
   reason_code="classifier-selected-full"
 elif jq -e '
-  .introducesSeam or .introducesDependency or .changesInterface or
+  .introducesSeam or .introducesNewDependency or .changesInterface or
   .securitySensitive or .dataMigration or .multiRepo or .destructive or
   .workingTreeConflict
 ' <<<"$raw" >/dev/null; then
   normalized_route="full"
   reason_code="hard-risk"
-elif (( estimated_files > 5 || criteria_count > 3 )); then
+elif (( reviewable_files > 5 || criteria_count > 3 )); then
   normalized_route="full"
   reason_code="scope-too-large"
 elif [[ "$ambiguity" == "high" ]]; then
@@ -159,5 +182,7 @@ jq -c \
   --arg route "$normalized_route" \
   --arg candidate_route "$candidate_route" \
   --arg reason_code "$reason_code" \
-  '. + {route: $route, candidateRoute: $candidate_route, reasonCode: $reason_code}' \
+  --argjson reviewable_files "$reviewable_files" \
+  '. + {route: $route, candidateRoute: $candidate_route, reasonCode: $reason_code,
+        reviewableEstimatedFiles: $reviewable_files}' \
   <<<"$raw"

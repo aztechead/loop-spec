@@ -309,6 +309,7 @@ class Supervisor:
                     "allowed_tools": t.get("allowed_tools", "Read,Edit,Bash"),
                     "claude_bin": self.args.claude_bin,
                     "agent_cli": self.args.agent_cli,
+                    "adk_agent_dir": getattr(self.args, "adk_agent_dir", ""),
                     "commit": True,           # durability: each productive tick is a commit
                     "reset": attempt > 1,     # retries start clean but keep the nudge
                 }
@@ -513,11 +514,14 @@ def main() -> int:
                         "halts budget_exhausted at the cap. Fleet-wide worst case "
                         "is this times the number of tasks (0 = unbounded).")
     p.add_argument("--claude-bin", default="claude")
-    p.add_argument("--agent-cli", choices=["claude", "pi", "opencode"], default="",
+    p.add_argument("--agent-cli", choices=["claude", "opencode", "adk"], default="",
                    dest="agent_cli",
                    help="Headless protocol for every loop tick: claude -p JSON vs "
-                        "pi --mode json vs opencode run --format json events "
+                        "adk run --jsonl vs opencode run --format json events "
                          "(default: auto from the binary name).")
+    p.add_argument("--adk-agent-dir", default="", dest="adk_agent_dir",
+                   help="Mounted ADK working-agent directory handed to every worker "
+                        "(default: $LOOP_SPEC_ADK_AGENT_DIR).")
     p.add_argument("--feature-dir", default="",
                    help="Feature-state path relative to the repository; enables exact-candidate baseline comparison.")
     p.add_argument("--prepare-command", default=None,
@@ -541,6 +545,9 @@ def main() -> int:
             p.error(f"{flag} must be a {wording} integer")
     if args.max_budget_usd < 0:
         p.error("--max-budget-usd must be a non-negative number")
+    if args.agent_cli == "adk" and args.max_budget_usd > 0:
+        p.error("--max-budget-usd cannot be enforced by the adk backend because "
+                "ADK JSONL does not report monetary cost")
 
     worktrees = os.environ.get("LOOP_SPEC_WORKTREES", "1")
     if worktrees not in ("0", "1"):

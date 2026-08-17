@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- One supported harness: Claude Code, pi, or OpenCode
+- One supported harness: Claude Code, OpenCode, or Google ADK
 - The [base runtime dependencies](loop-spec/PREREQUISITES.md)
 - A project where you have full git push access
 - An authenticated GitHub CLI and `origin` remote when the cycle should open a PR
@@ -25,11 +25,13 @@ claude plugin install loop-spec@loop-spec-marketplace
 Open a new session and run `/loop-spec:cycle <goal>`. Agent teams are optional;
 without them, the same gates run through bounded one-shot agents and loop-fleet.
 
-### pi
+### Google ADK
 
 ```bash
-pi install git:github.com/aztechead/loop-spec
-pi --mode json "/skill:auto <goal>"
+python3 -m pip install 'google-adk>=2.7,<3'
+bash loop-spec/lib/adk-install.sh install --project .
+LOOP_SPEC_NON_INTERACTIVE=1 adk run "$PWD/adk_agents/loop_spec" \
+  "Load the loop-spec auto skill and run: <goal>" --jsonl
 ```
 
 ### OpenCode
@@ -65,7 +67,8 @@ generated skills and agents should live only in the current project.
 
 - **An explicit model route is unavailable**: remove the override to inherit the
   session model, or replace it with a selector native to that harness. Claude accepts
-  its aliases/full IDs; pi accepts pi model IDs; OpenCode accepts `provider/model`.
+  its aliases/full IDs; OpenCode accepts `provider/model`; ADK accepts `gemini-*` or
+  `provider/model` through LiteLLM.
 - **A Claude alias does nothing in OpenCode**: this is intentional. OpenCode generated
   agents inherit unless installed with `--model role=provider/model`; Claude aliases
   are never translated into guessed provider routes.

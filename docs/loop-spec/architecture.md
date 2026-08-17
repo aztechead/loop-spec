@@ -16,7 +16,7 @@ is used — a sandboxed harness may deny writing harness-config paths such as
 part-way through — and relocates the worktree outside the repository when it cannot.
 `LOOP_SPEC_WORKTREE_DIR` sets that base explicitly.
 `LOOP_SPEC_WORKTREES=0` instead uses a clean in-place feature branch and
-deterministically blocks later worktree creation/entry. OpenCode/pi always use a clean
+deterministically blocks later worktree creation/entry. OpenCode and ADK always use a clean
 in-place branch because those harnesses cannot switch a live session root. Resume scans
 both the invocation root and registered feature worktrees for incomplete features
 inside the staleness window (48h), then adopts the recorded absolute root before
@@ -191,8 +191,7 @@ docs/loop-spec/                          # committed
 ```
 loop-spec/
 ├── .claude-plugin/                  # plugin.json + marketplace.json
-├── package.json                     # pi package manifest (skills + prompts + extension)
-├── extensions/pi/loop-spec.ts       # pi bridge: env + CC hook equivalents (node builtins only)
+├── extensions/adk/loop_spec_adk/    # ADK bridge: env + skills + dispatch (imports google-adk)
 ├── extensions/opencode/loop-spec.ts # opencode bridge: shell.env/chat.message/event hooks (node builtins only)
 ├── agents/                          # specialized agent definitions (teammates + mappers)
 ├── skills/
@@ -202,7 +201,7 @@ loop-spec/
 │   ├── grill/ simplicity/ human-code/ discipline/               # session-mode toggles
 │   ├── pause/ rollback/ forensics/                             # lifecycle utilities
 │   ├── loop-runner/                 # bundled loop engine + its offline test suite
-│   └── shared/                      # cross-skill contracts (tier-matrix, model-matrix, autonomous-mode, pi-harness, opencode-harness, ...)
+│   └── shared/                      # cross-skill contracts (tier-matrix, model-matrix, autonomous-mode, claude-harness, opencode-harness, adk-harness, ...)
 ├── lib/                             # extracted bash, one concern per script, unit-tested
 ├── hooks/                           # PreToolUse/Stop/SessionStart guards + hooks.json
 ├── tests/

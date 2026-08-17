@@ -2,7 +2,7 @@
 """
 compile_spec.py — spec → plan. Layer 2 of loop-runner, and the bridge this whole
 skill exists for: you write a goal or spec the way you normally would; this turns
-it into loops that Claude Code, pi, or OpenCode can run.
+it into loops that Claude Code, OpenCode, or Google ADK can run.
 
 A spec is a bundle of testable claims. Compilation makes that explicit:
   1. Read the spec (plus a look at the repo for context).
@@ -83,7 +83,7 @@ def strip_fences(text: str) -> str:
 
 
 def compile_spec(spec_path: Path, *, claude_bin: str, model: str,
-                 out_path: Path, agent_cli: str = "") -> dict:
+                 out_path: Path, agent_cli: str = "", adk_agent_dir: str = "") -> dict:
     spec_text = spec_path.read_text()
     base_prompt = (
         "You are a plan compiler for autonomous coding loops. Read the spec below and "
@@ -93,7 +93,7 @@ def compile_spec(spec_path: Path, *, claude_bin: str, model: str,
         f"Set \"spec\" to \"{spec_path}\".\n\n--- SPEC ({spec_path}) ---\n{spec_text}"
     )
     cfg = LoopConfig(task="", claude_bin=claude_bin, agent_cli=agent_cli, model=model,
-                     allowed_tools="Read,Glob,Grep")
+                     allowed_tools="Read,Glob,Grep", adk_agent_dir=adk_agent_dir)
     conflict = cfg.transport_conflict()
     if conflict:
         sys.exit(f"compile_spec: {conflict}")
@@ -138,13 +138,17 @@ def main() -> int:
     p.add_argument("--out", default="plan/tasks.json")
     p.add_argument("--model", default="", help="Model for the compiler pass.")
     p.add_argument("--claude-bin", default="claude")
-    p.add_argument("--agent-cli", choices=["claude", "pi", "opencode"], default="",
+    p.add_argument("--agent-cli", choices=["claude", "opencode", "adk"], default="",
                    dest="agent_cli",
                    help="Headless protocol (default: auto from the binary name).")
+    p.add_argument("--adk-agent-dir", default="", dest="adk_agent_dir",
+                   help="Mounted ADK working-agent directory (default: "
+                        "$LOOP_SPEC_ADK_AGENT_DIR).")
     args = p.parse_args()
 
     plan = compile_spec(Path(args.spec), claude_bin=args.claude_bin, model=args.model,
-                        out_path=Path(args.out), agent_cli=args.agent_cli)
+                        out_path=Path(args.out), agent_cli=args.agent_cli,
+                        adk_agent_dir=args.adk_agent_dir)
 
     print(f"\n✓ Plan written to {args.out}")
     for t in plan["tasks"]:

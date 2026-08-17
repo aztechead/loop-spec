@@ -54,7 +54,7 @@
 #
 # Calibration, over the last 14 non-merge commits of this repo: 9 report clean,
 # and every finding in the other 5 is real -- `conf_get` verbatim in three files,
-# the pi and opencode coverage suites sharing 13 lines exactly and 15 more by
+# harness coverage suites sharing substantial test scaffolding and more by
 # shape, the two near-identical assertion helpers inside plain-language-lint's
 # test. Scanning whole files instead -- every tracked source file as a target at
 # once -- surfaces 216, which is the repository's standing duplication rather

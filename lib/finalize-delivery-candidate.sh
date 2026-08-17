@@ -7,6 +7,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ARTIFACT_SINK="$SCRIPT_DIR/artifact-sink.sh"
 
 binding_query='def local_error: ["repo_invalid","repo_root_mismatch","branch_mismatch","git_status_failed",
   "dirty_worktree","base_sha_missing","base_sha_invalid","base_not_ancestor","no_commits",
@@ -90,6 +91,18 @@ repo_root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || {
   exit 2
 }
 repo_root="$(cd "$repo_root" && pwd -P)" || exit 2
+feature_rel="${feature_dir#"$repo_root"/}"
+progress_path="$feature_rel/PROGRESS.md"
+state_commit_mode="$(bash "$SCRIPT_DIR/state-commit-policy.sh" mode)" || exit $?
+rules_path=".loop-spec/RULES.md"
+ignore_path=".gitignore"
+digest_path="docs/loop-spec/telemetry/runs/$slug.json"
+docs_path="docs/loop-spec/features/$slug"
+artifact_mode="${LOOP_SPEC_ARTIFACTS_IN_PR:-1}"
+[[ "$artifact_mode" == "0" || "$artifact_mode" == "1" ]] || {
+  echo "finalize-delivery-candidate: LOOP_SPEC_ARTIFACTS_IN_PR must be 0 or 1" >&2
+  exit 2
+}
 expected_branch="$(jq -r '.branch // ""' "$feature_json")"
 actual_branch="$(git -C "$repo_root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 base_sha="$(jq -r '.baseSha // ""' "$feature_json")"
@@ -108,6 +121,60 @@ elif [[ "$(git -C "$repo_root" rev-list --count "${base_sha}..${head_sha}" 2>/de
   exit 1
 fi
 
+validate_status() {
+  local stage="$1" content="$2" line path
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    path="${line:3}"
+    if [[ "$stage" == "initial" ]]; then
+      case "$path" in
+        "$ignore_path")
+          bash "$SCRIPT_DIR/owned-gitignore.sh" check "$repo_root" || {
+            echo "finalize-delivery-candidate: pre-existing .gitignore change is not loop-spec-owned" >&2
+            return 1
+          }
+          ;;
+        "$feature_rel/feature.json"|"$progress_path")
+          [[ "$state_commit_mode" == "final" ]] || {
+            echo "finalize-delivery-candidate: unexpected pre-existing worktree change: $path" >&2
+            return 1
+          }
+          ;;
+        *)
+          echo "finalize-delivery-candidate: unexpected pre-existing worktree change: $path" >&2
+          return 1
+          ;;
+      esac
+    else
+      case "$path" in
+        "$rules_path"|"$ignore_path"|"$digest_path") ;;
+        "$feature_rel/feature.json")
+          [[ "$artifact_mode" == "0" || "$state_commit_mode" == "final" ]] || {
+            echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
+            return 1
+          }
+          ;;
+        "$progress_path")
+          [[ "$state_commit_mode" == "final" ]] || {
+            echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
+            return 1
+          }
+          ;;
+        "$docs_path"/*)
+          [[ "$artifact_mode" == "0" ]] || {
+            echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
+            return 1
+          }
+          ;;
+        *)
+          echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
+          return 1
+          ;;
+      esac
+    fi
+  done <<<"$content"
+}
+
 bash "$SCRIPT_DIR/runtime-ignore.sh" ensure "$repo_root" >/dev/null || {
   echo "finalize-delivery-candidate: failed to install runtime ignores" >&2
   exit 2
@@ -117,22 +184,7 @@ initial_status="$(git -C "$repo_root" status --porcelain --untracked-files=all 2
   echo "finalize-delivery-candidate: cannot establish candidate cleanliness" >&2
   exit 2
 }
-while IFS= read -r line; do
-  [[ -n "$line" ]] || continue
-  path="${line:3}"
-  case "$path" in
-    ".gitignore")
-      bash "$SCRIPT_DIR/owned-gitignore.sh" check "$repo_root" || {
-        echo "finalize-delivery-candidate: pre-existing .gitignore change is not loop-spec-owned" >&2
-        exit 1
-      }
-      ;;
-    *)
-      echo "finalize-delivery-candidate: unexpected pre-existing worktree change: $path" >&2
-      exit 1
-      ;;
-  esac
-done <<<"$initial_status"
+validate_status initial "$initial_status" || exit $?
 
 CLAUDE_PROJECT_DIR="$repo_root" bash "$SCRIPT_DIR/retro.sh" auto "$feature_dir" >/dev/null || {
   echo "finalize-delivery-candidate: retrospective finalization failed" >&2
@@ -142,10 +194,6 @@ bash "$SCRIPT_DIR/run-digest.sh" append "$feature_dir" --candidate >/dev/null ||
   echo "finalize-delivery-candidate: run digest finalization failed" >&2
   exit 2
 }
-
-rules_path=".loop-spec/RULES.md"
-ignore_path=".gitignore"
-digest_path="docs/loop-spec/telemetry/runs/$slug.json"
 
 # Telemetry is machine-local by default: another session needs the FEATURE
 # artifacts and state, not the run digest (retro/status/trust/watch all read the
@@ -163,25 +211,28 @@ if ! jq -e --arg slug "$slug" '.slug == $slug and .status == "completed"' \
   exit 2
 fi
 
+if [[ "$artifact_mode" == "0" ]]; then
+  bash "$ARTIFACT_SINK" store "$feature_dir" "$repo_root" >/dev/null || {
+    echo "finalize-delivery-candidate: artifact store finalization failed" >&2
+    exit 2
+  }
+fi
+
 status="$(git -C "$repo_root" status --porcelain --untracked-files=all 2>/dev/null)" || {
   echo "finalize-delivery-candidate: cannot inspect finalized artifacts" >&2
   exit 2
 }
-while IFS= read -r line; do
-  [[ -n "$line" ]] || continue
-  path="${line:3}"
-  case "$path" in
-    "$rules_path"|"$ignore_path"|"$digest_path") ;;
-    *)
-      echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
-      exit 1
-      ;;
-  esac
-done <<<"$status"
+validate_status final "$status" || exit $?
 
 if [[ "$commit_requested" -eq 1 ]]; then
   finalize_paths=("$rules_path" "$ignore_path")
   [[ "$commit_telemetry" -eq 1 ]] && finalize_paths+=("$digest_path")
+  if [[ "$artifact_mode" == "0" ]]; then
+    finalize_paths+=("$feature_rel/feature.json" "$docs_path")
+  fi
+  if [[ "$state_commit_mode" == "final" ]]; then
+    finalize_paths+=("$feature_rel/feature.json" "$progress_path")
+  fi
   stage_paths=()
   for path in "${finalize_paths[@]}"; do
     if [[ -e "$repo_root/$path" ]] || git -C "$repo_root" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
@@ -191,10 +242,13 @@ if [[ "$commit_requested" -eq 1 ]]; then
   if [[ -n "${stage_paths[*]-}" ]]; then
     # -f: the digest is runtime-ignored by default; an opt-in commit must not
     # be silently refused by that exclusion.
-    git -C "$repo_root" add -f -- "${stage_paths[@]}" || exit 2
-    if ! git -C "$repo_root" diff --cached --quiet -- "${stage_paths[@]}"; then
-      git -C "$repo_root" commit -q -m "chore: NO_JIRA finalize delivery candidate for $slug" -- \
-        "${stage_paths[@]}" || exit 2
+    git -C "$repo_root" add -A -f -- "${stage_paths[@]}" || exit 2
+    if ! git -C "$repo_root" diff --cached --quiet; then
+      # The status allow-list above proves every staged path is loop-spec-owned.
+      # Commit the whole validated index so an artifact directory removed by the
+      # store helper is included even though it no longer exists as a pathspec.
+      git -C "$repo_root" commit -q -m "chore: NO_JIRA finalize delivery candidate for $slug" \
+        || exit 2
     fi
   fi
   final_status="$(git -C "$repo_root" status --porcelain --untracked-files=all 2>/dev/null)" || exit 2

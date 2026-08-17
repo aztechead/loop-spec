@@ -5,7 +5,7 @@
 > current runtime contract. See [the GDD architecture](loop-spec/gdd.md),
 > [model matrix](../skills/shared/model-matrix.md), and
 > [model policy](../skills/shared/model-policy.md) for the portable implementation
-> shared by Claude Code, pi, and OpenCode.
+> shared by Claude Code, OpenCode, and Google ADK.
 
 **Date:** 2026-05-05
 **Status:** Design approved, planning next
@@ -467,8 +467,9 @@ resumably. DELIVER never merges or enables auto-merge.
 
 ### Self-heal loop (AUTO)
 
-Full-bore operation: gate retries are unbounded. The ONE limit the cycle respects is
-ITERATE's round limit (`iterate.maxIterations`, fixed 10). Within EXECUTE, the per-task
+Full-bore operation: gate retries are unbounded. The cycle-wide limit is ITERATE's
+persisted round ceiling (`iterate.maxIterations`, default 10 and configurable through
+`LOOP_SPEC_ITERATE_MAX_ITERATIONS`). Within EXECUTE, the per-task
 rework cap (`maxRetriesPerTask`, fixed 2) routes a repeatedly-failing task to the lead
 for escalation instead of ping-ponging it between the same implementer and reviewer.
 

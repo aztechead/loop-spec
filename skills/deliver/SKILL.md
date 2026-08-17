@@ -26,7 +26,7 @@ PR is no longer a draft
 
 The deterministic implementation is `lib/deliver.sh`, which delegates each changed
 repository to `lib/pr-delivery.sh`. Both use explicit repository paths, so this phase
-is identical under Claude Code, pi, and OpenCode.
+is identical under Claude Code, OpenCode, and Google ADK.
 
 Three invariants the controller enforces so retries and multi-repo features stay safe:
 

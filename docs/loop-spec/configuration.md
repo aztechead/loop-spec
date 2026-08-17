@@ -47,8 +47,10 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_PHASE_TIMEOUT_MINS` | positive integer; `60` | Wall-clock watchdog ceiling for a phase. A non-integer or non-positive value is a configuration error, not a fallback. |
 | `LOOP_SPEC_PHASE_HANDOFF` | `0`/`1`; unset | `1` permits one phase per main-agent invocation, persists the next phase, and returns `status=paused`, `reason=phase-handoff`. `0` runs phase routing continuously. The environment overrides persisted state; inline `phase:fresh`/`phase:continuous` overrides the environment. A tool-boundary guard enforces the boundary. |
 | `LOOP_SPEC_ITERATE_FRESH` | `0`/`1`; unset | `1` makes an ITERATE rewind persist state and relaunch instead of continuing in the current main-agent context. |
+| `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | integer `1..100`; `10` | Sets the full cycle's persisted ITERATE convergence ceiling. This is independent of `LOOP_SPEC_LOOP_MAX_ITERATIONS`, which bounds each loop-fleet task. |
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
+| `LOOP_SPEC_SQUASH_STATE_COMMITS` | `0`/`1`; `0` | `1` defers pure feature.json/PROGRESS phase-state commits and writes one final state commit during DELIVER. It also disables per-phase remote checkpoints because pushed intermediate state would require a later history rewrite. |
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective selector set is unchanged. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
@@ -76,7 +78,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_LOOP_MAX_BUDGET_USD` | positive decimal; unlimited | Cumulative model-cost cap for each loop-fleet task. A fleet’s worst-case cap is this value times its task count. |
 | `LOOP_SPEC_TEAMS_MODE` | `none`/`explicit`/`implicit`; probed | Overrides agent-team capability detection. |
 | `LOOP_SPEC_WORKFLOWS_AVAILABLE` | `0`/`1`; probed | Overrides Workflow-tool capability detection. |
-| `LOOP_SPEC_HARNESS` | `claude`/`pi`/`opencode`; detected | Forces the host adapter. The pi and OpenCode extensions normally set this themselves. An unknown value falls through to detection. |
+| `LOOP_SPEC_HARNESS` | `claude`/`opencode`/`adk`; detected | Forces the host adapter. The OpenCode plugin and ADK bridge normally set this themselves. An unknown value falls through to detection, which defaults to `claude`. |
 | `LOOP_SPEC_FOREIGN_CLAIMANTS` | `0`/`1`; `0` | `1` opts EXECUTE into the `foreign` rung when a handoff port adapter is reachable (`LOOP_SPEC_PORT` or the bundled `lib/graph/port-local.sh`). Width still selects the rung and never removes a graph node. |
 | `LOOP_SPEC_PORT` | executable path; unset | Handoff-port adapter invoked by `lib/graph/port.sh`. Unset uses `lib/graph/port-local.sh`. |
 | `LOOP_SPEC_PORT_ROOT` | directory path; platform temp | Store root for the reference `port-local` adapter. Unset defaults under the process temp directory. |
@@ -100,13 +102,14 @@ installers and therefore are part of the integration contract.
 | `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` | Claude Code; `8` | Maximum consecutive Stop-hook blocks before Claude Code force-completes the turn with a warning. This is what bounds `LOOP_SPEC_DEFERRAL_GUARD` and `LOOP_SPEC_MICRO_GUARD`, which deliberately do not treat `stop_hook_active` as an override. loop-spec never sets it. |
 | `CLAUDE_CODE_MAX_RETRIES` | Claude Code legacy control; inherited | Not configured by loop-spec. Prefer `CLAUDE_CODE_RETRY_WATCHDOG`; Claude Code caps the legacy value at 15. |
 | `CLAUDECODE` | Claude Code | `1` is a fallback harness-detection signal when `LOOP_SPEC_HARNESS` is unset. |
-| `CLAUDE_PLUGIN_ROOT` | host adapter | Absolute installed plugin root used to resolve hooks and bundled assets. The pi/OpenCode adapters set it. Operator override is unsupported. |
-| `CLAUDE_PROJECT_DIR` | host adapter; current directory | Project root used for `.loop-spec` discovery. The pi/OpenCode adapters set it from the session directory. |
-| `CLAUDE_SKILL_DIR` | host adapter | Directory of the active skill, used for bundled relative paths. The pi/OpenCode adapters update it as skills are read. |
+| `CLAUDE_PLUGIN_ROOT` | host adapter | Absolute installed plugin root used to resolve hooks and bundled assets. The OpenCode plugin and ADK bridge set it. Operator override is unsupported. |
+| `CLAUDE_PROJECT_DIR` | host adapter; current directory | Project root used for `.loop-spec` discovery. The OpenCode plugin and ADK bridge set it from the session/project directory. |
+| `CLAUDE_SKILL_DIR` | host adapter | Directory of the active skill, used for bundled relative paths. The OpenCode plugin and ADK bridge update it as skills are loaded. |
 | `CLAUDE_CODE_SESSION_ID`, `CLAUDE_SESSION_ID` | host adapter; process ID fallback | Session identity used to scope learnings and hook failure counters. |
-| `PI_CODING_AGENT_DIR` | pi | pi configuration directory. When the adapter signal is missing, a non-empty value is a weak pi harness-detection hint. |
 | `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | OpenCode; unset | OpenCode-native opt-in for background subagents. loop-spec does not set it and does not depend on it; the OpenCode adapter’s bounded dispatch rules still apply. |
 | `OPENCODE_CONFIG_DIR` | operator/installer; unset | Explicit OpenCode install target. |
+| `LOOP_SPEC_ADK_AGENT_DIR` | operator/installer; unset | Mounted ADK agent directory (written by `lib/adk-install.sh`). Required by the `adk` fleet backend and `lib/issue-intake.sh`, which dispatch at a directory rather than a bare prompt. |
+| `LOOP_SPEC_ADK_MODEL` | operator; `gemini-2.5-pro` | Default ADK model for a mounted agent. `lib/adk-install.sh --model` writes it into the generated shim. |
 | `XDG_CONFIG_HOME` | operating system/user; `~/.config` | Base for the default OpenCode install target when `OPENCODE_CONFIG_DIR` is unset. |
 | `GH_HOST` | GitHub CLI; `github.com` | GitHub host used for credential refresh context and PR API calls. |
 | `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN` | GitHub CLI | Authentication inherited by GitHub operations. They are also the only keys a credential-refresh command may return in its private JSON output. |
@@ -152,6 +155,11 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_MAP_MAX_AGE_DAYS` | positive integer; `90` | Age at which `lib/map-audit.sh staleness` reports a map domain as stale, matching the existing refresh advisory. |
 | `LOOP_SPEC_MAP_DIR` | path; `docs/loop-spec/codebase` | Codebase-map location read by `lib/map-audit.sh` and `lib/map-trust.sh`. |
 | `LOOP_SPEC_MAP_INDEX` | path; `.loop-spec/codebase/index.json` | Map index location read by `lib/map-audit.sh orphans` and `staleness`, and pruned by `lib/map-index-prune.sh`. |
+| `LOOP_SPEC_MAP_BOOTSTRAP` | `0`/`1`; `1` | `0` skips first-run GSD codebase-map ingestion and mapper dispatch. Existing maps are left untouched. |
+| `LOOP_SPEC_MAP_REFRESH` | `0`/`1`; `1` | `0` skips VERIFY's automatic incremental or greenfield codebase-map refresh. |
+| `LOOP_SPEC_ARTIFACTS_IN_PR` | `0`/`1`; `1` | `0` copies `docs/loop-spec/features/<slug>/` and feature state to the artifact store during candidate finalization, then restores that document directory to its base image so run documents do not enter the PR diff. |
+| `LOOP_SPEC_ARTIFACT_DIR` | directory outside the working tree; Git private storage | Store root used when `LOOP_SPEC_ARTIFACTS_IN_PR=0`. The default is the repository's private Git path under `loop-spec/artifacts`; set an external mounted directory for ephemeral jobs. A working-tree path is rejected because it would reintroduce the audit payload into the candidate. |
+| `LOOP_SPEC_PR_BODY_VERBOSE` | `0`/`1`; `0` | `0` keeps reviewer-facing summary and verification sections expanded while putting spec scores, convergence prose, and artifact metadata in a collapsed Run details block. `1` expands those sections. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | integer `0..86400`; `900` | Total DELIVER wait for required PR checks. `0` performs no extended wait. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
 | `LOOP_SPEC_CHECKS_REGISTRATION_GRACE_SECONDS` | non-negative integer; `30` | Grace period after push during which a missing check is treated as not-yet-registered rather than absent. |
@@ -172,7 +180,7 @@ variables. They configure that published recipe, not plugin internals:
 | Variable | Accepted values / default | Exact effect |
 |---|---|---|
 | `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and role Agents. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. Pi and OpenCode consume an explicit value only on loop-fleet subprocesses. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. OpenCode native task agents use generated-agent routes instead. |
-| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. Pi/OpenCode accept a native ID only for `IMPLEMENTER` on the loop-fleet rung (pi model ID or OpenCode `provider/model`); configure other OpenCode roles through generated agents. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
+| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. OpenCode and ADK accept a native ID only for `IMPLEMENTER` on the loop-fleet rung (OpenCode `provider/model`, ADK `gemini-*` or `provider/model`); configure other OpenCode roles through generated agents and ADK roles through the mounted agent. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
 | `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
 | `LOOP_SPEC_ANSWER_REPOS` | comma-separated repo names; all | Supplies workspace repo selection. |
@@ -334,7 +342,8 @@ Usage: `loop.py [task] [flags]`. Supply either the positional task or
 | `--state-dir PATH` | Override persisted runner state (default `.loop/<task-id>`). |
 | `--commit` | Commit a successful task result. |
 | `--claude-bin PATH` | Agent executable (default `claude`; changes to the selected adapter binary when appropriate). |
-| `--agent-cli claude\|pi\|opencode` | Agent CLI adapter (default inferred from the executable name, then Claude). |
+| `--agent-cli claude\|opencode\|adk` | Agent CLI adapter (default inferred from the executable name, then Claude). |
+| `--adk-agent-dir <dir>` | Mounted ADK agent directory for `--agent-cli adk` (default `$LOOP_SPEC_ADK_AGENT_DIR`). |
 | `--reset` | Discard prior state for this task ID and start again. |
 
 After `--`, additional arguments are forwarded verbatim to the selected agent CLI on
@@ -357,7 +366,7 @@ equivalent config-file field.
 | `--retry-watchdog CMD` | Retry authorization command. |
 | `--max-budget-usd AMOUNT` | Non-negative cost cap per task (default `0`, unlimited). |
 | `--claude-bin PATH` | Agent executable (default `claude`). |
-| `--agent-cli claude\|pi\|opencode` | Agent CLI adapter (default inferred from the executable). |
+| `--agent-cli claude\|opencode\|adk` | Agent CLI adapter (default inferred from the executable). |
 | `--feature-dir PATH` | Feature-state path used for exact-candidate baseline comparison. |
 | `--prepare-command CMD` | Persisted preparation command; an empty value disables detection. |
 | `--no-worktree` | Run serially in the supplied repository instead of creating task worktrees. `LOOP_SPEC_WORKTREES=0` implies this flag. |
@@ -373,7 +382,7 @@ Usage: `compile_spec.py <spec> [flags]`.
 | `--out PATH` | Compiled plan destination (default `plan/tasks.json`). |
 | `--model MODEL` | Compiler-pass model. |
 | `--claude-bin PATH` | Agent executable (default `claude`). |
-| `--agent-cli claude\|pi\|opencode` | Agent CLI adapter (default inferred from the executable). |
+| `--agent-cli claude\|opencode\|adk` | Agent CLI adapter (default inferred from the executable). |
 
 All three scripts also accept argparse’s `-h` / `--help`. Flags on scripts under
 `lib/` and `hooks/` are implementation interfaces used by skills and tests; they are

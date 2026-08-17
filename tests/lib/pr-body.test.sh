@@ -84,6 +84,7 @@ check "1: verification excerpt present" "1" "$(grep -c '42 tests' "$OUT")"
 check "1: convergence excerpt present" "1" "$(grep -c 'Converged' "$OUT")"
 check "1: warning bullet present" "1" "$(grep -c -- '- one warning' "$OUT")"
 check "1: artifact paths listed" "1" "$(grep -c 'docs/loop-spec/features/demo/SPEC.md' "$OUT")"
+check "1: run metadata is collapsed by default" "1" "$(grep -c '<summary>Run details</summary>' "$OUT")"
 check "1: provenance role is not rendered as a path" "0" "$(grep -c 'pattern-mapper' "$OUT")"
 check "1: metadata object is not rendered as a path" "0" "$(grep -c "'tech': None" "$OUT")"
 check "1: runtime task sidecar is not rendered as a path" "0" "$(grep -c 'tasks.json' "$OUT")"
@@ -166,7 +167,9 @@ bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
 check "5: renders with frontmatter" "0" "$?"
 check "5: no raw decimal scores leak" "0" "$(grep -c '0\.18\|goal_clarity' "$OUT")"
 check "5: no frontmatter delimiter leaks" "0" "$(grep -c '^---$' "$OUT")"
-check "5: spec quality section present" "1" "$(grep -c '^## Spec quality' "$OUT")"
+check "5: spec quality section present" "1" "$(grep -c '^### Spec quality' "$OUT")"
+check "5: spec quality follows reviewer-facing verification" "1" \
+  "$(awk '/^## Verification/{v=NR} /^### Spec quality/{q=NR} END{print (v && q && v<q)?1:0}' "$OUT")"
 check "5: percentages rendered" "1" "$(grep -c '| \*\*18%\*\* |' "$OUT")"
 check "5: per-dimension gate marks" "1" "$(grep -c '| Goal clarity | 85% | >= 60% | ✅ |' "$OUT")"
 check "5: rounds note rendered" "1" "$(grep -c 'Gate passed after 3 interview round' "$OUT")"
@@ -181,11 +184,25 @@ check "5: gate not passed note" "1" "$(grep -c 'not passed' "$OUT")"
 # Warnings render as a GFM alert.
 check "5: warnings as GFM alert" "1" "$(grep -c '> \[!WARNING\]' "$OUT")"
 
+# Verbose mode preserves expanded run sections for operators that want them.
+LOOP_SPEC_PR_BODY_VERBOSE=1 bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
+check "5b: verbose mode expands run details" "1" "$(grep -c '^## Spec quality' "$OUT")"
+check "5b: verbose mode omits details wrapper" "0" "$(grep -c '<summary>Run details</summary>' "$OUT")"
+
+# External artifact storage never claims those paths are committed in the PR.
+LOOP_SPEC_ARTIFACTS_IN_PR=0 bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT"
+check "5c: external artifact mode omits committed path list" "0" \
+  "$(grep -c 'docs/loop-spec/features/demo/SPEC.md' "$OUT")"
+check "5c: external artifact mode explains the audit trail" "1" \
+  "$(grep -c 'Stored outside the PR' "$OUT")"
+
 # ── Case 6: bad invocation ───────────────────────────────────────────────────
 ec=0; bash "$LIB" render >/dev/null 2>&1 || ec=$?
 check "6: missing args exit 2" "2" "$ec"
 ec=0; bash "$LIB" bogus a b c >/dev/null 2>&1 || ec=$?
 check "6: unknown subcommand exit 2" "2" "$ec"
+ec=0; LOOP_SPEC_PR_BODY_VERBOSE=maybe bash "$LIB" render "$WORK/feature.json" "$WORK" "$OUT" >/dev/null 2>&1 || ec=$?
+check "6: invalid verbosity exits 2" "2" "$ec"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

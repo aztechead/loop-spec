@@ -1,6 +1,6 @@
 ---
 name: mapper-domain
-description: Maps business concepts, glossary, entity model. Writes only to docs/loop-spec/codebase/DOMAIN.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation.
+description: "Maps business concepts, glossary, entity model. Writes only to docs/loop-spec/codebase/DOMAIN.md. Cycle-internal: dispatched by loop-spec skills with a structured brief; not for ad-hoc auto-delegation."
 tools:
   - Read
   - Write

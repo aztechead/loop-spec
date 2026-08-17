@@ -2,7 +2,7 @@
 
 loop-spec owns two machine-readable outputs: terminal cycle results and the normalized
 headless-agent result consumed by the bundled loop runner. It does not own the complete
-Claude Code, pi, or OpenCode CLI event protocols.
+Claude Code, OpenCode, or Google ADK CLI event protocols.
 
 ## Terminal Cycle Result
 
@@ -161,7 +161,7 @@ marker.
 ```
 
 `cost_usd` is `null` when the backend does not report cost. `turns` is a backend-derived
-unit, not a claim that Claude turns, pi `turn_end` events, and OpenCode `step_finish`
+unit, not a claim that Claude turns, ADK text events, and OpenCode `step_finish`
 events are semantically identical.
 
 ## Observed Backend Profiles
@@ -192,17 +192,19 @@ messages may contain `tool_result` blocks, and a terminal `result` event carries
 final status/result fields. Those shapes can change with Claude Code; use Anthropic's
 current headless/Agent SDK documentation and tolerate unknown event and content types.
 
-### pi
+### Google ADK
 
-loop-spec consumes newline-delimited JSON from `pi --mode json`:
+loop-spec consumes newline-delimited JSON from `adk run <agent-dir> --jsonl`:
 
-- first object `id` as the session id;
-- `turn_end` count as turns;
-- the last assistant `message_end.message.content` text as the result;
-- numeric `message_end.message.usage.cost.total` as cost.
+- first object `session_id` as the session id;
+- the count of non-`user`-authored events carrying text as turns;
+- the last such event's `content.parts[].text` as the result;
+- `error_code` / `error_message` on any event as the failure reason;
+- NO cost: ADK reports `usage_metadata` token counts, not money, so `cost_usd`
+  stays `None` — "unknown", never "free". A `--max-budget-usd` cap cannot bind here.
 
 Unknown and malformed lines are ignored. This is the observed compatibility profile,
-not pi's complete session schema.
+not ADK's complete Event schema.
 
 ### OpenCode
 

@@ -4,6 +4,9 @@ Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. App
 
 ### Step 5.5 - First-run codebase map (one-time per project)
 
+This procedure runs only after `lib/map-policy.sh bootstrap` returns `run`.
+`LOOP_SPEC_MAP_BOOTSTRAP=0` skips both GSD ingestion and mapper dispatch.
+
 **Workspace mode -- GSD ingest:** GSD ingest is a single-repo operation (`.planning/codebase/` lives inside one repo). Skip Step 5.5a (GSD ingest) entirely in workspace mode and log one line:
 
 ```
