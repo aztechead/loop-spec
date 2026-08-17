@@ -26,11 +26,11 @@ checks=(
   "hooks/team/micro-inject.sh	/loop-spec:auto"
   "skills/shared/autonomous-mode.md	/loop-spec:auto"
   "skills/shared/autonomous-mode.md	loop-spec-auto"
-  "skills/shared/pi-harness.md	/skill:auto"
+  "skills/shared/adk-harness.md	adk run"
   "skills/shared/opencode-harness.md	loop-spec-auto"
   "README.md	/loop-spec:auto"
   "README.md	AUTONOMOUS_ROUTE"
-  "skills/shared/pi-harness.md	route-terminal-guard.sh"
+  "skills/shared/adk-harness.md	route-terminal-guard.sh"
   "skills/shared/opencode-harness.md	route-terminal-guard.sh"
 )
 

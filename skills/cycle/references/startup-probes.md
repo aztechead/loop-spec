@@ -38,13 +38,12 @@ a fresh Claude CLI/SDK phase launcher and is checked by that launcher; role-leve
 full IDs fail in `feature-init.sh` before this step because Agent cannot consume
 them.
 
-**pi harness: skip this probe entirely** (`harness != "claude"` in the preflight
-blob). The probe pre-flights `Agent` dispatches and pi has no `Agent` tool; model
-failures surface loudly on the first loop-fleet dispatch instead. Do not write
-`modelsProbedAt`. See `skills/shared/pi-harness.md`. The same skip applies under
-OpenCode: per-role models live in the generated agent files there, so failures surface
-on the first task or loop-fleet dispatch.
-See `skills/shared/opencode-harness.md`.
+**Non-claude harnesses: skip this probe entirely** (`harness != "claude"` in the
+preflight blob). The probe pre-flights Claude Code model aliases, which exist on
+no other harness. Do not write `modelsProbedAt`. Under OpenCode per-role models
+live in the generated agent files, and under ADK they come from the mounted
+agent, so failures surface loudly on the first dispatch instead. See
+`skills/shared/opencode-harness.md` and `skills/shared/adk-harness.md`.
 
 **Probe cache (speed):** the probe result is cached in `.loop-spec/runtime.json`
 (`modelsProbedAt`, ISO-8601, and `modelsProbed`, the sorted selector array). Skip the

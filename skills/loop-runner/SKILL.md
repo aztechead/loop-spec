@@ -122,20 +122,24 @@ python3 scripts/supervisor.py --plan plan/tasks.json --parallel 2 \
 ```
 
 These options default off, so behavior is unchanged unless you opt in. They are
-Claude-specific and are ignored by the pi and OpenCode backends.
+Claude-specific and are ignored by the OpenCode and ADK backends.
 
-### pi backend (`--agent-cli pi`)
+### ADK backend (`--agent-cli adk`)
 
-All three layers also drive **pi** (https://pi.dev) as the headless agent:
-`--agent-cli pi` (on `loop.py`, `compile_spec.py`, and `supervisor.py`, which
-threads it into every tick) switches the invocation to `pi --mode json` and
-normalizes pi's event stream onto the same result contract — `result.json` and
-`fleet-result.json` are byte-for-byte the same shape. Auto-detection also works:
-a `--claude-bin` whose basename is `pi` selects the pi protocol. Differences:
-read-only passes (compiler, judge) run with `--no-builtin-tools` instead of
-permission modes; `--model` takes pi model ids; `--fallback-model` /
-`--retry-watchdog` / `allowed_tools` are claude-only and ignored; pi-specific
-flags pass through as extra args. See `skills/shared/pi-harness.md`.
+All three layers also drive **Google ADK** as the headless agent: `--agent-cli
+adk` (on `loop.py`, `compile_spec.py`, and `supervisor.py`, which threads it into
+every tick) switches the invocation to `adk run <agent-dir> "<prompt>" --jsonl`
+and normalizes ADK's JSONL event stream onto the same result contract —
+`result.json` and `fleet-result.json` are byte-for-byte the same shape.
+Auto-detection also works: a `--claude-bin` whose basename is `adk` selects the
+ADK protocol. Differences: dispatch targets a mounted agent DIRECTORY
+(`--adk-agent-dir`, or `$LOOP_SPEC_ADK_AGENT_DIR`) rather than a bare prompt;
+read-only passes (compiler, judge) select the `_readonly` sibling agent and fail
+closed when it is missing; the model flag is `--default_llm_model` and takes ADK
+ids; one-shot `adk run` cannot resume a session, so every tick starts fresh and
+carries context in the prompt; cost is unavailable because ADK reports tokens,
+not money. `--fallback-model` / `--retry-watchdog` / `allowed_tools` are
+claude-only and ignored. See `skills/shared/adk-harness.md`.
 
 ### opencode backend (`--agent-cli opencode`)
 

@@ -61,9 +61,9 @@ check "no resume candidates" "0" "$(jq -r '.resume.candidates | length' <<<"$out
 check "no warnings" "0" "$(jq -r '.warnings | length' <<<"$out")"
 
 
-# pi harness flows through the blob
-out="$(HARNESS=pi run_preflight)"
-check "pi harness reported" "pi" "$(jq -r '.harness.name' <<<"$out")"
+# adk harness flows through the blob
+out="$(HARNESS=adk run_preflight)"
+check "adk harness reported" "adk" "$(jq -r '.harness.name' <<<"$out")"
 
 # --- execution profile ---------------------------------------------------------
 out="$(run_preflight)"

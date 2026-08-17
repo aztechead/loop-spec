@@ -33,8 +33,9 @@ harnesses, regardless of which models either account exposes.
 only for an Agent-compatible alias and omit it for `inherit`. OpenCode maps the
 same logical dispatch to its generated agent and omits a per-call model, as
 required by `skills/shared/opencode-harness.md`.
-Pi performs inline dispatch and inherits its session model as described in
-`skills/shared/pi-harness.md`.
+ADK resolves a role's model from its charter only when that names an ADK id and
+otherwise inherits the mounted agent's model, as required by
+`skills/shared/adk-harness.md`.
 
 ## Resolution and overrides
 

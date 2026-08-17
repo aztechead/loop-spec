@@ -82,25 +82,24 @@ sample agent definitions). To add a fixture for a new manual end-to-end cell,
 create `tests/fixtures/{name}/` with a `Makefile` exposing `test`, `lint`, and
 `typecheck` targets, plus a short `README.md` describing its purpose.
 
-## Manual pi-harness smoke (live, owed before each release that touches pi paths)
+## Manual ADK-harness smoke (live, owed before each release that touches ADK paths)
 
-The offline suite covers the pi protocol with `tests/fakepi` and structural
-lints; it cannot exercise a real pi runtime. Before tagging, run once against a
-live pi install:
+`tests/adk-extension.test.sh` exercises the bridge against the REAL `google-adk`
+package (skills load, `CLAUDE_*` reaches the shell, tool surfaces are exact), and
+`tests/adk-harness-coverage.test.sh` pins the cross-file couplings — but neither
+calls a model. Before tagging, run once against live credentials:
 
-1. `pi install git:github.com/aztechead/loop-spec` — package loads, skills
-   listed under `/skill:`, `/loop-debug` prompt registered, extension loads
-   without errors.
-2. In the TUI: invoke `/skill:assess` on a small repo — verify
-   `CLAUDE_SKILL_DIR`/`CLAUDE_PLUGIN_ROOT` resolve (lib scripts run), teams and
-   Workflow report unavailable, no Agent/AskUserQuestion calls are attempted.
-3. Headless: `pi --mode json "/skill:cycle autonomous <small task>"` — cycle
-   runs question-free on the inline rung; then a fleet tick via
-   `python3 skills/loop-runner/scripts/loop.py "<task>" --agent-cli pi --verify <cmd>`.
-4. Pin the two doc-underspecified behaviors the offline suite cannot prove:
-   (a) `pi --mode json "<prompt>"` **exits** after the response (if it holds the
-   session open, every fleet tick runs to its timeout — add `-p` to the
-   `run_pi` invocation if so); (b) a bash command run by a skill sees
-   `LOOP_SPEC_HARNESS=pi` (the extension both sets process.env and prepends an
-   export line to each bash command — `echo $LOOP_SPEC_HARNESS` from the TUI
-   confirms delivery).
+1. `pip install google-adk` and `bash lib/adk-install.sh install --project <dir>`
+   — both agent directories written, `check` clean.
+2. `adk run <dir>/adk_agents/loop_spec "list your skills" --jsonl` — the agent
+   enumerates loop-spec's skills and the JSONL stream parses.
+3. Load a skill and confirm its shell lines run: the model should call
+   `load_skill`, then `Execute` a `bash "${CLAUDE_SKILL_DIR}/../../lib/..."`
+   command that succeeds — this is the whole CLAUDE_SKILL_DIR bridge in one step.
+4. A fleet tick:
+   `python3 skills/loop-runner/scripts/loop.py "<task>" --agent-cli adk --adk-agent-dir <dir>/adk_agents/loop_spec --verify <cmd>`
+   — `result.json` has the same shape as the claude backend, with
+   `total_cost_usd: null` (ADK reports tokens, not money).
+5. Confirm the read-only agent refuses to write: dispatch a judge tick
+   (`--permission-mode plan`) and verify it holds only `ReadFile` plus the skill
+   tools.

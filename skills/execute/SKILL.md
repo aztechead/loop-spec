@@ -361,7 +361,7 @@ Announce the choice on one line, then dispatch the matching path below:
 echo "[EXECUTE] DAG width W=$W -> rung: $rung ($rung_reason)"
 ```
 
-- `rung == "inline"`: follow **`skills/shared/execute-inline.md`** (no subagent harness — the lead performs each task itself on `feat/{slug}`; see `skills/shared/pi-harness.md`). Same `{merged, blocked, escalation}` shape; consume it per Step 3b-exit, then go to **Phase exit**. Skip Steps 4-10.
+- `rung == "inline"`: follow **`skills/shared/execute-inline.md`** (no one-shot dispatch tool — the lead performs each task itself on `feat/{slug}`). Same `{merged, blocked, escalation}` shape; consume it per Step 3b-exit, then go to **Phase exit**. Skip Steps 4-10.
 - `rung == "subagent"`: follow **`skills/shared/execute-subagent.md`** (lead-driven waves of one-shot `Agent` calls + inline ff-merge). It returns the same `{merged, blocked, escalation}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
 - `rung == "loop"`: follow **`skills/shared/execute-loop-fleet.md`** (plan-to-loop conversion + loop-runner supervisor fleet). It returns the same `{merged, blocked, escalation}` shape; consume it exactly as the workflow path does (Step 3b-exit below), then go to **Phase exit**. Skip Steps 4-10.
 - `rung == "team"`: fall through to **Steps 4-10** (the TeamCreate self-claim team).

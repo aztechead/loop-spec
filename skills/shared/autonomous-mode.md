@@ -27,13 +27,13 @@ returns. A user or durable supervisor then invokes the cycle again; resume detec
 enters the recorded next phase in a new agent session. This does not disable one-shot
 subagents inside a phase.
 
-Under the pi harness the preferred entry is `pi --mode json "/skill:auto
-<description>"` (or `pi -p ...`, or the pi SDK's `createAgentSession()` prompting the
-same text). Under opencode it is `opencode run --format json "Load the loop-spec-auto
-skill and run: <description>"` (or the `@opencode-ai/sdk`'s
-`client.session.prompt()` against `opencode serve`, same text). The self-answer and
-fail-closed routing contracts are identical; see `skills/shared/pi-harness.md` and
-`skills/shared/opencode-harness.md`.
+Under opencode the preferred entry is `opencode run --format json "Load the
+loop-spec-auto skill and run: <description>"` (or the `@opencode-ai/sdk`'s
+`client.session.prompt()` against `opencode serve`, same text). Under ADK it is
+`adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run:
+<description>" --jsonl` (or your own `Runner` over `build_app()`, same text). The
+self-answer and fail-closed routing contracts are identical; see
+`skills/shared/opencode-harness.md` and `skills/shared/adk-harness.md`.
 
 ## Trigger and precedence
 

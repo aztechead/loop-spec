@@ -98,7 +98,7 @@ in the decisions record. Style is forced to `auto`. Explicit `LOOP_SPEC_ANSWER_*
 self-answer rule, decisions record, per-site map — in **`skills/shared/autonomous-mode.md`**;
 every phase skill honors it. Headless form for an explicitly full run:
 `claude -p "/loop-spec:cycle autonomous <description>"` (pi: `pi --mode json
-"/skill:cycle autonomous <description>"`). Use `/loop-spec:auto <description>` when
+`load_skill({skill_name: "cycle"})` with `autonomous <description>`). Use `/loop-spec:auto <description>` when
 the autonomous entry should semantically choose micro, debug, or the full cycle before
 paying the full-cycle startup cost.
 Setup answers made before SPEC.md exists (workspace repos, resume choice, commands) are
@@ -283,11 +283,11 @@ esac
 
 - `none` → no teams. Phases use **`skills/shared/no-teams-fallback.md`** (one-shot
   `Agent`; EXECUTE uses the loop-fleet or subagent rung). Phases MUST NOT call any team tool.
-  - When the preflight blob additionally reports `harness.name == "pi"` (mode is
-    always `none` there), the `Agent` tool itself does not exist either: apply
-    **`skills/shared/pi-harness.md`** on top — one-shot dispatches run inline by
-    the lead, EXECUTE selects the loop-fleet or inline rung, and the model probe
-    is skipped.
+  - When the preflight blob additionally reports `harness.name == "adk"` (mode is
+    always `none` there), one-shot dispatches run through the bridge's
+    `dispatch_subagent` tool: apply **`skills/shared/adk-harness.md`** on top —
+    same call shape, role names without the `loop-spec:` prefix, model probe
+    skipped.
   - When it reports `harness.name == "opencode"` (mode is always `none` there
     too), one-shot dispatches run natively through opencode's `task` tool: apply
     **`skills/shared/opencode-harness.md`** on top — same call shape, agent ids

@@ -31,14 +31,11 @@ run() {
 }
 
 # --- detect: override wins over everything ---
-got=$(run detect LOOP_SPEC_HARNESS=pi)
-check "override pi -> pi" "pi" "$got"
+got=$(run detect LOOP_SPEC_HARNESS=adk)
+check "override adk -> adk" "adk" "$got"
 
-got=$(run detect LOOP_SPEC_HARNESS=claude PI_CODING_AGENT_DIR=/x)
-check "override claude beats pi env hint" "claude" "$got"
-
-got=$(run detect LOOP_SPEC_HARNESS=pi CLAUDECODE=1)
-check "override pi beats CLAUDECODE" "pi" "$got"
+got=$(run detect LOOP_SPEC_HARNESS=adk CLAUDECODE=1)
+check "override adk beats CLAUDECODE" "adk" "$got"
 
 got=$(run detect LOOP_SPEC_HARNESS=opencode)
 check "override opencode -> opencode" "opencode" "$got"
@@ -46,32 +43,31 @@ check "override opencode -> opencode" "opencode" "$got"
 got=$(run detect LOOP_SPEC_HARNESS=opencode CLAUDECODE=1)
 check "override opencode beats CLAUDECODE" "opencode" "$got"
 
-got=$(run detect LOOP_SPEC_HARNESS=opencode PI_CODING_AGENT_DIR=/x)
-check "override opencode beats pi env hint" "opencode" "$got"
+got=$(run detect LOOP_SPEC_HARNESS=claude)
+check "override claude -> claude" "claude" "$got"
 
-# --- detect: unknown override falls through ---
+# --- detect: unknown override falls through to the back-compat default ---
 got=$(run detect LOOP_SPEC_HARNESS=garbage)
 check "unknown override -> default claude" "claude" "$got"
 
-got=$(run detect LOOP_SPEC_HARNESS=garbage PI_CODING_AGENT_DIR=/x)
-check "unknown override falls through to pi hint" "pi" "$got"
+# The removed pi harness is now just an unknown value: it must not resolve to a
+# harness with no contract, no backend, and no extension.
+got=$(run detect LOOP_SPEC_HARNESS=pi)
+check "retired pi override -> default claude" "claude" "$got"
+
+got=$(run detect PI_CODING_AGENT_DIR=/x)
+check "retired pi env hint -> default claude" "claude" "$got"
 
 # --- detect: env signals ---
 got=$(run detect CLAUDECODE=1)
 check "CLAUDECODE=1 -> claude" "claude" "$got"
 
-got=$(run detect CLAUDECODE=1 PI_CODING_AGENT_DIR=/x)
-check "CLAUDECODE beats pi hint" "claude" "$got"
-
-got=$(run detect PI_CODING_AGENT_DIR=/x)
-check "PI_CODING_AGENT_DIR -> pi" "pi" "$got"
-
 got=$(run detect)
 check "no signals -> default claude" "claude" "$got"
 
 # --- cli mirrors detect ---
-got=$(run cli LOOP_SPEC_HARNESS=pi)
-check "cli under pi -> pi" "pi" "$got"
+got=$(run cli LOOP_SPEC_HARNESS=adk)
+check "cli under adk -> adk" "adk" "$got"
 
 got=$(run cli)
 check "cli default -> claude" "claude" "$got"
@@ -80,15 +76,17 @@ got=$(run cli LOOP_SPEC_HARNESS=opencode)
 check "cli under opencode -> opencode" "opencode" "$got"
 
 # --- subagents ---
-got=$(run subagents LOOP_SPEC_HARNESS=pi)
-check "subagents under pi -> false" "false" "$got"
-
 got=$(run subagents CLAUDECODE=1)
 check "subagents under claude -> true" "true" "$got"
 
 # opencode's task tool shares the Agent call shape, so the capability holds.
 got=$(run subagents LOOP_SPEC_HARNESS=opencode)
 check "subagents under opencode -> true" "true" "$got"
+
+# The ADK bridge's dispatch_subagent takes the same {description, prompt,
+# subagent_type} shape, so the capability holds there too.
+got=$(run subagents LOOP_SPEC_HARNESS=adk)
+check "subagents under adk -> true" "true" "$got"
 
 # --- loop runtime ---
 got=$(run loop-runtime LOOP_SPEC_NON_INTERACTIVE=1)

@@ -117,9 +117,10 @@ the ban on raw `jq`/`python3` mutation applies to node bodies verbatim.
 
 Nothing under `lib/graph/` branches on the harness: no `lib/harness.sh` call, no
 entrypoint probe, no per-harness case. Only node *bodies* adapt, through
-`lib/harness.sh`, under the additive-branch contract of `skills/shared/pi-harness.md`
-and `skills/shared/opencode-harness.md`. The enforcers are the coupling pins
-`tests/pi-harness-coverage.test.sh` and `tests/opencode-harness-coverage.test.sh`: every
+`lib/harness.sh`, under the additive-branch contract of
+`skills/shared/opencode-harness.md` and `skills/shared/adk-harness.md`. The
+enforcers are the coupling pins
+`tests/opencode-harness-coverage.test.sh` and `tests/adk-harness-coverage.test.sh`: every
 legitimate `lib/harness.sh` coupling is enumerated there, and a `lib/graph/` file
 appearing in that inventory is a contract violation to reject in review, never a pin to
 add.

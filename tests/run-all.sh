@@ -38,9 +38,8 @@ run_suite() {
 
 run_suite "validate-agents"           "bash tests/validate-agents.sh"
 run_suite "validate-manifest"         "bash tests/validate-manifest.test.sh"
-run_suite "validate-pi-manifest"      "bash tests/validate-pi-manifest.test.sh"
-run_suite "pi-extension"              "bash tests/pi-extension.test.sh"
-run_suite "pi-harness-coverage"       "bash tests/pi-harness-coverage.test.sh"
+run_suite "adk-harness-coverage"      "bash tests/adk-harness-coverage.test.sh"
+run_suite "adk-extension"             "bash tests/adk-extension.test.sh"
 run_suite "graph-conformance"         "bash tests/graph-conformance.test.sh"
 run_suite "graph-docs-coverage"       "bash tests/graph-docs-coverage.test.sh"
 run_suite "lib/graph-schema"          "bash tests/lib/graph-schema.test.sh"

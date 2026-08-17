@@ -68,21 +68,25 @@ check "E2: override none beats flag=1" "none" "$got"
 got=$(env CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_TEAMS_MODE=bogus bash "$LIB" "2.1.181")
 check "E3: override bogus -> none (fail safe)" "none" "$got"
 
-# Case F: pi harness -> none even with the flag exported and a modern version
-# (teams are a Claude Code surface; under pi the Agent tool does not exist)
-got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_HARNESS=pi)
-check "F: pi harness + flag=1 -> none" "none" "$got"
+# Case F: adk harness -> none even with the flag exported and a modern version
+# (named, addressable teammates are a Claude Code surface; ADK's AgentTool
+# returns a result to its caller and nothing more)
+got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_HARNESS=adk)
+check "F: adk harness + flag=1 -> none" "none" "$got"
 
+# The retired pi env hint must no longer gate anything: a Claude Code user with a
+# stale PI_CODING_AGENT_DIR in their environment would otherwise lose teams for a
+# harness that no longer exists.
 got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 PI_CODING_AGENT_DIR=/x)
-check "F2: pi env hint + flag=1 -> none" "none" "$got"
+check "F2: retired pi env hint no longer suppresses teams" "implicit" "$got"
 
 # An override may turn a capability OFF anywhere, but it must not conjure one the
-# harness does not have. pi has no Agent tool at all, so `implicit` there is a state
+# harness does not have. ADK has no named teammates at all, so `implicit` there is a state
 # that cannot exist: it used to answer "implicit" and route EXECUTE onto a team rung
 # whose every spawn throws. Absence of a surface is a fact; only a negative override
 # is honored past the harness gate.
-got=$(run "2.1.181" LOOP_SPEC_HARNESS=pi LOOP_SPEC_TEAMS_MODE=implicit)
-check "F3: positive mode override cannot beat the pi gate" "none" "$got"
+got=$(run "2.1.181" LOOP_SPEC_HARNESS=adk LOOP_SPEC_TEAMS_MODE=implicit)
+check "F3: positive mode override cannot beat the adk gate" "none" "$got"
 got=$(run "2.1.181" LOOP_SPEC_HARNESS=opencode LOOP_SPEC_TEAMS_MODE=explicit)
 check "F4: positive mode override cannot beat the opencode gate" "none" "$got"
 # The escape hatch is still there for anyone who needs one: assert the harness, then
@@ -91,7 +95,7 @@ got=$(run "2.1.181" LOOP_SPEC_HARNESS=claude LOOP_SPEC_TEAMS_MODE=implicit)
 check "F5: harness assertion + mode override still forces the mode" "implicit" "$got"
 
 # Case G: opencode harness -> none (resumable tasks have no named teammates,
-# peer messaging, or shared task list -- same Claude-Code-surface gate as pi)
+# peer messaging, or shared task list -- same Claude-Code-surface gate as ADK)
 got=$(run "2.1.181" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_HARNESS=opencode)
 check "G: opencode harness + flag=1 -> none" "none" "$got"
 

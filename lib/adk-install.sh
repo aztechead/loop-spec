@@ -76,9 +76,9 @@ Regenerate with:
 
 import sys
 
-LOOP_SPEC_ADK = r"$PKG"
-if LOOP_SPEC_ADK not in sys.path:
-    sys.path.insert(0, LOOP_SPEC_ADK)
+_PACKAGE_PATH = r"$PKG"
+if _PACKAGE_PATH not in sys.path:
+    sys.path.insert(0, _PACKAGE_PATH)
 
 from loop_spec_adk import build_app  # noqa: E402
 
@@ -126,7 +126,7 @@ case "$cmd" in
     # A shim pointing at a package root that no longer exists is the drift this
     # catches: the clone moved or was deleted and every dispatch would ImportError.
     if [[ -f "$AGENT_DIR/agent.py" ]]; then
-      pkg="$(sed -n 's/^LOOP_SPEC_ADK = r"\(.*\)"$/\1/p' "$AGENT_DIR/agent.py" | head -1)"
+      pkg="$(sed -n 's/^_PACKAGE_PATH = r"\(.*\)"$/\1/p' "$AGENT_DIR/agent.py" | head -1)"
       if [[ -n "$pkg" && ! -d "$pkg/loop_spec_adk" ]]; then
         echo "adk-install: $AGENT_DIR/agent.py points at '$pkg', which is gone — re-run install" >&2
         status=1

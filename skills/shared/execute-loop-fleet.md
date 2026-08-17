@@ -9,12 +9,13 @@ edit the requirements to match its work. It requires no agent-teams support and
 no `Workflow` tool, but it does require the **agent CLI** on PATH, git, and a
 persistent harness runtime that can keep one synchronous long-running tool call alive.
 The agent CLI is the
-running harness's own headless binary (`claude`, `pi`, or `opencode`), resolved
-by `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli`; under pi every
+running harness's own headless binary (`claude`, `opencode`, or `adk`), resolved
+by `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli`; under opencode every
 `supervisor.py` / `loop.py` invocation below additionally carries
-`--agent-cli pi --claude-bin pi` (see `skills/shared/pi-harness.md`), and under
-opencode `--agent-cli opencode --claude-bin opencode`
-(see `skills/shared/opencode-harness.md`).
+`--agent-cli opencode --claude-bin opencode`
+(see `skills/shared/opencode-harness.md`), and under ADK
+`--agent-cli adk --claude-bin adk --adk-agent-dir "$LOOP_SPEC_ADK_AGENT_DIR"`
+(see `skills/shared/adk-harness.md`).
 
 ## When this rung is selected (see execute/SKILL.md Step 3b)
 
@@ -104,11 +105,13 @@ it caps each task's cumulative spend (halting `budget_exhausted`) and caps every
 tick at the task's remaining budget. Unset means unbounded — iteration and
 wall-clock caps do not bound cost.
 
-The portable `inherit` selector deliberately produces no `--model` flag. Under
-pi, append `--agent-cli pi --claude-bin pi`; an explicit override must be a pi
-model id. Under opencode, append `--agent-cli opencode --claude-bin opencode`;
-an explicit override must be an OpenCode `provider/model` id. In either harness,
-omitting `--model` inherits the configured session model.
+The portable `inherit` selector deliberately produces no model flag. Under
+opencode, append `--agent-cli opencode --claude-bin opencode`; an explicit
+override must be an OpenCode `provider/model` id. Under ADK, append
+`--agent-cli adk --claude-bin adk --adk-agent-dir <dir>`; an explicit override
+must be an ADK id (`gemini-*` or `provider/model`) and is spelled
+`--default_llm_model` by that backend. In every harness, omitting the model
+inherits the configured session model.
 
 The supervisor walks the DAG, runs each task's loop in an isolated worktree on
 branch `loop/<id>`, merges completed branches into `feat/{slug}` (the current

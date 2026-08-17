@@ -107,6 +107,8 @@ installers and therefore are part of the integration contract.
 | `PI_CODING_AGENT_DIR` | pi | pi configuration directory. When the adapter signal is missing, a non-empty value is a weak pi harness-detection hint. |
 | `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | OpenCode; unset | OpenCode-native opt-in for background subagents. loop-spec does not set it and does not depend on it; the OpenCode adapter’s bounded dispatch rules still apply. |
 | `OPENCODE_CONFIG_DIR` | operator/installer; unset | Explicit OpenCode install target. |
+| `LOOP_SPEC_ADK_AGENT_DIR` | operator/installer; unset | Mounted ADK agent directory (written by `lib/adk-install.sh`). Required by the `adk` fleet backend and `lib/issue-intake.sh`, which dispatch at a directory rather than a bare prompt. |
+| `LOOP_SPEC_ADK_MODEL` | operator; `gemini-2.5-pro` | Default ADK model for a mounted agent. `lib/adk-install.sh --model` writes it into the generated shim. |
 | `XDG_CONFIG_HOME` | operating system/user; `~/.config` | Base for the default OpenCode install target when `OPENCODE_CONFIG_DIR` is unset. |
 | `GH_HOST` | GitHub CLI; `github.com` | GitHub host used for credential refresh context and PR API calls. |
 | `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN` | GitHub CLI | Authentication inherited by GitHub operations. They are also the only keys a credential-refresh command may return in its private JSON output. |
@@ -334,7 +336,8 @@ Usage: `loop.py [task] [flags]`. Supply either the positional task or
 | `--state-dir PATH` | Override persisted runner state (default `.loop/<task-id>`). |
 | `--commit` | Commit a successful task result. |
 | `--claude-bin PATH` | Agent executable (default `claude`; changes to the selected adapter binary when appropriate). |
-| `--agent-cli claude\|pi\|opencode` | Agent CLI adapter (default inferred from the executable name, then Claude). |
+| `--agent-cli claude\|opencode\|adk` | Agent CLI adapter (default inferred from the executable name, then Claude). |
+| `--adk-agent-dir <dir>` | Mounted ADK agent directory for `--agent-cli adk` (default `$LOOP_SPEC_ADK_AGENT_DIR`). |
 | `--reset` | Discard prior state for this task ID and start again. |
 
 After `--`, additional arguments are forwarded verbatim to the selected agent CLI on
@@ -357,7 +360,7 @@ equivalent config-file field.
 | `--retry-watchdog CMD` | Retry authorization command. |
 | `--max-budget-usd AMOUNT` | Non-negative cost cap per task (default `0`, unlimited). |
 | `--claude-bin PATH` | Agent executable (default `claude`). |
-| `--agent-cli claude\|pi\|opencode` | Agent CLI adapter (default inferred from the executable). |
+| `--agent-cli claude\|opencode\|adk` | Agent CLI adapter (default inferred from the executable). |
 | `--feature-dir PATH` | Feature-state path used for exact-candidate baseline comparison. |
 | `--prepare-command CMD` | Persisted preparation command; an empty value disables detection. |
 | `--no-worktree` | Run serially in the supplied repository instead of creating task worktrees. `LOOP_SPEC_WORKTREES=0` implies this flag. |
@@ -373,7 +376,7 @@ Usage: `compile_spec.py <spec> [flags]`.
 | `--out PATH` | Compiled plan destination (default `plan/tasks.json`). |
 | `--model MODEL` | Compiler-pass model. |
 | `--claude-bin PATH` | Agent executable (default `claude`). |
-| `--agent-cli claude\|pi\|opencode` | Agent CLI adapter (default inferred from the executable). |
+| `--agent-cli claude\|opencode\|adk` | Agent CLI adapter (default inferred from the executable). |
 
 All three scripts also accept argparse’s `-h` / `--help`. Flags on scripts under
 `lib/` and `hooks/` are implementation interfaces used by skills and tests; they are
