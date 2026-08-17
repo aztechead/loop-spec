@@ -123,7 +123,8 @@ hard-gate them to `none` / `false` there regardless of environment variables.
 OpenCode prerequisites are the base runtime (`bash >= 3.2`, `git`, `jq >= 1.5`,
 `python3 >= 3.7`) plus the `opencode` CLI for the loop-fleet rung. ADK requires
 Python >=3.10 and `python3 -m pip install 'google-adk>=2.7,<3'`, plus a mounted
-agent (`bash lib/adk-install.sh install`); its `adk` CLI runs loop-fleet ticks.
+agent (`bash lib/adk-install.sh install`); `install` and `check` reject a missing
+package or any version outside that range. Its `adk` CLI runs loop-fleet ticks.
 The ADK bridge uses the experimental upstream `LocalEnvironment`: file tools
 enforce project containment, while Execute starts a shell in the project that
 still inherits the operating-system user's host permissions. Run it in an

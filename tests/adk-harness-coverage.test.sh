@@ -119,6 +119,13 @@ done
 # -- the installer must produce a mount that imports, not just files that exist.
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+ADK_STUB="$TMP/adk-stub"
+mkdir -p "$ADK_STUB/google/adk" "$ADK_STUB/google_adk-2.7.0.dist-info"
+printf '' > "$ADK_STUB/google/__init__.py"
+printf '' > "$ADK_STUB/google/adk/__init__.py"
+printf 'Metadata-Version: 2.1\nName: google-adk\nVersion: 2.7.0\n' \
+  > "$ADK_STUB/google_adk-2.7.0.dist-info/METADATA"
+export PYTHONPATH="$ADK_STUB${PYTHONPATH:+:$PYTHONPATH}"
 if bash lib/adk-install.sh install --project "$TMP" --model gemini-2.5-flash >/dev/null 2>&1 \
    && bash lib/adk-install.sh check --project "$TMP" >/dev/null 2>&1; then
   PASS=$((PASS+1)); echo "PASS: adk-install install+check round-trips"
@@ -133,6 +140,12 @@ for want in "$TMP/adk_agents/loop_spec/agent.py" "$TMP/adk_agents/loop_spec_read
     FAIL=$((FAIL+1)); echo "FAIL: installer did not write ${want#$TMP/}"
   fi
 done
+if [[ "$(jq -r '.adkRequirement' "$TMP/.loop-spec/adk-install.json")" == ">=2.7,<3" \
+   && "$(jq -r '.adkVersion' "$TMP/.loop-spec/adk-install.json")" == "2.7.0" ]]; then
+  PASS=$((PASS+1)); echo "PASS: installer records the enforced ADK contract"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: installer did not record the ADK contract"
+fi
 # `adk run` loads `app` before `root_agent`; only the App form carries the plugin.
 if grep -qF "app = build_app(" "$TMP/adk_agents/loop_spec/agent.py" 2>/dev/null; then
   PASS=$((PASS+1)); echo "PASS: generated shim exposes an App"
@@ -144,6 +157,27 @@ if grep -qF "readonly=True" "$TMP/adk_agents/loop_spec_readonly/agent.py" 2>/dev
 else
   FAIL=$((FAIL+1)); echo "FAIL: read-only shim does not request readonly"
 fi
+
+# Both install and check reject versions outside the supported major/minor range.
+sed -i.bak 's/Version: 2.7.0/Version: 2.6.9/' \
+  "$ADK_STUB/google_adk-2.7.0.dist-info/METADATA"
+OUT_OF_RANGE="$TMP/out-of-range"
+mkdir -p "$OUT_OF_RANGE"
+if bash lib/adk-install.sh install --project "$OUT_OF_RANGE" >/dev/null 2>&1 \
+   || [[ -e "$OUT_OF_RANGE/adk_agents/loop_spec/agent.py" ]]; then
+  FAIL=$((FAIL+1)); echo "FAIL: installer accepted google-adk below 2.7"
+else
+  PASS=$((PASS+1)); echo "PASS: installer rejects google-adk below 2.7"
+fi
+sed -i.bak 's/Version: 2.6.9/Version: 3.0.0/' \
+  "$ADK_STUB/google_adk-2.7.0.dist-info/METADATA"
+if bash lib/adk-install.sh check --project "$TMP" >/dev/null 2>&1; then
+  FAIL=$((FAIL+1)); echo "FAIL: installer check accepted google-adk 3.x"
+else
+  PASS=$((PASS+1)); echo "PASS: installer check rejects google-adk 3.x"
+fi
+sed -i.bak 's/Version: 3.0.0/Version: 2.7.0/' \
+  "$ADK_STUB/google_adk-2.7.0.dist-info/METADATA"
 # check must catch a mount whose package root moved out from under it.
 sed -i.bak "s|^_PACKAGE_PATH = .*$|_PACKAGE_PATH = '/nonexistent/loop-spec/extensions/adk'|" \
   "$TMP/adk_agents/loop_spec/agent.py"

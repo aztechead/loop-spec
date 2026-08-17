@@ -65,8 +65,9 @@ removed.
   `--adk-agent-dir` now reaches compiler, supervisor, and judge paths. A monetary
   budget is rejected under ADK because its JSONL reports tokens but no cost.
 - `lib/adk-install.sh` rejects mount traversal and user-file collisions, quotes
-  generated Python values safely, validates both shims, and uninstalls only its
-  marked files. Unrelated mount content is preserved.
+  generated Python values safely, enforces and records `google-adk>=2.7,<3`,
+  validates both shims, and uninstalls only its marked files. Unrelated mount
+  content is preserved.
 - Removing the pi-only root manifest no longer leaves OpenCode install metadata
   with an empty version; it now reads `.claude-plugin/plugin.json`.
 - Active skills and runtime comments no longer retain pi branches. The removal
