@@ -112,9 +112,9 @@ The three checks:
 
 ## Known false-positive sources (report them, do not hide them)
 
-Measured across this repository's own 169 markdown documents: **183 findings**, of which
-148 sit in delivered feature artifacts (SPEC/PLAN/PATTERNS from closed cycles, frozen
-records of what was true then) and 35 in live documents. The live findings were sampled and
+Measured across this repository's own 170 markdown documents: **181 findings**, of which
+149 sit in delivered feature artifacts (SPEC/PLAN/PATTERNS from closed cycles, frozen
+records of what was true then) and 32 in live documents. The live findings were sampled and
 were real: `tests/smoke.sh` renamed years ago, `lib/state-write.sh` deleted, a relative link
 written as if from the repository root. The known misfires:
 

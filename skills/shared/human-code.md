@@ -95,9 +95,9 @@ comment inside the handler, an exit guarded by a command that reports its own fa
 (`resolve_root "$1" || exit 2`), and a message naming any real noun all pass. A heredoc
 body in a shell script is data rather than shell, so it is not scanned — which also means
 a python program embedded in one is not checked at all. Measured
-across this repository's 349 shell, python, and TypeScript files: **1 finding**, a
+across this repository's 352 shell, python, and TypeScript files: **1 finding**, a
 `sys.exit(4)` whose status code is itself the documented contract — the known
-false-positive class, a query or state tool whose non-zero exit IS its answer. The three
+false-positive class, a query or state tool whose non-zero exit IS its answer. The four
 `except Exception: pass` handlers it found in `lib/graph/engine.py` were real and now
 carry the reason they always had.
 

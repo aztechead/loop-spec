@@ -26,9 +26,9 @@ pass.
   It is quiet wherever the code already says why: a narrow exception type (`except
   FileNotFoundError` names the case), a comment inside the handler, an exit guarded by a
   command that reports its own failure (`resolve_root "$1" || exit 2`), and any message
-  naming a real noun. Measured across this repository's 349 shell, python, and TypeScript
+  naming a real noun. Measured across this repository's 352 shell, python, and TypeScript
   files: **1 finding** — a `sys.exit(4)` whose status code is itself the documented
-  contract, which is the known false-positive class. The three `except Exception: pass`
+  contract, which is the known false-positive class. The four `except Exception: pass`
   handlers it found in `lib/graph/engine.py` were real, and each now carries the reason it
   always had.
 - **`skills/shared/human-code.md` gained its second half.** Three principles — fail loudly
@@ -58,8 +58,8 @@ pass.
   kind in that directory, which is what keeps runtime state (`.loop-spec/runtime.json`),
   foreign examples (`app/models/user.rb` in a project with no `app/`), and a path named
   because it is gone from being reported as rot. Measured over this repository's own 169
-  documents: 183 findings, 148 of them in delivered feature artifacts (frozen records) and
-  35 in live documents; the live ones were sampled and were real.
+  documents: 181 findings, 149 of them in delivered feature artifacts (frozen records) and
+  32 in live documents; the live ones were sampled and were real.
 - **VERIFY Step 7.66 — the docs-for-humans pass.** Runs `doc-tells.sh diff` over the
   change. Findings are fixable rather than advisory: each names a file, a line, and a
   one-line edit. The escape hatch is narrow and recorded — a documented misfire is written
