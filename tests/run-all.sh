@@ -327,6 +327,7 @@ run_suite "lib/tuning"                "bash tests/lib/tuning.test.sh"
 run_suite "lib/verify-live"           "bash tests/lib/verify-live.test.sh" integration
 run_suite "tests/all-tests-registered" "bash tests/all-tests-registered.test.sh"
 run_suite "tests/run-all"             "bash tests/run-all.test.sh"
+run_suite "tests/run-unit"            "bash tests/run-unit.test.sh"
 run_suite "tests/ponytail-coverage"   "bash tests/ponytail-coverage.test.sh"
 run_suite "tests/design-coverage"     "bash tests/design-coverage.test.sh"
 run_suite "tests/human-code-coverage" "bash tests/human-code-coverage.test.sh"

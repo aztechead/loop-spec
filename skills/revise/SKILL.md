@@ -48,9 +48,16 @@ git remote get-url origin >/dev/null 2>&1 || # abort: "revise requires an origin
 pr_json="$(gh pr view "<arg>" --json number,url,title,state,headRefName,baseRefName)"
 ```
 
-Abort unless `state == "OPEN"`. Derive:
-- `branch = .headRefName`, `pr = .number`
-- `slug`: strip a leading `feat/` from `branch`; otherwise sanitize the branch
+Abort unless `state == "OPEN"`. Read the command values from that response:
+
+```bash
+branch="$(jq -r '.headRefName' <<<"$pr_json")"
+pr="$(jq -r '.number' <<<"$pr_json")"
+base_branch="$(jq -r '.baseRefName' <<<"$pr_json")"
+pr_title="$(jq -r '.title' <<<"$pr_json")"
+```
+
+Derive `slug`: strip a leading `feat/` from `branch`; otherwise sanitize the branch
   name (non-alphanumerics → `-`).
 
 ### Step 2 - Resolve identity only (no state writes)
@@ -109,7 +116,7 @@ schema-7 skeleton:
 ```bash
 state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/revise-state.sh" ensure \
   "$revision_root" "$slug" \
-  --branch "$branch" --base-branch "<baseRefName>" --title "<PR title>" \
+  --branch "$branch" --base-branch "$base_branch" --title "$pr_title" \
   --autonomous <0|1>)"
 fdir="$(jq -r '.featureDir' <<<"$state")"
 ```

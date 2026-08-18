@@ -78,7 +78,10 @@ pass.
 
 - **The test loop is split by feedback speed.** `tests/run-unit.sh` maps the current
   worktree diff (or an explicit base ref) to same-name unit suites and registered coupling
-  tests, then runs just that set plus syntax and code/document tells. `tests/run-all.sh`
+  tests, including coverage pins for executable Markdown under the plugin's skill, agent,
+  command, and rule surfaces. `--list <path>...` explains the mapping without running it.
+  The gate then runs just that set plus syntax checks and diff-scoped code/document tells,
+  so existing findings elsewhere in a touched file do not poison the edit loop. `tests/run-all.sh`
   remains the complete offline gate, now runs independent suites concurrently, moves the
   graph mutation proofs into a temporary copy, prints concise timing by default, and
   accepts `RUN_ALL_JOBS` / `RUN_ALL_VERBOSE` for diagnosis.

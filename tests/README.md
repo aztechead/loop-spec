@@ -6,13 +6,20 @@ Run from repo root:
 
 ```bash
 bash tests/run-unit.sh
+bash tests/run-unit.sh --list skills/shared/human-code.md
 bash tests/run-all.sh
 ```
 
 `run-unit.sh` is the edit-loop gate. With no argument it maps uncommitted files to their
 same-name unit suites and every registered coupling test that names them, then runs only
 that set. Pass a base ref (`bash tests/run-unit.sh main`) to cover a whole branch diff.
-It also syntax-checks and runs the code/document tells over every changed file. The full
+Use `--list <path>...` to inspect the mapping without running it. Coupling discovery includes
+Markdown that the plugin executes as instructions under `skills/`, `agents/`, `commands/`,
+and `.claude/rules/`; ordinary prose selects the docs linter without expanding into every
+suite that happens to quote it.
+It also syntax-checks changed files and runs the code/document tells over lines introduced
+by the diff, so an existing finding elsewhere in a touched file does not poison the edit
+loop. The full
 gate runs every suite concurrently; set `RUN_ALL_JOBS=1` when diagnosing order-sensitive
 behavior and `RUN_ALL_VERBOSE=1` to print successful suite logs.
 

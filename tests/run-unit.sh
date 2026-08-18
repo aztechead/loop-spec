@@ -1,23 +1,36 @@
 #!/usr/bin/env bash
 # Fast edit-loop gate. Selects registered suites coupled to the current worktree diff;
 # pass a base ref to test the whole branch diff (for example, tests/run-unit.sh main).
+# `--list <path>...` prints the suite mapping without running it.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 cd "$REPO_ROOT"
 
-[[ $# -le 1 ]] || { echo "usage: tests/run-unit.sh [base_ref]" >&2; exit 2; }
-BASE="${1:-HEAD}"
-git rev-parse --verify "$BASE^{commit}" >/dev/null 2>&1 \
-  || { echo "run-unit.sh: base ref does not resolve: $BASE" >&2; exit 2; }
+LIST_ONLY=0
+BASE=HEAD
+if [[ "${1:-}" == "--list" ]]; then
+  LIST_ONLY=1
+  shift
+  (( $# > 0 )) || { echo "usage: tests/run-unit.sh --list <path>..." >&2; exit 2; }
+else
+  [[ $# -le 1 ]] || { echo "usage: tests/run-unit.sh [base_ref]" >&2; exit 2; }
+  BASE="${1:-HEAD}"
+  git rev-parse --verify "$BASE^{commit}" >/dev/null 2>&1 \
+    || { echo "run-unit.sh: base ref does not resolve: $BASE" >&2; exit 2; }
+fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-run-unit-XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 CHANGED="$WORK/changed"
 SELECTED="$WORK/selected"
-git diff --name-only "$BASE" > "$CHANGED"
-git ls-files --others --exclude-standard >> "$CHANGED"
+if [[ "$LIST_ONLY" == "1" ]]; then
+  printf '%s\n' "$@" > "$CHANGED"
+else
+  git diff --name-only "$BASE" > "$CHANGED"
+  git ls-files --others --exclude-standard >> "$CHANGED"
+fi
 sort -u "$CHANGED" -o "$CHANGED"
 
 if [[ ! -s "$CHANGED" ]]; then
@@ -44,9 +57,13 @@ while IFS= read -r path; do
     tests/run-all.sh|tests/run-unit.sh)
       add_suite "tests/all-tests-registered.test.sh"
       add_suite "tests/run-all.test.sh"
+      add_suite "tests/run-unit.test.sh"
       ;;
   esac
   case "$path" in
+    skills/*.md|skills/*.markdown|agents/*.md|agents/*.markdown|commands/*.md|commands/*.markdown|.claude/rules/*.md|.claude/rules/*.markdown)
+      coverage_paths+=("$path")
+      ;;
     *.md|*.markdown|*.test.sh|tests/run-all.sh|tests/run-unit.sh) ;;
     *) coverage_paths+=("$path") ;;
   esac
@@ -57,6 +74,11 @@ if (( ${#coverage_paths[@]} > 0 )); then
   while IFS=$'\t' read -r kind target suite; do
     [[ "$kind" == "covers" ]] && add_suite "$suite"
   done <<< "$covers"
+fi
+
+if [[ "$LIST_ONLY" == "1" ]]; then
+  [[ -s "$SELECTED" ]] && sort -u "$SELECTED"
+  exit 0
 fi
 
 if [[ -s "$SELECTED" ]]; then
@@ -76,21 +98,8 @@ while IFS= read -r path; do
   esac
 done < "$CHANGED"
 
-code_paths=()
-doc_paths=()
-while IFS= read -r path; do
-  [[ -f "$path" ]] || continue
-  case "$path" in
-    *.sh|*.bash|*.py|*.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx) code_paths+=("$path") ;;
-    *.md|*.markdown) doc_paths+=("$path") ;;
-  esac
-done < "$CHANGED"
-if (( ${#code_paths[@]} > 0 )); then
-  bash lib/comment-tells.sh scan "${code_paths[@]}"
-  bash lib/failure-tells.sh scan "${code_paths[@]}"
-fi
-if (( ${#doc_paths[@]} > 0 )); then
-  bash lib/doc-tells.sh scan "${doc_paths[@]}"
-fi
+bash lib/comment-tells.sh diff "$BASE"
+bash lib/failure-tells.sh diff "$BASE"
+bash lib/doc-tells.sh diff "$BASE"
 
 echo "run-unit: changed-file gate passed"
