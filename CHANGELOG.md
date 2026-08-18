@@ -4,8 +4,10 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [4.1.0] - 2026-08-18
 
-Fixes and additive controls from headless, autonomous, graph-driven runs. Every
-change defaults to 4.0.0 behavior unless a new flag, token, or node field is set.
+Fixes and controls from headless, autonomous, graph-driven runs. Two changes alter
+default behavior — the repository-wide suite now runs once per cycle rather than per
+EXECUTE wave, and the `skippable` node field is gone. Everything else defaults to 4.0.0
+behavior unless a new flag, token, or node field is set.
 
 ### Removed
 
@@ -14,6 +16,22 @@ change defaults to 4.0.0 behavior unless a new flag, token, or node field is set
   an agent or a fast-path rather than a script — so it skipped nothing, invisibly,
   while reading like a live control. A `route` skips the NODE, works for every node
   kind, and shows up in a dry run. One mechanism for "do not run this", not two.
+
+### Changed
+
+- **The repository-wide test/lint/typecheck comparison runs ONCE per cycle, at
+  VERIFY.** Every EXECUTE rung — inline, one-shot subagent, agent team, Workflow,
+  and the loop-fleet supervisor — ran `lib/feature-validation.sh compare` again at
+  each wave or merge-queue boundary, so a run paid a full suite per wave PLUS the
+  one VERIFY Step 1.75 runs against the same integrated tree moments later. On a
+  single-wave change those two runs were the same commands over the same working
+  tree. EXECUTE now runs each task's focused `verifyCommand` after any rebase and
+  nothing else. Regressions surface at VERIFY instead of at the wave boundary,
+  where remediation already routes through `pendingRemediationTasks`.
+  `tests/execution-validation-coverage.test.sh` inverts: it now asserts NO rung
+  names `feature-validation.sh` and that VERIFY does.
+- The loop-fleet supervisor's `--feature-dir` flag is removed with the behaviour
+  it existed for; it had no other consumer.
 
 ### Fixed
 

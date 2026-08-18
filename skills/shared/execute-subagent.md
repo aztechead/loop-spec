@@ -95,10 +95,9 @@ Apply these replacements to the lead wave loop:
 5. On `block`, retry exhaustion, out-of-scope dirt, verification failure, missing
    commit, or an unreadable Git state, stop with the existing structured blocked or
    escalation reason. Preserve the working tree for diagnosis; never reset or clean it.
-6. Run the normal post-merge `feature-validation.sh compare` once for the completed
-   serialized wave (Step 7 below). Each task still runs its own `verifyCommand` before
-   publication; the wave gate validates the exact integrated feature candidate before
-   another wave begins.
+6. Each task runs its own `verifyCommand` before publication. The repository-wide
+   test/lint/typecheck comparison is NOT run here: it runs exactly once per cycle, at
+   VERIFY Step 1.75, against the fully integrated candidate.
 
 The direct implementer prompt keeps every non-worktree step of the template below and
 replaces its Steps 1, 1.5, 3, and 5 with:
@@ -179,14 +178,10 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    The helper runs `verifyCommand` after any required rebase and before publication,
    so each task's focused proof covers exactly the commit that fast-forwards the feature
    branch. It deliberately does not run the repository-wide suite here.
-7. **Post-wave candidate suite gate**: after every passed task in the wave has been
-   published, run `lib/feature-validation.sh compare` once against the feature directory.
-   Exit 20 is a new regression; exit 21 is preparation/infrastructure failure. Unchanged
-   failures do not block only when a startup baseline was captured
-   (`LOOP_SPEC_STARTUP_BASELINE=1`); with none recorded any failure blocks.
-   This validates the exact integrated wave candidate and
-   catches cross-task regressions without repeating the same full suite once per task.
-8. Loop back to step 1.
+7. Loop back to step 1. EXECUTE runs no repository-wide suite of its own: every task's
+   focused `verifyCommand` runs after any rebase and before publication, and the
+   test/lint/typecheck comparison runs exactly once per cycle, at VERIFY Step 1.75,
+   against the fully integrated candidate.
 
 ## Agent dispatch convention
 
@@ -333,8 +328,9 @@ Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.
 
 Step 4 - Run the task's feature-specific verify command inside the worktree:
   {task.verifyCommand}
-The integration helper reruns this focused command after any required rebase. The lead
-runs the repository-wide no-new-failures comparison once after the integrated wave.
+The integration helper reruns this focused command after any required rebase. This is the
+only command EXECUTE runs; the repository-wide no-new-failures comparison happens once per
+cycle, at VERIFY.
 
 Step 5 - Stage and commit inside the worktree branch:
   git -C "{worktree_path}" add <files>
@@ -507,9 +503,8 @@ commit directly on `feat/{slug}` in the repo; there is no task branch and no per
 worktree to merge. The lead does not run `git merge` or `git worktree remove` for
 workspace tasks.
 
-The post-wave suite gate (step 7) still applies: run
-`lib/feature-validation.sh compare {workspace_root}/.loop-spec/features/{slug}` once.
-It prepares and compares every participating repo; only new failures block.
+No post-wave suite gate runs here either. The repository-wide comparison across every
+participating repo happens once, at VERIFY Step 1.75.
 
 ### Completion verification (workspace mode)
 

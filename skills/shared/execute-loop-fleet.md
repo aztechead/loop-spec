@@ -88,7 +88,6 @@ parallel=$(( W < maxParallelImplementers ? W : maxParallelImplementers ))
 worker_model="{feature.models.implementer}"
 supervisor_args=(
   --plan "$fdir/loop-plan.json"
-  --feature-dir "$fdir"
   --prepare-command "$(jq -r '.commands.prepare // ""' "$fdir/feature.json")"
   --parallel "$parallel"
   --retries "2"
@@ -119,8 +118,9 @@ branch) so dependents build on them, retries stalls/thrash once with the stall
 context appended, never retries timeout halts, and kills the fleet on a
 verifier-integrity violation.
 Before each merge, the supervisor rebases and verifies the immutable candidate through
-`integrate-task.sh`, combining the task command with `feature-validation.sh compare` from
-that task worktree. Only a candidate with no new exact-base failures can merge.
+`integrate-task.sh` using the TASK's own focused verify command. It runs no
+repository-wide suite: the test/lint/typecheck comparison runs exactly once per cycle, at
+VERIFY Step 1.75, against the fully integrated candidate.
 
 This call is long-running and unattended; run it in the foreground. The supervisor
 prints and flushes `FLEET_START` before environment preparation, bounds every worker

@@ -186,14 +186,17 @@ def fake_sh(cmd, cwd, timeout=300):
 
 supervisor.sh = fake_sh
 class Args:
-    feature_dir = ".loop-spec/features/demo"
-s = supervisor.Supervisor({"tasks": [{"id": "immutable", "verify": "true"}]},
+    pass
+s = supervisor.Supervisor({"tasks": [{"id": "immutable", "verify": "pytest -q"}]},
                           Path("/tmp/repo"), Args())
 ok = s.merge("immutable")
 merge_cmd = next(cmd for cmd in commands if cmd[:2] == ["git", "merge"])
 preflight_cmd = next(cmd for cmd in commands if cmd and cmd[0] == "bash")
+verify_arg = preflight_cmd[preflight_cmd.index("--verify") + 1]
+# The task's focused proof, and ONLY that: the repository-wide comparison runs once
+# per cycle at VERIFY, so appending it here made a width-N fleet pay N full suites.
 print(ok and merge_cmd[-1] == candidate and "loop/immutable" not in merge_cmd
-      and "--no-ff" in merge_cmd and "feature-validation.sh" in preflight_cmd[preflight_cmd.index("--verify") + 1])
+      and "--no-ff" in merge_cmd and verify_arg == "pytest -q")
 EOF
 )
 check "supervisor merges immutable preflight candidate with no-ff" "$SUPERVISOR_CANDIDATE" "True"

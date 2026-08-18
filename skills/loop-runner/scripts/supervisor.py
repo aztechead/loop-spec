@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shlex
 import signal
 import subprocess
 import sys
@@ -44,7 +43,6 @@ from planlib import validate_plan, topo_order  # noqa: E402
 LOOP_PY = Path(__file__).resolve().parent / "loop.py"
 INTEGRATE_TASK = Path(__file__).resolve().parents[3] / "lib" / "integrate-task.sh"
 PREPARE_ENVIRONMENT = Path(__file__).resolve().parents[3] / "lib" / "prepare-environment.sh"
-FEATURE_VALIDATION = Path(__file__).resolve().parents[3] / "lib" / "feature-validation.sh"
 
 RETRYABLE = {"no_progress", "verifier_thrash", "agent_error"}
 FLEET_FATAL = {"verifier_integrity"}
@@ -193,12 +191,11 @@ class Supervisor:
         feature_branch = sh(["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
                             self.repo).stdout.strip()
         wt = self.wt_root / tid
+        # The task's own focused proof, and nothing else. The repository-wide
+        # test/lint/typecheck comparison runs once per cycle, at VERIFY, against the
+        # fully integrated candidate -- appending it here made a width-N fleet pay N
+        # full suites for the one VERIFY repeats anyway.
         verify_command = self.tasks[tid]["verify"]
-        feature_dir = getattr(self.args, "feature_dir", "")
-        if feature_dir:
-            candidate_feature_dir = wt / feature_dir
-            verify_command += (f" && bash {shlex.quote(str(FEATURE_VALIDATION))} compare "
-                               f"{shlex.quote(str(candidate_feature_dir))}")
         preflight = sh([
             "bash", str(INTEGRATE_TASK),
             "--feature-root", str(self.repo),
@@ -522,8 +519,6 @@ def main() -> int:
     p.add_argument("--adk-agent-dir", default="", dest="adk_agent_dir",
                    help="Mounted ADK working-agent directory handed to every worker "
                         "(default: $LOOP_SPEC_ADK_AGENT_DIR).")
-    p.add_argument("--feature-dir", default="",
-                   help="Feature-state path relative to the repository; enables exact-candidate baseline comparison.")
     p.add_argument("--prepare-command", default=None,
                    help="Persisted feature preparation command (empty explicitly disables detection).")
     p.add_argument("--no-worktree", action="store_true",

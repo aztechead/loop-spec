@@ -64,12 +64,10 @@ mergeable; `verify-failed` returns to remediation; `rebase-conflict`,
 Do not stash, reset, remove, or delete anything after a failed result. The helper
 performs cleanup itself, and only after a successful fast-forward publication.
 
-**Post-merge-queue suite gate:** after every passed task in the current merge queue has
-been published, run `lib/feature-validation.sh compare` once against the feature directory.
-Exit 20 creates suite-regression remediation; exit 21 escalates environment
-preparation/infrastructure. Unchanged exact-base failures do not block. Every task still
-ran its focused `verifyCommand` after any rebase; this single check validates the exact
-integrated queue candidate and avoids replaying the full repository suite per task.
+**No post-merge-queue suite gate.** Every task ran its focused `verifyCommand` after any
+rebase, and that is the only command EXECUTE runs. The repository-wide
+test/lint/typecheck comparison runs exactly once per cycle, at VERIFY Step 1.75, against
+the fully integrated candidate.
 
 For full detail on the self-claim loop, reviewer loop, rework re-entry, and race-claim serialization, see **`skills/shared/execute-loops.md`**.
 
