@@ -88,9 +88,10 @@ Apply these replacements to the lead wave loop:
    `task.files`. Dispatch the reviewer against the uncommitted diff:
    `git -C "{featureWorktreeRoot}" diff -- {task.files}`. Rework agents edit the same
    working tree serially; no other task starts while it is dirty.
-4. On reviewer `pass`, the lead reruns `task.verifyCommand`, stages exactly
+   4. On reviewer `pass`, the lead reruns `task.verifyCommand`, stages exactly
    `task.files`, and commits `feat: NO_JIRA {task.subject}`. Verify that HEAD advanced
-   from `taskBaseSha` and the checkout is clean, then add the task to `mergedSet`.
+   from `taskBaseSha` and the checkout is clean, then add the task to `mergedSet` and
+   persist `bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done ".loop-spec/features/${slug}/tasks.json" "{taskId}"`.
    There is no `integrate-task.sh` call because the accepted commit is already on the
    feature branch.
 5. On `block`, retry exhaustion, out-of-scope dirt, verification failure, missing
@@ -121,7 +122,9 @@ from the normal prompt remains mandatory.
 
 ## Lead wave loop
 
-Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repeat:
+`mergedSet` is seeded in execute SKILL Step 2a from `task-progress.sh done`. If this
+protocol is entered directly, seed it the same way before the loop. Maintain `mergedSet`
+(task ids merged onto `feat/{slug}`) and `blocked[]`. Repeat:
 
 1. **Compute the remaining set:** `remaining = tasks - mergedSet - {b.taskId for b in blocked}`. If empty, exit the loop (success).
 2. **Compute the ready set:** `ready = [t in remaining if every dep in t.blockedBy is in mergedSet]`.
@@ -171,7 +174,14 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    ```
 
    Parse `integration_json`, never command prose. If `.published == true`, add the
-   task id to `mergedSet` even when cleanup reports a failure. Otherwise map
+   task id to `mergedSet` even when cleanup reports a failure, then persist:
+
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done \
+     ".loop-spec/features/${slug}/tasks.json" "{taskId}"
+   ```
+
+   Otherwise map
    `zero-commit` to the existing `zero-commit` blocked reason, `verify-failed` or
    `prepare-failed` to `retry-exhausted`, and any rebase/publication/cleanliness
    failure to `escalation.reason = "rebase-conflict"` with the helper's `reason`

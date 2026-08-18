@@ -53,7 +53,9 @@ once at VERIFY, not here. `maxParallelImplementers` is moot (executor count is 1
 
 ## Lead task loop
 
-Maintain `mergedSet` and `blocked[]`. Repeat until `remaining` is empty:
+`mergedSet` is seeded in execute SKILL Step 2a from `task-progress.sh done`. If this
+protocol is entered directly, seed it the same way before the loop. Maintain `mergedSet`
+and `blocked[]`. Repeat until `remaining` is empty:
 
 1. **Ready set:** `remaining = tasks - mergedSet - blocked`; `ready = [t in
    remaining if every dep in t.blockedBy is in mergedSet]`. Empty `ready` with
@@ -77,7 +79,7 @@ Maintain `mergedSet` and `blocked[]`. Repeat until `remaining` is empty:
    reason: "commit-missing"}`.
 6. **Inline spec-compliance review** against `acceptanceCriteria` (reviewer
    brief semantics; verdict `pass | rework | block`):
-   - `pass` → add the task id to `mergedSet`, log the verdict, continue.
+   - `pass` → add the task id to `mergedSet`, persist `bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done ".loop-spec/features/${slug}/tasks.json" "{taskId}"`, log the verdict, continue.
     - `rework` with attempts remaining → revert the candidate, fix in place, re-run steps 4-6.
    - `rework` exhausted → `blocked += {taskId, reason: "retry-exhausted"}`
      (revert the task's commits: `git revert --no-edit <shas>`).
@@ -96,5 +98,6 @@ with the rung recorded as `inline`.
 
 Artifacts, gates, PLAN.md task blocks, `feature.json` schema, gate-log
 locations, the phase-exit contract. A feature started on any other rung can
-resume on this one and vice versa — the DAG state is recomputed from PLAN.md
-plus the commits on `feat/{slug}`, exactly like a workflow-path resume.
+resume on this one and vice versa — remaining work is the ids `task-progress.sh
+remaining` prints from `artifacts.tasks`, not a recomputation from PLAN.md plus
+commits.

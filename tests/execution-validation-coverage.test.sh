@@ -53,9 +53,35 @@ do
     "$f" 'feature-validation.sh'
 done
 
-# VERIFY is where it runs, and the only place.
+# VERIFY is where it runs, and the only place — including resume.
 check_contains "VERIFY runs the comparison" \
   skills/verify/SKILL.md 'lib/feature-validation.sh" compare'
+check_not_contains "cycle resume does not run the comparison" \
+  skills/cycle/SKILL.md 'feature-validation.sh'
+check_contains "cycle resume names VERIFY as the only suite" \
+  skills/cycle/SKILL.md 'VERIFY Step 1.75 is the only place'
+check_contains "cycle resume prints remaining task ids" \
+  skills/cycle/SKILL.md 'task-progress.sh" remaining'
+check_contains "EXECUTE seeds mergedSet from done ids" \
+  skills/execute/SKILL.md 'task-progress.sh" done'
+check_contains "EXECUTE persists mark-done" \
+  skills/execute/SKILL.md 'task-progress.sh" mark-done'
+check_contains "subagent protocol persists mark-done" \
+  skills/shared/execute-subagent.md 'task-progress.sh" mark-done'
+check_contains "inline protocol persists mark-done" \
+  skills/shared/execute-inline.md 'task-progress.sh" mark-done'
+check_contains "team protocol persists mark-done" \
+  skills/execute/references/team-rung-protocol.md 'task-progress.sh" mark-done'
+check_contains "workflow DAG persists mark-done" \
+  lib/workflows/execute-dag.js 'task-progress.sh'
+check_contains "workflow DAG seeds doneTaskIds" \
+  lib/workflows/execute-dag.js 'doneTaskIds'
+check_contains "loop-fleet passes the sidecar" \
+  skills/shared/execute-loop-fleet.md '--tasks-json'
+check_contains "supervisor accepts the sidecar" \
+  skills/loop-runner/scripts/supervisor.py '--tasks-json'
+check_contains "resume reference picks up remaining ids" \
+  skills/shared/cycle-resume-escalation.md 'task-progress.sh remaining'
 
 # Startup must not pay for a repository-wide suite on the untouched base. The capture
 # survives only as an opt-in for repositories whose base commit is already red.

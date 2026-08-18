@@ -377,6 +377,9 @@ def lint_tasks(display, data):
         sp = t.get('specPath')
         if sp is not None and not isinstance(sp, str):
             flag(display, 0, '%s.specPath must be a string or null' % label)
+        st = t.get('status')
+        if st is not None and st not in ('pending', 'done'):
+            flag(display, 0, '%s.status must be pending or done when present' % label)
     for i, t in enumerate(tasks):
         if not isinstance(t, dict):
             continue

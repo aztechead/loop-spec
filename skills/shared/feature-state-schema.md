@@ -60,7 +60,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "patterns": "path or null (docs/loop-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
     "patternsSource": "gsd-ingest | pattern-mapper | manual | null",
     "plan": "path or null",
-    "tasks": "path or null (.loop-spec/features/{slug}/tasks.json — gate-validated tasks[] JSON persisted at PLAN Step 6; EXECUTE Step 2a's preferred task source, validated by lib/artifact-lint.sh tasks)",
+    "tasks": "path or null (.loop-spec/features/{slug}/tasks.json — gate-validated tasks[] JSON persisted at PLAN Step 6; EXECUTE Step 2a's preferred task source, validated by lib/artifact-lint.sh tasks; optional per-task status pending|done is the resume ledger — cycle resume and EXECUTE read it via lib/task-progress.sh)",
     "execution": "path or null",
     "verification": "path or null",
     "iteration": "path or null",

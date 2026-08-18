@@ -201,6 +201,7 @@ run_suite "tests/prepare-resolution-coverage" "bash tests/prepare-resolution-cov
 run_suite "workflows/acceptance-verify" "bash tests/workflows/acceptance-verify.test.sh"
 run_suite "lib/workflow-availability" "bash tests/lib/workflow-availability.test.sh"
 run_suite "lib/dag-width"             "bash tests/lib/dag-width.test.sh"
+run_suite "lib/task-progress"         "bash tests/lib/task-progress.test.sh"
 run_suite "lib/plan-to-loop"          "bash tests/lib/plan-to-loop.test.sh"
 run_suite "skills/loop-runner"        "bash skills/loop-runner/tests/run_tests.sh"
 

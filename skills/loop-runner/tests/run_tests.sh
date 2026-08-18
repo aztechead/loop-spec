@@ -201,6 +201,46 @@ EOF
 )
 check "supervisor merges immutable preflight candidate with no-ff" "$SUPERVISOR_CANDIDATE" "True"
 
+SUPERVISOR_SIDECAR=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
+import json, tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+import supervisor
+
+with tempfile.TemporaryDirectory() as td:
+    sidecar = Path(td) / "tasks.json"
+    sidecar.write_text(json.dumps([
+        {"id": "done-one", "status": "done"},
+        {"id": "todo-two", "status": "pending"},
+    ]))
+    plan = {"tasks": [
+        {"id": "done-one", "prompt": "already done task prompt ok",
+         "verify": "true", "deps": []},
+        {"id": "todo-two", "prompt": "remaining task prompt ok",
+         "verify": "true", "deps": ["done-one"]},
+    ]}
+    args = SimpleNamespace(plan="plan.json", parallel=1, no_worktree=True,
+                           cleanup_worktrees=False, tasks_json=str(sidecar))
+    s = supervisor.Supervisor(plan, Path(td), args)
+    ran = []
+    def result(tid):
+        ran.append(tid)
+        return {"task_id": tid, "status": "complete", "iterations": 1}
+    with patch.object(s, "run_task", side_effect=result):
+        rc = s.run()
+    fleet = json.load(open(Path(td) / ".loop" / "fleet-result.json"))
+    todo = next(t["status"] for t in json.load(open(sidecar)) if t["id"] == "todo-two")
+    print("SIDECAR_RESULT", rc, ran == ["todo-two"],
+          sorted(fleet["completed"]) == ["done-one", "todo-two"], todo == "done")
+EOF
+)
+SIDECAR_GOT=$(echo "$SUPERVISOR_SIDECAR" | grep '^SIDECAR_RESULT ' | tail -1)
+check "sidecar skips already-done worker" "$(echo "$SIDECAR_GOT" | awk '{print $2}')" "0"
+check "sidecar launches only remaining task" "$(echo "$SIDECAR_GOT" | awk '{print $3}')" "True"
+check "sidecar completed includes done ids" "$(echo "$SIDECAR_GOT" | awk '{print $4}')" "True"
+check "sidecar marks newly merged id done" "$(echo "$SIDECAR_GOT" | awk '{print $5}')" "True"
+
 SUPERVISOR_TIMEOUT=$(PYTHONPATH="$SCRIPTS" python3 - << 'EOF'
 import subprocess
 from pathlib import Path

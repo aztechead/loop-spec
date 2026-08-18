@@ -227,14 +227,23 @@ invocation checkout or a registered feature worktree.
    PR targets, then jump directly to On completion**. The exact SHA and checks were
    already proven; a flaky local environment must not reopen delivered work, but recovery
    must not skip terminal feedback observation.
-5. Otherwise run the shared candidate check once:
-   `bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" compare ".loop-spec/features/${slug}"`.
-   It prepares each repository and compares test/lint/typecheck failures with the recorded
-   exact-base baseline; with no baseline recorded (the default) every failure counts.
-   Exit 20 means new failures: append the existing FULL-SHAPE resume remediation
-   task, set `currentPhase = "execute"`, and announce the redirect. Exit 21 is an
-   environment/infrastructure stop, not implementation remediation. Exit 0 resumes the
-   recorded phase, including `deliver`. Never recapture a baseline on resume.
+5. Otherwise resume the recorded phase. Do not run the repository-wide
+   test/lint/typecheck comparison here: VERIFY Step 1.75 is the only place it
+   runs. When `artifacts.tasks` exists, print what is already published and what
+   is left — that is the pickup, not a suite:
+
+   ```bash
+   tasks_sidecar="$(jq -r '.artifacts.tasks // empty' ".loop-spec/features/${slug}/feature.json")"
+   if [[ -n "$tasks_sidecar" && -f "$tasks_sidecar" ]]; then
+     done_ids="$(bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" done "$tasks_sidecar")"
+     remaining_ids="$(bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" remaining "$tasks_sidecar")"
+     echo "[RESUME] tasks done: ${done_ids:-none}"
+     echo "[RESUME] tasks remaining: ${remaining_ids:-none}"
+   fi
+   ```
+
+   EXECUTE seeds `mergedSet` from the done ids and dispatches only remaining
+   work. Never recapture a baseline on resume.
 
 Full algorithm: `skills/shared/cycle-resume-escalation.md`.
 

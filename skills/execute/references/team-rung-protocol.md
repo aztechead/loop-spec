@@ -57,7 +57,14 @@ integration_rc=$?
 
 Parse `integration_json` rather than inferring state from `integration_rc`. A result
 with `.published == true` is merged; remove its task id from `mergeQueue` via
-`lib/feature-write.sh` (and surface a `cleanup-failed` result for manual cleanup).
+`lib/feature-write.sh` (and surface a `cleanup-failed` result for manual cleanup),
+then persist progress:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done \
+  ".loop-spec/features/{slug}/tasks.json" "{taskId}"
+```
+
 For `.published == false`, retain the queue entry and worktree. `zero-commit` is not
 mergeable; `verify-failed` returns to remediation; `rebase-conflict`,
 `check-dirty-worktree`, `feature-moved`, and `publish-failed` escalate to the user.
@@ -103,7 +110,7 @@ plan_task_ids=$(echo "$adherence_json" | jq -r '.plan_task_ids[]')
 gap_message=$(echo "$adherence_json" | jq -r '.gap_message // empty')
 ```
 
-For each `plan_task_id`, confirm at least one completed task subject contains it as a substring. On gap: `AskUserQuestion` with options to re-queue or abort.
+For each `plan_task_id`, confirm at least one completed task subject contains it as a substring, or that the sidecar already records `status=done` for that id (`task-progress.sh done`). On gap: `AskUserQuestion` with options to re-queue or abort.
 
 TeamDelete and cleanup:
 

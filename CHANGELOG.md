@@ -26,12 +26,14 @@ behavior unless a new flag, token, or node field is set.
   one VERIFY Step 1.75 runs against the same integrated tree moments later. On a
   single-wave change those two runs were the same commands over the same working
   tree. EXECUTE now runs each task's focused `verifyCommand` after any rebase and
-  nothing else. Cycle resume still runs the same comparison once, because an
-  interrupted EXECUTE may have published tasks that never reached VERIFY.
-  Regressions on a finished EXECUTE surface at VERIFY instead of at the wave
-  boundary, where remediation already routes through `pendingRemediationTasks`.
-  `tests/execution-validation-coverage.test.sh` inverts: it now asserts NO rung
-  names `feature-validation.sh` and that VERIFY does.
+  nothing else. Cycle resume does not run the comparison: it reads
+  `tasks.json` for which ids are already `status=done` and continues the
+  remaining work (`lib/task-progress.sh`). EXECUTE seeds `mergedSet` from those
+  ids and persists `status=done` after each successful publication. VERIFY Step 1.75
+  is the suite that
+  sees the fully integrated tree. `tests/execution-validation-coverage.test.sh`
+  inverts: it now asserts NO rung names `feature-validation.sh`, that cycle
+  resume does not either, and that VERIFY does.
 - The loop-fleet supervisor's `--feature-dir` flag is removed with the behaviour
   it existed for; it had no other consumer.
 

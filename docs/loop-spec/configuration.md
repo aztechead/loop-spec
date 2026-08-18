@@ -372,6 +372,7 @@ equivalent config-file field.
 | `--no-worktree` | Run serially in the supplied repository instead of creating task worktrees. `LOOP_SPEC_WORKTREES=0` implies this flag. |
 | `--cleanup-worktrees` | Remove successful task worktrees and branches after integration. |
 | `--dry-run` | Validate and print the schedule without executing tasks. |
+| `--tasks-json PATH` | Optional cycle `tasks.json` sidecar. Ids already `status=done` are skipped; each successful merge is marked done. Omit for standalone loop-runner. |
 
 ### `compile_spec.py`
 

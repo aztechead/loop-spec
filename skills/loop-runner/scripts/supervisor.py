@@ -43,6 +43,7 @@ from planlib import validate_plan, topo_order  # noqa: E402
 LOOP_PY = Path(__file__).resolve().parent / "loop.py"
 INTEGRATE_TASK = Path(__file__).resolve().parents[3] / "lib" / "integrate-task.sh"
 PREPARE_ENVIRONMENT = Path(__file__).resolve().parents[3] / "lib" / "prepare-environment.sh"
+TASK_PROGRESS = Path(__file__).resolve().parents[3] / "lib" / "task-progress.sh"
 
 RETRYABLE = {"no_progress", "verifier_thrash", "agent_error"}
 FLEET_FATAL = {"verifier_integrity"}
@@ -130,6 +131,34 @@ def read_result(res_path: Path, tid: str, log: Path) -> dict:
                 "error": f"corrupt result.json ({e}) — see {log}"}
 
 
+def sidecar_done_ids(path: str) -> set[str]:
+    """Ids already published according to the cycle tasks.json sidecar."""
+    if not path:
+        return set()
+    r = subprocess.run(
+        ["bash", str(TASK_PROGRESS), "done", path],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        print(f"⚠ task-progress done failed for {path}: "
+              f"{(r.stderr or r.stdout).strip()}", flush=True)
+        return set()
+    return {line.strip() for line in r.stdout.splitlines() if line.strip()}
+
+
+def mark_sidecar_done(path: str, tid: str) -> None:
+    """Persist a successful merge onto the cycle sidecar. Missing sidecar is a warning."""
+    if not path:
+        return
+    r = subprocess.run(
+        ["bash", str(TASK_PROGRESS), "mark-done", path, tid],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        print(f"⚠ task-progress mark-done {tid} failed: "
+              f"{(r.stderr or r.stdout).strip()}", flush=True)
+
+
 class Supervisor:
     def __init__(self, plan: dict, repo: Path, args):
         CANCEL_EVENT.clear()
@@ -138,7 +167,8 @@ class Supervisor:
         self.args = args
         self.tasks = {t["id"]: t for t in plan["tasks"]}
         self.results: dict[str, dict] = {}
-        self.done_merged: set[str] = set()
+        already = sidecar_done_ids(getattr(args, "tasks_json", "") or "") & set(self.tasks)
+        self.done_merged: set[str] = set(already)
         self.failed: set[str] = set()
         self.lock = threading.Lock()        # serializes merges
         self.fleet_fatal = False
@@ -392,6 +422,14 @@ class Supervisor:
         failed = self.failed
         pending = set(order)
         futures = {}
+        sidecar = getattr(self.args, "tasks_json", "") or ""
+        for tid in list(pending & done_merged):
+            pending.discard(tid)
+            self.results.setdefault(tid, {
+                "task_id": tid, "status": "complete",
+                "halt_reason": "already_done", "iterations": 0,
+            })
+            print(f"↷ {tid} already done (tasks.json); skipping", flush=True)
 
         out = self.write_fleet("running")
         print(f"FLEET_START tasks={len(order)} parallel={max(1, self.args.parallel)} "
@@ -436,6 +474,7 @@ class Supervisor:
                             print(f"TASK_ERROR id={tid} integration={exc}", flush=True)
                         if ok:
                             done_merged.add(tid)
+                            mark_sidecar_done(sidecar, tid)
                             print(f"✓ {tid} complete and merged "
                                   f"({res.get('iterations')} iters)")
                             if self.args.cleanup_worktrees and not self.args.no_worktree:
@@ -527,6 +566,10 @@ def main() -> int:
                    help="Remove each task's worktree and branch after a successful merge.")
     p.add_argument("--dry-run", action="store_true",
                    help="Validate the plan and print the schedule without running.")
+    p.add_argument("--tasks-json", default="", dest="tasks_json",
+                   help="Cycle tasks.json sidecar. Already-done ids are skipped; "
+                        "each successful merge is marked status=done. Optional: "
+                        "standalone loop-runner without a cycle sidecar omits it.")
     args = p.parse_args()
 
     bounds = (

@@ -100,6 +100,29 @@ else
 fi
 ```
 
+When the sidecar is readable, seed `mergedSet` from already-published ids so a resumed
+cycle does not re-dispatch completed work. A missing or empty `status` is pending.
+
+```bash
+mergedSet=()
+if [[ -n "$tasks_sidecar" && -f "$tasks_sidecar" ]]; then
+  while IFS= read -r id; do
+    [[ -n "$id" ]] && mergedSet+=("$id")
+  done < <(bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" done "$tasks_sidecar")
+fi
+```
+
+After any successful publication onto `feat/{slug}`, persist that fact:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done \
+  ".loop-spec/features/{slug}/tasks.json" "{taskId}"
+```
+
+A mark-done failure (sidecar missing, unknown id) is a warning, not an integration
+failure — the commit is already on the branch. If every planned id is already in
+`mergedSet` and `pendingRemediationTasks` is empty, skip to Phase exit (VERIFY).
+
 When using the sidecar, cross-check its task ids against the `### task-` headings in
 PLAN.md: an id set mismatch means PLAN.md was revised after the sidecar was written —
 log one line naming the mismatched ids and fall back to the PLAN.md parse below
@@ -140,7 +163,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$feature_dir" pending
 
 #### Step 2b - Compute synthetic blockedBy edges
 
-For each pair of tasks `(A, B)` where both are in `pending` status and `id(A) < id(B)`:
+For each pair of tasks `(A, B)` where both are still pending (missing `status`
+counts as pending; skip any id already in `mergedSet`) and `id(A) < id(B)`:
 
 1. Compute `overlap = A.files ∩ B.files`.
 2. If `overlap` is empty: no synthetic edge.
@@ -186,9 +210,9 @@ cmd_prepare="$(jq -r '.command // ""' <<<"$prepare_json")"
 Cross-check against the canonical commands SPEC.md's Foundations requirements name (they
 should agree; if they differ, prefer what actually runs and append a one-line note to
 `warnings[]`), then write `commands.prepare` / `commands.test` / `commands.lint` / `commands.typecheck` into
-feature.json via `lib/feature-write.sh`. Every later task's verify, the resume re-grounding
-test run, and VERIFY's acceptance gate depend on this backfill — an empty test command in a
-greenfield feature past task-001 is a bug, not a degraded mode. The invariant is ENFORCED,
+feature.json via `lib/feature-write.sh`. Every later task's verify and VERIFY's acceptance
+gate depend on this backfill — an empty test command in a greenfield feature past task-001
+is a bug, not a degraded mode. The invariant is ENFORCED,
 not just stated: after the write (and again before dispatching any post-task-001 task), run
 
 ```bash
@@ -384,7 +408,10 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" activeWorkflow
   '{scriptPath: $sp, startedAt: $at}')"
 ```
 
-Resume note: EXECUTE re-runs from scratch on resume (it does not persist `args`). The re-run is idempotent in practice -- the implementer step skips a task worktree that already exists, and the merge agent's `git merge --ff-only` of an already-merged branch is a no-op. The DAG simply recomputes `ready`/`merged` from the live branch state.
+Resume note: pass `doneTaskIds` from `task-progress.sh done` (Step 2a). The DAG
+seeds `mergedSet` from those ids and dispatches only remaining work. After each
+successful publication the merge agent persists `status=done` on the sidecar. Do
+not rebuild remaining work from git history.
 
 Dispatch:
 
@@ -406,7 +433,8 @@ Workflow({
     skillDir: skillDir,
     // bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" resolve "$featureWorktreeRoot" task "{slug}" | jq -r '.path'
     taskWorktreeBase: taskWorktreeBase,
-    tasks: <tasks[] array from Step 2a/2b>
+    tasks: <tasks[] array from Step 2a/2b>,
+    doneTaskIds: <mergedSet from Step 2a — ids already status=done>
   }
 })
 ```
@@ -441,7 +469,7 @@ Each task in `tasks[]` from Step 3 becomes one claimable bundle instead of a `Ta
 dispatch. The graph node dispatched is still `execute.worker` (`graph/cycle.graph.json`) —
 width selects the rung, it never substitutes a different node or a different contract.
 
-Offer every task as a bundle and put it on the port:
+Offer every remaining task as a bundle and put it on the port (skip ids already in `mergedSet`):
 
 ```bash
 fdir=".loop-spec/features/{slug}"
@@ -552,7 +580,11 @@ for task in $tasks; do
 done
 ```
 
-After validation passes, call `TaskCreate` once per task:
+After validation passes, call `TaskCreate` once per task that is not already in
+`mergedSet`. Already-published ids stay out of the harness task list; sidecar
+`status=done` satisfies plan-adherence for those ids.
+
+Call `TaskCreate` once per remaining task:
 
 ```
 TaskCreate({
