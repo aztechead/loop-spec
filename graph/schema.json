@@ -128,14 +128,6 @@
           "description": "Argument vector passed to a function/gate body. {featureDir}, {repoRoot}, {featureRepoRoot}, {slug}, {node}, {baseSha} are engine-substituted placeholders; no other placeholder is legal. Absent means the body is invoked with no arguments."
         },
         "graph": { "type": "string" },
-        "skippable": {
-          "type": "object",
-          "required": ["probe"],
-          "additionalProperties": false,
-          "properties": {
-            "probe": { "type": "string", "minLength": 1 }
-          }
-        },
         "authorizesDelivery": { "type": "boolean" },
         "admit": {
           "$ref": "#/definitions/routeCondition",

@@ -219,22 +219,10 @@ for i, node in enumerate(nodes):
     effort = node.get("effort")
     if effort not in effort_vals:
         flag(ptr + "/effort", "effort must be system1|system2")
-    # Gate skippable must name a licensing probe
-    skippable = node.get("skippable")
-    if skippable is not None:
-        if kind != "gate":
-            flag(ptr + "/skippable", "only gate nodes may declare skippable")
-        elif not isinstance(skippable, dict) or not skippable.get("probe"):
-            flag(ptr + "/skippable", "skippable gate must name a licensing probe")
-        else:
-            probe = skippable["probe"]
-            path = repo_path(probe, repo_root)
-            if not (os.path.isfile(path) and os.access(path, os.X_OK)):
-                flag(ptr + "/skippable/probe", "licensing probe not executable: %s" % probe)
     if node.get("authorizesDelivery") is True and effort == "system1":
         flag(ptr + "/effort", "delivery-authorizing node may not default to system1")
     # Human admit gate (contract sec 4): same {probe,args,expects} shape as a
-    # route condition, restricted to human nodes like skippable is to gates.
+    # route condition, restricted to human nodes the way `condition` is to route edges.
     admit = node.get("admit")
     if admit is not None:
         if kind != "human":

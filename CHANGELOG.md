@@ -7,6 +7,14 @@ All notable changes documented here. Format follows Keep a Changelog.
 Fixes and additive controls from headless, autonomous, graph-driven runs. Every
 change defaults to 4.0.0 behavior unless a new flag, token, or node field is set.
 
+### Removed
+
+- **The `skippable` node field.** It skipped a gate's `.sh` BODY, the engine never
+  evaluated it at all, and all three gates that could carry it have bodies naming
+  an agent or a fast-path rather than a script — so it skipped nothing, invisibly,
+  while reading like a live control. A `route` skips the NODE, works for every node
+  kind, and shows up in a dry run. One mechanism for "do not run this", not two.
+
 ### Fixed
 
 - **Graph-driven VERIFY is no longer blocked on sound changes.** The engine
@@ -56,6 +64,21 @@ change defaults to 4.0.0 behavior unless a new flag, token, or node field is set
   cache, no artifact, nothing to rot — and each purpose line is that file's own
   header, so `tests/lib/surface.test.sh` now fails when a bundled file's header
   does not say what the file is for.
+- **A short path through the cycle graph.** Run length was a fixed property: every
+  run walked all seven phases plus the full spec-critique protocol, so an hour was
+  the FLOOR even for a dependency bump, and the only escape was routing to a
+  different protocol (micro/debug) and giving up the cycle's continuity.
+  `lib/graph/probes/short-path.sh` answers `path=short` for a maintenance-profile
+  run with no security signal in the artifacts it has written so far, and
+  `graph/cycle.graph.json` routes around three nodes on that answer: `discuss`,
+  the spec-critique subgraph, and the `verify.code-review` agent. Same graph, same
+  checkpoint ledger, same state contract, same terminal result — a shorter
+  declared path, visible in a dry run, not a different protocol. Every bypass is
+  paired with a route to the long path and a `routeDefault` to it, so an
+  unresolved probe lengthens the run rather than stranding it, and the signal is
+  re-read from the artifacts that exist NOW so a change that turns out to touch a
+  security surface lengthens its own path mid-run. The deterministic VERIFY gates
+  (placeholder, tamper, acceptance, no-new-failures) run on both paths.
 - **A maintenance execution profile** (`lib/cycle-profile.sh`, opt-in). Earned
   only by a validated low-risk classification — maintenance-shaped task kind, low
   ambiguity, at most five reviewable files and three criteria, and no seam,

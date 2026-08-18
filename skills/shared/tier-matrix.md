@@ -60,8 +60,20 @@ What it lightens:
 | DISCUSS | Critique gate (single-critic, escalating) | Skipped when `lib/security-signal.sh` reports no match |
 | PLAN | Critique gate, subject to the structural fast-path | Skipped when `lib/security-signal.sh` reports no match, regardless of the fast-path bounds |
 
+The profile is also the graph's own path selector. `lib/graph/probes/short-path.sh`
+answers `path=short` for a maintenance run with no security signal in its written
+artifacts, and `graph/cycle.graph.json` routes around three nodes on that answer:
+`discuss`, the spec-critique subgraph, and the `verify.code-review` agent. Same graph,
+same checkpoint ledger, same terminal result — a shorter declared path, not a different
+protocol. The probe re-reads the signal from the artifacts that exist now, so a change
+that turns out to touch a security surface lengthens its own path mid-run.
+
 What it never touches: the ambiguity gate, decision/criteria coverage, the feasibility
-check, and every VERIFY gate. Escalation on a genuine security signal is unchanged —
+check, and every other VERIFY gate — the placeholder scan, the tamper scan, the
+acceptance lint, and the no-new-failures comparison all run on both paths. Code review
+is the one quality gate the short path drops, and only behind the full maintenance
+classification: at most five reviewable files, low ambiguity, and no seam, interface,
+security, migration, dependency-edge, multi-repo, or destructive flag. Escalation on a genuine security signal is unchanged —
 the signal is checked FIRST on both critique gates, and a match escalates to the debate
 on the maintenance profile exactly as it does on the standard one.
 

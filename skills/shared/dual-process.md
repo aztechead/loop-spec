@@ -79,7 +79,6 @@ model catalog or reasoning controls are portable.
 
 `graph/cycle.graph.json` declares a default `effort` on every node (task-011);
 the runtime mode is the probe answer, or the operator override where set.
-`lib/graph/validate.sh` rejects a `gate` node marked skippable without a
-licensing probe path, and rejects a `system1` default on any node that
+`lib/graph/validate.sh` rejects a `system1` default on any node that
 authorizes delivery — the effort probe independently forces those nodes to
 `system2` at runtime (`delivery-authorizing-node`).

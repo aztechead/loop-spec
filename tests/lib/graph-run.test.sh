@@ -636,6 +636,43 @@ check "the kept-case really measures the system1 node" "cheap" "$(jq -r '.node' 
 check "declared system1 stays system1 when the probe agrees" \
   "system1" "$(jq -r '.effort' <<<"$kept")"
 
+## --- 20. cycle.graph.json: the maintenance profile takes a SHORTER declared path
+##          through the same graph -- same nodes, same ledger, same terminal result ---
+if [[ -d "$WORK/cyclerepo" ]]; then
+  short_feat="$WORK/cyclerepo/.loop-spec/features/shortpath"
+  mkdir -p "$short_feat"
+  seed_short() {
+    jq -n --arg base "$base_sha" --arg profile "$1" \
+      '{slug:"shortpath",schemaVersion:7,execStyle:"auto",baseSha:$base,
+        executionProfile:$profile,iterate:{used:0,feedback:null},
+        delivery:{nextPhase:"completed"}}' > "$short_feat/feature.json"
+    ( cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
+      --feature-dir ".loop-spec/features/shortpath" "$ROOT/graph/cycle.graph.json" ) | cut -f1
+  }
+  full_path="$(seed_short standard)"
+  short_path="$(seed_short maintenance)"
+  check "the standard profile still walks DISCUSS and its critique" "1" \
+    "$(grep -cx 'discuss.critique' <<<"$full_path")"
+  check "the short path skips DISCUSS" "0" "$(grep -cx 'discuss' <<<"$short_path")"
+  check "the short path skips the spec critique protocol" "0" \
+    "$(grep -cx 'discuss.critique' <<<"$short_path")"
+  check "the standard profile still walks the code-review agent" "1" \
+    "$(grep -cx 'verify.code-review' <<<"$full_path")"
+  check "the short path skips the code-review agent" "0" \
+    "$(grep -cx 'verify.code-review' <<<"$short_path")"
+  # The cheap, high-value VERIFY gates run on BOTH paths -- the short path drops
+  # agent dispatches, never the deterministic scans.
+  for gate in verify.marker verify.tamper verify.acceptance; do
+    check "the short path still runs $gate" "1" "$(grep -cx "$gate" <<<"$short_path")"
+  done
+  # Continuity: a shorter path is still the SAME cycle, ending the same way.
+  for phase in spec plan execute verify iterate deliver completed; do
+    check "the short path still reaches $phase" "1" "$(grep -cx "$phase" <<<"$short_path")"
+  done
+  check "the short path is strictly shorter" "1" \
+    "$([[ "$(wc -l <<<"$short_path")" -lt "$(wc -l <<<"$full_path")" ]] && echo 1 || echo 0)"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

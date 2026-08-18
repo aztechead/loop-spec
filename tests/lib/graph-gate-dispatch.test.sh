@@ -30,7 +30,10 @@ check() {
 # the ones a real cycle dispatches.
 gate_graph() {
   local node_id="$1" out="$2"
-  jq --arg id "$node_id" '{entry: $id, nodes: [.nodes[] | select(.id == $id)], edges: []}' \
+  # routeDefault names a successor that this one-node graph deliberately does not
+  # carry; dropping it keeps the extraction about the node's DISPATCH contract.
+  jq --arg id "$node_id" \
+    '{entry: $id, nodes: [.nodes[] | select(.id == $id) | del(.routeDefault)], edges: []}' \
     "$CYCLE_GRAPH" > "$out"
 }
 

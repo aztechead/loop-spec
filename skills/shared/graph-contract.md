@@ -38,10 +38,12 @@ breaking checkpoints or edge references. The schema permits labels and
    `lib/graph/validate.sh`; each body is an ordinary `lib/` script with its own unit
    test.
 3. **`gate`.** Runs a probe and admits or blocks — the marker scan, the tamper scan, the
-   acceptance lint, code review. Only a gate may declare `skippable`, and only by naming
-   an executable licensing probe: `lib/graph/validate.sh` flags `skippable` on any other
-   kind, a `skippable` without a probe, and a probe path that is not an executable file,
-   with negative cases in `tests/lib/graph-validate.test.sh`.
+   acceptance lint, code review. A gate that is unnecessary for a given run is ROUTED
+   AROUND, never marked skippable: `route` skips the node, works for every node kind, and
+   shows up in a dry run, whereas the `skippable` field this vocabulary carried through
+   4.0 skipped only a `.sh` BODY, was never evaluated by the engine at all, and was
+   declared on gates whose bodies name an agent — so it skipped nothing, invisibly. One
+   mechanism for "do not run this", not two.
 4. **`human`.** Interrupts and waits for a person — the `step` style's inter-phase
    pause, ITERATE's spec-change approval. A human node is a real stop: a checkpoint is
    written to the node ledger by `lib/graph/checkpoint.sh` (covered by
@@ -87,6 +89,30 @@ must be reachable from `entry` — both `FLAG`s from `lib/graph/validate.sh`.
    iteration is not representable. A `route` back-edge is tolerated by the DAG check
    only when its source also declares a bounded `loop` edge — that is the declared form
    of ITERATE/DELIVER re-entry; an uncovered back-edge still `FLAG`s.
+
+## Path-length rule
+
+A graph declares ONE topology and more than one path through it. The cycle graph's long
+path walks every phase; its short path is the same graph with `discuss`, the spec
+critique, and the `verify.code-review` agent routed around, selected by
+`lib/graph/probes/short-path.sh` (maintenance
+execution profile AND no security signal in the artifacts the run has written so far).
+This is where run length becomes a declared, auditable property instead of prose inside
+a phase body.
+
+Three rules keep a short path honest, all enforced:
+
+1. **Same graph, same continuity.** A short path is routing, never a second graph and
+   never a different protocol. The checkpoint ledger, the state contract, and the
+   terminal result are identical; `tests/lib/graph-run.test.sh` section 20 asserts the
+   short path still reaches every remaining phase and `completed`.
+2. **The long path is the default.** Every bypass route is paired with a route to the
+   long path, and the branching node declares `routeDefault` to the long path, so an
+   unresolved probe lengthens the run rather than stranding it.
+3. **The evidence is re-read, not remembered.** `short-path.sh` re-runs the security
+   signal over the artifacts that exist NOW, because SPEC and DISCUSS author them after
+   the profile was chosen. A change that turns out to touch a security surface lengthens
+   its own path mid-run.
 
 ## Route-condition rule
 

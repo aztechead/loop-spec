@@ -376,8 +376,8 @@ UNRESOLVED_BODY_ARG = 64
 def dispatch_body(node_id, node, kind):
     """Dispatch a function/gate body in-process with its declared `bodyArgs`.
     Returns (exit_code, output), or (None, "") when there is nothing to run (no
-    body, or a non-script body — e.g. a gate with only a `skippable` probe and
-    no action script). cycle-result.sh is never dispatched generically here —
+    body, or a non-script body — e.g. a gate whose body names an agent rather
+    than a script). cycle-result.sh is never dispatched generically here —
     see publish_result(); calling it with no arguments is the exact bug this
     contract exists to fix (sec 8).
 

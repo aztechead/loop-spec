@@ -38,7 +38,8 @@
           "{featureDir}"
         ],
         "expects": "gate=pause"
-      }
+      },
+      "routeDefault": "discuss"
     },
     {
       "id": "discuss",
@@ -56,6 +57,19 @@
       ],
       "effort": "system2",
       "body": "skills/discuss/SKILL.md"
+    },
+    {
+      "id": "discuss.critique.gate",
+      "label": "Check whether the spec needs critique",
+      "kind": "gate",
+      "reads": [
+        "artifacts"
+      ],
+      "writes": [
+        "currentGate"
+      ],
+      "effort": "system1",
+      "routeDefault": "discuss.critique"
     },
     {
       "id": "discuss.critique",
@@ -122,9 +136,6 @@
         "currentGate"
       ],
       "effort": "system1",
-      "skippable": {
-        "probe": "lib/security-signal.sh"
-      },
       "body": "plan-critique-fastpath"
     },
     {
@@ -267,7 +278,10 @@
       ],
       "effort": "system1",
       "body": "lib/placeholder-scan.sh",
-      "bodyArgs": ["{baseSha}", "{featureRepoRoot}"]
+      "bodyArgs": [
+        "{baseSha}",
+        "{featureRepoRoot}"
+      ]
     },
     {
       "id": "verify.tamper",
@@ -282,7 +296,10 @@
       ],
       "effort": "system1",
       "body": "lib/test-tamper-scan.sh",
-      "bodyArgs": ["{baseSha}", "{featureRepoRoot}"]
+      "bodyArgs": [
+        "{baseSha}",
+        "{featureRepoRoot}"
+      ]
     },
     {
       "id": "verify.acceptance",
@@ -296,7 +313,10 @@
       ],
       "effort": "system2",
       "body": "lib/acceptance-lint.sh",
-      "bodyArgs": ["{featureDir}/tasks.json"]
+      "bodyArgs": [
+        "{featureDir}/tasks.json"
+      ],
+      "routeDefault": "verify.code-review"
     },
     {
       "id": "verify.code-review",
@@ -396,12 +416,59 @@
     {
       "from": "human.after-spec",
       "to": "discuss",
-      "kind": "chain"
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/short-path.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "path=full"
+      }
+    },
+    {
+      "from": "human.after-spec",
+      "to": "plan",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/short-path.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "path=short"
+      }
     },
     {
       "from": "discuss",
-      "to": "discuss.critique",
+      "to": "discuss.critique.gate",
       "kind": "chain"
+    },
+    {
+      "from": "discuss.critique.gate",
+      "to": "discuss.critique",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/short-path.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "path=full"
+      }
+    },
+    {
+      "from": "discuss.critique.gate",
+      "to": "human.after-discuss",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/short-path.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "path=short"
+      }
     },
     {
       "from": "discuss.critique",
@@ -500,7 +567,28 @@
     {
       "from": "verify.acceptance",
       "to": "verify.code-review",
-      "kind": "chain"
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/short-path.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "path=full"
+      }
+    },
+    {
+      "from": "verify.acceptance",
+      "to": "iterate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/short-path.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "path=short"
+      }
     },
     {
       "from": "verify.code-review",
