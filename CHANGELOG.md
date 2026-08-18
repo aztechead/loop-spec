@@ -43,6 +43,16 @@ change defaults to 4.0.0 behavior unless a new flag, token, or node field is set
 
 ### Added
 
+- **`lib/surface.sh` — one call to locate any bundled script, shared contract,
+  or agent role.** `find <term>` narrows by path or purpose, `show <name>` prints
+  the header block (usage, exit codes, tool allow-list) so the file usually need
+  not be opened, `covers <path>` names the registered test suites that pin a
+  path, and `list` prints the whole surface. Measured on mocked sessions:
+  answering "which script does X, what does it exit, and what must I run after
+  changing it" fell from 13 opened files to 6. It is derived, never stored — no
+  cache, no artifact, nothing to rot — and each purpose line is that file's own
+  header, so `tests/lib/surface.test.sh` now fails when a bundled file's header
+  does not say what the file is for.
 - **A maintenance execution profile** (`lib/cycle-profile.sh`, opt-in). Earned
   only by a validated low-risk classification — maintenance-shaped task kind, low
   ambiguity, at most five reviewable files and three criteria, and no seam,

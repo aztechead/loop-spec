@@ -12,6 +12,26 @@
 - **Code for humans: house style over habit.** Code is read far more than it is written. Read the neighbors before writing a line and match them — naming, error idiom, test structure, layout; the house convention outranks your defaults, and disagreeing with it is a finding, never a licence to deviate mid-diff. Comments carry why, never what, and comment *density* is set by the file, not by an absolute — a good name deletes a comment. Measured, not recalled: `lib/house-style.sh probe <files>` reports the conventions and `lib/comment-tells.sh` flags comments that narrate the edit, narrate history, or restate the next line. Carve-outs that are never cut: `simplicity:` markers, file-header purpose blocks, TODO/FIXME/NOTE/HACK/SAFETY markers, spec-required contract docs. Canonical: `skills/shared/human-code.md`, enforced by `tests/human-code-coverage.test.sh`.
 - **Design for change: seams, not speculation.** Design to an interface, not an implementation; one unit, one reason to change; units receive their collaborators (params/args/env) instead of constructing them deep inside. Place boundaries where change is likely so the next tweak is a local diff — but never build speculation behind a seam (YAGNI cuts artifacts, never seams). Tests come first (TDD), simplicity beats cleverness, and a confirmed root cause gets a sibling sweep — same mechanism fixed in the same change, new mechanisms backlogged. Canonical: `skills/shared/design-for-change.md`, enforced by `tests/design-coverage.test.sh`.
 
+## Finding what is already bundled
+
+`bash lib/surface.sh` answers "which bundled script, shared contract, or agent role covers
+X?" from the tree, at call time. The bundled surface is well past a hundred `lib/` scripts
+plus every shared contract and role charter — more than a fresh context can hold — and
+glob-then-grep-then-open-three-files is the tax every agent pays otherwise.
+
+- `surface.sh find <term> [term ...]` — entries whose path or purpose matches EVERY term.
+- `surface.sh show <name>` — one entry's header block: usage, exit codes, tool allow-list.
+  Read this before opening the file; it is usually the whole answer.
+- `surface.sh covers <path>` — the registered test suites that name a path, so "what must
+  I run after changing this?" is one call instead of a sweep of `tests/`.
+- `surface.sh list [lib|shared|agent|all]` — the whole surface.
+
+This is NOT a stored map and must never become one: it writes nothing, caches nothing, and
+derives every answer from the files that exist right now, so there is no artifact to rot
+(the reason graphify was removed in 2.35). Each entry's purpose line is that file's OWN
+header, which is why `tests/lib/surface.test.sh` fails when a bundled file's header does
+not say what the file is for. Writing the header IS writing the index entry.
+
 ## Adding a Skill
 
 1. New dir under `skills/{name}/`.
