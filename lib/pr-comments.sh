@@ -11,15 +11,25 @@
 #
 # Output: a JSON array on stdout, one element per feedback item:
 #   [{
-#     "id":       <number|string>,      # comment/review database id
-#     "kind":     "review_comment" | "review" | "issue_comment",
-#     "path":     "<file path or null>",
-#     "line":     <line number or null>,
-#     "author":   "<login>",
-#     "body":     "<markdown body>",
-#     "resolved": true|false,           # review threads only; false when unknown
-#     "url":      "<html url or null>"
+#     "id":         <number|string>,      # comment/review database id
+#     "kind":       "review_comment" | "review" | "issue_comment",
+#     "path":       "<file path or null>",
+#     "line":       <line number or null>,
+#     "author":     "<login>",
+#     "body":       "<markdown body>",
+#     "state":      "APPROVED"|"CHANGES_REQUESTED"|"COMMENTED"|"DISMISSED"|null,
+#     "resolved":   true|false,           # review threads only; false when unknown
+#     "url":        "<html url or null>",
+#     "skip":       true|false,           # deterministic triage; revise must honor !skip
+#     "skipReason": ""|"self-revise-comment"|"bare-approval"|"noise-bot"|"bot-issue-comment"
 #   }]
+#
+# Bot authors are not a blanket skip. A REVIEW with CHANGES_REQUESTED (even an
+# empty body) and every inline review_comment are kept, including GitHub's
+# code-review agent. Skipped: self `<!-- loop-spec:revise -->` comments, bare
+# LGTM/Approved-only bodies, and issue_comment chatter from CI/dependabot-class
+# bots. LOOP_SPEC_REVIEW_BOT_ALLOWLIST (comma-separated logins) forces keep
+# except for the self-marker and bare approvals.
 #
 # `summary` wraps the same items in one feedback-check object (the shape every
 # cycle type's terminal PR check consumes):
@@ -80,9 +90,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Shared normalize: input = the combined raw object, output = the stable array.
+# Skip reasons are a probe, not a model judgment — the same item must classify
+# the same way on every run. jq 1.5 has no ascii_downcase.
 _normalize() {
-  jq -c --argjson include_resolved "$INCLUDE_RESOLVED" '
+  jq -c --argjson include_resolved "$INCLUDE_RESOLVED" \
+        --arg allowlist "${LOOP_SPEC_REVIEW_BOT_ALLOWLIST:-}" '
+    def down:
+      explode | map(if . >= 65 and . <= 90 then . + 32 else . end) | implode;
+    def trim:
+      gsub("^\\s+|\\s+$"; "");
     (.resolvedIds // []) as $resolved |
+    ($allowlist | split(",") | map(trim) | map(select(. != "")) | map(down)) as $allowed |
+    ["dependabot[bot]", "github-actions[bot]", "renovate[bot]",
+     "codecov[bot]", "snyk[bot]", "imgbot[bot]", "greenkeeper[bot]",
+     "sonarcloud[bot]", "mergify[bot]"] as $noise |
     (
       ((.reviewComments // []) | map(.id as $id | {
         id: $id,
@@ -91,20 +112,24 @@ _normalize() {
         line: (.line // .original_line // null),
         author: (.user.login // "unknown"),
         body: (.body // ""),
+        state: null,
         resolved: (($resolved | index($id)) != null),
         url: (.html_url // null)
       }))
       +
-      ((.reviews // []) | map(select((.body // "") != "")) | map({
-        id: .id,
-        kind: "review",
-        path: null,
-        line: null,
-        author: (.user.login // "unknown"),
-        body: (.body // ""),
-        resolved: false,
-        url: (.html_url // null)
-      }))
+      ((.reviews // [])
+        | map(select(((.body // "") != "") or ((.state // "") == "CHANGES_REQUESTED")))
+        | map({
+            id: .id,
+            kind: "review",
+            path: null,
+            line: null,
+            author: (.user.login // "unknown"),
+            body: (.body // ""),
+            state: (.state // null),
+            resolved: false,
+            url: (.html_url // null)
+          }))
       +
       ((.issueComments // []) | map({
         id: .id,
@@ -113,11 +138,29 @@ _normalize() {
         line: null,
         author: (.user.login // "unknown"),
         body: (.body // ""),
+        state: null,
         resolved: false,
         url: (.html_url // null)
       }))
     )
     | map(select(($include_resolved == 1) or (.resolved | not)))
+    | map(
+        (.author | down) as $login |
+        (.body | contains("<!-- loop-spec:revise -->")) as $self |
+        ((.body | trim | down) as $bare
+          | ($bare == "" and ((.state // "") == "APPROVED"))
+            or ($bare | test("^(lgtm|approved|\\+1|looks good( to me)?)[.!]*$"))) as $lgtm |
+        ($allowed | index($login) != null) as $allow |
+        ($noise | index($login) != null) as $ci |
+        ($login | endswith("[bot]")) as $bot |
+        (if $self then "self-revise-comment"
+         elif $lgtm then "bare-approval"
+         elif $allow then ""
+         elif $ci and .kind == "issue_comment" then "noise-bot"
+         elif $bot and .kind == "issue_comment" then "bot-issue-comment"
+         else "" end) as $reason |
+        . + {skip: ($reason != ""), skipReason: $reason}
+      )
   '
 }
 
@@ -131,7 +174,7 @@ _summarize() {
       metadataStatus: ($meta.metadataStatus // "complete"),
       changesRequested: ($decision == "CHANGES_REQUESTED"),
       requestedReviewers: [($meta.reviewRequests // [])[] | (.login // .name // .slug // "unknown")],
-      unresolved: ($items | length),
+      unresolved: ([$items[] | select(.skip | not)] | length),
       items: $items
     }
   '

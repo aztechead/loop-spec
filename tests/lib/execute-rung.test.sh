@@ -28,6 +28,8 @@ select_rung() {
 out="$(select_rung LOOP_SPEC_NON_INTERACTIVE=1)"
 check "headless wide DAG uses subagent" "subagent" "$(jq -r '.rung' <<<"$out")"
 check "headless fallback reason is auditable" "headless/non-interactive" "$(jq -r '.loop.runtimeReason' <<<"$out")"
+check "headless subagent isolation is lead-created worktrees" "lead-worktree" \
+  "$(jq -r '.subagentIsolation' <<<"$out")"
 
 out="$(select_rung LOOP_SPEC_EXECUTION_PROFILE=interactive)"
 check "persistent runtime may auto-select loop" "loop" "$(jq -r '.rung' <<<"$out")"
@@ -40,6 +42,8 @@ check "worktree opt-out retains sequential context-isolating subagents" "subagen
   "$(jq -r '.rung + ":" + (.worktreesEnabled | tostring)' <<<"$out")"
 check "worktree opt-out reason is auditable" "LOOP_SPEC_WORKTREES=0; serial in-place one-shot subagents" \
   "$(jq -r '.reason' <<<"$out")"
+check "worktree opt-out has no subagent isolation" "none" \
+  "$(jq -r '.subagentIsolation' <<<"$out")"
 rc=0
 select_rung LOOP_SPEC_WORKTREES=invalid >/dev/null 2>&1 || rc=$?
 check "invalid worktree setting fails closed" "2" "$rc"

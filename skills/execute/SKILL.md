@@ -289,7 +289,10 @@ clamped to the tier maximum. `LOOP_SPEC_WORKTREES=0` is stronger than that cap: 
 forces `maxParallelImplementers=1` and disables task worktrees. When the harness has
 an Agent tool, EXECUTE still uses sequential one-shot implementer/reviewer subagents
 to bound the lead's context; only a harness without subagents falls back to inline
-lead execution.
+lead execution. On the headless subagent rung, wave width > 1 additionally requires
+lead-created task worktrees (`subagentIsolation=lead-worktree` from
+`lib/execute-rung.sh`); a failed `git worktree add` serializes that wave. Do not
+raise the cap until that isolation holds.
 
 ```bash
 maxParallelImplementers=3

@@ -116,15 +116,25 @@ else
   fi
 fi
 
+# One-shot Agents share the lead's session cwd. Isolation for the subagent rung
+# is therefore the lead creating each task worktree BEFORE dispatch — never the
+# subagent running `git worktree add` itself. Fan-out wider than 1 is gated on
+# that lead-created worktree existing; a failed add serializes the wave.
+subagent_isolation="none"
+if [[ "$rung" == "subagent" && "$worktrees_enabled" == "1" ]]; then
+  subagent_isolation="lead-worktree"
+fi
+
 jq -cn --arg rung "$rung" --argjson width "$width" --arg reason "$reason" \
   --arg teamsMode "$teams_mode" --argjson subagents "$subagents" \
   --arg cli "$agent_cli" --argjson cliAvailable "$cli_available" \
   --argjson loopRuntime "$loop_runtime" --arg loopRuntimeReason "$loop_runtime_reason" \
   --arg loopOptIn "$loops_optin" --argjson worktreesEnabled "$worktrees_json" \
-  --arg subagentCap "$subagent_cap" \
+  --arg subagentCap "$subagent_cap" --arg subagentIsolation "$subagent_isolation" \
   '{rung:$rung,width:$width,reason:$reason,teamsMode:$teamsMode,
     subagentsAvailable:$subagents,
     maxParallelSubagents:(if $subagentCap == "" then null else ($subagentCap | tonumber) end),
     worktreesEnabled:$worktreesEnabled,
+    subagentIsolation:$subagentIsolation,
     loop:{cli:$cli,cliAvailable:$cliAvailable,runtimeAvailable:$loopRuntime,
       runtimeReason:$loopRuntimeReason,optIn:$loopOptIn}}'

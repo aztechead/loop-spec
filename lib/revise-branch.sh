@@ -10,7 +10,12 @@
 # Usage:
 #   revise-branch.sh prepare <repo> <branch> <0|1> [revision-worktree]
 #
-# Output: one JSON object {revisionRoot, branch, sync, mode}.
+# Output: one JSON object {revisionRoot, branch, sync, mode, isolation, owned}.
+#   isolation  worktree | in-place — where the revision actually runs, which can
+#              differ from the requested mode when the branch is already checked out.
+#   owned      true only when this invocation created a new worktree. Step 10
+#              must `git worktree remove` only when owned is true; never remove
+#              the caller's checkout or a worktree that already held the branch.
 # Exit: 0 prepared; 2 bad invocation/precondition; 3 genuine divergence or failed
 #       fast-forward reconciliation; 4 worktree setup failure.
 set -euo pipefail
@@ -36,11 +41,33 @@ git -C "$repo" remote get-url origin >/dev/null 2>&1 || die "origin remote is re
 [[ -n "$branch" ]] || die "branch must be non-empty"
 if [[ "$mode" == "1" ]]; then
   [[ -n "$revision_root" ]] || die "worktree mode requires a revision-worktree path"
-  [[ ! -e "$revision_root" ]] || worktree_fail "revision worktree path already exists: $revision_root"
 else
   [[ -z "$(git -C "$repo" status --porcelain --untracked-files=all)" ]] \
     || die "LOOP_SPEC_WORKTREES=0 requires a clean dedicated checkout for revise"
 fi
+
+# Where <branch> is already checked out, if anywhere. Porcelain, not `git branch`
+# (a worktree other than $repo can hold the branch). Empty = not checked out.
+checkout_path=""
+want_ref="refs/heads/$branch"
+cur_path=""
+while IFS= read -r line; do
+  case "$line" in
+    worktree\ *) cur_path="${line#worktree }" ;;
+    branch\ *)
+      if [[ "${line#branch }" == "$want_ref" ]]; then
+        checkout_path="$cur_path"
+      fi
+      ;;
+    "") cur_path="" ;;
+  esac
+done < <(git -C "$repo" worktree list --porcelain)
+
+require_clean() {
+  local root="$1"
+  [[ -z "$(git -C "$root" status --porcelain --untracked-files=all)" ]] \
+    || die "revise in-place at $root requires a clean checkout (branch $branch is already checked out there)"
+}
 
 timeout_secs="$(loop_spec_resolve_timeout "${LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS:-}" 60)" || timeout_secs=60
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-revise-branch-XXXXXX")"
@@ -79,14 +106,29 @@ if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
   fi
 fi
 
-if [[ "$mode" == "1" ]]; then
+isolation="in-place"
+owned=false
+if [[ "$mode" == "1" && -n "$checkout_path" ]]; then
+  # Already checked out somewhere: never `worktree add` (git refuses) and never
+  # remove that checkout in Step 10. Same class as LOOP_SPEC_WORKTREES=0.
+  revision_root="$(cd "$checkout_path" && pwd -P)"
+  require_clean "$revision_root"
+  if [[ "$revision_root" == "$repo" ]]; then
+    isolation="in-place"
+  else
+    isolation="worktree"
+  fi
+elif [[ "$mode" == "1" ]]; then
+  [[ ! -e "$revision_root" ]] || worktree_fail "revision worktree path already exists: $revision_root"
   if [[ "$local_exists" == "true" ]]; then
     git -C "$repo" worktree add "$revision_root" "$branch" >/dev/null 2>&1 \
-      || worktree_fail "could not add $branch at $revision_root (it may already be checked out)"
+      || worktree_fail "could not add $branch at $revision_root"
   else
     git -C "$repo" worktree add -b "$branch" "$revision_root" "origin/$branch" >/dev/null 2>&1 \
       || worktree_fail "could not create revision worktree for origin/$branch"
   fi
+  isolation="worktree"
+  owned=true
 else
   revision_root="$repo"
   if [[ "$local_exists" == "true" ]]; then
@@ -103,5 +145,7 @@ if [[ "$sync" == "fast-forwarded-remote" ]]; then
     || sync_fail "origin/$branch could not be fast-forwarded into the revision checkout"
 fi
 
-jq -cn --arg root "$revision_root" --arg branch "$branch" --arg sync "$sync" --arg mode "$mode" \
-  '{revisionRoot:$root,branch:$branch,sync:$sync,mode:($mode|tonumber)}'
+jq -cn --arg root "$revision_root" --arg branch "$branch" --arg sync "$sync" \
+  --arg mode "$mode" --arg isolation "$isolation" --argjson owned "$owned" \
+  '{revisionRoot:$root,branch:$branch,sync:$sync,mode:($mode|tonumber),
+    isolation:$isolation,owned:$owned}'

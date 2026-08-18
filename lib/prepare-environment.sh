@@ -237,7 +237,8 @@ names = (
     "package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock",
     "pyproject.toml", "poetry.lock", "uv.lock", "requirements.txt", "requirements.lock",
     "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "Gemfile", "Gemfile.lock",
-    "composer.json", "composer.lock",
+    "composer.json", "composer.lock", "project.clj", "deps.edn", "mix.exs",
+    "pom.xml", "build.gradle", "build.gradle.kts",
 )
 # The root keeps its bare manifest names so an unchanged repository keeps its
 # existing key; a prepared subdirectory contributes its manifests under the

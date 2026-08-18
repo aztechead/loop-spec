@@ -59,6 +59,14 @@ wave (`min(|ready|, maxParallelImplementers)`).
   repository when it cannot — a sandboxed harness that denies harness-config paths
   (`.claude/commands/**`) inside the repo makes an in-repo checkout impossible — or when
   the operator sets `LOOP_SPEC_WORKTREE_DIR`.
+- `subagentIsolation` — read from the same `execute-rung.sh` result. `lead-worktree` means
+  the **lead** creates each task worktree before any Agent call; `none` means in-place
+  (no isolation). One-shot Agents share the session cwd and cannot isolate themselves,
+  even when `LOOP_SPEC_WORKTREES=1`. Collision-safety is therefore this lead-created
+  worktree (plus the lead's file partitioning), not a hope that parallel subagents will
+  each `git worktree add`. Wave width > 1 is allowed only when every member of the wave
+  has a created worktree. Raising `maxParallelImplementers` (caps → 3 and beyond) is
+  gated on this remaining true.
 - `models.implementer`, `models.specComplianceReviewer` — read for each Agent
   call; add `model` only for an alias and omit it for `inherit`.
 - `commands.prepare` — from `feature.json.commands`. Repository-wide
@@ -130,6 +138,22 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 2. **Compute the ready set:** `ready = [t in remaining if every dep in t.blockedBy is in mergedSet]`.
    - If `ready` is empty while `remaining` is non-empty: set `escalation = {reason: "deadlock", detail: "unmergeable dependency cycle or all remaining blocked"}` and exit.
 3. **Form the wave:** `wave = ready[:maxParallelImplementers]`.
+3.5 **Isolate the wave (worktree mode only).** One-shot Agents share the lead's cwd;
+    they do not get a harness worktree. When `subagentIsolation == "lead-worktree"`,
+    the lead creates each task worktree **before** any Agent call:
+
+    ```bash
+    worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+      resolve "$featureWorktreeRoot" task "{slug}/task-{taskId}" | jq -r '.path')"
+    git -C "$featureWorktreeRoot" worktree add "$worktree_path" \
+      -b "task/{taskId}-{slug}" "feat/{slug}"
+    ```
+
+    A failed add drops that task from this wave (it stays ready). If the wave would
+    be empty, dispatch **one** remaining ready task in-place on `feat/{slug}` —
+    never overlap writers in the feature root. Wave width > 1 is allowed only when
+    every member of the wave has a created worktree. Do not raise
+    `maxParallelImplementers` above this isolation.
 4. **Dispatch the wave.** For each `taskId` in `wave`, issue an implementer `Agent`
    call. On rung 2 emit all wave calls in ONE assistant message so they run in
    parallel; on rung 1 the wave has one task. Use the prompt template below.
@@ -198,12 +222,12 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 
 Dispatch every implementer and reviewer with the **default** agent (do NOT pass
 `subagent_type`), exactly as `lib/workflows/execute-dag.js` does. The prompts below are
-self-contained -- they carry the worktree, implement, verify, commit, and review
+self-contained -- they carry the implement, verify, commit, and review
 instructions in full. The template below is the WORKTREE-mode prompt; with
 `worktreesEnabled == false` compose the in-place prompt from "In-place single-repository
-mode" above instead. Do NOT pass `subagent_type: "loop-spec:implementer"`: that agent
-declares `isolation: worktree` in its frontmatter, which would create a second worktree
-on top of the explicit `git worktree add` in the prompt. Read the role selector
+mode" above instead. Do NOT pass `subagent_type: "loop-spec:implementer"`: this path
+uses the default Agent with a self-contained prompt, and the lead already created
+the task worktree. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 
@@ -285,8 +309,10 @@ the whole job — never skip, trim, or defer an item, and never write
 follow-up/deferred/future-work notes; a criterion you cannot meet is a loud failure
 with evidence, never a note.
 
-Step 1 - Create the task worktree (worktree mode only; skip if it already exists):
-  git -C "{featureWorktreeRoot}" worktree add "{worktree_path}" -b "task/{taskId}-{slug}" "feat/{slug}"
+Step 1 - The task worktree already exists at {worktree_path} on branch
+  task/{taskId}-{slug}. Do not run `git worktree add`. If the path is missing,
+  fail loudly; do not create a worktree and do not edit the feature root.
+  All git and file operations use that directory (`git -C "{worktree_path}"`).
 
 Step 1.5 - Prepare declared dev/test dependencies inside the task worktree:
   bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{worktree_path}" --command "{commands.prepare}" --reuse-from "{featureWorktreeRoot}"

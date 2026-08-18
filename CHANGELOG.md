@@ -108,6 +108,32 @@ pass.
 
 ### Fixed
 
+- **`/loop-spec:revise` no longer blanket-skips `[bot]` authors.** That discarded
+  GitHub's code-review agent `CHANGES_REQUESTED` (processed:0) and silently killed
+  the review→revise loop. `lib/pr-comments.sh` now keeps a REVIEW with
+  `CHANGES_REQUESTED` (even an empty body) and every inline `review_comment`,
+  including bots. Still skipped: self `<!-- loop-spec:revise -->` comments, bare
+  LGTM/Approved bodies, and CI/dependabot issue-comment chatter.
+  `LOOP_SPEC_REVIEW_BOT_ALLOWLIST` force-keeps named bot issue comments.
+- **`revise-branch.sh` no longer tries to `worktree add` a branch that is already
+  checked out.** That failed with "already checked out", wasted steps, then fell
+  back. If the branch is checked out in the source repo, revise goes in-place;
+  if it is checked out in another worktree, that path is reused. JSON reports
+  `isolation` and `owned` so Step 10 cannot `git worktree remove` the caller's
+  checkout.
+- **Headless subagent isolation is lead-created worktrees, not a hope that
+  parallel Agents will `git worktree add`.** One-shot Agents share the session
+  cwd even with `LOOP_SPEC_WORKTREES=1`. The lead creates each task worktree
+  before dispatch (`subagentIsolation=lead-worktree`); wave width > 1 is allowed
+  only when those worktrees exist; a failed add serializes. Raising the
+  implementer cap is gated on this.
+- **`detect-test-cmd.sh` is language-agnostic.** `project.clj` → `lein test`,
+  `deps.edn` → `clojure -M:test`, plus Elixir, Maven, Gradle, Bundler, and
+  Composer markers. The detector must not assume JS or Python.
+- **Revise no longer hand-reconstructs a missing `feature.json`.**
+  `lib/revise-state.sh ensure` reuses or writes a schema-7 skeleton via
+  `feature-init.sh`; the skill does not author jq.
+
 - **Full-cycle phase markers are emitted by the graph engine, not by cycle-skill
   prose the agent can skip.** A run that called `loop-spec:cycle` once, then
   implemented the feature inline, produced `cycleKind=full` with `phase=unknown`
