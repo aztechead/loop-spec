@@ -19,7 +19,6 @@ LANGUAGE = {
     ".js": "js", ".jsx": "js", ".mjs": "js", ".cjs": "js",
     ".ts": "js", ".tsx": "js",
 }
-COMMENT = {"python": "#", "shell": "#", "js": "//"}
 # A heredoc in a shell script is data -- a python program, a prompt, a test fixture --
 # and reading it as shell reports findings against code that is not this file's.
 HEREDOC_OPEN = re.compile(r"<<-?\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?")
@@ -70,43 +69,114 @@ WORD = re.compile(r"[A-Za-z]+")
 MAX_GENERIC_WORDS = 6
 
 
-def code_lines(lines, language):
-    """(index, text) for every line this file actually runs: no whole-line comments (a
-    commented-out `exit 1` is not a failure path) and, in shell, no heredoc bodies."""
-    marker = COMMENT[language]
+def executable_lines(lines, language):
+    """One same-width code view per source line, with data and comments blanked.
+
+    The rules match executable tokens, not examples such as ``"process.exit(2)"`` or
+    an inline ``# sys.exit(2)``. Keeping the width preserves match positions for the
+    original source line used in each finding."""
+    masked = []
+    quote = None
+    block_comment = False
     terminator = None
-    for index, text in enumerate(lines):
-        if terminator is not None:
+    for text in lines:
+        if language == "shell" and terminator is not None:
+            masked.append(" " * len(text))
             if text.strip() == terminator:
                 terminator = None
             continue
-        if language == "shell" and "<<<" not in text:
-            opener = HEREDOC_OPEN.search(text)
-            if opener:
-                terminator = opener.group(1)
-        if not text.strip().startswith(marker):
-            yield index, text
+        code = list(text)
+        index = 0
+        pending_terminator = None
+        while index < len(text):
+            if block_comment:
+                code[index] = " "
+                if text.startswith("*/", index):
+                    code[index:index + 2] = "  "
+                    index += 2
+                    block_comment = False
+                else:
+                    index += 1
+                continue
+            if quote:
+                width = len(quote)
+                if text.startswith(quote, index):
+                    code[index:index + width] = " " * width
+                    index += width
+                    quote = None
+                elif text[index] == "\\":
+                    code[index] = " "
+                    if index + 1 < len(text):
+                        code[index + 1] = " "
+                    index += 2
+                else:
+                    code[index] = " "
+                    index += 1
+                continue
+
+            if language == "js" and text.startswith("/*", index):
+                code[index:index + 2] = "  "
+                index += 2
+                block_comment = True
+                continue
+            if language == "js" and text.startswith("//", index):
+                code[index:] = " " * (len(text) - index)
+                break
+            if language in ("python", "shell") and text[index] == "#":
+                if language == "python" or index == 0 or text[index - 1].isspace():
+                    code[index:] = " " * (len(text) - index)
+                    break
+
+            if language == "shell" and not text.startswith("<<<", index):
+                opener = HEREDOC_OPEN.match(text, index)
+                if opener:
+                    pending_terminator = opener.group(1)
+
+            if language == "python" and text.startswith(("'''", '\"\"\"'), index):
+                quote = text[index:index + 3]
+                code[index:index + 3] = "   "
+                index += 3
+                continue
+            allowed_quotes = ("'", '"', "`") if language == "js" else ("'", '"')
+            if text[index] in allowed_quotes:
+                quote = text[index]
+                code[index] = " "
+            index += 1
+        masked.append("".join(code))
+        if pending_terminator is not None:
+            terminator = pending_terminator
+        if language == "python" and quote in ("'", '"'):
+            quote = None
+    return masked
+
+
+def code_lines(lines, language, executable=None):
+    """(index, source, code) for every line containing executable text."""
+    executable = executable if executable is not None else executable_lines(lines, language)
+    for index, text in enumerate(lines):
+        if executable[index].strip():
+            yield index, text, executable[index]
 
 
 def swallowed(lines, language):
     """A caught error whose handler does nothing. The program continues as if the
     call succeeded, and the only record of what actually happened is gone."""
     if language == "python":
-        for index, text in code_lines(lines, language):
-            match = EXCEPT_INLINE.match(text)
+        for index, text, code in code_lines(lines, language):
+            match = EXCEPT_INLINE.match(code)
             if match:
                 if BROAD.match(match.group("clause")):
                     yield index + 1, "swallowed", text.strip()
                 continue
-            match = EXCEPT_OPEN.match(text)
+            match = EXCEPT_OPEN.match(code)
             if (match and BROAD.match(match.group("clause"))
                     and _only_statement_is_empty(lines, index, len(match.group(1)))):
                 yield index + 1, "swallowed", text.strip()
     elif language == "js":
-        for index, text in code_lines(lines, language):
-            if CATCH_INLINE.search(text):
+        for index, text, code in code_lines(lines, language):
+            if CATCH_INLINE.search(code):
                 yield index + 1, "swallowed", text.strip()
-            elif CATCH_OPEN.search(text) and _next_code_line_closes(lines, index):
+            elif CATCH_OPEN.search(code) and _next_code_line_closes(lines, index):
                 yield index + 1, "swallowed", text.strip()
 
 
@@ -146,11 +216,12 @@ def silent_exit(lines, language):
     what failed."""
     patterns = {"shell": SHELL_EXIT, "python": PY_EXIT, "js": JS_EXIT}
     pattern = patterns[language]
-    for index, text in code_lines(lines, language):
-        match = pattern.search(text)
-        if not match or GUARDED_EXIT.search(text):
+    executable = executable_lines(lines, language)
+    for index, text, code in code_lines(lines, language, executable):
+        match = pattern.search(code)
+        if not match or GUARDED_EXIT.search(code):
             continue
-        if _speaks_nearby(lines, index):
+        if _speaks_nearby(executable, index):
             continue
         yield index + 1, "silent-exit", text.strip()
 
@@ -176,9 +247,12 @@ def contextless(lines, language):
     "it broke". The failure that actually happened -- which file, which field,
     which limit -- is exactly what the message leaves out."""
     patterns = {"python": (PY_RAISE,), "js": (JS_THROW,), "shell": (SH_SAY,)}
-    for index, text in code_lines(lines, language):
+    operators = {"python": "raise", "js": "throw", "shell": "echo"}
+    for index, text, code in code_lines(lines, language):
         for pattern in patterns[language]:
             for match in pattern.finditer(text):
+                if not code.startswith(operators[language], match.start()):
+                    continue
                 if match.groupdict().get("prefix") == "f":
                     continue
                 body = match.group("body")

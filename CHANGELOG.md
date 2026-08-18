@@ -36,7 +36,7 @@ pass.
   exit says why before it exits — plus a section stating exactly what the probe checks and
   what stays a judgment (whether an error should have been retried, whether a log line is
   at the right level, whether the handling is correct at all).
-- **`tests/lib/failure-tells.test.sh`** — 22 cases pinning the three silences and the four
+- **`tests/lib/failure-tells.test.sh`** — 25 cases pinning the three silences and the four
   deliberate shapes the probe must stay quiet on.
 
 - **`skills/shared/human-docs.md` — the docs-for-humans contract.** The fourth member of
@@ -57,7 +57,7 @@ pass.
   only what a change introduced. `stale-ref` fires only where git tracks files of that
   kind in that directory, which is what keeps runtime state (`.loop-spec/runtime.json`),
   foreign examples (`app/models/user.rb` in a project with no `app/`), and a path named
-  because it is gone from being reported as rot. Measured over this repository's own 169
+  because it is gone from being reported as rot. Measured over this repository's own 170
   documents: 181 findings, 149 of them in delivered feature artifacts (frozen records) and
   32 in live documents; the live ones were sampled and were real.
 - **VERIFY Step 7.66 — the docs-for-humans pass.** Runs `doc-tells.sh diff` over the
@@ -76,6 +76,12 @@ pass.
 
 ### Changed
 
+- **The test loop is split by feedback speed.** `tests/run-unit.sh` maps the current
+  worktree diff (or an explicit base ref) to same-name unit suites and registered coupling
+  tests, then runs just that set plus syntax and code/document tells. `tests/run-all.sh`
+  remains the complete offline gate, now runs independent suites concurrently, moves the
+  graph mutation proofs into a temporary copy, prints concise timing by default, and
+  accepts `RUN_ALL_JOBS` / `RUN_ALL_VERBOSE` for diagnosis.
 - **The code-for-humans switch now carries all three halves.** `hooks/team/human-code-inject.sh`
   injects the failure-path directive and the docs directive beside the house-style one,
   `/loop-spec:human-code off` and `LOOP_SPEC_HUMAN_CODE=0` disable all of it, and
@@ -108,6 +114,15 @@ pass.
 
 ### Fixed
 
+- **Workflow implementers resolve the design-for-change contract from the installed
+  plugin.** The execute DAG previously handed target-repository agents the relative path
+  `skills/shared/design-for-change.md`, which does not exist in the project being changed.
+- **Failure-path checks distinguish executable code from examples and comments.** Quoted
+  `exit`/`throw` examples and inline comments no longer produce findings or count as a
+  diagnostic for a real exit, while heredoc markers inside data cannot hide later code.
+- **The surface index suite is portable across BSD and GNU `wc`.** Line-count assertions
+  now normalize `wc -l` padding, and `lib/surface.py` uses the keyword form of
+  `re.split(maxsplit=...)` required by newer Python versions without deprecation warnings.
 - **`/loop-spec:revise` no longer blanket-skips `[bot]` authors.** That discarded
   GitHub's code-review agent `CHANGES_REQUESTED` (processed:0) and silently killed
   the review→revise loop. `lib/pr-comments.sh` now keeps a REVIEW with

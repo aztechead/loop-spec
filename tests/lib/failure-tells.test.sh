@@ -151,10 +151,55 @@ EOF
 check "m: a stated reason, a logged handler, and an interpolated message stay quiet" 0 \
   "failure-tells: clean" scan good.ts
 
+# --- quoted examples and inline comments are data, not executable exits ---
+cat > "$WORK/quoted.py" <<'EOF'
+note = "sys.exit(2)"
+value = 1  # sys.exit(3)
+example = 'raise ValueError("invalid input")'
+EOF
+cat > "$WORK/quoted.js" <<'EOF'
+const note = "process.exit(2)";
+const value = 1; // process.exit(3)
+const example = 'throw new Error("invalid input")';
+/* process.exit(4); */
+EOF
+cat > "$WORK/quoted.sh" <<'EOF'
+note="then; exit 2"
+value=1  # exit 3
+cat <<'PAYLOAD'
+exit 4
+PAYLOAD
+EOF
+check "n: exit and error examples in strings or comments stay quiet" 0 \
+  "failure-tells: clean" scan quoted.py quoted.js quoted.sh
+
+cat > "$WORK/data-before-exit.py" <<'EOF'
+note = "error"
+sys.exit(2)
+EOF
+cat > "$WORK/data-before-exit.js" <<'EOF'
+const note = "error";
+process.exit(2);
+EOF
+cat > "$WORK/data-before-exit.sh" <<'EOF'
+note="error"
+exit 2
+EOF
+check "o: an error word stored as data does not speak for a real exit" 1 \
+  "failure-tells: 3 finding" scan data-before-exit.py data-before-exit.js data-before-exit.sh
+
+cat > "$WORK/quoted-heredoc.sh" <<'EOF'
+# cat <<COMMENTED
+note='<<QUOTED'
+exit 2
+EOF
+check "p: a heredoc marker in a comment or string does not hide later code" 1 \
+  "tell=silent-exit: exit 2" scan quoted-heredoc.sh
+
 # --- scope ---
 printf '# notes\n' > "$WORK/bad.py.md"
-check "n: a language with no rules is skipped, not guessed at" 0 "1 skipped" scan bad.py.md
-check "o: the skip is counted in the answer line" 1 "skipped \(no rules" scan bad.py bad.py.md
+check "q: a language with no rules is skipped, not guessed at" 0 "1 skipped" scan bad.py.md
+check "r: the skip is counted in the answer line" 1 "skipped \(no rules" scan bad.py bad.py.md
 
 # --- diff mode reports only what the change introduced ---
 (
@@ -167,19 +212,19 @@ BASE="$(cd "$WORK" && git rev-parse HEAD)"
 printf '\n\ndef save(path):\n    try:\n        write(path)\n    except Exception:\n        pass\n' >> "$WORK/good.py"
 (cd "$WORK" && git add good.py && git commit -qm "add a swallowed handler") >/dev/null 2>&1
 
-check "p: diff mode flags the handler the change added" 1 "good.py:[0-9]+: tell=swallowed" diff "$BASE"
-check "q: diff mode leaves the file's other lines alone" 1 "failure-tells: 1 finding" diff "$BASE"
-check "r: an unchanged range is clean" 0 "failure-tells: clean" diff HEAD
+check "s: diff mode flags the handler the change added" 1 "good.py:[0-9]+: tell=swallowed" diff "$BASE"
+check "t: diff mode leaves the file's other lines alone" 1 "failure-tells: 1 finding" diff "$BASE"
+check "u: an unchanged range is clean" 0 "failure-tells: clean" diff HEAD
 
 # --- usage ---
-check "s: bad mode exits 2" 2 "usage: failure-tells.sh" bogus bad.py
-check "t: scan with no file exits 2" 2 "usage: failure-tells.sh scan" scan
-check "u: an unreadable file exits 2" 2 "cannot read" scan absent.py
+check "v: bad mode exits 2" 2 "usage: failure-tells.sh" bogus bad.py
+check "w: scan with no file exits 2" 2 "usage: failure-tells.sh scan" scan
+check "x: an unreadable file exits 2" 2 "cannot read" scan absent.py
 
 if [[ -x "$LINT" ]]; then
-  echo "PASS: v: lint is executable"; PASS=$((PASS+1))
+  echo "PASS: y: lint is executable"; PASS=$((PASS+1))
 else
-  echo "FAIL: v: lint is not executable"; FAIL=$((FAIL+1))
+  echo "FAIL: y: lint is not executable"; FAIL=$((FAIL+1))
 fi
 
 echo "Results: $PASS passed, $FAIL failed"

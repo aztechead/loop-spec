@@ -50,6 +50,17 @@ for entry in "${checks[@]}"; do
   fi
 done
 
+# Workflow agents run in the target repository, not the plugin checkout. The
+# contract path must therefore be built from the injected skill directory.
+if grep -qE "libDir \? libDir \+ '/\.\./skills/shared/design-for-change\.md'" \
+  lib/workflows/execute-dag.js; then
+  echo "PASS: execute-dag.js resolves the design contract from the plugin directory"
+  PASS=$((PASS+1))
+else
+  echo "FAIL: execute-dag.js leaves the design contract relative to the target repository"
+  FAIL=$((FAIL+1))
+fi
+
 # The EXECUTE subagent rung dispatches TWO implementer prompts (single-repo + workspace);
 # both must carry the directive, same as the ladder requirement.
 sub_count="$(grep -ciE "seams, not speculation" skills/shared/execute-subagent.md)"

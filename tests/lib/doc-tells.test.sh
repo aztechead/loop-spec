@@ -6,7 +6,7 @@
 # identical in the text and are not defects -- an example path from another
 # project, state the software writes at runtime, a path named because it is gone,
 # and a placeholder the prose already explains. The negative cases below are the
-# ones a survey of this repo's own 169 documents turned up.
+# ones a survey of this repo's own 170 documents turned up.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

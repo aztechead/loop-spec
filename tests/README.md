@@ -5,12 +5,20 @@
 Run from repo root:
 
 ```bash
+bash tests/run-unit.sh
 bash tests/run-all.sh
 ```
 
-This runs every non-interactive suite: the agent/manifest validators, the hook
-tests, the `lib/` unit tests, and (when a node runtime is available) the workflow
-syntax checks in `tests/workflows/smoke.sh`. It needs bash, git, jq, python3,
+`run-unit.sh` is the edit-loop gate. With no argument it maps uncommitted files to their
+same-name unit suites and every registered coupling test that names them, then runs only
+that set. Pass a base ref (`bash tests/run-unit.sh main`) to cover a whole branch diff.
+It also syntax-checks and runs the code/document tells over every changed file. The full
+gate runs every suite concurrently; set `RUN_ALL_JOBS=1` when diagnosing order-sensitive
+behavior and `RUN_ALL_VERBOSE=1` to print successful suite logs.
+
+The full gate runs every non-interactive suite: the agent/manifest validators, the hook
+tests, the `lib/` units and integration contracts, and (when a node runtime is available)
+the workflow syntax checks in `tests/workflows/smoke.sh`. It needs bash, git, jq, python3,
 ripgrep (`rg`, used by the two coverage sweeps to enumerate the tree), and (for
 the workflow checks) node. It does NOT require the Claude CLI. `rg` is a
 test-only dependency: nothing shipped at runtime uses it.
