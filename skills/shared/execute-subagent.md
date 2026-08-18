@@ -39,9 +39,15 @@ wave (`min(|ready|, maxParallelImplementers)`).
 - `tasks[]` — each `{id, subject, files, blockedBy (union), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` comes straight from the PLAN task block; it is the per-task behavioral assertion re-run post-merge in step 7.)
 - `maxParallelImplementers` (3), `maxRetriesPerTask` (2), `reviewersEnabled` (true) — fixed (`skills/shared/tier-matrix.md`).
 - `featureWorktreeRoot = $(git rev-parse --show-toplevel)`, `featureBranch = feat/{slug}`.
-- `worktree_path` — **resolved per task, never hard-coded.** Compute it once and
-  substitute the same absolute value into the implementer prompt, the reviewer prompt,
-  and the integration call:
+- `worktreesEnabled` — read from the `lib/execute-rung.sh` result **before composing any
+  prompt**. It selects the mode below; nothing else does. `false` means no worktree path is
+  resolved, no worktree command is composed, and no worktree tool is called — the guard in
+  `hooks/team/no-worktrees-guard.sh` is the backstop for a bypass, not the branch point. A
+  denied `git worktree add` followed by an in-place retry is the defect this ordering
+  removes: it costs a denied tool call and an error line on every headless run.
+- `worktree_path` — **worktree mode only; resolved per task, never hard-coded.** Compute it
+  once and substitute the same absolute value into the implementer prompt, the reviewer
+  prompt, and the integration call:
 
   ```bash
   worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
@@ -55,7 +61,8 @@ wave (`min(|ready|, maxParallelImplementers)`).
   the operator sets `LOOP_SPEC_WORKTREE_DIR`.
 - `models.implementer`, `models.specComplianceReviewer` — read for each Agent
   call; add `model` only for an alias and omit it for `inherit`.
-- `commands` — `{lint, test, typecheck}` from `feature.json.commands`.
+- `commands.prepare` — from `feature.json.commands`. Repository-wide
+  `lint`/`test`/`typecheck` run once at VERIFY, not on this rung.
 
 ## In-place single-repository mode
 
@@ -63,6 +70,11 @@ When the rung result has `worktreesEnabled == false`, retain the one-shot Agent
 boundary but serialize every task on the checked-out `feat/{slug}` branch. This is the
 `LOOP_SPEC_WORKTREES=0` mode: it protects the lead's context without paying for task
 worktrees or allowing concurrent writers.
+
+Select this mode BEFORE resolving a worktree path or composing a prompt. The worktree
+steps of the template below (Step 1, Step 1.5, Step 5, and the reviewer's
+`git -C "{worktree_path}"` diff) do not apply here and are never emitted — not attempted
+and fallen back from.
 
 Apply these replacements to the lead wave loop:
 
@@ -76,21 +88,21 @@ Apply these replacements to the lead wave loop:
    `task.files`. Dispatch the reviewer against the uncommitted diff:
    `git -C "{featureWorktreeRoot}" diff -- {task.files}`. Rework agents edit the same
    working tree serially; no other task starts while it is dirty.
-4. On reviewer `pass`, the lead reruns `task.verifyCommand`, stages exactly
+   4. On reviewer `pass`, the lead reruns `task.verifyCommand`, stages exactly
    `task.files`, and commits `feat: NO_JIRA {task.subject}`. Verify that HEAD advanced
-   from `taskBaseSha` and the checkout is clean, then add the task to `mergedSet`.
+   from `taskBaseSha` and the checkout is clean, then add the task to `mergedSet` and
+   persist `bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done ".loop-spec/features/${slug}/tasks.json" "{taskId}"`.
    There is no `integrate-task.sh` call because the accepted commit is already on the
    feature branch.
 5. On `block`, retry exhaustion, out-of-scope dirt, verification failure, missing
    commit, or an unreadable Git state, stop with the existing structured blocked or
    escalation reason. Preserve the working tree for diagnosis; never reset or clean it.
-6. Run the normal post-merge `feature-validation.sh compare` once for the completed
-   serialized wave (Step 7 below). Each task still runs its own `verifyCommand` before
-   publication; the wave gate validates the exact integrated feature candidate before
-   another wave begins.
+6. Each task runs its own `verifyCommand` before publication. The repository-wide
+   test/lint/typecheck comparison is NOT run here: it runs exactly once per cycle, at
+   VERIFY Step 1.75, against the fully integrated candidate.
 
-The direct implementer prompt replaces only the worktree/commit mechanics in the
-template below with:
+The direct implementer prompt keeps every non-worktree step of the template below and
+replaces its Steps 1, 1.5, 3, and 5 with:
 
 ```text
 Repository root: {featureWorktreeRoot}
@@ -102,12 +114,17 @@ the lead and a fresh reviewer agent. Return:
 { taskId: "{taskId}", ready: <true|false>, notes: "<notes>" }
 ```
 
+The reviewer reads the uncommitted diff at the repository root
+(`git -C "{featureWorktreeRoot}" diff -- {task.files}`) instead of a task branch.
+
 All reasoning, simplicity, design-for-change, evidence, and acceptance-criteria text
 from the normal prompt remains mandatory.
 
 ## Lead wave loop
 
-Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repeat:
+`mergedSet` is seeded in execute SKILL Step 2a from `task-progress.sh done`. If this
+protocol is entered directly, seed it the same way before the loop. Maintain `mergedSet`
+(task ids merged onto `feat/{slug}`) and `blocked[]`. Repeat:
 
 1. **Compute the remaining set:** `remaining = tasks - mergedSet - {b.taskId for b in blocked}`. If empty, exit the loop (success).
 2. **Compute the ready set:** `ready = [t in remaining if every dep in t.blockedBy is in mergedSet]`.
@@ -157,7 +174,14 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    ```
 
    Parse `integration_json`, never command prose. If `.published == true`, add the
-   task id to `mergedSet` even when cleanup reports a failure. Otherwise map
+   task id to `mergedSet` even when cleanup reports a failure, then persist:
+
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done \
+     ".loop-spec/features/${slug}/tasks.json" "{taskId}"
+   ```
+
+   Otherwise map
    `zero-commit` to the existing `zero-commit` blocked reason, `verify-failed` or
    `prepare-failed` to `retry-exhausted`, and any rebase/publication/cleanliness
    failure to `escalation.reason = "rebase-conflict"` with the helper's `reason`
@@ -165,21 +189,19 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
    The helper runs `verifyCommand` after any required rebase and before publication,
    so each task's focused proof covers exactly the commit that fast-forwards the feature
    branch. It deliberately does not run the repository-wide suite here.
-7. **Post-wave candidate suite gate**: after every passed task in the wave has been
-   published, run `lib/feature-validation.sh compare` once against the feature directory.
-   Exit 20 is a new regression; exit 21 is preparation/infrastructure failure. Unchanged
-   failures do not block only when a startup baseline was captured
-   (`LOOP_SPEC_STARTUP_BASELINE=1`); with none recorded any failure blocks.
-   This validates the exact integrated wave candidate and
-   catches cross-task regressions without repeating the same full suite once per task.
-8. Loop back to step 1.
+7. Loop back to step 1. EXECUTE runs no repository-wide suite of its own: every task's
+   focused `verifyCommand` runs after any rebase and before publication, and the
+   test/lint/typecheck comparison runs exactly once per cycle, at VERIFY Step 1.75,
+   against the fully integrated candidate.
 
 ## Agent dispatch convention
 
 Dispatch every implementer and reviewer with the **default** agent (do NOT pass
 `subagent_type`), exactly as `lib/workflows/execute-dag.js` does. The prompts below are
 self-contained -- they carry the worktree, implement, verify, commit, and review
-instructions in full. Do NOT pass `subagent_type: "loop-spec:implementer"`: that agent
+instructions in full. The template below is the WORKTREE-mode prompt; with
+`worktreesEnabled == false` compose the in-place prompt from "In-place single-repository
+mode" above instead. Do NOT pass `subagent_type: "loop-spec:implementer"`: that agent
 declares `isolation: worktree` in its frontmatter, which would create a second worktree
 on top of the explicit `git worktree add` in the prompt. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
@@ -292,7 +314,7 @@ the whole job — never skip, trim, or defer an item, and never write
 follow-up/deferred/future-work notes; a criterion you cannot meet is a loud failure
 with evidence, never a note.
 
-Step 1 - Create the task worktree (skip if it already exists):
+Step 1 - Create the task worktree (worktree mode only; skip if it already exists):
   git -C "{featureWorktreeRoot}" worktree add "{worktree_path}" -b "task/{taskId}-{slug}" "feat/{slug}"
 
 Step 1.5 - Prepare declared dev/test dependencies inside the task worktree:
@@ -317,8 +339,9 @@ Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.
 
 Step 4 - Run the task's feature-specific verify command inside the worktree:
   {task.verifyCommand}
-The integration helper reruns this focused command after any required rebase. The lead
-runs the repository-wide no-new-failures comparison once after the integrated wave.
+The integration helper reruns this focused command after any required rebase. This is the
+only command EXECUTE runs; the repository-wide no-new-failures comparison happens once per
+cycle, at VERIFY.
 
 Step 5 - Stage and commit inside the worktree branch:
   git -C "{worktree_path}" add <files>
@@ -491,9 +514,8 @@ commit directly on `feat/{slug}` in the repo; there is no task branch and no per
 worktree to merge. The lead does not run `git merge` or `git worktree remove` for
 workspace tasks.
 
-The post-wave suite gate (step 7) still applies: run
-`lib/feature-validation.sh compare {workspace_root}/.loop-spec/features/{slug}` once.
-It prepares and compares every participating repo; only new failures block.
+No post-wave suite gate runs here either. The repository-wide comparison across every
+participating repo happens once, at VERIFY Step 1.75.
 
 ### Completion verification (workspace mode)
 

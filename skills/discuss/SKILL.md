@@ -275,6 +275,12 @@ fi
 
 A security-signaled spec starts directly in the escalated debate (skip to **Escalated debate** below). Everything else runs single-critic.
 
+**Maintenance profile:** when `feature.json.executionProfile == "maintenance"` AND
+`security_signal` is empty, skip this gate entirely. Log one line —
+`discuss critique skipped (maintenance profile, no security signal)` — and continue at the
+next step. The signal check runs FIRST and is never skipped: a security-signaled spec
+escalates on the maintenance profile exactly as it does on the standard one.
+
 #### Single-critic pass (default)
 
 Model: `feature.models.challenger`. Send `challenger-1` the solo-critic brief:

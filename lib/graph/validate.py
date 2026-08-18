@@ -9,6 +9,7 @@ from __future__ import print_function
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -149,6 +150,30 @@ def check_condition(cond, ptr, label):
             elif expects not in answers:
                 flag(ptr + "/expects", "expects %r is not a member of %s --answers" % (expects, probe))
 
+BODY_ARG_PLACEHOLDERS = {"{featureDir}", "{repoRoot}", "{featureRepoRoot}", "{slug}", "{node}", "{baseSha}"}
+PLACEHOLDER_RE = re.compile(r"\{[A-Za-z][A-Za-z0-9]*\}")
+
+
+def check_body_args(node, ptr):
+    """A body's argument vector is declared, not improvised. The engine
+    substitutes a closed placeholder set; an undeclared one would reach the
+    script verbatim, so it is rejected here rather than at dispatch."""
+    args = node.get("bodyArgs")
+    if args is None:
+        return
+    if not isinstance(args, list) or any(not isinstance(a, str) for a in args):
+        flag(ptr + "/bodyArgs", "bodyArgs must be an array of strings")
+        return
+    body = node.get("body")
+    if node.get("kind") not in ("function", "gate") or not isinstance(body, str) or not body.endswith(".sh"):
+        flag(ptr + "/bodyArgs", "only a function/gate node with a .sh body may declare bodyArgs")
+    for j, arg in enumerate(args):
+        for found in PLACEHOLDER_RE.findall(arg):
+            if found not in BODY_ARG_PLACEHOLDERS:
+                flag("%s/bodyArgs/%d" % (ptr, j),
+                     "unknown placeholder %s (legal: %s)" % (found, ", ".join(sorted(BODY_ARG_PLACEHOLDERS))))
+
+
 node_ids = []
 node_by_id = {}
 for i, node in enumerate(nodes):
@@ -174,33 +199,30 @@ for i, node in enumerate(nodes):
         # The engine falls back to the node id, so a missing label never crashes
         # -- it silently publishes an identifier where a reader expects a name.
         flag(ptr + "/label", "published graph node %r has no human-facing label" % nid)
-    for field in ("reads", "writes"):
+    for field in ("reads", "writes", "optionalReads"):
         vals = node.get(field)
+        if vals is None and field == "optionalReads":
+            continue
         if not isinstance(vals, list):
             flag(ptr + "/" + field, "%s must be an array" % field)
             continue
         for j, key in enumerate(vals):
             if key not in state_keys:
                 flag("%s/%s/%d" % (ptr, field, j), "state key %r not in schema key space" % key)
+    # A key is either asserted on entry or explicitly nullable, never both --
+    # declaring both hides which rule the engine actually applies.
+    both = set(node.get("reads") or []) & set(node.get("optionalReads") or [])
+    if both:
+        flag(ptr + "/optionalReads",
+             "keys declared in both reads and optionalReads: %s" % sorted(both))
+    check_body_args(node, ptr)
     effort = node.get("effort")
     if effort not in effort_vals:
         flag(ptr + "/effort", "effort must be system1|system2")
-    # Gate skippable must name a licensing probe
-    skippable = node.get("skippable")
-    if skippable is not None:
-        if kind != "gate":
-            flag(ptr + "/skippable", "only gate nodes may declare skippable")
-        elif not isinstance(skippable, dict) or not skippable.get("probe"):
-            flag(ptr + "/skippable", "skippable gate must name a licensing probe")
-        else:
-            probe = skippable["probe"]
-            path = repo_path(probe, repo_root)
-            if not (os.path.isfile(path) and os.access(path, os.X_OK)):
-                flag(ptr + "/skippable/probe", "licensing probe not executable: %s" % probe)
     if node.get("authorizesDelivery") is True and effort == "system1":
         flag(ptr + "/effort", "delivery-authorizing node may not default to system1")
     # Human admit gate (contract sec 4): same {probe,args,expects} shape as a
-    # route condition, restricted to human nodes like skippable is to gates.
+    # route condition, restricted to human nodes the way `condition` is to route edges.
     admit = node.get("admit")
     if admit is not None:
         if kind != "human":
@@ -270,12 +292,13 @@ for node in nodes:
 for i, node in enumerate(nodes):
     if not isinstance(node, dict):
         continue
-    for j, key in enumerate(node.get("reads") or []):
-        if key not in written and key not in skeleton_keys:
-            flag(
-                "/nodes/%d/reads/%d" % (i, j),
-                "read key %r is never written by any node and is not a feature-init skeleton key" % key,
-            )
+    for field in ("reads", "optionalReads"):
+        for j, key in enumerate(node.get(field) or []):
+            if key not in written and key not in skeleton_keys:
+                flag(
+                    "/nodes/%d/%s/%d" % (i, field, j),
+                    "read key %r is never written by any node and is not a feature-init skeleton key" % key,
+                )
 
 # Reachability from entry (following all edge kinds)
 if idset and entries:

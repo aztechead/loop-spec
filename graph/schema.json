@@ -33,6 +33,7 @@
         "createdAt",
         "updatedAt",
         "execStyle",
+        "executionProfile",
         "phaseHandoff",
         "currentPhase",
         "completedPhases",
@@ -82,7 +83,7 @@
         "args": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Probe argument vector. {featureDir}, {repoRoot}, {slug}, {node} are engine-substituted placeholders; no other placeholder is legal. May be empty."
+          "description": "Probe argument vector. {featureDir}, {repoRoot}, {featureRepoRoot}, {slug}, {node}, {baseSha} are engine-substituted placeholders; no other placeholder is legal. May be empty."
         },
         "expects": {
           "type": "string",
@@ -114,17 +115,19 @@
           "type": "array",
           "items": { "$ref": "#/definitions/stateKey" }
         },
+        "optionalReads": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/stateKey" },
+          "description": "State keys the node consults but that are legitimately absent or null (an opt-out the schema documents, e.g. verificationBaseline without LOOP_SPEC_STARTUP_BASELINE=1). Entering the node never asserts them; the body owns the null case. A key may appear in reads or optionalReads, never both."
+        },
         "effort": { "$ref": "#/definitions/effort" },
         "body": { "type": "string" },
-        "graph": { "type": "string" },
-        "skippable": {
-          "type": "object",
-          "required": ["probe"],
-          "additionalProperties": false,
-          "properties": {
-            "probe": { "type": "string", "minLength": 1 }
-          }
+        "bodyArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Argument vector passed to a function/gate body. {featureDir}, {repoRoot}, {featureRepoRoot}, {slug}, {node}, {baseSha} are engine-substituted placeholders; no other placeholder is legal. Absent means the body is invoked with no arguments."
         },
+        "graph": { "type": "string" },
         "authorizesDelivery": { "type": "boolean" },
         "admit": {
           "$ref": "#/definitions/routeCondition",

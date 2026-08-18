@@ -96,7 +96,7 @@ and the checked-out branch equals `feature.branch`; otherwise print the absolute
 ask for relaunch there. Never substitute another `git worktree add` for changing cwd.
 
 **Both paths then:**
-Load feature state into memory. Jump directly to Step 6 (phase routing) with `state = loaded feature.json`. Do not re-run Steps 2-4. The phase team is re-created fresh via `TeamCreate` (the harness does not support in-process teammate resume). If `currentGate` in `feature.json` is non-null with a non-zero round, load prior debate transcript from `.loop-spec/features/{slug}/gate-logs/` into the spawn prompt so the resumed advocate/challenger have prior context.
+Load feature state into memory. Jump directly to Step 6 (phase routing) with `state = loaded feature.json`. Do not re-run Steps 2-4. Do not run the repository-wide test/lint/typecheck comparison — VERIFY Step 1.75 is the only place it runs. When `artifacts.tasks` exists, remaining work is the ids `lib/task-progress.sh remaining` prints; EXECUTE seeds `mergedSet` from the done ids and dispatches only those. The phase team is re-created fresh via `TeamCreate` (the harness does not support in-process teammate resume). If `currentGate` in `feature.json` is non-null with a non-zero round, load prior debate transcript from `.loop-spec/features/{slug}/gate-logs/` into the spawn prompt so the resumed advocate/challenger have prior context.
 
 The `TaskList` probe is the sole mechanism for detecting live teams. The harness exposes no `TeamList` tool, and the probe is non-destructive (it reads only, cannot create or delete teams).
 

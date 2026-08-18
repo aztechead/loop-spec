@@ -37,12 +37,54 @@ they ARE 2 and 3.
 When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)`.
 Everything else (spec critique, compliance, acceptance, code review, tamper scan) still runs.
 
+## Maintenance profile
+
+The structural fast-path measures the PLAN. The maintenance profile measures the TASK,
+before any phase runs, and lightens the gate OVERHEAD a low-risk mechanical change does
+not need — the remaining cost after the low-overhead map/artifact/state controls.
+
+`lib/cycle-profile.sh select` is the probe. It answers `profile=maintenance` only from a
+validated `lib/task-route.sh` classification that is maintenance-shaped
+(`taskKind` in docs/config/maintenance), low-ambiguity, at least 0.8 confidence, within 5
+reviewable files and 3 acceptance criteria, and carries NO seam, interface, security,
+migration, dependency-edge, multi-repo, or destructive flag. Anything unknown reads as
+risk. `LOOP_SPEC_CYCLE_PROFILE` and the inline `profile:` token are explicit operator
+overrides in both directions. The answer is persisted as
+`feature.json.executionProfile`, so a resume keeps the same ladder.
+
+What it lightens:
+
+| Phase | Standard | Maintenance |
+|---|---|---|
+| SPEC | Socratic interview, up to 6 rounds | Synthesize from the request + scout; the ambiguity gate still scores and still gates, falling back to the interview when a dimension misses its minimum |
+| DISCUSS | Critique gate (single-critic, escalating) | Skipped when `lib/security-signal.sh` reports no match |
+| PLAN | Critique gate, subject to the structural fast-path | Skipped when `lib/security-signal.sh` reports no match, regardless of the fast-path bounds |
+
+The profile is also the graph's own path selector. `lib/graph/probes/short-path.sh`
+answers `path=short` for a maintenance run with no security signal in its written
+artifacts, and `graph/cycle.graph.json` routes around three nodes on that answer:
+`discuss`, the spec-critique subgraph, and the `verify.code-review` agent. Same graph,
+same checkpoint ledger, same terminal result — a shorter declared path, not a different
+protocol. The probe re-reads the signal from the artifacts that exist now, so a change
+that turns out to touch a security surface lengthens its own path mid-run.
+
+What it never touches: the ambiguity gate, decision/criteria coverage, the feasibility
+check, and every other VERIFY gate — the placeholder scan, the tamper scan, the
+acceptance lint, and the no-new-failures comparison all run on both paths. Code review
+is the one quality gate the short path drops, and only behind the full maintenance
+classification: at most five reviewable files, low ambiguity, and no seam, interface,
+security, migration, dependency-edge, multi-repo, or destructive flag. Escalation on a genuine security signal is unchanged —
+the signal is checked FIRST on both critique gates, and a match escalates to the debate
+on the maintenance profile exactly as it does on the standard one.
+
 ## Critique gate ladder (skip → single-critic → escalated debate)
 
 Both critique gates (DISCUSS spec-critique, PLAN plan-critique) climb the same ladder —
 the lightest mode that preserves strictness wins:
 
-1. **Skip** — PLAN only, via the structural fast-path above. The spec critique never skips.
+1. **Skip** — PLAN via the structural fast-path above, and either gate on the maintenance
+   profile when no security signal fires. On the standard profile the spec critique never
+   skips.
 2. **Single-critic (the default)** — one challenger (inheriting the session model) reviews the artifact solo and
    reports `[major]`/`[minor]`-tagged findings straight to the lead
    (`skills/shared/team-prompts/critic.md`). No advocate is dispatched; the lead

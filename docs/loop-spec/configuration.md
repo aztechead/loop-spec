@@ -51,6 +51,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
 | `LOOP_SPEC_SQUASH_STATE_COMMITS` | `0`/`1`; `0` | `1` defers pure feature.json/PROGRESS phase-state commits and writes one final state commit during DELIVER. It also disables per-phase remote checkpoints because pushed intermediate state would require a later history rewrite. |
+| `LOOP_SPEC_CYCLE_PROFILE` | `maintenance`/`standard`/`auto`; `auto` | Selects the cycle's gate ladder through `lib/cycle-profile.sh`. `auto` resolves it from the validated task classification and answers `standard` whenever there is no classification to read. `maintenance` lightens SPEC (synthesize instead of interview) and, when there is no security signal, takes the graph short path: skip DISCUSS, spec-critique, and code review (`skills/shared/tier-matrix.md`). PLAN critique is still decided by `plan-critique.sh` / the skill fast-path. The ambiguity gate, the feasibility check, and the deterministic VERIFY gates stay. The inline `profile:maintenance` / `profile:standard` cycle token outranks this variable. An invalid value fails safe to `standard`. |
 | `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective selector set is unchanged. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
@@ -367,11 +368,11 @@ equivalent config-file field.
 | `--max-budget-usd AMOUNT` | Non-negative cost cap per task (default `0`, unlimited). |
 | `--claude-bin PATH` | Agent executable (default `claude`). |
 | `--agent-cli claude\|opencode\|adk` | Agent CLI adapter (default inferred from the executable). |
-| `--feature-dir PATH` | Feature-state path used for exact-candidate baseline comparison. |
 | `--prepare-command CMD` | Persisted preparation command; an empty value disables detection. |
 | `--no-worktree` | Run serially in the supplied repository instead of creating task worktrees. `LOOP_SPEC_WORKTREES=0` implies this flag. |
 | `--cleanup-worktrees` | Remove successful task worktrees and branches after integration. |
 | `--dry-run` | Validate and print the schedule without executing tasks. |
+| `--tasks-json PATH` | Optional cycle `tasks.json` sidecar. Ids already `status=done` are skipped; each successful merge is marked done. Omit for standalone loop-runner. |
 
 ### `compile_spec.py`
 

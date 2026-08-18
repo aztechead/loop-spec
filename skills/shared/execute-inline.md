@@ -47,13 +47,15 @@ merge.
 
 Same as `execute-subagent.md`: `tasks[]` (`{id, subject, files, blockedBy,
 specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`),
-`maxRetriesPerTask` (2), `featureBranch = feat/{slug}`, `commands`
-(`{prepare, lint, test, typecheck}` from `feature.json.commands`).
-`maxParallelImplementers` is moot (executor count is 1).
+`maxRetriesPerTask` (2), `featureBranch = feat/{slug}`, `commands.prepare`
+from `feature.json.commands`. Repository-wide `lint`/`test`/`typecheck` run
+once at VERIFY, not here. `maxParallelImplementers` is moot (executor count is 1).
 
 ## Lead task loop
 
-Maintain `mergedSet` and `blocked[]`. Repeat until `remaining` is empty:
+`mergedSet` is seeded in execute SKILL Step 2a from `task-progress.sh done`. If this
+protocol is entered directly, seed it the same way before the loop. Maintain `mergedSet`
+and `blocked[]`. Repeat until `remaining` is empty:
 
 1. **Ready set:** `remaining = tasks - mergedSet - blocked`; `ready = [t in
    remaining if every dep in t.blockedBy is in mergedSet]`. Empty `ready` with
@@ -75,21 +77,16 @@ Maintain `mergedSet` and `blocked[]`. Repeat until `remaining` is empty:
 5. **Commit candidate** on `feat/{slug}` with the task id in the message (same message
    contract as the implementer prompt). Nothing staged → `blocked += {taskId,
    reason: "commit-missing"}`.
-6. **Candidate suite gate:** run `lib/feature-validation.sh compare` against the now-clean
-   committed feature candidate. Exit 20 means a new baseline failure: revert the task's
-   candidate commit(s) with `git revert --no-edit`, then retry or mark `retry-exhausted`.
-   Exit 21 is environment/infrastructure escalation, not product remediation. Never leave
-   a failed candidate commit active on `feat/{slug}`.
-7. **Inline spec-compliance review** against `acceptanceCriteria` (reviewer
+6. **Inline spec-compliance review** against `acceptanceCriteria` (reviewer
    brief semantics; verdict `pass | rework | block`):
-   - `pass` → add the task id to `mergedSet`, log the verdict, continue.
-    - `rework` with attempts remaining → revert the candidate, fix in place, re-run steps 4-7.
+   - `pass` → add the task id to `mergedSet`, persist `bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done ".loop-spec/features/${slug}/tasks.json" "{taskId}"`, log the verdict, continue.
+    - `rework` with attempts remaining → revert the candidate, fix in place, re-run steps 4-6.
    - `rework` exhausted → `blocked += {taskId, reason: "retry-exhausted"}`
      (revert the task's commits: `git revert --no-edit <shas>`).
    - `block` → `blocked += {taskId, reason: "spec-compliance-block"}` (revert
      likewise).
 
-8. **Close the task out** once its outcome is decided:
+7. **Close the task out** once its outcome is decided:
    `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" task_end --phase execute --data '{"index":<same>,"total":<same>,"id":"<task id>","result":"<merged|failed|skipped>"}' || true`
    — a `task_start` with no matching `task_end` is exactly what a stall looks like to
    someone watching the log, so always emit it, including on the blocked paths above.
@@ -101,5 +98,6 @@ with the rung recorded as `inline`.
 
 Artifacts, gates, PLAN.md task blocks, `feature.json` schema, gate-log
 locations, the phase-exit contract. A feature started on any other rung can
-resume on this one and vice versa — the DAG state is recomputed from PLAN.md
-plus the commits on `feat/{slug}`, exactly like a workflow-path resume.
+resume on this one and vice versa — remaining work is the ids `task-progress.sh
+remaining` prints from `artifacts.tasks`, not a recomputation from PLAN.md plus
+commits.

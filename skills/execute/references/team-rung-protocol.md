@@ -57,19 +57,24 @@ integration_rc=$?
 
 Parse `integration_json` rather than inferring state from `integration_rc`. A result
 with `.published == true` is merged; remove its task id from `mergeQueue` via
-`lib/feature-write.sh` (and surface a `cleanup-failed` result for manual cleanup).
+`lib/feature-write.sh` (and surface a `cleanup-failed` result for manual cleanup),
+then persist progress:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done \
+  ".loop-spec/features/{slug}/tasks.json" "{taskId}"
+```
+
 For `.published == false`, retain the queue entry and worktree. `zero-commit` is not
 mergeable; `verify-failed` returns to remediation; `rebase-conflict`,
 `check-dirty-worktree`, `feature-moved`, and `publish-failed` escalate to the user.
 Do not stash, reset, remove, or delete anything after a failed result. The helper
 performs cleanup itself, and only after a successful fast-forward publication.
 
-**Post-merge-queue suite gate:** after every passed task in the current merge queue has
-been published, run `lib/feature-validation.sh compare` once against the feature directory.
-Exit 20 creates suite-regression remediation; exit 21 escalates environment
-preparation/infrastructure. Unchanged exact-base failures do not block. Every task still
-ran its focused `verifyCommand` after any rebase; this single check validates the exact
-integrated queue candidate and avoids replaying the full repository suite per task.
+**No post-merge-queue suite gate.** Every task ran its focused `verifyCommand` after any
+rebase, and that is the only command EXECUTE runs. The repository-wide
+test/lint/typecheck comparison runs exactly once per cycle, at VERIFY Step 1.75, against
+the fully integrated candidate.
 
 For full detail on the self-claim loop, reviewer loop, rework re-entry, and race-claim serialization, see **`skills/shared/execute-loops.md`**.
 
@@ -105,7 +110,7 @@ plan_task_ids=$(echo "$adherence_json" | jq -r '.plan_task_ids[]')
 gap_message=$(echo "$adherence_json" | jq -r '.gap_message // empty')
 ```
 
-For each `plan_task_id`, confirm at least one completed task subject contains it as a substring. On gap: `AskUserQuestion` with options to re-queue or abort.
+For each `plan_task_id`, confirm at least one completed task subject contains it as a substring, or that the sidecar already records `status=done` for that id (`task-progress.sh done`). On gap: `AskUserQuestion` with options to re-queue or abort.
 
 TeamDelete and cleanup:
 

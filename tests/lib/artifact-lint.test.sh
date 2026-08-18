@@ -311,6 +311,15 @@ cat > "$WORK/tasks-good.json" <<'EOF'
 EOF
 check "well-formed tasks pass" 0 tasks "$WORK/tasks-good.json"
 
+printf '[{"id":"task-001","brief":"x","files":[],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["ok"],"status":"done"}]' \
+  > "$WORK/tasks-done.json"
+check "status=done is accepted" 0 tasks "$WORK/tasks-done.json"
+
+printf '[{"id":"task-001","brief":"x","files":[],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["ok"],"status":"merged"}]' \
+  > "$WORK/tasks-badstatus.json"
+check "unknown status flags" 1 tasks "$WORK/tasks-badstatus.json"
+check_output "unknown status is named" "pending or done" tasks "$WORK/tasks-badstatus.json"
+
 check "tasks from stdin works" 0 tasks - < "$WORK/tasks-good.json"
 
 printf '[{"id": "task-001"}]' > "$WORK/tasks-missing.json"

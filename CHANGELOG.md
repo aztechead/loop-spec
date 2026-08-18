@@ -2,6 +2,121 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [4.1.0] - 2026-08-18
+
+Fixes and controls from headless, autonomous, graph-driven runs. Two changes alter
+default behavior — the repository-wide suite now runs once per cycle rather than per
+EXECUTE wave, and the `skippable` node field is gone. Everything else defaults to 4.0.0
+behavior unless a new flag, token, or node field is set.
+
+### Removed
+
+- **The `skippable` node field.** 4.0.0 declared it on one shipped node
+  (`plan.critique.gate`), whose body is a fast-path token rather than a script.
+  The engine never evaluated the field, so it skipped nothing, invisibly, while
+  reading like a live control. A `route` skips the NODE, works for every node
+  kind, and shows up in a dry run. One mechanism for "do not run this", not two.
+
+### Changed
+
+- **The repository-wide test/lint/typecheck comparison runs ONCE per cycle, at
+  VERIFY.** Every EXECUTE rung — inline, one-shot subagent, agent team, Workflow,
+  and the loop-fleet supervisor — ran `lib/feature-validation.sh compare` again at
+  each wave or merge-queue boundary, so a run paid a full suite per wave PLUS the
+  one VERIFY Step 1.75 runs against the same integrated tree moments later. On a
+  single-wave change those two runs were the same commands over the same working
+  tree. EXECUTE now runs each task's focused `verifyCommand` after any rebase and
+  nothing else. Cycle resume does not run the comparison: it reads
+  `tasks.json` for which ids are already `status=done` and continues the
+  remaining work (`lib/task-progress.sh`). EXECUTE seeds `mergedSet` from those
+  ids and persists `status=done` after each successful publication. VERIFY Step 1.75
+  is the suite that
+  sees the fully integrated tree. `tests/execution-validation-coverage.test.sh`
+  inverts: it now asserts NO rung names `feature-validation.sh`, that cycle
+  resume does not either, and that VERIFY does.
+- The loop-fleet supervisor's `--feature-dir` flag is removed with the behaviour
+  it existed for; it had no other consumer.
+
+### Fixed
+
+- **Graph-driven VERIFY is no longer blocked on sound changes.** The engine
+  dispatched every gate body with no arguments, so the placeholder scan, the
+  test-tamper scan, and the acceptance lint each exited 2 — a usage error the
+  gate node then read as a finding. Node bodies now declare their argument
+  vector (`bodyArgs`, a closed placeholder set the engine substitutes), and
+  `tests/lib/graph-gate-dispatch.test.sh` runs each shipped VERIFY gate THROUGH
+  the dispatch path on the declarations read out of `graph/cycle.graph.json`, so
+  standalone-only coverage can no longer hide the class. A gate body's own
+  diagnostic now reaches stderr instead of `/dev/null`.
+- **The VERIFY node honors the documented opt-out on `verificationBaseline`.** A
+  node may declare `optionalReads[]` for keys the schema documents as nullable;
+  entering it no longer asserts them. With `LOOP_SPEC_STARTUP_BASELINE` unset the
+  baseline is null by design, and the run no longer stops to capture one
+  mid-VERIFY. Failures observed later in the cycle still block.
+- **The security signal reads context, not bare keywords.** A boundary or
+  non-goal mention — `do NOT touch the auth middleware`, `must never modify the
+  permissions table`, anything under a `## Non-Goals` heading — no longer buys a
+  full advocate/challenger debate on a mechanical change. Suppression is
+  structural and auditable: the no-signal answer names what it skipped and why.
+  Negated ACTIONS on a security surface (`must never log the credential`) still
+  fire, as does every unqualified mention.
+- **In-place EXECUTE never attempts a worktree first.** The one-shot subagent
+  rung now reads `worktreesEnabled` from the `lib/execute-rung.sh` result before
+  composing any prompt, so `LOOP_SPEC_WORKTREES=0` stops paying a denied tool
+  call and an error line per task. `tests/cycle-worktree-policy.test.sh` pins the
+  ordering.
+- **Gate and bookkeeping scripts treat malformed input as a defined state.**
+  `lib/acceptance-lint.sh` separates a bad invocation (exit 2) from a criterion
+  finding (exit 1) and accepts a tasks path as well as stdin; the graph
+  checkpoint ledger skips a record truncated by a killed run rather than handing
+  the engine a fragment to parse.
+
+### Added
+
+- **`lib/surface.sh` — one call to locate any bundled script, shared contract,
+  or agent role.** `find <term>` narrows by path or purpose, `show <name>` prints
+  the header block (usage, exit codes, tool allow-list) so the file usually need
+  not be opened, `covers <path>` names the suites `tests/run-all.sh` registers
+  that name a path, and `list` prints the whole surface. The index spans `lib/`
+  (including the graph route probes), `hooks/`, the shared contracts, and the
+  agent role charters; a bare name two files share is refused with both
+  candidates named rather than resolved to one of them. Measured on mocked sessions:
+  answering "which script does X, what does it exit, and what must I run after
+  changing it" fell from 13 opened files to 6. It is derived, never stored — no
+  cache, no artifact, nothing to rot — and each purpose line is that file's own
+  header, so `tests/lib/surface.test.sh` now fails when a bundled file's header
+  does not say what the file is for.
+- **A short path through the cycle graph.** Run length was a fixed property: every
+  run walked all seven phases plus the full spec-critique protocol, so an hour was
+  the FLOOR even for a dependency bump, and the only escape was routing to a
+  different protocol (micro/debug) and giving up the cycle's continuity.
+  `lib/graph/probes/short-path.sh` answers `path=short` for a maintenance-profile
+  run with no security signal in the artifacts it has written so far, and
+  `graph/cycle.graph.json` routes around three nodes on that answer: `discuss`,
+  the spec-critique subgraph, and the `verify.code-review` agent. PLAN critique
+  is still decided by `lib/graph/probes/plan-critique.sh` (security terms in the
+  git diff), not by this probe — a short path still visits `plan.critique.gate`.
+  Same graph, same checkpoint ledger, same state contract, same terminal result —
+  a shorter declared path, visible in a dry run, not a different protocol. Every
+  bypass is paired with a route to the long path and a `routeDefault` to it, so an
+  unresolved probe lengthens the run rather than stranding it, and the signal is
+  re-read from the artifacts that exist NOW so a change that turns out to touch a
+  security surface lengthens its own path mid-run. The deterministic VERIFY gates
+  (placeholder, tamper, acceptance) and the no-new-failures comparison run on
+  both paths. Code review is the one quality gate the short path drops.
+- **A maintenance execution profile** (`lib/cycle-profile.sh`, opt-in). Earned
+  only by a validated low-risk classification — maintenance-shaped task kind, low
+  ambiguity, at most five reviewable files and three criteria, and no seam,
+  interface, security, migration, dependency-edge, multi-repo, or destructive
+  flag — or by an explicit `LOOP_SPEC_CYCLE_PROFILE` / `profile:` override. SPEC
+  synthesizes its spec instead of interviewing. The graph short path then skips
+  DISCUSS, spec-critique, and code review when no security signal fires. PLAN
+  critique skip is the existing `plan-critique.sh` / skill fast-path, not a
+  short-path bypass. The ambiguity gate, the feasibility check, and the
+  deterministic VERIFY gates stay; code review is dropped only behind this
+  classification. The answer is persisted as `feature.json.executionProfile`, so
+  a resume keeps the same ladder.
+
 ## [4.0.0] - 2026-08-17
 
 Three peer harness contracts, no reference harness: Claude Code (including the

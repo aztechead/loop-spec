@@ -227,14 +227,23 @@ invocation checkout or a registered feature worktree.
    PR targets, then jump directly to On completion**. The exact SHA and checks were
    already proven; a flaky local environment must not reopen delivered work, but recovery
    must not skip terminal feedback observation.
-5. Otherwise run the shared candidate check once:
-   `bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" compare ".loop-spec/features/${slug}"`.
-   It prepares each repository and compares test/lint/typecheck failures with the recorded
-   exact-base baseline; with no baseline recorded (the default) every failure counts.
-   Exit 20 means new failures: append the existing FULL-SHAPE resume remediation
-   task, set `currentPhase = "execute"`, and announce the redirect. Exit 21 is an
-   environment/infrastructure stop, not implementation remediation. Exit 0 resumes the
-   recorded phase, including `deliver`. Never recapture a baseline on resume.
+5. Otherwise resume the recorded phase. Do not run the repository-wide
+   test/lint/typecheck comparison here: VERIFY Step 1.75 is the only place it
+   runs. When `artifacts.tasks` exists, print what is already published and what
+   is left — that is the pickup, not a suite:
+
+   ```bash
+   tasks_sidecar="$(jq -r '.artifacts.tasks // empty' ".loop-spec/features/${slug}/feature.json")"
+   if [[ -n "$tasks_sidecar" && -f "$tasks_sidecar" ]]; then
+     done_ids="$(bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" done "$tasks_sidecar")"
+     remaining_ids="$(bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" remaining "$tasks_sidecar")"
+     echo "[RESUME] tasks done: ${done_ids:-none}"
+     echo "[RESUME] tasks remaining: ${remaining_ids:-none}"
+   fi
+   ```
+
+   EXECUTE seeds `mergedSet` from the done ids and dispatches only remaining
+   work. Never recapture a baseline on resume.
 
 Full algorithm: `skills/shared/cycle-resume-escalation.md`.
 
@@ -355,7 +364,7 @@ this script exists):
 
 ```bash
 inv="$(bash "${CLAUDE_SKILL_DIR}/../../lib/parse-invocation.sh" parse -- "$ARGUMENTS")"
-# {mode: description|spec-file|backlog|bare, title, slug, style, autonomous,
+# {mode: description|spec-file|backlog|bare, title, slug, style, profile, autonomous,
 #  greenfield, phase_mode: fresh|continuous|null, no_run, spec_path, legacy: []}
 ```
 
@@ -363,6 +372,30 @@ inv="$(bash "${CLAUDE_SKILL_DIR}/../../lib/parse-invocation.sh" parse -- "$ARGUM
 `.greenfield` feed the autonomous contract and Step 0's greenfield branch.
 `.phase_mode` controls fresh-main-context handoffs and is stripped from the feature
 title. `.legacy` non-empty gets the one-line "ignored legacy token" notice.
+
+**Execution profile.** Resolve it once here and carry it for the whole cycle — the gate
+ladder must not change shape mid-run:
+
+```bash
+inv_profile="$(jq -r '.profile // empty' <<<"$inv")"
+profile_line="$(LOOP_SPEC_CYCLE_PROFILE="${inv_profile:-${LOOP_SPEC_CYCLE_PROFILE:-auto}}" \
+  bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select)"
+echo "loop-spec: $profile_line"
+cycle_profile="${profile_line#profile=}"; cycle_profile="${cycle_profile%% *}"
+```
+
+The inline `profile:` token outranks `LOOP_SPEC_CYCLE_PROFILE`, matching how
+`phase:fresh` outranks `LOOP_SPEC_PHASE_HANDOFF`. `/loop-spec:auto` is the caller that
+supplies the token: it resolves the profile from the validated task classification and
+forwards the answer, so the evidence and the decision stay in one place.
+
+`profile=maintenance` runs the lightened ladder (`skills/shared/tier-matrix.md`,
+"Maintenance profile"): SPEC skips the Socratic interview and synthesizes the spec, and
+the graph short path skips DISCUSS, spec-critique, and the code-review agent when no
+security signal fires. PLAN critique skip is `plan-critique.sh` / the skill fast-path,
+not that short path. The ambiguity gate, the feasibility check, and the deterministic
+VERIFY gates stay. `profile=standard` (the default, and the answer whenever the
+invocation carries no `profile:` token) is today's full ladder.
 
 Resolution order:
 
@@ -600,8 +633,8 @@ feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --m
   --branch "feat/${slug}" --base-sha "$base_sha" --base-branch "$base_branch" \
   --worktree "$worktree_state_path" \
   --prepare "$cmd_prepare" --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
-feature_json="$(jq --argjson baseline "$baseline_json" \
-  '.verificationBaseline = $baseline' <<<"$feature_json")"
+feature_json="$(jq --argjson baseline "$baseline_json" --arg profile "$cycle_profile" \
+  '.verificationBaseline = $baseline | .executionProfile = $profile' <<<"$feature_json")"
 
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$feature_json"
 feature_dir_abs="$(cd ".loop-spec/features/${slug}" && pwd -P)"

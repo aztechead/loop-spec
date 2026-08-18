@@ -88,6 +88,41 @@ rc=0
 bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node spec "${GRAPH_FLAG[@]}" || rc=$?
 check "satisfied reads exit 0" "0" "$rc"
 
+# --- optionalReads: a documented-nullable key is never asserted on entry ---
+# The startup baseline is opt-in; with it disabled verificationBaseline stays
+# null by design, and hard-requiring it forced the VERIFY node to capture one
+# mid-phase -- exactly the opt-out the schema documents, undone at runtime.
+cat > "$WORK/graph/optional.graph.json" <<'EOF'
+{
+  "entry": "verify",
+  "nodes": [
+    {
+      "id": "verify",
+      "kind": "agent",
+      "reads": ["slug"],
+      "optionalReads": ["verificationBaseline"],
+      "writes": ["warnings"],
+      "effort": "system2"
+    }
+  ],
+  "edges": []
+}
+EOF
+bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" verificationBaseline 'null'
+rc=0
+bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node verify \
+  --graph "$WORK/graph/optional.graph.json" || rc=$?
+check "null optionalReads key does not block node entry" "0" "$rc"
+
+# The same key declared as an ordinary read still blocks, so the exemption comes
+# from the declaration and not from the key's name.
+jq '.nodes[0].reads += ["verificationBaseline"] | del(.nodes[0].optionalReads)' \
+  "$WORK/graph/optional.graph.json" > "$WORK/graph/required.graph.json"
+rc=0
+bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node verify \
+  --graph "$WORK/graph/required.graph.json" 2>/dev/null || rc=$?
+check "the same key as a plain read still blocks" "1" "$rc"
+
 # --- delegate stub: when FEATURE_WRITE points at stub, no write without stub invoke ---
 printf '#!/usr/bin/env bash\necho STUB_CALLED >> "%s/stub.log"\nexit 0\n' "$WORK" > "$WORK/bin/feature-write.sh"
 chmod +x "$WORK/bin/feature-write.sh"

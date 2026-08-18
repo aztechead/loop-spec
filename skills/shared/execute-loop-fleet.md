@@ -88,13 +88,15 @@ parallel=$(( W < maxParallelImplementers ? W : maxParallelImplementers ))
 worker_model="{feature.models.implementer}"
 supervisor_args=(
   --plan "$fdir/loop-plan.json"
-  --feature-dir "$fdir"
   --prepare-command "$(jq -r '.commands.prepare // ""' "$fdir/feature.json")"
   --parallel "$parallel"
   --retries "2"
 )
 if [[ -n "$worker_model" && "$worker_model" != "inherit" ]]; then
   supervisor_args+=(--model "$worker_model")
+fi
+if [[ -f "$fdir/tasks.json" ]]; then
+  supervisor_args+=(--tasks-json "$fdir/tasks.json")
 fi
 python3 "$LOOP_DIR/supervisor.py" "${supervisor_args[@]}"
 rc=$?
@@ -117,10 +119,13 @@ The supervisor walks the DAG, runs each task's loop in an isolated worktree on
 branch `loop/<id>`, merges completed branches into `feat/{slug}` (the current
 branch) so dependents build on them, retries stalls/thrash once with the stall
 context appended, never retries timeout halts, and kills the fleet on a
-verifier-integrity violation.
+verifier-integrity violation. When `--tasks-json` points at the cycle sidecar,
+ids already `status=done` are treated as merged (their workers are not launched)
+and each newly published id is marked done so a later resume continues the rest.
 Before each merge, the supervisor rebases and verifies the immutable candidate through
-`integrate-task.sh`, combining the task command with `feature-validation.sh compare` from
-that task worktree. Only a candidate with no new exact-base failures can merge.
+`integrate-task.sh` using the TASK's own focused verify command. It runs no
+repository-wide suite: the test/lint/typecheck comparison runs exactly once per cycle, at
+VERIFY Step 1.75, against the fully integrated candidate.
 
 This call is long-running and unattended; run it in the foreground. The supervisor
 prints and flushes `FLEET_START` before environment preparation, bounds every worker
@@ -198,6 +203,8 @@ output, every verifier run in full, and the worker-maintained PROGRESS.md.
 
 ### Resume semantics
 
-Re-entering EXECUTE re-runs the converter and supervisor. Loop state is durable:
-already-completed tasks are merged (their `loop/<id>` branches are no-ops), and a
-halted task resumes from its saved state when re-run with a higher iteration cap.
+Re-entering EXECUTE re-runs the converter and supervisor. Remaining work is the
+ids `task-progress.sh remaining` prints from `$fdir/tasks.json`: the supervisor
+skips `status=done` and marks each newly merged id. Loop state is still durable
+for a halted in-progress task — it resumes from its saved worker state when
+re-run with a higher iteration cap.

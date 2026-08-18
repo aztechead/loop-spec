@@ -148,6 +148,16 @@ If `feature.json.autonomous == true` (or `LOOP_SPEC_AUTONOMOUS=1`): run Step 2 i
 
 If `LOOP_SPEC_NON_INTERACTIVE=1` is set (and autonomous is not): skip Step 2 entirely and go to the **Non-interactive mode** section below.
 
+**Maintenance profile:** if `feature.json.executionProfile == "maintenance"`, skip the
+interview (Step 2) and synthesize SPEC.md from the request plus the Step 1 scout, exactly
+as **Non-interactive mode** does. The classification that earned this profile already
+established a low-risk mechanical change of at most five files with low ambiguity
+(`lib/cycle-profile.sh`); a six-round Socratic interview has nothing left to resolve.
+The ambiguity gate is NOT skipped: score the 4 dimensions against the synthesized draft
+and, if any dimension is below its minimum, fall back to the ordinary Step 2 interview
+(non-interactive styles write `gate_passed: false` with the failing dimensions as usual).
+Log one line: `spec interview skipped (maintenance profile)`.
+
 **Spec-file ingest mode:** if `.loop-spec/features/{slug}/spec-draft.md` exists (cycle Step 3 placed it there — the user pre-authored the spec), skip the interview (Step 2) entirely:
 
 1. Read the draft. Treat it as the primary source of truth for goal, scope, constraints, and criteria; the Step 1 graph scout grounds it against the actual codebase.

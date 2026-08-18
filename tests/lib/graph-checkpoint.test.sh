@@ -62,6 +62,23 @@ bash "$SCRIPT" append --feature-dir "$WORK/feat" --node iterate \
 hash3="$(bash "$SCRIPT" latest --feature-dir "$WORK/feat" | jq -r '.stateHash')"
 check "hash stable when feature.json unchanged" "$hash2" "$hash3"
 
+
+# A run killed mid-append leaves a partial trailing line. Resume is a lookup, so
+# it must fall back to the last parseable record rather than hand the engine a
+# fragment to json.loads().
+printf '{"node":"deliv' >> "$WORK/feat/graph-checkpoints.jsonl"
+check "a truncated trailing record is skipped" "iterate" \
+  "$(bash "$SCRIPT" latest --feature-dir "$WORK/feat" | jq -r '.node')"
+
+printf 'not json at all\n' >> "$WORK/feat/graph-checkpoints.jsonl"
+check "a non-JSON line is skipped" "iterate" \
+  "$(bash "$SCRIPT" latest --feature-dir "$WORK/feat" | jq -r '.node')"
+
+# A ledger with nothing parseable is the defined empty state, not a crash.
+printf 'garbage\n\n' > "$WORK/feat/graph-checkpoints.jsonl"
+check "an unparseable ledger reports empty" "true" \
+  "$(bash "$SCRIPT" latest --feature-dir "$WORK/feat" | jq -r '.empty')"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

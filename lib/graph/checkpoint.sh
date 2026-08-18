@@ -8,7 +8,11 @@
 # Ledger path: <feature_dir>/graph-checkpoints.jsonl
 # Each record: {node, stateHash, gitSha, ts, effort, edge}
 #
-# latest prints one JSON object, or {"empty":true} when the ledger has no records.
+# latest prints one JSON object, or {"empty":true} when the ledger holds no PARSEABLE
+# record. A ledger truncated mid-append (a killed run, a full disk) leaves a partial last
+# line; the engine json.loads() that output, so an unvalidated tail turned a recoverable
+# resume into a traceback. Scanning back to the last parseable record keeps resume working
+# and keeps "no usable checkpoint" a defined state rather than a crash.
 set -euo pipefail
 
 usage() {
@@ -44,7 +48,17 @@ case "$cmd" in
       echo '{"empty":true}'
       exit 0
     fi
-    tail -n 1 "$ledger"
+    latest_record=""
+    while IFS= read -r record; do
+      [[ -n "${record//[[:space:]]/}" ]] || continue
+      jq -e 'type == "object"' >/dev/null 2>&1 <<<"$record" || continue
+      latest_record="$record"
+    done < "$ledger"
+    if [[ -z "$latest_record" ]]; then
+      echo '{"empty":true}'
+      exit 0
+    fi
+    printf '%s\n' "$latest_record"
     exit 0
     ;;
   append)

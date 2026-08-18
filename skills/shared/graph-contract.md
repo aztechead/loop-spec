@@ -38,10 +38,14 @@ breaking checkpoints or edge references. The schema permits labels and
    `lib/graph/validate.sh`; each body is an ordinary `lib/` script with its own unit
    test.
 3. **`gate`.** Runs a probe and admits or blocks — the marker scan, the tamper scan, the
-   acceptance lint, code review. Only a gate may declare `skippable`, and only by naming
-   an executable licensing probe: `lib/graph/validate.sh` flags `skippable` on any other
-   kind, a `skippable` without a probe, and a probe path that is not an executable file,
-   with negative cases in `tests/lib/graph-validate.test.sh`.
+   acceptance lint, code review. A gate that is unnecessary for a given run is ROUTED
+   AROUND, never marked skippable: `route` skips the node, works for every node kind, and
+   shows up in a dry run, whereas the `skippable` field this vocabulary carried through
+   4.0 skipped only a `.sh` BODY and was never evaluated by the engine. The only shipped
+   declaration was `plan.critique.gate`, whose body is a fast-path token rather than a
+   script — so it skipped nothing, invisibly. One mechanism for "do not run this", not
+   two. `tests/lib/graph-schema.test.sh` pins the field absent from the schema;
+   `tests/lib/graph-run.test.sh` section 20 pins it absent from `graph/cycle.graph.json`.
 4. **`human`.** Interrupts and waits for a person — the `step` style's inter-phase
    pause, ITERATE's spec-change approval. A human node is a real stop: a checkpoint is
    written to the node ledger by `lib/graph/checkpoint.sh` (covered by
@@ -88,6 +92,34 @@ must be reachable from `entry` — both `FLAG`s from `lib/graph/validate.sh`.
    only when its source also declares a bounded `loop` edge — that is the declared form
    of ITERATE/DELIVER re-entry; an uncovered back-edge still `FLAG`s.
 
+## Path-length rule
+
+A graph declares ONE topology and more than one path through it. The cycle graph's long
+path walks every phase; its short path is the same graph with `discuss`, the spec
+critique, and the `verify.code-review` agent routed around, selected by
+`lib/graph/probes/short-path.sh` (maintenance
+execution profile AND no security signal in the artifacts the run has written so far).
+This is where run length becomes a declared, auditable property instead of prose inside
+a phase body.
+
+Three rules keep a short path honest, all enforced:
+
+1. **Same graph, same continuity.** A short path is routing, never a second graph and
+   never a different protocol. The checkpoint ledger, the state contract, and the
+   terminal result are identical; `tests/lib/graph-run.test.sh` section 20 asserts the
+   short path still visits every remaining phase and `completed`, and that PLAN critique
+   remains a `plan-critique.sh` decision (`plan.critique.gate` is still on the path).
+2. **The long path is the default.** Every bypass route is paired with a route to the
+   long path, and the branching node declares `routeDefault` to the long path, so an
+   unresolved probe lengthens the run rather than stranding it.
+   `tests/lib/graph-run.test.sh` section 20 asserts that pairing on every short-path
+   branch in `graph/cycle.graph.json`.
+3. **The evidence is re-read, not remembered.** `short-path.sh` re-runs the security
+   signal over the artifacts that exist NOW, because SPEC and DISCUSS author them after
+   the profile was chosen. A change that turns out to touch a security surface lengthens
+   its own path mid-run. `tests/lib/graph-probes.test.sh` pins a written security
+   artifact forcing `path=full`.
+
 ## Route-condition rule
 
 A route condition is a probe path and an expected answer token — never prose. This is
@@ -100,6 +132,24 @@ path that does not exist or is not executable, each exercised by
 `graph/schema.json` (`routeCondition` with `additionalProperties: false`), pinned by
 `tests/lib/graph-schema.test.sh`.
 
+## Body-argument rule
+
+A `function` or `gate` node whose body is a `lib/` script may declare `bodyArgs`, the
+argument vector the engine passes it. The engine substitutes a closed placeholder set —
+`{featureDir}`, `{repoRoot}`, `{featureRepoRoot}`, `{slug}`, `{node}`, `{baseSha}` — and
+nothing else; `lib/graph/validate.sh` flags an unknown placeholder, a non-array
+`bodyArgs`, and `bodyArgs` on any node that is not a function/gate with a `.sh` body,
+each exercised in `tests/lib/graph-validate.test.sh`. A placeholder that resolves EMPTY
+is a dispatch failure carrying its own reason, never an empty argument handed to the
+script: a body invoked without the arguments it requires exits on a usage error, and a
+gate reads that as a finding. `tests/lib/graph-gate-dispatch.test.sh` runs each shipped
+VERIFY gate through this path, on the node declarations read out of
+`graph/cycle.graph.json` rather than a copy.
+
+`{repoRoot}` is the loop-spec install; `{featureRepoRoot}` is the git repository holding
+the feature. They are the same directory only when self-hosting, so a body that reads the
+PROJECT tree takes `{featureRepoRoot}`.
+
 ## State declaration rule
 
 Every node declares `reads[]` and `writes[]` from the `stateKey` enum in
@@ -108,7 +158,16 @@ Every node declares `reads[]` and `writes[]` from the `stateKey` enum in
 outside the enum and a read key that no node writes and no feature-init skeleton seeds.
 At runtime, `lib/graph/state.sh` is the typed channel: a write to a key absent from the
 node's `writes[]` fails and writes nothing, and entering a node with a declared read
-absent or null fails — both covered by `tests/lib/graph-state.test.sh`. Accepted writes
+absent or null fails — both covered by `tests/lib/graph-state.test.sh`.
+
+A node may also declare `optionalReads[]`: keys it consults that are legitimately absent
+or null because the schema documents an opt-out for them. `verificationBaseline` is the
+case that forced the rule — the startup baseline is opt-in, so with it disabled the key
+is null BY DESIGN, and asserting it made the VERIFY node capture a baseline mid-phase to
+satisfy a contract that was never meant to bind. Entering the node never asserts an
+optional read; the body owns the null case. The producer/consumer rule still applies, and
+a key declared in both `reads` and `optionalReads` is a `FLAG` — the two lists say
+different things about the same key. Accepted writes
 delegate to `lib/feature-write.sh`, so the atomic write, `.bak` rotation, and the
 committed resume contract from `skills/shared/feature-state-schema.md` are unchanged;
 the ban on raw `jq`/`python3` mutation applies to node bodies verbatim.

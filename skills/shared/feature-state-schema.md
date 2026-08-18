@@ -23,6 +23,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "createdAt": "ISO-8601 timestamp",
   "updatedAt": "ISO-8601 timestamp",
   "execStyle": "auto | step | interactive | review-only",
+  "executionProfile": "standard | maintenance",
   "phaseHandoff": "boolean; return after each durable phase for a fresh main-agent context",
   "currentPhase": "spec | discuss | plan | execute | verify | iterate | deliver | completed",
   "completedPhases": ["array of phase names"],
@@ -59,7 +60,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "patterns": "path or null (docs/loop-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
     "patternsSource": "gsd-ingest | pattern-mapper | manual | null",
     "plan": "path or null",
-    "tasks": "path or null (.loop-spec/features/{slug}/tasks.json — gate-validated tasks[] JSON persisted at PLAN Step 6; EXECUTE Step 2a's preferred task source, validated by lib/artifact-lint.sh tasks)",
+    "tasks": "path or null (.loop-spec/features/{slug}/tasks.json — gate-validated tasks[] JSON persisted at PLAN Step 6; EXECUTE Step 2a's preferred task source, validated by lib/artifact-lint.sh tasks; optional per-task status pending|done is the resume ledger — cycle resume and EXECUTE read it via lib/task-progress.sh)",
     "execution": "path or null",
     "verification": "path or null",
     "iteration": "path or null",
@@ -176,6 +177,15 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - The `tasks` and `waves` arrays from v2 are gone. Live task state lives in the harness task list, not in `feature.json`.
 - There is no `retryBudget` block (full-bore operation): gate retries are unbounded, and every attempt is recorded in `gateHistory[]`. The only bound the cycle respects is `iterate.maxIterations`. During EXECUTE, the per-task rework cap (`maxRetriesPerTask`, fixed 2) routes a repeatedly-failing task to the lead for escalation rather than looping it forever between the same implementer and reviewer.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. All three are reset (`null` / `[]` / zeroed) after `TeamDelete`.
+- `executionProfile` is the gate ladder the whole cycle runs, resolved once at Step 3 by
+  `lib/cycle-profile.sh` and persisted so a resume keeps the same shape. `standard` is the
+  default and today's full ladder. `maintenance` is earned only by a validated low-risk
+  classification (or an explicit operator override): SPEC synthesizes its spec instead of
+  interviewing, and the graph short path skips DISCUSS, spec-critique, and the
+  code-review agent when `lib/security-signal.sh` reports no match. PLAN critique skip is
+  `plan-critique.sh` / the skill fast-path, not that short path. The ambiguity gate, the
+  feasibility check, and the deterministic VERIFY gates stay; code review is the one
+  quality gate the short path drops, and only behind this classification.
 - `phaseHandoff` is independent of `execStyle` and subagent dispatch. When true,
   cycle writes a paused `phase-handoff` result after a phase transition and a fresh
   invocation resumes at `currentPhase`.

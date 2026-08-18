@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Keep the expensive repository-wide comparison at the integrated-wave boundary.
-# Per-task integration may only rerun its focused task proof; otherwise a width-N
-# wave silently becomes N full suites plus VERIFY's mandatory full suite.
+# The repository-wide test/lint/typecheck comparison runs ONCE per cycle, at VERIFY.
+#
+# EXECUTE used to run it again at every wave/merge-queue boundary on all four rungs, so
+# a run paid one full suite per wave PLUS the one VERIFY runs against the same integrated
+# tree moments later -- the single largest fixed cost in a short cycle, and duplicated
+# work by construction. Each task still runs its own focused `verifyCommand` after any
+# rebase; that is the only command EXECUTE executes.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -27,20 +31,57 @@ check_not_contains() {
   fi
 }
 
+# Each rung still runs the task's own focused proof.
 check_contains "subagent integration reruns focused proof" \
   skills/shared/execute-subagent.md '--verify "{task.verifyCommand}"'
-check_contains "subagent has post-wave candidate gate" \
-  skills/shared/execute-subagent.md 'Post-wave candidate suite gate'
 check_contains "team integration reruns focused proof" \
   skills/execute/references/team-rung-protocol.md '--verify "{task.metadata.verifyCommand}"'
-check_contains "team has post-queue candidate gate" \
-  skills/execute/references/team-rung-protocol.md 'Post-merge-queue suite gate'
 check_contains "workflow integration uses focused candidateVerify" \
   lib/workflows/execute-dag.js "const candidateVerify = byId[p.taskId].verifyCommand || 'true'"
-check_contains "workflow has one post-wave candidate gate" \
-  lib/workflows/execute-dag.js 'repository-wide candidate gate ONCE'
-check_not_contains "workflow no longer appends full suite to every task proof" \
-  lib/workflows/execute-dag.js '&& bash ${shellQuote(`${skillDir}/../../lib/feature-validation.sh`)}'
+
+# No rung runs the repository-wide comparison. One name per rung, checked by file,
+# because each rung reintroduces it in its own vocabulary.
+for f in \
+  skills/shared/execute-subagent.md \
+  skills/shared/execute-inline.md \
+  skills/shared/execute-loop-fleet.md \
+  skills/execute/references/team-rung-protocol.md \
+  lib/workflows/execute-dag.js \
+  skills/loop-runner/scripts/supervisor.py
+do
+  check_not_contains "no repository-wide comparison in $(basename "$f")" \
+    "$f" 'feature-validation.sh'
+done
+
+# VERIFY is where it runs, and the only place — including resume.
+check_contains "VERIFY runs the comparison" \
+  skills/verify/SKILL.md 'lib/feature-validation.sh" compare'
+check_not_contains "cycle resume does not run the comparison" \
+  skills/cycle/SKILL.md 'feature-validation.sh'
+check_contains "cycle resume names VERIFY as the only suite" \
+  skills/cycle/SKILL.md 'VERIFY Step 1.75 is the only place'
+check_contains "cycle resume prints remaining task ids" \
+  skills/cycle/SKILL.md 'task-progress.sh" remaining'
+check_contains "EXECUTE seeds mergedSet from done ids" \
+  skills/execute/SKILL.md 'task-progress.sh" done'
+check_contains "EXECUTE persists mark-done" \
+  skills/execute/SKILL.md 'task-progress.sh" mark-done'
+check_contains "subagent protocol persists mark-done" \
+  skills/shared/execute-subagent.md 'task-progress.sh" mark-done'
+check_contains "inline protocol persists mark-done" \
+  skills/shared/execute-inline.md 'task-progress.sh" mark-done'
+check_contains "team protocol persists mark-done" \
+  skills/execute/references/team-rung-protocol.md 'task-progress.sh" mark-done'
+check_contains "workflow DAG persists mark-done" \
+  lib/workflows/execute-dag.js 'task-progress.sh'
+check_contains "workflow DAG seeds doneTaskIds" \
+  lib/workflows/execute-dag.js 'doneTaskIds'
+check_contains "loop-fleet passes the sidecar" \
+  skills/shared/execute-loop-fleet.md '--tasks-json'
+check_contains "supervisor accepts the sidecar" \
+  skills/loop-runner/scripts/supervisor.py '--tasks-json'
+check_contains "resume reference picks up remaining ids" \
+  skills/shared/cycle-resume-escalation.md 'task-progress.sh remaining'
 
 # Startup must not pay for a repository-wide suite on the untouched base. The capture
 # survives only as an opt-in for repositories whose base commit is already red.

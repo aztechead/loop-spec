@@ -37,9 +37,32 @@ check "mixed set flags the bad one" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 out="$(echo '[{"id":"task-099","acceptanceCriteria":["grep -c \"foo\" f returns 2"]}]' | bash "$LIB" 2>/dev/null)"
 check "flag output names the task" "$(echo "$out" | grep -q 'task-099' && echo 1 || echo 0)"
 
-# Invalid JSON -> error exit.
-echo 'not json' | bash "$LIB" >/dev/null 2>&1
-check "invalid JSON errors" "$([[ $? -ne 0 ]] && echo 1 || echo 0)"
+# Malformed input is a USAGE error (2), never a criterion finding (1): a caller
+# that treats every non-zero exit as "criteria are bad" would remediate the wrong thing.
+rc=0; echo 'not json' | bash "$LIB" >/dev/null 2>&1 || rc=$?
+check "invalid JSON is a bad invocation" "$([[ $rc -eq 2 ]] && echo 1 || echo 0)"
+rc=0; printf '' | bash "$LIB" >/dev/null 2>&1 || rc=$?
+check "empty input is a bad invocation" "$([[ $rc -eq 2 ]] && echo 1 || echo 0)"
+rc=0; printf '   \n' | bash "$LIB" >/dev/null 2>&1 || rc=$?
+check "whitespace-only input is a bad invocation" "$([[ $rc -eq 2 ]] && echo 1 || echo 0)"
+rc=0; echo '{"id":"task-001"}' | bash "$LIB" >/dev/null 2>&1 || rc=$?
+check "a JSON object is not a tasks array" "$([[ $rc -eq 2 ]] && echo 1 || echo 0)"
+
+# An empty tasks array is a DEFINED clean state, not a crash.
+rc=0; echo '[]' | bash "$LIB" >/dev/null 2>&1 || rc=$?
+check "empty tasks array is clean" "$([[ $rc -eq 0 ]] && echo 1 || echo 0)"
+
+# The graph gate names a file; a graph node has no pipeline to pipe through.
+TASKS="${TMPDIR:-/tmp}/loop-spec-acceptance-lint.$$.json"
+trap 'rm -f "$TASKS"' EXIT
+echo '[{"id":"task-001","acceptanceCriteria":["grep -w \"foo\" f"]}]' > "$TASKS"
+rc=0; bash "$LIB" "$TASKS" >/dev/null 2>&1 || rc=$?
+check "clean tasks file passes by path" "$([[ $rc -eq 0 ]] && echo 1 || echo 0)"
+echo '[{"id":"task-002","acceptanceCriteria":["grep -c \"foo\" f returns 2"]}]' > "$TASKS"
+rc=0; bash "$LIB" "$TASKS" >/dev/null 2>&1 || rc=$?
+check "flagged tasks file exits 1 by path" "$([[ $rc -eq 1 ]] && echo 1 || echo 0)"
+rc=0; bash "$LIB" "$TASKS.missing" >/dev/null 2>&1 || rc=$?
+check "missing tasks file is a bad invocation" "$([[ $rc -eq 2 ]] && echo 1 || echo 0)"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

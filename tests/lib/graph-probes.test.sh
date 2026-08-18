@@ -278,6 +278,67 @@ printf '{"execStyle":"step","iterate":{}}' > "$IA/feature.json"
 check "iterate-approval is unresolved when no verdict is recorded" 1 "$APPROVAL" --feature-dir "$IA"
 check_silent "iterate-approval prints nothing when unresolved" "$APPROVAL" --feature-dir "$IA"
 
+# --- short-path: may this run take the shorter declared path through the cycle? ---
+SHORT_PATH="$PROBES/short-path.sh"
+SP="$WORK/shortpath"
+mkdir -p "$SP"
+check_output "short-path enumerates its answer set" "path=short" "$SHORT_PATH" --answers
+check_output "short-path enumerates the long answer too" "path=full" "$SHORT_PATH" --answers
+check "short-path needs a feature dir" 2 "$SHORT_PATH"
+
+seed_sp() { jq -n --argjson a "$2" --arg p "$1" \
+  '{slug:"sp",executionProfile:$p,artifacts:$a}' > "$SP/feature.json"; }
+
+# Both conditions must hold, and each answers with its own reason.
+seed_sp maintenance '{}'
+check_output "maintenance profile with no artifacts takes the short path" \
+  "path=short reason=" "$SHORT_PATH" --feature-dir "$SP"
+seed_sp standard '{}'
+check_output "the standard profile takes the long path" \
+  "path=full reason=executionProfile=standard" "$SHORT_PATH" --feature-dir "$SP"
+
+# The security signal is re-checked against the artifacts the run has WRITTEN, not
+# trusted from classification time: SPEC and DISCUSS author them after the profile
+# was chosen, so a change that turns out to touch a security surface lengthens its
+# own path.
+printf '# Spec\n\nRotate the OAuth2 credential.\n' > "$SP/SPEC.md"
+seed_sp maintenance "$(jq -n --arg s "$SP/SPEC.md" '{spec:$s}')"
+check_output "a security signal in a written artifact forces the long path" \
+  "path=full reason=security signal" "$SHORT_PATH" --feature-dir "$SP"
+printf '# Spec\n\nBump the pinned version.\n' > "$SP/SPEC.md"
+check_output "a clean artifact keeps the short path" \
+  "path=short reason=" "$SHORT_PATH" --feature-dir "$SP"
+
+# A boundary mention is not a security surface (lib/security-signal.sh context rules).
+printf '# Spec\n\nBump the pin.\n\n## Non-Goals\n\n- Rotating the OAuth2 credentials.\n' \
+  > "$SP/SPEC.md"
+check_output "a non-goal mention does not lengthen the path" \
+  "path=short reason=" "$SHORT_PATH" --feature-dir "$SP"
+
+# Anything undeterminable answers with the LONG path -- never a silent short-circuit.
+check_output "a missing feature.json answers path=full" \
+  "path=full reason=no feature.json" "$SHORT_PATH" --feature-dir "$WORK/no-such-dir"
+seed_sp maintenance '{}'
+printf 'not json\n' > "$SP/feature.json"
+check_output "an unreadable feature.json answers path=full" \
+  "path=full reason=" "$SHORT_PATH" --feature-dir "$SP"
+
+# Every route naming this probe expects a token the probe declares (the same rule
+# lib/graph/validate.sh applies, asserted here against the shipped graph).
+declared="$(bash "$SHORT_PATH" --answers)"
+missing=0
+while IFS= read -r expects; do
+  [[ -z "$expects" ]] && continue
+  grep -qxF "$expects" <<<"$declared" || { echo "  undeclared: $expects"; missing=$((missing + 1)); }
+done < <(jq -r '[.edges[].condition]
+  | map(select(. != null and (.probe | test("short-path.sh$")))) | .[].expects' \
+  "$ROOT/graph/cycle.graph.json")
+if [[ "$missing" -eq 0 ]]; then
+  echo "PASS: every short-path route expects a declared answer"; PASS=$((PASS + 1))
+else
+  echo "FAIL: $missing short-path route(s) expect an undeclared answer"; FAIL=$((FAIL + 1))
+fi
+
 # The spec rewind target, asserted against the graph itself.
 spec_target="$(jq -r '.edges[]|select(.from=="iterate" and .condition.expects=="gap=spec")|.to' "$ROOT/graph/cycle.graph.json")"
 if [[ "$spec_target" == "discuss" ]]; then
