@@ -99,7 +99,12 @@ Two outcomes belong to every cycle type rather than to one:
   and an unmodified tracked tree — a route that already changed the repository reports
   what it did instead. The caller's move is to re-route the request, not to retry it.
 - `interrupted`: the run stopped before it could finish. It requires `status: "failed"`
-  and is what `lib/cycle-reconcile.sh` writes for an armed run whose process is gone.
+  and is what `lib/cycle-reconcile.sh` writes for an armed run whose process is gone,
+  unless a PR was already delivered in that run — then reconcile writes `completed`
+  / `delivered` instead of overwriting success with a false failure.
+- Full-cycle `--outcome delivered` is accepted as an alias for
+  `write <feature_dir> --status completed`. The previous hard-reject (exit 0, write
+  nothing) left interrupted pointers in place when the agent used DELIVER's own word.
 
 Both successful cases use `status: "completed"`, `outcome: "no-change-needed"`,
 `converged: true`, `prUrl: null`, and `checkpointPrUrl: null`. Zero commits without one of these explicit,

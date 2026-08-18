@@ -415,14 +415,38 @@ def publish_result(status, summary):
     -- never a hand-built result dict. Same target as the pre-remediation
     hand-built result.json (feature_dir/result.json), plus the fix: this also
     publishes .loop-spec/last-result.json, which the old hand-built object
-    never touched. Observability contract: best-effort, never gates the
-    engine's own exit code."""
+    never touched.
+
+    LOOP_SPEC_RESULT shares stderr with the phase markers: --step stdout is the
+    JSON descriptor, and swallowing this write is how a delivered cycle left
+    last-result.json on an interrupted pointer the agent could not overwrite.
+    """
     if dry_run:
-        return
-    subprocess.call([
+        return 0
+    feat = _feature_json() or {}
+    if status == "completed":
+        iterate = feat.get("iterate") if isinstance(feat.get("iterate"), dict) else {}
+        last = iterate.get("lastVerdict") if isinstance(iterate, dict) else None
+        if isinstance(last, dict):
+            verdict_summary = last.get("summary")
+            if isinstance(verdict_summary, str) and verdict_summary.strip():
+                summary = verdict_summary.strip()
+    cmd = [
         "bash", os.path.join(repo_root, "lib", "cycle-result.sh"), "write", feature_dir,
         "--status", status, "--summary", summary,
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ]
+    pr_url = feat.get("prUrl")
+    if isinstance(pr_url, str) and pr_url:
+        cmd.extend(["--pr-url", pr_url])
+    try:
+        rc = subprocess.call(cmd, stdout=sys.stderr)
+    except Exception as exc:
+        print("run.sh: TERMINAL RESULT NOT PUBLISHED (%s)" % exc, file=sys.stderr)
+        return 1
+    if rc != 0:
+        print("run.sh: TERMINAL RESULT NOT PUBLISHED (cycle-result.sh write rc=%s)" % rc,
+              file=sys.stderr)
+    return rc
 
 
 UNRESOLVED_BODY_ARG = 64
@@ -584,7 +608,8 @@ def process_node(current, admitting, defer_agent_routing):
 
     if kind == "function" and dispatch_rc is None and body and _is_cycle_result_body(
             repo_path(body, repo_root)) and not dry_run:
-        publish_result("completed", "completed at %s" % current)
+        if publish_result("completed", "completed at %s" % current) != 0:
+            sys.exit(3)
 
     emit_trace(current, admitting, None, effort_reason, effort)
     checkpoint(current, admitting, effort)
@@ -604,7 +629,11 @@ def process_node(current, admitting, defer_agent_routing):
         emit_trace(current, "%s:%s->%s" % (edge.get("kind"), current, edge["to"]),
                    probe_path, probe_token or probe_reason, effort)
     if edge is None:
-        publish_result("completed", "completed at %s (%s)" % (current, edge_label))
+        # Only `completed` is the DELIVER→converged publication. Any other
+        # dead-end (nested subgraph, synthetic terminal) is not a delivered
+        # cycle and must not stamp last-result.json completed.
+        if current == "completed":
+            publish_result("completed", "completed at %s (%s)" % (current, edge_label))
         descriptor["terminal"] = True
         return {"status": "terminal", "descriptor": descriptor, "next": None}
     next_admitting = "%s:%s->%s" % (edge.get("kind"), edge["from"], edge["to"])

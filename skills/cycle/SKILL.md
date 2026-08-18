@@ -1149,9 +1149,21 @@ _summary="$(jq -r '.iterate.lastVerdict.summary // empty' "$feature_dir/feature.
   echo "cycle completion has no iterate summary; terminal result not emitted" >&2
   false
 }
+_write_rc=0
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
-  --status completed --summary "$_summary" ${_pr_url:+--pr-url "$_pr_url"} || true
+  --status completed --summary "$_summary" ${_pr_url:+--pr-url "$_pr_url"} || _write_rc=$?
+if [[ "$_write_rc" -ne 0 ]]; then
+  echo "cycle-result.sh write failed (rc=$_write_rc); retrying once" >&2
+  bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
+    --status completed --summary "$_summary" ${_pr_url:+--pr-url "$_pr_url"}
+fi
 ```
+
+`run.sh --step` already publishes this result when it enters the `completed`
+node; a second write is idempotent. `write-terminal --outcome delivered` is
+the same alias if the agent reaches for DELIVER's own word. A non-zero write
+is a publication failure — retry, then stop. Do not continue as if the pointer
+landed.
 
 The run digest was finalized immediately before DELIVER (machine-local by default;
 part of the checked SHA only when `LOOP_SPEC_COMMIT_TELEMETRY=1` or the repo already

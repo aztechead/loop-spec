@@ -413,7 +413,10 @@ git -C "$GITWORK" config user.name tester
 git -C "$GITWORK" add README.md
 git -C "$GITWORK" commit -q -m base
 mkdir -p "$GITWORK/.loop-spec/features/f1"
-jq -n '{slug:"f1",schemaVersion:7,currentPhase:"deliver",delivery:{}}' \
+jq -n '{slug:"f1",schemaVersion:7,currentPhase:"deliver",
+    prUrl:"https://github.com/test/repo/pull/39",
+    iterate:{lastVerdict:{summary:"Migrated and opened PR #39."}},
+    delivery:{}}' \
   > "$GITWORK/.loop-spec/features/f1/feature.json"
 cat > "$WORK/completed.json" <<EOF
 {
@@ -428,6 +431,10 @@ check "completed graph validates" "0" "$?"
 [[ -f "$GITWORK/.loop-spec/last-result.json" ]]
 check "completed node publishes .loop-spec/last-result.json via the canonical constructor" "0" "$?"
 check "published result has status completed" "completed" "$(jq -r '.status' "$GITWORK/.loop-spec/last-result.json" 2>/dev/null)"
+check "published result uses iterate lastVerdict summary" "Migrated and opened PR #39." \
+  "$(jq -r '.summary' "$GITWORK/.loop-spec/last-result.json" 2>/dev/null)"
+check "published result carries feature.json prUrl" "https://github.com/test/repo/pull/39" \
+  "$(jq -r '.prUrl' "$GITWORK/.loop-spec/last-result.json" 2>/dev/null)"
 
 ## --- 16. subgraph: real execution, not an unconditional dry-run ---
 cat > "$WORK/nested.json" <<'EOF'

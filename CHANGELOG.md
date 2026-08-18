@@ -14,6 +14,15 @@ All notable changes documented here. Format follows Keep a Changelog.
   `phase_start` / `phase_end` at working-phase node transitions (markers on
   stderr so the `--step` JSON descriptor stays parseable). micro and debug
   still emit from their skills.
+- **A delivered full cycle is no longer recorded as `interrupted`.** Three
+  compliance gaps stacked: reconcile stamped `converged=false` before
+  bookkeeping finished; `write-terminal --outcome delivered` hard-rejected
+  (DELIVER's own word, exit 0, write nothing); the agent's turn ended, so
+  `last-result.json` stayed failed and the supervisor marked the PR a draft.
+  `--outcome delivered` now aliases `write --status completed`. Reconcile
+  writes completed when a PR was actually delivered. A success-shaped
+  write-terminal that we still refuse exits 3, not 0. The engine publishes
+  the terminal result when it enters the `completed` node.
 
 ## [4.1.0] - 2026-08-18
 

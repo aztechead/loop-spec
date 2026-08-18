@@ -43,6 +43,32 @@ feature_dir="$(jq -r '.featureDir // empty' "$active")"
 autonomous="$(jq -r '.autonomous // false' "$active")"
 summary="Cycle interrupted during ${phase}: ${reason}"
 
+# A delivered PR in this run is not an interruption. Reconcile used to stamp
+# converged=false over a successful DELIVER because the agent process ended
+# before the cycle-skill write, and the supervisor then marked the PR a draft.
+# Phase is not required: an inline cycle can open the PR without advancing
+# currentPhase through deliver/completed.
+_delivery_succeeded() {
+  local fdir="$1"
+  [[ -f "$fdir/feature.json" ]] || return 1
+  local delivery="$fdir/delivery.json"
+  [[ -f "$delivery" ]] || delivery="$fdir/feature.json"
+  if jq -e '
+    .status == "ready-for-review"
+    or ((.targets // []) | map(select(
+          .outcome == "delivered" and ((.prUrl // "") != ""))) | length) > 0
+    or ((.delivery.status // "") == "ready-for-review")
+    or ((.delivery.targets // []) | map(select(
+          .outcome == "delivered" and ((.prUrl // "") != ""))) | length) > 0
+  ' "$delivery" >/dev/null 2>&1; then
+    return 0
+  fi
+  jq -e '
+    ((.prUrl // "") != "")
+    and ((.prUrl // "") != (.checkpointPrUrl // ""))
+  ' "$fdir/feature.json" >/dev/null 2>&1
+}
+
 if [[ ! -f "$feature_dir/feature.json" && -n "$slug" ]]; then
   candidate="$result_root/.loop-spec/features/$slug"
   if [[ -f "$candidate/feature.json" ]]; then
@@ -63,6 +89,21 @@ if [[ ! -f "$feature_dir/feature.json" && -n "$slug" ]]; then
 fi
 
 if [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]]; then
+  if _delivery_succeeded "$feature_dir"; then
+    delivered_summary="$(jq -r '.iterate.lastVerdict.summary // empty' \
+      "$feature_dir/feature.json" 2>/dev/null || true)"
+    if ! jq -en --arg s "$delivered_summary" '$s | test("\\S")' >/dev/null 2>&1; then
+      delivered_summary="Cycle completed; a PR was delivered."
+    fi
+    LOOP_SPEC_RESULT_ROOT="$result_root" bash "$script_dir/cycle-result.sh" write \
+      "$feature_dir" --status completed --summary "$delivered_summary"
+    final_rc=$?
+    if [[ "$final_rc" -ne 0 ]]; then
+      echo "cycle-reconcile: delivered terminal result could not be published (rc=$final_rc)" >&2
+      exit "$final_rc"
+    fi
+    exit 0
+  fi
   # Establish the local terminal result before attempting network I/O. A second
   # write below picks up checkpointPrUrl if the best-effort push succeeds.
   LOOP_SPEC_RESULT_ROOT="$result_root" bash "$script_dir/cycle-result.sh" write "$feature_dir" \
