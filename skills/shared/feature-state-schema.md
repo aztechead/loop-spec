@@ -23,6 +23,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "createdAt": "ISO-8601 timestamp",
   "updatedAt": "ISO-8601 timestamp",
   "execStyle": "auto | step | interactive | review-only",
+  "executionProfile": "standard | maintenance",
   "phaseHandoff": "boolean; return after each durable phase for a fresh main-agent context",
   "currentPhase": "spec | discuss | plan | execute | verify | iterate | deliver | completed",
   "completedPhases": ["array of phase names"],
@@ -176,6 +177,13 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - The `tasks` and `waves` arrays from v2 are gone. Live task state lives in the harness task list, not in `feature.json`.
 - There is no `retryBudget` block (full-bore operation): gate retries are unbounded, and every attempt is recorded in `gateHistory[]`. The only bound the cycle respects is `iterate.maxIterations`. During EXECUTE, the per-task rework cap (`maxRetriesPerTask`, fixed 2) routes a repeatedly-failing task to the lead for escalation rather than looping it forever between the same implementer and reviewer.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. All three are reset (`null` / `[]` / zeroed) after `TeamDelete`.
+- `executionProfile` is the gate ladder the whole cycle runs, resolved once at Step 3 by
+  `lib/cycle-profile.sh` and persisted so a resume keeps the same shape. `standard` is the
+  default and today's full ladder. `maintenance` is earned only by a validated low-risk
+  classification (or an explicit operator override): SPEC synthesizes its spec instead of
+  interviewing, and the DISCUSS and PLAN critique gates are skipped when
+  `lib/security-signal.sh` reports no match. No gate that can FAIL is removed — the
+  ambiguity gate, the feasibility check, and every VERIFY gate are unchanged.
 - `phaseHandoff` is independent of `execStyle` and subagent dispatch. When true,
   cycle writes a paused `phase-handoff` result after a phase transition and a fresh
   invocation resumes at `currentPhase`.

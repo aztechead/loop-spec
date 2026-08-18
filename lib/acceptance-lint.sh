@@ -7,20 +7,39 @@
 # anchor any grep (whole-word / code-only / comment-excluding); this gate enforces it so
 # guidance does not silently drift back into bare greps.
 #
-# Input: a JSON array of task objects on stdin, each with an `acceptanceCriteria` array of
-# strings (the planner's tasks[] shape). Reads the SAME structure EXECUTE consumes.
+# Usage: acceptance-lint.sh [<tasks JSON path> | -]
+#   A JSON array of task objects, each with an `acceptanceCriteria` array of strings (the
+#   planner's tasks[] shape) -- the SAME structure EXECUTE consumes. `-` or no argument
+#   reads stdin; PLAN pipes the tasks it just authored, the graph gate names the persisted
+#   `tasks.json` (a graph node has no pipeline to pipe through).
 #
 # A criterion is FLAGGED when it contains a `grep` whose target looks like a plain
 # substring and it carries NONE of the anchoring markers that make a grep behavior-ish:
 #   -w / -F-with-word / \b / ^ / $ / function|def|class boundary / a `grep -v` comment strip.
 #
-# Output: one line per flagged criterion (taskId + the criterion). Exit 1 if any flagged,
-# else 0. Intended as a blocking feasibility check (plan Step 4b).
+# Output: one line per flagged criterion (taskId + the criterion). Intended as a blocking
+# feasibility check (plan Step 4b).
+#
+# Exit codes: 0 clean, 1 any flagged criterion, 2 bad invocation -- unreadable, empty, or
+# non-JSON input is a usage error, never a finding. Conflating the two made an unreadable
+# input read as "criteria are bad", which is a different instruction to whoever acts on it.
 set -uo pipefail
 
-input="$(cat)"
-[[ -z "$input" ]] && { echo "acceptance-lint: empty input" >&2; exit 1; }
-echo "$input" | jq -e . >/dev/null 2>&1 || { echo "acceptance-lint: input is not valid JSON" >&2; exit 1; }
+source_path="${1:--}"
+if [[ "$source_path" == "-" ]]; then
+  input="$(cat)"
+elif [[ -f "$source_path" ]]; then
+  input="$(<"$source_path")"
+else
+  echo "acceptance-lint: tasks file not found: $source_path" >&2
+  exit 2
+fi
+
+[[ -n "${input//[[:space:]]/}" ]] || { echo "acceptance-lint: empty input" >&2; exit 2; }
+jq -e 'type == "array"' >/dev/null 2>&1 <<<"$input" || {
+  echo "acceptance-lint: input is not a JSON array of tasks" >&2
+  exit 2
+}
 
 flagged=0
 

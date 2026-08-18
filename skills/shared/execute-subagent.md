@@ -39,9 +39,15 @@ wave (`min(|ready|, maxParallelImplementers)`).
 - `tasks[]` — each `{id, subject, files, blockedBy (union), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` comes straight from the PLAN task block; it is the per-task behavioral assertion re-run post-merge in step 7.)
 - `maxParallelImplementers` (3), `maxRetriesPerTask` (2), `reviewersEnabled` (true) — fixed (`skills/shared/tier-matrix.md`).
 - `featureWorktreeRoot = $(git rev-parse --show-toplevel)`, `featureBranch = feat/{slug}`.
-- `worktree_path` — **resolved per task, never hard-coded.** Compute it once and
-  substitute the same absolute value into the implementer prompt, the reviewer prompt,
-  and the integration call:
+- `worktreesEnabled` — read from the `lib/execute-rung.sh` result **before composing any
+  prompt**. It selects the mode below; nothing else does. `false` means no worktree path is
+  resolved, no worktree command is composed, and no worktree tool is called — the guard in
+  `hooks/team/no-worktrees-guard.sh` is the backstop for a bypass, not the branch point. A
+  denied `git worktree add` followed by an in-place retry is the defect this ordering
+  removes: it costs a denied tool call and an error line on every headless run.
+- `worktree_path` — **worktree mode only; resolved per task, never hard-coded.** Compute it
+  once and substitute the same absolute value into the implementer prompt, the reviewer
+  prompt, and the integration call:
 
   ```bash
   worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
@@ -63,6 +69,11 @@ When the rung result has `worktreesEnabled == false`, retain the one-shot Agent
 boundary but serialize every task on the checked-out `feat/{slug}` branch. This is the
 `LOOP_SPEC_WORKTREES=0` mode: it protects the lead's context without paying for task
 worktrees or allowing concurrent writers.
+
+Select this mode BEFORE resolving a worktree path or composing a prompt. The worktree
+steps of the template below (Step 1, Step 1.5, Step 5, and the reviewer's
+`git -C "{worktree_path}"` diff) do not apply here and are never emitted — not attempted
+and fallen back from.
 
 Apply these replacements to the lead wave loop:
 
@@ -89,8 +100,8 @@ Apply these replacements to the lead wave loop:
    publication; the wave gate validates the exact integrated feature candidate before
    another wave begins.
 
-The direct implementer prompt replaces only the worktree/commit mechanics in the
-template below with:
+The direct implementer prompt keeps every non-worktree step of the template below and
+replaces its Steps 1, 1.5, 3, and 5 with:
 
 ```text
 Repository root: {featureWorktreeRoot}
@@ -101,6 +112,9 @@ under the repository root, run {task.verifyCommand}, and leave the verified diff
 the lead and a fresh reviewer agent. Return:
 { taskId: "{taskId}", ready: <true|false>, notes: "<notes>" }
 ```
+
+The reviewer reads the uncommitted diff at the repository root
+(`git -C "{featureWorktreeRoot}" diff -- {task.files}`) instead of a task branch.
 
 All reasoning, simplicity, design-for-change, evidence, and acceptance-criteria text
 from the normal prompt remains mandatory.
@@ -179,7 +193,9 @@ Maintain `mergedSet` (task ids merged onto `feat/{slug}`) and `blocked[]`. Repea
 Dispatch every implementer and reviewer with the **default** agent (do NOT pass
 `subagent_type`), exactly as `lib/workflows/execute-dag.js` does. The prompts below are
 self-contained -- they carry the worktree, implement, verify, commit, and review
-instructions in full. Do NOT pass `subagent_type: "loop-spec:implementer"`: that agent
+instructions in full. The template below is the WORKTREE-mode prompt; with
+`worktreesEnabled == false` compose the in-place prompt from "In-place single-repository
+mode" above instead. Do NOT pass `subagent_type: "loop-spec:implementer"`: that agent
 declares `isolation: worktree` in its frontmatter, which would create a second worktree
 on top of the explicit `git worktree add` in the prompt. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
@@ -292,7 +308,7 @@ the whole job — never skip, trim, or defer an item, and never write
 follow-up/deferred/future-work notes; a criterion you cannot meet is a loud failure
 with evidence, never a note.
 
-Step 1 - Create the task worktree (skip if it already exists):
+Step 1 - Create the task worktree (worktree mode only; skip if it already exists):
   git -C "{featureWorktreeRoot}" worktree add "{worktree_path}" -b "task/{taskId}-{slug}" "feat/{slug}"
 
 Step 1.5 - Prepare declared dev/test dependencies inside the task worktree:

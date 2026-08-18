@@ -50,6 +50,12 @@ check "human admit reuses routeCondition shape" "#/definitions/routeCondition" "
 route_default_type="$(jq -r '.definitions.node.properties.routeDefault.type // empty' "$SCHEMA")"
 check "routeDefault is a string node id" "string" "$route_default_type"
 
+# bodyArgs is a string vector; optionalReads draws from the same key space as reads.
+body_args_items="$(jq -r '.definitions.node.properties.bodyArgs.items.type // empty' "$SCHEMA")"
+check "bodyArgs is an array of strings" "string" "$body_args_items"
+optional_ref="$(jq -r '.definitions.node.properties.optionalReads.items["$ref"] // empty' "$SCHEMA")"
+check "optionalReads draws from the stateKey enum" "#/definitions/stateKey" "$optional_ref"
+
 ceiling_type="$(jq -r '
   .definitions.edge.properties.ceiling.type
   // .definitions.loopEdge.properties.ceiling.type

@@ -53,6 +53,56 @@ printf 'The token is a credential.\n' > "$WORK/cred.md"
 out="$(bash "$SCRIPT" first "$WORK/cred.md")"
 check "strong term fires regardless of weak terms" "$WORK/cred.md:1:term=credential" "$out"
 
+# Context: a boundary/non-goal mention is the change saying it will LEAVE the
+# surface alone. It must not buy the escalated advocate/challenger debate.
+printf 'Rename the helper.\nDo NOT touch the auth middleware.\n' > "$WORK/boundary.md"
+rc=0; bash "$SCRIPT" first "$WORK/boundary.md" >/dev/null 2>&1 || rc=$?
+check "negated scope verb does not fire" "1" "$rc"
+
+printf 'Bump the pinned version.\nThis must never modify the permissions table.\n' \
+  > "$WORK/never.md"
+rc=0; bash "$SCRIPT" first "$WORK/never.md" >/dev/null 2>&1 || rc=$?
+check "must-never-modify does not fire" "1" "$rc"
+
+printf 'Leave the credential store unchanged.\n' > "$WORK/unchanged.md"
+rc=0; bash "$SCRIPT" first "$WORK/unchanged.md" >/dev/null 2>&1 || rc=$?
+check "declared-unchanged surface does not fire" "1" "$rc"
+
+printf '## Non-Goals\n\n- Rotating the OAuth2 credentials.\n\n## Approach\n\n- Bump a pin.\n' \
+  > "$WORK/nongoal.md"
+rc=0; bash "$SCRIPT" first "$WORK/nongoal.md" >/dev/null 2>&1 || rc=$?
+check "non-goal section does not fire" "1" "$rc"
+
+# The suppression is auditable: the no-signal answer still names what it skipped.
+err="$(bash "$SCRIPT" first "$WORK/boundary.md" 2>&1 >/dev/null || true)"
+check "suppression reports its reason" "1" \
+  "$(grep -c 'negated scope verb' <<<"$err")"
+
+# The section ends at the next heading of the same or a higher level.
+printf '## Non-Goals\n\n- Nothing here.\n\n## Approach\n\nRotate the auth token.\n' \
+  > "$WORK/nongoal-end.md"
+out="$(bash "$SCRIPT" first "$WORK/nongoal-end.md")"
+check "signal after the non-goal section still fires" "$WORK/nongoal-end.md:7:term=auth" "$out"
+
+# A heading is scanned like any other line: `## Auth rework` is the loudest signal
+# an artifact carries, and a non-goal heading only opens the suppressed section.
+printf '## Auth rework\n\nDetails follow.\n' > "$WORK/heading.md"
+out="$(bash "$SCRIPT" first "$WORK/heading.md")"
+check "a security term in a heading still fires" "$WORK/heading.md:1:term=auth" "$out"
+
+# The negation window is one clause: a negation in an earlier clause must not
+# suppress a mention in the next.
+printf 'Do not rename the helper, and rotate the OAuth2 secret.\n' > "$WORK/clause.md"
+out="$(bash "$SCRIPT" first "$WORK/clause.md")"
+check "a negation in an earlier clause does not suppress" \
+  "$WORK/clause.md:1:term=auth protocol" "$out"
+
+# Narrow by design: a negated ACTION on a security surface is a requirement, not
+# a boundary. Only verbs of CHANGE suppress.
+printf 'The service must never log the credential.\n' > "$WORK/negated-action.md"
+out="$(bash "$SCRIPT" first "$WORK/negated-action.md")"
+check "negated action still fires" "$WORK/negated-action.md:1:term=credential" "$out"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

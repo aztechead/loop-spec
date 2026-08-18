@@ -101,6 +101,21 @@ Set `introducesNewDependency` only when the change adds a dependency edge; a ver
 change sets `updatesDependencyVersion` instead. `generatedFiles` counts generated outputs
 such as lockfiles within `estimatedFiles`, never hand-maintained manifests.
 
+A `full` route still carries the classification's own risk picture, so resolve the
+execution profile from the SAME normalized decision and pass it to the cycle:
+
+```bash
+profile_line="$(printf '%s' "$decision" | \
+  bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select -)"
+echo "loop-spec: $profile_line"
+profile="${profile_line#profile=}"; profile="${profile%% *}"
+```
+
+`profile=maintenance` lightens the SPEC interview and skips the DISCUSS and PLAN critique
+gates when no security signal fires (`skills/shared/tier-matrix.md`, "Maintenance
+profile"); `profile=standard` is the unchanged full ladder. The logged line carries its
+own reason, so a run that took the lightened ladder says why it was allowed to.
+
 Print exactly one concise, SDK-readable JSON line containing the normalized decision,
 prefixed with `AUTONOMOUS_ROUTE `. Do not write routing state into the target repository's
 tracked tree; that would dirty a clean base before cycle or delivery guards run. The
@@ -114,7 +129,7 @@ creation/reconciliation, and terminal PR feedback checking:
 
 - `micro` -> `Skill(loop-spec:micro)` with `autonomous <verbatim request>`.
 - `debug` -> `Skill(loop-spec:debug)` with `autonomous <verbatim request>`.
-- `full` -> `Skill(loop-spec:cycle)` with `autonomous <verbatim request>`.
+- `full` -> `Skill(loop-spec:cycle)` with `autonomous profile:{profile} <verbatim request>`.
 
 Every selected route owns the same `skills/shared/verification-grounding.md` post-change
 gate. Routing changes ceremony and orchestration, never the shared verification-grounding contract.

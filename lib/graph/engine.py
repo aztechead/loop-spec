@@ -67,11 +67,51 @@ def _slug():
     return os.path.basename(os.path.normpath(feature_dir))
 
 
+PLACEHOLDER_RE = re.compile(r"\{[A-Za-z][A-Za-z0-9]*\}")
+_repo_root_cache = []
+
+
+def _base_sha():
+    feat = _feature_json()
+    if feat and isinstance(feat.get("baseSha"), str):
+        return feat["baseSha"]
+    return ""
+
+
+def _feature_repo_root():
+    """The git repository holding the feature — not repo_root, which is the
+    loop-spec install and is the same directory only when self-hosting. Derived
+    the way lib/graph/probes/plan-critique.sh derives it, so a scan dispatched
+    from the graph reads the same tree as the standalone invocation."""
+    if not _repo_root_cache:
+        try:
+            out = subprocess.check_output(
+                ["git", "-C", feature_dir, "rev-parse", "--show-toplevel"],
+                stderr=subprocess.DEVNULL, timeout=30)
+            _repo_root_cache.append(out.decode("utf-8", errors="replace").strip())
+        except Exception:
+            _repo_root_cache.append("")
+    return _repo_root_cache[0]
+
+
+def _placeholders(node_id):
+    """The closed placeholder set graph/schema.json documents, resolved against
+    current state. An empty value means the state it names is absent — the
+    caller decides whether that is tolerable."""
+    return {
+        "{featureDir}": feature_dir,
+        "{repoRoot}": repo_root,
+        "{featureRepoRoot}": _feature_repo_root(),
+        "{slug}": _slug(),
+        "{node}": node_id,
+        "{baseSha}": _base_sha(),
+    }
+
+
 def _substitute(arg, node_id):
-    return (arg.replace("{featureDir}", feature_dir)
-               .replace("{repoRoot}", repo_root)
-               .replace("{slug}", _slug())
-               .replace("{node}", node_id))
+    for token, value in _placeholders(node_id).items():
+        arg = arg.replace(token, value)
+    return arg
 
 
 def run_condition(cond, node_id):
@@ -195,11 +235,18 @@ def checkpoint(node_id, edge_label, effort):
 
 
 def latest_checkpoint():
-    out = subprocess.check_output([
-        "bash", os.path.join(script_dir, "checkpoint.sh"), "latest",
-        "--feature-dir", feature_dir,
-    ], stderr=subprocess.DEVNULL)
-    return json.loads(out.decode("utf-8"))
+    """Resume is a lookup, and a lookup that cannot answer must say "nothing
+    here" rather than abort the run: an unreadable or unparseable ledger falls
+    back to the remaining start-node resolution chain (contract sec 5) instead
+    of a traceback."""
+    try:
+        out = subprocess.check_output([
+            "bash", os.path.join(script_dir, "checkpoint.sh"), "latest",
+            "--feature-dir", feature_dir,
+        ], stderr=subprocess.DEVNULL)
+        return json.loads(out.decode("utf-8"))
+    except Exception:
+        return {"empty": True}
 
 
 def assert_reads(node_id):
@@ -323,23 +370,42 @@ def publish_result(status, summary):
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+UNRESOLVED_BODY_ARG = 64
+
+
 def dispatch_body(node_id, node, kind):
-    """Dispatch a function/gate body in-process. Returns None when there is
-    nothing to run (no body, or a non-script body — e.g. a gate with only a
-    `skippable` probe and no action script). cycle-result.sh is never dispatched
-    generically here — see publish_result(); calling it with no arguments is
-    the exact bug this contract exists to fix (sec 8)."""
+    """Dispatch a function/gate body in-process with its declared `bodyArgs`.
+    Returns (exit_code, output), or (None, "") when there is nothing to run (no
+    body, or a non-script body — e.g. a gate with only a `skippable` probe and
+    no action script). cycle-result.sh is never dispatched generically here —
+    see publish_result(); calling it with no arguments is the exact bug this
+    contract exists to fix (sec 8).
+
+    A body that REQUIRES arguments gets them the same way a route probe does:
+    declared on the node, substituted here. Invoked bare, the VERIFY scans exit
+    2 — a usage error the gate then reads as a real finding, which is how a
+    sound change was blocked at VERIFY in every graph-driven run. An
+    unsubstitutable placeholder is a dispatch failure with its own exit code,
+    never an empty argument handed to the script."""
     body = node.get("body") or ""
     if not body.endswith(".sh"):
-        return None
+        return None, ""
     body_path = repo_path(body, repo_root)
     if not os.path.isfile(body_path):
-        return None
+        return None, ""
     if _is_cycle_result_body(body_path):
-        return None
-    proc = subprocess.call(["bash", body_path], cwd=repo_root,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return proc
+        return None, ""
+    args = []
+    placeholders = _placeholders(node_id)
+    for raw in node.get("bodyArgs") or []:
+        unresolved = [t for t in PLACEHOLDER_RE.findall(raw) if not placeholders.get(t)]
+        if unresolved:
+            return UNRESOLVED_BODY_ARG, "unresolved bodyArgs placeholder %s on node %s" % (
+                ", ".join(sorted(set(unresolved))), node_id)
+        args.append(_substitute(raw, node_id))
+    proc = subprocess.run(["bash", body_path] + args, cwd=repo_root,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return proc.returncode, proc.stdout.decode("utf-8", errors="replace").strip()
 
 
 def dispatch_subgraph(node):
@@ -443,16 +509,23 @@ def process_node(current, admitting, defer_agent_routing):
 
     dispatch_rc = None
     if kind in ("function", "gate") and not dry_run:
-        dispatch_rc = dispatch_body(current, node, kind)
+        dispatch_rc, dispatch_out = dispatch_body(current, node, kind)
         if dispatch_rc is not None and dispatch_rc != 0:
             conflict_line = check_conflict(dispatch_rc)
+            detail = "%s failed (exit %d); %s" % (current, dispatch_rc, conflict_line)
             if kind == "gate":
                 emit_trace(current, admitting, body, "gate-failed:%d %s" % (dispatch_rc, conflict_line), effort)
                 checkpoint(current, admitting, effort)
-                publish_result("failed", "gate %s failed (exit %d); %s" % (current, dispatch_rc, conflict_line))
-                print("run.sh: gate %s failed (exit %d); %s" % (current, dispatch_rc, conflict_line), file=sys.stderr)
+                publish_result("failed", "gate %s" % detail)
+                print("run.sh: gate %s" % detail, file=sys.stderr)
+                # The body's own diagnostic is what tells a reader whether the
+                # gate found signals or could not run at all.
+                if dispatch_out:
+                    print(dispatch_out, file=sys.stderr)
                 sys.exit(1)
-            print("run.sh: function %s body failed (exit %d); %s" % (current, dispatch_rc, conflict_line), file=sys.stderr)
+            print("run.sh: function body %s" % detail, file=sys.stderr)
+            if dispatch_out:
+                print(dispatch_out, file=sys.stderr)
 
     if kind == "function" and dispatch_rc is None and body and _is_cycle_result_body(
             repo_path(body, repo_root)) and not dry_run:

@@ -20,6 +20,9 @@
 #                            unknown style values are kept with a notice
 #   phase:fresh           -> .phase_mode = "fresh"; return after each durable phase
 #   phase:continuous      -> .phase_mode = "continuous"; keep routing in one session
+#   profile:X             -> .profile = X when X in maintenance|standard; unknown
+#                            values are stripped and left unset (lib/cycle-profile.sh
+#                            owns the answer space and its own fail-safe)
 #   --no-run              -> .no_run = true (intake only; harmless elsewhere)
 #   tier:X, preset:X      -> ignored, listed in .legacy[] (caller prints the notice)
 #
@@ -30,7 +33,7 @@
 #   empty                                  -> .mode = "bare"
 #
 # Output: one JSON object:
-#   {mode, title, slug, style, phase_mode, autonomous, greenfield, no_run,
+#   {mode, title, slug, style, phase_mode, profile, autonomous, greenfield, no_run,
 #    spec_path, legacy: []}
 #   .title is the token-stripped text ("" for bare/backlog; spec-file title is
 #   resolved by the caller from the file's first heading). .slug is the kebab-case
@@ -54,6 +57,7 @@ greenfield=false
 no_run=false
 style="auto"
 phase_mode=""
+profile=""
 legacy=()
 remaining=()
 
@@ -82,6 +86,10 @@ for tok in "$@"; do
         phase_mode="fresh" ;;
       phase:continuous)
         phase_mode="continuous" ;;
+      profile:maintenance|profile:standard)
+        profile="${w#profile:}" ;;
+      profile:*)
+        : ;;  # stripped from the title; an unrecognized profile is simply not set
       tier:*|preset:*)
         legacy+=("$w") ;;
       *)
@@ -121,6 +129,7 @@ jq -cn \
   --arg slug "$slug" \
   --arg style "$style" \
   --arg phase_mode "$phase_mode" \
+  --arg profile "$profile" \
   --argjson autonomous "$autonomous" \
   --argjson greenfield "$greenfield" \
   --argjson no_run "$no_run" \
@@ -128,6 +137,7 @@ jq -cn \
   --argjson legacy "$legacy_json" \
   '{mode: $mode, title: $title, slug: $slug, style: $style,
     phase_mode: (if $phase_mode == "" then null else $phase_mode end),
+    profile: (if $profile == "" then null else $profile end),
     autonomous: $autonomous, greenfield: $greenfield, no_run: $no_run,
     spec_path: (if $spec_path == "" then null else $spec_path end),
     legacy: $legacy}'

@@ -241,7 +241,9 @@
       "kind": "agent",
       "reads": [
         "artifacts",
-        "commands",
+        "commands"
+      ],
+      "optionalReads": [
         "verificationBaseline"
       ],
       "writes": [
@@ -264,7 +266,8 @@
         "warnings"
       ],
       "effort": "system1",
-      "body": "lib/placeholder-scan.sh"
+      "body": "lib/placeholder-scan.sh",
+      "bodyArgs": ["{baseSha}", "{featureRepoRoot}"]
     },
     {
       "id": "verify.tamper",
@@ -278,7 +281,8 @@
         "warnings"
       ],
       "effort": "system1",
-      "body": "lib/test-tamper-scan.sh"
+      "body": "lib/test-tamper-scan.sh",
+      "bodyArgs": ["{baseSha}", "{featureRepoRoot}"]
     },
     {
       "id": "verify.acceptance",
@@ -291,7 +295,8 @@
         "warnings"
       ],
       "effort": "system2",
-      "body": "lib/acceptance-lint.sh"
+      "body": "lib/acceptance-lint.sh",
+      "bodyArgs": ["{featureDir}/tasks.json"]
     },
     {
       "id": "verify.code-review",

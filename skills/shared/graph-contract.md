@@ -100,6 +100,24 @@ path that does not exist or is not executable, each exercised by
 `graph/schema.json` (`routeCondition` with `additionalProperties: false`), pinned by
 `tests/lib/graph-schema.test.sh`.
 
+## Body-argument rule
+
+A `function` or `gate` node whose body is a `lib/` script may declare `bodyArgs`, the
+argument vector the engine passes it. The engine substitutes a closed placeholder set —
+`{featureDir}`, `{repoRoot}`, `{featureRepoRoot}`, `{slug}`, `{node}`, `{baseSha}` — and
+nothing else; `lib/graph/validate.sh` flags an unknown placeholder, a non-array
+`bodyArgs`, and `bodyArgs` on any node that is not a function/gate with a `.sh` body,
+each exercised in `tests/lib/graph-validate.test.sh`. A placeholder that resolves EMPTY
+is a dispatch failure carrying its own reason, never an empty argument handed to the
+script: a body invoked without the arguments it requires exits on a usage error, and a
+gate reads that as a finding. `tests/lib/graph-gate-dispatch.test.sh` runs each shipped
+VERIFY gate through this path, on the node declarations read out of
+`graph/cycle.graph.json` rather than a copy.
+
+`{repoRoot}` is the loop-spec install; `{featureRepoRoot}` is the git repository holding
+the feature. They are the same directory only when self-hosting, so a body that reads the
+PROJECT tree takes `{featureRepoRoot}`.
+
 ## State declaration rule
 
 Every node declares `reads[]` and `writes[]` from the `stateKey` enum in
@@ -108,7 +126,16 @@ Every node declares `reads[]` and `writes[]` from the `stateKey` enum in
 outside the enum and a read key that no node writes and no feature-init skeleton seeds.
 At runtime, `lib/graph/state.sh` is the typed channel: a write to a key absent from the
 node's `writes[]` fails and writes nothing, and entering a node with a declared read
-absent or null fails — both covered by `tests/lib/graph-state.test.sh`. Accepted writes
+absent or null fails — both covered by `tests/lib/graph-state.test.sh`.
+
+A node may also declare `optionalReads[]`: keys it consults that are legitimately absent
+or null because the schema documents an opt-out for them. `verificationBaseline` is the
+case that forced the rule — the startup baseline is opt-in, so with it disabled the key
+is null BY DESIGN, and asserting it made the VERIFY node capture a baseline mid-phase to
+satisfy a contract that was never meant to bind. Entering the node never asserts an
+optional read; the body owns the null case. The producer/consumer rule still applies, and
+a key declared in both `reads` and `optionalReads` is a `FLAG` — the two lists say
+different things about the same key. Accepted writes
 delegate to `lib/feature-write.sh`, so the atomic write, `.bak` rotation, and the
 committed resume contract from `skills/shared/feature-state-schema.md` are unchanged;
 the ban on raw `jq`/`python3` mutation applies to node bodies verbatim.

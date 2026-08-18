@@ -2,6 +2,58 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [4.1.0] - 2026-08-18
+
+Fixes and additive controls from headless, autonomous, graph-driven runs. Every
+change defaults to 4.0.0 behavior unless a new flag, token, or node field is set.
+
+### Fixed
+
+- **Graph-driven VERIFY is no longer blocked on sound changes.** The engine
+  dispatched every gate body with no arguments, so the placeholder scan, the
+  test-tamper scan, and the acceptance lint each exited 2 — a usage error the
+  gate node then read as a finding. Node bodies now declare their argument
+  vector (`bodyArgs`, a closed placeholder set the engine substitutes), and
+  `tests/lib/graph-gate-dispatch.test.sh` runs each shipped VERIFY gate THROUGH
+  the dispatch path on the declarations read out of `graph/cycle.graph.json`, so
+  standalone-only coverage can no longer hide the class. A gate body's own
+  diagnostic now reaches stderr instead of `/dev/null`.
+- **The VERIFY node honors the documented opt-out on `verificationBaseline`.** A
+  node may declare `optionalReads[]` for keys the schema documents as nullable;
+  entering it no longer asserts them. With `LOOP_SPEC_STARTUP_BASELINE` unset the
+  baseline is null by design, and the run no longer stops to capture one
+  mid-VERIFY. Failures observed later in the cycle still block.
+- **The security signal reads context, not bare keywords.** A boundary or
+  non-goal mention — `do NOT touch the auth middleware`, `must never modify the
+  permissions table`, anything under a `## Non-Goals` heading — no longer buys a
+  full advocate/challenger debate on a mechanical change. Suppression is
+  structural and auditable: the no-signal answer names what it skipped and why.
+  Negated ACTIONS on a security surface (`must never log the credential`) still
+  fire, as does every unqualified mention.
+- **In-place EXECUTE never attempts a worktree first.** The one-shot subagent
+  rung now reads `worktreesEnabled` from the `lib/execute-rung.sh` result before
+  composing any prompt, so `LOOP_SPEC_WORKTREES=0` stops paying a denied tool
+  call and an error line per task. `tests/cycle-worktree-policy.test.sh` pins the
+  ordering.
+- **Gate and bookkeeping scripts treat malformed input as a defined state.**
+  `lib/acceptance-lint.sh` separates a bad invocation (exit 2) from a criterion
+  finding (exit 1) and accepts a tasks path as well as stdin; the graph
+  checkpoint ledger skips a record truncated by a killed run rather than handing
+  the engine a fragment to parse.
+
+### Added
+
+- **A maintenance execution profile** (`lib/cycle-profile.sh`, opt-in). Earned
+  only by a validated low-risk classification — maintenance-shaped task kind, low
+  ambiguity, at most five reviewable files and three criteria, and no seam,
+  interface, security, migration, dependency-edge, multi-repo, or destructive
+  flag — or by an explicit `LOOP_SPEC_CYCLE_PROFILE` / `profile:` override. SPEC
+  synthesizes its spec instead of interviewing, and the DISCUSS and PLAN critique
+  gates are skipped when no security signal fires. No gate that can FAIL is
+  removed: the ambiguity gate, the feasibility check, and every VERIFY gate are
+  unchanged, and a genuine security signal still escalates. The answer is
+  persisted as `feature.json.executionProfile`, so a resume keeps the same ladder.
+
 ## [4.0.0] - 2026-08-17
 
 Three peer harness contracts, no reference harness: Claude Code (including the

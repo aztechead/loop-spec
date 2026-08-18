@@ -325,6 +325,59 @@ check "a non-string label is rejected WITHOUT --strict" 1 "$WORK/int-label.json"
 
 check "--strict still rejects a bad graph for its ordinary defects" 2 --strict "$WORK/does-not-exist.json"
 
+# --- bodyArgs: the declared argument vector for a function/gate body ---
+cat > "$WORK/bodyargs.json" <<EOF
+{
+  "entry": "g",
+  "nodes": [
+    {"id": "g", "label": "Gate", "kind": "gate", "reads": [], "writes": [],
+     "effort": "system1", "body": "lib/placeholder-scan.sh",
+     "bodyArgs": ["{baseSha}", "{featureRepoRoot}"]}
+  ],
+  "edges": []
+}
+EOF
+check "declared bodyArgs on a gate body validates" 0 "$WORK/bodyargs.json"
+
+jq '.nodes[0].bodyArgs = ["{nope}"]' "$WORK/bodyargs.json" > "$WORK/bodyargs-unknown.json"
+check "an unknown bodyArgs placeholder is rejected" 1 "$WORK/bodyargs-unknown.json"
+check_output "the unknown placeholder is named" "unknown placeholder {nope}" "$WORK/bodyargs-unknown.json"
+
+jq '.nodes[0].bodyArgs = "{baseSha}"' "$WORK/bodyargs.json" > "$WORK/bodyargs-string.json"
+check "bodyArgs must be an array of strings" 1 "$WORK/bodyargs-string.json"
+
+jq '.nodes[0].kind = "agent" | .nodes[0].body = "skills/verify/SKILL.md"' \
+  "$WORK/bodyargs.json" > "$WORK/bodyargs-agent.json"
+check "only a function/gate .sh body may declare bodyArgs" 1 "$WORK/bodyargs-agent.json"
+
+# --- optionalReads: a key the node consults but that is legitimately null ---
+cat > "$WORK/optional.json" <<EOF
+{
+  "entry": "a",
+  "nodes": [
+    {"id": "a", "label": "A", "kind": "agent", "reads": [], "writes": ["verificationBaseline"],
+     "effort": "system2", "optionalReads": ["verificationBaseline"]}
+  ],
+  "edges": []
+}
+EOF
+check "optionalReads validates" 0 "$WORK/optional.json"
+
+jq '.nodes[0].optionalReads = ["notAKey"]' "$WORK/optional.json" > "$WORK/optional-badkey.json"
+check "an optionalReads key outside the schema key space is rejected" 1 "$WORK/optional-badkey.json"
+
+jq '.nodes[0].reads = ["verificationBaseline"]' "$WORK/optional.json" > "$WORK/optional-both.json"
+check "a key in both reads and optionalReads is rejected" 1 "$WORK/optional-both.json"
+check_output "the doubly-declared key is named" \
+  "declared in both reads and optionalReads" "$WORK/optional-both.json"
+
+# The producer/consumer rule covers optionalReads too: "may be null" is not
+# "may name a key nothing ever produces". activeWorkflow is outside the
+# feature-init skeleton, so only a writing node can satisfy it.
+jq '.nodes[0].optionalReads = ["activeWorkflow"] | .nodes[0].writes = []' \
+  "$WORK/optional.json" > "$WORK/optional-unwritten.json"
+check "an optionalReads key no node writes is still rejected" 1 "$WORK/optional-unwritten.json"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
