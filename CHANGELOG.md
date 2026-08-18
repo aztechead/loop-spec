@@ -46,8 +46,11 @@ change defaults to 4.0.0 behavior unless a new flag, token, or node field is set
 - **`lib/surface.sh` — one call to locate any bundled script, shared contract,
   or agent role.** `find <term>` narrows by path or purpose, `show <name>` prints
   the header block (usage, exit codes, tool allow-list) so the file usually need
-  not be opened, `covers <path>` names the registered test suites that pin a
-  path, and `list` prints the whole surface. Measured on mocked sessions:
+  not be opened, `covers <path>` names the suites `tests/run-all.sh` registers
+  that name a path, and `list` prints the whole surface. The index spans `lib/`
+  (including the graph route probes), `hooks/`, the shared contracts, and the
+  agent role charters; a bare name two files share is refused with both
+  candidates named rather than resolved to one of them. Measured on mocked sessions:
   answering "which script does X, what does it exit, and what must I run after
   changing it" fell from 13 opened files to 6. It is derived, never stored — no
   cache, no artifact, nothing to rot — and each purpose line is that file's own

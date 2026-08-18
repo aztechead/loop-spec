@@ -42,8 +42,8 @@ check "list all is every kind" \
 check "list defaults to all" "$(wc -l <<<"$all_rows")" "$(bash "$SCRIPT" list | wc -l)"
 check "every row is kind<TAB>path<TAB>purpose" "0" \
   "$(awk -F'\t' 'NF != 3 {n++} END {print n+0}' <<<"$all_rows")"
-check "lib rows are all lib paths" "0" \
-  "$(awk -F'\t' '$2 !~ /^lib\// {n++} END {print n+0}' <<<"$lib_rows")"
+check "lib rows are all script paths" "0" \
+  "$(awk -F'\t' '$2 !~ /^(lib|hooks)\// {n++} END {print n+0}' <<<"$lib_rows")"
 check "shared rows are all shared contracts" "0" \
   "$(awk -F'\t' '$2 !~ /^skills\/shared\/.*\.md$/ {n++} END {print n+0}' <<<"$shared_rows")"
 check "agent rows are all role charters" "0" \
@@ -61,12 +61,16 @@ bash "$SCRIPT" find worktree >/dev/null || true
 check "querying the index writes nothing" "$before" "$(git -C "$ROOT" status --porcelain | sort)"
 
 # --- coverage: the tool sees the whole surface ---
+# Swept from the TREE, not from the directories the index happens to walk: a sweep
+# tuned to the indexed set cannot catch a directory the index omits, which is how
+# lib/graph/probes/ and hooks/ were missing from a tool documented as covering "any
+# bundled script".
 missing=0
 while IFS= read -r f; do
   rel="${f#"$ROOT"/}"
   grep -qF "$rel" <<<"$lib_rows" || { echo "  uncovered: $rel"; missing=$((missing + 1)); }
-done < <(find "$ROOT/lib" -maxdepth 2 -name '*.sh' -not -name '*.test.sh' | sort)
-check "every non-test lib script is indexed" "0" "$missing"
+done < <(find "$ROOT/lib" "$ROOT/hooks" -name '*.sh' -not -name '*.test.sh' | sort)
+check "every non-test lib and hook script is indexed" "0" "$missing"
 
 missing=0
 while IFS= read -r f; do
@@ -74,6 +78,13 @@ while IFS= read -r f; do
   grep -qF "$rel" <<<"$shared_rows" || { echo "  uncovered: $rel"; missing=$((missing + 1)); }
 done < <(find "$ROOT/skills/shared" -maxdepth 1 -name '*.md' | sort)
 check "every shared contract is indexed" "0" "$missing"
+
+# Named explicitly because both were absent from a tool documented as covering "any
+# bundled script", and neither is in the directory a reader would check first.
+check "graph route probes are part of the surface" "1" \
+  "$(bash "$SCRIPT" find human-gate | grep -c 'lib/graph/probes/human-gate.sh')"
+check "hooks are part of the surface" "1" \
+  "$(bash "$SCRIPT" find restrict-agent-paths | grep -c 'hooks/restrict-agent-paths.sh')"
 
 missing=0
 while IFS= read -r f; do
@@ -92,9 +103,9 @@ check "a test file is not part of the callable surface" "0" \
 short=0
 while IFS=$'\t' read -r _kind path text; do
   base="$(basename "$path")"
-  stem="${base%.*}"
+  stem="$(tr '[:upper:]' '[:lower:]' <<<"${base%.*}")"
   words="$(wc -w <<<"$text" | tr -d ' ')"
-  if [[ "$words" -lt 4 ]] || [[ "${text,,}" == "${stem,,}" ]]; then
+  if [[ "$words" -lt 4 ]] || [[ "$(tr '[:upper:]' '[:lower:]' <<<"$text")" == "$stem" ]]; then
     echo "  thin purpose: $path -> '$text'"
     short=$((short + 1))
   fi
@@ -102,18 +113,22 @@ done <<<"$all_rows"
 check "every indexed file carries a real purpose line" "0" "$short"
 
 # --- find ---
-check "find narrows to matching entries" "lib/security-signal.sh" \
-  "$(bash "$SCRIPT" find security-signal | cut -f2)"
+# The probe wrapper's purpose names security-signal.sh too, so the term legitimately
+# matches both -- assert the hit is present, not that it is alone.
+found="$(bash "$SCRIPT" find security-signal | cut -f2)"
+check "find narrows to matching entries" "1" "$(grep -cx 'lib/security-signal.sh' <<<"$found")"
+check "find does not return the whole index" "1" \
+  "$([[ "$(wc -l <<<"$found")" -lt "$(wc -l <<<"$all_rows")" ]] && echo 1 || echo 0)"
 # `worktree` and `security` each match entries; nothing matches both, so requiring
 # every term is the difference between one hit and an honest miss.
 rc=0; bash "$SCRIPT" find worktree security >/dev/null 2>&1 || rc=$?
 check "find requires EVERY term, not any" "1" "$rc"
 rc=0; bash "$SCRIPT" find zzz-no-such-thing >/dev/null 2>&1 || rc=$?
 check "an unmatched query exits 1, not 0" "1" "$rc"
-check "find is case-insensitive" "lib/security-signal.sh" \
-  "$(bash "$SCRIPT" find SECURITY-SIGNAL | cut -f2)"
+check "find is case-insensitive" "$found" "$(bash "$SCRIPT" find SECURITY-SIGNAL | cut -f2)"
+# `destructive-change` appears in a purpose line, never in a path.
 check "find matches purpose text, not only paths" "1" \
-  "$(bash "$SCRIPT" find 'destructive-change' | grep -c 'security-signal')"
+  "$(bash "$SCRIPT" find 'destructive-change' | cut -f2 | grep -cx 'lib/security-signal.sh')"
 
 # --- show: the header block, so exit codes are one call away ---
 shown="$(bash "$SCRIPT" show ralph-remediation)"
@@ -157,6 +172,42 @@ check "a suite never covers itself" "0" \
 unpinned="lib/$(printf 'zz-unpinned-%s.sh' "$$")"
 rc=0; bash "$SCRIPT" covers "$unpinned" >/dev/null 2>&1 || rc=$?
 check "covers of an unpinned path exits 1" "1" "$rc"
+
+# --- review findings, pinned so they cannot come back ---
+
+# `covers` must read the suites run-all.sh REGISTERS, not the files under tests/:
+# a quarter of them live elsewhere, and the ones that do were reported as unpinned.
+check "covers finds a registered suite outside tests/" "1" \
+  "$(bash "$SCRIPT" covers lib/pause-snapshot.sh | grep -c 'lib/pause-snapshot.test.sh')"
+check "covers finds a hooks suite" "1" \
+  "$(bash "$SCRIPT" covers hooks/team/no-worktrees-guard.sh | grep -c 'hooks/team/no-worktrees-guard.test.sh')"
+
+# A file's own sibling unit suite must never be displaced by an incidental mention.
+check "covers names the sibling unit suite" "1" \
+  "$(bash "$SCRIPT" covers lib/ralph-remediation.sh | grep -c 'lib/ralph-remediation.test.sh')"
+
+# One unanswered target is a miss even when another target matched: a silent 0 would
+# tell the caller every path they asked about is pinned.
+rc=0; bash "$SCRIPT" covers lib/security-signal.sh "lib/zz-unpinned-$$.sh" >/dev/null 2>&1 || rc=$?
+check "a partly unanswered covers query exits 1" "1" "$rc"
+
+# A basename two files share must not silently answer for one of them.
+rc=0; bash "$SCRIPT" covers checkpoint >/dev/null 2>&1 || rc=$?
+check "an ambiguous bare name is a bad invocation, not a guess" "2" "$rc"
+check "the ambiguous answer names every candidate" "1" \
+  "$(bash "$SCRIPT" covers checkpoint 2>&1 >/dev/null | grep -c 'lib/graph/checkpoint.sh')"
+rc=0; bash "$SCRIPT" show checkpoint >/dev/null 2>&1 || rc=$?
+check "show refuses an ambiguous bare name too" "2" "$rc"
+
+# A script with no header block has NO purpose. Taking some later column-0 comment
+# instead would let the header enforcement above pass on exactly what it must catch.
+HEADERLESS="$ROOT/lib/zz-surface-headerless-$$.sh"
+trap 'rm -f "$HEADERLESS"' EXIT
+printf '#!/usr/bin/env bash\nset -euo pipefail\n# a later comment that is not a header\necho hi\n' \
+  > "$HEADERLESS"
+check "a headerless script reports no purpose" "" \
+  "$(bash "$SCRIPT" list lib | awk -F'\t' -v p="lib/$(basename "$HEADERLESS")" '$2 == p {print $3}')"
+rm -f "$HEADERLESS"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

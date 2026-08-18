@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# TeammateIdle advisory hook.
+# TeammateIdle hook: tell the lead what to do next when a teammate goes idle.
 #
-# Emits a phase-aware advisory message to stderr when a teammate goes idle.
-# Always exits 0 (advisory only, never blocks).
+# Emits a phase-aware advisory message to stderr. Always exits 0 (advisory only,
+# never blocks).
 #
 # Environment:
 #   LOOP_SPEC_FEATURE_DIR  path to the feature dir containing feature.json

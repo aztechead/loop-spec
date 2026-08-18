@@ -15,16 +15,22 @@
 ## Finding what is already bundled
 
 `bash lib/surface.sh` answers "which bundled script, shared contract, or agent role covers
-X?" from the tree, at call time. The bundled surface is well past a hundred `lib/` scripts
-plus every shared contract and role charter — more than a fresh context can hold — and
-glob-then-grep-then-open-three-files is the tax every agent pays otherwise.
+X?" from the tree, at call time. The bundled surface is well past a hundred scripts under
+`lib/` and `hooks/`, plus every shared contract and role charter — more than a fresh
+context can hold — and glob-then-grep-then-open-three-files is the tax every agent pays
+otherwise.
 
 - `surface.sh find <term> [term ...]` — entries whose path or purpose matches EVERY term.
 - `surface.sh show <name>` — one entry's header block: usage, exit codes, tool allow-list.
   Read this before opening the file; it is usually the whole answer.
-- `surface.sh covers <path>` — the registered test suites that name a path, so "what must
-  I run after changing this?" is one call instead of a sweep of `tests/`.
+- `surface.sh covers <path>` — the suites `tests/run-all.sh` REGISTERS that name a path,
+  so "what must I run after changing this?" is one call instead of a sweep. It reports
+  mentions, not proven coverage: a suite using the path as a fixture is listed too, and
+  over-reporting costs a test run while under-reporting ships an unpinned change.
 - `surface.sh list [lib|shared|agent|all]` — the whole surface.
+
+A bare name two files share (`checkpoint`) is refused with both candidates named, never
+resolved to whichever sorts first.
 
 This is NOT a stored map and must never become one: it writes nothing, caches nothing, and
 derives every answer from the files that exist right now, so there is no artifact to rot
