@@ -1,13 +1,13 @@
 # Docs for humans (maintain and operate) — canonical prompt directive
 
 Single source of truth for the docs-for-humans directive that every **document-producing
-phase dispatch** must carry. It is the fourth member of a set: the laziness ladder
-(`skills/shared/laziness-ladder.md`) governs *how much* code exists, design for change
-(`skills/shared/design-for-change.md`) governs *where its boundaries sit*, code for humans
+phase dispatch** must carry. It is the fourth member of a set. The laziness ladder
+(`skills/shared/laziness-ladder.md`) governs *how much* code exists. Design for change
+(`skills/shared/design-for-change.md`) governs *where its boundaries sit*. Code for humans
 (`skills/shared/human-code.md`) governs *how the code reads to the next person who opens
-the file*, and this one governs *the markdown that person reaches for when the code is not
-enough*. Enforced by `tests/human-docs-coverage.test.sh`; measured, in one corner, by
-`lib/doc-tells.sh`.
+the file*. This one governs *the markdown that person reaches for when the code is not
+enough*. `tests/human-docs-coverage.test.sh` enforces the wiring; `lib/doc-tells.sh`
+measures one corner of the content.
 
 The plugin's output is not just code. Every cycle also writes markdown: SPEC, PLAN,
 PATTERNS, VERIFICATION, the reviewer's guide, a PR body, commit messages, and whatever
