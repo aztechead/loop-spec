@@ -31,6 +31,14 @@ checks=(
   "hooks/team/human-code-inject.sh	CODE FOR HUMANS MODE ACTIVE"
   "skills/human-code/SKILL.md	code-for-humans mode"
   "CLAUDE.md	house style over habit"
+  "skills/shared/human-code.md	Fail loudly"
+  "skills/shared/human-code.md	names what broke"
+  "agents/implementer.md	Code a human can operate"
+  "skills/shared/team-prompts/implementer.md	Code a human can operate"
+  "skills/shared/execute-subagent.md	CODE A HUMAN CAN OPERATE"
+  "hooks/team/human-code-inject.sh	CODE A HUMAN CAN OPERATE"
+  "agents/code-reviewer.md	the operate half"
+  "CLAUDE.md	failure path"
 )
 
 for entry in "${checks[@]}"; do
@@ -56,6 +64,34 @@ if [[ "$sub_count" -ge 2 ]]; then
 else
   echo "FAIL: execute-subagent.md has $sub_count code-for-humans occurrences; expected >= 2 (single-repo + workspace prompts)"
   FAIL=$((FAIL+1))
+fi
+
+# The operate half is the one nobody rereads, because it only runs when something is
+# already wrong. A rung that carries the style directive without it ships code that goes
+# quiet exactly when a person needs it to speak.
+for f in agents/implementer.md agents/code-reviewer.md \
+         skills/shared/team-prompts/implementer.md skills/shared/execute-subagent.md \
+         lib/plan-to-loop.sh lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
+         skills/human-code/SKILL.md skills/shared/human-code.md; do
+  if grep -q "failure-tells.sh" "$f"; then
+    echo "PASS: $f names the failure-path probe"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f does not name failure-tells.sh -- the operate half is missing"
+    FAIL=$((FAIL+1))
+  fi
+  if grep -qE 'bash (")?lib/failure-tells\.sh' "$f"; then
+    echo "FAIL: $f invokes failure-tells.sh by bare relative path -- unreachable outside this repo"
+    FAIL=$((FAIL+1))
+  else
+    echo "PASS: $f has no bare-relative failure-tells invocation"; PASS=$((PASS+1))
+  fi
+done
+
+# The reviewer needs a tag for it, or a measured silence has nowhere to be reported.
+if grep -qF 'silent:' agents/code-reviewer.md; then
+  echo "PASS: code-reviewer.md carries the silent: finding tag"; PASS=$((PASS+1))
+else
+  echo "FAIL: code-reviewer.md has no silent: tag for failure-path findings"; FAIL=$((FAIL+1))
 fi
 
 # Every dispatch copy must point at the probes, not just assert the principle: a prompt
@@ -138,7 +174,7 @@ fi
 
 # The probes are the deterministic half of the directive; they must exist, be executable,
 # and be wired into the offline suite.
-for probe in lib/house-style.sh lib/comment-tells.sh; do
+for probe in lib/house-style.sh lib/comment-tells.sh lib/failure-tells.sh; do
   if [[ -x "$probe" ]]; then
     echo "PASS: $probe exists and is executable"; PASS=$((PASS+1))
   else
@@ -147,7 +183,7 @@ for probe in lib/house-style.sh lib/comment-tells.sh; do
 done
 
 for suite in tests/lib/house-style.test.sh tests/lib/comment-tells.test.sh \
-             hooks/team/human-code-inject.test.sh; do
+             tests/lib/failure-tells.test.sh hooks/team/human-code-inject.test.sh; do
   if grep -qF "$suite" tests/run-all.sh; then
     echo "PASS: $suite registered in run-all.sh"; PASS=$((PASS+1))
   else
@@ -174,6 +210,27 @@ if grep -qF 'code-for-humans findings from step 8' agents/code-reviewer.md &&
   PASS=$((PASS+1))
 else
   echo "FAIL: code-reviewer.md lost the measured-blocks / taste-is-Minor split"
+  FAIL=$((FAIL+1))
+fi
+
+# Dispatch paths name the contract so they point at it instead of pasting it.
+for f in skills/shared/execute-subagent.md lib/plan-to-loop.sh \
+         lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
+         agents/implementer.md skills/shared/team-prompts/implementer.md \
+         CLAUDE.md; do
+  if grep -q "skills/shared/human-code.md" "$f"; then
+    echo "PASS: $f names the human-code contract"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f does not name skills/shared/human-code.md -- the prompt will paste instead of point"
+    FAIL=$((FAIL+1))
+  fi
+done
+hc_count="$(grep -cF "skills/shared/human-code.md" skills/shared/execute-subagent.md)"
+if [[ "$hc_count" -ge 2 ]]; then
+  echo "PASS: execute-subagent.md names the contract in both prompts ($hc_count occurrences)"
+  PASS=$((PASS+1))
+else
+  echo "FAIL: execute-subagent.md has $hc_count human-code.md references; expected >= 2"
   FAIL=$((FAIL+1))
 fi
 

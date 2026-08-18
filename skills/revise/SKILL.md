@@ -23,7 +23,12 @@ mode asks exactly ONE confirmation (the classification table) before acting.
 - **Checkout isolation follows `LOOP_SPEC_WORKTREES`.** Default mode never switches
   the user's checkout: all work happens in a dedicated worktree whose location comes
   from `lib/worktree-base.sh` (`.loop-spec/worktrees/{slug}-revise` unless that base
-  cannot hold a checkout or `LOOP_SPEC_WORKTREE_DIR` says otherwise). With `LOOP_SPEC_WORKTREES=0`, the checkout
+  cannot hold a checkout or `LOOP_SPEC_WORKTREE_DIR` says otherwise). If the PR
+  branch is already checked out in this repo, `revise-branch.sh` goes in-place
+  instead of failing `git worktree add`; if it is checked out in another worktree,
+  that path is reused. `owned` in the helper JSON is true only when this run
+  created a worktree — Step 10 must not `git worktree remove` the caller's
+  checkout. With `LOOP_SPEC_WORKTREES=0`, the checkout
   must be clean and dedicated to this run; revise checks out the PR branch in place,
   creates no worktree, and leaves that branch checked out.
 - **Never force-push or reset a branch.** A local branch merely ahead of origin is
@@ -43,9 +48,16 @@ git remote get-url origin >/dev/null 2>&1 || # abort: "revise requires an origin
 pr_json="$(gh pr view "<arg>" --json number,url,title,state,headRefName,baseRefName)"
 ```
 
-Abort unless `state == "OPEN"`. Derive:
-- `branch = .headRefName`, `pr = .number`
-- `slug`: strip a leading `feat/` from `branch`; otherwise sanitize the branch
+Abort unless `state == "OPEN"`. Read the command values from that response:
+
+```bash
+branch="$(jq -r '.headRefName' <<<"$pr_json")"
+pr="$(jq -r '.number' <<<"$pr_json")"
+base_branch="$(jq -r '.baseRefName' <<<"$pr_json")"
+pr_title="$(jq -r '.title' <<<"$pr_json")"
+```
+
+Derive `slug`: strip a leading `feat/` from `branch`; otherwise sanitize the branch
   name (non-alphanumerics → `-`).
 
 ### Step 2 - Resolve identity only (no state writes)
@@ -83,6 +95,8 @@ case "${LOOP_SPEC_WORKTREES:-1}" in
 esac
 revision_root="$(jq -r '.revisionRoot' <<<"$prep")"
 sync="$(jq -r '.sync' <<<"$prep")" # already-current | pushed-local-ahead | fast-forwarded-remote
+isolation="$(jq -r '.isolation' <<<"$prep")" # worktree | in-place
+owned="$(jq -r '.owned' <<<"$prep")" # true only when this run created the worktree
 ```
 
 On a true divergence the helper exits 3 before it checks out a branch or touches
@@ -93,35 +107,20 @@ revision proceeds. A remote-ahead local branch is fast-forwarded only (`merge
 
 ### Step 3.5 - Feature runtime state (only after preparation succeeds)
 
-Now set `fdir="$revision_root/.loop-spec/features/$slug"`. If `feature.json` is
-missing (gitignored state lost, different machine), reconstruct the minimal runtime
-record the machinery needs — and mark it. First isolate this exact runtime directory
-from the revision index; this is required even if a prior cycle tracked
-`feature.json` or `PROGRESS.md`:
+Now set `fdir="$revision_root/.loop-spec/features/$slug"`. Do **not** reconstruct
+`feature.json` by hand — a missing file is a gitignored-state miss on a fresh
+clone, not a prompt for jq. The helper isolates the runtime directory, reuses an
+existing record (phase → revise, fills `commands.test` if empty), or writes a
+schema-7 skeleton:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/runtime-ignore.sh" revise-state "$revision_root" "$slug"
+state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/revise-state.sh" ensure \
+  "$revision_root" "$slug" \
+  --branch "$branch" --base-branch "$base_branch" --title "$pr_title" \
+  --autonomous <0|1>)"
+fdir="$(jq -r '.featureDir' <<<"$state")"
 ```
 
-Then reconstruct only when missing:
-
-```bash
-mkdir -p "$fdir"
-iterate_max="${LOOP_SPEC_ITERATE_MAX_ITERATIONS:-10}"
-[[ "$iterate_max" =~ ^[1-9][0-9]*$ && "$iterate_max" -le 100 ]] || {
-  echo "revise: LOOP_SPEC_ITERATE_MAX_ITERATIONS must be an integer from 1 to 100" >&2
-  exit 2
-}
-jq -n --arg slug "$slug" --arg branch "$branch" --arg base "<baseRefName>" \
-      --arg title "<PR title>" --argjson iterate_max "$iterate_max" \
-  '{schemaVersion: 7, slug: $slug, feature_title: $title, branch: $branch,
-    baseBranch: $base, currentPhase: "revise", reconstructed: true,
-    iterate: {used: 0, maxIterations: $iterate_max}, warnings: [],
-    pendingRemediationTasks: [], autonomous: <true|false>}' > "$fdir/feature.json"
-```
-
-Detect the test command (`lib/detect-test-cmd.sh`) and record it at
-`feature.json.commands.test` if absent — remediation tasks need a verifyCommand.
 Emit `phase_start` only now:
 
 ```bash
@@ -129,7 +128,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" phase_start --phase 
 ```
 
 `feature.json`, its `.bak`, event ledger, and every other `.loop-spec` runtime file
-remain local state. `revise-state` ignores newly reconstructed state and marks legacy
+remain local state. `revise-state` ignores newly created state and marks legacy
 tracked state skip-worktree in the revision checkout. Never stage it manually. Every
 revise code commit names its reviewed source/test paths explicitly; the only revise
 artifact that may be committed is the explicit
@@ -141,11 +140,21 @@ artifact that may be committed is the explicit
 items="$(bash "${CLAUDE_SKILL_DIR}/../../lib/pr-comments.sh" fetch "$pr")"
 ```
 
-Triage every item (resolved threads are already filtered out):
-- **skip**: bot authors (`login` ending `[bot]`), self-comments generated by a
-  prior revise run (marker `<!-- loop-spec:revise -->`), bare approvals ("LGTM").
+Triage every item using the probe fields, not a model judgment about the author:
+
+```bash
+actionable="$(jq -c '[.[] | select(.skip | not)]' <<<"$items")"
+```
+
+- **skip** (already flagged as `.skip == true`): self-comments from a prior revise
+  run (marker `<!-- loop-spec:revise -->`), bare approvals ("LGTM"), CI/dependabot
+  issue-comment chatter, and non-allowlisted bot issue comments. A **REVIEW** with
+  `CHANGES_REQUESTED` (even an empty body) and every inline `review_comment` are
+  kept even when `login` ends in `[bot]` — that is how GitHub's code-review agent
+  reaches revise. `LOOP_SPEC_REVIEW_BOT_ALLOWLIST` (comma-separated logins) forces
+  keep except for the self-marker and bare approvals.
 - **question**: asks for information, requests no change → queue a reply.
-- **actionable**: everything else → classify with the iterate gap taxonomy
+- **actionable**: everything else in `$actionable` → classify with the iterate gap taxonomy
   (`skills/iterate/SKILL.md`): `execute` (implementation fix at file/line —
   the overwhelming default for review comments), `plan` (the request implies
   missing/mis-decomposed work beyond a local fix), `spec` (the request changes
@@ -223,8 +232,10 @@ gh pr comment "$pr" --body "<!-- loop-spec:revise -->
 
 ### Step 10 - Cleanup
 
-When `LOOP_SPEC_WORKTREES != 0`, remove the revise worktree (`git worktree remove`)
-and keep the branch. In no-worktree mode there is nothing to remove; leave the
+Remove a revise worktree only when `owned == true` (`git worktree remove` that
+`revisionRoot`, keep the branch). `isolation == "in-place"` or `owned == false`
+means this run used the caller's checkout or a worktree that already held the
+branch — leave it. In no-worktree mode there is nothing to remove; leave the
 in-place PR branch checked out. Print the PR URL and the per-item outcome table.
 
 ## Failure behavior

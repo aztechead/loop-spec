@@ -1,6 +1,6 @@
 ---
 name: human-code
-description: Toggle code-for-humans mode on or off for the current project. Code-for-humans mode (default ON) makes the assistant read the surrounding code before writing any, match the house conventions it finds there — naming, error idiom, test structure, comment density — and spend comments on why rather than what, so generated code reads like the codebase it lands in instead of like generated code. Reads and writes .loop-spec/human-code.conf to persist state across sessions.
+description: Toggle code-for-humans mode on or off for the current project. Code-for-humans mode (default ON) makes the assistant read the surrounding code before writing any, match the house conventions it finds there — naming, error idiom, test structure, comment density — and spend comments on why rather than what, so generated code reads like the codebase it lands in instead of like generated code. It covers the markdown too: every document is written for a person who will maintain or operate it, and a change that makes a document false fixes it in the same diff. Reads and writes .loop-spec/human-code.conf to persist state across sessions.
 argument-hint: "[on|off|status|probe]"
 ---
 
@@ -8,16 +8,23 @@ argument-hint: "[on|off|status|probe]"
 
 Invoked as `/loop-spec:human-code <subcommand>`.
 
-Code-for-humans mode is **ON by default**. Code is read far more often than it is
+Code-for-humans mode is **ON by default**. It covers both halves of what a person needs
+from code: reading it, and running it. Code is read far more often than it is
 written, and generated code fails its reader in a recognisable way: it is correct,
 and it looks nothing like the code around it. Different naming, a different error
 idiom, a docstring on every function in a module that has none, a comment above
 every line restating the line. This mode makes the assistant read the neighbors
 first, match what it finds, and spend its comment budget on why.
 
-This skill only flips the persistent state; the directive itself is injected at
+The same switch covers the markdown. Documents are the half of the output a person
+reads when the code is not enough, and they fail their reader in their own way: a link
+that goes nowhere, a path the tree no longer holds, a command nobody can run, a page
+that restates code it will outlive. Code-for-humans mode makes both halves the
+deliverable (canonical text: `skills/shared/human-docs.md`).
+
+This skill only flips the persistent state; the directives themselves are injected at
 session start by `hooks/team/human-code-inject.sh`, and every code-producing
-dispatch carries its own copy (canonical text: `skills/shared/human-code.md`).
+dispatch names the contract (`skills/shared/human-code.md`) and the probes.
 
 ## Subcommands
 
@@ -77,10 +84,12 @@ suppresses injection.
 1. Run `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <paths>` (default `.` when no path is given).
 2. Report the fact lines verbatim. Each carries its own evidence; do not paraphrase or round them.
 3. Exit 1 with `sample=none` means the convention is **undemonstrated**, not absent — say so rather than filling the gap with a default.
+4. Run `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <code paths>` for the failure path, and report its findings the same way.
+5. When any path is markdown, also run `bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <markdown paths>` and report its findings the same way.
 
 ## Probes
 
-Two deterministic scripts back this mode, so "honor the existing conventions" is
+Four deterministic scripts back this mode, so "honor the existing conventions" is
 measured rather than recalled:
 
 - `"${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <paths>` — comment density, doc-comment usage, indentation,
@@ -97,7 +106,18 @@ measured rather than recalled:
   comments that narrate the edit, narrate history, or restate the next line of code. Exit 1
   means findings, exit 0 means clean.
 
-VERIFY's `code-reviewer` runs both over the feature diff; a deviation either probe can
+- `"${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files>` / `... diff <base> [head]` — the
+  operate half: a caught error whose handler does nothing, a non-zero exit with nothing said
+  to the operator, and an error message whose every word is a synonym for "it broke". Quiet
+  where the code already says why — a narrow exception type, a comment in the handler, an
+  exit guarded by a command that reports its own failure. Exit 1 means findings.
+- `"${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <markdown>` / `... diff <base> [head]` — flags a
+  relative link with no target, an inline-code path the tree no longer holds, and a shell
+  command holding a placeholder the document's prose never explains. Exit 1 means findings,
+  exit 0 means clean. It judges no sentence: `skills/shared/human-docs.md` states which of
+  its rules are machine-checked and which stay judgments.
+
+VERIFY's `code-reviewer` runs all four over the feature diff; a deviation any probe can
 demonstrate is an **Important** (blocking) finding, while a convention you believe in but
 cannot show in the probe output is taste and stays **Minor**.
 
@@ -114,5 +134,5 @@ they travel in the prompt, where a session-level switch does not reach.
 - Changes take effect at the next session start (the hook fires on SessionStart).
 - Complements [simplicity mode](../simplicity/SKILL.md): the ladder governs how much code
   exists, `skills/shared/design-for-change.md` governs where its boundaries sit, and this
-  mode governs how it reads. The `simplicity:` shortcut marker the ladder requires is an
+  mode governs how the code and its documents read. The `simplicity:` shortcut marker the ladder requires is an
   explicit carve-out here and is never counted against a file's comment budget.

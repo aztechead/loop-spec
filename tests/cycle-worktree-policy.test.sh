@@ -21,6 +21,8 @@ enabled = cycle[fallback:end]
 execute = Path(sys.argv[2]).read_text(encoding="utf-8")
 inputs = execute[execute.index("## Inputs"):execute.index("## In-place single-repository mode")]
 in_place = execute[execute.index("## In-place single-repository mode"):execute.index("## Lead wave loop")]
+wave = execute[execute.index("## Lead wave loop"):execute.index("## Agent dispatch convention")]
+prompt = execute[execute.index("Step 1 - The task worktree already exists"):execute.index("## Reviewer Agent prompt")]
 
 checks = [
     ("disabled branch performs an in-place checkout", 'checkout -b "feat/${slug}"' in disabled),
@@ -29,12 +31,24 @@ checks = [
     ("the rung's worktreesEnabled is read before any prompt is composed",
      "worktreesEnabled" in inputs and "before composing any" in inputs),
     ("the worktree path is resolved in worktree mode only", "worktree mode only" in inputs),
+    ("headless subagent isolation is lead-created worktrees",
+     "subagentIsolation" in inputs and "lead-worktree" in inputs),
     ("the in-place mode never emits a worktree command",
      "worktree add" not in in_place and "EnterWorktree" not in in_place),
     ("the in-place mode is selected before a prompt is composed, not after a denial",
      "BEFORE resolving a worktree path" in in_place),
     ("the in-place reviewer reads the working-tree diff, not a task branch",
      "diff -- {task.files}" in in_place),
+    ("the lead creates each task worktree before any Agent call",
+     "any Agent call" in wave and "worktree add" in wave),
+    ("wave width > 1 requires a created worktree per member",
+     "Wave width > 1 is allowed only when" in wave),
+    ("a failed worktree add serializes rather than overlapping in the feature root",
+     "never overlap writers in the feature root" in wave),
+    ("the implementer prompt tells the agent the worktree already exists",
+     "The task worktree already exists" in prompt and "Do not run" in prompt),
+    ("the implementer prompt does not invoke git worktree add",
+     'worktree add "{worktree_path}"' not in prompt and "worktree add -b" not in prompt),
 ]
 failures = 0
 for name, passed in checks:

@@ -65,6 +65,7 @@ In workspace mode, scan each participating repository separately and attach the 
 - Bash is for `ls`, `git log`, `wc -l`, `grep -r`. No tests, no installs, no builds.
 - Descriptive only. Document what exists; the planner decides what to build. If the spec is ambiguous, note it under `## Open questions for the planner` and stop.
 - **State assumptions, never guess silently.** If no clear analog exists for a concept, list it under `## Concepts with no clear analog` (planner's "novel work" bucket). Do not invent a plausible-looking analog or stretch an unrelated file to fit. Better to flag the gap than to mislead the planner with a fake reference.
+- **Docs for humans (PATTERNS.md is read while someone writes code).** Cite the analog at `path:lines` and quote only the few lines a reader cannot get by opening it; a long copied block is stale the first time that file changes. Full reference: `skills/shared/human-docs.md`.
 - **Plain language (readability contract — advisory).** Write PATTERNS.md's gotchas and analog notes in short sentences, active voice, and plain words. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks); several of its rules, including cutting needless words, are not machine-checked at all.
 
 ## Re-dispatch behavior

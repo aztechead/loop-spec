@@ -12,11 +12,14 @@ Relevant phases (per `skills/simplicity/SKILL.md` "Relationship to the cycle"):
   loop-fleet (`lib/plan-to-loop.sh`), workflow (`lib/workflows/execute-dag.js`).
 - **VERIFY / code-reviewer** — `agents/code-reviewer.md` over-engineering pass.
 
-The directive realizes `skills/simplicity/SKILL.md`; that skill is the full reference. Keep
-the canonical compact text below in sync with the skill. The session-level copy lives in
+The directive realizes `skills/simplicity/SKILL.md`; that skill is the full reference. Dispatch
+names this file rather than pasting it. The session-level copy lives in
 `hooks/team/simplicity-inject.sh`.
 
-## Canonical compact directive (inline this verbatim into dispatch prompts)
+## Compact directive (read this file; do not paste it into a prompt)
+
+Dispatch names this file and the resolved probes. A SessionStart hook does not reach a
+dispatched agent, so the prompt still says to Read this file.
 
 > SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
 > actually works; the best code is the code never written. BEFORE writing code, stop at the

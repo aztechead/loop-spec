@@ -120,72 +120,47 @@ for t in tasks:
     spec_path = t.get('specPath')
 
     # Ponytail laziness ladder (canonical: skills/shared/laziness-ladder.md). A SessionStart
-    # hook does not reach this loop-runner worker, so the directive is inlined here so the
-    # simplicity discipline applies on the loop-fleet rung every time, like the other rungs.
+    # hook does not reach this loop-runner worker, so the prompt names the contract and the
+    # probes rather than pasting the essay.
     ladder = (
-        'SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution '
-        'that actually works; the best code is the code never written. BEFORE writing code, '
-        'stop at the first rung that holds: (1) does it need to exist at all? speculative = '
-        'skip it (YAGNI); (2) DRY — already in this codebase? reuse the existing helper/util/'
-        'type/pattern, do not re-implement it; (3) stdlib does it? use it; (4) native platform '
-        'feature covers it? use it; (5) an already-installed dependency solves it? use it, '
-        'never add a new one for what a few lines do; (6) can it be one line? one line; '
-        '(7) only then, the minimum code that works. The ladder runs AFTER you understand '
-        'the problem. Bug fix = root cause, not symptom. NEVER cut input validation at trust '
-        'boundaries, error handling that prevents data loss, security, accessibility, or '
-        'anything the spec requires. Non-trivial logic leaves ONE runnable check behind. '
-        'Mark deliberate shortcuts with a simplicity: comment. '
-        'Rung 1 is measured too: before DONE run bash '
-        f'{lib_dir}/indirection-scan.sh scan <files you touched> — it names each small '
-        'private helper you added that is called exactly once; inline it or say why the '
-        'name earns its hop. It stays silent on long single-caller functions '
-        '(decomposition), exported symbols, and dead code. '
-        'Rung 2 is measured, not recalled — you cannot find a helper in a file you never '
-        f'opened, so before DONE run bash {lib_dir}/duplication-scan.sh scan <files you '
-        'touched>. It names each block you duplicated and the file that block already lives '
-        'in: duplicate= is the same lines, similar= is the same lines with every name '
-        'changed, which is what writing one module beside a similar one produces, so both '
-        'count. Resolve every finding: call the existing thing, or lift the shared part into one '
-        'place both callers use, never a second copy that drifts. A coincidental resemblance '
-        '(two blocks that change for different reasons) is the one exception — report it '
-        'rather than merging them, because that merge is a coupling bug.'
+        'SIMPLICITY (ponytail laziness ladder — on by default). Read '
+        f'{lib_dir}/../skills/shared/laziness-ladder.md before writing code — do not paste '
+        'it. YAGNI, then DRY: reuse what is already here. Before DONE run bash '
+        f'{lib_dir}/indirection-scan.sh scan <files you touched> and bash '
+        f'{lib_dir}/duplication-scan.sh scan <files you touched> '
+        '(duplicate= same lines, similar= names-changed; both count).'
     )
 
     # Design-for-change directive (canonical: skills/shared/design-for-change.md).
     # Travels with the ladder: the loop-runner worker sees only its prompt.
     design = (
-        'DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task\'s '
-        'stated interface, not an implementation detail; one unit, one reason to change. '
-        'New units receive their collaborators (params/args/env), never construct them deep '
-        'inside. Never cut a seam to save lines, and never build speculation behind one '
-        '(YAGNI cuts artifacts, not seams). Bug-fix tasks: after the root cause is fixed, '
-        'sweep callers, copy-pasted patterns, and parallel paths for the same mechanism; '
-        'fix same-cause siblings within the task files scope, report the rest.'
+        'DESIGN FOR CHANGE (seams, not speculation — on by default). Read '
+        f'{lib_dir}/../skills/shared/design-for-change.md — do not paste it. Design to an '
+        'interface; one unit, one reason to change; receive collaborators.'
     )
 
     # Code-for-humans directive (canonical: skills/shared/human-code.md).
     # Travels with the ladder: the loop-runner worker sees only its prompt.
     human = (
-        'CODE FOR HUMANS (house style over habit — on by default). Code is read far more '
-        'than it is written; your diff must read like the code around it. Read the '
-        'neighbors of every file in the task files list FIRST and match them: naming, '
-        'error idiom, test structure, layout, import order. The house convention outranks '
-        'your defaults even where you would have chosen differently — disagreeing with it '
-        'is a self-review finding, never a licence to deviate. Where the convention is '
-        f'unclear, measure it: run bash {lib_dir}/house-style.sh probe <files> for comment '
-        'density, doc-comment usage, indentation, and naming case from the actual '
-        'neighbors, and before DONE run bash '
-        f'{lib_dir}/house-style.sh compare <files you touched> to see where your own work '
-        'deviates from its same-language neighbors (indent, naming, quotes, semicolons, '
-        'module system); probe pools your file into the sample and so can never show you a '
-        'deviation. Comments carry WHY, never what: a constraint not visible locally, a '
-        'decision and the alternative it beat, a workaround and its reason. Never narrate '
-        'the code, announce the edit ("Added...", "Updated..."), or narrate history '
-        f'("previously..."); bash {lib_dir}/comment-tells.sh scan <files> catches those three. '
-        'Comment density matches the file, not an absolute. A good name deletes a comment. '
-        'No drive-by reformatting or renames that bury the change. NEVER cut simplicity: '
-        'markers, file-header purpose blocks the codebase uses, TODO/FIXME/NOTE/HACK/'
-        'SAFETY markers, or any comment encoding a non-obvious why.'
+        'CODE FOR HUMANS (house style over habit — on by default). Read '
+        f'{lib_dir}/../skills/shared/human-code.md before writing code — do not paste it. '
+        'Read the neighbors. Comments carry WHY, never what. NEVER cut simplicity: markers. '
+        f'Before DONE run bash {lib_dir}/house-style.sh probe <files>; bash '
+        f'{lib_dir}/house-style.sh compare <files you touched>; bash '
+        f'{lib_dir}/comment-tells.sh scan <files>; bash {lib_dir}/failure-tells.sh scan '
+        '<files you touched>. CODE A HUMAN CAN OPERATE: fail loudly, or say why you did not.'
+    )
+
+    # Docs-for-humans directive (canonical: skills/shared/human-docs.md).
+    # Travels with the ladder: the loop-runner worker sees only its prompt.
+    docs = (
+        'DOCS FOR HUMANS (the markdown is a deliverable too — on by default). Read '
+        f'{lib_dir}/../skills/shared/human-docs.md — do not paste it. One job per document. '
+        'Cite, never copy. If your change makes a document false, fix it IN THIS DIFF; a '
+        'follow-up documentation task is deferred scope. Before DONE run bash '
+        f'{lib_dir}/doc-tells.sh scan <the markdown you touched>. NEVER cut frontmatter, '
+        'machine-read contract sections, required artifact headings, EVID citation lines, '
+        'or license blocks.'
     )
 
     # Execution-discipline directive (canonical: skills/shared/execution-discipline.md).
@@ -202,7 +177,7 @@ for t in tasks:
         'future-work notes; a criterion you cannot meet is a loud failure with evidence, '
         'never a note.'
     )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', human, '', discipline, '', f'TASK {raw}: {brief}', '']
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', human, '', docs, '', discipline, '', f'TASK {raw}: {brief}', '']
     if global_constraints:
         lines.append('Global constraints (from the plan, verbatim; every one binds):')
         lines += [f'{c}' for c in global_constraints]

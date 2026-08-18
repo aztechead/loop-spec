@@ -5,12 +5,27 @@
 Run from repo root:
 
 ```bash
+bash tests/run-unit.sh
+bash tests/run-unit.sh --list skills/shared/human-code.md
 bash tests/run-all.sh
 ```
 
-This runs every non-interactive suite: the agent/manifest validators, the hook
-tests, the `lib/` unit tests, and (when a node runtime is available) the workflow
-syntax checks in `tests/workflows/smoke.sh`. It needs bash, git, jq, python3,
+`run-unit.sh` is the edit-loop gate. With no argument it maps uncommitted files to their
+same-name unit suites and every registered coupling test that names them, then runs only
+that set. Pass a base ref (`bash tests/run-unit.sh main`) to cover a whole branch diff.
+Use `--list <path>...` to inspect the mapping without running it. Coupling discovery includes
+Markdown that the plugin executes as instructions under `skills/`, `agents/`, `commands/`,
+and `.claude/rules/`; ordinary prose selects the docs linter without expanding into every
+suite that happens to quote it.
+It also syntax-checks changed files and runs the code/document tells over lines introduced
+by the diff, so an existing finding elsewhere in a touched file does not poison the edit
+loop. The full
+gate runs every suite concurrently; set `RUN_ALL_JOBS=1` when diagnosing order-sensitive
+behavior and `RUN_ALL_VERBOSE=1` to print successful suite logs.
+
+The full gate runs every non-interactive suite: the agent/manifest validators, the hook
+tests, the `lib/` units and integration contracts, and (when a node runtime is available)
+the workflow syntax checks in `tests/workflows/smoke.sh`. It needs bash, git, jq, python3,
 ripgrep (`rg`, used by the two coverage sweeps to enumerate the tree), and (for
 the workflow checks) node. It does NOT require the Claude CLI. `rg` is a
 test-only dependency: nothing shipped at runtime uses it.

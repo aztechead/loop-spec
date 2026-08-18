@@ -135,8 +135,64 @@ printf 'module example.com/bar\n\ngo 1.21\n' > "$DIR/go.mod"
 got=$(bash "$LIB" "$DIR")
 check "K: explicit directory argument" "go test ./..." "$got"
 
+# M: language-agnostic markers (Clojure, Elixir, JVM, Ruby, PHP)
+DIR="$WORK/lein"
+mkdir -p "$DIR"
+printf '(defproject foo "0.1.0")\n' > "$DIR/project.clj"
+got=$(cd "$DIR" && bash "$LIB")
+check "M: project.clj -> lein test" "lein test" "$got"
+
+DIR="$WORK/deps-edn"
+mkdir -p "$DIR"
+printf '{:paths ["src"]}\n' > "$DIR/deps.edn"
+got=$(cd "$DIR" && bash "$LIB")
+check "M: deps.edn -> clojure -M:test" "clojure -M:test" "$got"
+
+DIR="$WORK/mix"
+mkdir -p "$DIR"
+printf 'defmodule Foo.MixProject do\nend\n' > "$DIR/mix.exs"
+got=$(cd "$DIR" && bash "$LIB")
+check "M: mix.exs -> mix test" "mix test" "$got"
+
+DIR="$WORK/maven"
+mkdir -p "$DIR"
+printf '<project></project>\n' > "$DIR/pom.xml"
+got=$(cd "$DIR" && bash "$LIB")
+check "M: pom.xml -> mvn test" "mvn test" "$got"
+
+DIR="$WORK/gradle"
+mkdir -p "$DIR"
+printf 'plugins {}\n' > "$DIR/build.gradle"
+got=$(cd "$DIR" && bash "$LIB")
+check "M: build.gradle -> gradle test" "gradle test" "$got"
+
+DIR="$WORK/gradle-kts"
+mkdir -p "$DIR"
+printf 'plugins {}\n' > "$DIR/build.gradle.kts"
+got=$(cd "$DIR" && bash "$LIB")
+check "M: build.gradle.kts -> gradle test" "gradle test" "$got"
+
+DIR="$WORK/ruby"
+mkdir -p "$DIR"
+printf 'source "https://rubygems.org"\n' > "$DIR/Gemfile"
+got=$(cd "$DIR" && bash "$LIB")
+check "M: Gemfile -> bundle exec rake test" "bundle exec rake test" "$got"
+
+DIR="$WORK/composer"
+mkdir -p "$DIR"
+printf '{"name":"foo/bar"}\n' > "$DIR/composer.json"
+got=$(cd "$DIR" && bash "$LIB")
+check "M: composer.json -> composer test" "composer test" "$got"
+
+DIR="$WORK/lein-over-deps"
+mkdir -p "$DIR"
+printf '(defproject foo "0.1.0")\n' > "$DIR/project.clj"
+printf '{:paths ["src"]}\n' > "$DIR/deps.edn"
+got=$(cd "$DIR" && bash "$LIB")
+check "M: project.clj wins over deps.edn" "lein test" "$got"
+
 # L: exit 0 in all cases
-for case_name in "makefile-test" "package-json" "cargo" "pyproject" "setup-py" "go-mod" "uv-python" "poetry-python" "venv-python" "empty"; do
+for case_name in "makefile-test" "package-json" "cargo" "pyproject" "setup-py" "go-mod" "uv-python" "poetry-python" "venv-python" "empty" "lein" "deps-edn"; do
   exit_code=0
   (cd "$WORK/$case_name" && bash "$LIB") || exit_code=$?
   check_exit "L: exit 0 for $case_name" "0" "$exit_code"

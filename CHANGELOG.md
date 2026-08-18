@@ -2,9 +2,155 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
-## [Unreleased]
+## [4.2.0] - 2026-08-18
+
+Everything this plugin emits is written for a person who has to maintain and operate it.
+Two halves were missing. The code directive covered only how a diff READS — nothing asked
+what the code SAYS when it breaks, which is the half a person meets at 03:00 holding
+whatever the software chose to tell them. And nothing at all governed the documents, though
+a cycle writes plenty: SPEC, PLAN, VERIFICATION, the reviewer's guide, a PR body, and
+whatever README, guide, or runbook the change makes true or false. Defaults change only in
+that both directives ride the existing code-for-humans switch and VERIFY gains one fixable
+pass.
+
+### Added
+
+- **`lib/failure-tells.sh` — the operate half of code-for-humans.** Three silences that are
+  decidable from the text: `swallowed` (a caught error whose handler does nothing —
+  the error-hiding anti-pattern, which erases the only record of what happened),
+  `silent-exit` (a non-zero exit with nothing said in the five code lines above it), and
+  `contextless-error` (a message whose every word is a synonym for "it broke", so the
+  reader learns nothing the crash had not already told them). `scan <file>` reads whole
+  files; `diff <base> [head]` reports only what a change introduced. Python, shell, and
+  js/ts; any other language is skipped and counted, never guessed at.
+  It is quiet wherever the code already says why: a narrow exception type (`except
+  FileNotFoundError` names the case), a comment inside the handler, an exit guarded by a
+  command that reports its own failure (`resolve_root "$1" || exit 2`), and any message
+  naming a real noun. Measured across this repository's 352 shell, python, and TypeScript
+  files: **1 finding** — a `sys.exit(4)` whose status code is itself the documented
+  contract, which is the known false-positive class. The four `except Exception: pass`
+  handlers it found in `lib/graph/engine.py` were real, and each now carries the reason it
+  always had.
+- **`skills/shared/human-code.md` gained its second half.** Three principles — fail loudly
+  or say why you did not; an error message names what broke and the next move; a non-zero
+  exit says why before it exits — plus a section stating exactly what the probe checks and
+  what stays a judgment (whether an error should have been retried, whether a log line is
+  at the right level, whether the handling is correct at all).
+- **`tests/lib/failure-tells.test.sh`** — 25 cases pinning the three silences and the four
+  deliberate shapes the probe must stay quiet on.
+
+- **`skills/shared/human-docs.md` — the docs-for-humans contract.** The fourth member of
+  the set beside the laziness ladder, design-for-change, and code-for-humans. Eight
+  principles: name the reader and what they can do when they finish; one job per document
+  (Diátaxis — a how-to gets a task done, a reference states facts, an explanation says
+  why, and blending them serves neither reader); a procedure states its prerequisites,
+  then the exact copy-pasteable command, then what success looks like, then what to do
+  when the step fails; cite, never copy; the document ships in the diff that changes the
+  behavior; write the document the project will maintain; ground every claim; write for a
+  reader in a hurry. The contract states per rule which ones a script checks and which
+  stay judgments, rather than claiming enforcement it does not have.
+- **`lib/doc-tells.sh` — the deterministic corner of it.** Three checks decidable from the
+  text and the tree: `dead-link` (a relative link whose target is not on disk),
+  `stale-ref` (an inline-code path the tree no longer holds), and
+  `undefined-placeholder` (a shell command holding a placeholder the document's prose
+  never explains). `scan <file.md>` reads whole documents; `diff <base> [head]` reports
+  only what a change introduced. `stale-ref` fires only where git tracks files of that
+  kind in that directory, which is what keeps runtime state (`.loop-spec/runtime.json`),
+  foreign examples (`app/models/user.rb` in a project with no `app/`), and a path named
+  because it is gone from being reported as rot. Measured over this repository's own 170
+  documents: 181 findings, 149 of them in delivered feature artifacts (frozen records) and
+  32 in live documents; the live ones were sampled and were real.
+- **VERIFY Step 7.66 — the docs-for-humans pass.** Runs `doc-tells.sh diff` over the
+  change. Findings are fixable rather than advisory: each names a file, a line, and a
+  one-line edit. The escape hatch is narrow and recorded — a documented misfire is written
+  into VERIFICATION.md with its reason and does not block.
+- **A docs pass in `agents/code-reviewer.md` (8.5).** The judgment half: `doc:` from the
+  probe and `stale-doc:` (a sentence in a document the diff makes false, quoted) are
+  Important and block; `unusable-doc:` (a procedure with no prerequisites, no expected
+  output, or no failure branch) is Minor unless the SPEC asked for that document. Evidence
+  blocks, taste does not — the same split the code-for-humans pass makes.
+- **`tests/human-docs-coverage.test.sh` and `tests/lib/doc-tells.test.sh`.** The coverage
+  suite pins the directive into every document-producing dispatch path and fails when one
+  loses it; the unit suite pins the three checks and the four look-alikes they must stay
+  quiet on.
+
+### Changed
+
+- **The test loop is split by feedback speed.** `tests/run-unit.sh` maps the current
+  worktree diff (or an explicit base ref) to same-name unit suites and registered coupling
+  tests, including coverage pins for executable Markdown under the plugin's skill, agent,
+  command, and rule surfaces. `--list <path>...` explains the mapping without running it.
+  The gate then runs just that set plus syntax checks and diff-scoped code/document tells,
+  so existing findings elsewhere in a touched file do not poison the edit loop. `tests/run-all.sh`
+  remains the complete offline gate, now runs independent suites concurrently, moves the
+  graph mutation proofs into a temporary copy, prints concise timing by default, and
+  accepts `RUN_ALL_JOBS` / `RUN_ALL_VERBOSE` for diagnosis.
+- **The code-for-humans switch now carries all three halves.** `hooks/team/human-code-inject.sh`
+  injects the failure-path directive and the docs directive beside the house-style one,
+  `/loop-spec:human-code off` and `LOOP_SPEC_HUMAN_CODE=0` disable all of it, and
+  `human-code probe` reports `failure-tells.sh` and (for markdown paths) `doc-tells.sh`
+  alongside the conventions. One switch, not three: the opencode and ADK bridges replay the
+  same hook, so all three harnesses gain the directives without a per-harness change.
+- **The code-reviewer's code-for-humans pass runs the failure-path probe too**, and reports
+  what it finds as `silent:` — an error swallowed with no reason given, an exit that says
+  nothing, a message a person cannot act on. Measured findings are Important and block,
+  the same rule the `house:` and `noise:` tags already follow.
+- **PLAN carries the documentation task.** `agents/planner.md` asks of every task which
+  README, help text, runbook, or configuration table the change makes wrong, names that
+  file in the task's `files[]`, and refuses to plan a documentation fix as a follow-up —
+  that is the deferred scope the cycle already rejects. The EXECUTE rungs (team, subagent,
+  loop-fleet, Workflow) each name the contract and the probes rather than pasting the
+  essay, since a SessionStart hook does not reach a dispatched agent.
+- **Dispatch, inject, and CLAUDE.md point at the contracts.** `skills/shared/human-code.md`,
+  `skills/shared/human-docs.md`, `skills/shared/laziness-ladder.md`, and
+  `skills/shared/design-for-change.md` stay the source of truth. Path-scoped
+  `.claude/rules/` remind contributors when matching files are opened; they wrap those
+  paths in backticks so Claude Code does not `@import` them at launch.
+- **VERIFY Step 7.66 no longer swallows the probe.** `doc-tells.sh diff` is a gate:
+  exit 1 is a finding to fix, not an advisory list hidden behind `|| true`.
+- **`human-docs` is a protected gate id** in `lib/extension-points.sh`: a project layer
+  answering to that name would be indistinguishable from the built-in pass in the logs.
+- **Two live documents corrected**, found by the new probe on this repository: a
+  `tests/smoke.sh` reference in `docs/loop-spec/PREREQUISITES.md` (the file was renamed
+  long ago) and a relative link in `docs/loop-spec/architecture.md` written as if from the
+  repository root.
 
 ### Fixed
+
+- **Workflow implementers resolve the design-for-change contract from the installed
+  plugin.** The execute DAG previously handed target-repository agents the relative path
+  `skills/shared/design-for-change.md`, which does not exist in the project being changed.
+- **Failure-path checks distinguish executable code from examples and comments.** Quoted
+  `exit`/`throw` examples and inline comments no longer produce findings or count as a
+  diagnostic for a real exit, while heredoc markers inside data cannot hide later code.
+- **The surface index suite is portable across BSD and GNU `wc`.** Line-count assertions
+  now normalize `wc -l` padding, and `lib/surface.py` uses the keyword form of
+  `re.split(maxsplit=...)` required by newer Python versions without deprecation warnings.
+- **`/loop-spec:revise` no longer blanket-skips `[bot]` authors.** That discarded
+  GitHub's code-review agent `CHANGES_REQUESTED` (processed:0) and silently killed
+  the review→revise loop. `lib/pr-comments.sh` now keeps a REVIEW with
+  `CHANGES_REQUESTED` (even an empty body) and every inline `review_comment`,
+  including bots. Still skipped: self `<!-- loop-spec:revise -->` comments, bare
+  LGTM/Approved bodies, and CI/dependabot issue-comment chatter.
+  `LOOP_SPEC_REVIEW_BOT_ALLOWLIST` force-keeps named bot issue comments.
+- **`revise-branch.sh` no longer tries to `worktree add` a branch that is already
+  checked out.** That failed with "already checked out", wasted steps, then fell
+  back. If the branch is checked out in the source repo, revise goes in-place;
+  if it is checked out in another worktree, that path is reused. JSON reports
+  `isolation` and `owned` so Step 10 cannot `git worktree remove` the caller's
+  checkout.
+- **Headless subagent isolation is lead-created worktrees, not a hope that
+  parallel Agents will `git worktree add`.** One-shot Agents share the session
+  cwd even with `LOOP_SPEC_WORKTREES=1`. The lead creates each task worktree
+  before dispatch (`subagentIsolation=lead-worktree`); wave width > 1 is allowed
+  only when those worktrees exist; a failed add serializes. Raising the
+  implementer cap is gated on this.
+- **`detect-test-cmd.sh` is language-agnostic.** `project.clj` → `lein test`,
+  `deps.edn` → `clojure -M:test`, plus Elixir, Maven, Gradle, Bundler, and
+  Composer markers. The detector must not assume JS or Python.
+- **Revise no longer hand-reconstructs a missing `feature.json`.**
+  `lib/revise-state.sh ensure` reuses or writes a schema-7 skeleton via
+  `feature-init.sh`; the skill does not author jq.
 
 - **Full-cycle phase markers are emitted by the graph engine, not by cycle-skill
   prose the agent can skip.** A run that called `loop-spec:cycle` once, then

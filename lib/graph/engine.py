@@ -275,6 +275,8 @@ def check_conflict(test_exit):
             if out:
                 return out.splitlines()[0]
     except Exception:
+        # Any probe failure is the same answer to the caller: unknown. The line
+        # below carries it, so the exception detail buys nothing here.
         pass
     return "conflict=unknown reason=conflict-monitor-unresolved"
 
@@ -322,6 +324,8 @@ def compute_effort(node_id, node, attempt):
                         timeout=30)
                     security_signal = "matched" if sec.returncode == 0 else "none"
         except Exception:
+            # A signal that cannot be measured stays "none"; effort-probe below reads
+            # the defaults set above and reports the reason it used them.
             pass
 
     authorizes = "true" if node.get("authorizesDelivery") else "false"
@@ -341,6 +345,8 @@ def compute_effort(node_id, node, attempt):
                 final = "system2" if (declared == "system2" or probe_mode == "system2") else "system1"
                 return final, probe_reason
     except Exception:
+        # The declared mode is the fallback by design, and the reason returned below
+        # tells the caller the probe never resolved.
         pass
     return declared, "effort-probe-unresolved"
 
@@ -407,6 +413,8 @@ def emit_phase_boundaries(current, admitting):
                  "--phase", current],
                 stdout=sys.stderr)
     except Exception:
+        # Markers are observability, never control flow: a run that cannot emit one
+        # still has to finish the phase it is in.
         pass
 
 

@@ -40,7 +40,7 @@ agent_rows="$(bash "$SCRIPT" list agent)"
 all_rows="$(bash "$SCRIPT" list all)"
 check "list all is every kind" \
   "$(( $(wc -l <<<"$lib_rows") + $(wc -l <<<"$shared_rows") + $(wc -l <<<"$agent_rows") ))" \
-  "$(wc -l <<<"$all_rows")"
+  "$(wc -l <<<"$all_rows" | tr -d ' ')"
 check "list defaults to all" "$(wc -l <<<"$all_rows")" "$(bash "$SCRIPT" list | wc -l)"
 check "every row is kind<TAB>path<TAB>purpose" "0" \
   "$(awk -F'\t' 'NF != 3 {n++} END {print n+0}' <<<"$all_rows")"

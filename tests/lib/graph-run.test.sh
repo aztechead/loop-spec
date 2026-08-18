@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT="$ROOT/lib/graph/run.sh"
 ENGINE="$ROOT/lib/graph/engine.py"
 WORK="${TMPDIR:-/tmp}/loop-spec-graph-run.$$"
-trap 'cp "$BACKUP" "$ENGINE" 2>/dev/null || true; rm -rf "$WORK"' EXIT
+trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/feat" "$WORK/bin"
 PASS=0; FAIL=0
 
@@ -594,7 +594,14 @@ run_check_silently() {
 
 echo ""
 echo "--- mutation proof 1: substring match (\"expects in text\") ---"
-python3 - "$ENGINE" <<'PYEOF'
+MUTATION_ROOT="$WORK/mutation-root"
+mkdir -p "$MUTATION_ROOT" "$MUTATION_ROOT/graph"
+cp -R "$ROOT/lib" "$MUTATION_ROOT/lib"
+cp "$ROOT/graph/schema.json" "$MUTATION_ROOT/graph/schema.json"
+MUTATION_GRAPH="$MUTATION_ROOT/lib/graph"
+MUTATION_SCRIPT="$MUTATION_GRAPH/run.sh"
+MUTATION_ENGINE="$MUTATION_GRAPH/engine.py"
+python3 - "$MUTATION_ENGINE" <<'PYEOF'
 import sys
 
 path = sys.argv[1]
@@ -608,7 +615,7 @@ with open(path, "w", encoding="utf-8") as fh:
     fh.write(source)
 PYEOF
 mkdir -p "$WORK/feat-exact-mut"
-out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-exact-mut" "$WORK/route-exact.json")"
+out="$(bash "$MUTATION_SCRIPT" --feature-dir "$WORK/feat-exact-mut" "$WORK/route-exact.json")"
 if run_check_silently "0" "$(echo "$out" | grep -c $'^b\t')"; then
   echo "FAIL: mutation 1 (substring match) was NOT caught -- test is worthless"
   FAIL=$((FAIL + 1))
@@ -616,10 +623,10 @@ else
   echo "PASS: mutation 1 (substring match) makes the exact-match test fail, as required"
   PASS=$((PASS + 1))
 fi
-cp "$BACKUP" "$ENGINE"
+cp "$BACKUP" "$MUTATION_ENGINE"
 
 echo "--- mutation proof 2: fail-open for expects==\"none\" on probe crash ---"
-python3 - "$ENGINE" <<'PYEOF'
+python3 - "$MUTATION_ENGINE" <<'PYEOF'
 import re, sys
 path = sys.argv[1]
 with open(path) as fh:
@@ -640,7 +647,7 @@ with open(path, "w") as fh:
     fh.write(src)
 PYEOF
 mkdir -p "$WORK/feat-none-mut"
-out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-none-mut" "$WORK/gate-none.json")"
+out="$(bash "$MUTATION_SCRIPT" --feature-dir "$WORK/feat-none-mut" "$WORK/gate-none.json")"
 if run_check_silently "0" "$(echo "$out" | grep -c $'^skip\t')"; then
   echo "FAIL: mutation 2 (fail-open expects=none) was NOT caught -- test is worthless"
   FAIL=$((FAIL + 1))
@@ -648,9 +655,9 @@ else
   echo "PASS: mutation 2 (fail-open expects=none) makes the fail-closed test fail, as required"
   PASS=$((PASS + 1))
 fi
-cp "$BACKUP" "$ENGINE"
+cp "$BACKUP" "$MUTATION_ENGINE"
 diff -q "$BACKUP" "$ENGINE" >/dev/null
-check "engine file restored byte-identical after mutation proofs" "0" "$?"
+check "source engine remains byte-identical after isolated mutation proofs" "0" "$?"
 
 rm -rf "$ROOT"/.tmp-gate-* "$ROOT"/.tmp-probes-* 2>/dev/null || true
 

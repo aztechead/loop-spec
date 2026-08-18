@@ -18,5 +18,12 @@ An explicit cap changes dispatch policy:
   one-shot fallback.
 - EXECUTE also clamps `maxParallelImplementers` to `N`.
 
+On the headless one-shot subagent rung, Agents share the lead's session cwd even
+when `LOOP_SPEC_WORKTREES=1`. Parallel implementers are collision-safe only when
+the lead creates each task worktree **before** dispatch (`subagentIsolation=
+lead-worktree`). Wave width > 1 is forbidden unless those worktrees exist; a
+failed add serializes the wave onto `feat/{slug}`. Raising the implementer cap
+(caps → 3 and beyond) is gated on that isolation remaining in force.
+
 The cap controls agent fan-out, not Cloud Run CPU, RAM, instance concurrency, or the
 number of independent containers. Those remain deployment settings.

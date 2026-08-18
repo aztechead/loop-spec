@@ -52,7 +52,10 @@ hardcoding a dependency, merging two concerns to save a file) is not simplificat
 it is borrowing against the next change. Conversely, a seam is not an excuse to build
 what nobody asked for: the boundary ships, the speculation does not.
 
-## Canonical compact directive (inline this verbatim into dispatch prompts)
+## Compact directive (read this file; do not paste it into a prompt)
+
+Dispatch names this file. A SessionStart hook does not reach a dispatched agent, so the
+prompt still says to Read this file.
 
 > DESIGN FOR CHANGE (seams, not speculation — on by default). Design to an interface,
 > not an implementation: consumers depend on the boundary, internals stay swappable.

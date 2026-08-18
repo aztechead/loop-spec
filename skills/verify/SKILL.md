@@ -438,6 +438,33 @@ any of these rules sooner than say anything barbarous") is the rule that overrid
 others. `lib/plain-language-lint.sh` has no opinion on either. Do not treat a clean run
 as evidence the prose is good.
 
+### Step 7.66 - Docs-for-humans pass
+
+Asks whether the markdown this change leaves behind can be maintained and operated by a
+person. `skills/shared/human-docs.md` is the contract; `lib/doc-tells.sh` is the corner of it
+that is decidable from the text and the tree.
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" diff "$baseSha" HEAD
+```
+
+Exit 0 means the documents this change touched carry no relative link without a target, no
+inline-code path the tree no longer holds, and no shell command holding a placeholder the
+prose never explains. Exit 1 lists each with `file:line` and is a gate failure: fix them
+here and re-run until clean. Do not append `|| true` — that swallows the only signal this
+pass has.
+
+These findings are **fixable, not advisory**: every one names a file, a line, and a one-line
+edit, so fix them here and re-run until clean rather than backlogging them. The escape hatch
+is narrow and recorded: a finding that is one of the misfires the contract documents (a design
+artifact naming a file this change deliberately does not create, a frozen record) is written
+into VERIFICATION.md under `## Docs for humans` with the reason and does not block. Never
+suppress the check itself.
+
+The judgment half belongs to the code-reviewer (Step 6, pass 8.5): which document the change
+made false, and whether a procedure a person must follow states its prerequisites, its
+expected output, and what to do when a step fails.
+
 ### Step 7.7 - Project review layers (opt-in per repo)
 
 Any layer the project declared in `.loop-spec/extensions.json` runs here, after the built-in gates:

@@ -141,7 +141,7 @@ def purpose(path, ext):
             if text and not USAGE_SHAPED.match(text):
                 # Sentence end only: a colon here is a label ("Deterministic probe: ..."),
                 # and cutting there throws away the half that names the subject.
-                return re.split(r"(?<=\.)\s", text, 1)[0][:200].rstrip()
+                return re.split(r"(?<=\.)\s", text, maxsplit=1)[0][:200].rstrip()
             paragraph = []
     return block[0][:200]
 
@@ -212,7 +212,7 @@ def names_path(text, target):
     return re.search(r"(?<![\w/.-])" + re.escape(base), text) is not None
 
 
-REGISTERED_SUITE = re.compile(r'run_suite\s+"[^"]*"\s+"([^"]*)"')
+REGISTERED_SUITE = re.compile(r'run_suite(?:_serial)?\s+"[^"]*"\s+"([^"]*)"')
 
 
 def registered_suites():
@@ -245,21 +245,22 @@ if cmd == "covers":
     if not args:
         print("surface.sh: covers needs at least one path", file=sys.stderr)
         sys.exit(2)
-    suites = registered_suites()
+    suites = []
+    for suite in registered_suites():
+        try:
+            with open(os.path.join(root, suite), "r", encoding="utf-8",
+                      errors="replace") as fh:
+                suites.append((suite, fh.read()))
+        except OSError:
+            continue
     rows = []
     unmatched = []
     for raw in args:
         target = resolve_target(raw)
         hits = []
-        for suite in suites:
+        for suite, text in suites:
             if suite == target:
                 continue  # a suite never "covers" itself
-            try:
-                with open(os.path.join(root, suite), "r", encoding="utf-8",
-                          errors="replace") as fh:
-                    text = fh.read()
-            except OSError:
-                continue
             if names_path(text, target):
                 hits.append(("covers", target, suite))
         if hits:

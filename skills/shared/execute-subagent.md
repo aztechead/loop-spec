@@ -59,6 +59,14 @@ wave (`min(|ready|, maxParallelImplementers)`).
   repository when it cannot — a sandboxed harness that denies harness-config paths
   (`.claude/commands/**`) inside the repo makes an in-repo checkout impossible — or when
   the operator sets `LOOP_SPEC_WORKTREE_DIR`.
+- `subagentIsolation` — read from the same `execute-rung.sh` result. `lead-worktree` means
+  the **lead** creates each task worktree before any Agent call; `none` means in-place
+  (no isolation). One-shot Agents share the session cwd and cannot isolate themselves,
+  even when `LOOP_SPEC_WORKTREES=1`. Collision-safety is therefore this lead-created
+  worktree (plus the lead's file partitioning), not a hope that parallel subagents will
+  each `git worktree add`. Wave width > 1 is allowed only when every member of the wave
+  has a created worktree. Raising `maxParallelImplementers` (caps → 3 and beyond) is
+  gated on this remaining true.
 - `models.implementer`, `models.specComplianceReviewer` — read for each Agent
   call; add `model` only for an alias and omit it for `inherit`.
 - `commands.prepare` — from `feature.json.commands`. Repository-wide
@@ -130,6 +138,22 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 2. **Compute the ready set:** `ready = [t in remaining if every dep in t.blockedBy is in mergedSet]`.
    - If `ready` is empty while `remaining` is non-empty: set `escalation = {reason: "deadlock", detail: "unmergeable dependency cycle or all remaining blocked"}` and exit.
 3. **Form the wave:** `wave = ready[:maxParallelImplementers]`.
+3.5 **Isolate the wave (worktree mode only).** One-shot Agents share the lead's cwd;
+    they do not get a harness worktree. When `subagentIsolation == "lead-worktree"`,
+    the lead creates each task worktree **before** any Agent call:
+
+    ```bash
+    worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+      resolve "$featureWorktreeRoot" task "{slug}/task-{taskId}" | jq -r '.path')"
+    git -C "$featureWorktreeRoot" worktree add "$worktree_path" \
+      -b "task/{taskId}-{slug}" "feat/{slug}"
+    ```
+
+    A failed add drops that task from this wave (it stays ready). If the wave would
+    be empty, dispatch **one** remaining ready task in-place on `feat/{slug}` —
+    never overlap writers in the feature root. Wave width > 1 is allowed only when
+    every member of the wave has a created worktree. Do not raise
+    `maxParallelImplementers` above this isolation.
 4. **Dispatch the wave.** For each `taskId` in `wave`, issue an implementer `Agent`
    call. On rung 2 emit all wave calls in ONE assistant message so they run in
    parallel; on rung 1 the wave has one task. Use the prompt template below.
@@ -198,12 +222,12 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 
 Dispatch every implementer and reviewer with the **default** agent (do NOT pass
 `subagent_type`), exactly as `lib/workflows/execute-dag.js` does. The prompts below are
-self-contained -- they carry the worktree, implement, verify, commit, and review
+self-contained -- they carry the implement, verify, commit, and review
 instructions in full. The template below is the WORKTREE-mode prompt; with
 `worktreesEnabled == false` compose the in-place prompt from "In-place single-repository
-mode" above instead. Do NOT pass `subagent_type: "loop-spec:implementer"`: that agent
-declares `isolation: worktree` in its frontmatter, which would create a second worktree
-on top of the explicit `git worktree add` in the prompt. Read the role selector
+mode" above instead. Do NOT pass `subagent_type: "loop-spec:implementer"`: this path
+uses the default Agent with a self-contained prompt, and the lead already created
+the task worktree. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 
@@ -235,72 +259,43 @@ Substitute the runtime values. This mirrors the implementer contract in
 `lib/workflows/execute-dag.js` so behavior is identical across rungs.
 
 This dispatch uses the DEFAULT agent (not loop-spec:implementer), so the agent definition's
-ponytail directive does NOT apply here and a SessionStart hook does not reach this subagent.
-The simplicity directive is therefore inlined verbatim below (canonical source:
-`skills/shared/laziness-ladder.md`) so EXECUTE follows ponytail on this rung every time.
+directives do NOT apply here and a SessionStart hook does not reach this subagent.
+The prompt therefore names each contract and the resolved probes (canonical sources under
+`skills/shared/`) so EXECUTE follows them on this rung every time. Read the files; do not
+paste them.
 
 ```
 You are an implementer agent for task {taskId}.
 
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
 
-SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
-actually works; the best code is the code never written. BEFORE writing code, stop at the
-first rung that holds: (1) does it need to exist at all? speculative = skip it (YAGNI);
-(2) DRY — already in this codebase? reuse the existing helper/util/type/pattern, do not
-re-implement it; (3) stdlib does it? use it; (4) native platform feature covers it? use it;
-(5) an already-installed dependency solves it? use it, never add a new one for what a few
-lines do; (6) can it be one line? one line; (7) only then, the minimum code that works. The
-ladder runs AFTER you understand the problem. Bug fix = root cause, not symptom. NEVER cut
-input validation at trust boundaries, error handling that prevents data loss, security,
-accessibility, or anything the spec requires. Non-trivial logic leaves ONE runnable check
-behind. Mark deliberate shortcuts with a `simplicity:` comment naming the ceiling.
+SIMPLICITY (ponytail laziness ladder — on by default). Read
+`${CLAUDE_SKILL_DIR}/../../skills/shared/laziness-ladder.md` before writing code — do not
+paste it. YAGNI, then DRY: reuse what is already here. Before DONE run
+`bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>` and
+`bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>` (`duplicate=` same lines, `similar=` names-changed; both count).
 
-Rung 1 is measured too: the layer nobody needed always looks justified while you write it.
-Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you
-touched>` — it names each small private helper you added that is called exactly once. Inline
-it, or say why the name earns its hop. It stays silent on a long function with one caller
-(decomposition), on exported symbols, and on dead code.
+DESIGN FOR CHANGE (seams, not speculation — on by default). Read
+`${CLAUDE_SKILL_DIR}/../../skills/shared/design-for-change.md` — do not paste it.
 
-Rung 2 is measured, not recalled: you cannot find a helper in a file you never opened, so
-before reporting DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan
-<files you touched>`. It names each block you duplicated and the file that block already
-lives in: `duplicate=` for the same lines, `similar=` for the same lines with every name
-changed — the latter is what writing one module beside a similar one actually produces, so
-it counts the same. Resolve every finding — call the existing thing, or lift the shared part
-into one place both callers use. Never leave a second copy that drifts. The one exception is a
-coincidental resemblance (two blocks that look alike but change for different reasons);
-say so once in your report rather than merging them, because that merge is a coupling bug.
+CODE FOR HUMANS (house style over habit — on by default). Read
+`${CLAUDE_SKILL_DIR}/../../skills/shared/human-code.md` before writing code — do not paste
+it. Read the neighbors. Comments carry WHY, never what. Density matches the file. NEVER cut
+`simplicity:` markers. Before DONE: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe
+<files>`; `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`;
+`bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>`.
 
-DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task's stated
-interface, not an implementation detail; one unit, one reason to change. New units receive
-their collaborators (params/args/env), never construct them deep inside. Never cut a seam
-to save lines, and never build speculation behind one (YAGNI cuts artifacts, not seams).
-Bug-fix tasks: after the root cause is fixed, sweep callers, copy-pasted patterns, and
-parallel paths for the same mechanism; fix same-cause siblings within the task's files
-scope, report the rest.
+CODE A HUMAN CAN OPERATE (the failure path — on by default). Fail loudly, or say why you did
+not. Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files you
+touched>`.
 
-CODE FOR HUMANS (house style over habit — on by default). Code is read far more than it
-is written; your diff must read like the code around it. Read the neighbors of every file
-in the task's files list FIRST and match them: naming, error idiom, test structure, file
-layout, import order. The house convention outranks your defaults even where you would
-have chosen differently — disagreeing with it is a self-review finding, never a licence to
-deviate. Where the convention is unclear, measure it: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe
-<files>` reports comment density, doc-comment usage, indentation, and naming case from the
-actual neighbors. Before DONE, check your own work with `bash
-"${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`: it holds each
-file out of its own baseline and names where it deviates from its same-language neighbors
-(indent, naming, quotes, semicolons, module system). `probe` pools your file into the
-sample, so it can never show you a deviation — only `compare` can.
-Comments carry WHY, never what: a constraint not visible locally, a
-decision and the alternative it beat, a workaround and its reason. Never narrate the code,
-restate a signature, announce the edit ("Added...", "Updated..."), or narrate history
-("previously...", "renamed from...") — `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` catches
-those three before you report DONE. Comment DENSITY matches the file, not an absolute: no
-docstrings added to a module that has none. A good name deletes a comment. No drive-by
-reformatting or renames that bury the change. NEVER cut `simplicity:` markers, file-header
-purpose blocks where the codebase uses them, TODO/FIXME/NOTE/HACK/SAFETY markers, or any
-comment encoding a non-obvious why.
+DOCS FOR HUMANS (the markdown is a deliverable too — on by default). Read
+`${CLAUDE_SKILL_DIR}/../../skills/shared/human-docs.md` — do not paste it. One job per
+document. Cite, never copy. If your change makes a document false, fix it IN THIS DIFF; a
+follow-up documentation task is deferred scope. Before DONE run
+`bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <the markdown you touched>`. NEVER
+cut frontmatter, machine-read contract sections, required artifact headings, EVID citation
+lines, or license blocks.
 
 EXECUTION DISCIPLINE (evidence over recall — on by default). You execute a brief a
 stronger reasoning pass produced; your job is fidelity, not improvisation. Verify, don't
@@ -314,8 +309,10 @@ the whole job — never skip, trim, or defer an item, and never write
 follow-up/deferred/future-work notes; a criterion you cannot meet is a loud failure
 with evidence, never a note.
 
-Step 1 - Create the task worktree (worktree mode only; skip if it already exists):
-  git -C "{featureWorktreeRoot}" worktree add "{worktree_path}" -b "task/{taskId}-{slug}" "feat/{slug}"
+Step 1 - The task worktree already exists at {worktree_path} on branch
+  task/{taskId}-{slug}. Do not run `git worktree add`. If the path is missing,
+  fail loudly; do not create a worktree and do not edit the feature root.
+  All git and file operations use that directory (`git -C "{worktree_path}"`).
 
 Step 1.5 - Prepare declared dev/test dependencies inside the task worktree:
   bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{worktree_path}" --command "{commands.prepare}" --reuse-from "{featureWorktreeRoot}"
@@ -426,41 +423,33 @@ You are an implementer agent for task {taskId} in repo '{repo}'.
 
 IMPORTANT: All paths must be ABSOLUTE. Do not use em-dashes.
 
-SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
-actually works. BEFORE writing code, stop at the first rung that holds: (1) needed at all?
-speculative = skip (YAGNI); (2) DRY — already in this codebase? reuse it; (3) stdlib does
-it? use it; (4) native platform feature? use it; (5) installed dependency solves it? use it,
-add no new one for what a few lines do; (6) one line? one line; (7) only then the minimum
-that works. Ladder runs AFTER understanding the problem; bug fix = root cause not symptom.
-NEVER cut validation at trust boundaries, data-loss error handling, security, accessibility,
-or anything the spec requires. Non-trivial logic leaves ONE runnable check behind.
-Rung 1 is measured too: `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>`
-names each small private helper called exactly once; inline it or justify the hop.
-Rung 2 is measured: before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh"
-scan <files you touched>` — it names each duplicated block and the file it already lives in
-(`duplicate=` same lines, `similar=` same lines with every name changed; both count).
-Call the existing thing or lift the shared part out; never leave a second copy that drifts.
-A coincidental resemblance is the one exception — report it rather than merging it.
+SIMPLICITY (ponytail laziness ladder — on by default). Read
+`${CLAUDE_SKILL_DIR}/../../skills/shared/laziness-ladder.md` before writing code — do not
+paste it. YAGNI, then DRY: reuse what is already here. Before DONE run
+`bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>` and
+`bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>` (`duplicate=` same lines, `similar=` names-changed; both count).
 
-DESIGN FOR CHANGE (seams, not speculation — on by default). Design to the task's stated
-interface; one unit, one reason to change; new units receive collaborators (params/args/env),
-never construct them deep inside. Never cut a seam to save lines, never build speculation
-behind one. Bug-fix tasks: sweep for the same mechanism (callers, copies, parallel paths)
-and fix same-cause siblings in scope; report the rest.
+DESIGN FOR CHANGE (seams, not speculation — on by default). Read
+`${CLAUDE_SKILL_DIR}/../../skills/shared/design-for-change.md` — do not paste it.
 
-CODE FOR HUMANS (house style over habit — on by default). Your diff must read like the
-code around it. Read the neighbors of every file in the task's files list FIRST and match
-them: naming, error idiom, test structure, layout, import order. The house convention
-outranks your defaults; disagreeing with it is a self-review finding, never a licence to
-deviate. Measure rather than guess: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <files>`, and before
-DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>` — it holds each file out of
-its own baseline and names where it deviates from its same-language neighbors; `probe` pools your file in and cannot. Comments carry
-WHY, never what. Never narrate the code, announce the edit ("Added...", "Updated..."), or
-narrate history ("previously...") — `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` catches those
-three. Comment DENSITY matches the file, not an absolute. A good name deletes a comment.
-No drive-by reformatting or renames that bury the change. NEVER cut `simplicity:` markers,
-file-header purpose blocks the codebase uses, TODO/FIXME/NOTE/HACK/SAFETY markers, or any
-comment encoding a non-obvious why.
+CODE FOR HUMANS (house style over habit — on by default). Read
+`${CLAUDE_SKILL_DIR}/../../skills/shared/human-code.md` before writing code — do not paste
+it. Read the neighbors. Comments carry WHY, never what. Density matches the file. NEVER cut
+`simplicity:` markers. Before DONE: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe
+<files>`; `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`;
+`bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>`.
+
+CODE A HUMAN CAN OPERATE (the failure path — on by default). Fail loudly, or say why you did
+not. Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files you
+touched>`.
+
+DOCS FOR HUMANS (the markdown is a deliverable too — on by default). Read
+`${CLAUDE_SKILL_DIR}/../../skills/shared/human-docs.md` — do not paste it. One job per
+document. Cite, never copy. If your change makes a document false, fix it IN THIS DIFF; a
+follow-up documentation task is deferred scope. Before DONE run
+`bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <the markdown you touched>`. NEVER
+cut frontmatter, machine-read contract sections, required artifact headings, EVID citation
+lines, or license blocks.
 
 EXECUTION DISCIPLINE (evidence over recall — on by default). Verify, don't recall: never
 assert what a file/command does from memory — read it, run it, paste the actual output.

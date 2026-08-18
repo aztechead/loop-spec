@@ -63,6 +63,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
    - `bash {probe_dir}/house-style.sh compare <changed files>` — the pass that produces `house:` findings. It holds each file out of its own baseline and names where it deviates from its same-language neighbors: indent, naming, quotes, semicolons, module system. Exit 1 means deviations, exit 0 means the diff reads like its neighbors. Quote the deviation lines verbatim — both sides are measured, so the finding carries its own evidence. `baseline=0 files` means there was no neighbor to compare against; report nothing rather than inventing a convention.
    - `bash {probe_dir}/house-style.sh probe <changed files>` — the underlying facts (comment density, doc-comment usage, line length) when you need to describe the neighbourhood rather than judge a file against it. Note this mode pools the target INTO the sample, so it can never show you a deviation; use `compare` for that. A `sample=none` or `unknown` answer means the convention is undemonstrated; report nothing on that axis.
    - `bash {probe_dir}/comment-tells.sh diff {base_sha} {branch}` — flags added comments that narrate the edit, narrate history, or restate the next line. Exit 1 means findings; exit 0 means clean.
+   - `bash {probe_dir}/failure-tells.sh diff {base_sha} {branch}` — the operate half: a caught error whose handler does nothing, a non-zero exit with nothing said to the operator, and an error message whose every word is a synonym for "it broke". This is the path a person meets at 03:00 with only what the code chose to say, and it is the one nobody rereads. Exit 1 means findings; exit 0 means clean.
 
    `probe_dir` is an input, not a guess: the probes ship with the plugin while your cwd is the target repository, so a bare `lib/...` path does not resolve. If your brief did not supply `probe_dir`, or the scripts are not there, say so once in the report and run this pass by reading three neighboring files end to end instead — findings you cannot ground in probe output are **Minor**, per the severity rule below.
 
@@ -71,12 +72,21 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
    - `noise:` a comment tell from the scan, or comment density visibly outside what the probe measured for the file. Quote the tell name.
    - `name:` an identifier whose meaning needs a comment that a better name would delete.
    - `churn:` drive-by reformatting, unrelated renames, or reordering that buries the real change in the diff.
+   - `silent:` a failure-path tell from the scan — an error swallowed with no reason given, an exit that says nothing, a message a person cannot act on. Quote the tell name and the line.
 
    Never flag the carve-outs: `simplicity:` shortcut markers, file-header purpose blocks where the codebase uses them, TODO/FIXME/NOTE/HACK/SAFETY markers, spec- or API-required contract docs, and any comment encoding a non-obvious why are all intentional — leave them. Section banners and "Step N:" narration are judged against the file's neighbors, never banned outright. This pass lists; it never rewrites.
+8.5. **Docs-for-humans pass** (canonical reference `skills/shared/human-docs.md`). Step 8 asks whether the code reads; this one asks whether the markdown the change leaves behind can be maintained and operated by a person. Run the probe first and quote it:
+   - `bash {probe_dir}/doc-tells.sh diff {base_sha} {branch}` — on the lines this change added, it flags a relative link with no target, an inline-code path the tree no longer holds, and a shell command holding a placeholder the document's prose never explains. Exit 1 means findings; exit 0 means the documents this change touched are clean.
+
+   Then read the diff for the two things no probe decides. Both need evidence you can quote, exactly like the `house:` rule above:
+   - `stale-doc:` the change alters behavior a document describes — README, help text, a runbook step, a configuration table, the command in a quickstart — and that document is not in the diff. Quote the sentence the diff makes false and name its file:line.
+   - `unusable-doc:` a procedure a reader is meant to follow that states no prerequisites, no expected output, or no failure branch; or a document answering two questions at once (a how-to that stops to explain theory, a reference padded with narrative).
+
+   Report `doc:` (probe output) and `stale-doc:` (a false sentence you can quote) as **Important** with file:line. `unusable-doc:` is **Minor** unless a stated acceptance criterion or the SPEC asked for that document, in which case it is Important. Never flag the carve-outs: frontmatter, machine-read contract sections, required artifact headings, EVID citation lines, license blocks, or a deliberately frozen record (a delivered cycle's artifacts, a dated audit, a changelog entry). A document you would simply have written differently is taste, and taste is Minor. This pass lists; it never rewrites.
 9. Classify remaining findings:
    - **Critical**: security vulns (injection, auth bypass, secret leak), data loss risks, broken core invariants, SPEC Boundary/anti-goal violations, and any shortcut from step 5
-   - **Important**: bugs, perf regressions, missed test coverage, brittle code, over-engineering findings from step 6, design-for-change findings from step 7, and the measurable code-for-humans findings from step 8 (`house:`, `noise:`, `churn:`)
-   - **Minor**: subjective clarity and naming preferences, todo cleanup, and `name:` findings — taste never blocks
+   - **Important**: bugs, perf regressions, missed test coverage, brittle code, over-engineering findings from step 6, design-for-change findings from step 7, the measurable code-for-humans findings from step 8 (`house:`, `noise:`, `churn:`, `silent:`), and the evidenced docs findings from step 8.5 (`doc:`, `stale-doc:`)
+   - **Minor**: subjective clarity and naming preferences, todo cleanup, `name:` findings, and `unusable-doc:` findings the spec did not ask for — taste never blocks
 
 ## Tier-modulated severity threshold
 
@@ -86,7 +96,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 ## What NOT to do
 
 - Do NOT modify code. Your Write/Edit access is memory-scoped: the path hook denies any write outside `.claude/agent-memory/`.
-- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `house-style.sh` measured, a tell `comment-tells.sh` flagged, or a clone `duplication-scan.sh` located in another file, is Important and blocks — you can point at the probe output. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
+- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `house-style.sh` measured, a tell `comment-tells.sh` or `failure-tells.sh` flagged, a clone `duplication-scan.sh` located in another file, or a sentence in a document the diff makes false, is Important and blocks — you can point at the probe output or quote the sentence. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
 - Do NOT review code that's pre-existing on `base_sha` - only the diff.
 
 ## Report format
@@ -96,7 +106,8 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 - **Important**: list
 - **Over-engineering**: the `duplication-scan.sh` verdict, then tagged delete/stdlib/native/yagni/shrink/dry lines + `net: -<N> lines possible` (`Lean already` if nothing cuts)
 - **Design-for-change**: tagged couple/corner/inject/iface lines (`Boundaries sound` if nothing flags)
-- **Code-for-humans**: the `house-style.sh` fact lines you measured, the `comment-tells.sh` verdict, then tagged house/noise/name/churn lines (`Reads like its neighbors` if nothing flags)
+- **Code-for-humans**: the `house-style.sh` fact lines you measured, the `comment-tells.sh` and `failure-tells.sh` verdicts, then tagged house/noise/name/churn/silent lines (`Reads like its neighbors` if nothing flags)
+- **Docs-for-humans**: the `doc-tells.sh` verdict, then tagged doc/stale-doc/unusable-doc lines (`Docs match the change` if nothing flags)
 - **Minor (deferred)**: list of follow-up suggestions
 - **Security summary**: 1-paragraph
 

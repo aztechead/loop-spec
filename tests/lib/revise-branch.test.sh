@@ -89,6 +89,37 @@ WT_ROOT="$WORK/revision-worktree"
 out="$(bash "$LIB" prepare "$WT_SOURCE" feat/revise 1 "$WT_ROOT")"
 check "worktree mode reports requested root" "$WT_ROOT" "$(jq -r '.revisionRoot' <<<"$out")"
 check "worktree mode checks out PR branch" "feat/revise" "$(git -C "$WT_ROOT" branch --show-current)"
+check "worktree mode isolation is worktree" "worktree" "$(jq -r '.isolation' <<<"$out")"
+check "worktree mode owned is true" "true" "$(jq -r '.owned' <<<"$out")"
+
+# Branch already checked out in the source repo: go in-place, do not worktree-add.
+INPLACE="$WORK/already-checked-out"
+git clone -q "$REMOTE" "$INPLACE"
+git -C "$INPLACE" config user.name test
+git -C "$INPLACE" config user.email test@example.invalid
+git -C "$INPLACE" checkout -q feat/revise
+INPLACE_ROOT="$WORK/should-not-be-created"
+out="$(bash "$LIB" prepare "$INPLACE" feat/revise 1 "$INPLACE_ROOT")"
+check "already-checked-out uses the source root" "$(cd "$INPLACE" && pwd -P)" "$(jq -r '.revisionRoot' <<<"$out")"
+check "already-checked-out isolation is in-place" "in-place" "$(jq -r '.isolation' <<<"$out")"
+check "already-checked-out is not owned" "false" "$(jq -r '.owned' <<<"$out")"
+check "already-checked-out does not create the requested worktree" "0" \
+  "$([[ -e "$INPLACE_ROOT" ]] && echo 1 || echo 0)"
+
+# Branch already checked out in another worktree: reuse that path, do not add.
+REUSE_SRC="$WORK/reuse-source"
+git clone -q "$REMOTE" "$REUSE_SRC"
+git -C "$REUSE_SRC" config user.name test
+git -C "$REUSE_SRC" config user.email test@example.invalid
+REUSE_EXISTING="$WORK/existing-feat-worktree"
+git -C "$REUSE_SRC" worktree add -q "$REUSE_EXISTING" feat/revise
+REUSE_REQUESTED="$WORK/reuse-should-not-create"
+out="$(bash "$LIB" prepare "$REUSE_SRC" feat/revise 1 "$REUSE_REQUESTED")"
+check "reused worktree reports that path" "$(cd "$REUSE_EXISTING" && pwd -P)" "$(jq -r '.revisionRoot' <<<"$out")"
+check "reused worktree isolation is worktree" "worktree" "$(jq -r '.isolation' <<<"$out")"
+check "reused worktree is not owned" "false" "$(jq -r '.owned' <<<"$out")"
+check "reused worktree does not create a second path" "0" \
+  "$([[ -e "$REUSE_REQUESTED" ]] && echo 1 || echo 0)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

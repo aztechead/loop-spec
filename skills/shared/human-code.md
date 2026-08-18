@@ -7,6 +7,12 @@ phase dispatch** must carry. It is the third member of a set: the laziness ladde
 governs *how it reads to the next person who opens the file*. Enforced by
 `tests/human-code-coverage.test.sh`.
 
+This directive has two halves, and the same person needs both. At read time they are
+changing the file; at run time they are on call, holding whatever the software chose to
+say. House style serves the first. The failure path -- what a caught error does, what a
+message names, what an exit says before it goes -- serves the second, and it is the half
+nobody rereads, because it only runs when something is already wrong.
+
 Code is read far more often than it is written, and the reader is a person with a
 half-loaded mental model of the module. Generated code fails that reader in a specific,
 recognisable way: it is correct, and it looks nothing like the code around it. Different
@@ -56,9 +62,44 @@ Relevant phases:
    per function, control flow that reads top to bottom. If explaining the code takes a
    paragraph, the code is the problem — this is the ladder's "clever is suspect" seen from
    the reader's chair.
-6. **The diff is written for the reviewer.** No drive-by reformatting, no unrelated
+6. **Fail loudly, or say why you did not.** A handler that catches an error and does
+   nothing erases the only record of what happened, and the program carries on as if the
+   call had succeeded — the anti-pattern the literature calls error hiding, and the one
+   that turns a five-minute diagnosis into an afternoon. Log it, re-raise it, or state the
+   reason the failure is genuinely uninteresting. A narrow exception type states it for
+   you (`except FileNotFoundError` says which case this is); a bare `except Exception:
+   pass` states nothing.
+7. **An error message names what broke and, where you know it, the next move.** "Invalid
+   input" is not something a person can act on. Which file, which field, which limit, what
+   to do instead — the message is the only thing the operator has at 03:00, and it costs
+   one interpolation to make it specific.
+8. **A non-zero exit says why before it exits.** A status code with no sentence sends the
+   reader into the source to learn what a number meant. Either say it on stderr, or let
+   the command that failed speak for itself.
+9. **The diff is written for the reviewer.** No drive-by reformatting, no unrelated
    renames, no churn that buries the real change. A reviewer should be able to read the
    diff and see only the decision you made.
+
+## What the operate half machine-checks, and what it does not
+
+`lib/failure-tells.sh` measures three silences that are decidable from the text:
+`swallowed` (a caught error whose handler does nothing), `silent-exit` (a non-zero exit
+with nothing said in the five code lines above it), and `contextless-error` (a message
+whose every word is a synonym for "it broke"). It has NO opinion on anything else:
+whether the error should have been retried, whether a log line is at the right level,
+whether the handling is correct at all, or whether a message reads well — that last one
+is `lib/plain-language-lint.sh`. Those stay judgments.
+
+It is deliberately quiet where the code already says why. A narrow exception type, a
+comment inside the handler, an exit guarded by a command that reports its own failure
+(`resolve_root "$1" || exit 2`), and a message naming any real noun all pass. A heredoc
+body in a shell script is data rather than shell, so it is not scanned — which also means
+a python program embedded in one is not checked at all. Measured
+across this repository's 352 shell, python, and TypeScript files: **1 finding**, a
+`sys.exit(4)` whose status code is itself the documented contract — the known
+false-positive class, a query or state tool whose non-zero exit IS its answer. The four
+`except Exception: pass` handlers it found in `lib/graph/engine.py` were real and now
+carry the reason they always had.
 
 ## Resolving the probes (`<probe_dir>`)
 
@@ -75,6 +116,8 @@ these sites carries alongside these two:
 | `lib/workflows/execute-dag.js` | the injected `skillDir` arg |
 | `hooks/team/human-code-inject.sh` | its own directory, from `BASH_SOURCE` |
 | `agents/implementer.md`, `agents/code-reviewer.md` | the `probe_dir` brief input |
+
+The same table governs `failure-tells.sh`, the operate half's probe.
 
 When no path is available the sentence naming the probe drops out and the directive stands
 on its own: read three neighboring files end to end and follow them. The measurement is
@@ -116,7 +159,10 @@ collide the resolution is fixed:
 - A convention that is genuinely wrong is a **finding**, reported in self-review or by the
   reviewer, and fixed in its own change — never fixed silently inside an unrelated diff.
 
-## Canonical compact directive (inline this verbatim into dispatch prompts)
+## Compact directive (read this file; do not paste it into a prompt)
+
+Dispatch names this file and the resolved probes. A SessionStart hook does not reach a
+dispatched agent, so the prompt still says to Read this file.
 
 > CODE FOR HUMANS (house style over habit — on by default). Code is read far more than it
 > is written; the diff must read like the code around it. Read the neighbors FIRST and
@@ -141,3 +187,14 @@ collide the resolution is fixed:
 > NEVER cut: `simplicity:` shortcut markers, file-header purpose blocks where the codebase
 > uses them, TODO/FIXME/NOTE/HACK/SAFETY/SECURITY markers, spec- or API-required contract
 > docs, or any comment encoding a non-obvious why.
+>
+> CODE A HUMAN CAN OPERATE (the failure path, same directive's second half). When this
+> breaks at 03:00 the person on call has only what the code said. Never swallow an error:
+> a handler that catches and does nothing erases the one record of what happened — log it,
+> re-raise it, or state why the failure is uninteresting (a narrow exception type states it
+> for you; `except Exception: pass` states nothing). An error message names what broke and,
+> where you know it, the next move — which file, which field, which limit; "invalid input"
+> is not actionable. Never exit non-zero in silence: say why on stderr first, or leave the
+> failing command to speak. Before you report DONE run `bash <probe_dir>/failure-tells.sh
+> scan <files you touched>`, which flags those three shapes and stays quiet on the
+> deliberate ones.
