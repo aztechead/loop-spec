@@ -19,9 +19,10 @@ Design constraints:
 - Whether the loop may act without a human is decided by tested shell scripts, not skill prose.
 - No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`.
 - `lib/surface.sh find|show|covers` locates any bundled script, shared contract, or agent role — derived from the tree at call time, never a stored index.
+- The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 4.1.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+Current version: 4.2.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Install
 

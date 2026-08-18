@@ -188,6 +188,27 @@ for t in tasks:
         'SAFETY markers, or any comment encoding a non-obvious why.'
     )
 
+    # Docs-for-humans directive (canonical: skills/shared/human-docs.md).
+    # Travels with the ladder: the loop-runner worker sees only its prompt.
+    docs = (
+        'DOCS FOR HUMANS (the markdown is a deliverable too — on by default). A person '
+        'maintains and operates every document you write, long after this run ends. Name '
+        'its reader in the first line — someone about to CHANGE this system, or someone '
+        'about to RUN it — and hold one job per document: a how-to gets a task done, a '
+        'reference states facts, an explanation says why. A procedure states its '
+        'prerequisites, then the exact copy-pasteable command, then what success looks '
+        'like, then what to do when the step fails. Cite, never copy: point at file:line '
+        'instead of restating what the code says — stale prose is worse than none, because '
+        'it is wrong with authority. If your change makes a document false (README, help '
+        'text, runbook, config table), fix it IN THIS DIFF; a follow-up documentation task '
+        'is deferred scope. Never invent a documentation convention this repository does '
+        f'not already have. Before DONE run bash {lib_dir}/doc-tells.sh scan <the markdown '
+        'you touched>: it flags a relative link with no target, an inline-code path the '
+        'tree no longer holds, and a command holding a placeholder your prose never '
+        'explains. NEVER cut frontmatter, machine-read contract sections, required artifact '
+        'headings, EVID citation lines, or license blocks.'
+    )
+
     # Execution-discipline directive (canonical: skills/shared/execution-discipline.md).
     # Travels with the ladder: the loop-runner worker sees only its prompt.
     discipline = (
@@ -202,7 +223,7 @@ for t in tasks:
         'future-work notes; a criterion you cannot meet is a loud failure with evidence, '
         'never a note.'
     )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', human, '', discipline, '', f'TASK {raw}: {brief}', '']
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', human, '', docs, '', discipline, '', f'TASK {raw}: {brief}', '']
     if global_constraints:
         lines.append('Global constraints (from the plan, verbatim; every one binds):')
         lines += [f'{c}' for c in global_constraints]

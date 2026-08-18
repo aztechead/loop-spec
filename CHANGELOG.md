@@ -2,6 +2,73 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [4.2.0] - 2026-08-18
+
+The markdown is a deliverable too. Three directives already governed the code a cycle
+writes — how much of it exists, where its boundaries sit, how it reads. Nothing governed
+the documents, and a cycle writes plenty: SPEC, PLAN, VERIFICATION, the reviewer's guide,
+a PR body, and whatever README, guide, or runbook the change makes true or false. A person
+maintains and operates all of it after the run ends. Defaults change only in that the
+docs directive rides the existing code-for-humans switch and VERIFY gains one fixable pass.
+
+### Added
+
+- **`skills/shared/human-docs.md` — the docs-for-humans contract.** The fourth member of
+  the set beside the laziness ladder, design-for-change, and code-for-humans. Eight
+  principles: name the reader and what they can do when they finish; one job per document
+  (Diátaxis — a how-to gets a task done, a reference states facts, an explanation says
+  why, and blending them serves neither reader); a procedure states its prerequisites,
+  then the exact copy-pasteable command, then what success looks like, then what to do
+  when the step fails; cite, never copy; the document ships in the diff that changes the
+  behavior; write the document the project will maintain; ground every claim; write for a
+  reader in a hurry. The contract states per rule which ones a script checks and which
+  stay judgments, rather than claiming enforcement it does not have.
+- **`lib/doc-tells.sh` — the deterministic corner of it.** Three checks decidable from the
+  text and the tree: `dead-link` (a relative link whose target is not on disk),
+  `stale-ref` (an inline-code path the tree no longer holds), and
+  `undefined-placeholder` (a shell command holding a placeholder the document's prose
+  never explains). `scan <file.md>` reads whole documents; `diff <base> [head]` reports
+  only what a change introduced. `stale-ref` fires only where git tracks files of that
+  kind in that directory, which is what keeps runtime state (`.loop-spec/runtime.json`),
+  foreign examples (`app/models/user.rb` in a project with no `app/`), and a path named
+  because it is gone from being reported as rot. Measured over this repository's own 169
+  documents: 183 findings, 148 of them in delivered feature artifacts (frozen records) and
+  35 in live documents; the live ones were sampled and were real.
+- **VERIFY Step 7.66 — the docs-for-humans pass.** Runs `doc-tells.sh diff` over the
+  change. Findings are fixable rather than advisory: each names a file, a line, and a
+  one-line edit. The escape hatch is narrow and recorded — a documented misfire is written
+  into VERIFICATION.md with its reason and does not block.
+- **A docs pass in `agents/code-reviewer.md` (8.5).** The judgment half: `doc:` from the
+  probe and `stale-doc:` (a sentence in a document the diff makes false, quoted) are
+  Important and block; `unusable-doc:` (a procedure with no prerequisites, no expected
+  output, or no failure branch) is Minor unless the SPEC asked for that document. Evidence
+  blocks, taste does not — the same split the code-for-humans pass makes.
+- **`tests/human-docs-coverage.test.sh` and `tests/lib/doc-tells.test.sh`.** The coverage
+  suite pins the directive into every document-producing dispatch path and fails when one
+  loses it; the unit suite pins the three checks and the four look-alikes they must stay
+  quiet on.
+
+### Changed
+
+- **The code-for-humans switch now carries both halves.** `hooks/team/human-code-inject.sh`
+  injects the docs directive beside the code directive, `/loop-spec:human-code off` and
+  `LOOP_SPEC_HUMAN_CODE=0` disable both, and `human-code probe` also reports `doc-tells.sh`
+  findings for any markdown among its paths. One switch, not two: the opencode and ADK
+  bridges replay the same hook, so all three harnesses gain the directive without a
+  per-harness change.
+- **PLAN carries the documentation task.** `agents/planner.md` asks of every task which
+  README, help text, runbook, or configuration table the change makes wrong, names that
+  file in the task's `files[]`, and refuses to plan a documentation fix as a follow-up —
+  that is the deferred scope the cycle already rejects. The EXECUTE rungs (team, subagent,
+  loop-fleet, Workflow) each carry their own copy of the directive, since a SessionStart
+  hook does not reach a dispatched agent.
+- **`human-docs` is a protected gate id** in `lib/extension-points.sh`: a project layer
+  answering to that name would be indistinguishable from the built-in pass in the logs.
+- **Two live documents corrected**, found by the new probe on this repository: a
+  `tests/smoke.sh` reference in `docs/loop-spec/PREREQUISITES.md` (the file was renamed
+  long ago) and a relative link in `docs/loop-spec/architecture.md` written as if from the
+  repository root.
+
 ## [4.1.0] - 2026-08-18
 
 Fixes and controls from headless, autonomous, graph-driven runs. Two changes alter

@@ -73,10 +73,18 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
    - `churn:` drive-by reformatting, unrelated renames, or reordering that buries the real change in the diff.
 
    Never flag the carve-outs: `simplicity:` shortcut markers, file-header purpose blocks where the codebase uses them, TODO/FIXME/NOTE/HACK/SAFETY markers, spec- or API-required contract docs, and any comment encoding a non-obvious why are all intentional — leave them. Section banners and "Step N:" narration are judged against the file's neighbors, never banned outright. This pass lists; it never rewrites.
+8.5. **Docs-for-humans pass** (canonical reference `skills/shared/human-docs.md`). Step 8 asks whether the code reads; this one asks whether the markdown the change leaves behind can be maintained and operated by a person. Run the probe first and quote it:
+   - `bash {probe_dir}/doc-tells.sh diff {base_sha} {branch}` — on the lines this change added, it flags a relative link with no target, an inline-code path the tree no longer holds, and a shell command holding a placeholder the document's prose never explains. Exit 1 means findings; exit 0 means the documents this change touched are clean.
+
+   Then read the diff for the two things no probe decides. Both need evidence you can quote, exactly like the `house:` rule above:
+   - `stale-doc:` the change alters behavior a document describes — README, help text, a runbook step, a configuration table, the command in a quickstart — and that document is not in the diff. Quote the sentence the diff makes false and name its file:line.
+   - `unusable-doc:` a procedure a reader is meant to follow that states no prerequisites, no expected output, or no failure branch; or a document answering two questions at once (a how-to that stops to explain theory, a reference padded with narrative).
+
+   Report `doc:` (probe output) and `stale-doc:` (a false sentence you can quote) as **Important** with file:line. `unusable-doc:` is **Minor** unless a stated acceptance criterion or the SPEC asked for that document, in which case it is Important. Never flag the carve-outs: frontmatter, machine-read contract sections, required artifact headings, EVID citation lines, license blocks, or a deliberately frozen record (a delivered cycle's artifacts, a dated audit, a changelog entry). A document you would simply have written differently is taste, and taste is Minor. This pass lists; it never rewrites.
 9. Classify remaining findings:
    - **Critical**: security vulns (injection, auth bypass, secret leak), data loss risks, broken core invariants, SPEC Boundary/anti-goal violations, and any shortcut from step 5
-   - **Important**: bugs, perf regressions, missed test coverage, brittle code, over-engineering findings from step 6, design-for-change findings from step 7, and the measurable code-for-humans findings from step 8 (`house:`, `noise:`, `churn:`)
-   - **Minor**: subjective clarity and naming preferences, todo cleanup, and `name:` findings — taste never blocks
+   - **Important**: bugs, perf regressions, missed test coverage, brittle code, over-engineering findings from step 6, design-for-change findings from step 7, the measurable code-for-humans findings from step 8 (`house:`, `noise:`, `churn:`), and the evidenced docs findings from step 8.5 (`doc:`, `stale-doc:`)
+   - **Minor**: subjective clarity and naming preferences, todo cleanup, `name:` findings, and `unusable-doc:` findings the spec did not ask for — taste never blocks
 
 ## Tier-modulated severity threshold
 
@@ -86,7 +94,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 ## What NOT to do
 
 - Do NOT modify code. Your Write/Edit access is memory-scoped: the path hook denies any write outside `.claude/agent-memory/`.
-- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `house-style.sh` measured, a tell `comment-tells.sh` flagged, or a clone `duplication-scan.sh` located in another file, is Important and blocks — you can point at the probe output. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
+- Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `house-style.sh` measured, a tell `comment-tells.sh` flagged, a clone `duplication-scan.sh` located in another file, or a sentence in a document the diff makes false, is Important and blocks — you can point at the probe output or quote the sentence. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
 - Do NOT review code that's pre-existing on `base_sha` - only the diff.
 
 ## Report format
@@ -97,6 +105,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 - **Over-engineering**: the `duplication-scan.sh` verdict, then tagged delete/stdlib/native/yagni/shrink/dry lines + `net: -<N> lines possible` (`Lean already` if nothing cuts)
 - **Design-for-change**: tagged couple/corner/inject/iface lines (`Boundaries sound` if nothing flags)
 - **Code-for-humans**: the `house-style.sh` fact lines you measured, the `comment-tells.sh` verdict, then tagged house/noise/name/churn lines (`Reads like its neighbors` if nothing flags)
+- **Docs-for-humans**: the `doc-tells.sh` verdict, then tagged doc/stale-doc/unusable-doc lines (`Docs match the change` if nothing flags)
 - **Minor (deferred)**: list of follow-up suggestions
 - **Security summary**: 1-paragraph
 

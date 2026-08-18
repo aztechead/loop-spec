@@ -46,7 +46,7 @@ esac
 
 # Ids the built-in gates own. A user layer answering to one of these names would
 # be indistinguishable from the gate it shadows in every log the loop keeps.
-PROTECTED_IDS="spec-compliance code-review security test-tamper acceptance marker over-engineering design-for-change human-code verification-gap grounding"
+PROTECTED_IDS="spec-compliance code-review security test-tamper acceptance marker over-engineering design-for-change human-code human-docs verification-gap grounding"
 PHASES="spec discuss plan execute verify iterate deliver"
 MAX_LAYERS=5
 MAX_INSTRUCTION_CHARS=2000

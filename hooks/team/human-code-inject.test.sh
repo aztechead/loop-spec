@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Test suite for hooks/team/human-code-inject.sh
 #
+# Both halves -- the code directive and the docs directive -- ride one switch, so a
+# project that disables the mode loses both and a project that leaves it alone gets both.
+#
 # Code-for-humans mode is DEFAULT ON, self-scoped to loop-spec projects (a
 # .loop-spec/ dir must exist). Polarity matches grill-inject and
 # simplicity-inject: with .loop-spec present, absent conf => inject; ENABLED=0
@@ -34,6 +37,12 @@ check_output "g: points at the convention probe" 0 "house-style.sh probe" CLAUDE
 check_output "h: points at the tell scan" 0 "comment-tells.sh scan" CLAUDE_PROJECT_DIR="$LS"
 check_output "i: carries the simplicity: carve-out" 0 "simplicity:" CLAUDE_PROJECT_DIR="$LS"
 check_output "j: carries the file-header carve-out" 0 "file-header purpose blocks" CLAUDE_PROJECT_DIR="$LS"
+
+# --- the docs half travels with the code half, on the same switch ---
+check_output "p: names the docs directive" 0 "DOCS FOR HUMANS" CLAUDE_PROJECT_DIR="$LS"
+check_output "q: names the reader rule" 0 "one job per document" CLAUDE_PROJECT_DIR="$LS"
+check_output "r: requires the doc fix in the same diff" 0 "SAME diff" CLAUDE_PROJECT_DIR="$LS"
+check_output "s: points at the doc probe" 0 "doc-tells.sh scan" CLAUDE_PROJECT_DIR="$LS"
 
 # --- self-scoping: NO .loop-spec dir -> silent ---
 NOPROJ="$TMPDIR_TEST/noproj"; mkdir -p "$NOPROJ"
