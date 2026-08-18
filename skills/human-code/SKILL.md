@@ -8,7 +8,8 @@ argument-hint: "[on|off|status|probe]"
 
 Invoked as `/loop-spec:human-code <subcommand>`.
 
-Code-for-humans mode is **ON by default**. Code is read far more often than it is
+Code-for-humans mode is **ON by default**. It covers both halves of what a person needs
+from code: reading it, and running it. Code is read far more often than it is
 written, and generated code fails its reader in a recognisable way: it is correct,
 and it looks nothing like the code around it. Different naming, a different error
 idiom, a docstring on every function in a module that has none, a comment above
@@ -83,11 +84,12 @@ suppresses injection.
 1. Run `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <paths>` (default `.` when no path is given).
 2. Report the fact lines verbatim. Each carries its own evidence; do not paraphrase or round them.
 3. Exit 1 with `sample=none` means the convention is **undemonstrated**, not absent — say so rather than filling the gap with a default.
-4. When any path is markdown, also run `bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <markdown paths>` and report its findings the same way.
+4. Run `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <code paths>` for the failure path, and report its findings the same way.
+5. When any path is markdown, also run `bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <markdown paths>` and report its findings the same way.
 
 ## Probes
 
-Three deterministic scripts back this mode, so "honor the existing conventions" is
+Four deterministic scripts back this mode, so "honor the existing conventions" is
 measured rather than recalled:
 
 - `"${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <paths>` — comment density, doc-comment usage, indentation,
@@ -104,13 +106,18 @@ measured rather than recalled:
   comments that narrate the edit, narrate history, or restate the next line of code. Exit 1
   means findings, exit 0 means clean.
 
+- `"${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files>` / `... diff <base> [head]` — the
+  operate half: a caught error whose handler does nothing, a non-zero exit with nothing said
+  to the operator, and an error message whose every word is a synonym for "it broke". Quiet
+  where the code already says why — a narrow exception type, a comment in the handler, an
+  exit guarded by a command that reports its own failure. Exit 1 means findings.
 - `"${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <markdown>` / `... diff <base> [head]` — flags a
   relative link with no target, an inline-code path the tree no longer holds, and a shell
   command holding a placeholder the document's prose never explains. Exit 1 means findings,
   exit 0 means clean. It judges no sentence: `skills/shared/human-docs.md` states which of
   its rules are machine-checked and which stay judgments.
 
-VERIFY's `code-reviewer` runs all three over the feature diff; a deviation any probe can
+VERIFY's `code-reviewer` runs all four over the feature diff; a deviation any probe can
 demonstrate is an **Important** (blocking) finding, while a convention you believe in but
 cannot show in the probe output is taste and stays **Minor**.
 

@@ -4,14 +4,40 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [4.2.0] - 2026-08-18
 
-The markdown is a deliverable too. Three directives already governed the code a cycle
-writes — how much of it exists, where its boundaries sit, how it reads. Nothing governed
-the documents, and a cycle writes plenty: SPEC, PLAN, VERIFICATION, the reviewer's guide,
-a PR body, and whatever README, guide, or runbook the change makes true or false. A person
-maintains and operates all of it after the run ends. Defaults change only in that the
-docs directive rides the existing code-for-humans switch and VERIFY gains one fixable pass.
+Everything this plugin emits is written for a person who has to maintain and operate it.
+Two halves were missing. The code directive covered only how a diff READS — nothing asked
+what the code SAYS when it breaks, which is the half a person meets at 03:00 holding
+whatever the software chose to tell them. And nothing at all governed the documents, though
+a cycle writes plenty: SPEC, PLAN, VERIFICATION, the reviewer's guide, a PR body, and
+whatever README, guide, or runbook the change makes true or false. Defaults change only in
+that both directives ride the existing code-for-humans switch and VERIFY gains one fixable
+pass.
 
 ### Added
+
+- **`lib/failure-tells.sh` — the operate half of code-for-humans.** Three silences that are
+  decidable from the text: `swallowed` (a caught error whose handler does nothing —
+  the error-hiding anti-pattern, which erases the only record of what happened),
+  `silent-exit` (a non-zero exit with nothing said in the five code lines above it), and
+  `contextless-error` (a message whose every word is a synonym for "it broke", so the
+  reader learns nothing the crash had not already told them). `scan <file>` reads whole
+  files; `diff <base> [head]` reports only what a change introduced. Python, shell, and
+  js/ts; any other language is skipped and counted, never guessed at.
+  It is quiet wherever the code already says why: a narrow exception type (`except
+  FileNotFoundError` names the case), a comment inside the handler, an exit guarded by a
+  command that reports its own failure (`resolve_root "$1" || exit 2`), and any message
+  naming a real noun. Measured across this repository's 349 shell, python, and TypeScript
+  files: **1 finding** — a `sys.exit(4)` whose status code is itself the documented
+  contract, which is the known false-positive class. The three `except Exception: pass`
+  handlers it found in `lib/graph/engine.py` were real, and each now carries the reason it
+  always had.
+- **`skills/shared/human-code.md` gained its second half.** Three principles — fail loudly
+  or say why you did not; an error message names what broke and the next move; a non-zero
+  exit says why before it exits — plus a section stating exactly what the probe checks and
+  what stays a judgment (whether an error should have been retried, whether a log line is
+  at the right level, whether the handling is correct at all).
+- **`tests/lib/failure-tells.test.sh`** — 22 cases pinning the three silences and the four
+  deliberate shapes the probe must stay quiet on.
 
 - **`skills/shared/human-docs.md` — the docs-for-humans contract.** The fourth member of
   the set beside the laziness ladder, design-for-change, and code-for-humans. Eight
@@ -50,12 +76,16 @@ docs directive rides the existing code-for-humans switch and VERIFY gains one fi
 
 ### Changed
 
-- **The code-for-humans switch now carries both halves.** `hooks/team/human-code-inject.sh`
-  injects the docs directive beside the code directive, `/loop-spec:human-code off` and
-  `LOOP_SPEC_HUMAN_CODE=0` disable both, and `human-code probe` also reports `doc-tells.sh`
-  findings for any markdown among its paths. One switch, not two: the opencode and ADK
-  bridges replay the same hook, so all three harnesses gain the directive without a
-  per-harness change.
+- **The code-for-humans switch now carries all three halves.** `hooks/team/human-code-inject.sh`
+  injects the failure-path directive and the docs directive beside the house-style one,
+  `/loop-spec:human-code off` and `LOOP_SPEC_HUMAN_CODE=0` disable all of it, and
+  `human-code probe` reports `failure-tells.sh` and (for markdown paths) `doc-tells.sh`
+  alongside the conventions. One switch, not three: the opencode and ADK bridges replay the
+  same hook, so all three harnesses gain the directives without a per-harness change.
+- **The code-reviewer's code-for-humans pass runs the failure-path probe too**, and reports
+  what it finds as `silent:` — an error swallowed with no reason given, an exit that says
+  nothing, a message a person cannot act on. Measured findings are Important and block,
+  the same rule the `house:` and `noise:` tags already follow.
 - **PLAN carries the documentation task.** `agents/planner.md` asks of every task which
   README, help text, runbook, or configuration table the change makes wrong, names that
   file in the task's `files[]`, and refuses to plan a documentation fix as a follow-up —

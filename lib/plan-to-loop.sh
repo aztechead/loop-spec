@@ -185,7 +185,13 @@ for t in tasks:
         'Comment density matches the file, not an absolute. A good name deletes a comment. '
         'No drive-by reformatting or renames that bury the change. NEVER cut simplicity: '
         'markers, file-header purpose blocks the codebase uses, TODO/FIXME/NOTE/HACK/'
-        'SAFETY markers, or any comment encoding a non-obvious why.'
+        'SAFETY markers, or any comment encoding a non-obvious why. When this code '
+        'breaks at 03:00 the person on call has only what it said: never swallow an '
+        'error (a handler that catches and does nothing erases the one record of what '
+        'happened -- log it, re-raise it, or state why the failure is uninteresting), '
+        'never exit non-zero in silence, and make each error message name what broke '
+        'and the next move where you know it. Before DONE run bash '
+        f'{lib_dir}/failure-tells.sh scan <files you touched>, which flags those three.'
     )
 
     # Docs-for-humans directive (canonical: skills/shared/human-docs.md).
