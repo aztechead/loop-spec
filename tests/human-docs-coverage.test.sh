@@ -175,6 +175,27 @@ else
   echo "FAIL: tests/lib/doc-tells.test.sh is not registered in tests/run-all.sh"; FAIL=$((FAIL+1))
 fi
 
+# Dispatch paths name the contract so they point at it instead of pasting it.
+for f in skills/shared/execute-subagent.md lib/plan-to-loop.sh \
+         lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
+         agents/implementer.md skills/shared/team-prompts/implementer.md \
+         CLAUDE.md; do
+  if grep -q "skills/shared/human-docs.md" "$f"; then
+    echo "PASS: $f names the human-docs contract"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f does not name skills/shared/human-docs.md -- the prompt will paste instead of point"
+    FAIL=$((FAIL+1))
+  fi
+done
+hd_count="$(grep -cF "skills/shared/human-docs.md" skills/shared/execute-subagent.md)"
+if [[ "$hd_count" -ge 2 ]]; then
+  echo "PASS: execute-subagent.md names the docs contract in both prompts ($hd_count occurrences)"
+  PASS=$((PASS+1))
+else
+  echo "FAIL: execute-subagent.md has $hd_count human-docs.md references; expected >= 2"
+  FAIL=$((FAIL+1))
+fi
+
 # The gate id is the loop's own: a project extension answering to it would be
 # indistinguishable from the built-in pass in every log the cycle keeps.
 if grep -qE 'PROTECTED_IDS=.*human-docs' lib/extension-points.sh; then

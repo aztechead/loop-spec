@@ -190,6 +190,7 @@ docs/loop-spec/                          # committed
 
 ```
 loop-spec/
+├── .claude/rules/                   # path-scoped contributor reminders (not @imported)
 ├── .claude-plugin/                  # plugin.json + marketplace.json
 ├── extensions/adk/loop_spec_adk/    # ADK bridge: env + skills + dispatch (imports google-adk)
 ├── extensions/opencode/loop-spec.ts # opencode bridge: shell.env/chat.message/event hooks (node builtins only)

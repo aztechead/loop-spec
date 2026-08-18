@@ -90,8 +90,15 @@ pass.
   README, help text, runbook, or configuration table the change makes wrong, names that
   file in the task's `files[]`, and refuses to plan a documentation fix as a follow-up —
   that is the deferred scope the cycle already rejects. The EXECUTE rungs (team, subagent,
-  loop-fleet, Workflow) each carry their own copy of the directive, since a SessionStart
-  hook does not reach a dispatched agent.
+  loop-fleet, Workflow) each name the contract and the probes rather than pasting the
+  essay, since a SessionStart hook does not reach a dispatched agent.
+- **Dispatch, inject, and CLAUDE.md point at the contracts.** `skills/shared/human-code.md`,
+  `skills/shared/human-docs.md`, `skills/shared/laziness-ladder.md`, and
+  `skills/shared/design-for-change.md` stay the source of truth. Path-scoped
+  `.claude/rules/` remind contributors when matching files are opened; they wrap those
+  paths in backticks so Claude Code does not `@import` them at launch.
+- **VERIFY Step 7.66 no longer swallows the probe.** `doc-tells.sh diff` is a gate:
+  exit 1 is a finding to fix, not an advisory list hidden behind `|| true`.
 - **`human-docs` is a protected gate id** in `lib/extension-points.sh`: a project layer
   answering to that name would be indistinguishable from the built-in pass in the logs.
 - **Two live documents corrected**, found by the new probe on this repository: a

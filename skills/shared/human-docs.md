@@ -177,7 +177,10 @@ Never cut, and never counted against a document's budget:
 - The grounding protocol supplies the evidence a claim needs; principle 7 is that protocol
   applied to prose a human will trust without checking.
 
-## Canonical compact directive (inline this verbatim into dispatch prompts)
+## Compact directive (read this file; do not paste it into a prompt)
+
+Dispatch names this file and the resolved probe. A SessionStart hook does not reach a
+dispatched agent, so the prompt still says to Read this file.
 
 > DOCS FOR HUMANS (the markdown is a deliverable too — on by default). Every document you
 > write is maintained and operated by a person after this run ends. Name its reader in the
@@ -209,4 +212,4 @@ Never cut, and never counted against a document's budget:
 - **On-call runbook practice** — one failure mode per runbook, prerequisites up front,
   expected output beside each command, an explicit branch for each failure.
 - This repository's own evidence — the generated code map removed in 2.35 because a rotted
-  map is wrong with authority (CLAUDE.md), and the 183-finding survey recorded above.
+  map is wrong with authority (CLAUDE.md), and the 181-finding survey recorded above.

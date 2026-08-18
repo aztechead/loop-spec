@@ -24,7 +24,7 @@ deliverable (canonical text: `skills/shared/human-docs.md`).
 
 This skill only flips the persistent state; the directives themselves are injected at
 session start by `hooks/team/human-code-inject.sh`, and every code-producing
-dispatch carries its own copy (canonical text: `skills/shared/human-code.md`).
+dispatch names the contract (`skills/shared/human-code.md`) and the probes.
 
 ## Subcommands
 

@@ -159,7 +159,10 @@ collide the resolution is fixed:
 - A convention that is genuinely wrong is a **finding**, reported in self-review or by the
   reviewer, and fixed in its own change — never fixed silently inside an unrelated diff.
 
-## Canonical compact directive (inline this verbatim into dispatch prompts)
+## Compact directive (read this file; do not paste it into a prompt)
+
+Dispatch names this file and the resolved probes. A SessionStart hook does not reach a
+dispatched agent, so the prompt still says to Read this file.
 
 > CODE FOR HUMANS (house style over habit — on by default). Code is read far more than it
 > is written; the diff must read like the code around it. Read the neighbors FIRST and

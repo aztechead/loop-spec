@@ -445,12 +445,14 @@ person. `skills/shared/human-docs.md` is the contract; `lib/doc-tells.sh` is the
 that is decidable from the text and the tree.
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" diff "$baseSha" HEAD || true
+bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" diff "$baseSha" HEAD
 ```
 
 Exit 0 means the documents this change touched carry no relative link without a target, no
 inline-code path the tree no longer holds, and no shell command holding a placeholder the
-prose never explains. Exit 1 lists each with `file:line`.
+prose never explains. Exit 1 lists each with `file:line` and is a gate failure: fix them
+here and re-run until clean. Do not append `|| true` — that swallows the only signal this
+pass has.
 
 These findings are **fixable, not advisory**: every one names a file, a line, and a one-line
 edit, so fix them here and re-run until clean rather than backlogging them. The escape hatch

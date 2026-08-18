@@ -40,10 +40,10 @@ fi
 
 CONF_FILE="${PROJECT_DIR}/.loop-spec/human-code.conf"
 
-# The directive names three scripts the model has to RUN, and the session's cwd is the
-# user's project, not the plugin. Resolve them from this hook's own location -- the
-# probes ship beside it -- so the paths are correct wherever the plugin is installed.
+# The directive names contracts to READ and scripts to RUN. The session cwd is the
+# user's project, not the plugin, so both resolve from this hook's location.
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" 2>/dev/null && pwd || true)"
+PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd || true)"
 
 # Opt-out: if the conf file exists AND pins ENABLED=0, stay silent.
 # Absent conf file => default ON (inject).
@@ -52,29 +52,14 @@ if [[ -f "$CONF_FILE" ]] && grep -q "ENABLED=0" "$CONF_FILE" 2>/dev/null; then
   exit 0
 fi
 
-DIRECTIVE="CODE FOR HUMANS MODE ACTIVE (default): write code for the next person to read, not for the compiler. Code is read far more often than it is written, and the reader arrives with a half-loaded mental model of the module.
+DIRECTIVE="CODE FOR HUMANS MODE ACTIVE (default): house style over habit. Read ${PLUGIN_ROOT}/skills/shared/human-code.md before writing code — do not paste it. Read the neighbors. Comments carry WHY, never what. Density matches the file, not an absolute. Never cut simplicity: markers or file-header purpose blocks.
+Before DONE: bash ${LIB_DIR}/house-style.sh probe <files>; bash ${LIB_DIR}/house-style.sh compare <files you touched>; bash ${LIB_DIR}/comment-tells.sh scan <files>; bash ${LIB_DIR}/failure-tells.sh scan <files>.
+CODE A HUMAN CAN OPERATE: fail loudly, or say why you did not.
 
-Read the neighbors before writing a line, and match them:
-1. Naming, error idiom, test structure, file layout, import order, how they log, how they fail.
-2. The house convention outranks any external guide, and it outranks your own defaults even where you would have chosen differently.
-3. Disagreeing with a convention is a finding to report, never a licence to deviate inside your diff.
-4. Where the convention is not obvious, measure it instead of guessing: 'bash ${LIB_DIR}/house-style.sh probe <files>' reports comment density, doc-comment usage, indentation, naming case, and line length from the actual neighbors, and says unknown rather than inventing an answer. When you have finished writing, check your own work: 'bash ${LIB_DIR}/house-style.sh compare <files you touched>' holds each file out of its own baseline and names where it deviates from its same-language neighbors -- indent, naming, quotes, semicolons, module system. Use compare for that question, never probe: probe pools your file into the sample, so a file breaking every convention around it reports as the convention.
+DOCS FOR HUMANS: the markdown is a deliverable too. Read ${PLUGIN_ROOT}/skills/shared/human-docs.md. Hold one job per document. A change that makes a document false is fixed in the SAME diff. NEVER cut frontmatter.
+Before DONE: bash ${LIB_DIR}/doc-tells.sh scan <markdown you touched>.
 
-Comments carry WHY, never what. The code already says what it does; a comment restating it goes stale on the first edit and misleads from then on. Spend a comment on what the code cannot say: a constraint not visible locally, a decision and the alternative it beat, a workaround and its reason, a landmine for the next reader. Never narrate the code, restate a signature, announce the edit ('Added...', 'Updated...'), or narrate history ('previously...', 'renamed from...') -- 'bash ${LIB_DIR}/comment-tells.sh scan <files>' catches those three shapes.
-
-Comment DENSITY matches the file, not an absolute: do not add docstrings to a module that has none, or strip them from one that documents everything. A good name deletes a comment -- reach for the name first. Early return over nested branch, one idea per function. Keep the diff readable: no drive-by reformatting, no unrelated renames, no churn that buries the real change.
-
-Never cut: 'simplicity:' shortcut markers, file-header purpose blocks where the codebase uses them, TODO/FIXME/NOTE/HACK/SAFETY/SECURITY markers, spec- or API-required contract docs, or any comment encoding a non-obvious why.
-
-CODE A HUMAN CAN OPERATE: the failure path is the other half of this directive, and it is the half nobody rereads because it only runs when something is already wrong. When this code breaks at 03:00, the person on call has only what it said. Never swallow an error -- a handler that catches and does nothing erases the one record of what happened; log it, re-raise it, or state why the failure is uninteresting (a narrow exception type states it for you, 'except Exception: pass' states nothing). An error message names what broke and, where you know it, the next move: which file, which field, which limit. \"Invalid input\" is not something a person can act on. Never exit non-zero in silence: say why on stderr first, or leave the failing command to speak. Check your own work with 'bash ${LIB_DIR}/failure-tells.sh scan <files you touched>', which flags those three shapes and stays quiet on the deliberate ones.
-
-DOCS FOR HUMANS: the markdown is a deliverable too. A person maintains and operates every document you write after this session ends, so name its reader in the first line -- someone about to CHANGE this system, or someone about to RUN it -- and hold one job per document: a how-to gets a task done, a reference states facts, an explanation says why. Blending them serves neither reader.
-
-A procedure states its prerequisites first, then the exact copy-pasteable command, then what success looks like, then what to do when the step fails. A command whose expected output you never described cannot be checked by the person running it.
-
-Cite, never copy: point at file:line rather than restating what the code says. Stale prose is worse than none because it is wrong with authority. If a change makes a document false -- README, help text, runbook, configuration table -- fix it in the SAME diff; a follow-up documentation task is deferred scope. Ground every claim: never write what the code probably does. Prefer one page the project will keep true over five that decay, and never invent a documentation convention this repository does not already have. Check your own writing with 'bash ${LIB_DIR}/doc-tells.sh scan <the markdown you touched>': it flags a relative link with no target, an inline-code path the tree no longer holds, and a command holding a placeholder the prose never explains. Never cut frontmatter, machine-read contract sections, required artifact headings, EVID citation lines, or license blocks. Full contract: skills/shared/human-docs.md.
-
-Code-for-humans mode is ON by default and covers both halves -- the code and the docs that ship with it. Disable it with /loop-spec:human-code off or LOOP_SPEC_HUMAN_CODE=0."
+Disable with /loop-spec:human-code off or LOOP_SPEC_HUMAN_CODE=0."
 
 # Emit valid JSON via jq (hard dependency) rather than a hand-rolled escaper.
 jq -n --arg ctx "$DIRECTIVE" \

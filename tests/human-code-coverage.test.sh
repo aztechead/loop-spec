@@ -213,6 +213,27 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# Dispatch paths name the contract so they point at it instead of pasting it.
+for f in skills/shared/execute-subagent.md lib/plan-to-loop.sh \
+         lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
+         agents/implementer.md skills/shared/team-prompts/implementer.md \
+         CLAUDE.md; do
+  if grep -q "skills/shared/human-code.md" "$f"; then
+    echo "PASS: $f names the human-code contract"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f does not name skills/shared/human-code.md -- the prompt will paste instead of point"
+    FAIL=$((FAIL+1))
+  fi
+done
+hc_count="$(grep -cF "skills/shared/human-code.md" skills/shared/execute-subagent.md)"
+if [[ "$hc_count" -ge 2 ]]; then
+  echo "PASS: execute-subagent.md names the contract in both prompts ($hc_count occurrences)"
+  PASS=$((PASS+1))
+else
+  echo "FAIL: execute-subagent.md has $hc_count human-code.md references; expected >= 2"
+  FAIL=$((FAIL+1))
+fi
+
 # The SessionStart hook must be registered, or main-thread work never sees the directive.
 if grep -qF 'human-code-inject.sh' hooks/hooks.json; then
   echo "PASS: human-code-inject.sh registered in hooks.json"; PASS=$((PASS+1))
