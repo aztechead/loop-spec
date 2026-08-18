@@ -24,11 +24,14 @@
 #   cycle-result.sh write <feature_dir> --status <completed|paused|escalated|terminal|failed>
 #                        --summary <text> [--pr-url <url>] [--reason <text>]
 #                        [--no-change-reason <already-satisfied>]
+#                        [--outcome delivered]   alias for --status completed
 #   cycle-result.sh write-terminal --result-root <root> --cycle-type <full|micro|debug|diagnostic>
 #                        --status <status> --outcome <outcome> --title <title>
 #                        --converged <true|false> --summary <text>
 #                        [--no-change-reason <already-satisfied|diagnostic-only>]
 #                        [compatibility/result fields...]
+#     Full-cycle --outcome delivered is an alias for write --status completed
+#     (DELIVER's own word); it is not a write-terminal success record.
 #
 # Reads <feature_dir>/feature.json and writes <feature_dir>/result.json, then
 # copies it to <feature_dir>/../../last-result.json (i.e., .loop-spec/last-result.json,
@@ -133,6 +136,43 @@ _prepare_result_root() {
   if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     bash "$SCRIPT_DIR/runtime-ignore.sh" ensure "$root" >/dev/null 2>&1 || return 1
   fi
+}
+
+# Feature dir a full-cycle --outcome delivered alias can hand to `write`.
+# An interrupted pointer is often already published (reconcile ran first), so
+# active-run.json may be gone; last-result.json.slug is the remaining handle.
+_resolve_full_feature_dir() {
+  local result_root="$1" slug="${2:-}" candidate="" d
+  local active="$result_root/.loop-spec/active-run.json"
+  local terminal="$result_root/.loop-spec/last-result.json"
+  if [[ -f "$active" ]]; then
+    candidate="$(jq -r '.featureDir // empty' "$active" 2>/dev/null || true)"
+    if [[ -n "$candidate" && -f "$candidate/feature.json" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+    [[ -n "$slug" ]] || slug="$(jq -r '.slug // empty' "$active" 2>/dev/null || true)"
+  fi
+  if [[ -z "$slug" && -f "$terminal" ]]; then
+    slug="$(jq -r '.slug // empty' "$terminal" 2>/dev/null || true)"
+  fi
+  if [[ -n "$slug" && -f "$result_root/.loop-spec/features/$slug/feature.json" ]]; then
+    printf '%s' "$result_root/.loop-spec/features/$slug"
+    return 0
+  fi
+  candidate=""
+  for d in "$result_root/.loop-spec/features"/*/feature.json; do
+    [[ -f "$d" ]] || continue
+    if [[ -n "$candidate" ]]; then
+      return 1
+    fi
+    candidate="$(dirname "$d")"
+  done
+  if [[ -n "$candidate" ]]; then
+    printf '%s' "$candidate"
+    return 0
+  fi
+  return 1
 }
 
 # Whether the route has already changed tracked files. Untracked paths are out of
@@ -316,6 +356,32 @@ PY
         *) shift || true ;;
       esac
     done
+    # --outcome delivered is the DELIVER phase's word for a completed full cycle.
+    # Agents reach for it; write-terminal used to hard-reject it (exit 0, write
+    # nothing) and leave an interrupted pointer in place. Map it onto `write
+    # --status completed` against the feature the run already has.
+    if [[ "$outcome" == "delivered" ]]; then
+      [[ -n "$cycle_type" ]] || cycle_type="full"
+      if [[ "$cycle_type" == "full" ]]; then
+        [[ -n "$result_root" ]] || {
+          echo "cycle-result.sh: --outcome delivered requires --result-root" >&2; exit 3; }
+        result_root_abs="$(_resolve_result_root "$result_root")" || {
+          echo "cycle-result.sh: TERMINAL RESULT NOT PUBLISHED - cannot resolve result root: $result_root" >&2
+          exit 3
+        }
+        feat_dir="$(_resolve_full_feature_dir "$result_root_abs" "$slug" || true)"
+        if [[ -n "$feat_dir" && -f "$feat_dir/feature.json" ]]; then
+          _is_nonblank "$summary" || summary="Cycle completed; PR delivered."
+          write_args=(write "$feat_dir" --status completed --summary "$summary")
+          [[ -z "$pr_url" ]] || write_args+=(--pr-url "$pr_url")
+          [[ -z "$reason" ]] || write_args+=(--reason "$reason")
+          LOOP_SPEC_RESULT_ROOT="$result_root_abs" bash "$0" "${write_args[@]}"
+          exit $?
+        fi
+        echo "cycle-result.sh: --outcome delivered requires a readable feature.json (active-run.featureDir, --slug, or last-result.json slug); completed full cycles use 'cycle-result.sh write <feature_dir> --status completed --summary <text>'" >&2
+        exit 3
+      fi
+    fi
     if [[ -z "$result_root" || -z "$cycle_type" || -z "$status" || -z "$outcome" || -z "$title" ]]; then
       echo "cycle-result.sh: write-terminal requires --result-root --cycle-type --status --outcome --title" >&2
       exit 0
@@ -352,7 +418,13 @@ PY
     allowed_outcomes="$allowed_outcomes protocol-mismatch"
     case " $allowed_outcomes " in *" $outcome "*) ;; *)
       if [[ "$cycle_type" == "full" ]]; then
-        echo "cycle-result.sh: invalid full --outcome '$outcome'; completed full cycles use 'cycle-result.sh write <feature_dir> --status completed --summary <text>'. write-terminal accepts: infrastructure-failed, interrupted, protocol-mismatch" >&2
+        echo "cycle-result.sh: invalid full --outcome '$outcome'; completed full cycles use 'cycle-result.sh write <feature_dir> --status completed --summary <text>' (or write-terminal --outcome delivered, which is that alias). write-terminal failure outcomes: infrastructure-failed, interrupted, protocol-mismatch" >&2
+        # A success-shaped invocation that we refused must not look like a
+        # published run: exit 0 here is how a delivered PR was recorded as
+        # interrupted when the agent used the DELIVER phase's own word.
+        if [[ "$status" == "completed" || "$converged" == "true" || "$outcome" == "verified" ]]; then
+          exit 3
+        fi
       else
         echo "cycle-result.sh: invalid $cycle_type --outcome '$outcome'; accepted: $allowed_outcomes" >&2
       fi
@@ -486,11 +558,16 @@ PY
     reason=""
     summary=""
     no_change_reason=""
+    outcome=""
     shift 2 || true
     while [[ $# -gt 0 ]]; do
       case "${1:-}" in
         --status)
           status="${2:-}"
+          shift 2 || shift || true
+          ;;
+        --outcome)
+          outcome="${2:-}"
           shift 2 || shift || true
           ;;
         --pr-url)
@@ -514,6 +591,16 @@ PY
           ;;
       esac
     done
+
+    # Same alias write-terminal honours: DELIVER's outcome word is completed.
+    case "$outcome" in
+      delivered|completed) status="completed" ;;
+      "" ) ;;
+      *)
+        echo "cycle-result.sh: write maps --outcome delivered to --status completed; got '$outcome'" >&2
+        exit 0
+        ;;
+    esac
 
     # Validate status
     if [[ -z "$status" ]]; then

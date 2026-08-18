@@ -99,6 +99,26 @@ pass.
   long ago) and a relative link in `docs/loop-spec/architecture.md` written as if from the
   repository root.
 
+### Fixed
+
+- **Full-cycle phase markers are emitted by the graph engine, not by cycle-skill
+  prose the agent can skip.** A run that called `loop-spec:cycle` once, then
+  implemented the feature inline, produced `cycleKind=full` with `phase=unknown`
+  and a hidden progress bar: zero `LOOP_SPEC_PHASE_*` lines, zero `[PHASE]`
+  tags, zero `events.sh` calls. `lib/graph/run.sh --step` now emits
+  `phase_start` / `phase_end` at working-phase node transitions (markers on
+  stderr so the `--step` JSON descriptor stays parseable). micro and debug
+  still emit from their skills.
+- **A delivered full cycle is no longer recorded as `interrupted`.** Three
+  compliance gaps stacked: reconcile stamped `converged=false` before
+  bookkeeping finished; `write-terminal --outcome delivered` hard-rejected
+  (DELIVER's own word, exit 0, write nothing); the agent's turn ended, so
+  `last-result.json` stayed failed and the supervisor marked the PR a draft.
+  `--outcome delivered` now aliases `write --status completed`. Reconcile
+  writes completed when a PR was actually delivered. A success-shaped
+  write-terminal that we still refuse exits 3, not 0. The engine publishes
+  the terminal result when it enters the `completed` node.
+
 ## [4.1.0] - 2026-08-18
 
 Fixes and controls from headless, autonomous, graph-driven runs. Two changes alter

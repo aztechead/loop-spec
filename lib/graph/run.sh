@@ -19,7 +19,10 @@
 #             routing is resolved lazily by the FOLLOWING --step call via
 #             checkpoint-successor resolution, never guessed here on stale state.
 #             `function`/`gate`/`subgraph` node bodies ARE dispatched in-process
-#             during --step, exactly as they are without it.
+#             during --step, exactly as they are without it. Entering or leaving
+#             a working-phase node (spec..deliver) also emits phase_start /
+#             phase_end on stderr — never on stdout, which this mode reserves
+#             for the descriptor.
 #
 # Exit codes:
 #   0  completed traversal, or --step returned a descriptor (check "terminal")

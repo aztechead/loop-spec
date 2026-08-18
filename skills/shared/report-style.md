@@ -33,9 +33,15 @@ What this means in practice:
 - **Emit the event and the line follows.** The observability you owe an operator is
   discharged by calling `events.sh emit` at the right moments — not by writing console
   prose. A missing boundary line is now a missing *event*, which is a real bug.
-- **stdout is unchanged.** `LOOP_SPEC_PHASE_START` / `LOOP_SPEC_PHASE_END` plus their
-  JSON still go to stdout for machine consumers; the human line goes to stderr. Both
-  land in a streamed log.
+  Full-cycle `phase_start` / `phase_end` are emitted by `lib/graph/run.sh` at node
+  transitions; the cycle skill must not re-emit them. micro and debug still emit
+  from their skills.
+- **stdout is unchanged** for a direct `events.sh emit` call. `LOOP_SPEC_PHASE_START` /
+  `LOOP_SPEC_PHASE_END` plus their JSON still go to stdout for machine consumers; the
+  human line goes to stderr. Both land in a streamed log. The graph engine is the
+  exception: `--step`'s JSON descriptor occupies stdout, so the engine sends the
+  greppable marker to stderr with the console line — otherwise
+  `step_json=$(run.sh --step)` would trap the only record the console can parse.
 - **`LOOP_SPEC_CONSOLE_STREAM=stdout`** moves the console lines to stdout for hosts
   that grade the two streams differently — Cloud Run assigns stderr output ERROR
   severity, so routine progress otherwise shows up in Cloud Logging as errors. It is

@@ -482,13 +482,82 @@ check "W3: startup failure has terminal outcome" "infrastructure-failed:idle_tim
 check "W3: startup failure clears active pointer" "0" \
   "$([[ -f "$ACTIVE_RESULT" ]] && echo 1 || echo 0)"
 
+full_success_ec=0
 full_success_hint="$(bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" \
   --cycle-type full --status completed --outcome verified --title "Wrong writer" \
-  --converged true --verification-status passed --summary "Done." 2>&1 >/dev/null)"
+  --converged true --verification-status passed --summary "Done." 2>&1 >/dev/null)" || full_success_ec=$?
 check "W4: rejected full success names the correct writer" "1" \
   "$(grep -c 'write <feature_dir> --status completed' <<<"$full_success_hint")"
-check "W4: rejected full success lists terminal outcomes" "1" \
-  "$(grep -c 'infrastructure-failed, interrupted, protocol-mismatch' <<<"$full_success_hint")"
+check "W4: rejected full success names the delivered alias" "1" \
+  "$(grep -c 'write-terminal --outcome delivered' <<<"$full_success_hint")"
+check "W4: rejected success-shaped full outcome exits 3 (not silent 0)" "3" "$full_success_ec"
+
+# Case W5: --outcome delivered is DELIVER's word; map it onto write --status
+# completed, including the sequence that actually bit us (reconcile stamped
+# interrupted first, then the agent tried to overwrite with the natural phrasing).
+printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
+rm -f "$FEAT_DIR/delivery.json"
+bash "$LIB" begin --result-root "$WORK" --cycle-type full \
+  --title "Add rate limiting" --slug my-feature --feature-dir "$FEAT_DIR" \
+  --phase deliver --autonomous true
+LOOP_SPEC_RESULT_ROOT="$WORK" bash "$LIB" write "$FEAT_DIR" --status failed \
+  --reason "agent process terminated before emitting a terminal result" \
+  --summary "Cycle interrupted during deliver: agent process terminated" >/dev/null
+check "W5: interrupted pointer lands first" "failed" \
+  "$(jq -r '.status' "$LOOP_DIR/last-result.json")"
+delivered_ec=0
+bash "$LIB" write-terminal --result-root "$WORK" --cycle-type full \
+  --outcome delivered --summary "Migrated and opened PR #39." >/dev/null || delivered_ec=$?
+check "W5: --outcome delivered exits 0" "0" "$delivered_ec"
+check "W5: --outcome delivered overwrites interrupted" "completed:delivered:true" \
+  "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$LOOP_DIR/last-result.json")"
+check "W5: --outcome delivered keeps the PR" "https://github.com/test/repo/pull/1" \
+  "$(jq -r '.prUrl' "$LOOP_DIR/last-result.json")"
+
+rm -f "$FEAT_DIR/result.json" "$LOOP_DIR/last-result.json" "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --outcome delivered \
+  --summary "write --outcome delivered is the same alias." >/dev/null
+check "W5b: write --outcome delivered is --status completed" "completed:delivered:true" \
+  "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$FEAT_DIR/result.json")"
+
+# Case W6: reconcile must not stamp interrupted over a delivered PR.
+printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
+rm -f "$LOOP_DIR/last-result.json" "$FEAT_DIR/delivery.json"
+bash "$LIB" begin --result-root "$WORK" --cycle-type full \
+  --title "Add rate limiting" --slug my-feature --feature-dir "$FEAT_DIR" \
+  --phase deliver --autonomous true
+bash "$REPO_ROOT/lib/cycle-reconcile.sh" --result-root "$WORK" \
+  --reason "routed skill ended without emitting a terminal result" >/dev/null
+check "W6: reconcile over a delivered PR is completed, not interrupted" \
+  "completed:delivered:true" \
+  "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$LOOP_DIR/last-result.json")"
+
+# The run that bit us never entered DELIVER, so currentPhase can still be
+# execute while feature.json.prUrl already names the opened PR.
+printf '%s\n' "$(jq '.currentPhase = "execute" | del(.delivery)' <<<"$FIXTURE_FJ")" \
+  > "$FEAT_DIR/feature.json"
+rm -f "$LOOP_DIR/last-result.json" "$FEAT_DIR/delivery.json"
+bash "$LIB" begin --result-root "$WORK" --cycle-type full \
+  --title "Add rate limiting" --slug my-feature --feature-dir "$FEAT_DIR" \
+  --phase execute --autonomous true
+bash "$REPO_ROOT/lib/cycle-reconcile.sh" --result-root "$WORK" \
+  --reason "routed skill ended without emitting a terminal result" >/dev/null
+check "W6b: reconcile over a PR with currentPhase still execute is completed" \
+  "completed:delivered:true" \
+  "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$LOOP_DIR/last-result.json")"
+
+# A checkpoint PR is the interruption record, not a delivered feature PR.
+printf '%s\n' "$(jq '.currentPhase = "execute" | del(.delivery)
+  | .checkpointPrUrl = .prUrl' <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+rm -f "$LOOP_DIR/last-result.json" "$FEAT_DIR/delivery.json"
+bash "$LIB" begin --result-root "$WORK" --cycle-type full \
+  --title "Add rate limiting" --slug my-feature --feature-dir "$FEAT_DIR" \
+  --phase execute --autonomous true
+bash "$REPO_ROOT/lib/cycle-reconcile.sh" --result-root "$WORK" \
+  --reason "routed skill ended without emitting a terminal result" >/dev/null
+check "W6c: reconcile over a checkpoint-only PR stays interrupted" \
+  "failed:false" \
+  "$(jq -r '.status + ":" + (.converged | tostring)' "$LOOP_DIR/last-result.json")"
 
 # Case X: a phase handoff is terminal for one invocation while preserving
 # resumable feature state for the next fresh agent.

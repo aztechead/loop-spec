@@ -99,7 +99,12 @@ Two outcomes belong to every cycle type rather than to one:
   and an unmodified tracked tree — a route that already changed the repository reports
   what it did instead. The caller's move is to re-route the request, not to retry it.
 - `interrupted`: the run stopped before it could finish. It requires `status: "failed"`
-  and is what `lib/cycle-reconcile.sh` writes for an armed run whose process is gone.
+  and is what `lib/cycle-reconcile.sh` writes for an armed run whose process is gone,
+  unless a PR was already delivered in that run — then reconcile writes `completed`
+  / `delivered` instead of overwriting success with a false failure.
+- Full-cycle `--outcome delivered` is accepted as an alias for
+  `write <feature_dir> --status completed`. The previous hard-reject (exit 0, write
+  nothing) left interrupted pointers in place when the agent used DELIVER's own word.
 
 Both successful cases use `status: "completed"`, `outcome: "no-change-needed"`,
 `converged: true`, `prUrl: null`, and `checkpointPrUrl: null`. Zero commits without one of these explicit,
@@ -132,7 +137,12 @@ delivery block.
 ## Phase Boundary Markers
 
 `lib/events.sh` continues to append the existing JSONL event shape. `phase_start` and
-`phase_end` add fields and also print one greppable line:
+`phase_end` add fields and also print one greppable line. A full cycle's boundaries are
+emitted by `lib/graph/run.sh` at node transitions — not by cycle-skill prose the agent
+can skip — so a run that `--step`s the graph and then works inline still surfaces them.
+`--step` keeps its JSON descriptor on stdout; the greppable lines share stderr with the
+`[PHASE]` console line so a `step_json=$(run.sh --step)` capture cannot trap them.
+micro and debug still emit from their skills.
 
 ```text
 LOOP_SPEC_PHASE_START {"event":"phase_start","attemptId":"...","timestamp":"...",...}
