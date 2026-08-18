@@ -105,9 +105,11 @@ Publish the result that matches what actually happened, then stop:
 
 - Routed protocol did not fit and you changed nothing: --status escalated
   --outcome protocol-mismatch --converged false --reason "<the mismatch>".
+- You completed a full cycle: `--outcome delivered` (alias for
+  `write <feature_dir> --status completed`). Do not hand-build `converged`.
 - You stopped part-way: --status failed --outcome interrupted --converged false.
-- You completed the work: finish the route's own delivery contract (PR included)
-  and let it emit the result -- do not hand-write a converged one.
+- You completed a reduced route: finish that route's own delivery contract
+  (PR included) and let it emit the result.
 
 Leaving the route to finish the task by hand is the failure this guard exists to
 catch: the work may be right, but the run is unaccountable without the record.

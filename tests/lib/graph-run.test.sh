@@ -413,7 +413,10 @@ git -C "$GITWORK" config user.name tester
 git -C "$GITWORK" add README.md
 git -C "$GITWORK" commit -q -m base
 mkdir -p "$GITWORK/.loop-spec/features/f1"
-jq -n '{slug:"f1",schemaVersion:7,currentPhase:"deliver",delivery:{}}' \
+jq -n '{slug:"f1",schemaVersion:7,currentPhase:"deliver",
+    prUrl:"https://github.com/test/repo/pull/39",
+    iterate:{lastVerdict:{summary:"Migrated and opened PR #39."}},
+    delivery:{}}' \
   > "$GITWORK/.loop-spec/features/f1/feature.json"
 cat > "$WORK/completed.json" <<EOF
 {
@@ -428,6 +431,10 @@ check "completed graph validates" "0" "$?"
 [[ -f "$GITWORK/.loop-spec/last-result.json" ]]
 check "completed node publishes .loop-spec/last-result.json via the canonical constructor" "0" "$?"
 check "published result has status completed" "completed" "$(jq -r '.status' "$GITWORK/.loop-spec/last-result.json" 2>/dev/null)"
+check "published result uses iterate lastVerdict summary" "Migrated and opened PR #39." \
+  "$(jq -r '.summary' "$GITWORK/.loop-spec/last-result.json" 2>/dev/null)"
+check "published result carries feature.json prUrl" "https://github.com/test/repo/pull/39" \
+  "$(jq -r '.prUrl' "$GITWORK/.loop-spec/last-result.json" 2>/dev/null)"
 
 ## --- 16. subgraph: real execution, not an unconditional dry-run ---
 cat > "$WORK/nested.json" <<'EOF'
@@ -512,6 +519,65 @@ check "engine sets currentPhase to discuss" "discuss" "$(jq -r '.currentPhase' "
 new_feat "$WORK/feat-phase" '{slug:"p",schemaVersion:7,currentPhase:"spec"}'
 bash "$SCRIPT" --dry-run --feature-dir "$WORK/feat-phase" "$WORK/phase-advance.json" >/dev/null
 check "dry-run leaves currentPhase untouched" "spec" "$(jq -r '.currentPhase' "$WORK/feat-phase/feature.json")"
+
+## --- 21. phase_start/phase_end are emitted by the engine at node
+##         transitions. The cycle skill used to ask the agent to run
+##         events.sh as prose; a coder who ran the work inline emitted
+##         nothing, and the console hid the bar (phase=unknown).
+cat > "$WORK/phase-markers.json" <<'EOF'
+{
+  "entry": "spec",
+  "nodes": [
+    {"id":"spec","kind":"agent","reads":[],"writes":["currentPhase"],"effort":"system1","body":"skills/spec/SKILL.md"},
+    {"id":"discuss","kind":"agent","reads":[],"writes":["currentPhase"],"effort":"system1","body":"skills/discuss/SKILL.md"},
+    {"id":"completed","kind":"function","reads":[],"writes":["currentPhase"],"effort":"system1"}
+  ],
+  "edges": [
+    {"from":"spec","to":"discuss","kind":"chain"},
+    {"from":"discuss","to":"completed","kind":"chain"}
+  ]
+}
+EOF
+bash "$ROOT/lib/graph/validate.sh" "$WORK/phase-markers.json" >/dev/null
+check "phase-markers graph validates" "0" "$?"
+new_feat "$WORK/feat-markers" '{slug:"markers",schemaVersion:7,currentPhase:"spec"}'
+
+step1="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-markers" "$WORK/phase-markers.json" 2>"$WORK/markers-err1")"
+check "step 1 stdout is parseable JSON (markers must not mix with the descriptor)" \
+  "spec" "$(jq -r '.node' <<<"$step1")"
+check "step 1 stdout carries no LOOP_SPEC_PHASE marker" "0" \
+  "$(grep -c LOOP_SPEC_PHASE <<<"$step1" || true)"
+check "step 1 stderr emits LOOP_SPEC_PHASE_START for spec" "1" \
+  "$(grep -c '^LOOP_SPEC_PHASE_START' "$WORK/markers-err1" || true)"
+check "step 1 stderr emits [SPEC] start" "1" \
+  "$(grep -c '\[SPEC\] start' "$WORK/markers-err1" || true)"
+check "step 1 writes phase_start to events.jsonl" "spec" \
+  "$(jq -r 'select(.event=="phase_start") | .phase' "$WORK/feat-markers/events.jsonl" | tail -1)"
+check "step 1 does not write phase_end yet (the agent has not left spec)" "0" \
+  "$(jq -r 'select(.event=="phase_end") | .phase' "$WORK/feat-markers/events.jsonl" | grep -c . || true)"
+
+step2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-markers" "$WORK/phase-markers.json" 2>"$WORK/markers-err2")"
+check "step 2 stdout is parseable JSON" "discuss" "$(jq -r '.node' <<<"$step2")"
+check "step 2 stderr emits LOOP_SPEC_PHASE_END for spec" "1" \
+  "$(grep -c '^LOOP_SPEC_PHASE_END' "$WORK/markers-err2" || true)"
+check "step 2 phase_end next is discuss" "discuss" \
+  "$(jq -r 'select(.event=="phase_end" and .phase=="spec") | .next' "$WORK/feat-markers/events.jsonl" | tail -1)"
+check "step 2 stderr emits LOOP_SPEC_PHASE_START for discuss" "1" \
+  "$(grep -c '^LOOP_SPEC_PHASE_START' "$WORK/markers-err2" || true)"
+
+new_feat "$WORK/feat-markers-dry" '{slug:"mdry",schemaVersion:7,currentPhase:"spec"}'
+bash "$SCRIPT" --dry-run --feature-dir "$WORK/feat-markers-dry" "$WORK/phase-markers.json" \
+  >/dev/null 2>"$WORK/markers-dry-err"
+check "dry-run emits no LOOP_SPEC_PHASE markers" "0" \
+  "$(grep -c LOOP_SPEC_PHASE "$WORK/markers-dry-err" || true)"
+check "dry-run writes no events.jsonl" "1" \
+  "$([[ -f "$WORK/feat-markers-dry/events.jsonl" ]] && echo 0 || echo 1)"
+
+new_feat "$WORK/feat-nophase" '{slug:"nophase",schemaVersion:7}'
+bash "$SCRIPT" --step --feature-dir "$WORK/feat-nophase" "$WORK/basic.json" \
+  >/dev/null 2>"$WORK/nophase-err"
+check "non-phase function node emits no LOOP_SPEC_PHASE_START" "0" \
+  "$(grep -c LOOP_SPEC_PHASE_START "$WORK/nophase-err" || true)"
 
 ## --- 20. MUTATION PROOF (required) ---
 # Re-introduce each of the two shipped-3.0 route-evaluation bugs one at a

@@ -58,6 +58,27 @@ expect "micro closes with phase_end" skills/micro/SKILL.md 'phase_end --phase mi
 expect "debug opens with phase_start" skills/debug/SKILL.md 'phase_start --phase debug'
 expect "debug closes with phase_end" skills/debug/SKILL.md 'phase_end --phase debug'
 
+# Full-cycle boundaries are an engine mechanism, not cycle-skill prose the
+# agent can skip. A run that --steps the graph and then works inline still
+# surfaces LOOP_SPEC_PHASE_* / [PHASE] start; the cycle skill must not be
+# the thing that has to remember to call events.sh.
+expect "full-cycle phase_start is emitted by the graph engine" \
+  lib/graph/engine.py 'emit.*, "phase_start"'
+expect "full-cycle phase_end is emitted by the graph engine" \
+  lib/graph/engine.py 'emit.*, "phase_end"'
+expect "engine keeps --step stdout parseable (markers on stderr)" \
+  lib/graph/engine.py 'stdout=sys\.stderr'
+if grep -qE 'events\.sh".*emit.*phase_start' skills/cycle/SKILL.md; then
+  echo "FAIL: cycle skill still instructs the agent to emit phase_start -- that is the compliance gap"; FAIL=$((FAIL+1))
+else
+  echo "PASS: cycle skill does not instruct the agent to emit phase_start"; PASS=$((PASS+1))
+fi
+if grep -qE 'events\.sh".*emit.*phase_end' skills/cycle/SKILL.md; then
+  echo "FAIL: cycle skill still instructs the agent to emit phase_end -- that is the compliance gap"; FAIL=$((FAIL+1))
+else
+  echo "PASS: cycle skill does not instruct the agent to emit phase_end"; PASS=$((PASS+1))
+fi
+
 # The Cloud Run stream probe: platform stamps route the console to stdout, because
 # Cloud Run grades stderr as ERROR severity.
 expect "Cloud Run stamps are probed for stream selection" lib/events.sh 'CLOUD_RUN_JOB'

@@ -54,7 +54,13 @@ re-route it; that is a smaller loss than an unaccounted run.
   whose armed run published nothing. Kill switch: `LOOP_SPEC_ROUTE_GUARD=0`.
 - `lib/cycle-reconcile.sh --result-root <root>` converts a surviving armed run into a
   terminal result after the fact. It is the out-of-band backstop and the in-band
-  confirmation `/loop-spec:auto` runs after its delegated route returns.
+  confirmation `/loop-spec:auto` runs after its delegated route returns. A PR
+  already delivered in that run is recorded `completed`/`delivered`, not
+  `interrupted`.
+- Full-cycle success is `write <feature_dir> --status completed`. `--outcome
+  delivered` (write or write-terminal) is that alias — DELIVER's own word. The
+  graph engine also publishes on entering the `completed` node, so the agent
+  does not have to hand-author the exact CLI.
 
 Under OpenCode and ADK no Stop event can veto
 (`skills/shared/opencode-harness.md`, `skills/shared/adk-harness.md`), so the
