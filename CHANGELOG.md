@@ -11,10 +11,10 @@ behavior unless a new flag, token, or node field is set.
 
 ### Removed
 
-- **The `skippable` node field.** It skipped a gate's `.sh` BODY, the engine never
-  evaluated it at all, and all three gates that could carry it have bodies naming
-  an agent or a fast-path rather than a script — so it skipped nothing, invisibly,
-  while reading like a live control. A `route` skips the NODE, works for every node
+- **The `skippable` node field.** 4.0.0 declared it on one shipped node
+  (`plan.critique.gate`), whose body is a fast-path token rather than a script.
+  The engine never evaluated the field, so it skipped nothing, invisibly, while
+  reading like a live control. A `route` skips the NODE, works for every node
   kind, and shows up in a dry run. One mechanism for "do not run this", not two.
 
 ### Changed
@@ -26,8 +26,10 @@ behavior unless a new flag, token, or node field is set.
   one VERIFY Step 1.75 runs against the same integrated tree moments later. On a
   single-wave change those two runs were the same commands over the same working
   tree. EXECUTE now runs each task's focused `verifyCommand` after any rebase and
-  nothing else. Regressions surface at VERIFY instead of at the wave boundary,
-  where remediation already routes through `pendingRemediationTasks`.
+  nothing else. Cycle resume still runs the same comparison once, because an
+  interrupted EXECUTE may have published tasks that never reached VERIFY.
+  Regressions on a finished EXECUTE surface at VERIFY instead of at the wave
+  boundary, where remediation already routes through `pendingRemediationTasks`.
   `tests/execution-validation-coverage.test.sh` inverts: it now asserts NO rung
   names `feature-validation.sh` and that VERIFY does.
 - The loop-fleet supervisor's `--feature-dir` flag is removed with the behaviour
@@ -89,24 +91,29 @@ behavior unless a new flag, token, or node field is set.
   `lib/graph/probes/short-path.sh` answers `path=short` for a maintenance-profile
   run with no security signal in the artifacts it has written so far, and
   `graph/cycle.graph.json` routes around three nodes on that answer: `discuss`,
-  the spec-critique subgraph, and the `verify.code-review` agent. Same graph, same
-  checkpoint ledger, same state contract, same terminal result — a shorter
-  declared path, visible in a dry run, not a different protocol. Every bypass is
-  paired with a route to the long path and a `routeDefault` to it, so an
+  the spec-critique subgraph, and the `verify.code-review` agent. PLAN critique
+  is still decided by `lib/graph/probes/plan-critique.sh` (security terms in the
+  git diff), not by this probe — a short path still visits `plan.critique.gate`.
+  Same graph, same checkpoint ledger, same state contract, same terminal result —
+  a shorter declared path, visible in a dry run, not a different protocol. Every
+  bypass is paired with a route to the long path and a `routeDefault` to it, so an
   unresolved probe lengthens the run rather than stranding it, and the signal is
   re-read from the artifacts that exist NOW so a change that turns out to touch a
   security surface lengthens its own path mid-run. The deterministic VERIFY gates
-  (placeholder, tamper, acceptance, no-new-failures) run on both paths.
+  (placeholder, tamper, acceptance) and the no-new-failures comparison run on
+  both paths. Code review is the one quality gate the short path drops.
 - **A maintenance execution profile** (`lib/cycle-profile.sh`, opt-in). Earned
   only by a validated low-risk classification — maintenance-shaped task kind, low
   ambiguity, at most five reviewable files and three criteria, and no seam,
   interface, security, migration, dependency-edge, multi-repo, or destructive
   flag — or by an explicit `LOOP_SPEC_CYCLE_PROFILE` / `profile:` override. SPEC
-  synthesizes its spec instead of interviewing, and the DISCUSS and PLAN critique
-  gates are skipped when no security signal fires. No gate that can FAIL is
-  removed: the ambiguity gate, the feasibility check, and every VERIFY gate are
-  unchanged, and a genuine security signal still escalates. The answer is
-  persisted as `feature.json.executionProfile`, so a resume keeps the same ladder.
+  synthesizes its spec instead of interviewing. The graph short path then skips
+  DISCUSS, spec-critique, and code review when no security signal fires. PLAN
+  critique skip is the existing `plan-critique.sh` / skill fast-path, not a
+  short-path bypass. The ambiguity gate, the feasibility check, and the
+  deterministic VERIFY gates stay; code review is dropped only behind this
+  classification. The answer is persisted as `feature.json.executionProfile`, so
+  a resume keeps the same ladder.
 
 ## [4.0.0] - 2026-08-17
 

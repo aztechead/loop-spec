@@ -55,6 +55,11 @@ body_args_items="$(jq -r '.definitions.node.properties.bodyArgs.items.type // em
 check "bodyArgs is an array of strings" "string" "$body_args_items"
 optional_ref="$(jq -r '.definitions.node.properties.optionalReads.items["$ref"] // empty' "$SCHEMA")"
 check "optionalReads draws from the stateKey enum" "#/definitions/stateKey" "$optional_ref"
+check "schema does not declare skippable" "false" \
+  "$(jq -r '.definitions.node.properties | has("skippable")' "$SCHEMA")"
+route_args_desc="$(jq -r '.definitions.routeCondition.properties.args.description' "$SCHEMA")"
+check "route args document the same placeholder set as bodyArgs" "1" \
+  "$(grep -c '{featureRepoRoot}' <<<"$route_args_desc")"
 
 ceiling_type="$(jq -r '
   .definitions.edge.properties.ceiling.type

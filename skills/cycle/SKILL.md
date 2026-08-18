@@ -382,10 +382,11 @@ forwards the answer, so the evidence and the decision stay in one place.
 
 `profile=maintenance` runs the lightened ladder (`skills/shared/tier-matrix.md`,
 "Maintenance profile"): SPEC skips the Socratic interview and synthesizes the spec, and
-the DISCUSS and PLAN critique gates are skipped when no security signal fires. Every
-gate that can still FAIL — the ambiguity gate, the feasibility check, and all of VERIFY —
-is unchanged. `profile=standard` (the default, and the answer whenever the invocation
-carries no `profile:` token) is today's full ladder.
+the graph short path skips DISCUSS, spec-critique, and the code-review agent when no
+security signal fires. PLAN critique skip is `plan-critique.sh` / the skill fast-path,
+not that short path. The ambiguity gate, the feasibility check, and the deterministic
+VERIFY gates stay. `profile=standard` (the default, and the answer whenever the
+invocation carries no `profile:` token) is today's full ladder.
 
 Resolution order:
 

@@ -61,7 +61,8 @@ wave (`min(|ready|, maxParallelImplementers)`).
   the operator sets `LOOP_SPEC_WORKTREE_DIR`.
 - `models.implementer`, `models.specComplianceReviewer` — read for each Agent
   call; add `model` only for an alias and omit it for `inherit`.
-- `commands` — `{lint, test, typecheck}` from `feature.json.commands`.
+- `commands.prepare` — from `feature.json.commands`. Repository-wide
+  `lint`/`test`/`typecheck` run once at VERIFY, not on this rung.
 
 ## In-place single-repository mode
 

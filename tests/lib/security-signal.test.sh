@@ -97,6 +97,18 @@ out="$(bash "$SCRIPT" first "$WORK/clause.md")"
 check "a negation in an earlier clause does not suppress" \
   "$WORK/clause.md:1:term=auth protocol" "$out"
 
+printf 'Do not rename the helper — rotate the OAuth2 secret.\n' > "$WORK/emdash.md"
+out="$(bash "$SCRIPT" first "$WORK/emdash.md")"
+check "an em-dash is a clause boundary" \
+  "$WORK/emdash.md:1:term=auth protocol" "$out"
+
+# Coordinating "and" without a comma is one clause: splitting on "and" would
+# fire the second half of "do not touch the auth middleware and the permissions
+# table". The advertised compound uses a comma (or an em-dash).
+printf 'Do not rename the helper and rotate the OAuth2 secret.\n' > "$WORK/and.md"
+rc=0; bash "$SCRIPT" first "$WORK/and.md" >/dev/null 2>&1 || rc=$?
+check "a comma-less coordinating and is one clause" "1" "$rc"
+
 # Narrow by design: a negated ACTION on a security surface is a requirement, not
 # a boundary. Only verbs of CHANGE suppress.
 printf 'The service must never log the credential.\n' > "$WORK/negated-action.md"

@@ -8,11 +8,15 @@
 # are the largest avoidable cost in the run. This is the probe that decides, so the
 # decision is one auditable line rather than a per-phase judgment call.
 #
-# The lightened profile NEVER removes a gate that can still fail: SPEC still scores
-# ambiguity and still gates on it, VERIFY is untouched, and a security signal still
-# escalates the critique gates. What it removes is gate OVERHEAD the classification has
-# already ruled out — a seam, an interface change, a security surface, a migration, a
-# multi-repo blast radius, or scope beyond a handful of files each disqualify it.
+# The lightened profile never removes a gate that can still fail on the work: SPEC still
+# scores ambiguity and still gates on it, and a security signal still lengthens the path.
+# What it removes is gate OVERHEAD the classification has already ruled out — a seam, an
+# interface change, a security surface, a migration, a multi-repo blast radius, or scope
+# beyond a handful of files each disqualify it. The graph short path
+# (`lib/graph/probes/short-path.sh`), selected from this profile, additionally routes
+# around discuss, the spec-critique subgraph, and the code-review agent — that last one
+# is coverage, and only behind this classification. PLAN critique is still decided by
+# `plan-critique.sh`, not by this probe.
 #
 # Usage:
 #   cycle-profile.sh select [<classification.json> | -]

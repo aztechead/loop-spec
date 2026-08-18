@@ -83,7 +83,7 @@
         "args": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Probe argument vector. {featureDir}, {repoRoot}, {slug}, {node} are engine-substituted placeholders; no other placeholder is legal. May be empty."
+          "description": "Probe argument vector. {featureDir}, {repoRoot}, {featureRepoRoot}, {slug}, {node}, {baseSha} are engine-substituted placeholders; no other placeholder is legal. May be empty."
         },
         "expects": {
           "type": "string",

@@ -167,7 +167,7 @@ if cmd == "list":
     sys.exit(emit(every_entry() if kinds[0] == "all" else entries(kinds[0])))
 
 if cmd == "find":
-    if not args:
+    if not args or any(not a.strip() for a in args):
         print("surface.sh: find needs at least one term", file=sys.stderr)
         sys.exit(2)
     terms = [a.lower() for a in args]

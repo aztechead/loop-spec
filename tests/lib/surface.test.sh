@@ -30,6 +30,8 @@ rc=0; bash "$SCRIPT" list nonsense >/dev/null 2>&1 || rc=$?
 check "an unknown list scope is a bad invocation" "2" "$rc"
 rc=0; bash "$SCRIPT" find >/dev/null 2>&1 || rc=$?
 check "find with no term is a bad invocation" "2" "$rc"
+rc=0; bash "$SCRIPT" find "" >/dev/null 2>&1 || rc=$?
+check "find with an empty term is a bad invocation" "2" "$rc"
 
 # --- list ---
 lib_rows="$(bash "$SCRIPT" list lib)"

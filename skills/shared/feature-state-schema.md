@@ -181,9 +181,11 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   `lib/cycle-profile.sh` and persisted so a resume keeps the same shape. `standard` is the
   default and today's full ladder. `maintenance` is earned only by a validated low-risk
   classification (or an explicit operator override): SPEC synthesizes its spec instead of
-  interviewing, and the DISCUSS and PLAN critique gates are skipped when
-  `lib/security-signal.sh` reports no match. No gate that can FAIL is removed — the
-  ambiguity gate, the feasibility check, and every VERIFY gate are unchanged.
+  interviewing, and the graph short path skips DISCUSS, spec-critique, and the
+  code-review agent when `lib/security-signal.sh` reports no match. PLAN critique skip is
+  `plan-critique.sh` / the skill fast-path, not that short path. The ambiguity gate, the
+  feasibility check, and the deterministic VERIFY gates stay; code review is the one
+  quality gate the short path drops, and only behind this classification.
 - `phaseHandoff` is independent of `execStyle` and subagent dispatch. When true,
   cycle writes a paused `phase-handoff` result after a phase transition and a fresh
   invocation resumes at `currentPhase`.

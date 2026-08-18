@@ -660,17 +660,63 @@ if [[ -d "$WORK/cyclerepo" ]]; then
     "$(grep -cx 'verify.code-review' <<<"$full_path")"
   check "the short path skips the code-review agent" "0" \
     "$(grep -cx 'verify.code-review' <<<"$short_path")"
-  # The cheap, high-value VERIFY gates run on BOTH paths -- the short path drops
-  # agent dispatches, never the deterministic scans.
+  # Dry-run records VISITS, not body execution. The .sh VERIFY gates are
+  # dispatched by tests/lib/graph-gate-dispatch.test.sh; this pins they remain
+  # on both declared paths so a non-dry run would reach them.
   for gate in verify.marker verify.tamper verify.acceptance; do
-    check "the short path still runs $gate" "1" "$(grep -cx "$gate" <<<"$short_path")"
+    check "the short path still visits $gate" "1" "$(grep -cx "$gate" <<<"$short_path")"
   done
+  # PLAN critique is NOT a short-path bypass: the gate stays on the path and
+  # plan-critique.sh decides whether the subgraph runs.
+  check "the short path still visits plan.critique.gate" "1" \
+    "$(grep -cx 'plan.critique.gate' <<<"$short_path")"
   # Continuity: a shorter path is still the SAME cycle, ending the same way.
   for phase in spec plan execute verify iterate deliver completed; do
     check "the short path still reaches $phase" "1" "$(grep -cx "$phase" <<<"$short_path")"
   done
   check "the short path is strictly shorter" "1" \
     "$([[ "$(wc -l <<<"$short_path")" -lt "$(wc -l <<<"$full_path")" ]] && echo 1 || echo 0)"
+  check "cycle graph declares no skippable field" "0" \
+    "$(jq '[.nodes[] | select(has("skippable"))] | length' "$ROOT/graph/cycle.graph.json")"
+  # Path-length rule 2: every short-path bypass is paired with a full-path
+  # route, and the branching node defaults to that full-path successor.
+  pair_rc=0
+  pair_out="$(python3 - "$ROOT/graph/cycle.graph.json" 2>&1 <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+nodes = {n["id"]: n for n in g["nodes"]}
+froms = sorted({
+    e["from"] for e in g["edges"]
+    if e.get("kind") == "route"
+    and (e.get("condition") or {}).get("probe") == "lib/graph/probes/short-path.sh"
+})
+failed = []
+for nid in froms:
+    routes = [
+        e for e in g["edges"]
+        if e.get("from") == nid and e.get("kind") == "route"
+        and (e.get("condition") or {}).get("probe") == "lib/graph/probes/short-path.sh"
+    ]
+    shorts = {e["to"] for e in routes if e["condition"].get("expects") == "path=short"}
+    fulls = {e["to"] for e in routes if e["condition"].get("expects") == "path=full"}
+    default = nodes[nid].get("routeDefault")
+    if len(shorts) != 1 or len(fulls) != 1 or default not in fulls:
+        failed.append("%s short=%s full=%s routeDefault=%s" % (
+            nid, sorted(shorts), sorted(fulls), default))
+if not froms:
+    print("no short-path routes")
+    sys.exit(1)
+if failed:
+    print("\n".join(failed))
+    sys.exit(1)
+print("%d branch(es)" % len(froms))
+PY
+)" || pair_rc=$?
+  check "every short-path bypass pairs with routeDefault to the long path" "0" "$pair_rc"
+  if [[ "$pair_rc" != 0 ]]; then
+    echo "$pair_out" | sed 's/^/    /'
+  fi
+  check "the pairing check found the three short-path branches" "3 branch(es)" "$pair_out"
 fi
 
 echo ""

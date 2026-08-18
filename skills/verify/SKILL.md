@@ -132,12 +132,13 @@ VALIDATION_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" co
 ```
 
 It runs the persisted preparation command in every participating repository, then runs
-test/lint/typecheck against the candidate. This is the ONLY place the cycle's
-repository-wide suite runs: startup does not run it (the baseline capture is opt-in), and
-EXECUTE does not run it at any rung — it runs each task's focused `verifyCommand` and
-nothing more. Every rung previously repeated this same comparison per wave against the
-same integrated tree, which is why it is stated here as an invariant rather than a
-default. With no recorded baseline (the default, since
+test/lint/typecheck against the candidate. EXECUTE never runs this comparison at any
+rung — it runs each task's focused `verifyCommand` and nothing more — and startup does
+not run it either (the baseline capture is opt-in). Cycle resume still runs the same
+comparison once before continuing, because an interrupted EXECUTE may have published
+tasks that never reached VERIFY. Every rung previously repeated this same comparison per
+wave against the same integrated tree, which is why the happy-path placement is stated
+here as an invariant rather than a default. With no recorded baseline (the default, since
 `LOOP_SPEC_STARTUP_BASELINE` is off) every failure blocks. With a captured baseline the
 comparison is relative: exit 0 means no new failures, and pre-existing fingerprints may
 remain and must be reported as known baseline failures rather than repaired. Exit 20 is a

@@ -73,8 +73,11 @@ untouched = re.compile(r"\b(?:unchanged|untouched|unmodified|out\s+of\s+scope|no
 
 # Suppression is scoped to the CLAUSE, not the line: "Do not rename the helper,
 # and rotate the OAuth2 secret" is a boundary AND a real signal, and only the
-# first half is the boundary.
-clause_split = re.compile(r"[;:,]|\.(?=\s|$)")
+# first half is the boundary. Em-dash / en-dash are clause punctuation too;
+# a coordinating "and" without a comma is one clause on purpose — splitting on
+# "and" would fire "do not touch the auth middleware and the permissions table"
+# on its second half.
+clause_split = re.compile(r"[;:,]|\.(?=\s|$)|[\u2013\u2014]")
 
 
 def suppressed(clause, in_non_goal):
