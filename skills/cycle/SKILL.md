@@ -717,7 +717,10 @@ call to make. The engine dispatches in-process anything it can execute itself (`
 `gate` bodies, a real nested `subgraph` run, an unadmitted `human` node's skip-and-route);
 this loop only stops at an `agent` node (this phase's own dispatch — the orchestrator, not
 the engine, drives an agent through `Skill(...)`), an admitted `human` node (exit 4,
-pause), a route abort (exit 5), or the graph's terminal node. This exact snippet resolves
+pause), a route abort (exit 5), or the graph's terminal node. Entering or leaving a
+working-phase node also emits `phase_start` / `phase_end` on stderr (the JSON
+descriptor stays on stdout so this snippet's `step_json=$(...)` capture stays
+parseable). This exact snippet resolves
 `currentPhase` for dispatch both here (session entry) and at the bottom of Step 6
 (continuing after a phase returns) — same snippet, same call, one authority:
 
@@ -863,7 +866,10 @@ Cycle's responsibility after the engine names a node is to invoke that phase ski
      bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set \
        ".loop-spec/features/${slug}" currentPhaseStartedAt "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
    fi
-   bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" phase_start --phase "${currentPhase}" || true
+   # phase_start/phase_end are emitted by run.sh --step at the node
+   # transition (lib/graph/engine.py). Do not re-emit here — a second copy
+   # is noise, and this call is the compliance gap that hid the console bar
+   # when a coder ran the phase inline.
    bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" begin \
      --result-root "$repo_root" --cycle-type full --title "$title" --slug "$slug" \
      --branch "feat/${slug}" --base-branch "$base_branch" \
@@ -881,9 +887,10 @@ Cycle's responsibility after the engine names a node is to invoke that phase ski
    after the skill returns. These are accelerators: they may shape how work is done, never
    whether a gate passes, and the path fails open — no output means no extensions.
 
-   Print the greppable boundary line before invoking (and its `done` twin with elapsed
-   time + headline verdict after the skill returns) — `skills/shared/report-style.md`:
-   `[{CURRENTPHASE}] start` / `[{CURRENTPHASE}] done ({elapsed}) — {verdict}`.
+   The Step 5.9 `--step` call already printed the greppable boundary
+   (`LOOP_SPEC_PHASE_START` / `[{CURRENTPHASE}] start` on stderr). The matching
+   `done` line is printed by the next `--step`, when the engine leaves this
+   node. Do not print them by hand — `skills/shared/report-style.md`.
    ```
    Skill(loop-spec:{currentPhase})
    ```
@@ -947,8 +954,9 @@ Cycle's responsibility after the engine names a node is to invoke that phase ski
    ```
 
    **DELIVER external-observation exception:** when the phase that returned was
-   `deliver` and `next_phase` is `completed` or `deliver`, emit `phase_end` but skip the
-   tracked timestamp/progress/state commit below. Success proved the exact PR head SHA;
+   `deliver` and `next_phase` is `completed` or `deliver`, skip the
+   tracked timestamp/progress/state commit below. The engine emits `phase_end` on
+   the following `--step`. Success proved the exact PR head SHA;
    a hard transport/identity/timeout failure also binds its retry to the exact attempted
    SHA. Any new commit would invalidate either invariant. Only `next_phase == "execute"`
    mutates and commits tracked remediation state.
@@ -982,11 +990,9 @@ Cycle's responsibility after the engine names a node is to invoke that phase ski
 
    feature.json says WHERE the loop is; PROGRESS.md says WHY — it is what a fresh or compacted session reads to re-orient (Step 1 re-grounding), and the handoff document for fresh-context rewinds.
 
-   Emit the `phase_end` event before committing (the event is non-fatal — it must not gate the commit):
-   ```bash
-   bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" phase_end \
-     --phase "{phase}" --data "{\"next\":\"${next_phase}\"}" || true
-   ```
+   Do not emit `phase_end` here. The next Step 5.9 `--step` closes this phase
+   when it leaves the node, even if the agent ran the work inline and never
+   invoked the phase skill.
 
    **Commit the resume contract (single point).** Resolve the state commit policy with
    `bash "${CLAUDE_SKILL_DIR}/../../lib/state-commit-policy.sh" mode`. The default

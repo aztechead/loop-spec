@@ -2,6 +2,19 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [Unreleased]
+
+### Fixed
+
+- **Full-cycle phase markers are emitted by the graph engine, not by cycle-skill
+  prose the agent can skip.** A run that called `loop-spec:cycle` once, then
+  implemented the feature inline, produced `cycleKind=full` with `phase=unknown`
+  and a hidden progress bar: zero `LOOP_SPEC_PHASE_*` lines, zero `[PHASE]`
+  tags, zero `events.sh` calls. `lib/graph/run.sh --step` now emits
+  `phase_start` / `phase_end` at working-phase node transitions (markers on
+  stderr so the `--step` JSON descriptor stays parseable). micro and debug
+  still emit from their skills.
+
 ## [4.1.0] - 2026-08-18
 
 Fixes and controls from headless, autonomous, graph-driven runs. Two changes alter

@@ -132,7 +132,12 @@ delivery block.
 ## Phase Boundary Markers
 
 `lib/events.sh` continues to append the existing JSONL event shape. `phase_start` and
-`phase_end` add fields and also print one greppable line:
+`phase_end` add fields and also print one greppable line. A full cycle's boundaries are
+emitted by `lib/graph/run.sh` at node transitions — not by cycle-skill prose the agent
+can skip — so a run that `--step`s the graph and then works inline still surfaces them.
+`--step` keeps its JSON descriptor on stdout; the greppable lines share stderr with the
+`[PHASE]` console line so a `step_json=$(run.sh --step)` capture cannot trap them.
+micro and debug still emit from their skills.
 
 ```text
 LOOP_SPEC_PHASE_START {"event":"phase_start","attemptId":"...","timestamp":"...",...}

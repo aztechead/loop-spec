@@ -102,6 +102,12 @@ The engine MUST call the components the spec promised:
   that node's next attempt to `system2` and is recorded.
 - `lib/graph/trace.sh` with the REAL probe token and reason for the edge taken, never the
   literal `probe="none"`.
+- `lib/events.sh` `phase_start` / `phase_end` at every working-phase node transition
+  (`spec` `discuss` `plan` `execute` `verify` `iterate` `deliver`). The engine owns
+  the successor; it is the one caller that cannot skip the marker. `--step` keeps its
+  JSON descriptor on stdout; the greppable `LOOP_SPEC_PHASE_*` line shares stderr with
+  the `[PHASE]` console line so a `step_json=$(run.sh --step)` capture cannot trap it.
+  Covered by `tests/lib/graph-run.test.sh` section 21.
 
 ## 8. Terminal result
 

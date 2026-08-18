@@ -347,12 +347,67 @@ def compute_effort(node_id, node, attempt):
 
 CYCLE_RESULT = os.path.realpath(os.path.join(repo_root, "lib", "cycle-result.sh"))
 
+# Working phases an operator (and the console) can be *in*. `completed` is a
+# pointer the engine writes, not a phase that emits start/end markers.
+PHASE_NODE_IDS = (
+    "spec", "discuss", "plan", "execute", "verify", "iterate", "deliver",
+)
+PHASE_POINTER_IDS = PHASE_NODE_IDS + ("completed",)
+EDGE_KIND_RE = re.compile(
+    r"^(?:chain|route|fanout|fanin|loop|routeDefault):(.+)->(.+)$"
+)
+
 
 def _is_cycle_result_body(body_path):
     try:
         return os.path.realpath(body_path) == CYCLE_RESULT
     except Exception:
         return False
+
+
+def emit_phase_boundaries(current, admitting):
+    """phase_start / phase_end at node transitions (REMEDIATION-CONTRACT.md sec 7).
+
+    The cycle skill used to ask the agent to run `events.sh emit` as prose, so a
+    coder who ran the work inline skipped every marker and the console saw
+    phase=unknown. The engine already owns the transition; it is the one caller
+    that cannot skip it.
+
+    Markers share stderr with the `[PHASE]` console line. --step's JSON
+    descriptor and the full-traversal TSV both occupy stdout, and the cycle
+    snippet captures --step stdout (`step_json=$(run.sh --step)`), so putting
+    LOOP_SPEC_PHASE_* on stdout would both break jq and trap the only greppable
+    record inside a variable the session log never sees.
+    """
+    if dry_run:
+        return
+    events = os.environ.get("LOOP_SPEC_EVENTS") or os.path.join(
+        repo_root, "lib", "events.sh")
+    leaving = None
+    match = EDGE_KIND_RE.match(admitting or "")
+    if match:
+        src = match.group(1)
+        if src in PHASE_NODE_IDS:
+            leaving = src
+    nxt = current
+    if current not in PHASE_NODE_IDS and current != "completed":
+        feat = _feature_json() or {}
+        cur = feat.get("currentPhase")
+        if isinstance(cur, str) and cur and cur != leaving:
+            nxt = cur
+    try:
+        if leaving:
+            subprocess.call(
+                ["bash", events, "emit", feature_dir, "phase_end",
+                 "--phase", leaving, "--data", json.dumps({"next": nxt})],
+                stdout=sys.stderr)
+        if current in PHASE_NODE_IDS:
+            subprocess.call(
+                ["bash", events, "emit", feature_dir, "phase_start",
+                 "--phase", current],
+                stdout=sys.stderr)
+    except Exception:
+        pass
 
 
 def publish_result(status, summary):
@@ -455,11 +510,11 @@ def process_node(current, admitting, defer_agent_routing):
 
     # Phase pointer: the graph owns successors, so the engine advances
     # currentPhase when entering a phase node — never before start-node
-    # resolution (contract sec 5) and never for a dry run.
-    phase_ids = {
-        "spec", "discuss", "plan", "execute", "verify", "iterate", "deliver", "completed",
-    }
-    if not dry_run and current in phase_ids:
+    # resolution (contract sec 5) and never for a dry run. The same
+    # transition is what emits phase_start/phase_end: close the phase named
+    # by the admitting edge, then open the node we are entering.
+    emit_phase_boundaries(current, admitting)
+    if not dry_run and current in PHASE_POINTER_IDS:
         feat_path = os.path.join(feature_dir, "feature.json")
         if os.path.isfile(feat_path):
             fw = os.environ.get("LOOP_SPEC_FEATURE_WRITE") or os.path.join(
