@@ -96,7 +96,7 @@ Still zero ceremony — no worktree, no DELIVER controller:
 - If the request names an open PR, adopt it instead of minting `micro/<slug>`:
   ```bash
   adopt_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/adopt-pr.sh" resolve \
-    --repo "$(git rev-parse --show-toplevel)" --request "$task")"
+    --repo "$(git rev-parse --show-toplevel)" --request "<the task text>")"
   ```
   When `.adopt == true`, check out `.branch` (fetch first) and stay on it. That is
   the PR DELIVER-equivalent will update. Dirt on that branch is the work.

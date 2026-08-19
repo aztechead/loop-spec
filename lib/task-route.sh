@@ -51,7 +51,7 @@ arm_route() {
   [[ -n "$classification" ]] && extra+=(--classification "$classification")
   bash "$script_dir/cycle-result.sh" begin --result-root "$repo_path" \
     --cycle-type "$route" --title "$title" --phase routing \
-    --autonomous true "${extra[@]}" >/dev/null 2>&1 || true
+    --autonomous true ${extra[@]+"${extra[@]}"} >/dev/null 2>&1 || true
 }
 
 fallback() {
