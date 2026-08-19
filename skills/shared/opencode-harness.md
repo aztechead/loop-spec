@@ -108,7 +108,10 @@ native `task` tool:
   dispatch. Pass it only when the invoking command is known; otherwise omit it.
 - There is NO per-dispatch `model` parameter — omit it. Per-role models come
   from the generated agent file (default: inherit the session model; pin by
-  editing `model: provider/model` there). The `model-matrix.md` aliases are
+  `opencode-install.sh install --model` or a project `agent` override).
+  `LOOP_SPEC_PHASE_MODEL_*` and non-implementer `LOOP_SPEC_MODEL_*` are not
+  forwarded on `task` — those env routes are Claude Agent aliases or, for
+  implementer, the loop-fleet `--model` flag. The `model-matrix.md` aliases are
   Claude Code-only.
 
 OpenCode's `task` schema always requires `subagent_type`; it has no generic

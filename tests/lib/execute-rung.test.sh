@@ -80,6 +80,25 @@ out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=c
 check "workflow still wins when opted in" "workflow" "$(jq -r '.rung' <<<"$out")"
 
 out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+  LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 3 --teams-mode implicit \
+  --workflows-available false --workflow-optin false)"
+check "implicit inherit still selects team" "team" "$(jq -r '.rung' <<<"$out")"
+
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+  LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 3 --teams-mode implicit \
+  --workflows-available false --workflow-optin false --implementer-model sonnet)"
+check "implicit sonnet skips team for a nameless subagent" "subagent" "$(jq -r '.rung' <<<"$out")"
+check "implicit sonnet reason names session inheritance" "1" \
+  "$(grep -Fq 'inherit the session model' <<<"$(jq -r '.reason' <<<"$out")" && echo 1 || echo 0)"
+check "implicit sonnet still reports teamsMode implicit" "implicit" \
+  "$(jq -r '.teamsMode' <<<"$out")"
+
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+  LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 3 --teams-mode explicit \
+  --workflows-available false --workflow-optin false --implementer-model sonnet)"
+check "explicit sonnet still selects team" "team" "$(jq -r '.rung' <<<"$out")"
+
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 08 --teams-mode implicit \
   --workflows-available true --workflow-optin true)"
 check "leading-zero width is decimal" "workflow" "$(jq -r '.rung' <<<"$out")"
@@ -102,6 +121,8 @@ check "EXECUTE rung relay captures stderr" "1" \
   "$(grep -Fq '2>"$rung_err"' "$EXEC_SKILL" && echo 1 || echo 0)"
 check "EXECUTE rung relay falls back to the stderr text" "1" \
   "$(grep -Fq 'rung_msg="$(cat "$rung_err")"' "$EXEC_SKILL" && echo 1 || echo 0)"
+check "EXECUTE passes implementer model into the rung probe" "1" \
+  "$(grep -Fq -- '--implementer-model' "$EXEC_SKILL" && echo 1 || echo 0)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

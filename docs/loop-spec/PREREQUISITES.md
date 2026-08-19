@@ -96,6 +96,8 @@ Enforce the model policy where it is actually checked instead:
 1. **Pin the routes.** Set `LOOP_SPEC_PHASE_MODEL_<PHASE>` and/or `LOOP_SPEC_MODEL_<ROLE>`
    in the deployment environment. Both default to `inherit`. Claude role routes
    accept Agent aliases; a full ID belongs only to a fresh phase CLI/SDK launcher.
+   On Claude Code implicit-team (named `Agent({name})` teammates), those aliases
+   bind only on a nameless one-shot Agent (`lib/implicit-team-model.sh`).
    Cycle activates the consumable role map into `feature.models.<role>` before
    every phase and rejects a selector that its dispatch surface cannot use.
 2. **Constrain explicit aliases.** Alias → concrete model is a harness/provider

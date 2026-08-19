@@ -181,8 +181,8 @@ variables. They configure that published recipe, not plugin internals:
 
 | Variable | Accepted values / default | Exact effect |
 |---|---|---|
-| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and role Agents. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. Pi and OpenCode consume an explicit value only on loop-fleet subprocesses. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. OpenCode native task agents use generated-agent routes instead. |
-| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. OpenCode and ADK accept a native ID only for `IMPLEMENTER` on the loop-fleet rung (OpenCode `provider/model`, ADK `gemini-*` or `provider/model`); configure other OpenCode roles through generated agents and ADK roles through the mounted agent. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
+| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and to **nameless** role Agents. A named implicit-team spawn inherits the session model regardless (`skills/shared/implicit-team-mode.md`); `lib/implicit-team-model.sh` selects the nameless path when an alias is set. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. OpenCode consumes an explicit value only on loop-fleet subprocesses; its `task` tool has no per-call model — pin task roles with `opencode-install.sh install --model`. ADK `dispatch_subagent` consumes a native role id. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. |
+| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. OpenCode accepts a native ID only for `IMPLEMENTER` on the loop-fleet rung (`provider/model`); configure other OpenCode roles through generated agents. ADK accepts a native ID (`gemini-*` or `provider/model`) for every role and forwards it on `dispatch_subagent({model})`. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
 | `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
 | `LOOP_SPEC_ANSWER_REPOS` | comma-separated repo names; all | Supplies workspace repo selection. |
@@ -193,7 +193,8 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_ANSWER_PRESET` | ignored | Removed compatibility input. A notice is emitted; it cannot change behavior. |
 | `LOOP_SPEC_ANSWER_*` | family | Namespace used by non-interactive answers. Unknown suffixes are ignored. |
 
-Concrete variables such as `LOOP_SPEC_MODEL_PLANNER` and
+Concrete variables such as `LOOP_SPEC_MODEL_PLANNER`,
+`LOOP_SPEC_MODEL_IMPLEMENTER`, and
 `LOOP_SPEC_MODEL_ITERATE_JUDGE` follow the `LOOP_SPEC_MODEL_<ROLE>` contract; the
 family form is canonical for every supported role. Likewise,
 `LOOP_SPEC_PHASE_MODEL_SPEC`, `LOOP_SPEC_PHASE_MODEL_DISCUSS`,

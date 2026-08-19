@@ -44,6 +44,8 @@ checks=(
   "extensions/adk/loop_spec_adk/plugin.py	on_user_message_callback"
   "extensions/adk/loop_spec_adk/agent.py	AgentTool"
   "extensions/adk/loop_spec_adk/agent.py	dispatch_subagent"
+  "skills/shared/adk-harness.md	model?"
+  "extensions/adk/loop_spec_adk/agent.py	model: str = \"\""
   "extensions/adk/loop_spec_adk/agent.py	get_user_choice"
   # -- installer places both agents and records the mount
   "lib/adk-install.sh	loop_spec_readonly"
@@ -226,6 +228,20 @@ elif [[ -f "$QUOTED/adk_agents/loop_spec/notes.txt" \
   PASS=$((PASS+1)); echo "PASS: uninstall preserves unrelated mount content"
 else
   FAIL=$((FAIL+1)); echo "FAIL: uninstall removed unrelated mount content"
+fi
+
+# The shipped bridge must at least PARSE offline. tests/adk-extension.test.sh is
+# the real contract suite, but it skips wherever google-adk is absent — which is
+# every default `tests/run-all.sh` run — so a syntax error in the package reaches
+# a user before any suite objects. This is the unconditional floor.
+adk_syntax_ok=1
+for py in extensions/adk/loop_spec_adk/*.py; do
+  python3 -m py_compile "$py" 2>/dev/null || { adk_syntax_ok=0; echo "  $py does not parse"; }
+done
+if [[ "$adk_syntax_ok" == "1" ]]; then
+  PASS=$((PASS+1)); echo "PASS: shipped ADK package parses"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: shipped ADK package does not parse"
 fi
 
 finish_fixed_string_coverage

@@ -48,7 +48,11 @@ Agent({
   `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` by an actual named spawn + `SendMessage` by
   name (the teams surface merged into core; the flag remains loop-spec's routing gate
   via `lib/teams-capability.sh`, not a schema gate). `name` pattern:
-  `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`.
+  `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`. On the implicit-team harness (CC >= 2.1.178 with
+  the flag set), passing `name` starts an **in-process teammate** that inherits the
+  lead session model; `model` and the agent definition's `model:` frontmatter are
+  ignored. Honor a role alias by omitting `name` (`lib/implicit-team-model.sh`,
+  `skills/shared/implicit-team-mode.md`).
 - `team_name` is accepted but ignored (harness marks it deprecated) — never emit it.
 
 ## AskUserQuestion

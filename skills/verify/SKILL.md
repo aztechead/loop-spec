@@ -15,11 +15,13 @@ Invoked when feature.json currentPhase == "verify".
 > code-review HARD-GATE semantics are unchanged.
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
-> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
-> spawn verifier and code-reviewer with `Agent({name, description, subagent_type, model, prompt})`, folding
-> each one's work prompt into the spawn, and use `SendMessage` for any follow-up. Per
-> `skills/shared/implicit-team-mode.md`. The acceptance gate and code-review HARD-GATE
-> semantics are unchanged.
+> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). Probe
+> `lib/implicit-team-model.sh spawn-kind --teams-mode implicit --selector <feature.models.role>`
+> per teammate. `named`: `Agent({name, description, subagent_type, prompt})` with no
+> `model` key, then `SendMessage` for follow-up. `oneshot`: nameless Agent with the
+> alias so routing binds; rework re-dispatches per `skills/shared/no-teams-fallback.md`.
+> Per `skills/shared/implicit-team-mode.md`. The acceptance gate and code-review
+> HARD-GATE semantics are unchanged.
 
 > **Autonomous mode** (`feature.json.autonomous == true`): no escalation in this phase
 > may wait on a human, and `warnings[]` is an audit record, never the handler

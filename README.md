@@ -23,7 +23,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 4.2.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+Current version: 4.2.2 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Install
 

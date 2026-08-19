@@ -94,8 +94,8 @@ check "subagents under claude -> true" "true" "$got"
 got=$(run subagents LOOP_SPEC_HARNESS=opencode)
 check "subagents under opencode -> true" "true" "$got"
 
-# The ADK bridge's dispatch_subagent takes the same {description, prompt,
-# subagent_type} shape, so the capability holds there too.
+# The ADK bridge's dispatch_subagent takes {description, prompt, subagent_type,
+# optional native model}, so the capability holds there too.
 got=$(run subagents LOOP_SPEC_HARNESS=adk)
 check "subagents under adk -> true" "true" "$got"
 

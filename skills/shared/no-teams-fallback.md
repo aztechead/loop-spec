@@ -18,7 +18,7 @@ context-isolated; no call is left running in the background.
 through the bridge's `dispatch_subagent` tool, which shares the `Agent` call
 shape. Apply this table first, then the **dispatch mapping rule** in
 `skills/shared/adk-harness.md` on top: role names lose the `loop-spec:` prefix
-and there is no per-dispatch model parameter.
+and optional `model` is an ADK id (omit it to inherit the mounted agent).
 
 **opencode harness:** this table applies as written — the one-shot dispatches
 run natively through opencode's `task` tool, which shares the `Agent` call

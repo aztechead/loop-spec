@@ -36,7 +36,7 @@ check() { # check <label> <got> <want>
 DRIVER_ERR="$(mktemp)"
 trap 'rm -f "$DRIVER_ERR"' EXIT
 OUT="$(PYTHONPATH="$REPO_ROOT/extensions/adk" "$PY" - <<'PY' 2>"$DRIVER_ERR"
-import asyncio, json, os, tempfile
+import asyncio, inspect, json, os, tempfile
 from importlib.metadata import version
 from loop_spec_adk import (LoopSpecBridge, LoopSpecPlugin, build_agent,
                            build_app, build_readonly_agent, load_roles)
@@ -108,7 +108,11 @@ async def main():
     r = await bridge.environment.execute('bash "$CLAUDE_PLUGIN_ROOT/lib/workflow-availability.sh"')
     out["workflows"] = (r.stdout or "").strip()
 
-    out["root_tools"] = await tool_names(build_agent(bridge=bridge))
+    root = build_agent(bridge=bridge)
+    out["root_tools"] = await tool_names(root)
+    dispatch = next(t for t in root.tools
+                    if getattr(t, "__name__", "") == "dispatch_subagent")
+    out["dispatch_has_model"] = "model" in inspect.signature(dispatch).parameters
     out["readonly_tools"] = await tool_names(build_readonly_agent(bridge=bridge))
 
     app = build_app(".")
@@ -201,6 +205,7 @@ check "inherit falls back"            "$(get model_inherit)" "gemini-2.5-pro"
 check "claude alias falls back"       "$(get model_alias)" "gemini-2.5-pro"
 check "gemini id passes through"      "$(get model_gemini)" "gemini-2.5-flash"
 check "litellm id passes through"     "$(get model_litellm)" "anthropic/claude-sonnet-4-5"
+check "dispatch_subagent accepts model" "$(get dispatch_has_model)" "True"
 check "root tool surface"             "$(get root_tools)" \
   "['EditFile', 'Execute', 'ReadFile', 'WriteFile', 'dispatch_subagent', 'get_user_choice', 'list_skills', 'load_skill', 'load_skill_resource']"
 check "read-only tool surface"        "$(get readonly_tools)" \

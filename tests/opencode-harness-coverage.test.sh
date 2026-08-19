@@ -28,6 +28,7 @@ checks=(
   "skills/shared/opencode-harness.md	lib/pr-delivery.sh"
   "skills/shared/opencode-harness.md	does not pretend worktree creation changed cwd"
   "skills/shared/opencode-harness.md	--model adversarial=github-copilot/"
+  "skills/shared/opencode-harness.md	LOOP_SPEC_PHASE_MODEL_*"
   "lib/opencode-install.sh	modelRoutes"
   # -- the harness probe knows opencode and grants the subagent capability
   "lib/harness.sh	opencode"

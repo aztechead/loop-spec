@@ -50,7 +50,10 @@ For Claude Code, a role override may be `inherit` or a host alias such as
 `sonnet`, `opus`, `haiku`, or `fable`. A full model ID is valid only as a phase
 override consumed by a fresh CLI/SDK main-context launcher; its role agents omit
 the model key and inherit that main model. `feature-init.sh` rejects a full ID in
-a Claude role override because Agent cannot consume it. A selector is explicit
+a Claude role override because Agent cannot consume it. On the implicit-team
+harness, a Claude alias is consumed only by a **nameless** Agent spawn; a named
+teammate inherits the session even if the key is present
+(`skills/shared/implicit-team-mode.md`). A selector is explicit
 operator policy; loop-spec does not maintain a model-ID catalog or silently
 translate one family into another.
 
@@ -59,6 +62,7 @@ The consuming surfaces differ and a selector valid for one is not valid for all:
 | Surface | Accepts |
 |---|---|
 | `Agent({model:})` tool parameter | the four aliases only; `inherit` and full IDs are rejected — omit the key to inherit |
+| named implicit-team `Agent({name})` | session model only — alias and frontmatter are ignored (`lib/implicit-team-model.sh`) |
 | agent definition frontmatter (`agents/*.md`) | an alias or `inherit` |
 | `claude --model` / SDK `model` option | an alias or a full model ID; never the literal `inherit` |
 
@@ -76,12 +80,15 @@ own main model, but role subagents still consume the activated map.
 OpenCode routes native role models through generated-agent configuration, using
 `provider/model` IDs. Configure those with
 `opencode-install.sh install --model` or a project agent override. Unrouted
-agents inherit the primary model. ADK role agents inherit the mounted app model;
-the ADK and OpenCode loop-fleet rungs may receive a native implementer ID through
-the `LOOP_SPEC_MODEL_<ROLE>` family with role `IMPLEMENTER`. Other non-Claude role
-overrides reject native IDs
-because no shipped dispatch consumes them. Set a native selector only when the
-selected rung will consume it; neither harness consumes Claude aliases.
+agents inherit the primary model. The OpenCode `task` tool has no per-call
+`model` field, so `LOOP_SPEC_PHASE_MODEL_*` / non-implementer `LOOP_SPEC_MODEL_*`
+are not forwarded on task dispatch. ADK role agents inherit the mounted app
+model unless `dispatch_subagent` is given a native id; the ADK and OpenCode
+loop-fleet rungs may receive a native implementer ID through
+the `LOOP_SPEC_MODEL_<ROLE>` family with role `IMPLEMENTER`. Other OpenCode
+role overrides reject native IDs because no shipped `task` dispatch consumes
+them. Set a native selector only when the selected rung will consume it;
+neither harness consumes Claude aliases.
 
 Legacy task `modelTier` values remain accepted so old plans resume, but
 `lib/model-tier.sh` resolves every tier to `inherit`. A plan that truly needs a
@@ -90,14 +97,20 @@ specific model must carry an explicit operator-approved `model` value.
 ## Dispatch rule
 
 Claude phase skills read `feature.models.<role>` and pass it on each Agent spawn
-**only when it is one of the four aliases**. When it resolves to `inherit` — the
-default — OMIT the `model` key entirely: the Agent tool's `model` is an alias
-enum and rejects the literal string `inherit` with `InputValidationError`
-(`skills/shared/harness-call-contracts.md` records the live probe). The durable
-policy still shows in `feature.models.<role>`; the dispatch does not restate it.
-Under OpenCode, apply the native task mapping and omit the per-call model. Under
-ADK, `dispatch_subagent` applies the role charter and inherits the app model when
-the charter's model is `inherit` or a Claude-only alias.
+**only when it is one of the four aliases and the spawn is nameless**. When it
+resolves to `inherit` — the default — OMIT the `model` key entirely: the Agent
+tool's `model` is an alias enum and rejects the literal string `inherit` with
+`InputValidationError` (`skills/shared/harness-call-contracts.md` records the live
+probe). Named implicit-team spawns also omit `model` and omit any alias: they are
+in-process teammates that inherit the session (`lib/implicit-team-model.sh`).
+The durable policy still shows in `feature.models.<role>`; the dispatch does not
+restate it.
+Under OpenCode, apply the native task mapping and omit the per-call model —
+`LOOP_SPEC_PHASE_MODEL_*` is not a `task` parameter; pin roles with generated-agent
+`--model` routes (`skills/shared/opencode-harness.md`). Under ADK, pass
+`dispatch_subagent`'s optional `model` when `feature.models.<role>` is an ADK id
+(`gemini-*` or `provider/model`); `inherit` and Claude aliases fall back to the
+mounted app model (`skills/shared/adk-harness.md`).
 
 Standalone skills and agents also default to `inherit`. A user's chosen session
 model is a complete supported configuration, not a degraded mode.
