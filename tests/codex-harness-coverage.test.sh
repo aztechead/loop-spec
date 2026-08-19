@@ -65,6 +65,7 @@ checks=(
   "lib/codex-install.sh	loop-spec-readonly"
   "lib/codex-install.sh	shell_environment_policy.set"
   "lib/codex-install.sh	.agents/skills"
+  "lib/codex-install.sh	s.replace(\"\\\\\", \"\\\\\\\\\").replace('\"\"\"', \"'''\")"
   # -- loop-runner backend
   "skills/loop-runner/scripts/loop.py	def run_codex"
   "skills/loop-runner/scripts/loop.py	codex"
