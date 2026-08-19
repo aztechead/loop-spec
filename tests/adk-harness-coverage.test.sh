@@ -230,4 +230,18 @@ else
   FAIL=$((FAIL+1)); echo "FAIL: uninstall removed unrelated mount content"
 fi
 
+# The shipped bridge must at least PARSE offline. tests/adk-extension.test.sh is
+# the real contract suite, but it skips wherever google-adk is absent — which is
+# every default `tests/run-all.sh` run — so a syntax error in the package reaches
+# a user before any suite objects. This is the unconditional floor.
+adk_syntax_ok=1
+for py in extensions/adk/loop_spec_adk/*.py; do
+  python3 -m py_compile "$py" 2>/dev/null || { adk_syntax_ok=0; echo "  $py does not parse"; }
+done
+if [[ "$adk_syntax_ok" == "1" ]]; then
+  PASS=$((PASS+1)); echo "PASS: shipped ADK package parses"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: shipped ADK package does not parse"
+fi
+
 finish_fixed_string_coverage

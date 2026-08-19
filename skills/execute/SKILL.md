@@ -334,7 +334,7 @@ fi
 workflows_available=$(jq -r '.workflowsAvailable // false' .loop-spec/runtime.json 2>/dev/null || echo false)
 workflow_optin=$(jq -r '.workflowExecuteOptIn // false' .loop-spec/runtime.json 2>/dev/null || echo false)
 teams_mode=$(jq -r '.teamsMode // "none"' .loop-spec/runtime.json 2>/dev/null || echo none)
-implementer_model=$(jq -r '.models.implementer // "inherit"' ".loop-spec/features/${slug}/feature.json")
+implementer_model=$(jq -r '.models.implementer // "inherit"' ".loop-spec/features/${slug}/feature.json" 2>/dev/null || echo inherit)
 ```
 
 #### Step 3b - Select the rung

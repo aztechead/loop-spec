@@ -124,8 +124,8 @@ def build_agent(project_dir: Optional[Path | str] = None, *,
         )
 
     async def dispatch_subagent(subagent_type: str, description: str, prompt: str,
-                                model: str = "",
-                                tool_context: ToolContext) -> dict[str, Any]:
+                                tool_context: ToolContext,
+                                model: str = "") -> dict[str, Any]:
         """Dispatch one loop-spec role for a single task and return its result.
 
         Args:
