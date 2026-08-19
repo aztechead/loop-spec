@@ -540,7 +540,9 @@ def toml_basic(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 def toml_multiline(s):
-    return '"""\n' + s.replace('"""', "'''") + '\n"""'
+    # """ strings still honor backslash escapes (`\b` is backspace, `\s` is a
+    # parse error). Agent markdown ships regexes; escape like toml_basic.
+    return '"""\n' + s.replace("\\", "\\\\").replace('"""', "'''") + '\n"""'
 
 for name in sorted(os.listdir(src_dir)):
     if not name.endswith(".md") or name == "README.md":
