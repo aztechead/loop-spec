@@ -1,6 +1,6 @@
 # loop-spec
 
-Spec-driven development loops for [Claude Code](https://claude.com/claude-code), [opencode](https://opencode.ai), and an experimental [Google ADK](https://google.github.io/adk-docs/) adapter — three peer harness contracts from one source tree.
+Spec-driven development loops for [Claude Code](https://claude.com/claude-code), [opencode](https://opencode.ai), [OpenAI Codex](https://developers.openai.com/codex), and an experimental [Google ADK](https://google.github.io/adk-docs/) adapter — four peer harness contracts from one source tree.
 
 Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
 
@@ -23,7 +23,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 4.2.2 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+Current version: 4.3.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Install
 
@@ -51,6 +51,31 @@ bash loop-spec/lib/opencode-install.sh install --project . # or ./.opencode
 ```
 
 Generates namespaced skills/commands/agents and installs `extensions/opencode/loop-spec.ts`. Preferred headless entry: `opencode run --format json "Load the loop-spec-auto skill and run: <description>"`. Differences: [`skills/shared/opencode-harness.md`](skills/shared/opencode-harness.md).
+
+### Codex
+
+```bash
+git clone https://github.com/aztechead/loop-spec
+bash loop-spec/lib/codex-install.sh install            # ~/.codex + ~/.agents/skills
+bash loop-spec/lib/codex-install.sh install --project . # or ./.codex + ./.agents/skills
+```
+
+Alternatively, from a clone that already contains `.codex-plugin/plugin.json` and
+`.agents/plugins/marketplace.json`:
+
+```bash
+codex plugin marketplace add https://github.com/aztechead/loop-spec.git
+codex plugin add loop-spec
+```
+
+The installer generates namespaced `$loop-spec-<name>` skill adapters, custom
+agent TOML for `spawn_agent`, and a marked `shell_environment_policy.set` block
+so Bash subprocesses receive `LOOP_SPEC_HARNESS=codex` without waiting on plugin
+hook trust. Start a new Codex session after installing so custom agents are
+loaded. Preferred headless entry:
+`LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`.
+Plugin-bundled hooks stay skipped until `/hooks` trusts them. Differences:
+[`skills/shared/codex-harness.md`](skills/shared/codex-harness.md).
 
 ### Google ADK
 
@@ -80,7 +105,7 @@ Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 ```
 
 1. Startup probes cache to `.loop-spec/runtime.json`. The first run also builds a 5-domain codebase map under `docs/loop-spec/codebase/`.
-2. Claude Code creates a feature worktree at `.claude/worktrees/{slug}` on `feat/{slug}`. OpenCode and ADK create the branch in place on a clean checkout — neither has a session-root switch, so `executionRootMode` records the difference rather than faking it.
+2. Claude Code creates a feature worktree at `.claude/worktrees/{slug}` on `feat/{slug}`. OpenCode, Codex, and ADK create the branch in place on a clean checkout — none of them has a session-root switch, so `executionRootMode` records the difference rather than faking it.
 3. SPEC interviews you (up to 6 rounds) until the ambiguity gate passes, then writes `docs/loop-spec/features/{slug}/SPEC.md`.
 4. DISCUSS critiques the spec. PLAN writes `PATTERNS.md` + `PLAN.md` (task DAG with verify commands).
 5. EXECUTE implements tasks in parallel where the DAG allows, one commit per task.
@@ -184,8 +209,9 @@ Common knobs:
 | `LOOP_SPEC_MAX_FEATURES` | `1` | Backlog / sentinel batch size (L1+ for sentinel) |
 | `LOOP_SPEC_CHECKPOINT_PR` | on | `0` disables draft checkpoint PRs |
 | `LOOP_SPEC_CMD_TEST` (and `LOOP_SPEC_CMD_*`) | detected | Pin test/lint/typecheck/prepare commands |
-| `LOOP_SPEC_HARNESS` | detected | Force `claude`, `opencode`, or `adk` |
+| `LOOP_SPEC_HARNESS` | detected | Force `claude`, `opencode`, `adk`, or `codex` |
 | `LOOP_SPEC_ADK_AGENT_DIR` | unset | Mounted ADK agent directory (written by `lib/adk-install.sh`) |
+| `CODEX_HOME` | `~/.codex` | Codex config tree used by `lib/codex-install.sh` when `--project` is omitted |
 
 Config files under `.loop-spec/`: `workflow.json`, `workspace.json`, `sentinel.conf`, `trust.conf`, `tuning.json`, session-mode `*.conf`, `extensions.json`, `RULES.md`. Extensions add review layers and phase instructions; they never disable built-in gates.
 

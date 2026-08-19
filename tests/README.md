@@ -131,3 +131,36 @@ needed:
 older, and 3.x installations fail before an agent mount is accepted. A real
 oldest/latest compatibility matrix remains useful follow-up coverage, not a
 merge gate.
+
+## Manual Codex-harness smoke (post-merge operational validation)
+
+`tests/codex-harness-coverage.test.sh` pins the cross-file couplings, and
+`tests/lib/codex-install.test.sh` / `skills/loop-runner/tests/run_tests.sh`
+exercise the installer and `codex exec --json` backend against `fakecodex` —
+but none of those call a live Codex model. Live validation is not a merge
+gate. The first operator should record this smoke and ship follow-up fixes as
+needed:
+
+1. `bash lib/codex-install.sh install --project <dir>` — adapters under
+   `<dir>/.agents/skills/loop-spec-*`, custom agents under
+   `<dir>/.codex/agents/loop-spec-*.toml`, and a marked
+   `shell_environment_policy.set` block in `<dir>/.codex/config.toml`.
+2. `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write
+   '$loop-spec-auto list your skills'` — JSONL stream
+   parses (`thread.started`, `turn.*`, `item.*`).
+3. Load `$loop-spec-status` (or a plugin skill `$status`) and confirm a shell
+   line runs `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect` printing
+   `codex`.
+4. A fleet tick:
+   `python3 skills/loop-runner/scripts/loop.py "<task>" --agent-cli codex --verify <cmd>`
+   — `result.json` has the same shape as the claude backend, with
+   `cost_usd: null` (Codex reports tokens, not money).
+5. Confirm a read-only judge tick (`--permission-mode plan`) passes
+   `--sandbox read-only`.
+6. Continue the fleet with its emitted thread id and confirm the next tick
+   uses `codex exec resume <id> --json`.
+7. Record the Codex CLI version, model, commands, sanitized output, and final
+   result path in the first operational report.
+
+Plugin-bundled hooks stay skipped until `/hooks` trusts them. Do not pass
+`--dangerously-bypass-approvals-and-sandbox` as the default automation path.

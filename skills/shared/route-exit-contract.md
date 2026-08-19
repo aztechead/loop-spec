@@ -80,6 +80,9 @@ ending this contract exists to prevent.
   already delivered in that run is recorded `completed`/`delivered`, not
   `interrupted`.
 
-Under OpenCode and ADK no Stop event can veto
-(`skills/shared/opencode-harness.md`, `skills/shared/adk-harness.md`), so the
-reconcile call in `/loop-spec:auto` is the only enforcement there. Run it.
+Under OpenCode, ADK, and Codex no Stop event can veto
+(`skills/shared/opencode-harness.md`, `skills/shared/adk-harness.md`,
+`skills/shared/codex-harness.md`). Codex Stop polarity is inverted versus
+Claude Code (`decision: "block"` continues the turn), so Claude Stop guards
+are not bridged there either. The reconcile call in `/loop-spec:auto` is the
+only enforcement on those three harnesses. Run it.

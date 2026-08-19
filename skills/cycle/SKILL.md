@@ -315,6 +315,10 @@ esac
     too), one-shot dispatches run natively through opencode's `task` tool: apply
     **`skills/shared/opencode-harness.md`** on top — same call shape, agent ids
     spelled `loop-spec-<role>`, model probe skipped.
+  - When it reports `harness.name == "codex"` (mode is always `none` there too),
+    one-shot dispatches run through Codex `spawn_agent`: apply
+    **`skills/shared/codex-harness.md`** on top — same call shape, agent ids
+    spelled `loop-spec-<role>`, model probe skipped.
 - `implicit` → teams are live but `TeamCreate` / `TeamDelete` do **not** exist. Phases
   probe `lib/implicit-team-model.sh` per role: inherit selectors spawn named teammates
   with `Agent({name})` and message them via `SendMessage`; a Claude alias spawns a

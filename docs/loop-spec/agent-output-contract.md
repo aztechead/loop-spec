@@ -2,7 +2,7 @@
 
 loop-spec owns two machine-readable outputs: terminal cycle results and the normalized
 headless-agent result consumed by the bundled loop runner. It does not own the complete
-Claude Code, OpenCode, or Google ADK CLI event protocols.
+Claude Code, OpenCode, Google ADK, or Codex CLI event protocols.
 
 ## Terminal Cycle Result
 
@@ -178,8 +178,8 @@ marker.
 ```
 
 `cost_usd` is `null` when the backend does not report cost. `turns` is a backend-derived
-unit, not a claim that Claude turns, ADK text events, and OpenCode `step_finish`
-events are semantically identical.
+unit, not a claim that Claude turns, ADK text events, OpenCode `step_finish`
+events, and Codex `turn.completed` events are semantically identical.
 
 ## Observed Backend Profiles
 
@@ -233,6 +233,22 @@ loop-spec consumes newline-delimited JSON from `opencode run --format json`:
 - `error.error` when no result text was produced.
 
 Tool, reasoning, token, and other events are outside the normalized contract.
+
+### Codex
+
+loop-spec consumes newline-delimited JSON from `codex exec --json`
+(https://developers.openai.com/codex/noninteractive):
+
+- first `thread.started` object's `thread_id` as the session id;
+- the count of `turn.completed` events as turns;
+- the last `agent_message` item text as the result;
+- `turn.failed` / `error` as the failure reason;
+- NO cost: Codex reports usage tokens, not money, so `cost_usd` stays `None`
+  — "unknown", never "free". A `--max-budget-usd` cap cannot bind here.
+
+Unknown and malformed lines are ignored. This is the observed compatibility
+profile, not Codex's complete event schema. Resume is
+`codex exec resume <thread_id> --json`.
 
 ## Versioning Policy
 

@@ -550,10 +550,11 @@ def main() -> int:
                         "halts budget_exhausted at the cap. Fleet-wide worst case "
                         "is this times the number of tasks (0 = unbounded).")
     p.add_argument("--claude-bin", default="claude")
-    p.add_argument("--agent-cli", choices=["claude", "opencode", "adk"], default="",
+    p.add_argument("--agent-cli", choices=["claude", "opencode", "adk", "codex"], default="",
                    dest="agent_cli",
                    help="Headless protocol for every loop tick: claude -p JSON vs "
-                        "adk run --jsonl vs opencode run --format json events "
+                        "adk run --jsonl vs opencode run --format json vs "
+                        "codex exec --json events "
                          "(default: auto from the binary name).")
     p.add_argument("--adk-agent-dir", default="", dest="adk_agent_dir",
                    help="Mounted ADK working-agent directory handed to every worker "
@@ -583,9 +584,10 @@ def main() -> int:
             p.error(f"{flag} must be a {wording} integer")
     if args.max_budget_usd < 0:
         p.error("--max-budget-usd must be a non-negative number")
-    if args.agent_cli == "adk" and args.max_budget_usd > 0:
-        p.error("--max-budget-usd cannot be enforced by the adk backend because "
-                "ADK JSONL does not report monetary cost")
+    if args.agent_cli in ("adk", "codex") and args.max_budget_usd > 0:
+        p.error("--max-budget-usd cannot be enforced by the "
+                f"{args.agent_cli} backend because its JSONL does not report "
+                "monetary cost")
 
     worktrees = os.environ.get("LOOP_SPEC_WORKTREES", "1")
     if worktrees not in ("0", "1"):

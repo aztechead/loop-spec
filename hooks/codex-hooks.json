@@ -1,0 +1,67 @@
+{
+  "description": "loop-spec Codex lifecycle hooks. Plugin-bundled; skipped until trusted.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/codex-session-start.sh\"",
+            "statusMessage": "loop-spec session start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/codex-user-prompt.sh\"",
+            "statusMessage": "loop-spec done-criteria"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/codex-shell-env.sh\"",
+            "statusMessage": "loop-spec shell env"
+          },
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/team/no-worktrees-guard.sh\"",
+            "statusMessage": "loop-spec no-worktrees"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/team/no-worktrees-guard.sh\"",
+            "statusMessage": "loop-spec no-worktrees"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/team/strategy-rotation.sh\"",
+            "statusMessage": "loop-spec strategy rotation"
+          }
+        ]
+      }
+    ]
+  }
+}

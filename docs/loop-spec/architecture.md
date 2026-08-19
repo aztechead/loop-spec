@@ -16,7 +16,7 @@ is used — a sandboxed harness may deny writing harness-config paths such as
 part-way through — and relocates the worktree outside the repository when it cannot.
 `LOOP_SPEC_WORKTREE_DIR` sets that base explicitly.
 `LOOP_SPEC_WORKTREES=0` instead uses a clean in-place feature branch and
-deterministically blocks later worktree creation/entry. OpenCode and ADK always use a clean
+deterministically blocks later worktree creation/entry. OpenCode, Codex, and ADK always use a clean
 in-place branch because those harnesses cannot switch a live session root. Resume scans
 both the invocation root and registered feature worktrees for incomplete features
 inside the staleness window (48h), then adopts the recorded absolute root before

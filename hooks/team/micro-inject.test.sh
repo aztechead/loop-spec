@@ -58,6 +58,9 @@ check_output "p2: unknown harness falls back to Claude commands" 0 "/loop-spec:m
 check_output "q: opencode directive uses native micro command" 0 "/loop-spec/micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
 check_output "r: opencode directive uses native intake command" 0 "/loop-spec/intake" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
 check_no_pattern "s: opencode directive omits Claude micro command" 0 "/loop-spec:micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
+check_output "s2: codex directive uses namespaced skill mention" 0 "loop-spec-micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=codex
+check_output "s3: codex directive uses namespaced auto skill" 0 "loop-spec-auto" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=codex
+check_no_pattern "s4: codex directive omits Claude micro command" 0 "/loop-spec:micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=codex
 check_output "t: directive names exact criterion copy rule" 0 "copy each --criteria value byte-for-byte" CLAUDE_PROJECT_DIR="$LS"
 check_output "u: directive shows no-integration grammar" 0 "integration: none - <reason of at least 10 characters>" CLAUDE_PROJECT_DIR="$LS"
 

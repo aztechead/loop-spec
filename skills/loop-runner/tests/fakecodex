@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# fakecodex — offline stand-in for `codex exec --json`, used by
+# tests/run_tests.sh. Mirrors fakeclaude/fakeadk/fakeopencode's behaviors
+# (same env protocol) but speaks Codex's exec JSONL protocol: one JSON
+# object per line, types thread.started / turn.started / item.completed /
+# turn.completed (https://developers.openai.com/codex/noninteractive).
+#
+# Behaviors (env-driven so one stub covers every scenario):
+#   FAKE_COST     unused (Codex JSONL reports tokens, not USD)
+#   FAKE_STILL=1  change nothing (stall scenario)
+#   FAKE_TAMPER=<path>  append to that path (verifier-integrity scenario)
+#   FAKE_PLAN=<file>    return that file's contents as the result (compiler scenario)
+#   FAKE_HANG=<s>       sleep (hung-tick scenario)
+#   FAKE_ARGV_LOG=<f>   append full argv to <f> (flag-shape assertions)
+#   FAKE_ENV_LOG=<f>    record the harness/profile environment
+#
+# Protocol: if the prompt (any argv) contains TOUCH:<file>, create/append that file.
+set -euo pipefail
+
+if [[ -n "${FAKE_ARGV_LOG:-}" ]]; then
+  printf '%s\n' "$*" >> "$FAKE_ARGV_LOG"
+fi
+if [[ -n "${FAKE_ENV_LOG:-}" ]]; then
+  printf 'harness=%s profile=%s\n' \
+    "${LOOP_SPEC_HARNESS:-}" "${LOOP_SPEC_NON_INTERACTIVE:-}" >> "$FAKE_ENV_LOG"
+fi
+
+if [[ -n "${FAKE_HANG:-}" ]]; then
+  sleep "$FAKE_HANG"
+fi
+
+PROMPT=""
+for a in "$@"; do PROMPT="$PROMPT $a"; done
+
+emit() { # emit <result-text>
+  python3 - "$1" << 'EOF'
+import json, sys
+text = sys.argv[1]
+sid = "thr_codex_abc"
+print(json.dumps({"type": "thread.started", "thread_id": sid}))
+print(json.dumps({"type": "turn.started", "thread_id": sid}))
+print(json.dumps({
+    "type": "item.completed",
+    "thread_id": sid,
+    "item": {"type": "agent_message", "text": text},
+}))
+print(json.dumps({
+    "type": "turn.completed",
+    "thread_id": sid,
+    "usage": {"input_tokens": 10, "output_tokens": 5},
+}))
+EOF
+}
+
+if [[ -n "${FAKE_PLAN:-}" ]]; then
+  emit "$(cat "$FAKE_PLAN")"
+  exit 0
+fi
+
+if [[ -n "${FAKE_TAMPER:-}" ]]; then
+  echo "tampered" >> "$FAKE_TAMPER"
+fi
+
+if [[ "$PROMPT" =~ TOUCH:([A-Za-z0-9._/-]+) ]]; then
+  f="${BASH_REMATCH[1]}"
+  mkdir -p "$(dirname "$f")" 2>/dev/null || true
+  echo "work $(date +%s%N)" >> "$f"
+elif [[ "${FAKE_STILL:-0}" != "1" ]]; then
+  echo "iter $(date +%s%N)" >> work.txt
+fi
+
+emit "did some work this iteration"

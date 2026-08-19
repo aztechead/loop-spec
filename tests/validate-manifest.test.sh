@@ -15,13 +15,19 @@ FAIL=0
 pass() { echo "PASS: $1"; ((PASS++)) || true; }
 fail() { echo "FAIL: $1"; ((FAIL++)) || true; }
 
-# 1. plugin.json version == marketplace.json plugin version
+# 1. plugin.json version == marketplace.json plugin version == Codex plugin.json
 PLUGIN_VER=$(jq -r '.version' .claude-plugin/plugin.json)
 MARKET_VER=$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)
+CODEX_VER=$(jq -r '.version' .codex-plugin/plugin.json)
 if [[ "$PLUGIN_VER" == "$MARKET_VER" ]]; then
   pass "plugin.json ($PLUGIN_VER) == marketplace.json ($MARKET_VER)"
 else
   fail "version drift: plugin.json=$PLUGIN_VER marketplace.json=$MARKET_VER"
+fi
+if [[ "$PLUGIN_VER" == "$CODEX_VER" ]]; then
+  pass "plugin.json ($PLUGIN_VER) == .codex-plugin/plugin.json ($CODEX_VER)"
+else
+  fail "version drift: plugin.json=$PLUGIN_VER .codex-plugin/plugin.json=$CODEX_VER"
 fi
 
 # 2. CHANGELOG top version heading matches plugin.json version
@@ -49,6 +55,16 @@ if jq -e . hooks/hooks.json >/dev/null 2>&1; then
   pass "hooks/hooks.json is valid JSON"
 else
   fail "hooks/hooks.json is not valid JSON"
+fi
+if jq -e . hooks/codex-hooks.json >/dev/null 2>&1; then
+  pass "hooks/codex-hooks.json is valid JSON"
+else
+  fail "hooks/codex-hooks.json is not valid JSON"
+fi
+if jq -e '.plugins[0].source.path == "./"' .agents/plugins/marketplace.json >/dev/null 2>&1; then
+  pass ".agents/plugins/marketplace.json points at the plugin root"
+else
+  fail ".agents/plugins/marketplace.json is missing or source.path is not ./"
 fi
 
 # 5. No retired opus model id in shipped agents/skills/README (allow CHANGELOG history).

@@ -41,9 +41,11 @@ them.
 **Non-claude harnesses: skip this probe entirely** (`harness != "claude"` in the
 preflight blob). The probe pre-flights Claude Code model aliases, which exist on
 no other harness. Do not write `modelsProbedAt`. Under OpenCode per-role models
-live in the generated agent files, and under ADK they come from the mounted
-agent, so failures surface loudly on the first dispatch instead. See
-`skills/shared/opencode-harness.md` and `skills/shared/adk-harness.md`.
+live in the generated agent files, under ADK they come from the mounted agent,
+and under Codex they live in generated custom-agent TOML, so failures surface
+loudly on the first dispatch instead. See
+`skills/shared/opencode-harness.md`, `skills/shared/adk-harness.md`, and
+`skills/shared/codex-harness.md`.
 
 **Probe cache (speed):** the probe result is cached in `.loop-spec/runtime.json`
 (`modelsProbedAt`, ISO-8601, and `modelsProbed`, the sorted selector array). Skip the

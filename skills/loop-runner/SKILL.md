@@ -1,7 +1,7 @@
 ---
 name: loop-runner
 description: >-
-  Compile specs/goals into autonomous Claude Code, OpenCode, or Google ADK loops and run them safely. The base
+  Compile specs/goals into autonomous Claude Code, OpenCode, Google ADK, or Codex loops and run them safely. The base
   layer for spec-driven and workflow automation: bridges "a spec written normally" to
   "loops execute it unattended." Use whenever the user wants a supported harness hands-off —
   "implement this spec", "keep going until tests pass", "break this down and execute",
@@ -52,7 +52,7 @@ SPEC.md ──compile_spec.py──▶ plan/tasks.json ──supervisor.py──
 
 | Layer | Script | In → Out | Job |
 |---|---|---|---|
-| 1 | `scripts/loop.py` | one task → `result.json` | Run one bounded loop through Claude Code, OpenCode, or Google ADK; verify, measure progress, and halt safely. |
+| 1 | `scripts/loop.py` | one task → `result.json` | Run one bounded loop through Claude Code, OpenCode, Google ADK, or Codex; verify, measure progress, and halt safely. |
 | 2 | `scripts/compile_spec.py` | spec → `plan/tasks.json` | Decompose a spec into small verifiable tasks and **synthesize a verifier per task**. |
 | 3 | `scripts/supervisor.py` | plan → `fleet-result.json` | Walk the dependency DAG, run each task's loop in an isolated git worktree, merge completed work, apply halt policy. |
 
@@ -122,7 +122,7 @@ python3 scripts/supervisor.py --plan plan/tasks.json --parallel 2 \
 ```
 
 These options default off, so behavior is unchanged unless you opt in. They are
-Claude-specific and are ignored by the OpenCode and ADK backends.
+Claude-specific and are ignored by the OpenCode, ADK, and Codex backends.
 
 ### ADK backend (`--agent-cli adk`)
 
@@ -155,6 +155,21 @@ while Claude aliases are omitted to inherit the configured model;
 `--fallback-model` / `--retry-watchdog` /
 `allowed_tools` are claude-only and ignored; opencode-specific flags pass
 through as extra args. See `skills/shared/opencode-harness.md`.
+
+### Codex backend (`--agent-cli codex`)
+
+The same three layers drive **OpenAI Codex**
+(https://developers.openai.com/codex/noninteractive): `--agent-cli codex`
+switches the invocation to `codex exec --json --sandbox workspace-write` (work)
+or `--sandbox read-only` (compiler / judge) and normalizes Codex's JSONL event
+stream (`thread.started`, `turn.*`, `item.*`, `error`) onto the same result
+contract. Auto-detection also works: a `--claude-bin` whose basename is
+`codex` selects the protocol. Differences: headless work never passes
+`--dangerously-bypass-approvals-and-sandbox`; resume is
+`codex exec resume <thread_id> --json`; cost is unavailable because Codex
+reports tokens, not money, so `--max-budget-usd` is rejected rather than
+silently ignored; `--fallback-model` / `--retry-watchdog` / `allowed_tools`
+are claude-only and ignored. See `skills/shared/codex-harness.md`.
 
 ## What makes a loop trustworthy here
 

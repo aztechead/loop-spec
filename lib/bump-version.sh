@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # bump-version.sh - Set the loop-spec version everywhere it is declared, at once.
 #
-# The version lives in three places that must agree: two manifests (the Claude
-# Code plugin and the marketplace entry) and one line of README prose.
-# `tests/validate-manifest.test.sh` enforces the agreement, but only after a human
-# has already forgotten one — this removes the class instead of catching it.
+# The version lives in four places that must agree: two Claude Code manifests
+# (the plugin and the marketplace entry), the Codex plugin manifest, and one
+# line of README prose. `tests/validate-manifest.test.sh` enforces the
+# agreement, but only after a human has already forgotten one — this removes
+# the class instead of catching it.
 #
 # Usage:
 #   bump-version.sh <version>   set every declaration to <version>
@@ -19,6 +20,7 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PLUGIN="$ROOT/.claude-plugin/plugin.json"
 MARKET="$ROOT/.claude-plugin/marketplace.json"
+CODEX_PLUGIN="$ROOT/.codex-plugin/plugin.json"
 README="$ROOT/README.md"
 
 read_current() {
@@ -26,11 +28,12 @@ read_current() {
 }
 
 check() {
-  local pv mv rv status=0
+  local pv mv cv rv status=0
   pv="$(jq -r '.version // empty' "$PLUGIN" 2>/dev/null || true)"
   mv="$(jq -r '.plugins[0].version // .version // empty' "$MARKET" 2>/dev/null || true)"
+  cv="$(jq -r '.version // empty' "$CODEX_PLUGIN" 2>/dev/null || true)"
   rv="$(grep -oE '^Current version: [0-9]+\.[0-9]+\.[0-9]+' "$README" 2>/dev/null | head -1 | awk '{print $3}')"
-  for pair in "plugin.json:$pv" "marketplace.json:$mv" "README.md:$rv"; do
+  for pair in "plugin.json:$pv" "marketplace.json:$mv" ".codex-plugin/plugin.json:$cv" "README.md:$rv"; do
     local name="${pair%%:*}" val="${pair#*:}"
     if [[ -z "$val" ]]; then
       echo "bump-version: no version found in $name" >&2; status=1
@@ -58,19 +61,19 @@ case "${1:-}" in
     }
     current="$(read_current)"
 
-    for f in "$PLUGIN" "$MARKET" "$README"; do
+    for f in "$PLUGIN" "$MARKET" "$CODEX_PLUGIN" "$README"; do
       [[ -w "$f" ]] || { echo "bump-version: cannot write $f" >&2; exit 1; }
     done
 
     # jq -S would reorder keys; edit the declaration line in place instead so the
     # manifests stay byte-identical apart from the version itself.
-    python3 - "$version" "$PLUGIN" "$MARKET" "$README" <<'PY'
+    python3 - "$version" "$PLUGIN" "$MARKET" "$CODEX_PLUGIN" "$README" <<'PY'
 import re
 import sys
 
-version, plugin, market, readme = sys.argv[1:5]
+version, plugin, market, codex_plugin, readme = sys.argv[1:6]
 
-for path in (plugin, market):
+for path in (plugin, market, codex_plugin):
     with open(path, encoding="utf-8") as fh:
         text = fh.read()
     new, count = re.subn(r'("version"\s*:\s*")[0-9]+\.[0-9]+\.[0-9]+(")',

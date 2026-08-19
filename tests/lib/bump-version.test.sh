@@ -22,11 +22,13 @@ trap 'rm -rf "$WORK"' EXIT
 # A throwaway tree with the same four declaration sites as the real repo.
 make_fixture() {
   local dir="$1" version="$2" readme_version="${3:-$2}"
-  rm -rf "$dir"; mkdir -p "$dir/.claude-plugin" "$dir/lib"
+  rm -rf "$dir"; mkdir -p "$dir/.claude-plugin" "$dir/.codex-plugin" "$dir/lib"
   printf '{\n  "name": "loop-spec",\n  "version": "%s",\n  "keep": "me"\n}\n' "$version" \
     > "$dir/.claude-plugin/plugin.json"
   printf '{\n  "plugins": [\n    {\n      "name": "loop-spec",\n      "version": "%s"\n    }\n  ]\n}\n' "$version" \
     > "$dir/.claude-plugin/marketplace.json"
+  printf '{\n  "name": "loop-spec",\n  "version": "%s"\n}\n' "$version" \
+    > "$dir/.codex-plugin/plugin.json"
   printf '# loop-spec\n\nCurrent version: %s (renamed at v2.5.2).\n\nMore prose 1.0.0 here.\n' \
     "$readme_version" > "$dir/README.md"
   cp "$LIB" "$dir/lib/bump-version.sh"
@@ -52,6 +54,7 @@ make_fixture "$FX" "1.0.0"
 bash "$FX/lib/bump-version.sh" 2.30.1 >/dev/null 2>&1
 check "plugin.json set" "2.30.1" "$(jq -r '.version' "$FX/.claude-plugin/plugin.json")"
 check "marketplace.json set" "2.30.1" "$(jq -r '.plugins[0].version' "$FX/.claude-plugin/marketplace.json")"
+check "codex plugin.json set" "2.30.1" "$(jq -r '.version' "$FX/.codex-plugin/plugin.json")"
 check "README prose set" "2.30.1" "$(grep -oE '^Current version: [0-9.]+' "$FX/README.md" | awk '{print $3}')"
 check "other manifest keys untouched" "me" "$(jq -r '.keep' "$FX/.claude-plugin/plugin.json")"
 check "unrelated README versions untouched" "1" "$(grep -c 'More prose 1.0.0 here' "$FX/README.md")"

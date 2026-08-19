@@ -139,10 +139,11 @@ class LoopConfig:
     state_dir: str = ""               # default .loop/<task_id>
     commit: bool = False              # scoped git commit per productive iteration
     claude_bin: str = "claude"
-    agent_cli: str = ""               # "claude" | "opencode" | "adk" | "" (auto: named
+    agent_cli: str = ""               # "claude" | "opencode" | "adk" | "codex" | "" (auto: named
                                       # after the binary). Selects the headless protocol:
                                       # claude -p JSON object vs opencode run --format
-                                      # json events vs adk run --jsonl events.
+                                      # json events vs adk run --jsonl events vs
+                                      # codex exec --json events.
     adk_agent_dir: str = ""           # ADK dispatches at a mounted agent DIRECTORY, not a
                                       # bare prompt. Written by lib/adk-install.sh and
                                       # passed through LOOP_SPEC_ADK_AGENT_DIR.
@@ -155,6 +156,7 @@ class LoopConfig:
         "claude": "-p --output-format json (single JSON object)",
         "opencode": "run --format json (one event per line)",
         "adk": "run <agent-dir> --jsonl (one event per line)",
+        "codex": "exec --json (one event per line)",
     }
 
     def resolved_agent_cli(self) -> str:
@@ -218,10 +220,11 @@ class LoopConfig:
                 or isinstance(self.max_budget_usd, bool)
                 or self.max_budget_usd < 0):
             return "max_budget_usd must be a non-negative number"
-        if self.resolved_agent_cli() == "adk" and self.max_budget_usd > 0:
-            return ("max_budget_usd cannot be enforced by the adk backend because "
-                    "ADK JSONL reports tokens, not monetary cost; omit the cap or "
-                    "use a backend that reports cost")
+        if self.resolved_agent_cli() in ("adk", "codex") and self.max_budget_usd > 0:
+            return ("max_budget_usd cannot be enforced by the "
+                    f"{self.resolved_agent_cli()} backend because it reports "
+                    "tokens, not monetary cost; omit the cap or use a backend "
+                    "that reports cost")
         return None
 
     def resolved_task_id(self) -> str:
@@ -418,6 +421,9 @@ def run_claude(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     if cfg.resolved_agent_cli() == "opencode":
         return run_opencode(prompt, cfg, resume=resume, permission_mode=permission_mode,
                             raw_log=raw_log, timeout=timeout)
+    if cfg.resolved_agent_cli() == "codex":
+        return run_codex(prompt, cfg, resume=resume, permission_mode=permission_mode,
+                         raw_log=raw_log, timeout=timeout)
     cmd = [cfg.claude_bin, "-p", prompt, "--output-format", "json",
            "--permission-mode", permission_mode or cfg.permission_mode]
     if cfg.allowed_tools:
@@ -563,6 +569,7 @@ def run_adk(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     cmd += [prompt, "--jsonl"]
 
     env = dict(os.environ)
+    env["LOOP_SPEC_HARNESS"] = "adk"
     env["LOOP_SPEC_NON_INTERACTIVE"] = "1"
     events, err = _run_jsonl_agent(cmd, backend="adk", bin_label=bin_, env=env,
                                    resume=resume, raw_log=raw_log, timeout=timeout)
@@ -705,6 +712,96 @@ def run_opencode(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
                 "turns": turns, "session_id": session_id, "result": ""}
     return {"ok": True, "error": None, "turns": turns,
             "session_id": session_id, "result": result_text, "cost_usd": cost}
+
+
+def run_codex(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
+              permission_mode: Optional[str] = None, raw_log: Optional[Path] = None,
+              timeout: Optional[float] = None) -> dict:
+    """Codex (https://developers.openai.com/codex/noninteractive) headless
+    backend, normalized to run_claude's result contract.
+
+    `codex exec --json "<prompt>"` emits one JSON event per line. Documented
+    types include thread.started, turn.started, turn.completed, turn.failed,
+    item.*, and error. Mapping to the claude -p JSON-object contract:
+      - result:     text of the last agent_message / item with assistant text
+      - turns:      count of turn.completed events (else item completions)
+      - session_id: thread_id from thread.started; resume is
+                    `codex exec resume <id> --json`
+      - cost_usd:   None — the JSONL stream reports tokens, not money
+      - permission_mode "plan" (read-only judge / compiler) selects
+        `--sandbox read-only`. Work ticks use `--sandbox workspace-write`
+        and never `--dangerously-bypass-approvals-and-sandbox`.
+      - claude-only knobs are ignored here: allowed_tools, fallback_model,
+        retry_watchdog. Models must be Codex slugs. Codex-specific flags go
+        through extra_args verbatim.
+    """
+    bin_ = cfg.resolved_agent_bin()
+    mode = permission_mode or cfg.permission_mode
+    sandbox = "read-only" if mode == "plan" else "workspace-write"
+    cmd = [bin_, "exec", "--json", "--sandbox", sandbox]
+    if resume:
+        cmd += ["resume", str(resume)]
+    claude_aliases = {"sonnet", "opus", "haiku", "fable"}
+    cmd += model_args(cfg.model, consumable=lambda m: m not in claude_aliases)
+    cmd += list(cfg.extra_args)
+    cmd += [prompt]
+
+    env = dict(os.environ)
+    env["LOOP_SPEC_HARNESS"] = "codex"
+    env["LOOP_SPEC_NON_INTERACTIVE"] = "1"
+    events, err = _run_jsonl_agent(cmd, backend="codex", bin_label=bin_, env=env,
+                                   resume=resume, raw_log=raw_log, timeout=timeout)
+    if err:
+        return err
+
+    session_id = resume
+    turns = 0
+    result_text = ""
+    error_msg: Optional[str] = None
+
+    def take_text(value) -> str:
+        if isinstance(value, str) and value.strip():
+            return value
+        if isinstance(value, dict):
+            for key in ("text", "message", "content"):
+                got = take_text(value.get(key))
+                if got:
+                    return got
+            parts = value.get("parts")
+            if isinstance(parts, list):
+                bits = [take_text(p) for p in parts]
+                return "\n".join(b for b in bits if b)
+        return ""
+
+    for ev in events:
+        etype = ev.get("type") or ev.get("event") or ""
+        thread = ev.get("thread_id") or (ev.get("thread") or {}).get("id")
+        if isinstance(thread, str) and thread:
+            session_id = thread
+        if etype in ("turn.completed", "turn_completed"):
+            turns += 1
+        if etype in ("turn.failed", "turn_failed", "error"):
+            err_obj = ev.get("error") or ev.get("message") or ev
+            error_msg = take_text(err_obj) or str(err_obj)[:500]
+        item = ev.get("item") if isinstance(ev.get("item"), dict) else ev
+        item_type = item.get("type") if isinstance(item, dict) else ""
+        if item_type in ("agent_message", "agent-message", "message") or etype in (
+            "item.completed", "item_completed", "agent.message",
+        ):
+            text = take_text(item) or take_text(ev.get("text"))
+            if text.strip():
+                result_text = text
+                if etype not in ("turn.completed", "turn_completed") and item_type:
+                    turns = max(turns, 1)
+
+    if error_msg and not result_text:
+        return {"ok": False, "error": error_msg,
+                "turns": turns, "session_id": session_id, "result": ""}
+    if not result_text:
+        return {"ok": False, "error": "no assistant text in codex output",
+                "turns": turns, "session_id": session_id, "result": ""}
+    return {"ok": True, "error": None, "turns": turns,
+            "session_id": session_id, "result": result_text, "cost_usd": None}
 
 
 def run_verifier(cmd: str, timeout: int, out_file: Path) -> tuple[bool, str]:
@@ -1068,13 +1165,13 @@ def build_config(argv: Optional[list[str]] = None) -> LoopConfig:
     p.add_argument("--state-dir", default=None)
     p.add_argument("--commit", action="store_true", default=None)
     p.add_argument("--claude-bin", default=None,
-                   help="agent binary (default `claude`; with --agent-cli opencode/adk, "
+                   help="agent binary (default `claude`; with --agent-cli opencode/adk/codex, "
                         "that harness's own binary)")
-    p.add_argument("--agent-cli", choices=["claude", "opencode", "adk"], default=None,
+    p.add_argument("--agent-cli", choices=["claude", "opencode", "adk", "codex"], default=None,
                    dest="agent_cli",
                    help="headless protocol: claude -p JSON vs adk run --jsonl vs "
-                        "opencode run --format json events (default: auto — named "
-                        "after the binary)")
+                        "opencode run --format json vs codex exec --json events "
+                        "(default: auto — named after the binary)")
     p.add_argument("--adk-agent-dir", default=None, dest="adk_agent_dir",
                    help="mounted ADK agent directory for --agent-cli adk "
                         "(default: $LOOP_SPEC_ADK_AGENT_DIR)")

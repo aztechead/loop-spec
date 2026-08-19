@@ -785,7 +785,99 @@ FAKE_READONLY_MISSING=1 python3 "$SCRIPTS/compile_spec.py" SPEC.md \
 check "oc missing readonly agent fails closed" "$?" "1"
 check "oc missing readonly agent writes no plan" "$(test -f plan/tasks.json && echo yes || echo no)" "no"
 
-echo "== 18. permission-mode is validated against the real claude CLI choice set =="
+echo "== 18. codex backend: --agent-cli codex speaks exec --json =="
+FAKECX="$HERE/fakecodex"; chmod +x "$FAKECX"
+
+# 18a. complete run: same result contract as the claude backend
+newrepo
+python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id cxdone \
+  --agent-cli codex --claude-bin "$FAKECX" \
+  --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 99 >/dev/null 2>&1
+check "cx exit 0"          "$?" "0"
+check "cx halt_reason"     "$(reason .loop/cxdone/result.json)" "complete"
+check "cx cost unknown"    "$(python3 -c "import json;print(json.load(open('.loop/cxdone/result.json'))['total_cost_usd'])")" "None"
+check "cx raw log kept"    "$(test -f .loop/cxdone/iter-001.raw.json && echo yes)" "yes"
+
+# 18b. flag shape: codex gets exec --json --sandbox, never claude-only ones
+newrepo
+CXLOG="$R/cxargv.txt"
+CXENV="$R/cxenv.txt"
+FAKE_ARGV_LOG="$CXLOG" FAKE_ENV_LOG="$CXENV" python3 "$SCRIPTS/loop.py" "noop" --task-id cxflags \
+  --agent-cli codex --claude-bin "$FAKECX" --model gpt-5.6 \
+  --fallback-model some-model --retry-watchdog 5 \
+  --max-iterations 1 --verify 'true' >/dev/null 2>&1
+check "cx: exec --json"            "$(grep -c -- 'exec --json' "$CXLOG")" "1"
+check "cx: workspace-write sandbox" "$(grep -c -- '--sandbox workspace-write' "$CXLOG")" "1"
+check "cx: no sandbox bypass"      "$(grep -c -- '--dangerously-bypass-approvals-and-sandbox' "$CXLOG")" "0"
+check "cx: --model passed"         "$(grep -c -- '--model gpt-5.6' "$CXLOG")" "1"
+check "cx: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permission-mode|--output-format|--allowedTools' "$CXLOG")" "0"
+check "cx: harness env stamped"       "$(grep -c 'harness=codex profile=1' "$CXENV")" "1"
+
+# 18b2. auto-detection: a binary named `codex` selects the protocol on its own
+newrepo
+cp "$FAKECX" "$R/codex"; chmod +x "$R/codex"
+python3 "$SCRIPTS/loop.py" "make work.txt have two lines" --task-id cxauto \
+  --claude-bin "$R/codex" \
+  --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 99 >/dev/null 2>&1
+check "cx auto exit 0"      "$?" "0"
+check "cx auto halt_reason" "$(reason .loop/cxauto/result.json)" "complete"
+
+# 18c. compiler via codex backend: read-only sandbox
+newrepo
+write_compiler_fixture
+CXLOG2="$R/cxargv2.txt"
+FAKE_PLAN="$R/goodplan.json" FAKE_ARGV_LOG="$CXLOG2" python3 "$SCRIPTS/compile_spec.py" SPEC.md \
+  --agent-cli codex --claude-bin "$FAKECX" --out plan/tasks.json >/dev/null 2>&1
+check "cx compile exit 0"      "$?" "0"
+check "cx plan written"        "$(test -f plan/tasks.json && echo yes)" "yes"
+check "cx read-only compile"   "$(grep -c -- '--sandbox read-only' "$CXLOG2")" "1"
+
+# 18d. budget cap is rejected (tokens, not money)
+newrepo
+python3 "$SCRIPTS/loop.py" "noop" --task-id cxbudget --agent-cli codex \
+  --claude-bin "$FAKECX" --max-budget-usd 1 >/dev/null 2>"$R/cxbudget.txt"
+check "cx budget exits 2" "$?" "2"
+check "cx budget explains unsupported cap" \
+  "$(grep -c 'cannot be enforced by the codex backend' "$R/cxbudget.txt")" "1"
+
+# 18e. supervisor passes --agent-cli through to every loop tick
+newrepo
+cat > plan.json << 'EOF'
+{"tasks":[
+ {"id":"solo","prompt":"make the file. TOUCH:s.txt",
+  "verify":"test -f s.txt","max_iterations":3,"deps":[]}]}
+EOF
+git add -A; git commit -qm plan
+python3 "$SCRIPTS/supervisor.py" --plan plan.json --agent-cli codex --claude-bin "$FAKECX" >/dev/null 2>&1
+check "cx fleet exit 0"     "$?" "0"
+check "cx fleet completed"  "$(python3 -c "import json;print(json.load(open('.loop/fleet-result.json'))['completed'])")" "['solo']"
+
+# 18f. transport conflict fails fast
+newrepo
+cp "$FAKE" "$R/claude"; chmod +x "$R/claude"
+python3 "$SCRIPTS/loop.py" "noop" --task-id cxconflict --agent-cli codex \
+  --claude-bin "$R/claude" --max-iterations 1 >/dev/null 2>"$R/cxerr.txt"
+check "cx conflict exit 2"     "$?" "2"
+check "cx conflict names both flags" "$(grep -c 'does not speak' "$R/cxerr.txt")" "1"
+
+# 18g. resume passes resume <thread_id>
+newrepo
+CXLOG3="$R/cxargv3.txt"
+FAKE_ARGV_LOG="$CXLOG3" python3 "$SCRIPTS/loop.py" "two lines. TOUCH:work.txt" --task-id cxresume \
+  --mode continue --agent-cli codex --claude-bin "$FAKECX" \
+  --verify 'test "$(wc -l < work.txt)" -ge 2' --max-iterations 3 >/dev/null 2>&1
+check "cx resume exit 0"       "$?" "0"
+check "cx resume thread id"    "$(grep -c -- 'resume thr_codex_abc' "$CXLOG3")" "1"
+
+# 18h. Claude aliases are omitted
+newrepo
+CXLOG4="$R/cxargv4.txt"
+FAKE_ARGV_LOG="$CXLOG4" python3 "$SCRIPTS/loop.py" "noop" --task-id cxalias \
+  --agent-cli codex --claude-bin "$FAKECX" --model sonnet \
+  --max-iterations 1 --verify 'true' >/dev/null 2>&1
+check "cx alias model omitted" "$(grep -c -- '--model' "$CXLOG4")" "0"
+
+echo "== 19. permission-mode is validated against the real claude CLI choice set =="
 # Current Claude Code accepts `default`; older releases did not.
 newrepo
 python3 "$SCRIPTS/loop.py" "noop" --task-id permdefault --claude-bin "$FAKE" \
@@ -822,7 +914,7 @@ python3 "$SCRIPTS/loop.py" "noop" --task-id permadk --agent-cli adk --claude-bin
   --permission-mode default --max-iterations 1 >/dev/null 2>&1
 check "adk backend not gated by claude modes" "$(test -f .loop/permadk/result.json && echo yes || echo no)" "yes"
 
-echo "== 19. spend is a hard stop: --max-budget-usd =="
+echo "== 20. spend is a hard stop: --max-budget-usd =="
 # Iteration and wall-clock caps do not bound cost. A cumulative cap does.
 newrepo
 FAKE_COST=0.75 python3 "$SCRIPTS/loop.py" "spend forever" --task-id budget \
@@ -852,7 +944,7 @@ FAKE_ARGV_LOG="$NOBUDLOG" python3 "$SCRIPTS/loop.py" "noop" --task-id nobudget \
 check "no budget flag by default" "$(grep -c -- '--max-budget-usd' "$NOBUDLOG")" "0"
 check "null cap in result"        "$(python3 -c "import json;print(json.load(open('.loop/nobudget/result.json'))['max_budget_usd'])")" "None"
 
-echo "== 20. judge spend is billed to the loop total =="
+echo "== 21. judge spend is billed to the loop total =="
 # A judge call is a real priced invocation. Billing it to total_cost_usd is what
 # makes the reported total honest and the cumulative cap enforceable.
 newrepo

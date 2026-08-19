@@ -8,10 +8,10 @@ SDK** for Python and TypeScript: `bash
 Claude Code plugin (`.claude-plugin/plugin.json`).
 
 This file exists so that Claude Code is DESCRIBED rather than assumed. The other
-two contracts (`opencode-harness.md`, `adk-harness.md`) used to read as
-deviations from an unstated norm; they are peers, and the norm needed writing
-down. Nothing here is new behavior — it is the surface every skill was already
-written against.
+three contracts (`opencode-harness.md`, `adk-harness.md`, `codex-harness.md`)
+used to read as deviations from an unstated norm; they are peers, and the
+norm needed writing down. Nothing here is new behavior — it is the surface
+every skill was already written against.
 
 ## Detection
 

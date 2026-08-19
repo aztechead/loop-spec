@@ -43,8 +43,11 @@ check "override opencode -> opencode" "opencode" "$got"
 got=$(run detect LOOP_SPEC_HARNESS=opencode CLAUDECODE=1)
 check "override opencode beats CLAUDECODE" "opencode" "$got"
 
-got=$(run detect LOOP_SPEC_HARNESS=claude)
-check "override claude -> claude" "claude" "$got"
+got=$(run detect LOOP_SPEC_HARNESS=codex)
+check "override codex -> codex" "codex" "$got"
+
+got=$(run detect LOOP_SPEC_HARNESS=codex CLAUDECODE=1)
+check "override codex beats CLAUDECODE" "codex" "$got"
 
 # --- detect: unknown override falls through to the back-compat default ---
 got=$(run detect LOOP_SPEC_HARNESS=garbage)
@@ -58,7 +61,7 @@ pi_rc=$?
 set -e
 check "retired pi override exits 2" "2" "$pi_rc"
 check "retired pi override names migration" "1" \
-  "$(grep -c 'choose claude, opencode, or adk' <<< "$pi_err")"
+  "$(grep -c 'choose claude, opencode, adk, or codex' <<< "$pi_err")"
 
 set +e
 run subagents LOOP_SPEC_HARNESS=pi >/dev/null 2>&1
@@ -86,6 +89,9 @@ check "cli default -> claude" "claude" "$got"
 got=$(run cli LOOP_SPEC_HARNESS=opencode)
 check "cli under opencode -> opencode" "opencode" "$got"
 
+got=$(run cli LOOP_SPEC_HARNESS=codex)
+check "cli under codex -> codex" "codex" "$got"
+
 # --- subagents ---
 got=$(run subagents CLAUDECODE=1)
 check "subagents under claude -> true" "true" "$got"
@@ -98,6 +104,9 @@ check "subagents under opencode -> true" "true" "$got"
 # optional native model}, so the capability holds there too.
 got=$(run subagents LOOP_SPEC_HARNESS=adk)
 check "subagents under adk -> true" "true" "$got"
+
+got=$(run subagents LOOP_SPEC_HARNESS=codex)
+check "subagents under codex -> true" "true" "$got"
 
 # --- loop runtime ---
 got=$(run loop-runtime LOOP_SPEC_NON_INTERACTIVE=1)
