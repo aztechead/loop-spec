@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- One supported harness: Claude Code, OpenCode, or Google ADK
+- One supported harness: Claude Code, OpenCode, Codex, or Google ADK
 - The [base runtime dependencies](loop-spec/PREREQUISITES.md)
 - A project where you have full git push access
 - An authenticated GitHub CLI and `origin` remote when the cycle should open a PR
@@ -45,6 +45,22 @@ opencode run --format json "Load the loop-spec-auto skill and run: <goal>"
 Use `bash loop-spec/lib/opencode-install.sh install --project .` instead when the
 generated skills and agents should live only in the current project.
 
+### Codex
+
+```bash
+git clone https://github.com/aztechead/loop-spec
+bash loop-spec/lib/codex-install.sh install
+LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \
+  "Load the loop-spec-auto skill and run: <goal>"
+```
+
+Use `bash loop-spec/lib/codex-install.sh install --project .` instead when the
+generated skills and custom agents should live only in the current project.
+Plugin install from a clone that already contains `.codex-plugin/plugin.json`:
+`codex plugin marketplace add https://github.com/aztechead/loop-spec.git` then
+`codex plugin add loop-spec`. Plugin-bundled hooks stay skipped until `/hooks`
+trusts them; the installer-written env block does not wait on that review.
+
 ## First cycle
 
 1. Pick a small feature (1-3 file changes).
@@ -67,11 +83,14 @@ generated skills and agents should live only in the current project.
 
 - **An explicit model route is unavailable**: remove the override to inherit the
   session model, or replace it with a selector native to that harness. Claude accepts
-  its aliases/full IDs; OpenCode accepts `provider/model`; ADK accepts `gemini-*` or
+  its aliases/full IDs; OpenCode accepts `provider/model`; Codex accepts its
+  own slugs (`gpt-5.4`, `o3`, …); ADK accepts `gemini-*` or
   `provider/model` through LiteLLM.
-- **A Claude alias does nothing in OpenCode**: this is intentional. OpenCode generated
-  agents inherit unless installed with `--model role=provider/model`; Claude aliases
-  are never translated into guessed provider routes.
+- **A Claude alias does nothing in OpenCode or Codex**: this is intentional.
+  OpenCode generated agents inherit unless installed with
+  `--model role=provider/model`; Codex custom agents inherit unless installed
+  with `--model role=<codex-slug>`. Claude aliases are never translated into
+  guessed provider routes.
 - **Marketplace name confusion**: The marketplace name (`loop-spec-marketplace`) differs from the plugin name (`loop-spec`). Install command MUST use `plugin@marketplace` form.
 - **Critique gate keeps bouncing**: spec is genuinely ambiguous. Pick STEP style next time so you can review SPEC.md before plan starts.
 - **Worktree disk usage spikes**: EXECUTE self-claims up to `tier.execute.maxParallelImplementers` worktrees (2 on quick, 3 on balanced, 4 on quality), each a full checkout. Acceptable on modern SSDs; adjust the tier matrix if low-disk.

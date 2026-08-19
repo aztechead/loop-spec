@@ -22,7 +22,9 @@ Skill(loop-spec:debug, args: "autonomous auto $ARGUMENTS")
 (Under opencode this file loads as the `/loop-debug` command and the native skill
 tool takes the call: `skill({name: "loop-spec-debug"})`, then the same
 `autonomous auto` args; `skills/shared/opencode-harness.md` has the substitution
-rules. Under ADK there are no slash commands: enter the skill with
+rules. Under Codex invoke `$loop-spec-debug` then the same `autonomous auto`
+args; `skills/shared/codex-harness.md` has the substitution rules. Under ADK
+there are no slash commands: enter the skill with
 `load_skill({skill_name: "debug"})` and follow it with the same `autonomous auto`
 args; `skills/shared/adk-harness.md` has the substitution rules.)
 

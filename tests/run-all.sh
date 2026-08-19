@@ -182,6 +182,7 @@ echo "run-all: profile=$RUN_ALL_PROFILE jobs=$RUN_ALL_JOBS"
 run_suite "validate-agents"           "bash tests/validate-agents.sh"
 run_suite "validate-manifest"         "bash tests/validate-manifest.test.sh"
 run_suite "adk-harness-coverage"      "bash tests/adk-harness-coverage.test.sh"
+run_suite "codex-harness-coverage"    "bash tests/codex-harness-coverage.test.sh"
 run_suite "adk-extension"             "bash tests/adk-extension.test.sh"
 run_suite "session-start-hook-parity" "bash tests/session-start-hook-parity.test.sh"
 run_suite "cycle-worktree-policy"     "bash tests/cycle-worktree-policy.test.sh"
@@ -203,6 +204,8 @@ run_suite "e2e/foreign-claimant-app" "bash tests/e2e/foreign-claimant-app.test.s
 run_suite "opencode-plugin"           "bash tests/opencode-plugin.test.sh"
 run_suite "opencode-harness-coverage" "bash tests/opencode-harness-coverage.test.sh"
 run_suite "lib/opencode-install"      "bash tests/lib/opencode-install.test.sh" integration
+run_suite "lib/codex-install"         "bash tests/lib/codex-install.test.sh" integration
+run_suite "lib/codex-shell-env"       "bash tests/lib/codex-shell-env.test.sh"
 run_suite "validate-agents-frontmatter" "bash tests/validate-agents.test.sh"
 run_suite "restrict-agent-paths"      "bash hooks/restrict-agent-paths.test.sh"
 run_suite "hooks/team/no-worktrees-guard" "bash hooks/team/no-worktrees-guard.test.sh"

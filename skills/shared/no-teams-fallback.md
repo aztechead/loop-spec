@@ -25,6 +25,11 @@ run natively through opencode's `task` tool, which shares the `Agent` call
 shape. Spell the agent id `loop-spec-<role>` and see the dispatch mapping rule
 in `skills/shared/opencode-harness.md`.
 
+**Codex harness:** this table applies as written — the one-shot dispatches
+run through Codex `spawn_agent`, which shares the `Agent` call shape. Spell
+the agent id `loop-spec-<role>` and see the dispatch mapping rule in
+`skills/shared/codex-harness.md`.
+
 ## Substitution table
 
 | Team primitive | Fallback |

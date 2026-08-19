@@ -20,6 +20,10 @@ adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec sentinel skill and run" -
 
 # opencode
 opencode run --format json "Load the loop-spec-sentinel skill and run: run"
+
+# Codex
+LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \
+  "Load the loop-spec-sentinel skill and run: run"
 ```
 
 Run it from the target repo's root (the directory containing `.loop-spec/`).

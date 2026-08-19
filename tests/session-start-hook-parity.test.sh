@@ -43,8 +43,14 @@ if not match:
     raise SystemExit("FAIL: OpenCode SESSION_START_SCRIPTS assignment is missing")
 opencode = re.findall(r'"([^"]+)"', match.group(1))
 
+codex_source = (root / "hooks/codex-session-start.sh").read_text(encoding="utf-8")
+match = re.search(r"SESSION_START_SCRIPTS=\((.*?)\)", codex_source, re.S)
+if not match:
+    raise SystemExit("FAIL: Codex SESSION_START_SCRIPTS assignment is missing")
+codex = re.findall(r"hooks/team/[A-Za-z0-9._-]+\.sh", match.group(1))
+
 failures = 0
-for name, actual in (("ADK", adk), ("OpenCode", opencode)):
+for name, actual in (("ADK", adk), ("OpenCode", opencode), ("Codex", codex)):
     if actual == expected:
         print(f"PASS: {name} SessionStart scripts exactly match hooks/hooks.json")
     else:
@@ -66,6 +72,6 @@ else:
     failures += 1
     print(f"FAIL: missing SessionStart scripts: {missing}")
 
-print(f"Results: {4 - failures} passed, {failures} failed")
+print(f"Results: {5 - failures} passed, {failures} failed")
 raise SystemExit(1 if failures else 0)
 PY

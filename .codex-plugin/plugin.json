@@ -1,0 +1,35 @@
+{
+  "name": "loop-spec",
+  "version": "4.3.0",
+  "description": "Loop-driven development from a spec file or prose prompt for Codex. Semantic autonomous routing selects micro, bounded debug, or the full seven-phase cycle, then delivers a verified PR.",
+  "author": {
+    "name": "aztechead",
+    "email": "nctightend@gmail.com",
+    "url": "https://github.com/aztechead"
+  },
+  "homepage": "https://github.com/aztechead/loop-spec",
+  "repository": "https://github.com/aztechead/loop-spec",
+  "license": "MIT",
+  "keywords": [
+    "spec-driven",
+    "skills",
+    "tdd",
+    "agents",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/codex-hooks.json",
+  "interface": {
+    "displayName": "loop-spec",
+    "shortDescription": "Spec-driven cycle through ready-for-review PR",
+    "longDescription": "Give Codex a feature description or a pre-authored spec. loop-spec runs SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, and DELIVER from one source tree shared with Claude Code, OpenCode, and Google ADK.",
+    "developerName": "aztechead",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/aztechead/loop-spec",
+    "defaultPrompt": [
+      "Load the loop-spec auto skill and run: <description>",
+      "Load the loop-spec cycle skill and run: autonomous <description>"
+    ]
+  }
+}

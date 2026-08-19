@@ -66,6 +66,8 @@ case "${LOOP_SPEC_HARNESS:-claude}" in
     AUTO_CMD='load_skill({skill_name: "auto"})';;
   opencode)
     MICRO_CMD="/loop-spec/micro"; INTAKE_CMD="/loop-spec/intake"; AUTO_CMD="/loop-spec/auto";;
+  codex)
+    MICRO_CMD='$loop-spec-micro'; INTAKE_CMD='$loop-spec-intake'; AUTO_CMD='$loop-spec-auto';;
   *)
     MICRO_CMD="/loop-spec:micro"; INTAKE_CMD="/loop-spec:intake"; AUTO_CMD="/loop-spec:auto";;
 esac

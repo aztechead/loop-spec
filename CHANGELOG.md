@@ -2,6 +2,53 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [4.3.0] - 2026-08-19
+
+First-party OpenAI Codex harness. loop-spec now ships four peer contracts from
+one source tree: Claude Code, OpenCode, Google ADK, and Codex
+(https://developers.openai.com/codex). Codex is not a port of Claude Code —
+it expresses the same cycle through plugins, skills, `codex exec --json`,
+`spawn_agent`, and lifecycle hooks.
+
+### Added
+
+- **Native Codex plugin.** `.codex-plugin/plugin.json` (skills +
+  `hooks/codex-hooks.json`) and `.agents/plugins/marketplace.json`
+  (`source.path: "./"`). Codex looks for `hooks/hooks.json` by default; this
+  plugin points at `codex-hooks.json` so Claude-only Stop polarity is never
+  loaded. Plugin-bundled hooks stay skipped until `/hooks` trusts them.
+- **`lib/codex-install.sh`.** Generates `$loop-spec-<name>` skill adapters under
+  `.agents/skills` (user or `--project`), custom agent TOML under
+  `~/.codex/agents/` / `.codex/agents/` for `spawn_agent`, a marked
+  `[shell_environment_policy.set]` block so Bash subprocesses receive
+  `LOOP_SPEC_HARNESS=codex` without waiting on hook trust, and a merged
+  `.codex/hooks.json`. `--model role=slug` (and `adversarial=`) pins generated
+  agents. Marketplace file is written only when `--project` is this clone.
+- **Codex adaptation contract** `skills/shared/codex-harness.md`. Detection is
+  `LOOP_SPEC_HARNESS=codex` (Codex stamps no `CLAUDECODE` equivalent).
+  `executionRootMode: "in-place"`. Teams/Workflow stay fail-safe `none`/`false`.
+  One-shot `Agent` maps onto `spawn_agent` (`agent_type: loop-spec-<role>`,
+  `message`, `task_name`, `fork_turns: "none"` when those fields exist).
+- **Headless backend.** `loop.py --agent-cli codex` drives
+  `codex exec --json --sandbox workspace-write` (work) / `read-only` (plan).
+  Cost is `None` (tokens, not USD); `--max-budget-usd` is rejected like ADK.
+  Resume is `codex exec resume <thread_id> --json`. Issue intake uses the same
+  seam.
+- **Codex-specific hooks.** SessionStart injects the micro protocol; PreToolUse
+  Bash prefixes the env contract (`hooks/codex-shell-env.sh`); UserPromptSubmit
+  runs `done-criteria.sh`. Claude Stop guards are **not** bridged: on Codex,
+  `decision: "block"` continues the turn and `continue: false` allows stop
+  (https://developers.openai.com/codex/hooks).
+
+### Changed
+
+- `lib/harness.sh` detect/cli/subagents include `codex`. `lib/bump-version.sh`
+  and `tests/validate-manifest.test.sh` keep `.codex-plugin/plugin.json` in
+  lockstep with the Claude manifests and the README line.
+- Cycle, no-teams, model-matrix, loop-fleet, autonomous, sentinel, adopting,
+  and configuration docs grow a Codex branch. Contributor guidelines name four
+  peer harnesses.
+
 ## [4.2.2] - 2026-08-19
 
 Named implicit-team spawns inherit the lead session model. `LOOP_SPEC_PHASE_MODEL_EXECUTE=sonnet` and per-role aliases were documented as binding on every teammate; on Claude Code >= 2.1.178 they were a no-op (`task_type: in_process_teammate`). OpenCode `task` still has no per-call model. ADK can now forward a native id on `dispatch_subagent`.

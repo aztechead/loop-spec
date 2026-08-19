@@ -9,13 +9,15 @@ edit the requirements to match its work. It requires no agent-teams support and
 no `Workflow` tool, but it does require the **agent CLI** on PATH, git, and a
 persistent harness runtime that can keep one synchronous long-running tool call alive.
 The agent CLI is the
-running harness's own headless binary (`claude`, `opencode`, or `adk`), resolved
+running harness's own headless binary (`claude`, `opencode`, `adk`, or `codex`), resolved
 by `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli`; under opencode every
 `supervisor.py` / `loop.py` invocation below additionally carries
 `--agent-cli opencode --claude-bin opencode`
-(see `skills/shared/opencode-harness.md`), and under ADK
+(see `skills/shared/opencode-harness.md`), under ADK
 `--agent-cli adk --claude-bin adk --adk-agent-dir "$LOOP_SPEC_ADK_AGENT_DIR"`
-(see `skills/shared/adk-harness.md`).
+(see `skills/shared/adk-harness.md`), and under Codex
+`--agent-cli codex --claude-bin codex`
+(see `skills/shared/codex-harness.md`).
 
 ## When this rung is selected (see execute/SKILL.md Step 3b)
 

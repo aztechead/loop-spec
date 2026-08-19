@@ -177,9 +177,11 @@ the ban on raw `jq`/`python3` mutation applies to node bodies verbatim.
 Nothing under `lib/graph/` branches on the harness: no `lib/harness.sh` call, no
 entrypoint probe, no per-harness case. Only node *bodies* adapt, through
 `lib/harness.sh`, under the additive-branch contract of
-`skills/shared/opencode-harness.md` and `skills/shared/adk-harness.md`. The
+`skills/shared/opencode-harness.md`, `skills/shared/adk-harness.md`, and
+`skills/shared/codex-harness.md`. The
 enforcers are the coupling pins
-`tests/opencode-harness-coverage.test.sh` and `tests/adk-harness-coverage.test.sh`: every
+`tests/opencode-harness-coverage.test.sh`, `tests/adk-harness-coverage.test.sh`,
+and `tests/codex-harness-coverage.test.sh`: every
 legitimate `lib/harness.sh` coupling is enumerated there, and a `lib/graph/` file
 appearing in that inventory is a contract violation to reject in review, never a pin to
 add.
@@ -187,7 +189,7 @@ add.
 The step descriptor is model-neutral:
 `{node,label,kind,body,effort,nextEdge,terminal,paused}`. Model selection belongs to the
 dispatch adapter, not the control-flow engine. This keeps the same graph executable
-under Claude Code, OpenCode, and ADK even when their model registries differ.
+under Claude Code, OpenCode, ADK, and Codex even when their model registries differ.
 
 ## Effort declaration
 

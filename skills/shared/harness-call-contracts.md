@@ -183,3 +183,25 @@ seam the loop-runner's `--agent-cli opencode` backend drives.
 
 External skills use their own names — `skill({name: "<name>"})`. OpenCode's
 skill tool accepts no arguments, so the surrounding prompt carries `. --update`.
+
+## Codex harness (native plugin + spawn_agent)
+
+Under the Codex harness (`lib/harness.sh detect` == `codex`) the tool surface
+is Codex's own: file tools plus `apply_patch`, `Bash` / `exec_command`, skills
+invoked as `$loop-spec-<name>` (or a plugin skill `$<name>`), and one-shot
+dispatch through `spawn_agent`. Glob and Grep have no native tools; use Bash.
+Team tools, `Workflow`, `TaskCreate`/`TaskUpdate`, and `ToolSearch` do not
+exist — apply the substitution table and dispatch mapping rule in
+`skills/shared/codex-harness.md`. Headless dispatch goes through
+`codex exec --json --sandbox workspace-write "<prompt>"`, the same seam the
+loop-runner's `--agent-cli codex` backend drives.
+
+`spawn_agent` is the `Agent` counterpart (`features.multi_agent`, on by
+default). Map `subagent_type: "loop-spec:<role>"` to `agent_type:
+"loop-spec-<role>"` (installer-written `~/.codex/agents/loop-spec-<role>.toml`
+or `.codex/agents/loop-spec-<role>.toml`), `prompt` to `message`, and
+`description` to `task_name` when that field is on the schema. Pass
+`fork_turns: "none"` (or `fork_context: false`) so a full-history fork cannot
+reject the override. Optional `model` is a Codex slug; omit `inherit` and
+Claude aliases. When a release hides `agent_type`, still spawn and prefix the
+message with the role charter from `agents/<role>.md`.

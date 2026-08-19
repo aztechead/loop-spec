@@ -31,9 +31,12 @@ Under opencode the preferred entry is `opencode run --format json "Load the
 loop-spec-auto skill and run: <description>"` (or the `@opencode-ai/sdk`'s
 `client.session.prompt()` against `opencode serve`, same text). Under ADK it is
 `adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run:
-<description>" --jsonl` (or your own `Runner` over `build_app()`, same text). The
+<description>" --jsonl` (or your own `Runner` over `build_app()`, same text).
+Under Codex it is `LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox
+workspace-write "Load the loop-spec-auto skill and run: <description>"`. The
 self-answer and fail-closed routing contracts are identical; see
-`skills/shared/opencode-harness.md` and `skills/shared/adk-harness.md`.
+`skills/shared/opencode-harness.md`, `skills/shared/adk-harness.md`, and
+`skills/shared/codex-harness.md`.
 
 ## Trigger and precedence
 

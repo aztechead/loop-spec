@@ -89,6 +89,13 @@ out="$(LOOP_SPEC_HARNESS=claude bash "$LIB" run --fixture "$FIXTURE" --dry-run)"
 check "6b: claude -p in plan" "1" "$(grep -c -- 'claude -p' <<<"$out")"
 check "6b: /loop-spec:intake prefix" "1" "$(grep -c -- '/loop-spec:intake autonomous' <<<"$out")"
 
+# Codex dispatches `codex exec --json --sandbox workspace-write` with a skill prompt
+out="$(LOOP_SPEC_HARNESS=codex bash "$LIB" run --fixture "$FIXTURE" --dry-run)"
+check "6d: codex exec in plan" "1" "$(grep -c -- 'codex exec --json' <<<"$out")"
+check "6d: workspace-write sandbox" "1" "$(grep -c -- '--sandbox workspace-write' <<<"$out")"
+check "6d: skill-tool intake prompt" "1" "$(grep -c -- 'Load the loop-spec-intake skill and run: autonomous' <<<"$out")"
+check "6d: no permission-mode default" "0" "$(grep -c -- '--permission-mode' <<<"$out")"
+
 # Case 7: live linked-worktree runs clear and read the control-checkout pointer.
 mkdir -p "$WORK/shims"
 cat > "$WORK/shims/gh" <<'SHIM'

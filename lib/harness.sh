@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
 # harness.sh - Identify the agent harness loop-spec is running under.
 #
-# loop-spec ships for three peer harnesses from one source tree: Claude Code
-# (including the Claude Agent SDK), opencode (https://opencode.ai), and Google's
-# Agent Development Kit (https://google.github.io/adk-docs/). None of them is the
+# loop-spec ships for four peer harnesses from one source tree: Claude Code
+# (including the Claude Agent SDK), opencode (https://opencode.ai), Google's
+# Agent Development Kit (https://google.github.io/adk-docs/), and OpenAI Codex
+# (https://developers.openai.com/codex). None of them is the
 # reference implementation — each expresses the same cycle through the surface it
 # actually has, and every difference between them is a branch keyed on this one
 # probe rather than an ad hoc tool sniff. The adaptation contracts that consume
 # these answers are skills/shared/claude-harness.md,
-# skills/shared/opencode-harness.md, and skills/shared/adk-harness.md.
+# skills/shared/opencode-harness.md, skills/shared/adk-harness.md, and
+# skills/shared/codex-harness.md.
 #
 # Usage:
-#   harness.sh detect      -> "claude" | "opencode" | "adk"
+#   harness.sh detect      -> "claude" | "opencode" | "adk" | "codex"
 #   harness.sh cli         -> headless dispatch binary for THIS harness
-#                             ("claude" | "opencode" | "adk"); loop-fleet rungs
+#                             ("claude" | "opencode" | "adk" | "codex"); loop-fleet rungs
 #                             spawn this.
 #   harness.sh subagents   -> "true" | "false"  (does the harness have a
 #                             one-shot subagent tool taking {description,
 #                             prompt, subagent_type}: claude has Agent,
 #                             opencode has task, adk has the bundled
-#                             dispatch_subagent tool over AgentTool — all three
-#                             share that parameter shape)
+#                             dispatch_subagent tool over AgentTool, Codex has
+#                             spawn_agent — the call shape is mapped per
+#                             contract, the capability is the same)
 #   harness.sh entrypoint  -> the raw CLAUDE_CODE_ENTRYPOINT stamp, or
 #                             "unknown" when unset (see below)
 #   harness.sh headless    -> "true" | "false" (is this a one-shot, unattended
@@ -31,25 +34,30 @@
 #   harness.sh loop-runtime-reason -> stable reason for rung telemetry
 #
 # Detection order (first match wins):
-#   1. LOOP_SPEC_HARNESS=claude|opencode|adk   explicit override. The retired
+#   1. LOOP_SPEC_HARNESS=claude|opencode|adk|codex   explicit override. The retired
 #      value `pi` is an error instead of silently selecting another harness. # retired-harness-diagnostic
 #      The bundled
-#      opencode plugin (extensions/opencode/loop-spec.ts) and ADK bridge
-#      (extensions/adk/loop_spec_adk/bridge.py) both export it into every shell
-#      invocation — opencode through the documented `shell.env` plugin hook,
-#      ADK through its session-aware Execute wrapper — so under those harnesses
-#      this is the NORMAL signal, not just the escape hatch. Unknown values
-#      fall through.
+#      opencode plugin (extensions/opencode/loop-spec.ts), ADK bridge
+#      (extensions/adk/loop_spec_adk/bridge.py), and Codex installer/hooks
+#      (lib/codex-install.sh, hooks/codex-shell-env.sh) all export it into every
+#      shell invocation — opencode through the documented `shell.env` plugin
+#      hook, ADK through its session-aware Execute wrapper, Codex through
+#      shell_environment_policy.set plus a PreToolUse Bash rewrite — so under
+#      those harnesses this is the NORMAL signal, not just the escape hatch.
+#      Unknown values fall through.
 #   2. CLAUDECODE=1                  set by Claude Code's Bash tool -> claude
 #   3. default                       -> claude (back-compat: every pre-2.14
 #                                     install is a Claude Code plugin)
 #
-# Neither opencode nor ADK stamps an identifying variable of its own: opencode's
-# shell env is a plain process.env spread plus plugin `shell.env` output, and ADK
-# runs shell commands through whatever environment the embedding program built.
-# Detection under both therefore REQUIRES the bundled bridge; there is no weak
-# hint to fall back on, and inventing one would guess wrong on any machine with
-# the other harness installed.
+# Neither opencode, ADK, nor Codex stamps an identifying variable of its own
+# that this probe may treat as proof: opencode's shell env is a plain
+# process.env spread plus plugin `shell.env` output, ADK runs shell commands
+# through whatever environment the embedding program built, and Codex's
+# documented subprocess env is `shell_environment_policy` plus plugin hook
+# variables that exist only inside hook processes. Detection under those
+# harnesses therefore REQUIRES the bundled bridge; there is no weak hint to
+# fall back on, and inventing one would guess wrong on any machine with
+# another harness installed.
 #
 # Headless proof (`entrypoint` / `headless`):
 #   Claude Code stamps CLAUDE_CODE_ENTRYPOINT into every child process it spawns,
@@ -70,12 +78,14 @@
 #   not have — which is how a headless run gets routed onto the loop-fleet rung it
 #   cannot execute. A stamped headless entrypoint is a fact and outranks that claim.
 #
-#   opencode and ADK publish no equivalent stamp, so they assert the profile on the
-#   channel that already exists: `opencode run` and `adk run` are one-shot, and the
-#   bundled launch paths export LOOP_SPEC_NON_INTERACTIVE=1 for one-shot runs
-#   (ADK: loop.py and issue-intake.sh; direct `adk run` callers set it explicitly,
-#   unlike persistent `adk web` / `adk api_server`). That is an assertion rather than a proof, which is why it
-#   ranks below a stamp and above an inherited EXECUTION_PROFILE claim.
+#   opencode, ADK, and Codex publish no equivalent stamp, so they assert the
+#   profile on the channel that already exists: `opencode run`, `adk run`, and
+#   `codex exec` are one-shot, and the bundled launch paths export
+#   LOOP_SPEC_NON_INTERACTIVE=1 for one-shot runs (ADK/Codex: loop.py and
+#   issue-intake.sh; direct `adk run` / `codex exec` callers set it explicitly,
+#   unlike persistent `adk web` / `adk api_server` or the Codex TUI). That is
+#   an assertion rather than a proof, which is why it ranks below a stamp and
+#   above an inherited EXECUTION_PROFILE claim.
 #
 # detect/cli/subagents/entrypoint/headless always exit 0 with the answer on
 # stdout; an unknown command exits 2.
@@ -98,9 +108,9 @@ entrypoint_headless() {
 
 detect() {
   case "${LOOP_SPEC_HARNESS:-}" in
-    claude|opencode|adk) echo "${LOOP_SPEC_HARNESS}"; return ;;
+    claude|opencode|adk|codex) echo "${LOOP_SPEC_HARNESS}"; return ;;
     pi) # retired-harness-diagnostic
-      echo "harness.sh: LOOP_SPEC_HARNESS=pi was removed in 4.0.0; choose claude, opencode, or adk" >&2 # retired-harness-diagnostic
+      echo "harness.sh: LOOP_SPEC_HARNESS=pi was removed in 4.0.0; choose claude, opencode, adk, or codex" >&2 # retired-harness-diagnostic
       return 2
       ;;
   esac
@@ -116,22 +126,24 @@ case "$cmd" in
     detect
     ;;
   cli)
-    # Today the harness name IS the headless binary name for all three
-    # harnesses (claude -p / opencode run --format json / adk run --output jsonl).
-    # Kept as a separate verb so call sites read as intent (which binary do I
-    # spawn) and so a future harness where the two diverge only changes here.
+    # Today the harness name IS the headless binary name for all four
+    # harnesses (claude -p / opencode run --format json / adk run --jsonl /
+    # codex exec --json). Kept as a separate verb so call sites read as intent
+    # (which binary do I spawn) and so a future harness where the two diverge
+    # only changes here.
     detect
     ;;
   subagents)
-    # Capability, not harness name: all three harnesses expose a one-shot
-    # dispatch taking {description, prompt, subagent_type} — claude's Agent,
-    # opencode's task, and the dispatch_subagent tool the ADK bridge builds over
-    # AgentTool — so the subagent rungs stay live everywhere. This stays a verb
+    # Capability, not harness name: all four harnesses expose a one-shot
+    # dispatch — claude's Agent, opencode's task, the dispatch_subagent tool
+    # the ADK bridge builds over AgentTool, and Codex spawn_agent — so the
+    # subagent rungs stay live everywhere. The parameter spelling is a per-
+    # contract mapping, not a reason to answer false. This stays a verb
     # rather than a constant because it is a CAPABILITY question: a harness that
     # cannot dispatch must answer false and fall back to the inline rung.
     harness="$(detect)" || exit $?
     case "$harness" in
-      claude|opencode|adk) echo "true" ;;
+      claude|opencode|adk|codex) echo "true" ;;
       *) echo "false" ;;
     esac
     ;;

@@ -1,16 +1,18 @@
 # Model routing
 
 loop-spec is model-portable by default. Every role uses `inherit`, so the model
-that launched the Claude Code or OpenCode session can run the complete cycle.
-No provider, model family, or premium tier is a prerequisite.
+that launched the Claude Code, OpenCode, Codex, or ADK session can run the
+complete cycle. No provider, model family, or premium tier is a prerequisite.
 
-This follows both current host contracts:
+This follows the current host contracts:
 
 - Claude Code: an omitted subagent model defaults to `inherit`; `inherit`
   uses the main conversation's model. Explicit aliases and full model IDs are
   also supported: https://code.claude.com/docs/en/sub-agents#choose-a-model
 - OpenCode: a subagent with no model override uses the primary agent's model:
   https://opencode.ai/docs/agents/#model
+- Codex: a custom agent with no `model` key inherits the parent session model:
+  https://developers.openai.com/codex/subagents
 
 The graph's `system1` and `system2` effort values do not select a model. They
 change the phase guidance described in `skills/shared/dual-process.md`. Keeping
@@ -36,6 +38,9 @@ required by `skills/shared/opencode-harness.md`.
 ADK resolves a role's model from its charter only when that names an ADK id and
 otherwise inherits the mounted agent's model, as required by
 `skills/shared/adk-harness.md`.
+Codex maps the same logical dispatch to a generated custom agent and passes
+`spawn_agent`'s optional `model` only when `feature.models.<role>` is a Codex
+slug, as required by `skills/shared/codex-harness.md`.
 
 ## Resolution and overrides
 
@@ -110,7 +115,11 @@ Under OpenCode, apply the native task mapping and omit the per-call model —
 `--model` routes (`skills/shared/opencode-harness.md`). Under ADK, pass
 `dispatch_subagent`'s optional `model` when `feature.models.<role>` is an ADK id
 (`gemini-*` or `provider/model`); `inherit` and Claude aliases fall back to the
-mounted app model (`skills/shared/adk-harness.md`).
+mounted app model (`skills/shared/adk-harness.md`). Under Codex, pass
+`spawn_agent`'s optional `model` when `feature.models.<role>` is a Codex slug;
+`inherit` and Claude aliases fall back to the custom agent file or parent
+session model (`skills/shared/codex-harness.md`). Pin generated agents with
+`codex-install.sh install --model`.
 
 Standalone skills and agents also default to `inherit`. A user's chosen session
 model is a complete supported configuration, not a degraded mode.

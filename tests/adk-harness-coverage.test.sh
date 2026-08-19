@@ -29,7 +29,7 @@ checks=(
   "skills/shared/adk-harness.md	token counts, not money"
   # -- the harness probe knows adk and grants the subagent capability
   "lib/harness.sh	adk"
-  "lib/harness.sh	claude|opencode|adk"
+  "lib/harness.sh	claude|opencode|adk|codex"
   "lib/execute-rung.sh	harness.sh"
   # -- capability gates are non-claude-gated (the bash side of the contract)
   "lib/teams-capability.sh	!= \"claude\""
