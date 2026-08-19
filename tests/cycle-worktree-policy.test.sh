@@ -7,11 +7,12 @@ from pathlib import Path
 import sys
 
 cycle = Path(sys.argv[1]).read_text(encoding="utf-8")
-start = cycle.index('if [[ "$worktrees_enabled" == "0" ]]')
-fallback = cycle.index("else", start)
-end = cycle.index("fi", fallback)
-disabled = cycle[start:fallback]
-enabled = cycle[fallback:end]
+mint = cycle[cycle.index("# Mint feat/{slug} when adopt-pr.sh did not select an existing PR."):]
+start = mint.index('if [[ "$worktrees_enabled" == "0" ]]')
+fallback = mint.index("else", start)
+end = mint.index("fi", fallback)
+disabled = mint[start:fallback]
+enabled = mint[fallback:end]
 
 # EXECUTE's one-shot subagent rung is where LOOP_SPEC_WORKTREES=0 actually lands
 # (lib/execute-rung.sh selects `subagent`). Its prompt template must select the mode
@@ -25,6 +26,8 @@ wave = execute[execute.index("## Lead wave loop"):execute.index("## Agent dispat
 prompt = execute[execute.index("Step 1 - The task worktree already exists"):execute.index("## Reviewer Agent prompt")]
 
 checks = [
+    ("adopted PR attaches instead of minting feat/{slug}",
+     "attach-feature-worktree" in cycle and "adopting PR" in cycle),
     ("disabled branch performs an in-place checkout", 'checkout -b "feat/${slug}"' in disabled),
     ("disabled branch never invokes the worktree helper", "create-feature-worktree" not in disabled),
     ("enabled branch invokes the worktree helper", "create-feature-worktree" in enabled),

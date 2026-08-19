@@ -46,10 +46,12 @@ fi
 # Always autonomous: /loop-spec:auto is this validator's only caller, and it is
 # autonomous by definition. The guard reads that flag to leave interactive runs alone.
 arm_route() {
-  local route="$1" title="$2"
+  local route="$1" title="$2" classification="${3:-}"
+  local extra=()
+  [[ -n "$classification" ]] && extra+=(--classification "$classification")
   bash "$script_dir/cycle-result.sh" begin --result-root "$repo_path" \
     --cycle-type "$route" --title "$title" --phase routing \
-    --autonomous true >/dev/null 2>&1 || true
+    --autonomous true "${extra[@]}" >/dev/null 2>&1 || true
 }
 
 fallback() {
@@ -176,13 +178,14 @@ elif [[ "$candidate_route" == "debug" ]]; then
   fi
 fi
 
-arm_route "$normalized_route" "$(jq -r '.reason' <<<"$raw")"
-
-jq -c \
+normalized="$(jq -c \
   --arg route "$normalized_route" \
   --arg candidate_route "$candidate_route" \
   --arg reason_code "$reason_code" \
   --argjson reviewable_files "$reviewable_files" \
   '. + {route: $route, candidateRoute: $candidate_route, reasonCode: $reason_code,
         reviewableEstimatedFiles: $reviewable_files}' \
-  <<<"$raw"
+  <<<"$raw")"
+
+arm_route "$normalized_route" "$(jq -r '.reason' <<<"$raw")" "$normalized"
+printf '%s\n' "$normalized"

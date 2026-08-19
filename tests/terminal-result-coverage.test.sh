@@ -23,6 +23,7 @@ checks=(
   "lib/cycle-reconcile.sh	write-terminal"
   "lib/cycle-reconcile.sh	checkpoint-pr.sh"
   "lib/cycle-result.sh	--outcome delivered"
+  "lib/cycle-result.sh	Cycle completed; PR delivered."
   "lib/cycle-reconcile.sh	a PR was delivered"
   "lib/cycle-result.sh	LOOP_SPEC_RESULT"
   "skills/cycle/SKILL.md	retrying once"

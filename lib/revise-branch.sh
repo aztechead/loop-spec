@@ -48,20 +48,7 @@ fi
 
 # Where <branch> is already checked out, if anywhere. Porcelain, not `git branch`
 # (a worktree other than $repo can hold the branch). Empty = not checked out.
-checkout_path=""
-want_ref="refs/heads/$branch"
-cur_path=""
-while IFS= read -r line; do
-  case "$line" in
-    worktree\ *) cur_path="${line#worktree }" ;;
-    branch\ *)
-      if [[ "${line#branch }" == "$want_ref" ]]; then
-        checkout_path="$cur_path"
-      fi
-      ;;
-    "") cur_path="" ;;
-  esac
-done < <(git -C "$repo" worktree list --porcelain)
+checkout_path="$(bash "$SCRIPT_DIR/git-ops.sh" -C "$repo" checkout-path-for-branch "$branch")"
 
 require_clean() {
   local root="$1"

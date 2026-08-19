@@ -23,6 +23,21 @@ Headless callers gating on `converged` still failed, and nothing was delivered.
   maintenance short path still walks PLAN → EXECUTE → VERIFY → ITERATE → DELIVER and
   still publishes `write --status completed` (or `--outcome delivered`) on the
   `completed` node; skipping DELIVER to save ceremony is the same unaccounted ending.
+- **Empty ITERATE summary still publishes.** `cycle-result.sh write --status completed`
+  used to refuse a blank `--summary`, so a delivered PR with no ITERATE verdict looked
+  like a failed run to a headless caller. It now falls back to the iterate summary when
+  present, else `Cycle completed; PR delivered.` when delivery is `ready-for-review`.
+  Cycle On completion does the same instead of aborting.
+- **Classification survives `begin`.** `/loop-spec:auto` persists the validated
+  classification on `.loop-spec/active-run.json`. Cycle Step 3 reads it when no
+  `profile:` token is on the invocation, so `profile=maintenance` still selects if the
+  token is dropped. A later `begin` without `--classification` keeps the armed object;
+  fail-closed routing still arms without one.
+- **Named open PRs are adopted, not re-minted.** `lib/adopt-pr.sh` is the probe: a
+  GitHub pull URL, `PR #N`, or "this/the PR" on a branch that already has one checks
+  out that OPEN, same-repo head instead of `feat/{slug}` / `micro/<slug>`. DELIVER
+  updates the named PR. Workspace mode still mints per repo. Dirt on the adopted
+  branch is the work; dirt anywhere else still aborts.
 
 ## [4.2.0] - 2026-08-18
 

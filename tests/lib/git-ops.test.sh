@@ -189,6 +189,55 @@ list_c=$(bash "$LIB" -C "$CLEAN_REPO" list-feature-worktrees)
 echo "$list_c" | grep -q "feat/c-slug" && r=ok || r=bad
 check "AA: -C list-feature-worktrees lists the worktree created with -C (from outside cwd)" "ok" "$r"
 
+# Attach an existing branch (named-PR adoption) instead of minting feat/{slug}.
+exit_code=0
+LOOP_SPEC_WORKTREES=0 bash "$LIB" -C "$CLEAN_REPO" \
+  attach-feature-worktree no-wt feat/c-slug >/dev/null 2>&1 || exit_code=$?
+check "AG: worktree opt-out rejects attach-feature-worktree" "1" "$exit_code"
+
+exit_code=0
+bash "$LIB" -C "$CLEAN_REPO" attach-feature-worktree missing feat/does-not-exist \
+  >/dev/null 2>&1 || exit_code=$?
+check "AH: attach-feature-worktree rejects a missing branch" "1" "$exit_code"
+
+git -C "$CLEAN_REPO" branch feat/attach-me "$base_sha_clean"
+got=$(bash "$LIB" -C "$CLEAN_REPO" attach-feature-worktree attach-me feat/attach-me)
+check "AI: attach-feature-worktree prints the worktree path" \
+  "${CLEAN_REPO}/.claude/worktrees/attach-me" "$got"
+[[ -d "${CLEAN_REPO}/.claude/worktrees/attach-me" ]] && r=ok || r=bad
+check "AI2: attach-feature-worktree creates the worktree dir" "ok" "$r"
+git -C "$CLEAN_REPO" show-ref --verify --quiet refs/heads/feat/attach-me && r=ok || r=bad
+check "AI3: attach-feature-worktree keeps the existing branch" "ok" "$r"
+
+got=$(bash "$LIB" -C "$CLEAN_REPO" attach-feature-worktree attach-me feat/attach-me)
+check "AJ: attach-feature-worktree reuses the checkout that already holds the branch" \
+  "${CLEAN_REPO}/.claude/worktrees/attach-me" "$got"
+
+orig_branch=$(git -C "$CLEAN_REPO" rev-parse --abbrev-ref HEAD)
+git -C "$CLEAN_REPO" checkout -q -b feat/on-main "$base_sha_clean"
+main_wt=$(git -C "$CLEAN_REPO" rev-parse --show-toplevel)
+got=$(bash "$LIB" -C "$CLEAN_REPO" attach-feature-worktree on-main feat/on-main)
+check "AK: attach-feature-worktree reuses the main worktree when it holds the branch" \
+  "$main_wt" "$got"
+got=$(bash "$LIB" -C "$CLEAN_REPO" checkout-path-for-branch feat/on-main)
+check "AK2: checkout-path-for-branch names the main worktree" "$main_wt" "$got"
+git -C "$CLEAN_REPO" checkout -q "$orig_branch"
+got=$(bash "$LIB" -C "$CLEAN_REPO" checkout-path-for-branch feat/does-not-exist)
+check "AK3: checkout-path-for-branch is empty when the branch is not checked out" "" "$got"
+
+BARE="$OUTSIDE/bare-origin"
+git init --bare -q "$BARE"
+git -C "$CLEAN_REPO" remote add origin "$BARE"
+git -C "$CLEAN_REPO" push -q origin HEAD:feat/from-origin
+git -C "$CLEAN_REPO" fetch -q origin
+git -C "$CLEAN_REPO" show-ref --verify --quiet refs/heads/feat/from-origin && \
+  git -C "$CLEAN_REPO" branch -D feat/from-origin >/dev/null
+got=$(bash "$LIB" -C "$CLEAN_REPO" attach-feature-worktree from-origin feat/from-origin)
+check "AL: attach-feature-worktree creates a local branch from origin" \
+  "${CLEAN_REPO}/.claude/worktrees/from-origin" "$got"
+git -C "$CLEAN_REPO" show-ref --verify --quiet refs/heads/feat/from-origin && r=ok || r=bad
+check "AL2: the origin-only attach created the local branch" "ok" "$r"
+
 # AB: -C missing path argument exits 1
 exit_code=0
 bash "$LIB" -C >/dev/null 2>&1 || exit_code=$?

@@ -16,6 +16,8 @@ checks=(
   "lib/task-route.sh	micro-requires-low-ambiguity"
   "lib/task-route.sh	debug-task-kind-mismatch"
   "lib/task-route.sh	workingTreeConflict"
+  "lib/task-route.sh	--classification"
+  "skills/cycle/SKILL.md	classification so the maintenance short path"
   "skills/micro/SKILL.md	autonomous runs (inline"
   "skills/micro/SKILL.md	brief so intake"
   "skills/debug/SKILL.md	with the path, hand off"
