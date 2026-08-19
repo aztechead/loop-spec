@@ -33,7 +33,7 @@ arm() {
   local project="$1" autonomous="$2" started="${3:-}"
   mkdir -p "$project/.loop-spec"
   jq -n --arg autonomous "$autonomous" --arg started "$started" \
-    '{schema:1,cycleType:"full",title:"Sync PR #114 up to main",slug:null,branch:null,
+    '{schema:1,cycleType:"full",title:"What is the architecture?",slug:null,branch:null,
       baseBranch:null,featureDir:null,phase:"routing",
       autonomous:($autonomous == "true"),
       startedAt:(if $started == "" then "2026-01-01T00:00:00Z" else $started end),
@@ -52,9 +52,9 @@ check "a: armed autonomous route with no terminal result -> BLOCK" 2 "$ARMED"
 PUBLISHED="$TMPDIR_TEST/published"; mkdir -p "$PUBLISHED"
 arm "$PUBLISHED" true "$(now_stamp)"
 bash "$CYCLE_RESULT" write-terminal --result-root "$PUBLISHED" --cycle-type full \
-  --status escalated --outcome protocol-mismatch --title "Sync PR #114 up to main" \
-  --converged false --reason "a branch sync has no spec surface" \
-  --summary "Routed to the full cycle; reported the mismatch without changing the repo." \
+  --status escalated --outcome protocol-mismatch --title "What is the architecture?" \
+  --converged false --reason "the request is a question, not a code-change task" \
+  --summary "Routed to the full cycle; reported the non-task without changing the repo." \
   >/dev/null 2>&1
 check "b: published terminal result -> ALLOW" 0 "$PUBLISHED"
 

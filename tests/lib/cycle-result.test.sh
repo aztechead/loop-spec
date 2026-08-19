@@ -624,7 +624,7 @@ git -C "$Z" init -q
 git -C "$Z" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
 check "Z: idle root reports idle" "idle" "$(bash "$LIB" state --result-root "$Z" | cut -d' ' -f1)"
 
-bash "$LIB" begin --result-root "$Z" --cycle-type micro --title "Sync PR #114" \
+bash "$LIB" begin --result-root "$Z" --cycle-type micro --title "What is the architecture?" \
   --phase routing --autonomous true
 check "Z: reduced routes arm the same record" "micro" "$(jq -r '.cycleType' "$Z/.loop-spec/active-run.json")"
 Z_STATE="$(bash "$LIB" state --result-root "$Z")"
@@ -633,11 +633,12 @@ check "Z: probe reports the armed autonomy" "1" \
   "$(grep -c 'autonomous=true' <<<"$Z_STATE")"
 check "Z: probe reports an age" "1" "$(grep -cE 'ageSeconds=[0-9]+' <<<"$Z_STATE")"
 
-# The mismatch record is the honest exit from a protocol that does not fit.
+# The mismatch record is the honest exit from a genuine non-task, not from a
+# rebase/sync/chore the router already accepted.
 bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status escalated \
-  --outcome protocol-mismatch --title "Sync PR #114" --converged false \
-  --reason "a branch sync has no criteria to verify" \
-  --summary "The micro protocol does not fit a rebase; no repository work was done." >/dev/null
+  --outcome protocol-mismatch --title "What is the architecture?" --converged false \
+  --reason "the request is a question, not a code-change task" \
+  --summary "The request is not repository work; no repository work was done." >/dev/null
 Z_RESULT="$Z/.loop-spec/last-result.json"
 check "Z: mismatch publishes a terminal result" "escalated:protocol-mismatch:false" \
   "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$Z_RESULT")"
@@ -666,7 +667,7 @@ git -C "$Z" checkout -q -- tracked.txt
 printf 'untracked\n' > "$Z/scratch.txt"
 bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status escalated \
   --outcome protocol-mismatch --title "Scratch file" --converged false \
-  --reason "a branch sync has no criteria to verify" \
+  --reason "the request is a question, not a code-change task" \
   --summary "An unrelated untracked file must not block the record." >/dev/null 2>&1
 check "Z: mismatch ignores untracked paths" "1" "$([[ -f "$Z_RESULT" ]] && echo 1 || echo 0)"
 
@@ -678,6 +679,54 @@ bash "$REPO_ROOT/lib/cycle-reconcile.sh" --result-root "$Z" \
   --reason "routed skill ended without emitting a terminal result" >/dev/null
 check "Z: reconciled route keeps its cycle type" "debug:failed:interrupted" \
   "$(jq -r '.cycleType + ":" + .status + ":" + .outcome' "$Z_RESULT")"
+
+# Empty ITERATE summary must still publish a delivered run.
+printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
+rm -f "$FEAT_DIR/result.json" "$LOOP_DIR/last-result.json" "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "" >/dev/null 2>&1
+check "AA: blank summary falls back on delivered completion" \
+  "Cycle completed; PR delivered." "$(jq -r '.summary' "$FEAT_DIR/result.json")"
+
+printf '%s\n' "$(jq '.iterate.lastVerdict.summary = "Iterate said so."' "$FEAT_DIR/feature.json")" \
+  > "$FEAT_DIR/feature.json"
+rm -f "$FEAT_DIR/result.json"
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "" >/dev/null 2>&1
+check "AA2: iterate verdict wins over the delivery fallback" \
+  "Iterate said so." "$(jq -r '.summary' "$FEAT_DIR/result.json")"
+
+printf '%s\n' "$(jq 'del(.delivery)' "$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+rm -f "$FEAT_DIR/result.json" "$FEAT_DIR/delivery.json"
+bash "$LIB" write "$FEAT_DIR" --status completed --summary "" >/dev/null 2>&1
+check "AA3: blank summary without delivery still refuses" "0" \
+  "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"
+
+# Classification on the armed run survives a later begin that omitted it.
+CLASS_JSON='{"route":"full","taskKind":"maintenance","confidence":0.9,"estimatedFiles":2,"reviewableEstimatedFiles":2,"criteriaCount":2,"ambiguity":"low","introducesSeam":false,"introducesDependency":false,"introducesNewDependency":false,"updatesDependencyVersion":false,"changesInterface":false,"securitySensitive":false,"dataMigration":false,"multiRepo":false,"destructive":false,"reason":"sync PR"}'
+CLASS_ROOT="$WORK/class-root"
+mkdir -p "$CLASS_ROOT"
+bash "$LIB" begin --result-root "$CLASS_ROOT" --cycle-type full \
+  --title "Sync PR #114" --phase routing --autonomous true \
+  --classification "$CLASS_JSON"
+check "AB: begin stores the classification object" "maintenance" \
+  "$(jq -r '.classification.taskKind' "$CLASS_ROOT/.loop-spec/active-run.json")"
+bash "$LIB" begin --result-root "$CLASS_ROOT" --cycle-type full \
+  --title "Sync PR #114" --slug sync-pr-114 --branch feat/sync --base-branch main \
+  --phase startup --autonomous true
+check "AB2: begin without --classification preserves the armed object" "maintenance" \
+  "$(jq -r '.classification.taskKind' "$CLASS_ROOT/.loop-spec/active-run.json")"
+check "AB2: preserved classification still selects maintenance" "maintenance" \
+  "$(jq -c '.classification' "$CLASS_ROOT/.loop-spec/active-run.json" \
+     | bash "$REPO_ROOT/lib/cycle-profile.sh" select - | sed -E 's/^profile=([a-z]+).*/\1/')"
+bash "$LIB" begin --result-root "$CLASS_ROOT" --cycle-type full \
+  --title "Sync PR #114" --phase startup --classification 'not-json'
+check "AB3: invalid --classification does not wipe the stored object" "maintenance" \
+  "$(jq -r '.classification.taskKind' "$CLASS_ROOT/.loop-spec/active-run.json")"
+NULL_ROOT="$WORK/null-class-root"
+mkdir -p "$NULL_ROOT"
+bash "$LIB" begin --result-root "$NULL_ROOT" --cycle-type full \
+  --title "No classification" --phase routing
+check "AB4: begin without a classification stores JSON null" "null" \
+  "$(jq -c '.classification' "$NULL_ROOT/.loop-spec/active-run.json")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

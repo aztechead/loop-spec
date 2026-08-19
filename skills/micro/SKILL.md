@@ -93,7 +93,14 @@ open no PR: select `no-change-needed` with reason code `already-satisfied`. A cl
 alone is not enough; unsupported or blocked work is a failure, not intentional no-change.
 Still zero ceremony — no worktree, no DELIVER controller:
 
-- On the default branch? Move the work to a branch first: `git checkout -b micro/<slug>`
+- If the request names an open PR, adopt it instead of minting `micro/<slug>`:
+  ```bash
+  adopt_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/adopt-pr.sh" resolve \
+    --repo "$(git rev-parse --show-toplevel)" --request "$task")"
+  ```
+  When `.adopt == true`, check out `.branch` (fetch first) and stay on it. That is
+  the PR DELIVER-equivalent will update. Dirt on that branch is the work.
+- Otherwise: on the default branch? Move the work to a branch first: `git checkout -b micro/<slug>`
   (uncommitted changes travel). Already on a topic branch: stay on it.
 - Commit (project commit conventions apply), `git push -u origin <branch>`, then reuse
   the branch's existing PR if one exists (`gh pr view --json number,url`) or open one
@@ -195,11 +202,15 @@ will replace the stable pointer with its final terminal result.
 ## Protocol mismatch
 
 Escalation is for work that outgrew this protocol. A mismatch is the other direction:
-the micro protocol does not fit the request at all. Both end the same way — with a
-published result, never with the protocol abandoned and the task finished by hand
+the request is not repository work at all (a pure question, or a different product).
+A merge-conflict resolution, PR sync/rebase, re-review, or one-command chore is
+micro-scale work when the bounds still hold — execute it; if a bound is crossed,
+promote (Escalation above), do not decline. Both endings publish a result, never with
+the protocol abandoned and the task finished by hand
 (**`skills/shared/route-exit-contract.md`**). Before touching the repository, emit the
 Step 9 record with `--status escalated --outcome protocol-mismatch --converged false`
-and a `--reason` naming the mismatch, then stop so the caller can re-route.
+and a `--reason` naming why this is not repository work, then stop so the caller can
+re-route.
 
 ## Mode toggle
 

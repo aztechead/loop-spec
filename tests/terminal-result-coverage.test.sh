@@ -23,6 +23,7 @@ checks=(
   "lib/cycle-reconcile.sh	write-terminal"
   "lib/cycle-reconcile.sh	checkpoint-pr.sh"
   "lib/cycle-result.sh	--outcome delivered"
+  "lib/cycle-result.sh	Cycle completed; PR delivered."
   "lib/cycle-reconcile.sh	a PR was delivered"
   "lib/cycle-result.sh	LOOP_SPEC_RESULT"
   "skills/cycle/SKILL.md	retrying once"
@@ -34,20 +35,46 @@ checks=(
   "lib/events.sh	LOOP_SPEC_PHASE_START"
   "lib/events.sh	LOOP_SPEC_PHASE_END"
   # The route-exit contract: every route publishes a terminal result, including the
-  # one that declines the task. A route that exits without one is the false-negative
-  # failure this pins shut.
+  # one that declines a genuine non-task. A route that exits without one is the
+  # false-negative failure this pins shut. Declining accepted repository work as
+  # protocol-mismatch is the complementary failure (v4.2.1).
   "skills/shared/route-exit-contract.md	protocol-mismatch"
+  "skills/shared/route-exit-contract.md	genuine **non-task**"
+  "skills/shared/route-exit-contract.md	ITERATE and DELIVER included"
   "skills/auto/SKILL.md	route-exit-contract.md"
   "skills/auto/SKILL.md	cycle-reconcile.sh"
+  "skills/auto/SKILL.md	executed, not declined"
   "skills/cycle/SKILL.md	protocol-mismatch"
+  "skills/cycle/SKILL.md	genuine **non-task**"
+  "skills/cycle/SKILL.md	ITERATE and DELIVER still run"
   "skills/micro/SKILL.md	protocol-mismatch"
+  "skills/micro/SKILL.md	not repository work at all"
   "skills/debug/SKILL.md	protocol-mismatch"
+  "skills/debug/SKILL.md	not repository work at all"
   "lib/cycle-result.sh	protocol-mismatch"
   "lib/task-route.sh	arm_route"
   "hooks/hooks.json	route-terminal-guard.sh"
   "hooks/team/route-terminal-guard.sh	LOOP_SPEC_ROUTE_GUARD"
+  "hooks/team/route-terminal-guard.sh	Do not use this to decline"
+  "docs/loop-spec/agent-output-contract.md	not declined"
 )
 
 check_fixed_strings "${checks[@]}"
+
+# v3.0.1 invited the model to decline a rebase/sync/chore as protocol-mismatch.
+# Those examples must not return: they are the v4.2.1 complementary failure.
+for entry in \
+  "skills/cycle/SKILL.md	that judgment is a finding to report" \
+  "skills/auto/SKILL.md	judges its protocol a poor fit must publish" \
+  "skills/shared/route-exit-contract.md	Stopping is the point"
+do
+  file="${entry%%	*}"
+  needle="${entry#*	}"
+  if [[ -f "$file" ]] && grep -qF -e "$needle" "$file"; then
+    FAIL=$((FAIL+1)); echo "FAIL: $file still invites mismatch with '$needle'"
+  else
+    PASS=$((PASS+1)); echo "PASS: $file no longer contains '$needle'"
+  fi
+done
 
 finish_fixed_string_coverage

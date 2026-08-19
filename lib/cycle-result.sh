@@ -19,6 +19,7 @@
 #                         [--slug <slug>] [--branch <branch>] [--base-branch <branch>]
 #                         [--feature-dir <absolute path>] [--phase <phase>]
 #                         [--autonomous <true|false>]
+#                         [--classification <json object>]
 #   cycle-result.sh state [--result-root <root>]
 #   cycle-result.sh resolve-root [<path>]
 #   cycle-result.sh write <feature_dir> --status <completed|paused|escalated|terminal|failed>
@@ -279,7 +280,7 @@ PY
   begin)
     shift
     result_root="" cycle_type="" title="" slug="" branch="" base_branch=""
-    feature_dir="" phase="startup" autonomous="false"
+    feature_dir="" phase="startup" autonomous="false" classification_raw=""
     while [[ $# -gt 0 ]]; do
       case "$1" in
         --result-root) result_root="${2:-}"; shift 2 || true ;;
@@ -291,6 +292,7 @@ PY
         --feature-dir) feature_dir="${2:-}"; shift 2 || true ;;
         --phase) phase="${2:-}"; shift 2 || true ;;
         --autonomous) autonomous="${2:-}"; shift 2 || true ;;
+        --classification) classification_raw="${2:-}"; shift 2 || true ;;
         *) shift || true ;;
       esac
     done
@@ -311,16 +313,27 @@ PY
     started_at="$(jq -r '.startedAt // empty' "$active_path" 2>/dev/null || true)"
     [[ -n "$started_at" ]] || started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    existing_class="null"
+    if [[ -f "$active_path" ]]; then
+      existing_class="$(jq -c '.classification // null' "$active_path" 2>/dev/null || echo null)"
+    fi
+    classification_json="$existing_class"
+    if [[ -n "$classification_raw" ]]; then
+      jq -e 'type == "object"' >/dev/null 2>&1 <<<"$classification_raw" \
+        && classification_json="$classification_raw"
+    fi
     active_json="$(jq -cn --arg cycleType "$cycle_type" --arg title "$title" \
       --arg slug "$slug" --arg branch "$branch" --arg base "$base_branch" \
       --arg featureDir "$feature_dir" --arg phase "$phase" --arg startedAt "$started_at" \
       --arg updatedAt "$now" --argjson autonomous "$autonomous" \
+      --argjson classification "$classification_json" \
       '{schema:1,cycleType:$cycleType,title:$title,
         slug:(if $slug == "" then null else $slug end),
         branch:(if $branch == "" then null else $branch end),
         baseBranch:(if $base == "" then null else $base end),
         featureDir:(if $featureDir == "" then null else $featureDir end),
-        phase:$phase,autonomous:$autonomous,startedAt:$startedAt,updatedAt:$updatedAt}')"
+        phase:$phase,autonomous:$autonomous,startedAt:$startedAt,updatedAt:$updatedAt,
+        classification:$classification}')"
     _write_atomic "$active_json" "$active_path" || {
       echo "cycle-result.sh: failed to write $active_path" >&2; exit 0; }
     exit 0
@@ -407,10 +420,12 @@ PY
       success_outcome=""
       allowed_outcomes="infrastructure-failed interrupted"
     fi
-    # Two endings belong to every route, not to one cycle type: the protocol did not
-    # fit the task, and the run stopped before it could finish. Both are honest exits
-    # that publish a result; the alternative -- leaving the route and finishing the
-    # work by hand -- publishes nothing and reads as a failed run downstream.
+    # Two endings belong to every route, not to one cycle type: the request was not
+    # repository work, and the run stopped before it could finish. Both are honest
+    # exits that publish a result. Declining a rebase/sync/conflict/re-review as
+    # protocol-mismatch is the complementary failure -- the v3.0.1 freelance path
+    # inverted. Leaving the route and finishing the work by hand publishes nothing
+    # and reads as a failed run downstream.
     case " $allowed_outcomes " in
       *" interrupted "*) ;;
       *) allowed_outcomes="$allowed_outcomes interrupted" ;;
@@ -611,10 +626,6 @@ PY
       echo "cycle-result.sh: invalid --status '$status'; must be one of: $VALID_STATUSES" >&2
       exit 0
     fi
-    if ! _is_nonblank "$summary"; then
-      echo "cycle-result.sh: a non-empty --summary is required" >&2
-      exit 0
-    fi
     if [[ -n "$no_change_reason" && "$no_change_reason" != "already-satisfied" ]]; then
       echo "cycle-result.sh: full-cycle --no-change-reason must be already-satisfied" >&2
       exit 0
@@ -638,6 +649,27 @@ PY
     delivery_content="null"
     if [[ -f "$feature_dir/delivery.json" ]]; then
       delivery_content="$(jq -c . "$feature_dir/delivery.json" 2>/dev/null || echo null)"
+    fi
+    if [[ "$delivery_content" == "null" ]]; then
+      delivery_content="$(jq -c '.delivery // null' <<<"$fj_content" 2>/dev/null || echo null)"
+    fi
+    # A delivered run must still publish when ITERATE left no summary. Reconcile
+    # and --outcome delivered already fall back; refusing here is the hole that
+    # makes a headless caller treat a delivered PR as a failed run.
+    if ! _is_nonblank "$summary"; then
+      iterate_summary="$(jq -r '.iterate.lastVerdict.summary // empty' <<<"$fj_content" 2>/dev/null || true)"
+      if _is_nonblank "$iterate_summary"; then
+        summary="$iterate_summary"
+      elif [[ "$status" == "completed" ]] && jq -e '
+          . != null and (
+            (.nextPhase // "") == "completed" or
+            (.status // "") == "ready-for-review")
+        ' >/dev/null 2>&1 <<<"$delivery_content"; then
+        summary="Cycle completed; PR delivered."
+      else
+        echo "cycle-result.sh: a non-empty --summary is required" >&2
+        exit 0
+      fi
     fi
     if [[ -n "$no_change_reason" ]] && ! jq -e '
       .iterate.lastVerdict.converged == true and

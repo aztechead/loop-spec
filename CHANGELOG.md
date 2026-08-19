@@ -2,6 +2,43 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [4.2.1] - 2026-08-19
+
+`protocol-mismatch` stopped the v3.0.1 freelance path (leave the routed protocol, do
+the work by hand, publish nothing). It then over-applied: `/loop-spec:auto` would
+correctly send a merge-conflict resolution, PR sync, or re-review into the full cycle,
+and the cycle would decline it because the seven-phase shape looked like a poor fit.
+Headless callers gating on `converged` still failed, and nothing was delivered.
+
+### Changed
+
+- **`protocol-mismatch` is a genuine non-task only.** A pure question, or work that
+  needs a different product, still publishes `escalated` / `protocol-mismatch` /
+  `converged: false` on an unmodified tree. A rebase, branch sync, merge-conflict
+  resolution, PR re-review, or one-command chore is repository work: micro when the
+  bounds hold, full with the maintenance profile / graph short path when they do not.
+  The router having accepted the task is decisive — the cycle executes it.
+  `skills/shared/route-exit-contract.md`, the cycle/micro/debug/auto skills, the
+  agent-output contract, and the route-terminal-guard message all say so. The
+  maintenance short path still walks PLAN → EXECUTE → VERIFY → ITERATE → DELIVER and
+  still publishes `write --status completed` (or `--outcome delivered`) on the
+  `completed` node; skipping DELIVER to save ceremony is the same unaccounted ending.
+- **Empty ITERATE summary still publishes.** `cycle-result.sh write --status completed`
+  used to refuse a blank `--summary`, so a delivered PR with no ITERATE verdict looked
+  like a failed run to a headless caller. It now falls back to the iterate summary when
+  present, else `Cycle completed; PR delivered.` when delivery is `ready-for-review`.
+  Cycle On completion does the same instead of aborting.
+- **Classification survives `begin`.** `/loop-spec:auto` persists the validated
+  classification on `.loop-spec/active-run.json`. Cycle Step 3 reads it when no
+  `profile:` token is on the invocation, so `profile=maintenance` still selects if the
+  token is dropped. A later `begin` without `--classification` keeps the armed object;
+  fail-closed routing still arms without one.
+- **Named open PRs are adopted, not re-minted.** `lib/adopt-pr.sh` is the probe: a
+  GitHub pull URL, `PR #N`, or "this/the PR" on a branch that already has one checks
+  out that OPEN, same-repo head instead of `feat/{slug}` / `micro/<slug>`. DELIVER
+  updates the named PR. Workspace mode still mints per repo. Dirt on the adopted
+  branch is the work; dirt anywhere else still aborts.
+
 ## [4.2.0] - 2026-08-18
 
 Everything this plugin emits is written for a person who has to maintain and operate it.

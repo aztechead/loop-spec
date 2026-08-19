@@ -112,15 +112,26 @@ migrates the staging record into the feature dir; SPEC renders it into SPEC.md's
 
 This skill is a route, and a route ends by publishing `.loop-spec/last-result.json` —
 a run that ends without one reads as a failure to every headless caller
-(**`skills/shared/route-exit-contract.md`**). If the seven-phase shape looks like a poor
-fit for the request (a rebase, a branch sync, a one-command chore), that judgment is a
-finding to report, not a licence to leave the protocol and do the task by hand:
+(**`skills/shared/route-exit-contract.md`**).
+
+`protocol-mismatch` is for a genuine **non-task** only (a pure question, or work that
+needs a different product entirely). A rebase, a branch sync, a merge-conflict
+resolution, a PR re-review, or a one-command chore is repository work. If
+`/loop-spec:auto` already routed here, that commitment stands — execute the cycle; do
+not decline it. Heavy ceremony is the maintenance profile (`profile=maintenance`,
+`skills/shared/tier-matrix.md`): SPEC synthesizes, the graph short path skips DISCUSS /
+spec-critique / code-review when no security signal fires, and PLAN / EXECUTE / VERIFY /
+ITERATE / DELIVER still run. Walk that path. Do not skip ITERATE or DELIVER because the
+task felt small; the graph owns sequencing, and a delivered change without a terminal
+result is the unaccounted ending this contract exists to prevent.
+
+When the request is genuinely not repository work, stop before changing the tree:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
   --result-root "$(git rev-parse --show-toplevel)" --cycle-type full \
   --status escalated --outcome protocol-mismatch --converged false \
-  --title "<request title>" --reason "<why the cycle does not fit this request>" \
+  --title "<request title>" --reason "<why this is not repository work>" \
   --summary "<what the request actually needs; no repository work was done>"
 ```
 
@@ -378,16 +389,31 @@ ladder must not change shape mid-run:
 
 ```bash
 inv_profile="$(jq -r '.profile // empty' <<<"$inv")"
-profile_line="$(LOOP_SPEC_CYCLE_PROFILE="${inv_profile:-${LOOP_SPEC_CYCLE_PROFILE:-auto}}" \
-  bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select)"
+class_json=""
+if [[ -f "${workspace_root:-.}/.loop-spec/active-run.json" ]]; then
+  class_json="$(jq -c '.classification // empty' \
+    "${workspace_root:-.}/.loop-spec/active-run.json" 2>/dev/null || true)"
+fi
+if [[ -n "$inv_profile" ]]; then
+  profile_line="$(LOOP_SPEC_CYCLE_PROFILE="$inv_profile" \
+    bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select)"
+elif [[ -n "$class_json" ]]; then
+  profile_line="$(printf '%s' "$class_json" | \
+    LOOP_SPEC_CYCLE_PROFILE="${LOOP_SPEC_CYCLE_PROFILE:-auto}" \
+    bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select -)"
+else
+  profile_line="$(LOOP_SPEC_CYCLE_PROFILE="${LOOP_SPEC_CYCLE_PROFILE:-auto}" \
+    bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select)"
+fi
 echo "loop-spec: $profile_line"
 cycle_profile="${profile_line#profile=}"; cycle_profile="${cycle_profile%% *}"
 ```
 
 The inline `profile:` token outranks `LOOP_SPEC_CYCLE_PROFILE`, matching how
 `phase:fresh` outranks `LOOP_SPEC_PHASE_HANDOFF`. `/loop-spec:auto` is the caller that
-supplies the token: it resolves the profile from the validated task classification and
-forwards the answer, so the evidence and the decision stay in one place.
+supplies the token AND persists the validated classification on the armed run
+(`.loop-spec/active-run.json`). If the token is dropped, this step still reads that
+classification so the maintenance short path survives a forgotten argument.
 
 `profile=maintenance` runs the lightened ladder (`skills/shared/tier-matrix.md`,
 "Maintenance profile"): SPEC skips the Socratic interview and synthesizes the spec, and
@@ -486,38 +512,79 @@ feature-worktree isolation. OpenCode and ADK have no session-root switch, so the
 branch uses a clean in-place feature branch instead of pretending `git worktree add`
 changed the running session's cwd.
 
+A request that names an open PR (`#114`, a GitHub pull URL, or "this/the PR" on a
+branch that already has one) is adopted: `lib/adopt-pr.sh resolve` is the probe.
+The cycle checks out that head instead of minting `feat/{slug}`, so conflict
+resolution and re-review land on the PR DELIVER will update. Workspace mode does
+not adopt (it still mints `feat/{slug}` in every participating repo). Dirt on the
+adopted branch is the work; dirt on any other branch still aborts.
+
 ```bash
 slug="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" slugify "$title")"
 repo_root="$workspace_root"
 harness_name="$(jq -r '.harness.name' <<<"$pf")"
+feature_branch="feat/${slug}"
+adopted_pr="false"
 
-# Never build a feature from an unrelated dirty checkout or stale feature HEAD.
+adopt_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/adopt-pr.sh" resolve \
+  --repo "$repo_root" --request "$title")"
+if [[ "${workspaceMode:-single}" == "single" ]] \
+   && jq -e '.adopt == true' >/dev/null 2>&1 <<<"$adopt_json"; then
+  adopted_pr="true"
+  feature_branch="$(jq -r '.branch' <<<"$adopt_json")"
+  base_branch="$(jq -r '.baseBranch' <<<"$adopt_json")"
+  echo "loop-spec: adopting PR $(jq -r '.number' <<<"$adopt_json") on $feature_branch (base $base_branch)."
+else
+  base_branch="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" detect-base-branch)"
+fi
+
+# Never build a feature from an unrelated dirty checkout. Dirt on the adopted PR
+# branch is the requested work (merge conflicts already in progress).
 bash "${CLAUDE_SKILL_DIR}/../../lib/runtime-ignore.sh" ensure "$repo_root"
-clean_state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" ensure-clean-or-stash)"
-[[ "$clean_state" == "clean" ]] || {
-  echo "loop-spec: source checkout is dirty; commit or stash changes before starting autonomous delivery." >&2
-  exit 1
-}
-base_branch="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" detect-base-branch)"
+current_branch="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)"
+if [[ "$adopted_pr" == "true" && "$current_branch" == "$feature_branch" ]]; then
+  clean_state="clean"
+else
+  clean_state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" ensure-clean-or-stash)"
+  [[ "$clean_state" == "clean" ]] || {
+    echo "loop-spec: source checkout is dirty; commit or stash changes before starting autonomous delivery." >&2
+    exit 1
+  }
+fi
 if git -C "$repo_root" remote get-url origin >/dev/null 2>&1; then
   git -C "$repo_root" fetch --quiet origin "$base_branch" || {
     echo "loop-spec: failed to fetch origin/$base_branch; refusing a stale PR base." >&2
     exit 1
   }
   base_ref="origin/$base_branch"
+  if [[ "$adopted_pr" == "true" ]]; then
+    git -C "$repo_root" fetch --quiet origin "$feature_branch" || true
+  fi
 else
   base_ref="$base_branch"
 fi
-base_sha="$(git -C "$repo_root" rev-parse --verify "${base_ref}^{commit}")" || {
-  echo "loop-spec: cannot resolve base branch '$base_ref'." >&2
-  exit 1
-}
+if [[ "$adopted_pr" == "true" ]]; then
+  pr_head="$(git -C "$repo_root" rev-parse --verify "refs/heads/${feature_branch}^{commit}" 2>/dev/null \
+    || git -C "$repo_root" rev-parse --verify "refs/remotes/origin/${feature_branch}^{commit}")" || {
+    echo "loop-spec: cannot resolve adopted PR branch '$feature_branch'." >&2
+    exit 1
+  }
+  base_sha="$(git -C "$repo_root" merge-base "$pr_head" "$base_ref")" || {
+    echo "loop-spec: adopted PR branch '$feature_branch' does not share history with '$base_ref'." >&2
+    exit 1
+  }
+else
+  base_sha="$(git -C "$repo_root" rev-parse --verify "${base_ref}^{commit}")" || {
+    echo "loop-spec: cannot resolve base branch '$base_ref'." >&2
+    exit 1
+  }
+fi
 
 active_autonomous=false
 [[ "${autonomous:-0}" == "1" ]] && active_autonomous=true
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" begin \
   --result-root "$repo_root" --cycle-type full --title "$title" --slug "$slug" \
-  --branch "feat/${slug}" --base-branch "$base_branch" --phase startup \
+  --branch "$feature_branch" --base-branch "$base_branch" --phase startup \
   --autonomous "$active_autonomous"
 
 worktree_state_path=""
@@ -526,6 +593,30 @@ case "$worktrees_enabled" in
   0|1) ;;
   *) echo "loop-spec: LOOP_SPEC_WORKTREES must be 0 or 1." >&2; exit 2 ;;
 esac
+if [[ "$adopted_pr" == "true" ]]; then
+  case "$harness_name" in
+    claude)
+      if [[ "$worktrees_enabled" == "0" ]]; then
+        git -C "$repo_root" checkout "$feature_branch" \
+          || git -C "$repo_root" checkout -b "$feature_branch" --track "origin/$feature_branch"
+        echo "loop-spec: LOOP_SPEC_WORKTREES=0; using the adopted PR branch in place."
+      else
+        worktree_abs="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" \
+          attach-feature-worktree "$slug" "$feature_branch")" || {
+          echo "loop-spec: could not attach a worktree to $feature_branch (see the helper's diagnostic above)." >&2
+          exit 1
+        }
+        worktree_state_path="$worktree_abs"
+        EnterWorktree({ path: worktree_abs })
+      fi
+      ;;
+    opencode|adk)
+      git -C "$repo_root" checkout "$feature_branch" \
+        || git -C "$repo_root" checkout -b "$feature_branch" --track "origin/$feature_branch"
+      ;;
+  esac
+else
+# Mint feat/{slug} when adopt-pr.sh did not select an existing PR.
 case "$harness_name" in
   claude)
     if [[ "$worktrees_enabled" == "0" ]]; then
@@ -549,6 +640,7 @@ case "$harness_name" in
     # Session cwd stays at repo_root; every later relative path remains valid.
     ;;
 esac
+fi
 
 # Prepare the untouched exact-base checkout before any loop-spec files or feature edits
 # exist. Repository-wide test/lint/typecheck runs at the END of the cycle (VERIFY Step
@@ -569,7 +661,7 @@ prepare_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run 
   bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
     --result-root "$repo_root" --cycle-type full --status failed \
     --outcome infrastructure-failed --title "$title" --slug "$slug" \
-    --branch "feat/${slug}" --base-branch "$base_branch" --phase-reached startup \
+    --branch "$feature_branch" --base-branch "$base_branch" --phase-reached startup \
     --reason "$prepare_reason" --summary "Environment preparation failed: $prepare_reason" \
     --converged false --verification-status not-run --autonomous "$active_autonomous"
   echo "loop-spec: environment preparation failed before feature initialization: $prepare_reason." >&2
@@ -604,7 +696,7 @@ if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]];
     bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
       --result-root "$repo_root" --cycle-type full --status failed \
       --outcome infrastructure-failed --title "$title" --slug "$slug" \
-      --branch "feat/${slug}" --base-branch "$base_branch" --phase-reached startup \
+      --branch "$feature_branch" --base-branch "$base_branch" --phase-reached startup \
       --reason "$baseline_reason" --summary "Validation baseline failed: $baseline_reason" \
       --converged false --verification-status failed --verification-command "$cmd_test" \
       --autonomous "$active_autonomous"
@@ -630,7 +722,7 @@ fi
 feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode single \
   --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --style "$execStyle" --title "$title" \
-  --branch "feat/${slug}" --base-sha "$base_sha" --base-branch "$base_branch" \
+  --branch "$feature_branch" --base-sha "$base_sha" --base-branch "$base_branch" \
   --worktree "$worktree_state_path" \
   --prepare "$cmd_prepare" --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
 feature_json="$(jq --argjson baseline "$baseline_json" --arg profile "$cycle_profile" \
@@ -640,7 +732,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slu
 feature_dir_abs="$(cd ".loop-spec/features/${slug}" && pwd -P)"
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" begin \
   --result-root "$repo_root" --cycle-type full --title "$title" --slug "$slug" \
-  --branch "feat/${slug}" --base-branch "$base_branch" --feature-dir "$feature_dir_abs" \
+  --branch "$feature_branch" --base-branch "$base_branch" --feature-dir "$feature_dir_abs" \
   --phase spec --autonomous "$active_autonomous"
 
 # Autonomous mode: persist the flag so phase skills and resumed sessions see it
@@ -656,7 +748,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" migrate \
 
 #### Workspace mode Step 5 variant
 
-In workspace mode (`workspaceMode == "workspace"`), do NOT call `create-feature-worktree` and do NOT call `EnterWorktree`; all work stays at the workspace root on in-place `feat/{slug}` branches. Apply the two-phase procedure (Phase 1: pre-flight cleanliness check across ALL repos before ANY branch is created; Phase 2: per-repo branch creation + the workspace-mode `feature-init.sh` skeleton) verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 5 variant").
+In workspace mode (`workspaceMode == "workspace"`), do NOT call `create-feature-worktree` and do NOT call `EnterWorktree`; all work stays at the workspace root on in-place `feat/{slug}` branches. Named-PR adoption is single-repo only. Apply the two-phase procedure (Phase 1: pre-flight cleanliness check across ALL repos before ANY branch is created; Phase 2: per-repo branch creation + the workspace-mode `feature-init.sh` skeleton) verbatim from `${CLAUDE_SKILL_DIR}/references/workspace-mode.md` ("Step 5 variant").
 
 Provenance fields:
 - `artifacts.patternsSource` -- one of `"gsd-ingest"`, `"pattern-mapper"`, `"manual"`, or `null` until written. Set in PLAN Step 0.
@@ -1145,10 +1237,7 @@ still available:
 feature_dir=".loop-spec/features/${slug}"
 _pr_url="$(jq -r '.prUrl // empty' "$feature_dir/feature.json")"
 _summary="$(jq -r '.iterate.lastVerdict.summary // empty' "$feature_dir/feature.json")"
-[[ -n "${_summary//[[:space:]]/}" ]] || {
-  echo "cycle completion has no iterate summary; terminal result not emitted" >&2
-  false
-}
+[[ -n "${_summary//[[:space:]]/}" ]] || _summary="Cycle completed; PR delivered."
 _write_rc=0
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$feature_dir" \
   --status completed --summary "$_summary" ${_pr_url:+--pr-url "$_pr_url"} || _write_rc=$?
@@ -1163,7 +1252,9 @@ fi
 node; a second write is idempotent. `write-terminal --outcome delivered` is
 the same alias if the agent reaches for DELIVER's own word. A non-zero write
 is a publication failure — retry, then stop. Do not continue as if the pointer
-landed.
+landed. The maintenance short path still reaches this section: ITERATE and DELIVER still run, and a headless caller still gates on this pointer. Do not
+exit after EXECUTE because the task felt like a sync. An empty ITERATE summary
+does not block publication: the writer falls back to "Cycle completed; PR delivered."
 
 The run digest was finalized immediately before DELIVER (machine-local by default;
 part of the checked SHA only when `LOOP_SPEC_COMMIT_TELEMETRY=1` or the repo already

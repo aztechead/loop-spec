@@ -134,9 +134,24 @@ armed_type="$(jq -r '.cycleType' "$armed" 2>/dev/null || echo missing)"
 [[ "$armed_type" == "full" ]] \
   && pass "fail-closed routing arms the full route it selected" \
   || fail "fail-closed routing arms the full route it selected (got $armed_type)"
+[[ "$(jq -c '.classification' "$armed")" == "null" ]] \
+  && pass "fail-closed routing arms without a classification" \
+  || fail "fail-closed routing arms without a classification (got $(jq -c '.classification' "$armed"))"
 [[ -z "$(git -C "$CLEAN_REPO" status --porcelain)" ]] \
   && pass "arming leaves the tracked tree clean" \
   || fail "arming leaves the tracked tree clean"
+rm -f "$armed"
+out="$(normalized "$(candidate micro maintenance)")"
+stored="$(jq -c '.classification' "$armed")"
+[[ "$stored" == "$(jq -c . <<<"$out")" ]] \
+  && pass "validation persists the normalized classification" \
+  || fail "validation persists the normalized classification"
+profile="$(jq -c '.classification' "$armed" \
+  | bash "$(cd "$(dirname "$SCRIPT")" && pwd)/cycle-profile.sh" select - \
+  | sed -E 's/^profile=([a-z]+).*/\1/')"
+[[ "$profile" == "maintenance" ]] \
+  && pass "persisted micro-maintenance classification selects maintenance" \
+  || fail "persisted micro-maintenance classification selects maintenance (got $profile)"
 rm -f "$armed"
 
 invalid_reason="$(reason_code '{not-json')"

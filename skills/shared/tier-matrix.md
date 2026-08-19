@@ -65,7 +65,9 @@ answers `path=short` for a maintenance run with no security signal in its writte
 artifacts, and `graph/cycle.graph.json` routes around three nodes on that answer:
 `discuss`, the spec-critique subgraph, and the `verify.code-review` agent. Same graph,
 same checkpoint ledger, same terminal result — a shorter declared path, not a different
-protocol. The probe re-reads the signal from the artifacts that exist now, so a change
+protocol, and not a `protocol-mismatch` decline. A rebase, branch sync, merge-conflict
+resolution, or re-review that `/loop-spec:auto` promoted to full takes this path. The
+probe re-reads the signal from the artifacts that exist now, so a change
 that turns out to touch a security surface lengthens its own path mid-run.
 
 What it never touches: the ambiguity gate, decision/criteria coverage, the feasibility

@@ -31,6 +31,15 @@
 #                                       already exists, or if no base can hold the checkout.
 #                                       A failed checkout is cleaned up (no partial worktree,
 #                                       no orphan branch). Prints the worktree path on success.
+#   attach-feature-worktree <slug> <branch>
+#                                       Attach a worktree at the same resolved feature
+#                                       base to an EXISTING branch (an adopted PR head).
+#                                       Does not mint feat/<slug>. Reuses the checkout if
+#                                       <branch> is already checked out. Prints the
+#                                       worktree path.
+#   checkout-path-for-branch <branch>
+#                                       Print the worktree path that currently has
+#                                       <branch> checked out, or empty if none.
 #   list-feature-worktrees              Print one "<path>\t<branch>" line per worktree that is
 #                                       on a feat/* branch or under any candidate feature base
 #                                       for this repo (including "/.claude/worktrees/").
@@ -55,6 +64,68 @@ if [[ "${1:-}" == "-C" ]]; then
 fi
 
 cmd="${1:-}"
+
+# Sets _repo_root and _wt (path to print). Returns 1 after printing why.
+_feature_worktree_location() {
+  local slug="$1"
+  if [[ "${#G[@]}" -gt 1 ]]; then
+    _repo_root="${G[2]}"
+  else
+    _repo_root="$("${G[@]}" rev-parse --show-toplevel)"
+  fi
+  local location
+  location="$(bash "$SCRIPT_DIR/worktree-base.sh" resolve "$_repo_root" feature "$slug")"
+  if [[ "$(jq -r '.writable' <<<"$location")" != "true" ]]; then
+    echo "$cmd: no usable worktree location for $_repo_root" >&2
+    echo "$cmd: $(jq -r '.reason' <<<"$location")" >&2
+    echo "$cmd: a sandboxed harness can deny writing harness-config paths (e.g. .claude/commands/**) into an in-repo worktree." >&2
+    echo "$cmd: set LOOP_SPEC_WORKTREE_DIR to a writable path outside the repository, or LOOP_SPEC_WORKTREES=0 to work in place." >&2
+    return 1
+  fi
+  if [[ "$(jq -r '.relocated' <<<"$location")" == "true" ]]; then
+    _wt="$(jq -r '.path' <<<"$location")"
+    echo "$cmd: $(jq -r '.reason' <<<"$location")" >&2
+  elif [[ "${#G[@]}" -gt 1 ]]; then
+    _wt="${_repo_root}/.claude/worktrees/${slug}"
+  else
+    _wt=".claude/worktrees/${slug}"
+  fi
+  return 0
+}
+
+_require_worktrees_enabled() {
+  local in_place_hint="$1"
+  case "${LOOP_SPEC_WORKTREES:-1}" in
+    0)
+      echo "$cmd: LOOP_SPEC_WORKTREES=0 forbids worktree creation; $in_place_hint" >&2
+      exit 1
+      ;;
+    1) ;;
+    *)
+      echo "$cmd: LOOP_SPEC_WORKTREES must be 0 or 1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# Path of the worktree that currently has <branch> checked out, or empty.
+_checkout_path_for_branch() {
+  local branch="$1"
+  local want_ref="refs/heads/$branch"
+  local checkout_path="" cur_path=""
+  while IFS= read -r line; do
+    case "$line" in
+      worktree\ *) cur_path="${line#worktree }" ;;
+      branch\ *)
+        if [[ "${line#branch }" == "$want_ref" ]]; then
+          checkout_path="$cur_path"
+        fi
+        ;;
+      "") cur_path="" ;;
+    esac
+  done < <("${G[@]}" worktree list --porcelain)
+  printf '%s' "$checkout_path"
+}
 
 case "$cmd" in
   detect-base-branch)
@@ -99,41 +170,10 @@ case "$cmd" in
       echo "create-feature-worktree: usage: git-ops.sh create-feature-worktree <slug> <base_sha>" >&2
       exit 1
     fi
-    case "${LOOP_SPEC_WORKTREES:-1}" in
-      0)
-        echo "create-feature-worktree: LOOP_SPEC_WORKTREES=0 forbids worktree creation; use the clean in-place feature branch" >&2
-        exit 1
-        ;;
-      1) ;;
-      *)
-        echo "create-feature-worktree: LOOP_SPEC_WORKTREES must be 0 or 1" >&2
-        exit 1
-        ;;
-    esac
+    _require_worktrees_enabled "use the clean in-place feature branch"
     branch="feat/${slug}"
-    if [[ "${#G[@]}" -gt 1 ]]; then
-      # -C mode: build absolute paths inside the target repo dir
-      repo_root="${G[2]}"
-    else
-      repo_root="$("${G[@]}" rev-parse --show-toplevel)"
-    fi
-    location="$(bash "$SCRIPT_DIR/worktree-base.sh" resolve "$repo_root" feature "$slug")"
-    if [[ "$(jq -r '.writable' <<<"$location")" != "true" ]]; then
-      echo "create-feature-worktree: no usable worktree location for $repo_root" >&2
-      echo "create-feature-worktree: $(jq -r '.reason' <<<"$location")" >&2
-      echo "create-feature-worktree: a sandboxed harness can deny writing harness-config paths (e.g. .claude/commands/**) into an in-repo worktree." >&2
-      echo "create-feature-worktree: set LOOP_SPEC_WORKTREE_DIR to a writable path outside the repository, or LOOP_SPEC_WORKTREES=0 to work in place." >&2
-      exit 1
-    fi
-    if [[ "$(jq -r '.relocated' <<<"$location")" == "true" ]]; then
-      # Outside the repo, so there is no meaningful relative form: always absolute.
-      wt="$(jq -r '.path' <<<"$location")"
-      echo "create-feature-worktree: $(jq -r '.reason' <<<"$location")" >&2
-    elif [[ "${#G[@]}" -gt 1 ]]; then
-      wt="${repo_root}/.claude/worktrees/${slug}"
-    else
-      wt=".claude/worktrees/${slug}"
-    fi
+    _feature_worktree_location "$slug" || exit 1
+    wt="$_wt"
     if [[ -e "$wt" ]]; then
       echo "create-feature-worktree: worktree path already exists: $wt" >&2
       exit 1
@@ -154,6 +194,55 @@ case "$cmd" in
       exit 1
     fi
     printf '%s\n' "$wt"
+    ;;
+  attach-feature-worktree)
+    slug="${2:-}"
+    branch="${3:-}"
+    if [[ -z "$slug" || -z "$branch" ]]; then
+      echo "attach-feature-worktree: usage: git-ops.sh attach-feature-worktree <slug> <branch>" >&2
+      exit 1
+    fi
+    _require_worktrees_enabled "check out $branch in place"
+    _feature_worktree_location "$slug" || exit 1
+    wt="$_wt"
+    checkout_path="$(_checkout_path_for_branch "$branch")"
+    if [[ -n "$checkout_path" ]]; then
+      printf '%s\n' "$checkout_path"
+      exit 0
+    fi
+    if [[ -e "$wt" ]]; then
+      echo "attach-feature-worktree: worktree path already exists: $wt" >&2
+      exit 1
+    fi
+    if "${G[@]}" show-ref --verify --quiet "refs/heads/${branch}"; then
+      if ! "${G[@]}" worktree add "$wt" "$branch" >&2; then
+        "${G[@]}" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
+        "${G[@]}" worktree prune >/dev/null 2>&1 || true
+        echo "attach-feature-worktree: git worktree add failed for $wt (cleaned up the partial worktree)." >&2
+        exit 1
+      fi
+    elif "${G[@]}" rev-parse --verify "refs/remotes/origin/${branch}^{commit}" >/dev/null 2>&1; then
+      if ! "${G[@]}" worktree add -b "$branch" "$wt" "origin/$branch" >&2; then
+        "${G[@]}" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
+        "${G[@]}" worktree prune >/dev/null 2>&1 || true
+        "${G[@]}" branch -D "$branch" >/dev/null 2>&1 || true
+        echo "attach-feature-worktree: git worktree add failed for origin/$branch (cleaned up the partial worktree and branch)." >&2
+        exit 1
+      fi
+    else
+      echo "attach-feature-worktree: branch not found locally or on origin: $branch" >&2
+      exit 1
+    fi
+    printf '%s\n' "$wt"
+    ;;
+  checkout-path-for-branch)
+    branch="${2:-}"
+    if [[ -z "$branch" ]]; then
+      echo "checkout-path-for-branch: usage: git-ops.sh checkout-path-for-branch <branch>" >&2
+      exit 1
+    fi
+    _checkout_path_for_branch "$branch"
+    printf '\n'
     ;;
   list-feature-worktrees)
     if [[ "${#G[@]}" -gt 1 ]]; then
@@ -202,7 +291,7 @@ case "$cmd" in
     done
     ;;
   *)
-    echo "usage: git-ops.sh [-C <path>] {detect-base-branch|slugify <text>|ensure-clean-or-stash|current-sha|create-feature-worktree <slug> <base_sha>|list-feature-worktrees}" >&2
+    echo "usage: git-ops.sh [-C <path>] {detect-base-branch|slugify <text>|ensure-clean-or-stash|current-sha|create-feature-worktree <slug> <base_sha>|attach-feature-worktree <slug> <branch>|checkout-path-for-branch <branch>|list-feature-worktrees}" >&2
     exit 1
     ;;
 esac
