@@ -44,7 +44,13 @@ command = tool_input.get("command")
 if not isinstance(command, str) or not command.strip():
     raise SystemExit(0)
 
-if "LOOP_SPEC_HARNESS=codex" in command:
+required = (
+    "LOOP_SPEC_HARNESS=codex",
+    "CLAUDE_PLUGIN_ROOT=",
+    "CLAUDE_PROJECT_DIR=",
+    "CLAUDE_SKILL_DIR=",
+)
+if all(item in command for item in required):
     raise SystemExit(0)
 
 cwd = payload.get("cwd") or os.getcwd()

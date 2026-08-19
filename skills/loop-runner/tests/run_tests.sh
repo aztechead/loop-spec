@@ -801,15 +801,17 @@ check "cx raw log kept"    "$(test -f .loop/cxdone/iter-001.raw.json && echo yes
 # 18b. flag shape: codex gets exec --json --sandbox, never claude-only ones
 newrepo
 CXLOG="$R/cxargv.txt"
-FAKE_ARGV_LOG="$CXLOG" python3 "$SCRIPTS/loop.py" "noop" --task-id cxflags \
-  --agent-cli codex --claude-bin "$FAKECX" --model gpt-5.4 \
+CXENV="$R/cxenv.txt"
+FAKE_ARGV_LOG="$CXLOG" FAKE_ENV_LOG="$CXENV" python3 "$SCRIPTS/loop.py" "noop" --task-id cxflags \
+  --agent-cli codex --claude-bin "$FAKECX" --model gpt-5.6 \
   --fallback-model some-model --retry-watchdog 5 \
   --max-iterations 1 --verify 'true' >/dev/null 2>&1
 check "cx: exec --json"            "$(grep -c -- 'exec --json' "$CXLOG")" "1"
 check "cx: workspace-write sandbox" "$(grep -c -- '--sandbox workspace-write' "$CXLOG")" "1"
 check "cx: no sandbox bypass"      "$(grep -c -- '--dangerously-bypass-approvals-and-sandbox' "$CXLOG")" "0"
-check "cx: --model passed"         "$(grep -c -- '--model gpt-5.4' "$CXLOG")" "1"
+check "cx: --model passed"         "$(grep -c -- '--model gpt-5.6' "$CXLOG")" "1"
 check "cx: claude-only flags dropped" "$(grep -cE -- '--fallback-model|--permission-mode|--output-format|--allowedTools' "$CXLOG")" "0"
+check "cx: harness env stamped"       "$(grep -c 'harness=codex profile=1' "$CXENV")" "1"
 
 # 18b2. auto-detection: a binary named `codex` selects the protocol on its own
 newrepo

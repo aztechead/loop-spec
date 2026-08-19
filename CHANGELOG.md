@@ -17,13 +17,16 @@ it expresses the same cycle through plugins, skills, `codex exec --json`,
   (`source.path: "./"`). Codex looks for `hooks/hooks.json` by default; this
   plugin points at `codex-hooks.json` so Claude-only Stop polarity is never
   loaded. Plugin-bundled hooks stay skipped until `/hooks` trusts them.
-- **`lib/codex-install.sh`.** Generates `$loop-spec-<name>` skill adapters under
-  `.agents/skills` (user or `--project`), custom agent TOML under
+- **`lib/codex-install.sh`.** Generates `$loop-spec-<name>` skill adapters and
+  `agents/openai.yaml` invocation policy under `.agents/skills` (user or
+  `--project`), custom agent TOML under
   `~/.codex/agents/` / `.codex/agents/` for `spawn_agent`, a marked
   `[shell_environment_policy.set]` block so Bash subprocesses receive
   `LOOP_SPEC_HARNESS=codex` without waiting on hook trust, and a merged
-  `.codex/hooks.json`. `--model role=slug` (and `adversarial=`) pins generated
-  agents. Marketplace file is written only when `--project` is this clone.
+  `.codex/hooks.json`. Merged config and hook state stays separate from
+  fully-owned manifest artifacts, so uninstall removes only loop-spec entries
+  and preserves user settings. `--model role=slug` (and `adversarial=`) pins
+  generated agents. Marketplace is written only when `--project` is this clone.
 - **Codex adaptation contract** `skills/shared/codex-harness.md`. Detection is
   `LOOP_SPEC_HARNESS=codex` (Codex stamps no `CLAUDECODE` equivalent).
   `executionRootMode: "in-place"`. Teams/Workflow stay fail-safe `none`/`false`.
@@ -31,6 +34,8 @@ it expresses the same cycle through plugins, skills, `codex exec --json`,
   `message`, `task_name`, `fork_turns: "none"` when those fields exist).
 - **Headless backend.** `loop.py --agent-cli codex` drives
   `codex exec --json --sandbox workspace-write` (work) / `read-only` (plan).
+  It stamps both `LOOP_SPEC_HARNESS=codex` and the non-interactive profile into
+  the child environment.
   Cost is `None` (tokens, not USD); `--max-budget-usd` is rejected like ADK.
   Resume is `codex exec resume <thread_id> --json`. Issue intake uses the same
   seam.

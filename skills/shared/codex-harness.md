@@ -28,7 +28,7 @@ hooks.
 | `<codex-home>/config.toml` `[shell_environment_policy.set]` | `LOOP_SPEC_HARNESS=codex` plus `CLAUDE_PLUGIN_ROOT` / `CLAUDE_SKILL_DIR` for every Bash subprocess |
 | `<codex-home>/hooks.json` | SessionStart / UserPromptSubmit / PreToolUse Bash env rewrite, merged without clobbering other hooks |
 
-Preferred headless entry: `LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write "Load the loop-spec-auto skill and run: <description>"`. Plugin install: `codex plugin marketplace add https://github.com/aztechead/loop-spec.git` then `codex plugin add loop-spec`. Plugin-bundled hooks stay skipped until `/hooks` trusts them; the installer-written `shell_environment_policy.set` block does not wait on that review.
+Preferred headless entry: `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`. Plugin install: `codex plugin marketplace add https://github.com/aztechead/loop-spec.git` then `codex plugin add loop-spec`. Plugin-bundled hooks stay skipped until `/hooks` trusts them; the installer-written `shell_environment_policy.set` block does not wait on that review.
 
 ## Environment contract (who sets what)
 
@@ -48,21 +48,21 @@ Three deterministic injections close that gap:
 2. `hooks/codex-shell-env.sh` is a PreToolUse Bash rewrite that prefixes the
    same exports onto the command. It is the fallback when hook trust is on
    and the config block is missing.
-3. Generated skill adapters assign `CLAUDE_SKILL_DIR` to the **source** skill
-   directory only when the variable is empty — the same assign-only-when-empty
-   rule as OpenCode. An already-set value came from the installer or the
-   PreToolUse hook; overwriting it with the adapter directory would break
-   `${CLAUDE_SKILL_DIR}/../../lib/...`.
+3. Generated skill adapters re-export `CLAUDE_SKILL_DIR` to the **source** skill
+   directory before every bundled command. Codex starts each Bash tool in a new
+   process, while the installer and PreToolUse fallback deliberately provide
+   `skills/cycle` only as a package anchor. Keeping that anchor during another
+   skill would break local paths such as `${CLAUDE_SKILL_DIR}/scripts/...`.
 
 **Re-export rule (cross-skill reads):** `CLAUDE_SKILL_DIR` must point at the
 skill that is still executing when a skill-local path is needed. Sibling
 package paths (`${CLAUDE_SKILL_DIR}/../../lib/...`) are unaffected by which
 skill directory is the anchor.
 
-**Fallback rule (empty only):**
+**Per-skill re-export rule:**
 
 ```bash
-: "${CLAUDE_SKILL_DIR:=<package>/skills/<name>}"
+export CLAUDE_SKILL_DIR="<package>/skills/<name>"
 ```
 
 Verify before relying on it:
@@ -83,7 +83,7 @@ wrong on a machine that also has Claude Code installed.
 | Read / Write / Edit | native file tools, plus `apply_patch` for edits. PreToolUse/PostToolUse match `apply_patch` as `Edit` or `Write` (https://developers.openai.com/codex/hooks) |
 | Bash | `Bash` (and unified exec `exec_command`, which hooks also match as `Bash`) |
 | Glob / Grep | no separate tools — use Bash with `find` / `rg` / `grep` |
-| Skill | `$loop-spec-<name>` (installer adapters) or a plugin skill `$<name>` from `.codex-plugin`. Explicit `$` mention; generated adapters set `allow_implicit_invocation: false` so a generic prompt cannot silently bind `status` |
+| Skill | `$loop-spec-<name>` (installer adapters) or a plugin skill `$<name>` from `.codex-plugin`. Explicit `$` mention; generated adapters set `policy.allow_implicit_invocation: false` in `agents/openai.yaml` so a generic prompt cannot silently bind `status` |
 | Agent (subagent) | `spawn_agent` — see the dispatch mapping rule below |
 | Teams (named spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` (`lib/teams-capability.sh`). `spawn_agent` returns a child thread; it does not provide named teammates, peer messaging, or a shared task list |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |
@@ -119,7 +119,7 @@ already-vetted automation and is never the default.
 `harness.sh subagents` prints `true` under Codex: the full EXECUTE ladder
 below the team rung survives, and every one-shot `Agent` dispatch a phase
 skill (or `skills/shared/no-teams-fallback.md`) prescribes maps onto
-`spawn_agent` (stable; `features.multi_agent` is on by default —
+`spawn_agent` (stable; `agents.enabled` is on by default —
 https://developers.openai.com/codex/subagents):
 
 - `subagent_type: "loop-spec:<role>"` → `agent_type: "loop-spec-<role>"`
@@ -147,9 +147,11 @@ installed — fall back to performing the prompt inline after reading the
 role's charter (`agents/<role>.md`), matching the portable inline dispatch
 rule, and tell the user to run `bash lib/codex-install.sh install`.
 
-Follow-up work uses `send_input` / `resume_agent` / `wait_agent` when those
-tools are present and a thread id is still available; otherwise a fresh
-`spawn_agent` with the prior round inlined from `gate-logs/`.
+Follow-up work uses only the steering and wait controls exposed by the current
+multi-agent schema while the child thread is available. Do not synthesize tool
+names from another Codex release. When no follow-up control or live thread is
+available, use a fresh `spawn_agent` with the prior round inlined from
+`gate-logs/`.
 
 Gates, artifacts, and delivery semantics do not change. DELIVER still calls
 the same explicit-path `lib/deliver.sh` / `lib/pr-delivery.sh` controller as
@@ -165,14 +167,14 @@ on their own.
 
 ## Model routing
 
-Codex model ids are slugs (`gpt-5.4`, `o3`, …), not Claude aliases and not
+Codex model ids are slugs (`gpt-5.6`, `gpt-5.6-terra`, …), not Claude aliases and not
 OpenCode `provider/model`. Generated custom agents inherit the parent session
 model unless `codex-install.sh install --model` pins a role:
 
 ```bash
 bash lib/codex-install.sh install \
-  --model adversarial=gpt-5.4 \
-  --model planner=gpt-5.4
+  --model adversarial=gpt-5.6 \
+  --model planner=gpt-5.6
 ```
 
 `adversarial` pins `challenger`, `iterate-judge`, `code-reviewer`, and
@@ -191,7 +193,7 @@ must be a Codex slug.
 | Claude Code | Codex |
 |---|---|
 | interactive session | Codex TUI (`codex`) |
-| `claude -p` headless / autonomous mode | `LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write "Load the loop-spec-auto skill and run: <description>"` |
+| `claude -p` headless / autonomous mode | `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'` |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `codex exec --json --sandbox workspace-write` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli codex` (see `skills/shared/execute-loop-fleet.md`) |
 
 Headless permission note: `codex exec` defaults to a read-only sandbox.
@@ -208,12 +210,14 @@ pretending a hard cap can bind.
 
 ## Headless profile
 
-Codex publishes no entrypoint stamp, so one-shot launchers assert the
-profile: loop.py and `lib/issue-intake.sh` export `LOOP_SPEC_NON_INTERACTIVE=1`,
-and direct `codex exec` commands must set it as shown above. The installer
-does not infer a profile from the executable name because the interactive
-TUI uses the same `codex` binary. `lib/harness.sh` ranks the explicit
-assertion below Claude Code's stamp and above an inherited
+Codex publishes no entrypoint stamp, so one-shot launchers assert both the
+harness and profile. `loop.py --agent-cli codex` exports
+`LOOP_SPEC_HARNESS=codex` and `LOOP_SPEC_NON_INTERACTIVE=1` into the child;
+`lib/issue-intake.sh` retains the explicit harness value it used to select
+Codex. Direct `codex exec` commands must set both as shown above. The installer
+does not infer a profile from the executable name because the interactive TUI
+uses the same `codex` binary. `lib/harness.sh` ranks the explicit assertion
+below Claude Code's stamp and above an inherited
 `LOOP_SPEC_EXECUTION_PROFILE` claim.
 
 ## Graph engine (GDD)

@@ -569,6 +569,7 @@ def run_adk(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     cmd += [prompt, "--jsonl"]
 
     env = dict(os.environ)
+    env["LOOP_SPEC_HARNESS"] = "adk"
     env["LOOP_SPEC_NON_INTERACTIVE"] = "1"
     events, err = _run_jsonl_agent(cmd, backend="adk", bin_label=bin_, env=env,
                                    resume=resume, raw_log=raw_log, timeout=timeout)
@@ -746,6 +747,7 @@ def run_codex(prompt: str, cfg: LoopConfig, *, resume: Optional[str],
     cmd += [prompt]
 
     env = dict(os.environ)
+    env["LOOP_SPEC_HARNESS"] = "codex"
     env["LOOP_SPEC_NON_INTERACTIVE"] = "1"
     events, err = _run_jsonl_agent(cmd, backend="codex", bin_label=bin_, env=env,
                                    resume=resume, raw_log=raw_log, timeout=timeout)

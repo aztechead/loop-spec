@@ -34,8 +34,8 @@
 #   adk:      adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec-intake skill
 #             and run: autonomous <text>" --jsonl (the agent directory is written
 #             by lib/adk-install.sh; unset means no mounted agent to dispatch to)
-#   codex:    LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write
-#             "Load the loop-spec-intake skill and run: autonomous <text>"
+#   codex:    LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write
+#             '$loop-spec-intake autonomous <text>'
 # The intake skill's own provenance rules apply — the issue text is
 # restructured, never invented.
 #
@@ -73,7 +73,7 @@ if [[ "$AGENT_CLI" == "opencode" ]]; then
   CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:-}"
 elif [[ "$AGENT_CLI" == "codex" ]]; then
   AGENT_ARGS=(exec --json --sandbox workspace-write)
-  INTAKE_CMD="Load the loop-spec-intake skill and run:"
+  INTAKE_CMD='$loop-spec-intake'
   CLAUDE_FLAGS="${LOOP_SPEC_ISSUE_INTAKE_CLAUDE_FLAGS:-}"
   export LOOP_SPEC_NON_INTERACTIVE=1
 elif [[ "$AGENT_CLI" == "adk" ]]; then

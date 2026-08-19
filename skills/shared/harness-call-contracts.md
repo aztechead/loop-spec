@@ -196,7 +196,7 @@ exist — apply the substitution table and dispatch mapping rule in
 `codex exec --json --sandbox workspace-write "<prompt>"`, the same seam the
 loop-runner's `--agent-cli codex` backend drives.
 
-`spawn_agent` is the `Agent` counterpart (`features.multi_agent`, on by
+`spawn_agent` is the `Agent` counterpart (`agents.enabled`, on by
 default). Map `subagent_type: "loop-spec:<role>"` to `agent_type:
 "loop-spec-<role>"` (installer-written `~/.codex/agents/loop-spec-<role>.toml`
 or `.codex/agents/loop-spec-<role>.toml`), `prompt` to `message`, and

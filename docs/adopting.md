@@ -50,8 +50,8 @@ generated skills and agents should live only in the current project.
 ```bash
 git clone https://github.com/aztechead/loop-spec
 bash loop-spec/lib/codex-install.sh install
-LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \
-  "Load the loop-spec-auto skill and run: <goal>"
+LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \
+  '$loop-spec-auto <goal>'
 ```
 
 Use `bash loop-spec/lib/codex-install.sh install --project .` instead when the
@@ -84,7 +84,7 @@ trusts them; the installer-written env block does not wait on that review.
 - **An explicit model route is unavailable**: remove the override to inherit the
   session model, or replace it with a selector native to that harness. Claude accepts
   its aliases/full IDs; OpenCode accepts `provider/model`; Codex accepts its
-  own slugs (`gpt-5.4`, `o3`, …); ADK accepts `gemini-*` or
+  own slugs (`gpt-5.6`, `gpt-5.6-terra`, …); ADK accepts `gemini-*` or
   `provider/model` through LiteLLM.
 - **A Claude alias does nothing in OpenCode or Codex**: this is intentional.
   OpenCode generated agents inherit unless installed with

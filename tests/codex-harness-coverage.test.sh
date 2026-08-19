@@ -107,15 +107,15 @@ for gate in "teams-capability.sh	none" "workflow-availability.sh	false"; do
 done
 
 CX_DOC="skills/shared/codex-harness.md"
-if grep -qE '^export CLAUDE_SKILL_DIR=' "$CX_DOC"; then
-  FAIL=$((FAIL+1)); echo "FAIL: $CX_DOC tells the model to overwrite CLAUDE_SKILL_DIR unconditionally"
+if grep -qF 'export CLAUDE_SKILL_DIR=' "$CX_DOC"; then
+  PASS=$((PASS+1)); echo "PASS: $CX_DOC re-exports the active source skill directory"
 else
-  PASS=$((PASS+1)); echo "PASS: $CX_DOC never overwrites CLAUDE_SKILL_DIR unconditionally"
+  FAIL=$((FAIL+1)); echo "FAIL: $CX_DOC lost the per-skill source-directory re-export"
 fi
-if grep -qF ': "${CLAUDE_SKILL_DIR:=' "$CX_DOC"; then
-  PASS=$((PASS+1)); echo "PASS: $CX_DOC assigns CLAUDE_SKILL_DIR only when empty"
+if grep -qF 'Before EVERY bundled script' lib/codex-install.sh; then
+  PASS=$((PASS+1)); echo "PASS: generated adapters re-export before every bundled command"
 else
-  FAIL=$((FAIL+1)); echo "FAIL: $CX_DOC lost the assign-only-when-empty fallback"
+  FAIL=$((FAIL+1)); echo "FAIL: generated adapters do not scope CLAUDE_SKILL_DIR per command"
 fi
 
 if jq -e '.hooks and .skills' .codex-plugin/plugin.json >/dev/null; then

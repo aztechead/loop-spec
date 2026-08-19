@@ -21,8 +21,9 @@
 #                the repo root). A user install prints the `codex plugin
 #                marketplace add` command instead of writing outside HOME.
 #
-# A manifest records each artifact so reinstall/uninstall never removes
-# user-replaced content.
+# A manifest records fully-owned artifacts separately from the config/hook
+# surfaces that are merged into user files. Uninstall removes only loop-spec's
+# marked keys and hook commands from merged files.
 #
 # Usage:
 #   codex-install.sh install   [--project <dir>]
@@ -60,7 +61,7 @@ while [[ $# -gt 0 ]]; do
       role="${route%%=*}"
       model="${route#*=}"
       [[ "$role" =~ ^[a-z0-9-]+$ ]] || _die2 "invalid model role '$role'"
-      [[ -n "$model" && "$model" != *$'\n'* && "$model" != *$'\t'* ]] \
+      [[ -n "$model" && ! "$model" =~ [[:space:]] ]] \
         || _die2 "model slug for '$role' is empty or contains whitespace"
       if [[ "$role" != "adversarial" && "$role" != "readonly" ]]; then
         grep -q "^name: ${role}$" "$REPO_ROOT"/agents/*.md 2>/dev/null \
@@ -99,6 +100,11 @@ manifest_valid() {
   jq -e '
     type == "object" and
     (.created | type == "array" and all(.[]; type == "string")) and
+    ((has("managed") | not) or
+      (.managed | type == "array" and all(.[];
+        type == "object" and (.path | type == "string") and
+        (.kind == "config" or .kind == "hooks") and
+        (.created_file | type == "boolean")))) and
     ((has("artifacts") | not) or
       (.artifacts | type == "array" and all(.[];
         type == "object" and (.path | type == "string") and
@@ -124,7 +130,7 @@ manifest_paths_safe() {
   local p
   while IFS= read -r p; do
     path_is_safe "$p" || return 1
-  done < <(jq -r '.created[]' "$MANIFEST")
+  done < <(jq -r '.created[], (.managed[]?.path)' "$MANIFEST")
 }
 
 manifest_contains() {
@@ -163,6 +169,46 @@ PYEOF
   return 1
 }
 
+managed_matches() {
+  local candidate="$1" kind="$2"
+  [[ -f "$candidate" && ! -L "$candidate" ]] || return 1
+  python3 - "$candidate" "$kind" <<'PYEOF'
+import json, sys
+
+path, kind = sys.argv[1:]
+if kind == "config":
+    text = open(path, encoding="utf-8").read()
+    required = (
+        "# BEGIN loop-spec",
+        "# END loop-spec",
+        'LOOP_SPEC_HARNESS = "codex"',
+        "CLAUDE_PLUGIN_ROOT = ",
+        "CLAUDE_SKILL_DIR = ",
+    )
+    ok = all(item in text for item in required)
+elif kind == "hooks":
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except Exception:
+        raise SystemExit(1)
+    statuses = {
+        hook.get("statusMessage")
+        for groups in (data.get("hooks") or {}).values()
+        if isinstance(groups, list)
+        for group in groups if isinstance(group, dict)
+        for hook in (group.get("hooks") or []) if isinstance(hook, dict)
+    }
+    ok = {
+        "loop-spec session start",
+        "loop-spec done-criteria",
+        "loop-spec shell env",
+    }.issubset(statuses)
+else:
+    ok = False
+raise SystemExit(0 if ok else 1)
+PYEOF
+}
+
 status_cmd() {
   if [[ ! -e "$MANIFEST" && ! -L "$MANIFEST" ]]; then
     echo "not installed: $CODEX_DIR (no loop-spec-install.json)"
@@ -171,7 +217,8 @@ status_cmd() {
   manifest_paths_safe || { echo "invalid install manifest: $MANIFEST" >&2; return 1; }
   local degraded=0 p
   echo "installed: $CODEX_DIR"
-  jq -r '"version: \(.version)\nmode: \(.mode)\npaths:", (.created[] | "  \(.)")' "$MANIFEST"
+  jq -r '"version: \(.version)\nmode: \(.mode)\npaths:",
+    (.created[] | "  \(.)"), (.managed[]?.path | "  \(.) (merged)")' "$MANIFEST"
   while IFS= read -r p; do
     if [[ ! -e "$p" && ! -L "$p" ]]; then
       echo "missing: $p" >&2
@@ -181,6 +228,12 @@ status_cmd() {
       degraded=1
     fi
   done < <(jq -r '.created[]' "$MANIFEST")
+  while IFS=$'\t' read -r p kind; do
+    if ! managed_matches "$p" "$kind"; then
+      echo "modified or missing managed state: $p" >&2
+      degraded=1
+    fi
+  done < <(jq -r '.managed[]? | [.path, .kind] | @tsv' "$MANIFEST")
   [[ "$degraded" == "0" ]]
 }
 
@@ -190,6 +243,11 @@ uninstall_cmd() {
   local failed=0 p
   while IFS= read -r p; do
     [[ -e "$p" || -L "$p" ]] || continue
+    # Older pre-release manifests incorrectly listed merged user files as
+    # fully-owned artifacts. Never delete either file wholesale.
+    if [[ "$p" == "$CONFIG" || "$p" == "$HOOKS" ]]; then
+      continue
+    fi
     if artifact_matches "$p"; then
       rm -rf "$p" || { echo "could not remove: $p" >&2; failed=1; }
     else
@@ -197,16 +255,82 @@ uninstall_cmd() {
       failed=1
     fi
   done < <(jq -r '.created[]' "$MANIFEST")
-  python3 - "$CONFIG" <<'PY'
+  local config_created=0 hooks_created=0
+  jq -e --arg p "$CONFIG" '.managed[]? | select(.path == $p and .created_file == true)' \
+    "$MANIFEST" >/dev/null 2>&1 && config_created=1
+  jq -e --arg p "$HOOKS" '.managed[]? | select(.path == $p and .created_file == true)' \
+    "$MANIFEST" >/dev/null 2>&1 && hooks_created=1
+  python3 - "$CONFIG" "$config_created" <<'PY' || failed=1
 import os, re, sys
-path = sys.argv[1]
+path, created = sys.argv[1], sys.argv[2] == "1"
 if not os.path.isfile(path):
     raise SystemExit(0)
 text = open(path, encoding="utf-8").read()
-new = re.sub(r"\n?# BEGIN loop-spec\n.*?# END loop-spec\n?", "\n", text, flags=re.S)
+new = re.sub(
+    r"(?ms)^# BEGIN loop-spec\n.*?^# END loop-spec\n?",
+    "",
+    text,
+)
 if new != text:
+    if created and not new.strip():
+        os.remove(path)
+    else:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(new)
+PY
+  python3 - "$HOOKS" "$hooks_created" <<'PY' || failed=1
+import json, os, sys
+
+path, created = sys.argv[1], sys.argv[2] == "1"
+if not os.path.isfile(path):
+    raise SystemExit(0)
+try:
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception as exc:
+    print(f"could not remove loop-spec hooks from {path}: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+owned = {
+    "loop-spec session start",
+    "loop-spec done-criteria",
+    "loop-spec shell env",
+}
+hooks = data.get("hooks")
+if not isinstance(hooks, dict):
+    print(f"could not remove loop-spec hooks from {path}: hooks is not an object", file=sys.stderr)
+    raise SystemExit(1)
+for event, groups in list(hooks.items()):
+    if not isinstance(groups, list):
+        continue
+    kept_groups = []
+    for group in groups:
+        if not isinstance(group, dict):
+            kept_groups.append(group)
+            continue
+        commands = group.get("hooks")
+        if not isinstance(commands, list):
+            kept_groups.append(group)
+            continue
+        kept_commands = [
+            hook for hook in commands
+            if not (isinstance(hook, dict) and hook.get("statusMessage") in owned)
+        ]
+        if kept_commands:
+            copy = dict(group)
+            copy["hooks"] = kept_commands
+            kept_groups.append(copy)
+    if kept_groups:
+        hooks[event] = kept_groups
+    else:
+        hooks.pop(event, None)
+
+if created and data == {"hooks": {}}:
+    os.remove(path)
+else:
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write(new)
+        json.dump(data, fh, indent=2)
+        fh.write("\n")
 PY
   if [[ "$failed" == "0" ]]; then
     rm -f "$MANIFEST"
@@ -253,6 +377,55 @@ install_cmd() {
       old_paths+=("$p")
     done < <(jq -r '.created[]' "$MANIFEST")
   fi
+  [[ ! -L "$CONFIG" ]] || _die2 "refusing config symlink: $CONFIG"
+  [[ ! -L "$HOOKS" ]] || _die2 "refusing hooks symlink: $HOOKS"
+  local config_existed=0 hooks_existed=0
+  [[ -f "$CONFIG" ]] && config_existed=1
+  [[ -f "$HOOKS" ]] && hooks_existed=1
+  python3 - "$CONFIG" "$PROJECT" <<'PY' || _die2 "config.toml cannot accept loop-spec's managed keys"
+import os, re, sys
+
+path, project = sys.argv[1:]
+if not os.path.isfile(path):
+    raise SystemExit(0)
+text = open(path, encoding="utf-8").read()
+begin, end = "# BEGIN loop-spec", "# END loop-spec"
+if (begin in text) != (end in text):
+    raise SystemExit("partial loop-spec marker block")
+text = re.sub(
+    r"(?ms)^" + re.escape(begin) + r"\n.*?^" + re.escape(end) + r"\n?",
+    "",
+    text,
+)
+match = re.search(r"(?m)^\[shell_environment_policy\.set\][ \t]*(?:#.*)?$", text)
+if not match:
+    raise SystemExit(0)
+next_header = re.search(r"(?m)^\s*\[[^\n]+\][ \t]*(?:#.*)?$", text[match.end():])
+section_end = match.end() + next_header.start() if next_header else len(text)
+section = text[match.end():section_end]
+keys = ["LOOP_SPEC_HARNESS", "CLAUDE_PLUGIN_ROOT", "CLAUDE_SKILL_DIR"]
+if project:
+    keys.append("CLAUDE_PROJECT_DIR")
+for key in keys:
+    pattern = r"(?m)^\s*(?:" + re.escape(key) + r"|[\"']" + re.escape(key) + r"[\"'])\s*="
+    if re.search(pattern, section):
+        raise SystemExit(f"config.toml already defines {key} outside loop-spec's managed block")
+PY
+  python3 - "$HOOKS" <<'PY' || _die2 "hooks.json is invalid or has an unsupported shape"
+import json, os, sys
+
+path = sys.argv[1]
+if not os.path.isfile(path):
+    raise SystemExit(0)
+with open(path, encoding="utf-8") as fh:
+    data = json.load(fh)
+if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict):
+    raise SystemExit("hooks root and hooks field must be objects")
+for event in ("SessionStart", "UserPromptSubmit", "PreToolUse"):
+    value = data.get("hooks", {}).get(event, [])
+    if not isinstance(value, list):
+        raise SystemExit(f"hooks.{event} must be an array")
+PY
   local generated_root
   generated_root="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-codex-install-XXXXXX")"
   trap "rm -rf '$generated_root'" EXIT
@@ -260,7 +433,7 @@ install_cmd() {
   local skills_dir="$generated_root/skills"
   mkdir -p "$skills_dir"
   python3 - "$REPO_ROOT/skills" "$skills_dir" <<'PYEOF' || _die2 "skill adapter generation failed"
-import json, os, re, sys
+import json, os, re, shlex, sys
 src_root, out_root = sys.argv[1:]
 
 def field(text, key, default=""):
@@ -296,15 +469,15 @@ for directory in sorted(os.listdir(src_root)):
         "---",
         f"name: {adapter_name}",
         "description: " + json.dumps(description),
-        "allow_implicit_invocation: false",
         "---",
         "<!-- GENERATED by loop-spec's lib/codex-install.sh; edit the source, not this file. -->",
         "",
-        "Before any bundled script, export the skill directory of the SOURCE skill",
-        "(not this adapter) so `${CLAUDE_SKILL_DIR}/../../lib/...` resolves:",
+        "Before EVERY bundled script or skill-local path, export the directory of",
+        "the SOURCE skill (not this adapter). Codex starts each Bash tool in a new",
+        "process, and the installer's package anchor may point at `skills/cycle`:",
         "",
         "```bash",
-        ': "${CLAUDE_SKILL_DIR:=<this checkout>/skills/' + source_name + '}"',
+        "export CLAUDE_SKILL_DIR=" + shlex.quote(os.path.join(src_root, source_name)),
         "[ -f \"${CLAUDE_SKILL_DIR}/../../lib/harness.sh\" ] || {",
         "  echo \"loop-spec: CLAUDE_SKILL_DIR does not resolve lib/; re-run bash lib/codex-install.sh install\" >&2",
         "  exit 2",
@@ -319,21 +492,23 @@ for directory in sorted(os.listdir(src_root)):
     ]
     with open(os.path.join(output_dir, "SKILL.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(body))
+    metadata_dir = os.path.join(output_dir, "agents")
+    os.makedirs(metadata_dir)
+    with open(os.path.join(metadata_dir, "openai.yaml"), "w", encoding="utf-8") as f:
+        f.write(
+            "# GENERATED by loop-spec's lib/codex-install.sh; edit the installer, not this file.\n"
+            "interface:\n"
+            f"  display_name: {json.dumps(adapter_name)}\n"
+            f"  short_description: {json.dumps(description)}\n"
+            "policy:\n"
+            "  allow_implicit_invocation: false\n"
+        )
 PYEOF
-  python3 - "$skills_dir" "$REPO_ROOT" <<'PY'
-import os, sys
-skills_dir, repo = sys.argv[1:]
-needle = "<this checkout>"
-for root, _, files in os.walk(skills_dir):
-    for name in files:
-        path = os.path.join(root, name)
-        text = open(path, encoding="utf-8").read().replace(needle, repo)
-        open(path, "w", encoding="utf-8").write(text)
-PY
   local d name
   for d in "$skills_dir"/*/; do
     name="$(basename "$d")"
     place_generated "$d/SKILL.md" "$SKILLS_DIR/$name/SKILL.md" || true
+    place_generated "$d/agents/openai.yaml" "$SKILLS_DIR/$name/agents/openai.yaml" || true
   done
 
   local agents_dir="$generated_root/agents"
@@ -415,29 +590,45 @@ import os, re, sys
 path, repo, project = sys.argv[1:]
 begin, end = "# BEGIN loop-spec", "# END loop-spec"
 skill_dir = os.path.join(repo, "skills", "cycle")
-lines = [
-    begin,
-    "[shell_environment_policy.set]",
+assignments = [
     'LOOP_SPEC_HARNESS = "codex"',
     'CLAUDE_PLUGIN_ROOT = "%s"' % repo.replace("\\", "\\\\").replace('"', '\\"'),
     'CLAUDE_SKILL_DIR = "%s"' % skill_dir.replace("\\", "\\\\").replace('"', '\\"'),
 ]
 if project:
-    lines.append('CLAUDE_PROJECT_DIR = "%s"' % project.replace("\\", "\\\\").replace('"', '\\"'))
-lines.append(end)
-block = "\n".join(lines) + "\n"
+    assignments.append('CLAUDE_PROJECT_DIR = "%s"' % project.replace("\\", "\\\\").replace('"', '\\"'))
 os.makedirs(os.path.dirname(path), exist_ok=True)
 text = open(path, encoding="utf-8").read() if os.path.isfile(path) else ""
-if begin in text and end in text:
-    text = re.sub(re.escape(begin) + r".*?" + re.escape(end) + r"\n?", block, text, flags=re.S)
+if (begin in text) != (end in text):
+    raise SystemExit("partial loop-spec marker block in config.toml")
+text = re.sub(
+    r"(?ms)^" + re.escape(begin) + r"\n.*?^" + re.escape(end) + r"\n?",
+    "",
+    text,
+)
+
+header = re.compile(r"(?m)^\[shell_environment_policy\.set\][ \t]*(?:#.*)?$")
+match = header.search(text)
+marked_assignments = "\n".join([begin] + assignments + [end]) + "\n"
+if match:
+    section_end_match = re.search(r"(?m)^\s*\[[^\n]+\][ \t]*(?:#.*)?$", text[match.end():])
+    section_end = match.end() + section_end_match.start() if section_end_match else len(text)
+    section = text[match.end():section_end]
+    for assignment in assignments:
+        key = assignment.split("=", 1)[0].strip()
+        key_pattern = r"(?m)^\s*(?:" + re.escape(key) + r"|[\"']" + re.escape(key) + r"[\"'])\s*="
+        if re.search(key_pattern, section):
+            raise SystemExit(f"config.toml already defines {key} outside loop-spec's managed block")
+    insertion = match.end()
+    text = text[:insertion] + "\n" + marked_assignments + text[insertion:].lstrip("\n")
 else:
     if text and not text.endswith("\n"):
         text += "\n"
+    block = "\n".join([begin, "[shell_environment_policy.set]"] + assignments + [end]) + "\n"
     text += ("\n" if text else "") + block
 with open(path, "w", encoding="utf-8") as fh:
     fh.write(text)
 PY
-  CREATED+=("$CONFIG")
 
   python3 - "$HOOKS" "$REPO_ROOT" <<'PY' || _die2 "hooks.json merge failed"
 import json, os, sys
@@ -466,24 +657,38 @@ data = {"hooks": {}}
 if os.path.isfile(path):
     try:
         data = json.load(open(path, encoding="utf-8"))
-    except Exception:
-        data = {"hooks": {}}
+    except Exception as exc:
+        raise SystemExit(f"refusing to replace invalid hooks.json: {exc}")
+if not isinstance(data, dict):
+    raise SystemExit("refusing hooks.json whose root is not an object")
 hooks = data.setdefault("hooks", {})
+if not isinstance(hooks, dict):
+    raise SystemExit("refusing hooks.json whose hooks field is not an object")
 for event, groups in owned.items():
     existing = hooks.get(event) or []
+    if not isinstance(existing, list):
+        raise SystemExit(f"refusing hooks.json whose {event} field is not an array")
     kept = []
     for group in existing:
-        messages = [h.get("statusMessage") for h in (group.get("hooks") or [])]
-        if any(isinstance(m, str) and m.startswith("loop-spec ") for m in messages):
+        if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+            kept.append(group)
             continue
-        kept.append(group)
+        commands = [
+            hook for hook in group["hooks"]
+            if not (isinstance(hook, dict) and hook.get("statusMessage") in {
+                "loop-spec session start", "loop-spec done-criteria", "loop-spec shell env"
+            })
+        ]
+        if commands:
+            copy = dict(group)
+            copy["hooks"] = commands
+            kept.append(copy)
     hooks[event] = groups + kept
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(data, fh, indent=2)
     fh.write("\n")
 PY
-  CREATED+=("$HOOKS")
 
   if [[ "$WRITE_MARKET" == "1" ]]; then
     mkdir -p "$(dirname "$MARKET")"
@@ -514,10 +719,11 @@ EOF
 
   local version
   version="$(jq -r '.version' "$REPO_ROOT/.codex-plugin/plugin.json")"
-  python3 - "$MANIFEST" "$version" "${PROJECT:-user}" "$REPO_ROOT" "${CREATED[@]}" <<'PY'
+  python3 - "$MANIFEST" "$version" "${PROJECT:-user}" "$REPO_ROOT" \
+    "$CONFIG" "$config_existed" "$HOOKS" "$hooks_existed" "${CREATED[@]}" <<'PY'
 import hashlib, json, os, sys
-manifest, version, mode, repo = sys.argv[1:5]
-created = sys.argv[5:]
+manifest, version, mode, repo, config, config_existed, hooks, hooks_existed = sys.argv[1:9]
+created = sys.argv[9:]
 artifacts = []
 for path in created:
     entry = {"path": path, "kind": "file"}
@@ -530,6 +736,10 @@ payload = {
     "mode": mode,
     "repo": repo,
     "created": created,
+    "managed": [
+        {"path": config, "kind": "config", "created_file": config_existed == "0"},
+        {"path": hooks, "kind": "hooks", "created_file": hooks_existed == "0"},
+    ],
     "artifacts": artifacts,
 }
 os.makedirs(os.path.dirname(manifest), exist_ok=True)
@@ -557,9 +767,9 @@ PY
   echo "installed loop-spec for Codex at $CODEX_DIR"
   echo "  skills: $SKILLS_DIR"
   echo "  agents: $AGENTS_DIR"
-  echo "Next: trust the loop-spec hooks with /hooks, then invoke \$loop-spec-auto"
-  echo "      or: LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \\"
-  echo "          \"Load the loop-spec-auto skill and run: <description>\""
+  echo "Next: start a new Codex session, trust the loop-spec hooks with /hooks, then invoke \$loop-spec-auto"
+  echo "      or: LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \\"
+  echo "          '\$loop-spec-auto <description>'"
   if [[ "$WRITE_MARKET" != "1" ]]; then
     echo "Plugin install (skills + bundled hooks from the clone):"
     echo "  codex plugin marketplace add https://github.com/aztechead/loop-spec.git"

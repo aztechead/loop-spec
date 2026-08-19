@@ -71,8 +71,9 @@ codex plugin add loop-spec
 The installer generates namespaced `$loop-spec-<name>` skill adapters, custom
 agent TOML for `spawn_agent`, and a marked `shell_environment_policy.set` block
 so Bash subprocesses receive `LOOP_SPEC_HARNESS=codex` without waiting on plugin
-hook trust. Preferred headless entry:
-`LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write "Load the loop-spec-auto skill and run: <description>"`.
+hook trust. Start a new Codex session after installing so custom agents are
+loaded. Preferred headless entry:
+`LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`.
 Plugin-bundled hooks stay skipped until `/hooks` trusts them. Differences:
 [`skills/shared/codex-harness.md`](skills/shared/codex-harness.md).
 

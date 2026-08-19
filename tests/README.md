@@ -145,8 +145,8 @@ needed:
    `<dir>/.agents/skills/loop-spec-*`, custom agents under
    `<dir>/.codex/agents/loop-spec-*.toml`, and a marked
    `shell_environment_policy.set` block in `<dir>/.codex/config.toml`.
-2. `LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write
-   "Load the loop-spec-auto skill and run: list your skills"` — JSONL stream
+2. `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write
+   '$loop-spec-auto list your skills'` — JSONL stream
    parses (`thread.started`, `turn.*`, `item.*`).
 3. Load `$loop-spec-status` (or a plugin skill `$status`) and confirm a shell
    line runs `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect` printing

@@ -29,7 +29,12 @@ check "sets plugin root" "yes" "$(grep -q "$REPO" <<<"$cmd" && echo yes || echo 
 
 out2="$(printf '%s' '{"tool_name":"Bash","cwd":"/tmp/proj","tool_input":{"command":"export LOOP_SPEC_HARNESS=codex\necho hi"}}' \
   | bash "$HOOK")"
-check "does not double-prefix" "" "$out2"
+check "partial env gets missing roots" "allow" "$(printf '%s' "$out2" | jq -r '.hookSpecificOutput.permissionDecision')"
+check "partial env keeps original command" "yes" "$(printf '%s' "$out2" | jq -r '.hookSpecificOutput.updatedInput.command' | grep -q 'echo hi' && echo yes || echo no)"
+
+out_full="$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"/tmp/proj\",\"tool_input\":{\"command\":\"export LOOP_SPEC_HARNESS=codex CLAUDE_PLUGIN_ROOT=x CLAUDE_PROJECT_DIR=y CLAUDE_SKILL_DIR=z\\necho hi\"}}" \
+  | bash "$HOOK")"
+check "does not double-prefix complete env" "" "$out_full"
 
 out3="$(printf '%s' '{"tool_name":"spawn_agent","tool_input":{"message":"x"}}' \
   | bash "$HOOK")"
