@@ -1174,8 +1174,7 @@ fi
 node; a second write is idempotent. `write-terminal --outcome delivered` is
 the same alias if the agent reaches for DELIVER's own word. A non-zero write
 is a publication failure — retry, then stop. Do not continue as if the pointer
-landed. The maintenance short path still reaches this section: ITERATE and
-DELIVER still run, and a headless caller still gates on this pointer. Do not
+landed. The maintenance short path still reaches this section: ITERATE and DELIVER still run, and a headless caller still gates on this pointer. Do not
 exit after EXECUTE because the task felt like a sync.
 
 The run digest was finalized immediately before DELIVER (machine-local by default;
