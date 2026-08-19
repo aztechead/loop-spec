@@ -47,8 +47,8 @@ HARNESS="$(bash "$SCRIPT_DIR/harness.sh" detect)"
 # Model routing defaults to the model that launched the session. Claude Code,
 # OpenCode, and ADK define this inheritance behavior, so the cycle has no required
 # provider, family, or model catalog. Claude role overrides may use Agent aliases;
-# a fresh phase launcher may use an alias or full CLI model ID. OpenCode/ADK native
-# implementer IDs are accepted only for their loop-fleet rung.
+# OpenCode/ADK native IDs: ADK dispatch_subagent consumes them for every role;
+# OpenCode forwards only the implementer fleet --model flag.
 INHERIT="inherit"
 
 # validate_model_selector <variable-name> <value>
@@ -81,10 +81,11 @@ validate_model_selector() {
 # validate_role_model_selector <role-suffix> <variable-name> <value>
 #
 # Role selectors eventually cross a subagent boundary. Claude's Agent tool accepts
-# aliases only; a full CLI model ID cannot be forwarded there. OpenCode and ADK have
-# no native per-role Agent parameter in this path, so only the implementer fleet may
-# carry a harness-native ID. Reject unsupported pins here instead of silently
-# dropping them at dispatch time.
+# aliases only; a full CLI model ID cannot be forwarded there. OpenCode has no
+# native per-role task parameter, so only the implementer fleet may carry an
+# OpenCode provider/model ID. ADK's dispatch_subagent consumes a native id for
+# every role. Reject unsupported pins here instead of silently dropping them
+# at dispatch time.
 validate_role_model_selector() {
   local role="$1"
   local var="$2"
@@ -103,10 +104,13 @@ validate_role_model_selector() {
   case "$val" in
     sonnet|opus|haiku|fable)
       echo "feature-init: ${var}='${val}' is a Claude Agent alias, not a ${HARNESS} model ID." \
-           "Use inherit or a harness-native implementer ID for loop-fleet." >&2
+           "Use inherit or a harness-native model ID." >&2
       return 1
       ;;
   esac
+  if [[ "$HARNESS" == "adk" ]]; then
+    return 0
+  fi
   [[ "$role" == "IMPLEMENTER" ]] && return 0
 
   echo "feature-init: ${var}='${val}' is not consumed by ${HARNESS} for role ${role}." \

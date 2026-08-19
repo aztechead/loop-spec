@@ -105,6 +105,10 @@ check "contract docs cite current Claude Code model inheritance" "$v"
 grep -qF 'mode: "acceptEdits" | ... | "plan",      // deprecated and ignored since CC 2.1.212' \
   skills/shared/harness-call-contracts.md && v=1 || v=0
 check "contract doc records ignored Agent mode" "$v"
+grep -qF 'in-process teammate' skills/shared/harness-call-contracts.md \
+  && grep -qF 'lib/implicit-team-model.sh' skills/shared/implicit-team-mode.md \
+  && v=1 || v=0
+check "contract docs record named implicit-team model inheritance" "$v"
 
 # 8) No run_in_background anywhere in skills/ agents/ *.md
 #    (harness-call-contracts.md is excluded — it documents the portability rule).

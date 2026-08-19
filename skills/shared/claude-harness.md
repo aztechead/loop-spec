@@ -81,6 +81,11 @@ REJECTED there — inheritance is expressed by omitting the field. These aliases
 are Claude Code-only; `skills/shared/model-matrix.md` resolves the portable
 selector for every harness.
 
+On the implicit-team harness, a **named** Agent spawn is an in-process teammate
+and ignores that alias. Honor `feature.models.<role>` with a nameless one-shot
+Agent when `lib/implicit-team-model.sh` returns `oneshot`
+(`skills/shared/implicit-team-mode.md`).
+
 ## Both run modes (parity map)
 
 | Mode | Invocation |

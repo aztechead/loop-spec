@@ -68,6 +68,16 @@ LOOP_SPEC_HARNESS=opencode LOOP_SPEC_MODEL_ADVOCATE=anthropic/claude-sonnet-4-5 
   bash "$LIB" models >/dev/null 2>/dev/null || oc_role_exit=$?
 check "OpenCode non-fleet native role ID: rejected when no dispatch consumes it" \
   "$([[ "$oc_role_exit" -ne 0 ]] && echo 1 || echo 0)"
+adk_planner="$(LOOP_SPEC_HARNESS=adk LOOP_SPEC_MODEL_PLANNER=gemini-2.5-flash \
+  bash "$LIB" models)"
+check "ADK native planner ID: accepted for dispatch_subagent" \
+  "$(echo "$adk_planner" | jq -e '.planner == "gemini-2.5-flash"' \
+    >/dev/null 2>&1 && echo 1 || echo 0)"
+adk_alias_exit=0
+LOOP_SPEC_HARNESS=adk LOOP_SPEC_MODEL_PLANNER=sonnet \
+  bash "$LIB" models >/dev/null 2>/dev/null || adk_alias_exit=$?
+check "ADK role Claude alias: rejected instead of silently inheriting" \
+  "$([[ "$adk_alias_exit" -ne 0 ]] && echo 1 || echo 0)"
 oc_alias_exit=0
 LOOP_SPEC_HARNESS=opencode LOOP_SPEC_MODEL_IMPLEMENTER=sonnet \
   bash "$LIB" models >/dev/null 2>/dev/null || oc_alias_exit=$?

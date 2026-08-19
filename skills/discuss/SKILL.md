@@ -17,10 +17,13 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 > `gate-logs/`) inlined. All artifacts and gates are unchanged.
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
-> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). The team already exists:
-> spawn each teammate below with `Agent({name, description, subagent_type, model, prompt})`, folding its first
-> work prompt into the spawn, then drive critique rounds with `SendMessage` as written. Per
-> `skills/shared/implicit-team-mode.md`. `SendMessage` and the shared task list are unchanged.
+> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). Probe
+> `lib/implicit-team-model.sh spawn-kind --teams-mode implicit --selector <feature.models.role>`
+> per teammate. `named`: `Agent({name, description, subagent_type, prompt})` with no
+> `model` key, then `SendMessage` for critique. `oneshot`: nameless Agent with the
+> alias so routing binds; rework re-dispatches per `skills/shared/no-teams-fallback.md`.
+> Per `skills/shared/implicit-team-mode.md`. `SendMessage` and the shared task list
+> remain available for named teammates.
 
 ## Inputs (from cycle skill via feature.json)
 

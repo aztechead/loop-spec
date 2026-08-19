@@ -11,9 +11,12 @@ the session. Claude Code and OpenCode both define inheritance for subagents, so
 loop-spec requires no named model family and no fixed provider catalog.
 
 Claude dispatches OMIT the Agent `model` key when the role inherits; that tool
-parameter is an alias enum and rejects the literal `inherit`. OpenCode task calls
-omit a model and let the generated subagent inherit its primary agent. ADK role
-agents inherit the mounted app's model unless their charter names an ADK model ID.
+parameter is an alias enum and rejects the literal `inherit`. Named implicit-team
+spawns omit it even when an alias is configured — they inherit the session; the
+alias is honored only on a nameless Agent (`skills/shared/implicit-team-mode.md`).
+OpenCode task calls omit a model and let the generated subagent inherit its
+primary agent, or the install-time `--model` pin. ADK role agents inherit the
+mounted app's model unless `dispatch_subagent` is passed a native ADK id.
 
 ## Explicit routes
 
@@ -29,8 +32,9 @@ consumes it; role Agents then inherit that main model.
 
 OpenCode and ADK do not consume Claude aliases. An implementer loop-fleet
 subprocess may consume an explicit native value: an OpenCode `provider/model` ID,
-or a Gemini / LiteLLM ID under ADK. Other native role pins fail early; OpenCode
-task agents use generated-agent routes and ADK role agents use their charters.
+or a Gemini / LiteLLM ID under ADK. ADK `dispatch_subagent` also consumes a
+native role id passed as its optional `model` argument. OpenCode task agents use
+generated-agent routes instead of `LOOP_SPEC_PHASE_MODEL_*`.
 A harness never receives another harness's selector by default.
 
 ## Startup check

@@ -2,6 +2,20 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [4.2.2] - 2026-08-19
+
+Named implicit-team spawns inherit the lead session model. `LOOP_SPEC_PHASE_MODEL_EXECUTE=sonnet` and per-role aliases were documented as binding on every teammate; on Claude Code >= 2.1.178 they were a no-op (`task_type: in_process_teammate`). OpenCode `task` still has no per-call model. ADK can now forward a native id on `dispatch_subagent`.
+
+### Fixed
+
+- **Implicit-team role routing binds on nameless Agents.** `lib/implicit-team-model.sh` is the probe: `inherit` keeps a named teammate; a Claude alias omits `name` so `Agent({model})` is honored, and rework follows the no-teams fallback. EXECUTE skips the team rung for an implementer alias and uses loop-fleet or subagent instead. `skills/shared/implicit-team-mode.md` no longer tells the lead to "add the model key per teammate."
+- **ADK `dispatch_subagent` takes optional `model`.** A native `gemini-*` or `provider/model` id from `feature.models.<role>` is forwarded; `inherit` and Claude aliases still use the mounted agent. `feature-init.sh` accepts native role ids under ADK for every role, not only IMPLEMENTER.
+- **OpenCode phase env is not a `task` parameter.** The contract now says so: pin task roles with `opencode-install.sh install --model` or a project agent override; `LOOP_SPEC_MODEL_IMPLEMENTER` still routes loop-fleet `--model`.
+
+### Changed
+
+- Harness call contracts, model-matrix, cycle/phase skills, and configuration docs record in-process teammate inheritance as harness behavior, not a loop-spec bug.
+
 ## [4.2.1] - 2026-08-19
 
 `protocol-mismatch` stopped the v3.0.1 freelance path (leave the routed protocol, do

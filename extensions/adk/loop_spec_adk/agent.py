@@ -65,8 +65,9 @@ paths resolve because CLAUDE_SKILL_DIR, CLAUDE_PLUGIN_ROOT, and
 CLAUDE_PROJECT_DIR are exported into every command you run.
 
 When a skill prescribes a one-shot subagent dispatch, call dispatch_subagent with
-the role it names. Consult skills/shared/adk-harness.md for how the rest of the
-Claude Code tool surface maps onto this harness."""
+the role it names. Pass model when feature.models.<role> is an ADK id; omit it
+to inherit the mounted agent. Consult skills/shared/adk-harness.md for how the
+rest of the Claude Code tool surface maps onto this harness."""
 
 
 class ReadOnlyEnvironmentToolset(EnvironmentToolset):
@@ -112,17 +113,18 @@ def build_agent(project_dir: Optional[Path | str] = None, *,
     bridge = bridge or LoopSpecBridge(project_dir)
     roles = load_roles()
 
-    def role_agent(role: str) -> LlmAgent:
+    def role_agent(role: str, override: str = "") -> LlmAgent:
         spec = roles[role]
         return LlmAgent(
             name=f"loop_spec_{role.replace('-', '_')}",
-            model=adk_model(spec["model"], model),
+            model=adk_model(override or spec["model"], model),
             description=spec["description"],
             instruction=spec["instruction"],
             tools=[*bridge.toolsets(), bridge.execute_tool()],
         )
 
     async def dispatch_subagent(subagent_type: str, description: str, prompt: str,
+                                model: str = "",
                                 tool_context: ToolContext) -> dict[str, Any]:
         """Dispatch one loop-spec role for a single task and return its result.
 
@@ -132,13 +134,15 @@ def build_agent(project_dir: Optional[Path | str] = None, *,
                 uses is accepted and stripped.
             description: 3-5 word label for the task.
             prompt: the full task for the role to perform.
+            model: optional ADK model id (`gemini-*` or `provider/model`).
+                Empty, inherit, and Claude aliases use the mounted agent's model.
         """
         role = subagent_type.split(":")[-1]
         if role not in roles:
             return {"status": "error",
                     "error": f"unknown subagent_type '{subagent_type}'. "
                              f"Known roles: {', '.join(sorted(roles))}"}
-        result = await AgentTool(agent=role_agent(role)).run_async(
+        result = await AgentTool(agent=role_agent(role, model)).run_async(
             args={"request": prompt}, tool_context=tool_context)
         return {"status": "ok", "role": role, "description": description,
                 "result": result}

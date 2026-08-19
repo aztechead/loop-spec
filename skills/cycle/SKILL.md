@@ -45,14 +45,16 @@ and DELIVER are main-thread phases and create no team. Teammates in the other ph
 spawned at phase start and persist for the full phase. How the team is created depends on
 `.loop-spec/runtime.json.teamsMode` (set in Step 2):
 - **`explicit`** (CC < 2.1.178): the lead creates the roster with `TeamCreate` and tears it down with `TeamDelete` at the phase boundary.
-- **`implicit`** (CC >= 2.1.178): the session already has one team. The lead spawns each teammate directly with `Agent({name: "<teammate-name>", description, subagent_type, prompt})` — no `TeamCreate`, no `TeamDelete`. Add `model` only for an Agent alias; omit it for `inherit`. See **`skills/shared/implicit-team-mode.md`**.
+- **`implicit`** (CC >= 2.1.178): the session already has one team. The lead probes
+  `lib/implicit-team-model.sh spawn-kind --teams-mode implicit --selector <feature.models.role>`
+  per teammate. `named` (selector `inherit`): `Agent({name: "<teammate-name>", description, subagent_type, prompt})` with no `model` key. `oneshot` (a Claude alias): nameless `Agent({description, subagent_type, model, prompt})` so the alias binds. No `TeamCreate`, no `TeamDelete`. See **`skills/shared/implicit-team-mode.md`**.
 
 Inter-agent communication within a phase team uses `SendMessage` in BOTH team modes. This is the correct tool for routing work, critique rounds, and notifications between the lead and teammates (or between teammates directly by name).
 
 Whenever a phase skill or this orchestrator says "instruct teammate X to revise" or "notify implementer of rework":
 - Use `SendMessage({to: "<teammate-name>", message: "..."})` to address the teammate by their assigned name (e.g., `advocate-1`, `implementer-2`, `spec-writer-1`).
-- Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`. (In `implicit` mode the *initial* spawn is an `Agent({name})` call; rework after that still goes through `SendMessage`.)
-- A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers, the DISCUSS Step 1.75 background PATTERNS.md prefetch (`skills/discuss/SKILL.md`), and the ITERATE phase's one-shot `iterate-judge` dispatch (`skills/iterate/SKILL.md`); all are main-thread one-shot dispatches, not team rework.
+- Do NOT issue a fresh `Agent` call for rework within a phase -- teammates persist and can receive further instructions via `SendMessage`. (In `implicit` mode the *initial* spawn is an `Agent({name})` call when the probe returns `named`; rework after that still goes through `SendMessage`. When the probe returns `oneshot`, rework is a fresh nameless Agent with the prior round inlined, same as the no-teams fallback.)
+- A fresh `Agent` call is reserved for the Step 5.5b background codebase domain mappers, the DISCUSS Step 1.75 background PATTERNS.md prefetch (`skills/discuss/SKILL.md`), the ITERATE phase's one-shot `iterate-judge` dispatch (`skills/iterate/SKILL.md`), and implicit-team `oneshot` role spawns when `lib/implicit-team-model.sh` says a named teammate would ignore the alias; all of those are main-thread one-shot dispatches, not named-teammate rework.
 
 When a phase ends: in `explicit` mode call `TeamDelete` before the next phase's `TeamCreate`; in `implicit` mode there is nothing to delete — just clear `feature.json.currentTeamName` and stop messaging the phase's teammates.
 
@@ -294,7 +296,7 @@ case "$teams_mode" in
     echo "  Continuing with ${loops_hint}. For persistent phase teams: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1." ;;
   implicit)
     echo "loop-spec: agent teams on (implicit-team model, CC >= 2.1.178)."
-    echo "  Teammates are spawned via Agent({name}); TeamCreate/TeamDelete are not used. See skills/shared/implicit-team-mode.md." ;;
+    echo "  Named inherit teammates spawn via Agent({name}); a role alias spawns a nameless one-shot Agent. TeamCreate/TeamDelete are not used. See skills/shared/implicit-team-mode.md." ;;
   explicit)
     echo "loop-spec: agent teams on (explicit-team model, CC < 2.1.178). Per-phase TeamCreate/TeamDelete." ;;
 esac
@@ -314,7 +316,9 @@ esac
     **`skills/shared/opencode-harness.md`** on top — same call shape, agent ids
     spelled `loop-spec-<role>`, model probe skipped.
 - `implicit` → teams are live but `TeamCreate` / `TeamDelete` do **not** exist. Phases
-  spawn named teammates with `Agent({name})` and message them via `SendMessage` per
+  probe `lib/implicit-team-model.sh` per role: inherit selectors spawn named teammates
+  with `Agent({name})` and message them via `SendMessage`; a Claude alias spawns a
+  nameless one-shot Agent that honors `model`. Per
   **`skills/shared/implicit-team-mode.md`**. Phases MUST NOT call `TeamCreate` / `TeamDelete`
   (they throw `No such tool available`).
 - `explicit` → the per-phase `TeamCreate` / `TeamDelete` roster model, as written in each phase skill.
@@ -777,9 +781,12 @@ across the phase boundary.
 ### Step 5.9 - Activate the current phase's model routing
 
 Every phase skill reads `feature.models.<role>` as the selector. Add a `model`
-key only when it is one of the four Agent aliases; when it is `inherit`, **emit
-no `model` key at all**. The Agent tool rejects the literal string `inherit` with
-`InputValidationError` — inheritance is expressed by omission
+key only when it is one of the four Agent aliases **and** the spawn is nameless
+(a one-shot Agent, the no-teams fallback, or implicit-team `oneshot`). When it is
+`inherit`, **emit no `model` key at all**. Named implicit-team spawns also omit
+`model`: they inherit the session regardless
+(`skills/shared/implicit-team-mode.md`). The Agent tool rejects the literal
+string `inherit` with `InputValidationError` — inheritance is expressed by omission
 (`skills/shared/harness-call-contracts.md`). Immediately
 before a phase launch, `feature-init.sh activate` resolves and persists the exact
 map those Agent calls consume:
@@ -937,9 +944,12 @@ Cycle's responsibility after the engine names a node is to invoke that phase ski
    Before every invocation—including continuous routing after a prior phase
    returns—activate that phase's effective model map. This call is mandatory; do
    not invoke a phase against the previous phase's map. Since every team,
-   implicit-team, and one-shot fallback launch reads `feature.models.<role>`,
+   implicit-team (named inherit or nameless oneshot), and one-shot fallback launch
+   reads `feature.models.<role>`,
    this is the enforcement point that makes phase routing apply to authors,
-   implementers, verifiers, and phase-gate reviewers alike.
+   implementers, verifiers, and phase-gate reviewers alike. Named implicit-team
+   spawns still inherit the session model; an alias must take the oneshot path
+   (`skills/shared/implicit-team-mode.md`).
    ```bash
    feature_dir=".loop-spec/features/${slug}"
    bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" activate \

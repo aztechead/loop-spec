@@ -44,6 +44,8 @@ checks=(
   "extensions/adk/loop_spec_adk/plugin.py	on_user_message_callback"
   "extensions/adk/loop_spec_adk/agent.py	AgentTool"
   "extensions/adk/loop_spec_adk/agent.py	dispatch_subagent"
+  "skills/shared/adk-harness.md	model?"
+  "extensions/adk/loop_spec_adk/agent.py	model: str = \"\""
   "extensions/adk/loop_spec_adk/agent.py	get_user_choice"
   # -- installer places both agents and records the mount
   "lib/adk-install.sh	loop_spec_readonly"

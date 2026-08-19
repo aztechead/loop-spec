@@ -334,6 +334,7 @@ fi
 workflows_available=$(jq -r '.workflowsAvailable // false' .loop-spec/runtime.json 2>/dev/null || echo false)
 workflow_optin=$(jq -r '.workflowExecuteOptIn // false' .loop-spec/runtime.json 2>/dev/null || echo false)
 teams_mode=$(jq -r '.teamsMode // "none"' .loop-spec/runtime.json 2>/dev/null || echo none)
+implementer_model=$(jq -r '.models.implementer // "inherit"' ".loop-spec/features/${slug}/feature.json")
 ```
 
 #### Step 3b - Select the rung
@@ -353,6 +354,7 @@ rung_err="$(mktemp)"
 rung_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/execute-rung.sh" select \
   --width "$W" --teams-mode "$teams_mode" \
   --workflows-available "$workflows_available" --workflow-optin "$workflow_optin" \
+  --implementer-model "$implementer_model" \
   2>"$rung_err")" || rung_rc=$?
 if [[ "$rung_rc" -ne 0 ]]; then
   rung_msg="$(jq -r '.message // empty' <<<"$rung_json" 2>/dev/null || true)"
@@ -553,9 +555,10 @@ Behavior is retained verbatim. The long self-claim loop and reviewer loop detail
 **`skills/shared/execute-loops.md`**.
 
 > **Implicit-team harness (`.loop-spec/runtime.json.teamsMode == "implicit"`, CC >= 2.1.178):**
-> `TeamCreate`/`TeamDelete` were removed and throw. The self-claim team still runs — only the
-> create/teardown changes. In **Step 5**, instead of one `TeamCreate` with a `teammates` array,
-> spawn each teammate object as its own `Agent({name, description, subagent_type, model, prompt})` call (the
+> `TeamCreate`/`TeamDelete` were removed and throw. This rung is reached only when
+> `lib/implicit-team-model.sh` returned `named` for the implementer selector
+> (`lib/execute-rung.sh` skips team when the selector is an alias). In **Step 5**, instead of one `TeamCreate` with a `teammates` array,
+> spawn each teammate object as its own `Agent({name, description, subagent_type, prompt})` call with **no** `model` key (the
 > prompts are already inline, so this is a 1:1 expansion). In **Steps 9-10**, skip `TeamDelete`
 > — just clear `currentTeamName`/`currentTeammates`. `TaskCreate`/`TaskUpdate`/`TaskList` (Steps 4,
 > 6-8) and all `SendMessage` routing are unchanged: the session-implicit team shares one task list.

@@ -201,14 +201,17 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   `lib/feature-init.sh activate <feature-dir> <phase>` rewrites it immediately
   before every phase invocation, including continuous transitions and resumes.
   Every phase skill reads `feature.models.<role>` rather than re-deriving it.
-  It adds an Agent `model` key only for one of the four aliases and omits the key
-  for `inherit` (the Agent tool rejects that literal). The authoritative
-  precedence is in `skills/shared/model-matrix.md`.
+  It adds an Agent `model` key only for one of the four aliases on a **nameless**
+  spawn and omits the key for `inherit` (the Agent tool rejects that literal).
+  Named implicit-team spawns omit `model` even when the map holds an alias —
+  they inherit the session (`skills/shared/implicit-team-mode.md`). The
+  authoritative precedence is in `skills/shared/model-matrix.md`.
 - `phaseModels` is the persisted seven-phase override map from
   `LOOP_SPEC_PHASE_MODEL_<PHASE>`; null means no override. It lets a fresh Claude
   CLI/Agent SDK phase handoff choose its main model, while `models` guarantees
-  the same phase default reaches explicit teams, implicit named Agents,
-  one-shot fallbacks, and phase gates. Both maps come from `feature-init.sh`.
+  the same phase default reaches explicit teams, nameless implicit-team
+  oneshots, one-shot fallbacks, and phase gates. Named implicit teammates still
+  inherit the session. Both maps come from `feature-init.sh`.
 - `worktreePath` points at the dedicated single-repo git worktree created at cycle
   Step 5 via `lib/git-ops.sh create-feature-worktree`. Its location is resolved by
   `lib/worktree-base.sh`: `<repo>/.claude/worktrees/{slug}` by default, relocated

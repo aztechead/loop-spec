@@ -64,7 +64,7 @@ vector).
 | Read / Write / Edit | `ReadFile` / `WriteFile` / `EditFile` (same semantics) |
 | Glob / Grep | no native tools — use `Execute` with `find` / `grep` / `rg` |
 | Skill (invoke a skill) | `load_skill({skill_name: "<name>"})`; `list_skills` enumerates. Skill names are UNPREFIXED here (`cycle`, not `loop-spec-cycle`) because the toolset holds only loop-spec's skills |
-| Agent (subagent) | `dispatch_subagent({subagent_type, description, prompt})` — the bundled tool over ADK's `AgentTool`. Same parameter shape as Claude Code's `Agent`; a `loop-spec:` prefix on `subagent_type` is accepted and stripped |
+| Agent (subagent) | `dispatch_subagent({subagent_type, description, prompt, model?})` — the bundled tool over ADK's `AgentTool`. Same call shape as Claude Code's `Agent` plus optional native `model`; a `loop-spec:` prefix on `subagent_type` is accepted and stripped |
 | Teams (named spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` (`lib/teams-capability.sh`). `AgentTool` returns a result to its caller and nothing more: no named peers, no peer messaging, no shared task list |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |
 | TaskCreate / TaskUpdate / TaskList / TaskGet | none. DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` |
@@ -110,9 +110,11 @@ team rung survives, and every one-shot dispatch a phase skill (or
   stripped for you; either spelling works). Roles are the filenames in
   `agents/`, parsed at build time — the same charters Claude Code dispatches.
 - `prompt` and `description` pass through verbatim.
-- There is NO per-dispatch `model` parameter. A role's model comes from its
-  charter when that names an ADK id; `model: inherit` (which every charter
-  ships) and Claude aliases fall back to the mounted agent's model. The
+- Optional `model` is an ADK id (`gemini-*` or `provider/model`). Pass
+  `feature.models.<role>` when that value is an ADK id so
+  `LOOP_SPEC_PHASE_MODEL_*` / `LOOP_SPEC_MODEL_<ROLE>` bind at dispatch.
+  Empty, `inherit`, and Claude aliases fall back to the mounted agent's model
+  — the same rule `adk_model()` and `loop.py`'s `model_args()` apply. The
   `model-matrix.md` aliases are Claude Code-only.
 - There is no session resumption for a dispatch: `AgentTool` runs the role once
   and returns. Follow-up work is a new dispatch carrying its own context.
@@ -141,9 +143,12 @@ runtime default. Re-run the installer to change it; generated shims are owned by
 the installer and are replaced on reinstall.
 
 The portable `inherit` selector means "use the mounted agent's model" — it is
-never forwarded as a literal id. `LOOP_SPEC_MODEL_<ROLE>` routes fleet workers
-only and must be an ADK id; a Claude alias there is dropped rather than
-forwarded, the same rule `loop.py`'s `model_args()` applies.
+never forwarded as a literal id. Pass a native ADK id through
+`dispatch_subagent({model})` when `feature.models.<role>` carries one, so phase
+and role env routes bind at dispatch rather than only on the loop-fleet
+implementer. A Claude alias there is dropped rather than forwarded, the same
+rule `loop.py`'s `model_args()` applies. `LOOP_SPEC_MODEL_IMPLEMENTER` still
+routes fleet workers independently.
 
 ## Both run modes (parity map)
 
