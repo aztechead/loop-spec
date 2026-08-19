@@ -9,6 +9,8 @@ checks=(
   "skills/auto/SKILL.md	Skill(loop-spec:debug)"
   "skills/auto/SKILL.md	Skill(loop-spec:cycle)"
   "skills/auto/SKILL.md	AUTONOMOUS_ROUTE"
+  "skills/auto/SKILL.md	merge-conflict resolution"
+  "skills/auto/SKILL.md	profile:{profile}"
   "skills/micro/SKILL.md	model: inherit"
   "lib/task-route.sh	invalid-classification"
   "lib/task-route.sh	micro-requires-low-ambiguity"

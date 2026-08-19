@@ -624,7 +624,7 @@ git -C "$Z" init -q
 git -C "$Z" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
 check "Z: idle root reports idle" "idle" "$(bash "$LIB" state --result-root "$Z" | cut -d' ' -f1)"
 
-bash "$LIB" begin --result-root "$Z" --cycle-type micro --title "Sync PR #114" \
+bash "$LIB" begin --result-root "$Z" --cycle-type micro --title "What is the architecture?" \
   --phase routing --autonomous true
 check "Z: reduced routes arm the same record" "micro" "$(jq -r '.cycleType' "$Z/.loop-spec/active-run.json")"
 Z_STATE="$(bash "$LIB" state --result-root "$Z")"
@@ -633,11 +633,12 @@ check "Z: probe reports the armed autonomy" "1" \
   "$(grep -c 'autonomous=true' <<<"$Z_STATE")"
 check "Z: probe reports an age" "1" "$(grep -cE 'ageSeconds=[0-9]+' <<<"$Z_STATE")"
 
-# The mismatch record is the honest exit from a protocol that does not fit.
+# The mismatch record is the honest exit from a genuine non-task, not from a
+# rebase/sync/chore the router already accepted.
 bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status escalated \
-  --outcome protocol-mismatch --title "Sync PR #114" --converged false \
-  --reason "a branch sync has no criteria to verify" \
-  --summary "The micro protocol does not fit a rebase; no repository work was done." >/dev/null
+  --outcome protocol-mismatch --title "What is the architecture?" --converged false \
+  --reason "the request is a question, not a code-change task" \
+  --summary "The request is not repository work; no repository work was done." >/dev/null
 Z_RESULT="$Z/.loop-spec/last-result.json"
 check "Z: mismatch publishes a terminal result" "escalated:protocol-mismatch:false" \
   "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$Z_RESULT")"
@@ -666,7 +667,7 @@ git -C "$Z" checkout -q -- tracked.txt
 printf 'untracked\n' > "$Z/scratch.txt"
 bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status escalated \
   --outcome protocol-mismatch --title "Scratch file" --converged false \
-  --reason "a branch sync has no criteria to verify" \
+  --reason "the request is a question, not a code-change task" \
   --summary "An unrelated untracked file must not block the record." >/dev/null 2>&1
 check "Z: mismatch ignores untracked paths" "1" "$([[ -f "$Z_RESULT" ]] && echo 1 || echo 0)"
 

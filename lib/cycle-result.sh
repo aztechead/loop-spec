@@ -407,10 +407,12 @@ PY
       success_outcome=""
       allowed_outcomes="infrastructure-failed interrupted"
     fi
-    # Two endings belong to every route, not to one cycle type: the protocol did not
-    # fit the task, and the run stopped before it could finish. Both are honest exits
-    # that publish a result; the alternative -- leaving the route and finishing the
-    # work by hand -- publishes nothing and reads as a failed run downstream.
+    # Two endings belong to every route, not to one cycle type: the request was not
+    # repository work, and the run stopped before it could finish. Both are honest
+    # exits that publish a result. Declining a rebase/sync/conflict/re-review as
+    # protocol-mismatch is the complementary failure -- the v3.0.1 freelance path
+    # inverted. Leaving the route and finishing the work by hand publishes nothing
+    # and reads as a failed run downstream.
     case " $allowed_outcomes " in
       *" interrupted "*) ;;
       *) allowed_outcomes="$allowed_outcomes interrupted" ;;

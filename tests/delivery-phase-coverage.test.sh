@@ -30,6 +30,8 @@ present "DELIVER invokes deterministic controller" skills/deliver/SKILL.md "lib/
 present "controller delegates one-repo delivery" lib/deliver.sh "pr-delivery.sh"
 present "ITERATE advances to DELIVER" skills/iterate/SKILL.md 'currentPhase = "deliver"'
 present "cycle documents seven-phase chain" skills/cycle/SKILL.md "VERIFY -> ITERATE -> DELIVER"
+present "short path still walks ITERATE and DELIVER" skills/cycle/SKILL.md "ITERATE and DELIVER still run"
+present "completion still emits the terminal result" skills/cycle/SKILL.md "cycle-result.sh write"
 present "cycle exits worktree only after delivery" skills/cycle/SKILL.md "final operation after DELIVER"
 present "fresh rewind set is explicit" skills/cycle/SKILL.md "execute|plan|spec|discuss"
 present "blocked delivery cannot spin" skills/cycle/SKILL.md "Never immediately invoke DELIVER again"

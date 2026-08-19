@@ -2,6 +2,28 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [4.2.1] - 2026-08-19
+
+`protocol-mismatch` stopped the v3.0.1 freelance path (leave the routed protocol, do
+the work by hand, publish nothing). It then over-applied: `/loop-spec:auto` would
+correctly send a merge-conflict resolution, PR sync, or re-review into the full cycle,
+and the cycle would decline it because the seven-phase shape looked like a poor fit.
+Headless callers gating on `converged` still failed, and nothing was delivered.
+
+### Changed
+
+- **`protocol-mismatch` is a genuine non-task only.** A pure question, or work that
+  needs a different product, still publishes `escalated` / `protocol-mismatch` /
+  `converged: false` on an unmodified tree. A rebase, branch sync, merge-conflict
+  resolution, PR re-review, or one-command chore is repository work: micro when the
+  bounds hold, full with the maintenance profile / graph short path when they do not.
+  The router having accepted the task is decisive — the cycle executes it.
+  `skills/shared/route-exit-contract.md`, the cycle/micro/debug/auto skills, the
+  agent-output contract, and the route-terminal-guard message all say so. The
+  maintenance short path still walks PLAN → EXECUTE → VERIFY → ITERATE → DELIVER and
+  still publishes `write --status completed` (or `--outcome delivered`) on the
+  `completed` node; skipping DELIVER to save ceremony is the same unaccounted ending.
+
 ## [4.2.0] - 2026-08-18
 
 Everything this plugin emits is written for a person who has to maintain and operate it.

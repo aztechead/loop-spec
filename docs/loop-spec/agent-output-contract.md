@@ -30,9 +30,12 @@ disarms it, so leaving a protocol without emitting one is detectable rather than
 silent: `lib/cycle-result.sh state` reports `published | unaccounted | idle` for a
 root, `hooks/team/route-terminal-guard.sh` refuses to end an autonomous session whose
 armed run published nothing, and `lib/cycle-reconcile.sh` converts a surviving armed
-run into a terminal result. A route that judges its protocol a poor fit reports that
-(`outcome: "protocol-mismatch"`, below) instead of completing the task off-protocol.
-Full contract: `skills/shared/route-exit-contract.md`.
+run into a terminal result. A route that received a genuine non-task (a pure question,
+or work that needs a different product) reports that (`outcome: "protocol-mismatch"`,
+below) instead of completing the task off-protocol. Repository work the router
+accepted — a rebase, a branch sync, a merge-conflict resolution, a re-review, a
+one-command chore — is executed to a converged result, not declined. Full contract:
+`skills/shared/route-exit-contract.md`.
 
 `loopSpecVersion` is the version that produced the run (`"unknown"` when the
 manifest is unreadable). It is what lets a consumer date a result: a report from an
@@ -94,10 +97,14 @@ intentional no-change semantics.
 
 Two outcomes belong to every cycle type rather than to one:
 
-- `protocol-mismatch`: the routed protocol does not fit the request. It requires
-  `status: "escalated"`, `converged: false`, a non-empty `reason` naming the mismatch,
-  and an unmodified tracked tree — a route that already changed the repository reports
-  what it did instead. The caller's move is to re-route the request, not to retry it.
+- `protocol-mismatch`: the request is not repository work (a pure question, or a
+  different product). It requires `status: "escalated"`, `converged: false`, a
+  non-empty `reason` naming why this is not a code-change task, and an unmodified
+  tracked tree — a route that already changed the repository reports what it did
+  instead. It is not for a rebase, branch sync, merge-conflict resolution, re-review,
+  or chore whose ceremony looks heavy; those are executed (micro when the bounds
+  hold; full with the maintenance profile otherwise). The caller's move on a genuine
+  non-task is to re-route, not to retry.
 - `interrupted`: the run stopped before it could finish. It requires `status: "failed"`
   and is what `lib/cycle-reconcile.sh` writes for an armed run whose process is gone,
   unless a PR was already delivered in that run — then reconcile writes `completed`

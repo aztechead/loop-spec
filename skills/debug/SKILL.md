@@ -283,9 +283,12 @@ or escalated-to-cycle. Never in silent thrash.
 
 ## Protocol mismatch
 
-There is a fourth ending, and it is still a published one: the request is not a defect
-at all, so the reproduce/hypothesize/sweep protocol does not fit it. Report that before
-touching the repository — `--status escalated --outcome protocol-mismatch --converged
-false` with a `--reason` naming the mismatch — and stop so the caller can re-route.
+There is a fourth ending, and it is still a published one: the request is not repository work at all (a pure question, or a different product), so the
+reproduce/hypothesize/sweep protocol does not fit it. A code change that is not a
+defect — including a merge-conflict resolution, PR sync/rebase, or re-review —
+promotes to the full cycle (or micro, if that skill's bounds hold); it is not a
+`protocol-mismatch`. Report a genuine non-task before touching the repository —
+`--status escalated --outcome protocol-mismatch --converged false` with a `--reason`
+naming why this is not repository work — and stop so the caller can re-route.
 Leaving the protocol and completing the task by hand publishes nothing, which every
 headless caller reads as a failed run (**`skills/shared/route-exit-contract.md`**).

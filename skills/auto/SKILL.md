@@ -62,8 +62,11 @@ Route semantics:
 - **micro**: direct, well-understood maintenance with at most 3 criteria and about 5
   reviewable edited files. Generated lockfiles do not count toward that edit surface.
   Examples include a focused documentation refresh, config adjustment, an update to
-  already-present dependency versions, a rename, or a localized fix whose mechanism is
-  already known. No subagents or design
+  already-present dependency versions, a rename, a localized fix whose mechanism is
+  already known, a merge-conflict resolution, a PR sync/rebase, a re-review against
+  the default branch, or a one-command chore — all `taskKind: maintenance`, all work
+  to execute (micro owns the current checkout and will reuse the branch's existing
+  PR). No subagents or design
   phases. The micro skill inherits the session model in Claude Code and OpenCode;
   classification stays on that same parent model.
 - **debug**: a bounded bug or unexplained behavior that needs reproduction, hypotheses,
@@ -72,7 +75,10 @@ Route semantics:
 - **full**: features, refactors, greenfield work, broad or unclear requests, or any
   work involving a new seam or dependency edge, interface or schema behavior, security,
   destructive/data migration operations, multiple repositories, or conflicting
-  uncommitted changes.
+  uncommitted changes. Maintenance that exceeds micro bounds (a large conflict
+  resolution, a re-review whose edit surface is wide, a dirty tree) is still `full`
+  with the profile `cycle-profile.sh` selects — fail-closed promotion, not a
+  `protocol-mismatch`.
 
 Do not invent a generic `compact` route. The reduced routes must reuse an existing
 protocol with established verification and PR delivery. Route telemetry and user
@@ -139,10 +145,15 @@ work in this skill. The delegated protocol owns runtime scope tripwires: micro p
 losslessly when its bounds are crossed, and debug promotes when the confirmed fix is
 feature-scale.
 
-The delegated protocol also owns **`skills/shared/route-exit-contract.md`**: it runs, or
-it reports a mismatch and stops. A route that judges its protocol a poor fit must publish
-`--outcome protocol-mismatch` and stop — never leave the protocol and complete the task by
-hand, which delivers work no caller can see.
+The delegated protocol also owns **`skills/shared/route-exit-contract.md`**: it runs to
+a published terminal result. `protocol-mismatch` is for a genuine non-task (a pure
+question, or work that needs a different product). A task this router accepted —
+including a merge-conflict resolution, PR sync/rebase, re-review, or maintenance
+chore, even when fail-closed promotion sent it to `full` — is executed, not declined.
+When `full` is selected, pass `profile:{profile}` so the maintenance short path can
+shrink ceremony; the cycle still walks PLAN → EXECUTE → VERIFY → ITERATE → DELIVER
+and publishes on completion. Never leave the protocol and complete the task by hand,
+which delivers work no caller can see.
 
 ## Step 4 - Confirm the terminal result
 

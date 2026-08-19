@@ -112,15 +112,26 @@ migrates the staging record into the feature dir; SPEC renders it into SPEC.md's
 
 This skill is a route, and a route ends by publishing `.loop-spec/last-result.json` —
 a run that ends without one reads as a failure to every headless caller
-(**`skills/shared/route-exit-contract.md`**). If the seven-phase shape looks like a poor
-fit for the request (a rebase, a branch sync, a one-command chore), that judgment is a
-finding to report, not a licence to leave the protocol and do the task by hand:
+(**`skills/shared/route-exit-contract.md`**).
+
+`protocol-mismatch` is for a genuine **non-task** only (a pure question, or work that
+needs a different product entirely). A rebase, a branch sync, a merge-conflict
+resolution, a PR re-review, or a one-command chore is repository work. If
+`/loop-spec:auto` already routed here, that commitment stands — execute the cycle; do
+not decline it. Heavy ceremony is the maintenance profile (`profile=maintenance`,
+`skills/shared/tier-matrix.md`): SPEC synthesizes, the graph short path skips DISCUSS /
+spec-critique / code-review when no security signal fires, and PLAN / EXECUTE / VERIFY /
+ITERATE / DELIVER still run. Walk that path. Do not skip ITERATE or DELIVER because the
+task felt small; the graph owns sequencing, and a delivered change without a terminal
+result is the unaccounted ending this contract exists to prevent.
+
+When the request is genuinely not repository work, stop before changing the tree:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
   --result-root "$(git rev-parse --show-toplevel)" --cycle-type full \
   --status escalated --outcome protocol-mismatch --converged false \
-  --title "<request title>" --reason "<why the cycle does not fit this request>" \
+  --title "<request title>" --reason "<why this is not repository work>" \
   --summary "<what the request actually needs; no repository work was done>"
 ```
 
@@ -1163,7 +1174,9 @@ fi
 node; a second write is idempotent. `write-terminal --outcome delivered` is
 the same alias if the agent reaches for DELIVER's own word. A non-zero write
 is a publication failure — retry, then stop. Do not continue as if the pointer
-landed.
+landed. The maintenance short path still reaches this section: ITERATE and
+DELIVER still run, and a headless caller still gates on this pointer. Do not
+exit after EXECUTE because the task felt like a sync.
 
 The run digest was finalized immediately before DELIVER (machine-local by default;
 part of the checked SHA only when `LOOP_SPEC_COMMIT_TELEMETRY=1` or the repo already
