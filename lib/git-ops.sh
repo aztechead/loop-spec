@@ -40,6 +40,14 @@
 #   checkout-path-for-branch <branch>
 #                                       Print the worktree path that currently has
 #                                       <branch> checked out, or empty if none.
+#   fast-forward-to-origin <branch>     Fetch origin/<branch> and move the local <branch>
+#                                       up to it when that is a fast-forward. Prints one
+#                                       of "synced", "already-current", "diverged" (local
+#                                       has commits origin lacks -- left alone), "blocked"
+#                                       (the checkout refused the fast-forward), or
+#                                       "unavailable" (no origin, no such remote branch,
+#                                       or no local branch to move). The reason is on
+#                                       stderr.
 #   list-feature-worktrees              Print one "<path>\t<branch>" line per worktree that is
 #                                       on a feat/* branch or under any candidate feature base
 #                                       for this repo (including "/.claude/worktrees/").
@@ -244,6 +252,63 @@ case "$cmd" in
     _checkout_path_for_branch "$branch"
     printf '\n'
     ;;
+  fast-forward-to-origin)
+    # An adopted PR head that is stale locally would put old code in the worktree and
+    # get DELIVER's push rejected as non-fast-forward. Move the ref up before anything
+    # checks it out. Local commits origin does not have are never discarded.
+    branch="${2:-}"
+    if [[ -z "$branch" ]]; then
+      echo "fast-forward-to-origin: usage: git-ops.sh fast-forward-to-origin <branch>" >&2
+      exit 1
+    fi
+    if ! "${G[@]}" remote get-url origin >/dev/null 2>&1; then
+      echo "fast-forward-to-origin: no origin remote to sync $branch from." >&2
+      echo "unavailable"
+      exit 0
+    fi
+    # Explicit refspec: whether a bare `fetch origin <branch>` also updates the
+    # remote-tracking ref depends on the configured refspec, and the answer reads it.
+    remote_ref="refs/remotes/origin/${branch}"
+    if ! "${G[@]}" fetch --quiet origin "+refs/heads/${branch}:${remote_ref}"; then
+      echo "fast-forward-to-origin: origin has no branch $branch." >&2
+      echo "unavailable"
+      exit 0
+    fi
+    remote_sha="$("${G[@]}" rev-parse --verify --quiet "${remote_ref}^{commit}")" || {
+      echo "fast-forward-to-origin: fetched origin/$branch but cannot resolve $remote_ref." >&2
+      echo "unavailable"
+      exit 0
+    }
+    local_sha="$("${G[@]}" rev-parse --verify --quiet "refs/heads/${branch}^{commit}")" || {
+      echo "fast-forward-to-origin: no local $branch; a checkout starts from origin/$branch." >&2
+      echo "unavailable"
+      exit 0
+    }
+    if [[ "$local_sha" == "$remote_sha" ]]; then
+      echo "already-current"
+      exit 0
+    fi
+    if ! "${G[@]}" merge-base --is-ancestor "$local_sha" "$remote_sha"; then
+      echo "fast-forward-to-origin: local $branch has commits origin/$branch does not; leaving it alone." >&2
+      echo "diverged"
+      exit 0
+    fi
+    checkout_path="$(_checkout_path_for_branch "$branch")"
+    if [[ -n "$checkout_path" ]]; then
+      # git owns the safety here: it refuses to fast-forward over an in-progress
+      # merge or local edits it would overwrite. That refusal is the answer.
+      if ! git -C "$checkout_path" merge --ff-only "$remote_ref" >&2; then
+        echo "fast-forward-to-origin: $checkout_path refused the fast-forward; leaving $branch at $local_sha." >&2
+        echo "blocked"
+        exit 0
+      fi
+    elif ! "${G[@]}" update-ref "refs/heads/${branch}" "$remote_sha" "$local_sha"; then
+      echo "fast-forward-to-origin: could not move refs/heads/$branch to origin/$branch." >&2
+      echo "blocked"
+      exit 0
+    fi
+    echo "synced"
+    ;;
   list-feature-worktrees)
     if [[ "${#G[@]}" -gt 1 ]]; then
       repo_root="${G[2]}"
@@ -291,7 +356,7 @@ case "$cmd" in
     done
     ;;
   *)
-    echo "usage: git-ops.sh [-C <path>] {detect-base-branch|slugify <text>|ensure-clean-or-stash|current-sha|create-feature-worktree <slug> <base_sha>|attach-feature-worktree <slug> <branch>|checkout-path-for-branch <branch>|list-feature-worktrees}" >&2
+    echo "usage: git-ops.sh [-C <path>] {detect-base-branch|slugify <text>|ensure-clean-or-stash|current-sha|create-feature-worktree <slug> <base_sha>|attach-feature-worktree <slug> <branch>|checkout-path-for-branch <branch>|fast-forward-to-origin <branch>|list-feature-worktrees}" >&2
     exit 1
     ;;
 esac

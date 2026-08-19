@@ -35,6 +35,8 @@ present "completion still emits the terminal result" skills/cycle/SKILL.md "cycl
 present "empty ITERATE summary still publishes" skills/cycle/SKILL.md "Cycle completed; PR delivered."
 present "named open PRs are adopted" skills/cycle/SKILL.md "adopt-pr.sh"
 present "micro adopts a named open PR" skills/micro/SKILL.md "adopt-pr.sh"
+present "cycle fast-forwards the adopted PR head" skills/cycle/SKILL.md "fast-forward-to-origin"
+present "micro fast-forwards the adopted PR head" skills/micro/SKILL.md "fast-forward-to-origin"
 present "cycle exits worktree only after delivery" skills/cycle/SKILL.md "final operation after DELIVER"
 present "fresh rewind set is explicit" skills/cycle/SKILL.md "execute|plan|spec|discuss"
 present "blocked delivery cannot spin" skills/cycle/SKILL.md "Never immediately invoke DELIVER again"

@@ -519,6 +519,13 @@ resolution and re-review land on the PR DELIVER will update. Workspace mode does
 not adopt (it still mints `feat/{slug}` in every participating repo). Dirt on the
 adopted branch is the work; dirt on any other branch still aborts.
 
+A stale local copy of that head is the trap: the worktree would hold old code and
+DELIVER's push would be rejected as non-fast-forward. `git-ops.sh
+fast-forward-to-origin` moves the local ref up first and answers `synced`,
+`already-current`, `diverged`, `blocked`, or `unavailable`. Local commits origin
+does not have are never discarded — `diverged` and `blocked` keep the local head
+and say so.
+
 ```bash
 slug="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" slugify "$title")"
 repo_root="$workspace_root"
@@ -558,7 +565,14 @@ if git -C "$repo_root" remote get-url origin >/dev/null 2>&1; then
   }
   base_ref="origin/$base_branch"
   if [[ "$adopted_pr" == "true" ]]; then
-    git -C "$repo_root" fetch --quiet origin "$feature_branch" || true
+    ff_state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" -C "$repo_root" \
+      fast-forward-to-origin "$feature_branch")"
+    case "$ff_state" in
+      synced) echo "loop-spec: fast-forwarded $feature_branch to origin/$feature_branch." ;;
+      diverged|blocked)
+        echo "loop-spec: $feature_branch is $ff_state against origin/$feature_branch; working from the local head." >&2
+        ;;
+    esac
   fi
 else
   base_ref="$base_branch"

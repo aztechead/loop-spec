@@ -28,6 +28,8 @@ prompt = execute[execute.index("Step 1 - The task worktree already exists"):exec
 checks = [
     ("adopted PR attaches instead of minting feat/{slug}",
      "attach-feature-worktree" in cycle and "adopting PR" in cycle),
+    ("adopted PR head is fast-forwarded before anything checks it out",
+     cycle.index("fast-forward-to-origin") < cycle.index("attach-feature-worktree")),
     ("disabled branch performs an in-place checkout", 'checkout -b "feat/${slug}"' in disabled),
     ("disabled branch never invokes the worktree helper", "create-feature-worktree" not in disabled),
     ("enabled branch invokes the worktree helper", "create-feature-worktree" in enabled),

@@ -238,6 +238,86 @@ check "AL: attach-feature-worktree creates a local branch from origin" \
 git -C "$CLEAN_REPO" show-ref --verify --quiet refs/heads/feat/from-origin && r=ok || r=bad
 check "AL2: the origin-only attach created the local branch" "ok" "$r"
 
+# ---------------------------------------------------------------------------
+# fast-forward-to-origin: an adopted PR head must not be worked on while stale
+# ---------------------------------------------------------------------------
+FF_BARE="$OUTSIDE/ff-bare"
+git init --bare -q "$FF_BARE"
+FF_A="$OUTSIDE/ff-a"
+git init -q "$FF_A"
+git -C "$FF_A" config user.email t@t
+git -C "$FF_A" config user.name t
+echo one > "$FF_A/f"
+git -C "$FF_A" add f
+git -C "$FF_A" commit -q -m one
+git -C "$FF_A" branch -M pr/head
+git -C "$FF_A" remote add origin "$FF_BARE"
+git -C "$FF_A" push -q origin pr/head
+git -C "$FF_BARE" symbolic-ref HEAD refs/heads/pr/head
+old_head=$(git -C "$FF_A" rev-parse HEAD)
+
+FF_B="$OUTSIDE/ff-b"
+git clone -q "$FF_BARE" "$FF_B"
+git -C "$FF_B" config user.email t@t
+git -C "$FF_B" config user.name t
+
+got=$(bash "$LIB" -C "$WORK" fast-forward-to-origin main 2>/dev/null)
+check "AM: fast-forward-to-origin is unavailable with no origin remote" "unavailable" "$got"
+
+got=$(bash "$LIB" -C "$FF_B" fast-forward-to-origin pr/nope 2>/dev/null)
+check "AN: fast-forward-to-origin is unavailable when origin has no such branch" \
+  "unavailable" "$got"
+
+got=$(bash "$LIB" -C "$FF_B" fast-forward-to-origin pr/head 2>/dev/null)
+check "AO: fast-forward-to-origin is already-current when local matches origin" \
+  "already-current" "$got"
+
+# origin moves ahead; the clone's checked-out branch is now stale.
+echo two > "$FF_A/f"
+git -C "$FF_A" commit -q -am two
+git -C "$FF_A" push -q origin pr/head
+new_head=$(git -C "$FF_A" rev-parse HEAD)
+
+got=$(bash "$LIB" -C "$FF_B" fast-forward-to-origin pr/head 2>/dev/null)
+check "AP: fast-forward-to-origin syncs a checked-out branch that is behind" "synced" "$got"
+check "AP2: the checkout is at origin's head" "$new_head" "$(git -C "$FF_B" rev-parse HEAD)"
+
+got=$(bash "$LIB" -C "$FF_B" fast-forward-to-origin pr/other 2>/dev/null)
+check "AQ: fast-forward-to-origin is unavailable when there is no local branch" \
+  "unavailable" "$got"
+
+# Not checked out: the ref moves by update-ref rather than by a merge.
+git -C "$FF_B" checkout -q -b parking
+git -C "$FF_B" branch -f pr/head "$old_head"
+got=$(bash "$LIB" -C "$FF_B" fast-forward-to-origin pr/head 2>/dev/null)
+check "AR: fast-forward-to-origin syncs a branch that is not checked out" "synced" "$got"
+check "AR2: refs/heads/pr/head moved to origin's head" \
+  "$new_head" "$(git -C "$FF_B" rev-parse refs/heads/pr/head)"
+
+# Local commits origin does not have are work, not staleness: never discarded.
+git -C "$FF_B" branch -f pr/head "$old_head"
+git -C "$FF_B" checkout -q pr/head
+echo local > "$FF_B/g"
+git -C "$FF_B" add g
+git -C "$FF_B" commit -q -m local
+diverged_head=$(git -C "$FF_B" rev-parse HEAD)
+got=$(bash "$LIB" -C "$FF_B" fast-forward-to-origin pr/head 2>/dev/null)
+check "AS: fast-forward-to-origin reports diverged" "diverged" "$got"
+check "AS2: the diverged local head is left alone" \
+  "$diverged_head" "$(git -C "$FF_B" rev-parse refs/heads/pr/head)"
+
+# A checkout git refuses to move is "blocked", not a silent stale success.
+git -C "$FF_B" reset -q --hard "$old_head"
+echo uncommitted > "$FF_B/f"
+got=$(bash "$LIB" -C "$FF_B" fast-forward-to-origin pr/head 2>/dev/null)
+check "AT: fast-forward-to-origin reports blocked when the checkout refuses" "blocked" "$got"
+check "AT2: the blocked checkout keeps its own head" \
+  "$old_head" "$(git -C "$FF_B" rev-parse HEAD)"
+
+exit_code=0
+bash "$LIB" -C "$FF_B" fast-forward-to-origin >/dev/null 2>&1 || exit_code=$?
+check "AU: fast-forward-to-origin with no branch exits 1" "1" "$exit_code"
+
 # AB: -C missing path argument exits 1
 exit_code=0
 bash "$LIB" -C >/dev/null 2>&1 || exit_code=$?

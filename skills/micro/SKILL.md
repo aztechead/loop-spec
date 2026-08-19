@@ -98,8 +98,13 @@ Still zero ceremony — no worktree, no DELIVER controller:
   adopt_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/adopt-pr.sh" resolve \
     --repo "$(git rev-parse --show-toplevel)" --request "<the task text>")"
   ```
-  When `.adopt == true`, check out `.branch` (fetch first) and stay on it. That is
-  the PR DELIVER-equivalent will update. Dirt on that branch is the work.
+  When `.adopt == true`, fast-forward that head before checking it out, so the work
+  does not land on a stale copy (`diverged` and `blocked` keep the local commits):
+  ```bash
+  bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" fast-forward-to-origin "<the branch>"
+  ```
+  Then check out `.branch` and stay on it. That is the PR DELIVER-equivalent will
+  update. Dirt on that branch is the work.
 - Otherwise: on the default branch? Move the work to a branch first: `git checkout -b micro/<slug>`
   (uncommitted changes travel). Already on a topic branch: stay on it.
 - Commit (project commit conventions apply), `git push -u origin <branch>`, then reuse

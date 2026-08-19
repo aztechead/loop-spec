@@ -38,6 +38,13 @@ Headless callers gating on `converged` still failed, and nothing was delivered.
   out that OPEN, same-repo head instead of `feat/{slug}` / `micro/<slug>`. DELIVER
   updates the named PR. Workspace mode still mints per repo. Dirt on the adopted
   branch is the work; dirt anywhere else still aborts.
+- **An adopted PR head is fast-forwarded before anything checks it out.**
+  `git-ops.sh fast-forward-to-origin <branch>` fetches and moves the local ref up,
+  so the cycle and micro do not work on a stale copy whose push DELIVER would get
+  rejected as non-fast-forward. It answers `synced`, `already-current`, `diverged`,
+  `blocked`, or `unavailable`; local commits origin does not have are never
+  discarded, and a checkout git refuses to move reports `blocked` rather than
+  passing for fresh.
 
 ## [4.2.0] - 2026-08-18
 
