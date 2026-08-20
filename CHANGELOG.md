@@ -2,6 +2,18 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
+## [Unreleased]
+
+### Fixed
+
+- **Codex interactive SPEC/DISCUSS/PLAN now wait for the user.** The Codex
+  contract treated `AskUserQuestion` as "ask in the transcript", which Default
+  mode does not block on, so those phases ran as if autonomous. They now map
+  onto `request_user_input`, SessionStart tells the lead to wait, and
+  `lib/codex-install.sh` writes `[features] default_mode_request_user_input =
+  true` so Default mode exposes the tool. Headless `$loop-spec-auto` /
+  `codex exec` is unchanged.
+
 ## [4.3.0] - 2026-08-19
 
 First-party OpenAI Codex harness. loop-spec now ships four peer contracts from

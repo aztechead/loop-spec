@@ -190,8 +190,13 @@ Under the Codex harness (`lib/harness.sh detect` == `codex`) the tool surface
 is Codex's own: file tools plus `apply_patch`, `Bash` / `exec_command`, skills
 invoked as `$loop-spec-<name>` (or a plugin skill `$<name>`), and one-shot
 dispatch through `spawn_agent`. Glob and Grep have no native tools; use Bash.
-Team tools, `Workflow`, `TaskCreate`/`TaskUpdate`, and `ToolSearch` do not
-exist — apply the substitution table and dispatch mapping rule in
+`AskUserQuestion` maps to `request_user_input` (add `id`, option `value`;
+drop `multiSelect`; 1–3 questions). When a human is attached the call
+**blocks** — never self-answer SPEC/DISCUSS/PLAN interviews unless
+autonomous or `LOOP_SPEC_NON_INTERACTIVE=1`. If the tool is missing from the
+schema, end the turn with numbered options instead of proceeding. Team tools,
+`Workflow`, `TaskCreate`/`TaskUpdate`, and `ToolSearch` do not exist — apply
+the substitution table, HITL rule, and dispatch mapping in
 `skills/shared/codex-harness.md`. Headless dispatch goes through
 `codex exec --json --sandbox workspace-write "<prompt>"`, the same seam the
 loop-runner's `--agent-cli codex` backend drives.

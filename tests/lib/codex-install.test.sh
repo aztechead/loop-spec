@@ -72,6 +72,7 @@ check "namespaced auto skill generated" "yes" "$([[ -f "$HOME/.agents/skills/loo
 check "namespaced skill frontmatter" "1" "$(grep -c '^name: loop-spec-cycle$' "$HOME/.agents/skills/loop-spec-cycle/SKILL.md")"
 check "source skill remains unshadowed" "no" "$([[ -e "$HOME/.agents/skills/cycle" ]] && echo yes || echo no)"
 check "skill adapter loads Codex contract" "yes" "$(grep -q 'codex-harness.md' "$HOME/.agents/skills/loop-spec-cycle/SKILL.md" && echo yes || echo no)"
+check "skill adapter maps AskUserQuestion to request_user_input" "yes" "$(grep -q 'request_user_input' "$HOME/.agents/skills/loop-spec-cycle/SKILL.md" && echo yes || echo no)"
 check "skill adapter re-exports source directory" "1" "$(grep -c "^export CLAUDE_SKILL_DIR=$REPO/skills/cycle$" "$HOME/.agents/skills/loop-spec-cycle/SKILL.md")"
 check "skill invocation policy is outside SKILL.md" "0" "$(grep -c '^allow_implicit_invocation:' "$HOME/.agents/skills/loop-spec-cycle/SKILL.md" || true)"
 check "skill adapter writes OpenAI metadata" "yes" "$([[ -f "$HOME/.agents/skills/loop-spec-cycle/agents/openai.yaml" ]] && echo yes || echo no)"
@@ -175,6 +176,8 @@ check "config sets harness" "1" "$(grep -c 'LOOP_SPEC_HARNESS = "codex"' "$CODEX
 check "config sets plugin root" "yes" "$(grep -q "$REPO" "$CODEX_HOME/config.toml" && echo yes || echo no)"
 check "config keeps one env table" "1" "$(grep -c '^\[shell_environment_policy.set\]$' "$CODEX_HOME/config.toml")"
 check "config preserves user setting" "1" "$(grep -c '^USER_SETTING = "preserved"$' "$CODEX_HOME/config.toml")"
+check "config enables request_user_input in Default mode" "1" "$(grep -c '^default_mode_request_user_input = true$' "$CODEX_HOME/config.toml")"
+check "config features block is marked" "yes" "$(grep -q '# BEGIN loop-spec-features' "$CODEX_HOME/config.toml" && echo yes || echo no)"
 check "hooks.json written" "yes" "$([[ -f "$CODEX_HOME/hooks.json" ]] && echo yes || echo no)"
 check "hooks call session-start" "yes" "$(grep -q 'codex-session-start.sh' "$CODEX_HOME/hooks.json" && echo yes || echo no)"
 check "hooks preserve user command" "1" "$(grep -c 'echo user-hook' "$CODEX_HOME/hooks.json")"
@@ -200,6 +203,37 @@ HOME="$HOME" CODEX_HOME="$CODEX_HOME" bash "$LIB" uninstall --project "$PROJ" >/
 check "project uninstall removes created config" "no" "$([[ -f "$PROJ/.codex/config.toml" ]] && echo yes || echo no)"
 check "project uninstall removes created hooks" "no" "$([[ -f "$PROJ/.codex/hooks.json" ]] && echo yes || echo no)"
 
+# Operator-authored feature flag is left untouched (true or false).
+FLAG_HOME="$TMP/flag-home"
+FLAG_CODEX="$TMP/flag-codex"
+mkdir -p "$FLAG_HOME" "$FLAG_CODEX"
+cat > "$FLAG_CODEX/config.toml" <<'EOF'
+[features]
+default_mode_request_user_input = false
+keep_me = true
+EOF
+HOME="$FLAG_HOME" CODEX_HOME="$FLAG_CODEX" bash "$LIB" install >/dev/null
+check "user feature flag preserved" "1" "$(grep -c '^default_mode_request_user_input = false$' "$FLAG_CODEX/config.toml")"
+check "user feature flag not re-marked" "0" "$(grep -c '# BEGIN loop-spec-features' "$FLAG_CODEX/config.toml" || true)"
+check "user features table kept" "1" "$(grep -c '^keep_me = true$' "$FLAG_CODEX/config.toml")"
+HOME="$FLAG_HOME" CODEX_HOME="$FLAG_CODEX" bash "$LIB" uninstall >/dev/null
+check "user feature flag survives uninstall" "1" "$(grep -c '^default_mode_request_user_input = false$' "$FLAG_CODEX/config.toml")"
+
+MERGE_HOME="$TMP/merge-home"
+MERGE_CODEX="$TMP/merge-codex"
+mkdir -p "$MERGE_HOME" "$MERGE_CODEX"
+cat > "$MERGE_CODEX/config.toml" <<'EOF'
+[features]
+keep_me = true
+EOF
+HOME="$MERGE_HOME" CODEX_HOME="$MERGE_CODEX" bash "$LIB" install >/dev/null
+check "features merge writes the flag" "1" "$(grep -c '^default_mode_request_user_input = true$' "$MERGE_CODEX/config.toml")"
+check "features merge keeps user key" "1" "$(grep -c '^keep_me = true$' "$MERGE_CODEX/config.toml")"
+check "features merge keeps one features table" "1" "$(grep -c '^\[features\]$' "$MERGE_CODEX/config.toml")"
+HOME="$MERGE_HOME" CODEX_HOME="$MERGE_CODEX" bash "$LIB" uninstall >/dev/null
+check "features merge uninstall keeps user key" "1" "$(grep -c '^keep_me = true$' "$MERGE_CODEX/config.toml")"
+check "features merge uninstall strips flag" "0" "$(grep -c 'default_mode_request_user_input' "$MERGE_CODEX/config.toml" || true)"
+
 # --- status + uninstall ---
 out="$(CODEX_HOME="$CODEX_HOME" HOME="$HOME" bash "$LIB" status)"
 check "status reports installed" "yes" "$(grep -q "^installed:" <<<"$out" && echo yes || echo no)"
@@ -207,7 +241,8 @@ CODEX_HOME="$CODEX_HOME" HOME="$HOME" bash "$LIB" uninstall >/dev/null
 check "uninstall removes manifest" "no" "$([[ -f "$CODEX_HOME/loop-spec-install.json" ]] && echo yes || echo no)"
 check "uninstall removes adapters" "no" "$([[ -f "$HOME/.agents/skills/loop-spec-cycle/SKILL.md" ]] && echo yes || echo no)"
 check "uninstall removes agents" "no" "$([[ -f "$CODEX_HOME/agents/loop-spec-implementer.toml" ]] && echo yes || echo no)"
-check "uninstall strips env block" "0" "$(if [[ -f "$CODEX_HOME/config.toml" ]] && grep -q 'BEGIN loop-spec' "$CODEX_HOME/config.toml"; then echo 1; else echo 0; fi)"
+check "uninstall strips env block" "0" "$(if [[ -f "$CODEX_HOME/config.toml" ]] && grep -qx '# BEGIN loop-spec' "$CODEX_HOME/config.toml"; then echo 1; else echo 0; fi)"
+check "uninstall strips features block" "0" "$(if [[ -f "$CODEX_HOME/config.toml" ]] && grep -qx '# BEGIN loop-spec-features' "$CODEX_HOME/config.toml"; then echo 1; else echo 0; fi)"
 check "uninstall preserves config" "1" "$(grep -c '^model = "keep-me"$' "$CODEX_HOME/config.toml")"
 check "uninstall preserves env setting" "1" "$(grep -c '^USER_SETTING = "preserved"$' "$CODEX_HOME/config.toml")"
 check "uninstall preserves hooks file" "yes" "$([[ -f "$CODEX_HOME/hooks.json" ]] && echo yes || echo no)"
