@@ -15,7 +15,9 @@
 #                PreToolUse entries pointing at this checkout's Codex hooks)
 #   env       -> <codex-home>/config.toml  marked [shell_environment_policy.set]
 #                block so Bash subprocesses receive LOOP_SPEC_HARNESS without
-#                waiting on hook trust
+#                waiting on hook trust, plus a marked
+#                [features] default_mode_request_user_input so Default mode
+#                exposes request_user_input (the AskUserQuestion analogue)
 #   marketplace -> <project>/.agents/plugins/marketplace.json when --project
 #                points at this clone (Codex resolves source.path relative to
 #                the repo root). A user install prints the `codex plugin
@@ -271,6 +273,11 @@ new = re.sub(
     "",
     text,
 )
+new = re.sub(
+    r"(?ms)^# BEGIN loop-spec-features\n.*?^# END loop-spec-features\n?",
+    "",
+    new,
+)
 if new != text:
     if created and not new.strip():
         os.remove(path)
@@ -390,10 +397,18 @@ if not os.path.isfile(path):
     raise SystemExit(0)
 text = open(path, encoding="utf-8").read()
 begin, end = "# BEGIN loop-spec", "# END loop-spec"
+feat_begin, feat_end = "# BEGIN loop-spec-features", "# END loop-spec-features"
 if (begin in text) != (end in text):
     raise SystemExit("partial loop-spec marker block")
+if (feat_begin in text) != (feat_end in text):
+    raise SystemExit("partial loop-spec-features marker block")
 text = re.sub(
     r"(?ms)^" + re.escape(begin) + r"\n.*?^" + re.escape(end) + r"\n?",
+    "",
+    text,
+)
+text = re.sub(
+    r"(?ms)^" + re.escape(feat_begin) + r"\n.*?^" + re.escape(feat_end) + r"\n?",
     "",
     text,
 )
@@ -591,6 +606,8 @@ PYEOF
 import os, re, sys
 path, repo, project = sys.argv[1:]
 begin, end = "# BEGIN loop-spec", "# END loop-spec"
+feat_begin, feat_end = "# BEGIN loop-spec-features", "# END loop-spec-features"
+feat_key = "default_mode_request_user_input"
 skill_dir = os.path.join(repo, "skills", "cycle")
 assignments = [
     'LOOP_SPEC_HARNESS = "codex"',
@@ -603,8 +620,15 @@ os.makedirs(os.path.dirname(path), exist_ok=True)
 text = open(path, encoding="utf-8").read() if os.path.isfile(path) else ""
 if (begin in text) != (end in text):
     raise SystemExit("partial loop-spec marker block in config.toml")
+if (feat_begin in text) != (feat_end in text):
+    raise SystemExit("partial loop-spec-features marker block in config.toml")
 text = re.sub(
     r"(?ms)^" + re.escape(begin) + r"\n.*?^" + re.escape(end) + r"\n?",
+    "",
+    text,
+)
+text = re.sub(
+    r"(?ms)^" + re.escape(feat_begin) + r"\n.*?^" + re.escape(feat_end) + r"\n?",
     "",
     text,
 )
@@ -628,6 +652,28 @@ else:
         text += "\n"
     block = "\n".join([begin, "[shell_environment_policy.set]"] + assignments + [end]) + "\n"
     text += ("\n" if text else "") + block
+
+# Default mode hides request_user_input unless this flag is on. Leave a
+# user-authored value untouched (true or false) so an operator override wins.
+feat_header = re.compile(r"(?m)^\[features\][ \t]*(?:#.*)?$")
+feat_match = feat_header.search(text)
+feat_key_re = re.compile(
+    r"(?m)^\s*(?:" + re.escape(feat_key) + r"|[\"']" + re.escape(feat_key) + r"[\"'])\s*="
+)
+marked_feature = "\n".join([feat_begin, feat_key + " = true", feat_end]) + "\n"
+if feat_match:
+    feat_end_match = re.search(r"(?m)^\s*\[[^\n]+\][ \t]*(?:#.*)?$", text[feat_match.end():])
+    feat_section_end = feat_match.end() + feat_end_match.start() if feat_end_match else len(text)
+    feat_section = text[feat_match.end():feat_section_end]
+    if not feat_key_re.search(feat_section):
+        insertion = feat_match.end()
+        text = text[:insertion] + "\n" + marked_feature + text[insertion:].lstrip("\n")
+else:
+    if text and not text.endswith("\n"):
+        text += "\n"
+    text += ("\n" if text else "") + "\n".join(
+        [feat_begin, "[features]", feat_key + " = true", feat_end]
+    ) + "\n"
 with open(path, "w", encoding="utf-8") as fh:
     fh.write(text)
 PY
@@ -769,8 +815,10 @@ PY
   echo "installed loop-spec for Codex at $CODEX_DIR"
   echo "  skills: $SKILLS_DIR"
   echo "  agents: $AGENTS_DIR"
-  echo "Next: start a new Codex session, trust the loop-spec hooks with /hooks, then invoke \$loop-spec-auto"
-  echo "      or: LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \\"
+  echo "Next: start a new Codex session, trust the loop-spec hooks with /hooks, then invoke \$loop-spec-cycle <description>"
+  echo "      Interactive SPEC/DISCUSS/PLAN wait on request_user_input (Default mode needs"
+  echo "      [features] default_mode_request_user_input = true — the installer wrote it)."
+  echo "      Headless: LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \\"
   echo "          '\$loop-spec-auto <description>'"
   if [[ "$WRITE_MARKET" != "1" ]]; then
     echo "Plugin install (skills + bundled hooks from the clone):"

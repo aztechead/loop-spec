@@ -88,9 +88,64 @@ wrong on a machine that also has Claude Code installed.
 | Teams (named spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` (`lib/teams-capability.sh`). `spawn_agent` returns a child thread; it does not provide named teammates, peer messaging, or a shared task list |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |
 | TaskCreate / TaskUpdate / TaskList / TaskGet | none. DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` |
-| AskUserQuestion | none with that shape. Ask in the transcript when a human is attached; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
+| AskUserQuestion | `request_user_input` (blocks the turn). Map the call per the HITL section below. Autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under Codex — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd |
+
+## Human-in-the-loop (SPEC / DISCUSS / PLAN)
+
+Codex Default-mode models assume and continue unless a tool **blocks**. Claude
+Code's `AskUserQuestion` and OpenCode's `question` both block. "Ask in the
+transcript and keep going" does not: the interview never reaches the user, and
+the cycle looks autonomous. Every `AskUserQuestion` site in an attached
+interactive session therefore maps onto a blocking wait.
+
+`request_user_input` is native (Codex >= 0.88). Default mode hides it until
+`[features] default_mode_request_user_input = true` — `lib/codex-install.sh`
+writes that key into a marked block; plugin-only installs set it by hand in
+`~/.codex/config.toml` (or the project's `.codex/config.toml`). Plan mode
+already exposes the tool.
+
+Call shape (1–3 questions; loop-spec interviews stay one-at-a-time, so send
+one unless a skill already batched):
+
+```
+request_user_input({
+  questions: [{
+    id: "<snake_case>",          // required; maps the answer
+    header: "<12 chars>",        // required chip label
+    question: "…ends with a question mark?",
+    options: [                   // omit for free-text
+      { value: "snake_case", label: "Short choice", description: "What picking it means" },
+      ...
+    ]
+  }]
+})
+```
+
+- Keep `questions`, `question`, and `header`. Add `id`. Drop `multiSelect`
+  (Codex options are mutually exclusive; a Claude `multiSelect: true` site
+  becomes sequential single-select calls).
+- Each option needs `value` (snake_case) plus Claude's `label` /
+  `description`. Codex allows 2–3 options; a 4-option Claude call keeps the
+  first three (put the recommended option first) and asks the remainder on
+  the next call. Do not add an `"Other"` option — the UI already offers
+  free-form.
+- Wait for the tool result. Do not invent an answer, do not proceed to the
+  next interview round, and do not enter EXECUTE, while a question is
+  outstanding.
+
+When `request_user_input` is missing from the schema (Default mode without
+the flag, or a release that hid it):
+
+- **Human attached** (`harness.sh headless` is false, `feature.json.autonomous`
+  is not true, `LOOP_SPEC_NON_INTERACTIVE` is unset): print the same question
+  with numbered options and **end the turn**. Resume from the user's next
+  message. Never self-answer to keep the cycle moving.
+- **Headless / autonomous / `LOOP_SPEC_NON_INTERACTIVE=1`**: do not call
+  `request_user_input` (nothing would answer it). Follow
+  `skills/shared/autonomous-mode.md` or the pinned `LOOP_SPEC_ANSWER_*` /
+  `LOOP_SPEC_CMD_*` vars, exactly as on the other harnesses.
 
 ## Ambient verification enforcement
 
@@ -192,7 +247,7 @@ must be a Codex slug.
 
 | Claude Code | Codex |
 |---|---|
-| interactive session | Codex TUI (`codex`) |
+| interactive session | Codex TUI (`codex`); `$loop-spec-cycle` waits on `request_user_input` |
 | `claude -p` headless / autonomous mode | `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'` |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `codex exec --json --sandbox workspace-write` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli codex` (see `skills/shared/execute-loop-fleet.md`) |
 

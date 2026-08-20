@@ -28,8 +28,8 @@
     "capabilities": ["Read", "Write"],
     "websiteURL": "https://github.com/aztechead/loop-spec",
     "defaultPrompt": [
-      "Run loop-spec autonomously: <description>",
-      "Run the full loop-spec cycle: autonomous <description>"
+      "Run the loop-spec cycle: $loop-spec-cycle <description>",
+      "Run loop-spec autonomously: $loop-spec-auto <description>"
     ]
   }
 }

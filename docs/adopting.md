@@ -50,6 +50,14 @@ generated skills and agents should live only in the current project.
 ```bash
 git clone https://github.com/aztechead/loop-spec
 bash loop-spec/lib/codex-install.sh install
+```
+
+Interactive TUI: start a new Codex session and run `$loop-spec-cycle <goal>`.
+SPEC, DISCUSS, and PLAN wait on `request_user_input` (the installer enables
+Default-mode access via `[features] default_mode_request_user_input = true`).
+Headless / autonomous:
+
+```bash
 LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write \
   '$loop-spec-auto <goal>'
 ```
