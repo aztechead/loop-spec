@@ -215,11 +215,15 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/execute-stop.sh" classify "<overlap or inter
 ```
 
 `stop=true` pauses EXECUTE (cycle-resume-escalation contract). `stop=false
-reason=ruling` records the ruling and continues:
+reason=ruling` records the ruling and continues. Substitute the conflict as the
+question, the call you made as the answer, and why you made it as the rationale:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$fdir" execute \
-  "<question>" "<answer>" "<rationale>" ruling
+  "task-003 and task-007 both write lib/foo.sh" \
+  "task-007 rebases onto task-003; no plan change" \
+  "the overlap is one function and the order is already in blockedBy" \
+  ruling
 ```
 
 Autonomous mode never waits on a reversible question. Pass `--plan-broken` only

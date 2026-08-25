@@ -45,8 +45,8 @@
 #                                       for this repo (including "/.claude/worktrees/").
 #                                       No output if none.
 #   remove-task-worktree <path>         Remove a task worktree that already had a successful
-#                                       checkout. Never --force: if git refuses because of
-#                                       modified or untracked files, print them and exit 1.
+#                                       checkout. Never --force: if git refuses, print git's
+#                                       own reason plus any dirty paths and exit 1.
 #                                       Partial-add rollback still uses --force inline.
 #
 # Exit codes:
@@ -300,11 +300,14 @@ case "$cmd" in
       echo "remove-task-worktree: usage: git-ops.sh remove-task-worktree <path>" >&2
       exit 1
     fi
-    if "${G[@]}" worktree remove "$wt" >/dev/null 2>&1; then
+    if err="$("${G[@]}" worktree remove "$wt" 2>&1)"; then
       echo "removed"
       exit 0
     fi
-    echo "remove-task-worktree: git refused to remove $wt (uncommitted or untracked files). Not using --force." >&2
+    # Print git's own reason: "uncommitted changes" is the common one, but a locked
+    # worktree or a path that is not a worktree at all fails here too, and naming the
+    # wrong cause sends the caller looking for files that are not there.
+    echo "remove-task-worktree: git refused to remove $wt (not using --force): $err" >&2
     if [[ -d "$wt" ]]; then
       git -C "$wt" status --porcelain >&2 || true
     fi

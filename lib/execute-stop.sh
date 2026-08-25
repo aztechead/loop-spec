@@ -8,6 +8,10 @@
 # override. Everything else is a ruling. This script emits ANSWER and REASON
 # on one line; unknown text fails safe to ruling (continue), never to stop.
 #
+# The security tier is not re-implemented here: `lib/security-signal.sh` already
+# owns the term list AND the suppressions that keep "must not modify the auth
+# middleware" from reading as a security change. This script feeds it the text.
+#
 # Usage:
 #   execute-stop.sh classify <text>
 #   execute-stop.sh classify --plan-broken <text>
@@ -18,6 +22,8 @@
 #
 # Exit: 0 always with an answer, 2 usage.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PLAN_BROKEN=0
 if [[ "${1:-}" == "classify" ]]; then
@@ -38,7 +44,7 @@ if [[ "$PLAN_BROKEN" == "1" ]]; then
   exit 0
 fi
 
-python3 -c '
+answer="$(python3 -c '
 from __future__ import print_function
 import re, sys
 text = sys.argv[1]
@@ -49,11 +55,6 @@ checks = [
         ("drop-table", re.compile(r"\bdrop\s+table\b", re.I)),
         ("irreversible", re.compile(r"\birreversible\b", re.I)),
         ("destroy", re.compile(r"\bdestroy(?:s|ing|ed)?\b", re.I)),
-    ]),
-    ("security", [
-        ("credential", re.compile(r"\bcredentials?\b", re.I)),
-        ("secret", re.compile(r"\bsecrets?\b", re.I)),
-        ("auth", re.compile(r"\bauthn?\b", re.I)),
     ]),
     ("side-effect-outside", [
         ("push-origin", re.compile(r"\b(?:git\s+push|push\s+to\s+(?:origin|shared))\b", re.I)),
@@ -66,5 +67,25 @@ for reason, terms in checks:
         if rx.search(text):
             print("stop=true reason=%s matched=%s" % (reason, name))
             sys.exit(0)
-print("stop=false reason=ruling matched=")
-' "$text"
+print("")
+' "$text")"
+
+if [[ -n "$answer" ]]; then
+  echo "$answer"
+  exit 0
+fi
+
+# The in-script tiers run first: an rm -rf of a secrets dir is the rm -rf, and a
+# push to origin is the push. Both stop the run, so only the reason label differs.
+signal_file="$(mktemp)"
+trap 'rm -f "$signal_file"' EXIT
+printf '%s\n' "$text" > "$signal_file"
+if term="$(bash "$SCRIPT_DIR/security-signal.sh" first "$signal_file" 2>/dev/null)"; then
+  # security-signal prints "<file>:<line>:term=<name>", and a corroborated weak
+  # term appends "(corroborated by: ...)". matched= stays one token.
+  term="${term##*:term=}"
+  echo "stop=true reason=security matched=${term%% *}"
+  exit 0
+fi
+
+echo "stop=false reason=ruling matched="

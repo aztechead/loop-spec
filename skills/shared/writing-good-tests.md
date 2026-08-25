@@ -29,6 +29,14 @@ Trivial forwarding, constructors, and human prose earn no test. Skills are
 tested by the consuming agent's behavior (`CLAUDE.md`: eval evidence), not
 by asserting that a markdown file contains a sentence.
 
+One carve-out, and it is the repo's own convention: a COUPLING between two
+files that no runtime exercises — a prompt template that must keep naming the
+script it calls, a version declared in four manifests — is pinned by a
+`tests/*-coverage.test.sh` grep, because the break it catches is real (one side
+edited, the other left behind) and nothing else can catch it. That is a
+coupling pin, not a test of the prose. Anything a runtime CAN exercise is
+tested by running it.
+
 ## TDD
 
 If the task has testable behavior, write or extend the failing test first

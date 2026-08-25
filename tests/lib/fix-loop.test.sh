@@ -25,6 +25,17 @@ check "attempt 5 is fresh-upgrade" "fresh-upgrade" "$(bash "$SCRIPT" action 5)"
 check "attempt 6 is breaker" "breaker" "$(bash "$SCRIPT" action 6)"
 check "attempt 9 is breaker" "breaker" "$(bash "$SCRIPT" action 9)"
 
+# A tuned cap (lib/tuning.sh raises executeMaxRetriesPerTask to 7) moves the
+# breaker with it; fresh-upgrade stays the last two attempts before the cap.
+check "tuned cap 7: attempt 4 is resume" "resume" "$(bash "$SCRIPT" action 4 7)"
+check "tuned cap 7: attempt 5 is fresh-upgrade" "fresh-upgrade" "$(bash "$SCRIPT" action 5 7)"
+check "tuned cap 7: attempt 6 is fresh-upgrade" "fresh-upgrade" "$(bash "$SCRIPT" action 6 7)"
+check "tuned cap 7: attempt 7 is breaker" "breaker" "$(bash "$SCRIPT" action 7 7)"
+ec=0; bash "$SCRIPT" action 1 nope >/dev/null 2>&1 || ec=$?
+check "non-numeric max exits 2" "2" "$ec"
+ec=0; bash "$SCRIPT" action 1 2 >/dev/null 2>&1 || ec=$?
+check "max below 3 exits 2" "2" "$ec"
+
 check "live team is resumeable" "resumeable" "$(bash "$SCRIPT" live team)"
 check "live implicit-named is resumeable" "resumeable" "$(bash "$SCRIPT" live implicit-named)"
 check "live loop-fleet is resumeable" "resumeable" "$(bash "$SCRIPT" live loop-fleet)"

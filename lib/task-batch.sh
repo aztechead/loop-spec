@@ -3,8 +3,9 @@
 #
 # Why: twenty identical one-line edits should not cost twenty implementer
 # seats. Superpowers v6.3.0 batches small same-shape work. Fail-closed: no
-# batchGroup, a blockedBy edge, or overlapping files with a different group
-# keeps today's one-task-one-dispatch.
+# batchGroup, a blockedBy edge out of the group, an outside task waiting on a
+# member the collapse would erase, or overlapping files keeps today's
+# one-task-one-dispatch.
 #
 # Usage:
 #   task-batch.sh collapse <tasks.json>
@@ -69,6 +70,18 @@ for key, members in groups.items():
                 overlap = True
             seen.append(f)
     if overlap:
+        continue
+    # Collapse erases every member id but the first. A task outside the group that
+    # waits on an erased id would wait forever (the DAG calls that a deadlock), so
+    # an inbound edge to a non-surviving member keeps one-task-one-dispatch.
+    erased = member_ids - {ids[0]}
+    inbound = False
+    for t in tasks:
+        if not isinstance(t, dict) or t.get("id") in member_ids:
+            continue
+        if erased & set(t.get("blockedBy") or []):
+            inbound = True
+    if inbound:
         continue
     first = dict(members[0])
     first["files"] = seen

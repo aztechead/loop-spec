@@ -52,6 +52,28 @@ check "brief carries files" "ok" "$r"
 grep -q "Produces: bar" "$brief" && r=ok || r=missing
 check "brief carries interfaces" "ok" "$r"
 
+# artifact-lint accepts an array for consumes/produces; the brief is prose an
+# implementer reads, so an array joins instead of printing raw JSON.
+cat > "$FDIR/tasks.json" <<'EOF'
+[
+  {
+    "id": "task-002",
+    "subject": "wire the bridge",
+    "brief": "Wire it.",
+    "files": ["src/bridge.sh"],
+    "blockedBy": [],
+    "verifyCommand": "true",
+    "acceptanceCriteria": ["wired"],
+    "interfaces": {"consumes": ["lib/a.sh api", "lib/b.sh api"], "produces": "lib/c.sh api"}
+  }
+]
+EOF
+brief2=$(bash "$SCRIPT" brief --feature-dir "$FDIR" --task-id task-002)
+grep -q "Consumes: lib/a.sh api, lib/b.sh api" "$brief2" && r=ok || r=missing
+check "brief joins an interfaces array" "ok" "$r"
+grep -q '\[' "$brief2" && r=json || r=ok
+check "brief carries no raw JSON array" "ok" "$r"
+
 report=$(bash "$SCRIPT" report-path --feature-dir "$FDIR" --task-id task-001)
 check "report-path" "$FDIR/dispatch/task-001-report.md" "$report"
 

@@ -482,8 +482,9 @@ class Supervisor:
                                 rr = sh(["git", "worktree", "remove", str(wt)],
                                         self.repo)
                                 if rr.returncode != 0:
-                                    print(f"⚠ cleanup: worktree remove {wt} "
-                                          f"refused (untracked/modified files; not --force)")
+                                    print(f"⚠ cleanup: worktree remove {wt} refused "
+                                          f"(rc={rr.returncode}; not --force): "
+                                          f"{(rr.stderr or '').strip()}")
                                 rb = sh(["git", "branch", "-d", f"loop/{tid}"], self.repo)
                                 if rb.returncode != 0:
                                     print(f"⚠ cleanup: branch delete loop/{tid} "

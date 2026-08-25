@@ -137,11 +137,12 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 1. **Compute the remaining set:** `remaining = tasks - mergedSet - {b.taskId for b in blocked}`. If empty, exit the loop (success).
 2. **Compute the ready set:** `ready = [t in remaining if every dep in t.blockedBy is in mergedSet]`.
    - If `ready` is empty while `remaining` is non-empty: set `escalation = {reason: "deadlock", detail: "unmergeable dependency cycle or all remaining blocked"}` and exit.
-   3. **Form the wave:** `wave = ready[:maxParallelImplementers]`. Collapse same-shape
-      members first: `bash "${CLAUDE_SKILL_DIR}/../../lib/task-batch.sh" collapse
-      ".loop-spec/features/${slug}/tasks.json"` — a `batchGroup` with matching
-      verifyCommand and no cross-group `blockedBy` becomes one dispatch whose
-      `files[]` is the union. Fail-closed: no hint means one-task-one-dispatch.
+3. **Form the wave:** `wave = ready[:maxParallelImplementers]`. Collapse same-shape
+   members first: `bash "${CLAUDE_SKILL_DIR}/../../lib/task-batch.sh" collapse
+   ".loop-spec/features/${slug}/tasks.json"` — a `batchGroup` with matching
+   verifyCommand and no cross-group `blockedBy` becomes one dispatch whose
+   `files[]` is the union. Fail-closed: no hint, or an outside task waiting on a
+   member the collapse would erase, means one-task-one-dispatch.
 3.5 **Isolate the wave (worktree mode only).** One-shot Agents share the lead's cwd;
     they do not get a harness worktree. When `subagentIsolation == "lead-worktree"`,
     the lead creates each task worktree **before** any Agent call:
@@ -189,7 +190,8 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
      the plan / prior tasks (ledger a note) or promote to `rework`. Unverified items
      must not evaporate.
    - `pass` with empty unresolved unverified: the task is ready to merge.
-   - `rework` and attempts remaining: run `bash "${CLAUDE_SKILL_DIR}/../../lib/fix-loop.sh" action "{attempt}"`.
+   - `rework` and attempts remaining: run `bash "${CLAUDE_SKILL_DIR}/../../lib/fix-loop.sh" action "{attempt}" "{maxRetriesPerTask}"`
+     (pass the effective cap so a tuned `executeMaxRetriesPerTask` moves the breaker with it).
      `resume` on a live teammate (`fix-loop.sh live team` → `resumeable`) is
      `SendMessage` to that identity with the findings. `oneshot` rungs re-dispatch
      a fresh Agent that must read the report file. `fresh-upgrade` re-dispatches
@@ -419,7 +421,7 @@ A requirement that lives in unchanged code or spans tasks is not a fail: put it 
 unverified[] with why the diff cannot show it. The lead must resolve each item.
 
 Return one of:
-  - verdict "pass"   if everything is satisfied
+  - verdict "pass"   if everything is satisfied AND unverified[] is empty
   - verdict "rework" with specific findings if fixable issues exist (incl. over-engineering)
   - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
 

@@ -28,6 +28,12 @@ check "credentials is security" \
   "stop=true reason=security matched=credential" \
   "$(bash "$SCRIPT" classify 'this writes credentials to disk')"
 
+# lib/security-signal.sh owns the security tier, suppressions included: a conflict
+# summary that says the task must LEAVE a security surface alone is not a stop.
+check "declared-unchanged auth is a ruling" \
+  "stop=false reason=ruling matched=" \
+  "$(bash "$SCRIPT" classify 'task-003 must not modify the auth middleware')"
+
 check "git push is side-effect-outside" \
   "stop=true reason=side-effect-outside matched=push-origin" \
   "$(bash "$SCRIPT" classify 'then git push to origin')"

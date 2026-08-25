@@ -15,6 +15,16 @@ All notable changes documented here. Format follows Keep a Changelog.
   `mechanical` → `haiku` on Claude Code only (S10); task-worktree remove never
   `--force` (S11). S8 and the skip list were not ported.
 
+  Audit follow-ups on the same ports: a reviewer `pass` carrying `unverified[]`
+  is downgraded to `rework` so the items cannot merge on the last attempt (S5);
+  `batchGroup` collapse also refuses when a task outside the group waits on a
+  member id the collapse would erase (S7); `lib/fix-loop.sh action` takes the
+  effective `maxRetriesPerTask` so a tuned cap moves the breaker with it (S2);
+  `lib/execute-stop.sh` delegates its security tier to `lib/security-signal.sh`
+  instead of re-listing the terms, so "must not modify the auth middleware" is a
+  ruling rather than a stop (S6); worktree-removal refusals print git's own
+  reason instead of asserting a cause (S11).
+
 ### Fixed
 
 - **Codex interactive SPEC/DISCUSS/PLAN now wait for the user.** The Codex

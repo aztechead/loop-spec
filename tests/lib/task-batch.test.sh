@@ -57,6 +57,33 @@ EOF
 out=$(bash "$SCRIPT" collapse "$WORK/blocked.json")
 check "blockedBy outside group does not collapse" "2" "$(jq 'length' <<<"$out")"
 
+cat > "$WORK/inbound.json" <<'EOF'
+[
+  {"id":"task-001","files":["a.sh"],"blockedBy":[],"verifyCommand":"true",
+   "acceptanceCriteria":["ok"],"batchGroup":"g"},
+  {"id":"task-002","files":["b.sh"],"blockedBy":[],"verifyCommand":"true",
+   "acceptanceCriteria":["ok"],"batchGroup":"g"},
+  {"id":"task-003","files":["c.sh"],"blockedBy":["task-002"],"verifyCommand":"true",
+   "acceptanceCriteria":["ok"]}
+]
+EOF
+out=$(bash "$SCRIPT" collapse "$WORK/inbound.json")
+check "outside task waiting on an erased member does not collapse" "3" "$(jq 'length' <<<"$out")"
+check "erased member survives the refusal" "task-002" "$(jq -r '.[1].id' <<<"$out")"
+
+cat > "$WORK/inbound-first.json" <<'EOF'
+[
+  {"id":"task-001","files":["a.sh"],"blockedBy":[],"verifyCommand":"true",
+   "acceptanceCriteria":["ok"],"batchGroup":"g"},
+  {"id":"task-002","files":["b.sh"],"blockedBy":[],"verifyCommand":"true",
+   "acceptanceCriteria":["ok"],"batchGroup":"g"},
+  {"id":"task-003","files":["c.sh"],"blockedBy":["task-001"],"verifyCommand":"true",
+   "acceptanceCriteria":["ok"]}
+]
+EOF
+out=$(bash "$SCRIPT" collapse "$WORK/inbound-first.json")
+check "edge to the surviving id still collapses" "2" "$(jq 'length' <<<"$out")"
+
 cat > "$WORK/verify.json" <<'EOF'
 [
   {"id":"task-001","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh",

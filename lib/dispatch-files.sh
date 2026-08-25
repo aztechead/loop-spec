@@ -64,8 +64,10 @@ case "$cmd" in
       "",
       "## Interfaces",
       (if .interfaces then
-         "- Consumes: \(.interfaces.consumes // "none")",
-         "- Produces: \(.interfaces.produces // "none")"
+         # consumes/produces are a string or an array of strings (artifact-lint);
+         # an implementer reads prose, so an array joins rather than printing JSON.
+         "- Consumes: \(.interfaces.consumes | if type == "array" then join(", ") else (. // "none") end)",
+         "- Produces: \(.interfaces.produces | if type == "array" then join(", ") else (. // "none") end)"
        elif .Interfaces then
          .Interfaces
        else

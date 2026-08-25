@@ -288,10 +288,12 @@ echo leftover > "$TASK_WT2/untracked.txt"
 ec=0
 err=$(bash "$LIB" -C "$CLEAN_REPO" remove-task-worktree "$TASK_WT2" 2>&1) || ec=$?
 check "AH: dirty remove-task-worktree exits 1" "1" "$ec"
-echo "$err" | grep -q "Not using --force" && r=ok || r=missing
+echo "$err" | grep -qi "not using --force" && r=ok || r=missing
 check "AH2: refuse names --force" "ok" "$r"
 echo "$err" | grep -q "untracked.txt" && r=ok || r=missing
 check "AH3: refuse lists the untracked file" "ok" "$r"
+echo "$err" | grep -qi "contains modified or untracked files" && r=ok || r=missing
+check "AH3b: refuse carries git's own reason" "ok" "$r"
 [[ -d "$TASK_WT2" ]] && r=ok || r=bad
 check "AH4: refused remove leaves the worktree" "ok" "$r"
 git -C "$CLEAN_REPO" worktree remove --force "$TASK_WT2" >/dev/null 2>&1 || true

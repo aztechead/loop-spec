@@ -86,6 +86,10 @@ expect "workflow schema includes unverified" \
   lib/workflows/execute-dag.js 'unverified'
 expect "workflow implementer names writing-good-tests" \
   lib/workflows/execute-dag.js 'writing-good-tests.md'
+# The break this catches: a "pass" carrying unverified[] merged on the last
+# attempt, because `continue` alone leaves the recorded verdict at pass.
+expect "workflow downgrades a pass carrying unverified" \
+  lib/workflows/execute-dag.js "verdict: 'rework' \}"
 expect "git-ops remove-task-worktree never --force" \
   lib/git-ops.sh 'Never --force'
 
