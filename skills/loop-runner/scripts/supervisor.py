@@ -479,11 +479,11 @@ class Supervisor:
                                   f"({res.get('iterations')} iters)")
                             if self.args.cleanup_worktrees and not self.args.no_worktree:
                                 wt = self.wt_root / tid
-                                rr = sh(["git", "worktree", "remove", "--force", str(wt)],
+                                rr = sh(["git", "worktree", "remove", str(wt)],
                                         self.repo)
                                 if rr.returncode != 0:
                                     print(f"⚠ cleanup: worktree remove {wt} "
-                                          f"failed (rc={rr.returncode})")
+                                          f"refused (untracked/modified files; not --force)")
                                 rb = sh(["git", "branch", "-d", f"loop/{tid}"], self.repo)
                                 if rb.returncode != 0:
                                     print(f"⚠ cleanup: branch delete loop/{tid} "

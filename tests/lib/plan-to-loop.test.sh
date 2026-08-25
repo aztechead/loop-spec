@@ -74,9 +74,10 @@ PROMPT_OK=$(printf '%s' "$OUT" | python3 -c "
 import json,sys; p=json.load(sys.stdin)
 t={x['id']:x for x in p['tasks']}
 pr=t['task-001']['prompt']
-print('ok' if 'add(2,2)==4' in pr and 'src/add.py' in pr and 'Do NOT modify' in pr else 'bad')")
+print('ok' if 'add(2,2)==4' in pr and 'src/add.py' in pr and 'Do NOT modify' in pr
+          and 'WRITING GOOD TESTS' in pr and 'NO NESTED SUBAGENTS' in pr else 'bad')")
 if [[ "$PROMPT_OK" == "ok" ]]; then
-  pass "E: prompt carries criteria + scope + don'ts"
+  pass "E: prompt carries criteria + scope + don'ts + tests catalog + no-nested"
 else
   fail "E: prompt carries criteria + scope + don'ts"
 fi

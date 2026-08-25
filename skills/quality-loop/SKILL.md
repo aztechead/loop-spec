@@ -155,7 +155,7 @@ Do not proceed to persona dispatch while deterministic findings remain.
 - Any "check whether X was fixed" framing
 - References to previous rounds or what was wrong before
 
-Each persona reviews the current state of the files as if it is the first and only review. This independence is non-negotiable: it prevents anchoring bias and ensures findings reflect actual current file state.
+Each persona reviews the current state of the files as if it is the first and only review. This independence is non-negotiable: it prevents anchoring bias and ensures findings reflect actual current file state. Include `skills/shared/review-prompts/no-prejudge.md` (do not paste): never tell a reviewer what not to flag.
 
 Dispatch `loop-spec:code-reviewer` and `loop-spec:security-reviewer` in parallel as one-shot Agent calls.
 

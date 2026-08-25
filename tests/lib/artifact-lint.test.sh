@@ -355,6 +355,15 @@ check "valid json passes" 0 json "$WORK/ok.json"
 check "trailing-comma json flags" 1 json "$WORK/trailing.json"
 check "multi-file json: one bad file fails the batch" 1 json "$WORK/ok.json" "$WORK/trailing.json"
 
+printf '[{"id": "task-001", "brief": "x", "files": [], "blockedBy": [], "verifyCommand": "true", "acceptanceCriteria": ["ok"], "batchGroup": "rename-foo", "modelTier": "mechanical", "interfaces": {"consumes": "none", "produces": "Foo"}}]' > "$WORK/tasks-optional.json"
+check "optional batchGroup, modelTier, interfaces pass" 0 tasks "$WORK/tasks-optional.json"
+
+printf '[{"id": "task-001", "brief": "x", "files": [], "blockedBy": [], "verifyCommand": "true", "acceptanceCriteria": ["ok"], "batchGroup": "  "}]' > "$WORK/tasks-blank-bg.json"
+check "whitespace-only batchGroup flags" 1 tasks "$WORK/tasks-blank-bg.json"
+
+printf '[{"id": "task-001", "brief": "x", "files": [], "blockedBy": [], "verifyCommand": "true", "acceptanceCriteria": ["ok"], "modelTier": "haiku"}]' > "$WORK/tasks-bad-tier.json"
+check "unknown modelTier flags" 1 tasks "$WORK/tasks-bad-tier.json"
+
 # --- the repo's own current templates/artifacts stay green ---
 check "current PLAN template shape passes (real artifact)" 0 plan "$ROOT/docs/loop-spec/features/user-gate-flow/PLAN.md"
 check "current SPEC template shape passes (real artifact)" 0 spec "$ROOT/docs/loop-spec/features/grounded-claims/SPEC.md"

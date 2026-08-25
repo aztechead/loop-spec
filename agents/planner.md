@@ -181,7 +181,25 @@ This record is the authority during EXECUTE: a coordinator that hits a question 
 
 ### Optional per-task model tier
 
-Do not assign a model based on your estimate of task difficulty. Every task inherits the operator's chosen session model by default. Legacy `modelTier` metadata remains readable but resolves to `inherit`; only an explicit operator-approved concrete `model` may override it.
+Set `modelTier: mechanical` only when the task is complete-code transcription:
+the brief already contains the exact code to write, with no design judgment left.
+`lib/model-tier.sh model mechanical` resolves to `haiku` on Claude Code and
+`inherit` on every other harness. `standard` and `frontier` still resolve to
+`inherit`. Do not assign a model based on estimated difficulty. A concrete
+operator-approved `model` pin still wins over any tier.
+
+### Optional batchGroup
+
+Tasks that apply the same mechanical change to different files may share a
+`batchGroup` string. EXECUTE collapses the group into one dispatch when
+`verifyCommand` matches, files do not overlap, and no `blockedBy` points
+outside the group. Omit the field when any member needs independent judgment
+(fail-closed: missing hint = one-task-one-dispatch).
+
+### Interfaces
+
+Each task carries `interfaces: { "consumes": "...", "produces": "..." }` (or
+`"none"`). EXECUTE's pre-flight table flags a consume with no producer.
 
 ## What NOT to do
 
@@ -199,4 +217,4 @@ Same as spec-writer: apply fix-list via Edit, preserve untouched content.
 - **Status**: DONE | NEEDS_CONTEXT
 - **Plan path**: ...
 - **Task count**: N
-- **Tasks JSON**: full tasks[] for the lead to seed the EXECUTE harness task list via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst` (from each task's `read_first` list), and `specPath` (a per-task spec file path if you wrote one for a complex task, else `null`))
+- **Tasks JSON**: full tasks[] for the lead to seed the EXECUTE harness task list via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst` (from each task's `read_first` list), `specPath` (a per-task spec file path if you wrote one for a complex task, else `null`), optional `batchGroup`, optional `modelTier`, and `interfaces`)

@@ -194,6 +194,54 @@ all_exclude_globs=$(printf '%s\n%s' "$feature_globs" "$repo_globs" | grep -v '^$
 
 A file is excluded if it matches any glob in `all_exclude_globs` (use `fnmatch`-compatible matching).
 
+#### Step 2d - Conflict table and rulings
+
+Emit a machine-readable conflict table before Task 1. The table is the probe;
+a ruling after it is still a model judgment.
+
+```bash
+mkdir -p ".loop-spec/features/{slug}/dispatch"
+if [[ -n "$tasks_sidecar" && -f "$tasks_sidecar" ]]; then
+  bash "${CLAUDE_SKILL_DIR}/../../lib/plan-conflicts.sh" table "$tasks_sidecar" \
+    > ".loop-spec/features/{slug}/dispatch/conflict-table.json"
+fi
+```
+
+Read `rows`. Zero is a clean scan (the table still exists). For each pair or
+interface row, classify the conflict text:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/execute-stop.sh" classify "<overlap or interface summary>"
+```
+
+`stop=true` pauses EXECUTE (cycle-resume-escalation contract). `stop=false
+reason=ruling` records the ruling and continues:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$fdir" execute \
+  "<question>" "<answer>" "<rationale>" ruling
+```
+
+Autonomous mode never waits on a reversible question. Pass `--plan-broken` only
+when the operator has declared the plan itself broken.
+
+#### Step 2e - Same-shape collapse
+
+Collapse same-shape members before any rung forms a wave. Fail-closed: no
+`batchGroup` hint, a `blockedBy` edge out of the group, mismatched
+`verifyCommand`, or overlapping files keeps one-task-one-dispatch.
+
+```bash
+if [[ -n "$tasks_sidecar" && -f "$tasks_sidecar" ]]; then
+  bash "${CLAUDE_SKILL_DIR}/../../lib/task-batch.sh" collapse "$tasks_sidecar" \
+    > ".loop-spec/features/{slug}/dispatch/tasks-collapsed.json"
+fi
+```
+
+Use the collapsed array as the dispatch task list. A collapsed group keeps the
+first member's id, unions `files[]`, and carries `memberIds[]`. Reviewers assert
+every listed file appears in the diff.
+
 ### Step 2.5 - Greenfield command backfill
 
 Only when `feature.json.greenfield == true` and `feature.commands.test` is empty: the plan
@@ -281,7 +329,7 @@ Fixed operating params (`skills/shared/tier-matrix.md`):
 
 | maxParallelImplementers | maxRetriesPerTask | reviewersEnabled | t_team | t_wf |
 |---|---|---|---|---|
-| 3 | 2 | true | 3 | 6 |
+| 3 | 6 | true | 3 | 6 |
 
 For constrained containers, `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` may lower the
 implementer cap without changing DAG semantics. It must be a positive integer and is
@@ -432,7 +480,7 @@ Workflow({
       specComplianceReviewer: feature.models.specComplianceReviewer
     },
     maxParallelImplementers: maxParallelImplementers,
-    maxRetriesPerTask: 2,
+    maxRetriesPerTask: 6,
     reviewersEnabled: true,
     commands: feature.commands,
     skillDir: skillDir,

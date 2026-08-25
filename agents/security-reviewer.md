@@ -7,6 +7,8 @@ tools:
   - Grep
 model: inherit
 color: red
+disallowedTools:
+  - Agent
 ---
 
 # security-reviewer

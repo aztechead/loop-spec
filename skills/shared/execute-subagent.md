@@ -37,7 +37,7 @@ wave (`min(|ready|, maxParallelImplementers)`).
 ## Inputs (resolved by `execute` Step 3 before entering this path)
 
 - `tasks[]` — each `{id, subject, files, blockedBy (union), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` comes straight from the PLAN task block; it is the per-task behavioral assertion re-run post-merge in step 7.)
-- `maxParallelImplementers` (3), `maxRetriesPerTask` (2), `reviewersEnabled` (true) — fixed (`skills/shared/tier-matrix.md`).
+- `maxParallelImplementers` (3), `maxRetriesPerTask` (6), `reviewersEnabled` (true) — fixed (`skills/shared/tier-matrix.md`). One initial attempt plus five fix rounds; `lib/fix-loop.sh max` is 6 (the first attempt index that trips the breaker).
 - `featureWorktreeRoot = $(git rev-parse --show-toplevel)`, `featureBranch = feat/{slug}`.
 - `worktreesEnabled` — read from the `lib/execute-rung.sh` result **before composing any
   prompt**. It selects the mode below; nothing else does. `false` means no worktree path is
@@ -122,8 +122,8 @@ the lead and a fresh reviewer agent. Return:
 { taskId: "{taskId}", ready: <true|false>, notes: "<notes>" }
 ```
 
-The reviewer reads the uncommitted diff at the repository root
-(`git -C "{featureWorktreeRoot}" diff -- {task.files}`) instead of a task branch.
+The reviewer reads the review package for the uncommitted range when one exists;
+otherwise `git -C "{featureWorktreeRoot}" diff -- {task.files}`.
 
 All reasoning, simplicity, design-for-change, evidence, and acceptance-criteria text
 from the normal prompt remains mandatory.
@@ -137,7 +137,11 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 1. **Compute the remaining set:** `remaining = tasks - mergedSet - {b.taskId for b in blocked}`. If empty, exit the loop (success).
 2. **Compute the ready set:** `ready = [t in remaining if every dep in t.blockedBy is in mergedSet]`.
    - If `ready` is empty while `remaining` is non-empty: set `escalation = {reason: "deadlock", detail: "unmergeable dependency cycle or all remaining blocked"}` and exit.
-3. **Form the wave:** `wave = ready[:maxParallelImplementers]`.
+   3. **Form the wave:** `wave = ready[:maxParallelImplementers]`. Collapse same-shape
+      members first: `bash "${CLAUDE_SKILL_DIR}/../../lib/task-batch.sh" collapse
+      ".loop-spec/features/${slug}/tasks.json"` — a `batchGroup` with matching
+      verifyCommand and no cross-group `blockedBy` becomes one dispatch whose
+      `files[]` is the union. Fail-closed: no hint means one-task-one-dispatch.
 3.5 **Isolate the wave (worktree mode only).** One-shot Agents share the lead's cwd;
     they do not get a harness worktree. When `subagentIsolation == "lead-worktree"`,
     the lead creates each task worktree **before** any Agent call:
@@ -154,8 +158,21 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
     never overlap writers in the feature root. Wave width > 1 is allowed only when
     every member of the wave has a created worktree. Do not raise
     `maxParallelImplementers` above this isolation.
-4. **Dispatch the wave.** For each `taskId` in `wave`, issue an implementer `Agent`
-   call. On rung 2 emit all wave calls in ONE assistant message so they run in
+4. **Dispatch the wave.** For each `taskId` in `wave`, write the file handoff
+   then issue an implementer `Agent` call. Record `taskBaseSha` before dispatch
+   (`git rev-parse HEAD` in the task worktree, or the feature HEAD in in-place
+   mode) — review packages must use that SHA, never `HEAD~1`.
+
+   ```bash
+   fdir=".loop-spec/features/${slug}"
+   brief="$(bash "${CLAUDE_SKILL_DIR}/../../lib/dispatch-files.sh" brief \
+     --feature-dir "$fdir" --task-id "{taskId}")"
+   report="$(bash "${CLAUDE_SKILL_DIR}/../../lib/dispatch-files.sh" report-path \
+     --feature-dir "$fdir" --task-id "{taskId}")"
+   ```
+
+   The dispatch prompt carries those paths plus a one-line fit. Exact values live
+   only in the brief. On rung 2 emit all wave calls in ONE assistant message so they run in
    parallel; on rung 1 the wave has one task. Use the prompt template below.
    **Per-task model resolution** (cheapest model that fits, in priority order):
    1. a concrete `metadata.model` pin on the task, else
@@ -165,15 +182,22 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    aliases and omit it for `inherit`. A full/native ID requires the loop-fleet
    rung; fail loud if it reaches this Agent boundary.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
-5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, dispatch a
-   spec-compliance reviewer `Agent` using the activated
+5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, write a review package from the recorded BASE to the implementer's HEAD, then dispatch a spec-compliance reviewer `Agent` using the activated
    `models.specComplianceReviewer` selector (alias → add `model`; `inherit` → omit) and the
-   review prompt below. It returns `{verdict: "pass"|"rework"|"block", findings[]}`.
-   - `pass`: the task is ready to merge.
-   - `rework` and attempts remaining (`attempt + 1 < maxRetriesPerTask`): re-dispatch the
-     implementer with `findings` fed into the prompt; re-review. Loop up to
-     `maxRetriesPerTask` attempts.
-   - `rework` with attempts exhausted: `blocked.push({taskId, reason: "retry-exhausted"})`.
+   review prompt below. It returns `{verdict: "pass"|"rework"|"block", findings[], unverified[]}`.
+   - Resolve every `unverified[]` item before marking the task complete: confirm from
+     the plan / prior tasks (ledger a note) or promote to `rework`. Unverified items
+     must not evaporate.
+   - `pass` with empty unresolved unverified: the task is ready to merge.
+   - `rework` and attempts remaining: run `bash "${CLAUDE_SKILL_DIR}/../../lib/fix-loop.sh" action "{attempt}"`.
+     `resume` on a live teammate (`fix-loop.sh live team` → `resumeable`) is
+     `SendMessage` to that identity with the findings. `oneshot` rungs re-dispatch
+     a fresh Agent that must read the report file. `fresh-upgrade` re-dispatches
+     on `bash "${CLAUDE_SKILL_DIR}/../../lib/model-tier.sh" upgrade "{current}"`.
+     `breaker` stops: park residuals in `warnings[]` and
+     `blocked.push({taskId, reason: "retry-exhausted"})`.
+     Re-review is scoped (`skills/shared/review-prompts/re-review.md`) against
+     `FIX_BASE..HEAD`, not a full-task re-read.
    - `block`: `blocked.push({taskId, reason: "spec-compliance-block"})`.
    - implementer `committed == false`: `blocked.push({taskId, reason: "commit-missing"})`.
 6. **Integrate the passed tasks** (inline, serial, in `wave` order). For each task
@@ -297,6 +321,13 @@ follow-up documentation task is deferred scope. Before DONE run
 cut frontmatter, machine-read contract sections, required artifact headings, EVID citation
 lines, or license blocks.
 
+WRITING GOOD TESTS. Read `${CLAUDE_SKILL_DIR}/../../skills/shared/writing-good-tests.md`
+before adding or changing a test — do not paste it. Name the break; no string-presence
+traps; no change detectors.
+
+NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
+Review arrives from the lead after your report.
+
 EXECUTION DISCIPLINE (evidence over recall — on by default). You execute a brief a
 stronger reasoning pass produced; your job is fidelity, not improvisation. Verify, don't
 recall: never assert what a file/command/API does from memory — read it, run it, paste
@@ -323,14 +354,18 @@ Step 2 - {readFirst clause} Read the assigned files: {task.files}.
 
 Step 3 - Implement the task in the worktree at {worktree_path}.
 Task subject: {task.subject}
-Brief: {task.brief}
+Read this first — it is your requirements, with the exact values to use verbatim:
+  {brief path from dispatch-files.sh}
+Write your full report (status, commits, test command, output, concerns) to:
+  {report path from dispatch-files.sh}
+Return only JSON plus a one-line test summary. Exact values live in the brief; do not
+ask the lead to paste them.
 Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
 {global constraints lines, or "- none"}
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}
-Acceptance criteria:
-{numbered acceptanceCriteria}
-{prior-findings clause on rework attempts}
+Acceptance criteria are in the brief.
+{prior-findings clause on rework attempts; on resume/oneshot rework, read the report file first}
 
 Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.
 
@@ -350,30 +385,45 @@ Return JSON: { taskId: "{taskId}", branch: "task/{taskId}-{slug}", committed: <t
 
 ## Reviewer Agent prompt
 
+Include `skills/shared/review-prompts/no-prejudge.md` (do not paste). A scoped
+re-review after a fix round uses `skills/shared/review-prompts/re-review.md`
+with FIX_BASE = the HEAD the previous review saw.
+
 ```
 You are a spec-compliance reviewer for task {taskId} (attempt {n}).
 
-Review the diff of branch "task/{taskId}-{slug}" against "feat/{slug}" in the worktree at "{worktree_path}":
-  git -C "{worktree_path}" diff "feat/{slug}"..HEAD
+NO NESTED SUBAGENTS. Do this review yourself. Never spawn a helper or a second reviewer.
+
+Read the task brief: {brief path}
+Read the implementer's report: {report path}
+Read the review package once (commit list, stat, diff -U10). Do not re-run git for this
+range if the file exists:
+  {package path from: bash lib/dispatch-files.sh package --repo ... --base {taskBaseSha} --head {implHead}}
+If the package is missing, fetch `git diff --stat {taskBaseSha}..{implHead}` and
+`git diff -U10 {taskBaseSha}..{implHead}` yourself. Never use HEAD~1 as BASE.
 
 {specPath clause}
-Acceptance criteria:
-{numbered acceptanceCriteria}
 
 Determine whether the implementation satisfies all acceptance criteria and matches the spec.
+Do not re-run tests the implementer already ran on the same code; the report carries that
+evidence. If the evidence is illegible, say so — do not re-run the suite.
 
 Over-engineering pass (ponytail): scan the diff for
 complexity it does not need. Flag each as a rework finding — delete: dead/speculative code;
 stdlib: hand-rolled thing the standard library already ships; yagni: abstraction with one
-implementation or config nobody sets; shrink: same logic in fewer lines. Do NOT flag the
-ponytail minimum (a single smoke/assert check, or an accepted `simplicity:`-marked shortcut).
+implementation or config nobody sets; shrink: same logic in fewer lines. The
+ponytail minimum (a single smoke/assert check, or an accepted `simplicity:`-marked shortcut)
+is the floor of this pass, not a finding.
+
+A requirement that lives in unchanged code or spans tasks is not a fail: put it in
+unverified[] with why the diff cannot show it. The lead must resolve each item.
 
 Return one of:
   - verdict "pass"   if everything is satisfied
   - verdict "rework" with specific findings if fixable issues exist (incl. over-engineering)
   - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
 
-Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...] }
+Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] }
 ```
 
 ## Why no team here
@@ -451,6 +501,13 @@ follow-up documentation task is deferred scope. Before DONE run
 cut frontmatter, machine-read contract sections, required artifact headings, EVID citation
 lines, or license blocks.
 
+WRITING GOOD TESTS. Read `${CLAUDE_SKILL_DIR}/../../skills/shared/writing-good-tests.md`
+before adding or changing a test — do not paste it. Name the break; no string-presence
+traps; no change detectors.
+
+NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
+Review arrives from the lead after your report.
+
 EXECUTION DISCIPLINE (evidence over recall — on by default). Verify, don't recall: never
 assert what a file/command does from memory — read it, run it, paste the actual output.
 Surprise is signal: output contradicting expectation means stop and revise, never explain
@@ -471,13 +528,15 @@ Step 1 - Read the assigned files. Files are workspace-relative ({repo}/{path}); 
 
 Step 2 - Implement the task directly in the repo at {abs_repo}.
 Task subject: {task.subject}
-Brief: {task.brief}
+Read this first — it is your requirements, with the exact values to use verbatim:
+  {brief path from dispatch-files.sh}
+Write your full report to:
+  {report path from dispatch-files.sh}
 Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
 {global constraints lines, or "- none"}
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}
-Acceptance criteria:
-{numbered acceptanceCriteria}
+Acceptance criteria are in the brief.
 {prior-findings clause on rework attempts}
 
 Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.

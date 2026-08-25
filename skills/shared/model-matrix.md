@@ -62,6 +62,10 @@ teammate inherits the session even if the key is present
 operator policy; loop-spec does not maintain a model-ID catalog or silently
 translate one family into another.
 
+`lib/model-tier.sh` is the one exception: `mechanical` on Claude Code resolves
+to the cheapest Agent alias (`haiku`); every other tier and every other harness
+still inherits. `upgrade haiku` on Claude Code is one step to `sonnet`.
+
 The consuming surfaces differ and a selector valid for one is not valid for all:
 
 | Surface | Accepts |

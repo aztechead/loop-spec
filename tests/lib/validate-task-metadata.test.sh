@@ -100,6 +100,24 @@ check "U: repo absent ALLOW" 0 \
 check "V: repo present as number DENY" 2 \
   '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"repo":42}'
 
+check "W: batchGroup string ALLOW" 0 \
+  '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"batchGroup":"rename-foo"}'
+
+check "X: empty batchGroup DENY" 2 \
+  '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"batchGroup":""}'
+
+check "Y: modelTier mechanical ALLOW" 0 \
+  '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"modelTier":"mechanical"}'
+
+check "Z: modelTier garbage DENY" 2 \
+  '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"modelTier":"haiku"}'
+
+check "AA: interfaces object ALLOW" 0 \
+  '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"interfaces":{"consumes":"none","produces":["Foo"]}}'
+
+check "AB: interfaces not object DENY" 2 \
+  '{"blockedBy":[],"files":["foo.sh"],"verifyCommand":"bash t.sh","acceptanceCriteria":["works"],"interfaces":"none"}'
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

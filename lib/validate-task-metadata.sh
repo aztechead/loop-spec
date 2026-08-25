@@ -92,6 +92,29 @@ check_optional('gateScope', lambda v: isinstance(v, str) and v in GATE_SCOPE_VAL
 check_optional('requireEvidenceTokens', lambda v: isinstance(v, list),
                'must be array')
 check_optional('repo', lambda v: isinstance(v, str), 'must be string')
+check_optional('batchGroup', lambda v: isinstance(v, str) and bool(v.strip()),
+               'must be a non-empty string')
+check_optional('modelTier', lambda v: isinstance(v, str) and v in
+               ('mechanical', 'standard', 'frontier'),
+               'must be mechanical, standard, or frontier')
+check_optional('memberIds', lambda v: isinstance(v, list) and all(isinstance(x, str) for x in v),
+               'must be an array of strings')
+
+def interfaces_ok(val):
+    if not isinstance(val, dict):
+        return False
+    for key in ('consumes', 'produces'):
+        if key not in val:
+            continue
+        item = val[key]
+        if isinstance(item, str):
+            continue
+        if isinstance(item, list) and all(isinstance(x, str) for x in item):
+            continue
+        return False
+    return True
+check_optional('interfaces', interfaces_ok,
+               'must be an object with optional consumes/produces strings or string arrays')
 
 if optional_errors:
     print('INVALID_OPTIONAL:' + ','.join(optional_errors))

@@ -3,6 +3,8 @@
 # stdout is always one compact JSON result; command output is redirected to stderr.
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 feature_root=""
 feature_branch=""
 task_worktree=""
@@ -240,8 +242,9 @@ if [[ "$publish_rc" -ne 0 || "$published" != true ]]; then
 fi
 
 if [[ "$cleanup_requested" == true ]]; then
-  if ! git -C "$feature_root" worktree remove "$task_worktree" >&2; then
-    fail cleanup-failed worktree-remove-failed
+  if ! bash "$SCRIPT_DIR/git-ops.sh" -C "$feature_root" remove-task-worktree "$task_worktree" >/dev/null; then
+    dirty="$(git -C "$task_worktree" status --porcelain 2>/dev/null | tr '\n' ' ')"
+    fail cleanup-failed "worktree-remove-refused:${dirty:-unknown}"
   fi
   if ! git -C "$feature_root" branch -d "$task_branch" >&2; then
     fail cleanup-failed branch-delete-failed

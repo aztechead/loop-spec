@@ -48,6 +48,9 @@ Repeat until idle:
    ```
    Load `metadata.files`, `metadata.verifyCommand`, `metadata.acceptanceCriteria`, `metadata.readFirst`, `metadata.specPath`, `metadata.claimedBy` (the implementer who implemented this task), and `metadata.retries` (current rework count, default 0).
 5. **Review** the implementation in `{worktreeBase}/task-<id>/` (the same resolved base the lead gave the implementer):
+   - Read `skills/shared/review-prompts/no-prejudge.md` (do not paste). A scoped re-review after a fix round uses `skills/shared/review-prompts/re-review.md` against `FIX_BASE..HEAD`.
+   - Do this review yourself. Never spawn a helper or a second reviewer.
+   - Prefer the review package from `lib/dispatch-files.sh package` (recorded BASE, never `HEAD~1`) when the lead supplied a path. Do not re-run git for that range if the file exists.
    - Read each file in `metadata.files`.
    - Read every path in `metadata.readFirst` for the analogs the task was meant to mirror.
    - For requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
@@ -57,8 +60,10 @@ Repeat until idle:
      Bash({command: "<metadata.verifyCommand>"})
      ```
    - Check for spec compliance: does the implementation match only what the spec requires, with no extraneous additions?
+   - A requirement that lives in unchanged code or spans tasks is not a fail: put it in `unverified[]` with why the diff cannot show it.
 6. **Decide:**
-   - **Pass**: all acceptance criteria met, verify command passes, no spec violations. Go to "On Pass".
+   - **Pass**: all acceptance criteria met, verify command passes, no spec violations, AND `unverified[]` is empty. Go to "On Pass".
+   - **Unverified remaining**: criteria that this diff cannot show. Do NOT mark `completed`. Go to "On Unverified".
    - **Fail with rework cap remaining**: one or more criteria unmet, verify fails, or spec violated, AND `metadata.retries + 1 <= {maxRetriesPerTask}`. Go to "On Fail (rework)".
    - **Fail with rework cap exhausted**: same as above AND `metadata.retries + 1 > {maxRetriesPerTask}`. Go to "On Fail (blocked)".
 
@@ -72,6 +77,27 @@ SendMessage({to: "lead", message: "REVIEW PASS: task-<id>"})
 ```
 
 Then go back to step 1.
+
+### On Unverified
+
+A requirement the diff cannot show must not evaporate. Send the list to the lead
+and keep the task in review until the lead records a ruling or promotes it to
+rework. Do NOT mark `completed`.
+
+```
+TaskUpdate({
+  taskId: "<id>",
+  owner: null,
+  metadata: {phase: "awaiting_review", unverified: [{"requirement":"...","why":"..."}]}
+})
+SendMessage({
+  to: "lead",
+  message: "UNVERIFIED: task-<id>\n<json unverified[]>"
+})
+```
+
+The lead records `lib/decisions.sh add ... ruling` (then you Pass) or promotes
+the items to rework findings. Then go back to step 1.
 
 ### On Fail (rework)
 

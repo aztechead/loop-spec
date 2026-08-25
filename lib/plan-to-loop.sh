@@ -163,6 +163,18 @@ for t in tasks:
         'or license blocks.'
     )
 
+    tests_catalog = (
+        'WRITING GOOD TESTS. Read '
+        f'{lib_dir}/../skills/shared/writing-good-tests.md before adding or changing a '
+        'test — do not paste it. Name the break; no string-presence traps; no change '
+        'detectors.'
+    )
+
+    no_nested = (
+        'NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a '
+        'reviewer. Review arrives from the lead after your report.'
+    )
+
     # Execution-discipline directive (canonical: skills/shared/execution-discipline.md).
     # Travels with the ladder: the loop-runner worker sees only its prompt.
     discipline = (
@@ -177,7 +189,7 @@ for t in tasks:
         'future-work notes; a criterion you cannot meet is a loud failure with evidence, '
         'never a note.'
     )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', human, '', docs, '', discipline, '', f'TASK {raw}: {brief}', '']
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', ladder, '', design, '', human, '', docs, '', tests_catalog, '', no_nested, '', discipline, '', f'TASK {raw}: {brief}', '']
     if global_constraints:
         lines.append('Global constraints (from the plan, verbatim; every one binds):')
         lines += [f'{c}' for c in global_constraints]

@@ -6,10 +6,14 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Added
 
-- **Superpowers four-month scan** (`docs/loop-spec/superpowers-scan-proposals.md`).
-  Identification only — ranked porting candidates from obra/superpowers v5.1.0–v6.3.0
-  against the current loop-spec surface. Nothing from the scan is implemented in
-  this change; picks go through the cycle in a later PR.
+- **Superpowers EXECUTE ports** (`docs/loop-spec/superpowers-scan-proposals.md`).
+  File-handoff briefs and review packages (S1); resume/fresh-upgrade/breaker
+  fix-loop with scoped re-review (S2); no nested subagents on named roles (S3);
+  prejudge-lint on templates (S4); `unverified[]` the lead must resolve (S5);
+  conflict table + rulings vs four stop reasons (S6); fail-closed `batchGroup`
+  collapse (S7); writing-good-tests catalog on implementer prompts (S9);
+  `mechanical` → `haiku` on Claude Code only (S10); task-worktree remove never
+  `--force` (S11). S8 and the skip list were not ported.
 
 ### Fixed
 

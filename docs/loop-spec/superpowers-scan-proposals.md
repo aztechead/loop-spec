@@ -1,8 +1,8 @@
 # External scan — obra/superpowers (last four months)
 
-**Status:** draft proposals (2026-08-25). Nothing here is committed work; every
-item goes through the cycle when picked up. This document is the identification
-pass: pick items in review, then open a separate implementation PR per pick.
+**Status:** S1, S2, S3, S4, S5, S6, S7, S9, S10, S11 shipped (2026-08-25).
+Identification of the rest stands. S8 (spike/bounded/architectural ceremony)
+and the skip list below were not ported.
 
 **Source scanned:** [obra/superpowers](https://github.com/obra/superpowers) at
 v6.3.0 (`b36e0829`, released 2026-08-12). Window is 2026-04-25 → 2026-08-25
@@ -461,19 +461,11 @@ verify.
 
 ## Suggested first PR (if we pick a bundle)
 
-One implementation PR should not take the whole list. A coherent first
-bundle, all on the EXECUTE dispatch seam:
-
-1. **S1** file handoff (the cost win)
-2. **S3** no nested subagents (the duplicate-seat bug)
-3. **S4** no pre-judging (the shipped-flaw bug)
-4. **S11** worktree `--force` split (the data-loss bug)
-
-S2 (resume/re-review/breaker) depends on S1's report file and is the natural
-second PR. S5/S6/S7 are EXECUTE-controller behavior and can follow. S8 is a
-product decision about interactive vs autonomous. S9/S10/S13 are skill-author
-and test-author quality, orthogonal to dispatch. S12 is mostly S6's probe.
-S14 folds into S1's reviewer contract.
+Shipped in one implementation change: **S1, S3, S4, S11** (the original first
+bundle) plus **S2, S5, S6, S7, S9, S10**. S8 remains a product decision about
+interactive vs autonomous. S12's table is S6's `lib/plan-conflicts.sh`. S13 is
+contributor-facing and unpicked. S14 folded into S1's reviewer contract (the
+report file holds evidence; `integrate-task.sh` remains the scripted oracle).
 
 ## What this scan did not do
 

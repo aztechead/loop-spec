@@ -148,6 +148,12 @@ SendMessage({
       7. Each task block carries an "**Interfaces:**" entry (consumes/produces contracts,
          or "none") -- parallel-wave implementers see only their own brief, so a task's
          neighbors' contracts must travel in the plan, not in shared context.
+      8. Optional `batchGroup` on same-shape mechanical edits (same verifyCommand,
+         disjoint files, no independent judgment). Omit it when unsure — EXECUTE
+         will not collapse a group without the hint.
+      9. Set `modelTier: mechanical` only for complete-code transcription tasks
+         (`lib/model-tier.sh` resolves that to `haiku` on Claude Code, `inherit`
+         elsewhere). Do not assign a model from estimated difficulty.
 
     When done, send:
       SendMessage({to: "lead", message: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})

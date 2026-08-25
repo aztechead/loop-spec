@@ -115,7 +115,7 @@ Retries stay unbounded (full bore); only the per-revision cost collapses from a 
 | discuss.maxCritiqueRounds | 2 (escalated debate only) |
 | plan.maxCritiqueRounds | 2 (escalated debate only) |
 | execute.maxParallelImplementers | 3 |
-| execute.maxRetriesPerTask | 2 |
+| execute.maxRetriesPerTask | 6 |
 
 ## Repo tuning overlay (`.loop-spec/tuning.json`, ROADMAP-3.0 B2)
 
@@ -132,7 +132,7 @@ FP_TASKS="$(bash "$TUNE" get fastPathMaxTasks 2)"       # PLAN fast-path bound (
 FP_FILES="$(bash "$TUNE" get fastPathMaxFiles 3)"       # PLAN fast-path bound (loosen)
 DISCUSS_ROUNDS="$(bash "$TUNE" get discussMaxCritiqueRounds 2)"  # tighten only
 PLAN_ROUNDS="$(bash "$TUNE" get planMaxCritiqueRounds 2)"        # tighten only
-EXEC_RETRIES="$(bash "$TUNE" get executeMaxRetriesPerTask 2)"    # tighten only
+EXEC_RETRIES="$(bash "$TUNE" get executeMaxRetriesPerTask 6)"    # tighten only
 bash "$TUNE" has-check suite-regression   # VERIFY: regression scan mandatory?
 ```
 

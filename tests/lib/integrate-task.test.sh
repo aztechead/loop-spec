@@ -152,6 +152,15 @@ git -C "$WT" reset -q --hard feat/demo
 run_helper --verify true
 check "zero commit rejected" zero-commit "$(jq -r .reason <<<"$OUT")"
 
+make_fixture
+mkdir -p "$WT/.loop-spec/results"
+printf '{}\n' > "$WT/.loop-spec/results/task.json"
+run_helper --verify 'test -f task.txt' --cleanup
+check "cleanup refuses untracked runtime files" cleanup-failed "$(jq -r .reason <<<"$OUT")"
+check "cleanup names porcelain refuse" 1 "$(jq -r .detail <<<"$OUT" | grep -c 'worktree-remove-refused:' || true)"
+check "published despite cleanup refuse" true "$(jq -r .published <<<"$OUT")"
+check "refused cleanup leaves worktree" yes "$([[ -d "$WT" ]] && printf yes || printf no)"
+
 check "helper avoids newer path-format option" 0 "$(grep -c -- '--path-format' "$SCRIPT" || true)"
 
 check "JSON shape is stable" 'candidate,cleanedUp,detail,featureBefore,featureBranch,published,reason,rebased,schema,status,taskBranch' \

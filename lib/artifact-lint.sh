@@ -380,6 +380,27 @@ def lint_tasks(display, data):
         st = t.get('status')
         if st is not None and st not in ('pending', 'done'):
             flag(display, 0, '%s.status must be pending or done when present' % label)
+        bg = t.get('batchGroup')
+        if bg is not None and (not isinstance(bg, str) or not bg.strip()):
+            flag(display, 0, '%s.batchGroup must be a non-empty string when present' % label)
+        mt = t.get('modelTier')
+        if mt is not None and mt not in ('mechanical', 'standard', 'frontier'):
+            flag(display, 0, '%s.modelTier must be mechanical, standard, or frontier when present' % label)
+        iface = t.get('interfaces')
+        if iface is not None:
+            if not isinstance(iface, dict):
+                flag(display, 0, '%s.interfaces must be an object when present' % label)
+            else:
+                for key in ('consumes', 'produces'):
+                    if key not in iface:
+                        continue
+                    item = iface[key]
+                    if isinstance(item, str):
+                        continue
+                    if isinstance(item, list) and all(isinstance(x, str) for x in item):
+                        continue
+                    flag(display, 0, '%s.interfaces.%s must be a string or array of strings'
+                         % (label, key))
     for i, t in enumerate(tasks):
         if not isinstance(t, dict):
             continue

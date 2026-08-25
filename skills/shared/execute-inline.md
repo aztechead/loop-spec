@@ -47,7 +47,7 @@ merge.
 
 Same as `execute-subagent.md`: `tasks[]` (`{id, subject, files, blockedBy,
 specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`),
-`maxRetriesPerTask` (2), `featureBranch = feat/{slug}`, `commands.prepare`
+`maxRetriesPerTask` (6), `featureBranch = feat/{slug}`, `commands.prepare`
 from `feature.json.commands`. Repository-wide `lint`/`test`/`typecheck` run
 once at VERIFY, not here. `maxParallelImplementers` is moot (executor count is 1).
 
