@@ -4,6 +4,14 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-08-25
+
+Superpowers EXECUTE dispatch contracts. loop-spec ports the session-level
+mechanics Superpowers measured on live evals into the cycle's four peer
+harnesses: file-handoff briefs, resume/fresh-upgrade/breaker fix-loop, no
+nested subagents, `unverified[]` the lead must resolve, rulings vs four stop
+reasons, and fail-closed `batchGroup`. S8 and the skip list were not ported.
+
 ### Added
 
 - **Superpowers EXECUTE ports** (`docs/loop-spec/superpowers-scan-proposals.md`).
