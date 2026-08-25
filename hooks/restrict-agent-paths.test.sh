@@ -108,9 +108,10 @@ check "O: nonexistent transcript path ALLOW" 0 \
   "$(payload "Write" "src/foo.py" "/nonexistent/transcript.jsonl")"
 
 # Case P: kill switch LOOP_SPEC_PATH_GUARD=0 -> ALLOW even for restricted caller
+# Here-string, not a pipe: the hook returns immediately and a pipe would SIGPIPE (141).
 actual_exit=0
-echo "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" \
-  | LOOP_SPEC_PATH_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+LOOP_SPEC_PATH_GUARD=0 bash "$HOOK" >/dev/null 2>&1 \
+  <<< "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then
   echo "PASS: P: kill switch ALLOW"
   ((PASS++)) || true
