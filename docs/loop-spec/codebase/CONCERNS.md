@@ -87,13 +87,13 @@ The project declares "Zero deps. No npm, pip, brew." in the README but `python3`
 
 **Files:** `/Users/cbobrowitz/Projects/loop-spec/skills/execute/SKILL.md`, `/Users/cbobrowitz/Projects/loop-spec/skills/verify/SKILL.md`, `/Users/cbobrowitz/Projects/loop-spec/skills/cycle/SKILL.md`
 
-Git operations including `git merge --ff-only`, `git rebase`, `git branch -D`, and `git worktree remove --force` are described as prose-in-codeblock instructions that the LLM orchestrator must interpret and execute via its Bash tool. There is no script wrapping these: the LLM is expected to faithfully reproduce and execute multi-step git sequences. On misinterpretation, the result is branch corruption, orphaned worktrees, or lost commits. The stall-detection logic in `execute/SKILL.md:192-211` relies on the LLM correctly reading `git -C {worktree_path} log` and `git diff` output and making a branching decision.
+Git operations including `git merge --ff-only`, `git rebase`, and `git branch -D` are described as prose-in-codeblock instructions that the LLM orchestrator must interpret and execute via its Bash tool. Task-worktree cleanup after a successful merge is wrapped: `lib/integrate-task.sh --cleanup` calls `lib/git-ops.sh remove-task-worktree`, which never passes `--force`. A refused remove prints porcelain and leaves the tree. Partial `git worktree add` rollback (the add never finished) still uses `--force`. On misinterpretation of the remaining inline git sequences, the result is branch corruption, orphaned worktrees, or lost commits. The stall-detection logic in `execute/SKILL.md` relies on the LLM correctly reading `git -C {worktree_path} log` and `git diff` output and making a branching decision.
 
 ### `git branch -D` used in non-recoverable position (low)
 
 **File:** `/Users/cbobrowitz/Projects/loop-spec/skills/execute/SKILL.md:164,236`
 
-Post-wave cleanup uses `git branch -D {task.worktree_branch}` (force delete) immediately after `git worktree remove`. If worktree removal fails mid-sequence, the branch is still deleted on the next attempt without checking whether the worktree was successfully detached. The orphan-prune block at line 235-236 also uses `--force` on `git worktree remove`. This is safe when all changes are merged, but the merged-ancestor check at line 234 could race with a concurrent operation in multi-session resume.
+Post-wave cleanup deletes the task branch with `git branch -d` only after `remove-task-worktree` succeeds. If worktree removal is refused (untracked or modified files), `integrate-task.sh` reports `cleanup-failed` with `worktree-remove-refused:` and the porcelain; the branch is left in place. Partial-add rollback still uses `--force` because that tree never had a successful checkout.
 
 ### `sync` used instead of `fsync` in state-write (low)
 

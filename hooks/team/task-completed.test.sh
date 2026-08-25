@@ -179,7 +179,9 @@ check_exit=0
 fdir_ks="$TMPDIR_TESTS/kill-switch"
 mkdir -p "$fdir_ks"
 printf '%s' "$(feature_execute_failing_lint)" > "$fdir_ks/feature.json"
-echo "$(payload_completed)" | LOOP_SPEC_FEATURE_DIR="$fdir_ks" LOOP_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || check_exit=$?
+# Here-string, not a pipe: the hook returns immediately and a pipe would SIGPIPE (141).
+LOOP_SPEC_FEATURE_DIR="$fdir_ks" LOOP_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 \
+  <<< "$(payload_completed)" || check_exit=$?
 if [[ "$check_exit" -eq 0 ]]; then
   echo "PASS: J2: kill switch ALLOW"
   ((PASS++)) || true

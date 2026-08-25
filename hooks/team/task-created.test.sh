@@ -82,8 +82,10 @@ check "g: malformed payload fail-open ALLOW" 0 'this is not json'
 check "h: empty stdin ALLOW" 0 ''
 
 # i: kill switch LOOP_SPEC_TASK_GUARD=0 -> ALLOW even when invalid
+# Here-string, not a pipe: the hook returns immediately and a pipe would SIGPIPE (141).
 actual_exit=0
-echo "$(payload 'task-005: k' '{}')" | LOOP_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+LOOP_SPEC_TASK_GUARD=0 bash "$HOOK" >/dev/null 2>&1 \
+  <<< "$(payload 'task-005: k' '{}')" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then
   echo "PASS: i: kill switch ALLOW"
   ((PASS++)) || true

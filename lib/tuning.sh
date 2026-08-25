@@ -28,7 +28,7 @@
 #   raise-gate-rounds-plan     tighten   gapCounts.plan >= 3
 #       -> planMaxCritiqueRounds 2->3
 #   raise-gate-rounds-execute  tighten   gapCounts.execute >= 3
-#       -> executeMaxRetriesPerTask 2->3
+#       -> executeMaxRetriesPerTask 6->7
 #
 # Tightening adjustments persist until the USER removes them (you curate the
 # file); loosening adjustments are always one bad run from reverting.
@@ -226,7 +226,7 @@ VERDICT="$(jq -cn \
     (if (($m.gapCounts // {}).execute // 0) >= $min then
       {id: "raise-gate-rounds-execute", kind: "tighten",
        trigger: ("gapCounts.execute \($m.gapCounts.execute) >= \($min)"),
-       params: {executeMaxRetriesPerTask: 3}}
+       params: {executeMaxRetriesPerTask: 7}}
      else empty end)
   ]) as $triggered
 

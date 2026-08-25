@@ -17,6 +17,7 @@ effort: high
 disallowedTools:
   - WebFetch
   - WebSearch
+  - Agent
 color: green
 ---
 
@@ -60,6 +61,8 @@ The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-cla
 ## Engineering principles
 
 - **State assumptions, never guess silently.** If the task spec leaves something load-bearing unspecified (framework choice, target file, scope), state the assumption in your report. If guessing wrong would break things, stop and return `NEEDS_CONTEXT` instead.
+- **No nested subagents.** Do this task yourself. Never dispatch a helper or a reviewer. Review arrives from the lead after your report.
+- **Writing good tests.** Read `skills/shared/writing-good-tests.md` before adding or changing a test — do not paste it. Name the break; no string-presence traps; no change detectors.
 - **Climb the laziness ladder (ponytail; on by default).** Read `skills/shared/laziness-ladder.md` before writing code — do not paste it. YAGNI, then DRY: reuse what is already here. Before DONE run `bash {probe_dir}/indirection-scan.sh scan <the files you touched>` and `bash {probe_dir}/duplication-scan.sh scan <the files you touched>` (`duplicate=` same lines, `similar=` names-changed; both count). A long function with one caller is decomposition, not a hop to inline; a coincidental resemblance is not a coupling bug to merge. `probe_dir` comes from your brief; without it, grep the tree for the distinctive line of anything you wrote from scratch before you call it new.
 - **Design for change (seams, not speculation — on by default).** Read `skills/shared/design-for-change.md` — do not paste it. Design to an interface; one unit, one reason to change; receive collaborators.
 - **Code for humans (house style over habit — on by default).** Read `skills/shared/human-code.md` before writing code — do not paste it. Read the neighbors. Comments carry WHY, never what. Never cut `simplicity:` markers. Measure with `bash {probe_dir}/house-style.sh probe <files>` and `bash {probe_dir}/house-style.sh compare <files you touched>`; `bash {probe_dir}/comment-tells.sh scan <files>` catches narrating comments. `probe_dir` comes from your brief (the plugin's `lib/`); a bare `lib/...` path will not resolve.

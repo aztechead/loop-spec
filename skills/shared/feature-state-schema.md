@@ -175,7 +175,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 ### Field notes
 
 - The `tasks` and `waves` arrays from v2 are gone. Live task state lives in the harness task list, not in `feature.json`.
-- There is no `retryBudget` block (full-bore operation): gate retries are unbounded, and every attempt is recorded in `gateHistory[]`. The only bound the cycle respects is `iterate.maxIterations`. During EXECUTE, the per-task rework cap (`maxRetriesPerTask`, fixed 2) routes a repeatedly-failing task to the lead for escalation rather than looping it forever between the same implementer and reviewer.
+- There is no `retryBudget` block (full-bore operation): gate retries are unbounded, and every attempt is recorded in `gateHistory[]`. The only bound the cycle respects is `iterate.maxIterations`. During EXECUTE, the per-task rework cap (`maxRetriesPerTask`, default 6: one initial attempt plus five fix rounds; `lib/fix-loop.sh max` prints that default) routes a repeatedly-failing task to the lead for escalation rather than looping it forever between the same implementer and reviewer. EXECUTE reads the overlay at dispatch (`lib/tuning.sh get executeMaxRetriesPerTask 6`) so a `raise-gate-rounds-execute` tightening actually moves the cap.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. All three are reset (`null` / `[]` / zeroed) after `TeamDelete`.
 - `executionProfile` is the gate ladder the whole cycle runs, resolved once at Step 3 by
   `lib/cycle-profile.sh` and persisted so a resume keeps the same shape. `standard` is the
@@ -255,7 +255,7 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 | Field | Type | Set by | Description |
 |---|---|---|---|
-| `retries` | integer | Reviewer (`team-prompts/reviewer.md` On Fail rework) / EXECUTE SKILL Step 6 | Per-task retry counter. Capped by `maxRetriesPerTask` (fixed 2). Initialized to 0 at `TaskCreate`. Resets to 0 on EXECUTE resume (harness task list is recreated from `PLAN.md`). |
+| `retries` | integer | Reviewer (`team-prompts/reviewer.md` On Fail rework) / EXECUTE SKILL Step 6 | Per-task retry counter. Capped by `maxRetriesPerTask` (default 6; overlay may raise). Initialized to 0 at `TaskCreate`. Resets to 0 on EXECUTE resume (harness task list is recreated from `PLAN.md`). |
 | `claimedBy` | string or null | Implementer, after successful `TaskUpdate` status claim | Teammate name of the implementer that claimed this task (e.g., `implementer-2`). Kept for reviewer addressing: reviewer reads `claimedBy` to direct `needs_rework` messages via `SendMessage({to: claimedBy, ...})`. Redundant with the harness `owner` field; both are set. |
 | `blockedBy` | array of task ids | Lead at `TaskCreate` | Tasks that must be `completed` before this task can be claimed. Used by implementers to filter available tasks. Synthetic `blockedBy` edges for file-conflict detection are added by the lead before calling `TaskCreate`. |
 | `files` | array of paths | Lead at `TaskCreate` | Files the task is expected to touch. Used for pre-task file-conflict detection and for the post-merge heuristic on EXECUTE resume. |

@@ -4,6 +4,37 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-08-25
+
+Superpowers EXECUTE dispatch contracts. loop-spec ports the session-level
+mechanics Superpowers measured on live evals into the cycle's four peer
+harnesses: file-handoff briefs, resume/fresh-upgrade/breaker fix-loop, no
+nested subagents, `unverified[]` the lead must resolve, rulings vs four stop
+reasons, and fail-closed `batchGroup`. S8 and the skip list were not ported.
+
+### Added
+
+- **Superpowers EXECUTE ports** (`docs/loop-spec/superpowers-scan-proposals.md`).
+  File-handoff briefs and review packages (S1); resume/fresh-upgrade/breaker
+  fix-loop with scoped re-review (S2); no nested subagents on named roles (S3);
+  prejudge-lint on templates (S4); `unverified[]` the lead must resolve (S5);
+  conflict table + rulings vs four stop reasons (S6); fail-closed `batchGroup`
+  collapse (S7); writing-good-tests catalog on implementer prompts (S9);
+  `mechanical` → `haiku` on Claude Code only (S10); task-worktree remove never
+  `--force` (S11). S8 and the skip list were not ported.
+
+  Audit follow-ups on the same ports: a reviewer `pass` carrying `unverified[]`
+  is downgraded to `rework` so the items cannot merge on the last attempt (S5);
+  `batchGroup` collapse also refuses when a task outside the group waits on a
+  member id the collapse would erase (S7); `lib/fix-loop.sh action` takes the
+  effective `maxRetriesPerTask`, and EXECUTE reads that cap from
+  `lib/tuning.sh get executeMaxRetriesPerTask` so a tuned overlay actually
+  moves Workflow retries, team `{maxRetriesPerTask}`, and the breaker (S2);
+  `lib/execute-stop.sh` delegates its security tier to `lib/security-signal.sh`
+  instead of re-listing the terms, so "must not modify the auth middleware" is a
+  ruling rather than a stop (S6); worktree-removal refusals print git's own
+  reason instead of asserting a cause (S11).
+
 ### Fixed
 
 - **Codex interactive SPEC/DISCUSS/PLAN now wait for the user.** The Codex

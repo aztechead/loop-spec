@@ -108,9 +108,10 @@ check "O: nonexistent transcript path ALLOW" 0 \
   "$(payload "Write" "src/foo.py" "/nonexistent/transcript.jsonl")"
 
 # Case P: kill switch LOOP_SPEC_PATH_GUARD=0 -> ALLOW even for restricted caller
+# Here-string, not a pipe: the hook returns immediately and a pipe would SIGPIPE (141).
 actual_exit=0
-echo "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" \
-  | LOOP_SPEC_PATH_GUARD=0 bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+LOOP_SPEC_PATH_GUARD=0 bash "$HOOK" >/dev/null 2>&1 \
+  <<< "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then
   echo "PASS: P: kill switch ALLOW"
   ((PASS++)) || true
@@ -128,10 +129,12 @@ check "S: spec-writer Write to /tmp/ws-test/workspace/frontend/src/app.py DENY" 
   "$(payload "Write" "/tmp/ws-test/workspace/frontend/src/app.py" "$FIXTURES/spec-writer.jsonl")"
 
 # Case Q: fast path — no .loop-spec/features and no force flag -> ALLOW without parsing
+# Here-string, not a pipe: the hook returns immediately and a pipe would SIGPIPE (141).
 HOOK_ABS="$(cd "$(dirname "$HOOK")" && pwd)/$(basename "$HOOK")"
 actual_exit=0
-echo "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" \
-  | env -u LOOP_SPEC_PATH_GUARD_FORCE CLAUDE_PROJECT_DIR=/nonexistent bash -c "cd /tmp && bash '$HOOK_ABS'" >/dev/null 2>&1 || actual_exit=$?
+env -u LOOP_SPEC_PATH_GUARD_FORCE CLAUDE_PROJECT_DIR=/nonexistent \
+  bash -c "cd /tmp && bash '$HOOK_ABS'" >/dev/null 2>&1 \
+  <<< "$(payload "Write" "src/foo.py" "$FIXTURES/spec-writer.jsonl")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then
   echo "PASS: Q: no-feature-state fast path ALLOW"
   ((PASS++)) || true

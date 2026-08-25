@@ -62,6 +62,17 @@ check "staging file gone" "0" "$(bash "$SCRIPT" count "$STAGING")"
 check "migrate again is no-op" "nothing to migrate" "$(bash "$SCRIPT" migrate "$STAGING" "$FEATURE")"
 check "feature order: pre-existing first" "Prior decision?" "$(bash "$SCRIPT" list "$FEATURE" | head -1 | jq -r '.question')"
 
+# kind: default assumed, explicit ruling
+KIND_DIR="$WORK/kind"
+bash "$SCRIPT" add "$KIND_DIR" execute "Who wins the overlap?" "task-001 first" "DAG order" >/dev/null
+check "default kind is assumed" "assumed" "$(bash "$SCRIPT" list "$KIND_DIR" | jq -r '.kind')"
+bash "$SCRIPT" add "$KIND_DIR" execute "Shared file owner?" "task-001" "recorded ruling" ruling >/dev/null
+check "explicit kind is ruling" "ruling" "$(bash "$SCRIPT" list "$KIND_DIR" | tail -1 | jq -r '.kind')"
+r_ruling="$(bash "$SCRIPT" render "$KIND_DIR" | tail -1)"
+check "render prefixes rulings" "- **Ruling:** Shared file owner? → task-001 — recorded ruling" "$r_ruling"
+ec=0; bash "$SCRIPT" add "$KIND_DIR" execute "q" "a" "r" bogus >/dev/null 2>&1 || ec=$?
+check "invalid kind exits 1" "1" "$ec"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

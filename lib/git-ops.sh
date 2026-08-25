@@ -44,10 +44,14 @@
 #                                       on a feat/* branch or under any candidate feature base
 #                                       for this repo (including "/.claude/worktrees/").
 #                                       No output if none.
+#   remove-task-worktree <path>         Remove a task worktree that already had a successful
+#                                       checkout. Never --force: if git refuses, print git's
+#                                       own reason plus any dirty paths and exit 1.
+#                                       Partial-add rollback still uses --force inline.
 #
 # Exit codes:
-#   0 success (always; the answer is on stdout)
-#   1 bad invocation
+#   0 success (the answer is on stdout)
+#   1 bad invocation, or remove-task-worktree refused (uncommitted/untracked files)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -290,8 +294,27 @@ case "$cmd" in
       [[ "$matched" -eq 1 ]] && printf '%s\t%s\n' "$wt_path" "$wt_branch"
     done
     ;;
+  remove-task-worktree)
+    wt="${2:-}"
+    if [[ -z "$wt" ]]; then
+      echo "remove-task-worktree: usage: git-ops.sh remove-task-worktree <path>" >&2
+      exit 1
+    fi
+    if err="$("${G[@]}" worktree remove "$wt" 2>&1)"; then
+      echo "removed"
+      exit 0
+    fi
+    # Print git's own reason: "uncommitted changes" is the common one, but a locked
+    # worktree or a path that is not a worktree at all fails here too, and naming the
+    # wrong cause sends the caller looking for files that are not there.
+    echo "remove-task-worktree: git refused to remove $wt (not using --force): $err" >&2
+    if [[ -d "$wt" ]]; then
+      git -C "$wt" status --porcelain >&2 || true
+    fi
+    exit 1
+    ;;
   *)
-    echo "usage: git-ops.sh [-C <path>] {detect-base-branch|slugify <text>|ensure-clean-or-stash|current-sha|create-feature-worktree <slug> <base_sha>|attach-feature-worktree <slug> <branch>|checkout-path-for-branch <branch>|list-feature-worktrees}" >&2
+    echo "usage: git-ops.sh [-C <path>] {detect-base-branch|slugify <text>|ensure-clean-or-stash|current-sha|create-feature-worktree <slug> <base_sha>|attach-feature-worktree <slug> <branch>|checkout-path-for-branch <branch>|list-feature-worktrees|remove-task-worktree <path>}" >&2
     exit 1
     ;;
 esac

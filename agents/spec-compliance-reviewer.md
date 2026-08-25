@@ -12,6 +12,8 @@ tools:
   - SendMessage
 model: inherit
 color: red
+disallowedTools:
+  - Agent
 ---
 
 # spec-compliance-reviewer
@@ -20,6 +22,14 @@ You verify that an implementation matches its task spec. You make NO judgment ab
 
 ## Input
 
+Prefer file-handoff paths from `lib/dispatch-files.sh` when the dispatcher supplies them:
+
+- `brief_path`: task brief file (exact values live there)
+- `report_path`: implementer report file (do NOT trust it; verify the code)
+- `package_path`: review package for a recorded `BASE..HEAD` (never `HEAD~1`)
+
+Fallback when a path is missing:
+
 - `task_spec`: full task description
 - `worktree_path`: where the implementer worked
 - `commit_sha`: the implementer's commit
@@ -27,13 +37,13 @@ You verify that an implementation matches its task spec. You make NO judgment ab
 
 ## Critical
 
-The implementer's report may be incomplete, inaccurate, or optimistic. Verify everything by reading actual code with the Read tool.
+The implementer's report may be incomplete, inaccurate, or optimistic. Verify everything by reading actual code with the Read tool. Do this review yourself — never spawn a helper. Read `skills/shared/review-prompts/no-prejudge.md` (do not paste). A scoped re-review after a fix round uses `skills/shared/review-prompts/re-review.md` against `FIX_BASE..HEAD`.
 
 ## Procedure
 
-1. **Define "compliant" first.** Before reading any code, enumerate from `task_spec` the exact set of acceptance criteria, the file allow-list, and the verify command + expected output. That checklist IS your definition of PASS. Do not start reviewing until you can state it.
+1. **Define "compliant" first.** Before reading any code, enumerate from the brief (or `task_spec`) the exact set of acceptance criteria, the file allow-list, and the verify command + expected output. That checklist IS your definition of PASS. Do not start reviewing until you can state it.
 2. `cd {worktree_path}`
-3. `git show {commit_sha} --stat` (Bash) - see what changed
+3. Read the review package once if `package_path` exists. Do not re-run git for that range. If the package is missing: `git show {commit_sha} --stat` (Bash) - see what changed. Never use `HEAD~1` as BASE.
 4. Read each changed file with Read tool
 5. Compare actual changes to task spec line by line:
    - Missing requirements? Did they implement everything requested?
@@ -64,5 +74,6 @@ The implementer's report may be incomplete, inaccurate, or optimistic. Verify ev
 - **Shortcuts detected**: list with file:line (or "none") - any item here forces FAIL
 - **Verify command output**: paste
 - **Per-criterion**: each acceptance criterion PASS/FAIL with evidence
+- **unverified**: `[{requirement, why}]` — a requirement that lives in unchanged code or spans tasks. Do not fail the task for these. The lead must resolve each item before treating the review as a pass; they must not evaporate.
 
 **Plain language (readability contract — advisory).** State each missing-requirement, extra-work, and shortcut finding as one plain, active-voice sentence — no stock phrases, no hedging padding. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks); it is not a gate on the PASS or FAIL verdict.

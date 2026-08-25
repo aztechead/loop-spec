@@ -274,6 +274,36 @@ check "AE2: a failed create leaves no partial worktree behind" "ok" "$r"
 git -C "$CLEAN_REPO" show-ref --verify --quiet refs/heads/feat/fail-slug && r=bad || r=ok
 check "AE3: a failed create leaves no orphan branch behind" "ok" "$r"
 
+# S11: remove-task-worktree never --force; dirty trees are listed and left
+TASK_WT="$CLEAN_REPO/.loop-spec-task-wt-clean"
+git -C "$CLEAN_REPO" worktree add -q -b task/clean-rm "$TASK_WT"
+got=$(bash "$LIB" -C "$CLEAN_REPO" remove-task-worktree "$TASK_WT")
+check "AG: clean remove-task-worktree prints removed" "removed" "$got"
+[[ -e "$TASK_WT" ]] && r=bad || r=ok
+check "AG2: clean remove deletes the directory" "ok" "$r"
+
+TASK_WT2="$CLEAN_REPO/.loop-spec-task-wt-dirty"
+git -C "$CLEAN_REPO" worktree add -q -b task/dirty-rm "$TASK_WT2"
+echo leftover > "$TASK_WT2/untracked.txt"
+ec=0
+err=$(bash "$LIB" -C "$CLEAN_REPO" remove-task-worktree "$TASK_WT2" 2>&1) || ec=$?
+check "AH: dirty remove-task-worktree exits 1" "1" "$ec"
+echo "$err" | grep -qi "not using --force" && r=ok || r=missing
+check "AH2: refuse names --force" "ok" "$r"
+echo "$err" | grep -q "untracked.txt" && r=ok || r=missing
+check "AH3: refuse lists the untracked file" "ok" "$r"
+echo "$err" | grep -qi "contains modified or untracked files" && r=ok || r=missing
+check "AH3b: refuse carries git's own reason" "ok" "$r"
+[[ -d "$TASK_WT2" ]] && r=ok || r=bad
+check "AH4: refused remove leaves the worktree" "ok" "$r"
+git -C "$CLEAN_REPO" worktree remove --force "$TASK_WT2" >/dev/null 2>&1 || true
+
+force_in_remove=$(awk '/^  remove-task-worktree\)/,/^  \*\)/' "$LIB" | grep -c 'worktree remove --force' || true)
+check "AI: remove-task-worktree does not pass --force to git" "0" "$force_in_remove"
+rollback_force=$(grep -c 'worktree remove --force' "$LIB" || true)
+[[ "$rollback_force" -ge 1 ]] && r=ok || r=bad
+check "AI2: partial-add rollback still uses --force" "ok" "$r"
+
 if [[ "$(id -u)" == "0" ]]; then
   echo "SKIP: AF unwritable-base diagnostic (running as root)"
 else

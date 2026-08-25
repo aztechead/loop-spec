@@ -268,7 +268,7 @@ spawn below.
 
 Send code-reviewer-1 its work prompt via SendMessage:
 
-Pass `probe_dir` (the absolute `${CLAUDE_SKILL_DIR}/../../lib`) so the code-for-humans pass can measure the diff's conventions instead of judging them, and the over-engineering pass can locate duplication with `duplication-scan.sh` instead of eyeballing it — without it both degrade to reading neighbors and can only report Minor. Pass `spec_path` so the reviewer can check each SPEC Boundary / anti-goal against the diff (the "must never produce" behaviors most worth catching at a HARD gate), and echo the blocking-severity rule (Critical + Important block; Minor is recorded, backlogged, and never blocks) so the reviewer self-prioritizes blocking findings.
+Pass `probe_dir` (the absolute `${CLAUDE_SKILL_DIR}/../../lib`) so the code-for-humans pass can measure the diff's conventions instead of judging them, and the over-engineering pass can locate duplication with `duplication-scan.sh` instead of eyeballing it — without it both degrade to reading neighbors and can only report Minor. Pass `spec_path` so the reviewer can check each SPEC Boundary / anti-goal against the diff (the "must never produce" behaviors most worth catching at a HARD gate), and echo the blocking-severity rule (Critical + Important block; Minor is recorded, backlogged, and never blocks) so the reviewer self-prioritizes blocking findings. Include `skills/shared/review-prompts/no-prejudge.md` (do not paste): never tell a reviewer what not to flag.
 
 **Single-repo mode (unchanged):**
 
@@ -437,8 +437,8 @@ to `.loop-spec/BACKLOG.md` — never the raw list.
 Two of Orwell's rules are not machine-checked and never will be: "cut every word that
 adds nothing" is a judgment about a sentence's information content, and rule 6 ("break
 any of these rules sooner than say anything barbarous") is the rule that overrides the
-others. `lib/plain-language-lint.sh` has no opinion on either. Do not treat a clean run
-as evidence the prose is good.
+others. `lib/plain-language-lint.sh` has no opinion on either. A clean run is not
+evidence the prose is good.
 
 ### Step 7.66 - Docs-for-humans pass
 

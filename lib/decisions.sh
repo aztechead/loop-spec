@@ -8,14 +8,17 @@
 # death silently drops them. The audit trail IS the point of autonomous mode, so it
 # lives in a file from the moment the first assumption is made.
 #
-# Store: JSONL, one decision per line: {ts, phase, question, answer, rationale}
+# Store: JSONL, one decision per line:
+#   {ts, phase, question, answer, rationale, kind}
+# kind is `assumed` (autonomous self-answer, default) or `ruling`
+# (EXECUTE continues past a reversible plan conflict).
 # Location: <dir>/decisions.jsonl where <dir> is the feature dir once it exists.
 # Before the feature dir exists (cycle Steps 0-4), callers use the staging file
 # .loop-spec/decisions-staging.jsonl and `migrate` moves it into the feature dir.
 #
 # Usage:
-#   decisions.sh add <dir> <phase> <question> <answer> <rationale>
-#       Append one decision. Creates <dir> if missing.
+#   decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling]
+#       Append one decision. Creates <dir> if missing. kind defaults to assumed.
 #   decisions.sh list <dir>
 #       Print the raw JSONL (empty output when none). Exit 0 always.
 #   decisions.sh count <dir>
@@ -40,10 +43,17 @@ case "${1:-}" in
       exit 1
     fi
     mkdir -p "$dir"
+    kind="${7:-assumed}"
+    case "$kind" in assumed|ruling) ;; *)
+      echo "usage: decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling]" >&2
+      exit 1
+      ;;
+    esac
     jq -cn \
       --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
       --arg phase "$phase" --arg q "$question" --arg a "$answer" --arg r "$rationale" \
-      '{ts: $ts, phase: $phase, question: $q, answer: $a, rationale: $r}' \
+      --arg kind "$kind" \
+      '{ts: $ts, phase: $phase, question: $q, answer: $a, rationale: $r, kind: $kind}' \
       >> "$dir/$FILE_NAME"
     echo "recorded"
     ;;
@@ -67,7 +77,13 @@ case "${1:-}" in
     dir="${2:-}"
     [[ -n "$dir" ]] || { echo "usage: decisions.sh render <dir>" >&2; exit 1; }
     [[ -f "$dir/$FILE_NAME" ]] || exit 0
-    jq -r '"- **\(.question)** → \(.answer) — \(.rationale)"' "$dir/$FILE_NAME"
+    jq -r '
+      if (.kind // "assumed") == "ruling" then
+        "- **Ruling:** \(.question) → \(.answer) — \(.rationale)"
+      else
+        "- **\(.question)** → \(.answer) — \(.rationale)"
+      end
+    ' "$dir/$FILE_NAME"
     ;;
   migrate)
     staging="${2:-}"; feature="${3:-}"

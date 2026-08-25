@@ -194,6 +194,58 @@ all_exclude_globs=$(printf '%s\n%s' "$feature_globs" "$repo_globs" | grep -v '^$
 
 A file is excluded if it matches any glob in `all_exclude_globs` (use `fnmatch`-compatible matching).
 
+#### Step 2d - Conflict table and rulings
+
+Emit a machine-readable conflict table before Task 1. The table is the probe;
+a ruling after it is still a model judgment.
+
+```bash
+mkdir -p ".loop-spec/features/{slug}/dispatch"
+if [[ -n "$tasks_sidecar" && -f "$tasks_sidecar" ]]; then
+  bash "${CLAUDE_SKILL_DIR}/../../lib/plan-conflicts.sh" table "$tasks_sidecar" \
+    > ".loop-spec/features/{slug}/dispatch/conflict-table.json"
+fi
+```
+
+Read `rows`. Zero is a clean scan (the table still exists). For each pair or
+interface row, classify the conflict text:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/execute-stop.sh" classify "<overlap or interface summary>"
+```
+
+`stop=true` pauses EXECUTE (cycle-resume-escalation contract). `stop=false
+reason=ruling` records the ruling and continues. Substitute the conflict as the
+question, the call you made as the answer, and why you made it as the rationale:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$fdir" execute \
+  "task-003 and task-007 both write lib/foo.sh" \
+  "task-007 rebases onto task-003; no plan change" \
+  "the overlap is one function and the order is already in blockedBy" \
+  ruling
+```
+
+Autonomous mode never waits on a reversible question. Pass `--plan-broken` only
+when the operator has declared the plan itself broken.
+
+#### Step 2e - Same-shape collapse
+
+Collapse same-shape members before any rung forms a wave. Fail-closed: no
+`batchGroup` hint, a `blockedBy` edge out of the group, mismatched
+`verifyCommand`, or overlapping files keeps one-task-one-dispatch.
+
+```bash
+if [[ -n "$tasks_sidecar" && -f "$tasks_sidecar" ]]; then
+  bash "${CLAUDE_SKILL_DIR}/../../lib/task-batch.sh" collapse "$tasks_sidecar" \
+    > ".loop-spec/features/{slug}/dispatch/tasks-collapsed.json"
+fi
+```
+
+Use the collapsed array as the dispatch task list. A collapsed group keeps the
+first member's id, unions `files[]`, and carries `memberIds[]`. Reviewers assert
+every listed file appears in the diff.
+
 ### Step 2.5 - Greenfield command backfill
 
 Only when `feature.json.greenfield == true` and `feature.commands.test` is empty: the plan
@@ -281,7 +333,7 @@ Fixed operating params (`skills/shared/tier-matrix.md`):
 
 | maxParallelImplementers | maxRetriesPerTask | reviewersEnabled | t_team | t_wf |
 |---|---|---|---|---|
-| 3 | 2 | true | 3 | 6 |
+| 3 | 6 | true | 3 | 6 |
 
 For constrained containers, `LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS` may lower the
 implementer cap without changing DAG semantics. It must be a positive integer and is
@@ -293,6 +345,11 @@ lead execution. On the headless subagent rung, wave width > 1 additionally requi
 lead-created task worktrees (`subagentIsolation=lead-worktree` from
 `lib/execute-rung.sh`); a failed `git worktree add` serializes that wave. Do not
 raise the cap until that isolation holds.
+
+The retry cap in the table is the default. Read the overlay at dispatch and pass
+that same number into Workflow `maxRetriesPerTask`, team `{maxRetriesPerTask}`,
+and `fix-loop.sh action` — otherwise `raise-gate-rounds-execute` (6→7) never
+moves the breaker (`skills/shared/tier-matrix.md` "Repo tuning overlay").
 
 ```bash
 maxParallelImplementers=3
@@ -313,6 +370,7 @@ if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
     && maxParallelImplementers="$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS"
 fi
 [[ "${LOOP_SPEC_WORKTREES:-1}" == "0" ]] && maxParallelImplementers=1
+maxRetriesPerTask="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get executeMaxRetriesPerTask 6)"
 ```
 
 #### Step 3a - Compute DAG width W and read runtime capabilities
@@ -432,7 +490,7 @@ Workflow({
       specComplianceReviewer: feature.models.specComplianceReviewer
     },
     maxParallelImplementers: maxParallelImplementers,
-    maxRetriesPerTask: 2,
+    maxRetriesPerTask: maxRetriesPerTask,
     reviewersEnabled: true,
     commands: feature.commands,
     skillDir: skillDir,
@@ -660,6 +718,8 @@ the implementer and reviewer prompts, so every teammate agrees on where task wor
 worktreeBase="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
   resolve "$WT_ROOT" task "{slug}" | jq -r '.path')"
 ```
+
+`{maxRetriesPerTask}` is the overlay value resolved with the operating params above.
 
 Record the full roster in `feature.json.currentTeammates`:
 
