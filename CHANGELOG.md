@@ -4,6 +4,13 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+
+- **Superpowers four-month scan** (`docs/loop-spec/superpowers-scan-proposals.md`).
+  Identification only — ranked porting candidates from obra/superpowers v5.1.0–v6.3.0
+  against the current loop-spec surface. Nothing from the scan is implemented in
+  this change; picks go through the cycle in a later PR.
+
 ### Fixed
 
 - **Codex interactive SPEC/DISCUSS/PLAN now wait for the user.** The Codex
