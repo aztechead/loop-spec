@@ -19,7 +19,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   is downgraded to `rework` so the items cannot merge on the last attempt (S5);
   `batchGroup` collapse also refuses when a task outside the group waits on a
   member id the collapse would erase (S7); `lib/fix-loop.sh action` takes the
-  effective `maxRetriesPerTask` so a tuned cap moves the breaker with it (S2);
+  effective `maxRetriesPerTask`, and EXECUTE reads that cap from
+  `lib/tuning.sh get executeMaxRetriesPerTask` so a tuned overlay actually
+  moves Workflow retries, team `{maxRetriesPerTask}`, and the breaker (S2);
   `lib/execute-stop.sh` delegates its security tier to `lib/security-signal.sh`
   instead of re-listing the terms, so "must not modify the auth middleware" is a
   ruling rather than a stop (S6); worktree-removal refusals print git's own

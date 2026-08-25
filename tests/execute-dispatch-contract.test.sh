@@ -52,8 +52,10 @@ count_ge "subagent writing-good-tests on both implementer prompts" \
 count_ge "subagent no-nested on implementer prompts" \
   skills/shared/execute-subagent.md 'NO NESTED SUBAGENTS' 3
 
-expect "execute SKILL maxRetriesPerTask is 6" \
-  skills/execute/SKILL.md 'maxRetriesPerTask: 6'
+expect "execute SKILL reads executeMaxRetriesPerTask from the overlay" \
+  skills/execute/SKILL.md 'get executeMaxRetriesPerTask 6'
+expect "execute SKILL passes the effective cap into Workflow" \
+  skills/execute/SKILL.md 'maxRetriesPerTask: maxRetriesPerTask,'
 expect "execute SKILL emits conflict table" \
   skills/execute/SKILL.md 'plan-conflicts.sh" table'
 expect "execute SKILL classifies stop vs ruling" \

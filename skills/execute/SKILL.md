@@ -346,6 +346,11 @@ lead-created task worktrees (`subagentIsolation=lead-worktree` from
 `lib/execute-rung.sh`); a failed `git worktree add` serializes that wave. Do not
 raise the cap until that isolation holds.
 
+The retry cap in the table is the default. Read the overlay at dispatch and pass
+that same number into Workflow `maxRetriesPerTask`, team `{maxRetriesPerTask}`,
+and `fix-loop.sh action` — otherwise `raise-gate-rounds-execute` (6→7) never
+moves the breaker (`skills/shared/tier-matrix.md` "Repo tuning overlay").
+
 ```bash
 maxParallelImplementers=3
 if [[ -n "${LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS:-}" ]]; then
@@ -365,6 +370,7 @@ if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" ]]; then
     && maxParallelImplementers="$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS"
 fi
 [[ "${LOOP_SPEC_WORKTREES:-1}" == "0" ]] && maxParallelImplementers=1
+maxRetriesPerTask="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get executeMaxRetriesPerTask 6)"
 ```
 
 #### Step 3a - Compute DAG width W and read runtime capabilities
@@ -484,7 +490,7 @@ Workflow({
       specComplianceReviewer: feature.models.specComplianceReviewer
     },
     maxParallelImplementers: maxParallelImplementers,
-    maxRetriesPerTask: 6,
+    maxRetriesPerTask: maxRetriesPerTask,
     reviewersEnabled: true,
     commands: feature.commands,
     skillDir: skillDir,
@@ -712,6 +718,8 @@ the implementer and reviewer prompts, so every teammate agrees on where task wor
 worktreeBase="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
   resolve "$WT_ROOT" task "{slug}" | jq -r '.path')"
 ```
+
+`{maxRetriesPerTask}` is the overlay value resolved with the operating params above.
 
 Record the full roster in `feature.json.currentTeammates`:
 

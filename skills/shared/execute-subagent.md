@@ -37,7 +37,7 @@ wave (`min(|ready|, maxParallelImplementers)`).
 ## Inputs (resolved by `execute` Step 3 before entering this path)
 
 - `tasks[]` — each `{id, subject, files, blockedBy (union), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` comes straight from the PLAN task block; it is the per-task behavioral assertion re-run post-merge in step 7.)
-- `maxParallelImplementers` (3), `maxRetriesPerTask` (6), `reviewersEnabled` (true) — fixed (`skills/shared/tier-matrix.md`). One initial attempt plus five fix rounds; `lib/fix-loop.sh max` is 6 (the first attempt index that trips the breaker).
+- `maxParallelImplementers` (3), `maxRetriesPerTask` (effective cap from execute Step 3; default 6), `reviewersEnabled` (true) — `skills/shared/tier-matrix.md`. At the default cap: one initial attempt plus five fix rounds; `lib/fix-loop.sh max` prints 6 (the default first attempt index that trips the breaker). Pass the effective cap into `fix-loop.sh action`, not that default.
 - `featureWorktreeRoot = $(git rev-parse --show-toplevel)`, `featureBranch = feat/{slug}`.
 - `worktreesEnabled` — read from the `lib/execute-rung.sh` result **before composing any
   prompt**. It selects the mode below; nothing else does. `false` means no worktree path is
