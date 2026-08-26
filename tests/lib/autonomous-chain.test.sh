@@ -90,6 +90,16 @@ jq -n '{schema:1,status:"ready-for-review",nextPhase:"completed",targets:[]}' > 
 out="$(bash "$SCRIPT" should-chain "$FEAT")"
 check "sidecar completion chains" "true" "$(chain_of "$out")"
 
+# A green draft is delivered for humans, not for autonomous chaining.
+write_feature true deliver '["iterate-budget-spent: csv gap"]'
+jq -n '{schema:1,status:"delivered-draft",nextPhase:"completed",
+  prUrl:"https://github.com/t/r/pull/4",targets:[]}' > "$FEAT/delivery.json"
+out="$(bash "$SCRIPT" should-chain "$FEAT")"
+check "draft sidecar does not chain" "false" "$(chain_of "$out")"
+check "draft sidecar reason" "delivery-incomplete" "$(reason_of "$out")"
+write_feature true deliver '["iterate-budget-spent: csv gap"]'
+jq -n '{schema:1,status:"ready-for-review",nextPhase:"completed",targets:[]}' > "$FEAT/delivery.json"
+
 # bound: completed >= LOOP_SPEC_MAX_FEATURES stops the chain
 out="$(bash "$SCRIPT" should-chain "$FEAT" --completed 1)"
 check "default max-features bound" "max-features-reached" "$(reason_of "$out")"

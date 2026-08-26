@@ -695,6 +695,70 @@ out="$(bash "$SCRIPT" final -C "$WORK/repo" --branch feat/delivery --base main -
 check "oversized timeout: exit 2" "2" "$ec"
 check "oversized timeout: structured code" "bad_timeout" "$(jq -r '.errorCode' <<<"$out")"
 
+run_observe() {
+  local args=(observe -C "$WORK/repo" --branch feat/delivery --sha "$TARGET_SHA")
+  if [[ "${1:-}" == "--no-base" ]]; then
+    shift
+  else
+    args+=(--base main)
+  fi
+  PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
+    FAKE_GH_HEAD_SHA="$TARGET_SHA" bash "$SCRIPT" "${args[@]}" \
+      --checks-timeout 2 --checks-interval 0 "$@"
+}
+
+draft_pr="$(jq -cn --arg sha "$TARGET_SHA" '{number:11,url:"https://github.com/test/repo/pull/11",isDraft:true,
+  headRefOid:$sha,headRefName:"feat/delivery",headRepository:{nameWithOwner:"test/repo"},
+  isCrossRepository:false,baseRefName:"main",title:"feat: delivery",body:"",state:"OPEN"}')"
+
+# observe: green draft, no push/create/ready.
+origin_before="$(git --git-dir="$WORK/origin.git" rev-parse refs/heads/feat/delivery 2>/dev/null || echo missing)"
+reset_gh "[$draft_pr]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0; out="$(run_observe 2>"$WORK/err")" || ec=$?
+check "observe draft: exit 0" "0" "$ec"
+check "observe draft: outcome delivered-draft" "delivered-draft" "$(jq -r '.outcome' <<<"$out")"
+check "observe draft: ok" "true" "$(jq -r '.ok' <<<"$out")"
+check "observe draft: left as draft" "true" "$(jq -r '.isDraft' <<<"$out")"
+check "observe draft: no create" "0" "$(grep -c '^pr create ' "$GH_LOG" || true)"
+check "observe draft: no ready" "0" "$(grep -c '^pr ready ' "$GH_LOG" || true)"
+check "observe draft: no edit" "0" "$(grep -c '^pr edit ' "$GH_LOG" || true)"
+check "observe draft: remote unchanged" "$origin_before" \
+  "$(git --git-dir="$WORK/origin.git" rev-parse refs/heads/feat/delivery 2>/dev/null || echo missing)"
+
+# observe without --base (title/body are not required either).
+ec=0; out="$(run_observe --no-base 2>"$WORK/err")" || ec=$?
+check "observe no-base: exit 0" "0" "$ec"
+check "observe no-base: delivered-draft" "delivered-draft" "$(jq -r '.outcome' <<<"$out")"
+
+ready_pr="$(jq -c '.isDraft=false | .number=12 | .url="https://github.com/test/repo/pull/12"' <<<"$draft_pr")"
+reset_gh "[$ready_pr]" '[[{"name":"ci","workflow":"Tests","bucket":"pass","state":"SUCCESS","link":"x"}]]'
+ec=0; out="$(run_observe 2>"$WORK/err")" || ec=$?
+check "observe ready: delivered" "delivered:false" \
+  "$(jq -r '.outcome + ":" + (.isDraft | tostring)' <<<"$out")"
+
+observe_block() {
+  local label="$1" prs="$2" checks="$3" want_ec="$4" want_code="$5"
+  reset_gh "$prs" "$checks"
+  ec=0; out="$(run_observe 2>"$WORK/err")" || ec=$?
+  check "observe ${label}: exit ${want_ec}" "$want_ec" "$ec"
+  check "observe ${label}: structured code" "$want_code" "$(jq -r '.errorCode' <<<"$out")"
+}
+
+observe_block pending "[$draft_pr]" \
+  '[[{"name":"test","workflow":"CI","bucket":"pending","state":"QUEUED","link":"u"}]]' \
+  1 checks_pending
+observe_block failed "[$draft_pr]" \
+  '[[{"name":"test","workflow":"CI","bucket":"fail","state":"FAILURE","link":"u"}]]' \
+  1 checks_failed
+observe_block "missing PR" '[]' '[[]]' 1 pr_lookup_failed
+observe_block "unregistered checks" "[$draft_pr]" '[[]]' 1 checks_pending
+
+reset_gh "[$draft_pr]" '[[]]' true
+ec=0; out="$(run_observe 2>"$WORK/err")" || ec=$?
+check "observe no required checks: exit 0" "0" "$ec"
+check "observe no required checks: delivered-draft" "delivered-draft" "$(jq -r '.outcome' <<<"$out")"
+check "observe no required checks: status none" "none" "$(jq -r '.checks.status' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

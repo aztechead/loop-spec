@@ -28,6 +28,10 @@ absent() {
 present "DELIVER skill exists" skills/deliver/SKILL.md "name: deliver"
 present "DELIVER invokes deterministic controller" skills/deliver/SKILL.md "lib/deliver.sh"
 present "controller delegates one-repo delivery" lib/deliver.sh "pr-delivery.sh"
+present "bypass PRs are reconciled at publication" lib/delivery-reconcile.sh "Turn a GitHub PR created outside"
+present "pr-delivery observe does not flip readiness" lib/pr-delivery.sh "Green draft"
+present "cycle-result fail-open reconciles" lib/cycle-result.sh "delivery-reconcile.sh"
+present "DELIVER skill names the reconciler" skills/deliver/SKILL.md "delivery-reconcile.sh"
 present "ITERATE advances to DELIVER" skills/iterate/SKILL.md 'currentPhase = "deliver"'
 present "cycle documents seven-phase chain" skills/cycle/SKILL.md "VERIFY -> ITERATE -> DELIVER"
 present "short path still walks ITERATE and DELIVER" skills/cycle/SKILL.md "ITERATE and DELIVER still run"

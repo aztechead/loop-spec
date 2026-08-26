@@ -70,11 +70,15 @@ check "A: no-change reason defaults null" "null" "$(jq -r '.noChangeReason' "$FE
 
 # Case B: converged=true with empty warnings
 check "B: converged=true on clean completion" "true" "$(jq '.converged' "$FEAT_DIR/result.json")"
+check "A: outcome delivered" "delivered" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "A: workDelivered true" "true" "$(jq '.workDelivered' "$FEAT_DIR/result.json")"
 
 # Case C: converged=false when warnings contains iterate-budget-spent:
 printf '%s\n' "$(jq '.warnings = ["iterate-budget-spent: foo gap"]' "$FEAT_DIR/feature.json")" > "$FEAT_DIR/feature.json"
 bash "$LIB" write "$FEAT_DIR" --status completed --summary "Completed with iteration warnings." >/dev/null 2>&1
 check "C: converged=false with iterate-budget-spent warning" "false" "$(jq '.converged' "$FEAT_DIR/result.json")"
+check "C: outcome completed-with-gaps" "completed-with-gaps" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "C: workDelivered true despite gaps" "true" "$(jq '.workDelivered' "$FEAT_DIR/result.json")"
 check "C: warnings array present" "1" "$(jq '.warnings | length' "$FEAT_DIR/result.json")"
 
 # Restore clean warnings
@@ -213,6 +217,7 @@ check "O: cycle type" "micro" "$(jq -r '.cycleType' "$GENERIC_RESULT")"
 check "O: compatibility branch" "micro/doc-refresh" "$(jq -r '.branch' "$GENERIC_RESULT")"
 check "O: compatibility PR" "https://github.com/test/repo/pull/8" "$(jq -r '.prUrl' "$GENERIC_RESULT")"
 check "O: explicit convergence" "true" "$(jq -r '.converged' "$GENERIC_RESULT")"
+check "O: workDelivered true" "true" "$(jq '.workDelivered' "$GENERIC_RESULT")"
 check "O: verification command" "bash tests/run-all.sh" "$(jq -r '.verification.command' "$GENERIC_RESULT")"
 check "O: reduced summary exposed" "Documentation was refreshed and verified." "$(jq -r '.summary' "$GENERIC_RESULT")"
 check "O: reduced no-change reason defaults null" "null" "$(jq -r '.noChangeReason' "$GENERIC_RESULT")"
@@ -377,6 +382,7 @@ check "U: intentional no-change outcome" "no-change-needed" "$(jq -r '.outcome' 
 check "U: intentional no-change converged" "true" "$(jq -r '.converged' "$FEAT_DIR/result.json")"
 check "U: intentional no-change reason code" "already-satisfied" "$(jq -r '.noChangeReason' "$FEAT_DIR/result.json")"
 check "U: intentional no-change has no PR" "null" "$(jq -r '.prUrl' "$FEAT_DIR/result.json")"
+check "U: workDelivered false" "false" "$(jq '.workDelivered' "$FEAT_DIR/result.json")"
 check "U: intentional no-change has no checkpoint PR" "null" \
   "$(jq -r '.checkpointPrUrl' "$FEAT_DIR/result.json")"
 
@@ -416,6 +422,7 @@ bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
 check "V: reduced no-change completed" "completed" "$(jq -r '.status' "$GENERIC_RESULT")"
 check "V: reduced no-change reason" "already-satisfied" "$(jq -r '.noChangeReason' "$GENERIC_RESULT")"
 check "V: reduced no-change has no PR" "null" "$(jq -r '.prUrl' "$GENERIC_RESULT")"
+check "V: workDelivered false" "false" "$(jq '.workDelivered' "$GENERIC_RESULT")"
 
 rm -f "$GENERIC_RESULT"
 bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type diagnostic \
@@ -559,6 +566,27 @@ check "W6c: reconcile over a checkpoint-only PR stays interrupted" \
   "failed:false" \
   "$(jq -r '.status + ":" + (.converged | tostring)' "$LOOP_DIR/last-result.json")"
 
+# A SHA-bound green draft is delivered for resume, not a gap and not interrupted.
+printf '%s\n' "$(jq '.currentPhase = "deliver" | .delivery = {status:"pending",targets:[]}' \
+  <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+jq -n '{schema:1,ok:true,status:"delivered-draft",nextPhase:"completed",
+  prUrl:"https://github.com/test/repo/pull/1",attemptedAt:"2026-01-01T01:00:00Z",
+  finishedAt:"2026-01-01T01:05:00Z",
+  targets:[{name:"my-feature",ok:true,outcome:"delivered-draft",
+    prUrl:"https://github.com/test/repo/pull/1",targetSha:"abc",
+    checks:{status:"passed"}}]}' > "$FEAT_DIR/delivery.json"
+rm -f "$LOOP_DIR/last-result.json"
+bash "$LIB" begin --result-root "$WORK" --cycle-type full \
+  --title "Draft sign-off" --slug my-feature --feature-dir "$FEAT_DIR" \
+  --phase deliver --autonomous true
+LOOP_SPEC_RESULT_ROOT="$WORK" bash "$REPO_ROOT/lib/cycle-reconcile.sh" \
+  --result-root "$WORK" --reason "supervisor recovered a draft delivery" >/dev/null
+check "W6d: reconcile over delivered-draft is completed, not interrupted" \
+  "completed:delivered-draft:false" \
+  "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$LOOP_DIR/last-result.json")"
+check "W6d: draft delivery still counts as work shipped" "true" \
+  "$(jq '.workDelivered' "$LOOP_DIR/last-result.json")"
+
 # Case X: a phase handoff is terminal for one invocation while preserving
 # resumable feature state for the next fresh agent.
 printf '%s\n' "$(jq '.currentPhase = "plan"' <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
@@ -694,7 +722,7 @@ bash "$LIB" write "$FEAT_DIR" --status completed --summary "" >/dev/null 2>&1
 check "AA2: iterate verdict wins over the delivery fallback" \
   "Iterate said so." "$(jq -r '.summary' "$FEAT_DIR/result.json")"
 
-printf '%s\n' "$(jq 'del(.delivery)' "$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+printf '%s\n' "$(jq 'del(.delivery)' <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
 rm -f "$FEAT_DIR/result.json" "$FEAT_DIR/delivery.json"
 bash "$LIB" write "$FEAT_DIR" --status completed --summary "" >/dev/null 2>&1
 check "AA3: blank summary without delivery still refuses" "0" \
@@ -727,6 +755,106 @@ bash "$LIB" begin --result-root "$NULL_ROOT" --cycle-type full \
   --title "No classification" --phase routing
 check "AB4: begin without a classification stores JSON null" "null" \
   "$(jq -c '.classification' "$NULL_ROOT/.loop-spec/active-run.json")"
+
+# Case AC: a SHA-bound green draft is first-class, not completed-with-gaps.
+printf '%s\n' "$(jq '.currentPhase = "deliver" | .delivery = {status:"pending",targets:[]}
+  | .warnings = []' <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+jq -n '{schema:1,ok:true,status:"delivered-draft",nextPhase:"completed",
+  prUrl:"https://github.com/sidecar/pr/22",attemptedAt:"2026-01-01T01:00:00Z",
+  finishedAt:"2026-01-01T01:05:00Z",
+  targets:[{name:"my-feature",ok:true,outcome:"delivered-draft",
+    prUrl:"https://github.com/sidecar/pr/22",targetSha:"abc",
+    checks:{status:"passed"}}]}' > "$FEAT_DIR/delivery.json"
+LOOP_SPEC_DELIVERY_RECONCILE=0 bash "$LIB" write "$FEAT_DIR" --status completed \
+  --summary "Opened a draft PR for human sign-off." >/dev/null 2>&1
+check "AC: draft outcome" "delivered-draft" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "AC: draft not converged" "false" "$(jq '.converged' "$FEAT_DIR/result.json")"
+check "AC: draft workDelivered" "true" "$(jq '.workDelivered' "$FEAT_DIR/result.json")"
+check "AC: draft phaseReached completed" "completed" "$(jq -r '.phaseReached' "$FEAT_DIR/result.json")"
+check "AC: draft status completed" "completed" "$(jq -r '.status' "$FEAT_DIR/result.json")"
+
+# Iterate-budget warnings keep a ready PR in the gaps bucket, but work still shipped.
+printf '%s\n' "$(jq '.warnings = ["iterate-budget-spent: leftover"]' "$FEAT_DIR/feature.json")" \
+  > "$FEAT_DIR/feature.json"
+jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed",
+  prUrl:"https://github.com/sidecar/pr/23",
+  targets:[{name:"my-feature",ok:true,outcome:"delivered",
+    prUrl:"https://github.com/sidecar/pr/23"}]}' > "$FEAT_DIR/delivery.json"
+LOOP_SPEC_DELIVERY_RECONCILE=0 bash "$LIB" write "$FEAT_DIR" --status completed \
+  --summary "Completed with leftover iteration gaps." >/dev/null 2>&1
+check "AC2: ready PR with iterate gaps stays completed-with-gaps" \
+  "completed-with-gaps" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "AC2: gaps do not hide shipped work" "true" "$(jq '.workDelivered' "$FEAT_DIR/result.json")"
+
+# Schema-7 pending delivery + a gh PR URL and no sidecar is a gap until reconcile runs.
+printf '%s\n' "$(jq '.currentPhase = "deliver" | .delivery = {status:"pending",targets:[]}
+  | .warnings = [] | .prUrl = "https://github.com/bypass/pr/9"' \
+  <<<"$FIXTURE_FJ")" > "$FEAT_DIR/feature.json"
+rm -f "$FEAT_DIR/delivery.json"
+LOOP_SPEC_DELIVERY_RECONCILE=0 bash "$LIB" write "$FEAT_DIR" --status completed \
+  --summary "Agent opened a PR without deliver.sh." >/dev/null 2>&1
+check "AC3: bypass without sidecar is completed-with-gaps" \
+  "completed-with-gaps" "$(jq -r '.outcome' "$FEAT_DIR/result.json")"
+check "AC3: bypass PR still counts as workDelivered" "true" \
+  "$(jq '.workDelivered' "$FEAT_DIR/result.json")"
+
+# Case AD: write --status completed fail-open-reconciles a gh-created PR into a sidecar.
+RECON_ROOT="$WORK/recon-write"
+RECON_FEAT="$RECON_ROOT/.loop-spec/features/recon-feat"
+mkdir -p "$RECON_FEAT" "$WORK/shims"
+git -C "$RECON_ROOT" init -q
+git -C "$RECON_ROOT" config user.email t@t
+git -C "$RECON_ROOT" config user.name t
+git -C "$RECON_ROOT" commit --allow-empty -qm init
+printf '%s\n' "$(jq '.slug = "recon-feat" | .branch = "feat/recon"
+  | .currentPhase = "deliver" | .delivery = {status:"pending",targets:[]}
+  | .prUrl = "https://github.com/test/repo/pull/40" | .warnings = []' \
+  <<<"$FIXTURE_FJ")" > "$RECON_FEAT/feature.json"
+cat > "$WORK/shims/pr-delivery" <<'SHIM'
+#!/usr/bin/env bash
+set -uo pipefail
+printf '%s\n' "$*" >> "${FAKE_OBSERVE_LOG:?}"
+outcome="${FAKE_OBSERVE_OUTCOME:-delivered-draft}"
+url="${FAKE_OBSERVE_PR_URL:-https://github.com/test/repo/pull/40}"
+code="${FAKE_OBSERVE_ERROR:-}"
+ok=true
+[[ -z "$code" ]] || ok=false
+jq -cn --argjson ok "$ok" --arg outcome "$outcome" --arg url "$url" --arg code "$code" \
+  '{schema:1,ok:$ok,mode:"observe",outcome:$outcome,prUrl:$url,prNumber:40,
+    isDraft:($outcome == "delivered-draft"),targetSha:"abc",remoteSha:"abc",headSha:"abc",
+    checks:{status:"passed",required:[]},errorCode:(if $code == "" then null else $code end),
+    error:null}'
+[[ -z "$code" ]] || exit 1
+exit 0
+SHIM
+chmod +x "$WORK/shims/pr-delivery"
+: > "$WORK/observe.log"
+FAKE_OBSERVE_LOG="$WORK/observe.log" LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" \
+  bash "$LIB" write "$RECON_FEAT" --status completed \
+  --summary "Reconciled a gh-created draft." >/dev/null 2>&1
+check "AD: reconcile writes delivery.json" "delivered-draft" \
+  "$(jq -r '.status' "$RECON_FEAT/delivery.json")"
+check "AD: result outcome delivered-draft" "delivered-draft" \
+  "$(jq -r '.outcome' "$RECON_FEAT/result.json")"
+check "AD: result workDelivered" "true" "$(jq '.workDelivered' "$RECON_FEAT/result.json")"
+check "AD: result not converged" "false" "$(jq '.converged' "$RECON_FEAT/result.json")"
+check "AD: observe invoked" "1" "$(grep -c '^observe ' "$WORK/observe.log" || true)"
+
+# Fail-open: a broken observer cannot block publishing the terminal result.
+rm -f "$RECON_FEAT/delivery.json" "$RECON_FEAT/result.json"
+cat > "$WORK/shims/pr-delivery" <<'SHIM'
+#!/usr/bin/env bash
+echo 'not-json'
+exit 1
+SHIM
+chmod +x "$WORK/shims/pr-delivery"
+FAKE_OBSERVE_LOG="$WORK/observe.log" LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" \
+  bash "$LIB" write "$RECON_FEAT" --status completed \
+  --summary "Observer crashed; still publish." >/dev/null 2>&1
+check "AD2: fail-open still publishes" "completed" \
+  "$(jq -r '.status' "$RECON_FEAT/result.json")"
+check "AD2: fail-open writes no sidecar" "0" \
+  "$([[ -f "$RECON_FEAT/delivery.json" ]] && echo 1 || echo 0)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -90,7 +90,8 @@ _collect() {
           slug: $slug,
           phase: (if ($rj.status // "") == "completed" or
                          (($dj.nextPhase // "") == "completed" and
-                          ($dj.status // "") == "ready-for-review")
+                          (($dj.status // "") == "ready-for-review" or
+                           ($dj.status // "") == "delivered-draft"))
                   then "completed" else ($fj.currentPhase // null) end),
           iterations: {
             used: ($fj.iterate.used // 0),

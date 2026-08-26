@@ -4,6 +4,35 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+Draft-PR completion is a first-class terminal result. `cycle-result.sh` classifies a
+SHA-bound green draft as `outcome: delivered-draft` with `workDelivered: true`
+instead of `completed-with-gaps`. `lib/delivery-reconcile.sh` observes PRs created
+outside `lib/deliver.sh` and writes the canonical sidecar. Bash helpers in
+`lib/pr-delivery.sh` return snapshot fields instead of mutating `is_draft`.
+
+### Added
+
+- **`outcome: delivered-draft` and `workDelivered`.** Full-cycle `result.json`
+  distinguishes an intentional draft PR (human sign-off, safety gates) from
+  iterate gaps and aborted runs. `converged` stays false until the PR is marked
+  ready; `workDelivered` is the enterprise "did work ship?" gate. Additive on
+  schema 1.
+
+- **`lib/delivery-reconcile.sh`.** Terminal result publication and
+  `cycle-reconcile.sh` observe an open PR created via `gh`, read required checks
+  once, and write `delivery.json` (`delivered-draft` or `ready-for-review`).
+  Checkpoint-only PRs stay interrupted unless the agent claimed completion
+  (`--accept-checkpoint`). Kill switch: `LOOP_SPEC_DELIVERY_RECONCILE=0`.
+
+- **`pr-delivery.sh observe`.** No push, create, metadata edit, or ready flip.
+  Binds `--sha` to the existing PR and classifies a one-shot check observation.
+
+### Fixed
+
+- **`validate_pr_snapshot` no longer mutates `is_draft`.** Temps are local; the
+  caller assigns script-level identity fields through `apply_pr_snapshot`.
+  `refresh_remote_sha` and readiness observation return values on stdout.
+
 ## [4.4.1] - 2026-08-26
 
 Graph routing after EXECUTE and DELIVER. The deliver-next probe reads

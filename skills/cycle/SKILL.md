@@ -1240,7 +1240,8 @@ Full algorithm and escalation handling (iteration limit exhausted, NEEDS_CONTEXT
 ## On completion
 
 This section is reachable only after DELIVER wrote `delivery.json.nextPhase =
-"completed"`. Assert sidecar `status == "ready-for-review"`; otherwise stop with
+"completed"`. Assert sidecar `status == "ready-for-review"` or
+`status == "delivered-draft"`; otherwise stop with
 `delivery-incomplete` and leave tracked `feature.json.currentPhase = "deliver"`.
 Never overwrite or commit the tracked phase pointer here.
 
@@ -1264,7 +1265,10 @@ fi
 
 `run.sh --step` already publishes this result when it enters the `completed`
 node; a second write is idempotent. `write-terminal --outcome delivered` is
-the same alias if the agent reaches for DELIVER's own word. A non-zero write
+the same alias if the agent reaches for DELIVER's own word. A sidecar whose
+`status` is `delivered-draft` is a successful completion with a green draft PR
+(enterprise sign-off), not a gap: `outcome` is `delivered-draft`, `workDelivered`
+is true, and `converged` stays false until the PR is marked ready. A non-zero write
 is a publication failure — retry, then stop. Do not continue as if the pointer
 landed. The maintenance short path still reaches this section: ITERATE and DELIVER still run, and a headless caller still gates on this pointer. Do not
 exit after EXECUTE because the task felt like a sync. An empty ITERATE summary
