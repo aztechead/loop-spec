@@ -4,6 +4,16 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Deliver-next probe reads the sidecar.** A successful DELIVER writes
+  `nextPhase=completed` only to ignored `delivery.json` (tracked
+  `feature.json.delivery.nextPhase` stays null, or stale `execute` after
+  an earlier CI remediation). The graph probe read the tracked field, so
+  no post-delivery route satisfied and the engine published a spurious
+  `failed` terminal result. Prefer the sidecar; fall back to tracked
+  state for dry-run fixtures and durable execute-remediation.
+
 ## [4.4.0] - 2026-08-25
 
 Superpowers EXECUTE dispatch contracts. loop-spec ports the session-level

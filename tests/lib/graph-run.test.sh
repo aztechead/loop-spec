@@ -71,6 +71,50 @@ else
   check "cycle.graph.json validates" "0" "1"
 fi
 
+## --- 0b. cycle.graph.json: a successful delivery writes nextPhase only on
+##          the sidecar. The shipped graph must still reach completed — not
+##          abort with "no route satisfied" / failed — and must not take a
+##          stale tracked execute leftover from an earlier CI hop.
+if [[ -d "$WORK/cyclerepo" ]]; then
+  sidecar_feat="$WORK/cyclerepo/.loop-spec/features/sidecar-complete"
+  mkdir -p "$sidecar_feat"
+  jq -n --arg base "$base_sha" '{slug:"sidecar-complete",schemaVersion:7,execStyle:"auto",
+    baseSha:$base,iterate:{used:0,feedback:null},
+    delivery:{status:"pending",nextPhase:null}}' \
+    > "$sidecar_feat/feature.json"
+  jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed"}' \
+    > "$sidecar_feat/delivery.json"
+  set +e
+  sidecar_out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
+    --feature-dir ".loop-spec/features/sidecar-complete" "$ROOT/graph/cycle.graph.json")"
+  sidecar_rc=$?
+  set -e
+  check "sidecar-only completed: dry-run reaches completed (rc 0)" "0" "$sidecar_rc"
+  echo "$sidecar_out" | grep -q $'^completed\troute:deliver->completed'
+  check "sidecar-only completed: deliver routes to completed" "0" "$?"
+  echo "$sidecar_out" | grep -q $'^execute\troute:deliver->execute' && took_execute=1 || took_execute=0
+  check "sidecar-only completed: deliver does not take execute" "0" "$took_execute"
+
+  stale_feat="$WORK/cyclerepo/.loop-spec/features/sidecar-stale"
+  mkdir -p "$stale_feat"
+  jq -n --arg base "$base_sha" '{slug:"sidecar-stale",schemaVersion:7,execStyle:"auto",
+    baseSha:$base,iterate:{used:0,feedback:null},
+    delivery:{status:"checks-failed",nextPhase:"execute"}}' \
+    > "$stale_feat/feature.json"
+  jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed"}' \
+    > "$stale_feat/delivery.json"
+  set +e
+  stale_out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
+    --feature-dir ".loop-spec/features/sidecar-stale" "$ROOT/graph/cycle.graph.json")"
+  stale_rc=$?
+  set -e
+  check "sidecar completed vs stale tracked execute: dry-run rc 0" "0" "$stale_rc"
+  echo "$stale_out" | grep -q $'^completed\troute:deliver->completed'
+  check "sidecar completed vs stale tracked execute: still routes to completed" "0" "$?"
+  echo "$stale_out" | grep -q $'^execute\troute:deliver->execute' && stale_execute=1 || stale_execute=0
+  check "sidecar completed vs stale tracked execute: does not take execute" "0" "$stale_execute"
+fi
+
 ## --- 1. dry-run: structural walk, no state/dispatch side effects ---
 cat > "$WORK/basic.json" <<'EOF'
 {
@@ -328,6 +372,54 @@ step2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-step-agent" "$WORK/step
 check "step 2 (after caller's dispatch wrote fresh state): resolves the real route" "planX" "$(jq -r '.node' <<<"$step2")"
 check "step 2: nextEdge reflects the route actually taken" "route:iterate->planX" "$(jq -r '.nextEdge' <<<"$step2")"
 check "step 2: terminal (no further edges from planX)" "true" "$(jq -r '.terminal' <<<"$step2")"
+
+## --- 10b. --step after DELIVER: the skill writes the sidecar, then the
+##          following --step resolves routes from the checkpoint. Reading
+##          only tracked feature.json.delivery.nextPhase made that second
+##          step abort (exit 5, result=failed) even when delivery succeeded.
+cat > "$WORK/step-deliver.json" <<'EOF'
+{
+  "entry": "deliver",
+  "nodes": [
+    {"id":"deliver","kind":"agent","reads":[],"writes":[],"effort":"system2","body":"skills/deliver/SKILL.md"},
+    {"id":"execute","kind":"function","reads":[],"writes":[],"effort":"system1"},
+    {"id":"completed","kind":"function","reads":[],"writes":[],"effort":"system1"}
+  ],
+  "edges": [
+    {"from":"deliver","to":"execute","kind":"route","condition":{"probe":"lib/graph/probes/deliver-next.sh","args":["--feature-dir","{featureDir}"],"expects":"nextPhase=execute"}},
+    {"from":"deliver","to":"completed","kind":"route","condition":{"probe":"lib/graph/probes/deliver-next.sh","args":["--feature-dir","{featureDir}"],"expects":"nextPhase=completed"}},
+    {"from":"deliver","to":"deliver","kind":"route","condition":{"probe":"lib/graph/probes/deliver-next.sh","args":["--feature-dir","{featureDir}"],"expects":"nextPhase=deliver"}},
+    {"from":"deliver","to":"deliver","kind":"loop","ceiling":2,"strategy":"unroll"}
+  ]
+}
+EOF
+bash "$ROOT/lib/graph/validate.sh" "$WORK/step-deliver.json" >/dev/null
+check "step-deliver graph validates" "0" "$?"
+
+new_feat "$WORK/feat-step-deliver" \
+  '{slug:"stepdeliver",schemaVersion:7,currentPhase:"deliver",delivery:{status:"pending",nextPhase:null}}'
+dstep="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-step-deliver" "$WORK/step-deliver.json")"
+check "deliver step 1: descriptor names the agent node" "deliver" "$(jq -r '.node' <<<"$dstep")"
+check "deliver step 1: nextEdge deferred until the sidecar exists" "null" "$(jq -r '.nextEdge' <<<"$dstep")"
+
+jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed"}' \
+  > "$WORK/feat-step-deliver/delivery.json"
+# Leave tracked nextPhase stale execute — the production leftover after a
+# CI-remediation hop that then succeeded.
+jq '.delivery.nextPhase = "execute"' \
+  "$WORK/feat-step-deliver/feature.json" > "$WORK/feat-step-deliver/feature.json.tmp"
+mv "$WORK/feat-step-deliver/feature.json.tmp" "$WORK/feat-step-deliver/feature.json"
+
+set +e
+dstep2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-step-deliver" "$WORK/step-deliver.json" 2>"$WORK/feat-step-deliver.err")"
+dstep2_rc=$?
+set -e
+check "deliver step 2: sidecar completed does not abort (not exit 5)" "0" "$dstep2_rc"
+check "deliver step 2: resolves the completed route, not stale execute" \
+  "completed" "$(jq -r '.node' <<<"$dstep2")"
+echo "$(cat "$WORK/feat-step-deliver.err" 2>/dev/null || true)" | grep -q "no route satisfied" \
+  && aborted=1 || aborted=0
+check "deliver step 2: no 'no route satisfied' diagnostic" "0" "$aborted"
 
 ## --- 11. --step: function/gate dispatched in-process; human admit pauses too ---
 new_feat "$WORK/feat-step-human" '{slug:"stephuman",schemaVersion:7,execStyle:"step"}'
