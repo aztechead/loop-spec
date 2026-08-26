@@ -194,7 +194,8 @@
         "currentTeammates"
       ],
       "effort": "system2",
-      "body": "skills/execute/SKILL.md"
+      "body": "skills/execute/SKILL.md",
+      "routeDefault": "human.after-execute"
     },
     {
       "id": "execute.worker",

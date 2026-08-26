@@ -45,7 +45,9 @@ instead of dispatching `loop-spec:implementer` against an empty
   and merges inline and never touches `mergeQueue`, so the engine walked
   to the worker anyway. `lib/graph/probes/execute-fanout.sh` admits the
   fanout only when the queue still has work; otherwise the path goes to
-  `human.after-execute`.
+  `human.after-execute`. An unresolved probe takes that same skip as
+  `routeDefault`, so EXECUTE cannot abort the cycle the way a missing
+  DELIVER sidecar used to.
 
 ## [4.4.0] - 2026-08-25
 

@@ -129,6 +129,8 @@ skip_r="$(jq -r '[.edges[] | select(.from=="execute" and .to=="human.after-execu
 worker_r="$(jq -r '[.edges[] | select(.from=="execute" and .to=="execute.worker" and .kind=="route" and .condition.expects=="fanout=worker")] | length' "$GRAPH")"
 check "execute skip-fanout route present" "1" "$skip_r"
 check "execute admit-fanout route present" "1" "$worker_r"
+exec_default="$(jq -r '.nodes[] | select(.id=="execute") | .routeDefault // empty' "$GRAPH")"
+check "execute routeDefault skips the worker rather than aborting" "human.after-execute" "$exec_default"
 
 # Critique subgraph referenced twice
 crit="$(jq '[.nodes[] | select(.kind=="subgraph" and .graph=="graph/critique.graph.json")] | length' "$GRAPH")"

@@ -267,6 +267,13 @@ else
   echo "FAIL: $missing execute-fanout route(s) expect an undeclared answer"; FAIL=$((FAIL + 1))
 fi
 
+exec_default="$(jq -r '.nodes[] | select(.id=="execute") | .routeDefault // empty' "$ROOT/graph/cycle.graph.json")"
+if [[ "$exec_default" == "human.after-execute" ]]; then
+  echo "PASS: execute routeDefault is the skip target, not the worker"; PASS=$((PASS + 1))
+else
+  echo "FAIL: execute routeDefault is '$exec_default', expected human.after-execute"; FAIL=$((FAIL + 1))
+fi
+
 # =====================================================================
 # plan-critique.sh (wraps lib/security-signal.sh over a real git diff)
 # =====================================================================

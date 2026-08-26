@@ -12,7 +12,11 @@
 #
 # mergeQueue is the worker subgraph's input. A non-empty queue admits
 # the fanout; an empty or absent queue skips it. A mergeQueue that is
-# not an array fails closed (unresolved) rather than guessing.
+# not an array fails closed (unresolved) rather than guessing; the
+# execute node declares routeDefault=human.after-execute so that
+# unresolved case skips the worker instead of aborting the cycle.
+# Aborting was the instability: before these routes, execute had only
+# an unconditional fanout and could not RouteAbort.
 #
 # Usage:
 #   execute-fanout.sh --feature-dir DIR
