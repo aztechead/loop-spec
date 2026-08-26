@@ -25,7 +25,8 @@ outside `lib/deliver.sh` and writes the canonical sidecar. Bash helpers in
   (`--accept-checkpoint`). Kill switch: `LOOP_SPEC_DELIVERY_RECONCILE=0`.
 
 - **`pr-delivery.sh observe`.** No push, create, metadata edit, or ready flip.
-  Binds `--sha` to the existing PR and classifies a one-shot check observation.
+  Binds `--sha` to the existing PR head and remote branch, then classifies a
+  one-shot check observation.
 
 ### Fixed
 

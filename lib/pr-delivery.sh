@@ -14,9 +14,10 @@
 # PR is marked ready until every repo in the feature has cleared its checks.
 #
 # observe: do not push, create, edit metadata, or flip readiness. Find the open PR
-# for --branch (or --pr-url), bind it to --sha, and read required checks once.
-# Green draft → outcome "delivered-draft"; green ready → "delivered". Pending or
-# failed checks are a structured block. Title and body-file are not required.
+# for --branch (or --pr-url), bind it to --sha (PR head and remote branch), and read
+# required checks once. Green draft → outcome "delivered-draft"; green ready →
+# "delivered". Pending or failed checks are a structured block. Title and body-file
+# are not required.
 #
 # Script-level identity fields (pr_number, pr_url, head_sha, is_draft, remote_sha,
 # checks_json) are assigned only by apply_pr_snapshot, rollback_readiness, the
