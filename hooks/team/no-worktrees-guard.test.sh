@@ -11,7 +11,9 @@ check() {
   local name="$1" expected="$2" payload="$3"
   shift 3
   local actual=0
-  printf '%s' "$payload" | env "$@" bash "$HOOK" >/dev/null 2>&1 || actual=$?
+  # Here-string, not a pipe: LOOP_SPEC_WORKTREES=1 and out-of-scope return
+  # before reading stdin; a pipe then SIGPIPE (141) under parallel run-all.
+  env "$@" bash "$HOOK" >/dev/null 2>&1 <<< "$payload" || actual=$?
   if [[ "$actual" -eq "$expected" ]]; then
     echo "PASS: $name"
     ((PASS++)) || true
@@ -90,8 +92,8 @@ check_outside() {
   shift 3
   local outside actual=0
   outside="$(mktemp -d "${TMPDIR:-/tmp}/no-worktrees-guard-outside-XXXXXX")"
-  printf '%s' "$payload" \
-    | (cd "$outside" && env CLAUDE_PROJECT_DIR="$outside" "$@" bash "$HOOK") >/dev/null 2>&1 \
+  (cd "$outside" && env CLAUDE_PROJECT_DIR="$outside" "$@" bash "$HOOK") >/dev/null 2>&1 \
+    <<< "$payload" \
     || actual=$?
   rm -rf "$outside"
   if [[ "$actual" -eq "$expected" ]]; then
