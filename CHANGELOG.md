@@ -4,6 +4,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-08-26
+
 Draft-PR completion is a first-class terminal result. `cycle-result.sh` classifies a
 SHA-bound green draft as `outcome: delivered-draft` with `workDelivered: true`
 instead of `completed-with-gaps`. `lib/delivery-reconcile.sh` observes PRs created
