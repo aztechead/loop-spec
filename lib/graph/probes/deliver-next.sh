@@ -21,6 +21,11 @@
 # Tracked state remains the fallback for dry-run fixtures and a clone
 # that has the durable execute-remediation pointer but no local sidecar.
 #
+# Do not delete the sidecar at DELIVER start. lib/deliver.sh reuses it for
+# PR-URL hints and bound-SHA retries (bound_target_sha / .prUrl). An abort
+# before the final write then leaves the previous observation in place;
+# routing that observation is accepted. Clearing identity would break retry.
+#
 # Exit: 0 with one `nextPhase=<value> reason=<text>` line on stdout when
 # resolved; non-zero and silent otherwise.
 set -euo pipefail
