@@ -135,10 +135,14 @@ out="$(bash "$DELIVER_NEXT" --answers)"
   || { echo "FAIL: deliver-next --answers lists all three nextPhase tokens (got: $out)"; FAIL=$((FAIL+1)); }
 
 d="$(feature_dir next-execute '{"delivery":{"nextPhase":"execute"}}')"
-check_output "deliver-next resolves nextPhase=execute" "nextPhase=execute reason=" "$DELIVER_NEXT" --feature-dir "$d"
+check_output "deliver-next resolves tracked nextPhase=execute" \
+  "nextPhase=execute reason=feature.json.delivery.nextPhase=execute" \
+  "$DELIVER_NEXT" --feature-dir "$d"
 
 d="$(feature_dir next-completed '{"delivery":{"nextPhase":"completed"}}')"
-check_output "deliver-next resolves nextPhase=completed" "nextPhase=completed reason=" "$DELIVER_NEXT" --feature-dir "$d"
+check_output "deliver-next resolves tracked nextPhase=completed" \
+  "nextPhase=completed reason=feature.json.delivery.nextPhase=completed" \
+  "$DELIVER_NEXT" --feature-dir "$d"
 
 # "deliver" IS an answer. skills/deliver/SKILL.md sets it for push/identity/
 # check-oracle failures and documents the behaviour as "stop resumably rather
@@ -148,7 +152,9 @@ check_output "deliver-next resolves nextPhase=completed" "nextPhase=completed re
 # The graph declares a bounded self-loop for it instead; exhausting the ceiling
 # still aborts, but only after the retry the skill calls for.
 d="$(feature_dir next-retry '{"delivery":{"nextPhase":"deliver"}}')"
-check_output "deliver-next resolves nextPhase=deliver (bounded retry)" "nextPhase=deliver reason=" "$DELIVER_NEXT" --feature-dir "$d"
+check_output "deliver-next resolves tracked nextPhase=deliver (bounded retry)" \
+  "nextPhase=deliver reason=feature.json.delivery.nextPhase=deliver" \
+  "$DELIVER_NEXT" --feature-dir "$d"
 
 retry_route="$(jq -r '[.edges[]|select(.from=="deliver" and .to=="deliver" and .kind=="route" and .condition.expects=="nextPhase=deliver")]|length' "$ROOT/graph/cycle.graph.json")"
 retry_loop="$(jq -r '[.edges[]|select(.from=="deliver" and .to=="deliver" and .kind=="loop" and .ceiling>0)]|length' "$ROOT/graph/cycle.graph.json")"
@@ -160,6 +166,40 @@ fi
 
 d="$(feature_dir next-missing '{"delivery":{}}')"
 check "deliver-next is unresolved when delivery.nextPhase is absent" 1 "$DELIVER_NEXT" --feature-dir "$d"
+
+# lib/deliver.sh writes success/retry only to the sidecar. The production
+# post-delivery route must resolve from that file even when tracked
+# nextPhase is still null — or worse, leftover execute from an earlier
+# CI-remediation hop.
+d="$(feature_dir sidecar-completed '{"delivery":{"status":"pending","nextPhase":null}}')"
+printf '%s' '{"schema":1,"ok":true,"status":"ready-for-review","nextPhase":"completed"}' \
+  > "$d/delivery.json"
+check_output "deliver-next resolves sidecar nextPhase=completed" \
+  "nextPhase=completed reason=delivery.json.nextPhase=completed" \
+  "$DELIVER_NEXT" --feature-dir "$d"
+
+d="$(feature_dir sidecar-wins-stale '{"delivery":{"status":"checks-failed","nextPhase":"execute"}}')"
+printf '%s' '{"schema":1,"ok":true,"status":"ready-for-review","nextPhase":"completed"}' \
+  > "$d/delivery.json"
+check_output "deliver-next sidecar completed beats stale tracked execute" \
+  "nextPhase=completed reason=delivery.json.nextPhase=completed" \
+  "$DELIVER_NEXT" --feature-dir "$d"
+
+d="$(feature_dir sidecar-retry '{"delivery":{}}')"
+printf '%s' '{"schema":1,"ok":false,"status":"push-failed","nextPhase":"deliver"}' \
+  > "$d/delivery.json"
+check_output "deliver-next resolves sidecar nextPhase=deliver" \
+  "nextPhase=deliver reason=delivery.json.nextPhase=deliver" \
+  "$DELIVER_NEXT" --feature-dir "$d"
+
+# A sidecar that names a non-answer must fail closed, not fall through to
+# tracked execute and silently take the remediation route.
+d="$(feature_dir sidecar-bogus '{"delivery":{"nextPhase":"execute"}}')"
+printf '%s' '{"nextPhase":"pending"}' > "$d/delivery.json"
+check "deliver-next is unresolved on a sidecar nextPhase outside the answer set" \
+  1 "$DELIVER_NEXT" --feature-dir "$d"
+check_silent "deliver-next prints nothing on a sidecar nextPhase outside the answer set" \
+  "$DELIVER_NEXT" --feature-dir "$d"
 
 # =====================================================================
 # plan-critique.sh (wraps lib/security-signal.sh over a real git diff)

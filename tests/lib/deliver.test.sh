@@ -139,6 +139,10 @@ check "single: exit 0" "0" "$ec"
 check "single: aggregate ready" "ready-for-review" "$(jq -r '.status' <<<"$out" 2>/dev/null)"
 check "single: sidecar ready" "ready-for-review" "$(jq -r '.status' "$FDIR/delivery.json")"
 check "single: deterministic next phase" "completed" "$(jq -r '.nextPhase' "$FDIR/delivery.json")"
+check "single: tracked nextPhase stays unset on success" "null" \
+  "$(jq -r '.delivery.nextPhase' "$FDIR/feature.json")"
+check "single: graph probe sees sidecar completed" "nextPhase=completed" \
+  "$(bash "$ROOT/lib/graph/probes/deliver-next.sh" --feature-dir "$FDIR" | awk '{print $1}')"
 check "single: committed phase remains resumable" "deliver" "$(jq -r '.currentPhase' "$FDIR/feature.json")"
 check "single: URL persisted locally" "https://github.com/test/repo/pull/7" "$(jq -r '.prUrl' "$FDIR/delivery.json")"
 FINALIZED_SHA="$(git -C "$SINGLE" rev-parse HEAD)"
@@ -173,6 +177,8 @@ out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_FAIL=1 
 check "failure: exit 1" "1" "$ec"
 check "failure: state not ready" "checks-failed" "$(jq -r '.delivery.status' "$FDIR/feature.json")"
 check "failure: deterministic remediation route" "execute" "$(jq -r '.delivery.nextPhase' "$FDIR/feature.json")"
+check "failure: graph probe sees execute" "nextPhase=execute" \
+  "$(bash "$ROOT/lib/graph/probes/deliver-next.sh" --feature-dir "$FDIR" | awk '{print $1}')"
 check "failure: remediation attempt counted" "1" "$(jq -r '.delivery.ciRemediationAttempts' "$FDIR/feature.json")"
 check "failure: phase routed to execute" "execute" "$(jq -r '.currentPhase' "$FDIR/feature.json")"
 check "failure: remediation task appended" "task-delivery-ci-demo" "$(jq -r '.pendingRemediationTasks[0].id' "$FDIR/feature.json")"
@@ -190,6 +196,8 @@ out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" FAKE_DELIVERY_FAIL=1 
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$FDIR")" || ec=$?
 check "failure limit: exit 1" "1" "$ec"
 check "failure limit: route stops at deliver" "deliver" "$(jq -r '.nextPhase' "$FDIR/delivery.json")"
+check "failure limit: graph probe sees deliver" "nextPhase=deliver" \
+  "$(bash "$ROOT/lib/graph/probes/deliver-next.sh" --feature-dir "$FDIR" | awk '{print $1}')"
 check "failure limit: tracked phase unchanged" "deliver" "$(jq -r '.currentPhase' "$FDIR/feature.json")"
 check "failure limit: no extra attempt" "2" "$(jq -r '.ciRemediationAttempts' "$FDIR/delivery.json")"
 

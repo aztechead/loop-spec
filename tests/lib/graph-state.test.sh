@@ -123,6 +123,67 @@ bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node verify \
   --graph "$WORK/graph/required.graph.json" 2>/dev/null || rc=$?
 check "the same key as a plain read still blocks" "1" "$rc"
 
+# --- workspace identity keys: top-level branch/baseSha/baseBranch are null
+#     by design; per-repo values satisfy a declared read. The shipped execute
+#     node reads "branch", so a flat None check blocked every workspace run.
+SHIPPED="$ROOT/graph/cycle.graph.json"
+mkdir -p "$WORK/ws-feature"
+bash "$ROOT/lib/feature-init.sh" skeleton --mode workspace \
+  --slug ws-exec --now "$NOW" --style auto --title "workspace assert-reads" \
+  --ws-root /ws \
+  --repos '[{"name":"fe","path":"fe","branch":"feat/ws-exec","baseSha":"abc","baseBranch":"main"},{"name":"be","path":"be","branch":"feat/ws-exec","baseSha":"def","baseBranch":"main"}]' \
+  > "$WORK/ws-feature/feature.json"
+
+for node in execute execute.worker verify.code-review deliver; do
+  rc=0
+  bash "$SCRIPT" assert-reads --feature-dir "$WORK/ws-feature" --node "$node" \
+    --graph "$SHIPPED" || rc=$?
+  check "workspace $node: per-repo identity satisfies shipped reads[]" "0" "$rc"
+done
+
+# A repo that did not actually record its branch still fails — the relocation
+# is not a blanket skip of the key.
+jq '.workspace.repos[1].branch = null' "$WORK/ws-feature/feature.json" \
+  > "$WORK/ws-feature/feature.json.tmp"
+mv "$WORK/ws-feature/feature.json.tmp" "$WORK/ws-feature/feature.json"
+rc=0
+err="$(bash "$SCRIPT" assert-reads --feature-dir "$WORK/ws-feature" --node execute \
+  --graph "$SHIPPED" 2>&1)" || rc=$?
+check "workspace execute fails when a repo has no branch" "1" "$rc"
+echo "$err" | grep -qx 'branch' && named=0 || named=1
+check "workspace execute names the unsatisfied key" "0" "$named"
+
+# Empty repos[] is a workspace with no authoritative identity.
+jq '.workspace.repos = []' "$WORK/ws-feature/feature.json" \
+  > "$WORK/ws-feature/feature.json.tmp"
+mv "$WORK/ws-feature/feature.json.tmp" "$WORK/ws-feature/feature.json"
+rc=0
+bash "$SCRIPT" assert-reads --feature-dir "$WORK/ws-feature" --node execute \
+  --graph "$SHIPPED" 2>/dev/null || rc=$?
+check "workspace execute fails when repos[] is empty" "1" "$rc"
+
+# Single-mode still requires the top-level key. The existing fixture has a
+# branch; null it and the shipped execute node must fail.
+bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" branch 'null'
+rc=0
+bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node execute \
+  --graph "$SHIPPED" 2>/dev/null || rc=$?
+check "single-mode execute still fails when top-level branch is null" "1" "$rc"
+bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" branch '"feat/gdd-state"'
+
+# Only branch/baseSha/baseBranch are relocated. A non-relocated null key still
+# blocks in workspace mode, exactly as it does in single mode.
+bash "$ROOT/lib/feature-init.sh" skeleton --mode workspace \
+  --slug ws-wt --now "$NOW" --style auto \
+  --ws-root /ws \
+  --repos '[{"name":"fe","path":"fe","branch":"feat/ws-wt","baseSha":"abc","baseBranch":"main"}]' \
+  > "$WORK/ws-feature/feature.json"
+bash "$ROOT/lib/feature-write.sh" set "$WORK/ws-feature" slug 'null'
+rc=0
+bash "$SCRIPT" assert-reads --feature-dir "$WORK/ws-feature" --node spec \
+  --graph "$WORK/graph/cycle.graph.json" 2>/dev/null || rc=$?
+check "workspace mode still fails a null non-identity read" "1" "$rc"
+
 # --- delegate stub: when FEATURE_WRITE points at stub, no write without stub invoke ---
 printf '#!/usr/bin/env bash\necho STUB_CALLED >> "%s/stub.log"\nexit 0\n' "$WORK" > "$WORK/bin/feature-write.sh"
 chmod +x "$WORK/bin/feature-write.sh"

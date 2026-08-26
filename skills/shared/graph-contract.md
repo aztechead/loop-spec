@@ -158,7 +158,11 @@ Every node declares `reads[]` and `writes[]` from the `stateKey` enum in
 outside the enum and a read key that no node writes and no feature-init skeleton seeds.
 At runtime, `lib/graph/state.sh` is the typed channel: a write to a key absent from the
 node's `writes[]` fails and writes nothing, and entering a node with a declared read
-absent or null fails — both covered by `tests/lib/graph-state.test.sh`.
+absent or null fails. In workspace mode the schema relocates `branch`, `baseSha`, and
+`baseBranch` onto `workspace.repos[]` and leaves the top-level keys null; `assert-reads`
+treats those per-repo values as the read. No other key is relocated — a null one still
+fails in both modes, and `optionalReads[]` below remains the way to declare a key the
+schema lets be null. Covered by `tests/lib/graph-state.test.sh`.
 
 A node may also declare `optionalReads[]`: keys it consults that are legitimately absent
 or null because the schema documents an opt-out for them. `verificationBaseline` is the

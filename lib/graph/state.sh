@@ -66,15 +66,39 @@ node_json="$(jq -c --arg id "$node_id" '.nodes[] | select(.id==$id)' "$graph_pat
 case "$cmd" in
   assert-reads)
     reads="$(jq -c '.reads // []' <<<"$node_json")"
+    # Workspace mode relocates branch/baseSha/baseBranch onto workspace.repos[]
+    # and leaves the top-level keys null by design (feature-state-schema.md).
+    # A flat feat[key] is None check treats that as a missing read, so the
+    # shipped execute node (reads: [..., "branch"]) always failed the gate.
     unsatisfied="$(python3 - "$feature_dir/feature.json" "$reads" <<'PY'
 import json, sys
+
+# The only keys the schema relocates. Every other key stays top-level in both
+# modes, so a null one is a missing read here exactly as it is in single mode.
+RELOCATED = ("branch", "baseSha", "baseBranch")
+
 feat = json.load(open(sys.argv[1]))
 reads = json.loads(sys.argv[2])
-bad = []
-for key in reads:
-    if key not in feat or feat[key] is None:
-        bad.append(key)
-print("\n".join(bad))
+ws = feat.get("workspace")
+repos = ws.get("repos") if isinstance(ws, dict) else None
+if not isinstance(repos, list):
+    repos = None
+
+def repo_has(repo, key):
+    if not isinstance(repo, dict):
+        return False
+    val = repo.get(key)
+    return isinstance(val, str) and val.strip() != ""
+
+def satisfied(key):
+    if key in feat and feat[key] is not None:
+        return True
+    if repos is None or key not in RELOCATED:
+        return False
+    # An empty repos[] is a workspace with no authoritative identity at all.
+    return len(repos) > 0 and all(repo_has(r, key) for r in repos)
+
+print("\n".join(key for key in reads if not satisfied(key)))
 PY
 )"
     if [[ -n "$unsatisfied" ]]; then
