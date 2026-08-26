@@ -118,11 +118,19 @@ check "deliver->execute retry loop has a ceiling" "1" "$([[ "$dl" -ge 1 ]] && ec
 il="$(jq -r '[.edges[] | select(.from=="iterate" and .to=="verify" and .kind=="loop" and .ceiling > 0)] | length' "$GRAPH")"
 check "iterate->verify round loop has a ceiling" "1" "$([[ "$il" -ge 1 ]] && echo 1 || echo 0)"
 
-# EXECUTE fanout/fanin
+# EXECUTE fanout/fanin. The fanout stays declared; a probe admits it only
+# when mergeQueue still has work, because the execute node body already
+# runs the selected rung to completion.
 fanout="$(jq '[.edges[] | select(.kind=="fanout")] | length' "$GRAPH")"
 fanin="$(jq '[.edges[] | select(.kind=="fanin")] | length' "$GRAPH")"
 check "execute fanout present" "1" "$([[ "$fanout" -ge 1 ]] && echo 1 || echo 0)"
 check "execute fanin present" "1" "$([[ "$fanin" -ge 1 ]] && echo 1 || echo 0)"
+skip_r="$(jq -r '[.edges[] | select(.from=="execute" and .to=="human.after-execute" and .kind=="route" and .condition.expects=="fanout=skip")] | length' "$GRAPH")"
+worker_r="$(jq -r '[.edges[] | select(.from=="execute" and .to=="execute.worker" and .kind=="route" and .condition.expects=="fanout=worker")] | length' "$GRAPH")"
+check "execute skip-fanout route present" "1" "$skip_r"
+check "execute admit-fanout route present" "1" "$worker_r"
+exec_default="$(jq -r '.nodes[] | select(.id=="execute") | .routeDefault // empty' "$GRAPH")"
+check "execute routeDefault skips the worker rather than aborting" "human.after-execute" "$exec_default"
 
 # Critique subgraph referenced twice
 crit="$(jq '[.nodes[] | select(.kind=="subgraph" and .graph=="graph/critique.graph.json")] | length' "$GRAPH")"

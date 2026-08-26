@@ -67,6 +67,10 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
     echo "$out" | grep -q "^${phase}"$'\t'
     check "cycle.graph.json dry-run visits $phase" "0" "$?"
   done
+  echo "$out" | grep -q "^execute.worker"$'\t' && empty_worker=0 || empty_worker=1
+  check "cycle.graph.json dry-run skips execute.worker when mergeQueue is empty" "1" "$empty_worker"
+  echo "$out" | grep -q "^execute.join"$'\t' && empty_join=0 || empty_join=1
+  check "cycle.graph.json dry-run skips execute.join when mergeQueue is empty" "1" "$empty_join"
 else
   check "cycle.graph.json validates" "0" "1"
 fi
@@ -104,6 +108,29 @@ if [[ -d "$WORK/cyclerepo" ]]; then
     '{"status":"pending","nextPhase":null}'
   check_sidecar_route "sidecar completed beats stale tracked execute" sidecar-stale \
     '{"status":"checks-failed","nextPhase":"execute"}'
+fi
+
+## --- 0c. cycle.graph.json: a leftover mergeQueue admits execute.worker.
+##          The skip path (empty queue) is pinned in section 0; this is the
+##          other declared answer, so a non-empty queue must still reach
+##          the fanout rather than abort with "no route satisfied".
+if [[ -d "$WORK/cyclerepo" ]]; then
+  qdir="$WORK/cyclerepo/.loop-spec/features/queue-worker"
+  mkdir -p "$qdir"
+  jq -n --arg base "$base_sha" '{slug:"queue-worker",schemaVersion:7,execStyle:"auto",
+    baseSha:$base,iterate:{used:0,feedback:null},
+    delivery:{nextPhase:"completed"},mergeQueue:["task-001"]}' \
+    > "$qdir/feature.json"
+  set +e
+  qout="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
+    --feature-dir ".loop-spec/features/queue-worker" "$ROOT/graph/cycle.graph.json")"
+  qrc=$?
+  set -e
+  check "non-empty mergeQueue dry-run reaches completed (rc 0)" "0" "$qrc"
+  echo "$qout" | grep -q "^execute.worker"$'\t' && q_worker=0 || q_worker=1
+  check "non-empty mergeQueue visits execute.worker" "0" "$q_worker"
+  echo "$qout" | grep -q "^execute.join"$'\t' && q_join=0 || q_join=1
+  check "non-empty mergeQueue visits execute.join" "0" "$q_join"
 fi
 
 ## --- 1. dry-run: structural walk, no state/dispatch side effects ---
@@ -465,6 +492,106 @@ check "workspace execute: --step enters the execute node" \
 grep -q "assert-reads" "$WORK/feat-ws-exec.err" 2>/dev/null \
   && ws_assert=1 || ws_assert=0
 check "workspace execute: no assert-reads diagnostic" "0" "$ws_assert"
+
+# Live protocol: after the execute agent returns, the following --step
+# resolves routes from the checkpoint. An empty mergeQueue (workspace
+# subagent rung) must skip execute.worker and must not abort (exit 5).
+set +e
+ws_step2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-ws-exec" \
+  "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-ws-exec2.err")"
+ws_step2_rc=$?
+set -e
+check "workspace execute step 2: does not abort" "0" "$ws_step2_rc"
+check "workspace execute step 2: does not dispatch execute.worker" \
+  "1" "$([[ "$(jq -r '.node' <<<"$ws_step2")" == "execute.worker" ]] && echo 0 || echo 1)"
+grep -q "no route satisfied" "$WORK/feat-ws-exec2.err" 2>/dev/null \
+  && ws_abort=1 || ws_abort=0
+check "workspace execute step 2: no 'no route satisfied' diagnostic" "0" "$ws_abort"
+# Keep stepping until an agent node (cycle's own loop). Must land on verify.
+ws_agent="human.after-execute"
+ws_guard=0
+while [[ "$ws_agent" != "verify" && "$ws_guard" -lt 8 ]]; do
+  ws_guard=$((ws_guard + 1))
+  set +e
+  ws_next="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-ws-exec" \
+    "$ROOT/graph/cycle.graph.json" 2>/dev/null)"
+  set -e
+  ws_agent="$(jq -r '.node' <<<"$ws_next")"
+  [[ "$(jq -r '.kind' <<<"$ws_next")" == "agent" ]] && break
+done
+check "workspace execute: post-execute agent is verify, not execute.worker" \
+  "verify" "$ws_agent"
+
+## --- 12c. shipped cycle graph --step after execute: empty queue skips
+##          the worker; leftover queue admits it; a malformed queue takes
+##          routeDefault instead of aborting the cycle.
+mkdir -p "$WORK/feat-exec-step"
+new_feat "$WORK/feat-exec-step" \
+  '{slug:"execstep",schemaVersion:7,execStyle:"auto",phaseHandoff:false,currentPhase:"execute",
+    branch:"feat/execstep",commands:{prepare:"",test:"",lint:"",typecheck:""},
+    artifacts:{},pendingRemediationTasks:[],mergeQueue:[],
+    iterate:{used:0,feedback:null},delivery:{nextPhase:"completed"}}'
+set +e
+es1="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-step" \
+  "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-exec-step.err")"
+es1_rc=$?
+set -e
+check "execute step 1: enters execute" "execute" "$(jq -r '.node' <<<"$es1")"
+check "execute step 1: nextEdge deferred" "null" "$(jq -r '.nextEdge' <<<"$es1")"
+check "execute step 1: rc 0" "0" "$es1_rc"
+
+set +e
+es2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-step" \
+  "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-exec-step2.err")"
+es2_rc=$?
+set -e
+check "empty mergeQueue step 2: does not abort" "0" "$es2_rc"
+check "empty mergeQueue step 2: skips execute.worker" \
+  "1" "$([[ "$(jq -r '.node' <<<"$es2")" == "execute.worker" ]] && echo 0 || echo 1)"
+grep -q "no route satisfied" "$WORK/feat-exec-step2.err" 2>/dev/null \
+  && es_abort=1 || es_abort=0
+check "empty mergeQueue step 2: no 'no route satisfied' diagnostic" "0" "$es_abort"
+
+# Fresh feature: leftover mergeQueue admits the worker.
+mkdir -p "$WORK/feat-exec-worker"
+new_feat "$WORK/feat-exec-worker" \
+  '{slug:"execworker",schemaVersion:7,execStyle:"auto",currentPhase:"execute",
+    branch:"feat/execworker",commands:{prepare:"",test:"",lint:"",typecheck:""},
+    artifacts:{},pendingRemediationTasks:[],mergeQueue:["task-001"],
+    iterate:{used:0,feedback:null},delivery:{nextPhase:"completed"}}'
+set +e
+ew1="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-worker" \
+  "$ROOT/graph/cycle.graph.json" 2>/dev/null)"
+ew2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-worker" \
+  "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-exec-worker2.err")"
+ew2_rc=$?
+set -e
+check "leftover mergeQueue step 1: enters execute" "execute" "$(jq -r '.node' <<<"$ew1")"
+check "leftover mergeQueue step 2: does not abort" "0" "$ew2_rc"
+check "leftover mergeQueue step 2: admits execute.worker" \
+  "execute.worker" "$(jq -r '.node' <<<"$ew2")"
+
+# Malformed mergeQueue: probe unresolved, routeDefault skips the worker.
+mkdir -p "$WORK/feat-exec-badq"
+new_feat "$WORK/feat-exec-badq" \
+  '{slug:"execbadq",schemaVersion:7,execStyle:"auto",phaseHandoff:false,currentPhase:"execute",
+    branch:"feat/execbadq",commands:{prepare:"",test:"",lint:"",typecheck:""},
+    artifacts:{},pendingRemediationTasks:[],mergeQueue:"not-an-array",
+    iterate:{used:0,feedback:null},delivery:{nextPhase:"completed"}}'
+set +e
+eb1="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-badq" \
+  "$ROOT/graph/cycle.graph.json" 2>/dev/null)"
+eb2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-badq" \
+  "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-exec-badq2.err")"
+eb2_rc=$?
+set -e
+check "malformed mergeQueue step 1: enters execute" "execute" "$(jq -r '.node' <<<"$eb1")"
+check "malformed mergeQueue step 2: routeDefault does not abort" "0" "$eb2_rc"
+check "malformed mergeQueue step 2: does not dispatch execute.worker" \
+  "1" "$([[ "$(jq -r '.node' <<<"$eb2")" == "execute.worker" ]] && echo 0 || echo 1)"
+grep -q "no route satisfied" "$WORK/feat-exec-badq2.err" 2>/dev/null \
+  && eb_abort=1 || eb_abort=0
+check "malformed mergeQueue step 2: no 'no route satisfied' diagnostic" "0" "$eb_abort"
 
 ## --- 13. wiring: gate body failure invokes conflict-monitor.sh and blocks the phase ---
 cat > "$WORK/bin/failing-gate.sh" <<'EOF'

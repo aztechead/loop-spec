@@ -78,8 +78,15 @@ must be reachable from `entry` — both `FLAG`s from `lib/graph/validate.sh`.
 3. **`fanout`.** One-to-many dispatch: one source, N parallel instances of the target —
    EXECUTE's task waves, `execute` fanning out to `execute.worker`. The same declaration
    serves width 1 and width N; width selects an execution rung via
-   `lib/execute-rung.sh`, it never edits the topology. The EXECUTE fanout/fanin pairing
-   is asserted by `tests/graph-conformance.test.sh`.
+   `lib/execute-rung.sh`, it never edits the topology. The execute node body already
+   runs the selected rung to completion (inline, subagent, loop, team, workflow), so
+   walking the fanout afterward would dispatch `loop-spec:implementer` against an
+   empty `mergeQueue`. `lib/graph/probes/execute-fanout.sh` admits the fanout only
+   when `mergeQueue` still has work; otherwise the engine routes to
+   `human.after-execute`. The execute node declares `routeDefault` to that same
+   skip target, so an unresolved probe cannot abort the cycle the way DELIVER's
+   missing sidecar used to. The EXECUTE fanout/fanin pairing is asserted by
+   `tests/graph-conformance.test.sh`.
 4. **`fanin`.** Many-to-one join: the target runs once after the fanned-out instances
    return, merged under a declared `join` rule (`merge-queue` for EXECUTE). A `fanin`
    without a `join` is a `FLAG` from `lib/graph/validate.sh`, required by the

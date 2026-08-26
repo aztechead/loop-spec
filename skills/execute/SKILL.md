@@ -779,7 +779,12 @@ lib/feature-write.sh set currentTeammates "[]"
 
 Always return to the cycle orchestrator; never invoke a successor phase directly.
 EXECUTE declares no successor — `graph/cycle.graph.json` does, and the engine
-(`lib/graph/run.sh`, cycle Step 6) selects the next node. Cycle owns the phase
+(`lib/graph/run.sh`, cycle Step 6) selects the next node. After this skill
+returns, `lib/graph/probes/execute-fanout.sh` reads `mergeQueue`: an empty
+queue skips `execute.worker` (the rung already finished the DAG inside this
+node); a non-empty queue admits the declared fanout. An unresolved probe
+takes `routeDefault` (`human.after-execute`) rather than aborting the
+cycle. Cycle owns the phase
 boundary: continuous mode enters the engine-selected node immediately, while
 `phaseHandoff == true` writes the paused result and ends the main-agent invocation.
 For `step` / `interactive`, include the completed-task summary and the

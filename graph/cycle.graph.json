@@ -194,7 +194,8 @@
         "currentTeammates"
       ],
       "effort": "system2",
-      "body": "skills/execute/SKILL.md"
+      "body": "skills/execute/SKILL.md",
+      "routeDefault": "human.after-execute"
     },
     {
       "id": "execute.worker",
@@ -520,6 +521,32 @@
       "from": "human.after-plan",
       "to": "execute",
       "kind": "chain"
+    },
+    {
+      "from": "execute",
+      "to": "human.after-execute",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/execute-fanout.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "fanout=skip"
+      }
+    },
+    {
+      "from": "execute",
+      "to": "execute.worker",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/execute-fanout.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "fanout=worker"
+      }
     },
     {
       "from": "execute",
