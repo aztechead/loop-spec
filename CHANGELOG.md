@@ -4,6 +4,13 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.4.1] - 2026-08-26
+
+Deliver-next routing after a genuine ready-for-review, and workspace
+execute. The graph probe now reads ignored `delivery.json` so a successful
+DELIVER reaches `completed` instead of publishing `failed`. Workspace
+features no longer fail `assert-reads` on a null top-level `branch`.
+
 ### Fixed
 
 - **Deliver-next probe reads the sidecar.** A successful DELIVER writes
