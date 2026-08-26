@@ -14,6 +14,14 @@ All notable changes documented here. Format follows Keep a Changelog.
   `failed` terminal result. Prefer the sidecar; fall back to tracked
   state for dry-run fixtures and durable execute-remediation.
 
+- **Workspace execute no longer fails assert-reads on a null top-level
+  `branch`.** `graph/cycle.graph.json`'s execute node (and
+  `execute.worker`, `verify.code-review`, `deliver`) declare a `branch`
+  read. Workspace-mode features keep top-level `branch`/`baseSha`/
+  `baseBranch` null by design. `state.sh assert-reads` treated that as a
+  missing key. It now takes `workspace.repos[]` as authoritative for
+  those identity keys.
+
 ## [4.4.0] - 2026-08-25
 
 Superpowers EXECUTE dispatch contracts. loop-spec ports the session-level

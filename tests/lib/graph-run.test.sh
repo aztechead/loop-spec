@@ -451,6 +451,30 @@ check "unsatisfied declared read is enforced (state.sh wired, not orphaned): exi
 echo "$out" | grep -q "assert-reads"
 check "diagnostic names assert-reads" "0" "$?"
 
+## --- 12b. workspace execute: the shipped cycle graph reads "branch", and
+##          workspace features keep top-level branch null. Entering execute
+##          must not fail assert-reads when every repo recorded its branch.
+mkdir -p "$WORK/feat-ws-exec"
+bash "$ROOT/lib/feature-init.sh" skeleton --mode workspace \
+  --slug wsexec --now 2026-01-01T00:00:00Z --style auto \
+  --ws-root /ws \
+  --repos '[{"name":"fe","path":"fe","branch":"feat/wsexec","baseSha":"abc","baseBranch":"main"}]' \
+  > "$WORK/feat-ws-exec/feature.json"
+jq '.currentPhase = "execute"' "$WORK/feat-ws-exec/feature.json" \
+  > "$WORK/feat-ws-exec/feature.json.tmp"
+mv "$WORK/feat-ws-exec/feature.json.tmp" "$WORK/feat-ws-exec/feature.json"
+set +e
+ws_step="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-ws-exec" \
+  "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-ws-exec.err")"
+ws_step_rc=$?
+set -e
+check "workspace execute: --step does not fail assert-reads" "0" "$ws_step_rc"
+check "workspace execute: --step enters the execute node" \
+  "execute" "$(jq -r '.node' <<<"$ws_step")"
+echo "$(cat "$WORK/feat-ws-exec.err" 2>/dev/null || true)" | grep -q "assert-reads" \
+  && ws_assert=1 || ws_assert=0
+check "workspace execute: no assert-reads diagnostic" "0" "$ws_assert"
+
 ## --- 13. wiring: gate body failure invokes conflict-monitor.sh and blocks the phase ---
 cat > "$WORK/bin/failing-gate.sh" <<'EOF'
 #!/usr/bin/env bash
