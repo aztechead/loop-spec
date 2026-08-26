@@ -6,10 +6,13 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [4.4.1] - 2026-08-26
 
-Deliver-next routing after a genuine ready-for-review, and workspace
-execute. The graph probe now reads ignored `delivery.json` so a successful
-DELIVER reaches `completed` instead of publishing `failed`. Workspace
-features no longer fail `assert-reads` on a null top-level `branch`.
+Graph routing after EXECUTE and DELIVER. The deliver-next probe reads
+ignored `delivery.json` so a successful DELIVER reaches `completed`
+instead of publishing `failed`. Workspace features no longer fail
+`assert-reads` on a null top-level `branch`. After a rung that finishes
+the DAG inside the execute node, the engine skips `execute.worker`
+instead of dispatching `loop-spec:implementer` against an empty
+`mergeQueue`.
 
 ### Fixed
 
@@ -34,6 +37,15 @@ features no longer fail `assert-reads` on a null top-level `branch`.
   those identity keys, and only those: every other key, `worktreePath`
   included, still fails when null in either mode, with `optionalReads[]`
   the way to declare one the schema lets be null.
+
+- **Execute fanout is skipped when `mergeQueue` is empty.** The execute
+  node had one outgoing edge: an unconditional fanout to `execute.worker`
+  (per-task `loop-spec:implementer` for the workflow/loop-fleet mergeQueue
+  path). The subagent rung — hard-pinned by workspace mode — dispatches
+  and merges inline and never touches `mergeQueue`, so the engine walked
+  to the worker anyway. `lib/graph/probes/execute-fanout.sh` admits the
+  fanout only when the queue still has work; otherwise the path goes to
+  `human.after-execute`.
 
 ## [4.4.0] - 2026-08-25
 

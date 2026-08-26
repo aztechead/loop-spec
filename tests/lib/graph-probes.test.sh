@@ -202,6 +202,72 @@ check_silent "deliver-next prints nothing on a sidecar nextPhase outside the ans
   "$DELIVER_NEXT" --feature-dir "$d"
 
 # =====================================================================
+# execute-fanout.sh
+# =====================================================================
+# The execute node body already runs the selected rung to completion.
+# Walking the unconditional fanout then dispatched loop-spec:implementer
+# against an empty mergeQueue. mergeQueue is the worker subgraph's input.
+EXECUTE_FANOUT="$PROBES/execute-fanout.sh"
+
+out="$(bash "$EXECUTE_FANOUT" --answers)"
+[[ "$out" == $'fanout=skip\nfanout=worker' ]] \
+  && { echo "PASS: execute-fanout --answers lists skip and worker"; PASS=$((PASS+1)); } \
+  || { echo "FAIL: execute-fanout --answers lists skip and worker (got: $out)"; FAIL=$((FAIL+1)); }
+
+d="$(feature_dir fanout-empty '{"mergeQueue":[]}')"
+check_output "execute-fanout skips when mergeQueue is empty" \
+  "fanout=skip reason=mergeQueue-empty" \
+  "$EXECUTE_FANOUT" --feature-dir "$d"
+
+d="$(feature_dir fanout-absent '{"slug":"no-queue"}')"
+check_output "execute-fanout skips when mergeQueue is absent" \
+  "fanout=skip reason=mergeQueue-empty" \
+  "$EXECUTE_FANOUT" --feature-dir "$d"
+
+d="$(feature_dir fanout-null '{"mergeQueue":null}')"
+check_output "execute-fanout skips when mergeQueue is null" \
+  "fanout=skip reason=mergeQueue-empty" \
+  "$EXECUTE_FANOUT" --feature-dir "$d"
+
+d="$(feature_dir fanout-worker '{"mergeQueue":["task-001","task-002"]}')"
+check_output "execute-fanout admits the worker when mergeQueue has work" \
+  "fanout=worker reason=mergeQueue-length=2" \
+  "$EXECUTE_FANOUT" --feature-dir "$d"
+
+d="$(feature_dir fanout-bogus '{"mergeQueue":"task-001"}')"
+check "execute-fanout is unresolved when mergeQueue is not an array" \
+  1 "$EXECUTE_FANOUT" --feature-dir "$d"
+check_silent "execute-fanout prints nothing when mergeQueue is not an array" \
+  "$EXECUTE_FANOUT" --feature-dir "$d"
+
+check "execute-fanout is unresolved without a feature.json" \
+  1 "$EXECUTE_FANOUT" --feature-dir "$WORK/no-such-dir"
+check_silent "execute-fanout prints nothing without a feature.json" \
+  "$EXECUTE_FANOUT" --feature-dir "$WORK/no-such-dir"
+
+skip_route="$(jq -r '[.edges[]|select(.from=="execute" and .to=="human.after-execute" and .kind=="route" and .condition.expects=="fanout=skip")]|length' "$ROOT/graph/cycle.graph.json")"
+worker_route="$(jq -r '[.edges[]|select(.from=="execute" and .to=="execute.worker" and .kind=="route" and .condition.expects=="fanout=worker")]|length' "$ROOT/graph/cycle.graph.json")"
+if [[ "$skip_route" == "1" && "$worker_route" == "1" ]]; then
+  echo "PASS: execute skip and worker routes are declared"; PASS=$((PASS + 1))
+else
+  echo "FAIL: execute skip=$skip_route worker=$worker_route (need one of each)"; FAIL=$((FAIL + 1))
+fi
+
+declared="$(bash "$EXECUTE_FANOUT" --answers)"
+missing=0
+while IFS= read -r expects; do
+  [[ -z "$expects" ]] && continue
+  grep -qxF "$expects" <<<"$declared" || { echo "  undeclared: $expects"; missing=$((missing + 1)); }
+done < <(jq -r '[.edges[].condition]
+  | map(select(. != null and (.probe | test("execute-fanout.sh$")))) | .[].expects' \
+  "$ROOT/graph/cycle.graph.json")
+if [[ "$missing" -eq 0 ]]; then
+  echo "PASS: every execute-fanout route expects a declared answer"; PASS=$((PASS + 1))
+else
+  echo "FAIL: $missing execute-fanout route(s) expect an undeclared answer"; FAIL=$((FAIL + 1))
+fi
+
+# =====================================================================
 # plan-critique.sh (wraps lib/security-signal.sh over a real git diff)
 # =====================================================================
 PLAN_CRITIQUE="$PROBES/plan-critique.sh"

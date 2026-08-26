@@ -523,6 +523,32 @@
     },
     {
       "from": "execute",
+      "to": "human.after-execute",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/execute-fanout.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "fanout=skip"
+      }
+    },
+    {
+      "from": "execute",
+      "to": "execute.worker",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/execute-fanout.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "fanout=worker"
+      }
+    },
+    {
+      "from": "execute",
       "to": "execute.worker",
       "kind": "fanout"
     },

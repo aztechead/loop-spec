@@ -67,6 +67,10 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
     echo "$out" | grep -q "^${phase}"$'\t'
     check "cycle.graph.json dry-run visits $phase" "0" "$?"
   done
+  echo "$out" | grep -q "^execute.worker"$'\t' && empty_worker=0 || empty_worker=1
+  check "cycle.graph.json dry-run skips execute.worker when mergeQueue is empty" "1" "$empty_worker"
+  echo "$out" | grep -q "^execute.join"$'\t' && empty_join=0 || empty_join=1
+  check "cycle.graph.json dry-run skips execute.join when mergeQueue is empty" "1" "$empty_join"
 else
   check "cycle.graph.json validates" "0" "1"
 fi
@@ -104,6 +108,29 @@ if [[ -d "$WORK/cyclerepo" ]]; then
     '{"status":"pending","nextPhase":null}'
   check_sidecar_route "sidecar completed beats stale tracked execute" sidecar-stale \
     '{"status":"checks-failed","nextPhase":"execute"}'
+fi
+
+## --- 0c. cycle.graph.json: a leftover mergeQueue admits execute.worker.
+##          The skip path (empty queue) is pinned in section 0; this is the
+##          other declared answer, so a non-empty queue must still reach
+##          the fanout rather than abort with "no route satisfied".
+if [[ -d "$WORK/cyclerepo" ]]; then
+  qdir="$WORK/cyclerepo/.loop-spec/features/queue-worker"
+  mkdir -p "$qdir"
+  jq -n --arg base "$base_sha" '{slug:"queue-worker",schemaVersion:7,execStyle:"auto",
+    baseSha:$base,iterate:{used:0,feedback:null},
+    delivery:{nextPhase:"completed"},mergeQueue:["task-001"]}' \
+    > "$qdir/feature.json"
+  set +e
+  qout="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
+    --feature-dir ".loop-spec/features/queue-worker" "$ROOT/graph/cycle.graph.json")"
+  qrc=$?
+  set -e
+  check "non-empty mergeQueue dry-run reaches completed (rc 0)" "0" "$qrc"
+  echo "$qout" | grep -q "^execute.worker"$'\t' && q_worker=0 || q_worker=1
+  check "non-empty mergeQueue visits execute.worker" "0" "$q_worker"
+  echo "$qout" | grep -q "^execute.join"$'\t' && q_join=0 || q_join=1
+  check "non-empty mergeQueue visits execute.join" "0" "$q_join"
 fi
 
 ## --- 1. dry-run: structural walk, no state/dispatch side effects ---
