@@ -171,34 +171,13 @@ bash "$SCRIPT" assert-reads --feature-dir "$WORK/feature" --node execute \
 check "single-mode execute still fails when top-level branch is null" "1" "$rc"
 bash "$ROOT/lib/feature-write.sh" set "$WORK/feature" branch '"feat/gdd-state"'
 
-# worktreePath is null in workspace mode with no per-repo equivalent.
-cat > "$WORK/graph/worktree-read.json" <<'EOF'
-{
-  "entry": "execute",
-  "nodes": [
-    {
-      "id": "execute",
-      "kind": "agent",
-      "reads": ["worktreePath"],
-      "writes": [],
-      "effort": "system2"
-    }
-  ],
-  "edges": []
-}
-EOF
-# Restore a well-formed workspace feature for the worktreePath case.
+# Only branch/baseSha/baseBranch are relocated. A non-relocated null key still
+# blocks in workspace mode, exactly as it does in single mode.
 bash "$ROOT/lib/feature-init.sh" skeleton --mode workspace \
   --slug ws-wt --now "$NOW" --style auto \
   --ws-root /ws \
   --repos '[{"name":"fe","path":"fe","branch":"feat/ws-wt","baseSha":"abc","baseBranch":"main"}]' \
   > "$WORK/ws-feature/feature.json"
-rc=0
-bash "$SCRIPT" assert-reads --feature-dir "$WORK/ws-feature" --node execute \
-  --graph "$WORK/graph/worktree-read.json" || rc=$?
-check "workspace worktreePath null satisfies a declared read" "0" "$rc"
-
-# A non-relocated null key still blocks in workspace mode.
 bash "$ROOT/lib/feature-write.sh" set "$WORK/ws-feature" slug 'null'
 rc=0
 bash "$SCRIPT" assert-reads --feature-dir "$WORK/ws-feature" --node spec \

@@ -76,43 +76,34 @@ fi
 ##          abort with "no route satisfied" / failed — and must not take a
 ##          stale tracked execute leftover from an earlier CI hop.
 if [[ -d "$WORK/cyclerepo" ]]; then
-  sidecar_feat="$WORK/cyclerepo/.loop-spec/features/sidecar-complete"
-  mkdir -p "$sidecar_feat"
-  jq -n --arg base "$base_sha" '{slug:"sidecar-complete",schemaVersion:7,execStyle:"auto",
-    baseSha:$base,iterate:{used:0,feedback:null},
-    delivery:{status:"pending",nextPhase:null}}' \
-    > "$sidecar_feat/feature.json"
-  jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed"}' \
-    > "$sidecar_feat/delivery.json"
-  set +e
-  sidecar_out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
-    --feature-dir ".loop-spec/features/sidecar-complete" "$ROOT/graph/cycle.graph.json")"
-  sidecar_rc=$?
-  set -e
-  check "sidecar-only completed: dry-run reaches completed (rc 0)" "0" "$sidecar_rc"
-  echo "$sidecar_out" | grep -q $'^completed\troute:deliver->completed'
-  check "sidecar-only completed: deliver routes to completed" "0" "$?"
-  echo "$sidecar_out" | grep -q $'^execute\troute:deliver->execute' && took_execute=1 || took_execute=0
-  check "sidecar-only completed: deliver does not take execute" "0" "$took_execute"
+  # $1 label, $2 slug, $3 tracked delivery block. The sidecar always says
+  # completed: the point is that the sidecar decides the route either way.
+  check_sidecar_route() {
+    local label="$1" slug="$2" tracked="$3" dir out rc took_execute
+    dir="$WORK/cyclerepo/.loop-spec/features/$slug"
+    mkdir -p "$dir"
+    jq -n --arg base "$base_sha" --arg slug "$slug" --argjson tracked "$tracked" \
+      '{slug:$slug,schemaVersion:7,execStyle:"auto",
+        baseSha:$base,iterate:{used:0,feedback:null},delivery:$tracked}' \
+      > "$dir/feature.json"
+    jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed"}' \
+      > "$dir/delivery.json"
+    set +e
+    out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
+      --feature-dir ".loop-spec/features/$slug" "$ROOT/graph/cycle.graph.json")"
+    rc=$?
+    set -e
+    check "$label: dry-run reaches completed (rc 0)" "0" "$rc"
+    grep -q $'^completed\troute:deliver->completed' <<<"$out"
+    check "$label: deliver routes to completed" "0" "$?"
+    grep -q $'^execute\troute:deliver->execute' <<<"$out" && took_execute=1 || took_execute=0
+    check "$label: deliver does not take execute" "0" "$took_execute"
+  }
 
-  stale_feat="$WORK/cyclerepo/.loop-spec/features/sidecar-stale"
-  mkdir -p "$stale_feat"
-  jq -n --arg base "$base_sha" '{slug:"sidecar-stale",schemaVersion:7,execStyle:"auto",
-    baseSha:$base,iterate:{used:0,feedback:null},
-    delivery:{status:"checks-failed",nextPhase:"execute"}}' \
-    > "$stale_feat/feature.json"
-  jq -n '{schema:1,ok:true,status:"ready-for-review",nextPhase:"completed"}' \
-    > "$stale_feat/delivery.json"
-  set +e
-  stale_out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
-    --feature-dir ".loop-spec/features/sidecar-stale" "$ROOT/graph/cycle.graph.json")"
-  stale_rc=$?
-  set -e
-  check "sidecar completed vs stale tracked execute: dry-run rc 0" "0" "$stale_rc"
-  echo "$stale_out" | grep -q $'^completed\troute:deliver->completed'
-  check "sidecar completed vs stale tracked execute: still routes to completed" "0" "$?"
-  echo "$stale_out" | grep -q $'^execute\troute:deliver->execute' && stale_execute=1 || stale_execute=0
-  check "sidecar completed vs stale tracked execute: does not take execute" "0" "$stale_execute"
+  check_sidecar_route "sidecar-only completed" sidecar-complete \
+    '{"status":"pending","nextPhase":null}'
+  check_sidecar_route "sidecar completed beats stale tracked execute" sidecar-stale \
+    '{"status":"checks-failed","nextPhase":"execute"}'
 fi
 
 ## --- 1. dry-run: structural walk, no state/dispatch side effects ---
@@ -417,7 +408,7 @@ set -e
 check "deliver step 2: sidecar completed does not abort (not exit 5)" "0" "$dstep2_rc"
 check "deliver step 2: resolves the completed route, not stale execute" \
   "completed" "$(jq -r '.node' <<<"$dstep2")"
-echo "$(cat "$WORK/feat-step-deliver.err" 2>/dev/null || true)" | grep -q "no route satisfied" \
+grep -q "no route satisfied" "$WORK/feat-step-deliver.err" 2>/dev/null \
   && aborted=1 || aborted=0
 check "deliver step 2: no 'no route satisfied' diagnostic" "0" "$aborted"
 
@@ -471,7 +462,7 @@ set -e
 check "workspace execute: --step does not fail assert-reads" "0" "$ws_step_rc"
 check "workspace execute: --step enters the execute node" \
   "execute" "$(jq -r '.node' <<<"$ws_step")"
-echo "$(cat "$WORK/feat-ws-exec.err" 2>/dev/null || true)" | grep -q "assert-reads" \
+grep -q "assert-reads" "$WORK/feat-ws-exec.err" 2>/dev/null \
   && ws_assert=1 || ws_assert=0
 check "workspace execute: no assert-reads diagnostic" "0" "$ws_assert"
 

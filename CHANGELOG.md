@@ -12,7 +12,11 @@ All notable changes documented here. Format follows Keep a Changelog.
   an earlier CI remediation). The graph probe read the tracked field, so
   no post-delivery route satisfied and the engine published a spurious
   `failed` terminal result. Prefer the sidecar; fall back to tracked
-  state for dry-run fixtures and durable execute-remediation.
+  state for dry-run fixtures and durable execute-remediation. This also
+  makes the CI-remediation ceiling reachable: at the limit `lib/deliver.sh`
+  writes `nextPhase=deliver` to the sidecar only and leaves tracked
+  `execute` in place, so the tracked read routed back to EXECUTE forever
+  instead of stopping at DELIVER.
 
 - **Workspace execute no longer fails assert-reads on a null top-level
   `branch`.** `graph/cycle.graph.json`'s execute node (and
@@ -20,7 +24,9 @@ All notable changes documented here. Format follows Keep a Changelog.
   read. Workspace-mode features keep top-level `branch`/`baseSha`/
   `baseBranch` null by design. `state.sh assert-reads` treated that as a
   missing key. It now takes `workspace.repos[]` as authoritative for
-  those identity keys.
+  those identity keys, and only those: every other key, `worktreePath`
+  included, still fails when null in either mode, with `optionalReads[]`
+  the way to declare one the schema lets be null.
 
 ## [4.4.0] - 2026-08-25
 

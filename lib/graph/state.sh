@@ -73,8 +73,8 @@ case "$cmd" in
     unsatisfied="$(python3 - "$feature_dir/feature.json" "$reads" <<'PY'
 import json, sys
 
-# Identity keys the schema stores per repo in workspace mode. worktreePath has
-# no per-repo equivalent: null means in-place at each repo.
+# The only keys the schema relocates. Every other key stays top-level in both
+# modes, so a null one is a missing read here exactly as it is in single mode.
 RELOCATED = ("branch", "baseSha", "baseBranch")
 
 feat = json.load(open(sys.argv[1]))
@@ -93,13 +93,10 @@ def repo_has(repo, key):
 def satisfied(key):
     if key in feat and feat[key] is not None:
         return True
-    if repos is None:
+    if repos is None or key not in RELOCATED:
         return False
-    if key == "worktreePath":
-        return True
-    if key in RELOCATED:
-        return len(repos) > 0 and all(repo_has(r, key) for r in repos)
-    return False
+    # An empty repos[] is a workspace with no authoritative identity at all.
+    return len(repos) > 0 and all(repo_has(r, key) for r in repos)
 
 print("\n".join(key for key in reads if not satisfied(key)))
 PY
