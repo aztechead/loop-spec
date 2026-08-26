@@ -36,6 +36,13 @@ outside `lib/deliver.sh` and writes the canonical sidecar. Bash helpers in
   caller assigns script-level identity fields through `apply_pr_snapshot`.
   `refresh_remote_sha` and readiness observation return values on stdout.
 
+- **VERIFY marker/tamper gates in workspace mode.** `verify.marker` and
+  `verify.tamper` took `{baseSha}` and `{featureRepoRoot}`, which resolve empty
+  when `baseSha` is per-repo and the workspace root is not a git repository. The
+  engine treated that as a gate failure and published a premature `FAILED`
+  result. Both nodes now pass `--feature-dir {featureDir}`; `lib/feature-scan-each.sh`
+  runs the scan once per repo.
+
 ## [4.4.1] - 2026-08-26
 
 Graph routing after EXECUTE and DELIVER. The deliver-next probe reads

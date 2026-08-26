@@ -278,10 +278,11 @@
         "warnings"
       ],
       "effort": "system1",
-      "body": "lib/placeholder-scan.sh",
+      "body": "lib/feature-scan-each.sh",
       "bodyArgs": [
-        "{baseSha}",
-        "{featureRepoRoot}"
+        "{repoRoot}/lib/placeholder-scan.sh",
+        "--feature-dir",
+        "{featureDir}"
       ]
     },
     {
@@ -296,10 +297,11 @@
         "warnings"
       ],
       "effort": "system1",
-      "body": "lib/test-tamper-scan.sh",
+      "body": "lib/feature-scan-each.sh",
       "bodyArgs": [
-        "{baseSha}",
-        "{featureRepoRoot}"
+        "{repoRoot}/lib/test-tamper-scan.sh",
+        "--feature-dir",
+        "{featureDir}"
       ]
     },
     {

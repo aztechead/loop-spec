@@ -26,6 +26,13 @@ check() {
   fi
 }
 
+check "verify.marker bodyArgs take feature-scan-each --feature-dir" \
+  "true" \
+  "$(jq -r '.nodes[] | select(.id=="verify.marker") | (.body == "lib/feature-scan-each.sh" and (.bodyArgs | index("--feature-dir") != null) and (.bodyArgs | index("{featureDir}") != null))' "$CYCLE_GRAPH")"
+check "verify.tamper bodyArgs take feature-scan-each --feature-dir" \
+  "true" \
+  "$(jq -r '.nodes[] | select(.id=="verify.tamper") | (.body == "lib/feature-scan-each.sh" and (.bodyArgs | index("--feature-dir") != null) and (.bodyArgs | index("{featureDir}") != null))' "$CYCLE_GRAPH")"
+
 # A single-gate graph built from the shipped node, so the bodyArgs under test are
 # the ones a real cycle dispatches.
 gate_graph() {
@@ -121,14 +128,95 @@ check "verify.acceptance blocks a bare-substring grep criterion" "1" \
 check "the blocked acceptance gate names the offending task" "1" \
   "$(grep -c "task-002" "$WORK/out.txt")"
 
-## --- 4. An unresolvable bodyArgs placeholder is a dispatch failure with its own
-##        reason -- never the script invoked bare on an empty argument ---
+## --- 4. Missing single-repo baseSha is a scan-target failure, not a bare usage error ---
 seed_feature
 jq 'del(.baseSha)' "$FEAT/feature.json" > "$FEAT/feature.json.tmp"
 mv "$FEAT/feature.json.tmp" "$FEAT/feature.json"
-check "a gate whose bodyArgs cannot resolve blocks" "1" "$(run_gate "$WORK/marker.json")"
+check "a shipped marker gate without baseSha blocks" "1" "$(run_gate "$WORK/marker.json")"
+check "the missing baseSha is named, not an unresolved {baseSha} placeholder" "1" \
+  "$(grep -c "no baseSha" "$WORK/out.txt")"
+check "the diagnostic is not the old unresolved-placeholder abort" "0" \
+  "$(grep -c "unresolved bodyArgs placeholder" "$WORK/out.txt" || true)"
+
+## --- 4b. An unresolvable bodyArgs placeholder is still a named dispatch failure ---
+cat > "$WORK/unresolved.json" <<'EOF'
+{
+  "entry": "g",
+  "nodes": [{"id":"g","kind":"gate","reads":[],"writes":[],"effort":"system1",
+             "body":"lib/placeholder-scan.sh","bodyArgs":["{baseSha}"]}],
+  "edges": []
+}
+EOF
+seed_feature
+jq 'del(.baseSha)' "$FEAT/feature.json" > "$FEAT/feature.json.tmp"
+mv "$FEAT/feature.json.tmp" "$FEAT/feature.json"
+check "a gate whose bodyArgs cannot resolve blocks" "1" "$(run_gate "$WORK/unresolved.json")"
 check "the unresolved placeholder is named in the diagnostic" "1" \
   "$(grep -c "unresolved bodyArgs placeholder" "$WORK/out.txt")"
+
+## --- 5. Workspace mode: per-repo SHAs, workspace root is not a git repo ---
+WS="$WORK/workspace"
+mkdir -p "$WS/fe/tests" "$WS/be/tests"
+init_ws_repo() {
+  local d="$1"
+  git -C "$d" init -q
+  git -C "$d" config user.email t@example.com
+  git -C "$d" config user.name tester
+  printf 'def add(a, b):\n    return a + b\n' > "$d/app.py"
+  printf 'def test_add():\n    assert True\n' > "$d/tests/test_app.py"
+  git -C "$d" -c commit.gpgsign=false add -A
+  git -C "$d" -c commit.gpgsign=false commit -q -m base
+}
+init_ws_repo "$WS/fe"
+init_ws_repo "$WS/be"
+FE_SHA="$(git -C "$WS/fe" rev-parse HEAD)"
+BE_SHA="$(git -C "$WS/be" rev-parse HEAD)"
+# Workspace root must not be a git work tree — that is the production layout.
+if git -C "$WS" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "FAIL: workspace fixture root is a git repo"; FAIL=$((FAIL + 1))
+else
+  echo "PASS: workspace fixture root is not a git repo"; PASS=$((PASS + 1))
+fi
+
+WS_FEAT_REL=".loop-spec/features/wsgate"
+WS_FEAT="$WS/$WS_FEAT_REL"
+mkdir -p "$WS_FEAT"
+bash "$ROOT/lib/feature-init.sh" skeleton --mode workspace \
+  --slug wsgate --now 2026-01-01T00:00:00Z --style auto \
+  --ws-root "$WS" \
+  --repos "$(jq -nc --arg fe "$FE_SHA" --arg be "$BE_SHA" \
+    '[{"name":"fe","path":"fe","branch":"feat/wsgate","baseSha":$fe,"baseBranch":"main"},
+      {"name":"be","path":"be","branch":"feat/wsgate","baseSha":$be,"baseBranch":"main"}]')" \
+  > "$WS_FEAT/feature.json"
+
+printf 'def sub(a, b):\n    return a - b\n' >> "$WS/fe/app.py"
+git -C "$WS/fe" -c commit.gpgsign=false add -A
+git -C "$WS/fe" -c commit.gpgsign=false commit -q -m "clean change"
+
+run_ws_gate() {
+  local graph="$1" rc=0
+  bash "$SCRIPT" --feature-dir "$WS_FEAT" "$graph" >"$WORK/out.txt" 2>&1 || rc=$?
+  echo "$rc"
+}
+
+gate_graph "verify.marker" "$WORK/ws-marker.json"
+check "workspace verify.marker passes a clean per-repo diff" "0" \
+  "$(run_ws_gate "$WORK/ws-marker.json")"
+check "workspace marker did not abort on unresolved placeholders" "0" \
+  "$(grep -c "unresolved bodyArgs placeholder" "$WORK/out.txt" || true)"
+
+printf '# TODO: finish this\n' >> "$WS/be/app.py"
+git -C "$WS/be" -c commit.gpgsign=false add -A
+git -C "$WS/be" -c commit.gpgsign=false commit -q -m stub
+check "workspace verify.marker blocks a placeholder in one repo" "1" \
+  "$(run_ws_gate "$WORK/ws-marker.json")"
+check "workspace marker finding names the dirty repo" "1" \
+  "$(grep -c "be: .*placeholder marker" "$WORK/out.txt")"
+
+git -C "$WS/be" -c commit.gpgsign=false revert --no-edit HEAD >/dev/null
+gate_graph "verify.tamper" "$WORK/ws-tamper.json"
+check "workspace verify.tamper passes an untampered workspace" "0" \
+  "$(run_ws_gate "$WORK/ws-tamper.json")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
