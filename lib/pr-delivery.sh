@@ -698,7 +698,10 @@ if [[ "$mode" == "checkpoint" ]]; then
 fi
 
 if [[ "$mode" == "observe" ]]; then
-  remote_sha="$(refresh_remote_sha)" || remote_sha=""
+  remote_sha="$(refresh_remote_sha)" \
+    || fail_delivery "remote_query_failed" "cannot read remote branch: $(tr '\n' ' ' < "$tmp_dir/git-ls-remote.err")"
+  [[ "$remote_sha" == "$target_sha" ]] \
+    || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
   refresh_pr_and_ingest_checks "observe CI"
   checks_json="$(jq -cn --argjson timeout "$checks_timeout" --argjson counts "$counts" \
     --argjson required "$checks_payload" \

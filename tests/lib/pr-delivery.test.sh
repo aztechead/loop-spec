@@ -725,6 +725,14 @@ check "observe draft: no edit" "0" "$(grep -c '^pr edit ' "$GH_LOG" || true)"
 check "observe draft: remote unchanged" "$origin_before" \
   "$(git --git-dir="$WORK/origin.git" rev-parse refs/heads/feat/delivery 2>/dev/null || echo missing)"
 
+moved_remote="$(git --git-dir="$WORK/origin.git" rev-parse refs/heads/main)"
+git --git-dir="$WORK/origin.git" update-ref refs/heads/feat/delivery "$moved_remote"
+reset_gh "[$draft_pr]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0; out="$(run_observe 2>"$WORK/err")" || ec=$?
+check "observe remote mismatch: exit 1" "1" "$ec"
+check "observe remote mismatch: structured code" "remote_sha_mismatch" "$(jq -r '.errorCode' <<<"$out")"
+git --git-dir="$WORK/origin.git" update-ref refs/heads/feat/delivery "$TARGET_SHA"
+
 # observe without --base (title/body are not required either).
 ec=0; out="$(run_observe --no-base 2>"$WORK/err")" || ec=$?
 check "observe no-base: exit 0" "0" "$ec"
