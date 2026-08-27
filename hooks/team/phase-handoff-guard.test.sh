@@ -10,7 +10,7 @@ check() {
   local name="$1" expected="$2" payload="$3"
   shift 3
   local actual=0
-  printf '%s' "$payload" | env "$@" bash "$HOOK" >/dev/null 2>&1 || actual=$?
+  env "$@" bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual=$?
   if [[ "$actual" -eq "$expected" ]]; then
     echo "PASS: $name"
     ((PASS++)) || true

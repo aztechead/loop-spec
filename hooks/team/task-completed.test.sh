@@ -27,9 +27,9 @@ check() {
   fi
 
   if [[ ${#env_args[@]} -gt 0 ]]; then
-    echo "$payload" | env "${env_args[@]}" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    env "${env_args[@]}" bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
   else
-    echo "$payload" | bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
   fi
 
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then
@@ -199,7 +199,7 @@ check "J3: malformed payload fail-open ALLOW" 0 \
 EMPTY_DIR="$TMPDIR_TESTS/empty-dir"
 mkdir -p "$EMPTY_DIR"
 check_exit=0
-echo "$(payload_completed)" | LOOP_SPEC_FEATURE_DIR="$EMPTY_DIR" bash "$HOOK" >/dev/null 2>&1 || check_exit=$?
+LOOP_SPEC_FEATURE_DIR="$EMPTY_DIR" bash "$HOOK" >/dev/null 2>&1 <<<"$(payload_completed)" || check_exit=$?
 if [[ "$check_exit" -eq 0 ]]; then
   echo "PASS: K: feature dir exists but no feature.json exit 0"
   ((PASS++)) || true

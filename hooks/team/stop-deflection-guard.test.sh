@@ -19,9 +19,9 @@ check() {
   local actual_exit=0
 
   if [[ $# -gt 0 ]]; then
-    echo "$payload" | env "$@" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    env "$@" bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
   else
-    echo "$payload" | bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
   fi
 
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then

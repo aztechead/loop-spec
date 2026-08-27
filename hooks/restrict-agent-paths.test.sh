@@ -18,7 +18,7 @@ check() {
   local payload="$3"
   local actual_exit=0
 
-  echo "$payload" | bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+  bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
 
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then
     echo "PASS: $name"
@@ -94,7 +94,7 @@ check "M: finished spec-writer dispatch does not restrict main thread ALLOW" 0 \
 
 # Case N: malformed payload -> fail-open ALLOW (exit 0, never a hook error)
 actual_exit=0
-echo 'not json' | bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+bash "$HOOK" >/dev/null 2>&1 <<<'not json' || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then
   echo "PASS: N: malformed payload fail-open ALLOW"
   ((PASS++)) || true

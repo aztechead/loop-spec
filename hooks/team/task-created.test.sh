@@ -15,7 +15,7 @@ check() {
   local payload="$3"
   local actual_exit=0
 
-  echo "$payload" | bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+  bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
 
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then
     echo "PASS: $name"
@@ -61,7 +61,7 @@ check "e: task-NNN: subject without loopSpec marker ALLOW" 0 \
   "$(payload 'task-003: y' '{}')"
 
 # e2: the advisory is printed on stderr for the convention-only case
-adv="$(echo "$(payload 'task-003: y' '{}')" | bash "$HOOK" 2>&1 >/dev/null || true)"
+adv="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload 'task-003: y' '{}')" || true)"
 if grep -q "no loopSpec marker" <<<"$adv"; then
   echo "PASS: e2: convention-only advisory on stderr"
   ((PASS++)) || true

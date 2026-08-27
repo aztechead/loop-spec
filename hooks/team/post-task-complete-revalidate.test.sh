@@ -21,9 +21,9 @@ check() {
   local actual_exit=0
 
   if [[ -n "$env_prefix" ]]; then
-    echo "$payload" | env $env_prefix bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    env $env_prefix bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
   else
-    echo "$payload" | bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
   fi
 
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then

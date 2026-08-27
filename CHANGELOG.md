@@ -49,6 +49,14 @@ outside `lib/deliver.sh` and writes the canonical sidecar. Bash helpers in
   full-cycle contract only for the delivery URL; a result whose `prUrl` is the
   checkpoint salvage URL now reports `workDelivered: false`.
 
+- **Hook suites no longer race SIGPIPE.** A hook that exits before draining
+  stdin (kill switch, out-of-scope project) closed the pipe while the writer was
+  still queued, and `set -o pipefail` reported the pipeline as 141 even though
+  the hook exited 0 — reproducible at 17% under CPU contention, which is what
+  `run-all.sh` creates by running suites in parallel. Every hook suite now feeds
+  its payload by here-string, and `tests/hook-payload-stdin.test.sh` keeps the
+  pipe from coming back.
+
 - **VERIFY marker/tamper gates in workspace mode.** `verify.marker` and
   `verify.tamper` took `{baseSha}` and `{featureRepoRoot}`, which resolve empty
   when `baseSha` is per-repo and the workspace root is not a git repository. The

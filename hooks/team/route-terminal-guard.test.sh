@@ -19,8 +19,8 @@ FAIL=0
 check() {
   local name="$1" expected_exit="$2" project="$3"; shift 3
   local actual_exit=0
-  printf '%s' "${PAYLOAD:-{\}}" \
-    | env CLAUDE_PROJECT_DIR="$project" "$@" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+  env CLAUDE_PROJECT_DIR="$project" "$@" bash "$HOOK" >/dev/null 2>&1 \
+    <<<"${PAYLOAD:-{\}}" || actual_exit=$?
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then
     echo "PASS: $name"; ((PASS++)) || true
   else
@@ -93,7 +93,7 @@ PAYLOAD='this is not json' check "k: malformed payload -> BLOCK (armed run stand
 PAYLOAD='' check "l: empty payload -> BLOCK (armed run stands)" 2 "$ARMED"
 
 # m: the block message has to be actionable on its own.
-msg="$(printf '{}' | env CLAUDE_PROJECT_DIR="$ARMED" bash "$HOOK" 2>&1 >/dev/null || true)"
+msg="$(env CLAUDE_PROJECT_DIR="$ARMED" bash "$HOOK" 2>&1 >/dev/null <<<'{}' || true)"
 for needle in "write-terminal" "protocol-mismatch" "LOOP_SPEC_ROUTE_GUARD=0"; do
   if printf '%s' "$msg" | grep -qF -- "$needle"; then
     echo "PASS: m: block message names '$needle'"; ((PASS++)) || true
