@@ -42,8 +42,8 @@ The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-cla
 
 1. `cd {worktree_path}`
 2. Read task spec carefully.
-3. If task says TDD: write failing test FIRST, run it, confirm fail.
-4. Implement minimal code to pass.
+3. For every code-producing task: write the failing test FIRST, run it, confirm red. Skill/config/docs tasks are excluded. Omitting a TDD label does not exempt this step.
+4. Implement minimal code to pass (green).
 5. Run verify command. Confirm pass.
 6. `git add <files>` (specific files from task spec, not -A).
 7. Commit using a heredoc (bash does NOT expand `\n` inside `git commit -m "..."`):
@@ -76,7 +76,7 @@ The `worktree_path` is created explicitly by the caller (EXECUTE lead / self-cla
 ## What NOT to do
 
 - Do NOT touch files outside the task's `files` list.
-- Do NOT skip the failing-test step on TDD tasks.
+- Do NOT skip the failing-test step on code-producing tasks.
 - Do NOT push, do NOT create PRs, do NOT merge.
 - Do NOT use `git add -A` or `git commit -am`.
 - Do NOT cd outside the worktree.

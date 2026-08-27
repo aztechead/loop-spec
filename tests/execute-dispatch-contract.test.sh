@@ -49,6 +49,8 @@ expect "subagent names task-batch" \
   skills/shared/execute-subagent.md 'task-batch.sh'
 count_ge "subagent writing-good-tests on both implementer prompts" \
   skills/shared/execute-subagent.md 'writing-good-tests.md' 2
+count_ge "subagent TDD force on both implementer prompts" \
+  skills/shared/execute-subagent.md 'Omitting a TDD label does not exempt' 2
 count_ge "subagent no-nested on implementer prompts" \
   skills/shared/execute-subagent.md 'NO NESTED SUBAGENTS' 3
 
@@ -82,12 +84,18 @@ expect "planner documents batchGroup" \
   agents/planner.md 'batchGroup'
 expect "team implementer names writing-good-tests" \
   skills/shared/team-prompts/implementer.md 'writing-good-tests.md'
+expect "team implementer forces TDD" \
+  skills/shared/team-prompts/implementer.md 'Omitting a TDD label does not exempt'
+expect "named implementer forces TDD" \
+  agents/implementer.md 'Omitting a TDD label does not exempt'
 expect "team reviewer names unverified" \
   skills/shared/team-prompts/reviewer.md 'unverified'
 expect "workflow schema includes unverified" \
   lib/workflows/execute-dag.js 'unverified'
 expect "workflow implementer names writing-good-tests" \
   lib/workflows/execute-dag.js 'writing-good-tests.md'
+expect "workflow implementer forces TDD" \
+  lib/workflows/execute-dag.js 'Omitting a TDD label does not exempt'
 # The break this catches: a "pass" carrying unverified[] merged on the last
 # attempt, because `continue` alone leaves the recorded verdict at pass.
 expect "workflow downgrades a pass carrying unverified" \

@@ -72,6 +72,7 @@ In workspace mode, scan each participating repository separately and attach the 
 - Each task must be a coherent commit-able unit.
 - Code-producing tasks MUST specify TDD ordering in Steps (test first).
 - Skill/config/docs tasks excluded from TDD.
+- Omitting a TDD label does not exempt a code-producing task; the implementer still runs red then green.
 - Each task has: id, subject, files, verify command, acceptance criteria, blockedBy, read_first. In workspace mode each task also carries repo: the name of the single participating repository this task targets (workspace mode only; absent in single mode).
 - Every task MUST include a `read_first:` field containing a list of concrete file identifiers (paths, path:line-range, or path (section name)) that the implementer must read before starting. An empty list `[]` is allowed only when the task creates a brand-new file with no analog in the codebase.
 - Declare a `blockedBy` edge whenever a task logically depends on another (e.g., a refactor before its caller). Do NOT enumerate file-overlap-based edges manually -- EXECUTE Step 2b computes those automatically from `files[]` intersections, so the planner only needs explicit logical dependencies.

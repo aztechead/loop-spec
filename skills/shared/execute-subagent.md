@@ -327,6 +327,10 @@ WRITING GOOD TESTS. Read `${CLAUDE_SKILL_DIR}/../../skills/shared/writing-good-t
 before adding or changing a test — do not paste it. Name the break; no string-presence
 traps; no change detectors.
 
+TDD (red then green). Code-producing tasks: write the failing test FIRST, run it,
+confirm red, then implement, confirm green. Skill/config/docs tasks are excluded.
+Omitting a TDD label does not exempt this step.
+
 NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
 Review arrives from the lead after your report.
 
@@ -506,6 +510,10 @@ lines, or license blocks.
 WRITING GOOD TESTS. Read `${CLAUDE_SKILL_DIR}/../../skills/shared/writing-good-tests.md`
 before adding or changing a test — do not paste it. Name the break; no string-presence
 traps; no change detectors.
+
+TDD (red then green). Code-producing tasks: write the failing test FIRST, run it,
+confirm red, then implement, confirm green. Skill/config/docs tasks are excluded.
+Omitting a TDD label does not exempt this step.
 
 NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
 Review arrives from the lead after your report.

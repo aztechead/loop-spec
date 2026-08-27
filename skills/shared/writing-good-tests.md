@@ -39,6 +39,7 @@ tested by running it.
 
 ## TDD
 
-If the task has testable behavior, write or extend the failing test first
-and watch it fail against real code. Mock only when the real dependency is
-slow or external.
+Code-producing tasks MUST write the failing test first (red), then the
+minimal implementation (green). Skill/config/docs tasks are excluded.
+Omitting a TDD label does not exempt a code-producing task.
+Mock only when the real dependency is slow or external.

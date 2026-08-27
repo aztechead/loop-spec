@@ -4,6 +4,20 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+
+- **Red-then-green TDD is required on every code-producing task.** Omitting a
+  TDD label in the plan does not exempt the implementer. Skill/config/docs
+  tasks stay excluded. Every implementer dispatch (named agent, team prompt,
+  subagent, loop-fleet, workflow, inline) names the force.
+
+- **`detect-test-cmd.sh` joins every matching language.** A Makefile `test:`
+  target remains the exclusive project override. Otherwise the probe emits
+  every matching family command joined with ` && ` (bun, deno, .NET, Swift,
+  Dart/Flutter, Scala, Haskell, Zig, Julia, Crystal, CMake, Meson, Bazel,
+  OCaml, Elm, Nim, D, Perl, R, just, Taskfile, plus the markers it already
+  knew). Cycle Step 4 cites the probe rather than a one-language list.
+
 ### Fixed
 
 - **DISCUSS grill restored for non-autonomous runs.** `execStyle: auto` is not

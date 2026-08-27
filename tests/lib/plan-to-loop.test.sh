@@ -75,7 +75,8 @@ import json,sys; p=json.load(sys.stdin)
 t={x['id']:x for x in p['tasks']}
 pr=t['task-001']['prompt']
 print('ok' if 'add(2,2)==4' in pr and 'src/add.py' in pr and 'Do NOT modify' in pr
-          and 'WRITING GOOD TESTS' in pr and 'NO NESTED SUBAGENTS' in pr else 'bad')")
+          and 'WRITING GOOD TESTS' in pr and 'Omitting a TDD label does not exempt' in pr
+          and 'NO NESTED SUBAGENTS' in pr else 'bad')")
 if [[ "$PROMPT_OK" == "ok" ]]; then
   pass "E: prompt carries criteria + scope + don'ts + tests catalog + no-nested"
 else

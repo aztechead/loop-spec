@@ -12,7 +12,7 @@ Auto-detect (best effort):
   `lib/prepare-environment.sh resolve` — including workspace layouts where the lockfile
   sits below the root (a uv root with the frontend in `webapp/frontend/` resolves to
   `(cd webapp/frontend && npm ci) && uv sync --frozen`)
-- test: parse package.json scripts.test, Makefile `test` target, pyproject.toml [tool.pytest], go.mod presence (`go test ./...`), project.clj (`lein test`), deps.edn (`clojure -M:test`), mix.exs (`mix test`), pom.xml (`mvn test`), build.gradle / build.gradle.kts (`gradle test`), Gemfile (`bundle exec rake test`), composer.json (`composer test`). Detection is marker-based and language-agnostic; it must not assume the project is JS or Python. `lib/detect-test-cmd.sh` is the probe.
+- test: `lib/detect-test-cmd.sh` is the probe. A Makefile `test:` target is the exclusive project override (`make test`). Otherwise it joins every matching language command with ` && ` (one command per family: bun/deno/npm, uv/poetry/venv/pytest, lein/clojure, stack/cabal, flutter/dart, composer/phpunit). Markers cover JS, Python, Rust, Go, JVM, .NET, Swift, Dart/Flutter, Scala, Haskell, Zig, Julia, Crystal, CMake, Meson, Bazel, OCaml, Elm, Nim, D, Perl, R, and project runners (just, Taskfile). Detection is marker-based and language-agnostic; it must not assume the project is one language.
 - lint: scripts.lint, Makefile lint, ruff/eslint config files
 - typecheck: scripts.typecheck, mypy.ini, tsconfig.json + tsc
 
