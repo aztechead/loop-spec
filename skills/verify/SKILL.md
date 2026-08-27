@@ -86,13 +86,18 @@ code-level form of self-authored deferral (`skills/shared/no-deferral.md`): a TO
 FIXME, `NotImplementedError`, or "not implemented" throw in an ADDED line means a
 stub shipped where the design promised a full implementation.
 
-**Single-repo mode:**
-
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/placeholder-scan.sh" "{baseSha}" .
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" \
+  "${CLAUDE_SKILL_DIR}/../../lib/placeholder-scan.sh" \
+  --feature-dir ".loop-spec/features/${slug}"
 ```
 
-**Workspace mode:** run once per participating repo with that repo's `baseSha` and absolute path.
+`lib/feature-scan-each.sh` walks every git target of the feature: the single-repo
+toplevel, or each `workspace.repos[]` with that repo's `baseSha` and absolute
+path. Do not pass top-level `{baseSha}` / `.` to the scan — those are empty in
+workspace mode and the workspace root is not a git repository. Per-repo
+invocation (`placeholder-scan.sh <base-sha> <repo-path>`) remains valid for a
+known tree.
 
 Exit 1 = signals found: VERIFY fails immediately. Print the listed `file:line: signal`
 lines verbatim, and emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"marker"}' || true`).
@@ -113,13 +118,14 @@ PR is deferred scope the model chose on its own.
 
 The implementer may have edited the very suite the acceptance gate is about to trust. Before spawning teammates, scan the diff for oracle tampering — deleted test files, newly-added skip/focus annotations (`.skip`, `.only`, `xit`, `@pytest.mark.skip`, `t.Skip`, ...), and `|| true` swallowing a test command's exit code:
 
-**Single-repo mode:**
-
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" "{baseSha}" .
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" \
+  "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" \
+  --feature-dir ".loop-spec/features/${slug}"
 ```
 
-**Workspace mode:** run once per participating repo with that repo's `baseSha` and absolute path.
+Same `--feature-dir` contract as Step 1. Do not pass top-level `{baseSha}` / `.`
+in workspace mode.
 
 Exit 1 = signals found: VERIFY fails immediately. Print the listed signals verbatim and emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"tamper"}' || true`). This is NOT auto-remediable by re-running EXECUTE with a generic brief — the remediation task must state the specific tampering (`subject = "Fix: restore tampered test — {signal}"`) so the implementer un-tampers rather than re-tampers. A legitimate skip (e.g. a platform-gated test) is the HUMAN's call: in `step`/`interactive` styles ask; in autonomous styles treat as tampering and remediate — a real platform gate will come back with justification in the task notes and can be accepted on the next pass by recording it in `warnings[]`.
 

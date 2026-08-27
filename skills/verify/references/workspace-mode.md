@@ -5,16 +5,15 @@ Single-repo mode is unchanged in the SKILL; apply these only when `feature.works
 
 ## Step 1 - Placeholder scan
 
-**Workspace mode (additive):** loop over `feature.workspace.repos[]` and run the scan per repo. The abs repo path is `feature.workspace.root + "/" + repo.path`.
+**Workspace mode:** use the same `--feature-dir` invocation as the SKILL. Do not
+loop in prose and do not run `git rev-parse --show-toplevel` at the workspace
+root (it is not a git repository). `lib/feature-scan-each.sh` walks
+`workspace.repos[]` with each repo's `baseSha` and absolute path.
 
 ```bash
-for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="$(echo "$repo_entry" | jq -r '.path')"
-  rabs="${feature_workspace_root}/${rpath}"
-  rbase_sha="$(echo "$repo_entry" | jq -r '.baseSha')"
-  bash "${CLAUDE_SKILL_DIR}/../../lib/placeholder-scan.sh" "$rbase_sha" "$rabs" || echo "PLACEHOLDER-FAIL ${rname}"
-done
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" \
+  "${CLAUDE_SKILL_DIR}/../../lib/placeholder-scan.sh" \
+  --feature-dir ".loop-spec/features/${slug}"
 ```
 
 (Shared fail rules and notes for this step live in the SKILL's Step 1 — they apply to both modes.)

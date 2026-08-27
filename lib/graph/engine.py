@@ -72,17 +72,19 @@ _repo_root_cache = []
 
 
 def _base_sha():
+    """Top-level feature.json.baseSha. Empty in workspace mode (the SHA lives
+    per repo); bodies that diff the feature must take {featureDir} instead."""
     feat = _feature_json()
-    if feat and isinstance(feat.get("baseSha"), str):
+    if feat and isinstance(feat.get("baseSha"), str) and feat["baseSha"]:
         return feat["baseSha"]
     return ""
 
 
 def _feature_repo_root():
     """The git repository holding the feature — not repo_root, which is the
-    loop-spec install and is the same directory only when self-hosting. Derived
-    the way lib/graph/probes/plan-critique.sh derives it, so a scan dispatched
-    from the graph reads the same tree as the standalone invocation."""
+    loop-spec install and is the same directory only when self-hosting. Empty
+    when feature_dir is not inside a git work tree (workspace root). Derived
+    the way lib/graph/probes/plan-critique.sh derives the single-repo case."""
     if not _repo_root_cache:
         try:
             out = subprocess.check_output(

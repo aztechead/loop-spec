@@ -23,7 +23,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 4.4.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+Current version: 4.5.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Install
 
@@ -119,6 +119,8 @@ Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 VERIFY also writes `REVIEW-ORDER.md` (ordered `path:line` stops for the reviewer); DELIVER inlines it in the PR body. `/loop-spec:walkthrough --walk` presents the same trail conversationally.
 
 Variations: `style:step` pauses after every phase; pass a spec file path to skip the interview; re-invoke `/loop-spec:cycle` to resume from durable state.
+
+On Claude Code, installing the plugin binds the `loop-spec` output style (`output-styles/loop-spec.md`): name the phase when it changes, one thought per action, then one outcome-first close. Built-in Concise does not do that. OpenCode, Codex, and ADK have no output-style slot; they follow [`skills/shared/report-style.md`](skills/shared/report-style.md).
 
 ## Skills
 

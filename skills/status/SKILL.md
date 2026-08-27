@@ -1,6 +1,6 @@
 ---
 name: status
-description: Show loop-spec run status and aggregate telemetry stats. Default lists every feature (phase, iterations, last event, warnings, result, PR); "stats" aggregates across runs — convergence rate, gate rounds, iterate gap histogram, dispatch counts by model/role/rung, loop-fleet cost; "metrics" adds persisted phase timing by phase; "trust" shows the repo's earned-autonomy level (L0-L3) with the evidence and distance to the next level; sentinel needs-human items are surfaced alongside. Read-only consumer of feature.json + events.jsonl + result.json + the committed metrics contract.
+description: Use when the user says "status", "what's running", "stats", "metrics", or "trust level". Read-only over feature.json, events.jsonl, result.json, and the metrics contract. Do not use this to start, pause, or deliver a feature.
 argument-hint: '[status [<slug>] | stats | metrics | trust] [--json]'
 ---
 

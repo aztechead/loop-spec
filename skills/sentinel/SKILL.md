@@ -1,6 +1,6 @@
 ---
 name: sentinel
-description: Watch loop-spec's work sources, triage them into an ordered queue, and (run) drive the head of the queue through the cycle. "scan" runs the source adapters (labeled GitHub issues, CI failures on the default branch, the backlog, fresh assessment findings) through the deterministic triage policy and prints .loop-spec/sentinel-queue.json — read-only. "run" pops the first eligible item, converts it via intake, and starts an autonomous cycle — always PR-terminated, batch-bounded by the trust governor (lib/trust.sh), never chaining past a failure. Unclassifiable items are queued as needs-human, never silently dropped.
+description: Use when the user says "scan the queue", "run sentinel", or "what's next in the backlog". "scan" writes .loop-spec/sentinel-queue.json (read-only). "run" starts one autonomous cycle. Do not use to implement an arbitrary prompt (that's /loop-spec:cycle) or to assess codebase health (that's /loop-spec:assess).
 argument-hint: 'scan | run'
 ---
 

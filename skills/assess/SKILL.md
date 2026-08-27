@@ -1,6 +1,6 @@
 ---
 name: assess
-description: Standalone, read-only codebase fragility and health assessment. Workspace-aware -- in workspace mode scans every configured repo; in single mode, just the one. Dispatches bounded code-reviewer subagents at the top-N hotspots, then synthesizes docs/loop-spec/assessment/ASSESSMENT.md with per-repo fragility heat maps, reviewer findings, cross-repo ranked findings, and prioritized fix recommendations. Nothing is committed; the shared terminal result records the conclusion.
+description: Use when the user asks for a health check, fragility assessment, hotspot review, or "what's wrong with this codebase". Workspace-aware read-only scan; writes docs/loop-spec/assessment/ASSESSMENT.md and does not commit. Do not use to implement the fixes (that's /loop-spec:cycle or /loop-spec:micro) or to debug one failing test (that's /loop-spec:debug).
 allowed-tools: Bash Read Glob Grep Agent AskUserQuestion Write
 ---
 

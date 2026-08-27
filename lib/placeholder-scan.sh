@@ -10,7 +10,8 @@
 # gate instead of surviving to the PR.
 #
 # Usage: placeholder-scan.sh <base-sha> [repo-path]
-#   repo-path defaults to "." (single-repo mode; workspace mode calls once per repo).
+#   repo-path defaults to ".". Workspace and graph dispatch call this once per
+#   repo via lib/feature-scan-each.sh --feature-dir.
 #
 # Exit codes:
 #   0  no placeholder signals

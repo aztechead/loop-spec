@@ -2,9 +2,9 @@
 # Reconcile one exact git commit into one GitHub PR.
 #
 # Usage:
-#   pr-delivery.sh checkpoint|final -C <repo> \
+#   pr-delivery.sh checkpoint|final|observe -C <repo> \
 #     --branch <head> --base <base> --sha <full-sha> \
-#     --title <title> --body-file <path> [--pr-url <url>] \
+#     [--title <title> --body-file <path>] [--pr-url <url>] \
 #     [--remote origin] [--checks-timeout 900] [--checks-interval 10]
 #     [--hold-ready | --restore-draft]
 #
@@ -13,8 +13,22 @@
 # plain final call promotes it. Callers use this to stage multi-repo readiness so no
 # PR is marked ready until every repo in the feature has cleared its checks.
 #
+# observe: do not push, create, edit metadata, or flip readiness. Find the open PR
+# for --branch (or --pr-url), bind it to --sha (PR head and remote branch), and read
+# required checks once. Green draft → outcome "delivered-draft"; green ready →
+# "delivered". Pending or failed checks are a structured block. Title and body-file
+# are not required. --base is optional and, when given, asserts the PR's base rather
+# than retargeting it; the result reports the base the PR actually has.
+#
+# Script-level identity fields (pr_number, pr_url, head_sha, is_draft, remote_sha,
+# checks_json) are assigned only by apply_pr_snapshot, rollback_readiness, the
+# main flow, or a helper that prints its value for the caller to assign. Helper
+# temps are local. Check-observation fields (checks_payload, counts, failed,
+# pending, total, no_checks_confirmed) are assigned only by apply_check_snapshot.
+# refresh_pr_and_ingest_checks rebinds pr_json then calls those two appliers.
+#
 # stdout is exactly one JSON result. Diagnostics go to stderr.
-# Exit 0: delivered/checkpointed; 1: operational or policy failure; 2: bad input.
+# Exit 0: delivered/checkpointed/observed; 1: operational or policy failure; 2: bad input.
 set -uo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -157,8 +171,8 @@ fail_delivery() {
   exit 1
 }
 
-[[ "$mode" == "checkpoint" || "$mode" == "final" ]] \
-  || fail_bad "bad_mode" "mode must be checkpoint or final"
+[[ "$mode" == "checkpoint" || "$mode" == "final" || "$mode" == "observe" ]] \
+  || fail_bad "bad_mode" "mode must be checkpoint, final, or observe"
 [[ "$hold_ready" -eq 0 || "$restore_draft" -eq 0 ]] \
   || fail_bad "bad_readiness_mode" "--hold-ready and --restore-draft are mutually exclusive"
 [[ "$mode" == "final" || ("$hold_ready" -eq 0 && "$restore_draft" -eq 0) ]] \
@@ -167,9 +181,14 @@ fail_delivery() {
 [[ -z "$unknown_arg" ]] || fail_bad "unknown_argument" "unknown argument: $unknown_arg"
 [[ -d "$repo_dir" ]] || fail_bad "repo_missing" "repository directory does not exist: $repo_dir"
 repo_dir="$(cd "$repo_dir" && pwd -P)"
-[[ -n "$branch" && -n "$base_branch" && -n "$target_arg" && -n "$title" && -n "$body_file" ]] \
-  || fail_bad "missing_argument" "--branch, --base, --sha, --title, and --body-file are required"
-[[ -r "$body_file" ]] || fail_bad "body_unreadable" "body file is not readable: $body_file"
+if [[ "$mode" == "observe" ]]; then
+  [[ -n "$branch" && -n "$target_arg" ]] \
+    || fail_bad "missing_argument" "--branch and --sha are required"
+else
+  [[ -n "$branch" && -n "$base_branch" && -n "$target_arg" && -n "$title" && -n "$body_file" ]] \
+    || fail_bad "missing_argument" "--branch, --base, --sha, --title, and --body-file are required"
+  [[ -r "$body_file" ]] || fail_bad "body_unreadable" "body file is not readable: $body_file"
+fi
 [[ "$checks_timeout" =~ ^[0-9]+$ ]] || fail_bad "bad_timeout" "--checks-timeout must be a non-negative integer"
 [[ "$checks_interval" =~ ^[0-9]+$ ]] || fail_bad "bad_interval" "--checks-interval must be a non-negative integer"
 [[ "$command_timeout" =~ ^[1-9][0-9]*$ ]] || fail_bad "bad_command_timeout" "LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS must be a positive integer"
@@ -194,8 +213,13 @@ git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
   || fail_bad "not_git_repo" "not a git work tree: $repo_dir"
 git check-ref-format --branch "$branch" >/dev/null 2>&1 \
   || fail_bad "bad_branch" "invalid head branch: $branch"
-git check-ref-format --branch "$base_branch" >/dev/null 2>&1 \
-  || fail_bad "bad_base" "invalid base branch: $base_branch"
+# observe requires --branch and --sha only; --base is optional identity.
+if [[ -n "$base_branch" ]]; then
+  git check-ref-format --branch "$base_branch" >/dev/null 2>&1 \
+    || fail_bad "bad_base" "invalid base branch: $base_branch"
+elif [[ "$mode" != "observe" ]]; then
+  fail_bad "bad_base" "invalid base branch: $base_branch"
+fi
 target_sha="$(git -C "$repo_dir" rev-parse --verify "${target_arg}^{commit}" 2>/dev/null)" \
   || fail_bad "bad_sha" "target is not a local commit: $target_arg"
 git -C "$repo_dir" remote get-url "$remote" >/dev/null 2>&1 \
@@ -298,14 +322,23 @@ gh_out="$tmp_dir/gh.out"
 gh_err="$tmp_dir/gh.err"
 readiness_out="$tmp_dir/readiness.out"
 readiness_err="$tmp_dir/readiness.err"
+# Refresh the remote ref listing. Runs in the CALLER's shell, not a command
+# substitution: run_gh records the auth outcome in LOOP_SPEC_AUTH_ERROR_CODE and
+# memoizes the prepared credential stage, and a subshell would discard both --
+# an expired token would then be reported as a plain remote_query_failed.
+# Callers read the SHA with remote_sha_from_refresh.
 refresh_remote_sha() {
-  local rc=0
   run_gh "$tmp_dir/git-ls-remote.out" "$tmp_dir/git-ls-remote.err" \
-    git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch" || rc=$?
-  [[ "$rc" -eq 0 ]] || return "$rc"
-  remote_sha="$(awk 'NR == 1 {print $1}' "$tmp_dir/git-ls-remote.out")"
+    git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch"
 }
 
+remote_sha_from_refresh() {
+  awk 'NR == 1 {print $1}' "$tmp_dir/git-ls-remote.out"
+}
+
+# Refresh $readiness_out. Like refresh_remote_sha, it runs in the caller's shell
+# so its LOOP_SPEC_AUTH_ERROR_CODE assignment survives; the caller reads the
+# observed value with observed_draft_from_refresh.
 observe_readiness_after_refresh() {
   local rc=0
   run_gh_once "$readiness_out" "$readiness_err" gh pr view "$pr_number" \
@@ -317,9 +350,11 @@ observe_readiness_after_refresh() {
     fi
     return "$rc"
   fi
-  observed_is_draft="$(jq -r 'if (.isDraft | type) == "boolean" then .isDraft else "invalid" end' \
-    "$readiness_out" 2>/dev/null)"
-  [[ "$observed_is_draft" != "invalid" ]]
+  jq -e '(.isDraft | type) == "boolean"' "$readiness_out" >/dev/null 2>&1
+}
+
+observed_draft_from_refresh() {
+  jq -r '.isDraft' "$readiness_out"
 }
 
 set_readiness_idempotent() {
@@ -333,6 +368,7 @@ set_readiness_idempotent() {
 
   loop_spec_credential_refresh "$repo_dir" "github-pr" "auth-retry" "$credential_host" || return 125
   observe_readiness_after_refresh || return $?
+  observed_is_draft="$(observed_draft_from_refresh)"
   [[ "$observed_is_draft" != "$desired_is_draft" ]] || return 0
 
   rc=0
@@ -340,6 +376,7 @@ set_readiness_idempotent() {
   [[ "$rc" -ne 0 ]] || return 0
   if loop_spec_is_auth_failure "$rc" "$readiness_out" "$readiness_err"; then
     observe_readiness_after_refresh || return $?
+    observed_is_draft="$(observed_draft_from_refresh)"
     [[ "$observed_is_draft" != "$desired_is_draft" ]] || return 0
     LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
     LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
@@ -383,15 +420,20 @@ repo_selector="$repo_host/$repo_identity"
 credential_host="$repo_host"
 
 # Push the requested commit, not HEAD, then prove the remote ref is identical.
-push_rc=0
-run_gh "$tmp_dir/git-push.out" "$tmp_dir/git-push.err" \
-  git -C "$repo_dir" push "$remote_url" "$target_sha:refs/heads/$branch" || push_rc=$?
-if [[ "$push_rc" -ne 0 ]]; then
-  fail_delivery "push_failed" "exact-SHA push failed: $(tr '\n' ' ' < "$tmp_dir/git-push.err")"
+# observe never mutates the remote: it binds an already-pushed SHA to an open PR.
+if [[ "$mode" != "observe" ]]; then
+  push_rc=0
+  run_gh "$tmp_dir/git-push.out" "$tmp_dir/git-push.err" \
+    git -C "$repo_dir" push "$remote_url" "$target_sha:refs/heads/$branch" || push_rc=$?
+  if [[ "$push_rc" -ne 0 ]]; then
+    fail_delivery "push_failed" "exact-SHA push failed: $(tr '\n' ' ' < "$tmp_dir/git-push.err")"
+  fi
+  refresh_remote_sha \
+    || fail_delivery "remote_query_failed" "cannot read pushed branch: $(tr '\n' ' ' < "$tmp_dir/git-ls-remote.err")"
+  remote_sha="$(remote_sha_from_refresh)"
+  [[ "$remote_sha" == "$target_sha" ]] \
+    || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
 fi
-refresh_remote_sha || fail_delivery "remote_query_failed" "cannot read pushed branch: $(tr '\n' ' ' < "$tmp_dir/git-ls-remote.err")"
-[[ "$remote_sha" == "$target_sha" ]] \
-  || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
 
 pr_json=""
 pr_fields="number,url,isDraft,headRefOid,headRefName,headRepository,isCrossRepository,baseRefName,title,body,state"
@@ -404,9 +446,12 @@ view_pr() {
   jq -e 'type == "object"' "$gh_out" >/dev/null 2>&1
 }
 
+# Validate $pr_json. Temps stay local. On success, write $tmp_dir/pr-snapshot.json
+# for apply_pr_snapshot — this function never assigns is_draft/pr_number/pr_url/head_sha.
 validate_pr_snapshot() {
   local context="$1" pr_repo_identity pr_url_host head_repo is_cross_repository
   local parsed=()
+  local pr_state pr_head snapshot_number snapshot_url snapshot_head snapshot_draft parsed_value
   jq -e '
     type == "object"
     and (.number | type == "number" and floor == . and . > 0)
@@ -424,10 +469,10 @@ validate_pr_snapshot() {
   ' <<<"$pr_json" >/dev/null 2>&1 \
     || fail_delivery "pr_lookup_failed" "$context returned malformed PR fields"
 
-  pr_number="$(jq -r '.number' <<<"$pr_json")"
-  pr_url="$(jq -r '.url' <<<"$pr_json")"
-  head_sha="$(jq -r '.headRefOid' <<<"$pr_json")"
-  is_draft="$(jq -r '.isDraft' <<<"$pr_json")"
+  snapshot_number="$(jq -r '.number' <<<"$pr_json")"
+  snapshot_url="$(jq -r '.url' <<<"$pr_json")"
+  snapshot_head="$(jq -r '.headRefOid' <<<"$pr_json")"
+  snapshot_draft="$(jq -r '.isDraft' <<<"$pr_json")"
   pr_state="$(jq -r '.state' <<<"$pr_json")"
   pr_head="$(jq -r '.headRefName' <<<"$pr_json")"
   head_repo="$(jq -r '.headRepository.nameWithOwner' <<<"$pr_json")"
@@ -435,7 +480,7 @@ validate_pr_snapshot() {
 
   while IFS= read -r parsed_value; do
     parsed+=("$parsed_value")
-  done < <(python3 - "$pr_url" <<'PY'
+  done < <(python3 - "$snapshot_url" <<'PY'
 import sys
 try:
     from urllib.parse import urlparse
@@ -454,7 +499,7 @@ print(parts[0] + "/" + parts[1])
 PY
   )
   [[ "${#parsed[@]}" -eq 2 ]] \
-    || fail_delivery "pr_identity_mismatch" "$context returned a malformed PR URL: '$pr_url'"
+    || fail_delivery "pr_identity_mismatch" "$context returned a malformed PR URL: '$snapshot_url'"
   pr_url_host="${parsed[0]}"
   pr_repo_identity="${parsed[1]}"
   [[ "$pr_url_host" == "$repo_host" && "$pr_repo_identity" == "$repo_identity" ]] \
@@ -467,8 +512,90 @@ PY
   [[ "$pr_state" == "OPEN" ]] || fail_delivery "pr_closed" "PR is not open"
   [[ "$pr_head" == "$branch" ]] \
     || fail_delivery "pr_identity_mismatch" "PR head '$pr_head' does not match '$branch'"
-  [[ "$head_sha" == "$target_sha" ]] \
-    || fail_delivery "pr_head_moved" "PR head is '$head_sha', expected verified SHA '$target_sha'"
+  [[ "$snapshot_head" == "$target_sha" ]] \
+    || fail_delivery "pr_head_moved" "PR head is '$snapshot_head', expected verified SHA '$target_sha'"
+  jq -cn --argjson number "$snapshot_number" --arg url "$snapshot_url" \
+    --arg headSha "$snapshot_head" --argjson draft "$snapshot_draft" \
+    '{number:$number,url:$url,headSha:$headSha,isDraft:$draft}' \
+    > "$tmp_dir/pr-snapshot.json" \
+    || fail_delivery "pr_lookup_failed" "$context could not write the PR snapshot"
+}
+
+# The only helper allowed to assign script-level PR identity fields from a snapshot.
+apply_pr_snapshot() {
+  pr_number="$(jq -r '.number' "$tmp_dir/pr-snapshot.json")"
+  pr_url="$(jq -r '.url' "$tmp_dir/pr-snapshot.json")"
+  head_sha="$(jq -r '.headSha' "$tmp_dir/pr-snapshot.json")"
+  is_draft="$(jq -r '.isDraft' "$tmp_dir/pr-snapshot.json")"
+}
+
+# Parse one gh pr checks snapshot into $tmp_dir/checks-snapshot.json. Never
+# assigns script-level check fields — apply_check_snapshot does that. fail_delivery
+# from here is in the parent shell (not a command substitution).
+ingest_required_checks() {
+  local checks_rc="$1" payload="" confirmed=false
+  [[ "$checks_rc" -ne 124 ]] \
+    || fail_delivery "checks_timeout" "gh pr checks exceeded its command timeout"
+  if jq -e 'type == "array"' "$gh_out" >/dev/null 2>&1; then
+    payload="$(jq -c . "$gh_out")"
+  elif grep -qi "no required checks" "$gh_err" 2>/dev/null; then
+    payload="[]"
+    confirmed=true
+  elif grep -qi "no checks reported" "$gh_err" 2>/dev/null; then
+    payload="[]"
+  else
+    fail_delivery "checks_unsupported" "required checks could not be read: $(tr '\n' ' ' < "$gh_err")"
+  fi
+  jq -e 'all(.[];
+    type == "object" and (.bucket | type == "string") and
+    (.name | type == "string") and (.workflow | type == "string") and
+    (.state | type == "string") and (.link | type == "string") and
+    (.bucket == "pass" or .bucket == "skipping" or .bucket == "pending" or
+     .bucket == "fail" or .bucket == "cancel"))' <<<"$payload" >/dev/null 2>&1 \
+    || fail_delivery "checks_unsupported" "required checks returned malformed fields or an unknown bucket"
+  jq -cn --argjson payload "$payload" --argjson noRequired "$confirmed" '
+    {
+      payload: $payload,
+      noRequired: $noRequired,
+      counts: {
+        pass: ([$payload[] | select(.bucket == "pass")] | length),
+        skipping: ([$payload[] | select(.bucket == "skipping")] | length),
+        pending: ([$payload[] | select(.bucket == "pending")] | length),
+        fail: ([$payload[] | select(.bucket == "fail")] | length),
+        cancel: ([$payload[] | select(.bucket == "cancel")] | length)
+      }
+    }
+    | . + {
+        failed: (.counts.fail + .counts.cancel),
+        pending: .counts.pending,
+        total: (.payload | length)
+      }
+  ' > "$tmp_dir/checks-snapshot.json" \
+    || fail_delivery "checks_unsupported" "required checks could not be summarised"
+}
+
+apply_check_snapshot() {
+  checks_payload="$(jq -c '.payload' "$tmp_dir/checks-snapshot.json")"
+  counts="$(jq -c '.counts' "$tmp_dir/checks-snapshot.json")"
+  failed="$(jq -r '.failed' "$tmp_dir/checks-snapshot.json")"
+  pending="$(jq -r '.pending' "$tmp_dir/checks-snapshot.json")"
+  total="$(jq -r '.total' "$tmp_dir/checks-snapshot.json")"
+  no_checks_confirmed="$(jq -r '.noRequired' "$tmp_dir/checks-snapshot.json")"
+}
+
+# Re-bind the open PR and ingest one required-check snapshot. observe and the
+# polling loop share this so a one-shot classification cannot drift from the
+# wait loop's parser.
+refresh_pr_and_ingest_checks() {
+  local context="$1" checks_rc=0
+  view_pr "$pr_number" || fail_delivery "pr_lookup_failed" "cannot refresh PR before checking CI"
+  pr_json="$(jq -c . "$gh_out")"
+  validate_pr_snapshot "$context"
+  apply_pr_snapshot
+  run_gh "$gh_out" "$gh_err" gh pr checks "$pr_number" --repo "$repo_selector" \
+    --required --json name,workflow,bucket,state,link || checks_rc=$?
+  ingest_required_checks "$checks_rc"
+  apply_check_snapshot
 }
 
 if [[ -n "$pr_url_hint" ]]; then
@@ -486,6 +613,8 @@ else
   if [[ "$list_count" -eq 1 ]]; then
     pr_json="$(jq -c '.[0]' "$gh_out")"
     pr_action="reused"
+  elif [[ "$mode" == "observe" ]]; then
+    fail_delivery "pr_lookup_failed" "no open PR found for '$branch'"
   else
     create_rc=0
     run_gh_no_auth_retry "$gh_out" "$gh_err" github-pr gh pr create --draft --repo "$repo_selector" \
@@ -546,7 +675,9 @@ else
 fi
 
 validate_pr_snapshot "PR lookup"
+apply_pr_snapshot
 
+if [[ "$mode" != "observe" ]]; then
 expected_body="$(cat "$body_file")"
 actual_title="$(jq -r '.title // ""' <<<"$pr_json")"
 actual_base="$(jq -r '.baseRefName // ""' <<<"$pr_json")"
@@ -560,6 +691,7 @@ if [[ "$actual_title" != "$title" || "$actual_base" != "$base_branch" || "$actua
   view_pr "$pr_number" || fail_delivery "metadata_failed" "updated PR could not be refreshed"
   pr_json="$(jq -c . "$gh_out")"
   validate_pr_snapshot "metadata refresh"
+  apply_pr_snapshot
 else
   metadata_action="unchanged"
 fi
@@ -569,6 +701,7 @@ actual_base="$(jq -r '.baseRefName' <<<"$pr_json")"
 actual_body="$(jq -r '.body' <<<"$pr_json")"
 [[ "$actual_title" == "$title" && "$actual_base" == "$base_branch" && "$actual_body" == "$expected_body" ]] \
   || fail_delivery "metadata_failed" "PR title, body, or base did not reconcile"
+fi
 
 if [[ "$mode" == "checkpoint" ]]; then
   checks_json="$(jq -cn --argjson timeout "$checks_timeout" \
@@ -579,49 +712,53 @@ if [[ "$mode" == "checkpoint" ]]; then
   exit 0
 fi
 
+if [[ "$mode" == "observe" ]]; then
+  refresh_remote_sha \
+    || fail_delivery "remote_query_failed" "cannot read remote branch: $(tr '\n' ' ' < "$tmp_dir/git-ls-remote.err")"
+  remote_sha="$(remote_sha_from_refresh)"
+  [[ "$remote_sha" == "$target_sha" ]] \
+    || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
+  refresh_pr_and_ingest_checks "observe CI"
+  # observe never edits metadata, so it reports the base the PR actually has
+  # rather than the one the caller asked for. An explicit --base is an assertion:
+  # a PR retargeted away from the feature's base is not this feature's delivery.
+  observed_base="$(jq -r '.baseRefName' <<<"$pr_json")"
+  [[ -z "$base_branch" || "$base_branch" == "$observed_base" ]] \
+    || fail_delivery "pr_identity_mismatch" "PR base '$observed_base' does not match '$base_branch'"
+  base_branch="$observed_base"
+  checks_json="$(jq -cn --argjson timeout "$checks_timeout" --argjson counts "$counts" \
+    --argjson required "$checks_payload" \
+    '{status:"not-run",timeoutSeconds:$timeout,elapsedSeconds:0,counts:$counts,required:$required}')"
+  if [[ "$failed" -gt 0 ]]; then
+    checks_json="$(jq -c '.status = "failed"' <<<"$checks_json")"
+    fail_delivery "checks_failed" "one or more required checks failed or were cancelled"
+  fi
+  if [[ "$pending" -gt 0 ]]; then
+    checks_json="$(jq -c '.status = "pending"' <<<"$checks_json")"
+    fail_delivery "checks_pending" "required checks are still pending"
+  fi
+  if [[ "$total" -eq 0 && "$no_checks_confirmed" != "true" ]]; then
+    checks_json="$(jq -c '.status = "pending"' <<<"$checks_json")"
+    fail_delivery "checks_pending" "required checks have not registered"
+  fi
+  check_status="passed"
+  [[ "$total" -eq 0 ]] && check_status="none"
+  checks_json="$(jq -c --arg status "$check_status" '.status = $status' <<<"$checks_json")"
+  readiness_action="unchanged"
+  metadata_action="unchanged"
+  if [[ "$is_draft" == "true" ]]; then
+    emit_result true "delivered-draft" "" ""
+  else
+    emit_result true "delivered" "" ""
+  fi
+  exit 0
+fi
+
 checks_started="$(date +%s)"
 while :; do
-  view_pr "$pr_number" || fail_delivery "pr_lookup_failed" "cannot refresh PR before checking CI"
-  pr_json="$(jq -c . "$gh_out")"
-  validate_pr_snapshot "CI refresh"
-
-  checks_rc=0
-  run_gh "$gh_out" "$gh_err" gh pr checks "$pr_number" --repo "$repo_selector" \
-    --required --json name,workflow,bucket,state,link || checks_rc=$?
-  [[ "$checks_rc" -ne 124 ]] \
-    || fail_delivery "checks_timeout" "gh pr checks exceeded its command timeout"
-
-  checks_payload=""
-  no_checks_confirmed=false
-  if jq -e 'type == "array"' "$gh_out" >/dev/null 2>&1; then
-    checks_payload="$(jq -c . "$gh_out")"
-  elif grep -qi "no required checks" "$gh_err" 2>/dev/null; then
-    checks_payload="[]"
-    no_checks_confirmed=true
-  elif grep -qi "no checks reported" "$gh_err" 2>/dev/null; then
-    checks_payload="[]"
-  else
-    fail_delivery "checks_unsupported" "required checks could not be read: $(tr '\n' ' ' < "$gh_err")"
-  fi
-
-  jq -e 'all(.[];
-    type == "object" and (.bucket | type == "string") and
-    (.name | type == "string") and (.workflow | type == "string") and
-    (.state | type == "string") and (.link | type == "string") and
-    (.bucket == "pass" or .bucket == "skipping" or .bucket == "pending" or
-     .bucket == "fail" or .bucket == "cancel"))' <<<"$checks_payload" >/dev/null 2>&1 \
-    || fail_delivery "checks_unsupported" "required checks returned malformed fields or an unknown bucket"
-
-  counts="$(jq -c '{pass:([.[]|select(.bucket=="pass")]|length),
-    skipping:([.[]|select(.bucket=="skipping")]|length),
-    pending:([.[]|select(.bucket=="pending")]|length),
-    fail:([.[]|select(.bucket=="fail")]|length),
-    cancel:([.[]|select(.bucket=="cancel")]|length)}' <<<"$checks_payload")"
+  refresh_pr_and_ingest_checks "CI refresh"
   now_epoch="$(date +%s)"
   elapsed=$((now_epoch - checks_started))
-  failed="$(jq -r '.fail + .cancel' <<<"$counts")"
-  pending="$(jq -r '.pending' <<<"$counts")"
-  total="$(jq -r 'length' <<<"$checks_payload")"
 
   # Heartbeat. This loop can run for LOOP_SPEC_CHECKS_TIMEOUT_SECONDS -- 900s by
   # default -- and DELIVER emitted nothing at all while it did, so an unattended
@@ -699,7 +836,10 @@ done
 view_pr "$pr_number" || fail_delivery "pr_lookup_failed" "cannot refresh PR before readiness transition"
 pr_json="$(jq -c . "$gh_out")"
 validate_pr_snapshot "pre-readiness refresh"
-refresh_remote_sha || fail_delivery "remote_query_failed" "cannot read remote branch before readiness transition"
+apply_pr_snapshot
+refresh_remote_sha \
+  || fail_delivery "remote_query_failed" "cannot read remote branch before readiness transition"
+remote_sha="$(remote_sha_from_refresh)"
 [[ "$remote_sha" == "$target_sha" ]] \
   || fail_delivery "remote_sha_mismatch" "remote branch moved to '$remote_sha' before readiness transition"
 actual_title="$(jq -r '.title' <<<"$pr_json")"
@@ -727,7 +867,7 @@ if [[ "$restore_draft" == "1" ]]; then
   view_pr "$pr_number" || fail_delivery "pr_lookup_failed" "cannot verify restored draft state"
   pr_json="$(jq -c . "$gh_out")"
   validate_pr_snapshot "draft restore observation"
-  is_draft="$(jq -r '.isDraft' <<<"$pr_json")"
+  apply_pr_snapshot
   [[ "$is_draft" == "true" ]] || fail_delivery "draft_restore_failed" "PR remains ready after draft restore"
   readiness_action="rolled_back"
   emit_result true "ready-pending" "" ""
@@ -756,10 +896,12 @@ if [[ "$final_head" != "$target_sha" ]]; then
   fail_delivery "pr_head_moved" "PR head moved to '$final_head' during readiness transition"
 fi
 validate_pr_snapshot "final PR observation"
+apply_pr_snapshot
 if ! refresh_remote_sha; then
   rollback_readiness
   fail_delivery "remote_query_failed" "cannot read remote branch for final observation"
 fi
+remote_sha="$(remote_sha_from_refresh)"
 if [[ "$remote_sha" != "$target_sha" ]]; then
   rollback_readiness
   fail_delivery "remote_sha_mismatch" "final remote SHA no longer matches '$target_sha'"

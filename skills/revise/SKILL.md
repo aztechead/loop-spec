@@ -1,6 +1,6 @@
 ---
 name: revise
-description: Close the PR-review round trip - ingest human review feedback on an open loop-spec PR (inline review comments, reviews, discussion comments), classify each actionable item with the iterate gap taxonomy (execute/plan/spec), fix execute-class items on the PR branch via the EXECUTE remediation machinery, push, and post one summary comment mapping feedback to commits. Autonomous-mode aware.
+description: Use when the user says "address the review comments", "revise this PR", or pastes a loop-spec PR number/URL after human review. Fixes execute-class items on the PR branch. Do not use to start new work (that's /loop-spec:cycle) or to ingest a ticket that is not PR review (that's /loop-spec:intake).
 argument-hint: '<pr-number | pr-url> [autonomous]'
 ---
 

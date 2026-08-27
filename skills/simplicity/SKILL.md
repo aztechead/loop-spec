@@ -1,6 +1,6 @@
 ---
 name: simplicity
-description: Toggle simplicity mode (the laziness ladder) on/off and set its intensity (lite/full/ultra) for the current project. Simplicity mode (default ON, full) makes the assistant climb the laziness ladder before writing code — YAGNI, reuse, stdlib, native, installed dep, one line, then minimum — so the cycle ships the shortest solution that actually works without cutting validation, error handling, security, or accessibility. Reads and writes .loop-spec/simplicity.conf to persist state across sessions. Ported from ponytail (https://github.com/DietrichGebert/ponytail).
+description: Use when the user says "simplicity on/off/status/lite/full/ultra". Writes .loop-spec/simplicity.conf. Default ON, full: stop at the first laziness-ladder rung. Do not use this to implement a feature; it only toggles the SessionStart injector.
 argument-hint: "[on|off|status|lite|full|ultra]"
 ---
 

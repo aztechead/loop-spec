@@ -1,6 +1,6 @@
 ---
 name: pause
-description: Snapshot in-progress feature state to HANDOFF.json + .continue-here.md for safe pause/resume
+description: Use when the user says "pause", "stop for now", "pick this up later", or needs a handoff. Writes HANDOFF.json and .continue-here.md on the active feature. Do not use to cancel a cycle, to resume (re-invoke /loop-spec:cycle), or to roll back code (that's /loop-spec:rollback).
 argument-hint: "[path/to/feature.json]  (optional; defaults to the active feature)"
 ---
 

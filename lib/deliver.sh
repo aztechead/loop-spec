@@ -87,6 +87,9 @@ attempted_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Every observation is appended here; the delivered/skipped/held/failure counts are
 # derived from this set after all targets are processed.
 targets="[]"
+# targets is the script-level observation accumulator. Helpers declare temps
+# local; append_target_failure and run_target assign this array after they
+# build a local record.
 
 invoke_delivery() {
   local repo_dir="$1" branch="$2" base="$3" sha="$4" title="$5" hint="$6" hold="${7:-0}" restore="${8:-0}"

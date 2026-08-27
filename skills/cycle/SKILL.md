@@ -1,6 +1,6 @@
 ---
 name: cycle
-description: "ENTRY POINT for loop-spec. Spec-driven feature cycle (SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER, where ITERATE judges against the original goal and DELIVER binds the final SHA to one CI-green PR). Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Single-tier operation: gate behavior is fixed; trivially-scoped plans skip the plan critique via a structural fast-path. Execution style defaults to auto (overridable inline, never asked). Model defaults are fixed and may be overridden per phase or role. Resumes incomplete features automatically."
+description: "ENTRY POINT for loop-spec. Give it a feature description OR a path to a pre-authored spec .md file (spec-file ingest skips the interview). Runs SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER. Resumes incomplete features automatically. Do not use for a pasted stack trace (that's /loop-spec:debug) or a one-file ad-hoc fix (that's /loop-spec:micro)."
 argument-hint: "[new] [feature description | path/to/spec.md | backlog]  (optional inline overrides: style:auto|step|interactive|review-only, autonomous)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
@@ -1240,7 +1240,8 @@ Full algorithm and escalation handling (iteration limit exhausted, NEEDS_CONTEXT
 ## On completion
 
 This section is reachable only after DELIVER wrote `delivery.json.nextPhase =
-"completed"`. Assert sidecar `status == "ready-for-review"`; otherwise stop with
+"completed"`. Assert sidecar `status == "ready-for-review"` or
+`status == "delivered-draft"`; otherwise stop with
 `delivery-incomplete` and leave tracked `feature.json.currentPhase = "deliver"`.
 Never overwrite or commit the tracked phase pointer here.
 
@@ -1264,7 +1265,10 @@ fi
 
 `run.sh --step` already publishes this result when it enters the `completed`
 node; a second write is idempotent. `write-terminal --outcome delivered` is
-the same alias if the agent reaches for DELIVER's own word. A non-zero write
+the same alias if the agent reaches for DELIVER's own word. A sidecar whose
+`status` is `delivered-draft` is a successful completion with a green draft PR
+(enterprise sign-off), not a gap: `outcome` is `delivered-draft`, `workDelivered`
+is true, and `converged` stays false until the PR is marked ready. A non-zero write
 is a publication failure — retry, then stop. Do not continue as if the pointer
 landed. The maintenance short path still reaches this section: ITERATE and DELIVER still run, and a headless caller still gates on this pointer. Do not
 exit after EXECUTE because the task felt like a sync. An empty ITERATE summary

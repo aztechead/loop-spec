@@ -21,32 +21,30 @@ names this file rather than pasting it. The session-level copy lives in
 Dispatch names this file and the resolved probes. A SessionStart hook does not reach a
 dispatched agent, so the prompt still says to Read this file.
 
-> SIMPLICITY (ponytail laziness ladder — on by default). Write the shortest solution that
-> actually works; the best code is the code never written. BEFORE writing code, stop at the
-> first rung that holds: (1) does it need to exist at all? speculative = skip it (YAGNI) —
-> and the layer nobody needed always looks justified while you write it, so count it
-> afterwards: `bash <probe_dir>/indirection-scan.sh scan <your files>` names each small
-> private helper you added that is called exactly once. Inline it, or say why the name
-> earns its hop. It leaves decomposition alone (a long function with one caller is what
-> functions are for), and stays silent on exported symbols and dead code;
-> (2) DRY — already in this codebase? reuse the existing helper/util/type/pattern, do not
-> re-implement it: search the tree for it BEFORE you write, and check what you wrote after
-> with `bash <probe_dir>/duplication-scan.sh scan <your files>`, which reports any block
-> you duplicated and the file it already lives in — `duplicate=` for the same lines and
-> `similar=` for the same lines with every name changed, which is the shape a copy-paste
-> usually takes, so both count. Reuse means call it, or lift the shared
-> part into one place both callers use — never a second copy that drifts; (3) stdlib does
-> it? use it; (4) native platform feature covers it? use it; (5) an already-installed
-> dependency solves it? use it, never add a new one for what a few lines do; (6) can it be
-> one line? one line; (7) only then, the minimum code that works. The ladder runs AFTER you
-> understand the problem, never instead of it. Bug fix = root cause, not symptom (fix the
-> shared function once). NEVER cut input validation at trust boundaries, error handling that
-> prevents data loss, security, accessibility, or anything the spec explicitly requires. A
-> seam (a clean boundary, an injected dependency) is not bloat — cutting it is not
-> simplification, and neither is collapsing two things that merely look alike: duplication
-> is the same *reason to change* expressed twice, so leave alone what coincidentally
-> resembles. Non-trivial logic leaves ONE runnable check behind. Mark deliberate shortcuts
-> with a `simplicity:` comment naming the ceiling and upgrade path.
+A paragraph of "prefer simplicity" does not fire. This ladder does, because it names the
+moment (about to write code), the action at each rung, and the probe that is the artifact.
+Stop at the first rung that holds. Do not check the rungs below it. Do not narrate the rungs.
+
+> SIMPLICITY (ponytail laziness ladder — on by default). When you are about to write or
+> edit code, read the files the change touches, then stop at the first rung that holds.
+> (1) Not needed? Skip it. Say so in one line. After writing,
+> `bash <probe_dir>/indirection-scan.sh scan <your files>` names each small private helper
+> you added that is called exactly once. Inline it, or say why the name earns its hop. A
+> long function with one caller is decomposition; leave it. (2) DRY — already in this
+> codebase? One search. Reuse a hit. After writing,
+> `bash <probe_dir>/duplication-scan.sh scan <your files>` (`duplicate=` same lines,
+> `similar=` names-changed; both count). Call the existing helper, or lift the shared part
+> into one place both callers use. Two blocks that merely look alike but change for
+> different reasons are not duplication. (3) Stdlib does it? Use it. (4) Native platform
+> feature covers it? Use it. (5) An already-installed dependency solves it? Use it. Never
+> add a new one for what a few lines do. (6) Fits in one line? One line. (7) Only then:
+> the minimum code that works. The ladder runs AFTER you understand the problem, never
+> instead of it. Bug fix = root cause, not symptom (fix the shared function once). Never
+> cut input validation at trust boundaries, error handling that prevents data loss,
+> security, accessibility, or anything the spec names — write the minimum that still
+> covers those. A seam is not bloat. Non-trivial logic leaves ONE runnable check behind.
+> Mark deliberate shortcuts with a `simplicity:` comment naming the ceiling and upgrade
+> path. If the user insists on the fuller version, build it without re-arguing.
 
 ## Rungs 1 and 2 are the two the prose could never enforce
 

@@ -30,7 +30,7 @@ FAIL=0
 check() {
   local name="$1" expected_exit="$2" payload="$3"; shift 3
   local actual_exit=0
-  echo "$payload" | env CLAUDE_PROJECT_DIR="$PROJ" "$@" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+  env CLAUDE_PROJECT_DIR="$PROJ" "$@" bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then
     echo "PASS: $name"; ((PASS++)) || true
   else
@@ -128,15 +128,15 @@ check "h4: unrecognized runner without VERIFY_CMD -> BLOCK" 2 "$(payload "$EDIT_
 VC="$TMPDIR_TEST/vc"; mkdir -p "$VC/.loop-spec"; seed_edits "$VC"
 printf 'ENABLED=1\nVERIFY_CMD=rake spec\n' > "$VC/.loop-spec/micro.conf"
 actual_exit=0
-echo "$(payload "$EDIT_PY" "$BASH_RAKE")" | env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY" "$BASH_RAKE")" || actual_exit=$?
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: h5: VERIFY_CMD without grounding review -> BLOCK"; ((PASS++)) || true
 else echo "FAIL: h5: VERIFY_CMD without grounding review -> BLOCK (got $actual_exit)"; ((FAIL++)) || true; fi
 actual_exit=0
-echo "$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF" "$BASH_RAKE")" | env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY" "$READ_PY" "$BASH_DIFF" "$BASH_RAKE")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: h5b: grounded VERIFY_CMD-declared runner -> ALLOW"; ((PASS++)) || true
 else echo "FAIL: h5b: grounded VERIFY_CMD-declared runner -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
 actual_exit=0
-echo "$(payload "$BASH_RAKE" "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$VC" bash "$HOOK" >/dev/null 2>&1 <<<"$(payload "$BASH_RAKE" "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: h6: VERIFY_CMD evidence predating edit -> still BLOCK"; ((PASS++)) || true
 else echo "FAIL: h6: VERIFY_CMD evidence predating edit -> still BLOCK (got $actual_exit)"; ((FAIL++)) || true; fi
 
@@ -171,14 +171,14 @@ check "j2: stop_hook_active after remediation ALLOWS" 0 "$active_payload"
 # micro.conf ENABLED=0 disarms the guard
 OFF="$TMPDIR_TEST/off"; mkdir -p "$OFF/.loop-spec"; printf 'ENABLED=0\n' > "$OFF/.loop-spec/micro.conf"
 actual_exit=0
-echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$OFF" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$OFF" bash "$HOOK" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: k: micro.conf ENABLED=0 -> ALLOW"; ((PASS++)) || true
 else echo "FAIL: k: micro.conf ENABLED=0 -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
 
 # no .loop-spec dir -> out of scope
 NOPROJ="$TMPDIR_TEST/noproj"; mkdir -p "$NOPROJ"
 actual_exit=0
-echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$NOPROJ" bash -c "cd '$NOPROJ' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$NOPROJ" bash -c "cd '$NOPROJ' && bash '$HOOK'" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: l: no .loop-spec dir -> ALLOW"; ((PASS++)) || true
 else echo "FAIL: l: no .loop-spec dir -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
 
@@ -186,7 +186,7 @@ else echo "FAIL: l: no .loop-spec dir -> ALLOW (got $actual_exit)"; ((FAIL++)) |
 CYC="$TMPDIR_TEST/cycle"; mkdir -p "$CYC/.loop-spec/features/my-feat"
 printf '{"currentPhase":"execute"}\n' > "$CYC/.loop-spec/features/my-feat/feature.json"
 actual_exit=0
-echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CYC" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$CYC" bash "$HOOK" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: m: in-flight feature -> ALLOW"; ((PASS++)) || true
 else echo "FAIL: m: in-flight feature -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
 
@@ -194,7 +194,7 @@ else echo "FAIL: m: in-flight feature -> ALLOW (got $actual_exit)"; ((FAIL++)) |
 DONE="$TMPDIR_TEST/done"; mkdir -p "$DONE/.loop-spec/features/old-feat"; seed_edits "$DONE"
 printf '{"currentPhase":"completed"}\n' > "$DONE/.loop-spec/features/old-feat/feature.json"
 actual_exit=0
-echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$DONE" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$DONE" bash "$HOOK" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n: completed feature only -> guard still BLOCKS"; ((PASS++)) || true
 else echo "FAIL: n: completed feature only -> guard still BLOCKS (got $actual_exit)"; ((FAIL++)) || true; fi
 
@@ -204,7 +204,7 @@ LOGICAL_DONE="$TMPDIR_TEST/logical-done"; mkdir -p "$LOGICAL_DONE/.loop-spec/fea
 printf '{"currentPhase":"deliver"}\n' > "$LOGICAL_DONE/.loop-spec/features/final/feature.json"
 printf '{"nextPhase":"completed"}\n' > "$LOGICAL_DONE/.loop-spec/features/final/delivery.json"
 actual_exit=0
-echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$LOGICAL_DONE" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$LOGICAL_DONE" bash "$HOOK" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n2: logically completed retained feature -> guard still BLOCKS"; ((PASS++)) || true
 else echo "FAIL: n2: logically completed retained feature -> guard still BLOCKS (got $actual_exit)"; ((FAIL++)) || true; fi
 
@@ -214,13 +214,13 @@ CYCLE_DONE="$TMPDIR_TEST/cycle-done"; mkdir -p "$CYCLE_DONE/.loop-spec"; seed_ed
 printf '%s\n' '{"cycleType":"full","status":"completed","finishedAt":"2026-01-01T12:05:00Z"}' \
   > "$CYCLE_DONE/.loop-spec/last-result.json"
 actual_exit=0
-echo "$(cycle_payload_at "2026-01-01T12:04:00Z" "$EDIT_PY")" \
-  | env CLAUDE_PROJECT_DIR="$CYCLE_DONE" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$CYCLE_DONE" bash "$HOOK" >/dev/null 2>&1 \
+  <<<"$(cycle_payload_at "2026-01-01T12:04:00Z" "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n2b: completed cycle owns its transcript evidence -> ALLOW"; ((PASS++)) || true
 else echo "FAIL: n2b: completed cycle owns its transcript evidence -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
 actual_exit=0
-echo "$(cycle_payload_at "2026-01-01T12:06:00Z" "$EDIT_PY")" \
-  | env CLAUDE_PROJECT_DIR="$CYCLE_DONE" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$CYCLE_DONE" bash "$HOOK" >/dev/null 2>&1 \
+  <<<"$(cycle_payload_at "2026-01-01T12:06:00Z" "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n2c: post-cycle ad-hoc edit re-arms guard"; ((PASS++)) || true
 else echo "FAIL: n2c: post-cycle ad-hoc edit re-arms guard (got $actual_exit)"; ((FAIL++)) || true; fi
 
@@ -236,22 +236,22 @@ git -C "$CONTROL" worktree add -q -b feat/linked "$LINKED"
 mkdir -p "$CONTROL/.loop-spec" "$LINKED/.loop-spec/features/linked"; seed_edits "$CONTROL"
 printf '{"currentPhase":"execute"}\n' > "$LINKED/.loop-spec/features/linked/feature.json"
 actual_exit=0
-echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n3: control checkout sees active linked feature -> ALLOW"; ((PASS++)) || true
 else echo "FAIL: n3: control checkout sees active linked feature -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
 actual_exit=0
-echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$LINKED' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$LINKED' && bash '$HOOK'" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n4: feature-root mid-cycle Stop -> ALLOW"; ((PASS++)) || true
 else echo "FAIL: n4: feature-root mid-cycle Stop -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
 printf '{"currentPhase":"deliver"}\n' > "$LINKED/.loop-spec/features/linked/feature.json"
 actual_exit=0
-echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$LINKED' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$LINKED' && bash '$HOOK'" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n5: feature-root final-phase Stop -> ALLOW"; ((PASS++)) || true
 else echo "FAIL: n5: feature-root final-phase Stop -> ALLOW (got $actual_exit)"; ((FAIL++)) || true; fi
 printf '{"nextPhase":"completed","finishedAt":"2026-01-01T12:05:00Z"}\n' \
   > "$LINKED/.loop-spec/features/linked/delivery.json"
 actual_exit=0
-echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" >/dev/null 2>&1 <<<"$(payload "$EDIT_PY")" || actual_exit=$?
 if [[ "$actual_exit" -eq 2 ]]; then echo "PASS: n6: completed retained worktree re-arms ambient guard"; ((PASS++)) || true
 else echo "FAIL: n6: completed retained worktree re-arms ambient guard (got $actual_exit)"; ((FAIL++)) || true; fi
 
@@ -264,9 +264,8 @@ WT_EDIT="$(jq -cn --arg path "$LINKED/src/app.py" \
 CONTROL_DIFF="$(jq -cn --arg command "git -C $CONTROL diff -- src/app.py" \
   '{type:"tool_use",name:"Bash",input:{command:$command}}')"
 actual_exit=0
-guard_output="$(echo "$(payload "$WT_EDIT" "$CONTROL_DIFF" "$BASH_TEST")" \
-  | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" \
-    2>&1 >/dev/null)" || actual_exit=$?
+guard_output="$(env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" \
+  2>&1 >/dev/null <<<"$(payload "$WT_EDIT" "$CONTROL_DIFF" "$BASH_TEST")")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n6b: control pathspec grounds linked-worktree edit"; ((PASS++)) || true
 else echo "FAIL: n6b: control pathspec grounds linked-worktree edit (got $actual_exit: $guard_output)"; ((FAIL++)) || true; fi
 
@@ -274,9 +273,8 @@ else echo "FAIL: n6b: control pathspec grounds linked-worktree edit (got $actual
 # partially salvaged delivery). The completed delivery sidecar in its retained linked
 # worktree still proves that this cycle transcript is no longer ad hoc.
 actual_exit=0
-echo "$(cycle_payload_at "2026-01-01T12:04:00Z" "$WT_EDIT")" \
-  | env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" \
-    >/dev/null 2>&1 || actual_exit=$?
+env CLAUDE_PROJECT_DIR="$CONTROL" bash -c "cd '$CONTROL' && bash '$HOOK'" \
+  >/dev/null 2>&1 <<<"$(cycle_payload_at "2026-01-01T12:04:00Z" "$WT_EDIT")" || actual_exit=$?
 if [[ "$actual_exit" -eq 0 ]]; then echo "PASS: n6c: linked completion owns cycle transcript from control root"; ((PASS++)) || true
 else echo "FAIL: n6c: linked completion owns cycle transcript from control root (got $actual_exit)"; ((FAIL++)) || true; fi
 
@@ -290,7 +288,7 @@ check "o: malformed JSON payload -> ALLOW" 0 'this is not json'
 check "p: empty payload -> ALLOW" 0 ''
 
 # --- block message names the remedy ---
-msg=$(echo "$(payload "$EDIT_PY")" | env CLAUDE_PROJECT_DIR="$PROJ" bash "$HOOK" 2>&1 >/dev/null || true)
+msg=$(env CLAUDE_PROJECT_DIR="$PROJ" bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "$EDIT_PY")" || true)
 if printf '%s' "$msg" | grep -q "adhoc-ledger.sh add"; then
   echo "PASS: q: block message names ledger remedy"; ((PASS++)) || true
 else

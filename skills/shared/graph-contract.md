@@ -155,7 +155,12 @@ VERIFY gate through this path, on the node declarations read out of
 
 `{repoRoot}` is the loop-spec install; `{featureRepoRoot}` is the git repository holding
 the feature. They are the same directory only when self-hosting, so a body that reads the
-PROJECT tree takes `{featureRepoRoot}`.
+PROJECT tree in **single-repo** mode takes `{featureRepoRoot}`. `{baseSha}` is the
+top-level feature SHA and is empty in workspace mode, where each `workspace.repos[]`
+carries its own `baseSha` and the workspace root is not a git repository. A body that
+must run in both modes takes `{featureDir}` and enumerates targets itself
+(`lib/feature-scan-each.sh`); `verify.marker` and `verify.tamper` do this. Covered by
+`tests/lib/graph-gate-dispatch.test.sh`.
 
 ## State declaration rule
 

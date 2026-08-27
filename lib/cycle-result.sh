@@ -63,6 +63,12 @@
 #                 with "iterate-budget-spent:" or "iterate-terminal:", AND an
 #                 explicit delivery block is ready-for-review (legacy state with
 #                 no delivery block remains compatible)>,
+#   "workDelivered": <true iff a non-checkpoint PR URL is present on the result
+#                     or a delivery target — draft or ready. Independent of
+#                     converged so a sign-off draft is not a gap>,
+#   "outcome": <"delivered" when converged; "delivered-draft" when the sidecar
+#               is a SHA-bound green draft with no iterate gaps; "completed-with-gaps"
+#               for completed runs that did not deliver and are not a draft delivery>,
 #   "retryable": <true for a SHA-bound delivery block>,
 #   "retryPhase": <"deliver" for a SHA-bound delivery block, else null>,
 #   "verifiedSha": <single-repo delivery targetSha, else null>,
@@ -540,7 +546,9 @@ PY
        baseBranch:(if $base == "" then null else $base end),
        prUrl:(if $pr == "" then null else $pr end),
        checkpointPrUrl:(if $checkpointPr == "" then null else $checkpointPr end),delivery:null,
-       converged:$converged,iterations:{used:0,max:null},warnings:$warnings,
+       converged:$converged,
+       workDelivered:($pr != "" and $pr != $checkpointPr),
+       iterations:{used:0,max:null},warnings:$warnings,
        autonomous:$autonomous,feature_title:$title,createdAt:null,finishedAt:$now,
        verification:{status:$verifyStatus,command:(if $verifyCommand == "" then null else $verifyCommand end)}}')" || {
       echo "cycle-result.sh: TERMINAL RESULT NOT PUBLISHED - failed to build terminal result" >&2; exit 3; }
@@ -646,6 +654,11 @@ PY
       echo "cycle-result.sh: cannot read $fj" >&2
       exit 0
     }
+    # Fail-open: a gh miss must not block publishing the terminal result.
+    if [[ "$status" == "completed" && -z "$no_change_reason" ]]; then
+      bash "$SCRIPT_DIR/delivery-reconcile.sh" observe "$feature_dir" --accept-checkpoint \
+        >/dev/null 2>&1 || true
+    fi
     delivery_content="null"
     if [[ -f "$feature_dir/delivery.json" ]]; then
       delivery_content="$(jq -c . "$feature_dir/delivery.json" 2>/dev/null || echo null)"
@@ -663,7 +676,8 @@ PY
       elif [[ "$status" == "completed" ]] && jq -e '
           . != null and (
             (.nextPhase // "") == "completed" or
-            (.status // "") == "ready-for-review")
+            (.status // "") == "ready-for-review" or
+            (.status // "") == "delivered-draft")
         ' >/dev/null 2>&1 <<<"$delivery_content"; then
         summary="Cycle completed; PR delivered."
       else
@@ -767,17 +781,37 @@ PY
        (if $delivery != null then ((($delivery.status // "") == "ready-for-review") or $intentionalNoChange)
         else (($fj | has("delivery") | not) or (($fj.delivery.status // "") == "ready-for-review"))
         end)) as $converged |
+        (($delivery.status // "") == "delivered-draft"
+         or (($delivery.targets // [])
+             | map(select(.outcome == "delivered-draft" and ((.prUrl // "") != "")))
+             | length) > 0) as $draftRecord |
+        (($effectiveStatus == "completed")
+         and ($feedbackBlocking | not)
+         and ($warnings
+              | map(startswith("iterate-budget-spent:") or startswith("iterate-terminal:"))
+              | any | not)
+         and $draftRecord
+         and ($converged | not)) as $draftDelivered |
+        (($intentionalNoChange | not) and (
+           ($prUrl != null and $prUrl != ($fj.checkpointPrUrl // ""))
+           or (($delivery.status // "") == "ready-for-review")
+           or (($delivery.status // "") == "delivered-draft")
+           or (($delivery.targets // []) | any(
+             ((.prUrl // "") != "")
+             and ((.outcome // "") == "delivered" or (.outcome // "") == "delivered-draft")
+           ))
+        )) as $workDelivered |
       {
          schema: 1,
          loopSpecVersion: $loopSpecVersion,
          cycleType: "full",
          slug: $fj.slug,
           status: $effectiveStatus,
-          outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
+          outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $draftDelivered then "delivered-draft" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
           reason: $reason,
           summary: $summary_arg,
           noChangeReason: (if $intentionalNoChange then $no_change_reason_arg else null end),
-          phaseReached: (if $effectiveStatus == "completed" and ((($delivery.status // "") == "ready-for-review") or $intentionalNoChange)
+          phaseReached: (if $effectiveStatus == "completed" and ((($delivery.status // "") == "ready-for-review") or (($delivery.status // "") == "delivered-draft") or $intentionalNoChange)
                          then "completed" else ($fj.currentPhase // null) end),
          branch: (if $primaryTarget != null then ($primaryTarget.branch // $fj.branch // null)
                   else ($fj.branch // null) end),
@@ -788,6 +822,7 @@ PY
          eligibleTargets: $eligibleTargets,
          implementationConverged: $implementationConverged,
          converged: $converged,
+         workDelivered: $workDelivered,
          retryable: $deliveryBlocked,
          retryPhase: (if $deliveryBlocked then "deliver" else null end),
          verifiedSha: (if $primaryTarget != null then $primaryTarget.targetSha else null end),

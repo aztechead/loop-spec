@@ -26,7 +26,9 @@ PR is no longer a draft
 
 The deterministic implementation is `lib/deliver.sh`, which delegates each changed
 repository to `lib/pr-delivery.sh`. Both use explicit repository paths, so this phase
-is identical under Claude Code, OpenCode, and Google ADK.
+is identical under Claude Code, OpenCode, and Google ADK. Agents that open a PR with
+`gh` instead of this controller are reconciled at terminal result publication by
+`lib/delivery-reconcile.sh` (one-shot check observation, no ready flip).
 
 Three invariants the controller enforces so retries and multi-repo features stay safe:
 

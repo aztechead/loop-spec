@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: Guided one-time setup for loop-spec's optional features. Asks a few multiple-choice questions and writes the chosen config files in place (.loop-spec/grill.conf, discipline.conf, workflow.json, RULES.md seed). Everything it configures can also be set manually; onboarding is a convenience, never a requirement.
+description: Use when the user says "set up loop-spec", "onboard", or "configure grill/discipline/workflow". Writes .loop-spec/grill.conf, discipline.conf, workflow.json, and a RULES.md seed. Do not use this to start a feature cycle (that's /loop-spec:cycle); everything it configures can also be set by hand.
 allowed-tools: Bash Read Write AskUserQuestion
 ---
 

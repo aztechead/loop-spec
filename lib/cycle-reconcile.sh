@@ -47,7 +47,9 @@ summary="Cycle interrupted during ${phase}: ${reason}"
 # converged=false over a successful DELIVER because the agent process ended
 # before the cycle-skill write, and the supervisor then marked the PR a draft.
 # Phase is not required: an inline cycle can open the PR without advancing
-# currentPhase through deliver/completed.
+# currentPhase through deliver/completed. A SHA-bound green draft
+# (delivery.json status delivered-draft) is delivered for resume classification
+# and is recorded completed/delivered-draft, not interrupted.
 _delivery_succeeded() {
   local fdir="$1"
   [[ -f "$fdir/feature.json" ]] || return 1
@@ -55,11 +57,15 @@ _delivery_succeeded() {
   [[ -f "$delivery" ]] || delivery="$fdir/feature.json"
   if jq -e '
     .status == "ready-for-review"
+    or .status == "delivered-draft"
     or ((.targets // []) | map(select(
-          .outcome == "delivered" and ((.prUrl // "") != ""))) | length) > 0
+          (.outcome == "delivered" or .outcome == "delivered-draft")
+          and ((.prUrl // "") != ""))) | length) > 0
     or ((.delivery.status // "") == "ready-for-review")
+    or ((.delivery.status // "") == "delivered-draft")
     or ((.delivery.targets // []) | map(select(
-          .outcome == "delivered" and ((.prUrl // "") != ""))) | length) > 0
+          (.outcome == "delivered" or .outcome == "delivered-draft")
+          and ((.prUrl // "") != ""))) | length) > 0
   ' "$delivery" >/dev/null 2>&1; then
     return 0
   fi
@@ -89,6 +95,7 @@ if [[ ! -f "$feature_dir/feature.json" && -n "$slug" ]]; then
 fi
 
 if [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]]; then
+  bash "$script_dir/delivery-reconcile.sh" observe "$feature_dir" >/dev/null 2>&1 || true
   if _delivery_succeeded "$feature_dir"; then
     delivered_summary="$(jq -r '.iterate.lastVerdict.summary // empty' \
       "$feature_dir/feature.json" 2>/dev/null || true)"

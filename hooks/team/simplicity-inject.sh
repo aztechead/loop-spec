@@ -78,7 +78,7 @@ esac
 
 DIRECTIVE="SIMPLICITY MODE ACTIVE (default, ${LEVEL}): write the shortest solution that actually works. Lazy means efficient, not careless. The best code is the code never written.
 
-Before writing any code, stop at the first rung that holds:
+When you are about to write or edit code this session, stop at the first rung that holds. Do not check the rungs below it. Do not narrate the rungs:
 1. Does this need to exist at all? Speculative need = skip it, say so in one line. (YAGNI) The layer nobody needed always looks justified while you are writing it and is only countable afterwards, so count it: '${RUNG_ONE_PROBE}'
 2. DRY -- already in this codebase? Reuse the helper, util, type, or pattern that already lives here; do not re-implement it. Reuse means calling it, or lifting the shared part into one place both callers use -- never a second copy that drifts. Two blocks that merely look alike but change for different reasons are not duplication; merging those is a coupling bug.
 3. Stdlib does it? Use it.

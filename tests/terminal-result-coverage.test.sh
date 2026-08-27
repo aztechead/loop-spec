@@ -32,6 +32,11 @@ checks=(
   "lib/cycle-result.sh	worktree list --porcelain"
   "lib/cycle-result.sh	delivery-blocked"
   "lib/cycle-result.sh	implementationConverged"
+  "lib/cycle-result.sh	workDelivered"
+  "lib/cycle-result.sh	delivered-draft"
+  "lib/cycle-result.sh	delivery-reconcile.sh"
+  "docs/loop-spec/agent-output-contract.md	workDelivered"
+  "docs/loop-spec/agent-output-contract.md	delivered-draft"
   "lib/events.sh	LOOP_SPEC_PHASE_START"
   "lib/events.sh	LOOP_SPEC_PHASE_END"
   # The route-exit contract: every route publishes a terminal result, including the

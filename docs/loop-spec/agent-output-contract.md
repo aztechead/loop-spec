@@ -67,6 +67,7 @@ absent:
   "checkpointPrUrl": "string or null",
   "delivery": "object or null",
   "converged": true,
+  "workDelivered": true,
   "iterations": {"used": 0, "max": null},
   "warnings": [],
   "autonomous": true,
@@ -126,7 +127,8 @@ Full-cycle results add these schema-1 fields:
   "eligibleTargets": [{"branch":"feat/example","targetSha":"..."}],
   "retryable": false,
   "retryPhase": null,
-  "verifiedSha": "immutable single-repository delivery target SHA or null"
+  "verifiedSha": "immutable single-repository delivery target SHA or null",
+  "workDelivered": true
 }
 ```
 
@@ -135,7 +137,14 @@ conclusion. A full cycle that completed implementation and
 verification but hit a SHA-bound delivery failure (`delivery.json.nextPhase ==
 "deliver"`) reports `status: "failed"`, `outcome: "delivery-blocked"`,
 `phaseReached: "deliver"`, `implementationConverged: true`, `converged: false`, passed
-verification, and a retry at `deliver`. In single-repository mode, `branch` and
+verification, and a retry at `deliver`. A green draft PR (SHA-bound, required checks
+passed or none configured, PR left draft for human sign-off) reports
+`status: "completed"`, `outcome: "delivered-draft"`, `workDelivered: true`,
+`converged: false`, and `phaseReached: "completed"`. `workDelivered` is true whenever
+a non-checkpoint PR URL is present, so callers can gate on shipped work without
+treating a draft as `completed-with-gaps`. `completed-with-gaps` remains the
+classification for iterate-budget/terminal warnings and for completed runs that
+did not deliver a PR. In single-repository mode, `branch` and
 `verifiedSha` come from that delivery target. In workspace mode, top-level `branch` and
 `verifiedSha` remain null and `eligibleTargets[]` retains each SHA-bound repository's
 branch and `targetSha`. A delivery `nextPhase` of `execute` is a remediation rewind, not a terminal

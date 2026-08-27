@@ -4,6 +4,77 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-08-26
+
+Draft-PR completion is a first-class terminal result. `cycle-result.sh` classifies a
+SHA-bound green draft as `outcome: delivered-draft` with `workDelivered: true`
+instead of `completed-with-gaps`. `lib/delivery-reconcile.sh` observes PRs created
+outside `lib/deliver.sh` and writes the canonical sidecar. Bash helpers in
+`lib/pr-delivery.sh` return snapshot fields instead of mutating `is_draft`.
+
+### Added
+
+- **`outcome: delivered-draft` and `workDelivered`.** Full-cycle `result.json`
+  distinguishes an intentional draft PR (human sign-off, safety gates) from
+  iterate gaps and aborted runs. `converged` stays false until the PR is marked
+  ready; `workDelivered` is the enterprise "did work ship?" gate. Additive on
+  schema 1.
+
+- **`lib/delivery-reconcile.sh`.** Terminal result publication and
+  `cycle-reconcile.sh` observe an open PR created via `gh`, read required checks
+  once, and write `delivery.json` (`delivered-draft` or `ready-for-review`).
+  Checkpoint-only PRs stay interrupted unless the agent claimed completion
+  (`--accept-checkpoint`). Kill switch: `LOOP_SPEC_DELIVERY_RECONCILE=0`.
+
+- **`pr-delivery.sh observe`.** No push, create, metadata edit, or ready flip.
+  Binds `--sha` to the existing PR head and remote branch, then classifies a
+  one-shot check observation.
+
+- **Claude Code output style `loop-spec`.** The working contract binds in
+  `output-styles/loop-spec.md` (`force-for-plugin: true`,
+  `keep-coding-instructions: true`): name the phase when it changes, one
+  thought per action, then one outcome-first close. Total mid-turn silence is
+  not the contract. The manifest names `"outputStyles": "./output-styles/"`.
+  The same text in a hook or CLAUDE.md does not shape chat. Durable reports
+  stay in `skills/shared/report-style.md`. Contributor rules in CLAUDE.md now
+  name a moment, an artifact, and what to do instead of a bare forbid. The
+  ponytail compact directive is a stop-at-first-rung nudge. Skill and agent
+  `description:` lines name a recognizable moment and when not to fire.
+
+### Fixed
+
+- **`validate_pr_snapshot` no longer mutates `is_draft`.** Temps are local; the
+  caller assigns script-level identity fields through `apply_pr_snapshot`.
+  `refresh_remote_sha` and readiness observation refresh their output files in
+  the caller's shell and expose the value through a reader helper, so the auth
+  outcome `run_gh` records still reaches `fail_delivery`: an expired credential
+  is reported as `authentication_failed`, not as a generic `remote_query_failed`.
+
+- **`observe` reports the base branch the PR actually has.** It never edits
+  metadata, so it no longer echoes the requested `--base` into the delivery
+  record. An explicit `--base` is now an assertion: a PR retargeted away from
+  the feature base is `pr_identity_mismatch`, and `delivery-reconcile.sh` passes
+  `--base` only when `feature.json` records one.
+
+- **A checkpoint PR is not `workDelivered`.** `write-terminal` matched the
+  full-cycle contract only for the delivery URL; a result whose `prUrl` is the
+  checkpoint salvage URL now reports `workDelivered: false`.
+
+- **Hook suites no longer race SIGPIPE.** A hook that exits before draining
+  stdin (kill switch, out-of-scope project) closed the pipe while the writer was
+  still queued, and `set -o pipefail` reported the pipeline as 141 even though
+  the hook exited 0 — reproducible at 17% under CPU contention, which is what
+  `run-all.sh` creates by running suites in parallel. Every hook suite now feeds
+  its payload by here-string, and `tests/hook-payload-stdin.test.sh` keeps the
+  pipe from coming back.
+
+- **VERIFY marker/tamper gates in workspace mode.** `verify.marker` and
+  `verify.tamper` took `{baseSha}` and `{featureRepoRoot}`, which resolve empty
+  when `baseSha` is per-repo and the workspace root is not a git repository. The
+  engine treated that as a gate failure and published a premature `FAILED`
+  result. Both nodes now pass `--feature-dir {featureDir}`; `lib/feature-scan-each.sh`
+  runs the scan once per repo.
+
 ## [4.4.1] - 2026-08-26
 
 Graph routing after EXECUTE and DELIVER. The deliver-next probe reads

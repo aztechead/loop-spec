@@ -22,7 +22,7 @@ check() {
   local actual_exit=0
   local output=""
 
-  output=$(printf '%s' "$payload" | env "$@" bash "$HOOK" 2>/dev/null) || actual_exit=$?
+  output=$(env "$@" bash "$HOOK" 2>/dev/null <<<"$payload") || actual_exit=$?
 
   LAST_OUTPUT="$output"
 

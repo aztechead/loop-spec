@@ -25,7 +25,7 @@ TEST1_DIR="$TMPDIR_TEST/test1"
 mkdir -p "$TEST1_DIR/.loop-spec"
 
 PAYLOAD='{"total_agent_calls":1,"errors":[],"workflow":"build"}'
-printf '%s' "$PAYLOAD" | env CLAUDE_PROJECT_DIR="$TEST1_DIR" bash "$HOOK" 2>/dev/null
+env CLAUDE_PROJECT_DIR="$TEST1_DIR" bash "$HOOK" 2>/dev/null <<<"$PAYLOAD"
 
 LEARNINGS_FILE="$TEST1_DIR/.loop-spec/learnings.jsonl"
 if [[ -f "$LEARNINGS_FILE" ]]; then
@@ -70,7 +70,7 @@ done
 
 # Run hook once more (adds 1 line -> 61 total, then trimmed to 50).
 PAYLOAD2='{"total_agent_calls":0,"errors":[]}'
-printf '%s' "$PAYLOAD2" | env CLAUDE_PROJECT_DIR="$TEST2_DIR" bash "$HOOK" 2>/dev/null
+env CLAUDE_PROJECT_DIR="$TEST2_DIR" bash "$HOOK" 2>/dev/null <<<"$PAYLOAD2"
 
 FINAL_COUNT=$(wc -l < "$LEARNINGS_FILE2" | tr -d ' ')
 if [[ "$FINAL_COUNT" -eq 50 ]]; then
@@ -87,7 +87,7 @@ mkdir -p "$TEST3_DIR"
 LEARNINGS_FILE3="$TEST3_DIR/.loop-spec/learnings.jsonl"
 
 PAYLOAD3='{"total_agent_calls":2,"errors":[]}'
-printf '%s' "$PAYLOAD3" | env CLAUDE_PROJECT_DIR="$TEST3_DIR" LOOP_SPEC_LEARNINGS=0 bash "$HOOK" 2>/dev/null
+env CLAUDE_PROJECT_DIR="$TEST3_DIR" LOOP_SPEC_LEARNINGS=0 bash "$HOOK" 2>/dev/null <<<"$PAYLOAD3"
 
 if [[ ! -f "$LEARNINGS_FILE3" ]]; then
   pass "3: kill switch - file not created when LOOP_SPEC_LEARNINGS=0"
@@ -102,7 +102,7 @@ TEST3B_DIR="$TMPDIR_TEST/test3b"
 mkdir -p "$TEST3B_DIR"
 
 PAYLOAD3B='{"total_agent_calls":2,"errors":[]}'
-printf '%s' "$PAYLOAD3B" | env CLAUDE_PROJECT_DIR="$TEST3B_DIR" bash "$HOOK" 2>/dev/null
+env CLAUDE_PROJECT_DIR="$TEST3B_DIR" bash "$HOOK" 2>/dev/null <<<"$PAYLOAD3B"
 
 if [[ ! -d "$TEST3B_DIR/.loop-spec" ]]; then
   pass "3b: scope - .loop-spec/ not created in non-loop-spec project"
@@ -118,7 +118,7 @@ mkdir -p "$TEST4_DIR/.loop-spec"
 LEARNINGS_FILE4="$TEST4_DIR/.loop-spec/learnings.jsonl"
 
 PAYLOAD4='{"total_agent_calls":5,"errors":[],"workflow":"build"}'
-printf '%s' "$PAYLOAD4" | env CLAUDE_PROJECT_DIR="$TEST4_DIR" bash "$HOOK" 2>/dev/null
+env CLAUDE_PROJECT_DIR="$TEST4_DIR" bash "$HOOK" 2>/dev/null <<<"$PAYLOAD4"
 
 if [[ -f "$LEARNINGS_FILE4" ]]; then
   LINE4=$(head -1 "$LEARNINGS_FILE4")

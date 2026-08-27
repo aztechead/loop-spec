@@ -18,9 +18,9 @@ check() {
   local actual_exit=0
 
   if [[ -n "$extra_env" ]]; then
-    echo "$payload" | env LOOP_SPEC_BLOCKEDBY_TRACE_LOG="$TRACE_LOG" $extra_env bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    env LOOP_SPEC_BLOCKEDBY_TRACE_LOG="$TRACE_LOG" $extra_env bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
   else
-    echo "$payload" | env LOOP_SPEC_BLOCKEDBY_TRACE_LOG="$TRACE_LOG" bash "$HOOK" >/dev/null 2>&1 || actual_exit=$?
+    env LOOP_SPEC_BLOCKEDBY_TRACE_LOG="$TRACE_LOG" bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual_exit=$?
   fi
 
   if [[ "$actual_exit" -eq "$expected_exit" ]]; then

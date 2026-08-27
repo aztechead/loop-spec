@@ -1,6 +1,6 @@
 ---
 name: retro
-description: Retrospective over accumulated loop telemetry - mine events.jsonl/result.json across features for repeated failure patterns (recurring iterate gaps, critique gates at round cap), turn them into rule candidates for the self-learning RULES.md loop, surface evidence-backed suggestions (effort headroom) and info (convergence rate, fleet cost), and emit the shared terminal result. Report is read-only; "apply" writes the rule candidates. Deterministic thresholds, never model-judged.
+description: Use when the user says "retro", "what keeps failing", or "mine the telemetry". Reads events.jsonl/result.json. "report" is read-only; "apply" writes rule candidates. Do not use this to start a feature or to debug one run (that's /loop-spec:forensics).
 argument-hint: '[report | apply] [--min-repeats N]'
 ---
 

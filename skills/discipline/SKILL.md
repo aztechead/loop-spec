@@ -1,6 +1,6 @@
 ---
 name: discipline
-description: Toggle discipline mode on or off for the current project. Reads and writes .loop-spec/discipline.conf to persist state across sessions.
+description: Use when the user says "discipline on/off/status". Writes .loop-spec/discipline.conf. Do not use this to implement a feature; it only toggles the SessionStart gates.
 argument-hint: "[on|off|status]"
 ---
 

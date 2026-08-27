@@ -77,7 +77,8 @@ ending this contract exists to prevent.
 - `lib/cycle-reconcile.sh --result-root <root>` converts a surviving armed run into a
   terminal result after the fact. It is the out-of-band backstop and the in-band
   confirmation `/loop-spec:auto` runs after its delegated route returns. A PR
-  already delivered in that run is recorded `completed`/`delivered`, not
+  already delivered in that run is recorded `completed`/`delivered` (or
+  `delivered-draft` when the PR remains a draft after green checks), not
   `interrupted`.
 
 Under OpenCode, ADK, and Codex no Stop event can veto

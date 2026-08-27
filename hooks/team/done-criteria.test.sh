@@ -19,7 +19,7 @@ check_output() {
   local actual_exit=0
   local actual_stdout
 
-  actual_stdout=$(printf '%s' "$payload" | env "$@" bash "$HOOK" 2>/dev/null) || actual_exit=$?
+  actual_stdout=$(env "$@" bash "$HOOK" 2>/dev/null <<<"$payload") || actual_exit=$?
 
   if [[ "$actual_exit" -eq 0 ]] && echo "$actual_stdout" | grep -q "$needle"; then
     echo "PASS: $name"
@@ -39,7 +39,7 @@ check_silent() {
   local actual_exit=0
   local actual_stdout
 
-  actual_stdout=$(printf '%s' "$payload" | env "$@" bash "$HOOK" 2>/dev/null) || actual_exit=$?
+  actual_stdout=$(env "$@" bash "$HOOK" 2>/dev/null <<<"$payload") || actual_exit=$?
 
   if [[ "$actual_exit" -eq 0 ]] && [[ -z "$actual_stdout" ]]; then
     echo "PASS: $name"

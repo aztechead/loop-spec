@@ -1,6 +1,6 @@
 ---
 name: micro
-description: Micro-cycle for small, ad-hoc tasks — the cycle's five invariants (stated done-criteria, grounded claims, test-first, evidence-before-done, mistakes-become-rules) enforced inline on the main thread with zero agent ceremony. Give it a small task and it runs the protocol directly, ending like every cycle type — work delivered as a PR that is then checked for reviews/comments/requested changes; or toggle micro mode (on/off/status), which controls the micro-inject SessionStart directive and the adhoc-verify-guard Stop hook. Honors inline autonomous mode and escalates to /loop-spec:intake when the task outgrows ad-hoc scale.
+description: Use when the user has a small ad-hoc task ("add a flag", "rename this helper", "fix this typo") and wants the five cycle invariants without agent ceremony. Give it the task, or toggle on/off/status. Ends in a PR. Do not use for a new feature that needs a spec (that's /loop-spec:cycle) or a pasted stack trace (that's /loop-spec:debug).
 argument-hint: "[autonomous] [small task description | on | off | status]"
 allowed-tools: Bash Read Write Edit Glob Grep Skill AskUserQuestion
 model: inherit

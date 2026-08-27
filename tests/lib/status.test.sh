@@ -141,6 +141,12 @@ check "7d: no-change status suppresses stale PR" "null" "$(jq -r '.[0].prUrl' <<
 check "7d: no-change status suppresses stale checkpoint" "null" \
   "$(jq -r '.[0].checkpointPrUrl' <<<"$out")"
 
+sidecar="$(jq -c '.status = "delivered-draft"' "$ROOT3/features/delivered/delivery.json")"
+printf '%s\n' "$sidecar" > "$ROOT3/features/delivered/delivery.json"
+draft_status="$(bash "$LIB" --root "$ROOT3" --json status \
+  | jq -r '.[0] | .phase + ":" + .deliveryStatus')"
+check "7e: draft sidecar is logical completion" "completed:delivered-draft" "$draft_status"
+
 # ── Case 8: bad flag → exit 2 ─────────────────────────────────────────────────
 ec=0
 bash "$LIB" --bogus >/dev/null 2>&1 || ec=$?

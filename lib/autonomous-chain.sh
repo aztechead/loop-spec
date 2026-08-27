@@ -103,11 +103,13 @@ if [[ -f "$delivery_file" ]]; then
 fi
 tracked_phase="$(jq -r '.currentPhase // ""' "$fj")"
 if [[ "$tracked_phase" != "completed" ]]; then
-  [[ "$(jq -r '.nextPhase == "completed" and .status == "ready-for-review"' \
+  [[ "$(jq -r '.nextPhase == "completed" and
+      (.status == "ready-for-review" or .status == "delivered-draft")' \
       <<<"$sidecar_delivery" 2>/dev/null)" == "true" ]] || no_chain "feature-not-completed"
 fi
 
 # New seven-phase runs may chain only after DELIVER reached a review-ready PR.
+# A green draft is a completed delivery for humans, not for autonomous chaining.
 # A missing delivery block is accepted for completed schema-7 state created by
 # older plugin versions; an explicit non-ready state fails closed.
 if [[ "$sidecar_delivery" != "null" ]]; then

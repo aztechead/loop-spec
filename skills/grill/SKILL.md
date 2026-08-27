@@ -1,6 +1,6 @@
 ---
 name: grill
-description: Toggle grill mode on or off for the current project. Grill mode (default ON) makes the assistant ask sharp disambiguation questions right after the initial prompt to lower ambiguity before acting. Reads and writes .loop-spec/grill.conf to persist state across sessions.
+description: Use when the user says "grill on/off/status". Writes .loop-spec/grill.conf. Grill mode (default ON) asks disambiguation questions right after the initial prompt. Do not use this to implement a feature; it only toggles the SessionStart injector.
 argument-hint: "[on|off|status]"
 ---
 

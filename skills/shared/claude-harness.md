@@ -104,6 +104,19 @@ PROVEN rather than asserted; opencode and ADK export
 (`mcp`, `bench`, `remote`, `claude-desktop`, ...) are neither proven headless nor
 proven interactive and stay unknown, failing safe.
 
+## Chat output style
+
+Claude Code is the only peer with an output-style slot. loop-spec ships
+`output-styles/loop-spec.md` with `force-for-plugin: true` and
+`keep-coding-instructions: true`, so enabling the plugin binds the working
+contract: name the phase when it changes, one thought per action, then one
+outcome-first close. Built-in Concise does not do that (~6% shorter, same
+chatter, and it also hides the phase). If another enabled plugin also sets
+`force-for-plugin`, Claude Code uses the first one loaded.
+
+Do not re-home those instructions into `hooks/team/*-inject.sh` or CLAUDE.md.
+Durable reports stay in `skills/shared/report-style.md`.
+
 ## Graph engine (GDD)
 
 `lib/graph/run.sh` sequences `graph/cycle.graph.json`. Nothing under `lib/graph/`

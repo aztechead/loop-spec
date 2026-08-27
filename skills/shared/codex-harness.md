@@ -147,6 +147,12 @@ the flag, or a release that hid it):
   `skills/shared/autonomous-mode.md` or the pinned `LOOP_SPEC_ANSWER_*` /
   `LOOP_SPEC_CMD_*` vars, exactly as on the other harnesses.
 
+## Chat reports
+
+Codex has no output-style slot. Name the phase, one thought per action, and
+the one-message close follow `skills/shared/report-style.md`. Do not expect
+`output-styles/loop-spec.md` to load here.
+
 ## Ambient verification enforcement
 
 Codex Stop is **not** Claude Code Stop. On Codex, `decision: "block"` on Stop
