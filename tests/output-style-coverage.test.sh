@@ -88,6 +88,96 @@ else
   bad "simplicity-inject.sh lost the write-code moment"
 fi
 
+# The manifest must name the default directory. Omitting the key still scans
+# output-styles/ today; naming it keeps the slot loaded if that default moves.
+if jq -e '.outputStyles == "./output-styles/"' .claude-plugin/plugin.json >/dev/null; then
+  ok "plugin.json names outputStyles ./output-styles/"
+else
+  bad "plugin.json lost outputStyles ./output-styles/"
+fi
+
+# Codex has no output-style slot. Pretending it does would load nothing.
+if jq -e 'has("outputStyles")' .codex-plugin/plugin.json >/dev/null; then
+  bad ".codex-plugin/plugin.json must not declare outputStyles"
+else
+  ok "Codex plugin.json does not declare outputStyles"
+fi
+
+# A description that only summarizes the skill never fires. Each one must name
+# a moment the model can recognize and what to do instead of stalling.
+desc_rc=0
+desc_out="$(python3 - "$REPO_ROOT" <<'PY'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+WHEN = re.compile(
+    r"(?i)(use when|use whenever|use after|when the user|when you |when picking|"
+    r"when a |when handing|when cron|when the caller|when the input|"
+    r"toggle |give it|feed it|after a |preferred |cycle-internal|invoked by)"
+)
+NOT = re.compile(
+    r"(?i)(not for|do not |does not |doesn.t |never |don.t |cycle-internal)"
+)
+
+def description_of(path):
+    text = path.read_text(encoding="utf-8")
+    m = re.search(r"^---\n(.*?)\n---", text, re.S)
+    if not m:
+        return None
+    fm = m.group(1)
+    m2 = re.search(r"^description:\s*(.*)$", fm, re.M)
+    if not m2:
+        return None
+    first = m2.group(1).strip()
+    rest = fm[m2.end():]
+    if first in (">", ">-", "|", "|-"):
+        lines = []
+        for line in rest.splitlines():
+            if re.match(r"^[A-Za-z0-9_-]+:", line):
+                break
+            if line.startswith(" ") or line.startswith("\t"):
+                lines.append(line.strip())
+        return " ".join(x for x in lines if x)
+    if (first.startswith('"') and first.endswith('"')) or (
+        first.startswith("'") and first.endswith("'")
+    ):
+        return first[1:-1]
+    return first
+
+failed = []
+seen = 0
+for glob in ("skills/*/SKILL.md", "agents/*.md"):
+    for path in sorted(root.glob(glob)):
+        if path.name == "README.md":
+            continue
+        desc = description_of(path)
+        seen += 1
+        rel = path.relative_to(root)
+        if not desc:
+            failed.append(f"{rel}: missing description")
+            continue
+        missing = []
+        if not WHEN.search(desc):
+            missing.append("moment")
+        if not NOT.search(desc):
+            missing.append("when-not")
+        if missing:
+            failed.append(f"{rel}: missing {', '.join(missing)}")
+print(f"seen={seen}")
+if failed:
+    print("\n".join(failed))
+    sys.exit(1)
+print("ok")
+PY
+)" || desc_rc=$?
+
+if [[ "$desc_rc" -eq 0 ]] && grep -q '^ok$' <<<"$desc_out"; then
+  seen="$(sed -n 's/^seen=//p' <<<"$desc_out" | head -1)"
+  ok "skill and agent descriptions name a moment and when-not (n=$seen)"
+else
+  bad "skill/agent description missing a trigger"
+  echo "$desc_out" | grep -v '^seen=' | grep -v '^ok$' | sed 's/^/  /'
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

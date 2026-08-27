@@ -13,6 +13,8 @@ description: >-
   worktrees with merge + halt policy), loop.py (bounded loop with verifier-integrity
   locking, iteration/stall/timeout stops, durable state, result.json contract).
   Prefer this over any bespoke while-loop; regression suite in tests/.
+  Do not use for an interactive SPEC interview (that's /loop-spec:cycle) or a
+  single small edit (that's /loop-spec:micro).
 ---
 
 # Loop Runner

@@ -1,6 +1,6 @@
 ---
 name: forensics
-description: Read-only diagnostic that detects 7 anomaly patterns in a stuck or failed feature workflow, writes a structured report to .loop-spec/forensics/, and emits the shared terminal result contract.
+description: Use when a loop-spec feature is stuck or failed and the user says "what happened", "why is this stuck", or "diagnose this run". Writes .loop-spec/forensics/ and does not change the feature. Do not use to resume or fix the run (that's /loop-spec:cycle) or to debug product code (that's /loop-spec:debug).
 argument-hint: "[feature slug or description of the stuck/failed workflow]"
 ---
 

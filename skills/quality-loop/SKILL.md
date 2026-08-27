@@ -1,6 +1,6 @@
 ---
 name: quality-loop
-description: Iterative pre-commit review convergence loop, workspace-aware. Resolves scope from explicit file arguments or modified files across repos, runs deterministic checks first (lint/typecheck plus unresolved-marker scan), then dispatches code-reviewer and security-reviewer in parallel per round, records findings via quality-loop-state.sh, and loops until convergence or the round limit is exhausted.
+description: Use when the user says "review my changes", "pre-commit review", or "quality loop" before a commit. Reviews modified files (or the paths they name) until convergence. Do not use as VERIFY inside a cycle (that's /loop-spec:verify) or to implement the findings (that's /loop-spec:micro or /loop-spec:cycle).
 argument-hint: "[file paths to review]  (optional; defaults to modified files)"
 allowed-tools: Bash Read Write Edit Glob Grep Agent AskUserQuestion
 ---

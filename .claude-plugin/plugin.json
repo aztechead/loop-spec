@@ -18,5 +18,6 @@
     "claude-code",
     "pi",
     "opencode"
-  ]
+  ],
+  "outputStyles": "./output-styles/"
 }

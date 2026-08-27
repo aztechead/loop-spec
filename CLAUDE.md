@@ -55,16 +55,19 @@ not say what the file is for. Writing the header IS writing the index entry.
 
 Claude Code is the only harness with an output-style slot. When you change how the
 plugin talks in chat (silence, length, shape), edit `output-styles/loop-spec.md`.
-Keep `force-for-plugin: true` and `keep-coding-instructions: true`. Do not copy
-those instructions into a SessionStart hook or this file: that slot is the only
-place mid-turn silence binds. Other harnesses follow `skills/shared/report-style.md`.
+Keep `force-for-plugin: true` and `keep-coding-instructions: true`. Keep
+`.claude-plugin/plugin.json` `"outputStyles": "./output-styles/"` so the slot
+loads. Do not copy those instructions into a SessionStart hook or this file:
+that slot is the only place mid-turn silence binds. Other harnesses follow
+`skills/shared/report-style.md`. Do not add `outputStyles` to
+`.codex-plugin/plugin.json`.
 
 Pin the file from `tests/output-style-coverage.test.sh`.
 
 ## Adding an Agent
 
 1. New file `agents/{role}.md` (bare role name, no `loop-spec-` prefix). The harness namespaces it as `loop-spec:{role}`; reference it from skills as `subagent_type: "loop-spec:{role}"`.
-2. Frontmatter: `name` (must equal the filename `{role}`), `description`, `tools` (allow-list), `model` (default).
+2. Frontmatter: `name` (must equal the filename `{role}`), `description`, `tools` (allow-list), `model` (default). The `description` names when the harness should dispatch it, and when not to (cycle-internal roles say they are not for ad-hoc auto-delegation).
 3. Document role boundary in prompt body.
 4. If write-access scoped, add a `{role})` case in `hooks/restrict-agent-paths.sh` (the hook normalizes the namespaced caller to the bare role) and a test case.
 

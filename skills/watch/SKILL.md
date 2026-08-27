@@ -1,6 +1,6 @@
 ---
 name: watch
-description: Bounded post-merge watch for a shipped loop-spec feature (ROADMAP-3.0 C2). After a cycle PR merges, checks whether the default branch stayed green for the watch window and whether fixup commits touched the feature's files, appends the verdict to the feature's committed run digest (the raw signal the trust governor consumes), and queues a watch-regression backlog entry on a dirty window — it never reopens a cycle itself. Recipe-driven (cron/CI), no daemon.
+description: Use after a cycle PR merges, when cron/CI should watch the default branch for the watch window. Appends the verdict to the feature's committed run digest. Do not use this to reopen or continue a cycle — it never starts one.
 argument-hint: '<slug> [--window-hours 24]'
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: walkthrough
-description: Build the reviewer's guide for a change — an ordered trail of `path:line` stops grouped by concern, entry point first, supporting files last, one line of framing each. Writes REVIEW-ORDER.md, lints it against the actual diff, and can walk a human through it interactively. Use when handing a branch, PR, or feature to a human reviewer, or when the user says "walk me through this change".
+description: Use when handing a branch, PR, or feature to a human reviewer, or when the user says "walk me through this change". Writes REVIEW-ORDER.md. Do not use to implement the change or to address review comments (that's /loop-spec:revise).
 argument-hint: '[<slug> | <base-ref>] [--write | --walk]'
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: intake
-description: Turn ANY input into a cycle-ready spec draft and kick off the cycle. Feed it a Slack message, a Jira ticket, a .txt/.md file, a pasted email, or a bare prompt — anything that is not already SPEC.md-shaped. It faithfully restructures the source into a spec draft (never inventing scope), writes it to .loop-spec/intake/, and hands it to /loop-spec:cycle via the existing spec-file ingest path. Honors autonomous mode and inline style/new tokens (passed through to the cycle).
+description: Turn ANY input into a cycle-ready spec draft and kick off the cycle. Feed it a Slack message, a Jira ticket, a .txt/.md file, a pasted email, or a bare prompt — anything that is not already SPEC.md-shaped. Writes .loop-spec/intake/ and hands it to /loop-spec:cycle. Do not use when the input is already a SPEC.md (pass that path to /loop-spec:cycle) or when the user pasted a stack trace (that's /loop-spec:debug).
 argument-hint: "<file path | pasted text (slack/jira/email/prompt/...)>  (optional pass-through tokens: autonomous, new, style:...; --no-run to stop after writing the draft)"
 allowed-tools: Bash Read Write Glob Grep Skill AskUserQuestion
 ---

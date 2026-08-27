@@ -1,6 +1,6 @@
 ---
 name: debug
-description: Spec-driven debugging loop for a specific error (message/stack/failing test) OR a non-specific symptom ("something's wrong", flaky, slow). TRIAGE converges vague symptoms to one reproducible signal; REPRODUCE writes the failing oracle before any fix; an evidence-disciplined FIX loop (confirm each hypothesis before changing code, revert failed attempts) closes it; a mandatory SIBLING SWEEP fixes same-mechanism occurrences in the same branch; VERIFY runs the full suite + test-tamper scan and keeps the repro as a regression test. Writes docs/loop-spec/debug/{slug}/BUG.md.
+description: Use when the user pastes an error, stack trace, failing test, or a vague "something's wrong / flaky / slow". Writes docs/loop-spec/debug/{slug}/BUG.md (triage, red repro, fix, sibling sweep, verify). Do not use for a new feature (that's /loop-spec:cycle) or a tiny unrelated edit (that's /loop-spec:micro).
 argument-hint: "<error text | stack trace | failing test | vague symptom description>"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---

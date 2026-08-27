@@ -32,11 +32,13 @@ outside `lib/deliver.sh` and writes the canonical sidecar. Bash helpers in
 
 - **Claude Code output style `loop-spec`.** Mid-turn silence and one
   outcome-first chat message bind in `output-styles/loop-spec.md`
-  (`force-for-plugin: true`, `keep-coding-instructions: true`). The same text in
-  a hook or CLAUDE.md does not shorten chat. Durable reports stay in
+  (`force-for-plugin: true`, `keep-coding-instructions: true`). The manifest
+  names `"outputStyles": "./output-styles/"`. The same text in a hook or
+  CLAUDE.md does not shorten chat. Durable reports stay in
   `skills/shared/report-style.md`. Contributor rules in CLAUDE.md now name a
   moment, an artifact, and what to do instead of a bare forbid. The ponytail
-  compact directive is a stop-at-first-rung nudge.
+  compact directive is a stop-at-first-rung nudge. Skill and agent
+  `description:` lines name a recognizable moment and when not to fire.
 
 ### Fixed
 

@@ -1,6 +1,6 @@
 ---
 name: human-code
-description: Toggle code-for-humans mode on or off for the current project. Code-for-humans mode (default ON) makes the assistant read the surrounding code before writing any, match the house conventions it finds there — naming, error idiom, test structure, comment density — and spend comments on why rather than what, so generated code reads like the codebase it lands in instead of like generated code. It covers the markdown too: every document is written for a person who will maintain or operate it, and a change that makes a document false fixes it in the same diff. Reads and writes .loop-spec/human-code.conf to persist state across sessions.
+description: Use when the user says "human-code on/off/status/probe". Writes .loop-spec/human-code.conf. Default ON: match house style, comments carry why, docs stay true in the same diff. Do not use this to implement a feature; it only toggles the SessionStart injector.
 argument-hint: "[on|off|status|probe]"
 ---
 

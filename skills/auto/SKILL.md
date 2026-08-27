@@ -1,6 +1,6 @@
 ---
 name: auto
-description: Preferred autonomous entry point for Claude Code, OpenCode, Google ADK, and OpenAI Codex SDK/headless requests. Semantically routes a grounded task to the micro cycle, bounded debug loop, or full seven-phase cycle; uncertain or risky work always fails upward to the full cycle.
+description: Preferred autonomous entry point for Claude Code, OpenCode, Google ADK, and OpenAI Codex SDK/headless requests. Use when a script or SDK has a grounded task and has not named cycle, debug, or micro. Routes to micro, debug, or the full seven-phase cycle; uncertain or risky work fails upward to the full cycle. Do not use from an interactive session when the user already named cycle, debug, or micro — run that skill instead.
 argument-hint: "<task description>"
 allowed-tools: Bash Read Glob Grep Skill
 ---

@@ -1,6 +1,6 @@
 ---
 name: rollback
-description: Restore the working tree to a named checkpoint tag using history-safe git checkout, then commit the rollback as a new commit.
+description: Use when the user says "rollback", "restore the checkpoint", or names a loop-spec-checkpoint-* tag. History-safe checkout, then a new commit. Do not use git reset --hard, and do not use this to pause (that's /loop-spec:pause).
 argument-hint: "[checkpoint tag or type]  (e.g. post-plan, or a full loop-spec-checkpoint-* tag)"
 ---
 
