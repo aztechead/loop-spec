@@ -76,6 +76,12 @@ adapter directory is the wrong base:
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under opencode — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd. |
 
+## Chat reports
+
+OpenCode has no output-style slot. Mid-turn silence and the one-message close
+follow `skills/shared/report-style.md`. Do not expect `output-styles/loop-spec.md`
+to load here.
+
 ## Ambient verification enforcement
 
 OpenCode receives the harness-specific micro SessionStart directive

@@ -83,6 +83,12 @@ sessions still edit the same mounted working tree. This is not tenant isolation:
 never expose the working agent through `adk web` or `adk api_server` to
 untrusted users.
 
+## Chat reports
+
+ADK has no output-style slot. Mid-turn silence and the one-message close
+follow `skills/shared/report-style.md`. Do not expect `output-styles/loop-spec.md`
+to load here.
+
 ## Ambient verification enforcement
 
 ADK receives the SessionStart injections (`hooks/team/*-inject.sh`) through the

@@ -6,8 +6,8 @@ paths:
 
 # Docs for humans
 
-Read `skills/shared/human-docs.md` before changing these files. Do not paste that
-contract into a prompt.
+When you edit a file matching this rule's paths, Read `skills/shared/human-docs.md`
+before the first write. Do not paste that contract into a prompt.
 
-Before DONE: `bash lib/doc-tells.sh scan <markdown you touched>`.
-A change that makes a document false is fixed in the same diff.
+Before you commit that markdown, run `bash lib/doc-tells.sh scan <markdown you touched>`.
+If the change makes another document false, edit that document in the same diff.

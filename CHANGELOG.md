@@ -30,6 +30,14 @@ outside `lib/deliver.sh` and writes the canonical sidecar. Bash helpers in
   Binds `--sha` to the existing PR head and remote branch, then classifies a
   one-shot check observation.
 
+- **Claude Code output style `loop-spec`.** Mid-turn silence and one
+  outcome-first chat message bind in `output-styles/loop-spec.md`
+  (`force-for-plugin: true`, `keep-coding-instructions: true`). The same text in
+  a hook or CLAUDE.md does not shorten chat. Durable reports stay in
+  `skills/shared/report-style.md`. Contributor rules in CLAUDE.md now name a
+  moment, an artifact, and what to do instead of a bare forbid. The ponytail
+  compact directive is a stop-at-first-rung nudge.
+
 ### Fixed
 
 - **`validate_pr_snapshot` no longer mutates `is_draft`.** Temps are local; the

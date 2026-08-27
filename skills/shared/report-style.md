@@ -5,6 +5,22 @@ record at every phase boundary for the unattended operator, and action-first pro
 the human reading a report. Verbosity is not thoroughness — the artifacts carry the
 detail; the console carries the signal.
 
+## Where chat silence binds
+
+On Claude Code, mid-turn silence and the one-message close live in
+`output-styles/loop-spec.md` (`force-for-plugin: true`, `keep-coding-instructions: true`).
+That is the only slot that actually shortens chat. The same instruction in a hook,
+a skill, or CLAUDE.md does not. Do not copy this file's chat rules into a SessionStart
+hook.
+
+OpenCode, Codex, and ADK have no output-style slot. On those harnesses this file is
+the chat contract: lead with the outcome, write nothing between tool calls, put the
+evidence trail in the durable artifact.
+
+This file remains the contract for durable reports on every harness (phase summaries,
+PR bodies, completion artifacts) and for the greppable `[PHASE]` lines `lib/events.sh`
+already prints.
+
 ## Phase-boundary lines (machine-greppable) — emitted for you
 
 **`lib/events.sh` prints these. You do not have to.** Every `events.sh emit` call

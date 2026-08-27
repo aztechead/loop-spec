@@ -120,6 +120,8 @@ VERIFY also writes `REVIEW-ORDER.md` (ordered `path:line` stops for the reviewer
 
 Variations: `style:step` pauses after every phase; pass a spec file path to skip the interview; re-invoke `/loop-spec:cycle` to resume from durable state.
 
+On Claude Code, installing the plugin binds the `loop-spec` output style (`output-styles/loop-spec.md`): silent between tool calls, then one outcome-first chat message. Built-in Concise does not do that. OpenCode, Codex, and ADK have no output-style slot; they follow [`skills/shared/report-style.md`](skills/shared/report-style.md).
+
 ## Skills
 
 Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills can run alone; `cycle` chains them.
