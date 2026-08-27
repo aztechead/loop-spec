@@ -25,7 +25,9 @@ for needle in \
   "keep-coding-instructions: true" \
   "one thought per action" \
   "When the phase changes" \
-  "Never compress"; do
+  "Never compress" \
+  "Required questions" \
+  "\`style:auto\` is not autonomous mode"; do
   if grep -Fq "$needle" "$STYLE"; then
     ok "style carries: $needle"
   else
@@ -54,10 +56,11 @@ fi
 
 if grep -Fq "output-styles/loop-spec.md" skills/shared/report-style.md &&
    grep -Fq "force-for-plugin" skills/shared/report-style.md &&
-   grep -Fq "one thought per action" skills/shared/report-style.md; then
-  ok "report-style names the Claude slot and the working contract"
+   grep -Fq "one thought per action" skills/shared/report-style.md &&
+   grep -Fq "\`style:auto\` is not autonomous mode" skills/shared/report-style.md; then
+  ok "report-style names the Claude slot, working contract, and auto-vs-autonomous"
 else
-  bad "report-style.md no longer names the slot or one-thought-per-action"
+  bad "report-style.md no longer names the slot, one-thought-per-action, or auto-vs-autonomous"
 fi
 
 if grep -Fq "output-styles/loop-spec.md" skills/shared/claude-harness.md &&

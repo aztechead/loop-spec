@@ -69,27 +69,28 @@ collapses to lead-authored refinement + the critique gate:
    lint re-runs.
 5. Every remaining step (bootstrap wait, commit, teardown, routing) runs unchanged.
 
-Interactive/step styles are untouched by this fast path — a human conversation adds real
-information, so the full Step 1 loop and the spec-writer revision flow stay as written.
+Non-autonomous styles (`auto` / `step` / `interactive`) are untouched by this fast path — a human conversation adds real information, so the full Step 1 grill and the spec-writer revision flow stay as written. `execStyle: auto` is not autonomous mode.
 
 ## Procedure
 
 ### Step 1 - Conversational clarifying loop
 
+**This is the in-phase grill.** A human is attached unless `feature.json.autonomous == true` or `LOOP_SPEC_NON_INTERACTIVE=1`. `execStyle: auto` is not autonomous: it means the cycle does not pause between phases. It still runs this loop. SPEC already pinned requirements; this loop pins design and approach. Do not skip it because SPEC interviewed, because the ambiguity gate passed, or because you could assume an answer.
+
 **Autonomous fast path:** if `feature.json.autonomous == true`, skip this step's conversational loop — the lead performs the collapsed obligations per the **Autonomous fast path** section above, then continues at Step 1.75.
 
 **ITERATE re-entry (autonomous refinement mode):** if `feature.json.iterate.feedback` is non-null, DISCUSS was re-entered by the ITERATE convergence loop to close a `spec`-type goal gap. Read that feedback first and target only the named scope gap, then refine SPEC.md toward the **original goal** (`feature.json.feature_title`) — do not restart the whole interview, and do not redefine the goal.
 - In `auto` / `review-only` styles (and under `LOOP_SPEC_NON_INTERACTIVE=1`): run this refinement **without `AskUserQuestion`** — synthesize the SPEC change from `iterate.feedback` + the codebase, note any assumption in SPEC.md, and proceed. The loop must not block on a human here; the next VERIFY→ITERATE pass re-judges against the immutable original goal.
-- In `step` / `interactive` styles only: you may run the normal clarifying loop to refine the scope gap with the user.
+- In `step` / `interactive` styles: run the clarifying loop to refine the scope gap with the user.
 
 **Unresolved SPEC dimensions (consume them — SPEC wrote them for THIS step):** read the `ambiguity_scores` YAML frontmatter of the SPEC draft (`docs/loop-spec/features/{slug}/SPEC.md`). If `gate_passed: false`, the `unresolved_dimensions[]` list names requirement dimensions the SPEC phase could NOT pin down (user override at round 6, or thin non-interactive input). These are open asks — left unconsumed they survive every downstream gate and ship unmet. For EACH listed dimension:
 
-- **`step` / `interactive`:** ask ONE targeted `AskUserQuestion` for that dimension first, before any other clarifying question.
-- **`auto` / `review-only` / non-interactive:** do not block; resolve it as an explicit assumption grounded in the code graph, and record it in the transcript as `ASSUMPTION ({dimension}): ...`. (If the assumption also lands in a `## Grounding` section, it must carry the full bullet grammar — `- ASSUMPTION ({dimension}): <claim> | verify: <command>` — per `skills/shared/grounding-protocol.md`; the lint accepts the parenthetical qualifier.)
+- **`auto` / `step` / `interactive`:** ask ONE targeted `AskUserQuestion` for that dimension first, before any other clarifying question.
+- **`review-only` / non-interactive / autonomous:** do not block; resolve it as an explicit assumption grounded in the code graph, and record it in the transcript as `ASSUMPTION ({dimension}): ...`. (If the assumption also lands in a `## Grounding` section, it must carry the full bullet grammar — `- ASSUMPTION ({dimension}): <claim> | verify: <command>` — per `skills/shared/grounding-protocol.md`; the lint accepts the parenthetical qualifier.)
 
 Either way, the spec-writer brief (Step 3) must require: every resolved dimension becomes a concrete requirement (or explicit assumption) WITH a testable acceptance criterion under `### Good Enough`, and the updated SPEC.md frontmatter drops it from `unresolved_dimensions` (empty list + `gate_passed: true` once all are resolved). An unresolved dimension may never be silently carried past DISCUSS.
 
-Run a one-question-at-a-time loop to understand the feature.
+Run a one-question-at-a-time loop to understand the feature. The loop is required, not optional.
 
 **Ground in the code first (required).** Before and during the loop, read what the feature will actually touch: search the area, read the entry points in full, and follow callers and imports far enough to name the integration points and the boundaries the change crosses. Let that drive the design questions — surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. Fan the scanning out to subagents that return `file:line` evidence rather than pulling a large tree through your own context. In workspace mode, scan each participating repository separately and keep the repository name on every finding. Every claim carried into the critique cites `file:line`. (In greenfield features before code exists — `feature.json.greenfield` — ground in SPEC.md's Foundations requirements and the chosen stack's conventions instead.)
 
@@ -103,10 +104,11 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add \
 
 Facts about external systems presented in questions or `AskUserQuestion` options must carry their `EVID-NNN` citation or be phrased as explicit assumptions (e.g. "assuming X — probe: `<cmd>` — is this right?"). Autonomous and non-interactive styles self-run probes and never block on a user question; if a probe is impossible, record `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md` and proceed.
 
-**Ask the corner question (required, once per design shape).** Before the design settles, ask: "what is the most likely next change to this feature — a new param, a new case, a new caller, a scale step — and does the proposed shape absorb it as a local diff?" Ground the candidate next-changes in the graph (ripple paths, god nodes). If the likely change would ripple broadly, surface the boundary that fixes it as an option (interactive: an `AskUserQuestion` choice; auto: resolve as a recorded assumption). This asks for a seam — a clean boundary, an injected dependency — never for built-out speculation; canonical reference `skills/shared/design-for-change.md`.
+**Ask the corner question (required, once per design shape).** Before the design settles, ask: "what is the most likely next change to this feature — a new param, a new case, a new caller, a scale step — and does the proposed shape absorb it as a local diff?" Ground the candidate next-changes in the graph (ripple paths, god nodes). If the likely change would ripple broadly, surface the boundary that fixes it as an option (`auto` / `step` / `interactive`: an `AskUserQuestion` choice; autonomous / `review-only` / non-interactive: resolve as a recorded assumption). This asks for a seam — a clean boundary, an injected dependency — never for built-out speculation; canonical reference `skills/shared/design-for-change.md`.
 
-- Non-AUTO styles: full conversation in main thread, no cap on rounds
-- AUTO style: cap at 5 Q rounds, then proceed regardless
+- **`auto`:** MUST grill. Cap at 5 Q rounds, then proceed. A passed SPEC gate does not shorten this. Ask the corner question and at least two design-shape questions even when `unresolved_dimensions` is empty.
+- **`step` / `interactive`:** MUST grill. Full conversation in the main thread, no cap on rounds. Same minimum as `auto`, then keep going until design and approach are locked.
+- **`review-only`:** skip the conversational loop (the human contact is the critique-gate pause). Still consume unresolved dimensions as assumptions.
 - **Present design/approach decisions as structured `AskUserQuestion` multiple-choice with explicit tradeoffs, not prose.** Whenever a question has discernible options (library choice, scope cut, data shape, integration point), surface them as numbered options so the user can steer with one click. Reserve free-text questions for genuinely open prompts. This applies to every `AskUserQuestion` escalation in this phase (Step 5 reconciliation included).
 
 Save the transcript to `.loop-spec/features/{slug}/discuss-transcript.md` for spec-writer to read.
@@ -668,10 +670,13 @@ Return.
 
 ## Non-interactive mode
 
-If invoked with no pending user conversation (e.g., `execStyle == "auto"` and the caller passes a pre-written transcript path):
-- Skip Step 1.
-- Read the transcript from the provided path.
-- Proceed directly to Step 2 (TeamCreate).
+Skip Step 1 only when one of these is actually true:
+
+- `feature.json.autonomous == true`, or
+- `LOOP_SPEC_NON_INTERACTIVE=1`, or
+- the caller passed a pre-written transcript path and that file exists.
+
+`execStyle == "auto"` is none of those. Auto with a human still grills. When a transcript file exists, read it and proceed to Step 2 (TeamCreate); do not skip the grill because the style is `auto` and the file is missing.
 
 ## Resume
 

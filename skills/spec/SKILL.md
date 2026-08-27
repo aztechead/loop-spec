@@ -148,6 +148,8 @@ If `feature.json.autonomous == true` (or `LOOP_SPEC_AUTONOMOUS=1`): run Step 2 i
 
 If `LOOP_SPEC_NON_INTERACTIVE=1` is set (and autonomous is not): skip Step 2 entirely and go to the **Non-interactive mode** section below.
 
+**`execStyle: auto` still interviews.** Auto means the cycle does not pause after this phase. A human is attached. Run Step 2 with `AskUserQuestion`. Self-answer only under **Autonomous mode** below. Do not skip rounds because the request seems clear enough to write SPEC.md already — the gate scores the interview, not the one-liner.
+
 **Maintenance profile:** if `feature.json.executionProfile == "maintenance"`, skip the
 interview (Step 2) and synthesize SPEC.md from the request plus the Step 1 scout, exactly
 as **Non-interactive mode** does. The classification that earned this profile already

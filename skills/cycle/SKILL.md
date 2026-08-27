@@ -488,9 +488,11 @@ Slug = the parser's `.slug` (kebab-case of title); for titles resolved after par
 
 > The grill directive (`hooks/team/grill-inject.sh`, on by default) may already have
 > elicited disambiguating answers before SPEC runs; feed those into the inference above so
-> the SPEC reflects the clarified scope, not just the raw one-liner. Do not re-grill once
-> the SPEC phase starts — SPEC's Socratic interview is the in-cycle grill. In autonomous
-> mode the hook suppresses the directive (`LOOP_SPEC_AUTONOMOUS=1`); there is nobody to grill.
+> the SPEC reflects the clarified scope, not just the raw one-liner. Do not repeat the
+> session-start 2-4 questions once SPEC is running — SPEC's Socratic interview continues
+> the grill, and DISCUSS still runs its design-shape grill afterward unless the run is
+> autonomous. In autonomous mode the hook suppresses the directive (`LOOP_SPEC_AUTONOMOUS=1`);
+> there is nobody to grill. `execStyle: auto` is not autonomous.
 
 ### Step 3.5 - Model probe + Workflow availability probe
 

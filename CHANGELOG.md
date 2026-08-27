@@ -4,6 +4,15 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Fixed
+
+- **DISCUSS grill restored for non-autonomous runs.** `execStyle: auto` is not
+  autonomous mode: auto still asks (5 Q-round cap); step/interactive stay
+  uncapped. The leftover "skip Step 1 when style is auto" example, the optional
+  "you may run" iterate wording, and the output-style "ask only when blocked"
+  exception had taught models to skip the design-shape loop after SPEC. Autonomous
+  mode (`autonomous` token / `LOOP_SPEC_AUTONOMOUS=1`) is unchanged.
+
 ## [4.5.0] - 2026-08-26
 
 Draft-PR completion is a first-class terminal result. `cycle-result.sh` classifies a
