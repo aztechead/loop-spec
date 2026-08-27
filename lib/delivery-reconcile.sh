@@ -87,7 +87,7 @@ fi
 
 slug="$(jq -r '.slug' "$feature_json")"
 branch="$(jq -r '.branch // empty' "$feature_json")"
-base_branch="$(jq -r '.baseBranch // "main"' "$feature_json")"
+base_branch="$(jq -r '.baseBranch // empty' "$feature_json")"
 [[ -n "$branch" ]] || {
   echo "delivery-reconcile: feature has no branch" >&2
   exit 1
@@ -161,8 +161,13 @@ aggregate="$(jq -cn --argjson ok "$ok" --arg status "$status" --arg nextPhase "c
   '{schema:1,ok:$ok,status:$status,nextPhase:$nextPhase,prUrl:$prUrl,attemptedAt:$attempted,
     finishedAt:$finished,ciRemediationAttempts:0,ciRemediationLimit:2,targets:$targets}')"
 
-printf '%s\n' "$aggregate" > "$delivery_file.tmp" || exit 2
-sync
-mv "$delivery_file.tmp" "$delivery_file" || exit 2
+printf '%s\n' "$aggregate" > "$delivery_file.tmp" || {
+  echo "delivery-reconcile: cannot write $delivery_file.tmp" >&2
+  exit 2
+}
+mv "$delivery_file.tmp" "$delivery_file" || {
+  echo "delivery-reconcile: cannot install $delivery_file" >&2
+  exit 2
+}
 printf '%s\n' "$aggregate"
 exit 0

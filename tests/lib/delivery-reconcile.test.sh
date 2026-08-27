@@ -126,6 +126,18 @@ out="$(FAKE_OBSERVE_PR_URL="$CHECKPOINT" run_observe --accept-checkpoint 2>"$WOR
 check "checkpoint accepted: exit 0" "0" "$ec"
 check "checkpoint accepted: sidecar" "delivered-draft" "$(jq -r '.status' "$FEAT/delivery.json")"
 
+# The recorded base is asserted by observe; an unrecorded base is not invented.
+write_feature "https://github.com/test/repo/pull/40"
+rm -f "$FEAT/delivery.json"
+run_observe >/dev/null 2>&1
+check "recorded base: passed through" "1" "$(grep -c -- '--base main' "$WORK/observe.log" || true)"
+
+jq 'del(.baseBranch)' "$FEAT/feature.json" > "$FEAT/feature.json.tmp"
+mv "$FEAT/feature.json.tmp" "$FEAT/feature.json"
+rm -f "$FEAT/delivery.json"
+run_observe >/dev/null 2>&1
+check "absent base: no --base asserted" "0" "$(grep -c -- '--base ' "$WORK/observe.log" || true)"
+
 # Kill switch skips without writing.
 write_feature "https://github.com/test/repo/pull/40"
 rm -f "$FEAT/delivery.json"

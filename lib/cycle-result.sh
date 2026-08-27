@@ -547,7 +547,7 @@ PY
        prUrl:(if $pr == "" then null else $pr end),
        checkpointPrUrl:(if $checkpointPr == "" then null else $checkpointPr end),delivery:null,
        converged:$converged,
-       workDelivered:($pr != ""),
+       workDelivered:($pr != "" and $pr != $checkpointPr),
        iterations:{used:0,max:null},warnings:$warnings,
        autonomous:$autonomous,feature_title:$title,createdAt:null,finishedAt:$now,
        verification:{status:$verifyStatus,command:(if $verifyCommand == "" then null else $verifyCommand end)}}')" || {

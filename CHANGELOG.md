@@ -34,7 +34,20 @@ outside `lib/deliver.sh` and writes the canonical sidecar. Bash helpers in
 
 - **`validate_pr_snapshot` no longer mutates `is_draft`.** Temps are local; the
   caller assigns script-level identity fields through `apply_pr_snapshot`.
-  `refresh_remote_sha` and readiness observation return values on stdout.
+  `refresh_remote_sha` and readiness observation refresh their output files in
+  the caller's shell and expose the value through a reader helper, so the auth
+  outcome `run_gh` records still reaches `fail_delivery`: an expired credential
+  is reported as `authentication_failed`, not as a generic `remote_query_failed`.
+
+- **`observe` reports the base branch the PR actually has.** It never edits
+  metadata, so it no longer echoes the requested `--base` into the delivery
+  record. An explicit `--base` is now an assertion: a PR retargeted away from
+  the feature base is `pr_identity_mismatch`, and `delivery-reconcile.sh` passes
+  `--base` only when `feature.json` records one.
+
+- **A checkpoint PR is not `workDelivered`.** `write-terminal` matched the
+  full-cycle contract only for the delivery URL; a result whose `prUrl` is the
+  checkpoint salvage URL now reports `workDelivered: false`.
 
 - **VERIFY marker/tamper gates in workspace mode.** `verify.marker` and
   `verify.tamper` took `{baseSha}` and `{featureRepoRoot}`, which resolve empty

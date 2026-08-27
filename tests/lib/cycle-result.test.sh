@@ -223,6 +223,25 @@ check "O: reduced summary exposed" "Documentation was refreshed and verified." "
 check "O: reduced no-change reason defaults null" "null" "$(jq -r '.noChangeReason' "$GENERIC_RESULT")"
 check "O: no temporary pointer remains" "0" "$([[ -f "$GENERIC_RESULT.tmp" ]] && echo 1 || echo 0)"
 
+# A checkpoint PR is the interruption salvage, not shipped work: the terminal
+# writer must not report it as workDelivered.
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
+  --status failed --outcome interrupted --slug doc-refresh --title "Refresh docs" \
+  --pr-url https://github.com/test/repo/pull/9 \
+  --checkpoint-pr-url https://github.com/test/repo/pull/9 \
+  --converged false --verification-status not-run --summary "Run was interrupted." >/dev/null
+check "O: checkpoint-only PR is not workDelivered" "false" "$(jq '.workDelivered' "$GENERIC_RESULT")"
+rm -f "$GENERIC_RESULT"
+bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \
+  --status completed --outcome verified --slug doc-refresh --title "Refresh docs" \
+  --branch micro/doc-refresh --base-branch main \
+  --pr-url https://github.com/test/repo/pull/8 \
+  --checkpoint-pr-url https://github.com/test/repo/pull/9 \
+  --converged true --verification-status passed --summary "Documentation was refreshed." >/dev/null
+check "O: delivered PR beside a checkpoint is workDelivered" "true" \
+  "$(jq '.workDelivered' "$GENERIC_RESULT")"
+
 # Case P: contradictory success claims are rejected and clear removes stale pointers.
 rm -f "$GENERIC_RESULT"
 bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type micro \

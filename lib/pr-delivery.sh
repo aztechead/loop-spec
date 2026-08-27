@@ -17,7 +17,8 @@
 # for --branch (or --pr-url), bind it to --sha (PR head and remote branch), and read
 # required checks once. Green draft → outcome "delivered-draft"; green ready →
 # "delivered". Pending or failed checks are a structured block. Title and body-file
-# are not required.
+# are not required. --base is optional and, when given, asserts the PR's base rather
+# than retargeting it; the result reports the base the PR actually has.
 #
 # Script-level identity fields (pr_number, pr_url, head_sha, is_draft, remote_sha,
 # checks_json) are assigned only by apply_pr_snapshot, rollback_readiness, the
@@ -321,16 +322,25 @@ gh_out="$tmp_dir/gh.out"
 gh_err="$tmp_dir/gh.err"
 readiness_out="$tmp_dir/readiness.out"
 readiness_err="$tmp_dir/readiness.err"
+# Refresh the remote ref listing. Runs in the CALLER's shell, not a command
+# substitution: run_gh records the auth outcome in LOOP_SPEC_AUTH_ERROR_CODE and
+# memoizes the prepared credential stage, and a subshell would discard both --
+# an expired token would then be reported as a plain remote_query_failed.
+# Callers read the SHA with remote_sha_from_refresh.
 refresh_remote_sha() {
-  local rc=0
   run_gh "$tmp_dir/git-ls-remote.out" "$tmp_dir/git-ls-remote.err" \
-    git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch" || rc=$?
-  [[ "$rc" -eq 0 ]] || return "$rc"
+    git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch"
+}
+
+remote_sha_from_refresh() {
   awk 'NR == 1 {print $1}' "$tmp_dir/git-ls-remote.out"
 }
 
+# Refresh $readiness_out. Like refresh_remote_sha, it runs in the caller's shell
+# so its LOOP_SPEC_AUTH_ERROR_CODE assignment survives; the caller reads the
+# observed value with observed_draft_from_refresh.
 observe_readiness_after_refresh() {
-  local rc=0 observed
+  local rc=0
   run_gh_once "$readiness_out" "$readiness_err" gh pr view "$pr_number" \
     --repo "$repo_selector" --json isDraft || rc=$?
   if [[ "$rc" -ne 0 ]]; then
@@ -340,10 +350,11 @@ observe_readiness_after_refresh() {
     fi
     return "$rc"
   fi
-  observed="$(jq -r 'if (.isDraft | type) == "boolean" then .isDraft else "invalid" end' \
-    "$readiness_out" 2>/dev/null)"
-  [[ "$observed" != "invalid" ]] || return 1
-  printf '%s' "$observed"
+  jq -e '(.isDraft | type) == "boolean"' "$readiness_out" >/dev/null 2>&1
+}
+
+observed_draft_from_refresh() {
+  jq -r '.isDraft' "$readiness_out"
 }
 
 set_readiness_idempotent() {
@@ -356,14 +367,16 @@ set_readiness_idempotent() {
   loop_spec_is_auth_failure "$rc" "$readiness_out" "$readiness_err" || return "$rc"
 
   loop_spec_credential_refresh "$repo_dir" "github-pr" "auth-retry" "$credential_host" || return 125
-  observed_is_draft="$(observe_readiness_after_refresh)" || return $?
+  observe_readiness_after_refresh || return $?
+  observed_is_draft="$(observed_draft_from_refresh)"
   [[ "$observed_is_draft" != "$desired_is_draft" ]] || return 0
 
   rc=0
   run_gh_once "$readiness_out" "$readiness_err" "$@" || rc=$?
   [[ "$rc" -ne 0 ]] || return 0
   if loop_spec_is_auth_failure "$rc" "$readiness_out" "$readiness_err"; then
-    observed_is_draft="$(observe_readiness_after_refresh)" || return $?
+    observe_readiness_after_refresh || return $?
+    observed_is_draft="$(observed_draft_from_refresh)"
     [[ "$observed_is_draft" != "$desired_is_draft" ]] || return 0
     LOOP_SPEC_AUTH_ERROR_CODE="authentication_failed"
     LOOP_SPEC_AUTH_ERROR_MESSAGE="authentication failed after credential refresh"
@@ -415,8 +428,9 @@ if [[ "$mode" != "observe" ]]; then
   if [[ "$push_rc" -ne 0 ]]; then
     fail_delivery "push_failed" "exact-SHA push failed: $(tr '\n' ' ' < "$tmp_dir/git-push.err")"
   fi
-  remote_sha="$(refresh_remote_sha)" \
+  refresh_remote_sha \
     || fail_delivery "remote_query_failed" "cannot read pushed branch: $(tr '\n' ' ' < "$tmp_dir/git-ls-remote.err")"
+  remote_sha="$(remote_sha_from_refresh)"
   [[ "$remote_sha" == "$target_sha" ]] \
     || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
 fi
@@ -699,11 +713,19 @@ if [[ "$mode" == "checkpoint" ]]; then
 fi
 
 if [[ "$mode" == "observe" ]]; then
-  remote_sha="$(refresh_remote_sha)" \
+  refresh_remote_sha \
     || fail_delivery "remote_query_failed" "cannot read remote branch: $(tr '\n' ' ' < "$tmp_dir/git-ls-remote.err")"
+  remote_sha="$(remote_sha_from_refresh)"
   [[ "$remote_sha" == "$target_sha" ]] \
     || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
   refresh_pr_and_ingest_checks "observe CI"
+  # observe never edits metadata, so it reports the base the PR actually has
+  # rather than the one the caller asked for. An explicit --base is an assertion:
+  # a PR retargeted away from the feature's base is not this feature's delivery.
+  observed_base="$(jq -r '.baseRefName' <<<"$pr_json")"
+  [[ -z "$base_branch" || "$base_branch" == "$observed_base" ]] \
+    || fail_delivery "pr_identity_mismatch" "PR base '$observed_base' does not match '$base_branch'"
+  base_branch="$observed_base"
   checks_json="$(jq -cn --argjson timeout "$checks_timeout" --argjson counts "$counts" \
     --argjson required "$checks_payload" \
     '{status:"not-run",timeoutSeconds:$timeout,elapsedSeconds:0,counts:$counts,required:$required}')"
@@ -815,8 +837,9 @@ view_pr "$pr_number" || fail_delivery "pr_lookup_failed" "cannot refresh PR befo
 pr_json="$(jq -c . "$gh_out")"
 validate_pr_snapshot "pre-readiness refresh"
 apply_pr_snapshot
-remote_sha="$(refresh_remote_sha)" \
+refresh_remote_sha \
   || fail_delivery "remote_query_failed" "cannot read remote branch before readiness transition"
+remote_sha="$(remote_sha_from_refresh)"
 [[ "$remote_sha" == "$target_sha" ]] \
   || fail_delivery "remote_sha_mismatch" "remote branch moved to '$remote_sha' before readiness transition"
 actual_title="$(jq -r '.title' <<<"$pr_json")"
@@ -874,10 +897,11 @@ if [[ "$final_head" != "$target_sha" ]]; then
 fi
 validate_pr_snapshot "final PR observation"
 apply_pr_snapshot
-remote_sha="$(refresh_remote_sha)" || {
+if ! refresh_remote_sha; then
   rollback_readiness
   fail_delivery "remote_query_failed" "cannot read remote branch for final observation"
-}
+fi
+remote_sha="$(remote_sha_from_refresh)"
 if [[ "$remote_sha" != "$target_sha" ]]; then
   rollback_readiness
   fail_delivery "remote_sha_mismatch" "final remote SHA no longer matches '$target_sha'"

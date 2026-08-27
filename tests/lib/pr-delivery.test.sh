@@ -189,6 +189,10 @@ chmod +x "$WORK/shims/gh"
 cat > "$WORK/shims/git" <<'GIT'
 #!/usr/bin/env bash
 set -uo pipefail
+if [[ " $* " == *" ls-remote "* && "${FAKE_GIT_LS_REMOTE_AUTH:-0}" == "1" ]]; then
+  echo "fatal: Authentication failed for remote" >&2
+  exit 128
+fi
 if [[ " $* " == *" push "* && -n "${FAKE_GIT_AUTH_MODE:-}" ]]; then
   count=0
   [[ ! -f "${FAKE_GIT_COUNT:?}" ]] || count="$(<"$FAKE_GIT_COUNT")"
@@ -766,6 +770,30 @@ ec=0; out="$(run_observe 2>"$WORK/err")" || ec=$?
 check "observe no required checks: exit 0" "0" "$ec"
 check "observe no required checks: delivered-draft" "delivered-draft" "$(jq -r '.outcome' <<<"$out")"
 check "observe no required checks: status none" "none" "$(jq -r '.checks.status' <<<"$out")"
+
+# observe reports the base the PR actually has, and an explicit --base is an
+# assertion: a PR retargeted away from the feature base is not this delivery.
+retargeted_pr="$(jq -c '.baseRefName="release/1.0"' <<<"$draft_pr")"
+reset_gh "[$retargeted_pr]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0; out="$(run_observe 2>"$WORK/err")" || ec=$?
+check "observe base mismatch: exit 1" "1" "$ec"
+check "observe base mismatch: structured code" "pr_identity_mismatch" "$(jq -r '.errorCode' <<<"$out")"
+
+reset_gh "[$retargeted_pr]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+ec=0; out="$(run_observe --no-base 2>"$WORK/err")" || ec=$?
+check "observe no-base: reports observed base" "release/1.0" "$(jq -r '.baseBranch' <<<"$out")"
+
+# An expired credential during the remote-ref read stays authentication_failed:
+# the auth outcome is recorded in the caller's shell, not lost to a subshell.
+reset_gh "[$draft_pr]" '[[{"name":"test","workflow":"CI","bucket":"pass","state":"SUCCESS","link":"u"}]]'
+: > "$REFRESH_LOG"
+ec=0
+out="$(FAKE_GIT_LS_REMOTE_AUTH=1 FAKE_REFRESH_LOG="$REFRESH_LOG" \
+  LOOP_SPEC_CREDENTIAL_REFRESH_CMD="$REFRESH_HOOK" run_observe 2>"$WORK/err")" || ec=$?
+check "observe auth failure: exit 1" "1" "$ec"
+check "observe auth failure: structured code" "authentication_failed" "$(jq -r '.errorCode' <<<"$out")"
+check "observe auth failure: one auth refresh" "1" \
+  "$(grep -c '^git-query|auth-retry|' "$REFRESH_LOG" || true)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
