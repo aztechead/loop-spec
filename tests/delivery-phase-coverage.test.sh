@@ -32,6 +32,11 @@ present "bypass PRs are reconciled at publication" lib/delivery-reconcile.sh "Tu
 present "pr-delivery observe does not flip readiness" lib/pr-delivery.sh "Green draft"
 present "cycle-result fail-open reconciles" lib/cycle-result.sh "delivery-reconcile.sh"
 present "DELIVER skill names the reconciler" skills/deliver/SKILL.md "delivery-reconcile.sh"
+# A resume that re-runs the controller over a delivered-draft sidecar would mark a
+# deliberately-draft PR ready, so the finalization branch must accept both statuses.
+present "resume finalizes a delivered draft" skills/cycle/SKILL.md \
+  '"ready-for-review"` or `status == "delivered-draft"`'
+
 present "ITERATE advances to DELIVER" skills/iterate/SKILL.md 'currentPhase = "deliver"'
 present "cycle documents seven-phase chain" skills/cycle/SKILL.md "VERIFY -> ITERATE -> DELIVER"
 present "short path still walks ITERATE and DELIVER" skills/cycle/SKILL.md "ITERATE and DELIVER still run"

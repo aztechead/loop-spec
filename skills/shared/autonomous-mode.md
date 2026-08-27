@@ -130,7 +130,9 @@ escalation path fires, climb this ladder instead of stopping:
    `delivery.json.status == "ready-for-review"`, the autonomous run **chains directly
    into backlog drain** (cycle Step 3 branch 4 semantics, bounded by
    `LOOP_SPEC_MAX_FEATURES`) so the gaps become worked items in the same run,
-   not notes for a human. `delivery-incomplete` stops chaining. Record the same
+   not notes for a human. `delivery-incomplete` stops chaining, and a
+   `delivered-draft` sidecar is one of its causes: a green draft PR is a
+   completed delivery for a human reviewer, never a chaining signal. Record the same
    facts in `warnings[]` for the PR audit trail.
 5. **Terminal** — a gap that re-enters via backlog drain and spends its rounds
    AGAIN is not re-backlogged: mark it terminal (`iterate-terminal:` prefix in

@@ -677,30 +677,31 @@ fi
 validate_pr_snapshot "PR lookup"
 apply_pr_snapshot
 
+# observe reads an existing PR; only checkpoint and final own its metadata.
 if [[ "$mode" != "observe" ]]; then
-expected_body="$(cat "$body_file")"
-actual_title="$(jq -r '.title // ""' <<<"$pr_json")"
-actual_base="$(jq -r '.baseRefName // ""' <<<"$pr_json")"
-actual_body="$(jq -r '.body // ""' <<<"$pr_json")"
-if [[ "$actual_title" != "$title" || "$actual_base" != "$base_branch" || "$actual_body" != "$expected_body" ]]; then
-  if ! run_gh "$gh_out" "$gh_err" gh pr edit "$pr_number" --repo "$repo_selector" \
-      --title "$title" --base "$base_branch" --body-file "$body_file"; then
-    fail_delivery "metadata_failed" "failed to reconcile PR title, body, or base"
+  expected_body="$(cat "$body_file")"
+  actual_title="$(jq -r '.title // ""' <<<"$pr_json")"
+  actual_base="$(jq -r '.baseRefName // ""' <<<"$pr_json")"
+  actual_body="$(jq -r '.body // ""' <<<"$pr_json")"
+  if [[ "$actual_title" != "$title" || "$actual_base" != "$base_branch" || "$actual_body" != "$expected_body" ]]; then
+    if ! run_gh "$gh_out" "$gh_err" gh pr edit "$pr_number" --repo "$repo_selector" \
+        --title "$title" --base "$base_branch" --body-file "$body_file"; then
+      fail_delivery "metadata_failed" "failed to reconcile PR title, body, or base"
+    fi
+    metadata_action="updated"
+    view_pr "$pr_number" || fail_delivery "metadata_failed" "updated PR could not be refreshed"
+    pr_json="$(jq -c . "$gh_out")"
+    validate_pr_snapshot "metadata refresh"
+    apply_pr_snapshot
+  else
+    metadata_action="unchanged"
   fi
-  metadata_action="updated"
-  view_pr "$pr_number" || fail_delivery "metadata_failed" "updated PR could not be refreshed"
-  pr_json="$(jq -c . "$gh_out")"
-  validate_pr_snapshot "metadata refresh"
-  apply_pr_snapshot
-else
-  metadata_action="unchanged"
-fi
 
-actual_title="$(jq -r '.title' <<<"$pr_json")"
-actual_base="$(jq -r '.baseRefName' <<<"$pr_json")"
-actual_body="$(jq -r '.body' <<<"$pr_json")"
-[[ "$actual_title" == "$title" && "$actual_base" == "$base_branch" && "$actual_body" == "$expected_body" ]] \
-  || fail_delivery "metadata_failed" "PR title, body, or base did not reconcile"
+  actual_title="$(jq -r '.title' <<<"$pr_json")"
+  actual_base="$(jq -r '.baseRefName' <<<"$pr_json")"
+  actual_body="$(jq -r '.body' <<<"$pr_json")"
+  [[ "$actual_title" == "$title" && "$actual_base" == "$base_branch" && "$actual_body" == "$expected_body" ]] \
+    || fail_delivery "metadata_failed" "PR title, body, or base did not reconcile"
 fi
 
 if [[ "$mode" == "checkpoint" ]]; then

@@ -235,11 +235,13 @@ invocation checkout or a registered feature worktree.
 3. Read `.loop-spec/features/{slug}/PROGRESS.md`, then run `git log --oneline -10` on the
    feature branch (workspace mode: per repo).
 4. If ignored `delivery.json` has `nextPhase == "completed"` and `status ==
-   "ready-for-review"`, this is interrupted completion finalization: **skip project tests
-   and the delivery controller, run DELIVER Step 4's feedback check against the existing
-   PR targets, then jump directly to On completion**. The exact SHA and checks were
-   already proven; a flaky local environment must not reopen delivered work, but recovery
-   must not skip terminal feedback observation.
+   "ready-for-review"` or `status == "delivered-draft"`, this is interrupted completion
+   finalization: **skip project tests and the delivery controller, run DELIVER Step 4's
+   feedback check against the existing PR targets, then jump directly to On completion**.
+   The exact SHA and checks were already proven; a flaky local environment must not reopen
+   delivered work, but recovery must not skip terminal feedback observation. A
+   `delivered-draft` sidecar takes this path too: re-running the controller would mark a
+   deliberately-draft PR ready.
 5. Otherwise resume the recorded phase. Do not run the repository-wide
    test/lint/typecheck comparison here: VERIFY Step 1.75 is the only place it
    runs. When `artifacts.tasks` exists, print what is already published and what
