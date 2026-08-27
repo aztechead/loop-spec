@@ -12,13 +12,22 @@ All notable changes documented here. Format follows Keep a Changelog.
   subagent, loop-fleet, workflow, inline) names the force.
 
 - **`detect-test-cmd.sh` joins every matching language.** A Makefile `test:`
-  target remains the exclusive project override. Otherwise the probe emits
-  every matching family command joined with ` && ` (bun, deno, .NET, Swift,
-  Dart/Flutter, Scala, Haskell, Zig, Julia, Crystal, CMake, Meson, Bazel,
-  OCaml, Elm, Nim, D, Perl, R, just, Taskfile, plus the markers it already
-  knew). Cycle Step 4 cites the probe rather than a one-language list.
+  target, a justfile `test:` recipe, or a Taskfile task named `test` is the
+  exclusive project override. Otherwise the probe emits every matching family
+  command joined with ` && ` (bun, deno, .NET, Swift, Dart/Flutter, Scala,
+  Haskell, Zig, Julia, Crystal, OCaml, Elm, Nim, D, Perl, R, plus the
+  markers it already knew). CMake, Meson, and Bazel are fallbacks only when
+  no language marker matched. Cycle Step 4 cites the probe rather than a
+  one-language list.
 
 ### Fixed
+
+- **Test-command detection does not stack build files onto language suites.**
+  `package.json` + `CMakeLists.txt` is `npm test`, not `npm test && ctest`.
+  Nested Taskfile keys named `test` are not a test task. Cycle rewrites a
+  polyglot command that contains `python -m pytest` after venv prepare.
+  `interactive` still pauses before every agent dispatch; it is not a
+  duplicate of `step`.
 
 - **DISCUSS grill restored for non-autonomous runs.** `execStyle: auto` is not
   autonomous mode: auto still asks (5 Q-round cap); step/interactive stay

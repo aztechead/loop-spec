@@ -4,9 +4,15 @@
 # Usage: detect-test-cmd.sh [<directory>]
 #   <directory>  Directory to probe (default: current working directory)
 #
-# A Makefile with a `test:` target is the exclusive project override (`make test`).
+# Exclusive project override (first match, then stop):
+#   Makefile with test:            -> make test
+#   justfile/Justfile with test:   -> just test
+#   Taskfile task named test       -> task test
 # Otherwise every matching language family contributes one command, joined with
 # ` && ` so a polyglot tree is not truncated to whichever marker sorts first.
+# CMake/Meson/Bazel are not languages: a CMakeLists.txt next to package.json is
+# a native addon, not a second suite. They are fallbacks only when no language
+# marker matched.
 # Family XOR (one runner, not two for the same ecosystem):
 #   bun.lock/bun.lockb | deno.json(c) | package.json
 #   uv.lock | poetry.lock | .venv | pyproject/setup.py
@@ -15,7 +21,7 @@
 #   composer.json | phpunit.xml(.dist)
 #   flutter (sdk: flutter in pubspec.yaml) | dart
 #
-# Marker -> command (collected in this order after the Makefile override):
+# Marker -> command (collected in this order after the exclusive override):
 #   bun.lock / bun.lockb        -> bun test
 #   deno.json / deno.jsonc      -> deno test
 #   package.json                -> npm test
@@ -42,17 +48,16 @@
 #   build.zig                   -> zig build test
 #   Project.toml                -> julia --project=. -e 'using Pkg; Pkg.test()'
 #   shard.yml                   -> crystal spec
-#   CMakeLists.txt              -> ctest --output-on-failure
-#   meson.build                 -> meson test
-#   WORKSPACE / MODULE.bazel    -> bazel test //...
 #   dune-project                -> dune runtest
 #   elm.json                    -> elm-test
 #   *.nimble                    -> nimble test
 #   dub.json / dub.sdl          -> dub test
 #   Makefile.PL / Build.PL / cpanfile -> prove -l
 #   DESCRIPTION with Package:   -> Rscript -e 'testthat::test_local()'
-#   justfile/Justfile with test: -> just test
-#   Taskfile.yml with test:     -> task test
+# Fallback only when the list above is empty:
+#   CMakeLists.txt              -> ctest --output-on-failure
+#   meson.build                 -> meson test
+#   WORKSPACE / MODULE.bazel    -> bazel test //...
 #
 # Output: test command string on stdout (empty if no marker found).
 # Exit: 0 in all cases.
@@ -75,8 +80,47 @@ has_root_glob() {
   return 1
 }
 
+# Nested YAML keys named test (env.test, vars.test) are not a test task.
+has_taskfile_test() {
+  local f
+  for f in "$dir/Taskfile.yml" "$dir/Taskfile.yaml" "$dir/Taskfile.dist.yml"; do
+    [[ -f "$f" ]] || continue
+    if awk '
+      /^[[:space:]]*#/ { next }
+      /^tasks:[[:space:]]*(#.*)?$/ { in_tasks=1; task_col=-1; next }
+      in_tasks && /^[^[:space:]#]/ { in_tasks=0 }
+      in_tasks && /^[[:space:]]+test:([[:space:]]|$)/ {
+        match($0, /^[[:space:]]*/)
+        col = RLENGTH
+        if (task_col < 0 || col == task_col) { found=1; exit }
+      }
+      in_tasks && /^[[:space:]]+[^[:space:]#]/ {
+        match($0, /^[[:space:]]*/)
+        if (task_col < 0) task_col = RLENGTH
+      }
+      END { exit found ? 0 : 1 }
+    ' "$f"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 if [[ -f "$dir/Makefile" ]] && grep -qE '^test:' "$dir/Makefile"; then
   printf 'make test\n'
+  exit 0
+fi
+
+justfile=""
+[[ -f "$dir/justfile" ]] && justfile="$dir/justfile"
+[[ -f "$dir/Justfile" ]] && justfile="$dir/Justfile"
+if [[ -n "$justfile" ]] && grep -qE '^test:' "$justfile"; then
+  printf 'just test\n'
+  exit 0
+fi
+
+if has_taskfile_test; then
+  printf 'task test\n'
   exit 0
 fi
 
@@ -176,18 +220,6 @@ if [[ -f "$dir/shard.yml" ]]; then
   add_cmd 'crystal spec'
 fi
 
-if [[ -f "$dir/CMakeLists.txt" ]]; then
-  add_cmd 'ctest --output-on-failure'
-fi
-
-if [[ -f "$dir/meson.build" ]]; then
-  add_cmd 'meson test'
-fi
-
-if [[ -f "$dir/WORKSPACE" || -f "$dir/WORKSPACE.bazel" || -f "$dir/MODULE.bazel" ]]; then
-  add_cmd 'bazel test //...'
-fi
-
 if [[ -f "$dir/dune-project" ]]; then
   add_cmd 'dune runtest'
 fi
@@ -212,19 +244,15 @@ if [[ -f "$dir/DESCRIPTION" ]] && grep -qE '^Package:' "$dir/DESCRIPTION"; then
   add_cmd "Rscript -e 'testthat::test_local()'"
 fi
 
-justfile=""
-[[ -f "$dir/justfile" ]] && justfile="$dir/justfile"
-[[ -f "$dir/Justfile" ]] && justfile="$dir/Justfile"
-if [[ -n "$justfile" ]] && grep -qE '^test:' "$justfile"; then
-  add_cmd 'just test'
-fi
-
-for tf in Taskfile.yml Taskfile.yaml Taskfile.dist.yml; do
-  if [[ -f "$dir/$tf" ]] && grep -qE '^[[:space:]]*test:' "$dir/$tf"; then
-    add_cmd 'task test'
-    break
+if [[ ${#cmds[@]} -eq 0 ]]; then
+  if [[ -f "$dir/CMakeLists.txt" ]]; then
+    add_cmd 'ctest --output-on-failure'
+  elif [[ -f "$dir/meson.build" ]]; then
+    add_cmd 'meson test'
+  elif [[ -f "$dir/WORKSPACE" || -f "$dir/WORKSPACE.bazel" || -f "$dir/MODULE.bazel" ]]; then
+    add_cmd 'bazel test //...'
   fi
-done
+fi
 
 # "${arr[*]}" joins on the first IFS character only, so " && " would collapse to " ".
 if [[ ${#cmds[@]} -gt 0 ]]; then

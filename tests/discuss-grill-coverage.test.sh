@@ -21,6 +21,7 @@ checks=(
   "output-styles/loop-spec.md	\`style:auto\` is not autonomous mode"
   "skills/shared/report-style.md	\`style:auto\` is not autonomous mode"
   "docs/tier-guide.md	SPEC and DISCUSS still grill a human"
+  "docs/tier-guide.md	pauses before every agent dispatch"
   "skills/iterate/SKILL.md	ITERATE re-entry; do not block an unattended loop"
 )
 
@@ -32,6 +33,7 @@ must_not=(
   "skills/discuss/SKILL.md	e.g., \`execStyle == \"auto\"\` and the caller passes"
   "skills/iterate/SKILL.md	\`auto\` / \`review-only\` (autonomous):"
   "docs/tier-guide.md	plus interactive clarifying loops in SPEC/DISCUSS"
+  "docs/tier-guide.md	Like step. SPEC/DISCUSS clarifying loops have no round cap."
 )
 
 for entry in "${must_not[@]}"; do

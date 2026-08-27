@@ -679,9 +679,10 @@ prepare_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run 
 }
 prepare_key="$(jq -r '.key // ""' <<<"$prepare_json")"
 cmd_prepare="$(jq -r '.command // ""' <<<"$prepare_json")"
-# Preparation may create an isolated Python runner. Upgrade only the generic auto-detected
-# command; never overwrite a user-pinned LOOP_SPEC_CMD_TEST value.
-if [[ "$cmd_test" == "python -m pytest" && -z "${LOOP_SPEC_CMD_TEST+x}" ]]; then
+# Preparation may create an isolated Python runner. Upgrade the generic auto-detected
+# python command even when it is one conjunct in a polyglot join; never overwrite a
+# user-pinned LOOP_SPEC_CMD_TEST value.
+if [[ "$cmd_test" == *"python -m pytest"* && -z "${LOOP_SPEC_CMD_TEST+x}" ]]; then
   cmd_test="$(bash "${CLAUDE_SKILL_DIR}/../../lib/detect-test-cmd.sh" "$execution_root")"
 fi
 

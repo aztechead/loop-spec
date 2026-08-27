@@ -316,6 +316,80 @@ printf '[package]\nname = "foo"\n' > "$DIR/Cargo.toml"
 got=$(cd "$DIR" && bash "$LIB")
 check "N: Makefile test: exclusive over polyglot" "make test" "$got"
 
+# Project runners with a test recipe are exclusive, like Makefile — not stacked
+# on cargo/npm. A justfile that does not define test: is not an override.
+DIR="$WORK/just-over-cargo"
+mkdir -p "$DIR"
+printf 'test:\n\t@echo hi\n' > "$DIR/justfile"
+printf '[package]\nname = "foo"\n' > "$DIR/Cargo.toml"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: justfile test: exclusive over cargo" "just test" "$got"
+
+DIR="$WORK/justfile-no-test"
+mkdir -p "$DIR"
+printf 'build:\n\t@echo hi\n' > "$DIR/justfile"
+printf '[package]\nname = "foo"\n' > "$DIR/Cargo.toml"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: justfile without test: falls through to cargo" "cargo test" "$got"
+
+DIR="$WORK/makefile-over-just"
+mkdir -p "$DIR"
+printf 'test:\n\t@echo running tests\n' > "$DIR/Makefile"
+printf 'test:\n\t@echo hi\n' > "$DIR/justfile"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: Makefile test: exclusive over justfile" "make test" "$got"
+
+DIR="$WORK/task-over-cargo"
+mkdir -p "$DIR"
+printf 'version: "3"\ntasks:\n  build:\n    cmds: ["echo"]\n  test:\n    cmds: ["echo hi"]\n' > "$DIR/Taskfile.yml"
+printf '[package]\nname = "foo"\n' > "$DIR/Cargo.toml"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: Taskfile task test exclusive over cargo" "task test" "$got"
+
+# Nested YAML keys named test are not a Taskfile test task.
+DIR="$WORK/taskfile-env-test"
+mkdir -p "$DIR"
+printf 'version: "3"\nenv:\n  test: development\ntasks:\n  build:\n    cmds: ["echo hi"]\n' > "$DIR/Taskfile.yml"
+printf '[package]\nname = "foo"\n' > "$DIR/Cargo.toml"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: Taskfile env.test is not a test task" "cargo test" "$got"
+
+DIR="$WORK/taskfile-nested-test"
+mkdir -p "$DIR"
+printf 'version: "3"\ntasks:\n  build:\n    vars:\n      test: unit\n    cmds: ["echo hi"]\n' > "$DIR/Taskfile.yml"
+printf '[package]\nname = "foo"\n' > "$DIR/Cargo.toml"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: Taskfile nested vars.test is not a test task" "cargo test" "$got"
+
+# Build-system files next to a language manifest are native addons / extra
+# toolchains, not a second test suite. Fallback only when they are the only marker.
+DIR="$WORK/npm-cmake"
+mkdir -p "$DIR"
+printf '{"name":"foo"}\n' > "$DIR/package.json"
+touch "$DIR/CMakeLists.txt"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: package.json + CMakeLists.txt is npm only" "npm test" "$got"
+
+DIR="$WORK/npm-meson"
+mkdir -p "$DIR"
+printf '{"name":"foo"}\n' > "$DIR/package.json"
+touch "$DIR/meson.build"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: package.json + meson.build is npm only" "npm test" "$got"
+
+DIR="$WORK/npm-bazel"
+mkdir -p "$DIR"
+printf '{"name":"foo"}\n' > "$DIR/package.json"
+touch "$DIR/WORKSPACE"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: package.json + WORKSPACE is npm only" "npm test" "$got"
+
+DIR="$WORK/py-cmake"
+mkdir -p "$DIR"
+touch "$DIR/pyproject.toml" "$DIR/CMakeLists.txt"
+got=$(cd "$DIR" && bash "$LIB")
+check "N: pyproject + CMakeLists.txt is pytest only" "python -m pytest" "$got"
+
 # Coupling: cycle Step 4 names the polyglot join (the probe is the marker list).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOC="$ROOT/skills/cycle/references/detect-commands.md"
@@ -331,6 +405,28 @@ if grep -qF 'must not assume the project is one language' "$DOC"; then
   ((PASS++)) || true
 else
   echo "FAIL: detect-commands.md missing 'must not assume the project is one language'"
+  ((FAIL++)) || true
+fi
+if grep -qF 'exclusive project override' "$DOC" && grep -qF 'just test' "$DOC"; then
+  echo "PASS: detect-commands.md names just/Taskfile as exclusive overrides"
+  ((PASS++)) || true
+else
+  echo "FAIL: detect-commands.md missing exclusive just/Taskfile override"
+  ((FAIL++)) || true
+fi
+if grep -qF 'only when no language marker matched' "$DOC"; then
+  echo "PASS: detect-commands.md names CMake/Meson/Bazel as language-absent fallbacks"
+  ((PASS++)) || true
+else
+  echo "FAIL: detect-commands.md missing 'only when no language marker matched'"
+  ((FAIL++)) || true
+fi
+# Polyglot python -m pytest && go test ./... must still get the venv rewrite.
+if grep -qF '*"python -m pytest"*' "$ROOT/skills/cycle/SKILL.md"; then
+  echo "PASS: cycle SKILL upgrades any command containing python -m pytest"
+  ((PASS++)) || true
+else
+  echo "FAIL: cycle SKILL still exact-matches python -m pytest (polyglot misses the venv rewrite)"
   ((FAIL++)) || true
 fi
 
