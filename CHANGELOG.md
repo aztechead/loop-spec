@@ -30,14 +30,15 @@ outside `lib/deliver.sh` and writes the canonical sidecar. Bash helpers in
   Binds `--sha` to the existing PR head and remote branch, then classifies a
   one-shot check observation.
 
-- **Claude Code output style `loop-spec`.** Mid-turn silence and one
-  outcome-first chat message bind in `output-styles/loop-spec.md`
-  (`force-for-plugin: true`, `keep-coding-instructions: true`). The manifest
-  names `"outputStyles": "./output-styles/"`. The same text in a hook or
-  CLAUDE.md does not shorten chat. Durable reports stay in
-  `skills/shared/report-style.md`. Contributor rules in CLAUDE.md now name a
-  moment, an artifact, and what to do instead of a bare forbid. The ponytail
-  compact directive is a stop-at-first-rung nudge. Skill and agent
+- **Claude Code output style `loop-spec`.** The working contract binds in
+  `output-styles/loop-spec.md` (`force-for-plugin: true`,
+  `keep-coding-instructions: true`): name the phase when it changes, one
+  thought per action, then one outcome-first close. Total mid-turn silence is
+  not the contract. The manifest names `"outputStyles": "./output-styles/"`.
+  The same text in a hook or CLAUDE.md does not shape chat. Durable reports
+  stay in `skills/shared/report-style.md`. Contributor rules in CLAUDE.md now
+  name a moment, an artifact, and what to do instead of a bare forbid. The
+  ponytail compact directive is a stop-at-first-rung nudge. Skill and agent
   `description:` lines name a recognizable moment and when not to fire.
 
 ### Fixed

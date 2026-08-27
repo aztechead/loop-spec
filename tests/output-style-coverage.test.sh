@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Output-style coverage: mid-turn silence binds in the Claude Code output-style
-# slot, not in a hook or CLAUDE.md. A paragraph of "be concise" in those other
-# places does not shorten chat; force-for-plugin on output-styles/loop-spec.md does.
+# Output-style coverage: the working contract binds in the Claude Code
+# output-style slot, not in a hook or CLAUDE.md. Phase line + one thought per
+# action is the contract; total mid-turn silence is not.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,9 +23,9 @@ fi
 for needle in \
   "force-for-plugin: true" \
   "keep-coding-instructions: true" \
-  "Emit no text between tool calls" \
-  "Never compress" \
-  "one chat message per turn"; do
+  "one thought per action" \
+  "When the phase changes" \
+  "Never compress"; do
   if grep -Fq "$needle" "$STYLE"; then
     ok "style carries: $needle"
   else
@@ -33,36 +33,54 @@ for needle in \
   fi
 done
 
-# The finding: the same instruction in a hook does not bind. Pin that we did
-# not copy mid-turn silence into SessionStart injectors.
-if grep -RFq "Emit no text between tool calls" hooks; then
-  bad "hooks copied mid-turn silence out of the output-style slot"
+if grep -Fq "Emit no text between tool calls" "$STYLE"; then
+  bad "style restored total mid-turn silence"
 else
-  ok "hooks do not carry mid-turn silence"
+  ok "style does not demand total mid-turn silence"
+fi
+
+# The finding: the same instruction in a hook does not bind. Pin that we did
+# not copy the working contract into SessionStart injectors.
+if grep -RFq "Emit no text between tool calls" hooks; then
+  bad "hooks copied total mid-turn silence"
+else
+  ok "hooks do not carry total mid-turn silence"
+fi
+if grep -RFq "one thought per action" hooks; then
+  bad "hooks copied the working contract out of the output-style slot"
+else
+  ok "hooks do not carry one-thought-per-action"
 fi
 
 if grep -Fq "output-styles/loop-spec.md" skills/shared/report-style.md &&
-   grep -Fq "force-for-plugin" skills/shared/report-style.md; then
-  ok "report-style names the Claude slot"
+   grep -Fq "force-for-plugin" skills/shared/report-style.md &&
+   grep -Fq "one thought per action" skills/shared/report-style.md; then
+  ok "report-style names the Claude slot and the working contract"
 else
-  bad "report-style.md no longer names output-styles/loop-spec.md as the Claude slot"
+  bad "report-style.md no longer names the slot or one-thought-per-action"
 fi
 
 if grep -Fq "output-styles/loop-spec.md" skills/shared/claude-harness.md &&
-   grep -Fq "force-for-plugin" skills/shared/claude-harness.md; then
-  ok "claude-harness names the output style"
+   grep -Fq "force-for-plugin" skills/shared/claude-harness.md &&
+   grep -Fq "one thought per action" skills/shared/claude-harness.md; then
+  ok "claude-harness names the output style and the working contract"
 else
-  bad "claude-harness.md no longer names the output style"
+  bad "claude-harness.md no longer names the output style or working contract"
 fi
 
 # Peer harnesses have no slot; they must say so rather than pretend the Claude
-# file loads.
+# file loads, and they must still carry the working contract.
 for f in skills/shared/opencode-harness.md skills/shared/codex-harness.md \
          skills/shared/adk-harness.md; do
   if grep -Fq "no output-style slot" "$f"; then
     ok "$f records the missing slot"
   else
     bad "$f does not say it has no output-style slot"
+  fi
+  if grep -Fq "one thought per action" "$f"; then
+    ok "$f carries one-thought-per-action"
+  else
+    bad "$f lost one-thought-per-action"
   fi
 done
 

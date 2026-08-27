@@ -108,9 +108,10 @@ proven interactive and stay unknown, failing safe.
 
 Claude Code is the only peer with an output-style slot. loop-spec ships
 `output-styles/loop-spec.md` with `force-for-plugin: true` and
-`keep-coding-instructions: true`, so enabling the plugin binds silent-while-working
-plus one outcome-first chat message. Built-in Concise does not do that (~6% shorter,
-same chatter between tool calls). If another enabled plugin also sets
+`keep-coding-instructions: true`, so enabling the plugin binds the working
+contract: name the phase when it changes, one thought per action, then one
+outcome-first close. Built-in Concise does not do that (~6% shorter, same
+chatter, and it also hides the phase). If another enabled plugin also sets
 `force-for-plugin`, Claude Code uses the first one loaded.
 
 Do not re-home those instructions into `hooks/team/*-inject.sh` or CLAUDE.md.

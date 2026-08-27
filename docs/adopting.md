@@ -24,8 +24,9 @@ claude plugin install loop-spec@loop-spec-marketplace
 
 Open a new session and run `/loop-spec:cycle <goal>`. Agent teams are optional;
 without them, the same gates run through bounded one-shot agents and loop-fleet.
-Installing the plugin binds the `loop-spec` output style: silent between tool
-calls, then one outcome-first chat message. Built-in Concise does not do that.
+Installing the plugin binds the `loop-spec` output style: name the phase when
+it changes, one thought per action, then one outcome-first close. Built-in
+Concise does not do that.
 
 ### Google ADK
 

@@ -58,8 +58,9 @@ plugin talks in chat (silence, length, shape), edit `output-styles/loop-spec.md`
 Keep `force-for-plugin: true` and `keep-coding-instructions: true`. Keep
 `.claude-plugin/plugin.json` `"outputStyles": "./output-styles/"` so the slot
 loads. Do not copy those instructions into a SessionStart hook or this file:
-that slot is the only place mid-turn silence binds. Other harnesses follow
-`skills/shared/report-style.md`. Do not add `outputStyles` to
+that slot is the only place the working contract binds (phase line, one thought
+per action, no chatter). Total mid-turn silence is not the contract. Other
+harnesses follow `skills/shared/report-style.md`. Do not add `outputStyles` to
 `.codex-plugin/plugin.json`.
 
 Pin the file from `tests/output-style-coverage.test.sh`.

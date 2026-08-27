@@ -78,9 +78,9 @@ adapter directory is the wrong base:
 
 ## Chat reports
 
-OpenCode has no output-style slot. Mid-turn silence and the one-message close
-follow `skills/shared/report-style.md`. Do not expect `output-styles/loop-spec.md`
-to load here.
+OpenCode has no output-style slot. Name the phase, one thought per action, and
+the one-message close follow `skills/shared/report-style.md`. Do not expect
+`output-styles/loop-spec.md` to load here.
 
 ## Ambient verification enforcement
 
