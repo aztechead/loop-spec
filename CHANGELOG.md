@@ -9,7 +9,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 SPEC and PLAN get shorter without dropping the DISCUSS grill or the
 challenger. DISCUSS no longer re-authors and re-debates an already-gated
 spec. PLAN does not pay opus for PATTERNS.md or a challenger-before-lints.
-The advocate debate round is gone.
+The advocate debate round is gone. Phase joins no longer `sleep`-poll
+background Agents (up to 120s for PATTERNS, 600s for codebase maps).
 
 ### Changed
 
@@ -38,9 +39,17 @@ The advocate debate round is gone.
   file is missing after cache/GSD. Prefetch join checks once (never `sleep`).
   Planner last-resort fallback remains if the mapper produces nothing.
 
+### Fixed
+
+- **No `sleep` to join a background Agent.** DISCUSS Step 5.8 and PLAN Step 0
+  check once, then proceed or fall back (`Skill(map-codebase)` / pattern-mapper).
+  `skills/shared/harness-call-contracts.md` forbids sleep-poll joins. Happy path
+  is unchanged (the file is usually already on disk after the overlapping phase).
+
 Pinned by `tests/lib/graph-probes.test.sh`,
-`tests/spec-plan-speed-coverage.test.sh`, and
-`tests/discuss-grill-coverage.test.sh`.
+`tests/spec-plan-speed-coverage.test.sh`,
+`tests/discuss-grill-coverage.test.sh`, and
+`tests/lib/harness-call-shapes.test.sh`.
 
 ## [4.6.1] - 2026-08-28
 

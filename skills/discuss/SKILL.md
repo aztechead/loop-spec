@@ -319,19 +319,11 @@ Exit 1 from either BLOCKS: re-dispatch spec-writer-1 via `SendMessage` with the 
 
 If `feature.json.bootstrapPendingDomains` is non-empty (set during cycle Step 5.5b when background mappers were fired) — PLAN requires all 5 domain docs, so join the background work now (it has had the whole phase to run concurrently with the critique gate):
 
-1. Poll for file existence with a max wait of 600 seconds (10 minutes):
+1. Check once whether all 5 domain docs exist. Do not sleep. A `sleep` loop freezes the session between DISCUSS and PLAN (`skills/shared/harness-call-contracts.md`).
    ```bash
-   max_wait=600
-   elapsed=0
-   interval=15
-   while [[ $elapsed -lt $max_wait ]]; do
-     all_present=true
-     for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
-       [[ -f "docs/loop-spec/codebase/${d}.md" ]] || { all_present=false; break; }
-     done
-     $all_present && break
-     sleep $interval
-     elapsed=$((elapsed + interval))
+   all_present=true
+   for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
+     [[ -f "docs/loop-spec/codebase/${d}.md" ]] || { all_present=false; break; }
    done
    ```
 
@@ -345,11 +337,11 @@ If `feature.json.bootstrapPendingDomains` is non-empty (set during cycle Step 5.
    git commit -m "docs: NO_JIRA bootstrap codebase map (background)"
    ```
 
-3. If timeout reached with missing files: print which domains are still missing, then fall back to synchronous invocation:
+3. If any are missing: print which domains are still missing, then fall back to synchronous invocation immediately:
    ```
    Skill(loop-spec:map-codebase) args: --domain {csv-of-still-missing-lowercased}
    ```
-   This ensures correctness even if background agents failed.
+   Never AskUserQuestion as a wait. Never `sleep` to join.
 
 If `feature.json.bootstrapPendingDomains` is empty (codebase docs already existed or GSD-ingested): skip this step.
 

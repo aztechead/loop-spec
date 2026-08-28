@@ -152,6 +152,20 @@ done
 check "every Agent-joining phase forbids AskUserQuestion as a wait" \
   "$([[ -z "$wait_missing" ]] && echo 1 || echo 0)" "$wait_missing"
 
+# 8c) Live /cycle: bash sleep-polls (120s PATTERNS join, 600s map bootstrap)
+#     froze the session between DISCUSS and PLAN. Check once, then fallback.
+grep -qF 'Never `sleep` to join a background Agent' \
+  skills/shared/harness-call-contracts.md && v=1 || v=0
+check "contract doc forbids sleep-poll joins" "$v"
+bad=$(grep -rnE 'sleep \$interval' skills --include='*.md' || true)
+check "no sleep-poll join of background Agents" \
+  "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+grep -qF 'check once' skills/plan/SKILL.md \
+  && grep -qiF 'never sleep' skills/plan/SKILL.md \
+  && grep -qiF 'Do not sleep' skills/discuss/SKILL.md \
+  && v=1 || v=0
+check "PLAN prefetch and DISCUSS bootstrap join without sleep" "$v"
+
 # 9) For every SendMessage({ occurrence, the 4-line window must NOT contain body:
 #    (harness-call-contracts.md excluded — it documents the invalid param).
 bad=""
