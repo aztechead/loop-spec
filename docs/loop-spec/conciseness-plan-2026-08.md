@@ -45,6 +45,10 @@ Rules that bind every stage:
 | 5 | SPEC/ITERATE/DELIVER + feature-state/grounding trims | done |
 | 6 | Aux skill fold-ins (simplicity, human-code, gates, walkthrough, micro/discipline) | done |
 | 7 | Cross-cutting: harness adapters, harness-call-contracts, style docs | done |
+| 8 | Trim skill frontmatter descriptions (startup metadata) | done |
+| 9 | Extract judgment-free Step 5 bash into `lib/feature-bootstrap.sh` | done |
+| 10 | Contents lines on reference files over 100 lines | done |
+| 11 | Dedupe agent charters against team prompts | done |
 
 ## Findings the stages rest on
 
@@ -260,6 +264,45 @@ shared.
 - `skills/shared/report-style.md`: drop the historical "used to be an instruction"
   paragraph. `output-styles/loop-spec.md`: keep all pins; trim only meta-commentary.
   The two files stay separate by design (Claude slot vs other harnesses).
+
+### Stage 8 — skill frontmatter descriptions
+
+Every skill's `name` + `description` loads at session start. Cut each description to
+its trigger words plus one not-for clause; drop body procedure. The six phase skills
+shared a 26-word "Cycle-internal - invoked by..." boilerplate — shortened in place.
+No test pinned description text. Installers copy the field verbatim.
+
+### Stage 9 — `lib/feature-bootstrap.sh`
+
+The prepare / opt-in baseline / skeleton-write half of
+`skills/cycle/references/feature-init.md` has no model judgment, so it now runs as one
+script whose source never enters context. The reference keeps the judgment half (PR
+adoption, execution-root selection, `EnterWorktree`) plus a one-call stub. Pins on the
+moved lines (`python -m pytest` rewrite, `LOOP_SPEC_STARTUP_BASELINE` guard,
+`decisions.sh migrate`) retarget to the script. New unit suite:
+`tests/lib/feature-bootstrap.test.sh`.
+
+### Stage 10 — contents lines on long references
+
+Official skill-authoring checklist: a reference over 100 lines opens with a TOC so a
+partial read sees the file's scope. Plain-text "Contents:" lines (no heading strings)
+on every reference over 100 lines, including `execute-subagent.md` and
+`critique-gate-protocol.md`. Heading-sliced structural tests are unaffected.
+
+### Stage 11 — charter / team-prompt dedupe
+
+Team teammates load both `subagent_type` (the charter) and the spawn prompt, so restated
+text is paid twice per dispatch.
+
+- `agents/challenger.md` cites `skills/shared/team-prompts/critic.md` for the finding
+  taxonomy instead of restating Gap/Ambiguity/Flawed-assumption/UNGROUNDED.
+- `skills/shared/team-prompts/reviewer.md` cites `agents/spec-compliance-reviewer.md`
+  (already in context) for the review procedure and keeps only the task-metadata mapping.
+- SKIPPED: implementer engineering stanzas — dual dispatch surfaces, pinned verbatim
+  by design (rule 5). The team prompt now names the charter as binding for those
+  principles so a future edit has one place to look.
+- SKIPPED: advocate pair — one-shot parallel critique vs. debate-round protocol share
+  no real text; a "canonical + deltas" file would be a new surface with nothing to own.
 
 ## Acceptance, every stage
 

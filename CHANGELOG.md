@@ -55,7 +55,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 - **The test suite is offline-only and fast.** `tests/e2e/` and all timing-dependent
   cases are removed; suites run under a hermetic git config so a machine's global
   fsmonitor/commit-signing settings cannot hang test commits. Full run: ~11 min → under
-  2 min, 192 suites.
+  2 min, 193 suites.
 
 ### Added (landed before this release cut, previously under Unreleased)
 
