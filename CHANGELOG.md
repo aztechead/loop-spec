@@ -24,8 +24,26 @@ All notable changes documented here. Format follows Keep a Changelog.
   always-loaded skill bodies into on-demand references
   (`skills/cycle/SKILL.md` 1327 → 797 lines; `skills/spec/SKILL.md` 426 → 344).
 
+- **`lib/feature-bootstrap.sh`** — the deterministic tail of cycle Step 5 (environment
+  prep, opt-in baseline, feature.json skeleton write) now runs as one script whose
+  source never enters context; `skills/cycle/references/feature-init.md` keeps only the
+  judgment half (PR adoption, execution root, `EnterWorktree`). Unit suite:
+  `tests/lib/feature-bootstrap.test.sh`.
+
 ### Changed
 
+- **Skill frontmatter descriptions trimmed to trigger + not-for.** Descriptions load at
+  every session start; the six phase skills shared a 26-word cycle-internal boilerplate
+  and several entry skills restated body procedure.
+- **Reference files over 100 lines open with a contents line**, so a partial read sees
+  the file's scope.
+- **Charter/team-prompt dedupe.** `agents/challenger.md` cites `team-prompts/critic.md`
+  for the finding taxonomy instead of restating it; `team-prompts/reviewer.md` cites the
+  spec-compliance-reviewer charter (already in the teammate's context via
+  `subagent_type`) for the review procedure and keeps only the task-metadata mapping.
+  The implementer engineering stanzas stay verbatim in both files by design — they are
+  pinned dispatch surfaces; the advocate pair shares no real text (one-shot critique vs
+  debate rounds).
 - **Conciseness pass across the shipped markdown** (`docs/loop-spec/conciseness-plan-2026-08.md`):
   the two EXECUTE implementer prompt templates share one contract stanza; VERIFY's
   remediation teardown is one named sub-procedure; ITERATE/DELIVER cite their shared
