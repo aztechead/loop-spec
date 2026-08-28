@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-python3 - "$ROOT/skills/cycle/SKILL.md" "$ROOT/skills/shared/execute-subagent.md" <<'PY'
+# The Step 5 init procedure lives in the cycle skill's feature-init reference.
+python3 - "$ROOT/skills/cycle/references/feature-init.md" "$ROOT/skills/shared/execute-subagent.md" <<'PY'
 from pathlib import Path
 import sys
 

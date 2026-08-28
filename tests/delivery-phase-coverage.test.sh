@@ -42,7 +42,7 @@ present "micro adopts a named open PR" skills/micro/SKILL.md "adopt-pr.sh"
 present "cycle exits worktree only after delivery" skills/cycle/SKILL.md "final operation after DELIVER"
 present "fresh rewind set is explicit" skills/cycle/SKILL.md "execute|plan|spec|discuss"
 present "blocked delivery cannot spin" skills/cycle/SKILL.md "Never immediately invoke DELIVER again"
-present "single-repo base is fetched" skills/cycle/SKILL.md 'fetch --quiet origin "$base_branch"'
+present "single-repo base is fetched" skills/cycle/references/feature-init.md 'fetch --quiet origin "$base_branch"'
 present "workspace cleanliness checks output" skills/cycle/references/workspace-mode.md '[[ "$clean_state" != "clean" ]]'
 present "workspace bases are fetched" skills/cycle/references/workspace-mode.md 'fetch --quiet origin "$base_branch_r"'
 present "candidate finalization is deterministic" lib/deliver.sh 'finalize-delivery-candidate.sh'

@@ -86,7 +86,7 @@ check_contains "resume reference picks up remaining ids" \
 # Startup must not pay for a repository-wide suite on the untouched base. The capture
 # survives only as an opt-in for repositories whose base commit is already red.
 check_contains "startup baseline capture is opt-in" \
-  skills/cycle/SKILL.md 'if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then'
+  skills/cycle/references/feature-init.md 'if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then'
 check_contains "workspace startup baseline capture is opt-in" \
   skills/cycle/references/workspace-mode.md '[[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" ]] || continue'
 check_contains "the opt-in is documented" \

@@ -422,7 +422,7 @@ else
   ((FAIL++)) || true
 fi
 # Polyglot python -m pytest && go test ./... must still get the venv rewrite.
-if grep -qF '*"python -m pytest"*' "$ROOT/skills/cycle/SKILL.md"; then
+if grep -qF '*"python -m pytest"*' "$ROOT/skills/cycle/references/feature-init.md"; then
   echo "PASS: cycle SKILL upgrades any command containing python -m pytest"
   ((PASS++)) || true
 else
