@@ -4,6 +4,26 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.6.1] - 2026-08-28
+
+AskUserQuestion is not a wait. A live `/cycle` run showed a placeholder
+question (`n/a` / "Type something" / "not a real question") while the
+SPEC fresh-eyes pruning Agent ran in the background. Claude Code
+backgrounds Agent calls by default; the lead invented a fake question
+to occupy the operator. The working contract now says: dispatch, then
+stop; the harness resumes this turn. Dummy wait questions are forbidden.
+
+### Fixed
+
+- **AskUserQuestion is never a wait.** `output-styles/loop-spec.md` (Claude
+  chat slot) and `skills/shared/report-style.md` (peer harnesses) forbid
+  placeholder / keep-alive questions while a subagent runs. The recorded
+  contract in `skills/shared/harness-call-contracts.md` says the wait is
+  dispatch-then-stop. SPEC Step 3.5, PLAN Step 5.7, and map-codebase
+  Step 6.6 cite that line. Still never emit `run_in_background` (older
+  harnesses omitted the field). Pinned by `tests/output-style-coverage.test.sh`,
+  `tests/lib/harness-call-shapes.test.sh`, and `tests/bmad-import-coverage.test.sh`.
+
 ## [4.6.0] - 2026-08-28
 
 ### Added

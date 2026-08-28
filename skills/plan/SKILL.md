@@ -303,6 +303,7 @@ carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.m
 verbatim, plus ONLY the final PLAN.md and
 `skills/shared/artifact-templates/PLAN.md.template` — no spec, no gate-logs, no
 critique history.
+Dispatch the reviewer, then stop: never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
 
 Skip the dispatch when PLAN.md is under 60 lines (`wc -l`).
 

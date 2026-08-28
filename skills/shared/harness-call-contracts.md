@@ -42,6 +42,10 @@ Agent({
   because older supported harness generations omitted it and modern subagents are
   backgrounded by default (CC 2.1.198). Parallel fan-out means issuing multiple Agent
   calls in one message, not setting a background flag.
+- Waiting on a dispatched Agent whose result the current step still needs: issue the
+  call, then stop. The harness resumes this turn on completion. Then adjudicate.
+  Never AskUserQuestion as a wait, and never emit `run_in_background` to wait or
+  to foreground.
 - `mode` is deprecated and ignored since CC 2.1.212. Subagents inherit the parent
   session's permission mode, subject to their agent-definition tool restrictions.
 - `name` is live on the core tool as of CC 2.1.187 — verified in a session WITHOUT
@@ -74,6 +78,10 @@ AskUserQuestion({
 - The flat `{header, question, options: ["A","B"]}` shape is INVALID: no `questions`
   wrapper, bare-string options, missing `multiSelect`, missing option descriptions.
 - "Other" is provided automatically; never add it as an option.
+- AskUserQuestion is never a wait, keep-alive, or placeholder while a subagent runs.
+  Dummy option labels (`n/a`, "Type something") and a question that says it is
+  "not a real question" are forbidden. "Chat about this" is harness chrome; do not
+  emit it.
 
 ## TaskCreate
 

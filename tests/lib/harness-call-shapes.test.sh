@@ -116,6 +116,15 @@ bad=$(grep -rn 'run_in_background' skills agents --include='*.md' 2>/dev/null \
         | grep -v 'harness-call-contracts' | head -5 || true)
 check "no run_in_background in skill/agent corpus" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
+# 8b) Waiting on a background Agent is dispatch-then-stop, never a fake question.
+#     Live /cycle invented AskUserQuestion({header: wait, question: "not a real
+#     question", options: n/a / n/a2 / Type something}) while SPEC pruning ran.
+grep -qF 'Never AskUserQuestion as a wait' \
+  skills/shared/harness-call-contracts.md && v=1 || v=0
+check "contract doc forbids AskUserQuestion as a wait" "$v"
+grep -qF 'not a real question' skills/shared/harness-call-contracts.md && v=1 || v=0
+check "contract doc names the dummy-question tell" "$v"
+
 # 9) For every SendMessage({ occurrence, the 4-line window must NOT contain body:
 #    (harness-call-contracts.md excluded — it documents the invalid param).
 bad=""

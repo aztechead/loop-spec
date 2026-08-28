@@ -263,6 +263,7 @@ shrink; this pass names what. Dispatch ONE context-free reviewer (never a mapper
 wrote a domain this refresh) carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
 verbatim, plus the domain documents under `docs/loop-spec/codebase/` and nothing else —
 no mapper reports, no refresh conversation.
+Dispatch the reviewer, then stop: never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
 
 The reviewer lists `cut:`/`merge:`/`shrink:` proposals; the lead applies the ones it
 accepts, re-runs `lib/map-audit.sh budget`, and commits the shrunken map (a follow-up

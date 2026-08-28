@@ -182,6 +182,7 @@ every line justified. Dispatch ONE context-free reviewer (a fresh subagent, not 
 thread) carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
 verbatim, plus ONLY the written SPEC.md and
 `skills/shared/artifact-templates/SPEC.md.template` — never the interview transcript.
+Dispatch the reviewer, then stop: never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
 
 Skip the dispatch when SPEC.md is under 60 lines (`wc -l`): a spec that small cannot
 repay a subagent.
