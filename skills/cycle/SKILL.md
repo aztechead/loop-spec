@@ -50,8 +50,9 @@ and DELIVER are main-thread phases and create no team. `.loop-spec/runtime.json.
 - **`implicit`** (CC >= 2.1.178): the session already has one team. Probe
   `lib/implicit-team-model.sh spawn-kind --teams-mode implicit --selector <feature.models.role>`
   per teammate and spawn per **`skills/shared/implicit-team-mode.md`** (`named` →
-  `Agent({name, ...})` with no `model` key; `oneshot` → nameless Agent carrying the
-  alias). No `TeamCreate`, no `TeamDelete` (they throw); at phase end just clear
+  `Agent({name, description, subagent_type, prompt})` with no `model` key; `oneshot` →
+  a nameless Agent with the same required keys plus the alias as `model`). No
+  `TeamCreate`, no `TeamDelete` (they throw); at phase end just clear
   `feature.json.currentTeamName` and stop messaging.
 - **`none`** (equivalently `teamsAvailable == false`): every rule here degrades per the
   substitution table in **`skills/shared/no-teams-fallback.md`** — teammates become
