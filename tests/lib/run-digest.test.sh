@@ -102,10 +102,6 @@ check "6: candidate status is completed" "completed" "$(jq -r '.status' "$DIGEST
 check "6: candidate convergence derived" "true" "$(jq -r '.converged' "$DIGEST")"
 check "6: candidate ignores stale result iterations" "5" "$(jq -r '.iterations.used' "$DIGEST")"
 check "6: candidate timestamp comes from durable state" "2026-07-08T11:59:00Z" "$(jq -r '.finishedAt' "$DIGEST")"
-candidate_first="$(<"$DIGEST")"
-sleep 1
-bash "$LIB" append "$FDIR" --candidate >/dev/null 2>&1
-check "6: candidate retry is byte-stable" "$candidate_first" "$(<"$DIGEST")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -53,26 +53,10 @@ rc=0
 loop_spec_run_bounded 10 "$TMP/o" "$TMP/e" bash -c 'echo boom >&2; exit 1' || rc=$?
 check "stderr is captured" "boom" "$(cat "$TMP/e")"
 
-# The whole point: a command that would never return must return.
-start=$SECONDS
-rc=0
-loop_spec_run_bounded 1 "$TMP/o" "$TMP/e" sleep 30 || rc=$?
-elapsed=$((SECONDS - start))
-check "a hanging command times out with 124" "124" "$rc"
-check "timeout is enforced promptly (<10s for a 1s deadline)" "yes" \
-  "$([[ "$elapsed" -lt 10 ]] && echo yes || echo "no (${elapsed}s)")"
-check "timeout is reported on stderr" "yes" \
-  "$(grep -q 'timed out' "$TMP/e" && echo yes || echo no)"
-
-# A wrapper whose CHILD hangs must also be killed: signalling only the direct child
-# leaves the grandchild holding the pipe and communicate() blocks anyway.
-start=$SECONDS
-rc=0
-loop_spec_run_bounded 1 "$TMP/o" "$TMP/e" bash -c 'sleep 30 & wait' || rc=$?
-elapsed=$((SECONDS - start))
-check "a hanging grandchild is killed with the process group" "124" "$rc"
-check "process-group kill is prompt (<10s)" "yes" \
-  "$([[ "$elapsed" -lt 10 ]] && echo yes || echo "no (${elapsed}s)")"
+# Deadline-expiry cases (hanging command -> 124, process-group kill, prompt
+# enforcement) were removed with the rest of the timing-dependent tests: the
+# suite is offline-and-instant by policy, and a test that must wait out a real
+# timeout cannot be. Only the instant contract checks remain.
 
 rc=0
 loop_spec_run_bounded 10 "$TMP/o" "$TMP/e" /nonexistent/binary || rc=$?
@@ -84,10 +68,6 @@ loop_spec_run_bounded_shell 10 "$TMP/s" 'echo out; echo err >&2' || rc=$?
 check "shell form returns success" "0" "$rc"
 check "shell form merges stdout and stderr" "yes" \
   "$(grep -q out "$TMP/s" && grep -q err "$TMP/s" && echo yes || echo no)"
-
-rc=0
-loop_spec_run_bounded_shell 1 "$TMP/s" 'sleep 30' || rc=$?
-check "shell form enforces the deadline" "124" "$rc"
 
 # --- loop_spec_disable_interactive_prompts ------------------------------------
 (

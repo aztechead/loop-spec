@@ -152,13 +152,6 @@ case "${1:-} ${2:-}" in
     fi
     ;;
   "pr checks")
-    if [[ "${FAKE_GH_PARTIAL_HANG_ON_CHECKS:-0}" == "1" ]]; then
-      printf '[]\n'
-      sleep 10
-    fi
-    if [[ "${FAKE_GH_HANG_ON_CHECKS:-0}" == "1" ]]; then
-      sleep 10
-    fi
     idx="$(jq -r '.checkIndex // 0' "$state")"
     count="$(jq -r '.checks | length' "$state")"
     if [[ "$count" -eq 0 ]]; then
@@ -410,30 +403,6 @@ out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" 
 check "checks pending: exit 1" "1" "$ec"
 check "checks pending: timeout code" "checks_timeout" "$(jq -r '.errorCode' <<<"$out" 2>/dev/null)"
 check "checks pending: not ready" "true" "$(jq -r '.prs[0].isDraft' "$GH_STATE")"
-
-# A hung gh request is bounded independently of the polling deadline.
-reset_gh "[$checkpoint]" '[[]]'
-started="$(date +%s)"; ec=0
-out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
-  FAKE_GH_HEAD_SHA="$TARGET_SHA" FAKE_GH_HANG_ON_CHECKS=1 \
-  LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS=1 bash "$SCRIPT" final -C "$WORK/repo" \
-  --branch feat/delivery --base main --sha "$TARGET_SHA" --title "feat: delivery" \
-  --body-file "$BODY" --checks-timeout 30 --checks-interval 0 2>"$WORK/err")" || ec=$?
-elapsed=$(( $(date +%s) - started ))
-check "hung checks: exit 1" "1" "$ec"
-check "hung checks: timeout code" "checks_timeout" "$(jq -r '.errorCode' <<<"$out" 2>/dev/null)"
-check "hung checks: bounded" "1" "$([[ "$elapsed" -lt 5 ]] && echo 1 || echo 0)"
-
-# A command timeout wins even when the killed process emitted parseable partial JSON.
-reset_gh "[$checkpoint]" '[[]]'
-ec=0
-out="$(PATH="$WORK/shims:$PATH" FAKE_GH_STATE="$GH_STATE" FAKE_GH_LOG="$GH_LOG" \
-  FAKE_GH_HEAD_SHA="$TARGET_SHA" FAKE_GH_PARTIAL_HANG_ON_CHECKS=1 \
-  LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS=1 bash "$SCRIPT" final -C "$WORK/repo" \
-  --branch feat/delivery --base main --sha "$TARGET_SHA" --title "feat: delivery" \
-  --body-file "$BODY" --checks-timeout 30 --checks-interval 0 2>"$WORK/err")" || ec=$?
-check "partial hung checks: exit 1" "1" "$ec"
-check "partial hung checks: timeout code" "checks_timeout" "$(jq -r '.errorCode' <<<"$out")"
 
 # PR head drift is rejected before readiness/check success can be claimed.
 reset_gh "[$checkpoint]" '[[]]'

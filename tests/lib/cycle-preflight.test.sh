@@ -129,9 +129,9 @@ out="$(run_preflight)"
 check "bak recovery makes candidate" "1" "$(jq -r '[.resume.candidates[] | select(.slug == "broken-one")] | length' <<<"$out")"
 check "bak recovery recorded" "feature.json.bak" "$(jq -r '.resume.candidates[] | select(.slug == "broken-one") | .parse_source' <<<"$out")"
 
-# ordering: most recently updated first
-mk_feature fresher-one spec 7 null "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-sleep 1
+# ordering: most recently updated first (distinct fixed timestamps; the sort
+# key is the updatedAt field, so no wall-clock separation is needed)
+mk_feature fresher-one spec 7 null "2026-01-01T00:00:00Z"
 mk_feature freshest-one discuss 7 null "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 out="$(run_preflight)"
 first="$(jq -r '.resume.candidates[0].slug' <<<"$out")"
