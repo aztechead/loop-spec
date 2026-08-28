@@ -22,13 +22,13 @@ checks=(
   "skills/iterate/SKILL.md	iterate-terminal:"
   "skills/shared/autonomous-mode.md	iterate-terminal:"
   # -- chain predicate: skill must consume the script and its stable reasons
-  "skills/cycle/SKILL.md	autonomous-chain.sh\" should-chain"
-  "skills/cycle/SKILL.md	max-features-reached"
-  "skills/cycle/SKILL.md	next-entry-terminal"
+  "skills/cycle/references/completion.md	autonomous-chain.sh\" should-chain"
+  "skills/cycle/references/completion.md	max-features-reached"
+  "skills/cycle/references/completion.md	next-entry-terminal"
   "lib/autonomous-chain.sh	max-features-reached"
   "lib/autonomous-chain.sh	next-entry-terminal"
   # -- delivery must finish before unattended chaining continues
-  "skills/cycle/SKILL.md	delivery-incomplete"
+  "skills/cycle/references/completion.md	delivery-incomplete"
   "lib/autonomous-chain.sh	delivery-incomplete"
   # -- backlogEntryId: written by cycle drain, matched by iterate terminal rule
   "skills/cycle/SKILL.md	backlogEntryId"
