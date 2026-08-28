@@ -3,6 +3,10 @@
 Extracted verbatim from `skills/cycle/SKILL.md` Step 5; the SKILL stub points here.
 Run once per NEW feature, before any phase. Apply as written.
 
+Contents: resolve base and adopt (PR adoption, clean guard, base SHA) · choose the
+execution root (worktree vs in-place, `EnterWorktree`) · finalize
+(`lib/feature-bootstrap.sh` — environment prep, opt-in baseline, feature.json write).
+
 If resuming: load feature.json into memory.
 
 If new feature: resolve a clean, current base in the control checkout, then choose the
@@ -17,6 +21,8 @@ The cycle checks out that head instead of minting `feat/{slug}`, so conflict
 resolution and re-review land on the PR DELIVER will update. Workspace mode does
 not adopt (it still mints `feat/{slug}` in every participating repo). Dirt on the
 adopted branch is the work; dirt on any other branch still aborts.
+
+## Resolve base and adopt
 
 ```bash
 slug="$(bash "${CLAUDE_SKILL_DIR}/../../lib/git-ops.sh" slugify "$title")"
@@ -85,7 +91,14 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" begin \
   --result-root "$repo_root" --cycle-type full --title "$title" --slug "$slug" \
   --branch "$feature_branch" --base-branch "$base_branch" --phase startup \
   --autonomous "$active_autonomous"
+```
 
+## Choose the execution root
+
+`EnterWorktree` is a harness tool call, not Bash — this section cannot move into a
+script. Everything after it can, and does (next section).
+
+```bash
 worktree_state_path=""
 worktrees_enabled="${LOOP_SPEC_WORKTREES:-1}"
 case "$worktrees_enabled" in
@@ -140,110 +153,31 @@ case "$harness_name" in
     ;;
 esac
 fi
+```
 
-# Prepare the untouched exact-base checkout before any loop-spec files or feature edits
-# exist. Repository-wide test/lint/typecheck runs at the END of the cycle (VERIFY Step
-# 1.75); startup no longer pays for a full suite on a fresh checkout before a single line
-# of the feature exists. Setup must leave both HEAD and the worktree unchanged.
-# prepare-environment.sh owns a foreground process watchdog. Never background the command,
-# never poll a log with sleep/cat, and never use ps or /proc to infer liveness.
-execution_root="$(pwd -P)"
-prepare_rc=0
-prepare_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run \
-  --root "$execution_root" --command "$cmd_prepare")" || prepare_rc=$?
-[[ "$prepare_rc" -eq 0 ]] || {
-  prepare_reason="$(jq -r --arg fallback "$prepare_rc" \
-    '(.failureKind // .status // "unknown") + " (exit " +
-     ((.exitCode // ($fallback | tonumber)) | tostring) + ")"' \
-    <<<"${prepare_json:-{}}" 2>/dev/null \
-    || printf 'environment preparation failed (exit %s)' "$prepare_rc")"
-  bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
-    --result-root "$repo_root" --cycle-type full --status failed \
-    --outcome infrastructure-failed --title "$title" --slug "$slug" \
-    --branch "$feature_branch" --base-branch "$base_branch" --phase-reached startup \
-    --reason "$prepare_reason" --summary "Environment preparation failed: $prepare_reason" \
-    --converged false --verification-status not-run --autonomous "$active_autonomous"
-  echo "loop-spec: environment preparation failed before feature initialization: $prepare_reason." >&2
+## Finalize (deterministic — `lib/feature-bootstrap.sh`)
+
+Everything from here on has no decision in it, so it runs as one script: environment
+preparation (foreground watchdog; leaves HEAD and the worktree unchanged), the
+python-runner test-command upgrade, the opt-in startup baseline
+(`LOOP_SPEC_STARTUP_BASELINE=1` — default off; see the script header), the schema-7
+`feature.json` skeleton write via `lib/feature-init.sh`, the cycle-result `begin`
+marker, the autonomous/greenfield flags, and the staged-decisions migration. On a
+preparation or baseline failure the script has already written a terminal cycle
+result — surface its stderr and stop.
+
+```bash
+cmd_test="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-bootstrap.sh" finalize \
+  --repo-root "$repo_root" --execution-root "$(pwd -P)" \
+  --slug "$slug" --title "$title" \
+  --branch "$feature_branch" --base-branch "$base_branch" --base-sha "$base_sha" \
+  --worktree "$worktree_state_path" --style "$execStyle" --profile "$cycle_profile" \
+  --autonomous "${autonomous:-0}" --greenfield "${greenfield:-0}" \
+  --prepare "$cmd_prepare" --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")" || {
+  echo "loop-spec: feature bootstrap failed; a terminal cycle result was written (see stderr above)." >&2
   exit 1
 }
-prepare_key="$(jq -r '.key // ""' <<<"$prepare_json")"
-cmd_prepare="$(jq -r '.command // ""' <<<"$prepare_json")"
-# Preparation may create an isolated Python runner. Upgrade the generic auto-detected
-# python command even when it is one conjunct in a polyglot join; never overwrite a
-# user-pinned LOOP_SPEC_CMD_TEST value.
-if [[ "$cmd_test" == *"python -m pytest"* && -z "${LOOP_SPEC_CMD_TEST+x}" ]]; then
-  cmd_test="$(bash "${CLAUDE_SKILL_DIR}/../../lib/detect-test-cmd.sh" "$execution_root")"
-fi
-
-# Opt-in startup baseline (LOOP_SPEC_STARTUP_BASELINE=1). Default off: no capture runs,
-# `verificationBaseline` stays null, and VERIFY's end-of-cycle comparison treats every
-# failure it observes as blocking. Turn it on only where the base commit is already red
-# and the known-failure oracle is what stops VERIFY from chasing pre-existing failures.
-# The capture owns a foreground watchdog and must leave HEAD and the worktree unchanged.
-baseline_json=null
-if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then
-  baseline_git_path="$(git -C "$execution_root" rev-parse --git-path "loop-spec/validation/${slug}/base")"
-  [[ "$baseline_git_path" == /* ]] || baseline_git_path="$execution_root/$baseline_git_path"
-  mkdir -p "$baseline_git_path"
-  baseline_rc=0
-  baseline_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/verification-baseline.sh" capture \
-    --root "$execution_root" --base-sha "$base_sha" --prepare-key "$prepare_key" \
-    --log-dir "$baseline_git_path" --test "$cmd_test" --lint "$cmd_lint" \
-    --typecheck "$cmd_typecheck")" || baseline_rc=$?
-  [[ "$baseline_rc" -eq 0 ]] || {
-    baseline_reason="$(jq -r '.reason // "exact-base validation baseline could not be captured"' \
-      <<<"${baseline_json:-{}}" 2>/dev/null || printf 'exact-base validation baseline failed')"
-    bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
-      --result-root "$repo_root" --cycle-type full --status failed \
-      --outcome infrastructure-failed --title "$title" --slug "$slug" \
-      --branch "$feature_branch" --base-branch "$base_branch" --phase-reached startup \
-      --reason "$baseline_reason" --summary "Validation baseline failed: $baseline_reason" \
-      --converged false --verification-status failed --verification-command "$cmd_test" \
-      --autonomous "$active_autonomous"
-    echo "loop-spec: exact-base validation baseline could not be captured (exit $baseline_rc): $baseline_reason." >&2
-    exit 1
-  }
-fi
-
-# Create dirs and write feature.json inside the now-active execution root.
-mkdir -p ".loop-spec/features/${slug}" .loop-spec/codebase "docs/loop-spec/features/${slug}"
-# Startup probes ran in the control checkout. Copy their local runtime cache into
-# a Claude feature worktree; in-place harnesses already point at the same file.
-if [[ -f "$repo_root/.loop-spec/runtime.json" && "$(pwd -P)" != "$(cd "$repo_root" && pwd -P)" ]]; then
-  cp "$repo_root/.loop-spec/runtime.json" .loop-spec/runtime.json
-fi
-
-# Build the full schema-7 skeleton from the single source of truth (lib/feature-init.sh).
-# Model routes, configured phase defaults, the fixed iterate block, and the artifact scaffold all
-# live in that one script -- never hand-build feature.json inline (that drift is what
-# previously dropped iterateJudge from the normalized models map). Every phase skill reads
-# the activated selector from feature.models.{role} ({role} = its own role name): an
-# alias is explicit, while `inherit`
-# deliberately omits the Agent model key and uses the session model.
-feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" skeleton --mode single \
-  --slug "$slug" --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --style "$execStyle" --title "$title" \
-  --branch "$feature_branch" --base-sha "$base_sha" --base-branch "$base_branch" \
-  --worktree "$worktree_state_path" \
-  --prepare "$cmd_prepare" --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
-feature_json="$(jq --argjson baseline "$baseline_json" --arg profile "$cycle_profile" \
-  '.verificationBaseline = $baseline | .executionProfile = $profile' <<<"$feature_json")"
-
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" ".loop-spec/features/${slug}" "$feature_json"
-feature_dir_abs="$(cd ".loop-spec/features/${slug}" && pwd -P)"
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" begin \
-  --result-root "$repo_root" --cycle-type full --title "$title" --slug "$slug" \
-  --branch "$feature_branch" --base-branch "$base_branch" --feature-dir "$feature_dir_abs" \
-  --phase spec --autonomous "$active_autonomous"
-
-# Autonomous mode: persist the flag so phase skills and resumed sessions see it
-# without re-parsing the invocation (skills/shared/autonomous-mode.md).
-# Greenfield mode: persist it the same way (Step 0 greenfield branch set $greenfield).
-[[ "${autonomous:-0}" == "1" ]] && bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" autonomous true
-[[ "${greenfield:-0}" == "1" ]] && bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set ".loop-spec/features/${slug}" greenfield true
-
-# Move any pre-SPEC assumed decisions (recorded during Steps 0-4) into the feature dir
-# so SPEC can render them; no-op when nothing was staged.
-bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" migrate \
-  "$repo_root/.loop-spec/decisions-staging" ".loop-spec/features/${slug}"
 ```
+
+The script prints the (possibly upgraded) test command on stdout; keep the captured
+`cmd_test` for the rest of the session.

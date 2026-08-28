@@ -54,7 +54,7 @@ checks=(
   "skills/spec/SKILL.md	decisions.sh\" add"
   "skills/discuss/SKILL.md	decisions.sh\" add"
   "skills/plan/SKILL.md	decisions.sh\" add"
-  "skills/cycle/references/feature-init.md	decisions.sh\" migrate"
+  "lib/feature-bootstrap.sh	decisions.sh\" migrate"
   # -- debug: init consumed by the skill
   "skills/debug/SKILL.md	debug-init.sh\" init"
   # -- greenfield: bootstrap in cycle, backfill invariant in execute
