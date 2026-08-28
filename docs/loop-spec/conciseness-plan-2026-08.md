@@ -174,13 +174,12 @@ Target: SKILL body ~10.5k→~4.0–4.5k words; references grow to ~7–7.8k; net
 
 ### Stage 4 — EXECUTE/VERIFY rung dedup
 
-- New `skills/shared/execute-core.md` (~350–500w): result shape
-  `{merged, blocked, escalation}` + consume rule, `mergedSet`/`mark-done`, the
-  VERIFY-Step-1.75-only suite invariant (said once), dispatch/task_start/task_end event
-  shapes, shared inputs. Rung docs keep isolation model, dispatch tool, merge path,
-  halt vocabulary as deltas. Keep `feature-validation.sh` absent from every rung doc
-  (`tests/execution-validation-coverage.test.sh`) and `dispatch-events.md` named from
-  each pinned file.
+- ~~New `skills/shared/execute-core.md`~~ — SKIPPED (laziness ladder / YAGNI).
+  After the shared implementer-contract stanza collapse in `execute-subagent.md`, the
+  cross-rung duplication this file was meant to absorb is down to ~15 lines (result
+  shape + mergedSet seed note), and the event shapes are individually pinned per rung
+  doc. A new surface would cost more than it saves. `feature-validation.sh` stays
+  absent from every rung doc and `dispatch-events.md` stays named in each pinned file.
 - `skills/shared/execute-subagent.md`: single implementer prompt template with
   workspace/in-place deltas instead of two full prompts; drop "Why no team" pedagogy;
   one suite-invariant sentence. Update `tests/execute-dispatch-contract.test.sh`

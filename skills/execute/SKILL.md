@@ -30,25 +30,10 @@ execution roots: the default feature worktree (`executionRootMode == "worktree"`
 `LOOP_SPEC_WORKTREES=0` (`executionRootMode == "in-place"`, `worktreePath == null`).
 The latter is the supported single-instance/cloud path, not a legacy fallback.
 
-**Workspace mode (`feature.workspace` non-null):** Each participating repo must be on `feat/{slug}`. Assert this before any other work:
-
-```bash
-workspace_root="$(jq -r '.workspace.root' .loop-spec/features/{slug}/feature.json)"
-feature_slug="{feature.json.slug}"
-jq -c '.workspace.repos[]' .loop-spec/features/{slug}/feature.json | while IFS= read -r repo_entry; do
-  rname="$(echo "$repo_entry" | jq -r '.name')"
-  rpath="$(echo "$repo_entry" | jq -r '.path')"
-  abs_repo="${workspace_root}/${rpath}"
-  current="$(git -C "$abs_repo" branch --show-current)"
-  if [[ "$current" != "feat/${feature_slug}" ]]; then
-    echo "ERROR: workspace repo '$rname' ($abs_repo): expected branch feat/${feature_slug} but current branch is '$current'." >&2
-    echo "Ensure every participating repo is on feat/${feature_slug} before running EXECUTE." >&2
-    exit 2
-  fi
-done
-```
-
-If any repo fails the check, abort with the message above. Do not proceed.
+**Workspace mode (`feature.workspace` non-null):** Each participating repo must be on
+`feat/{slug}`. Run the Step 1 branch-check snippet in
+`${CLAUDE_SKILL_DIR}/references/workspace-mode.md` verbatim before any other work; if
+any repo fails, abort with its message and do not proceed.
 
 **Single-repo worktree mode (`worktreePath` present):** The feature worktree was created at cycle start and the session was switched into it via `EnterWorktree`. The branch `feat/{slug}` is already checked out there. Assert this is the case; do not create the branch in-place:
 
@@ -296,43 +281,13 @@ it; the inline rung binds it by cite.
 
 Build the `tasks[]` array from Step 2a/2b first: each element is `{id, subject, files, blockedBy (union of explicit + synthetic edges), specPath, acceptanceCriteria, readFirst, brief, verifyCommand}`. (`verifyCommand` is carried through so the subagent rung can re-run each task's behavioral check against the integrated branch post-merge — see `skills/shared/execute-subagent.md` step 6/7.)
 
-**Workspace mode gate (evaluated BEFORE `featureWorktreeRoot` is resolved):**
-
-When `feature.workspace` is non-null, hard-pin the rung here and skip the `featureWorktreeRoot` line and the Step 3a/3b ladder entirely. The workspace root may not be a git repo; running `git rev-parse --show-toplevel` at a non-repo root would abort under set -e semantics.
-
-```bash
-workspace_block="$(jq -r '.workspace // "null"' .loop-spec/features/{slug}/feature.json)"
-if [[ "$workspace_block" != "null" ]]; then
-  # Workspace mode: rung is always subagent. No ladder evaluation.
-  if [[ "${LOOP_SPEC_EXECUTE_LOOPS:-}" == "1" ]]; then
-    echo "[EXECUTE] ERROR: LOOP_SPEC_EXECUTE_LOOPS=1 is not supported in workspace mode." >&2
-    echo "  The loop-fleet rung is single-repo only. Unset LOOP_SPEC_EXECUTE_LOOPS or" >&2
-    echo "  run EXECUTE without it. Aborting -- resolve this before proceeding." >&2
-    exit 2
-  fi
-  repo_count="$(echo "$workspace_block" | jq '.repos | length')"
-  rung="subagent"
-  echo "[EXECUTE] workspace mode -> rung capped at subagent (repos: ${repo_count})"
-  skillDir="${CLAUDE_SKILL_DIR}"
-  # Skip to subagent dispatch; featureWorktreeRoot is not set (not needed in workspace mode).
-  # Follow skills/shared/execute-subagent.md "Workspace mode" section.
-else
-```
-
-Close the else block after the ladder resolves:
-
-```bash
-  # --- single-repo path below ---
-  featureWorktreeRoot=$(git rev-parse --show-toplevel)
-  skillDir="${CLAUDE_SKILL_DIR}"
-  # One resolution for every task worktree of this feature, passed to whichever rung
-  # runs (Workflow DAG arg, team-prompt {worktreeBase}, subagent worktree_path).
-  taskWorktreeBase="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
-    resolve "$featureWorktreeRoot" task "{slug}" | jq -r '.path')"
-fi
-```
-
-In workspace mode the `featureWorktreeRoot` variable is NOT set. The subagent path uses per-repo absolute paths from `feature.workspace.repos[]` instead. See `skills/shared/execute-subagent.md` "Workspace mode" section for the workspace-aware wave loop.
+**Workspace mode gate (evaluated BEFORE `featureWorktreeRoot` is resolved):** when
+`feature.workspace` is non-null the rung is hard-pinned to `subagent` and the Step
+3a/3b ladder is skipped entirely. Run the Step 3 rung-gate snippet in
+`${CLAUDE_SKILL_DIR}/references/workspace-mode.md` verbatim — it rejects
+`LOOP_SPEC_EXECUTE_LOOPS=1`, pins the rung, and resolves `featureWorktreeRoot` /
+`taskWorktreeBase` only on its single-repo branch. The workspace wave loop is
+`skills/shared/execute-subagent.md` "Workspace mode".
 
 Fixed operating params (`skills/shared/tier-matrix.md`):
 
@@ -436,16 +391,12 @@ The gate is the **capability** (`subagents`), not the harness name — a future
 harness with its own Agent tool keeps the full ladder without touching this file.
 
 The **loop** rung runs the DAG as a fleet of bounded headless workers via the
-bundled loop-runner skill — no agent teams, no Workflow tool, mechanical
-verifier enforcement per iteration, SPEC.md/PLAN.md integrity-protected.
-`LOOP_SPEC_EXECUTE_LOOPS=1` forces it at any width; `LOOP_SPEC_EXECUTE_LOOPS=0`
-disables it (kill switch). Selection additionally requires the persistent runtime
-capability from `lib/harness.sh loop-runtime`. `LOOP_SPEC_NON_INTERACTIVE=1` and
-`LOOP_SPEC_EXECUTION_PROFILE=headless` disable that capability unless the operator
-explicitly guarantees it with `LOOP_SPEC_LOOP_RUNTIME=1`. When both teams and loops
-are unavailable, the subagent rung handles any width in bounded waves. An unmarked
-invocation also fails safe; set `LOOP_SPEC_EXECUTION_PROFILE=interactive` to enable
-automatic loop selection in a persistent session.
+bundled loop-runner skill — no agent teams, no Workflow tool, mechanical verifier
+enforcement per iteration, SPEC.md/PLAN.md integrity-protected. Selection triggers,
+the `LOOP_SPEC_EXECUTE_LOOPS` opt-in/kill-switch, and the full runtime-probe
+narrative (headless entrypoints, profile assertions, `LOOP_SPEC_LOOP_RUNTIME`) are
+`skills/shared/execute-loop-fleet.md` "When this rung is selected". When both teams
+and loops are unavailable, the subagent rung handles any width in bounded waves.
 
 Announce the choice on one line, then dispatch the matching path below:
 
@@ -552,27 +503,20 @@ for task in <tasks[] array from Step 2a/2b>; do
 done
 ```
 
-`--brief`/`--files` carry `task.brief` and `task.files` (already computed in Step 2a/2b,
-`skills/plan/SKILL.md`) onto the bundle -- without them a claimant sharing no session
-state with EXECUTE would have `inputs`+`verifyCommand` (what state to run against, how
-to check its own output) but nothing telling it what to build or where the result
-belongs (`examples/foreign-claimant/` is a reference consumer that depends on both).
+Bundle semantics are `skills/shared/handoff-port.md`:
 
-`--task` makes the bundle id content-addressed from node + task + state hash
-(`skills/shared/handoff-port.md`), so `task-002` and `task-003` of the same EXECUTE
-never collide, and re-exporting the same task at the same feature state is idempotent.
-
-**What this rung does not automate.** There is no supervisor loop here that blocks
-EXECUTE waiting on a foreign claimant, the way the team rung's self-claim loop or the
-loop-fleet's synchronous worker call does. Claiming a bundle, doing the work, and
-calling `complete` happen on infrastructure this session does not control and may not
-share a process with — that is the entire point of the port. Say this plainly rather
-than implying a poll loop exists: after `put`-ting the outstanding bundles, EXECUTE
-returns control the same way any `step`/`interactive` phase summary does (see **Phase
-routing** at the end of this skill) rather than inventing a busy-wait. Driving claim →
-work → `complete` on the claimant side, and re-invoking EXECUTE to check for results, is
-the integrator's responsibility — a cron job, a Routine, or a human running the next
-cycle turn.
+- `--brief`/`--files` carry what to build and where the result belongs — a claimant
+  sharing no session state would otherwise have only `inputs`+`verifyCommand`
+  (`examples/foreign-claimant/` is a reference consumer that depends on both).
+- `--task` makes the bundle id content-addressed from node + task + state hash, so
+  tasks of the same EXECUTE never collide and re-export at the same state is
+  idempotent.
+- **No supervisor loop.** Claim → work → `complete` happens on infrastructure this
+  session does not control; that is the point of the port. After `put`-ting the
+  outstanding bundles, EXECUTE returns control like any `step`/`interactive` phase
+  summary (see **Phase routing** below) — never a busy-wait. Re-invoking EXECUTE to
+  collect results is the integrator's responsibility (cron, Routine, or the next
+  cycle turn).
 
 **Collecting a result on re-entry.** Each time EXECUTE is (re-)entered with tasks still
 assigned to this rung, check every recorded id before re-offering it:
@@ -582,27 +526,21 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/graph/port.sh" get "$id" > "$WORK/instance-$
   && jq -e 'true' "$WORK/instance-$id.json" >/dev/null 2>&1
 ```
 
-`get` returns the bundle, not a separate "has it completed" flag — the port contract
-(`skills/shared/handoff-port.md`) exposes completion only through the reference
-adapter's own instance store today (`result.json` alongside the bundle) or through
-whatever equivalent an integrator's `LOOP_SPEC_PORT` adapter provides; there is no
-sixth operation for it. For every id whose result is available, merge it:
+`get` returns the bundle, not a completion flag — completion surfaces only through the
+adapter's instance store (`result.json` alongside the bundle; `handoff-port.md`). For
+every id whose result is available, merge it:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/graph/handoff.sh" import \
   --feature-dir "$fdir" --bundle "$WORK/bundle-$task.id.json"
 ```
 
-`import` re-derives the state hash from the live `feature.json` at `$fdir` and rejects a
-bundle whose captured hash no longer matches (exit 1, left unmerged) — the same
-stale-return rule `complete` enforces on the claimant side
-(`skills/shared/handoff-port.md`), applied again on the merging side. A rejected import
-leaves the task `pending`; re-offer it as a fresh bundle rather than merging a return
-checked against state that has since moved. A merged import still needs
-`task.verifyCommand` re-run against the integrated branch before the task counts as
-done, exactly as the subagent rung does post-merge (`skills/shared/execute-subagent.md`
-step 6/7) — a foreign claimant's return is checked against the same criteria any other
-rung's return is, never a degraded variant.
+`import` re-derives the state hash from the live `feature.json` and rejects a bundle
+whose captured hash no longer matches (exit 1, left unmerged) — the same stale-return
+rule `complete` enforces claimant-side. A rejected import leaves the task `pending`;
+re-offer it as a fresh bundle. A merged import still needs `task.verifyCommand` re-run
+against the integrated branch before the task counts as done, exactly as the subagent
+rung does post-merge — never a degraded variant.
 
 Tasks with no result yet keep EXECUTE returning control on re-entry (unchanged from the
 above). Once every task assigned to this rung has merged or exhausted its retry budget,
