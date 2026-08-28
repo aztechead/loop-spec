@@ -8,20 +8,21 @@ Before spawning the team, check in order:
 
 **0-pre - Join the DISCUSS prefetch (if in flight):**
 
-DISCUSS Step 1.75 may have fired a background pattern-mapper. If `feature.json.artifacts.patternsPrefetch == "in-flight"` and `docs/loop-spec/features/${slug}/PATTERNS.md` does not exist yet, give the prefetch a bounded window to land (it has had the whole critique gate to run, so this is usually a no-op):
+DISCUSS Step 1.75 may have fired a background pattern-mapper. It has had the whole
+critique gate to run, so this is usually already on disk. Check once — do not sleep.
+A `sleep` loop freezes the session between DISCUSS and PLAN
+(`skills/shared/harness-call-contracts.md`).
 
 ```bash
-max_wait=120
-elapsed=0
-interval=10
-while [[ $elapsed -lt $max_wait ]]; do
-  [[ -f "docs/loop-spec/features/${slug}/PATTERNS.md" ]] && break
-  sleep $interval
-  elapsed=$((elapsed + interval))
-done
+# Check once. Never sleep to join a background Agent.
+if [[ -f "docs/loop-spec/features/${slug}/PATTERNS.md" ]]; then
+  echo present
+else
+  echo missing
+fi
 ```
 
-Whatever the outcome, resolve the marker via `lib/feature-write.sh`: file present → `artifacts.patternsPrefetch = "landed"` (0a below takes the cached path); still missing → `artifacts.patternsPrefetch = "timeout"` and continue to 0a/0b as if no prefetch happened (the planner produces PATTERNS.md itself; the prefetch prompt's existence guard keeps a late mapper from clobbering the planner's version).
+Whatever the outcome, resolve the marker via `lib/feature-write.sh`: file present → `artifacts.patternsPrefetch = "landed"` (0a below takes the cached path); still missing → `artifacts.patternsPrefetch = "timeout"` and continue to 0a/0b as if no prefetch happened (the planner produces PATTERNS.md itself; the prefetch prompt's existence guard keeps a late mapper from clobbering the planner's version). Never AskUserQuestion as a wait.
 
 **0a - Existing PATTERNS.md (any source):**
 

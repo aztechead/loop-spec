@@ -46,6 +46,10 @@ Agent({
   call, then stop. The harness resumes this turn on completion. Then adjudicate.
   Never AskUserQuestion as a wait, and never emit `run_in_background` to wait or
   to foreground.
+- Never `sleep` to join a background Agent. Check the artifact once. If it is
+  missing and this turn dispatched the Agent, stop; the harness resumes on
+  completion. If this turn did not dispatch it, take the documented fallback
+  immediately. A sleep loop freezes the session for minutes between phases.
 - `mode` is deprecated and ignored since CC 2.1.212. Subagents inherit the parent
   session's permission mode, subject to their agent-definition tool restrictions.
 - `name` is live on the core tool as of CC 2.1.187 — verified in a session WITHOUT

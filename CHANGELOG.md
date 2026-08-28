@@ -4,6 +4,24 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.6.2] - 2026-08-28
+
+Sleep-polls were the leftover wait between DISCUSS and PLAN. After 4.6.1
+forbade fake AskUserQuestion waits, the lead could still run a bash
+`sleep` loop for up to 120s (PATTERNS prefetch) or 600s (codebase
+bootstrap) at the phase join. Those loops do not make the Agents faster;
+they freeze the session. Check the artifact once. If it is missing, take
+the documented fallback immediately.
+
+### Fixed
+
+- **No `sleep` to join a background Agent.** DISCUSS Step 5.8 and PLAN
+  Step 0 check once, then proceed or fall back (`Skill(map-codebase)` /
+  planner produces PATTERNS.md). The recorded contract in
+  `skills/shared/harness-call-contracts.md` forbids sleep-poll joins.
+  Happy path is unchanged (the file is usually already on disk after the
+  overlapping phase). Pinned by `tests/lib/harness-call-shapes.test.sh`.
+
 ## [4.6.1] - 2026-08-28
 
 AskUserQuestion is not a wait. A live `/cycle` run showed the same
