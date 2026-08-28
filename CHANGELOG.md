@@ -4,7 +4,42 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-08-28
+
 ### Added
+
+- **The design gate is now four questions.** Every code-producing dispatch asks, before
+  implementing and again before DONE: more modular? more extensible? least code? and
+  **does this hold at production scale?** (memory and work bounded against
+  deployment-sized input, not the fixture). The canonical text lives in
+  `skills/shared/implementer-contract.md`; the challenger critiques scale at design time
+  and the code-reviewer's design-for-change pass gained a blocking `scale:` finding tag.
+  Pinned by `tests/implementer-contract-coverage.test.sh`.
+- **`skills/shared/critique-gate-protocol.md`** — the shared critique/adjudication
+  procedure DISCUSS and PLAN previously each restated; each skill now states only its
+  deltas.
+- **`skills/cycle/references/`** (`feature-init.md`, `phase-loop.md`, `completion.md`),
+  **`skills/execute/references/workspace-mode.md`**, and
+  **`skills/spec/references/interview-prompts.md`** — heavy procedure extracted from
+  always-loaded skill bodies into on-demand references
+  (`skills/cycle/SKILL.md` 1327 → 797 lines; `skills/spec/SKILL.md` 426 → 344).
+
+### Changed
+
+- **Conciseness pass across the shipped markdown** (`docs/loop-spec/conciseness-plan-2026-08.md`):
+  the two EXECUTE implementer prompt templates share one contract stanza; VERIFY's
+  remediation teardown is one named sub-procedure; ITERATE/DELIVER cite their shared
+  contracts instead of restating them; simplicity/human-code/discipline aux skills cite
+  their canonical text (the ladder, the probes, the inject) instead of holding copies;
+  `harness-call-contracts.md`'s per-harness appendices are pointers at each adapter's own
+  dispatch section. No contract text was dropped — every pinned needle moved with its
+  text or its suite was updated in the same commit.
+- **The test suite is offline-only and fast.** `tests/e2e/` and all timing-dependent
+  cases are removed; suites run under a hermetic git config so a machine's global
+  fsmonitor/commit-signing settings cannot hang test commits. Full run: ~11 min → under
+  2 min, 192 suites.
+
+### Added (landed before this release cut, previously under Unreleased)
 
 - **Red-then-green TDD is required on every code-producing task.** Omitting a
   TDD label in the plan does not exempt the implementer. Skill/config/docs
