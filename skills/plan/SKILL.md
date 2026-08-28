@@ -1,6 +1,6 @@
 ---
 name: plan
-description: PLAN phase - creates a plan team; planner produces PATTERNS.md (unless prefetched) then PLAN.md; runs the single-critic critique gate (escalating to an advocate/challenger debate when contested or security-signaled); writes PLAN.md and updates feature.json. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: PLAN phase - the planner produces PATTERNS.md then PLAN.md, then the critique gate; updates feature.json. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 

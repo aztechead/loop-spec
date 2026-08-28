@@ -1,6 +1,6 @@
 ---
 name: spec
-description: SPEC phase - Socratic interview with quantitative ambiguity scoring; gates ambiguity <= 0.20. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: SPEC phase - Socratic interview with quantitative ambiguity scoring; gates ambiguity <= 0.20. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
 allowed-tools: Bash Read Write Edit Glob Grep Skill AskUserQuestion
 ---
 

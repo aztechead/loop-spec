@@ -1,6 +1,6 @@
 ---
 name: iterate
-description: ITERATE phase - the outer convergence loop. Judges the integrated result against the ORIGINAL goal (deterministic acceptance gate + an LLM goal re-judge), and either advances to DELIVER (converged or iteration limit spent) or classifies the highest-leverage gap so the declared graph's rewind routes send the cycle back to EXECUTE, PLAN, or (with human approval) SPEC/DISCUSS. Bounded by feature.iterate.maxIterations. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: ITERATE phase - the outer convergence loop. Judges the integrated result against the ORIGINAL goal, then advances to DELIVER or classifies the highest-leverage gap so the graph's rewind routes send the cycle back to EXECUTE, PLAN, or (with human approval) SPEC/DISCUSS. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
 

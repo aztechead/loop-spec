@@ -1,6 +1,6 @@
 ---
 name: execute
-description: EXECUTE phase - deterministic capability-aware dispatch by DAG width W. Rung 1/2 subagent (lead-driven Agent waves), rung 3 agent team (self-claim), rung 4 workflow DAG (execute-dag.js, opt-in only). Loop-fleet is available only when its persistent runtime capability is present. Fixed width thresholds in tier-matrix. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: EXECUTE phase - dispatches the task DAG up the capability-aware concurrency ladder (subagent waves, agent team, workflow DAG) by width thresholds in tier-matrix. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet Workflow ToolSearch
 ---
 

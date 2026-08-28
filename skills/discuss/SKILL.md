@@ -1,6 +1,6 @@
 ---
 name: discuss
-description: DISCUSS phase - conversational requirements gathering, refines SPEC.md, and runs the single-critic critique gate (escalating to an advocate/challenger debate when contested or security-signaled). Autonomous runs collapse to lead-authored refinement + the critique gate. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: DISCUSS phase - conversational requirements gathering that refines SPEC.md, then the critique gate (single critic, escalating to a debate when contested). Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch
 ---
 

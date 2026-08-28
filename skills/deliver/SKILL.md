@@ -1,6 +1,6 @@
 ---
 name: deliver
-description: DELIVER phase - deterministic exact-SHA push, idempotent PR reconciliation, required-check wait, and draft-to-ready transition after ITERATE converges. Cycle-internal - invoked by /loop-spec:cycle against an active feature at currentPhase=deliver.
+description: DELIVER phase - deterministic exact-SHA push, idempotent PR reconciliation, required-check wait, and draft-to-ready after ITERATE converges. Cycle-internal - invoked by /loop-spec:cycle at currentPhase=deliver.
 allowed-tools: Bash Read Write Edit
 ---
 
