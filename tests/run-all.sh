@@ -299,6 +299,7 @@ run_suite "lib/pause-snapshot"        "bash lib/pause-snapshot.test.sh"
 run_suite "lib/regression-scan"       "bash tests/lib/regression-scan.test.sh"
 run_suite "lib/feature-init"          "bash tests/lib/feature-init.test.sh"
 run_suite "lib/feature-bootstrap"     "bash tests/lib/feature-bootstrap.test.sh"
+run_suite "lib/run-with-watchdog"     "bash tests/lib/run-with-watchdog.test.sh"
 run_suite "lib/prepare-environment"   "bash tests/lib/prepare-environment.test.sh" integration
 run_suite "lib/project-commands"      "bash tests/lib/project-commands.test.sh"
 run_suite "lib/verification-baseline" "bash tests/lib/verification-baseline.test.sh" integration

@@ -44,5 +44,18 @@ done
 total_ptrs=$(grep -ho '\${CLAUDE_SKILL_DIR}/references/[A-Za-z0-9._-]*\.md' skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
 check "lint saw at least one pointer (found: $total_ptrs)" "$([[ "$total_ptrs" -ge 1 ]] && echo 1 || echo 0)"
 
+# Stage 10: a reference over 100 lines opens with a Contents line so a partial
+# read sees the file's scope. Heading strings are not the marker.
+has_contents() { grep -q '^Contents:' "$1"; }
+for ref_file in skills/*/references/*.md \
+                skills/shared/execute-subagent.md \
+                skills/shared/critique-gate-protocol.md; do
+  [[ -f "$ref_file" ]] || continue
+  n=$(wc -l < "$ref_file")
+  [[ "$n" -gt 100 ]] || continue
+  check "$ref_file has Contents line ($n lines)" \
+    "$(has_contents "$ref_file" && echo 1 || echo 0)"
+done
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

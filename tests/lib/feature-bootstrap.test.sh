@@ -124,6 +124,10 @@ check "G: last-result.json written" "failed" \
   "$(jq -r '.status' "$WORK/g/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
 check "G: repo-label prefixes the reason" "frontend:" \
   "$(jq -r '.reason' "$WORK/g/.loop-spec/last-result.json" 2>/dev/null | grep -o '^frontend:' || echo MISSING)"
+check "G: outcome is infrastructure-failed" "infrastructure-failed" \
+  "$(jq -r '.outcome' "$WORK/g/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
+check "G: phaseReached is startup" "startup" \
+  "$(jq -r '.phaseReached' "$WORK/g/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
 
 # Case H: generic python -m pytest is rewritten even as a polyglot conjunct.
 make_repo "$WORK/h"
@@ -142,6 +146,55 @@ rc=0
 bash "$LIB" prepare-repo --slug demo --title T --branch b \
   --base-branch main --base-sha abc --result-root "$WORK" >/dev/null 2>&1 || rc=$?
 check "I: prepare-repo missing --root exit 2" "2" "$rc"
+
+# Case J: finalize uses the same fail-terminal path as prepare-repo.
+make_repo "$WORK/j"
+rc=0
+finalize "$WORK/j" --prepare "false" >/dev/null 2>&1 || rc=$?
+check "J: finalize prepare failure exit 1" "1" "$rc"
+check "J: finalize writes last-result.json" "failed" \
+  "$(jq -r '.status' "$WORK/j/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
+got="absent"
+[[ -e "$WORK/j/.loop-spec/features/demo/feature.json" ]] && got="written"
+check "J: finalize does not write feature.json on prepare failure" "absent" "$got"
+check "J: finalize outcome is infrastructure-failed" "infrastructure-failed" \
+  "$(jq -r '.outcome' "$WORK/j/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
+
+# Case K: opt-in baseline capture failure is also a terminal result.
+make_repo "$WORK/k"
+echo dirt > "$WORK/k/untracked"
+rc=0
+LOOP_SPEC_STARTUP_BASELINE=1 prepare_repo "$WORK/k" >/dev/null 2>&1 || rc=$?
+check "K: dirty-tree baseline capture exit 1" "1" "$rc"
+check "K: baseline failure writes last-result.json" "failed" \
+  "$(jq -r '.status' "$WORK/k/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
+check "K: baseline failure outcome is infrastructure-failed" "infrastructure-failed" \
+  "$(jq -r '.outcome' "$WORK/k/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
+
+# Case L: greenfield skips baseline even when the opt-in is on.
+make_repo "$WORK/l"
+out=$(LOOP_SPEC_STARTUP_BASELINE=1 prepare_repo "$WORK/l" --greenfield 1 2>/dev/null)
+check "L: greenfield skips baseline when opt-in is on" "null" \
+  "$(jq -r '.baseline' <<<"$out")"
+
+# Case M: finalize publishes the terminal result at --repo-root, not the
+# execution root (workspace-style split: control checkout vs prepared tree).
+make_repo "$WORK/m-exec"
+mkdir -p "$WORK/m-repo"
+rc=0
+bash "$LIB" finalize \
+  --repo-root "$WORK/m-repo" --execution-root "$WORK/m-exec" \
+  --slug demo --title "Demo feature" \
+  --branch feat/demo --base-branch main --base-sha "$(git -C "$WORK/m-exec" rev-parse HEAD)" \
+  --worktree "" --style balanced --profile standard \
+  --autonomous 0 --greenfield 0 \
+  --prepare "false" --test "true" --lint "" --typecheck "" >/dev/null 2>&1 || rc=$?
+check "M: split-root prepare failure exit 1" "1" "$rc"
+check "M: last-result.json lands at repo-root" "failed" \
+  "$(jq -r '.status' "$WORK/m-repo/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
+got="absent"
+[[ -e "$WORK/m-exec/.loop-spec/last-result.json" ]] && got="written"
+check "M: execution root has no last-result.json" "absent" "$got"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

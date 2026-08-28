@@ -10,9 +10,9 @@ in order; mark the tracker as you land them.
 Shrink the always-loaded token weight of the plugin so agents follow it more easily,
 without dropping functionality. The measure of success is harness best practice, not a
 word quota: Anthropic's skill-authoring guidance says keep a SKILL.md body under 500
-lines (~5k tokens) and push detail into `references/` loaded on demand. Today `cycle`
-(1327 lines), `execute` (791), `discuss` (693), `plan` (669), and `verify` (594) all
-exceed that line.
+lines (~5k tokens) and push detail into `references/` loaded on demand. At the audit
+`cycle` (1327), `execute` (791), `discuss` (693), `plan` (669), and `verify` (594) all
+exceeded that line; every `skills/*/SKILL.md` is now under 500 (`tests/human-docs-coverage.test.sh`).
 
 Rules that bind every stage:
 
@@ -52,6 +52,9 @@ Rules that bind every stage:
 | 12 | `prepare-repo` + cycle Step 5 stub + restore challenger `UNGROUNDED:` format | done |
 | 13 | Cycle/execute SKILL bodies under 500 lines | done |
 | 14 | Compact implementer team-prompt engineering stanza (charter cite + path delta) | done |
+| 15 | Instant `run-with-watchdog` success-path + usage tests | done |
+| 16 | `feature-bootstrap` failure-path unit tests (finalize, baseline, greenfield skip, split-root) | done |
+| 17 | VERIFY SKILL body under 500 lines; pin every `skills/*/SKILL.md` | done |
 
 ## Findings the stages rest on
 
@@ -314,6 +317,29 @@ text is paid twice per dispatch.
   two full copies of the charter.
 - SKIPPED: advocate pair — one-shot parallel critique vs. debate-round protocol share
   no real text; a "canonical + deltas" file would be a new surface with nothing to own.
+
+### Stage 15 — instant `run-with-watchdog` tests
+
+The suite that covered `lib/run-with-watchdog.sh` was unregistered because every
+timeout case waited out real wall-clock time. Restore the instant contract:
+success path, non-zero exit, and usage refusals (`--timeout-secs 0` used to disable
+the deadline). Leave idle/wall expiry cases out — those are still timing-dependent.
+
+### Stage 16 — `feature-bootstrap` failure paths
+
+`prepare-repo` already had a prepare-failure case. Close the rest of the fail-terminal
+contract: `finalize` prepare failure (no feature.json, terminal result written),
+opt-in baseline capture failure, greenfield skipping baseline even when opt-in is on,
+and split `--repo-root` / `--execution-root` publishing the result at the control
+checkout.
+
+### Stage 17 — VERIFY under 500; pin every skill body
+
+`skills/verify/SKILL.md` was the last phase body over the skill-authoring budget.
+Steps 0–1.75 go to `references/pre-team-gates.md`; Steps 7.5–7.8 go to
+`references/post-hard-gate.md`. `tests/human-docs-coverage.test.sh` now fails if
+any `skills/*/SKILL.md` is ≥ 500 lines, and `tests/lib/skill-references.test.sh`
+fails if a `skills/*/references/` file over 100 lines lacks a `Contents:` line.
 
 ## Acceptance, every stage
 

@@ -21,12 +21,13 @@ All notable changes documented here. Format follows Keep a Changelog.
 - **`skills/cycle/references/`** (`feature-init.md`, `phase-loop.md`, `completion.md`,
   `startup-health.md`, `phase-activate.md`),
   **`skills/execute/references/`** (`workspace-mode.md`, `conflicts.md`,
-  `rung-workflow-foreign.md`), and
+  `rung-workflow-foreign.md`),
+  **`skills/verify/references/`** (`pre-team-gates.md`, `post-hard-gate.md`), and
   **`skills/spec/references/interview-prompts.md`** — heavy procedure extracted from
   always-loaded skill bodies into on-demand references
   (`skills/cycle/SKILL.md` 1327 → 498 lines; `skills/execute/SKILL.md` 791 → 446;
-  `skills/spec/SKILL.md` 426 → 344). Pinned under 500 lines by
-  `tests/human-docs-coverage.test.sh`.
+  `skills/spec/SKILL.md` 426 → 344; `skills/verify/SKILL.md` 594 → 409). Pinned under
+  500 lines for every `skills/*/SKILL.md` by `tests/human-docs-coverage.test.sh`.
 
 - **`lib/feature-bootstrap.sh`** — the deterministic tail of cycle Step 5 (environment
   prep, opt-in baseline, feature.json skeleton write) now runs as one script whose
@@ -34,7 +35,13 @@ All notable changes documented here. Format follows Keep a Changelog.
   judgment half (PR adoption, execution root, `EnterWorktree`). `prepare-repo` is the
   per-repo half workspace Step 5 calls (same prepare, pytest upgrade, opt-in baseline,
   and `write-terminal` on failure as single-repo `finalize`). Unit suite:
-  `tests/lib/feature-bootstrap.test.sh`.
+  `tests/lib/feature-bootstrap.test.sh` (happy path plus prepare/baseline/finalize
+  failure, greenfield skip, and split-root publication).
+
+- **`tests/lib/run-with-watchdog.test.sh`** — instant success-path, non-zero exit,
+  and usage-refusal coverage for the watchdog (including `--timeout-secs 0`, which
+  used to disable the deadline). Idle/wall expiry cases stay out: they wait out
+  real seconds and the suite is offline-and-instant by policy.
 
 ### Changed
 

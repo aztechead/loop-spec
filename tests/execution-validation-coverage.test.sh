@@ -55,7 +55,7 @@ done
 
 # VERIFY is where it runs, and the only place — including resume.
 check_contains "VERIFY runs the comparison" \
-  skills/verify/SKILL.md 'lib/feature-validation.sh" compare'
+  skills/verify/references/pre-team-gates.md 'lib/feature-validation.sh" compare'
 check_not_contains "cycle resume does not run the comparison" \
   skills/cycle/SKILL.md 'feature-validation.sh'
 check_contains "cycle resume names VERIFY as the only suite" \
