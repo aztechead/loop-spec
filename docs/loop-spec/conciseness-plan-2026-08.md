@@ -38,9 +38,9 @@ Rules that bind every stage:
 
 | Stage | Scope | Status |
 |---|---|---|
-| 1 | Implementer contract: one shared block, every rung, three design questions | pending |
-| 2 | DISCUSS/PLAN: shared critique-gate protocol + preamble cites | pending |
-| 3 | CYCLE: extract init/phase-loop/completion references, cite shared contracts, fix fences | pending |
+| 1 | Implementer contract: one shared block, every rung, three design questions | done |
+| 2 | DISCUSS/PLAN: shared critique-gate protocol + preamble cites | done |
+| 3 | CYCLE: extract init/phase-loop/completion references, cite shared contracts, fix fences | done |
 | 4 | EXECUTE/VERIFY: execute-core extraction, loops shrink, remediation factor | pending |
 | 5 | SPEC/ITERATE/DELIVER + feature-state/grounding trims | pending |
 | 6 | Aux skill fold-ins (simplicity, human-code, gates, walkthrough, micro/discipline) | pending |

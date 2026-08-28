@@ -11,7 +11,7 @@ checks=(
   "skills/forensics/SKILL.md	write-terminal"
   "skills/assess/SKILL.md	write-terminal"
   "skills/retro/SKILL.md	write-terminal"
-  "skills/cycle/SKILL.md	--summary"
+  "skills/shared/route-exit-contract.md	--summary"
   "skills/cycle/references/phase-loop.md	No-change completion cleanup"
   "skills/micro/SKILL.md	--summary"
   "skills/debug/SKILL.md	--summary"

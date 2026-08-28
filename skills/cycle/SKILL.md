@@ -114,28 +114,17 @@ a run that ends without one reads as a failure to every headless caller
 
 `protocol-mismatch` is for a genuine **non-task** only (a pure question, or work that
 needs a different product entirely). A rebase, a branch sync, a merge-conflict
-resolution, a PR re-review, or a one-command chore is repository work. If
-`/loop-spec:auto` already routed here, that commitment stands — execute the cycle; do
-not decline it. Heavy ceremony is the maintenance profile (`profile=maintenance`,
-`skills/shared/tier-matrix.md`): SPEC synthesizes, the graph short path skips DISCUSS /
-spec-critique / code-review when no security signal fires, and PLAN / EXECUTE / VERIFY /
-ITERATE / DELIVER still run. Walk that path. Do not skip ITERATE or DELIVER because the
-task felt small; the graph owns sequencing, and a delivered change without a terminal
-result is the unaccounted ending this contract exists to prevent.
+resolution, a PR re-review, or a one-command chore is repository work; if
+`/loop-spec:auto` already routed here, that commitment stands — execute the cycle.
+Heavy ceremony is the maintenance profile (`profile=maintenance`,
+`skills/shared/tier-matrix.md`): the graph short path skips DISCUSS / spec-critique /
+code-review when no security signal fires, and PLAN / EXECUTE / VERIFY / ITERATE /
+DELIVER still run. Never skip ITERATE or DELIVER because the task felt small.
 
-When the request is genuinely not repository work, stop before changing the tree:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
-  --result-root "$(git rev-parse --show-toplevel)" --cycle-type full \
-  --status escalated --outcome protocol-mismatch --converged false \
-  --title "<request title>" --reason "<why this is not repository work>" \
-  --summary "<what the request actually needs; no repository work was done>"
-```
-
-Then stop, so the caller can re-route. The writer requires an unmodified tracked tree:
-once this cycle has changed the repository, mismatch is no longer the honest ending and
-the run reports what it actually did.
+When the request is genuinely not repository work, stop BEFORE changing the tree and
+run the `write-terminal` decline snippet from the contract verbatim — the writer
+requires an unmodified tracked tree; once the cycle has changed the repository,
+mismatch is no longer the honest ending and the run reports what it actually did.
 
 ## Procedure
 
@@ -217,11 +206,10 @@ If the user picks resume, use the candidate's absolute `featureRoot` before read
 feature-relative path. The preflight already discovered whether state came from the
 invocation checkout or a registered feature worktree.
 
-1. **Adopt the execution root first.** Workspace and `executionRootMode == "in-place"`
-   features require the session cwd to equal `featureRoot`; otherwise print the absolute
-   path and stop so the harness can be relaunched there. For a Claude feature-worktree
-   candidate, call `EnterWorktree({path: worktreeAbs})`. OpenCode/ADK features use the
-   clean in-place branch path and never emulate a cwd switch with `git worktree add`.
+1. **Adopt the execution root first** — the per-family procedure (worktree
+   presence check and recreation, workspace root assertion, in-place relaunch
+   message) is `skills/shared/cycle-resume-escalation.md` §5. Never emulate a cwd
+   switch with `git worktree add`.
 2. Load `feature.json` from the adopted root and refresh `.loop-spec/runtime.json` with the
    and the Step 5.4 freshness decision for every non-greenfield source repository. A matching
    validated source stamp reuses the local graph; every changed or unprovable input refreshes it.
