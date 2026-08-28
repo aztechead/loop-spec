@@ -31,6 +31,8 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 
 ## Procedure
 
+Run these headings in this order: Step 0, Step 1, Step 2, Step 4b, Step 5.5, Step 3, Step 4, Step 5.7, Step 6, Step 7, Step 8. Historical numbers stay; 4b and 5.5 sit before 3 in this file because that is when they run.
+
 ### Step 0 - PATTERNS.md cache check, GSD ingestion, and mapper dispatch
 
 Before spawning the team: join the DISCUSS background prefetch if one is in flight (`artifacts.patternsPrefetch == "in-flight"`, check once — never sleep); then if `docs/loop-spec/features/{slug}/PATTERNS.md` already exists, record it in `feature.json.artifacts` and skip production; else attempt GSD `.planning/codebase/` ingestion; else dispatch a one-shot `loop-spec:pattern-mapper` (not the opus planner). Exact procedure and artifact bookkeeping verbatim in `${CLAUDE_SKILL_DIR}/references/patterns-bootstrap.md`. Never AskUserQuestion as a wait.
@@ -151,64 +153,6 @@ Parse the `tasks[]` JSON from the message body. Store for use in Steps 4b and 3.
 
 Proceed to Step 4b (feasibility and coverage run BEFORE the critique).
 
-### Step 3 - Critique gate (runs AFTER Steps 4b and 5.5; structural fast-path may skip)
-
-**Structural fast-path (replaces the old quick tier — measured scope, decided AFTER planning):** resolve the two bounds through the repo tuning overlay first (`FP_TASKS="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxTasks 2)"`, `FP_FILES="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxFiles 3)"` — defaults 2/3 unless `lib/tuning.sh` widened them for this repo; `skills/shared/tier-matrix.md` "Repo tuning overlay"). Run `security_signal="$(bash "${CLAUDE_SKILL_DIR}/../../lib/security-signal.sh" first "docs/loop-spec/features/{slug}/SPEC.md" "docs/loop-spec/features/{slug}/PLAN.md")"` while preserving exit 1 as the normal no-match result and treating exit 2 as an error. Skip this critique gate iff ALL hold: the plan has <= {FP_TASKS} tasks, AND the union of task `files[]` touches <= {FP_FILES} files, AND `security_signal` is empty. When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)` and go to Step 5.7 (feasibility and coverage already ran).
-
-**Maintenance profile:** when `feature.json.executionProfile == "maintenance"` AND
-`security_signal` is empty, skip this gate regardless of the task/file bounds above — the
-classification that earned the profile already bounded the change more tightly than the
-fast-path does. Log `plan critique skipped (maintenance profile, no security signal)` and
-go to Step 5.7. A security signal still runs the challenger (never skip).
-
-When not skipped, run the protocol per `skills/shared/critique-gate-protocol.md` and
-`graph/critique.graph.json` (challenger-only: gate open, single-critic pass, adjudication,
-fix loop, gateHistory, currentGate reset):
-
-- `phase=plan`, `gate=plan-critique`, `artifact=PLAN.md`,
-  `artifact_path=docs/loop-spec/features/{slug}/PLAN.md`
-- `author=planner-1`
-- `next_step=Step 4 post-critique mechanical re-run`
-- Model: `feature.models.challenger` (activated for PLAN immediately before entry;
-  do not re-derive from model-matrix). Never spawn `advocate-1`.
-
-A security signal forces this pass; it does not spawn a second critic. The evidence
-string contains the exact file, line, and normalized term.
-
-**Round telemetry:** where the protocol says "emit the phase's `gate_round` event", run
-(non-fatal; `"mode":"single-critic"` on the solo pass, `"mode":"delta"` on delta
-re-verifies):
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" gate_round \
-  --phase "plan" --data '{"gate":"plan-critique","round":<N>,"mode":"single-critic"}' || true
-```
-
-### Step 4 - Adjudicate findings and synthesize fix-list
-
-Adjudicate per the protocol's table (`skills/shared/critique-gate-protocol.md`,
-"Adjudication") and run its fix loop (gateHistory fail entry BEFORE re-dispatch, snapshot,
-author re-dispatch, delta re-verify, deadlock-kept, pass entry + `currentGate`
-reset). PLAN supplies these phase actions and deltas:
-
-- **`{user_intent_action}`** (finding depends on user intent, autonomous mode): adopt the
-  more reversible reading and record it to disk (`bash
-  "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" plan "<question>"
-  "<reading adopted>" "more reversible"`) AND in `## User decisions (already made)`
-  suffixed `(assumed)` (`skills/shared/autonomous-mode.md`).
-- **`{ungrounded_action}`** (`UNGROUNDED:` finding): append the probe result via `bash
-  "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add
-  "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, then
-  feed `EVID-NNN` + output excerpt into the planner re-dispatch so planner-1 cites it.
-- **Author re-dispatch:** `planner-1` reads the current PLAN.md, applies every fix-list
-  item in place, sends `PATTERNS.md and PLAN.md written\n\n<tasks JSON>` to lead, goes
-  idle. **Re-parse the `tasks[]` JSON from every revision message** before the delta
-  re-verify — Steps 4b/6 consume it.
-
-On gate pass: if PLAN.md changed since the pre-critique Step 4b/5.5 run, re-run Step 4b
-and Step 5.5 (coverage-only failures still do not re-enter this critique). Then proceed
-to Step 5.7.
-
 ### Step 4b - Feasibility gate (ALWAYS runs, no agent dispatch)
 
 Validate the plan locally using the `tasks[]` data from Step 2 (or the latest planner-1 revision):
@@ -288,6 +232,64 @@ grounding_exit=$?
 ```
 
 Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1 with the FLAG lines in the body; retries unbounded). On revision received, re-run ONLY this lint. Exit 0 on all three checks: proceed to Step 3 (critique; mechanical gates already passed). Coverage-only failures never re-enter the critique gate.
+
+### Step 3 - Critique gate (runs AFTER Steps 4b and 5.5; structural fast-path may skip)
+
+**Structural fast-path (replaces the old quick tier — measured scope, decided AFTER planning):** resolve the two bounds through the repo tuning overlay first (`FP_TASKS="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxTasks 2)"`, `FP_FILES="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxFiles 3)"` — defaults 2/3 unless `lib/tuning.sh` widened them for this repo; `skills/shared/tier-matrix.md` "Repo tuning overlay"). Run `security_signal="$(bash "${CLAUDE_SKILL_DIR}/../../lib/security-signal.sh" first "docs/loop-spec/features/{slug}/SPEC.md" "docs/loop-spec/features/{slug}/PLAN.md")"` while preserving exit 1 as the normal no-match result and treating exit 2 as an error. Skip this critique gate iff ALL hold: the plan has <= {FP_TASKS} tasks, AND the union of task `files[]` touches <= {FP_FILES} files, AND `security_signal` is empty. When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)` and go to Step 5.7 (feasibility and coverage already ran).
+
+**Maintenance profile:** when `feature.json.executionProfile == "maintenance"` AND
+`security_signal` is empty, skip this gate regardless of the task/file bounds above — the
+classification that earned the profile already bounded the change more tightly than the
+fast-path does. Log `plan critique skipped (maintenance profile, no security signal)` and
+go to Step 5.7. A security signal still runs the challenger (never skip).
+
+When not skipped, run the protocol per `skills/shared/critique-gate-protocol.md` and
+`graph/critique.graph.json` (challenger-only: gate open, single-critic pass, adjudication,
+fix loop, gateHistory, currentGate reset):
+
+- `phase=plan`, `gate=plan-critique`, `artifact=PLAN.md`,
+  `artifact_path=docs/loop-spec/features/{slug}/PLAN.md`
+- `author=planner-1`
+- `next_step=Step 4 post-critique mechanical re-run`
+- Model: `feature.models.challenger` (activated for PLAN immediately before entry;
+  do not re-derive from model-matrix). Never spawn `advocate-1`.
+
+A security signal forces this pass; it does not spawn a second critic. The evidence
+string contains the exact file, line, and normalized term.
+
+**Round telemetry:** where the protocol says "emit the phase's `gate_round` event", run
+(non-fatal; `"mode":"single-critic"` on the solo pass, `"mode":"delta"` on delta
+re-verifies):
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" gate_round \
+  --phase "plan" --data '{"gate":"plan-critique","round":<N>,"mode":"single-critic"}' || true
+```
+
+### Step 4 - Adjudicate findings and synthesize fix-list
+
+Adjudicate per the protocol's table (`skills/shared/critique-gate-protocol.md`,
+"Adjudication") and run its fix loop (gateHistory fail entry BEFORE re-dispatch, snapshot,
+author re-dispatch, delta re-verify, deadlock-kept, pass entry + `currentGate`
+reset). PLAN supplies these phase actions and deltas:
+
+- **`{user_intent_action}`** (finding depends on user intent, autonomous mode): adopt the
+  more reversible reading and record it to disk (`bash
+  "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" plan "<question>"
+  "<reading adopted>" "more reversible"`) AND in `## User decisions (already made)`
+  suffixed `(assumed)` (`skills/shared/autonomous-mode.md`).
+- **`{ungrounded_action}`** (`UNGROUNDED:` finding): append the probe result via `bash
+  "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add
+  "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, then
+  feed `EVID-NNN` + output excerpt into the planner re-dispatch so planner-1 cites it.
+- **Author re-dispatch:** `planner-1` reads the current PLAN.md, applies every fix-list
+  item in place, sends `PATTERNS.md and PLAN.md written\n\n<tasks JSON>` to lead, goes
+  idle. **Re-parse the `tasks[]` JSON from every revision message** before the delta
+  re-verify — Steps 4b/6 consume it.
+
+On gate pass: if PLAN.md changed since the pre-critique Step 4b/5.5 run, re-run Step 4b
+and Step 5.5 (coverage-only failures still do not re-enter this critique). Then proceed
+to Step 5.7.
 
 ### Step 5.7 - Fresh-eyes pruning pass (advisory)
 

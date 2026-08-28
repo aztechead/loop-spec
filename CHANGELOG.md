@@ -51,6 +51,11 @@ Pinned by `tests/lib/graph-probes.test.sh`,
 `tests/discuss-grill-coverage.test.sh`, and
 `tests/lib/harness-call-shapes.test.sh`.
 
+Live contracts that still described an advocate debate (challenger charter,
+`team-prompts/challenger.md` / `advocate.md`, architecture diagrams) now match
+the challenger-only protocol. PLAN's procedure lists Steps 4b and 5.5 before
+Step 3 in the file, not only in prose.
+
 ## [4.6.1] - 2026-08-28
 
 AskUserQuestion is not a wait. A live `/cycle` run showed the same

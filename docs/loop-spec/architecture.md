@@ -27,8 +27,8 @@ flowchart LR
     user([User]) -->|"Skill(loop-spec:cycle)"| cycle[cycle skill<br/>orchestrator]
     cycle -->|"health-check + style"| init[feature.json<br/>schema v7]
     init --> spec[SPEC phase<br/>main-thread interview]
-    spec -->|SPEC.md + ambiguity_scores| discuss[DISCUSS team<br/>spec-writer + challenger<br/>advocate on escalation]
-    discuss -->|SPEC.md| plan[PLAN team<br/>planner + challenger<br/>advocate on escalation]
+    spec -->|SPEC.md + ambiguity_scores| discuss[DISCUSS team<br/>grill + challenger]
+    discuss -->|SPEC.md| plan[PLAN team<br/>planner + challenger]
     plan -->|PLAN.md + task DAG| execute[EXECUTE team<br/>lead + N implementers + R reviewers]
     execute -->|merged commits on feat/&lcub;slug&rcub;| verify[VERIFY team<br/>verifier + code-reviewer]
     verify -->|VERIFICATION.md| iterate[ITERATE<br/>goal judge]
@@ -68,28 +68,22 @@ sequenceDiagram
 
 Resume reads `currentTeamName` from each candidate `feature.json` and, on the explicit-teams harness, probes `TaskList({team})` to detect a still-live orphan. On implicit and no-teams harnesses the prior team is treated as gone and the feature resumes directly.
 
-### Critique gate protocol (escalated form)
+### Critique gate protocol (challenger-only)
 
 ```mermaid
 flowchart TD
-    spawn[Lead spawns advocate-1 + challenger-1<br/>with &lcub;N_round&rcub;=1] --> round{Round N}
-    round -->|"SendMessage(critique)"| ch[challenger-N]
-    ch -->|"SendMessage(critique)"| ad[advocate-N]
-    ad -->|"SendMessage(ROUND-N DONE: ...)"| log[Append to<br/>gate-logs/&lcub;phase&rcub;-critique-round-N.md]
-    ch -->|"SendMessage(ROUND-N DONE: ...)"| log
-    log --> conv{Convergence?}
-    conv -->|"both DONE"| pass[fix_list empty<br/>→ artifact accepted]
-    conv -->|"N == maxRounds"| pass
-    conv -->|"otherwise"| nextround[N += 1<br/>SendMessage start round N+1]
-    nextround --> round
-    pass --> revise{fix_list?}
-    revise -->|"empty"| commit[Commit artifact]
-    revise -->|"non-empty"| author[SendMessage author:<br/>revise with fix-list]
-    author --> restart[Re-send spawn prompts<br/>with prior_round_summaries]
-    restart --> round
+    spawn[Lead sends critic.md brief to challenger-1] --> findings{FINDINGS?}
+    findings -->|"NO-FINDINGS"| pass[currentGate reset<br/>artifact accepted]
+    findings -->|"FINDINGS"| adj[Lead adjudicates<br/>disputed major stays]
+    adj --> fix{fix-list?}
+    fix -->|"empty"| pass
+    fix -->|"non-empty"| author[SendMessage author:<br/>revise with fix-list]
+    author --> delta[challenger delta re-verify]
+    delta -->|"DELTA-VERIFIED"| pass
+    delta -->|"DELTA-FINDINGS"| adj
 ```
 
-Gate transcripts persist under `gate-logs/` so re-entry after a revision replays the prior debate context.
+Gate transcripts persist under `gate-logs/` so a delta re-verify has the prior findings.
 
 ### EXECUTE, agent-team rung
 
