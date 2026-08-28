@@ -162,7 +162,7 @@ The plugin version is `0.3.2` in `/Users/cbobrowitz/Projects/loop-spec/.claude-p
 
 The following are explicitly acknowledged risks from `/Users/cbobrowitz/Projects/loop-spec/docs/design.md:597-618`, listed here for completeness:
 
-- **Risk 7**: Critique-gate collusion (advocate + challenger share a blind spot). Acknowledged, partially mitigated by challenger prompt.
+- **Risk 7**: Critique-gate blind spot (a solo challenger shares none of an author's context, but still one critic). Acknowledged; disputed `[major]` stays on the fix-list.
 - **Risk 8**: Map-codebase incremental drift. Per-domain staleness detection exists; quarterly forced re-map is a manual recommendation, not automated.
 - **Risk 12**: CC plugin agent loading semantics not stable. Mitigated by pinning minimum CC version (not yet documented which version).
 - **Risk 15**: Skill content not eval-tested at launch. High likelihood, high impact. Only 1 of 36 matrix cells automated.

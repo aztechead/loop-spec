@@ -43,12 +43,11 @@ the agent id `loop-spec-<role>` and see the dispatch mapping rule in
 
 ## Phase notes
 
-- **DISCUSS / PLAN critique gates:** the default single-critic pass is ONE
+- **DISCUSS / PLAN critique gates:** the critic is ONE
   one-shot `challenger` Agent call (solo-critic brief from
   `skills/shared/team-prompts/critic.md`); each delta re-verify is a fresh
-  one-shot `challenger` call with the fix-list + diff inlined. An escalated
-  debate runs each round as `challenger` then `advocate` one-shot Agent calls
-  (challenger output feeds the advocate prompt). Round transcripts still land
+  one-shot `challenger` call with the fix-list + diff inlined. There is no
+  advocate and no debate round. Round transcripts still land
   in `.loop-spec/features/{slug}/gate-logs/` and the ladder/adjudication rules
   (`skills/shared/tier-matrix.md`) are unchanged. What is lost without teams is
   in-context memory between rounds; compensate by inlining

@@ -8,12 +8,26 @@ Each item lists the change, the rationale, and the evidence that would justify s
 
 The pipeline's largest losses are structural duplication and dropped structured data, not slow models:
 
-1. The default new-feature path authors and commits SPEC.md twice (SPEC phase, then DISCUSS) and debates a spec already gated to <=0.20 ambiguity. Largest front-half wall-clock cost.
-2. Structured data the producer computed is discarded at phase boundaries and re-derived downstream (planner `tasks[]` JSON re-parsed from PLAN.md markdown in EXECUTE).
-3. Cheap deterministic gates run after expensive LLM debate, and every revision resets the debate to round 1.
+1. ~~The default new-feature path authors and commits SPEC.md twice (SPEC phase, then DISCUSS) and debates a spec already gated to <=0.20 ambiguity.~~ **Shipped in 4.7.0:** DISCUSS keeps the grill, lead-edits SPEC.md, and `lib/graph/probes/discuss-critique.sh` skips the challenger when the spec is already gated. Critique is challenger-only (no advocate).
+2. Structured data the producer computed is discarded at phase boundaries and re-derived downstream (planner `tasks[]` JSON re-parsed from PLAN.md markdown in EXECUTE). *(tasks.json shipped earlier.)*
+3. ~~Cheap deterministic gates run after expensive LLM debate.~~ **Shipped in 4.7.0:** PLAN runs feasibility + coverage + grounding before the challenger; PATTERNS.md is a one-shot pattern-mapper, not the opus planner.
 4. Per-merge full-suite test runs serialize EXECUTE (O(tasks) suite runs).
 
 ## P1 - Collapse the duplicate SPEC.md pipeline
+
+**Status: shipped (4.7.0), narrower than the original recommendation.** SPEC still owns the gated SPEC.md. DISCUSS still grills design. The lead Edits SPEC.md in place (no spec-writer when the file exists). Spec-critique skips when `discuss-critique.sh` answers `gate=skip`. The advocate debate is gone; the challenger remains. Both phases still commit SPEC.md (`spec: NO_JIRA`) — commit dedupe was not in this change.
+
+## P2 - Dispatch pattern-mapper as a real teammate instead of inlining it into the opus planner
+
+**Status: shipped (4.7.0) as a one-shot Agent, not a 4th teammate.** PLAN Step 0 dispatches `loop-spec:pattern-mapper` when PATTERNS.md is missing after cache/GSD. The planner brief skips production when the file exists.
+
+## P2 - Run cheap gates before the debate; cap revision re-debates at 1 round
+
+**Status: shipped (4.7.0) in part.** PLAN runs Step 4b + coverage/grounding before the challenger. Delta re-verify was already one scoped turn. There is no debate to cap: disputed `[major]` stays on the fix-list; deadlock keeps the finding.
+
+The original eval-gated writeup follows; treat the three items above as done.
+
+## P1 - Collapse the duplicate SPEC.md pipeline (original writeup)
 
 **Finding:** spec-1 / discuss-1 / shared-2.
 

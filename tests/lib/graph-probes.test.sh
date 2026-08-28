@@ -460,6 +460,94 @@ else
   echo "FAIL: spec gap rewinds to '$spec_target', expected 'discuss'"; FAIL=$((FAIL + 1))
 fi
 
+# --- discuss-critique: skip the spec-critique subgraph without skipping the grill ---
+DISCUSS_CRITIQUE="$PROBES/discuss-critique.sh"
+DC="$WORK/discuss-critique"
+mkdir -p "$DC"
+check_output "discuss-critique enumerates gate=run" "gate=run" "$DISCUSS_CRITIQUE" --answers
+check_output "discuss-critique enumerates gate=skip" "gate=skip" "$DISCUSS_CRITIQUE" --answers
+check "discuss-critique needs a feature dir" 2 "$DISCUSS_CRITIQUE"
+
+write_spec() {
+  local path="$1" gate="$2" unresolved="$3"
+  cat > "$path" <<EOF
+---
+ambiguity_scores:
+  goal_clarity: 0.90
+  boundary_clarity: 0.90
+  constraint_clarity: 0.90
+  acceptance_clarity: 0.90
+  ambiguity: 0.10
+  rounds_completed: 2
+  gate_passed: $gate
+  unresolved_dimensions: $unresolved
+---
+
+# Spec
+
+Bump the pinned version.
+EOF
+}
+
+seed_dc() {
+  jq -n --arg spec "$DC/SPEC.md" --argjson fb "$2" --arg p "$1" \
+    '{slug:"dc",executionProfile:$p,iterate:{feedback:$fb},artifacts:{spec:$spec}}' \
+    > "$DC/feature.json"
+}
+
+write_spec "$DC/SPEC.md" true '[]'
+seed_dc standard 'null'
+check_output "an already-gated spec skips critique" \
+  "gate=skip reason=spec already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+
+write_spec "$DC/SPEC.md" false '[]'
+check_output "an ungated spec runs critique" \
+  "gate=run reason=spec not already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+
+write_spec "$DC/SPEC.md" true '[goal_clarity]'
+check_output "unresolved dimensions force critique" \
+  "gate=run reason=spec not already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+
+write_spec "$DC/SPEC.md" true '[]'
+seed_dc standard '{"type":"spec"}'
+check_output "iterate re-entry runs critique even when gated" \
+  "gate=run reason=iterate re-entry" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+
+seed_dc maintenance 'null'
+check_output "maintenance profile skips critique when the spec is clean" \
+  "gate=skip reason=maintenance profile, no security signal" \
+  "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+
+printf '# Spec\n\nRotate the OAuth2 credential.\n' > "$DC/SPEC.md"
+seed_dc standard 'null'
+check_output "a security signal forces critique even on a gated-looking skip path" \
+  "gate=run reason=security signal" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+
+check_output "a missing feature.json fails closed to run" \
+  "gate=run reason=no feature.json" "$DISCUSS_CRITIQUE" --feature-dir "$WORK/no-such-dir"
+
+declared="$(bash "$DISCUSS_CRITIQUE" --answers)"
+missing=0
+while IFS= read -r expects; do
+  [[ -z "$expects" ]] && continue
+  grep -qxF "$expects" <<<"$declared" || { echo "  undeclared: $expects"; missing=$((missing + 1)); }
+done < <(jq -r '[.edges[].condition]
+  | map(select(. != null and (.probe | test("discuss-critique.sh$")))) | .[].expects' \
+  "$ROOT/graph/cycle.graph.json")
+if [[ "$missing" -eq 0 ]]; then
+  echo "PASS: every discuss-critique route expects a declared answer"; PASS=$((PASS + 1))
+else
+  echo "FAIL: $missing discuss-critique route(s) expect an undeclared answer"; FAIL=$((FAIL + 1))
+fi
+
+debate_nodes="$(jq -r '[.nodes[]|select(.id=="critique.debate" or .id=="critique.escalate")]|length' \
+  "$ROOT/graph/critique.graph.json")"
+if [[ "$debate_nodes" == "0" ]]; then
+  echo "PASS: critique graph has no advocate debate nodes"; PASS=$((PASS + 1))
+else
+  echo "FAIL: critique graph still declares $debate_nodes debate/escalate node(s)"; FAIL=$((FAIL + 1))
+fi
+
 # The approval route must be declared BEFORE the gap routes or it is dead.
 order="$(jq -r '[.edges[]|select(.from=="iterate" and .kind=="route")|.condition.expects]|index("approval=required")' "$ROOT/graph/cycle.graph.json")"
 if [[ "$order" == "0" ]]; then

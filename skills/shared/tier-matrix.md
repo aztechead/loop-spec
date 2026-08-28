@@ -11,8 +11,8 @@ Canonical role defaults and phase/role override precedence live in
 
 | Gate | Behavior |
 |---|---|
-| Spec critique | ALWAYS runs — the cheap gate that catches building the wrong thing entirely. Single-critic by default; escalates to the paired debate per the **critique gate ladder** (below) |
-| Plan critique | Runs unless the **structural fast-path** holds (below). Single-critic by default; same escalation ladder |
+| Spec critique | Challenger-only. Skips when `lib/graph/probes/discuss-critique.sh` answers `gate=skip` (already-gated SPEC, or maintenance, and no security signal). ITERATE re-entry always runs. |
+| Plan critique | Challenger-only. Runs unless the **structural fast-path** holds (below). Same skip on the maintenance profile. |
 | Spec-compliance gate | runs |
 | Acceptance gate | runs |
 | Test-tamper scan | runs (fail-fast) |
@@ -22,7 +22,7 @@ Canonical role defaults and phase/role override precedence live in
 ## Structural fast-path (replaces the old `quick` tier)
 
 Decided AFTER planning, from measured scope — not before, from prompt vibes. The PLAN
-critique debate is skipped iff ALL hold:
+critique is skipped iff ALL hold:
 
 1. The plan has **<= `fastPathMaxTasks` (default 2)** tasks, AND
 2. the union of task `files[]` touches **<= `fastPathMaxFiles` (default 3)** files, AND
@@ -57,7 +57,7 @@ What it lightens:
 | Phase | Standard | Maintenance |
 |---|---|---|
 | SPEC | Socratic interview, up to 6 rounds | Synthesize from the request + scout; the ambiguity gate still scores and still gates, falling back to the interview when a dimension misses its minimum |
-| DISCUSS | Critique gate (single-critic, escalating) | Skipped when `lib/security-signal.sh` reports no match |
+| DISCUSS | Critique gate (challenger-only; skipped when the spec is already gated) | Skipped when `lib/security-signal.sh` reports no match |
 | PLAN | Critique gate, subject to the structural fast-path | Skipped when `lib/security-signal.sh` reports no match, regardless of the fast-path bounds |
 
 The profile is also the graph's own path selector. `lib/graph/probes/short-path.sh`
@@ -75,45 +75,39 @@ check, and every other VERIFY gate — the placeholder scan, the tamper scan, th
 acceptance lint, and the no-new-failures comparison all run on both paths. Code review
 is the one quality gate the short path drops, and only behind the full maintenance
 classification: at most five reviewable files, low ambiguity, and no seam, interface,
-security, migration, dependency-edge, multi-repo, or destructive flag. Escalation on a genuine security signal is unchanged —
-the signal is checked FIRST on both critique gates, and a match escalates to the debate
-on the maintenance profile exactly as it does on the standard one.
+security, migration, dependency-edge, multi-repo, or destructive flag. A genuine security
+signal is checked FIRST on both critique gates and forces the challenger to run — it
+does not spawn a second critic.
 
-## Critique gate ladder (skip → single-critic → escalated debate)
+## Critique gate ladder (skip → single-critic)
 
 Both critique gates (DISCUSS spec-critique, PLAN plan-critique) climb the same ladder —
-the lightest mode that preserves strictness wins:
+the lightest mode that preserves strictness wins. There is no advocate and no debate.
 
-1. **Skip** — PLAN via the structural fast-path above, and either gate on the maintenance
-   profile when no security signal fires. On the standard profile the spec critique never
-   skips.
+1. **Skip** — PLAN via the structural fast-path above; DISCUSS via
+   `lib/graph/probes/discuss-critique.sh` (`gate=skip`: already-gated SPEC, or
+   maintenance). Either gate also skips on the maintenance profile when no security
+   signal fires. A security signal and an ITERATE re-entry never skip.
 2. **Single-critic (the default)** — one challenger (inheriting the session model) reviews the artifact solo and
    reports `[major]`/`[minor]`-tagged findings straight to the lead
-   (`skills/shared/team-prompts/critic.md`). No advocate is dispatched; the lead
-   adjudicates. Strictness is preserved by construction: the lead may accept any finding
-   into the fix-list, but may NOT unilaterally dismiss a `[major]` finding — disputing one
-   escalates to the debate instead. A solo gate can only bias stricter, never looser.
-3. **Escalated debate** — the full advocate + challenger paired protocol
-   (`maxCritiqueRounds = 2`), exactly as each phase skill writes it. Escalation triggers:
-   - **Security signal**: `lib/security-signal.sh` reports evidence in SPEC.md or
-     PLAN.md — log that evidence and start in debate mode directly.
-   - **Contested major**: the lead disputes a `[major]` finding from the solo critic.
-   - **Deadlock**: the same finding survives two consecutive delta re-verify rounds
-     (author and critic are stuck; the debate is the tiebreak).
+   (`skills/shared/team-prompts/critic.md`). The lead adjudicates. Strictness is
+   preserved by construction: the lead may accept any finding into the fix-list, but
+   may NOT drop a `[major]` finding — a disputed `[major]` stays on the fix-list. A
+   solo gate can only bias stricter, never looser. Deadlock (the same finding survives
+   two consecutive delta rounds) keeps the finding and continues the delta loop.
 
-**Delta re-verify (revisions, both modes):** after the author applies a fix-list, the gate
+**Delta re-verify:** after the author applies a fix-list, the gate
 does NOT re-run its full protocol. The lead sends the critic ONE message — the applied
 fix-list plus a unified diff of the artifact — and the critic confirms each item is
 addressed and checks the changed sections only (`DELTA-VERIFIED` / `DELTA-FINDINGS`).
-Retries stay unbounded (full bore); only the per-revision cost collapses from a fresh
-2-round debate to a single scoped turn.
+Retries stay unbounded (full bore).
 
 ## Team coordination params (fixed)
 
 | Param | Value |
 |---|---|
-| discuss.maxCritiqueRounds | 2 (escalated debate only) |
-| plan.maxCritiqueRounds | 2 (escalated debate only) |
+| discuss.maxCritiqueRounds | 2 (unused; no debate — retained in the tuning overlay) |
+| plan.maxCritiqueRounds | 2 (unused; no debate — retained in the tuning overlay) |
 | execute.maxParallelImplementers | 3 |
 | execute.maxRetriesPerTask | 6 |
 

@@ -68,6 +68,7 @@ checks=(
   "skills/plan/SKILL.md	evidence.sh\" add"
   "agents/challenger.md	UNGROUNDED:"
   "agents/challenger.md	UNGROUNDED: \"<verbatim quote from the artifact>\" — probe:"
+  "skills/shared/team-prompts/critic.md	UNGROUNDED:"
   "skills/shared/team-prompts/challenger.md	UNGROUNDED:"
   "skills/discuss/SKILL.md	UNGROUNDED:"
   "skills/plan/SKILL.md	UNGROUNDED:"

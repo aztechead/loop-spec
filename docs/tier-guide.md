@@ -7,7 +7,7 @@ independent choice remains: the **execution style**.
 
 Every feature gets the same treatment (`skills/shared/tier-matrix.md`):
 
-- Spec critique (advocate + challenger): ALWAYS runs.
+- Spec critique (challenger-only): skipped when the spec is already gated (`gate_passed`, no unresolved dimensions, no security signal) or on the maintenance profile. ITERATE re-entry always runs it. A passed SPEC gate does not skip the DISCUSS design loop.
 - Plan critique: runs unless the **structural fast-path** holds — <=2 tasks,
   <=3 files, no security-signal match in SPEC/PLAN. Measured AFTER planning,
   never inferred from the prompt.
@@ -36,7 +36,7 @@ Override inline anywhere in the prompt: `style:step`. Never asked via menu.
 
 ## Model map (fixed)
 
-Opus authors and judges: spec-writer, planner, advocate, challenger,
+Opus authors and judges: spec-writer, planner, challenger,
 spec-compliance-reviewer, iterate-judge, code-reviewer. Sonnet implements,
 verifies (mechanical command execution), and maps. See
 `skills/shared/model-matrix.md`.

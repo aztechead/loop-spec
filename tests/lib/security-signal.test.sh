@@ -54,7 +54,7 @@ out="$(bash "$SCRIPT" first "$WORK/cred.md")"
 check "strong term fires regardless of weak terms" "$WORK/cred.md:1:term=credential" "$out"
 
 # Context: a boundary/non-goal mention is the change saying it will LEAVE the
-# surface alone. It must not buy the escalated advocate/challenger debate.
+# surface alone. It must not buy a second critic.
 printf 'Rename the helper.\nDo NOT touch the auth middleware.\n' > "$WORK/boundary.md"
 rc=0; bash "$SCRIPT" first "$WORK/boundary.md" >/dev/null 2>&1 || rc=$?
 check "negated scope verb does not fire" "1" "$rc"

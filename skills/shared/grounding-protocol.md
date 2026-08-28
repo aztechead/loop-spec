@@ -75,7 +75,7 @@ populate the artifact's `## Grounding` section.
 
 ## The lead-runs-probes rule
 
-Teammates (spec-writer, planner, challenger, advocate) have **no Bash tool by
+Teammates (spec-writer, planner, challenger) have **no Bash tool by
 design** — write-scope containment. Only the LEAD (orchestrator / main thread)
 can run probes.
 
