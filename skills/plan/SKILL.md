@@ -8,22 +8,13 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.json.currentPhase == "plan"`.
 
-> **No-teams fallback:** if `.loop-spec/runtime.json.teamsAvailable == false`, do NOT
-> call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run planner, challenger (and
-> advocate, on escalation) as one-shot `Agent` calls with the same agent types, models, and
-> prompt templates, per `skills/shared/no-teams-fallback.md`. The single-critic pass and
-> each delta re-verify become one-shot challenger Agent calls (fix-list + diff inlined);
-> an escalated debate becomes sequential challenger → advocate Agent calls with prior
-> round summaries (from `gate-logs/`) inlined. All artifacts and gates are unchanged.
-
-> **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
-> do NOT call `TeamCreate`/`TeamDelete` (they were removed and throw). Probe
+> **Team modes:** dispatch follows `.loop-spec/runtime.json.teamsMode`. `explicit`: as
+> written below. `implicit` (no `TeamCreate`/`TeamDelete` — they throw): probe
 > `lib/implicit-team-model.sh spawn-kind --teams-mode implicit --selector <feature.models.role>`
-> per teammate. `named`: `Agent({name, description, subagent_type, prompt})` with no
-> `model` key, then `SendMessage` for the critique debate. `oneshot`: nameless Agent
-> with the alias so routing binds; rework re-dispatches per
-> `skills/shared/no-teams-fallback.md`. Per `skills/shared/implicit-team-mode.md`.
-> `SendMessage` and the shared task list remain available for named teammates.
+> per teammate and dispatch per `skills/shared/implicit-team-mode.md` (DISCUSS/PLAN note).
+> `teamsAvailable == false`: every teammate below becomes a one-shot `Agent` call per
+> `skills/shared/no-teams-fallback.md` (DISCUSS/PLAN critique-gate note). All artifacts
+> and gates are unchanged in every mode.
 
 ## Inputs (from cycle skill via feature.json)
 
@@ -129,31 +120,13 @@ SendMessage({
     Do NOT compute or return waves[] -- EXECUTE Step 2b derives synthetic blockedBy edges
     from file overlap, so wave assignment is no longer your responsibility.
 
-    PRE-SUBMIT SELF-CHECK (you are graded on these by automated gates after you return; a
-    failure here forces a re-dispatch round, so verify before sending):
-      1. Every task's verify command passes `bash -n -c "$cmd"` (no empty or malformed commands).
-      2. The blockedBy graph is acyclic.
-      3. Every task has at least one acceptance criterion in the REQUIRED CONCRETE FORM from
-         your role definition (an exact value, regex, exit code, file path, or grep/jq check).
-      4. Each task's files[] is scoped to what that task actually edits. Declare `blockedBy`
-         only for logical ordering; do not add file-overlap edges, because EXECUTE derives
-         those automatically from `files[]`.
-      5. For each entry in the SPEC <decisions> block, reproduce the decision text verbatim
-         (the part after the "- "/"Decision: " prefix) somewhere in PLAN.md -- a "## Decisions"
-         or "## Assumptions" section is fine -- so the automated decision-coverage check
-         (fixed-string grep) matches.
-      6. "## Global constraints" lists every binding rule VERBATIM (SPEC boundaries,
-         <decisions> constraints, repo rules) or the single line "- none" -- dispatch
-         briefs inline it, so a paraphrase here becomes a drifted rule in every wave.
-      7. Each task block carries an "**Interfaces:**" entry (consumes/produces contracts,
-         or "none") -- parallel-wave implementers see only their own brief, so a task's
-         neighbors' contracts must travel in the plan, not in shared context.
-      8. Optional `batchGroup` on same-shape mechanical edits (same verifyCommand,
-         disjoint files, no independent judgment). Omit it when unsure — EXECUTE
-         will not collapse a group without the hint.
-      9. Set `modelTier: mechanical` only for complete-code transcription tasks
-         (`lib/model-tier.sh` resolves that to `haiku` on Claude Code, `inherit`
-         elsewhere). Do not assign a model from estimated difficulty.
+    PRE-SUBMIT SELF-CHECK (automated gates grade the plan after you return; a failure
+    forces a re-dispatch round): self-check against your role definition's "Gates you
+    will be judged against", "Role boundary", REQUIRED CONCRETE FORM, modelTier,
+    batchGroup, and Interfaces sections before sending. One addition not in the charter:
+    "## Global constraints" lists every binding rule VERBATIM (SPEC boundaries,
+    <decisions> constraints, repo rules) or the single line "- none" -- dispatch briefs
+    inline it, so a paraphrase here becomes a drifted rule in every wave.
 
     When done, send:
       SendMessage({to: "lead", message: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
@@ -189,301 +162,57 @@ go to Step 4b (feasibility still runs). A security signal still escalates.
 
 When not skipped, the gate runs per the **critique gate ladder** (`skills/shared/tier-matrix.md`): single-critic by default, escalating to the paired debate only when triggered.
 
-Update `feature.json` via `lib/feature-write.sh`:
-```json
-{
-  "currentGate": {
-    "phase": "plan",
-    "gate": "plan-critique",
-    "round": 0,
-    "advocateName": "advocate-1",
-    "challengerName": "challenger-1",
-    "startedAt": "<ISO-8601 now>"
-  }
-}
-```
+**Run the full gate procedure per `skills/shared/critique-gate-protocol.md`** (gate open,
+single-critic pass, escalated debate, adjudication, fix loop, gateHistory, currentGate
+reset) with these parameters:
 
-Create the gate-logs directory:
-```bash
-mkdir -p .loop-spec/features/{slug}/gate-logs/
-```
+- `phase=plan`, `gate=plan-critique`, `artifact=PLAN.md`,
+  `artifact_path=docs/loop-spec/features/{slug}/PLAN.md`
+- `author=planner-1`
+- `next_step=Step 4b`
+- Models: `feature.models.challenger` / `feature.models.advocate` (activated for PLAN
+  immediately before entry; do not re-derive from model-matrix)
 
-#### Mode selection (security signal)
-
-The escalation trigger is declared on the critique graph, not here:
-`graph/critique.graph.json` routes `critique.escalate -> critique.debate` when
-`lib/security-signal.sh` reports a match. The fast-path check above already ran that
+**Mode selection (security signal).** The escalation trigger is declared on the critique
+graph, not here: `graph/critique.graph.json` routes `critique.escalate -> critique.debate`
+when `lib/security-signal.sh` reports a match. The fast-path check above already ran that
 declared probe; this gate obeys it. If `security_signal` is non-empty: log
-`[PLAN] critique gate escalated: security signal ($security_signal)`, set
-`gate_mode="debate"`, and start directly in the **Escalated debate** below. Otherwise
-set `gate_mode="single-critic"`. The evidence string contains the exact file, line,
-and normalized term, so escalation is auditable.
+`[PLAN] critique gate escalated: security signal ($security_signal)` and start directly
+in the protocol's **Escalated debate**. Otherwise run its single-critic pass. The
+evidence string contains the exact file, line, and normalized term, so escalation is
+auditable.
 
-#### Single-critic pass (default)
+**Round telemetry:** where the protocol says "emit the phase's `gate_round` event", run
+(non-fatal; `"mode":"single-critic"` on the solo pass, `"mode":"delta"` on delta
+re-verifies, no mode key on debate rounds):
 
-Model: `feature.models.challenger`. Send `challenger-1` the solo-critic brief:
-
-```
-SendMessage({
-  to: "challenger-1",
-  message: """
-    [Populate from skills/shared/team-prompts/critic.md with these substitutions:
-      {slug} = slug
-      {N} = 1
-      {phase} = plan
-      {artifact} = PLAN.md
-    ]
-
-    Run your findings pass on PLAN.md now and report to lead.
-  """
-})
-```
-
-Wait for `TeammateIdle` from `challenger-1` and read its `FINDINGS:` / `NO-FINDINGS:` message. Write it to the gate-log:
-
-```
-Write .loop-spec/features/{slug}/gate-logs/plan-critique-round-1.md
-Contents:
-  # plan-critique Round 1 (single-critic)
-
-  ## challenger-1
-  <the FINDINGS/NO-FINDINGS message body>
-```
-
-Emit the round's telemetry event (non-fatal):
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" gate_round \
-  --phase "plan" --data '{"gate":"plan-critique","round":1,"mode":"single-critic"}' || true
+  --phase "plan" --data '{"gate":"plan-critique","round":<N>,"mode":"single-critic"}' || true
 ```
-
-Proceed to Step 4 (the lead adjudicates the findings there).
-
-#### Escalated debate
-
-Runs only when a ladder trigger fires (security signal above; contested `[major]` or delta deadlock from Step 4). `maxCritiqueRounds = 2` (fixed; `skills/shared/tier-matrix.md`). When escalating from a single-critic pass, include all existing `gate-logs/plan-critique-round-*.md` content as `{prior_round_summaries}` in both spawn prompts, and note that `challenger-1` is already live — re-send it the debate brief via `SendMessage` instead of spawning fresh.
-
-##### Spawn advocate-1
-
-Model: `feature.models.advocate`.
-
-```
-SendMessage({
-  to: "advocate-1",
-  message: """
-    [Populate from skills/shared/team-prompts/advocate.md with these substitutions:
-      {slug} = slug
-      {N} = 1
-      {phase} = plan
-      {artifact} = PLAN.md
-      {maxRounds} = maxCritiqueRounds
-      {N_round} = 1
-      {prior_round_summaries} = (empty on first run; load from gate-logs/ on resume)
-    ]
-
-    You will receive the first message from challenger-1. Wait for it before starting your round-1 response.
-  """
-})
-```
-
-##### Spawn challenger-1
-
-Model: `feature.models.challenger`.
-
-```
-SendMessage({
-  to: "challenger-1",
-  message: """
-    [Populate from skills/shared/team-prompts/challenger.md with these substitutions:
-      {slug} = slug
-      {N} = 1
-      {phase} = plan
-      {artifact} = PLAN.md
-      {maxRounds} = maxCritiqueRounds
-      {N_round} = 1
-      {prior_round_summaries} = (empty on first run; load from gate-logs/ on resume)
-    ]
-
-    Start round 1 now: read PLAN.md and send your critique to advocate-1 via SendMessage.
-    After sending to advocate-1, wait for their response before sending your ROUND-1 DONE message to lead.
-  """
-})
-```
-
-##### Debate loop
-
-For each round N = 1 .. maxCritiqueRounds:
-
-1. Update `feature.json.currentGate.round = N` via `lib/feature-write.sh`.
-
-2. Wait for `TeammateIdle` from `advocate-1` (which signals it has sent both its cross-debate message and its lead round-end message for round N).
-
-3. Wait for `TeammateIdle` from `challenger-1` (same condition).
-
-4. Read the two `ROUND-N DONE[...]` messages sent to `lead` (one from `advocate-1`, one from `challenger-1`).
-
-5. Append each message to the gate-log:
-   ```
-   Write .loop-spec/features/{slug}/gate-logs/plan-critique-round-{N}.md
-   Contents:
-     # plan-critique Round {N}
-
-     ## advocate-1
-     <advocate-1's ROUND-N DONE[...] message body>
-
-     ## challenger-1
-     <challenger-1's ROUND-N DONE[...] message body>
-   ```
-
-6. Emit the round's telemetry event (non-fatal):
-   ```bash
-   bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" gate_round \
-     --phase "plan" --data "{\"gate\":\"plan-critique\",\"round\":{N}}" || true
-   ```
-
-7. Convergence check:
-   - **Mutual DONE**: both messages start with `ROUND-{N} DONE:` (not `DONE-WITH-ISSUES`). Break loop.
-   - **One-sided DONE for two consecutive rounds**: one teammate sent `ROUND-{N} DONE:` in both round N and round N-1 while the other sent `DONE-WITH-ISSUES`. Break loop.
-   - **Cap reached**: N == maxCritiqueRounds. Record `notes: "cap reached"` in gateHistory. Break loop.
-   - Otherwise: N += 1. Send `SendMessage` to both teammates starting round N+1:
-     ```
-     SendMessage({to: "challenger-1", message: "Start round {N+1}. Read PLAN.md and send your round {N+1} critique to advocate-1."})
-     SendMessage({to: "advocate-1", message: "Round {N+1} starting. Wait for challenger-1's critique, then respond."})
-     ```
 
 ### Step 4 - Adjudicate findings and synthesize fix-list
 
-Read all files under `.loop-spec/features/{slug}/gate-logs/` matching `plan-critique-round-*.md`.
+Adjudicate per the protocol's two tables (`skills/shared/critique-gate-protocol.md`,
+"Adjudication") and run its fix loop (gateHistory fail entry BEFORE re-dispatch, snapshot,
+author re-dispatch, delta re-verify, deadlock escalation, pass entry + `currentGate`
+reset). PLAN supplies these phase actions and deltas:
 
-**Single-critic adjudication (default mode):**
+- **`{user_intent_action}`** (finding depends on user intent, autonomous mode): adopt the
+  more reversible reading and record it to disk (`bash
+  "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" plan "<question>"
+  "<reading adopted>" "more reversible"`) AND in `## User decisions (already made)`
+  suffixed `(assumed)` (`skills/shared/autonomous-mode.md`).
+- **`{ungrounded_action}`** (`UNGROUNDED:` finding): append the probe result via `bash
+  "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add
+  "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, then
+  feed `EVID-NNN` + output excerpt into the planner re-dispatch so planner-1 cites it.
+- **Author re-dispatch:** `planner-1` reads the current PLAN.md, applies every fix-list
+  item in place, sends `PATTERNS.md and PLAN.md written\n\n<tasks JSON>` to lead, goes
+  idle. **Re-parse the `tasks[]` JSON from every revision message** before the delta
+  re-verify — Steps 4b/6 consume it.
 
-| Situation | Action |
-|-----------|--------|
-| `[major]` finding the lead agrees with | Add to fix-list. |
-| `[major]` finding the lead disputes | Do NOT drop it — ESCALATE to the full debate (Step 3, Escalated debate) with all gate-logs as prior summaries. The debate is the tiebreak; a solo gate may only bias stricter, never looser. |
-| `[minor]` finding | Lead's judgment: add to fix-list or drop. Every dropped `[minor]` is logged in the gate-log with a one-line reason — never silently. |
-| Finding depends on user intent | Escalate via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): no escalation — adopt the more reversible reading, record it to disk (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "{feature_dir}" plan "<question>" "<reading adopted>" "more reversible"`) AND in `## User decisions (already made)` suffixed `(assumed)` (`skills/shared/autonomous-mode.md`), and add it to the fix-list. |
-| Finding is an `UNGROUNDED:` line (ungrounded external claim) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it via `bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<output>"`, and feeds `EVID-NNN` + output excerpt into the planner re-dispatch so planner-1 cites it (or converts the claim to an ASSUMPTION if the probe is impossible). |
-
-**Escalated-debate reconciliation (when the debate ran):**
-
-| Situation | Action |
-|-----------|--------|
-| Challenger raises point advocate also flagged as risk | High-confidence. Add to fix-list. |
-| Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
-| Both agree | No action. |
-| Neither resolves (depends on user intent) | Same user-intent row as above. |
-| `UNGROUNDED:` line | Same probe row as above. |
-
-Build `fix_list` (may be empty).
-
-#### If fix_list non-empty:
-
-Gate retries are unbounded (full bore): re-run the fix/debate loop until the gate passes. The only bound the cycle respects is ITERATE's round limit.
-
-Append the fail entry to `feature.json.gateHistory` via `lib/feature-write.sh` BEFORE re-dispatching (the re-dispatch path returns to Step 3 and would never reach an append placed after the return):
-
-```json
-{
-  "phase": "plan",
-  "gate": "plan-critique",
-  "attempt": <attempt number>,
-  "result": "fail",
-  "advocateModel": "<model | null when the gate never escalated>",
-  "challengerModel": "<model>",
-  "rounds": <N (single-critic: 1 + delta rounds)>,
-  "convergence": "<single-critic | delta-verified | mutual-done | cap-reached | one-sided>",
-  "findingsAddressed": [<fix_list items>],
-  "notes": null
-}
-```
-
-Snapshot PLAN.md before sending the fix-list (feeds the delta re-verify diff):
-
-```bash
-cp docs/loop-spec/features/{slug}/PLAN.md .loop-spec/features/{slug}/gate-logs/PLAN.pre-revision.md
-```
-
-Re-dispatch planner-1 via `SendMessage` (not a fresh Agent call):
-```
-SendMessage({
-  to: "planner-1",
-  message: """
-    PLAN.md needs revisions. Fix-list:
-    {fix_list items, numbered}
-
-    Read the current PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.
-    Apply all items on the fix-list. Write the updated PLAN.md in place.
-    When done: SendMessage({to: "lead", message: "PATTERNS.md and PLAN.md written\n\n<tasks JSON>"})
-    then go idle.
-  """
-})
-```
-
-Wait for `TeammateIdle` from `planner-1`. When `PATTERNS.md and PLAN.md written` is received, parse the updated `tasks[]` JSON. Then run the **delta re-verify** — do NOT re-run the full gate protocol (`skills/shared/tier-matrix.md`, critique gate ladder):
-
-```bash
-diff -u .loop-spec/features/{slug}/gate-logs/PLAN.pre-revision.md \
-        docs/loop-spec/features/{slug}/PLAN.md > /tmp/plan-delta.diff || true
-```
-
-```
-SendMessage({
-  to: "challenger-1",
-  message: """
-    Delta re-verify (per your solo-critic brief). The fix-list below was applied to PLAN.md.
-    Confirm each item is addressed and check the CHANGED sections only for new issues.
-
-    Fix-list applied:
-    {fix_list items, numbered}
-
-    Diff:
-    {content of /tmp/plan-delta.diff}
-
-    Reply to lead with DELTA-VERIFIED or DELTA-FINDINGS, then go idle.
-  """
-})
-```
-
-Wait for `TeammateIdle` from `challenger-1`, append the reply to a new `gate-logs/plan-critique-round-{next}.md` (titled `(delta re-verify)`), and emit a `gate_round` event with `"mode":"delta"`:
-
-- **`DELTA-VERIFIED`**: the gate passes — append the `gateHistory` pass entry (convergence: `"delta-verified"`), reset `currentGate` (as in the fix_list-empty branch below), and proceed to Step 4b.
-- **`DELTA-FINDINGS`**: adjudicate the tagged findings per the Step 4 rules and start a new fix round (retries are unbounded — full bore). **Deadlock escalation:** if the same finding survives two consecutive delta rounds, escalate to the full debate (Step 3, Escalated debate) with all gate-logs as prior summaries.
-
-(When the escalated debate produced the fix-list, the delta re-verify above still applies — the debate does not re-run for a revision; only a deadlock or a new contested `[major]` re-enters it.)
-
-#### If fix_list empty:
-
-Append to `feature.json.gateHistory` via `lib/feature-write.sh`:
-```json
-{
-  "phase": "plan",
-  "gate": "plan-critique",
-  "attempt": <attempt number>,
-  "result": "pass",
-  "advocateModel": "<model | null when the gate never escalated>",
-  "challengerModel": "<model>",
-  "rounds": <N (single-critic: 1 + delta rounds)>,
-  "convergence": "<single-critic | delta-verified | mutual-done | cap-reached | one-sided>",
-  "findingsAddressed": [],
-  "notes": null
-}
-```
-
-Reset `currentGate` to zeroed state via `lib/feature-write.sh`:
-```json
-{
-  "currentGate": {
-    "phase": null,
-    "gate": null,
-    "round": 0,
-    "advocateName": null,
-    "challengerName": null,
-    "startedAt": null
-  }
-}
-```
-
-Proceed to Step 4b.
+On gate pass, proceed to Step 4b.
 
 ### Step 4b - Feasibility gate (ALWAYS runs, no agent dispatch)
 
@@ -653,7 +382,7 @@ If invoked with `currentPhase == "plan"` already in `feature.json`:
 1. Read `feature.json` to determine subphase state:
    - `artifacts.patterns` is null: PATTERNS.md not yet written; begin from Step 2 (spawn planner-1, which produces PATTERNS.md first).
    - `artifacts.patterns` is set but `artifacts.plan` is null: PATTERNS.md exists; begin from Step 2 (spawn planner-1, skip PATTERNS.md production since file exists).
-   - `artifacts.plan` is set and `currentGate.round > 0`: the gate was in progress. Gate-logs with only single-critic/delta rounds (no advocate entries): re-run from the single-critic findings pass with the existing gate-logs inlined as prior context. Advocate entries present (escalated debate): load prior round summaries from `gate-logs/plan-critique-round-*.md` and resume the debate.
+   - `artifacts.plan` is set and `currentGate.round > 0`: the gate was in progress — resume per `skills/shared/critique-gate-protocol.md` "Resume".
    - `artifacts.plan` is set and `currentGate.round == 0` and `currentGate.phase == null`: plan written and critique passed; run Step 4b feasibility gate.
 
 2. Live-team probe:
@@ -662,7 +391,7 @@ If invoked with `currentPhase == "plan"` already in `feature.json`:
      - Success (team live): print orphan-cleanup message with explicit team name; require manual `TeamDelete` before resume.
    - If `currentTeamName == null`: recreate team via `TeamCreate` and replay from subphase.
 
-3. On resume with a prior debate in progress: load all existing `gate-logs/plan-critique-round-*.md` content into the spawn prompts for `advocate-1` and `challenger-1` as `{prior_round_summaries}`, then restart the debate from round `currentGate.round + 1`.
+3. On resume with a prior debate in progress: per the protocol's "Resume" section.
 
 ## Workspace mode -- task-format rules
 
