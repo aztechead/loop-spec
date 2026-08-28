@@ -45,6 +45,12 @@ check_no_pattern "h: LOOP_SPEC_AUTONOMOUS=1 -> silent" 0 "additionalContext" CLA
 check_valid_json "i: LOOP_SPEC_AUTONOMOUS=1 -> valid JSON" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_AUTONOMOUS=1
 check_output "j: LOOP_SPEC_AUTONOMOUS=0 -> still injects" 0 "GRILL MODE ACTIVE" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_AUTONOMOUS=0
 
+# The injected directive must keep the tight skip list. Dropping "only" is how
+# models started treating every reasonably-clear request as a skip.
+check_output "k: skip list stays exclusive" 0 "already unambiguous (goal" CLAUDE_PROJECT_DIR="$LS"
+check_output "l: cycle without autonomous is not a skip" 0 "without that token is not a skip" CLAUDE_PROJECT_DIR="$LS"
+check_output "m: DISCUSS still grills after SPEC" 0 "DISCUSS still runs its design-shape grill" CLAUDE_PROJECT_DIR="$LS"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

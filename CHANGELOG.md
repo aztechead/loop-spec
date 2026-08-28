@@ -4,6 +4,38 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+
+- **Red-then-green TDD is required on every code-producing task.** Omitting a
+  TDD label in the plan does not exempt the implementer. Skill/config/docs
+  tasks stay excluded. Every implementer dispatch (named agent, team prompt,
+  subagent, loop-fleet, workflow, inline) names the force.
+
+- **`detect-test-cmd.sh` joins every matching language.** A Makefile `test:`
+  target, a justfile `test:` recipe, or a Taskfile task named `test` is the
+  exclusive project override. Otherwise the probe emits every matching family
+  command joined with ` && ` (bun, deno, .NET, Swift, Dart/Flutter, Scala,
+  Haskell, Zig, Julia, Crystal, OCaml, Elm, Nim, D, Perl, R, plus the
+  markers it already knew). CMake, Meson, and Bazel are fallbacks only when
+  no language marker matched. Cycle Step 4 cites the probe rather than a
+  one-language list.
+
+### Fixed
+
+- **Test-command detection does not stack build files onto language suites.**
+  `package.json` + `CMakeLists.txt` is `npm test`, not `npm test && ctest`.
+  Nested Taskfile keys named `test` are not a test task. Cycle rewrites a
+  polyglot command that contains `python -m pytest` after venv prepare.
+  `interactive` still pauses before every agent dispatch; it is not a
+  duplicate of `step`.
+
+- **DISCUSS grill restored for non-autonomous runs.** `execStyle: auto` is not
+  autonomous mode: auto still asks (5 Q-round cap); step/interactive stay
+  uncapped. The leftover "skip Step 1 when style is auto" example, the optional
+  "you may run" iterate wording, and the output-style "ask only when blocked"
+  exception had taught models to skip the design-shape loop after SPEC. Autonomous
+  mode (`autonomous` token / `LOOP_SPEC_AUTONOMOUS=1`) is unchanged.
+
 ## [4.5.0] - 2026-08-26
 
 Draft-PR completion is a first-class terminal result. `cycle-result.sh` classifies a

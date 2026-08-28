@@ -340,7 +340,7 @@ Atomic write pattern: write to `state.json.tmp`, fsync, rename. Keep last-good `
 2. Read docs/loop-spec/codebase/*.md if present (gives planner architecture context)
 3. Dispatch loop-spec-planner (model per tier)
    - Output: PLAN.md with task DAG (numbered, blockedBy, files, verify cmds, acceptance criteria, est scope, wave assignment)
-   - TDD ordering enforced for code tasks; non-code tasks excluded
+   - TDD ordering enforced for code tasks (red then green even if the plan omits the label); skill/config/docs excluded
 4. Planner writes tasks[] + waves[] into state.json
 5. GATE: Plan critique gate (advocate + challenger)
    - Challenger checks: task atomicity, missing deps, untestable acceptance criteria, file-overlap conflicts

@@ -19,6 +19,10 @@ OpenCode, Codex, and ADK have no output-style slot. On those harnesses this file
 the chat contract: name the phase, one thought per action, lead the close with the
 outcome, put the evidence trail in the durable artifact.
 
+Grill, SPEC interview, and DISCUSS clarifying questions are the work, not chatter.
+`style:auto` is not autonomous mode: auto still asks; only the `autonomous` token
+or `LOOP_SPEC_AUTONOMOUS=1` self-answers.
+
 This file remains the contract for durable reports on every harness (phase summaries,
 PR bodies, completion artifacts) and for the greppable `[PHASE]` lines `lib/events.sh`
 already prints. Chat phase lines do not replace those emits.

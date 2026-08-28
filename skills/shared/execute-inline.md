@@ -69,8 +69,8 @@ and `blocked[]`. Repeat until `remaining` is empty:
    `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" task_start --phase execute --data '{"index":<1-based DAG position>,"total":<total tasks>,"id":"<task id>","subject":"<task subject>"}' || true`
    — rendered as `[EXECUTE] task 2/5 start - task-002: <subject>`.
 3. **Execute the task yourself** under the implementer charter
-   (`agents/implementer.md`): read `readFirst`, TDD (failing test first where
-   the task admits one), touch only `files`, keep to the brief.
+   (`agents/implementer.md`): read `readFirst`, TDD (failing test first for every code-producing task; skill/config/docs excluded), touch only `files`, keep to
+   the brief.
 4. **Task verify:** run `lib/prepare-environment.sh` with `commands.prepare`, then the
    task's `verifyCommand`. A task-command failure remains uncommitted and may be fixed in
    place up to `maxRetriesPerTask` attempts.

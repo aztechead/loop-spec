@@ -4,7 +4,12 @@ Autonomous mode makes a run **question-free**: every point where loop-spec would
 normally call `AskUserQuestion`, the orchestrator instead takes the answer it
 would have recommended — the option grounded in the code graph, the codebase
 map, and general best practice — records it as an assumed decision, and
-proceeds. The preferred headless/SDK entry is `claude -p "/loop-spec:auto
+proceeds.
+
+`execStyle: auto` is not this mode. Auto is the default execution style: the
+cycle does not pause between phases, but a human is attached and grill, SPEC,
+and DISCUSS questions still fire. This file is about the `autonomous` token
+and `LOOP_SPEC_AUTONOMOUS=1`. The preferred headless/SDK entry is `claude -p "/loop-spec:auto
 <description>"`: the auto skill performs a grounded semantic decision and validates
 it through `lib/task-route.sh` before delegating to micro, debug, or the full cycle.
 An explicit `claude -p "/loop-spec:cycle autonomous <description>"` still means the
@@ -188,9 +193,9 @@ an edited spec file.
 | cycle Step 1 resume choice | AskUserQuestion | resume the most recently updated resumable feature; if none, new feature |
 | cycle Step 3 bare invocation | free-text question | abort with usage guidance (no goal to infer) |
 | cycle Step 4 command confirmation | AskUserQuestion | trust detection (or `LOOP_SPEC_CMD_*`); record |
-| SPEC interview (all rounds + gate prompts) | AskUserQuestion loop | self-answered interview, all six perspectives in ONE pass with a single end-of-pass scoring — see `skills/spec/SKILL.md` "Autonomous mode" |
-| DISCUSS phase shape | clarifying loop + spec-writer + critique gate | **collapsed** (`skills/discuss/SKILL.md`, Autonomous fast path): no clarifying loop (the SPEC self-interview covered it), no spec-writer (SPEC.md is the draft; the lead applies revisions directly) — only the critique gate dispatches a teammate |
-| DISCUSS unresolved dimensions / "depends on user intent" rows | AskUserQuestion in `step`/`interactive` | graph-grounded assumption, recorded (already the `auto` path; the intent row picks the more reversible reading and records it) — applied by the lead directly under the fast path |
+| SPEC interview (all rounds + gate prompts) | AskUserQuestion loop (`auto` included) | self-answered interview, all six perspectives in ONE pass with a single end-of-pass scoring — see `skills/spec/SKILL.md` "Autonomous mode" |
+| DISCUSS phase shape | clarifying loop + spec-writer + critique gate (`auto`: cap 5 Q rounds; `step`/`interactive`: no cap) | **collapsed** (`skills/discuss/SKILL.md`, Autonomous fast path): no clarifying loop (the SPEC self-interview covered it), no spec-writer (SPEC.md is the draft; the lead applies revisions directly) — only the critique gate dispatches a teammate |
+| DISCUSS unresolved dimensions / "depends on user intent" rows | AskUserQuestion in `auto`/`step`/`interactive` | graph-grounded assumption, recorded (the intent row picks the more reversible reading and records it) — applied by the lead directly under the fast path |
 | DISCUSS / PLAN teammate-idle | AskUserQuestion | one fresh re-dispatch, then the lead authors the artifact itself (continuation ladder rung 2). DISCUSS's fast path has no spec-writer, so this applies to its critique teammates and to PLAN's roster |
 | ITERATE spec-rewind approval (`step`/`interactive` only) | AskUserQuestion | moot — style is forced to `auto`, which already auto-approves |
 | ITERATE limit spent | ship-with-warnings, human drains backlog later | confirmation pass → accepted gaps become BACKLOG entries → chain into backlog drain (ladder rungs 4-5) |

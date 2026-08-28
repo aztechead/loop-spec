@@ -8,7 +8,7 @@ argument-hint: "[on|off|status]"
 
 Invoked as `/loop-spec:grill <subcommand>`.
 
-Grill mode is **ON by default**. Right after the user's opening request, the assistant runs one short "grill" pass — 2-4 sharp clarifying questions (structured multiple-choice where the answers are discernible) — to collapse the highest-leverage ambiguities before writing code, planning, or committing to an approach. Inside the loop-spec cycle, the SPEC phase Socratic interview is the in-cycle realization of this behavior.
+Grill mode is **ON by default**. Right after the user's opening request, the assistant runs one short "grill" pass — 2-4 sharp clarifying questions (structured multiple-choice where the answers are discernible) — to collapse the highest-leverage ambiguities before writing code, planning, or committing to an approach. Inside the loop-spec cycle, the SPEC phase Socratic interview continues that grill, and DISCUSS still runs its design-shape clarifying loop unless the run is autonomous. `execStyle: auto` is not autonomous mode.
 
 This skill only flips the persistent state; the directive itself is injected at session start by `hooks/team/grill-inject.sh`.
 

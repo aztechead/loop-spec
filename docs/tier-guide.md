@@ -27,10 +27,10 @@ control (fast-path + DAG-width ladder) replaces intent-based tiering.
 
 | Style | Behavior |
 |---|---|
-| `auto` (default) | Runs the full cycle hands-off; pauses only on iteration-limit exhaustion or hard escalation. |
-| `step` | Stops after every phase; you re-invoke to continue. |
-| `interactive` | Like step, plus interactive clarifying loops in SPEC/DISCUSS. |
-| `review-only` | Autonomous, but critique-gate findings pause for your review. |
+| `auto` (default) | Runs the full cycle without pausing between phases. SPEC and DISCUSS still grill a human (DISCUSS caps at 5 Q rounds). Pauses only on iteration-limit exhaustion or hard escalation. Not autonomous mode. |
+| `step` | Stops after every phase; you re-invoke to continue. SPEC/DISCUSS clarifying loops have no round cap. |
+| `interactive` | Like step, and also pauses before every agent dispatch. SPEC/DISCUSS clarifying loops have no round cap. |
+| `review-only` | No SPEC/DISCUSS clarifying loop; critique-gate findings pause for your review. |
 
 Override inline anywhere in the prompt: `style:step`. Never asked via menu.
 
