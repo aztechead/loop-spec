@@ -205,6 +205,17 @@ else
   echo "FAIL: human-docs is not in extension-points.sh PROTECTED_IDS"; FAIL=$((FAIL+1))
 fi
 
+# Always-loaded cycle/execute bodies stay under the skill-authoring budget.
+for f in skills/cycle/SKILL.md skills/execute/SKILL.md; do
+  n=$(wc -l < "$f")
+  if [[ "$n" -lt 500 ]]; then
+    echo "PASS: $f is under 500 lines ($n)"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f is $n lines; extract into references/ so the body stays under 500"
+    FAIL=$((FAIL+1))
+  fi
+done
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1
 echo "PASS: docs-for-humans directive present in every document-producing path"

@@ -88,5 +88,60 @@ got="absent"
 [[ -e "$WORK/d/.loop-spec/features/demo/feature.json" ]] && got="written"
 check "D: nothing written on usage error" "absent" "$got"
 
+prepare_repo() {
+  local dir="$1"; shift
+  bash "$LIB" prepare-repo \
+    --root "$dir" --result-root "$dir" \
+    --slug demo --title "Demo feature" \
+    --branch feat/demo --base-branch main --base-sha "$(git -C "$dir" rev-parse HEAD)" \
+    --autonomous 0 --greenfield 0 \
+    --prepare "" --test "true" --lint "" --typecheck "" "$@"
+}
+
+# Case E: prepare-repo prints JSON and does not write feature.json.
+make_repo "$WORK/e"
+out=$(prepare_repo "$WORK/e" 2>/dev/null)
+rc=$?
+check "E: exit 0" "0" "$rc"
+check "E: JSON test echoed" "true" "$(jq -r '.test' <<<"$out")"
+check "E: JSON baseline null when opt-in is off" "null" \
+  "$(jq -r '.baseline' <<<"$out")"
+got="absent"
+[[ -e "$WORK/e/.loop-spec/features/demo/feature.json" ]] && got="written"
+check "E: prepare-repo does not write feature.json" "absent" "$got"
+
+# Case F: opt-in baseline capture is a JSON object, not null.
+make_repo "$WORK/f"
+out=$(LOOP_SPEC_STARTUP_BASELINE=1 prepare_repo "$WORK/f" 2>/dev/null)
+check "F: baseline captured" "object" "$(jq -r '.baseline | type' <<<"$out")"
+
+# Case G: prepare failure writes a terminal result (workspace-mode contract).
+make_repo "$WORK/g"
+rc=0
+prepare_repo "$WORK/g" --prepare "false" --repo-label frontend >/dev/null 2>&1 || rc=$?
+check "G: prepare failure exit 1" "1" "$rc"
+check "G: last-result.json written" "failed" \
+  "$(jq -r '.status' "$WORK/g/.loop-spec/last-result.json" 2>/dev/null || echo MISSING)"
+check "G: repo-label prefixes the reason" "frontend:" \
+  "$(jq -r '.reason' "$WORK/g/.loop-spec/last-result.json" 2>/dev/null | grep -o '^frontend:' || echo MISSING)"
+
+# Case H: generic python -m pytest is rewritten even as a polyglot conjunct.
+make_repo "$WORK/h"
+printf '[project]\nname="demo"\nversion="0"\n' > "$WORK/h/pyproject.toml"
+git -C "$WORK/h" add pyproject.toml
+git -C "$WORK/h" commit -qm py
+want=$(bash "$ROOT/lib/detect-test-cmd.sh" "$WORK/h")
+out=$(prepare_repo "$WORK/h" --test "python -m pytest && go test ./..." 2>/dev/null)
+check "H: pytest conjunct is rewritten" "$want" "$(jq -r '.test' <<<"$out")"
+
+# Case I: unknown command and missing --root are usage errors.
+rc=0
+bash "$LIB" nosuch >/dev/null 2>&1 || rc=$?
+check "I: unknown command exit 2" "2" "$rc"
+rc=0
+bash "$LIB" prepare-repo --slug demo --title T --branch b \
+  --base-branch main --base-sha abc --result-root "$WORK" >/dev/null 2>&1 || rc=$?
+check "I: prepare-repo missing --root exit 2" "2" "$rc"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

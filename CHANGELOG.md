@@ -18,16 +18,22 @@ All notable changes documented here. Format follows Keep a Changelog.
 - **`skills/shared/critique-gate-protocol.md`** — the shared critique/adjudication
   procedure DISCUSS and PLAN previously each restated; each skill now states only its
   deltas.
-- **`skills/cycle/references/`** (`feature-init.md`, `phase-loop.md`, `completion.md`),
-  **`skills/execute/references/workspace-mode.md`**, and
+- **`skills/cycle/references/`** (`feature-init.md`, `phase-loop.md`, `completion.md`,
+  `startup-health.md`, `phase-activate.md`),
+  **`skills/execute/references/`** (`workspace-mode.md`, `conflicts.md`,
+  `rung-workflow-foreign.md`), and
   **`skills/spec/references/interview-prompts.md`** — heavy procedure extracted from
   always-loaded skill bodies into on-demand references
-  (`skills/cycle/SKILL.md` 1327 → 797 lines; `skills/spec/SKILL.md` 426 → 344).
+  (`skills/cycle/SKILL.md` 1327 → 498 lines; `skills/execute/SKILL.md` 791 → 446;
+  `skills/spec/SKILL.md` 426 → 344). Pinned under 500 lines by
+  `tests/human-docs-coverage.test.sh`.
 
 - **`lib/feature-bootstrap.sh`** — the deterministic tail of cycle Step 5 (environment
   prep, opt-in baseline, feature.json skeleton write) now runs as one script whose
   source never enters context; `skills/cycle/references/feature-init.md` keeps only the
-  judgment half (PR adoption, execution root, `EnterWorktree`). Unit suite:
+  judgment half (PR adoption, execution root, `EnterWorktree`). `prepare-repo` is the
+  per-repo half workspace Step 5 calls (same prepare, pytest upgrade, opt-in baseline,
+  and `write-terminal` on failure as single-repo `finalize`). Unit suite:
   `tests/lib/feature-bootstrap.test.sh`.
 
 ### Changed
@@ -41,9 +47,12 @@ All notable changes documented here. Format follows Keep a Changelog.
   for the finding taxonomy instead of restating it; `team-prompts/reviewer.md` cites the
   spec-compliance-reviewer charter (already in the teammate's context via
   `subagent_type`) for the review procedure and keeps only the task-metadata mapping.
-  The implementer engineering stanzas stay verbatim in both files by design — they are
-  pinned dispatch surfaces; the advocate pair shares no real text (one-shot critique vs
-  debate rounds).
+  The implementer team prompt keeps loop mechanics and a compact charter-cite +
+  path-delta stanza (`${CLAUDE_SKILL_DIR}/../../lib/` rather than `{probe_dir}`) so dual
+  pins still fire without restating the charter; the advocate pair shares no real text
+  (one-shot critique vs debate rounds). The challenger charter keeps the exact
+  `UNGROUNDED:` emit line so a one-shot `Agent({subagent_type: loop-spec:challenger})`
+  has the format without loading the team prompt.
 - **Conciseness pass across the shipped markdown** (`docs/loop-spec/conciseness-plan-2026-08.md`):
   the two EXECUTE implementer prompt templates share one contract stanza; VERIFY's
   remediation teardown is one named sub-procedure; ITERATE/DELIVER cite their shared

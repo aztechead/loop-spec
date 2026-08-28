@@ -3,8 +3,8 @@
 Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stubs point here. Apply as written.
 
 Contents: Step 5 variant — workspace state init (phase 1 pre-flight, phase 2 branch +
-state creation, workspace `feature.json` skeleton) and the workspace-mode deltas the
-later steps consume.
+per-repo `feature-bootstrap.sh prepare-repo`, workspace `feature.json` skeleton) and
+the workspace-mode deltas the later steps consume.
 
 ## Step 5 variant -- workspace state init
 
@@ -75,40 +75,36 @@ done
 
 Prepare every repository now, while each feature branch `HEAD` is still its exact
 untouched base and before the workspace state directories exist. Setup must leave each
-repository clean. A failure aborts initialization; never record setup failure as a known
-test failure. Repository-wide validation runs at the end of the cycle, not here; the
-per-repo baseline capture is opt-in under the same `LOOP_SPEC_STARTUP_BASELINE=1` gate as
-single-repo mode, and each `repo_baseline_json` entry stays `null` when it is off.
+repository clean. A failure aborts initialization and writes a terminal cycle result
+(never record setup failure as a known test failure). Use the same
+`lib/feature-bootstrap.sh prepare-repo` path as single-repo `finalize`: environment
+preparation, the python-runner test-command upgrade, and the opt-in startup baseline
+(`LOOP_SPEC_STARTUP_BASELINE=1`; default off — each `repo_baseline_json` entry stays
+`null` when it is off). `--result-root` is the workspace root.
 
 ```bash
 declare -A repo_prepare_key repo_baseline_json
 for repo_entry in $(echo "$workspace_repos_json" | jq -c '.[]'); do
   rname="$(echo "$repo_entry" | jq -r '.name')"
   rpath="${workspace_root}/$(echo "$repo_entry" | jq -r '.path')"
-  prepare_rc=0
-  prepare_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run \
-    --root "$rpath" --command "${repo_cmds_prepare[$rname]:-}")" || prepare_rc=$?
-  [[ "$prepare_rc" -eq 0 ]] || {
-    echo "loop-spec: environment preparation failed for $rname (exit $prepare_rc)." >&2
+  prep_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-bootstrap.sh" prepare-repo \
+    --root "$rpath" --result-root "$workspace_root" \
+    --slug "$slug" --title "$title" \
+    --branch "feat/${slug}" --base-branch "${repo_base_branch[$rname]}" \
+    --base-sha "${repo_base_sha[$rname]}" \
+    --prepare "${repo_cmds_prepare[$rname]:-}" \
+    --test "${repo_cmds_test[$rname]:-}" \
+    --lint "${repo_cmds_lint[$rname]:-}" \
+    --typecheck "${repo_cmds_typecheck[$rname]:-}" \
+    --autonomous "${autonomous:-0}" --greenfield "${greenfield:-0}" \
+    --repo-label "$rname")" || {
+    echo "loop-spec: feature bootstrap failed for $rname; a terminal cycle result was written (see stderr above)." >&2
     exit 1
   }
-  repo_cmds_prepare["$rname"]="$(jq -r '.command // ""' <<<"$prepare_json")"
-  repo_prepare_key["$rname"]="$(jq -r '.key // ""' <<<"$prepare_json")"
-  repo_baseline_json["$rname"]=null
-  [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" ]] || continue
-  baseline_path="$(git -C "$rpath" rev-parse --git-path "loop-spec/validation/${slug}/base")"
-  [[ "$baseline_path" == /* ]] || baseline_path="$rpath/$baseline_path"
-  mkdir -p "$baseline_path"
-  baseline_rc=0
-  repo_baseline_json["$rname"]="$(bash "${CLAUDE_SKILL_DIR}/../../lib/verification-baseline.sh" capture \
-    --root "$rpath" --base-sha "${repo_base_sha[$rname]}" \
-    --prepare-key "${repo_prepare_key[$rname]}" --log-dir "$baseline_path" \
-    --test "${repo_cmds_test[$rname]:-}" --lint "${repo_cmds_lint[$rname]:-}" \
-    --typecheck "${repo_cmds_typecheck[$rname]:-}")" || baseline_rc=$?
-  [[ "$baseline_rc" -eq 0 ]] || {
-    echo "loop-spec: exact-base validation baseline failed for $rname (exit $baseline_rc)." >&2
-    exit 1
-  }
+  repo_cmds_prepare["$rname"]="$(jq -r '.command // ""' <<<"$prep_json")"
+  repo_cmds_test["$rname"]="$(jq -r '.test // ""' <<<"$prep_json")"
+  repo_prepare_key["$rname"]="$(jq -r '.key // ""' <<<"$prep_json")"
+  repo_baseline_json["$rname"]="$(jq -c '.baseline' <<<"$prep_json")"
 done
 ```
 

@@ -29,8 +29,8 @@ checks=(
 
   # B3 -- extension points
   "skills/verify/SKILL.md	extension-points\.sh.? layers verify	VERIFY must offer the project its review layers"
-  "skills/cycle/SKILL.md	extension-points\.sh.? instructions	the cycle must load per-phase instructions"
-  "skills/cycle/SKILL.md	extension-points\.sh.? facts	the cycle must load standing facts"
+  "skills/cycle/references/phase-activate.md	extension-points\.sh.? instructions	the cycle must load per-phase instructions"
+  "skills/cycle/references/phase-activate.md	extension-points\.sh.? facts	the cycle must load standing facts"
 
   # B4 -- map audit
   "skills/map-codebase/SKILL.md	map-audit\.sh	the map skill must be able to measure its own output"

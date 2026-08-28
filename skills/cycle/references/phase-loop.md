@@ -1,10 +1,10 @@
 # Phase loop — reacting to a phase skill's return (cycle Step 6, items 2-3)
 
 Read when the cycle reaches Step 6 and a phase skill has just returned (or is about
-to be re-invoked in the same session). The skill body keeps item 1 (activate the
-model map, `cycle-result.sh begin`, extension points, `Skill(...)` dispatch); this
-file owns everything between that return and the next dispatch. Item numbering
-continues from the skill body.
+to be re-invoked in the same session). Item 1 (activate the model map,
+`cycle-result.sh begin`, extension points, `Skill(...)` dispatch) lives in
+`references/phase-activate.md`; this file owns everything between that return and
+the next dispatch. Item numbering continues from the skill body.
 
 Contents: item 2 — re-load feature.json, declined-SPEC terminal, phase watchdog,
 PROGRESS.md journaling, state commit, autonomous remote checkpoint · item 3 — route to

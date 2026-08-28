@@ -28,10 +28,11 @@ Critique this artifact. Find real engineering flaws. Do not nitpick formatting.
 ## Output
 
 Top 5-7 most impactful issues. The base finding taxonomy — Gap, Ambiguity, Flawed
-assumption, Missing criterion, Ungrounded claim (each `UNGROUNDED:` finding on its own
-line with a read-only probe, `[major]` until resolved) — is defined once in
+assumption, Missing criterion, Ungrounded claim — is defined once in
 `skills/shared/team-prompts/critic.md`; apply it as written rather than from memory.
-Beyond the taxonomy, also check:
+Emit each Ungrounded-claim finding as its own line in exactly this format:
+`UNGROUNDED: "<verbatim quote from the artifact>" — probe: <suggested read-only command>`
+(`[major]` until the lead's probe resolves it). Beyond the taxonomy, also check:
 
 - **Better alternatives**: where a different approach would be materially superior
 - **Designed into a corner (the corner test)**: name the most likely next change to this design (a new param, a new case, a new caller, a scale step) and check whether the design absorbs it as a local diff. If that change would ripple through many files or force a redesign, that is a finding: say which boundary is missing or misplaced. Do NOT demand speculative artifacts as the fix — a seam (a clean boundary, an injected dependency) suffices; built-out speculation is itself a finding.

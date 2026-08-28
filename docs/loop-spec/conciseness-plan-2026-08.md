@@ -49,6 +49,9 @@ Rules that bind every stage:
 | 9 | Extract judgment-free Step 5 bash into `lib/feature-bootstrap.sh` | done |
 | 10 | Contents lines on reference files over 100 lines | done |
 | 11 | Dedupe agent charters against team prompts | done |
+| 12 | `prepare-repo` + cycle Step 5 stub + restore challenger `UNGROUNDED:` format | done |
+| 13 | Cycle/execute SKILL bodies under 500 lines | done |
+| 14 | Compact implementer team-prompt engineering stanza (charter cite + path delta) | done |
 
 ## Findings the stages rest on
 
@@ -301,9 +304,14 @@ text is paid twice per dispatch.
   taxonomy instead of restating Gap/Ambiguity/Flawed-assumption/UNGROUNDED.
 - `skills/shared/team-prompts/reviewer.md` cites `agents/spec-compliance-reviewer.md`
   (already in context) for the review procedure and keeps only the task-metadata mapping.
-- SKIPPED: implementer engineering stanzas — dual dispatch surfaces, pinned verbatim
-  by design (rule 5). The team prompt now names the charter as binding for those
-  principles so a future edit has one place to look.
+- The one-shot challenger charter still emits
+  `UNGROUNDED: "<verbatim quote from the artifact>" — probe: ...` so a no-teams
+  `Agent({subagent_type: loop-spec:challenger})` has the format without the team prompt
+  (stage 11's cite-only taxonomy was not enough for that path).
+- Implementer engineering stanzas: the team prompt cites `agents/implementer.md` and
+  keeps the dual-pin needles plus the `${CLAUDE_SKILL_DIR}/../../lib/` path delta
+  (stage 14). Dual dispatch surfaces still carry the phrases; they are no longer
+  two full copies of the charter.
 - SKIPPED: advocate pair — one-shot parallel critique vs. debate-round protocol share
   no real text; a "canonical + deltas" file would be a new surface with nothing to own.
 

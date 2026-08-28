@@ -162,7 +162,8 @@ preparation (foreground watchdog; leaves HEAD and the worktree unchanged), the
 python-runner test-command upgrade, the opt-in startup baseline
 (`LOOP_SPEC_STARTUP_BASELINE=1` — default off; see the script header), the schema-7
 `feature.json` skeleton write via `lib/feature-init.sh`, the cycle-result `begin`
-marker, the autonomous/greenfield flags, and the staged-decisions migration. On a
+marker, the autonomous/greenfield flags, and the staged-decisions migration. Workspace
+mode calls the same prepare/baseline half per repo (`prepare-repo`). On a
 preparation or baseline failure the script has already written a terminal cycle
 result — surface its stderr and stop.
 

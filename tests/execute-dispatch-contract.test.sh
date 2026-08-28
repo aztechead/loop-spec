@@ -58,14 +58,14 @@ count_ge "both implementer prompts insert the shared stanza" \
 
 expect "execute SKILL reads executeMaxRetriesPerTask from the overlay" \
   skills/execute/SKILL.md 'get executeMaxRetriesPerTask 6'
-expect "execute SKILL passes the effective cap into Workflow" \
-  skills/execute/SKILL.md 'maxRetriesPerTask: maxRetriesPerTask,'
 expect "execute SKILL emits conflict table" \
-  skills/execute/SKILL.md 'plan-conflicts.sh" table'
+  skills/execute/references/conflicts.md 'plan-conflicts.sh" table'
 expect "execute SKILL classifies stop vs ruling" \
-  skills/execute/SKILL.md 'execute-stop.sh" classify'
+  skills/execute/references/conflicts.md 'execute-stop.sh" classify'
 expect "execute SKILL collapses batch groups" \
-  skills/execute/SKILL.md 'task-batch.sh" collapse'
+  skills/execute/references/conflicts.md 'task-batch.sh" collapse'
+expect "execute workflow path passes the overlay retry cap" \
+  skills/execute/references/rung-workflow-foreign.md 'maxRetriesPerTask: maxRetriesPerTask,'
 expect "tier-matrix retries is 6" \
   skills/shared/tier-matrix.md 'execute.maxRetriesPerTask \| 6'
 
