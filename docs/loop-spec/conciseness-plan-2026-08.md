@@ -43,7 +43,7 @@ Rules that bind every stage:
 | 3 | CYCLE: extract init/phase-loop/completion references, cite shared contracts, fix fences | done |
 | 4 | EXECUTE/VERIFY: prompt-stanza collapse, loops shrink, remediation factor (execute-core skipped per YAGNI) | done |
 | 5 | SPEC/ITERATE/DELIVER + feature-state/grounding trims | done |
-| 6 | Aux skill fold-ins (simplicity, human-code, gates, walkthrough, micro/discipline) | pending |
+| 6 | Aux skill fold-ins (simplicity, human-code, gates, walkthrough, micro/discipline) | done |
 | 7 | Cross-cutting: harness adapters, harness-call-contracts, style docs | pending |
 
 ## Findings the stages rest on
@@ -232,14 +232,18 @@ shared.
   `skills/shared/laziness-ladder.md`. Inject already points at shared.
 - `skills/human-code/SKILL.md`: principles + probe re-documentation deleted; stub cites
   `skills/shared/human-code.md` / `human-docs.md`; probe subcommand stays.
-- `skills/checking-gates/SKILL.md` + `skills/specifying-gates/SKILL.md`: bodies merge
-  into new `skills/shared/user-gates.md`; EXECUTE cites it; both skills stub (hook
-  `Skill(...)` names keep resolving).
-- `skills/walkthrough/SKILL.md`: procedure moves to a VERIFY-citable shared/reference
-  home; stub remains for ad-hoc use (bmad pins move with the text).
-- `skills/micro/SKILL.md` + `skills/discipline/SKILL.md`: dedupe against their injects —
-  protocol/gate text lives in one place, the other cites it. micro remains a standalone
-  protocol (not folded into EXECUTE).
+- `skills/checking-gates/SKILL.md` + `skills/specifying-gates/SKILL.md`: SKIPPED the
+  `user-gates.md` merge (YAGNI) — both bodies are unique procedure with no shared-contract
+  overlap, and skills load only on invocation, so a merged file would make each invocation
+  carry both flows. Landed instead: EXECUTE Step 4 now names the `userGate` →
+  `checking-gates` routing it previously never mentioned.
+- `skills/walkthrough/SKILL.md`: SKIPPED the move (YAGNI) — VERIFY already cites the
+  skill file directly; relocating 121 lines of unique procedure gains nothing.
+- `skills/micro/SKILL.md`: SKIPPED the dedupe — the inject is a deliberately compressed
+  ambient copy (SessionStart text cannot cite), the skill is the full protocol, and six
+  coverage suites pin its body.
+- `skills/discipline/SKILL.md`: gate text now lives only in
+  `hooks/team/discipline-inject.sh`; the skill cites it.
 - Leave alone (compress only if trivial): auto, debug, intake, loop-runner,
   map-codebase, assess, forensics, revise, sentinel, quality-loop, rollback, onboard,
   pause, retro, status, watch, grill, rules.

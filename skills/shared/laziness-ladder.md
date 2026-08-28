@@ -5,15 +5,15 @@ phase dispatch** must carry, so the discipline is applied *every time* — not o
 main thread (where `hooks/team/simplicity-inject.sh` injects it at SessionStart) but inside
 each dispatched implementer/planner/reviewer, which a SessionStart hook does NOT reach.
 
-Relevant phases (per `skills/simplicity/SKILL.md` "Relationship to the cycle"):
+Relevant phases:
 - **PLAN / planner** — `agents/planner.md` (ladder baked in; shapes tasks).
 - **EXECUTE / implementer** — every rung: team (`agents/implementer.md`,
   `skills/shared/team-prompts/implementer.md`), subagent (`skills/shared/execute-subagent.md`),
   loop-fleet (`lib/plan-to-loop.sh`), workflow (`lib/workflows/execute-dag.js`).
 - **VERIFY / code-reviewer** — `agents/code-reviewer.md` over-engineering pass.
 
-The directive realizes `skills/simplicity/SKILL.md`; that skill is the full reference. Dispatch
-names this file rather than pasting it. The session-level copy lives in
+This file is the full reference; `skills/simplicity/SKILL.md` is the on/off/level toggle.
+Dispatch names this file rather than pasting it. The session-level copy lives in
 `hooks/team/simplicity-inject.sh`.
 
 ## Compact directive (read this file; do not paste it into a prompt)

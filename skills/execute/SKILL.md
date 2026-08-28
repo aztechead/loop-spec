@@ -591,6 +591,11 @@ After validation passes, call `TaskCreate` once per task that is not already in
 `mergedSet`. Already-published ids stay out of the harness task list; sidecar
 `status=done` satisfies plan-adherence for those ids.
 
+A task carrying `userGate: true` (or the `user-gate` tag) is closed through
+`Skill(loop-spec:checking-gates)` when the opt-in revalidation hooks are active — the
+gate's evidence contract (`AC:` / `PROVEN BY`) and the `specifying-gates` handoff live in
+those two skills, not here.
+
 Call `TaskCreate` once per remaining task:
 
 ```
