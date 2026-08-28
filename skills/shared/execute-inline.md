@@ -71,7 +71,8 @@ and `blocked[]`. Repeat until `remaining` is empty:
 3. **Execute the task yourself** under the implementer charter
    (`agents/implementer.md`) and the design gate (`skills/shared/implementer-contract.md`
    — before implementing and again before DONE: can I make it more modular? more
-   extensible? is this the least amount of code that makes it happen?): read `readFirst`,
+   extensible? is this the least amount of code that makes it happen? does this hold at
+   production scale?): read `readFirst`,
    TDD (failing test first for every code-producing task; skill/config/docs excluded),
    touch only `files`, keep to the brief.
 4. **Task verify:** run `lib/prepare-environment.sh` with `commands.prepare`, then the

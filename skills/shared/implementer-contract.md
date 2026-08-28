@@ -1,4 +1,4 @@
-# Implementer contract (three questions) — canonical prompt directive
+# Implementer contract (four questions) — canonical prompt directive
 
 Single source of truth for the design gate that every **code-producing dispatch** carries,
 and the index of the engineering directives that travel with it. Enforced by
@@ -15,7 +15,7 @@ contract. This file is the one place the assembly is defined, so a new rung or c
 copies from here instead of from whichever prompt it happened to open, and the inline rung
 (lead as implementer) binds it by cite.
 
-## The three questions (design gate — on by default)
+## The four questions (design gate — on by default)
 
 Before implementing, and again before DONE, ask of the change:
 
@@ -26,16 +26,22 @@ Before implementing, and again before DONE, ask of the change:
 3. **Is this the least amount of code that makes it happen?** Climb the ladder — YAGNI,
    then DRY: reuse what is already here before writing anything new
    (`skills/shared/laziness-ladder.md`).
+4. **Does this hold at production scale?** The fixture is small; the deployed input is
+   not. Name the input whose size or rate the deployment controls (rows, files, events,
+   concurrent callers) and keep memory and work bounded against it. A path that
+   materializes or accumulates the whole input when the consumer needs a piece at a time
+   survives the test and dies in production — that is not done.
 
 A "yes, but not doing it" is fine when the rung says skip — say so in one line in the
 report. A question never asked is the failure mode.
 
 ## Canonical compact directive (inline this verbatim into dispatch prompts)
 
-> THREE QUESTIONS (design gate — on by default). Before implementing and again before
+> FOUR QUESTIONS (design gate — on by default). Before implementing and again before
 > DONE, ask of the change: can I make it more modular? can I make it more extensible? is
-> this the least amount of code that makes it happen? Full contract:
-> `skills/shared/implementer-contract.md`.
+> this the least amount of code that makes it happen? does this hold at production scale
+> (memory and work bounded against deployment-sized input, not the fixture)? Full
+> contract: `skills/shared/implementer-contract.md`.
 
 ## The directives that travel with it
 

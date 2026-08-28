@@ -97,6 +97,9 @@ Full audit detail lives in the PR discussion; the load-bearing facts:
 ## Stages
 
 ### Stage 1 — implementer contract, every rung, three questions
+(amended mid-work: the gate grew a fourth question — "does this hold at production
+scale?" — on user request; the challenger and code-reviewer gained a matching scale
+lens, pinned by `tests/implementer-contract-coverage.test.sh`)
 
 New file `skills/shared/implementer-contract.md` (~450–550w): the engineering contract
 every code-producing dispatch carries. Headline framing is the maintainer's three

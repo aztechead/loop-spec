@@ -291,9 +291,10 @@ templates cannot drift.
 ```
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
 
-THREE QUESTIONS (design gate — on by default). Before implementing and again before DONE,
+FOUR QUESTIONS (design gate — on by default). Before implementing and again before DONE,
 ask of the change: can I make it more modular? can I make it more extensible? is this the
-least amount of code that makes it happen? Full contract:
+least amount of code that makes it happen? does this hold at production scale (memory and
+work bounded against deployment-sized input, not the fixture)? Full contract:
 `${CLAUDE_SKILL_DIR}/../../skills/shared/implementer-contract.md`.
 
 SIMPLICITY (ponytail laziness ladder — on by default). Read

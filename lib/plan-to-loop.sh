@@ -122,10 +122,12 @@ for t in tasks:
     # Design gate (canonical: skills/shared/implementer-contract.md). A SessionStart
     # hook does not reach this loop-runner worker, so the prompt names the contract and the
     # probes rather than pasting the essay.
-    three_questions = (
-        'THREE QUESTIONS (design gate — on by default). Before implementing and again '
+    four_questions = (
+        'FOUR QUESTIONS (design gate — on by default). Before implementing and again '
         'before DONE, ask of the change: can I make it more modular? can I make it more '
-        'extensible? is this the least amount of code that makes it happen? Full contract: '
+        'extensible? is this the least amount of code that makes it happen? does this '
+        'hold at production scale (memory and work bounded against deployment-sized '
+        'input, not the fixture)? Full contract: '
         f'{lib_dir}/../skills/shared/implementer-contract.md.'
     )
 
@@ -198,7 +200,7 @@ for t in tasks:
         'future-work notes; a criterion you cannot meet is a loud failure with evidence, '
         'never a note.'
     )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', three_questions, '', ladder, '', design, '', human, '', docs, '', tests_catalog, '', no_nested, '', discipline, '', f'TASK {raw}: {brief}', '']
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', four_questions, '', ladder, '', design, '', human, '', docs, '', tests_catalog, '', no_nested, '', discipline, '', f'TASK {raw}: {brief}', '']
     if global_constraints:
         lines.append('Global constraints (from the plan, verbatim; every one binds):')
         lines += [f'{c}' for c in global_constraints]

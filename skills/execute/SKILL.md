@@ -274,8 +274,8 @@ opt-in.
 
 Whichever rung is selected, every code-producing dispatch carries the design gate from
 `skills/shared/implementer-contract.md` (can it be more modular? more extensible? is this
-the least amount of code that makes it happen?) — the rung templates and compilers embed
-it; the inline rung binds it by cite.
+the least amount of code that makes it happen? does this hold at production scale?) — the
+rung templates and compilers embed it; the inline rung binds it by cite.
 
 **Dispatch telemetry (`skills/shared/dispatch-events.md`):** whichever rung is selected, emit one `dispatch` event per implementer/reviewer/worker launched — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<role>","model":"<resolved selector>","rung":"<team|subagent|loop-fleet|workflow>"}' || true`. Loop-fleet: one event per compiled task at fleet launch; worker iterations are not separate dispatches. `SendMessage` rework does not re-emit.
 

@@ -60,6 +60,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
    - `corner:` a change pattern the diff makes expensive — adding the next obvious param/case/caller would require shotgun edits across files. Name the missing or misplaced boundary.
    - `inject:` a dependency constructed deep inside a unit (hardcoded path, command, collaborator) that should be received via params/args/env — untestable in isolation.
    - `iface:` a consumer depending on an implementation detail (internal field, private helper, output format quirk) rather than the stated interface.
+   - `scale:` a path whose memory or work grows unbounded with an input the deployment controls (rows, files, events, concurrent callers) — the whole input materialized or accumulated where the consumer needs a piece at a time, or superlinear work over an input the SPEC or the data source says is large. Name the input and why production makes it big; a fixture-sized input with no growth story is not a finding.
    This pass lists; it never rewrites. Findings here and in step 6 must not contradict: do not demand a seam be cut as bloat (step 6) and added as a boundary (this step) — the seam stays.
 8. **Code-for-humans pass** (canonical reference `skills/shared/human-code.md`). Step 6 asks "is there too much code?", step 7 asks "are the boundaries wrong?"; this pass asks "will the next person be able to read this?". Run the two probes first and quote them — this pass is grounded in what the neighbors actually do, never in your own style preferences:
    - `bash {probe_dir}/house-style.sh compare <changed files>` — the pass that produces `house:` findings. It holds each file out of its own baseline and names where it deviates from its same-language neighbors: indent, naming, quotes, semicolons, module system. Exit 1 means deviations, exit 0 means the diff reads like its neighbors. Quote the deviation lines verbatim — both sides are measured, so the finding carries its own evidence. `baseline=0 files` means there was no neighbor to compare against; report nothing rather than inventing a convention.
@@ -107,7 +108,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 - **Critical**: list with file:line + description + suggested fix
 - **Important**: list
 - **Over-engineering**: the `duplication-scan.sh` verdict, then tagged delete/stdlib/native/yagni/shrink/dry lines + `net: -<N> lines possible` (`Lean already` if nothing cuts)
-- **Design-for-change**: tagged couple/corner/inject/iface lines (`Boundaries sound` if nothing flags)
+- **Design-for-change**: tagged couple/corner/inject/iface/scale lines (`Boundaries sound` if nothing flags)
 - **Code-for-humans**: the `house-style.sh` fact lines you measured, the `comment-tells.sh` and `failure-tells.sh` verdicts, then tagged house/noise/name/churn/silent lines (`Reads like its neighbors` if nothing flags)
 - **Docs-for-humans**: the `doc-tells.sh` verdict, then tagged doc/stale-doc/unusable-doc lines (`Docs match the change` if nothing flags)
 - **Minor (deferred)**: list of follow-up suggestions
