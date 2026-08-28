@@ -56,18 +56,11 @@ Score each dimension 0.0 (completely unclear) to 1.0 (crystal clear):
 
 **Gate:** ambiguity <= 0.20 AND goal_clarity >= 0.60 AND boundary_clarity >= 0.50 AND constraint_clarity >= 0.40 AND acceptance_clarity >= 0.50
 
-**Score from the SPEC text you could write right now, not from optimism about where the conversation is heading.** Anchor each dimension against these calibration examples (at the dimension minimum vs near-done at ~0.85):
-
-| Dimension | At the minimum | At ~0.85 |
-|-----------|----------------|----------|
-| Goal Clarity (min 0.60) | "Make the export faster" (direction only, no measurable target) | "Cut p95 export latency from 4s to under 1.5s for a 10k-row sheet" |
-| Boundary Clarity (min 0.50) | "Mostly the export path" (fuzzy edges) | "Touch only `export/*`; CSV and PDF paths explicitly out of scope" |
-| Constraint Clarity (min 0.40) | "Should work on the current stack" | "Must stay on Python 3.12, no new deps, within the 2GB worker cap" |
-| Acceptance Clarity (min 0.50) | "It should feel snappy" (subjective) | "`pytest tests/export_test.py` passes AND latency assertion <1.5s holds in CI" |
+**Score from the SPEC text you could write right now, not from optimism about where the conversation is heading.** Calibration anchors (per-dimension examples at the minimum vs ~0.85): `${CLAUDE_SKILL_DIR}/references/interview-prompts.md`.
 
 ## Interview Perspectives
 
-Apply one perspective per round. Each perspective surfaces different blindspots. Ask 2-3 questions per round maximum; do not frontload all questions at once.
+Apply one perspective per round. Each perspective surfaces different blindspots. Ask 2-3 questions per round maximum; do not frontload all questions at once. Example question banks per perspective: `${CLAUDE_SKILL_DIR}/references/interview-prompts.md`.
 
 | Round | Perspective      | Focus                                                  |
 |-------|-----------------|--------------------------------------------------------|
@@ -78,36 +71,7 @@ Apply one perspective per round. Each perspective surfaces different blindspots.
 | 5     | Seed Closer      | Lock remaining undecided territory                     |
 | 6     | Seed Closer      | Final pass on lowest-scoring dimensions                |
 
-**Researcher (round 1) example questions:**
-- "What exists in the codebase today related to this feature?"
-- "What is the delta between today and the target state?"
-- "What triggers this work - what is broken or missing?"
-
-**Greenfield (`feature.json.greenfield == true`): round 1 runs the Foundations perspective instead of Researcher** — there is no codebase to research; the foundations ARE the round-1 blindspot. Ask (or in autonomous mode self-answer, preferring the boring industry-standard choice for the app's domain):
-- "What language/runtime and framework? What is the deployment target (CLI, web service, desktop, library)?"
-- "What project structure and tooling — test framework, linter, formatter, build tool?"
-- "What is the smallest end-to-end slice that proves the app works (the walking skeleton)?"
-The chosen stack and its canonical test/lint/typecheck commands MUST land in SPEC.md as explicit requirements (PLAN's scaffold task and EXECUTE's command backfill read them). Rounds 2-6 are unchanged.
-
-**Simplifier (round 2) example questions:**
-- "What is the simplest version that solves the core problem?"
-- "If you had to cut 50%, what is the irreducible core?"
-- "What would make this feature a success even without the nice-to-haves?"
-
-**Boundary Keeper (round 3) example questions:**
-- "What explicitly will NOT be done in this phase?"
-- "What adjacent problems is it tempting to solve but should not be?"
-- "What does 'done' look like - what is the final deliverable?"
-
-**Failure Analyst (round 4) example questions:**
-- "What is the worst thing that could go wrong if we get the requirements wrong?"
-- "What does a broken version of this look like?"
-- "What would cause a verifier to reject the output?"
-
-**Seed Closer (rounds 5-6) example questions:**
-- "We have [dimension] at [score] - what would make it completely clear?"
-- "The remaining ambiguity is in [area] - can we make a decision now?"
-- "Is there anything you would regret not specifying before planning starts?"
+**Greenfield (`feature.json.greenfield == true`): round 1 runs the Foundations perspective instead of Researcher** — there is no codebase to research; the foundations ARE the round-1 blindspot (stack, tooling, walking skeleton — question bank in the reference; autonomous mode self-answers preferring the boring industry-standard choice for the app's domain). The chosen stack and its canonical test/lint/typecheck commands MUST land in SPEC.md as explicit requirements (PLAN's scaffold task and EXECUTE's command backfill read them). Rounds 2-6 are unchanged.
 
 ## Procedure
 
@@ -137,8 +101,6 @@ Before asking any questions, read for grounding context:
    The script prints the assigned `EVID-NNN` id; use it to cite the probe in interview questions and the eventual `## Grounding` section.
 3. Researcher-round questions must state probed facts with their `EVID-NNN`, never memory-asserted facts.
 4. Unverifiable (no CLI, no creds, offline): record it as `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md`. In autonomous styles (`feature.json.autonomous == true` or `LOOP_SPEC_AUTONOMOUS=1`) also record via `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add ...` — never ask the user about it. In step/interactive styles, surface the assumption conversationally but do not block indefinitely.
-
-- Relevant source files to understand current state
 
 Synthesize current state internally: what exists today related to this feature, and the gap to the target state. Do not present this synthesis to the user - use it to ask precise, grounded questions.
 
@@ -189,43 +151,9 @@ After round [N]:
   Ambiguity: [score] (gate: <= 0.20)
 ```
 
-**On gate pass** (ambiguity <= 0.20 AND all per-dimension minimums met):
+**On gate pass** (ambiguity <= 0.20 AND all per-dimension minimums met), ask the "Spec gate" question (full prompt in `${CLAUDE_SKILL_DIR}/references/interview-prompts.md`): "Yes - write SPEC.md" or "Done talking - write it" → Step 3; "One more round" → continue the loop.
 
-```
-AskUserQuestion({
-  questions: [{
-    question: "Ambiguity is [score] after round [N] - requirements are clear enough to write SPEC.md. Proceed?",
-    header: "Spec gate",
-    options: [
-      { label: "Yes - write SPEC.md", description: "Requirements are clear; proceed to the draft" },
-      { label: "One more round", description: "Ask another round of clarifying questions first" },
-      { label: "Done talking - write it", description: "Stop the interview and write with what we have" }
-    ],
-    multiSelect: false
-  }]
-})
-```
-
-If the user selects "Yes" or "Done talking - write it": go to Step 3. If "One more round": continue the loop.
-
-**On round 6 reached with the gate still failing:**
-
-```
-AskUserQuestion({
-  questions: [{
-    question: "After 6 rounds, ambiguity is [score]. Dimensions still below minimum: [list]. What would you like to do?",
-    header: "Max rounds",
-    options: [
-      { label: "Write SPEC.md anyway", description: "Flag unresolved dimensions as assumptions; DISCUSS resolves them" },
-      { label: "Keep talking", description: "Continue the interview with no round limit from here" },
-      { label: "Abandon", description: "Exit without writing a spec" }
-    ],
-    multiSelect: false
-  }]
-})
-```
-
-If "Write SPEC.md anyway": go to Step 3, marking unresolved dimensions in the `ambiguity_scores` block (`gate_passed: false`). If "Keep talking": continue without a round limit. If "Abandon": stop without writing; report that the user abandoned and return to the cycle.
+**On round 6 reached with the gate still failing**, ask the "Max rounds" question (same reference): "Write SPEC.md anyway" → Step 3, marking unresolved dimensions in the `ambiguity_scores` block (`gate_passed: false`); "Keep talking" → continue without a round limit; "Abandon" → stop without writing; report that the user abandoned and return to the cycle.
 
 ### Step 3 - Write SPEC.md and the transcript
 
@@ -325,17 +253,7 @@ ambiguity_scores:
 
 If any dimension is below its minimum when SPEC.md is written (user override at round 6, or non-interactive synthesis with thin input), set `gate_passed: false` and list the dimension names in `unresolved_dimensions`. DISCUSS Step 1 consumes this list: each entry is resolved with the user (interactive styles) or as an explicit graph-grounded assumption (autonomous styles), converted into a testable `### Good Enough` criterion, and removed from the list — see `skills/discuss/SKILL.md`.
 
-Every requirement entry in SPEC.md MUST have:
-- One specific, testable statement
-- Current state (what exists now)
-- Target state (what it should become)
-- Acceptance criterion (how to verify it was met)
-
-Boundaries are mandatory explicit lists:
-- "In scope" - what this feature produces
-- "Out of scope" - what it explicitly does NOT do (with brief reasoning)
-
-Acceptance criteria must be pass/fail checkboxes. No subjective criteria.
+Section structure and per-requirement shape (testable statement, current state, target state, acceptance criterion; mandatory in/out-of-scope boundary lists; pass/fail checkbox criteria only) follow `skills/shared/artifact-templates/SPEC.md.template` — the Step 3 `artifact-lint.sh spec` gate enforces it.
 
 The discuss phase reads this SPEC.md and refines it; if its frontmatter contains `ambiguity_scores`, discuss preserves the block verbatim.
 

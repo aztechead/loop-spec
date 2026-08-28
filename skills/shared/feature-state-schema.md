@@ -224,7 +224,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `executionRootMode` is `worktree` for Claude's default native feature worktree,
   `in-place` for `LOOP_SPEC_WORKTREES=0` and the additive OpenCode/ADK path (those
   harnesses cannot switch a live session root), and `workspace` for multi-repo mode.
-- Tracked `delivery` is absent on completed schema-7 features created before the DELIVER phase and is tolerated for backward compatibility. New features initialize it to `pending`; DELIVER updates it only when failed checks route durable remediation back to EXECUTE. At most two required-check failures are routed back; a third fails closed at DELIVER instead of creating an infinite CI-remediation loop. Successful or external-failure observations live in ignored `.loop-spec/features/{slug}/delivery.json`, schema 1, with top-level `ok`, `status`, `nextPhase`, `prUrl`, timestamps, CI-remediation counters, and the same `targets[]` records. Keeping success out of tracked state prevents a post-CI commit from changing the exact checked SHA. `ready-for-review` means every changed target has `targetSha == remoteSha == headSha`, required checks passed or none were configured, and the PR is ready rather than draft. `delivered-draft` is the same SHA and check invariant with the PR left as a draft (enterprise sign-off). `lib/delivery-reconcile.sh` writes that sidecar when an agent opened the PR with `gh` instead of `lib/deliver.sh`.
+- Tracked `delivery` initializes to `pending` (absent on pre-DELIVER schema-7 features; tolerated) and mutates only when failed checks route durable remediation back to EXECUTE. Everything else — the ignored `delivery.json` sidecar (schema 1), status meanings, SHA invariants, and the CI-remediation cap — is DELIVER's contract: see `skills/deliver/SKILL.md` and `lib/pr-delivery.sh`. Keeping success out of tracked state prevents a post-CI commit from changing the exact checked SHA.
 - The optional `workspace` block enables multi-root workspace mode. Rules: (1) `workspace` absent or null means single-repo mode (`worktreePath` set). (2) In workspace mode the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` are null; per-repo values in `workspace.repos[]` are authoritative. `lib/graph/state.sh assert-reads` honors that relocation, so a declared read of `branch` (or `baseSha`/`baseBranch`) is satisfied by every `workspace.repos[]` entry rather than the null top-level field. `worktreePath` is not relocated and has no per-repo equivalent; a node that needs it in workspace mode declares it in `optionalReads[]`. (3) The top-level `commands` block holds empty strings (per-repo commands live in `workspace.repos[].commands`). (4) State and artifact dirs are rooted at `workspace.root`. (5) Resume requires the session cwd to be `workspace.root`; the cycle skill instructs the user to cd there before re-invoking.
 - **Schema is 7-only.** A `feature.json` with `schemaVersion != 7` is unsupported and skipped on resume with a warning; there is no in-place migration path for older schemas. New features are always created at schema 7 by `lib/feature-init.sh`.
 
@@ -311,18 +311,8 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 ## Atomic write
 
-```bash
-write_feature() {
-  local feature_dir="$1"
-  local feature_json="$2"
-  echo "$feature_json" > "$feature_dir/feature.json.tmp"
-  sync  # fsync
-  mv "$feature_dir/feature.json" "$feature_dir/feature.json.bak" 2>/dev/null || true
-  mv "$feature_dir/feature.json.tmp" "$feature_dir/feature.json"
-}
-```
-
-Implemented in `lib/feature-write.sh`. Replaces `lib/state-write.sh` (removed in v1.0.0).
+All `feature.json` mutations go through `lib/feature-write.sh` (tmp-file write, sync,
+`.bak` rotation, atomic rename). Never write the file directly.
 
 ## Resume
 

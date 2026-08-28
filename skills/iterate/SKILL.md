@@ -161,22 +161,10 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedba
 
   Branch by `execStyle` (read from `feature.json`):
   - **`auto` / `review-only` (ITERATE re-entry; do not block an unattended loop):** proceed WITHOUT asking. The rewind lands in DISCUSS's **autonomous refinement mode** (driven by `iterate.feedback` + the immutable original goal; it does not run its interactive clarifying loop — see `skills/discuss/SKILL.md` ITERATE re-entry note). No `AskUserQuestion`. The next VERIFY→ITERATE pass re-judges against the original goal and either converges or spends another iteration.
-  - **`step` / `interactive` (human-in-loop by choice):** the user explicitly opted into per-phase control, so here — and ONLY here — present the approval gate:
-    ```
-    AskUserQuestion({
-      questions: [{
-        question: "ITERATE judges the goal still unmet because of a SPEC-level gap: {gap.description}. Re-open SPEC/DISCUSS, ship as-is, or stop?",
-        header: "Re-open SPEC",
-        options: [
-          { label: "Re-open SPEC/DISCUSS", description: "Rewind to refine the spec toward the original goal (costs an iteration)" },
-          { label: "Ship as-is", description: "Complete now; the accepted gap is recorded in warnings[] and the backlog" },
-          { label: "Stop - hand back", description: "Pause the cycle and return control (resume later)" }
-        ],
-        multiSelect: false
-      }]
-    })
-    ```
-    Re-open → the approval route re-enters DISCUSS refinement; Ship as-is → `currentPhase = "deliver"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
+  - **`step` / `interactive` (human-in-loop by choice):** the user explicitly opted into per-phase control, so here — and ONLY here — present the approval gate via `AskUserQuestion` (header `Re-open SPEC`, question naming `{gap.description}`, `multiSelect: false`) with three options:
+    - **Re-open SPEC/DISCUSS** ("Rewind to refine the spec toward the original goal (costs an iteration)") → the approval route re-enters DISCUSS refinement.
+    - **Ship as-is** ("Complete now; the accepted gap is recorded in warnings[] and the backlog") → `currentPhase = "deliver"` + record the accepted gap in `warnings[]`.
+    - **Stop - hand back** ("Pause the cycle and return control (resume later)") → pause per the **cycle-resume-escalation** contract.
   - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): resolve
     `iterate_answer="${LOOP_SPEC_ANSWER_ITERATE_SPEC:-reopen}"`, reject values other
     than `reopen|ship` with exit 2, then treat `reopen` as autonomous DISCUSS
@@ -208,8 +196,5 @@ ITERATE does not append itself to `completedPhases` on a rewind (it will run aga
 
 ## Design notes
 
-- **The deterministic gate is the floor; the goal re-judge is the ceiling.** ITERATE never ships on the judge's word alone — `deterministic_gate_passed` (from VERIFICATION.md) must hold too. And it never ships on a green checklist alone — the judge must agree the *goal* is met. This is the dual oracle.
-- **Bounded by rounds, nothing else.** The round ceiling is declared once, on the graph's `iterate -> verify` loop edge (`graph/cycle.graph.json`), and surfaces here as `feature.iterate.maxIterations` — the ONE limit the cycle respects; everything else runs full bore. The ceiling is headroom, not an expectation — most features converge in 1-2 rounds; the headroom exists so a legitimately hard goal is not shipped-with-warnings prematurely. The loop ships or escalates; it never spins.
-- **Don't stop to ask mid-loop**, except the one SPEC-rewind approval gate (scope changes are the user's call). Everywhere else, the judge assumes, notes it, and the loop continues — per the article's self-checking-loop rule.
-- **Fix the weakest first — but carry the whole list.** Each rewind carries `iterate.feedback` so the re-entered phase targets the single highest-leverage gap first; `remaining_gaps[]` rides along so already-identified execute-level misses are remediated in the same pass instead of costing one judge iteration each.
-- **Never ship silent.** Both terminal paths (converged, limit-spent) end in the cycle's On-completion summary; the limit-spent path must arrive there with every accepted gap in `warnings[]` so the summary shows them.
+- **Dual oracle:** the deterministic gate is the floor (Step 3's converged-floor veto); the goal re-judge is the ceiling. Neither ships alone.
+- **Bounded by rounds, nothing else:** the ceiling is declared on the graph's `iterate -> verify` loop edge and surfaces as `feature.iterate.maxIterations`; it is headroom (most features converge in 1-2 rounds), and the loop ships or escalates — it never spins, and it never ships silent (`warnings[]` carries every accepted gap into the On-completion summary).

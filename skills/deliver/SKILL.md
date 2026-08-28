@@ -32,23 +32,18 @@ is identical under Claude Code, OpenCode, and Google ADK. Agents that open a PR 
 
 Three invariants the controller enforces so retries and multi-repo features stay safe:
 
-- **Candidate preflight.** Every target — single-repo and each workspace repo — must be
-  a clean git work tree at the repository root, on the recorded feature branch, with its
-  recorded base as an ancestor and at least one commit past it, before any push. All
-  workspace targets preflight before any sibling touches GitHub. A mismatch is a
-  structured block, never a silent delivery of the wrong or incomplete `HEAD`.
-- **SHA-bound hard retries.** A hard failure (transport, identity, timeout) leaves
-  `delivery.json.nextPhase = "deliver"` with the exact `targetSha` it tried. A resumed
-  attempt re-delivers that same SHA; if `HEAD` has drifted it fails closed with
-  `candidate_sha_drift` rather than delivering an unverified commit. A remediation route
-  (`nextPhase = "execute"`) intentionally produces a new SHA, so binding is skipped there.
-- **Staged workspace readiness.** With two or more changed repos, the controller holds
-  every repo's draft (push + reconcile + green required checks, `--hold-ready`) and
-  promotes them to ready only after all repos have cleared checks. One repo's CI failure
-  therefore never leaves a half-ready set of PRs; the feature routes to remediation with
-  the passing repos still held as drafts. If a held PR was externally promoted, staging
-  fails closed instead of falsely claiming it remains draft. If a later promotion fails,
-  the controller restores already-promoted siblings to draft before the retry.
+- **Candidate preflight.** Every target (single-repo and each workspace repo) must be a
+  clean tree at the repo root, on the recorded feature branch, with the recorded base an
+  ancestor and at least one commit past it — checked for ALL workspace targets before any
+  sibling touches GitHub. A mismatch is a structured block, never a silent wrong-`HEAD` push.
+- **SHA-bound hard retries.** A hard failure (transport, identity, timeout) records the
+  exact `targetSha` in `delivery.json` with `nextPhase = "deliver"`; resume re-delivers
+  that SHA and fails closed with `candidate_sha_drift` if `HEAD` moved. Remediation routes
+  (`nextPhase = "execute"`) intentionally produce a new SHA, so binding is skipped there.
+- **Staged workspace readiness.** With two or more changed repos, all PRs are held as
+  drafts (`--hold-ready`) until every repo clears required checks, then promoted together;
+  a CI failure routes to remediation with passing repos still drafts. Externally-promoted
+  held PRs fail closed; a failed promotion restores already-promoted siblings to draft.
 
 ## Procedure
 
@@ -195,13 +190,11 @@ done < <(jq -c '.targets[] | select(.prNumber != null)' "$fdir/delivery.json")
 [[ "$feedback_rc" -eq 0 ]] || { echo "DELIVER: feedback persistence failed; completion blocked" >&2; false; }
 ```
 
-Route the result per the shared contract: `changesRequested` → print the items and
-recommend `/loop-spec:revise <pr-number>` (autonomous: record in result warnings, never
-self-approve); unresolved items without a blocking decision → list them; clean → the
-one-line clean report. The check is read-only and never mutates the delivered SHA or
-the sidecar's `nextPhase`. A metadata failure degrades loudly per the contract — relay
-the stderr note, never claim clean. Any check or recording failure blocks completion;
-never emit a result from a sidecar that did not durably capture the observation.
+Route the result per `skills/shared/pr-feedback-check.md` (changes-requested,
+unresolved-items, clean, and loud-degrade handling all live there). The check is
+read-only — it never mutates the delivered SHA or the sidecar's `nextPhase`. Any check
+or recording failure blocks completion; never emit a result from a sidecar that did not
+durably capture the observation.
 
 ## Resume
 

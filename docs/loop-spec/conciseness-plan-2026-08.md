@@ -42,7 +42,7 @@ Rules that bind every stage:
 | 2 | DISCUSS/PLAN: shared critique-gate protocol + preamble cites | done |
 | 3 | CYCLE: extract init/phase-loop/completion references, cite shared contracts, fix fences | done |
 | 4 | EXECUTE/VERIFY: prompt-stanza collapse, loops shrink, remediation factor (execute-core skipped per YAGNI) | done |
-| 5 | SPEC/ITERATE/DELIVER + feature-state/grounding trims | pending |
+| 5 | SPEC/ITERATE/DELIVER + feature-state/grounding trims | done |
 | 6 | Aux skill fold-ins (simplicity, human-code, gates, walkthrough, micro/discipline) | pending |
 | 7 | Cross-cutting: harness adapters, harness-call-contracts, style docs | pending |
 
