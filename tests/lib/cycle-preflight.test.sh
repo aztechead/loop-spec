@@ -129,10 +129,12 @@ out="$(run_preflight)"
 check "bak recovery makes candidate" "1" "$(jq -r '[.resume.candidates[] | select(.slug == "broken-one")] | length' <<<"$out")"
 check "bak recovery recorded" "feature.json.bak" "$(jq -r '.resume.candidates[] | select(.slug == "broken-one") | .parse_source' <<<"$out")"
 
-# ordering: most recently updated first
-mk_feature fresher-one spec 7 null "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-sleep 1
-mk_feature freshest-one discuss 7 null "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# ordering: most recently updated first. The sort key is the updatedAt field, so
+# distinct stamps replace wall-clock separation; freshest-one gets now+5s because
+# other fixtures were stamped "now" and one-second resolution would tie.
+mk_feature fresher-one spec 7 null "2026-01-01T00:00:00Z"
+freshest_ts="$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=5)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
+mk_feature freshest-one discuss 7 null "$freshest_ts"
 out="$(run_preflight)"
 first="$(jq -r '.resume.candidates[0].slug' <<<"$out")"
 check "most recent first" "freshest-one" "$first"

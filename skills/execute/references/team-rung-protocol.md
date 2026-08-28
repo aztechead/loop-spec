@@ -3,6 +3,9 @@
 Extracted verbatim from `skills/execute/SKILL.md`; the SKILL stub points here.
 These steps apply on the team rung (explicit or implicit team mode). Apply as written.
 
+Contents: Step 7 idle/wake protocol (lead wake-and-reconcile contract) · Step 8 merge
+queue · Step 9 log emission · Step 10 phase exit condition.
+
 ### Step 7 - Fallback: Idle/wake protocol
 
 Idle and wake are event-driven. No polling.

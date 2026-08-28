@@ -164,8 +164,8 @@ longer exists. Categories: manifest/agent validators, hook units (all 20
 (`*-coverage.test.sh`, one per cross-cutting contract CLAUDE.md calls out —
 `design-coverage`, `human-code-coverage`, `pi-harness-coverage`,
 `opencode-harness-coverage`, etc.), a Node-gated workflow syntax check, and
-`skills/loop-runner/tests/run_tests.sh`. `tests/e2e/` (live `claude -p` runs) is
-opt-in only via `--e2e`, never part of the default suite (`tests/run-all.sh:190-193`).
+`skills/loop-runner/tests/run_tests.sh`. The test tree is offline-only: the former
+`tests/e2e/` live suites were removed; no suite requires network or a live model.
 
 ---
 

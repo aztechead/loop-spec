@@ -8,6 +8,11 @@ itself with one-shot `Agent` dispatches and inline `git` merges. No `TeamCreate`
 
 All waves also obey `skills/shared/subagent-concurrency.md`.
 
+Contents: when this path runs · inputs · in-place single-repository mode · lead wave
+loop · agent dispatch convention · implementer contract stanza · implementer Agent
+prompt · reviewer Agent prompt · workspace mode (wave construction, implementer
+prompts, merge/ff, completion verification).
+
 This path returns the **same** result object as the workflow and team paths so the
 consuming code in `execute` SKILL Step 3 is shape-identical:
 
@@ -105,9 +110,8 @@ Apply these replacements to the lead wave loop:
 5. On `block`, retry exhaustion, out-of-scope dirt, verification failure, missing
    commit, or an unreadable Git state, stop with the existing structured blocked or
    escalation reason. Preserve the working tree for diagnosis; never reset or clean it.
-6. Each task runs its own `verifyCommand` before publication. The repository-wide
-   test/lint/typecheck comparison is NOT run here: it runs exactly once per cycle, at
-   VERIFY Step 1.75, against the fully integrated candidate.
+6. Each task runs its own `verifyCommand` before publication; the repository-wide
+   comparison is NOT run here (wave-loop step 7 owns that invariant).
 
 The direct implementer prompt keeps every non-worktree step of the template below and
 replaces its Steps 1, 1.5, 3, and 5 with:
@@ -238,7 +242,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    and `detail`, then stop. Never remove or reset a failed task worktree manually.
    The helper runs `verifyCommand` after any required rebase and before publication,
    so each task's focused proof covers exactly the commit that fast-forwards the feature
-   branch. It deliberately does not run the repository-wide suite here.
+   branch.
 7. Loop back to step 1. EXECUTE runs no repository-wide suite of its own: every task's
    focused `verifyCommand` runs after any rebase and before publication, and the
    test/lint/typecheck comparison runs exactly once per cycle, at VERIFY Step 1.75,
@@ -279,21 +283,24 @@ advances monotonically across waves. In a parallel wave emit every `task_start` 
 wave launches; `index` is the task's position in the DAG order. `lib/events.sh` renders
 these as `[EXECUTE] task 2/5 start - task-002: <subject>`. Retries re-emit.
 
-## Implementer Agent prompt (per task, per attempt)
-
-Substitute the runtime values. This mirrors the implementer contract in
-`lib/workflows/execute-dag.js` so behavior is identical across rungs.
+## Implementer contract stanza (open EVERY implementer prompt with this, verbatim)
 
 This dispatch uses the DEFAULT agent (not loop-spec:implementer), so the agent definition's
 directives do NOT apply here and a SessionStart hook does not reach this subagent.
-The prompt therefore names each contract and the resolved probes (canonical sources under
-`skills/shared/`) so EXECUTE follows them on this rung every time. Read the files; do not
-paste them.
+The stanza therefore names each contract and the resolved probes (canonical sources under
+`skills/shared/`) so EXECUTE follows them on this rung every time — the agent reads the
+files; it does not paste them. Both prompt templates below (worktree and workspace) open
+with this block after their first line; the stanza is written once here so the two
+templates cannot drift.
 
 ```
-You are an implementer agent for task {taskId}.
-
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
+
+FOUR QUESTIONS (design gate — on by default). Before implementing and again before DONE,
+ask of the change: can I make it more modular? can I make it more extensible? is this the
+least amount of code that makes it happen? does this hold at production scale (memory and
+work bounded against deployment-sized input, not the fixture)? Full contract:
+`${CLAUDE_SKILL_DIR}/../../skills/shared/implementer-contract.md`.
 
 SIMPLICITY (ponytail laziness ladder — on by default). Read
 `${CLAUDE_SKILL_DIR}/../../skills/shared/laziness-ladder.md` before writing code — do not
@@ -345,6 +352,17 @@ load-bearing file completely instead of skimming five. "Should work" / "probably
 the whole job — never skip, trim, or defer an item, and never write
 follow-up/deferred/future-work notes; a criterion you cannot meet is a loud failure
 with evidence, never a note.
+```
+
+## Implementer Agent prompt (per task, per attempt)
+
+Substitute the runtime values. This mirrors the implementer contract in
+`lib/workflows/execute-dag.js` so behavior is identical across rungs.
+
+```
+You are an implementer agent for task {taskId}.
+
+[implementer contract stanza — insert the block above, verbatim]
 
 Step 1 - The task worktree already exists at {worktree_path} on branch
   task/{taskId}-{slug}. Do not run `git worktree add`. If the path is missing,
@@ -377,9 +395,8 @@ Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.
 
 Step 4 - Run the task's feature-specific verify command inside the worktree:
   {task.verifyCommand}
-The integration helper reruns this focused command after any required rebase. This is the
-only command EXECUTE runs; the repository-wide no-new-failures comparison happens once per
-cycle, at VERIFY.
+The integration helper reruns this focused command after any required rebase. This is
+the only command EXECUTE runs.
 
 Step 5 - Stage and commit inside the worktree branch:
   git -C "{worktree_path}" add <files>
@@ -432,14 +449,6 @@ Return one of:
 Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] }
 ```
 
-## Why no team here
-
-The agent-team path (`execute` Steps 4-10) earns its `TeamCreate` cost through dynamic
-self-claim, idle/wake messaging, and a persistent merge queue -- all of which matter
-when many implementers contend for a wide pool of tasks. At `W < t_team` the pool is
-small enough that the lead can dispatch each wave directly and serialize merges inline,
-which is cheaper and simpler while producing the identical merged feature branch.
-
 ## Workspace mode
 
 When `feature.workspace` is non-null, the subagent rung is always selected (the rung is
@@ -467,65 +476,14 @@ serialized within each repo). The wave is still capped by `maxParallelImplemente
 
 ### Implementer prompts (workspace mode)
 
-Each implementer `Agent` call in workspace mode receives a prompt that includes:
-- `repo`: the repo name (e.g., `frontend`)
-- `abs_repo`: the absolute path to the repo (`{feature.workspace.root}/{repo.path}`)
-- `branch`: `feat/{slug}` (the in-place branch on that repo)
-
-The prompt instructs the implementer:
+Each implementer `Agent` call in workspace mode receives `repo` (the repo name),
+`abs_repo` (`{feature.workspace.root}/{repo.path}`, absolute), and `branch`
+(`feat/{slug}`, the in-place branch on that repo). The prompt instructs the implementer:
 
 ```
 You are an implementer agent for task {taskId} in repo '{repo}'.
 
-IMPORTANT: All paths must be ABSOLUTE. Do not use em-dashes.
-
-SIMPLICITY (ponytail laziness ladder — on by default). Read
-`${CLAUDE_SKILL_DIR}/../../skills/shared/laziness-ladder.md` before writing code — do not
-paste it. YAGNI, then DRY: reuse what is already here. Before DONE run
-`bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>` and
-`bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>` (`duplicate=` same lines, `similar=` names-changed; both count).
-
-DESIGN FOR CHANGE (seams, not speculation — on by default). Read
-`${CLAUDE_SKILL_DIR}/../../skills/shared/design-for-change.md` — do not paste it.
-
-CODE FOR HUMANS (house style over habit — on by default). Read
-`${CLAUDE_SKILL_DIR}/../../skills/shared/human-code.md` before writing code — do not paste
-it. Read the neighbors. Comments carry WHY, never what. Density matches the file. NEVER cut
-`simplicity:` markers. Before DONE: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe
-<files>`; `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`;
-`bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>`.
-
-CODE A HUMAN CAN OPERATE (the failure path — on by default). Fail loudly, or say why you did
-not. Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files you
-touched>`.
-
-DOCS FOR HUMANS (the markdown is a deliverable too — on by default). Read
-`${CLAUDE_SKILL_DIR}/../../skills/shared/human-docs.md` — do not paste it. One job per
-document. Cite, never copy. If your change makes a document false, fix it IN THIS DIFF; a
-follow-up documentation task is deferred scope. Before DONE run
-`bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <the markdown you touched>`. NEVER
-cut frontmatter, machine-read contract sections, required artifact headings, EVID citation
-lines, or license blocks.
-
-WRITING GOOD TESTS. Read `${CLAUDE_SKILL_DIR}/../../skills/shared/writing-good-tests.md`
-before adding or changing a test — do not paste it. Name the break; no string-presence
-traps; no change detectors.
-
-TDD (red then green). Code-producing tasks: write the failing test FIRST, run it,
-confirm red, then implement, confirm green. Skill/config/docs tasks are excluded.
-Omitting a TDD label does not exempt this step.
-
-NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
-Review arrives from the lead after your report.
-
-EXECUTION DISCIPLINE (evidence over recall — on by default). Verify, don't recall: never
-assert what a file/command does from memory — read it, run it, paste the actual output.
-Surprise is signal: output contradicting expectation means stop and revise, never explain
-away. Re-read the acceptance criteria before DONE and check each against actual output.
-"Should work" / "probably fine" / "tests likely pass" each mean run it now. Scope is
-closed: the acceptance criteria are the whole job — never skip, trim, or defer an item,
-and never write follow-up/deferred/future-work notes; a criterion you cannot meet is a
-loud failure with evidence, never a note.
+[implementer contract stanza — insert the block above, verbatim]
 
 Repo: {repo}
 Repo path: {abs_repo}   (absolute; all git and file operations target this directory)
@@ -570,10 +528,7 @@ In workspace mode the per-task ff-merge steps from the standard wave loop (step 
 `git checkout feat/{slug}` / `git merge --ff-only`) are **skipped entirely**. Implementers
 commit directly on `feat/{slug}` in the repo; there is no task branch and no per-task
 worktree to merge. The lead does not run `git merge` or `git worktree remove` for
-workspace tasks.
-
-No post-wave suite gate runs here either. The repository-wide comparison across every
-participating repo happens once, at VERIFY Step 1.75.
+workspace tasks, and no post-wave suite gate runs here either (wave-loop step 7).
 
 ### Completion verification (workspace mode)
 

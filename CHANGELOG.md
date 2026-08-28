@@ -4,7 +4,76 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-08-28
+
 ### Added
+
+- **The design gate is now four questions.** Every code-producing dispatch asks, before
+  implementing and again before DONE: more modular? more extensible? least code? and
+  **does this hold at production scale?** (memory and work bounded against
+  deployment-sized input, not the fixture). The canonical text lives in
+  `skills/shared/implementer-contract.md`; the challenger critiques scale at design time
+  and the code-reviewer's design-for-change pass gained a blocking `scale:` finding tag.
+  Pinned by `tests/implementer-contract-coverage.test.sh`.
+- **`skills/shared/critique-gate-protocol.md`** — the shared critique/adjudication
+  procedure DISCUSS and PLAN previously each restated; each skill now states only its
+  deltas.
+- **`skills/cycle/references/`** (`feature-init.md`, `phase-loop.md`, `completion.md`,
+  `startup-health.md`, `phase-activate.md`),
+  **`skills/execute/references/`** (`workspace-mode.md`, `conflicts.md`,
+  `rung-workflow-foreign.md`),
+  **`skills/verify/references/`** (`pre-team-gates.md`, `post-hard-gate.md`), and
+  **`skills/spec/references/interview-prompts.md`** — heavy procedure extracted from
+  always-loaded skill bodies into on-demand references
+  (`skills/cycle/SKILL.md` 1327 → 498 lines; `skills/execute/SKILL.md` 791 → 446;
+  `skills/spec/SKILL.md` 426 → 344; `skills/verify/SKILL.md` 594 → 409). Pinned under
+  500 lines for every `skills/*/SKILL.md` by `tests/human-docs-coverage.test.sh`.
+
+- **`lib/feature-bootstrap.sh`** — the deterministic tail of cycle Step 5 (environment
+  prep, opt-in baseline, feature.json skeleton write) now runs as one script whose
+  source never enters context; `skills/cycle/references/feature-init.md` keeps only the
+  judgment half (PR adoption, execution root, `EnterWorktree`). `prepare-repo` is the
+  per-repo half workspace Step 5 calls (same prepare, pytest upgrade, opt-in baseline,
+  and `write-terminal` on failure as single-repo `finalize`). Unit suite:
+  `tests/lib/feature-bootstrap.test.sh` (happy path plus prepare/baseline/finalize
+  failure, greenfield skip, and split-root publication).
+
+- **`tests/lib/run-with-watchdog.test.sh`** — instant success-path, non-zero exit,
+  and usage-refusal coverage for the watchdog (including `--timeout-secs 0`, which
+  used to disable the deadline). Idle/wall expiry cases stay out: they wait out
+  real seconds and the suite is offline-and-instant by policy.
+
+### Changed
+
+- **Skill frontmatter descriptions trimmed to trigger + not-for.** Descriptions load at
+  every session start; the six phase skills shared a 26-word cycle-internal boilerplate
+  and several entry skills restated body procedure.
+- **Reference files over 100 lines open with a contents line**, so a partial read sees
+  the file's scope.
+- **Charter/team-prompt dedupe.** `agents/challenger.md` cites `team-prompts/critic.md`
+  for the finding taxonomy instead of restating it; `team-prompts/reviewer.md` cites the
+  spec-compliance-reviewer charter (already in the teammate's context via
+  `subagent_type`) for the review procedure and keeps only the task-metadata mapping.
+  The implementer team prompt keeps loop mechanics and a compact charter-cite +
+  path-delta stanza (`${CLAUDE_SKILL_DIR}/../../lib/` rather than `{probe_dir}`) so dual
+  pins still fire without restating the charter; the advocate pair shares no real text
+  (one-shot critique vs debate rounds). The challenger charter keeps the exact
+  `UNGROUNDED:` emit line so a one-shot `Agent({subagent_type: loop-spec:challenger})`
+  has the format without loading the team prompt.
+- **Conciseness pass across the shipped markdown** (`docs/loop-spec/conciseness-plan-2026-08.md`):
+  the two EXECUTE implementer prompt templates share one contract stanza; VERIFY's
+  remediation teardown is one named sub-procedure; ITERATE/DELIVER cite their shared
+  contracts instead of restating them; simplicity/human-code/discipline aux skills cite
+  their canonical text (the ladder, the probes, the inject) instead of holding copies;
+  `harness-call-contracts.md`'s per-harness appendices are pointers at each adapter's own
+  dispatch section. No contract text was dropped — every pinned needle moved with its
+  text or its suite was updated in the same commit.
+- **The test suite is offline-only and fast.** `tests/e2e/` and all timing-dependent
+  cases are removed; suites run under a hermetic git config so a machine's global
+  fsmonitor/commit-signing settings cannot hang test commits. Full run: ~11 min → under
+  2 min, 193 suites.
+
+### Added (landed before this release cut, previously under Unreleased)
 
 - **Red-then-green TDD is required on every code-producing task.** Omitting a
   TDD label in the plan does not exempt the implementer. Skill/config/docs

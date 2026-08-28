@@ -197,7 +197,7 @@ check "all-models: no partial selector set on stdout for an invalid role route" 
   "$([[ -z "$allrole_stdout" ]] && echo 1 || echo 0)"
 
 # --- Test 11: Instruction/SDK boundaries call the executable router ---
-CYCLE="$REPO_ROOT/skills/cycle/SKILL.md"
+CYCLE="$REPO_ROOT/skills/cycle/references/phase-activate.md"
 CLOUD="$REPO_ROOT/docs/loop-spec/cloud-run-autonomous.md"
 check "cycle boundary: activation is mandatory before every phase skill" \
   "$([[ "$(grep -c 'feature-init.sh\" activate' "$CYCLE")" -ge 2 ]] && echo 1 || echo 0)"

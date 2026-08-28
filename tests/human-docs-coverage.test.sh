@@ -54,11 +54,12 @@ done
 # The EXECUTE subagent rung dispatches TWO implementer prompts (single-repo + workspace);
 # both write documents, so both must carry the directive.
 sub_count="$(grep -cE "DOCS FOR HUMANS" skills/shared/execute-subagent.md)"
-if [[ "$sub_count" -ge 2 ]]; then
+marker_count="$(grep -cF "implementer contract stanza — insert the block above" skills/shared/execute-subagent.md)"
+if [[ "$sub_count" -ge 1 && "$marker_count" -ge 2 ]]; then
   echo "PASS: execute-subagent.md covers both implementer prompts ($sub_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $sub_count docs-for-humans occurrences; expected >= 2 (single-repo + workspace prompts)"
+  echo "FAIL: execute-subagent.md has $sub_count docs-for-humans occurrences; expected stanza >= 1 and both prompts inserting it (marker >= 2)"
   FAIL=$((FAIL+1))
 fi
 
@@ -68,7 +69,7 @@ fi
 for f in agents/implementer.md agents/code-reviewer.md \
          skills/shared/team-prompts/implementer.md skills/shared/execute-subagent.md \
          lib/plan-to-loop.sh lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
-         skills/verify/SKILL.md; do
+         skills/verify/SKILL.md skills/verify/references/post-hard-gate.md; do
   if grep -q "doc-tells.sh" "$f"; then
     echo "PASS: $f names the probe"; PASS=$((PASS+1))
   else
@@ -81,7 +82,7 @@ done
 for f in skills/shared/human-docs.md agents/implementer.md agents/code-reviewer.md \
          skills/shared/team-prompts/implementer.md skills/shared/execute-subagent.md \
          lib/plan-to-loop.sh lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
-         skills/verify/SKILL.md; do
+         skills/verify/SKILL.md skills/verify/references/post-hard-gate.md; do
   if grep -qE 'bash (")?lib/doc-tells\.sh' "$f"; then
     echo "FAIL: $f invokes the probe by bare relative path -- unreachable outside this repo"
     FAIL=$((FAIL+1))
@@ -94,7 +95,7 @@ done
 resolvers=(
   "skills/shared/execute-subagent.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib\"? doc-tells|CLAUDE_SKILL_DIR}/\.\./\.\./lib\"?/doc-tells"
   "skills/shared/team-prompts/implementer.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib"
-  "skills/verify/SKILL.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib/doc-tells\.sh"
+  "skills/verify/references/post-hard-gate.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib/doc-tells\.sh"
   "lib/plan-to-loop.sh	\{lib_dir\}/doc-tells\.sh"
   "lib/workflows/execute-dag.js	libDir \+ '/doc-tells\.sh"
   "hooks/team/human-code-inject.sh	\\\$\{LIB_DIR\}/doc-tells\.sh"
@@ -188,11 +189,11 @@ for f in skills/shared/execute-subagent.md lib/plan-to-loop.sh \
   fi
 done
 hd_count="$(grep -cF "skills/shared/human-docs.md" skills/shared/execute-subagent.md)"
-if [[ "$hd_count" -ge 2 ]]; then
-  echo "PASS: execute-subagent.md names the docs contract in both prompts ($hd_count occurrences)"
+if [[ "$hd_count" -ge 1 ]]; then
+  echo "PASS: execute-subagent.md names the docs contract in the shared stanza ($hd_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $hd_count human-docs.md references; expected >= 2"
+  echo "FAIL: execute-subagent.md has $hd_count human-docs.md references; expected >= 1 (shared stanza)"
   FAIL=$((FAIL+1))
 fi
 
@@ -203,6 +204,18 @@ if grep -qE 'PROTECTED_IDS=.*human-docs' lib/extension-points.sh; then
 else
   echo "FAIL: human-docs is not in extension-points.sh PROTECTED_IDS"; FAIL=$((FAIL+1))
 fi
+
+# Always-loaded skill bodies stay under the skill-authoring budget. Pin every
+# SKILL.md, not a named subset: a new over-budget body is the same defect.
+for f in skills/*/SKILL.md; do
+  n=$(wc -l < "$f")
+  if [[ "$n" -lt 500 ]]; then
+    echo "PASS: $f is under 500 lines ($n)"; PASS=$((PASS+1))
+  else
+    echo "FAIL: $f is $n lines; extract into references/ so the body stays under 500"
+    FAIL=$((FAIL+1))
+  fi
+done
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

@@ -44,13 +44,8 @@ so the whole lifecycle is greppable from a streamed log:
 [DELIVER] done (115s) - completed -> completed
 ```
 
-This used to be an instruction to *you* to print such lines. That made the only window
-into a long unattended run depend on model compliance, with no test — and in practice
-only EXECUTE and DISCUSS ever printed them, while gate rounds, dispatches and verify
-failures reached no console at all. It is a mechanism now, pinned by
-`tests/lib/events.test.sh` case P.
-
-What this means in practice:
+These lines are a mechanism (`lib/events.sh`, pinned by `tests/lib/events.test.sh`
+case P), not a prose obligation. What this means in practice:
 
 - **Emit the event and the line follows.** The observability you owe an operator is
   discharged by calling `events.sh emit` at the right moments — not by writing console

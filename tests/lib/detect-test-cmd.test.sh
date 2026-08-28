@@ -422,11 +422,11 @@ else
   ((FAIL++)) || true
 fi
 # Polyglot python -m pytest && go test ./... must still get the venv rewrite.
-if grep -qF '*"python -m pytest"*' "$ROOT/skills/cycle/SKILL.md"; then
-  echo "PASS: cycle SKILL upgrades any command containing python -m pytest"
+if grep -qF '*"python -m pytest"*' "$ROOT/lib/feature-bootstrap.sh"; then
+  echo "PASS: feature bootstrap upgrades any command containing python -m pytest"
   ((PASS++)) || true
 else
-  echo "FAIL: cycle SKILL still exact-matches python -m pytest (polyglot misses the venv rewrite)"
+  echo "FAIL: feature bootstrap still exact-matches python -m pytest (polyglot misses the venv rewrite)"
   ((FAIL++)) || true
 fi
 

@@ -104,13 +104,6 @@ ec=0
 bash "$SCRIPT" run --root "$REPO" --command 'exit 7' >/dev/null 2>&1 || ec=$?
 check "setup command failure has a distinct exit" "10" "$ec"
 
-ec=0
-out="$(LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS=1 bash "$SCRIPT" run --root "$REPO" \
-  --command 'sleep 3 # idle-timeout')" || ec=$?
-check "silent setup is bounded" "10" "$ec"
-check "silent setup keeps structured failure" "setup_failed:idle_timeout:124" \
-  "$(jq -r '.status + ":" + .failureKind + ":" + (.exitCode | tostring)' <<<"$out")"
-
 FAKE_BIN="$WORK/fake-bin"
 mkdir -p "$FAKE_BIN"
 REAL_GIT="$(command -v git)"

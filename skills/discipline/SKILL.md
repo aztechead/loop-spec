@@ -59,13 +59,10 @@ The `hooks/team/discipline-inject.sh` SessionStart hook reads this file. When `E
 
 ## The 5 behavioral gates
 
-When discipline mode is on, the following gates are active for the session:
-
-1. **brainstorm-before-coding** - Confirm the approach has been discussed before writing code. Pause and plan first when not discussed.
-2. **verification-before-claims** - Run the actual verification command and show its output before claiming work is done or passing. No "should work" claims without evidence.
-3. **investigation-before-fixes** - Investigate root cause before proposing fixes when encountering bugs, errors, or test failures. No guessing.
-4. **decision-gate** - Present a structured comparison with criteria and a recommendation when choosing between options or approaches.
-5. **intent-gate** - Lock in the goal and audience before any creative or writing task. Validate output against those locked goals.
+The gate text (brainstorm-before-coding, verification-before-claims,
+investigation-before-fixes, decision-gate, intent-gate) lives in the directive
+`hooks/team/discipline-inject.sh` injects at SessionStart; this skill only flips the
+switch and does not restate it.
 
 ## Kill switch
 

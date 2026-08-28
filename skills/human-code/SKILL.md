@@ -89,37 +89,13 @@ suppresses injection.
 
 ## Probes
 
-Four deterministic scripts back this mode, so "honor the existing conventions" is
-measured rather than recalled:
-
-- `"${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <paths>` — comment density, doc-comment usage, indentation,
-  naming case, quote style, and line length, sampled from the target files or (for a file
-  that does not exist yet) from its future neighbors. Answers `unknown` when the evidence
-  is too thin, and `sample=none` (exit 1) when nothing readable was found.
-- `"${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files>` — names where each file
-  deviates from its same-language neighbors: indent, naming, quotes, semicolons, module
-  system. Unlike `probe`, the file is held out of its own baseline, which is what lets it
-  report a deviation at all — pooled in, a file that breaks every convention around it
-  reports as the convention. Exit 1 means deviations, exit 0 means it reads like its
-  neighbors, `baseline=0 files` means there was nothing to compare against.
-- `"${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>` / `... diff <base> [head]` — flags added
-  comments that narrate the edit, narrate history, or restate the next line of code. Exit 1
-  means findings, exit 0 means clean.
-
-- `"${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files>` / `... diff <base> [head]` — the
-  operate half: a caught error whose handler does nothing, a non-zero exit with nothing said
-  to the operator, and an error message whose every word is a synonym for "it broke". Quiet
-  where the code already says why — a narrow exception type, a comment in the handler, an
-  exit guarded by a command that reports its own failure. Exit 1 means findings.
-- `"${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <markdown>` / `... diff <base> [head]` — flags a
-  relative link with no target, an inline-code path the tree no longer holds, and a shell
-  command holding a placeholder the document's prose never explains. Exit 1 means findings,
-  exit 0 means clean. It judges no sentence: `skills/shared/human-docs.md` states which of
-  its rules are machine-checked and which stay judgments.
-
-VERIFY's `code-reviewer` runs all four over the feature diff; a deviation any probe can
-demonstrate is an **Important** (blocking) finding, while a convention you believe in but
-cannot show in the probe output is taste and stays **Minor**.
+The deterministic probes backing this mode — `house-style.sh probe` / `house-style.sh compare`,
+`comment-tells.sh`, `failure-tells.sh` (the operate half), and `doc-tells.sh` (the markdown
+half) — are documented once, with their exit codes and carve-outs, in
+`skills/shared/human-code.md` and `skills/shared/human-docs.md`. This skill does not restate
+them. VERIFY's `code-reviewer` runs all of them over the feature diff; a deviation a probe
+can demonstrate is an **Important** (blocking) finding, while a convention you believe in
+but cannot show in the probe output is taste and stays **Minor**.
 
 ## Kill switch
 

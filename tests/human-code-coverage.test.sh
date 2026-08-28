@@ -58,11 +58,12 @@ done
 # The EXECUTE subagent rung dispatches TWO implementer prompts (single-repo + workspace);
 # both must carry the directive, same as the ladder and design requirements.
 sub_count="$(grep -ciE "house style over habit" skills/shared/execute-subagent.md)"
-if [[ "$sub_count" -ge 2 ]]; then
+marker_count="$(grep -cF "implementer contract stanza — insert the block above" skills/shared/execute-subagent.md)"
+if [[ "$sub_count" -ge 1 && "$marker_count" -ge 2 ]]; then
   echo "PASS: execute-subagent.md covers both implementer prompts ($sub_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $sub_count code-for-humans occurrences; expected >= 2 (single-repo + workspace prompts)"
+  echo "FAIL: execute-subagent.md has $sub_count code-for-humans occurrences; expected stanza >= 1 and both prompts inserting it (marker >= 2)"
   FAIL=$((FAIL+1))
 fi
 
@@ -162,13 +163,13 @@ for f in agents/implementer.md agents/code-reviewer.md \
   fi
 done
 
-# Both subagent implementer prompts, same as every other directive half.
+# The shared stanza carries compare once; both prompts insert the stanza.
 cmp_count="$(grep -cF "house-style.sh\" compare" skills/shared/execute-subagent.md)"
-if [[ "$cmp_count" -ge 2 ]]; then
-  echo "PASS: execute-subagent.md carries compare in both prompts ($cmp_count occurrences)"
+if [[ "$cmp_count" -ge 1 ]]; then
+  echo "PASS: execute-subagent.md carries compare in the shared stanza ($cmp_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $cmp_count compare references; expected >= 2"
+  echo "FAIL: execute-subagent.md has $cmp_count compare references; expected >= 1 (shared stanza)"
   FAIL=$((FAIL+1))
 fi
 
@@ -226,11 +227,11 @@ for f in skills/shared/execute-subagent.md lib/plan-to-loop.sh \
   fi
 done
 hc_count="$(grep -cF "skills/shared/human-code.md" skills/shared/execute-subagent.md)"
-if [[ "$hc_count" -ge 2 ]]; then
-  echo "PASS: execute-subagent.md names the contract in both prompts ($hc_count occurrences)"
+if [[ "$hc_count" -ge 1 ]]; then
+  echo "PASS: execute-subagent.md names the contract in the shared stanza ($hc_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $hc_count human-code.md references; expected >= 2"
+  echo "FAIL: execute-subagent.md has $hc_count human-code.md references; expected >= 1 (shared stanza)"
   FAIL=$((FAIL+1))
 fi
 

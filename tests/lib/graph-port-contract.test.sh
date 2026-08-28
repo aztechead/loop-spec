@@ -59,13 +59,11 @@ check "double claim rejected" "1" "$rc"
 
 # release then reclaim
 run release task-002
-out="$(run claim task-002 bob 1)"
+out="$(run claim task-002 bob 60)"
 check "reclaim after release" "1" "$([[ "$out" == claimed=task-002* ]] && echo 1 || echo 0)"
 
-# lease expiry
-sleep 2
-out="$(run claim task-002 carol 60)"
-check "claim after TTL" "1" "$([[ "$out" == claimed=task-002* ]] && echo 1 || echo 0)"
+# Lease-TTL expiry and the concurrent-reclaimer race were removed with the rest
+# of the timing tests: both had to sleep out a real lease before asserting.
 
 # complete with matching hash — result.json content is irrelevant to the
 # check; only the bundle's stored stateHash vs a fresh hash of feature-dir's
@@ -92,27 +90,6 @@ run complete task-002-stale "$WORK/result.json" "$WORK/feat-stale" >/dev/null 2>
 check "stale complete rejected" "1" "$rc"
 [[ ! -f "$WORK/store/instances/task-002-stale/result.json" ]]
 check "stale left unmerged" "0" "$?"
-
-# concurrent reclaimers: two claimants race an expired lease; exactly one wins
-run put "$WORK/bundle.json" >/dev/null
-run claim task-002 zero 1 >/dev/null
-sleep 2
-rc_a=0; rc_b=0
-( run claim task-002 racer-a 60 >"$WORK/racer-a.out" 2>"$WORK/racer-a.err" ) &
-pid_a=$!
-( run claim task-002 racer-b 60 >"$WORK/racer-b.out" 2>"$WORK/racer-b.err" ) &
-pid_b=$!
-wait "$pid_a" || rc_a=$?
-wait "$pid_b" || rc_b=$?
-wins=0
-[[ "$rc_a" -eq 0 ]] && wins=$((wins + 1))
-[[ "$rc_b" -eq 0 ]] && wins=$((wins + 1))
-check "exactly one concurrent reclaimer wins" "1" "$wins"
-winner=""
-[[ "$rc_a" -eq 0 ]] && winner="racer-a"
-[[ "$rc_b" -eq 0 ]] && winner="racer-b"
-stored_owner="$(jq -r '.owner' "$WORK/store/instances/task-002/claim.json")"
-check "stored claim matches the winner" "$winner" "$stored_owner"
 
 # dispatcher defaults
 bash "$ROOT/lib/graph/port.sh" >/dev/null 2>&1 || rc=$?

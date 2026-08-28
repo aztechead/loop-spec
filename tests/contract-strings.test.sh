@@ -22,13 +22,13 @@ checks=(
   "skills/iterate/SKILL.md	iterate-terminal:"
   "skills/shared/autonomous-mode.md	iterate-terminal:"
   # -- chain predicate: skill must consume the script and its stable reasons
-  "skills/cycle/SKILL.md	autonomous-chain.sh\" should-chain"
-  "skills/cycle/SKILL.md	max-features-reached"
-  "skills/cycle/SKILL.md	next-entry-terminal"
+  "skills/cycle/references/completion.md	autonomous-chain.sh\" should-chain"
+  "skills/cycle/references/completion.md	max-features-reached"
+  "skills/cycle/references/completion.md	next-entry-terminal"
   "lib/autonomous-chain.sh	max-features-reached"
   "lib/autonomous-chain.sh	next-entry-terminal"
   # -- delivery must finish before unattended chaining continues
-  "skills/cycle/SKILL.md	delivery-incomplete"
+  "skills/cycle/references/completion.md	delivery-incomplete"
   "lib/autonomous-chain.sh	delivery-incomplete"
   # -- backlogEntryId: written by cycle drain, matched by iterate terminal rule
   "skills/cycle/SKILL.md	backlogEntryId"
@@ -54,7 +54,7 @@ checks=(
   "skills/spec/SKILL.md	decisions.sh\" add"
   "skills/discuss/SKILL.md	decisions.sh\" add"
   "skills/plan/SKILL.md	decisions.sh\" add"
-  "skills/cycle/SKILL.md	decisions.sh\" migrate"
+  "lib/feature-bootstrap.sh	decisions.sh\" migrate"
   # -- debug: init consumed by the skill
   "skills/debug/SKILL.md	debug-init.sh\" init"
   # -- greenfield: bootstrap in cycle, backfill invariant in execute
@@ -67,6 +67,7 @@ checks=(
   "skills/discuss/SKILL.md	evidence.sh\" add"
   "skills/plan/SKILL.md	evidence.sh\" add"
   "agents/challenger.md	UNGROUNDED:"
+  "agents/challenger.md	UNGROUNDED: \"<verbatim quote from the artifact>\" — probe:"
   "skills/shared/team-prompts/challenger.md	UNGROUNDED:"
   "skills/discuss/SKILL.md	UNGROUNDED:"
   "skills/plan/SKILL.md	UNGROUNDED:"

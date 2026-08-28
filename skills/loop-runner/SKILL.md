@@ -1,18 +1,10 @@
 ---
 name: loop-runner
 description: >-
-  Compile specs/goals into autonomous Claude Code, OpenCode, Google ADK, or Codex loops and run them safely. The base
-  layer for spec-driven and workflow automation: bridges "a spec written normally" to
-  "loops execute it unattended." Use whenever the user wants a supported harness hands-off —
-  "implement this spec", "keep going until tests pass", "break this down and execute",
-  "babysit my PRs", overnight/cron/CI runs, agent fleets, orchestration, ralph or
-  /goal-style loops, or worries about runaway agents. Also the base
-  for building other workflow skills: derivatives should emit plans (plan/tasks.json)
-  or call the library API, not reinvent guardrails. Three tested layers:
-  compile_spec.py (spec → verified task plan), supervisor.py (plan → fleet in isolated
-  worktrees with merge + halt policy), loop.py (bounded loop with verifier-integrity
-  locking, iteration/stall/timeout stops, durable state, result.json contract).
-  Prefer this over any bespoke while-loop; regression suite in tests/.
+  Compile specs/goals into autonomous Claude Code, OpenCode, Google ADK, or Codex loops and run them safely.
+  Use whenever the user wants a supported harness hands-off — "implement this spec",
+  "keep going until tests pass", "babysit my PRs", overnight/cron/CI, agent fleets,
+  ralph or /goal-style loops, or worries about runaway agents.
   Do not use for an interactive SPEC interview (that's /loop-spec:cycle) or a
   single small edit (that's /loop-spec:micro).
 ---

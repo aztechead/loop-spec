@@ -1,6 +1,6 @@
 ---
 name: map-codebase
-description: Use when the user says "map the codebase", "refresh the code map", or a cycle needs docs/loop-spec/codebase/. Five domains (tech/arch/quality/concerns/domain); incremental by default, --full or --domain to override. Do not use this in place of reading the files a change touches, and do not use it to implement a feature.
+description: Use when the user says "map the codebase", "refresh the code map", or a cycle needs docs/loop-spec/codebase/. Incremental by default; --full or --domain to override. Do not use this in place of reading the files a change touches, and do not use it to implement a feature.
 argument-hint: "[--full] [--domain tech,arch,...]"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet
 ---

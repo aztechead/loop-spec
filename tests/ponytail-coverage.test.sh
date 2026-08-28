@@ -44,11 +44,12 @@ done
 # The EXECUTE subagent rung dispatches TWO implementer prompts (single-repo + workspace);
 # both must carry the directive. Require >= 2 ladder occurrences in that file.
 sub_count="$(grep -ciE "ponytail laziness ladder" skills/shared/execute-subagent.md)"
-if [[ "$sub_count" -ge 2 ]]; then
+marker_count="$(grep -cF "implementer contract stanza — insert the block above" skills/shared/execute-subagent.md)"
+if [[ "$sub_count" -ge 1 && "$marker_count" -ge 2 ]]; then
   echo "PASS: execute-subagent.md covers both implementer prompts ($sub_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $sub_count ladder occurrences; expected >= 2 (single-repo + workspace prompts)"
+  echo "FAIL: execute-subagent.md has $sub_count ladder occurrences; expected stanza >= 1 and both prompts inserting it (marker >= 2)"
   FAIL=$((FAIL+1))
 fi
 
@@ -128,13 +129,13 @@ for entry in "${resolvers[@]}"; do
   fi
 done
 
-# Both subagent implementer prompts carry the probe, same as the ladder itself.
+# The shared stanza carries the probe once; both prompts insert the stanza.
 dup_count="$(grep -cF "duplication-scan.sh" skills/shared/execute-subagent.md)"
-if [[ "$dup_count" -ge 2 ]]; then
-  echo "PASS: execute-subagent.md carries the probe in both prompts ($dup_count occurrences)"
+if [[ "$dup_count" -ge 1 ]]; then
+  echo "PASS: execute-subagent.md carries the probe in the shared stanza ($dup_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $dup_count probe references; expected >= 2"
+  echo "FAIL: execute-subagent.md has $dup_count probe references; expected >= 1 (shared stanza)"
   FAIL=$((FAIL+1))
 fi
 

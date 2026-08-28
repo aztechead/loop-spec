@@ -16,21 +16,21 @@ FAIL=0
 checks=(
   # B1 -- the reviewer's guide
   "skills/walkthrough/SKILL.md	review-trail\.sh	the walkthrough skill must call the trail script, not eyeball the diff"
-  "skills/verify/SKILL.md	review-trail\.sh.? lint	VERIFY must lint the written trail against the real diff"
-  "skills/verify/SKILL.md	artifacts\.reviewOrder	VERIFY must record the trail so DELIVER can inline it"
+  "skills/verify/references/post-hard-gate.md	review-trail\.sh.? lint	VERIFY must lint the written trail against the real diff"
+  "skills/verify/references/post-hard-gate.md	artifacts\.reviewOrder	VERIFY must record the trail so DELIVER can inline it"
   "lib/pr-body.sh	reviewOrder	the PR body must inline the trail"
   "lib/pr-body.sh	Suggested review order	the trail needs its own PR body heading"
   "README.md	walkthrough	the skills table must list the walkthrough skill"
 
   # B2 -- the verification-gap pass
   "skills/shared/review-prompts/verification-gap.md	verification-gap-scan\.sh	the prompt must send the reviewer to the probe"
-  "skills/verify/SKILL.md	verification-gap-scan\.sh	VERIFY must run the probe before dispatching the pass"
-  "skills/verify/SKILL.md	review-prompts/verification-gap\.md	VERIFY must carry the canonical prompt"
+  "skills/verify/references/post-hard-gate.md	verification-gap-scan\.sh	VERIFY must run the probe before dispatching the pass"
+  "skills/verify/references/post-hard-gate.md	review-prompts/verification-gap\.md	VERIFY must carry the canonical prompt"
 
   # B3 -- extension points
-  "skills/verify/SKILL.md	extension-points\.sh.? layers verify	VERIFY must offer the project its review layers"
-  "skills/cycle/SKILL.md	extension-points\.sh.? instructions	the cycle must load per-phase instructions"
-  "skills/cycle/SKILL.md	extension-points\.sh.? facts	the cycle must load standing facts"
+  "skills/verify/references/post-hard-gate.md	extension-points\.sh.? layers verify	VERIFY must offer the project its review layers"
+  "skills/cycle/references/phase-activate.md	extension-points\.sh.? instructions	the cycle must load per-phase instructions"
+  "skills/cycle/references/phase-activate.md	extension-points\.sh.? facts	the cycle must load standing facts"
 
   # B4 -- map audit
   "skills/map-codebase/SKILL.md	map-audit\.sh	the map skill must be able to measure its own output"

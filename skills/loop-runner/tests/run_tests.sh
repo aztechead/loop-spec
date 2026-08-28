@@ -501,19 +501,9 @@ print(repr(git_sha()))
 " 2>/dev/null | tail -1)
 check "git_sha returns empty string in non-git dir" "$GS" "''"
 
-echo "== 14. hung-tick timeout: per-tick subprocess timeout kills a hung claude -p =="
-newrepo
-HUNG_OUT=$(FAKE_HANG=15 PYTHONPATH="$SCRIPTS" python3 - "$FAKE" << 'EOF'
-import sys
-import loop
-loop.MIN_TICK_TIMEOUT = 1.0
-from loop import LoopConfig, run_loop
-r = run_loop(LoopConfig(task="hang", task_id="hang",
-    claude_bin=sys.argv[1], timeout_s=8, max_iterations=3))
-print(r["halt_reason"])
-EOF
-2>&1)
-check "hung-tick halts with timeout" "$(echo "$HUNG_OUT" | tail -1)" "timeout"
+# Section 14 (hung-tick timeout) was removed with the rest of the timing tests:
+# it hung a real subprocess and waited out real per-tick kills. The timeout
+# HANDLING logic stays covered by the mocked supervisor-timeout cases above.
 
 echo "== 15. read_result: missing and corrupt result.json =="
 TMPDIR_RR="$(mktemp -d)"

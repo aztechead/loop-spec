@@ -26,6 +26,8 @@ Releasing ownership (`owner: null`) is how you hand a task off without changing 
 
 Self-claim unblocked tasks from the shared task list, implement them in your assigned worktree, run the verify command, and hand off to review. You run continuously until no unclaimed tasks remain.
 
+You are spawned as `loop-spec:implementer`. Where your charter's one-shot procedure (dispatch inputs, single-task report) differs from this self-claim loop, this loop wins; the charter's engineering principles and prohibitions still bind.
+
 ## Context
 
 - Feature slug: `{slug}`
@@ -69,15 +71,24 @@ Repeat until idle:
    - For exact requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
    - Read PLAN.md's `## Global constraints` section (if present) and the task block's `**Interfaces:**` entry before writing code — every global constraint binds verbatim, and the interfaces name the contracts neighboring tasks consume/produce.
    - Modify only the files listed in `metadata.files`.
-   - **Climb the ponytail laziness ladder** (`skills/shared/laziness-ladder.md`): read that file — do not paste it. YAGNI, then DRY. Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>` and `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>` (`duplicate=` same lines, `similar=` names-changed; both count).
-   - **Writing good tests** (`skills/shared/writing-good-tests.md`): read that file — do not paste it. Name the break; no string-presence traps; no change detectors.
-   - **TDD (red then green).** Code-producing tasks: write the failing test FIRST, run it, confirm red, then implement, confirm green. Skill/config/docs tasks are excluded. Omitting a TDD label does not exempt this step.
    - **No nested subagents.** Do this task yourself. Never dispatch a helper or a reviewer. Review arrives from the lead after your report.
-   - **Design for change (seams, not speculation)** (`skills/shared/design-for-change.md`): read that file — do not paste it. Design to an interface; one unit, one reason to change; receive collaborators.
-   - **Code for humans (house style over habit)** (`skills/shared/human-code.md`): read that file — do not paste it. Read the neighbors. Comments carry WHY, never what. Never cut `simplicity:` markers. Before DONE: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <files>`; `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`; `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>`.
-   - **Code a human can operate (the failure path)** (`skills/shared/human-code.md`): fail loudly, or say why you did not. Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files you touched>`.
-   - **Docs for humans (the markdown is a deliverable too)** (`skills/shared/human-docs.md`): read that file — do not paste it. One job per document. Cite, never copy. If your change makes a document false, fix it IN THIS DIFF; a follow-up documentation task is deferred scope. Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <the markdown you touched>`. NEVER cut frontmatter.
-   - **Execution discipline (evidence over recall)** (`skills/shared/execution-discipline.md`): verify, don't recall — never assert what a file/command does from memory; read it, run it, paste the output. Surprise is signal — output contradicting expectation means stop and revise, never explain away. Re-read `metadata.acceptanceCriteria` before marking complete and check each against actual output. "Should work" / "probably fine" / "tests likely pass" each mean run it now. Scope is closed: the criteria are the whole job — never skip, trim, or defer an item, and never write follow-up/deferred/future-work notes; a criterion you cannot meet is a loud failure with evidence, never a note.
+   - **Engineering (charter + path delta).** Apply `agents/implementer.md` as written
+     (four questions / `implementer-contract.md`: more modular, more extensible, least
+     code, does this hold at production scale; ponytail laziness ladder, DRY;
+     `writing-good-tests.md`; Omitting a TDD label does not exempt; seams, not speculation
+     / `design-for-change.md`; house style over habit /
+     `skills/shared/human-code.md`; Code a human can operate; Docs for humans /
+     `skills/shared/human-docs.md`; IN THIS DIFF / deferred scope; NEVER cut
+     frontmatter; evidence over recall; scope is closed). Probe paths use
+     `${CLAUDE_SKILL_DIR}/../../lib/` not `{probe_dir}`: run
+     `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>`
+     and `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>`
+     (`duplicate=` same lines, `similar=` names-changed; both count);
+     `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <files>`;
+     `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`;
+     `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>`;
+     `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files you touched>`;
+     `bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <the markdown you touched>`.
    - On rework: read the most recent `REWORK NEEDED` message from the reviewer and apply the listed fixes.
 6. **Verify** by running the verify command from the task metadata:
    ```

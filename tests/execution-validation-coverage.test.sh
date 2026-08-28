@@ -55,7 +55,7 @@ done
 
 # VERIFY is where it runs, and the only place — including resume.
 check_contains "VERIFY runs the comparison" \
-  skills/verify/SKILL.md 'lib/feature-validation.sh" compare'
+  skills/verify/references/pre-team-gates.md 'lib/feature-validation.sh" compare'
 check_not_contains "cycle resume does not run the comparison" \
   skills/cycle/SKILL.md 'feature-validation.sh'
 check_contains "cycle resume names VERIFY as the only suite" \
@@ -63,9 +63,9 @@ check_contains "cycle resume names VERIFY as the only suite" \
 check_contains "cycle resume prints remaining task ids" \
   skills/cycle/SKILL.md 'task-progress.sh" remaining'
 check_contains "EXECUTE seeds mergedSet from done ids" \
-  skills/execute/SKILL.md 'task-progress.sh" done'
+  skills/execute/references/conflicts.md 'task-progress.sh" done'
 check_contains "EXECUTE persists mark-done" \
-  skills/execute/SKILL.md 'task-progress.sh" mark-done'
+  skills/execute/references/conflicts.md 'task-progress.sh" mark-done'
 check_contains "subagent protocol persists mark-done" \
   skills/shared/execute-subagent.md 'task-progress.sh" mark-done'
 check_contains "inline protocol persists mark-done" \
@@ -86,9 +86,9 @@ check_contains "resume reference picks up remaining ids" \
 # Startup must not pay for a repository-wide suite on the untouched base. The capture
 # survives only as an opt-in for repositories whose base commit is already red.
 check_contains "startup baseline capture is opt-in" \
-  skills/cycle/SKILL.md 'if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then'
-check_contains "workspace startup baseline capture is opt-in" \
-  skills/cycle/references/workspace-mode.md '[[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" ]] || continue'
+  lib/feature-bootstrap.sh 'if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then'
+check_contains "workspace prepare/baseline uses the shared bootstrap" \
+  skills/cycle/references/workspace-mode.md 'feature-bootstrap.sh" prepare-repo'
 check_contains "the opt-in is documented" \
   docs/loop-spec/configuration.md '`LOOP_SPEC_STARTUP_BASELINE`'
 

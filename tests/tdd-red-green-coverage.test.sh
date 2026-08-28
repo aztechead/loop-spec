@@ -23,10 +23,11 @@ checks=(
 check_fixed_strings "${checks[@]}"
 
 sub_count="$(grep -cF 'Omitting a TDD label does not exempt' skills/shared/execute-subagent.md || true)"
-if [[ "$sub_count" -ge 2 ]]; then
+marker_count="$(grep -cF "implementer contract stanza — insert the block above" skills/shared/execute-subagent.md)"
+if [[ "$sub_count" -ge 1 && "$marker_count" -ge 2 ]]; then
   PASS=$((PASS+1)); echo "PASS: execute-subagent.md forces TDD on both implementer prompts ($sub_count)"
 else
-  FAIL=$((FAIL+1)); echo "FAIL: execute-subagent.md TDD force count $sub_count; expected >= 2"
+  FAIL=$((FAIL+1)); echo "FAIL: execute-subagent.md TDD force count $sub_count with stanza marker count $marker_count; expected >= 1 and >= 2"
 fi
 
 must_not=(

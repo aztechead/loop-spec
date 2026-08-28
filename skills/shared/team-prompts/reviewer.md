@@ -47,19 +47,11 @@ Repeat until idle:
    TaskGet({taskId: "<id>"})
    ```
    Load `metadata.files`, `metadata.verifyCommand`, `metadata.acceptanceCriteria`, `metadata.readFirst`, `metadata.specPath`, `metadata.claimedBy` (the implementer who implemented this task), and `metadata.retries` (current rework count, default 0).
-5. **Review** the implementation in `{worktreeBase}/task-<id>/` (the same resolved base the lead gave the implementer):
-   - Read `skills/shared/review-prompts/no-prejudge.md` (do not paste). A scoped re-review after a fix round uses `skills/shared/review-prompts/re-review.md` against `FIX_BASE..HEAD`.
-   - Do this review yourself. Never spawn a helper or a second reviewer.
-   - Prefer the review package from `lib/dispatch-files.sh package` (recorded BASE, never `HEAD~1`) when the lead supplied a path. Do not re-run git for that range if the file exists.
-   - Read each file in `metadata.files`.
+5. **Review** the implementation in `{worktreeBase}/task-<id>/` (the same resolved base the lead gave the implementer). You are spawned as `loop-spec:spec-compliance-reviewer`; your charter (`agents/spec-compliance-reviewer.md`) owns the review procedure — define "compliant" first, read the no-prejudge prompt, prefer the `lib/dispatch-files.sh` package (recorded BASE, never `HEAD~1`), read each changed file, compare line-by-line to the spec, run the verify command, run the shortcut/cheat scan, and never spawn a helper. Team-specific mapping on top of the charter:
+   - The charter's brief fields come from task metadata (step 4): files list = `metadata.files`, verify command = `metadata.verifyCommand` (run via `Bash`), criteria = `metadata.acceptanceCriteria`.
    - Read every path in `metadata.readFirst` for the analogs the task was meant to mirror.
    - For requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
-   - Check each acceptance criterion in `metadata.acceptanceCriteria` is satisfied.
-   - Run the verify command:
-     ```
-     Bash({command: "<metadata.verifyCommand>"})
-     ```
-   - Check for spec compliance: does the implementation match only what the spec requires, with no extraneous additions?
+   - A scoped re-review after a fix round uses `skills/shared/review-prompts/re-review.md` against `FIX_BASE..HEAD`.
    - A requirement that lives in unchanged code or spans tasks is not a fail: put it in `unverified[]` with why the diff cannot show it.
 6. **Decide:**
    - **Pass**: all acceptance criteria met, verify command passes, no spec violations, AND `unverified[]` is empty. Go to "On Pass".

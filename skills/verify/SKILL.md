@@ -1,6 +1,6 @@
 ---
 name: verify
-description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team (explicit, implicit, or no-teams dispatch), evidence commit, and map-codebase refresh. Cycle-internal - invoked by /loop-spec:cycle against the active feature's state; not for ad-hoc invocation on a bare user request (start via /loop-spec:cycle).
+description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team, evidence commit, and map-codebase refresh. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
@@ -47,116 +47,17 @@ codebase map substitutes for post-change `file:line` evidence tied to each crite
 
 ### Step 0 - Regression gate (opt-in)
 
-This scan re-runs every prior completed feature's test commands serially and is **advisory only** (it can never block VERIFY). Because that serial cost sits in front of the fail-fast marker scan and the parallel team, it is **off by default**; enable it with `LOOP_SPEC_REGRESSION_SCAN=1` — or let the repo's tuning overlay demand it: when suite regressions have recurred in this repo, `lib/tuning.sh` records `suite-regression` as a mandatory check and the scan runs regardless of the env opt-in (`skills/shared/tier-matrix.md` "Repo tuning overlay").
-
-```bash
-if [[ "${LOOP_SPEC_REGRESSION_SCAN:-0}" == "1" ]] \
-   || bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" has-check suite-regression; then
-  REGRESSION_JSON=$(bash "${CLAUDE_SKILL_DIR}/../../lib/regression-scan.sh" .)
-else
-  echo "Regression scan skipped (set LOOP_SPEC_REGRESSION_SCAN=1 to enable)"
-fi
-```
-
-When enabled:
-
-Parse the JSON output:
-
-```bash
-PRIOR_COUNT=$(echo "$REGRESSION_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('prior_features', [])))")
-FAILED_COUNT=$(echo "$REGRESSION_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('failed_tests', [])))")
-```
-
-This gate is **advisory only**: a non-zero `failed_tests` count does NOT block VERIFY. Log the result to VERIFICATION.md:
-
-```
-Regression scan complete: {PRIOR_COUNT} prior features checked, {FAILED_COUNT} test failures (advisory)
-```
-
-If `regression-scan.sh` itself fails (exits non-zero or produces invalid JSON), log a warning and continue without blocking:
-
-```
-Warning: regression-scan.sh failed to run; skipping advisory regression gate
-```
-
 ### Step 1 - Placeholder scan (no stub implementations)
-
-Before spawning any teammates, scan the diff for placeholder/stub markers — the
-code-level form of self-authored deferral (`skills/shared/no-deferral.md`): a TODO,
-FIXME, `NotImplementedError`, or "not implemented" throw in an ADDED line means a
-stub shipped where the design promised a full implementation.
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" \
-  "${CLAUDE_SKILL_DIR}/../../lib/placeholder-scan.sh" \
-  --feature-dir ".loop-spec/features/${slug}"
-```
-
-`lib/feature-scan-each.sh` walks every git target of the feature: the single-repo
-toplevel, or each `workspace.repos[]` with that repo's `baseSha` and absolute
-path. Do not pass top-level `{baseSha}` / `.` to the scan — those are empty in
-workspace mode and the workspace root is not a git repository. Per-repo
-invocation (`placeholder-scan.sh <base-sha> <repo-path>`) remains valid for a
-known tree.
-
-Exit 1 = signals found: VERIFY fails immediately. Print the listed `file:line: signal`
-lines verbatim, and emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"marker"}' || true`).
-Do not spawn verifier or code-reviewer until all markers are resolved.
-
-Notes:
-- Only ADDED lines are scanned (diff vs `{baseSha}`), so pre-existing markers in a
-  not-green repo never fire — the scan reports what THIS feature introduced.
-- Markdown/docs files are exempt: prose descriptions of markers are not stub code.
-- The marker set and exemptions live in `lib/placeholder-scan.sh` (one home); do not
-  re-derive them as inline grep pipelines here.
-
-Rationale: placeholder markers are incomplete implementation; running acceptance
-gates against incomplete code wastes agent effort, and a stub that survives to the
-PR is deferred scope the model chose on its own.
 
 ### Step 1.5 - Test-tamper scan (anti-reward-hacking, fail-fast)
 
-The implementer may have edited the very suite the acceptance gate is about to trust. Before spawning teammates, scan the diff for oracle tampering — deleted test files, newly-added skip/focus annotations (`.skip`, `.only`, `xit`, `@pytest.mark.skip`, `t.Skip`, ...), and `|| true` swallowing a test command's exit code:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" \
-  "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" \
-  --feature-dir ".loop-spec/features/${slug}"
-```
-
-Same `--feature-dir` contract as Step 1. Do not pass top-level `{baseSha}` / `.`
-in workspace mode.
-
-Exit 1 = signals found: VERIFY fails immediately. Print the listed signals verbatim and emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"tamper"}' || true`). This is NOT auto-remediable by re-running EXECUTE with a generic brief — the remediation task must state the specific tampering (`subject = "Fix: restore tampered test — {signal}"`) so the implementer un-tampers rather than re-tampers. A legitimate skip (e.g. a platform-gated test) is the HUMAN's call: in `step`/`interactive` styles ask; in autonomous styles treat as tampering and remediate — a real platform gate will come back with justification in the task notes and can be accepted on the next pass by recording it in `warnings[]`.
-
 ### Step 1.75 - Prepared no-new-failures gate
 
-Before creating the VERIFY team, run the shared feature-level adapter:
-
-```bash
-validation_rc=0
-VALIDATION_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" compare \
-  ".loop-spec/features/${slug}")" || validation_rc=$?
-```
-
-It runs the persisted preparation command in every participating repository, then runs
-test/lint/typecheck against the candidate. This is the only place the cycle's
-repository-wide suite runs: startup does not run it (the baseline capture is opt-in),
-EXECUTE does not run it at any rung, and cycle resume does not run it — it reads
-`tasks.json` for which ids are already `status=done` and continues remaining work
-in the recorded phase. Every rung previously repeated this same comparison per wave against the
-same integrated tree, which is why it is stated here as an invariant rather than a
-default. With no recorded baseline (the default, since
-`LOOP_SPEC_STARTUP_BASELINE` is off) every failure blocks. With a captured baseline the
-comparison is relative: exit 0 means no new failures, and pre-existing fingerprints may
-remain and must be reported as known baseline failures rather than repaired. Exit 20 is a
-real suite regression: emit `suite-regression`, append the normal
-FULL-SHAPE remediation task, and return to the cycle orchestrator without spawning VERIFY
-agents — the pending remediation state drives the graph's declared remediation route
-(`graph/cycle.graph.json`). Exit 21 is environment/infrastructure failure: preserve the JSON
-and logs, escalate, and do not mislabel setup repair as implementation work. Acceptance
-criterion commands remain absolute pass/fail, and DELIVER's required GitHub checks remain
-absolute green.
+Run the advisory regression scan, the placeholder and test-tamper fail-fast
+scans (`lib/feature-scan-each.sh` over `placeholder-scan.sh` and
+`test-tamper-scan.sh`), and `lib/feature-validation.sh compare` before creating
+the VERIFY team. Apply the procedure verbatim from
+`${CLAUDE_SKILL_DIR}/references/pre-team-gates.md`.
 
 ### Step 2 - TeamCreate verify team
 
@@ -314,46 +215,60 @@ the emitted `FLAG` lines as the failure evidence and route through the normal ac
 remediation branch. This gate is mandatory when workflows are unavailable, which is the
 normal OpenCode/ADK path; prompt compliance alone never clears VERIFY.
 
+#### Remediation teardown (shared by every failing gate in Steps 7 and 7.5)
+
+Every remediation task is FULL-SHAPE:
+
+```json
+{
+  "id": "task-NNN+remediate-M",
+  "subject": "Fix: {criterion or finding}",
+  "files": ["...derived from failure"],
+  "verifyCommand": "criterion's verify command",
+  "acceptanceCriteria": ["criterion"],
+  "blockedBy": [],
+  "retries": 0
+}
+```
+
+Partial-shape tasks get DENIED by the task guard when EXECUTE registers them. Then:
+
+1. Append each remediation task to `feature.json.pendingRemediationTasks[]` via
+   `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md
+   tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is
+   critical: the verify team's task list is destroyed by the `TeamDelete` below, so
+   any `TaskCreate` calls on it would be lost.
+2. Append the fail entry to `gateHistory[]` via `lib/feature-write.sh`
+   (`phase: verify`, `gate: <acceptance|code-review|live-verify>`, `result: fail`).
+3. Discard code-reviewer output for this iteration when a verifier gate failed
+   (it re-runs when VERIFY loops back after remediation).
+4. Call `TeamDelete({name: "loop-spec-verify-{slug}"})`, then via
+   `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
+5. Return to the cycle orchestrator. `lib/ralph-remediation.sh` is the graph's declared
+   route probe for pending remediation (`graph/cycle.graph.json`): the recorded tasks —
+   never this skill — select the rewind, and the probe's own threshold logic
+   (`LOOP_SPEC_RALPH_THRESHOLD`) decides between the bounded remediation loop and the
+   full EXECUTE team. The graph's loop edge re-enters VERIFY from Step 1 after
+   remediation lands.
+
 #### verifier-1 gate
 
 **If verifier reports `ALL_PASS` AND `Test suite status: PASS` (or `N/A`):** proceed to code-reviewer gate below. `PASS` means Step 1.75 found no new repository-wide failures; VERIFICATION.md may list unchanged known baseline failures.
 
-**If verifier reports `ALL_PASS` but `Test suite status: FAIL`:** this now means a
-criterion-specific command failed after Step 1.75; repository-wide regressions already
-returned to EXECUTE before team creation.
-- Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"suite-regression"}' || true`
-- Generate a FULL-SHAPE remediation task: `subject = "Fix: test suite regression"`, `verifyCommand = feature.commands.test`, `blockedBy = []`, `files = []` (unknown until diagnosed), `acceptanceCriteria = ["test suite passes"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them.
-- Append the remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step, so any `TaskCreate` calls on it would be lost.
-- Update `feature.json` via `lib/feature-write.sh`:
-  - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
-- Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
-- Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
-- Discard code-reviewer output for this iteration (will re-run when verify loops back after remediation).
-- Return to the cycle orchestrator: the appended remediation state drives the graph's declared remediation route.
+**If verifier reports `ALL_PASS` but `Test suite status: FAIL`:** a criterion-specific
+command failed after Step 1.75 (repository-wide regressions already returned to EXECUTE
+before team creation). Emit
+`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"suite-regression"}' || true`,
+generate one remediation task (`subject = "Fix: test suite regression"`,
+`verifyCommand = feature.commands.test`, `files = []` until diagnosed,
+`acceptanceCriteria = ["test suite passes"]`), and run the **Remediation teardown**
+(gate: `acceptance`).
 
-**If verifier reports `FAIL`:**
-- This includes any failed grounding gate: absent/stale `repositoryEvidence`, an
-  unsupported assumption, or repository evidence that contradicts the implementation.
-- Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"acceptance"}' || true`
-- Discard code-reviewer output for this iteration.
-- For each failed criterion, generate a remediation task:
-  ```json
-  {
-    "id": "task-NNN+remediate-M",
-    "subject": "Fix: {criterion}",
-    "files": ["...derived from failure"],
-    "verifyCommand": "criterion's verify command",
-    "acceptanceCriteria": ["criterion"],
-    "blockedBy": [],
-    "retries": 0
-  }
-  ```
-- Append each remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step.
-- Update `feature.json` via `lib/feature-write.sh`:
-  - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
-- Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
-- Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
-- Return to the cycle orchestrator: the appended remediation state drives the graph's declared remediation route, and the graph's loop edge re-enters VERIFY from Step 1 after remediation lands.
+**If verifier reports `FAIL`** (including any failed grounding gate: absent/stale
+`repositoryEvidence`, an unsupported assumption, or repository evidence that
+contradicts the implementation): emit the `'{"class":"acceptance"}'` failure event,
+generate one remediation task per failed criterion, and run the **Remediation
+teardown** (gate: `acceptance`).
 
 #### code-reviewer-1 HARD-GATE
 
@@ -361,19 +276,9 @@ Use the `CODE-REVIEWER DONE` message already received from Step 6.
 
 Fixed gate rule (single-tier operation): **BLOCK on Critical OR Important. PASS_WITH_MINOR proceeds; every Minor is backlogged below.**
 
-**If BLOCK:**
-- Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"code-review"}' || true`
-- Generate one remediation task per blocking finding (same remediation task shape as verifier FAIL above).
-- Append each remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry.
-- Update `feature.json` via `lib/feature-write.sh`:
-  - Append entry to `gateHistory[]` (`phase: verify`, `gate: code-review`, `result: fail`).
-- Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
-- Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
-- Return to the cycle orchestrator. `lib/ralph-remediation.sh` is the graph's declared
-  route probe for pending remediation (`graph/cycle.graph.json`): the recorded tasks —
-  never this skill — select the rewind, and the probe's own threshold logic
-  (`LOOP_SPEC_RALPH_THRESHOLD`) decides between the bounded remediation loop and the
-  full EXECUTE team.
+**If BLOCK:** emit the `'{"class":"code-review"}'` failure event, generate one
+remediation task per blocking finding, and run the **Remediation teardown**
+(gate: `code-review`).
 
 **If PASS or PASS_WITH_MINOR:**
 - Append code-review section to VERIFICATION.md.
@@ -394,107 +299,19 @@ One rule per repeated criterion (rules.sh add is idempotent). Do not write rules
 
 ### Step 7.5 - Live-run verify rung (opt-in per repo; ROADMAP-3.0 C1)
 
-Probe-before-assert extended past the suite: when the repo has configured a `verifyCommands` block in `.loop-spec/workflow.json`, launch the app, wait for readiness, and run the acceptance probes — the loop ends at "observed working", not "suite green". Runs ONLY after both Step 7 gates passed (a live probe against known-failing code wastes the launch).
-
-```bash
-LIVE_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/verify-live.sh" run \
-  --evidence "docs/loop-spec/features/${slug}/EVIDENCE.md")"; LIVE_EC=$?
-```
-
-- **Unconfigured** (`configured: false`, exit 0): suite-only VERIFY, unchanged. NEVER guess a launch command here. If the user has not been offered configuration before, `bash "${CLAUDE_SKILL_DIR}/../../lib/verify-live.sh" detect .` may SUGGEST one — in interactive styles offer it once; in autonomous mode record a `decisions.sh` entry that the rung stayed off (suggestion included when detect found one) and move on.
-- **Exit 0 with `allPass: true`:** append a "## Live verification" section to VERIFICATION.md listing each probe with its `EVID-NNN` id (the verifier cites evidence ids, never bare claims — the probe outputs are already in the EVIDENCE.md ledger).
-- **Exit 1** (never became ready, or a probe failed): emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"live-probe"}' || true`), then record remediation exactly like a verifier `FAIL` (Step 7): one FULL-SHAPE remediation task per failed probe (`subject = "Fix: live probe failed — {probe cmd}"`, `verifyCommand` = the probe) and a `gateHistory` entry (`gate: live-verify`, `result: fail`); the recorded tasks drive the graph's declared remediation route.
-
 ### Step 7.6 - Verification-gap pass
-
-Asks the one question the gates above do not: if the behavior this change produces broke where it is actually used, would any verification fail? Step 1.5 defends the tests that already exist; Step 3 checks that criteria carry verify commands; neither traces NEW behavior out to the sites that observe it.
-
-Ground it in the probe before dispatching, so the reviewer reasons from a measured symbol search rather than recalling one:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/verification-gap-scan.sh" "$baseSha" HEAD || true
-```
-
-Exit 1 means no definition changed in a non-test file — record that and skip the pass. Otherwise dispatch one reviewer carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/verification-gap.md` verbatim plus the probe output, on the same maker≠checker terms as Step 6 (never the agent that wrote the code).
-
-Findings are **advisory in this release**: record them in VERIFICATION.md under `## Verification gaps` and append each to `.loop-spec/BACKLOG.md`. They do not block delivery. A gap class this new blocking a verified change would cost more than it catches until the false-positive rate is measured on real runs; promoting it to blocking is a tuning decision backed by telemetry, not a default.
 
 ### Step 7.65 - Plain-language pass (advisory)
 
-Checks the prose this cycle produced against `skills/shared/plain-language.md` — Orwell's
-six rules plus the STE-informed structural rules the repo adopts. Deterministic, never a
-model judgment: `lib/plain-language-lint.sh` counts sentence length, passive
-constructions, curated long-word and foreign-phrase substitutions, stock phrases,
-`and/or` slashes, paragraph length, and gerund-headed imperatives.
-
-```bash
-lint="${CLAUDE_SKILL_DIR}/../../lib/plain-language-lint.sh"
-bash "$lint" prose docs/loop-spec/features/"$slug"/*.md --max-flags 40 || true
-bash "$lint" comments $(git diff --name-only "$baseSha" HEAD -- '*.sh' '*.py') --max-flags 20 || true
-```
-
-Findings are **advisory and stay advisory until the false-positive rate is measured**.
-On this repository's own artifacts the linter reports roughly one flag per six lines,
-dominated by long sentences and passive constructions, so a blocking gate would stop
-every run on prose that reads perfectly well. Record the counts per check in
-VERIFICATION.md under `## Plain language` and append only the flags a human agrees with
-to `.loop-spec/BACKLOG.md` — never the raw list.
-
-Two of Orwell's rules are not machine-checked and never will be: "cut every word that
-adds nothing" is a judgment about a sentence's information content, and rule 6 ("break
-any of these rules sooner than say anything barbarous") is the rule that overrides the
-others. `lib/plain-language-lint.sh` has no opinion on either. A clean run is not
-evidence the prose is good.
-
 ### Step 7.66 - Docs-for-humans pass
-
-Asks whether the markdown this change leaves behind can be maintained and operated by a
-person. `skills/shared/human-docs.md` is the contract; `lib/doc-tells.sh` is the corner of it
-that is decidable from the text and the tree.
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" diff "$baseSha" HEAD
-```
-
-Exit 0 means the documents this change touched carry no relative link without a target, no
-inline-code path the tree no longer holds, and no shell command holding a placeholder the
-prose never explains. Exit 1 lists each with `file:line` and is a gate failure: fix them
-here and re-run until clean. Do not append `|| true` — that swallows the only signal this
-pass has.
-
-These findings are **fixable, not advisory**: every one names a file, a line, and a one-line
-edit, so fix them here and re-run until clean rather than backlogging them. The escape hatch
-is narrow and recorded: a finding that is one of the misfires the contract documents (a design
-artifact naming a file this change deliberately does not create, a frozen record) is written
-into VERIFICATION.md under `## Docs for humans` with the reason and does not block. Never
-suppress the check itself.
-
-The judgment half belongs to the code-reviewer (Step 6, pass 8.5): which document the change
-made false, and whether a procedure a person must follow states its prerequisites, its
-expected output, and what to do when a step fails.
 
 ### Step 7.7 - Project review layers (opt-in per repo)
 
-Any layer the project declared in `.loop-spec/extensions.json` runs here, after the built-in gates:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/extension-points.sh" layers verify
-```
-
-Each emitted line names a layer and its `promptFile`. Dispatch one reviewer per layer with that file's contents, and record findings alongside the verification-gap findings. Extensions ADD only: a declared layer can never disable, reorder, or shadow a built-in gate, and `extension-points.sh validate` refuses a layer claiming a built-in gate id. No output, a missing file, or a malformed file means no extra layers and no error — this path fails open.
-
 ### Step 7.8 - Write the reviewer's guide
 
-The change is verified; now make it reviewable. Follow `skills/walkthrough/SKILL.md` in `--write` mode to produce `docs/loop-spec/features/{slug}/REVIEW-ORDER.md`, then lint it:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/review-trail.sh" lint \
-  "docs/loop-spec/features/${slug}/REVIEW-ORDER.md" "$baseSha" HEAD
-```
-
-Fix every finding and re-run until clean. Record the artifact path in `feature.json` as `artifacts.reviewOrder` so DELIVER inlines it into the PR body.
-
-This never gates delivery. If the trail cannot be produced or will not lint after a reasonable attempt, note it in VERIFICATION.md and continue — a verified change held back over prose costs the reviewer more time than the guide saves.
+After both Step 7 gates pass: live-run probes, verification-gap, plain-language,
+docs-for-humans (`lib/doc-tells.sh`), project review layers, and the reviewer's
+guide. Apply each verbatim from `${CLAUDE_SKILL_DIR}/references/post-hard-gate.md`.
 
 ### Step 8 - TeamDelete verify team
 

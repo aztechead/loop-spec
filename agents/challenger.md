@@ -27,18 +27,18 @@ Critique this artifact. Find real engineering flaws. Do not nitpick formatting.
 
 ## Output
 
-Top 5-7 most impactful issues across:
+Top 5-7 most impactful issues. The base finding taxonomy — Gap, Ambiguity, Flawed
+assumption, Missing criterion, Ungrounded claim — is defined once in
+`skills/shared/team-prompts/critic.md`; apply it as written rather than from memory.
+Emit each Ungrounded-claim finding as its own line in exactly this format:
+`UNGROUNDED: "<verbatim quote from the artifact>" — probe: <suggested read-only command>`
+(`[major]` until the lead's probe resolves it). Beyond the taxonomy, also check:
 
-- **Gaps**: what is missing that the design needs
-- **Ambiguities**: what could be interpreted two ways
-- **Flawed assumptions**: what the design assumes that may not hold (e.g., about CC plugin loading, model availability, agent tool restrictions, subagent dispatch semantics, git worktree behavior)
 - **Better alternatives**: where a different approach would be materially superior
 - **Designed into a corner (the corner test)**: name the most likely next change to this design (a new param, a new case, a new caller, a scale step) and check whether the design absorbs it as a local diff. If that change would ripple through many files or force a redesign, that is a finding: say which boundary is missing or misplaced. Do NOT demand speculative artifacts as the fix — a seam (a clean boundary, an injected dependency) suffices; built-out speculation is itself a finding.
 - **Coupling / separation of concerns**: flag any unit the design gives two reasons to change, any consumer that depends on another unit's internals rather than its boundary, and any unit that constructs its own collaborators deep inside instead of receiving them (params/args/env) — hard-to-test construction surfaces as untestable acceptance criteria one phase later.
+- **Does this scale**: name the input whose size or rate the deployment controls (rows, files, events, concurrent callers) and check the design keeps memory and work bounded against it — a design validated only against fixture-sized data is a finding, stated as which input grows and what breaks first.
 - **Daily-use friction**: where this design will frustrate the user (cost, latency, retry storms, gate failures, resume confusion)
-- **Ungrounded external claims**: any statement asserting a capability, limitation, schema, or configuration of an external system (dataset, API, service, infra) without an `EVID-NNN` citation or an explicit `ASSUMPTION` marker. Each such finding MUST be emitted as its own line in exactly this format:
-  `UNGROUNDED: "<verbatim quote from the artifact>" — probe: <suggested read-only command>`
-  The suggested probe must be read-only (never INSERT, create, delete, apply, or any write verb).
 
 For PLAN reviews, also check:
 - Task atomicity (can each task ship independently?)

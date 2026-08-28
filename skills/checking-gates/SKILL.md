@@ -1,6 +1,6 @@
 ---
 name: checking-gates
-description: Use when picking up a user-gate task OR when a hook demands re-validation. Runs the "do I know HOW?" self-check; if the HOW is clear, executes the verification and posts evidence; if not, hands off to specifying-gates. Do not use to invent verification mechanics (that's specifying-gates) or to run the full VERIFY phase (that's /loop-spec:verify).
+description: Use when picking up a user-gate task OR when a hook demands re-validation. If the verification HOW is clear, runs it and posts evidence; otherwise hands off to specifying-gates. Do not use to invent verification mechanics (that's specifying-gates) or to run the full VERIFY phase (that's /loop-spec:verify).
 ---
 
 # Checking User-Thrown Gates

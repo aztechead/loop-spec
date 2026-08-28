@@ -2,6 +2,8 @@
 
 Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. Apply as written.
 
+Contents: Step 3.5 model probe · Workflow availability probe.
+
 ### Step 3.5 - Model probe
 
 Resolve the complete selector set from the same executable source used at phase

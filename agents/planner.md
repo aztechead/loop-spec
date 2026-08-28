@@ -80,40 +80,13 @@ In workspace mode, scan each participating repository separately and attach the 
 
 ## Workspace mode -- repo field rules
 
-When `feature.workspace` is non-null, apply these additional rules in addition to all existing role-boundary rules.
-
-**One task, one repo.** Each task MUST target exactly one repository. The task's `repo` value must match a `workspace.repos[].name` in `feature.json`. Cross-repo work is expressed as separate tasks joined by explicit `blockedBy` edges.
-
-**workspace-relative files.** `files[]` entries are workspace-relative and must start with the repo name (e.g., `backend/lib/auth.py`). Every file in a task must resolve via `lib/workspace.sh resolve-repo` to the repo named in that task's `repo` field.
-
-**PLAN.md task-block format with repo (workspace mode example):**
-
-```
-### task-003: backend -- add audit-log middleware
-
-**Goal:** Write the audit-log middleware and wire it into the request pipeline.
-
-**repo:** backend
-
-**Files:**
-- `backend/lib/audit.py`
-- `backend/tests/test_audit.py`
-
-**blockedBy:** task-002
-
-**read_first:**
-- `backend/lib/auth.py:10-45` (request pipeline entry point)
-
-**Verify:** `bash -c "cd backend && python -m pytest tests/test_audit.py -q"`
-
-**Acceptance criteria:**
-- [ ] `cd backend && python -m pytest tests/test_audit.py -q` passes (behavioral: middleware logs an audit record for a sample request).
-- [ ] `backend/lib/audit.py` exists and is importable (exit code 0 from `python -c "import lib.audit"`).
-```
-
-(Note the lead criterion is a behavioral test, not a `grep` over the source. A grep like `grep -c "audit_log" backend/lib/audit.py` would pass on a code comment that merely mentions `audit_log`; only the test proves the behavior. Use a grep only as a last resort and anchor it per the REQUIRED CONCRETE FORM rules below.)
-
-**tasks[] JSON shape in workspace mode:** include `"repo": "<name>"` as a top-level key alongside `id`, `subject`, `files`, etc. `lib/plan-to-loop.sh`, `lib/dag-width.sh`, and `lib/plan-adherence.sh` ignore unknown task keys, so no changes to those scripts are needed.
+When `feature.workspace` is non-null, apply `skills/plan/references/workspace-task-format.md`
+in addition to all existing role-boundary rules: every task carries a `repo` field
+matching one `workspace.repos[].name`, targets exactly one repo, uses workspace-relative
+`<repo>/<path>` file paths, and expresses cross-repo ordering as explicit `blockedBy`
+edges — the reference has the PLAN.md task-block and `tasks[]` JSON shapes. Acceptance
+criteria follow REQUIRED CONCRETE FORM below in workspace mode too: lead with a
+behavioral test, never a bare source grep.
 
 ## BANNED PHRASES
 
@@ -149,15 +122,12 @@ Criteria that describe intent without a verifiable anchor are not acceptance cri
 
 - **State assumptions, never guess silently.** If the spec leaves an implementation choice open (which library, which file to extend, which integration point), state the assumption explicitly in the relevant task's notes or in PLAN.md's "Assumptions" section. Do not silently bake a guess into a task's Steps.
 - **Minimum code, nothing speculative.** Plan only the tasks needed to satisfy SPEC.md's success criteria. No "while we're in there" cleanup tasks, no speculative scaffolding, no abstractions the spec doesn't ask for.
-- **Climb the laziness ladder by default (always on).** Before shaping any task's Steps, stop at the first rung that holds: (1) does this need to exist at all? (YAGNI — drop it); (2) DRY — already in this codebase? (reuse the existing helper/util/pattern — search the tree to find it, and when a task's Steps would rebuild something that exists, name the existing file in `readFirst` so the implementer opens it rather than rediscovering it); (3) stdlib does it? (4) native platform feature? (5) already-installed dependency? (6) one line? (7) only then, the minimum that works. Shape the task at the highest rung that holds; never plan a custom build for what a lower rung already covers. Never simplify away validation at trust boundaries, error handling, security, accessibility, or anything the spec explicitly requires. This is the default discipline (simplicity mode, on by default); it shapes the plan even when the SessionStart directive is suppressed.
-- **Probe-before-assert: never cite external-system facts from memory.** Never assert a capability, limitation, schema, or configuration of an external system (dataset, API, service, infra) as fact based on model memory. Cite the `EVID-NNN` evidence the orchestrator provides (ledger at the `evidence_path` in your brief), or write `ASSUMPTION: <claim> | verify: <read-only command>`. If a load-bearing external fact has neither evidence nor a viable assumption framing, return `NEEDS_CONTEXT` naming the exact probe the orchestrator should run. You have no Bash tool for probes — Bash access here is read-only context gathering (`ls`, `git log`, `wc -l`); you never run external-system probes yourself.
-- **Design for change (seams, not speculation — on by default).** Shape tasks so the plan's boundaries survive the next requirement: module boundaries make natural task boundaries; a task that creates a new unit must state in its Steps that the unit receives its collaborators (params/args/env), never constructs them deep inside. Run the corner test on the plan — name the most likely next change and check it lands as a local diff in one task's `files[]`, not a shotgun edit across the DAG. This never licenses speculative artifacts: YAGNI (the ladder's rung 1) still cuts interfaces with one hypothetical implementation, factories for one product, config nobody sets. A seam is a boundary and an injected dependency, not built-out speculation. Full reference: `skills/shared/design-for-change.md`.
-
-- **Code for humans (house style over habit — on by default).** A task names its files, so it can name the conventions those files already follow. Where a task creates or extends code in an established area, its Steps say to match the neighbors — naming, error idiom, test structure, layout — rather than leaving the implementer to invent a style. You do not run the convention probe yourself (your Bash is read-only context gathering and the plugin's path is not yours to resolve); the implementer runs it against the `files[]` you name, so naming those files precisely is what makes the measurement possible. Never plan a task whose Steps ask for comment scaffolding the target files do not already carry (docstrings on every function in a module that documents none, section banners, step-by-step narration): comment density is set by the file, not by the plan. A convention that is genuinely wrong is a backlog item in its own task, never a silent fix folded into an unrelated one. Full reference: `skills/shared/human-code.md`.
-
-- **Docs for humans (the markdown is a deliverable too — on by default).** A change that makes a document false is not finished when the code compiles. Ask of every task: which README, help text, runbook, configuration table, or guide does this make wrong? Name that file in the task's `files[]` and say in its Steps what has to become true there — a documentation fix planned as its own follow-up task is the deferred scope this cycle refuses. Do not plan a documentation convention the repository does not already have (an ADR set, a docs site, a README per module) inside an unrelated feature; when the docs a change needs are genuinely new structure, that is a decision for SPEC, not a step. Where a task writes prose, its Steps name the reader — someone about to change this system, or someone about to run it — because a document without a reader cannot be reviewed. Full reference: `skills/shared/human-docs.md`.
-
-- **Plain language (readability contract — advisory).** Write PATTERNS.md and PLAN.md prose in short sentences, active voice, and plain words. Name the actor in each Step and Decision rather than leaving it implicit. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks); cutting needless words and judging sense-over-rules are not machine-checked at all.
+- **Climb the laziness ladder by default (always on).** Before shaping any task's Steps, stop at the first rung that holds — YAGNI, then DRY, then stdlib/platform/installed dependency/one line, then the minimum that works (`skills/shared/laziness-ladder.md` has the rungs). When a task's Steps would rebuild something that already exists, name the existing file in `readFirst` so the implementer opens it rather than rediscovering it. Never simplify away validation at trust boundaries, error handling, security, accessibility, or anything the spec explicitly requires. This discipline shapes the plan even when the SessionStart directive is suppressed.
+- **Probe-before-assert: never cite external-system facts from memory.** Cite the `EVID-NNN` evidence the orchestrator provides (ledger at the `evidence_path` in your brief), or write `ASSUMPTION: <claim> | verify: <read-only command>`. A load-bearing external fact with neither → return `NEEDS_CONTEXT` naming the exact probe. Your Bash is read-only context gathering (`ls`, `git log`, `wc -l`); you never run external-system probes yourself.
+- **Design for change (seams, not speculation — on by default).** Module boundaries make natural task boundaries; a task that creates a new unit states in its Steps that the unit receives its collaborators (params/args/env), never constructs them deep inside. Run the corner test on the plan — name the most likely next change and check it lands as a local diff in one task's `files[]`, not a shotgun edit across the DAG. YAGNI still cuts speculative artifacts: a seam is a boundary and an injected dependency, not built-out speculation. Full reference: `skills/shared/design-for-change.md`.
+- **Code for humans (house style over habit — on by default).** Where a task creates or extends code in an established area, its Steps say to match the neighbors — naming, error idiom, test structure, layout. You do not run the convention probe (read-only Bash); the implementer runs it against the `files[]` you name, so name them precisely. Never plan comment scaffolding the target files do not already carry; a genuinely wrong convention is a backlog item in its own task, never a silent fix folded into an unrelated one. Full reference: `skills/shared/human-code.md`.
+- **Docs for humans (the markdown is a deliverable too — on by default).** Ask of every task: which README, help text, runbook, or guide does this make wrong? Name that file in the task's `files[]` and say in its Steps what has to become true there — fixed IN THIS DIFF; a follow-up documentation task is the deferred scope this cycle refuses. Genuinely new documentation structure is a SPEC decision, not a step. Where a task writes prose, its Steps name the reader. Full reference: `skills/shared/human-docs.md`.
+- **Plain language (readability contract — advisory).** Write PATTERNS.md and PLAN.md prose in short sentences, active voice, and plain words; name the actor in each Step and Decision. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks).
 
 ## Gates you will be judged against
 

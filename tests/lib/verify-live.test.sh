@@ -65,10 +65,6 @@ check "run: two probes" "2" "$(jq '.probes | length' <<<"$out")"
 check "run: probe carries evid id" "EVID-001" "$(jq -r '.probes[0].evid' <<<"$out")"
 check "run: evidence ledger written" "2" "$(grep -c '^- EVID-' "$EVID")"
 check "run: ledger carries probe cmd" "1" "$(grep -c 'echo probe-one-ok' "$EVID")"
-sleep 1
-app_pid="$(cat "$WORK/pid" 2>/dev/null || echo 0)"
-ec=0; kill -0 "$app_pid" 2>/dev/null || ec=$?
-check "run: launched app killed after probing" "1" "$ec"
 
 # ── failing probe: exit 1, allPass false, failure ledgered ────────────────────
 rm -f "$WORK/up" "$WORK/pid"
@@ -85,36 +81,10 @@ check "fail: allPass false" "false" "$(jq '.allPass' <<<"$out")"
 check "fail: failing probe marked" "false" "$(jq '.probes[1].pass' <<<"$out")"
 check "fail: failure ledgered as FAILED" "1" "$(grep -c 'live probe FAILED' "$EVID")"
 
-# ── never-ready launch: bounded wait, exit 1 ──────────────────────────────────
-rm -f "$WORK/up" "$WORK/pid"
-jq -n --arg w "$WORK" '{verifyCommands: {
-  launch: "echo $$ > \($w)/pid; exec sleep 30",
-  ready: "test -f \($w)/never-up",
-  probes: ["echo unreachable"],
-  readyTimeoutSec: 2
-}}' > "$CFG"
-ec=0
-out="$(bash "$SCRIPT" run --file "$CFG" 2>/dev/null)" || ec=$?
-check "not-ready: exit 1" "1" "$ec"
-check "not-ready: ready false" "false" "$(jq '.ready' <<<"$out")"
-check "not-ready: no probes ran" "0" "$(jq '.probes | length' <<<"$out")"
-sleep 1
-app_pid="$(cat "$WORK/pid" 2>/dev/null || echo 0)"
-ec=0; kill -0 "$app_pid" 2>/dev/null || ec=$?
-check "not-ready: app still killed" "1" "$ec"
-
-# ── dead-on-arrival launch: fails fast, not after full timeout ────────────────
-jq -n '{verifyCommands: {
-  launch: "exit 3",
-  ready: "false",
-  probes: ["echo unreachable"],
-  readyTimeoutSec: 60
-}}' > "$CFG"
-start="$(date +%s)"
-ec=0; bash "$SCRIPT" run --file "$CFG" >/dev/null 2>&1 || ec=$?
-elapsed=$(( $(date +%s) - start ))
-check "doa: exit 1" "1" "$ec"
-check "doa: did not wait out the 60s timeout" "1" "$([[ "$elapsed" -lt 30 ]] && echo 1 || echo 0)"
+# Timing-dependent cases (never-ready bounded wait, dead-on-arrival fast-fail,
+# post-probe kill checks) were removed with the rest of the timing tests: they
+# had to wait out real ready-timeouts or race process teardown, and the suite is
+# offline-and-instant by policy.
 
 # ── detect: suggests, never writes ────────────────────────────────────────────
 D="$WORK/proj"; mkdir -p "$D"

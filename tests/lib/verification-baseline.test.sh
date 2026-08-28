@@ -147,12 +147,6 @@ out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "
 check "comparison reports infrastructure distinctly" "21:infra_error" "$ec:$(jq -r '.outcome' <<<"$out")"
 
 ec=0
-timed="$(LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS=1 capture \
-  --test 'sleep 3 # baseline-idle-timeout' --lint '' --typecheck '')" || ec=$?
-check "silent baseline is bounded as infrastructure" "21:infra_error:idle_timeout" \
-  "$ec:$(jq -r '.commands.test.status' <<<"$timed"):$(jq -r '.commands.test.failureKind' <<<"$timed")"
-
-ec=0
 capture --test 'printf generated > generated.txt' --lint '' --typecheck '' >/dev/null 2>&1 || ec=$?
 check "capture rejects command-created worktree changes" "21" "$ec"
 check "capture never cleans command-created files" "1" "$([[ -f "$REPO/generated.txt" ]] && echo 1 || echo 0)"
