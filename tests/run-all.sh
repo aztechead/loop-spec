@@ -360,6 +360,7 @@ run_suite "tests/autonomous-routing-coverage" "bash tests/autonomous-routing-cov
 run_suite "tests/dispatch-events-coverage" "bash tests/dispatch-events-coverage.test.sh"
 run_suite "tests/console-observability-coverage" "bash tests/console-observability-coverage.test.sh"
 run_suite "tests/execution-discipline-coverage" "bash tests/execution-discipline-coverage.test.sh"
+run_suite "tests/implementer-contract-coverage" "bash tests/implementer-contract-coverage.test.sh"
 run_suite "tests/execution-validation-coverage" "bash tests/execution-validation-coverage.test.sh"
 run_suite "tests/verification-grounding-coverage" "bash tests/verification-grounding-coverage.test.sh"
 run_suite "tests/configuration-coverage" "bash tests/configuration-coverage.test.sh"

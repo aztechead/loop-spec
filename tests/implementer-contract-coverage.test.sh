@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Pin the three-questions design gate: every code-producing dispatch surface names
+# skills/shared/implementer-contract.md and asks modular / extensible / least code.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
+
+checks=(
+  "skills/shared/implementer-contract.md	THREE QUESTIONS (design gate — on by default)"
+  "skills/shared/implementer-contract.md	more modular"
+  "skills/shared/implementer-contract.md	least amount of code that makes it happen"
+  "skills/shared/execute-subagent.md	implementer-contract.md"
+  "skills/shared/execute-subagent.md	least amount of code that makes it happen"
+  "skills/shared/team-prompts/implementer.md	implementer-contract.md"
+  "skills/shared/team-prompts/implementer.md	more modular"
+  "agents/implementer.md	implementer-contract.md"
+  "agents/implementer.md	more modular"
+  "skills/shared/execute-inline.md	implementer-contract.md"
+  "skills/shared/execute-inline.md	more modular"
+  "lib/plan-to-loop.sh	implementer-contract.md"
+  "lib/plan-to-loop.sh	more modular"
+  "lib/workflows/execute-dag.js	implementer-contract.md"
+  "lib/workflows/execute-dag.js	more modular"
+  "skills/execute/SKILL.md	implementer-contract.md"
+)
+
+check_fixed_strings "${checks[@]}"
+
+# Both subagent prompt templates (single-repo + workspace) must carry the gate.
+sub_count="$(grep -cF "THREE QUESTIONS (design gate" skills/shared/execute-subagent.md)"
+if [[ "$sub_count" -ge 2 ]]; then
+  PASS=$((PASS+1)); echo "PASS: execute-subagent.md carries the gate in both prompts ($sub_count occurrences)"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: execute-subagent.md has $sub_count three-questions occurrences; expected >= 2"
+fi
+
+finish_fixed_string_coverage

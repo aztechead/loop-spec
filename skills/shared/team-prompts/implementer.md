@@ -69,6 +69,7 @@ Repeat until idle:
    - For exact requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
    - Read PLAN.md's `## Global constraints` section (if present) and the task block's `**Interfaces:**` entry before writing code — every global constraint binds verbatim, and the interfaces name the contracts neighboring tasks consume/produce.
    - Modify only the files listed in `metadata.files`.
+   - **Three questions (design gate — on by default)** (`skills/shared/implementer-contract.md`): before implementing and again before DONE, ask of the change: can I make it more modular? can I make it more extensible? is this the least amount of code that makes it happen?
    - **Climb the ponytail laziness ladder** (`skills/shared/laziness-ladder.md`): read that file — do not paste it. YAGNI, then DRY. Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>` and `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>` (`duplicate=` same lines, `similar=` names-changed; both count).
    - **Writing good tests** (`skills/shared/writing-good-tests.md`): read that file — do not paste it. Name the break; no string-presence traps; no change detectors.
    - **TDD (red then green).** Code-producing tasks: write the failing test FIRST, run it, confirm red, then implement, confirm green. Skill/config/docs tasks are excluded. Omitting a TDD label does not exempt this step.

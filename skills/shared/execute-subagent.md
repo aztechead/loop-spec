@@ -295,6 +295,11 @@ You are an implementer agent for task {taskId}.
 
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
 
+THREE QUESTIONS (design gate — on by default). Before implementing and again before DONE,
+ask of the change: can I make it more modular? can I make it more extensible? is this the
+least amount of code that makes it happen? Full contract:
+`${CLAUDE_SKILL_DIR}/../../skills/shared/implementer-contract.md`.
+
 SIMPLICITY (ponytail laziness ladder — on by default). Read
 `${CLAUDE_SKILL_DIR}/../../skills/shared/laziness-ladder.md` before writing code — do not
 paste it. YAGNI, then DRY: reuse what is already here. Before DONE run
@@ -478,6 +483,11 @@ The prompt instructs the implementer:
 You are an implementer agent for task {taskId} in repo '{repo}'.
 
 IMPORTANT: All paths must be ABSOLUTE. Do not use em-dashes.
+
+THREE QUESTIONS (design gate — on by default). Before implementing and again before DONE,
+ask of the change: can I make it more modular? can I make it more extensible? is this the
+least amount of code that makes it happen? Full contract:
+`${CLAUDE_SKILL_DIR}/../../skills/shared/implementer-contract.md`.
 
 SIMPLICITY (ponytail laziness ladder — on by default). Read
 `${CLAUDE_SKILL_DIR}/../../skills/shared/laziness-ladder.md` before writing code — do not
