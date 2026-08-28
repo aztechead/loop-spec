@@ -79,7 +79,7 @@ Skills must use `${CLAUDE_SKILL_DIR}` (the documented skill substitution) to rea
 ## Tests
 
 - Test runner: `bash tests/run-all.sh` from repo root (validators + hook + lib units + workflow syntax + the bundled loop-runner offline suite).
-- Manual end-to-end matrix: see `tests/README.md` (run against a live Claude Code session). Scripted headless e2e smoke: `bash tests/e2e/run-e2e.sh` (or `tests/run-all.sh --e2e`) — LIVE and opt-in, never part of the default offline suite.
+- The shipped test tree is offline-only: no network, no live model calls, no e2e suites. Manual end-to-end matrix: see `tests/README.md` (run against a live Claude Code session).
 - All commits must keep `tests/run-all.sh` passing.
 
 ## Commits

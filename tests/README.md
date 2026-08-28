@@ -30,15 +30,9 @@ ripgrep (`rg`, used by the two coverage sweeps to enumerate the tree), and (for
 the workflow checks) node. It does NOT require the Claude CLI. `rg` is a
 test-only dependency: nothing shipped at runtime uses it.
 
-Scripted end-to-end: `bash tests/e2e/run-e2e.sh` (or `tests/run-all.sh --e2e`)
-runs ONE live autonomous cycle against a throwaway fixture repo — installed from
-THIS checkout via a local-scope plugin install, so it never exercises a stale
-cached snapshot, and `autonomous` mode removes the interactive AskUserQuestion
-path that made earlier headless attempts unreliable. It asserts the
-machine-readable contract (`result.json` schema 1 + `events.jsonl`); see
-`tests/e2e/README.md`. It costs real tokens and minutes, so it is opt-in and the
-default suite stays offline. Broader behavioral coverage remains the manual
-matrix below, run against a live Claude Code session.
+There are no scripted e2e or live-model suites: the shipped test tree is offline-only
+by policy (no network, no `claude -p`, no live services). Behavioral end-to-end
+coverage is the manual matrix below, run against a live Claude Code session.
 
 ## Manual end-to-end matrix
 

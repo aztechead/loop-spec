@@ -250,14 +250,13 @@ More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/archit
 bash tests/run-unit.sh         # fast edit loop; tests coupled to uncommitted changes
 bash tests/run-unit.sh main    # tests coupled to the whole branch diff
 bash tests/run-all.sh          # full offline gate, parallel by default
-bash tests/run-all.sh --e2e    # full gate + live smokes (costs tokens and time)
 ```
 
 `RUN_ALL_JOBS` controls concurrency and `RUN_ALL_VERBOSE=1` restores every successful
 suite's detailed log. The fast gate uses the coverage index plus same-name unit suites to
-select the checks coupled to the changed files; the full gate retains every timeout,
-installer, temporary-server, and end-to-end contract. Live e2e:
-[`tests/e2e/README.md`](tests/e2e/README.md). Manual matrix: [`tests/README.md`](tests/README.md).
+select the checks coupled to the changed files. Every suite is offline — no network, no
+live model calls; end-to-end coverage is the manual matrix in
+[`tests/README.md`](tests/README.md).
 
 ## License
 

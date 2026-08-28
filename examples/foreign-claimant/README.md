@@ -4,7 +4,7 @@ A worked, end-to-end example of the handoff port's `foreign` rung
 (`skills/shared/handoff-port.md`, `skills/execute/SKILL.md` "Rung 5 - foreign
 claimants"): a bundle is exported and `put` on the port, and a separate,
 out-of-process consumer claims it, does the work, verifies it, and completes
-it. Proved offline and hermetically by `tests/e2e/foreign-claimant-app.test.sh`.
+it.
 
 **This is a reference consumer, not a supported product surface.** It
 implements exactly one task type (deploy `app.py`) so the example stays

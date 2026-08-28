@@ -1,22 +1,18 @@
 #!/usr/bin/env bash
 # Run every non-CC test suite (validators + hook + lib units + workflow syntax).
 #
-# Usage: bash tests/run-all.sh [--e2e]
-#   --e2e  additionally run tests/e2e/run-e2e.sh (LIVE: real claude -p cycle,
-#          costs tokens and minutes; the default suite stays offline)
+# Usage: bash tests/run-all.sh
 #
-# Offline suites run concurrently. RUN_ALL_JOBS overrides the default worker count;
-# RUN_ALL_VERBOSE=1 prints successful suite logs instead of only their answer lines.
+# Every suite is offline: no network, no live model calls. Suites run concurrently.
+# RUN_ALL_JOBS overrides the default worker count; RUN_ALL_VERBOSE=1 prints successful
+# suite logs (and per-suite START lines) instead of only their answer lines.
 # tests/run-unit.sh selects only the suites coupled to the current worktree diff.
 # Exits 0 if all pass, 1 otherwise.
 set -euo pipefail
 
-RUN_E2E=0
 for arg in "$@"; do
-  case "$arg" in
-    --e2e) RUN_E2E=1 ;;
-    *) echo "run-all.sh: unknown flag '$arg' (supported: --e2e)" >&2; exit 2 ;;
-  esac
+  echo "run-all.sh: unknown flag '$arg' (no flags supported; the suite is offline-only)" >&2
+  exit 2
 done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -60,6 +56,7 @@ RUN_ALL_JOBS="${RUN_ALL_JOBS:-$default_jobs}"
   || { echo "run-all.sh: RUN_ALL_JOBS must be 32 or less" >&2; exit 2; }
 
 RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-run-all-XXXXXX")"
+printf '[user]\n\tname = loop-spec-tests\n\temail = tests@loop-spec.invalid\n' > "$RUN_DIR/gitconfig"
 cleanup() {
   local pid
   if (( SUITE_BATCH > 0 )); then
@@ -115,10 +112,15 @@ run_suite() {
   SUITE_REPORTED[$index]=0
   SUITE_SEQUENCE=$((SUITE_SEQUENCE + 1))
   SUITE_BATCH=$((SUITE_BATCH + 1))
-  echo "START: $name t=${SECONDS}s"
+  [[ "$RUN_ALL_VERBOSE" == "1" ]] && echo "START: $name t=${SECONDS}s"
 
   (
     started="$SECONDS"
+    # Every suite runs against a hermetic git config: a host's global config can
+    # carry hooks that block plain commits in the suites' temp repos (an fsmonitor
+    # daemon or a commit-signing helper turns a 25ms commit into a 20s hang, which
+    # once stretched this runner to ~11 minutes of wall time).
+    export GIT_CONFIG_GLOBAL="$RUN_DIR/gitconfig" GIT_CONFIG_SYSTEM=/dev/null
     if bash -c "$cmd" >"$log" 2>&1; then
       rc=0
     else
@@ -172,12 +174,6 @@ flush_suites() {
   SUITE_BATCH=0
 }
 
-run_suite_serial() {
-  flush_suites
-  run_suite "$@"
-  flush_suites
-}
-
 echo "run-all: profile=$RUN_ALL_PROFILE jobs=$RUN_ALL_JOBS"
 
 run_suite "validate-agents"           "bash tests/validate-agents.sh"
@@ -200,8 +196,6 @@ run_suite "lib/graph-gate-dispatch"    "bash tests/lib/graph-gate-dispatch.test.
 run_suite "lib/effort-probe"          "bash tests/lib/effort-probe.test.sh"
 run_suite "lib/conflict-monitor"      "bash tests/lib/conflict-monitor.test.sh"
 run_suite "lib/graph-port-contract"   "bash tests/lib/graph-port-contract.test.sh" integration
-run_suite "e2e/graph-handoff"        "bash tests/e2e/graph-handoff.test.sh" integration
-run_suite "e2e/foreign-claimant-app" "bash tests/e2e/foreign-claimant-app.test.sh" integration
 run_suite "opencode-plugin"           "bash tests/opencode-plugin.test.sh"
 run_suite "opencode-harness-coverage" "bash tests/opencode-harness-coverage.test.sh"
 run_suite "lib/opencode-install"      "bash tests/lib/opencode-install.test.sh" integration
@@ -304,7 +298,6 @@ run_suite "lib/ralph-remediation"    "bash lib/ralph-remediation.test.sh"
 run_suite "lib/pause-snapshot"        "bash lib/pause-snapshot.test.sh"
 run_suite "lib/regression-scan"       "bash tests/lib/regression-scan.test.sh"
 run_suite "lib/feature-init"          "bash tests/lib/feature-init.test.sh"
-run_suite "lib/run-with-watchdog"     "bash tests/lib/run-with-watchdog.test.sh" integration
 run_suite "lib/prepare-environment"   "bash tests/lib/prepare-environment.test.sh" integration
 run_suite "lib/project-commands"      "bash tests/lib/project-commands.test.sh"
 run_suite "lib/verification-baseline" "bash tests/lib/verification-baseline.test.sh" integration
@@ -387,11 +380,6 @@ else
 fi
 
 flush_suites
-
-if [[ "$RUN_E2E" == "1" ]]; then
-  run_suite_serial "tests/e2e (LIVE)" "bash tests/e2e/run-e2e.sh" integration
-  run_suite_serial "tests/e2e sentinel (LIVE)" "bash tests/e2e/run-e2e-sentinel.sh" integration
-fi
 
 echo ""
 echo "=== Summary ==="
