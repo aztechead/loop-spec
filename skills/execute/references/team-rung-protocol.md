@@ -31,7 +31,7 @@ The harness guarantees one event the lead can rely on: every time a teammate end
 3. Process the merge queue (Step 8).
 4. Re-evaluate the exit condition (Step 10).
 
-The lead is therefore self-correcting: even if every teammate `SendMessage` were dropped, the guaranteed `TeammateIdle` stream still drives the merge queue and the phase to completion. This mirrors the DISCUSS phase, which already synchronizes on `TeammateIdle` plus a state/artifact check rather than on message receipt. The lead must never block waiting for a specific message; it acts on TaskList state at each wake.
+The lead is therefore self-correcting: even if every teammate `SendMessage` were dropped, the guaranteed `TeammateIdle` stream still drives the merge queue and the phase to completion. This mirrors the DISCUSS phase, which already synchronizes on `TeammateIdle` plus a state/artifact check rather than on message receipt. The lead must never block waiting for a specific message; it acts on TaskList state at each wake. Never AskUserQuestion as a wait.
 
 ### Step 8 - Fallback: Merge queue
 

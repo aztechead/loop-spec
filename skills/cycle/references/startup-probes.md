@@ -86,7 +86,8 @@ Parallel:
     })
 ```
 
-Retry each on transient error (2x, 2s backoff). On hard failure:
+Dispatch the probe Agents, then stop. Never AskUserQuestion as a wait
+(`skills/shared/harness-call-contracts.md`). Retry each on transient error (2x, 2s backoff). On hard failure:
 ```
 loop-spec health check FAILED
   Model: {model_id}

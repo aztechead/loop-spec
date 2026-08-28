@@ -46,9 +46,11 @@ checks=(
   "skills/plan/SKILL.md	review-prompts/prose-pruning\.md	PLAN must run the fresh-eyes pass on its own artifact"
   "skills/map-codebase/SKILL.md	review-prompts/prose-pruning\.md	an over-budget map needs the pass that names the cuts"
   "skills/shared/review-prompts/prose-pruning.md	never rewrite	the pass lists; the maker applies"
-  "skills/spec/SKILL.md	never AskUserQuestion as a wait	SPEC pruning must not stall the operator on a fake question"
-  "skills/plan/SKILL.md	never AskUserQuestion as a wait	PLAN pruning must not stall the operator on a fake question"
-  "skills/map-codebase/SKILL.md	never AskUserQuestion as a wait	map pruning must not stall the operator on a fake question"
+  "skills/spec/SKILL.md	never AskUserQuestion as a wait	SPEC scout fan-out and pruning must not stall on a fake question"
+  "skills/plan/SKILL.md	never AskUserQuestion as a wait	PLAN teammate joins and pruning must not stall on a fake question"
+  "skills/discuss/SKILL.md	never AskUserQuestion as a wait	DISCUSS scout fan-out and spec-writer join must not stall on a fake question"
+  "skills/map-codebase/SKILL.md	never AskUserQuestion as a wait	map mapper joins and pruning must not stall on a fake question"
+  "skills/shared/critique-gate-protocol.md	never AskUserQuestion as a wait	critique TeammateIdle joins must not stall on a fake question"
 )
 
 for entry in "${checks[@]}"; do

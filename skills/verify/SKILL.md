@@ -11,7 +11,8 @@ Invoked when feature.json currentPhase == "verify".
 > **No-teams fallback:** if `.loop-spec/runtime.json.teamsAvailable == false`, do NOT
 > call `TeamCreate`/`TeamDelete`/`SendMessage` (they throw). Run verifier and
 > code-reviewer as sequential one-shot `Agent` calls with the same agent types, models,
-> and prompt templates, per `skills/shared/no-teams-fallback.md`. The acceptance gate and
+> and prompt templates, per `skills/shared/no-teams-fallback.md`. Issue each call, then
+> stop. Never AskUserQuestion as a wait. The acceptance gate and
 > code-review HARD-GATE semantics are unchanged.
 
 > **Implicit-team harness:** if `.loop-spec/runtime.json.teamsMode == "implicit"` (CC >= 2.1.178),
@@ -194,7 +195,7 @@ SendMessage({
 
 ### Step 7 - Acceptance gate
 
-Wait for both `VERIFIER DONE` and `CODE-REVIEWER DONE` messages from teammates before proceeding.
+Stop after both dispatches. The harness resumes this turn on `VERIFIER DONE` and `CODE-REVIEWER DONE`. Never AskUserQuestion as a wait. Then proceed.
 
 Before trusting either the workflow result or `VERIFIER DONE`, run the deterministic
 artifact gate. The linter derives `GE-001`, `GE-002`, and so on directly from SPEC's

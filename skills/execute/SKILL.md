@@ -11,7 +11,9 @@ Invoked when `feature.json.currentPhase == "execute"`. Dispatch is chosen by a
 (`skills/shared/execute-subagent.md`), rung 3 agent team (TeamCreate self-claim, Steps
 4-10), rung 4 Workflow DAG (`lib/workflows/execute-dag.js`, opt-in only). Width
 thresholds and the rung rule live in `skills/shared/tier-matrix.md`. All three paths
-return the same `{merged, blocked, escalation}` result shape.
+return the same `{merged, blocked, escalation}` result shape. After every Agent or
+SendMessage whose result this step still needs: stop. Never AskUserQuestion as a wait
+(`skills/shared/harness-call-contracts.md`).
 
 ## Inputs
 
