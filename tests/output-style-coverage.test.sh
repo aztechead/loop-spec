@@ -27,7 +27,9 @@ for needle in \
   "When the phase changes" \
   "Never compress" \
   "Required questions" \
-  "\`style:auto\` is not autonomous mode"; do
+  "\`style:auto\` is not autonomous mode" \
+  "AskUserQuestion is never a wait" \
+  "not a real question"; do
   if grep -Fq "$needle" "$STYLE"; then
     ok "style carries: $needle"
   else
@@ -57,10 +59,11 @@ fi
 if grep -Fq "output-styles/loop-spec.md" skills/shared/report-style.md &&
    grep -Fq "force-for-plugin" skills/shared/report-style.md &&
    grep -Fq "one thought per action" skills/shared/report-style.md &&
-   grep -Fq "\`style:auto\` is not autonomous mode" skills/shared/report-style.md; then
-  ok "report-style names the Claude slot, working contract, and auto-vs-autonomous"
+   grep -Fq "\`style:auto\` is not autonomous mode" skills/shared/report-style.md &&
+   grep -Fq "AskUserQuestion is never a wait" skills/shared/report-style.md; then
+  ok "report-style names the Claude slot, working contract, auto-vs-autonomous, and wait forbid"
 else
-  bad "report-style.md no longer names the slot, one-thought-per-action, or auto-vs-autonomous"
+  bad "report-style.md no longer names the slot, one-thought-per-action, auto-vs-autonomous, or wait forbid"
 fi
 
 if grep -Fq "output-styles/loop-spec.md" skills/shared/claude-harness.md &&

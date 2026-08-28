@@ -4,6 +4,33 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.6.1] - 2026-08-28
+
+AskUserQuestion is not a wait. A live `/cycle` run showed the same
+placeholder question (`n/a` / "Type something" / "not a real question")
+several times through SPEC and PLAN, not once at pruning. Claude Code
+backgrounds Agent calls by default; the lead invented a fake question at
+every join: SPEC scout fan-out, PLAN/DISCUSS `TeammateIdle`, the critique
+gate, and the fresh-eyes pass. The wait is: dispatch, then stop. The
+harness resumes this turn. Dummy wait questions are forbidden.
+
+### Fixed
+
+- **AskUserQuestion is never a wait, on every Agent join.**
+  `output-styles/loop-spec.md` (Claude chat slot) and
+  `skills/shared/report-style.md` (peer harnesses) forbid placeholder /
+  keep-alive questions. The recorded contract in
+  `skills/shared/harness-call-contracts.md` says dispatch-then-stop.
+  SPEC scout fan-out, PLAN/DISCUSS teammate joins, the shared critique
+  gate, VERIFY, EXECUTE, map-codebase, cycle startup probes, and the
+  no-teams fallback (one-shot Agents are not synchronous on modern CC)
+  all carry that line. Lead-facing `Wait for TeammateIdle` is gone;
+  second-idle escalation stays a real stuck-teammate question. Still
+  never emit `run_in_background`. Pinned by
+  `tests/output-style-coverage.test.sh`,
+  `tests/lib/harness-call-shapes.test.sh`, and
+  `tests/bmad-import-coverage.test.sh`.
+
 ## [4.6.0] - 2026-08-28
 
 ### Added

@@ -14,7 +14,10 @@ You are the DISCUSS phase orchestrator. Invoked by `loop-spec:cycle` after style
 > per teammate and dispatch per `skills/shared/implicit-team-mode.md` (DISCUSS/PLAN note).
 > `teamsAvailable == false`: every teammate below becomes a one-shot `Agent` call per
 > `skills/shared/no-teams-fallback.md` (DISCUSS/PLAN critique-gate note). All artifacts
-> and gates are unchanged in every mode.
+> and gates are unchanged in every mode. Every Agent or SendMessage whose result this
+> step still needs: issue the call, then stop. Never AskUserQuestion as a wait
+> (`skills/shared/harness-call-contracts.md`). Grill `AskUserQuestion` rounds are real
+> questions; a running subagent is not.
 
 ## Inputs (from cycle skill via feature.json)
 
@@ -83,7 +86,7 @@ Either way, the spec-writer brief (Step 3) must require: every resolved dimensio
 
 Run a one-question-at-a-time loop to understand the feature. The loop is required, not optional.
 
-**Ground in the code first (required).** Before and during the loop, read what the feature will actually touch: search the area, read the entry points in full, and follow callers and imports far enough to name the integration points and the boundaries the change crosses. Let that drive the design questions — surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. Fan the scanning out to subagents that return `file:line` evidence rather than pulling a large tree through your own context. In workspace mode, scan each participating repository separately and keep the repository name on every finding. Every claim carried into the critique cites `file:line`. (In greenfield features before code exists — `feature.json.greenfield` — ground in SPEC.md's Foundations requirements and the chosen stack's conventions instead.)
+**Ground in the code first (required).** Before and during the loop, read what the feature will actually touch: search the area, read the entry points in full, and follow callers and imports far enough to name the integration points and the boundaries the change crosses. Let that drive the design questions — surface the real integration points and ripple paths as the options in your `AskUserQuestion` choices, instead of generic alternatives. Fan the scanning out to subagents that return `file:line` evidence rather than pulling a large tree through your own context. Dispatch them, then stop: never AskUserQuestion as a wait. In workspace mode, scan each participating repository separately and keep the repository name on every finding. Every claim carried into the critique cites `file:line`. (In greenfield features before code exists — `feature.json.greenfield` — ground in SPEC.md's Foundations requirements and the chosen stack's conventions instead.)
 
 **Probe external reality before asserting it (required).** Before treating any factual premise about an external system (dataset, API, service, infra) as fact in questions, `AskUserQuestion` options, or the spec-writer brief, run the cheapest READ-ONLY probe and record the result:
 
@@ -213,9 +216,9 @@ SendMessage({
 })
 ```
 
-Wait for `TeammateIdle` from `spec-writer-1`. If spec-writer-1 goes idle without producing `SPEC.md`:
+Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `spec-writer-1`. Never AskUserQuestion as a wait. If spec-writer-1 goes idle without producing `SPEC.md`:
 - Send `SendMessage({to: "spec-writer-1", message: "SPEC.md not found at docs/loop-spec/features/{slug}/SPEC.md. Write it now and send lead the SPEC.md written message."})` once.
-- If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors SPEC.md itself from the same brief and continues, noting `lead-authored` in the transcript and `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
+- If still idle without output on second idle, AskUserQuestion is a real stuck-teammate question (retry / lead-author / abort), never a wait. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors SPEC.md itself from the same brief and continues, noting `lead-authored` in the transcript and `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
 
 On `SPEC.md written` message received: proceed to Step 4.
 

@@ -38,7 +38,7 @@ the agent id `loop-spec-<role>` and see the dispatch mapping rule in
 | Teammate spawn prompt | one-shot `Agent` call with the SAME agent type, model, and prompt template |
 | `SendMessage` rework/revision round | fresh `Agent` call to the same agent type with the prior round's summary inlined in the prompt (read it from `gate-logs/`) |
 | `SendMessage` teammate-to-teammate critique | sequential `Agent` calls; the lead carries each output into the next prompt |
-| `TeammateIdle` wake / idle protocol | not needed — one-shot calls are synchronous; the lead simply proceeds when the call returns |
+| `TeammateIdle` wake / idle protocol | one-shot Agent calls are backgrounded by default (CC 2.1.198). Issue the call, then stop. The harness resumes this turn when the call returns. Never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`). |
 | `TeamDelete` | none |
 
 ## Phase notes

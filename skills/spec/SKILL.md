@@ -10,6 +10,8 @@ You are the SPEC phase orchestrator, running on the **main thread**. Invoked by 
 
 **The interview runs on the main thread, not in a subagent.** A spawned teammate cannot hold an interactive question-and-answer with the user (it runs one turn and goes idle). Only the main-thread orchestrator has a real `AskUserQuestion` loop with the user. This phase therefore creates no team and spawns no teammates; it asks questions, scores answers, and writes the file directly. This mirrors `skills/discuss/SKILL.md` Step 1, which already runs its clarifying loop on the main thread.
 
+Interview `AskUserQuestion` rounds are real questions. A running subagent is not. Scout fan-out and the Step 3.5 reviewer: dispatch, then stop. Never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
+
 ## Inputs (from cycle skill via feature.json)
 
 - `slug`, `execStyle`, `feature_title`
@@ -85,7 +87,7 @@ Before asking any questions, read for grounding context:
   - Search for the feature area by name, by the vocabulary the user used, and by the obvious symbol names. Does an implementation already exist? What does it touch?
   - Read the entry points you find, not just the matches. A hit tells you where to look; the surrounding file tells you what it does.
   - Follow the imports and callers of anything you will change, far enough to name the boundaries the change crosses. Those boundaries are what turn a generic interview question into a precise one ("this would touch `X` which also feeds `Y` — in scope?").
-  - **Fan this out.** Send subagents to scan and return findings with `file:line` evidence rather than pulling a large tree through your own context. Interrogate what they return; do not adopt it unread.
+  - **Fan this out.** Send subagents to scan and return findings with `file:line` evidence rather than pulling a large tree through your own context. Dispatch them, then stop: never AskUserQuestion as a wait. Interrogate what they return; do not adopt it unread.
   - **Workspace mode:** scan each participating repository separately and preserve the repository name in every finding.
   Every claim you carry into SPEC.md cites `file:line`. (**Greenfield:** there is no code yet — ground in the stated goal and the chosen stack's conventions instead.)
 
@@ -182,6 +184,7 @@ every line justified. Dispatch ONE context-free reviewer (a fresh subagent, not 
 thread) carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
 verbatim, plus ONLY the written SPEC.md and
 `skills/shared/artifact-templates/SPEC.md.template` — never the interview transcript.
+Dispatch the reviewer, then stop: never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
 
 Skip the dispatch when SPEC.md is under 60 lines (`wc -l`): a spec that small cannot
 repay a subagent.

@@ -116,6 +116,41 @@ bad=$(grep -rn 'run_in_background' skills agents --include='*.md' 2>/dev/null \
         | grep -v 'harness-call-contracts' | head -5 || true)
 check "no run_in_background in skill/agent corpus" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
+# 8b) Waiting on a background Agent is dispatch-then-stop, never a fake question.
+#     Live /cycle invented AskUserQuestion({header: wait, question: "not a real
+#     question", options: n/a / n/a2 / Type something}) on SPEC scout fan-out,
+#     every PLAN/DISCUSS TeammateIdle join, and the pruning pass — not once.
+grep -qF 'Never AskUserQuestion as a wait' \
+  skills/shared/harness-call-contracts.md && v=1 || v=0
+check "contract doc forbids AskUserQuestion as a wait" "$v"
+grep -qF 'not a real question' skills/shared/harness-call-contracts.md && v=1 || v=0
+check "contract doc names the dummy-question tell" "$v"
+
+bad=$(grep -rn 'Wait for `TeammateIdle`' skills --include='*.md' || true)
+check "no lead Wait-for-TeammateIdle (stop-then-resume instead)" \
+  "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
+wait_missing=""
+for f in \
+  skills/spec/SKILL.md \
+  skills/plan/SKILL.md \
+  skills/discuss/SKILL.md \
+  skills/execute/SKILL.md \
+  skills/verify/SKILL.md \
+  skills/map-codebase/SKILL.md \
+  skills/shared/critique-gate-protocol.md \
+  skills/shared/no-teams-fallback.md \
+  skills/shared/subagent-concurrency.md \
+  skills/cycle/references/startup-probes.md \
+  skills/cycle/references/codebase-map-bootstrap.md \
+  skills/execute/references/team-rung-protocol.md
+do
+  grep -qiF 'never AskUserQuestion as a wait' "$f" \
+    || wait_missing="$wait_missing $f"
+done
+check "every Agent-joining phase forbids AskUserQuestion as a wait" \
+  "$([[ -z "$wait_missing" ]] && echo 1 || echo 0)" "$wait_missing"
+
 # 9) For every SendMessage({ occurrence, the 4-line window must NOT contain body:
 #    (harness-call-contracts.md excluded — it documents the invalid param).
 bad=""

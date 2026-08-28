@@ -77,7 +77,7 @@ SendMessage({
 })
 ```
 
-Wait for `TeammateIdle` from `challenger-1` and read its `FINDINGS:` / `NO-FINDINGS:`
+Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `challenger-1`. Never AskUserQuestion as a wait. Read its `FINDINGS:` / `NO-FINDINGS:`
 message. Write it to `gate-logs/{gate}-round-1.md`:
 
 ```
@@ -129,12 +129,12 @@ After sending to advocate-1, wait for their response before sending your ROUND-1
 
 ### Debate loop
 
-For each round N = 1 .. maxCritiqueRounds:
+For each round N = 1 .. maxCritiqueRounds. After each SendMessage, stop. The harness resumes this turn on `TeammateIdle`. Never AskUserQuestion as a wait.
 
 1. Update `feature.json.currentGate.round = N` via `lib/feature-write.sh`.
-2. Wait for `TeammateIdle` from `advocate-1` (it has sent both its cross-debate message
+2. Resume on `TeammateIdle` from `advocate-1` (it has sent both its cross-debate message
    and its lead round-end message for round N).
-3. Wait for `TeammateIdle` from `challenger-1` (same condition).
+3. Resume on `TeammateIdle` from `challenger-1` (same condition).
 4. Read the two `ROUND-N DONE[...]` messages sent to `lead`.
 5. Append both message bodies to `gate-logs/{gate}-round-{N}.md` under `## advocate-1` /
    `## challenger-1` headings.
@@ -236,7 +236,7 @@ SendMessage({
 })
 ```
 
-Wait for `TeammateIdle` from `challenger-1`, append the reply to a new
+Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `challenger-1`. Never AskUserQuestion as a wait. Append the reply to a new
 `gate-logs/{gate}-round-{next}.md` (titled `(delta re-verify)`), and emit a `gate_round`
 event with `"mode":"delta"`:
 

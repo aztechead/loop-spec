@@ -16,6 +16,8 @@ Standalone skill that builds or refreshes `docs/loop-spec/codebase/*.md`. Also a
 >
 > Every one-shot mapper fallback obeys `skills/shared/subagent-concurrency.md`.
 > Dispatch at most `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` mappers per wave when set.
+> Every mapper whose report this step still needs: issue the call, then stop.
+> Never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
 
 ## Modes
 
@@ -145,7 +147,7 @@ Lead does not interject while mappers are running. Mappers communicate directly 
 
 ### Step 4 - Collect domain reports and build index.json
 
-Wait for each spawned mapper to send `DOMAIN_DONE: {domain} files: [...]` to `lead`.
+Stop. The harness resumes this turn as each spawned mapper sends `DOMAIN_DONE: {domain} files: [...]` to `lead`. Never AskUserQuestion as a wait.
 
 For each report received, extract the list of inspected files and update the file-to-domain mapping:
 
@@ -263,6 +265,7 @@ shrink; this pass names what. Dispatch ONE context-free reviewer (never a mapper
 wrote a domain this refresh) carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
 verbatim, plus the domain documents under `docs/loop-spec/codebase/` and nothing else —
 no mapper reports, no refresh conversation.
+Dispatch the reviewer, then stop: never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
 
 The reviewer lists `cut:`/`merge:`/`shrink:` proposals; the lead applies the ones it
 accepts, re-runs `lib/map-audit.sh budget`, and commits the shrunken map (a follow-up

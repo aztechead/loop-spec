@@ -14,7 +14,9 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 > per teammate and dispatch per `skills/shared/implicit-team-mode.md` (DISCUSS/PLAN note).
 > `teamsAvailable == false`: every teammate below becomes a one-shot `Agent` call per
 > `skills/shared/no-teams-fallback.md` (DISCUSS/PLAN critique-gate note). All artifacts
-> and gates are unchanged in every mode.
+> and gates are unchanged in every mode. Every Agent or SendMessage whose result this
+> step still needs: issue the call, then stop. Never AskUserQuestion as a wait
+> (`skills/shared/harness-call-contracts.md`).
 
 ## Inputs (from cycle skill via feature.json)
 
@@ -135,9 +137,9 @@ SendMessage({
 })
 ```
 
-Wait for `TeammateIdle` from `planner-1`. If `planner-1` goes idle without producing both `PATTERNS.md` and `PLAN.md`:
+Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `planner-1`. Never AskUserQuestion as a wait. If `planner-1` goes idle without producing both `PATTERNS.md` and `PLAN.md`:
 - Send `SendMessage({to: "planner-1", message: "Check docs/loop-spec/features/{slug}/PATTERNS.md and docs/loop-spec/features/{slug}/PLAN.md -- one or both are missing. Produce any missing files now and include tasks[] JSON in your completion message."})` once.
-- If still idle without output on second idle, escalate to user via `AskUserQuestion`. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors PATTERNS.md + PLAN.md itself from the same brief and continues, noting `lead-authored` in `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
+- If still idle without output on second idle, AskUserQuestion is a real stuck-teammate question (retry / lead-author / abort), never a wait. Autonomous mode (`feature.json.autonomous`): re-dispatch the teammate fresh ONCE; if that also produces nothing, the lead authors PATTERNS.md + PLAN.md itself from the same brief and continues, noting `lead-authored` in `warnings[]` — never wait on a human, and never treat the warning as the handler (`skills/shared/autonomous-mode.md`, continuation ladder).
 
 On `PATTERNS.md and PLAN.md written` message received: update `feature.json` via `lib/feature-write.sh` — nested `set` takes the dot path directly, value JSON-quoted, never raw jq (`skills/shared/feature-state-schema.md` "Writing rules"):
 
@@ -272,7 +274,7 @@ SendMessage({
 })
 ```
 
-Wait for `TeammateIdle` from `planner-1`. When the revision is received, re-run ONLY the decision-coverage check above (coverage-only failures never re-enter the critique gate).
+Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `planner-1`. Never AskUserQuestion as a wait. When the revision is received, re-run ONLY the decision-coverage check above (coverage-only failures never re-enter the critique gate).
 
 Exit code 0 (all decisions covered, or no `<decisions>` block present): proceed to the criteria-coverage check below.
 
@@ -303,6 +305,7 @@ carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.m
 verbatim, plus ONLY the final PLAN.md and
 `skills/shared/artifact-templates/PLAN.md.template` — no spec, no gate-logs, no
 critique history.
+Dispatch the reviewer, then stop: never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
 
 Skip the dispatch when PLAN.md is under 60 lines (`wc -l`).
 

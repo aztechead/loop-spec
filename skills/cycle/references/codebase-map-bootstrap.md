@@ -71,9 +71,10 @@ If `missing` is non-empty:
 - Print: `First loop-spec run. Bootstrapping {N} codebase domain(s) in background: {csv}...`
 
 - If `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` is set, validate it as a positive integer,
-  dispatch at most that many mappers in one message, and await each wave before
-  starting the next. In this bounded mode these are foreground waves: do not carry
-  mapper tasks into SPEC. Update the announcement to `in bounded waves`.
+  dispatch at most that many mappers in one message, then stop until the wave
+  completes. Never AskUserQuestion as a wait. In this bounded mode these are
+  foreground waves: do not carry mapper tasks into SPEC. Update the announcement
+  to `in bounded waves`.
 
 - Model for mappers: `model_mapper = feature.models.mapper` (activated for SPEC before bootstrap; do not re-derive from model-matrix).
   Build every Agent call without `model`; add the key only when `model_mapper`
