@@ -6,6 +6,10 @@ model map, `cycle-result.sh begin`, extension points, `Skill(...)` dispatch); th
 file owns everything between that return and the next dispatch. Item numbering
 continues from the skill body.
 
+Contents: item 2 — re-load feature.json, declined-SPEC terminal, phase watchdog,
+PROGRESS.md journaling, state commit, autonomous remote checkpoint · item 3 — route to
+the next iteration via the graph engine.
+
 2. **Re-load feature.json** after the skill returns (the skill may have advanced `currentPhase` and updated artifacts):
    ```bash
    feature_json=$(cat ".loop-spec/features/${slug}/feature.json")

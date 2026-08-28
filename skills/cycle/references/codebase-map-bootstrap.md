@@ -2,6 +2,8 @@
 
 Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. Apply as written.
 
+Contents: Step 5.5 first-run codebase map · 5.5a GSD ingestion · 5.5b map missing domains.
+
 ### Step 5.5 - First-run codebase map (one-time per project)
 
 This procedure runs only after `lib/map-policy.sh bootstrap` returns `run`.

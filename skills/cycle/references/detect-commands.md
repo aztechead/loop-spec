@@ -2,6 +2,9 @@
 
 Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stub points here. Apply as written.
 
+Contents: Step 4 command detection — single-repo mode, workspace mode (per-repo
+commands), and the greenfield deferral.
+
 ### Step 4 - Detect project commands
 
 **Single-repo mode (unchanged):**

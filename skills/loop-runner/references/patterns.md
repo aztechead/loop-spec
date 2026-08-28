@@ -4,6 +4,10 @@ Read this when building orchestration loops (one loop supervising others), desig
 verifiers, or debugging a loop that misbehaves. The SKILL.md covers the day-to-day; this
 is the theory and the sharp edges.
 
+Contents: the lineage · orchestration (loops supervising loops) · designing a good
+verifier · prompt-anchoring discipline · failure modes to design against · the honest
+framing.
+
 ## The lineage — know which "loop" someone means
 
 The word *loop* hides at least five different things. When people argue about loops they

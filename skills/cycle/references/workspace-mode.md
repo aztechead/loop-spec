@@ -2,6 +2,10 @@
 
 Extracted verbatim from `skills/cycle/SKILL.md`; the SKILL stubs point here. Apply as written.
 
+Contents: Step 5 variant — workspace state init (phase 1 pre-flight, phase 2 branch +
+state creation, workspace `feature.json` skeleton) and the workspace-mode deltas the
+later steps consume.
+
 ## Step 5 variant -- workspace state init
 
 #### Workspace mode Step 5 variant

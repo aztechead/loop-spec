@@ -8,6 +8,11 @@ itself with one-shot `Agent` dispatches and inline `git` merges. No `TeamCreate`
 
 All waves also obey `skills/shared/subagent-concurrency.md`.
 
+Contents: when this path runs · inputs · in-place single-repository mode · lead wave
+loop · agent dispatch convention · implementer contract stanza · implementer Agent
+prompt · reviewer Agent prompt · workspace mode (wave construction, implementer
+prompts, merge/ff, completion verification).
+
 This path returns the **same** result object as the workflow and team paths so the
 consuming code in `execute` SKILL Step 3 is shape-identical:
 

@@ -6,6 +6,9 @@ protocol with the parameters below and keeps only its deltas; the routing topolo
 owned by `graph/critique.graph.json` and the ladder policy by `skills/shared/tier-matrix.md`
 — this file owns the operational procedure between those two.
 
+Contents: parameters · gate open · mode selection · single-critic pass · escalated
+debate · adjudication · fix_list non-empty / empty · resume.
+
 ## Parameters (declared by the invoking phase)
 
 | Parameter | DISCUSS | PLAN |
