@@ -283,10 +283,10 @@ currentPhase:  spec -> discuss -> plan -> execute -> verify -> iterate -> delive
 
 - **SPEC**: Socratic interview, gated on a quantitative ambiguity score ≤ 0.20
   across 4 dimensions (not a single critique gate).
-- **DISCUSS → PLAN**: single-critic critique gate by default, escalating to a
-  full advocate/challenger debate only when contested or security-signaled
-  (`lib/security-signal.sh`) — the always-on debate team the prior ARCH.md
-  described is gone; single-tier operation fixed this.
+- **DISCUSS → PLAN**: challenger-only critique gate. DISCUSS skips when SPEC.md is
+  already gated; PLAN skips on the structural fast-path. A security signal forces
+  the challenger to run (`lib/security-signal.sh`) — it does not spawn a second
+  critic. The advocate debate the prior ARCH.md described is gone.
 - **PLAN Step 6** persists the gate-validated task DAG to
   `feature.json.artifacts.tasks` (`.loop-spec/features/{slug}/tasks.json`) —
   EXECUTE reads this, not a re-derivation from `PLAN.md` prose.

@@ -4,6 +4,44 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-08-28
+
+SPEC and PLAN get shorter without dropping the DISCUSS grill or the
+challenger. DISCUSS no longer re-authors and re-debates an already-gated
+spec. PLAN does not pay opus for PATTERNS.md or a challenger-before-lints.
+The advocate debate round is gone.
+
+### Changed
+
+- **Advocate dropped; challenger stays.** Critique is one critic plus lead
+  adjudication. A disputed `[major]` stays on the fix-list (stricter bias).
+  Deadlock keeps the finding and continues the delta loop. A security signal
+  still runs the challenger — it does not spawn a second critic.
+  `graph/critique.graph.json` no longer has a debate node.
+  `agents/advocate.md` is retained for schema/validation and is not dispatched.
+
+- **DISCUSS skips spec-writer and spec-critique when SPEC.md is already gated.**
+  The grill still runs (`execStyle: auto` included). The lead Edits SPEC.md
+  from the transcript when the file exists. `lib/graph/probes/discuss-critique.sh`
+  answers `gate=skip` only when `gate_passed` is true, `unresolved_dimensions`
+  is empty, there is no security signal, and this is not an ITERATE re-entry.
+  Fail closed to `gate=run`. Log line:
+  `discuss critique skipped (spec already gated: ...)`. Format and grounding
+  lints still run.
+
+- **PLAN runs cheap gates before the challenger.** Feasibility, decision
+  coverage, criteria coverage, and grounding run first; coverage-only failures
+  still do not re-enter critique. Then the challenger (unless structural
+  fast-path or maintenance). If critique changed PLAN.md, those gates re-run.
+
+- **PATTERNS.md is a one-shot pattern-mapper**, not the opus planner, when the
+  file is missing after cache/GSD. Prefetch join checks once (never `sleep`).
+  Planner last-resort fallback remains if the mapper produces nothing.
+
+Pinned by `tests/lib/graph-probes.test.sh`,
+`tests/spec-plan-speed-coverage.test.sh`, and
+`tests/discuss-grill-coverage.test.sh`.
+
 ## [4.6.1] - 2026-08-28
 
 AskUserQuestion is not a wait. A live `/cycle` run showed the same

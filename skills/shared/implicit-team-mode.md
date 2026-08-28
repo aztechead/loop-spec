@@ -70,13 +70,14 @@ load the schema and retry the op once. Treat it as a missing capability only whe
 
 ## Phase notes
 
-- **DISCUSS / PLAN / VERIFY:** for each roster member (e.g. `spec-writer-1`,
-  `challenger-1`, `verifier-1`, `code-reviewer-1` — and `advocate-1` lazily, only when a
-  critique gate escalates to the paired debate) run the spawn-kind probe on
+- **DISCUSS / PLAN / VERIFY:** for each roster member (e.g. `spec-writer-1` only
+  when SPEC.md is missing, `challenger-1`, `verifier-1`, `code-reviewer-1`) run
+  the spawn-kind probe on
   `feature.models.<role>`. `named`: one `Agent({name, description, subagent_type, prompt})`
   carrying its first work prompt, then `SendMessage` for critique and rework.
   `oneshot`: nameless one-shot Agent with the alias, then re-dispatch with
-  `gate-logs/` inlined. Skip `TeamCreate` / `TeamDelete` either way.
+  `gate-logs/` inlined. Skip `TeamCreate` / `TeamDelete` either way. Never spawn
+  `advocate-1`.
 - **EXECUTE:** the concurrency ladder already skips the team rung when the
   implementer selector is an alias (`lib/execute-rung.sh`). When it still selects
   team, spawn inherit implementers as named `Agent` teammates (no `TeamCreate`) and

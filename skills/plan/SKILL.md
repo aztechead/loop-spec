@@ -1,6 +1,6 @@
 ---
 name: plan
-description: PLAN phase - the planner produces PATTERNS.md then PLAN.md, then the critique gate; updates feature.json. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
+description: PLAN phase - pattern-mapper produces PATTERNS.md, the planner produces PLAN.md, cheap lints run, then a challenger-only critique; updates feature.json. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
@@ -31,9 +31,9 @@ You are the PLAN phase orchestrator. Invoked by `loop-spec:cycle` when `feature.
 
 ## Procedure
 
-### Step 0 - PATTERNS.md cache check and GSD ingestion
+### Step 0 - PATTERNS.md cache check, GSD ingestion, and mapper dispatch
 
-Before spawning the team: join the DISCUSS background prefetch if one is in flight (`artifacts.patternsPrefetch == "in-flight"`, bounded 120s wait); then if `docs/loop-spec/features/{slug}/PATTERNS.md` already exists, record it in `feature.json.artifacts` and skip production; else attempt GSD `.planning/codebase/` ingestion; else the planner produces PATTERNS.md at its own Step 0. Exact prefetch-join/cache/ingest procedure and artifact bookkeeping verbatim in `${CLAUDE_SKILL_DIR}/references/patterns-bootstrap.md`.
+Before spawning the team: join the DISCUSS background prefetch if one is in flight (`artifacts.patternsPrefetch == "in-flight"`, check once — never sleep); then if `docs/loop-spec/features/{slug}/PATTERNS.md` already exists, record it in `feature.json.artifacts` and skip production; else attempt GSD `.planning/codebase/` ingestion; else dispatch a one-shot `loop-spec:pattern-mapper` (not the opus planner). Exact procedure and artifact bookkeeping verbatim in `${CLAUDE_SKILL_DIR}/references/patterns-bootstrap.md`. Never AskUserQuestion as a wait.
 
 **Greenfield plans (`feature.json.greenfield == true`).** There are no codebase analogs: PATTERNS.md records the chosen stack's canonical conventions (project layout, test placement, naming) from SPEC.md's Foundations requirements instead of mined analogs, marked `Source: stack conventions (greenfield)`. The task DAG MUST lead with **task-001 = scaffold**: initialize the project structure, dependency manifest, test harness, and a passing walking-skeleton test; its `verifyCommand` is the stack's canonical test command from SPEC.md, and EVERY other task is `blockedBy: ["task-001"]` (directly or transitively). No task may assume tooling that task-001 does not create. After task-001 merges, EXECUTE backfills `feature.commands.*` (see `skills/execute/SKILL.md`) so later tasks and VERIFY run real commands.
 
@@ -44,7 +44,6 @@ TeamCreate({
   name: "loop-spec-plan-{slug}",
   teammates: [
     { name: "planner-1",    subagent_type: "loop-spec:planner" },
-    { name: "advocate-1",   subagent_type: "loop-spec:advocate" },
     { name: "challenger-1", subagent_type: "loop-spec:challenger" }
   ]
 })
@@ -56,11 +55,11 @@ in `agents/*.md`). Add `model` only when the matching
 
 Update `feature.json` via `lib/feature-write.sh`:
 - `currentTeamName = "loop-spec-plan-{slug}"`
-- `currentTeammates = ["planner-1", "advocate-1", "challenger-1"]`
+- `currentTeammates = ["planner-1", "challenger-1"]`
 
 #### Warm up the critic while the planner authors
 
-Send challenger-1 a warm-up brief so it loads context concurrently with plan authoring instead of starting its findings pass cold (if the structural fast-path later skips the critique, the warm-up cost is one idle context load — acceptable). Do NOT warm up advocate-1: the gate is single-critic by default and the advocate runs only on escalation (`skills/shared/tier-matrix.md`, critique gate ladder) — an eager advocate warm-up is a wasted dispatch on the common path.
+Send challenger-1 a warm-up brief so it loads context concurrently with plan authoring instead of starting its findings pass cold (if the structural fast-path later skips the critique, the warm-up cost is one idle context load — acceptable). Never spawn `advocate-1`.
 
 ```
 SendMessage({
@@ -91,7 +90,7 @@ Result: `{plan: <markdown>, angles: [...], winner}`. Skill writes `plan` to
 If `workflowsAvailable=false` OR the opt-in is unset, fall through to the
 existing single-planner Agent dispatch below.
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (planner, pattern-mapper, challenger; advocate only when the gate escalates) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "plan" --data '{"role":"<role>","model":"<resolved selector>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
+**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per teammate actually launched in this phase (planner, pattern-mapper, challenger) — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "plan" --data '{"role":"<role>","model":"<resolved selector>","rung":"team"}' || true`. One event per LAUNCH; `SendMessage` rework rounds and delta re-verifies do not re-emit.
 
 ### Step 2 - Spawn planner-1
 
@@ -111,10 +110,10 @@ SendMessage({
 
     Every fact asserted about an external system in PLAN.md must cite an `EVID-NNN` entry from the evidence_path ledger or be written as an explicit `ASSUMPTION: <claim> | verify: <command>` per `skills/shared/grounding-protocol.md`.
 
-    FIRST: If docs/loop-spec/features/{slug}/PATTERNS.md does not exist, produce it now.
-    Analyze the codebase for concept analogs per the spec, following the pattern-mapper role
-    definition at agents/pattern-mapper.md. Write to
-    docs/loop-spec/features/{slug}/PATTERNS.md.
+    FIRST: PATTERNS.md should already exist at patterns_path (cache, GSD ingest, or
+    the pattern-mapper one-shot from Step 0). If it exists, do not produce or
+    overwrite it. If it is missing, produce it now from agents/pattern-mapper.md
+    as a last-resort fallback, then continue.
 
     THEN: Read PATTERNS.md; cite concept analogs in each task's Steps so implementers know
     which existing code to mirror. Produce PLAN.md at docs/loop-spec/features/{slug}/PLAN.md
@@ -148,45 +147,37 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patt
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patternsSource '"pattern-mapper"'
 ```
 
-Parse the `tasks[]` JSON from the message body. Store for use in Steps 3 and 4.
+Parse the `tasks[]` JSON from the message body. Store for use in Steps 4b and 3.
 
-Proceed to Step 3.
+Proceed to Step 4b (feasibility and coverage run BEFORE the critique).
 
-### Step 3 - Critique gate (structural fast-path may skip; single-critic default)
+### Step 3 - Critique gate (runs AFTER Steps 4b and 5.5; structural fast-path may skip)
 
-**Structural fast-path (replaces the old quick tier — measured scope, decided AFTER planning):** resolve the two bounds through the repo tuning overlay first (`FP_TASKS="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxTasks 2)"`, `FP_FILES="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxFiles 3)"` — defaults 2/3 unless `lib/tuning.sh` widened them for this repo; `skills/shared/tier-matrix.md` "Repo tuning overlay"). Run `security_signal="$(bash "${CLAUDE_SKILL_DIR}/../../lib/security-signal.sh" first "docs/loop-spec/features/{slug}/SPEC.md" "docs/loop-spec/features/{slug}/PLAN.md")"` while preserving exit 1 as the normal no-match result and treating exit 2 as an error. Skip this critique gate iff ALL hold: the plan has <= {FP_TASKS} tasks, AND the union of task `files[]` touches <= {FP_FILES} files, AND `security_signal` is empty. When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)` and go to Step 4b (feasibility still runs).
+**Structural fast-path (replaces the old quick tier — measured scope, decided AFTER planning):** resolve the two bounds through the repo tuning overlay first (`FP_TASKS="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxTasks 2)"`, `FP_FILES="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxFiles 3)"` — defaults 2/3 unless `lib/tuning.sh` widened them for this repo; `skills/shared/tier-matrix.md` "Repo tuning overlay"). Run `security_signal="$(bash "${CLAUDE_SKILL_DIR}/../../lib/security-signal.sh" first "docs/loop-spec/features/{slug}/SPEC.md" "docs/loop-spec/features/{slug}/PLAN.md")"` while preserving exit 1 as the normal no-match result and treating exit 2 as an error. Skip this critique gate iff ALL hold: the plan has <= {FP_TASKS} tasks, AND the union of task `files[]` touches <= {FP_FILES} files, AND `security_signal` is empty. When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)` and go to Step 5.7 (feasibility and coverage already ran).
 
 **Maintenance profile:** when `feature.json.executionProfile == "maintenance"` AND
 `security_signal` is empty, skip this gate regardless of the task/file bounds above — the
 classification that earned the profile already bounded the change more tightly than the
 fast-path does. Log `plan critique skipped (maintenance profile, no security signal)` and
-go to Step 4b (feasibility still runs). A security signal still escalates.
+go to Step 5.7. A security signal still runs the challenger (never skip).
 
-When not skipped, the gate runs per the **critique gate ladder** (`skills/shared/tier-matrix.md`): single-critic by default, escalating to the paired debate only when triggered.
-
-**Run the full gate procedure per `skills/shared/critique-gate-protocol.md`** (gate open,
-single-critic pass, escalated debate, adjudication, fix loop, gateHistory, currentGate
-reset) with these parameters:
+When not skipped, run the protocol per `skills/shared/critique-gate-protocol.md` and
+`graph/critique.graph.json` (challenger-only: gate open, single-critic pass, adjudication,
+fix loop, gateHistory, currentGate reset):
 
 - `phase=plan`, `gate=plan-critique`, `artifact=PLAN.md`,
   `artifact_path=docs/loop-spec/features/{slug}/PLAN.md`
 - `author=planner-1`
-- `next_step=Step 4b`
-- Models: `feature.models.challenger` / `feature.models.advocate` (activated for PLAN
-  immediately before entry; do not re-derive from model-matrix)
+- `next_step=Step 4 post-critique mechanical re-run`
+- Model: `feature.models.challenger` (activated for PLAN immediately before entry;
+  do not re-derive from model-matrix). Never spawn `advocate-1`.
 
-**Mode selection (security signal).** The escalation trigger is declared on the critique
-graph, not here: `graph/critique.graph.json` routes `critique.escalate -> critique.debate`
-when `lib/security-signal.sh` reports a match. The fast-path check above already ran that
-declared probe; this gate obeys it. If `security_signal` is non-empty: log
-`[PLAN] critique gate escalated: security signal ($security_signal)` and start directly
-in the protocol's **Escalated debate**. Otherwise run its single-critic pass. The
-evidence string contains the exact file, line, and normalized term, so escalation is
-auditable.
+A security signal forces this pass; it does not spawn a second critic. The evidence
+string contains the exact file, line, and normalized term.
 
 **Round telemetry:** where the protocol says "emit the phase's `gate_round` event", run
 (non-fatal; `"mode":"single-critic"` on the solo pass, `"mode":"delta"` on delta
-re-verifies, no mode key on debate rounds):
+re-verifies):
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" gate_round \
@@ -195,9 +186,9 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}
 
 ### Step 4 - Adjudicate findings and synthesize fix-list
 
-Adjudicate per the protocol's two tables (`skills/shared/critique-gate-protocol.md`,
+Adjudicate per the protocol's table (`skills/shared/critique-gate-protocol.md`,
 "Adjudication") and run its fix loop (gateHistory fail entry BEFORE re-dispatch, snapshot,
-author re-dispatch, delta re-verify, deadlock escalation, pass entry + `currentGate`
+author re-dispatch, delta re-verify, deadlock-kept, pass entry + `currentGate`
 reset). PLAN supplies these phase actions and deltas:
 
 - **`{user_intent_action}`** (finding depends on user intent, autonomous mode): adopt the
@@ -214,7 +205,9 @@ reset). PLAN supplies these phase actions and deltas:
   idle. **Re-parse the `tasks[]` JSON from every revision message** before the delta
   re-verify — Steps 4b/6 consume it.
 
-On gate pass, proceed to Step 4b.
+On gate pass: if PLAN.md changed since the pre-critique Step 4b/5.5 run, re-run Step 4b
+and Step 5.5 (coverage-only failures still do not re-enter this critique). Then proceed
+to Step 5.7.
 
 ### Step 4b - Feasibility gate (ALWAYS runs, no agent dispatch)
 
@@ -244,11 +237,11 @@ Validate the plan locally using the `tasks[]` data from Step 2 (or the latest pl
    - Exit 1 BLOCKS — add the flagged criteria to `infeasibility_list`
      so the planner rewrites them as behavioral checks (a named test) or anchored greps.
 
-Build `infeasibility_list`. If non-empty: re-dispatch planner-1 via `SendMessage` with the list. On plan revision received, re-run Step 4b. Retries are unbounded — repeat until feasible.
+Build `infeasibility_list`. If non-empty: re-dispatch planner-1 via `SendMessage` with the list. On plan revision received, re-run Step 4b. Retries are unbounded — repeat until feasible. When feasible, proceed to Step 5.5.
 
 ### Step 5.5 - Decision coverage gate
 
-Run the decision-coverage check after feasibility passes and before committing:
+Run the decision-coverage check after feasibility passes and before the critique:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/decision-coverage.sh" "$spec_path" "$plan_path"
@@ -294,7 +287,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/grounding-lint.sh" "$plan_path"
 grounding_exit=$?
 ```
 
-Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1 with the FLAG lines in the body; retries unbounded). On revision received, re-run ONLY this lint. Exit 0 on all three checks: proceed to Step 5.7.
+Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1 with the FLAG lines in the body; retries unbounded). On revision received, re-run ONLY this lint. Exit 0 on all three checks: proceed to Step 3 (critique; mechanical gates already passed). Coverage-only failures never re-enter the critique gate.
 
 ### Step 5.7 - Fresh-eyes pruning pass (advisory)
 
@@ -394,7 +387,7 @@ If invoked with `currentPhase == "plan"` already in `feature.json`:
      - Success (team live): print orphan-cleanup message with explicit team name; require manual `TeamDelete` before resume.
    - If `currentTeamName == null`: recreate team via `TeamCreate` and replay from subphase.
 
-3. On resume with a prior debate in progress: per the protocol's "Resume" section.
+3. On resume with a prior critique in progress: per the protocol's "Resume" section.
 
 ## Workspace mode -- task-format rules
 

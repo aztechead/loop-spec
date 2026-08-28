@@ -3,11 +3,12 @@
 Single source of truth for the critique-gate procedure both artifact gates run
 (`spec-critique` in DISCUSS, `plan-critique` in PLAN). The phase skill invokes this
 protocol with the parameters below and keeps only its deltas; the routing topology is
-owned by `graph/critique.graph.json` and the ladder policy by `skills/shared/tier-matrix.md`
-— this file owns the operational procedure between those two.
+owned by `graph/critique.graph.json` and the skip policy by `skills/shared/tier-matrix.md`
+— this file owns the operational procedure between those two. Critique is
+**challenger-only**: there is no advocate and no debate round.
 
-Contents: parameters · gate open · mode selection · single-critic pass · escalated
-debate · adjudication · fix_list non-empty / empty · resume.
+Contents: parameters · gate open · single-critic pass · adjudication · fix_list
+    non-empty / empty · resume.
 
 ## Parameters (declared by the invoking phase)
 
@@ -17,20 +18,21 @@ debate · adjudication · fix_list non-empty / empty · resume.
 | `{gate}` | `spec-critique` | `plan-critique` |
 | `{artifact}` | `SPEC.md` | `PLAN.md` |
 | `{artifact_path}` | `docs/loop-spec/features/{slug}/SPEC.md` | `docs/loop-spec/features/{slug}/PLAN.md` |
-| `{author}` | `spec-writer-1` (LEAD edits directly on the autonomous fast path) | `planner-1` |
-| `{next_step}` | phase Step 5.75 | phase Step 4b |
-| Skip policy | never (maintenance profile only, no security signal) | structural fast-path ∪ maintenance profile (no security signal) |
-| Phase deltas | no-op-revision hash shortcut; lead-authored autonomous fixes | re-parse `tasks[]` after every revision |
+| `{author}` | `spec-writer-1` when SPEC.md was missing; otherwise the LEAD edits directly | `planner-1` |
+| `{next_step}` | phase Step 5.75 | phase Step 5.7 (prune; mechanical gates already ran) |
+| Skip policy | `lib/graph/probes/discuss-critique.sh` answers `gate=skip` (maintenance ∪ spec already gated; never on a security signal or ITERATE re-entry) | structural fast-path ∪ maintenance profile (no security signal) |
+| Phase deltas | no-op-revision hash shortcut; lead-authored fixes when there is no spec-writer | re-parse `tasks[]` after every revision; re-run feasibility + coverage if PLAN.md changed |
 
 The phase skill also declares the two adjudication actions that differ by phase:
 `{user_intent_action}` (what to do when a finding depends on user intent) and
-`{ungrounded_action}` (where the probed evidence goes). Security-signal handling, skip
-policies, and the `gate_round` / `dispatch` telemetry emits stay in the phase skill —
-they carry phase-specific arguments and are pinned there.
+`{ungrounded_action}` (where the probed evidence goes). Skip policies and the
+`gate_round` / `dispatch` telemetry emits stay in the phase skill — they carry
+phase-specific arguments and are pinned there.
 
 ## Gate open
 
-Update `feature.json` via `lib/feature-write.sh` and create the log directory:
+Update `feature.json` via `lib/feature-write.sh` and create the log directory.
+`advocateName` stays null (schema key retained for resume; no advocate is spawned):
 
 ```json
 {
@@ -38,7 +40,7 @@ Update `feature.json` via `lib/feature-write.sh` and create the log directory:
     "phase": "{phase}",
     "gate": "{gate}",
     "round": 0,
-    "advocateName": "advocate-1",
+    "advocateName": null,
     "challengerName": "challenger-1",
     "startedAt": "<ISO-8601 now>"
   }
@@ -49,15 +51,7 @@ Update `feature.json` via `lib/feature-write.sh` and create the log directory:
 mkdir -p .loop-spec/features/{slug}/gate-logs/
 ```
 
-## Mode selection
-
-The escalation trigger is declared on the critique graph, not here:
-`graph/critique.graph.json` routes `critique.escalate -> critique.debate` when
-`lib/security-signal.sh` reports a match. The phase skill runs the probe (its file list
-differs by phase) and obeys the declaration: signal non-empty → start directly in the
-**Escalated debate**; otherwise **Single-critic pass**.
-
-## Single-critic pass (default)
+## Single-critic pass
 
 Model: `feature.models.challenger`. Send `challenger-1` the solo-critic brief:
 
@@ -89,87 +83,20 @@ message. Write it to `gate-logs/{gate}-round-1.md`:
 
 Emit the phase's `gate_round` event (`"mode":"single-critic"`), then adjudicate.
 
-## Escalated debate
-
-Runs only when a ladder trigger fires (security signal; contested `[major]` or delta
-deadlock from adjudication). `maxCritiqueRounds = 2` (fixed;
-`skills/shared/tier-matrix.md`). When escalating from a single-critic pass, include all
-existing `gate-logs/{gate}-round-*.md` content as `{prior_round_summaries}` in both spawn
-prompts; `challenger-1` is already live — re-send it the debate brief via `SendMessage`
-instead of spawning fresh.
-
-Spawn `advocate-1` (model: `feature.models.advocate`):
-
-```
-SendMessage({
-  to: "advocate-1",
-  message: """
-    [Populate from skills/shared/team-prompts/advocate.md with these substitutions:
-      {slug} = slug
-      {N} = 1
-      {phase} = {phase}
-      {artifact} = {artifact}
-      {maxRounds} = maxCritiqueRounds
-      {N_round} = 1
-      {prior_round_summaries} = (empty on first run; load from gate-logs/ on resume)
-    ]
-
-    You will receive the first message from challenger-1. Wait for it before starting your round-1 response.
-  """
-})
-```
-
-Brief `challenger-1` (model: `feature.models.challenger`) the same way from
-`skills/shared/team-prompts/challenger.md`, closing with:
-
-```
-Start round 1 now: read {artifact} and send your critique to advocate-1 via SendMessage.
-After sending to advocate-1, wait for their response before sending your ROUND-1 DONE message to lead.
-```
-
-### Debate loop
-
-For each round N = 1 .. maxCritiqueRounds. After each SendMessage, stop. The harness resumes this turn on `TeammateIdle`. Never AskUserQuestion as a wait.
-
-1. Update `feature.json.currentGate.round = N` via `lib/feature-write.sh`.
-2. Resume on `TeammateIdle` from `advocate-1` (it has sent both its cross-debate message
-   and its lead round-end message for round N).
-3. Resume on `TeammateIdle` from `challenger-1` (same condition).
-4. Read the two `ROUND-N DONE[...]` messages sent to `lead`.
-5. Append both message bodies to `gate-logs/{gate}-round-{N}.md` under `## advocate-1` /
-   `## challenger-1` headings.
-6. Emit the phase's `gate_round` event for round N.
-7. Convergence check:
-   - **Mutual DONE**: both messages start with `ROUND-{N} DONE:` (not `DONE-WITH-ISSUES`). Break.
-   - **One-sided DONE for two consecutive rounds**: one teammate sent `ROUND-{N} DONE:`
-     in rounds N and N-1 while the other sent `DONE-WITH-ISSUES`. Break.
-   - **Cap reached**: N == maxCritiqueRounds. Record `notes: "cap reached"` in gateHistory. Break.
-   - Otherwise N += 1 and message both teammates to start the next round (challenger
-     reads {artifact} and critiques to advocate; advocate waits then responds).
+A security signal still runs this pass (never skip). It does not spawn a second
+critic.
 
 ## Adjudication
 
 Read all `gate-logs/{gate}-round-*.md`.
 
-**Single-critic adjudication (default mode):**
-
 | Situation | Action |
 |-----------|--------|
 | `[major]` finding the lead agrees with | Add to fix-list. |
-| `[major]` finding the lead disputes | Do NOT drop it — ESCALATE to the full debate with all gate-logs as prior summaries. The debate is the tiebreak; a solo gate may only bias stricter, never looser. |
+| `[major]` finding the lead disputes | Do NOT drop it — add it to the fix-list. A solo gate may only bias stricter, never looser. There is no advocate tiebreak. |
 | `[minor]` finding | Lead's judgment: add to fix-list or drop. Every dropped `[minor]` is logged in the gate-log with a one-line reason — never silently. |
 | Finding depends on user intent | Escalate via `AskUserQuestion`. Autonomous mode: no escalation — `{user_intent_action}` per the phase skill, and add it to the fix-list so the artifact states it explicitly. |
 | Finding is an ungrounded external claim (`UNGROUNDED:` line) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it to the evidence ledger, then `{ungrounded_action}` per the phase skill (or converts the claim to an ASSUMPTION if the probe is impossible). |
-
-**Escalated-debate reconciliation (when the debate ran):**
-
-| Situation | Action |
-|-----------|--------|
-| Challenger raises point advocate also flagged as risk | High-confidence. Add to fix-list. |
-| Challenger raises point advocate explicitly defended | Evaluate; pick the stronger argument. Add to fix-list if challenger wins. |
-| Both agree | No action. |
-| Neither resolves (depends on user intent) | Same user-intent row as above. |
-| `UNGROUNDED:` line | Same probe row as above. |
 
 Build `fix_list` (may be empty).
 
@@ -188,10 +115,10 @@ placed after the return):
   "gate": "{gate}",
   "attempt": <attempt number>,
   "result": "fail",
-  "advocateModel": "<model | null when the gate never escalated>",
+  "advocateModel": null,
   "challengerModel": "<model>",
   "rounds": <N (single-critic: 1 + delta rounds)>,
-  "convergence": "<single-critic | delta-verified | mutual-done | cap-reached | one-sided>",
+  "convergence": "<single-critic | delta-verified | deadlock-kept>",
   "findingsAddressed": [<fix_list items>],
   "notes": null
 }
@@ -206,9 +133,9 @@ cp {artifact_path} .loop-spec/features/{slug}/gate-logs/{artifact}.pre-revision.
 
 Re-dispatch `{author}` via `SendMessage` (not a fresh Agent call) with the numbered
 fix-list, instructing it to read the current artifact, apply every item in place, send
-lead its completion message, then go idle. (Phase deltas apply: the DISCUSS autonomous
-fast path has the LEAD edit directly; PLAN re-parses `tasks[]` from the completion
-message.)
+lead its completion message, then go idle. (Phase deltas apply: DISCUSS has the LEAD
+edit directly when there is no spec-writer; PLAN re-parses `tasks[]` from the
+completion message.)
 
 When the revision lands, run the **delta re-verify** — do NOT re-run the full gate
 protocol (`skills/shared/tier-matrix.md`, critique gate ladder):
@@ -242,14 +169,11 @@ event with `"mode":"delta"`:
 
 - **`DELTA-VERIFIED`**: the gate passes — append the `gateHistory` pass entry
   (convergence: `"delta-verified"`), reset `currentGate` (below), proceed to `{next_step}`.
-- **`DELTA-FINDINGS`**: adjudicate the tagged findings per the tables above and start a
-  new fix round (retries unbounded). **Deadlock escalation:** if the same finding
-  survives two consecutive delta rounds, the author and critic are stuck — escalate to
-  the full debate with all gate-logs as prior summaries.
-
-(When the escalated debate produced the fix-list, the delta re-verify still applies — the
-debate does not re-run for a revision; only a deadlock or a new contested `[major]`
-re-enters it.)
+- **`DELTA-FINDINGS`**: adjudicate the tagged findings per the table above and start a
+  new fix round (retries unbounded). **Deadlock:** if the same finding survives two
+  consecutive delta rounds, keep it on the fix-list (stricter bias) and continue the
+  delta loop — do not hang the cycle and do not spawn a second critic. Record
+  `convergence: "deadlock-kept"` on the next fail entry.
 
 ## fix_list empty
 
@@ -274,9 +198,6 @@ Proceed to `{next_step}`.
 
 ## Resume (gate in progress)
 
-When the phase resumes with `currentGate.round > 0`: gate-logs holding only
-single-critic/delta rounds (no advocate entries) → re-run from the single-critic findings
-pass with the existing gate-logs inlined as prior context. Advocate entries present
-(escalated debate) → load all `gate-logs/{gate}-round-*.md` content into both spawn
-prompts as `{prior_round_summaries}` and restart the debate from
-`currentGate.round + 1`.
+When the phase resumes with `currentGate.round > 0`: re-run from the single-critic
+findings pass with the existing gate-logs inlined as prior context. There is no
+advocate transcript to reload.

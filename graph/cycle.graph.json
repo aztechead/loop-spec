@@ -452,12 +452,12 @@
       "to": "discuss.critique",
       "kind": "route",
       "condition": {
-        "probe": "lib/graph/probes/short-path.sh",
+        "probe": "lib/graph/probes/discuss-critique.sh",
         "args": [
           "--feature-dir",
           "{featureDir}"
         ],
-        "expects": "path=full"
+        "expects": "gate=run"
       }
     },
     {
@@ -465,12 +465,12 @@
       "to": "human.after-discuss",
       "kind": "route",
       "condition": {
-        "probe": "lib/graph/probes/short-path.sh",
+        "probe": "lib/graph/probes/discuss-critique.sh",
         "args": [
           "--feature-dir",
           "{featureDir}"
         ],
-        "expects": "path=short"
+        "expects": "gate=skip"
       }
     },
     {

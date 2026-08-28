@@ -1023,7 +1023,31 @@ PY
   if [[ "$pair_rc" != 0 ]]; then
     echo "$pair_out" | sed 's/^/    /'
   fi
-  check "the pairing check found the three short-path branches" "3 branch(es)" "$pair_out"
+  check "the pairing check found the two remaining short-path branches" "2 branch(es)" "$pair_out"
+  # discuss.critique.gate left short-path so an already-gated spec can skip
+  # critique without skipping DISCUSS itself. Same pairing rule: skip and run
+  # routes, default to the run (fail-closed) successor.
+  dc_pair="$(python3 - "$ROOT/graph/cycle.graph.json" 2>&1 <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+nodes = {n["id"]: n for n in g["nodes"]}
+nid = "discuss.critique.gate"
+routes = [
+    e for e in g["edges"]
+    if e.get("from") == nid and e.get("kind") == "route"
+    and (e.get("condition") or {}).get("probe") == "lib/graph/probes/discuss-critique.sh"
+]
+runs = {e["to"] for e in routes if e["condition"].get("expects") == "gate=run"}
+skips = {e["to"] for e in routes if e["condition"].get("expects") == "gate=skip"}
+default = nodes[nid].get("routeDefault")
+if runs != {"discuss.critique"} or skips != {"human.after-discuss"} or default != "discuss.critique":
+    print("discuss.critique.gate run=%s skip=%s routeDefault=%s" % (
+        sorted(runs), sorted(skips), default))
+    sys.exit(1)
+print("paired")
+PY
+)"
+  check "discuss-critique skip pairs with routeDefault to the run path" "paired" "$dc_pair"
 fi
 
 echo ""

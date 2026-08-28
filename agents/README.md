@@ -65,7 +65,7 @@ feature-branch HEAD and is a single, auditable mechanism.
 
 ### `color`
 
-Display color in the harness task list / transcript. loop-spec assigns colors by role family so a running cycle reads at a glance: authors (`spec-writer`, `planner`) blue, critique gate (`advocate`, `challenger`) purple, review gates (`code-reviewer`, `spec-compliance-reviewer`, `security-reviewer`) red, judge (`iterate-judge`) orange, `implementer` green, `verifier` yellow, mappers cyan. Allowed values: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` (validated).
+Display color in the harness task list / transcript. loop-spec assigns colors by role family so a running cycle reads at a glance: authors (`spec-writer`, `planner`) blue, critique gate (`challenger`) purple, review gates (`code-reviewer`, `spec-compliance-reviewer`, `security-reviewer`) red, judge (`iterate-judge`) orange, `implementer` green, `verifier` yellow, mappers cyan. Allowed values: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` (validated).
 
 ### `memory`
 
@@ -79,7 +79,7 @@ Persistent memory scope (`user` | `project` | `local`, validated). Grants the ag
 
 | Name | Description |
 |------|-------------|
-| `advocate` | Makes the case for a SPEC or PLAN in the critique gate. Read-only. Argues the design is sound. |
+| `advocate` | Not dispatched. Critique is challenger-only; retained for schema/validation. Read-only. |
 | `challenger` | Critiques a SPEC or PLAN in the critique gate. Read-only. Surfaces gaps, ambiguities, and flawed assumptions. |
 | `code-reviewer` | Quality + security review of feature branch diff. Read-only. |
 | `implementer` | Implements one task per dispatch in its own git worktree. Commits to worktree branch; orchestrator merges. |

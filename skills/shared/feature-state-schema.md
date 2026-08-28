@@ -77,8 +77,8 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "currentGate": {
     "phase": "string or null",
     "gate": "string or null",
-    "round": "integer (current round of advocate/challenger debate, 0 if no gate active)",
-    "advocateName": "string or null (e.g., advocate-1)",
+    "round": "integer (current single-critic / delta round, 0 if no gate active)",
+    "advocateName": "string or null (always null; retained for resume schema)",
     "challengerName": "string or null (e.g., challenger-1)",
     "startedAt": "ISO-8601 timestamp or null"
   },
@@ -276,9 +276,9 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 ### Per-phase harness task list notes
 
-**DISCUSS.** No harness task list. The spec-writer, advocate, and challenger communicate via `SendMessage`; the lead tracks gate state in `feature.json.currentGate` and appends round-end messages to `.loop-spec/features/{slug}/gate-logs/`.
+**DISCUSS.** No harness task list. The challenger (and spec-writer only when SPEC.md was missing) communicate via `SendMessage`; the lead tracks gate state in `feature.json.currentGate` and appends round-end messages to `.loop-spec/features/{slug}/gate-logs/`.
 
-**PLAN.** No harness task list for PLAN's internal teammates (pattern-mapper, planner, advocate, challenger). PLAN emits the validated `tasks[]` JSON in the planner's completion message; the EXECUTE team's harness task list is created from it later, by `TaskCreate` calls in EXECUTE Step 3 (one task per planned task), populated with `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, and `specPath` in task `metadata`. It is not pre-created at PLAN exit and there is no EXECUTE Step 0.
+**PLAN.** No harness task list for PLAN's internal teammates (pattern-mapper, planner, challenger). PLAN emits the validated `tasks[]` JSON in the planner's completion message; the EXECUTE team's harness task list is created from it later, by `TaskCreate` calls in EXECUTE Step 3 (one task per planned task), populated with `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, and `specPath` in task `metadata`. It is not pre-created at PLAN exit and there is no EXECUTE Step 0.
 
 **EXECUTE.** One task per planned task. Implementers self-claim by calling `TaskUpdate({taskId, status: "in_progress", owner: "<own-name>"})`. The harness serializes concurrent claims on the same task id; the losing implementer must re-query and retry. Task lifecycle: `pending -> in_progress -> awaiting_review -> completed | needs_rework`. Per-task `retries` in metadata is the retry counter; `claimedBy` identifies the owner for reviewer-to-implementer messaging.
 

@@ -65,4 +65,4 @@ Keep under 500 words. Cite section names or quote the artifact.
 
 - Do NOT raise generic critiques ("this could be more robust").
 - Do NOT nitpick (typos, formatting, capitalization).
-- Do NOT see the advocate's output (escalated debate mode).
+- Do NOT invent a debate partner. Critique is challenger-only.

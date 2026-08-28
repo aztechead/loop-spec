@@ -7,6 +7,7 @@ checks=(
   "skills/discuss/SKILL.md	This is the in-phase grill."
   "skills/discuss/SKILL.md	\`execStyle: auto\` is not autonomous mode"
   "skills/discuss/SKILL.md	**\`auto\`:** MUST grill."
+  "skills/discuss/SKILL.md	A passed SPEC gate does not skip the design loop"
   "skills/discuss/SKILL.md	**\`step\` / \`interactive\`:** MUST grill."
   "skills/discuss/SKILL.md	**\`auto\` / \`step\` / \`interactive\`:** ask ONE targeted"
   "skills/discuss/SKILL.md	\`execStyle == \"auto\"\` is none of those."

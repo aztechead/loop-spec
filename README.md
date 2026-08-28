@@ -23,7 +23,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 4.6.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+Current version: 4.7.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Install
 
@@ -152,7 +152,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 | Phase | Produces | Gates |
 |---|---|---|
 | SPEC | `SPEC.md` with `ambiguity_scores` | Interview (max 6); ambiguity ≤ 0.20 |
-| DISCUSS | revised SPEC.md | Spec critique (debate on escalation) |
+| DISCUSS | revised SPEC.md | Challenger critique (skipped when the spec is already gated) |
 | PLAN | `PATTERNS.md` + `PLAN.md` | Critique + feasibility + criteria coverage |
 | EXECUTE | per-task commits on `feat/{slug}` | Spec-compliance review; dispatch by DAG width |
 | VERIFY | `VERIFICATION.md`, `REVIEW-ORDER.md` | Marker/tamper scans, acceptance, blocking review |
@@ -162,7 +162,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 Mechanics in brief:
 
 - **ITERATE** is the outer loop: VERIFY proves the checklist; ITERATE asks whether the original request is met. Gap classes `execute` / `plan` / `spec` rewind to that phase.
-- **Critique** climbs skip → single critic → advocate/challenger debate (security signal, disputed major, or deadlock).
+- **Critique** is challenger-only: skip (already-gated spec, PLAN fast-path, or maintenance) or a single critic. A disputed `[major]` stays on the fix-list. There is no advocate debate.
 - **EXECUTE** picks dispatch from DAG width and probed capability (`lib/execute-rung.sh`): sequential, batched subagents, agent team, optional Workflow, or loop-fleet.
 - **VERIFY** defends the oracle (test-tamper + marker scans). An advisory verification-gap pass records coverage holes without blocking.
 - **Sequencing is a declared graph** from 3.0 (`graph/cycle.graph.json`, run by `lib/graph/run.sh`): typed `reads[]`/`writes[]` over `feature.json`, per-node checkpoints, probe-conditioned `route` edges, and dual-process effort (`lib/effort-probe.sh`). Phase *content* is unchanged. Upgrading from 2.x needs no action: schema stays v7 and every new variable defaults to 2.x behaviour.

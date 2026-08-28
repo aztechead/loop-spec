@@ -143,7 +143,8 @@ for f in \
   skills/shared/subagent-concurrency.md \
   skills/cycle/references/startup-probes.md \
   skills/cycle/references/codebase-map-bootstrap.md \
-  skills/execute/references/team-rung-protocol.md
+  skills/execute/references/team-rung-protocol.md \
+  skills/plan/references/patterns-bootstrap.md
 do
   grep -qiF 'never AskUserQuestion as a wait' "$f" \
     || wait_missing="$wait_missing $f"
