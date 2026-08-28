@@ -47,12 +47,14 @@ expect "subagent names fix-loop" \
   skills/shared/execute-subagent.md 'fix-loop.sh'
 expect "subagent names task-batch" \
   skills/shared/execute-subagent.md 'task-batch.sh'
-count_ge "subagent writing-good-tests on both implementer prompts" \
-  skills/shared/execute-subagent.md 'writing-good-tests.md' 2
-count_ge "subagent TDD force on both implementer prompts" \
-  skills/shared/execute-subagent.md 'Omitting a TDD label does not exempt' 2
-count_ge "subagent no-nested on implementer prompts" \
-  skills/shared/execute-subagent.md 'NO NESTED SUBAGENTS' 3
+count_ge "subagent writing-good-tests in the shared stanza" \
+  skills/shared/execute-subagent.md 'writing-good-tests.md' 1
+count_ge "subagent TDD force in the shared stanza" \
+  skills/shared/execute-subagent.md 'Omitting a TDD label does not exempt' 1
+count_ge "subagent no-nested in stanza and reviewer prompt" \
+  skills/shared/execute-subagent.md 'NO NESTED SUBAGENTS' 2
+count_ge "both implementer prompts insert the shared stanza" \
+  skills/shared/execute-subagent.md 'implementer contract stanza — insert the block above' 2
 
 expect "execute SKILL reads executeMaxRetriesPerTask from the overlay" \
   skills/execute/SKILL.md 'get executeMaxRetriesPerTask 6'

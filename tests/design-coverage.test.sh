@@ -64,11 +64,12 @@ fi
 # The EXECUTE subagent rung dispatches TWO implementer prompts (single-repo + workspace);
 # both must carry the directive, same as the ladder requirement.
 sub_count="$(grep -ciE "seams, not speculation" skills/shared/execute-subagent.md)"
-if [[ "$sub_count" -ge 2 ]]; then
+marker_count="$(grep -cF "implementer contract stanza — insert the block above" skills/shared/execute-subagent.md)"
+if [[ "$sub_count" -ge 1 && "$marker_count" -ge 2 ]]; then
   echo "PASS: execute-subagent.md covers both implementer prompts ($sub_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $sub_count design-for-change occurrences; expected >= 2 (single-repo + workspace prompts)"
+  echo "FAIL: execute-subagent.md has $sub_count design-for-change occurrences; expected stanza >= 1 and both prompts inserting it (marker >= 2)"
   FAIL=$((FAIL+1))
 fi
 

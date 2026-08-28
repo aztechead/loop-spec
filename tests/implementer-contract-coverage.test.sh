@@ -26,10 +26,11 @@ check_fixed_strings "${checks[@]}"
 
 # Both subagent prompt templates (single-repo + workspace) must carry the gate.
 sub_count="$(grep -cF "THREE QUESTIONS (design gate" skills/shared/execute-subagent.md)"
-if [[ "$sub_count" -ge 2 ]]; then
+marker_count="$(grep -cF "implementer contract stanza — insert the block above" skills/shared/execute-subagent.md)"
+if [[ "$sub_count" -ge 1 && "$marker_count" -ge 2 ]]; then
   PASS=$((PASS+1)); echo "PASS: execute-subagent.md carries the gate in both prompts ($sub_count occurrences)"
 else
-  FAIL=$((FAIL+1)); echo "FAIL: execute-subagent.md has $sub_count three-questions occurrences; expected >= 2"
+  FAIL=$((FAIL+1)); echo "FAIL: execute-subagent.md has $sub_count three-questions occurrences; expected stanza >= 1 and both prompts inserting it (marker >= 2)"
 fi
 
 finish_fixed_string_coverage

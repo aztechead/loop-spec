@@ -54,11 +54,12 @@ done
 # The EXECUTE subagent rung dispatches TWO implementer prompts (single-repo + workspace);
 # both write documents, so both must carry the directive.
 sub_count="$(grep -cE "DOCS FOR HUMANS" skills/shared/execute-subagent.md)"
-if [[ "$sub_count" -ge 2 ]]; then
+marker_count="$(grep -cF "implementer contract stanza — insert the block above" skills/shared/execute-subagent.md)"
+if [[ "$sub_count" -ge 1 && "$marker_count" -ge 2 ]]; then
   echo "PASS: execute-subagent.md covers both implementer prompts ($sub_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $sub_count docs-for-humans occurrences; expected >= 2 (single-repo + workspace prompts)"
+  echo "FAIL: execute-subagent.md has $sub_count docs-for-humans occurrences; expected stanza >= 1 and both prompts inserting it (marker >= 2)"
   FAIL=$((FAIL+1))
 fi
 
@@ -188,11 +189,11 @@ for f in skills/shared/execute-subagent.md lib/plan-to-loop.sh \
   fi
 done
 hd_count="$(grep -cF "skills/shared/human-docs.md" skills/shared/execute-subagent.md)"
-if [[ "$hd_count" -ge 2 ]]; then
-  echo "PASS: execute-subagent.md names the docs contract in both prompts ($hd_count occurrences)"
+if [[ "$hd_count" -ge 1 ]]; then
+  echo "PASS: execute-subagent.md names the docs contract in the shared stanza ($hd_count occurrences)"
   PASS=$((PASS+1))
 else
-  echo "FAIL: execute-subagent.md has $hd_count human-docs.md references; expected >= 2"
+  echo "FAIL: execute-subagent.md has $hd_count human-docs.md references; expected >= 1 (shared stanza)"
   FAIL=$((FAIL+1))
 fi
 
