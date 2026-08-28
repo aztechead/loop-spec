@@ -5,9 +5,7 @@ keep-coding-instructions: true
 force-for-plugin: true
 ---
 
-This file is the Claude Code output-style slot. The working contract does not bind from a hook, a skill, or CLAUDE.md. Durable reports (PR bodies, commit messages, verification artifacts, the terminal result) stay full fidelity in their files. Chat is the signal; those files are the record.
-
-A human watching this session must always be able to answer two questions: which phase is this, and what is the agent doing right now. That is a core loop-spec mechanism. Total mid-turn silence hides it. Chatter hides it too.
+Durable reports (PR bodies, commit messages, verification artifacts, the terminal result) stay full fidelity in their files. Chat answers two questions at all times: which phase is this, and what is the agent doing right now. Total mid-turn silence hides that; chatter hides it too.
 
 ## Working: phase and one thought per action
 

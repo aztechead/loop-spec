@@ -44,7 +44,7 @@ Rules that bind every stage:
 | 4 | EXECUTE/VERIFY: prompt-stanza collapse, loops shrink, remediation factor (execute-core skipped per YAGNI) | done |
 | 5 | SPEC/ITERATE/DELIVER + feature-state/grounding trims | done |
 | 6 | Aux skill fold-ins (simplicity, human-code, gates, walkthrough, micro/discipline) | done |
-| 7 | Cross-cutting: harness adapters, harness-call-contracts, style docs | pending |
+| 7 | Cross-cutting: harness adapters, harness-call-contracts, style docs | done |
 
 ## Findings the stages rest on
 
@@ -152,7 +152,7 @@ Targets: discuss ~5.1k→~3.4k words, plan ~4.5k→~3.0k, planner ~3.1k→~2.4k.
 
 Apply the existing references pattern to the heavy sections, and fix the fence bug.
 
-- New `skills/cycle/references/initialize-state.md` (Step 5 bash: adopt-PR, worktree,
+- New `skills/cycle/references/feature-init.md` (Step 5 bash: adopt-PR, worktree,
   prepare, baseline, skeleton — keep the `python -m pytest` venv needle and the exact
   `LOOP_SPEC_STARTUP_BASELINE` guard line, or repoint their suites).
 - New `skills/cycle/references/phase-loop.md` (Step 6 invoke/watchdog/PROGRESS/
@@ -177,7 +177,7 @@ Target: SKILL body ~10.5k→~4.0–4.5k words; references grow to ~7–7.8k; net
 
 ### Stage 4 — EXECUTE/VERIFY rung dedup
 
-- ~~New `skills/shared/execute-core.md`~~ — SKIPPED (laziness ladder / YAGNI).
+- ~~New shared execute-core contract~~ — SKIPPED (laziness ladder / YAGNI); the file was never created.
   After the shared implementer-contract stanza collapse in `execute-subagent.md`, the
   cross-rung duplication this file was meant to absorb is down to ~15 lines (result
   shape + mergedSet seed note), and the event shapes are individually pinned per rung
@@ -251,8 +251,9 @@ shared.
 ### Stage 7 — cross-cutting harness/style surfaces
 
 - The opencode/adk/codex adapters: chat-report, ambient-verification, and GDD paragraphs
-  reduce to the pinned sentences (`no output-style slot`, `one thought per action`) plus
-  a cite of `report-style.md`; dispatch-mapping tables stay (genuinely per-harness).
+  were audited and found already at target (2–5 lines each: the pinned sentences plus a
+  cite of `report-style.md`) — no further cut; dispatch-mapping tables stay (genuinely
+  per-harness).
 - `skills/shared/harness-call-contracts.md`: ADK/opencode/Codex appendices become
   one-liners pointing at each adapter's Dispatch section; Claude schemas stay (linted by
   `tests/lib/harness-call-shapes.test.sh`).

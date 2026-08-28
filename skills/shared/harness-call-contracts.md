@@ -153,60 +153,20 @@ SendMessage({
 `TeamCreate` / `TeamDelete`: legacy explicit harness only (CC < 2.1.178).
 Deferred-schema rescue applies to all team-related tools (cycle Step 2).
 
-## ADK harness (a framework, not a coding agent)
+## Other harnesses (pointers, not restatements)
 
-Under ADK (`lib/harness.sh detect` == `adk`) the tool surface is the one the
-bundled bridge builds: `Execute` / `ReadFile` / `WriteFile` / `EditFile` from
-`EnvironmentToolset`, `list_skills` / `load_skill` / `load_skill_resource` from
-`SkillToolset`, and `dispatch_subagent` over `AgentTool` — which takes the same
-`{description, prompt, subagent_type}` shape as `Agent`. Glob and Grep have no
-native tools; use `Execute`. Team tools, `Workflow`, `TaskCreate`/`TaskUpdate`,
-and `ToolSearch` do not exist — apply the substitution table and dispatch mapping
-rule in `skills/shared/adk-harness.md`. Headless dispatch goes through
-`adk run <agent-dir> "<prompt>" --jsonl`, the same seam the loop-runner's
-`--agent-cli adk` backend drives.
+The Claude Code schemas above are this file's job. Each peer harness documents its own
+tool surface, substitution table, and dispatch mapping in its adaptation contract —
+apply that file, not a from-memory translation:
 
-## opencode harness (native near-equivalents)
-
-Under opencode (`lib/harness.sh detect` == `opencode`) most CC tools have
-NATIVE counterparts with near-identical shapes: `Agent` → `task`
-(`{description, prompt, subagent_type, task_id?, command?}` parameters;
-`subagent_type` is required and agent ids are `loop-spec-<role>`, hyphen not
-colon; `task_id` resumes a prior child session), `AskUserQuestion` →
-`question` (rename `multiSelect` to `multiple`),
-`Skill` → `skill({name: "loop-spec-<name>"})`, Read/Write/Edit/Bash/Glob/Grep → their lowercase
-twins. Teams tools, `Workflow`, `TaskCreate`/`TaskUpdate`, and `ToolSearch`
-still do not exist — apply the substitution table and dispatch mapping rule
-in `skills/shared/opencode-harness.md`. Headless dispatch goes through
-`opencode run --format json "<prompt>" --model <provider/model>`, the same
-seam the loop-runner's `--agent-cli opencode` backend drives.
-
-External skills use their own names — `skill({name: "<name>"})`. OpenCode's
-skill tool accepts no arguments, so the surrounding prompt carries `. --update`.
-
-## Codex harness (native plugin + spawn_agent)
-
-Under the Codex harness (`lib/harness.sh detect` == `codex`) the tool surface
-is Codex's own: file tools plus `apply_patch`, `Bash` / `exec_command`, skills
-invoked as `$loop-spec-<name>` (or a plugin skill `$<name>`), and one-shot
-dispatch through `spawn_agent`. Glob and Grep have no native tools; use Bash.
-`AskUserQuestion` maps to `request_user_input` (add `id`, option `value`;
-drop `multiSelect`; 1–3 questions). When a human is attached the call
-**blocks** — never self-answer SPEC/DISCUSS/PLAN interviews unless
-autonomous or `LOOP_SPEC_NON_INTERACTIVE=1`. If the tool is missing from the
-schema, end the turn with numbered options instead of proceeding. Team tools,
-`Workflow`, `TaskCreate`/`TaskUpdate`, and `ToolSearch` do not exist — apply
-the substitution table, HITL rule, and dispatch mapping in
-`skills/shared/codex-harness.md`. Headless dispatch goes through
-`codex exec --json --sandbox workspace-write "<prompt>"`, the same seam the
-loop-runner's `--agent-cli codex` backend drives.
-
-`spawn_agent` is the `Agent` counterpart (`agents.enabled`, on by
-default). Map `subagent_type: "loop-spec:<role>"` to `agent_type:
-"loop-spec-<role>"` (installer-written `~/.codex/agents/loop-spec-<role>.toml`
-or `.codex/agents/loop-spec-<role>.toml`), `prompt` to `message`, and
-`description` to `task_name` when that field is on the schema. Pass
-`fork_turns: "none"` (or `fork_context: false`) so a full-history fork cannot
-reject the override. Optional `model` is a Codex slug; omit `inherit` and
-Claude aliases. When a release hides `agent_type`, still spawn and prefix the
-message with the role charter from `agents/<role>.md`.
+- **ADK harness** (`lib/harness.sh detect` == `adk`): `dispatch_subagent` over
+  `AgentTool` takes the same `{description, prompt, subagent_type}` shape as `Agent`.
+  Full table and mapping: `skills/shared/adk-harness.md`.
+- **opencode harness** (`detect` == `opencode`): `Agent` → native `task`
+  (`{description, prompt, subagent_type, task_id?, command?}`; `subagent_type` is
+  required, agent ids are `loop-spec-<role>`). Full table and mapping:
+  `skills/shared/opencode-harness.md`.
+- **Codex harness** (`detect` == `codex`): `Agent` → `spawn_agent`; `AskUserQuestion`
+  → `request_user_input`, which **blocks** when a human is attached — apply the HITL
+  rule before calling. Full table, HITL rule, and mapping:
+  `skills/shared/codex-harness.md`.
