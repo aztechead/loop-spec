@@ -115,6 +115,7 @@ run_suite() {
   SUITE_REPORTED[$index]=0
   SUITE_SEQUENCE=$((SUITE_SEQUENCE + 1))
   SUITE_BATCH=$((SUITE_BATCH + 1))
+  echo "START: $name t=${SECONDS}s"
 
   (
     started="$SECONDS"

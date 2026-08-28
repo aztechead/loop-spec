@@ -756,6 +756,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" begin \
 # so SPEC can render them; no-op when nothing was staged.
 bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" migrate \
   "$repo_root/.loop-spec/decisions-staging" ".loop-spec/features/${slug}"
+```
 
 #### Workspace mode Step 5 variant
 
