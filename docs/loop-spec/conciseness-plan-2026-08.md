@@ -270,7 +270,10 @@ shared.
 Every skill's `name` + `description` loads at session start. Cut each description to
 its trigger words plus one not-for clause; drop body procedure. The six phase skills
 shared a 26-word "Cycle-internal - invoked by..." boilerplate — shortened in place.
-No test pinned description text. Installers copy the field verbatim.
+No test pinned description text except `loop-runner`'s leading `"Compile specs`
+(opencode-install folded-scalar round-trip). Installers copy the field verbatim.
+The folded 155-word `loop-runner` description was cut to trigger + not-for (66 words)
+after the pin inventory; architecture-layer prose stays in the body.
 
 ### Stage 9 — `lib/feature-bootstrap.sh`
 
