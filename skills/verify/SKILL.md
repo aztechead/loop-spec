@@ -141,12 +141,10 @@ VALIDATION_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" co
 
 It runs the persisted preparation command in every participating repository, then runs
 test/lint/typecheck against the candidate. This is the only place the cycle's
-repository-wide suite runs: startup does not run it (the baseline capture is opt-in),
-EXECUTE does not run it at any rung, and cycle resume does not run it — it reads
-`tasks.json` for which ids are already `status=done` and continues remaining work
-in the recorded phase. Every rung previously repeated this same comparison per wave against the
-same integrated tree, which is why it is stated here as an invariant rather than a
-default. With no recorded baseline (the default, since
+repository-wide suite runs — an invariant, not a default: startup does not run it (the
+baseline capture is opt-in), EXECUTE does not run it at any rung, and cycle resume does
+not run it (it reads `tasks.json` for which ids are already `status=done` and continues
+remaining work in the recorded phase). With no recorded baseline (the default, since
 `LOOP_SPEC_STARTUP_BASELINE` is off) every failure blocks. With a captured baseline the
 comparison is relative: exit 0 means no new failures, and pre-existing fingerprints may
 remain and must be reported as known baseline failures rather than repaired. Exit 20 is a
@@ -314,46 +312,60 @@ the emitted `FLAG` lines as the failure evidence and route through the normal ac
 remediation branch. This gate is mandatory when workflows are unavailable, which is the
 normal OpenCode/ADK path; prompt compliance alone never clears VERIFY.
 
+#### Remediation teardown (shared by every failing gate in Steps 7 and 7.5)
+
+Every remediation task is FULL-SHAPE:
+
+```json
+{
+  "id": "task-NNN+remediate-M",
+  "subject": "Fix: {criterion or finding}",
+  "files": ["...derived from failure"],
+  "verifyCommand": "criterion's verify command",
+  "acceptanceCriteria": ["criterion"],
+  "blockedBy": [],
+  "retries": 0
+}
+```
+
+Partial-shape tasks get DENIED by the task guard when EXECUTE registers them. Then:
+
+1. Append each remediation task to `feature.json.pendingRemediationTasks[]` via
+   `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md
+   tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is
+   critical: the verify team's task list is destroyed by the `TeamDelete` below, so
+   any `TaskCreate` calls on it would be lost.
+2. Append the fail entry to `gateHistory[]` via `lib/feature-write.sh`
+   (`phase: verify`, `gate: <acceptance|code-review|live-verify>`, `result: fail`).
+3. Discard code-reviewer output for this iteration when a verifier gate failed
+   (it re-runs when VERIFY loops back after remediation).
+4. Call `TeamDelete({name: "loop-spec-verify-{slug}"})`, then via
+   `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
+5. Return to the cycle orchestrator. `lib/ralph-remediation.sh` is the graph's declared
+   route probe for pending remediation (`graph/cycle.graph.json`): the recorded tasks —
+   never this skill — select the rewind, and the probe's own threshold logic
+   (`LOOP_SPEC_RALPH_THRESHOLD`) decides between the bounded remediation loop and the
+   full EXECUTE team. The graph's loop edge re-enters VERIFY from Step 1 after
+   remediation lands.
+
 #### verifier-1 gate
 
 **If verifier reports `ALL_PASS` AND `Test suite status: PASS` (or `N/A`):** proceed to code-reviewer gate below. `PASS` means Step 1.75 found no new repository-wide failures; VERIFICATION.md may list unchanged known baseline failures.
 
-**If verifier reports `ALL_PASS` but `Test suite status: FAIL`:** this now means a
-criterion-specific command failed after Step 1.75; repository-wide regressions already
-returned to EXECUTE before team creation.
-- Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"suite-regression"}' || true`
-- Generate a FULL-SHAPE remediation task: `subject = "Fix: test suite regression"`, `verifyCommand = feature.commands.test`, `blockedBy = []`, `files = []` (unknown until diagnosed), `acceptanceCriteria = ["test suite passes"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them.
-- Append the remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step, so any `TaskCreate` calls on it would be lost.
-- Update `feature.json` via `lib/feature-write.sh`:
-  - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
-- Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
-- Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
-- Discard code-reviewer output for this iteration (will re-run when verify loops back after remediation).
-- Return to the cycle orchestrator: the appended remediation state drives the graph's declared remediation route.
+**If verifier reports `ALL_PASS` but `Test suite status: FAIL`:** a criterion-specific
+command failed after Step 1.75 (repository-wide regressions already returned to EXECUTE
+before team creation). Emit
+`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"suite-regression"}' || true`,
+generate one remediation task (`subject = "Fix: test suite regression"`,
+`verifyCommand = feature.commands.test`, `files = []` until diagnosed,
+`acceptanceCriteria = ["test suite passes"]`), and run the **Remediation teardown**
+(gate: `acceptance`).
 
-**If verifier reports `FAIL`:**
-- This includes any failed grounding gate: absent/stale `repositoryEvidence`, an
-  unsupported assumption, or repository evidence that contradicts the implementation.
-- Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"acceptance"}' || true`
-- Discard code-reviewer output for this iteration.
-- For each failed criterion, generate a remediation task:
-  ```json
-  {
-    "id": "task-NNN+remediate-M",
-    "subject": "Fix: {criterion}",
-    "files": ["...derived from failure"],
-    "verifyCommand": "criterion's verify command",
-    "acceptanceCriteria": ["criterion"],
-    "blockedBy": [],
-    "retries": 0
-  }
-  ```
-- Append each remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry. Using feature.json (not `TaskCreate` on the verify team) is critical: the verify team's task list is destroyed by the `TeamDelete` later in this step.
-- Update `feature.json` via `lib/feature-write.sh`:
-  - Append entry to `gateHistory[]` (`phase: verify`, `gate: acceptance`, `result: fail`).
-- Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
-- Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
-- Return to the cycle orchestrator: the appended remediation state drives the graph's declared remediation route, and the graph's loop edge re-enters VERIFY from Step 1 after remediation lands.
+**If verifier reports `FAIL`** (including any failed grounding gate: absent/stale
+`repositoryEvidence`, an unsupported assumption, or repository evidence that
+contradicts the implementation): emit the `'{"class":"acceptance"}'` failure event,
+generate one remediation task per failed criterion, and run the **Remediation
+teardown** (gate: `acceptance`).
 
 #### code-reviewer-1 HARD-GATE
 
@@ -361,19 +373,9 @@ Use the `CODE-REVIEWER DONE` message already received from Step 6.
 
 Fixed gate rule (single-tier operation): **BLOCK on Critical OR Important. PASS_WITH_MINOR proceeds; every Minor is backlogged below.**
 
-**If BLOCK:**
-- Emit the failure class: `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"code-review"}' || true`
-- Generate one remediation task per blocking finding (same remediation task shape as verifier FAIL above).
-- Append each remediation task to `feature.json.pendingRemediationTasks[]` via `lib/feature-write.sh append`. EXECUTE Step 2a reads this array alongside PLAN.md tasks on next entry.
-- Update `feature.json` via `lib/feature-write.sh`:
-  - Append entry to `gateHistory[]` (`phase: verify`, `gate: code-review`, `result: fail`).
-- Call `TeamDelete({name: "loop-spec-verify-{slug}"})`.
-- Update `feature.json` via `lib/feature-write.sh`: `currentTeamName = null`, `currentTeammates = []`.
-- Return to the cycle orchestrator. `lib/ralph-remediation.sh` is the graph's declared
-  route probe for pending remediation (`graph/cycle.graph.json`): the recorded tasks —
-  never this skill — select the rewind, and the probe's own threshold logic
-  (`LOOP_SPEC_RALPH_THRESHOLD`) decides between the bounded remediation loop and the
-  full EXECUTE team.
+**If BLOCK:** emit the `'{"class":"code-review"}'` failure event, generate one
+remediation task per blocking finding, and run the **Remediation teardown**
+(gate: `code-review`).
 
 **If PASS or PASS_WITH_MINOR:**
 - Append code-review section to VERIFICATION.md.
@@ -403,7 +405,7 @@ LIVE_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/verify-live.sh" run \
 
 - **Unconfigured** (`configured: false`, exit 0): suite-only VERIFY, unchanged. NEVER guess a launch command here. If the user has not been offered configuration before, `bash "${CLAUDE_SKILL_DIR}/../../lib/verify-live.sh" detect .` may SUGGEST one — in interactive styles offer it once; in autonomous mode record a `decisions.sh` entry that the rung stayed off (suggestion included when detect found one) and move on.
 - **Exit 0 with `allPass: true`:** append a "## Live verification" section to VERIFICATION.md listing each probe with its `EVID-NNN` id (the verifier cites evidence ids, never bare claims — the probe outputs are already in the EVIDENCE.md ledger).
-- **Exit 1** (never became ready, or a probe failed): emit the failure class (`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" verify_failure --phase verify --data '{"class":"live-probe"}' || true`), then record remediation exactly like a verifier `FAIL` (Step 7): one FULL-SHAPE remediation task per failed probe (`subject = "Fix: live probe failed — {probe cmd}"`, `verifyCommand` = the probe) and a `gateHistory` entry (`gate: live-verify`, `result: fail`); the recorded tasks drive the graph's declared remediation route.
+- **Exit 1** (never became ready, or a probe failed): emit the `'{"class":"live-probe"}'` failure event, generate one remediation task per failed probe (`subject = "Fix: live probe failed — {probe cmd}"`, `verifyCommand` = the probe), and run the **Remediation teardown** (gate: `live-verify`).
 
 ### Step 7.6 - Verification-gap pass
 
@@ -421,11 +423,9 @@ Findings are **advisory in this release**: record them in VERIFICATION.md under 
 
 ### Step 7.65 - Plain-language pass (advisory)
 
-Checks the prose this cycle produced against `skills/shared/plain-language.md` — Orwell's
-six rules plus the STE-informed structural rules the repo adopts. Deterministic, never a
-model judgment: `lib/plain-language-lint.sh` counts sentence length, passive
-constructions, curated long-word and foreign-phrase substitutions, stock phrases,
-`and/or` slashes, paragraph length, and gerund-headed imperatives.
+Checks the prose this cycle produced against `skills/shared/plain-language.md` (the
+contract, including which rules are machine-checked and which never will be).
+Deterministic, never a model judgment:
 
 ```bash
 lint="${CLAUDE_SKILL_DIR}/../../lib/plain-language-lint.sh"
@@ -433,17 +433,10 @@ bash "$lint" prose docs/loop-spec/features/"$slug"/*.md --max-flags 40 || true
 bash "$lint" comments $(git diff --name-only "$baseSha" HEAD -- '*.sh' '*.py') --max-flags 20 || true
 ```
 
-Findings are **advisory and stay advisory until the false-positive rate is measured**.
-On this repository's own artifacts the linter reports roughly one flag per six lines,
-dominated by long sentences and passive constructions, so a blocking gate would stop
-every run on prose that reads perfectly well. Record the counts per check in
-VERIFICATION.md under `## Plain language` and append only the flags a human agrees with
-to `.loop-spec/BACKLOG.md` — never the raw list.
-
-Two of Orwell's rules are not machine-checked and never will be: "cut every word that
-adds nothing" is a judgment about a sentence's information content, and rule 6 ("break
-any of these rules sooner than say anything barbarous") is the rule that overrides the
-others. `lib/plain-language-lint.sh` has no opinion on either. A clean run is not
+Findings are **advisory and stay advisory until the false-positive rate is measured**
+(the linter flags roughly one line in six on this repo's own artifacts). Record the
+counts per check in VERIFICATION.md under `## Plain language` and append only the flags
+a human agrees with to `.loop-spec/BACKLOG.md` — never the raw list. A clean run is not
 evidence the prose is good.
 
 ### Step 7.66 - Docs-for-humans pass

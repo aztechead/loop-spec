@@ -41,7 +41,7 @@ Rules that bind every stage:
 | 1 | Implementer contract: one shared block, every rung, three design questions | done |
 | 2 | DISCUSS/PLAN: shared critique-gate protocol + preamble cites | done |
 | 3 | CYCLE: extract init/phase-loop/completion references, cite shared contracts, fix fences | done |
-| 4 | EXECUTE/VERIFY: execute-core extraction, loops shrink, remediation factor | pending |
+| 4 | EXECUTE/VERIFY: prompt-stanza collapse, loops shrink, remediation factor (execute-core skipped per YAGNI) | done |
 | 5 | SPEC/ITERATE/DELIVER + feature-state/grounding trims | pending |
 | 6 | Aux skill fold-ins (simplicity, human-code, gates, walkthrough, micro/discipline) | pending |
 | 7 | Cross-cutting: harness adapters, harness-call-contracts, style docs | pending |
@@ -194,8 +194,9 @@ Target: SKILL body ~10.5k→~4.0–4.5k words; references grow to ~7–7.8k; net
   sub-procedure the three sites cite); Steps 7.65/7.66 shrink to command + contract cite
   (`plain-language.md`, `human-docs.md`); trim Step 1.75 history. Keep
   `verification-grounding` needles. ~4.7k→~3.6k words.
-- Thin shared "workspace invariants" stub (~50w) cited by cycle/execute/verify; the
-  three phase workspace docs stay separate (different jobs).
+- ~~Thin shared "workspace invariants" stub~~ — SKIPPED (YAGNI): the three phase
+  workspace docs stay separate (different jobs), and a ~50-word stub would be a new
+  surface with nothing load-bearing to own.
 
 ### Stage 5 — SPEC/ITERATE/DELIVER + schema/grounding
 
