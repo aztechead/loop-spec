@@ -137,20 +137,33 @@ for f in \
   skills/discuss/SKILL.md \
   skills/execute/SKILL.md \
   skills/verify/SKILL.md \
+  skills/iterate/SKILL.md \
+  skills/deliver/SKILL.md \
   skills/map-codebase/SKILL.md \
   skills/shared/critique-gate-protocol.md \
   skills/shared/no-teams-fallback.md \
   skills/shared/subagent-concurrency.md \
+  skills/shared/execute-subagent.md \
+  skills/shared/execute-loop-fleet.md \
   skills/cycle/references/startup-probes.md \
   skills/cycle/references/codebase-map-bootstrap.md \
+  skills/cycle/references/phase-activate.md \
   skills/execute/references/team-rung-protocol.md \
-  skills/plan/references/patterns-bootstrap.md
+  skills/plan/references/patterns-bootstrap.md \
+  skills/verify/references/workspace-mode.md
 do
   grep -qiF 'never AskUserQuestion as a wait' "$f" \
     || wait_missing="$wait_missing $f"
 done
 check "every Agent-joining phase forbids AskUserQuestion as a wait" \
   "$([[ -z "$wait_missing" ]] && echo 1 || echo 0)" "$wait_missing"
+grep -qF 'placeholder-question-guard.sh' hooks/hooks.json \
+  && grep -qF '"matcher": "AskUserQuestion"' hooks/hooks.json \
+  && v=1 || v=0
+check "hooks.json registers the placeholder-question PreToolUse guard" "$v"
+grep -qF 'placeholder-question-guard.sh' skills/shared/harness-call-contracts.md \
+  && v=1 || v=0
+check "contract doc names the placeholder-question hook" "$v"
 
 # 8c) Live /cycle: bash sleep-polls (120s PATTERNS join, 600s map bootstrap)
 #     froze the session between DISCUSS and PLAN. Check once, then fallback.

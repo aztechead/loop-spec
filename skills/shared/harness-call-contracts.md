@@ -85,7 +85,8 @@ AskUserQuestion({
 - AskUserQuestion is never a wait, keep-alive, or placeholder while a subagent runs.
   Dummy option labels (`n/a`, "Type something") and a question that says it is
   "not a real question" are forbidden. "Chat about this" is harness chrome; do not
-  emit it.
+  emit it. Claude Code enforces this at the tool boundary:
+  `hooks/team/placeholder-question-guard.sh` (PreToolUse matcher `AskUserQuestion`).
 
 ## TaskCreate
 

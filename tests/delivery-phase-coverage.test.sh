@@ -26,6 +26,8 @@ absent() {
 }
 
 present "DELIVER skill exists" skills/deliver/SKILL.md "name: deliver"
+present "DELIVER never AskUserQuestion as a wait" skills/deliver/SKILL.md "Never AskUserQuestion as a wait"
+present "ITERATE never AskUserQuestion as a wait" skills/iterate/SKILL.md "Never AskUserQuestion as a wait"
 present "DELIVER invokes deterministic controller" skills/deliver/SKILL.md "lib/deliver.sh"
 present "controller delegates one-repo delivery" lib/deliver.sh "pr-delivery.sh"
 present "bypass PRs are reconciled at publication" lib/delivery-reconcile.sh "Turn a GitHub PR created outside"

@@ -35,7 +35,8 @@ SendMessage({
 })
 ```
 
-verifier-1 works independently. Lead waits for its completion signal.
+verifier-1 works independently. Stop after SendMessage. The harness resumes this
+turn on `VERIFIER DONE`. Never AskUserQuestion as a wait.
 The lead then runs `lib/verification-grounding-lint.sh` with `--repo {workspace_root}`
 and `--spec {spec_path}` so `GE-NNN` rows derive from SPEC order before accepting `ALL_PASS`.
 
@@ -52,7 +53,8 @@ SendMessage({
 })
 ```
 
-code-reviewer-1 works independently in parallel with verifier-1. Lead waits for both.
+code-reviewer-1 works independently in parallel with verifier-1. Stop after both
+dispatches. Never AskUserQuestion as a wait.
 
 ## Step 9 - map-codebase refresh
 

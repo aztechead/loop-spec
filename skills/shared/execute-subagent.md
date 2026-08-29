@@ -186,6 +186,9 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    On this Agent rung, add `model` only when the result is one of the four
    aliases and omit it for `inherit`. A full/native ID requires the loop-fleet
    rung; fail loud if it reaches this Agent boundary.
+   Issue the Agent call(s), then stop. Never AskUserQuestion as a wait
+   (`skills/shared/harness-call-contracts.md`). The harness resumes this turn
+   when they complete. Then review.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
 5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, write a review package from the recorded BASE to the implementer's HEAD, then dispatch a spec-compliance reviewer `Agent` using the activated
    `models.specComplianceReviewer` selector (alias → add `model`; `inherit` → omit) and the

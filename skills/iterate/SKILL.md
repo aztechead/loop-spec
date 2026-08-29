@@ -82,6 +82,8 @@ Agent({
 })
 ```
 
+Issue the Agent call, then stop. Never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`). The harness resumes this turn when the judge completes. Then parse the verdict.
+
 Parse the verdict JSON from its completion message (schema in `agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[], weakest, gap{type,description,fix_first}, remaining_gaps[], summary}`. `gap` is the single highest-leverage miss that decides the routing; `remaining_gaps[]` (possibly empty) lists the other known misses so one pass can remediate several and a limit-exhausted ship can report ALL of them.
 
 **Defensive parse (the verdict is the loop's oracle — extract it deterministically, do not eyeball it):** the judge returns the verdict inside a fenced ```json block. Capture its completion message to `$fdir/.iterate-judge.out`, then extract and validate before acting:

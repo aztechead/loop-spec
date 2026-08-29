@@ -4,6 +4,25 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.7.1] - 2026-08-28
+
+Placeholder `AskUserQuestion` waits still fired in EXECUTE, VERIFY, ITERATE,
+and DELIVER after 4.6.1's instruction-only forbid. The lead invented
+`wait` / `n/a` / "Type something" / "not a real question" while a background
+Agent or the DELIVER check wait ran. A PreToolUse hook now denies those calls.
+
+### Fixed
+
+- **Dummy wait questions are denied at the tool boundary.**
+  `hooks/team/placeholder-question-guard.sh` (matcher `AskUserQuestion`) blocks
+  the live dummy tells, any question while an Agent is still running, every
+  question during VERIFY/DELIVER, and ITERATE questions other than the
+  Re-open SPEC gate. Kill switch: `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD=0`.
+  ITERATE, DELIVER, the EXECUTE subagent/loop-fleet rungs, VERIFY workspace
+  joins, and cycle phase dispatch now say dispatch-then-stop instead of
+  "lead waits". Pinned by `hooks/team/placeholder-question-guard.test.sh`
+  and `tests/lib/harness-call-shapes.test.sh`.
+
 ## [4.7.0] - 2026-08-28
 
 SPEC and PLAN get shorter without dropping the DISCUSS grill or the
