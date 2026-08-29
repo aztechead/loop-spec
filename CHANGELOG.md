@@ -4,7 +4,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
-## [4.7.1] - 2026-08-28
+## [4.7.2] - 2026-08-29
 
 Placeholder `AskUserQuestion` waits still fired in EXECUTE, VERIFY, ITERATE,
 and DELIVER after 4.6.1's instruction-only forbid. The lead invented
