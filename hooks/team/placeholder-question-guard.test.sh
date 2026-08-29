@@ -41,6 +41,7 @@ REAL='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Gate 
 DUMMY_FLAT='{"tool_name":"AskUserQuestion","tool_input":{"header":"wait","question":"not a real question","options":["n/a","n/a2","Type something"]}}'
 DUMMY_WRAPPED='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"wait","question":"This is not a real question","options":[{"label":"n/a","description":"keep-alive"},{"label":"Type something","description":"occupy the wait"}],"multiSelect":false}]}}'
 REOPEN='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Re-open SPEC","question":"Rewind to refine the spec toward the original goal?","options":[{"label":"Re-open SPEC/DISCUSS","description":"Rewind"},{"label":"Ship as-is","description":"Complete now"}],"multiSelect":false}]}}'
+PLAN_GAP='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Plan gap","question":"Plan-adherence found PLAN.md ids with no completed task. Re-queue the missing work, or abort EXECUTE?","options":[{"label":"Re-queue missing tasks","description":"Create TaskCreate entries"},{"label":"Abort EXECUTE","description":"Stop the phase"}],"multiSelect":false}]}}'
 OTHER_ITERATE='{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"header":"Continue","question":"Keep going while the judge runs?","options":[{"label":"Yes","description":"Continue"},{"label":"Stop","description":"Pause"}],"multiSelect":false}]}}'
 
 set_phase() {
@@ -55,6 +56,8 @@ PY
 echo "=== placeholder-question-guard.sh tests ==="
 
 check "a: real specifying-gates question ALLOW" 0 "$REAL"
+check "a2: EXECUTE plan-adherence Plan gap ALLOW" 0 "$PLAN_GAP"
+check "a3: EXECUTE rejects a keep-going question" 2 "$OTHER_ITERATE"
 check "b: live dummy flat shape DENY" 2 "$DUMMY_FLAT"
 check "c: dummy wrapped questions DENY" 2 "$DUMMY_WRAPPED"
 

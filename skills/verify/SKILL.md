@@ -1,7 +1,7 @@
 ---
 name: verify
 description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team, evidence commit, and map-codebase refresh. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
-allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
+allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
 # VERIFY Phase

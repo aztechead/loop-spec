@@ -113,7 +113,23 @@ plan_task_ids=$(echo "$adherence_json" | jq -r '.plan_task_ids[]')
 gap_message=$(echo "$adherence_json" | jq -r '.gap_message // empty')
 ```
 
-For each `plan_task_id`, confirm at least one completed task subject contains it as a substring, or that the sidecar already records `status=done` for that id (`task-progress.sh done`). On gap: `AskUserQuestion` with options to re-queue or abort.
+For each `plan_task_id`, confirm at least one completed task subject contains it as a substring, or that the sidecar already records `status=done` for that id (`task-progress.sh done`). On gap (any `plan_task_id` with neither), this is a real question, never a wait. Emit this call as written (`skills/shared/harness-call-contracts.md`):
+
+```
+AskUserQuestion({
+  questions: [{
+    question: "Plan-adherence found PLAN.md ids with no completed task: {gap_message}. Re-queue the missing work, or abort EXECUTE?",
+    header: "Plan gap",
+    options: [
+      { label: "Re-queue missing tasks", description: "Create TaskCreate entries for the missing plan_task_ids and continue EXECUTE" },
+      { label: "Abort EXECUTE", description: "Stop the phase and return control with the gap_message" }
+    ],
+    multiSelect: false
+  }]
+})
+```
+
+Autonomous mode and `LOOP_SPEC_NON_INTERACTIVE=1`: take Re-queue, record the assumption, continue. Never invent a wait question here.
 
 TeamDelete and cleanup:
 

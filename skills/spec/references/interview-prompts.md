@@ -50,18 +50,39 @@ Anchor each dimension against these examples (at the dimension minimum vs near-d
 ## Gate prompts (AskUserQuestion)
 
 Call shapes per `skills/shared/harness-call-contracts.md`; `multiSelect: false` on both.
+Routing after the answer lives in `skills/spec/SKILL.md`. Emit these as written —
+never a prose shorthand or a wait.
 
-**On gate pass** — question: "Ambiguity is [score] after round [N] - requirements are
-clear enough to write SPEC.md. Proceed?" (header `Spec gate`), options:
+**On gate pass:**
 
-- **Yes - write SPEC.md** — "Requirements are clear; proceed to the draft"
-- **One more round** — "Ask another round of clarifying questions first"
-- **Done talking - write it** — "Stop the interview and write with what we have"
+```
+AskUserQuestion({
+  questions: [{
+    question: "Ambiguity is [score] after round [N] - requirements are clear enough to write SPEC.md. Proceed?",
+    header: "Spec gate",
+    options: [
+      { label: "Yes - write SPEC.md", description: "Requirements are clear; proceed to the draft" },
+      { label: "One more round", description: "Ask another round of clarifying questions first" },
+      { label: "Done talking - write it", description: "Stop the interview and write with what we have" }
+    ],
+    multiSelect: false
+  }]
+})
+```
 
-**On round 6 reached with the gate still failing** — question: "After 6 rounds,
-ambiguity is [score]. Dimensions still below minimum: [list]. What would you like to
-do?" (header `Max rounds`), options:
+**On round 6 reached with the gate still failing:**
 
-- **Write SPEC.md anyway** — "Flag unresolved dimensions as assumptions; DISCUSS resolves them"
-- **Keep talking** — "Continue the interview with no round limit from here"
-- **Abandon** — "Exit without writing a spec"
+```
+AskUserQuestion({
+  questions: [{
+    question: "After 6 rounds, ambiguity is [score]. Dimensions still below minimum: [list]. What would you like to do?",
+    header: "Max rounds",
+    options: [
+      { label: "Write SPEC.md anyway", description: "Flag unresolved dimensions as assumptions; DISCUSS resolves them" },
+      { label: "Keep talking", description: "Continue the interview with no round limit from here" },
+      { label: "Abandon", description: "Exit without writing a spec" }
+    ],
+    multiSelect: false
+  }]
+})
+```

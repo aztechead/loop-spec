@@ -163,10 +163,22 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedba
 
   Branch by `execStyle` (read from `feature.json`):
   - **`auto` / `review-only` (ITERATE re-entry; do not block an unattended loop):** proceed WITHOUT asking. The rewind lands in DISCUSS's **autonomous refinement mode** (driven by `iterate.feedback` + the immutable original goal; it does not run its interactive clarifying loop — see `skills/discuss/SKILL.md` ITERATE re-entry note). No `AskUserQuestion`. The next VERIFY→ITERATE pass re-judges against the original goal and either converges or spends another iteration.
-  - **`step` / `interactive` (human-in-loop by choice):** the user explicitly opted into per-phase control, so here — and ONLY here — present the approval gate via `AskUserQuestion` (header `Re-open SPEC`, question naming `{gap.description}`, `multiSelect: false`) with three options:
-    - **Re-open SPEC/DISCUSS** ("Rewind to refine the spec toward the original goal (costs an iteration)") → the approval route re-enters DISCUSS refinement.
-    - **Ship as-is** ("Complete now; the accepted gap is recorded in warnings[] and the backlog") → `currentPhase = "deliver"` + record the accepted gap in `warnings[]`.
-    - **Stop - hand back** ("Pause the cycle and return control (resume later)") → pause per the **cycle-resume-escalation** contract.
+  - **`step` / `interactive` (human-in-loop by choice):** the user explicitly opted into per-phase control, so here — and ONLY here — present the approval gate. Emit this call as written (`skills/shared/harness-call-contracts.md`); never a prose shorthand or a wait:
+    ```
+    AskUserQuestion({
+      questions: [{
+        question: "ITERATE judges the goal still unmet because of a SPEC-level gap: {gap.description}. Re-open SPEC/DISCUSS, ship as-is, or stop?",
+        header: "Re-open SPEC",
+        options: [
+          { label: "Re-open SPEC/DISCUSS", description: "Rewind to refine the spec toward the original goal (costs an iteration)" },
+          { label: "Ship as-is", description: "Complete now; the accepted gap is recorded in warnings[] and the backlog" },
+          { label: "Stop - hand back", description: "Pause the cycle and return control (resume later)" }
+        ],
+        multiSelect: false
+      }]
+    })
+    ```
+    Re-open → the approval route re-enters DISCUSS refinement; Ship as-is → `currentPhase = "deliver"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
   - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): resolve
     `iterate_answer="${LOOP_SPEC_ANSWER_ITERATE_SPEC:-reopen}"`, reject values other
     than `reopen|ship` with exit 2, then treat `reopen` as autonomous DISCUSS

@@ -9,15 +9,26 @@ All notable changes documented here. Format follows Keep a Changelog.
 Placeholder `AskUserQuestion` waits still fired in EXECUTE, VERIFY, ITERATE,
 and DELIVER after 4.6.1's instruction-only forbid. The lead invented
 `wait` / `n/a` / "Type something" / "not a real question" while a background
-Agent or the DELIVER check wait ran. A PreToolUse hook now denies those calls.
+Agent or the DELIVER check wait ran.
+
+The introducing commit is `8adeb32` (conciseness stage 5): it replaced the
+only valid ITERATE `AskUserQuestion({ questions: [...] })` with prose
+shorthand and flattened the SPEC gate prompts the same way. Without an
+in-phase call-contract example, the model emits the invalid dummy flat
+shape. EXECUTE's plan-adherence gate was never a structured call.
 
 ### Fixed
 
+- **Call contracts restored, not just filtered.** ITERATE's Re-open SPEC
+  gate, SPEC's Spec gate / Max rounds prompts, and EXECUTE's plan-adherence
+  re-queue/abort are `AskUserQuestion({ questions: [...] })` again. VERIFY
+  drops `AskUserQuestion` from `allowed-tools` (it has no real question).
 - **Dummy wait questions are denied at the tool boundary.**
   `hooks/team/placeholder-question-guard.sh` (matcher `AskUserQuestion`) blocks
   the live dummy tells, any question while an Agent is still running, every
-  question during VERIFY/DELIVER, and ITERATE questions other than the
-  Re-open SPEC gate. Kill switch: `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD=0`.
+  question during VERIFY/DELIVER, ITERATE questions other than the
+  Re-open SPEC gate, and EXECUTE questions other than Plan gap /
+  specifying-gates. Kill switch: `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD=0`.
   ITERATE, DELIVER, the EXECUTE subagent/loop-fleet rungs, VERIFY workspace
   joins, and cycle phase dispatch now say dispatch-then-stop instead of
   "lead waits". Pinned by `hooks/team/placeholder-question-guard.test.sh`

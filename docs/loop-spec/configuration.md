@@ -249,7 +249,7 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_TASK_GUARD` | `1` | Enforces task metadata and required lint/typecheck completion. |
 | `LOOP_SPEC_PATH_GUARD` | `1` | Enforces role-specific write paths. |
 | `LOOP_SPEC_PATH_GUARD_FORCE` | `0` | Applies path restrictions to otherwise open dispatches. |
-| `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD` | `1` | Blocks `AskUserQuestion` used as a wait or keep-alive (`n/a`, "Type something", "not a real question", header `wait`, or any question while an Agent is still running). VERIFY and DELIVER have no user questions; ITERATE only allows the Re-open SPEC gate. |
+| `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD` | `1` | Blocks `AskUserQuestion` used as a wait or keep-alive (`n/a`, "Type something", "not a real question", header `wait`, or any question while an Agent is still running). VERIFY and DELIVER have no user questions; ITERATE only allows the Re-open SPEC gate; EXECUTE only allows Plan gap and specifying-gates. |
 | `LOOP_SPEC_BLOCKEDBY_GUARD` | `1` | Refuses completion or claim of tasks with unfinished `blockedBy` dependencies. |
 | `LOOP_SPEC_USERGATE_GUARD` | `1` | Enforces user-gate evidence at task completion. |
 | `LOOP_SPEC_USERGATE_STOP_GUARD` | `1` | Enforces user-gate evidence at Stop. |

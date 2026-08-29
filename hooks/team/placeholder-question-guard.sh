@@ -15,6 +15,8 @@
 #   2. an Agent tool_use is still open in the transcript (in-flight subagent)
 #   3. currentPhase is verify or deliver (those phases have no user questions)
 #   4. currentPhase is iterate and the header is not the spec-rewind gate
+#   5. currentPhase is execute and the header is not plan-adherence or
+#      specifying-gates
 #
 # Real questions (grill, SPEC interview, specifying-gates, plan-adherence
 # re-queue/abort, iterate Re-open SPEC) pass when no Agent is in flight.
@@ -57,6 +59,10 @@ DUMMY_QUESTION = re.compile(
 )
 DUMMY_LABEL = re.compile(r"^(n/?a\d*|type something|dummy|placeholder)$", re.I)
 REOPEN_SPEC = re.compile(r"^re-?open spec$", re.I)
+EXECUTE_OK = re.compile(
+    r"^(plan gap|gate outcome|mechanism|scope|on failure|dispatch brief)$",
+    re.I,
+)
 LATE_PHASES = {"verify", "deliver"}
 
 def load_payload():
@@ -198,6 +204,11 @@ if phase == "iterate":
     if not any(REOPEN_SPEC.match(h) for h in headers):
         print("DENY:phase")
         raise SystemExit(0)
+if phase == "execute":
+    headers = [q["header"].strip() for q in questions]
+    if not any(EXECUTE_OK.match(h) for h in headers):
+        print("DENY:phase")
+        raise SystemExit(0)
 print("ALLOW")
 PY
 )" "$PROJECT_DIR") || RESULT="ALLOW"
@@ -212,7 +223,7 @@ case "$RESULT" in
     exit 2
     ;;
   DENY:phase)
-    echo "DENY: this phase has no wait-question. VERIFY and DELIVER never AskUserQuestion; ITERATE only asks the Re-open SPEC gate in step/interactive. The required-check wait is inside lib/deliver.sh. Stop; the harness resumes this turn. (Disable: LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD=0)" >&2
+    echo "DENY: this phase has no wait-question. VERIFY and DELIVER never AskUserQuestion; ITERATE only asks the Re-open SPEC gate in step/interactive; EXECUTE only asks Plan gap or specifying-gates. The required-check wait is inside lib/deliver.sh. Stop; the harness resumes this turn. (Disable: LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD=0)" >&2
     exit 2
     ;;
   *)

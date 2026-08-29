@@ -165,6 +165,27 @@ grep -qF 'placeholder-question-guard.sh' skills/shared/harness-call-contracts.md
   && v=1 || v=0
 check "contract doc names the placeholder-question hook" "$v"
 
+# 8adeb32 replaced the only ITERATE AskUserQuestion({ questions: [...] }) with
+# prose shorthand; the model then invented the dummy wait shape. Call-contract
+# examples that the harness actually executes must stay as JSON.
+grep -qF 'AskUserQuestion({' skills/iterate/SKILL.md \
+  && grep -qF 'header: "Re-open SPEC"' skills/iterate/SKILL.md \
+  && grep -qF 'questions: [{' skills/iterate/SKILL.md && v=1 || v=0
+check "ITERATE spec-rewind gate is a questions-wrapper call" "$v"
+grep -qF 'AskUserQuestion({' skills/execute/references/team-rung-protocol.md \
+  && grep -qF 'header: "Plan gap"' skills/execute/references/team-rung-protocol.md \
+  && grep -qF 'questions: [{' skills/execute/references/team-rung-protocol.md && v=1 || v=0
+check "EXECUTE plan-adherence gate is a questions-wrapper call" "$v"
+grep -qF 'AskUserQuestion({' skills/spec/references/interview-prompts.md \
+  && grep -qF 'header: "Spec gate"' skills/spec/references/interview-prompts.md \
+  && grep -qF 'header: "Max rounds"' skills/spec/references/interview-prompts.md \
+  && grep -qF 'questions: [{' skills/spec/references/interview-prompts.md && v=1 || v=0
+check "SPEC gate prompts are questions-wrapper calls" "$v"
+grep -E '^allowed-tools:' skills/verify/SKILL.md | grep -q AskUserQuestion && v=0 || v=1
+check "VERIFY allowed-tools omit AskUserQuestion" "$v"
+grep -E '^allowed-tools:' skills/deliver/SKILL.md | grep -q AskUserQuestion && v=0 || v=1
+check "DELIVER allowed-tools omit AskUserQuestion" "$v"
+
 # 8c) Live /cycle: bash sleep-polls (120s PATTERNS join, 600s map bootstrap)
 #     froze the session between DISCUSS and PLAN. Check once, then fallback.
 grep -qF 'Never `sleep` to join a background Agent' \
