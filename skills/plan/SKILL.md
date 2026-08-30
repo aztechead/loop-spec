@@ -235,6 +235,14 @@ Handle exit 1 exactly like decision-coverage above (BLOCK, re-dispatch planner-1
 
 ### Step 3 - Critique gate (runs AFTER Steps 4b and 5.5; structural fast-path may skip)
 
+**Compact gate plan:** first resolve `planCritique` with
+`lib/graph/probes/compact-gate.sh --feature-dir .loop-spec/features/{slug} --gate planCritique`.
+`gate=skip` is the classifier's explicit authorization: log `plan critique skipped
+(<reason>)` and continue at Step 5.7. `gate=run`, including missing or malformed compact
+state, continues through the ordinary structural/security decision below. The graph uses
+the same persisted decision, so this instruction cannot create a second lifecycle; see
+`skills/shared/compact-profile.md`.
+
 **Structural fast-path (replaces the old quick tier — measured scope, decided AFTER planning):** resolve the two bounds through the repo tuning overlay first (`FP_TASKS="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxTasks 2)"`, `FP_FILES="$(bash "${CLAUDE_SKILL_DIR}/../../lib/tuning.sh" get fastPathMaxFiles 3)"` — defaults 2/3 unless `lib/tuning.sh` widened them for this repo; `skills/shared/tier-matrix.md` "Repo tuning overlay"). Run `security_signal="$(bash "${CLAUDE_SKILL_DIR}/../../lib/security-signal.sh" first "docs/loop-spec/features/{slug}/SPEC.md" "docs/loop-spec/features/{slug}/PLAN.md")"` while preserving exit 1 as the normal no-match result and treating exit 2 as an error. Skip this critique gate iff ALL hold: the plan has <= {FP_TASKS} tasks, AND the union of task `files[]` touches <= {FP_FILES} files, AND `security_signal` is empty. When skipped, log one line: `plan critique skipped (structural fast-path: {N} tasks, {M} files, no security signal)` and go to Step 5.7 (feasibility and coverage already ran).
 
 **Maintenance profile:** when `feature.json.executionProfile == "maintenance"` AND

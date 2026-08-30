@@ -1,6 +1,6 @@
 ---
 name: auto
-description: Autonomous entry point for Claude Code, OpenCode, ADK, and Codex SDK/headless requests. Use when a script or SDK has a grounded task and has not named cycle, debug, or micro; routes to one of those, failing upward to the full cycle when uncertain. Do not use from an interactive session when the user already named a skill - run that skill instead.
+description: Autonomous entry point for Claude Code, OpenCode, ADK, and Codex SDK/headless requests. Use when a script or SDK has a grounded task and has not named cycle, debug, or micro; routes to micro, debug, compact, or full, failing upward when uncertain. Do not use from an interactive session when the user already named a skill - run that skill instead.
 argument-hint: "<task description>"
 allowed-tools: Bash Read Glob Grep Skill
 ---
@@ -37,7 +37,7 @@ Propose exactly one JSON object with this schema:
 
 ```json
 {
-  "route": "micro | debug | full",
+  "route": "micro | debug | compact | full",
   "taskKind": "docs | config | maintenance | bug | feature | refactor | greenfield | unknown",
   "confidence": 0.0,
   "estimatedFiles": 0,
@@ -57,6 +57,25 @@ Propose exactly one JSON object with this schema:
 }
 ```
 
+Include `gatePlan` **only** when `route` is `compact`; omit it for `micro`,
+`debug`, and `full` rather than emitting `null` or an unapplied plan. For compact,
+replace the omitted field with exactly these ten entries:
+
+```json
+"gatePlan": {
+  "specInterview": {"run": false, "reason": "nonblank explanation"},
+  "discuss": {"run": false, "reason": "nonblank explanation"},
+  "specCritique": {"run": false, "reason": "nonblank explanation"},
+  "planCritique": {"run": true, "reason": "nonblank explanation"},
+  "repositoryValidation": {"run": true, "reason": "nonblank explanation"},
+  "placeholderScan": {"run": true, "reason": "nonblank explanation"},
+  "tamperScan": {"run": true, "reason": "nonblank explanation"},
+  "acceptance": {"run": true, "reason": "nonblank explanation"},
+  "codeReview": {"run": true, "reason": "nonblank explanation"},
+  "iterate": {"run": true, "reason": "nonblank explanation"}
+}
+```
+
 Route semantics:
 
 - **micro**: direct, well-understood maintenance with at most 3 criteria and about 5
@@ -72,17 +91,22 @@ Route semantics:
 - **debug**: a bounded bug or unexplained behavior that needs reproduction, hypotheses,
   and a sibling sweep. This is the middle route: more rigor than micro without a
   feature SPEC/PLAN DAG.
-- **full**: features, refactors, greenfield work, broad or unclear requests, or any
-  work involving a new seam or dependency edge, interface or schema behavior, security,
-  destructive/data migration operations, multiple repositories, or conflicting
-  uncommitted changes. Maintenance that exceeds micro bounds (a large conflict
-  resolution, a re-review whose edit surface is wide, a dirty tree) is still `full`
-  with the profile `cycle-profile.sh` selects — fail-closed promotion, not a
+- **compact**: a bounded feature or refactor that stays in the cycle. The classifier
+  supplies a durable typed `gatePlan` for every adaptable gate. Read
+  `skills/shared/compact-profile.md` before proposing compact: all ten entries are
+  required, each exactly `{run:boolean, reason:nonblank string}`. A confident compact
+  classification may handle security, migration, multi-repository, dirty-worktree,
+  interface, seam, or dependency work; destructive work is always full.
+- **full**: greenfield or unknown work, destructive work, broad or unclear requests, and
+  features/refactors the classifier cannot confidently authorize as bounded compact work.
+  Maintenance that exceeds micro bounds (a large conflict resolution or a wide re-review)
+  is also `full`. A seam, interface, security, migration, multi-repository, dependency,
+  or dirty-worktree signal belongs here unless the grounded compact classification explains
+  its bounded handling in the durable plan — fail-closed promotion, not a
   `protocol-mismatch`.
 
-Do not invent a generic `compact` route. The reduced routes must reuse an existing
-protocol with established verification and PR delivery. Route telemetry and user
-feedback can justify a reusable compact lifecycle later; prompt intuition alone cannot.
+Compact reuses the existing cycle and its terminal delivery contract. The gate plan
+changes only adaptable gate choices; it does not create a separate protocol.
 
 ## Step 2 - Validate Fail-Closed
 
@@ -95,12 +119,12 @@ decision="$(printf '%s\n' '<one-line candidate JSON>' | \
 ```
 
 Use `.route` from the normalized output, never the proposed route. The validator
-promotes malformed, low-confidence, oversized, ambiguous, mismatched, risky, or
-working-tree-conflicted classifications to `full`. Working-tree conflict is measured
-by the script from the current execution root with the cycle's canonical clean-base
-rules; it is not accepted as a path or field from the semantic proposal. Other semantic
-fields remain model judgments, so uncertain evidence must lower confidence and therefore
-promote the request.
+promotes malformed compact gate plans, confidence below 0.7, high ambiguity, more than
+12 reviewable files, more than 6 criteria, destructive compact work, and invalid
+micro/debug classifications to `full`. Working-tree conflict is measured by the script
+from the current execution root with the cycle's canonical clean-base rules; it is not
+accepted as a path or field from the semantic proposal. It remains a full promotion for
+micro/debug, but a confidently classified compact proposal may carry it in its gate plan.
 
 Set `introducesDependency` for compatibility whenever either dependency field is true.
 Set `introducesNewDependency` only when the change adds a dependency edge; a version-only
@@ -113,14 +137,15 @@ execution profile from the SAME normalized decision and pass it to the cycle:
 ```bash
 profile_line="$(printf '%s' "$decision" | \
   bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select -)"
-echo "loop-spec: $profile_line"
 profile="${profile_line#profile=}"; profile="${profile%% *}"
 ```
 
-`profile=maintenance` lightens the SPEC interview and skips the DISCUSS and PLAN critique
-gates when no security signal fires (`skills/shared/tier-matrix.md`, "Maintenance
-profile"); `profile=standard` is the unchanged full ladder. The logged line carries its
-own reason, so a run that took the lightened ladder says why it was allowed to.
+Keep `profile_line` internal to routing. The route decision is the sole router output:
+one `AUTONOMOUS_ROUTE ` line containing the normalized decision.
+
+`profile=compact` applies the validated compact gate plan; `profile=maintenance` retains
+the existing maintenance short path; `profile=standard` is the unchanged full ladder.
+The logged line carries its own reason, so a run says why its profile was allowed.
 
 Print exactly one concise, SDK-readable JSON line containing the normalized decision,
 prefixed with `AUTONOMOUS_ROUTE `. Do not write routing state into the target repository's
@@ -135,6 +160,7 @@ creation/reconciliation, and terminal PR feedback checking:
 
 - `micro` -> `Skill(loop-spec:micro)` with `autonomous <verbatim request>`.
 - `debug` -> `Skill(loop-spec:debug)` with `autonomous <verbatim request>`.
+- `compact` -> `Skill(loop-spec:cycle)` with `autonomous profile:compact <verbatim request>`.
 - `full` -> `Skill(loop-spec:cycle)` with `autonomous profile:{profile} <verbatim request>`.
 
 Every selected route owns the same `skills/shared/verification-grounding.md` post-change

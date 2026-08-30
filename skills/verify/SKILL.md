@@ -46,6 +46,28 @@ VERIFY enforces `skills/shared/verification-grounding.md`: repository grounding 
 executed validation are separate mandatory gates. Neither a green command nor a refreshed
 codebase map substitutes for post-change `file:line` evidence tied to each criterion.
 
+### Compact gate plan
+
+For `executionProfile: compact`, resolve each listed verification gate with
+`lib/graph/probes/compact-gate.sh --feature-dir .loop-spec/features/{slug} --gate <name>`.
+The graph consumes `placeholderScan`, `tamperScan`, `acceptance`, and `codeReview`; this
+phase consumes `repositoryValidation` before it starts the team. A `gate=skip` records
+`- Compact gate skipped: <name> | reason: <classifier reason>` in VERIFICATION.md and
+does not run that gate. The persisted `feature.json.gatePlan` is the durable companion
+record; do not recalculate classification on resume. `gate=run` includes missing or
+malformed compact state, so safety fails upward to the existing full behavior. See
+`skills/shared/compact-profile.md`.
+
+When `repositoryValidation` is skipped, do not call `feature-validation.sh compare`;
+write a `VALIDATION_JSON` entry with `status: "SKIPPED"` and the classifier reason, then
+continue to the selected gates. When acceptance is skipped, do not dispatch the acceptance
+workflow/verifier; still write the minimal VERIFICATION.md candidate binding (base SHA,
+candidate HEAD, selected/skipped gates, and the classifier reason) required by DELIVER.
+When code review is skipped, do not create or message `code-reviewer-1`; do not describe a
+skipped review as a pass. Placeholder and tamper skips apply only to their named scans.
+The ordinary verification artifact, state transition, and DELIVER's exact-SHA contract stay
+unchanged.
+
 ### Step 0 - Regression gate (opt-in)
 
 ### Step 1 - Placeholder scan (no stub implementations)

@@ -43,6 +43,18 @@ self-answer and fail-closed routing contracts are identical; see
 `skills/shared/opencode-harness.md`, `skills/shared/adk-harness.md`, and
 `skills/shared/codex-harness.md`.
 
+## Compact auto route
+
+`/loop-spec:auto` may select `compact` for a bounded feature or refactor. Its
+classifier writes an auditable per-gate run/skip plan; every skip has a reason.
+Compact may adapt the spec interview, DISCUSS and spec critique, PLAN critique,
+repository validation, placeholder and tamper scans, acceptance, code review,
+and ITERATE. Destructive work is never compact. A malformed, uncertain, or
+unbounded proposal promotes to the full cycle. Exact-SHA delivery and terminal
+result publication remain invariant on every harness. The canonical gate-plan
+contract is [`compact-profile.md`](compact-profile.md); do not duplicate its
+schema here.
+
 ## Trigger and precedence
 
 Autonomous mode is ON when either:
@@ -188,7 +200,7 @@ an edited spec file.
 
 | Site | Normal behavior | Autonomous behavior |
 |---|---|---|
-| auto route selection | explicit cycle choice | grounded semantic proposal -> `lib/task-route.sh` validation -> micro/debug/full; uncertainty and risk promote to full |
+| auto route selection | explicit cycle choice | grounded semantic proposal -> `lib/task-route.sh` validation -> micro/debug/compact/full; malformed, uncertain, unbounded, or destructive compact proposals promote to full |
 | cycle Step 0 workspace repo confirmation | AskUserQuestion | all discovered repos participate (or `LOOP_SPEC_ANSWER_REPOS`) |
 | cycle Step 1 resume choice | AskUserQuestion | resume the most recently updated resumable feature; if none, new feature |
 | cycle Step 3 bare invocation | free-text question | abort with usage guidance (no goal to infer) |

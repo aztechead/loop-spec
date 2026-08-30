@@ -22,14 +22,16 @@
 #   discuss-critique.sh --feature-dir DIR
 #   discuss-critique.sh --answers
 #
-# Exit: 0 with one `gate=<run|skip> reason=<text>` line.
+# Exit: 0 with one `gate=<run|skip|compact> reason=<text>` line. Compact's
+# durable gate plan owns this decision, so this legacy probe must not supply a
+# second competing answer.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_SIGNAL="$SCRIPT_DIR/../../security-signal.sh"
 
 if [[ "${1:-}" == "--answers" ]]; then
-  printf 'gate=run\ngate=skip\n'
+  printf 'gate=run\ngate=skip\ngate=compact\n'
   exit 0
 fi
 
@@ -57,6 +59,10 @@ feature_json="$feature_dir/feature.json"
 
 profile="$(jq -r '.executionProfile // "standard"' "$feature_json" 2>/dev/null)" \
   || run "feature.json could not be read"
+if [[ "$profile" == "compact" ]]; then
+  echo 'gate=compact reason=compact gate plan owns spec critique'
+  exit 0
+fi
 
 # ITERATE re-entry revises a spec that was already gated; the old frontmatter
 # must not skip the critic that is supposed to catch the gap.

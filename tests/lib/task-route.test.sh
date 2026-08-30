@@ -52,6 +52,26 @@ candidate() {
       destructive: $destructive, reason: "test candidate"}'
 }
 
+compact_gate_plan() {
+  jq -nc '{
+    specInterview: {run: false, reason: "bounded change has grounded requirements"},
+    discuss: {run: false, reason: "classifier found no unresolved product decision"},
+    specCritique: {run: false, reason: "bounded scope makes a separate critique unnecessary"},
+    planCritique: {run: true, reason: "review the compact execution plan"},
+    repositoryValidation: {run: true, reason: "validate the target repository before change"},
+    placeholderScan: {run: true, reason: "scan generated artifacts for placeholders"},
+    tamperScan: {run: true, reason: "verify the compact run artifacts"},
+    acceptance: {run: true, reason: "run the stated acceptance checks"},
+    codeReview: {run: true, reason: "review the bounded implementation"},
+    iterate: {run: true, reason: "judge the result against the request"}
+  }'
+}
+
+compact_candidate() {
+  candidate compact refactor 0.8 12 6 medium \
+    | jq --argjson gate_plan "$(compact_gate_plan)" '. + {gatePlan: $gate_plan}'
+}
+
 route() {
   local input="$1" repo="${2:-$CLEAN_REPO}"
   printf '%s\n' "$input" | (cd "$repo" && bash "$SCRIPT" validate -) | jq -r '.route'
@@ -79,6 +99,7 @@ assert_route "small maintenance task remains micro" "micro" "$(candidate micro m
 assert_route "canonical loop-spec runtime files do not force full" "micro" "$(candidate micro maintenance)"
 assert_route "concrete bounded bug uses debug" "debug" "$(candidate debug bug 0.85 4 2 medium)"
 assert_route "explicit full proposal remains full" "full" "$(candidate full feature 0.95 2 2 low)"
+assert_route "bounded refactor with a typed gate plan selects compact" "compact" "$(compact_candidate)"
 
 assert_route "security work promotes to full" "full" "$(candidate micro config 0.95 1 1 low false false false true)"
 assert_route "dependency work promotes to full" "full" "$(candidate micro maintenance 0.95 2 2 low false true)"
@@ -112,12 +133,46 @@ assert_route "non-bug debug proposal promotes to full" "full" "$(candidate debug
 assert_route "unknown task kind cannot use micro" "full" "$(candidate micro unknown 0.95 1 1 low)"
 assert_route "greenfield task cannot use micro" "full" "$(candidate micro greenfield 0.95 1 1 low)"
 assert_route "malformed JSON fails closed" "full" '{not-json'
-assert_route "unknown route fails closed" "full" "$(candidate compact maintenance)"
+assert_route "compact without gate plan fails closed" "full" "$(candidate compact refactor)"
 assert_route "generated file count cannot exceed total estimate" "full" \
   "$(candidate micro maintenance | jq '. + {generatedFiles:3}')"
 assert_route "dependency detail fields must agree with compatibility field" "full" \
   "$(candidate micro maintenance | jq '. + {
     introducesNewDependency:false, updatesDependencyVersion:true}')"
+
+for risk in introducesSeam introducesNewDependency changesInterface securitySensitive dataMigration multiRepo; do
+  proposal="$(compact_candidate | jq --arg risk "$risk" '
+    .[$risk] = true |
+    if $risk == "introducesNewDependency" then
+      .introducesDependency = true | .updatesDependencyVersion = false
+    else . end')"
+  assert_route "compact classifier may select a bounded $risk change" "compact" "$proposal"
+done
+assert_route "compact classifier may select a bounded dirty-tree change" "compact" "$(compact_candidate)" "$DIRTY_REPO"
+assert_route "destructive compact proposal promotes to full" "full" \
+  "$(compact_candidate | jq '.destructive = true')"
+assert_route "compact requires confidence of at least 0.7" "full" \
+  "$(compact_candidate | jq '.confidence = 0.69')"
+assert_route "compact rejects high ambiguity" "full" \
+  "$(compact_candidate | jq '.ambiguity = "high"')"
+assert_route "compact rejects more than twelve reviewable files" "full" \
+  "$(compact_candidate | jq '.estimatedFiles = 13')"
+assert_route "compact rejects more than six criteria" "full" \
+  "$(compact_candidate | jq '.criteriaCount = 7')"
+assert_route "compact requires every named gate" "full" \
+  "$(compact_candidate | jq 'del(.gatePlan.iterate)')"
+assert_route "compact requires typed gates" "full" \
+  "$(compact_candidate | jq '.gatePlan.acceptance.run = "yes"')"
+assert_route "compact gate entries cannot carry undeclared fields" "full" \
+  "$(compact_candidate | jq '.gatePlan.acceptance.extra = true')"
+assert_route "compact gate reasons cannot be blank" "full" \
+  "$(compact_candidate | jq '.gatePlan.acceptance.reason = "  "')"
+assert_route "compact gate reasons cannot inject a second probe line" "full" \
+  "$(compact_candidate | jq '.gatePlan.acceptance.reason = "line one\nline two"')"
+assert_route "compact gate reasons have a bounded probe-safe length" "full" \
+  "$(compact_candidate | jq '.gatePlan.acceptance.reason = ("x" * 241)')"
+assert_route "compact cannot run spec critique after skipping discuss" "full" \
+  "$(compact_candidate | jq '.gatePlan.specCritique.run = true')"
 
 # Routing arms the run: from here on, an exit with no terminal result is detectable.
 armed="$CLEAN_REPO/.loop-spec/active-run.json"

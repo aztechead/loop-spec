@@ -47,11 +47,11 @@ fi
 # autonomous by definition. The guard reads that flag to leave interactive runs alone.
 arm_route() {
   local route="$1" title="$2" classification="${3:-}"
-  local extra=()
+  local -a extra=()
   [[ -n "$classification" ]] && extra+=(--classification "$classification")
   bash "$script_dir/cycle-result.sh" begin --result-root "$repo_path" \
     --cycle-type "$route" --title "$title" --phase routing \
-    --autonomous true "${extra[@]}" >/dev/null 2>&1 || true
+    --autonomous true ${extra[@]+"${extra[@]}"} >/dev/null 2>&1 || true
 }
 
 fallback() {
@@ -69,9 +69,18 @@ fallback() {
 if ! jq -e '
   type == "object" and
   (.route | type == "string") and
-  (["micro", "debug", "full"] | index($ARGS.named.route)) != null
+  (["micro", "debug", "compact", "full"] | index($ARGS.named.route)) != null
 ' --arg route "$(jq -r '.route // ""' <<<"$raw" 2>/dev/null || true)" <<<"$raw" >/dev/null 2>&1; then
   fallback "invalid-classification"
+  exit 0
+fi
+
+# Compact routes share cycle-profile's single gate-plan validator so routing and
+# execution cannot disagree on the durable contract. Micro/debug keep their legacy
+# payload shape because this check runs only for an explicitly compact candidate.
+if [[ "$(jq -r '.route' <<<"$raw")" == "compact" ]] && ! \
+  printf '%s' "$raw" | bash "$script_dir/cycle-profile.sh" validate-gate-plan -; then
+  fallback "invalid-compact-gate-plan"
   exit 0
 fi
 
@@ -141,6 +150,26 @@ reason_code="validated"
 
 if [[ "$candidate_route" == "full" ]]; then
   reason_code="classifier-selected-full"
+elif [[ "$candidate_route" == "compact" || "$candidate_route" == "debug" ]]; then
+  if [[ "$candidate_route" == "compact" && "$task_kind" != "feature" && "$task_kind" != "refactor" ]]; then
+    normalized_route="full"
+    reason_code="compact-task-kind-mismatch"
+  elif [[ "$candidate_route" == "debug" && "$task_kind" != "bug" ]]; then
+    normalized_route="full"
+    reason_code="debug-task-kind-mismatch"
+  elif [[ "$ambiguity" == "high" ]]; then
+    normalized_route="full"
+    reason_code="high-ambiguity"
+  elif ! jq -e '.confidence >= 0.7' <<<"$raw" >/dev/null; then
+    normalized_route="full"
+    reason_code="low-confidence"
+  elif [[ "$candidate_route" == "compact" ]] && (( reviewable_files > 12 || criteria_count > 6 )); then
+    normalized_route="full"
+    reason_code="compact-scope-too-large"
+  elif [[ "$candidate_route" == "compact" ]] && jq -e '.destructive' <<<"$raw" >/dev/null; then
+    normalized_route="full"
+    reason_code="destructive-compact"
+  fi
 elif jq -e '
   .introducesSeam or .introducesNewDependency or .changesInterface or
   .securitySensitive or .dataMigration or .multiRepo or .destructive or
@@ -164,17 +193,6 @@ elif [[ "$candidate_route" == "micro" ]]; then
   elif [[ "$task_kind" == "feature" || "$task_kind" == "refactor" || "$task_kind" == "greenfield" || "$task_kind" == "unknown" ]]; then
     normalized_route="full"
     reason_code="micro-task-kind-mismatch"
-  fi
-elif [[ "$candidate_route" == "debug" ]]; then
-  if [[ "$task_kind" != "bug" ]]; then
-    normalized_route="full"
-    reason_code="debug-task-kind-mismatch"
-  elif [[ "$ambiguity" == "high" ]]; then
-    normalized_route="full"
-    reason_code="high-ambiguity"
-  elif ! jq -e '.confidence >= 0.7' <<<"$raw" >/dev/null; then
-    normalized_route="full"
-    reason_code="low-confidence"
   fi
 fi
 

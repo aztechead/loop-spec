@@ -20,7 +20,7 @@
 #                            unknown style values are kept with a notice
 #   phase:fresh           -> .phase_mode = "fresh"; return after each durable phase
 #   phase:continuous      -> .phase_mode = "continuous"; keep routing in one session
-#   profile:X             -> .profile = X when X in maintenance|standard; unknown
+#   profile:X             -> .profile = X when X in compact|maintenance|standard; unknown
 #                            values are stripped and left unset (lib/cycle-profile.sh
 #                            owns the answer space and its own fail-safe)
 #   --no-run              -> .no_run = true (intake only; harmless elsewhere)
@@ -86,7 +86,7 @@ for tok in "$@"; do
         phase_mode="fresh" ;;
       phase:continuous)
         phase_mode="continuous" ;;
-      profile:maintenance|profile:standard)
+      profile:compact|profile:maintenance|profile:standard)
         profile="${w#profile:}" ;;
       profile:*)
         : ;;  # stripped from the title; an unrecognized profile is simply not set

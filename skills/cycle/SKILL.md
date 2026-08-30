@@ -285,7 +285,12 @@ if [[ -f "${workspace_root:-.}/.loop-spec/active-run.json" ]]; then
   class_json="$(jq -c '.classification // empty' \
     "${workspace_root:-.}/.loop-spec/active-run.json" 2>/dev/null || true)"
 fi
-if [[ -n "$inv_profile" ]]; then
+if [[ "$inv_profile" == "compact" ]]; then
+  # Compact needs the armed classification; absent evidence promotes to standard.
+  profile_line="$(printf '%s' "$class_json" | \
+    LOOP_SPEC_CYCLE_PROFILE=compact \
+    bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select -)"
+elif [[ -n "$inv_profile" ]]; then
   profile_line="$(LOOP_SPEC_CYCLE_PROFILE="$inv_profile" \
     bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select)"
 elif [[ -n "$class_json" ]]; then
@@ -300,19 +305,10 @@ echo "loop-spec: $profile_line"
 cycle_profile="${profile_line#profile=}"; cycle_profile="${cycle_profile%% *}"
 ```
 
-The inline `profile:` token outranks `LOOP_SPEC_CYCLE_PROFILE`, matching how
-`phase:fresh` outranks `LOOP_SPEC_PHASE_HANDOFF`. `/loop-spec:auto` is the caller that
-supplies the token AND persists the validated classification on the armed run
-(`.loop-spec/active-run.json`). If the token is dropped, this step still reads that
-classification so the maintenance short path survives a forgotten argument.
-
-`profile=maintenance` runs the lightened ladder (`skills/shared/tier-matrix.md`,
-"Maintenance profile"): SPEC skips the Socratic interview and synthesizes the spec, and
-the graph short path skips DISCUSS, spec-critique, and the code-review agent when no
-security signal fires. PLAN critique skip is `plan-critique.sh` / the skill fast-path,
-not that short path. The ambiguity gate, the feasibility check, and the deterministic
-VERIFY gates stay. `profile=standard` (the default, and the answer whenever the
-invocation carries no `profile:` token) is today's full ladder.
+`profile:` outranks `LOOP_SPEC_CYCLE_PROFILE`, and `/auto` arms its validated
+classification in `.loop-spec/active-run.json`. Apply
+`${CLAUDE_SKILL_DIR}/references/profile-resolution.md`: compact needs that evidence;
+maintenance keeps its existing short path; standard remains the default full ladder.
 
 Resolution order:
 

@@ -4,6 +4,30 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-08-30
+
+Autonomous routing now has a compact path for bounded features and refactors,
+without making delivery or terminal observability conditional on that shorter
+path.
+
+### Added
+
+- **Auditable compact routing.** `/loop-spec:auto` can select `compact` only
+  from a validated, classifier-authored per-gate run/skip plan. Every skipped
+  gate records its reason. The plan covers the adaptive quality gates while
+  destructive, malformed, uncertain, and unbounded proposals fail upward to
+  the full cycle. The public compact-profile contract is shared by Claude
+  Code, Codex, OpenCode, and ADK.
+- **Terminal compact evidence.** `result.json` and the stable terminal pointer
+  retain the persisted classification and gate plan when available. Legacy
+  result records remain unchanged when no compact context exists.
+
+### Changed
+
+- **4.8.0 release.** README, configuration reference, harness contracts, and
+  plugin manifests describe compact routing while retaining exact-SHA delivery
+  and terminal-result publication as invariants.
+
 ## [4.7.2] - 2026-08-29
 
 Placeholder `AskUserQuestion` waits still fired in EXECUTE, VERIFY, ITERATE,

@@ -237,7 +237,10 @@ echo "$probe_line"
 
 If `gate=skip`: log one line — `discuss critique skipped (<reason>)` — and continue
 at Step 5.75. Typical reasons: `spec already gated: gate_passed, no unresolved
-dimensions, no security signal` and `maintenance profile, no security signal`. A
+dimensions, no security signal`, `maintenance profile, no security signal`, and a
+persisted `compact gatePlan specCritique: <classifier reason>`. The compact route is
+resolved before this legacy probe by `graph/cycle.graph.json`; its reason remains durable
+in `feature.json.gatePlan` (see `skills/shared/compact-profile.md`). A
 security signal and an ITERATE re-entry never skip (the probe fails closed to
 `gate=run`). Format + grounding lints at Step 5.75 still run.
 

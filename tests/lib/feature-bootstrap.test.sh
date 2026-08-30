@@ -196,5 +196,35 @@ got="absent"
 [[ -e "$WORK/m-exec/.loop-spec/last-result.json" ]] && got="written"
 check "M: execution root has no last-result.json" "absent" "$got"
 
+# Case N: a normalized compact classification persists its exact gate plan so
+# a later resume never reclassifies the run from transient active-run state.
+make_repo "$WORK/n"
+compact_classification='{"route":"compact","candidateRoute":"compact","taskKind":"refactor","confidence":0.8,"estimatedFiles":3,"reviewableEstimatedFiles":3,"criteriaCount":2,"ambiguity":"medium","introducesSeam":false,"introducesDependency":false,"introducesNewDependency":false,"updatesDependencyVersion":false,"changesInterface":false,"securitySensitive":false,"dataMigration":false,"multiRepo":false,"destructive":false,"workingTreeConflict":false,"reason":"bounded change","gatePlan":{"specInterview":{"run":false,"reason":"bounded change"},"discuss":{"run":false,"reason":"bounded change"},"specCritique":{"run":false,"reason":"gated spec"},"planCritique":{"run":true,"reason":"plan touches a seam"},"repositoryValidation":{"run":true,"reason":"candidate validation"},"placeholderScan":{"run":true,"reason":"safety scan"},"tamperScan":{"run":true,"reason":"safety scan"},"acceptance":{"run":true,"reason":"criterion evidence"},"codeReview":{"run":false,"reason":"bounded diff"},"iterate":{"run":false,"reason":"classifier convergence"}}}'
+finalize "$WORK/n" --profile compact --classification "$compact_classification" >/dev/null 2>&1
+check "N: compact profile persisted" "compact" \
+  "$(jq -r '.executionProfile' "$WORK/n/.loop-spec/features/demo/feature.json")"
+check "N: normalized compact route is durable" "compact" \
+  "$(jq -r '.autonomousClassification.route' "$WORK/n/.loop-spec/features/demo/feature.json")"
+check "N: compact gate plan is durable" "bounded diff" \
+  "$(jq -r '.gatePlan.codeReview.reason' "$WORK/n/.loop-spec/features/demo/feature.json")"
+
+# Case O: a legacy/partial object remains audit context, but promotes a compact
+# request to the full ladder because it cannot authorize any gate skip.
+make_repo "$WORK/o"
+finalize "$WORK/o" --profile compact --classification '{"route":"compact"}' >/dev/null 2>&1
+check "O: partial classification is retained for audit" "compact" \
+  "$(jq -r '.autonomousClassification.route' "$WORK/o/.loop-spec/features/demo/feature.json")"
+check "O: partial compact classification promotes to standard" "standard" \
+  "$(jq -r '.executionProfile' "$WORK/o/.loop-spec/features/demo/feature.json")"
+check "O: partial classification does not persist a gate plan" "null" \
+  "$(jq -r '.gatePlan // "null"' "$WORK/o/.loop-spec/features/demo/feature.json")"
+
+# Case P: an explicit non-object classification is an invocation error, not
+# data the bootstrap would later mistake for a compact authorization.
+make_repo "$WORK/p"
+rc=0
+finalize "$WORK/p" --classification '[]' >/dev/null 2>&1 || rc=$?
+check "P: non-object classification exits 2" "2" "$rc"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

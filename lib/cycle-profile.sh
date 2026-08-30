@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Select the cycle's execution profile: full gate ladder, or the lightened
-# maintenance path.
+# Select the cycle's execution profile: standard, maintenance, or classifier-planned
+# compact gates.
 #
 # Why: a dependency version bump that routes to the full cycle still pays the SPEC
 # interview, the DISCUSS critique, and the PLAN critique. Those gates exist for changes
@@ -26,12 +26,52 @@
 # means no evidence, which resolves `standard` — the profile is opt-in on evidence, never
 # a default the absence of data can select.
 #
-# Output: one line, ANSWER + REASON: `profile=<maintenance|standard> reason=<text>`.
+# Output: one line, ANSWER + REASON: `profile=<compact|maintenance|standard> reason=<text>`.
 # Exit: 0 resolved, 2 bad invocation.
 set -uo pipefail
 
+validate_gate_plan() {
+  jq -e '
+    def gate_names: [
+      "specInterview", "discuss", "specCritique", "planCritique",
+      "repositoryValidation", "placeholderScan", "tamperScan", "acceptance",
+      "codeReview", "iterate"
+    ];
+    .gatePlan as $plan |
+    ($plan | type == "object") and
+    (($plan | keys | sort) == (gate_names | sort)) and
+    all(gate_names[]; . as $name |
+      ($plan[$name] | type == "object") and
+      (($plan[$name] | keys | sort) == ["reason", "run"]) and
+      ($plan[$name].run | type == "boolean") and
+      ($plan[$name].reason | type == "string" and
+        (length <= 240) and
+        test("^[^\\r\\n]+$") and
+        (gsub("[[:space:]]"; "") | length > 0))) and
+    ((.gatePlan.specCritique.run | not) or .gatePlan.discuss.run)
+  ' >/dev/null 2>&1 <<<"$1"
+}
+
+if [[ "${1:-}" == "validate-gate-plan" ]]; then
+  source_path="${2:-}"
+  [[ -n "$source_path" ]] || {
+    echo "usage: cycle-profile.sh validate-gate-plan <classification.json | ->" >&2
+    exit 2
+  }
+  if [[ "$source_path" == "-" ]]; then
+    raw="$(cat)"
+  elif [[ -f "$source_path" ]]; then
+    raw="$(<"$source_path")"
+  else
+    echo "cycle-profile.sh: classification file not found: $source_path" >&2
+    exit 2
+  fi
+  validate_gate_plan "$raw"
+  exit $?
+fi
+
 if [[ "${1:-}" == "--answers" ]]; then
-  printf 'profile=maintenance\nprofile=standard\n'
+  printf 'profile=compact\nprofile=maintenance\nprofile=standard\n'
   exit 0
 fi
 
@@ -45,12 +85,16 @@ emit() {
   exit 0
 }
 
-# An explicit operator setting outranks the probe (CLAUDE.md: probes, not judgments).
+# Maintenance and standard remain explicit operator choices. Compact is different: it
+# can omit named safeguards, so even an operator request needs the classifier evidence
+# that says exactly which safeguards remain and why.
+compact_requested=false
 case "${LOOP_SPEC_CYCLE_PROFILE:-auto}" in
+  compact) compact_requested=true ;;
   maintenance) emit maintenance "LOOP_SPEC_CYCLE_PROFILE=maintenance" ;;
   standard) emit standard "LOOP_SPEC_CYCLE_PROFILE=standard" ;;
   auto) ;;
-  *) emit standard "LOOP_SPEC_CYCLE_PROFILE must be maintenance, standard, or auto" ;;
+  *) emit standard "LOOP_SPEC_CYCLE_PROFILE must be compact, maintenance, standard, or auto" ;;
 esac
 
 source_path="${2:-}"
@@ -66,6 +110,36 @@ fi
 
 [[ -n "${raw//[[:space:]]/}" ]] || emit standard "empty classification"
 jq -e 'type == "object"' >/dev/null 2>&1 <<<"$raw" || emit standard "classification is not a JSON object"
+
+# Compact is evidence-driven: route=compact is accepted only with the full typed plan
+# and its deliberately broader, but still bounded, classifier evidence. Risk flags are
+# not category hard gates here; destructive work is the one non-negotiable promotion.
+compact_verdict="$(jq -r '
+  .taskKind as $kind |
+  if .route == "compact" and
+     ((["feature", "refactor"] | index($kind)) != null) and
+     (.confidence | type == "number" and . >= 0.7 and . <= 1) and
+     (.reviewableEstimatedFiles | type == "number" and floor == . and . >= 0 and . <= 12) and
+     (.criteriaCount | type == "number" and floor == . and . >= 1 and . <= 6) and
+     (.ambiguity == "low" or .ambiguity == "medium") and
+     (.destructive == false)
+  then "compact\troute=compact with a valid bounded gate plan"
+  else empty end
+' <<<"$raw" 2>/dev/null)" || compact_verdict=""
+
+if [[ -n "$compact_verdict" ]] && validate_gate_plan "$raw"; then
+  if [[ "$compact_requested" == true ]]; then
+    emit compact "LOOP_SPEC_CYCLE_PROFILE=compact with ${compact_verdict#*$'\t'}"
+  fi
+  emit "${compact_verdict%%$'\t'*}" "${compact_verdict#*$'\t'}"
+fi
+
+if [[ "$compact_requested" == true ]]; then
+  emit standard "LOOP_SPEC_CYCLE_PROFILE=compact requires valid normalized compact classification"
+fi
+
+[[ "$(jq -r '.route // ""' <<<"$raw")" != "compact" ]] || \
+  emit standard "route=compact lacks valid bounded compact evidence"
 
 # One jq expression, so a missing field reads as disqualifying rather than as an
 # absent test. `risk` answers true for anything that is not an explicit `false`:

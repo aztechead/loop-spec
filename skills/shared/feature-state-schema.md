@@ -23,7 +23,20 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "createdAt": "ISO-8601 timestamp",
   "updatedAt": "ISO-8601 timestamp",
   "execStyle": "auto | step | interactive | review-only",
-  "executionProfile": "standard | maintenance",
+  "executionProfile": "standard | maintenance | compact",
+  "autonomousClassification": "normalized active-run classification object | absent on legacy runs",
+  "gatePlan": {
+    "specInterview": {"run": "boolean", "reason": "nonblank classifier reason"},
+    "discuss": {"run": "boolean", "reason": "nonblank classifier reason"},
+    "specCritique": {"run": "boolean", "reason": "nonblank classifier reason"},
+    "planCritique": {"run": "boolean", "reason": "nonblank classifier reason"},
+    "repositoryValidation": {"run": "boolean", "reason": "nonblank classifier reason"},
+    "placeholderScan": {"run": "boolean", "reason": "nonblank classifier reason"},
+    "tamperScan": {"run": "boolean", "reason": "nonblank classifier reason"},
+    "acceptance": {"run": "boolean", "reason": "nonblank classifier reason"},
+    "codeReview": {"run": "boolean", "reason": "nonblank classifier reason"},
+    "iterate": {"run": "boolean", "reason": "nonblank classifier reason"}
+  },
   "phaseHandoff": "boolean; return after each durable phase for a fresh main-agent context",
   "currentPhase": "spec | discuss | plan | execute | verify | iterate | deliver | completed",
   "completedPhases": ["array of phase names"],
@@ -186,6 +199,15 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   `plan-critique.sh` / the skill fast-path, not that short path. The ambiguity gate, the
   feasibility check, and the deterministic VERIFY gates stay; code review is the one
   quality gate the short path drops, and only behind this classification.
+- `compact` is a separate, classifier-authored ladder. Bootstrap records the normalized
+  input in `autonomousClassification` and persists `gatePlan` only when the normalized
+  compact decision passes `lib/cycle-profile.sh`: all ten named gates must have exactly a
+  boolean `run` and a nonblank, single-line reason of at most 240 characters; see
+  `skills/shared/compact-profile.md`. Graph and phase skills read that committed plan on
+  every entry, so a resume never recalculates or silently widens a skip. Missing or
+  malformed compact state fails upward by running the affected gate. A false gate remains
+  observable through its persisted classifier reason; VERIFY also records skipped
+  verification gates in `VERIFICATION.md`.
 - `phaseHandoff` is independent of `execStyle` and subagent dispatch. When true,
   cycle writes a paused `phase-handoff` result after a phase transition and a fresh
   invocation resumes at `currentPhase`.

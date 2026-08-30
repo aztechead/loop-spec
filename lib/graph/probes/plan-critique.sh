@@ -30,7 +30,7 @@ usage() {
 }
 
 if [[ "${1:-}" == "--answers" ]]; then
-  printf 'signal=matched\nsignal=none\n'
+  printf 'signal=matched\nsignal=none\nsignal=compact\n'
   exit 0
 fi
 
@@ -46,6 +46,12 @@ done
 feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || exit 1
 [[ -x "$SECURITY_SIGNAL" ]] || exit 1
+
+profile="$(jq -r '.executionProfile // "standard"' "$feature_json" 2>/dev/null)" || exit 1
+if [[ "$profile" == "compact" ]]; then
+  echo 'signal=compact reason=compact gate plan owns plan critique'
+  exit 0
+fi
 
 # changed_files REPO_ROOT BASE_SHA -- prints repo-relative paths changed between
 # BASE_SHA and HEAD, excluding deletions. Returns non-zero when the base SHA or

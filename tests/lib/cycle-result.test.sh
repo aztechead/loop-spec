@@ -67,6 +67,8 @@ check "A: finishedAt present" "1" "$([[ "$(jq -r '.finishedAt' "$FEAT_DIR/result
 check "A: delivery status exposed" "ready-for-review" "$(jq -r '.delivery.status' "$FEAT_DIR/result.json")"
 check "A: summary exposed" "Rate limiting was implemented and verified." "$(jq -r '.summary' "$FEAT_DIR/result.json")"
 check "A: no-change reason defaults null" "null" "$(jq -r '.noChangeReason' "$FEAT_DIR/result.json")"
+check "A: legacy result omits compact observability" "false" \
+  "$(jq 'has("classification") or has("gatePlan")' "$FEAT_DIR/result.json")"
 
 # Case B: converged=true with empty warnings
 check "B: converged=true on clean completion" "true" "$(jq '.converged' "$FEAT_DIR/result.json")"
@@ -774,6 +776,52 @@ bash "$LIB" begin --result-root "$NULL_ROOT" --cycle-type full \
   --title "No classification" --phase routing
 check "AB4: begin without a classification stores JSON null" "null" \
   "$(jq -c '.classification' "$NULL_ROOT/.loop-spec/active-run.json")"
+
+# Compact routing leaves `autonomousClassification` and its per-gate plan in
+# feature state. Terminal telemetry exposes that classifier decision as
+# `classification`, preserving the active-run/public result spelling.
+COMPACT_GATE_PLAN="$(jq -nc '{
+  specInterview: {run: false, reason: "bounded requirements are grounded"},
+  discuss: {run: false, reason: "no unresolved product decision"},
+  specCritique: {run: false, reason: "scope is deliberately bounded"},
+  planCritique: {run: true, reason: "review the compact plan"},
+  repositoryValidation: {run: true, reason: "validate repository state"},
+  placeholderScan: {run: true, reason: "scan artifacts for placeholders"},
+  tamperScan: {run: true, reason: "verify compact run artifacts"},
+  acceptance: {run: true, reason: "run acceptance evidence"},
+  codeReview: {run: true, reason: "review implementation"},
+  iterate: {run: true, reason: "judge the final result"}
+}')"
+COMPACT_RESULT_FJ="$(jq --argjson gatePlan "$COMPACT_GATE_PLAN" '
+  .autonomous = true |
+  .autonomousClassification = {route:"compact",taskKind:"feature",confidence:0.94} |
+  .gatePlan = $gatePlan
+' <<<"$FIXTURE_FJ")"
+printf '%s\n' "$COMPACT_RESULT_FJ" > "$FEAT_DIR/feature.json"
+bash "$LIB" write "$FEAT_DIR" --status completed \
+  --summary "The compact route was delivered and verified." >/dev/null 2>&1
+check "AB5: result preserves compact classification" "compact" \
+  "$(jq -r '.classification.route' "$FEAT_DIR/result.json")"
+check "AB5: result preserves compact gate plan" "false" \
+  "$(jq -r '.gatePlan.specInterview.run' "$FEAT_DIR/result.json")"
+
+# Reduced routes have no feature directory. Their terminal writer must retain
+# the classifier record armed at routing time before it consumes that record.
+COMPACT_TERMINAL_ROOT="$WORK/compact-terminal-root"
+COMPACT_TERMINAL_CLASS="$(jq -nc --argjson gatePlan "$COMPACT_GATE_PLAN" \
+  '{route:"compact",taskKind:"refactor",gatePlan:$gatePlan}')"
+mkdir -p "$COMPACT_TERMINAL_ROOT"
+bash "$LIB" begin --result-root "$COMPACT_TERMINAL_ROOT" --cycle-type micro \
+  --title "Compact refactor" --phase routing --autonomous true \
+  --classification "$COMPACT_TERMINAL_CLASS"
+bash "$LIB" write-terminal --result-root "$COMPACT_TERMINAL_ROOT" --cycle-type micro \
+  --status failed --outcome verification-failed --title "Compact refactor" \
+  --converged false --verification-status failed \
+  --summary "The compact route failed verification." >/dev/null 2>&1
+check "AB6: terminal result preserves armed compact classification" "compact" \
+  "$(jq -r '.classification.route' "$COMPACT_TERMINAL_ROOT/.loop-spec/last-result.json")"
+check "AB6: terminal result preserves armed compact gate plan" "true" \
+  "$(jq -r '.gatePlan.acceptance.run' "$COMPACT_TERMINAL_ROOT/.loop-spec/last-result.json")"
 
 # Case AC: a SHA-bound green draft is first-class, not completed-with-gaps.
 printf '%s\n' "$(jq '.currentPhase = "deliver" | .delivery = {status:"pending",targets:[]}

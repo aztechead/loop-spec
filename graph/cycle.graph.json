@@ -268,6 +268,18 @@
       "body": "skills/verify/SKILL.md"
     },
     {
+      "id": "verify.placeholder.gate",
+      "label": "Check whether the placeholder scan is required",
+      "kind": "gate",
+      "reads": [
+        "artifacts"
+      ],
+      "writes": [
+        "currentGate"
+      ],
+      "effort": "system1"
+    },
+    {
       "id": "verify.marker",
       "label": "Reject unresolved placeholders",
       "kind": "gate",
@@ -284,6 +296,19 @@
         "--feature-dir",
         "{featureDir}"
       ]
+    },
+    {
+      "id": "verify.tamper.gate",
+      "label": "Check whether the tamper scan is required",
+      "kind": "gate",
+      "reads": [
+        "artifacts",
+        "commands"
+      ],
+      "writes": [
+        "currentGate"
+      ],
+      "effort": "system1"
     },
     {
       "id": "verify.tamper",
@@ -305,6 +330,18 @@
       ]
     },
     {
+      "id": "verify.acceptance.gate",
+      "label": "Check whether acceptance evidence is required",
+      "kind": "gate",
+      "reads": [
+        "artifacts"
+      ],
+      "writes": [
+        "currentGate"
+      ],
+      "effort": "system1"
+    },
+    {
       "id": "verify.acceptance",
       "label": "Check acceptance evidence",
       "kind": "gate",
@@ -322,6 +359,20 @@
       "routeDefault": "verify.code-review"
     },
     {
+      "id": "verify.code-review.gate",
+      "label": "Check whether code review is required",
+      "kind": "gate",
+      "reads": [
+        "artifacts",
+        "branch"
+      ],
+      "writes": [
+        "currentGate"
+      ],
+      "effort": "system1",
+      "routeDefault": "verify.code-review"
+    },
+    {
       "id": "verify.code-review",
       "label": "Review code quality",
       "kind": "gate",
@@ -335,6 +386,19 @@
       ],
       "effort": "system2",
       "body": "loop-spec:code-reviewer"
+    },
+    {
+      "id": "iterate.gate",
+      "label": "Check whether result judgment is required",
+      "kind": "gate",
+      "reads": [
+        "artifacts"
+      ],
+      "writes": [
+        "currentGate"
+      ],
+      "effort": "system1",
+      "routeDefault": "iterate"
     },
     {
       "id": "iterate",
@@ -418,6 +482,36 @@
     },
     {
       "from": "human.after-spec",
+      "to": "plan",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "discuss"
+        ],
+        "expects": "gate=skip"
+      }
+    },
+    {
+      "from": "human.after-spec",
+      "to": "discuss",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "discuss"
+        ],
+        "expects": "gate=run"
+      }
+    },
+    {
+      "from": "human.after-spec",
       "to": "discuss",
       "kind": "route",
       "condition": {
@@ -446,6 +540,36 @@
       "from": "discuss",
       "to": "discuss.critique.gate",
       "kind": "chain"
+    },
+    {
+      "from": "discuss.critique.gate",
+      "to": "discuss.critique",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "specCritique"
+        ],
+        "expects": "gate=run"
+      }
+    },
+    {
+      "from": "discuss.critique.gate",
+      "to": "human.after-discuss",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "specCritique"
+        ],
+        "expects": "gate=skip"
+      }
     },
     {
       "from": "discuss.critique.gate",
@@ -487,6 +611,36 @@
       "from": "plan",
       "to": "plan.critique.gate",
       "kind": "chain"
+    },
+    {
+      "from": "plan.critique.gate",
+      "to": "plan.critique",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "planCritique"
+        ],
+        "expects": "gate=run"
+      }
+    },
+    {
+      "from": "plan.critique.gate",
+      "to": "human.after-plan",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "planCritique"
+        ],
+        "expects": "gate=skip"
+      }
     },
     {
       "from": "plan.critique.gate",
@@ -580,21 +734,146 @@
     },
     {
       "from": "verify",
-      "to": "verify.marker",
+      "to": "verify.placeholder.gate",
       "kind": "chain"
+    },
+    {
+      "from": "verify.placeholder.gate",
+      "to": "verify.marker",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": ["--feature-dir", "{featureDir}", "--gate", "placeholderScan"],
+        "expects": "gate=run"
+      }
+    },
+    {
+      "from": "verify.placeholder.gate",
+      "to": "verify.tamper.gate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": ["--feature-dir", "{featureDir}", "--gate", "placeholderScan"],
+        "expects": "gate=skip"
+      }
+    },
+    {
+      "from": "verify.placeholder.gate",
+      "to": "verify.marker",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": ["--feature-dir", "{featureDir}", "--gate", "placeholderScan"],
+        "expects": "gate=unplanned"
+      }
     },
     {
       "from": "verify.marker",
-      "to": "verify.tamper",
+      "to": "verify.tamper.gate",
       "kind": "chain"
+    },
+    {
+      "from": "verify.tamper.gate",
+      "to": "verify.tamper",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": ["--feature-dir", "{featureDir}", "--gate", "tamperScan"],
+        "expects": "gate=run"
+      }
+    },
+    {
+      "from": "verify.tamper.gate",
+      "to": "verify.acceptance.gate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": ["--feature-dir", "{featureDir}", "--gate", "tamperScan"],
+        "expects": "gate=skip"
+      }
+    },
+    {
+      "from": "verify.tamper.gate",
+      "to": "verify.tamper",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": ["--feature-dir", "{featureDir}", "--gate", "tamperScan"],
+        "expects": "gate=unplanned"
+      }
     },
     {
       "from": "verify.tamper",
-      "to": "verify.acceptance",
+      "to": "verify.acceptance.gate",
       "kind": "chain"
     },
     {
+      "from": "verify.acceptance.gate",
+      "to": "verify.acceptance",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": ["--feature-dir", "{featureDir}", "--gate", "acceptance"],
+        "expects": "gate=run"
+      }
+    },
+    {
+      "from": "verify.acceptance.gate",
+      "to": "verify.code-review.gate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": ["--feature-dir", "{featureDir}", "--gate", "acceptance"],
+        "expects": "gate=skip"
+      }
+    },
+    {
+      "from": "verify.acceptance.gate",
+      "to": "verify.acceptance",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": ["--feature-dir", "{featureDir}", "--gate", "acceptance"],
+        "expects": "gate=unplanned"
+      }
+    },
+    {
       "from": "verify.acceptance",
+      "to": "verify.code-review.gate",
+      "kind": "chain"
+    },
+    {
+      "from": "verify.code-review.gate",
+      "to": "verify.code-review",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "codeReview"
+        ],
+        "expects": "gate=run"
+      }
+    },
+    {
+      "from": "verify.code-review.gate",
+      "to": "iterate.gate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "codeReview"
+        ],
+        "expects": "gate=skip"
+      }
+    },
+    {
+      "from": "verify.code-review.gate",
       "to": "verify.code-review",
       "kind": "route",
       "condition": {
@@ -607,7 +886,7 @@
       }
     },
     {
-      "from": "verify.acceptance",
+      "from": "verify.code-review.gate",
       "to": "iterate",
       "kind": "route",
       "condition": {
@@ -621,8 +900,53 @@
     },
     {
       "from": "verify.code-review",
-      "to": "iterate",
+      "to": "iterate.gate",
       "kind": "chain"
+    },
+    {
+      "from": "iterate.gate",
+      "to": "iterate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "iterate"
+        ],
+        "expects": "gate=run"
+      }
+    },
+    {
+      "from": "iterate.gate",
+      "to": "deliver",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "iterate"
+        ],
+        "expects": "gate=skip"
+      }
+    },
+    {
+      "from": "iterate.gate",
+      "to": "iterate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/compact-gate.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "iterate"
+        ],
+        "expects": "gate=unplanned"
+      }
     },
     {
       "from": "iterate",
