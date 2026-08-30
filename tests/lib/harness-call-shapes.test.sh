@@ -33,6 +33,12 @@ check "AskUserQuestion calls use questions:[...] wrapper" "$([[ -z "$bad" ]] && 
 bad=$(grep -rn 'options: \["' skills agents --include='*.md' 2>/dev/null | grep -v 'harness-call-contracts' | head -5 || true)
 check "no bare-string AskUserQuestion options" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
+bad=$(grep -rnE 'header: *"[^"]{13,}"' skills agents --include='*.md' 2>/dev/null | head -5 || true)
+check "AskUserQuestion headers stay within 12 characters" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
+bad=$(grep -rn 'subagentBrief' skills/checking-gates/SKILL.md skills/specifying-gates/SKILL.md 2>/dev/null | head -5 || true)
+check "gate skills use canonical dispatchBrief metadata" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
 # 3) Every Agent({ block must carry the REQUIRED description: within its body.
 bad=""
 for f in $CORPUS; do

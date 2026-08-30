@@ -44,7 +44,7 @@ If none of these apply, return to the execute skill without running this skill.
 
 ### Step 3 -- Execute and post evidence
 
-1. Run the `verifyCommand` (or dispatch the subagent with `subagentBrief`). Capture exact output.
+1. Run the `verifyCommand` (or dispatch the subagent with `dispatchBrief`). Capture exact output.
 2. Map each `acceptanceCriteria` entry to an observable in the output.
 3. Post one block of text back to the user, using EXACTLY this format (the sibling hooks key off the `AC:` + `PROVEN BY` markers):
 

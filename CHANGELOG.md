@@ -28,7 +28,15 @@ shape. EXECUTE's plan-adherence gate was never a structured call.
   the live dummy tells, any question while an Agent is still running, every
   question during VERIFY/DELIVER, ITERATE questions other than the
   Re-open SPEC gate, and EXECUTE questions other than Plan gap /
-  specifying-gates. Kill switch: `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD=0`.
+  specifying-gates. Every question in a batch must be allowed, so one valid
+  header cannot mask another question; allowed headers must also match their
+  published single-select question and option contracts. Gate specification now
+  records executable commands, exact pass/fail rules, and the canonical
+  `dispatchBrief` field. Real questions about a product's
+  ping or keepalive behavior are not mistaken for agent keep-alives. Phase
+  restrictions follow the active skill in the harness transcript, so persisted
+  state cannot block the cycle entrypoint's resume/new-feature question. Kill switch:
+  `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD=0`.
   ITERATE, DELIVER, the EXECUTE subagent/loop-fleet rungs, VERIFY workspace
   joins, and cycle phase dispatch now say dispatch-then-stop instead of
   "lead waits". Pinned by `hooks/team/placeholder-question-guard.test.sh`

@@ -37,35 +37,33 @@ Use `AskUserQuestion` -- one question at a time. Never batch multiple questions 
 
 ```yaml
 AskUserQuestion:
-  question: "Gate: <task subject>. What exact state proves this works? One line per criterion. 'It works' is not an answer -- name a sensor, HTTP status, log line, file presence, or equivalent."
+  question: "Gate: <task subject>. Use Other to type 1-5 concrete observable criteria, or choose an existing source. Each criterion must name the observable and its exact passing value, regex, or threshold."
   header: "Gate outcome"
   options:
-    - label: "I'll type the criteria"
-      description: "Write 1-5 concrete, observable conditions"
     - label: "Copy from task's acceptanceCriteria"
       description: "Use the existing list (only if it's already concrete)"
+    - label: "Stop - revise task"
+      description: "Keep requiresUserSpecification and return control"
 ```
 
-Store the user's free-text answer as a list of strings in `acceptanceCriteria`. If any entry is vague (contains "works", "fine", "as expected", "properly" without a concrete target), push back and ask them to name the observable before continuing.
+Store an Other free-text answer as a list of strings in `acceptanceCriteria`. Copy the task's existing list only when every entry names both an observable and its exact passing value, regex, or threshold. If either part is missing, repeat Q1 exactly so the follow-up remains inside the published call contract; do not paraphrase it. If the user stops, leave `requiresUserSpecification` in place and return control.
 
 ### Q2 -- Proof mechanism
 
 ```yaml
 AskUserQuestion:
-  question: "How should the agent capture that state?"
+  question: "Use Other to paste the exact shell command that captures proof, or choose an existing mechanism. API and inspection checks must be expressed as executable commands."
   header: "Mechanism"
   options:
-    - label: "CLI command"
-      description: "A shell command whose output shows the criterion"
-    - label: "REST / API call"
-      description: "HTTP request, inspect response"
+    - label: "Use task verifyCommand"
+      description: "Keep the existing concrete command"
     - label: "Subagent with briefing"
-      description: "Dispatch Sonnet or Haiku with a prompt template"
-    - label: "Direct inspection"
-      description: "Read a file, query an entity, check a log"
+      description: "Specify a subagent proof contract"
+    - label: "Stop - revise task"
+      description: "Keep requiresUserSpecification and return control"
 ```
 
-If the user selects "Subagent with briefing", ask Q5 (dispatch contract) before proceeding to Q3.
+Store an Other free-text answer as the exact shell-executable `verifyCommand`. Use the task's existing `verifyCommand` only when it is already concrete and shell-executable. If the user selects "Subagent with briefing", store `verifyCommand: "(subagent)"` and ask Q5 before proceeding to Q3. If the user stops, leave `requiresUserSpecification` in place and return control.
 
 ### Q3 -- Scope
 
@@ -109,18 +107,18 @@ Only when Q2 = "Subagent with briefing". Ask this before Q3.
 
 ```yaml
 AskUserQuestion:
-  question: "Paste the exact prompt / briefing the subagent should receive. This becomes the dispatch contract -- the agent cannot substitute a shorter version at runtime."
-  header: "Dispatch brief"
+  question: "Use Other to paste the exact prompt / briefing the subagent should receive, or choose a source. This becomes the dispatch contract -- the agent cannot substitute a shorter version at runtime."
+  header: "Briefing"
   options:
-    - label: "I'll paste it"
-      description: "Provide the briefing text"
     - label: "Use instances/<tag>/seed-briefing.md"
       description: "Per-target briefing file already written by a plan task"
     - label: "Generate from task description"
       description: "Build the briefing from the task's Goal + Files + Acceptance Criteria"
+    - label: "Stop - revise task"
+      description: "Keep requiresUserSpecification and return control"
 ```
 
-Store as `subagentBrief` (string or file-path).
+Store an Other free-text answer as the exact `dispatchBrief`. For a seed briefing, store its file path. For generation, build and store the full briefing from the task's Goal, Files, and Acceptance Criteria. If the user stops, leave `requiresUserSpecification` in place and return control.
 
 ## Writing back
 
@@ -131,13 +129,13 @@ After all questions are answered:
 ```json:metadata
 {
   "files": [...],
-  "verifyCommand": "<from Q2 -- the CLI/API string, or '(subagent)' sentinel>",
+  "verifyCommand": "<from Q2 -- the shell command, or '(subagent)' sentinel>",
   "acceptanceCriteria": ["<from Q1>", "..."],
   "userGate": true,
   "tags": ["user-gate"],
   "gateScope": "<from Q3>",
   "failurePolicy": "<from Q4>",
-  "subagentBrief": "<from Q5 if applicable>"
+  "dispatchBrief": "<from Q5 if applicable>"
 }
 ```
 
@@ -166,5 +164,5 @@ After all questions are answered:
 ## Integration
 
 - **Invoked from:** `skills/checking-gates/SKILL.md` (Path A routing, automatic), or `Skill(loop-spec:specifying-gates)` manual invocation.
-- **Returns to:** `skills/execute/SKILL.md`. The agent reads the updated task and executes the now-concrete `verifyCommand` (or dispatches the subagent with `subagentBrief`).
+- **Returns to:** `skills/execute/SKILL.md`. The agent reads the updated task and executes the now-concrete `verifyCommand` (or dispatches the subagent with `dispatchBrief`).
 - **References:** `skills/shared/feature-state-schema.md` for the full metadata schema including all 9 optional gate fields.
