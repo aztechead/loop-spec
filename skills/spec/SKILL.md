@@ -114,6 +114,21 @@ If `LOOP_SPEC_NON_INTERACTIVE=1` is set (and autonomous is not): skip Step 2 ent
 
 **`execStyle: auto` still interviews.** Auto means the cycle does not pause after this phase. A human is attached. Run Step 2 with `AskUserQuestion`. Self-answer only under **Autonomous mode** below. Do not skip rounds because the request seems clear enough to write SPEC.md already — the gate scores the interview, not the one-liner.
 
+**Compact gate plan:** before choosing the interview path, resolve the committed gate:
+
+```bash
+compact_interview="$(bash "${CLAUDE_SKILL_DIR}/../../lib/graph/probes/compact-gate.sh" \
+  --feature-dir ".loop-spec/features/{slug}" --gate specInterview)"
+echo "$compact_interview"
+```
+
+If it is `gate=skip`, synthesize SPEC.md from the request and Step 1 scout exactly as
+the non-interactive path does. Preserve the exact `reason=` in the transcript as
+`spec interview skipped (<reason>)`; the committed `feature.json.gatePlan` is the durable
+authorization for the omission. `gate=run` — including missing or malformed compact
+state, which fails upward — follows the ordinary interview rules below. See
+`skills/shared/compact-profile.md`.
+
 **Maintenance profile:** if `feature.json.executionProfile == "maintenance"`, skip the
 interview (Step 2) and synthesize SPEC.md from the request plus the Step 1 scout, exactly
 as **Non-interactive mode** does. The classification that earned this profile already

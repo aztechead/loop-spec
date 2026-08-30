@@ -151,6 +151,31 @@ workspace_feature_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-init.sh" sk
   --style "$execStyle" --title "$title" \
   --ws-root "$workspace_root" --repos "$repos_json_array")
 
+# class_json came from the normalized active-run classification in the cycle
+# entry step. Retain a legacy object for audit, but only a complete compact
+# gate plan is permitted to alter the resumed graph route.
+class_json="${class_json:-null}"
+jq -e 'type == "object" or . == null' >/dev/null <<<"$class_json" || {
+  echo "loop-spec: normalized classification must be an object or null" >&2
+  exit 2
+}
+workspace_gate_plan=null
+workspace_compact_line="$(printf '%s' "$class_json" | \
+  LOOP_SPEC_CYCLE_PROFILE=auto \
+  bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select -)"
+if [[ "$workspace_compact_line" == profile=compact\ * ]]; then
+  workspace_gate_plan="$(jq -c '.gatePlan' <<<"$class_json")"
+fi
+workspace_feature_json="$(jq --argjson classification "$class_json" --argjson gatePlan "$workspace_gate_plan" '
+  if $classification == null then . else .autonomousClassification = $classification end |
+  if $gatePlan == null then . else .gatePlan = $gatePlan end
+' <<<"$workspace_feature_json")"
+workspace_effective_profile="$cycle_profile"
+[[ "$workspace_effective_profile" == "compact" && "$workspace_gate_plan" == "null" ]] \
+  && workspace_effective_profile="standard"
+workspace_feature_json="$(jq --arg profile "$workspace_effective_profile" \
+  '.executionProfile = $profile' <<<"$workspace_feature_json")"
+
 bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" \
   "${workspace_root}/.loop-spec/features/${slug}" "$workspace_feature_json"
 ```

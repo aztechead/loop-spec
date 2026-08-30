@@ -64,6 +64,70 @@ feature_dir() {
 }
 
 # =====================================================================
+# compact-gate.sh
+# =====================================================================
+COMPACT_GATE="$PROBES/compact-gate.sh"
+CG="$WORK/compact-gate"
+mkdir -p "$CG"
+check_output "compact-gate enumerates gate=run" "gate=run" "$COMPACT_GATE" --answers
+check_output "compact-gate enumerates gate=skip" "gate=skip" "$COMPACT_GATE" --answers
+check_output "compact-gate enumerates gate=unplanned" "gate=unplanned" "$COMPACT_GATE" --answers
+check "compact-gate needs a gate name" 2 "$COMPACT_GATE" --feature-dir "$CG"
+
+compact_plan() {
+  jq -n --argjson discuss "$1" --argjson review "$2" --argjson iterate "$3" '
+    {specInterview:{run:true,reason:"interview evidence"},
+     discuss:{run:$discuss,reason:"discussion scope"},
+     specCritique:{run:true,reason:"spec challenge"},
+     planCritique:{run:true,reason:"plan challenge"},
+     repositoryValidation:{run:true,reason:"candidate validation"},
+     placeholderScan:{run:true,reason:"placeholder safety"},
+     tamperScan:{run:true,reason:"tamper safety"},
+     acceptance:{run:true,reason:"acceptance evidence"},
+     codeReview:{run:$review,reason:"review scope"},
+     iterate:{run:$iterate,reason:"convergence scope"}}'
+}
+
+plan="$(compact_plan false false false | jq '.specCritique.run = false')"
+jq -n --argjson plan "$plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
+check "compact-gate rejects an undeclared persisted gate" 2 \
+  "$COMPACT_GATE" --feature-dir "$CG" --gate notAGate
+check_output "compact-gate skips a persisted false gate with its reason" \
+  "gate=skip reason=compact gatePlan discuss: discussion scope" \
+  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
+run_plan="$(compact_plan true false false)"
+jq -n --argjson plan "$run_plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
+check_output "compact-gate runs a persisted true gate with its reason" \
+  "gate=run reason=compact gatePlan specCritique: spec challenge" \
+  "$COMPACT_GATE" --feature-dir "$CG" --gate specCritique
+
+incoherent_plan="$(jq -c '.specCritique.run = true' <<<"$plan")"
+jq -n --argjson plan "$incoherent_plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
+check_output "compact-gate fails upward when spec critique lacks discuss" \
+  "gate=run reason=compact gatePlan is missing or invalid" \
+  "$COMPACT_GATE" --feature-dir "$CG" --gate specCritique
+
+newline_plan="$(jq -c '.discuss.reason = "line one\nline two"' <<<"$plan")"
+jq -n --argjson plan "$newline_plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
+check_output "compact-gate fails upward on a multiline reason" \
+  "gate=run reason=compact gatePlan is missing or invalid" \
+  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
+oversized_plan="$(jq -c '.discuss.reason = ("x" * 241)' <<<"$plan")"
+jq -n --argjson plan "$oversized_plan" '{executionProfile:"compact",gatePlan:$plan}' > "$CG/feature.json"
+check_output "compact-gate fails upward on an oversized reason" \
+  "gate=run reason=compact gatePlan is missing or invalid" \
+  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
+
+jq -n '{executionProfile:"compact"}' > "$CG/feature.json"
+check_output "compact-gate fails upward when compact state is incomplete" \
+  "gate=run reason=compact gatePlan is missing or invalid" \
+  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
+jq -n --argjson plan "$plan" '{executionProfile:"standard",gatePlan:$plan}' > "$CG/feature.json"
+check_output "compact-gate marks standard runs as unplanned" \
+  "gate=unplanned reason=executionProfile=standard is not compact" \
+  "$COMPACT_GATE" --feature-dir "$CG" --gate discuss
+
+# =====================================================================
 # iterate-gap.sh
 # =====================================================================
 ITERATE_GAP="$PROBES/iterate-gap.sh"
@@ -280,9 +344,9 @@ fi
 PLAN_CRITIQUE="$PROBES/plan-critique.sh"
 
 out="$(bash "$PLAN_CRITIQUE" --answers)"
-[[ "$out" == $'signal=matched\nsignal=none' ]] \
-  && { echo "PASS: plan-critique --answers lists exactly the two signal tokens"; PASS=$((PASS+1)); } \
-  || { echo "FAIL: plan-critique --answers lists exactly the two signal tokens (got: $out)"; FAIL=$((FAIL+1)); }
+[[ "$out" == $'signal=matched\nsignal=none\nsignal=compact' ]] \
+  && { echo "PASS: plan-critique --answers lists compact ownership too"; PASS=$((PASS+1)); } \
+  || { echo "FAIL: plan-critique --answers lists compact ownership too (got: $out)"; FAIL=$((FAIL+1)); }
 
 REPO="$WORK/repo"
 git init -q "$REPO"

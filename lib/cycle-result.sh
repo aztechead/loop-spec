@@ -75,6 +75,8 @@
 #   "iterations": {"used": <.iterate.used // 0>, "max": <.iterate.maxIterations // null>},
 #   "warnings": <.warnings // []>,
 #   "autonomous": <.autonomous // false>,
+#   "classification": "<persisted autonomous classifier decision, when present>",
+#   "gatePlan": "<persisted compact gate plan, when present>",
 #   "feature_title": "<.feature_title // .slug>",
 #   "createdAt": "<.createdAt // null>",
 #   "finishedAt": "<now ISO-8601 UTC>"
@@ -526,6 +528,8 @@ PY
     _prepare_result_root "$result_root_abs" || {
       echo "cycle-result.sh: TERMINAL RESULT NOT PUBLISHED - cannot prepare result root: $result_root_abs" >&2; exit 3; }
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    active_context="$(jq -c '{classification:(.classification // .autonomousClassification // null), gatePlan:(.gatePlan // .autonomousGatePlan // (.classification.gatePlan // null) // (.autonomousClassification.gatePlan // null))}' \
+      "$result_root_abs/.loop-spec/active-run.json" 2>/dev/null || printf '%s' '{}')"
     result_json="$(jq -cn --arg cycleType "$cycle_type" --arg status "$status" \
       --arg outcome "$outcome" --arg slug "$slug" --arg title "$title" \
       --arg branch "$branch" --arg base "$base_branch" --arg pr "$pr_url" \
@@ -535,7 +539,9 @@ PY
       --arg verifyCommand "$verification_command" --arg now "$now" \
       --argjson converged "$converged" --argjson autonomous "$autonomous" \
       --arg loopSpecVersion "$loop_spec_version" \
-      --argjson warnings "$warnings_json" '
+      --argjson warnings "$warnings_json" --argjson active "$active_context" '
+      ($active.classification // null) as $classification |
+      ($active.gatePlan // ($classification.gatePlan // null)) as $gatePlan |
       {schema:1,loopSpecVersion:$loopSpecVersion,
        cycleType:$cycleType,slug:(if $slug == "" then null else $slug end),
        status:$status,outcome:$outcome,reason:(if $reason == "" then null else $reason end),
@@ -550,7 +556,9 @@ PY
        workDelivered:($pr != "" and $pr != $checkpointPr),
        iterations:{used:0,max:null},warnings:$warnings,
        autonomous:$autonomous,feature_title:$title,createdAt:null,finishedAt:$now,
-       verification:{status:$verifyStatus,command:(if $verifyCommand == "" then null else $verifyCommand end)}}')" || {
+       verification:{status:$verifyStatus,command:(if $verifyCommand == "" then null else $verifyCommand end)}}
+      + (if $classification == null then {} else {classification:$classification} end)
+      + (if $gatePlan == null then {} else {gatePlan:$gatePlan} end)')" || {
       echo "cycle-result.sh: TERMINAL RESULT NOT PUBLISHED - failed to build terminal result" >&2; exit 3; }
     destination="$result_root_abs/.loop-spec/last-result.json"
     _write_atomic "$result_json" "$destination" || {
@@ -710,7 +718,18 @@ PY
 
     # Build result.json with jq (never string-interpolate user text into JSON).
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    feature_dir_abs="$(cd "$feature_dir" 2>/dev/null && pwd)" || feature_dir_abs=""
+    compact_root="${LOOP_SPEC_RESULT_ROOT:-}"
+    if [[ -z "$compact_root" && -n "$feature_dir_abs" ]]; then
+      compact_root="$(_resolve_result_root "$feature_dir_abs" 2>/dev/null || true)"
+    elif [[ -n "$compact_root" ]]; then
+      compact_root="$(_resolve_result_root "$compact_root" 2>/dev/null || true)"
+    fi
+    active_context="$(jq -c '{classification:(.classification // .autonomousClassification // null), gatePlan:(.gatePlan // .autonomousGatePlan // (.classification.gatePlan // null) // (.autonomousClassification.gatePlan // null))}' \
+      "$compact_root/.loop-spec/active-run.json" 2>/dev/null || printf '%s' '{}')"
 
+    # Feature state calls it autonomousClassification; terminal telemetry keeps
+    # the established active-run name, classification, for one public shape.
     result_json="$(jq -cn \
       --arg now "$now" \
       --arg status "$status" \
@@ -721,6 +740,7 @@ PY
       --arg loopSpecVersion "$loop_spec_version" \
       --argjson fj "$fj_content" \
       --argjson delivery "$delivery_content" \
+      --argjson active "$active_context" \
       '
       # prUrl: explicit arg, successful delivery sidecar, tracked fallback.
       (if $pr_url_arg != "" then $pr_url_arg
@@ -742,6 +762,10 @@ PY
        ([$delivery.targets[]?
           | select((.feedback.changesRequested // false) == true)] | length > 0) as $feedbackBlocking |
        ($stateWarnings + $feedbackWarnings) as $warnings |
+       ($fj.classification // $fj.autonomousClassification // $active.classification // null)
+         as $classification |
+       ($fj.gatePlan // $fj.autonomousGatePlan // ($classification.gatePlan // null) //
+        $active.gatePlan // null) as $gatePlan |
          def local_delivery_error: ["repo_invalid","repo_root_mismatch","branch_mismatch",
            "git_status_failed","dirty_worktree","base_sha_missing","base_sha_invalid",
            "base_not_ancestor","no_commits","git_history_failed","local_artifact_policy_failed"];
@@ -840,6 +864,8 @@ PY
            command: ($fj.commands.test // null)
          }
       }
+      + (if $classification == null then {} else {classification:$classification} end)
+      + (if $gatePlan == null then {} else {gatePlan:$gatePlan} end)
       ')" 2>/dev/null || {
       echo "cycle-result.sh: failed to build result.json from feature.json in $feature_dir" >&2
       exit 0

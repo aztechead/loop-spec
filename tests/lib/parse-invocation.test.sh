@@ -40,6 +40,11 @@ out="$(bash "$SCRIPT" parse "add csv export style:step to reports")"
 check "style parsed mid-text" "step" "$(field "$out" style)"
 check "style stripped from title" "add csv export to reports" "$(field "$out" title)"
 
+# Explicit compact is a cycle profile token, never request text.
+out="$(bash "$SCRIPT" parse "profile:compact add bounded export")"
+check "compact profile parsed" "compact" "$(field "$out" profile)"
+check "compact profile stripped from title" "add bounded export" "$(field "$out" title)"
+
 # phase mode tokens are execution controls, never goal text
 out="$(bash "$SCRIPT" parse "phase:fresh autonomous add csv export")"
 check "fresh phase mode parsed" "fresh" "$(field "$out" phase_mode)"

@@ -23,7 +23,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 4.7.2 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+Current version: 4.8.0 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Install
 
@@ -180,7 +180,7 @@ claude -p "/loop-spec:auto update CLAUDE.md with relevant changes"
 claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
 ```
 
-`/loop-spec:auto` inspects likely files/tests, proposes a route, and `lib/task-route.sh` validates it fail-closed. Small maintenance → micro; bounded bugs → debug; everything else → full cycle (maintenance-shaped work that outgrew micro takes the full cycle's maintenance profile, not a `protocol-mismatch` decline). SDK callers get one `AUTONOMOUS_ROUTE {...}` line; route selection writes nothing into the target repo. Full contract: [`skills/shared/autonomous-mode.md`](skills/shared/autonomous-mode.md).
+`/loop-spec:auto` inspects likely files/tests, proposes a route, and `lib/task-route.sh` validates it fail-closed. Small maintenance → micro; bounded bugs → debug; bounded features and refactors may use compact; everything else → full cycle. Compact records the classifier's per-gate run/skip plan, including a reason for each skip; destructive, malformed, uncertain, and unbounded proposals promote to full. Exact-SHA delivery and terminal-result publication stay mandatory. SDK callers get one `AUTONOMOUS_ROUTE {...}` line; route selection writes nothing into the target repo. Full contract: [`skills/shared/autonomous-mode.md`](skills/shared/autonomous-mode.md) and the canonical [`compact profile`](skills/shared/compact-profile.md).
 
 Ephemeral containers: [Cloud Run autonomous profile](docs/loop-spec/cloud-run-autonomous.md).
 

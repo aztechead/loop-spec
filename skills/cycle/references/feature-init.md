@@ -173,6 +173,7 @@ cmd_test="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-bootstrap.sh" finalize \
   --slug "$slug" --title "$title" \
   --branch "$feature_branch" --base-branch "$base_branch" --base-sha "$base_sha" \
   --worktree "$worktree_state_path" --style "$execStyle" --profile "$cycle_profile" \
+  --classification "${class_json:-null}" \
   --autonomous "${autonomous:-0}" --greenfield "${greenfield:-0}" \
   --prepare "$cmd_prepare" --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")" || {
   echo "loop-spec: feature bootstrap failed; a terminal cycle result was written (see stderr above)." >&2

@@ -20,7 +20,7 @@
 #   short-path.sh --feature-dir DIR
 #   short-path.sh --answers
 #
-# Exit: 0 with one `path=<short|full> reason=<text>` line. Anything undeterminable
+# Exit: 0 with one `path=<compact|short|full> reason=<text>` line. Anything undeterminable
 # answers `path=full` -- the long path is the safe direction, and an unresolved probe
 # never satisfies a route (graph-contract.md, route-condition rule).
 set -uo pipefail
@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECURITY_SIGNAL="$SCRIPT_DIR/../../security-signal.sh"
 
 if [[ "${1:-}" == "--answers" ]]; then
-  printf 'path=short\npath=full\n'
+  printf 'path=compact\npath=short\npath=full\n'
   exit 0
 fi
 
@@ -52,6 +52,10 @@ feature_json="$feature_dir/feature.json"
 
 profile="$(jq -r '.executionProfile // "standard"' "$feature_json" 2>/dev/null)" \
   || full "feature.json could not be read"
+if [[ "$profile" == "compact" ]]; then
+  echo 'path=compact reason=compact gate plan owns adaptable graph decisions'
+  exit 0
+fi
 [[ "$profile" == "maintenance" ]] || full "executionProfile=${profile:-unset} is not maintenance"
 
 # Only artifacts that exist: a run reaching this probe before DISCUSS has written its

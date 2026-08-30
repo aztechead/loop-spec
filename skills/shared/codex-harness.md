@@ -218,6 +218,11 @@ Gates, artifacts, and delivery semantics do not change. DELIVER still calls
 the same explicit-path `lib/deliver.sh` / `lib/pr-delivery.sh` controller as
 Claude Code.
 
+Codex shares the autonomous compact-route contract unchanged: bounded features
+and refactors may be compact, the classifier's reasoned gate plan is retained,
+and uncertain or destructive work promotes to full. See
+[`compact-profile.md`](compact-profile.md) for the canonical contract.
+
 ## Startup probes
 
 Skip the cycle's model probe (Step 3.5) entirely — it pre-flights Claude Code

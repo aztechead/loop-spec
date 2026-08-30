@@ -23,6 +23,7 @@
 #       --branch feat/S --base-branch BB --base-sha SHA \
 #       --worktree PATH_OR_EMPTY --style ST --profile PROFILE \
 #       --autonomous 0|1 --greenfield 0|1 \
+#       [--classification NORMALIZED_JSON] \
 #       --prepare CMD --test CMD --lint CMD --typecheck CMD
 #     -> runs prepare-repo against the execution root, writes the schema-7
 #        feature.json (via lib/feature-init.sh skeleton), records the
@@ -123,7 +124,7 @@ esac
 repo_root="" execution_root="" prep_root="" result_root="" slug="" title=""
 feature_branch="" base_branch="" base_sha="" worktree_state_path="" execStyle=""
 cycle_profile="" autonomous="0" greenfield="0" cmd_prepare="" cmd_test=""
-cmd_lint="" cmd_typecheck="" repo_label=""
+cmd_lint="" cmd_typecheck="" repo_label="" classification_raw=""
 prepare_key="" baseline_json=null
 
 while [[ $# -gt 0 ]]; do
@@ -142,6 +143,7 @@ while [[ $# -gt 0 ]]; do
     --profile)        cycle_profile="$2"; shift 2 ;;
     --autonomous)     autonomous="$2"; shift 2 ;;
     --greenfield)     greenfield="$2"; shift 2 ;;
+    --classification) classification_raw="$2"; shift 2 ;;
     --prepare)        cmd_prepare="$2"; shift 2 ;;
     --test)           cmd_test="$2"; shift 2 ;;
     --lint)           cmd_lint="$2"; shift 2 ;;
@@ -198,8 +200,38 @@ feature_json=$(bash "$SCRIPT_DIR/feature-init.sh" skeleton --mode single \
   --branch "$feature_branch" --base-sha "$base_sha" --base-branch "$base_branch" \
   --worktree "$worktree_state_path" \
   --prepare "$cmd_prepare" --test "$cmd_test" --lint "$cmd_lint" --typecheck "$cmd_typecheck")
-feature_json="$(jq --argjson baseline "$baseline_json" --arg profile "$cycle_profile" \
-  '.verificationBaseline = $baseline | .executionProfile = $profile' <<<"$feature_json")"
+
+# The caller gives us the normalized active-run classification explicitly. Do
+# not re-read active-run.json here: initialization has one input and resumes
+# must rely on the committed feature state. Legacy classifications remain
+# useful audit context, while only a complete normalized compact decision earns skips.
+classification_json=null
+gate_plan_json=null
+if [[ -n "$classification_raw" && "$classification_raw" != "null" ]]; then
+  jq -e 'type == "object"' >/dev/null 2>&1 <<<"$classification_raw" || {
+    echo "feature-bootstrap: --classification must be a JSON object or null" >&2
+    exit 2
+  }
+  classification_json="$(jq -c . <<<"$classification_raw")"
+  compact_profile_line="$(printf '%s' "$classification_json" | \
+    LOOP_SPEC_CYCLE_PROFILE=auto bash "$SCRIPT_DIR/cycle-profile.sh" select -)"
+  if [[ "$compact_profile_line" == profile=compact\ * ]]; then
+    gate_plan_json="$(jq -c '.gatePlan' <<<"$classification_json")"
+  fi
+fi
+# A compact label without its complete authorization is not a compact run.
+# Store the classifier for diagnosis, but persist the full ladder so a resume
+# cannot mistake a malformed plan for permission to skip a gate.
+effective_profile="$cycle_profile"
+if [[ "$effective_profile" == "compact" && "$gate_plan_json" == "null" ]]; then
+  effective_profile="standard"
+fi
+feature_json="$(jq --argjson baseline "$baseline_json" --arg profile "$effective_profile" \
+  --argjson classification "$classification_json" --argjson gatePlan "$gate_plan_json" '
+    .verificationBaseline = $baseline | .executionProfile = $profile |
+    if $classification == null then . else .autonomousClassification = $classification end |
+    if $gatePlan == null then . else .gatePlan = $gatePlan end
+  ' <<<"$feature_json")"
 
 # Everything below chats on stdout; the ONLY stdout this script owns is the final
 # test command the caller captures, so sub-call chatter is routed to stderr.
@@ -208,7 +240,7 @@ feature_dir_abs="$(cd ".loop-spec/features/${slug}" && pwd -P)"
 bash "$SCRIPT_DIR/cycle-result.sh" begin \
   --result-root "$repo_root" --cycle-type full --title "$title" --slug "$slug" \
   --branch "$feature_branch" --base-branch "$base_branch" --feature-dir "$feature_dir_abs" \
-  --phase spec --autonomous "$active_autonomous" >&2
+  --phase spec --autonomous "$active_autonomous" --classification "$classification_json" >&2
 
 # Autonomous mode: persist the flag so phase skills and resumed sessions see it
 # without re-parsing the invocation (skills/shared/autonomous-mode.md).

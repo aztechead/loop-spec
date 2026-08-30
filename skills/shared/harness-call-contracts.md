@@ -172,6 +172,11 @@ The Claude Code schemas above are this file's job. Each peer harness documents i
 tool surface, substitution table, and dispatch mapping in its adaptation contract —
 apply that file, not a from-memory translation:
 
+Compact-route selection adds no harness-specific tool call. Claude Code, Codex,
+OpenCode, and ADK use the same classifier-authored, reasoned gate plan and the
+same fail-upward and delivery invariants; see
+[`compact-profile.md`](compact-profile.md).
+
 - **ADK harness** (`lib/harness.sh detect` == `adk`): `dispatch_subagent` over
   `AgentTool` takes the same `{description, prompt, subagent_type}` shape as `Agent`.
   Full table and mapping: `skills/shared/adk-harness.md`.

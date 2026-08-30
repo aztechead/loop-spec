@@ -985,6 +985,83 @@ if [[ -d "$WORK/cyclerepo" ]]; then
     "$([[ "$(wc -l <<<"$short_path")" -lt "$(wc -l <<<"$full_path")" ]] && echo 1 || echo 0)"
   check "cycle graph declares no skippable field" "0" \
     "$(jq '[.nodes[] | select(has("skippable"))] | length' "$ROOT/graph/cycle.graph.json")"
+
+  # Each plan gets a fresh feature directory. A graph resume ledger is durable
+  # state, so sharing one fixture would make a later dry run test the prior
+  # plan's successor rather than the plan it just wrote.
+  compact_path_with() {
+    local name="$1" plan="$2" dir
+    dir="$WORK/cyclerepo/.loop-spec/features/$name"
+    mkdir -p "$dir"
+    jq -n --arg base "$base_sha" --arg slug "$name" --argjson plan "$plan" \
+      '{slug:$slug,schemaVersion:7,execStyle:"auto",baseSha:$base,
+        executionProfile:"compact",gatePlan:$plan,iterate:{used:0,feedback:null},
+        delivery:{nextPhase:"completed"}}' > "$dir/feature.json"
+    ( cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
+      --feature-dir ".loop-spec/features/$name" "$ROOT/graph/cycle.graph.json" ) | cut -f1
+  }
+  # A compact plan is not the maintenance shortcut: it names every omission
+  # independently and resumes from feature.json with the same declared route.
+  compact_plan='{"specInterview":{"run":false,"reason":"bounded request"},"discuss":{"run":false,"reason":"bounded request"},"specCritique":{"run":false,"reason":"gated spec"},"planCritique":{"run":false,"reason":"small plan"},"repositoryValidation":{"run":false,"reason":"no repository validation"},"placeholderScan":{"run":false,"reason":"no placeholder scan"},"tamperScan":{"run":false,"reason":"no tamper scan"},"acceptance":{"run":false,"reason":"no acceptance run"},"codeReview":{"run":false,"reason":"bounded diff"},"iterate":{"run":false,"reason":"already classified"}}'
+  compact_path_out="$(compact_path_with compact-all-skip "$compact_plan")"
+  for skipped in discuss discuss.critique plan.critique verify.marker verify.tamper \
+                 verify.acceptance verify.code-review iterate; do
+    check "compact plan skips $skipped" "0" "$(grep -cx "$skipped" <<<"$compact_path_out")"
+  done
+  for retained in spec plan execute verify deliver completed; do
+    check "compact plan keeps lifecycle shell $retained" "1" \
+      "$(grep -cx "$retained" <<<"$compact_path_out")"
+  done
+
+  # Compact decisions are independent. These mixed plans exercise the places
+  # where the old chain fallbacks could silently reintroduce a skipped gate.
+  compact_all_run='{"specInterview":{"run":true,"reason":"interview remains useful"},"discuss":{"run":true,"reason":"product decision needs discussion"},"specCritique":{"run":true,"reason":"challenge the specification"},"planCritique":{"run":true,"reason":"challenge the implementation plan"},"repositoryValidation":{"run":true,"reason":"validate repository state"},"placeholderScan":{"run":true,"reason":"scan for placeholders"},"tamperScan":{"run":true,"reason":"scan for weakened tests"},"acceptance":{"run":true,"reason":"collect acceptance evidence"},"codeReview":{"run":true,"reason":"review the implementation"},"iterate":{"run":true,"reason":"judge the final result"}}'
+
+  mixed_discuss_skip="$(jq -c '.discuss.run = false | .discuss.reason = "requirements are already settled" | .specCritique.run = false | .specCritique.reason = "no discussion leaves no critique to run"' <<<"$compact_all_run")"
+  mixed_discuss_out="$(compact_path_with compact-discuss-skip "$mixed_discuss_skip")"
+  check "mixed compact plan skips DISCUSS only when discuss=false" "0" \
+    "$(grep -cx 'discuss' <<<"$mixed_discuss_out")"
+  check "mixed compact plan still runs code review when codeReview=true" "1" \
+    "$(grep -cx 'verify.code-review' <<<"$mixed_discuss_out")"
+
+  mixed_verify="$(jq -c '.placeholderScan.run = false | .placeholderScan.reason = "no generated placeholders" | .acceptance.run = false | .acceptance.reason = "evidence is supplied by the selected verifier"' <<<"$compact_all_run")"
+  mixed_verify_out="$(compact_path_with compact-verify-mix "$mixed_verify")"
+  check "mixed compact plan skips placeholder scan" "0" \
+    "$(grep -cx 'verify.marker' <<<"$mixed_verify_out")"
+  check "mixed compact plan keeps tamper scan after placeholder skip" "1" \
+    "$(grep -cx 'verify.tamper' <<<"$mixed_verify_out")"
+  check "mixed compact plan skips acceptance evidence" "0" \
+    "$(grep -cx 'verify.acceptance' <<<"$mixed_verify_out")"
+  check "mixed compact plan still reaches code review" "1" \
+    "$(grep -cx 'verify.code-review' <<<"$mixed_verify_out")"
+
+  mixed_iterate="$(jq -c '.iterate.run = false | .iterate.reason = "bounded result needs no separate iteration"' <<<"$compact_all_run")"
+  mixed_iterate_out="$(compact_path_with compact-iterate-skip "$mixed_iterate")"
+  check "mixed compact plan skips ITERATE only when iterate=false" "0" \
+    "$(grep -cx 'iterate' <<<"$mixed_iterate_out")"
+  check "mixed compact plan still delivers after iterate skip" "1" \
+    "$(grep -cx 'deliver' <<<"$mixed_iterate_out")"
+
+  compact_shape_rc=0
+  compact_shape="$(python3 - "$ROOT/graph/cycle.graph.json" 2>&1 <<'PY'
+import json, sys
+graph = json.load(open(sys.argv[1]))
+adaptive = {
+    "human.after-spec", "discuss.critique.gate", "plan.critique.gate",
+    "verify.placeholder.gate", "verify.tamper.gate", "verify.acceptance.gate",
+    "verify.code-review.gate",
+    "iterate.gate",
+}
+for node in adaptive:
+    edges = [edge for edge in graph["edges"] if edge["from"] == node]
+    chains = [edge for edge in edges if edge.get("kind") == "chain"]
+    if chains:
+        raise SystemExit("%s retains chain fallback(s)" % node)
+print("no adaptive chain fallbacks")
+PY
+)" || compact_shape_rc=$?
+  check "compact adaptive gates have no bypassing chain fallbacks" "0" "$compact_shape_rc"
+  check "compact adaptive chain audit names the invariant" "no adaptive chain fallbacks" "$compact_shape"
   # Path-length rule 2: every short-path bypass is paired with a full-path
   # route, and the branching node defaults to that full-path successor.
   pair_rc=0
