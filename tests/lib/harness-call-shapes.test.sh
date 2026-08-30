@@ -33,6 +33,12 @@ check "AskUserQuestion calls use questions:[...] wrapper" "$([[ -z "$bad" ]] && 
 bad=$(grep -rn 'options: \["' skills agents --include='*.md' 2>/dev/null | grep -v 'harness-call-contracts' | head -5 || true)
 check "no bare-string AskUserQuestion options" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
+bad=$(grep -rnE 'header: *"[^"]{13,}"' skills agents --include='*.md' 2>/dev/null | head -5 || true)
+check "AskUserQuestion headers stay within 12 characters" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
+bad=$(grep -rn 'subagentBrief' skills/checking-gates/SKILL.md skills/specifying-gates/SKILL.md 2>/dev/null | head -5 || true)
+check "gate skills use canonical dispatchBrief metadata" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+
 # 3) Every Agent({ block must carry the REQUIRED description: within its body.
 bad=""
 for f in $CORPUS; do
@@ -137,20 +143,54 @@ for f in \
   skills/discuss/SKILL.md \
   skills/execute/SKILL.md \
   skills/verify/SKILL.md \
+  skills/iterate/SKILL.md \
+  skills/deliver/SKILL.md \
   skills/map-codebase/SKILL.md \
   skills/shared/critique-gate-protocol.md \
   skills/shared/no-teams-fallback.md \
   skills/shared/subagent-concurrency.md \
+  skills/shared/execute-subagent.md \
+  skills/shared/execute-loop-fleet.md \
   skills/cycle/references/startup-probes.md \
   skills/cycle/references/codebase-map-bootstrap.md \
+  skills/cycle/references/phase-activate.md \
   skills/execute/references/team-rung-protocol.md \
-  skills/plan/references/patterns-bootstrap.md
+  skills/plan/references/patterns-bootstrap.md \
+  skills/verify/references/workspace-mode.md
 do
   grep -qiF 'never AskUserQuestion as a wait' "$f" \
     || wait_missing="$wait_missing $f"
 done
 check "every Agent-joining phase forbids AskUserQuestion as a wait" \
   "$([[ -z "$wait_missing" ]] && echo 1 || echo 0)" "$wait_missing"
+grep -qF 'placeholder-question-guard.sh' hooks/hooks.json \
+  && grep -qF '"matcher": "AskUserQuestion"' hooks/hooks.json \
+  && v=1 || v=0
+check "hooks.json registers the placeholder-question PreToolUse guard" "$v"
+grep -qF 'placeholder-question-guard.sh' skills/shared/harness-call-contracts.md \
+  && v=1 || v=0
+check "contract doc names the placeholder-question hook" "$v"
+
+# 8adeb32 replaced the only ITERATE AskUserQuestion({ questions: [...] }) with
+# prose shorthand; the model then invented the dummy wait shape. Call-contract
+# examples that the harness actually executes must stay as JSON.
+grep -qF 'AskUserQuestion({' skills/iterate/SKILL.md \
+  && grep -qF 'header: "Re-open SPEC"' skills/iterate/SKILL.md \
+  && grep -qF 'questions: [{' skills/iterate/SKILL.md && v=1 || v=0
+check "ITERATE spec-rewind gate is a questions-wrapper call" "$v"
+grep -qF 'AskUserQuestion({' skills/execute/references/team-rung-protocol.md \
+  && grep -qF 'header: "Plan gap"' skills/execute/references/team-rung-protocol.md \
+  && grep -qF 'questions: [{' skills/execute/references/team-rung-protocol.md && v=1 || v=0
+check "EXECUTE plan-adherence gate is a questions-wrapper call" "$v"
+grep -qF 'AskUserQuestion({' skills/spec/references/interview-prompts.md \
+  && grep -qF 'header: "Spec gate"' skills/spec/references/interview-prompts.md \
+  && grep -qF 'header: "Max rounds"' skills/spec/references/interview-prompts.md \
+  && grep -qF 'questions: [{' skills/spec/references/interview-prompts.md && v=1 || v=0
+check "SPEC gate prompts are questions-wrapper calls" "$v"
+grep -E '^allowed-tools:' skills/verify/SKILL.md | grep -q AskUserQuestion && v=0 || v=1
+check "VERIFY allowed-tools omit AskUserQuestion" "$v"
+grep -E '^allowed-tools:' skills/deliver/SKILL.md | grep -q AskUserQuestion && v=0 || v=1
+check "DELIVER allowed-tools omit AskUserQuestion" "$v"
 
 # 8c) Live /cycle: bash sleep-polls (120s PATTERNS join, 600s map bootstrap)
 #     froze the session between DISCUSS and PLAN. Check once, then fallback.

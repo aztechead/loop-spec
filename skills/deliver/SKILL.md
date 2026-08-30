@@ -24,6 +24,10 @@ PR metadata reflects final artifacts
 PR is no longer a draft
 ```
 
+Never AskUserQuestion as a wait. This phase launches no agents; the required-check
+wait is inside `lib/deliver.sh` (one blocking Bash call). Do not background that
+call or occupy the wait with a placeholder question.
+
 The deterministic implementation is `lib/deliver.sh`, which delegates each changed
 repository to `lib/pr-delivery.sh`. Both use explicit repository paths, so this phase
 is identical under Claude Code, OpenCode, and Google ADK. Agents that open a PR with

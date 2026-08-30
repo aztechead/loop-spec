@@ -26,6 +26,10 @@ absent() {
 }
 
 present "DELIVER skill exists" skills/deliver/SKILL.md "name: deliver"
+present "DELIVER never AskUserQuestion as a wait" skills/deliver/SKILL.md "Never AskUserQuestion as a wait"
+present "ITERATE never AskUserQuestion as a wait" skills/iterate/SKILL.md "Never AskUserQuestion as a wait"
+present "ITERATE spec-rewind gate is a questions-wrapper call" skills/iterate/SKILL.md 'AskUserQuestion({'
+present "ITERATE spec-rewind header is Re-open SPEC" skills/iterate/SKILL.md 'header: "Re-open SPEC"'
 present "DELIVER invokes deterministic controller" skills/deliver/SKILL.md "lib/deliver.sh"
 present "controller delegates one-repo delivery" lib/deliver.sh "pr-delivery.sh"
 present "bypass PRs are reconciled at publication" lib/delivery-reconcile.sh "Turn a GitHub PR created outside"
@@ -69,6 +73,17 @@ absent "VERIFY does not create PRs" skills/verify/SKILL.md "gh pr create"
 absent "VERIFY does not push branches" skills/verify/SKILL.md "git push -u origin"
 absent "VERIFY does not exit worktree" skills/verify/SKILL.md "ExitWorktree"
 absent "workspace VERIFY does not create PRs" skills/verify/references/workspace-mode.md "gh pr create"
+
+if grep -E '^allowed-tools:' skills/verify/SKILL.md | grep -q AskUserQuestion; then
+  echo "FAIL: VERIFY allowed-tools omit AskUserQuestion"; FAIL=$((FAIL + 1))
+else
+  echo "PASS: VERIFY allowed-tools omit AskUserQuestion"; PASS=$((PASS + 1))
+fi
+if grep -E '^allowed-tools:' skills/deliver/SKILL.md | grep -q AskUserQuestion; then
+  echo "FAIL: DELIVER allowed-tools omit AskUserQuestion"; FAIL=$((FAIL + 1))
+else
+  echo "PASS: DELIVER allowed-tools omit AskUserQuestion"; PASS=$((PASS + 1))
+fi
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

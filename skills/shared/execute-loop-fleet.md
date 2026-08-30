@@ -32,8 +32,9 @@ then behaves exactly as before this rung existed).
 runtime probe false, so one-shot `claude -p`, cron, CI, and SDK jobs use subagent
 waves at any width. `LOOP_SPEC_LOOP_RUNTIME=1` is the explicit integrator assertion
 that a headless wrapper can keep the foreground call alive. Never background the
-supervisor and never use `ScheduleWakeup`; a forced loop without this capability is
-a loud EXECUTE error rather than a silent exit.
+supervisor, never AskUserQuestion as a wait
+(`skills/shared/harness-call-contracts.md`), and never use `ScheduleWakeup`; a forced
+loop without this capability is a loud EXECUTE error rather than a silent exit.
 
 Under Claude Code no operator env is needed for the common case: the harness stamps
 `CLAUDE_CODE_ENTRYPOINT`, and the values `sdk-cli` (`claude -p`), `sdk-py` (Python

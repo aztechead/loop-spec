@@ -4,6 +4,44 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.7.2] - 2026-08-29
+
+Placeholder `AskUserQuestion` waits still fired in EXECUTE, VERIFY, ITERATE,
+and DELIVER after 4.6.1's instruction-only forbid. The lead invented
+`wait` / `n/a` / "Type something" / "not a real question" while a background
+Agent or the DELIVER check wait ran.
+
+The introducing commit is `8adeb32` (conciseness stage 5): it replaced the
+only valid ITERATE `AskUserQuestion({ questions: [...] })` with prose
+shorthand and flattened the SPEC gate prompts the same way. Without an
+in-phase call-contract example, the model emits the invalid dummy flat
+shape. EXECUTE's plan-adherence gate was never a structured call.
+
+### Fixed
+
+- **Call contracts restored, not just filtered.** ITERATE's Re-open SPEC
+  gate, SPEC's Spec gate / Max rounds prompts, and EXECUTE's plan-adherence
+  re-queue/abort are `AskUserQuestion({ questions: [...] })` again. VERIFY
+  drops `AskUserQuestion` from `allowed-tools` (it has no real question).
+- **Dummy wait questions are denied at the tool boundary.**
+  `hooks/team/placeholder-question-guard.sh` (matcher `AskUserQuestion`) blocks
+  the live dummy tells, any question while an Agent is still running, every
+  question during VERIFY/DELIVER, ITERATE questions other than the
+  Re-open SPEC gate, and EXECUTE questions other than Plan gap /
+  specifying-gates. Every question in a batch must be allowed, so one valid
+  header cannot mask another question; allowed headers must also match their
+  published single-select question and option contracts. Gate specification now
+  records executable commands, exact pass/fail rules, and the canonical
+  `dispatchBrief` field. Real questions about a product's
+  ping or keepalive behavior are not mistaken for agent keep-alives. Phase
+  restrictions follow the active skill in the harness transcript, so persisted
+  state cannot block the cycle entrypoint's resume/new-feature question. Kill switch:
+  `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD=0`.
+  ITERATE, DELIVER, the EXECUTE subagent/loop-fleet rungs, VERIFY workspace
+  joins, and cycle phase dispatch now say dispatch-then-stop instead of
+  "lead waits". Pinned by `hooks/team/placeholder-question-guard.test.sh`
+  and `tests/lib/harness-call-shapes.test.sh`.
+
 ## [4.7.0] - 2026-08-28
 
 SPEC and PLAN get shorter without dropping the DISCUSS grill or the

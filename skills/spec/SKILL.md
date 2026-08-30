@@ -153,9 +153,9 @@ After round [N]:
   Ambiguity: [score] (gate: <= 0.20)
 ```
 
-**On gate pass** (ambiguity <= 0.20 AND all per-dimension minimums met), ask the "Spec gate" question (full prompt in `${CLAUDE_SKILL_DIR}/references/interview-prompts.md`): "Yes - write SPEC.md" or "Done talking - write it" → Step 3; "One more round" → continue the loop.
+**On gate pass** (ambiguity <= 0.20 AND all per-dimension minimums met), emit the "Spec gate" `AskUserQuestion({ questions: [...] })` from `${CLAUDE_SKILL_DIR}/references/interview-prompts.md` as written: "Yes - write SPEC.md" or "Done talking - write it" → Step 3; "One more round" → continue the loop.
 
-**On round 6 reached with the gate still failing**, ask the "Max rounds" question (same reference): "Write SPEC.md anyway" → Step 3, marking unresolved dimensions in the `ambiguity_scores` block (`gate_passed: false`); "Keep talking" → continue without a round limit; "Abandon" → stop without writing; report that the user abandoned and return to the cycle.
+**On round 6 reached with the gate still failing**, emit the "Max rounds" call from the same reference as written: "Write SPEC.md anyway" → Step 3, marking unresolved dimensions in the `ambiguity_scores` block (`gate_passed: false`); "Keep talking" → continue without a round limit; "Abandon" → stop without writing; report that the user abandoned and return to the cycle.
 
 ### Step 3 - Write SPEC.md and the transcript
 
