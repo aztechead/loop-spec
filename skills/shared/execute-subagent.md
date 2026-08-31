@@ -101,8 +101,19 @@ Apply these replacements to the lead wave loop:
    `task.files`. Dispatch the reviewer against the uncommitted diff:
    `git -C "{featureWorktreeRoot}" diff -- {task.files}`. Rework agents edit the same
    working tree serially; no other task starts while it is dirty.
-   4. On reviewer `pass`, the lead reruns `task.verifyCommand`, stages exactly
-   `task.files`, and commits `feat: NO_JIRA {task.subject}`. Verify that HEAD advanced
+   4. On reviewer `pass`, the lead reruns `task.verifyCommand` through
+   `lib/output-digest.sh` — once per merged task is the largest single thing that
+   accumulates in the lead's window across a wave loop, and the full log stays on disk
+   where it can still be grepped or cited:
+
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/output-digest.sh" run \
+     --log ".loop-spec/features/{slug}/logs/verify-{taskId}.log" \
+     --label "verify {taskId}" -- {task.verifyCommand}
+   ```
+
+   It exits with the command's own code, so the pass/fail branch below is unchanged.
+   Then stage exactly `task.files` and commit `feat: NO_JIRA {task.subject}`. Verify that HEAD advanced
    from `taskBaseSha` and the checkout is clean, then add the task to `mergedSet` and
    persist `bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done ".loop-spec/features/${slug}/tasks.json" "{taskId}"`.
    There is no `integrate-task.sh` call because the accepted commit is already on the

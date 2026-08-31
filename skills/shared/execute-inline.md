@@ -76,8 +76,18 @@ and `blocked[]`. Repeat until `remaining` is empty:
    TDD (failing test first for every code-producing task; skill/config/docs excluded),
    touch only `files`, keep to the brief.
 4. **Task verify:** run `lib/prepare-environment.sh` with `commands.prepare`, then the
-   task's `verifyCommand`. A task-command failure remains uncommitted and may be fixed in
-   place up to `maxRetriesPerTask` attempts.
+   task's `verifyCommand` through `lib/output-digest.sh` — this rung runs entirely on the
+   lead's thread, so an unbounded suite log per task per retry is the whole window:
+
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/../../lib/output-digest.sh" run \
+     --log ".loop-spec/features/{slug}/logs/verify-{taskId}.log" \
+     --label "verify {taskId}" -- {task.verifyCommand}
+   ```
+
+   It exits with the command's own code. A task-command failure remains uncommitted and
+   may be fixed in place up to `maxRetriesPerTask` attempts; the full log stays at the
+   path above for diagnosis.
 5. **Commit candidate** on `feat/{slug}` with the task id in the message (same message
    contract as the implementer prompt). Nothing staged → `blocked += {taskId,
    reason: "commit-missing"}`.

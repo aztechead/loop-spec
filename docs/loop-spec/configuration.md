@@ -59,6 +59,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for each baseline/candidate validation command. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for each baseline/candidate validation command. `0` disables the idle deadline. |
 | `LOOP_SPEC_COMMAND_TIMEOUT_SECS` | non-negative integer; `1800` | Default wall-clock timeout used by generic managed command execution. A more specific timeout wins; `0` disables the wall-clock deadline. |
+| `LOOP_SPEC_DIGEST_MAX_LINES` | positive integer; `40` | Lines of command output `lib/output-digest.sh` puts into the agent's context (head and tail, split evenly). The complete output always goes to the log file the digest names, so raising this buys nothing a `grep` of that file does not. `0` is refused; an explicit `--max-lines` outranks this. |
 | `LOOP_SPEC_COMMAND_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | Default no-output timeout used by generic managed command execution. A more specific idle timeout wins; `0` disables the idle deadline. |
 
 ### Worktrees, dispatch, and runtime capability
