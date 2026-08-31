@@ -422,6 +422,7 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_BOUNDED_RUN_CWD`, `LOOP_SPEC_BOUNDED_RUN_STDIN` | Internal subprocess transport used by `lib/bounded-run.sh`; callers set these only while spawning the bounded child. |
 | `LOOP_SPEC_PROJECT_DIR`, `LOOP_SPEC_PWD`, `LOOP_SPEC_PROJ_VERIFY_CMD`, `LOOP_SPEC_LAST_RESULT_FILE` | Internal values passed into embedded hook parsers. |
 | `LOOP_SPEC_GROUNDING_SPEC` | Internal transport for the verification-grounding linter. |
+| `LOOP_SPEC_GATE_WRITE` | Set by `lib/graph/gate.sh` so `lib/feature-write.sh` admits the `currentGate`/`gateHistory` write it owns. Setting it by hand re-opens the raw write path that gate.sh exists to close. |
 | `LOOP_SPEC_BASE_CURSOR`, `LOOP_SPEC_STATE_CURSOR`, `LOOP_SPEC_STATE_FINGERPRINT`, `LOOP_SPEC_STATE_FLAGS`, `LOOP_SPEC_STATE_REPORT` | Internal deferral-guard state serialization. |
 | `LOOP_SPEC_DIR` | Internal session-learnings path variable. |
 | `LOOP_SPEC_VERSION` | Packaging/test override for plugin-version detection. Production reads the installed manifest. |

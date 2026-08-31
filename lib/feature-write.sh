@@ -41,6 +41,14 @@ if [[ "$1" == "set" || "$1" == "append" ]]; then
   # caller-controlled value execute arbitrary jq (or corrupt the file via a parse error).
   # We split on `.` and validate each segment, then pass the segments to jq via --argjson
   # so the path is built inside jq with getpath/setpath rather than via string concatenation.
+  # currentGate/gateHistory move together in a fixed order, so they belong to one writer:
+  # lib/graph/gate.sh. A prose-driven raw write is what put a null in currentGate in the
+  # field, which lib/graph/state.sh assert-reads then rejected at the critique node.
+  if [[ "${LOOP_SPEC_GATE_WRITE:-}" != "1" && "${dot_path%%.*}" =~ ^(currentGate|gateHistory)$ ]]; then
+    echo "feature-write: ${dot_path%%.*} is written only by lib/graph/gate.sh" >&2
+    echo "  use: gate.sh open|round|fail|pass --feature-dir <dir> ..." >&2
+    exit 1
+  fi
   if [[ ! "$dot_path" =~ ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$ ]]; then
     echo "feature-write: invalid dot_path (must be alnum/underscore segments separated by .): $dot_path" >&2
     echo "  nested object keys are supported (artifacts.patterns); array indices are not" >&2

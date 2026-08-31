@@ -57,10 +57,17 @@ check "an agent purpose comes from its frontmatter description" "1" \
   "$(bash "$SCRIPT" find code-reviewer | grep -c 'Quality + security review')"
 
 # The index is derived, never stored: nothing is written and no artifact is left behind.
-before="$(git -C "$ROOT" status --porcelain | sort)"
+# tests/run-all.sh runs suites concurrently, so a repo-wide snapshot also catches another
+# suite's scratch file appearing and vanishing mid-interval. Scoping both snapshots to the
+# directories surface.sh reads keeps the property honest -- an artifact it left behind lands
+# in one of them -- without failing on a neighbour's temp file at the repo root.
+scoped_status() {
+  git -C "$ROOT" status --porcelain -- lib hooks skills agents graph docs tests | sort
+}
+before="$(scoped_status)"
 bash "$SCRIPT" list >/dev/null
 bash "$SCRIPT" find worktree >/dev/null || true
-check "querying the index writes nothing" "$before" "$(git -C "$ROOT" status --porcelain | sort)"
+check "querying the index writes nothing" "$before" "$(scoped_status)"
 
 # --- coverage: the tool sees the whole surface ---
 # Swept from the TREE, not from the directories the index happens to walk: a sweep

@@ -51,7 +51,14 @@ breaking checkpoints or edge references. The schema permits labels and
    written to the node ledger by `lib/graph/checkpoint.sh` (covered by
    `tests/lib/graph-checkpoint.test.sh`), a resumable pause record is emitted, and any
    later invocation resumes at exactly that node — resume is a lookup, not a
-   scan-and-infer procedure.
+   scan-and-infer procedure. Its `admit` decides whether this run pauses here, and only
+   an ANSWERED admit decides anything: a resolved non-match skips the node (`auto` and
+   `review-only` answer `gate=skip`), while an UNRESOLVED admit — an unreadable
+   `feature.json`, an `execStyle` outside the enum, a missing probe, or no `admit`
+   declared at all — aborts the run with a published `failed` result. Falling through
+   there is how a run with hand-damaged state walked past `human.after-plan` into
+   EXECUTE with nobody having decided to skip it. Pinned by section 22 of
+   `tests/lib/graph-run.test.sh`.
 5. **`subgraph`.** Nests another graph file via its `graph` path so a protocol is
    declared once and reused — the critique protocol lives in
    `graph/critique.graph.json` and is referenced by both `discuss.critique` and

@@ -565,13 +565,30 @@ def process_node(current, admitting, defer_agent_routing):
     if kind == "human":
         admit = node.get("admit")
         admitted = False
+        resolved = False
         admit_probe, admit_token, admit_reason = None, None, None
         if admit:
             r = run_condition(admit, current)
             admitted = r["satisfied"]
+            resolved = r["resolved"]
             admit_probe = admit.get("probe")
             admit_token = r["token"]
             admit_reason = r["reason"]
+        # An unresolved admit is not a skip. Skipping is a decision, and only a
+        # probe that ANSWERED has made one -- an unreadable feature.json or an
+        # execStyle outside the enum means nobody decided, and falling through
+        # there silently drops the human gate for the rest of the run. A dry run
+        # still walks past, exactly as it walks past an admitted pause below:
+        # it is a topology traversal, not an execution.
+        if not resolved and not dry_run:
+            detail = "human node %s: admit unresolved (%s); refusing to skip a human gate" % (
+                current, admit_reason or "no admit condition declared")
+            emit_trace(current, admitting, admit_probe,
+                       "human-admit-unresolved:%s" % (admit_reason or "no-admit"), effort)
+            checkpoint(current, admitting, effort)
+            publish_result("failed", detail)
+            print("run.sh: %s" % detail, file=sys.stderr)
+            sys.exit(1)
         if admitted and not dry_run:
             emit_trace(current, admitting, admit_probe, admit_reason, effort)
             checkpoint(current, admitting, effort)
@@ -585,9 +602,9 @@ def process_node(current, admitting, defer_agent_routing):
             if not step_mode:
                 print("run.sh: paused at human node %s" % current, file=sys.stderr)
             return {"status": "paused", "descriptor": descriptor, "next": None}
-        # Not admitted (or an unresolved/absent admit): skip, fall through to
-        # ordinary routing exactly like any other node — the gates that must
-        # never be skipped are `gate` nodes, not `human` nodes (sec 4).
+        # Resolved and not admitted: skip, fall through to ordinary routing
+        # exactly like any other node — `auto` and `review-only` answer
+        # `gate=skip` here, and an answered skip is the run's own policy (sec 4).
 
     if kind == "subgraph" and not dry_run:
         rc = dispatch_subgraph(node)

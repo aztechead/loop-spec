@@ -189,6 +189,7 @@ run_suite "lib/graph-schema"          "bash tests/lib/graph-schema.test.sh"
 run_suite "lib/graph-validate"        "bash tests/lib/graph-validate.test.sh"
 run_suite "lib/graph-probes"      "bash tests/lib/graph-probes.test.sh"
 run_suite "lib/graph-state"           "bash tests/lib/graph-state.test.sh"
+run_suite "lib/graph-gate"            "bash tests/lib/graph-gate.test.sh"
 run_suite "lib/graph-checkpoint"      "bash tests/lib/graph-checkpoint.test.sh"
 run_suite "lib/graph-trace"           "bash tests/lib/graph-trace.test.sh"
 run_suite "lib/graph-run"             "bash tests/lib/graph-run.test.sh" integration
