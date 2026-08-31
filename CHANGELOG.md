@@ -4,6 +4,56 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-08-31
+
+The critique-gate transition is a program rather than a procedure a model
+performs, an unresolved human-gate admit can no longer be mistaken for a skip,
+and the command output that accumulates in the lead's context across a cycle is
+bounded without losing the output itself.
+
+### Added
+
+- **`lib/graph/gate.sh`** — the sole writer of `feature.json` `currentGate` and
+  `gateHistory`. It derives each attempt number from the entries already
+  recorded for that phase and gate, appends the history entry before closing a
+  gate, resets to a whole object and never to `null`, and refuses every
+  subcommand when no gate is open. `lib/feature-write.sh` refuses both keys to
+  any other caller.
+- **`lib/output-digest.sh`** — bounded command output: the complete result goes
+  to a log file, a fixed head/tail excerpt goes to the agent's context, and the
+  wrapped command's own exit code is propagated so no caller's branch changes.
+  `run` executes and logs; `print` digests a log another runner already wrote,
+  so `lib/run-with-watchdog.sh` composes with it. New operator input
+  `LOOP_SPEC_DIGEST_MAX_LINES` (default 40; `0` is refused).
+
+### Fixed
+
+- **The critique gate no longer dead-ends the engine.** `currentGate` had two
+  drivers — graph nodes that declare it in `writes[]`, and prose ordered against
+  phase-skill step numbers — and the two shipped readings of its reset (a zeroed
+  object, or `null`) disagreed. A `null` reset fails `lib/graph/state.sh
+  assert-reads` at the critique nodes that declare it in `reads[]`. The
+  transition is now code and the contradiction is gone from the docs.
+- **An unresolved human-gate admit aborts instead of skipping.** The engine
+  treated an admit that could not answer — unreadable `feature.json`, an
+  `execStyle` outside the enum, a missing probe, no `admit` declared — the same
+  as an answered `gate=skip`, so damaged state silently dropped every human gate
+  in a run. Autonomous behavior is unchanged: `auto` and `review-only` resolve
+  to `gate=skip`.
+- **`feature-init.sh` seeded `currentGate` with two of its six documented keys.**
+- **`tests/lib/graph-run.test.sh` no longer writes a fixture into the repo root**,
+  which raced `tests/lib/surface.test.sh`'s working-tree snapshot under the
+  concurrent runner and failed that suite intermittently.
+
+### Changed
+
+- **The lead's unbounded command output is bounded at its three sites.** EXECUTE's
+  per-task `verifyCommand` re-run on both lead-thread rungs, and the grounding
+  protocol's lead-runs-probes rule — where output stays on the main thread by
+  design, because teammates have no Bash for write-scope containment, and so is
+  bounded rather than delegated.
+
+
 ## [4.8.0] - 2026-08-30
 
 Autonomous routing now has a compact path for bounded features and refactors,

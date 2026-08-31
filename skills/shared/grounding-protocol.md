@@ -79,10 +79,20 @@ Teammates (spec-writer, planner, challenger) have **no Bash tool by
 design** — write-scope containment. Only the LEAD (orchestrator / main thread)
 can run probes.
 
+Because that containment is deliberate, probe output lands in the lead's own context
+and cannot be delegated away — so it is bounded instead. Run any probe whose output is
+not obviously a line or two through `lib/output-digest.sh`, which keeps the whole result
+on disk for the ledger and citation while a fixed excerpt enters context:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/output-digest.sh" run \
+  --log ".loop-spec/features/{slug}/logs/probe-{n}.log" --label "probe {n}" -- <probe>
+```
+
 Protocol:
 1. Before dispatching a writer, the lead enumerates external systems named in the
-   ask, runs the appropriate read-only probes, and calls `evidence.sh add` for each
-   result.
+   ask, runs the appropriate read-only probes (bounded as above), and calls
+   `evidence.sh add` for each result.
 2. The lead includes the `EVID-NNN` ids and the relevant output excerpts in the
    writer's brief under a field such as `evidence_path:` and `evidence:`.
 3. Writers cite the ids they were handed (`EVID-NNN`) — they do not invent or

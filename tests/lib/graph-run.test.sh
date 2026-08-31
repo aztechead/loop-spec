@@ -599,13 +599,16 @@ cat > "$WORK/bin/failing-gate.sh" <<'EOF'
 exit 7
 EOF
 chmod +x "$WORK/bin/failing-gate.sh"
-cp "$WORK/bin/failing-gate.sh" "$ROOT/.tmp-gate-$$.sh"
-chmod +x "$ROOT/.tmp-gate-$$.sh"
+# An absolute body, so this fixture never lands in the working tree. The copy that
+# used to sit at the repo root raced tests/lib/surface.test.sh, which snapshots
+# `git status` across an interval while run-all.sh runs suites concurrently.
+# lib/graph/paths.py repo_path() leaves an absolute path alone, and validate.sh
+# resolves it the same way, so the dispatch under test is unchanged.
 cat > "$WORK/gate-fail.json" <<EOF
 {
   "entry": "g",
   "nodes": [
-    {"id":"g","kind":"gate","reads":[],"writes":[],"effort":"system1","body":".tmp-gate-$$.sh"},
+    {"id":"g","kind":"gate","reads":[],"writes":[],"effort":"system1","body":"$WORK/bin/failing-gate.sh"},
     {"id":"after","kind":"function","reads":[],"writes":[],"effort":"system1"}
   ],
   "edges": [{"from":"g","to":"after","kind":"chain"}]
@@ -618,7 +621,6 @@ set +e
 out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-gatefail" "$WORK/gate-fail.json" 2>&1)"
 rc=$?
 set -e
-rm -f "$ROOT/.tmp-gate-$$.sh"
 check "gate nodes ARE dispatched and a failing gate blocks the phase: exit 1" "1" "$rc"
 check "failing gate never reaches its chain successor" "0" "$(echo "$out" | grep -c $'^after\t')"
 echo "$out" | grep -q "conflict="
@@ -893,7 +895,6 @@ cp "$BACKUP" "$MUTATION_ENGINE"
 diff -q "$BACKUP" "$ENGINE" >/dev/null
 check "source engine remains byte-identical after isolated mutation proofs" "0" "$?"
 
-rm -rf "$ROOT"/.tmp-gate-* "$ROOT"/.tmp-probes-* 2>/dev/null || true
 
 ## --- 14. effort: the probe runs, and may only RAISE the declared default ---
 ## Contract sec 7. lib/verification-gap-scan.sh found this: every other wired
@@ -1126,6 +1127,73 @@ PY
 )"
   check "discuss-critique skip pairs with routeDefault to the run path" "paired" "$dc_pair"
 fi
+
+## --- 22. human node: an UNRESOLVED admit aborts; it never skips the gate ---
+##      The field failure this pins: a hand-repaired feature.json left execStyle
+##      unreadable, every human.* admit went unresolved, and the run walked
+##      straight past human.after-plan into EXECUTE. Only an ANSWERED skip skips.
+new_feat "$WORK/feat-noexec" '{slug:"h-noexec",schemaVersion:7}'
+set +e
+out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-noexec" "$WORK/human.json" 2>&1)"
+rc=$?
+set -e
+check "unresolved admit: exit 1 (aborted)" "1" "$rc"
+check "unresolved admit: never reaches b" "0" "$(echo "$out" | grep -c $'^b\t')"
+check "unresolved admit: no pause record" "1" \
+  "$([[ -f "$WORK/feat-noexec/graph-pause.json" ]] && echo 0 || echo 1)"
+check "unresolved admit: says why" "0" \
+  "$(echo "$out" | grep -q 'refusing to skip a human gate' && echo 0 || echo 1)"
+check "unresolved admit: publishes a failed result" "failed" \
+  "$(jq -r '.status // "none"' "$WORK/feat-noexec/result.json" 2>/dev/null || echo none)"
+
+new_feat "$WORK/feat-badexec" '{slug:"h-bad",schemaVersion:7,execStyle:"whatever"}'
+set +e
+bash "$SCRIPT" --feature-dir "$WORK/feat-badexec" "$WORK/human.json" >/dev/null 2>&1
+rc=$?
+set -e
+check "execStyle outside the enum aborts too" "1" "$rc"
+
+# A human node with no admit at all has no policy to answer with -- same abort.
+cat > "$WORK/human-noadmit.json" <<'EOF'
+{
+  "entry": "a",
+  "nodes": [
+    {"id":"a","kind":"function","reads":[],"writes":[],"effort":"system1"},
+    {"id":"human.after-a","kind":"human","reads":[],"writes":[],"effort":"system1"},
+    {"id":"b","kind":"function","reads":[],"writes":[],"effort":"system1"}
+  ],
+  "edges": [
+    {"from":"a","to":"human.after-a","kind":"chain"},
+    {"from":"human.after-a","to":"b","kind":"chain"}
+  ]
+}
+EOF
+new_feat "$WORK/feat-noadmit" '{slug:"h-noadmit",schemaVersion:7,execStyle:"auto"}'
+set +e
+bash "$SCRIPT" --feature-dir "$WORK/feat-noadmit" "$WORK/human-noadmit.json" >/dev/null 2>&1
+rc=$?
+set -e
+check "human node with no admit aborts" "1" "$rc"
+
+# Autonomous is untouched: `auto` and `review-only` RESOLVE to a skip.
+new_feat "$WORK/feat-auto2" '{slug:"h-auto2",schemaVersion:7,execStyle:"auto"}'
+set +e
+out="$(bash "$SCRIPT" --feature-dir "$WORK/feat-auto2" "$WORK/human.json")"
+rc=$?
+set -e
+check "autonomous still traverses the human node" "0" "$rc"
+check "autonomous still reaches b" "1" "$(echo "$out" | grep -c $'^b\t')"
+
+# The shipped human-gate probe answers for every style, so no shipped human node
+# can reach the abort on a well-formed feature.json.
+for style in auto step interactive review-only; do
+  new_feat "$WORK/feat-hg-$style" "{slug:\"hg\",schemaVersion:7,execStyle:\"$style\"}"
+  set +e
+  bash "$ROOT/lib/graph/probes/human-gate.sh" --feature-dir "$WORK/feat-hg-$style" >/dev/null
+  rc=$?
+  set -e
+  check "human-gate.sh resolves execStyle=$style" "0" "$rc"
+done
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

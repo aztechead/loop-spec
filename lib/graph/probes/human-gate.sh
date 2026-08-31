@@ -19,7 +19,10 @@
 # one. See README "Execution styles".
 #
 # Exit: 0 with one `gate=<pause|skip> reason=<text>` line when resolved;
-# non-zero and silent otherwise, so an unresolved style never admits.
+# non-zero and silent otherwise. Unresolved is not a skip: the engine aborts the
+# run at a human node whose admit did not answer (graph-contract.md sec 4),
+# because "nobody could decide" and "this run decided not to pause" are opposite
+# answers and only the second one may drop a human gate.
 set -euo pipefail
 
 usage() {

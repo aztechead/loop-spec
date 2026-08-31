@@ -59,6 +59,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_BASELINE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for each baseline/candidate validation command. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for each baseline/candidate validation command. `0` disables the idle deadline. |
 | `LOOP_SPEC_COMMAND_TIMEOUT_SECS` | non-negative integer; `1800` | Default wall-clock timeout used by generic managed command execution. A more specific timeout wins; `0` disables the wall-clock deadline. |
+| `LOOP_SPEC_DIGEST_MAX_LINES` | positive integer; `40` | Lines of command output `lib/output-digest.sh` puts into the agent's context (head and tail, split evenly). The complete output always goes to the log file the digest names, so raising this buys nothing a `grep` of that file does not. `0` is refused; an explicit `--max-lines` outranks this. |
 | `LOOP_SPEC_COMMAND_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | Default no-output timeout used by generic managed command execution. A more specific idle timeout wins; `0` disables the idle deadline. |
 
 ### Worktrees, dispatch, and runtime capability
@@ -422,6 +423,7 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_BOUNDED_RUN_CWD`, `LOOP_SPEC_BOUNDED_RUN_STDIN` | Internal subprocess transport used by `lib/bounded-run.sh`; callers set these only while spawning the bounded child. |
 | `LOOP_SPEC_PROJECT_DIR`, `LOOP_SPEC_PWD`, `LOOP_SPEC_PROJ_VERIFY_CMD`, `LOOP_SPEC_LAST_RESULT_FILE` | Internal values passed into embedded hook parsers. |
 | `LOOP_SPEC_GROUNDING_SPEC` | Internal transport for the verification-grounding linter. |
+| `LOOP_SPEC_GATE_WRITE` | Set by `lib/graph/gate.sh` so `lib/feature-write.sh` admits the `currentGate`/`gateHistory` write it owns. Setting it by hand re-opens the raw write path that gate.sh exists to close. |
 | `LOOP_SPEC_BASE_CURSOR`, `LOOP_SPEC_STATE_CURSOR`, `LOOP_SPEC_STATE_FINGERPRINT`, `LOOP_SPEC_STATE_FLAGS`, `LOOP_SPEC_STATE_REPORT` | Internal deferral-guard state serialization. |
 | `LOOP_SPEC_DIR` | Internal session-learnings path variable. |
 | `LOOP_SPEC_VERSION` | Packaging/test override for plugin-version detection. Production reads the installed manifest. |

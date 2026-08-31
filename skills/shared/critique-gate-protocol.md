@@ -31,25 +31,20 @@ phase-specific arguments and are pinned there.
 
 ## Gate open
 
-Update `feature.json` via `lib/feature-write.sh` and create the log directory.
-`advocateName` stays null (schema key retained for resume; no advocate is spawned):
-
-```json
-{
-  "currentGate": {
-    "phase": "{phase}",
-    "gate": "{gate}",
-    "round": 0,
-    "advocateName": null,
-    "challengerName": "challenger-1",
-    "startedAt": "<ISO-8601 now>"
-  }
-}
-```
+`lib/graph/gate.sh` owns every `currentGate` / `gateHistory` write in this protocol —
+`lib/feature-write.sh` refuses those two keys to anything else. It stamps `startedAt`,
+zeroes the round, and leaves `advocateName` null (schema key retained for resume; no
+advocate is spawned):
 
 ```bash
-mkdir -p .loop-spec/features/{slug}/gate-logs/
+feature_dir=".loop-spec/features/{slug}"
+bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" open --feature-dir "$feature_dir" \
+  --phase {phase} --gate {gate} --challenger challenger-1
+mkdir -p "$feature_dir/gate-logs/"
 ```
+
+Opening over an already-open gate is refused rather than overwritten: on a resume the
+gate is already open, and "Resume" below is the entry point, not this one.
 
 ## Single-critic pass
 
@@ -81,6 +76,13 @@ message. Write it to `gate-logs/{gate}-round-1.md`:
 <the FINDINGS/NO-FINDINGS message body>
 ```
 
+Record the round before adjudicating — `Resume` below re-enters on `currentGate.round > 0`,
+so a round that is logged to disk but never counted resumes as a gate that never opened:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" round --feature-dir "$feature_dir"
+```
+
 Emit the phase's `gate_round` event (`"mode":"single-critic"`), then adjudicate.
 
 A security signal still runs this pass (never skip). It does not spawn a second
@@ -105,24 +107,19 @@ Build `fix_list` (may be empty).
 Gate retries are unbounded (full bore): re-run the fix/verify loop until the gate passes.
 The only bound the cycle respects is ITERATE's round limit.
 
-Append the fail entry to `feature.json.gateHistory` via `lib/feature-write.sh` BEFORE
-re-dispatching (the re-dispatch path returns to the gate and would never reach an append
-placed after the return):
+Append the fail entry BEFORE re-dispatching (the re-dispatch path returns to the gate and
+would never reach an append placed after the return). `attempt` is counted from the
+entries already recorded for this phase and gate — never supplied:
 
-```json
-{
-  "phase": "{phase}",
-  "gate": "{gate}",
-  "attempt": <attempt number>,
-  "result": "fail",
-  "advocateModel": null,
-  "challengerModel": "<model>",
-  "rounds": <N (single-critic: 1 + delta rounds)>,
-  "convergence": "<single-critic | delta-verified | deadlock-kept>",
-  "findingsAddressed": [<fix_list items>],
-  "notes": null
-}
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" fail --feature-dir "$feature_dir" \
+  --rounds <N (single-critic: 1 + delta rounds)> \
+  --convergence <single-critic | delta-verified | deadlock-kept> \
+  --challenger-model "<model>" \
+  --findings '<fix_list items as a JSON array of strings>'
 ```
+
+The gate stays open across a fail — only `pass` closes it.
 
 Snapshot the artifact (feeds the delta re-verify diff; DISCUSS also hashes it for the
 no-op shortcut):
@@ -164,8 +161,8 @@ SendMessage({
 ```
 
 Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `challenger-1`. Never AskUserQuestion as a wait. Append the reply to a new
-`gate-logs/{gate}-round-{next}.md` (titled `(delta re-verify)`), and emit a `gate_round`
-event with `"mode":"delta"`:
+`gate-logs/{gate}-round-{next}.md` (titled `(delta re-verify)`) — `gate.sh round` supplies
+`{next}` — and emit a `gate_round` event with `"mode":"delta"`:
 
 - **`DELTA-VERIFIED`**: the gate passes — append the `gateHistory` pass entry
   (convergence: `"delta-verified"`), reset `currentGate` (below), proceed to `{next_step}`.
@@ -177,22 +174,19 @@ event with `"mode":"delta"`:
 
 ## fix_list empty
 
-Append the pass entry to `feature.json.gateHistory` (same shape as the fail entry with
-`"result": "pass"` and `"findingsAddressed": []`), then reset `currentGate` to zeroed
-state via `lib/feature-write.sh`:
+One call appends the pass entry and closes the gate, in that order:
 
-```json
-{
-  "currentGate": {
-    "phase": null,
-    "gate": null,
-    "round": 0,
-    "advocateName": null,
-    "challengerName": null,
-    "startedAt": null
-  }
-}
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" pass --feature-dir "$feature_dir" \
+  --rounds <N> --convergence <single-critic | delta-verified | deadlock-kept> \
+  --challenger-model "<model>"
 ```
+
+Do not clear `currentGate` any other way, and never before this call. The reset is a
+zeroed OBJECT, never null: `graph/cycle.graph.json` declares `currentGate` in the
+`reads[]` of both critique subgraph nodes, and `lib/graph/state.sh assert-reads` fails a
+node whose declared read is null. A run that nulled it by hand dead-ended the engine
+mid-gate and lost a human gate during the hand-repair that followed.
 
 Proceed to `{next_step}`.
 
