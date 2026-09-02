@@ -28,7 +28,7 @@ PY
   mv "$tmp" "$script"
 }
 
-for s in map-codebase acceptance-verify code-review-dimensions plan-multi-angle execute-dag; do
+for s in acceptance-verify code-review-dimensions plan-multi-angle execute-dag; do
   src="$LIB/${s}.js"
   [[ -f "$src" ]] || continue
   inject "$src"

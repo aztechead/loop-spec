@@ -28,7 +28,7 @@ harnesses, regardless of which models either account exposes.
 | iterate-judge, code-reviewer | inherit |
 | spec-compliance-reviewer, verifier | inherit |
 | implementer | inherit |
-| mapper-*, pattern-mapper | inherit |
+| pattern-mapper | inherit |
 
 `lib/feature-init.sh activate` writes this map to
 `feature.models.<role>` before each phase. Claude dispatches add a `model` key
@@ -78,7 +78,7 @@ The consuming surfaces differ and a selector valid for one is not valid for all:
 Supported phase suffixes are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`,
 `ITERATE`, and `DELIVER`. Supported role suffixes are `SPEC_WRITER`,
 `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`,
-`ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`,
+`ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`,
 and `PATTERN_MAPPER`.
 
 For a fresh main-context phase, `feature.phaseModels.<phase>` supplies the

@@ -42,7 +42,7 @@ printf '%s\n' \
 FIRST='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:spec"},"transcript":[]}'
 SECOND='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:discuss"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
 SAME='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:spec"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
-OTHER='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:map-codebase"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
+OTHER='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:retro"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
 
 check "first phase in transcript allowed" 0 "$FIRST" \
   CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=1

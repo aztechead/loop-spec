@@ -68,7 +68,7 @@ check "contract doc records the Agent model alias enum" "$v"
 # default resolves to inherit, `model: feature.models.role` emits the rejected
 # value. The startup probe is the one exception because it first filters its
 # loop input to the four aliases below.
-bad=$(grep -rnE 'model: *(feature\.models\.|models\.|model_mapper|mapper_model)' \
+bad=$(grep -rnE 'model: *(feature\.models\.|models\.)' \
   skills agents --include='*.md' 2>/dev/null | head -5 || true)
 check "Agent templates do not emit dynamic model placeholders" \
   "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
@@ -136,7 +136,6 @@ for f in \
   skills/verify/SKILL.md \
   skills/iterate/SKILL.md \
   skills/deliver/SKILL.md \
-  skills/map-codebase/SKILL.md \
   skills/shared/critique-gate-protocol.md \
   skills/shared/dispatch.md \
   skills/shared/dispatch.md \

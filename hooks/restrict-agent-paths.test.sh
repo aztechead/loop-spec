@@ -52,14 +52,6 @@ check "B: spec-writer Write to src/foo.py DENY" 2 \
 check "C: planner Edit to docs/loop-spec/features/foo/PLAN.md ALLOW" 0 \
   "$(payload "Edit" "docs/loop-spec/features/foo/PLAN.md" "$FIXTURES/planner.jsonl")"
 
-# Case D: mapper-tech Write to allowed codebase path -> ALLOW (exit 0)
-check "D: mapper-tech Write to docs/loop-spec/codebase/TECH.md ALLOW" 0 \
-  "$(payload "Write" "docs/loop-spec/codebase/TECH.md" "$FIXTURES/mapper-tech.jsonl")"
-
-# Case E: mapper-arch Write to disallowed path -> DENY (exit 2)
-check "E: mapper-arch Write to src/foo.py DENY" 2 \
-  "$(payload "Write" "src/foo.py" "$FIXTURES/mapper-arch.jsonl")"
-
 # Case F: implementer Write to any path -> ALLOW (exit 0)
 check "F: implementer Write to src/foo.py ALLOW" 0 \
   "$(payload "Write" "src/foo.py" "$FIXTURES/implementer.jsonl")"
@@ -75,10 +67,6 @@ check "H: Bash tool not restricted ALLOW" 0 \
 # Case I: spec-writer with absolute path to allowed location -> ALLOW (exit 0)
 check "I: spec-writer Write to /abs/path/docs/loop-spec/features/bar/SPEC.md ALLOW" 0 \
   "$(payload "Write" "/abs/path/docs/loop-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
-
-# Case J: mapper-arch Edit to absolute allowed codebase path -> ALLOW (exit 0)
-check "J: mapper-arch Edit to /abs/docs/loop-spec/codebase/MAP.md ALLOW" 0 \
-  "$(payload "Edit" "/abs/docs/loop-spec/codebase/MAP.md" "$FIXTURES/mapper-arch.jsonl")"
 
 # Case K: pattern-mapper Write to allowed features path -> ALLOW (exit 0)
 check "K: pattern-mapper Write to docs/loop-spec/features/foo/PATTERNS.md ALLOW" 0 \

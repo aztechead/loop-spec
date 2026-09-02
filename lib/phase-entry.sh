@@ -27,12 +27,12 @@
 # Ingress per phase (required files are FLAGged when absent; optional ones are listed
 # only when present):
 #   spec      fields slug feature_title execStyle greenfield autonomous artifacts.spec
-#             optional spec-draft.md, spec-interview-transcript.md, codebase/*.md
-#   discuss   fields slug feature_title execStyle autonomous bootstrapPendingDomains
-#             iterate.feedback currentGate; requires SPEC.md; optional codebase/*.md
+#             optional spec-draft.md, spec-interview-transcript.md
+#   discuss   fields slug feature_title execStyle autonomous iterate.feedback
+#             currentGate; requires SPEC.md
 #   plan      fields slug greenfield workspace iterate.feedback currentGate artifacts
 #             models.planner models.challenger; requires SPEC.md; optional PATTERNS.md,
-#             EVIDENCE.md, codebase/*.md
+#             EVIDENCE.md
 #   execute   fields slug branch baseSha commands workspace executionRootMode
 #             worktreePath greenfield artifacts.tasks pendingRemediationTasks
 #             models.implementer models.specComplianceReviewer; requires tasks.json,
@@ -75,26 +75,22 @@ fields() {
 # required WRITER PATH / optional PATH: list what exists; flag a required absence.
 required() { if [[ -f "$2" ]]; then echo "read=$2"; else echo "FLAG [ingress] $2 missing: $1 did not write it"; flags=$((flags + 1)); fi; }
 optional() { [[ -f "$1" ]] && echo "read=$1" || true; }
-codebase_maps() { local f; for f in "$root"/docs/loop-spec/codebase/*.md; do optional "$f"; done; }
 
 case "$phase" in
   spec)
     fields slug feature_title execStyle greenfield autonomous artifacts.spec
     optional "$feature_dir/spec-draft.md"
     optional "$feature_dir/spec-interview-transcript.md"
-    codebase_maps
     ;;
   discuss)
-    fields slug feature_title execStyle autonomous bootstrapPendingDomains iterate.feedback currentGate
+    fields slug feature_title execStyle autonomous iterate.feedback currentGate
     required SPEC "$docs/SPEC.md"
-    codebase_maps
     ;;
   plan)
     fields slug greenfield workspace iterate.feedback currentGate artifacts models.planner models.challenger
     required SPEC "$docs/SPEC.md"
     optional "$docs/PATTERNS.md"
     optional "$docs/EVIDENCE.md"
-    codebase_maps
     ;;
   execute)
     fields slug branch baseSha commands workspace executionRootMode worktreePath greenfield \

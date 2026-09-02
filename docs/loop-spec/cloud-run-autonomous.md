@@ -63,16 +63,13 @@ checkout, these optional controls reduce reviewer and model overhead:
 ```bash
 LOOP_SPEC_ARTIFACTS_IN_PR=0
 LOOP_SPEC_ARTIFACT_DIR=/mounted-run-artifacts
-LOOP_SPEC_MAP_BOOTSTRAP=0
-LOOP_SPEC_MAP_REFRESH=0
 LOOP_SPEC_ITERATE_MAX_ITERATIONS=2
 LOOP_SPEC_SQUASH_STATE_COMMITS=1
 ```
 
 The final setting consolidates state into one DELIVER commit and therefore disables
 per-phase checkpoint pushes; do not combine it with a requirement to recover every
-phase from the remote PR branch. Map opt-outs also mean this job will not create or
-refresh codebase-map documents.
+phase from the remote PR branch.
 
 The same controls can be scoped to one CLI invocation:
 
@@ -156,10 +153,7 @@ remedies.
   protection, not a candidate for a silent default bypass.
 
 Never cut the candidate comparison, VERIFY acceptance/code-review gates, ITERATE
-judge, or delivery identity/CI checks to improve elapsed time. The runtime now skips
-the codebase map only when it is stale, and skips mapping
-only with a complete-map/no-relevant-change proof; missing or uncertain evidence
-refreshes normally.
+judge, or delivery identity/CI checks to improve elapsed time.
 
 ## SDK policy
 

@@ -114,12 +114,12 @@ check "gate-prefixed warning ok" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 printf '{"warnings":["decided to defer the cleanup to keep the diff small"]}' > "$tmp/f2.json"
 bash "$LIB" warnings "$tmp/f2.json" >/dev/null 2>&1
 check "free-form deferral warning allowed" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
-printf '{"warnings":["VERIFY Step 9: codebase-map refresh deferred; feature verification passed"]}' > "$tmp/f2b.json"
+printf '{"warnings":["VERIFY Step 9: reviewer guide deferred; feature verification passed"]}' > "$tmp/f2b.json"
 bash "$LIB" warnings "$tmp/f2b.json" >/dev/null 2>&1
-check "map refresh warning allowed" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
+check "phase-step warning allowed" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 
 # Non-deferral free-form warning stays legal (warnings are an audit trail).
-printf '{"warnings":["map-codebase refresh failed; continued without it"]}' > "$tmp/f3.json"
+printf '{"warnings":["plain-language lint failed; continued without it"]}' > "$tmp/f3.json"
 bash "$LIB" warnings "$tmp/f3.json" >/dev/null 2>&1
 check "benign warning ok" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 

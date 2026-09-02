@@ -12,7 +12,7 @@
 #
 # Gates per phase (all deterministic, all already bundled):
 #   spec      artifact-lint spec
-#   discuss   artifact-lint spec, grounding-lint SPEC.md, codebase-map join
+#   discuss   artifact-lint spec, grounding-lint SPEC.md
 #   plan      artifact-lint plan/patterns/tasks, acceptance-lint, verifyCommand
 #             syntax, criteria per task, DAG acyclic, workspace repo field,
 #             decision-coverage, criteria-coverage, grounding-lint PLAN.md
@@ -32,7 +32,6 @@
 # Output: `FLAG <what>` per finding, then one answer line:
 #   phase-exit: ok (<phase>)                 exit 0
 #   phase-exit: <n> flag(s) (<phase>)        exit 1
-#   phase-exit: NEED map-codebase <domains>  exit 3  (discuss: mappers not landed)
 # Exit 2 is a bad invocation.
 #
 # On ok: records artifacts.* and completedPhases, clears currentTeamName and
@@ -113,7 +112,7 @@ tag_checkpoint() {
 # completedPhases writes happen after the check, so they are not listed.
 WRITES_ALL="currentGate gateHistory currentTeamName currentTeammates updatedAt warnings activeWorkflow checkpointPrUrl"
 WRITES_spec="artifacts.spec artifacts.specInterview"
-WRITES_discuss="artifacts.spec artifacts.codebaseSource artifacts.patternsPrefetch bootstrapPendingDomains"
+WRITES_discuss="artifacts.spec artifacts.patternsPrefetch"
 WRITES_plan="artifacts.patternsPrefetch artifacts.patternsSource artifacts.patterns artifacts.plan artifacts.tasks"
 WRITES_execute="mergeQueue pendingRemediationTasks commands greenfield artifacts.tasks artifacts.execution workspace"
 WRITES_verify="pendingRemediationTasks artifacts.verification artifacts.reviewOrder verificationBaseline workspace"
@@ -168,18 +167,6 @@ case "$phase" in
   discuss)
     run_gate artifact-lint lib artifact-lint spec "$docs/SPEC.md"
     run_gate grounding-lint lib grounding-lint "$docs/SPEC.md"
-    if (( flags == 0 )) && [[ "$(fget '.bootstrapPendingDomains | length')" != "0" ]]; then
-      missing=""
-      for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
-        [[ -f "docs/loop-spec/codebase/$d.md" ]] || missing="$missing $(tr 'A-Z' 'a-z' <<<"$d")"
-      done
-      if [[ -n "$missing" ]]; then
-        echo "phase-exit: NEED map-codebase${missing}"; exit 3
-      fi
-      for d in $(fget '.bootstrapPendingDomains[]'); do fset "artifacts.codebaseSource.$d" '"mapper"'; done
-      fset bootstrapPendingDomains '[]'
-      commit_paths "docs: bootstrap codebase map" docs/loop-spec/codebase
-    fi
     if (( flags == 0 )); then
       fset artifacts.spec "\"$docs/SPEC.md\""
       commit_paths "spec: $slug" "$docs/SPEC.md" "$docs/EVIDENCE.md"

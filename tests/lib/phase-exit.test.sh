@@ -107,16 +107,8 @@ out="$(bash "$MODE" discuss --feature-dir "$FD")"
 check "mode discuss: review-only skips the grill" "grill=skip" "${out%% *}"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
 
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" bootstrapPendingDomains '["tech","arch"]' >/dev/null
-ec=0; out="$(bash "$EXIT" discuss --feature-dir "$FD" 2>&1)" || ec=$?
-check "exit discuss: unlanded mappers exit 3" "3" "$ec"
-check "exit discuss: the answer names the missing domains" "phase-exit: NEED map-codebase tech arch quality concerns domain" "$(tail -1 <<<"$out")"
-mkdir -p docs/loop-spec/codebase
-for d in TECH ARCH QUALITY CONCERNS DOMAIN; do printf '# %s\n' "$d" > "docs/loop-spec/codebase/$d.md"; done
 ec=0; bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
-check "exit discuss: landed mappers pass" "0" "$ec"
-check "exit discuss: pending domains cleared" "0" "$(fj '.bootstrapPendingDomains | length')"
-check "exit discuss: domain source recorded" "mapper" "$(fj '.artifacts.codebaseSource.tech')"
+check "exit discuss: clean spec passes" "0" "$ec"
 check "exit discuss: checkpoint tagged" "1" "$(git tag | grep -c 'post-discuss')"
 
 # --- plan ---------------------------------------------------------------------------

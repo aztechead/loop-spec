@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Validates all 16 agent defs.
+# Validates all 11 agent defs.
 set -euo pipefail
-EXPECTED="${EXPECTED:-16}"
+EXPECTED="${EXPECTED:-11}"
 ALLOWED_MODELS="inherit"
 RESTRICTED_AGENTS="spec-compliance-reviewer code-reviewer advocate challenger"
 

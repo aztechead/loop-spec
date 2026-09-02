@@ -137,13 +137,6 @@ check "escalate: result is escalated" "escalated" "$(jq -r '.status' "$FD/result
 check "escalate: team state cleared" "null" "$(jq -r '.currentTeamName' "$FD/feature.json")"
 check "escalate: in-place feature exits no worktree" "false" "$(jq -r '.exitWorktree' <<<"$out")"
 
-# --- map -----------------------------------------------------------------------------
-out="$(cd "$REPO" && drv map --feature-dir "$FD" 2>/dev/null)"
-check "map: all five domains missing on a fresh repo" "5" "$(jq -r '.dispatch | length' <<<"$out")"
-check "map: pending domains recorded" "5" "$(jq -r '.bootstrapPendingDomains | length' "$FD/feature.json")"
-out="$(cd "$REPO" && LOOP_SPEC_MAP_BOOTSTRAP=0 drv map --feature-dir "$FD" 2>/dev/null)"
-check "map: policy off dispatches nothing" "0" "$(jq -r '.dispatch | length' <<<"$out")"
-
 # --- claude worktree path -------------------------------------------------------------
 REPO2="$(new_repo r2)"
 HARNESS=claude AUTONOMOUS=1 drv start --dir "$REPO2" -- ship it >/dev/null 2>&1

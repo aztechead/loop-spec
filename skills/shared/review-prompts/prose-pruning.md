@@ -29,9 +29,6 @@ exact reviewer this pass exists to replace.
   (`skills/spec/SKILL.md`).
 - **PLAN**, on `PLAN.md` after the coverage and grounding gates pass, before commit
   (`skills/plan/SKILL.md`).
-- **map-codebase**, on the domain documents when `lib/map-audit.sh budget` reports
-  `over-budget` — the budget probe says the map must shrink; this pass names what
-  (`skills/map-codebase/SKILL.md`).
 
 ## The pruning tests
 
@@ -39,8 +36,7 @@ Every proposal names exactly one test the lines fail. A line that fails none of 
 stays — pruning is not compression, and shorter prose that loses a decision is a defect,
 not a cut.
 
-1. **derivable** — restates what the file it cites plainly shows on one read. The map
-   mappers are already forbidden to write these; this catches the ones that got through.
+1. **derivable** — restates what the file it cites plainly shows on one read.
 2. **duplicate** — the same fact or decision already stated elsewhere in this artifact.
    Name both locations.
 3. **speculative** — serves a requirement nothing in the artifact names: hypothetical

@@ -87,8 +87,7 @@ trusts them; the installer-written env block does not wait on that review.
 - A `docs/loop-spec/features/{slug}/` dir created with SPEC.md, PLAN.md, VERIFICATION.md
 - A `feat/{slug}` branch with one commit per task plus spec/plan/verify commits
 - A PR opened on completion
-- A `docs/loop-spec/codebase/` dir with TECH.md / ARCH.md / QUALITY.md / CONCERNS.md / DOMAIN.md (refreshed at end)
-- A `.loop-spec/` runtime dir (gitignored except `codebase/index.json`)
+- A `.loop-spec/` runtime dir (gitignored)
 
 ## Common pitfalls
 

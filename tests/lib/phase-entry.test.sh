@@ -64,7 +64,6 @@ printf '# My Feature\n' > "$DOCS/SPEC.md"
 ec=0; out="$(bash "$ENTRY" discuss --feature-dir "$FD")" || ec=$?
 check "discuss: SPEC.md present enters clean" "0" "$ec"
 check "discuss: read list names SPEC.md" "1" "$(grep -c '^read=.*SPEC.md$' <<<"$out")"
-check "discuss: packet carries bootstrapPendingDomains" "true" "$(jq 'has("bootstrapPendingDomains")' <<<"$(fields "$out")")"
 
 # --- plan: SPEC.md required, PATTERNS.md optional -----------------------------------
 ec=0; out="$(bash "$ENTRY" plan --feature-dir "$FD")" || ec=$?

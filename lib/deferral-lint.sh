@@ -179,7 +179,7 @@ else:  # warnings
     warnings = data.get("warnings") or []
     if not isinstance(warnings, list):
         flags.append((0, "warnings is not a list"))
-    # Runtime warnings describe observations such as a non-blocking map refresh;
+    # Runtime warnings describe observations such as a non-blocking skipped step;
     # they are not a declaration that feature scope was dropped. Never infer scope
     # from a reserved word in this unstructured diagnostics channel.
 

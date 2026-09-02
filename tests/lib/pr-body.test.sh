@@ -62,7 +62,6 @@ jq -n '{schemaVersion:7,slug:"demo",feature_title:"Demo feature",warnings:["one 
              verification:"docs/loop-spec/features/demo/VERIFICATION.md",
              iteration:"docs/loop-spec/features/demo/ITERATION.md",
              patternsSource:"pattern-mapper",
-             codebaseSource:{tech:null,arch:null,quality:null,concerns:null,domain:null},
              tasks:".loop-spec/features/demo/tasks.json"}}' > "$WORK/feature.json"
 
 # "Committed on this branch" is a literal contract. The renderer must consult the

@@ -15,7 +15,7 @@ fi
 
 cat <<'EOF'
 [loop-spec] Workflow tool unavailable in this session.
-   Fan-out phases (map-codebase, acceptance gate, code-review HARD-GATE) will
+   Fan-out phases (acceptance gate, code-review HARD-GATE) will
    fall back to TeamCreate dispatch. To enable workflow acceleration:
 
      /permissions

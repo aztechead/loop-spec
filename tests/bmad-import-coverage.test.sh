@@ -32,24 +32,13 @@ checks=(
   "lib/cycle-driver.sh	extension-points instructions	the cycle must load per-phase instructions"
   "lib/cycle-driver.sh	extension-points facts	the cycle must load standing facts"
 
-  # B4 -- map audit
-  "skills/map-codebase/SKILL.md	map-audit\.sh	the map skill must be able to measure its own output"
-
-  # B6 -- trust marking (plus F3, the index prune that pairs with the orphans probe)
-  "skills/map-codebase/SKILL.md	map-trust\.sh.? mark .* generated	every refresh must stamp its documents generated"
-  "skills/map-codebase/SKILL.md	map-trust\.sh.? mark .* verified --by	the skill must know promotion is an operator action"
-  "skills/map-codebase/SKILL.md	map-index-prune\.sh	pruning is a script, never an instruction (F3)"
-  "lib/map-audit.sh	trust-expired	the audit must flag a ratification the doc outgrew"
-
   # B7 -- fresh-eyes prose pruning
   "skills/spec/SKILL.md	review-prompts/prose-pruning\.md	SPEC must run the fresh-eyes pass on its own artifact"
   "skills/plan/SKILL.md	review-prompts/prose-pruning\.md	PLAN must run the fresh-eyes pass on its own artifact"
-  "skills/map-codebase/SKILL.md	review-prompts/prose-pruning\.md	an over-budget map needs the pass that names the cuts"
   "skills/shared/review-prompts/prose-pruning.md	never rewrite	the pass lists; the maker applies"
   "skills/spec/SKILL.md	never AskUserQuestion as a wait	SPEC scout fan-out and pruning must not stall on a fake question"
   "skills/plan/SKILL.md	never AskUserQuestion as a wait	PLAN teammate joins and pruning must not stall on a fake question"
   "skills/discuss/SKILL.md	never AskUserQuestion as a wait	DISCUSS scout fan-out and spec-writer join must not stall on a fake question"
-  "skills/map-codebase/SKILL.md	never AskUserQuestion as a wait	map mapper joins and pruning must not stall on a fake question"
   "skills/shared/critique-gate-protocol.md	never AskUserQuestion as a wait	critique TeammateIdle joins must not stall on a fake question"
 )
 
@@ -68,7 +57,7 @@ done
 
 # Every shipped import must be documented as a supported control, or an operator has no
 # way to learn it exists. configuration.md is the exhaustive contract by its own claim.
-for knob in LOOP_SPEC_EXTENSIONS LOOP_SPEC_MAP_MAX_LINES LOOP_SPEC_MAP_MAX_AGE_DAYS; do
+for knob in LOOP_SPEC_EXTENSIONS; do
   if grep -q "$knob" docs/loop-spec/configuration.md; then
     echo "PASS: configuration.md documents $knob"; PASS=$((PASS+1))
   else
@@ -93,8 +82,7 @@ else
 fi
 
 # Every new script carries the house probe shape: an ANSWER and its REASON on one line.
-for script in lib/review-trail.sh lib/verification-gap-scan.sh lib/map-audit.sh \
-              lib/map-trust.sh lib/map-index-prune.sh; do
+for script in lib/review-trail.sh lib/verification-gap-scan.sh; do
   if grep -q 'reason=' "$script"; then
     echo "PASS: $script reports the reason behind its answer"; PASS=$((PASS+1))
   else

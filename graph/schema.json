@@ -58,7 +58,6 @@
         "warnings",
         "mergeQueue",
         "pendingRemediationTasks",
-        "bootstrapPendingDomains",
         "activeWorkflow",
         "harnessTaskMetadataMode",
         "harnessStatusMode",

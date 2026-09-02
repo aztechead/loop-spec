@@ -57,7 +57,7 @@ def read_artifact(key):
 
 
 # `artifacts` mixes reader-facing artifact paths with provenance and runtime state
-# (for example, patternsSource = "pattern-mapper" and codebaseSource = {...}).
+# (for example, patternsSource = "pattern-mapper").
 # A PR body is a public, committed-file index, not a serialization of that internal
 # object. Keep the allow-list deliberately small and prove each entry resolves to a
 # tracked regular file in this repository before calling it "committed".

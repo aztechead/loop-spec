@@ -40,8 +40,8 @@ Calibration anchors and question banks: `${CLAUDE_SKILL_DIR}/references/intervie
 
 ## 1. Scout
 
-Read `feature_dir/` (prior transcript on resume), `docs/loop-spec/features/{slug}/`,
-and `docs/loop-spec/codebase/*.md` if present. Then read the code: search the feature
+Read `feature_dir/` (prior transcript on resume) and `docs/loop-spec/features/{slug}/`.
+Then read the code: search the feature
 area by the user's vocabulary and the obvious symbols, read the entry points you find,
 follow imports and callers far enough to name the boundaries the change crosses. Fan
 scanning out to subagents that return `file:line` evidence (dispatch, then stop;

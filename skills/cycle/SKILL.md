@@ -9,8 +9,8 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 You are the lead. `lib/cycle-driver.sh` owns every mechanical step of the loop and
 answers each call with one JSON object or one line. Your job is the parts that need a
-harness tool or a human: answer questions, enter and leave the worktree, dispatch
-mapper agents, and invoke each phase skill when the driver names it. Do not
+harness tool or a human: answer questions, enter and leave the worktree, and invoke
+each phase skill when the driver names it. Do not
 re-derive state, re-scan directories, or narrate the preflight.
 
 ```bash
@@ -69,29 +69,6 @@ file: <path> — ...`). If `.enterWorktree` is non-null, call
 `EnterWorktree({path: .enterWorktree})` now; every later path is relative to it.
 `.featureDir` is the feature directory for the rest of the run. A non-zero exit
 already wrote a terminal result: relay stderr and stop.
-
-Then the one-time codebase map:
-
-```bash
-map="$(bash "$DRV" map --feature-dir "$featureDir")"
-```
-
-For each domain in `.dispatch[]`, fire ONE background `Agent` call, all in the same
-message (respect `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` as wave size and await each wave
-when it is set):
-
-```
-Agent({
-  subagent_type: "loop-spec:mapper-<domain>",
-  description: "Bootstrap codebase map: <domain>",
-  prompt: "Produce <root>/docs/loop-spec/codebase/<DOMAIN>.md per your role definition.
-           Working directory (absolute): <root>. <workspace: Repos: name=abs-path, ...;
-           cover each repo in its own section.> Use absolute paths. Do NOT commit.
-           Reply DONE: <domain> when finished."
-})
-```
-
-Do not wait for them; DISCUSS joins them before PLAN needs the docs.
 
 ## 3. Resume an existing feature
 

@@ -65,12 +65,13 @@ resolved. Spawn `spec-writer-1` (`loop-spec:spec-writer`) only when SPEC.md is m
 entirely. Never spawn `advocate-1`.
 
 **PATTERNS.md prefetch (background, best effort).** Unless greenfield, workspace mode,
-`bootstrapPendingDomains` non-empty, PATTERNS.md already present, or
+PATTERNS.md already present, or
 `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` set, fire ONE background `Agent`
 (`subagent_type: "loop-spec:pattern-mapper"`, `description: "Prefetch PATTERNS.md: {slug}"`,
-absolute paths for SPEC.md, `docs/loop-spec/codebase/*.md`, and the output; "STOP without
+absolute paths for SPEC.md and the output; "STOP without
 writing if PATTERNS.md already exists; do not commit; reply DONE: patterns"), set
-`artifacts.patternsPrefetch = "in-flight"`, and do not wait. GSD ingest first:
+`artifacts.patternsPrefetch = "in-flight"`, and do not wait (do not sleep, do not
+poll; PLAN joins it). GSD ingest first:
 `lib/gsd-ingest.sh patterns {slug} <target>` printing `INGESTED` sets
 `artifacts.patterns` and `artifacts.patternsSource = "gsd-ingest"` and skips the prefetch.
 
@@ -98,11 +99,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" discuss --feature-dir "$featu
 - `FLAG` lines: format flags follow `skills/shared/artifact-templates/SPEC.md.template`;
   `grounding-lint.sh"` flags cite a ledger entry or become an ASSUMPTION. Fix SPEC.md in place and
   run the command again; lint-only failures never re-open the critique.
-- `phase-exit: NEED map-codebase <domains>` (exit 3): the background mappers from cycle
-  start have not landed. Do not sleep, do not poll: run
-  `Skill(loop-spec:map-codebase) args: --domain <csv>` synchronously, then run the exit
-  command again.
-- `phase-exit: ok (discuss)`: SPEC.md and the codebase map are committed, the phase is
+- `phase-exit: ok (discuss)`: SPEC.md is committed, the phase is
   closed. In explicit teams mode `TeamDelete` first. Return to the cycle; in
   `step`/`interactive` say `DISCUSS complete. SPEC at docs/loop-spec/features/{slug}/SPEC.md.`
 

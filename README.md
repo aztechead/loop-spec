@@ -109,7 +109,7 @@ Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 /loop-spec:cycle add a --json flag to the export command
 ```
 
-1. Startup probes cache to `.loop-spec/runtime.json`. The first run also builds a 5-domain codebase map under `docs/loop-spec/codebase/`.
+1. Startup probes cache to `.loop-spec/runtime.json`.
 2. Claude Code creates a feature worktree at `.claude/worktrees/{slug}` on `feat/{slug}`. OpenCode, Codex, and ADK create the branch in place on a clean checkout — none of them has a session-root switch, so `executionRootMode` records the difference rather than faking it.
 3. SPEC interviews you (up to 6 rounds) until the ambiguity gate passes, then writes `docs/loop-spec/features/{slug}/SPEC.md`.
 4. DISCUSS critiques the spec. PLAN writes `PATTERNS.md` + `PLAN.md` (task DAG with verify commands).

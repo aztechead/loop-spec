@@ -27,15 +27,15 @@ Join a DISCUSS prefetch: check once whether PATTERNS.md exists
 never AskUserQuestion as a wait. If PATTERNS.md exists, keep it. Else
 `lib/gsd-ingest.sh patterns {slug} <target>` (`INGESTED` sets
 `artifacts.patternsSource = "gsd-ingest"`). Else dispatch a one-shot `loop-spec:pattern-mapper`
-Agent with absolute paths for SPEC.md, `docs/loop-spec/codebase/*.md`, and the target,
+Agent with absolute paths for SPEC.md and the target,
 then stop; the planner's brief covers the last-resort fallback. Greenfield: PATTERNS.md
 records the chosen stack's conventions instead of mined analogs.
 
 ## 2. Author PLAN.md
 
 Spawn `planner-1` (`loop-spec:planner`, model `feature.models.planner`) and, in team
-modes, warm up `challenger-1` with SPEC.md and the codebase maps meanwhile. The
-planner brief carries: `slug`, `spec_path`, `patterns_path`, the codebase map paths,
+modes, warm up `challenger-1` with SPEC.md meanwhile. The
+planner brief carries: `slug`, `spec_path`, `patterns_path`,
 `evidence_path`; the grounding rule (every external fact cites `EVID-NNN` or is an
 `ASSUMPTION: ... | verify: ...`); "cite PATTERNS.md analogs in each task's steps";
 "return tasks[] as JSON in your completion message; do not compute waves"; the
