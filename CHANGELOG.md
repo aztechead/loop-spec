@@ -4,6 +4,22 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [4.9.1] - 2026-09-02
+
+### Changed
+
+- **Fable 5.1 prompt alignment.** Shared phase contracts now ask for concise progress
+  updates, independent-tool batching, literal prose, useful chat structure, marked source
+  quotations, and search verification for fast-moving names. Autonomous runs finish
+  already-authorized work and retain goals, constraints, decisions, evidence, and resume
+  details through compaction.
+- **Execution boundaries.** Implementers keep unrelated defects and tests outside the
+  requested change, prefer targeted edits, and leads continue independent work while
+  bounded subagent waves run before joining their results.
+- **Offline test isolation.** Test suites now ignore injected harness state, canonicalize
+  temporary paths, retain required runtime binaries in missing-tool fixtures, and skip
+  nested runtime worktrees when checking test registration.
+
 ## [4.9.0] - 2026-08-31
 
 The critique-gate transition is a program rather than a procedure a model

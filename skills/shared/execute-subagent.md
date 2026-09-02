@@ -365,7 +365,11 @@ load-bearing file completely instead of skimming five. "Should work" / "probably
 "tests likely pass" each mean run it now. Scope is closed: the acceptance criteria are
 the whole job — never skip, trim, or defer an item, and never write
 follow-up/deferred/future-work notes; a criterion you cannot meet is a loud failure
-with evidence, never a note.
+with evidence, never a note. Keep extras out: if you find a pre-existing bug,
+performance concern, or unrelated behavior, leave it unchanged unless the requested
+behavior cannot work without it. Keep permanent tests to requested behavior or the
+repository's established convention, and surgically edit needed lines instead of
+rewriting a whole file when the result is unchanged.
 ```
 
 ## Implementer Agent prompt (per task, per attempt)

@@ -227,9 +227,9 @@ Cycle's responsibility after the engine names a node is to invoke that phase ski
    Skill(loop-spec:{currentPhase})
    ```
    Never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`) while
-   a phase Agent or the DELIVER controller is running. Dispatch, then stop; the
-   harness resumes this turn.
+   a phase Agent or the DELIVER controller is running. After dispatch, complete safe
+   independent lead work; stop only when the next action needs its result. The harness
+   resumes this turn.
    `{currentPhase}` is read from the in-memory `feature_json`. Team-capable phases own
    their team lifecycle; SPEC, ITERATE, and DELIVER run on the main thread. Every phase
    advances `currentPhase` through `lib/feature-write.sh`.
-

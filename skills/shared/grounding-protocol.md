@@ -20,6 +20,14 @@ gathered, recorded, cited, and checked.
 from model memory.** Before treating any such premise as fact, run the cheapest
 read-only probe available and record its output.
 
+When a request names something you do not confidently recognize, or names a
+fast-moving developer tool, model, service, or library, search for that name before
+answering. Include the name as the user wrote it in at least one query; partial
+familiarity is not evidence that the current state is known.
+
+When a retrieved source is quoted, mark it as a quotation and cite the source. Do not
+let copied source wording appear as the plugin's own conclusion.
+
 ### Example read-only probes
 
 ```

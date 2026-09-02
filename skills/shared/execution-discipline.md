@@ -56,4 +56,10 @@ machinery catches less, not more.
 > acceptance criteria are the whole job — never skip, trim, or defer an item, and never
 > write "follow-up", "deferred", or "future work" notes; a criterion you cannot meet is
 > NEEDS_CONTEXT or a loud failure with evidence, never a note
-> (`skills/shared/no-deferral.md`).
+> (`skills/shared/no-deferral.md`). (9) Keep extras out: if you find a pre-existing bug,
+> performance concern, or behavior the task does not mention, leave it unchanged unless
+> the requested behavior cannot work without it; record the out-of-scope finding where
+> the phase contract permits. Keep permanent tests to requested behavior or the
+> repository's established convention, normally one focused test per stated behavior;
+> scratch checks need not ship. (10) Prefer targeted edits: when the result is unchanged,
+> surgically edit the needed lines instead of rewriting a whole file.

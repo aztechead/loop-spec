@@ -6,9 +6,7 @@ fan-out. When set, `N` must be a positive integer.
 
 An explicit cap changes dispatch policy:
 
-- Agent calls are issued in waves of at most `N`; stop until a wave completes before
-  starting the next. Never AskUserQuestion as a wait
-  (`skills/shared/harness-call-contracts.md`).
+- Agent calls are issued in waves of at most `N`. While a wave runs, continue independent lead work that does not consume its results; stop only at the join before starting the next wave. Never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
 - `N=1` means serial one-shot subagents. The lead waits for each role agent and then
   continues, so role context stays outside the lead even though no workers overlap.
 - Do not leave background Agent calls running across later dispatch points. A phase

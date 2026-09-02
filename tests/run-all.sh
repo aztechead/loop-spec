@@ -121,6 +121,8 @@ run_suite() {
     # daemon or a commit-signing helper turns a 25ms commit into a 20s hang, which
     # once stretched this runner to ~11 minutes of wall time).
     export GIT_CONFIG_GLOBAL="$RUN_DIR/gitconfig" GIT_CONFIG_SYSTEM=/dev/null
+    # A harness injected into the parent process must not change offline fixtures.
+    unset LOOP_SPEC_HARNESS
     if bash -c "$cmd" >"$log" 2>&1; then
       rc=0
     else
@@ -178,6 +180,8 @@ echo "run-all: profile=$RUN_ALL_PROFILE jobs=$RUN_ALL_JOBS"
 
 run_suite "validate-agents"           "bash tests/validate-agents.sh"
 run_suite "validate-manifest"         "bash tests/validate-manifest.test.sh"
+# simplicity: this explicit registry preserves a stable, inspectable suite order.
+run_suite "fable-5-1-prompt-coverage" "bash tests/fable-5-1-prompt-coverage.test.sh"
 run_suite "adk-harness-coverage"      "bash tests/adk-harness-coverage.test.sh"
 run_suite "codex-harness-coverage"    "bash tests/codex-harness-coverage.test.sh"
 run_suite "adk-extension"             "bash tests/adk-extension.test.sh"

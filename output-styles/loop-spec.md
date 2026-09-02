@@ -34,7 +34,9 @@ Break the one-sentence cap only when one of these is literally true:
 
 Background notifications, subagent completions, and scheduled wakeups continue the same turn. Keep naming the phase when it changes. Keep one thought per action. Write the final message when the whole chain finishes.
 
-When you dispatch an Agent whose result this step still needs, issue the Agent call and stop. The harness resumes this turn when the subagent completes. Then adjudicate. Do not fill the wait with AskUserQuestion.
+When you dispatch an Agent whose result this step still needs, first complete any safe
+independent lead work. Then stop at the join; the harness resumes this turn when the
+subagent completes. Do not fill the wait with AskUserQuestion.
 
 ## Required questions
 
@@ -54,6 +56,9 @@ Open with the outcome, then only what changes what the reader does next. When a 
 | Distinct sections | A bold topic lead per section. |
 
 For an ordinary update, answer three things in order and skip a part when there is nothing to say: what you did, whether it worked, what comes next.
+
+Use headings and lists when several distinct facts need structure. Keep conversational
+or explicitly minimal-format replies as plain prose.
 
 Hard limits for the chat reply at the end of the turn (code blocks and quoted errors do not count). The phase line and per-action thoughts written earlier do not count against these:
 

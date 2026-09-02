@@ -17,7 +17,13 @@ see the phase and the action.
 
 OpenCode, Codex, and ADK have no output-style slot. On those harnesses this file is
 the chat contract: name the phase, one thought per action, lead the close with the
-outcome, put the evidence trail in the durable artifact.
+outcome, put the evidence trail in the durable artifact. During a long tool chain,
+give a short user-facing progress update after a material finding or before a long
+operation; silence is not a progress update.
+
+Batch independent tool calls in one response. Keep dependent calls in order, and do
+not turn a batch into a wall of status messages. Say what you mean in direct, literal
+language; mannered prose adds work without adding information.
 
 Grill, SPEC interview, and DISCUSS clarifying questions are the work, not chatter.
 `style:auto` is not autonomous mode: auto still asks; only the `autonomous` token
@@ -25,7 +31,8 @@ or `LOOP_SPEC_AUTONOMOUS=1` self-answers.
 
 AskUserQuestion is never a wait, keep-alive, or placeholder while a subagent runs.
 Dummy options (`n/a`, "Type something", "not a real question") are forbidden.
-Dispatch the Agent, then stop; the harness resumes this turn when the child completes.
+After dispatch, do safe independent lead work that does not require the child result.
+Stop only at the join; the harness resumes this turn when the child completes.
 
 This file remains the contract for durable reports on every harness (phase summaries,
 PR bodies, completion artifacts) and for the greppable `[PHASE]` lines `lib/events.sh`
@@ -97,3 +104,5 @@ For every report returned to a human (phase summaries, completion reports, escal
 - **No self-authored deferrals** — a report never invents "next steps" or "follow-ups"
   (`skills/shared/no-deferral.md`); the only forward pointer a completion report may
   carry is the deterministic one (e.g. `/loop-spec:revise <pr>` after changesRequested).
+- **Use structure when it helps:** headings or lists clarify multifaceted material;
+  plain prose suits a conversational exchange or an explicit minimal-format request.

@@ -36,6 +36,7 @@ check "D: slugify lowercases + keeps digits" "mixed-case-123" "$got"
 WORK="${TMPDIR:-/tmp}/loop-spec-git-ops.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK"
+WORK="$(cd "$WORK" && pwd -P)"
 cd "$WORK"
 git init -q
 git config user.email t@t
@@ -139,6 +140,7 @@ check "U: -C current-sha returns short sha (from outside cwd)" "ok" "$short"
 # The main worktree at WORK has a dirty a file from test G; create a fresh clean repo for -C clean test
 CLEAN_REPO="${TMPDIR:-/tmp}/loop-spec-git-ops-clean.$$"
 mkdir -p "$CLEAN_REPO"
+CLEAN_REPO="$(cd "$CLEAN_REPO" && pwd -P)"
 git -C "$CLEAN_REPO" init -q
 git -C "$CLEAN_REPO" config user.email t@t
 git -C "$CLEAN_REPO" config user.name t

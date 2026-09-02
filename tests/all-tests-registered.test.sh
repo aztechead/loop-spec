@@ -21,7 +21,7 @@ run_all_contents="$(cat "$RUN_ALL")"
 while IFS= read -r f; do
   rel="${f#"$REPO_ROOT"/}"
   [[ "$rel" == "$SELF" ]] && continue
-  case "$rel" in skills/loop-runner/*) continue;; esac
+  case "$rel" in skills/loop-runner/*|.loop-spec/worktrees/*) continue;; esac
   if grep -qF "$rel" <<<"$run_all_contents"; then
     pass=$((pass+1))
   else
