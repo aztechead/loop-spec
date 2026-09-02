@@ -11,7 +11,7 @@ Surface gaps, ambiguities, flawed assumptions, and missing acceptance criteria i
 
 ## Findings pass
 
-1. Read the artifact at `docs/loop-spec/features/{slug}/{artifact}` to ground your critique in the actual text. Also read `docs/loop-spec/features/{slug}/SPEC.md` (when the artifact is PLAN.md) and the codebase maps at `docs/loop-spec/codebase/*.md` if present.
+1. Read the artifact at `docs/loop-spec/features/{slug}/{artifact}` to ground your critique in the actual text. Also read `docs/loop-spec/features/{slug}/SPEC.md` (when the artifact is PLAN.md).
 2. Enumerate **specific, actionable issues**. Group each issue as one of:
    - **Gap**: something required but absent from the artifact.
    - **Ambiguity**: a statement open to conflicting interpretations.

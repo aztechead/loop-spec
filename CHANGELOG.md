@@ -4,6 +4,22 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-09-02
+
+### Removed
+
+- The generated 5-domain codebase map, by the same test that removed graphify in
+  2.35: no consumption evidence, three of five domains trivially re-derivable
+  live, and autonomous runs structurally unable to ratify the prose. Gone: the
+  five `mapper-*` agents, the `map-codebase` skill, `lib/map-{audit,trust,
+  refresh,policy,index-prune}.sh`, `lib/workflows/map-codebase.js`,
+  `gsd-ingest`'s `codebase` subcommand, `bootstrapPendingDomains` /
+  `artifacts.codebaseSource` feature state, the `MAPPER` model role, and the
+  `LOOP_SPEC_MAP_*` knobs. DISCUSS no longer gates on a map join (phase-exit
+  exit 3 is retired) and VERIFY no longer refreshes a map. PATTERNS.md plus
+  live scout exploration carry the load; `pattern-mapper` survives because it
+  is feature-scoped and regenerated per cycle, not a stored map. (PR #84)
+
 ## [5.0.0] - 2026-09-02
 
 Breaking: the plugin's prose was cut by roughly two thirds so any model family can

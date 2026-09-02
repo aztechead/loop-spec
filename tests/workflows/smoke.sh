@@ -40,7 +40,7 @@ bash hooks/install-bundled-workflows.sh > /dev/null
 
 # Syntax check each script
 fail=0
-for s in map-codebase acceptance-verify code-review-dimensions plan-multi-angle execute-dag; do
+for s in acceptance-verify code-review-dimensions plan-multi-angle execute-dag; do
   script="lib/workflows/${s}.js"
   if [[ ! -f "$script" ]]; then
     echo "FAIL: $script does not exist"
@@ -67,7 +67,7 @@ done
 
 # Idempotency: second hook run produces identical files
 bash hooks/install-bundled-workflows.sh > /dev/null
-for s in map-codebase acceptance-verify code-review-dimensions plan-multi-angle execute-dag; do
+for s in acceptance-verify code-review-dimensions plan-multi-angle execute-dag; do
   if ! check_esm "lib/workflows/${s}.js" 2>&1; then
     echo "FAIL: $s broken after second install"
     fail=1

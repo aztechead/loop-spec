@@ -184,7 +184,7 @@ active_autonomous=false
 [[ "$autonomous" == "1" ]] && active_autonomous=true
 
 # Create dirs and write feature.json inside the now-active execution root.
-mkdir -p ".loop-spec/features/${slug}" .loop-spec/codebase "docs/loop-spec/features/${slug}"
+mkdir -p ".loop-spec/features/${slug}" "docs/loop-spec/features/${slug}"
 # Startup probes ran in the control checkout. Copy their local runtime cache into
 # a Claude feature worktree; in-place harnesses already point at the same file.
 if [[ -f "$repo_root/.loop-spec/runtime.json" && "$(pwd -P)" != "$(cd "$repo_root" && pwd -P)" ]]; then

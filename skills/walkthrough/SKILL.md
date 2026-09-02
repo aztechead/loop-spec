@@ -26,8 +26,8 @@ The ordering and the checking are `lib/review-trail.sh`'s job. The framing is yo
 ## Step 1 — Resolve the change
 
 In a feature: the slug's branch against its base (`feature.json` holds `baseBranch` and
-the branch name). Standalone: the ref pair given, defaulting to the merge-base of the
-current branch and the default branch.
+the branch name). Standalone: the base and head refs given, defaulting to the merge-base
+of the current branch and the default branch.
 
 ## Step 2 — Measure the surface
 
@@ -67,17 +67,17 @@ the repo root, or the path given). Framing first, anchor underneath:
 ```markdown
 # Suggested review order
 
-**Trust marking on map claims**
+**Grounding gate on plan claims**
 
-- decides verified vs generated for every claim
-  `lib/map-audit.sh:88`
+- decides cited vs assumed for every claim
+  `lib/grounding-lint.sh:88`
 - the ceiling that blocks silent growth
-  `lib/map-audit.sh:142`
+  `lib/grounding-lint.sh:142`
 
 **Peripherals**
 
 - fixture corpus for the sweep
-  `tests/lib/map-audit.test.sh:1`
+  `tests/lib/grounding-lint.test.sh:1`
 ```
 
 Rules the lint measures, so meet them deliberately:

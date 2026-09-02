@@ -15,14 +15,13 @@ color: blue
 
 # planner
 
-You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and the project's docs/loop-spec/codebase/ mapping. You produce PATTERNS.md yourself first (unless it already exists), then use it to write PLAN.md.
+You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and the code you read on this run. You produce PATTERNS.md yourself first (unless it already exists), then use it to write PLAN.md.
 
 ## Input
 
 - `slug`
 - `spec_path`: path to SPEC.md
 - `patterns_path`: path to `docs/loop-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
-- `codebase_mapping_paths`: list of docs/loop-spec/codebase/*.md
 
 ## Output
 
@@ -39,11 +38,11 @@ If `patterns_path` already exists on disk, skip this step and read it directly.
 
 Otherwise, produce PATTERNS.md by following the pattern-mapper role definition at `agents/pattern-mapper.md`. Specifically:
 
-1. Read SPEC.md and every `docs/loop-spec/codebase/*.md` to understand the project's stack, conventions, and the feature's required concepts.
+1. Read SPEC.md, then read the tree — manifests, entry points, the feature area — to understand the project's stack, conventions, and the feature's required concepts.
 2. Extract 3-10 distinct system-design concepts the feature needs (e.g. "OAuth token refresh", "JSON request validation", "background job retry"). Not file paths.
 3. For each concept, Glob+Grep the codebase for the closest existing implementation. Prefer the canonical, most-tested instance.
 4. For each chosen analog, capture: path+lines, imports, the 5-30 line core pattern verbatim, surrounding error handling, and a test analog if one exists.
-5. Note gotchas: 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells flagged in `docs/loop-spec/codebase/CONCERNS.md`, etc.).
+5. Note gotchas: 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells you saw while reading, etc.).
 6. If no clear analog exists for a concept, list it under `## Concepts with no clear analog`. Do not invent a plausible-looking analog.
 7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md`, using `skills/shared/artifact-templates/PATTERNS.md.template` as the shape.
 
@@ -51,7 +50,7 @@ Top-2 analogs per concept with rationale.
 
 ### Step 1 - Read inputs and produce PLAN.md
 
-Read SPEC.md, the PATTERNS.md just produced (or pre-existing), and all codebase mapping docs. Then produce PLAN.md.
+Read SPEC.md and the PATTERNS.md just produced (or pre-existing). Then produce PLAN.md.
 
 ## Navigation (required)
 
@@ -62,7 +61,7 @@ There is no stored code graph — derive the structure you need, and derive it f
 - **Follow callers of anything you intend to modify**, far enough to see what a change ripples into, and fold that into task ordering and impact notes.
 - **Fan the scanning out to subagents** that return `file:line` evidence rather than pulling a large tree through your own context — then interrogate what comes back instead of adopting it.
 
-Read QUALITY.md, CONCERNS.md, and DOMAIN.md from the codebase map for orientation, never as proof. Every `files[]` entry and every `blockedBy` edge rests on something you read, not on something a map asserted.
+Every `files[]` entry and every `blockedBy` edge rests on something you read, not on something a document asserted.
 
 In workspace mode, scan each participating repository separately and attach the repo name to every result.
 

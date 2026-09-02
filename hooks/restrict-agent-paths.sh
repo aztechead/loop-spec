@@ -18,7 +18,6 @@
 # Rules (by role):
 #   spec-writer, planner             -> docs/loop-spec/features/**
 #   pattern-mapper                   -> docs/loop-spec/features/** + .claude/agent-memory/** (memory: project)
-#   mapper-*                         -> docs/loop-spec/codebase/**
 #   code-reviewer                    -> .claude/agent-memory/** ONLY (read-only for code; the
 #                                       `memory: project` frontmatter auto-enables Write/Edit,
 #                                       so this case keeps the role's no-code-writes invariant)
@@ -81,6 +80,9 @@ fi
 # with a matching tool_result is finished — writes after it belong to the main
 # thread, not to that subagent. Dispatches without ids (older transcripts,
 # fixtures) cannot be matched and are conservatively treated as open.
+# simplicity: this JSONL walk is near-duplicated in hooks/team/placeholder-question-guard.sh
+# (different outputs: caller name here, open/phase there); extract a shared walker when a
+# third hook needs one.
 CALLER=$(python3 - "$TRANSCRIPT_PATH" <<'PY' 2>/dev/null
 import json, sys
 
@@ -176,13 +178,6 @@ case "$CALLER" in
       exit 0
     fi
     echo "DENY: $CALLER is read-only for code; it may only $TOOL_NAME under .claude/agent-memory/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
-    exit 2
-    ;;
-  mapper-*)
-    if path_allowed "docs/loop-spec/codebase"; then
-      exit 0
-    fi
-    echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/codebase/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
     exit 2
     ;;
   implementer|verifier|"")

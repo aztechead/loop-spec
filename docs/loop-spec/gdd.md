@@ -42,7 +42,7 @@ are how loop-spec expresses and already realizes each pattern.
 |---|---|---|
 | Prompt chaining | `chain` edges | SPEC → DISCUSS → PLAN → EXECUTE → VERIFY → ITERATE → DELIVER |
 | Routing | `route` edges | `skills/auto/` + `lib/task-route.sh` (micro / debug / full) |
-| Parallelization | `fanout` + `fanin` | EXECUTE's DAG waves; the five `mapper-*` agents |
+| Parallelization | `fanout` + `fanin` | EXECUTE's DAG waves; VERIFY's dimension reviewers |
 | Reflection | bounded `loop` around a `gate` | critique gates, spec-compliance review, ITERATE's judge |
 | Human-in-the-loop | `human` node | `step` / `interactive` styles, the ambiguity gate, checkpoint PRs |
 

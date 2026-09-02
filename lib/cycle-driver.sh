@@ -34,10 +34,6 @@
 #       currentPhase, enterWorktree, tasksDone, tasksRemaining, progressTail,
 #       recoverCompletion}. Exit 0; 1 refused (message says where to relaunch).
 #
-#   cycle-driver.sh map --feature-dir DIR
-#       First-run codebase map policy + GSD ingest. Prints {dispatch:[domains], root}.
-#       Caller dispatches one mapper Agent per domain in `dispatch` (may be empty).
-#
 #   cycle-driver.sh next --feature-dir DIR [--returned-from PHASE] [--note TEXT]
 #       Post-phase bookkeeping, then the graph step. Prints exactly ONE answer line:
 #         NEXT phase=<id> label="<label>" effort=<system1|system2>
@@ -484,7 +480,7 @@ init_workspace() {
   done < <(jq -c '.[]' <<<"$repos")
 
   local feature_dir="$ws_root/.loop-spec/features/$slug"
-  mkdir -p "$feature_dir" "$ws_root/.loop-spec/codebase" "$ws_root/docs/loop-spec/features/$slug"
+  mkdir -p "$feature_dir" "$ws_root/docs/loop-spec/features/$slug"
   [[ -n "$spec_file" ]] && cp "$spec_file" "$feature_dir/spec-draft.md"
   local fj gate_plan=null effective="$profile"
   fj="$(lib feature-init skeleton --mode workspace --slug "$slug" --now "$(now)" --style "$style" --title "$title" \
@@ -600,36 +596,6 @@ cmd_resume() {
 
 iso_epoch() {
   python3 -c "import sys,datetime;print(int(datetime.datetime.strptime(sys.argv[1],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()))" "$1" 2>/dev/null || echo 0
-}
-
-# -------------------------------------------------------------------- map ----
-cmd_map() {
-  local feature_dir=""
-  while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="$2" ;; *) usage ;; esac; shift 2; done
-  [[ -n "$feature_dir" ]] || usage
-  local root ws_root
-  ws_root="$(fget "$feature_dir" '.workspace.root // ""')"
-  root="${ws_root:-$(git rev-parse --show-toplevel)}"
-  cd "$root"
-  if [[ "$(fget "$feature_dir" '.greenfield // false')" == "true" || "$(lib map-policy bootstrap)" == "skip" ]]; then
-    jq -n --arg r "$root" '{dispatch:[], root:$r, reason:"skipped"}'; return
-  fi
-  if [[ -z "$ws_root" ]]; then
-    local line
-    while IFS= read -r line; do
-      case "$line" in INGESTED\ *) fset "$feature_dir" "artifacts.codebaseSource.$(tr 'A-Z' 'a-z' <<<"${line#INGESTED }")" '"gsd-ingest"' >/dev/null ;; esac
-    done < <(lib gsd-ingest codebase 2>/dev/null || true)
-    if ! git diff --quiet -- docs/loop-spec/codebase/ 2>/dev/null || [[ -n "$(git ls-files --others --exclude-standard docs/loop-spec/codebase/)" ]]; then
-      git add docs/loop-spec/codebase/ && git commit -q -m "docs: ingest GSD codebase map" || true
-    fi
-  fi
-  local missing='[]' d
-  for d in TECH ARCH QUALITY CONCERNS DOMAIN; do
-    [[ -f "docs/loop-spec/codebase/$d.md" ]] || missing="$(jq -c --arg d "$(tr 'A-Z' 'a-z' <<<"$d")" '. + [$d]' <<<"$missing")"
-  done
-  fset "$feature_dir" bootstrapPendingDomains "$missing" >/dev/null
-  jq -n --argjson m "$missing" --arg r "$root" --argjson repos "$(fget "$feature_dir" '.workspace.repos // []')" \
-    '{dispatch:$m, root:$r, repos:$repos}'
 }
 
 # ------------------------------------------------------------------- next ----
@@ -851,7 +817,6 @@ case "${1:-}" in
   start) shift; cmd_start "$@" ;;
   init) shift; cmd_init "$@" ;;
   resume) shift; cmd_resume "$@" ;;
-  map) shift; cmd_map "$@" ;;
   next) shift; cmd_next "$@" ;;
   finish) shift; cmd_finish "$@" ;;
   escalate) shift; cmd_escalate "$@" ;;

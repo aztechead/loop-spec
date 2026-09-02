@@ -55,7 +55,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "implementer": "effective alias for the active phase",
     "codeReviewer": "effective alias for the active phase",
     "verifier": "effective alias for the active phase",
-    "mapper": "effective alias for the active phase",
     "patternMapper": "effective alias for the active phase"
   },
   "phaseModels": {
@@ -76,14 +75,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "tasks": "path or null (.loop-spec/features/{slug}/tasks.json — gate-validated tasks[] JSON persisted at PLAN Step 6; EXECUTE Step 2a's preferred task source, validated by lib/artifact-lint.sh tasks; optional per-task status pending|done is the resume ledger — cycle resume and EXECUTE read it via lib/task-progress.sh)",
     "execution": "path or null",
     "verification": "path or null",
-    "iteration": "path or null",
-    "codebaseSource": {
-      "tech": "gsd-ingest | mapper | manual | null",
-      "arch": "gsd-ingest | mapper | manual | null",
-      "quality": "gsd-ingest | mapper | manual | null",
-      "concerns": "gsd-ingest | mapper | manual | null",
-      "domain": "gsd-ingest | mapper | manual | null"
-    }
+    "iteration": "path or null"
   },
   "currentTeamName": "string or null (e.g., loop-spec-execute-{slug}); null between phases",
   "currentTeammates": ["array of teammate names currently spawned, e.g., implementer-1, reviewer-1; empty between phases"],
@@ -158,7 +150,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "warnings": ["array of strings"],
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
   "pendingRemediationTasks": ["array of remediation task objects appended by VERIFY (lib/feature-write.sh append) and consumed+cleared by EXECUTE Step 2a; empty between phases"],
-  "bootstrapPendingDomains": ["array of codebase domain names whose background mappers were fired in cycle Step 5.5b; consumed and cleared in the DISCUSS phase; empty if codebase docs pre-existed or were GSD-ingested"],
   "activeWorkflow": {
     "scriptPath": "string or null",
     "args": "object or null",
@@ -216,7 +207,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null` unless the cycle's Step 2 capability probe signals a specific mode.
 - `artifacts.specInterview` is a nullable path to the SPEC-phase interview transcript (written by the spec orchestrator on the main thread). `currentPhase` includes `"spec"` as its first value.
-- `pendingRemediationTasks`, `bootstrapPendingDomains`, and `activeWorkflow` are runtime-only working fields written by the code (VERIFY remediation routing, cycle Step 5.5b background mapping, and the workflow dispatch contract in `dispatch-fanout.md`); all three are absent or empty/null between phases.
+- `pendingRemediationTasks` and `activeWorkflow` are runtime-only working fields written by the code (VERIFY remediation routing and the workflow dispatch contract in `dispatch-fanout.md`); both are absent or empty/null between phases.
 - `commands.prepare` is persisted beside the quality commands. Resolution precedence is an already-persisted explicit command, `LOOP_SPEC_CMD_PREPARE` (including an explicit empty value), `.loop-spec/workflow.json.prepareCommand`, then conservative lockfile detection by `lib/prepare-environment.sh`; ambiguous lockfiles produce an empty command rather than a mutable install guess. Detection covers workspace layouts: when the root carries no lockfile for an ecosystem, a single tracked `manifest + lockfile` pair within three directories of the root resolves to the same frozen install scoped to that directory (`(cd webapp/frontend && npm ci)`), and the preparation key hashes that directory's manifests alongside the root's. In workspace mode each repo owns its command and preparation key independently.
 - `verificationBaseline` is `null` unless `LOOP_SPEC_STARTUP_BASELINE=1` opted the cycle into a clean, exact `HEAD == baseSha` capture at startup. Default runs never capture one: the cycle spends no fresh-checkout time on repository-wide validation before the feature exists, and VERIFY's end-of-cycle comparison blocks on every failure it observes. Single-repo mode uses the top-level field; workspace mode leaves that field null and uses `workspace.repos[].verificationBaseline`. Its compact JSON is committed with feature state, but command logs remain machine-local. Comparison requires matching `baseSha`, preparation key, and test/lint/typecheck command strings. Pass-to-fail and added fingerprints are regressions; unchanged or subset known failures are accepted; command/runtime infrastructure errors are distinct. Criterion-specific acceptance commands are never included. A missing baseline on an older feature is strict: current failures regress and are never learned from the modified feature head.
 - `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base.
@@ -305,32 +296,7 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 **EXECUTE.** One task per planned task. Implementers self-claim by calling `TaskUpdate({taskId, status: "in_progress", owner: "<own-name>"})`. The harness serializes concurrent claims on the same task id; the losing implementer must re-query and retry. Task lifecycle: `pending -> in_progress -> awaiting_review -> completed | needs_rework`. Per-task `retries` in metadata is the retry counter; `claimedBy` identifies the owner for reviewer-to-implementer messaging.
 
-**VERIFY.** No per-task harness task list for the verifier or code-reviewer teammates. Those teammates are single-instance; the lead tracks their completion via `TeammateIdle` and direct `SendMessage` to `lead`. Mapper teammates (incremental codebase refresh) use a small task list with one task per stale domain.
-
-## Codebase index schema (.loop-spec/codebase/index.json)
-
-`.loop-spec/codebase/index.json` is the file-to-domain mapping used by `map-codebase` and `verify` skills. It is not gitignored (shared across machines).
-
-```json
-{
-  "last_refreshed_at": {
-    "arch": "ISO-8601 timestamp or null",
-    "tech": "ISO-8601 timestamp or null",
-    "quality": "ISO-8601 timestamp or null",
-    "concerns": "ISO-8601 timestamp or null",
-    "domain": "ISO-8601 timestamp or null"
-  },
-  "files": {
-    "file/path.ext": ["arch", "tech", "quality"],
-    "another/file.ext": ["domain"]
-  }
-}
-```
-
-### index.json field notes
-
-- `files` maps repository-relative paths to arrays of domain names.
-- `last_refreshed_at.{domain}` is set by the map-codebase skill after each mapper completes and reports `DOMAIN_DONE`.
+**VERIFY.** No per-task harness task list for the verifier or code-reviewer teammates. Those teammates are single-instance; the lead tracks their completion via `TeammateIdle` and direct `SendMessage` to `lead`.
 
 ## Atomic write
 

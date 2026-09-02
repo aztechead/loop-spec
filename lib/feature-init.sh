@@ -208,7 +208,7 @@ canonical_models() {
   local phase_default=""
   local role_phase_default=""
   local v_specWriter v_planner v_advocate v_challenger v_specComplianceReviewer
-  local v_iterateJudge v_codeReviewer v_implementer v_verifier v_mapper v_patternMapper
+  local v_iterateJudge v_codeReviewer v_implementer v_verifier v_patternMapper
   if [[ -n "$phase" ]]; then
     validate_phase "$phase" || return 1
     phase_default="$(resolve_phase_model "$phase")" || return 1
@@ -234,7 +234,6 @@ canonical_models() {
   v_codeReviewer=$(resolve_role_model CODE_REVIEWER "${role_phase_default:-$INHERIT}")                       || return 1
   v_implementer=$(resolve_role_model IMPLEMENTER "${role_phase_default:-$INHERIT}")                          || return 1
   v_verifier=$(resolve_role_model VERIFIER "${role_phase_default:-$INHERIT}")                                || return 1
-  v_mapper=$(resolve_role_model MAPPER "${role_phase_default:-$INHERIT}")                                    || return 1
   v_patternMapper=$(resolve_role_model PATTERN_MAPPER "${role_phase_default:-$INHERIT}")                     || return 1
 
   jq -n \
@@ -247,7 +246,6 @@ canonical_models() {
     --arg codeReviewer           "$v_codeReviewer" \
     --arg implementer            "$v_implementer" \
     --arg verifier               "$v_verifier" \
-    --arg mapper                 "$v_mapper" \
     --arg patternMapper          "$v_patternMapper" \
     '{
       specWriter: $specWriter,
@@ -259,7 +257,6 @@ canonical_models() {
       codeReviewer: $codeReviewer,
       implementer: $implementer,
       verifier: $verifier,
-      mapper: $mapper,
       patternMapper: $patternMapper
     }'
 }
@@ -316,7 +313,7 @@ validate_routing() {
     validate_phase_model_selector "$var" "${!var:-}" || return 1
   done
   for role in SPEC_WRITER PLANNER ADVOCATE CHALLENGER SPEC_COMPLIANCE_REVIEWER \
-              ITERATE_JUDGE CODE_REVIEWER IMPLEMENTER VERIFIER MAPPER PATTERN_MAPPER; do
+              ITERATE_JUDGE CODE_REVIEWER IMPLEMENTER VERIFIER PATTERN_MAPPER; do
     var="LOOP_SPEC_MODEL_${role}"
     [[ -z "${!var:-}" ]] || validate_role_model_selector "$role" "$var" "${!var}" || return 1
   done
@@ -387,8 +384,7 @@ common_skeleton() {
         specInterview: null,
         spec: null, patterns: null, plan: null, execution: null, verification: null,
         iteration: null,
-        patternsSource: null,
-        codebaseSource: {tech: null, arch: null, quality: null, concerns: null, domain: null}
+        patternsSource: null
       },
       currentTeamName: null,
       currentTeammates: [],
@@ -411,9 +407,13 @@ common_skeleton() {
         targets: []
       },
       warnings: [],
-      bootstrapPendingDomains: [],
       verificationBaseline: null
     } + $tierblocks'
+}
+
+no_extra_args() {
+  local sub="$1"; shift
+  [[ $# -eq 1 ]] || { echo "usage: feature-init.sh $sub" >&2; exit 1; }
 }
 
 case "${1:-}" in
@@ -437,31 +437,19 @@ case "${1:-}" in
     resolve_phase_model "$2"
     ;;
   phase-models)
-    [[ $# -eq 1 ]] || {
-      echo "usage: feature-init.sh phase-models" >&2
-      exit 1
-    }
+    no_extra_args phase-models "$@"
     canonical_phase_models
     ;;
   all-models)
-    [[ $# -eq 1 ]] || {
-      echo "usage: feature-init.sh all-models" >&2
-      exit 1
-    }
+    no_extra_args all-models "$@"
     all_effective_models
     ;;
   validate)
-    [[ $# -eq 1 ]] || {
-      echo "usage: feature-init.sh validate" >&2
-      exit 1
-    }
+    no_extra_args validate "$@"
     validate_routing
     ;;
   agent-probe-models)
-    [[ $# -eq 1 ]] || {
-      echo "usage: feature-init.sh agent-probe-models" >&2
-      exit 1
-    }
+    no_extra_args agent-probe-models "$@"
     agent_probe_models
     ;;
   activate)

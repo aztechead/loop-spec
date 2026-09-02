@@ -47,8 +47,7 @@
       "kind": "agent",
       "reads": [
         "artifacts",
-        "execStyle",
-        "bootstrapPendingDomains"
+        "execStyle"
       ],
       "writes": [
         "artifacts",

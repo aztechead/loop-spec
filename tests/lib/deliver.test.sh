@@ -686,7 +686,7 @@ printf '# Verification\nAll pass.\n' > "$DDOCS/VERIFICATION.md"
 printf '# Iteration\nConverged.\n' > "$DDOCS/ITERATION.md"
 jq -n --arg base "$DBASE" '{schemaVersion:7,slug:"defer",feature_title:"Gated warning feature",
   currentPhase:"deliver",branch:"feat/defer",baseSha:$base,baseBranch:"main",workspace:null,
-  prUrl:null,checkpointPrUrl:null,warnings:["codebase-map refresh deferred; feature verification passed"],
+  prUrl:null,checkpointPrUrl:null,warnings:["reviewer guide deferred; feature verification passed"],
   artifacts:{spec:"docs/loop-spec/features/defer/SPEC.md",verification:"docs/loop-spec/features/defer/VERIFICATION.md",iteration:"docs/loop-spec/features/defer/ITERATION.md"},
   delivery:{status:"pending",attemptedAt:null,finishedAt:null,targets:[]}}' > "$DFDIR/feature.json"
 git -C "$DEFER" add .gitignore ".loop-spec/features/defer/feature.json" \
@@ -699,10 +699,10 @@ check "deferral gate: exit 3" "3" "$ec"
 check "deferral gate: no controller calls" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 check "deferral gate: stderr names the violation" "1" "$(grep -q 'self-authored deferral' <<<"$err" && echo 1 || echo 0)"
 
-# Runtime warnings may name a non-blocking deferred map refresh; they do not declare
+# Runtime warnings may name a non-blocking deferred step; they do not declare
 # dropped feature scope. Remove the actual declaration and delivery proceeds.
 printf '# Spec\n\n## Summary\n\nThe goal.\n' > "$DDOCS/SPEC.md"
-jq '.warnings=["VERIFY Step 9: codebase-map refresh deferred; feature verification passed"] | .delivery={status:"pending",attemptedAt:null,finishedAt:null,targets:[]}' \
+jq '.warnings=["VERIFY Step 9: reviewer guide deferred; feature verification passed"] | .delivery={status:"pending",attemptedAt:null,finishedAt:null,targets:[]}' \
   "$DFDIR/feature.json" > "$DFDIR/feature.json.tmp" && mv "$DFDIR/feature.json.tmp" "$DFDIR/feature.json"
 git -C "$DEFER" add ".loop-spec/features/defer/feature.json" "$DDOCS/SPEC.md"
 git -C "$DEFER" commit -q -m "clear deferred scope declaration"

@@ -20,7 +20,6 @@ checks=(
   "skills/execute/SKILL.md	dispatch.md"
   "skills/verify/SKILL.md	dispatch.md"
   "skills/iterate/SKILL.md	dispatch.md"
-  "skills/map-codebase/SKILL.md	dispatch.md"
   "skills/shared/execute-subagent.md	dispatch.md"
   "skills/shared/execute-loop-fleet.md	dispatch.md"
   "lib/events.sh	dispatch          - an agent was launched"

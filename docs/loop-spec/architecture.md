@@ -188,10 +188,10 @@ loop-spec/
 ├── .claude-plugin/                  # plugin.json + marketplace.json
 ├── extensions/adk/loop_spec_adk/    # ADK bridge: env + skills + dispatch (imports google-adk)
 ├── extensions/opencode/loop-spec.ts # opencode bridge: shell.env/chat.message/event hooks (node builtins only)
-├── agents/                          # specialized agent definitions (teammates + mappers)
+├── agents/                          # specialized agent definitions (teammates)
 ├── skills/
 │   ├── cycle/ spec/ discuss/ plan/ execute/ verify/ iterate/ deliver/ # seven phases + orchestrator
-│   ├── map-codebase/ assess/ debug/ intake/ quality-loop/ revise/ retro/
+│   ├── assess/ debug/ intake/ quality-loop/ revise/ retro/
 │   ├── status/ sentinel/ watch/ micro/ rules/ onboard/
 │   ├── grill/ simplicity/ human-code/ discipline/               # session-mode toggles
 │   ├── pause/ rollback/ forensics/                             # lifecycle utilities
@@ -213,7 +213,7 @@ loop-spec/
 
 ## Workflows integration
 
-Phase skills can dispatch [Claude Code dynamic workflows](https://code.claude.com/docs/en/workflows) at fan-out points (map-codebase, the VERIFY acceptance and code-review gates, and PLAN multi-angle on opt-in). The wrapper preserves the team orchestration and falls back automatically when the `Workflow` tool is unavailable. If the tool is denied, add `Workflow` to the allow list via `/permissions`; to force the fallback everywhere, set `CLAUDE_CODE_DISABLE_WORKFLOWS=1`. Fan-out parameters are fixed: 3 refute voters, 3 plan angles, 3 dimension reviewers, completeness critic on.
+Phase skills can dispatch [Claude Code dynamic workflows](https://code.claude.com/docs/en/workflows) at fan-out points (the VERIFY acceptance and code-review gates, and PLAN multi-angle on opt-in). The wrapper preserves the team orchestration and falls back automatically when the `Workflow` tool is unavailable. If the tool is denied, add `Workflow` to the allow list via `/permissions`; to force the fallback everywhere, set `CLAUDE_CODE_DISABLE_WORKFLOWS=1`. Fan-out parameters are fixed: 3 refute voters, 3 plan angles, 3 dimension reviewers, completeness critic on.
 
 `hooks/install-bundled-workflows.sh` also installs two standalone commands: `/loop-spec:codebase-audit` (multi-dimension review of the current diff) and `/loop-spec:multi-angle-plan` (draft N plans, judge, synthesize).
 
@@ -222,7 +222,7 @@ Phase skills can dispatch [Claude Code dynamic workflows](https://code.claude.co
 
 Three open-source projects shaped this one:
 
-- [get-shit-done](https://github.com/gsd-build/get-shit-done): a multi-phase workflow that captures every decision in markdown artifacts. Its lesson: spec-driven beats prompt-driven as soon as a task is bigger than one commit, because the spec catches design errors that re-rolls cannot. Several mechanisms are ported directly: the first-run codebase map (with GSD `.planning/` ingest), the pattern-mapper, the VERIFY marker scan, stall detection on resume, and orphaned-worktree pruning.
+- [get-shit-done](https://github.com/gsd-build/get-shit-done): a multi-phase workflow that captures every decision in markdown artifacts. Its lesson: spec-driven beats prompt-driven as soon as a task is bigger than one commit, because the spec catches design errors that re-rolls cannot. Several mechanisms are ported directly: the pattern-mapper (with GSD `.planning/` ingest), the VERIFY marker scan, stall detection on resume, and orphaned-worktree pruning.
 - [ponytail](https://github.com/DietrichGebert/ponytail): a "lazy senior dev" skill that climbs a ladder (YAGNI, reuse, stdlib, native, installed dep, one line, minimum) before writing code, without cutting validation, error handling, security, or accessibility. Ported here as simplicity mode plus an over-engineering pass in VERIFY's code review.
 
 Positions the codebase takes:

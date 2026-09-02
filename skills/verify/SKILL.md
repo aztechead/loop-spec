@@ -1,6 +1,6 @@
 ---
 name: verify
-description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team, evidence commit, and map-codebase refresh. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
+description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team, and evidence commit. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
@@ -128,10 +128,6 @@ afterwards.
   `docs/loop-spec/features/{slug}/REVIEW-ORDER.md`; lint with
   `bash "${CLAUDE_SKILL_DIR}/../../lib/review-trail.sh" lint <path> "$baseSha" HEAD` until
   clean; the exit records it as `artifacts.reviewOrder` for DELIVER. Never a delivery gate.
-- **Map refresh**: unless `lib/map-policy.sh refresh` says `skip`,
-  `Skill(loop-spec:map-codebase) mode: incremental, since_sha: baseSha` (`--full` for
-  greenfield; workspace passes `name=abs-path` repo list). A failure is a warning, not a
-  gate.
 
 ## 5. Exit
 

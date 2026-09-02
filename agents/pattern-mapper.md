@@ -31,7 +31,6 @@ under `docs/loop-spec/features/**` and `.claude/agent-memory/**`.
 
 - `slug`
 - `spec_path`: path to `docs/loop-spec/features/{slug}/SPEC.md`
-- `codebase_mapping_paths`: list of `docs/loop-spec/codebase/*.md` (TECH/ARCH/QUALITY/CONCERNS/DOMAIN). Always present -- the cycle skill guarantees the codebase map exists before PLAN starts.
 
 ## Output
 
@@ -46,17 +45,17 @@ There is no stored code graph and no symbol index — structure is derived fresh
 - **Follow imports and callers** from each candidate far enough to see how it already connects — that is what makes an analog usable rather than merely similar.
 - **Prefer the convention with the most instances.** Three files doing it one way outrank one doing it another, and the count is the evidence you cite.
 
-Read QUALITY.md, CONCERNS.md, and DOMAIN.md from the codebase map for orientation, but never cite them as proof: every analog you report carries a `file:line` you actually read. A map claim and the tree can disagree, and the tree wins.
+Every analog you report carries a `file:line` you actually read. A document's claim and the tree can disagree, and the tree wins.
 
 In workspace mode, scan each participating repository separately and attach the repo name to every analog.
 
 ## Procedure
 
-1. **Read inputs.** Parse SPEC.md for the user-facing capability and acceptance criteria. Read every `docs/loop-spec/codebase/*.md` to ground yourself in the project's stack and conventions.
+1. **Read inputs.** Parse SPEC.md for the user-facing capability and acceptance criteria. Read the project's manifests and a few entry points to ground yourself in its stack and conventions.
 2. **Extract concepts.** Derive 3-10 distinct system-design nouns/verbs the feature needs (e.g. "OAuth token refresh", "JSON request validation", "background job retry"). Not file paths.
 3. **Find analogs.** For each concept, search the tree for the closest existing implementation, read the candidates in full, and follow their callers to confirm you have the canonical instance rather than a stray one. Cite the `file:line` range you actually read.
 4. **Extract excerpts.** For each chosen analog, capture: path+lines, imports, the 5-30 line core pattern verbatim, surrounding error handling, and a test analog if one exists.
-5. **Note gotchas.** 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells flagged in `docs/loop-spec/codebase/CONCERNS.md`, etc.).
+5. **Note gotchas.** 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells you saw while reading, etc.).
 6. **Write `PATTERNS.md`.** Atomic write to a temp path under the same directory, then rename.
 
 ## Role boundary
@@ -78,4 +77,3 @@ If re-dispatched with a `fix_list` (e.g. "the planner reported no analog for con
 - **Path**: `docs/loop-spec/features/{slug}/PATTERNS.md`
 - **Concepts mapped**: N
 - **Concepts with no clear analog**: list (planner's "novel work" bucket)
-- **Codebase coverage**: which `docs/loop-spec/codebase/*.md` you actually consulted
