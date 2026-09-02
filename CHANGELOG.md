@@ -21,7 +21,11 @@ follow it, and the mechanics that prose used to describe now live in scripts.
 - **Phase ingress is a script.** `lib/phase-entry.sh <phase>` names the exact
   `feature.json` fields and files a phase consumes and `FLAG`s a missing one at the
   door, so a session resuming after a handoff reads the packet instead of re-deriving
-  state. Each phase skill opens with it; `phase-exit.sh` remains the egress.
+  state. Each phase skill opens with it; `phase-exit.sh` remains the egress. The entry
+  call also snapshots `feature.json`, and `phase-exit.sh` diffs the file against that
+  snapshot: a key changed outside the phase's allow-list is state no later phase reads
+  and is reported as `WARN [egress]` (a `FLAG` under `LOOP_SPEC_EGRESS_GUARD=deny`, silent
+  under `off`).
 
 ### Changed
 
@@ -30,6 +34,11 @@ follow it, and the mechanics that prose used to describe now live in scripts.
   resolving nine effective maps, which was two thirds of the start time. The
   SessionStart simplicity directive is pointer-style: it names the ladder and the two
   probes instead of restating the rungs, about half its previous size.
+- **One contract block per implementer prompt.** The subagent, loop-fleet, and Workflow
+  rungs carried nine separate directive paragraphs per task, per attempt; each now
+  carries one `ENGINEERING CONTRACT` block that names the contracts to read, the probes
+  to run, and the rules that bind without a file read. The subagent stanza drops from
+  4523 to 3579 bytes; every coverage pin on the directives still holds.
 - **Lookup tools are the harness's call.** The cycle skill no longer declares
   `WebFetch`/`WebSearch` off limits and the implementer role no longer disallows them;
   a version or advisory lookup uses whatever the host program provides.

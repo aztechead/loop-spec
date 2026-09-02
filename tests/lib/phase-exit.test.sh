@@ -212,6 +212,34 @@ check "exit iterate: rewind pass leaves the phase open" "verify" "$(fj '.complet
 ec=0; bash "$EXIT" iterate --feature-dir "$FD" --terminal >/dev/null 2>&1 || ec=$?
 check "exit iterate: terminal pass closes the phase" "iterate" "$(fj '.completedPhases[-1]')"
 
+# --- egress guard -------------------------------------------------------------------
+# ITERATION.md is present, so the only thing left to judge is what the phase wrote.
+ENTRY="$REPO_ROOT/lib/phase-entry.sh"
+bash "$ENTRY" iterate --feature-dir "$FD" >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.used 1 >/dev/null
+ec=0; out="$(bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
+check "egress: a key the phase owns raises nothing" "0" "$(grep -c '\[egress\]' <<<"$out")"
+check "egress: the snapshot is consumed on ok" "missing" "$([[ -f "$FD/.phase-entry.json" ]] && echo present || echo missing)"
+
+bash "$ENTRY" iterate --feature-dir "$FD" >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" scratch.note '"left behind"' >/dev/null
+ec=0; out="$(bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
+check "egress: a stray key warns by default and does not block" "0" "$ec"
+check "egress: the warning names the path" "1" "$(grep -c '^WARN \[egress\] scratch.note ' <<<"$out")"
+
+bash "$ENTRY" iterate --feature-dir "$FD" >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" scratch.note '"changed again"' >/dev/null
+ec=0; out="$(LOOP_SPEC_EGRESS_GUARD=deny bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
+check "egress: deny mode flags the stray key" "1" "$ec"
+check "egress: deny mode names the path as a FLAG" "1" "$(grep -c '^FLAG \[egress\] scratch.note ' <<<"$out")"
+ec=0; out="$(LOOP_SPEC_EGRESS_GUARD=off bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
+check "egress: off mode is silent" "0" "$(grep -c '\[egress\]' <<<"$out")"
+ec=0; LOOP_SPEC_EGRESS_GUARD=bogus bash "$EXIT" iterate --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "egress: an unknown mode is a bad invocation" "2" "$ec"
+rm -f "$FD/.phase-entry.json"
+ec=0; out="$(bash "$EXIT" iterate --feature-dir "$FD" 2>&1)" || ec=$?
+check "egress: no snapshot means nothing to judge" "0" "$(grep -c '\[egress\]' <<<"$out")"
+
 echo
 echo "phase-exit: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

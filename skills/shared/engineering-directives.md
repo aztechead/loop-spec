@@ -44,11 +44,18 @@ set in one place so a new rung copies from here.
 | Fires when | Do | Artifact | Probe |
 |---|---|---|---|
 | A phase starts or resumes | Read the entry packet and nothing else: `bash lib/phase-entry.sh <phase> --feature-dir DIR` lists the exact fields and files this phase consumes. Do not re-read `feature.json` whole, re-scan the tree, or re-derive what a prior phase already wrote. | The packet's `read=` list is the phase's whole ingress | `lib/phase-entry.sh` (`FLAG` on a missing ingress artifact) |
-| A phase ends | Write only the egress artifacts the next phase's packet names, then close with `bash lib/phase-exit.sh <phase> --feature-dir DIR`. Never set `currentPhase`; the driver owns it. | `artifacts.*` pointers and the commit | `lib/phase-exit.sh` (`FLAG` per missing gate) |
+| A phase ends | Write only the egress artifacts the next phase's packet names, then close with `bash lib/phase-exit.sh <phase> --feature-dir DIR`. Never set `currentPhase`; the driver owns it. | `artifacts.*` pointers and the commit | `lib/phase-exit.sh` (`FLAG` per missing gate; `WARN [egress]` per `feature.json` key changed outside the phase's allow-list, a `FLAG` under `LOOP_SPEC_EGRESS_GUARD=deny`) |
 | The driver answers `HANDOFF next=<p>` | Print the line and stop. The fresh session runs `phase-entry.sh <p>` first; nothing from this session's context is needed. | The `LOOP_SPEC_PHASE_HANDOFF` line | `hooks/team/phase-handoff-guard.sh` |
 | The cycle starts | `cycle-driver.sh start` is the whole preflight. Print its notices and warnings, resolve its decisions, nothing else. | The `start` JSON | `lib/feature-init.sh validate` (selector routing, fork-free) |
 
-## Canonical compact directive (inline this verbatim into dispatch prompts)
+## Canonical compact directive
+
+A dispatch prompt that is the executor's whole contract (the subagent, loop-fleet, and
+Workflow rungs) carries the one `ENGINEERING CONTRACT` block; its canonical copy is the
+stanza in `skills/shared/execute-subagent.md`, and `lib/plan-to-loop.sh` and
+`lib/workflows/execute-dag.js` render the same text with their own path resolution. A
+surface whose reader already holds the implementer charter (the team prompt, the
+SessionStart hook) inlines only this paragraph:
 
 > ENGINEERING DIRECTIVES (on by default). Read
 > `skills/shared/engineering-directives.md` — do not paste it. Simple over clever: the

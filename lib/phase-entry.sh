@@ -12,6 +12,10 @@
 # Usage:
 #   phase-entry.sh <spec|discuss|plan|execute|verify|iterate|deliver> --feature-dir DIR
 #
+# The call also copies feature.json to <DIR>/.phase-entry.json (ignored by the
+# runtime ignore rules): phase-exit.sh diffs the file against it and names every key the
+# phase changed outside its own allow-list, which is the egress half of this contract.
+#
 # Output:
 #   fields=<compact JSON of the consumed feature.json keys>
 #   read=<path>                one per existing file the phase reads, required or not
@@ -56,6 +60,7 @@ feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 
 slug="$(jq -r '.slug' "$fj")"
+cp "$fj" "$feature_dir/.phase-entry.json"
 ws_root="$(jq -r '.workspace.root // ""' "$fj")"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; fi
 docs="$root/docs/loop-spec/features/$slug"

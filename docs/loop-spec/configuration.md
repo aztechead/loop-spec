@@ -84,6 +84,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_PORT_ROOT` | directory path; platform temp | Store root for the reference `port-local` adapter. Unset defaults under the process temp directory. |
 | `LOOP_SPEC_EFFORT` | `system1`/`system2`; unset | Global operator override for `lib/effort-probe.sh`. Invalid values fail safe to `system2`. Outranked by the more-specific overrides below. |
 | `LOOP_SPEC_EFFORT_PHASE` | `system1`/`system2`; unset | Per-phase effort override. Outranks `LOOP_SPEC_EFFORT`; outranked by `LOOP_SPEC_EFFORT_NODE`. |
+| `LOOP_SPEC_EGRESS_GUARD` | `warn`/`deny`/`off`; `warn` | How `lib/phase-exit.sh` treats a `feature.json` key a phase changed outside its allow-list (state no later phase reads): `warn` prints `WARN [egress]`, `deny` makes it a `FLAG` that keeps the phase open, `off` skips the comparison. |
 | `LOOP_SPEC_EFFORT_NODE` | `system1`/`system2`; unset | Per-node effort override. Most specific form; outranks phase and global. |
 | `LOOP_SPEC_FEATURE_WRITE` | executable path; `lib/feature-write.sh` | Test/seam override for the feature-state writer. Production unset uses the bundled `lib/feature-write.sh`. |
 | `LOOP_SPEC_EVENTS` | executable path; `lib/events.sh` | Test/seam override for the event emitter used by `lib/graph/trace.sh`. Production unset uses the bundled `lib/events.sh`. |

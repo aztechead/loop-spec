@@ -21,6 +21,14 @@
 #   verify    artifact-lint verification, verification-grounding-lint
 #   iterate   ITERATION.md present (--terminal also closes the phase)
 #
+# Egress guard: when phase-entry.sh left <DIR>/.phase-entry.json, every feature.json
+# path the phase changed is checked against that phase's allow-list (WRITES below). A
+# key outside it is state no later phase reads, the churn a resumed session pays for.
+#   LOOP_SPEC_EGRESS_GUARD=warn   default: `WARN [egress] <path> ...`, never blocks
+#   LOOP_SPEC_EGRESS_GUARD=deny   the same finding is a FLAG and the phase stays open
+#   LOOP_SPEC_EGRESS_GUARD=off    no comparison
+# The snapshot is removed on ok. No snapshot means nothing to judge.
+#
 # Output: `FLAG <what>` per finding, then one answer line:
 #   phase-exit: ok (<phase>)                 exit 0
 #   phase-exit: <n> flag(s) (<phase>)        exit 1
@@ -99,11 +107,52 @@ tag_checkpoint() {
   fi
 }
 
+# WRITES: the feature.json paths a phase may change between entry and exit, by prefix.
+# The first line is every phase (gate rounds, team state, journaling); the rest is what
+# that phase's skill or in-phase scripts own. phase-exit's own artifacts.* and
+# completedPhases writes happen after the check, so they are not listed.
+WRITES_ALL="currentGate gateHistory currentTeamName currentTeammates updatedAt warnings activeWorkflow checkpointPrUrl"
+WRITES_spec="artifacts.spec artifacts.specInterview"
+WRITES_discuss="artifacts.spec artifacts.codebaseSource artifacts.patternsPrefetch bootstrapPendingDomains"
+WRITES_plan="artifacts.patternsPrefetch artifacts.patternsSource artifacts.patterns artifacts.plan artifacts.tasks"
+WRITES_execute="mergeQueue pendingRemediationTasks commands greenfield artifacts.tasks artifacts.execution workspace"
+WRITES_verify="pendingRemediationTasks artifacts.verification artifacts.reviewOrder verificationBaseline workspace"
+WRITES_iterate="iterate artifacts.iteration pendingRemediationTasks backlogEntryId"
+
+egress_check() {
+  local mode="${LOOP_SPEC_EGRESS_GUARD:-warn}" snap="$feature_dir/.phase-entry.json"
+  case "$mode" in warn|deny) ;; off) return 0 ;;
+    *) echo "phase-exit: LOOP_SPEC_EGRESS_GUARD must be warn, deny, or off (got '$mode')" >&2; exit 2 ;;
+  esac
+  [[ -f "$snap" ]] || return 0
+  local allowed changed p a ok
+  allowed="$WRITES_ALL $(eval "echo \"\${WRITES_$phase:-}\"")"
+  # Every non-object path whose value differs, reduced to its key segments: an appended
+  # array element reports as the array's own path.
+  changed="$(jq -rn --slurpfile a "$snap" --slurpfile b "$fj" '
+    ($a[0]) as $A | ($b[0]) as $B
+    | ([($A, $B) | paths(type != "object")] | unique)
+    | map(select(. as $p | ($A | getpath($p)) != ($B | getpath($p))))
+    | map(map(select(type == "string")) | join(".")) | unique | .[]')"
+  for p in $changed; do
+    ok=0
+    for a in $allowed; do [[ "$p" == "$a" || "$p" == "$a".* ]] && { ok=1; break; }; done
+    (( ok )) && continue
+    if [[ "$mode" == "deny" ]]; then
+      flag "[egress] $p changed during $phase: no later phase reads it (allow-list WRITES_$phase in lib/phase-exit.sh)"
+    else
+      echo "WARN [egress] $p changed during $phase: no later phase reads it (allow-list WRITES_$phase in lib/phase-exit.sh; LOOP_SPEC_EGRESS_GUARD=deny blocks)"
+    fi
+  done
+}
+
 close_phase() {
   lib feature-write append "$feature_dir" completedPhases "\"$phase\"" >/dev/null
   fset currentTeamName null
   fset currentTeammates '[]'
 }
+
+egress_check
 
 case "$phase" in
   spec)
@@ -220,6 +269,7 @@ case "$phase" in
 esac
 
 if (( flags == 0 )); then
+  rm -f "$feature_dir/.phase-entry.json"
   echo "phase-exit: ok ($phase)"
 else
   echo "phase-exit: $flags flag(s) ($phase)"; exit 1
