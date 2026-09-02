@@ -7,7 +7,7 @@
 #
 # --dry-run   traverse without dispatching node bodies or writing state; print
 #             node/edge/kind/label per line, structural only.
-# --resume    resolve the start node per docs/loop-spec/features/gdd/REMEDIATION-CONTRACT.md
+# --resume    resolve the start node per docs/loop-spec/graph-remediation-contract.md
 #             sec 5 (pause record -> checkpoint ledger -> feature.json.currentPhase
 #             pre-3.0 compat -> graph entry) instead of always starting at entry.
 # --step      process at most one node and print its JSON dispatch descriptor to
@@ -31,7 +31,7 @@
 #      nested subgraph failure)
 #   2  bad invocation
 #   5  a node had route edges and none was satisfied, with no routeDefault
-#      (REMEDIATION-CONTRACT.md sec 3) — never a silent chain fallthrough.
+#      (graph-remediation-contract.md sec 3) — never a silent chain fallthrough.
 #
 # harness-neutral: never branches on harness; node bodies may via lib/harness.sh.
 set -euo pipefail

@@ -12,7 +12,7 @@
 # Referential rules beyond JSON shape:
 #   - route condition (and human admit) must be {probe,args,expects}; probe path
 #     must be an executable file; expects must be a member of `<probe> --answers`
-#     (docs/loop-spec/features/gdd/REMEDIATION-CONTRACT.md sec 2 -- this is the
+#     (docs/loop-spec/graph-remediation-contract.md sec 2 -- this is the
 #     rule that would have caught the shipped PLAN-critique-skip / lost-rewind bug)
 #   - edge endpoints must name declared nodes
 #   - every node reachable from entry

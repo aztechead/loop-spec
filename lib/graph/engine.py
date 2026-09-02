@@ -117,7 +117,7 @@ def _substitute(arg, node_id):
 
 
 def run_condition(cond, node_id):
-    """Evaluate a {probe, args, expects} condition per REMEDIATION-CONTRACT.md
+    """Evaluate a {probe, args, expects} condition per graph-remediation-contract.md
     sec 1-3: substitute placeholders, run the probe, match its FIRST
     whitespace-delimited stdout token against `expects` EXACTLY. Never a
     substring match. Unresolved (missing probe, non-zero exit, empty stdout)
@@ -252,7 +252,7 @@ def latest_checkpoint():
 
 
 def assert_reads(node_id):
-    """lib/graph/state.sh assert-reads on node entry (REMEDIATION-CONTRACT.md
+    """lib/graph/state.sh assert-reads on node entry (graph-remediation-contract.md
     sec 7). Read-only against feature.json; run even in dry-run for structural
     validation, but only when a feature.json actually exists -- a synthetic
     graph exercised before any feature is initialized has nothing to assert."""
@@ -374,7 +374,7 @@ def _is_cycle_result_body(body_path):
 
 
 def emit_phase_boundaries(current, admitting):
-    """phase_start / phase_end at node transitions (REMEDIATION-CONTRACT.md sec 7).
+    """phase_start / phase_end at node transitions (graph-remediation-contract.md sec 7).
 
     The cycle skill used to ask the agent to run `events.sh emit` as prose, so a
     coder who ran the work inline skipped every marker and the console saw
@@ -421,7 +421,7 @@ def emit_phase_boundaries(current, admitting):
 
 
 def publish_result(status, summary):
-    """The canonical terminal-result constructor (REMEDIATION-CONTRACT.md sec 8)
+    """The canonical terminal-result constructor (graph-remediation-contract.md sec 8)
     -- never a hand-built result dict. Same target as the pre-remediation
     hand-built result.json (feature_dir/result.json), plus the fix: this also
     publishes .loop-spec/last-result.json, which the old hand-built object
@@ -671,7 +671,7 @@ def process_node(current, admitting, defer_agent_routing):
 
 
 def resolve_start():
-    """Start-node resolution (REMEDIATION-CONTRACT.md sec 5), in priority
+    """Start-node resolution (graph-remediation-contract.md sec 5), in priority
     order. The engine MUST NOT write currentPhase before this returns — nothing
     here writes state, it only reads the pause record / ledger / feature.json
     and (for the first two) evaluates the resolved node's own outgoing edges to

@@ -6,7 +6,7 @@
 # far the map has decayed; this field is what makes those numbers actionable —
 # a `generated` domain with outdated claims is routine refresh work, a
 # `verified` one is a broken promise. Ported from BMAD-METHOD's
-# verified/generated split (docs/loop-spec/bmad-scan-proposals.md B6).
+# verified/generated split (the curated-artifact rule in CLAUDE.md).
 #
 # The marking lives in YAML frontmatter at the top of each domain document,
 # managed keys only — anything else in the block is preserved untouched:

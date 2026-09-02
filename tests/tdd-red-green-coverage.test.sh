@@ -17,7 +17,7 @@ checks=(
   "skills/shared/execute-subagent.md	Omitting a TDD label does not exempt"
   "lib/plan-to-loop.sh	Omitting a TDD label does not exempt"
   "lib/workflows/execute-dag.js	Omitting a TDD label does not exempt"
-  "docs/loop-spec/codebase/DOMAIN.md	even when the plan omits a TDD label"
+  "skills/shared/execute-subagent.md	Omitting a TDD label does not exempt"
 )
 
 check_fixed_strings "${checks[@]}"

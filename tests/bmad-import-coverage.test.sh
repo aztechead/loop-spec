@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# BMAD-import coverage: the imports from docs/loop-spec/bmad-scan-proposals.md are
+# BMAD-import coverage: the imports adopted from the BMAD method scan are
 # cross-file mechanisms -- a script plus the phase that calls it plus the docs that
 # describe it. Each coupling below broke silently at least once while it was being built,
 # so each is pinned here.
@@ -79,7 +79,7 @@ done
 
 # The guardrail that separates this from BMAD's customize.toml: extensions add, never
 # subtract. If a built-in gate id ever becomes claimable, the whole authority argument in
-# bmad-scan-proposals.md B3 is void.
+# the B3 proposal is void.
 if bash lib/extension-points.sh validate >/dev/null 2>&1; then :; fi
 GUARD_DIR="${TMPDIR:-/tmp}/loop-spec-bmad-guard.$$"
 mkdir -p "$GUARD_DIR"

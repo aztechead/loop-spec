@@ -139,7 +139,7 @@ model judgment — so it will misfire in specific, nameable ways:
 - `long-sentence`'s imperative/procedural classification treats every `- ` or
   numbered list item as imperative (the 20-word cap), on the theory that list
   items are usually instructions or steps. Measured against
-  `docs/loop-spec/features/gdd/SPEC.md`, that assumption is wrong often enough to
+  a real SPEC.md, that assumption is wrong often enough to
   matter: most of that file's bulleted content is `- Decision: ...` and
   `- EVID-NNN: ...` citation entries, which are descriptive, not procedural. Of
   175 total flags on that file, 102 were `long-sentence`; 51 of those landed on a

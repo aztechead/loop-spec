@@ -7,7 +7,7 @@
 #   deliver-next.sh --answers
 #
 # lib/deliver.sh is the side-effecting action script that actually runs
-# delivery; it is never itself a route condition (REMEDIATION-CONTRACT.md
+# delivery; it is never itself a route condition (graph-remediation-contract.md
 # sec 1). This probe only reads the outcome that script already wrote.
 #
 # Successful and retry observations live in the ignored sidecar

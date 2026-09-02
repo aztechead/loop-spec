@@ -5,7 +5,7 @@
 # trail: what was asked, what "done" meant, how it was grounded and verified. Feature-scale work
 # gets a whole docs/loop-spec/features/{slug}/ tree; ad-hoc work gets ~5 appended
 # lines here. One file, greppable, and a future retro pass can mine it the same way
-# retro.sh mines events.jsonl (see docs/loop-spec/ROADMAP-3.0.md, pillar B).
+# retro.sh mines events.jsonl.
 #
 # Usage: add | list | path  (run with -h for the full flag reference; usage()
 # below is the single source of truth for it).

@@ -4,7 +4,7 @@
 # Why: skills/map-codebase updates the index by adding domains to a file's
 # entry, so without pruning the index only ever grows and a deleted source
 # file keeps voting on which domains are stale forever (F3 in
-# docs/loop-spec/bmad-scan-proposals.md). The map skill used to carry this as
+# the map trust contract, lib/map-trust.sh). The map skill used to carry this as
 # an instruction; an instruction is followed on a good day, a script every day.
 #
 # `lib/map-audit.sh orphans` DETECTS these entries and never rewrites; this is

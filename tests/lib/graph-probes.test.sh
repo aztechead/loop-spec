@@ -2,7 +2,7 @@
 # Offline unit suite for lib/graph/probes/*.sh -- the route probes that
 # graph/cycle.graph.json and graph/critique.graph.json name in their route
 # conditions and human `admit` gates. Each probe is checked against the house
-# contract (docs/loop-spec/features/gdd/REMEDIATION-CONTRACT.md sec 2): exactly
+# contract (docs/loop-spec/graph-remediation-contract.md sec 2): exactly
 # one `<key>=<value> reason=<text>` line and exit 0 when resolved; silent and
 # non-zero when unresolved; a `--answers` verb listing its full answer-token set.
 set -uo pipefail
