@@ -34,7 +34,7 @@
 #   - skip schemaVersion != 7 -> skipped + the one-line warning the skill specifies
 #   - currentTeamName != null -> candidate with needs_probe: true (liveness probing
 #     needs the harness TaskList tool; the ORCHESTRATOR resolves it per
-#     cycle-resume-escalation.md, using teams.mode from this same blob)
+#     lib/cycle-driver.sh start, using teams.mode from this same blob)
 #   - currentTeamName == null && age >= stalenessHours*3600 -> skipped (too stale)
 #   - else -> candidate, sorted most-recently-updated first
 #

@@ -4,7 +4,7 @@
 # thread (SessionStart hook) but inside each dispatched implementer / planner / reviewer,
 # which a SessionStart hook does NOT reach.
 #
-# Relevant phases (skills/simplicity/SKILL.md "Relationship to the cycle"):
+# Relevant phases (skills/settings/SKILL.md, simplicity row):
 #   PLAN/planner, EXECUTE/implementer (team + subagent + loop-fleet rungs), VERIFY/code-reviewer.
 #
 # This is the enforcement that keeps the wiring from silently regressing.

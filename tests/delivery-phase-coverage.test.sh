@@ -36,7 +36,7 @@ present "bypass PRs are reconciled at publication" lib/delivery-reconcile.sh "Tu
 present "pr-delivery observe does not flip readiness" lib/pr-delivery.sh "Green draft"
 present "cycle-result fail-open reconciles" lib/cycle-result.sh "delivery-reconcile.sh"
 present "DELIVER skill names the reconciler" skills/deliver/SKILL.md "delivery-reconcile.sh"
-present "ITERATE advances to DELIVER" skills/iterate/SKILL.md 'currentPhase = "deliver"'
+present "ITERATE closes the phase on the terminal pass" skills/iterate/SKILL.md '--terminal'
 present "cycle documents seven-phase chain" skills/cycle/SKILL.md "VERIFY -> ITERATE -> DELIVER"
 present "short path still walks ITERATE and DELIVER" skills/cycle/SKILL.md "never skips ITERATE or DELIVER"
 present "completion still emits the terminal result" lib/cycle-driver.sh "cycle-result write"
@@ -51,11 +51,11 @@ present "workspace cleanliness checks output" lib/cycle-driver.sh '== "clean" ]]
 present "workspace bases are fetched" lib/cycle-driver.sh 'fetch --quiet origin "$bb"'
 present "candidate finalization is deterministic" lib/deliver.sh 'finalize-delivery-candidate.sh'
 present "candidate finalizer scopes digest" lib/finalize-delivery-candidate.sh 'docs/loop-spec/telemetry/runs/$slug.json'
-present "terminal iteration evidence is committed" skills/iterate/SKILL.md 'iterate: NO_JIRA ${slug} terminal evidence'
-present "terminal backlog commit is path scoped" skills/iterate/SKILL.md 'git diff --cached --quiet -- "$iteration_path" .loop-spec/BACKLOG.md'
-present "VERIFY commit is path scoped" skills/verify/SKILL.md 'git commit -m "verify: NO_JIRA {slug}" -- docs/loop-spec/features/{slug}/VERIFICATION.md'
-present "workspace VERIFY avoids parent commit" skills/verify/references/workspace-mode.md 'workspace root is not a delivery target'
-absent "workspace VERIFY does not commit parent" skills/verify/references/workspace-mode.md 'git -C "$feature_workspace_root" commit'
+present "terminal iteration evidence is committed" lib/phase-exit.sh 'commit_paths "iterate: $slug'
+present "terminal backlog commit is path scoped" lib/phase-exit.sh 'git diff --cached --quiet -- "${existing[@]}"'
+present "VERIFY commit is path scoped" lib/phase-exit.sh 'git commit -q -m "$msg" -- "${existing[@]}"'
+present "workspace VERIFY avoids parent commit" lib/phase-exit.sh 'workspace root is not a delivery target'
+absent "workspace VERIFY does not commit parent" lib/phase-exit.sh 'git -C "$feature_workspace_root" commit'
 present "single-repo delivery has candidate preflight" lib/deliver.sh "Candidate preflight"
 present "hard retries bind to the recorded SHA" lib/deliver.sh "candidate_sha_drift"
 present "hard delivery failure skips tracked commit" lib/cycle-driver.sh '"$phase" == "deliver" && "$next" != "execute"'
@@ -72,7 +72,7 @@ present "workspace surfaces a representative PR url" lib/deliver.sh 'select(.out
 absent "VERIFY does not create PRs" skills/verify/SKILL.md "gh pr create"
 absent "VERIFY does not push branches" skills/verify/SKILL.md "git push -u origin"
 absent "VERIFY does not exit worktree" skills/verify/SKILL.md "ExitWorktree"
-absent "workspace VERIFY does not create PRs" skills/verify/references/workspace-mode.md "gh pr create"
+absent "workspace VERIFY does not create PRs" lib/phase-exit.sh "gh pr create"
 
 if grep -E '^allowed-tools:' skills/verify/SKILL.md | grep -q AskUserQuestion; then
   echo "FAIL: VERIFY allowed-tools omit AskUserQuestion"; FAIL=$((FAIL + 1))

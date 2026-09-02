@@ -80,7 +80,7 @@ In workspace mode, scan each participating repository separately and attach the 
 
 ## Workspace mode -- repo field rules
 
-When `feature.workspace` is non-null, apply `skills/plan/references/workspace-task-format.md`
+When `feature.workspace` is non-null, apply the workspace task rules in `skills/plan/SKILL.md` (step 2)
 in addition to all existing role-boundary rules: every task carries a `repo` field
 matching one `workspace.repos[].name`, targets exactly one repo, uses workspace-relative
 `<repo>/<path>` file paths, and expresses cross-repo ordering as explicit `blockedBy`

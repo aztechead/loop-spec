@@ -95,7 +95,7 @@ ${INTENSITY}
 
 Never lazy about: understanding the problem, input validation at trust boundaries, error handling that prevents data loss, security, accessibility, or anything explicitly requested. A seam (a clean boundary, an injected dependency) is not bloat; cutting it is not simplification. Non-trivial logic leaves ONE runnable check behind. Mark deliberate shortcuts with a 'simplicity:' comment naming the ceiling and upgrade path.
 
-Simplicity mode is ON by default. Disable it with /loop-spec:simplicity off or LOOP_SPEC_SIMPLICITY=0."
+Simplicity mode is ON by default. Disable it with /loop-spec:settings simplicity off or LOOP_SPEC_SIMPLICITY=0."
 
 # Emit valid JSON via jq (hard dependency) rather than a hand-rolled escaper.
 jq -n --arg ctx "$DIRECTIVE" \

@@ -7,7 +7,7 @@
 # (task_type: in_process_teammate). That is harness behavior, not a loop-spec
 # bug. A role or phase alias therefore has to spawn as a nameless one-shot
 # Agent, which does honor the alias enum. Rework for that role follows
-# skills/shared/no-teams-fallback.md.
+# skills/shared/dispatch.md.
 #
 # Usage:
 #   implicit-team-model.sh spawn-kind --teams-mode MODE --selector SELECTOR

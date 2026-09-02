@@ -1,228 +1,107 @@
-# Autonomous mode — the self-answer contract
+# Autonomous mode: the self-answer contract
 
-Autonomous mode makes a run **question-free**: every point where loop-spec would
-normally call `AskUserQuestion`, the orchestrator instead takes the answer it
-would have recommended — the option grounded in the code graph, the codebase
-map, and general best practice — records it as an assumed decision, and
-proceeds.
+Autonomous mode makes a run question-free: at every point loop-spec would call
+`AskUserQuestion`, the orchestrator takes the answer it would have recommended, records
+it as an assumed decision, and proceeds. It is ON when the inline token `autonomous`
+appears in the invocation (stripped from the title) or `LOOP_SPEC_AUTONOMOUS=1` is set;
+the cycle persists it as `feature.json.autonomous = true` so phases and resumes see it.
 
-## Finish the authorized task
+`execStyle: auto` is not this mode. Auto is the default style: the cycle does not pause
+between phases, but a human is attached and grill, SPEC, and DISCUSS questions still
+fire (the SPEC interview is an AskUserQuestion loop (`auto` included)).
 
-Do not ask for permission to perform work the original request already authorizes.
-Carry out the stated next step and keep going until the requested work is complete.
-This does not override an explicit human gate, a destructive-action confirmation, or
-a safety failure; those remain pauses or loud failures as their owning phase requires.
+Do not ask for permission to perform work the original request already authorizes;
+carry out the next step and keep going until the work is complete. Human gates,
+destructive-action confirmations, and safety failures remain pauses or loud failures.
 
-`execStyle: auto` is not this mode. Auto is the default execution style: the
-cycle does not pause between phases, but a human is attached and grill, SPEC,
-and DISCUSS questions still fire. This file is about the `autonomous` token
-and `LOOP_SPEC_AUTONOMOUS=1`. The preferred headless/SDK entry is `claude -p "/loop-spec:auto
-<description>"`: the auto skill performs a grounded semantic decision and validates
-it through `lib/task-route.sh` before delegating to micro, debug, or the full cycle.
-An explicit `claude -p "/loop-spec:cycle autonomous <description>"` still means the
-full seven-phase cycle with zero human input. The Claude Agent SDK for Python
-(`claude-agent-sdk`) is the same entry from a job runner — prompt
-`/loop-spec:auto <description>` through `query()` with loop-spec loaded via
-`ClaudeAgentOptions(plugins=[...], setting_sources=["project"])`; see
-`docs/loop-spec/claude-invocation-contract.md` for the full call and the
-CLI-vs-SDK `permission_mode` divergence.
+## Entry points
 
-All three stamp `CLAUDE_CODE_ENTRYPOINT` (`sdk-cli`, `sdk-py`, `sdk-ts`), so the
-headless execution profile is detected without operator configuration:
-`bash lib/harness.sh headless` answers it, and the cycle's startup preflight
-reports it as `execution:{entrypoint,headless}`.
+The preferred headless entry is `/loop-spec:auto <description>`, which makes a grounded
+routing decision validated by `lib/task-route.sh` before micro, debug, compact, or the
+full cycle; `/loop-spec:cycle autonomous <description>` is the full cycle with zero
+input. Per harness: `claude -p "/loop-spec:auto <description>"` (or the Claude Agent SDK
+`query()` with the plugin loaded; `docs/loop-spec/claude-invocation-contract.md`),
+`opencode run --format json "Load the loop-spec-auto skill and run: <description>"`,
+`adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl`,
+and `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`.
+All stamp `CLAUDE_CODE_ENTRYPOINT`, so `lib/harness.sh headless` detects the profile.
+`LOOP_SPEC_PHASE_HANDOFF=1` (or `phase:fresh`) returns after each durable phase with a
+paused `phase-handoff` result so a supervisor can relaunch with fresh context.
 
-For bounded main-thread context, set `LOOP_SPEC_PHASE_HANDOFF=1` or include the
-`phase:fresh` token in the cycle invocation. The cycle completes one phase, commits
-its resume state, writes a paused `last-result.json` with `reason=phase-handoff`, and
-returns. A user or durable supervisor then invokes the cycle again; resume detection
-enters the recorded next phase in a new agent session. This does not disable one-shot
-subagents inside a phase.
+The compact route (`/loop-spec:auto` classifier) writes an auditable per-gate run/skip
+plan; every skip has a reason, a malformed or unbounded proposal promotes to the full
+cycle, and Destructive work is never compact. The contract is
+[`compact-profile.md`](compact-profile.md).
 
-Under opencode the preferred entry is `opencode run --format json "Load the
-loop-spec-auto skill and run: <description>"` (or the `@opencode-ai/sdk`'s
-`client.session.prompt()` against `opencode serve`, same text). Under ADK it is
-`adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run:
-<description>" --jsonl` (or your own `Runner` over `build_app()`, same text).
-Under Codex it is `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox
-workspace-write '$loop-spec-auto <description>'`. The
-self-answer and fail-closed routing contracts are identical; see
-`skills/shared/opencode-harness.md`, `skills/shared/adk-harness.md`, and
-`skills/shared/codex-harness.md`.
+## Precedence
 
-## Compact auto route
+1. Explicit answers win: a `LOOP_SPEC_ANSWER_*` / `LOOP_SPEC_CMD_*` variable, a rule in
+   `.loop-spec/RULES.md`, or a decision already in the feature's record is never
+   re-decided.
+2. Style is forced to `auto`; `step`/`interactive`/`review-only` tokens are ignored with
+   a one-line notice.
+3. Every remaining question self-answers (below). `lib/phase-mode.sh` and
+   `lib/cycle-driver.sh start` already resolve the setup and phase-entry sites; the
+   grill directive is suppressed for the session.
+4. Retro auto-applies at completion (`lib/retro.sh auto`; kill switch
+   `LOOP_SPEC_RETRO_AUTO_APPLY=0`): a closed template set that only tightens the loop.
 
-`/loop-spec:auto` may select `compact` for a bounded feature or refactor. Its
-classifier writes an auditable per-gate run/skip plan; every skip has a reason.
-Compact may adapt the spec interview, DISCUSS and spec critique, PLAN critique,
-repository validation, placeholder and tamper scans, acceptance, code review,
-and ITERATE. Destructive work is never compact. A malformed, uncertain, or
-unbounded proposal promotes to the full cycle. Exact-SHA delivery and terminal
-result publication remain invariant on every harness. The canonical gate-plan
-contract is [`compact-profile.md`](compact-profile.md); do not duplicate its
-schema here.
-
-## Trigger and precedence
-
-Autonomous mode is ON when either:
-
-- the inline token `autonomous` appears anywhere in the invocation text
-  (stripped from the title like `style:` tokens — cycle Step 3), or
-- `LOOP_SPEC_AUTONOMOUS=1` is set in the environment.
-
-Effects, in order of precedence:
-
-1. **Explicit answers still win.** If a `LOOP_SPEC_ANSWER_*` / `LOOP_SPEC_CMD_*`
-   env var covers the question, use it — autonomous never overrides an answer
-   the operator pinned. Same for a prior decision already recorded in
-   `.loop-spec/RULES.md` or the feature's decisions record (never re-decide).
-2. **Style is forced to `auto`.** `step`/`interactive`/`review-only` tokens are
-   ignored with a one-line notice (they exist to pause for a human; there is no
-   human).
-3. **Every remaining `AskUserQuestion` site self-answers** per the rule below.
-4. **Grill mode is suppressed for the session** (`hooks/team/grill-inject.sh`
-   checks `LOOP_SPEC_AUTONOMOUS`); the SPEC interview runs in self-answered
-   one-pass form instead, and DISCUSS collapses to lead-authored refinement +
-   the critique gate (`skills/discuss/SKILL.md`, Autonomous fast path).
-5. **Retro auto-applies at completion.** `lib/retro.sh auto` promotes repeated-
-   pattern rule candidates into `.loop-spec/RULES.md` without a human (kill
-   switch `LOOP_SPEC_RETRO_AUTO_APPLY=0`). Safe by construction: the appliable
-   texts are a closed template set with deterministic triggers that only ever
-   tighten the loop — autonomous mode cannot author or weaken a rule, and the
-   apply happens only at cycle completion, never mid-run.
-
-Autonomous mode implies non-interactive semantics everywhere
-`LOOP_SPEC_NON_INTERACTIVE=1` is honored, but is strictly stronger: where
-non-interactive aborts or takes a fixed default on a missing `LOOP_SPEC_ANSWER_*`
-var, autonomous derives the recommended answer itself. Persist the flag as
-`feature.json.autonomous = true` (cycle Step 5, via `lib/feature-write.sh set`)
-so phase skills and resumed sessions see it without re-parsing the invocation.
+Autonomous implies non-interactive everywhere `LOOP_SPEC_NON_INTERACTIVE=1` is honored
+and is strictly stronger: where non-interactive aborts or takes a fixed default,
+autonomous derives the recommended answer.
 
 ## The self-answer rule
 
-At any point a skill would call `AskUserQuestion`, when autonomous:
+1. Formulate the question anyway; it names the ambiguity being collapsed.
+2. Answer as the options' author would recommend: what the codebase already does
+   (map, PATTERNS, evidence) first, then industry practice, then the most reversible
+   option. Boring beats clever.
+3. Record it to disk at once, never in model memory:
+   `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$dir" "$phase" "$question" "$answer" "$rationale"`
+   (`$dir` is the feature dir; setup answers use `.loop-spec/decisions-staging` and the
+   cycle migrates them). SPEC renders the record into its `<decisions>` block
+   (`decisions.sh render`); PLAN copies it into `## User decisions (already made)`
+   suffixed `(assumed)`, so the "answer from the record before asking" rule covers
+   assumed answers exactly like human ones. A reviewer reads what was assumed and can
+   rerun with pinned `LOOP_SPEC_ANSWER_*` values or an edited spec.
+4. Proceed without pausing. Never print a question and wait.
 
-1. **Formulate the question anyway** — it names the ambiguity being collapsed.
-2. **Answer it as the options' author would recommend**: prefer the choice that
-   is grounded in what the codebase already does (graph/map/PATTERNS evidence),
-   then industry best practice, then the most reversible option. Boring beats
-   clever (simplicity mode's laziness ladder applies to decisions too).
-3. **Record it** in the decisions record (below) with a one-line rationale.
-4. **Proceed without pausing.** Never print a question and wait.
+A free-text prompt with no goal to infer (a bare invocation) cannot be self-answered:
+abort with usage guidance. Compaction summaries preserve the original goal, user
+constraints, locked decisions, acceptance criteria, unresolved blockers, evidence
+paths, and the exact commands needed to resume.
 
-Free-text prompts (e.g. cycle's bare-invocation "what do you want to build?")
-cannot be self-answered — there is no goal to infer. That single case aborts
-with usage guidance: autonomous invocations must carry a description, a spec
-file, or `backlog`.
-
-## What autonomous does NOT override
-
-Self-answering collapses *preference* questions, never *safety* aborts. These
-stay hard failures exactly as written in their skills:
-
-- dirty-repo aborts (workspace Step 5 two-phase check, worktree creation)
-- schema-version guards, the iteration ceiling
-- VERIFY's code-review HARD-GATE and the test-tamper scan
-- DELIVER's exact-SHA identity, required-check, and unique-PR gates
-- anything the skill marks abort/escalate-with-evidence rather than ask
+Self-answering collapses preference questions, never safety aborts: dirty-repo aborts,
+schema guards, the iteration ceiling, VERIFY's code-review HARD-GATE and tamper scan,
+and DELIVER's exact-SHA, required-check, and unique-PR gates stay hard failures. Sites
+that normally reach a human only in one style (DISCUSS unresolved dimensions and
+intent findings: AskUserQuestion in `auto`/`step`/`interactive`; ITERATE's spec-rewind
+approval in `step`/`interactive`) take the grounded assumption here.
 
 ## The continuation ladder (warnings are a record, not a handler)
 
-An autonomous run must manage every cycle of iteration itself. `warnings[]` is
-the audit trail of what happened — it is NEVER how a problem gets handled,
-because in a headless run nobody is reading warnings mid-flight. When a phase's
-escalation path fires, climb this ladder instead of stopping:
+`warnings[]` is the audit trail; nobody reads it mid-flight. When an escalation path
+fires, climb instead of stopping:
 
-1. **Self-heal in phase** — the existing gate retry loops (gate re-dispatch with
-   findings, teammate rework via SendMessage) run exactly as written; gate
-   retries are unbounded.
-2. **Lead-authored fallback** — if a teammate fails to produce its artifact
-   after one fresh re-dispatch, the lead (main thread) authors the artifact
-   itself from the same brief and continues, noting `lead-authored` in the
-   transcript. A missing teammate output is a dispatch problem, not a reason
-   to stop the loop.
-3. **ITERATE rewinds** — `execute`/`plan`/`spec` gaps rewind hands-off (style
-   is `auto`); the immutable original goal keeps the oracle honest and
-   `iterate.maxIterations` keeps it bounded. **While iterations remain, the
-   backlog is never used** (any mode): every gap is worked by a rewind, not
-   deferred — a backlogged in-limit gap would be convergence the loop claimed
-   but never did.
-4. **Iteration limit hit (the ONLY backlog entry point)** — run ITERATE's
-   confirmation pass as written, then convert EVERY accepted gap into a
-   concrete `BACKLOG.md` entry (`lib/backlog.sh add`, one self-contained
-   feature description per gap). After DELIVER's sidecar reaches
-   `delivery.json.status == "ready-for-review"`, the autonomous run **chains directly
-   into backlog drain** (cycle Step 3 branch 4 semantics, bounded by
-   `LOOP_SPEC_MAX_FEATURES`) so the gaps become worked items in the same run,
-   not notes for a human. `delivery-incomplete` stops chaining. Record the same
-   facts in `warnings[]` for the PR audit trail.
-5. **Terminal** — a gap that re-enters via backlog drain and spends its rounds
-   AGAIN is not re-backlogged: mark it terminal (`iterate-terminal:` prefix in
-   `warnings[]` and the backlog entry closed via `lib/backlog.sh terminal
-   <gap-id> <note>`; the gap id is deterministic — `backlog.sh gap-id` — and
-   matched by exact equality against `feature.backlogEntryId`, never fuzzy text). Two full
-   limits on the same gap means the approach is wrong, not under-iterated —
-   that is the one legitimate stop, and it stops with the complete evidence
-   trail (BUG-level detail in ITERATION.md), never silently. Before stopping,
-   the run salvages the work product via `lib/checkpoint-pr.sh` (draft PR with
-   the evidence trail) so a terminal stop still yields a reviewable artifact.
+1. **Self-heal in phase**: gate retry loops run as written, unbounded.
+2. **Lead-authored fallback**: a teammate that produces nothing after one fresh
+   re-dispatch is replaced by the lead authoring the artifact from the same brief
+   (`lead-authored` in the transcript).
+3. **ITERATE rewinds** hands-off; the immutable original goal keeps the oracle honest
+   and `iterate.maxIterations` bounds it. While iterations remain, the backlog is never
+   used.
+4. **Iteration limit hit** (the only backlog entry point): the confirmation pass, then
+   every accepted gap becomes a `BACKLOG.md` entry, and after DELIVER reaches
+   `ready-for-review` the run chains into backlog drain (`LOOP_SPEC_MAX_FEATURES`).
+   `delivery-incomplete` stops chaining.
+5. **Terminal**: a gap re-entered from the backlog that spends its rounds again is not
+   re-backlogged. Mark it `iterate-terminal:`, close the entry (`lib/backlog.sh
+   terminal <gap-id> <note>`; ids are deterministic and matched exactly against
+   `feature.backlogEntryId`), write the full evidence trail into ITERATION.md, and
+   salvage the work via `lib/checkpoint-pr.sh`. Two limits on one gap means the
+   approach is wrong; that is the one legitimate stop, and it stops loudly.
 
-The ladder never invents an approval and never overrides a safety gate; it
-exhausts autonomous handling before anything is left for a human, and what it
-does leave is a worked evidence trail rather than a warning line.
-
-## The decisions record
-
-The moment an assumption is made it goes to DISK, never model memory — the audit
-trail must survive compaction and session death. `lib/decisions.sh` is the store
-(JSONL; `add` / `render` / `migrate`):
-
-Compaction summaries preserve the original goal, user constraints, locked decisions,
-acceptance criteria, unresolved blockers, evidence paths, and exact commands or
-identifiers needed to resume. Condense reasoning and intermediate narration first.
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$dir" "$phase" "$question" "$answer" "$rationale"
-```
-
-`$dir` is the feature dir once it exists; setup answers made before then (cycle
-Steps 0–4: workspace repos, resume choice, detected commands) use the staging dir
-`.loop-spec/decisions-staging`, and cycle Step 5 migrates them right after
-feature-init: `decisions.sh migrate .loop-spec/decisions-staging "$feature_dir"`.
-
-From that store, every self-answered question lands in two places:
-
-1. **SPEC.md `<decisions>` block** — a `## Decisions (assumed — autonomous)`
-   list, rendered verbatim from the store (`decisions.sh render "$feature_dir"`
-   emits the `- **{question}** → {answer} — {rationale}` lines). Whichever phase
-   makes an assumption `add`s it (SPEC for interview rounds, DISCUSS for
-   unresolved-dimension resolutions, cycle for setup answers); SPEC writes the
-   rendered list in.
-2. **PLAN.md `## User decisions (already made)`** — the planner copies the
-   record forward, each entry suffixed `(assumed)`, so the existing
-   escalation contract ("consult the decisions record before asking") covers
-   assumed answers exactly like human ones.
-
-The record is the audit trail: a human reviewing the PR reads what was assumed
-and why, and can rerun with corrections as pinned `LOOP_SPEC_ANSWER_*` vars or
-an edited spec file.
-
-## Site map (where the contract applies)
-
-| Site | Normal behavior | Autonomous behavior |
-|---|---|---|
-| auto route selection | explicit cycle choice | grounded semantic proposal -> `lib/task-route.sh` validation -> micro/debug/compact/full; malformed, uncertain, unbounded, or destructive compact proposals promote to full |
-| cycle Step 0 workspace repo confirmation | AskUserQuestion | all discovered repos participate (or `LOOP_SPEC_ANSWER_REPOS`) |
-| cycle Step 1 resume choice | AskUserQuestion | resume the most recently updated resumable feature; if none, new feature |
-| cycle Step 3 bare invocation | free-text question | abort with usage guidance (no goal to infer) |
-| cycle Step 4 command confirmation | AskUserQuestion | trust detection (or `LOOP_SPEC_CMD_*`); record |
-| SPEC interview (all rounds + gate prompts) | AskUserQuestion loop (`auto` included) | self-answered interview, all six perspectives in ONE pass with a single end-of-pass scoring — see `skills/spec/SKILL.md` "Autonomous mode" |
-| DISCUSS phase shape | clarifying loop + spec-writer + critique gate (`auto`: cap 5 Q rounds; `step`/`interactive`: no cap) | **collapsed** (`skills/discuss/SKILL.md`, Autonomous fast path): no clarifying loop (the SPEC self-interview covered it), no spec-writer (SPEC.md is the draft; the lead applies revisions directly) — only the critique gate dispatches a teammate |
-| DISCUSS unresolved dimensions / "depends on user intent" rows | AskUserQuestion in `auto`/`step`/`interactive` | graph-grounded assumption, recorded (the intent row picks the more reversible reading and records it) — applied by the lead directly under the fast path |
-| DISCUSS / PLAN teammate-idle | AskUserQuestion | one fresh re-dispatch, then the lead authors the artifact itself (continuation ladder rung 2). DISCUSS's fast path has no spec-writer, so this applies to its critique teammates and to PLAN's roster |
-| ITERATE spec-rewind approval (`step`/`interactive` only) | AskUserQuestion | moot — style is forced to `auto`, which already auto-approves |
-| ITERATE limit spent | ship-with-warnings, human drains backlog later | confirmation pass → accepted gaps become BACKLOG entries → chain into backlog drain (ladder rungs 4-5) |
-| DELIVER transport / identity / CI gate | stop or manual repair | failed required checks route to EXECUTE; ambiguous PR, moved head, timeout, missing auth/remote, or partial workspace delivery fail closed and stop chaining |
-| debug skill fix-strategy and escalation choices | AskUserQuestion | recommended strategy, recorded in BUG.md |
-
-Sites not listed follow the general rule: recommended option, recorded, proceed.
+DELIVER stays fail-closed: failed required checks route to EXECUTE; an ambiguous PR,
+moved head, timeout, missing auth or remote, or partial workspace delivery stops the
+chain. The debug skill's strategy and escalation choices take the recommended option
+and record it in BUG.md.

@@ -56,7 +56,7 @@ check "unknown flag is a bad invocation" "2" "$rc"
 
 # The contract docs and phase skills must name the probe; a model that still
 # "adds the model key per teammate" in implicit mode silently burns the override.
-IMPLICIT_DOC="$ROOT/skills/shared/implicit-team-mode.md"
+IMPLICIT_DOC="$ROOT/skills/shared/dispatch.md"
 check "implicit-team contract names the probe" "1" \
   "$(grep -Fq 'lib/implicit-team-model.sh' "$IMPLICIT_DOC" && echo 1 || echo 0)"
 check "implicit-team contract records in-process inheritance" "1" \

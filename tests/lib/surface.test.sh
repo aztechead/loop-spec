@@ -145,8 +145,8 @@ check "show resolves a bare name" "lib/ralph-remediation.sh" "$(head -1 <<<"$sho
 check "show prints the exit-code contract" "1" "$(grep -c 'Exit codes' <<<"$shown")"
 check "show resolves a full path" "lib/ralph-remediation.sh" \
   "$(bash "$SCRIPT" show lib/ralph-remediation.sh | head -1)"
-check "show resolves a shared contract" "skills/shared/dispatch-events.md" \
-  "$(bash "$SCRIPT" show dispatch-events | head -1)"
+check "show resolves a shared contract" "skills/shared/dispatch.md" \
+  "$(bash "$SCRIPT" show dispatch | head -1)"
 rc=0; bash "$SCRIPT" show no-such-script >/dev/null 2>&1 || rc=$?
 check "show of an unknown name exits 1" "1" "$rc"
 rc=0; bash "$SCRIPT" show a b >/dev/null 2>&1 || rc=$?

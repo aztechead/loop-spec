@@ -272,6 +272,7 @@ run_suite "lib/debug-init"            "bash tests/lib/debug-init.test.sh"
 run_suite "lib/greenfield-bootstrap"  "bash tests/lib/greenfield-bootstrap.test.sh"
 run_suite "lib/cycle-preflight"       "bash tests/lib/cycle-preflight.test.sh" integration
 run_suite "lib/cycle-driver"          "bash tests/lib/cycle-driver.test.sh" integration
+run_suite "lib/phase-exit"            "bash tests/lib/phase-exit.test.sh" integration
 run_suite "lib/plan-adherence"        "bash tests/lib/plan-adherence.test.sh"
 run_suite "lib/detect-test-cmd"       "bash tests/lib/detect-test-cmd.test.sh"
 run_suite "lib/workspace"          "bash tests/lib/workspace.test.sh"

@@ -49,7 +49,7 @@ Anchor each dimension against these examples (at the dimension minimum vs near-d
 
 ## Gate prompts (AskUserQuestion)
 
-Call shapes per `skills/shared/harness-call-contracts.md`; `multiSelect: false` on both.
+Call shapes per `skills/shared/dispatch.md`; `multiSelect: false` on both.
 Routing after the answer lives in `skills/spec/SKILL.md`. Emit these as written —
 never a prose shorthand or a wait.
 

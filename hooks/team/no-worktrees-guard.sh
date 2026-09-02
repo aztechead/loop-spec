@@ -6,7 +6,7 @@
 # entry point reachable from a tool call. Claude Code names three:
 #   "Applies to --worktree, EnterWorktree, and agent isolation."
 # so covering only the first two would leave `Agent({isolation: "worktree"})` -- a
-# documented parameter in skills/shared/harness-call-contracts.md -- as an open bypass.
+# documented parameter in skills/shared/dispatch.md -- as an open bypass.
 # Also caught: a raw `git worktree add` and loop-spec's own feature-worktree helper.
 #
 # Two worktree paths are deliberately NOT handled here, because neither is a tool call:

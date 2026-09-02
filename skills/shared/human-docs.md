@@ -39,7 +39,7 @@ paragraph serves neither — the reader has to change mental gears mid-page.
   `skills/shared/team-prompts/implementer.md`), subagent (`skills/shared/execute-subagent.md`),
   loop-fleet (`lib/plan-to-loop.sh`), workflow (`lib/workflows/execute-dag.js`).
 - **VERIFY / code-reviewer** — the docs-for-humans pass (`agents/code-reviewer.md`, `skills/verify/SKILL.md` Step 7.66).
-- **Main thread** — `hooks/team/human-code-inject.sh` at SessionStart, toggled by `skills/human-code/SKILL.md`.
+- **Main thread** — `hooks/team/human-code-inject.sh` at SessionStart, toggled by `skills/settings/SKILL.md` (`human-code`).
 
 ## The principles
 

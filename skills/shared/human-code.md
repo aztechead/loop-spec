@@ -25,7 +25,7 @@ Relevant phases:
   `skills/shared/team-prompts/implementer.md`), subagent (`skills/shared/execute-subagent.md`),
   loop-fleet (`lib/plan-to-loop.sh`), workflow (`lib/workflows/execute-dag.js`).
 - **VERIFY / code-reviewer** — the code-for-humans pass (`agents/code-reviewer.md`).
-- **Main thread** — `hooks/team/human-code-inject.sh` at SessionStart, toggled by `skills/human-code/SKILL.md`.
+- **Main thread** — `hooks/team/human-code-inject.sh` at SessionStart, toggled by `skills/settings/SKILL.md` (`human-code`).
 
 ## The principles
 

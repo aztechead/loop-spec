@@ -6,7 +6,7 @@ width `W < t_team`. The lead (the main thread running `execute`) drives the wave
 itself with one-shot `Agent` dispatches and inline `git` merges. No `TeamCreate`, no
 `Workflow`, no `SendMessage`, no harness task list.
 
-All waves also obey `skills/shared/subagent-concurrency.md`.
+All waves also obey `skills/shared/dispatch.md`.
 
 Contents: when this path runs · inputs · in-place single-repository mode · lead wave
 loop · agent dispatch convention · implementer contract stanza · implementer Agent
@@ -198,7 +198,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    aliases and omit it for `inherit`. A full/native ID requires the loop-fleet
    rung; fail loud if it reaches this Agent boundary.
    Issue the Agent call(s), then stop. Never AskUserQuestion as a wait
-   (`skills/shared/harness-call-contracts.md`). The harness resumes this turn
+   (`skills/shared/dispatch.md`). The harness resumes this turn
    when they complete. Then review.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
 5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, write a review package from the recorded BASE to the implementer's HEAD, then dispatch a spec-compliance reviewer `Agent` using the activated
@@ -275,7 +275,7 @@ the task worktree. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved selector>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved selector>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
 
 **Task progress (required).** EXECUTE is the longest phase; without this it reports
 only `[EXECUTE] start` and an operator watching a streamed log cannot tell task 1 of 6

@@ -98,7 +98,7 @@ contract here (`skills/shared/route-exit-contract.md`). Run it on every route.
 
 Under opencode, `harness.sh subagents` prints `true`: the full EXECUTE ladder
 below the team rung survives, and every one-shot `Agent` dispatch a phase
-skill (or `skills/shared/no-teams-fallback.md`) prescribes maps 1:1 onto the
+skill (or `skills/shared/dispatch.md`) prescribes maps 1:1 onto the
 native `task` tool:
 
 - `subagent_type: "loop-spec:<role>"` → `subagent_type: "loop-spec-<role>"`

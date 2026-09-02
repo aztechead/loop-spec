@@ -59,13 +59,13 @@ count_ge "both implementer prompts insert the shared stanza" \
 expect "execute SKILL reads executeMaxRetriesPerTask from the overlay" \
   skills/execute/SKILL.md 'get executeMaxRetriesPerTask 6'
 expect "execute SKILL emits conflict table" \
-  skills/execute/references/conflicts.md 'plan-conflicts.sh" table'
+  skills/execute/SKILL.md 'plan-conflicts.sh" table'
 expect "execute SKILL classifies stop vs ruling" \
-  skills/execute/references/conflicts.md 'execute-stop.sh" classify'
+  skills/execute/SKILL.md 'execute-stop.sh classify'
 expect "execute SKILL collapses batch groups" \
-  skills/execute/references/conflicts.md 'task-batch.sh" collapse'
+  skills/execute/SKILL.md 'task-batch.sh" collapse'
 expect "execute workflow path passes the overlay retry cap" \
-  skills/execute/references/rung-workflow-foreign.md 'maxRetriesPerTask: maxRetriesPerTask,'
+  skills/shared/execute-rungs.md 'maxRetriesPerTask, reviewersEnabled: true'
 expect "tier-matrix retries is 6" \
   skills/shared/tier-matrix.md 'execute.maxRetriesPerTask \| 6'
 
@@ -118,8 +118,7 @@ TEMPLATES=(
   lib/workflows/execute-dag.js
   skills/quality-loop/SKILL.md
   skills/verify/SKILL.md
-  skills/shared/execute-inline.md
-  skills/shared/execute-loops.md
+  skills/shared/execute-rungs.md
 )
 ec=0
 out=$(bash lib/prejudge-lint.sh scan "${TEMPLATES[@]}" 2>&1) || ec=$?

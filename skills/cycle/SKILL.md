@@ -200,7 +200,7 @@ entry per invocation (`LOOP_SPEC_MAX_FEATURES` bounds chaining); an outer
 
 Team dispatch inside phases follows `.loop-spec/runtime.json.teamsMode`: `explicit`
 creates a per-phase team, `implicit` probes `lib/implicit-team-model.sh spawn-kind` per
-teammate (`skills/shared/implicit-team-mode.md`), `none` uses one-shot agents
-(`skills/shared/no-teams-fallback.md`); rework goes to the same teammate. Follow the
+teammate (`skills/shared/dispatch.md`), `none` uses one-shot agents
+(`skills/shared/dispatch.md`); rework goes to the same teammate. Follow the
 harness contract for this harness (`skills/shared/claude-harness.md`,
 `opencode-harness.md`, `codex-harness.md`, `adk-harness.md`).

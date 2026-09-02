@@ -4,211 +4,135 @@ description: ITERATE phase - the outer convergence loop. Judges the integrated r
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
 
-# ITERATE Phase
+# ITERATE
 
-You are the ITERATE phase orchestrator, running on the **main thread**. Invoked by `loop-spec:cycle` when `feature.json.currentPhase == "iterate"` — i.e. after VERIFY's gates passed. VERIFY proves the SPEC acceptance checklist is met; ITERATE asks the harder question the article calls the heart of a loop: **are we actually there yet, measured against the original goal — and if not, feed the result back in and repeat.**
+VERIFY proved the acceptance checklist; you ask whether the ORIGINAL goal
+(`feature_title`, immutable, in the user's words) is met, and if not, what to fix
+first. Main thread, no team: one fresh `iterate-judge` per pass (maker ≠ checker).
+Inputs from `feature.json`: `slug`, `feature_title`, `iterate` (`maxIterations`,
+`used`, `confirmationUsed`, `lastVerdict`, `feedback`, `history[]`), `artifacts`,
+`execStyle`, `autonomous`, `backlogEntryId`, `models.iterateJudge`. The round limit is
+the one bound the cycle respects.
 
-This phase runs no team. It dispatches ONE fresh `iterate-judge` subagent (maker ≠ checker) for the goal re-judge, decides on its verdict, and records the gap state the graph's rewind routes key on. The bounded outer loop is: `... EXECUTE → VERIFY → ITERATE → (EXECUTE|PLAN|SPEC again | DELIVER)`.
+## 1. Limit gate
 
-Autonomous mode (`feature.json.autonomous == true`) forces style `auto`, so the spec-rewind approval gate below never fires — every rewind runs hands-off per `skills/shared/autonomous-mode.md`.
+`used >= maxIterations`: stop iterating and ship LOUD, never silent.
 
-## Inputs (from feature.json)
+1. **Confirmation pass** (once): if `used > 0` and `confirmationUsed` is not true, set
+   `iterate.confirmationUsed = true` first, then dispatch the judge as in step 2 with
+   `mode=confirmation`. It never increments `used` and never rewinds. `converged` closes
+   the goal with no limit warnings; otherwise its gaps are the fresher ones below.
+2. **Harvest every gap** from the freshest verdict into `warnings[]`, each prefixed
+   `iterate-budget-spent:`, and queue each on the backlog with its deterministic id:
+   ```bash
+   gid="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" gap-id "<gap.fix_first>")"
+   bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "{slug}" iterate-gap "<gap.description> — fix first: <gap.fix_first>" --id "$gid"
+   ```
+   This is the only point where ITERATE writes the backlog. **Terminal rule** (autonomous
+   and `gid == feature.json.backlogEntryId`): two limits on the same gap means the
+   approach is wrong. Record `iterate-terminal:` instead, close the entry with
+   `backlog.sh terminal "$gid" "two iteration limits spent on {slug}; approach wrong"`,
+   and write the evidence trail into ITERATION.md. Record the pattern once:
+   `lib/rules.sh add "iterate limit spent on {slug} with a <type>-level gap: ..." --check "bash lib/criteria-coverage.sh <spec> <plan>"`.
+   No confirmation pass possible: add `iterate-budget-spent: final remediation was never
+   re-judged against the original goal`.
+3. Write the final ITERATION.md section listing the warnings verbatim, run the exit
+   command with `--terminal` (step 4), and return; the graph routes to DELIVER.
 
-- `slug`, `feature_dir`, `feature_title` (the **original goal**, in the user's words).
-- `iterate`: `{maxIterations, used, confirmationUsed, lastVerdict, feedback, history[]}`.
-- `artifacts`: `spec`, `plan`, `verification` paths.
-- `models.iterateJudge` (the activated ITERATE selector; default `inherit`).
+## 2. Judge
 
-## Procedure
-
-### Step 0 - Round limit gate (hard stop first)
-
-The iterate round limit is the ONE bound the cycle respects. Before judging, check it:
+Emit the `dispatch` event, then ONE `Agent({description: "Iterate goal re-judge",
+subagent_type: "loop-spec:iterate-judge", prompt: ...})` (add `model` only for an
+alias) with: `slug`, `iteration = used + 1`, `original_goal = feature_title`, the
+SPEC.md / PLAN.md / VERIFICATION.md paths, the `feat/{slug}` diff, and
+`prior_feedback = iterate.feedback`. Dispatch, then stop. Never AskUserQuestion as a wait
+(`skills/shared/dispatch.md`). Save its completion message to `$feature_dir/.iterate-judge.out` and extract the
+verdict deterministically:
 
 ```bash
-fdir=".loop-spec/features/${slug}"
-used=$(jq -r '.iterate.used' "$fdir/feature.json")
-maxit=$(jq -r '.iterate.maxIterations' "$fdir/feature.json")
-```
-
-If `used >= maxit`: **stop iterating and advance to delivery — but report gaps LOUD, never silent.** Do NOT re-enter an upstream phase — this is the article's `STOP WHEN: ... OR N iterations reached`. Before setting `currentPhase = "deliver"`:
-
-0. **Confirmation pass (bounded to exactly one, report-only).** If a rewind fix landed after the last judge pass (`used > 0` and the phase pointer arrived here from VERIFY) AND `iterate.confirmationUsed` is not `true`: set `iterate.confirmationUsed = true` (via `lib/feature-write.sh`, BEFORE dispatching, so a crash/resume can never run it twice), then dispatch the `iterate-judge` once more exactly as in Step 1 but with `mode=confirmation` noted in the prompt. This pass does NOT increment `iterate.used` and CANNOT trigger a rewind — its verdict only decides what the ship looks like:
-   - `converged == true` (and `deterministic_gate_passed`): the final fix actually closed the goal. Record the verdict in `iterate.lastVerdict` + `history`, write ITERATION.md's final section as a clean converge, and ship with NO limit warnings — this converts "shipped with unknown state" into a confirmed converge.
-   - `converged == false` (or the dispatch fails/malforms): fall through to the loud-ship steps below using THIS verdict's gaps (they are fresher than the pre-fix `lastVerdict`).
-1. **Harvest every unresolved gap from the freshest verdict** (the confirmation verdict when one ran, else `iterate.lastVerdict`) into `warnings[]` (one entry per below-8 criterion and per gap in `gap` / `remaining_gaps[]`), each prefixed `iterate-budget-spent:`. A limit-exhausted ship with an empty warning trail is indistinguishable from a clean converge — that silence is the failure mode this step exists to prevent.
-
-   **Backlog each harvested gap too** — warnings are a report, the backlog is a queue. (This is the ONLY point in ITERATE, in any mode, where the backlog is written: the iteration limit is hit and the loop can no longer work the gap itself. While rounds remain, gaps rewind — Step 3 — and never touch the backlog.) Stamp each entry with its deterministic gap id (computed from `fix_first`) — the id is how a re-drained gap is recognized later, by exact equality, never fuzzy text:
-   ```bash
-   gid="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" gap-id "{gap.fix_first}")"
-   bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "{slug}" iterate-gap "{gap.description} — fix first: {gap.fix_first}" --id "$gid"
-   ```
-   `/loop-spec:cycle backlog` turns each into its own bounded follow-up cycle instead of the gap dying in feature.json.
-
-   **Autonomous terminal rule** (`feature.json.autonomous == true`): if THIS feature was itself started from a backlog drain (`feature.json.backlogEntryId` non-null) and the gap being harvested is the same gap that entry was created for — exact id equality, `[[ "$gid" == "{feature.backlogEntryId}" ]]` with `gid` computed from `gap.fix_first` as above — do NOT re-backlog it: two full iteration limits on the same gap means the approach is wrong, not under-iterated. Record it as `iterate-terminal:` (instead of `iterate-budget-spent:`) in `warnings[]`, close the backlog entry with `bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" terminal "$gid" "two iteration limits spent on {slug}; approach wrong"` (same note into ITERATION.md), and write the complete evidence trail into ITERATION.md. (Legacy feature with `backlogEntry` text but no `backlogEntryId`: close by exact text with `backlog.sh done` instead.) This is the ladder's one legitimate stop (`skills/shared/autonomous-mode.md`, rung 5) — everything short of it keeps the loop working the gap.
-
-   **Self-learning writer:** a limit-spent ship means the loop could not converge within its rounds — record the pattern once so the next feature plans for it:
-   ```bash
-   bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "iterate limit spent on {slug} with a {gap.type}-level gap: '{gap.fix_first}' — surface this class of requirement during PLAN" --check "bash lib/criteria-coverage.sh docs/loop-spec/features/{slug}/SPEC.md docs/loop-spec/features/{slug}/PLAN.md"
-   ```
-2. **If no confirmation pass could run** (already used, or the dispatch failed), append one more warning: `iterate-budget-spent: final remediation was never re-judged against the original goal`.
-3. Write the final ITERATION.md section stating the iteration limit was spent, listing the harvested warnings verbatim. Before advancing, commit the terminal evidence and backlog mutation with an explicit pathspec so they are part of the SHA DELIVER proves and unrelated staged files cannot be swept in:
-   ```bash
-   iteration_path="docs/loop-spec/features/${slug}/ITERATION.md"
-   if jq -e '.workspace == null' "$fdir/feature.json" >/dev/null 2>&1 \
-      && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-     git add "$iteration_path" .loop-spec/BACKLOG.md 2>/dev/null || true
-     git diff --cached --quiet -- "$iteration_path" .loop-spec/BACKLOG.md 2>/dev/null \
-       || git commit -m "iterate: NO_JIRA ${slug} terminal evidence" -- \
-         "$iteration_path" .loop-spec/BACKLOG.md
-   fi
-   ```
-4. Set `currentPhase = "deliver"` and go to Phase exit. DELIVER creates or reconciles the final PR only after this terminal verdict. The cycle's On-completion summary prints `warnings[]` after delivery — the user must see the accepted gaps without opening feature.json. **Autonomous mode:** chaining is allowed only after DELIVER reaches `ready-for-review`, so a limit-spent handoff can never outrun a failed PR delivery.
-
-### Step 1 - Dispatch the judge (maker ≠ checker)
-
-One-shot `Agent` dispatch (not a team), fresh context, strict grader. Emit the dispatch telemetry event first (`skills/shared/dispatch-events.md`): `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "iterate" --data '{"role":"iterate-judge","model":"<resolved selector>","rung":"subagent"}' || true`.
-
-Build the call without `model`. Add `model: <alias>` only when
-`feature.models.iterateJudge` is one of the four Agent aliases; omit it for
-`inherit`.
-
-```
-Agent({
-  description: "Iterate goal re-judge",
-  subagent_type: "loop-spec:iterate-judge",
-  prompt: "<iterate-judge.md inputs: slug, iteration=(used+1), original_goal=feature_title,
-            paths to SPEC.md / VERIFICATION.md / PLAN.md, feat/{slug} diff, and prior_feedback=feature.iterate.feedback>"
-})
-```
-
-Issue the Agent call, then stop. Never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`). The harness resumes this turn when the judge completes. Then parse the verdict.
-
-Parse the verdict JSON from its completion message (schema in `agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[], weakest, gap{type,description,fix_first}, remaining_gaps[], summary}`. `gap` is the single highest-leverage miss that decides the routing; `remaining_gaps[]` (possibly empty) lists the other known misses so one pass can remediate several and a limit-exhausted ship can report ALL of them.
-
-**Defensive parse (the verdict is the loop's oracle — extract it deterministically, do not eyeball it):** the judge returns the verdict inside a fenced ```json block. Capture its completion message to `$fdir/.iterate-judge.out`, then extract and validate before acting:
-
-```bash
-verdict=$(python3 - "$fdir/.iterate-judge.out" <<'PY'
+verdict=$(python3 - "$feature_dir/.iterate-judge.out" <<'PY'
 import json, re, sys
 txt = open(sys.argv[1]).read()
 m = re.search(r"```json\s*(\{.*?\})\s*```", txt, re.S) or re.search(r"(\{.*\})", txt, re.S)
-if not m: sys.exit("iterate-judge: no JSON verdict found in completion message")
+if not m: sys.exit("iterate-judge: no JSON verdict found")
 d = json.loads(m.group(1))
 for k in ("converged", "deterministic_gate_passed", "summary"):
-    if k not in d: sys.exit(f"iterate-judge: verdict missing required key '{k}'")
+    if k not in d: sys.exit(f"iterate-judge: verdict missing '{k}'")
 print(json.dumps(d))
 PY
 ) || { echo "ITERATE: malformed judge verdict; not shipping. Re-dispatch once, then escalate." >&2; }
 ```
 
-A malformed or missing verdict must NOT be read as "converged": treat it as re-dispatch-once-then-escalate. The convergence decision (Step 3) reads the validated `$verdict`, never the raw message.
+A malformed verdict is never "converged": re-dispatch once, then escalate. Schema
+(`agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[], weakest,
+gap{type,description,fix_first}, remaining_gaps[], summary}`.
 
-### Step 2 - Record the iteration
-
-```bash
-# increment the round counter and append the verdict to history
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.used "$((used+1))"
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.lastVerdict "<verdict json>"
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" iterate.history "<verdict json>"
-# emit iterate_verdict event (non-fatal; verdict lands in feature.json above).
-# gap = the rewind classification (execute|plan|spec, "none" when converged) —
-# /loop-spec:status --stats histograms it to show WHERE the loop loses rounds.
-_cvgd="$(echo "$verdict" | jq -r 'if .converged then "converged" else "not-converged" end')"
-_gap="$(echo "$verdict" | jq -r '.gap.type // "none"')"
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" iterate_verdict \
-  --phase iterate --data "{\"verdict\":\"$_cvgd\",\"iteration\":$((used+1)),\"gap\":\"$_gap\"}" || true
-```
-
-Write a human-readable `docs/loop-spec/features/{slug}/ITERATION.md` (append one section per iteration: number, converged?, per-criterion scores, weakest point, gap + fix-first, summary). Set `artifacts.iteration` to that path. Commit it only in single-repo mode; a workspace parent is orchestration state and may be an unrelated, unbranched git repository:
+Record it:
 
 ```bash
-if jq -e '.workspace == null' "$fdir/feature.json" >/dev/null 2>&1; then
-  git add docs/loop-spec/features/{slug}/ITERATION.md
-  git diff --cached --quiet -- docs/loop-spec/features/{slug}/ITERATION.md \
-    || git commit -m "iterate: NO_JIRA {slug} iteration $((used+1))" -- \
-      docs/loop-spec/features/{slug}/ITERATION.md
-fi
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$feature_dir" iterate.used "$((used+1))"
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$feature_dir" iterate.lastVerdict "$verdict"
+bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" append "$feature_dir" iterate.history "$verdict"
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" iterate_verdict --phase iterate \
+  --data "{\"verdict\":\"$(jq -r 'if .converged then "converged" else "not-converged" end' <<<"$verdict")\",\"iteration\":$((used+1)),\"gap\":\"$(jq -r '.gap.type // "none"' <<<"$verdict")\"}" || true
 ```
 
-### Step 3 - DECIDE
+Append one section to `docs/loop-spec/features/{slug}/ITERATION.md` (number,
+converged?, per-criterion scores, weakest point, gap and fix-first, summary).
 
-**Converged** (`verdict.converged == true`): the judge's verdict is a judgment; the
-deterministic floor beneath it runs first — convergence cannot be claimed over
-unverified scope:
+## 3. Decide
+
+**Converged:** the deterministic floor runs first and can veto the judge:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/converged-floor.sh" \
-  "docs/loop-spec/features/${slug}/SPEC.md" \
-  "docs/loop-spec/features/${slug}/VERIFICATION.md"
+bash "${CLAUDE_SKILL_DIR}/../../lib/converged-floor.sh" "docs/loop-spec/features/{slug}/SPEC.md" "docs/loop-spec/features/{slug}/VERIFICATION.md"
 ```
 
-(Workspace mode: artifact paths are under `${workspace_root}/`.) Exit 1 VETOES the
-verdict: print the `FLOOR` lines verbatim and treat the round as **not converged**
-with an `execute`-type gap — `fix_first` = the first FLOOR line (a missing `GE-NNN`
-grounding row means VERIFY must re-prove that criterion; a FAIL table row means the
-criterion is simply not met). The judge cannot out-vote the verification record.
+Exit 1: print the `FLOOR` lines and treat the round as not converged with an
+`execute`-type gap whose `fix_first` is the first FLOOR line. Exit 0: clear
+`iterate.feedback`, run the exit command with `--terminal`, return; the graph routes to
+DELIVER.
 
-On exit 0: set `currentPhase = "deliver"`. Clear `iterate.feedback = null`. Go to Phase exit; DELIVER now binds the final verified commit to the PR.
+**Not converged:** write the gap so the re-entered phase fixes the weakest point first
+(`feature-write.sh set "$feature_dir" iterate.feedback "<gap json>"`), then by `gap.type`:
 
-**Not converged:** route by `gap.type`. **The backlog is NEVER an option here, in any mode** — while iterations remain, every gap is worked by a rewind (below); deferring an in-limit gap to `BACKLOG.md` would let the loop claim convergence work it never did. Neither is prose: a gap "noted as a follow-up" instead of routed is self-authored deferral, the one thing a successful conclusion can never contain (`skills/shared/no-deferral.md`). The backlog is exclusively the limit-exhaustion exit (Step 0's loud-ship path). In every case, write the gap so the re-entered phase can "fix the weakest point first":
+- `execute`: one FULL-SHAPE remediation task per implementation gap, including every
+  `remaining_gaps[]` entry of type `execute` (`subject: "Iterate fix: <fix_first>"`,
+  `verifyCommand` from `commands.test` or the criterion's check, `files` as implicated
+  or `[]`, `acceptanceCriteria: ["<fix_first>"]`), appended to `pendingRemediationTasks[]`.
+- `plan`: PLAN re-plans the affected slice from `iterate.feedback`.
+- `spec`: the expensive rewind. `auto`/`review-only`/autonomous (ITERATE re-entry; do not block an unattended loop):
+  proceed without asking; DISCUSS refines toward the immutable original goal. `step`/`interactive`
+  only: emit as written
+  ```
+  AskUserQuestion({
+    questions: [{
+      question: "ITERATE judges the goal still unmet because of a SPEC-level gap: <gap.description>. Re-open SPEC/DISCUSS, ship as-is, or stop?",
+      header: "Re-open SPEC",
+      options: [
+        { label: "Re-open SPEC/DISCUSS", description: "Rewind to refine the spec toward the original goal (costs an iteration)" },
+        { label: "Ship as-is", description: "Complete now; the accepted gap is recorded in warnings[] and the backlog" },
+        { label: "Stop - hand back", description: "Pause the cycle and return control (resume later)" }
+      ],
+      multiSelect: false
+    }]
+  })
+  ```
+  Ship as-is records the gap in `warnings[]` and exits terminal; Stop pauses through the
+  cycle. Non-interactive reads `LOOP_SPEC_ANSWER_ITERATE_SPEC` (`reopen` default |
+  `ship`; anything else exits 2).
+
+The backlog is never an option while rounds remain, and a gap "noted as a follow-up"
+instead of routed is self-authored deferral (`skills/shared/no-deferral.md`). You
+record the gap; `graph/cycle.graph.json` selects the rewind target from it. In
+`auto`/`review-only` no gap type ever blocks on a human.
+
+## 4. Exit
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" iterate.feedback "<gap json>"
+bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" iterate --feature-dir "$feature_dir" [--terminal]
 ```
 
-- **`execute`** — implementation gap. Convert `gap` into a FULL-SHAPE remediation task (`subject = "Iterate fix: {gap.fix_first}"`, `verifyCommand` from `feature.commands.test` or the relevant acceptance check, `blockedBy = []`, `files` = the files the verdict implicates (empty array when unknown), `acceptanceCriteria = ["{gap.fix_first}"]` — partial-shape tasks get DENIED by the task guard when EXECUTE registers them) and append to `pendingRemediationTasks[]` (EXECUTE Step 2a consumes it alongside PLAN.md tasks). **Also convert every `remaining_gaps[]` entry with `type == "execute"` into its own remediation task** — the iteration limit counts judge passes, not fixes, so burning one pass per known miss when several are already identified wastes the rounds the loop needs to converge.
-- **`plan`** — decomposition gap. PLAN reads `iterate.feedback` on re-entry and re-plans the affected slice (it does not re-author the whole plan from scratch; it addresses the gap). 
-- **`spec`** — goal unmet because the SPEC captured the wrong thing. This is the expensive rewind, but it is **autonomous in the autonomous styles** — it does NOT block on a human. The loop stays hands-off because the rewind cannot game its own oracle: the `iterate-judge` always scores against the **immutable original goal** (`feature.json.feature_title`), never the rewritten SPEC, so refining the spec can only move the work toward the original goal, not redefine "done". The iteration limit (Step 0) hard-caps the number of rewinds.
-
-  Branch by `execStyle` (read from `feature.json`):
-  - **`auto` / `review-only` (ITERATE re-entry; do not block an unattended loop):** proceed WITHOUT asking. The rewind lands in DISCUSS's **autonomous refinement mode** (driven by `iterate.feedback` + the immutable original goal; it does not run its interactive clarifying loop — see `skills/discuss/SKILL.md` ITERATE re-entry note). No `AskUserQuestion`. The next VERIFY→ITERATE pass re-judges against the original goal and either converges or spends another iteration.
-  - **`step` / `interactive` (human-in-loop by choice):** the user explicitly opted into per-phase control, so here — and ONLY here — present the approval gate. Emit this call as written (`skills/shared/harness-call-contracts.md`); never a prose shorthand or a wait:
-    ```
-    AskUserQuestion({
-      questions: [{
-        question: "ITERATE judges the goal still unmet because of a SPEC-level gap: {gap.description}. Re-open SPEC/DISCUSS, ship as-is, or stop?",
-        header: "Re-open SPEC",
-        options: [
-          { label: "Re-open SPEC/DISCUSS", description: "Rewind to refine the spec toward the original goal (costs an iteration)" },
-          { label: "Ship as-is", description: "Complete now; the accepted gap is recorded in warnings[] and the backlog" },
-          { label: "Stop - hand back", description: "Pause the cycle and return control (resume later)" }
-        ],
-        multiSelect: false
-      }]
-    })
-    ```
-    Re-open → the approval route re-enters DISCUSS refinement; Ship as-is → `currentPhase = "deliver"` + record the accepted gap in `warnings[]`; Stop → pause per the **cycle-resume-escalation** contract.
-  - **Non-interactive** (`LOOP_SPEC_NON_INTERACTIVE=1`): resolve
-    `iterate_answer="${LOOP_SPEC_ANSWER_ITERATE_SPEC:-reopen}"`, reject values other
-    than `reopen|ship` with exit 2, then treat `reopen` as autonomous DISCUSS
-    refinement and `ship` as `currentPhase = "deliver"` plus the accepted gap in
-    `warnings[]`.
-
-In every rewind case, ITERATE records the gap and NEVER selects the target phase
-itself: `graph/cycle.graph.json` declares the rewind routes, each keyed on a
-deterministic probe (`lib/ralph-remediation.sh`, `lib/plan-adherence.sh`,
-`lib/criteria-coverage.sh`, and the `step`/`interactive` approval node), and the
-engine selects the target from the recorded state.
-
-The autonomy guarantee: in `auto`/`review-only`, **no gap type ever blocks on a human**. The loop runs EXECUTE/PLAN/SPEC rewinds on its own until it converges or the iteration limit is spent, then it ships-with-warnings (Step 0). The only thing that ever returns control to you mid-loop is the explicit human-in-loop styles, or a hard escalation (limit-exhausted in `step`/`interactive`). An overnight `auto` run never waits for input.
-
-Clear `currentTeamName`/`currentTeammates` are already null (ITERATE ran no team).
-
-### Step 4 - Phase routing
-
-Always return to the cycle orchestrator; the engine selects the next node (terminal
-DELIVER or a rewind) from the routes declared in `graph/cycle.graph.json`.
-Fresh-context rewinds are cycle's `LOOP_SPEC_ITERATE_FRESH` contract, not this
-skill's. For `step` / `interactive`, print the iteration verdict (converged? / gap /
-where the graph routes next) and return to the user; they re-invoke
-`Skill(loop-spec:cycle)` to continue.
-
-## Phase exit
-
-ITERATE does not append itself to `completedPhases` on a rewind (it will run again after the next VERIFY). It appends `"iterate"` to `completedPhases` only on the terminal pass (converged or limit-spent), immediately before `currentPhase = "deliver"`.
-
-## Design notes
-
-- **Dual oracle:** the deterministic gate is the floor (Step 3's converged-floor veto); the goal re-judge is the ceiling. Neither ships alone.
-- **Bounded by rounds, nothing else:** the ceiling is declared on the graph's `iterate -> verify` loop edge and surfaces as `feature.iterate.maxIterations`; it is headroom (most features converge in 1-2 rounds), and the loop ships or escalates — it never spins, and it never ships silent (`warnings[]` carries every accepted gap into the On-completion summary).
+Commits ITERATION.md (and the backlog) in single-repo mode; `--terminal` (converged or
+limit spent) also closes the phase. A rewind leaves it open for the next pass. Return
+to the cycle; in `step`/`interactive` print the verdict and where the graph routes next.

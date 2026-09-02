@@ -179,7 +179,7 @@ already-vetted automation and is never the default.
 
 `harness.sh subagents` prints `true` under Codex: the full EXECUTE ladder
 below the team rung survives, and every one-shot `Agent` dispatch a phase
-skill (or `skills/shared/no-teams-fallback.md`) prescribes maps onto
+skill (or `skills/shared/dispatch.md`) prescribes maps onto
 `spawn_agent` (stable; `agents.enabled` is on by default —
 https://developers.openai.com/codex/subagents):
 

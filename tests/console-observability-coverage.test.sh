@@ -48,8 +48,8 @@ expect "subagent rung emits task_start" skills/shared/execute-subagent.md 'task_
 expect "subagent rung emits task_end" skills/shared/execute-subagent.md 'task_end --phase execute'
 expect "subagent rung counts against the whole DAG, not the wave" \
   skills/shared/execute-subagent.md 'total.*DAG, not the current wave|not the current wave'
-expect "inline rung emits task_start" skills/shared/execute-inline.md 'task_start --phase execute'
-expect "inline rung emits task_end" skills/shared/execute-inline.md 'task_end --phase execute'
+expect "inline rung emits task_start" skills/shared/execute-rungs.md 'task_start --phase execute'
+expect "inline rung emits task_end" skills/shared/execute-rungs.md 'task_end --phase execute'
 
 # micro and debug are the autonomous router's favorite targets and used to emit
 # NOTHING -- an unattended run routed to either was silent end to end.

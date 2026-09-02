@@ -12,7 +12,7 @@ checks=(
   "skills/shared/writing-good-tests.md	Code-producing tasks MUST write the failing test first"
   "skills/shared/writing-good-tests.md	Omitting a TDD label does not exempt"
   "skills/shared/writing-good-tests.md	Skill/config/docs tasks are excluded"
-  "skills/shared/execute-inline.md	TDD (failing test first for every code-producing task"
+  "skills/shared/execute-rungs.md	TDD (failing test first for every code-producing task"
   "skills/shared/team-prompts/implementer.md	Omitting a TDD label does not exempt"
   "skills/shared/execute-subagent.md	Omitting a TDD label does not exempt"
   "lib/plan-to-loop.sh	Omitting a TDD label does not exempt"
@@ -32,7 +32,7 @@ fi
 
 must_not=(
   "agents/implementer.md	If task says TDD"
-  "skills/shared/execute-inline.md	the task admits one"
+  "skills/shared/execute-rungs.md	the task admits one"
 )
 
 for entry in "${must_not[@]}"; do

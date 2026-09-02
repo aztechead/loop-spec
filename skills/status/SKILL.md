@@ -67,7 +67,7 @@ raw output, citing rows/fields.
   true`. `gate rounds` and `iterate gaps` histogram the `gate_round` /
   `iterate_verdict` events (gap = which phase the judge rewound to — a high
   `plan` count means decomposition is the weak link). `dispatches` counts
-  `dispatch` events by model/role/rung (`skills/shared/dispatch-events.md`).
+  `dispatch` events by model/role/rung (`skills/shared/dispatch.md`).
   `loop-fleet cost` sums the agent CLI's reported cost (`claude -p`
   `total_cost_usd`, or harness usage cost when reported) from
   `.loop/fleet-result.json` when the loop-fleet rung ran; `n/a` = fleet never

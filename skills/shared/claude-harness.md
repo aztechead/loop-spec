@@ -42,7 +42,7 @@ The full surface, and the only harness where all of it exists:
 `TaskCreate`/`TaskUpdate`/`TaskList`/`TaskGet`, `Workflow`, `SendMessage` and the
 team primitives, `EnterWorktree`/`ExitWorktree`, and `ToolSearch` for
 deferred-tool rescue. Exact parameter schemas — which are live-verified and NOT
-inferred from prose — live in `skills/shared/harness-call-contracts.md`.
+inferred from prose — live in `skills/shared/dispatch.md`.
 
 Four of those are Claude Code-only today. They are NOT the default path other
 harnesses fall short of; each is gated by a probe that answers for every harness
@@ -84,7 +84,7 @@ selector for every harness.
 On the implicit-team harness, a **named** Agent spawn is an in-process teammate
 and ignores that alias. Honor `feature.models.<role>` with a nameless one-shot
 Agent when `lib/implicit-team-model.sh` returns `oneshot`
-(`skills/shared/implicit-team-mode.md`).
+(`skills/shared/dispatch.md`).
 
 ## Both run modes (parity map)
 

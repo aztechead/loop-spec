@@ -143,7 +143,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 | `walkthrough` | Reviewer's guide: ordered `path:line` stops; writes/lints `REVIEW-ORDER.md`. |
 | `micro` | Lightweight ad-hoc protocol (on by default as a session mode). |
 | `loop-runner` | Bundled loop engine, standalone. |
-| `grill` / `simplicity` / `human-code` / `discipline` / `rules` | Session-mode toggles. |
+| `settings` / `rules` | Session-mode toggles (`grill`, `discipline`, `simplicity`, `human-code`) and the self-learning rules file. |
 | `onboard` | Guided one-time setup for optional modes. |
 | `pause` / `rollback` / `forensics` | Cycle lifecycle utilities. |
 

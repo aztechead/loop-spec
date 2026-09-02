@@ -10,15 +10,14 @@ checks=(
   "skills/discuss/SKILL.md	If \`docs/loop-spec/features/{slug}/SPEC.md\` exists"
   "skills/discuss/SKILL.md	Never spawn \`advocate-1\`"
   "skills/plan/SKILL.md	feasibility and coverage run BEFORE the critique"
-  "skills/plan/SKILL.md	Run these headings in this order:"
   "skills/plan/SKILL.md	Never spawn \`advocate-1\`"
   "skills/plan/SKILL.md	one-shot \`loop-spec:pattern-mapper\`"
   "agents/challenger.md	Critique is challenger-only"
   "skills/shared/team-prompts/challenger.md	not dispatched"
   "skills/shared/team-prompts/advocate.md	not dispatched"
   "docs/loop-spec/architecture.md	Critique gate protocol (challenger-only)"
-  "skills/plan/references/patterns-bootstrap.md	Never \`sleep\` to join a background Agent"
-  "skills/plan/references/patterns-bootstrap.md	One-shot pattern-mapper"
+  "skills/plan/SKILL.md	Never \`sleep\` to join a background Agent"
+  "skills/plan/SKILL.md	loop-spec:pattern-mapper"
   "skills/shared/critique-gate-protocol.md	there is no advocate and no debate round"
   "skills/shared/critique-gate-protocol.md	Do NOT drop it — add it to the fix-list"
   "skills/shared/critique-gate-protocol.md	keep it on the fix-list (stricter bias)"
@@ -33,7 +32,7 @@ must_not=(
   "skills/discuss/SKILL.md	subagent_type: \"loop-spec:advocate\""
   "skills/plan/SKILL.md	subagent_type: \"loop-spec:advocate\""
   "skills/shared/critique-gate-protocol.md	Spawn \`advocate-1\`"
-  "skills/shared/no-teams-fallback.md	advocate one-shot"
+  "skills/shared/dispatch.md	advocate one-shot"
   "graph/critique.graph.json	critique.debate"
   "graph/critique.graph.json	loop-spec:advocate"
   "agents/challenger.md	Escalated debate"
@@ -52,18 +51,5 @@ for entry in "${must_not[@]}"; do
     PASS=$((PASS+1)); echo "PASS: $file dropped '$needle'"
   fi
 done
-
-# PLAN.md is executed top-to-bottom; 4b and 5.5 must appear before Step 3 so a
-# model that follows headings cannot run the challenger before the cheap lints.
-plan_file="skills/plan/SKILL.md"
-line_4b="$(grep -n '^### Step 4b ' "$plan_file" | head -1 | cut -d: -f1)"
-line_55="$(grep -n '^### Step 5.5 ' "$plan_file" | head -1 | cut -d: -f1)"
-line_3="$(grep -n '^### Step 3 ' "$plan_file" | head -1 | cut -d: -f1)"
-if [[ -n "$line_4b" && -n "$line_55" && -n "$line_3" ]] \
-  && (( line_4b < line_3 && line_55 < line_3 && line_4b < line_55 )); then
-  PASS=$((PASS+1)); echo "PASS: $plan_file runs Step 4b then 5.5 before Step 3 ($line_4b < $line_55 < $line_3)"
-else
-  FAIL=$((FAIL+1)); echo "FAIL: $plan_file Step order is 4b=$line_4b 5.5=$line_55 3=$line_3 (want 4b < 5.5 < 3)"
-fi
 
 finish_fixed_string_coverage

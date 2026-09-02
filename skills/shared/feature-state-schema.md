@@ -164,7 +164,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "args": "object or null",
     "sessionId": "string or null",
     "runId": "string or null",
-    "startedAt": "ISO-8601 timestamp or null (set before a dispatched Workflow call per dispatch-fanout.md; cleared once the skill consumes the result; null when no workflow is in flight)"
+    "startedAt": "ISO-8601 timestamp or null (set before a dispatched Workflow call per dispatch.md; cleared once the skill consumes the result; null when no workflow is in flight)"
   },
   "harnessTaskMetadataMode": "string or null (reserved for future harness capability negotiation)",
   "harnessStatusMode": "string or null (reserved for future harness capability negotiation)",
@@ -227,7 +227,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   It adds an Agent `model` key only for one of the four aliases on a **nameless**
   spawn and omits the key for `inherit` (the Agent tool rejects that literal).
   Named implicit-team spawns omit `model` even when the map holds an alias —
-  they inherit the session (`skills/shared/implicit-team-mode.md`). The
+  they inherit the session (`skills/shared/dispatch.md`). The
   authoritative precedence is in `skills/shared/model-matrix.md`.
 - `phaseModels` is the persisted seven-phase override map from
   `LOOP_SPEC_PHASE_MODEL_<PHASE>`; null means no override. It lets a fresh Claude
@@ -339,4 +339,4 @@ All `feature.json` mutations go through `lib/feature-write.sh` (tmp-file write, 
 
 ## Resume
 
-On `cycle` skill startup, candidate `feature.json` files are enumerated, filtered (completed/stale skip, `TaskList({team: currentTeamName})` live-team probe — explicit teams mode only), and routed back into their phase. The full algorithm, the orphan/stale-team handling, worktree/workspace re-entry, and `currentGate` transcript reload are documented authoritatively in `skills/shared/cycle-resume-escalation.md`.
+On `cycle` skill startup, candidate `feature.json` files are enumerated, filtered (completed/stale skip, `TaskList({team: currentTeamName})` live-team probe — explicit teams mode only), and routed back into their phase. The full algorithm, the orphan/stale-team handling, worktree/workspace re-entry, and `currentGate` transcript reload are documented authoritatively in `lib/cycle-driver.sh` (resume).

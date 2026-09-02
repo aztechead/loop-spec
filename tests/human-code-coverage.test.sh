@@ -29,7 +29,7 @@ checks=(
   "lib/plan-to-loop.sh	house style over habit"
   "lib/workflows/execute-dag.js	house style over habit"
   "hooks/team/human-code-inject.sh	CODE FOR HUMANS MODE ACTIVE"
-  "skills/human-code/SKILL.md	code-for-humans mode"
+  "skills/settings/SKILL.md	human-code"
   "CLAUDE.md	house style over habit"
   "skills/shared/human-code.md	Fail loudly"
   "skills/shared/human-code.md	names what broke"
@@ -73,7 +73,7 @@ fi
 for f in agents/implementer.md agents/code-reviewer.md \
          skills/shared/team-prompts/implementer.md skills/shared/execute-subagent.md \
          lib/plan-to-loop.sh lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
-         skills/human-code/SKILL.md skills/shared/human-code.md; do
+         skills/settings/SKILL.md skills/shared/human-code.md; do
   if grep -q "failure-tells.sh" "$f"; then
     echo "PASS: $f names the failure-path probe"; PASS=$((PASS+1))
   else
@@ -154,7 +154,7 @@ done
 for f in agents/implementer.md agents/code-reviewer.md \
          skills/shared/team-prompts/implementer.md skills/shared/execute-subagent.md \
          lib/plan-to-loop.sh lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
-         skills/shared/human-code.md skills/human-code/SKILL.md; do
+         skills/shared/human-code.md skills/settings/SKILL.md; do
   if grep -qE 'house-style\.sh"? compare|house-style\.sh compare' "$f"; then
     echo "PASS: $f carries the compare mode"; PASS=$((PASS+1))
   else
