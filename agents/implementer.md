@@ -97,4 +97,5 @@ Report `BLOCKED` or `NEEDS_CONTEXT` with specifics.
 - **Commit SHA**: from `git rev-parse HEAD`
 - **Verify output**: paste actual output
 - **Acceptance criteria status**: per criterion PASS/FAIL
+- **Versions**: one `version: <name>@<v> source: <command>` line per language, runtime, or package version this task chose, or `unverified` (`skills/shared/engineering-directives.md`); `none` when the task pinned nothing
 - **Self-review findings**: any

@@ -18,6 +18,7 @@ checks=(
   "agents/implementer.md	engineering-directives.md"
   "agents/implementer.md	never from recall"
   "agents/implementer.md	version: <name>@<v> source: <command>"
+  "agents/implementer.md	- **Versions**: one \`version:"
   "agents/planner.md	engineering-directives.md"
   "agents/planner.md	Design for scale before code exists"
   "agents/planner.md	Versions come from a tool, never from recall"
