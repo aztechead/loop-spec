@@ -59,13 +59,13 @@ got=$(run "unknown" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)
 check "D: flag=1 + unknown version -> none" "none" "$got"
 
 # Case E: LOOP_SPEC_TEAMS_MODE override wins over flag + version
-got=$(env -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS LOOP_SPEC_TEAMS_MODE=explicit bash "$LIB" "2.1.181")
+got=$(env -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS -u LOOP_SPEC_HARNESS LOOP_SPEC_TEAMS_MODE=explicit bash "$LIB" "2.1.181")
 check "E: override -> explicit" "explicit" "$got"
 
-got=$(env CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_TEAMS_MODE=none bash "$LIB" "2.1.181")
+got=$(env -u LOOP_SPEC_HARNESS CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_TEAMS_MODE=none bash "$LIB" "2.1.181")
 check "E2: override none beats flag=1" "none" "$got"
 
-got=$(env CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_TEAMS_MODE=bogus bash "$LIB" "2.1.181")
+got=$(env -u LOOP_SPEC_HARNESS CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 LOOP_SPEC_TEAMS_MODE=bogus bash "$LIB" "2.1.181")
 check "E3: override bogus -> none (fail safe)" "none" "$got"
 
 # Case F: adk harness -> none even with the flag exported and a modern version

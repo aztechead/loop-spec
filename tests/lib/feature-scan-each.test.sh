@@ -17,6 +17,7 @@ check() {
 }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/feature-scan-each-test.XXXXXX")"
+WORK="$(cd "$WORK" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
 
 SCAN="$WORK/scan.sh"

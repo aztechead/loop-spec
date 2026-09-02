@@ -6,6 +6,13 @@ would have recommended — the option grounded in the code graph, the codebase
 map, and general best practice — records it as an assumed decision, and
 proceeds.
 
+## Finish the authorized task
+
+Do not ask for permission to perform work the original request already authorizes.
+Carry out the stated next step and keep going until the requested work is complete.
+This does not override an explicit human gate, a destructive-action confirmation, or
+a safety failure; those remain pauses or loud failures as their owning phase requires.
+
 `execStyle: auto` is not this mode. Auto is the default execution style: the
 cycle does not pause between phases, but a human is attached and grill, SPEC,
 and DISCUSS questions still fire. This file is about the `autonomous` token
@@ -169,6 +176,10 @@ does leave is a worked evidence trail rather than a warning line.
 The moment an assumption is made it goes to DISK, never model memory — the audit
 trail must survive compaction and session death. `lib/decisions.sh` is the store
 (JSONL; `add` / `render` / `migrate`):
+
+Compaction summaries preserve the original goal, user constraints, locked decisions,
+acceptance criteria, unresolved blockers, evidence paths, and exact commands or
+identifiers needed to resume. Condense reasoning and intermediate narration first.
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$dir" "$phase" "$question" "$answer" "$rationale"
