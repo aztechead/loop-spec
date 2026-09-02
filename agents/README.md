@@ -37,14 +37,13 @@ effort: high
 
 YAML list of tool names the agent must not use, even if the harness would otherwise permit them. Use this to block destructive or out-of-scope operations for agents whose role boundary forbids them.
 
-Common candidates: `WebFetch`, `WebSearch` (for agents that must stay offline), `Push`, `CreatePullRequest` (for agents that must not touch the remote).
+Common candidates: `Agent` (for roles that must not nest a dispatch), `Push`, `CreatePullRequest` (for agents that must not touch the remote). Do not block `WebFetch` or `WebSearch`: the host program decides which lookup tools exist, and `skills/shared/engineering-directives.md` tells roles to use whatever version and advisory lookup the harness offers.
 
 Example:
 
 ```yaml
 disallowedTools:
-  - WebFetch
-  - WebSearch
+  - Agent
 ```
 
 ### `isolation` — forbidden (`tests/validate-agents.sh` enforces this)

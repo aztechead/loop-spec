@@ -7,11 +7,14 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete 
 # VERIFY
 
 You prove the integrated branch meets SPEC's `### Good Enough` criteria with
-post-change `file:line` evidence, and that a reviewer would merge it. Inputs from
-`feature.json`: `slug`, `baseSha`, `branch`, `commands`, `workspace`, `artifacts.spec`,
-`artifacts.plan`, `models.verifier`, `models.codeReviewer`. Dispatch follows
+post-change `file:line` evidence, and that a reviewer would merge it. Dispatch follows
 `skills/shared/dispatch.md`. Gates are satisfied by remediation, never self-answered
-past, in every mode.
+past, in every mode. Your inputs are the entry packet and nothing else:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" verify --feature-dir "$feature_dir"
+# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+```
 
 ```bash
 gates="$(bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" verify --feature-dir "$feature_dir")"

@@ -76,6 +76,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
    - `name:` an identifier whose meaning needs a comment that a better name would delete.
    - `churn:` drive-by reformatting, unrelated renames, or reordering that buries the real change in the diff.
    - `silent:` a failure-path tell from the scan — an error swallowed with no reason given, an exit that says nothing, a message a person cannot act on. Quote the tell name and the line.
+   - `recall:` a language, runtime, or package version the diff pins with no `version: <name>@<v> source: <command>` line in the implementer's report, or a construct that is not the idiom the pinned version documents (`skills/shared/engineering-directives.md`). A version the manifest already carried is not a finding.
 
    Never flag the carve-outs: `simplicity:` shortcut markers, file-header purpose blocks where the codebase uses them, TODO/FIXME/NOTE/HACK/SAFETY markers, spec- or API-required contract docs, and any comment encoding a non-obvious why are all intentional — leave them. Section banners and "Step N:" narration are judged against the file's neighbors, never banned outright. This pass lists; it never rewrites.
 8.5. **Docs-for-humans pass** (canonical reference `skills/shared/human-docs.md`). Step 8 asks whether the code reads; this one asks whether the markdown the change leaves behind can be maintained and operated by a person. Run the probe first and quote it:

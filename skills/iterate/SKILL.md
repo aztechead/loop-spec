@@ -9,10 +9,14 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 VERIFY proved the acceptance checklist; you ask whether the ORIGINAL goal
 (`feature_title`, immutable, in the user's words) is met, and if not, what to fix
 first. Main thread, no team: one fresh `iterate-judge` per pass (maker ≠ checker).
-Inputs from `feature.json`: `slug`, `feature_title`, `iterate` (`maxIterations`,
-`used`, `confirmationUsed`, `lastVerdict`, `feedback`, `history[]`), `artifacts`,
-`execStyle`, `autonomous`, `backlogEntryId`, `models.iterateJudge`. The round limit is
-the one bound the cycle respects.
+The `iterate` block (`maxIterations`, `used`, `confirmationUsed`, `lastVerdict`,
+`feedback`, `history[]`) holds the one bound the cycle respects. Your inputs are the
+entry packet and nothing else:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" iterate --feature-dir "$feature_dir"
+# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+```
 
 ## 1. Limit gate
 

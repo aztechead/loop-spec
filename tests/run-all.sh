@@ -273,6 +273,7 @@ run_suite "lib/greenfield-bootstrap"  "bash tests/lib/greenfield-bootstrap.test.
 run_suite "lib/cycle-preflight"       "bash tests/lib/cycle-preflight.test.sh" integration
 run_suite "lib/cycle-driver"          "bash tests/lib/cycle-driver.test.sh" integration
 run_suite "lib/phase-exit"            "bash tests/lib/phase-exit.test.sh" integration
+run_suite "lib/phase-entry"           "bash tests/lib/phase-entry.test.sh" integration
 run_suite "lib/plan-adherence"        "bash tests/lib/plan-adherence.test.sh"
 run_suite "lib/detect-test-cmd"       "bash tests/lib/detect-test-cmd.test.sh"
 run_suite "lib/workspace"          "bash tests/lib/workspace.test.sh"
@@ -367,6 +368,7 @@ run_suite "tests/dispatch-events-coverage" "bash tests/dispatch-events-coverage.
 run_suite "tests/console-observability-coverage" "bash tests/console-observability-coverage.test.sh"
 run_suite "tests/execution-discipline-coverage" "bash tests/execution-discipline-coverage.test.sh"
 run_suite "tests/implementer-contract-coverage" "bash tests/implementer-contract-coverage.test.sh"
+run_suite "tests/engineering-directives-coverage" "bash tests/engineering-directives-coverage.test.sh"
 run_suite "tests/execution-validation-coverage" "bash tests/execution-validation-coverage.test.sh"
 run_suite "tests/verification-grounding-coverage" "bash tests/verification-grounding-coverage.test.sh"
 run_suite "tests/configuration-coverage" "bash tests/configuration-coverage.test.sh"

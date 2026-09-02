@@ -17,9 +17,9 @@ re-derive state, re-scan directories, or narrate the preflight.
 DRV="${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
 ```
 
-Tools this skill and its phase skills may use: the list in the frontmatter. `WebFetch`,
-`WebSearch`, and the scheduling tools are not permitted (offline, synchronous by
-design). A step that seems to need another tool means the instruction was misread.
+The frontmatter lists the tools this skill and its phase skills use. Any other tool the
+harness offers (a web or registry lookup, an MCP server) is available to a phase that
+needs it; the plugin restricts nothing beyond what a role's own charter says.
 
 ## 1. Start
 
@@ -129,7 +129,9 @@ Act on the first line of `ans`:
   Claude worktree feature, `ExitWorktree({action:"keep"})`. Stop.
 - `HANDOFF next=<p> model=<m>` — print
   `LOOP_SPEC_PHASE_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and stop; a fresh
-  session (`/loop-spec:cycle phase:fresh`) enters the next phase.
+  session (`/loop-spec:cycle phase:fresh`) enters the next phase. Nothing from this
+  session's context travels: the phase skill's first call is
+  `lib/phase-entry.sh <p>`, whose packet is the whole ingress.
 - `REWIND next=<p>` — print `fresh-context rewind: state committed; relaunch
   /loop-spec:cycle to re-enter <p>.` and stop.
 - `DONE status=completed` — go to step 5. `DONE status=completed

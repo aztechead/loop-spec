@@ -352,6 +352,14 @@ TDD (red then green). Code-producing tasks: write the failing test FIRST, run it
 confirm red, then implement, confirm green. Skill/config/docs tasks are excluded.
 Omitting a TDD label does not exempt this step.
 
+ENGINEERING DIRECTIVES (on by default). Read
+`${CLAUDE_SKILL_DIR}/../../skills/shared/engineering-directives.md` — do not paste it.
+Simple over clever: the construct the next reader decodes without a comment. Idiomatic
+for the version the repo pins. Versions come from a tool (manifest, package manager,
+registry, advisory check), never from recall; report `version: <name>@<v> source:
+<command>` or `unverified`. Name the scaling input before writing code. Tests first; one
+test, one break, smallest input.
+
 NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
 Review arrives from the lead after your report.
 

@@ -8,9 +8,13 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 
 You produce `PATTERNS.md` (analogs to mirror) and `PLAN.md` (a task DAG with verify
 commands) under `docs/loop-spec/features/{slug}/`, plus the machine-readable
-`feature_dir/tasks.json` EXECUTE consumes. Inputs from `feature.json`: `slug`,
-`artifacts.spec`, `greenfield`, `workspace`, `iterate.feedback`, `models.planner`,
-`models.challenger`. Dispatch follows `skills/shared/dispatch.md`.
+`feature_dir/tasks.json` EXECUTE consumes. Dispatch follows `skills/shared/dispatch.md`.
+Your inputs are the entry packet and nothing else:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" plan --feature-dir "$feature_dir"
+# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+```
 
 `reentry` (ITERATE sent the cycle back for a `plan`-type gap): read `iterate.feedback`,
 revise or add only the tasks that close it, keep `## User decisions (already made)`.

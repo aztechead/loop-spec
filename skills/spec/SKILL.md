@@ -8,10 +8,14 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 
 You run on the main thread (a subagent cannot hold an interview). You produce
 `docs/loop-spec/features/{slug}/SPEC.md` from a grounded interview, scored on four
-ambiguity dimensions, and close the phase with one command. Inputs come from
-`feature.json` (the cycle created it; this skill never bootstraps one): `slug`,
-`feature_title`, `execStyle`, `greenfield`, `autonomous`. `feature_dir` is
-`.loop-spec/features/{slug}`.
+ambiguity dimensions, and close the phase with one command. `feature_dir` is
+`.loop-spec/features/{slug}` (the cycle created it; this skill never bootstraps one).
+Your inputs are the entry packet and nothing else; a FLAG is a prior phase's failure, relay it:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" spec --feature-dir "$feature_dir"
+# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+```
 
 ```bash
 mode="$(bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" spec --feature-dir "$feature_dir")"

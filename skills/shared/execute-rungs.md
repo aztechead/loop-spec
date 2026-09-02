@@ -34,7 +34,9 @@ branch), per-task model pins ignored. Loop until `remaining` is empty:
    `bash lib/events.sh emit "$fdir" task_start --phase execute --data '{"index":N,"total":T,"id":"task-NNN","subject":"..."}' || true`.
 3. Implement under `agents/implementer.md` and the design gate in
    `implementer-contract.md` (can I make it more modular? more extensible? is this the
-   least code that makes it happen? does this hold at production scale?): read
+   least code that makes it happen? does this hold at production scale?) plus
+   `engineering-directives.md` (simple over clever, idiomatic for the pinned version,
+   versions from a tool never from recall, scaling input named first): read
    `readFirst`, TDD (failing test first for every code-producing task; skill, config, and
    docs tasks excluded), touch only `files`.
 4. Run `lib/prepare-environment.sh run` with `commands.prepare`, then

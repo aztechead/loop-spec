@@ -7,10 +7,14 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 # DISCUSS
 
 SPEC pinned the requirements; DISCUSS pins the design and approach, then has a
-challenger critique the spec. Inputs from `feature.json`: `slug`, `execStyle`,
-`feature_title`, `autonomous`, `bootstrapPendingDomains`, `iterate.feedback`.
-`feature_dir` is `.loop-spec/features/{slug}`; the spec is
-`docs/loop-spec/features/{slug}/SPEC.md`. Dispatch follows `skills/shared/dispatch.md`.
+challenger critique the spec. `feature_dir` is `.loop-spec/features/{slug}`; the
+spec is `docs/loop-spec/features/{slug}/SPEC.md`. Dispatch follows
+`skills/shared/dispatch.md`. Your inputs are the entry packet and nothing else:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" discuss --feature-dir "$feature_dir"
+# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+```
 
 ```bash
 mode="$(bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" discuss --feature-dir "$feature_dir")"

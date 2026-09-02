@@ -7,12 +7,16 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCr
 # EXECUTE
 
 You publish every PLAN task onto `feat/{slug}`, one commit per task, each verified by
-its own `verifyCommand` after integration. Inputs from `feature.json`: `slug`,
-`branch`, `baseSha`, `commands`, `workspace`, `executionRootMode`, `worktreePath`,
-`artifacts.tasks`, `pendingRemediationTasks`, `models.implementer`,
-`models.specComplianceReviewer`, `greenfield`. Dispatch follows `skills/shared/dispatch.md`;
+its own `verifyCommand` after integration. Dispatch follows `skills/shared/dispatch.md`;
 the design gate every implementer carries is `skills/shared/implementer-contract.md`
-(more modular? more extensible? least code? does this hold at production scale?).
+(more modular? more extensible? least code? does this hold at production scale?) and
+the directive set is `skills/shared/engineering-directives.md`. Your inputs are the
+entry packet and nothing else:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" execute --feature-dir "$feature_dir"
+# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+```
 
 ## 1. Branch check
 

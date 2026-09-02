@@ -9,8 +9,30 @@ All notable changes documented here. Format follows Keep a Changelog.
 Breaking: the plugin's prose was cut by roughly two thirds so any model family can
 follow it, and the mechanics that prose used to describe now live in scripts.
 
+### Added
+
+- **Engineering directives.** `skills/shared/engineering-directives.md` is the one file
+  every code-producing dispatch names: simple over clever, idiomatic for the version the
+  repo pins, versions and advisories from a tool (manifest, package manager, registry, or
+  whatever lookup the harness offers) never from recall, the scaling input named before
+  code, tests first with one test per break. The planner names each task's scaling input
+  and version source; the code reviewer reports `recall:` for a version pinned without a
+  tool source. Pinned by `tests/engineering-directives-coverage.test.sh`.
+- **Phase ingress is a script.** `lib/phase-entry.sh <phase>` names the exact
+  `feature.json` fields and files a phase consumes and `FLAG`s a missing one at the
+  door, so a session resuming after a handoff reads the packet instead of re-deriving
+  state. Each phase skill opens with it; `phase-exit.sh` remains the egress.
+
 ### Changed
 
+- **Startup.** `cycle-driver.sh start` validates model routing through
+  `feature-init.sh validate` (every selector checked once, no subshells) instead of
+  resolving nine effective maps, which was two thirds of the start time. The
+  SessionStart simplicity directive is pointer-style: it names the ladder and the two
+  probes instead of restating the rungs, about half its previous size.
+- **Lookup tools are the harness's call.** The cycle skill no longer declares
+  `WebFetch`/`WebSearch` off limits and the implementer role no longer disallows them;
+  a version or advisory lookup uses whatever the host program provides.
 - **Cycle orchestration is a script.** `lib/cycle-driver.sh` (`start`, `init`,
   `resume`, `map`, `next`, `finish`, `escalate`) owns preflight, invocation parsing,
   feature init, resume adoption, the graph step, model-map activation, journaling,

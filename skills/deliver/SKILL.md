@@ -24,6 +24,12 @@ multi-repo PRs as drafts until every repo is green. `lib/finalize-delivery-candi
 yourself. A PR opened with `gh` outside the controller is reconciled at terminal result
 time by `lib/delivery-reconcile.sh`.
 
+Your inputs are the entry packet and nothing else; the controller reads the rest itself:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" deliver --feature-dir "$feature_dir"
+```
+
 ## 1. Run the controller
 
 ```bash

@@ -181,6 +181,18 @@ for t in tasks:
         'Omitting a TDD label does not exempt this step.'
     )
 
+    # Engineering directives (canonical: skills/shared/engineering-directives.md).
+    # Travels with the ladder: the loop-runner worker sees only its prompt.
+    engineering = (
+        'ENGINEERING DIRECTIVES (on by default). Read '
+        f'{lib_dir}/../skills/shared/engineering-directives.md — do not paste it. Simple '
+        'over clever: the construct the next reader decodes without a comment. Idiomatic '
+        'for the version the repo pins. Versions come from a tool (manifest, package '
+        'manager, registry, advisory check), never from recall; report version: '
+        '<name>@<v> source: <command> or unverified. Name the scaling input before '
+        'writing code. Tests first; one test, one break, smallest input.'
+    )
+
     no_nested = (
         'NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a '
         'reviewer. Review arrives from the lead after your report.'
@@ -204,7 +216,7 @@ for t in tasks:
         'convention, and surgically edit needed lines instead of rewriting a whole file '
         'when the result is unchanged.'
     )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', four_questions, '', ladder, '', design, '', human, '', docs, '', tests_catalog, '', no_nested, '', discipline, '', f'TASK {raw}: {brief}', '']
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', four_questions, '', ladder, '', design, '', human, '', docs, '', tests_catalog, '', engineering, '', no_nested, '', discipline, '', f'TASK {raw}: {brief}', '']
     if global_constraints:
         lines.append('Global constraints (from the plan, verbatim; every one binds):')
         lines += [f'{c}' for c in global_constraints]

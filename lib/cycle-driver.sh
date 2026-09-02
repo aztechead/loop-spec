@@ -91,7 +91,7 @@ cmd_start() {
 
   # Every LOOP_SPEC_PHASE_MODEL_* / LOOP_SPEC_MODEL_* value is validated here; a bad
   # selector would fail at phase activation anyway, and later is worse.
-  lib feature-init all-models >/dev/null \
+  lib feature-init validate \
     || _rc=2 die "model routing is misconfigured; startup cannot resolve the selector set."
 
   local pf inv

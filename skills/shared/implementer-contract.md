@@ -56,6 +56,7 @@ probe commands resolved for its rung:
 | CODE A HUMAN CAN OPERATE (the failure path) | `skills/shared/human-code.md` | `lib/failure-tells.sh scan` |
 | DOCS FOR HUMANS (the markdown is a deliverable too) | `skills/shared/human-docs.md` | `lib/doc-tells.sh scan` |
 | WRITING GOOD TESTS | `skills/shared/writing-good-tests.md` | — |
+| ENGINEERING DIRECTIVES (simple over clever, idiom, versions from a tool, scale first, small tests) | `skills/shared/engineering-directives.md` | `lib/grounding-lint.sh` (unverified versions) |
 | TDD (red then green) | prompt-inline; force string pinned by `tests/tdd-red-green-coverage.test.sh` | — |
 | NO NESTED SUBAGENTS | prompt-inline | — |
 | EXECUTION DISCIPLINE (evidence over recall) | `skills/shared/execution-discipline.md` | — |

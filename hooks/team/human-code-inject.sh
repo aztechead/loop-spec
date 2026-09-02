@@ -59,6 +59,8 @@ CODE A HUMAN CAN OPERATE: fail loudly, or say why you did not.
 DOCS FOR HUMANS: the markdown is a deliverable too. Read ${PLUGIN_ROOT}/skills/shared/human-docs.md. Hold one job per document. A change that makes a document false is fixed in the SAME diff. NEVER cut frontmatter.
 Before DONE: bash ${LIB_DIR}/doc-tells.sh scan <markdown you touched>.
 
+ENGINEERING DIRECTIVES (on by default). Read ${PLUGIN_ROOT}/skills/shared/engineering-directives.md — do not paste it. Simple over clever: the construct the next reader decodes without a comment. Idiomatic for the version the repo pins. Versions come from a tool (manifest, package manager, registry, advisory check), never from recall; report version: <name>@<v> source: <command> or unverified. Name the scaling input before writing code. Tests first; one test, one break, smallest input.
+
 Disable with /loop-spec:settings human-code off or LOOP_SPEC_HUMAN_CODE=0."
 
 # Emit valid JSON via jq (hard dependency) rather than a hand-rolled escaper.
