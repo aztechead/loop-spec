@@ -18,6 +18,8 @@
 #       -> prints all persisted phase overrides as a JSON object (unset = null).
 #   bash lib/feature-init.sh all-models
 #       -> prints the unique selectors that startup must health-check.
+#   bash lib/feature-init.sh validate
+#       -> checks every phase and role selector once; prints nothing, exit 1 on a bad route.
 #   bash lib/feature-init.sh agent-probe-models
 #       -> prints only selectors accepted by Claude Agent({model:}); `inherit`
 #          and full CLI IDs are omitted.
@@ -303,6 +305,23 @@ all_effective_models() {
   printf '%s\n' "$maps" | jq -s '[.[] | .[] | select(. != null)] | unique'
 }
 
+# validate_routing: every phase and role selector checked once, no subshells. This is
+# what cycle startup needs; all_effective_models answers a different question (the
+# union of selectors) at nine map resolutions, which cost two seconds of every start.
+validate_routing() {
+  local phase suffix var role
+  for phase in spec discuss plan execute verify iterate deliver; do
+    suffix="$(phase_env_suffix "$phase")"
+    var="LOOP_SPEC_PHASE_MODEL_${suffix}"
+    validate_phase_model_selector "$var" "${!var:-}" || return 1
+  done
+  for role in SPEC_WRITER PLANNER ADVOCATE CHALLENGER SPEC_COMPLIANCE_REVIEWER \
+              ITERATE_JUDGE CODE_REVIEWER IMPLEMENTER VERIFIER MAPPER PATTERN_MAPPER; do
+    var="LOOP_SPEC_MODEL_${role}"
+    [[ -z "${!var:-}" ]] || validate_role_model_selector "$role" "$var" "${!var}" || return 1
+  done
+}
+
 agent_probe_models() {
   local selectors
   selectors="$(all_effective_models)" || return 1
@@ -431,6 +450,13 @@ case "${1:-}" in
     }
     all_effective_models
     ;;
+  validate)
+    [[ $# -eq 1 ]] || {
+      echo "usage: feature-init.sh validate" >&2
+      exit 1
+    }
+    validate_routing
+    ;;
   agent-probe-models)
     [[ $# -eq 1 ]] || {
       echo "usage: feature-init.sh agent-probe-models" >&2
@@ -530,7 +556,7 @@ case "${1:-}" in
     esac
     ;;
   *)
-    echo "usage: feature-init.sh models [--phase PHASE] | phase-model PHASE | phase-models | all-models | activate FEATURE_DIR PHASE | skeleton --mode single|workspace ..." >&2
+    echo "usage: feature-init.sh models [--phase PHASE] | phase-model PHASE | phase-models | all-models | validate | activate FEATURE_DIR PHASE | skeleton --mode single|workspace ..." >&2
     exit 1
     ;;
 esac

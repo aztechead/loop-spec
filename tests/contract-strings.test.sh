@@ -22,31 +22,29 @@ checks=(
   "skills/iterate/SKILL.md	iterate-terminal:"
   "skills/shared/autonomous-mode.md	iterate-terminal:"
   # -- chain predicate: skill must consume the script and its stable reasons
-  "skills/cycle/references/completion.md	autonomous-chain.sh\" should-chain"
-  "skills/cycle/references/completion.md	max-features-reached"
-  "skills/cycle/references/completion.md	next-entry-terminal"
+  "lib/cycle-driver.sh	autonomous-chain should-chain"
   "lib/autonomous-chain.sh	max-features-reached"
   "lib/autonomous-chain.sh	next-entry-terminal"
   # -- delivery must finish before unattended chaining continues
-  "skills/cycle/references/completion.md	delivery-incomplete"
+  "lib/cycle-driver.sh	delivery-incomplete"
   "lib/autonomous-chain.sh	delivery-incomplete"
   # -- backlogEntryId: written by cycle drain, matched by iterate terminal rule
-  "skills/cycle/SKILL.md	backlogEntryId"
+  "lib/cycle-driver.sh	backlogEntryId"
   "skills/iterate/SKILL.md	backlogEntryId"
   # -- gap ids: iterate stamps them via backlog.sh gap-id / add --id
   "skills/iterate/SKILL.md	gap-id"
   "skills/iterate/SKILL.md	--id"
   # -- TERMINAL marker: backlog.sh writes/reads it; chain + iterate rely on it
   "lib/backlog.sh	-- TERMINAL: "
-  # -- preflight blob keys consumed by cycle prose
-  "skills/cycle/SKILL.md	cycle-preflight.sh\" run"
-  "skills/cycle/SKILL.md	.workspace.mode"
-  "skills/cycle/SKILL.md	.teams.mode"
-  "skills/cycle/SKILL.md	.workflows.available"
+  # -- preflight blob keys consumed by the cycle driver
+  "lib/cycle-driver.sh	cycle-preflight run"
+  "lib/cycle-driver.sh	.workspace.mode"
+  "lib/cycle-driver.sh	.teams.mode"
+  "lib/cycle-driver.sh	.workflows.available"
   "lib/cycle-preflight.sh	needs_probe"
-  "skills/cycle/SKILL.md	needs_probe"
-  # -- invocation parser consumed by cycle + intake; debug goes through debug-init
-  "skills/cycle/SKILL.md	parse-invocation.sh\" parse"
+  "lib/cycle-driver.sh	needs_probe"
+  # -- invocation parser consumed by the cycle driver + intake; debug goes through debug-init
+  "lib/cycle-driver.sh	parse-invocation parse"
   "skills/intake/SKILL.md	parse-invocation.sh\" parse"
   "lib/debug-init.sh	parse-invocation.sh"
   # -- decisions store: shared contract + spec/discuss/plan/cycle all call it
@@ -58,7 +56,7 @@ checks=(
   # -- debug: init consumed by the skill
   "skills/debug/SKILL.md	debug-init.sh\" init"
   # -- greenfield: bootstrap in cycle, backfill invariant in execute
-  "skills/cycle/SKILL.md	greenfield-bootstrap.sh\" bootstrap"
+  "lib/cycle-driver.sh	greenfield-bootstrap bootstrap"
   "skills/execute/SKILL.md	greenfield-bootstrap.sh\" backfill-check"
   # -- grounding: evidence ledger + lint gate + challenger marker couplings
   "skills/discuss/SKILL.md	grounding-lint.sh\""

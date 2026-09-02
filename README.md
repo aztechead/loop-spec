@@ -23,7 +23,9 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 4.9.1 (renamed from super-spec at v2.5.2). Direction: [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md). Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+Current version: 5.0.0
+
+Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Install
 
@@ -143,7 +145,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 | `walkthrough` | Reviewer's guide: ordered `path:line` stops; writes/lints `REVIEW-ORDER.md`. |
 | `micro` | Lightweight ad-hoc protocol (on by default as a session mode). |
 | `loop-runner` | Bundled loop engine, standalone. |
-| `grill` / `simplicity` / `human-code` / `discipline` / `rules` | Session-mode toggles. |
+| `settings` / `rules` | Session-mode toggles (`grill`, `discipline`, `simplicity`, `human-code`) and the self-learning rules file. |
 | `onboard` | Guided one-time setup for optional modes. |
 | `pause` / `rollback` / `forensics` | Cycle lifecycle utilities. |
 
@@ -229,7 +231,7 @@ Multi-repo workspaces: [docs/adopting.md](docs/adopting.md#workspace-multi-repo-
 - Loop-fleet halt: read `halt_reason` in `.loop/fleet-result.json` (table in `skills/shared/execute-loop-fleet.md`).
 - Teams unavailable: not a failure; set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to restore persistent teams.
 
-More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md). Historical design doc: [docs/design.md](docs/design.md).
+More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md).
 
 ## Docs map
 
@@ -242,7 +244,6 @@ More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/archit
 | [docs/loop-spec/agent-output-contract.md](docs/loop-spec/agent-output-contract.md) | `LOOP_SPEC_RESULT` / result.json schema |
 | [docs/loop-spec/sentinel.md](docs/loop-spec/sentinel.md) | Unattended scan/run/watch recipes |
 | [docs/loop-spec/cloud-run-autonomous.md](docs/loop-spec/cloud-run-autonomous.md) | Ephemeral-container profile |
-| [docs/loop-spec/ROADMAP-3.0.md](docs/loop-spec/ROADMAP-3.0.md) | Direction |
 
 ## Tests
 

@@ -43,9 +43,9 @@ result in `.loop-spec/runtime.json.teamsMode`:
 
 | `teamsMode` | When | How teammates are created |
 |---|---|---|
-| `none` | flag unset / not `1` | No team — one-shot `Agent` calls (`skills/shared/no-teams-fallback.md`) |
+| `none` | flag unset / not `1` | No team — one-shot `Agent` calls (`skills/shared/dispatch.md`) |
 | `explicit` | flag=1 **and** CC `< 2.1.178` | Per-phase `TeamCreate` / `TeamDelete` roster |
-| `implicit` | flag=1 **and** CC `>= 2.1.178` | One implicit team; teammates spawned via `Agent({name})`, **no `TeamCreate`/`TeamDelete`** (`skills/shared/implicit-team-mode.md`) |
+| `implicit` | flag=1 **and** CC `>= 2.1.178` | One implicit team; teammates spawned via `Agent({name})`, **no `TeamCreate`/`TeamDelete`** (`skills/shared/dispatch.md`) |
 
 Force the mode with `LOOP_SPEC_TEAMS_MODE=none|explicit|implicit` (testing / constrained environments).
 Setting `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` forces `teamsMode=none` and runs

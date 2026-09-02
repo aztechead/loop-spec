@@ -390,37 +390,6 @@ touch "$DIR/pyproject.toml" "$DIR/CMakeLists.txt"
 got=$(cd "$DIR" && bash "$LIB")
 check "N: pyproject + CMakeLists.txt is pytest only" "python -m pytest" "$got"
 
-# Coupling: cycle Step 4 names the polyglot join (the probe is the marker list).
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-DOC="$ROOT/skills/cycle/references/detect-commands.md"
-if grep -qF 'joins every matching language command' "$DOC"; then
-  echo "PASS: detect-commands.md names the polyglot join"
-  ((PASS++)) || true
-else
-  echo "FAIL: detect-commands.md missing 'joins every matching language command'"
-  ((FAIL++)) || true
-fi
-if grep -qF 'must not assume the project is one language' "$DOC"; then
-  echo "PASS: detect-commands.md is language-agnostic"
-  ((PASS++)) || true
-else
-  echo "FAIL: detect-commands.md missing 'must not assume the project is one language'"
-  ((FAIL++)) || true
-fi
-if grep -qF 'exclusive project override' "$DOC" && grep -qF 'just test' "$DOC"; then
-  echo "PASS: detect-commands.md names just/Taskfile as exclusive overrides"
-  ((PASS++)) || true
-else
-  echo "FAIL: detect-commands.md missing exclusive just/Taskfile override"
-  ((FAIL++)) || true
-fi
-if grep -qF 'only when no language marker matched' "$DOC"; then
-  echo "PASS: detect-commands.md names CMake/Meson/Bazel as language-absent fallbacks"
-  ((PASS++)) || true
-else
-  echo "FAIL: detect-commands.md missing 'only when no language marker matched'"
-  ((FAIL++)) || true
-fi
 # Polyglot python -m pytest && go test ./... must still get the venv rewrite.
 if grep -qF '*"python -m pytest"*' "$ROOT/lib/feature-bootstrap.sh"; then
   echo "PASS: feature bootstrap upgrades any command containing python -m pytest"

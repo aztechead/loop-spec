@@ -4,206 +4,87 @@ description: DELIVER phase - deterministic exact-SHA push, idempotent PR reconci
 allowed-tools: Bash Read Write Edit
 ---
 
-# DELIVER Phase
+# DELIVER
 
-Invoked only when `feature.json.currentPhase == "deliver"`. This phase runs on the
-main thread and launches no agents or teams. GitHub delivery is a transport/state
-transaction, not an LLM judgment.
-
-## Contract
-
-DELIVER owns every normal push and final PR mutation. VERIFY and ITERATE must have
-finished first. It never merges or enables auto-merge.
-
-A successful result means all changed repositories satisfy the same invariant:
+Main thread, no agents: GitHub delivery is a transport transaction, not a judgment.
+The invariant for every changed repository:
 
 ```text
 local candidate SHA == remote branch SHA == PR head SHA
-required checks are all pass/skipping (or none are configured)
-PR metadata reflects final artifacts
-PR is no longer a draft
+required checks all pass/skipping (or none configured)
+PR metadata reflects final artifacts; PR is no longer a draft
 ```
 
-Never AskUserQuestion as a wait. This phase launches no agents; the required-check
-wait is inside `lib/deliver.sh` (one blocking Bash call). Do not background that
-call or occupy the wait with a placeholder question.
+`lib/deliver.sh` is the implementation (one blocking call; the required-check wait is
+inside it, bounded by `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS`, default 900). It delegates
+each changed repo to `lib/pr-delivery.sh`, refuses any dirt or branch/base mismatch
+before touching GitHub, binds hard-failure retries to the exact `targetSha`, and holds
+multi-repo PRs as drafts until every repo is green. `lib/finalize-delivery-candidate.sh`
+(called by the controller) is the only pre-delivery mutation; never commit here
+yourself. A PR opened with `gh` outside the controller is reconciled at terminal result
+time by `lib/delivery-reconcile.sh`.
 
-The deterministic implementation is `lib/deliver.sh`, which delegates each changed
-repository to `lib/pr-delivery.sh`. Both use explicit repository paths, so this phase
-is identical under Claude Code, OpenCode, and Google ADK. Agents that open a PR with
-`gh` instead of this controller are reconciled at terminal result publication by
-`lib/delivery-reconcile.sh` (one-shot check observation, no ready flip).
-
-Three invariants the controller enforces so retries and multi-repo features stay safe:
-
-- **Candidate preflight.** Every target (single-repo and each workspace repo) must be a
-  clean tree at the repo root, on the recorded feature branch, with the recorded base an
-  ancestor and at least one commit past it — checked for ALL workspace targets before any
-  sibling touches GitHub. A mismatch is a structured block, never a silent wrong-`HEAD` push.
-- **SHA-bound hard retries.** A hard failure (transport, identity, timeout) records the
-  exact `targetSha` in `delivery.json` with `nextPhase = "deliver"`; resume re-delivers
-  that SHA and fails closed with `candidate_sha_drift` if `HEAD` moved. Remediation routes
-  (`nextPhase = "execute"`) intentionally produce a new SHA, so binding is skipped there.
-- **Staged workspace readiness.** With two or more changed repos, all PRs are held as
-  drafts (`--hold-ready`) until every repo clears required checks, then promoted together;
-  a CI failure routes to remediation with passing repos still drafts. Externally-promoted
-  held PRs fail closed; a failed promotion restores already-promoted siblings to draft.
-
-## Procedure
-
-### Step 1 - Final-candidate guard
-
-DELIVER is the sole owner of final candidate mutation. At controller entry,
-`lib/finalize-delivery-candidate.sh` installs runtime exclusions and commits only the
-named rules and ignore artifacts before first observation (the run digest joins that
-commit set only under `LOOP_SPEC_COMMIT_TELEMETRY=1` or when the repo already tracks
-it — a resuming session needs feature state and artifacts, not telemetry). If an eligible
-prior sidecar already binds a hard retry or completion SHA, finalization is a strict
-no-op. Do not add another finalization path in cycle prose.
-
-`lib/deliver.sh` enforces the clean-tree, branch, root, and ancestry checks. No tracked or
-untracked dirt is tolerated in a delivery target; every implementation/artifact change
-must already be committed. In workspace mode it validates every repo before calling any
-controller.
-
-### Step 2 - Run the controller
+Your inputs are the entry packet and nothing else; the controller reads the rest itself:
 
 ```bash
-fdir=".loop-spec/features/${slug}"
+bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" deliver --feature-dir "$feature_dir"
+```
+
+## 1. Run the controller
+
+```bash
 delivery_rc=0
-delivery_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/deliver.sh" run "$fdir")" \
-  || delivery_rc=$?
+delivery_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/deliver.sh" run "$feature_dir")" || delivery_rc=$?
 ```
 
-**Exit 3 = self-authored deferral in the delivery surface** (`skills/shared/no-deferral.md`).
-Before touching GitHub, the controller runs `lib/deferral-lint.sh` on the rendered PR
-body and on `feature.json.warnings[]`. A flag is a SCOPE violation, not a transport
-failure: the model recorded deferred/follow-up items it chose on its own, which means
-spec scope was silently dropped. Do not reword anything to pass the probe. Route by
-the flag's source: unimplemented spec scope → append a FULL-SHAPE remediation task for
-it (same shape as the failed-checks route — the recorded tasks drive the graph's
-declared remediation route); a
-bounded-gate line missing its marker → restore the `iterate-budget-spent:` /
-`iterate-terminal:` / `verify-deferred` marker at the source artifact or warning entry,
-then re-run DELIVER.
+Never AskUserQuestion as a wait and never background the call. **Exit 3** is a
+self-authored deferral in the PR body or `warnings[]` (`lib/deferral-lint.sh`,
+`skills/shared/no-deferral.md`): scope was dropped, not worded badly. Unimplemented spec
+scope becomes a FULL-SHAPE remediation task; a bounded-gate line missing its
+`iterate-budget-spent:` / `iterate-terminal:` / `verify-deferred` marker gets the marker
+restored at its source. Then run DELIVER again. `LOOP_SPEC_CREDENTIAL_REFRESH_CMD`, when
+set, runs before every push and API stage and retries one auth failure.
 
-`LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` controls the total required-check wait (default
-900); `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` controls polling (default 10). Each `gh`
-request also has a bounded command timeout via
-`LOOP_SPEC_GH_COMMAND_TIMEOUT_SECONDS` (default 60).
+## 2. Route by the sidecar
 
-Short-lived credentials may expire during earlier phases. When
-`LOOP_SPEC_CREDENTIAL_REFRESH_CMD` is configured, every push and GitHub API/PR stage
-runs it immediately beforehand with `LOOP_SPEC_CREDENTIAL_REFRESH_STAGE`, `..._REASON`,
-`..._HOST`, and `..._REPO`. Empty stdout means side-effect-only refresh; JSON stdout may
-set allow-listed GitHub token variables and is never logged. A 401/403/authentication
-failure refreshes and retries once, with mutation reconciliation preventing duplicate PRs
-or incorrect readiness state. A second auth failure stops at DELIVER.
+The controller persists `.loop-spec/features/{slug}/delivery.json`; its `nextPhase` is
+the route. Obey it; never reclassify a failure from prose.
 
-The adapter atomically persists the observation to ignored
-`.loop-spec/features/{slug}/delivery.json`. That sidecar's `nextPhase` is the
-deterministic route (`completed`, `execute`, or `deliver`); obey it rather than
-reclassifying failures from prose. Only a failed-check route mutates tracked
-`feature.json`, because EXECUTE must receive durable remediation state.
+- **`completed`** (`status == "ready-for-review"` or `"delivered-draft"`): run step 3,
+  then return. Do not commit or push afterwards; the proven head SHA is immutable and
+  `feature.json.currentPhase` stays `deliver` (a clone re-proves the external state).
+- **`execute`** (required checks failed): the PR stays a draft and the controller has
+  appended one `task-delivery-ci-remediation` task per failed target to
+  `pendingRemediationTasks[]`, with the failed check names in its notes. Return; the
+  CI-remediation route declared on `graph/cycle.graph.json`'s `deliver -> execute` loop
+  edge (bounded by `ciRemediationAttempts`) re-enters EXECUTE
+  and a new SHA comes back through VERIFY, ITERATE, DELIVER.
+- **`deliver`** (transport, timeout, identity, `no-changes`, `partial`, ambiguous PR,
+  moved head, unsupported checks): do not claim completion and do not re-run DELIVER in
+  this loop. Return; the cycle driver writes the escalated or no-change result from the
+  sidecar, and a resume re-runs the transaction idempotently against the same SHA once
+  the external condition changes. Autonomous mode cannot self-approve past any of these.
 
-### Step 3 - Route the result
+## 3. Terminal PR feedback check (ready-for-review only)
 
-#### Ready for review
-
-When `delivery_rc == 0`, `.status == "ready-for-review"`, and
-`.nextPhase == "completed"`:
-
-The adapter leaves tracked `feature.json.currentPhase = "deliver"` and writes logical
-completion to `delivery.json`, keeping the checked branch clean. Run the Step 4
-feedback check, then return to cycle; its router treats sidecar `nextPhase=completed`
-as the terminal transition. **Do not commit
-or push after the controller succeeds.** The PR head just proved is the immutable delivered SHA;
-any post-delivery commit would invalidate both its local verification and CI result.
-The local sidecar/result are the observation record. The committed branch remains
-resumable at `currentPhase=deliver`, so a clone re-runs this idempotent phase and
-re-proves the external state; same-machine completion can resume from the sidecar.
-
-#### Required checks failed
-
-When `delivery.nextPhase == "execute"`, every failed target was deterministically
-classified as `checks_failed`. The adapter keeps the PR as a draft and appends one
-idempotent FULL-SHAPE task per failed target to `pendingRemediationTasks[]`; the
-sidecar's `nextPhase=execute` is the condition on the graph's declared CI-remediation
-route (`lib/deliver.sh` probe in `graph/cycle.graph.json`):
-
-```json
-{
-  "id": "task-delivery-ci-remediation",
-  "subject": "Fix: required PR checks failed",
-  "files": [],
-  "verifyCommand": "<feature.commands.test, or the relevant repo test command>",
-  "acceptanceCriteria": ["all required PR checks pass for the delivered SHA"],
-  "repo": "<workspace repo name, or null in single mode>",
-  "blockedBy": [],
-  "retries": 0
-}
-```
-
-Failed check names/links from `delivery.targets[].checks.required[]` are in the task
-notes. Reload the state and return to cycle. The normal
-EXECUTE -> VERIFY -> ITERATE -> DELIVER path produces and checks a new SHA. The
-CI-remediation retry budget is declared once, on the graph's `deliver -> execute`
-loop edge (`graph/cycle.graph.json`), and enforced by the controller's persisted
-`ciRemediationAttempts` counter; a delivery that exhausts it remains at DELIVER and
-stops for external review rather than looping indefinitely.
-
-#### Transport, timeout, or identity failure
-
-When `delivery.nextPhase == "deliver"`, failures such as `push_failed`,
-`remote_sha_mismatch`, `pr_ambiguous`, `pr_head_moved`,
-`checks_timeout`, `checks_unsupported`, authentication failures, `partial`, or
-`no-changes`, do not claim completion and do not spin by invoking DELIVER again in
-the same phase loop. Leave `currentPhase = "deliver"`, write an escalated cycle result
-with the structured error, and return control. Resume re-runs the transaction
-idempotently after the external condition is corrected. Cycle must not update timestamps,
-progress, or tracked state on this route: the sidecar owns the observation and the retry
-is bound to the same candidate SHA. Eligible SHA-bound failures emit terminal outcome
-`delivery-blocked`, `implementationConverged: true`, and `retryPhase: "deliver"`; local
-preflight failures without an eligible binding remain ordinary escalations.
-
-Autonomous mode follows the same fail-closed rule. It may remediate an actual failed
-check, but it cannot self-approve a missing remote, ambiguous PR identity, moved head,
-or unavailable required-check oracle.
-
-### Step 4 - Terminal PR feedback check (ready-for-review only)
-
-Every cycle type ends by opening a PR **and checking it for reviews, comments, and
-requested changes** — the shared contract is `skills/shared/pr-feedback-check.md`.
-After the ready-for-review route (and only there), run the check once per delivered
-target:
+Every cycle ends by opening a PR and checking it for reviews, comments, and requested
+changes (`skills/shared/pr-feedback-check.md`):
 
 ```bash
 feedback_rc=0
 while read -r t; do
-  target_name="$(jq -r '.name' <<<"$t")"
-  pr_number="$(jq -r '.prNumber' <<<"$t")"
-  repo="$(jq -r '.repo // empty' <<<"$t")"
-  feedback_args=("$pr_number")
-  [[ -n "$repo" ]] && feedback_args+=(--repo "$repo")
-  fb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/pr-feedback.sh" check "${feedback_args[@]}")" \
-    || { feedback_rc=1; break; }
-  bash "${CLAUDE_SKILL_DIR}/../../lib/pr-feedback.sh" record "$fdir/delivery.json" "$target_name" "$fb" \
-    || { feedback_rc=1; break; }
+  args=("$(jq -r '.prNumber' <<<"$t")"); repo="$(jq -r '.repo // empty' <<<"$t")"; [[ -n "$repo" ]] && args+=(--repo "$repo")
+  fb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/pr-feedback.sh" check "${args[@]}")" || { feedback_rc=1; break; }
+  bash "${CLAUDE_SKILL_DIR}/../../lib/pr-feedback.sh" record "$feature_dir/delivery.json" "$(jq -r '.name' <<<"$t")" "$fb" || { feedback_rc=1; break; }
   printf '%s\n' "$fb"
-done < <(jq -c '.targets[] | select(.prNumber != null)' "$fdir/delivery.json")
+done < <(jq -c '.targets[] | select(.prNumber != null)' "$feature_dir/delivery.json")
 [[ "$feedback_rc" -eq 0 ]] || { echo "DELIVER: feedback persistence failed; completion blocked" >&2; false; }
 ```
 
-Route the result per `skills/shared/pr-feedback-check.md` (changes-requested,
-unresolved-items, clean, and loud-degrade handling all live there). The check is
-read-only — it never mutates the delivered SHA or the sidecar's `nextPhase`. Any check
-or recording failure blocks completion; never emit a result from a sidecar that did not
-durably capture the observation.
+The check is read-only; a check or recording failure blocks completion.
 
 ## Resume
 
-Re-run Step 2. The controller pushes the same explicit SHA, finds the existing PR by
-branch or persisted URL, updates metadata only when changed, and never creates a
-duplicate. A ready PR with the same verified SHA and green required checks is a no-op
-success (Step 4's feedback check still runs — a resumed completion is exactly when
-review feedback is likely to have arrived).
+Run step 1 again. The controller pushes the same SHA, finds the existing PR, updates
+metadata only when changed, never duplicates, and a ready PR with green checks is a
+no-op success whose feedback check still runs.

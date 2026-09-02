@@ -3,13 +3,13 @@
 #
 # Output is exactly one word on stdout:
 #   none      Agent teams are off. CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS != 1.
-#             -> phases use the no-teams fallback (skills/shared/no-teams-fallback.md).
+#             -> phases use the no-teams fallback (skills/shared/dispatch.md).
 #   explicit  Legacy agent teams (CC < 2.1.178): the TeamCreate / TeamDelete tools
 #             exist. Each phase creates and tears down its own named team.
 #   implicit  Modern agent teams (CC >= 2.1.178): TeamCreate / TeamDelete were
 #             REMOVED. Every session has one implicit team; teammates are spawned
 #             directly via Agent({name}) and addressed with SendMessage. See
-#             skills/shared/implicit-team-mode.md.
+#             skills/shared/dispatch.md.
 #
 # The 2.1.178 boundary is the Claude Code release that removed TeamCreate /
 # TeamDelete ("every session now has one implicit team -- spawn teammates

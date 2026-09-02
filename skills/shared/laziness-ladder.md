@@ -12,7 +12,7 @@ Relevant phases:
   loop-fleet (`lib/plan-to-loop.sh`), workflow (`lib/workflows/execute-dag.js`).
 - **VERIFY / code-reviewer** — `agents/code-reviewer.md` over-engineering pass.
 
-This file is the full reference; `skills/simplicity/SKILL.md` is the on/off/level toggle.
+This file is the full reference; `skills/settings/SKILL.md` (`simplicity`) is the on/off/level toggle.
 Dispatch names this file rather than pasting it. The session-level copy lives in
 `hooks/team/simplicity-inject.sh`.
 

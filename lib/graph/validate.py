@@ -106,7 +106,7 @@ def check_condition(cond, ptr, label):
     a human node's `admit` (contract sec 1/4, same shape). Checks shape, probe
     executability, and that `expects` is a member of the probe's own declared
     answer set: the rule that would have caught the shipped engine naming
-    probes that never emit the token a route expected (REMEDIATION-CONTRACT.md
+    probes that never emit the token a route expected (graph-remediation-contract.md
     sec 2/3)."""
     if not isinstance(cond, dict):
         flag(ptr, "%s must be {probe, args, expects} object, not prose" % label)

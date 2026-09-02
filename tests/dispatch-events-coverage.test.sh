@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Dispatch-telemetry coverage: every dispatch path MUST carry the `dispatch`
-# event emission directive (skills/shared/dispatch-events.md), mirroring
+# event emission directive (skills/shared/dispatch.md), mirroring
 # tests/design-coverage.test.sh for the design-for-change directive. Without
 # this enforcement the events.jsonl dispatch record silently rots and
 # `/loop-spec:status --stats` loses its model/role accounting.
@@ -13,16 +13,16 @@ FAIL=0
 
 # file<TAB>regex(any-case) that must match at least once.
 checks=(
-  "skills/shared/dispatch-events.md	dispatch telemetry contract"
-  "skills/shared/dispatch-events.md	one event per agent launched"
-  "skills/discuss/SKILL.md	dispatch-events.md"
-  "skills/plan/SKILL.md	dispatch-events.md"
-  "skills/execute/SKILL.md	dispatch-events.md"
-  "skills/verify/SKILL.md	dispatch-events.md"
-  "skills/iterate/SKILL.md	dispatch-events.md"
-  "skills/map-codebase/SKILL.md	dispatch-events.md"
-  "skills/shared/execute-subagent.md	dispatch-events.md"
-  "skills/shared/execute-loop-fleet.md	dispatch-events.md"
+  "skills/shared/dispatch.md	dispatch telemetry contract"
+  "skills/shared/dispatch.md	one event per agent launched"
+  "skills/discuss/SKILL.md	dispatch.md"
+  "skills/plan/SKILL.md	dispatch.md"
+  "skills/execute/SKILL.md	dispatch.md"
+  "skills/verify/SKILL.md	dispatch.md"
+  "skills/iterate/SKILL.md	dispatch.md"
+  "skills/map-codebase/SKILL.md	dispatch.md"
+  "skills/shared/execute-subagent.md	dispatch.md"
+  "skills/shared/execute-loop-fleet.md	dispatch.md"
   "lib/events.sh	dispatch          - an agent was launched"
 )
 

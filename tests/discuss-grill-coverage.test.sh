@@ -16,7 +16,7 @@ checks=(
   "skills/shared/autonomous-mode.md	AskUserQuestion loop (\`auto\` included)"
   "skills/shared/autonomous-mode.md	AskUserQuestion in \`auto\`/\`step\`/\`interactive\`"
   "skills/cycle/SKILL.md	DISCUSS still runs its design-shape grill afterward"
-  "skills/grill/SKILL.md	DISCUSS still runs its design-shape clarifying loop"
+  "skills/settings/SKILL.md	DISCUSS still runs its design-shape clarifying loop"
   "hooks/team/grill-inject.sh	Skip the grill pass **only** when"
   "hooks/team/grill-inject.sh	\`/loop-spec:cycle\` without that token is not a skip"
   "output-styles/loop-spec.md	\`style:auto\` is not autonomous mode"

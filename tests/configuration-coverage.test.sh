@@ -8,13 +8,12 @@ DOC="$ROOT/docs/loop-spec/configuration.md"
 PASS=0
 FAIL=0
 
-# Every sweep below enumerates the tree with `rg`. Without it each `rg -o | sort -u`
-# feeds an EMPTY list into the while loops and all of them report ✓ having checked
-# nothing -- a green suite that verified nothing is worse than a red one.
-if ! command -v rg >/dev/null 2>&1; then
-  echo "configuration-coverage: ripgrep (rg) is required; see tests/README.md" >&2
-  exit 1
-fi
+# Shipped-tree sweep: the same directories every enumeration below reads, with the
+# test files excluded so a fixture cannot count as a consumer.
+shipped_files() {
+  find "$ROOT/agents" "$ROOT/commands" "$ROOT/extensions" "$ROOT/hooks" "$ROOT/lib" "$ROOT/skills" \
+    -type f ! -name '*.test.sh' ! -path '*/tests/*' ! -path '*/__pycache__/*'
+}
 
 ok() {
   PASS=$((PASS + 1))
@@ -50,10 +49,8 @@ role_suffixes() {
 
 has_consumer() {
   local name="$1"
-  if rg -Fq "$name" \
-    "$ROOT/agents" "$ROOT/commands" "$ROOT/extensions" "$ROOT/hooks" "$ROOT/lib" "$ROOT/skills" \
-    "$ROOT/docs/loop-spec/cloud-run-autonomous.md" \
-    --glob '!*.test.sh' --glob '!**/tests/**'; then
+  if shipped_files | xargs grep -lF -- "$name" >/dev/null 2>&1 \
+     || grep -qF -- "$name" "$ROOT/docs/loop-spec/cloud-run-autonomous.md"; then
     return 0
   fi
 
@@ -61,10 +58,10 @@ has_consumer() {
     # The family headers themselves (`LOOP_SPEC_PHASE_MODEL_<PHASE>` reduces to
     # this once the placeholder is stripped): the construction site is the consumer.
     LOOP_SPEC_PHASE_MODEL_)
-      rg -Fq 'var="LOOP_SPEC_PHASE_MODEL_${suffix}"' "$ROOT/lib/feature-init.sh"
+      grep -qF 'var="LOOP_SPEC_PHASE_MODEL_${suffix}"' "$ROOT/lib/feature-init.sh"
       ;;
     LOOP_SPEC_MODEL_)
-      rg -Fq 'local var="LOOP_SPEC_MODEL_${env_suffix}"' "$ROOT/lib/feature-init.sh"
+      grep -qF 'local var="LOOP_SPEC_MODEL_${env_suffix}"' "$ROOT/lib/feature-init.sh"
       ;;
     LOOP_SPEC_PHASE_MODEL_*)
       phase_suffixes | grep -qx -- "${name#LOOP_SPEC_PHASE_MODEL_}"
@@ -91,9 +88,7 @@ while IFS= read -r name; do
   [[ -n "$name" ]] || continue
   contains_text "$name" || missing_env+=("$name")
 done < <(
-  rg -o --no-filename 'LOOP_SPEC_[A-Z0-9_]+' \
-    "$ROOT/agents" "$ROOT/commands" "$ROOT/extensions" "$ROOT/hooks" "$ROOT/lib" "$ROOT/skills" \
-    --glob '!*.test.sh' --glob '!**/tests/**' | sort -u
+  shipped_files | xargs grep -ohE 'LOOP_SPEC_[A-Z0-9_]+' 2>/dev/null | sort -u
 )
 
 if [[ ${#missing_env[@]} -eq 0 ]]; then
@@ -110,7 +105,7 @@ while IFS= read -r name; do
   fi
 done < <(
   sed -n '/^## Supported environment variables/,/^## Skill command arguments/p' "$DOC" \
-    | rg -o 'LOOP_SPEC_[A-Z0-9_]+' | sort -u
+    | grep -oE 'LOOP_SPEC_[A-Z0-9_]+' | sort -u
 )
 
 if [[ ${#missing_consumers[@]} -eq 0 ]]; then
@@ -178,9 +173,9 @@ while IFS= read -r flag; do
   contains_text "$flag" || missing_cli+=("$flag")
 done < <(
   {
-    rg '^argument-hint:' "$ROOT"/skills/*/SKILL.md \
-      | rg -o -- '--[a-z][a-z0-9-]*' || true
-    rg -o 'add_argument\("--[a-z][a-z0-9-]*' \
+    grep -h '^argument-hint:' "$ROOT"/skills/*/SKILL.md \
+      | grep -oE -- '--[a-z][a-z0-9-]*' || true
+    grep -ohE 'add_argument\("--[a-z][a-z0-9-]*' \
       "$ROOT"/skills/loop-runner/scripts/loop.py \
       "$ROOT"/skills/loop-runner/scripts/supervisor.py \
       "$ROOT"/skills/loop-runner/scripts/compile_spec.py \

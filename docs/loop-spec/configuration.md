@@ -7,7 +7,6 @@ implementers do not mistake them for controls, but callers must not set them unl
 the table explicitly says otherwise.
 
 The release’s source-to-contract utilization review is recorded in
-[`configuration-audit.md`](configuration-audit.md).
 
 ## Value and precedence rules
 
@@ -52,7 +51,6 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
 | `LOOP_SPEC_SQUASH_STATE_COMMITS` | `0`/`1`; `0` | `1` defers pure feature.json/PROGRESS phase-state commits and writes one final state commit during DELIVER. It also disables per-phase remote checkpoints because pushed intermediate state would require a later history rewrite. |
 | `LOOP_SPEC_CYCLE_PROFILE` | `maintenance`/`compact`/`standard`/`auto`; `auto` | Selects the cycle's gate ladder through `lib/cycle-profile.sh`. `auto` uses validated autonomous classification; a bounded feature or refactor may select `compact`, whose auditable run/skip plan gives every skipped gate a reason. `compact` requests (inline or environment) still require that persisted valid classification; without it they resolve `standard`. Destructive, malformed, uncertain, or unbounded compact proposals also fail upward to `standard`; exact-SHA delivery and terminal publication do not change. `maintenance` lightens SPEC and may take the existing short path. The compact schema and gate rules live in [`skills/shared/compact-profile.md`](../../skills/shared/compact-profile.md). Inline `profile:` tokens outrank this variable; invalid values fail safe to `standard`. |
-| `LOOP_SPEC_SKIP_HEALTHCHECK` | `0`/`1`; unset | `1` skips the startup model probe. A successful probe is cached for 24 hours only while the exact sorted effective selector set is unchanged. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
 | `LOOP_SPEC_STARTUP_BASELINE` | `0`/`1`; `0` | `1` captures the exact-base test/lint/typecheck baseline during cycle startup, before the feature exists. Default `0` skips that fresh-checkout suite run entirely: `verificationBaseline` stays `null` and every repository-wide failure observed later in the cycle blocks. Enable it only where the base commit is already red and the known-failure oracle is what keeps EXECUTE and VERIFY from chasing failures the feature did not cause. Greenfield never captures a baseline regardless. |
@@ -86,6 +84,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_PORT_ROOT` | directory path; platform temp | Store root for the reference `port-local` adapter. Unset defaults under the process temp directory. |
 | `LOOP_SPEC_EFFORT` | `system1`/`system2`; unset | Global operator override for `lib/effort-probe.sh`. Invalid values fail safe to `system2`. Outranked by the more-specific overrides below. |
 | `LOOP_SPEC_EFFORT_PHASE` | `system1`/`system2`; unset | Per-phase effort override. Outranks `LOOP_SPEC_EFFORT`; outranked by `LOOP_SPEC_EFFORT_NODE`. |
+| `LOOP_SPEC_EGRESS_GUARD` | `warn`/`deny`/`off`; `warn` | How `lib/phase-exit.sh` treats a `feature.json` key a phase changed outside its allow-list (state no later phase reads): `warn` prints `WARN [egress]`, `deny` makes it a `FLAG` that keeps the phase open, `off` skips the comparison. |
 | `LOOP_SPEC_EFFORT_NODE` | `system1`/`system2`; unset | Per-node effort override. Most specific form; outranks phase and global. |
 | `LOOP_SPEC_FEATURE_WRITE` | executable path; `lib/feature-write.sh` | Test/seam override for the feature-state writer. Production unset uses the bundled `lib/feature-write.sh`. |
 | `LOOP_SPEC_EVENTS` | executable path; `lib/events.sh` | Test/seam override for the event emitter used by `lib/graph/trace.sh`. Production unset uses the bundled `lib/events.sh`. |
@@ -184,7 +183,7 @@ variables. They configure that published recipe, not plugin internals:
 
 | Variable | Accepted values / default | Exact effect |
 |---|---|---|
-| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and to **nameless** role Agents. A named implicit-team spawn inherits the session model regardless (`skills/shared/implicit-team-mode.md`); `lib/implicit-team-model.sh` selects the nameless path when an alias is set. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. OpenCode consumes an explicit value only on loop-fleet subprocesses; its `task` tool has no per-call model — pin task roles with `opencode-install.sh install --model`. Codex `spawn_agent` consumes a Codex slug; pin generated custom agents with `codex-install.sh install --model`. ADK `dispatch_subagent` consumes a native role id. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. |
+| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and to **nameless** role Agents. A named implicit-team spawn inherits the session model regardless (`skills/shared/dispatch.md`); `lib/implicit-team-model.sh` selects the nameless path when an alias is set. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. OpenCode consumes an explicit value only on loop-fleet subprocesses; its `task` tool has no per-call model — pin task roles with `opencode-install.sh install --model`. Codex `spawn_agent` consumes a Codex slug; pin generated custom agents with `codex-install.sh install --model`. ADK `dispatch_subagent` consumes a native role id. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. |
 | `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. OpenCode accepts a native ID only for `IMPLEMENTER` on the loop-fleet rung (`provider/model`); configure other OpenCode roles through generated agents. ADK accepts a native ID (`gemini-*` or `provider/model`) for every role and forwards it on `dispatch_subagent({model})`. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, `MAPPER`, and `PATTERN_MAPPER`. |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
 | `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
@@ -192,8 +191,6 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_ANSWER_SPEC_CONFIRM` | `yes`/`no`; `yes` | After a passing synthesized gate, `yes` writes SPEC.md; `no` leaves the phase at SPEC and returns a durable `spec-confirmation-declined` pause. |
 | `LOOP_SPEC_ANSWER_SPEC_OVERRIDE` | `yes`/`no`; `yes` | After a failing synthesized gate, `yes` writes SPEC.md with failing dimensions recorded; `no` leaves the phase at SPEC and returns a durable `spec-override-declined` pause. |
 | `LOOP_SPEC_ANSWER_ITERATE_SPEC` | `reopen`/`ship`; `reopen` | On a non-interactive SPEC-level iteration gap, `reopen` returns to DISCUSS refinement; `ship` advances to DELIVER and records the accepted gap. |
-| `LOOP_SPEC_ANSWER_TIER` | ignored | Removed compatibility input. A notice is emitted; it cannot change behavior. |
-| `LOOP_SPEC_ANSWER_PRESET` | ignored | Removed compatibility input. A notice is emitted; it cannot change behavior. |
 | `LOOP_SPEC_ANSWER_*` | family | Namespace used by non-interactive answers. Unknown suffixes are ignored. |
 
 Concrete variables such as `LOOP_SPEC_MODEL_PLANNER`,

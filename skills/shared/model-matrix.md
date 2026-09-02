@@ -58,7 +58,7 @@ the model key and inherit that main model. `feature-init.sh` rejects a full ID i
 a Claude role override because Agent cannot consume it. On the implicit-team
 harness, a Claude alias is consumed only by a **nameless** Agent spawn; a named
 teammate inherits the session even if the key is present
-(`skills/shared/implicit-team-mode.md`). A selector is explicit
+(`skills/shared/dispatch.md`). A selector is explicit
 operator policy; loop-spec does not maintain a model-ID catalog or silently
 translate one family into another.
 
@@ -109,7 +109,7 @@ Claude phase skills read `feature.models.<role>` and pass it on each Agent spawn
 **only when it is one of the four aliases and the spawn is nameless**. When it
 resolves to `inherit` — the default — OMIT the `model` key entirely: the Agent
 tool's `model` is an alias enum and rejects the literal string `inherit` with
-`InputValidationError` (`skills/shared/harness-call-contracts.md` records the live
+`InputValidationError` (`skills/shared/dispatch.md` records the live
 probe). Named implicit-team spawns also omit `model` and omit any alias: they are
 in-process teammates that inherit the session (`lib/implicit-team-model.sh`).
 The durable policy still shows in `feature.models.<role>`; the dispatch does not

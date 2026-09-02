@@ -6,7 +6,7 @@ width `W < t_team`. The lead (the main thread running `execute`) drives the wave
 itself with one-shot `Agent` dispatches and inline `git` merges. No `TeamCreate`, no
 `Workflow`, no `SendMessage`, no harness task list.
 
-All waves also obey `skills/shared/subagent-concurrency.md`.
+All waves also obey `skills/shared/dispatch.md`.
 
 Contents: when this path runs · inputs · in-place single-repository mode · lead wave
 loop · agent dispatch convention · implementer contract stanza · implementer Agent
@@ -198,7 +198,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    aliases and omit it for `inherit`. A full/native ID requires the loop-fleet
    rung; fail loud if it reaches this Agent boundary.
    Issue the Agent call(s), then stop. Never AskUserQuestion as a wait
-   (`skills/shared/harness-call-contracts.md`). The harness resumes this turn
+   (`skills/shared/dispatch.md`). The harness resumes this turn
    when they complete. Then review.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
 5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, write a review package from the recorded BASE to the implementer's HEAD, then dispatch a spec-compliance reviewer `Agent` using the activated
@@ -275,7 +275,7 @@ the task worktree. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved selector>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved selector>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
 
 **Task progress (required).** EXECUTE is the longest phase; without this it reports
 only `[EXECUTE] start` and an operator watching a streamed log cannot tell task 1 of 6
@@ -310,66 +310,49 @@ templates cannot drift.
 ```
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
 
-FOUR QUESTIONS (design gate — on by default). Before implementing and again before DONE,
-ask of the change: can I make it more modular? can I make it more extensible? is this the
-least amount of code that makes it happen? does this hold at production scale (memory and
-work bounded against deployment-sized input, not the fixture)? Full contract:
-`${CLAUDE_SKILL_DIR}/../../skills/shared/implementer-contract.md`.
+ENGINEERING CONTRACT (on by default; every directive binds). The index is
+`${CLAUDE_SKILL_DIR}/../../skills/shared/engineering-directives.md`. Read these before writing code, never paste them:
+`${CLAUDE_SKILL_DIR}/../../skills/shared/implementer-contract.md` (FOUR QUESTIONS (design gate): can I make it more modular?
+more extensible? is this the least amount of code that makes it happen?
+does this hold at production scale, memory and work bounded against deployment-sized
+input, not the fixture?); `${CLAUDE_SKILL_DIR}/../../skills/shared/laziness-ladder.md` (ponytail laziness ladder: YAGNI, then DRY, reuse
+what is already here); `${CLAUDE_SKILL_DIR}/../../skills/shared/design-for-change.md` (seams, not speculation);
+`${CLAUDE_SKILL_DIR}/../../skills/shared/human-code.md` (house style over habit: read the neighbors, comments carry WHY,
+density matches the file, never cut `simplicity:` markers; CODE A HUMAN CAN OPERATE: fail
+loudly, or say why not); `${CLAUDE_SKILL_DIR}/../../skills/shared/human-docs.md` (DOCS FOR HUMANS: one job per document,
+cite never copy, a document your change makes false is fixed IN THIS DIFF and never a
+deferred follow-up; NEVER cut frontmatter, machine-read contract sections, artifact
+headings, EVID lines, or licenses); `${CLAUDE_SKILL_DIR}/../../skills/shared/writing-good-tests.md` (WRITING GOOD TESTS:
+name the break; no string-presence traps; no change detectors).
 
-SIMPLICITY (ponytail laziness ladder — on by default). Read
-`${CLAUDE_SKILL_DIR}/../../skills/shared/laziness-ladder.md` before writing code — do not
-paste it. YAGNI, then DRY: reuse what is already here. Before DONE run
-`bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>` and
-`bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>` (`duplicate=` same lines, `similar=` names-changed; both count).
+Rules that bind without a file read. TDD, red then green: code-producing tasks write the
+failing test FIRST, run it, confirm red, implement, confirm green; skill/config/docs
+tasks are excluded; Omitting a TDD label does not exempt this step. Simple over clever:
+the construct the next reader decodes without a comment. Idiomatic for the version the
+repo pins. Versions come from a tool (manifest, package manager, registry, advisory
+check), never from recall; report `version: <name>@<v> source: <command>` or
+`unverified`. Name the scaling input before writing code. Tests first; one test, one
+break, smallest input.
 
-DESIGN FOR CHANGE (seams, not speculation — on by default). Read
-`${CLAUDE_SKILL_DIR}/../../skills/shared/design-for-change.md` — do not paste it.
-
-CODE FOR HUMANS (house style over habit — on by default). Read
-`${CLAUDE_SKILL_DIR}/../../skills/shared/human-code.md` before writing code — do not paste
-it. Read the neighbors. Comments carry WHY, never what. Density matches the file. NEVER cut
-`simplicity:` markers. Before DONE: `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe
-<files>`; `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`;
-`bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>`.
-
-CODE A HUMAN CAN OPERATE (the failure path — on by default). Fail loudly, or say why you did
-not. Before DONE run `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files you
-touched>`.
-
-DOCS FOR HUMANS (the markdown is a deliverable too — on by default). Read
-`${CLAUDE_SKILL_DIR}/../../skills/shared/human-docs.md` — do not paste it. One job per
-document. Cite, never copy. If your change makes a document false, fix it IN THIS DIFF; a
-follow-up documentation task is deferred scope. Before DONE run
-`bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <the markdown you touched>`. NEVER
-cut frontmatter, machine-read contract sections, required artifact headings, EVID citation
-lines, or license blocks.
-
-WRITING GOOD TESTS. Read `${CLAUDE_SKILL_DIR}/../../skills/shared/writing-good-tests.md`
-before adding or changing a test — do not paste it. Name the break; no string-presence
-traps; no change detectors.
-
-TDD (red then green). Code-producing tasks: write the failing test FIRST, run it,
-confirm red, then implement, confirm green. Skill/config/docs tasks are excluded.
-Omitting a TDD label does not exempt this step.
+Before DONE, on <files you touched>: `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan` (one-caller
+helpers to inline); `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan` (`duplicate=` same lines,
+`similar=` names changed; both count); `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare`;
+`bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan`; `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan`;
+`bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <markdown you touched>`.
 
 NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
 Review arrives from the lead after your report.
 
-EXECUTION DISCIPLINE (evidence over recall — on by default). You execute a brief a
-stronger reasoning pass produced; your job is fidelity, not improvisation. Verify, don't
-recall: never assert what a file/command/API does from memory — read it, run it, paste
-the actual output. Surprise is signal: output contradicting your expectation is
-information — stop, re-read, revise; never explain it away. Re-read the acceptance
-criteria before DONE and check each against actual output. Depth over breadth: read the
-load-bearing file completely instead of skimming five. "Should work" / "probably fine" /
-"tests likely pass" each mean run it now. Scope is closed: the acceptance criteria are
-the whole job — never skip, trim, or defer an item, and never write
-follow-up/deferred/future-work notes; a criterion you cannot meet is a loud failure
-with evidence, never a note. Keep extras out: if you find a pre-existing bug,
-performance concern, or unrelated behavior, leave it unchanged unless the requested
-behavior cannot work without it. Keep permanent tests to requested behavior or the
-repository's established convention, and surgically edit needed lines instead of
-rewriting a whole file when the result is unchanged.
+EXECUTION DISCIPLINE (evidence over recall). Read `${CLAUDE_SKILL_DIR}/../../skills/shared/execution-discipline.md`, do not
+paste it. You execute a brief a stronger reasoning pass produced: fidelity, not
+improvisation. Never assert what a file, command, or API does from memory; read it, run
+it, paste the output. Output that contradicts your expectation is signal: stop, re-read,
+revise. Re-read the acceptance criteria before DONE and check each against actual
+output. Scope is closed: never skip, trim, or defer a criterion and never write
+follow-up notes; a criterion you cannot meet is a loud failure with evidence. Leave
+pre-existing bugs and unrelated behavior unchanged unless the requested behavior cannot
+work without them; keep permanent tests to requested behavior or the repository's
+convention; edit the needed lines instead of rewriting a file whose result is unchanged.
 ```
 
 ## Implementer Agent prompt (per task, per attempt)

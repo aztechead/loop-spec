@@ -7,8 +7,8 @@
 # that rewrote package-lock.json, and preparation failed the "tree unchanged" guard --
 # costing a restore plus a redo before the cycle could start. The resolver now answers for
 # a subdirectory ecosystem (lib/prepare-environment.sh, unit-tested in
-# tests/lib/prepare-environment.test.sh), and detect-commands.md forbids the mutating
-# install for the cases the resolver still declines to guess.
+# tests/lib/prepare-environment.test.sh), and lib/cycle-driver.sh feeds its answer
+# straight into feature.json so no model ever composes an install command.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,11 +21,7 @@ checks=(
   "lib/prepare-environment.sh	\\(cd \\\$dir && "
   "lib/prepare-environment.sh	ecosystem_subdirs"
   "lib/prepare-environment.sh	command_dirs"
-  "skills/cycle/references/detect-commands.md	never hand-roll a lockfile-mutating install"
-  "skills/cycle/references/detect-commands.md	npm ci"
-  "skills/cycle/references/detect-commands.md	pnpm install --frozen-lockfile"
-  "skills/cycle/references/detect-commands.md	uv sync --frozen"
-  "skills/cycle/references/detect-commands.md	(cd <subdir> && npm ci)"
+  "lib/cycle-driver.sh	prepare-environment resolve"
   "skills/shared/feature-state-schema.md	webapp/frontend && npm ci"
 )
 

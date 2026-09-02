@@ -4,7 +4,7 @@
 # per rule (probe-shaped route conditions, probe existence, edge endpoints,
 # reachability, loop ceilings, fanin joins, non-loop DAG-ness), plus the
 # invocation contract (exit 2 on missing/unreadable args) and the rules added
-# for docs/loop-spec/features/gdd/REMEDIATION-CONTRACT.md: expects membership
+# for docs/loop-spec/graph-remediation-contract.md: expects membership
 # in the probe's own --answers set, '|' alternation rejection, per-(from,to)
 # loop-pair scoping of the acyclicity carve-out, node body path existence, and
 # the derived (not hardcoded) feature-init skeleton key space.
@@ -266,7 +266,7 @@ check_output "delivery system1 FLAG" "system1" "$WORK/baddel.json"
 # skeleton` run at validate time, not a third hardcoded copy. That hardcoded
 # copy (a verbatim mirror of the schema.json stateKey enum) had already
 # drifted -- lib/feature-init.sh actually emits currentPhaseStartedAt and
-# iterate too, which is what REMEDIATION-CONTRACT.md sec 10's "already
+# iterate too, which is what graph-remediation-contract.md sec 10's "already
 # drifted" note is about. Both names are outside the schema.json stateKey
 # enum today (a separate, differently-scoped list -- fixing IT is cross-file
 # with skills/shared/feature-state-schema.md, out of this file's ownership),

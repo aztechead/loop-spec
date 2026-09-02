@@ -63,7 +63,7 @@ After the user'"'"'s initial substantive prompt, and before writing code, planni
 
 Skip the grill pass **only** when the request is already unambiguous (goal, scope boundary, constraints, and acceptance are all stated), purely informational, trivially reversible, or explicitly invokes autonomous routing (`/loop-spec:auto`, `/loop-spec/auto`, `loop-spec-auto`, or an `autonomous` token). `/loop-spec:cycle` without that token is not a skip. Inside the loop-spec cycle, the SPEC interview continues the grill and DISCUSS still runs its design-shape grill; do not repeat the session-start 2-4 questions once SPEC is running.
 
-Grill mode is ON by default. Disable it with /loop-spec:grill off or LOOP_SPEC_GRILL=0.'
+Grill mode is ON by default. Disable it with /loop-spec:settings grill off or LOOP_SPEC_GRILL=0.'
 
 # Emit valid JSON via jq (hard dependency) rather than a hand-rolled escaper.
 jq -n --arg ctx "$DIRECTIVE" \

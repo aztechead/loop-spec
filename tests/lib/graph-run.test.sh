@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Unit tests for lib/graph/run.sh — routes, admit/skip, resume, --step, abort,
 # and mutation proofs for the two shipped-3.0 route-evaluation bugs
-# (docs/loop-spec/features/gdd/REMEDIATION-CONTRACT.md).
+# (docs/loop-spec/graph-remediation-contract.md).
 #
 # Synthetic graphs isolate each routing contract below. Section 0 also requires
 # the shipped cycle graph to validate and traverse its primary phases.

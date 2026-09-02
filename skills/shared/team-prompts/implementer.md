@@ -79,7 +79,10 @@ Repeat until idle:
      / `design-for-change.md`; house style over habit /
      `skills/shared/human-code.md`; Code a human can operate; Docs for humans /
      `skills/shared/human-docs.md`; IN THIS DIFF / deferred scope; NEVER cut
-     frontmatter; evidence over recall; scope is closed). Probe paths use
+     frontmatter; evidence over recall; scope is closed; engineering directives /
+     `skills/shared/engineering-directives.md`: simple over clever, idiomatic for the
+     pinned version, versions from a tool never from recall, scaling input named
+     before code, tests first with one test one break). Probe paths use
      `${CLAUDE_SKILL_DIR}/../../lib/` not `{probe_dir}`: run
      `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>`
      and `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>`

@@ -365,8 +365,8 @@ printf '[{"id": "task-001", "brief": "x", "files": [], "blockedBy": [], "verifyC
 check "unknown modelTier flags" 1 tasks "$WORK/tasks-bad-tier.json"
 
 # --- the repo's own current templates/artifacts stay green ---
-check "current PLAN template shape passes (real artifact)" 0 plan "$ROOT/docs/loop-spec/features/user-gate-flow/PLAN.md"
-check "current SPEC template shape passes (real artifact)" 0 spec "$ROOT/docs/loop-spec/features/grounded-claims/SPEC.md"
+check "current PLAN template shape passes (real artifact)" 0 plan "$ROOT/tests/fixtures/real-PLAN.md"
+check "current SPEC template shape passes (real artifact)" 0 spec "$ROOT/tests/fixtures/real-SPEC.md"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

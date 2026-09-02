@@ -110,7 +110,7 @@ deterministic `lib/verification-grounding-lint.sh` gate.
 
 `harness.sh subagents` prints `true` under ADK: the full EXECUTE ladder below the
 team rung survives, and every one-shot dispatch a phase skill (or
-`skills/shared/no-teams-fallback.md`) prescribes maps onto `dispatch_subagent`:
+`skills/shared/dispatch.md`) prescribes maps onto `dispatch_subagent`:
 
 - `subagent_type: "loop-spec:<role>"` → `subagent_type: "<role>"` (the prefix is
   stripped for you; either spelling works). Roles are the filenames in

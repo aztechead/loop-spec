@@ -65,6 +65,6 @@ lesson as a rule so the next run cannot repeat it. One mistake, one permanent ch
   (`$LOOP_SPEC_GLOBAL_RULES_FILE` else `~/.loop-spec/RULES.md`). Both are injected inside
   loop-spec projects (project first, global rules deduped against it); a project rule can
   restate a global one to pin phrasing. Nothing is ever injected outside loop-spec projects.
-- Complements [grill mode](../grill/SKILL.md) (front-load ambiguity) and
-  [discipline mode](../discipline/SKILL.md) (behavioral gates): grill lowers ambiguity going
+- Complements grill mode (front-load ambiguity) and discipline mode (behavioral
+  gates), both toggled by `/loop-spec:settings`: grill lowers ambiguity going
   in, rules lower repeat-failure rate over time.

@@ -74,7 +74,7 @@ def header_lines(path, ext):
                 break
         return block
     # A contract's header is its title AND the paragraph under it. The title alone is
-    # the filename restated -- "Dispatch telemetry contract" for dispatch-events.md
+    # the filename restated -- "Dispatch telemetry contract" for dispatch.md
     # tells a searching agent nothing it did not already have.
     block = []
     paragraphs = 0

@@ -33,7 +33,7 @@ runtime probe false, so one-shot `claude -p`, cron, CI, and SDK jobs use subagen
 waves at any width. `LOOP_SPEC_LOOP_RUNTIME=1` is the explicit integrator assertion
 that a headless wrapper can keep the foreground call alive. Never background the
 supervisor, never AskUserQuestion as a wait
-(`skills/shared/harness-call-contracts.md`), and never use `ScheduleWakeup`; a forced
+(`skills/shared/dispatch.md`), and never use `ScheduleWakeup`; a forced
 loop without this capability is a loud EXECUTE error rather than a silent exit.
 
 Under Claude Code no operator env is needed for the common case: the harness stamps
@@ -136,7 +136,7 @@ subprocess by the task timeout plus shutdown grace, and writes an initial
 `.loop/fleet-result.json` before dispatch. If the call returns without a terminal fleet
 result, escalate with `loop-fleet supervisor made no progress` and do not advance.
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** before launching the supervisor, emit one `dispatch` event per compiled task — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "execute" --data '{"role":"implementer","model":"<feature.models.implementer>","rung":"loop-fleet"}' || true`. Worker iterations are not separate dispatches.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** before launching the supervisor, emit one `dispatch` event per compiled task — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "execute" --data '{"role":"implementer","model":"<feature.models.implementer>","rung":"loop-fleet"}' || true`. Worker iterations are not separate dispatches.
 
 ### 4. Consume the result (never scrape stdout)
 

@@ -31,7 +31,7 @@ checks=(
   "lib/plan-to-loop.sh	seams, not speculation"
   "lib/workflows/execute-dag.js	seams, not speculation"
   "skills/shared/laziness-ladder.md	seam"
-  "skills/simplicity/SKILL.md	seam"
+  "skills/settings/SKILL.md	ladder"
   "hooks/team/simplicity-inject.sh	seam"
   "CLAUDE.md	seams, not speculation"
 )

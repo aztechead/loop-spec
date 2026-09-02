@@ -26,9 +26,7 @@ behavior and `RUN_ALL_VERBOSE=1` to print successful suite logs.
 The full gate runs every non-interactive suite: the agent/manifest validators, the hook
 tests, the `lib/` units and integration contracts, and (when a node runtime is available)
 the workflow syntax checks in `tests/workflows/smoke.sh`. It needs bash, git, jq, python3,
-ripgrep (`rg`, used by the two coverage sweeps to enumerate the tree), and (for
-the workflow checks) node. It does NOT require the Claude CLI. `rg` is a
-test-only dependency: nothing shipped at runtime uses it.
+and (for the workflow checks) node. It does NOT require the Claude CLI.
 
 There are no scripted e2e or live-model suites: the shipped test tree is offline-only
 by policy (no network, no `claude -p`, no live services). Behavioral end-to-end

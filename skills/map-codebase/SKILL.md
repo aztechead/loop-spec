@@ -10,14 +10,14 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete 
 Standalone skill that builds or refreshes `docs/loop-spec/codebase/*.md`. Also auto-invoked by `loop-spec:verify` after its gates, before ITERATE and DELIVER.
 
 > **Team-mode adaptation (Step 3–5):** read `.loop-spec/runtime.json.teamsMode`.
-> - `none` → no team: run each mapper as a one-shot `Agent` call (`skills/shared/no-teams-fallback.md`); skip the `TeamCreate`/`TeamDelete` steps and collect each mapper's returned report directly.
-> - `implicit` (CC >= 2.1.178) → `TeamCreate`/`TeamDelete` were removed and throw. Skip the `TeamCreate` in Step 3 and the `TeamDelete` in Step 5. Probe `lib/implicit-team-model.sh spawn-kind --teams-mode implicit --selector <feature.models.mapper>` per domain. `named`: `Agent({name: "mapper-{domain}-1", description, subagent_type, prompt})` with no `model` key; mapper-to-mapper and `DOMAIN_DONE` messaging via `SendMessage` is unchanged. `oneshot`: nameless Agent with the alias so routing binds. Per `skills/shared/implicit-team-mode.md`.
+> - `none` → no team: run each mapper as a one-shot `Agent` call (`skills/shared/dispatch.md`); skip the `TeamCreate`/`TeamDelete` steps and collect each mapper's returned report directly.
+> - `implicit` (CC >= 2.1.178) → `TeamCreate`/`TeamDelete` were removed and throw. Skip the `TeamCreate` in Step 3 and the `TeamDelete` in Step 5. Probe `lib/implicit-team-model.sh spawn-kind --teams-mode implicit --selector <feature.models.mapper>` per domain. `named`: `Agent({name: "mapper-{domain}-1", description, subagent_type, prompt})` with no `model` key; mapper-to-mapper and `DOMAIN_DONE` messaging via `SendMessage` is unchanged. `oneshot`: nameless Agent with the alias so routing binds. Per `skills/shared/dispatch.md`.
 > - `explicit` → the `TeamCreate`/`TeamDelete` steps below run as written.
 >
-> Every one-shot mapper fallback obeys `skills/shared/subagent-concurrency.md`.
+> Every one-shot mapper fallback obeys `skills/shared/dispatch.md`.
 > Dispatch at most `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` mappers per wave when set.
 > Every mapper whose report this step still needs: issue the call, then stop.
-> Never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
+> Never AskUserQuestion as a wait (`skills/shared/dispatch.md`).
 
 ## Modes
 
@@ -105,7 +105,7 @@ object without `model`, adding it only when `mapper_model` is an Agent alias.
 Omit it for `inherit`. Under OpenCode, omit the per-call model and use the
 generated agent's native inheritance.
 
-**Dispatch telemetry (`skills/shared/dispatch-events.md`):** when invoked inside a cycle (feature dir exists), emit one `dispatch` event per mapper launched — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "map-codebase" --data '{"role":"mapper","model":"<mapper_model>","rung":"<team|subagent|workflow>"}' || true`. Standalone invocations (no feature dir) skip this.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** when invoked inside a cycle (feature dir exists), emit one `dispatch` event per mapper launched — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "map-codebase" --data '{"role":"mapper","model":"<mapper_model>","rung":"<team|subagent|workflow>"}' || true`. Standalone invocations (no feature dir) skip this.
 
 ```
 TeamCreate({
@@ -265,7 +265,7 @@ shrink; this pass names what. Dispatch ONE context-free reviewer (never a mapper
 wrote a domain this refresh) carrying `${CLAUDE_SKILL_DIR}/../../skills/shared/review-prompts/prose-pruning.md`
 verbatim, plus the domain documents under `docs/loop-spec/codebase/` and nothing else —
 no mapper reports, no refresh conversation.
-Dispatch the reviewer, then stop: never AskUserQuestion as a wait (`skills/shared/harness-call-contracts.md`).
+Dispatch the reviewer, then stop: never AskUserQuestion as a wait (`skills/shared/dispatch.md`).
 
 The reviewer lists `cut:`/`merge:`/`shrink:` proposals; the lead applies the ones it
 accepts, re-runs `lib/map-audit.sh budget`, and commits the shrunken map (a follow-up

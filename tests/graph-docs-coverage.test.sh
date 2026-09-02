@@ -5,13 +5,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PASS=0; FAIL=0
 
-# The reference sweep below uses `rg`. Under `set -e` a missing binary aborts the
-# suite mid-run with 127 and no diagnostic; say why instead.
-if ! command -v rg >/dev/null 2>&1; then
-  echo "graph-docs-coverage: ripgrep (rg) is required; see tests/README.md" >&2
-  exit 1
-fi
-
 check() {
   local name="$1" expected="$2" actual="$3"
   if [[ "$expected" == "$actual" ]]; then
@@ -33,7 +26,7 @@ done
 
 # Each contract has at least one referencing skill
 for doc in graph-contract.md dual-process.md handoff-port.md; do
-  hits="$(rg -l "$doc" "$ROOT/skills" "$ROOT/docs" 2>/dev/null | wc -l | tr -d ' ')"
+  hits="$(grep -rlF "$doc" "$ROOT/skills" "$ROOT/docs" 2>/dev/null | wc -l | tr -d ' ')"
   check "$doc referenced" "1" "$([[ "$hits" -ge 1 ]] && echo 1 || echo 0)"
 done
 

@@ -35,7 +35,7 @@ check_not_contains() {
 check_contains "subagent integration reruns focused proof" \
   skills/shared/execute-subagent.md '--verify "{task.verifyCommand}"'
 check_contains "team integration reruns focused proof" \
-  skills/execute/references/team-rung-protocol.md '--verify "{task.metadata.verifyCommand}"'
+  skills/shared/execute-rungs.md '--verify "<verifyCommand>"'
 check_contains "workflow integration uses focused candidateVerify" \
   lib/workflows/execute-dag.js "const candidateVerify = byId[p.taskId].verifyCommand || 'true'"
 
@@ -43,9 +43,8 @@ check_contains "workflow integration uses focused candidateVerify" \
 # because each rung reintroduces it in its own vocabulary.
 for f in \
   skills/shared/execute-subagent.md \
-  skills/shared/execute-inline.md \
+  skills/shared/execute-rungs.md \
   skills/shared/execute-loop-fleet.md \
-  skills/execute/references/team-rung-protocol.md \
   lib/workflows/execute-dag.js \
   skills/loop-runner/scripts/supervisor.py
 do
@@ -55,23 +54,23 @@ done
 
 # VERIFY is where it runs, and the only place — including resume.
 check_contains "VERIFY runs the comparison" \
-  skills/verify/references/pre-team-gates.md 'lib/feature-validation.sh" compare'
+  skills/verify/SKILL.md 'lib/feature-validation.sh" compare'
 check_not_contains "cycle resume does not run the comparison" \
   skills/cycle/SKILL.md 'feature-validation.sh'
 check_contains "cycle resume names VERIFY as the only suite" \
-  skills/cycle/SKILL.md 'VERIFY Step 1.75 is the only place'
+  skills/cycle/SKILL.md 'VERIFY is the only place'
 check_contains "cycle resume prints remaining task ids" \
-  skills/cycle/SKILL.md 'task-progress.sh" remaining'
+  lib/cycle-driver.sh 'task-progress remaining'
 check_contains "EXECUTE seeds mergedSet from done ids" \
-  skills/execute/references/conflicts.md 'task-progress.sh" done'
+  skills/execute/SKILL.md 'task-progress.sh done'
 check_contains "EXECUTE persists mark-done" \
-  skills/execute/references/conflicts.md 'task-progress.sh" mark-done'
+  skills/execute/SKILL.md 'task-progress.sh mark-done'
 check_contains "subagent protocol persists mark-done" \
   skills/shared/execute-subagent.md 'task-progress.sh" mark-done'
 check_contains "inline protocol persists mark-done" \
-  skills/shared/execute-inline.md 'task-progress.sh" mark-done'
+  skills/shared/execute-rungs.md 'mark-done'
 check_contains "team protocol persists mark-done" \
-  skills/execute/references/team-rung-protocol.md 'task-progress.sh" mark-done'
+  lib/phase-exit.sh 'task-progress remaining'
 check_contains "workflow DAG persists mark-done" \
   lib/workflows/execute-dag.js 'task-progress.sh'
 check_contains "workflow DAG seeds doneTaskIds" \
@@ -81,14 +80,14 @@ check_contains "loop-fleet passes the sidecar" \
 check_contains "supervisor accepts the sidecar" \
   skills/loop-runner/scripts/supervisor.py '--tasks-json'
 check_contains "resume reference picks up remaining ids" \
-  skills/shared/cycle-resume-escalation.md 'task-progress.sh remaining'
+  lib/cycle-driver.sh 'task-progress remaining'
 
 # Startup must not pay for a repository-wide suite on the untouched base. The capture
 # survives only as an opt-in for repositories whose base commit is already red.
 check_contains "startup baseline capture is opt-in" \
   lib/feature-bootstrap.sh 'if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then'
 check_contains "workspace prepare/baseline uses the shared bootstrap" \
-  skills/cycle/references/workspace-mode.md 'feature-bootstrap.sh" prepare-repo'
+  lib/cycle-driver.sh 'feature-bootstrap prepare-repo'
 check_contains "the opt-in is documented" \
   docs/loop-spec/configuration.md '`LOOP_SPEC_STARTUP_BASELINE`'
 

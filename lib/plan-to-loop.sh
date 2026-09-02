@@ -119,92 +119,56 @@ for t in tasks:
     read_first = t.get('readFirst') or []
     spec_path = t.get('specPath')
 
-    # Design gate (canonical: skills/shared/implementer-contract.md). A SessionStart
-    # hook does not reach this loop-runner worker, so the prompt names the contract and the
-    # probes rather than pasting the essay.
-    four_questions = (
-        'FOUR QUESTIONS (design gate — on by default). Before implementing and again '
-        'before DONE, ask of the change: can I make it more modular? can I make it more '
-        'extensible? is this the least amount of code that makes it happen? does this '
-        'hold at production scale (memory and work bounded against deployment-sized '
-        'input, not the fixture)? Full contract: '
-        f'{lib_dir}/../skills/shared/implementer-contract.md.'
+    # Engineering contract (canonical index: skills/shared/engineering-directives.md).
+    # A SessionStart hook does not reach this loop-runner worker, so the prompt names the
+    # contracts and the probes; the rules that must bind without a file read are inline.
+    contract = (
+        f'ENGINEERING CONTRACT (on by default; every directive binds). The index is '
+        f'`{lib_dir}/../skills/shared/engineering-directives.md`. Read these before writing code, never paste them: '
+        f'`{lib_dir}/../skills/shared/implementer-contract.md` (FOUR QUESTIONS (design gate): can I make it more modular? '
+        f'more extensible? is this the least amount of code that makes it happen? '
+        f'does this hold at production scale, memory and work bounded against deployment-sized '
+        f'input, not the fixture?); `{lib_dir}/../skills/shared/laziness-ladder.md` (ponytail laziness ladder: YAGNI, then DRY, reuse '
+        f'what is already here); `{lib_dir}/../skills/shared/design-for-change.md` (seams, not speculation); '
+        f'`{lib_dir}/../skills/shared/human-code.md` (house style over habit: read the neighbors, comments carry WHY, '
+        f'density matches the file, never cut `simplicity:` markers; CODE A HUMAN CAN OPERATE: fail '
+        f'loudly, or say why not); `{lib_dir}/../skills/shared/human-docs.md` (DOCS FOR HUMANS: one job per document, '
+        f'cite never copy, a document your change makes false is fixed IN THIS DIFF and never a '
+        f'deferred follow-up; NEVER cut frontmatter, machine-read contract sections, artifact '
+        f'headings, EVID lines, or licenses); `{lib_dir}/../skills/shared/writing-good-tests.md` (WRITING GOOD TESTS: '
+        f'name the break; no string-presence traps; no change detectors).\n'
+        f'\n'
+        f'Rules that bind without a file read. TDD, red then green: code-producing tasks write the '
+        f'failing test FIRST, run it, confirm red, implement, confirm green; skill/config/docs '
+        f'tasks are excluded; Omitting a TDD label does not exempt this step. Simple over clever: '
+        f'the construct the next reader decodes without a comment. Idiomatic for the version the '
+        f'repo pins. Versions come from a tool (manifest, package manager, registry, advisory '
+        f'check), never from recall; report `version: <name>@<v> source: <command>` or '
+        f'`unverified`. Name the scaling input before writing code. Tests first; one test, one '
+        f'break, smallest input.\n'
+        f'\n'
+        f'Before DONE, on <files you touched>: `bash {lib_dir}/indirection-scan.sh scan` (one-caller '
+        f'helpers to inline); `bash {lib_dir}/duplication-scan.sh scan` (`duplicate=` same lines, '
+        f'`similar=` names changed; both count); `bash {lib_dir}/house-style.sh compare`; '
+        f'`bash {lib_dir}/comment-tells.sh scan`; `bash {lib_dir}/failure-tells.sh scan`; '
+        f'`bash {lib_dir}/doc-tells.sh scan <markdown you touched>`.\n'
+        f'\n'
+        f'NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer. '
+        f'Review arrives from the lead after your report.\n'
+        f'\n'
+        f'EXECUTION DISCIPLINE (evidence over recall). Read `{lib_dir}/../skills/shared/execution-discipline.md`, do not '
+        f'paste it. You execute a brief a stronger reasoning pass produced: fidelity, not '
+        f'improvisation. Never assert what a file, command, or API does from memory; read it, run '
+        f'it, paste the output. Output that contradicts your expectation is signal: stop, re-read, '
+        f'revise. Re-read the acceptance criteria before DONE and check each against actual '
+        f'output. Scope is closed: never skip, trim, or defer a criterion and never write '
+        f'follow-up notes; a criterion you cannot meet is a loud failure with evidence. Leave '
+        f'pre-existing bugs and unrelated behavior unchanged unless the requested behavior cannot '
+        f'work without them; keep permanent tests to requested behavior or the repository\'s '
+        f'convention; edit the needed lines instead of rewriting a file whose result is unchanged.'
     )
 
-    ladder = (
-        'SIMPLICITY (ponytail laziness ladder — on by default). Read '
-        f'{lib_dir}/../skills/shared/laziness-ladder.md before writing code — do not paste '
-        'it. YAGNI, then DRY: reuse what is already here. Before DONE run bash '
-        f'{lib_dir}/indirection-scan.sh scan <files you touched> and bash '
-        f'{lib_dir}/duplication-scan.sh scan <files you touched> '
-        '(duplicate= same lines, similar= names-changed; both count).'
-    )
-
-    # Design-for-change directive (canonical: skills/shared/design-for-change.md).
-    # Travels with the ladder: the loop-runner worker sees only its prompt.
-    design = (
-        'DESIGN FOR CHANGE (seams, not speculation — on by default). Read '
-        f'{lib_dir}/../skills/shared/design-for-change.md — do not paste it. Design to an '
-        'interface; one unit, one reason to change; receive collaborators.'
-    )
-
-    # Code-for-humans directive (canonical: skills/shared/human-code.md).
-    # Travels with the ladder: the loop-runner worker sees only its prompt.
-    human = (
-        'CODE FOR HUMANS (house style over habit — on by default). Read '
-        f'{lib_dir}/../skills/shared/human-code.md before writing code — do not paste it. '
-        'Read the neighbors. Comments carry WHY, never what. NEVER cut simplicity: markers. '
-        f'Before DONE run bash {lib_dir}/house-style.sh probe <files>; bash '
-        f'{lib_dir}/house-style.sh compare <files you touched>; bash '
-        f'{lib_dir}/comment-tells.sh scan <files>; bash {lib_dir}/failure-tells.sh scan '
-        '<files you touched>. CODE A HUMAN CAN OPERATE: fail loudly, or say why you did not.'
-    )
-
-    # Docs-for-humans directive (canonical: skills/shared/human-docs.md).
-    # Travels with the ladder: the loop-runner worker sees only its prompt.
-    docs = (
-        'DOCS FOR HUMANS (the markdown is a deliverable too — on by default). Read '
-        f'{lib_dir}/../skills/shared/human-docs.md — do not paste it. One job per document. '
-        'Cite, never copy. If your change makes a document false, fix it IN THIS DIFF; a '
-        'follow-up documentation task is deferred scope. Before DONE run bash '
-        f'{lib_dir}/doc-tells.sh scan <the markdown you touched>. NEVER cut frontmatter, '
-        'machine-read contract sections, required artifact headings, EVID citation lines, '
-        'or license blocks.'
-    )
-
-    tests_catalog = (
-        'WRITING GOOD TESTS. Read '
-        f'{lib_dir}/../skills/shared/writing-good-tests.md before adding or changing a '
-        'test — do not paste it. Name the break; no string-presence traps; no change '
-        'detectors. TDD: code-producing tasks write the failing test FIRST, confirm '
-        'red, then implement, confirm green. Skill/config/docs tasks are excluded. '
-        'Omitting a TDD label does not exempt this step.'
-    )
-
-    no_nested = (
-        'NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a '
-        'reviewer. Review arrives from the lead after your report.'
-    )
-
-    # Execution-discipline directive (canonical: skills/shared/execution-discipline.md).
-    # Travels with the ladder: the loop-runner worker sees only its prompt.
-    discipline = (
-        'EXECUTION DISCIPLINE (evidence over recall — on by default). You execute a brief a '
-        'stronger reasoning pass produced; your job is fidelity, not improvisation. Verify, '
-        'do not recall: never assert what a file/command does from memory — read it, run it, '
-        'paste the actual output. Surprise is signal: output contradicting expectation means '
-        'stop and revise, never explain away. Re-read the acceptance criteria before DONE and '
-        'check each against actual output. \"Should work\" / \"probably fine\" / \"tests likely '
-        'pass\" each mean run it now. Scope is closed: the acceptance criteria are the whole '
-        'job — never skip, trim, or defer an item, and never write follow-up/deferred/'
-        'future-work notes; a criterion you cannot meet is a loud failure with evidence, '
-        'never a note. Keep extras out: leave a pre-existing bug, performance concern, or '
-        'unrelated behavior unchanged unless the requested behavior cannot work without it. '
-        'Keep permanent tests to requested behavior or the repository\'s established '
-        'convention, and surgically edit needed lines instead of rewriting a whole file '
-        'when the result is unchanged.'
-    )
-    lines = [f'You are implementing one task of feature \"{slug}\".', '', four_questions, '', ladder, '', design, '', human, '', docs, '', tests_catalog, '', no_nested, '', discipline, '', f'TASK {raw}: {brief}', '']
+    lines = [f'You are implementing one task of feature \"{slug}\".', '', contract, '', f'TASK {raw}: {brief}', '']
     if global_constraints:
         lines.append('Global constraints (from the plan, verbatim; every one binds):')
         lines += [f'{c}' for c in global_constraints]

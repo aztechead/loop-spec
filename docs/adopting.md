@@ -155,6 +155,5 @@ git worktree prune
 
 ## Next steps
 
-- Read `docs/design.md` for architecture detail
 - Read `tests/README.md` for test matrix coverage
 - Contribute: see CLAUDE.md

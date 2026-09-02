@@ -37,14 +37,12 @@ checks=(
   "lib/teams-capability.sh	!= \"claude\""
   "lib/workflow-availability.sh	!= \"claude\""
   # -- dispatch docs route opencode through the native task tool
-  "skills/shared/no-teams-fallback.md	opencode-harness.md"
+  "skills/shared/dispatch.md	opencode-harness.md"
   "skills/cycle/SKILL.md	opencode-harness.md"
   "skills/shared/tier-matrix.md	opencode-harness.md"
-  # -- startup probes: skip model probe under opencode too
-  "skills/cycle/references/startup-probes.md	opencode-harness.md"
   # -- tool-contract doc carries the opencode surface
-  "skills/shared/harness-call-contracts.md	opencode harness"
-  "skills/shared/harness-call-contracts.md	opencode-harness.md"
+  "skills/shared/dispatch.md	opencode harness"
+  "skills/shared/dispatch.md	opencode-harness.md"
   # -- headless parity documented for autonomous mode + models
   "skills/shared/autonomous-mode.md	opencode run --format json"
   "skills/shared/opencode-harness.md	loop-spec-auto"

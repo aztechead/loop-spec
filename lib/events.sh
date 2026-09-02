@@ -27,7 +27,7 @@
 #   gate_round        - a gate round completed (data: {"gate":..,"round":N})
 #   iterate_verdict   - an iterate judge verdict landed
 #   dispatch          - an agent was launched (data: {"role":..,"model":..,"rung":..};
-#                       contract: skills/shared/dispatch-events.md)
+#                       contract: skills/shared/dispatch.md)
 #   task_start        - an EXECUTE task began (data: {"index":N,"total":M,
 #                       "id":"task-003","subject":"..."}) -> "[EXECUTE] task 2/5 start"
 #   task_end          - an EXECUTE task finished (same, plus {"result":"merged|failed|..."})

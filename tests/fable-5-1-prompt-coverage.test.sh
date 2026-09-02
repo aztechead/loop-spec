@@ -40,7 +40,7 @@ check "keeps scope and tests bounded" \
 check "prefers targeted edits" \
   skills/shared/execution-discipline.md "surgically edit"
 check "keeps the lead productive" \
-  skills/shared/subagent-concurrency.md "independent lead work"
+  skills/shared/dispatch.md "independent lead work"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
