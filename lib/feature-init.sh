@@ -411,6 +411,11 @@ common_skeleton() {
     } + $tierblocks'
 }
 
+no_extra_args() {
+  local sub="$1"; shift
+  [[ $# -eq 1 ]] || { echo "usage: feature-init.sh $sub" >&2; exit 1; }
+}
+
 case "${1:-}" in
   models)
     shift
@@ -432,31 +437,19 @@ case "${1:-}" in
     resolve_phase_model "$2"
     ;;
   phase-models)
-    [[ $# -eq 1 ]] || {
-      echo "usage: feature-init.sh phase-models" >&2
-      exit 1
-    }
+    no_extra_args phase-models "$@"
     canonical_phase_models
     ;;
   all-models)
-    [[ $# -eq 1 ]] || {
-      echo "usage: feature-init.sh all-models" >&2
-      exit 1
-    }
+    no_extra_args all-models "$@"
     all_effective_models
     ;;
   validate)
-    [[ $# -eq 1 ]] || {
-      echo "usage: feature-init.sh validate" >&2
-      exit 1
-    }
+    no_extra_args validate "$@"
     validate_routing
     ;;
   agent-probe-models)
-    [[ $# -eq 1 ]] || {
-      echo "usage: feature-init.sh agent-probe-models" >&2
-      exit 1
-    }
+    no_extra_args agent-probe-models "$@"
     agent_probe_models
     ;;
   activate)

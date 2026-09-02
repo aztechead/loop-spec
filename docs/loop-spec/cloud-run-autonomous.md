@@ -351,7 +351,7 @@ The durable job controller must therefore:
    Run.
 2. Observe Cloud Run completion out of band.
 3. If no durable terminal result exists, restore/mount the control checkout and
-   run:
+   run, with `--result-root` pointing at the restored repo root:
 
 ```bash
 bash /path/to/loop-spec/lib/cycle-reconcile.sh \

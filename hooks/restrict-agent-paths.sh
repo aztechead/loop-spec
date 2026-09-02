@@ -80,6 +80,9 @@ fi
 # with a matching tool_result is finished — writes after it belong to the main
 # thread, not to that subagent. Dispatches without ids (older transcripts,
 # fixtures) cannot be matched and are conservatively treated as open.
+# simplicity: this JSONL walk is near-duplicated in hooks/team/placeholder-question-guard.sh
+# (different outputs: caller name here, open/phase there); extract a shared walker when a
+# third hook needs one.
 CALLER=$(python3 - "$TRANSCRIPT_PATH" <<'PY' 2>/dev/null
 import json, sys
 
