@@ -509,7 +509,9 @@ def dispatch_subgraph(node):
     cmd = ["bash", os.path.join(script_dir, "run.sh"), "--feature-dir", feature_dir, nested_path]
     if dry_run:
         cmd.insert(2, "--dry-run")
-    return subprocess.call(cmd)
+    # --step reserves stdout for the one descriptor line; the nested run's
+    # per-node traversal lines go to stderr so the parent's caller can parse it.
+    return subprocess.call(cmd, stdout=sys.stderr if step_mode else None)
 
 
 def process_node(current, admitting, defer_agent_routing):

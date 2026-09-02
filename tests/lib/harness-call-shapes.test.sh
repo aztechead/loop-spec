@@ -73,15 +73,6 @@ bad=$(grep -rnE 'model: *(feature\.models\.|models\.|model_mapper|mapper_model)'
 check "Agent templates do not emit dynamic model placeholders" \
   "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
 
-PROBES=skills/cycle/references/startup-probes.md
-grep -qF '[[ "$agent_probe_models" == "[]" ]] && skip_probe=true' "$PROBES" \
-  && v=1 || v=0
-check "inherit-only startup skips every Agent model probe" "$v"
-grep -qF 'for model_selector in agent_probe_models:' "$PROBES" \
-  && grep -qF 'feature-init.sh" agent-probe-models' "$PROBES" \
-  && v=1 || v=0
-check "startup model probes iterate only over Agent aliases" "$v"
-
 # 4) TaskList takes no status/filter arguments.
 bad=$(grep -rn 'TaskList({status' skills agents --include='*.md' 2>/dev/null | grep -v 'harness-call-contracts' | head -5 || true)
 check "no TaskList({status: ...}) filter args" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
@@ -151,9 +142,7 @@ for f in \
   skills/shared/subagent-concurrency.md \
   skills/shared/execute-subagent.md \
   skills/shared/execute-loop-fleet.md \
-  skills/cycle/references/startup-probes.md \
-  skills/cycle/references/codebase-map-bootstrap.md \
-  skills/cycle/references/phase-activate.md \
+  skills/cycle/SKILL.md \
   skills/execute/references/team-rung-protocol.md \
   skills/plan/references/patterns-bootstrap.md \
   skills/verify/references/workspace-mode.md

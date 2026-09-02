@@ -40,8 +40,6 @@ checks=(
   "skills/shared/no-teams-fallback.md	opencode-harness.md"
   "skills/cycle/SKILL.md	opencode-harness.md"
   "skills/shared/tier-matrix.md	opencode-harness.md"
-  # -- startup probes: skip model probe under opencode too
-  "skills/cycle/references/startup-probes.md	opencode-harness.md"
   # -- tool-contract doc carries the opencode surface
   "skills/shared/harness-call-contracts.md	opencode harness"
   "skills/shared/harness-call-contracts.md	opencode-harness.md"

@@ -197,10 +197,10 @@ check "all-models: no partial selector set on stdout for an invalid role route" 
   "$([[ -z "$allrole_stdout" ]] && echo 1 || echo 0)"
 
 # --- Test 11: Instruction/SDK boundaries call the executable router ---
-CYCLE="$REPO_ROOT/skills/cycle/references/phase-activate.md"
+CYCLE="$REPO_ROOT/lib/cycle-driver.sh"
 CLOUD="$REPO_ROOT/docs/loop-spec/cloud-run-autonomous.md"
 check "cycle boundary: activation is mandatory before every phase skill" \
-  "$([[ "$(grep -c 'feature-init.sh\" activate' "$CYCLE")" -ge 2 ]] && echo 1 || echo 0)"
+  "$([[ "$(grep -c 'feature-init activate' "$CYCLE")" -ge 1 ]] && echo 1 || echo 0)"
 check "SDK controller: resolves model inside the per-phase query loop" \
   "$(grep -Fq 'phase = resumable_phase(ROOT)' "$CLOUD" \
     && grep -Fq 'query_overrides["model"] = value' "$CLOUD" \

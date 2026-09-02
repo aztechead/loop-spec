@@ -29,8 +29,8 @@ checks=(
 
   # B3 -- extension points
   "skills/verify/references/post-hard-gate.md	extension-points\.sh.? layers verify	VERIFY must offer the project its review layers"
-  "skills/cycle/references/phase-activate.md	extension-points\.sh.? instructions	the cycle must load per-phase instructions"
-  "skills/cycle/references/phase-activate.md	extension-points\.sh.? facts	the cycle must load standing facts"
+  "lib/cycle-driver.sh	extension-points instructions	the cycle must load per-phase instructions"
+  "lib/cycle-driver.sh	extension-points facts	the cycle must load standing facts"
 
   # B4 -- map audit
   "skills/map-codebase/SKILL.md	map-audit\.sh	the map skill must be able to measure its own output"

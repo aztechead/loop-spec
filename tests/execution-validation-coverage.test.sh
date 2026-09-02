@@ -59,9 +59,9 @@ check_contains "VERIFY runs the comparison" \
 check_not_contains "cycle resume does not run the comparison" \
   skills/cycle/SKILL.md 'feature-validation.sh'
 check_contains "cycle resume names VERIFY as the only suite" \
-  skills/cycle/SKILL.md 'VERIFY Step 1.75 is the only place'
+  skills/cycle/SKILL.md 'VERIFY is the only place'
 check_contains "cycle resume prints remaining task ids" \
-  skills/cycle/SKILL.md 'task-progress.sh" remaining'
+  lib/cycle-driver.sh 'task-progress remaining'
 check_contains "EXECUTE seeds mergedSet from done ids" \
   skills/execute/references/conflicts.md 'task-progress.sh" done'
 check_contains "EXECUTE persists mark-done" \
@@ -88,7 +88,7 @@ check_contains "resume reference picks up remaining ids" \
 check_contains "startup baseline capture is opt-in" \
   lib/feature-bootstrap.sh 'if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then'
 check_contains "workspace prepare/baseline uses the shared bootstrap" \
-  skills/cycle/references/workspace-mode.md 'feature-bootstrap.sh" prepare-repo'
+  lib/cycle-driver.sh 'feature-bootstrap prepare-repo'
 check_contains "the opt-in is documented" \
   docs/loop-spec/configuration.md '`LOOP_SPEC_STARTUP_BASELINE`'
 

@@ -57,7 +57,6 @@ checks=(
   "skills/shared/no-teams-fallback.md	codex-harness.md"
   "skills/cycle/SKILL.md	codex-harness.md"
   "skills/shared/tier-matrix.md	codex-harness.md"
-  "skills/cycle/references/startup-probes.md	codex-harness.md"
   "skills/shared/harness-call-contracts.md	Codex harness"
   "skills/shared/harness-call-contracts.md	codex-harness.md"
   "skills/shared/harness-call-contracts.md	request_user_input"
