@@ -34,8 +34,11 @@ both paths.
 
 **Critique ladder**: skip (above) or a single critic. There is no advocate and no debate.
 The lead may accept any finding and may never drop a `[major]`; a solo gate biases only
-stricter. A revision gets a delta re-verify (fix-list plus diff), never a full re-run;
-retries are unbounded (`critique-gate-protocol.md`).
+stricter. A revision gets a delta re-verify (fix-list plus diff), never a full re-run. Delta
+rounds are bounded by the loop ceiling `graph/critique.graph.json` declares;
+`lib/graph/gate.sh next` reads it and closes the gate with `cap-reached` when it is
+spent or one finding survives two consecutive delta rounds
+(`critique-gate-protocol.md`). `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph.
 
 ## Parameters (fixed; `.loop-spec/tuning.json` may overlay a closed set)
 
@@ -43,7 +46,8 @@ retries are unbounded (`critique-gate-protocol.md`).
 |---|---|
 | execute.maxParallelImplementers | 3 |
 | execute.maxRetriesPerTask | 6 |
-| iterate.maxIterations | 10 (the one bound the cycle respects; gate retries are unbounded) |
+| iterate.maxIterations | 10 |
+| critique delta rounds | the `critique.adjudicate` -> `critique.challenge` loop ceiling in `graph/critique.graph.json` (`LOOP_SPEC_CRITIQUE_ROUNDS` overrides; `0` = unbounded) |
 | fastPathMaxTasks / fastPathMaxFiles | 2 / 3 |
 | DISCUSS `auto` rounds | 5 (`step`/`interactive`: unlimited) |
 | Workflow fan-out (refuteVoters, planAngles, dimensionReviewers) | 3 / 3 / 3, completenessCritic on |

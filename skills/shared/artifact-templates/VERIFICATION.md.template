@@ -42,6 +42,10 @@ root. `integration: none` requires a concrete reason.
 #### Minor (deferred)
 {list or "none"}
 
+#### Performance
+{`perf:` findings from the code-reviewer's performance pass, each with the input that
+makes it cost and the measurement, or "none"}
+
 ### Resolution
 {which findings were addressed in which commits, which deferred to follow-up tasks}
 

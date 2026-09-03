@@ -169,7 +169,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
       "advocateModel": "string or null",
       "challengerModel": "string or null",
       "rounds": "integer (rounds the debate ran)",
-      "convergence": "mutual-done | cap-reached | one-sided",
+      "convergence": "single-critic | delta-verified | cap-reached",
       "findingsAddressed": ["string", "..."],
       "notes": "string or null"
     }
@@ -180,7 +180,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 ### Field notes
 
 - The `tasks` and `waves` arrays from v2 are gone. Live task state lives in the harness task list, not in `feature.json`.
-- There is no `retryBudget` block (full-bore operation): gate retries are unbounded, and every attempt is recorded in `gateHistory[]`. The only bound the cycle respects is `iterate.maxIterations`. During EXECUTE, the per-task rework cap (`maxRetriesPerTask`, default 6: one initial attempt plus five fix rounds; `lib/fix-loop.sh max` prints that default) routes a repeatedly-failing task to the lead for escalation rather than looping it forever between the same implementer and reviewer. EXECUTE reads the overlay at dispatch (`lib/tuning.sh get executeMaxRetriesPerTask 6`) so a `raise-gate-rounds-execute` tightening actually moves the cap.
+- There is no `retryBudget` block: every attempt is recorded in `gateHistory[]`, and the critique gates' delta rounds are bounded by the loop ceiling `graph/critique.graph.json` declares, read by `lib/graph/gate.sh next` (a `cap-reached` pass entry carries the surviving findings in `notes`). The cycle's other bound is `iterate.maxIterations`. During EXECUTE, the per-task rework cap (`maxRetriesPerTask`, default 6: one initial attempt plus five fix rounds; `lib/fix-loop.sh max` prints that default) routes a repeatedly-failing task to the lead for escalation rather than looping it forever between the same implementer and reviewer. EXECUTE reads the overlay at dispatch (`lib/tuning.sh get executeMaxRetriesPerTask 6`) so a `raise-gate-rounds-execute` tightening actually moves the cap.
 - `currentTeamName`, `currentTeammates`, and `currentGate` are the rapidly-mutating fields. After `TeamDelete`, `currentTeamName` becomes `null` and `currentTeammates` `[]`. `currentGate` is NEVER nulled — it is closed by `lib/graph/gate.sh pass`, which writes a zeroed object, because `graph/cycle.graph.json` declares it in the `reads[]` of both critique nodes and `lib/graph/state.sh assert-reads` fails a node whose declared read is null.
 - `executionProfile` is the gate ladder the whole cycle runs, resolved once at Step 3 by
   `lib/cycle-profile.sh` and persisted so a resume keeps the same shape. `standard` is the

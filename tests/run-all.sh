@@ -372,6 +372,7 @@ run_suite "tests/console-observability-coverage" "bash tests/console-observabili
 run_suite "tests/execution-discipline-coverage" "bash tests/execution-discipline-coverage.test.sh"
 run_suite "tests/implementer-contract-coverage" "bash tests/implementer-contract-coverage.test.sh"
 run_suite "tests/engineering-directives-coverage" "bash tests/engineering-directives-coverage.test.sh"
+run_suite "tests/engineering-stances-coverage" "bash tests/engineering-stances-coverage.test.sh"
 run_suite "tests/execution-validation-coverage" "bash tests/execution-validation-coverage.test.sh"
 run_suite "tests/verification-grounding-coverage" "bash tests/verification-grounding-coverage.test.sh"
 run_suite "tests/prompt-normalize-coverage" "bash tests/prompt-normalize-coverage.test.sh"

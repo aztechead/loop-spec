@@ -72,9 +72,11 @@ Score the four dimensions from what you know now and display the scoring block.
 
 Perspectives, one per round, 2-3 questions each, structured multiple-choice with
 tradeoffs whenever options are discernible: Researcher (round 1; **Foundations** when
-greenfield: stack, tooling, walking skeleton, and the canonical test/lint/typecheck
-commands, which land in SPEC.md as requirements), Simplifier, Boundary Keeper, Failure
-Analyst, Seed Closer (rounds 5-6, lowest-scoring dimensions).
+greenfield: stack, tooling, walking skeleton, the canonical test/lint/typecheck
+commands, and the build-from-scratch stance's data model, API surface, interface, and
+scaling input, `skills/shared/engineering-stances.md`; all land in SPEC.md as
+requirements), Simplifier, Boundary Keeper, Failure Analyst, Seed Closer (rounds 5-6,
+lowest-scoring dimensions).
 
 - **`interview`** (a human is attached). **`execStyle: auto` still interviews.** Auto
   means the cycle does not pause after this phase, not that nobody is there. Up to 6

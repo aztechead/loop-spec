@@ -6,7 +6,22 @@
 #   gate.sh round --feature-dir DIR
 #   gate.sh fail  --feature-dir DIR --rounds N --convergence C --challenger-model M [--findings JSON] [--notes TEXT]
 #   gate.sh pass  --feature-dir DIR --rounds N --convergence C --challenger-model M [--notes TEXT]
+#   gate.sh next  --feature-dir DIR
 #   gate.sh show  --feature-dir DIR
+#
+# `next` is the delta-round probe: after a fail entry lands it answers, on one line,
+# whether the lead re-dispatches the author or closes the gate --
+#   ANSWER=rerun REASON=...   another delta round is inside the ceiling
+#   ANSWER=close REASON=...   the ceiling is spent, or one finding survived two
+#                             consecutive delta rounds (a deadlock)
+# The ceiling is the loop edge graph/critique.graph.json declares from
+# critique.adjudicate back to critique.challenge, read at call time; a number restated
+# here would be the second declaration tests/graph-conformance.test.sh bans.
+# LOOP_SPEC_CRITIQUE_ROUNDS outranks the graph: a positive integer replaces the ceiling,
+# 0 means unbounded (every answer is rerun), anything else is a configuration error.
+# A field run spent over an hour bouncing PLAN.md between the challenger and the planner
+# because the protocol prose said retries were unbounded and the graph's ceiling was
+# inside a `contain` loop the engine never counts; this subcommand is what counts it.
 #
 # Why this exists rather than the write steps in skills/shared/critique-gate-protocol.md:
 # the gate transition SELECTS A CODE PATH. graph/cycle.graph.json declares currentGate in
@@ -23,7 +38,8 @@
 # graph's own writes[] declaration still governs. Both keys belong to critique.adjudicate
 # in graph/critique.graph.json -- the node that owns the adjudication these calls record.
 #
-# Exit: 0 ok; 1 no open gate / unreadable state / write failure; 2 bad invocation.
+# Exit: 0 ok; 1 no open gate / unreadable state / write failure; 2 bad invocation or a
+# malformed LOOP_SPEC_CRITIQUE_ROUNDS.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,6 +54,7 @@ usage: gate.sh open  --feature-dir DIR --phase PHASE --gate GATE [--challenger N
        gate.sh round --feature-dir DIR
        gate.sh fail  --feature-dir DIR --rounds N --convergence C --challenger-model M [--findings JSON] [--notes TEXT]
        gate.sh pass  --feature-dir DIR --rounds N --convergence C --challenger-model M [--notes TEXT]
+       gate.sh next  --feature-dir DIR
        gate.sh show  --feature-dir DIR
 EOF
   exit 2
@@ -115,6 +132,36 @@ append_history() {
   write_key gateHistory "$history"
 }
 
+# The delta-round ceiling, from the graph's own loop edge. Empty output means the graph
+# no longer declares one, and the caller must refuse rather than guess a number.
+critique_ceiling() {
+  local override="${LOOP_SPEC_CRITIQUE_ROUNDS-}"
+  if [[ -n "$override" ]]; then
+    [[ "$override" =~ ^[0-9]+$ ]] || {
+      echo "gate.sh: LOOP_SPEC_CRITIQUE_ROUNDS must be a non-negative integer (0 = unbounded), got '$override'" >&2
+      exit 2
+    }
+    echo "$override"
+    return 0
+  fi
+  jq -r '[.edges[] | select(.kind == "loop" and .from == "critique.adjudicate"
+                            and .to == "critique.challenge")][0].ceiling // empty' \
+    "$CRITIQUE_GRAPH"
+}
+
+# A finding present in both of the last two fail entries for the open gate. Fail entries
+# are appended before every re-dispatch, so in a stall the last two are the last two
+# rounds; a DELTA-VERIFIED round would have closed the gate instead.
+surviving_finding() {
+  jq -r --arg phase "$open_phase" \
+    --arg gate "$(jq -r '.currentGate.gate // ""' "$feature_json")" '
+    [.gateHistory[]? | select(.phase == $phase and .gate == $gate and .result == "fail")]
+    | if length < 2 then empty
+      else (.[-2].findingsAddressed // []) as $prev
+           | (.[-1].findingsAddressed // []) | map(select(. as $f | $prev | index($f))) | .[0] // empty
+      end' "$feature_json"
+}
+
 case "$cmd" in
   open)
     [[ -n "$phase" && -n "$gate" ]] || usage
@@ -150,6 +197,34 @@ case "$cmd" in
     # and read as a gate that never ran.
     write_key currentGate '{"phase": null, "gate": null, "round": 0, "advocateName": null,
       "challengerName": null, "startedAt": null}'
+    ;;
+  next)
+    require_open
+    # The substitution swallows the helper's exit code; pass it through unchanged.
+    ceiling="$(critique_ceiling)" || exit $?
+    [[ -n "$ceiling" ]] || {
+      echo "gate.sh: $CRITIQUE_GRAPH declares no loop edge from critique.adjudicate to critique.challenge; cannot bound the gate" >&2
+      exit 1
+    }
+    if [[ "$ceiling" -eq 0 ]]; then
+      echo "ANSWER=rerun REASON=LOOP_SPEC_CRITIQUE_ROUNDS=0 (unbounded by operator)"
+      exit 0
+    fi
+    round="$(jq -r '.currentGate.round' "$feature_json")" || exit 1
+    # Round 1 is the single-critic pass; every later round is a delta re-verify.
+    delta_spent=$(( round > 0 ? round - 1 : 0 ))
+    if (( delta_spent >= ceiling )); then
+      echo "ANSWER=close REASON=ceiling: $delta_spent of $ceiling delta rounds spent (graph/critique.graph.json)"
+      exit 0
+    fi
+    if (( round >= 3 )); then
+      survivor="$(surviving_finding)" || exit 1
+      if [[ -n "$survivor" ]]; then
+        echo "ANSWER=close REASON=deadlock: finding survived two consecutive delta rounds: $survivor"
+        exit 0
+      fi
+    fi
+    echo "ANSWER=rerun REASON=$delta_spent of $ceiling delta rounds spent"
     ;;
   show)
     if [[ -z "$open_phase" ]]; then

@@ -83,7 +83,7 @@ approval in `step`/`interactive`) take the grounded assumption here.
 `warnings[]` is the audit trail; nobody reads it mid-flight. When an escalation path
 fires, climb instead of stopping:
 
-1. **Self-heal in phase**: gate retry loops run as written, unbounded.
+1. **Self-heal in phase**: gate retry loops run as written; a critique gate closes at the graph's delta ceiling (`lib/graph/gate.sh next`) and the run proceeds.
 2. **Lead-authored fallback**: a teammate that produces nothing after one fresh
    re-dispatch is replaced by the lead authoring the artifact from the same brief
    (`lead-authored` in the transcript).

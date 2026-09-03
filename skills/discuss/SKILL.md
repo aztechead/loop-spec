@@ -52,7 +52,11 @@ cite `EVID-NNN`, or write an ASSUMPTION; `skills/shared/grounding-protocol.md`).
   per design shape: "what is the most likely next change here, and does this shape
   absorb it as a local diff?" and offer the seam that fixes a broad ripple
   (`skills/shared/design-for-change.md`). At least the corner question plus two
-  design-shape questions even when nothing is unresolved.
+  design-shape questions even when nothing is unresolved. When the spec adds a
+  component, a store, a service boundary, or a cache (always under greenfield), the
+  design-shape questions are the system-design stance's deliverables
+  (`skills/shared/engineering-stances.md`): who owns each piece of state, how each data
+  flow runs end to end, what the API looks like, what is cached and invalidated how.
 - **`self-answer`** (autonomous): the same obligations, answered by you from the code,
   each recorded with `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" discuss "<q>" "<a>" "<why>"`.
 - **`skip`** (`review-only` or non-interactive): only the unresolved-dimension
@@ -86,7 +90,9 @@ maintenance profile, never on a security signal or re-entry): log
 finding that depends on user intent is a question in `grill=run` and otherwise the more
 reversible reading, recorded via `decisions.sh add`; an `UNGROUNDED:` finding gets its
 probe run by you, appended to the evidence ledger, and cited in the fix; hash SPEC.md
-before and after a revision and skip the delta re-verify when nothing changed. Emit
+before and after a revision and skip the delta re-verify when nothing changed;
+`gate.sh next` answering `close` ends the critique with SPEC.md as it stands (residue
+in `gate-logs/spec-critique-residue.md` only). Emit
 one `dispatch` event per agent launched and, per round,
 `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" gate_round --phase discuss --data '{"gate":"spec-critique","round":N,"mode":"single-critic|delta"}' || true`.
 

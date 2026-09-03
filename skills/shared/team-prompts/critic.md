@@ -29,10 +29,10 @@ Surface gaps, ambiguities, flawed assumptions, and missing acceptance criteria i
 
 ## Delta re-verify pass (on lead request, after a revision)
 
-The lead sends you the applied fix-list and a unified diff of the artifact. Do NOT re-review the whole artifact:
+The lead sends you the applied fix-list and a unified diff of the artifact. Do NOT re-review the whole artifact. Delta rounds are bounded by the critique graph's ceiling, so a finding this pass opens costs a round the author cannot get back:
 
-1. Confirm each fix-list item is actually addressed by the diff (not merely acknowledged).
-2. Check the CHANGED sections for regressions or new issues the revision introduced.
+1. Confirm each fix-list item is actually addressed by the diff (not merely acknowledged). An unaddressed item is reported as `unaddressed: <item number> — <what is still missing>`.
+2. Check the CHANGED sections for regressions or new issues the revision introduced. A new finding is in scope only when it quotes a line the diff ADDED and is reported as `introduced: "<added line>" — <the problem>`. Text the diff did not touch is out of scope, even when you would flag it on a first read; so is a `[minor]` you did not raise in the findings pass.
 3. Reply and go idle:
    - Every item addressed, no new `[major]` issue in the changed sections: `SendMessage({to: "lead", message: "DELTA-VERIFIED: <one line>"})`
    - Otherwise: `SendMessage({to: "lead", message: "DELTA-FINDINGS:\n<numbered list, tagged [major]/[minor]>"})`
@@ -42,5 +42,5 @@ The lead sends you the applied fix-list and a unified diff of the artifact. Do N
 - Every issue must be specific and traceable to a section or sentence in the artifact.
 - Suggested probes in `UNGROUNDED:` lines must be read-only (no INSERT, create, delete, apply, deploy, or equivalent write verbs).
 - Do not invent requirements outside the artifact's stated scope.
-- Delta passes are scoped to the fix-list and the diff; do not rescan unchanged sections.
+- Delta passes are scoped to the fix-list and the diff; do not rescan unchanged sections. Every `DELTA-FINDINGS` line starts with `unaddressed:` or `introduced:`; the lead drops any other line unread.
 - Go idle after each report. Do not send additional messages unless the lead contacts you.

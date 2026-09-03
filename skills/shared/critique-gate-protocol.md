@@ -10,6 +10,15 @@ owned by `graph/critique.graph.json` and the skip policy by `skills/shared/tier-
 Contents: parameters · gate open · single-critic pass · adjudication · fix_list
     non-empty / empty · resume.
 
+Delta rounds are bounded. The bound is the loop edge `graph/critique.graph.json`
+declares from `critique.adjudicate` back to `critique.challenge`, and
+`lib/graph/gate.sh next` is the only thing that reads it: after every fail entry it
+answers `ANSWER=rerun` or `ANSWER=close` with a reason. No prose here restates the
+number, and no round is counted by hand. `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph
+(`0` restores unbounded retries). A run once spent over an hour bouncing PLAN.md between
+the challenger and the planner because the ceiling lived inside a `contain` loop the
+engine never counts; the probe is what counts it.
+
 ## Parameters (declared by the invoking phase)
 
 | Parameter | DISCUSS | PLAN |
@@ -104,22 +113,35 @@ Build `fix_list` (may be empty).
 
 ## fix_list non-empty
 
-Gate retries are unbounded (full bore): re-run the fix/verify loop until the gate passes.
-The only bound the cycle respects is ITERATE's round limit.
-
-Append the fail entry BEFORE re-dispatching (the re-dispatch path returns to the gate and
+Append the fail entry BEFORE anything else (the re-dispatch path returns to the gate and
 would never reach an append placed after the return). `attempt` is counted from the
 entries already recorded for this phase and gate — never supplied:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" fail --feature-dir "$feature_dir" \
   --rounds <N (single-critic: 1 + delta rounds)> \
-  --convergence <single-critic | delta-verified | deadlock-kept> \
+  --convergence <single-critic | delta-verified> \
   --challenger-model "<model>" \
   --findings '<fix_list items as a JSON array of strings>'
 ```
 
 The gate stays open across a fail — only `pass` closes it.
+
+Then ask the probe whether another delta round is inside the ceiling:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" next --feature-dir "$feature_dir"
+# ANSWER=rerun REASON=<n> of <ceiling> delta rounds spent
+# ANSWER=close REASON=ceiling: ... | deadlock: finding survived two consecutive delta rounds: ...
+```
+
+`close` ends the gate now: append the pass entry with `--convergence cap-reached` and
+`--notes` carrying every fix-list item still open, write those items to
+`gate-logs/{gate}-residue.md`, and proceed to `{next_step}` with the artifact as it
+stands. The residue goes nowhere else: not into the artifact, not into the backlog, not
+to the user. `rerun` continues below. A non-zero exit is a message on stderr (no open
+gate, a graph with no ceiling, a malformed override): relay it and stop, and
+never count rounds by hand in its place.
 
 Snapshot the artifact (feeds the delta re-verify diff; DISCUSS also hashes it for the
 no-op shortcut):
@@ -148,6 +170,7 @@ SendMessage({
   message: """
     Delta re-verify (per your solo-critic brief). The fix-list below was applied to {artifact}.
     Confirm each item is addressed and check the CHANGED sections only for new issues.
+    Every DELTA-FINDINGS line is `unaddressed: <item>` or `introduced: "<added line>"`.
 
     Fix-list applied:
     {fix_list items, numbered}
@@ -166,11 +189,13 @@ Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `ch
 
 - **`DELTA-VERIFIED`**: the gate passes — append the `gateHistory` pass entry
   (convergence: `"delta-verified"`), reset `currentGate` (below), proceed to `{next_step}`.
-- **`DELTA-FINDINGS`**: adjudicate the tagged findings per the table above and start a
-  new fix round (retries unbounded). **Deadlock:** if the same finding survives two
-  consecutive delta rounds, keep it on the fix-list (stricter bias) and continue the
-  delta loop — do not hang the cycle and do not spawn a second critic. Record
-  `convergence: "deadlock-kept"` on the next fail entry.
+- **`DELTA-FINDINGS`**: adjudicate the tagged findings per the table above. A delta
+  finding is in scope only when it names an unaddressed fix-list item or quotes a line
+  the revision added (`skills/shared/team-prompts/critic.md`); anything else is dropped
+  with a one-line reason in the gate-log. A surviving item stays:
+  keep it on the fix-list (stricter bias). Then start a new fix round from the top of
+  this section — the fail entry, then `gate.sh next`, which decides whether the round
+  runs. Never spawn a second critic and never loop without the probe's answer.
 
 ## fix_list empty
 
@@ -178,7 +203,7 @@ One call appends the pass entry and closes the gate, in that order:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" pass --feature-dir "$feature_dir" \
-  --rounds <N> --convergence <single-critic | delta-verified | deadlock-kept> \
+  --rounds <N> --convergence <single-critic | delta-verified | cap-reached> \
   --challenger-model "<model>"
 ```
 

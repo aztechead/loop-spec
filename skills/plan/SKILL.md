@@ -47,7 +47,10 @@ pre-submit self-check against `agents/planner.md` and a verbatim
 `repo` (one repo per task), `files[]` are `<repo>/<path>`, cross-repo order is a
 `blockedBy` edge. Greenfield adds: task-001 is the scaffold (structure, manifest, test
 harness, a passing walking-skeleton test; `verifyCommand` is the stack's canonical test
-command) and every other task is blocked by it.
+command), every other task is blocked by it, and PLAN.md's `## System design` is filled
+in full (the build-from-scratch and system-design stances,
+`skills/shared/engineering-stances.md`; a refactor spec binds the refactor stance the
+same way).
 
 With `workflowsAvailable` and `LOOP_SPEC_PLAN_MULTI_ANGLE=1`, the
 `lib/workflows/plan-multi-angle.js` Workflow authors instead; log its angles to
@@ -85,7 +88,8 @@ as the more reversible reading recorded via
 and in `## User decisions (already made)` suffixed `(assumed)`; `UNGROUNDED:` findings
 get their probe run by you (`bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add ...`)
 and fed to the planner with the `EVID-NNN`; re-run step 2's gate command after any
-revision. Emit one `dispatch` event per agent launched and, per round,
+revision. `gate.sh next` answering `close` ends the critique with the plan as it stands
+(residue in `gate-logs/plan-critique-residue.md` only); go to the pruning pass. Emit one `dispatch` event per agent launched and, per round,
 `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" gate_round --phase plan --data '{"gate":"plan-critique","round":N,"mode":"single-critic|delta"}' || true`.
 
 **Pruning pass (advisory, skip under 60 lines):** ONE fresh reviewer with
