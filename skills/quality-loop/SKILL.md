@@ -174,8 +174,12 @@ Files to review:
 {for each file: absolute path + file contents}
 
 Review each file for code quality, correctness, bugs, performance regressions,
-missed test coverage, and anti-patterns. Do not reference any prior review
-round. Review the files as they currently exist.
+missed test coverage, and anti-patterns. Hold the refactor and performance
+stances (skills/shared/engineering-stances.md): flag structural issues,
+duplicated code, bottlenecks, inefficient logic, and unnecessary rendering,
+each pinned to the input that makes it cost; never propose a behavior change.
+Do not reference any prior review round. Review the files as they currently
+exist.
 
 Return your findings as a JSON array in your reply with this exact shape:
 [

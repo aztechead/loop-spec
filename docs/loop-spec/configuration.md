@@ -44,6 +44,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_SPEC_FILE` | path; unset | Uses the specified pre-authored Markdown spec instead of collecting a new one. |
 | `LOOP_SPEC_MAX_FEATURES` | positive integer; `1` | Maximum backlog features selected per invocation. Sentinel batch requests above one are still restricted by the trust level. |
 | `LOOP_SPEC_PHASE_TIMEOUT_MINS` | positive integer; `60` | Wall-clock watchdog ceiling for a phase. A non-integer or non-positive value is a configuration error, not a fallback. |
+| `LOOP_SPEC_CRITIQUE_ROUNDS` | non-negative integer; unset | Replaces the delta-round ceiling `graph/critique.graph.json` declares for the SPEC and PLAN critique gates. `0` restores unbounded retries. `lib/graph/gate.sh next` reads it; any other value is a configuration error. |
 | `LOOP_SPEC_PHASE_HANDOFF` | `0`/`1`; unset | `1` permits one phase per main-agent invocation, persists the next phase, and returns `status=paused`, `reason=phase-handoff`. `0` runs phase routing continuously. The environment overrides persisted state; inline `phase:fresh`/`phase:continuous` overrides the environment. A tool-boundary guard enforces the boundary. |
 | `LOOP_SPEC_ITERATE_FRESH` | `0`/`1`; unset | `1` makes an ITERATE rewind persist state and relaunch instead of continuing in the current main-agent context. |
 | `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | integer `1..100`; `10` | Sets the full cycle's persisted ITERATE convergence ceiling. This is independent of `LOOP_SPEC_LOOP_MAX_ITERATIONS`, which bounds each loop-fleet task. |
@@ -294,6 +295,7 @@ angle brackets mean required. Inline words are tokens, not GNU flags.
 | `revise` | `<PR number \| PR URL> [autonomous]` | Applies actionable PR feedback. `autonomous` removes interactive confirmations but not safety gates. |
 | `rollback` | `[checkpoint tag \| checkpoint type]` | Selects a checkpoint; file restoration still requires `LOOP_SPEC_ROLLBACK_CONFIRMED=1`. |
 | `rules` | `add "<rule>" [--check "<cmd>"] \| list \| render \| path` | Manages project rules. `--check` associates a verification command with a rule. |
+| `settings` | `<grill\|discipline\|simplicity\|human-code> [on\|off\|status\|lite\|full\|ultra\|probe [paths]]` | Writes or reports the named per-project `.loop-spec/<mode>.conf` switch; the same tokens the `grill`, `discipline`, `simplicity`, and `human-code` commands take. |
 | `sentinel` | `scan\|run` | `scan` reports candidates; `run` selects authorized backlog work. |
 | `simplicity` | `[on\|off\|status\|lite\|full\|ultra]` | Changes, reports, or selects simplicity intensity. |
 | `human-code` | `[on\|off\|status\|probe]` | Changes or reports code-for-humans mode, which covers the code and the documents that ship with it; `probe` reports the conventions `lib/house-style.sh` measures for the given paths, plus `lib/failure-tells.sh` findings on the failure path and `lib/doc-tells.sh` findings for any markdown among them, without changing state. |

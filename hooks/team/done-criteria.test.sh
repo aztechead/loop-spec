@@ -6,6 +6,13 @@ set -euo pipefail
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/done-criteria.sh"
 
+# The hook self-scopes to a loop-spec project; a fresh clone has no .loop-spec/, so
+# the suite supplies one instead of depending on the checkout's local state.
+PROJECT_DIR_TEST="${TMPDIR:-/tmp}/claude-hooks-proj-$$"
+mkdir -p "$PROJECT_DIR_TEST/.loop-spec"
+export CLAUDE_PROJECT_DIR="$PROJECT_DIR_TEST"
+trap 'rm -rf "$PROJECT_DIR_TEST"' EXIT
+
 PASS=0
 FAIL=0
 

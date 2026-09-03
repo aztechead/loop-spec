@@ -92,6 +92,14 @@ def read_artifact(path):
 # stripped lines only — real artifacts legitimately contain `{slug}`-style text
 # inside prose and code, so a substring scan would false-positive.
 UNFILLED = {
+    '- Architecture: {components and their owners}',
+    '- Component structure: {modules and the boundary between them}',
+    '- Data flows: {each flow end to end, who owns each piece of state}',
+    '- API design: {endpoints or commands, request and response shapes}',
+    '- Database schema: {entities, keys, indexes}',
+    '- Interface architecture: {what the user meets and how it talks to the API}',
+    '- Caching strategy: {what is cached, where, and how it is invalidated}',
+    '- Scale bound: {the input that grows and the bound held against it}',
     '# {feature_title}',
     '# {feature_title} - Implementation Plan',
     '# {feature_title} - Verification',

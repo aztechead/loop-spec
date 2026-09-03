@@ -26,6 +26,8 @@ Anchor each dimension against these examples (at the dimension minimum vs near-d
 - "What language/runtime and framework? What is the deployment target (CLI, web service, desktop, library)?"
 - "What project structure and tooling — test framework, linter, formatter, build tool?"
 - "What is the smallest end-to-end slice that proves the app works (the walking skeleton)?"
+- "What does the app store, and what does it expose? Name the core entities, the API surface (endpoints or commands), the interface the user meets, and any caching or background work."
+- "Which input grows in production (users, rows, files, events, concurrent callers), and what bound must the MVP hold against it?"
 
 **Simplifier (round 2):**
 - "What is the simplest version that solves the core problem?"

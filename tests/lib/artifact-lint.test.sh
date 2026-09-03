@@ -208,6 +208,13 @@ Two tasks. Note: prose may mention `.loop-spec/features/{slug}/` paths legitimat
 EOF
 check "well-formed plan passes" 0 plan "$WORK/plan-good.md"
 
+# The System design block ships as placeholders; one left in place is template text
+# where the stance's deliverable should be.
+sed 's/^## Task DAG/## System design\n\n- Architecture: {components and their owners}\n\n## Task DAG/' \
+    "$WORK/plan-good.md" > "$WORK/plan-system-design-unfilled.md"
+check "unfilled System design placeholder flags" 1 plan "$WORK/plan-system-design-unfilled.md"
+check_output "System design placeholder line is named" "unfilled template placeholder" plan "$WORK/plan-system-design-unfilled.md"
+
 # colon-outside-the-bold marker variant ('**Files**:') must not force a repair round
 sed -e 's/\*\*Files:\*\*/**Files**:/' -e 's/\*\*Verify:\*\* /**Verify**: /' \
     -e 's/\*\*Acceptance criteria:\*\*/**Acceptance criteria**:/' \

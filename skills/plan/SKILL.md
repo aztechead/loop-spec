@@ -47,7 +47,10 @@ pre-submit self-check against `agents/planner.md` and a verbatim
 `repo` (one repo per task), `files[]` are `<repo>/<path>`, cross-repo order is a
 `blockedBy` edge. Greenfield adds: task-001 is the scaffold (structure, manifest, test
 harness, a passing walking-skeleton test; `verifyCommand` is the stack's canonical test
-command) and every other task is blocked by it.
+command), every other task is blocked by it, and PLAN.md's `## System design` is filled
+in full (the build-from-scratch and system-design stances,
+`skills/shared/engineering-stances.md`; a refactor spec binds the refactor stance the
+same way).
 
 With `workflowsAvailable` and `LOOP_SPEC_PLAN_MULTI_ANGLE=1`, the
 `lib/workflows/plan-multi-angle.js` Workflow authors instead; log its angles to
@@ -65,8 +68,16 @@ This is also the exit (step 4); feasibility and coverage run BEFORE the critique
 criterion, DAG cycle, workspace repo, uncovered decision or `### Good Enough` criterion,
 `grounding-lint.sh"` claim, `doc-deps` uncovered dependency) goes back to `planner-1`
 as a numbered list via `SendMessage`
-(re-parse `tasks[]` from every revision). Retries are unbounded. A coverage-only or
-lint-only failure never enters the critique.
+(re-parse `tasks[]` from every revision). This loop is counted like the critique's:
+before the first FLAG list, `bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" open
+--feature-dir "$feature_dir" --phase plan --gate plan-feasibility`; per revision,
+`gate.sh round` and `gate.sh fail` with the FLAG lines as `--findings`, then
+`gate.sh next`. `rerun` re-dispatches; `close` stops: relay the FLAG list, and in
+`step`/`interactive` ask the user how to proceed, otherwise publish a paused result
+with reason `plan-feasibility-cap` via `lib/cycle-result.sh write` and return. When
+the gate command prints ok, `gate.sh pass --convergence delta-verified` closes the
+gate (the critique cannot open over it). A coverage-only or lint-only failure never
+enters the critique.
 
 ## 3. Critique
 
@@ -85,7 +96,8 @@ as the more reversible reading recorded via
 and in `## User decisions (already made)` suffixed `(assumed)`; `UNGROUNDED:` findings
 get their probe run by you (`bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add ...`)
 and fed to the planner with the `EVID-NNN`; re-run step 2's gate command after any
-revision. Emit one `dispatch` event per agent launched and, per round,
+revision. `gate.sh next` answering `close` ends the critique with the plan as it stands
+(residue in `gate-logs/plan-critique-residue.md` only); go to the pruning pass. Emit one `dispatch` event per agent launched and, per round,
 `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" gate_round --phase plan --data '{"gate":"plan-critique","round":N,"mode":"single-critic|delta"}' || true`.
 
 **Pruning pass (advisory, skip under 60 lines):** ONE fresh reviewer with
@@ -103,6 +115,7 @@ and PATTERNS.md, tags `post-plan`, and closes the phase. In explicit teams mode
 
 ## Resume
 
-`artifacts.plan` null: start at step 1 or 2 by what exists. `currentGate.round > 0`:
-resume the critique per the protocol. Otherwise run the gate command and continue from
+`artifacts.plan` null: start at step 1 or 2 by what exists. `currentGate.round > 0`
+with `currentGate.gate == "plan-feasibility"`: re-run the gate command and continue
+step 2's loop; any other open gate: resume the critique per the protocol. Otherwise run the gate command and continue from
 its answer. Teammates never survive a session; spawn fresh.

@@ -49,6 +49,17 @@ set in one place so a new rung copies from here.
 | The driver answers `HANDOFF next=<p>` | Print the line and stop. The fresh session runs `phase-entry.sh <p>` first; nothing from this session's context is needed. | The `LOOP_SPEC_PHASE_HANDOFF` line | `hooks/team/phase-handoff-guard.sh` |
 | The cycle starts | `cycle-driver.sh start` is the whole preflight. Print its notices and warnings, resolve its decisions, nothing else. | The `start` JSON | `lib/feature-init.sh validate` (selector routing, fork-free) |
 
+## Stance directives
+
+A stance is a mindset with a deliverable list attached; `skills/shared/engineering-stances.md`
+is the single source for the five (build from scratch, system design, refactor, debug,
+performance) and names the artifact section each one fills. A stance never selects a
+route or a phase.
+
+| Fires when | Do | Artifact |
+|---|---|---|
+| The phase matches a stance's "fires when" column | Hold the mindset and write every deliverable in that row; a deliverable that does not apply gets `- none` with a reason. | The named section in SPEC.md, PLAN.md, VERIFICATION.md, or BUG.md |
+
 ## Canonical compact directive
 
 A dispatch prompt that is the executor's whole contract (the subagent, loop-fleet, and
@@ -78,3 +89,4 @@ SessionStart hook) inlines only this paragraph:
 | VERIFY | `agents/code-reviewer.md` |
 | Main thread (Claude Code SessionStart) | `hooks/team/human-code-inject.sh` |
 | Index of every code-producing directive | `skills/shared/implementer-contract.md` |
+| The five stances and where each binds | `skills/shared/engineering-stances.md` |

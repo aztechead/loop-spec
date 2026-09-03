@@ -133,7 +133,10 @@ For each hypothesis, in ranked order:
    move to the next hypothesis WITHOUT changing code. This is what keeps the loop from
    shotgun-patching.
 3. **Fix minimally** (simplicity mode applies): the smallest change that corrects the
-   mechanism. Not the refactor the area deserves — record that as a
+   mechanism, written as a senior engineer fixing production (the debug stance,
+   `skills/shared/engineering-stances.md`): `## Fix` states what the code does, what
+   the problem is, why it fails, the edge cases the fix covers (each with the test that
+   proves it), and the change itself, ready to ship. Not the refactor the area deserves — record that as a
    `new-mechanism:` entry in `## Deferred` and backlog it (`lib/backlog.sh add`).
 4. **Verify:** repro goes green AND the full test suite passes AND nothing else changed
    behavior (`git diff` review — the diff should read as exactly the mechanism fix).
@@ -262,7 +265,8 @@ The writer emits `LOOP_SPEC_RESULT {...}` and atomically updates the stable
 ## Converged signal     <- non-specific inputs only
 ## Reproduction         <- command, red output verbatim, exit code
 ## Hypothesis log       <- H1..Hn: mechanism, evidence, verdict (REFUTED/CONFIRMED), attempts
-## Fix                  <- root cause, change, why sufficient
+## Fix                  <- what the code does, the problem, why it fails, edge cases
+                           (each with its test), the change, why sufficient
 ## Sibling sweep        <- commands run, sites examined, verdict per site (FIXED-SIBLING/CLEAN/DEFERRED-NEW-BUG)
 ## Deferred             <- sibling-sweep DEFERRED-NEW-BUG findings ONLY; every entry
                            starts with `new-mechanism:` and gets a backlog entry

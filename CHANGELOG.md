@@ -4,6 +4,48 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [5.4.0] - 2026-09-03
+
+### Added
+
+- `skills/shared/engineering-stances.md`: the five senior-engineer stances (build
+  from scratch, system design, refactor, debug, performance), each a mindset plus
+  the deliverables that prove it was held and the artifact section they fill.
+  Bound by cite from SPEC's Foundations round, DISCUSS's design grill, the planner
+  and pattern-mapper, the code-reviewer (a new `perf:` performance pass), the
+  iterate-judge, the debug loop's `## Fix`, and quality-loop. PLAN.md gains a
+  `## System design` section; VERIFICATION.md gains a `#### Performance` list.
+  Pinned by `tests/engineering-stances-coverage.test.sh`.
+- `lib/graph/gate.sh next`: the critique gate's delta-round probe. After each fail
+  entry it answers `ANSWER=rerun|close REASON=...` from the loop ceiling
+  `graph/critique.graph.json` declares and the rounds `feature.json` records,
+  closing the gate when the ceiling is spent or, under a raised ceiling, when
+  one finding survives two consecutive delta rounds. `LOOP_SPEC_CRITIQUE_ROUNDS`
+  outranks the graph (`0` = unbounded). PLAN's feasibility FLAG loop, the
+  critique's sibling, is counted through the same probe under gate
+  `plan-feasibility`.
+
+### Fixed
+
+- Four hook suites (`done-criteria`, `deferral-guard`, `strategy-rotation`,
+  `stop-deflection-guard`) failed in a fresh clone because each hook self-scopes
+  to a project with a `.loop-spec/` directory and the suites relied on the
+  checkout having one. Each suite now supplies its own project directory.
+- `tests/configuration-coverage.test.sh` failed because the `settings` skill takes
+  arguments and `docs/loop-spec/configuration.md` had no row for it.
+
+### Changed
+
+- The critique gate protocol no longer says retries are unbounded. Runs were
+  spending over an hour bouncing PLAN.md between the challenger and the planner:
+  the graph's ceiling sat inside a `contain` loop the engine never counts, and the
+  prose kept every disputed finding alive forever. The gate now closes with
+  `convergence: cap-reached` and the surviving findings in the gate log only; the
+  critique graph's ceiling is lowered from 3 to 2 delta rounds.
+- The challenger's delta re-verify is narrowed: every `DELTA-FINDINGS` line is
+  `unaddressed:` (a fix-list item) or `introduced:` (a quoted added line); text the
+  revision did not touch is out of scope.
+
 ## [5.3.0] - 2026-09-03
 
 ### Changed

@@ -7,6 +7,21 @@
 
 {2-3 sentences on approach.}
 
+## System design
+
+<!-- The system-design stance (skills/shared/engineering-stances.md). Greenfield fills
+     every bullet; a feature that adds a component, store, service boundary, or cache
+     fills the bullets it changes and writes `none` with a reason for the rest; any other
+     feature replaces the whole list with the single line `- none`. -->
+- Architecture: {components and their owners}
+- Component structure: {modules and the boundary between them}
+- Data flows: {each flow end to end, who owns each piece of state}
+- API design: {endpoints or commands, request and response shapes}
+- Database schema: {entities, keys, indexes}
+- Interface architecture: {what the user meets and how it talks to the API}
+- Caching strategy: {what is cached, where, and how it is invalidated}
+- Scale bound: {the input that grows and the bound held against it}
+
 ## Global constraints
 
 <!-- Binding rules every task must respect, stated VERBATIM (copied from SPEC
