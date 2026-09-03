@@ -19,9 +19,20 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `lib/graph/gate.sh next`: the critique gate's delta-round probe. After each fail
   entry it answers `ANSWER=rerun|close REASON=...` from the loop ceiling
   `graph/critique.graph.json` declares and the rounds `feature.json` records,
-  closing the gate when the ceiling is spent or one finding survives two
-  consecutive delta rounds. `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph
-  (`0` = unbounded).
+  closing the gate when the ceiling is spent or, under a raised ceiling, when
+  one finding survives two consecutive delta rounds. `LOOP_SPEC_CRITIQUE_ROUNDS`
+  outranks the graph (`0` = unbounded). PLAN's feasibility FLAG loop, the
+  critique's sibling, is counted through the same probe under gate
+  `plan-feasibility`.
+
+### Fixed
+
+- Four hook suites (`done-criteria`, `deferral-guard`, `strategy-rotation`,
+  `stop-deflection-guard`) failed in a fresh clone because each hook self-scopes
+  to a project with a `.loop-spec/` directory and the suites relied on the
+  checkout having one. Each suite now supplies its own project directory.
+- `tests/configuration-coverage.test.sh` failed because the `settings` skill takes
+  arguments and `docs/loop-spec/configuration.md` had no row for it.
 
 ### Changed
 

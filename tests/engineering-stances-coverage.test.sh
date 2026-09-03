@@ -46,7 +46,9 @@ check_fixed_strings "${checks[@]}"
 
 # A stance is applied inside a phase; it must never appear as a route or phase selector.
 for f in lib/task-route.sh lib/cycle-driver.sh lib/parse-invocation.sh; do
-  if grep -qF "engineering-stances" "$f"; then
+  if [[ ! -f "$f" ]]; then
+    FAIL=$((FAIL+1)); echo "FAIL: $f is gone; re-point this pin at the route selector"
+  elif grep -qF "engineering-stances" "$f"; then
     FAIL=$((FAIL+1)); echo "FAIL: $f names the stance contract from a route selector"
   else
     PASS=$((PASS+1)); echo "PASS: $f selects routes without the stance contract"

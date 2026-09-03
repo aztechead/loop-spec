@@ -328,8 +328,9 @@ agent_probe_models() {
 }
 
 # Fixed operating block (iterate), identical for single and workspace modes.
-# Gate retries are unbounded (attempts still land in gateHistory). The operator may
-# lower or raise the cycle convergence ceiling without changing loop-fleet limits.
+# Critique delta rounds are bounded by graph/critique.graph.json (lib/graph/gate.sh
+# next); every attempt still lands in gateHistory. The operator may lower or raise the
+# cycle convergence ceiling here without changing loop-fleet limits.
 fixed_blocks() {
   local max_iterations="${LOOP_SPEC_ITERATE_MAX_ITERATIONS:-10}"
   [[ "$max_iterations" =~ ^[1-9][0-9]*$ && "$max_iterations" -le 100 ]] || {

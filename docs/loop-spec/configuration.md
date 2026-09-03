@@ -295,6 +295,7 @@ angle brackets mean required. Inline words are tokens, not GNU flags.
 | `revise` | `<PR number \| PR URL> [autonomous]` | Applies actionable PR feedback. `autonomous` removes interactive confirmations but not safety gates. |
 | `rollback` | `[checkpoint tag \| checkpoint type]` | Selects a checkpoint; file restoration still requires `LOOP_SPEC_ROLLBACK_CONFIRMED=1`. |
 | `rules` | `add "<rule>" [--check "<cmd>"] \| list \| render \| path` | Manages project rules. `--check` associates a verification command with a rule. |
+| `settings` | `<grill\|discipline\|simplicity\|human-code> [on\|off\|status\|lite\|full\|ultra\|probe [paths]]` | Writes or reports the named per-project `.loop-spec/<mode>.conf` switch; the same tokens the `grill`, `discipline`, `simplicity`, and `human-code` commands take. |
 | `sentinel` | `scan\|run` | `scan` reports candidates; `run` selects authorized backlog work. |
 | `simplicity` | `[on\|off\|status\|lite\|full\|ultra]` | Changes, reports, or selects simplicity intensity. |
 | `human-code` | `[on\|off\|status\|probe]` | Changes or reports code-for-humans mode, which covers the code and the documents that ship with it; `probe` reports the conventions `lib/house-style.sh` measures for the given paths, plus `lib/failure-tells.sh` findings on the failure path and `lib/doc-tells.sh` findings for any markdown among them, without changing state. |

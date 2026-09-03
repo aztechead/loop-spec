@@ -193,7 +193,9 @@ Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `ch
   finding is in scope only when it names an unaddressed fix-list item or quotes a line
   the revision added (`skills/shared/team-prompts/critic.md`); anything else is dropped
   with a one-line reason in the gate-log. A surviving item stays:
-  keep it on the fix-list (stricter bias). Then start a new fix round from the top of
+  keep it on the fix-list (stricter bias), and the next fail entry's `--findings`
+  carries it in the exact words the first fail entry recorded — that identity is what
+  the probe's deadlock rule matches on. Then start a new fix round from the top of
   this section — the fail entry, then `gate.sh next`, which decides whether the round
   runs. Never spawn a second critic and never loop without the probe's answer.
 

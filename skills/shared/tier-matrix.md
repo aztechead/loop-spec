@@ -37,8 +37,8 @@ The lead may accept any finding and may never drop a `[major]`; a solo gate bias
 stricter. A revision gets a delta re-verify (fix-list plus diff), never a full re-run. Delta
 rounds are bounded by the loop ceiling `graph/critique.graph.json` declares;
 `lib/graph/gate.sh next` reads it and closes the gate with `cap-reached` when it is
-spent or one finding survives two consecutive delta rounds
-(`critique-gate-protocol.md`). `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph.
+spent; when `LOOP_SPEC_CRITIQUE_ROUNDS` raises the ceiling, a finding that survives
+two consecutive delta rounds closes it too (`critique-gate-protocol.md`).
 
 ## Parameters (fixed; `.loop-spec/tuning.json` may overlay a closed set)
 

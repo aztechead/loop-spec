@@ -13,7 +13,9 @@
 # whether the lead re-dispatches the author or closes the gate --
 #   ANSWER=rerun REASON=...   another delta round is inside the ceiling
 #   ANSWER=close REASON=...   the ceiling is spent, or one finding survived two
-#                             consecutive delta rounds (a deadlock)
+#                             consecutive delta rounds (a deadlock; with the shipped
+#                             ceiling the first rule fires first, so this one only
+#                             matters when an operator raises the ceiling)
 # The ceiling is the loop edge graph/critique.graph.json declares from
 # critique.adjudicate back to critique.challenge, read at call time; a number restated
 # here would be the second declaration tests/graph-conformance.test.sh bans.
@@ -144,9 +146,17 @@ critique_ceiling() {
     echo "$override"
     return 0
   fi
-  jq -r '[.edges[] | select(.kind == "loop" and .from == "critique.adjudicate"
-                            and .to == "critique.challenge")][0].ceiling // empty' \
-    "$CRITIQUE_GRAPH"
+  local ceiling
+  ceiling="$(jq -r '[.edges[] | select(.kind == "loop" and .from == "critique.adjudicate"
+                                      and .to == "critique.challenge")][0].ceiling // empty' \
+    "$CRITIQUE_GRAPH")" || return 1
+  # graph/schema.json allows any number above zero; a fractional ceiling would make
+  # the comparisons below error and fall through to rerun, the unbounded loop again.
+  [[ -z "$ceiling" || "$ceiling" =~ ^[1-9][0-9]*$ ]] || {
+    echo "gate.sh: $CRITIQUE_GRAPH declares a non-integer critique ceiling '$ceiling'; cannot bound the gate" >&2
+    return 1
+  }
+  echo "$ceiling"
 }
 
 # A finding present in both of the last two fail entries for the open gate. Fail entries

@@ -90,7 +90,9 @@ maintenance profile, never on a security signal or re-entry): log
 finding that depends on user intent is a question in `grill=run` and otherwise the more
 reversible reading, recorded via `decisions.sh add`; an `UNGROUNDED:` finding gets its
 probe run by you, appended to the evidence ledger, and cited in the fix; hash SPEC.md
-before and after a revision and skip the delta re-verify when nothing changed;
+before and after a revision, and when nothing changed skip only the challenger call:
+the round is still `gate.sh round`, a fail entry with the same fix-list, and
+`gate.sh next`, so an author that answers without editing is counted, not bounced;
 `gate.sh next` answering `close` ends the critique with SPEC.md as it stands (residue
 in `gate-logs/spec-critique-residue.md` only). Emit
 one `dispatch` event per agent launched and, per round,
