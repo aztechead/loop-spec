@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Run every non-CC test suite (validators + hook + lib units + workflow syntax).
+# Fast unit gate: runs the tests/lib/*.test.sh suites, minus the ones tagged
+# integration (subprocess-heavy or multi-file). Hook, validator, harness-coverage,
+# and workflow suites stay registered below but do not run here; invoke a suite's
+# own file directly to run one of those by hand.
 #
 # Usage: bash tests/run-all.sh
 #
@@ -29,10 +32,10 @@ SUITE_RESULTS=()
 SUITE_REPORTED=()
 SUITE_BATCH=0
 
-RUN_ALL_PROFILE="${RUN_ALL_PROFILE:-full}"
+RUN_ALL_PROFILE="${RUN_ALL_PROFILE:-unit}"
 case "$RUN_ALL_PROFILE" in
-  full|selected) ;;
-  *) echo "run-all.sh: RUN_ALL_PROFILE must be full or selected" >&2; exit 2 ;;
+  unit|selected) ;;
+  *) echo "run-all.sh: RUN_ALL_PROFILE must be unit or selected" >&2; exit 2 ;;
 esac
 RUN_ALL_ONLY_PATHS="${RUN_ALL_ONLY_PATHS:-}"
 if [[ "$RUN_ALL_PROFILE" == "selected" && -z "$RUN_ALL_ONLY_PATHS" ]]; then
@@ -85,6 +88,10 @@ run_suite() {
   local cmd="$2"
   local tier="${3:-unit}"
   local index log result selected_path selected=false
+  if [[ "$RUN_ALL_PROFILE" == "unit" && ( "$cmd" != *' tests/lib/'* || "$tier" == "integration" ) ]]; then
+    TOTAL_SKIP=$((TOTAL_SKIP + 1))
+    return
+  fi
   if [[ "$RUN_ALL_PROFILE" == "selected" ]]; then
     while IFS= read -r selected_path; do
       if [[ -n "$selected_path" && " $cmd " == *" $selected_path"* ]]; then

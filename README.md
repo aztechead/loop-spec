@@ -23,7 +23,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 5.2.0
+Current version: 5.3.0
 
 Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
@@ -250,7 +250,7 @@ More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/archit
 ```bash
 bash tests/run-unit.sh         # fast edit loop; tests coupled to uncommitted changes
 bash tests/run-unit.sh main    # tests coupled to the whole branch diff
-bash tests/run-all.sh          # full offline gate, parallel by default
+bash tests/run-all.sh          # unit gate: tests/lib/*.test.sh, parallel by default
 ```
 
 `RUN_ALL_JOBS` controls concurrency and `RUN_ALL_VERBOSE=1` restores every successful
