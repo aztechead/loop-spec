@@ -96,6 +96,8 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_ORACLE` | `supervisor`/`self`; unset | Who answers an autonomous interview question (`lib/supervisor/oracle.sh mode`). `supervisor` asks through the harness question tool first (`skills/shared/autonomous-mode.md`, "The supervised path"); unset or `self` is the self-answer rule. Any other value fails safe to `self`. Has no effect on a run that is not autonomous. |
 | `LOOP_SPEC_PROFILE` | path; `.loop-spec/profile.json` | The run profile file `lib/profile.sh` reads: `{ "preset": "<name>", "env": { "LOOP_SPEC_*": "<string>" } }`. Presets: `interactive` (nothing), `autonomous`, `supervised`, `cloud` (`bash lib/profile.sh show <preset>`). A variable already set in the environment outranks the file. Applied by `cycle-preflight.sh`, `phase-mode.sh`, and the supervisor probes; launchers apply it with `eval "$(bash lib/profile.sh env)"`. |
 | `LOOP_SPEC_PROFILE_PRESET` | preset name; unset | Selects the preset without a file, and outranks the file's `preset` when both exist. |
+| `LOOP_SPEC_ORACLE_RECORD` | `0`/`1`; `1` | `0` disables `hooks/team/oracle-record.sh`, the PostToolUse hook that records a supervisor's `AskUserQuestion` answers as `supervised` decisions. |
+| `LOOP_SPEC_ORACLE_WRITE` | `1`; unset | Write token `hooks/team/oracle-record.sh` sets so `lib/decisions.sh` accepts kinds `supervised` and `oracle-unavailable` on Claude Code. Internal: callers must not set it. |
 
 ### Host and installer environment
 

@@ -82,15 +82,17 @@ run_gate() {
 }
 
 # oracle_gate: when the run named a supervisor as its oracle, this phase must have put
-# at least one question to it (a `supervised` decision) or recorded why it could not
-# (an `assumed` decision whose rationale names the oracle). The live run that bit us
-# self-answered the whole interview with a supervisor waiting, and nothing noticed.
+# at least one question to it (a `supervised` decision) or the question tool must
+# have failed (`oracle-unavailable`). On Claude Code both kinds come only from
+# hooks/team/oracle-record.sh, so a rationale cannot stand in for a question: the
+# live run that bit us self-answered the interview, was flagged, and wrote a note.
 oracle_gate() {
   local mode
   mode="$(lib supervisor/oracle mode --feature-dir "$feature_dir" 2>/dev/null || true)"
   [[ "$mode" == oracle=supervisor* ]] || return 0
-  if ! jq -e --arg p "$phase" 'select(.phase == $p and (.kind == "supervised" or ((.kind // "assumed") == "assumed" and (.rationale | test("oracle"; "i")))))'       "$feature_dir/decisions.jsonl" >/dev/null 2>&1; then
-    flag "[oracle] LOOP_SPEC_ORACLE=supervisor but no $phase question reached it: ask through the question tool (skills/shared/autonomous-mode.md, The supervised path) or record why with a rationale naming the oracle"
+  if ! jq -e --arg p "$phase" 'select(.phase == $p and (.kind == "supervised" or .kind == "oracle-unavailable"))' \
+      "$feature_dir/decisions.jsonl" >/dev/null 2>&1; then
+    flag "[oracle] LOOP_SPEC_ORACLE=supervisor but no $phase question reached it: ask through the question tool (skills/shared/autonomous-mode.md, The supervised path); the hook records the answer"
   fi
 }
 

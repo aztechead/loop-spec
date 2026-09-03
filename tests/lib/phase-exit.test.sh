@@ -118,13 +118,16 @@ bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
 ec=0; out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" discuss --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit discuss: supervisor named, nothing asked, flags" "1" "$ec"
 check "exit discuss: the flag names the oracle" "1" "$(grep -c 'FLAG \[oracle\]' <<<"$out")"
-bash "$REPO_ROOT/lib/decisions.sh" add "$FD" discuss "Which store?" "sqlite" "supervisor chose it" supervised >/dev/null
-ec=0; bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
-check "exit discuss: a supervised decision satisfies the gate" "0" "$ec"
-git -C "$REPO" tag -d post-discuss >/dev/null 2>&1 || true
-bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Runtime?" "python3" "oracle unavailable: question tool denied" >/dev/null
+bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Runtime?" "python3" "oracle unavailable: I decided not to ask" >/dev/null
 ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
-check "exit spec: an assumed decision naming the oracle satisfies the gate" "0" "$ec"
+check "exit spec: an assumed decision naming the oracle does not satisfy the gate" "1" "$ec"
+LOOP_SPEC_ORACLE_WRITE=1 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" discuss "Which store?" "sqlite" "supervisor chose it" supervised >/dev/null
+ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit discuss: a supervised decision satisfies the gate" "0" "$ec"
+git -C "$REPO" tag | grep post-discuss | xargs -r git -C "$REPO" tag -d >/dev/null 2>&1 || true
+LOOP_SPEC_ORACLE_WRITE=1 bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Runtime?" "(unanswered)" "oracle unavailable: denied" oracle-unavailable >/dev/null
+ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit spec: a failed question tool satisfies the gate" "0" "$ec"
 ec=0; bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit discuss: clean spec passes" "0" "$ec"
 check "exit discuss: checkpoint tagged" "1" "$(git tag | grep -c 'post-discuss')"

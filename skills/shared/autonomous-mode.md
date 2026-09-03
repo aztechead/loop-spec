@@ -84,11 +84,13 @@ On that answer, at every self-answer site in SPEC and DISCUSS:
    native question tool with the recommended option FIRST and labeled `(Recommended)`.
    One call per interview round; the placeholder guard still applies, so every question
    is a real one.
-2. An answer records with kind `supervised`: `decisions.sh add "$dir" "$phase" "<q>"
-   "<a>" "<why>" supervised`. The recommended option, an empty answer, and a denied or
-   failed tool call all fall back to the self-answer rule and record kind `assumed`
-   with a rationale that names why (`supervisor took the recommendation`, `oracle
-   unavailable`).
+2. The answer is recorded for you on Claude Code and the Agent SDK:
+   `hooks/team/oracle-record.sh` writes kind `supervised` from the question tool's
+   payload, and `oracle-unavailable` when the call failed; `decisions.sh` refuses
+   those kinds from anywhere else there. On opencode, ADK, and Codex record them
+   yourself (`decisions.sh add ... supervised`). The recommended option, an empty
+   answer, and a failed call all fall back to the self-answer rule for the content
+   of the decision; the record still shows the supervisor was asked.
 3. A free-text answer of exactly `halt` pauses the cycle: publish a paused result with
    reason `oracle-halt` via `lib/cycle-result.sh write` and return. The supervisor
    resumes with the answer pinned (`LOOP_SPEC_ANSWER_*`, `RULES.md`, or an edited SPEC).
