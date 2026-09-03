@@ -6,7 +6,10 @@ lead executing an entry skill (cycle, intake, micro, debug) at the moment it acq
 the implementer's input, before any parsing, extraction, or classification uses it.
 One inline pass by that lead - non-interactive, no subagent, no questions, no delta
 shown; the rewritten text silently replaces the original as the input everywhere
-downstream (titles, slugs, drafts, provenance blocks all derive from it).
+downstream (titles, slugs, drafts, provenance blocks all derive from it). Ordering:
+the pass runs after the entry's own token stripping and source classification (those
+inspect the raw input) and before any extraction, drafting, or title derives from it
+- the table below names the exact seam per entry.
 
 ## What gets rewritten, what passes through byte-for-byte
 
@@ -21,9 +24,11 @@ task sentence, a vague symptom report. Everything else travels verbatim:
 - **SPEC-shaped sources** (an `ambiguity_scores` frontmatter block, or the SPEC.md
   section skeleton) - the SPEC phase's ingest gate already normalizes those;
   rewriting a spec into a spec adds nothing but drift.
-- **Input another loop-spec skill produced** (an escalation brief from micro, a draft
-  from intake, an auto route) - it was normalized at its own entry; a second pass
-  only drifts. Normalize implementer input once, never loop-spec output.
+- **Input another loop-spec skill produced** (an escalation brief from micro, a
+  draft from intake) - it was normalized at its own entry; a second pass only
+  drifts. Normalize implementer input once, never loop-spec output. An auto-routed
+  request is NOT loop-spec output: auto forwards the implementer's prose verbatim,
+  so the routed-to skill runs the pass.
 
 ## The rewrite moves
 

@@ -29,8 +29,10 @@ into BUG.md before any change is made.
 ## Step 0 - Classify and initialize
 
 Rewrite free-prose symptom text per `skills/shared/prompt-normalize.md` before
-anything derives from it; concrete artifacts (stack traces, error output,
-failing-test names, commands) pass through byte-for-byte.
+anything derives from it; the rewritten text is what `$ARGUMENTS` means in the init
+call below. Concrete artifacts (stack traces, error output, failing-test names,
+commands) pass through byte-for-byte, so an input that is all artifact passes
+through unchanged.
 
 1. **Initialize deterministically** — one call does the mechanics (token stripping,
    slug, BUG.md dir, branch discipline, branch-point SHA capture, test-cmd detection):
@@ -45,8 +47,8 @@ failing-test names, commands) pass through byte-for-byte.
    before ANY change, which is exactly why it is script-side. `.test_cmd` honors
    `LOOP_SPEC_CMD_TEST` over detection; `feature.commands.test` (when a feature
    context exists) overrides both.
-2. Start `BUG.md` in `.bug_dir` (format below) with the verbatim input under
-   `## Symptom (verbatim)`.
+2. Start `BUG.md` in `.bug_dir` (format below) with the input - normalized prose,
+   byte-for-byte artifacts - under `## Symptom (as received)`.
 3. **Classify the input:**
    - **Specific** — it contains a concrete signal: an error message, a stack trace, a
      failing test name, a command that fails, a URL/endpoint that errors. Skip TRIAGE.
@@ -254,7 +256,7 @@ The writer emits `LOOP_SPEC_RESULT {...}` and atomically updates the stable
 ```markdown
 # BUG: {symptom summary}
 
-## Symptom (verbatim)
+## Symptom (as received)
 ## Decisions            <- autonomous self-answers land here
 ## Triage evidence      <- non-specific inputs only
 ## Converged signal     <- non-specific inputs only

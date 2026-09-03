@@ -71,7 +71,7 @@ fill at all costs:
 
 Extract into these buckets (leave a bucket EMPTY when the source has nothing for it):
 
-- **Title** — one line, imperative, the user's ask in their own words where possible.
+- **Title** — one line, imperative, in the normalized source's own words where possible.
   This becomes the immutable original goal (`feature_title`) the ITERATE judge scores
   against, so keep it faithful to the source's intent, not your paraphrase of it.
 - **Requirements** — each specific, testable statement the source makes. Keep the
@@ -119,7 +119,8 @@ The `## Source` block is the provenance trail: when DISCUSS or a PR reviewer won
 "who asked for this?", the answer is in the artifact - the normalized source in full,
 its artifacts and quoted criteria byte-for-byte. The SPEC phase copies
 the draft into `.loop-spec/features/{slug}/spec-draft.md` and normalizes from there,
-so this file is the durable record of what intake received and produced.
+so this file is the durable record of the normalized source and what intake produced
+from it (the pre-normalize paste is not kept anywhere).
 
 ## Step 4 - Kick off the cycle
 
