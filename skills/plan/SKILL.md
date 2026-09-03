@@ -37,7 +37,10 @@ Spawn `planner-1` (`loop-spec:planner`, model `feature.models.planner`) and, in 
 modes, warm up `challenger-1` with SPEC.md meanwhile. The
 planner brief carries: `slug`, `spec_path`, `patterns_path`,
 `evidence_path`; the grounding rule (every external fact cites `EVID-NNN` or is an
-`ASSUMPTION: ... | verify: ...`); "cite PATTERNS.md analogs in each task's steps";
+`ASSUMPTION: ... | verify: ...`); the dependency-idiom rule (every dependency
+`lib/doc-deps.sh scan` names on the task files needs a doc-backed `EVID-NNN` or an
+`ASSUMPTION` in `## Grounding` — fetch current docs with any web tool available, or
+return the need); "cite PATTERNS.md analogs in each task's steps";
 "return tasks[] as JSON in your completion message; do not compute waves"; the
 pre-submit self-check against `agents/planner.md` and a verbatim
 `## Global constraints` section (or `- none`). Workspace mode adds: every task carries
@@ -60,7 +63,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_
 This is also the exit (step 4); feasibility and coverage run BEFORE the critique. Every
 `FLAG` (format, `lib/acceptance-lint.sh`, unparseable verify command, missing
 criterion, DAG cycle, workspace repo, uncovered decision or `### Good Enough` criterion,
-`grounding-lint.sh"` claim) goes back to `planner-1` as a numbered list via `SendMessage`
+`grounding-lint.sh"` claim, `doc-deps` uncovered dependency) goes back to `planner-1`
+as a numbered list via `SendMessage`
 (re-parse `tasks[]` from every revision). Retries are unbounded. A coverage-only or
 lint-only failure never enters the critique.
 
