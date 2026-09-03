@@ -568,6 +568,8 @@ PY
     # terminal result with. Removing it before publication burned both.
     rm -f "$result_root_abs/.loop-spec/active-run.json" 2>/dev/null || true
     printf 'LOOP_SPEC_RESULT %s\n' "$result_json"
+    jq -cn --argjson r "$result_json" '{ts:(now|todate), slug:$r.slug, event:"result", phase:null, data:$r}' \
+      | bash "$SCRIPT_DIR/events.sh" sink
     exit 0
     ;;
   write)
@@ -920,6 +922,8 @@ PY
       if [[ "$pointer_published" != "true" ]]; then
         # result.json in the feature dir did land; say so, then fail loudly.
         printf 'LOOP_SPEC_RESULT %s\n' "$result_json"
+        jq -cn --argjson r "$result_json" '{ts:(now|todate), slug:$r.slug, event:"result", phase:null, data:$r}' \
+          | bash "$SCRIPT_DIR/events.sh" sink
         exit 3
       fi
     fi
@@ -930,6 +934,8 @@ PY
     bash "$EVENTS_SH" emit "$feature_dir" "$result_status" 2>/dev/null || true
 
     printf 'LOOP_SPEC_RESULT %s\n' "$result_json"
+    jq -cn --argjson r "$result_json" '{ts:(now|todate), slug:$r.slug, event:"result", phase:null, data:$r}' \
+      | bash "$SCRIPT_DIR/events.sh" sink
 
     exit 0
     ;;

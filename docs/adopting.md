@@ -152,6 +152,19 @@ git branch -D feat/{slug}
 git worktree prune
 ```
 
+## Embedding in an SDK or ADK app
+
+The Claude Agent SDK is the same harness as Claude Code: load the plugin with
+`plugins=[{"type": "local", "path": "<plugin>"}]` and send `/loop-spec:auto <task>`.
+Google ADK mounts it with `bash lib/adk-install.sh`. What your app may own beyond that
+is one contract: where feature state is durable between agent deaths, where events go,
+who answers interview questions, and when to relaunch after a phase handoff. The six
+steps, the result fields to judge, and the native seam each port lands on are in
+`docs/loop-spec/supervisor-interface.md` ("Quick start for implementers");
+`examples/supervisor/supervisor.py` is the runnable form. Write the policy once as
+`.loop-spec/profile.json` (`bash lib/profile.sh presets`) so a later run from a
+terminal sees the same store and sink.
+
 ## Next steps
 
 - Read `tests/README.md` for test matrix coverage

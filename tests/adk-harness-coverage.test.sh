@@ -39,6 +39,7 @@ checks=(
   "extensions/adk/loop_spec_adk/bridge.py	CLAUDE_SKILL_DIR"
   "extensions/adk/loop_spec_adk/bridge.py	SESSION_START_HOOKS"
   "extensions/adk/loop_spec_adk/bridge.py	LocalEnvironment"
+  "extensions/adk/loop_spec_adk/bridge.py	profile.sh"
   "extensions/adk/loop_spec_adk/plugin.py	load_skill"
   "extensions/adk/loop_spec_adk/plugin.py	loop_spec:session_started"
   "extensions/adk/loop_spec_adk/plugin.py	on_user_message_callback"

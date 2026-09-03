@@ -72,7 +72,7 @@ adapter directory is the wrong base:
 | Teams (named `Agent` spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` under opencode (`lib/teams-capability.sh`); resumable task sessions do not provide named teammates, shared task lists, or peer messaging |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |
 | TaskCreate / TaskUpdate / TaskList / TaskGet | none with that shape — opencode's `todowrite` is a flat checklist (no deps/metadata). DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` |
-| AskUserQuestion | the native `question` tool. Preserve `questions`, `question`, `header`, and option objects, but rename Claude Code's `multiSelect` field to OpenCode's `multiple`; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
+| AskUserQuestion | the native `question` tool. Preserve `questions`, `question`, `header`, and option objects, but rename Claude Code's `multiSelect` field to OpenCode's `multiple`; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged, and when `lib/supervisor/oracle.sh mode` answers `supervisor` the supervised path asks through `question` first |
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under opencode — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd. |
 

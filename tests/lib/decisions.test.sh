@@ -73,6 +73,17 @@ check "render prefixes rulings" "- **Ruling:** Shared file owner? → task-001 �
 ec=0; bash "$SCRIPT" add "$KIND_DIR" execute "q" "a" "r" bogus >/dev/null 2>&1 || ec=$?
 check "invalid kind exits 1" "1" "$ec"
 
+ec=0; LOOP_SPEC_HARNESS=claude bash "$SCRIPT" add "$KIND_DIR" spec "Which store?" "sqlite" "prose-driven" supervised >/dev/null 2>&1 || ec=$?
+check "supervised without the write token is refused on Claude Code" "1" "$ec"
+LOOP_SPEC_HARNESS=adk bash "$SCRIPT" add "$KIND_DIR" spec "Which store?" "sqlite" "no hook seam here" supervised >/dev/null
+check "supervised without the token is the model's record elsewhere" "supervised" "$(bash "$SCRIPT" list "$KIND_DIR" | tail -1 | jq -r '.kind')"
+LOOP_SPEC_HARNESS=claude LOOP_SPEC_ORACLE_WRITE=1 bash "$SCRIPT" add "$KIND_DIR" spec "Which store?" "sqlite" "supervisor chose it" supervised >/dev/null
+check "supervised kind recorded" "supervised" "$(bash "$SCRIPT" list "$KIND_DIR" | tail -1 | jq -r '.kind')"
+LOOP_SPEC_HARNESS=claude LOOP_SPEC_ORACLE_WRITE=1 bash "$SCRIPT" add "$KIND_DIR" spec "Runtime?" "(unanswered)" "oracle unavailable: denied" oracle-unavailable >/dev/null
+check "oracle-unavailable renders" "- **Supervisor (unavailable):** Runtime? → (unanswered) — oracle unavailable: denied" "$(bash "$SCRIPT" render "$KIND_DIR" | tail -1)"
+bash "$SCRIPT" list "$KIND_DIR" | grep -v unavailable > "$KIND_DIR/tmp" && mv "$KIND_DIR/tmp" "$KIND_DIR/decisions.jsonl"
+check "render prefixes supervised answers" "- **Supervisor:** Which store? → sqlite — supervisor chose it" "$(bash "$SCRIPT" render "$KIND_DIR" | tail -1)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

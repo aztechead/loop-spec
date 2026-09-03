@@ -68,9 +68,20 @@ vector).
 | Teams (named spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` (`lib/teams-capability.sh`). `AgentTool` returns a result to its caller and nothing more: no named peers, no peer messaging, no shared task list |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |
 | TaskCreate / TaskUpdate / TaskList / TaskGet | none. DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` |
-| AskUserQuestion | `get_user_choice` (ADK's long-running HITL tool) when a human is attached; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
+| AskUserQuestion | `get_user_choice` (ADK's long-running HITL tool) when a human is attached; autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged, and when `lib/supervisor/oracle.sh mode` answers `supervisor` the supervised path asks through `get_user_choice` first — the caller that resumes the pending function call is the supervisor |
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under ADK — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd |
+
+**Supervisor interface on ADK's own seams** (`docs/loop-spec/supervisor-interface.md`,
+"Native integration map"):
+
+| Port | ADK seam |
+|---|---|
+| profile | `LocalEnvironment(env_vars=...)`: `bridge.py` resolves `lib/profile.sh resolve` itself, under the process environment |
+| state store | `Runner(artifact_service=...)`; `BaseArtifactService.save_artifact` per slug is the adapter shape (increment 2) |
+| event sink | `BasePlugin.after_tool_callback` sees every Execute result, `on_event_callback` every `Event`; `LOOP_SPEC_EVENT_SINK` gets every line |
+| decision oracle | `get_user_choice` is a `LongRunningFunctionTool`: the event's `long_running_tool_ids` names the pending call, the caller answers with a `FunctionResponse` |
+| lifecycle | `Runner.run_async(..., invocation_id=)` resumes an interrupted invocation; `App.resumability_config` |
 
 **Security boundary:** ReadFile/EditFile/WriteFile reject paths that resolve
 outside the project. Execute is different: its shell starts in the project but

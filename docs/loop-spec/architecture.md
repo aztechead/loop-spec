@@ -198,6 +198,9 @@ loop-spec/
 │   ├── loop-runner/                 # bundled loop engine + its offline test suite
 │   └── shared/                      # cross-skill contracts (tier-matrix, model-matrix, autonomous-mode, claude-harness, opencode-harness, adk-harness, ...)
 ├── lib/                             # extracted bash, one concern per script, unit-tested
+│   ├── profile.sh                   # .loop-spec/profile.json presets -> env (docs/loop-spec/supervisor-interface.md)
+│   └── supervisor/                  # state-store port (store.sh, store-local.sh, store-mirror.sh) + decision oracle probe
+├── examples/supervisor/             # reference supervisor on the Python Agent SDK (imports claude-agent-sdk; not a supported surface)
 ├── hooks/                           # PreToolUse/Stop/SessionStart guards + hooks.json
 ├── tests/
 │   ├── run-all.sh                   # unit gate: tests/lib/*.test.sh (non-integration); run a suite's own file directly for hooks/validators/workflow/loop-runner checks
@@ -207,7 +210,8 @@ loop-spec/
     ├── design.md                    # full architecture
     ├── adopting.md                  # adoption guide
     ├── examples/issue-to-pr.yml     # GitHub Action recipe
-    └── loop-spec/sentinel.md        # unattended operation recipes
+    ├── loop-spec/sentinel.md        # unattended operation recipes
+    └── loop-spec/supervisor-interface.md  # the four ports an embedding app may implement
 ```
 
 

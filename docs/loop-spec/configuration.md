@@ -90,6 +90,14 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_EFFORT_NODE` | `system1`/`system2`; unset | Per-node effort override. Most specific form; outranks phase and global. |
 | `LOOP_SPEC_FEATURE_WRITE` | executable path; `lib/feature-write.sh` | Test/seam override for the feature-state writer. Production unset uses the bundled `lib/feature-write.sh`. |
 | `LOOP_SPEC_EVENTS` | executable path; `lib/events.sh` | Test/seam override for the event emitter used by `lib/graph/trace.sh`. Production unset uses the bundled `lib/events.sh`. |
+| `LOOP_SPEC_EVENT_SINK` | executable path; unset | Event-sink port (`docs/loop-spec/supervisor-interface.md`). `lib/events.sh` writes every emitted line to this executable's stdin after appending it to `events.jsonl`; `lib/cycle-result.sh` sends the terminal result as event `result`. A missing or failing sink is one warning, never an abort. |
+| `LOOP_SPEC_STORE` | executable path; unset | State-store port adapter invoked by `lib/supervisor/store.sh` after every `feature-write.sh` write and every clean `phase-exit.sh`, and at the preflight resume scan. Unset uses `lib/supervisor/store-local.sh` (the checkout is the store, today's behavior). `lib/supervisor/store-mirror.sh` is the bundled second adapter. A `persist` or `open` that fails is loud (exit 2). |
+| `LOOP_SPEC_STORE_DIR` | directory path; unset | Directory `store-mirror.sh` mirrors each feature directory into and restores from. Required by that adapter; ignored by every other. |
+| `LOOP_SPEC_ORACLE` | `supervisor`/`self`; unset | Who answers an autonomous interview question (`lib/supervisor/oracle.sh mode`). `supervisor` asks through the harness question tool first (`skills/shared/autonomous-mode.md`, "The supervised path"); unset or `self` is the self-answer rule. Any other value fails safe to `self`. Has no effect on a run that is not autonomous. |
+| `LOOP_SPEC_PROFILE` | path; `.loop-spec/profile.json` | The run profile file `lib/profile.sh` reads: `{ "preset": "<name>", "env": { "LOOP_SPEC_*": "<string>" } }`. Presets: `interactive` (nothing), `autonomous`, `supervised`, `cloud` (`bash lib/profile.sh show <preset>`). A variable already set in the environment outranks the file. Applied by `cycle-preflight.sh`, `phase-mode.sh`, and the supervisor probes; launchers apply it with `eval "$(bash lib/profile.sh env)"`. |
+| `LOOP_SPEC_PROFILE_PRESET` | preset name; unset | Selects the preset without a file, and outranks the file's `preset` when both exist. |
+| `LOOP_SPEC_ORACLE_RECORD` | `0`/`1`; `1` | `0` disables `hooks/team/oracle-record.sh`, the PostToolUse hook that records a supervisor's `AskUserQuestion` answers as `supervised` decisions. |
+| `LOOP_SPEC_ORACLE_WRITE` | `1`; unset | Write token `hooks/team/oracle-record.sh` sets so `lib/decisions.sh` accepts kinds `supervised` and `oracle-unavailable` on Claude Code. Internal: callers must not set it. |
 
 ### Host and installer environment
 

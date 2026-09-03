@@ -10,14 +10,18 @@
 #
 # Store: JSONL, one decision per line:
 #   {ts, phase, question, answer, rationale, kind}
-# kind is `assumed` (autonomous self-answer, default) or `ruling`
+# kind is `assumed` (autonomous self-answer, default), `supervised` (a supervisor
+# answered through the decision oracle, skills/shared/autonomous-mode.md),
+# `oracle-unavailable` (the question tool failed under a named supervisor), or `ruling`
 # (EXECUTE continues past a reversible plan conflict).
 # Location: <dir>/decisions.jsonl where <dir> is the feature dir once it exists.
 # Before the feature dir exists (cycle Steps 0-4), callers use the staging file
 # .loop-spec/decisions-staging.jsonl and `migrate` moves it into the feature dir.
 #
 # Usage:
-#   decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling]
+#   decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling|supervised|oracle-unavailable]
+#       supervised / oracle-unavailable: on Claude Code only with LOOP_SPEC_ORACLE_WRITE=1
+#       (hooks/team/oracle-record.sh sets it); elsewhere the model records them.
 #       Append one decision. Creates <dir> if missing. kind defaults to assumed.
 #   decisions.sh list <dir>
 #       Print the raw JSONL (empty output when none). Exit 0 always.
@@ -33,6 +37,7 @@
 # Exit codes: 0 success, 1 bad invocation.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FILE_NAME="decisions.jsonl"
 
 case "${1:-}" in
@@ -44,11 +49,23 @@ case "${1:-}" in
     fi
     mkdir -p "$dir"
     kind="${7:-assumed}"
-    case "$kind" in assumed|ruling) ;; *)
-      echo "usage: decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling]" >&2
+    case "$kind" in assumed|ruling|supervised|oracle-unavailable) ;; *)
+      echo "usage: decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling|supervised|oracle-unavailable]" >&2
       exit 1
       ;;
     esac
+    # On Claude Code the question tool's own payload is the evidence, and
+    # hooks/team/oracle-record.sh writes these two kinds from it with the token. A
+    # prose-driven write would let a run claim it asked when it did not (the live
+    # run that bit us). Other harnesses have no hook seam, so there the model's
+    # record is the record.
+    if [[ "$kind" == supervised || "$kind" == oracle-unavailable ]] \
+        && [[ "${LOOP_SPEC_ORACLE_WRITE:-}" != "1" ]] \
+        && [[ "$(bash "$SCRIPT_DIR/harness.sh" detect 2>/dev/null)" == "claude" ]]; then
+      echo "decisions.sh: kind $kind is written only by hooks/team/oracle-record.sh from the question tool's payload" >&2
+      echo "  ask through AskUserQuestion; the hook records the answer" >&2
+      exit 1
+    fi
     jq -cn \
       --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
       --arg phase "$phase" --arg q "$question" --arg a "$answer" --arg r "$rationale" \
@@ -80,6 +97,10 @@ case "${1:-}" in
     jq -r '
       if (.kind // "assumed") == "ruling" then
         "- **Ruling:** \(.question) → \(.answer) — \(.rationale)"
+      elif .kind == "supervised" then
+        "- **Supervisor:** \(.question) → \(.answer) — \(.rationale)"
+      elif .kind == "oracle-unavailable" then
+        "- **Supervisor (unavailable):** \(.question) → \(.answer) — \(.rationale)"
       else
         "- **\(.question)** → \(.answer) — \(.rationale)"
       end

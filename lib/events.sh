@@ -7,6 +7,12 @@
 #
 # Usage:
 #   events.sh emit <feature_dir> <event> [--phase <phase>] [--data <json-object>]
+#   events.sh sink   (one JSON object on stdin -> $LOOP_SPEC_EVENT_SINK, if set)
+#
+# EVENT SINK: when LOOP_SPEC_EVENT_SINK names an executable, every emitted line is
+# also written to that executable's stdin, one call per event, after the append.
+# The terminal result reaches it as event "result" (lib/cycle-result.sh). The sink
+# must return promptly; a missing or failing sink is one warning, never an abort.
 #
 # Appends ONE line to <feature_dir>/events.jsonl:
 #   {"ts":"<ISO-8601 UTC>","slug":"<slug>","event":"<event>","phase":<phase|null>,"data":<object|{}>}
@@ -280,7 +286,32 @@ _console_line() {
   fi
 }
 
+# _sink_forward JSON_LINE: hand one event line to $LOOP_SPEC_EVENT_SINK on its stdin.
+# Unset means no sink. A sink that is missing or fails prints one warning and the
+# event stays in events.jsonl: a broken sink never kills a two-hour run.
+_sink_forward() {
+  local sink="${LOOP_SPEC_EVENT_SINK:-}"
+  [[ -n "$sink" ]] || return 0
+  if [[ ! -x "$sink" ]]; then
+    echo "events.sh: LOOP_SPEC_EVENT_SINK='$sink' is missing or not executable; event kept in events.jsonl only" >&2
+    return 0
+  fi
+  printf '%s\n' "$1" | "$sink" >/dev/null 2>&1 \
+    || echo "events.sh: sink '$sink' failed; event kept in events.jsonl only" >&2
+  return 0
+}
+
 case "${1:-}" in
+  sink)
+    # One JSON line on stdin (cycle-result.sh sends the terminal result this way).
+    IFS= read -r line || true
+    if ! printf '%s' "$line" | jq -e 'type == "object"' >/dev/null 2>&1; then
+      echo "events.sh: sink expects one JSON object on stdin; nothing forwarded" >&2
+      exit 0
+    fi
+    _sink_forward "$line"
+    exit 0
+    ;;
   emit)
     feature_dir="${2:-}"
     event="${3:-}"
@@ -367,10 +398,11 @@ case "${1:-}" in
     fi
     [[ -z "$marker" ]] || printf '%s %s\n' "$marker" "$event_json"
     _console_line "$event" "$phase_str" "$data_val" "${elapsed:-}" "${verdict:-}"
+    _sink_forward "$event_json"
     exit 0
     ;;
   *)
-    echo "events.sh: bad invocation — usage: events.sh emit <feature_dir> <event> [--phase <phase>] [--data <json-object>]" >&2
+    echo "events.sh: bad invocation — usage: events.sh emit <feature_dir> <event> [--phase <phase>] [--data <json-object>] | events.sh sink" >&2
     exit 0
     ;;
 esac

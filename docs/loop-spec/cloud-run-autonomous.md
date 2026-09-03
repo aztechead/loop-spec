@@ -35,27 +35,20 @@ size; operators select the controls below for each deployment shape.
 - Persist the control checkout or incrementally mirror `.loop-spec/active-run.json`
   and committed Git state. Local disk cannot survive an instance crash.
 
-Conservative example policy. Every value is an operator input, not a hardware
-assumption:
+The `cloud` preset of `lib/profile.sh` is this policy. Write it once as project
+policy and every launcher and probe applies it (`docs/loop-spec/supervisor-interface.md`):
 
 ```bash
-LOOP_SPEC_AUTONOMOUS=1
-LOOP_SPEC_NON_INTERACTIVE=1
-LOOP_SPEC_WORKTREES=0
-LOOP_SPEC_MAX_PARALLEL_IMPLEMENTERS=1
-LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1
-LOOP_SPEC_TEAMS_MODE=none
-LOOP_SPEC_EXECUTE_LOOPS=0
-LOOP_SPEC_EXECUTE_WORKFLOW=0
-LOOP_SPEC_PLAN_MULTI_ANGLE=0
-LOOP_SPEC_PHASE_HANDOFF=1
-LOOP_SPEC_SHARE_DEPENDENCIES=1
-LOOP_SPEC_PREPARE_TIMEOUT_SECS=1200
-LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS=300
-LOOP_SPEC_BASELINE_TIMEOUT_SECS=1800
-LOOP_SPEC_BASELINE_IDLE_TIMEOUT_SECS=300
-LOOP_SPEC_CHECKPOINT_EACH_PHASE=1
+printf '{ "preset": "cloud" }\n' > .loop-spec/profile.json
+bash lib/profile.sh show cloud                    # the exact variables it sets
+eval "$(LOOP_SPEC_PROFILE_PRESET=cloud bash lib/profile.sh env)"   # or export them yourself
 ```
+
+Every value is an operator input, not a hardware assumption: override one in the
+file's `env` object. A variable already set in the environment wins over the file.
+When the launcher answers questions (an Agent SDK `canUseTool` callback), add
+`"LOOP_SPEC_ORACLE": "supervisor"` to `env`; under a bare `claude -p` leave it out, so
+the run self-answers instead of asking a callback that does not exist.
 
 For maintenance jobs where the runtime volume is preserved separately from the
 checkout, these optional controls reduce reviewer and model overhead:

@@ -11,8 +11,8 @@
 #   phase-exit.sh <spec|discuss|plan|execute|verify|iterate> --feature-dir DIR [--terminal]
 #
 # Gates per phase (all deterministic, all already bundled):
-#   spec      artifact-lint spec
-#   discuss   artifact-lint spec, grounding-lint SPEC.md
+#   spec      artifact-lint spec, oracle gate (a named supervisor was asked)
+#   discuss   artifact-lint spec, grounding-lint SPEC.md, oracle gate
 #   plan      artifact-lint plan/patterns/tasks, acceptance-lint, verifyCommand
 #             syntax, criteria per task, DAG acyclic, workspace repo field,
 #             doc-deps (dependency doc-grounding), decision-coverage,
@@ -78,6 +78,21 @@ run_gate() {
   if (( rc != 0 )); then
     printf '%s\n' "$out" | grep -E '^(FLAG|FLOOR)|^[^ ]' | sed "s/^/FLAG [$label] /" | grep -v 'phase-exit' || true
     flags=$((flags + 1))
+  fi
+}
+
+# oracle_gate: when the run named a supervisor as its oracle, this phase must have put
+# at least one question to it (a `supervised` decision) or the question tool must
+# have failed (`oracle-unavailable`). On Claude Code both kinds come only from
+# hooks/team/oracle-record.sh, so a rationale cannot stand in for a question: the
+# live run that bit us self-answered the interview, was flagged, and wrote a note.
+oracle_gate() {
+  local mode
+  mode="$(lib supervisor/oracle mode --feature-dir "$feature_dir" 2>/dev/null || true)"
+  [[ "$mode" == oracle=supervisor* ]] || return 0
+  if ! jq -e --arg p "$phase" 'select(.phase == $p and (.kind == "supervised" or .kind == "oracle-unavailable"))' \
+      "$feature_dir/decisions.jsonl" >/dev/null 2>&1; then
+    flag "[oracle] LOOP_SPEC_ORACLE=supervisor but no $phase question reached it: ask through the question tool (skills/shared/autonomous-mode.md, The supervised path); the hook records the answer"
   fi
 }
 
@@ -157,6 +172,7 @@ egress_check
 case "$phase" in
   spec)
     run_gate artifact-lint lib artifact-lint spec "$docs/SPEC.md"
+    oracle_gate
     if (( flags == 0 )); then
       fset artifacts.spec "\"$docs/SPEC.md\""
       [[ -f "$feature_dir/spec-interview-transcript.md" ]] \
@@ -168,6 +184,7 @@ case "$phase" in
   discuss)
     run_gate artifact-lint lib artifact-lint spec "$docs/SPEC.md"
     run_gate grounding-lint lib grounding-lint "$docs/SPEC.md"
+    oracle_gate
     if (( flags == 0 )); then
       fset artifacts.spec "\"$docs/SPEC.md\""
       commit_paths "spec: $slug" "$docs/SPEC.md" "$docs/EVIDENCE.md"
@@ -259,6 +276,10 @@ esac
 
 if (( flags == 0 )); then
   rm -f "$feature_dir/.phase-entry.json"
+  bash "$SCRIPT_DIR/supervisor/store.sh" persist "$feature_dir" "phase-exit:$phase" >/dev/null \
+    || flag "[store] persist failed for $feature_dir (LOOP_SPEC_STORE)"
+fi
+if (( flags == 0 )); then
   echo "phase-exit: ok ($phase)"
 else
   echo "phase-exit: $flags flag(s) ($phase)"; exit 1

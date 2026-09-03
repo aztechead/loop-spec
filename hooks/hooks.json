@@ -95,6 +95,15 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/strategy-rotation.sh"
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/oracle-record.sh"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -181,6 +190,17 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/session-end-learnings.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/oracle-record.sh"
           }
         ]
       }

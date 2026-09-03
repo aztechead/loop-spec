@@ -25,7 +25,9 @@ Two deliberate omissions, both load-bearing:
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
@@ -100,6 +102,13 @@ class LoopSpecBridge:
             headless = os.environ.get("LOOP_SPEC_NON_INTERACTIVE") == "1"
         if headless:
             self.env_vars["LOOP_SPEC_NON_INTERACTIVE"] = "1"
+        # The run profile (.loop-spec/profile.json, lib/profile.sh) is project
+        # policy; this is the harness's env seam, so it is applied here the way the
+        # Agent SDK applies it through ClaudeAgentOptions.env. A variable the caller
+        # already set in the process environment outranks the file.
+        for key, value in self.profile_env().items():
+            if key not in os.environ:
+                self.env_vars.setdefault(key, value)
 
         self.environment = LocalEnvironment(working_dir=self.project_dir,
                                             env_vars=self.env_vars)
@@ -127,6 +136,18 @@ class LoopSpecBridge:
             return None
         state[SKILL_DIR_STATE_KEY] = str(skill_dir)
         return skill_dir
+
+    def profile_env(self) -> dict[str, str]:
+        """Resolve the project's run profile to the variables it sets."""
+        try:
+            out = subprocess.run(
+                ["bash", str(PACKAGE_ROOT / "lib" / "profile.sh"), "resolve"],
+                cwd=self.project_dir, capture_output=True, text=True, check=True,
+                env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.project_dir)})
+        except (OSError, subprocess.CalledProcessError) as exc:
+            detail = getattr(exc, "stderr", "") or str(exc)
+            raise RuntimeError(f"loop-spec profile did not resolve: {detail.strip()}") from exc
+        return dict(json.loads(out.stdout).get("env", {}))
 
     def environment_for(self, state: Any) -> dict[str, str]:
         """Build one invocation's environment from static and session state."""
