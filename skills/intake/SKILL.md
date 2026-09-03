@@ -50,6 +50,12 @@ frontmatter block, or is a file that already carries the SPEC.md section skeleto
 with the file path (write pasted text to the Step 3 path first). Converting a spec into
 a spec adds nothing but drift.
 
+**Normalize the source** (`skills/shared/prompt-normalize.md`): after the SPEC-shaped
+check, rewrite the source's free prose per that contract and use the rewritten text as
+the source for Steps 2-3; quoted artifacts and criteria pass through byte-for-byte,
+and input another loop-spec skill produced (a micro escalation brief) is already
+normalized - skip the pass.
+
 ## Step 2 - Extract (source → spec fields)
 
 Read the source once as an editor, mapping what is actually there onto the spec
@@ -65,7 +71,7 @@ fill at all costs:
 
 Extract into these buckets (leave a bucket EMPTY when the source has nothing for it):
 
-- **Title** — one line, imperative, the user's ask in their own words where possible.
+- **Title** — one line, imperative, in the normalized source's own words where possible.
   This becomes the immutable original goal (`feature_title`) the ITERATE judge scores
   against, so keep it faithful to the source's intent, not your paraphrase of it.
 - **Requirements** — each specific, testable statement the source makes. Keep the
@@ -92,7 +98,7 @@ Write to `.loop-spec/intake/{slug}.md` (`slug` = kebab-case of the title; `mkdir
 # {Title}
 
 ## Source
-> Verbatim original, blockquoted in full (truncate only past ~200 lines, noting the cut).
+> The normalized source, blockquoted in full (truncate only past ~200 lines, noting the cut).
 Type: {slack message | jira ticket | email | file: path | prompt} — captured {ISO date}.
 
 ## Requirements
@@ -110,9 +116,11 @@ Type: {slack message | jira ticket | email | file: path | prompt} — captured {
 ```
 
 The `## Source` block is the provenance trail: when DISCUSS or a PR reviewer wonders
-"who asked for this?", the answer is in the artifact, verbatim. The SPEC phase copies
+"who asked for this?", the answer is in the artifact - the normalized source in full,
+its artifacts and quoted criteria byte-for-byte. The SPEC phase copies
 the draft into `.loop-spec/features/{slug}/spec-draft.md` and normalizes from there,
-so this file is the durable record of what intake received and produced.
+so this file is the durable record of the normalized source and what intake produced
+from it (the pre-normalize paste is not kept anywhere).
 
 ## Step 4 - Kick off the cycle
 
