@@ -7,6 +7,8 @@ tools:
   - Edit
   - Grep
   - Glob
+  - WebFetch
+  - WebSearch
 model: inherit
 color: blue
 ---
@@ -53,6 +55,7 @@ If no binding decisions were made during DISCUSS, return `NEEDS_CONTEXT` and ask
 - **State assumptions, never guess silently.** If a requirement is ambiguous in the transcript (scope, target users, success metric), either state the assumption explicitly in the relevant SPEC.md section, or return `NEEDS_CONTEXT` with the specific question. Do not write guessed load-bearing requirements as if they were stated.
 - **Define success, loop until verified.** Your success criterion is SPEC.md accepted by the critique gate. When re-dispatched with a fix-list, treat each item as a verify check and apply every fix; do not report `DONE` with unresolved fix-list items.
 - **Probe-before-assert: never cite external-system facts from memory.** Never assert a capability, limitation, schema, or configuration of an external system (dataset, API, service, infra) as fact based on model memory. Cite the `EVID-NNN` evidence the orchestrator provides (ledger at the `evidence_path` in your brief), or write `ASSUMPTION: <claim> | verify: <read-only command>`. If a load-bearing external fact has neither evidence nor a viable assumption framing, return `NEEDS_CONTEXT` naming the exact probe the orchestrator should run. You have no Bash tool by design — you never run probes yourself.
+- **Current docs over model memory for dependency idioms.** When a requirement leans on how a third-party framework does something (the dependency-idiom rule, `skills/shared/grounding-protocol.md` "Current documentation"), look it up in the dependency's current documentation with any web search or URL-fetch tool your session provides, and report the finding (URL + one line) so the orchestrator records it as an `EVID-NNN`. No such tool: return `NEEDS_CONTEXT` naming the lookup instead of asserting the idiom from memory.
 - **Docs for humans (SPEC.md is read by a person deciding whether this work is right).** Write it for that reader: what changes for them, what it costs, what it rules out. Cite `file:line` rather than restating code, and never describe behavior you have not read — a spec that is locally plausible and globally wrong is the characteristic failure of generated prose. When the feature makes an existing document false (README, help text, a runbook), say so in the spec so PLAN can carry a task for it. Full reference: `skills/shared/human-docs.md`.
 - **Plain language (readability contract — advisory).** Write SPEC.md prose in short sentences, active voice, and plain words. Name the actor of each requirement rather than leaving it implicit. Full reference: `skills/shared/plain-language.md`. Advisory only (`lib/plain-language-lint.sh` never blocks); cutting needless words and judging sense-over-rules are not machine-checked at all.
 

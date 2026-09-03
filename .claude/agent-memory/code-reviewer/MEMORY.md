@@ -1,0 +1,4 @@
+- Phase-gate allowlists must validate every batched question, not merely one matching header; see `hooks/team/placeholder-question-guard.sh`.
+- Hooks that inspect feature state must resolve the active worktree as well as `CLAUDE_PROJECT_DIR`; preferring the control checkout silently loses worktree-local `.loop-spec/features/*/feature.json` state (`hooks/team/placeholder-question-guard.sh`).
+- Transcript-derived phase guards must recognize utility and directly invoked skills or stale restrictive phases deny legitimate questions (`hooks/team/placeholder-question-guard.sh`, `skills/specifying-gates/SKILL.md`).
+- AskUserQuestion contract tests should validate the documented 12-character header limit, not only wrapper shape (`skills/specifying-gates/SKILL.md`, `tests/lib/harness-call-shapes.test.sh`).

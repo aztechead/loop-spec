@@ -15,7 +15,8 @@
 #   discuss   artifact-lint spec, grounding-lint SPEC.md
 #   plan      artifact-lint plan/patterns/tasks, acceptance-lint, verifyCommand
 #             syntax, criteria per task, DAG acyclic, workspace repo field,
-#             decision-coverage, criteria-coverage, grounding-lint PLAN.md
+#             doc-deps (dependency doc-grounding), decision-coverage,
+#             criteria-coverage, grounding-lint PLAN.md
 #   execute   every PLAN task id published (tasks.json status=done), greenfield
 #             command backfill, at-end commit strategy
 #   verify    artifact-lint verification, verification-grounding-lint
@@ -182,6 +183,7 @@ case "$phase" in
     if [[ -f "$tasks" ]]; then
       run_gate artifact-lint lib artifact-lint tasks "$tasks"
       run_gate acceptance-lint lib acceptance-lint "$tasks"
+      run_gate doc-deps lib doc-deps gate --tasks "$tasks" --artifact "$docs/PLAN.md"
       # Structural feasibility: a task with no runnable check or no criterion cannot be
       # verified, and a cyclic DAG never dispatches.
       while IFS=$'\t' read -r id cmd ncrit; do

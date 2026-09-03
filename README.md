@@ -23,7 +23,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 5.1.0
+Current version: 5.2.0
 
 Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 

@@ -4,6 +4,27 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-09-02
+
+### Added
+
+- The dependency-idiom rule: design phases now consult a dependency's CURRENT
+  documentation instead of model memory before asserting how a framework does
+  something. `lib/doc-deps.sh scan` (with `lib/doc-deps.py`) deterministically
+  names the dependencies in play — the imports of the touched files intersected
+  with the repo's manifests (py/js-ts/go), never the whole manifest — and
+  `LOOP_SPEC_DOC_DEPS` lets the operator override it. SPEC's scout and the
+  planner brief carry the fetch mandate (any web search or URL-fetch tool the
+  session provides; `curl` as the floor; policy-blocked native tools fall back
+  to custom tools or the lead), findings land in the evidence ledger as
+  `EVID-NNN` entries only, and `lib/doc-deps.sh gate` blocks PLAN's phase-exit
+  when a named dependency has neither a doc-backed `EVID` nor an `ASSUMPTION`
+  bullet in `## Grounding` — offline runs pass through the `ASSUMPTION` hatch.
+  `agents/planner.md` and `agents/spec-writer.md` gain WebFetch/WebSearch, and
+  `skills/shared/engineering-directives.md` gains the mid-EXECUTE row: unsure
+  how an imported dependency does something, fetch its docs before writing the
+  call.
+
 ## [5.1.0] - 2026-09-02
 
 ### Removed

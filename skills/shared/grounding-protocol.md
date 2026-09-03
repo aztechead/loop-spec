@@ -12,6 +12,7 @@ gathered, recorded, cited, and checked.
 | **Code-structure claim** | What calls what, how two entities connect, which subsystems a change ripples through | Read it and cite `file:line`. There is no stored graph to quote; a claim nobody can point at is an `ASSUMPTION`. |
 | **External-system claim** | Dataset schema, API capability or limitation, service config, infra state, cloud resource attributes | Run the cheapest read-only probe, record the result in the evidence ledger, cite `EVID-NNN`. |
 | **Ecosystem / library claim** | Version, API surface, behavior of a third-party package or CLI already installed locally | Probe local install (`<tool> --version`, `pip show`, `npm list`, local docs); if unavailable, write `ASSUMPTION`. |
+| **Dependency-idiom claim** | How to accomplish something with a third-party framework a touched file imports: the recommended pattern, the current API shape, a capability or limit | Fetch the dependency's current documentation (see "Current documentation" below) and record the finding in the ledger; no web-capable tool or no network, write `ASSUMPTION`. |
 | **User-stated fact** | Something the user asserted in the transcript | Cite the transcript ("user stated in session that …"); no probe needed, but do not extend the claim beyond what was said. |
 
 ## Probe-before-assert rule
@@ -51,6 +52,44 @@ Probes must never mutate external systems. Commands containing `INSERT`, `UPDATE
 `DELETE`, `create`, `apply`, `deploy`, `rm`, `drop`, or equivalent write verbs are
 **not probes** — they are actions. Design phases must never run them as evidence
 gathering. The read-only constraint is absolute.
+
+## Current documentation — the dependency-idiom rule
+
+Model memory of a fast-moving framework is a hypothesis, and designing from it is
+how a plan ships hacks the current docs would have prevented. When the ask is
+"implement X with framework Y", look up how Y's current release does X before
+asserting the approach.
+
+**Which dependencies?** Only the ones the touched files import — never the whole
+manifest, which is context bloat. The deterministic answer is:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/doc-deps.sh" scan <touched files>
+# ANSWER=google-adk,fastapi REASON=imports of N file(s) intersected with declared dependencies
+```
+
+`LOOP_SPEC_DOC_DEPS=<comma-list|none>` overrides the scan when the operator knows
+better.
+
+**How to fetch.** Use whatever tool the session provides that can search the web or
+retrieve a URL — the rule names the capability, not a tool, because the harnesses
+name these differently, deployments may block the native web tools by policy, and a
+custom or MCP search tool may stand in their place; `curl -s <url>` through Bash is
+the floor. Writers with such a tool fetch for themselves; a writer whose allow-list
+reaches no web-capable tool returns the need (`NEEDS_CONTEXT` or `UNGROUNDED:`) and
+the lead — which holds the session's full tool set, custom search tools included —
+fetches.
+
+**What to record.** A ledger entry only: `claim:` is the idiom question, `cmd:` is
+the search query or URL, `out:` is the one-line finding. Never paste fetched doc
+pages into artifacts or briefs — the citation is the artifact, the URL is the way
+back.
+
+**The gate.** `lib/doc-deps.sh gate` runs inside PLAN's `phase-exit.sh` cluster: it
+re-derives the dependency list from every task's `files[]` and FLAGs any dependency
+with neither an `EVID-NNN` bullet nor an `ASSUMPTION` in PLAN.md's `## Grounding`.
+Offline runs pass through the `ASSUMPTION` escape hatch, so the gate never needs
+network to clear.
 
 ## The evidence ledger
 

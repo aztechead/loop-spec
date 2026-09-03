@@ -58,6 +58,14 @@ the cheapest read-only probe and record it; cite the `EVID-NNN` it prints, or wr
 bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<probe output>"
 ```
 
+Then name the frameworks in play:
+`bash "${CLAUDE_SKILL_DIR}/../../lib/doc-deps.sh" scan <the files the scout found>` lists
+the third-party dependencies those files import. For each one the feature will lean on,
+look up how its current release does what the feature needs — any web search or
+URL-fetch tool the session provides — and `evidence.sh add` the finding (the
+dependency-idiom rule, `skills/shared/grounding-protocol.md` "Current documentation").
+The idiom in today's docs outranks the idiom in model memory.
+
 Score the four dimensions from what you know now and display the scoring block.
 
 ## 2. Interview (by `path`)
