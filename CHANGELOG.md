@@ -4,6 +4,21 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-09-03
+
+### Changed
+
+- `tests/run-all.sh` is now a fast unit gate: by default it runs only
+  `tests/lib/*.test.sh` suites, minus the ones tagged `integration`
+  (subprocess-heavy or multi-file), instead of every registered suite.
+  `RUN_ALL_PROFILE` gains a `unit` value (the new default) alongside
+  `selected`; `full` is gone. Hook tests, validators, harness-coverage
+  suites, and workflow syntax checks stay registered (so
+  `tests/all-tests-registered.test.sh` still tracks them) but no longer run
+  automatically — invoke a suite's own file directly to run one by hand.
+  `tests/lib/detect-test-cmd.test.sh` also had a pre-existing `$ROOT`
+  unbound-variable bug fixed so the new gate passes cleanly.
+
 ## [5.2.0] - 2026-09-02
 
 ### Added

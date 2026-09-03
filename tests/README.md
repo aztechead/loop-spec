@@ -19,14 +19,18 @@ and `.claude/rules/`; ordinary prose selects the docs linter without expanding i
 suite that happens to quote it.
 It also syntax-checks changed files and runs the code/document tells over lines introduced
 by the diff, so an existing finding elsewhere in a touched file does not poison the edit
-loop. The full
+loop. The unit
 gate runs every suite concurrently; set `RUN_ALL_JOBS=1` when diagnosing order-sensitive
 behavior and `RUN_ALL_VERBOSE=1` to print successful suite logs.
 
-The full gate runs every non-interactive suite: the agent/manifest validators, the hook
-tests, the `lib/` units and integration contracts, and (when a node runtime is available)
-the workflow syntax checks in `tests/workflows/smoke.sh`. It needs bash, git, jq, python3,
-and (for the workflow checks) node. It does NOT require the Claude CLI.
+The unit gate runs only `tests/lib/*.test.sh` suites, minus the ones tagged `integration`
+(subprocess-heavy or multi-file). It needs bash, git, jq, and python3. It does NOT require
+the Claude CLI. Every other registered suite — agent/manifest validators, hook tests,
+integration-tier `lib/` contracts, harness-coverage suites, and (when a node runtime is
+available) the workflow syntax checks in `tests/workflows/smoke.sh` — stays registered in
+`tests/run-all.sh` (so `tests/all-tests-registered.test.sh` still tracks it) but does not
+run automatically; invoke a suite's own file directly, for example
+`bash tests/adk-harness-coverage.test.sh` or `bash hooks/restrict-agent-paths.test.sh`.
 
 There are no scripted e2e or live-model suites: the shipped test tree is offline-only
 by policy (no network, no `claude -p`, no live services). Behavioral end-to-end

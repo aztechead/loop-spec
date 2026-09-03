@@ -200,7 +200,7 @@ loop-spec/
 ├── lib/                             # extracted bash, one concern per script, unit-tested
 ├── hooks/                           # PreToolUse/Stop/SessionStart guards + hooks.json
 ├── tests/
-│   ├── run-all.sh                   # offline suite: validators + hooks + lib units + workflow syntax + loop-runner
+│   ├── run-all.sh                   # unit gate: tests/lib/*.test.sh (non-integration); run a suite's own file directly for hooks/validators/workflow/loop-runner checks
 │   ├── lib/                         # unit tests for lib/*.sh
 │   └── e2e/                         # live smokes (opt-in): full cycle + sentinel drive loop
 └── docs/

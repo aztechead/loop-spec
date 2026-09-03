@@ -2,7 +2,8 @@
 # Tests for lib/detect-test-cmd.sh
 set -euo pipefail
 
-LIB="$(cd "$(dirname "$0")/../.." && pwd)/lib/detect-test-cmd.sh"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LIB="$ROOT/lib/detect-test-cmd.sh"
 PASS=0
 FAIL=0
 
