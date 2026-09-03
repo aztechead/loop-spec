@@ -276,6 +276,37 @@ SDK column; its README maps each port to the function that implements it.
 | 2 | ADK bridge wires `get_user_choice` to the oracle path; opencode `question` and Codex `request_user_input` mappings cite the oracle | harness coverage suites; one live ADK run |
 | 3 | the workbench pack | installer suites; a fresh install of core alone runs a full cycle |
 
+## Evidence from the first live runs
+
+Three runs of `examples/supervisor/supervisor.py` on 2026-09-03, model `haiku`, task
+"a Python command-line tool fib that prints the n-th Fibonacci number, with unit
+tests and a README", in a fresh `git init` directory with no `origin` and no `gh`.
+Logs and artifacts are the run's own files (`<project>-events.jsonl`,
+`<project>-mirror/`, `.loop-spec/last-result.json`); the lines below are copied from
+them because a reader cannot rerun a paid session.
+
+What the ports did, every run:
+
+- profile: the SDK `env` carried the nine variables of the `supervised` preset plus
+  the store and sink; `cycle-preflight.sh` reported `profile.preset=supervised`.
+- store: `<project>-mirror/<slug>/feature.json` matched the working copy after every
+  write, including `currentPhase: deliver` at the end of run 2.
+- sink: every event line reached the file, 49 in run 2, including each terminal
+  result as event `result`.
+- lifecycle: run 2 returned a `phase-handoff` pause after DISCUSS, the supervisor
+  reissued `/loop-spec:cycle autonomous`, and the run resumed in a fresh context and
+  reached DELIVER, which failed with `no route satisfied at node deliver` because
+  there is no `gh` and no `origin`.
+
+What went wrong, and what changed because of it:
+
+| Run | Finding | Change |
+|---|---|---|
+| 1 | The oracle never fired: seventeen `assumed` decisions, zero `supervised`. The prose asked the model to call `oracle.sh` and it did not. | `phase-mode.sh` carries `oracle=` on the line SPEC and DISCUSS already read; `phase-exit.sh` flags a named supervisor that was never asked. |
+| 1 | The agent published `status: completed` from SPEC. The contract already said `outcome: completed-with-gaps`, `converged: false`, `workDelivered: false`; the reference supervisor read `status`. | The supervisor judges `outcome` and `converged`. |
+| 2 | The agent read `oracle=supervisor`, self-answered, was flagged, and wrote an `assumed` decision whose rationale named the oracle, which satisfied the gate. | `hooks/team/oracle-record.sh` writes `supervised` and `oracle-unavailable` from the question tool's payload; `decisions.sh` refuses those kinds from anywhere else on Claude Code; the gate accepts only those kinds. |
+| 2 | EXECUTE committed no application files: the branch holds SPEC, PLAN, and progress commits, VERIFY passed with an empty command, and DELIVER was reached. | Not changed here. This is the "mergeable but wrong" failure from the interview; the terminal result exposes it (`verification.command: ""`), and a supervisor policy can refuse it. Recorded for the next increment. |
+
 ## Rejected alternatives
 
 | Alternative | Why rejected |
