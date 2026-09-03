@@ -186,6 +186,10 @@ claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
 
 Ephemeral containers: [Cloud Run autonomous profile](docs/loop-spec/cloud-run-autonomous.md).
 
+Embedding in an SDK or ADK app: a supervisor owns where state is durable, where events go, who answers interview questions, and when to relaunch; the plugin owns the artifacts and the contract. Quick start, ports, and the native seam each lands on: [docs/loop-spec/supervisor-interface.md](docs/loop-spec/supervisor-interface.md). Runnable reference: [`examples/supervisor/`](examples/supervisor/README.md). Policy lives in `.loop-spec/profile.json` (`bash lib/profile.sh presets`).
+
+An agent pointed at this repository starts at [llms.txt](llms.txt): what to run, what to read, and what not to invent.
+
 Non-interactive (CI) pre-pins answers instead of letting the model choose:
 
 ```bash
@@ -244,7 +248,9 @@ More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/archit
 | [docs/loop-spec/agent-output-contract.md](docs/loop-spec/agent-output-contract.md) | `LOOP_SPEC_RESULT` / result.json schema |
 | [docs/loop-spec/sentinel.md](docs/loop-spec/sentinel.md) | Unattended scan/run/watch recipes |
 | [docs/loop-spec/cloud-run-autonomous.md](docs/loop-spec/cloud-run-autonomous.md) | Ephemeral-container profile |
-| [docs/loop-spec/supervisor-interface.md](docs/loop-spec/supervisor-interface.md) | The four ports a supervisor may implement (state store, event sink, decision oracle, lifecycle) and the profile presets |
+| [docs/loop-spec/supervisor-interface.md](docs/loop-spec/supervisor-interface.md) | The four ports a supervisor may implement (state store, event sink, decision oracle, lifecycle), the profile presets, and the native SDK and ADK seams |
+| [examples/supervisor/README.md](examples/supervisor/README.md) | Runnable reference supervisor on the Python Agent SDK |
+| [llms.txt](llms.txt) | Entry map for agents pointed at this repository |
 
 ## Tests
 

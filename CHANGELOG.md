@@ -40,6 +40,11 @@ All notable changes documented here. Format follows Keep a Changelog.
   `extensions/adk/loop_spec_adk/bridge.py` resolves the profile through its own
   environment seam. `examples/supervisor/` is a runnable reference supervisor on the
   Python Agent SDK that exercises every SDK-side row.
+- `llms.txt` at the repository root: the entry map for an agent pointed at this
+  repository (what to run, what to read, what not to invent). The supervisor
+  interface doc opens with a six-step quick start for implementers and a checklist
+  for the agent inside a supervised run; README, `docs/adopting.md`, and the
+  architecture layout point at both.
 
 ## [5.4.0] - 2026-09-03
 

@@ -9,6 +9,57 @@ This page explains why the boundary sits where it does. The operating contract f
 port lives in the script header the port names; read the header before the code
 (`bash lib/surface.sh show <name>`).
 
+## Quick start for implementers
+
+Prerequisites: the plugin checkout on disk, `git` initialized in the target project,
+and one of: `pip install claude-agent-sdk` with a Claude login, or Google ADK with
+`bash lib/adk-install.sh`. DELIVER also needs `gh auth status` and an `origin` remote.
+
+1. **Declare the policy once.** Write `.loop-spec/profile.json` in the target project:
+   ```json
+   { "preset": "supervised",
+     "env": { "LOOP_SPEC_STORE": "<plugin>/lib/supervisor/store-mirror.sh",
+              "LOOP_SPEC_STORE_DIR": "/mnt/runs",
+              "LOOP_SPEC_EVENT_SINK": "<your executable>" } }
+   ```
+   Check it: `bash lib/profile.sh validate` prints `profile: ok (...)`.
+2. **Hand the resolved profile to the harness.** Claude Agent SDK: pass
+   `bash lib/profile.sh resolve` `.env` as `ClaudeAgentOptions.env`. ADK: nothing; the
+   bridge reads the file. A variable you already set in the process wins over the file.
+3. **Point at the plugin.** SDK: `plugins=[{"type": "local", "path": "<plugin>"}]`; the
+   init `SystemMessage` lists `loop-spec` under `plugins`. ADK: `lib/adk-install.sh`.
+4. **Answer questions.** SDK: a `can_use_tool` callback that handles
+   `tool_name == "AskUserQuestion"` and returns `{"questions": ..., "answers": {question: label}}`.
+   Return the `(Recommended)` label to take the plugin's own answer; return the text
+   `halt` to pause the run. ADK: resume the pending `get_user_choice` function call.
+5. **Run and loop.** Send `/loop-spec:auto <task>`. After each turn read
+   `.loop-spec/last-result.json`: `status: paused` with `reason: phase-handoff` means
+   send `/loop-spec:cycle autonomous` again in a fresh context; anything else is
+   terminal. The run succeeded when `outcome` is `delivered` (or `no-change-needed`) and
+   `converged` is `true`. `status: completed` alone is not success.
+6. **Consume events.** Every line of `events.jsonl`, and each terminal result as event
+   `result`, reaches the executable named in `LOOP_SPEC_EVENT_SINK` on stdin. On the SDK
+   a `PostToolUse` hook on `Bash` sees the same phase markers.
+
+Runnable form of all six steps: `examples/supervisor/supervisor.py`.
+
+## Checklist for an agent pointed at a supervised run
+
+You are the agent inside the cycle, not the supervisor. The mode line each phase
+already reads tells you what to do:
+
+- `bash lib/phase-mode.sh spec --feature-dir DIR` prints `path=self-answer oracle=supervisor`
+  when a supervisor is waiting. Ask your interview questions through the harness question
+  tool (`AskUserQuestion`, `question`, `get_user_choice`, `request_user_input`) with the
+  recommended option first. The answer is recorded for you on Claude Code; on other
+  harnesses record it with `lib/decisions.sh add ... supervised`.
+- `oracle=self` means no one is listening: apply the self-answer rule in
+  `skills/shared/autonomous-mode.md` and record `assumed` decisions.
+- `lib/phase-exit.sh` refuses to close SPEC or DISCUSS when a named supervisor was never
+  asked. A rationale is not a question.
+- Never publish `cycle-result.sh write --status completed` before DELIVER; the result
+  contract records `phaseReached` and `converged`, and a supervisor reads them.
+
 ## Intent
 
 These are the decisions from the design interview that shaped this page. Each one is a

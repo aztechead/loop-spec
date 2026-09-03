@@ -1,0 +1,60 @@
+# loop-spec
+
+> Spec-driven development loops for Claude Code and the Claude Agent SDK, opencode, OpenAI Codex, and Google ADK, from one source tree. Give it a task; it runs SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER and ships one verified PR. State is durable on disk, so a dead agent resumes instead of restarting.
+
+This file is for an agent or a person who was pointed at this repository and needs to know what to run, what to read, and what not to invent. Every path below exists in the tree; read the file before acting on a claim about it. Runtime: bash 3.2+, git, jq 1.5+, python3 3.7+. No daemon, no database, no stored code map.
+
+## Start here
+
+- [README.md](README.md): install per harness, the seven phases, the skills table, headless use, configuration pointers.
+- [docs/adopting.md](docs/adopting.md): first cycle, pitfalls, multi-repo workspaces, embedding in an SDK app.
+- [CLAUDE.md](CLAUDE.md): the rules a change to this repository must obey (probes over judgments, no new dependencies, tested skill bodies, house-style probes to run).
+
+## Run it
+
+- Interactive, any harness: `/loop-spec:cycle <description>`; a bare `/loop-spec:cycle` resumes an incomplete feature.
+- Headless or from an SDK: `/loop-spec:auto <description>` routes to micro, debug, compact, or the full cycle and never asks a human ([skills/auto/SKILL.md](skills/auto/SKILL.md)).
+- Question-free full cycle: `/loop-spec:cycle autonomous <description>` ([skills/shared/autonomous-mode.md](skills/shared/autonomous-mode.md)).
+- One phase per process: set `LOOP_SPEC_PHASE_HANDOFF=1` (or the `supervised` profile preset); the run returns a paused `phase-handoff` result after each durable phase and a fresh invocation of `/loop-spec:cycle autonomous` continues it.
+- Read the outcome from `.loop-spec/last-result.json` or the `LOOP_SPEC_RESULT {...}` line: judge `outcome` (`delivered`, `no-change-needed`, `completed-with-gaps`, `failed`, ...) and `converged`, not `status` alone ([docs/loop-spec/agent-output-contract.md](docs/loop-spec/agent-output-contract.md)).
+
+## Embed it (supervisors on the Claude Agent SDK or Google ADK)
+
+- [docs/loop-spec/supervisor-interface.md](docs/loop-spec/supervisor-interface.md): the four ports a supervisor may implement (state store, event sink, decision oracle, lifecycle), the native SDK and ADK seam each lands on, the profile presets, and evidence from live runs. Read the quick start at the top first.
+- [examples/supervisor/README.md](examples/supervisor/README.md): a runnable reference supervisor on the Python Agent SDK, with the port-to-function map. Not a supported surface.
+- [lib/profile.sh](lib/profile.sh): `.loop-spec/profile.json` with presets `interactive`, `autonomous`, `supervised`, `cloud`; `bash lib/profile.sh show <preset>`.
+- [docs/loop-spec/cloud-run-autonomous.md](docs/loop-spec/cloud-run-autonomous.md): the ephemeral-container recipe.
+- [docs/loop-spec/claude-invocation-contract.md](docs/loop-spec/claude-invocation-contract.md): how `claude -p` and the Agent SDK differ in ways that break an unattended run.
+
+## Contracts (read before changing behavior)
+
+- [docs/loop-spec/configuration.md](docs/loop-spec/configuration.md): every supported `LOOP_SPEC_*` variable, precedence, skill arguments. A name not in this file is not a control.
+- [skills/shared/feature-state-schema.md](skills/shared/feature-state-schema.md): `feature.json` schema 7, the committed resume contract; write it only through `lib/feature-write.sh`.
+- [skills/shared/dispatch.md](skills/shared/dispatch.md): live-verified tool call shapes (Agent, TaskCreate, SendMessage, AskUserQuestion).
+- [skills/shared/claude-harness.md](skills/shared/claude-harness.md), [opencode-harness.md](skills/shared/opencode-harness.md), [adk-harness.md](skills/shared/adk-harness.md), [codex-harness.md](skills/shared/codex-harness.md): what each harness has and how the same cycle maps onto it. `lib/harness.sh detect` answers which one you are on.
+- [skills/shared/handoff-port.md](skills/shared/handoff-port.md): claim, lease, and complete a unit of work out of process.
+- [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md): the cycle as a declared graph under `graph/`, executed by `lib/graph/run.sh`.
+- [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md): diagrams, artifact tree, repository layout, limitations.
+
+## Find things without a map
+
+- `bash lib/surface.sh find <term> [term ...]`: which bundled script, shared contract, or agent role covers a term, derived from the tree at call time.
+- `bash lib/surface.sh show <name>`: one script's header block (usage, exit codes). Usually the whole answer.
+- `bash lib/surface.sh covers <path>`: the test suites that name a path, so you know what to run after changing it.
+- `bash tests/run-all.sh`: the offline unit gate. It must pass before any commit.
+
+## Rules an agent must not break here
+
+- Do not add a package manifest, a dependency, a code graph, or a generated codebase map ([CLAUDE.md](CLAUDE.md)).
+- Do not let a model judgment select a code path; write a probe that prints one `ANSWER REASON` line and a test.
+- Do not mutate `feature.json` with raw `jq`; use `lib/feature-write.sh`.
+- Do not write `supervised` decisions by hand on Claude Code; the question tool's payload is recorded by `hooks/team/oracle-record.sh`.
+- Do not use `AskUserQuestion` as a wait; every question is a real question ([hooks/team/placeholder-question-guard.sh](hooks/team/placeholder-question-guard.sh)).
+- Run `bash lib/doc-tells.sh scan <markdown>`, `bash lib/house-style.sh compare <files>`, `bash lib/comment-tells.sh scan <files>`, and `bash lib/failure-tells.sh scan <files>` on what you touched.
+
+## Optional
+
+- [CHANGELOG.md](CHANGELOG.md): what changed per version and why.
+- [docs/loop-spec/sentinel.md](docs/loop-spec/sentinel.md): unattended scan, run, and watch recipes.
+- [docs/tier-guide.md](docs/tier-guide.md): picking a cycle tier.
+- [tests/README.md](tests/README.md): the manual end-to-end matrix.

@@ -65,6 +65,11 @@ checks=(
   "docs/loop-spec/configuration.md	LOOP_SPEC_ORACLE"
   "docs/loop-spec/configuration.md	LOOP_SPEC_PROFILE_PRESET"
   "README.md	docs/loop-spec/supervisor-interface.md"
+  "README.md	llms.txt"
+  "llms.txt	docs/loop-spec/supervisor-interface.md"
+  "llms.txt	examples/supervisor/README.md"
+  "docs/adopting.md	docs/loop-spec/supervisor-interface.md"
+  "docs/loop-spec/supervisor-interface.md	## Quick start for implementers"
   # -- the native integration map names the SDK and ADK seams, and the reference supervisor runs them
   "docs/loop-spec/supervisor-interface.md	## Native integration map"
   "docs/loop-spec/supervisor-interface.md	can_use_tool"
