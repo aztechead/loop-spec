@@ -28,6 +28,10 @@ into BUG.md before any change is made.
 
 ## Step 0 - Classify and initialize
 
+Rewrite free-prose symptom text per `skills/shared/prompt-normalize.md` before
+anything derives from it; concrete artifacts (stack traces, error output,
+failing-test names, commands) pass through byte-for-byte.
+
 1. **Initialize deterministically** — one call does the mechanics (token stripping,
    slug, BUG.md dir, branch discipline, branch-point SHA capture, test-cmd detection):
    ```bash

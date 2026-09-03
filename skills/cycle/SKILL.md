@@ -23,6 +23,10 @@ needs it; the plugin restricts nothing beyond what a role's own charter says.
 
 ## 1. Start
 
+When `$ARGUMENTS` carries a free-prose feature description (not just tokens, a spec
+path, or `backlog`), rewrite that prose per `skills/shared/prompt-normalize.md` first
+and use the rewritten arguments everywhere below; tokens and paths travel verbatim.
+
 ```bash
 st="$(bash "$DRV" start -- "$ARGUMENTS")"
 ```

@@ -47,6 +47,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit .loop-spec/adhoc phase_start
 ```
 
 Execute directly on the main thread with base tools. Do not dispatch subagents.
+Rewrite the task description per `skills/shared/prompt-normalize.md` before deriving
+anything from it - the rewritten text is the task everywhere below.
 
 **1. Done-criteria first.** Before touching any file, state 1–3 bullets of what "done"
 means, each verifiable. Show them to the user as part of your normal narration. If the
