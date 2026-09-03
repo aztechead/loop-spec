@@ -230,6 +230,27 @@ check "P: missing data fields degrade gracefully" "[VERIFY] FAILURE: unclassifie
 check "P: malformed data does not break the line" "[PLAN] dispatch agent" \
   "$(con dispatch --phase plan --data 'not-json' 2>/dev/null | tail -1)"
 
+# Case Q: event sink port — every emitted line also reaches LOOP_SPEC_EVENT_SINK
+mkdir -p "$WORK/sink"
+printf '#!/usr/bin/env bash\ncat >> "%s/sink/received.jsonl"\n' "$WORK" > "$WORK/sink/sink.sh"
+chmod +x "$WORK/sink/sink.sh"
+LOOP_SPEC_EVENT_SINK="$WORK/sink/sink.sh" bash "$LIB" emit "$WORK/feat" gate_round --phase spec --data '{"gate":"critique","round":2}' >/dev/null 2>&1
+check "Q: sink received the event" "gate_round" "$(jq -r '.event' "$WORK/sink/received.jsonl")"
+check "Q: sink line carries data" "2" "$(jq -r '.data.round' "$WORK/sink/received.jsonl")"
+check "Q: events.jsonl still appended" "critique" "$(tail -1 "$WORK/feat/events.jsonl" | jq -r '.data.gate')"
+printf '{"event":"result","slug":"x","data":{"status":"completed"}}\n' | LOOP_SPEC_EVENT_SINK="$WORK/sink/sink.sh" bash "$LIB" sink
+check "Q: sink subcommand forwards stdin" "result" "$(tail -1 "$WORK/sink/received.jsonl" | jq -r '.event')"
+check "Q: sink subcommand ignores a non-object" "2" "$(printf 'nope\n' | LOOP_SPEC_EVENT_SINK="$WORK/sink/sink.sh" bash "$LIB" sink 2>/dev/null; wc -l < "$WORK/sink/received.jsonl" | tr -d ' ')"
+# a missing or failing sink is a warning, never an abort, and the file still gets the line
+err="$(LOOP_SPEC_EVENT_SINK="$WORK/sink/missing.sh" bash "$LIB" emit "$WORK/feat" gate_round --phase spec 2>&1 >/dev/null)"; ec=$?
+check "Q: missing sink exits 0" "0" "$ec"
+check "Q: missing sink warns" "yes" "$(grep -q 'not executable' <<<"$err" && echo yes || echo no)"
+printf '#!/usr/bin/env bash\nexit 7\n' > "$WORK/sink/bad.sh"; chmod +x "$WORK/sink/bad.sh"
+err="$(LOOP_SPEC_EVENT_SINK="$WORK/sink/bad.sh" bash "$LIB" emit "$WORK/feat" gate_round --phase spec 2>&1 >/dev/null)"; ec=$?
+check "Q: failing sink exits 0" "0" "$ec"
+check "Q: failing sink warns" "yes" "$(grep -q "sink '$WORK/sink/bad.sh' failed" <<<"$err" && echo yes || echo no)"
+check "Q: unset sink forwards nothing and stays silent" "no" "$(bash "$LIB" emit "$WORK/feat" gate_round --phase spec 2>&1 >/dev/null | grep -q sink && echo yes || echo no)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

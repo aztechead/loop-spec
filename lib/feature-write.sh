@@ -117,4 +117,11 @@ bak="$feature_dir/feature.json.bak"
   exit 2
 }
 
+# The working copy is durable only where the store port says it is
+# (docs/loop-spec/supervisor-interface.md). The default adapter is a no-op.
+bash "$(dirname "${BASH_SOURCE[0]}")/supervisor/store.sh" persist "$feature_dir" feature-write >/dev/null || {
+  echo "feature-write: store persist failed for $feature_dir (LOOP_SPEC_STORE)" >&2
+  exit 2
+}
+
 exit 0

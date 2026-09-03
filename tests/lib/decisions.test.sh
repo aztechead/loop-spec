@@ -73,6 +73,10 @@ check "render prefixes rulings" "- **Ruling:** Shared file owner? → task-001 �
 ec=0; bash "$SCRIPT" add "$KIND_DIR" execute "q" "a" "r" bogus >/dev/null 2>&1 || ec=$?
 check "invalid kind exits 1" "1" "$ec"
 
+bash "$SCRIPT" add "$KIND_DIR" spec "Which store?" "sqlite" "supervisor chose it" supervised >/dev/null
+check "supervised kind recorded" "supervised" "$(bash "$SCRIPT" list "$KIND_DIR" | tail -1 | jq -r '.kind')"
+check "render prefixes supervised answers" "- **Supervisor:** Which store? → sqlite — supervisor chose it" "$(bash "$SCRIPT" render "$KIND_DIR" | tail -1)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

@@ -23,7 +23,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 5.4.0
+Current version: 5.5.0
 
 Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
@@ -42,7 +42,7 @@ Optional: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables agent teams. Without 
 
 Adoption walkthrough: [docs/adopting.md](docs/adopting.md).
 
-Differences: [`skills/shared/claude-harness.md`](skills/shared/claude-harness.md). The Claude Agent SDK (Python and TypeScript) is the SAME harness — it loads plugins and skills natively — so nothing extra is needed to embed loop-spec in an SDK app.
+Differences: [`skills/shared/claude-harness.md`](skills/shared/claude-harness.md). The Claude Agent SDK (Python and TypeScript) is the SAME harness — it loads plugins and skills natively — so nothing extra is needed to embed loop-spec in an SDK app. What an embedding app may plug in — where state is durable, where events go, who answers interview questions — is one contract: [docs/loop-spec/supervisor-interface.md](docs/loop-spec/supervisor-interface.md), selected by `.loop-spec/profile.json` (`bash lib/profile.sh presets`).
 
 ### opencode
 
@@ -244,6 +244,7 @@ More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/archit
 | [docs/loop-spec/agent-output-contract.md](docs/loop-spec/agent-output-contract.md) | `LOOP_SPEC_RESULT` / result.json schema |
 | [docs/loop-spec/sentinel.md](docs/loop-spec/sentinel.md) | Unattended scan/run/watch recipes |
 | [docs/loop-spec/cloud-run-autonomous.md](docs/loop-spec/cloud-run-autonomous.md) | Ephemeral-container profile |
+| [docs/loop-spec/supervisor-interface.md](docs/loop-spec/supervisor-interface.md) | The four ports a supervisor may implement (state store, event sink, decision oracle, lifecycle) and the profile presets |
 
 ## Tests
 

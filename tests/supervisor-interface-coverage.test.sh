@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# supervisor-interface coverage: the supervisor interface is a web of cross-file
+# couplings (design doc -> port dispatchers -> adapters -> call sites -> the skill
+# prose that asks the oracle -> harness contracts -> configuration rows). A renamed
+# script or a dropped cite silently strands an embedding on a port that no longer
+# answers. This pins every edge, mirroring tests/opencode-harness-coverage.test.sh.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
+
+checks=(
+  # -- the design doc names every port and its executable
+  "docs/loop-spec/supervisor-interface.md	lib/supervisor/store.sh"
+  "docs/loop-spec/supervisor-interface.md	lib/events.sh sink"
+  "docs/loop-spec/supervisor-interface.md	lib/supervisor/oracle.sh"
+  "docs/loop-spec/supervisor-interface.md	skills/shared/handoff-port.md"
+  "docs/loop-spec/supervisor-interface.md	tests/lib/supervisor-store-contract.test.sh"
+  "docs/loop-spec/supervisor-interface.md	.loop-spec/profile.json"
+  # -- the store port: dispatcher, both adapters, and every call site
+  "lib/supervisor/store.sh	LOOP_SPEC_STORE"
+  "lib/supervisor/store.sh	store-local.sh"
+  "lib/supervisor/store-mirror.sh	LOOP_SPEC_STORE_DIR"
+  "lib/feature-write.sh	supervisor/store.sh\" persist"
+  "lib/phase-exit.sh	supervisor/store.sh\" persist"
+  "lib/cycle-preflight.sh	supervisor/store.sh\" open"
+  "lib/cycle-preflight.sh	supervisor/store.sh\" list"
+  "lib/cycle-preflight.sh	supervisor/store.sh\" describe"
+  # -- the event sink: emitter and the terminal result
+  "lib/events.sh	LOOP_SPEC_EVENT_SINK"
+  "lib/events.sh	sink)"
+  "lib/cycle-result.sh	events.sh\" sink"
+  # -- the oracle: probe, the record kind, and the two skills that ask
+  "lib/supervisor/oracle.sh	LOOP_SPEC_ORACLE"
+  "lib/supervisor/oracle.sh	oracle=supervisor"
+  "lib/decisions.sh	supervised"
+  "skills/shared/autonomous-mode.md	## The supervised path"
+  "skills/shared/autonomous-mode.md	lib/supervisor/oracle.sh"
+  "skills/shared/autonomous-mode.md	oracle-halt"
+  "skills/shared/autonomous-mode.md	(Recommended)"
+  "skills/spec/SKILL.md	lib/supervisor/oracle.sh\" mode"
+  "skills/spec/SKILL.md	The supervised path"
+  "skills/discuss/SKILL.md	lib/supervisor/oracle.sh\" mode"
+  "skills/discuss/SKILL.md	The supervised path"
+  # -- every harness contract maps the supervised path onto its native question tool
+  "skills/shared/claude-harness.md	canUseTool"
+  "skills/shared/claude-harness.md	lib/supervisor/oracle.sh mode"
+  "skills/shared/opencode-harness.md	lib/supervisor/oracle.sh mode"
+  "skills/shared/adk-harness.md	lib/supervisor/oracle.sh mode"
+  "skills/shared/codex-harness.md	lib/supervisor/oracle.sh mode"
+  # -- the profile: presets, the consumers that apply it, and the docs that cite it
+  "lib/profile.sh	\"supervised\""
+  "lib/profile.sh	\"cloud\""
+  "lib/profile.sh	LOOP_SPEC_PROFILE_PRESET"
+  "lib/cycle-preflight.sh	profile.sh\" env"
+  "lib/phase-mode.sh	profile.sh\" env"
+  "lib/supervisor/oracle.sh	profile.sh\" env"
+  "lib/supervisor/store.sh	profile.sh\" env"
+  "docs/loop-spec/cloud-run-autonomous.md	bash lib/profile.sh show cloud"
+  "docs/loop-spec/configuration.md	LOOP_SPEC_EVENT_SINK"
+  "docs/loop-spec/configuration.md	LOOP_SPEC_STORE_DIR"
+  "docs/loop-spec/configuration.md	LOOP_SPEC_ORACLE"
+  "docs/loop-spec/configuration.md	LOOP_SPEC_PROFILE_PRESET"
+  "README.md	docs/loop-spec/supervisor-interface.md"
+  # -- the native integration map names the SDK and ADK seams, and the reference supervisor runs them
+  "docs/loop-spec/supervisor-interface.md	## Native integration map"
+  "docs/loop-spec/supervisor-interface.md	can_use_tool"
+  "docs/loop-spec/supervisor-interface.md	session_store"
+  "docs/loop-spec/supervisor-interface.md	max_budget_usd"
+  "docs/loop-spec/supervisor-interface.md	PostToolUse"
+  "docs/loop-spec/supervisor-interface.md	long_running_tool_ids"
+  "docs/loop-spec/supervisor-interface.md	invocation_id"
+  "docs/loop-spec/supervisor-interface.md	examples/supervisor/supervisor.py"
+  "skills/shared/claude-harness.md	can_use_tool"
+  "skills/shared/claude-harness.md	examples/supervisor/supervisor.py"
+  "skills/shared/adk-harness.md	LongRunningFunctionTool"
+  "skills/shared/adk-harness.md	after_tool_callback"
+  "extensions/adk/loop_spec_adk/bridge.py	profile.sh"
+  "examples/supervisor/supervisor.py	can_use_tool"
+  "examples/supervisor/supervisor.py	AskUserQuestion"
+  "examples/supervisor/supervisor.py	PostToolUse"
+  "examples/supervisor/supervisor.py	store-mirror.sh"
+  "examples/supervisor/supervisor.py	phase-handoff"
+  "examples/supervisor/supervisor.py	lib/profile.sh"
+  "examples/supervisor/append-sink.sh	LOOP_SPEC_EVENT_SINK_FILE"
+  # -- the suites run against both bundled adapters
+  "tests/run-all.sh	supervisor-store-contract.test.sh lib/supervisor/store-local.sh"
+  "tests/run-all.sh	supervisor-store-contract.test.sh lib/supervisor/store-mirror.sh"
+)
+
+check_fixed_strings "${checks[@]}"
+finish_fixed_string_coverage

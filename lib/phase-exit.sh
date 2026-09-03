@@ -259,6 +259,10 @@ esac
 
 if (( flags == 0 )); then
   rm -f "$feature_dir/.phase-entry.json"
+  bash "$SCRIPT_DIR/supervisor/store.sh" persist "$feature_dir" "phase-exit:$phase" >/dev/null \
+    || flag "[store] persist failed for $feature_dir (LOOP_SPEC_STORE)"
+fi
+if (( flags == 0 )); then
   echo "phase-exit: ok ($phase)"
 else
   echo "phase-exit: $flags flag(s) ($phase)"; exit 1

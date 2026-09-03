@@ -88,7 +88,7 @@ wrong on a machine that also has Claude Code installed.
 | Teams (named spawns, SendMessage, TeamCreate/TeamDelete) | never — `teamsMode` is hard-gated to `none` (`lib/teams-capability.sh`). `spawn_agent` returns a child thread; it does not provide named teammates, peer messaging, or a shared task list |
 | Workflow | never — hard-gated `false` (`lib/workflow-availability.sh`) |
 | TaskCreate / TaskUpdate / TaskList / TaskGet | none. DAG and wave state live where they already durably live: PLAN.md task blocks + `feature.json` |
-| AskUserQuestion | `request_user_input` (blocks the turn). Map the call per the HITL section below. Autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged |
+| AskUserQuestion | `request_user_input` (blocks the turn). Map the call per the HITL section below. Autonomous self-answering follows `skills/shared/autonomous-mode.md` unchanged; when `lib/supervisor/oracle.sh mode` answers `supervisor` the supervised path asks through `request_user_input` first |
 | ToolSearch (deferred-tool rescue) | does not exist; nothing is deferred under Codex — skip rescue steps entirely |
 | EnterWorktree / ExitWorktree | no session-root switch exists. Cycle uses `executionRootMode: "in-place"`: after a clean-base guard it creates/checks out `feat/{slug}` in the session repo and never calls either tool. It does not pretend worktree creation changed cwd |
 
@@ -143,7 +143,8 @@ the flag, or a release that hid it):
   with numbered options and **end the turn**. Resume from the user's next
   message. Never self-answer to keep the cycle moving.
 - **Headless / autonomous / `LOOP_SPEC_NON_INTERACTIVE=1`**: do not call
-  `request_user_input` (nothing would answer it). Follow
+  `request_user_input` (nothing would answer it) unless `lib/supervisor/oracle.sh mode`
+  answers `supervisor`. Follow
   `skills/shared/autonomous-mode.md` or the pinned `LOOP_SPEC_ANSWER_*` /
   `LOOP_SPEC_CMD_*` vars, exactly as on the other harnesses.
 

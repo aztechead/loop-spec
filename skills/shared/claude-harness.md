@@ -104,6 +104,33 @@ PROVEN rather than asserted; opencode and ADK export
 (`mcp`, `bench`, `remote`, `claude-desktop`, ...) are neither proven headless nor
 proven interactive and stay unknown, failing safe.
 
+## Decision oracle (SDK supervisors)
+
+The Agent SDK routes every `AskUserQuestion` call to the `canUseTool`
+(Python `can_use_tool`) callback and takes the answers back as
+`updatedInput.answers`, keyed by question text. That callback is the supervisor's
+seat at the interview. `lib/supervisor/oracle.sh mode` answers `supervisor` when
+`LOOP_SPEC_ORACLE=supervisor` (the `supervised` preset of `lib/profile.sh`), and
+the autonomous self-answer sites then ask first
+(`skills/shared/autonomous-mode.md`, "The supervised path"). A callback that
+wants no say returns the recommended option; one that wants the run stopped
+answers `halt`. `AskUserQuestion` is unavailable inside subagents, and loop-spec
+interviews are main-thread already.
+
+The whole supervisor interface on this harness's own seams
+(`docs/loop-spec/supervisor-interface.md`, "Native integration map"):
+
+| Port | Agent SDK seam |
+|---|---|
+| profile | `ClaudeAgentOptions.env` (`options.env`) carries `lib/profile.sh resolve` |
+| plugin | `plugins=[{"type": "local", "path": ...}]`; verify in the init `SystemMessage` |
+| state store | `cwd` is the key; `session_store` mirrors transcripts beside it |
+| event sink | `PostToolUse` hook on `Bash` reads the phase markers; `LOOP_SPEC_EVENT_SINK` gets every line |
+| decision oracle | `can_use_tool` on `AskUserQuestion`, answers keyed by question text |
+| lifecycle | `ResultMessage.session_id`, `resume`, `max_turns`, `max_budget_usd`; `PreToolUse` `defer` to park a question |
+
+Runnable: `examples/supervisor/supervisor.py`.
+
 ## Chat output style
 
 Claude Code is the only peer with an output-style slot. loop-spec ships

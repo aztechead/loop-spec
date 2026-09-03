@@ -10,14 +10,15 @@
 #
 # Store: JSONL, one decision per line:
 #   {ts, phase, question, answer, rationale, kind}
-# kind is `assumed` (autonomous self-answer, default) or `ruling`
+# kind is `assumed` (autonomous self-answer, default), `supervised` (a supervisor
+# answered through the decision oracle, skills/shared/autonomous-mode.md), or `ruling`
 # (EXECUTE continues past a reversible plan conflict).
 # Location: <dir>/decisions.jsonl where <dir> is the feature dir once it exists.
 # Before the feature dir exists (cycle Steps 0-4), callers use the staging file
 # .loop-spec/decisions-staging.jsonl and `migrate` moves it into the feature dir.
 #
 # Usage:
-#   decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling]
+#   decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling|supervised]
 #       Append one decision. Creates <dir> if missing. kind defaults to assumed.
 #   decisions.sh list <dir>
 #       Print the raw JSONL (empty output when none). Exit 0 always.
@@ -44,8 +45,8 @@ case "${1:-}" in
     fi
     mkdir -p "$dir"
     kind="${7:-assumed}"
-    case "$kind" in assumed|ruling) ;; *)
-      echo "usage: decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling]" >&2
+    case "$kind" in assumed|ruling|supervised) ;; *)
+      echo "usage: decisions.sh add <dir> <phase> <question> <answer> <rationale> [assumed|ruling|supervised]" >&2
       exit 1
       ;;
     esac
@@ -80,6 +81,8 @@ case "${1:-}" in
     jq -r '
       if (.kind // "assumed") == "ruling" then
         "- **Ruling:** \(.question) → \(.answer) — \(.rationale)"
+      elif .kind == "supervised" then
+        "- **Supervisor:** \(.question) → \(.answer) — \(.rationale)"
       else
         "- **\(.question)** → \(.answer) — \(.rationale)"
       end

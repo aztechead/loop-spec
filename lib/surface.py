@@ -26,6 +26,7 @@ DIRS = {
     "lib": [("lib", ".sh"),
             (os.path.join("lib", "graph"), ".sh"),
             (os.path.join("lib", "graph", "probes"), ".sh"),
+            (os.path.join("lib", "supervisor"), ".sh"),
             ("hooks", ".sh"),
             (os.path.join("hooks", "team"), ".sh")],
     "shared": [(os.path.join("skills", "shared"), ".md")],

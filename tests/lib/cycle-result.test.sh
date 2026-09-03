@@ -923,6 +923,16 @@ check "AD2: fail-open still publishes" "completed" \
 check "AD2: fail-open writes no sidecar" "0" \
   "$([[ -f "$RECON_FEAT/delivery.json" ]] && echo 1 || echo 0)"
 
+# AE: the terminal result reaches the event sink as event "result"
+mkdir -p "$WORK/sink"
+printf '#!/usr/bin/env bash\ncat >> "%s/sink/received.jsonl"\n' "$WORK" > "$WORK/sink/sink.sh"
+chmod +x "$WORK/sink/sink.sh"
+LOOP_SPEC_EVENT_SINK="$WORK/sink/sink.sh" bash "$LIB" write "$FEAT_DIR" --status completed \
+  --summary "Sink check." >/dev/null 2>&1
+check "AE: sink received a result event" "result" "$(tail -1 "$WORK/sink/received.jsonl" | jq -r '.event')"
+check "AE: result event carries the slug" "my-feature" "$(tail -1 "$WORK/sink/received.jsonl" | jq -r '.slug')"
+check "AE: result event data is the terminal result" "completed" "$(tail -1 "$WORK/sink/received.jsonl" | jq -r '.data.status')"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

@@ -2,7 +2,9 @@
 
 Autonomous mode makes a run question-free: at every point loop-spec would call
 `AskUserQuestion`, the orchestrator takes the answer it would have recommended, records
-it as an assumed decision, and proceeds. It is ON when the inline token `autonomous`
+it as an assumed decision, and proceeds. The one exception is a supervisor that
+answers ("The supervised path", below), and the probe that names it is
+`lib/supervisor/oracle.sh`. It is ON when the inline token `autonomous`
 appears in the invocation (stripped from the title) or `LOOP_SPEC_AUTONOMOUS=1` is set;
 the cycle persists it as `feature.json.autonomous = true` so phases and resumes see it.
 
@@ -65,6 +67,34 @@ autonomous derives the recommended answer.
    assumed answers exactly like human ones. A reviewer reads what was assumed and can
    rerun with pinned `LOOP_SPEC_ANSWER_*` values or an edited spec.
 4. Proceed without pausing. Never print a question and wait.
+
+## The supervised path
+
+An SDK or ADK supervisor can answer the harness's question tool while the run stays
+autonomous: the Claude Agent SDK routes `AskUserQuestion` to its `canUseTool`
+callback, ADK routes `get_user_choice` to the caller. `bash
+"${CLAUDE_SKILL_DIR}/../../lib/supervisor/oracle.sh" mode --feature-dir "$feature_dir"`
+answers `oracle=supervisor` when `LOOP_SPEC_ORACLE=supervisor` (the `supervised`
+profile preset sets it, `docs/loop-spec/supervisor-interface.md`). On that answer, at
+every self-answer site in SPEC and DISCUSS:
+
+1. Formulate the question exactly as the self-answer rule would, and ask it through the
+   native question tool with the recommended option FIRST and labeled `(Recommended)`.
+   One call per interview round; the placeholder guard still applies, so every question
+   is a real one.
+2. An answer records with kind `supervised`: `decisions.sh add "$dir" "$phase" "<q>"
+   "<a>" "<why>" supervised`. The recommended option, an empty answer, and a denied or
+   failed tool call all fall back to the self-answer rule and record kind `assumed`
+   with a rationale that names why (`supervisor took the recommendation`, `oracle
+   unavailable`).
+3. A free-text answer of exactly `halt` pauses the cycle: publish a paused result with
+   reason `oracle-halt` via `lib/cycle-result.sh write` and return. The supervisor
+   resumes with the answer pinned (`LOOP_SPEC_ANSWER_*`, `RULES.md`, or an edited SPEC).
+4. Precedence above is unchanged: a pinned answer or a decision on record is never
+   re-asked, whoever the oracle is.
+
+`oracle=self` (the default) is the self-answer rule exactly as written. `oracle=human`
+means the run is not autonomous and this file does not apply.
 
 A free-text prompt with no goal to infer (a bare invocation) cannot be self-answered:
 abort with usage guidance. Compaction summaries preserve the original goal, user

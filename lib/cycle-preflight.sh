@@ -15,7 +15,9 @@
 #
 #   {
 #     workspace:  {mode, root, repos?, source?},        # workspace.sh detect (verbatim)
-#     harness:    {name},                               # claude | opencode | adk
+#     harness:    {name},                               # claude | opencode | adk | codex
+#     profile:    {preset, source},                     # profile.sh resolve
+#     store:      {name},                               # supervisor/store.sh describe
 #     execution:  {entrypoint, headless},               # harness.sh entrypoint/headless
 #     teams:      {mode, available},                    # teams-capability.sh
 #     workflows:  {available},                          # workflow-availability.sh
@@ -66,6 +68,24 @@ bash "$SCRIPT_DIR/cycle-result.sh" clear --result-root "$dir"
 bash "$SCRIPT_DIR/runtime-preflight.sh" check-jq
 
 warnings=()
+
+# --- run profile / state store -----------------------------------------------
+# The profile is project policy (docs/loop-spec/supervisor-interface.md); apply it
+# here so every probe below and every env read in this process sees it, and report
+# it so the run's first line says what policy it is under. A profile that does not
+# validate is a warning, not an abort: the run continues on the environment alone.
+profile_json='{"preset":"interactive","source":"default","env":{}}'
+export LOOP_SPEC_PROFILE="${LOOP_SPEC_PROFILE:-$dir/.loop-spec/profile.json}"
+if profile_findings="$(bash "$SCRIPT_DIR/profile.sh" validate 2>&1 >/dev/null)"; then
+  profile_json="$(bash "$SCRIPT_DIR/profile.sh" resolve)"
+  # shellcheck disable=SC2046
+  eval $(bash "$SCRIPT_DIR/profile.sh" env)
+else
+  warnings+=("profile: ${profile_findings//$'\n'/; } — running on the environment alone")
+fi
+store_line="$(bash "$SCRIPT_DIR/supervisor/store.sh" describe 2>&1)" \
+  || warnings+=("store: $store_line")
+store_name="${store_line#store=}"; store_name="${store_name%% *}"
 
 # --- workspace ---------------------------------------------------------------
 ws_json="$(bash "$SCRIPT_DIR/workspace.sh" detect "$dir")"
@@ -224,6 +244,14 @@ print(int(dt.timestamp()) if dt else 0)
 }
 
 dir_abs="$(cd "$dir" && pwd)"
+# A store other than the checkout may hold a slug the working copy lacks (a fresh
+# container resuming a run): open each one before the scan parses the directory.
+while IFS= read -r store_slug; do
+  [[ -n "$store_slug" ]] || continue
+  [[ -f "$dir_abs/.loop-spec/features/$store_slug/feature.json" ]] && continue
+  open_line="$(bash "$SCRIPT_DIR/supervisor/store.sh" open "$dir_abs/.loop-spec/features/$store_slug" 2>&1)" \
+    || warnings+=("store: open $store_slug failed: $open_line")
+done < <(bash "$SCRIPT_DIR/supervisor/store.sh" list "$dir_abs" 2>/dev/null || true)
 scan_feature_root "$dir_abs" "invocation" ""
 
 # Single-repo feature state is created inside its registered feature worktree,
@@ -261,8 +289,12 @@ jq -cn \
   --argjson candidates "$candidates" \
   --argjson skipped "$skipped" \
   --argjson warnings "$warnings_json" \
+  --argjson profile "$profile_json" \
+  --arg store "$store_name" \
   '{workspace: $workspace,
     harness: {name: $harness},
+    profile: {preset: $profile.preset, source: $profile.source},
+    store: {name: $store},
     execution: {entrypoint: $entrypoint, headless: $headless},
     teams: {mode: $teams_mode, available: $teams_available},
     workflows: {available: $wf},

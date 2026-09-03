@@ -4,6 +4,43 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-09-03
+
+### Added
+
+- `docs/loop-spec/supervisor-interface.md`: the contract an autonomous embedding
+  (Claude Agent SDK, Google ADK) programs against, as four ports the plugin owns
+  the artifact side of and a supervisor owns the transport side of. Every port
+  ships with today's behavior as its default adapter.
+- `lib/profile.sh` and `.loop-spec/profile.json`: one named preset
+  (`interactive`, `autonomous`, `supervised`, `cloud`) plus overrides, applied as
+  env by `cycle-preflight.sh`, `phase-mode.sh`, and the supervisor probes. A
+  variable already set in the environment wins over the file.
+  `cycle-preflight.sh run` reports `profile:{preset,source}` and `store:{name}`.
+- `lib/supervisor/store.sh`: the state-store port at the durability boundary.
+  `feature-write.sh` and `phase-exit.sh` call `persist`; the preflight resume scan
+  calls `list` and `open`. `store-local.sh` (the checkout is the store) is the
+  default; `store-mirror.sh` mirrors to `LOOP_SPEC_STORE_DIR`. Any adapter must
+  pass `tests/lib/supervisor-store-contract.test.sh`.
+- `lib/events.sh sink` and `LOOP_SPEC_EVENT_SINK`: every emitted event line, and
+  the terminal result as event `result`, is also written to a supervisor's
+  executable. A failing sink is one warning, never an abort.
+- `lib/supervisor/oracle.sh mode` and `LOOP_SPEC_ORACLE`: the middle mode between
+  the interview and self-answer. `supervisor` makes SPEC and DISCUSS ask through
+  the harness question tool first (Agent SDK `canUseTool`, ADK `get_user_choice`,
+  opencode `question`, Codex `request_user_input`) and record answers as
+  `decisions.sh` kind `supervised`; `halt` pauses with reason `oracle-halt`.
+- `docs/loop-spec/cloud-run-autonomous.md` cites the `cloud` preset instead of
+  carrying the export block.
+- The native integration map: each port named against the Agent SDK seam
+  (`env`, `plugins`, `session_store`, `PostToolUse`, `can_use_tool`, `resume`,
+  `max_budget_usd`) and the ADK seam (`LocalEnvironment`, `BaseArtifactService`,
+  `BasePlugin` callbacks, `LongRunningFunctionTool`, `Runner.run_async
+  invocation_id`) it lands on, in the design doc and both harness contracts.
+  `extensions/adk/loop_spec_adk/bridge.py` resolves the profile through its own
+  environment seam. `examples/supervisor/` is a runnable reference supervisor on the
+  Python Agent SDK that exercises every SDK-side row.
+
 ## [5.4.0] - 2026-09-03
 
 ### Added
