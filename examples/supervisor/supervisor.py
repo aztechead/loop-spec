@@ -202,7 +202,14 @@ async def main() -> int:
             # Lifecycle: the plugin returned after one durable phase; a fresh context resumes it.
             prompt = "/loop-spec:cycle autonomous"
             continue
-        return 0 if result.get("status") == "completed" else 1
+        # "completed" alone is not done: the first live run published status
+        # "completed" from SPEC with outcome "completed-with-gaps". The outcome and
+        # the converged flag are the contract's word on whether work was delivered.
+        done = result.get("outcome") in ("delivered", "no-change-needed") and result.get("converged") is True
+        if not done:
+            print(f"not delivered: outcome={result.get('outcome')} phaseReached={result.get('phaseReached')} "
+                  f"converged={result.get('converged')}", file=sys.stderr)
+        return 0 if done else 1
     print(f"gave up after {args.max_rounds} rounds", file=sys.stderr)
     return 1
 

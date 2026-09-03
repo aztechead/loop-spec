@@ -57,10 +57,11 @@ cite `EVID-NNN`, or write an ASSUMPTION; `skills/shared/grounding-protocol.md`).
   design-shape questions are the system-design stance's deliverables
   (`skills/shared/engineering-stances.md`): who owns each piece of state, how each data
   flow runs end to end, what the API looks like, what is cached and invalidated how.
-- **`self-answer`** (autonomous): the same obligations. First
-  `bash "${CLAUDE_SKILL_DIR}/../../lib/supervisor/oracle.sh" mode --feature-dir "$feature_dir"`;
-  `oracle=supervisor` asks them through `AskUserQuestion` per `skills/shared/autonomous-mode.md`
-  "The supervised path" and records answers as `supervised`; otherwise answered by you from the code,
+- **`self-answer`** (autonomous): the same obligations. The mode line carries
+  `oracle=supervisor` or `oracle=self` (`lib/supervisor/oracle.sh`); `oracle=supervisor`
+  asks them through `AskUserQuestion` per `skills/shared/autonomous-mode.md`
+  "The supervised path" and records answers as `supervised` (`phase-exit.sh` flags a
+  named supervisor that was never asked); otherwise answered by you from the code,
   each recorded with `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" discuss "<q>" "<a>" "<why>"`.
 - **`skip`** (`review-only` or non-interactive): only the unresolved-dimension
   assumptions above.

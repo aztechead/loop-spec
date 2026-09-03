@@ -50,6 +50,11 @@ out="$(bash "$MODE" spec --feature-dir "$FD")"
 check "mode spec: human attached interviews" "path=interview" "${out%% *}"
 out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" spec --feature-dir "$FD")"
 check "mode spec: autonomous self-answers" "path=self-answer" "${out%% *}"
+check "mode spec: self-answer names the oracle" "oracle=self" "$(cut -d' ' -f2 <<<"$out")"
+out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: a supervisor rides on the line" "oracle=supervisor" "$(cut -d' ' -f2 <<<"$out")"
+out="$(bash "$MODE" spec --feature-dir "$FD")"
+check "mode spec: the interview path carries no oracle field" "0" "$(grep -c 'oracle=' <<<"$out")"
 out="$(LOOP_SPEC_NON_INTERACTIVE=1 bash "$MODE" spec --feature-dir "$FD")"
 check "mode spec: non-interactive synthesizes" "path=synthesize" "${out%% *}"
 touch "$FD/spec-draft.md"
@@ -102,11 +107,24 @@ check "mode discuss: human attached grills" "grill=run" "${out%% *}"
 check "mode discuss: gated spec skips the critique" "1" "$(grep -c 'critique=skip' <<<"$out")"
 out="$(LOOP_SPEC_AUTONOMOUS=1 bash "$MODE" discuss --feature-dir "$FD")"
 check "mode discuss: autonomous self-answers the grill" "grill=self-answer" "${out%% *}"
+out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$MODE" discuss --feature-dir "$FD")"
+check "mode discuss: a supervisor rides on the grill line" "oracle=supervisor" "$(cut -d' ' -f2 <<<"$out")"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"review-only"' >/dev/null
 out="$(bash "$MODE" discuss --feature-dir "$FD")"
 check "mode discuss: review-only skips the grill" "grill=skip" "${out%% *}"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
 
+# the oracle gate: a named supervisor that no discuss question reached keeps the phase open
+ec=0; out="$(LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" discuss --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit discuss: supervisor named, nothing asked, flags" "1" "$ec"
+check "exit discuss: the flag names the oracle" "1" "$(grep -c 'FLAG \[oracle\]' <<<"$out")"
+bash "$REPO_ROOT/lib/decisions.sh" add "$FD" discuss "Which store?" "sqlite" "supervisor chose it" supervised >/dev/null
+ec=0; bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit discuss: a supervised decision satisfies the gate" "0" "$ec"
+git -C "$REPO" tag -d post-discuss >/dev/null 2>&1 || true
+bash "$REPO_ROOT/lib/decisions.sh" add "$FD" spec "Runtime?" "python3" "oracle unavailable: question tool denied" >/dev/null
+ec=0; LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_ORACLE=supervisor bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit spec: an assumed decision naming the oracle satisfies the gate" "0" "$ec"
 ec=0; bash "$EXIT" discuss --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit discuss: clean spec passes" "0" "$ec"
 check "exit discuss: checkpoint tagged" "1" "$(git tag | grep -c 'post-discuss')"

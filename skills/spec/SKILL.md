@@ -93,13 +93,14 @@ lowest-scoring dimensions).
   round / done talking). At round 6 still failing, emit the "Max rounds" question
   (write anyway with `gate_passed: false` / keep talking / abandon). Abandon writes
   nothing: report it and return.
-- **`self-answer`** (autonomous): first `bash "${CLAUDE_SKILL_DIR}/../../lib/supervisor/oracle.sh" mode --feature-dir "$feature_dir"`;
-  `oracle=supervisor` asks each perspective's questions through `AskUserQuestion`
-  (recommended option first) and records answers as `supervised` per
-  `skills/shared/autonomous-mode.md` "The supervised path"; what comes back empty or
-  recommended, and everything under `oracle=self`, you answer yourself. Walk all
-  perspectives in ONE pass, answering each question with the option you would have
-  marked recommended: what the code
+- **`self-answer`** (autonomous): the mode line carries `oracle=supervisor` or
+  `oracle=self` (`lib/supervisor/oracle.sh`). `oracle=supervisor` asks each
+  perspective's questions through `AskUserQuestion` (recommended option first) and
+  records answers as `supervised` per `skills/shared/autonomous-mode.md`
+  "The supervised path"; `phase-exit.sh` flags the phase when a named supervisor was
+  never asked. What comes back empty or recommended, and everything under `oracle=self`,
+  you answer yourself. Walk all perspectives in ONE pass, answering each question
+  with the option you would have marked recommended: what the code
   already does first, then industry practice, then the most reversible choice. Score once
   at the end (`rounds_completed: 1`), honestly. A failing gate gets one Seed Closer
   follow-up pass, then writes anyway with the failing dimensions in

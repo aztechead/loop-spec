@@ -35,9 +35,11 @@ checks=(
   "skills/shared/autonomous-mode.md	lib/supervisor/oracle.sh"
   "skills/shared/autonomous-mode.md	oracle-halt"
   "skills/shared/autonomous-mode.md	(Recommended)"
-  "skills/spec/SKILL.md	lib/supervisor/oracle.sh\" mode"
+  "skills/spec/SKILL.md	oracle=supervisor"
+  "lib/phase-mode.sh	supervisor/oracle.sh"
+  "lib/phase-exit.sh	oracle_gate"
   "skills/spec/SKILL.md	The supervised path"
-  "skills/discuss/SKILL.md	lib/supervisor/oracle.sh\" mode"
+  "skills/discuss/SKILL.md	oracle=supervisor"
   "skills/discuss/SKILL.md	The supervised path"
   # -- every harness contract maps the supervised path onto its native question tool
   "skills/shared/claude-harness.md	canUseTool"

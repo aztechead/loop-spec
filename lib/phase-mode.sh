@@ -10,9 +10,10 @@
 #
 # Usage:
 #   phase-mode.sh spec    --feature-dir DIR
-#     path=<ingest|self-answer|synthesize|interview> reason=<text> greenfield=<bool>
+#     path=<ingest|self-answer|synthesize|interview> [oracle=<supervisor|self>] reason=<text> greenfield=<bool>
 #   phase-mode.sh discuss --feature-dir DIR
-#     grill=<run|self-answer|skip> critique=<run|skip> reentry=<bool> reason=<text>
+#     grill=<run|self-answer|skip> [oracle=<supervisor|self>] critique=<run|skip> reentry=<bool> reason=<text>
+#   (oracle= appears on the self-answer path only; lib/supervisor/oracle.sh decides it)
 #   phase-mode.sh plan    --feature-dir DIR
 #     critique=<run|skip> reentry=<bool> reason=<text>
 #   phase-mode.sh verify  --feature-dir DIR
@@ -55,6 +56,15 @@ ws_root="$(fget '.workspace.root // ""')"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null || pwd)"; fi
 docs="$root/docs/loop-spec/features/$slug"
 
+# oracle -> supervisor | self: who answers on the self-answer path (lib/supervisor/oracle.sh).
+# Carried on the mode line so the phase reads it in the one call it already makes;
+# the live run that bit us skipped a separate probe call and never asked.
+oracle() {
+  local line
+  line="$(bash "$SCRIPT_DIR/supervisor/oracle.sh" mode --feature-dir "$feature_dir" 2>/dev/null || true)"
+  case "$line" in oracle=supervisor*) echo supervisor ;; *) echo self ;; esac
+}
+
 # compact_gate NAME -> skip | run (unplanned and errors read as run: fail upward).
 compact_gate() {
   local line
@@ -73,7 +83,7 @@ case "$phase" in
     if [[ -f "$feature_dir/spec-draft.md" ]]; then
       echo "path=ingest reason=spec-draft.md present greenfield=$gf"
     elif [[ "$autonomous" == true ]]; then
-      echo "path=self-answer reason=autonomous greenfield=$gf"
+      echo "path=self-answer oracle=$(oracle) reason=autonomous greenfield=$gf"
     elif [[ "$non_interactive" == true ]]; then
       echo "path=synthesize reason=LOOP_SPEC_NON_INTERACTIVE=1 greenfield=$gf"
     elif [[ "$profile" == "maintenance" ]]; then
@@ -95,7 +105,8 @@ case "$phase" in
       gate=compact*) if [[ "$(compact_gate specCritique)" == "skip" ]]; then critique=skip; creason="compact gatePlan"; else critique=run; creason="compact gatePlan runs it"; fi ;;
       *) critique=run; creason="${line#*reason=}" ;;
     esac
-    echo "grill=$grill critique=$critique reentry=$reentry reason=$why; critique: $creason"
+    oracle_field=""; [[ "$grill" == "self-answer" ]] && oracle_field=" oracle=$(oracle)"
+    echo "grill=$grill$oracle_field critique=$critique reentry=$reentry reason=$why; critique: $creason"
     ;;
   plan)
     signal="$(security_signal "$docs/SPEC.md" "$docs/PLAN.md")"

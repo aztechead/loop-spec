@@ -75,8 +75,10 @@ autonomous: the Claude Agent SDK routes `AskUserQuestion` to its `canUseTool`
 callback, ADK routes `get_user_choice` to the caller. `bash
 "${CLAUDE_SKILL_DIR}/../../lib/supervisor/oracle.sh" mode --feature-dir "$feature_dir"`
 answers `oracle=supervisor` when `LOOP_SPEC_ORACLE=supervisor` (the `supervised`
-profile preset sets it, `docs/loop-spec/supervisor-interface.md`). On that answer, at
-every self-answer site in SPEC and DISCUSS:
+profile preset sets it, `docs/loop-spec/supervisor-interface.md`); `lib/phase-mode.sh`
+carries that answer on the SPEC and DISCUSS mode lines as `oracle=`, and
+`lib/phase-exit.sh` keeps either phase open when a named supervisor was never asked.
+On that answer, at every self-answer site in SPEC and DISCUSS:
 
 1. Formulate the question exactly as the self-answer rule would, and ask it through the
    native question tool with the recommended option FIRST and labeled `(Recommended)`.
