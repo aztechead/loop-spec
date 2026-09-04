@@ -14,6 +14,11 @@ set in one place so a new rung copies from here.
 
 ## Code directives
 
+Read `skills/shared/approach-selection.md` before planning, implementing, or reviewing
+a requested method. It binds the EXECUTE and VERIFY paths below: improve internal
+choices from evidence, preserve explicit constraints, and escalate changes to settled
+design or task boundaries through the existing phase path.
+
 | Fires when | Do | Artifact | Probe |
 |---|---|---|---|
 | You are about to write a line | Read the neighbors first; the surrounding code is the style guide (`human-code.md` §1). Where the repo has an analog, mirror it (`PATTERNS.md`). | The diff looks like the file it lands in | `lib/house-style.sh compare` |

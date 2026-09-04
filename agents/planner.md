@@ -36,6 +36,10 @@ Plus a `tasks` array returned in the completion message for the lead to seed the
 
 ### Step 0 - Produce PATTERNS.md
 
+Read `skills/shared/approach-selection.md`. Validate the selected approach against
+the patterns below and record its rationale in PLAN's opening summary. New evidence
+against a settled choice goes to the lead; do not emit tasks that contradict it.
+
 If `patterns_path` already exists on disk, skip this step and read it directly.
 
 Otherwise, produce PATTERNS.md by following the pattern-mapper role definition at `agents/pattern-mapper.md`. Specifically:

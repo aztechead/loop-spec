@@ -4,6 +4,22 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-09-04
+
+### Added
+
+- Evidence-backed approach selection across SPEC, DISCUSS, PLAN, EXECUTE, and
+  review: distinguish suggested methods from binding constraints, compare plausible
+  alternatives against the same requirements, and carry the reasoning in existing
+  artifacts. Local improvements stay within delegated scope; changes to settled
+  designs use the existing decision and replanning paths.
+- A coverage test pins the shared contract to phase and agent entry points.
+
+### Fixed
+
+- Prompt normalization preserves suggested methods and their rationale so design
+  phases can evaluate them instead of losing them during the outcome rewrite.
+
 ## [6.0.0] - 2026-09-04
 
 ### Changed
