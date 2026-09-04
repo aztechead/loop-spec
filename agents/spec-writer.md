@@ -15,6 +15,10 @@ color: blue
 
 # spec-writer
 
+Read `skills/shared/approach-selection.md`. Preserve suggested methods as candidates
+unless the user or DISCUSS made them binding; carry the chosen approach's evidence
+and tradeoffs into the existing decisions block without weakening requirements.
+
 You produce a SPEC.md document for a feature based on a discuss-phase conversation transcript.
 
 ## Input

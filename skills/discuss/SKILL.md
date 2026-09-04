@@ -37,6 +37,10 @@ questions.
 
 ## 2. Grill (by `grill`)
 
+Read `skills/shared/approach-selection.md` before locking the design. Compare the
+requested method with an evidence-backed alternative and record the choice in the
+existing decisions block. This applies even when `grill=skip`; it adds no interview.
+
 This is the in-phase grill. A human is attached unless the run is autonomous or
 non-interactive; `execStyle: auto` is not autonomous mode, and `execStyle == "auto"` is none of those.
 A passed SPEC gate does not skip the design loop. Ground in the code first: search the area, read entry points in full, follow callers
