@@ -20,7 +20,8 @@
 #   execute   every PLAN task id published (tasks.json status=done), greenfield
 #             command backfill, at-end commit strategy
 #   verify    artifact-lint verification, verification-grounding-lint
-#   iterate   ITERATION.md present (--terminal also closes the phase)
+#   iterate   ITERATION.md present, converged-floor for a converged verdict
+#             (--terminal also closes the phase)
 #
 # Egress guard: when phase-entry.sh left <DIR>/.phase-entry.json, every feature.json
 # path the phase changed is checked against that phase's allow-list (WRITES below). A
@@ -266,6 +267,10 @@ case "$phase" in
     ;;
   iterate)
     [[ -f "$docs/ITERATION.md" ]] || flag "[iteration] $docs/ITERATION.md missing"
+    if [[ "$(fget '.iterate.lastVerdict.converged // false')" == "true" ]]; then
+      spec="$(fget '.artifacts.spec // ""')"; [[ -n "$spec" ]] || spec="$docs/SPEC.md"
+      run_gate converged-floor lib converged-floor "$spec" "$docs/VERIFICATION.md"
+    fi
     if (( flags == 0 )); then
       fset artifacts.iteration "\"$docs/ITERATION.md\""
       commit_paths "iterate: $slug iteration $(fget '.iterate.used')" "$docs/ITERATION.md" .loop-spec/BACKLOG.md

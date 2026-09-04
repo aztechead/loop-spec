@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from paths import repo_path  # noqa: E402
 
 graph_path, feature_dir, dry_run, resume, step_mode, repo_root, script_dir = sys.argv[1:8]
+completed_node = sys.argv[8] if len(sys.argv) > 8 else ""
 dry_run = dry_run == "1"
 resume = resume == "1"
 step_mode = step_mode == "1"
@@ -38,15 +39,16 @@ out_edges = {}
 for e in edges:
     out_edges.setdefault(e["from"], []).append(e)
 
-loop_counts = {}   # (from,to) -> times taken
+loop_counts = {}   # JSON-encoded [from,to] -> times taken, persisted in checkpoints
 node_attempts = {}  # node id -> visits so far this process (fresh each invocation)
 
 
 class RouteAbort(Exception):
-    def __init__(self, node_id, diagnostics):
+    def __init__(self, node_id, diagnostics, reason="no-route-satisfied"):
         super(RouteAbort, self).__init__(node_id)
         self.node_id = node_id
         self.diagnostics = diagnostics
+        self.reason = reason
 
 
 def _feature_json():
@@ -160,6 +162,20 @@ def run_condition(cond, node_id):
     return result
 
 
+def admit_edge(edge):
+    key = json.dumps([edge["from"], edge["to"]])
+    limits = [e["ceiling"] for e in out_edges.get(edge["from"], [])
+              if e.get("kind") == "loop" and e["to"] == edge["to"]]
+    if limits:
+        used = loop_counts.get(key, 0)
+        ceiling = min(limits)
+        if used >= ceiling:
+            raise RouteAbort(edge["from"], "loop ceiling exhausted for %s -> %s (%d/%d)" %
+                             (edge["from"], edge["to"], used, ceiling), "loop-ceiling-exhausted")
+        loop_counts[key] = used + 1
+    return edge
+
+
 def pick_next(node_id):
     """Return (edge_dict, edge_kind_label, probe_path, probe_token, probe_reason).
     edge_dict is None at a true terminal (no candidates, or a loop ceiling
@@ -179,11 +195,11 @@ def pick_next(node_id):
             r = run_condition(cond, node_id)
             results.append((e, r))
             if r["satisfied"]:
-                return (e, "route:%s" % r["token"], cond.get("probe"), r["token"], r["reason"])
+                return (admit_edge(e), "route:%s" % r["token"], cond.get("probe"), r["token"], r["reason"])
         route_default = node.get("routeDefault")
         if route_default:
             synth = {"from": node_id, "to": route_default, "kind": "routeDefault"}
-            return (synth, "routeDefault:%s" % route_default, None, None,
+            return (admit_edge(synth), "routeDefault:%s" % route_default, None, None,
                     "no route satisfied; routeDefault=%s" % route_default)
         diag_lines = []
         for e, r in results:
@@ -196,16 +212,15 @@ def pick_next(node_id):
 
     if chains:
         e = chains[0]
-        return (e, e.get("kind", "chain"), None, None, e.get("kind", "chain"))
+        return (admit_edge(e), e.get("kind", "chain"), None, None, e.get("kind", "chain"))
 
     if loops:
         for e in loops:
-            key = (e["from"], e["to"])
+            key = json.dumps([e["from"], e["to"]])
             used = loop_counts.get(key, 0)
             ceiling = e.get("ceiling", 0)
             if used < ceiling:
-                loop_counts[key] = used + 1
-                return (e, "loop", None, None, "%d/%s" % (used + 1, ceiling))
+                return (admit_edge(e), "loop", None, None, "%d/%s" % (used + 1, ceiling))
         return (None, "loop-ceiling-exhausted", None, None, None)
 
     return (None, "terminal", None, None, None)
@@ -224,16 +239,22 @@ def emit_trace(node_id, edge_label, probe, reason, effort):
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def checkpoint(node_id, edge_label, effort):
+def checkpoint(node_id, edge_label, effort, status="completed"):
     if dry_run:
         return
-    subprocess.call([
+    result = subprocess.run([
         "bash", os.path.join(script_dir, "checkpoint.sh"), "append",
         "--feature-dir", feature_dir,
         "--node", node_id,
         "--edge", edge_label,
         "--effort", effort or "system2",
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        "--status", status,
+        "--loop-counts", json.dumps(loop_counts),
+    ], stdout=subprocess.DEVNULL)
+    if result.returncode:
+        print("run.sh: checkpoint publication failed at %s; refusing to advance" % node_id,
+              file=sys.stderr)
+        sys.exit(1)
 
 
 def latest_checkpoint():
@@ -529,8 +550,14 @@ def process_node(current, admitting, defer_agent_routing):
     kind = node.get("kind")
     body = node.get("body")
     label = node.get("label") or current
+    if admitting == "resume:terminal":
+        descriptor = {"node": current, "label": label, "kind": kind, "body": body,
+                      "effort": node.get("effort", "system2"), "nextEdge": admitting,
+                      "terminal": True, "paused": False}
+        return {"status": "terminal", "descriptor": descriptor, "next": None}
     attempt = node_attempts.get(current, 0)
     node_attempts[current] = attempt + 1
+    checkpoint(current, admitting, node.get("effort"), "started")
 
     if not dry_run:
         ok, err = assert_reads(current)
@@ -555,9 +582,12 @@ def process_node(current, admitting, defer_agent_routing):
         if os.path.isfile(feat_path):
             fw = os.environ.get("LOOP_SPEC_FEATURE_WRITE") or os.path.join(
                 repo_root, "lib", "feature-write.sh")
-            subprocess.call(
+            write_rc = subprocess.call(
                 ["bash", fw, "set", feature_dir, "currentPhase", json.dumps(current)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                stdout=subprocess.DEVNULL)
+            if write_rc:
+                print("run.sh: cannot persist phase %s; refusing dispatch" % current, file=sys.stderr)
+                sys.exit(1)
 
     if not step_mode:
         print("%s\t%s\t%s\t%s" % (current, admitting, kind, label))
@@ -587,7 +617,7 @@ def process_node(current, admitting, defer_agent_routing):
                 current, admit_reason or "no admit condition declared")
             emit_trace(current, admitting, admit_probe,
                        "human-admit-unresolved:%s" % (admit_reason or "no-admit"), effort)
-            checkpoint(current, admitting, effort)
+            checkpoint(current, admitting, effort, "failed")
             publish_result("failed", detail)
             print("run.sh: %s" % detail, file=sys.stderr)
             sys.exit(1)
@@ -612,7 +642,7 @@ def process_node(current, admitting, defer_agent_routing):
         rc = dispatch_subgraph(node)
         if rc != 0:
             emit_trace(current, admitting, None, "subgraph-failed:%d" % rc, effort)
-            checkpoint(current, admitting, effort)
+            checkpoint(current, admitting, effort, "failed")
             sys.exit(rc)
 
     dispatch_rc = None
@@ -623,7 +653,7 @@ def process_node(current, admitting, defer_agent_routing):
             detail = "%s failed (exit %d); %s" % (current, dispatch_rc, conflict_line)
             if kind == "gate":
                 emit_trace(current, admitting, body, "gate-failed:%d %s" % (dispatch_rc, conflict_line), effort)
-                checkpoint(current, admitting, effort)
+                checkpoint(current, admitting, effort, "failed")
                 publish_result("failed", "gate %s" % detail)
                 print("run.sh: gate %s" % detail, file=sys.stderr)
                 # The body's own diagnostic is what tells a reader whether the
@@ -634,6 +664,9 @@ def process_node(current, admitting, defer_agent_routing):
             print("run.sh: function body %s" % detail, file=sys.stderr)
             if dispatch_out:
                 print(dispatch_out, file=sys.stderr)
+            checkpoint(current, admitting, effort, "failed")
+            publish_result("failed", "function body %s" % detail)
+            sys.exit(1)
 
     if kind == "function" and dispatch_rc is None and body and _is_cycle_result_body(
             repo_path(body, repo_root)) and not dry_run:
@@ -641,7 +674,8 @@ def process_node(current, admitting, defer_agent_routing):
             sys.exit(3)
 
     emit_trace(current, admitting, None, effort_reason, effort)
-    checkpoint(current, admitting, effort)
+    checkpoint(current, admitting, effort,
+               "started" if kind == "agent" and defer_agent_routing else "completed")
 
     descriptor = {"node": current, "label": label, "kind": kind, "body": body,
                   "effort": effort, "nextEdge": admitting, "terminal": False, "paused": False}
@@ -672,10 +706,15 @@ def process_node(current, admitting, defer_agent_routing):
 
 def resolve_start():
     """Start-node resolution (graph-remediation-contract.md sec 5), in priority
-    order. The engine MUST NOT write currentPhase before this returns — nothing
-    here writes state, it only reads the pause record / ledger / feature.json
-    and (for the first two) evaluates the resolved node's own outgoing edges to
-    find its successor. Returns (node_id, admitting_label)."""
+    order. The engine MUST NOT write currentPhase before this returns. A caller's
+    completion acknowledgement is checkpointed before outgoing routes are resolved.
+    Returns (node_id, admitting_label)."""
+    latest = latest_checkpoint()
+    counts = latest.get("loopCounts", {})
+    if not isinstance(counts, dict) or any(type(value) is not int or value < 0 for value in counts.values()):
+        print("run.sh: checkpoint loopCounts is invalid; refusing to reset retry budgets", file=sys.stderr)
+        sys.exit(1)
+    loop_counts.update(counts)
     # 1. Pause record -> successor of the paused node; delete the pause record
     #    (re-entering the paused node is the deadlock this replaces).
     pause_path = os.path.join(feature_dir, "graph-pause.json")
@@ -694,14 +733,25 @@ def resolve_start():
             # Paused node turned out terminal (graph reshaped under us) — fall
             # through to the ledger/currentPhase/entry chain below.
 
-    # 2. Non-empty checkpoint ledger -> successor of the last checkpointed node.
-    latest = latest_checkpoint()
+    # 2. Only a completed node admits its successor. A dispatch descriptor is
+    #    an intent to work, not proof the agent returned successfully.
+    if completed_node:
+        last_node = latest.get("node")
+        if last_node != completed_node or nodes.get(last_node, {}).get("kind") != "agent":
+            print("run.sh: completion %s does not match pending agent %s" % (completed_node, last_node),
+                  file=sys.stderr)
+            sys.exit(1)
+        checkpoint(last_node, latest.get("edge", "returned"), latest.get("effort"), "completed")
+        latest["status"] = "completed"
     if not latest.get("empty"):
         last_node = latest.get("node")
         if last_node in nodes:
+            if latest.get("status", "completed") != "completed":
+                return last_node, latest.get("edge", "resume:incomplete")
             edge, edge_label, _p, _t, _r = pick_next(last_node)
             if edge is not None:
                 return edge["to"], "%s:%s->%s" % (edge.get("kind"), edge["from"], edge["to"])
+            return last_node, "resume:terminal"
 
     # 3. feature.json.currentPhase (pre-3.0 compatibility path): a feature
     #    created before the ledger existed resumes where its committed state
@@ -722,10 +772,13 @@ def _abort(abort):
     # may no longer resolve the way it did when that node first ran) -- both
     # call sites below share this handler so a resume-time abort gets the same
     # exit 5 + diagnostic as a mid-traversal one, never an uncaught traceback.
-    diag = "run.sh: no route satisfied at node %r and no routeDefault declared\n%s" % (
-        abort.node_id, abort.diagnostics)
+    if abort.reason == "loop-ceiling-exhausted":
+        diag = "run.sh: %s" % abort.diagnostics
+    else:
+        diag = "run.sh: no route satisfied at node %r and no routeDefault declared\n%s" % (
+            abort.node_id, abort.diagnostics)
     print(diag, file=sys.stderr)
-    publish_result("failed", "no route satisfied at node %s" % abort.node_id)
+    publish_result("failed", "%s at node %s" % (abort.reason, abort.node_id))
     sys.exit(5)
 
 

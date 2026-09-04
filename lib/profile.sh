@@ -168,6 +168,5 @@ fi
 while IFS= read -r key; do
   [[ -n "$key" ]] || continue
   if (( all == 0 )) && [[ -n "${!key+set}" ]]; then continue; fi
-  value="$(jq -r --arg k "$key" '.[$k]' <<<"$resolved")"
-  printf "export %s='%s'\n" "$key" "${value//\'/\'\\\'\'}"
+  jq -r --arg k "$key" '"export \($k)=\(.[$k] | @sh)"' <<<"$resolved"
 done < <(jq -r 'keys[]' <<<"$resolved")

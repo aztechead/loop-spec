@@ -23,7 +23,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 5.5.0
+Current version: 6.0.0
 
 Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
@@ -257,14 +257,19 @@ More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/archit
 ```bash
 bash tests/run-unit.sh         # fast edit loop; tests coupled to uncommitted changes
 bash tests/run-unit.sh main    # tests coupled to the whole branch diff
-bash tests/run-all.sh          # unit gate: tests/lib/*.test.sh, parallel by default
+bash tests/run-all.sh          # complete offline gate, parallel by default
+RUN_ALL_PROFILE=unit bash tests/run-all.sh  # shorter lib-only gate
 ```
 
 `RUN_ALL_JOBS` controls concurrency and `RUN_ALL_VERBOSE=1` restores every successful
 suite's detailed log. The fast gate uses the coverage index plus same-name unit suites to
-select the checks coupled to the changed files. Every suite is offline — no network, no
+select the checks coupled to the changed files, including integration suites. Unknown
+selections fail instead of reporting an empty success. Every suite is offline — no network, no
 live model calls; end-to-end coverage is the manual matrix in
 [`tests/README.md`](tests/README.md).
+
+Reliability design and the September 2026 source review:
+[specs, loops, and graph recovery](docs/loop-spec/reliability.md).
 
 ## License
 

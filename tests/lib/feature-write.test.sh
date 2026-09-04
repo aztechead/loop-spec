@@ -107,6 +107,8 @@ err=$(bash "$LIB" set "$WORK/feat" 'workspace.repos[0]' '"x"' 2>&1 >/dev/null) &
 check "L: array-index dot_path rejected" "1" "$exit_code"
 check "L: error names the limitation" "1" "$(grep -c 'array indices are not' <<<"$err")"
 
+python3 "$(dirname "$0")/feature-write-concurrency.py" "$LIB" || FAIL=$((FAIL + 1))
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

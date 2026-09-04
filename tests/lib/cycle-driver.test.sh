@@ -129,6 +129,19 @@ check "resume: in-place feature resumes from its root" "add-a-json-flag" "$(jq -
 ec=0; (cd "$WORK" && drv resume --dir "$WORK" --feature-root "$REPO" >/dev/null 2>&1) || ec=$?
 check "resume: in-place feature refuses another root" "1" "$ec"
 
+OTHER="$REPO/.loop-spec/features/aaa-other"
+mkdir -p "$OTHER"
+jq '.slug="aaa-other" | .currentTeamName="untouched"' "$FD/feature.json" > "$OTHER/feature.json"
+ec=0; drv resume --dir "$REPO" --feature-root "$REPO" >/dev/null 2>&1 || ec=$?
+check "resume: shared root without identity refuses ambiguity" "1" "$ec"
+out="$(drv resume --dir "$REPO" --feature-root "$REPO" --slug add-a-json-flag 2>/dev/null)"
+check "resume: selected slug survives shared checkout" "add-a-json-flag" "$(jq -r '.slug' <<<"$out")"
+check "resume: other feature remains untouched" "untouched" "$(jq -r '.currentTeamName' "$OTHER/feature.json")"
+ec=0; drv resume --dir "$REPO" --feature-root "$REPO" --slug missing >/dev/null 2>&1 || ec=$?
+check "resume: missing selected feature never falls back" "1" "$ec"
+ec=0; drv resume --dir "$REPO" --feature-root "$REPO" --slug ../add-a-json-flag >/dev/null 2>&1 || ec=$?
+check "resume: slug cannot traverse directories" "1" "$ec"
+
 # --- finish / escalate -----------------------------------------------------------
 ec=0; drv finish --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "finish: no delivery sidecar is delivery-incomplete" "1" "$ec"

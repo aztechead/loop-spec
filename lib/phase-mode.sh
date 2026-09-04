@@ -25,8 +25,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC2046
-eval $(bash "$SCRIPT_DIR/profile.sh" env 2>/dev/null || true)
+eval "$(bash "$SCRIPT_DIR/profile.sh" env 2>/dev/null || true)"
 phase="${1:-}"; shift || true
 feature_dir=""
 while [[ $# -gt 0 ]]; do

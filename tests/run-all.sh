@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Fast unit gate: runs the tests/lib/*.test.sh suites, minus the ones tagged
-# integration (subprocess-heavy or multi-file). Hook, validator, harness-coverage,
-# and workflow suites stay registered below but do not run here; invoke a suite's
-# own file directly to run one of those by hand.
+# Complete offline gate: unit, integration, hook, harness, and workflow suites.
+# RUN_ALL_PROFILE=unit keeps the shorter lib-only gate; selected runs every named
+# suite, including integration tests, and rejects unknown selections.
 #
 # Usage: bash tests/run-all.sh
 #
@@ -32,10 +31,10 @@ SUITE_RESULTS=()
 SUITE_REPORTED=()
 SUITE_BATCH=0
 
-RUN_ALL_PROFILE="${RUN_ALL_PROFILE:-unit}"
+RUN_ALL_PROFILE="${RUN_ALL_PROFILE:-full}"
 case "$RUN_ALL_PROFILE" in
-  unit|selected) ;;
-  *) echo "run-all.sh: RUN_ALL_PROFILE must be unit or selected" >&2; exit 2 ;;
+  full|unit|selected) ;;
+  *) echo "run-all.sh: RUN_ALL_PROFILE must be full, unit, or selected" >&2; exit 2 ;;
 esac
 RUN_ALL_ONLY_PATHS="${RUN_ALL_ONLY_PATHS:-}"
 if [[ "$RUN_ALL_PROFILE" == "selected" && -z "$RUN_ALL_ONLY_PATHS" ]]; then
@@ -59,6 +58,8 @@ RUN_ALL_JOBS="${RUN_ALL_JOBS:-$default_jobs}"
   || { echo "run-all.sh: RUN_ALL_JOBS must be 32 or less" >&2; exit 2; }
 
 RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/loop-spec-run-all-XXXXXX")"
+MATCHED_PATHS="$RUN_DIR/matched-paths"
+touch "$MATCHED_PATHS"
 printf '[user]\n\tname = loop-spec-tests\n\temail = tests@loop-spec.invalid\n' > "$RUN_DIR/gitconfig"
 cleanup() {
   local pid
@@ -94,17 +95,13 @@ run_suite() {
   fi
   if [[ "$RUN_ALL_PROFILE" == "selected" ]]; then
     while IFS= read -r selected_path; do
-      if [[ -n "$selected_path" && " $cmd " == *" $selected_path"* ]]; then
+      if [[ -n "$selected_path" && " $cmd " == *" $selected_path "* ]]; then
         selected=true
-        break
+        printf '%s\n' "$selected_path" >> "$MATCHED_PATHS"
       fi
     done <<< "$RUN_ALL_ONLY_PATHS"
   fi
   if [[ "$RUN_ALL_PROFILE" == "selected" && "$selected" != "true" ]]; then
-    TOTAL_SKIP=$((TOTAL_SKIP + 1))
-    return
-  fi
-  if [[ "$RUN_ALL_PROFILE" == "selected" && "$tier" == "integration" ]]; then
     TOTAL_SKIP=$((TOTAL_SKIP + 1))
     return
   fi
@@ -204,6 +201,7 @@ run_suite "lib/graph-state"           "bash tests/lib/graph-state.test.sh"
 run_suite "lib/graph-gate"            "bash tests/lib/graph-gate.test.sh"
 run_suite "lib/output-digest"         "bash tests/lib/output-digest.test.sh"
 run_suite "lib/graph-checkpoint"      "bash tests/lib/graph-checkpoint.test.sh"
+run_suite "lib/graph-recovery"        "bash tests/lib/graph-recovery.test.sh"
 run_suite "lib/graph-trace"           "bash tests/lib/graph-trace.test.sh"
 run_suite "lib/graph-run"             "bash tests/lib/graph-run.test.sh" integration
 run_suite "lib/graph-gate-dispatch"    "bash tests/lib/graph-gate-dispatch.test.sh"
@@ -406,6 +404,16 @@ else
 fi
 
 flush_suites
+
+if [[ "$RUN_ALL_PROFILE" == "selected" ]]; then
+  while IFS= read -r selected_path; do
+    [[ -n "$selected_path" ]] || continue
+    if ! grep -qxF -- "$selected_path" "$MATCHED_PATHS"; then
+      echo "run-all.sh: selected suite is not registered or unavailable: $selected_path" >&2
+      exit 2
+    fi
+  done <<< "$RUN_ALL_ONLY_PATHS"
+fi
 
 echo ""
 echo "=== Summary ==="

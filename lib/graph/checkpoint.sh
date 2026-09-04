@@ -2,11 +2,12 @@
 # Per-node checkpoint ledger — append-only records at each graph boundary.
 #
 # Usage:
-#   checkpoint.sh append --feature-dir DIR --node ID --edge EDGE --effort MODE
+#   checkpoint.sh append --feature-dir DIR --node ID --edge EDGE --effort MODE [--status started|completed|failed]
 #   checkpoint.sh latest --feature-dir DIR
 #
 # Ledger path: <feature_dir>/graph-checkpoints.jsonl
-# Each record: {node, stateHash, gitSha, ts, effort, edge}
+# Each record: {node, stateHash, gitSha, ts, effort, edge, status, loopCounts}
+# Legacy records without status mean completed. Started/failed nodes must be retried.
 #
 # latest prints one JSON object, or {"empty":true} when the ledger holds no PARSEABLE
 # record. A ledger truncated mid-append (a killed run, a full disk) leaves a partial last
@@ -28,6 +29,8 @@ feature_dir=""
 node=""
 edge=""
 effort=""
+status="completed"
+loop_counts='{}'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,6 +38,8 @@ while [[ $# -gt 0 ]]; do
     --node) node="${2:-}"; shift 2 ;;
     --edge) edge="${2:-}"; shift 2 ;;
     --effort) effort="${2:-}"; shift 2 ;;
+    --status) status="${2:-}"; shift 2 ;;
+    --loop-counts) loop_counts="${2:-}"; shift 2 ;;
     *) usage ;;
   esac
 done
@@ -49,9 +54,9 @@ case "$cmd" in
       exit 0
     fi
     latest_record=""
-    while IFS= read -r record; do
+    while IFS= read -r record || [[ -n "$record" ]]; do
       [[ -n "${record//[[:space:]]/}" ]] || continue
-      jq -e 'type == "object"' >/dev/null 2>&1 <<<"$record" || continue
+      jq -e 'type == "object" and (.node | type == "string") and (.edge | type == "string")' >/dev/null 2>&1 <<<"$record" || continue
       latest_record="$record"
     done < "$ledger"
     if [[ -z "$latest_record" ]]; then
@@ -63,6 +68,7 @@ case "$cmd" in
     ;;
   append)
     [[ -n "$node" && -n "$edge" && -n "$effort" ]] || usage
+    case "$status" in started|completed|failed) ;; *) usage ;; esac
     [[ -d "$feature_dir" ]] || { echo "checkpoint.sh: feature dir missing" >&2; exit 1; }
     fj="$feature_dir/feature.json"
     if [[ -f "$fj" ]]; then
@@ -82,8 +88,22 @@ case "$cmd" in
       --arg ts "$ts" \
       --arg effort "$effort" \
       --arg edge "$edge" \
-      '{node:$node, stateHash:$stateHash, gitSha:$gitSha, ts:$ts, effort:$effort, edge:$edge}' \
-      >> "$ledger"
+      --arg status "$status" \
+      --argjson loopCounts "$loop_counts" \
+      '{node:$node, stateHash:$stateHash, gitSha:$gitSha, ts:$ts, effort:$effort, edge:$edge, status:$status, loopCounts:$loopCounts}' \
+      | python3 -c '
+import fcntl, os, sys
+record = sys.stdin.buffer.read()
+with open(sys.argv[1], "ab+") as stream:
+    fcntl.flock(stream, fcntl.LOCK_EX)
+    if stream.tell():
+        stream.seek(-1, os.SEEK_END)
+        if stream.read(1) != b"\n":
+            stream.write(b"\n")
+    stream.write(record)
+    stream.flush()
+    os.fsync(stream.fileno())
+' "$ledger"
     exit 0
     ;;
   *)

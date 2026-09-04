@@ -10,13 +10,12 @@
 # Checks, given SPEC.md and VERIFICATION.md:
 #   1. Every Good Enough criterion (GE-001..GE-NNN, numbered by SPEC checkbox
 #      order) has a `- criterion: GE-NNN |` grounding row in VERIFICATION.md.
-#   2. No row of the "## Acceptance criteria" table carries status FAIL.
+#   2. Every criterion has exactly one PASS result in "## Acceptance criteria".
 #
 # Usage: converged-floor.sh <spec-path> <verification-path>
 #
 # Exit codes:
-#   0  floor holds (or SPEC has no Good Enough section — skipped, consistent
-#      with criteria-coverage.sh)
+#   0  floor holds
 #   1  floor violated (each violation printed as "FLOOR <message>") — treat the
 #      verdict as NOT converged; unreadable VERIFICATION.md with an existing
 #      Good Enough section also fails (fail closed: VERIFY must have written it)
@@ -33,11 +32,12 @@ verification_path="${2:-}"
   exit 2
 }
 
-# Fail-open only on the SPEC side (no spec / no section = nothing to floor).
+# A missing contract is missing evidence, never an empty success condition.
 spec_content=""
 if ! spec_content=$(cat "$spec_path" 2>/dev/null); then
-  echo "converged-floor: skipped (spec not readable: $spec_path)" >&2
-  exit 0
+  echo "FLOOR spec is not readable: $spec_path"
+  echo "converged-floor: 1 violation(s)"
+  exit 1
 fi
 
 criteria_count=$(printf '%s\n' "$spec_content" \
@@ -45,8 +45,9 @@ criteria_count=$(printf '%s\n' "$spec_content" \
   | grep -cE '^\s*- \[[ xX]\]' || true)
 
 if [[ "$criteria_count" -eq 0 ]]; then
-  echo "converged-floor: skipped (no Good Enough checkbox criteria in $spec_path)" >&2
-  exit 0
+  echo "FLOOR no Good Enough checkbox criteria in $spec_path"
+  echo "converged-floor: 1 violation(s)"
+  exit 1
 fi
 
 violations=0
@@ -56,10 +57,24 @@ if ! verification_content=$(cat "$verification_path" 2>/dev/null); then
   exit 1
 fi
 
+acceptance_rows="$(awk '
+  /^##[[:space:]]+Acceptance criteria[[:space:]]*$/ {active=1; next}
+  active && /^#/ {active=0}
+  active && /^\|/ {print}
+' <<<"$verification_content")"
 for ((i = 1; i <= criteria_count; i++)); do
   ge_id=$(printf 'GE-%03d' "$i")
   if ! grep -qE "^\s*- criterion:\s*${ge_id}\b" <<<"$verification_content"; then
     echo "FLOOR $ge_id has no grounding row in $verification_path — unverified Good Enough scope cannot converge"
+    violations=$((violations + 1))
+  fi
+  result="$(awk -F'|' -v id="$ge_id" -v number="$i" '
+    {gsub(/^[ \t]+|[ \t]+$/, "", $2); gsub(/^[ \t]+|[ \t]+$/, "", $4)}
+    $2 == id || $2 == number {count++; status=$4}
+    END {if (count == 1 && status == "PASS") print "PASS"; else print "missing, duplicate, or non-PASS"}
+  ' <<<"$acceptance_rows")"
+  if [[ "$result" != "PASS" ]]; then
+    echo "FLOOR $ge_id acceptance result is $result in $verification_path"
     violations=$((violations + 1))
   fi
 done
@@ -71,7 +86,7 @@ while IFS= read -r line; do
     echo "FLOOR acceptance table row still FAIL: ${line# }"
     violations=$((violations + 1))
   fi
-done < <(grep -E '^\|' <<<"$verification_content")
+done <<<"$acceptance_rows"
 
 if [[ "$violations" -gt 0 ]]; then
   echo "converged-floor: $violations violation(s)"

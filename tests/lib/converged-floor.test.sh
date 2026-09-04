@@ -76,14 +76,23 @@ check "FAIL substring in evidence cell is not a status" "$([[ $? -eq 0 ]] && ech
 bash "$LIB" "$tmp/SPEC.md" "$tmp/does-not-exist.md" >/dev/null 2>&1
 check "missing VERIFICATION fails closed" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 
-# No Good Enough section -> skipped (exit 0), consistent with criteria-coverage.
+# A missing contract cannot justify convergence.
 printf '# Feature\n\nno criteria here\n' > "$tmp/SPEC-none.md"
 bash "$LIB" "$tmp/SPEC-none.md" "$tmp/does-not-exist.md" >/dev/null 2>&1
-check "no Good Enough section skips" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
+check "no Good Enough section fails closed" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 
 # Missing spec -> fail-open skip (nothing to floor).
 bash "$LIB" "$tmp/no-spec.md" "$tmp/V.md" >/dev/null 2>&1
-check "missing spec skips" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
+check "missing spec fails closed" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
+
+for status in PENDING SKIP UNKNOWN; do
+  sed "s/| 2 | output contains marker | PASS |/| 2 | output contains marker | $status |/" "$tmp/V.md" > "$tmp/V-pending.md"
+  bash "$LIB" "$tmp/SPEC.md" "$tmp/V-pending.md" >/dev/null 2>&1
+  check "$status acceptance cannot converge" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
+done
+grep -v '^| 2 |' "$tmp/V.md" > "$tmp/V-no-result.md"
+bash "$LIB" "$tmp/SPEC.md" "$tmp/V-no-result.md" >/dev/null 2>&1
+check "grounding without an acceptance result cannot converge" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 
 # Bad invocation.
 bash "$LIB" "$tmp/SPEC.md" >/dev/null 2>&1

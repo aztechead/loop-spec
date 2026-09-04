@@ -1,6 +1,6 @@
 # Feature State Schema
 
-Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json`. It is the **committed resume contract** (tracked in git so resume survives a clone / hand-off; the cycle commits it on each phase transition). `PROGRESS.md` (the phase-transition journal) is committed alongside it. The remaining siblings -- `feature.json.bak`, `gate-logs/`, transcripts -- stay gitignored as per-machine churn. Atomic write pattern: write `feature.json.tmp`, fsync, rename. Backup `feature.json.bak` updated on each successful write. All writes go through `lib/feature-write.sh`.
+Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json`. It is the **committed resume contract** (tracked in git so resume survives a clone / hand-off; the cycle commits it on each phase transition). `PROGRESS.md` (the phase-transition journal) is committed alongside it. The remaining siblings -- `feature.json.bak`, `.feature-write.lock`, `gate-logs/`, transcripts -- stay gitignored as per-machine churn. All writes go through `lib/feature-write.sh`, whose Python transaction locks before reading, fsyncs a unique temporary file, and atomically replaces the destination. The previous state is copied to `feature.json.bak` before replacement; the live file is never moved away.
 
 **Writing rules (every phase, no exceptions):** never mutate `feature.json` with raw `jq`/`python3` — that bypasses the atomic write and `.bak` rotation that resume depends on. `feature-write.sh set` takes **nested dot paths** (object keys only, no array indices) and a **JSON value** (strings must be quoted):
 
@@ -300,8 +300,14 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 ## Atomic write
 
-All `feature.json` mutations go through `lib/feature-write.sh` (tmp-file write, sync,
-`.bak` rotation, atomic rename). Never write the file directly.
+All `feature.json` mutations go through `lib/feature-write.sh`. `set` and `append`
+serialize the complete read/modify/write transaction per feature, including store
+persistence. Readers see either the old or new complete file. The kernel releases
+the lock when the writer dies; do not delete the lock file while writers may exist.
+Whole-object replacement remains an explicit overwrite: a caller holding an old
+snapshot must not use it to merge concurrent changes. Prefer targeted field updates.
+The writer accepts one JSON object for replacement and rejects malformed or multiple
+documents. Never write the file directly.
 
 ## Resume
 

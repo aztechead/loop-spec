@@ -225,6 +225,14 @@ check "exit iterate: rewind pass leaves the phase open" "verify" "$(fj '.complet
 ec=0; bash "$EXIT" iterate --feature-dir "$FD" --terminal >/dev/null 2>&1 || ec=$?
 check "exit iterate: terminal pass closes the phase" "iterate" "$(fj '.completedPhases[-1]')"
 
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.lastVerdict '{"converged":true}' >/dev/null
+cp "$DOCS/VERIFICATION.md" "$WORK/verification.good"
+sed 's/| PASS |/| PENDING |/' "$WORK/verification.good" > "$DOCS/VERIFICATION.md"
+ec=0; bash "$EXIT" iterate --feature-dir "$FD" --terminal >/dev/null 2>&1 || ec=$?
+check "exit iterate: convergence with pending acceptance is rejected" "1" "$ec"
+cp "$WORK/verification.good" "$DOCS/VERIFICATION.md"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" iterate.lastVerdict null >/dev/null
+
 # --- egress guard -------------------------------------------------------------------
 # ITERATION.md is present, so the only thing left to judge is what the phase wrote.
 ENTRY="$REPO_ROOT/lib/phase-entry.sh"

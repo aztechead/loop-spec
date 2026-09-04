@@ -42,7 +42,7 @@ non-interactive, so the list is usually empty):
 | id | On the answer |
 |---|---|
 | `greenfield` | "Abort" ends the run. "Start new project here" sets `greenfield=1` for step 2. |
-| `resume` | A "Resume <slug>" pick jumps to step 3 with that candidate's `featureRoot`. "New feature" continues. |
+| `resume` | A "Resume <slug>" pick jumps to step 3 with that candidate's `featureRoot` and `slug`. "New feature" continues. |
 | `repos` | "Customize": ask for a comma-separated repo list and filter `.workspace.repos` to those names. |
 | `title` | The answer is the title; slug it with `lib/git-ops.sh slugify`. |
 | `commands` | "Customize": ask for each of prepare/test/lint/typecheck and replace `.commands`. |
@@ -79,12 +79,14 @@ already wrote a terminal result: relay stderr and stop.
 ## 3. Resume an existing feature
 
 ```bash
-rs="$(bash "$DRV" resume --dir "$PWD" --feature-root "<featureRoot>" \
+rs="$(bash "$DRV" resume --dir "$PWD" --feature-root "<featureRoot>" --slug "<selected slug>" \
   --phase-mode "$(jq -r '.invocation.phase_mode // ""' <<<"$st")")"
 ```
 
-Exit 1 means the feature must be resumed from another directory; relay the message and
-stop. Call `EnterWorktree({path: .enterWorktree})` when non-null. Print `.watchdog`
+Use the selected candidate's slug, including `.resume.autoPick` on automatic resume.
+The root alone is ambiguous when several features share a checkout. Exit 1 explains
+an invalid selection or where to resume; relay the message and stop.
+Call `EnterWorktree({path: .enterWorktree})` when non-null. Print `.watchdog`
 when non-null, then `.progressTail`, and `[RESUME] tasks done/remaining` from
 `.tasksDone` / `.tasksRemaining` when either is non-empty. When
 `.recoverCompletion` is true the PR was already proven: skip to step 5 and run only

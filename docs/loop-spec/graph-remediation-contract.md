@@ -72,23 +72,37 @@ A `human` node carries an `admit` object of the same shape as a condition:
 
 1. A pause record present → start at the **successor** of the paused node, and delete the
    pause record. Re-entering the paused node is the deadlock this replaces.
-2. Else a non-empty checkpoint ledger → start at the successor of the last checkpointed node.
+2. Else a non-empty checkpoint ledger → retry a `started` or `failed` node; only a
+   `completed` node admits its successor. Legacy records without status retain their
+   completed meaning. A checkpoint write failure stops execution before dispatch or
+   advancement; telemetry failures cannot erase this durability boundary.
 3. Else `feature.json.currentPhase` is set and names a declared node → start there.
    **This is the pre-3.0 compatibility path**: a feature created before the ledger existed
    must resume where its committed state says, never at the graph's start node.
 4. Else the graph's start node.
 
 The engine MUST NOT write `currentPhase` before it has resolved the start node.
+Checkpoint `loopCounts` retain retry consumption across processes. Matching route or
+chain edges obey a loop declaration for the same source and destination; choosing a
+route cannot bypass its retry limit. An exhausted routed retry fails resumably with
+exit 5. A loop-only node with no remaining edge terminates its traversal.
 
 ## 6. Node dispatch
 
 `lib/graph/run.sh --step` runs at most one node and returns a JSON dispatch descriptor on
 stdout: `{node, label, kind, body, effort, nextEdge}`. The cycle skill drives `agent` nodes
-by dispatching `body` itself and calling `--step` again. Without `--step` the engine runs to
+by dispatching `body` itself and calling `--step --completed-node ID` only after a
+successful return, where ID is the descriptor's `node`. A restart calls `--step` without
+that flag and receives the unfinished node again. An acknowledgement for another node
+is rejected. `cycle-driver.sh next --returned-from PHASE` carries this acknowledgement
+for phase callers. Without `--step` the engine runs to
 the next pause or terminal node, dispatching only what it can execute in-process
 (`function` and `gate` bodies).
 
 `gate` nodes ARE dispatched: a gate body is a script whose non-zero exit blocks the phase.
+Function failures also stop traversal. Failed nodes remain retryable rather than becoming
+successful checkpoints. Replayed bodies must make side effects idempotent or observe
+existing results before repeating them; checkpoints do not guarantee exactly-once effects.
 `subgraph` nodes execute their nested graph for real, not as a dry run.
 
 ## 7. State, effort, conflict, trace
