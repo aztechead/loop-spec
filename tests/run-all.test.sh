@@ -51,10 +51,14 @@ check "verbose mode includes successful suite detail" "1" \
 out="$(RUN_ALL_PROFILE=selected \
   RUN_ALL_ONLY_PATHS=tests/lib/bounded-run.test.sh \
   bash "$RUN_ALL")"
-check "selected mode excludes integration-tier suites" "1" \
-  "$(grep -c '^Suites passed: 0$' <<<"$out")"
-check "excluded integration suite does not execute" "0" \
+check "selected mode includes explicitly requested integration suites" "1" \
+  "$(grep -c '^Suites passed: 1$' <<<"$out")"
+check "selected integration suite executes" "1" \
   "$(grep -c '^PASS: lib/bounded-run ' <<<"$out")"
+
+rc=0
+out="$(RUN_ALL_PROFILE=selected RUN_ALL_ONLY_PATHS=tests/does-not-exist.test.sh bash "$RUN_ALL" 2>&1)" || rc=$?
+check "unknown selected suite cannot report success" "2" "$rc"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

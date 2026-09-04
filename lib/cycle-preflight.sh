@@ -78,8 +78,7 @@ profile_json='{"preset":"interactive","source":"default","env":{}}'
 export LOOP_SPEC_PROFILE="${LOOP_SPEC_PROFILE:-$dir/.loop-spec/profile.json}"
 if profile_findings="$(bash "$SCRIPT_DIR/profile.sh" validate 2>&1 >/dev/null)"; then
   profile_json="$(bash "$SCRIPT_DIR/profile.sh" resolve)"
-  # shellcheck disable=SC2046
-  eval $(bash "$SCRIPT_DIR/profile.sh" env)
+  eval "$(bash "$SCRIPT_DIR/profile.sh" env)"
 else
   warnings+=("profile: ${profile_findings//$'\n'/; } — running on the environment alone")
 fi

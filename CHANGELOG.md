@@ -4,6 +4,46 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-09-04
+
+### Changed
+
+- Direct graph callers acknowledge successful agent returns with
+  `--step --completed-node ID`. Restarting without an acknowledgement retries the
+  unfinished node. The cycle driver supplies acknowledgements through its existing
+  `next --returned-from PHASE` interface. Legacy checkpoints remain readable.
+- `tests/run-all.sh` runs the complete offline suite by default, including cycle,
+  delivery, harness, and loop-runner integration tests. `RUN_ALL_PROFILE=unit`
+  retains the shorter gate. Selected suites run even when marked integration;
+  unknown selections fail rather than reporting success with zero tests.
+- Convergence requires a readable specification, grounding for every Good Enough
+  criterion, and exactly one PASS acceptance result per criterion. The ITERATE
+  phase exit enforces this floor for converged verdicts.
+
+### Fixed
+
+- Concurrent state updates now lock before reading and preserve each other's field
+  changes. Publication fsyncs unique temporary files and atomically replaces the
+  destination while retaining the previous state as a backup. Invalid non-object
+  or multiple-document state is rejected.
+- Resume carries the selected feature slug through shared checkouts and rejects
+  ambiguous or missing selections instead of modifying the first directory found.
+- Graph checkpoints distinguish started, completed, and failed work. Failed gates
+  and functions remain retryable; checkpoint and phase-state write failures stop
+  advancement.
+- Graph retry counts survive process restarts, and matching routes obey their
+  declared loop ceilings instead of bypassing the retry limit.
+- Profile exports preserve literal quotes, shell syntax, and multiline values;
+  consumers evaluate the quoted export stream without splitting it.
+- The workflow smoke test installs into a temporary package so an inherited plugin
+  environment cannot modify an installed copy or the checkout under test.
+
+### Documentation
+
+- Added the September 4, 2026 primary-source review of specification, loop, and
+  graph reliability, with implementation evidence and 5.x migration guidance in
+  `docs/loop-spec/reliability.md`.
+
 ## [5.5.0] - 2026-09-03
 
 ### Added

@@ -38,8 +38,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# shellcheck disable=SC2046
-eval $(bash "$SCRIPT_DIR/../profile.sh" env 2>/dev/null || true)
+eval "$(bash "$SCRIPT_DIR/../profile.sh" env 2>/dev/null || true)"
 
 autonomous=false; why="not-autonomous"
 if [[ "${LOOP_SPEC_AUTONOMOUS:-}" == "1" ]]; then

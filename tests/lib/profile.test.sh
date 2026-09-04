@@ -90,6 +90,12 @@ printf '{"preset":"interactive","env":{"LOOP_SPEC_CMD_TEST":"echo '"'"'hi'"'"'"}
 eval "$(bash "$SCRIPT" env --file "$WORK/quote.json")"
 check "quoted value survives eval" "echo 'hi'" "${LOOP_SPEC_CMD_TEST:-}"
 
+literal=$'echo $(touch should-not-exist) `false` *\nsecond line\n'
+jq -n --arg value "$literal" '{env:{LOOP_SPEC_CMD_TEST:$value}}' > "$WORK/literal.json"
+unset LOOP_SPEC_CMD_TEST
+eval "$(bash "$SCRIPT" env --file "$WORK/literal.json")"
+check "multiline command remains literal with its trailing newline" "$literal" "$LOOP_SPEC_CMD_TEST"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

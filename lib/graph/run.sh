@@ -3,7 +3,7 @@
 #
 # Usage:
 #   run.sh [--dry-run] [--resume] --feature-dir DIR <graph.json>
-#   run.sh --step [--resume] --feature-dir DIR <graph.json>
+#   run.sh --step [--completed-node ID] --feature-dir DIR <graph.json>
 #
 # --dry-run   traverse without dispatching node bodies or writing state; print
 #             node/edge/kind/label per line, structural only.
@@ -16,8 +16,8 @@
 #             step/pause/checkpoint left off — see resolve_start() below). An
 #             `agent` node's `nextEdge` is always null: its outgoing route may
 #             depend on state the caller's dispatch has not written yet, so
-#             routing is resolved lazily by the FOLLOWING --step call via
-#             checkpoint-successor resolution, never guessed here on stale state.
+#             the caller acknowledges a successful dispatch with --completed-node ID
+#             on its next call. Without acknowledgement the agent node is replayed.
 #             `function`/`gate`/`subgraph` node bodies ARE dispatched in-process
 #             during --step, exactly as they are without it. Entering or leaving
 #             a working-phase node (spec..deliver) also emits phase_start /
@@ -44,12 +44,14 @@ RESUME=0
 STEP=0
 FEATURE_DIR=""
 GRAPH=""
+COMPLETED_NODE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
     --resume) RESUME=1; shift ;;
     --step) STEP=1; shift ;;
+    --completed-node) COMPLETED_NODE="${2:-}"; shift 2 ;;
     --feature-dir) FEATURE_DIR="${2:-}"; shift 2 ;;
     -*)
       echo "usage: run.sh [--dry-run] [--resume] [--step] --feature-dir DIR <graph.json>" >&2
@@ -75,6 +77,10 @@ fi
 # --step always continues from the last resolved position — there is no such
 # thing as a fresh --step invocation.
 [[ "$STEP" == "1" ]] && RESUME=1
+if [[ -n "$COMPLETED_NODE" && ( "$STEP" != "1" || "$DRY_RUN" == "1" ) ]]; then
+  echo "run.sh: --completed-node requires --step and cannot be used with --dry-run" >&2
+  exit 2
+fi
 
 # Validate first
 if ! bash "$SCRIPT_DIR/validate.sh" "$GRAPH" >/dev/null; then
@@ -90,4 +96,4 @@ mkdir -p "$FEATURE_DIR"
 FEATURE_DIR="$(cd "$FEATURE_DIR" && pwd)"
 
 exec python3 "$SCRIPT_DIR/engine.py" \
-  "$GRAPH" "$FEATURE_DIR" "$DRY_RUN" "$RESUME" "$STEP" "$REPO_ROOT" "$SCRIPT_DIR"
+  "$GRAPH" "$FEATURE_DIR" "$DRY_RUN" "$RESUME" "$STEP" "$REPO_ROOT" "$SCRIPT_DIR" "$COMPLETED_NODE"

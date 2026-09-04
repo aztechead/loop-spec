@@ -29,7 +29,7 @@
 #       baseSha, greenfield}. `enterWorktree` non-null means the caller must call
 #       EnterWorktree({path}) before anything else. Exit 0/1/2.
 #
-#   cycle-driver.sh resume --dir DIR --feature-root PATH [--phase-mode fresh|continuous]
+#   cycle-driver.sh resume --dir DIR --feature-root PATH [--slug SLUG] [--phase-mode fresh|continuous]
 #       Adopt a resumable feature's execution root. Prints {featureDir, slug,
 #       currentPhase, enterWorktree, tasksDone, tasksRemaining, progressTail,
 #       recoverCompletion}. Exit 0; 1 refused (message says where to relaunch).
@@ -525,10 +525,11 @@ persist_phase_mode() {
 
 # ----------------------------------------------------------------- resume ----
 cmd_resume() {
-  local dir="$PWD" feature_root="" phase_mode=""
+  local dir="$PWD" feature_root="" phase_mode="" selected_slug=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dir) dir="$2" ;; --feature-root) feature_root="$2" ;; --phase-mode) phase_mode="$2" ;;
+      --slug) selected_slug="$2" ;;
       *) usage ;;
     esac
     shift 2
@@ -537,9 +538,21 @@ cmd_resume() {
   dir="$(cd "$dir" && pwd -P)"; cd "$dir"
   feature_root="$(cd "$feature_root" && pwd -P)"
   local fj slug feature_dir enter="" harness
-  fj="$(ls "$feature_root"/.loop-spec/features/*/feature.json 2>/dev/null | head -1)"
-  [[ -n "$fj" ]] || die "no feature.json under $feature_root/.loop-spec/features/"
+  if [[ -n "$selected_slug" ]]; then
+    [[ "$selected_slug" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || die "invalid feature slug: $selected_slug"
+    fj="$feature_root/.loop-spec/features/$selected_slug/feature.json"
+    [[ -f "$fj" ]] || die "selected feature '$selected_slug' not found under $feature_root/.loop-spec/features/"
+  else
+    local candidates=() candidate
+    for candidate in "$feature_root"/.loop-spec/features/*/feature.json; do
+      [[ -f "$candidate" ]] && candidates+=("$candidate")
+    done
+    (( ${#candidates[@]} > 0 )) || die "no feature.json under $feature_root/.loop-spec/features/"
+    (( ${#candidates[@]} == 1 )) || die "multiple features under $feature_root; pass --slug for the selected resume candidate"
+    fj="${candidates[0]}"
+  fi
   feature_dir="$(dirname "$fj")"; slug="$(fget "$feature_dir" '.slug')"
+  [[ "$slug" == "$(basename "$feature_dir")" ]] || die "feature slug does not match its directory: $feature_dir"
   harness="$(lib harness detect)"
 
   if [[ "$(fget "$feature_dir" '.workspace // null')" != "null" ]]; then
@@ -623,15 +636,18 @@ cmd_next() {
   # Graph step: the engine dispatches gates/functions/subgraphs itself and stops at an
   # agent node, a human pause, an abort, or the terminal node.
   local step_json step_rc answer="" next=""
+  local completion_args=()
+  [[ -n "$returned" ]] && completion_args=(--completed-node "$returned")
   while :; do
     set +e
-    step_json="$(lib graph/run --step --feature-dir "$feature_dir" "$GRAPH")"
+    step_json="$(lib graph/run --step ${completion_args[@]+"${completion_args[@]}"} --feature-dir "$feature_dir" "$GRAPH")"
     step_rc=$?
     set -e
+    completion_args=()
     case "$step_rc" in
       0) ;;
       4) next="$(jq -r '.node' <<<"$step_json")"; answer="PAUSED node=$next"; break ;;
-      5) echo "ABORT reason=no-route-satisfied (see stderr for probe diagnostics)"; return 1 ;;
+      5) echo "ABORT reason=graph-route-blocked (see stderr for route or retry-limit diagnostics)"; return 1 ;;
       *) echo "ABORT reason=graph-step-failed exit=$step_rc"; return 1 ;;
     esac
     next="$(jq -r '.node' <<<"$step_json")"

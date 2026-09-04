@@ -24,6 +24,13 @@ fi
 # function, then syntax-check the result as ESM (.mjs).
 ESM_TMP="$(mktemp -d)"
 trap 'rm -rf "$ESM_TMP"' EXIT
+# The hook edits its package root. Test a disposable package so an installed
+# plugin environment cannot redirect the test into the user's plugin cache.
+mkdir -p "$ESM_TMP/project/lib" "$ESM_TMP/project/hooks"
+cp -R "$ROOT/lib/workflows" "$ESM_TMP/project/lib/"
+cp "$ROOT/hooks/install-bundled-workflows.sh" "$ESM_TMP/project/hooks/"
+export CLAUDE_PLUGIN_ROOT="$ESM_TMP/project"
+cd "$CLAUDE_PLUGIN_ROOT"
 check_esm() {
   local src="$1"
   local tmp="$ESM_TMP/$(basename "${src%.js}").mjs"

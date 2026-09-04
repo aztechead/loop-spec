@@ -203,7 +203,7 @@ loop-spec/
 ├── examples/supervisor/             # reference supervisor on the Python Agent SDK (imports claude-agent-sdk; not a supported surface)
 ├── hooks/                           # PreToolUse/Stop/SessionStart guards + hooks.json
 ├── tests/
-│   ├── run-all.sh                   # unit gate: tests/lib/*.test.sh (non-integration); run a suite's own file directly for hooks/validators/workflow/loop-runner checks
+│   ├── run-all.sh                   # complete offline gate, including integration and harness contracts
 │   ├── lib/                         # unit tests for lib/*.sh
 │   └── e2e/                         # live smokes (opt-in): full cycle + sentinel drive loop
 └── docs/

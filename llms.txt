@@ -41,7 +41,7 @@ This file is for an agent or a person who was pointed at this repository and nee
 - `bash lib/surface.sh find <term> [term ...]`: which bundled script, shared contract, or agent role covers a term, derived from the tree at call time.
 - `bash lib/surface.sh show <name>`: one script's header block (usage, exit codes). Usually the whole answer.
 - `bash lib/surface.sh covers <path>`: the test suites that name a path, so you know what to run after changing it.
-- `bash tests/run-all.sh`: the offline unit gate. It must pass before any commit.
+- `bash tests/run-all.sh`: the complete offline gate, including integration and harness suites. It must pass before any commit.
 
 ## Rules an agent must not break here
 

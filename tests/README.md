@@ -19,18 +19,18 @@ and `.claude/rules/`; ordinary prose selects the docs linter without expanding i
 suite that happens to quote it.
 It also syntax-checks changed files and runs the code/document tells over lines introduced
 by the diff, so an existing finding elsewhere in a touched file does not poison the edit
-loop. The unit
-gate runs every suite concurrently; set `RUN_ALL_JOBS=1` when diagnosing order-sensitive
+loop. The complete offline
+gate runs suites concurrently; set `RUN_ALL_JOBS=1` when diagnosing order-sensitive
 behavior and `RUN_ALL_VERBOSE=1` to print successful suite logs.
 
-The unit gate runs only `tests/lib/*.test.sh` suites, minus the ones tagged `integration`
-(subprocess-heavy or multi-file). It needs bash, git, jq, and python3. It does NOT require
-the Claude CLI. Every other registered suite — agent/manifest validators, hook tests,
-integration-tier `lib/` contracts, harness-coverage suites, and (when a node runtime is
-available) the workflow syntax checks in `tests/workflows/smoke.sh` — stays registered in
-`tests/run-all.sh` (so `tests/all-tests-registered.test.sh` still tracks it) but does not
-run automatically; invoke a suite's own file directly, for example
-`bash tests/adk-harness-coverage.test.sh` or `bash hooks/restrict-agent-paths.test.sh`.
+`run-all.sh` runs every registered offline suite, including cycle/delivery integration,
+hook, harness, manifest, and loop-runner checks. It needs bash, git, jq, and python3;
+workflow syntax checks run when Node is available. No live agent CLI is required.
+Use `RUN_ALL_PROFILE=unit bash tests/run-all.sh` for the shorter lib-only gate that
+excludes integration suites. `RUN_ALL_PROFILE=selected` requires newline-separated
+`RUN_ALL_ONLY_PATHS`; every named suite must be registered and available, and integration
+suites are included. A misspelled path fails with exit 2. The selected profile is what
+`run-unit.sh` uses after discovering coverage.
 
 There are no scripted e2e or live-model suites: the shipped test tree is offline-only
 by policy (no network, no `claude -p`, no live services). Behavioral end-to-end

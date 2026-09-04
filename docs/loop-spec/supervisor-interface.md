@@ -108,7 +108,7 @@ ephemeral container must persist the checkout or lose the run
 
 **Where the seam sits.** Ninety-three files read `feature.json` from disk
 (`grep -rl 'feature\.json' lib hooks skills agents extensions`). Every write already
-goes through one script, `lib/feature-write.sh:114`. Routing each read through a
+goes through one entry point, `lib/feature-write.sh`. Routing each read through a
 subprocess port would multiply cost by the reader count and rewrite the atomic-write
 contract for no gain. The port therefore sits at the **durability boundary**: the
 working copy on disk stays the working copy; the port decides where it is durable.
@@ -122,7 +122,8 @@ working copy on disk stays the working copy; the port decides where it is durabl
 | `list` | Slugs the store holds, one per line | the `.loop-spec/features/*` directories |
 | `describe` | One line: `store=<name> reason=<text>` | `store=local reason=checkout-is-store` |
 
-**Call sites.** `persist` after the rename in `lib/feature-write.sh`, and after
+**Call sites.** `persist` after the rename in `lib/feature_write.py` (the implementation
+behind `lib/feature-write.sh`), and after
 `commit_paths` in `lib/phase-exit.sh`. `open` and `list` in the resume scan of
 `lib/cycle-preflight.sh:98`, so a store that holds a slug the checkout lacks
 materializes it before the scan parses it.
@@ -130,6 +131,11 @@ materializes it before the scan parses it.
 **Failure rule.** `open` and `persist` fail loudly with exit 2; `feature-write.sh`
 reports it as an I/O failure. A store the supervisor chose and that cannot hold state
 is data loss waiting for the next death. The local adapter cannot fail.
+
+The writer holds the feature lock through `persist` to preserve write order. An adapter
+must not call the writer recursively for the same feature. A persistence failure leaves
+the newly written local state readable and returns exit 2; it does not roll back local
+state or claim that remote persistence succeeded.
 
 **Second adapter.** `store-mirror.sh` copies the feature directory to
 `$LOOP_SPEC_STORE_DIR/<slug>` on `persist` and restores it on `open` when the working

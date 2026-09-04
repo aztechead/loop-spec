@@ -386,7 +386,7 @@ jq '.iterate.feedback = {type:"plan",description:"x",fix_first:null}' \
   "$WORK/feat-step-agent/feature.json" > "$WORK/feat-step-agent/feature.json.tmp"
 mv "$WORK/feat-step-agent/feature.json.tmp" "$WORK/feat-step-agent/feature.json"
 
-step2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-step-agent" "$WORK/step-agent.json")"
+step2="$(bash "$SCRIPT" --step --completed-node iterate --feature-dir "$WORK/feat-step-agent" "$WORK/step-agent.json")"
 check "step 2 (after caller's dispatch wrote fresh state): resolves the real route" "planX" "$(jq -r '.node' <<<"$step2")"
 check "step 2: nextEdge reflects the route actually taken" "route:iterate->planX" "$(jq -r '.nextEdge' <<<"$step2")"
 check "step 2: terminal (no further edges from planX)" "true" "$(jq -r '.terminal' <<<"$step2")"
@@ -429,7 +429,7 @@ jq '.delivery.nextPhase = "execute"' \
 mv "$WORK/feat-step-deliver/feature.json.tmp" "$WORK/feat-step-deliver/feature.json"
 
 set +e
-dstep2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-step-deliver" "$WORK/step-deliver.json" 2>"$WORK/feat-step-deliver.err")"
+dstep2="$(bash "$SCRIPT" --step --completed-node deliver --feature-dir "$WORK/feat-step-deliver" "$WORK/step-deliver.json" 2>"$WORK/feat-step-deliver.err")"
 dstep2_rc=$?
 set -e
 check "deliver step 2: sidecar completed does not abort (not exit 5)" "0" "$dstep2_rc"
@@ -497,7 +497,7 @@ check "workspace execute: no assert-reads diagnostic" "0" "$ws_assert"
 # resolves routes from the checkpoint. An empty mergeQueue (workspace
 # subagent rung) must skip execute.worker and must not abort (exit 5).
 set +e
-ws_step2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-ws-exec" \
+ws_step2="$(bash "$SCRIPT" --step --completed-node execute --feature-dir "$WORK/feat-ws-exec" \
   "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-ws-exec2.err")"
 ws_step2_rc=$?
 set -e
@@ -541,7 +541,7 @@ check "execute step 1: nextEdge deferred" "null" "$(jq -r '.nextEdge' <<<"$es1")
 check "execute step 1: rc 0" "0" "$es1_rc"
 
 set +e
-es2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-step" \
+es2="$(bash "$SCRIPT" --step --completed-node execute --feature-dir "$WORK/feat-exec-step" \
   "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-exec-step2.err")"
 es2_rc=$?
 set -e
@@ -562,7 +562,7 @@ new_feat "$WORK/feat-exec-worker" \
 set +e
 ew1="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-worker" \
   "$ROOT/graph/cycle.graph.json" 2>/dev/null)"
-ew2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-worker" \
+ew2="$(bash "$SCRIPT" --step --completed-node execute --feature-dir "$WORK/feat-exec-worker" \
   "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-exec-worker2.err")"
 ew2_rc=$?
 set -e
@@ -581,7 +581,7 @@ new_feat "$WORK/feat-exec-badq" \
 set +e
 eb1="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-badq" \
   "$ROOT/graph/cycle.graph.json" 2>/dev/null)"
-eb2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-exec-badq" \
+eb2="$(bash "$SCRIPT" --step --completed-node execute --feature-dir "$WORK/feat-exec-badq" \
   "$ROOT/graph/cycle.graph.json" 2>"$WORK/feat-exec-badq2.err")"
 eb2_rc=$?
 set -e
@@ -792,7 +792,7 @@ check "step 1 writes phase_start to events.jsonl" "spec" \
 check "step 1 does not write phase_end yet (the agent has not left spec)" "0" \
   "$(jq -r 'select(.event=="phase_end") | .phase' "$WORK/feat-markers/events.jsonl" | grep -c . || true)"
 
-step2="$(bash "$SCRIPT" --step --feature-dir "$WORK/feat-markers" "$WORK/phase-markers.json" 2>"$WORK/markers-err2")"
+step2="$(bash "$SCRIPT" --step --completed-node spec --feature-dir "$WORK/feat-markers" "$WORK/phase-markers.json" 2>"$WORK/markers-err2")"
 check "step 2 stdout is parseable JSON" "discuss" "$(jq -r '.node' <<<"$step2")"
 check "step 2 stderr emits LOOP_SPEC_PHASE_END for spec" "1" \
   "$(grep -c '^LOOP_SPEC_PHASE_END' "$WORK/markers-err2" || true)"
