@@ -225,8 +225,9 @@ def judge(task, project, base, branch, env, log_path):
         "meets_request: 3 = does exactly what was asked, 0 = does not address it. "
         "overbuilt: 0 = no more than the request needs, 3 = large unrequested additions."
     )
-    proc = subprocess.run(["claude", "-p", prompt, "--bare", "--model", "haiku",
-                           "--max-turns", "1", "--output-format", "json"],
+    # No --bare: it skips credential reads and the call fails with an auth error.
+    proc = subprocess.run(["claude", "-p", prompt, "--model", "haiku", "--max-turns", "1",
+                           "--setting-sources", "project", "--output-format", "json"],
                           cwd=str(project), env=env, capture_output=True, text=True, timeout=300)
     log_path.write_text(proc.stdout + "\n--- stderr ---\n" + proc.stderr)
     try:
@@ -240,18 +241,32 @@ def judge(task, project, base, branch, env, log_path):
             "note": str(verdict.get("note", ""))[:300]}
 
 
-def run_task(task_id, model, run_id, budget):
+def run_task(task_id, model, run_id, budget, measure_only=False):
     task = load_task(task_id)
     env = child_env()
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    project, base = prepare_workspace(task, run_dir, env)
-    root = project.parent
-    prompt = f"/loop-spec:cycle autonomous {task['prompt']}"
+    root = run_dir / task_id
+    project = root / "project"
     rounds = []
     spent = 0.0
     result = None
+    if measure_only:
+        # Re-score a workspace an earlier run paid for; keep its round figures.
+        prior = read_json(RESULTS_DIR / run_id / f"{task_id}.json") or {}
+        rounds = prior.get("rounds_detail") or []
+        for r in rounds:
+            r.setdefault("result_text", prior.get("last_result_text", ""))
+            r.setdefault("stderr_tail", prior.get("last_stderr_tail", ""))
+        spent = prior.get("cost_usd") or 0.0
+        base = sh(["git", "rev-list", "--max-parents=0", "main"], cwd=project, env=env).stdout.strip()
+        result = read_json(newest([r / ".loop-spec" / "last-result.json" for r in roots(project, env)]) or "")
+    else:
+        project, base = prepare_workspace(task, run_dir, env)
+    prompt = f"/loop-spec:cycle autonomous {task['prompt']}"
     for n in range(1, MAX_ROUNDS + 1):
+        if measure_only:
+            break
         remaining = budget - spent
         if remaining <= 0.5:
             break
@@ -269,8 +284,9 @@ def run_task(task_id, model, run_id, budget):
                   f"{r['stderr_tail'][-300:]!r}", flush=True)
         if r["timed_out"] or status != "paused":
             break
-    feature_file = newest([f for r in roots(project, env)
-                           for f in (r / ".loop-spec" / "features").glob("*/feature.json")])
+    # Completion removes feature.json and leaves feature.json.bak; either names the dir.
+    feature_file = newest([f for r in roots(project, env) for pattern in ("*/feature.json", "*/feature.json.bak")
+                           for f in (r / ".loop-spec" / "features").glob(pattern)])
     fdir = feature_file.parent if feature_file else None
     feature = read_json(feature_file) if feature_file else None
     branch = branch_of(project, result, feature, env)
@@ -295,8 +311,9 @@ def run_task(task_id, model, run_id, budget):
         "timed_out": any(r["timed_out"] for r in rounds),
         "result": {k: (result or {}).get(k) for k in
                    ("status", "outcome", "reason", "phaseReached", "converged", "summary")},
-        "iterations": ((feature or {}).get("iterate") or {}).get("iterations")
-        if isinstance((feature or {}).get("iterate"), dict) else None,
+        "iterations": ((feature or {}).get("iterate") or {}).get("used"),
+        "phase": (feature or {}).get("currentPhase"),
+        "delivery_status": ((feature or {}).get("delivery") or {}).get("status"),
         "events": events,
         "branch": branch, "commits": commits,
         "app_diff": app, "artifact_diff": artifacts,
@@ -341,7 +358,7 @@ def write_summary(out_dir):
         j = r.get("judge") or {}
         lines.append(
             f"| {r['task']} | {'yes' if r['accepted'] else 'NO'} | {r['checks_passed']}/{r['checks_total']} "
-            f"| {r['result'].get('phaseReached')} | {r['result'].get('status')} | {r['rounds']} | {r['turns']} "
+            f"| {r.get('phase')} | {r['result'].get('status')} | {r['rounds']} | {r['turns']} "
             f"| {r['subagents']} | {r['cost_usd']:.2f} | {r['minutes']} | {r['app_diff']['files']} "
             f"| +{r['app_diff']['added']}/-{r['app_diff']['removed']} | +{r['artifact_diff']['added']} "
             f"| {r['overbuild_ratio']}x | {', '.join(r['protected_touched']) or '-'} "
@@ -367,8 +384,13 @@ def main(argv=None):
     ap.add_argument("--budget-usd", type=float, default=None, help="per task; default by model")
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--confirm-spend", action="store_true")
+    ap.add_argument("--measure-only", action="store_true",
+                    help="re-score the workspaces of --run-id without running a cycle (free)")
     args = ap.parse_args(argv)
-    if os.environ.get("LOOP_SPEC_EVAL_LIVE") != "1" or not args.confirm_spend:
+    if args.measure_only and not args.run_id:
+        print("eval_run: --measure-only needs --run-id", file=sys.stderr)
+        return 2
+    if not args.measure_only and (os.environ.get("LOOP_SPEC_EVAL_LIVE") != "1" or not args.confirm_spend):
         print("eval_run: refusing to spend money. Set LOOP_SPEC_EVAL_LIVE=1 and pass "
               "--confirm-spend. Read evals/README.md first.", file=sys.stderr)
         return 2
@@ -382,7 +404,8 @@ def main(argv=None):
     print(f"eval_run: run {run_id}, tasks {task_ids}, budget {budget} USD per task", flush=True)
     failures = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.parallel)) as pool:
-        futures = {pool.submit(run_task, t, args.model, run_id, budget): t for t in task_ids}
+        futures = {pool.submit(run_task, t, args.model, run_id, budget, args.measure_only): t
+                   for t in task_ids}
         for fut in concurrent.futures.as_completed(futures):
             try:
                 fut.result()
