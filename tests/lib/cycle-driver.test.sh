@@ -39,6 +39,40 @@ drv() {
     bash "$SCRIPT" "$@"
 }
 
+# write_spec ROOT FEATURE_DIR: the smallest SPEC.md the spec exit accepts, because
+# `next --returned-from spec` now runs that exit and answers REDO without one.
+write_spec() {
+  local root="$1" fd="$2" slug docs
+  slug="$(jq -r '.slug' "$fd/feature.json")"; docs="$root/docs/loop-spec/features/$slug"; mkdir -p "$docs"
+  cat > "$docs/SPEC.md" <<'MD'
+---
+ambiguity_scores:
+  ambiguity: 0.1
+  gate_passed: true
+  unresolved_dimensions: []
+---
+# A feature
+
+## Problem
+
+Something is broken.
+
+## Success criteria
+
+### Good Enough
+
+- [ ] `bash -n a.sh` exits 0
+
+### Exceptional
+
+- [ ] stretch
+
+## Grounding
+
+- none
+MD
+  printf '# transcript\n' > "$fd/spec-interview-transcript.md"
+}
 # --- usage ---------------------------------------------------------------------
 ec=0; bash "$SCRIPT" >/dev/null 2>&1 || ec=$?
 check "no subcommand exits 2" "2" "$ec"
@@ -101,6 +135,7 @@ check "next: first step names spec" 'NEXT phase=spec label="Write the specificat
 check "next: activation persisted models" "true" "$(jq '.models | length > 0' "$FD/feature.json")"
 check "next: currentPhaseStartedAt stamped" "true" "$(jq '.currentPhaseStartedAt != null' "$FD/feature.json")"
 
+write_spec "$REPO" "$FD"
 out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec --note "wrote SPEC" 2>/dev/null)"
 check "next: style=step pauses at the human gate" "PAUSED node=human.after-spec" "$out"
 check "next: journal records the real successor" "1" "$(grep -c 'spec → human.after-spec' "$FD/PROGRESS.md")"
@@ -177,6 +212,64 @@ printf 'wip\n' > "$REPO4/notes.txt"
 out="$(cd "$REPO4" && drv init --dir "$REPO4" --slug d --title d --style auto --profile standard 2>&1 >/dev/null)" || true
 check "init: dirty refusal names the dirty path" "1" "$(grep -c 'notes.txt' <<<"$out")"
 
+# --- begin: start and init in one call ------------------------------------------------
+REPO6="$(new_repo begun)"
+out="$(cd "$REPO6" && AUTONOMOUS=1 drv begin -- "autonomous add a flag to the tool" 2>/dev/null)"
+check "begin: an autonomous run initializes without a second call" "init" "$(jq -r '.action' <<<"$out")"
+check "begin: the feature dir is created" "1" "$([[ -d "$(jq -r '.featureDir' <<<"$out")" ]] && echo 1 || echo 0)"
+check "begin: start's notices ride along" "1" "$(jq '.notices | length > 0' <<<"$out" | grep -c true)"
+FD6="$(jq -r '.featureDir' <<<"$out")"
+out="$(cd "$REPO6" && drv begin -- "add a flag to the tool" 2>/dev/null)"
+check "begin: a human decision is handed back" "decisions" "$(jq -r '.action' <<<"$out")"
+
+# --- phase-begin: one ingress call per phase ------------------------------------------
+out="$(cd "$REPO6" && AUTONOMOUS=1 drv phase-begin spec --feature-dir "$FD6" 2>/dev/null)"
+check "phase-begin spec: entry packet is parsed" "1" "$(jq '.entry.fields | length > 0' <<<"$out" | grep -c true)"
+check "phase-begin spec: the mode line is an object" "self-answer" "$(jq -r '.mode.path' <<<"$out")"
+check "phase-begin spec: no flags on a fresh feature" "0" "$(jq '.entry.flags | length' <<<"$out")"
+ec=0; out="$(cd "$REPO6" && drv phase-begin execute --feature-dir "$FD6" 2>/dev/null)" || ec=$?
+check "phase-begin execute: a missing PLAN.md is a flagged ingress" "1" "$ec"
+check "phase-begin execute: the flags name the missing artifacts" "true" "$(jq '[.entry.flags[] | select(test("PLAN"))] | length > 0' <<<"$out")"
+
+# --- next runs the phase exit: REDO on flags, NEXT when clean ---------------------------
+out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" 2>/dev/null)"
+check "next: first entry is SPEC" "NEXT phase=spec" "${out:0:15}"
+out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
+check "next: a phase that wrote nothing is sent back" "REDO phase=spec" "${out:0:15}"
+check "next: the FLAG lines follow the answer" "true" "$([[ "$(grep -c '^FLAG' <<<"$out")" -gt 0 ]] && echo true || echo false)"
+DOCS6="$REPO6/docs/loop-spec/features/$(jq -r '.slug' "$FD6/feature.json")"; mkdir -p "$DOCS6"
+cat > "$DOCS6/SPEC.md" <<'MD'
+---
+ambiguity_scores:
+  ambiguity: 0.1
+  gate_passed: true
+  unresolved_dimensions: []
+---
+# Add a flag
+
+## Problem
+
+Something is broken.
+
+## Success criteria
+
+### Good Enough
+
+- [ ] `bash -n a.sh` exits 0
+
+### Exceptional
+
+- [ ] stretch
+
+## Grounding
+
+- none
+MD
+printf '# transcript\n' > "$FD6/spec-interview-transcript.md"
+out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
+check "next: a clean exit advances" "NEXT phase=discuss" "${out:0:18}"
+check "next: the exit committed the artifact" "1" "$(git -C "$REPO6" log --oneline | grep -c 'spec: ')"
+
 # --- claude worktree path -------------------------------------------------------------
 REPO2="$(new_repo r2)"
 HARNESS=claude AUTONOMOUS=1 drv start --dir "$REPO2" -- ship it >/dev/null 2>&1
@@ -192,6 +285,7 @@ check "next: records the answered phase for cycle-result" "spec" "$(jq -r '.driv
 # The lead often runs the driver from the project root while the feature lives in the
 # worktree; the state commit must land on the feature branch either way, never stage a
 # .gitignore in the root checkout, and never fail silently.
+write_spec "$WT" "$WT/.loop-spec/features/ship-it"
 out="$(cd "$REPO2" && HARNESS=claude drv next --feature-dir "$WT/.loop-spec/features/ship-it" --returned-from spec --note "wrote SPEC" 2>/dev/null)"
 check "next: from the project root still answers" "NEXT phase=" "${out:0:11}"
 check "next: state commit lands on the feature branch" "1" "$(git -C "$WT" log --oneline | grep -c 'state @')"

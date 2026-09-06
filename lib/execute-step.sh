@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# execute-step.sh - One EXECUTE task step per call: dispatch, package, verdict, integrate.
+#
+# Why: per task the subagent wave loop asked the lead for a worktree resolve, a worktree
+# add, a base SHA, a brief, a report path, two events, a review package, a fix-loop
+# action, an integration, a mark-done, and a closing event, each as its own Bash call
+# (evals/findings-2026-09-06.md, finding 7). Every one is deterministic. These four
+# subcommands are the steps a lead still has to sequence around its Agent calls; the
+# rest happens inside them. lib/execute-prepare.sh must have run first: the rung, the
+# roots, and the caps are read from dispatch/prepare.json, never re-measured.
+#
+# Usage:
+#   execute-step.sh dispatch  --feature-dir DIR --task ID [--attempt N]
+#       Creates the task worktree when the rung isolates by worktree, records the base
+#       SHA, writes the brief and report paths, resolves the implementer model, emits the
+#       dispatch and task_start events. Prints the dispatch packet (JSON).
+#   execute-step.sh package   --feature-dir DIR --task ID --head SHA
+#       Writes the review package from the recorded base to HEAD, emits the reviewer's
+#       dispatch event. Prints {package, model}.
+#   execute-step.sh verdict   --feature-dir DIR --task ID --verdict pass|rework|block --attempt N
+#       Applies the reviewer's verdict: pass -> {action:"integrate"}; rework ->
+#       lib/fix-loop.sh's action with the model to use; block or a spent breaker ->
+#       {action:"blocked", reason} with the task_end event emitted.
+#   execute-step.sh integrate --feature-dir DIR --task ID
+#       Worktree mode: lib/integrate-task.sh with --cleanup. In-place mode: runs the task's
+#       verify command through lib/output-digest.sh, commits exactly task.files, and checks
+#       HEAD advanced. Either way a published task is marked done, task_end is emitted,
+#       and task-001 of a greenfield feature runs the command backfill.
+#       Prints {published, reason, detail, sha, blocked}.
+#
+# Per-task state lives in DIR/dispatch/<task>.json (base SHA, worktree, attempt, blocked).
+#
+# Exit: 0 the step answered; 1 the step's answer is a stop (blocked, escalation, not
+# published) with the reason in the JSON; 2 bad invocation or missing prepare.json.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
+usage() { sed -n '2,40p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
+
+cmd="${1:-}"; shift || true
+feature_dir="" task_id="" attempt=0 head_sha="" verdict=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --feature-dir) feature_dir="${2:-}" ;; --task) task_id="${2:-}" ;; --attempt) attempt="${2:-0}" ;;
+    --head) head_sha="${2:-}" ;; --verdict) verdict="${2:-}" ;; *) usage ;;
+  esac
+  shift 2
+done
+case "$cmd" in dispatch|package|verdict|integrate) ;; *) usage ;; esac
+[[ -n "$feature_dir" && -f "$feature_dir/feature.json" && -n "$task_id" ]] || usage
+feature_dir="$(cd "$feature_dir" && pwd -P)"
+fj="$feature_dir/feature.json"
+prep="$feature_dir/dispatch/prepare.json"
+[[ -f "$prep" ]] || { echo "execute-step: $prep is missing; run lib/execute-prepare.sh first" >&2; exit 2; }
+fget() { jq -r "$1" "$fj"; }
+pget() { jq -r "$1" "$prep"; }
+slug="$(fget '.slug')"
+root="$(pget '.featureRoot')"
+sidecar="$(pget '.sidecar')"
+task_json="$(jq -c --arg id "$task_id" '(if type == "object" and has("tasks") then .tasks else . end) | map(select(.id == $id)) | first // empty' "$sidecar")"
+[[ -n "$task_json" ]] || { echo "execute-step: no task $task_id in $sidecar" >&2; exit 2; }
+state="$feature_dir/dispatch/$task_id.json"
+sget() { jq -r "$1" "$state" 2>/dev/null || true; }
+sset() { local cur; cur="$(cat "$state" 2>/dev/null || echo '{}')"; jq -c --arg k "$1" --argjson v "$2" '.[$k] = $v' <<<"$cur" > "$state"; }
+in_place=true
+[[ "$(pget '.rung.worktreesEnabled // false')" == "true" && "$(pget '.rung.subagentIsolation // "none"')" == "lead-worktree" ]] && in_place=false
+total="$(jq 'length' <<<"$(pget '.tasks')")"; index="$(jq --arg id "$task_id" 'map(.id) | index($id) // 0 | . + 1' <<<"$(pget '.tasks')")"
+emit() { lib events emit "$feature_dir" "$1" --phase execute --data "$2" >/dev/null 2>&1 || true; }
+task_end() { emit task_end "$(jq -cn --argjson i "$index" --argjson t "$total" --arg id "$task_id" --arg r "$1" '{index:$i,total:$t,id:$id,result:$r}')"; }
+
+case "$cmd" in
+  dispatch)
+    branch="task/$task_id-$slug"; worktree=""; base_sha=""
+    if [[ "$in_place" == false ]]; then
+      worktree="$(lib worktree-base resolve "$root" task "$slug/$task_id" | jq -r '.path')"
+      if [[ ! -d "$worktree" ]]; then
+        git -C "$root" worktree add "$worktree" -b "$branch" "feat/$slug" >/dev/null 2>&1 \
+          || { echo "execute-step: cannot create worktree $worktree" >&2; jq -cn --arg id "$task_id" '{taskId:$id, dispatchable:false, reason:"worktree-add-failed"}'; exit 1; }
+      fi
+      base_sha="$(git -C "$worktree" rev-parse HEAD)"
+    else
+      dirty="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' 2>/dev/null)"
+      [[ -z "$dirty" ]] || { jq -cn --arg id "$task_id" --arg d "$dirty" '{taskId:$id, dispatchable:false, reason:"feature-root-dirty", detail:$d}'; exit 1; }
+      base_sha="$(git -C "$root" rev-parse HEAD)"
+    fi
+    brief="$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id")" || { echo "execute-step: brief failed" >&2; exit 2; }
+    report="$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")"
+    # Cheapest model that fits: a concrete pin, else the tier, else the role default.
+    model="$(jq -r '.metadata.model // empty' <<<"$task_json")"
+    if [[ -z "$model" ]]; then
+      tier="$(jq -r '.metadata.modelTier // empty' <<<"$task_json")"
+      [[ -n "$tier" ]] && model="$(lib model-tier model "$tier" 2>/dev/null || true)"
+    fi
+    [[ -n "$model" && "$model" != "inherit" ]] || model="$(fget '.models.implementer // "inherit"')"
+    sset taskBaseSha "\"$base_sha\""; sset worktree "\"$worktree\""; sset branch "\"$branch\""; sset attempt "$attempt"; sset inPlace "$in_place"
+    emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"implementer",model:$m,rung:$r}')"
+    emit task_start "$(jq -cn --argjson i "$index" --argjson t "$total" --arg id "$task_id" --arg s "$(jq -r '.subject' <<<"$task_json")" '{index:$i,total:$t,id:$id,subject:$s}')"
+    jq -cn --argjson task "$task_json" --arg root "$root" --arg wt "$worktree" --arg br "$branch" --arg base "$base_sha" \
+      --arg brief "$brief" --arg report "$report" --arg model "$model" --argjson ip "$in_place" --argjson i "$index" --argjson t "$total" \
+      --argjson attempt "$attempt" --argjson max "$(pget '.maxRetries')" --arg prepare "$(fget '.commands.prepare // ""')" \
+      '{dispatchable:true, taskId:$task.id, subject:$task.subject, files:($task.files // []), verifyCommand:$task.verifyCommand,
+        acceptanceCriteria:($task.acceptanceCriteria // []), readFirst:($task.readFirst // []), specPath:($task.specPath // null),
+        featureRoot:$root, inPlace:$ip, worktreePath:(if $wt == "" then null else $wt end), branch:$br, taskBaseSha:$base,
+        brief:$brief, report:$report, model:$model, prepareCommand:$prepare, index:$i, total:$t, attempt:$attempt, maxRetries:$max}'
+    ;;
+  package)
+    [[ -n "$head_sha" ]] || usage
+    base_sha="$(sget '.taskBaseSha')"; repo="$(sget '.worktree')"; [[ -n "$repo" && "$repo" != "null" ]] || repo="$root"
+    [[ -n "$base_sha" && "$base_sha" != "null" ]] || { echo "execute-step: no recorded base SHA for $task_id; dispatch first" >&2; exit 2; }
+    pkg="$(lib dispatch-files package --repo "$repo" --base "$base_sha" --head "$head_sha")" || { echo "execute-step: package failed" >&2; exit 2; }
+    model="$(fget '.models.specComplianceReviewer // "inherit"')"
+    emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"spec-compliance-reviewer",model:$m,rung:$r}')"
+    jq -cn --arg p "$pkg" --arg m "$model" --arg base "$base_sha" --arg head "$head_sha" --arg brief "$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id" 2>/dev/null || true)" \
+      --arg report "$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")" \
+      '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report}'
+    ;;
+  verdict)
+    case "$verdict" in pass|rework|block) ;; *) usage ;; esac
+    max="$(pget '.maxRetries')"
+    case "$verdict" in
+      pass) jq -cn '{action:"integrate"}' ;;
+      block) sset blocked '"spec-compliance-block"'; task_end failed; jq -cn '{action:"blocked", reason:"spec-compliance-block"}'; exit 1 ;;
+      rework)
+        action="$(lib fix-loop action "$attempt" "$max")"
+        case "$action" in
+          breaker) sset blocked '"retry-exhausted"'; task_end failed; jq -cn '{action:"blocked", reason:"retry-exhausted"}'; exit 1 ;;
+          resume)
+            live="$(lib fix-loop live "$(pget '.rung.rung')")"
+            [[ "$live" == "resumeable" ]] || action=oneshot
+            jq -cn --arg a "$action" --arg m "$(fget '.models.implementer // "inherit"')" --argjson n "$((attempt + 1))" '{action:$a, model:$m, nextAttempt:$n}' ;;
+          fresh-upgrade)
+            jq -cn --arg a "$action" --arg m "$(lib model-tier upgrade "$(fget '.models.implementer // "inherit"')" 2>/dev/null || echo inherit)" --argjson n "$((attempt + 1))" '{action:$a, model:$m, nextAttempt:$n}' ;;
+          *) jq -cn --arg a "$action" --argjson n "$((attempt + 1))" '{action:$a, nextAttempt:$n}' ;;
+        esac ;;
+    esac
+    ;;
+  integrate)
+    verify_cmd="$(jq -r '.verifyCommand' <<<"$task_json")"
+    if [[ "$(sget '.inPlace')" != "true" ]]; then
+      worktree="$(sget '.worktree')"; branch="$(sget '.branch')"
+      res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \
+        --task-branch "$branch" --verify "$verify_cmd" --cleanup)" || true
+      published="$(jq -r '.published // false' <<<"$res")"
+      sha="$(git -C "$root" rev-parse "feat/$slug" 2>/dev/null || true)"
+      answer="$(jq -c --arg sha "$sha" '{published:(.published // false), reason:(.reason // null), detail:(.detail // null), sha:$sha, blocked:null}' <<<"$res")"
+    else
+      mkdir -p "$feature_dir/logs"
+      vrc=0; lib output-digest run --log "$feature_dir/logs/verify-$task_id.log" --label "verify $task_id" -- bash -c "cd '$root' && $verify_cmd" >&2 || vrc=$?
+      if (( vrc != 0 )); then
+        answer="$(jq -cn --argjson rc "$vrc" '{published:false, reason:"verify-failed", detail:("verify command exited " + ($rc | tostring)), sha:null, blocked:null}')"
+      else
+        before="$(git -C "$root" rev-parse HEAD)"
+        files_json="$(jq -c '.files // []' <<<"$task_json")"
+        while IFS= read -r f; do [[ -n "$f" ]] && git -C "$root" add -- "$f" 2>/dev/null; done < <(jq -r '.[]' <<<"$files_json")
+        git -C "$root" commit -q -m "feat: NO_JIRA $(jq -r '.subject' <<<"$task_json")" >/dev/null 2>&1 || true
+        after="$(git -C "$root" rev-parse HEAD)"
+        outside="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude)docs/loop-spec' 2>/dev/null)"
+        if [[ "$before" == "$after" ]]; then
+          answer="$(jq -cn '{published:false, reason:"commit-missing", detail:"nothing to commit under task.files", sha:null, blocked:"commit-missing"}')"
+        elif [[ -n "$outside" ]]; then
+          answer="$(jq -cn --arg sha "$after" --arg d "$outside" '{published:true, reason:"dirty-outside-task-files", detail:$d, sha:$sha, blocked:null}')"
+        else
+          answer="$(jq -cn --arg sha "$after" '{published:true, reason:null, detail:null, sha:$sha, blocked:null}')"
+        fi
+      fi
+    fi
+    if [[ "$(jq -r '.published' <<<"$answer")" == "true" ]]; then
+      lib task-progress mark-done "$sidecar" "$task_id" >/dev/null
+      task_end merged
+      if [[ "$task_id" == "task-001" && "$(fget '.greenfield // false')" == "true" ]]; then
+        test_cmd="$(lib detect-test-cmd "$root" 2>/dev/null || true)"
+        [[ -n "$test_cmd" ]] && lib feature-write set "$feature_dir" commands.test "\"$test_cmd\"" >/dev/null
+        prep_cmd="$(lib prepare-environment resolve --root "$root" 2>/dev/null | jq -r '.command // ""' || true)"
+        [[ -n "$prep_cmd" ]] && lib feature-write set "$feature_dir" commands.prepare "\"$prep_cmd\"" >/dev/null
+        lib greenfield-bootstrap backfill-check "$feature_dir" >&2 || answer="$(jq -c '.detail = "greenfield backfill missing: commands.test is empty after the scaffold"' <<<"$answer")"
+      fi
+      printf '%s\n' "$answer"; exit 0
+    fi
+    reason="$(jq -r '.reason' <<<"$answer")"
+    case "$reason" in
+      verify-failed|prepare-failed) sset blocked '"retry-exhausted"' ;;
+      zero-commit|commit-missing) sset blocked '"commit-missing"' ;;
+      *) sset blocked '"rebase-conflict"' ;;
+    esac
+    task_end failed
+    jq -c --arg b "$(sget '.blocked')" '.blocked = $b' <<<"$answer"; exit 1
+    ;;
+esac
