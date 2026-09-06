@@ -25,6 +25,10 @@ Read-only; you write no files. Return a verdict as JSON in your completion messa
 
 ## Procedure
 
+Read `skills/shared/approach-selection.md` and apply its VERIFY / ITERATE row:
+evaluate equivalent methods against the original outcome, preserve binding choices,
+and inspect the evidence and decision updates behind any material departure.
+
 1. **Read the original goal first**, then SPEC.md. Note any place the SPEC narrowed, drifted from, or failed to capture the original goal — a spec can pass its own checklist while the goal stays unmet.
 2. **Read VERIFICATION.md.** The deterministic acceptance gate already ran; treat its pass/fail as the objective floor. You are NOT re-running tests — you are judging whether passing them actually achieved the goal.
 3. **Inspect the integrated result** on `feat/{slug}` — read the changed files and follow their callers to confirm the change actually connects where the goal needs it.

@@ -41,6 +41,9 @@ task sentence, a vague symptom report. Everything else travels verbatim:
 3. **Choreography becomes outcomes.** Step-by-step method scripts for judgment work
    collapse to the goal, the constraints, and how success is checked. Keep exact
    sequences only where order genuinely matters (destructive commands, auth flows).
+   Preserve suggested methods and their reasons as candidates; preserve required
+   methods as constraints. Normalization does not select or discard an architecture;
+   `skills/shared/approach-selection.md` owns that later evidence-based choice.
 4. **Say each thing once.** Merge duplicate asks, drop generic virtues ("be accurate
    and thorough"), drop grader vocabulary; a repeated instruction is kept in its
    strongest single form.

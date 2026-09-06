@@ -14,6 +14,10 @@ Adjacent entry points on the same machinery:
 
 Design constraints:
 
+- Suggested methods are candidates: SPEC separates intent from constraints, DISCUSS
+  compares approaches, and PLAN checks them against existing code patterns. EXECUTE
+  may improve local choices when new evidence warrants it; binding decisions and
+  acceptance criteria remain intact. See [approach selection](skills/shared/approach-selection.md).
 - The base runtime is bash, jq, python3, and markdown. The optional ADK harness
   installs Google's Python package; no loop-spec daemon or database is required.
 - Whether the loop may act without a human is decided by tested shell scripts, not skill prose.
@@ -23,7 +27,7 @@ Design constraints:
 - The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
 - Works with or without Claude Code agent teams, and on both team harness generations.
 
-Current version: 6.0.0
+Current version: 6.1.0
 
 Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 

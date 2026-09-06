@@ -38,6 +38,10 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 
 ## Procedure
 
+Read `skills/shared/approach-selection.md`. Check material departures against the
+recorded evidence, original criteria, and binding decisions; an equivalent internal
+method is not a defect merely because it differs from the user's initial suggestion.
+
 1. `git diff {base_sha}..{branch} --stat` (Bash) - overview
 2. `git diff {base_sha}..{branch}` - full diff
 3. Read changed files with Read tool for context

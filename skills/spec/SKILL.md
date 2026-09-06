@@ -40,6 +40,10 @@ Calibration anchors and question banks: `${CLAUDE_SKILL_DIR}/references/intervie
 
 ## 1. Scout
 
+Read `skills/shared/approach-selection.md`: separate the outcome and binding
+constraints from a suggested method before the interview or draft. Preserve that
+distinction in every path below, including synthesis and ingest.
+
 Read `feature_dir/` (prior transcript on resume) and `docs/loop-spec/features/{slug}/`.
 Then read the code: search the feature
 area by the user's vocabulary and the obvious symbols, read the entry points you find,

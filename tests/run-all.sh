@@ -381,6 +381,7 @@ run_suite "tests/engineering-stances-coverage" "bash tests/engineering-stances-c
 run_suite "tests/execution-validation-coverage" "bash tests/execution-validation-coverage.test.sh"
 run_suite "tests/verification-grounding-coverage" "bash tests/verification-grounding-coverage.test.sh"
 run_suite "tests/prompt-normalize-coverage" "bash tests/prompt-normalize-coverage.test.sh"
+run_suite "tests/approach-selection-coverage" "bash tests/approach-selection-coverage.test.sh"
 run_suite "tests/configuration-coverage" "bash tests/configuration-coverage.test.sh"
 run_suite "tests/contract-strings"    "bash tests/contract-strings.test.sh"
 run_suite "tests/delivery-phase-coverage" "bash tests/delivery-phase-coverage.test.sh"

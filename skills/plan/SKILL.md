@@ -33,6 +33,10 @@ records the chosen stack's conventions instead of mined analogs.
 
 ## 2. Author PLAN.md
 
+Read `skills/shared/approach-selection.md` and include it in the authoring brief on
+every path below. Resolve evidence that challenges a settled design through the
+existing decision path before accepting conflicting tasks.
+
 Spawn `planner-1` (`loop-spec:planner`, model `feature.models.planner`) and, in team
 modes, warm up `challenger-1` with SPEC.md meanwhile. The
 planner brief carries: `slug`, `spec_path`, `patterns_path`,
