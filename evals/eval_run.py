@@ -78,7 +78,8 @@ def prepare_workspace(task, run_dir, env):
     if root.exists():
         shutil.rmtree(root)
     project = root / "project"
-    shutil.copytree(task["dir"] / "fixture", project)
+    shutil.copytree(task["dir"] / "fixture", project,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     origin = root / "origin.git"
     sh(["git", "init", "--bare", "-q", str(origin)], cwd=root, env=env)
     sh(["git", "init", "-q", "-b", "main"], cwd=project, env=env)
