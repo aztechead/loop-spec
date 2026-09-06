@@ -1,0 +1,11 @@
+# Eval run 20260906-v620-haiku3
+
+Plugin 6.2.0 at 3f0bf1c, model haiku, 1 task(s). Acceptance is `check.sh`; the judge is advisory.
+
+| task | accepted | delivered | checks | phase | status | rounds | turns | agents | cost USD | min | app files | app +/- | artifact + | over-build | protected touched | judge meets/over |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| slugify-bug | yes | no | 2/2 | deliver | escalated | 1 | 97 | 2 | 1.40 | 9.8 | 2 | +4/-0 | +523 | 0.5x | - | 3/1 |
+
+Accepted 1/1. Delivered 0/1. Total cost USD 1.40. Total minutes 9.8.
+
+- slugify-bug terminal reason: candidate repository has uncommitted changes
