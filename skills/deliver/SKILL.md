@@ -50,8 +50,9 @@ set, runs before every push and API stage and retries one auth failure.
 The controller persists `.loop-spec/features/{slug}/delivery.json`; its `nextPhase` is
 the route. Obey it; never reclassify a failure from prose.
 
-- **`completed`** (`status == "ready-for-review"` or `"delivered-draft"`): run step 3,
-  then return. Do not commit or push afterwards; the proven head SHA is immutable and
+- **`completed`** (`status == "ready-for-review"`, `"delivered-draft"`, or
+  `"pushed-no-pr"`: no `gh` on this host, the verified SHA is pushed and no PR exists,
+  so step 3 has nothing to check): run step 3, then return. Do not commit or push afterwards; the proven head SHA is immutable and
   `feature.json.currentPhase` stays `deliver` (a clone re-proves the external state).
 - **`execute`** (required checks failed): the PR stays a draft and the controller has
   appended one `task-delivery-ci-remediation` task per failed target to

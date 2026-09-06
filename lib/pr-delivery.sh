@@ -232,7 +232,14 @@ done < <(git -C "$repo_dir" remote get-url --push --all "$remote" 2>/dev/null)
 [[ "${#push_urls[@]}" -eq 1 ]] \
   || fail_bad "remote_ambiguous" "remote '$remote' has multiple push URLs; exact delivery requires one destination"
 remote_url="${push_urls[0]}"
-command -v gh >/dev/null 2>&1 || fail_bad "gh_missing" "gh is not on PATH"
+# Without gh, final mode still pushes the exact SHA and stops there with its own
+# outcome (pushed-no-pr): a verified commit on the remote is worth more than a blocked
+# run, and a supervisor can tell the two apart. checkpoint and observe need the API.
+have_gh=1
+if ! command -v gh >/dev/null 2>&1; then
+  [[ "$mode" == "final" ]] || fail_bad "gh_missing" "gh is not on PATH"
+  have_gh=0
+fi
 
 credential_host="$(python3 - "$remote_url" <<'PY'
 import re, sys
@@ -391,6 +398,20 @@ rollback_readiness() {
     is_draft="true"
   fi
 }
+
+if [[ "$have_gh" -eq 0 ]]; then
+  push_rc=0
+  run_gh_once "$tmp_dir/git-push.out" "$tmp_dir/git-push.err" \
+    git -C "$repo_dir" push "$remote_url" "$target_sha:refs/heads/$branch" || push_rc=$?
+  [[ "$push_rc" -eq 0 ]] \
+    || fail_delivery "push_failed" "exact-SHA push failed: $(tr '\n' ' ' < "$tmp_dir/git-push.err")"
+  remote_sha="$(git -C "$repo_dir" ls-remote "$remote_url" "refs/heads/$branch" 2>/dev/null | cut -f1)"
+  [[ "$remote_sha" == "$target_sha" ]] \
+    || fail_delivery "remote_sha_mismatch" "remote branch is '$remote_sha', expected '$target_sha'"
+  echo "pr-delivery: gh is not on PATH; pushed $target_sha to $branch and stopped (pushed-no-pr)" >&2
+  emit_result true "pushed-no-pr" "" ""
+  exit 0
+fi
 
 # Resolve GitHub identity from the exact push URL, not whichever remote gh happens
 # to prefer in the working tree.

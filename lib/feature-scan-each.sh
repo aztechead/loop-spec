@@ -41,7 +41,7 @@ emit_targets() {
   local ws_type workspace_root n name rel_path base_sha repo_dir slug repo_root
   ws_type="$(jq -r '.workspace | type' "$feature_json" 2>/dev/null)" || return 1
   if [[ "$ws_type" == "object" ]]; then
-    workspace_root="$(jq -r '.workspace.root // empty' "$feature_json")" || return 1
+    workspace_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end' "$feature_json")" || return 1
     [[ -n "$workspace_root" && -d "$workspace_root" ]] || {
       echo "feature-scan-each: workspace.root is missing or not a directory" >&2
       return 1

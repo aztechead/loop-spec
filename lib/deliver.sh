@@ -38,7 +38,7 @@ jq -e '.schemaVersion == 7 and (.currentPhase == "deliver")' "$feature_json" >/d
 
 slug="$(jq -r '.slug' "$feature_json")"
 feature_title="$(jq -r '.feature_title // .slug' "$feature_json")"
-workspace_root="$(jq -r '.workspace.root // empty' "$feature_json")"
+workspace_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end' "$feature_json")"
 if [[ -n "$workspace_root" ]]; then
   artifact_root="$workspace_root"
 else
@@ -374,6 +374,7 @@ fi
 delivered_count="$(jq '[.[] | select(.outcome == "delivered")] | length' <<<"$targets")"
 skipped_count="$(jq '[.[] | select(.outcome == "skipped-no-commits")] | length' <<<"$targets")"
 held_count="$(jq '[.[] | select(.outcome == "ready-pending")] | length' <<<"$targets")"
+pushed_count="$(jq '[.[] | select(.outcome == "pushed-no-pr")] | length' <<<"$targets")"
 failure_count="$(jq '[.[] | select(.ok == false)] | length' <<<"$targets")"
 first_error="$(jq -r '[.[] | select(.ok == false) | .errorCode // "delivery_failed"] | first // ""' <<<"$targets")"
 
@@ -409,6 +410,10 @@ if [[ "$failure_count" -gt 0 || "$held_count" -gt 0 ]]; then
   else
     next_phase="deliver"
   fi
+elif [[ "$delivered_count" -eq 0 && "$pushed_count" -gt 0 ]]; then
+  # No gh on this host: the verified SHA is on the remote and nothing else can happen
+  # here. Completed, and distinct from ready-for-review so a supervisor can tell.
+  status="pushed-no-pr"
 elif [[ "$delivered_count" -eq 0 ]]; then
   ok=false
   finished_at=""

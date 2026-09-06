@@ -66,13 +66,27 @@ now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
 fset() { lib feature-write set "$1" "$2" "$3"; }
 fget() { jq -r "$2" "$1/feature.json"; }
-# .loop-spec/profile.json is the run's policy (docs/loop-spec/supervisor-interface.md).
-# Preflight evaluates it in its own process, which this one never saw: a supervised
-# preset that named autonomous still started an interactive run (eval finding 3).
-load_profile() {
-  local exports
-  exports="$(lib profile env)" || { echo "cycle-driver: profile.json is invalid; running without it" >&2; return 0; }
-  eval "$exports"
+
+# merge_invocation_stamp DIR INV_JSON: the UserPromptSubmit hook stamps the raw
+# /loop-spec:<skill> arguments before the skill rewrites its prose; a token the rewrite
+# dropped is taken from the stamp. Consumed on read, and ignored past
+# LOOP_SPEC_STAMP_MAX_AGE_MIN (30), so a stale stamp never binds a later run.
+merge_invocation_stamp() {
+  local dir="$1" inv="$2" stamp="$1/.loop-spec/invocation-stamp.json" stamped ts now
+  [[ -f "$stamp" ]] || { printf '%s\n' "$inv"; return 0; }
+  ts="$(jq -r '.ts // 0' "$stamp" 2>/dev/null || echo 0)"; now="$(date +%s)"
+  if (( now - ts > ${LOOP_SPEC_STAMP_MAX_AGE_MIN:-30} * 60 )); then
+    rm -f "$stamp"; printf '%s\n' "$inv"; return 0
+  fi
+  stamped="$(lib parse-invocation parse -- $(jq -r '.args // ""' "$stamp"))" || stamped=""
+  rm -f "$stamp"
+  [[ -n "$stamped" ]] || { printf '%s\n' "$inv"; return 0; }
+  jq -c --argjson s "$stamped" '
+    .autonomous = (.autonomous or $s.autonomous)
+    | .greenfield = (.greenfield or $s.greenfield)
+    | .style = (if (.style // "") == "" then $s.style else .style end)
+    | .phase_mode = (if (.phase_mode // "") == "" then $s.phase_mode else .phase_mode end)
+    | .profile = (if (.profile // "") == "" then $s.profile else .profile end)' <<<"$inv"
 }
 
 # ------------------------------------------------------------------ start ----
@@ -87,7 +101,12 @@ cmd_start() {
   done
   dir="$(cd "$dir" && pwd -P)"
   cd "$dir"
-  load_profile
+  # .loop-spec/profile.json is the run's policy (docs/loop-spec/supervisor-interface.md).
+  # Preflight evaluates it in its own process, which this one never saw: a supervised
+  # preset that named autonomous still started an interactive run (eval finding 3).
+  local profile_exports
+  if profile_exports="$(lib profile env)"; then eval "$profile_exports"
+  else echo "cycle-driver: profile.json is invalid; running without it" >&2; fi
 
   if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" \
         && ! "$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS" =~ ^[1-9][0-9]*$ ]]; then
@@ -102,6 +121,7 @@ cmd_start() {
   local pf inv
   pf="$(lib cycle-preflight run "$dir")"
   inv="$(lib parse-invocation parse -- ${args[@]+"${args[@]}"})"
+  inv="$(merge_invocation_stamp "$dir" "$inv")"
 
   local autonomous=0 non_interactive=0
   [[ "$(jq -r '.autonomous' <<<"$inv")" == "true" || "${LOOP_SPEC_AUTONOMOUS:-}" == "1" ]] && autonomous=1
@@ -564,7 +584,7 @@ cmd_resume() {
   [[ "$slug" == "$(basename "$feature_dir")" ]] || die "feature slug does not match its directory: $feature_dir"
   harness="$(lib harness detect)"
 
-  if [[ "$(fget "$feature_dir" '.workspace // null')" != "null" ]]; then
+  if [[ "$(fget "$feature_dir" 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')" != "null" ]]; then
     [[ "$(fget "$feature_dir" '.workspace.root')" == "$dir" ]] \
       || die "this workspace feature must be resumed from its workspace root. cd to $(fget "$feature_dir" '.workspace.root') and re-invoke cycle."
   elif [[ "$(fget "$feature_dir" '.executionRootMode // "worktree"')" == "worktree" && "$harness" == "claude" ]]; then
@@ -620,6 +640,9 @@ iso_epoch() {
   python3 -c "import sys,datetime;print(int(datetime.datetime.strptime(sys.argv[1],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()))" "$1" 2>/dev/null || echo 0
 }
 
+# Workspace mode is the recorded mode, never the presence of a root: lib/workspace.sh
+# detect reports {root, mode:"single", repos:[]} for an ordinary repository too, and a
+# consumer that read the root as the mode skipped every artifact commit (eval finding 6).
 # ------------------------------------------------------------------- next ----
 cmd_next() {
   local feature_dir="" returned="" note=""
@@ -631,7 +654,7 @@ cmd_next() {
   feature_dir="$(cd "$feature_dir" && pwd -P)"
   local slug ws_mode=single repo_root
   slug="$(fget "$feature_dir" '.slug')"
-  [[ "$(fget "$feature_dir" '.workspace // null')" != "null" ]] && ws_mode=workspace
+  [[ "$(fget "$feature_dir" 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')" != "null" ]] && ws_mode=workspace
   repo_root="$(lib cycle-result resolve-root "$feature_dir/../../..")"
   cd "$repo_root"
 
@@ -809,13 +832,14 @@ cmd_finish() {
   feature_dir="$(cd "$feature_dir" && pwd -P)"
   local delivery="$feature_dir/delivery.json" status
   status="$(jq -r '.status // ""' "$delivery" 2>/dev/null || true)"
-  case "$status" in ready-for-review|delivered-draft) ;;
+  case "$status" in ready-for-review|delivered-draft|pushed-no-pr) ;;
     *) echo "loop-spec: delivery-incomplete (sidecar status '${status:-none}'); feature.json.currentPhase stays at deliver." >&2; exit 1 ;;
   esac
   local pr_url summary
   pr_url="$(fget "$feature_dir" '.prUrl // empty')"
   summary="$(fget "$feature_dir" '.iterate.lastVerdict.summary // empty')"
   [[ -n "${summary//[[:space:]]/}" ]] || summary="Cycle completed; PR delivered."
+  [[ "$status" == "pushed-no-pr" ]] && summary="$summary (pushed to the remote; no gh on this host, so no PR was opened)"
   lib cycle-result write "$feature_dir" --status completed --summary "$summary" ${pr_url:+--pr-url "$pr_url"} >/dev/null \
     || { echo "cycle-result.sh write failed; retrying once" >&2
          lib cycle-result write "$feature_dir" --status completed --summary "$summary" ${pr_url:+--pr-url "$pr_url"} >/dev/null; }
@@ -823,7 +847,7 @@ cmd_finish() {
   [[ -n "$entry" ]] && lib backlog done "$entry" >/dev/null 2>&1 || true
   local chain; chain="$(lib autonomous-chain should-chain "$feature_dir" --completed "$completed")"
   local exit_wt=false
-  [[ "$(fget "$feature_dir" '.workspace // null')" == "null" && -n "$(fget "$feature_dir" '.worktreePath // ""')" && "$(lib harness detect)" == "claude" ]] && exit_wt=true
+  [[ "$(fget "$feature_dir" 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')" == "null" && -n "$(fget "$feature_dir" '.worktreePath // ""')" && "$(lib harness detect)" == "claude" ]] && exit_wt=true
   jq -n --arg s "$status" --arg pr "$pr_url" --arg sum "$summary" --argjson d "$(cat "$delivery")" \
     --argjson w "$(fget "$feature_dir" '.warnings // []')" --argjson chain "$chain" --argjson ew "$exit_wt" \
     --arg bl "$(lib backlog count 2>/dev/null || echo 0)" \
@@ -844,7 +868,7 @@ cmd_escalate() {
     --summary "Cycle stopped during $phase: $reason" >/dev/null || true
   lib checkpoint-pr create "$feature_dir" --reason "$reason" >&2 || true
   local exit_wt=false
-  [[ "$(fget "$feature_dir" '.workspace // null')" == "null" && -n "$(fget "$feature_dir" '.worktreePath // ""')" && "$(lib harness detect)" == "claude" ]] && exit_wt=true
+  [[ "$(fget "$feature_dir" 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')" == "null" && -n "$(fget "$feature_dir" '.worktreePath // ""')" && "$(lib harness detect)" == "claude" ]] && exit_wt=true
   jq -n --arg r "$reason" --arg p "$phase" --argjson gh "$(fget "$feature_dir" '(.gateHistory // [])[-3:]')" \
     --argjson a "$(fget "$feature_dir" '.artifacts // {}')" \
     --argjson d "$(cat "$feature_dir/delivery.json" 2>/dev/null || echo null)" --argjson ew "$exit_wt" \

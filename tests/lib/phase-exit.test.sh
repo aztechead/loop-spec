@@ -100,6 +100,15 @@ check "exit spec: artifact pointer recorded" "docs/loop-spec/features/my-feature
 check "exit spec: transcript pointer recorded" "1" "$([[ "$(fj '.artifacts.specInterview')" == *transcript.md ]] && echo 1 || echo 0)"
 check "exit spec: phase closed" "spec" "$(fj '.completedPhases[-1]')"
 check "exit spec: SPEC.md committed" "1" "$(git log --oneline | grep -c 'spec: my-feature')"
+# A single-mode workspace record (what lib/workspace.sh detect reports for an ordinary
+# repository) must not read as workspace mode: the haiku re-run of todo-due carried one
+# and phase-exit committed nothing. Re-run the exit over an edited SPEC.md and expect a
+# second commit.
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace "{\"root\":\"$REPO\",\"mode\":\"single\",\"repos\":[]}" >/dev/null
+printf '\nA line the second commit carries.\n' >> "$DOCS/SPEC.md"
+bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1
+check "exit spec: a single-mode workspace record still commits" "2" "$(git log --oneline | grep -c 'spec: my-feature')"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" workspace null >/dev/null
 
 # --- discuss ------------------------------------------------------------------------
 out="$(bash "$MODE" discuss --feature-dir "$FD")"

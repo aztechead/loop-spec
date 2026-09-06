@@ -40,8 +40,8 @@ TASKS_DIR = REPO / "evals" / "tasks"
 RESULTS_DIR = REPO / "evals" / "results"
 RUNS_DIR = REPO / "evals" / ".runs"
 ARTIFACT_PREFIXES = ("docs/loop-spec/", ".loop-spec/", ".claude/")
-DEFAULT_BUDGET = {"haiku": 8.0, "sonnet": 20.0, "opus": 40.0}
-ROUND_TIMEOUT_S = 45 * 60
+DEFAULT_BUDGET = {"haiku": 8.0, "sonnet": 40.0, "opus": 80.0}
+ROUND_TIMEOUT_S = 90 * 60
 MAX_ROUNDS = 8
 ALLOWED_TOOLS = ",".join((
     "Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Agent", "Skill",
@@ -331,6 +331,7 @@ def run_task(task_id, model, run_id, budget, measure_only=False):
     record = {
         "task": task_id, "size": task.get("size"), "kind": task.get("kind"),
         "model": model, "run_id": run_id, "plugin_version": plugin_version(),
+        "plugin_commit": plugin_commit(),
         "rounds": len(rounds),
         "cost_usd": round(spent, 4),
         "minutes": round(sum(r["seconds"] for r in rounds) / 60, 1),
@@ -344,6 +345,8 @@ def run_task(task_id, model, run_id, budget, measure_only=False):
         "iterations": ((feature or {}).get("iterate") or {}).get("used"),
         "phase": (feature or {}).get("currentPhase"),
         "delivery_status": ((feature or {}).get("delivery") or {}).get("status"),
+        "delivered": ((feature or {}).get("delivery") or {}).get("status")
+        in ("ready-for-review", "delivered-draft", "pushed-no-pr"),
         "events": events,
         "branch": branch, "commits": commits,
         "app_diff": app, "artifact_diff": artifacts,
@@ -371,6 +374,18 @@ def run_task(task_id, model, run_id, budget, measure_only=False):
     return record
 
 
+def plugin_commit():
+    """The checkout the snapshot was taken from; a version number alone cannot tell two
+    builds of one release apart."""
+    try:
+        head = sh(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, check=False).stdout.strip()
+        dirty = sh(["git", "status", "--porcelain", "--", "lib", "hooks", "skills", "graph"],
+                   cwd=REPO, check=False).stdout.strip()
+        return head + ("-dirty" if dirty else "")
+    except OSError:
+        return None
+
+
 def plugin_version():
     try:
         return json.loads((REPO / ".claude-plugin" / "plugin.json").read_text()).get("version")
@@ -384,14 +399,16 @@ def write_summary(out_dir):
     if not records:
         return
     lines = [f"# Eval run {out_dir.name}", "",
-             f"Plugin {records[0].get('plugin_version')}, model {records[0].get('model')}, "
+             f"Plugin {records[0].get('plugin_version')} at {records[0].get('plugin_commit')}, "
+             f"model {records[0].get('model')}, "
              f"{len(records)} task(s). Acceptance is `check.sh`; the judge is advisory.", "",
-             "| task | accepted | checks | phase | status | rounds | turns | agents | cost USD | min | app files | app +/- | artifact + | over-build | protected touched | judge meets/over |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "| task | accepted | delivered | checks | phase | status | rounds | turns | agents | cost USD | min | app files | app +/- | artifact + | over-build | protected touched | judge meets/over |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in records:
         j = r.get("judge") or {}
         lines.append(
-            f"| {r['task']} | {'yes' if r['accepted'] else 'NO'} | {r['checks_passed']}/{r['checks_total']} "
+            f"| {r['task']} | {'yes' if r['accepted'] else 'NO'} | {'yes' if r.get('delivered') else 'no'} "
+            f"| {r['checks_passed']}/{r['checks_total']} "
             f"| {r.get('phase')} | {r['result'].get('status')} | {r['rounds']} | {r['turns']} "
             f"| {r['subagents']} | {r['cost_usd']:.2f} | {r['minutes']} | {r['app_diff']['files']} "
             f"| +{r['app_diff']['added']}/-{r['app_diff']['removed']} | +{r['artifact_diff']['added']} "
@@ -399,7 +416,9 @@ def write_summary(out_dir):
             f"| {j.get('meets_request')}/{j.get('overbuilt')} |")
     total_cost = sum(r["cost_usd"] for r in records)
     accepted = sum(1 for r in records if r["accepted"])
-    lines += ["", f"Accepted {accepted}/{len(records)}. Total cost USD {total_cost:.2f}. "
+    delivered = sum(1 for r in records if r.get("delivered"))
+    lines += ["", f"Accepted {accepted}/{len(records)}. Delivered {delivered}/{len(records)}. "
+                  f"Total cost USD {total_cost:.2f}. "
                   f"Total minutes {sum(r['minutes'] for r in records):.1f}.", ""]
     for r in records:
         failed = [f"{k}: {v['note']}".rstrip(": ") for k, v in r["checks"].items() if not v["pass"]]

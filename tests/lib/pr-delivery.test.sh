@@ -764,6 +764,21 @@ check "observe auth failure: structured code" "authentication_failed" "$(jq -r '
 check "observe auth failure: one auth refresh" "1" \
   "$(grep -c '^git-query|auth-retry|' "$REFRESH_LOG" || true)"
 
+# --- no gh: final mode pushes the exact SHA and stops with its own outcome ----------
+NOGH="$WORK/nogh-bin"; mkdir -p "$NOGH"; ln -sf "$REAL_GIT" "$NOGH/git"
+for tool in jq python3 bash cut tr date mktemp rm cat sed grep head; do
+  p="$(command -v "$tool")"; [[ -n "$p" ]] && ln -sf "$p" "$NOGH/$tool"
+done
+out="$(PATH="$NOGH" bash "$SCRIPT" final -C "$WORK/repo" --branch feat/nogh --base main --sha "$TARGET_SHA" \
+  --title "t" --body-file "$BODY" 2>/dev/null)"
+check "no gh: final mode succeeds" "true" "$(jq -r '.ok' <<<"$out")"
+check "no gh: outcome is pushed-no-pr" "pushed-no-pr" "$(jq -r '.outcome' <<<"$out")"
+check "no gh: the remote branch holds the exact SHA" "$TARGET_SHA" "$(git -C "$WORK/origin.git" rev-parse refs/heads/feat/nogh)"
+check "no gh: no PR url" "null" "$(jq -r '.prUrl' <<<"$out")"
+out="$(PATH="$NOGH" bash "$SCRIPT" checkpoint -C "$WORK/repo" --branch feat/nogh --base main --sha "$TARGET_SHA" \
+  --title "t" --body-file "$BODY" 2>/dev/null)"
+check "no gh: checkpoint mode still refuses" "gh_missing" "$(jq -r '.errorCode' <<<"$out")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

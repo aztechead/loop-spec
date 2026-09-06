@@ -65,7 +65,7 @@ fget() { jq -r "$1" "$fj"; }
 fset() { lib feature-write set "$feature_dir" "$1" "$2" >/dev/null; }
 
 slug="$(fget '.slug')"
-ws_root="$(fget '.workspace.root // ""')"
+ws_root="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; fi
 cd "$root"
 docs="docs/loop-spec/features/$slug"

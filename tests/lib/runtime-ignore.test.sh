@@ -69,6 +69,9 @@ done
 touch "$WORK/.loop-spec/profile.json"
 check ".loop-spec/profile.json ignored" "ignored" \
   "$(git -C "$WORK" check-ignore -q .loop-spec/profile.json && echo ignored || echo not-ignored)"
+touch "$WORK/.loop-spec/invocation-stamp.json"
+check ".loop-spec/invocation-stamp.json ignored" "ignored" \
+  "$(git -C "$WORK" check-ignore -q .loop-spec/invocation-stamp.json && echo ignored || echo not-ignored)"
 
 # /revise must reuse feature-shaped runtime state without allowing it to enter a
 # remediation commit, even in repositories that historically tracked it.

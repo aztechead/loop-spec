@@ -65,7 +65,7 @@ jq -e '.schemaVersion == 7 and .currentPhase == "deliver"' "$feature_json" >/dev
 }
 
 # Workspace delivery has no single candidate branch at the feature root.
-if jq -e '.workspace != null' "$feature_json" >/dev/null 2>&1; then
+if jq -e '(.workspace != null and (.workspace.mode // "") != "single")' "$feature_json" >/dev/null 2>&1; then
   exit 0
 fi
 

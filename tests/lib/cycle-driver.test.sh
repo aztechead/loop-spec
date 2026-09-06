@@ -160,6 +160,17 @@ ec=0; init="$(cd "$REPO3" && drv init --dir "$REPO3" --slug flag --title "add a 
 check "init: an untracked profile.json is not dirt" "0" "$ec"
 check "init: the profile's preset arms the run autonomous" "true" "$(jq -r '.autonomous' "$REPO3/.loop-spec/active-run.json")"
 
+# --- the raw-prompt stamp restores a dropped token ----------------------------------------
+REPO5="$(new_repo stamped)"
+mkdir -p "$REPO5/.loop-spec"
+printf '{"schema":1,"skill":"cycle","args":"autonomous add a flag to the tool","ts":%s}\n' "$(date +%s)" > "$REPO5/.loop-spec/invocation-stamp.json"
+out="$(cd "$REPO5" && drv start -- "add a flag to the tool" 2>/dev/null)"
+check "start: a stamped autonomous token survives the prose rewrite" "true" "$(jq -r '.invocation.autonomous' <<<"$out")"
+check "start: the stamp is consumed" "0" "$([[ -f "$REPO5/.loop-spec/invocation-stamp.json" ]] && echo 1 || echo 0)"
+printf '{"schema":1,"skill":"cycle","args":"autonomous add a flag","ts":%s}\n' "$(( $(date +%s) - 7200 ))" > "$REPO5/.loop-spec/invocation-stamp.json"
+out="$(cd "$REPO5" && drv start -- "add a flag to the tool" 2>/dev/null)"
+check "start: a stale stamp is ignored" "false" "$(jq -r '.invocation.autonomous' <<<"$out")"
+
 # --- dirty refusal names the paths ------------------------------------------------------
 REPO4="$(new_repo dirty)"
 printf 'wip\n' > "$REPO4/notes.txt"

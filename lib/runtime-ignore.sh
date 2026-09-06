@@ -39,6 +39,7 @@ patterns=(
   '/.loop-spec/runtime.json'
   '/.loop-spec/active-run.json'
   '/.loop-spec/profile.json'
+  '/.loop-spec/invocation-stamp.json'
   '/.loop-spec/decisions-staging/'
   '/.loop-spec/last-result.json'
   '/.loop-spec/results/'

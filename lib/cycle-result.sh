@@ -700,7 +700,8 @@ PY
           . != null and (
             (.nextPhase // "") == "completed" or
             (.status // "") == "ready-for-review" or
-            (.status // "") == "delivered-draft")
+            (.status // "") == "delivered-draft" or
+            (.status // "") == "pushed-no-pr")
         ' >/dev/null 2>&1 <<<"$delivery_content"; then
         summary="Cycle completed; PR delivered."
       else
@@ -809,7 +810,7 @@ PY
            else $status end) as $effectiveStatus |
          ($reachedDelivery and (($localDeliveryEscalation | not) or $intentionalNoChange))
             as $implementationConverged |
-         (if ($fj.workspace // null) == null
+         (if ($fj.workspace == null or ($fj.workspace.mode // "") == "single")
           then ($eligibleTargets | first // null)
           else null end) as $primaryTarget |
         (($effectiveStatus == "completed") and
@@ -824,6 +825,7 @@ PY
          or (($delivery.targets // [])
              | map(select(.outcome == "delivered-draft" and ((.prUrl // "") != "")))
              | length) > 0) as $draftRecord |
+        (($effectiveStatus == "completed") and (($delivery.status // "") == "pushed-no-pr")) as $pushedNoPr |
         (($effectiveStatus == "completed")
          and ($feedbackBlocking | not)
          and ($warnings
@@ -846,11 +848,11 @@ PY
          cycleType: "full",
          slug: $fj.slug,
           status: $effectiveStatus,
-          outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $draftDelivered then "delivered-draft" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
+          outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $draftDelivered then "delivered-draft" elif $pushedNoPr then "pushed-no-pr" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
           reason: $reason,
           summary: $summary_arg,
           noChangeReason: (if $intentionalNoChange then $no_change_reason_arg else null end),
-          phaseReached: (if $effectiveStatus == "completed" and ((($delivery.status // "") == "ready-for-review") or (($delivery.status // "") == "delivered-draft") or $intentionalNoChange)
+          phaseReached: (if $effectiveStatus == "completed" and ((($delivery.status // "") == "ready-for-review") or (($delivery.status // "") == "delivered-draft") or (($delivery.status // "") == "pushed-no-pr") or $intentionalNoChange)
                          then "completed" else ($fj.currentPhase // null) end),
          branch: (if $primaryTarget != null then ($primaryTarget.branch // $fj.branch // null)
                   else ($fj.branch // null) end),

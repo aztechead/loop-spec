@@ -4,6 +4,8 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.2.0] - 2026-09-06
+
 ### Added
 
 - `evals/`: a paid, live outcome eval (five fixture tasks, deterministic acceptance
@@ -15,6 +17,16 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `feature.json.driverNext`: the phase the driver last answered with `NEXT`.
   `cycle-result.sh write` refuses `--status failed|terminal|escalated` over it unless
   `--reason` says what stopped the phase.
+- `hooks/team/invocation-stamp.sh` (UserPromptSubmit, Claude Code and Codex): stamps the
+  raw `/loop-spec:<skill>` arguments so `cycle-driver.sh start` can restore a token the
+  skill's prose rewrite dropped. `LOOP_SPEC_INVOCATION_STAMP`, `LOOP_SPEC_STAMP_MAX_AGE_MIN`.
+- `hooks/restrict-agent-paths.sh` denies Write and Edit under the installed plugin root
+  for every caller, by real path; a feature worktree under the project and a plugin root
+  inside the project (loop-spec developing itself) are unaffected.
+- DELIVER without `gh`: `lib/pr-delivery.sh final` pushes the exact SHA and stops with
+  outcome `pushed-no-pr`; `lib/deliver.sh` reports `status: pushed-no-pr`, the cycle
+  completes, and `cycle-result.sh` publishes outcome `pushed-no-pr`. checkpoint and
+  observe modes still require `gh`.
 - `LOOP_SPEC_MICRO_GUARD_MAX_DENIALS` (default 3) and
   `LOOP_SPEC_MICRO_GUARD_STATE_DIR`: the ad-hoc verify guard stands down after that
   many denials for one transcript.
@@ -30,9 +42,14 @@ All notable changes documented here. Format follows Keep a Changelog.
   working directory, and a failed commit is reported and recorded instead of hidden.
   Run from the project root with the feature in a worktree, it used to stage a
   `.gitignore` in the root and leave `feature.json` untracked for DELIVER to refuse.
-- `lib/graph/probes/plan-critique.sh` routes on `workspace.mode`, not on the presence
-  of a root, and says why when it cannot answer; `plan.critique.gate` has a
-  `routeDefault` to the critique so an unanswerable probe no longer kills the run.
+- Workspace mode is the recorded mode, never the presence of a root: `lib/workspace.sh
+  detect` reports `{root, mode: "single", repos: []}` for an ordinary repository, and
+  every consumer (phase-entry, phase-mode, phase-exit, deliver, delivery-reconcile,
+  feature-scan-each, finalize-delivery-candidate, cycle-driver, cycle-result, the
+  plan-critique probe) now treats only an object whose mode is not `single` as a
+  workspace. A record with a single-mode object used to skip every artifact commit and
+  leave `plan.critique.gate` with no route; `plan.critique.gate` also gained a
+  `routeDefault` to the critique, and the probe says why when it cannot answer.
 
 ## [6.1.0] - 2026-09-04
 

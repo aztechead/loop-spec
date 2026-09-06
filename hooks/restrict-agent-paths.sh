@@ -75,6 +75,27 @@ if [[ "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" ]]; then
   exit 0
 fi
 
+# The installed plugin is never a write target, whoever the caller is: a sonnet eval
+# run patched lib/runtime-ignore.sh in the plugin checkout to get past a gate
+# (evals/findings-2026-09-06.md, finding 1). Paths resolve by real location, so a
+# feature worktree under the project stays writable, and the rule is off when the
+# plugin root is the project or inside it (loop-spec developing itself).
+plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -n "$plugin_root" && -d "$plugin_root" ]]; then
+  plugin_real="$(cd "$plugin_root" && pwd -P)"
+  project_real="$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null && pwd -P)" || project_real="$PWD"
+  if [[ "$plugin_real" != "$project_real" && "$plugin_real" != "$project_real"/* ]]; then
+    target="$FILE_PATH"
+    [[ "$target" == /* ]] || target="$project_real/$target"
+    target_dir="$(cd "$(dirname "$target")" 2>/dev/null && pwd -P)" || target_dir="$(dirname "$target")"
+    target_real="$target_dir/$(basename "$target")"
+    if [[ "$target_real" == "$plugin_real" || "$target_real" == "$plugin_real"/* ]]; then
+      echo "DENY: $TOOL_NAME targets the installed loop-spec plugin ($plugin_real), which no cycle may edit (attempted: $FILE_PATH). A gate that blocks you is a finding to report, not a file to patch. (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+      exit 2
+    fi
+  fi
+fi
+
 # Parse transcript to find the caller subagent_type: the most recent Agent
 # dispatch whose tool_use id has NOT been answered by a tool_result. A dispatch
 # with a matching tool_result is finished — writes after it belong to the main
