@@ -25,7 +25,9 @@
     "converged": null,
     "summary": null
   },
-  "iterations": null,
+  "iterations": 0,
+  "phase": "deliver",
+  "delivery_status": "pending",
   "events": 43,
   "branch": "feat/python3-m-unittest-discover-s-tests-fails-in-tests-test-slugify-py-fix-the-bug-in-slugify-py-so-every-test-passes-do-not-change-the-tests",
   "commits": 6,
@@ -60,7 +62,7 @@
   "judge": {
     "meets_request": 3,
     "overbuilt": 0,
-    "note": "Minimal fix: collapses consecutive dashes and strips leading/trailing dashes, the standard slugify edge cases."
+    "note": "Adds standard slug normalization: collapses consecutive dashes and strips edges, directly fixing common slug test failures."
   },
   "rounds_detail": [
     {

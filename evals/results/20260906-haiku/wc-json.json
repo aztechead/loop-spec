@@ -25,7 +25,9 @@
     "converged": false,
     "summary": "Feature goal converged per iterate-judge. Implementation complete and verified: --json flag added, JSON output newline-delimited with path/lines/words/chars keys, default text output unchanged, all tests passing (7/7 criteria). Delivery infrastructure issue: finalize-delivery-candidate detected PROGRESS.md file modification. Worktree state check requires manual review."
   },
-  "iterations": null,
+  "iterations": 1,
+  "phase": "deliver",
+  "delivery_status": "pending",
   "events": 43,
   "branch": "feat/add-a-json-flag-to-wc-tool-py-so-that-it-prints-one-json-object-per-file-with-the-keys-path-lines-words-chars-instead-of-the-text-table-keep-the-default-text-output-unchanged-and-keep-the-existing-tests-passing",
   "commits": 6,
@@ -68,7 +70,7 @@
   "judge": {
     "meets_request": 3,
     "overbuilt": 0,
-    "note": "Correctly adds --json flag with conditional output logic, preserves default text format, and requires no changes to existing tests."
+    "note": "Implementation correctly adds --json flag with newline-delimited JSON output per file, preserves default text output exactly, and requires no changes to existing tests."
   },
   "rounds_detail": [
     {

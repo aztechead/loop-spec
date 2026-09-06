@@ -25,7 +25,9 @@
     "converged": null,
     "summary": null
   },
-  "iterations": null,
+  "iterations": 0,
+  "phase": "spec",
+  "delivery_status": "pending",
   "events": 2,
   "branch": "feat/add-optional-due-dates",
   "commits": 0,
@@ -70,7 +72,7 @@
   "judge": {
     "meets_request": 0,
     "overbuilt": 0,
-    "note": "No changes present in diff; feature not implemented."
+    "note": "No changes were made; the diff is empty."
   },
   "rounds_detail": [
     {
