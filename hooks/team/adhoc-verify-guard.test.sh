@@ -306,5 +306,14 @@ else
 fi
 
 echo ""
+# --- denial cap: a guard that denies forever selects for escape, not evidence ----------
+export LOOP_SPEC_MICRO_GUARD_STATE_DIR="$TMPDIR_TEST/state"
+CAP_PAYLOAD="$(payload "$EDIT_PY")"
+check "cap: first stop with an ungrounded edit is denied" 2 "$CAP_PAYLOAD" env LOOP_SPEC_MICRO_GUARD_MAX_DENIALS=2
+check "cap: second denial still blocks" 2 "$CAP_PAYLOAD" env LOOP_SPEC_MICRO_GUARD_MAX_DENIALS=2
+check "cap: the third stop is allowed once the cap is spent" 0 "$CAP_PAYLOAD" env LOOP_SPEC_MICRO_GUARD_MAX_DENIALS=2
+OTHER_PAYLOAD="$(payload "$EDIT_PY")"
+check "cap: another transcript starts its own count" 2 "$OTHER_PAYLOAD" env LOOP_SPEC_MICRO_GUARD_MAX_DENIALS=2
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

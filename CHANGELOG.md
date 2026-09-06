@@ -4,6 +4,36 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+
+- `evals/`: a paid, live outcome eval (five fixture tasks, deterministic acceptance
+  scripts, a driver that runs each through `claude -p "/loop-spec:cycle autonomous …"`
+  against a snapshot of the plugin and records cost, time, diff shape, workarounds,
+  and plugin tampering). Not registered by `tests/run-all.sh`; refuses to run without
+  `LOOP_SPEC_EVAL_LIVE=1` and `--confirm-spend`. Findings from the first runs:
+  `evals/findings-2026-09-06.md`.
+- `feature.json.driverNext`: the phase the driver last answered with `NEXT`.
+  `cycle-result.sh write` refuses `--status failed|terminal|escalated` over it unless
+  `--reason` says what stopped the phase.
+- `LOOP_SPEC_MICRO_GUARD_MAX_DENIALS` (default 3) and
+  `LOOP_SPEC_MICRO_GUARD_STATE_DIR`: the ad-hoc verify guard stands down after that
+  many denials for one transcript.
+
+### Fixed
+
+- `lib/runtime-ignore.sh` ignores `.loop-spec/profile.json`, the policy file the
+  supervisor contract tells embedders to write. Untracked, it made `cycle-driver.sh
+  init` refuse every fresh checkout as dirty; the refusal now names the dirty paths.
+- `lib/cycle-driver.sh` evaluates `.loop-spec/profile.json` itself, so a preset that
+  names `autonomous` arms the run even when the prompt rewrite drops the token.
+- The phase state commit runs in the feature's own repository, not the caller's
+  working directory, and a failed commit is reported and recorded instead of hidden.
+  Run from the project root with the feature in a worktree, it used to stage a
+  `.gitignore` in the root and leave `feature.json` untracked for DELIVER to refuse.
+- `lib/graph/probes/plan-critique.sh` routes on `workspace.mode`, not on the presence
+  of a root, and says why when it cannot answer; `plan.critique.gate` has a
+  `routeDefault` to the critique so an unanswerable probe no longer kills the run.
+
 ## [6.1.0] - 2026-09-04
 
 ### Added

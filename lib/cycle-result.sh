@@ -659,6 +659,19 @@ PY
       echo "cycle-result.sh: feature.json not found in $feature_dir" >&2
       exit 0
     fi
+    # The driver answered NEXT and the lead is publishing a failure instead of invoking
+    # the phase: a supervisor reads that as a dead run. Not refused outright, because a
+    # phase can genuinely die; refused without a reason, because "interrupted" with no
+    # cause is the eval's fib-cli run, not a result anyone can act on.
+    answered_next="$(jq -r '.driverNext.phase // empty' "$fj" 2>/dev/null || true)"
+    if [[ -n "$answered_next" && -z "$reason" ]]; then
+      case "$status" in
+        failed|terminal|escalated)
+          echo "cycle-result.sh: the driver answered NEXT phase=$answered_next; invoke that phase, or pass --reason <what stopped it> to publish --status $status" >&2
+          exit 0
+          ;;
+      esac
+    fi
 
     fj_content="$(cat "$fj" 2>/dev/null)" || {
       echo "cycle-result.sh: cannot read $fj" >&2

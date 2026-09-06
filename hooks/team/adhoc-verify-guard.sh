@@ -36,6 +36,13 @@
 #   LOOP_SPEC_MICRO_GUARD        Set to "0" to disable. Default: 1 (active).
 #   LOOP_SPEC_MICRO_GUARD_TRACE_LOG  Path for trace log.
 #                                Default: /tmp/claude-hooks/loop-spec-micro-guard-trace.log
+#   LOOP_SPEC_MICRO_GUARD_MAX_DENIALS  Denials per transcript before the guard stands
+#                                down (default 3). A guard that denies without end does
+#                                not get evidence; it gets a model that deletes state and
+#                                hand-writes its result to escape (eval finding 4: 18
+#                                denials, 160 turns, a forged last-result.json).
+#   LOOP_SPEC_MICRO_GUARD_STATE_DIR  Where the per-transcript denial count lives.
+#                                Default: /tmp/claude-hooks/loop-spec-micro-guard-state
 #
 # micro.conf keys (beyond ENABLED):
 #   VERIFY_CMD=<command>         The project's real verification command when its
@@ -97,6 +104,7 @@ elif [[ "$active_rc" -ne 1 ]]; then
 fi
 
 INPUT=$(cat)
+TRANSCRIPT_PATH="$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("transcript_path") or "")' 2>/dev/null || true)"
 
 # Completed-cycle stand-down is transcript-scoped rather than checkout-scoped. Resolve
 # the stable control-root result pointer even when Stop fires from a linked worktree.
@@ -435,7 +443,17 @@ out('allow', 'grounding and verification completed after final edit', edit_count
 IFS='|' read -r DECISION REASON EDITS <<<"$VERDICT"
 
 if [[ "$DECISION" == "block" ]]; then
-  trace "deny" "$REASON edits=${EDITS:-?}"
+  MAX_DENIALS="${LOOP_SPEC_MICRO_GUARD_MAX_DENIALS:-3}"
+  STATE_DIR="${LOOP_SPEC_MICRO_GUARD_STATE_DIR:-/tmp/claude-hooks/loop-spec-micro-guard-state}"
+  mkdir -p "$STATE_DIR" 2>/dev/null || true
+  COUNT_FILE="$STATE_DIR/$(printf '%s' "$TRANSCRIPT_PATH" | cksum | cut -d' ' -f1).denials"
+  DENIALS=$(( $(cat "$COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+  printf '%s\n' "$DENIALS" > "$COUNT_FILE" 2>/dev/null || true
+  if (( DENIALS > MAX_DENIALS )); then
+    trace "allow" "denial cap $MAX_DENIALS reached; $REASON edits=${EDITS:-?}"
+    exit 0
+  fi
+  trace "deny" "$REASON edits=${EDITS:-?} denial=$DENIALS/$MAX_DENIALS"
   echo "DENY: ${EDITS:-?} file edit(s) this session but ${REASON}. Micro VERIFY requires both a post-change grounding review and the project's real verification command after the final edit. Grounding: inspect the final content diff -- \`git diff\` for uncommitted work, \`git show HEAD\` once it is committed (a --stat/-s summary does not count) -- and re-read any edited path that diff does not cover, plus the relevant callers/tests/contracts. For a pass, copy each --criteria value byte-for-byte into exactly one grounding: lib/adhoc-ledger.sh add --title ... --criteria \"<criterion>\" --grounding \"<criterion> | repo: <file>:<positive line> | integration: <file>:<positive line>\" --verify \"<command>\" --result pass. With no integration site use \"integration: none - <reason of at least 10 characters>\". A fail/partial result may omit grounding." >&2
   echo "(If this project's verification command isn't recognized, declare it: add VERIFY_CMD=<command> to .loop-spec/micro.conf. To disable this check: /loop-spec:micro off, or LOOP_SPEC_MICRO_GUARD=0.)" >&2
   exit 2

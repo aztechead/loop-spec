@@ -66,6 +66,14 @@ now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
 fset() { lib feature-write set "$1" "$2" "$3"; }
 fget() { jq -r "$2" "$1/feature.json"; }
+# .loop-spec/profile.json is the run's policy (docs/loop-spec/supervisor-interface.md).
+# Preflight evaluates it in its own process, which this one never saw: a supervised
+# preset that named autonomous still started an interactive run (eval finding 3).
+load_profile() {
+  local exports
+  exports="$(lib profile env)" || { echo "cycle-driver: profile.json is invalid; running without it" >&2; return 0; }
+  eval "$exports"
+}
 
 # ------------------------------------------------------------------ start ----
 cmd_start() {
@@ -79,6 +87,7 @@ cmd_start() {
   done
   dir="$(cd "$dir" && pwd -P)"
   cd "$dir"
+  load_profile
 
   if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" \
         && ! "$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS" =~ ^[1-9][0-9]*$ ]]; then
@@ -367,7 +376,7 @@ cmd_init() {
   local current_branch; current_branch="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)"
   if ! { [[ "$adopted" == true && "$current_branch" == "$feature_branch" ]]; }; then
     [[ "$(lib git-ops -C "$repo_root" ensure-clean-or-stash)" == "clean" ]] \
-      || die "source checkout is dirty; commit or stash changes before starting autonomous delivery."
+      || die "source checkout is dirty; commit or stash changes before starting autonomous delivery: $(git -C "$repo_root" status --porcelain --untracked-files=all | head -5 | tr '\n' ' ')"
   fi
   local base_ref="$base_branch"
   if git -C "$repo_root" remote get-url origin >/dev/null 2>&1; then
@@ -677,6 +686,8 @@ cmd_next() {
     --title "$(fget "$feature_dir" '.feature_title')" --slug "$slug" \
     --branch "$(fget "$feature_dir" '.branch // ""')" --base-branch "$(fget "$feature_dir" '.baseBranch // ""')" \
     --feature-dir "$feature_dir" --phase "$next" --autonomous "$(fget "$feature_dir" '.autonomous // false')" >/dev/null
+  # cycle-result.sh reads this: a failure published over an answered NEXT must say why.
+  fset "$feature_dir" driverNext "{\"phase\":\"$next\",\"at\":\"$(now)\"}" >/dev/null
   echo "NEXT phase=$next label=\"$label\" effort=$effort"
   lib extension-points instructions "$next" prepend 2>/dev/null | sed 's/^/EXT /' || true
   lib extension-points facts 2>/dev/null | sed 's/^/EXT /' || true
@@ -728,15 +739,26 @@ record_transition() {
     printf '\n## %s — %s → %s\n- did: %s\n' "$(now)" "$phase" "$next" "${note:-phase $phase returned}"
   } >> "$feature_dir/PROGRESS.md"
 
-  if [[ "$(lib state-commit-policy mode)" == "phase" && "$ws_mode" != "workspace" ]] \
-     && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    lib owned-gitignore check . || die "refusing to mix pre-existing .gitignore changes with loop-spec policy"
-    grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
-    grep -qxF '!/.loop-spec/RULES.md' .gitignore 2>/dev/null || printf '!/.loop-spec/RULES.md\n' >> .gitignore
-    local rel; rel="$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' "$feature_dir" "$PWD")"
-    git add -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>/dev/null || true
-    git diff --cached --quiet -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>/dev/null \
-      || git commit -q -m "chore: $slug state @ $next" -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore || true
+  # The feature's own repository, not $PWD: the lead often calls this from the project
+  # root while the feature lives in a worktree, and a state commit that silently missed
+  # left feature.json untracked for DELIVER to refuse as dirt (eval finding 2).
+  local root=""
+  root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || root=""
+  if [[ "$(lib state-commit-policy mode)" == "phase" && "$ws_mode" != "workspace" && -n "$root" ]]; then
+    lib owned-gitignore check "$root" || die "refusing to mix pre-existing .gitignore changes with loop-spec policy"
+    grep -qxF '!/.loop-spec/features/*/PROGRESS.md' "$root/.gitignore" 2>/dev/null || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> "$root/.gitignore"
+    grep -qxF '!/.loop-spec/RULES.md' "$root/.gitignore" 2>/dev/null || printf '!/.loop-spec/RULES.md\n' >> "$root/.gitignore"
+    local rel; rel="$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' "$feature_dir" "$root")"
+    local git_err=""
+    if ! git_err="$(git -C "$root" add -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>&1)"; then
+      echo "cycle-driver: state commit failed in $root: $git_err" >&2
+      lib feature-write append "$feature_dir" warnings "\"state commit failed at $phase -> $next: $git_err\"" >/dev/null
+    elif ! git -C "$root" diff --cached --quiet -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>/dev/null; then
+      git_err="$(git -C "$root" commit -q -m "chore: $slug state @ $next" -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>&1)" || {
+        echo "cycle-driver: state commit failed in $root: $git_err" >&2
+        lib feature-write append "$feature_dir" warnings "\"state commit failed at $phase -> $next: $git_err\"" >/dev/null
+      }
+    fi
     local checkpoint_default=0
     [[ "$(fget "$feature_dir" '.autonomous // false')" == "true" ]] && checkpoint_default=1
     local each="${LOOP_SPEC_CHECKPOINT_EACH_PHASE:-$checkpoint_default}"

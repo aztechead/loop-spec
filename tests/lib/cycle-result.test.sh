@@ -933,6 +933,23 @@ check "AE: sink received a result event" "result" "$(tail -1 "$WORK/sink/receive
 check "AE: result event carries the slug" "my-feature" "$(tail -1 "$WORK/sink/received.jsonl" | jq -r '.slug')"
 check "AE: result event data is the terminal result" "completed" "$(tail -1 "$WORK/sink/received.jsonl" | jq -r '.data.status')"
 
+# --- a failure published over an answered NEXT needs a stated reason ------------------
+# A lead that is told NEXT phase=execute and publishes failed/interrupted instead ends a
+# run a supervisor then treats as dead (eval finding 5, fib-cli). The escape hatch is
+# --reason: say what stopped the phase from running.
+NEXT_DIR="$LOOP_DIR/features/next-feature"
+mkdir -p "$NEXT_DIR"
+jq '.slug="next-feature" | .currentPhase="verify" | .driverNext={phase:"execute",at:"2026-01-01T00:00:00Z"}' <<<"$FIXTURE_FJ" > "$NEXT_DIR/feature.json"
+rm -f "$NEXT_DIR/result.json"
+err="$(bash "$LIB" write "$NEXT_DIR" --status failed --summary "gave up" 2>&1 >/dev/null)"
+check "write: refuses an unexplained failure over NEXT phase=execute" "0" "$([[ -f "$NEXT_DIR/result.json" ]] && echo 1 || echo 0)"
+check "write: the refusal names the answered phase" "1" "$(grep -c 'NEXT phase=execute' <<<"$err")"
+bash "$LIB" write "$NEXT_DIR" --status failed --summary "gave up" --reason "runner lost its disk" >/dev/null 2>&1
+check "write: a stated reason publishes the failure" "failed" "$(jq -r '.status' "$NEXT_DIR/result.json" 2>/dev/null)"
+rm -f "$NEXT_DIR/result.json"
+bash "$LIB" write "$NEXT_DIR" --status completed --summary "done" >/dev/null 2>&1
+check "write: completion is never held back by driverNext" "completed" "$(jq -r '.status' "$NEXT_DIR/result.json" 2>/dev/null)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0
