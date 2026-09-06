@@ -12,11 +12,12 @@ commands) under `docs/loop-spec/features/{slug}/`, plus the machine-readable
 Your inputs are the entry packet and nothing else:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" plan --feature-dir "$feature_dir"
-# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin plan --feature-dir "$feature_dir")"
+# .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
+# .mode.critique=run|skip .mode.reentry=true|false .mode.reason (structural fast-path | maintenance | compact | security signal | ...)
 ```
 
-`reentry` (ITERATE sent the cycle back for a `plan`-type gap): read `iterate.feedback`,
+`.mode.reentry` (ITERATE sent the cycle back for a `plan`-type gap): read `iterate.feedback`,
 revise or add only the tasks that close it, keep `## User decisions (already made)`.
 
 ## 1. PATTERNS.md
@@ -85,11 +86,10 @@ enters the critique.
 
 ## 3. Critique
 
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" plan --feature-dir "$feature_dir"
-# critique=run|skip reentry=true|false reason=structural fast-path | maintenance | compact | security signal | ...
-```
-
+`.mode.critique` from the entry call (`lib/phase-mode.sh plan` folded in; the fast-path
+decision reads the plan you just wrote, so re-run
+`bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" plan --feature-dir "$feature_dir"`
+once the gate command printed ok).
 `skip`: log `plan critique skipped (<reason>)`. `run`: the challenger-only protocol
 (`loop-spec:challenger`, topology `graph/critique.graph.json`) in
 `skills/shared/critique-gate-protocol.md` with `phase=plan`, `gate=plan-critique`,
@@ -111,11 +111,12 @@ that breaks a gate is reverted. Declined proposals and `out-of-scope:` lines go 
 
 ## 4. Exit
 
-Run the gate command from step 2 once more on the final revision; it must print
-`phase-exit: ok (plan)`. That records `artifacts.plan|patterns|tasks`, commits PLAN.md
-and PATTERNS.md, tags `post-plan`, and closes the phase. In explicit teams mode
-`TeamDelete` first. Return to the cycle; in `step`/`interactive` say
-`PLAN complete. PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.`
+In explicit teams mode `TeamDelete` first. Return to the cycle. Its
+`next --returned-from plan` runs the gate command from step 2 once more on the final
+revision (`lib/phase-exit.sh plan`): ok records `artifacts.plan|patterns|tasks`,
+commits PLAN.md and PATTERNS.md, tags `post-plan`, and closes the phase; a `FLAG`
+answers `REDO` and you are invoked again to run step 2's loop on it. In
+`step`/`interactive` say `PLAN complete. PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.`
 
 ## Resume
 

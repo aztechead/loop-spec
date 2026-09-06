@@ -12,14 +12,13 @@ spec is `docs/loop-spec/features/{slug}/SPEC.md`. Dispatch follows
 `skills/shared/dispatch.md`. Your inputs are the entry packet and nothing else:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" discuss --feature-dir "$feature_dir"
-# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin discuss --feature-dir "$feature_dir")"
+# .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
+# .mode.grill=run|self-answer|skip .mode.oracle=supervisor|self .mode.critique=run|skip .mode.reentry=true|false .mode.reason
 ```
 
-```bash
-mode="$(bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" discuss --feature-dir "$feature_dir")"
-# grill=run|self-answer|skip critique=run|skip reentry=true|false reason=...
-```
+`grill`, `critique`, and `reentry` below are `.mode.*`; `phase-entry.sh` and
+`phase-mode.sh` are the probes it folds, read once.
 
 ## 1. Consume what SPEC left open
 
@@ -108,16 +107,14 @@ one `dispatch` event per agent launched and, per round,
 
 ## 4. Exit
 
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" discuss --feature-dir "$feature_dir"
-```
-
-- `FLAG` lines: format flags follow `skills/shared/artifact-templates/SPEC.md.template`;
-  `grounding-lint.sh"` flags cite a ledger entry or become an ASSUMPTION. Fix SPEC.md in place and
-  run the command again; lint-only failures never re-open the critique.
-- `phase-exit: ok (discuss)`: SPEC.md is committed, the phase is
-  closed. In explicit teams mode `TeamDelete` first. Return to the cycle; in
-  `step`/`interactive` say `DISCUSS complete. SPEC at docs/loop-spec/features/{slug}/SPEC.md.`
+In explicit teams mode `TeamDelete` first. Return to the cycle; never run the exit
+yourself. The cycle's `next --returned-from discuss` runs `lib/phase-exit.sh discuss`
+(`artifact-lint`, `grounding-lint.sh`, the oracle gate), commits SPEC.md, and closes the
+phase, or answers `REDO` with the `FLAG` lines: format flags follow
+`skills/shared/artifact-templates/SPEC.md.template`; `grounding-lint.sh"` flags cite a
+ledger entry or become an ASSUMPTION. You are invoked again to fix SPEC.md in place and
+return; lint-only failures never re-open the critique. In `step`/`interactive` say
+`DISCUSS complete. SPEC at docs/loop-spec/features/{slug}/SPEC.md.`
 
 ## Resume
 

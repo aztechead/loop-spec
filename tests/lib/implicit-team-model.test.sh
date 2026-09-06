@@ -68,7 +68,7 @@ CYCLE="$ROOT/skills/cycle/SKILL.md"
 check "cycle dispatch convention names the probe" "1" \
   "$(grep -Fq 'implicit-team-model.sh' "$CYCLE" && echo 1 || echo 0)"
 
-EXEC="$ROOT/skills/execute/SKILL.md"
+EXEC="$ROOT/lib/execute-prepare.sh"
 check "EXECUTE passes the implementer selector into the rung probe" "1" \
   "$(grep -Fq -- '--implementer-model' "$EXEC" && echo 1 || echo 0)"
 

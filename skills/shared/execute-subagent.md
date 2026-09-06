@@ -101,23 +101,17 @@ Apply these replacements to the lead wave loop:
    `task.files`. Dispatch the reviewer against the uncommitted diff:
    `git -C "{featureWorktreeRoot}" diff -- {task.files}`. Rework agents edit the same
    working tree serially; no other task starts while it is dirty.
-   4. On reviewer `pass`, the lead reruns `task.verifyCommand` through
+   4. On reviewer `pass`, `task integrate` (the same call as step 6 of the wave loop;
+   in-place mode is recorded at dispatch) reruns `task.verifyCommand` through
    `lib/output-digest.sh` — once per merged task is the largest single thing that
    accumulates in the lead's window across a wave loop, and the full log stays on disk
-   where it can still be grepped or cited:
-
-   ```bash
-   bash "${CLAUDE_SKILL_DIR}/../../lib/output-digest.sh" run \
-     --log ".loop-spec/features/{slug}/logs/verify-{taskId}.log" \
-     --label "verify {taskId}" -- {task.verifyCommand}
-   ```
-
-   It exits with the command's own code, so the pass/fail branch below is unchanged.
-   Then stage exactly `task.files` and commit `feat: NO_JIRA {task.subject}`. Verify that HEAD advanced
-   from `taskBaseSha` and the checkout is clean, then add the task to `mergedSet` and
-   persist `bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done ".loop-spec/features/${slug}/tasks.json" "{taskId}"`.
-   There is no `integrate-task.sh` call because the accepted commit is already on the
-   feature branch.
+   at `.loop-spec/features/{slug}/logs/verify-{taskId}.log` where it can still be
+   grepped or cited. It exits with the command's own code, so the pass/fail branch below
+   is unchanged. Then it stages exactly `task.files`, commits
+   `feat: NO_JIRA {task.subject}`, verifies that HEAD advanced from `taskBaseSha` and
+   the checkout is clean, persists `lib/task-progress.sh mark-done`, and emits `task_end`;
+   add the task to `mergedSet`. There is no `integrate-task.sh` call because the accepted
+   commit is already on the feature branch.
 5. On `block`, retry exhaustion, out-of-scope dirt, verification failure, missing
    commit, or an unreadable Git state, stop with the existing structured blocked or
    escalation reason. Preserve the working tree for diagnosis; never reset or clean it.
@@ -160,39 +154,34 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    member the collapse would erase, means one-task-one-dispatch.
 3.5 **Isolate the wave (worktree mode only).** One-shot Agents share the lead's cwd;
     they do not get a harness worktree. When `subagentIsolation == "lead-worktree"`,
-    the lead creates each task worktree **before** any Agent call:
-
-    ```bash
-    worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
-      resolve "$featureWorktreeRoot" task "{slug}/task-{taskId}" | jq -r '.path')"
-    git -C "$featureWorktreeRoot" worktree add "$worktree_path" \
-      -b "task/{taskId}-{slug}" "feat/{slug}"
-    ```
-
-    A failed add drops that task from this wave (it stays ready). If the wave would
-    be empty, dispatch **one** remaining ready task in-place on `feat/{slug}` —
-    never overlap writers in the feature root. Wave width > 1 is allowed only when
-    every member of the wave has a created worktree. Do not raise
-    `maxParallelImplementers` above this isolation.
-4. **Dispatch the wave.** For each `taskId` in `wave`, write the file handoff
-   then issue an implementer `Agent` call. Record `taskBaseSha` before dispatch
-   (`git rev-parse HEAD` in the task worktree, or the feature HEAD in in-place
-   mode) — review packages must use that SHA, never `HEAD~1`.
+    the `dispatch` step below creates each task worktree **before** any Agent call
+    (`lib/worktree-base.sh resolve`, then `git worktree add -b task/{taskId}-{slug}
+    feat/{slug}`). A failed add (`dispatchable: false`) drops that task from this wave
+    (it stays ready). If the wave would be empty, dispatch **one** remaining ready task
+    in-place on `feat/{slug}` — never overlap writers in the feature root.
+    Wave width > 1 is allowed only when every member of the wave has a created
+    worktree. Do not raise `maxParallelImplementers` above this isolation.
+4. **Dispatch the wave.** For each `taskId` in `wave`, one call writes the file handoff,
+   records `taskBaseSha` (`git rev-parse HEAD` in the task worktree, or the feature HEAD
+   in in-place mode; review packages must use that SHA, never `HEAD~1`), resolves the
+   model, and emits the `dispatch` and `task_start` events; then issue the implementer
+   `Agent` call:
 
    ```bash
-   fdir=".loop-spec/features/${slug}"
-   brief="$(bash "${CLAUDE_SKILL_DIR}/../../lib/dispatch-files.sh" brief \
-     --feature-dir "$fdir" --task-id "{taskId}")"
-   report="$(bash "${CLAUDE_SKILL_DIR}/../../lib/dispatch-files.sh" report-path \
-     --feature-dir "$fdir" --task-id "{taskId}")"
+   d="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task dispatch \
+     --feature-dir "$fdir" --task "{taskId}" --attempt {attempt})"
+   # .dispatchable .worktreePath .branch .taskBaseSha .brief .report .model .files .verifyCommand
+   # .acceptanceCriteria .readFirst .specPath .prepareCommand .index .total .maxRetries
    ```
 
-   The dispatch prompt carries those paths plus a one-line fit. Exact values live
-   only in the brief. On rung 2 emit all wave calls in ONE assistant message so they run in
+   `.brief` and `.report` are `lib/dispatch-files.sh brief` and `report-path`. The
+   dispatch prompt carries those paths plus a one-line fit. Exact values live only in
+   the brief. On rung 2 emit all wave calls in ONE assistant message so they run in
    parallel; on rung 1 the wave has one task. Use the prompt template below.
-   **Per-task model resolution** (cheapest model that fits, in priority order):
+   **Per-task model resolution** (cheapest model that fits, in priority order, done by
+   the call and reported as `.model`):
    1. a concrete `metadata.model` pin on the task, else
-   2. `bash "${CLAUDE_SKILL_DIR}/../../lib/model-tier.sh" model "$(task.metadata.modelTier)"` when the task carries a `modelTier`, else
+   2. `lib/model-tier.sh model` of the task's `modelTier`, else
    3. `models.implementer` (the role default).
    On this Agent rung, add `model` only when the result is one of the four
    aliases and omit it for `inherit`. A full/native ID requires the loop-fleet
@@ -201,55 +190,60 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    (`skills/shared/dispatch.md`). The harness resumes this turn
    when they complete. Then review.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
-5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, write a review package from the recorded BASE to the implementer's HEAD, then dispatch a spec-compliance reviewer `Agent` using the activated
-   `models.specComplianceReviewer` selector (alias → add `model`; `inherit` → omit) and the
+5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, one call writes the review package from the recorded BASE to the implementer's HEAD and emits the reviewer's `dispatch` event:
+
+   ```bash
+   pk="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task package \
+     --feature-dir "$fdir" --task "{taskId}" --head "{implHead}")"
+   # .package .model .base .head .brief .report
+   ```
+
+   Then dispatch a spec-compliance reviewer `Agent` using `.model` (the activated
+   `models.specComplianceReviewer` selector; alias → add `model`; `inherit` → omit) and the
    review prompt below. It returns `{verdict: "pass"|"rework"|"block", findings[], unverified[]}`.
    - Resolve every `unverified[]` item before marking the task complete: confirm from
      the plan / prior tasks (ledger a note) or promote to `rework`. Unverified items
      must not evaporate.
-   - `pass` with empty unresolved unverified: the task is ready to merge.
-   - `rework` and attempts remaining: run `bash "${CLAUDE_SKILL_DIR}/../../lib/fix-loop.sh" action "{attempt}" "{maxRetriesPerTask}"`
-     (pass the effective cap so a tuned `executeMaxRetriesPerTask` moves the breaker with it).
-     `resume` on a live teammate (`fix-loop.sh live team` → `resumeable`) is
-     `SendMessage` to that identity with the findings. `oneshot` rungs re-dispatch
-     a fresh Agent that must read the report file. `fresh-upgrade` re-dispatches
-     on `bash "${CLAUDE_SKILL_DIR}/../../lib/model-tier.sh" upgrade "{current}"`.
-     `breaker` stops: park residuals in `warnings[]` and
+   - Apply the verdict with one call:
+
+     ```bash
+     v="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task verdict \
+       --feature-dir "$fdir" --task "{taskId}" --verdict pass|rework|block --attempt {attempt})"
+     # .action=integrate|resume|oneshot|fresh-upgrade|blocked  .model  .nextAttempt  .reason
+     ```
+
+   - `pass` with empty unresolved unverified: `.action == "integrate"`, the task is
+     ready to merge.
+   - `rework` and attempts remaining: `.action` is `lib/fix-loop.sh action {attempt}
+     {maxRetriesPerTask}` (the effective cap, so a tuned `executeMaxRetriesPerTask`
+     moves the breaker with it). `resume` on a live teammate (`fix-loop.sh live team`
+     → `resumeable`) is `SendMessage` to that identity with the findings. `oneshot`
+     re-dispatches a fresh Agent that must read the report file. `fresh-upgrade`
+     re-dispatches on `.model` (`lib/model-tier.sh upgrade`). `blocked` with reason
+     `retry-exhausted` is the breaker: park residuals in `warnings[]` and
      `blocked.push({taskId, reason: "retry-exhausted"})`.
      Re-review is scoped (`skills/shared/review-prompts/re-review.md`) against
      `FIX_BASE..HEAD`, not a full-task re-read.
-   - `block`: `blocked.push({taskId, reason: "spec-compliance-block"})`.
+   - `block`: `.action == "blocked"`, `blocked.push({taskId, reason: "spec-compliance-block"})`.
    - implementer `committed == false`: `blocked.push({taskId, reason: "commit-missing"})`.
 6. **Integrate the passed tasks** (inline, serial, in `wave` order). For each task
-   that reached `pass`, use the transactional helper. It checks for commits and
-   clean worktrees, rebases a divergent task once, verifies the exact prospective
-   candidate, fast-forwards the feature branch only after all checks pass, and
-   cleans up only after publication:
+   that reached `pass`, one call runs the transactional helper
+   (`lib/integrate-task.sh --feature-root "$featureWorktreeRoot" --feature-branch
+   "feat/{slug}" --task-worktree <path> --task-branch task/{taskId}-{slug}
+   --verify "{task.verifyCommand}" --cleanup`). It checks for commits and clean worktrees,
+   rebases a divergent task once, verifies the exact prospective candidate,
+   fast-forwards the feature branch only after all checks pass, and cleans up only
+   after publication; on `.published == true` the call also persists
+   `lib/task-progress.sh mark-done` and emits `task_end`:
 
    ```bash
-   worktree_branch="task/{taskId}-{slug}"
-   worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
-     resolve "$featureWorktreeRoot" task "{slug}/task-{taskId}" | jq -r '.path')"
-
-   integration_json=$(bash "${CLAUDE_SKILL_DIR}/../../lib/integrate-task.sh" \
-     --feature-root "$featureWorktreeRoot" \
-     --feature-branch "feat/{slug}" \
-     --task-worktree "$worktree_path" \
-     --task-branch "$worktree_branch" \
-   --verify "{task.verifyCommand}" \
-     --cleanup)
-   integration_rc=$?
+   integration_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task integrate \
+     --feature-dir "$fdir" --task "{taskId}")"
+   # .published .reason .detail .sha .blocked
    ```
 
    Parse `integration_json`, never command prose. If `.published == true`, add the
-   task id to `mergedSet` even when cleanup reports a failure, then persist:
-
-   ```bash
-   bash "${CLAUDE_SKILL_DIR}/../../lib/task-progress.sh" mark-done \
-     ".loop-spec/features/${slug}/tasks.json" "{taskId}"
-   ```
-
-   Otherwise map
+   task id to `mergedSet` even when cleanup reports a failure. Otherwise map
    `zero-commit` to the existing `zero-commit` blocked reason, `verify-failed` or
    `prepare-failed` to `retry-exhausted`, and any rebase/publication/cleanliness
    failure to `escalation.reason = "rebase-conflict"` with the helper's `reason`

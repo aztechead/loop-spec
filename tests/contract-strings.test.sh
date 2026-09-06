@@ -57,7 +57,7 @@ checks=(
   "skills/debug/SKILL.md	debug-init.sh\" init"
   # -- greenfield: bootstrap in cycle, backfill invariant in execute
   "lib/cycle-driver.sh	greenfield-bootstrap bootstrap"
-  "skills/execute/SKILL.md	greenfield-bootstrap.sh\" backfill-check"
+  "lib/execute-step.sh	greenfield-bootstrap backfill-check"
   # -- grounding: evidence ledger + lint gate + challenger marker couplings
   "skills/discuss/SKILL.md	grounding-lint.sh\""
   "skills/plan/SKILL.md	grounding-lint.sh\""

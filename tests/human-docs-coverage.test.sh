@@ -69,8 +69,8 @@ fi
 for f in agents/implementer.md agents/code-reviewer.md \
          skills/shared/team-prompts/implementer.md skills/shared/execute-subagent.md \
          lib/plan-to-loop.sh lib/workflows/execute-dag.js hooks/team/human-code-inject.sh \
-         skills/verify/SKILL.md; do
-  if grep -q "doc-tells.sh" "$f"; then
+         skills/verify/SKILL.md lib/verify-passes.sh; do
+  if grep -q "doc-tells" "$f"; then
     echo "PASS: $f names the probe"; PASS=$((PASS+1))
   else
     echo "FAIL: $f does not name doc-tells.sh"; FAIL=$((FAIL+1))
@@ -95,7 +95,7 @@ done
 resolvers=(
   "skills/shared/execute-subagent.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib\"? doc-tells|CLAUDE_SKILL_DIR}/\.\./\.\./lib\"?/doc-tells"
   "skills/shared/team-prompts/implementer.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib"
-  "skills/verify/SKILL.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib/doc-tells\.sh"
+  "lib/verify-passes.sh	lib doc-tells diff"
   "lib/plan-to-loop.sh	\{lib_dir\}/doc-tells\.sh"
   "lib/workflows/execute-dag.js	libDir \+ '/doc-tells\.sh"
   "hooks/team/human-code-inject.sh	\\\$\{LIB_DIR\}/doc-tells\.sh"

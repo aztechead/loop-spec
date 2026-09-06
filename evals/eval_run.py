@@ -433,6 +433,51 @@ def write_summary(out_dir):
     (out_dir / "summary.md").write_text("\n".join(lines) + "\n")
 
 
+def preflight(models):
+    """Prove, for about three cents, every condition whose failure cost a re-run last time:
+    the CLI is on PATH and signed in; a tool call runs under the permission mode the
+    driver uses (bypass is refused for root); the judge answers JSON without tools; the
+    fixtures carry no compiled files; the plugin checkout is committed, so the snapshot
+    and the record's commit agree. Returns a list of failures; empty means go."""
+    failures = []
+    if shutil.which("claude") is None:
+        return ["no `claude` on PATH"]
+    env = child_env()
+    for model in models:
+        proc = subprocess.run(["claude", "-p", "Run exactly this shell command and reply with its output only: echo preflight-ok",
+                               "--model", model, "--max-turns", "3", "--permission-mode", "acceptEdits",
+                               "--allowedTools", ALLOWED_TOOLS, "--setting-sources", "project", "--output-format", "json"],
+                              capture_output=True, text=True, timeout=180, env=env, cwd=str(REPO))
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            payload = {}
+        if payload.get("is_error") or "preflight-ok" not in (payload.get("result") or ""):
+            failures.append(f"{model}: a tool call under acceptEdits did not run "
+                            f"(result={str(payload.get('result') or proc.stderr)[:160]!r})")
+    proc = subprocess.run(["claude", "-p", 'Do not use any tool. Reply with exactly this JSON and nothing else: {"ok": true}',
+                           "--model", "haiku", "--max-turns", "1", "--disallowedTools", ALLOWED_TOOLS,
+                           "--setting-sources", "project", "--output-format", "json"],
+                          capture_output=True, text=True, timeout=180, env=env, cwd=str(REPO))
+    try:
+        text = json.loads(proc.stdout).get("result", "")
+        json.loads(re.search(r"\{.*\}", text, re.S).group(0))
+    except (json.JSONDecodeError, AttributeError, ValueError):
+        failures.append(f"judge: no JSON came back ({proc.stdout[:160]!r})")
+    stray = [str(f) for f in TASKS_DIR.rglob("*") if f.name == "__pycache__" or f.suffix == ".pyc"]
+    if stray:
+        failures.append(f"fixtures carry compiled files: {stray[:3]}")
+    dirty = sh(["git", "status", "--porcelain", "--", "lib", "hooks", "skills", "graph", "evals/eval_run.py", "evals/tasks"],
+               cwd=REPO, check=False).stdout.strip()
+    if dirty:
+        failures.append("the plugin checkout has uncommitted changes; commit (after the gate) so the snapshot "
+                        "and the record's commit agree:\n" + dirty)
+    free_gb = shutil.disk_usage(str(REPO)).free / 1e9
+    if free_gb < 1.0:
+        failures.append(f"only {free_gb:.1f} GB free under {REPO}")
+    return failures
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--model", required=True)
@@ -443,6 +488,8 @@ def main(argv=None):
     ap.add_argument("--confirm-spend", action="store_true")
     ap.add_argument("--measure-only", action="store_true",
                     help="re-score the workspaces of --run-id without running a cycle (free)")
+    ap.add_argument("--preflight-only", action="store_true", help="run the preflight checks and stop")
+    ap.add_argument("--skip-preflight", action="store_true", help="start without the checks (not advised)")
     args = ap.parse_args(argv)
     if args.measure_only and not args.run_id:
         print("eval_run: --measure-only needs --run-id", file=sys.stderr)
@@ -454,6 +501,16 @@ def main(argv=None):
     if shutil.which("claude") is None:
         print("eval_run: no `claude` on PATH", file=sys.stderr)
         return 2
+    if not args.measure_only and not args.skip_preflight:
+        problems = preflight([args.model])
+        for problem in problems:
+            print(f"eval_run: preflight: {problem}", file=sys.stderr)
+        if problems:
+            print("eval_run: refusing to start; every item above cost a re-run last time", file=sys.stderr)
+            return 2
+        print("eval_run: preflight ok (CLI, permissions, judge, fixtures, clean checkout, disk)", flush=True)
+        if args.preflight_only:
+            return 0
     task_ids = ([p.name for p in sorted(TASKS_DIR.iterdir()) if (p / "task.json").is_file()]
                 if args.tasks == "all" else args.tasks.split(","))
     budget = args.budget_usd or DEFAULT_BUDGET.get(args.model, 10.0)

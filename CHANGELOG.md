@@ -6,6 +6,23 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [6.2.0] - 2026-09-06
 
+### Changed
+
+- The per-phase bookkeeping the phase skills asked the lead to run one script at a
+  time is folded into `lib/cycle-driver.sh` (eval finding 7: a two-line fix cost 186
+  lead tool calls, 156 of them Bash). `begin` is start plus init or resume when no human
+  decision is pending; `phase-begin <phase>` is the entry packet, the mode line, and for
+  EXECUTE and VERIFY the whole pre-dispatch or pre-team work (`lib/execute-prepare.sh`,
+  `lib/verify-prepare.sh`); `task dispatch|package|verdict|integrate`
+  (`lib/execute-step.sh`) is one call per EXECUTE task step; `verify gate` and
+  `verify passes` (`lib/verify-gate.sh`, `lib/verify-passes.sh`) apply the verdicts and
+  run the advisory passes; `iterate limit|record|harvest` (`lib/iterate-judged.sh`)
+  wraps the judge; `deliver` is the whole DELIVER phase. `next --returned-from <phase>`
+  runs `lib/phase-exit.sh` itself and answers `REDO phase=<p> flags=<n>` with the FLAG
+  lines when the artifact is not ready; phase skills no longer run the exit. Every phase
+  skill and the execute contracts now name these calls; the coverage pins moved to the
+  scripts that carry the behavior.
+
 ### Added
 
 - `evals/`: a paid, live outcome eval (five fixture tasks, deterministic acceptance

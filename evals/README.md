@@ -38,7 +38,16 @@ LOOP_SPEC_EVAL_LIVE=1 bash evals/run.sh --model sonnet --parallel 5 --confirm-sp
 ```
 
 Both guards are required. Options: `--tasks a,b`, `--budget-usd N` per task (default
-8 haiku, 20 sonnet), `--run-id NAME`. Needs `claude` on PATH with a login, `git`, and
+8 haiku, 40 sonnet), `--run-id NAME`, `--preflight-only`, `--measure-only` (re-score an
+existing run for free).
+
+Every run starts with a preflight that proves, for a few cents, each condition whose
+failure cost a re-run on 6 September: the CLI is signed in, a tool call runs under the
+permission mode the driver uses (bypass is refused for root), the judge answers JSON
+without tools, the fixtures carry no compiled files, the plugin checkout is committed
+(the snapshot and the record's `plugin_commit` must agree), and there is disk. A failed
+check refuses to start. Do not edit the driver or the plugin while cycles are in flight:
+the running processes keep the old code and the records stop agreeing with the tree. Needs `claude` on PATH with a login, `git`, and
 `python3`. There is no `gh` requirement: the fixture has a bare `origin`, so DELIVER
 pushes and then stops at the pull-request step. That stop is expected and recorded.
 
