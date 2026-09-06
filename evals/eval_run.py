@@ -221,13 +221,15 @@ def judge(task, project, base, branch, env, log_path):
     prompt = (
         "You grade a code change against the request that produced it.\n"
         f"REQUEST:\n{task['prompt']}\n\nDIFF (project files only):\n{diff or '(empty diff)'}\n\n"
-        "Answer with one JSON object and nothing else: "
+        "Do not use any tool. Answer with one JSON object and nothing else: "
         '{"meets_request": 0-3, "overbuilt": 0-3, "note": "<one sentence>"}. '
         "meets_request: 3 = does exactly what was asked, 0 = does not address it. "
         "overbuilt: 0 = no more than the request needs, 3 = large unrequested additions."
     )
     # No --bare: it skips credential reads and the call fails with an auth error.
+    # One turn and no tools: a judge that opens a file instead of answering returns nothing.
     proc = subprocess.run(["claude", "-p", prompt, "--model", "haiku", "--max-turns", "1",
+                           "--disallowedTools", ALLOWED_TOOLS,
                            "--setting-sources", "project", "--output-format", "json"],
                           cwd=str(project), env=env, capture_output=True, text=True, timeout=300)
     log_path.write_text(proc.stdout + "\n--- stderr ---\n" + proc.stderr)

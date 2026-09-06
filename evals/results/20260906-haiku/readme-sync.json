@@ -64,9 +64,9 @@
   "checks_total": 3,
   "accepted": true,
   "judge": {
-    "meets_request": null,
-    "overbuilt": null,
-    "note": ""
+    "meets_request": 3,
+    "overbuilt": 1,
+    "note": "Removes --compress flag and documents --exclude/--dry-run/--verbose; examples are helpful but not strictly required by the request."
   },
   "rounds_detail": [
     {
