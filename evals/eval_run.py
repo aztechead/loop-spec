@@ -350,6 +350,9 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
         "timed_out": any(r["timed_out"] for r in rounds),
         "result": {k: (result or {}).get(k) for k in
                    ("status", "outcome", "reason", "phaseReached", "converged", "summary")},
+        # cycle-result.sh stamps schema and loopSpecVersion; a pointer without them was
+        # written by hand (the 6.1.0 readme-sync and 6.2.0 wc-json runs both did).
+        "forged_result": bool(result) and not (result.get("schema") and result.get("loopSpecVersion")),
         "iterations": ((feature or {}).get("iterate") or {}).get("used"),
         "phase": (feature or {}).get("currentPhase"),
         "delivery_status": delivery_status,
@@ -428,6 +431,8 @@ def write_summary(out_dir):
                   f"Total cost USD {total_cost:.2f}. "
                   f"Total minutes {sum(r['minutes'] for r in records):.1f}.", ""]
     for r in records:
+        if r.get("forged_result"):
+            lines.append(f"- **{r['task']}** wrote its terminal result by hand (no schema or version stamp): status untrusted")
         failed = [f"{k}: {v['note']}".rstrip(": ") for k, v in r["checks"].items() if not v["pass"]]
         if failed or r["protected_touched"]:
             lines.append(f"- **{r['task']}** failed: {'; '.join(failed) or 'protected file changed'}")

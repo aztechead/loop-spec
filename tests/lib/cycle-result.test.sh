@@ -693,6 +693,14 @@ check "Z: mismatch publishes a terminal result" "escalated:protocol-mismatch:fal
   "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$Z_RESULT")"
 check "Z: mismatch disarms the run" "published" "$(bash "$LIB" state --result-root "$Z" | cut -d' ' -f1)"
 
+# A pointer the writer did not stamp (no schema, no loopSpecVersion) was written by
+# hand and does not account for the run; the wc-json eval run did this after two refusals.
+printf '{"status":"completed","outcome":"delivered"}\n' > "$Z_RESULT"
+Z_FORGED="$(bash "$LIB" state --result-root "$Z")"
+check "Z: a hand-written pointer is unaccounted" "unaccounted" "$(cut -d' ' -f1 <<<"$Z_FORGED")"
+check "Z: the forged pointer reports an age and autonomy" "1" \
+  "$(grep -cE 'ageSeconds=[0-9]+ autonomous=true forged' <<<"$Z_FORGED")"
+
 # Mismatch is a declaration about work NOT done, so its preconditions are checked.
 rm -f "$Z_RESULT"
 bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status failed \

@@ -47,9 +47,28 @@ All notable changes documented here. Format follows Keep a Changelog.
 - `LOOP_SPEC_MICRO_GUARD_MAX_DENIALS` (default 3) and
   `LOOP_SPEC_MICRO_GUARD_STATE_DIR`: the ad-hoc verify guard stands down after that
   many denials for one transcript.
+- `hooks/team/result-forgery-guard.sh` (PreToolUse Bash, Claude Code and Codex) denies a
+  shell redirect, `tee`, `cp`, `mv`, `install`, `sed -i`, or Python `open(..., "w")`
+  aimed at a `.loop-spec/` contract file (`last-result.json`, `result.json`,
+  `active-run.json`, `feature.json`, `delivery.json`); `hooks/restrict-agent-paths.sh`
+  denies Write and Edit on the same files. `cycle-result.sh state` reports a pointer
+  without `schema` and `loopSpecVersion` as `unaccounted`, so the stop guard keeps
+  refusing, and the eval marks the record `forged_result`. Two eval runs whose result the
+  writer refused wrote the pointer by hand. `LOOP_SPEC_FORGERY_GUARD=0` disables the hook.
+- `cycle-driver.sh next --returned-from <phase>` answers the same flag set at most
+  `LOOP_SPEC_REDO_MAX` (default 3) times, then escalates with the flags as the reason.
 
 ### Fixed
 
+- `cycle-result.sh write --status completed` refuses a feature that never reached
+  DELIVER unless `delivery.json` or a PR URL says otherwise, and `write-terminal` refuses
+  `completed` for a full cycle armed at an earlier phase.
+- `lib/verify-gate.sh` routes `redo` for a VERIFICATION.md whose format flags carry no
+  verifier FAIL, instead of dispatching the verifiers again; `lib/iterate-judged.sh
+  record` is idempotent on the judge hash, so a repeated call no longer counts a second
+  iteration.
+- `lib/phase-exit.sh` keeps a gate's indented detail lines, so a REDO names the
+  uncovered decisions instead of a bare heading.
 - `lib/runtime-ignore.sh` ignores `.loop-spec/profile.json`, the policy file the
   supervisor contract tells embedders to write. Untracked, it made `cycle-driver.sh
   init` refuse every fresh checkout as dirty; the refusal now names the dirty paths.

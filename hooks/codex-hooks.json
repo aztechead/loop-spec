@@ -37,6 +37,11 @@
             "type": "command",
             "command": "bash \"${PLUGIN_ROOT}/hooks/team/no-worktrees-guard.sh\"",
             "statusMessage": "loop-spec no-worktrees"
+          },
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/team/result-forgery-guard.sh\"",
+            "statusMessage": "loop-spec result-forgery"
           }
         ]
       },

@@ -58,6 +58,11 @@ bash "$CYCLE_RESULT" write-terminal --result-root "$PUBLISHED" --cycle-type full
   >/dev/null 2>&1
 check "b: published terminal result -> ALLOW" 0 "$PUBLISHED"
 
+# b2: a pointer written by hand (no schema, no loopSpecVersion) does not disarm it.
+FORGED="$TMPDIR_TEST/forged"; mkdir -p "$FORGED/.loop-spec"
+printf '{"status":"completed","outcome":"delivered"}\n' > "$FORGED/.loop-spec/last-result.json"
+check "b2: hand-written terminal result -> BLOCK" 2 "$FORGED"
+
 # c: an interactive run ends turns to ask the human; the guard is not its business.
 INTERACTIVE="$TMPDIR_TEST/interactive"; mkdir -p "$INTERACTIVE"
 arm "$INTERACTIVE" false "$(now_stamp)"

@@ -247,6 +247,7 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_MICRO_GUARD` | `1` | Blocks stopping after code edits without a verification run; stands down for active feature cycles and docs/config-only edits. |
 | `LOOP_SPEC_INVOCATION_STAMP` | `1` | The UserPromptSubmit hook stamps the raw arguments of a `/loop-spec:<skill>` prompt to `.loop-spec/invocation-stamp.json`; `cycle-driver.sh start` restores any token the skill's prose rewrite dropped and consumes the stamp. `0` disables. |
 | `LOOP_SPEC_STAMP_MAX_AGE_MIN` | `30` | A stamp older than this is deleted unread, so a stale prompt never binds a later run. |
+| `LOOP_SPEC_FORGERY_GUARD` | `1` | `0` disables `hooks/team/result-forgery-guard.sh`, the PreToolUse Bash hook that denies a shell redirect, `tee`, `cp`, `mv`, `install`, `sed -i`, or Python `open(..., "w")` whose target is a `.loop-spec/` contract file (`last-result.json`, `result.json`, `active-run.json`, `feature.json`, `delivery.json`). Only `lib/cycle-result.sh`, `lib/feature-write.sh`, and `lib/deliver.sh` write those. |
 | `LOOP_SPEC_MICRO_GUARD_MAX_DENIALS` | `3` | Denials per transcript before the micro guard stands down. `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` bounds consecutive blocks only; a model that does unrelated work between stops resets that count, and the eval saw 18 denials drive a run to hand-write its result. |
 | `LOOP_SPEC_MICRO_GUARD_STATE_DIR` | `/tmp/claude-hooks/loop-spec-micro-guard-state` | Where the per-transcript denial count lives. |
 | `LOOP_SPEC_DEFERRAL_GUARD` | `1` | Blocks completion with self-authored omitted/deferred scope. After denial, rewording alone remains blocked; repository work, a later verification action, and `Resolved scope: <item> — <evidence>` are required. |
@@ -422,6 +423,7 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_INTEGRATION_CANDIDATE` | Injected candidate commit for prepare/verify integration commands; safe for those commands to read. |
 | `LOOP_SPEC_RESULT` | Machine-output marker printed to stdout, not an input variable. |
 | `LOOP_SPEC_STAMP_INPUT` | The UserPromptSubmit payload, handed from `hooks/team/invocation-stamp.sh` to its Python reader; do not set. |
+| `LOOP_SPEC_GUARD_INPUT` | The PreToolUse payload, handed from `hooks/team/result-forgery-guard.sh` to its Python reader; do not set. |
 | `LOOP_SPEC_PHASE_START`, `LOOP_SPEC_PHASE_END` | Event marker names printed to output, not input variables. |
 | `LOOP_SPEC_ACTIVE_CYCLE_BIN`, `LOOP_SPEC_CYCLE_RESULT_BIN`, `LOOP_SPEC_DEFERRAL_LINT_BIN`, `LOOP_SPEC_FINALIZE_CANDIDATE_BIN`, `LOOP_SPEC_PR_COMMENTS_BIN`, `LOOP_SPEC_PR_DELIVERY_BIN` | Test seams that replace internal executables. Unsupported in production wrappers. |
 | `LOOP_SPEC_FEATURE_DIR` | Hook-scoped feature-directory override used by team hooks/tests. Normal runs discover the active feature. |

@@ -233,8 +233,19 @@ case "${1:-}" in
     fi
     active_path="$result_root_abs/.loop-spec/active-run.json"
     if [[ ! -f "$active_path" ]]; then
-      if [[ -f "$result_root_abs/.loop-spec/last-result.json" ]]; then
-        echo "published terminal result present at $result_root_abs/.loop-spec/last-result.json"
+      pointer="$result_root_abs/.loop-spec/last-result.json"
+      if [[ -f "$pointer" ]]; then
+        # Only write/write-terminal stamp schema and loopSpecVersion. A pointer without
+        # them was written by hand (the wc-json eval run, after two refusals) and must
+        # not disarm the stop guard; its age is the file's, so the stand-down still ends.
+        if jq -e '(.schema // "") != "" and (.loopSpecVersion // "") != ""' "$pointer" >/dev/null 2>&1; then
+          echo "published terminal result present at $pointer"
+        else
+          pointer_age=$(( $(date -u +%s) - $(stat -c %Y "$pointer" 2>/dev/null || stat -f %m "$pointer" 2>/dev/null || date -u +%s) ))
+          (( pointer_age < 0 )) && pointer_age=0
+          printf 'unaccounted ageSeconds=%s autonomous=true forged terminal result at %s lacks schema/loopSpecVersion; only cycle-result.sh may publish it\n' \
+            "$pointer_age" "$pointer"
+        fi
       else
         echo "idle no armed run and no terminal result at $result_root_abs"
       fi

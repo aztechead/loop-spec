@@ -17,3 +17,4 @@ Accepted 1/5. Delivered 0/5. Total cost USD 8.56. Total minutes 60.5.
 - **slugify-bug** failed: tests_pass; behavior: got '----hello---- a--b'
 - slugify-bug terminal reason: PLAN phase decision-coverage gate cannot parse spec file due to path resolution error in linter.
 - **todo-due** failed: sort_due_order; due_shown
+- **wc-json** wrote its terminal result by hand (no schema or version stamp): status untrusted
