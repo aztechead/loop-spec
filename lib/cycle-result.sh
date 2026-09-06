@@ -403,6 +403,11 @@ PY
         exit 3
       fi
     fi
+    if [[ "$status" == "completed" && -f "$result_root/.loop-spec/active-run.json" ]] \
+       && jq -e '(.cycleType // "") == "full" and ((.phase // "") | IN("deliver", "completed") | not)' "$result_root/.loop-spec/active-run.json" >/dev/null 2>&1; then
+      echo "cycle-result.sh: a full cycle is armed at phase $(jq -r '.phase' "$result_root/.loop-spec/active-run.json"); write-terminal cannot declare it completed. Return to the cycle, or publish failed/escalated with --reason" >&2
+      exit 3
+    fi
     if [[ -z "$result_root" || -z "$cycle_type" || -z "$status" || -z "$outcome" || -z "$title" ]]; then
       echo "cycle-result.sh: write-terminal requires --result-root --cycle-type --status --outcome --title" >&2
       exit 0
@@ -663,6 +668,16 @@ PY
     # the phase: a supervisor reads that as a dead run. Not refused outright, because a
     # phase can genuinely die; refused without a reason, because "interrupted" with no
     # cause is the eval's fib-cli run, not a result anyone can act on.
+    # A full cycle completes through cycle-driver.sh finish, after DELIVER wrote its
+    # sidecar. A lead that publishes completed from EXECUTE (the 6.2.0 smoke run) is the
+    # false success a supervisor cannot tell from a delivered one.
+    if [[ "$status" == "completed" && -z "$no_change_reason" && -z "$pr_url" ]] \
+       && jq -e '(.currentPhase // "") | IN("deliver", "completed") | not' "$fj" >/dev/null 2>&1 \
+       && ! jq -e '(.nextPhase // "") == "completed"' "$feature_dir/delivery.json" >/dev/null 2>&1 \
+       && ! jq -e '((.delivery.status // "") | IN("ready-for-review", "delivered-draft", "pushed-no-pr")) or ((.prUrl // "") != "")' "$fj" >/dev/null 2>&1; then
+      echo "cycle-result.sh: --status completed at currentPhase=$(jq -r '.currentPhase // "?"' "$fj") with no delivery record and no PR: DELIVER has not run. Return to the cycle, or publish the honest status with --reason" >&2
+      exit 0
+    fi
     answered_next="$(jq -r '.driverNext.phase // empty' "$fj" 2>/dev/null || true)"
     if [[ -n "$answered_next" && -z "$reason" ]]; then
       case "$status" in

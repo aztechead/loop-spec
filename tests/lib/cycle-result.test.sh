@@ -950,6 +950,21 @@ rm -f "$NEXT_DIR/result.json"
 bash "$LIB" write "$NEXT_DIR" --status completed --summary "done" >/dev/null 2>&1
 check "write: completion is never held back by driverNext" "completed" "$(jq -r '.status' "$NEXT_DIR/result.json" 2>/dev/null)"
 
+# --- completed is DELIVER's word ---------------------------------------------------------
+MID_DIR="$LOOP_DIR/features/mid-feature"; mkdir -p "$MID_DIR"
+jq '.slug="mid-feature" | .currentPhase="execute" | del(.delivery) | del(.driverNext) | .prUrl=null' <<<"$FIXTURE_FJ" > "$MID_DIR/feature.json"
+rm -f "$MID_DIR/result.json"
+bash "$LIB" write "$MID_DIR" --status completed --summary "done early" >/dev/null 2>&1
+check "write: completed without DELIVER's sidecar is refused" "0" "$([[ -f "$MID_DIR/result.json" ]] && echo 1 || echo 0)"
+printf '{"schema":1,"status":"ready-for-review","nextPhase":"completed","targets":[]}' > "$MID_DIR/delivery.json"
+bash "$LIB" write "$MID_DIR" --status completed --summary "done" >/dev/null 2>&1
+check "write: completed with DELIVER's sidecar publishes" "completed" "$(jq -r '.status' "$MID_DIR/result.json" 2>/dev/null)"
+ARMED="$WORK/armed"; mkdir -p "$ARMED/.loop-spec"
+printf '{"schema":1,"cycleType":"full","phase":"execute","slug":"s","title":"t","autonomous":true}' > "$ARMED/.loop-spec/active-run.json"
+ec=0; bash "$LIB" write-terminal --result-root "$ARMED" --cycle-type full --status completed --outcome delivered --title t --converged true --summary s >/dev/null 2>&1 || ec=$?
+check "write-terminal: an armed full cycle at execute cannot be declared completed" "3" "$ec"
+check "write-terminal: nothing was published" "0" "$([[ -f "$ARMED/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

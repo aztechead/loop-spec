@@ -236,7 +236,7 @@ case "$phase" in
     tasks="$(fget '.artifacts.tasks // ""')"
     if [[ -n "$tasks" && -f "$tasks" ]]; then
       remaining="$(lib task-progress remaining "$tasks" | paste -sd, -)"
-      [[ -z "$remaining" ]] || flag "[plan-adherence] tasks not published: $remaining (re-queue them or mark-done what already landed)"
+      [[ -z "$remaining" ]] || flag "[plan-adherence] tasks not published: $remaining (dispatch them again, or for a task whose commit is already on the feature branch run: bash lib/cycle-driver.sh task integrate --feature-dir $feature_dir --task <id>, or bash lib/task-progress.sh mark-done $(fget '.artifacts.tasks // "tasks.json"') <id>)"
     else
       flag "[plan-adherence] artifacts.tasks sidecar missing; cannot prove every PLAN task landed"
     fi
