@@ -69,6 +69,15 @@ All notable changes documented here. Format follows Keep a Changelog.
   iteration.
 - `lib/phase-exit.sh` keeps a gate's indented detail lines, so a REDO names the
   uncovered decisions instead of a bare heading.
+- `lib/decision-coverage.sh` matches a decision's statement, not its `Rationale:` and
+  `Alternatives considered:` clauses, and its heading says that only a verbatim copy in
+  PLAN.md counts. `lib/verification-grounding-lint.sh` prints the row grammar with a
+  malformed-row or empty-section flag. A haiku planner paraphrased every decision three
+  times, and a haiku verifier wrote `- none` three times, because neither flag said what
+  to write; each escalated at the REDO bound.
+- `evals/eval_run.py` marks a round the CLI ended with the account's usage-limit text as
+  `cut_off`, says so in the summary instead of scoring it as a plugin failure, and
+  refuses at preflight while the limit is active.
 - `lib/runtime-ignore.sh` ignores `.loop-spec/profile.json`, the policy file the
   supervisor contract tells embedders to write. Untracked, it made `cycle-driver.sh
   init` refuse every fresh checkout as dirty; the refusal now names the dirty paths.

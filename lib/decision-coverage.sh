@@ -3,11 +3,18 @@
 #
 # Usage: decision-coverage.sh <spec-path> <plan-path>
 #
+# An entry is covered when its statement -- the text before a "Rationale:" or
+# "Alternatives considered:" clause -- appears in PLAN.md as a fixed string,
+# whitespace-normalized. The rationale is the spec's to keep; the plan carries the
+# decision. A haiku planner paraphrased five entries three times and escalated because
+# the flag listed the entries without saying that only a verbatim copy counts.
+#
 # Exit codes:
 #   0  all entries covered (or no <decisions> block found -- skipped)
 #   1  one or more entries not found in PLAN
 #
-# Prints uncovered entries to stdout on exit 1.
+# Prints uncovered statements to stdout on exit 1, under a heading that says how to
+# cover them.
 # Prints "skipped: no <decisions> block" to stderr and exits 0 when block absent.
 # Fail-open: if SPEC cannot be read, exits 0 with a warning to stderr.
 set -euo pipefail
@@ -58,10 +65,14 @@ while IFS= read -r line; do
   entry="${entry#decision: }"
   [[ -z "$entry" ]] && continue
 
+  # The statement ends where the rationale begins.
+  statement="$(printf '%s' "$entry" | sed -E 's/[[:space:]]*(\*\*)?(Rationale|Alternatives considered):.*$//I')"
+  [[ -n "$statement" ]] || statement="$entry"
+
   # Fixed-string match on whitespace-normalized text (both sides)
-  entry_norm="$(printf '%s' "$entry" | tr -s '[:space:]' ' ')"
-  if [[ "$plan_norm" != *"$entry_norm"* ]]; then
-    uncovered+=("$entry")
+  statement_norm="$(printf '%s' "$statement" | tr -s '[:space:]' ' ')"
+  if [[ "$plan_norm" != *"$statement_norm"* ]]; then
+    uncovered+=("$statement")
   fi
 done <<< "$decisions_block"
 
@@ -69,7 +80,7 @@ if [[ ${#uncovered[@]} -eq 0 ]]; then
   exit 0
 fi
 
-echo "Uncovered decisions:"
+echo "Uncovered decisions (paste each line below into PLAN.md unchanged, under '## User decisions (already made)'; only a verbatim copy of the statement counts, a paraphrase does not):"
 for item in "${uncovered[@]}"; do
   echo "  - $item"
 done

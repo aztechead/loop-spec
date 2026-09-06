@@ -42,6 +42,10 @@ RUNS_DIR = REPO / "evals" / ".runs"
 ARTIFACT_PREFIXES = ("docs/loop-spec/", ".loop-spec/", ".claude/")
 DEFAULT_BUDGET = {"haiku": 8.0, "sonnet": 40.0, "opus": 80.0}
 ROUND_TIMEOUT_S = 90 * 60
+# The CLI ends the turn with this text, subtype "success", when the account's usage
+# window is spent; ten concurrent runs hit it eleven minutes in and every record read
+# as a plugin failure. A round that says this measured the account, not the plugin.
+USAGE_LIMIT_RE = re.compile(r"hit your (?:session|usage|weekly|daily) limit|usage limit reached|rate.?limit", re.I)
 MAX_ROUNDS = 8
 ALLOWED_TOOLS = ",".join((
     "Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Agent", "Skill",
@@ -167,6 +171,7 @@ def run_round(project, prompt, model, budget, env, log_path, plugin_dir):
         "subagents_spawned": (payload.get("subagent_stats") or {}).get("spawned"),
         "result_text": (payload.get("result") or "")[:2000],
         "stderr_tail": stderr[-1500:],
+        "cut_off": "usage-limit" if USAGE_LIMIT_RE.search(payload.get("result") or "") else None,
     }
 
 
@@ -286,10 +291,13 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
     if measure_only:
         # Re-score a workspace an earlier run paid for; keep its round figures.
         prior = read_json(RESULTS_DIR / run_id / f"{task_id}.json") or {}
+        # The record's model is the one that ran; the flag on a re-score is not.
+        model = prior.get("model") or model
         rounds = prior.get("rounds_detail") or []
         for r in rounds:
             r.setdefault("result_text", prior.get("last_result_text", ""))
             r.setdefault("stderr_tail", prior.get("last_stderr_tail", ""))
+            r.setdefault("cut_off", "usage-limit" if USAGE_LIMIT_RE.search(r["result_text"]) else None)
         spent = prior.get("cost_usd") or 0.0
         base = sh(["git", "rev-list", "--max-parents=0", "main"], cwd=project, env=env).stdout.strip()
         result = read_json(newest([r / ".loop-spec" / "last-result.json" for r in roots(project, env)]) or "")
@@ -315,6 +323,10 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
         if r["subtype"] is None:
             print(f"[{task_id}/{model}] round {n} produced no result payload; stderr tail: "
                   f"{r['stderr_tail'][-300:]!r}", flush=True)
+        if r["cut_off"]:
+            print(f"[{task_id}/{model}] round {n} CUT OFF by the account usage limit: "
+                  f"{r['result_text'][:120]!r}; this record measures the account, not the plugin",
+                  flush=True)
         if r["timed_out"] or status != "paused":
             break
     # Completion removes feature.json and leaves feature.json.bak; either names the dir.
@@ -348,6 +360,7 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
         "tokens": {k: sum(r[k] or 0 for r in rounds) for k in
                    ("input_tokens", "output_tokens", "cache_read_tokens", "cache_create_tokens")},
         "timed_out": any(r["timed_out"] for r in rounds),
+        "cut_off": next((r["cut_off"] for r in rounds if r.get("cut_off")), None),
         "result": {k: (result or {}).get(k) for k in
                    ("status", "outcome", "reason", "phaseReached", "converged", "summary")},
         # cycle-result.sh stamps schema and loopSpecVersion; a pointer without them was
@@ -427,10 +440,15 @@ def write_summary(out_dir):
     total_cost = sum(r["cost_usd"] for r in records)
     accepted = sum(1 for r in records if r["accepted"])
     delivered = sum(1 for r in records if r.get("delivered"))
+    cut = sum(1 for r in records if r.get("cut_off"))
     lines += ["", f"Accepted {accepted}/{len(records)}. Delivered {delivered}/{len(records)}. "
                   f"Total cost USD {total_cost:.2f}. "
-                  f"Total minutes {sum(r['minutes'] for r in records):.1f}.", ""]
+                  f"Total minutes {sum(r['minutes'] for r in records):.1f}."
+                  + (f" CUT OFF by the account usage limit: {cut}/{len(records)}; those rows measure "
+                     f"the account, not the plugin. Re-run them after the window resets." if cut else ""), ""]
     for r in records:
+        if r.get("cut_off"):
+            lines.append(f"- **{r['task']}** cut off by the account usage limit after {r['minutes']} min; not a plugin outcome")
         if r.get("forged_result"):
             lines.append(f"- **{r['task']}** wrote its terminal result by hand (no schema or version stamp): status untrusted")
         failed = [f"{k}: {v['note']}".rstrip(": ") for k, v in r["checks"].items() if not v["pass"]]
@@ -464,7 +482,10 @@ def preflight(models):
             payload = json.loads(proc.stdout)
         except json.JSONDecodeError:
             payload = {}
-        if payload.get("is_error") or "preflight-ok" not in (payload.get("result") or ""):
+        if USAGE_LIMIT_RE.search(payload.get("result") or ""):
+            failures.append(f"{model}: the account usage limit is active ({payload.get('result')!r}); "
+                            "every round would end at once")
+        elif payload.get("is_error") or "preflight-ok" not in (payload.get("result") or ""):
             failures.append(f"{model}: a tool call under acceptEdits did not run "
                             f"(result={str(payload.get('result') or proc.stderr)[:160]!r})")
     proc = subprocess.run(["claude", "-p", 'Do not use any tool. Reply with exactly this JSON and nothing else: {"ok": true}',

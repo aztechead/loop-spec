@@ -1,0 +1,109 @@
+{
+  "task": "fib-cli",
+  "size": "trivial",
+  "kind": "greenfield",
+  "model": "sonnet",
+  "run_id": "20260906-v620-sonnet",
+  "plugin_version": "6.2.0",
+  "plugin_commit": "9fa1c3b",
+  "rounds": 1,
+  "cost_usd": 3.6258,
+  "minutes": 10.9,
+  "turns": 77,
+  "subagents": 3,
+  "tokens": {
+    "input_tokens": 146,
+    "output_tokens": 32215,
+    "cache_read_tokens": 8026335,
+    "cache_create_tokens": 170716
+  },
+  "timed_out": false,
+  "cut_off": "usage-limit",
+  "result": {
+    "status": null,
+    "outcome": null,
+    "reason": null,
+    "phaseReached": null,
+    "converged": null,
+    "summary": null
+  },
+  "forged_result": false,
+  "iterations": 0,
+  "phase": "plan",
+  "delivery_status": "pending",
+  "delivered": false,
+  "events": 13,
+  "branch": "feat/a-python-command-line-tool-fib-py-that-prints-the-n-th-fibonacci-number-fib-0-0-fib-1-1-with-unit-tests-runnable-by-python3-m-unittest-and-a-readme",
+  "commits": 4,
+  "app_diff": {
+    "files": 1,
+    "added": 2,
+    "removed": 0,
+    "paths": [
+      ".gitignore"
+    ]
+  },
+  "artifact_diff": {
+    "files": 3,
+    "added": 194,
+    "removed": 0
+  },
+  "overbuild_ratio": 0.03,
+  "protected_touched": [],
+  "plugin_tampered": [],
+  "workarounds": [],
+  "checks": {
+    "fib_py_exists": {
+      "pass": false,
+      "note": "fib.py missing"
+    },
+    "fib_10_is_55": {
+      "pass": false,
+      "note": "got 'python3: can't open file '/home/user/loop-spec/evals/.runs/20260906-v620-sonnet/fib-cli/checkout/fib.py': [Errno 2] No such file or directory'"
+    },
+    "fib_0_is_0": {
+      "pass": false,
+      "note": "got 'python3: can't open file '/home/user/loop-spec/evals/.runs/20260906-v620-sonnet/fib-cli/checkout/fib.py': [Errno 2] No such file or directory'"
+    },
+    "unit_tests_pass": {
+      "pass": true,
+      "note": ""
+    },
+    "tests_exist": {
+      "pass": false,
+      "note": "no test files"
+    },
+    "readme_written": {
+      "pass": false,
+      "note": ""
+    }
+  },
+  "checks_passed": 1,
+  "checks_total": 6,
+  "accepted": false,
+  "judge": {
+    "meets_request": 0,
+    "overbuilt": 0,
+    "note": "Only .gitignore added; fib.py, tests, and README are completely missing."
+  },
+  "rounds_detail": [
+    {
+      "rc": 1,
+      "timed_out": false,
+      "seconds": 651.6,
+      "subtype": "success",
+      "is_error": true,
+      "cost_usd": 3.6258163000000008,
+      "num_turns": 77,
+      "input_tokens": 146,
+      "output_tokens": 32215,
+      "cache_read_tokens": 8026335,
+      "cache_create_tokens": 170716,
+      "subagents_spawned": 3,
+      "cut_off": "usage-limit"
+    }
+  ],
+  "last_result_text": "You've hit your session limit \u00b7 resets 6:20pm (UTC)",
+  "last_stderr_tail": "",
+  "workspace": "/home/user/loop-spec/evals/.runs/20260906-v620-sonnet/fib-cli"
+}

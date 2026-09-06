@@ -111,6 +111,22 @@ else
   FAIL=$((FAIL+1)); echo "FAIL: success output is stable"
 fi
 
+# A malformed row's flag carries the row grammar, so the verifier that wrote "- none"
+# knows what to write instead.
+cat > "$WORK/bare-none.md" <<'EOF'
+# Verification
+
+## Repository grounding
+
+- none
+EOF
+malformed_out="$(bash "$SCRIPT" "$WORK/bare-none.md" --repo "$WORK" --criterion SC-1 2>&1 || true)"
+if grep -q 'expected one row per Good Enough criterion, exactly `- criterion: GE-001 | implementation:' <<<"$malformed_out"; then
+  PASS=$((PASS+1)); echo "PASS: malformed row flag names the expected row"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: malformed row flag names the expected row: $malformed_out"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

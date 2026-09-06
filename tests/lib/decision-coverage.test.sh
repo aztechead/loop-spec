@@ -118,6 +118,29 @@ exit_code=0
 bash "$SCRIPT" "$SPEC_D" "$PLAN_D" >/dev/null 2>&1 || exit_code=$?
 check "D: missing-spec-file exits 0 (fail-open)" "0" "$exit_code"
 
+# === Case E: the statement is the match; the rationale stays in the spec ===
+# The 6.2.0 haiku fib-cli run carried every rationale into PLAN.md and paraphrased
+# every statement; the flag never said which half counts.
+SPEC_E="$WORK/spec-e.md"
+PLAN_E="$WORK/plan-e.md"
+cat > "$SPEC_E" <<'EOF'
+<decisions>
+- Decision: Stack is Python 3.7+ standard library only. Rationale: no external dependencies were asked for. Alternatives considered: numpy (rejected).
+- Decision: CLI is `python3 fib.py <n>`. Rationale: the request names it.
+</decisions>
+EOF
+cat > "$PLAN_E" <<'EOF'
+## User decisions (already made)
+- **Stack is Python 3.7+ standard library only.** Implemented in task-001.
+- **Stack (Python 3.7+, no deps):** the request names it.
+EOF
+exit_code=0
+out_e="$(bash "$SCRIPT" "$SPEC_E" "$PLAN_E" 2>/dev/null)" || exit_code=$?
+check "E: a statement without its rationale is covered; a paraphrase is not" "1" "$exit_code"
+check "E: only the paraphrased statement is listed" "1" "$(grep -c '^  - ' <<<"$out_e")"
+check "E: the listed line is the statement, not the rationale" "0" "$(grep -c 'Rationale' <<<"$out_e")"
+check "E: the heading says a verbatim copy is the fix" "1" "$(grep -c 'verbatim copy' <<<"$out_e")"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0
