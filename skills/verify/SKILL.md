@@ -76,13 +76,16 @@ One call applies both verdicts and the deterministic half of the acceptance gate
 gate="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verify gate --feature-dir "$feature_dir" \
   --verifier ALL_PASS|FAIL --suite PASS|FAIL|N/A --reviewer PASS|PASS_WITH_MINOR|BLOCK \
   --remediation-tasks '<JSON array of FULL-SHAPE tasks>' --minors '<JSON array of "file:line — claim">')"
-# .exit{ok,flags[]} .route=pass|remediate .class .tasks[] .minorsQueued .repeat
+# .exit{ok,flags[]} .route=redo|pass|remediate .class .tasks[] .minorsQueued .repeat
 ```
 
-It runs `lib/phase-exit.sh verify` first: a `[verification-grounding]` FLAG
-(`lib/verification-grounding-lint.sh`: a criterion row without post-change
-`repositoryEvidence`, a missing file, an out-of-range line) is a verifier FAIL
-regardless of green commands. Then:
+It runs `lib/phase-exit.sh verify` first: `.route == "redo"` means VERIFICATION.md
+FLAGged (`artifact-lint`, or `[verification-grounding]` from
+`lib/verification-grounding-lint.sh`: a criterion row without post-change
+`repositoryEvidence`, a missing file, an out-of-range line). Fix the file in place and
+call `verify gate` again with the same verdicts; nothing is recorded for a redo, and the
+agents are not re-dispatched. A criterion whose evidence cannot be written is a
+verifier FAIL regardless of green commands: pass `--verifier FAIL`. Then:
 
 - Verifier `FAIL`, or `ALL_PASS` with `Test suite status: FAIL`: class `acceptance`
   (or `suite-regression`); pass one remediation task per failed criterion.

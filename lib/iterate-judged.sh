@@ -78,6 +78,14 @@ for k in ("converged", "deterministic_gate_passed", "summary"):
 print(json.dumps(d))
 PY
 )" || { echo "iterate-judged: malformed judge verdict; re-dispatch once, then escalate" >&2; exit 1; }
+    # The same judge output recorded twice is one round, not two: the 6.2.0 smoke run
+    # counted four iterations from one converged verdict.
+    judge_hash="$(cksum "$judge_out" | cut -d' ' -f1)"
+    if [[ "$(fget '.iterate.lastJudgeHash // ""')" == "$judge_hash" ]]; then
+      prior_route="$(fget '.iterate.lastRoute // ""')"
+      [[ -n "$prior_route" ]] && { jq -cn --argjson v "$(fget '.iterate.lastVerdict')" --arg r "$prior_route" '{verdict:$v, converged:$v.converged, floor:[], route:$r, tasks:[], repeated:true}'; exit 0; }
+    fi
+    fset iterate.lastJudgeHash "\"$judge_hash\""
     iteration=$((used + 1)); (( confirmation )) && iteration="$used"
     (( confirmation )) || fset iterate.used "$iteration"
     fset iterate.lastVerdict "$verdict"
@@ -113,8 +121,9 @@ PY
         fi
       fi
     fi
+    fset iterate.lastRoute "\"$route\""
     jq -cn --argjson v "$verdict" --arg r "$route" --argjson f "$floor" --argjson t "$tasks" \
-      '{verdict:$v, converged:$v.converged, floor:$f, route:$r, tasks:$t}'
+      '{verdict:$v, converged:$v.converged, floor:$f, route:$r, tasks:$t, repeated:false}'
     ;;
   harvest)
     verdict="$(fget '.iterate.lastVerdict // null')"

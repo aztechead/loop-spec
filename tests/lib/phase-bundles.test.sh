@@ -92,6 +92,26 @@ out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite P
 check "gate block: the same finding twice is a repeat" "true" "$(jq -r '.repeat' <<<"$out")"
 check "gate block: a repeat records a rule" "1" "$(grep -c 'repeat-fail' "$REPO/.loop-spec/RULES.md" 2>/dev/null || echo 0)"
 
+# --- verify gate: a malformed record is a redo, never a recorded failure -----------------
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+before="$(fj '.gateHistory | length')"
+printf '# broken\n' > "$DOCS/VERIFICATION.md"
+ec=0; out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer PASS 2>/dev/null)" || ec=$?
+check "gate redo: route is redo" "redo" "$(jq -r '.route' <<<"$out")"
+check "gate redo: exit 1" "1" "$ec"
+check "gate redo: the flags come back" "true" "$(jq '.exit.flags | length > 0' <<<"$out")"
+check "gate redo: nothing is recorded" "$before" "$(fj '.gateHistory | length')"
+check "gate redo: no remediation task" "0" "$(fj '.pendingRemediationTasks | length')"
+cat > "$DOCS/VERIFICATION.md" <<'MD'
+# My Feature - Verification
+## Repository grounding
+- criterion: GE-001 | implementation: a.sh:1 - proves it | integration: none - covered by unit scope
+## Acceptance criteria
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| 1 | it works | PASS | `bash -n a.sh` -> ok |
+MD
+
 # --- verify gate: verifier fails without tasks -------------------------------------------
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
 out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier FAIL --suite N/A --reviewer PASS 2>/dev/null)" || true
@@ -114,6 +134,9 @@ check "iterate record: a converged verdict routes to deliver" "deliver" "$(jq -r
 check "iterate record: used is incremented" "1" "$(fj '.iterate.used')"
 check "iterate record: the verdict is recorded" "true" "$(fj '.iterate.lastVerdict.converged')"
 check "iterate record: iterate_verdict emitted" "1" "$(grep -c '"event":"iterate_verdict"' "$FD/events.jsonl")"
+out="$(bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-judge.out")"
+check "iterate record: the same judge output again is one round" "1" "$(fj '.iterate.used')"
+check "iterate record: a repeat says so and keeps the route" "deliver" "$(jq -r 'select(.repeated == true) | .route' <<<"$out")"
 printf '{"converged": false, "deterministic_gate_passed": true, "summary": "not yet", "gap": {"type": "execute", "description": "flag missing", "fix_first": "add the flag"}, "remaining_gaps": [{"type": "execute", "description": "docs", "fix_first": "update README"}]}\n' > "$FD/.iterate-judge.out"
 out="$(bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-judge.out")"
 check "iterate record: an execute gap routes to execute" "execute" "$(jq -r '.route' <<<"$out")"

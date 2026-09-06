@@ -327,6 +327,9 @@ def run_task(task_id, model, run_id, budget, measure_only=False):
         project, base, branch, task.get("protected", []), env)
     checks = export_and_check(task, project, branch, root, env)
     verdict = judge(task, project, base, branch, env, root / "judge.log")
+    # DELIVER's word is the sidecar; feature.json's delivery block stays pending after it.
+    delivery = read_json(fdir / "delivery.json") if fdir and (fdir / "delivery.json").is_file() else None
+    delivery_status = (delivery or (feature or {}).get("delivery") or {}).get("status")
     events = 0
     if fdir and (fdir / "events.jsonl").is_file():
         events = sum(1 for _ in (fdir / "events.jsonl").open())
@@ -347,9 +350,8 @@ def run_task(task_id, model, run_id, budget, measure_only=False):
                    ("status", "outcome", "reason", "phaseReached", "converged", "summary")},
         "iterations": ((feature or {}).get("iterate") or {}).get("used"),
         "phase": (feature or {}).get("currentPhase"),
-        "delivery_status": ((feature or {}).get("delivery") or {}).get("status"),
-        "delivered": ((feature or {}).get("delivery") or {}).get("status")
-        in ("ready-for-review", "delivered-draft", "pushed-no-pr"),
+        "delivery_status": delivery_status,
+        "delivered": delivery_status in ("ready-for-review", "delivered-draft", "pushed-no-pr"),
         "events": events,
         "branch": branch, "commits": commits,
         "app_diff": app, "artifact_diff": artifacts,

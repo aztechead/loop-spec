@@ -16,15 +16,17 @@
 #       --minors: a JSON array of "file:line - claim" strings for the backlog.
 #
 # Output (one JSON object):
-#   {exit:{ok,flags[]}, route:"pass"|"remediate", class:null|"acceptance"|"suite-regression"|"code-review",
+#   {exit:{ok,flags[]}, route:"redo"|"pass"|"remediate", class:null|"acceptance"|"suite-regression"|"code-review",
 #    tasks:[...], minorsQueued:N, repeat:bool}
+#   redo: lib/phase-exit.sh verify FLAGged VERIFICATION.md (format or evidence rows); fix
+#   the file and call again. Nothing is recorded for a redo.
 #
 # On remediate: tasks are appended to pendingRemediationTasks[], the gate (acceptance or
 # code-review) records a fail entry through lib/graph/gate.sh, a verify_failure event is
 # emitted, a repeated failure of the same finding records a rule, and the team fields are
 # cleared. On pass: the acceptance gate records a pass entry.
 #
-# Exit: 0 pass; 1 remediate; 2 bad invocation.
+# Exit: 0 pass; 1 redo or remediate (the route says which); 2 bad invocation.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,19 +59,23 @@ exit_rc=0; exit_out="$(lib phase-exit verify --feature-dir "$feature_dir" 2>&1)"
 flags="$(grep '^FLAG' <<<"$exit_out" | jq -R . | jq -cs .)"
 exit_ok=true; (( exit_rc == 0 )) || exit_ok=false
 
+# An exit FLAG is VERIFICATION.md drifting from its format or its evidence rows: the lead
+# fixes the file and calls again. It is not a verdict, so it records nothing; the 6.2.0
+# smoke run logged fifteen acceptance fails and re-ran both reviewers fifteen times
+# because a formatting flag was read as a verifier FAIL.
+if [[ "$exit_ok" == false ]]; then
+  jq -cn --argjson flags "$flags" '{exit:{ok:false, flags:$flags}, route:"redo", class:null, tasks:[], minorsQueued:0, repeat:false}'
+  exit 1
+fi
 route=pass; class=null
-if [[ "$verifier" == "FAIL" || "$exit_ok" == false ]]; then route=remediate; class=acceptance
+if [[ "$verifier" == "FAIL" ]]; then route=remediate; class=acceptance
 elif [[ "$suite" == "FAIL" ]]; then route=remediate; class=suite-regression
 elif [[ "$reviewer" == "BLOCK" ]]; then route=remediate; class=code-review
 fi
 
 if [[ "$route" == "remediate" && "$(jq 'length' <<<"$tasks")" == "0" ]]; then
-  # No tasks from the lead: one per exit FLAG, or one for the verdict itself.
-  if [[ "$(jq 'length' <<<"$flags")" != "0" ]]; then
-    tasks="$(jq -c --arg v "$default_verify" 'to_entries | map({id:("task-verify-grounding-" + (.key + 1 | tostring)), subject:("Fix verification evidence: " + .value), files:[], verifyCommand:$v, acceptanceCriteria:[.value], blockedBy:[], retries:0})' <<<"$flags")"
-  else
-    tasks="$(jq -cn --arg c "$class" --arg v "$default_verify" '[{id:("task-verify-" + $c + "-1"), subject:("Fix the " + $c + " failure VERIFY reported"), files:[], verifyCommand:$v, acceptanceCriteria:[("VERIFY " + $c + " gate passes")], blockedBy:[], retries:0}]')"
-  fi
+  # No tasks from the lead: one for the verdict itself.
+  tasks="$(jq -cn --arg c "$class" --arg v "$default_verify" '[{id:("task-verify-" + $c + "-1"), subject:("Fix the " + $c + " failure VERIFY reported"), files:[], verifyCommand:$v, acceptanceCriteria:[("VERIFY " + $c + " gate passes")], blockedBy:[], retries:0}]')"
 fi
 tasks="$(jq -c --arg v "$default_verify" 'map(.verifyCommand = (if (.verifyCommand // "") == "" then $v else .verifyCommand end) | .blockedBy = (.blockedBy // []) | .files = (.files // []) | .retries = (.retries // 0) | .acceptanceCriteria = (if (.acceptanceCriteria // []) == [] then [.subject] else .acceptanceCriteria end))' <<<"$tasks")"
 
