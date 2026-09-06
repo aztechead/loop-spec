@@ -51,6 +51,12 @@ the running processes keep the old code and the records stop agreeing with the t
 `python3`. There is no `gh` requirement: the fixture has a bare `origin`, so DELIVER
 pushes and then stops at the pull-request step. That stop is expected and recorded.
 
+Run one model at a time. Ten concurrent cycles (haiku and sonnet together) spent the
+account's usage window eleven minutes in, every round ended with the CLI's limit text,
+and every record read as a plugin failure. The driver now marks such a round `cut_off`
+and the summary says so; preflight refuses while the limit is active. A cut-off record
+measures the account, not the plugin: re-run it after the window resets.
+
 Results land in `evals/results/<run-id>/` as one JSON per task plus `summary.md`.
 Commit them; they are the evidence. Workspaces land in `evals/.runs/` and are ignored.
 
@@ -63,6 +69,11 @@ Commit them; they are the evidence. Workspaces land in `evals/.runs/` and are ig
 - `artifact_diff.added` is the prose the cycle wrote about the change. Compare it with
   `app_diff.added`.
 - `rounds` above 1 means the cycle paused and was re-issued; each round reloads context.
+- `forged_result` is true when `last-result.json` lacks the `schema` and
+  `loopSpecVersion` stamps only `cycle-result.sh` writes: the lead wrote it by hand, and
+  its status is untrusted.
+- `cut_off` names an account outcome (`usage-limit`) that ended the round; the row is
+  not a plugin result.
 - Compare runs of the same task and model across plugin versions before trusting a
   change. Model output varies between runs, so one run is a signal, not a verdict.
 
