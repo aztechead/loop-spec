@@ -147,6 +147,18 @@ def read_json(path):
         return None
 
 
+def roots(project, env):
+    """The project plus every worktree the cycle made: state can live in any of them."""
+    out = sh(["git", "worktree", "list", "--porcelain"], cwd=project, env=env, check=False).stdout
+    paths = [Path(line.split(" ", 1)[1]) for line in out.splitlines() if line.startswith("worktree ")]
+    return [project] + [p for p in paths if p != project]
+
+
+def newest(paths):
+    paths = [p for p in paths if p.is_file()]
+    return max(paths, key=lambda p: p.stat().st_mtime) if paths else None
+
+
 def branch_of(project, result, feature, env):
     for candidate in ((result or {}).get("branch"), (feature or {}).get("branch")):
         if candidate and sh(["git", "rev-parse", "--verify", "-q", candidate],
@@ -247,7 +259,7 @@ def run_task(task_id, model, run_id, budget):
         r = run_round(project, prompt, model, remaining, env, root / f"round-{n}.log")
         rounds.append(r)
         spent += r["cost_usd"] or 0.0
-        result = read_json(project / ".loop-spec" / "last-result.json")
+        result = read_json(newest([r / ".loop-spec" / "last-result.json" for r in roots(project, env)]) or "")
         status = (result or {}).get("status")
         print(f"[{task_id}/{model}] round {n} sdk={r['subtype']} cost={r['cost_usd']} "
               f"turns={r['num_turns']} status={status} phase={(result or {}).get('phaseReached')}",
@@ -257,9 +269,10 @@ def run_task(task_id, model, run_id, budget):
                   f"{r['stderr_tail'][-300:]!r}", flush=True)
         if r["timed_out"] or status != "paused":
             break
-    features = sorted((project / ".loop-spec" / "features").glob("*/feature.json"))
-    fdir = features[-1].parent if features else None
-    feature = read_json(features[-1]) if features else None
+    feature_file = newest([f for r in roots(project, env)
+                           for f in (r / ".loop-spec" / "features").glob("*/feature.json")])
+    fdir = feature_file.parent if feature_file else None
+    feature = read_json(feature_file) if feature_file else None
     branch = branch_of(project, result, feature, env)
     app, artifacts, protected_touched, commits = diff_metrics(
         project, base, branch, task.get("protected", []), env)
