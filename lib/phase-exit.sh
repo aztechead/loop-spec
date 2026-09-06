@@ -72,12 +72,14 @@ docs="docs/loop-spec/features/$slug"
 flags=0
 flag() { echo "FLAG $*"; flags=$((flags + 1)); }
 # run_gate LABEL CMD...: relay the gate's own FLAG/output lines, count a failure once.
+# Indented lines are the gate's detail (decision-coverage lists each uncovered entry under
+# its heading); dropping them left the lead a bare "Uncovered decisions:" to act on.
 run_gate() {
   local label="$1"; shift
   local out rc=0
   out="$("$@" 2>&1)" || rc=$?
   if (( rc != 0 )); then
-    printf '%s\n' "$out" | grep -E '^(FLAG|FLOOR)|^[^ ]' | sed "s/^/FLAG [$label] /" | grep -v 'phase-exit' || true
+    printf '%s\n' "$out" | grep -E '^(FLAG|FLOOR)|^[^ ]|^ +- ' | sed "s/^/FLAG [$label] /" | grep -v 'phase-exit' || true
     flags=$((flags + 1))
   fi
 }

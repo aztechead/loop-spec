@@ -64,7 +64,8 @@
 #
 #   cycle-driver.sh next --feature-dir DIR [--returned-from PHASE] [--note TEXT]
 #       Runs phase-exit for the returned phase first: a FLAG answers
-#         REDO phase=<id> flags=<n>       followed by the FLAG lines; fix and call again
+#         REDO phase=<id> flags=<n> attempt=<k>   followed by the FLAG lines; fix and call again
+#       The same flags LOOP_SPEC_REDO_MAX (3) times escalate the run with them as the reason.
 #       then post-phase bookkeeping and the graph step. Prints exactly ONE answer line:
 #         NEXT phase=<id> label="<label>" effort=<system1|system2>
 #         PAUSED node=<id>            (human gate; re-invoke the cycle to continue)
@@ -700,7 +701,22 @@ cmd_next() {
       [[ "$returned" == "iterate" ]] && iterate_is_terminal "$feature_dir" && terminal_flag=(--terminal)
       exit_out="$(lib phase-exit "$returned" --feature-dir "$feature_dir" ${terminal_flag[@]+"${terminal_flag[@]}"} 2>&1)" || exit_rc=$?
       if (( exit_rc == 1 )); then
-        echo "REDO phase=$returned flags=$(grep -c '^FLAG' <<<"$exit_out")"
+        # The same flags three times is a gate the phase cannot satisfy, not a phase that
+        # needs one more try: the 6.2.0 haiku runs looped six times on one flag and then
+        # published an invented reason. Escalate with the flags as the reason instead.
+        local redo_hash redo_count=1
+        redo_hash="$(grep '^FLAG' <<<"$exit_out" | cksum | cut -d' ' -f1)"
+        if [[ "$(fget "$feature_dir" '.driverRedo.phase // ""')" == "$returned" && "$(fget "$feature_dir" '.driverRedo.hash // ""')" == "$redo_hash" ]]; then
+          redo_count=$(( $(fget "$feature_dir" '.driverRedo.count // 1') + 1 ))
+        fi
+        fset "$feature_dir" driverRedo "{\"phase\":\"$returned\",\"hash\":\"$redo_hash\",\"count\":$redo_count}" >/dev/null
+        if (( redo_count >= ${LOOP_SPEC_REDO_MAX:-3} )); then
+          local reason; reason="$returned exit gate unsatisfied after $redo_count attempts: $(grep '^FLAG' <<<"$exit_out" | head -3 | tr '\n' ' ')"
+          cmd_escalate --feature-dir "$feature_dir" --reason "$reason" >/dev/null
+          echo "DONE status=escalated reason=$reason"
+          return 0
+        fi
+        echo "REDO phase=$returned flags=$(grep -c '^FLAG' <<<"$exit_out") attempt=$redo_count"
         grep '^FLAG' <<<"$exit_out"
         return 0
       elif (( exit_rc != 0 )); then

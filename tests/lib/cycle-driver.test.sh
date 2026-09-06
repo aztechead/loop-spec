@@ -237,6 +237,14 @@ check "next: first entry is SPEC" "NEXT phase=spec" "${out:0:15}"
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
 check "next: a phase that wrote nothing is sent back" "REDO phase=spec" "${out:0:15}"
 check "next: the FLAG lines follow the answer" "true" "$([[ "$(grep -c '^FLAG' <<<"$out")" -gt 0 ]] && echo true || echo false)"
+out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
+check "next: the same flags again count the attempt" "REDO phase=spec flags=" "${out:0:22}"
+check "next: attempt two is reported" "1" "$(head -1 <<<"$out" | grep -c 'attempt=2')"
+out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
+check "next: the third identical REDO escalates" "DONE status=escalated" "${out:0:21}"
+check "next: the escalation names the gate" "1" "$(head -1 <<<"$out" | grep -c 'spec exit gate unsatisfied')"
+check "next: an escalated result is published" "escalated" "$(jq -r '.status' "$FD6/result.json")"
+rm -f "$FD6/result.json"; bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" driverRedo null >/dev/null
 DOCS6="$REPO6/docs/loop-spec/features/$(jq -r '.slug' "$FD6/feature.json")"; mkdir -p "$DOCS6"
 cat > "$DOCS6/SPEC.md" <<'MD'
 ---

@@ -273,7 +273,7 @@ def judge(task, project, base, branch, env, log_path):
             "note": str(verdict.get("note", ""))[:300]}
 
 
-def run_task(task_id, model, run_id, budget, measure_only=False):
+def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
     task = load_task(task_id)
     env = child_env()
     run_dir = RUNS_DIR / run_id
@@ -337,7 +337,9 @@ def run_task(task_id, model, run_id, budget, measure_only=False):
     record = {
         "task": task_id, "size": task.get("size"), "kind": task.get("kind"),
         "model": model, "run_id": run_id, "plugin_version": plugin_version(),
-        "plugin_commit": plugin_commit(),
+        # The commit the snapshot was taken from, read once at launch: a record scored
+        # after later edits must not report the tree as dirty.
+        "plugin_commit": commit or plugin_commit(),
         "rounds": len(rounds),
         "cost_usd": round(spent, 4),
         "minutes": round(sum(r["seconds"] for r in rounds) / 60, 1),
@@ -520,10 +522,11 @@ def main(argv=None):
                 if args.tasks == "all" else args.tasks.split(","))
     budget = args.budget_usd or DEFAULT_BUDGET.get(args.model, 10.0)
     run_id = args.run_id or f"{dt.datetime.now(dt.timezone.utc):%Y%m%d-%H%M}-{args.model}"
-    print(f"eval_run: run {run_id}, tasks {task_ids}, budget {budget} USD per task", flush=True)
+    commit = plugin_commit()
+    print(f"eval_run: run {run_id}, tasks {task_ids}, budget {budget} USD per task, plugin {commit}", flush=True)
     failures = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.parallel)) as pool:
-        futures = {pool.submit(run_task, t, args.model, run_id, budget, args.measure_only): t
+        futures = {pool.submit(run_task, t, args.model, run_id, budget, args.measure_only, commit): t
                    for t in task_ids}
         for fut in concurrent.futures.as_completed(futures):
             try:
