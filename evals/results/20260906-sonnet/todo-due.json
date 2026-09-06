@@ -1,0 +1,107 @@
+{
+  "task": "todo-due",
+  "size": "medium",
+  "kind": "existing-feature",
+  "model": "sonnet",
+  "run_id": "20260906-sonnet",
+  "plugin_version": "6.1.0",
+  "rounds": 1,
+  "cost_usd": 0.0,
+  "minutes": 45.0,
+  "turns": 0,
+  "subagents": 0,
+  "tokens": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_create_tokens": 0
+  },
+  "timed_out": true,
+  "result": {
+    "status": null,
+    "outcome": null,
+    "reason": null,
+    "phaseReached": null,
+    "converged": null,
+    "summary": null
+  },
+  "iterations": 0,
+  "phase": "iterate",
+  "delivery_status": "pending",
+  "events": 60,
+  "branch": "feat/add-due-dates-to-todo-cli",
+  "commits": 13,
+  "app_diff": {
+    "files": 5,
+    "added": 82,
+    "removed": 6,
+    "paths": [
+      ".gitignore",
+      "README.md",
+      "tests/test_cli.py",
+      "todo/cli.py",
+      "todo/storage.py"
+    ]
+  },
+  "artifact_diff": {
+    "files": 7,
+    "added": 984,
+    "removed": 0
+  },
+  "overbuild_ratio": 1.37,
+  "protected_touched": [],
+  "plugin_tampered": [],
+  "workarounds": [
+    "deleted .loop-spec/profile.json",
+    "added profile.json to .git/info/exclude"
+  ],
+  "checks": {
+    "tests_pass": {
+      "pass": true,
+      "note": ""
+    },
+    "sort_due_order": {
+      "pass": true,
+      "note": ""
+    },
+    "due_shown": {
+      "pass": true,
+      "note": ""
+    },
+    "bad_date_exit_2": {
+      "pass": true,
+      "note": ""
+    },
+    "due_tests_added": {
+      "pass": true,
+      "note": ""
+    }
+  },
+  "checks_passed": 5,
+  "checks_total": 5,
+  "accepted": true,
+  "judge": {
+    "meets_request": 3,
+    "overbuilt": 0,
+    "note": "All requirements met: --due flag with YYYY-MM-DD validation, list shows due dates, --sort due orders correctly with undated last, exit code 2 on bad dates, comprehensive tests added, existing tests untouched. README and .gitignore additions are justified and minimal."
+  },
+  "rounds_detail": [
+    {
+      "rc": -1,
+      "timed_out": true,
+      "seconds": 2700.1,
+      "subtype": null,
+      "is_error": null,
+      "cost_usd": null,
+      "num_turns": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "cache_read_tokens": null,
+      "cache_create_tokens": null,
+      "subagents_spawned": null
+    }
+  ],
+  "last_result_text": "",
+  "last_stderr_tail": "",
+  "workspace": "/home/user/loop-spec/evals/.runs/20260906-sonnet/todo-due"
+}
