@@ -419,6 +419,19 @@ PY
       echo "cycle-result.sh: a full cycle is armed at phase $(jq -r '.phase' "$result_root/.loop-spec/active-run.json"); write-terminal cannot declare it completed. Return to the cycle, or publish failed/escalated with --reason" >&2
       exit 3
     fi
+    # "interrupted" over a phase the driver answered NEXT for is the lead ending its
+    # turn, not the run dying: three 6.2.0 haiku leads did it after EXECUTE when the
+    # stop guard listed it as an option. Continuing is one driver call; giving up
+    # needs a reason.
+    if [[ "$outcome" == "interrupted" && -n "$result_root" && -f "$result_root/.loop-spec/active-run.json" ]] \
+       && ! _is_nonblank "$reason"; then
+      feat_dir="$(_resolve_full_feature_dir "$(_resolve_result_root "$result_root" 2>/dev/null || echo "$result_root")" "$slug" 2>/dev/null || true)"
+      next_phase="$(jq -r '.driverNext.phase // empty' "$feat_dir/feature.json" 2>/dev/null || true)"
+      if [[ -n "$next_phase" ]]; then
+        echo "cycle-result.sh: the driver answered NEXT phase=$next_phase for $feat_dir and nothing says that phase cannot continue; write-terminal will not record 'interrupted' without --reason. Continue the cycle instead: bash lib/cycle-driver.sh next --feature-dir $feat_dir --returned-from $next_phase --note '<what the phase produced>' and act on its answer. Only a run that cannot continue publishes --status failed --outcome interrupted --reason '<what stopped it>'" >&2
+        exit 3
+      fi
+    fi
     if [[ -z "$result_root" || -z "$cycle_type" || -z "$status" || -z "$outcome" || -z "$title" ]]; then
       echo "cycle-result.sh: write-terminal requires --result-root --cycle-type --status --outcome --title" >&2
       exit 0

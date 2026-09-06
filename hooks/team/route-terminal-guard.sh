@@ -97,7 +97,13 @@ DENY: this autonomous run was routed but never published a terminal result, so
 .loop-spec/last-result.json does not exist. A headless caller gates success on that
 pointer and reads its absence as a failed run -- including when the work went fine.
 
-Publish the result that matches what actually happened, then stop:
+If the cycle has a phase left (feature.json.driverNext names it), publish nothing.
+Continue it: bash lib/cycle-driver.sh next --feature-dir <feature dir>
+--returned-from <that phase> --note "<what the phase produced>", then act on its
+answer. Three haiku leads ended their turn after EXECUTE and recorded "interrupted";
+the work was right and the run was not.
+
+Otherwise publish the result that matches what actually happened, then stop:
 
   bash lib/cycle-result.sh write-terminal --result-root <repo root> \
     --cycle-type <full|micro|debug> --status <status> --outcome <outcome> \
@@ -109,7 +115,8 @@ Publish the result that matches what actually happened, then stop:
   merge-conflict resolution, re-review, or chore the router already accepted.
 - You completed a full cycle: `--outcome delivered` (alias for
   `write <feature_dir> --status completed`). Do not hand-build `converged`.
-- You stopped part-way: --status failed --outcome interrupted --converged false.
+- The run cannot continue: --status failed --outcome interrupted --converged false
+  --reason "<what stopped it>" (refused without the reason while a phase is pending).
 - You completed a reduced route: finish that route's own delivery contract
   (PR included) and let it emit the result.
 

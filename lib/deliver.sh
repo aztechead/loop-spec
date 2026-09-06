@@ -194,8 +194,10 @@ if [[ -z "$workspace_root" ]]; then
       "git_status_failed" "cannot establish candidate worktree cleanliness"
     preflight_ok=0
   elif [[ -n "$dirty_state" ]]; then
+    # Name the paths: a haiku lead refused over untracked __pycache__/ could not tell
+    # a forgotten file from test residue and escalated.
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
-      "dirty_worktree" "candidate repository has uncommitted changes"
+      "dirty_worktree" "candidate repository has uncommitted changes: $(printf '%s\n' "$dirty_state" | head -5 | sed 's/^...//' | paste -sd ' ' -)"
     preflight_ok=0
   elif [[ "$finalize_rc" -ne 0 ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "$target_sha" "$hint" \
@@ -282,7 +284,7 @@ else
     fi
     if [[ -n "$dirty_state" ]]; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "$target_sha" "$hint" \
-        "dirty_worktree" "workspace target has uncommitted changes"
+        "dirty_worktree" "workspace target has uncommitted changes: $(printf '%s\n' "$dirty_state" | head -5 | sed 's/^...//' | paste -sd ' ' -)"
       continue
     fi
     if [[ "$commit_count" -eq 0 ]]; then

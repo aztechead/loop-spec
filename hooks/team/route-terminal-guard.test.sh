@@ -58,6 +58,14 @@ bash "$CYCLE_RESULT" write-terminal --result-root "$PUBLISHED" --cycle-type full
   >/dev/null 2>&1
 check "b: published terminal result -> ALLOW" 0 "$PUBLISHED"
 
+# a2: the denial leads with the continuation, not with a menu of terminal results.
+deny_text="$(CLAUDE_PROJECT_DIR="$ARMED" bash "$HOOK" 2>&1 >/dev/null <<<"{}" || true)"
+if grep -q 'next --feature-dir <feature dir>' <<<"$deny_text" && grep -q 'refused without the reason' <<<"$deny_text"; then
+  echo "PASS: a2: denial names the driver continuation and the reason rule"; PASS=$((PASS+1))
+else
+  echo "FAIL: a2: denial names the driver continuation and the reason rule"; FAIL=$((FAIL+1))
+fi
+
 # b2: a pointer written by hand (no schema, no loopSpecVersion) does not disarm it.
 FORGED="$TMPDIR_TEST/forged"; mkdir -p "$FORGED/.loop-spec"
 printf '{"status":"completed","outcome":"delivered"}\n' > "$FORGED/.loop-spec/last-result.json"

@@ -75,6 +75,15 @@ All notable changes documented here. Format follows Keep a Changelog.
   malformed-row or empty-section flag. A haiku planner paraphrased every decision three
   times, and a haiku verifier wrote `- none` three times, because neither flag said what
   to write; each escalated at the REDO bound.
+- `cycle-result.sh write-terminal` refuses `--outcome interrupted` without `--reason`
+  while `feature.json.driverNext` names a phase the driver answered NEXT for, and the
+  refusal prints the `cycle-driver.sh next --returned-from` call that continues the
+  cycle; `hooks/team/route-terminal-guard.sh` leads its denial with that continuation
+  instead of a menu of terminal results. Three haiku leads ended the turn after EXECUTE
+  with the work done and recorded `interrupted`.
+- `lib/deliver.sh` names the dirty paths in a `dirty_worktree` refusal; a lead refused
+  over untracked `__pycache__/` could not tell residue from a forgotten file. The eval
+  fixtures now carry the `.gitignore` a real Python repository has.
 - `evals/eval_run.py` marks a round the CLI ended with the account's usage-limit text as
   `cut_off`, says so in the summary instead of scoring it as a plugin failure, and
   refuses at preflight while the limit is active.

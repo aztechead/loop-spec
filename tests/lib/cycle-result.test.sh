@@ -701,6 +701,29 @@ check "Z: a hand-written pointer is unaccounted" "unaccounted" "$(cut -d' ' -f1 
 check "Z: the forged pointer reports an age and autonomy" "1" \
   "$(grep -cE 'ageSeconds=[0-9]+ autonomous=true forged' <<<"$Z_FORGED")"
 
+# --- "interrupted" over an answered NEXT is the lead giving up, and says why ---------
+# Three 6.2.0 haiku leads ended the turn after EXECUTE and recorded interrupted with
+# no reason; the driver had answered NEXT and nothing had stopped the phase.
+Y="$WORK/interrupt"; mkdir -p "$Y/.loop-spec/features/f"
+git -C "$Y" init -q
+git -C "$Y" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
+bash "$LIB" begin --result-root "$Y" --cycle-type full --title "Feature" --slug f \
+  --feature-dir "$Y/.loop-spec/features/f" --phase execute --autonomous true
+jq -n '{schemaVersion:7, slug:"f", feature_title:"Feature", currentPhase:"execute",
+  driverNext:{phase:"execute", at:"2026-09-06T00:00:00Z"}, warnings:[], artifacts:{}}' \
+  > "$Y/.loop-spec/features/f/feature.json"
+rc=0; err="$(bash "$LIB" write-terminal --result-root "$Y" --cycle-type full --status failed \
+  --outcome interrupted --title "Feature" --converged false \
+  --summary "EXECUTE phase complete." 2>&1 >/dev/null)" || rc=$?
+check "Y: interrupted without a reason over an answered NEXT is refused" "3" "$rc"
+check "Y: the refusal names the continuation call" "1" "$(grep -c 'next --feature-dir .* --returned-from execute' <<<"$err")"
+check "Y: nothing was published" "0" "$([[ -f "$Y/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+bash "$LIB" write-terminal --result-root "$Y" --cycle-type full --status failed \
+  --outcome interrupted --title "Feature" --converged false --reason "runner lost the worktree" \
+  --summary "EXECUTE could not continue." >/dev/null 2>&1
+check "Y: a stated reason publishes interrupted" "failed:interrupted" \
+  "$(jq -r '.status + ":" + .outcome' "$Y/.loop-spec/last-result.json")"
+
 # Mismatch is a declaration about work NOT done, so its preconditions are checked.
 rm -f "$Z_RESULT"
 bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status failed \
