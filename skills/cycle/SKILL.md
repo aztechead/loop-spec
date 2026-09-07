@@ -17,6 +17,9 @@ re-derive state, re-scan directories, or narrate the preflight.
 DRV="${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
 ```
 
+Run it; do not `ls`, `stat`, or `cat` it first (two live leads spent their first turn
+checking the path exists).
+
 The frontmatter lists the tools this skill and its phase skills use. Any other tool the
 harness offers (a web or registry lookup, an MCP server) is available to a phase that
 needs it; the plugin restricts nothing beyond what a role's own charter says.

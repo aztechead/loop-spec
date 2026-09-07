@@ -207,7 +207,7 @@ Source: GitHub issue #${number}"
   if [[ "$schema" == "1" && "$work_cycle" -eq 1 && "$status" == "completed" &&
         "$outcome" == "no-change-needed" && "$no_change_reason" == "already-satisfied" &&
         "$converged" == "true" && "$verification_status" == "passed" &&
-        -n "${summary//[[:space:]]/}" && -z "$pr_url" && -z "$checkpoint_pr_url" ]]; then
+        "$summary" =~ [^[:space:]] && -z "$pr_url" && -z "$checkpoint_pr_url" ]]; then
     intentional_no_change=1
   fi
 

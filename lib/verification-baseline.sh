@@ -91,8 +91,10 @@ read_head() {
   git -C "$root" rev-parse --verify HEAD 2>/dev/null
 }
 
+# .loop-spec is the plugin's own state, rewritten by every phase-begin; a live VERIFY
+# refused its own baseline because feature.json had changed since the state commit.
 read_worktree_status() {
-  git -C "$root" status --porcelain --untracked-files=all 2>/dev/null
+  git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' 2>/dev/null
 }
 
 assert_repo_state() {

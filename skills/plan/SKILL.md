@@ -28,8 +28,9 @@ Join a DISCUSS prefetch: check once whether PATTERNS.md exists
 never AskUserQuestion as a wait. If PATTERNS.md exists, keep it. Else
 `lib/gsd-ingest.sh patterns {slug} <target>` (`INGESTED` sets
 `artifacts.patternsSource = "gsd-ingest"`). Else dispatch a one-shot `loop-spec:pattern-mapper`
-Agent with absolute paths for SPEC.md and the target,
-then stop; the planner's brief covers the last-resort fallback. Greenfield: PATTERNS.md
+Agent with absolute paths for SPEC.md, the target, and
+`${CLAUDE_SKILL_DIR}/../shared/artifact-templates/PATTERNS.md.template` (a subagent
+cannot resolve a plugin-relative path), then stop; the planner's brief covers the last-resort fallback. Greenfield: PATTERNS.md
 records the chosen stack's conventions instead of mined analogs.
 
 ## 2. Author PLAN.md
@@ -41,12 +42,19 @@ existing decision path before accepting conflicting tasks.
 Spawn `planner-1` (`loop-spec:planner`, model `feature.models.planner`) and, in team
 modes, warm up `challenger-1` with SPEC.md meanwhile. The
 planner brief carries: `slug`, `spec_path`, `patterns_path`,
-`evidence_path`; the grounding rule (every external fact cites `EVID-NNN` or is an
+`evidence_path`, and `template_path` = the absolute
+`${CLAUDE_SKILL_DIR}/../shared/artifact-templates/PLAN.md.template` with "PLAN.md in
+exactly that shape: a `## Task DAG` table and, per task block, `**Files:**`,
+`**Verify:**`, `**Acceptance criteria:**`" (a live planner given no template wrote its
+own shape and the artifact lint flagged every task block); the grounding rule (every external fact cites `EVID-NNN` or is an
 `ASSUMPTION: ... | verify: ...`); the dependency-idiom rule (every dependency
 `lib/doc-deps.sh scan` names on the task files needs a doc-backed `EVID-NNN` or an
 `ASSUMPTION` in `## Grounding` — fetch current docs with any web tool available, or
 return the need); "cite PATTERNS.md analogs in each task's steps";
-"return tasks[] as JSON in your completion message; do not compute waves"; the
+"return tasks[] as JSON in your completion message, each task carrying `goal`,
+`read_first`, `interfaces`, `steps`, and `expected` beside `files`, `verifyCommand`,
+`acceptanceCriteria`, and `blockedBy`; leave `## Task DAG` and `## Tasks` as bare
+headings, the lead renders them from tasks[]; do not compute waves"; the
 pre-submit self-check against `agents/planner.md` and a verbatim
 `## Global constraints` section (or `- none`). Workspace mode adds: every task carries
 `repo` (one repo per task), `files[]` are `<repo>/<path>`, cross-repo order is a
@@ -61,19 +69,27 @@ With `workflowsAvailable` and `LOOP_SPEC_PLAN_MULTI_ANGLE=1`, the
 `lib/workflows/plan-multi-angle.js` Workflow authors instead; log its angles to
 `feature_dir/gate-logs/plan-multi-angle.json`.
 
-When the planner reports, save its `tasks[]` JSON to `feature_dir/tasks.json` and run
-the gates:
+When the planner reports, save its `tasks[]` JSON to `feature_dir/tasks.json`, render
+the plan's structured sections from it, and run the gates:
 
 ```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/plan-render.sh" render --tasks "$feature_dir/tasks.json" --plan "$docs/PLAN.md"
 bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir"
 ```
+
+`plan-render` owns `## Task DAG` and `## Tasks`: tasks.json is the single source, the
+shape the lint parses is produced rather than checked, and a fix to a task is one edit
+to tasks.json followed by a re-render, never a second edit to PLAN.md (a live planner
+applied thirty-six fixes twice). The planner authors the prose sections and returns
+`tasks[]` carrying `goal`, `read_first`, `interfaces`, `steps`, and `expected` beside
+the executable fields; it leaves the two rendered headings empty.
 
 This is also the exit (step 4); feasibility and coverage run BEFORE the critique. Every
 `FLAG` (format, `lib/acceptance-lint.sh`, unparseable verify command, missing
 criterion, DAG cycle, workspace repo, uncovered decision or `### Good Enough` criterion,
 `grounding-lint.sh"` claim, `doc-deps` uncovered dependency) goes back to `planner-1`
 as a numbered list via `SendMessage`
-(re-parse `tasks[]` from every revision). This loop is counted like the critique's:
+(re-parse `tasks[]` from every revision, save it, and re-render). This loop is counted like the critique's:
 before the first FLAG list, `bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" open
 --feature-dir "$feature_dir" --phase plan --gate plan-feasibility`; per revision,
 `gate.sh round` and `gate.sh fail` with the FLAG lines as `--findings`, then

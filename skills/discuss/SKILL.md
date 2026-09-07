@@ -79,10 +79,14 @@ entirely. Never spawn `advocate-1`.
 PATTERNS.md already present, or
 `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` set, fire ONE background `Agent`
 (`subagent_type: "loop-spec:pattern-mapper"`, `description: "Prefetch PATTERNS.md: {slug}"`,
-absolute paths for SPEC.md and the output; "STOP without
-writing if PATTERNS.md already exists; do not commit; reply DONE: patterns"), set
-`artifacts.patternsPrefetch = "in-flight"`, and do not wait (do not sleep, do not
-poll; PLAN joins it). GSD ingest first:
+absolute paths for SPEC.md, the output, and the template
+`${CLAUDE_SKILL_DIR}/../shared/artifact-templates/PATTERNS.md.template` — a subagent
+has no `${CLAUDE_SKILL_DIR}` and searched the whole disk for a plugin-relative path;
+"STOP without writing if PATTERNS.md already exists; do not commit; reply DONE:
+patterns"), run
+`bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$feature_dir" artifacts.patternsPrefetch '"in-flight"'`
+(feature.json is never edited by hand; the forgery guard denies it), and do not wait
+(do not sleep, do not poll; PLAN joins it). GSD ingest first:
 `lib/gsd-ingest.sh patterns {slug} <target>` printing `INGESTED` sets
 `artifacts.patterns` and `artifacts.patternsSource = "gsd-ingest"` and skips the prefetch.
 

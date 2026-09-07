@@ -34,7 +34,7 @@ under `docs/loop-spec/features/**` and `.claude/agent-memory/**`.
 
 ## Output
 
-`docs/loop-spec/features/{slug}/PATTERNS.md`, using `skills/shared/artifact-templates/PATTERNS.md.template` as the shape.
+`docs/loop-spec/features/{slug}/PATTERNS.md`, using the PATTERNS template the lead named as an absolute path (a plugin-relative path does not resolve from a subagent; never search the disk for it — if none was given, use the section order `## Concepts`, one `### <concept>` per analog, `## Concepts with no clear analog`). Size follows the tree: one entry per pattern actually observed, so a tree of a dozen files yields a short file.
 
 ## Navigation (required)
 

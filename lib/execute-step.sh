@@ -71,6 +71,11 @@ task_end() { emit task_end "$(jq -cn --argjson i "$index" --argjson t "$total" -
 
 case "$cmd" in
   dispatch)
+    # A dispatch is not a query: it creates a worktree and records a base SHA. A live
+    # lead called it on a blocked task while diagnosing and had to tear the worktree down.
+    unmet="$(jq -r --arg done "$(lib task-progress done "$sidecar" 2>/dev/null | tr '\n' ' ')" \
+      '[.blockedBy // [] | .[] | . as $b | select((" " + $done + " ") | contains(" " + $b + " ") | not)] | join(",")' <<<"$task_json")"
+    [[ -z "$unmet" ]] || { jq -cn --arg id "$task_id" --arg u "$unmet" '{taskId:$id, dispatchable:false, reason:"blocked", detail:("waiting on " + $u)}'; exit 1; }
     branch="task/$task_id-$slug"; worktree=""; base_sha=""
     if [[ "$in_place" == false ]]; then
       worktree="$(lib worktree-base resolve "$root" task "$slug/$task_id" | jq -r '.path')"
@@ -111,9 +116,11 @@ case "$cmd" in
     pkg="$(lib dispatch-files package --repo "$repo" --base "$base_sha" --head "$head_sha")" || { echo "execute-step: package failed" >&2; exit 2; }
     model="$(fget '.models.specComplianceReviewer // "inherit"')"
     emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"spec-compliance-reviewer",model:$m,rung:$r}')"
+    # The reviewer runs the verify where the head is checked out; without this path a
+    # live reviewer created a second worktree under /tmp for a commit that already had one.
     jq -cn --arg p "$pkg" --arg m "$model" --arg base "$base_sha" --arg head "$head_sha" --arg brief "$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id" 2>/dev/null || true)" \
-      --arg report "$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")" \
-      '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report}'
+      --arg report "$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")" --arg wt "$repo" \
+      '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report, worktree:$wt}'
     ;;
   verdict)
     case "$verdict" in pass|rework|block) ;; *) usage ;; esac
@@ -139,6 +146,12 @@ case "$cmd" in
     verify_cmd="$(jq -r '.verifyCommand' <<<"$task_json")"
     if [[ "$(sget '.inPlace')" != "true" ]]; then
       worktree="$(sget '.worktree')"; branch="$(sget '.branch')"
+      # Every dispatch modifies the tracked feature state, and integrate-task refuses a
+      # dirty feature root on purpose; commit the state the plugin itself changed so the
+      # first integrate of a wave does not stop for a hand-made checkpoint.
+      if git -C "$root" add -u -- .loop-spec 2>/dev/null && ! git -C "$root" diff --cached --quiet -- .loop-spec 2>/dev/null; then
+        git -C "$root" commit -q -m "chore: $slug state @ execute" -- .loop-spec >/dev/null 2>&1 || true
+      fi
       res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \
         --task-branch "$branch" --verify "$verify_cmd" --cleanup)" || true
       published="$(jq -r '.published // false' <<<"$res")"

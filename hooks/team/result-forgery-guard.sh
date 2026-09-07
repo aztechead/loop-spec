@@ -51,5 +51,5 @@ for pat in patterns:
 PY
 )"
 [[ -n "$VERDICT" ]] || exit 0
-echo "DENY: '$VERDICT' writes a loop-spec contract file by hand. The terminal result is published only by lib/cycle-result.sh (write, write-terminal) and feature state only by lib/feature-write.sh; a result those writers refuse is a run that has not earned it. Return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
+echo "DENY: '$VERDICT' writes a loop-spec contract file by hand. The terminal result is published only by lib/cycle-result.sh (write, write-terminal) and feature state only by lib/feature-write.sh (usage: bash lib/feature-write.sh set <feature_dir> <dot.path> '<json-value>' -- strings JSON-quoted, e.g. '\"in-flight\"'); a result those writers refuse is a run that has not earned it. Return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
 exit 2

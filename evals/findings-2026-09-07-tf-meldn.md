@@ -1,0 +1,109 @@
+# Live headless cycle findings, 7 September 2026: tf-meldn
+
+For the maintainer deciding what a real autonomous run on a real repository still costs.
+One cycle, not the fixture eval: plugin 6.2.0 at 964a72f, run as
+`claude -p "/loop-spec:cycle autonomous …"` from `~/Projects/meldn/tf-meldn` (a
+Terragrunt + OpenTofu repository managing live GCP, checked out as a git submodule), with
+this checkout as `--plugin-dir`, Opus for the first 65 minutes and Sonnet after the parent
+session killed the first process. The ask: bring the repository onto current Terragrunt
+and OpenTofu semantics, align it with Google's Cloud Foundation Toolkit and Fabric FAST
+principles, validate with `plan` only, and deliver a pull request. Every finding below
+names the transcript event or the offline reproduction behind it; the transcripts are
+kept with the session that ran it, not committed.
+
+## The run in numbers
+
+| | |
+|---|---|
+| Wall clock, first launch to PR ready for review | 3 h 22 min (14:54Z to 18:16Z), of which 65 min Opus before the parent session killed it and 2 h 11 min Sonnet |
+| Tool calls | 557 (Opus, SPEC through mid-PLAN) + 994 (Sonnet, PLAN resume through DELIVER) |
+| Sonnet round cost | USD 48.80 |
+| Pull request | aztechead/tf-meldn#1, 32 commits, 38 files, +2842/-76 |
+| Live plans at delivery | static-site unit: `No changes.`; bootstrap unit: `1 to import, 0 to add, 0 to change, 0 to destroy` |
+| Background `sleep` waits by the lead | Opus 24, Sonnet 11 |
+
+## Headline
+
+The cycle produced work of a quality the fixture eval never sees: a SPEC that refused to
+transplant eight empty CFT stages, protected the live state prefix, and chose an `import`
+block so a bootstrap unit is verifiable by `plan` alone; a challenger that found a
+locking plan writes to the live bucket, that `import` blocks are rejected inside child
+modules, and that two parallel tasks would share one unit's Terragrunt cache. It also lost
+roughly a third of its tool calls to the plugin, and every one of those losses is a
+deterministic defect with an offline reproduction. The fixes are in this change.
+
+## What the plugin cost the run
+
+| # | Where | What happened | Cost | Fix |
+|---|---|---|---|---|
+| 1 | `begin`, autonomous | The title was the entire 60-word prose; the slug was 400 characters; `git worktree add` failed with "File name too long" on the ref lock | 6 turns; the lead set a title by hand | `git-ops.sh slugify` caps at 60 chars on a word boundary |
+| 2 | `start` | `LOOP_SPEC_ANSWER_TITLE` was ignored under the inline `autonomous` token (only the env var was read), so the lead's first recovery did nothing | 2 turns | `cycle-driver.sh start` reads the answers under `$non_interactive` |
+| 3 | `init` on a submodule | git created the worktree; Claude Code's `EnterWorktree` refused it ("not a linked worktree of <repo>") because the main worktree lives under the parent's `.git/modules` | 4 turns to tear down and re-init in place | a gitfile checkout works in place with a notice |
+| 4 | state commit | The `.gitignore` negations were appended directly under the user's lock-file comment; the PLAN spent a task undoing it | 1 task in the user's PR | `owned-gitignore.sh ensure` writes a delimited block |
+| 5 | DISCUSS | The lead hand-edited feature.json (guard denied it, correctly), then guessed `feature-write.sh` syntax three times | 4 turns | the skill names the exact command; the guard's deny text carries the usage |
+| 6 | pattern-mapper | The charter cites the template plugin-relative; a subagent has no plugin root, so it ran `find /`, then `find ~/.claude`, gave up, wrote from memory, and the `find` had to be killed later | 6 turns and a runaway process | dispatches carry the template's absolute path; charters say never to search |
+| 7 | planner | Neither `agents/planner.md` nor `skills/plan/SKILL.md` names `PLAN.md.template`; the plan came back in the planner's own shape and the artifact lint flagged every task block | a full planner re-dispatch | the brief carries `template_path` and the three labels the lint parses |
+| 8 | PLAN exit gate | `acceptance-lint.sh` pegged a core for minutes: the empty-input check `${input//[[:space:]]/}` is superlinear on bash 3.2 (the declared floor) and the tasks file was 17 KB | ~25 turns and ~25 minutes; the lead shortened its own criteria to get under the bug | a regex test; four sibling call sites swept; a 20 KB timing test |
+| 9 | every SendMessage join | The lead did not believe "dispatch, then stop" holds under `claude -p` and ran background `sleep` loops, reading their empty output and launching another: 24 by the end of PLAN | the dominant token cost of PLAN | the contract states the headless case as verified fact; `busy-wait-guard.sh` denies a sleep-only Bash call |
+| 10 | evidence ledger | EVID-002 recorded the operator's email and the ADC credential path, then SPEC copied it; both were pushed in the checkpoint PR | a privacy leak in a public PR | `evidence.sh add` refuses email addresses and credential paths |
+| 11 | resume after the kill | `begin` warned "headless invocation without autonomous mode" (preflight only sees the env var), listed the one resumable feature without picking it (the prose no longer slugified to its slug), and `init` refused the checkout because the plugin's own uncommitted artifacts made it dirty | 5 turns; Sonnet committed the state by hand and called `resume --slug` | the warning is dropped once the token is parsed; one candidate is auto-picked; `.claude/agent-memory/` is not dirt |
+| 13 | phase close | Each re-entry of PLAN after an interrupted round appended it again: `completedPhases` read `spec,discuss,plan,plan,plan` | state a later reader cannot trust | `phase-exit.sh close_phase` records a phase once |
+| 14 | EXECUTE dispatch | The lead wrote each implementer brief to `/tmp` and called `Agent({prompt: "$(cat /tmp/prompt-task-001.txt)"})`; the Agent tool runs no shell, so both implementers began with a 31-character substitution and recovered only by guessing to `cat` the file | luck | `hooks/team/dispatch-prompt-guard.sh` denies a substitution or sub-40-character prompt |
+| 15 | EXECUTE dispatch | A diagnostic `task dispatch` on a still-blocked task created a real worktree the lead then tore down | 3 turns | `execute-step.sh dispatch` refuses a task whose blockers are not done |
+| 17 | EXECUTE integrate, VERIFY baseline, DELIVER finalize | Every dispatch and phase-begin rewrites the tracked feature.json, and VERIFY and ITERATE write into the artifact directory; `integrate-task`, `verification-baseline`, and `finalize-delivery-candidate` each read that as user dirt and refused, so the lead hand-committed "state @ execute", "state @ verify", and "state @ deliver" checkpoints four times | 8 turns | `execute-step integrate` commits tracked `.loop-spec` state first; the baseline status read excludes `.loop-spec`; finalize stages feature.json, PROGRESS.md, and the artifact directory in every state-commit mode |
+| 16 | EXECUTE review | The review packet named the diff, the brief, and the report but not the task worktree, so a reviewer ran `git worktree add /tmp/review-task-003` for a commit already checked out | 3 turns and a stray worktree | `task package` returns `.worktree`; the reviewer prompt names it |
+| 12 | critique gate ceiling | The gate closed with two accepted `[minor]` items unapplied because the round budget ran out | two agreed fixes lost | the protocol applies accepted minors as lead edits before closing |
+
+The structural cause behind rows 7 and 8, and the largest share of PLAN's 92 minutes:
+every artifact lint ran only at phase exit, after the author had written the whole
+artifact and reported DONE, so each deterministic 20-millisecond check cost a full
+lead-to-subagent round trip (six planner round trips for one plan, three of them lint
+shape). `hooks/team/artifact-lint-feedback.sh` now runs the matching lint on every
+Write or Edit of a cycle artifact and returns the flags to whoever wrote it; the exit
+gate remains the backstop. One step further, the plan's structured half is now produced
+rather than checked: `lib/plan-render.sh` renders `## Task DAG` and `## Tasks` from
+tasks.json, so the shape cannot miss the template and a task fix is one edit (the
+planner applied its thirty-six anchoring fixes twice, once per file). The critique
+rounds, by contrast, earned their time.
+
+Verified in the same run: Sonnet ran the PLAN gate as a background task, ended its turn,
+and the harness resumed it when the task exited. "Dispatch, then stop" holds under
+`claude -p`; the Opus busy-waits were avoidable.
+
+## Where the run excelled
+
+- SPEC scout: probed the installed toolchain, `gh release` for current versions,
+  `terragrunt backend|hcl|stack --help` for the CLI surface, and ran a baseline
+  `terragrunt plan` before touching anything (26 evidence entries by PLAN).
+- DISCUSS grill: built throwaway Terragrunt fixtures in `/tmp` to prove `include … expose`
+  and `import` + `for_each` semantics on the installed versions before deciding.
+- Challenger rounds (SPEC: 3, PLAN: 2): every finding concrete; the lead probed each
+  before accepting and recorded the probe as evidence.
+- Recovery: every plugin defect above was diagnosed correctly and worked around in a
+  few turns, including the submodule worktree and the lint hang.
+
+## Not fixed here, worth a look
+
+- `security-signal.sh` fired a full three-round critique gate on the SPEC line "never give
+  CI any apply-capable credential": a negated mention of a credential is a STRONG term.
+  The gate found real issues, so this is latency, not correctness.
+- Two parallel PLAN tasks ran `terragrunt plan` in the same unit and would have shared
+  its `.terragrunt-cache/`; `dag-width` only sees declared files. A task-level
+  `sharedState` declaration would let it serialize them.
+- `acceptance-lint.sh` flagged 37 criteria of the shape `grep -qF 'expose = true'
+  terragrunt.hcl exits 0` once it could run. On an infrastructure repository with no
+  test suite, a fixed-string match on HCL is often the honest check; the rule was written
+  for application code. Each rewrite cost a planner round, and the challenger then
+  found three of the rewrites wrong: `grep -w` cannot anchor a target that begins with
+  `$` or `"`, so the "anchored" verify could never pass. A per-language exemption (HCL,
+  YAML, INI, where `-F` on a whole line is behavioral) is worth a probe.
+- Artifact volume: PLAN.md reached 643 lines and 79 KB, SPEC 27 KB, PATTERNS 510 lines
+  for a repository of eight source files; every challenger and planner dispatch re-reads
+  all of it. The standard profile's known cost, now measured on a real repository.
+- `tests/lib/pr-delivery.test.sh` hangs on this machine in its "no gh: final mode" section,
+  on `main` as well as on this branch, so `tests/run-all.sh` never finishes here. Every
+  other registered suite passes under a per-suite alarm. Worth a probe of what that
+  section waits on (a `git push` to a bare origin under a restricted PATH).
+- The parent Claude Code session's memory watchdog killed the 65-minute Opus process. A
+  long observed run belongs in a plain terminal, not a harness background task
+  (`evals/README.md`).

@@ -258,6 +258,9 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_PATH_GUARD_FORCE` | `0` | Applies path restrictions to otherwise open dispatches. |
 | `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD` | `1` | Blocks `AskUserQuestion` used as a wait or keep-alive (`n/a`, "Type something", "not a real question", header `wait`, or any question while an Agent is still running). VERIFY and DELIVER have no user questions; ITERATE only allows the Re-open SPEC gate; EXECUTE only allows Plan gap and specifying-gates. |
 | `LOOP_SPEC_BLOCKEDBY_GUARD` | `1` | Refuses completion or claim of tasks with unfinished `blockedBy` dependencies. |
+| `LOOP_SPEC_BUSY_WAIT_GUARD` | `1` | `0` disables `hooks/team/busy-wait-guard.sh`, the PreToolUse Bash hook that denies a call whose only work is `sleep` (a bare sleep, a `for`/`seq` loop around one, or a sleep followed by a read-only peek). A wait on a condition (`until`, `while`) or beside real work passes. Dispatch, then stop: the harness resumes the turn, under `claude -p` too. |
+| `LOOP_SPEC_DISPATCH_PROMPT_GUARD` | `1` | `0` disables `hooks/team/dispatch-prompt-guard.sh`, the PreToolUse Agent hook that denies a prompt that is an unexpanded `$(...)` or backtick substitution, or under 40 characters. The Agent tool runs no shell; read the brief and pass its contents. |
+| `LOOP_SPEC_ARTIFACT_LINT_FEEDBACK` | `1` | `0` disables `hooks/team/artifact-lint-feedback.sh`, the PostToolUse Write/Edit hook that runs the matching artifact lint (and `acceptance-lint` for tasks.json, the converged floor for VERIFICATION.md) on a cycle artifact the moment it is written and returns the flags to the author. The phase exit stays the backstop. |
 | `LOOP_SPEC_USERGATE_GUARD` | `1` | Enforces user-gate evidence at task completion. |
 | `LOOP_SPEC_USERGATE_STOP_GUARD` | `1` | Enforces user-gate evidence at Stop. |
 | `LOOP_SPEC_STRATEGY_ROTATION` | `1` | Injects a strategy-change directive after repeated failures. |

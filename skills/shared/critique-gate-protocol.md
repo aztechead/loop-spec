@@ -30,7 +30,7 @@ engine never counts; the probe is what counts it.
 | `{author}` | `spec-writer-1` when SPEC.md was missing; otherwise the LEAD edits directly | `planner-1` |
 | `{next_step}` | phase Step 5.75 | phase Step 5.7 (prune; mechanical gates already ran) |
 | Skip policy | `lib/graph/probes/discuss-critique.sh` answers `gate=skip` (maintenance ∪ spec already gated; never on a security signal or ITERATE re-entry) | structural fast-path ∪ maintenance profile (no security signal) |
-| Phase deltas | no-op-revision hash shortcut; lead-authored fixes when there is no spec-writer | re-parse `tasks[]` after every revision; re-run feasibility + coverage if PLAN.md changed |
+| Phase deltas | no-op-revision hash shortcut; lead-authored fixes when there is no spec-writer | re-parse `tasks[]` after every revision, save it, and `lib/plan-render.sh render` PLAN.md from it; re-run feasibility + coverage if PLAN.md changed |
 
 The phase skill also declares the two adjudication actions that differ by phase:
 `{user_intent_action}` (what to do when a finding depends on user intent) and
@@ -75,7 +75,7 @@ SendMessage({
 })
 ```
 
-Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `challenger-1`. Never AskUserQuestion as a wait. Read its `FINDINGS:` / `NO-FINDINGS:`
+Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `challenger-1`, under `claude -p` as well: a pending teammate keeps the process alive. Never AskUserQuestion as a wait, and never `sleep` (foreground or background) to hold the turn open; a live lead spent twenty-four background sleeps polling for a reply the harness would have delivered. Read its `FINDINGS:` / `NO-FINDINGS:`
 message. Write it to `gate-logs/{gate}-round-1.md`:
 
 ```
@@ -135,8 +135,11 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" next --feature-dir "$feature_
 # ANSWER=close REASON=ceiling: ... | deadlock: finding survived two consecutive delta rounds: ...
 ```
 
-`close` ends the gate now: append the pass entry with `--convergence cap-reached` and
-`--notes` carrying every fix-list item still open, write those items to
+`close` ends the gate now. First apply, as lead edits with no re-dispatch and no
+re-verify, every fix-list item the lead already ACCEPTED as `[minor]`: the ceiling
+bounds challenger rounds, not agreed one-line fixes, and a live gate closed with two
+accepted minors unapplied. Then append the pass entry with `--convergence cap-reached`
+and `--notes` carrying every fix-list item still open, write those items to
 `gate-logs/{gate}-residue.md`, and proceed to `{next_step}` with the artifact as it
 stands. The residue goes nowhere else: not into the artifact, not into the backlog, not
 to the user. `rerun` continues below. A non-zero exit is a message on stderr (no open

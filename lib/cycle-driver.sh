@@ -177,8 +177,10 @@ cmd_start() {
   title="$(jq -r '.title // ""' <<<"$inv")"
   spec_path="$(jq -r '.spec_path // ""' <<<"$inv")"
 
-  # Non-interactive answers come from the environment and are validated here.
-  if [[ "${LOOP_SPEC_NON_INTERACTIVE:-}" == "1" ]]; then
+  # Non-interactive answers come from the environment and are validated here. The
+  # inline `autonomous` token counts: a live run set LOOP_SPEC_ANSWER_TITLE to escape
+  # an overlong prose slug and the driver ignored it because only the env var was read.
+  if [[ "$non_interactive" == "1" ]]; then
     style="${LOOP_SPEC_ANSWER_STYLE:-$style}"
     case "$style" in auto|step|interactive|review-only) ;;
       *) _rc=2 die "LOOP_SPEC_ANSWER_STYLE must be auto, step, interactive, or review-only" ;;
@@ -190,6 +192,7 @@ cmd_start() {
       mode=spec-file
     fi
     [[ -n "${LOOP_SPEC_ANSWER_TITLE:-}" ]] && { title="$LOOP_SPEC_ANSWER_TITLE"; [[ "$mode" == bare ]] && mode=description; }
+    [[ "$autonomous" == "1" ]] && style=auto
   fi
   if [[ "$mode" == "spec-file" && -z "$title" ]]; then
     title="$(grep -m1 '^# ' "$spec_path" | sed 's/^# //')"
@@ -205,6 +208,10 @@ cmd_start() {
 
   local decisions='[]' notices='[]' warnings
   warnings="$(jq -c '.warnings // []' <<<"$pf")"
+  # Preflight runs before the invocation tokens are parsed, so its headless warning
+  # cannot see the inline `autonomous` token; every documented `claude -p
+  # "/loop-spec:cycle autonomous ..."` run printed it. Drop it here where both are known.
+  [[ "$autonomous" == "1" ]] && warnings="$(jq -c '[.[] | select(startswith("headless invocation") | not)]' <<<"$warnings")"
   add_decision() { decisions="$(jq -c --argjson d "$1" '. + [$d]' <<<"$decisions")"; }
   add_notice() { notices="$(jq -c --arg n "$1" '. + [$n]' <<<"$notices")"; }
   record() { lib decisions add .loop-spec/decisions-staging cycle "$1" "$2" "$3" >/dev/null; }
@@ -276,7 +283,10 @@ cmd_start() {
     if [[ "$autonomous" == "1" ]]; then
       if [[ -n "$slug" ]] && jq -e --arg s "$slug" 'map(.slug) | index($s) != null' <<<"$candidates" >/dev/null; then
         resume_pick="$slug"
-      elif [[ -z "$title" ]]; then
+      elif [[ -z "$title" || "$(jq 'length' <<<"$candidates")" == "1" ]]; then
+        # Re-issuing the same command after an interrupted round is the documented
+        # headless loop; with one candidate, starting a second feature beside it is
+        # never what that loop meant.
         resume_pick="$(jq -r '.[0].slug' <<<"$candidates")"
       fi
       [[ -n "$resume_pick" ]] && record "Resume $resume_pick or start new?" "resume $resume_pick" "autonomous: most recent resumable feature"
@@ -452,6 +462,13 @@ cmd_init() {
   # Execution root: Claude enters a worktree; the other harnesses work in place.
   local worktrees="${LOOP_SPEC_WORKTREES:-1}" worktree_abs="" exec_root="$repo_root"
   case "$worktrees" in 0|1) ;; *) _rc=2 die "LOOP_SPEC_WORKTREES must be 0 or 1." ;; esac
+  if [[ "$worktrees" == "1" && -f "$repo_root/.git" ]]; then
+    # A gitfile means a submodule or a linked worktree. git adds a worktree there, but
+    # Claude Code's EnterWorktree then refuses it as "not a linked worktree of <repo>",
+    # so the run spent four turns tearing it down. Work in place instead.
+    worktrees=0
+    echo "loop-spec: $repo_root/.git is a file (submodule or linked worktree); working in place on the feature branch (LOOP_SPEC_WORKTREES=0)." >&2
+  fi
   if [[ "$harness" == "claude" && "$worktrees" == "1" ]]; then
     if [[ "$adopted" == true ]]; then
       worktree_abs="$(lib git-ops -C "$repo_root" attach-feature-worktree "$slug" "$feature_branch")" \
@@ -829,8 +846,7 @@ record_transition() {
   root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || root=""
   if [[ "$(lib state-commit-policy mode)" == "phase" && "$ws_mode" != "workspace" && -n "$root" ]]; then
     lib owned-gitignore check "$root" || die "refusing to mix pre-existing .gitignore changes with loop-spec policy"
-    grep -qxF '!/.loop-spec/features/*/PROGRESS.md' "$root/.gitignore" 2>/dev/null || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> "$root/.gitignore"
-    grep -qxF '!/.loop-spec/RULES.md' "$root/.gitignore" 2>/dev/null || printf '!/.loop-spec/RULES.md\n' >> "$root/.gitignore"
+    lib owned-gitignore ensure "$root" '!/.loop-spec/features/*/PROGRESS.md' '!/.loop-spec/RULES.md' >/dev/null
     local rel; rel="$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' "$feature_dir" "$root")"
     local git_err=""
     if ! git_err="$(git -C "$root" add -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>&1)"; then
@@ -898,7 +914,7 @@ cmd_finish() {
   local pr_url summary
   pr_url="$(fget "$feature_dir" '.prUrl // empty')"
   summary="$(fget "$feature_dir" '.iterate.lastVerdict.summary // empty')"
-  [[ -n "${summary//[[:space:]]/}" ]] || summary="Cycle completed; PR delivered."
+  [[ "$summary" =~ [^[:space:]] ]] || summary="Cycle completed; PR delivered."
   [[ "$status" == "pushed-no-pr" ]] && summary="$summary (pushed to the remote; no gh on this host, so no PR was opened)"
   lib cycle-result write "$feature_dir" --status completed --summary "$summary" ${pr_url:+--pr-url "$pr_url"} >/dev/null \
     || { echo "cycle-result.sh write failed; retrying once" >&2

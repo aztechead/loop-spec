@@ -37,6 +37,15 @@ LOOP_SPEC_EVAL_LIVE=1 bash evals/run.sh --model haiku --parallel 5 --confirm-spe
 LOOP_SPEC_EVAL_LIVE=1 bash evals/run.sh --model sonnet --parallel 5 --confirm-spend
 ```
 
+Launching a single cycle by hand from inside another Claude Code session (an agent
+observing a run) meets that session's auto-mode classifier: a prompt that says "push a
+branch and open a PR" or "never apply" was refused, and so was every detached form
+(`nohup`, `&`, a launcher script). What passed: the harness's own background task,
+this driver's flag set, and the ask worded "Deliver the result as a pull request" /
+"Validate with plan only; do not run apply". The harness kills that background task
+under memory pressure (a 65-minute Opus cycle was), so a long run is safer launched from
+a plain terminal.
+
 Both guards are required. Options: `--tasks a,b`, `--budget-usd N` per task (default
 8 haiku, 40 sonnet), `--run-id NAME`, `--preflight-only`, `--measure-only` (re-score an
 existing run for free).

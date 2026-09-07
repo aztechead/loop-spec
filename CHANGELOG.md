@@ -4,6 +4,52 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Fixed
+
+- A live headless cycle on a real Terragrunt repository (`evals/findings-2026-09-07-tf-meldn.md`)
+  lost about a third of its tool calls to twelve deterministic defects, each now fixed
+  with a test: `git-ops.sh slugify` caps a prose-derived slug at 60 characters (a 400-char
+  branch name failed `git worktree add`); `LOOP_SPEC_ANSWER_*` are honored under the inline
+  `autonomous` token; a gitfile checkout (submodule or linked worktree) works in place
+  because Claude Code's `EnterWorktree` refuses worktrees there; `.gitignore` exceptions
+  land as one delimited block (`owned-gitignore.sh ensure`); `acceptance-lint.sh` no longer
+  takes minutes on bash 3.2 (`${var//[[:space:]]/}` replaced by a regex test, four sibling
+  sites swept); `evidence.sh add` refuses email addresses and credential paths; the
+  preflight headless warning is dropped once the `autonomous` token is parsed; an
+  autonomous `begin` auto-picks the single resumable feature and `.claude/agent-memory/` no
+  longer counts as dirt. The plugin no longer refuses its own state as dirt: `execute-step
+  integrate` commits tracked `.loop-spec` changes before publishing, the verification
+  baseline ignores `.loop-spec`, `finalize-delivery-candidate` stages feature.json,
+  PROGRESS.md, and the artifact directory in every state-commit mode, `task dispatch`
+  refuses a task whose blockers are not done, `task package` names the task worktree
+  for the reviewer, and `phase-exit` records a re-entered phase once.
+- Subagent dispatches carry absolute template paths (a pattern-mapper searched the whole
+  disk for a plugin-relative one) and the planner brief names `PLAN.md.template` and the
+  three labels the artifact lint parses; DISCUSS names the exact `feature-write.sh`
+  command and the forgery guard's deny text carries its usage.
+
+### Added
+
+- `lib/plan-render.sh`: renders PLAN.md's `## Task DAG` and `## Tasks` from tasks.json,
+  preserving every other section. tasks.json is the single source for task fields; the
+  planner writes the prose sections and returns `tasks[]` with `goal`, `read_first`,
+  `interfaces`, `steps`, and `expected`. The shape the artifact lint parses is produced,
+  not checked, and a critique fix to a task is one edit plus a re-render.
+- `hooks/team/artifact-lint-feedback.sh` (PostToolUse on Write/Edit): runs the matching
+  artifact lint on SPEC.md, PLAN.md, PATTERNS.md, and tasks.json the moment they are
+  written and returns the flags to the author, lead or subagent. On the live run every
+  lint ran only at phase exit, so three 20-millisecond checks cost three planner
+  round trips; the exit gate stays as the backstop.
+- `hooks/team/dispatch-prompt-guard.sh` (PreToolUse on Agent): denies a prompt that is an
+  unexpanded `$(...)` substitution or under 40 characters (a live lead dispatched both
+  wave-one implementers with `$(cat /tmp/prompt.txt)` as their whole brief).
+  `execute-step.sh dispatch` now refuses a task whose `blockedBy` are not done.
+- `hooks/team/busy-wait-guard.sh`: denies a Bash call whose only work is `sleep` (a
+  lead ran 24 background sleep loops waiting for a reply the harness delivers by resuming
+  the turn). `skills/shared/dispatch.md` and the critique protocol now state that
+  "dispatch, then stop" holds under `claude -p`, verified live; the critique protocol
+  applies accepted `[minor]` items before closing at the round ceiling.
+
 ## [6.2.0] - 2026-09-06
 
 ### Changed

@@ -195,7 +195,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    ```bash
    pk="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task package \
      --feature-dir "$fdir" --task "{taskId}" --head "{implHead}")"
-   # .package .model .base .head .brief .report
+   # .package .model .base .head .brief .report .worktree
    ```
 
    Then dispatch a spec-compliance reviewer `Agent` using `.model` (the activated
@@ -414,6 +414,9 @@ NO NESTED SUBAGENTS. Do this review yourself. Never spawn a helper or a second r
 
 Read the task brief: {brief path}
 Read the implementer's report: {report path}
+The implementation is checked out at {worktree path from the package packet's .worktree};
+run every verify or acceptance command there. Never `git worktree add` another checkout
+for this review.
 Read the review package once (commit list, stat, diff -U10). Do not re-run git for this
 range if the file exists:
   {package path from: bash lib/dispatch-files.sh package --repo ... --base {taskBaseSha} --head {implHead}}

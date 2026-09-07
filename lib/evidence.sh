@@ -68,6 +68,17 @@ case "${1:-}" in
     sout="$(_sanitize "${output:-}")"
     sout="$(_truncate "$sout")"
 
+    # The ledger is committed and pushed with the PR. A live run recorded the operator's
+    # email and the ADC credential path as "auth exists" evidence; cite that auth
+    # works, never who or where.
+    for field in "$sc" "$scmd" "$sout"; do
+      if [[ "$field" =~ [A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z][A-Za-z]+ ]] \
+         || [[ "$field" =~ application_default_credentials|\.aws/credentials|\.ssh/|\.netrc|\.config/gcloud ]]; then
+        echo "evidence.sh: refusing an email address or credential path in the ledger (it is committed and pushed). Record that authentication works, not the account or the file." >&2
+        exit 1
+      fi
+    done
+
     # Idempotency: scan existing entries for matching sanitized claim + command.
     if [[ -f "$ledger" ]]; then
       while IFS= read -r line; do

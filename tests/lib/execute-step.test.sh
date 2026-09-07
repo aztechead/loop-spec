@@ -35,7 +35,7 @@ new_feature() {
   mkdir -p "$root/docs/loop-spec/features/my-feature"; printf '# PLAN\n' > "$root/docs/loop-spec/features/my-feature/PLAN.md"
   cat > "$fd/tasks.json" <<'JSON'
 [{"id":"task-001","subject":"change a","files":["a.py"],"blockedBy":[],"verifyCommand":"python3 a.py","acceptanceCriteria":["a prints 2"]},
- {"id":"task-002","subject":"add b","files":["b.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["b exists"]}]
+ {"id":"task-002","subject":"add b","files":["b.py"],"blockedBy":["task-001"],"verifyCommand":"true","acceptanceCriteria":["b exists"]}]
 JSON
   bash "$REPO_ROOT/lib/feature-write.sh" set "$fd" artifacts.tasks "\"$fd/tasks.json\"" >/dev/null
   bash "$REPO_ROOT/lib/feature-write.sh" set "$fd" commands '{"prepare":"","test":"true","lint":"","typecheck":""}' >/dev/null
@@ -53,6 +53,10 @@ FD="$(new_feature inplace)"; ROOT="$(git -C "$FD" rev-parse --show-toplevel)"
 ec=0; bash "$STEP" dispatch --feature-dir "$FD" --task task-001 >/dev/null 2>&1 || ec=$?
 check "dispatch: refuses before prepare ran" "2" "$ec"
 bash "$PREP" run --feature-dir "$FD" >/dev/null 2>&1
+ec=0; blocked="$(bash "$STEP" dispatch --feature-dir "$FD" --task task-002 2>/dev/null)" || ec=$?
+check "dispatch: a blocked task is refused" "1" "$ec"
+check "dispatch: the refusal names the blocker" "blocked" "$(jq -r '.reason' <<<"$blocked")"
+check "dispatch: a refused task leaves no dispatch state" "0" "$([[ -f "$FD/dispatch/task-002.json" ]] && echo 1 || echo 0)"
 out="$(bash "$STEP" dispatch --feature-dir "$FD" --task task-001)"
 check "dispatch: packet is dispatchable" "true" "$(jq -r '.dispatchable' <<<"$out")"
 check "dispatch: in-place mode has no worktree" "null" "$(jq -r '.worktreePath' <<<"$out")"
@@ -105,8 +109,13 @@ if [[ "$(jq -r '.rung.subagentIsolation' "$FD2/dispatch/prepare.json")" == "lead
   printf 'print(2)\n' > "$WT/a.py"; git -C "$WT" add a.py; git -C "$WT" commit -q -m "feat: NO_JIRA change a"
   out="$(bash "$STEP" package --feature-dir "$FD2" --task task-001 --head "$(git -C "$WT" rev-parse HEAD)")"
   check "package: a review package is written" "1" "$([[ -f "$(jq -r '.package' <<<"$out")" ]] && echo 1 || echo 0)"
+  check "package: names the task worktree for the reviewer" "$WT" "$(jq -r '.worktree' <<<"$out")"
+  # dispatch modified the tracked feature.json; integrate must not refuse its own state.
+  git -C "$ROOT2" add -f -- "$FD2/feature.json" >/dev/null 2>&1; git -C "$ROOT2" commit -q -m "track state" -- "$FD2/feature.json" >/dev/null 2>&1 || true
+  jq '.touched = "by the driver"' "$FD2/feature.json" > "$FD2/feature.json.tmp" && mv "$FD2/feature.json.tmp" "$FD2/feature.json"
   ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD2" --task task-001 2>/dev/null)" || ec=$?
   check "integrate worktree: published onto the feature branch" "true" "$(jq -r '.published' <<<"$out")"
+  check "integrate worktree: the plugin's own state was committed first" "1" "$(git -C "$ROOT2" log --oneline | grep -c 'state @ execute')"
   check "integrate worktree: feature branch carries the commit" "1" "$(git -C "$ROOT2" log --oneline feat/my-feature | grep -c 'change a')"
   check "integrate worktree: marked done" "task-001" "$(bash "$REPO_ROOT/lib/task-progress.sh" done "$FD2/tasks.json")"
 else

@@ -29,6 +29,11 @@ check "B: slugify with punctuation + double spaces" "foo-bar-baz" "$got"
 got=$(bash "$LIB" slugify "  ---trim me---  ")
 check "C: slugify trims leading/trailing dashes" "trim-me" "$got"
 
+# A prose-derived title must not become a branch name git refuses (File name too long).
+got=$(bash "$LIB" slugify "Bring this terragrunt plus opentofu repo up to date with current terragrunt and opentofu semantics and structure")
+check "C2: slugify caps at 60 chars on a word boundary" "bring-this-terragrunt-plus-opentofu-repo-up-to-date-with" "$got"
+check "C3: capped slug has no trailing dash" "0" "$(printf '%s' "$got" | grep -c -- '-$')"
+
 got=$(bash "$LIB" slugify "MIXED Case 123")
 check "D: slugify lowercases + keeps digits" "mixed-case-123" "$got"
 

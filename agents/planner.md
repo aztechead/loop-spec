@@ -50,13 +50,13 @@ Otherwise, produce PATTERNS.md by following the pattern-mapper role definition a
 4. For each chosen analog, capture: path+lines, imports, the 5-30 line core pattern verbatim, surrounding error handling, and a test analog if one exists.
 5. Note gotchas: 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells you saw while reading, etc.).
 6. If no clear analog exists for a concept, list it under `## Concepts with no clear analog`. Do not invent a plausible-looking analog.
-7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md`, using `skills/shared/artifact-templates/PATTERNS.md.template` as the shape.
+7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md`, using the PATTERNS template the lead named as an absolute path (plugin-relative paths like `skills/shared/artifact-templates/...` do not resolve from a subagent; if no path was given, ask the lead rather than searching the disk).
 
 Top-2 analogs per concept with rationale.
 
 ### Step 1 - Read inputs and produce PLAN.md
 
-Read SPEC.md and the PATTERNS.md just produced (or pre-existing). Then produce PLAN.md.
+Read SPEC.md and the PATTERNS.md just produced (or pre-existing). Then produce PLAN.md in the shape of `template_path` (the lead's absolute path to `PLAN.md.template`) for the prose sections, and leave `## Task DAG` and `## Tasks` as bare headings: the lead renders both from your `tasks[]` with `lib/plan-render.sh`, so every task field (`goal`, `read_first`, `interfaces`, `steps`, `expected`, `files`, `verifyCommand`, `acceptanceCriteria`, `blockedBy`) belongs in the JSON, once.
 
 ## Navigation (required)
 

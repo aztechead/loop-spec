@@ -134,12 +134,11 @@ validate_status() {
             return 1
           }
           ;;
-        "$feature_rel/feature.json"|"$progress_path")
-          [[ "$state_commit_mode" == "final" ]] || {
-            echo "finalize-delivery-candidate: unexpected pre-existing worktree change: $path" >&2
-            return 1
-          }
-          ;;
+        # phase-begin rewrites feature.json after the last state commit, and VERIFY and
+        # ITERATE write into the artifact directory: these are loop-spec's own files in
+        # every state-commit mode, staged below rather than refused (a live DELIVER
+        # refused them four phases running).
+        "$feature_rel/feature.json"|"$progress_path"|"$docs_path"/*) ;;
         *)
           echo "finalize-delivery-candidate: unexpected pre-existing worktree change: $path" >&2
           return 1
@@ -147,25 +146,8 @@ validate_status() {
       esac
     else
       case "$path" in
-        "$rules_path"|"$ignore_path"|"$digest_path") ;;
-        "$feature_rel/feature.json")
-          [[ "$artifact_mode" == "0" || "$state_commit_mode" == "final" ]] || {
-            echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
-            return 1
-          }
-          ;;
-        "$progress_path")
-          [[ "$state_commit_mode" == "final" ]] || {
-            echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
-            return 1
-          }
-          ;;
-        "$docs_path"/*)
-          [[ "$artifact_mode" == "0" ]] || {
-            echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
-            return 1
-          }
-          ;;
+        # The same loop-spec-owned set as the initial pass: staged and committed below.
+        "$rules_path"|"$ignore_path"|"$digest_path"|"$feature_rel/feature.json"|"$progress_path"|"$docs_path"/*) ;;
         *)
           echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
           return 1
@@ -225,14 +207,8 @@ status="$(git -C "$repo_root" status --porcelain --untracked-files=all 2>/dev/nu
 validate_status final "$status" || exit $?
 
 if [[ "$commit_requested" -eq 1 ]]; then
-  finalize_paths=("$rules_path" "$ignore_path")
+  finalize_paths=("$rules_path" "$ignore_path" "$feature_rel/feature.json" "$progress_path" "$docs_path")
   [[ "$commit_telemetry" -eq 1 ]] && finalize_paths+=("$digest_path")
-  if [[ "$artifact_mode" == "0" ]]; then
-    finalize_paths+=("$feature_rel/feature.json" "$docs_path")
-  fi
-  if [[ "$state_commit_mode" == "final" ]]; then
-    finalize_paths+=("$feature_rel/feature.json" "$progress_path")
-  fi
   stage_paths=()
   for path in "${finalize_paths[@]}"; do
     if [[ -e "$repo_root/$path" ]] || git -C "$repo_root" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then

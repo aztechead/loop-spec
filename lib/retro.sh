@@ -405,7 +405,7 @@ done < <(jq -r '.[] | select(.kind == "rule-candidate") | .rule.text' <<<"$FINDI
 project_dir="$(dirname "$ROOT")"
 if [[ -f "$project_dir/.gitignore" ]] \
    && ! grep -qxF '!/.loop-spec/RULES.md' "$project_dir/.gitignore" 2>/dev/null; then
-  printf '!/.loop-spec/RULES.md\n' >> "$project_dir/.gitignore" 2>/dev/null \
+  bash "$LIB_DIR/owned-gitignore.sh" ensure "$project_dir" '!/.loop-spec/RULES.md' >/dev/null 2>&1 \
     && echo "retro apply: added .gitignore exception for .loop-spec/RULES.md (commit it so rules survive ephemeral workspaces)"
 fi
 exit 0

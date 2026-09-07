@@ -165,7 +165,10 @@ egress_check() {
 }
 
 close_phase() {
-  lib feature-write append "$feature_dir" completedPhases "\"$phase\"" >/dev/null
+  # A phase re-entered after an interrupted round closes again; a live feature.json
+  # read "spec,discuss,plan,plan,plan". Record each phase once.
+  jq -e --arg p "$phase" '.completedPhases | index($p) != null' "$feature_dir/feature.json" >/dev/null 2>&1 \
+    || lib feature-write append "$feature_dir" completedPhases "\"$phase\"" >/dev/null
   fset currentTeamName null
   fset currentTeammates '[]'
 }

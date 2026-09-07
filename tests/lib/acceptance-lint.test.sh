@@ -37,6 +37,15 @@ check "mixed set flags the bad one" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 out="$(echo '[{"id":"task-099","acceptanceCriteria":["grep -c \"foo\" f returns 2"]}]' | bash "$LIB" 2>/dev/null)"
 check "flag output names the task" "$(echo "$out" | grep -q 'task-099' && echo 1 || echo 0)"
 
+# A live 17KB tasks.json hung the PLAN gate for minutes under bash 3.2 (the empty-input
+# check used ${input//[[:space:]]/}); 62 criteria must lint in well under a second.
+big="$(python3 -c '
+import json
+crit=["python -m pytest tests/test_%d.py::test_case exits 0 and prints 1 passed" % i for i in range(70)]
+print(json.dumps([{"id":"task-%03d" % t,"acceptanceCriteria":crit[t*7:(t+1)*7]} for t in range(10)]))')"
+start=$(date +%s); echo "$big" | bash "$LIB" >/dev/null 2>&1; elapsed=$(( $(date +%s) - start ))
+check "20KB tasks.json lints in under 3s (was minutes on bash 3.2)" "$([[ $elapsed -lt 3 ]] && echo 1 || echo 0)"
+
 # Malformed input is a USAGE error (2), never a criterion finding (1): a caller
 # that treats every non-zero exit as "criteria are bad" would remediate the wrong thing.
 rc=0; echo 'not json' | bash "$LIB" >/dev/null 2>&1 || rc=$?

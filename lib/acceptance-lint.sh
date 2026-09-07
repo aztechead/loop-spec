@@ -35,7 +35,9 @@ else
   exit 2
 fi
 
-[[ -n "${input//[[:space:]]/}" ]] || { echo "acceptance-lint: empty input" >&2; exit 2; }
+# A regex test, not ${input//[[:space:]]/}: bash 3.2 (the declared floor) takes minutes to
+# strip whitespace from a 17KB tasks.json, which hung the PLAN gate on a live run.
+[[ "$input" =~ [^[:space:]] ]] || { echo "acceptance-lint: empty input" >&2; exit 2; }
 jq -e 'type == "array"' >/dev/null 2>&1 <<<"$input" || {
   echo "acceptance-lint: input is not a JSON array of tasks" >&2
   exit 2
