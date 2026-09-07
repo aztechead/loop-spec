@@ -169,6 +169,9 @@ for ((j=0; j<nvis; j++)); do
       flags=$((flags+1))
     else
       cmd_part="${rest##* | verify: }"
+      # A planner writes "`cmd` (confirmed: ...)" and the prose is not shell; the first
+      # backtick span is the command. Two live flags were exactly this false positive.
+      if [[ "$cmd_part" =~ \`([^\`]+)\` ]]; then cmd_part="${BASH_REMATCH[1]}"; fi
       if [[ -z "$cmd_part" ]]; then
         echo "FLAG $artifact:$lineno: malformed ASSUMPTION bullet — verify command is empty"
         flags=$((flags+1))

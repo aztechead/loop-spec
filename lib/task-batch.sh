@@ -13,7 +13,7 @@
 # judgment: a LINEAR CHAIN of tasks whose verify commands only read local files
 # (grep/test/jq/diff, never plan/apply/a test runner/the network) merges into its
 # head, verifies joined with &&, up to LOOP_SPEC_TASK_BATCH_CHAIN_FILES files
-# (default 6); and a task whose files are all doc/config extensions and whose
+# (default 6; `terragrunt hcl format` and `tofu fmt` count as local); and a task whose files are all doc/config extensions and whose
 # verify is local gets `metadata.modelTier: mechanical` when no tier or pin is set,
 # so lib/model-tier.sh routes it to the cheapest model. An explicit batchGroup,
 # tier, or model pin always wins. LOOP_SPEC_TASK_BATCH_AUTO=0 keeps only the
@@ -36,7 +36,7 @@ file="$2"
 
 python3 - "$file" <<'PY'
 from __future__ import print_function
-import json, os, re, sys
+import json, os, re, shlex, sys
 
 path = sys.argv[1]
 auto = os.environ.get("LOOP_SPEC_TASK_BATCH_AUTO", "1") != "0"
@@ -55,25 +55,58 @@ CONFIG_EXT = {"md", "txt", "rst", "hcl", "tf", "tfvars", "json", "yaml", "yml", 
               "cfg", "conf", "env", "example", "gitignore", "editorconfig", "gitattributes"}
 
 
+# Formatters and syntax checks of the IaC tools read the checkout only; every other
+# subcommand of theirs (init, validate, plan) reaches a registry or a backend.
+LOCAL_SUBCOMMANDS = {("terragrunt", "hcl"), ("terragrunt", "hclfmt"), ("tofu", "fmt"), ("terraform", "fmt")}
+
+
+def segments(cmd):
+    """Pipeline segments split on |, ||, &&, ; OUTSIDE quotes; a quoted `a|b` in a grep
+    pattern is one argument, not two programs (the live run's verifies were full of them)."""
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars="|&;()")
+    lex.whitespace_split = True
+    segs, cur = [], []
+    try:
+        for tok in lex:
+            if tok in ("|", "||", "&&", ";", "(", ")"):
+                if cur:
+                    segs.append(cur)
+                cur = []
+            else:
+                cur.append(tok)
+    except ValueError:
+        return None
+    if cur:
+        segs.append(cur)
+    return segs
+
+
 def is_local(cmd):
     cmd = (cmd or "").strip()
     if not cmd:
         return False
-    for seg in re.split(r"\|\||&&|\||;", cmd):
-        words = seg.strip().lstrip("(").rstrip(")").split()
+    segs = segments(cmd)
+    if segs is None:
+        return False
+    for words in segs:
         while words and (words[0] in ("!", "env") or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0])):
             words = words[1:]
-        if not words or os.path.basename(words[0]) not in LOCAL_PROGRAMS:
+        if not words:
+            return False
+        prog = os.path.basename(words[0])
+        if len(words) > 1 and (prog, words[1]) in LOCAL_SUBCOMMANDS:
+            continue
+        if prog not in LOCAL_PROGRAMS:
             return False
         # `bash x.sh` / `python3 x.py` run the repo's own code, which is a real run.
         # Only a syntax check (-n) or an inline -c body that names no other program
         # stays local.
-        if words[0] in ("bash", "python3"):
+        if prog in ("bash", "python3"):
             if "-n" in words[1:2]:
                 continue
             if "-c" not in words:
                 return False
-            body = seg.split("-c", 1)[1]
+            body = " ".join(words[words.index("-c") + 1:])
             if re.search(r"\b(?:npm|pnpm|yarn|pytest|go|cargo|make|terragrunt|terraform|tofu|gcloud|aws|az|kubectl|curl|wget|docker)\b", body):
                 return False
     return True

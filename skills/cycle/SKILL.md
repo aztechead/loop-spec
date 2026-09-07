@@ -68,6 +68,10 @@ that team before resuming (those features are not offered).
 
 ## 2. Initialize a new feature
 
+Only after `begin` answered `decisions` (a human chose). When `.action` was `init` or
+`resume`, the feature is already initialized: do not call `init` again (a live lead did,
+with `$st` from a previous Bash call, which is empty, and got the usage text).
+
 ```bash
 init="$(bash "$DRV" init --dir "$(jq -r '.workspace.root' <<<"$st")" \
   --slug "<slug>" --title "<title>" --style "$(jq -r '.invocation.style' <<<"$st")" \

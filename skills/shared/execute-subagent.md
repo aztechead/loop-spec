@@ -174,6 +174,12 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    # .acceptanceCriteria .readFirst .specPath .prepareCommand .index .total .maxRetries
    ```
 
+   `.model` is the resolved selector (a concrete pin, else the task's tier, else the
+   role default): pass it as the Agent `model` field whenever it is not `inherit`. A live
+   lead read only `.dispatchable` and dispatched a `haiku`-tiered task on the lead's
+   model. The packet already emitted the `dispatch` event; do not emit another. Issue
+   every Agent call of the wave in ONE assistant message so the wave runs in parallel.
+
    `.brief` and `.report` are `lib/dispatch-files.sh brief` and `report-path`. The
    dispatch prompt carries those paths plus a one-line fit. Exact values live only in
    the brief. On rung 2 emit all wave calls in ONE assistant message so they run in
@@ -269,7 +275,7 @@ the task worktree. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 
-**Dispatch telemetry (`skills/shared/dispatch.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved selector>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** `task dispatch` and `task package` emit the `dispatch` event for the implementer and the reviewer with the resolved model; the lead emits none itself (a live lead emitted a second one with the wrong model). Retries of the same task go through `task dispatch` again and DO re-emit.
 
 **Task progress (required).** EXECUTE is the longest phase; without this it reports
 only `[EXECUTE] start` and an operator watching a streamed log cannot tell task 1 of 6
@@ -401,6 +407,8 @@ Step 5 - Stage and commit inside the worktree branch:
 Do NOT push. Do NOT run git outside the task worktree.
 
 Return JSON: { taskId: "{taskId}", branch: "task/{taskId}-{slug}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
+Your final message IS the return value. Never call SendMessage to deliver it: you are a
+one-shot subagent, there is no teammate named "main", and the lead reads your completion.
 ```
 
 ## Reviewer Agent prompt
@@ -451,6 +459,8 @@ Return one of:
   - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
 
 Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] }
+Your final message IS the verdict. Never call SendMessage to deliver it (a live reviewer
+lost three calls to InputValidationError sending JSON to a "main" that does not exist).
 ```
 
 ## Workspace mode
@@ -526,6 +536,7 @@ Step 4 - Stage and commit using git -C so git does not depend on cwd:
 Do NOT push. Do NOT run git against any path other than {abs_repo}.
 
 Return JSON: { taskId: "{taskId}", repo: "{repo}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
+Your final message IS the return value; never call SendMessage to deliver it.
 ```
 
 ### Merge and ff steps (workspace mode -- skipped)

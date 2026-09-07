@@ -140,5 +140,19 @@ check "chain: the file cap holds" "6" "$(jq 'length' <<<"$out")"
 out=$(LOOP_SPEC_TASK_BATCH_AUTO=0 bash "$SCRIPT" collapse "$WORK/chain.json")
 check "kill switch: nothing merges or tiers" "6,null" "$(jq -r '"\(length),\(.[0].metadata.modelTier // null)"' <<<"$out")"
 
+
+# A `|` inside a quoted grep pattern is one argument, and the IaC formatters are local.
+cat > "$WORK/quoted.json" <<'EOF'
+[
+  {"id":"task-001","subject":"fmt","files":["root.hcl"],"blockedBy":[],"verifyCommand":"terragrunt hcl format --check --file root.hcl && grep -E '^(terraform|terragrunt)_version_constraint' root.hcl","acceptanceCriteria":["a"]},
+  {"id":"task-002","subject":"audit","files":["org.hcl"],"blockedBy":["task-001"],"verifyCommand":"! grep -rnE '(plan-all|apply-all)' org.hcl","acceptanceCriteria":["b"]},
+  {"id":"task-003","subject":"validate","files":["main.tf"],"blockedBy":["task-002"],"verifyCommand":"tofu init -backend=false && tofu validate","acceptanceCriteria":["c"]}
+]
+EOF
+out=$(bash "$SCRIPT" collapse "$WORK/quoted.json")
+check "quoted pipe: hcl format + grep chain merges" "task-001,task-002" "$(jq -r '.[0].memberIds | join(",")' <<<"$out")"
+check "quoted pipe: tofu validate keeps its seat" "task-003" "$(jq -r '.[1].id' <<<"$out")"
+check "quoted pipe: tofu validate is not mechanical" "null" "$(jq -r '.[1].metadata.modelTier' <<<"$out")"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

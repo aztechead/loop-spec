@@ -98,5 +98,20 @@ check "grounding without an acceptance result cannot converge" "$([[ $? -eq 1 ]]
 bash "$LIB" "$tmp/SPEC.md" >/dev/null 2>&1
 check "missing args exit 2" "$([[ $? -eq 2 ]] && echo 1 || echo 0)"
 
+
+# BLOCKED is a status that cannot converge; PASS whose evidence says the check never
+# ran is the live relabeling this floor now refuses.
+sed 's/| 2 | output contains marker | PASS | `run` -> marker |/| 2 | output contains marker | BLOCKED | `run` -> gcloud reauth needed |/' "$tmp/V.md" > "$tmp/V-blocked.md"
+out="$(bash "$LIB" "$tmp/SPEC.md" "$tmp/V-blocked.md" 2>/dev/null)"; rc=$?
+check "BLOCKED row vetoes convergence" "$([[ $rc -eq 1 ]] && echo 1 || echo 0)"
+check "BLOCKED row names the operator" "$(grep -q 'BLOCKED (an operator must clear it' <<<"$out" && echo 1 || echo 0)"
+sed 's/| 2 | output contains marker | PASS | `run` -> marker |/| 2 | output contains marker | PASS | plan invocation is blocked-not-failed by the reauth lock, an explicit SPEC allowance |/' "$tmp/V.md" > "$tmp/V-relabeled.md"
+out="$(bash "$LIB" "$tmp/SPEC.md" "$tmp/V-relabeled.md" 2>/dev/null)"; rc=$?
+check "PASS with blocked evidence vetoes convergence" "$([[ $rc -eq 1 ]] && echo 1 || echo 0)"
+check "PASS with blocked evidence says to mark it BLOCKED" "$(grep -q 'mark it BLOCKED' <<<"$out" && echo 1 || echo 0)"
+sed 's/| 2 | output contains marker | PASS | `run` -> marker |/| 2 | output contains marker | PASS | `run` -> marker; the unblocked path is covered too |/' "$tmp/V.md" > "$tmp/V-word.md"
+bash "$LIB" "$tmp/SPEC.md" "$tmp/V-word.md" >/dev/null 2>&1
+check "the word unblocked in evidence is not a blocked check" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

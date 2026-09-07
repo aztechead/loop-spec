@@ -41,6 +41,19 @@ checks=(
   $'agents/planner.md\tlib/task-batch.sh'
   $'lib/security-signal.sh\tdeclared absent'
   $'docs/loop-spec/configuration.md\tLOOP_SPEC_TASK_BATCH_AUTO'
+  $'lib/iterate-judged.sh\troute=escalate'
+  $'lib/cycle-driver.sh\toperator action needed'
+  $'agents/iterate-judge.md\tneeds_operator'
+  $'skills/iterate/SKILL.md\t`escalate`: the gap needs an operator'
+  $'lib/converged-floor.sh\tmark it BLOCKED'
+  $'skills/shared/artifact-templates/VERIFICATION.md.template\tBLOCKED'
+  $'agents/verifier.md\tPASS/FAIL/BLOCKED/N/A'
+  $'hooks/hooks.json\thooks/team/secret-guard.sh'
+  $'hooks/team/secret-guard.sh\tLOOP_SPEC_SECRET_GUARD'
+  $'skills/shared/execute-subagent.md\tYour final message IS the verdict'
+  $'skills/shared/execute-subagent.md\tpass it as the Agent `model` field'
+  $'skills/cycle/SKILL.md\tdo not call `init` again'
+  $'docs/loop-spec/configuration.md\tLOOP_SPEC_SECRET_GUARD'
 )
 
 check_fixed_strings "${checks[@]}"

@@ -96,7 +96,57 @@ second pass on this branch removed the deterministic part of it:
 | No task ran below the lead's model | doc/config-only tasks with a local verify are tiered `mechanical` (haiku on Claude Code) |
 | A three-round critique gate on "no apply-capable credentials in CI" | `security-signal.sh` reads an absence boundary as no signal; a negated action still fires |
 
+## Round 4: the same prompt on the fixed plugin
+
+Sonnet again, plugin at d23c268 (the fixes above), tf-meldn `main`, prompt amended by one
+sentence because the first relaunch found PR #1 open with the same scope and stopped as a
+duplicate (26 turns, correct). The run ended at ITERATE round 2 without delivering.
+
+| | Round 3 | Round 4 |
+|---|---|---|
+| Wall clock | about 5 h across three relaunches | 1 h 50 min, one process |
+| Cost | $48.80 | $39.74 |
+| Tool calls (lead / all) | 994 all | 313 / 776 |
+| Subagent seats | 22 in EXECUTE alone | 24 total (12 in EXECUTE) |
+| PLAN tasks | 7, then 11 | 6 |
+| SPEC / DISCUSS / PLAN | long / long / long | 398 s / 669 s / 2512 s |
+| EXECUTE | about 2.5 h | 1284 s + a 97 s remediation |
+| Implementer tool calls per task | 25 to 40 | 10 to 17, no artifact reads |
+| Ending | PR delivered | escalation owed, question asked instead |
+
+What the fixes bought: EXECUTE fell to 21 minutes for six tasks with no rework round; no
+implementer opened SPEC, PLAN, PATTERNS, or EVIDENCE; the security-signal absence rule
+held (DISCUSS gate ran in single mode); SPEC and PLAN passed their shape lints on the first
+write; the busy-wait guard fired once on a `sleep 1`. PLAN is still the dominant phase:
+two lint rounds (a grounding-lint false positive and the bare-grep rule on HCL) and three
+critique rounds, each a planner round trip.
+
+Defects found in round 4, fixed on this branch:
+
+| # | Defect | Fix |
+|---|---|---|
+| 18 | ITERATE judged a gap only an operator could close (expired gcloud token), rewound EXECUTE once, judged it again, then the lead asked a question in a headless run | judge `needs_operator`; repeated `fix_first` after a round; route `escalate`; `next` ends the run escalated |
+| 19 | VERIFICATION.md marked "terragrunt plan succeeds" PASS with evidence "blocked by the reauth lock" | `BLOCKED` status; the floor refuses PASS whose evidence says the check did not run |
+| 20 | `grounding-lint` fed "`cmd` (confirmed: ...)" to `bash -n` | lint the backticked span |
+| 21 | `acceptance-lint` flagged `grep -qF 'expose = true' root.hcl` again | whole-line or key = value grep on a declarative file is exempt |
+| 22 | environment probe split on `\|` inside quoted patterns and ran `/usr/bin/apply --version` | shlex split; program-shaped names only |
+| 23 | `task-batch` treated `terragrunt hcl format` as a real run; quoted pipes stopped merges | local subcommand pairs; shlex split |
+| 24 | failed integrate labeled `rebase-conflict` for a dirty-after-verify tree | the label is the reason |
+| 25 | pattern-mapper memory committed into the PR to clear a dirty check; code-reviewer denied creating its memory dir | agent-memory excluded from dirt; `memory: project` removed from both agents |
+| 26 | lead ignored the packet's `model: haiku` and emitted a second dispatch event | contract: pass `.model`, emit nothing |
+| 27 | reviewers sent their verdict over `SendMessage` (3 InputValidationErrors each) | contract: the final message is the result |
+| 28 | the operator email landed in SPEC.md again; the lead read the ADC credentials file | `hooks/team/secret-guard.sh` |
+| 29 | lead re-ran `init` after `begin` with an empty `$st` | cycle skill: `begin` already initialized |
+| 30 | interface conflict rows recorded with the file-overlap rationale | rulings loop names the row kind |
+
 ## Not fixed here, worth a look
+
+- The planner still added new uncited claims during a critique revision (round 2 of the
+  SPEC gate), and a critique revision still costs a planner round trip each; the gate is
+  finding real verify-design defects, so this is latency, not correctness.
+- The ITERATE judge is right that a plan-only validation never happened when the token is
+  expired; the run now ends escalated with the operator action. A future round could let
+  DELIVER open a draft PR carrying the BLOCKED rows so the work is not stranded.
 
 - Two parallel PLAN tasks ran `terragrunt plan` in the same unit and would have shared
   its `.terragrunt-cache/`; `dag-width` only sees declared files. A task-level

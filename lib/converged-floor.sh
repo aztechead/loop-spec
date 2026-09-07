@@ -79,11 +79,23 @@ for ((i = 1; i <= criteria_count; i++)); do
   fi
 done
 
-# Acceptance table: any FAIL status cell vetoes convergence outright.
+# Acceptance table: any FAIL or BLOCKED status cell vetoes convergence outright, and so
+# does a PASS whose evidence says the check never ran. A live verifier wrote PASS for
+# "terragrunt plan succeeds" with the evidence "plan invocation is blocked by the reauth
+# lock" because PASS was the only cell that let the feature converge; BLOCKED is that
+# cell now, and it does not converge either.
+blocked_evidence='(^|[^a-z])(blocked|could not run|not run|never ran|did not run|unable to run|skipped|reauth|credentials? (expired|locked)|not verified|unverified)([^a-z]|$)'
 while IFS= read -r line; do
   status_cell=$(awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $4); print $4}' <<<"$line")
+  evidence_cell=$(awk -F'|' '{print $5}' <<<"$line" | tr '[:upper:]' '[:lower:]')
   if [[ "$status_cell" == "FAIL" ]]; then
     echo "FLOOR acceptance table row still FAIL: ${line# }"
+    violations=$((violations + 1))
+  elif [[ "$status_cell" == "BLOCKED" ]]; then
+    echo "FLOOR acceptance table row BLOCKED (an operator must clear it before this can converge): ${line# }"
+    violations=$((violations + 1))
+  elif [[ "$status_cell" == "PASS" ]] && [[ "$evidence_cell" =~ $blocked_evidence ]]; then
+    echo "FLOOR acceptance table row is PASS but its evidence says the check did not run (mark it BLOCKED): ${line# }"
     violations=$((violations + 1))
   fi
 done <<<"$acceptance_rows"

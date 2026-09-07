@@ -44,8 +44,35 @@ All notable changes documented here. Format follows Keep a Changelog.
   ("never log the credential") still fires; the live IaC spec paid a three-round gate for one
   such bullet.
 
+- A second observed run on the same repository (`evals/findings-2026-09-07-tf-meldn.md`,
+  round 4) ended with the lead asking an absent operator a question after the ITERATE
+  judge found the only gap was an expired gcloud token, and with two plan-dependent
+  criteria marked PASS because PASS was the only cell that converged. ITERATE now routes
+  `escalate` when the judge marks a gap `needs_operator` or the same `fix_first` survives
+  a remediation round, and the cycle's `next` ends the run `DONE status=escalated` with
+  the operator action as the reason; `VERIFICATION.md` has a `BLOCKED` status that the
+  converged floor refuses to converge on, and a PASS row whose evidence says the check
+  did not run is a floor violation. Also from that run: `grounding-lint` lints the
+  backticked command of an ASSUMPTION, not the prose after it (two false flags);
+  `acceptance-lint` accepts a whole-line or key = value grep against a declarative file
+  (HCL, YAML, TOML, INI, JSON); `task-batch` and the environment probe split pipelines
+  outside quotes (a quoted `a|b` pattern was probed as two programs) and treat
+  `terragrunt hcl format` and `tofu fmt` as local; `execute-step` labels a failed
+  integrate with its real reason instead of `rebase-conflict`; `.claude/agent-memory` is
+  not dirt for the dirty checks, and `pattern-mapper` and `code-reviewer` no longer keep
+  a per-repository memory (a one-shot reviewer's notes have no reader and were landing
+  in the user's PR); the execute contract says to pass the packet's `.model`, to issue a
+  wave's Agent calls in one message, and that a subagent's final message is its result
+  (three `SendMessage` failures per reviewer); the cycle skill says `begin` already
+  initialized the feature.
+
 ### Added
 
+- `hooks/team/secret-guard.sh` (PreToolUse on Write/Edit/MultiEdit/Bash): denies a cycle
+  artifact write that carries an email address or a credential path, and a Bash command
+  that reads a known credential file. Two runs pushed the operator's account email in
+  SPEC.md, and a lead read the gcloud ADC file into its context to diagnose an auth
+  failure. `LOOP_SPEC_SECRET_GUARD=0` disables it.
 - `lib/plan-render.sh`: renders PLAN.md's `## Task DAG` and `## Tasks` from tasks.json,
   preserving every other section. tasks.json is the single source for task fields; the
   planner writes the prose sections and returns `tasks[]` with `goal`, `read_first`,

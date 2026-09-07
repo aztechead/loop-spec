@@ -89,7 +89,7 @@ case "$cmd" in
       fi
       base_sha="$(git -C "$worktree" rev-parse HEAD)"
     else
-      dirty="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' 2>/dev/null)"
+      dirty="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude).claude/agent-memory' 2>/dev/null)"
       [[ -z "$dirty" ]] || { jq -cn --arg id "$task_id" --arg d "$dirty" '{taskId:$id, dispatchable:false, reason:"feature-root-dirty", detail:$d}'; exit 1; }
       base_sha="$(git -C "$root" rev-parse HEAD)"
     fi
@@ -173,7 +173,7 @@ case "$cmd" in
         while IFS= read -r f; do [[ -n "$f" ]] && git -C "$root" add -- "$f" 2>/dev/null; done < <(jq -r '.[]' <<<"$files_json")
         git -C "$root" commit -q -m "feat: NO_JIRA $(jq -r '.subject' <<<"$task_json")" >/dev/null 2>&1 || true
         after="$(git -C "$root" rev-parse HEAD)"
-        outside="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude)docs/loop-spec' 2>/dev/null)"
+        outside="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude)docs/loop-spec' ':(exclude).claude/agent-memory' 2>/dev/null)"
         if [[ "$before" == "$after" ]]; then
           answer="$(jq -cn '{published:false, reason:"commit-missing", detail:"nothing to commit under task.files", sha:null, blocked:"commit-missing"}')"
         elif [[ -n "$outside" ]]; then
@@ -201,7 +201,10 @@ case "$cmd" in
     case "$reason" in
       verify-failed|prepare-failed) sset blocked '"retry-exhausted"' ;;
       zero-commit|commit-missing) sset blocked '"commit-missing"' ;;
-      *) sset blocked '"rebase-conflict"' ;;
+      rebase-conflict) sset blocked '"rebase-conflict"' ;;
+      # A live lead read "rebase-conflict" for a verify that left files behind and went
+      # looking for a conflict that did not exist; the label is the reason.
+      *) sset blocked "\"$reason\"" ;;
     esac
     task_end failed
     jq -c --arg b "$(sget '.blocked')" '.blocked = $b' <<<"$answer"; exit 1

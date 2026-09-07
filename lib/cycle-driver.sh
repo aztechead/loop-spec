@@ -814,6 +814,13 @@ returned_checks() {
       lib feature-write append "$feature_dir" warnings "\"phase $phase took ${mins}m, ceiling ${ceiling}m\"" >/dev/null
     fi
   fi
+  # An ITERATE gap only an operator can close ends the run here with the fix as the
+  # reason, instead of a rewind that reproduces the gap or a question to an absent human.
+  if [[ "$phase" == "iterate" && "$(fget "$feature_dir" '.iterate.lastRoute // ""')" == "escalate" ]]; then
+    local fix; fix="$(fget "$feature_dir" '.iterate.feedback.fix_first // .iterate.feedback.description // "iterate gap needs an operator"')"
+    cmd_escalate --feature-dir "$feature_dir" --reason "operator action needed: $fix" >/dev/null
+    echo "DONE status=escalated reason=\"operator action needed: $fix\""; return 10
+  fi
   # deliver -> deliver is a stop that needs an external condition to change (or a
   # proven no-change completion); the graph must not re-enter DELIVER.
   if [[ "$phase" == "deliver" && -f "$feature_dir/delivery.json" \

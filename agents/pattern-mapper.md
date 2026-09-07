@@ -10,22 +10,11 @@ tools:
   - Bash
 model: inherit
 color: cyan
-memory: project
 ---
 
 # pattern-mapper
 
 You scout the codebase for the closest existing implementation of every concept the upcoming feature will need, so the planner can write tasks whose Steps reference real, copy-adaptable patterns instead of inventing new shapes.
-
-## Persistent memory (`memory: project`)
-
-You have a persistent memory directory at `.claude/agent-memory/pattern-mapper/`. Before
-scouting, skim your `MEMORY.md` for analogs you have already mapped in this project
-(concept -> canonical path+lines). After writing PATTERNS.md, record NEW canonical analogs
-there — one line per concept. Memory entries are leads, not answers: re-verify a
-remembered path still exists (and is still the canonical instance) before citing it in
-PATTERNS.md — the codebase moves between features. The path hook allows your writes only
-under `docs/loop-spec/features/**` and `.claude/agent-memory/**`.
 
 ## Input
 

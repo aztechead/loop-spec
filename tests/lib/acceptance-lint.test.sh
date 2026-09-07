@@ -25,6 +25,13 @@ check "behavioral criterion ok (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 echo '[{"id":"task-001","acceptanceCriteria":["grep -w \"allVersions\" src/app.ts exits 0"]}]' | bash "$LIB" >/dev/null 2>&1
 check "grep -w exempt (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 
+# A whole-line or key = value grep against a declarative file is behavioral (exit 0);
+# a bare word against the same file is still flagged.
+echo '[{"id":"task-001","acceptanceCriteria":["grep -qF '"'"'expose = true'"'"' root.hcl exits 0","grep -qE '"'"'^terraform_version_constraint'"'"' root.hcl exits 0","grep -c '"'"'image: nginx'"'"' deploy.yaml returns 1"]}]' | bash "$LIB" >/dev/null 2>&1
+check "key = value grep on a config file exempt (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
+echo '[{"id":"task-001","acceptanceCriteria":["grep -q bar config.yaml exits 0"]}]' | bash "$LIB" >/dev/null 2>&1
+check "bare word grep on a config file still flagged (exit 1)" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
+
 # Comment-excluding pipeline -> exempt (exit 0).
 echo '[{"id":"task-001","acceptanceCriteria":["grep -v \"//\" f | grep -c x returns 1"]}]' | bash "$LIB" >/dev/null 2>&1
 check "grep -v comment strip exempt" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
