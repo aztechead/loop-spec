@@ -96,6 +96,11 @@ check "absent sections: inserted before Test strategy" "1" "$(awk '/^## Tasks/{t
 lint="$(bash "$LINT" plan "$WORK/PLAN.md" 2>&1 || true)"
 check "rendered blocks pass the lint's task-block checks" "0" "$(grep -c -E "task block .* is missing|no '### task-<id>:' blocks|Task DAG' table has no" <<<"$lint")"
 
+# prose-lines counts what the pruner would read: everything outside the rendered span.
+check "prose-lines counts lines outside the rendered sections" "7" "$(bash "$LIB" prose-lines --plan "$WORK/PLAN.md")"
+ec=0; bash "$LIB" prose-lines --plan "$WORK/nope.md" >/dev/null 2>&1 || ec=$?
+check "prose-lines on a missing plan exits 1" "1" "$ec"
+
 # Failure paths are loud.
 ec=0; bash "$LIB" render --tasks "$WORK/nope.json" >/dev/null 2>&1 || ec=$?
 check "missing tasks file exits 1" "1" "$ec"

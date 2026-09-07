@@ -13,22 +13,32 @@
 #     Replaces the two sections in place (appends them before `## Test strategy`, or at
 #     the end, when absent). Every other section is preserved byte-for-byte.
 #   plan-render.sh render --tasks <tasks.json>          prints the two sections to stdout
+#   plan-render.sh prose-lines --plan <PLAN.md>         prints how many non-blank lines lie
+#     OUTSIDE the rendered span, so the prose-pruning pass can be skipped on a plan whose
+#     bulk is rendered task blocks (a live 377-line plan paid a pruner for all of it).
 #
 # Task fields read: id, subject|title, goal, files[], read_first[], interfaces{consumes,
 # produces}, blockedBy[], verifyCommand, expected, acceptanceCriteria[], steps[], scope.
 # Exit: 0 rendered, 1 unreadable or non-array tasks.json, 2 usage.
 set -uo pipefail
 
-tasks=""; plan=""
+tasks=""; plan=""; mode=render
 while [[ $# -gt 0 ]]; do
   case "$1" in
     render) ;;
+    prose-lines) mode=prose ;;
     --tasks) tasks="${2:-}"; shift ;;
     --plan) plan="${2:-}"; shift ;;
     *) echo "usage: plan-render.sh render --tasks <tasks.json> [--plan <PLAN.md>]" >&2; exit 2 ;;
   esac
   shift
 done
+if [[ "$mode" == "prose" ]]; then
+  [[ -n "$plan" ]] || { echo "usage: plan-render.sh prose-lines --plan <PLAN.md>" >&2; exit 2; }
+  [[ -f "$plan" ]] || { echo "plan-render: plan file not found: $plan" >&2; exit 1; }
+  awk 'BEGIN{r=0} /^## (Task DAG|Tasks)[[:space:]]*$/{r=1; next} r && /^## /{r=0} !r && NF{n++} END{print n+0}' "$plan"
+  exit 0
+fi
 [[ -n "$tasks" ]] || { echo "usage: plan-render.sh render --tasks <tasks.json> [--plan <PLAN.md>]" >&2; exit 2; }
 [[ -f "$tasks" ]] || { echo "plan-render: tasks file not found: $tasks" >&2; exit 1; }
 

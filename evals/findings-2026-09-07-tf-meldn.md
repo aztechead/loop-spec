@@ -139,11 +139,26 @@ Defects found in round 4, fixed on this branch:
 | 29 | lead re-ran `init` after `begin` with an empty `$st` | cycle skill: `begin` already initialized |
 | 30 | interface conflict rows recorded with the file-overlap rationale | rulings loop names the row kind |
 
+### PLAN, the dominant phase
+
+Round 4's PLAN took 2512 s: planner authoring about 8 min, then five round trips (two
+feasibility-lint rounds, three critique rounds) at 4 to 9 min each, then a prose pruner.
+Every finding in those rounds named a task id and a field, and every one went back to the
+planner over SendMessage. Fixed on this branch:
+
+| # | Cost | Fix |
+|---|---|---|
+| 31 | a planner round trip per revision, for field-level findings | `lib/fixlist-route.sh`: the lead applies task- and Grounding-scoped findings itself; only structural ones re-dispatch the planner |
+| 32 | a critique round spent on "task-005 is not blockedBy task-002" that EXECUTE would have serialized anyway | `plan-conflicts.sh edges` infers the edge from the task prose before the render |
+| 33 | the lead read every delta diff into its own context to paste it to the challenger | the challenger gets the diff path |
+| 34 | a prose pruner dispatched over a 377-line plan with 109 prose lines | `plan-render.sh prose-lines`; the pass runs at 120 or more |
+
 ## Not fixed here, worth a look
 
 - The planner still added new uncited claims during a critique revision (round 2 of the
-  SPEC gate), and a critique revision still costs a planner round trip each; the gate is
-  finding real verify-design defects, so this is latency, not correctness.
+  SPEC gate); the gate is finding real verify-design defects, so this is latency, not
+  correctness. The full first critique round (about 9 min on a 6-task plan) is the
+  remaining fixed cost of PLAN.
 - The ITERATE judge is right that a plan-only validation never happened when the token is
   expired; the run now ends escalated with the operator action. A future round could let
   DELIVER open a draft PR carrying the BLOCKED rows so the work is not stranded.

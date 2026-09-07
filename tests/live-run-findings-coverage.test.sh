@@ -54,6 +54,12 @@ checks=(
   $'skills/shared/execute-subagent.md\tpass it as the Agent `model` field'
   $'skills/cycle/SKILL.md\tdo not call `init` again'
   $'docs/loop-spec/configuration.md\tLOOP_SPEC_SECRET_GUARD'
+  $'skills/shared/critique-gate-protocol.md\tlib/fixlist-route.sh'
+  $'skills/shared/critique-gate-protocol.md\tthe lead does not inline it'
+  $'skills/plan/SKILL.md\tlib/fixlist-route.sh'
+  $'skills/plan/SKILL.md\tplan-conflicts.sh" edges'
+  $'skills/plan/SKILL.md\tplan-render.sh" prose-lines'
+  $'skills/shared/review-prompts/prose-pruning.md\tprose-lines'
 )
 
 check_fixed_strings "${checks[@]}"

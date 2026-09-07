@@ -66,8 +66,22 @@ All notable changes documented here. Format follows Keep a Changelog.
   (three `SendMessage` failures per reviewer); the cycle skill says `begin` already
   initialized the feature.
 
+- PLAN was 42 of round 4's 110 minutes: five planner round trips (two lint rounds, three
+  critique rounds), each a fresh planner context re-reading everything to change one
+  field, plus a prose pruner over a plan that was mostly rendered task blocks. Findings
+  are now routed by `lib/fixlist-route.sh`: one that names a `task-NNN` or a Grounding
+  bullet is applied by the lead in tasks.json (re-rendered) or the Grounding section, and
+  only a structural finding (a missing task, a re-split, an architecture change) goes back
+  to the planner; `plan-conflicts.sh edges` adds the `blockedBy` edges the task prose
+  already states before the challenger reads the plan (a live round was spent on one such
+  omission); the delta re-verify hands the challenger the diff path instead of inlining
+  it into the lead's context; the prose-pruning pass runs only when
+  `plan-render.sh prose-lines` counts 120 or more prose lines.
+
 ### Added
 
+- `lib/fixlist-route.sh`: routes each critique or lint finding to the lead or the author,
+  deterministically, failing safe to the author.
 - `hooks/team/secret-guard.sh` (PreToolUse on Write/Edit/MultiEdit/Bash): denies a cycle
   artifact write that carries an email address or a credential path, and a Bash command
   that reads a known credential file. Two runs pushed the operator's account email in

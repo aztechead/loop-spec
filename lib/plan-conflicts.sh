@@ -7,25 +7,35 @@
 #
 # Usage:
 #   plan-conflicts.sh table <tasks.json>
+#   plan-conflicts.sh edges <tasks.json>
 #
-# Output: JSON {pairs:[{a,b,files,status}], interfaces:[{task,problem}],
+# `table` output: JSON {pairs:[{a,b,files,status}], interfaces:[{task,problem}],
 # rows:N, reason:...}. status=overlap for shared files.
-# Exit: 0 always with JSON (fail-open for a missing optional interfaces field),
-# 2 usage / unreadable.
+#
+# `edges` writes tasks.json back with a blockedBy edge for every task whose
+# interfaces.consumes, goal, or brief names another task id it does not already wait on
+# ("consumes: task-003's module path"), and prints `edge <task> -> <dep>` per addition.
+# Why: a live PLAN critique spent a round on exactly this omission while EXECUTE would
+# have added the same edge from the interface row; inferring it before the render means
+# the plan the challenger reads already has it. An edge that would close a cycle is
+# refused (nothing written, exit 1).
+# Exit: 0 always with JSON / edges written (fail-open for a missing optional interfaces
+# field), 1 an inferred edge would close a cycle, 2 usage / unreadable.
 set -euo pipefail
 
-[[ "${1:-}" == "table" && $# -eq 2 ]] || {
-  echo "usage: plan-conflicts.sh table <tasks.json>" >&2
+cmd="${1:-}"
+[[ ( "$cmd" == "table" || "$cmd" == "edges" ) && $# -eq 2 ]] || {
+  echo "usage: plan-conflicts.sh table|edges <tasks.json>" >&2
   exit 2
 }
 file="$2"
 [[ -f "$file" ]] || { echo "plan-conflicts.sh: no such file $file" >&2; exit 2; }
 
-python3 - "$file" <<'PY'
+python3 - "$cmd" "$file" <<'PY'
 from __future__ import print_function
-import json, sys
+import json, re, sys
 
-path = sys.argv[1]
+cmd, path = sys.argv[1], sys.argv[2]
 try:
     tasks = json.load(open(path))
 except (OSError, ValueError) as exc:
@@ -34,6 +44,52 @@ except (OSError, ValueError) as exc:
 if not isinstance(tasks, list):
     sys.stderr.write("plan-conflicts.sh: tasks must be a JSON array\n")
     sys.exit(2)
+
+if cmd == "edges":
+    ids = {t.get("id") for t in tasks if isinstance(t, dict)}
+    ref = re.compile(r"\btask-\d{3}\b", re.I)
+    deps = {t.get("id"): set(t.get("blockedBy") or []) for t in tasks if isinstance(t, dict)}
+
+    def reaches(src, dst, seen=None):
+        seen = set() if seen is None else seen
+        for d in deps.get(src, ()):
+            if d == dst:
+                return True
+            if d not in seen:
+                seen.add(d)
+                if reaches(d, dst, seen):
+                    return True
+        return False
+
+    added = []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        iface = t.get("interfaces") if isinstance(t.get("interfaces"), dict) else {}
+        consumes = iface.get("consumes")
+        parts = consumes if isinstance(consumes, list) else [consumes]
+        text = " ".join(str(x or "") for x in parts + [t.get("goal") or "", t.get("brief") or ""])
+        for dep in sorted({m.lower() for m in ref.findall(text)}):
+            if dep == t.get("id") or dep not in ids or dep in deps[t.get("id")]:
+                continue
+            if reaches(dep, t.get("id")):
+                sys.stderr.write("plan-conflicts.sh: %s -> %s would close a cycle; nothing written\n" % (t.get("id"), dep))
+                sys.exit(1)
+            deps[t.get("id")].add(dep)
+            added.append((t.get("id"), dep))
+    if added:
+        for t in tasks:
+            if isinstance(t, dict) and t.get("id") in deps:
+                extra = [d for d in sorted(deps[t.get("id")]) if d not in (t.get("blockedBy") or [])]
+                if extra:
+                    t["blockedBy"] = list(t.get("blockedBy") or []) + extra
+        with open(path, "w") as fh:
+            json.dump(tasks, fh, indent=2)
+            fh.write("\n")
+    for a, b in added:
+        print("edge %s -> %s" % (a, b))
+    print("plan-conflicts: %d edge(s) inferred" % len(added))
+    sys.exit(0)
 
 pairs = []
 for i, a in enumerate(tasks):

@@ -69,13 +69,20 @@ With `workflowsAvailable` and `LOOP_SPEC_PLAN_MULTI_ANGLE=1`, the
 `lib/workflows/plan-multi-angle.js` Workflow authors instead; log its angles to
 `feature_dir/gate-logs/plan-multi-angle.json`.
 
-When the planner reports, save its `tasks[]` JSON to `feature_dir/tasks.json`, render
-the plan's structured sections from it, and run the gates:
+When the planner reports, save its `tasks[]` JSON to `feature_dir/tasks.json`, infer
+the edges the prose already states, render the plan's structured sections, and run the
+gates:
 
 ```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/plan-conflicts.sh" edges "$feature_dir/tasks.json"
 bash "${CLAUDE_SKILL_DIR}/../../lib/plan-render.sh" render --tasks "$feature_dir/tasks.json" --plan "$docs/PLAN.md"
 bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir"
 ```
+
+`edges` adds a `blockedBy` for every task whose `interfaces.consumes`, `goal`, or `brief`
+names another task it does not wait on (a live critique spent a round on that omission;
+EXECUTE would have serialized the pair anyway). An edge that would close a cycle is
+refused with exit 1: that is a planner finding, send it back.
 
 `plan-render` owns `## Task DAG` and `## Tasks`: tasks.json is the single source, the
 shape the lint parses is produced rather than checked, and a fix to a task is one edit
@@ -87,9 +94,16 @@ the executable fields; it leaves the two rendered headings empty.
 This is also the exit (step 4); feasibility and coverage run BEFORE the critique. Every
 `FLAG` (format, `lib/acceptance-lint.sh`, unparseable verify command, missing
 criterion, DAG cycle, workspace repo, uncovered decision or `### Good Enough` criterion,
-`grounding-lint.sh"` claim, `doc-deps` uncovered dependency) goes back to `planner-1`
-as a numbered list via `SendMessage`
-(re-parse `tasks[]` from every revision, save it, and re-render). This loop is counted like the critique's:
+`grounding-lint.sh"` claim, `doc-deps` uncovered dependency) is routed first:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/fixlist-route.sh" route - <<<'<FLAG lines as a JSON array>'
+```
+
+`lead` flags (they name a `task-NNN` or a `## Grounding` bullet) you fix yourself in
+`tasks.json` or the Grounding section and re-render; only `author` flags go back to
+`planner-1` as a numbered list via `SendMessage` (re-parse `tasks[]` from every
+revision, save it, and re-render). This loop is counted like the critique's:
 before the first FLAG list, `bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" open
 --feature-dir "$feature_dir" --phase plan --gate plan-feasibility`; per revision,
 `gate.sh round` and `gate.sh fail` with the FLAG lines as `--findings`, then
@@ -120,10 +134,13 @@ revision. `gate.sh next` answering `close` ends the critique with the plan as it
 (residue in `gate-logs/plan-critique-residue.md` only); go to the pruning pass. Emit one `dispatch` event per agent launched and, per round,
 `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" gate_round --phase plan --data '{"gate":"plan-critique","round":N,"mode":"single-critic|delta"}' || true`.
 
-**Pruning pass (advisory, skip under 60 lines):** ONE fresh reviewer with
-`skills/shared/review-prompts/prose-pruning.md`, PLAN.md, and the template only. A cut
-that breaks a gate is reverted. Declined proposals and `out-of-scope:` lines go to
-`.loop-spec/BACKLOG.md`.
+**Pruning pass (advisory):** run only when
+`bash "${CLAUDE_SKILL_DIR}/../../lib/plan-render.sh" prose-lines --plan "$docs/PLAN.md"`
+prints 120 or more; the rendered `## Task DAG` and `## Tasks` are never pruned (they are
+produced from tasks.json) and a plan whose bulk is rendered blocks has nothing for a
+pruner to read. ONE fresh reviewer with `skills/shared/review-prompts/prose-pruning.md`,
+PLAN.md, and the template only. A cut that breaks a gate is reverted. Declined proposals
+and `out-of-scope:` lines go to `.loop-spec/BACKLOG.md`.
 
 ## 4. Exit
 
