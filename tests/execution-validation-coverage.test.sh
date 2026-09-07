@@ -54,7 +54,7 @@ done
 
 # VERIFY is where it runs, and the only place — including resume.
 check_contains "VERIFY runs the comparison" \
-  skills/verify/SKILL.md 'lib/feature-validation.sh" compare'
+  lib/verify-prepare.sh 'feature-validation compare'
 check_not_contains "cycle resume does not run the comparison" \
   skills/cycle/SKILL.md 'feature-validation.sh'
 check_contains "cycle resume names VERIFY as the only suite" \
@@ -64,9 +64,9 @@ check_contains "cycle resume prints remaining task ids" \
 check_contains "EXECUTE seeds mergedSet from done ids" \
   skills/execute/SKILL.md 'task-progress.sh done'
 check_contains "EXECUTE persists mark-done" \
-  skills/execute/SKILL.md 'task-progress.sh mark-done'
+  lib/execute-step.sh 'task-progress mark-done'
 check_contains "subagent protocol persists mark-done" \
-  skills/shared/execute-subagent.md 'task-progress.sh" mark-done'
+  skills/shared/execute-subagent.md 'task-progress.sh mark-done'
 check_contains "inline protocol persists mark-done" \
   skills/shared/execute-rungs.md 'mark-done'
 check_contains "team protocol persists mark-done" \

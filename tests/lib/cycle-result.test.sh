@@ -693,6 +693,37 @@ check "Z: mismatch publishes a terminal result" "escalated:protocol-mismatch:fal
   "$(jq -r '.status + ":" + .outcome + ":" + (.converged | tostring)' "$Z_RESULT")"
 check "Z: mismatch disarms the run" "published" "$(bash "$LIB" state --result-root "$Z" | cut -d' ' -f1)"
 
+# A pointer the writer did not stamp (no schema, no loopSpecVersion) was written by
+# hand and does not account for the run; the wc-json eval run did this after two refusals.
+printf '{"status":"completed","outcome":"delivered"}\n' > "$Z_RESULT"
+Z_FORGED="$(bash "$LIB" state --result-root "$Z")"
+check "Z: a hand-written pointer is unaccounted" "unaccounted" "$(cut -d' ' -f1 <<<"$Z_FORGED")"
+check "Z: the forged pointer reports an age and autonomy" "1" \
+  "$(grep -cE 'ageSeconds=[0-9]+ autonomous=true forged' <<<"$Z_FORGED")"
+
+# --- "interrupted" over an answered NEXT is the lead giving up, and says why ---------
+# Three 6.2.0 haiku leads ended the turn after EXECUTE and recorded interrupted with
+# no reason; the driver had answered NEXT and nothing had stopped the phase.
+Y="$WORK/interrupt"; mkdir -p "$Y/.loop-spec/features/f"
+git -C "$Y" init -q
+git -C "$Y" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
+bash "$LIB" begin --result-root "$Y" --cycle-type full --title "Feature" --slug f \
+  --feature-dir "$Y/.loop-spec/features/f" --phase execute --autonomous true
+jq -n '{schemaVersion:7, slug:"f", feature_title:"Feature", currentPhase:"execute",
+  driverNext:{phase:"execute", at:"2026-09-06T00:00:00Z"}, warnings:[], artifacts:{}}' \
+  > "$Y/.loop-spec/features/f/feature.json"
+rc=0; err="$(bash "$LIB" write-terminal --result-root "$Y" --cycle-type full --status failed \
+  --outcome interrupted --title "Feature" --converged false \
+  --summary "EXECUTE phase complete." 2>&1 >/dev/null)" || rc=$?
+check "Y: interrupted without a reason over an answered NEXT is refused" "3" "$rc"
+check "Y: the refusal names the continuation call" "1" "$(grep -c 'next --feature-dir .* --returned-from execute' <<<"$err")"
+check "Y: nothing was published" "0" "$([[ -f "$Y/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
+bash "$LIB" write-terminal --result-root "$Y" --cycle-type full --status failed \
+  --outcome interrupted --title "Feature" --converged false --reason "runner lost the worktree" \
+  --summary "EXECUTE could not continue." >/dev/null 2>&1
+check "Y: a stated reason publishes interrupted" "failed:interrupted" \
+  "$(jq -r '.status + ":" + .outcome' "$Y/.loop-spec/last-result.json")"
+
 # Mismatch is a declaration about work NOT done, so its preconditions are checked.
 rm -f "$Z_RESULT"
 bash "$LIB" write-terminal --result-root "$Z" --cycle-type micro --status failed \
@@ -932,6 +963,38 @@ LOOP_SPEC_EVENT_SINK="$WORK/sink/sink.sh" bash "$LIB" write "$FEAT_DIR" --status
 check "AE: sink received a result event" "result" "$(tail -1 "$WORK/sink/received.jsonl" | jq -r '.event')"
 check "AE: result event carries the slug" "my-feature" "$(tail -1 "$WORK/sink/received.jsonl" | jq -r '.slug')"
 check "AE: result event data is the terminal result" "completed" "$(tail -1 "$WORK/sink/received.jsonl" | jq -r '.data.status')"
+
+# --- a failure published over an answered NEXT needs a stated reason ------------------
+# A lead that is told NEXT phase=execute and publishes failed/interrupted instead ends a
+# run a supervisor then treats as dead (eval finding 5, fib-cli). The escape hatch is
+# --reason: say what stopped the phase from running.
+NEXT_DIR="$LOOP_DIR/features/next-feature"
+mkdir -p "$NEXT_DIR"
+jq '.slug="next-feature" | .currentPhase="verify" | .driverNext={phase:"execute",at:"2026-01-01T00:00:00Z"}' <<<"$FIXTURE_FJ" > "$NEXT_DIR/feature.json"
+rm -f "$NEXT_DIR/result.json"
+err="$(bash "$LIB" write "$NEXT_DIR" --status failed --summary "gave up" 2>&1 >/dev/null)"
+check "write: refuses an unexplained failure over NEXT phase=execute" "0" "$([[ -f "$NEXT_DIR/result.json" ]] && echo 1 || echo 0)"
+check "write: the refusal names the answered phase" "1" "$(grep -c 'NEXT phase=execute' <<<"$err")"
+bash "$LIB" write "$NEXT_DIR" --status failed --summary "gave up" --reason "runner lost its disk" >/dev/null 2>&1
+check "write: a stated reason publishes the failure" "failed" "$(jq -r '.status' "$NEXT_DIR/result.json" 2>/dev/null)"
+rm -f "$NEXT_DIR/result.json"
+bash "$LIB" write "$NEXT_DIR" --status completed --summary "done" >/dev/null 2>&1
+check "write: completion is never held back by driverNext" "completed" "$(jq -r '.status' "$NEXT_DIR/result.json" 2>/dev/null)"
+
+# --- completed is DELIVER's word ---------------------------------------------------------
+MID_DIR="$LOOP_DIR/features/mid-feature"; mkdir -p "$MID_DIR"
+jq '.slug="mid-feature" | .currentPhase="execute" | del(.delivery) | del(.driverNext) | .prUrl=null' <<<"$FIXTURE_FJ" > "$MID_DIR/feature.json"
+rm -f "$MID_DIR/result.json"
+bash "$LIB" write "$MID_DIR" --status completed --summary "done early" >/dev/null 2>&1
+check "write: completed without DELIVER's sidecar is refused" "0" "$([[ -f "$MID_DIR/result.json" ]] && echo 1 || echo 0)"
+printf '{"schema":1,"status":"ready-for-review","nextPhase":"completed","targets":[]}' > "$MID_DIR/delivery.json"
+bash "$LIB" write "$MID_DIR" --status completed --summary "done" >/dev/null 2>&1
+check "write: completed with DELIVER's sidecar publishes" "completed" "$(jq -r '.status' "$MID_DIR/result.json" 2>/dev/null)"
+ARMED="$WORK/armed"; mkdir -p "$ARMED/.loop-spec"
+printf '{"schema":1,"cycleType":"full","phase":"execute","slug":"s","title":"t","autonomous":true}' > "$ARMED/.loop-spec/active-run.json"
+ec=0; bash "$LIB" write-terminal --result-root "$ARMED" --cycle-type full --status completed --outcome delivered --title t --converged true --summary s >/dev/null 2>&1 || ec=$?
+check "write-terminal: an armed full cycle at execute cannot be declared completed" "3" "$ec"
+check "write-terminal: nothing was published" "0" "$([[ -f "$ARMED/.loop-spec/last-result.json" ]] && echo 1 || echo 0)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

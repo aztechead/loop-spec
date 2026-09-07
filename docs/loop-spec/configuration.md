@@ -245,6 +245,11 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_HUMAN_CODE` | `1` | Injects the house-style directive: match the neighbors' conventions, comments carry why not what, comment density follows the file. It also carries the failure path: no swallowed errors, no silent non-zero exits, and error messages that name what broke. The same switch carries the docs directive: name the document's reader, one job per document, cite rather than copy, and fix a document the change makes false in the same diff. Suppresses the SessionStart injection only; dispatch-rung copies travel in the prompt and are unaffected. |
 | `LOOP_SPEC_MICRO` | `1` | Enables the micro-mode SessionStart directive. |
 | `LOOP_SPEC_MICRO_GUARD` | `1` | Blocks stopping after code edits without a verification run; stands down for active feature cycles and docs/config-only edits. |
+| `LOOP_SPEC_INVOCATION_STAMP` | `1` | The UserPromptSubmit hook stamps the raw arguments of a `/loop-spec:<skill>` prompt to `.loop-spec/invocation-stamp.json`; `cycle-driver.sh start` restores any token the skill's prose rewrite dropped and consumes the stamp. `0` disables. |
+| `LOOP_SPEC_STAMP_MAX_AGE_MIN` | `30` | A stamp older than this is deleted unread, so a stale prompt never binds a later run. |
+| `LOOP_SPEC_FORGERY_GUARD` | `1` | `0` disables `hooks/team/result-forgery-guard.sh`, the PreToolUse Bash hook that denies a shell redirect, `tee`, `cp`, `mv`, `install`, `sed -i`, or Python `open(..., "w")` whose target is a `.loop-spec/` contract file (`last-result.json`, `result.json`, `active-run.json`, `feature.json`, `delivery.json`). Only `lib/cycle-result.sh`, `lib/feature-write.sh`, and `lib/deliver.sh` write those. |
+| `LOOP_SPEC_MICRO_GUARD_MAX_DENIALS` | `3` | Denials per transcript before the micro guard stands down. `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` bounds consecutive blocks only; a model that does unrelated work between stops resets that count, and the eval saw 18 denials drive a run to hand-write its result. |
+| `LOOP_SPEC_MICRO_GUARD_STATE_DIR` | `/tmp/claude-hooks/loop-spec-micro-guard-state` | Where the per-transcript denial count lives. |
 | `LOOP_SPEC_DEFERRAL_GUARD` | `1` | Blocks completion with self-authored omitted/deferred scope. After denial, rewording alone remains blocked; repository work, a later verification action, and `Resolved scope: <item> — <evidence>` are required. |
 | `LOOP_SPEC_DEFERRAL_LINT` | `1` | DELIVER gate for explicit deferred-scope declarations in a PR body (`Deferred scope:`, `Follow-ups:`, etc.). Runtime warnings, negations, template defaults, quoted reports, and ordinary mentions are not scope declarations. `0` is the explicit override for a feature whose subject is deferral detection. |
 | `LOOP_SPEC_DISCIPLINE` | `0` | Enables brainstorm, verification, investigation, decision, and intent gates. |
@@ -259,6 +264,7 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_STRATEGY_ROTATION_THRESHOLD` | `2` | Consecutive failures before strategy rotation. |
 | `LOOP_SPEC_DONE_CRITERIA` | `1` | Injects done-criteria reminders when tasks are created. |
 | `LOOP_SPEC_ROUTE_GUARD` | `1` | Blocks stopping an autonomous session whose routed run never published `.loop-spec/last-result.json`. Stands down for interactive runs and for armed records past the stand-down age. |
+| `LOOP_SPEC_REDO_MAX` | `3` | `cycle-driver.sh next` answers `REDO` with the exit gate's FLAG lines when a returned phase's artifact is not ready; the same flags this many times escalate the run with them as the reason instead of looping. |
 | `LOOP_SPEC_ROUTE_GUARD_MAX_AGE_MIN` | `720` | Minutes after which an armed run is treated as a dead record rather than this session's contract. |
 | `LOOP_SPEC_DEFLECTION_GUARD` | `1` | Blocks premature “out of context” stops below the configured usage threshold. |
 | `LOOP_SPEC_DEFLECTION_THRESHOLD_PCT` | `50` | Percent of context that must be consumed before a context-exhaustion stop is accepted. |
@@ -416,6 +422,8 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_AUTH_ERROR_CODE`, `LOOP_SPEC_AUTH_ERROR_MESSAGE`, `LOOP_SPEC_CREDENTIAL_PREPARED_STAGES` | Mutable credential-library status; do not set. |
 | `LOOP_SPEC_INTEGRATION_CANDIDATE` | Injected candidate commit for prepare/verify integration commands; safe for those commands to read. |
 | `LOOP_SPEC_RESULT` | Machine-output marker printed to stdout, not an input variable. |
+| `LOOP_SPEC_STAMP_INPUT` | The UserPromptSubmit payload, handed from `hooks/team/invocation-stamp.sh` to its Python reader; do not set. |
+| `LOOP_SPEC_GUARD_INPUT` | The PreToolUse payload, handed from `hooks/team/result-forgery-guard.sh` to its Python reader; do not set. |
 | `LOOP_SPEC_PHASE_START`, `LOOP_SPEC_PHASE_END` | Event marker names printed to output, not input variables. |
 | `LOOP_SPEC_ACTIVE_CYCLE_BIN`, `LOOP_SPEC_CYCLE_RESULT_BIN`, `LOOP_SPEC_DEFERRAL_LINT_BIN`, `LOOP_SPEC_FINALIZE_CANDIDATE_BIN`, `LOOP_SPEC_PR_COMMENTS_BIN`, `LOOP_SPEC_PR_DELIVERY_BIN` | Test seams that replace internal executables. Unsupported in production wrappers. |
 | `LOOP_SPEC_FEATURE_DIR` | Hook-scoped feature-directory override used by team hooks/tests. Normal runs discover the active feature. |

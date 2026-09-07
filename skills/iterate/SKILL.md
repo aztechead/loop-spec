@@ -14,34 +14,40 @@ The `iterate` block (`maxIterations`, `used`, `confirmationUsed`, `lastVerdict`,
 entry packet and nothing else:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" iterate --feature-dir "$feature_dir"
-# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin iterate --feature-dir "$feature_dir")"
+# .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 ```
 
 ## 1. Limit gate
 
-`used >= maxIterations`: stop iterating and ship LOUD, never silent.
+```bash
+lim="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" iterate limit --feature-dir "$feature_dir")"
+# .route=judge|confirmation|harvest .used .max
+```
 
-1. **Confirmation pass** (once): if `used > 0` and `confirmationUsed` is not true, set
-   `iterate.confirmationUsed = true` first, then dispatch the judge as in step 2 with
-   `mode=confirmation`. It never increments `used` and never rewinds. `converged` closes
-   the goal with no limit warnings; otherwise its gaps are the fresher ones below.
-2. **Harvest every gap** from the freshest verdict into `warnings[]`, each prefixed
-   `iterate-budget-spent:`, and queue each on the backlog with its deterministic id:
+`judge`: rounds remain, go to step 2. `used >= maxIterations` stops iterating and ships
+LOUD, never silent:
+
+1. **Confirmation pass** (`confirmation`, once): `confirmationUsed` is now set; dispatch
+   the judge as in step 2 with `mode=confirmation` and record it with `--confirmation`.
+   It never increments `used` and never rewinds. `converged` closes the goal with no
+   limit warnings; otherwise its gaps are the fresher ones below.
+2. **Harvest** (`harvest`): one call moves every gap of the freshest verdict into
+   `warnings[]`, each prefixed `iterate-budget-spent:`, and onto the backlog with its
+   deterministic id (`lib/backlog.sh gap-id`, `lib/backlog.sh add {slug} iterate-gap ... --id`):
    ```bash
-   gid="$(bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" gap-id "<gap.fix_first>")"
-   bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "{slug}" iterate-gap "<gap.description> — fix first: <gap.fix_first>" --id "$gid"
+   harvest="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" iterate harvest --feature-dir "$feature_dir")"
+   # .route=deliver .warnings[] .terminal
    ```
    This is the only point where ITERATE writes the backlog. **Terminal rule** (autonomous
-   and `gid == feature.json.backlogEntryId`): two limits on the same gap means the
-   approach is wrong. Record `iterate-terminal:` instead, close the entry with
-   `backlog.sh terminal "$gid" "two iteration limits spent on {slug}; approach wrong"`,
-   and write the evidence trail into ITERATION.md. Record the pattern once:
-   `lib/rules.sh add "iterate limit spent on {slug} with a <type>-level gap: ..." --check "bash lib/criteria-coverage.sh <spec> <plan>"`.
-   No confirmation pass possible: add `iterate-budget-spent: final remediation was never
-   re-judged against the original goal`.
-3. Write the final ITERATION.md section listing the warnings verbatim, run the exit
-   command with `--terminal` (step 4), and return; the graph routes to DELIVER.
+   and `gid == feature.json.backlogEntryId`, reported as `.terminal`): two limits on the
+   same gap means the approach is wrong; the warning is `iterate-terminal:`, the entry is
+   closed with `backlog.sh terminal`, and the pattern is recorded once with
+   `lib/rules.sh add "iterate limit spent on {slug} with a <type>-level gap: ..."`. Write
+   the evidence trail into ITERATION.md. No confirmation pass possible: the warning is
+   `iterate-budget-spent: final remediation was never re-judged against the original goal`.
+3. Write the final ITERATION.md section listing `.warnings[]` verbatim and return; the
+   cycle's `next` closes the phase (`--terminal`) and the graph routes to DELIVER.
 
 ## 2. Judge
 
@@ -50,60 +56,42 @@ subagent_type: "loop-spec:iterate-judge", prompt: ...})` (add `model` only for a
 alias) with: `slug`, `iteration = used + 1`, `original_goal = feature_title`, the
 SPEC.md / PLAN.md / VERIFICATION.md paths, the `feat/{slug}` diff, and
 `prior_feedback = iterate.feedback`. Dispatch, then stop. Never AskUserQuestion as a wait
-(`skills/shared/dispatch.md`). Save its completion message to `$feature_dir/.iterate-judge.out` and extract the
-verdict deterministically:
+(`skills/shared/dispatch.md`). Save its completion message to `$feature_dir/.iterate-judge.out` and record it with
+one call, which extracts the verdict deterministically, writes `iterate.used`,
+`iterate.lastVerdict`, and `iterate.history[]`, emits `iterate_verdict`, runs the
+converged floor, and writes the feedback and remediation tasks a gap needs:
 
 ```bash
-verdict=$(python3 - "$feature_dir/.iterate-judge.out" <<'PY'
-import json, re, sys
-txt = open(sys.argv[1]).read()
-m = re.search(r"```json\s*(\{.*?\})\s*```", txt, re.S) or re.search(r"(\{.*\})", txt, re.S)
-if not m: sys.exit("iterate-judge: no JSON verdict found")
-d = json.loads(m.group(1))
-for k in ("converged", "deterministic_gate_passed", "summary"):
-    if k not in d: sys.exit(f"iterate-judge: verdict missing '{k}'")
-print(json.dumps(d))
-PY
-) || { echo "ITERATE: malformed judge verdict; not shipping. Re-dispatch once, then escalate." >&2; }
+rec="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" iterate record --feature-dir "$feature_dir" \
+  --judge-out "$feature_dir/.iterate-judge.out" [--confirmation])"
+# .verdict .converged .floor[] .route=deliver|execute|plan|spec|harvest .tasks[]
 ```
 
-A malformed verdict is never "converged": re-dispatch once, then escalate. Schema
-(`agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[], weakest,
-gap{type,description,fix_first}, remaining_gaps[], summary}`.
-
-Record it:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$feature_dir" iterate.used "$((used+1))"
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$feature_dir" iterate.lastVerdict "$verdict"
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" append "$feature_dir" iterate.history "$verdict"
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" iterate_verdict --phase iterate \
-  --data "{\"verdict\":\"$(jq -r 'if .converged then "converged" else "not-converged" end' <<<"$verdict")\",\"iteration\":$((used+1)),\"gap\":\"$(jq -r '.gap.type // "none"' <<<"$verdict")\"}" || true
-```
+Exit 1 is a malformed verdict, never "converged": re-dispatch once, then escalate.
+Schema (`agents/iterate-judge.md`): `{converged, deterministic_gate_passed, scores[],
+weakest, gap{type,description,fix_first}, remaining_gaps[], summary}`.
 
 Append one section to `docs/loop-spec/features/{slug}/ITERATION.md` (number,
 converged?, per-criterion scores, weakest point, gap and fix-first, summary).
 
 ## 3. Decide
 
-**Converged:** the deterministic floor runs first and can veto the judge:
+`.route` is the decision; `lib/converged-floor.sh` ran first and can veto the judge.
 
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/converged-floor.sh" "docs/loop-spec/features/{slug}/SPEC.md" "docs/loop-spec/features/{slug}/VERIFICATION.md"
-```
+**Converged** (`deliver`): the floor held (`.floor[]` empty), `iterate.feedback` is
+cleared; return, the cycle's `next` closes the phase with `--terminal` and the graph
+routes to DELIVER. A violated floor (`.floor[]` holds the `FLOOR` lines) was already
+treated as not converged with an `execute`-type gap whose `fix_first` is the first
+FLOOR line: print the lines.
 
-Exit 1: print the `FLOOR` lines and treat the round as not converged with an
-`execute`-type gap whose `fix_first` is the first FLOOR line. Exit 0: clear
-`iterate.feedback`, run the exit command with `--terminal`, return; the graph routes to
-DELIVER.
-
-**Not converged:** write the gap so the re-entered phase fixes the weakest point first
-(`feature-write.sh set "$feature_dir" iterate.feedback "<gap json>"`), then by `gap.type`:
+**Not converged:** `iterate.feedback` holds the gap so the re-entered phase fixes the
+weakest point first; by `.route` (`gap.type`):
 
 - `execute`: one FULL-SHAPE remediation task per implementation gap, including every
   `remaining_gaps[]` entry of type `execute` (`subject: "Iterate fix: <fix_first>"`,
   `verifyCommand` from `commands.test` or the criterion's check, `files` as implicated
-  or `[]`, `acceptanceCriteria: ["<fix_first>"]`), appended to `pendingRemediationTasks[]`.
+  or `[]`, `acceptanceCriteria: ["<fix_first>"]`), is already appended to
+  `pendingRemediationTasks[]` (`.tasks[]`).
 - `plan`: PLAN re-plans the affected slice from `iterate.feedback`.
 - `spec`: the expensive rewind. `auto`/`review-only`/autonomous (ITERATE re-entry; do not block an unattended loop):
   proceed without asking; DISCUSS refines toward the immutable original goal. `step`/`interactive`
@@ -133,10 +121,8 @@ record the gap; `graph/cycle.graph.json` selects the rewind target from it. In
 
 ## 4. Exit
 
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" iterate --feature-dir "$feature_dir" [--terminal]
-```
-
-Commits ITERATION.md (and the backlog) in single-repo mode; `--terminal` (converged or
-limit spent) also closes the phase. A rewind leaves it open for the next pass. Return
-to the cycle; in `step`/`interactive` print the verdict and where the graph routes next.
+Return to the cycle; never run the exit yourself. Its `next --returned-from iterate`
+runs `lib/phase-exit.sh iterate`, which commits ITERATION.md (and the backlog) in
+single-repo mode, with `--terminal` (converged, or the limit spent) when the recorded
+verdict says so, closing the phase. A rewind leaves it open for the next pass. In
+`step`/`interactive` print the verdict and where the graph routes next.

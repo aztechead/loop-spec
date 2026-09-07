@@ -1,0 +1,5 @@
+# Live-run workspaces: fixture clones, logs, checkouts. Never committed.
+.runs/
+__pycache__/
+*.pyc
+results/

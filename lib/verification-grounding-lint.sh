@@ -44,6 +44,14 @@ roots = [os.path.realpath(p) for p in sys.argv[2:separator]]
 expected = sys.argv[separator + 1:]
 spec = os.environ.get('LOOP_SPEC_GROUNDING_SPEC', '')
 
+# The grammar travels with the flag: the 6.2.0 haiku readme-sync run wrote "- none" and
+# a table under the heading three times, and "malformed grounding row" gave it nothing
+# to change.
+ROW_HELP = ('expected one row per Good Enough criterion, exactly `- criterion: GE-001 | '
+            'implementation: <repo-relative-file>:<line> - <what it proves> | integration: '
+            '<repo-relative-file>:<line> - <what it proves>` (or `integration: none - <reason '
+            'of ten or more characters>`); no table, no bare `- none`')
+
 def fail(line, message):
     print('FLAG %s:%s: %s' % (artifact, line, message))
     raise SystemExit(1)
@@ -134,7 +142,7 @@ def validate_ref(value, line, label):
 for line_number, line in section:
     match = row_re.match(line)
     if not match:
-        fail(line_number, 'malformed grounding row')
+        fail(line_number, 'malformed grounding row; ' + ROW_HELP)
     criterion, implementation, integration = [part.strip() for part in match.groups()]
     if criterion in rows:
         fail(line_number, 'duplicate grounding row for criterion %s' % criterion)
@@ -144,7 +152,7 @@ for line_number, line in section:
     rows[criterion] = line_number
 
 if not rows:
-    fail(start + 1, 'repository grounding section has no evidence rows')
+    fail(start + 1, 'repository grounding section has no evidence rows; ' + ROW_HELP)
 for criterion in expected:
     if criterion not in rows:
         fail(start + 1, 'missing grounding row for criterion %s' % criterion)

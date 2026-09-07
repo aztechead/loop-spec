@@ -30,14 +30,20 @@ classify your way into: tokens, file paths, and `backlog` are grammar, not prose
 an invocation carrying no prose passes through unchanged.
 
 ```bash
-st="$(bash "$DRV" start -- "$ARGUMENTS")"
+st="$(bash "$DRV" begin -- "$ARGUMENTS")"
 ```
 
-Print each line of `.notices[]` and `.warnings[]`, nothing else. Exit 3 is an abort
-whose message is already on stderr: relay it and stop. Then resolve `.decisions[]`,
-in order, with ONE `AskUserQuestion` per entry (`question`, `options`; `title` is free
-text; the driver has already self-answered everything when the run is autonomous or
-non-interactive, so the list is usually empty):
+`begin` is `start` followed by `init` or `resume` whenever no human decision is
+pending, which is every autonomous and non-interactive run. Print each line of
+`.notices[]` and `.warnings[]`, nothing else. Exit 3 is an abort whose message is
+already on stderr: relay it and stop. Read `.action`:
+
+- `init` or `resume`: the feature is ready. `.featureDir` is the feature directory for
+  the rest of the run; call `EnterWorktree({path: .enterWorktree})` when non-null; print
+  `Launching: style=<style> title="<title>".` (or the resume lines from step 3); go to
+  step 4.
+- `decisions`: resolve `.decisions[]`, in order, with ONE `AskUserQuestion` per entry
+  (`question`, `options`; `title` is free text), then run step 2 or step 3 yourself:
 
 | id | On the answer |
 |---|---|
@@ -109,6 +115,10 @@ Act on the first line of `ans`:
   returns, call `next --returned-from <p>` again. `effort=system1` means keep the phase
   direct; `system2` means state assumptions and check their evidence first.
   Never AskUserQuestion as a wait while a phase agent or the DELIVER controller runs.
+- `REDO phase=<p> flags=<n>` followed by `FLAG ...` lines — `next` ran the phase's exit
+  gates (`lib/phase-exit.sh`) and the artifact is not ready. Invoke `Skill(loop-spec:<p>)`
+  again with the FLAG lines; the phase fixes its artifact in place and returns; then call
+  `next --returned-from <p>` again. Phase skills never run the exit themselves.
 - `PAUSED node=...` — a human gate (`style:step|interactive`). Print
   `loop-spec: paused at <node>; re-invoke /loop-spec:cycle to continue.` and, for a
   Claude worktree feature, `ExitWorktree({action:"keep"})`. Stop.

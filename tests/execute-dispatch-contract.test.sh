@@ -32,7 +32,7 @@ count_ge() {
 }
 
 expect "subagent writes briefs via dispatch-files" \
-  skills/shared/execute-subagent.md 'dispatch-files.sh" brief'
+  lib/execute-step.sh 'dispatch-files brief'
 expect "subagent reviewer uses package path" \
   skills/shared/execute-subagent.md 'dispatch-files.sh package'
 expect "subagent review JSON has unverified" \
@@ -59,11 +59,11 @@ count_ge "both implementer prompts insert the shared stanza" \
 expect "execute SKILL reads executeMaxRetriesPerTask from the overlay" \
   skills/execute/SKILL.md 'get executeMaxRetriesPerTask 6'
 expect "execute SKILL emits conflict table" \
-  skills/execute/SKILL.md 'plan-conflicts.sh" table'
+  lib/execute-prepare.sh 'plan-conflicts table'
 expect "execute SKILL classifies stop vs ruling" \
   skills/execute/SKILL.md 'execute-stop.sh classify'
 expect "execute SKILL collapses batch groups" \
-  skills/execute/SKILL.md 'task-batch.sh" collapse'
+  lib/execute-prepare.sh 'task-batch collapse'
 expect "execute workflow path passes the overlay retry cap" \
   skills/shared/execute-rungs.md 'maxRetriesPerTask, reviewersEnabled: true'
 expect "tier-matrix retries is 6" \

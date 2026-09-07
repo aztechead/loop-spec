@@ -64,6 +64,36 @@ check "G: main thread Write to src/foo.py ALLOW" 0 \
 check "H: Bash tool not restricted ALLOW" 0 \
   "$(payload "Bash" "src/foo.py" "$FIXTURES/spec-writer.jsonl")"
 
+# Cases P: the installed plugin tree is never a write target, for any caller; a
+# worktree under the project and a plugin root inside the project stay unaffected.
+PLUG="$(mktemp -d)"; PROJ="$(mktemp -d)"; mkdir -p "$PLUG/lib" "$PROJ/.claude/worktrees/feat/lib"
+export CLAUDE_PLUGIN_ROOT="$PLUG" CLAUDE_PROJECT_DIR="$PROJ"
+check "P1: main thread Edit inside the installed plugin DENY" 2 \
+  "$(payload "Edit" "$PLUG/lib/runtime-ignore.sh" "$FIXTURES/main-thread.jsonl")"
+check "P2: implementer Write inside the installed plugin DENY" 2 \
+  "$(payload "Write" "$PLUG/lib/new.sh" "$FIXTURES/implementer.jsonl")"
+check "P3: main thread Edit in the project's feature worktree ALLOW" 0 \
+  "$(payload "Edit" "$PROJ/.claude/worktrees/feat/lib/x.sh" "$FIXTURES/main-thread.jsonl")"
+check "P4: relative project path ALLOW" 0 \
+  "$(payload "Write" "lib/x.sh" "$FIXTURES/main-thread.jsonl")"
+export CLAUDE_PLUGIN_ROOT="$PROJ/.claude/worktrees/feat"
+check "P5: a plugin root inside the project is not guarded (self-development) ALLOW" 0 \
+  "$(payload "Edit" "$PROJ/.claude/worktrees/feat/lib/x.sh" "$FIXTURES/main-thread.jsonl")"
+unset CLAUDE_PLUGIN_ROOT CLAUDE_PROJECT_DIR; rm -rf "$PLUG" "$PROJ"
+
+# Cases R: the contract files only the bundled writers may publish are never Write or
+# Edit targets, for any caller; reading and other .loop-spec files stay free.
+check "R1: main thread Write to .loop-spec/last-result.json DENY" 2 \
+  "$(payload "Write" ".loop-spec/last-result.json" "$FIXTURES/main-thread.jsonl")"
+check "R2: implementer Edit to an absolute feature.json DENY" 2 \
+  "$(payload "Edit" "/abs/proj/.loop-spec/features/x/feature.json" "$FIXTURES/implementer.jsonl")"
+check "R3: main thread Write to .loop-spec/features/x/delivery.json DENY" 2 \
+  "$(payload "Write" ".loop-spec/features/x/delivery.json" "$FIXTURES/main-thread.jsonl")"
+check "R4: main thread Write to .loop-spec/profile.json ALLOW" 0 \
+  "$(payload "Write" ".loop-spec/profile.json" "$FIXTURES/main-thread.jsonl")"
+check "R5: a feature.json outside .loop-spec is not a contract file ALLOW" 0 \
+  "$(payload "Write" "src/feature.json" "$FIXTURES/main-thread.jsonl")"
+
 # Case I: spec-writer with absolute path to allowed location -> ALLOW (exit 0)
 check "I: spec-writer Write to /abs/path/docs/loop-spec/features/bar/SPEC.md ALLOW" 0 \
   "$(payload "Write" "/abs/path/docs/loop-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"

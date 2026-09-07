@@ -233,8 +233,19 @@ case "${1:-}" in
     fi
     active_path="$result_root_abs/.loop-spec/active-run.json"
     if [[ ! -f "$active_path" ]]; then
-      if [[ -f "$result_root_abs/.loop-spec/last-result.json" ]]; then
-        echo "published terminal result present at $result_root_abs/.loop-spec/last-result.json"
+      pointer="$result_root_abs/.loop-spec/last-result.json"
+      if [[ -f "$pointer" ]]; then
+        # Only write/write-terminal stamp schema and loopSpecVersion. A pointer without
+        # them was written by hand (the wc-json eval run, after two refusals) and must
+        # not disarm the stop guard; its age is the file's, so the stand-down still ends.
+        if jq -e '(.schema // "") != "" and (.loopSpecVersion // "") != ""' "$pointer" >/dev/null 2>&1; then
+          echo "published terminal result present at $pointer"
+        else
+          pointer_age=$(( $(date -u +%s) - $(stat -c %Y "$pointer" 2>/dev/null || stat -f %m "$pointer" 2>/dev/null || date -u +%s) ))
+          (( pointer_age < 0 )) && pointer_age=0
+          printf 'unaccounted ageSeconds=%s autonomous=true forged terminal result at %s lacks schema/loopSpecVersion; only cycle-result.sh may publish it\n' \
+            "$pointer_age" "$pointer"
+        fi
       else
         echo "idle no armed run and no terminal result at $result_root_abs"
       fi
@@ -400,6 +411,24 @@ PY
           exit $?
         fi
         echo "cycle-result.sh: --outcome delivered requires a readable feature.json (active-run.featureDir, --slug, or last-result.json slug); completed full cycles use 'cycle-result.sh write <feature_dir> --status completed --summary <text>'" >&2
+        exit 3
+      fi
+    fi
+    if [[ "$status" == "completed" && -f "$result_root/.loop-spec/active-run.json" ]] \
+       && jq -e '(.cycleType // "") == "full" and ((.phase // "") | IN("deliver", "completed") | not)' "$result_root/.loop-spec/active-run.json" >/dev/null 2>&1; then
+      echo "cycle-result.sh: a full cycle is armed at phase $(jq -r '.phase' "$result_root/.loop-spec/active-run.json"); write-terminal cannot declare it completed. Return to the cycle, or publish failed/escalated with --reason" >&2
+      exit 3
+    fi
+    # "interrupted" over a phase the driver answered NEXT for is the lead ending its
+    # turn, not the run dying: three 6.2.0 haiku leads did it after EXECUTE when the
+    # stop guard listed it as an option. Continuing is one driver call; giving up
+    # needs a reason.
+    if [[ "$outcome" == "interrupted" && -n "$result_root" && -f "$result_root/.loop-spec/active-run.json" ]] \
+       && ! _is_nonblank "$reason"; then
+      feat_dir="$(_resolve_full_feature_dir "$(_resolve_result_root "$result_root" 2>/dev/null || echo "$result_root")" "$slug" 2>/dev/null || true)"
+      next_phase="$(jq -r '.driverNext.phase // empty' "$feat_dir/feature.json" 2>/dev/null || true)"
+      if [[ -n "$next_phase" ]]; then
+        echo "cycle-result.sh: the driver answered NEXT phase=$next_phase for $feat_dir and nothing says that phase cannot continue; write-terminal will not record 'interrupted' without --reason. Continue the cycle instead: bash lib/cycle-driver.sh next --feature-dir $feat_dir --returned-from $next_phase --note '<what the phase produced>' and act on its answer. Only a run that cannot continue publishes --status failed --outcome interrupted --reason '<what stopped it>'" >&2
         exit 3
       fi
     fi
@@ -659,6 +688,29 @@ PY
       echo "cycle-result.sh: feature.json not found in $feature_dir" >&2
       exit 0
     fi
+    # The driver answered NEXT and the lead is publishing a failure instead of invoking
+    # the phase: a supervisor reads that as a dead run. Not refused outright, because a
+    # phase can genuinely die; refused without a reason, because "interrupted" with no
+    # cause is the eval's fib-cli run, not a result anyone can act on.
+    # A full cycle completes through cycle-driver.sh finish, after DELIVER wrote its
+    # sidecar. A lead that publishes completed from EXECUTE (the 6.2.0 smoke run) is the
+    # false success a supervisor cannot tell from a delivered one.
+    if [[ "$status" == "completed" && -z "$no_change_reason" && -z "$pr_url" ]] \
+       && jq -e '(.currentPhase // "") | IN("deliver", "completed") | not' "$fj" >/dev/null 2>&1 \
+       && ! jq -e '(.nextPhase // "") == "completed"' "$feature_dir/delivery.json" >/dev/null 2>&1 \
+       && ! jq -e '((.delivery.status // "") | IN("ready-for-review", "delivered-draft", "pushed-no-pr")) or ((.prUrl // "") != "")' "$fj" >/dev/null 2>&1; then
+      echo "cycle-result.sh: --status completed at currentPhase=$(jq -r '.currentPhase // "?"' "$fj") with no delivery record and no PR: DELIVER has not run. Return to the cycle, or publish the honest status with --reason" >&2
+      exit 0
+    fi
+    answered_next="$(jq -r '.driverNext.phase // empty' "$fj" 2>/dev/null || true)"
+    if [[ -n "$answered_next" && -z "$reason" ]]; then
+      case "$status" in
+        failed|terminal|escalated)
+          echo "cycle-result.sh: the driver answered NEXT phase=$answered_next; invoke that phase, or pass --reason <what stopped it> to publish --status $status" >&2
+          exit 0
+          ;;
+      esac
+    fi
 
     fj_content="$(cat "$fj" 2>/dev/null)" || {
       echo "cycle-result.sh: cannot read $fj" >&2
@@ -687,7 +739,8 @@ PY
           . != null and (
             (.nextPhase // "") == "completed" or
             (.status // "") == "ready-for-review" or
-            (.status // "") == "delivered-draft")
+            (.status // "") == "delivered-draft" or
+            (.status // "") == "pushed-no-pr")
         ' >/dev/null 2>&1 <<<"$delivery_content"; then
         summary="Cycle completed; PR delivered."
       else
@@ -796,7 +849,7 @@ PY
            else $status end) as $effectiveStatus |
          ($reachedDelivery and (($localDeliveryEscalation | not) or $intentionalNoChange))
             as $implementationConverged |
-         (if ($fj.workspace // null) == null
+         (if ($fj.workspace == null or ($fj.workspace.mode // "") == "single")
           then ($eligibleTargets | first // null)
           else null end) as $primaryTarget |
         (($effectiveStatus == "completed") and
@@ -811,6 +864,7 @@ PY
          or (($delivery.targets // [])
              | map(select(.outcome == "delivered-draft" and ((.prUrl // "") != "")))
              | length) > 0) as $draftRecord |
+        (($effectiveStatus == "completed") and (($delivery.status // "") == "pushed-no-pr")) as $pushedNoPr |
         (($effectiveStatus == "completed")
          and ($feedbackBlocking | not)
          and ($warnings
@@ -833,11 +887,11 @@ PY
          cycleType: "full",
          slug: $fj.slug,
           status: $effectiveStatus,
-          outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $draftDelivered then "delivered-draft" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
+          outcome: (if $intentionalNoChange then "no-change-needed" elif $deliveryBlocked then "delivery-blocked" elif $converged then "delivered" elif $draftDelivered then "delivered-draft" elif $pushedNoPr then "pushed-no-pr" elif $effectiveStatus == "completed" then "completed-with-gaps" else $effectiveStatus end),
           reason: $reason,
           summary: $summary_arg,
           noChangeReason: (if $intentionalNoChange then $no_change_reason_arg else null end),
-          phaseReached: (if $effectiveStatus == "completed" and ((($delivery.status // "") == "ready-for-review") or (($delivery.status // "") == "delivered-draft") or $intentionalNoChange)
+          phaseReached: (if $effectiveStatus == "completed" and ((($delivery.status // "") == "ready-for-review") or (($delivery.status // "") == "delivered-draft") or (($delivery.status // "") == "pushed-no-pr") or $intentionalNoChange)
                          then "completed" else ($fj.currentPhase // null) end),
          branch: (if $primaryTarget != null then ($primaryTarget.branch // $fj.branch // null)
                   else ($fj.branch // null) end),

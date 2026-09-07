@@ -24,8 +24,10 @@
 #   implementer, verifier            -> unrestricted
 #   main thread (no open Agent dispatch) -> unrestricted
 #   all other subagent_types         -> unrestricted
+#   any caller                       -> never .loop-spec/**/{last-result,result,active-run,
+#                                       feature,delivery}.json, never the installed plugin
 #
-# Fast path: when the project has no .loop-spec/features state (no cycle has
+# Fast path: when the project has no .loop-spec/ state (no cycle has
 # ever run here), exit 0 before parsing anything — this hook must not tax every
 # Write/Edit in unrelated projects. LOOP_SPEC_PATH_GUARD_FORCE=1 bypasses the
 # fast path (used by tests).
@@ -43,7 +45,7 @@ fi
 
 # Fast path: no loop-spec state in this project -> nothing to restrict.
 if [[ "${LOOP_SPEC_PATH_GUARD_FORCE:-0}" != "1" ]]; then
-  if [[ ! -d "$PWD/.loop-spec/features" && ! -d "${CLAUDE_PROJECT_DIR:-/nonexistent}/.loop-spec/features" ]]; then
+  if [[ ! -d "$PWD/.loop-spec" && ! -d "${CLAUDE_PROJECT_DIR:-/nonexistent}/.loop-spec" ]]; then
     exit 0
   fi
 fi
@@ -73,6 +75,43 @@ TRANSCRIPT_PATH=$(printf '%s' "$PARSED" | sed -n '3p')
 # Only restrict Write and Edit tool calls
 if [[ "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" ]]; then
   exit 0
+fi
+
+# The files lib/cycle-result.sh, lib/feature-write.sh, and lib/deliver.sh own are never
+# Write or Edit targets, whoever the caller is: a haiku eval run whose result the writer
+# refused twice wrote .loop-spec/last-result.json by hand and a supervisor read a run
+# that never reached DELIVER as completed (evals/findings-2026-09-06.md).
+# hooks/team/result-forgery-guard.sh covers the same files from the shell.
+case "$FILE_PATH" in
+  .loop-spec/*|*/.loop-spec/*)
+    case "$(basename "$FILE_PATH")" in
+      last-result.json|result.json|active-run.json|feature.json|delivery.json)
+        echo "DENY: $TOOL_NAME targets $FILE_PATH, a loop-spec contract file that only lib/cycle-result.sh, lib/feature-write.sh, or lib/deliver.sh may write. A result those writers refuse is a run that has not earned it: return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+esac
+
+# The installed plugin is never a write target, whoever the caller is: a sonnet eval
+# run patched lib/runtime-ignore.sh in the plugin checkout to get past a gate
+# (evals/findings-2026-09-06.md, finding 1). Paths resolve by real location, so a
+# feature worktree under the project stays writable, and the rule is off when the
+# plugin root is the project or inside it (loop-spec developing itself).
+plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -n "$plugin_root" && -d "$plugin_root" ]]; then
+  plugin_real="$(cd "$plugin_root" && pwd -P)"
+  project_real="$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null && pwd -P)" || project_real="$PWD"
+  if [[ "$plugin_real" != "$project_real" && "$plugin_real" != "$project_real"/* ]]; then
+    target="$FILE_PATH"
+    [[ "$target" == /* ]] || target="$project_real/$target"
+    target_dir="$(cd "$(dirname "$target")" 2>/dev/null && pwd -P)" || target_dir="$(dirname "$target")"
+    target_real="$target_dir/$(basename "$target")"
+    if [[ "$target_real" == "$plugin_real" || "$target_real" == "$plugin_real"/* ]]; then
+      echo "DENY: $TOOL_NAME targets the installed loop-spec plugin ($plugin_real), which no cycle may edit (attempted: $FILE_PATH). A gate that blocks you is a finding to report, not a file to patch. (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+      exit 2
+    fi
+  fi
 fi
 
 # Parse transcript to find the caller subagent_type: the most recent Agent

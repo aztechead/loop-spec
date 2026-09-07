@@ -55,6 +55,10 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/no-worktrees-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/result-forgery-guard.sh"
           }
         ]
       },
@@ -109,6 +113,10 @@
     "UserPromptSubmit": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/invocation-stamp.sh"
+          },
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/team/done-criteria.sh"

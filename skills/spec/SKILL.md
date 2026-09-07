@@ -13,14 +13,14 @@ ambiguity dimensions, and close the phase with one command. `feature_dir` is
 Your inputs are the entry packet and nothing else; a FLAG is a prior phase's failure, relay it:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" spec --feature-dir "$feature_dir"
-# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
+pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin spec --feature-dir "$feature_dir")"
+# .entry.fields (the feature.json keys this phase consumes)  .entry.read[] (each file to read)
+# .entry.flags[] (a missing ingress; relay and return)  .mode.path=ingest|self-answer|synthesize|interview
+# .mode.oracle=supervisor|self  .mode.reason  .mode.greenfield=true|false
 ```
 
-```bash
-mode="$(bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" spec --feature-dir "$feature_dir")"
-# path=ingest|self-answer|synthesize|interview reason=... greenfield=true|false
-```
+`path` below is `.mode.path`; the `phase-entry.sh` and `phase-mode.sh` lines it folds
+are the same probes, read once.
 
 ## Ambiguity model
 
@@ -157,18 +157,15 @@ disposition in the transcript.
 
 ## 4. Exit
 
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" spec --feature-dir "$feature_dir"
-```
-
-A `FLAG` means SPEC.md drifted from the template: fix it in place and run the command
-again until it prints `phase-exit: ok (spec)`. It records the artifact pointers,
-commits SPEC.md, and closes the phase. Return to the cycle; never invoke a successor
-phase. In `step`/`interactive` styles say
+Return to the cycle; never invoke a successor phase and never run the exit yourself.
+The cycle's `next --returned-from spec` runs `lib/phase-exit.sh spec`: it records the
+artifact pointers, commits SPEC.md, and closes the phase, or answers `REDO` with the
+`FLAG` lines when SPEC.md drifted from the template, in which case you are invoked again
+to fix it in place and return. In `step`/`interactive` styles say
 `SPEC complete. SPEC.md at docs/loop-spec/features/{slug}/SPEC.md.`
 
 ## Resume
 
-`artifacts.spec` set: SPEC.md exists, run step 4. Otherwise read the transcript, restore
+`artifacts.spec` set: SPEC.md exists, return (step 4). Otherwise read the transcript, restore
 the prior round scores, and continue from the next round; never re-ask answered
 questions.

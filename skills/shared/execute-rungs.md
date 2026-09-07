@@ -29,9 +29,11 @@ branch), per-task model pins ignored. Loop until `remaining` is empty:
 
 1. `remaining = tasks - mergedSet - blocked`; `ready` = those whose `blockedBy` are all
    merged. Empty `ready` with non-empty `remaining` → `escalation.reason = "deadlock"`.
-2. Take `ready[0]` in DAG order; require a clean `git status` (drift from the previous
-   task dissolves attribution); emit
-   `bash lib/events.sh emit "$fdir" task_start --phase execute --data '{"index":N,"total":T,"id":"task-NNN","subject":"..."}' || true`.
+2. Take `ready[0]` in DAG order; `bash lib/cycle-driver.sh task dispatch --feature-dir
+   "$fdir" --task task-NNN` requires a clean `git status` (drift from the previous task
+   dissolves attribution; `dispatchable: false` names the dirt) and emits
+   `task_start` (`lib/events.sh emit ... task_start --phase execute --data
+   '{"index":N,"total":T,"id":"task-NNN","subject":"..."}'`).
 3. Implement under `agents/implementer.md` and the design gate in
    `implementer-contract.md` (can I make it more modular? more extensible? is this the
    least code that makes it happen? does this hold at production scale?) plus
@@ -39,16 +41,20 @@ branch), per-task model pins ignored. Loop until `remaining` is empty:
    versions from a tool never from recall, scaling input named first): read
    `readFirst`, TDD (failing test first for every code-producing task; skill, config, and
    docs tasks excluded), touch only `files`.
-4. Run `lib/prepare-environment.sh run` with `commands.prepare`, then
-   `bash lib/output-digest.sh run --log ".loop-spec/features/{slug}/logs/verify-{taskId}.log" --label "verify {taskId}" -- {verifyCommand}`
-   (exits with the command's code; up to `maxRetriesPerTask` in-place fixes).
-5. Commit on `feat/{slug}` with the task id in the message; nothing staged →
-   `blocked += {taskId, reason: "commit-missing"}`.
-6. Review inline against `acceptanceCriteria` with the reviewer brief's verdicts:
-   `pass` → `mergedSet`, `mark-done`, log the verdict; `rework` with attempts left →
-   revert, fix, repeat 4-6; exhausted → `retry-exhausted` (revert the task's commits);
-   `block` → `spec-compliance-block` (revert likewise).
-7. Emit `task_end --phase execute` (same shape, plus `"result":"merged|failed|skipped"`) on every outcome.
+4. Run `lib/prepare-environment.sh run` with `commands.prepare`, then review inline
+   against `acceptanceCriteria` with the reviewer brief's verdicts before publishing.
+5. On `pass`, `bash lib/cycle-driver.sh task integrate --feature-dir "$fdir" --task
+   task-NNN` runs `bash lib/output-digest.sh run --log
+   ".loop-spec/features/{slug}/logs/verify-{taskId}.log" --label "verify {taskId}" --
+   {verifyCommand}` (exits with the command's code; up to `maxRetriesPerTask` in-place
+   fixes before you call it), commits exactly `task.files` on `feat/{slug}` with the
+   task id in the message, persists `mark-done`, and emits `task_end`; nothing staged
+   → `.blocked == "commit-missing"`, `blocked += {taskId, reason: "commit-missing"}`.
+6. `rework` with attempts left → revert, fix, repeat 4-5; exhausted → `retry-exhausted`
+   (revert the task's commits); `block` → `spec-compliance-block` (revert likewise).
+7. `task integrate` emits `task_end --phase execute` (same shape, plus
+   `"result":"merged|failed|skipped"`) on every outcome it decides; emit it yourself for
+   a task you blocked before integrating.
 
 ## Agent team (explicit or implicit teams)
 

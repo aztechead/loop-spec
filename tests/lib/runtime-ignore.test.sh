@@ -64,6 +64,15 @@ for path in \
     "$(git -C "$WORK" check-ignore -q "$path" && echo ignored || echo not-ignored)"
 done
 
+# The profile is written untracked by a supervisor (docs/loop-spec/supervisor-interface.md);
+# left unignored it made cycle-driver init refuse every fresh checkout as dirty.
+touch "$WORK/.loop-spec/profile.json"
+check ".loop-spec/profile.json ignored" "ignored" \
+  "$(git -C "$WORK" check-ignore -q .loop-spec/profile.json && echo ignored || echo not-ignored)"
+touch "$WORK/.loop-spec/invocation-stamp.json"
+check ".loop-spec/invocation-stamp.json ignored" "ignored" \
+  "$(git -C "$WORK" check-ignore -q .loop-spec/invocation-stamp.json && echo ignored || echo not-ignored)"
+
 # /revise must reuse feature-shaped runtime state without allowing it to enter a
 # remediation commit, even in repositories that historically tracked it.
 git -C "$WORK" add .loop-spec/features/demo/feature.json .loop-spec/features/demo/PROGRESS.md

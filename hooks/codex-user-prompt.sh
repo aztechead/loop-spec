@@ -24,4 +24,5 @@ print(d.get("cwd") or "")
 ' 2>/dev/null || true)"
 export CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-${cwd:-$PWD}}"
 
+printf '%s' "$input" | bash "$PLUGIN_ROOT/hooks/team/invocation-stamp.sh" || true
 printf '%s' "$input" | bash "$PLUGIN_ROOT/hooks/team/done-criteria.sh"

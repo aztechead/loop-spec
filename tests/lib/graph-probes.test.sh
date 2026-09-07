@@ -381,6 +381,15 @@ git -C "$REPO" commit -qm "remove the auth file again"
 check_output "plan-critique resolves signal=none when the only change is a deletion" "signal=none reason=" "$PLAN_CRITIQUE" --feature-dir "$FDIR"
 
 # Cannot determine the change set -> unresolved, never signal=none.
+# lib/workspace.sh detect reports {root, mode:"single", repos:[]} for an ordinary
+# repository; the probe once read any root as multi-repo mode and died on the empty list,
+# which left plan.critique.gate with no satisfied route.
+printf '{"workspace":{"root":"%s","mode":"single","repos":[]},"baseSha":"%s"}' "$REPO" "$BASE_SHA" > "$FDIR/feature.json"
+check_output "plan-critique treats a single-mode workspace record as single-repo" "signal=" "$PLAN_CRITIQUE" --feature-dir "$FDIR"
+printf '{"workspace":{"root":"%s","mode":"workspace","repos":[]},"baseSha":"%s"}' "$REPO" "$BASE_SHA" > "$FDIR/feature.json"
+check "plan-critique is unresolved on a workspace with no repos" 1 "$PLAN_CRITIQUE" --feature-dir "$FDIR"
+check_output "plan-critique says why it is unresolved" "no repos" "$PLAN_CRITIQUE" --feature-dir "$FDIR"
+
 printf '{"workspace":null,"baseSha":""}' > "$FDIR/feature.json"
 check "plan-critique is unresolved when baseSha is missing" 1 "$PLAN_CRITIQUE" --feature-dir "$FDIR"
 check_silent "plan-critique prints nothing when baseSha is missing" "$PLAN_CRITIQUE" --feature-dir "$FDIR"

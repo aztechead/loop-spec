@@ -65,19 +65,21 @@ fget() { jq -r "$1" "$fj"; }
 fset() { lib feature-write set "$feature_dir" "$1" "$2" >/dev/null; }
 
 slug="$(fget '.slug')"
-ws_root="$(fget '.workspace.root // ""')"
+ws_root="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; fi
 cd "$root"
 docs="docs/loop-spec/features/$slug"
 flags=0
 flag() { echo "FLAG $*"; flags=$((flags + 1)); }
 # run_gate LABEL CMD...: relay the gate's own FLAG/output lines, count a failure once.
+# Indented lines are the gate's detail (decision-coverage lists each uncovered entry under
+# its heading); dropping them left the lead a bare "Uncovered decisions:" to act on.
 run_gate() {
   local label="$1"; shift
   local out rc=0
   out="$("$@" 2>&1)" || rc=$?
   if (( rc != 0 )); then
-    printf '%s\n' "$out" | grep -E '^(FLAG|FLOOR)|^[^ ]' | sed "s/^/FLAG [$label] /" | grep -v 'phase-exit' || true
+    printf '%s\n' "$out" | grep -E '^(FLAG|FLOOR)|^[^ ]|^ +- ' | sed "s/^/FLAG [$label] /" | grep -v 'phase-exit' || true
     flags=$((flags + 1))
   fi
 }
@@ -236,7 +238,7 @@ case "$phase" in
     tasks="$(fget '.artifacts.tasks // ""')"
     if [[ -n "$tasks" && -f "$tasks" ]]; then
       remaining="$(lib task-progress remaining "$tasks" | paste -sd, -)"
-      [[ -z "$remaining" ]] || flag "[plan-adherence] tasks not published: $remaining (re-queue them or mark-done what already landed)"
+      [[ -z "$remaining" ]] || flag "[plan-adherence] tasks not published: $remaining (dispatch them again, or for a task whose commit is already on the feature branch run: bash lib/cycle-driver.sh task integrate --feature-dir $feature_dir --task <id>, or bash lib/task-progress.sh mark-done $(fget '.artifacts.tasks // "tasks.json"') <id>)"
     else
       flag "[plan-adherence] artifacts.tasks sidecar missing; cannot prove every PLAN task landed"
     fi

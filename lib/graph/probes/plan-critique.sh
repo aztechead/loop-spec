@@ -65,10 +65,13 @@ changed_files() {
 }
 
 files=()
+# lib/workspace.sh detect records {root, mode:"single", repos:[]} for an ordinary
+# repository too, so the mode, not the presence of a root, says which branch applies.
+workspace_mode="$(jq -r '.workspace.mode // empty' "$feature_json" 2>/dev/null)" || exit 1
 workspace_root="$(jq -r '.workspace.root // empty' "$feature_json" 2>/dev/null)" || exit 1
-if [[ -n "$workspace_root" ]]; then
+if [[ -n "$workspace_root" && "$workspace_mode" != "single" ]]; then
   repo_entries="$(jq -c '.workspace.repos[]?' "$feature_json" 2>/dev/null)" || exit 1
-  [[ -n "$repo_entries" ]] || exit 1
+  [[ -n "$repo_entries" ]] || { echo "plan-critique: workspace mode with no repos in $feature_json" >&2; exit 1; }
   while IFS= read -r repo_entry; do
     [[ -n "$repo_entry" ]] || continue
     rel_path="$(jq -r '.path' <<<"$repo_entry")"

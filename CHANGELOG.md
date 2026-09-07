@@ -4,6 +4,107 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.2.0] - 2026-09-06
+
+### Changed
+
+- The per-phase bookkeeping the phase skills asked the lead to run one script at a
+  time is folded into `lib/cycle-driver.sh` (eval finding 7: a two-line fix cost 186
+  lead tool calls, 156 of them Bash). `begin` is start plus init or resume when no human
+  decision is pending; `phase-begin <phase>` is the entry packet, the mode line, and for
+  EXECUTE and VERIFY the whole pre-dispatch or pre-team work (`lib/execute-prepare.sh`,
+  `lib/verify-prepare.sh`); `task dispatch|package|verdict|integrate`
+  (`lib/execute-step.sh`) is one call per EXECUTE task step; `verify gate` and
+  `verify passes` (`lib/verify-gate.sh`, `lib/verify-passes.sh`) apply the verdicts and
+  run the advisory passes; `iterate limit|record|harvest` (`lib/iterate-judged.sh`)
+  wraps the judge; `deliver` is the whole DELIVER phase. `next --returned-from <phase>`
+  runs `lib/phase-exit.sh` itself and answers `REDO phase=<p> flags=<n>` with the FLAG
+  lines when the artifact is not ready; phase skills no longer run the exit. Every phase
+  skill and the execute contracts now name these calls; the coverage pins moved to the
+  scripts that carry the behavior.
+
+### Added
+
+- `evals/`: a paid, live outcome eval (five fixture tasks, deterministic acceptance
+  scripts, a driver that runs each through `claude -p "/loop-spec:cycle autonomous …"`
+  against a snapshot of the plugin and records cost, time, diff shape, workarounds,
+  and plugin tampering). Not registered by `tests/run-all.sh`; refuses to run without
+  `LOOP_SPEC_EVAL_LIVE=1` and `--confirm-spend`. Findings from the first runs:
+  `evals/findings-2026-09-06.md`.
+- `feature.json.driverNext`: the phase the driver last answered with `NEXT`.
+  `cycle-result.sh write` refuses `--status failed|terminal|escalated` over it unless
+  `--reason` says what stopped the phase.
+- `hooks/team/invocation-stamp.sh` (UserPromptSubmit, Claude Code and Codex): stamps the
+  raw `/loop-spec:<skill>` arguments so `cycle-driver.sh start` can restore a token the
+  skill's prose rewrite dropped. `LOOP_SPEC_INVOCATION_STAMP`, `LOOP_SPEC_STAMP_MAX_AGE_MIN`.
+- `hooks/restrict-agent-paths.sh` denies Write and Edit under the installed plugin root
+  for every caller, by real path; a feature worktree under the project and a plugin root
+  inside the project (loop-spec developing itself) are unaffected.
+- DELIVER without `gh`: `lib/pr-delivery.sh final` pushes the exact SHA and stops with
+  outcome `pushed-no-pr`; `lib/deliver.sh` reports `status: pushed-no-pr`, the cycle
+  completes, and `cycle-result.sh` publishes outcome `pushed-no-pr`. checkpoint and
+  observe modes still require `gh`.
+- `LOOP_SPEC_MICRO_GUARD_MAX_DENIALS` (default 3) and
+  `LOOP_SPEC_MICRO_GUARD_STATE_DIR`: the ad-hoc verify guard stands down after that
+  many denials for one transcript.
+- `hooks/team/result-forgery-guard.sh` (PreToolUse Bash, Claude Code and Codex) denies a
+  shell redirect, `tee`, `cp`, `mv`, `install`, `sed -i`, or Python `open(..., "w")`
+  aimed at a `.loop-spec/` contract file (`last-result.json`, `result.json`,
+  `active-run.json`, `feature.json`, `delivery.json`); `hooks/restrict-agent-paths.sh`
+  denies Write and Edit on the same files. `cycle-result.sh state` reports a pointer
+  without `schema` and `loopSpecVersion` as `unaccounted`, so the stop guard keeps
+  refusing, and the eval marks the record `forged_result`. Two eval runs whose result the
+  writer refused wrote the pointer by hand. `LOOP_SPEC_FORGERY_GUARD=0` disables the hook.
+- `cycle-driver.sh next --returned-from <phase>` answers the same flag set at most
+  `LOOP_SPEC_REDO_MAX` (default 3) times, then escalates with the flags as the reason.
+
+### Fixed
+
+- `cycle-result.sh write --status completed` refuses a feature that never reached
+  DELIVER unless `delivery.json` or a PR URL says otherwise, and `write-terminal` refuses
+  `completed` for a full cycle armed at an earlier phase.
+- `lib/verify-gate.sh` routes `redo` for a VERIFICATION.md whose format flags carry no
+  verifier FAIL, instead of dispatching the verifiers again; `lib/iterate-judged.sh
+  record` is idempotent on the judge hash, so a repeated call no longer counts a second
+  iteration.
+- `lib/phase-exit.sh` keeps a gate's indented detail lines, so a REDO names the
+  uncovered decisions instead of a bare heading.
+- `lib/decision-coverage.sh` matches a decision's statement, not its `Rationale:` and
+  `Alternatives considered:` clauses, and its heading says that only a verbatim copy in
+  PLAN.md counts. `lib/verification-grounding-lint.sh` prints the row grammar with a
+  malformed-row or empty-section flag. A haiku planner paraphrased every decision three
+  times, and a haiku verifier wrote `- none` three times, because neither flag said what
+  to write; each escalated at the REDO bound.
+- `cycle-result.sh write-terminal` refuses `--outcome interrupted` without `--reason`
+  while `feature.json.driverNext` names a phase the driver answered NEXT for, and the
+  refusal prints the `cycle-driver.sh next --returned-from` call that continues the
+  cycle; `hooks/team/route-terminal-guard.sh` leads its denial with that continuation
+  instead of a menu of terminal results. Three haiku leads ended the turn after EXECUTE
+  with the work done and recorded `interrupted`.
+- `lib/deliver.sh` names the dirty paths in a `dirty_worktree` refusal; a lead refused
+  over untracked `__pycache__/` could not tell residue from a forgotten file. The eval
+  fixtures now carry the `.gitignore` a real Python repository has.
+- `evals/eval_run.py` marks a round the CLI ended with the account's usage-limit text as
+  `cut_off`, says so in the summary instead of scoring it as a plugin failure, and
+  refuses at preflight while the limit is active.
+- `lib/runtime-ignore.sh` ignores `.loop-spec/profile.json`, the policy file the
+  supervisor contract tells embedders to write. Untracked, it made `cycle-driver.sh
+  init` refuse every fresh checkout as dirty; the refusal now names the dirty paths.
+- `lib/cycle-driver.sh` evaluates `.loop-spec/profile.json` itself, so a preset that
+  names `autonomous` arms the run even when the prompt rewrite drops the token.
+- The phase state commit runs in the feature's own repository, not the caller's
+  working directory, and a failed commit is reported and recorded instead of hidden.
+  Run from the project root with the feature in a worktree, it used to stage a
+  `.gitignore` in the root and leave `feature.json` untracked for DELIVER to refuse.
+- Workspace mode is the recorded mode, never the presence of a root: `lib/workspace.sh
+  detect` reports `{root, mode: "single", repos: []}` for an ordinary repository, and
+  every consumer (phase-entry, phase-mode, phase-exit, deliver, delivery-reconcile,
+  feature-scan-each, finalize-delivery-candidate, cycle-driver, cycle-result, the
+  plan-critique probe) now treats only an object whose mode is not `single` as a
+  workspace. A record with a single-mode object used to skip every artifact commit and
+  leave `plan.critique.gate` with no route; `plan.critique.gate` also gained a
+  `routeDefault` to the critique, and the probe says why when it cannot answer.
+
 ## [6.1.0] - 2026-09-04
 
 ### Added

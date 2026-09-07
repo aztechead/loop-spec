@@ -79,7 +79,7 @@ if canonical_sidecar "$delivery_file"; then
   exit 0
 fi
 
-workspace_root="$(jq -r '.workspace.root // empty' "$feature_json")"
+workspace_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end' "$feature_json")"
 if [[ -n "$workspace_root" ]]; then
   echo "delivery-reconcile: workspace mode is out of scope" >&2
   exit 1

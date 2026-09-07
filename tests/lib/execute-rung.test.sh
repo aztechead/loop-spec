@@ -116,13 +116,15 @@ check "invalid worktrees message lands on stderr" "1" \
 check "stdout-only relay would lose the message" "" \
   "$(jq -r '.message // empty' <<<"$cfg_out" 2>/dev/null || true)"
 
-EXEC_SKILL="$ROOT/skills/execute/SKILL.md"
-check "EXECUTE rung relay captures stderr" "1" \
-  "$(grep -Fq '2>"$rung_err"' "$EXEC_SKILL" && echo 1 || echo 0)"
-check "EXECUTE rung relay falls back to the stderr text" "1" \
-  "$(grep -Fq 'rung_msg="$(cat "$rung_err")"' "$EXEC_SKILL" && echo 1 || echo 0)"
+# lib/execute-prepare.sh runs the probe for the skill now; its stderr passes straight
+# through to the lead, and a failed selection is a loud exit 2.
+EXEC_PREP="$ROOT/lib/execute-prepare.sh"
+check "EXECUTE rung relay names a failed selection" "1" \
+  "$(grep -Fq 'rung selection failed' "$EXEC_PREP" && echo 1 || echo 0)"
+check "EXECUTE rung relay does not swallow the probe's stderr" "0" \
+  "$(grep -Fq 'execute-rung select' "$EXEC_PREP" && grep -F 'execute-rung select' "$EXEC_PREP" | grep -Fq '2>/dev/null' && echo 1 || echo 0)"
 check "EXECUTE passes implementer model into the rung probe" "1" \
-  "$(grep -Fq -- '--implementer-model' "$EXEC_SKILL" && echo 1 || echo 0)"
+  "$(grep -Fq -- '--implementer-model' "$EXEC_PREP" && echo 1 || echo 0)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

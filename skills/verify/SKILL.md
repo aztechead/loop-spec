@@ -9,16 +9,14 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete 
 You prove the integrated branch meets SPEC's `### Good Enough` criteria with
 post-change `file:line` evidence, and that a reviewer would merge it. Dispatch follows
 `skills/shared/dispatch.md`. Gates are satisfied by remediation, never self-answered
-past, in every mode. Your inputs are the entry packet and nothing else:
+past, in every mode. Your inputs are the entry packet and nothing else, and the pre-team scans come with it:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-entry.sh" verify --feature-dir "$feature_dir"
-# fields=<the feature.json keys this phase consumes>  read=<each file to read>  FLAG on a missing ingress
-```
-
-```bash
-gates="$(bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" verify --feature-dir "$feature_dir")"
-# placeholder=run|skip tamper=... validation=... acceptance=... codeReview=... regression=... reason=...
+pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin verify --feature-dir "$feature_dir")"
+# .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
+# .mode: placeholder=run|skip tamper=... validation=... acceptance=... codeReview=... regression=... reason=...
+# .verify = lib/verify-prepare.sh: placeholder{ran,ok,signals}, tamper{...}, validation{rc,outcome,result},
+#           regression{...}, route=continue|remediate|escalate, class, remediationTasks[]
 ```
 
 A `skip` (compact gate plan) is recorded in VERIFICATION.md as
@@ -27,25 +25,23 @@ a pass.
 
 ## 1. Pre-team scans (fail fast, no agents yet)
 
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" "${CLAUDE_SKILL_DIR}/../../lib/placeholder-scan.sh" --feature-dir "$feature_dir"   # placeholder
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" --feature-dir "$feature_dir"   # tamper
-VALIDATION_JSON="$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-validation.sh" compare "$feature_dir")"   # validation; exit 20 regression, 21 infrastructure
-```
-
-`feature-scan-each.sh` walks every git target (single-repo toplevel or each workspace
-repo with its own `baseSha`); never pass `.` or a top-level SHA yourself. Placeholder
-signals (TODO, FIXME, "not implemented" in ADDED lines) and tamper signals (deleted
-tests, new skip/focus annotations, `|| true` on a test command) each fail VERIFY at
-once: print the `file:line: signal` lines, emit `verify_failure` with class `marker` or
-`tamper`, and go to **Remediation** with one full-shape task per signal (a tamper task
-names the specific tampering; a legitimate skip is the human's call in
-`step`/`interactive` and is treated as tampering when autonomous). The validation
-adapter is the ONLY place the repository-wide test/lint/typecheck suite runs: exit 20
-is a suite regression (class `suite-regression`, one remediation task, no agents);
-exit 21 is infrastructure (escalate; never relabel setup repair as implementation
-work). `regression=run` first runs the advisory `lib/regression-scan.sh .` and logs
-its counts.
+`.verify` already ran them: `lib/feature-scan-each.sh` over `lib/placeholder-scan.sh`
+and `lib/test-tamper-scan.sh` (every git target: single-repo toplevel or each workspace
+repo with its own `baseSha`; never pass `.` or a top-level SHA yourself), then
+`lib/feature-validation.sh compare` (`VALIDATION_JSON` is `.verify.validation.result`),
+then the advisory `lib/regression-scan.sh` when `regression=run`. Placeholder signals
+(TODO, FIXME, "not implemented" in ADDED lines) and tamper signals (deleted tests, new
+skip/focus annotations, `|| true` on a test command) each fail VERIFY at once:
+`.verify.route` is `remediate` with class `marker` or `tamper`, the `file:line: signal`
+lines are `.verify.<scan>.signals[]`, `verify_failure` is emitted, and one full-shape
+task per signal is already in `pendingRemediationTasks[]` (a tamper task names the
+specific tampering; a legitimate skip is the human's call in `step`/`interactive` and is
+treated as tampering when autonomous): print the signals and return to the cycle
+(**Remediation** below is already recorded). The validation adapter is the ONLY place
+the repository-wide test/lint/typecheck suite runs: exit 20 is a suite regression
+(class `suite-regression`, one remediation task, no agents, route `remediate`); exit 21
+is infrastructure (route `escalate`; never relabel setup repair as implementation
+work). `route=continue` proceeds.
 
 ## 2. Verifier and code reviewer
 
@@ -74,67 +70,83 @@ tell a reviewer what not to flag); report
 
 ## 3. Gates
 
-Run the exit command first; it is the deterministic half of the acceptance gate:
+One call applies both verdicts and the deterministic half of the acceptance gate:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" verify --feature-dir "$feature_dir"
+gate="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verify gate --feature-dir "$feature_dir" \
+  --verifier ALL_PASS|FAIL --suite PASS|FAIL|N/A --reviewer PASS|PASS_WITH_MINOR|BLOCK \
+  --remediation-tasks '<JSON array of FULL-SHAPE tasks>' --minors '<JSON array of "file:line — claim">')"
+# .exit{ok,flags[]} .route=redo|pass|remediate .class .tasks[] .minorsQueued .repeat
 ```
 
-A `[verification-grounding]` FLAG (`lib/verification-grounding-lint.sh`: a criterion
-row without post-change `repositoryEvidence`, a missing file, an out-of-range line) is
-a verifier FAIL regardless of green commands.
-Then:
+It runs `lib/phase-exit.sh verify` first: `.route == "redo"` means VERIFICATION.md
+FLAGged (`artifact-lint`, or `[verification-grounding]` from
+`lib/verification-grounding-lint.sh`: a criterion row without post-change
+`repositoryEvidence`, a missing file, an out-of-range line). Fix the file in place and
+call `verify gate` again with the same verdicts; nothing is recorded for a redo, and the
+agents are not re-dispatched. A criterion whose evidence cannot be written is a
+verifier FAIL regardless of green commands: pass `--verifier FAIL`. Then:
 
 - Verifier `FAIL`, or `ALL_PASS` with `Test suite status: FAIL`: class `acceptance`
-  (or `suite-regression`), one remediation task per failed criterion, **Remediation**.
-- Reviewer `BLOCK`: class `code-review`, one task per blocking finding, **Remediation**.
-- `PASS_WITH_MINOR`: append every Minor to the backlog
-  (`lib/backlog.sh add {slug} verify-deferred "<file:line — claim>"`) and the
+  (or `suite-regression`); pass one remediation task per failed criterion.
+- Reviewer `BLOCK`: class `code-review`; pass one task per blocking finding.
+- `PASS_WITH_MINOR`: pass every Minor in `--minors`; the call appends each to the
+  backlog (`lib/backlog.sh add {slug} verify-deferred "<file:line — claim>"`); write the
   code-review section to VERIFICATION.md.
-- Second failure of the same criterion or finding across `gateHistory[]`: record the
-  lesson once, `lib/rules.sh add "VERIFY repeat-fail on '<criterion>' ({slug}): ..."
-  --check "<verify command>"`.
+- Second failure of the same criterion or finding across `gateHistory[]`: the call
+  records the lesson once (`lib/rules.sh add "VERIFY repeat-fail on '<criterion>'
+  ({slug}): ..." --check "<verify command>"`) and reports `.repeat`.
 
-**Remediation** (shared by every failing gate): append each FULL-SHAPE task
+**Remediation** (`.route == "remediate"`): the call appended each FULL-SHAPE task
 (`{id: "task-NNN+remediate-M", subject: "Fix: ...", files, verifyCommand,
-acceptanceCriteria, blockedBy: [], retries: 0}`) to `pendingRemediationTasks[]` via
-`lib/feature-write.sh append`, append a `gateHistory[]` fail entry (`phase: verify`,
-`gate: <acceptance|code-review|live-verify>`), discard the reviewer's output when the
-verifier failed, tear the team down (explicit mode `TeamDelete`; clear
-`currentTeamName`/`currentTeammates`), and return to the cycle. The remediation route
-declared in `graph/cycle.graph.json` (`lib/ralph-remediation.sh`) selects the bounded
-fix loop or a full EXECUTE re-entry from the recorded tasks; VERIFY re-enters at step 1
-afterwards.
+acceptanceCriteria, blockedBy: [], retries: 0}`) to `pendingRemediationTasks[]`,
+recorded the `gateHistory[]` fail entry (`phase: verify`, `gate: <acceptance|code-review>`),
+emitted `verify_failure`, and cleared `currentTeamName`/`currentTeammates`. Discard the
+reviewer's output when the verifier failed, tear the team down (explicit mode
+`TeamDelete`), and return to the cycle. The remediation route declared in
+`graph/cycle.graph.json` (`lib/ralph-remediation.sh`) selects the bounded fix loop or a
+full EXECUTE re-entry from the recorded tasks; VERIFY re-enters at step 1 afterwards.
 
 ## 4. After both gates pass
 
+One call runs every advisory pass and hands back their findings:
+
+```bash
+passes="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verify passes --feature-dir "$feature_dir")"
+# .live{configured,rc,result} .gaps{rc,lines[]} .plainLanguage{prose,comments} .docTells{rc,lines[]} .layers[] .reviewTrail{present,rc,findings[]}
+```
+
 - **Live run** (`.loop-spec/workflow.json` `verifyCommands` configured):
-  `lib/verify-live.sh run --evidence docs/loop-spec/features/{slug}/EVIDENCE.md`. Exit 1 is
-  class `live-probe`, one task per failed probe, **Remediation**. Unconfigured is
-  suite-only; never guess a launch command (`verify-live.sh detect .` may suggest one
+  `lib/verify-live.sh run --evidence docs/loop-spec/features/{slug}/EVIDENCE.md` is
+  `.live`; `rc` 1 is class `live-probe`, one task per failed probe, through
+  `verify gate` with `--verifier FAIL` and those tasks (**Remediation**). Unconfigured
+  is suite-only; never guess a launch command (`verify-live.sh detect .` may suggest one
   once in interactive styles).
-- **Verification-gap pass**: `bash "${CLAUDE_SKILL_DIR}/../../lib/verification-gap-scan.sh" "$baseSha" HEAD`; exit 1 means
-  no non-test definition changed. Otherwise ONE fresh reviewer carrying
-  `skills/shared/review-prompts/verification-gap.md` plus the probe output. Findings are
+- **Verification-gap pass**: `lib/verification-gap-scan.sh "$baseSha" HEAD` is `.gaps`;
+  `rc` 1 means no non-test definition changed. Otherwise ONE fresh reviewer carrying
+  `skills/shared/review-prompts/verification-gap.md` plus `.gaps.lines[]`. Findings are
   advisory: `## Verification gaps` in VERIFICATION.md and the backlog.
-- **Plain language** (advisory): `bash "${CLAUDE_SKILL_DIR}/../../lib/plain-language-lint.sh" prose docs/loop-spec/features/{slug}/*.md --max-flags 40`
-  and `comments` over changed `.sh`/`.py`; record counts under `## Plain language`.
-- **Docs-for-humans pass**: `bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" diff "$baseSha" HEAD`; exit 1 lists fixable
-  `file:line` findings; fix and re-run until clean (a documented misfire is recorded
-  under `## Docs for humans` instead).
-- **Project review layers**: `bash "${CLAUDE_SKILL_DIR}/../../lib/extension-points.sh" layers verify`; one reviewer per
-  emitted layer, findings recorded alongside the gap findings. Layers add, never remove.
+- **Plain language** (advisory): `lib/plain-language-lint.sh prose` over the feature's
+  artifacts and `comments` over changed `.sh`/`.py` are `.plainLanguage`; record counts
+  under `## Plain language`.
+- **Docs-for-humans pass**: `lib/doc-tells.sh diff "$baseSha" HEAD` is `.docTells`; `rc`
+  1 lists fixable `file:line` findings; fix and call `verify passes` again until clean (a
+  documented misfire is recorded under `## Docs for humans` instead).
+- **Project review layers**: `lib/extension-points.sh layers verify` is `.layers[]`; one
+  reviewer per layer, findings recorded alongside the gap findings. Layers add, never
+  remove.
 - **Reviewer's guide**: `skills/walkthrough/SKILL.md` in `--write` mode produces
-  `docs/loop-spec/features/{slug}/REVIEW-ORDER.md`; lint with
-  `bash "${CLAUDE_SKILL_DIR}/../../lib/review-trail.sh" lint <path> "$baseSha" HEAD` until
-  clean; the exit records it as `artifacts.reviewOrder` for DELIVER. Never a delivery gate.
+  `docs/loop-spec/features/{slug}/REVIEW-ORDER.md`; `lib/review-trail.sh lint` is
+  `.reviewTrail` on the next `verify passes` call; fix until its `findings[]` is empty.
+  The exit records it as `artifacts.reviewOrder` for DELIVER. Never a delivery gate.
 
 ## 5. Exit
 
-Run the exit command from step 3 again on the final VERIFICATION.md; it must print
-`phase-exit: ok (verify)`. That commits VERIFICATION.md and REVIEW-ORDER.md, tags
-`post-verify`, and closes the phase. VERIFY never pushes, opens a PR, or leaves the
-feature root; ITERATE judges next and only DELIVER ships.
+Return to the cycle; never run the exit yourself. Its `next --returned-from verify`
+runs `lib/phase-exit.sh verify` on the final VERIFICATION.md: ok commits
+VERIFICATION.md and REVIEW-ORDER.md, tags `post-verify`, and closes the phase; a FLAG
+answers `REDO` and you are invoked again to fix the record. VERIFY never pushes, opens a
+PR, or leaves the feature root; ITERATE judges next and only DELIVER ships.
 
 ## Resume
 

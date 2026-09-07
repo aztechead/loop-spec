@@ -148,6 +148,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     }
   },
   "warnings": ["array of strings"],
+  "driverNext": {"phase": "string; the phase cycle-driver.sh last answered NEXT with", "at": "ISO-8601"},
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
   "pendingRemediationTasks": ["array of remediation task objects appended by VERIFY (lib/feature-write.sh append) and consumed+cleared by EXECUTE Step 2a; empty between phases"],
   "activeWorkflow": {
@@ -241,6 +242,11 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - Tracked `delivery` initializes to `pending` (absent on pre-DELIVER schema-7 features; tolerated) and mutates only when failed checks route durable remediation back to EXECUTE. Everything else — the ignored `delivery.json` sidecar (schema 1), status meanings, SHA invariants, and the CI-remediation cap — is DELIVER's contract: see `skills/deliver/SKILL.md` and `lib/pr-delivery.sh`. Keeping success out of tracked state prevents a post-CI commit from changing the exact checked SHA.
 - The optional `workspace` block enables multi-root workspace mode. Rules: (1) `workspace` absent or null means single-repo mode (`worktreePath` set). (2) In workspace mode the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` are null; per-repo values in `workspace.repos[]` are authoritative. `lib/graph/state.sh assert-reads` honors that relocation, so a declared read of `branch` (or `baseSha`/`baseBranch`) is satisfied by every `workspace.repos[]` entry rather than the null top-level field. `worktreePath` is not relocated and has no per-repo equivalent; a node that needs it in workspace mode declares it in `optionalReads[]`. (3) The top-level `commands` block holds empty strings (per-repo commands live in `workspace.repos[].commands`). (4) State and artifact dirs are rooted at `workspace.root`. (5) Resume requires the session cwd to be `workspace.root`; the cycle skill instructs the user to cd there before re-invoking.
 - **Schema is 7-only.** A `feature.json` with `schemaVersion != 7` is unsupported and skipped on resume with a warning; there is no in-place migration path for older schemas. New features are always created at schema 7 by `lib/feature-init.sh`.
+
+- `driverNext` is written by `lib/cycle-driver.sh next` each time it answers `NEXT`.
+  `lib/cycle-result.sh write` reads it: publishing `failed`, `terminal`, or `escalated`
+  while it is set needs `--reason`, because a lead that was told to run a phase and
+  published a failure instead ends a run a supervisor treats as dead.
 
 ## Workspace pin file (.loop-spec/workspace.json)
 

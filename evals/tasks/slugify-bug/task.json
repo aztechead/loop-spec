@@ -1,0 +1,8 @@
+{
+  "id": "slugify-bug",
+  "size": "trivial",
+  "kind": "bugfix",
+  "prompt": "python3 -m unittest discover -s tests fails in tests/test_slugify.py. Fix the bug in slugify.py so every test passes. Do not change the tests.",
+  "reference_app_lines": 8,
+  "protected": ["tests/test_slugify.py"]
+}

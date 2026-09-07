@@ -61,7 +61,7 @@ fj="$feature_dir/feature.json"
 
 slug="$(jq -r '.slug' "$fj")"
 cp "$fj" "$feature_dir/.phase-entry.json"
-ws_root="$(jq -r '.workspace.root // ""' "$fj")"
+ws_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end' "$fj")"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; fi
 docs="$root/docs/loop-spec/features/$slug"
 flags=0

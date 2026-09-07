@@ -51,7 +51,7 @@ style="$(fget '.execStyle // "auto"')"
 reentry=false
 [[ "$(fget '.iterate.feedback // "null"')" != "null" ]] && reentry=true
 slug="$(fget '.slug')"
-ws_root="$(fget '.workspace.root // ""')"
+ws_root="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null || pwd)"; fi
 docs="$root/docs/loop-spec/features/$slug"
 

@@ -454,6 +454,7 @@ out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DDIR")" || ec=$?
 check "single dirty: exit 1" "1" "$ec"
 check "single dirty: structured error" "dirty_worktree" "$(jq -r '.targets[0].errorCode' "$DDIR/delivery.json")"
+check "single dirty: the refusal names the path" "1" "$(grep -c 'uncommitted changes: b' "$DDIR/delivery.json")"
 check "single dirty: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 
 git -C "$DIRTY" checkout -q -- b

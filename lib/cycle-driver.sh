@@ -34,8 +34,39 @@
 #       currentPhase, enterWorktree, tasksDone, tasksRemaining, progressTail,
 #       recoverCompletion}. Exit 0; 1 refused (message says where to relaunch).
 #
+#   cycle-driver.sh begin [--dir DIR] -- <invocation arguments...>
+#       start, then init or resume when no human decision is pending. Prints start's
+#       object plus {action: "init"|"resume"|"decisions", ...the init or resume object}.
+#       action=decisions means the caller answers .decisions[] and calls init or resume
+#       itself, as before. Exit codes as start, init, and resume.
+#
+#   cycle-driver.sh phase-begin <phase> --feature-dir DIR
+#       The phase's whole ingress in one call: {entry:{fields,read,flags}, mode:{...},
+#       execute:{...}|verify:{...}}. The execute and verify blocks are
+#       lib/execute-prepare.sh and lib/verify-prepare.sh. Exit 1 when the entry packet
+#       FLAGs a missing ingress (the flags are in the JSON); 2 bad invocation.
+#
+#   cycle-driver.sh task dispatch|package|verdict|integrate --feature-dir DIR --task ID ...
+#       One EXECUTE task step per call; lib/execute-step.sh owns the contract.
+#
+#   cycle-driver.sh verify gate|passes --feature-dir DIR ...
+#       VERIFY's verdict application (lib/verify-gate.sh) and advisory passes
+#       (lib/verify-passes.sh).
+#
+#   cycle-driver.sh iterate limit|record|harvest --feature-dir DIR ...
+#       ITERATE's bookkeeping around the judge (lib/iterate-judged.sh).
+#
+#   cycle-driver.sh deliver --feature-dir DIR
+#       The whole DELIVER phase: lib/deliver.sh run, then the terminal PR feedback check
+#       per target with a PR. Prints {rc, status, nextPhase, route, targets, feedback}.
+#       route: completed | execute | deliver | deferral (exit 3: restore the dropped scope,
+#       then call again). Exit 0 completed; 1 otherwise (the route says what to do).
+#
 #   cycle-driver.sh next --feature-dir DIR [--returned-from PHASE] [--note TEXT]
-#       Post-phase bookkeeping, then the graph step. Prints exactly ONE answer line:
+#       Runs phase-exit for the returned phase first: a FLAG answers
+#         REDO phase=<id> flags=<n> attempt=<k>   followed by the FLAG lines; fix and call again
+#       The same flags LOOP_SPEC_REDO_MAX (3) times escalate the run with them as the reason.
+#       then post-phase bookkeeping and the graph step. Prints exactly ONE answer line:
 #         NEXT phase=<id> label="<label>" effort=<system1|system2>
 #         PAUSED node=<id>            (human gate; re-invoke the cycle to continue)
 #         HANDOFF next=<phase> model=<selector>   (phaseHandoff; relaunch)
@@ -67,6 +98,28 @@ lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
 fset() { lib feature-write set "$1" "$2" "$3"; }
 fget() { jq -r "$2" "$1/feature.json"; }
 
+# merge_invocation_stamp DIR INV_JSON: the UserPromptSubmit hook stamps the raw
+# /loop-spec:<skill> arguments before the skill rewrites its prose; a token the rewrite
+# dropped is taken from the stamp. Consumed on read, and ignored past
+# LOOP_SPEC_STAMP_MAX_AGE_MIN (30), so a stale stamp never binds a later run.
+merge_invocation_stamp() {
+  local dir="$1" inv="$2" stamp="$1/.loop-spec/invocation-stamp.json" stamped ts now
+  [[ -f "$stamp" ]] || { printf '%s\n' "$inv"; return 0; }
+  ts="$(jq -r '.ts // 0' "$stamp" 2>/dev/null || echo 0)"; now="$(date +%s)"
+  if (( now - ts > ${LOOP_SPEC_STAMP_MAX_AGE_MIN:-30} * 60 )); then
+    rm -f "$stamp"; printf '%s\n' "$inv"; return 0
+  fi
+  stamped="$(lib parse-invocation parse -- $(jq -r '.args // ""' "$stamp"))" || stamped=""
+  rm -f "$stamp"
+  [[ -n "$stamped" ]] || { printf '%s\n' "$inv"; return 0; }
+  jq -c --argjson s "$stamped" '
+    .autonomous = (.autonomous or $s.autonomous)
+    | .greenfield = (.greenfield or $s.greenfield)
+    | .style = (if (.style // "") == "" then $s.style else .style end)
+    | .phase_mode = (if (.phase_mode // "") == "" then $s.phase_mode else .phase_mode end)
+    | .profile = (if (.profile // "") == "" then $s.profile else .profile end)' <<<"$inv"
+}
+
 # ------------------------------------------------------------------ start ----
 cmd_start() {
   local dir="$PWD" args=()
@@ -79,6 +132,12 @@ cmd_start() {
   done
   dir="$(cd "$dir" && pwd -P)"
   cd "$dir"
+  # .loop-spec/profile.json is the run's policy (docs/loop-spec/supervisor-interface.md).
+  # Preflight evaluates it in its own process, which this one never saw: a supervised
+  # preset that named autonomous still started an interactive run (eval finding 3).
+  local profile_exports
+  if profile_exports="$(lib profile env)"; then eval "$profile_exports"
+  else echo "cycle-driver: profile.json is invalid; running without it" >&2; fi
 
   if [[ -n "${LOOP_SPEC_MAX_PARALLEL_SUBAGENTS:-}" \
         && ! "$LOOP_SPEC_MAX_PARALLEL_SUBAGENTS" =~ ^[1-9][0-9]*$ ]]; then
@@ -93,6 +152,7 @@ cmd_start() {
   local pf inv
   pf="$(lib cycle-preflight run "$dir")"
   inv="$(lib parse-invocation parse -- ${args[@]+"${args[@]}"})"
+  inv="$(merge_invocation_stamp "$dir" "$inv")"
 
   local autonomous=0 non_interactive=0
   [[ "$(jq -r '.autonomous' <<<"$inv")" == "true" || "${LOOP_SPEC_AUTONOMOUS:-}" == "1" ]] && autonomous=1
@@ -367,7 +427,7 @@ cmd_init() {
   local current_branch; current_branch="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)"
   if ! { [[ "$adopted" == true && "$current_branch" == "$feature_branch" ]]; }; then
     [[ "$(lib git-ops -C "$repo_root" ensure-clean-or-stash)" == "clean" ]] \
-      || die "source checkout is dirty; commit or stash changes before starting autonomous delivery."
+      || die "source checkout is dirty; commit or stash changes before starting autonomous delivery: $(git -C "$repo_root" status --porcelain --untracked-files=all | head -5 | tr '\n' ' ')"
   fi
   local base_ref="$base_branch"
   if git -C "$repo_root" remote get-url origin >/dev/null 2>&1; then
@@ -555,7 +615,7 @@ cmd_resume() {
   [[ "$slug" == "$(basename "$feature_dir")" ]] || die "feature slug does not match its directory: $feature_dir"
   harness="$(lib harness detect)"
 
-  if [[ "$(fget "$feature_dir" '.workspace // null')" != "null" ]]; then
+  if [[ "$(fget "$feature_dir" 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')" != "null" ]]; then
     [[ "$(fget "$feature_dir" '.workspace.root')" == "$dir" ]] \
       || die "this workspace feature must be resumed from its workspace root. cd to $(fget "$feature_dir" '.workspace.root') and re-invoke cycle."
   elif [[ "$(fget "$feature_dir" '.executionRootMode // "worktree"')" == "worktree" && "$harness" == "claude" ]]; then
@@ -611,6 +671,9 @@ iso_epoch() {
   python3 -c "import sys,datetime;print(int(datetime.datetime.strptime(sys.argv[1],'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()))" "$1" 2>/dev/null || echo 0
 }
 
+# Workspace mode is the recorded mode, never the presence of a root: lib/workspace.sh
+# detect reports {root, mode:"single", repos:[]} for an ordinary repository too, and a
+# consumer that read the root as the mode skipped every artifact commit (eval finding 6).
 # ------------------------------------------------------------------- next ----
 cmd_next() {
   local feature_dir="" returned="" note=""
@@ -622,7 +685,7 @@ cmd_next() {
   feature_dir="$(cd "$feature_dir" && pwd -P)"
   local slug ws_mode=single repo_root
   slug="$(fget "$feature_dir" '.slug')"
-  [[ "$(fget "$feature_dir" '.workspace // null')" != "null" ]] && ws_mode=workspace
+  [[ "$(fget "$feature_dir" 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')" != "null" ]] && ws_mode=workspace
   repo_root="$(lib cycle-result resolve-root "$feature_dir/../../..")"
   cd "$repo_root"
 
@@ -631,6 +694,35 @@ cmd_next() {
     returned_checks "$feature_dir" "$returned" || rc=$?
     (( rc == 10 )) && return 0   # a terminal answer line was already printed
     (( rc == 0 )) || return "$rc"
+    # The phase's exit gates run here, once, whatever the phase skill did: a lead that
+    # skipped them or ran them from the wrong directory was every second eval finding.
+    if [[ "$returned" != "deliver" && "$(fget "$feature_dir" '.completedPhases[-1] // ""')" != "$returned" ]]; then
+      local exit_out exit_rc=0 terminal_flag=()
+      [[ "$returned" == "iterate" ]] && iterate_is_terminal "$feature_dir" && terminal_flag=(--terminal)
+      exit_out="$(lib phase-exit "$returned" --feature-dir "$feature_dir" ${terminal_flag[@]+"${terminal_flag[@]}"} 2>&1)" || exit_rc=$?
+      if (( exit_rc == 1 )); then
+        # The same flags three times is a gate the phase cannot satisfy, not a phase that
+        # needs one more try: the 6.2.0 haiku runs looped six times on one flag and then
+        # published an invented reason. Escalate with the flags as the reason instead.
+        local redo_hash redo_count=1
+        redo_hash="$(grep '^FLAG' <<<"$exit_out" | cksum | cut -d' ' -f1)"
+        if [[ "$(fget "$feature_dir" '.driverRedo.phase // ""')" == "$returned" && "$(fget "$feature_dir" '.driverRedo.hash // ""')" == "$redo_hash" ]]; then
+          redo_count=$(( $(fget "$feature_dir" '.driverRedo.count // 1') + 1 ))
+        fi
+        fset "$feature_dir" driverRedo "{\"phase\":\"$returned\",\"hash\":\"$redo_hash\",\"count\":$redo_count}" >/dev/null
+        if (( redo_count >= ${LOOP_SPEC_REDO_MAX:-3} )); then
+          local reason; reason="$returned exit gate unsatisfied after $redo_count attempts: $(grep '^FLAG' <<<"$exit_out" | head -3 | tr '\n' ' ')"
+          cmd_escalate --feature-dir "$feature_dir" --reason "$reason" >/dev/null
+          echo "DONE status=escalated reason=$reason"
+          return 0
+        fi
+        echo "REDO phase=$returned flags=$(grep -c '^FLAG' <<<"$exit_out") attempt=$redo_count"
+        grep '^FLAG' <<<"$exit_out"
+        return 0
+      elif (( exit_rc != 0 )); then
+        echo "ABORT reason=phase-exit-failed exit=$exit_rc"; printf '%s\n' "$exit_out" >&2; return 1
+      fi
+    fi
   fi
 
   # Graph step: the engine dispatches gates/functions/subgraphs itself and stops at an
@@ -677,6 +769,8 @@ cmd_next() {
     --title "$(fget "$feature_dir" '.feature_title')" --slug "$slug" \
     --branch "$(fget "$feature_dir" '.branch // ""')" --base-branch "$(fget "$feature_dir" '.baseBranch // ""')" \
     --feature-dir "$feature_dir" --phase "$next" --autonomous "$(fget "$feature_dir" '.autonomous // false')" >/dev/null
+  # cycle-result.sh reads this: a failure published over an answered NEXT must say why.
+  fset "$feature_dir" driverNext "{\"phase\":\"$next\",\"at\":\"$(now)\"}" >/dev/null
   echo "NEXT phase=$next label=\"$label\" effort=$effort"
   lib extension-points instructions "$next" prepend 2>/dev/null | sed 's/^/EXT /' || true
   lib extension-points facts 2>/dev/null | sed 's/^/EXT /' || true
@@ -728,15 +822,26 @@ record_transition() {
     printf '\n## %s — %s → %s\n- did: %s\n' "$(now)" "$phase" "$next" "${note:-phase $phase returned}"
   } >> "$feature_dir/PROGRESS.md"
 
-  if [[ "$(lib state-commit-policy mode)" == "phase" && "$ws_mode" != "workspace" ]] \
-     && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    lib owned-gitignore check . || die "refusing to mix pre-existing .gitignore changes with loop-spec policy"
-    grep -qxF '!/.loop-spec/features/*/PROGRESS.md' .gitignore 2>/dev/null || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> .gitignore
-    grep -qxF '!/.loop-spec/RULES.md' .gitignore 2>/dev/null || printf '!/.loop-spec/RULES.md\n' >> .gitignore
-    local rel; rel="$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' "$feature_dir" "$PWD")"
-    git add -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>/dev/null || true
-    git diff --cached --quiet -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>/dev/null \
-      || git commit -q -m "chore: $slug state @ $next" -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore || true
+  # The feature's own repository, not $PWD: the lead often calls this from the project
+  # root while the feature lives in a worktree, and a state commit that silently missed
+  # left feature.json untracked for DELIVER to refuse as dirt (eval finding 2).
+  local root=""
+  root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || root=""
+  if [[ "$(lib state-commit-policy mode)" == "phase" && "$ws_mode" != "workspace" && -n "$root" ]]; then
+    lib owned-gitignore check "$root" || die "refusing to mix pre-existing .gitignore changes with loop-spec policy"
+    grep -qxF '!/.loop-spec/features/*/PROGRESS.md' "$root/.gitignore" 2>/dev/null || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> "$root/.gitignore"
+    grep -qxF '!/.loop-spec/RULES.md' "$root/.gitignore" 2>/dev/null || printf '!/.loop-spec/RULES.md\n' >> "$root/.gitignore"
+    local rel; rel="$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' "$feature_dir" "$root")"
+    local git_err=""
+    if ! git_err="$(git -C "$root" add -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>&1)"; then
+      echo "cycle-driver: state commit failed in $root: $git_err" >&2
+      lib feature-write append "$feature_dir" warnings "\"state commit failed at $phase -> $next: $git_err\"" >/dev/null
+    elif ! git -C "$root" diff --cached --quiet -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>/dev/null; then
+      git_err="$(git -C "$root" commit -q -m "chore: $slug state @ $next" -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>&1)" || {
+        echo "cycle-driver: state commit failed in $root: $git_err" >&2
+        lib feature-write append "$feature_dir" warnings "\"state commit failed at $phase -> $next: $git_err\"" >/dev/null
+      }
+    fi
     local checkpoint_default=0
     [[ "$(fget "$feature_dir" '.autonomous // false')" == "true" ]] && checkpoint_default=1
     local each="${LOOP_SPEC_CHECKPOINT_EACH_PHASE:-$checkpoint_default}"
@@ -787,13 +892,14 @@ cmd_finish() {
   feature_dir="$(cd "$feature_dir" && pwd -P)"
   local delivery="$feature_dir/delivery.json" status
   status="$(jq -r '.status // ""' "$delivery" 2>/dev/null || true)"
-  case "$status" in ready-for-review|delivered-draft) ;;
+  case "$status" in ready-for-review|delivered-draft|pushed-no-pr) ;;
     *) echo "loop-spec: delivery-incomplete (sidecar status '${status:-none}'); feature.json.currentPhase stays at deliver." >&2; exit 1 ;;
   esac
   local pr_url summary
   pr_url="$(fget "$feature_dir" '.prUrl // empty')"
   summary="$(fget "$feature_dir" '.iterate.lastVerdict.summary // empty')"
   [[ -n "${summary//[[:space:]]/}" ]] || summary="Cycle completed; PR delivered."
+  [[ "$status" == "pushed-no-pr" ]] && summary="$summary (pushed to the remote; no gh on this host, so no PR was opened)"
   lib cycle-result write "$feature_dir" --status completed --summary "$summary" ${pr_url:+--pr-url "$pr_url"} >/dev/null \
     || { echo "cycle-result.sh write failed; retrying once" >&2
          lib cycle-result write "$feature_dir" --status completed --summary "$summary" ${pr_url:+--pr-url "$pr_url"} >/dev/null; }
@@ -801,7 +907,7 @@ cmd_finish() {
   [[ -n "$entry" ]] && lib backlog done "$entry" >/dev/null 2>&1 || true
   local chain; chain="$(lib autonomous-chain should-chain "$feature_dir" --completed "$completed")"
   local exit_wt=false
-  [[ "$(fget "$feature_dir" '.workspace // null')" == "null" && -n "$(fget "$feature_dir" '.worktreePath // ""')" && "$(lib harness detect)" == "claude" ]] && exit_wt=true
+  [[ "$(fget "$feature_dir" 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')" == "null" && -n "$(fget "$feature_dir" '.worktreePath // ""')" && "$(lib harness detect)" == "claude" ]] && exit_wt=true
   jq -n --arg s "$status" --arg pr "$pr_url" --arg sum "$summary" --argjson d "$(cat "$delivery")" \
     --argjson w "$(fget "$feature_dir" '.warnings // []')" --argjson chain "$chain" --argjson ew "$exit_wt" \
     --arg bl "$(lib backlog count 2>/dev/null || echo 0)" \
@@ -822,14 +928,143 @@ cmd_escalate() {
     --summary "Cycle stopped during $phase: $reason" >/dev/null || true
   lib checkpoint-pr create "$feature_dir" --reason "$reason" >&2 || true
   local exit_wt=false
-  [[ "$(fget "$feature_dir" '.workspace // null')" == "null" && -n "$(fget "$feature_dir" '.worktreePath // ""')" && "$(lib harness detect)" == "claude" ]] && exit_wt=true
+  [[ "$(fget "$feature_dir" 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')" == "null" && -n "$(fget "$feature_dir" '.worktreePath // ""')" && "$(lib harness detect)" == "claude" ]] && exit_wt=true
   jq -n --arg r "$reason" --arg p "$phase" --argjson gh "$(fget "$feature_dir" '(.gateHistory // [])[-3:]')" \
     --argjson a "$(fget "$feature_dir" '.artifacts // {}')" \
     --argjson d "$(cat "$feature_dir/delivery.json" 2>/dev/null || echo null)" --argjson ew "$exit_wt" \
     '{reason:$r, phase:$p, gateHistory:$gh, artifacts:$a, delivery:$d, exitWorktree:$ew}'
 }
 
+# iterate_is_terminal FEATURE_DIR: converged, or the iteration budget spent, closes the
+# phase; a rewind leaves it open for the next pass.
+iterate_is_terminal() {
+  jq -e '(.iterate.lastVerdict.converged == true)
+         or ((.iterate.used // 0) >= (.iterate.maxIterations // 10))' "$1/feature.json" >/dev/null 2>&1
+}
+
+# kv_json LINE: `key=value key2=value with spaces key3=x` -> a JSON object. The mode
+# lines end in a free-text reason, so a value runs until the next ` key=`.
+kv_json() {
+  python3 -c '
+import json, re, sys
+line = sys.argv[1].strip()
+print(json.dumps({m.group(1): m.group(2) for m in re.finditer(r"(\w+)=(.*?)(?=\s+\w+=|$)", line)}))' "$1"
+}
+
+# ------------------------------------------------------------------ begin ----
+cmd_begin() {
+  local dir="$PWD" args=() st rc=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --dir) dir="$2"; shift 2 ;; --) shift; args=("$@"); break ;; *) args+=("$1"); shift ;; esac
+  done
+  st="$(cmd_start --dir "$dir" -- ${args[@]+"${args[@]}"})" || return $?
+  if [[ "$(jq '.decisions | length' <<<"$st")" != "0" ]]; then
+    jq -c '. + {action:"decisions"}' <<<"$st"; return 0
+  fi
+  local pick; pick="$(jq -r '.resume.autoPick // empty' <<<"$st")"
+  local out
+  if [[ -n "$pick" ]]; then
+    local root; root="$(jq -r --arg s "$pick" '.resume.candidates[] | select(.slug == $s) | .featureRoot' <<<"$st" | head -1)"
+    out="$(cmd_resume --dir "$dir" --feature-root "$root" --slug "$pick" \
+      --phase-mode "$(jq -r '.invocation.phase_mode // ""' <<<"$st")")" || rc=$?
+    (( rc == 0 )) || return "$rc"
+    jq -c --argjson r "$out" '. + {action:"resume"} + $r' <<<"$st"; return 0
+  fi
+  local title slug; title="$(jq -r '.invocation.title // ""' <<<"$st")"; slug="$(jq -r '.invocation.slug // ""' <<<"$st")"
+  [[ -n "$title" && -n "$slug" ]] || { echo "cycle-driver: begin needs a feature title (start left none and asked no question)" >&2; return 3; }
+  local entry; entry="$(jq -c '.invocation.backlogEntry // empty' <<<"$st")"
+  out="$(cmd_init --dir "$(jq -r '.workspace.root' <<<"$st")" --slug "$slug" --title "$title" \
+    --style "$(jq -r '.invocation.style' <<<"$st")" --profile "$(jq -r '.profile' <<<"$st")" \
+    --classification "$(jq -c '.classification' <<<"$st")" \
+    --autonomous "$(jq -r 'if .autonomous then 1 else 0 end' <<<"$st")" \
+    --greenfield "$(jq -r 'if .greenfield then 1 else 0 end' <<<"$st")" \
+    --spec-file "$(jq -r '.invocation.spec_path // ""' <<<"$st")" \
+    --commands "$(jq -c '.commands' <<<"$st")" --repos "$(jq -c '.workspace.repos' <<<"$st")" \
+    --phase-mode "$(jq -r '.invocation.phase_mode // ""' <<<"$st")" \
+    ${entry:+--backlog-entry "$entry"})" || rc=$?
+  (( rc == 0 )) || return "$rc"
+  jq -c --argjson r "$out" '. + {action:"init"} + $r' <<<"$st"
+}
+
+# ---------------------------------------------------------------- deliver ----
+cmd_deliver() {
+  local feature_dir=""
+  while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="$2" ;; *) usage ;; esac; shift 2; done
+  [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
+  feature_dir="$(cd "$feature_dir" && pwd -P)"
+  local rc=0 out
+  out="$(lib deliver run "$feature_dir" 2>&1 >/dev/null)" || rc=$?
+  local sidecar="$feature_dir/delivery.json" status next route feedback='[]' frc=0
+  status="$(jq -r '.status // ""' "$sidecar" 2>/dev/null || true)"
+  next="$(jq -r '.nextPhase // "deliver"' "$sidecar" 2>/dev/null || echo deliver)"
+  if (( rc == 3 )); then route=deferral
+  elif [[ "$next" == "completed" ]]; then
+    route=completed
+    # Every cycle ends by reading its PR for reviews and requested changes; a target
+    # without a PR (pushed-no-pr) has nothing to read.
+    while IFS= read -r t; do
+      [[ -n "$t" ]] || continue
+      local n repo fb args=()
+      n="$(jq -r '.prNumber' <<<"$t")"; repo="$(jq -r '.repo // empty' <<<"$t")"
+      args=("$n"); [[ -n "$repo" ]] && args+=(--repo "$repo")
+      fb="$(lib pr-feedback check "${args[@]}")" || { frc=1; break; }
+      lib pr-feedback record "$sidecar" "$(jq -r '.name' <<<"$t")" "$fb" || { frc=1; break; }
+      feedback="$(jq -c --argjson f "$fb" '. + [$f]' <<<"$feedback")"
+    done < <(jq -c '.targets[]? | select(.prNumber != null)' "$sidecar")
+    (( frc == 0 )) || { route=feedback-failed; echo "cycle-driver: PR feedback persistence failed; completion blocked" >&2; }
+  else route="$next"; fi
+  jq -cn --argjson rc "$rc" --arg status "$status" --arg next "$next" --arg route "$route"     --argjson targets "$(jq -c '.targets // []' "$sidecar" 2>/dev/null || echo '[]')" --argjson fb "$feedback" --arg err "$out"     '{rc:$rc, status:$status, nextPhase:$next, route:$route, targets:$targets, feedback:$fb, stderr:(if $err == "" then null else $err end)}'
+  [[ "$route" == "completed" ]] && return 0 || return 1
+}
+
+# ------------------------------------------------------------ phase-begin ----
+cmd_phase_begin() {
+  local phase="${1:-}" feature_dir=""; shift || true
+  while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="$2" ;; *) usage ;; esac; shift 2; done
+  case "$phase" in spec|discuss|plan|execute|verify|iterate|deliver) ;; *) usage ;; esac
+  [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
+  feature_dir="$(cd "$feature_dir" && pwd -P)"
+  local entry_out entry_rc=0
+  entry_out="$(lib phase-entry "$phase" --feature-dir "$feature_dir" 2>&1)" || entry_rc=$?
+  (( entry_rc <= 1 )) || { printf '%s\n' "$entry_out" >&2; return 2; }
+  local entry_json
+  entry_json="$(python3 -c '
+import json, sys
+fields, reads, flags = {}, [], []
+for line in sys.argv[1].splitlines():
+    if line.startswith("fields="):
+        try: fields = json.loads(line[7:])
+        except ValueError: fields = {"raw": line[7:]}
+    elif line.startswith("read="): reads.append(line[5:])
+    elif line.startswith("FLAG"): flags.append(line)
+print(json.dumps({"fields": fields, "read": reads, "flags": flags}))' "$entry_out")"
+  local mode_json='{}'
+  case "$phase" in
+    spec|discuss|plan|verify) mode_json="$(kv_json "$(lib phase-mode "$phase" --feature-dir "$feature_dir")")" ;;
+  esac
+  local extra='{}' extra_rc=0
+  if (( entry_rc == 0 )); then
+    case "$phase" in
+      execute) extra="$(lib execute-prepare run --feature-dir "$feature_dir")" || extra_rc=$? ;;
+      verify) extra="$(lib verify-prepare run --feature-dir "$feature_dir")" || extra_rc=$? ;;
+    esac
+  fi
+  [[ -n "$extra" ]] || extra='{}'
+  jq -cn --arg phase "$phase" --argjson entry "$entry_json" --argjson mode "$mode_json" --argjson extra "$extra" \
+    '{phase:$phase, entry:$entry, mode:$mode} + (if $phase == "execute" then {execute:$extra} elif $phase == "verify" then {verify:$extra} else {} end)'
+  (( entry_rc == 0 )) || return 1
+  return "$extra_rc"
+}
+
 case "${1:-}" in
+  task) shift; lib execute-step "$@" ;;
+  verify)
+    shift
+    case "${1:-}" in gate) shift; lib verify-gate run "$@" ;; passes) shift; lib verify-passes run "$@" ;; *) usage ;; esac ;;
+  iterate) shift; lib iterate-judged "$@" ;;
+  deliver) shift; cmd_deliver "$@" ;;
+  begin) shift; cmd_begin "$@" ;;
+  phase-begin) shift; cmd_phase_begin "$@" ;;
   start) shift; cmd_start "$@" ;;
   init) shift; cmd_init "$@" ;;
   resume) shift; cmd_resume "$@" ;;

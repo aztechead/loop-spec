@@ -128,6 +128,7 @@
       "id": "plan.critique.gate",
       "label": "Check whether the plan needs critique",
       "kind": "gate",
+      "routeDefault": "plan.critique",
       "reads": [
         "artifacts"
       ],
