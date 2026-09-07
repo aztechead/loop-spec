@@ -6,6 +6,15 @@
 # v6.0.0 measured that as the largest reviewer cost. Exact values live in the
 # brief file; dispatch prompts carry the path.
 #
+# The brief is the implementer's whole context. A live run
+# (evals/findings-2026-09-07-tf-meldn.md) had every subagent read SPEC, PLAN, PATTERNS
+# and EVIDENCE in full (about 100KB) to find the three rules that bound it, and re-probe
+# the toolchain the lead had already probed. So the brief now carries the slices:
+# PLAN.md's `## Global constraints` verbatim, the EVIDENCE.md rows the task cites by
+# EVID id, and dispatch/environment.txt (tool versions the lead recorded; see
+# lib/execute-prepare.sh). The prompt template tells the implementer not to open the
+# artifacts.
+#
 # Usage:
 #   dispatch-files.sh brief --feature-dir <dir> --task-id <id> [--out <file>]
 #   dispatch-files.sh package --repo <root> --base <sha> --head <sha> [--out <file>]
@@ -52,9 +61,31 @@ case "$cmd" in
     fi
     tasks="$FEATURE_DIR/tasks.json"
     [[ -f "$tasks" ]] || { echo "dispatch-files.sh: missing $tasks" >&2; exit 2; }
-    task_json="$(jq -c --arg id "$TASK_ID" '.[] | select(.id == $id)' "$tasks")"
+    # A merged chain or batch (lib/task-batch.sh) lives only in the collapsed list.
+    task_json=""
+    [[ -f "$FEATURE_DIR/dispatch/tasks-collapsed.json" ]] \
+      && task_json="$(jq -c --arg id "$TASK_ID" '.[] | select(.id == $id)' "$FEATURE_DIR/dispatch/tasks-collapsed.json" 2>/dev/null || true)"
+    [[ -n "$task_json" ]] || task_json="$(jq -c --arg id "$TASK_ID" '.[] | select(.id == $id)' "$tasks")"
     [[ -n "$task_json" ]] || { echo "dispatch-files.sh: task $TASK_ID not in $tasks" >&2; exit 2; }
-    jq -r --arg id "$TASK_ID" '
+    # Slices: the docs dir is feature.json's artifacts.plan parent, else the conventional path.
+    docs_dir=""
+    if [[ -f "$FEATURE_DIR/feature.json" ]]; then
+      plan_rel="$(jq -r '.artifacts.plan // ""' "$FEATURE_DIR/feature.json")"
+      root="$(git -C "$FEATURE_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+      [[ -n "$plan_rel" && -n "$root" ]] && docs_dir="$(dirname "$root/$plan_rel")"
+      [[ -n "$docs_dir" && -d "$docs_dir" ]] || docs_dir="${root:-$FEATURE_DIR/../../..}/docs/loop-spec/features/$(basename "$FEATURE_DIR")"
+    fi
+    constraints="- none"
+    [[ -n "$docs_dir" && -f "$docs_dir/PLAN.md" ]] && constraints="$(awk '/^## Global constraints/{on=1; next} on && /^## /{exit} on && !/^<!--/ && !/^ *-->$/ && NF' "$docs_dir/PLAN.md")"
+    [[ -n "$constraints" ]] || constraints="- none"
+    cited=""
+    ids="$(grep -o 'EVID-[0-9][0-9]*' <<<"$task_json" | sort -u || true)"
+    if [[ -n "$ids" && -n "$docs_dir" && -f "$docs_dir/EVIDENCE.md" ]]; then
+      cited="$(grep -F -f <(printf '%s\n' $ids | sed 's/$/ |/') "$docs_dir/EVIDENCE.md" | grep '^- EVID-' || true)"
+    fi
+    environment=""
+    [[ -f "$FEATURE_DIR/dispatch/environment.txt" ]] && environment="$(cat "$FEATURE_DIR/dispatch/environment.txt")"
+    jq -r --arg id "$TASK_ID" --arg constraints "$constraints" --arg cited "$cited" --arg environment "$environment" '
       "# Task brief: \($id)",
       "",
       "**Subject:** \(.subject // .brief // "")",
@@ -82,6 +113,14 @@ case "$cmd" in
       "",
       "## Brief",
       (.brief // .subject // ""),
+      "",
+      "## Global constraints (PLAN.md, verbatim; every one binds)",
+      $constraints,
+      "",
+      (if $cited != "" then "## Evidence this task cites (EVIDENCE.md rows; do not re-probe)\n\($cited)\n" else empty end),
+      (if $environment != "" then "## Environment (probed by the lead; do not re-check versions or auth)\n\($environment)\n" else empty end),
+      "## Context rule",
+      "Everything that binds this task is in this brief and the files listed. Do not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md; ask the lead if a value is missing.",
       "",
       (if .batchGroup then "## Batch group\n\(.batchGroup)\n" else empty end),
       (if .memberIds then "## Batch members\n\(.memberIds | map("- \(.)") | join("\n"))\n" else empty end)

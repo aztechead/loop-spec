@@ -379,8 +379,10 @@ Write your full report (status, commits, test command, output, concerns) to:
   {report path from dispatch-files.sh}
 Return only JSON plus a one-line test summary. Exact values live in the brief; do not
 ask the lead to paste them.
-Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
-{global constraints lines, or "- none"}
+The brief also carries PLAN.md's Global constraints verbatim, the EVIDENCE rows this
+task cites, and the tool versions the lead probed. Do not open SPEC.md, PLAN.md,
+PATTERNS.md, or EVIDENCE.md, and do not re-run version or auth checks: if a value you
+need is not in the brief or the listed files, stop and report it as a blocker.
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}
 Acceptance criteria are in the brief.
@@ -414,8 +416,12 @@ NO NESTED SUBAGENTS. Do this review yourself. Never spawn a helper or a second r
 
 Read the task brief: {brief path}
 Read the implementer's report: {report path}
-The implementation is checked out at {worktree path from the package packet's .worktree};
-run every verify or acceptance command there. Never `git worktree add` another checkout
+The implementation is checked out at {worktree path from the package packet's .worktree}.
+Do NOT run the task's verify command ({verifyCommand from the packet}): the implementer ran
+it (its output is in the report) and the integration step reruns it after rebase. Run a
+command there only when the diff makes a specific criterion suspicious, and only one that
+reads the checkout (grep, test, jq, diff). Never run a plan, an apply, a test suite, or
+anything that reaches a network or a cloud API. Never `git worktree add` another checkout
 for this review.
 Read the review package once (commit list, stat, diff -U10). Do not re-run git for this
 range if the file exists:
@@ -498,8 +504,10 @@ Read this first — it is your requirements, with the exact values to use verbat
   {brief path from dispatch-files.sh}
 Write your full report to:
   {report path from dispatch-files.sh}
-Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
-{global constraints lines, or "- none"}
+The brief also carries PLAN.md's Global constraints verbatim, the EVIDENCE rows this
+task cites, and the tool versions the lead probed. Do not open SPEC.md, PLAN.md,
+PATTERNS.md, or EVIDENCE.md, and do not re-run version or auth checks: if a value you
+need is not in the brief or the listed files, stop and report it as a blocker.
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}
 Acceptance criteria are in the brief.

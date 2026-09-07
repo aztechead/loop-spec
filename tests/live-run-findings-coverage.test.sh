@@ -31,6 +31,16 @@ checks=(
   $'lib/evidence.sh\trefusing an email address or credential path'
   $'lib/owned-gitignore.sh\tensure <repo> <line>...'
   $'evals/README.md\tauto-mode classifier'
+  $'lib/execute-prepare.sh\tdispatch/environment.txt'
+  $'lib/dispatch-files.sh\tdispatch/tasks-collapsed.json'
+  $'lib/dispatch-files.sh\tDo not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md'
+  $'lib/execute-step.sh\t(.memberIds // [.id])[]'
+  $'lib/execute-step.sh\tverifyCommand:$vc'
+  $'skills/shared/execute-subagent.md\tDo NOT run the task\'s verify command'
+  $'skills/shared/execute-subagent.md\tDo not open SPEC.md, PLAN.md'
+  $'agents/planner.md\tlib/task-batch.sh'
+  $'lib/security-signal.sh\tdeclared absent'
+  $'docs/loop-spec/configuration.md\tLOOP_SPEC_TASK_BATCH_AUTO'
 )
 
 check_fixed_strings "${checks[@]}"

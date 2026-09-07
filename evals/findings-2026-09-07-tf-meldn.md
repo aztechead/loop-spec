@@ -82,11 +82,22 @@ and the harness resumed it when the task exited. "Dispatch, then stop" holds und
 - Recovery: every plugin defect above was diagnosed correctly and worked around in a
   few turns, including the submodule worktree and the lint hang.
 
+## Structural cost, fixed on the same branch
+
+The defect table above is about a third of the tool calls. The rest is shape, and the
+second pass on this branch removed the deterministic part of it:
+
+| Cost on the run | Fix |
+|---|---|
+| 11 tasks, 22 subagent seats, most a one-file HCL edit verified by grep | `task-batch.sh` merges a linear chain of local-verify tasks into one dispatch; `execute-step` dispatches the merged task and marks every member done |
+| Every seat re-read SPEC, PLAN, PATTERNS, EVIDENCE (about 100 KB) | the brief carries Global constraints, the cited EVID rows, and the environment; the prompt says not to open the artifacts |
+| Every seat re-ran `tofu version`, `terragrunt --version`, `gcloud auth list` | `execute-prepare` probes each verify program once into `dispatch/environment.txt` |
+| Reviewers re-ran the full verify, including live `terragrunt plan` | the packet names the verify command; the reviewer prompt forbids running it or anything remote |
+| No task ran below the lead's model | doc/config-only tasks with a local verify are tiered `mechanical` (haiku on Claude Code) |
+| A three-round critique gate on "no apply-capable credentials in CI" | `security-signal.sh` reads an absence boundary as no signal; a negated action still fires |
+
 ## Not fixed here, worth a look
 
-- `security-signal.sh` fired a full three-round critique gate on the SPEC line "never give
-  CI any apply-capable credential": a negated mention of a credential is a STRONG term.
-  The gate found real issues, so this is latency, not correctness.
 - Two parallel PLAN tasks ran `terragrunt plan` in the same unit and would have shared
   its `.terragrunt-cache/`; `dag-width` only sees declared files. A task-level
   `sharedState` declaration would let it serialize them.

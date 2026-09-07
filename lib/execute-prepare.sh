@@ -107,6 +107,39 @@ if [[ "$sidecar_ok" == true ]]; then
   mkdir -p "$feature_dir/dispatch"
   lib plan-conflicts table "$sidecar" > "$feature_dir/dispatch/conflict-table.json"
   lib task-batch collapse "$sidecar" > "$feature_dir/dispatch/tasks-collapsed.json"
+  # Tool versions, probed once here and inlined into every brief (lib/dispatch-files.sh),
+  # so implementers stop re-running `tofu version` and friends per seat. Programs are the
+  # first word of each verify/prepare/test pipeline segment; shell builtins and coreutils
+  # are skipped. Each probe is bounded so an interactive tool cannot hang preparation.
+  python3 - "$feature_dir/dispatch/tasks-collapsed.json" "$fj" > "$feature_dir/dispatch/environment.txt" <<'PYENV' || true
+import json, os, re, shutil, subprocess, sys
+tasks = json.load(open(sys.argv[1])); feature = json.load(open(sys.argv[2]))
+cmds = [t.get("verifyCommand") or "" for t in tasks if isinstance(t, dict)]
+cmds += [v for v in (feature.get("commands") or {}).values() if isinstance(v, str)]
+skip = {"true", "false", "test", "[", "[[", "cd", "echo", "printf", "cat", "head", "tail", "sed", "awk", "wc",
+        "sort", "uniq", "ls", "stat", "cut", "tr", "find", "xargs", "cmp", "diff", "grep", "egrep", "fgrep", "env", "!"}
+names = []
+for cmd in cmds:
+    for seg in re.split(r"\|\||&&|\||;", cmd):
+        words = seg.strip().lstrip("(").split()
+        while words and (words[0] in ("!", "env") or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0])):
+            words = words[1:]
+        if words and words[0] not in skip and words[0] not in names:
+            names.append(words[0])
+for name in names:
+    if not shutil.which(name):
+        print("%s: not on PATH" % name); continue
+    line = ""
+    for flag in ("--version", "version"):
+        try:
+            out = subprocess.run([name, flag], capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        text = (out.stdout or out.stderr or "").strip().splitlines()
+        if out.returncode == 0 and text:
+            line = text[0].strip(); break
+    print("%s: %s" % (name, line or "present (no version output)"))
+PYENV
   excludes="$(fget '(.fileConflictExcludeGlobs // []) | join("\n")')"
   [[ -f "$root/.loop-spec/file-conflict-exclude.txt" ]] && excludes="$excludes
 $(cat "$root/.loop-spec/file-conflict-exclude.txt")"

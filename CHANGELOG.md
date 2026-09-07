@@ -28,6 +28,22 @@ All notable changes documented here. Format follows Keep a Changelog.
   three labels the artifact lint parses; DISCUSS names the exact `feature-write.sh`
   command and the forgery guard's deny text carries its usage.
 
+- EXECUTE spends fewer seats and less context per seat, all of it deterministic. On the
+  live run eleven tasks cost twenty-two subagents, each re-reading four artifacts (about
+  100 KB) and re-probing the toolchain, and each reviewer re-ran the implementer's verify
+  including live `terragrunt plan`. `lib/task-batch.sh` now merges a linear chain of
+  local-verify tasks into one dispatch and tiers a doc/config-only task with a local
+  verify as `mechanical` (`LOOP_SPEC_TASK_BATCH_AUTO`, `LOOP_SPEC_TASK_BATCH_CHAIN_FILES`);
+  `execute-step` dispatches the collapsed task and marks every member done (the
+  `batchGroup` collapse never reached the dispatch before). The brief carries PLAN.md's
+  Global constraints verbatim, the EVIDENCE rows the task cites, and `dispatch/environment.txt`
+  (tool versions `execute-prepare` probes once), and both prompts tell the subagent not to
+  open the artifacts. The reviewer packet names the verify command so the reviewer can be
+  told not to run it. `security-signal.sh` treats an absence boundary ("no apply-capable
+  credentials in CI", "must not hold a secret") as no signal while a negated action
+  ("never log the credential") still fires; the live IaC spec paid a three-round gate for one
+  such bullet.
+
 ### Added
 
 - `lib/plan-render.sh`: renders PLAN.md's `## Task DAG` and `## Tasks` from tasks.json,

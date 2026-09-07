@@ -80,11 +80,32 @@ untouched = re.compile(r"\b(?:unchanged|untouched|unmodified|out\s+of\s+scope|no
 clause_split = re.compile(r"[;:,]|\.(?=\s|$)|[\u2013\u2014]")
 
 
+# A boundary that says a surface must NOT EXIST ("no apply-capable credentials in
+# CI", "must not hold a secret") describes an absence, not work on the surface. A live
+# IaC run (evals/findings-2026-09-07-tf-meldn.md) paid a full three-round gate for one
+# such bullet. A negated ACTION on the surface ("never log the credential", "no secret
+# leaks into logs") is still a requirement and still fires: the absence form is refused
+# when the clause also names an action verb.
+absence = re.compile(
+    r"\b(?:no|zero|without(?:\s+any)?|"
+    r"(?:do(?:es)?\s+not|must\s+not|mustn'?t|never|shall\s+not|cannot|can'?t|won'?t)\s+"
+    r"(?:hold|holds|contain|contains|carry|carries|require|requires|need|needs|grant|grants|"
+    r"receive|receives|have|has|ship|ships|include|includes|possess|possesses))\s+"
+    r"(?:[\w-]+\s+){0,3}?(?:credential|secret|token|password|key|cert|certificate|permission|role|access)s?\b", re.I)
+absence_action = re.compile(
+    r"\b(?:log|logs|logged|logging|leak|leaks|leaked|leaking|expos(?:e|es|ed|ing)|print|prints|printed|"
+    r"echo|commit|commits|committed|push|pushes|pushed|send|sends|sent|transmit|transmits|"
+    r"writ(?:e|es|ing|ten)|stor(?:e|es|ed|ing)|persist|persists|persisted|rotat(?:e|es|ed|ing)|"
+    r"hardcod(?:e|es|ed|ing)|embed|embeds|embedded)\b", re.I)
+
+
 def suppressed(clause, in_non_goal):
     if in_non_goal:
         return "non-goal section"
     if negated_scope.search(clause):
         return "negated scope verb"
+    if absence.search(clause) and not absence_action.search(clause):
+        return "declared absent"
     if untouched.search(clause):
         return "declared unchanged"
     return None

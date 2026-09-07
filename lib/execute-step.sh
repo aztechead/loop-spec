@@ -58,7 +58,11 @@ pget() { jq -r "$1" "$prep"; }
 slug="$(fget '.slug')"
 root="$(pget '.featureRoot')"
 sidecar="$(pget '.sidecar')"
-task_json="$(jq -c --arg id "$task_id" '(if type == "object" and has("tasks") then .tasks else . end) | map(select(.id == $id)) | first // empty' "$sidecar")"
+# The dispatch list is the collapsed one (lib/task-batch.sh): a merged chain or batch
+# carries the union of its members' files and verifies, which the sidecar row for the
+# surviving id does not. The sidecar is the fallback for a task that is not listed.
+task_json="$(jq -c --arg id "$task_id" '.tasks | map(select(.id == $id)) | first // empty' "$prep")"
+[[ -n "$task_json" ]] || task_json="$(jq -c --arg id "$task_id" '(if type == "object" and has("tasks") then .tasks else . end) | map(select(.id == $id)) | first // empty' "$sidecar")"
 [[ -n "$task_json" ]] || { echo "execute-step: no task $task_id in $sidecar" >&2; exit 2; }
 state="$feature_dir/dispatch/$task_id.json"
 sget() { jq -r "$1" "$state" 2>/dev/null || true; }
@@ -120,7 +124,8 @@ case "$cmd" in
     # live reviewer created a second worktree under /tmp for a commit that already had one.
     jq -cn --arg p "$pkg" --arg m "$model" --arg base "$base_sha" --arg head "$head_sha" --arg brief "$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id" 2>/dev/null || true)" \
       --arg report "$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")" --arg wt "$repo" \
-      '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report, worktree:$wt}'
+      --arg vc "$(jq -r '.verifyCommand // ""' <<<"$task_json")" \
+      '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report, worktree:$wt, verifyCommand:$vc}'
     ;;
   verdict)
     case "$verdict" in pass|rework|block) ;; *) usage ;; esac
@@ -179,7 +184,9 @@ case "$cmd" in
       fi
     fi
     if [[ "$(jq -r '.published' <<<"$answer")" == "true" ]]; then
-      lib task-progress mark-done "$sidecar" "$task_id" >/dev/null
+      for member in $(jq -r '(.memberIds // [.id])[]' <<<"$task_json"); do
+        lib task-progress mark-done "$sidecar" "$member" >/dev/null
+      done
       task_end merged
       if [[ "$task_id" == "task-001" && "$(fget '.greenfield // false')" == "true" ]]; then
         test_cmd="$(lib detect-test-cmd "$root" 2>/dev/null || true)"

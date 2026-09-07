@@ -159,6 +159,16 @@ Autonomous-mode runs (`feature.json.autonomous == true`) surface self-answered d
 
 This record is the authority during EXECUTE: a coordinator that hits a question already answered here resolves it from the record instead of re-escalating to the user. Never write a deferred/open question whose answer is already in this record, and never recommend an option that contradicts a recorded decision. If a decision is genuinely still open, state it as an explicit assumption in the relevant task's notes, naming the artifact and its current state — not a vague "TBD".
 
+### Task granularity
+
+One task is one dispatch: an implementer seat plus a reviewer seat, each re-oriented from
+scratch. A task that edits one or two files and is verified by grep does not earn two seats.
+Downstream, `lib/task-batch.sh` merges a linear chain of such tasks (verify commands that
+only read the checkout, no test runner, no plan) into its head, and routes a doc/config-only
+task with a local verify to the mechanical tier, both deterministically. Plan for that: keep
+a task that needs a real run (`terragrunt plan`, a test suite) on its own, and let the small
+edits around it chain rather than padding them into separate tasks with invented blockers.
+
 ### Optional per-task model tier
 
 Set `modelTier: mechanical` only when the task is complete-code transcription:
