@@ -57,8 +57,11 @@ and every record read as a plugin failure. The driver now marks such a round `cu
 and the summary says so; preflight refuses while the limit is active. A cut-off record
 measures the account, not the plugin: re-run it after the window resets.
 
-Results land in `evals/results/<run-id>/` as one JSON per task plus `summary.md`.
-Commit them; they are the evidence. Workspaces land in `evals/.runs/` and are ignored.
+Results land in `evals/results/<run-id>/` as one JSON per task plus `summary.md`, and
+workspaces in `evals/.runs/`. Both are ignored: a run's records are thousands of lines
+that belong with the run, not in a code review. Keep them locally, attach them to the
+pull request, and write what they showed into a findings document like
+`evals/findings-2026-09-06.md`, which cites run ids and record fields.
 
 ## Read the results
 
