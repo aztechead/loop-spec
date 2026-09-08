@@ -44,7 +44,7 @@ deterministic defect with an offline reproduction. The fixes are in this change.
 | 6 | pattern-mapper | The charter cites the template plugin-relative; a subagent has no plugin root, so it ran `find /`, then `find ~/.claude`, gave up, wrote from memory, and the `find` had to be killed later | 6 turns and a runaway process | dispatches carry the template's absolute path; charters say never to search |
 | 7 | planner | Neither `agents/planner.md` nor `skills/plan/SKILL.md` names `PLAN.md.template`; the plan came back in the planner's own shape and the artifact lint flagged every task block | a full planner re-dispatch | the brief carries `template_path` and the three labels the lint parses |
 | 8 | PLAN exit gate | `acceptance-lint.sh` pegged a core for minutes: the empty-input check `${input//[[:space:]]/}` is superlinear on bash 3.2 (the declared floor) and the tasks file was 17 KB | ~25 turns and ~25 minutes; the lead shortened its own criteria to get under the bug | a regex test; four sibling call sites swept; a 20 KB timing test |
-| 9 | every SendMessage join | The lead did not believe "dispatch, then stop" holds under `claude -p` and ran background `sleep` loops, reading their empty output and launching another: 24 by the end of PLAN | the dominant token cost of PLAN | the contract states the headless case as verified fact; `busy-wait-guard.sh` denies a sleep-only Bash call |
+| 9 | every SendMessage join | The lead did not believe "dispatch, then stop" holds under `claude -p` and ran background `sleep` loops, reading their empty output and launching another: 24 by the end of PLAN | the dominant token cost of PLAN | the contract states the headless case as verified fact; the sleep-denying hook was withdrawn: a pattern rule (see Not fixed here) |
 | 10 | evidence ledger | EVID-002 recorded the operator's email and the ADC credential path, then SPEC copied it; both were pushed in the checkpoint PR | a privacy leak in a public PR | `evidence.sh add` refuses email addresses and credential paths |
 | 11 | resume after the kill | `begin` warned "headless invocation without autonomous mode" (preflight only sees the env var), listed the one resumable feature without picking it (the prose no longer slugified to its slug), and `init` refused the checkout because the plugin's own uncommitted artifacts made it dirty | 5 turns; Sonnet committed the state by hand and called `resume --slug` | the warning is dropped once the token is parsed; one candidate is auto-picked; `.claude/agent-memory/` is not dirt |
 | 13 | phase close | Each re-entry of PLAN after an interrupted round appended it again: `completedPhases` read `spec,discuss,plan,plan,plan` | state a later reader cannot trust | `phase-exit.sh close_phase` records a phase once |
@@ -94,7 +94,7 @@ second pass on this branch removed the deterministic part of it:
 | Every seat re-ran `tofu version`, `terragrunt --version`, `gcloud auth list` | `execute-prepare` probes each verify program once into `dispatch/environment.txt` |
 | Reviewers re-ran the full verify, including live `terragrunt plan` | the packet names the verify command; the reviewer prompt forbids running it or anything remote |
 | No task ran below the lead's model | doc/config-only tasks with a local verify are tiered `mechanical` (haiku on Claude Code) |
-| A three-round critique gate on "no apply-capable credentials in CI" | `security-signal.sh` reads an absence boundary as no signal; a negated action still fires |
+| A three-round critique gate on "no apply-capable credentials in CI" | withdrawn: a pattern rule (see Not fixed here) |
 
 ## Round 4: the same prompt on the fixed plugin
 
@@ -116,8 +116,9 @@ duplicate (26 turns, correct). The run ended at ITERATE round 2 without deliveri
 
 What the fixes bought: EXECUTE fell to 21 minutes for six tasks with no rework round; no
 implementer opened SPEC, PLAN, PATTERNS, or EVIDENCE; the security-signal absence rule
-held (DISCUSS gate ran in single mode); SPEC and PLAN passed their shape lints on the first
-write; the busy-wait guard fired once on a `sleep 1`. PLAN is still the dominant phase:
+held (DISCUSS gate ran in single mode; the rule was later withdrawn); SPEC and PLAN passed
+their shape lints on the first write; the busy-wait guard fired once on a `sleep 1` (later
+withdrawn). PLAN is still the dominant phase:
 two lint rounds (a grounding-lint false positive and the bare-grep rule on HCL) and three
 critique rounds, each a planner round trip.
 
@@ -135,7 +136,7 @@ Defects found in round 4, fixed on this branch:
 | 25 | pattern-mapper memory committed into the PR to clear a dirty check; code-reviewer denied creating its memory dir | agent-memory excluded from dirt; `memory: project` removed from both agents |
 | 26 | lead ignored the packet's `model: haiku` and emitted a second dispatch event | contract: pass `.model`, emit nothing |
 | 27 | reviewers sent their verdict over `SendMessage` (3 InputValidationErrors each) | contract: the final message is the result |
-| 28 | the operator email landed in SPEC.md again; the lead read the ADC credentials file | `hooks/team/secret-guard.sh` |
+| 28 | the operator email landed in SPEC.md again; the lead read the ADC credentials file | withdrawn: a pattern rule (see Not fixed here) |
 | 29 | lead re-ran `init` after `begin` with an empty `$st` | cycle skill: `begin` already initialized |
 | 30 | interface conflict rows recorded with the file-overlap rationale | rulings loop names the row kind |
 
@@ -148,7 +149,7 @@ planner over SendMessage. Fixed on this branch:
 
 | # | Cost | Fix |
 |---|---|---|
-| 31 | a planner round trip per revision, for field-level findings | `lib/fixlist-route.sh`: the lead applies task- and Grounding-scoped findings itself; only structural ones re-dispatch the planner |
+| 31 | a planner round trip per revision, for field-level findings | withdrawn: a pattern rule (see Not fixed here) |
 | 32 | a critique round spent on "task-005 is not blockedBy task-002" that EXECUTE would have serialized anyway | `plan-conflicts.sh edges` infers the edge from the task prose before the render |
 | 33 | the lead read every delta diff into its own context to paste it to the challenger | the challenger gets the diff path |
 | 34 | a prose pruner dispatched over a 377-line plan with 109 prose lines | `plan-render.sh prose-lines`; the pass runs at 120 or more |
@@ -176,10 +177,10 @@ the seats without the coordination. What still cost rounds, fixed on this branch
 
 | # | Cost | Fix |
 |---|---|---|
-| 35 | verify shapes the critique had already flagged in round 4 came back: absence-only, self-reported, plan without an outcome | `lib/verify-lint.sh` at the PLAN exit and in the write-time hook |
+| 35 | verify shapes the critique had already flagged in round 4 came back: absence-only, self-reported, plan without an outcome | withdrawn: a pattern rule (see Not fixed here) |
 | 36 | seven SPEC decisions paraphrased; one lint round to copy them | `plan-render.sh decisions` copies them verbatim before the gate |
 | 37 | four `evidence.sh add` calls refused by Claude Code's worktree guard | headless runs work in place |
-| 38 | `Bash: true` and a `ScheduleWakeup` right after a dispatch | busy-wait guard extended |
+| 38 | `Bash: true` and a `ScheduleWakeup` right after a dispatch | withdrawn: a pattern rule (see Not fixed here) |
 | 39 | a pruner dispatched with a `$(cat contents below)` line | dispatch-prompt guard extended |
 | 40 | `edges` stdout captured as JSON by the lead (three retries) | `edges` prints the array |
 | 41 | the escalated run's checkpoint PR said nothing about what blocked it | BLOCKED rows in the PR body |
@@ -192,24 +193,23 @@ the seats without the coordination. What still cost rounds, fixed on this branch
 
 ## Not fixed here, worth a look
 
+- Withdrawn before merge, at the operator's request: five fixes above were regex rules
+  chosen from three runs on one repository, each able to misfire elsewhere. `verify-lint`
+  (rows 35), `fixlist-route` (31), the `security-signal` absence clause, `busy-wait-guard`
+  (9, 38), and `secret-guard` (28) are gone. What they addressed is open again: a lead can
+  busy-wait, a critique finding that names one field costs a planner round trip, a
+  boundary bullet re-arms the security gate, and the operator's email can land in a
+  feature artifact (scrub the branch before it is shared).
 - The planner still added new uncited claims during a critique revision (round 2 of the
   SPEC gate); the gate is finding real verify-design defects, so this is latency, not
   correctness. The full first critique round (about 9 min on a 6-task plan) is the
   remaining fixed cost of PLAN.
-- The ITERATE judge is right that a plan-only validation never happened when the token is
-  expired; the run now ends escalated with the operator action. A future round could let
-  DELIVER open a draft PR carrying the BLOCKED rows so the work is not stranded.
-
 - Two parallel PLAN tasks ran `terragrunt plan` in the same unit and would have shared
   its `.terragrunt-cache/`; `dag-width` only sees declared files. A task-level
   `sharedState` declaration would let it serialize them.
 - `acceptance-lint.sh` flagged 37 criteria of the shape `grep -qF 'expose = true'
-  terragrunt.hcl exits 0` once it could run. On an infrastructure repository with no
-  test suite, a fixed-string match on HCL is often the honest check; the rule was written
-  for application code. Each rewrite cost a planner round, and the challenger then
-  found three of the rewrites wrong: `grep -w` cannot anchor a target that begins with
-  `$` or `"`, so the "anchored" verify could never pass. A per-language exemption (HCL,
-  YAML, INI, where `-F` on a whole line is behavioral) is worth a probe.
+  terragrunt.hcl exits 0` once it could run. The declarative-file exemption in wave 3
+  covers that shape; the rule itself is still a pattern over criterion text.
 - Artifact volume: PLAN.md reached 643 lines and 79 KB, SPEC 27 KB, PATTERNS 510 lines
   for a repository of eight source files; every challenger and planner dispatch re-reads
   all of it. The standard profile's known cost, now measured on a real repository.

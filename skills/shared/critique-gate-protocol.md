@@ -157,23 +157,11 @@ no-op shortcut):
 cp {artifact_path} .loop-spec/features/{slug}/gate-logs/{artifact}.pre-revision.md
 ```
 
-Route the fix-list before anyone is re-dispatched. A revision is a fresh author context
-re-reading the spec, the plan, and the tree to change one field; a live PLAN gate paid
-five such round trips for findings that each named a task and a field.
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/fixlist-route.sh" route - <<<'<fix_list as a JSON array of strings>'
-# lead <n> <finding> | author <n> <finding> ... ANSWER=lead|author|split REASON=...
-```
-
-`lead` items you apply yourself, now, with no dispatch: on PLAN, edit the task's field
-in `tasks.json` and re-render (`plan-render.sh render --tasks ... --plan ...`), or edit
-the `## Grounding` bullet after running its probe; on SPEC and DISCUSS, edit the
-artifact in place. `author` items (a missing task, a re-split, an architecture change)
-go to `{author}` via `SendMessage` (not a fresh Agent call) as ONE numbered list,
-instructing it to read the current artifact, apply every item in place, send lead its
-completion message, then go idle (PLAN re-parses `tasks[]` from the completion message
-and re-renders). `ANSWER=lead` means no SendMessage at all this round.
+Re-dispatch `{author}` via `SendMessage` (not a fresh Agent call) with the numbered
+fix-list as ONE list, instructing it to read the current artifact, apply every item in
+place, send lead its completion message, then go idle. (Phase deltas apply: DISCUSS has
+the LEAD edit directly when there is no spec-writer; PLAN re-parses `tasks[]` from the
+completion message, saves it, and re-renders.)
 
 When the revision lands, run the **delta re-verify** — do NOT re-run the full gate
 protocol (`skills/shared/tier-matrix.md`, critique gate ladder):

@@ -13,7 +13,7 @@
 # Gates per phase (all deterministic, all already bundled):
 #   spec      artifact-lint spec, oracle gate (a named supervisor was asked)
 #   discuss   artifact-lint spec, grounding-lint SPEC.md, oracle gate
-#   plan      artifact-lint plan/patterns/tasks, acceptance-lint, verify-lint, verifyCommand
+#   plan      artifact-lint plan/patterns/tasks, acceptance-lint, verifyCommand
 #             syntax, criteria per task, DAG acyclic, workspace repo field,
 #             doc-deps (dependency doc-grounding), decision-coverage,
 #             criteria-coverage, grounding-lint PLAN.md
@@ -206,7 +206,6 @@ case "$phase" in
     if [[ -f "$tasks" ]]; then
       run_gate artifact-lint lib artifact-lint tasks "$tasks"
       run_gate acceptance-lint lib acceptance-lint "$tasks"
-      run_gate verify-lint lib verify-lint "$tasks"
       run_gate doc-deps lib doc-deps gate --tasks "$tasks" --artifact "$docs/PLAN.md"
       # Structural feasibility: a task with no runnable check or no criterion cannot be
       # verified, and a cyclic DAG never dispatches.

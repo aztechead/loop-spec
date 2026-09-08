@@ -115,21 +115,6 @@ printf 'The service must never log the credential.\n' > "$WORK/negated-action.md
 out="$(bash "$SCRIPT" first "$WORK/negated-action.md")"
 check "negated action still fires" "$WORK/negated-action.md:1:term=credential" "$out"
 
-# An absence boundary ("no <surface> in CI", "must not hold <surface>") is not work on
-# the surface; the live IaC bullet that paid a three-round gate is the fixture.
-printf 'Never add a CI job that can apply; any workflow added is plan/validate only and must not hold apply-capable credentials.\n' > "$WORK/absence.md"
-rc=0; bash "$SCRIPT" first "$WORK/absence.md" >/dev/null 2>&1 || rc=$?
-check "must-not-hold absence is suppressed" "1" "$rc"
-printf '%s\n' '- Boundaries: no apply-capable credentials in CI.' > "$WORK/absence-no.md"
-rc=0; bash "$SCRIPT" first "$WORK/absence-no.md" >/dev/null 2>&1 || rc=$?
-check "no-<surface> absence is suppressed" "1" "$rc"
-printf 'Ensure no secret leaks into the build logs.\n' > "$WORK/absence-action.md"
-out="$(bash "$SCRIPT" first "$WORK/absence-action.md")"
-check "an absence clause with an action verb still fires" "$WORK/absence-action.md:1:term=secret" "$out"
-printf 'Add a CI job that holds apply-capable credentials.\n' > "$WORK/presence.md"
-out="$(bash "$SCRIPT" first "$WORK/presence.md")"
-check "the un-negated form still fires" "$WORK/presence.md:1:term=credential" "$out"
-
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

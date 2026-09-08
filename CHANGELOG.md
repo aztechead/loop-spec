@@ -39,10 +39,7 @@ All notable changes documented here. Format follows Keep a Changelog.
   Global constraints verbatim, the EVIDENCE rows the task cites, and `dispatch/environment.txt`
   (tool versions `execute-prepare` probes once), and both prompts tell the subagent not to
   open the artifacts. The reviewer packet names the verify command so the reviewer can be
-  told not to run it. `security-signal.sh` treats an absence boundary ("no apply-capable
-  credentials in CI", "must not hold a secret") as no signal while a negated action
-  ("never log the credential") still fires; the live IaC spec paid a three-round gate for one
-  such bullet.
+  told not to run it.
 
 - A second observed run on the same repository (`evals/findings-2026-09-07-tf-meldn.md`,
   round 4) ended with the lead asking an absent operator a question after the ITERATE
@@ -68,26 +65,19 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 - PLAN was 42 of round 4's 110 minutes: five planner round trips (two lint rounds, three
   critique rounds), each a fresh planner context re-reading everything to change one
-  field, plus a prose pruner over a plan that was mostly rendered task blocks. Findings
-  are now routed by `lib/fixlist-route.sh`: one that names a `task-NNN` or a Grounding
-  bullet is applied by the lead in tasks.json (re-rendered) or the Grounding section, and
-  only a structural finding (a missing task, a re-split, an architecture change) goes back
-  to the planner; `plan-conflicts.sh edges` adds the `blockedBy` edges the task prose
+  field, plus a prose pruner over a plan that was mostly rendered task blocks.
+  `plan-conflicts.sh edges` adds the `blockedBy` edges the task prose
   already states before the challenger reads the plan (a live round was spent on one such
   omission); the delta re-verify hands the challenger the diff path instead of inlining
   it into the lead's context; the prose-pruning pass runs only when
   `plan-render.sh prose-lines` counts 120 or more prose lines.
 
-- Round 5 (the PLAN wave measured live) still spent PLAN rounds on shapes a probe reads:
-  a verify that only asserts absence, one that greps a status out of a note the task
-  writes, a `terragrunt plan` with no outcome assertion (all three were majors in round
-  4's critique), and seven SPEC decisions the planner paraphrased instead of copying.
-  `lib/verify-lint.sh` runs at the PLAN exit and in the write-time feedback hook;
-  `plan-render.sh decisions` copies the missing statements verbatim before the gate.
+- Round 5 (the PLAN wave measured live) spent a lint round on seven SPEC decisions the
+  planner paraphrased instead of copying; `plan-render.sh decisions` copies the missing
+  statements verbatim before the gate.
   Also from round 5: headless runs work in place instead of entering a session worktree
   (Claude Code's worktree guard refused four plugin calls whose quoted text it could not
-  prove git-free); the busy-wait guard denies a no-op Bash (`true`, a waiting `echo`) and
-  a `ScheduleWakeup` timer; the dispatch-prompt guard denies a brief with a line that is
+  prove git-free); the dispatch-prompt guard denies a brief with a line that is
   only a `$(...)` substitution (a pruner was dispatched twice for one); the critic reads
   only the EVIDENCE rows the artifact cites and never PATTERNS, transcripts, or gate logs;
   `plan-conflicts.sh edges` prints the updated array on stdout; the checkpoint PR of an
@@ -103,15 +93,6 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Added
 
-- `lib/verify-lint.sh`: flags verify commands that cannot prove their task (absence-only,
-  self-reported, plan without an outcome assertion) before any challenger is dispatched.
-- `lib/fixlist-route.sh`: routes each critique or lint finding to the lead or the author,
-  deterministically, failing safe to the author.
-- `hooks/team/secret-guard.sh` (PreToolUse on Write/Edit/MultiEdit/Bash): denies a cycle
-  artifact write that carries an email address or a credential path, and a Bash command
-  that reads a known credential file. Two runs pushed the operator's account email in
-  SPEC.md, and a lead read the gcloud ADC file into its context to diagnose an auth
-  failure. `LOOP_SPEC_SECRET_GUARD=0` disables it.
 - `lib/plan-render.sh`: renders PLAN.md's `## Task DAG` and `## Tasks` from tasks.json,
   preserving every other section. tasks.json is the single source for task fields; the
   planner writes the prose sections and returns `tasks[]` with `goal`, `read_first`,
@@ -126,11 +107,10 @@ All notable changes documented here. Format follows Keep a Changelog.
   unexpanded `$(...)` substitution or under 40 characters (a live lead dispatched both
   wave-one implementers with `$(cat /tmp/prompt.txt)` as their whole brief).
   `execute-step.sh dispatch` now refuses a task whose `blockedBy` are not done.
-- `hooks/team/busy-wait-guard.sh`: denies a Bash call whose only work is `sleep` (a
-  lead ran 24 background sleep loops waiting for a reply the harness delivers by resuming
-  the turn). `skills/shared/dispatch.md` and the critique protocol now state that
-  "dispatch, then stop" holds under `claude -p`, verified live; the critique protocol
-  applies accepted `[minor]` items before closing at the round ceiling.
+- `skills/shared/dispatch.md` and the critique protocol state that "dispatch, then stop"
+  holds under `claude -p`, verified live (a lead ran 24 background sleep loops waiting for
+  a reply the harness delivers by resuming the turn); the critique protocol applies
+  accepted `[minor]` items before closing at the round ceiling.
 
 ## [6.2.0] - 2026-09-06
 

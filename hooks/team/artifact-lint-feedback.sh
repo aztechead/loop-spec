@@ -15,7 +15,7 @@
 #
 # Recognized paths (anywhere under docs/loop-spec/features/<slug>/ or .loop-spec/features/<slug>/):
 #   SPEC.md -> artifact-lint spec     PLAN.md -> artifact-lint plan
-#   PATTERNS.md -> artifact-lint patterns   tasks.json -> artifact-lint tasks + acceptance-lint + verify-lint
+#   PATTERNS.md -> artifact-lint patterns   tasks.json -> artifact-lint tasks + acceptance-lint
 #   VERIFICATION.md -> artifact-lint verification + converged-floor (the ITERATE floor
 #   wants an exact `## Acceptance criteria` table; a live verifier learned that two
 #   phases later) + verification-grounding-lint (the `## Repository grounding` rows)
@@ -80,14 +80,11 @@ if [[ "$kind" == "tasks" ]]; then
   acc="$(bash "$LIB/acceptance-lint.sh" "$FILE" 2>&1)" || arc=$?
   # Exit 2 is a usage error (unreadable or non-JSON input), not a finding.
   if [[ "$arc" -eq 1 ]]; then out="$out"$'\n'"$acc"; rc=1; fi
-  vl=""; vrc=0
-  vl="$(bash "$LIB/verify-lint.sh" "$FILE" 2>&1)" || vrc=$?
-  if [[ "$vrc" -eq 1 ]]; then out="$out"$'\n'"$vl"; rc=1; fi
 fi
 [[ "$rc" -eq 0 ]] && exit 0
 
 {
   echo "artifact-lint: $(basename "$FILE") does not pass the $kind lint the phase exit will run. Fix these before reporting DONE:"
-  printf '%s\n' "$out" | grep -E '^(FLAG|acceptance-lint:|verify-lint:|converged-floor:|verification-grounding:)' | head -40
+  printf '%s\n' "$out" | grep -E '^(FLAG|acceptance-lint:|converged-floor:|verification-grounding:)' | head -40
 } >&2
 exit 2

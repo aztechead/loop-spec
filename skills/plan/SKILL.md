@@ -98,20 +98,11 @@ applied thirty-six fixes twice). The planner authors the prose sections and retu
 the executable fields; it leaves the two rendered headings empty.
 
 This is also the exit (step 4); feasibility and coverage run BEFORE the critique. Every
-`FLAG` (format, `lib/acceptance-lint.sh`, `lib/verify-lint.sh` (a verify that only
-asserts absence, grades a note the task writes, or runs a plan with no outcome
-assertion), unparseable verify command, missing
+`FLAG` (format, `lib/acceptance-lint.sh`, unparseable verify command, missing
 criterion, DAG cycle, workspace repo, uncovered decision or `### Good Enough` criterion,
-`grounding-lint.sh"` claim, `doc-deps` uncovered dependency) is routed first:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/fixlist-route.sh" route - <<<'<FLAG lines as a JSON array>'
-```
-
-`lead` flags (they name a `task-NNN` or a `## Grounding` bullet) you fix yourself in
-`tasks.json` or the Grounding section and re-render; only `author` flags go back to
-`planner-1` as a numbered list via `SendMessage` (re-parse `tasks[]` from every
-revision, save it, and re-render). This loop is counted like the critique's:
+`grounding-lint.sh"` claim, `doc-deps` uncovered dependency) goes back to `planner-1`
+as a numbered list via `SendMessage` (re-parse `tasks[]` from every revision, save it,
+and re-render). This loop is counted like the critique's:
 before the first FLAG list, `bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" open
 --feature-dir "$feature_dir" --phase plan --gate plan-feasibility`; per revision,
 `gate.sh round` and `gate.sh fail` with the FLAG lines as `--findings`, then
