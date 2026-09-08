@@ -122,8 +122,12 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" fail --feature-dir "$feature_
   --rounds <N (single-critic: 1 + delta rounds)> \
   --convergence <single-critic | delta-verified> \
   --challenger-model "<model>" \
-  --findings '<fix_list items as a JSON array of strings>'
+  --findings @"$feature_dir/gate-logs/{gate}-fixlist.json"
 ```
+
+Write the fix-list to that file first, one finding per line (a JSON array is accepted
+too; `--findings` also takes inline JSON, but a backslash or a quote in a finding breaks
+it, and a file of lines never does).
 
 The gate stays open across a fail — only `pass` closes it.
 

@@ -59,6 +59,15 @@ else
   echo "FAIL: floor feedback text: $msg"; ((FAIL++)) || true
 fi
 
+# A VERIFICATION.md with the floor table but no grounding rows is reported at write time.
+printf '# Verification\n\n## Acceptance criteria\n\n| # | Criterion | Status | Evidence |\n|---|---|---|---|\n| GE-001 | `true` exits 0 | PASS | ok |\n' > "$DOCS/VERIFICATION.md"
+msg="$(bash "$HOOK" 2>&1 >/dev/null <<< "$(payload Write "$DOCS/VERIFICATION.md")" || true)"
+if grep -q 'verification-grounding: FLAG' <<<"$msg"; then
+  echo "PASS: feedback names the missing grounding section"; ((PASS++)) || true
+else
+  echo "FAIL: grounding feedback text: $msg"; ((FAIL++)) || true
+fi
+
 # Files that are not cycle artifacts, or that pass, say nothing.
 printf 'x\n' > "$WORK/README.md"
 check "a non-artifact write is silent" 0 "$(payload Write "$WORK/README.md")"

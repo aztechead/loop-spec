@@ -164,8 +164,11 @@ check "next with no open gate refused" "1" "$rc"
 
 bash "$SCRIPT" open --feature-dir "$WORK/feature" --phase plan --gate plan-critique >/dev/null
 bash "$SCRIPT" round --feature-dir "$WORK/feature" >/dev/null
+printf 'task-002 has no verify command\ntask-003 verify "fails open" with a \\ escape\n' > "$WORK/fixlist.txt"
 bash "$SCRIPT" fail --feature-dir "$WORK/feature" --rounds 1 --convergence single-critic \
-  --challenger-model opus --findings '["task-002 has no verify command"]' >/dev/null
+  --challenger-model opus --findings "@$WORK/fixlist.txt" >/dev/null
+check "fail: @path findings are read one per line" "2" \
+  "$(jq -r '[.gateHistory[] | select(.result == "fail")][-1].findingsAddressed | length' "$WORK/feature/feature.json")"
 check "next after the single-critic round reruns" \
   "ANSWER=rerun REASON=0 of $CEILING delta rounds spent" \
   "$(bash "$SCRIPT" next --feature-dir "$WORK/feature")"

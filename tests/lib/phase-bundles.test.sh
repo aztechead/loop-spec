@@ -77,6 +77,14 @@ check "gate pass: minors go to the backlog" "1" "$(jq -r '.minorsQueued' <<<"$ou
 check "gate pass: the backlog holds the minor" "1" "$(grep -c 'naming' "$REPO/.loop-spec/BACKLOG.md" 2>/dev/null || echo 0)"
 check "gate pass: the acceptance gate recorded a pass" "pass" "$(fj '[.gateHistory[] | select(.gate == "acceptance")][-1].result')"
 
+# A minors list with quotes and backslashes breaks inline JSON; @path reads one finding
+# per line from a file and needs no JSON at all.
+printf '.github/workflows/checks.yml:20 - curl "unpinned" \\ escape\n' > "$FD/minors.json"
+ec=0; out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer PASS_WITH_MINOR --minors "@$FD/minors.json" 2>/dev/null)" || ec=$?
+check "verify gate: --minors @path is read from the file" "1" "$(jq -r '.minorsQueued' <<<"$out")"
+ec=0; bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer PASS_WITH_MINOR --minors "@$FD/nope.json" >/dev/null 2>&1 || ec=$?
+check "verify gate: a missing @path is a usage error" "2" "$ec"
+
 # --- verify gate: reviewer blocks ------------------------------------------------------
 ec=0; out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer BLOCK \
   --remediation-tasks '[{"id":"task-001+remediate-1","subject":"Fix: boundary violation","files":["a.sh"]}]' 2>/dev/null)" || ec=$?

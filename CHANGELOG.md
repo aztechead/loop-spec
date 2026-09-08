@@ -96,7 +96,10 @@ All notable changes documented here. Format follows Keep a Changelog.
   task list that rung runs on (three teammates each failed on `TaskList`); `execute-step`
   commits new `.loop-spec` files (a pruner's BACKLOG.md) as state before integrating, and
   `integrate-task` no longer counts tool caches a verify leaves behind (`.terraform/`, a
-  lock file, `node_modules/`, `__pycache__/`) as task dirt.
+  lock file, `node_modules/`, `__pycache__/`) as task dirt; the verify gate and the
+  critique gate read their JSON arrays from `@path` files (a `\.github` path inside inline
+  JSON killed a live gate call on quoting); the write-time hook runs the verification
+  grounding lint on VERIFICATION.md.
 
 ### Added
 

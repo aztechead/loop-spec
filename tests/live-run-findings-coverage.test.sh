@@ -74,6 +74,11 @@ checks=(
   $'lib/execute-rung.sh\tthe harness task list is disabled under claude -p'
   $'lib/integrate-task.sh\tis_tool_cache_path'
   $'lib/execute-step.sh\tadd -A -- .loop-spec'
+  $'hooks/team/artifact-lint-feedback.sh\tverification-grounding-lint.sh'
+  $'lib/verify-gate.sh\t@path'
+  $'skills/verify/SKILL.md\t--minors @'
+  $'skills/shared/critique-gate-protocol.md\t--findings @'
+  $'skills/cycle/SKILL.md\t--completed <N>'
 )
 
 check_fixed_strings "${checks[@]}"

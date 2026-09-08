@@ -156,9 +156,23 @@ planner over SendMessage. Fixed on this branch:
 ### Round 5, the PLAN wave measured
 
 Fresh clone of `main` (a plain git repository this time, so session worktrees were on),
-plugin at e32fe70. SPEC 556 s, DISCUSS 581 s. In PLAN the lead applied eleven lint
-fixes to tasks.json itself and reached the challenger 17 minutes after the phase began
-(round 4: 27). What still cost rounds, fixed on this branch:
+plugin at e32fe70. The run delivered PR #3 end to end in 2 h 00 min for $68.00 with
+1128 tool calls and no operator email in any artifact (the secret guard held).
+
+| Phase | Round 4 | Round 5 |
+|---|---|---|
+| SPEC | 398 s | 556 s (worktree-guard refusals, a double pruner) |
+| DISCUSS | 669 s | 581 s |
+| PLAN | 2512 s | 1869 s, one planner dispatch, lead-applied lint and critique fixes |
+| EXECUTE | 1284 s, 6 tasks, subagent rung | 2815 s, 7 tasks, team rung with no task list |
+| VERIFY | 386 s + 283 s | 818 s (six grounding-format rounds at the exit) |
+| ITERATE | rewind, then a question | 317 s, one agent-fixable rewind, then DELIVER |
+
+PLAN fell by a quarter and the routing did what it was built for: the lead applied
+eleven lint fixes and the whole critique fix-list itself, and reached the challenger 17
+minutes in (round 4: 27). EXECUTE doubled because width 3 selected the team rung under
+`claude -p`, where the harness task list is disabled: three persistent teammates cost
+the seats without the coordination. What still cost rounds, fixed on this branch:
 
 | # | Cost | Fix |
 |---|---|---|
@@ -171,6 +185,9 @@ fixes to tasks.json itself and reached the challenger 17 minutes after the phase
 | 41 | the escalated run's checkpoint PR said nothing about what blocked it | BLOCKED rows in the PR body |
 | 43 | a pruning pass wrote `.loop-spec/BACKLOG.md`; the first integrate stopped on it as feature dirt | `execute-step` commits new `.loop-spec` files as state, not only tracked ones |
 | 44 | `tofu init -backend=false && tofu validate` left `.terraform/` and a lock file; integrate stopped on task dirt (round 4's task-003 again) | `integrate-task` ignores tool cache paths in its dirty checks |
+| 45 | `verify gate --minors` died on a `\.github` path inside inline JSON (quoting, not substance) | both arrays and `gate.sh --findings` accept `@path` |
+| 46 | the verifier learned the `## Repository grounding` shape from the phase exit, two rounds of flags later | the write-time hook runs the grounding lint on VERIFICATION.md |
+| 47 | `finish --completed` was given the slug instead of a count | the cycle skill spells out the argument |
 | 42 | width 3 selected the team rung; `claude -p` disables the harness task list, so three teammates each failed on `TaskList` and improvised | headless never selects the team rung |
 
 ## Not fixed here, worth a look

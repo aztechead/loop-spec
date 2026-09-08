@@ -18,7 +18,7 @@
 #   PATTERNS.md -> artifact-lint patterns   tasks.json -> artifact-lint tasks + acceptance-lint + verify-lint
 #   VERIFICATION.md -> artifact-lint verification + converged-floor (the ITERATE floor
 #   wants an exact `## Acceptance criteria` table; a live verifier learned that two
-#   phases later)
+#   phases later) + verification-grounding-lint (the `## Repository grounding` rows)
 #
 # Kill switch: LOOP_SPEC_ARTIFACT_LINT_FEEDBACK=0 -> exit 0.
 # Fail-open: no payload, malformed JSON, missing lint, no python3 -> exit 0.
@@ -60,11 +60,20 @@ LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)"
 out=""
 rc=0
 out="$(bash "$LIB/artifact-lint.sh" "$kind" "$FILE" 2>&1)" || rc=$?
-# The floor needs the sibling SPEC.md; without one there is nothing to hold it to.
-if [[ "$kind" == "verification" && -f "$LIB/converged-floor.sh" && -f "$(dirname "$FILE")/SPEC.md" ]]; then
-  floor=""; frc=0
-  floor="$(bash "$LIB/converged-floor.sh" "$(dirname "$FILE")/SPEC.md" "$FILE" 2>&1)" || frc=$?
-  if [[ "$frc" -eq 1 ]]; then out="$out"$'\n'"$(grep '^FLOOR' <<<"$floor" | sed 's/^/converged-floor: /')"; rc=1; fi
+# The floor and the grounding lint need the sibling SPEC.md; without one there is
+# nothing to hold the record to. A live verifier learned the missing `## Repository
+# grounding` section from the phase exit, one round later.
+if [[ "$kind" == "verification" && -f "$(dirname "$FILE")/SPEC.md" ]]; then
+  if [[ -f "$LIB/converged-floor.sh" ]]; then
+    floor=""; frc=0
+    floor="$(bash "$LIB/converged-floor.sh" "$(dirname "$FILE")/SPEC.md" "$FILE" 2>&1)" || frc=$?
+    if [[ "$frc" -eq 1 ]]; then out="$out"$'\n'"$(grep '^FLOOR' <<<"$floor" | sed 's/^/converged-floor: /')"; rc=1; fi
+  fi
+  if [[ -f "$LIB/verification-grounding-lint.sh" ]]; then
+    ground=""; grc=0
+    ground="$(bash "$LIB/verification-grounding-lint.sh" "$FILE" --repo "$(git -C "$(dirname "$FILE")" rev-parse --show-toplevel 2>/dev/null || dirname "$FILE")" --spec "$(dirname "$FILE")/SPEC.md" 2>&1)" || grc=$?
+    if [[ "$grc" -eq 1 ]]; then out="$out"$'\n'"$(grep '^FLAG' <<<"$ground" | sed 's/^/verification-grounding: /')"; rc=1; fi
+  fi
 fi
 if [[ "$kind" == "tasks" ]]; then
   acc=""; arc=0
@@ -79,6 +88,6 @@ fi
 
 {
   echo "artifact-lint: $(basename "$FILE") does not pass the $kind lint the phase exit will run. Fix these before reporting DONE:"
-  printf '%s\n' "$out" | grep -E '^(FLAG|acceptance-lint:|verify-lint:|converged-floor:)' | head -40
+  printf '%s\n' "$out" | grep -E '^(FLAG|acceptance-lint:|verify-lint:|converged-floor:|verification-grounding:)' | head -40
 } >&2
 exit 2

@@ -4,7 +4,7 @@
 # Usage:
 #   gate.sh open  --feature-dir DIR --phase PHASE --gate GATE [--challenger NAME] [--now ISO]
 #   gate.sh round --feature-dir DIR
-#   gate.sh fail  --feature-dir DIR --rounds N --convergence C --challenger-model M [--findings JSON] [--notes TEXT]
+#   gate.sh fail  --feature-dir DIR --rounds N --convergence C --challenger-model M [--findings JSON|@path] [--notes TEXT]
 #   gate.sh pass  --feature-dir DIR --rounds N --convergence C --challenger-model M [--notes TEXT]
 #   gate.sh next  --feature-dir DIR
 #   gate.sh show  --feature-dir DIR
@@ -78,7 +78,14 @@ while [[ $# -gt 0 ]]; do
     --rounds) rounds="${2:-}"; shift 2 ;;
     --convergence) convergence="${2:-}"; shift 2 ;;
     --challenger-model) challenger_model="${2:-}"; shift 2 ;;
-    --findings) findings="${2:-}"; shift 2 ;;
+    --findings)
+      findings="${2:-}"
+      # @path: the file holds the JSON array, or one finding per line.
+      if [[ "$findings" == @* ]]; then
+        findings="$(cat "${findings#@}")"
+        jq -e 'type == "array"' <<<"$findings" >/dev/null 2>&1 || findings="$(jq -R . <<<"$findings" | jq -cs 'map(select(. != ""))')"
+      fi
+      shift 2 ;;
     --notes) notes="$(jq -Rn --arg n "${2:-}" '$n')"; shift 2 ;;
     *) usage ;;
   esac

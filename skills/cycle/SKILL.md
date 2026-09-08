@@ -158,7 +158,7 @@ delete the feature dir to abort). `ExitWorktree({action:"keep"})` when
 ## 5. Finish
 
 ```bash
-fin="$(bash "$DRV" finish --feature-dir "$featureDir" --completed "<features completed this invocation>")"
+fin="$(bash "$DRV" finish --feature-dir "$featureDir" --completed <N>)"   # N = how many features this invocation completed, counting this one (1 on a single-feature run); a live lead passed the slug
 ```
 
 Exit 1 is `delivery-incomplete`: relay and stop without touching state. Otherwise write
