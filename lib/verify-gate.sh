@@ -4,7 +4,7 @@
 # Why: after the verifier and the code reviewer report, the skill asked the lead to run
 # the exit lint, read two DONE lines, append remediation tasks, a gate entry, an event, a
 # backlog line per Minor, a rule on a repeat, and tear the team down, one Bash call each
-# (evals/findings-2026-09-06.md, finding 7). Only the verdicts are model work. This takes
+# (the 2026-09-06 live evals, finding 7). Only the verdicts are model work. This takes
 # them as arguments and does the rest.
 #
 # Usage:

@@ -85,7 +85,7 @@ Dispatch, then stop. The harness resumes the turn when an Agent returns, a teamm
 goes idle (`TeammateIdle`), or a background Bash task exits; adjudicate then. This holds
 under `claude -p`: a pending Agent, teammate reply, or background task keeps the process
 alive and its completion re-invokes the lead, so ending the turn never ends the run.
-Verified on a live headless cycle (evals/findings-2026-09-07-tf-meldn.md). Do independent lead work while a wave runs;
+Verified on a live headless cycle (the 2026-09-07 tf-meldn runs). Do independent lead work while a wave runs;
 stop only at the join. Never AskUserQuestion as a wait, keep-alive, or placeholder
 (`hooks/team/placeholder-question-guard.sh` blocks it on Claude Code).
 Never `sleep` to join a background Agent, and never poll. A teammate's plain-text output is invisible

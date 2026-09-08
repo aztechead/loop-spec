@@ -3,7 +3,7 @@
 #
 # Why: those two sections are the structured half of the plan, and until now the planner
 # hand-wrote them as markdown while also emitting the same tasks as JSON. On a live run
-# (evals/findings-2026-09-07-tf-meldn.md) that meant a full re-dispatch when the prose
+# (the 2026-09-07 tf-meldn runs) that meant a full re-dispatch when the prose
 # shape missed the template, and every later fix applied twice, once per file. Rendering
 # makes tasks.json the single source: the shape the artifact lint parses is produced,
 # not checked, and a fix to a task is one edit.

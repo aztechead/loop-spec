@@ -3,7 +3,7 @@
 #
 # Why: the sonnet eval's two-line fix spent 47 lead Bash calls in EXECUTE, and the first
 # dozen were this bookkeeping run one script at a time, each call a turn that re-read the
-# whole context (evals/findings-2026-09-06.md, finding 7). Every step here is
+# whole context (the 2026-09-06 live evals, finding 7). Every step here is
 # deterministic and already bundled; this is the one call that runs them in order.
 #
 # Usage:

@@ -9,7 +9,7 @@
 # Why: twice in the evals a lead whose result the writer refused wrote
 # .loop-spec/last-result.json itself -- once with the Write tool, once with a heredoc --
 # and a supervisor read a completed run that had never reached DELIVER
-# (evals/findings-2026-09-06.md). hooks/restrict-agent-paths.sh covers Write and Edit;
+# (the 2026-09-06 live evals). hooks/restrict-agent-paths.sh covers Write and Edit;
 # this covers the shell: `>`, `>>`, `tee`, `cp`, `mv`, `install`, `sed -i`, and a Python
 # `open(..., "w")` whose target is one of the contract files. Reading them stays free.
 #

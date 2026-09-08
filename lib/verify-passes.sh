@@ -3,7 +3,7 @@
 #
 # Why: the live run, the verification-gap scan, the plain-language probes, the docs
 # lint, the project's review layers, and the reviewer's-guide lint were six lead calls
-# whose only judgment is what to write down afterwards (evals/findings-2026-09-06.md,
+# whose only judgment is what to write down afterwards (the 2026-09-06 live evals,
 # finding 7). This runs them and hands the lead their findings as one object; the lead
 # records them in VERIFICATION.md and dispatches the reviewers the findings call for.
 #

@@ -7,7 +7,7 @@
 # member the collapse would erase, or overlapping files keeps today's
 # one-task-one-dispatch.
 #
-# A live run (evals/findings-2026-09-07-tf-meldn.md) planned eleven tasks for a
+# A live run (the 2026-09-07 tf-meldn runs) planned eleven tasks for a
 # 38-file change and paid two subagent seats each, most of them a one-file edit
 # verified by grep. Two more deterministic shapes fix that without a planner
 # judgment: a LINEAR CHAIN of tasks whose verify commands only read local files

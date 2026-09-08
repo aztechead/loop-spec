@@ -2,7 +2,7 @@
 # PostToolUse hook: lint a cycle artifact the moment it is written, for whoever wrote it.
 #
 # Why: every artifact lint ran only at phase exit, after a subagent had authored a
-# 600-line PLAN.md and reported DONE. On a live run (evals/findings-2026-09-07-tf-meldn.md)
+# 600-line PLAN.md and reported DONE. On a live run (the 2026-09-07 tf-meldn runs)
 # that placement turned three 20-millisecond checks into three planner round trips: the
 # template shape (35 flags), the bare-grep criteria (37 flags), and the decisions-verbatim
 # rule the planner pre-checked by hand. This hook runs the matching lint on the file a

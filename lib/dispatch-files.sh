@@ -7,7 +7,7 @@
 # brief file; dispatch prompts carry the path.
 #
 # The brief is the implementer's whole context. A live run
-# (evals/findings-2026-09-07-tf-meldn.md) had every subagent read SPEC, PLAN, PATTERNS
+# (the 2026-09-07 tf-meldn runs) had every subagent read SPEC, PLAN, PATTERNS
 # and EVIDENCE in full (about 100KB) to find the three rules that bound it, and re-probe
 # the toolchain the lead had already probed. So the brief now carries the slices:
 # PLAN.md's `## Global constraints` verbatim, the EVIDENCE.md rows the task cites by

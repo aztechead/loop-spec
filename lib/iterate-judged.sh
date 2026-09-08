@@ -4,7 +4,7 @@
 # Why: ITERATE asked the lead for a limit check, a verdict extraction, three state
 # writes, an event, a floor check, a feedback write, remediation tasks per gap, and on a
 # spent budget a harvest into warnings and the backlog, each a Bash call
-# (evals/findings-2026-09-06.md, finding 7). The judge is the only model work here.
+# (the 2026-09-06 live evals, finding 7). The judge is the only model work here.
 #
 # Usage:
 #   iterate-judged.sh limit   --feature-dir DIR

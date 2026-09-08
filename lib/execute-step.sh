@@ -4,7 +4,7 @@
 # Why: per task the subagent wave loop asked the lead for a worktree resolve, a worktree
 # add, a base SHA, a brief, a report path, two events, a review package, a fix-loop
 # action, an integration, a mark-done, and a closing event, each as its own Bash call
-# (evals/findings-2026-09-06.md, finding 7). Every one is deterministic. These four
+# (the 2026-09-06 live evals, finding 7). Every one is deterministic. These four
 # subcommands are the steps a lead still has to sequence around its Agent calls; the
 # rest happens inside them. lib/execute-prepare.sh must have run first: the rung, the
 # roots, and the caps are read from dispatch/prepare.json, never re-measured.

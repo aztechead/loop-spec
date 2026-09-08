@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pins the contract lines the 2026-09-07 live headless cycle on tf-meldn showed were
-# missing (evals/findings-2026-09-07-tf-meldn.md): subagents get absolute template
+# missing (the 2026-09-07 tf-meldn runs): subagents get absolute template
 # paths, task sections are rendered from tasks.json, state changes name their command,
 # the headless join is stated as fact, and the tool-boundary backstops are wired.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"

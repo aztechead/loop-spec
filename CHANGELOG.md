@@ -6,7 +6,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Fixed
 
-- A live headless cycle on a real Terragrunt repository (`evals/findings-2026-09-07-tf-meldn.md`)
+- A live headless cycle on a real Terragrunt repository (the 2026-09-07 tf-meldn runs)
   lost about a third of its tool calls to twelve deterministic defects, each now fixed
   with a test: `git-ops.sh slugify` caps a prose-derived slug at 60 characters (a 400-char
   branch name failed `git worktree add`); `LOOP_SPEC_ANSWER_*` are honored under the inline
@@ -41,7 +41,7 @@ All notable changes documented here. Format follows Keep a Changelog.
   open the artifacts. The reviewer packet names the verify command so the reviewer can be
   told not to run it.
 
-- A second observed run on the same repository (`evals/findings-2026-09-07-tf-meldn.md`,
+- A second observed run on the same repository (the 2026-09-07 tf-meldn runs,
   round 4) ended with the lead asking an absent operator a question after the ITERATE
   judge found the only gap was an expired gcloud token, and with two plan-dependent
   criteria marked PASS because PASS was the only cell that converged. ITERATE now routes
@@ -137,8 +137,7 @@ All notable changes documented here. Format follows Keep a Changelog.
   scripts, a driver that runs each through `claude -p "/loop-spec:cycle autonomous …"`
   against a snapshot of the plugin and records cost, time, diff shape, workarounds,
   and plugin tampering). Not registered by `tests/run-all.sh`; refuses to run without
-  `LOOP_SPEC_EVAL_LIVE=1` and `--confirm-spend`. Findings from the first runs:
-  `evals/findings-2026-09-06.md`.
+  `LOOP_SPEC_EVAL_LIVE=1` and `--confirm-spend`.
 - `feature.json.driverNext`: the phase the driver last answered with `NEXT`.
   `cycle-result.sh write` refuses `--status failed|terminal|escalated` over it unless
   `--reason` says what stopped the phase.

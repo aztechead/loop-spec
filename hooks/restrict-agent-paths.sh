@@ -80,7 +80,7 @@ fi
 # The files lib/cycle-result.sh, lib/feature-write.sh, and lib/deliver.sh own are never
 # Write or Edit targets, whoever the caller is: a haiku eval run whose result the writer
 # refused twice wrote .loop-spec/last-result.json by hand and a supervisor read a run
-# that never reached DELIVER as completed (evals/findings-2026-09-06.md).
+# that never reached DELIVER as completed (the 2026-09-06 live evals).
 # hooks/team/result-forgery-guard.sh covers the same files from the shell.
 case "$FILE_PATH" in
   .loop-spec/*|*/.loop-spec/*)
@@ -95,7 +95,7 @@ esac
 
 # The installed plugin is never a write target, whoever the caller is: a sonnet eval
 # run patched lib/runtime-ignore.sh in the plugin checkout to get past a gate
-# (evals/findings-2026-09-06.md, finding 1). Paths resolve by real location, so a
+# (the 2026-09-06 live evals, finding 1). Paths resolve by real location, so a
 # feature worktree under the project stays writable, and the rule is off when the
 # plugin root is the project or inside it (loop-spec developing itself).
 plugin_root="${CLAUDE_PLUGIN_ROOT:-}"

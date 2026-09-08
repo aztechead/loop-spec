@@ -69,8 +69,8 @@ measures the account, not the plugin: re-run it after the window resets.
 Results land in `evals/results/<run-id>/` as one JSON per task plus `summary.md`, and
 workspaces in `evals/.runs/`. Both are ignored: a run's records are thousands of lines
 that belong with the run, not in a code review. Keep them locally, attach them to the
-pull request, and write what they showed into a findings document like
-`evals/findings-2026-09-06.md`, which cites run ids and record fields.
+pull request, and write what they showed into a findings document that cites run ids
+and record fields; findings documents stay out of the tree.
 
 ## Read the results
 

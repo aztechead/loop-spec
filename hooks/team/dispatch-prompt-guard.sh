@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse hook: refuse an Agent dispatch whose prompt never became a brief.
 #
-# A live headless lead (evals/findings-2026-09-07-tf-meldn.md) wrote each implementer's
+# A live headless lead (the 2026-09-07 tf-meldn runs) wrote each implementer's
 # brief to /tmp and dispatched `Agent({prompt: "$(cat /tmp/prompt-task-001.txt)"})`.
 # The Agent tool is not a shell: both implementers started with a 31-character
 # substitution as their whole assignment and only recovered because they guessed to
