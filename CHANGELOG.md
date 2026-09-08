@@ -2,7 +2,7 @@
 
 All notable changes documented here. Format follows Keep a Changelog.
 
-## [Unreleased]
+## [6.3.0] - 2026-09-07
 
 ### Fixed
 
