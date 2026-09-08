@@ -32,6 +32,12 @@ check "sleep then read a file denied" 2 "$(bash_payload 'sleep 45; tail -c 3000 
 check "sleep then cat gate output denied" 2 "$(bash_payload 'sleep 240; echo "GATE:"; cat /tmp/plan-gate2.out; echo "=== procs:"; ps aux | grep -c "[a]cceptance-lint"')"
 check "bare sleep denied" 2 "$(bash_payload 'sleep 300')"
 
+# The round-5 shapes: a no-op Bash and a scheduled wakeup right after a dispatch.
+check "bare true denied" 2 "$(bash_payload 'true')"
+check "waiting echo denied" 2 "$(bash_payload 'echo "waiting for the pruner"')"
+check "ScheduleWakeup denied" 2 '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":1200,"reason":"fallback"}}'
+check "an echo that reports a result passes" 0 "$(bash_payload 'echo "gate passed: 3 tasks"')"
+
 # Waits with a purpose pass.
 check "until loop on a condition allowed" 0 "$(bash_payload 'until grep -q Ready dev.log; do sleep 0.5; done')"
 check "while loop polling a job allowed" 0 "$(bash_payload 'while ! test -f done; do sleep 5; done')"

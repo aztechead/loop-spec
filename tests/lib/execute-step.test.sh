@@ -113,9 +113,11 @@ if [[ "$(jq -r '.rung.subagentIsolation' "$FD2/dispatch/prepare.json")" == "lead
   # dispatch modified the tracked feature.json; integrate must not refuse its own state.
   git -C "$ROOT2" add -f -- "$FD2/feature.json" >/dev/null 2>&1; git -C "$ROOT2" commit -q -m "track state" -- "$FD2/feature.json" >/dev/null 2>&1 || true
   jq '.touched = "by the driver"' "$FD2/feature.json" > "$FD2/feature.json.tmp" && mv "$FD2/feature.json.tmp" "$FD2/feature.json"
+  printf '# Backlog\n' > "$ROOT2/.loop-spec/BACKLOG.md"
   ec=0; out="$(bash "$STEP" integrate --feature-dir "$FD2" --task task-001 2>/dev/null)" || ec=$?
   check "integrate worktree: published onto the feature branch" "true" "$(jq -r '.published' <<<"$out")"
   check "integrate worktree: the plugin's own state was committed first" "1" "$(git -C "$ROOT2" log --oneline | grep -c 'state @ execute')"
+  check "integrate worktree: a new .loop-spec file is state, not dirt" "1" "$(git -C "$ROOT2" ls-files .loop-spec/BACKLOG.md | grep -c BACKLOG)"
   check "integrate worktree: feature branch carries the commit" "1" "$(git -C "$ROOT2" log --oneline feat/my-feature | grep -c 'change a')"
   check "integrate worktree: marked done" "task-001" "$(bash "$REPO_ROOT/lib/task-progress.sh" done "$FD2/tasks.json")"
 else

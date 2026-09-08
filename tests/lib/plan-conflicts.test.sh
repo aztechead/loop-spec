@@ -71,9 +71,10 @@ cat > "$WORK/edges.json" <<'EOF'
   {"id":"task-003","files":["c"],"blockedBy":["task-002"],"verifyCommand":"true","acceptanceCriteria":["c"],"goal":"describe the unit task-002 audited and task-003 itself"}
 ]
 EOF
-out="$(bash "$SCRIPT" edges "$WORK/edges.json")"
-check "edges: consumes mention adds the edge" "1" "$(grep -c '^edge task-002 -> task-001$' <<<"$out")"
-check "edges: existing edge and self-mention add nothing" "1" "$(grep -c '1 edge(s) inferred' <<<"$out")"
+out="$(bash "$SCRIPT" edges "$WORK/edges.json" 2>"$WORK/edges.err")"
+check "edges: consumes mention adds the edge" "1" "$(grep -c '^edge task-002 -> task-001$' "$WORK/edges.err")"
+check "edges: existing edge and self-mention add nothing" "1" "$(grep -c '1 edge(s) inferred' "$WORK/edges.err")"
+check "edges: stdout is the updated array" "task-001" "$(jq -r '.[1].blockedBy | join(",")' <<<"$out")"
 check "edges: tasks.json is written back" "task-001" "$(jq -r '.[1].blockedBy | join(",")' "$WORK/edges.json")"
 cat > "$WORK/cycle.json" <<'EOF'
 [

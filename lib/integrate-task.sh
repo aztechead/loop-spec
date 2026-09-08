@@ -122,6 +122,19 @@ task_before="$(git -C "$task_worktree" rev-parse --verify "refs/heads/$task_bran
   || fail invalid-arguments task-ref-not-found 2
 
 clean_detail=""
+# Tool caches a verify command leaves behind (`tofu init`, `terragrunt plan`, a test
+# runner) are by-products, not the task's work: two live integrates stopped on a
+# module's .terraform/ and lock file after `tofu validate`. Anything a task means to
+# ship is in its files[] and already committed.
+is_tool_cache_path() {
+  case "$1" in
+    *.terraform/*|*/.terraform.lock.hcl|.terraform.lock.hcl|*.terragrunt-cache/*|*node_modules/*|\
+    *__pycache__/*|*.pytest_cache/*|*.mypy_cache/*|*.ruff_cache/*|*.tox/*|*.venv/*|\
+    *.gradle/*|*.cache/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 is_known_runtime_path() {
   case "$1" in
     .loop-spec/features/*/feature.json|.loop-spec/features/*/PROGRESS.md) return 1 ;;
@@ -151,6 +164,7 @@ check_clean() {
     if [[ "$line" == "?? "* ]]; then
       path="${line:3}"
       is_known_runtime_path "$path" && continue
+      is_tool_cache_path "$path" && continue
     fi
     clean_detail="${label}-dirty"
     return 1

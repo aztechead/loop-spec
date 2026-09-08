@@ -78,8 +78,30 @@ All notable changes documented here. Format follows Keep a Changelog.
   it into the lead's context; the prose-pruning pass runs only when
   `plan-render.sh prose-lines` counts 120 or more prose lines.
 
+- Round 5 (the PLAN wave measured live) still spent PLAN rounds on shapes a probe reads:
+  a verify that only asserts absence, one that greps a status out of a note the task
+  writes, a `terragrunt plan` with no outcome assertion (all three were majors in round
+  4's critique), and seven SPEC decisions the planner paraphrased instead of copying.
+  `lib/verify-lint.sh` runs at the PLAN exit and in the write-time feedback hook;
+  `plan-render.sh decisions` copies the missing statements verbatim before the gate.
+  Also from round 5: headless runs work in place instead of entering a session worktree
+  (Claude Code's worktree guard refused four plugin calls whose quoted text it could not
+  prove git-free); the busy-wait guard denies a no-op Bash (`true`, a waiting `echo`) and
+  a `ScheduleWakeup` timer; the dispatch-prompt guard denies a brief with a line that is
+  only a `$(...)` substitution (a pruner was dispatched twice for one); the critic reads
+  only the EVIDENCE rows the artifact cites and never PATTERNS, transcripts, or gate logs;
+  `plan-conflicts.sh edges` prints the updated array on stdout; the checkpoint PR of an
+  escalated run carries the BLOCKED verification rows and the operator action; and a
+  headless run never selects the team rung, because `claude -p` disables the harness
+  task list that rung runs on (three teammates each failed on `TaskList`); `execute-step`
+  commits new `.loop-spec` files (a pruner's BACKLOG.md) as state before integrating, and
+  `integrate-task` no longer counts tool caches a verify leaves behind (`.terraform/`, a
+  lock file, `node_modules/`, `__pycache__/`) as task dirt.
+
 ### Added
 
+- `lib/verify-lint.sh`: flags verify commands that cannot prove their task (absence-only,
+  self-reported, plan without an outcome assertion) before any challenger is dispatched.
 - `lib/fixlist-route.sh`: routes each critique or lint finding to the lead or the author,
   deterministically, failing safe to the author.
 - `hooks/team/secret-guard.sh` (PreToolUse on Write/Edit/MultiEdit/Bash): denies a cycle

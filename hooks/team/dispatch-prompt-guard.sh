@@ -47,7 +47,10 @@ if str(payload.get("tool_name") or "") != "Agent":
     raise SystemExit(0)
 prompt = str((payload.get("tool_input") or {}).get("prompt") or "")
 stripped = prompt.strip()
-if re.fullmatch(r"\$\(.*\)|`.*`", stripped, re.S):
+if re.fullmatch(r"\$\(.*\)|`.*`", stripped, re.S) \
+        or any(re.fullmatch(r"\$\([^)]*\)|`[^`]*`", line.strip()) for line in stripped.splitlines()):
+    # A brief with one line that is only `$(cat ...)` shipped the placeholder, not the
+    # file: a live pruner was dispatched twice for it.
     print("substitution")
 elif len(stripped) < 40:
     print("short")

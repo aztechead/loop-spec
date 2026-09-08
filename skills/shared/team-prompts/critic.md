@@ -11,7 +11,7 @@ Surface gaps, ambiguities, flawed assumptions, and missing acceptance criteria i
 
 ## Findings pass
 
-1. Read the artifact at `docs/loop-spec/features/{slug}/{artifact}` to ground your critique in the actual text. Also read `docs/loop-spec/features/{slug}/SPEC.md` (when the artifact is PLAN.md).
+1. Read the artifact at `docs/loop-spec/features/{slug}/{artifact}` to ground your critique in the actual text. Also read `docs/loop-spec/features/{slug}/SPEC.md` (when the artifact is PLAN.md). For the `EVID-NNN` ids the artifact cites, read only those rows (`grep -E '^- EVID-(001|007) ' docs/loop-spec/features/{slug}/EVIDENCE.md`), never the whole ledger. Do not open PATTERNS.md, the interview or discuss transcripts, or `gate-logs/`: a critic who has read the justifications is the reviewer this pass replaces, and every artifact you read is context the next round pays for again. Grep the tree for the claims you check.
 2. Enumerate **specific, actionable issues**. Group each issue as one of:
    - **Gap**: something required but absent from the artifact.
    - **Ambiguity**: a statement open to conflicting interpretations.

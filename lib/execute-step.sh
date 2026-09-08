@@ -153,8 +153,10 @@ case "$cmd" in
       worktree="$(sget '.worktree')"; branch="$(sget '.branch')"
       # Every dispatch modifies the tracked feature state, and integrate-task refuses a
       # dirty feature root on purpose; commit the state the plugin itself changed so the
-      # first integrate of a wave does not stop for a hand-made checkpoint.
-      if git -C "$root" add -u -- .loop-spec 2>/dev/null && ! git -C "$root" diff --cached --quiet -- .loop-spec 2>/dev/null; then
+      # first integrate of a wave does not stop for a hand-made checkpoint. New files
+      # count too: a pruning pass wrote .loop-spec/BACKLOG.md and a live integrate
+      # stopped on it as dirt.
+      if git -C "$root" add -A -- .loop-spec 2>/dev/null && ! git -C "$root" diff --cached --quiet -- .loop-spec 2>/dev/null; then
         git -C "$root" commit -q -m "chore: $slug state @ execute" -- .loop-spec >/dev/null 2>&1 || true
       fi
       res="$(lib integrate-task --feature-root "$root" --feature-branch "feat/$slug" --task-worktree "$worktree" \

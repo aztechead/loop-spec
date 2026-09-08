@@ -31,6 +31,7 @@ check "unexpanded \$(cat file) denied" 2 "$(agent '$(cat /tmp/prompt-task-001.tx
 check "backtick substitution denied" 2 "$(agent '`cat /tmp/brief.md`')"
 check "empty prompt denied" 2 "$(agent '')"
 check "one-line stub denied" 2 "$(agent 'do task-001')"
+check "a brief with a line that is only a substitution denied" 2 "$(agent $'Follow the directive verbatim (fresh-eyes prose pruning):\n\n---\n$(cat contents below)\n---\nArtifact: /repo/docs/loop-spec/features/x/SPEC.md and the template at /plugin/skills/shared/artifact-templates/SPEC.md.template. Return the pruning list.')"
 
 # Real briefs pass, including ones that mention a substitution inside prose.
 BRIEF='You are an implementer agent for task task-001. Read the brief at /repo/.loop-spec/features/x/dispatch/task-001-brief.md, then run the verify command `$(cat cmd.txt)` exactly as written and report DONE.'

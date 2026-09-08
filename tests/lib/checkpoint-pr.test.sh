@@ -200,6 +200,9 @@ reset_fixture
 # ── Case 4: Happy path (LOOP_SPEC_CHECKPOINT_PR=1) ───────────────────────────
 reset_fixture
 GH_LOG4="$WORK/gh-case4.log"
+# An escalated run's BLOCKED verification rows ride in the PR body.
+mkdir -p "$REPO/docs/loop-spec/features/my-feature"
+printf '# V\n\n## Acceptance criteria\n\n| # | Criterion | Status | Evidence |\n|---|---|---|---|\n| GE-001 | plan succeeds | BLOCKED | gcloud reauth needed |\n| GE-002 | fmt clean | PASS | ok |\n' > "$REPO/docs/loop-spec/features/my-feature/VERIFICATION.md"
 ec=0
 out=$( (cd "$REPO"; PATH="$SHIMS:$PATH" LOOP_SPEC_CHECKPOINT_PR=1 SHIM_GH_LOG="$GH_LOG4" \
   bash "$LIB" create "$FEAT_DIR" --reason "test escalation") 2>&1 ) || ec=$?
@@ -208,6 +211,8 @@ check "4: branch pushed to bare" \
   "1" "$(git -C "$WORK/bare" rev-parse --verify refs/heads/feat/my-feature >/dev/null 2>&1 && echo 1 || echo 0)"
 check "4: gh shim saw pr create --draft" \
   "1" "$([[ -f "$GH_LOG4" ]] && grep -q -- "--draft" "$GH_LOG4" && echo 1 || echo 0)"
+check "4: the PR body carries the BLOCKED row and not the PASS row" \
+  "1,0" "$(grep -c 'GE-001 | plan succeeds | BLOCKED' "$GH_LOG4"),$(grep -c 'GE-002' "$GH_LOG4")"
 check "4: feature.json has checkpointPrUrl" \
   "https://github.com/test/repo/pull/1" \
   "$(jq -r '.checkpointPrUrl // empty' "$FEAT_DIR/feature.json" 2>/dev/null)"

@@ -14,7 +14,9 @@
 #
 # `edges` writes tasks.json back with a blockedBy edge for every task whose
 # interfaces.consumes, goal, or brief names another task id it does not already wait on
-# ("consumes: task-003's module path"), and prints `edge <task> -> <dep>` per addition.
+# ("consumes: task-003's module path"), prints the updated array on stdout (the same
+# JSON `table` readers expect; a live lead redirected stdout into a file and jq-parsed
+# it), and reports `edge <task> -> <dep>` per addition on stderr.
 # Why: a live PLAN critique spent a round on exactly this omission while EXECUTE would
 # have added the same edge from the interface row; inferring it before the render means
 # the plan the challenger reads already has it. An edge that would close a cycle is
@@ -87,8 +89,9 @@ if cmd == "edges":
             json.dump(tasks, fh, indent=2)
             fh.write("\n")
     for a, b in added:
-        print("edge %s -> %s" % (a, b))
-    print("plan-conflicts: %d edge(s) inferred" % len(added))
+        sys.stderr.write("edge %s -> %s\n" % (a, b))
+    sys.stderr.write("plan-conflicts: %d edge(s) inferred\n" % len(added))
+    print(json.dumps(tasks, indent=2))
     sys.exit(0)
 
 pairs = []

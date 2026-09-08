@@ -153,6 +153,26 @@ planner over SendMessage. Fixed on this branch:
 | 33 | the lead read every delta diff into its own context to paste it to the challenger | the challenger gets the diff path |
 | 34 | a prose pruner dispatched over a 377-line plan with 109 prose lines | `plan-render.sh prose-lines`; the pass runs at 120 or more |
 
+### Round 5, the PLAN wave measured
+
+Fresh clone of `main` (a plain git repository this time, so session worktrees were on),
+plugin at e32fe70. SPEC 556 s, DISCUSS 581 s. In PLAN the lead applied eleven lint
+fixes to tasks.json itself and reached the challenger 17 minutes after the phase began
+(round 4: 27). What still cost rounds, fixed on this branch:
+
+| # | Cost | Fix |
+|---|---|---|
+| 35 | verify shapes the critique had already flagged in round 4 came back: absence-only, self-reported, plan without an outcome | `lib/verify-lint.sh` at the PLAN exit and in the write-time hook |
+| 36 | seven SPEC decisions paraphrased; one lint round to copy them | `plan-render.sh decisions` copies them verbatim before the gate |
+| 37 | four `evidence.sh add` calls refused by Claude Code's worktree guard | headless runs work in place |
+| 38 | `Bash: true` and a `ScheduleWakeup` right after a dispatch | busy-wait guard extended |
+| 39 | a pruner dispatched with a `$(cat contents below)` line | dispatch-prompt guard extended |
+| 40 | `edges` stdout captured as JSON by the lead (three retries) | `edges` prints the array |
+| 41 | the escalated run's checkpoint PR said nothing about what blocked it | BLOCKED rows in the PR body |
+| 43 | a pruning pass wrote `.loop-spec/BACKLOG.md`; the first integrate stopped on it as feature dirt | `execute-step` commits new `.loop-spec` files as state, not only tracked ones |
+| 44 | `tofu init -backend=false && tofu validate` left `.terraform/` and a lock file; integrate stopped on task dirt (round 4's task-003 again) | `integrate-task` ignores tool cache paths in its dirty checks |
+| 42 | width 3 selected the team rung; `claude -p` disables the harness task list, so three teammates each failed on `TaskList` and improvised | headless never selects the team rung |
+
 ## Not fixed here, worth a look
 
 - The planner still added new uncited claims during a critique revision (round 2 of the

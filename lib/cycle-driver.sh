@@ -469,6 +469,14 @@ cmd_init() {
     worktrees=0
     echo "loop-spec: $repo_root/.git is a file (submodule or linked worktree); working in place on the feature branch (LOOP_SPEC_WORKTREES=0)." >&2
   fi
+  if [[ "$worktrees" == "1" && "$(lib harness headless 2>/dev/null)" == "true" ]]; then
+    # A session worktree exists so a human can keep editing the checkout while the cycle
+    # runs. Headless has no such human, and Claude Code's worktree guard then refuses
+    # plugin calls whose quoted text it cannot prove git-free (four evidence.sh calls on
+    # a live run). In place, on the feature branch, is the same isolation for free.
+    worktrees=0
+    echo "loop-spec: headless invocation; working in place on the feature branch (LOOP_SPEC_WORKTREES=0)." >&2
+  fi
   if [[ "$harness" == "claude" && "$worktrees" == "1" ]]; then
     if [[ "$adopted" == true ]]; then
       worktree_abs="$(lib git-ops -C "$repo_root" attach-feature-worktree "$slug" "$feature_branch")" \

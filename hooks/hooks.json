@@ -50,7 +50,7 @@
         ]
       },
       {
-        "matcher": "Agent|Bash|EnterWorktree",
+        "matcher": "Agent|Bash|EnterWorktree|ScheduleWakeup",
         "hooks": [
           {
             "type": "command",

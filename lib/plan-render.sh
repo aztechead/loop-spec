@@ -13,6 +13,12 @@
 #     Replaces the two sections in place (appends them before `## Test strategy`, or at
 #     the end, when absent). Every other section is preserved byte-for-byte.
 #   plan-render.sh render --tasks <tasks.json>          prints the two sections to stdout
+#   plan-render.sh decisions --spec <SPEC.md> --plan <PLAN.md>
+#     Copies every SPEC <decisions> statement that PLAN.md does not yet carry verbatim into
+#     its `## User decisions (already made)` section (created before `## Global
+#     constraints` when absent). lib/decision-coverage.sh gates on exactly that fixed
+#     string; a live planner paraphrased seven of them and the phase paid a lint round for
+#     a copy. The planner's own richer bullets stay; only the missing statements are added.
 #   plan-render.sh prose-lines --plan <PLAN.md>         prints how many non-blank lines lie
 #     OUTSIDE the rendered span, so the prose-pruning pass can be skipped on a plan whose
 #     bulk is rendered task blocks (a live 377-line plan paid a pruner for all of it).
@@ -22,17 +28,63 @@
 # Exit: 0 rendered, 1 unreadable or non-array tasks.json, 2 usage.
 set -uo pipefail
 
-tasks=""; plan=""; mode=render
+tasks=""; plan=""; spec=""; mode=render
 while [[ $# -gt 0 ]]; do
   case "$1" in
     render) ;;
     prose-lines) mode=prose ;;
+    decisions) mode=decisions ;;
+    --spec) spec="${2:-}"; shift ;;
     --tasks) tasks="${2:-}"; shift ;;
     --plan) plan="${2:-}"; shift ;;
     *) echo "usage: plan-render.sh render --tasks <tasks.json> [--plan <PLAN.md>]" >&2; exit 2 ;;
   esac
   shift
 done
+if [[ "$mode" == "decisions" ]]; then
+  [[ -n "$spec" && -n "$plan" ]] || { echo "usage: plan-render.sh decisions --spec <SPEC.md> --plan <PLAN.md>" >&2; exit 2; }
+  [[ -f "$spec" && -f "$plan" ]] || { echo "plan-render: spec or plan file not found" >&2; exit 1; }
+  python3 - "$spec" "$plan" <<'PYD'
+import re
+import sys
+
+spec_path, plan_path = sys.argv[1], sys.argv[2]
+spec = open(spec_path, encoding="utf-8").read()
+m = re.search(r"<decisions>(.*?)</decisions>", spec, re.S)
+statements = []
+for line in (m.group(1) if m else "").splitlines():
+    line = line.strip()
+    if not line.startswith("-"):
+        continue
+    entry = re.sub(r"^-\s*(?:[Dd]ecision:\s*)?", "", line).strip()
+    statement = re.sub(r"\s*(\*\*)?(Rationale|Alternatives considered):.*$", "", entry, flags=re.I).strip()
+    if statement:
+        statements.append(statement)
+plan = open(plan_path, encoding="utf-8").read()
+norm = " ".join(plan.split())
+missing = [st for st in statements if " ".join(st.split()) not in norm]
+if not missing:
+    print("plan-render: decisions already covered (%d)" % len(statements))
+    raise SystemExit(0)
+heading = "## User decisions (already made)"
+bullets = ["- %s (from SPEC <decisions>)" % st for st in missing]
+lines = plan.split("\n")
+idx = next((i for i, l in enumerate(lines) if l.strip() == heading), None)
+if idx is None:
+    anchor = next((i for i, l in enumerate(lines) if l.startswith("## ") and l.strip() in ("## Global constraints", "## Task DAG", "## Tasks")), None)
+    block = [heading, ""] + bullets + [""]
+    lines = lines[:anchor] + block + lines[anchor:] if anchor is not None else lines + [""] + block
+else:
+    end = next((i for i in range(idx + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    insert = end
+    while insert > idx + 1 and not lines[insert - 1].strip():
+        insert -= 1
+    lines = lines[:insert] + bullets + lines[insert:]
+open(plan_path, "w", encoding="utf-8").write("\n".join(lines))
+print("plan-render: copied %d decision(s) into %s" % (len(missing), plan_path))
+PYD
+  exit $?
+fi
 if [[ "$mode" == "prose" ]]; then
   [[ -n "$plan" ]] || { echo "usage: plan-render.sh prose-lines --plan <PLAN.md>" >&2; exit 2; }
   [[ -f "$plan" ]] || { echo "plan-render: plan file not found: $plan" >&2; exit 1; }

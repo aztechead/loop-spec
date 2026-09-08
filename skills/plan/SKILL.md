@@ -76,10 +76,16 @@ gates:
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/plan-conflicts.sh" edges "$feature_dir/tasks.json"
 bash "${CLAUDE_SKILL_DIR}/../../lib/plan-render.sh" render --tasks "$feature_dir/tasks.json" --plan "$docs/PLAN.md"
+bash "${CLAUDE_SKILL_DIR}/../../lib/plan-render.sh" decisions --spec "$docs/SPEC.md" --plan "$docs/PLAN.md"
 bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir"
 ```
 
-`edges` adds a `blockedBy` for every task whose `interfaces.consumes`, `goal`, or `brief`
+`decisions` copies every SPEC `<decisions>` statement the plan does not carry verbatim
+into `## User decisions (already made)`; the coverage gate greps for that exact string,
+and a live planner paraphrased seven of them.
+
+`edges` writes tasks.json back (stdout repeats the updated array; stderr lists the edges)
+with a `blockedBy` for every task whose `interfaces.consumes`, `goal`, or `brief`
 names another task it does not wait on (a live critique spent a round on that omission;
 EXECUTE would have serialized the pair anyway). An edge that would close a cycle is
 refused with exit 1: that is a planner finding, send it back.
@@ -92,7 +98,9 @@ applied thirty-six fixes twice). The planner authors the prose sections and retu
 the executable fields; it leaves the two rendered headings empty.
 
 This is also the exit (step 4); feasibility and coverage run BEFORE the critique. Every
-`FLAG` (format, `lib/acceptance-lint.sh`, unparseable verify command, missing
+`FLAG` (format, `lib/acceptance-lint.sh`, `lib/verify-lint.sh` (a verify that only
+asserts absence, grades a note the task writes, or runs a plan with no outcome
+assertion), unparseable verify command, missing
 criterion, DAG cycle, workspace repo, uncovered decision or `### Good Enough` criterion,
 `grounding-lint.sh"` claim, `doc-deps` uncovered dependency) is routed first:
 

@@ -60,6 +60,20 @@ checks=(
   $'skills/plan/SKILL.md\tplan-conflicts.sh" edges'
   $'skills/plan/SKILL.md\tplan-render.sh" prose-lines'
   $'skills/shared/review-prompts/prose-pruning.md\tprose-lines'
+  $'lib/phase-exit.sh\tverify-lint'
+  $'hooks/team/artifact-lint-feedback.sh\tverify-lint.sh'
+  $'skills/plan/SKILL.md\tlib/verify-lint.sh'
+  $'skills/shared/team-prompts/critic.md\tread only those rows'
+  $'lib/cycle-driver.sh\theadless invocation; working in place'
+  $'hooks/hooks.json\tAgent|Bash|EnterWorktree|ScheduleWakeup'
+  $'hooks/team/busy-wait-guard.sh\ta scheduled wakeup is not a wait'
+  $'hooks/team/busy-wait-guard.sh\ta no-op command is not a wait'
+  $'lib/checkpoint-pr.sh\tBlocked verification'
+  $'skills/plan/SKILL.md\tplan-render.sh" decisions'
+  $'lib/plan-conflicts.sh\tprints the updated array on stdout'
+  $'lib/execute-rung.sh\tthe harness task list is disabled under claude -p'
+  $'lib/integrate-task.sh\tis_tool_cache_path'
+  $'lib/execute-step.sh\tadd -A -- .loop-spec'
 )
 
 check_fixed_strings "${checks[@]}"

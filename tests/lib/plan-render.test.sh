@@ -96,6 +96,25 @@ check "absent sections: inserted before Test strategy" "1" "$(awk '/^## Tasks/{t
 lint="$(bash "$LINT" plan "$WORK/PLAN.md" 2>&1 || true)"
 check "rendered blocks pass the lint's task-block checks" "0" "$(grep -c -E "task block .* is missing|no '### task-<id>:' blocks|Task DAG' table has no" <<<"$lint")"
 
+# decisions: SPEC statements the plan lacks are copied verbatim; the coverage gate then passes.
+cat > "$WORK/SPEC.md" <<'MD'
+# Spec
+
+<decisions>
+- Decision: no OpenTofu, Terragrunt, or provider version bumps. Rationale: scope. Alternatives considered: bumping.
+- the existing unit directory `site` never moves or is renamed.
+</decisions>
+MD
+printf '# Plan\n\n## Architecture overview\n\nProse.\n\n## User decisions (already made)\n\n- **bumps**: no OpenTofu, Terragrunt, or provider version bumps. Source: SPEC.\n\n## Global constraints\n\n- none\n' > "$WORK/PLAN3.md"
+out="$(bash "$LIB" decisions --spec "$WORK/SPEC.md" --plan "$WORK/PLAN3.md")"
+check "decisions: only the missing statement is copied" "plan-render: copied 1 decision(s) into $WORK/PLAN3.md" "$out"
+check "decisions: the copy lands under the existing section" "1" "$(awk '/^## User decisions/{s=1} /^## Global/{s=0} s && /never moves or is renamed/{print "ok"}' "$WORK/PLAN3.md" | grep -c ok)"
+check "decisions: the coverage gate passes afterwards" "0" "$(bash "$REPO_ROOT/lib/decision-coverage.sh" "$WORK/SPEC.md" "$WORK/PLAN3.md" >/dev/null 2>&1; echo $?)"
+check "decisions: idempotent" "plan-render: decisions already covered (2)" "$(bash "$LIB" decisions --spec "$WORK/SPEC.md" --plan "$WORK/PLAN3.md")"
+printf '# Plan\n\n## Architecture overview\n\nProse.\n\n## Global constraints\n\n- none\n' > "$WORK/PLAN4.md"
+bash "$LIB" decisions --spec "$WORK/SPEC.md" --plan "$WORK/PLAN4.md" >/dev/null
+check "decisions: the section is created before Global constraints" "1" "$(awk '/^## User decisions/{u=NR} /^## Global constraints/{g=NR} END{print (u && g && u<g) ? 1 : 0}' "$WORK/PLAN4.md")"
+
 # prose-lines counts what the pruner would read: everything outside the rendered span.
 check "prose-lines counts lines outside the rendered sections" "7" "$(bash "$LIB" prose-lines --plan "$WORK/PLAN.md")"
 ec=0; bash "$LIB" prose-lines --plan "$WORK/nope.md" >/dev/null 2>&1 || ec=$?

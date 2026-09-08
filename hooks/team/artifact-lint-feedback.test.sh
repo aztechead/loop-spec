@@ -43,6 +43,10 @@ fi
 # tasks.json with a bare-substring grep criterion (the second live failure).
 printf '[{"id":"task-001","title":"t","files":["a"],"verifyCommand":"true","acceptanceCriteria":["grep -c foo a returns 1"],"blockedBy":[]}]\n' > "$STATE/tasks.json"
 check "bare-grep tasks.json write is reported" 2 "$(payload Write "$STATE/tasks.json")"
+printf '[{"id":"task-001","title":"t","files":["notes.md"],"verifyCommand":"grep -q PASS notes.md","acceptanceCriteria":["grep -w PASS notes.md exits 0"],"blockedBy":[]}]\n' > "$STATE/tasks.json"
+check "self-reported verify in tasks.json is reported" 2 "$(payload Write "$STATE/tasks.json")"
+msg="$(bash "$HOOK" 2>&1 >/dev/null <<< "$(payload Write "$STATE/tasks.json")" || true)"
+if grep -q 'self-reported' <<<"$msg"; then echo "PASS: feedback names the verify-lint rule"; ((PASS++)) || true; else echo "FAIL: verify-lint feedback text: $msg"; ((FAIL++)) || true; fi
 
 # A VERIFICATION.md whose acceptance table the ITERATE floor cannot read is reported.
 printf '# Spec\n\n## Success criteria\n\n### Good Enough\n\n- [ ] `true` exits 0\n\n### Exceptional\n\n- [ ] more\n' > "$DOCS/SPEC.md"

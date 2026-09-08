@@ -48,10 +48,22 @@ except Exception:
     print("allow")
     raise SystemExit(0)
 
-if str(payload.get("tool_name") or "") != "Bash":
+tool = str(payload.get("tool_name") or "")
+if tool == "ScheduleWakeup":
+    # A scheduled wakeup "in case the notification is missed" is a timer, not a wait on
+    # a signal; a live lead armed a 20-minute one right after dispatching a subagent.
+    print("wakeup")
+    raise SystemExit(0)
+if tool != "Bash":
     print("allow")
     raise SystemExit(0)
 command = str((payload.get("tool_input") or {}).get("command") or "")
+stripped = command.strip()
+# A no-op Bash (true, or a bare colon) is the smallest way to hold a turn open; a real
+# command never has nothing to do. An echo of waiting prose is the same move.
+if re.fullmatch(r"(?:true|:)\s*;?", stripped) or re.fullmatch(r"echo\s+[^|;&]*\b(?:wait|waiting|idle|standing by|pending)\b[^|;&]*", stripped, re.I):
+    print("noop")
+    raise SystemExit(0)
 if not re.search(r"(?<![\w-])sleep\s+\d", command):
     print("allow")
     raise SystemExit(0)
@@ -81,6 +93,14 @@ for piece in re.split(r"[;&|\n]+", body):
 print("deny")
 ')
 
+case "$VERDICT" in
+  wakeup)
+    echo "DENY: a scheduled wakeup is not a wait. Dispatch, then stop: the harness resumes this turn when the Agent returns, the teammate replies, or the background task exits; no timer is needed and none is missed. (skills/shared/dispatch.md, Waiting. Disable: LOOP_SPEC_BUSY_WAIT_GUARD=0)" >&2
+    exit 2 ;;
+  noop)
+    echo "DENY: a no-op command is not a wait. Dispatch, then stop: end the turn and the harness resumes it when the dispatched work returns. (skills/shared/dispatch.md, Waiting. Disable: LOOP_SPEC_BUSY_WAIT_GUARD=0)" >&2
+    exit 2 ;;
+esac
 if [[ "$VERDICT" == "deny" ]]; then
   echo "DENY: sleep is not a wait. Dispatch, then stop: the harness resumes this turn when the Agent returns, the teammate replies, or the background task exits, under claude -p too. Do independent lead work or end the turn; never sleep, in the foreground or as a background task you then poll. (skills/shared/dispatch.md, Waiting. Disable: LOOP_SPEC_BUSY_WAIT_GUARD=0)" >&2
   exit 2
