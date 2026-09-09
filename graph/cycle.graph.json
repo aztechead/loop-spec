@@ -966,7 +966,8 @@
           "{featureDir}"
         ],
         "expects": "route=oneshot"
-      }
+      },
+      "sameSession": true
     },
     {
       "from": "human.after-spec",

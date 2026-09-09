@@ -20,6 +20,14 @@ check "validate: a gate node is not a phase" "1" "$(bash "$LIB" validate verify.
 check "validate: the message names the phases" "1" "$(bash "$LIB" validate nope 2>&1 | grep -c 'phase must be one of: spec | oneshot | discuss')"
 check "suffix: uppercased id" "DELIVER" "$(bash "$LIB" suffix deliver)"
 check "bad invocation exits 2" "2" "$(bash "$LIB" bogus >/dev/null 2>&1; echo $?)"
+# The short route is one session: the edge into oneshot carries sameSession, and the
+# walk passes through the human node between the two phases. Every other boundary
+# hands off.
+check "same-session: spec to oneshot stays in the session" "0" "$(bash "$LIB" same-session spec oneshot >/dev/null 2>&1; echo $?)"
+check "same-session: spec to discuss hands off" "1" "$(bash "$LIB" same-session spec discuss >/dev/null 2>&1; echo $?)"
+check "same-session: oneshot to deliver hands off" "1" "$(bash "$LIB" same-session oneshot deliver >/dev/null 2>&1; echo $?)"
+check "same-session: every full-path boundary hands off" "0" "$(for pair in 'discuss plan' 'plan execute' 'execute verify' 'verify iterate' 'iterate deliver'; do bash "$LIB" same-session $pair >/dev/null 2>&1 && echo "$pair"; done | wc -l | tr -d ' ')"
+check "same-session: one id is a bad invocation" "2" "$(bash "$LIB" same-session spec >/dev/null 2>&1; echo $?)"
 check "unreadable graph exits 2" "2" "$(bash "$LIB" list --graph "$WORK/none.json" >/dev/null 2>&1; echo $?)"
 
 # Every consumer reads a graph copy through LOOP_SPEC_GRAPH, so one graph edit adds a phase.

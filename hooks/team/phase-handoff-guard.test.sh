@@ -59,6 +59,18 @@ check "no switch exists: an active feature is enough to enforce" 2 "$SECOND" \
 check "malformed payload fails open" 0 "not json" \
   CLAUDE_PROJECT_DIR="$ROOT"
 
+# The short route is one session: the graph's spec -> oneshot edge carries sameSession,
+# so oneshot after spec is allowed, and oneshot -> deliver still hands off.
+ONESHOT_ROOT="$ROOT/oneshot"; ODIR="$ONESHOT_ROOT/.loop-spec/features/demo"; mkdir -p "$ODIR"
+jq '.currentPhase = "oneshot"' "$FDIR/feature.json" > "$ODIR/feature.json"
+ONESHOT_AFTER_SPEC='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:oneshot"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
+check "oneshot after spec is the same session (graph sameSession edge)" 0 "$ONESHOT_AFTER_SPEC" \
+  CLAUDE_PROJECT_DIR="$ONESHOT_ROOT"
+jq '.currentPhase = "deliver" | .completedPhases = ["spec","oneshot"]' "$FDIR/feature.json" > "$ODIR/feature.json"
+DELIVER_AFTER_ONESHOT='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:deliver"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:oneshot"}}]}]}'
+check "deliver after oneshot still hands off" 2 "$DELIVER_AFTER_ONESHOT" \
+  CLAUDE_PROJECT_DIR="$ONESHOT_ROOT"
+
 # Production path: Claude Code passes `transcript_path`, not an inline transcript.
 # Entries are JSONL with top-level `type:"assistant"` and the blocks under
 # `.message.content` -- the shape a real ~/.claude/projects/*.jsonl carries. The inline

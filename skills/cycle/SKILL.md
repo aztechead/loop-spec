@@ -106,7 +106,10 @@ project tests here (VERIFY is the only place that suite runs).
 ans="$(bash "$DRV" next --feature-dir "$featureDir")"
 ```
 
-Act on the first line of `ans`, then stop. This invocation runs at most one phase.
+Act on the first line of `ans`, then stop. This invocation runs at most one phase,
+except across a graph edge that carries `sameSession` (today SPEC to ONESHOT: the
+short route is one session), where `next --returned-from` answers `NEXT` again instead
+of `HANDOFF`.
 
 - `NEXT phase=<p> label="..." effort=<system1|system2>` — print it, treat every
   following `EXT ...` line as a standing directive or fact file for this phase, then
@@ -119,9 +122,9 @@ Act on the first line of `ans`, then stop. This invocation runs at most one phas
         --note "<one line: what the phase produced>")"
   ```
 
-  and act on that answer with the same list. `REDO` is the only answer that keeps
-  this invocation going: the same phase, until its exit is clean or the driver
-  escalates.
+  and act on that answer with the same list. `REDO` keeps this invocation going on
+  the same phase until its exit is clean or the driver escalates; a `NEXT` after
+  `--returned-from` is the same-session edge above, and you invoke that phase here.
 - `REDO phase=<p> flags=<n>` followed by `FLAG ...` lines — `next` ran the phase's exit
   gates (`lib/phase-exit.sh`) and the artifact is not ready. Invoke `Skill(loop-spec:<p>)`
   again with the FLAG lines; the phase fixes its artifact in place and returns; then call

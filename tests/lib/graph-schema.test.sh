@@ -82,6 +82,9 @@ loop_required="$(jq -c '
 ' "$SCHEMA")"
 check "loop requires ceiling+strategy" '["ceiling","strategy"]' "$loop_required"
 
+# sameSession is the one exception to one phase per invocation, and it is edge data.
+check "edge sameSession is a boolean" "boolean" "$(jq -r '.definitions.edge.properties.sameSession.type' "$SCHEMA")"
+
 # State key space subset of feature-state-schema v7 listing
 state_keys="$(jq -r '.definitions.stateKey.enum[]' "$SCHEMA" | sort)"
 doc="$ROOT/skills/shared/feature-state-schema.md"

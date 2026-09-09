@@ -251,6 +251,54 @@ FD6="$(jq -r '.featureDir' <<<"$out")"
 out="$(cd "$REPO6" && drv begin -- "add a flag to the tool" 2>/dev/null)"
 check "begin: a human decision is handed back" "decisions" "$(jq -r '.action' <<<"$out")"
 
+# --- the short route is one session: spec -> oneshot answers NEXT, not HANDOFF --------
+REPO7="$(new_repo oneshot)"
+printf 'def slugify(s):\n    return s.lower()\n' > "$REPO7/slugify.py"
+git -C "$REPO7" add -A && git -C "$REPO7" -c commit.gpgsign=false commit -q -m "add slugify"
+out="$(cd "$REPO7" && AUTONOMOUS=1 drv begin -- "autonomous fix slugify dots" 2>/dev/null)"
+FD7="$(jq -r '.featureDir' <<<"$out")"
+DOCS7="$REPO7/docs/loop-spec/features/$(jq -r '.slug' "$FD7/feature.json")"; mkdir -p "$DOCS7"
+cat > "$DOCS7/SPEC.md" <<'MD'
+---
+ambiguity_scores:
+  ambiguity: 0.1
+  gate_passed: true
+  unresolved_dimensions: []
+footprint:
+  - slugify.py
+---
+# fix slugify dots
+
+<!-- intent: frozen. The ask as SPEC understood it. -->
+## Intent
+
+Dots survive slugify.
+<!-- /intent -->
+
+## Implementation notes
+
+- slugify.py: strip dots in slugify().
+
+## Success criteria
+
+### Good Enough
+
+- [ ] `python3 -c "from slugify import slugify; assert slugify('a.b') == 'ab'"` exits 0
+
+## Grounding
+
+- none
+MD
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" 2>/dev/null)"
+check "next: the oneshot candidate enters SPEC first" "NEXT phase=spec" "${out:0:15}"
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from spec --note "oneshot spec" 2>/dev/null)"
+check "next: a oneshot spec enters ONESHOT in the same session (graph sameSession edge)" "NEXT phase=oneshot" "${out:0:18}"
+check "next: no handoff is recorded across the same-session edge" "null" "$(jq -r '.handoffSession' "$FD7/feature.json")"
+check "next: driverNext names oneshot" "oneshot" "$(jq -r '.driverNext.phase' "$FD7/feature.json")"
+check "next: SPEC closed before ONESHOT opened" "spec" "$(jq -r '.completedPhases[-1]' "$FD7/feature.json")"
+ec=0; (cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv phase-begin oneshot --feature-dir "$FD7" >/dev/null 2>&1) || ec=$?
+check "phase-begin oneshot: the same session opens the phase (no exit 4)" "0" "$([[ "$ec" -eq 4 ]] && echo 4 || echo 0)"
+
 # --- phase-begin: one ingress call per phase ------------------------------------------
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv phase-begin spec --feature-dir "$FD6" 2>/dev/null)"
 check "phase-begin spec: entry packet is parsed" "1" "$(jq '.entry.fields | length > 0' <<<"$out" | grep -c true)"

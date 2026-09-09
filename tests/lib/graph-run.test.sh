@@ -90,6 +90,12 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
     check "oneshot dry-run skips $phase" "1" "$visited"
   done
   rm -f "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck/SPEC.md"
+  # The spec to oneshot edge does not hand off: the short route is one session
+  # (orchestrator-port-followup.md, F2), and the exception is data on the edge.
+  check "the edge into oneshot carries sameSession" "true" \
+    "$(jq -r '[.edges[] | select(.to == "oneshot")] | all(.sameSession == true)' "$ROOT/graph/cycle.graph.json")"
+  check "no other edge carries sameSession" "0" \
+    "$(jq -r '[.edges[] | select(.to != "oneshot" and .sameSession == true)] | length' "$ROOT/graph/cycle.graph.json")"
   echo "$out" | grep -q "^execute.worker"$'\t' && empty_worker=0 || empty_worker=1
   check "cycle.graph.json dry-run skips execute.worker when mergeQueue is empty" "1" "$empty_worker"
   echo "$out" | grep -q "^execute.join"$'\t' && empty_join=0 || empty_join=1

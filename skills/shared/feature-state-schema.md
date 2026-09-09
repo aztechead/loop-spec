@@ -264,7 +264,9 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   handoff answer, and `begin` or `phase-begin` of any other phase exits 4; each writes
   the paused result again, since `begin`'s preflight clears it. The next phase starts in
   a fresh invocation, whatever tool the lead reaches for. An empty `id` (a harness that
-  stamps no session id) enforces nothing.
+  stamps no session id) enforces nothing. A graph edge carrying `sameSession` (the
+  `human.after-spec` to `oneshot` route) writes no record: the driver answers `NEXT`
+  and the phase runs in the session that closed SPEC.
 - `driverNext` is written by `lib/cycle-driver.sh next` each time it answers `NEXT`.
   `lib/cycle-result.sh write` reads it: publishing `failed`, `terminal`, or `escalated`
   while it is set needs `--reason`, because a lead that was told to run a phase and

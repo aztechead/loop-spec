@@ -140,6 +140,9 @@ remedies.
 - One phase per invocation is the only mode: it gives a fresh main context, per-phase
   main-model selection, and a durable recovery point after every phase. The SPEC, PLAN,
   verification, and delivery artifacts and the hard gates are the same in every phase.
+  The one exception is the short route: the graph's SPEC to ONESHOT edge carries
+  `sameSession`, so a oneshot spec and its implementation share one invocation and one
+  context load (`graph/cycle.graph.json`).
 - Keep `LOOP_SPEC_CHECKPOINT_EACH_PHASE=1` unless an operator has separately
   accepted a larger recovery window. Network checkpoint cost is intentional crash
   protection, not a candidate for a silent default bypass.

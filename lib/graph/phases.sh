@@ -14,23 +14,35 @@
 #   phases.sh validate <id> [--graph PATH]    exit 0 when <id> is a phase, 1 otherwise
 #                                             (the message names the phases)
 #   phases.sh suffix   <id> [--graph PATH]    the LOOP_SPEC_PHASE_MODEL_<SUFFIX> suffix
+#   phases.sh same-session <from> <to> [--graph PATH]
+#                                             exit 0 when the edge that enters phase <to>
+#                                             from phase <from> (through any non-agent
+#                                             nodes between them) carries
+#                                             `"sameSession": true`; 1 otherwise. The
+#                                             driver and hooks/team/phase-handoff-guard.sh
+#                                             read the same answer, so the one exception
+#                                             to one phase per invocation is graph data
+#                                             (orchestrator-port-followup.md, F2: the short
+#                                             route paid two sessions' fixed cost).
 #
 # LOOP_SPEC_GRAPH names another graph for every caller (an embedding that ships its own
 # graph, or a test that adds a phase to a copy); --graph outranks it.
-# Exit codes: 0 answered; 1 not a phase; 2 bad invocation or unreadable graph.
+# Exit codes: 0 answered; 1 not a phase (or not a same-session edge); 2 bad invocation or
+# unreadable graph.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cmd="${1:-}"; shift || true
 graph="${LOOP_SPEC_GRAPH:-$SCRIPT_DIR/../../graph/cycle.graph.json}"
-id=""
+id="" to=""
 case "$cmd" in
   validate|suffix) id="${1:-}"; shift || true ;;
+  same-session) id="${1:-}"; to="${2:-}"; shift 2 || true ;;
 esac
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --graph) graph="${2:-}"; shift 2 ;;
-    *) echo "usage: phases.sh list|regex|validate <id>|suffix <id> [--graph PATH]" >&2; exit 2 ;;
+    *) echo "usage: phases.sh list|regex|validate <id>|suffix <id>|same-session <from> <to> [--graph PATH]" >&2; exit 2 ;;
   esac
 done
 [[ -f "$graph" ]] || { echo "phases.sh: graph not readable: $graph" >&2; exit 2; }
@@ -53,5 +65,20 @@ case "$cmd" in
       || { echo "phase must be one of: $(paste -sd' ' <<<"$phases" | sed 's/ / | /g') (got '$id')" >&2; exit 1; }
     printf '%s\n' "$id" | tr 'a-z-' 'A-Z_'
     ;;
-  *) echo "usage: phases.sh list|regex|validate <id>|suffix <id> [--graph PATH]" >&2; exit 2 ;;
+  same-session)
+    [[ -n "$id" && -n "$to" ]] || { echo "usage: phases.sh same-session <from> <to> [--graph PATH]" >&2; exit 2; }
+    # Walk forward from <from>; a phase other than <to> ends a branch, a visited node
+    # ends a branch, and the edge that reaches <to> answers with its own flag.
+    jq -e --arg from "$id" --arg to "$to" '
+      . as $g
+      | ($g.nodes | map({key: .id, value: .kind}) | from_entries) as $kind
+      | def reach($n; $seen):
+          [ $g.edges[] | select(.from == $n) | .to as $t
+            | if $t == $to then (.sameSession == true)
+              elif ($kind[$t] // "") == "agent" or ($seen | index($t)) != null then false
+              else reach($t; $seen + [$t]) end ]
+          | any;
+      reach($from; [$from])' "$graph" >/dev/null 2>&1
+    ;;
+  *) echo "usage: phases.sh list|regex|validate <id>|suffix <id>|same-session <from> <to> [--graph PATH]" >&2; exit 2 ;;
 esac

@@ -1185,6 +1185,12 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
 
     if nxt == "completed" or nxt.startswith("human.") or nxt == phase:
         return None
+    # The graph names the one exception to one phase per session: an edge carrying
+    # sameSession (spec -> oneshot). The short route paid two sessions' fixed cost for a
+    # two-line fix, and each session loaded its whole context (orchestrator-port-followup.md,
+    # F2). hooks/team/phase-handoff-guard.sh reads the same edge.
+    if lib_run("graph/phases", "same-session", phase, nxt, quiet=True).returncode == 0:
+        return None
     # One phase per session: the next phase starts in a fresh context whose whole ingress
     # is lib/phase-entry.sh. A rewind is a next phase the graph lists before this one.
     lib("cycle-result", "write", feature_dir, "--status", "paused", "--reason", "phase-handoff",

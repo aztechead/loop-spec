@@ -4,9 +4,11 @@
 # Every phase hands off (orchestrator-port-plan.md, WP4): cycle invokes one phase skill,
 # the driver answers HANDOFF, and the next phase starts in a fresh session. A second,
 # different phase skill in the same transcript means a phase tried to chain directly
-# instead of returning to cycle. This hook writes the paused machine result itself and
-# denies the second phase invocation, so the outer process receives a deterministic
-# handoff even if the model ignored the routing prose.
+# instead of returning to cycle. The one exception is graph data: an edge carrying
+# `sameSession` (`lib/graph/phases.sh same-session`), today spec -> oneshot. This hook
+# writes the paused machine result itself and denies the second phase invocation, so
+# the outer process receives a deterministic handoff even if the model ignored the
+# routing prose.
 set -euo pipefail
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
@@ -162,6 +164,13 @@ PRIOR=$(printf '%s' "$PARSED" | python3 -c \
 # Re-entering the same phase for an internal retry is not a phase boundary.
 [[ "$TARGET" != "$PRIOR" ]] || exit 0
 
+# The graph's one exception: an edge into the target that carries sameSession (the
+# short route, spec -> oneshot). The driver answers NEXT across it, never HANDOFF.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if bash "$SCRIPT_DIR/../../lib/graph/phases.sh" same-session "$PRIOR" "$TARGET" 2>/dev/null; then
+  exit 0
+fi
+
 FEATURE_PATH=$(printf '%s' "$FEATURE_DIR" | python3 -c \
   'import json,sys; print(json.load(sys.stdin).get("path",""))' 2>/dev/null || echo "")
 CURRENT_PHASE=$(printf '%s' "$FEATURE_DIR" | python3 -c \
@@ -171,7 +180,6 @@ CURRENT_PHASE=$(printf '%s' "$FEATURE_DIR" | python3 -c \
 # This prevents an unrelated phase-skill call from being mistaken for cycle routing.
 [[ -n "$FEATURE_PATH" && "$CURRENT_PHASE" == "$TARGET" ]] || exit 0
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 summary="Phase ${PRIOR} completed; ${TARGET} is ready in durable state."
 bash "$SCRIPT_DIR/../../lib/cycle-result.sh" write "$FEATURE_PATH" \
   --status paused --reason phase-handoff --summary "$summary" >/dev/null 2>&1 || true

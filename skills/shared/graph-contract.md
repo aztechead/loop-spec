@@ -106,6 +106,15 @@ must be reachable from `entry` — both `FLAG`s from `lib/graph/validate.sh`.
    only when its source also declares a bounded `loop` edge — that is the declared form
    of ITERATE/DELIVER re-entry; an uncovered back-edge still `FLAG`s.
 
+An edge into an agent node may carry `sameSession: true`: the phase it enters runs in
+the session that closed the previous phase, and `lib/cycle-driver.sh next` answers
+`NEXT` across it instead of `HANDOFF`. `lib/graph/phases.sh same-session <from> <to>`
+answers for the driver and for `hooks/team/phase-handoff-guard.sh` alike, walking
+through the non-agent nodes between the two phases, so the exception is never prose.
+The shipped graph sets it on `human.after-spec` to `oneshot` only: the short route
+paid two sessions' fixed cost for a two-line fix. Pinned by
+`tests/lib/graph-run.test.sh` and `tests/lib/graph-phases.test.sh`.
+
 ## Path-length rule
 
 A graph declares ONE topology and more than one path through it. The cycle graph's long

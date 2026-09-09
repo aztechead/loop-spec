@@ -325,7 +325,11 @@
         "condition": { "$ref": "#/definitions/routeCondition" },
         "join": { "type": "string" },
         "ceiling": { "type": "number", "exclusiveMinimum": 0 },
-        "strategy": { "type": "string", "enum": ["unroll", "contain"] }
+        "strategy": { "type": "string", "enum": ["unroll", "contain"] },
+        "sameSession": {
+          "type": "boolean",
+          "description": "true: the agent node this edge enters starts in the session that closed the previous phase (cycle-driver.sh next answers NEXT instead of HANDOFF). Absent or false: one phase per invocation. Read through non-agent nodes between two phases."
+        }
       },
       "allOf": [
         {
