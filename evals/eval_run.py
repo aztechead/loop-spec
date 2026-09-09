@@ -62,9 +62,13 @@ def sh(args, cwd, env=None, check=True, timeout=None):
 
 def child_env():
     """The nested CLI must not inherit this session's plugin or project bindings."""
+    # CLAUDE_CODE_SESSION_ID is dropped too: a nested `claude -p` that inherits it appends
+    # every round to the parent session's transcript, and the phase-handoff guard then
+    # reads round one's phase as "already run in this invocation" in round three.
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("LOOP_SPEC_")
-           and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")}
+           and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT",
+                         "CLAUDE_CODE_SESSION_ID")}
     # Fork mode backgrounds every Agent and ignores run_in_background on the call; the
     # 20260909-sonnet-fastapi run saw the launch stub on all eight dispatches and paid
     # a wait turn for each report. This is the harness's documented foreground switch.

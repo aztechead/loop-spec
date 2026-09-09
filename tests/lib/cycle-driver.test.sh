@@ -157,6 +157,12 @@ out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from discuss 2>/dev
 check "next: handoff answer names the successor" "HANDOFF next=" "${out:0:13}"
 check "next: handoff writes a paused result" "phase-handoff" "$(jq -r '.reason' "$FD/result.json")"
 
+# --- start: an autonomous re-invocation resumes the one paused feature ------------
+out="$(AUTONOMOUS=1 drv start --dir "$REPO" -- add a json flag reworded 2>/dev/null)"
+check "start: autonomous with one paused feature and a new title resumes it" "add-a-json-flag" "$(jq -r '.resume.autoPick' <<<"$out")"
+check "start: the resume decision names the reworded slug" "1" \
+  "$(grep -c 'outranks a new title (add-a-json-flag-reworded)' "$REPO/.loop-spec/decisions-staging/decisions.jsonl" 2>/dev/null || echo 0)"
+
 # --- resume ----------------------------------------------------------------------
 out="$(cd "$REPO" && drv resume --dir "$REPO" --feature-root "$REPO" 2>/dev/null)"
 check "resume: in-place feature resumes from its root" "add-a-json-flag" "$(jq -r '.slug' <<<"$out")"
@@ -171,6 +177,8 @@ check "resume: shared root without identity refuses ambiguity" "1" "$ec"
 out="$(drv resume --dir "$REPO" --feature-root "$REPO" --slug add-a-json-flag 2>/dev/null)"
 check "resume: selected slug survives shared checkout" "add-a-json-flag" "$(jq -r '.slug' <<<"$out")"
 check "resume: other feature remains untouched" "untouched" "$(jq -r '.currentTeamName' "$OTHER/feature.json")"
+out="$(AUTONOMOUS=1 drv start --dir "$REPO" -- yet another title 2>/dev/null)"
+check "start: two paused features and a new title pick nothing" "null" "$(jq -r '.resume.autoPick' <<<"$out")"
 ec=0; drv resume --dir "$REPO" --feature-root "$REPO" --slug missing >/dev/null 2>&1 || ec=$?
 check "resume: missing selected feature never falls back" "1" "$ec"
 ec=0; drv resume --dir "$REPO" --feature-root "$REPO" --slug ../add-a-json-flag >/dev/null 2>&1 || ec=$?

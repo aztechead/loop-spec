@@ -173,6 +173,12 @@ touches, and what to do.
 
 ### Added
 
+- `hooks/team/nested-session-guard.sh` (PreToolUse, Bash): a phase lead that launches a
+  nested harness session (`claude -p`, `codex exec`, `opencode run`, `adk run`, in the
+  command or in a script it runs) is denied while a feature is active. A live run had
+  written its own round script after the DISCUSS handoff and spent its budget twice.
+  The bundled launchers (`session_run.py`, the loop-runner scripts, the eval driver)
+  pass. `LOOP_SPEC_NESTED_SESSION_GUARD=0` stands it down.
 - `extensions/sessions/`: the headless session layer. `lib/harness.sh session-layer`
   answers `session` when the invocation is headless, a profile exists for the harness
   CLI (`profiles/claude.toml`, `codex.toml`, `opencode.toml`), the CLI is on PATH, and
@@ -204,6 +210,18 @@ touches, and what to do.
 
 ### Fixed
 
+- `lib/parse-invocation.sh` refuses a flag only while it leads the arguments; after the
+  first description word a dash token is the description's own text (`python3 -m
+  unittest`, `accepts --due YYYY-MM-DD`). Refusing those made a lead reword the task, the
+  reworded slug matched no paused feature, and the next invocation started a second
+  cycle in the wrong directory (`tests/lib/parse-invocation.test.sh`).
+- `cycle-driver.sh start`: an autonomous invocation with exactly one paused feature
+  resumes it even when the title differs; a different feature is a human decision
+  (`tests/lib/cycle-driver.test.sh`).
+- `evals/eval_run.py` and `extensions/sessions/session_run.py` drop
+  `CLAUDE_CODE_SESSION_ID` from the child's environment: a nested `claude -p` that
+  inherits it appends every round to the parent's transcript, and the handoff guard then
+  reads an earlier round's phase as this invocation's.
 - Ten findings from the second and third live runs (`evals/findings-2026-09-09-rounds-2-3.md`):
   the version directive and SPEC's greenfield lookup say a stale installer is upgraded
   before anything is installed, never worked around with an older build or a

@@ -91,8 +91,15 @@ check "mid-text new kept in title" "add new export button" "$(field "$out" title
 ec=0; err="$(bash "$SCRIPT" parse "--help" 2>&1 >/dev/null)" || ec=$?
 check "--help is refused" "1" "$ec"
 check "the refusal names the flag and the tokens" "1" "$(grep -c "unknown flag '--help'.*--no-run" <<<"$err")"
-ec=0; bash "$SCRIPT" parse "add csv export -v" >/dev/null 2>&1 || ec=$?
-check "a stray flag inside the text is refused" "1" "$ec"
+out="$(bash "$SCRIPT" parse "add csv export -v")"
+check "a dash token after description words is description text" "add csv export -v" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "autonomous" "a fib tool with tests runnable by python3 -m unittest and a README")"
+check "a task's own flag-like words survive (-m)" "a fib tool with tests runnable by python3 -m unittest and a README" "$(field "$out" title)"
+check "autonomous still parsed around them" "true" "$(field "$out" autonomous)"
+out="$(bash "$SCRIPT" parse "add due dates: add accepts --due YYYY-MM-DD and stores it")"
+check "a task's own long flag survives (--due)" "add due dates: add accepts --due YYYY-MM-DD and stores it" "$(field "$out" title)"
+ec=0; bash "$SCRIPT" parse "-v" "add csv export" >/dev/null 2>&1 || ec=$?
+check "a leading flag is still refused" "1" "$ec"
 
 # --no-run
 out="$(bash "$SCRIPT" parse "--no-run some pasted text")"

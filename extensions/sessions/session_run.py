@@ -103,10 +103,12 @@ def build_argv(profile, prompt, model, bypass):
 
 def child_env(profile_env):
     # The session is an implementer, not a member of the cycle that dispatched it: the
-    # plugin bindings and every LOOP_SPEC_* setting would make it act as the lead.
+    # plugin bindings and every LOOP_SPEC_* setting would make it act as the lead, and an
+    # inherited session id would append its transcript to the lead's.
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("LOOP_SPEC_")
-           and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")}
+           and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT",
+                         "CLAUDE_CODE_SESSION_ID")}
     env.update(profile_env)
     return env
 

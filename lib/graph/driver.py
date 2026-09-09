@@ -466,13 +466,21 @@ def cmd_start(argv):
     resume_pick = ""
     if candidates:
         if autonomous:
+            reason = "autonomous: most recent resumable feature"
             if slug and any(c.get("slug") == slug for c in candidates):
                 resume_pick = slug
             elif not title:
                 resume_pick = candidates[0]["slug"]
+            elif len(candidates) == 1:
+                # After a handoff the caller re-invokes with the same description, and a
+                # lead that reworded it produced a slug no candidate carried: the run
+                # started a second feature next to the paused one. One paused feature in
+                # an unattended run is the feature to continue; a different feature is a
+                # human decision, and a human is not here.
+                resume_pick = candidates[0]["slug"]
+                reason = "autonomous: the one paused feature outranks a new title (%s)" % slug
             if resume_pick:
-                record("Resume %s or start new?" % resume_pick, "resume " + resume_pick,
-                       "autonomous: most recent resumable feature")
+                record("Resume %s or start new?" % resume_pick, "resume " + resume_pick, reason)
         elif not non_interactive:
             options = ["Resume %s - phase %s (updated %s)" % (c["slug"], c["currentPhase"], c["updatedAt"])
                        for c in candidates] + ["New feature"]

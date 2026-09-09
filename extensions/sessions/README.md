@@ -37,9 +37,10 @@ The result line:
 | 4 | `env-fault` | the CLI failed on a provider or transport line the profile names; retry, do not charge the attempt |
 | 5 | `timeout` | `--timeout` (else `LOOP_SPEC_SESSION_TIMEOUT_SECS`, else 3600) elapsed; the process was killed |
 
-The child inherits the environment minus every `LOOP_SPEC_*` name and the harness's
-plugin bindings (`CLAUDE_PROJECT_DIR`, `CLAUDE_SKILL_DIR`, `CLAUDE_PLUGIN_ROOT`): the
-session is an implementer, not a member of the cycle that dispatched it.
+The child inherits the environment minus every `LOOP_SPEC_*` name, the harness's
+plugin bindings (`CLAUDE_PROJECT_DIR`, `CLAUDE_SKILL_DIR`, `CLAUDE_PLUGIN_ROOT`), and
+`CLAUDE_CODE_SESSION_ID`: the session is an implementer, not a member of the cycle that
+dispatched it, and it writes its own transcript.
 
 ## Profiles
 

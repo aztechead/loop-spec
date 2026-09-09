@@ -30,6 +30,9 @@
 #                            owns the answer space and its own fail-safe)
 #   --no-run              -> .no_run = true (intake only; harmless elsewhere)
 #   tier:X, preset:X      -> ignored, listed in .legacy[] (caller prints the notice)
+#   any other -flag       -> refused (exit 1) while it LEADS the arguments; after the
+#                            first description word it is description text
+#                            ("python3 -m unittest", "accepts --due YYYY-MM-DD")
 #
 # Classification of the REMAINING text (mirrors cycle Step 3 resolution order):
 #   "backlog" (exactly)                    -> .mode = "backlog"
@@ -118,10 +121,17 @@ for w in ${words[@]+"${words[@]}"}; do
     tier:*|preset:*)
       legacy+=("$w") ;;
     -*)
-      # A flag is never a description. `begin --help` once initialized a feature titled
-      # "--help" in autonomous mode, with a branch and a worktree to clean up by hand.
-      echo "parse-invocation: unknown flag '$w'; the inline tokens are autonomous, new, style:<s>, phase:<m>, profile:<p>, --no-run" >&2
-      exit 1 ;;
+      # A leading flag is never a description: `begin --help` once initialized a feature
+      # titled "--help" in autonomous mode, with a branch and a worktree to clean up by
+      # hand. After description words a dash token is the description's own text
+      # ("runnable by python3 -m unittest", "`add` accepts --due YYYY-MM-DD"): refusing
+      # those made a lead rephrase the task, and the rephrased slug matched no paused
+      # feature, so the next invocation started a second cycle.
+      if [[ "${#remaining[@]}" -eq 0 ]]; then
+        echo "parse-invocation: unknown flag '$w'; the inline tokens are autonomous, new, style:<s>, phase:<m>, profile:<p>, --no-run" >&2
+        exit 1
+      fi
+      remaining+=("$w") ;;
     *)
       remaining+=("$w") ;;
   esac

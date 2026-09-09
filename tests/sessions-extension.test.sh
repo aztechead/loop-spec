@@ -37,7 +37,7 @@ cat > "$WORK/bin/fakecli" <<'SH'
 printf '%s\n' "$@"
 echo "probe=${FAKE_PROBE:-unset}"
 echo "cwd=$(pwd -P)"
-echo "loop=${LOOP_SPEC_LEAK:-unset} plugin=${CLAUDE_PLUGIN_ROOT:-unset}"
+echo "loop=${LOOP_SPEC_LEAK:-unset} plugin=${CLAUDE_PLUGIN_ROOT:-unset} session=${CLAUDE_CODE_SESSION_ID:-unset}"
 [[ -n "${FAKE_SAY:-}" ]] && echo "$FAKE_SAY"
 sleep "${FAKE_SLEEP:-0}"
 exit "${FAKE_EXIT:-0}"
@@ -65,7 +65,7 @@ run() { # run [VAR=value ...] [runner args...] -> stdout in $out, exit in $rc
   while [[ $# -gt 0 && "$1" == *=* && "$1" != --* ]]; do assigns+=("$1"); shift; done
   rc=0
   out="$(env PATH="$WORK/bin:$PATH" LOOP_SPEC_SESSION_PROFILES="$WORK/profiles" LOOP_SPEC_LEAK=1 \
-    CLAUDE_PLUGIN_ROOT=/nowhere ${assigns[@]+"${assigns[@]}"} \
+    CLAUDE_PLUGIN_ROOT=/nowhere CLAUDE_CODE_SESSION_ID=parent ${assigns[@]+"${assigns[@]}"} \
     python3 "$RUNNER" --log-dir "$WORK/logs" "$@" 2>"$WORK/stderr")" || rc=$?
 }
 common=(--profile fake --cwd "$WORK/cwd" --prompt-file "$WORK/prompt.md")
@@ -88,7 +88,7 @@ check "argv is binary, launch, guarded, model, then the prompt last" \
 log="$(jq -r '.stdout' <<<"$out")"
 check "the profile env reaches the child" "1" "$(grep -c '^probe=from-profile$' "$log")"
 check "the child runs in --cwd" "1" "$(grep -c "^cwd=$(cd "$WORK/cwd" && pwd -P)$" "$log")"
-check "LOOP_SPEC_* and the plugin bindings do not leak into the child" "1" "$(grep -c '^loop=unset plugin=unset$' "$log")"
+check "LOOP_SPEC_*, the plugin bindings, and the session id do not leak into the child" "1" "$(grep -c '^loop=unset plugin=unset session=unset$' "$log")"
 check "a seed file the worktree lacks is copied in" '{"seeded": true}' "$(cat "$WORK/cwd/.claude/settings.json")"
 check "the log lands under --log-dir" "$WORK/logs" "$(dirname "$log")"
 
