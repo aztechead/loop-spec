@@ -4,5 +4,12 @@
   "kind": "bugfix",
   "prompt": "python3 -m unittest discover -s tests fails in tests/test_slugify.py. Fix the bug in slugify.py so every test passes. Do not change the tests.",
   "reference_app_lines": 8,
-  "protected": ["tests/test_slugify.py"]
+  "protected": [
+    "tests/test_slugify.py"
+  ],
+  "bar": {
+    "cost_usd": 0.25,
+    "artifact_lines": 50,
+    "minutes": 3
+  }
 }

@@ -25,7 +25,6 @@ checks=(
   "skills/micro/SKILL.md	brief so intake"
   "skills/debug/SKILL.md	with the path, hand off"
   "hooks/team/grill-inject.sh	/loop-spec:auto"
-  "hooks/team/micro-inject.sh	/loop-spec:auto"
   "skills/shared/autonomous-mode.md	/loop-spec:auto"
   "skills/shared/autonomous-mode.md	loop-spec-auto"
   "skills/shared/autonomous-mode.md	Destructive work is never compact."

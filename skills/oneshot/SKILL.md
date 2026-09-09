@@ -66,7 +66,15 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" "${CLAUDE_SKILL_DIR}/.
 
 ## 3. One review pass
 
-Dispatch `loop-spec:code-reviewer` once (`Agent`, `subagent_type: "loop-spec:code-reviewer"`,
+The driver launches the reviewer where it can:
+
+```bash
+rv="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" oneshot review --feature-dir "$feature_dir")"
+```
+
+`.status` present: the review ran as its own session, the dispatch event is recorded,
+and `.report` holds the verdict and findings; continue below at "Fix every". `.action`
+is `in-harness`: dispatch `loop-spec:code-reviewer` once (`Agent`, `subagent_type: "loop-spec:code-reviewer"`,
 model `models.codeReviewer` from the packet, `run_in_background: false`; then stop and
 read its result, never `AskUserQuestion` as a wait). Brief: `slug`, `branch`,
 `baseSha`, `spec_path`, and `probe_dir` (absolute `${CLAUDE_SKILL_DIR}/../../lib`);

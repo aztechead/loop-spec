@@ -65,6 +65,17 @@ Usage:
         SPEC.md is kept. On route=full nothing is written and `spec` is null: the lead
         writes the full shape. Exit 0; 2 bad invocation.
 
+    cycle-driver.sh oneshot review --feature-dir DIR
+        ONESHOT's one review pass, launched by the driver when lib/harness.sh
+        session-layer answers "session": the package (the diff since baseSha) is
+        written by lib/dispatch-files.sh, the reviewer runs as its own headless CLI
+        session with a one-line prompt (the package, the spec, the report path), and
+        the dispatch event the exit gate reads is emitted here, driver-observed, never
+        self-reported (orchestrator-port-principles.md, rule 6). Prints the runner's
+        JSON line plus {report, package}. In-harness (an attended session, no profile)
+        it prints {action: "in-harness"} and the lead dispatches the reviewer through
+        the harness tool. Exit 0; 1 the session failed; 2 bad invocation.
+
     cycle-driver.sh spec write --feature-dir DIR --file PATH
         Copy PATH (or stdin for `-`) to {docs}/SPEC.md, the only target this command
         accepts, and print the path. The lead never resolves the docs directory itself:
@@ -1559,6 +1570,48 @@ def cmd_spec(argv):
     return 0
 
 
+def cmd_oneshot(argv):
+    if not argv or argv[0] != "review":
+        usage()
+    o = parse_pairs(argv[1:], ("--feature-dir",))
+    feature_dir = o.get("feature_dir") or ""
+    if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
+        usage()
+    feature_dir = os.path.realpath(feature_dir)
+    feat = state(feature_dir)
+    if lib("harness", "session-layer") != "session":
+        print(json.dumps({"action": "in-harness", "reason": lib("harness", "session-layer-reason")}))
+        return 0
+    root = feature_root(feature_dir, feat)
+    head = run(["git", "-C", root, "rev-parse", "HEAD"], quiet=True).stdout
+    package = lib("dispatch-files", "package", "--repo", root, "--base", feat.get("baseSha") or "", "--head", head)
+    spec = (feat.get("artifacts") or {}).get("spec") or os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
+    if not os.path.isabs(spec):
+        spec = os.path.join(root, spec)
+    dispatch = os.path.join(feature_dir, "dispatch")
+    os.makedirs(os.path.join(dispatch, "sessions"), exist_ok=True)
+    report = os.path.join(dispatch, "oneshot.review.md")
+    prompt = os.path.join(dispatch, "oneshot.reviewer.md")
+    with open(prompt, "w", encoding="utf-8") as fh:
+        fh.write("Review the package in %s against the spec %s. Write your verdict (PASS, PASS_WITH_MINOR, or BLOCK) "
+                 "and every finding as `- <file>:<line> — <claim>` to %s.\n" % (package, spec, report))
+    model = (feat.get("models") or {}).get("codeReviewer") or "inherit"
+    argv_run = ["python3", str(REPO_ROOT / "extensions" / "sessions" / "session_run.py"), "--profile", lib("harness", "cli"),
+                "--cwd", root, "--prompt-file", prompt, "--model", model, "--seed-from", root,
+                "--log-dir", os.path.join(dispatch, "sessions")]
+    proc = subprocess.run(argv_run, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if proc.returncode in (4, 5):
+        proc = subprocess.run(argv_run, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if proc.returncode not in (0, 1, 4, 5):
+        raise Die("the session runner refused the reviewer launch (exit %d): %s" % (proc.returncode, proc.stderr.strip()), 2)
+    lib("events", "emit", feature_dir, "dispatch", "--phase", "oneshot",
+        "--data", json.dumps({"role": "code-reviewer", "model": model, "rung": "session", "launchedBy": "driver"}))
+    line = json.loads(proc.stdout.strip() or "{}")
+    line.update({"report": report, "package": package})
+    print(json.dumps(line))
+    return 0 if proc.returncode == 0 else 1
+
+
 # ------------------------------------------------------------ phase-begin ----
 def cmd_phase_begin(argv):
     phase = argv[0] if argv else ""
@@ -1639,7 +1692,7 @@ def main(argv):
     handlers = {
         "deliver": cmd_deliver, "begin": cmd_begin, "phase-begin": cmd_phase_begin, "start": cmd_start,
         "init": cmd_init, "resume": cmd_resume, "next": cmd_next, "finish": cmd_finish,
-        "escalate": cmd_escalate, "spec": cmd_spec,
+        "escalate": cmd_escalate, "spec": cmd_spec, "oneshot": cmd_oneshot,
     }
     if command not in handlers:
         usage()

@@ -88,14 +88,13 @@ case "${LOOP_SPEC_HARNESS:-claude}" in
   adk)
     # ADK has no slash commands: skills are entered through the skill tool.
     MICRO_CMD='load_skill({skill_name: "micro"})'
-    INTAKE_CMD='load_skill({skill_name: "intake"})'
-    AUTO_CMD='load_skill({skill_name: "auto"})';;
+    INTAKE_CMD='load_skill({skill_name: "intake"})';;
   opencode)
-    MICRO_CMD="/loop-spec/micro"; INTAKE_CMD="/loop-spec/intake"; AUTO_CMD="/loop-spec/auto";;
+    MICRO_CMD="/loop-spec/micro"; INTAKE_CMD="/loop-spec/intake";;
   codex)
-    MICRO_CMD='$loop-spec-micro'; INTAKE_CMD='$loop-spec-intake'; AUTO_CMD='$loop-spec-auto';;
+    MICRO_CMD='$loop-spec-micro'; INTAKE_CMD='$loop-spec-intake';;
   *)
-    MICRO_CMD="/loop-spec:micro"; INTAKE_CMD="/loop-spec:intake"; AUTO_CMD="/loop-spec:auto";;
+    MICRO_CMD="/loop-spec:micro"; INTAKE_CMD="/loop-spec:intake";;
 esac
 
 DIRECTIVE="MICRO MODE ACTIVE (default): for small ad-hoc tasks outside a running loop-spec cycle, apply the micro-cycle protocol inline (full definition: ${MICRO_CMD}).
@@ -109,7 +108,7 @@ DIRECTIVE="MICRO MODE ACTIVE (default): for small ad-hoc tasks outside a running
 7. If the task outgrows ad-hoc scale (>~5 files, a new seam or dependency, criteria will not fit in 3 bullets, ambiguity survives one question), stop expanding scope and promote it via ${INTAKE_CMD}.
 8. A repeated mistake becomes a permanent rule: bash \"${PLUGIN_ROOT}/lib/rules.sh\" add.
 
-During explicit autonomous routing (${AUTO_CMD}) this ambient directive stands down until the router delegates; the selected protocol owns the task. Inside a running cycle this protocol also stands down - the phases own these invariants at feature scale. Micro mode is ON by default; disable with ${MICRO_CMD} off or LOOP_SPEC_MICRO=0."
+Micro mode is ON by default; disable with ${MICRO_CMD} off or LOOP_SPEC_MICRO=0."
 
 # Emit valid JSON via jq (hard dependency) rather than a hand-rolled escaper.
 jq -n --arg ctx "$DIRECTIVE" \

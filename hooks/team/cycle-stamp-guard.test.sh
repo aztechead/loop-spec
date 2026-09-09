@@ -12,7 +12,7 @@ mkdir -p "$ROOT"
 trap 'rm -rf "$ROOT"' EXIT
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 export LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0
-unset LOOP_SPEC_STAMP_MAX_AGE_MIN LOOP_SPEC_CYCLE_STAMP_GUARD
+unset LOOP_SPEC_STAMP_MAX_AGE_MIN
 
 PASS=0
 FAIL=0
@@ -51,7 +51,7 @@ PAYLOAD="$(jq -cn --arg p "$TRANSCRIPT" '{transcript_path:$p,stop_hook_active:fa
   check "a: unconsumed cycle stamp, edits, no driver call -> BLOCK" 2 "$DRIFT"
 msg="$(env CLAUDE_PROJECT_DIR="$DRIFT" CLAUDE_PLUGIN_ROOT=/opt/plugin bash "$HOOK" 2>&1 >/dev/null <<<'{}' || true)"
 for needle in '/opt/plugin/lib/cycle-driver.sh" begin -- "autonomous add a --json flag to wc_tool.py"' \
-              "write-terminal" "LOOP_SPEC_CYCLE_STAMP_GUARD=0" "micro protocol stands down"; do
+              "write-terminal" "micro protocol stands down"; do
   if grep -qF -- "$needle" <<<"$msg"; then
     echo "PASS: a2: denial carries: $needle"; PASS=$((PASS+1))
   else
@@ -96,7 +96,10 @@ IDLE="$ROOT/idle"; mkdir -p "$IDLE/.loop-spec"
 check "f: no stamp -> ALLOW" 0 "$IDLE"
 FOREIGN="$ROOT/foreign"; mkdir -p "$FOREIGN"
 check "f2: project without .loop-spec -> ALLOW" 0 "$FOREIGN"
-check "g: kill switch -> ALLOW" 0 "$DRIFT" LOOP_SPEC_CYCLE_STAMP_GUARD=0
+# No kill switch: the guard adds no variable. Stopping the stamp stops the deny.
+NOSTAMP="$ROOT/nostamp"; mkdir -p "$NOSTAMP/.loop-spec"
+printf '%s\n' '{"prompt":"/loop-spec:cycle autonomous x"}' | env CLAUDE_PROJECT_DIR="$NOSTAMP" LOOP_SPEC_INVOCATION_STAMP=0 bash "$STAMP_HOOK" >/dev/null
+check "g: LOOP_SPEC_INVOCATION_STAMP=0 writes no stamp, so nothing denies" 0 "$NOSTAMP"
 PAYLOAD='{"stop_hook_active":true}' check "h: stop_hook_active -> ALLOW" 0 "$DRIFT"
 BROKEN="$ROOT/broken"; mkdir -p "$BROKEN/.loop-spec"; printf 'not json' > "$BROKEN/.loop-spec/invocation-stamp.json"
 check "i: unreadable stamp -> ALLOW (fail-open)" 0 "$BROKEN"

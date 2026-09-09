@@ -4,5 +4,10 @@
   "kind": "existing-feature",
   "prompt": "add a --json flag to wc_tool.py so that it prints one JSON object per file with the keys path, lines, words, chars instead of the text table; keep the default text output unchanged and keep the existing tests passing",
   "reference_app_lines": 35,
-  "protected": []
+  "protected": [],
+  "bar": {
+    "cost_usd": 0.6,
+    "artifact_lines": 100,
+    "minutes": 5
+  }
 }

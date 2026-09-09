@@ -12,7 +12,9 @@ The landing record at the end of the follow-up says what each item became.
 
 ### Before you update
 
-- **The micro directive is injected only when a person is proven present.**
+- **The micro directive is shorter and injected only when a person is proven present.**
+  The two sentences about standing down inside a route or a cycle are gone; the guard
+  and the probe enforce what they said.
   `lib/harness.sh attended` answers true for the Claude Code `cli` stamp, for opencode,
   ADK, and Codex sessions with no one-shot assertion, and for
   `LOOP_SPEC_EXECUTION_PROFILE=interactive`; a headless or unstamped launch (a `claude
@@ -23,7 +25,8 @@ The landing record at the end of the follow-up says what each item became.
 - **A `/loop-spec:cycle` session that never calls the driver cannot stop.**
   `hooks/team/cycle-stamp-guard.sh` (Stop) denies while the prompt stamp
   `cycle-driver.sh start` consumes is still present and no newer
-  `.loop-spec/last-result.json` exists. `LOOP_SPEC_CYCLE_STAMP_GUARD=0` disables it.
+  `.loop-spec/last-result.json` exists. It has no switch of its own;
+  `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the deny.
 - **SPEC to ONESHOT is one session.** The graph's `human.after-spec` to `oneshot` edge
   carries `"sameSession": true`; `cycle-driver.sh next --returned-from spec` answers
   `NEXT phase=oneshot` instead of `HANDOFF`, and `hooks/team/phase-handoff-guard.sh`
@@ -58,8 +61,13 @@ The landing record at the end of the follow-up says what each item became.
 - `skills/spec/SKILL.md` "1a. The oneshot candidate": the lite path, one driver call,
   no score, no transcript, intent gaps asked once.
 - `cycle-driver.sh spec skeleton` (the candidate's route and SPEC.md skeleton), `spec
-  write --file` (the one target a draft lands at), and `task run --role
-  implementer|reviewer` (the session rung's launch, in the driver).
+  write --file` (the one target a draft lands at), `task run --role
+  implementer|reviewer` (the session rung's launch, in the driver), and `oneshot
+  review` (ONESHOT's one review pass as a driver-launched session where the session
+  layer answers, with the dispatch event driver-observed).
+- The eval tasks `slugify-bug` and `wc-json` carry `bar` figures (cost, artifact lines,
+  minutes); the record carries `bar.met` and the summary says "at the bar" or "over the
+  bar" per task, so the pass bar is read, not argued.
 - A phase node's ingress may list `skeletons` ({path, template}); `phase-begin` writes
   each absent one. The oneshot node lists VERIFICATION.md with one grounding row and
   one acceptance row per Good Enough criterion.

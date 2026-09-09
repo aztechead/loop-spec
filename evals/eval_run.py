@@ -362,6 +362,9 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
         # never entered a phase, whatever the lead edited (the dda2cca wc-json run
         # followed the ad-hoc micro directive instead and stopped with nothing).
         "cycle_begun": feature_file is not None,
+        # The pass bar (orchestrator-port-plan.md, WP1): a delivered run at or under
+        # every figure. Recorded so the stopping rule is read, not argued.
+        "bar": bar_verdict(task.get("bar"), spent, artifacts, sum(r["seconds"] for r in rounds) / 60, len(rounds)),
         "phase": (feature or {}).get("currentPhase"),
         "delivery_status": delivery_status,
         "delivered": delivery_status in ("ready-for-review", "delivered-draft", "pushed-no-pr"),
@@ -389,6 +392,22 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
     print(f"[{task_id}/{model}] accepted={record['accepted']} checks={passed}/{len(checks)} "
           f"cost={spent:.2f} minutes={record['minutes']}", flush=True)
     return record
+
+
+def bar_verdict(bar, cost, artifacts, minutes, rounds):
+    """{met, over:[...]} against the task's bar, or None when the task sets none."""
+    if not bar:
+        return None
+    over = []
+    if cost > bar.get("cost_usd", float("inf")):
+        over.append("cost %.2f > %.2f USD" % (cost, bar["cost_usd"]))
+    if artifacts["added"] > bar.get("artifact_lines", float("inf")):
+        over.append("artifact lines %d > %d" % (artifacts["added"], bar["artifact_lines"]))
+    if minutes > bar.get("minutes", float("inf")):
+        over.append("minutes %.1f > %s" % (minutes, bar["minutes"]))
+    if rounds > 1:
+        over.append("rounds %d > 1" % rounds)
+    return {"met": not over, "over": over}
 
 
 def plugin_commit():
@@ -441,6 +460,12 @@ def write_summary(out_dir):
     for r in records:
         if r.get("cut_off"):
             lines.append(f"- **{r['task']}** cut off by the account usage limit after {r['minutes']} min; not a plugin outcome")
+        bar = r.get("bar")
+        if bar is not None:
+            if bar["met"] and r.get("delivered"):
+                lines.append(f"- **{r['task']}** at the bar: delivered in one round at or under every figure")
+            else:
+                lines.append(f"- **{r['task']}** over the bar: {'; '.join(bar['over']) or 'not delivered'}")
         if not r.get("cycle_begun"):
             lines.append(f"- **{r['task']}** never began a cycle: the driver wrote no feature.json, so the row measures the entry, not the plugin's phases")
         if r.get("forged_result"):

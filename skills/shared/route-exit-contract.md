@@ -77,7 +77,7 @@ ending this contract exists to prevent.
 - `hooks/team/cycle-stamp-guard.sh` (Stop) blocks the end of a session that was
   invoked as `/loop-spec:cycle` and never called the driver: the prompt stamp
   `cycle-driver.sh start` consumes is still there. The decline above is the one way
-  past it. Kill switch: `LOOP_SPEC_CYCLE_STAMP_GUARD=0`.
+  past it; `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the deny.
 - `lib/cycle-reconcile.sh --result-root <root>` converts a surviving armed run into a
   terminal result after the fact. It is the out-of-band backstop and the in-band
   confirmation `/loop-spec:auto` runs after its delegated route returns. A PR

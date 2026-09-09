@@ -344,6 +344,20 @@ printf '# filled by the lead\n' > "$DOCS7/VERIFICATION.md"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv phase-begin oneshot --feature-dir "$FD7" 2>/dev/null)"
 check "phase-begin oneshot: an existing VERIFICATION.md is kept" "null" "$(jq -r '.skeletons' <<<"$out")"
 check "phase-begin oneshot: kept means untouched" "# filled by the lead" "$(head -1 "$DOCS7/VERIFICATION.md")"
+# The one review pass is the driver's launch under the session layer, and the dispatch
+# event the exit gate reads is driver-observed; attended, the lead dispatches in-harness.
+out="$(cd "$REPO7" && drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
+check "oneshot review: attended is in-harness" "in-harness" "$(jq -r '.action' <<<"$out")"
+SBIN7="$WORK/sbin7"; SPROF7="$WORK/sprof7"; mkdir -p "$SBIN7" "$SPROF7"
+printf '#!/usr/bin/env bash\necho "{\"ok\":true}"\n' > "$SBIN7/codex"; chmod +x "$SBIN7/codex"
+printf 'name = "codex"\nbinary = "codex"\nlaunch_args = ["exec"]\nguarded_args = []\nbypass_args = []\nmodel_flag = "--model"\nprompt_template = "{prompt}"\n' > "$SPROF7/codex.toml"
+printf 'def slugify(s):\n    return s.lower().replace(".", "")\n' > "$REPO7/slugify.py"; git -C "$REPO7" -c commit.gpgsign=false commit -qam "fix: strip dots"
+out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
+check "oneshot review: the reviewer ran as a session" "completed" "$(jq -r '.status' <<<"$out")"
+check "oneshot review: the prompt is one line naming the package, the spec, and the report" "1" "$(grep -c '^Review the package in .* against the spec .*SPEC.md. Write your verdict .* to .*oneshot.review.md.$' "$FD7/dispatch/oneshot.reviewer.md")"
+check "oneshot review: the package holds the diff since baseSha" "1" "$(grep -c 'replace' "$(jq -r '.package' <<<"$out")")"
+check "oneshot review: the dispatch event is driver-observed" "1" "$(jq -c 'select(.event == "dispatch" and .phase == "oneshot" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+check "oneshot review: the exit gate's review check is satisfied by it" "0" "$(bash "$REPO_ROOT/lib/oneshot-exit-gate.sh" "$FD7" 2>&1 | grep -c '\[review\]')"
 
 # --- the rewind rule: a next phase the graph lists earlier answers REWIND -------------
 # The port made every earlier phase a rewind (iterate to verify prints REWIND where it

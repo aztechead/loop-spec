@@ -16,7 +16,6 @@
 # no cycle. This hook refuses the stop until the driver runs or the route declines.
 #
 # Stands down (exit 0) when:
-#   - LOOP_SPEC_CYCLE_STAMP_GUARD=0 (kill switch)
 #   - the project has no .loop-spec/ dir (never hijack unrelated projects)
 #   - no stamp, or the stamp names another skill (auto arms a run that
 #     route-terminal-guard.sh holds accountable; micro, debug, and intake consume
@@ -31,16 +30,14 @@
 #
 # Fail-open: missing python3, an unreadable stamp, or a malformed payload -> exit 0.
 #
+# No kill switch of its own: a guard adds no variable (orchestrator-port-principles.md,
+# rule 9). LOOP_SPEC_INVOCATION_STAMP=0 stops the stamp, and with it this deny.
+#
 # Environment variables (all optional):
-#   LOOP_SPEC_CYCLE_STAMP_GUARD   Set to "0" to disable. Default: 1 (active).
 #   LOOP_SPEC_STAMP_MAX_AGE_MIN   Stand-down age in minutes, shared with the driver.
 #                                 Default: 30.
 #   CLAUDE_PROJECT_DIR            Project root; default $PWD.
 set -euo pipefail
-
-if [[ "${LOOP_SPEC_CYCLE_STAMP_GUARD:-1}" == "0" ]]; then
-  exit 0
-fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 if [[ ! -d "${PROJECT_DIR}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then
@@ -98,6 +95,5 @@ A request that is not repository work is declined with the write-terminal snippe
 skills/shared/route-exit-contract.md (protocol-mismatch), which publishes
 .loop-spec/last-result.json; that is the only honest way past the driver. The ad-hoc
 micro protocol stands down under /loop-spec:cycle: it is not a way to finish this run.
-(To disable this check, set LOOP_SPEC_CYCLE_STAMP_GUARD=0.)
 MESSAGE
 exit 2
