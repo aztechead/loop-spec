@@ -3,6 +3,11 @@
 # Usage: bash hooks/team/discipline-inject.test.sh
 set -euo pipefail
 
+# The suite runs under whatever harness launched it; the cases say what they assume
+# about the launch, and the default is the interactive TUI.
+export CLAUDE_CODE_ENTRYPOINT=cli
+unset LOOP_SPEC_NON_INTERACTIVE LOOP_SPEC_EXECUTION_PROFILE LOOP_SPEC_AUTONOMOUS
+
 HOOK="$(cd "$(dirname "$0")" && pwd)/discipline-inject.sh"
 TMPDIR_TEST="${TMPDIR:-/tmp}/discipline-inject-test-$$"
 mkdir -p "$TMPDIR_TEST"
@@ -163,6 +168,14 @@ printf 'ENABLED=0\n' > "$DISABLED_DIR/discipline.conf"
 check_no_pattern "j: ENABLED=0 in conf - no additionalContext injected" 0 \
   "additionalContext" \
   CLAUDE_PROJECT_DIR="$TMPDIR_TEST/disabled"
+
+# --- a proven headless launch injects nothing: the lead pays for every line ---
+check_no_pattern "z1: claude -p (sdk-cli stamp) -> silent" 0 "additionalContext" \
+  CLAUDE_PROJECT_DIR="$TMPDIR_TEST/enabled" CLAUDE_CODE_ENTRYPOINT=sdk-cli
+check_no_pattern "z2: LOOP_SPEC_NON_INTERACTIVE=1 -> silent" 0 "additionalContext" \
+  CLAUDE_PROJECT_DIR="$TMPDIR_TEST/enabled" LOOP_SPEC_NON_INTERACTIVE=1
+check_output "z3: an unstamped launch still injects (not proven headless)" 0 "additionalContext" \
+  -u CLAUDE_CODE_ENTRYPOINT CLAUDE_PROJECT_DIR="$TMPDIR_TEST/enabled"
 
 # Cleanup
 rm -rf "$TMPDIR_TEST"

@@ -73,6 +73,48 @@ check "exit spec: a SPEC.md in another checkout is named as misplaced" "1" "$(gr
 check "exit spec: the misplaced flag names the move" "1" "$(grep -c "mv $WORK/other/docs/loop-spec/features/my-feature/SPEC.md $REPO/docs/loop-spec/features/my-feature/SPEC.md" <<<"$out")"
 git worktree remove --force "$WORK/other" >/dev/null 2>&1; git branch -q -D other >/dev/null 2>&1
 
+# The feature lives in a worktree and the parent checkout holds a stale copy of its
+# docs directory (the dda2cca run wrote SPEC.md next to the lead, twice). The gate is
+# run from the parent, the lead's cwd, and reads the worktree copy: the stale one is
+# never linted, never committed, and never named as misplaced.
+git worktree add -q "$WORK/wt" -b feat/wt-feature >/dev/null 2>&1
+WFD="$WORK/wt/.loop-spec/features/wt-feature"; WDOCS="$WORK/wt/docs/loop-spec/features/wt-feature"
+mkdir -p "$WFD" "$WDOCS" "$REPO/docs/loop-spec/features/wt-feature"
+jq '.slug = "wt-feature" | .feature_title = "wt feature" | .branch = "feat/wt-feature" | .worktreePath = "'"$WORK/wt"'" | .artifacts = {}' \
+  "$FD/feature.json" > "$WFD/feature.json"
+printf '# stale: not a spec at all\n' > "$REPO/docs/loop-spec/features/wt-feature/SPEC.md"
+cat > "$WDOCS/SPEC.md" <<'MD'
+---
+ambiguity_scores:
+  ambiguity: 0.1
+  gate_passed: true
+  unresolved_dimensions: []
+---
+# wt feature
+
+## Problem
+
+The worktree copy is the real one.
+
+## Success criteria
+
+### Good Enough
+
+- [ ] `true` exits 0
+
+## Grounding
+
+- none
+MD
+ec=0; out="$(cd "$REPO" && bash "$EXIT" spec --feature-dir "$WFD" 2>&1)" || ec=$?
+check "exit spec from a worktree feature: the worktree copy is the one read (clean exit)" "phase-exit: ok (spec)" "$(tail -1 <<<"$out")"
+check "exit spec from a worktree feature: the stale parent copy is not named as misplaced" "0" "$(grep -c 'misplaced' <<<"$out")"
+check "exit spec from a worktree feature: the worktree copy is committed on the feature branch" "1" "$(git -C "$WORK/wt" show HEAD:docs/loop-spec/features/wt-feature/SPEC.md 2>/dev/null | grep -c 'The worktree copy is the real one')"
+check "exit spec from a worktree feature: the parent checkout commits nothing" "0" "$(git -C "$REPO" log --oneline -- docs/loop-spec/features/wt-feature 2>/dev/null | wc -l | tr -d ' ')"
+check "exit spec from a worktree feature: the artifact pointer is the worktree-relative path" "docs/loop-spec/features/wt-feature/SPEC.md" "$(jq -r '.artifacts.spec' "$WFD/feature.json")"
+rm -rf "$REPO/docs/loop-spec/features/wt-feature"
+git worktree remove --force "$WORK/wt" >/dev/null 2>&1; git branch -q -D feat/wt-feature >/dev/null 2>&1
+
 cat > "$DOCS/SPEC.md" <<'MD'
 ---
 ambiguity_scores:

@@ -134,6 +134,19 @@
           "type": "array",
           "items": { "$ref": "#/definitions/phasePath" },
           "description": "Files listed only when present"
+        },
+        "skeletons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "template"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "$ref": "#/definitions/phasePath" },
+              "template": { "type": "string", "minLength": 1, "description": "A file under skills/shared/artifact-templates/; the driver's phase-begin writes it to path when path is absent, with the facts it holds filled" }
+            }
+          },
+          "description": "Artifacts the driver writes in the shape the exit gates accept before the phase opens (lib/graph/driver.py phase-begin)"
         }
       }
     },

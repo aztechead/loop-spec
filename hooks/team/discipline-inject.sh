@@ -18,6 +18,15 @@ if [[ "${LOOP_SPEC_DISCIPLINE:-1}" == "0" ]]; then
   exit 0
 fi
 
+# A proven headless session (`lib/harness.sh headless`: a `claude -p` or SDK stamp, or
+# the operator's word) is a cycle or loop-runner session: the phases own the gates, and every
+# line injected here is context the lead pays for on each turn
+# (docs/loop-spec/orchestrator-port-followup.md, F3). Unknown launches still inject.
+if [[ "$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/harness.sh" headless 2>/dev/null)" == "true" ]]; then
+  printf '{}\n'
+  exit 0
+fi
+
 CONF_FILE="${CLAUDE_PROJECT_DIR:-.}/.loop-spec/discipline.conf"
 
 # If conf file is absent or ENABLED=1 not present, exit silently.

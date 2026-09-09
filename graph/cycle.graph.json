@@ -127,6 +127,12 @@
             "writer": "SPEC",
             "path": "{docs}/SPEC.md"
           }
+        ],
+        "skeletons": [
+          {
+            "path": "{docs}/VERIFICATION.md",
+            "template": "skills/shared/artifact-templates/VERIFICATION.md.template"
+          }
         ]
       },
       "egress": {

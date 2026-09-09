@@ -193,6 +193,18 @@ check "W3: planner Edit of PLAN.md in the main checkout DENY" 2 \
   "$(payload "Edit" "$WREPO/docs/loop-spec/features/foo/PLAN.md" "$FIXTURES/planner.jsonl")"
 check "W4: a slug with no feature.json anywhere stays ALLOW" 0 \
   "$(payload "Write" "docs/loop-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+# The lead writes the spec itself on the short route (the dda2cca run wrote it to the
+# main checkout again): the rule holds for the main thread and for every other caller.
+check "W4b: main-thread Write of SPEC.md relative to the main checkout DENY" 2 \
+  "$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "W4c: main-thread Edit of the stale parent copy DENY" 2 \
+  "$(payload "Edit" "$WREPO/docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "W4d: main-thread Write under the feature worktree ALLOW" 0 \
+  "$(payload "Write" "$WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
+check "W4e: implementer Write of a feature artifact in the main checkout DENY" 2 \
+  "$(payload "Write" "docs/loop-spec/features/foo/VERIFICATION.md" "$FIXTURES/implementer.jsonl")"
+check "W4f: main-thread Write outside the feature docs stays ALLOW" 0 \
+  "$(payload "Write" "src/x.py" "$FIXTURES/main-thread.jsonl")"
 msg="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/spec-writer.jsonl")" || true)"
 if [[ "$msg" == *"Write $WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo/SPEC.md instead"* ]]; then
   echo "PASS: W5: the denial names the path to write"; ((PASS++)) || true

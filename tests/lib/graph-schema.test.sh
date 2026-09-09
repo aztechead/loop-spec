@@ -82,6 +82,9 @@ loop_required="$(jq -c '
 ' "$SCHEMA")"
 check "loop requires ceiling+strategy" '["ceiling","strategy"]' "$loop_required"
 
+# A phase's skeletons are ingress data: {path, template}, the driver writes them at phase-begin.
+check "ingress skeletons entries are {path, template}" '["path","template"]' "$(jq -c '.definitions.phaseIngress.properties.skeletons.items.required' "$SCHEMA")"
+
 # sameSession is the one exception to one phase per invocation, and it is edge data.
 check "edge sameSession is a boolean" "boolean" "$(jq -r '.definitions.edge.properties.sameSession.type' "$SCHEMA")"
 

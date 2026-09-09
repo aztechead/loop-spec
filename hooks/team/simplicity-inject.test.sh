@@ -7,6 +7,11 @@
 # silent. LEVEL= in the conf selects the injected intensity line.
 set -euo pipefail
 
+# The suite runs under whatever harness launched it; the cases say what they assume
+# about the launch, and the default is the interactive TUI.
+export CLAUDE_CODE_ENTRYPOINT=cli
+unset LOOP_SPEC_NON_INTERACTIVE LOOP_SPEC_EXECUTION_PROFILE LOOP_SPEC_AUTONOMOUS
+
 HOOK="$(cd "$(dirname "$0")" && pwd)/simplicity-inject.sh"
 TMPDIR_TEST="${TMPDIR:-/tmp}/simplicity-inject-test-$$"
 mkdir -p "$TMPDIR_TEST"
@@ -58,6 +63,13 @@ check_no_pattern "i: ENABLED=0 -> silent" 0 "additionalContext" CLAUDE_PROJECT_D
 
 # --- kill switch -> silent even with .loop-spec + default ---
 check_no_pattern "j: LOOP_SPEC_SIMPLICITY=0 -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_SIMPLICITY=0
+
+
+# --- a proven headless launch injects nothing: the lead pays for every line ---
+check_no_pattern "z1: claude -p (sdk-cli stamp) -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" CLAUDE_CODE_ENTRYPOINT=sdk-cli
+check_valid_json "z2: sdk-cli stamp -> valid JSON" CLAUDE_PROJECT_DIR="$LS" CLAUDE_CODE_ENTRYPOINT=sdk-cli
+check_no_pattern "z3: LOOP_SPEC_NON_INTERACTIVE=1 -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_NON_INTERACTIVE=1
+check_output "z4: an unstamped launch still injects (not proven headless)" 0 "additionalContext" -u CLAUDE_CODE_ENTRYPOINT CLAUDE_PROJECT_DIR="$LS"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

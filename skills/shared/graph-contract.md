@@ -191,7 +191,10 @@ alternation, and `checkpoint.sh tag post-<phase>` with nothing else edited, sele
 through `LOOP_SPEC_GRAPH`.
 
 `ingress` names `fields` (the feature.json keys the packet carries), `required` files
-(each with the `writer` phase the FLAG names when the file is absent), and `optional`
+(each with the `writer` phase the FLAG names when the file is absent), `skeletons`
+(artifacts `lib/cycle-driver.sh phase-begin` writes from a template under
+`skills/shared/artifact-templates/` when absent, in the shape the exit gates accept, so
+a format REDO on a driver-written shape is a driver bug), and `optional`
 files (listed only when present). `egress` runs in the order the schema lists:
 `misplaced` (an artifact absent here but present in another checkout of the repository
 is named with its move), `required` files (`FLAG [label] <path> missing`), `gates` (each

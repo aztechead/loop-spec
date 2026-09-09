@@ -19,8 +19,12 @@ pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin oneshot -
 # .entry.read[] (SPEC.md)  .entry.flags[] (a missing ingress; relay and return)
 ```
 
-Read `skills/shared/engineering-directives.md` and `skills/shared/human-code.md`. The
-work lands on the feature branch the packet names; the cycle already checked it out.
+Read `skills/shared/engineering-directives.md#Canonical compact directive` and
+`skills/shared/human-code.md#Compact directive (read this file; do not paste it into a prompt)`:
+the compact directives are the whole contract for a three-file change, and the rest of
+each file is the reasoning behind them (`lib/context-load.sh` holds this phase under its
+line budget). The work lands on the feature branch the packet names; the cycle already
+checked it out.
 
 ## 1. Read, then decide whether this is still a oneshot
 
@@ -68,8 +72,9 @@ read its result, never `AskUserQuestion` as a wait). Brief: `slug`, `branch`,
 `baseSha`, `spec_path`, and `probe_dir` (absolute `${CLAUDE_SKILL_DIR}/../../lib`);
 include `skills/shared/review-prompts/no-prejudge.md`; report
 `CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <findings>`. Record the launch as
-the dispatch telemetry contract in `skills/shared/dispatch.md` says, in the same Bash
-call that reads the result; the exit gate reads this event as the proof the review ran:
+`skills/shared/dispatch.md#Telemetry (dispatch telemetry contract)` says, in the same
+Bash call that reads the result; the exit gate reads this event as the proof the review
+ran:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" dispatch \
@@ -88,12 +93,13 @@ pass: a second BLOCK after your fix is an escalation, not a third round.
 ## 4. Verify and record
 
 Run each Good Enough criterion's check command exactly as SPEC.md writes it and keep
-the output. Write `docs/loop-spec/features/{slug}/VERIFICATION.md` from
-`skills/shared/artifact-templates/VERIFICATION.md.template` (omit the `**Plan:**` line;
-there is no PLAN.md): one `- criterion: GE-NNN | implementation: <file>:<line> - <proof>
-| integration: ...` row per criterion under `## Repository grounding`
-(`skills/shared/verification-grounding.md`), one acceptance table row per criterion
-keyed `GE-NNN` whose `Status` cell begins `PASS`, the command outputs, the code review
+the output. `phase-begin` wrote `docs/loop-spec/features/{slug}/VERIFICATION.md` from
+`skills/shared/artifact-templates/VERIFICATION.md.template` (`.skeletons[]` in the
+packet): the title, no `**Plan:**` line, one `- criterion: GE-NNN | implementation:
+<file>:<line> - <proof> | integration: ...` row per criterion under `## Repository
+grounding` (`skills/shared/verification-grounding.md`), and one acceptance table row
+per criterion keyed `GE-NNN` whose `Status` cell begins `PASS`. Fill the values in
+place and add no heading: the grounding rows, the command outputs, the code review
 section with the reviewer's verdict and findings, and the final test suite output.
 A criterion that does not pass is not recorded as `FAIL` and worked around: fix it
 (step 2), or escalate (step 1).

@@ -16,8 +16,10 @@
 # bare <role> before matching.
 #
 # Rules (by role):
-#   spec-writer, planner             -> docs/loop-spec/features/**, in the checkout that
-#                                       holds the feature's feature.json when one does
+#   spec-writer, planner             -> docs/loop-spec/features/** only
+#   any caller                       -> a write under docs/loop-spec/features/<slug>/ lands
+#                                       in the checkout that holds that feature's
+#                                       feature.json, when one does
 #   pattern-mapper                   -> docs/loop-spec/features/** + .claude/agent-memory/** (memory: project)
 #   code-reviewer                    -> .claude/agent-memory/** ONLY (read-only for code; the
 #                                       `memory: project` frontmatter auto-enables Write/Edit,
@@ -202,7 +204,10 @@ CALLER="${CALLER#loop-spec-}"
 # checkout that holds that feature's feature.json. Agents share the lead's cwd, which
 # is the main checkout when the feature lives in a worktree: the spec-writer wrote
 # SPEC.md next to the lead while phase-exit.sh read the worktree, and the 6.3.0 fastapi
-# bug-fix run escalated after four blind REDO attempts. No feature.json anywhere means
+# bug-fix run escalated after four blind REDO attempts. The lead did the same on the
+# dda2cca run, on the short route, where it writes the spec itself, so the rule holds
+# for every caller (orchestrator-port-followup.md, F5); the driver's `spec skeleton`
+# and `spec write` are the path that cannot miss. No feature.json anywhere means
 # nothing to compare, so the write stays allowed.
 feature_checkout_deny() {
   local rel slug project target target_dir wt home homes=()
@@ -226,10 +231,13 @@ feature_checkout_deny() {
   exit 2
 }
 
+if path_allowed "docs/loop-spec/features"; then
+  feature_checkout_deny
+fi
+
 case "$CALLER" in
   spec-writer|planner)
     if path_allowed "docs/loop-spec/features"; then
-      feature_checkout_deny
       exit 0
     fi
     echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/features/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2

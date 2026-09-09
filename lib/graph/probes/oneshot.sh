@@ -19,10 +19,15 @@
 #
 # Usage:
 #   oneshot.sh --feature-dir DIR [--after]
+#   oneshot.sh --feature-dir DIR --candidate FILE [FILE ...]
 #   oneshot.sh --answers
 # `--after` is the reading the graph takes when the ONESHOT phase returns: only the
 # escalation key counts, because the phase's own edits to the footprint files are not
 # a reason to redo its work on the full path.
+# `--candidate` is the reading SPEC takes before its interview, from the footprint the
+# scout found and no SPEC.md yet: inputs 1 and 3 on those files. `route=oneshot` selects
+# the lite spec path (skills/spec/SKILL.md, "The oneshot candidate"); the graph's own
+# reading after SPEC still decides the route, from the spec as written.
 #
 # Exit: 0 with one `route=<oneshot|full> reason=<text>` line. Anything undeterminable
 # answers `route=full`: the long path is the safe direction.
@@ -42,15 +47,16 @@ full() {
   exit 0
 }
 
-feature_dir="" after=0
+feature_dir="" after=0 candidate=0 candidates=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --feature-dir) feature_dir="${2:-}"; shift 2 ;;
     --after) after=1; shift ;;
-    *) echo "usage: oneshot.sh --feature-dir DIR [--after] | --answers" >&2; exit 2 ;;
+    --candidate) candidate=1; shift; while [[ $# -gt 0 && "$1" != --* ]]; do candidates+=("$1"); shift; done ;;
+    *) echo "usage: oneshot.sh --feature-dir DIR [--after | --candidate FILE...] | --answers" >&2; exit 2 ;;
   esac
 done
-[[ -n "$feature_dir" ]] || { echo "usage: oneshot.sh --feature-dir DIR [--after] | --answers" >&2; exit 2; }
+[[ -n "$feature_dir" ]] || { echo "usage: oneshot.sh --feature-dir DIR [--after | --candidate FILE...] | --answers" >&2; exit 2; }
 
 case "${LOOP_SPEC_ROUTE:-}" in
   "") ;;
@@ -67,6 +73,41 @@ if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir"
 spec="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.artifacts.spec // ""')"
 [[ -n "$spec" ]] || spec="docs/loop-spec/features/$slug/SPEC.md"
 [[ "$spec" == /* ]] || spec="$root/$spec"
+
+# The footprint's own reading: count, shape, and the security signal, no spec yet.
+security_signal() {
+  local rc=0 out
+  [[ -x "$SECURITY_SIGNAL" ]] || full "security-signal.sh is not executable"
+  out="$(bash "$SECURITY_SIGNAL" first "$@" 2>/dev/null)" || rc=$?
+  case "$rc" in
+    0) full "security signal in SPEC.md or the footprint (${out})" ;;
+    1) ;;
+    *) full "security-signal scan could not run (exit ${rc})" ;;
+  esac
+}
+# Count and shape first, in this shell, so `full` ends the probe; then the files that
+# exist, for the scan (a greenfield footprint names files it will create).
+footprint_shape() {
+  local p
+  (( $# >= 1 )) || full "footprint names no file"
+  (( $# <= FOOTPRINT_MAX )) || full "footprint names $# files (oneshot allows at most $FOOTPRINT_MAX)"
+  for p in "$@"; do
+    [[ "$p" == /* ]] && full "footprint path $p is absolute (repository-relative paths only)"
+  done
+}
+footprint_existing() {
+  local p
+  for p in "$@"; do [[ -f "$root/$p" ]] && printf '%s\n' "$root/$p"; done
+  return 0
+}
+if (( candidate )); then
+  footprint_shape "${candidates[@]}"
+  targets=()
+  while IFS= read -r t; do [[ -n "$t" ]] && targets+=("$t"); done < <(footprint_existing "${candidates[@]}")
+  (( ${#targets[@]} )) && security_signal "${targets[@]}"
+  printf 'route=oneshot reason=candidate footprint of %d file(s) with no security signal (the ambiguity gate is read after SPEC)\n' "${#candidates[@]}"
+  exit 0
+fi
 [[ -f "$spec" ]] || full "no SPEC.md at $spec"
 
 # The frontmatter facts, one per line: route=, gate=, unresolved=<count>, footprint=<path>.
@@ -138,20 +179,8 @@ unresolved="$(sed -n 's/^unresolved=//p' <<<"$facts")"
 [[ "$unresolved" == "0" ]] || full "unresolved_dimensions is ${unresolved/missing/absent}, not empty"
 footprint=()
 while IFS= read -r p; do [[ -n "$p" ]] && footprint+=("$p"); done < <(sed -n 's/^footprint=//p' <<<"$facts")
-(( ${#footprint[@]} >= 1 )) || full "footprint names no file"
-(( ${#footprint[@]} <= FOOTPRINT_MAX )) || full "footprint names ${#footprint[@]} files (oneshot allows at most $FOOTPRINT_MAX)"
-
+footprint_shape "${footprint[@]}"
 targets=("$spec")
-for p in "${footprint[@]}"; do
-  [[ "$p" == /* ]] && full "footprint path $p is absolute (repository-relative paths only)"
-  [[ -f "$root/$p" ]] && targets+=("$root/$p")
-done
-[[ -x "$SECURITY_SIGNAL" ]] || full "security-signal.sh is not executable"
-signal_rc=0
-signal="$(bash "$SECURITY_SIGNAL" first "${targets[@]}" 2>/dev/null)" || signal_rc=$?
-case "$signal_rc" in
-  0) full "security signal in SPEC.md or the footprint (${signal})" ;;
-  1) ;;
-  *) full "security-signal scan could not run (exit ${signal_rc})" ;;
-esac
+while IFS= read -r t; do [[ -n "$t" ]] && targets+=("$t"); done < <(footprint_existing "${footprint[@]}")
+security_signal "${targets[@]}"
 printf 'route=oneshot reason=footprint of %d file(s), ambiguity gate passed with no unresolved dimension, no security signal\n' "${#footprint[@]}"

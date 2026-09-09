@@ -99,6 +99,15 @@ sed 's/^footprint:$/footprint: [a.py, b.py, c.py, d.py]/; /^  - src\/slugify.py$
 check "a full-shape spec (four files) passes the lint untouched" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/full.md" >/dev/null 2>&1; echo $?)"
 check "a spec without a footprint passes the lint" "0" "$(printf -- '---\nambiguity_scores:\n  gate_passed: true\n---\n# x\n' > "$WORK/nofp.md"; bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nofp.md" >/dev/null 2>&1; echo $?)"
 check "the oneshot template is under 60 lines" "1" "$([[ $(wc -l < "$REPO_ROOT/skills/shared/artifact-templates/SPEC-oneshot.md.template") -lt 60 ]] && echo 1 || echo 0)"
+# The driver's skeleton, with the lead's values filled by a blunt substitution, passes
+# both lints: a shape the driver wrote that a gate flags is a driver bug, not a REDO.
+rm -f "$DOCS/SPEC.md"
+skel="$(bash "$REPO_ROOT/lib/cycle-driver.sh" spec skeleton --feature-dir "$FD" --footprint src/slugify.py tests/test_slugify.py 2>/dev/null)"
+check "spec skeleton lands where the gate reads" "$DOCS/SPEC.md" "$skel"
+sed -i 's/{0\.00-1\.00}/0.9/; s/{n}/1/; s/{what changes here[^}]*}/strip dots/; s/{One paragraph:[^}]*}/Dots survive slugify./; s/{The behavior that must stay unchanged.}/Lower-casing stays./; s/{check command}/true/g; s/{what that proves}/it runs/g; s/{expected}/ok/' "$DOCS/SPEC.md"
+check "the filled skeleton passes artifact-lint spec" "0" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" spec "$DOCS/SPEC.md" >/dev/null 2>&1; echo $?)"
+check "the filled skeleton passes the oneshot spec lint" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$DOCS/SPEC.md" >/dev/null 2>&1; echo $?)"
+check "the fixture is the filled skeleton's shape (both lints)" "0" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" spec "$REPO_ROOT/tests/fixtures/oneshot-SPEC.md" >/dev/null 2>&1 && bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$REPO_ROOT/tests/fixtures/oneshot-SPEC.md" >/dev/null 2>&1; echo $?)"
 
 # --- an unfinished oneshot: no VERIFICATION.md ----------------------------------------
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
@@ -181,10 +190,19 @@ check "a finding without a verdict flags under the review-triage label" "1" "$(g
 sed -i 's/^- src\/slugify.py:2 — the replace runs before lower()$/- src\/slugify.py:2 — the replace runs before lower() | verdict: false — lower() never adds a dot, so the order cannot change the result/' "$DOCS/VERIFICATION.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a rejected finding with its disproof passes" "0" "$ec"
-# The footprint is a promise: a file it names that the diff never touched is a flag.
-sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|' "$DOCS/SPEC.md"
+# The footprint is a promise: a test module it names that the diff never touched is a
+# flag; any other untouched file is dropped with a note; the spec's own word stands.
+sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|; /^- tests\/test_slugify.py: unchanged/d' "$DOCS/SPEC.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
-check "an untouched footprint file flags" "1" "$(grep -c '^FLAG \[footprint\] tests/test_slugify.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
+check "an untouched test module flags" "1" "$(grep -c '^FLAG \[footprint\] tests/test_slugify.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
+spec
+sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - README.md|' "$DOCS/SPEC.md"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "an untouched non-test file is not a flag" "0" "$ec"
+check "the gate says what it dropped" "1" "$(grep -c '^NOTE \[footprint\] README.md was not in the diff' <<<"$out")"
+check "the file is gone from the footprint" "0" "$(grep -c '^  - README.md$' "$DOCS/SPEC.md")"
+check "the note lands under Implementation notes" "1" "$(grep -c '^- README.md: unchanged; dropped from the footprint by lib/oneshot-exit-gate.sh' "$DOCS/SPEC.md")"
+check "the Intent block is untouched by the drop" "Dots survive slugify." "$(sed -n '/^## Intent$/,/^<!-- \/intent -->$/p' "$DOCS/SPEC.md" | sed -n 3p)"
 spec
 # The converged floor is the full one: a FAIL row is a finding, not a shape.
 sed -i 's/| PASS |/| FAIL |/' "$DOCS/VERIFICATION.md"

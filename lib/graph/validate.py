@@ -177,7 +177,7 @@ def check_body_args(node, ptr):
 PHASE_BODY_RE = re.compile(r"^skills/[^/]+/SKILL\.md$")
 PHASE_PLACEHOLDERS = {"{docs}", "{featureDir}", "{root}", "{slug}", "{spec}", "{tasks}"}
 PHASE_PLACEHOLDER_RE = re.compile(r"\{[A-Za-z][A-Za-z0-9]*(?::[A-Za-z0-9_.]+)?\}")
-PHASE_INGRESS_KEYS = {"fields", "required", "optional"}
+PHASE_INGRESS_KEYS = {"fields", "required", "optional", "skeletons"}
 PHASE_EGRESS_KEYS = {"misplaced", "required", "gates", "oracle", "writes", "artifacts", "artifactsIfPresent",
                      "artifactsDefault", "onOk", "commit", "checkpoint", "set", "close"}
 
@@ -252,6 +252,13 @@ def check_phase_contract(node, ptr):
         fields = ingress.get("fields")
         if not isinstance(fields, list) or any(not isinstance(f, str) or not f for f in fields):
             flag(ptr + "/ingress/fields", "fields must be an array of feature.json keys")
+        for j, sk in enumerate(ingress.get("skeletons") or []):
+            sptr = "%s/ingress/skeletons/%d" % (ptr, j)
+            if not isinstance(sk, dict) or set(sk.keys()) != {"path", "template"}:
+                flag(sptr, "skeleton entry must be {path, template}")
+                continue
+            if not os.path.isfile(os.path.join(repo_root, str(sk.get("template") or ""))):
+                flag(sptr + "/template", "skeleton template not found: %r" % sk.get("template"))
         for j, req in enumerate(ingress.get("required") or []):
             rptr = "%s/ingress/required/%d" % (ptr, j)
             if not isinstance(req, dict) or set(req.keys()) != {"writer", "path"}:

@@ -12,7 +12,8 @@
 # Usage: oneshot-exit-gate.sh <feature-dir>
 # Output: `FLAG [<gate>] <finding>` lines; exit 1 when any, 0 when clean, 2 bad call.
 # Gates on a finished run: placeholder scan and test-tamper scan over the diff since
-# baseSha (the same bodies VERIFY's gate nodes run), every footprint file in that diff,
+# baseSha (the same bodies VERIFY's gate nodes run), every footprint file in that diff
+# (an untouched non-test file is dropped with a `NOTE [footprint]` line, never a flag),
 # the frozen Intent block unchanged since SPEC committed it, a recorded code-reviewer
 # dispatch, artifact-lint verification, verification-grounding-lint, review-triage-lint
 # over the findings, and the converged floor (every Good Enough row PASS).
@@ -32,15 +33,41 @@ run_gate placeholder lib feature-scan-each "$SCRIPT_DIR/placeholder-scan.sh" --f
 run_gate tamper lib feature-scan-each "$SCRIPT_DIR/test-tamper-scan.sh" --feature-dir "$feature_dir"
 # The footprint is a promise: every file it names is in the diff. The first wc-json run
 # on the route named the test file, never touched it, and shipped without the test the
-# spec's own footprint had committed to. Single-repo only: a workspace repo carries its
-# own baseSha and the footprint is repo-relative to it.
+# spec's own footprint had committed to. A file the diff never touched is read three
+# ways: an Implementation notes bullet that says `unchanged` or `read-only` is the
+# spec's own word; a test module with no such bullet stays a flag (the promise that
+# mattered); any other file is dropped from the footprint here, with a note under
+# Implementation notes, because a bounce to the lead for a file nobody changed was one
+# of six format REDO rounds on the dda2cca bug fix (orchestrator-port-followup.md, F4).
+# Single-repo only: a workspace repo carries its own baseSha and the footprint is
+# repo-relative to it.
 base_sha="$(fget '.baseSha // ""')"
+drop_from_footprint() {
+  python3 - "$spec" "$1" "$2" <<'PY'
+import re, sys
+path, f, sha = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(path, encoding="utf-8").read()
+text = re.sub(r"^  - %s\n" % re.escape(f), "", text, count=1, flags=re.M)
+text = re.sub(r"^(footprint: *\[)([^\]]*)(\])", lambda m: m.group(1) + ", ".join(p for p in re.split(r"\s*,\s*", m.group(2)) if p and p != f) + m.group(3), text, count=1, flags=re.M)
+note = "- %s: unchanged; dropped from the footprint by lib/oneshot-exit-gate.sh (not in the diff since %s)\n" % (f, sha[:12])
+text = text.replace("## Implementation notes\n\n", "## Implementation notes\n\n" + note, 1)
+open(path, "w", encoding="utf-8").write(text)
+PY
+}
 if [[ -z "$ws_root" && -n "$base_sha" ]]; then
   changed="$(git diff --name-only "$base_sha" HEAD -- 2>/dev/null || true)"
+  notes="$(sed -n '/^## Implementation notes$/,/^## /p' "$spec")"
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
-    grep -qxF "$f" <<<"$changed" \
-      || flag "[footprint] $f is in SPEC.md's footprint but not in the diff since $base_sha: make the change there, or drop it from the footprint with a line under Implementation notes saying why"
+    grep -qxF "$f" <<<"$changed" && continue
+    grep -Eq "^- ${f//./\\.}: .*(unchanged|read-only)" <<<"$notes" && continue
+    b="$(basename "$f")"
+    if [[ "$f" == tests/* || "$f" == */tests/* || "$f" == test/* || "$b" == test_* || "$b" == *_test.* || "$b" == *.test.* ]]; then
+      flag "[footprint] $f is in SPEC.md's footprint but not in the diff since $base_sha: make the change there, or say it stays unchanged in a line under Implementation notes (- $f: unchanged, because ...)"
+    else
+      drop_from_footprint "$f" "$base_sha"
+      echo "NOTE [footprint] $f was not in the diff since $base_sha: dropped from SPEC.md's footprint with a line under Implementation notes"
+    fi
   done < <(sed -n '/^footprint:/,/^[^ ]/p' "$spec" | sed -n 's/^  - //p; s/^footprint: *\[\(.*\)\]$/\1/p' | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sed '/^$/d')
 fi
 # The Intent block is the ask and it is frozen: ONESHOT changes code to meet it, never

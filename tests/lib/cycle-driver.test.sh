@@ -257,7 +257,31 @@ printf 'def slugify(s):\n    return s.lower()\n' > "$REPO7/slugify.py"
 git -C "$REPO7" add -A && git -C "$REPO7" -c commit.gpgsign=false commit -q -m "add slugify"
 out="$(cd "$REPO7" && AUTONOMOUS=1 drv begin -- "autonomous fix slugify dots" 2>/dev/null)"
 FD7="$(jq -r '.featureDir' <<<"$out")"
-DOCS7="$REPO7/docs/loop-spec/features/$(jq -r '.slug' "$FD7/feature.json")"; mkdir -p "$DOCS7"
+DOCS7="$REPO7/docs/loop-spec/features/$(jq -r '.slug' "$FD7/feature.json")"
+# The driver writes the oneshot skeleton where the exit gate reads it, with the facts it
+# holds filled and the lead's values left as placeholders.
+ec=0; (cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" >/dev/null 2>&1) || ec=$?
+check "spec skeleton: no footprint is a bad invocation" "2" "$ec"
+ec=0; (cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" --footprint a b c d >/dev/null 2>&1) || ec=$?
+check "spec skeleton: four files is the full shape, refused" "2" "$ec"
+ec=0; (cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" --footprint /etc/passwd >/dev/null 2>&1) || ec=$?
+check "spec skeleton: an absolute footprint path is refused" "2" "$ec"
+out="$(cd "$WORK" && drv spec skeleton --feature-dir "$FD7" --footprint slugify.py 2>/dev/null)"
+check "spec skeleton: prints the path in the feature's checkout, not the cwd" "$DOCS7/SPEC.md" "$out"
+check "spec skeleton: the title is filled" "# fix slugify dots" "$(sed -n '/^# /p' "$DOCS7/SPEC.md" | head -1)"
+check "spec skeleton: the footprint is filled" "1" "$(grep -c '^  - slugify.py$' "$DOCS7/SPEC.md")"
+check "spec skeleton: one Implementation notes bullet per footprint file" "1" "$(grep -c '^- slugify.py: {' "$DOCS7/SPEC.md")"
+check "spec skeleton: the frozen Intent block is in place" "2" "$(grep -c '^<!-- intent: frozen\|^<!-- /intent -->' "$DOCS7/SPEC.md")"
+check "spec skeleton: the oneshot spec lint accepts the shape" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$DOCS7/SPEC.md" >/dev/null 2>&1; echo $?)"
+printf '# edited by the lead\n' >> "$DOCS7/SPEC.md"
+out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" --footprint slugify.py 2>/dev/null)"
+check "spec skeleton: an existing SPEC.md is kept" "1" "$(grep -c '^# edited by the lead$' "$DOCS7/SPEC.md")"
+printf -- '---\nfootprint: [slugify.py]\n---\n# from a draft\n' > "$WORK/draft.md"
+out="$(cd "$WORK" && drv spec write --feature-dir "$FD7" --file "$WORK/draft.md" 2>/dev/null)"
+check "spec write: the draft lands at the one target" "$DOCS7/SPEC.md" "$out"
+check "spec write: the content is the draft's" "# from a draft" "$(sed -n 4p "$DOCS7/SPEC.md")"
+ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --to "$WORK/elsewhere.md" >/dev/null 2>&1) || ec=$?
+check "spec write: any other target is a bad invocation" "2" "$ec"
 cat > "$DOCS7/SPEC.md" <<'MD'
 ---
 ambiguity_scores:
@@ -296,8 +320,19 @@ check "next: a oneshot spec enters ONESHOT in the same session (graph sameSessio
 check "next: no handoff is recorded across the same-session edge" "null" "$(jq -r '.handoffSession' "$FD7/feature.json")"
 check "next: driverNext names oneshot" "oneshot" "$(jq -r '.driverNext.phase' "$FD7/feature.json")"
 check "next: SPEC closed before ONESHOT opened" "spec" "$(jq -r '.completedPhases[-1]' "$FD7/feature.json")"
-ec=0; (cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv phase-begin oneshot --feature-dir "$FD7" >/dev/null 2>&1) || ec=$?
+ec=0; out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv phase-begin oneshot --feature-dir "$FD7" 2>/dev/null)" || ec=$?
 check "phase-begin oneshot: the same session opens the phase (no exit 4)" "0" "$([[ "$ec" -eq 4 ]] && echo 4 || echo 0)"
+# The node's ingress lists VERIFICATION.md as a skeleton: written once, from the
+# template, one grounding row and one acceptance row per Good Enough criterion.
+check "phase-begin oneshot: the VERIFICATION.md skeleton is written" "$DOCS7/VERIFICATION.md" "$(jq -r '.skeletons[0]' <<<"$out")"
+check "phase-begin oneshot: the skeleton's title is the feature's" "# fix slugify dots - Verification" "$(head -1 "$DOCS7/VERIFICATION.md")"
+check "phase-begin oneshot: no Plan line without a PLAN.md" "0" "$(grep -c '^\*\*Plan:\*\*' "$DOCS7/VERIFICATION.md")"
+check "phase-begin oneshot: one grounding row per criterion" "1" "$(grep -c '^- criterion: GE-001 |' "$DOCS7/VERIFICATION.md")"
+check "phase-begin oneshot: the acceptance row carries the criterion text" "1" "$(grep -c "^| GE-001 | .*slugify('a.b') == 'ab'.* | PASS |" "$DOCS7/VERIFICATION.md")"
+printf '# filled by the lead\n' > "$DOCS7/VERIFICATION.md"
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv phase-begin oneshot --feature-dir "$FD7" 2>/dev/null)"
+check "phase-begin oneshot: an existing VERIFICATION.md is kept" "null" "$(jq -r '.skeletons' <<<"$out")"
+check "phase-begin oneshot: kept means untouched" "# filled by the lead" "$(head -1 "$DOCS7/VERIFICATION.md")"
 
 # --- phase-begin: one ingress call per phase ------------------------------------------
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv phase-begin spec --feature-dir "$FD6" 2>/dev/null)"
