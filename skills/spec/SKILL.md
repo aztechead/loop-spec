@@ -116,29 +116,29 @@ sk="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" spec skeleton --featu
 ```
 
 `.route` is `full`: continue at step 2 as written (`.reason` says why). `.route` is
-`oneshot`: `.spec` is the skeleton, the rest of this phase is the list below, and steps
-2 and 3 apply only where it says so. The route lengthens only: a fourth file found
-later escalates in ONESHOT, and nothing here shortens it.
+`oneshot`: the rest of this phase is the list below; steps 2 and 3 apply only where it
+says so. The route lengthens only (a fourth file escalates in ONESHOT).
 
 - The scout is done. No `doc-deps.sh`, no `docs-probe.sh`, no pattern fan-out. A claim
   about an external system still gets its read-only probe first
   (`skills/shared/grounding-protocol.md#Probe-before-assert rule`).
-- Fill the skeleton's values in place and add no heading: the ask inside the frozen
-  Intent block, what changes in each footprint file, one Good Enough criterion per
-  observable outcome with the command that checks it, and the Grounding rows. Every
-  footprint file is a promise the ONESHOT exit checks against the diff; a cited file
-  the change will not touch leaves the footprint through
+- The driver is the only writer of the skeleton; you never open it. Fill its values
+  through `cycle-driver.sh spec fill --feature-dir "$feature_dir"`, one value per
+  call, and read the `flags` each answer carries (the exit gate's findings so far):
+  `--intent "<the ask, one paragraph>"`; `--file <path> --note "<what changes there>"`
+  once per footprint file; `--criterion "<check command> exits 0: <what it proves>"`
+  once per observable outcome; `--grounding "<file:line - fact>"` per grounding row.
+  Every footprint file is a promise the ONESHOT exit checks against the diff; a cited
+  file the change will not touch leaves the footprint through
   `cycle-driver.sh spec footprint drop --file <path> --reason "<why>"`, never through a
-  bullet, and a test module of a footprint file cannot leave it. The template
-  (`skills/shared/artifact-templates/SPEC-oneshot.md.template`) is the whole shape.
-- There is no score and no transcript on this path. An intent gap is a choice the user
-  would notice in the result that the code cannot settle; everything else you decide
-  and record with one line of reason
-  (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<q>" "<a>" "<why>"`).
-  Gaps are one list, asked once: `interview` and `ingest` ask them in one
-  `AskUserQuestion` round; `self-answer` and `synthesize` take the recommended answer
-  into the same record (`skills/shared/autonomous-mode.md#The self-answer rule`). A gap
-  left open goes into `unresolved_dimensions`, which sends the run down the full path.
+  bullet, and a test module of a footprint file cannot leave it.
+- No score and no transcript on this path. An intent gap is a choice the user would
+  notice in the result that the code cannot settle; everything else you decide and
+  record (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<q>" "<a>" "<why>"`).
+  Gaps are one list, asked once: `interview` and `ingest` in one `AskUserQuestion`
+  round; `self-answer` and `synthesize` take the recommended answer into the same
+  record (`skills/shared/autonomous-mode.md#The self-answer rule`). A gap left open is
+  `cycle-driver.sh spec escalate --reason "<the gap>"`: the full path.
 - No pruning pass: the shape is under 60 lines. Then step 4.
 
 ## 2. Interview (by `path`)

@@ -213,6 +213,42 @@ else
 fi
 unset CLAUDE_PROJECT_DIR; rm -rf "$WREPO"
 
+# Cases X: on the oneshot route the driver is the only writer of SPEC.md and
+# VERIFICATION.md (followup-3, N1); the full route and a spec not yet written stay open.
+XREPO="$(mktemp -d)"
+git -C "$XREPO" init -q && git -C "$XREPO" commit -q --allow-empty -m seed
+mkdir -p "$XREPO/.loop-spec/features/one" "$XREPO/docs/loop-spec/features/one" "$XREPO/.loop-spec/features/big" "$XREPO/docs/loop-spec/features/big"
+printf '{"slug":"one","schemaVersion":7}\n' > "$XREPO/.loop-spec/features/one/feature.json"
+printf '{"slug":"big","schemaVersion":7}\n' > "$XREPO/.loop-spec/features/big/feature.json"
+printf -- '---\nambiguity_scores:\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint:\n  - a.py\n---\n# one\n\n## Intent\n\nx\n<!-- /intent -->\n\n## Implementation notes\n\n- a.py: x\n' > "$XREPO/docs/loop-spec/features/one/SPEC.md"
+printf -- '---\nambiguity_scores:\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint: [a.py, b.py, c.py, d.py]\n---\n# big\n\n## Problem\n\nx\n' > "$XREPO/docs/loop-spec/features/big/SPEC.md"
+export CLAUDE_PROJECT_DIR="$XREPO"
+check "X1: main-thread Edit of a oneshot-route SPEC.md DENY (the driver fills it)" 2 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X2: main-thread Write of a oneshot-route VERIFICATION.md DENY" 2 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
+check "X3: the same paths relative to the project DENY" 2 \
+  "$(payload "Edit" "docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X4: a full-route SPEC.md (four files) stays ALLOW" 0 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/big/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X5: a SPEC.md not yet written (the full shape's first Write) stays ALLOW" 0 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/new/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X6: another artifact of the oneshot feature stays ALLOW" 0 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/EVIDENCE.md" "$FIXTURES/main-thread.jsonl")"
+printf 'route: full\n' >> "$XREPO/docs/loop-spec/features/one/SPEC.md"
+sed -i 's/^footprint:$/route: full\nfootprint:/' "$XREPO/docs/loop-spec/features/one/SPEC.md"
+check "X7: an escalated spec (route: full) is the lead's again ALLOW" 0 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+msg="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")" || true)"
+sed -i '/^route: full$/d' "$XREPO/docs/loop-spec/features/one/SPEC.md"
+msg="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")" || true)"
+if [[ "$msg" == *"verification fill --feature-dir $XREPO/.loop-spec/features/one"* ]]; then
+  echo "PASS: X8: the denial names the fill command with the feature dir"; ((PASS++)) || true
+else
+  echo "FAIL: X8: the denial names the fill command with the feature dir ($msg)"; ((FAIL++)) || true
+fi
+unset CLAUDE_PROJECT_DIR; rm -rf "$XREPO"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

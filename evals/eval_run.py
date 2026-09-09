@@ -334,8 +334,21 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
     delivery = read_json(fdir / "delivery.json") if fdir and (fdir / "delivery.json").is_file() else None
     delivery_status = (delivery or (feature or {}).get("delivery") or {}).get("status")
     events = 0
+    redo = {"rounds": 0, "by_class": {}}
     if fdir and (fdir / "events.jsonl").is_file():
-        events = sum(1 for _ in (fdir / "events.jsonl").open())
+        for line in (fdir / "events.jsonl").open():
+            events += 1
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            # The driver emits one per REDO answer, with the bracketed label of every
+            # FLAG line (orchestrator-port-followup-3.md, N1): the record says which
+            # gate bounced the lead, not just how often.
+            if e.get("event") == "redo":
+                redo["rounds"] += 1
+                for label, n in ((e.get("data") or {}).get("classes") or {}).items():
+                    redo["by_class"][label] = redo["by_class"].get(label, 0) + int(n or 0)
     passed = sum(1 for c in checks.values() if c["pass"])
     record = {
         "task": task_id, "size": task.get("size"), "kind": task.get("kind"),
@@ -369,6 +382,9 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
         "delivery_status": delivery_status,
         "delivered": delivery_status in ("ready-for-review", "delivered-draft", "pushed-no-pr"),
         "events": events,
+        "redo": redo,
+        # The classes a driver-written shape makes impossible; a live run records zero here.
+        "format_redo": sum(redo["by_class"].get(c, 0) for c in FORMAT_CLASSES),
         "branch": branch, "commits": commits,
         "app_diff": app, "artifact_diff": artifacts,
         "overbuild_ratio": round(app["added"] / max(task.get("reference_app_lines", 1), 1), 2),
@@ -392,6 +408,9 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
     print(f"[{task_id}/{model}] accepted={record['accepted']} checks={passed}/{len(checks)} "
           f"cost={spent:.2f} minutes={record['minutes']}", flush=True)
     return record
+
+
+FORMAT_CLASSES = ("artifact-lint", "verification-grounding", "misplaced", "oneshot-shape", "review-triage", "converged-floor")
 
 
 def bar_verdict(bar, cost, artifacts, minutes, rounds):
@@ -466,6 +485,10 @@ def write_summary(out_dir):
                 lines.append(f"- **{r['task']}** at the bar: delivered in one round at or under every figure")
             else:
                 lines.append(f"- **{r['task']}** over the bar: {'; '.join(bar['over']) or 'not delivered'}")
+            redo = r.get("redo") or {}
+            if redo.get("rounds"):
+                by = ", ".join(f"{k} {v}" for k, v in sorted(redo.get("by_class", {}).items()))
+                lines.append(f"- **{r['task']}** REDO rounds: {redo['rounds']} ({by}); format classes: {r.get('format_redo', 0)}")
         if not r.get("cycle_begun"):
             lines.append(f"- **{r['task']}** never began a cycle: the driver wrote no feature.json, so the row measures the entry, not the plugin's phases")
         if r.get("forged_result"):

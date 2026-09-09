@@ -88,6 +88,31 @@ Usage:
         its test, or the run escalates. Prints {spec, dropped, footprint}. Exit 0; 1
         refused (not in the footprint, or a test module); 2 bad invocation.
 
+    cycle-driver.sh spec fill --feature-dir DIR [--intent TEXT] [--file PATH --note TEXT]
+        [--criterion TEXT] [--grounding TEXT]
+        Fill one value of the oneshot SPEC.md skeleton in place: the paragraph inside the
+        frozen Intent block, the Implementation notes bullet of one footprint file, one
+        Good Enough criterion (the text after `- [ ] `, the first real one replacing the
+        placeholders), or one Grounding bullet (replacing `- none`). The driver is the
+        only writer of the shape (orchestrator-port-followup-3.md, N1): the lead never
+        has the file open, so the exit gate cannot see a heading it typed. Every write
+        re-runs the two spec lints and prints {spec, flags:[...]}; exit 0 written (flags
+        are the gate's findings so far), 1 nothing to fill or the field is not in the
+        skeleton, 2 bad invocation.
+    cycle-driver.sh spec escalate --feature-dir DIR --reason TEXT
+        Write `route: full` into SPEC.md's frontmatter and the reason under
+        Implementation notes; the graph then routes the run to DISCUSS. Prints {spec}.
+    cycle-driver.sh verification fill --feature-dir DIR
+        --row GE-NNN --implementation FILE:LINE --proof TEXT
+          [--integration FILE:LINE|none --integration-proof TEXT] [--evidence TEXT] [--output TEXT]
+        --review TEXT [--reviewer-model M]     the Findings bullets (or "none")
+        --tests TEXT                          the final test suite output
+        Fill VERIFICATION.md's oneshot skeleton (phase-begin wrote it) one value at a
+        time: a criterion's grounding row, acceptance evidence, and command output; the
+        code review findings; the test suite output. Every write re-runs the four
+        verification lints the exit gate runs and prints {verification, flags:[...]}.
+        Exit 0 written, 1 the row or field is not in the skeleton, 2 bad invocation.
+
     cycle-driver.sh spec write --feature-dir DIR --file PATH
         Copy PATH (or stdin for `-`) to {docs}/SPEC.md, the only target this command
         accepts, and print the path. The lead never resolves the docs directory itself:
@@ -118,6 +143,8 @@ Usage:
         Runs phase-exit for the returned phase first: a FLAG answers
           REDO phase=<id> flags=<n> attempt=<k>   followed by the FLAG lines; fix and call again
         The same flags LOOP_SPEC_REDO_MAX (3) times escalate the run with them as the reason.
+        Each REDO is also a driver-observed `redo` event in events.jsonl with the flag
+        classes (the bracketed label of every FLAG line), which evals/eval_run.py counts.
         Then post-phase bookkeeping and the graph step. Prints exactly ONE answer line:
           NEXT phase=<id> label="<label>" effort=<system1|system2>
           PAUSED node=<id>            (human gate; re-invoke the cycle to continue)
@@ -1138,6 +1165,13 @@ def cmd_next(argv):
                     cmd_escalate(["--feature-dir", feature_dir, "--reason", reason], silent=True)
                     print("DONE status=escalated reason=%s" % reason)
                     return 0
+                classes = {}
+                for flag in flags:
+                    m = re.match(r"^FLAG \[([^\]]+)\]", flag)
+                    label = m.group(1) if m else "unlabeled"
+                    classes[label] = classes.get(label, 0) + 1
+                lib("events", "emit", feature_dir, "redo", "--phase", returned,
+                    "--data", json.dumps({"attempt": redo_count, "flags": len(flags), "classes": classes}))
                 print("REDO phase=%s flags=%d attempt=%d" % (returned, len(flags), redo_count))
                 for flag in flags:
                     print(flag)
@@ -1672,13 +1706,88 @@ def footprint_drop(feature_dir, feat, target, path, reason):
     return 0
 
 
+def section_span(text, heading):
+    """(start, end) of the body under a `## ` or `### ` heading: from the line after
+    it to the next heading of the same or a higher level, or the end."""
+    m = re.search(r"^(#{2,3}) %s[ \t]*$\n" % re.escape(heading), text, flags=re.M)
+    if not m:
+        return None
+    level = len(m.group(1))
+    nxt = re.compile(r"^#{1,%d} " % level, re.M).search(text, m.end())
+    return m.end(), (nxt.start() if nxt else len(text))
+
+
+def spec_fill(target, o):
+    text = open(target, encoding="utf-8").read()
+    filled = []
+    if o.get("intent"):
+        span = section_span(text, "Intent")
+        if span is None:
+            raise Die("spec fill: no ## Intent block in %s" % target)
+        body = text[span[0]:span[1]]
+        close = body.find("<!-- /intent -->")
+        if close < 0:
+            raise Die("spec fill: the Intent block of %s has no closing marker" % target)
+        text = text[:span[0]] + "\n" + o["intent"].strip() + "\n" + body[close:] + text[span[1]:]
+        filled.append("intent")
+    if o.get("note") or o.get("file"):
+        if not (o.get("note") and o.get("file")):
+            raise Die("spec fill: --file PATH and --note TEXT go together", 2)
+        line = re.compile(r"^- %s: .*$" % re.escape(o["file"]), re.M)
+        if not line.search(text):
+            raise Die("spec fill: %s has no Implementation notes bullet for %s (the footprint's files have one each)" % (target, o["file"]))
+        text = line.sub(lambda _: "- %s: %s" % (o["file"], o["note"].strip()), text, count=1)
+        filled.append("note:" + o["file"])
+    if o.get("criterion"):
+        span = section_span(text, "Good Enough")
+        if span is None:
+            raise Die("spec fill: no ### Good Enough section in %s" % target)
+        body = text[span[0]:span[1]]
+        kept = [l for l in body.splitlines() if l.strip() and "{check command}" not in l]
+        kept.append("- [ ] " + o["criterion"].strip())
+        text = text[:span[0]] + "\n" + "\n".join(kept) + "\n\n" + text[span[1]:]
+        filled.append("criterion")
+    if o.get("grounding"):
+        span = section_span(text, "Grounding")
+        if span is None:
+            raise Die("spec fill: no ## Grounding section in %s" % target)
+        body = text[span[0]:span[1]]
+        kept = [l for l in body.splitlines() if l.strip() and l.strip() != "- none"]
+        kept.append("- " + o["grounding"].strip())
+        text = text[:span[0]] + "\n" + "\n".join(kept) + "\n" + text[span[1]:]
+        filled.append("grounding")
+    if not filled:
+        raise Die("spec fill: nothing to fill (--intent, --file/--note, --criterion, or --grounding)", 2)
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    flags = []
+    for name, args in (("artifact-lint", ["spec", target]), ("oneshot-spec-lint", [target])):
+        out = lib_run(name, *args, quiet=True).stdout
+        flags += [line for line in out.splitlines() if line.startswith("FLAG")]
+    print(json.dumps({"spec": target, "filled": filled, "flags": flags}))
+    return 0
+
+
+def spec_escalate(target, reason):
+    text = open(target, encoding="utf-8").read()
+    if not re.search(r"^route: *full\s*$", text, flags=re.M):
+        text = re.sub(r"^---\n(.*?)^---\n", lambda m: "---\n" + m.group(1) + "route: full\n---\n", text, count=1, flags=re.M | re.S)
+    text = text.replace("## Implementation notes\n\n", "## Implementation notes\n\n- escalated (route: full): %s\n" % reason, 1)
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    print(json.dumps({"spec": target, "route": "full", "reason": reason}))
+    return 0
+
+
 def cmd_spec(argv):
     sub = argv[0] if argv else ""
     if sub == "footprint" and argv[1:2] == ["drop"]:
         sub, argv = "drop", argv[1:]
-    if sub not in ("skeleton", "write", "drop"):
+    if sub not in ("skeleton", "write", "drop", "fill", "escalate"):
         usage()
-    opts = {"write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason")}.get(sub, ("--feature-dir",))
+    opts = {"write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason"),
+            "fill": ("--feature-dir", "--intent", "--file", "--note", "--criterion", "--grounding"),
+            "escalate": ("--feature-dir", "--reason")}.get(sub, ("--feature-dir",))
     o = parse_pairs(argv[1:], opts)
     feature_dir = o.get("feature_dir") or ""
     source = o.get("file")
@@ -1687,12 +1796,18 @@ def cmd_spec(argv):
     feature_dir = os.path.realpath(feature_dir)
     feat = state(feature_dir)
     target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
+    if sub in ("drop", "fill", "escalate") and not os.path.isfile(target):
+        raise Die("spec %s: no SPEC.md at %s" % (sub, target), 2)
     if sub == "drop":
         if not source or not (o.get("reason") or "").strip():
             raise Die("spec footprint drop needs --file PATH and --reason TEXT", 2)
-        if not os.path.isfile(target):
-            raise Die("spec footprint drop: no SPEC.md at %s" % target, 2)
         return footprint_drop(feature_dir, feat, target, source, o["reason"].strip())
+    if sub == "fill":
+        return spec_fill(target, o)
+    if sub == "escalate":
+        if not (o.get("reason") or "").strip():
+            raise Die("spec escalate needs --reason TEXT", 2)
+        return spec_escalate(target, o["reason"].strip())
     if sub == "skeleton":
         # The route is a function of the scout's record, and the model may lengthen it,
         # never shorten it (orchestrator-port-principles.md, rule 1). The probe reads the
@@ -1729,6 +1844,87 @@ def cmd_spec(argv):
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(body)
     print(target)
+    return 0
+
+
+def verification_lint_flags(root, target, spec):
+    flags = []
+    for name, args in (("artifact-lint", ["verification", target]),
+                       ("verification-grounding-lint", [target, "--repo", root, "--spec", spec]),
+                       ("review-triage-lint", [target]),
+                       ("converged-floor", [spec, target])):
+        out = lib_run(name, *args, quiet=True).stdout
+        flags += [line for line in out.splitlines() if line.startswith("FLAG") or line.startswith("FLOOR")]
+    return flags
+
+
+def cmd_verification(argv):
+    if not argv or argv[0] != "fill":
+        usage()
+    o = parse_pairs(argv[1:], ("--feature-dir", "--row", "--implementation", "--proof", "--integration",
+                               "--integration-proof", "--evidence", "--output", "--review", "--reviewer-model", "--tests"))
+    feature_dir = o.get("feature_dir") or ""
+    if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
+        usage()
+    feature_dir = os.path.realpath(feature_dir)
+    feat = state(feature_dir)
+    docs = docs_dir(feature_dir, feat)
+    target = os.path.join(docs, "VERIFICATION.md")
+    spec = os.path.join(docs, "SPEC.md")
+    if not os.path.isfile(target):
+        raise Die("verification fill: no VERIFICATION.md at %s (phase-begin oneshot writes the skeleton)" % target, 2)
+    text = open(target, encoding="utf-8").read()
+    filled = []
+    row = o.get("row")
+    if row:
+        if not re.match(r"^GE-\d{3}$", row):
+            raise Die("verification fill: --row names a criterion as GE-NNN", 2)
+        number = int(row[3:])
+        if o.get("implementation"):
+            if not o.get("proof"):
+                raise Die("verification fill: --implementation FILE:LINE goes with --proof TEXT", 2)
+            integ = o.get("integration") or "none"
+            iproof = o.get("integration_proof") or ("the criterion's own check command exercises the change end to end" if integ == "none" else "")
+            if integ != "none" and not iproof:
+                raise Die("verification fill: --integration FILE:LINE goes with --integration-proof TEXT", 2)
+            line = re.compile(r"^- criterion: %s \|.*$" % re.escape(row), re.M)
+            if not line.search(text):
+                raise Die("verification fill: %s has no grounding row for %s" % (target, row))
+            text = line.sub(lambda _: "- criterion: %s | implementation: %s - %s | integration: %s - %s" % (
+                row, o["implementation"], o["proof"].strip(), integ, iproof.strip()), text, count=1)
+            filled.append("grounding:" + row)
+        if o.get("evidence"):
+            cell = re.compile(r"^(\| %s \| .* \| PASS \| )(.*?)( \|)$" % re.escape(row), re.M)
+            if not cell.search(text):
+                raise Die("verification fill: %s has no acceptance row for %s" % (target, row))
+            text = cell.sub(lambda m: m.group(1) + o["evidence"].strip().replace("|", "\\|") + m.group(3), text, count=1)
+            filled.append("evidence:" + row)
+        if o.get("output") is not None:
+            span = section_span(text, "Criterion %d" % number)
+            if span is None:
+                raise Die("verification fill: %s has no ### Criterion %d block" % (target, number))
+            text = text[:span[0]] + "\n```\n" + o["output"].rstrip("\n") + "\n```\n\n" + text[span[1]:]
+            filled.append("output:" + row)
+    if o.get("review") is not None:
+        span = section_span(text, "Findings")
+        if span is None:
+            raise Die("verification fill: %s has no ### Findings section" % target)
+        text = text[:span[0]] + "\n" + o["review"].strip() + "\n\n" + text[span[1]:]
+        if o.get("reviewer_model"):
+            text = re.sub(r"^\*\*Reviewer:\*\* code-reviewer \(.*\)$", "**Reviewer:** code-reviewer (%s)" % o["reviewer_model"], text, count=1, flags=re.M)
+        filled.append("review")
+    if o.get("tests") is not None:
+        span = section_span(text, "Final test suite")
+        if span is None:
+            raise Die("verification fill: %s has no ## Final test suite section" % target)
+        text = text[:span[0]] + "\n```\n" + o["tests"].rstrip("\n") + "\n```\n" + text[span[1]:]
+        filled.append("tests")
+    if not filled:
+        raise Die("verification fill: nothing to fill", 2)
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    print(json.dumps({"verification": target, "filled": filled,
+                      "flags": verification_lint_flags(feature_root(feature_dir, feat), target, spec)}))
     return 0
 
 
@@ -1861,7 +2057,7 @@ def main(argv):
     handlers = {
         "deliver": cmd_deliver, "begin": cmd_begin, "phase-begin": cmd_phase_begin, "start": cmd_start,
         "init": cmd_init, "resume": cmd_resume, "next": cmd_next, "finish": cmd_finish,
-        "escalate": cmd_escalate, "spec": cmd_spec, "oneshot": cmd_oneshot,
+        "escalate": cmd_escalate, "spec": cmd_spec, "oneshot": cmd_oneshot, "verification": cmd_verification,
     }
     if command not in handlers:
         usage()

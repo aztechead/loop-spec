@@ -18,7 +18,6 @@ footprint:
 ## Implementation notes
 
 - {What changes in each footprint file, one bullet per file, with the symbol or line it touches.}
-- {The behavior that must stay unchanged.}
 
 ## Success criteria
 

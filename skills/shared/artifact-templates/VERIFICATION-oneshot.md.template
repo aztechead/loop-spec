@@ -1,0 +1,37 @@
+# {feature_title} - Verification
+
+**Spec:** `docs/loop-spec/features/{slug}/SPEC.md`
+
+## Repository grounding
+
+- criterion: GE-001 | implementation: {path}:{line} - {what it proves} | integration: {path}:{line} - {what it proves}
+
+## Acceptance criteria
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| 1 | {from SPEC} | PASS / FAIL / BLOCKED / N/A | `{verify command}` -> {output summary} |
+
+## Verify command outputs
+
+### Criterion 1
+
+```
+{full output of verify command}
+```
+
+(repeat per criterion)
+
+## Code review
+
+**Reviewer:** code-reviewer ({model})
+
+### Findings
+
+none
+
+## Final test suite
+
+```
+{output of commands.test}
+```

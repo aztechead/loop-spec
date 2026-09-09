@@ -40,11 +40,14 @@ Escalate, and only escalate, when the code shows one of these:
 - a question the spec leaves open changes what you would write;
 - the footprint or the spec touches a security surface the probe could not see.
 
-To escalate, add `route: full` to SPEC.md's frontmatter (top level, next to
-`footprint:`), append one line under `## Implementation notes` saying why, and return.
-The cycle routes the run to DISCUSS on the full path (`lib/graph/probes/oneshot.sh
---after`); nothing you found is lost. A oneshot never turns a full run into a oneshot,
-and you never pick the next phase.
+To escalate, run
+`bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" spec escalate --feature-dir "$feature_dir" --reason "<why>"`
+and return. The cycle routes the run to DISCUSS on the full path
+(`lib/graph/probes/oneshot.sh --after`); nothing you found is lost. A oneshot never
+turns a full run into a oneshot, and you never pick the next phase. You never open
+SPEC.md or VERIFICATION.md to write: the driver is their only writer on this route
+(`hooks/restrict-agent-paths.sh` denies the Write), and every driver answer carries
+the gate flags the file has so far.
 
 ## 2. Implement
 
@@ -90,27 +93,41 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" dispatch \
 ```
 
 Fix every Critical and Important finding in the footprint and commit; a finding that
-needs a file outside the footprint is an escalation (step 1). Minor findings are
-recorded in VERIFICATION.md's code review section and never block. Every finding gets
-one bullet there with your verdict: `- <file>:<line> — <claim> | verdict: true —
-<commit or fix>`, or `| verdict: false — <disproof>` naming what shows it wrong
-(`lib/review-triage-lint.sh` at the exit rejects a bullet without a location, without
-a verdict, or a `false` without its disproof). There is one review
-pass: a second BLOCK after your fix is an escalation, not a third round.
+needs a file outside the footprint is an escalation (step 1). Minor findings never
+block. Record every finding with your verdict in one call, one bullet per finding:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verification fill --feature-dir "$feature_dir" \
+  --reviewer-model "<models.codeReviewer>" \
+  --review '- <file>:<line> — <claim> | verdict: true — <commit or fix>
+- <file>:<line> — <claim> | verdict: false — <disproof: what shows it wrong>'
+```
+
+(`<claim>` is the finding in the reviewer's words; `none` when there is no finding;
+`lib/review-triage-lint.sh` rejects a bullet without a location, without a verdict, or
+a `false` without its disproof, and the answer's `flags` say so at once). There is one review pass: a second BLOCK after your fix is an
+escalation, not a third round.
 
 ## 4. Verify and record
 
 Run each Good Enough criterion's check command exactly as SPEC.md writes it and keep
-the output. `phase-begin` wrote `docs/loop-spec/features/{slug}/VERIFICATION.md` from
-`skills/shared/artifact-templates/VERIFICATION.md.template` (`.skeletons[]` in the
-packet): the title, no `**Plan:**` line, one `- criterion: GE-NNN | implementation:
-<file>:<line> - <proof> | integration: ...` row per criterion under `## Repository
-grounding` (`skills/shared/verification-grounding.md`), and one acceptance table row
-per criterion keyed `GE-NNN` whose `Status` cell begins `PASS`. Fill the values in
-place and add no heading: the grounding rows, the command outputs, the code review
-section with the reviewer's verdict and findings, and the final test suite output.
-A criterion that does not pass is not recorded as `FAIL` and worked around: fix it
-(step 2), or escalate (step 1).
+the output. `phase-begin` wrote `docs/loop-spec/features/{slug}/VERIFICATION.md`
+(`.skeletons[]` in the packet) with one grounding row and one acceptance row per
+criterion, keyed `GE-NNN` in SPEC order. Fill it through the driver, one criterion per
+call, then the test suite output:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verification fill --feature-dir "$feature_dir" \
+  --row GE-001 --implementation <file>:<line> --proof "<what that line proves>" \
+  --integration <test file>:<line> --integration-proof "<what it proves>" \
+  --evidence "<command> -> <output summary>" --output "$(<the check command>)"
+bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verification fill --feature-dir "$feature_dir" --tests "$(<commands.test>)"
+```
+
+`--integration none` names the criterion's own command as the end-to-end proof. Each
+answer's `flags` are the four exit lints over the file as it stands; an empty list
+after the last call is the shape the gate accepts. A criterion that does not pass is
+not recorded as `FAIL` and worked around: fix it (step 2), or escalate (step 1).
 
 Return to the cycle; never invoke a successor phase and never run the exit yourself.
 The cycle's `next --returned-from oneshot` runs `lib/phase-exit.sh oneshot`
@@ -119,8 +136,9 @@ Intent block unchanged since SPEC committed it, the recorded reviewer dispatch,
 `artifact-lint verification`, `verification-grounding-lint`, `review-triage-lint`,
 and the converged floor over the acceptance table), commits
 SPEC.md and VERIFICATION.md, tags `post-oneshot`, and routes to DELIVER; `REDO` with
-`FLAG` lines means fix VERIFICATION.md or the change in place and return again. An
-escalated spec passes the exit with nothing to check and routes to DISCUSS.
+`FLAG` lines means fix the change, or the value a flag names through `verification
+fill`, and return again. An escalated spec passes the exit with nothing to check and
+routes to DISCUSS.
 
 ## Resume
 

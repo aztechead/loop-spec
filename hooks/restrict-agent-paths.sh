@@ -29,6 +29,11 @@
 #   all other subagent_types         -> unrestricted
 #   any caller                       -> never .loop-spec/**/{last-result,result,active-run,
 #                                       feature,delivery}.json, never the installed plugin
+#   any caller                       -> never SPEC.md or VERIFICATION.md of a feature on the
+#                                       oneshot route (lib/graph/probes/oneshot.sh answers
+#                                       route=oneshot for it): the driver's `spec fill`,
+#                                       `spec escalate`, `spec footprint drop`, and
+#                                       `verification fill` are the writers
 #
 # Fast path: when the project has no .loop-spec/ state (no cycle has
 # ever run here), exit 0 before parsing anything — this hook must not tax every
@@ -234,6 +239,29 @@ feature_checkout_deny() {
 if path_allowed "docs/loop-spec/features"; then
   feature_checkout_deny
 fi
+
+# driver_owned_deny: on the oneshot route the driver is the only writer of SPEC.md and
+# VERIFICATION.md. Five format REDO rounds on a live bug fix came from a lead that
+# filled the driver-written skeleton by hand and left the shape the gates read
+# (orchestrator-port-followup-3.md, N1). The route is the probe's answer over the
+# feature's own SPEC.md, so a full-route spec (no footprint, four files, `route: full`,
+# or no SPEC.md yet) stays the lead's to write.
+driver_owned_deny() {
+  local rel slug checkout fd route
+  case "$(basename "$FILE_PATH")" in SPEC.md|VERIFICATION.md) ;; *) return 0 ;; esac
+  rel="${FILE_PATH#*docs/loop-spec/features/}"
+  [[ "$rel" != "$FILE_PATH" && "$rel" == */* ]] || return 0
+  slug="${rel%%/*}"
+  checkout="${FILE_PATH%docs/loop-spec/features/*}"
+  [[ -n "$checkout" ]] || checkout="${CLAUDE_PROJECT_DIR:-$PWD}/"
+  fd="${checkout}.loop-spec/features/$slug"
+  [[ -f "$fd/feature.json" ]] || return 0
+  route="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/graph/probes/oneshot.sh" --feature-dir "$fd" 2>/dev/null || true)"
+  [[ "${route%% *}" == "route=oneshot" ]] || return 0
+  echo "DENY: $TOOL_NAME targets $FILE_PATH, which the driver writes on the oneshot route (${route#route=oneshot reason=}). Fill it through the driver: cycle-driver.sh spec fill --feature-dir $fd (--intent, --file/--note, --criterion, --grounding), spec escalate --reason, spec footprint drop --file --reason, or verification fill --feature-dir $fd (--row/--implementation/--proof/--evidence/--output, --review, --tests). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+  exit 2
+}
+driver_owned_deny
 
 case "$CALLER" in
   spec-writer|planner)

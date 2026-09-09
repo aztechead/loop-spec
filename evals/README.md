@@ -96,3 +96,13 @@ Create `evals/tasks/<id>/` with `task.json` (`id`, `size`, `kind`, `prompt`,
 `reference_app_lines`, `protected`), a `fixture/` directory that is a complete small
 project, and `check.sh` that prints one `CHECK <name> PASS|FAIL [note]` line per
 criterion. Keep fixtures small: cost scales with the tree the cycle reads.
+
+## REDO rounds in the record
+
+`cycle-driver.sh next` emits a `redo` event into the feature's `events.jsonl` for every
+REDO answer, with the bracketed class of each FLAG line. The record sums them as `redo`
+(`rounds`, `by_class`) and `format_redo`, the rounds spent on the classes a
+driver-written shape makes impossible (`artifact-lint`, `verification-grounding`,
+`misplaced`, `oneshot-shape`, `review-triage`, `converged-floor`); the summary prints
+the same per task. A live bug-fix run on the short route is at its done condition for
+`docs/loop-spec/orchestrator-port-followup-3.md` N1 when `format_redo` is zero.

@@ -131,7 +131,7 @@
         "skeletons": [
           {
             "path": "{docs}/VERIFICATION.md",
-            "template": "skills/shared/artifact-templates/VERIFICATION.md.template"
+            "template": "skills/shared/artifact-templates/VERIFICATION-oneshot.md.template"
           }
         ]
       },

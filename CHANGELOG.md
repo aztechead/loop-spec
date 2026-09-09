@@ -30,6 +30,19 @@ The landing record at the end of the follow-up says what each item became.
   `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
   the cycle skill binds, never a path to retype. It has no switch of its own;
   `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
+- **The lead never writes a shape on the short route.** `cycle-driver.sh spec fill`
+  (`--intent`, `--file/--note`, `--criterion`, `--grounding`), `spec escalate
+  --reason`, and `verification fill` (`--row` with `--implementation/--proof`,
+  `--integration/--integration-proof`, `--evidence`, `--output`; `--review`; `--tests`)
+  fill the driver-written skeletons one value per call and answer with the exit lints'
+  flags over the file as it stands. `hooks/restrict-agent-paths.sh` denies a Write or
+  Edit of SPEC.md or VERIFICATION.md while `lib/graph/probes/oneshot.sh` answers
+  `route=oneshot` for the feature, naming the fill commands. The oneshot node's
+  VERIFICATION.md skeleton is `VERIFICATION-oneshot.md.template`, the sections the
+  gates read and nothing more (44 lines for two criteria against 99 filled from the
+  full template on live run 3). Every REDO answer is a driver-observed `redo` event
+  with the flag classes; `evals/eval_run.py` records `redo` and `format_redo` and the
+  summary prints them (`tests/eval-record-coverage.test.sh`).
 - **The footprint has no prose exit.** `lib/oneshot-exit-gate.sh` flags every
   footprint file the diff since `baseSha` never touched, whatever Implementation notes
   say; `cycle-driver.sh spec footprint drop --file --reason` is the one way out, a
