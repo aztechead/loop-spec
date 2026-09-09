@@ -80,6 +80,20 @@ touches, and what to do.
   `introduced:` lines that quote a line the diff added reach the lead; every other line
   is dropped with a reason in the gate-log (`tests/lib/delta-findings-lint.test.sh`).
 
+### Added
+
+- `lib/docs-probe.sh`: the plugin's own current-version and current-docs lookup.
+  `latest <name>` answers `version=<v> source=<url>` from the registry or the release
+  tracker over the network; `docs <name> --topic <question>` returns the sections of the
+  current documentation that match (`llms.txt` where the docs live, else the README at
+  the version's tag, else the registry's readme, else the docs page). Sources are a
+  table in `lib/docs-probe.py`, one row per ecosystem (runtime via endoflife.date, PyPI,
+  npm, crates.io, RubyGems, the Go proxy); the ecosystem comes from `--ecosystem`, else
+  the manifest in the directory, else every row. Nothing answers: `unverified`, exit 1.
+  The grounding protocol, the version directive, and SPEC's greenfield lookup call it
+  before any web tool. `LOOP_SPEC_DOCS_CACHE_DIR`, `LOOP_SPEC_DOCS_CACHE_TTL_SECS`,
+  `LOOP_SPEC_DOCS_FIXTURES` (`tests/lib/docs-probe.test.sh`).
+
 ### Fixed
 
 - Five defects from the first live run on 6.3.0 (`evals/findings-2026-09-09.md`):

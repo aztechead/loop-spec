@@ -22,9 +22,14 @@ from model memory.** Before treating any such premise as fact, run the cheapest
 read-only probe available and record its output.
 
 When a request names something you do not confidently recognize, or names a
-fast-moving developer tool, model, service, or library, search for that name before
-answering. Include the name as the user wrote it in at least one query; partial
-familiarity is not evidence that the current state is known.
+fast-moving developer tool, model, service, or library, ask before answering. The
+plugin's own tool comes first: `bash lib/docs-probe.sh latest <name>` answers
+`version=<v> source=<url>` from the registry or the release tracker over the network
+(a runtime is `--ecosystem runtime`), and `version=unverified` when nothing answered;
+then search with the name as the user wrote it in at least one query. A local catalog
+(`uv python list`, `pyenv install --list`) is the installer's memory, not the
+language's, and never the answer. Partial familiarity is not evidence that the current
+state is known.
 
 When a retrieved source is quoted, mark it as a quotation and cite the source. Do not
 let copied source wording appear as the plugin's own conclusion.
@@ -71,11 +76,15 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/doc-deps.sh" scan <touched files>
 `LOOP_SPEC_DOC_DEPS=<comma-list|none>` overrides the scan when the operator knows
 better.
 
-**How to fetch.** Use whatever tool the session provides that can search the web or
-retrieve a URL — the rule names the capability, not a tool, because the harnesses
-name these differently, deployments may block the native web tools by policy, and a
-custom or MCP search tool may stand in their place; `curl -s <url>` through Bash is
-the floor. Writers with such a tool fetch for themselves; a writer whose allow-list
+**How to fetch.** First `bash lib/docs-probe.sh docs <dep> --topic <the idiom question>`:
+it resolves the dependency through its registry, then returns the sections of the
+current docs that match the topic (`llms.txt` where the docs live, else the README at
+the version's tag, else the registry's readme, else the docs page), and says
+`docs: unverified` when no source answers. Then use whatever tool the session provides
+that can search the web or retrieve a URL — the rule names the capability, not a
+tool, because the harnesses name these differently, deployments may block the native
+web tools by policy, and a custom or MCP search tool may stand in their place;
+`curl -s <url>` through Bash is the floor. Writers with such a tool fetch for themselves; a writer whose allow-list
 reaches no web-capable tool returns the need (`NEEDS_CONTEXT` or `UNGROUNDED:`) and
 the lead — which holds the session's full tool set, custom search tools included —
 fetches.

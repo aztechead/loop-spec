@@ -65,10 +65,18 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{s
 Then name the frameworks in play:
 `bash "${CLAUDE_SKILL_DIR}/../../lib/doc-deps.sh" scan <the files the scout found>` lists
 the third-party dependencies those files import. For each one the feature will lean on,
-look up how its current release does what the feature needs — any web search or
-URL-fetch tool the session provides — and `evidence.sh add` the finding (the
-dependency-idiom rule, `skills/shared/grounding-protocol.md` "Current documentation").
-The idiom in today's docs outranks the idiom in model memory.
+and for every runtime or library the ask names by version, ask the plugin's own tool
+before anything else: `bash "${CLAUDE_SKILL_DIR}/../../lib/docs-probe.sh" latest <name>`
+(`--ecosystem runtime` for a language) is the version, and
+`bash "${CLAUDE_SKILL_DIR}/../../lib/docs-probe.sh" docs <name> --topic <what the feature needs>`
+is how its current release does it; `unverified` means record an `ASSUMPTION`, then
+try any web search or URL-fetch tool the session provides. `evidence.sh add` the
+finding with the probe's `source=` URL as the command (the dependency-idiom rule,
+`skills/shared/grounding-protocol.md` "Current documentation"). A local catalog
+(`uv python list`, `pyenv install --list`) is never the version source: a run took a
+stale catalog's release candidate as the current Python and paid twenty commands for
+a crash the final release did not have. The idiom in today's docs outranks the idiom in
+model memory.
 
 Score the four dimensions from what you know now and display the scoring block.
 

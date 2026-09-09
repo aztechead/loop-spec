@@ -73,6 +73,9 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_EXECUTE_LOOPS` | `0`/`1`; automatic | `1` requests loop-fleet regardless of DAG width, subject to agent-CLI and persistent-runtime capability. `0` forbids loop-fleet. |
 | `LOOP_SPEC_EXECUTE_WORKFLOW` | `0`/`1`; `0` | `1` opts sufficiently wide EXECUTE DAGs into the Workflow rung when the Workflow tool is available. |
 | `LOOP_SPEC_PLAN_MULTI_ANGLE` | `0`/`1`; `0` | `1` enables PLAN multi-angle authoring through Workflow when available. |
+| `LOOP_SPEC_DOCS_CACHE_DIR` | directory path; `$TMPDIR/loop-spec-docs-cache` | Where `lib/docs-probe.sh` caches registry and documentation fetches. |
+| `LOOP_SPEC_DOCS_CACHE_TTL_SECS` | positive integer; `3600` | How long a cached `docs-probe.sh` fetch is reused before the source is asked again. |
+| `LOOP_SPEC_DOCS_FIXTURES` | directory path; unset | Canned responses for `docs-probe.sh`, keyed by `sha1(url)[:16]`; set, the probe touches no network (the offline test double). |
 | `LOOP_SPEC_DOC_DEPS` | comma-separated dependency names, or `none`; unset | Overrides `lib/doc-deps.sh scan` (the dependency-idiom probe): the listed dependencies replace the imports-intersect-manifest answer everywhere it is consulted, including PLAN's `doc-deps` exit gate. `none` empties the list, which also clears the gate. Unset means: derive the list from the touched files' imports. |
 | `LOOP_SPEC_EXECUTION_PROFILE` | `interactive`/`headless`; probed | Declares whether the invocation can retain a foreground fleet call. `headless` disables loop-fleet. A headless host entrypoint overrides `interactive`. |
 | `LOOP_SPEC_LOOP_RUNTIME` | `0`/`1`; probed | Explicit capability assertion for a persistent foreground loop. `0` disables it. `1` is the only loop-spec setting that can override a headless entrypoint stamp. |
