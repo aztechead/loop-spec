@@ -1562,9 +1562,13 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
                 "- criterion: GE-001 | implementation: {path}:{line} - {what it proves} | integration: {path}:{line} - {what it proves}\n",
                 "".join("- criterion: GE-%03d | implementation: {path}:{line} - {what it proves} | integration: {path}:{line} - {what it proves}\n" % (i + 1)
                         for i in range(len(criteria))))
+            # A criterion is often a shell pipeline; a bare `|` splits the table row
+            # and lib/converged-floor.sh reads its status from the wrong cell (live
+            # run 3 paid a REDO and ten edits for one).
             text = text.replace(
                 "| 1 | {from SPEC} | PASS / FAIL / BLOCKED / N/A | `{verify command}` -> {output summary} |\n",
-                "".join("| GE-%03d | %s | PASS | `{verify command}` -> {output summary} |\n" % (i + 1, c) for i, c in enumerate(criteria)))
+                "".join("| GE-%03d | %s | PASS | `{verify command}` -> {output summary} |\n" % (i + 1, c.replace("|", "\\|"))
+                        for i, c in enumerate(criteria)))
             text = text.replace(
                 "### Criterion 1\n\n```\n{full output of verify command}\n```\n\n(repeat per criterion)\n",
                 "".join("### Criterion %d\n\n```\n{full output of verify command}\n```\n\n" % (i + 1) for i in range(len(criteria))))

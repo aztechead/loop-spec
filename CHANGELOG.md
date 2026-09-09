@@ -118,6 +118,11 @@ environment probe come along unchanged.
 
 ### Fixed
 
+- The oneshot VERIFICATION.md skeleton escapes a `|` inside a Good Enough criterion (a
+  shell pipeline is a common criterion); the bare pipe split the table row and
+  `lib/converged-floor.sh` read the status from the wrong cell, one REDO and ten edits
+  on a live run.
+
 - The oneshot exit gate passed on a frontmatter the probe could not read, skipped the
   footprint check in workspace mode, and never checked the diff against the footprint
   in the other direction.

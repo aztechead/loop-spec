@@ -319,6 +319,7 @@ Dots survive slugify.
 ### Good Enough
 
 - [ ] `python3 -c "from slugify import slugify; assert slugify('a.b') == 'ab'"` exits 0
+- [ ] `python3 -m unittest discover -s tests -v 2>&1 | grep -c ' ok$'` prints 1
 
 ## Grounding
 
@@ -340,6 +341,11 @@ check "phase-begin oneshot: the skeleton's title is the feature's" "# fix slugif
 check "phase-begin oneshot: no Plan line without a PLAN.md" "0" "$(grep -c '^\*\*Plan:\*\*' "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: one grounding row per criterion" "1" "$(grep -c '^- criterion: GE-001 |' "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: the acceptance row carries the criterion text" "1" "$(grep -c "^| GE-001 | .*slugify('a.b') == 'ab'.* | PASS |" "$DOCS7/VERIFICATION.md")"
+check "phase-begin oneshot: the second criterion gets its own rows" "2" "$(grep -c '^- criterion: GE-00[12] |' "$DOCS7/VERIFICATION.md")"
+# A criterion that is a shell pipeline: the bare pipe would split the row and the
+# floor would read the wrong cell (live run 3 paid a REDO and ten edits for it).
+check "phase-begin oneshot: a pipe in the criterion is escaped in the table row" "1" "$(grep -c '^| GE-002 | `python3 -m unittest discover -s tests -v 2>&1 \\| grep -c .* | PASS |' "$DOCS7/VERIFICATION.md")"
+check "phase-begin oneshot: the floor reads the escaped row's status from the right cell" "0" "$(bash "$REPO_ROOT/lib/converged-floor.sh" "$DOCS7/SPEC.md" "$DOCS7/VERIFICATION.md" 2>&1 | grep -c 'FLOOR GE-002')"
 printf '# filled by the lead\n' > "$DOCS7/VERIFICATION.md"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv phase-begin oneshot --feature-dir "$FD7" 2>/dev/null)"
 check "phase-begin oneshot: an existing VERIFICATION.md is kept" "null" "$(jq -r '.skeletons' <<<"$out")"
