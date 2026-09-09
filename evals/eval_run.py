@@ -41,7 +41,7 @@ RESULTS_DIR = REPO / "evals" / "results"
 RUNS_DIR = REPO / "evals" / ".runs"
 ARTIFACT_PREFIXES = ("docs/loop-spec/", ".loop-spec/", ".claude/")
 DEFAULT_BUDGET = {"haiku": 8.0, "sonnet": 40.0, "opus": 80.0}
-ROUND_TIMEOUT_S = 90 * 60
+ROUND_TIMEOUT_S = 150 * 60  # --round-timeout-mins overrides; a six-task sonnet cycle ran 90 minutes and was killed in VERIFY
 # The CLI ends the turn with this text, subtype "success", when the account's usage
 # window is spent; ten concurrent runs hit it eleven minutes in and every record read
 # as a plugin failure. A round that says this measured the account, not the plugin.
@@ -131,7 +131,7 @@ def prepare_workspace(task, run_dir, env):
     return project, base
 
 
-def run_round(project, prompt, model, budget, env, log_path, plugin_dir):
+def run_round(project, prompt, model, budget, env, log_path, plugin_dir, timeout_s=None):
     cmd = ["claude", "-p", prompt, "--model", model,
            "--plugin-dir", str(plugin_dir),
            # bypassPermissions is refused for root, which CI containers often are;
@@ -144,7 +144,7 @@ def run_round(project, prompt, model, budget, env, log_path, plugin_dir):
     started = time.time()
     try:
         proc = subprocess.run(cmd, cwd=str(project), env=env, capture_output=True,
-                              text=True, timeout=ROUND_TIMEOUT_S)
+                              text=True, timeout=timeout_s or ROUND_TIMEOUT_S)
         timed_out = False
         stdout, stderr, rc = proc.stdout, proc.stderr, proc.returncode
     except subprocess.TimeoutExpired as exc:
@@ -282,7 +282,8 @@ def judge(task, project, base, branch, env, log_path):
             "note": str(verdict.get("note", ""))[:300]}
 
 
-def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
+def run_task(task_id, model, run_id, budget, measure_only=False, commit=None,
+             phase_fresh=False, timeout_s=None):
     task = load_task(task_id)
     env = child_env()
     run_dir = RUNS_DIR / run_id
@@ -308,15 +309,19 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
     else:
         project, base = prepare_workspace(task, run_dir, env)
     plugin_dir = plugin_snapshot(run_dir)
-    prompt = f"/loop-spec:cycle autonomous {task['prompt']}"
-    for n in range(1, MAX_ROUNDS + 1):
+    # phase:fresh returns after every durable phase, so each round starts the lead in
+    # a fresh context: the 20260909-sonnet-fastapi-3 lead re-read ~277k tokens on each
+    # of 569 calls in one session, 71 percent of that run's cost.
+    prompt = f"/loop-spec:cycle autonomous {'phase:fresh ' if phase_fresh else ''}{task['prompt']}"
+    max_rounds = MAX_ROUNDS * 2 if phase_fresh else MAX_ROUNDS
+    for n in range(1, max_rounds + 1):
         if measure_only:
             break
         remaining = budget - spent
         if remaining <= 0.5:
             break
         print(f"[{task_id}/{model}] round {n} budget {remaining:.2f}", flush=True)
-        r = run_round(project, prompt, model, remaining, env, root / f"round-{n}.log", plugin_dir)
+        r = run_round(project, prompt, model, remaining, env, root / f"round-{n}.log", plugin_dir, timeout_s)
         rounds.append(r)
         spent += r["cost_usd"] or 0.0
         result = read_json(newest([r / ".loop-spec" / "last-result.json" for r in roots(project, env)]) or "")
@@ -523,6 +528,10 @@ def main(argv=None):
     ap.add_argument("--budget-usd", type=float, default=None, help="per task; default by model")
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--confirm-spend", action="store_true")
+    ap.add_argument("--phase-fresh", action="store_true",
+                    help="add the phase:fresh token so each phase runs in a fresh lead context")
+    ap.add_argument("--round-timeout-mins", type=int, default=None,
+                    help="kill a round after this many minutes (default 150)")
     ap.add_argument("--measure-only", action="store_true",
                     help="re-score the workspaces of --run-id without running a cycle (free)")
     ap.add_argument("--preflight-only", action="store_true", help="run the preflight checks and stop")
@@ -556,7 +565,9 @@ def main(argv=None):
     print(f"eval_run: run {run_id}, tasks {task_ids}, budget {budget} USD per task, plugin {commit}", flush=True)
     failures = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.parallel)) as pool:
-        futures = {pool.submit(run_task, t, args.model, run_id, budget, args.measure_only, commit): t
+        timeout_s = args.round_timeout_mins * 60 if args.round_timeout_mins else None
+        futures = {pool.submit(run_task, t, args.model, run_id, budget, args.measure_only, commit,
+                               args.phase_fresh, timeout_s): t
                    for t in task_ids}
         for fut in concurrent.futures.as_completed(futures):
             try:

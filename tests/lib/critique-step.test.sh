@@ -17,7 +17,7 @@ check() {
 feat() { jq -r "$1" "$WORK/feature/feature.json"; }
 FD="$WORK/feature"; ART="$WORK/docs/PLAN.md"
 
-bash "$ROOT/lib/feature-init.sh" skeleton --mode single \
+LOOP_SPEC_HARNESS=claude bash "$ROOT/lib/feature-init.sh" skeleton --mode single \
   --slug step-unit --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --style auto --title "step test" \
   --branch feat/step-unit --base-sha deadbeef --base-branch main \
   --worktree "" --prepare "" --test "" --lint "" --typecheck "" > "$FD/feature.json"
@@ -30,6 +30,7 @@ out="$(bash "$STEP" open --feature-dir "$FD" --phase plan --gate plan-critique -
 check "open records the gate" "plan-critique" "$(feat '.currentGate.gate')"
 check "open answers the absolute artifact path" "$ART" "$(jq -r '.artifact' <<<"$out")"
 check "open writes the state sidecar" "1" "$([[ -f "$FD/gate-logs/plan-critique-state.json" ]] && echo 1 || echo 0)"
+check "open answers the challenger's alias to pass on the Agent call" "sonnet" "$(jq -r '.model' <<<"$out")"
 
 # --- findings ---
 out="$(printf 'FINDINGS:\n1. [major] Gap: no retry budget\n\n2. [minor] wording in T2\n' \
@@ -39,12 +40,14 @@ check "findings verdict" "findings" "$(jq -r '.verdict' <<<"$out")"
 check "findings lines skip the header and blanks" "2" "$(jq '.lines | length' <<<"$out")"
 check "findings gate-log written" "1" "$(grep -c 'Round 1 (single-critic)' "$FD/gate-logs/plan-critique-round-1.md")"
 check "findings emits gate_round" "1" "$(grep -c '"gate_round"' "$FD/events.jsonl")"
+check "findings snapshots the artifact the challenger read" "1" "$([[ -f "$FD/gate-logs/PLAN.pre-revision.md" ]] && echo 1 || echo 0)"
+printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint (edited before fail)\n- T2: write the CSV\n' > "$ART"
 
 # --- fail -> rerun (ceiling 1 leaves one delta round) ---
 out="$(printf '[major] Gap: no retry budget\n' | bash "$STEP" fail --feature-dir "$FD" --fix-list -)"
 check "fail answers rerun inside the ceiling" "rerun" "$(jq -r '.answer' <<<"$out")"
 check "fail numbers the fix-list for the author" "1. [major] Gap: no retry budget" "$(jq -r '.fixList' <<<"$out")"
-check "fail snapshots the artifact" "1" "$([[ -f "$FD/gate-logs/PLAN.pre-revision.md" ]] && echo 1 || echo 0)"
+check "fail keeps the findings-time snapshot, not the edited file" "0" "$(grep -c 'edited before fail' "$FD/gate-logs/PLAN.pre-revision.md")"
 check "fail records the entry with the items verbatim" "[major] Gap: no retry budget" \
   "$(feat '.gateHistory[-1].findingsAddressed[0]')"
 check "fail keeps the gate open" "plan-critique" "$(feat '.currentGate.gate')"
@@ -53,7 +56,9 @@ check "fail keeps the gate open" "plan-critique" "$(feat '.currentGate.gate')"
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint with a retry budget of 3\n- T2: write the CSV\n' > "$ART"
 out="$(bash "$STEP" revised --feature-dir "$FD")"
 check "revised sees the change" "true" "$(jq -r '.changed' <<<"$out")"
-check "revised carries the diff" "1" "$(jq -r '.diff' <<<"$out" | grep -c '^+- T1: add the endpoint with a retry budget of 3')"
+check "revised keeps the diff in the file, not the answer" "null" "$(jq -r '.diff' <<<"$out")"
+check "revised counts the diff lines" "1" "$([[ "$(jq -r '.lines' <<<"$out")" -gt 4 ]] && echo 1 || echo 0)"
+check "revised wrote the change into the diff file" "1" "$(grep -c '^+- T1: add the endpoint with a retry budget of 3' "$FD/gate-logs/plan-critique-delta.diff")"
 check "revised repeats the fix-list" "1. [major] Gap: no retry budget" "$(jq -r '.fixList' <<<"$out")"
 check "revised writes the diff file" "1" "$([[ -s "$FD/gate-logs/plan-critique-delta.diff" ]] && echo 1 || echo 0)"
 
@@ -77,7 +82,9 @@ check "close appends the cap-reached pass entry" "cap-reached" "$(feat '.gateHis
 check "close resets the gate" "null" "$(feat '.currentGate.phase')"
 
 # --- a clean delta passes by itself ---
-bash "$STEP" open --feature-dir "$FD" --phase plan --gate plan-critique --artifact "$ART" >/dev/null
+jq '.models.challenger = "inherit"' "$FD/feature.json" > "$FD/feature.json.tmp" && mv "$FD/feature.json.tmp" "$FD/feature.json"
+out="$(bash "$STEP" open --feature-dir "$FD" --phase plan --gate plan-critique --artifact "$ART")"
+check "open answers null when the role inherits" "null" "$(jq -r '.model' <<<"$out")"
 printf 'FINDINGS:\n1. [major] Gap: no schema\n' | bash "$STEP" findings --feature-dir "$FD" --reply - >/dev/null
 printf '[major] Gap: no schema\n' | bash "$STEP" fail --feature-dir "$FD" --fix-list - >/dev/null
 printf '# Plan\n\n## Tasks\n\n- T1: add the endpoint with a retry budget of 3\n- T2: write the CSV with the schema in lib/schema.py\n' > "$ART"

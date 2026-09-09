@@ -12,20 +12,25 @@
 # Usage:
 #   critique-step.sh open     --feature-dir DIR --phase P --gate G --artifact PATH
 #       lib/graph/gate.sh open, the gate-logs dir, and the artifact path the later
-#       steps read. Prints {gate, phase, artifact, logDir}.
+#       steps read. Prints {gate, phase, artifact, logDir, model}: model is the Agent
+#       alias to pass on the challenger call, null when the role inherits (a lead that
+#       decided this itself omitted the key and lost the sonnet default).
 #   critique-step.sh findings --feature-dir DIR --reply <path|->
-#       Round 1: writes gate-logs/<gate>-round-1.md, counts the round, emits gate_round.
+#       Round 1: snapshots the artifact the challenger read to
+#       gate-logs/<name>.pre-revision.md (so the author may edit before or after
+#       `fail`), writes gate-logs/<gate>-round-1.md, counts the round, emits gate_round.
 #       Prints {round, verdict: "findings"|"no-findings", lines: [...]} where lines are
 #       the reply's non-empty lines after the FINDINGS:/NO-FINDINGS: header.
 #   critique-step.sh fail     --feature-dir DIR --fix-list <path|->
 #       One fix-list item per line, verbatim (the deadlock rule matches on identity).
-#       Appends the fail entry, asks the probe. rerun: snapshots the artifact to
-#       gate-logs/<name>.pre-revision.md and prints {answer: "rerun", reason, fixList}
-#       with fixList numbered for the author. close: writes gate-logs/<gate>-residue.md,
-#       appends the cap-reached pass entry, and prints {answer: "close", reason, residue}.
+#       Appends the fail entry, asks the probe. rerun: prints {answer: "rerun", reason,
+#       fixList} with fixList numbered for the author. close: writes
+#       gate-logs/<gate>-residue.md, appends the cap-reached pass entry, and prints
+#       {answer: "close", reason, residue}.
 #   critique-step.sh revised  --feature-dir DIR
 #       After the author's revision: diffs the snapshot against the artifact into
-#       gate-logs/<gate>-delta.diff. Prints {diffPath, changed, diff, fixList}.
+#       gate-logs/<gate>-delta.diff. Prints {diffPath, changed, lines, fixList}; the diff
+#       stays in the file for the challenger to Read, never in the lead's context.
 #   critique-step.sh delta    --feature-dir DIR --reply <path|-> [--flags <path>]
 #       Round N: writes the delta gate-log, counts the round, emits gate_round, runs
 #       lib/delta-findings-lint.sh over the reply (DROP lines land in the gate-log),
@@ -100,13 +105,15 @@ case "$cmd" in
     gate open --feature-dir "$feature_dir" --phase "$phase" --gate "$gate_name" --challenger challenger-1 || exit 1
     mkdir -p "$logs"
     jq -n --arg a "$artifact" '{artifact:$a}' > "$logs/$gate_name-state.json"
-    jq -n --arg g "$gate_name" --arg p "$phase" --arg a "$artifact" --arg l "$logs" \
-      '{gate:$g, phase:$p, artifact:$a, logDir:$l}'
+    model="$(fget '.models.challenger // "inherit"')"
+    jq -n --arg g "$gate_name" --arg p "$phase" --arg a "$artifact" --arg l "$logs" --arg m "$model" \
+      '{gate:$g, phase:$p, artifact:$a, logDir:$l, model:(if $m == "inherit" or $m == "" then null else $m end)}'
     ;;
   findings)
     load_state; [[ -n "$reply" ]] || usage; src="$(slurp "$reply")"
     verdict=findings
     grep -qiE '^[[:space:]]*NO-FINDINGS:' "$src" && verdict=no-findings
+    cp "$artifact" "$snapshot"
     { printf '# %s Round 1 (single-critic)\n\n## challenger-1\n' "$gate_name"; cat "$src"; } > "$logs/$gate_name-round-1.md"
     n="$(gate round --feature-dir "$feature_dir")" || exit 1
     emit_round "$n" single-critic
@@ -123,7 +130,7 @@ case "$cmd" in
     answer="$(gate next --feature-dir "$feature_dir")" || exit 1
     reason="${answer#*REASON=}"
     if [[ "$answer" == ANSWER=rerun* ]]; then
-      cp "$artifact" "$snapshot"
+      [[ -f "$snapshot" ]] || cp "$artifact" "$snapshot"
       jq -n --arg r "$reason" --argjson items "$items" \
         '{answer:"rerun", reason:$r, fixList: ([$items | to_entries[] | "\(.key + 1). \(.value)"] | join("\n"))}'
     else
@@ -136,13 +143,13 @@ case "$cmd" in
     ;;
   revised)
     load_state
-    [[ -f "$snapshot" ]] || die "$snapshot missing: 'fail' answered close, or was never called"
+    [[ -f "$snapshot" ]] || die "$snapshot missing: 'findings' was never called, or 'fail' answered close"
     diff -u "$snapshot" "$artifact" > "$delta_diff"; changed=$(( $? == 1 ))
     fixlist="$(jq -r --arg p "$phase" --arg g "$gate_name" '
       [.gateHistory[]? | select(.phase == $p and .gate == $g and .result == "fail")] | last
       | (.findingsAddressed // []) | to_entries[] | "\(.key + 1). \(.value)"' "$fj")"
-    jq -n --arg d "$delta_diff" --argjson c "$changed" --rawfile diff "$delta_diff" --arg f "$fixlist" \
-      '{diffPath:$d, changed:($c == 1), diff:$diff, fixList:$f}'
+    jq -n --arg d "$delta_diff" --argjson c "$changed" --argjson n "$(wc -l < "$delta_diff")" --arg f "$fixlist" \
+      '{diffPath:$d, changed:($c == 1), lines:$n, fixList:$f}'
     ;;
   delta)
     load_state; [[ -n "$reply" ]] || usage; src="$(slurp "$reply")"

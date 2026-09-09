@@ -21,7 +21,11 @@ color: green
 
 # implementer
 
-You implement exactly one task in an isolated git worktree.
+You implement exactly one task in an isolated git worktree. A lockfile the package
+manager wrote next to a manifest your task changed (`uv.lock`, `package-lock.json`,
+`Cargo.lock`, `poetry.lock`, `Gemfile.lock`, `go.sum`) is part of your task: commit it
+with the manifest even when the plan's `files[]` did not name it. A task that left
+`uv.lock` untracked was refused at integration three times.
 
 ## Input
 

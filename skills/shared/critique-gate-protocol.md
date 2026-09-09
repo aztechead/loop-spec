@@ -52,10 +52,10 @@ file, never counts a round, and never calls `gate.sh` directly. Six steps, in or
 
 ```bash
 DRV="${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
-bash "$DRV" critique open     --feature-dir "$feature_dir" --phase {phase} --gate {gate} --artifact {artifact_path}
-bash "$DRV" critique findings --feature-dir "$feature_dir" --reply <path|->      # round 1: {verdict, lines[]}
+bash "$DRV" critique open     --feature-dir "$feature_dir" --phase {phase} --gate {gate} --artifact {artifact_path}   # {..., model}
+bash "$DRV" critique findings --feature-dir "$feature_dir" --reply <path|->      # round 1: {verdict, lines[]}; snapshots the artifact
 bash "$DRV" critique fail     --feature-dir "$feature_dir" --fix-list <path|->   # {answer: rerun|close, reason, fixList|residue}
-bash "$DRV" critique revised  --feature-dir "$feature_dir"                        # {diffPath, changed, diff, fixList}
+bash "$DRV" critique revised  --feature-dir "$feature_dir"                        # {diffPath, changed, lines, fixList}
 bash "$DRV" critique delta    --feature-dir "$feature_dir" --reply <path|-> [--flags <path>]   # {round, verified, survivors[]}
 bash "$DRV" critique pass     --feature-dir "$feature_dir"                        # the fix-list-empty close
 ```
@@ -69,10 +69,12 @@ that nulled it by hand dead-ended the engine mid-gate.
 
 ## Single-critic pass
 
-`critique open`, then send `challenger-1` the solo-critic brief (model:
-`feature.models.challenger`; under the `oneshot` spawn kind this and every later
-message is a fresh nameless Agent with the prior gate-logs inlined,
-`skills/shared/dispatch.md`):
+`critique open`, then send `challenger-1` the solo-critic brief. Under the `oneshot`
+spawn kind (`skills/shared/dispatch.md`) this and every later message is a nameless
+`Agent({description, subagent_type: "loop-spec:challenger", run_in_background: false,
+model: <open's .model>, prompt})` with the prior gate-logs inlined; omit `model` only
+when `open` answered null. A lead that chose the key itself omitted it and ran the
+critic on the session model:
 
 ```
 SendMessage({
@@ -130,9 +132,12 @@ ceiling:
 A non-zero exit is a message on stderr (no open gate, a graph with no ceiling, a
 malformed override): relay it and stop.
 
-When the revision lands, `critique revised` diffs the snapshot against the artifact
-and answers `{diff, fixList}`. Send the **delta re-verify** — never the full gate
-protocol again (`skills/shared/tier-matrix.md`, critique gate ladder):
+When the revision lands, `critique revised` diffs the snapshot `findings` took against
+the artifact and answers `{diffPath, lines, fixList}`. The author may have edited the
+artifact before or after `fail`; the snapshot is what the challenger read. Send the
+**delta re-verify** naming the diff file, never pasting it (the challenger has Read,
+and the diff in the lead's context is paid on every later call) — and never the full
+gate protocol again (`skills/shared/tier-matrix.md`, critique gate ladder):
 
 ```
 SendMessage({
@@ -145,8 +150,7 @@ SendMessage({
     Fix-list applied:
     {.fixList}
 
-    Diff:
-    {.diff}
+    Diff: Read {.diffPath} ({.lines} lines).
 
     Reply to lead with DELTA-VERIFIED or DELTA-FINDINGS, then go idle.
   """

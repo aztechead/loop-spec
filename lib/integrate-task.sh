@@ -200,13 +200,19 @@ if [[ -n "$prepare_command" ]]; then
 fi
 
 verify_rc=0
-(cd "$task_worktree" && LOOP_SPEC_INTEGRATION_CANDIDATE="$candidate" bash -o pipefail -c "$verify_command") >&2 \
-  || verify_rc=$?
+verify_log="$(mktemp "${TMPDIR:-/tmp}/integrate-verify.XXXXXX")"
+(cd "$task_worktree" && LOOP_SPEC_INTEGRATION_CANDIDATE="$candidate" bash -o pipefail -c "$verify_command") 2>&1 \
+  | tee "$verify_log" >&2 || verify_rc=$?
 if ! check_clean "$task_worktree" task-after-verify; then
+  rm -f "$verify_log"
   fail check-dirty-worktree "$clean_detail"
 fi
 if [[ "$verify_rc" -ne 0 ]]; then
-  fail verify-failed command-exited-nonzero
+  # The last lines of the output ride in the detail: a refusal that said only
+  # "command-exited-nonzero" made a lead re-run the command to learn which step failed.
+  verify_tail="$(tail -n 5 "$verify_log" | tr '\n' ' ' | cut -c1-400)"
+  rm -f "$verify_log"
+  fail verify-failed "command-exited-nonzero: ${verify_tail}"
 fi
 if [[ "$(git -C "$task_worktree" rev-parse HEAD 2>/dev/null)" != "$candidate" ]]; then
   fail candidate-changed verify-moved-task-head

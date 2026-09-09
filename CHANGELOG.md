@@ -96,6 +96,19 @@ touches, and what to do.
 
 ### Fixed
 
+- Ten findings from the second and third live runs (`evals/findings-2026-09-09-rounds-2-3.md`):
+  the version directive and SPEC's greenfield lookup say a stale installer is upgraded
+  before anything is installed, never worked around with an older build or a
+  pre-release; `critique open` answers the challenger's model alias for the Agent call;
+  `critique findings` snapshots the artifact the challenger read, so the author may edit
+  before or after `fail`; `critique revised` keeps the diff in its file and the delta
+  brief names the path; `lib/phase-exit.sh plan` flags a verify command that installs or
+  creates an environment; `lib/integrate-task.sh` carries the verify output's last lines
+  in a `verify-failed` refusal; `agents/implementer.md` commits a lockfile written next to
+  a manifest the task changed; the pruning pass is a nameless Agent, never a cycle role;
+  the eval driver's round timeout is 150 minutes (`--round-timeout-mins`) and
+  `--phase-fresh` runs each phase in a fresh lead context, the largest cost lever
+  measured: one lead's 569 calls re-read 277k tokens each, 71 percent of a run's cost.
 - `lib/graph/probes/discuss-critique.sh` no longer skips the spec critique on a gate the
   autonomous run scored itself: with no supervisor, the interview self-answers and
   `gate_passed` is true by construction, so the challenger was the spec's only

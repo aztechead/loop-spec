@@ -216,6 +216,12 @@ case "$phase" in
       while IFS=$'\t' read -r id cmd ncrit; do
         [[ -n "$cmd" ]] || { flag "[feasibility] $id has no verifyCommand"; continue; }
         bash -n -c "$cmd" 2>/dev/null || flag "[feasibility] $id verifyCommand does not parse: $cmd"
+        # A verify command checks; an install belongs to commands.prepare. A plan that
+        # bootstrapped the runtime inside every verify failed integration on a venv that
+        # already existed and paid a planner round to add --clear.
+        if grep -qE '(^|[ ;&|(])(pip3?|uv|npm|yarn|pnpm|cargo|gem|bundle|apt(-get)?|brew) +(install|add|python install)|uv +venv|python3? +-m +venv' <<<"$cmd"; then
+          flag "[feasibility] $id verifyCommand installs or creates an environment; move that step to commands.prepare and keep the command a check: $cmd"
+        fi
         [[ "$ncrit" != "0" ]] || flag "[feasibility] $id has no acceptance criteria"
       done < <(jq -r '.[] | [.id, (.verifyCommand // ""), ((.acceptanceCriteria // []) | length)] | @tsv' "$tasks")
       rc=0; lib dag-width < "$tasks" >/dev/null 2>&1 || rc=$?

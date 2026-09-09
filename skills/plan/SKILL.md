@@ -51,9 +51,10 @@ return the need); "cite PATTERNS.md analogs in each task's steps";
 pre-submit self-check against `agents/planner.md` and a verbatim
 `## Global constraints` section (or `- none`). Workspace mode adds: every task carries
 `repo` (one repo per task), `files[]` are `<repo>/<path>`, cross-repo order is a
-`blockedBy` edge. Greenfield adds: task-001 is the scaffold (structure, manifest, test
-harness, a passing walking-skeleton test; `verifyCommand` is the stack's canonical test
-command), every other task is blocked by it, and PLAN.md's `## System design` is filled
+`blockedBy` edge. Greenfield adds: task-001 is the scaffold (structure, manifest, the lockfile the
+package manager writes next to it, test harness, a passing walking-skeleton test;
+`verifyCommand` is the stack's canonical test command and never an install step, which
+belongs to `commands.prepare`), every other task is blocked by it, and PLAN.md's `## System design` is filled
 in full (the build-from-scratch and system-design stances,
 `skills/shared/engineering-stances.md`; a refactor spec binds the refactor stance the
 same way).
@@ -120,7 +121,8 @@ Critique residue goes to `gate-logs/plan-critique-residue.md` only, and the phas
 proceeds to the pruning pass. The critique never re-opens on a `REDO` (step 4).
 
 **Pruning pass (advisory, skip under 60 lines):** ONE fresh reviewer
-(`run_in_background: false`; its tool result is the listing) with
+(a nameless Agent with no `subagent_type`, never a cycle role; `run_in_background:
+false`; its tool result is the listing) with
 `skills/shared/review-prompts/prose-pruning.md`, PLAN.md, and the template only. A cut
 that breaks a gate is reverted. Declined proposals and `out-of-scope:` lines go to
 `.loop-spec/BACKLOG.md`.

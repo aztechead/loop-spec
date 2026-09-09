@@ -73,9 +73,13 @@ is how its current release does it; `unverified` means record an `ASSUMPTION`, t
 try any web search or URL-fetch tool the session provides. `evidence.sh add` the
 finding with the probe's `source=` URL as the command (the dependency-idiom rule,
 `skills/shared/grounding-protocol.md` "Current documentation"). A local catalog
-(`uv python list`, `pyenv install --list`) is never the version source: a run took a
-stale catalog's release candidate as the current Python and paid twenty commands for
-a crash the final release did not have. The idiom in today's docs outranks the idiom in
+(`uv python list`, `pyenv install --list`) is never the version source, and an installer
+whose catalog lacks the version the probe named gets upgraded before anything is
+installed (its own current version is one more probe call), never worked around with an
+older build or a pre-release: a run took a stale catalog's release candidate as the
+current Python and paid twenty commands for a crash the final release did not have; the
+next run knew the final version, kept the stale installer, and pinned the release
+candidate in SPEC anyway. The idiom in today's docs outranks the idiom in
 model memory.
 
 Score the four dimensions from what you know now and display the scoring block.
@@ -158,7 +162,8 @@ Write the transcript (rounds, questions, scores; `source: spec-draft.md` or
 `synthesized` when applicable) to `feature_dir/spec-interview-transcript.md`.
 
 **Pruning pass (advisory, skip under 60 lines):** dispatch ONE fresh reviewer
-(`run_in_background: false`; its tool result is the listing) carrying
+(a nameless Agent with no `subagent_type`, never a cycle role; `run_in_background:
+false`; its tool result is the listing) carrying
 `skills/shared/review-prompts/prose-pruning.md` verbatim plus SPEC.md and the template
 only (never the transcript). Apply `duplicate`/`narrative` cuts; judge the rest; never
 cut `### Good Enough` criteria, decisions, scores, or grounding lines; record every

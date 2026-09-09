@@ -197,6 +197,9 @@ check "exit plan: the derived sidecar carries no [tasks] flag" "0" "$(grep -c '^
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":["task-001"],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: a self-blocking task is a cycle" "1" "$(grep -c 'dependency cycle' <<<"$out")"
+printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"pip install -e . && uv venv --python 3.14 && bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: a verify command that installs is a feasibility flag" "1" "$(grep -c 'installs or creates an environment' <<<"$out")"
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 out="$(bash "$MODE" plan --feature-dir "$FD")"
 check "mode plan: one small task takes the fast path" "critique=skip" "${out%% *}"
