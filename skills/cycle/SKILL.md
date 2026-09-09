@@ -136,8 +136,9 @@ Act on the first line of `ans`, then stop. This invocation runs at most one phas
   script around one): the caller that started this invocation re-invokes, and a nested
   session spends this invocation's budget a second time
   (`hooks/team/nested-session-guard.sh` denies the launch). The driver holds the line
-  too: from this session, `next` repeats the handoff answer and `phase-begin` of the
-  next phase exits 4 (`feature.json.handoffSession`). For a Claude worktree feature,
+  too: from this session, `next` repeats the handoff answer, and `begin` or
+  `phase-begin` of the next phase exits 4 (`feature.json.handoffSession`); each puts
+  the paused result back for the caller. For a Claude worktree feature,
   `ExitWorktree({action:"keep"})` first.
 - `PAUSED node=...` — a human gate (`style:step|interactive`). Print
   `loop-spec: paused at <node>; re-invoke /loop-spec:cycle to continue.` and, for a

@@ -136,8 +136,9 @@ the run in `evals/eval_run.py` and `extensions/sessions/session_run.py`, which n
 the stamp with the session identity so the child stamps `sdk-cli` itself. The runner
 was proven against the real CLI before the runs: `session_run.py --profile claude
 --model haiku` on a one-line prompt created the file and returned `status: completed`
-in 6.4 seconds. A rerun on the fixed driver (`final2-sonnet-fastapi`, plugin f7a5b53)
-is in flight; its record, the rung's first live dispatch or its absence, follows.
+in 6.4 seconds. The rerun on the fixed driver (`final2-sonnet-fastapi`, plugin f7a5b53)
+ended after SPEC (1.66 USD, 52 turns, 8.8 minutes) on a defect in the handoff line, not
+the rung; it is the next section's. The rung has still not run live.
 
 The Codex half of the done condition did not run: the sandbox has no `codex` binary.
 `profiles/codex.toml` is the launch line `skills/shared/codex-harness.md` documents;
@@ -176,6 +177,21 @@ per invocation" on its first phase call, gives up, and is re-invoked; that costs
 0.35 USD and a dozen turns per phase boundary and is charged to WP4 here although it is
 the harness's. Read the bar against rounds 1, 3, 5, and 7: 11.10 USD, and still short
 of EXECUTE's first commit.
+
+### The rerun on f7a5b53: one round, and the pointer was gone
+
+`final2-sonnet-fastapi` ran SPEC in 1.66 USD and 52 turns, the driver answered
+`HANDOFF next=discuss`, and the lead, whose SKILL.md says never to launch the next
+invocation itself, called `Skill(loop-spec:cycle)` in the same session. The driver held
+the line: `begin` resumed the one paused feature and `next` repeated `HANDOFF`. But
+`begin` runs `cycle-preflight.sh`, which clears `.loop-spec/last-result.json` at every
+start, and the repeated answer did not write it again. The session ended with the
+feature paused at DISCUSS on the ref and no result pointer; the eval driver read no
+result and ended the run. Fixed after the run: `handoff_answer` writes the paused
+result again before it answers, and `begin` refuses the session that handed off with
+exit 4, as `phase-begin` already did (`tests/lib/cycle-driver.test.sh`). The
+phase-handoff guard sees `Skill` calls for phases only; the cycle skill itself is not a
+phase, which is why the driver, not the guard, is the line.
 
 ### What the earlier rounds cost and taught
 

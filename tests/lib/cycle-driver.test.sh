@@ -168,6 +168,17 @@ check "phase-begin: the same session is refused with 4" "4" "$ec"
 ec=0; (cd "$REPO" && SESSION=s2 drv phase-begin plan --feature-dir "$FD" >/dev/null 2>&1) || ec=$?
 check "phase-begin: a fresh session is not refused by the handoff" "0" "$([[ "$ec" -eq 4 ]] && echo 4 || echo 0)"
 
+# A same-session re-entry through begin runs preflight, which clears the result pointer;
+# the repeated answer and the refusal both put the pointer back for the caller.
+bash "$REPO_ROOT/lib/cycle-result.sh" clear --result-root "$REPO"
+out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" 2>/dev/null)"
+check "next: the repeated handoff answer puts the result pointer back" "phase-handoff" "$(jq -r '.reason' "$REPO/.loop-spec/last-result.json" 2>/dev/null)"
+bash "$REPO_ROOT/lib/cycle-result.sh" clear --result-root "$REPO"
+ec=0; err="$(cd "$REPO" && SESSION=s1 AUTONOMOUS=1 drv begin --dir "$REPO" -- add a json flag 2>&1 >/dev/null)" || ec=$?
+check "begin: the session that handed off is refused with 4" "4" "$ec"
+check "begin: the refusal carries the handoff answer" "1" "$(grep -c 'HANDOFF next=plan' <<<"$err")"
+check "begin: the refusal puts the result pointer back" "phase-handoff" "$(jq -r '.reason' "$REPO/.loop-spec/last-result.json" 2>/dev/null)"
+
 # --- start: an autonomous re-invocation resumes the one paused feature ------------
 out="$(AUTONOMOUS=1 drv start --dir "$REPO" -- add a json flag reworded 2>/dev/null)"
 check "start: autonomous with one paused feature and a new title resumes it" "add-a-json-flag" "$(jq -r '.resume.autoPick' <<<"$out")"

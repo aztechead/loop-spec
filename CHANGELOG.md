@@ -228,9 +228,12 @@ touches, and what to do.
   answered `attended`, and the session rung never ran (`tests/sessions-extension.test.sh`).
 - `cycle-driver.sh` holds the handoff line itself: `next` answers `HANDOFF` or `REWIND`
   and records the session (`feature.json.handoffSession`); from that session `next`
-  repeats the answer and `phase-begin` of the next phase exits 4. A lead denied by the
-  Skill-tool guard had read the next phase's SKILL.md by hand and run it in the session
-  that had handed off (`tests/lib/cycle-driver.test.sh`).
+  repeats the answer, and `begin` or `phase-begin` of the next phase exits 4. A lead
+  denied by the Skill-tool guard had read the next phase's SKILL.md by hand and run it
+  in the session that had handed off. Each of the three puts the paused result pointer
+  back: a lead that re-invoked `/loop-spec:cycle` in the session that had handed off
+  ran `begin`, whose preflight clears the pointer, and the caller then read no result
+  and ended the run after SPEC (`tests/lib/cycle-driver.test.sh`).
 - `lib/cycle-result.sh write --status completed` publishes nothing, whatever the phase,
   when the feature has no delivery record and no PR (the proven no-change path still
   names its reason): the check used to exempt `deliver`, and a lead whose `finish` was

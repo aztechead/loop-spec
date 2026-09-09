@@ -261,8 +261,9 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 
 - `handoffSession` is written by `lib/cycle-driver.sh next` each time it answers `HANDOFF`
   or `REWIND`. While the session named by `id` is the one calling, `next` repeats the
-  handoff answer and `phase-begin` of any other phase exits 4: the next phase starts in a
-  fresh invocation, whatever tool the lead reaches for. An empty `id` (a harness that
+  handoff answer, and `begin` or `phase-begin` of any other phase exits 4; each writes
+  the paused result again, since `begin`'s preflight clears it. The next phase starts in
+  a fresh invocation, whatever tool the lead reaches for. An empty `id` (a harness that
   stamps no session id) enforces nothing.
 - `driverNext` is written by `lib/cycle-driver.sh next` each time it answers `NEXT`.
   `lib/cycle-result.sh write` reads it: publishing `failed`, `terminal`, or `escalated`

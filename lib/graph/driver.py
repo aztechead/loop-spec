@@ -245,9 +245,14 @@ def handed_off_here(feat):
 
 
 def handoff_answer(feature_dir, rec):
+    """The answer this session already gave, with its record put back. A same-session
+    re-entry through `begin` runs preflight, which clears the result pointer; the eval's
+    caller then read no result and ended the run after SPEC (final2-sonnet-fastapi)."""
     nxt = rec.get("next") or ""
-    order = lib("graph/phases", "list").splitlines()
     frm = rec.get("from") or ""
+    lib("cycle-result", "write", feature_dir, "--status", "paused", "--reason", "phase-handoff",
+        "--summary", "Phase %s completed; %s is ready in durable state." % (frm, nxt))
+    order = lib("graph/phases", "list").splitlines()
     if nxt in order and frm in order and order.index(nxt) < order.index(frm):
         return "REWIND next=%s" % nxt
     model = lib_run("feature-init", "phase-model", nxt, quiet=True).stdout or "inherit"
@@ -512,6 +517,12 @@ def cmd_start(argv):
                 reason = "autonomous: the one paused feature outranks a new title (%s)" % slug
             if resume_pick:
                 record("Resume %s or start new?" % resume_pick, "resume " + resume_pick, reason)
+                picked = next(c for c in candidates if c.get("slug") == resume_pick)
+                fdir = os.path.join(picked["featureRoot"], ".loop-spec", "features", resume_pick)
+                handed = handed_off_here(state(fdir))
+                if handed is not None:
+                    raise Die("this session handed off after %s; %s starts in a fresh invocation (%s)"
+                              % (handed.get("from"), handed.get("next"), handoff_answer(fdir, handed)), 4)
         elif not non_interactive:
             options = ["Resume %s - phase %s (updated %s)" % (c["slug"], c["currentPhase"], c["updatedAt"])
                        for c in candidates] + ["New feature"]
