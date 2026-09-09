@@ -72,7 +72,7 @@ Where the session layer answers, the driver runs this pass itself at the phase
 boundary: return after step 2 with the verification rows filled (step 4), and the
 cycle's `next --returned-from oneshot` comes back once with `REDO` and the report
 path; record each finding as below, then return again. In-harness (the `REDO` never
-comes; an attended session), dispatch `loop-spec:code-reviewer` once (`Agent`,
+comes, or names a failed session), dispatch `loop-spec:code-reviewer` once (`Agent`,
 `subagent_type: "loop-spec:code-reviewer"`, model `models.codeReviewer` from the
 packet, `run_in_background: false`; then stop and read its result, never
 `AskUserQuestion` as a wait). Brief: `slug`, `branch`, `baseSha`, `spec_path`, and

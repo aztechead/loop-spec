@@ -280,6 +280,11 @@ ec=0; (cd "$REPO11" && drv decline --dir "$REPO11" --reason "too late" >/dev/nul
 check "decline: a changed tree is work to finish, not a mismatch (the writer refuses)" "1" "$ec"
 ec=0; (cd "$REPO11" && drv decline --dir "$REPO11" >/dev/null 2>&1) || ec=$?
 check "decline: no reason is a bad invocation" "2" "$ec"
+# Past begin the work is reported through the cycle, never declined (port4-haiku-3
+# declined with the fix committed).
+ec=0; out="$(cd "$REPO10" && drv decline --dir "$REPO10" --reason "a harness error, work is done" 2>&1 >/dev/null)" || ec=$?
+check "decline: refused once a feature has begun in the checkout" "1" "$ec"
+check "decline: the refusal names the feature and the way out" "1" "$(grep -c 'has begun (phase .*); a run past begin finishes through the cycle or escalates' <<<"$out")"
 
 # --- a cycle never runs in the plugin's own repository (followup-3, N6) ---------------
 # The checkout carries this plugin's manifest and is not the project the harness opened.
@@ -349,6 +354,12 @@ check "spec fill: a file with no bullet is refused" "1" "$ec"
 (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --criterion '`python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"` exits 0' >/dev/null 2>&1)
 check "spec fill: the first criterion replaces the placeholders" "0" "$(grep -c '{check command}' "$DOCS7/SPEC.md")"
 check "spec fill: the criterion is a checkbox line" "1" "$(grep -c '^- \[ \] `python3 -c' "$DOCS7/SPEC.md")"
+# A criterion carries its command in backticks or it is refused (nobody can run a bare
+# sentence), and the same criterion is never appended twice (port4-haiku-2 had twelve).
+ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --criterion 'python3 -m unittest exits 0: all pass' >/dev/null 2>&1) || ec=$?
+check "spec fill: a criterion without a backticked command is refused" "2" "$ec"
+(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --criterion '`python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"` exits 0' >/dev/null 2>&1)
+check "spec fill: a repeated criterion is not appended twice" "1" "$(grep -c '^- \[ \] `python3 -c' "$DOCS7/SPEC.md")"
 out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --grounding "slugify.py:2 is the one transform" 2>/dev/null)"
 check "spec fill: a grounding bullet replaces none" "0" "$(grep -c '^- none$' "$DOCS7/SPEC.md")"
 check "spec fill: the filled skeleton passes both spec lints" "[]" "$(jq -c '.flags' <<<"$out")"
@@ -468,6 +479,28 @@ check "verification run: the answer lists each row's exit" "PASS FAIL" "$(jq -r 
 check "verification run: the output block is the command's output" "1" "$(grep -c '^(no output, exit 0)$' "$DOCS7/VERIFICATION.md")"
 check "verification run: the floor refuses convergence on the FAIL row" "1" "$(jq -r '.flags[]' <<<"$out" | grep -c '^FLOOR GE-002')"
 check "verification run: no commands.test means the block says so" "1" "$(grep -c '^(no commands.test is configured for this feature)$' "$DOCS7/VERIFICATION.md")"
+# A criterion the spec gained after the skeleton, and one with no command: the driver
+# owns the shape, so the row and the block are added, and the bare one is a FAIL row.
+printf -- '- [ ] all tests pass\n' >> "$WORK/ge3.txt"
+python3 - "$DOCS7/SPEC.md" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p).read()
+s = s.replace("\n## Grounding", "- [ ] all tests pass\n\n## Grounding", 1)
+open(p, "w").write(s)
+PY
+ec=0; out="$(cd "$REPO7" && drv verification run --feature-dir "$FD7" 2>/dev/null)" || ec=$?
+check "verification run: a criterion with no command is a FAIL row that says so" "1" "$(grep -c '^| GE-003 | all tests pass | FAIL | no backticked command in the criterion' "$DOCS7/VERIFICATION.md")"
+check "verification run: the block for the added criterion exists" "1" "$(grep -c '^### Criterion 3$' "$DOCS7/VERIFICATION.md")"
+check "verification run: the earlier rows were still written" "1" "$(grep -c '^| GE-001 | .* | PASS | ' "$DOCS7/VERIFICATION.md")"
+python3 - "$DOCS7/SPEC.md" "$DOCS7/VERIFICATION.md" <<'PY'
+import re, sys
+for p in sys.argv[1:]:
+    s = open(p).read()
+    s = s.replace("- [ ] all tests pass\n\n", "", 1)
+    s = re.sub(r"^\| GE-003 \|.*\n", "", s, flags=re.M)
+    s = re.sub(r"\n### Criterion 3\n\n```\n.*?\n```\n", "\n", s, flags=re.S)
+    open(p, "w").write(s)
+PY
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" commands.test '"python3 -c \"print(\\\"2 passed\\\")\""' >/dev/null
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" protected '[]' >/dev/null
 # Fix the failing criterion's command in the spec and run again: the row turns PASS.
@@ -527,6 +560,20 @@ check "oneshot review: a reviewer that completes without its report leaves no di
 check "oneshot review: the withheld event is named in the answer" "1" "$(jq -r '.dispatchEvent // ""' <<<"$out" | grep -c '^withheld')"
 out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" STUB_FAIL=1 STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
 check "oneshot review: a failed reviewer session leaves no dispatch event even with a report" "0" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" 2>/dev/null | wc -l | tr -d ' ')"
+# At the boundary a failed session is handed to the lead once, in-harness; the driver
+# does not relaunch it on the next return (port4-haiku-2 escalated out of that loop).
+rm -f "$FD7/dispatch/oneshot.review.md"
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_FAIL=1 LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+check "next from oneshot: a failed reviewer session is one REDO naming the in-harness dispatch" "1" "$(grep -c 'the driver will not relaunch it: dispatch loop-spec:code-reviewer in-harness once' <<<"$out")"
+check "next from oneshot: the failure is on record" "1" "$(jq -c 'select(.event == "review-session-failed")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_FAIL=1 LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+check "next from oneshot again: no relaunch; the gate names the missing dispatch" "1" "$(grep -c 'no code-reviewer dispatch recorded' <<<"$out")"
+check "next from oneshot again: one failure on record, not two" "1" "$(jq -c 'select(.event == "review-session-failed")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+python3 - "$FD7/events.jsonl" <<'PY'
+import sys
+p = sys.argv[1]; lines = [l for l in open(p) if '"review-session-failed"' not in l]
+open(p, "w").writelines(lines)
+PY
 rm -f "$FD7/dispatch/oneshot.review.md"
 out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
 check "oneshot review: the reviewer ran as a session" "completed" "$(jq -r '.status' <<<"$out")"

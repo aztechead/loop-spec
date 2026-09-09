@@ -1329,12 +1329,23 @@ def boundary_review(feature_dir, phase):
         return None
     if lib("harness", "session-layer") != "session":
         return None
+    events = os.path.join(feature_dir, "events.jsonl")
+    if os.path.isfile(events) and any('"event": "review-session-failed"' in line or '"event":"review-session-failed"' in line
+                                      for line in open(events, encoding="utf-8", errors="replace")):
+        # One failed launch is on record: the lead was told to dispatch in-harness, and
+        # relaunching on every return was the loop the port4-haiku-2 feature run
+        # escalated out of. The gate's review check names what is still missing.
+        return None
     out = capture(cmd_oneshot, ["review", "--feature-dir", feature_dir])
     rec = json.loads(out.strip() or "{}")
     status = rec.get("status") or "failed"
     if status != "completed":
-        return ("REDO phase=oneshot flags=1\nFLAG [review] the driver-launched reviewer session ended %s (%s): "
-                "read %s, then return again" % (status, rec.get("stderr") or rec.get("envFault") or "no detail", rec.get("stdout") or "its log"))
+        lib("events", "emit", feature_dir, "review-session-failed", "--phase", "oneshot",
+            "--data", json.dumps({"status": status, "stderr": rec.get("stderr"), "envFault": rec.get("envFault")}))
+        return ("REDO phase=oneshot flags=1\nFLAG [review] the driver-launched reviewer session ended %s (%s); the driver will "
+                "not relaunch it: dispatch loop-spec:code-reviewer in-harness once (skills/oneshot/SKILL.md, One review pass), "
+                "save its result to %s, run `verification review`, emit the dispatch event, then return"
+                % (status, rec.get("stderr") or rec.get("envFault") or "no detail", rec.get("report") or "the report path"))
     feat = state(feature_dir)
     target = os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.md")
     written = ""
@@ -1596,6 +1607,14 @@ def cmd_decline(argv):
         raise Die("decline needs --reason TEXT (why this is not repository work)", 2)
     directory = os.path.realpath(o.get("dir") or os.getcwd())
     root = lib("cycle-result", "resolve-root", directory)
+    # Before begin, never after: a run that initialized a feature has changed the
+    # repository (a branch, a worktree, a spec) and reports what it did (the
+    # port4-haiku-3 bug fix declined with the fix committed, as protocol-mismatch).
+    for fj in glob(os.path.join(root, ".loop-spec", "features", "*", "feature.json")):
+        active = state(os.path.dirname(fj))
+        if lib_run("graph/phases", "validate", active.get("currentPhase") or "", quiet=True).returncode == 0:
+            raise Die("decline: feature %s has begun (phase %s); a run past begin finishes through the cycle or "
+                      "escalates (`escalate --reason`), never declines" % (active.get("slug"), active.get("currentPhase")), 1)
     autonomous = o.get("autonomous") or ("1" if os.environ.get("LOOP_SPEC_AUTONOMOUS") == "1" else "0")
     if autonomous not in ("0", "1"):
         raise Die("decline: --autonomous is 0 or 1", 2)
@@ -1894,11 +1913,21 @@ def spec_fill(target, o):
         span = section_span(text, "Good Enough")
         if span is None:
             raise Die("spec fill: no ### Good Enough section in %s" % target)
+        criterion = o["criterion"].strip()
+        # `verification run` executes the backticked span: a criterion without one is a
+        # row nobody can observe (the port4-haiku-2 bug fix wrote four such lines and
+        # stalled on their empty Status cells).
+        if not re.search(r"`[^`]+`", criterion):
+            raise Die("spec fill: a criterion carries its check command in backticks (`<command>` exits 0: <what it proves>); got: %s" % criterion, 2)
         body = text[span[0]:span[1]]
         kept = [l for l in body.splitlines() if l.strip() and "{check command}" not in l]
-        kept.append("- [ ] " + o["criterion"].strip())
+        line = "- [ ] " + criterion
+        if line not in kept:
+            kept.append(line)
+            filled.append("criterion")
+        else:
+            filled.append("criterion (already present)")
         text = text[:span[0]] + "\n" + "\n".join(kept) + "\n\n" + text[span[1]:]
-        filled.append("criterion")
     if o.get("grounding"):
         span = section_span(text, "Grounding")
         if span is None:
@@ -2077,20 +2106,39 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
         if only_row and row != only_row:
             continue
         m = re.search(r"`([^`]+)`", criterion)
-        if not m:
-            raise Die("verification run: criterion %s carries no backticked command to run: %s" % (row, criterion))
-        command = m.group(1)
-        code, block = observe(command, root)
+        if m:
+            command = m.group(1)
+            code, block = observe(command, root)
+            evidence = "`%s` -> exit %d" % (command.replace("|", "\\|"), code)
+        else:
+            # A criterion nobody can run is a FAIL the row says out loud, never a
+            # crash that leaves every row empty (the port4-haiku-2 bug fix).
+            code, block = 1, "(no command to run: the criterion carries none in backticks)"
+            evidence = "no backticked command in the criterion: `spec fill --criterion` names one"
         status = "PASS" if code == 0 else "FAIL"
         cell = re.compile(r"^(\| %s \| .* \| )([^|]*)( \| )(.*?)( \|)$" % re.escape(row), re.M)
-        if not cell.search(text):
-            raise Die("verification run: %s has no acceptance row for %s" % (target, row))
-        evidence = "`%s` -> exit %d" % (command.replace("|", "\\|"), code)
-        text = cell.sub(lambda mm: mm.group(1) + status + mm.group(3) + evidence + mm.group(5), text, count=1)
+        if cell.search(text):
+            text = cell.sub(lambda mm: mm.group(1) + status + mm.group(3) + evidence + mm.group(5), text, count=1)
+        else:
+            # A criterion added after the skeleton: the driver owns the shape, so the
+            # row joins the table (after its last row) rather than failing the run.
+            table = section_span(text, "Acceptance criteria")
+            if table is None:
+                raise Die("verification run: %s has no ## Acceptance criteria section" % target)
+            rows_end = table[0]
+            for mm in re.finditer(r"^\|.*\|$", text[table[0]:table[1]], flags=re.M):
+                rows_end = table[0] + mm.end()
+            text = text[:rows_end] + "\n| %s | %s | %s | %s |" % (row, criterion.replace("|", "\\|"), status, evidence) + text[rows_end:]
         span = section_span(text, "Criterion %d" % (i + 1))
-        if span is None:
-            raise Die("verification run: %s has no ### Criterion %d block" % (target, i + 1))
-        text = text[:span[0]] + "\n```\n" + block + "\n```\n\n" + text[span[1]:]
+        if span is not None:
+            text = text[:span[0]] + "\n```\n" + block + "\n```\n\n" + text[span[1]:]
+        else:
+            anchor = text.find("\n## Code review")
+            if anchor < 0:
+                raise Die("verification run: %s has no ## Code review section to place ### Criterion %d before" % (target, i + 1))
+            text = text[:anchor] + "\n### Criterion %d\n\n```\n%s\n```\n" % (i + 1, block) + text[anchor:]
+        with open(target, "w", encoding="utf-8") as fh:
+            fh.write(text)
         written.append({"row": row, "status": status, "exit": code})
     if with_tests:
         test_cmd = ((feat.get("commands") or {}).get("test") or "").strip()

@@ -11,7 +11,9 @@ PASS=0
 FAIL=0
 check() {
   local name="$1" expected="$2" cmd="$3" dir="${4:-$WORK/proj}" ec=0
-  CLAUDE_PROJECT_DIR="$dir" bash "$HOOK" >/dev/null 2>&1 <<<"$(jq -cn --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')" || ec=$?
+  # From the fixture: the hook also reads the working directory, and the plugin's own
+  # checkout carries a .loop-spec/ of its own.
+  (cd "$dir" && CLAUDE_PROJECT_DIR="$dir" bash "$HOOK" >/dev/null 2>&1 <<<"$(jq -cn --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')") || ec=$?
   if [[ "$ec" -eq "$expected" ]]; then echo "PASS: $name"; ((PASS++)) || true
   else echo "FAIL: $name (expected exit $expected, got $ec)"; ((FAIL++)) || true; fi
 }

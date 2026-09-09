@@ -51,6 +51,18 @@ The landing record at the end of the follow-up says what each item became.
   on an unreadable spec. `spec fill --json -` fills the whole spec in one call; a test
   module of a file that changed in the diff cannot be dropped; the eval records
   `first_turn_input_tokens` from the session transcript and reads `bar.rounds`.
+- **Three defects the first six-run reading exposed, fixed.** A criterion without a
+  backticked command made the boundary's `verification run` die before it wrote any
+  row, so every Status cell stayed empty and the run escalated; `spec fill
+  --criterion` now refuses a bare criterion and never appends the same one twice,
+  and `verification run` writes row by row, turns a bare criterion into a FAIL row
+  that says so, and adds the row and block for a criterion the spec gained after the
+  skeleton. The Claude session profile listed `--allowedTools` last, so with the
+  reviewer model `inherit` (no `--model`) the CLI read the prompt as one more tool
+  name and every driver-launched reviewer died on "no prompt"; the guarded list now
+  ends with `--permission-mode acceptEdits`. A failed reviewer session is handed to
+  the lead once, as the in-harness dispatch, instead of relaunched on every return.
+  `cycle-driver.sh decline` refuses once a feature has begun in the checkout.
 - **Live run 4** (`slugify-bug`, haiku, d17da82): delivered in one round at 0.41 USD, 3.8
   minutes, 74 artifact lines, 39 turns, zero REDO rounds; run 3 on the same fixture
   before this work was 0.80 USD, 79 turns, 124 lines. The bar (0.25 USD, 50 lines, 3

@@ -5,7 +5,12 @@
 name = "claude"
 binary = "claude"
 launch_args = ["-p", "--output-format", "json"]
-guarded_args = ["--permission-mode", "acceptEdits", "--allowedTools", "Bash,Read,Write,Edit,MultiEdit,Glob,Grep"]
+# --allowedTools is variadic: a prompt that follows it directly is read as one more tool
+# name and the CLI then sees no prompt ("Input must be provided either through stdin or
+# as a prompt argument"). It stays first, so --permission-mode ends the guarded list
+# whether or not a --model follows (the port4-haiku reviewer sessions all died this
+# way when the reviewer model was `inherit` and no --model was passed).
+guarded_args = ["--allowedTools", "Bash,Read,Write,Edit,MultiEdit,Glob,Grep", "--permission-mode", "acceptEdits"]
 bypass_args = ["--permission-mode", "bypassPermissions"]
 model_flag = "--model"
 prompt_template = "{prompt}"

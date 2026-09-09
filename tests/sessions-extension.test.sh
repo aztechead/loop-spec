@@ -136,6 +136,20 @@ PY
 )"
 done
 
+# --allowedTools is variadic: a prompt right after it is read as one more tool name and
+# the CLI sees no prompt. The guarded list ends with a flag that takes one value, so the
+# prompt is separated whether or not a --model precedes it (the port4-haiku reviewer
+# sessions all died on this with the reviewer model `inherit`).
+check "the claude profile's guarded list ends with a one-value flag, never the tool list" "acceptEdits" \
+  "$(python3 -c "import tomllib,sys; print(tomllib.load(open(sys.argv[1],'rb'))['guarded_args'][-1])" "$ROOT/extensions/sessions/profiles/claude.toml")"
+check "with model inherit the prompt still follows a one-value flag's value" "acceptEdits" \
+  "$(python3 - "$ROOT" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("sr", sys.argv[1] + "/extensions/sessions/session_run.py"); sr = importlib.util.module_from_spec(spec); spec.loader.exec_module(sr)
+argv = sr.build_argv(sr.load_profile(sys.argv[1] + "/extensions/sessions/profiles/claude.toml"), "review it", "inherit", False)
+print(argv[-2])
+PY
+)"
 check "the claude profile grants the implementer's tools without bypass" "1" \
   "$(grep -c 'guarded_args = .*--allowedTools' "$ROOT/extensions/sessions/profiles/claude.toml")"
 

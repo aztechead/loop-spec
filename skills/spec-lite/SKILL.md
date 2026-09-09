@@ -57,8 +57,8 @@ exit gate's findings so far):
 - `--intent "<the ask, one paragraph, in the requester's terms>"`
 - `--file <path> --note "<what changes there, with the symbol or line>"` once per
   footprint file
-- `--criterion "<check command> exits 0: <what it proves>"` once per observable
-  outcome, the command exactly as ONESHOT will run it
+- `--criterion "\`<check command>\` exits 0: <what it proves>"` once per observable
+  outcome, the command in backticks exactly as the driver will run it
 - `--grounding "<file:line - the fact it shows>"` per grounding row
 
 A cited file the change will not touch leaves the footprint through

@@ -154,3 +154,39 @@ order. Offline evidence is `bash tests/run-all.sh`. The live reading the audit a
 | `rounds` in task.json | done | Both tasks carry `bar.rounds: 1`; the verdict and the coverage check read it. |
 | state-ref test | done | `tests/lib/state-ref.test.sh` drives a feature through `begin`, the fills, and the spec exit, and counts the branch: the artifact commit, no state commit, the ref holding the state. |
 | N4 headroom | at the bound | The path is 600 of 600 again after the oneshot skill lost the guard-describing sentence the audit named and gained the observed-verification steps. |
+
+## The first six-run reading, and what it found
+
+Three runs per task on haiku at ccaf910 (`port4-haiku-1` to `-3`), the head with every
+item above. Not a reading of the bar: three defects of this branch's own making spoiled
+four of the six runs, and the reading is repeated on the head that fixes them.
+
+| run | task | rounds | cost USD | minutes | turns | delivered | checks | REDO | what happened |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | slugify-bug | 7 | 2.31 | 21.2 | 208 | yes | 2 of 2 | 4 | the lead could not clear two artifact-lint flags in ONESHOT, escalated, and walked the full route |
+| 1 | wc-json | 1 | 0.74 | 5.6 | 76 | yes | 4 of 4 | 2 | the test was written (item 1 held); two REDOs, footprint and grounding |
+| 2 | slugify-bug | 1 | 0.58 | 5.5 | 50 | no | 2 of 2 | 3 | four criteria without a backticked command, appended twelve times over; the boundary run died and every Status cell stayed empty; escalated on the empty cells |
+| 2 | wc-json | 1 | 0.42 | 3.6 | 53 | no | 3 of 4 | 0 | under every bar figure, then the driver-launched reviewer died on "no prompt" four times and the lead escalated |
+| 3 | slugify-bug | 1 | 0.51 | 5.2 | 58 | no | 2 of 2 | 0 | the fix committed, the reviewer session died the same way, and the lead declined the run as a protocol mismatch |
+| 3 | wc-json | 5 | 2.92 | 28.9 | 213 | no | 4 of 4 | 11 | the empty Status cells again, escalation, the full route, paused in ITERATE |
+
+The three defects, each with its fix on the next commit:
+
+1. **A criterion nobody can run.** `verification run` died on the first criterion with
+   no backticked command and wrote nothing, so the empty-cell lint the audit asked for
+   became a wall. Now `spec fill --criterion` refuses a bare criterion and never
+   appends a duplicate, and the run writes row by row, turning a bare criterion into a
+   FAIL row that names the cause.
+2. **The reviewer session got no prompt.** The Claude profile's guarded list ended with
+   `--allowedTools`, a variadic flag; with the reviewer model `inherit` no `--model`
+   separated it from the prompt, and the CLI read the prompt as a tool name. The list
+   now ends with `--permission-mode acceptEdits`, pinned in the sessions suite. A
+   failed session is handed to the lead once, as the in-harness dispatch, instead of
+   relaunched on every return.
+3. **Decline after the work.** `decline` refuses once a feature has begun in the checkout.
+
+What held: read-only from the task (both wc-json runs that reached the gate had the
+test module in the footprint, and run 1 wrote the test, the first time in this series);
+`first_turn_input_tokens` read 29k on every run; the one clean run, wc-json round 2,
+sat under every bar figure at 0.42 USD, 3.6 minutes, 38 lines, zero REDO, before the
+reviewer defect took it.
