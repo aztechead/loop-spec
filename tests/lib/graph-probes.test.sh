@@ -590,7 +590,11 @@ check_output "a self-scored gate in an autonomous run still runs critique" \
 # The driver splits a mode line on spaces and `=`; a reason carrying `oracle=self`
 # once became a field of its own and cut the reason short.
 reason_text="$(bash "$DISCUSS_CRITIQUE" --feature-dir "$DC" | sed 's/^gate=[a-z]* reason=//')"
-check "the probe's reason carries no field-shaped token" 0 "$(grep -c '[a-z]=' <<<"$reason_text")"
+if grep -q '[a-z]=' <<<"$reason_text"; then
+  echo "FAIL: the probe's reason carries a field-shaped token: $reason_text"; FAIL=$((FAIL + 1))
+else
+  echo "PASS: the probe's reason carries no field-shaped token"; PASS=$((PASS + 1))
+fi
 
 write_spec "$DC/SPEC.md" true '[]'
 seed_dc standard '{"type":"spec"}'
