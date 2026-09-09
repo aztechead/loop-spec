@@ -22,13 +22,13 @@ You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and t
 ## Input
 
 - `slug`
-- `spec_path`: path to SPEC.md
-- `patterns_path`: path to `docs/loop-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
+- `spec_path`: absolute path to SPEC.md
+- `patterns_path`: absolute path to `docs/loop-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
 
 ## Output
 
 1. `docs/loop-spec/features/{slug}/PATTERNS.md` - concept analogs from the existing codebase (produced first, in Step 0)
-2. `docs/loop-spec/features/{slug}/PLAN.md` - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
+2. `docs/loop-spec/features/{slug}/PLAN.md`, next to `spec_path` (the feature's checkout, never a path relative to your cwd) - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
 
 The lead derives `tasks.json` from PLAN.md's task blocks with `lib/plan-tasks.sh extract`, so every field EXECUTE needs lives in the block: `**Files:**`, `**Verify:**`, `**Acceptance criteria:**`, `**BlockedBy:**`, and `**read_first:**`, plus `**Repo:**` in workspace mode and the optional `**Batch group:**`, `**Model tier:**`, and `**Spec path:**` lines. A `tasks` array in your completion message is a courtesy copy the lead never dispatches from. Concurrency safety is enforced by EXECUTE Step 2b, which adds synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap, so the planner does not assign waves. In workspace mode each task object also carries `"repo": "<name>"` (matching a `workspace.repos[].name` value) so the EXECUTE harness knows which repo the task targets.
 

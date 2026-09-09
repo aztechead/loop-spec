@@ -7,7 +7,10 @@
 # the release tracker over the network, never a local catalog or model memory, and
 # returns one line for a version or the documentation sections that match a topic.
 # Sources are a table in lib/docs-probe.py, one row per ecosystem; the ecosystem comes
-# from --ecosystem, else the manifest in --dir, else every row in turn.
+# from --ecosystem, else the manifest in --dir, else every row in turn. The runtime row
+# has a mirror (the endoflife project's release data on GitHub) for a network that
+# blocks endoflife.date, and a bare lookup whose runtime sources never answered stops
+# with `unverified` rather than name a same-named package (`python` is one on npm).
 #
 # Usage:
 #   docs-probe.sh latest  <name> [--ecosystem runtime|pypi|npm|crates|rubygems|go] [--dir DIR]

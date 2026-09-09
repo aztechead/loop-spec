@@ -202,5 +202,21 @@ ec=0
 capture --test true --lint '' --typecheck '' >/dev/null 2>&1 || ec=$?
 check "capture refuses HEAD different from base SHA" "21" "$ec"
 
+# The cycle's own docs are not candidate dirt; any other uncommitted file still is.
+rm -f "$FAIL_FLAG"
+printf '%s\n' "$pass_base" > "$BASELINE"
+mkdir -p "$REPO/docs/loop-spec/features/x"
+printf '| GE-001 | it | PASS |\n' > "$REPO/docs/loop-spec/features/x/VERIFICATION.md"
+ec=0
+out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" \
+  --prepare-key prep-1 --log-dir "$LOGS/docs-dirty" --test "$pass_fail_cmd" --lint '' --typecheck '')" || ec=$?
+check "an uncommitted docs/loop-spec artifact is not candidate dirt" "0:accepted" "$ec:$(jq -r '.outcome' <<<"$out")"
+printf 'stray\n' > "$REPO/stray.txt"
+ec=0
+bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" \
+  --prepare-key prep-1 --log-dir "$LOGS/code-dirty" --test "$pass_fail_cmd" --lint '' --typecheck '' >/dev/null 2>&1 || ec=$?
+check "an uncommitted file outside docs/loop-spec is still candidate dirt" "21" "$ec"
+rm -rf "$REPO/stray.txt" "$REPO/docs"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

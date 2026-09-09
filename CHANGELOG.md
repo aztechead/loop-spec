@@ -49,6 +49,28 @@ touches, and what to do.
 - **Longer challenger replies.** The "top 5-7, under 500 words" caps are gone; a sink
   that stores `gate_round` payloads or gate-logs sees the full findings pass.
 
+- **VERIFICATION.md's acceptance table has a grammar, and VERIFY's exit enforces it.**
+  One row per Good Enough criterion keyed `GE-NNN` or its number in the `#` column; the
+  status in the `Status` or `Result` column begins with `PASS`, `FAIL`, or `N/A`. A
+  verifier of your own that writes another shape gets `FLAG [acceptance-table]` at
+  `phase-exit.sh verify` (a REDO) instead of a converged-floor veto in ITERATE. The
+  parser also accepts what the bundled verifier already wrote (`PASS (12 passed)`, a
+  `Result` column after the verify command, `\|` inside a cell), so existing records
+  keep reading.
+- **A feature artifact must be written in the feature's checkout.** When the feature
+  lives in a worktree, `hooks/restrict-agent-paths.sh` denies a spec-writer or planner
+  Write under `docs/loop-spec/features/<slug>/` that lands in another checkout and
+  names the path to use; `phase-exit.sh` flags `[misplaced]` with the move when it finds
+  the file elsewhere. Briefs of your own pass absolute artifact paths.
+- **`lib/verification-baseline.sh` no longer counts `docs/loop-spec/` as candidate
+  dirt.** An uncommitted cycle artifact never changes what test, lint, or typecheck see;
+  any other uncommitted file still fails the compare with exit 21.
+- **`docs-probe.sh latest <runtime>` has a mirror and a refusal.** When endoflife.date
+  is unreachable the probe reads the endoflife project's release data on
+  raw.githubusercontent.com; when neither answers, a bare lookup (no `--ecosystem`)
+  answers `unverified` rather than a same-named package from a registry. Pass
+  `--ecosystem pypi` (or npm, crates, rubygems, go) for a package on such a network.
+
 ### Changed
 
 - The critique gate's bookkeeping is one driver call per step: `cycle-driver.sh
@@ -141,6 +163,32 @@ touches, and what to do.
   reason to re-dispatch, the three peer harness contracts drop the key, and
   `tests/lib/harness-call-shapes.test.sh` case 8 now requires the key on every one-shot
   template instead of forbidding it.
+- `lib/converged-floor.sh` reads the acceptance table the verifier writes: the header
+  names the status column, `PASS (12 passed)` is PASS, `\|` inside a cell is a literal
+  pipe, and `--shape` checks the grammar alone. `phase-exit.sh verify` runs `--shape`, so
+  an unreadable table is VERIFY's REDO. A run whose judge said converged saw the floor
+  veto a table it could not parse, the lead rewrote VERIFICATION.md to fit the parser,
+  the driver rewound to an EXECUTE with nothing to do, and VERIFY then died on the
+  uncommitted file; `skills/iterate/SKILL.md` says never to edit VERIFICATION.md there.
+- `hooks/restrict-agent-paths.sh` denies a spec-writer or planner write under
+  `docs/loop-spec/features/<slug>/` in a checkout other than the one holding that
+  feature's `feature.json`, naming the path to write; `phase-exit.sh` names a
+  `[misplaced]` copy in another worktree and the `mv` that fixes it. A bug-fix cycle's
+  spec-writer wrote SPEC.md into the main checkout while the gate read the feature
+  worktree, and the driver escalated after four identical REDO rounds.
+- `lib/verification-baseline.sh` excludes `docs/loop-spec/` from the clean-candidate
+  check (`tests/lib/verification-baseline.test.sh`).
+- `lib/docs-probe.py` distinguishes an unreachable host from a definite miss, mirrors
+  the runtime row through the endoflife project's release data on GitHub (newest final
+  version by number, never map order or a pre-release), and refuses to let a registry
+  answer a bare runtime lookup whose sources never answered: on a network that blocks
+  endoflife.date, `latest python` had answered `0.0.4` from an npm package of that name,
+  and the fourth live run pinned Python 3.14.0rc2 from a stale `uv` and escalated
+  (`evals/findings-2026-09-09-round-4.md`). `agents/implementer.md` binds the
+  stale-installer rule where installs happen.
+- `evals/tasks/wc-json/check.sh` and `evals/tasks/todo-due/check.sh` grep test sources
+  only (`--include="*.py"`): after a test run, `tests/__pycache__/*.pyc` matched the
+  word and passed a control that had added no test.
 - `lib/parse-invocation.sh` honors the `autonomous` token only at the leading or trailing
   edge of the arguments. Inside the description it is prose: a feature described as "fix
   the autonomous chain bound" armed autonomous mode, stripped the word from the title,

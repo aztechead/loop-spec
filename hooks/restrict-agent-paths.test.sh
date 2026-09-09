@@ -177,6 +177,30 @@ check "V: pattern-mapper Write to .claude/agent-memory/pattern-mapper/notes.md A
 check "W: code-reviewer Edit to /abs/proj/.claude/agent-memory/code-reviewer/MEMORY.md ALLOW" 0 \
   "$(payload "Edit" "/abs/proj/.claude/agent-memory/code-reviewer/MEMORY.md" "$FIXTURES/code-reviewer.jsonl")"
 
+# Cases W: a feature artifact must land in the checkout that holds the feature's
+# feature.json. The lead's cwd is the main checkout; the feature lives in a worktree.
+WREPO="$(mktemp -d)"
+git -C "$WREPO" init -q && git -C "$WREPO" commit -q --allow-empty -m seed
+git -C "$WREPO" worktree add -q "$WREPO/.claude/worktrees/foo" -b feat/foo
+mkdir -p "$WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo"
+printf '{"slug":"foo"}\n' > "$WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo/feature.json"
+export CLAUDE_PROJECT_DIR="$WREPO"
+check "W1: spec-writer Write of SPEC.md relative to the main checkout DENY (feature lives in the worktree)" 2 \
+  "$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "W2: spec-writer Write of SPEC.md under the feature worktree ALLOW" 0 \
+  "$(payload "Write" "$WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "W3: planner Edit of PLAN.md in the main checkout DENY" 2 \
+  "$(payload "Edit" "$WREPO/docs/loop-spec/features/foo/PLAN.md" "$FIXTURES/planner.jsonl")"
+check "W4: a slug with no feature.json anywhere stays ALLOW" 0 \
+  "$(payload "Write" "docs/loop-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+msg="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/spec-writer.jsonl")" || true)"
+if [[ "$msg" == *"Write $WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo/SPEC.md instead"* ]]; then
+  echo "PASS: W5: the denial names the path to write"; ((PASS++)) || true
+else
+  echo "FAIL: W5: the denial names the path to write ($msg)"; ((FAIL++)) || true
+fi
+unset CLAUDE_PROJECT_DIR; rm -rf "$WREPO"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

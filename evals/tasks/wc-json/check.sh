@@ -13,4 +13,4 @@ assert o["lines"] == 2 and o["words"] == 4, o
 PY
 text="$(python3 wc_tool.py sample.txt 2>&1)"
 if [[ "$text" == *"sample.txt"* && "$text" != *"{"* ]]; then echo "CHECK text_output_unchanged PASS"; else echo "CHECK text_output_unchanged FAIL"; fi
-if grep -rq "json" tests/ 2>/dev/null; then echo "CHECK json_test_added PASS"; else echo "CHECK json_test_added FAIL no test mentions json"; fi
+if grep -rq --include="*.py" "json" tests/ 2>/dev/null; then echo "CHECK json_test_added PASS"; else echo "CHECK json_test_added FAIL no test mentions json"; fi

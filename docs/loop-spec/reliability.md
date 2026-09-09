@@ -14,7 +14,10 @@ a missing specification or a result marked PENDING could still clear the mechani
 
 `lib/converged-floor.sh` now requires a readable Good Enough contract, grounding for each
 GE identifier, and exactly one PASS acceptance result per criterion. Acceptance rows use
-the criterion's number or GE identifier. A grounding row establishes where the behavior
+the criterion's number or GE identifier in the `#` column; the header names the status
+column (`Status` or `Result`), and the cell begins with PASS, FAIL, or N/A. VERIFY's exit
+runs the same parser with `--shape`, so a table the floor cannot read is a REDO in VERIFY,
+never a veto of a converged verdict that rewinds through an empty EXECUTE. A grounding row establishes where the behavior
 lives; it does not replace the acceptance result. Semantic agreement between a requirement
 and its implementation still needs the goal judge and reviewer.
 
@@ -22,7 +25,8 @@ and its implementation still needs the goal judge and reviewer.
 so omitting a prose instruction cannot skip this check.
 
 Evidence: `tests/lib/converged-floor.test.sh` exercises missing contracts, missing results,
-and PENDING/SKIP/UNKNOWN outcomes as failures.
+PENDING/SKIP/UNKNOWN outcomes as failures, the verifier's four-column table, and `--shape`;
+`tests/lib/phase-exit.test.sh` pins the VERIFY-exit flag.
 
 ## Loops need outcome evidence and durable handoffs
 

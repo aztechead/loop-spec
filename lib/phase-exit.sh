@@ -19,7 +19,8 @@
 #             criteria-coverage, grounding-lint PLAN.md
 #   execute   every PLAN task id published (tasks.json status=done), greenfield
 #             command backfill, at-end commit strategy
-#   verify    artifact-lint verification, verification-grounding-lint
+#   verify    artifact-lint verification, verification-grounding-lint, converged-floor
+#             --shape (the acceptance table reads for ITERATE's floor)
 #   iterate   ITERATION.md present, converged-floor for a converged verdict
 #             (--terminal also closes the phase)
 #
@@ -71,6 +72,19 @@ cd "$root"
 docs="docs/loop-spec/features/$slug"
 flags=0
 flag() { echo "FLAG $*"; flags=$((flags + 1)); }
+# misplaced_hint NAME: the artifact is absent here but present under another checkout
+# of this repository. Agents share the lead's cwd, so a writer given a relative path
+# lands in the main checkout while this gate reads the feature worktree; the lead
+# then re-runs the phase blind (four REDO attempts in the 6.3.0 fastapi bug-fix run).
+misplaced_hint() {
+  local name="$1" wt
+  [[ -f "$docs/$name" ]] && return 0
+  while IFS= read -r wt; do
+    wt="${wt#worktree }"
+    [[ -d "$wt" && ! "$wt" -ef "$root" && -f "$wt/$docs/$name" ]] || continue
+    flag "[misplaced] $name was written to $wt/$docs/$name, another checkout of this repository; this gate reads $root/$docs/$name. Move it: mv $wt/$docs/$name $root/$docs/$name"
+  done < <(git -C "$root" worktree list --porcelain 2>/dev/null | grep '^worktree ' || true)
+}
 # run_gate LABEL CMD...: relay the gate's own FLAG/output lines, count a failure once.
 # Indented lines are the gate's detail (decision-coverage lists each uncovered entry under
 # its heading); dropping them left the lead a bare "Uncovered decisions:" to act on.
@@ -174,6 +188,7 @@ egress_check
 
 case "$phase" in
   spec)
+    misplaced_hint SPEC.md
     run_gate artifact-lint lib artifact-lint spec "$docs/SPEC.md"
     oracle_gate
     if (( flags == 0 )); then
@@ -185,6 +200,7 @@ case "$phase" in
     fi
     ;;
   discuss)
+    misplaced_hint SPEC.md
     run_gate artifact-lint lib artifact-lint spec "$docs/SPEC.md"
     run_gate grounding-lint lib grounding-lint "$docs/SPEC.md"
     oracle_gate
@@ -199,6 +215,7 @@ case "$phase" in
     tasks="$feature_dir/tasks.json"
     extract="bash lib/plan-tasks.sh extract $docs/PLAN.md > $tasks"
     [[ -f "$tasks" ]] || flag "[tasks] $tasks missing: derive it from PLAN.md first ($extract)"
+    misplaced_hint PLAN.md
     run_gate artifact-lint lib artifact-lint plan "$docs/PLAN.md"
     run_gate artifact-lint lib artifact-lint patterns "$docs/PATTERNS.md"
     if [[ -f "$tasks" ]]; then
@@ -270,8 +287,10 @@ case "$phase" in
     ;;
   verify)
     spec="$(fget '.artifacts.spec // ""')"; [[ -n "$spec" ]] || spec="$docs/SPEC.md"
+    misplaced_hint VERIFICATION.md
     run_gate artifact-lint lib artifact-lint verification "$docs/VERIFICATION.md"
     run_gate verification-grounding lib verification-grounding-lint "$docs/VERIFICATION.md" --repo "$root" --spec "$spec"
+    run_gate acceptance-table lib converged-floor --shape "$spec" "$docs/VERIFICATION.md"
     if (( flags == 0 )); then
       fset artifacts.verification "\"$docs/VERIFICATION.md\""
       [[ -f "$docs/REVIEW-ORDER.md" ]] && fset artifacts.reviewOrder "\"$docs/REVIEW-ORDER.md\""

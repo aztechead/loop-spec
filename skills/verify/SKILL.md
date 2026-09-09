@@ -80,9 +80,12 @@ gate="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verify gate --featu
 ```
 
 It runs `lib/phase-exit.sh verify` first: `.route == "redo"` means VERIFICATION.md
-FLAGged (`artifact-lint`, or `[verification-grounding]` from
+FLAGged (`artifact-lint`; `[verification-grounding]` from
 `lib/verification-grounding-lint.sh`: a criterion row without post-change
-`repositoryEvidence`, a missing file, an out-of-range line). Fix the file in place and
+`repositoryEvidence`, a missing file, an out-of-range line; `[acceptance-table]` from
+`lib/converged-floor.sh --shape`: a criterion with no row, two rows, or a status cell
+that does not begin with PASS, FAIL, or N/A; `[misplaced]`: the verifier wrote the file
+into another checkout, and the flag names the move). Fix the file in place and
 call `verify gate` again with the same verdicts; nothing is recorded for a redo, and the
 agents are not re-dispatched. A criterion whose evidence cannot be written is a
 verifier FAIL regardless of green commands: pass `--verifier FAIL`. Then:

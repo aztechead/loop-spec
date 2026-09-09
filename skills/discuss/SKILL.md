@@ -73,7 +73,7 @@ Save the transcript to `feature_dir/discuss-transcript.md`. If `docs/loop-spec/f
 edit it in place: resolved dimensions, design decisions, boundaries under
 `## Boundaries (what NOT to do)`. Preserve `ambiguity_scores` except the dimensions you
 resolved. Spawn `spec-writer-1` (`loop-spec:spec-writer`) only when SPEC.md is missing
-entirely. Never spawn `advocate-1`.
+entirely, with `spec_path` and the transcript path absolute (`$(git -C "$feature_dir" rev-parse --show-toplevel)/docs/loop-spec/features/{slug}/SPEC.md`, never relative: agents share your cwd, and the exit gate reads the feature's checkout). Never spawn `advocate-1`.
 
 **PATTERNS.md prefetch (background, best effort).** Unless greenfield, workspace mode,
 PATTERNS.md already present, or

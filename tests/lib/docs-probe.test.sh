@@ -29,6 +29,17 @@ canned "https://endoflife.date/api/python.json" '[{"cycle":"3.14","latest":"3.14
 # --- latest ---
 check "latest: pypi answers one line" "version=2.5.0 source=https://pypi.org/pypi/fastlib/json ecosystem=pypi" \
   "$(bash "$LIB" latest fastlib --ecosystem pypi)"
+MIRROR="https://raw.githubusercontent.com/endoflife-date/release-data/main/releases"
+canned "$MIRROR/ruby.json" '{"releases":{},"versions":{"3.3.12":{"name":"3.3.12","date":"2026-07-16"},"4.0.6":{"name":"4.0.6","date":"2026-07-13"},"4.1.0rc1":{"name":"4.1.0rc1","date":"2026-08-01"}}}'
+check "latest: the release-data mirror answers when the tracker does not, newest final by number not by map order or pre-release" \
+  "version=4.0.6 source=$MIRROR/ruby.json ecosystem=runtime" "$(bash "$LIB" latest ruby --ecosystem runtime)"
+touch "$LOOP_SPEC_DOCS_FIXTURES/$(printf '%s' "https://endoflife.date/api/lua.json" | sha1sum | cut -c1-16).unreachable" \
+      "$LOOP_SPEC_DOCS_FIXTURES/$(printf '%s' "$MIRROR/lua.json" | sha1sum | cut -c1-16).unreachable"
+canned "https://registry.npmjs.org/lua" '{"dist-tags":{"latest":"0.0.4"}}'
+out="$(cd "$tmp/proj" && bash "$LIB" latest lua)"; rc=$?
+check "latest: a bare lookup whose runtime sources never answered refuses the registry (exit 1)" "1" "$rc"
+check "latest: the refusal says why and names the flag" "1" "$(grep -c "^version=unverified reason=runtime sources unreachable for 'lua' .*pass --ecosystem" <<<"$out")"
+check "latest: --ecosystem npm still reaches the package" "version=0.0.4 source=https://registry.npmjs.org/lua ecosystem=npm" "$(bash "$LIB" latest lua --ecosystem npm)"
 check "latest: a runtime resolves through the release tracker" "version=3.14.7 source=https://endoflife.date/api/python.json ecosystem=runtime" \
   "$(bash "$LIB" latest python --ecosystem runtime)"
 rc=0; out="$(bash "$LIB" latest nosuchthing --ecosystem pypi 2>&1)" || rc=$?

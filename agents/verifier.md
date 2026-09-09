@@ -20,8 +20,9 @@ You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE
 ## Input
 
 - `slug`
-- `spec_path`: SPEC.md
-- `plan_path`: PLAN.md
+- `spec_path`: SPEC.md, absolute
+- `plan_path`: PLAN.md, absolute
+- `verification_path`: where VERIFICATION.md goes, absolute. Your cwd is the lead's, which is the main checkout when the feature lives in a worktree; a relative `docs/loop-spec/features/{slug}/` lands in the wrong checkout and the exit gate never sees it.
 - `branch`: feat/{slug}
 - `base_sha`: SHA before feature work began
 - `tier`
@@ -38,7 +39,7 @@ You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE
    - One exact repository-grounding row per Good Enough criterion:
      `- criterion: <id> | implementation: <repo-relative-file>:<line> - <what it proves> | integration: <repo-relative-file>:<line> - <what it proves>`
    - Use `integration: none - <concrete reason of at least 10 characters>` only when no separate integration site exists. Workspace paths are relative to the workspace root.
-   - Acceptance criteria table
+   - Acceptance criteria table, in the grammar `lib/converged-floor.sh` reads (VERIFY's exit runs it with `--shape`; ITERATE's converged floor runs it in full): one row per Good Enough criterion keyed `GE-NNN` (or its number) in the `#` column, and a `Status` or `Result` column whose cell begins with `PASS`, `FAIL`, or `N/A` (`PASS (12 passed)` reads; `passed` does not). Escape a pipe inside a cell as `\|`.
    - Verify command outputs
     - Repository-wide baseline comparison, including known failures and new-failure count
 7. Return result.
@@ -53,7 +54,7 @@ You verify a complete feature meets its SPEC's acceptance criteria after EXECUTE
 
 - Do NOT modify code to make tests pass. You verify, you do not fix.
 - Do NOT skip a criterion because the verify command is awkward - figure it out.
-- Do NOT write outside `docs/loop-spec/features/{slug}/VERIFICATION.md`.
+- Do NOT write outside `verification_path` (`docs/loop-spec/features/{slug}/VERIFICATION.md` in the feature's checkout).
 - You are authoritative for each acceptance criterion's command and its repository-grounded evidence. `validation_json` is authoritative for the repository-wide baseline comparison; do not rerun test/lint/typecheck outside that adapter. Report both accurately.
 - Do NOT turn an unchanged baseline failure into a feature failure. Report `Test suite status: PASS` only when `validation_json.outcome == "accepted"`; clearly list retained known failures.
 - Do NOT invent evidence references. `lib/verification-grounding-lint.sh` checks that cited files and lines exist and that every Good Enough criterion has exactly one row.

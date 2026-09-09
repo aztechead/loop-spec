@@ -83,7 +83,10 @@ converged?, per-criterion scores, weakest point, gap and fix-first, summary).
 cleared; return, the cycle's `next` closes the phase with `--terminal` and the graph
 routes to DELIVER. A violated floor (`.floor[]` holds the `FLOOR` lines) was already
 treated as not converged with an `execute`-type gap whose `fix_first` is the first
-FLOOR line: print the lines.
+FLOOR line: print the lines. Never edit VERIFICATION.md here: the verifier owns it, and
+VERIFY's exit already ran `converged-floor.sh --shape` on the table, so a floor veto is
+a real non-PASS result, not a format to fix (the 6.3.0 fastapi run that rewrote the
+table rewound through an empty EXECUTE and died in VERIFY on the uncommitted file).
 
 **Not converged:** `iterate.feedback` holds the gap so the re-entered phase fixes the
 weakest point first; by `.route` (`gap.type`):

@@ -39,11 +39,24 @@ import time
 # ecosystem -> how to resolve a name. `url` is a format with {name}; `parse` reads the
 # JSON into the common record. A runtime (python, nodejs, go, ...) is one more row.
 SOURCES = {
+    # A language release page, never a package registry: `python` is also a junk npm
+    # package at 0.0.4. The mirror is the endoflife project's own release data on GitHub,
+    # for a network that blocks endoflife.date (the 6.3.0 eval sandbox did).
     "runtime": {
         "url": "https://endoflife.date/api/{name}.json",
         "parse": lambda d: {
             "version": (d[0].get("latest") if isinstance(d, list) and d else None),
             "homepage": None, "docs": None, "repo": None},
+        # The map is ordered by date, a patch to an older cycle can be newer than the
+        # current cycle's last release, and a pre-release key never wins: highest final
+        # version by number.
+        "mirrors": (
+            ("https://raw.githubusercontent.com/endoflife-date/release-data/main/releases/{name}.json",
+             lambda d: {"version": max([k for k in ((d.get("versions") if isinstance(d, dict) else None) or {})
+                                        if re.match(r"^\d+(\.\d+)*$", k)],
+                                       key=lambda v: tuple(int(x) for x in v.split(".")), default=None),
+                        "homepage": None, "docs": None, "repo": None}),
+        ),
         "manifests": (),
     },
     "pypi": {
@@ -116,12 +129,19 @@ def _repo_str(repo):
     return re.sub(r"^git\+|\.git$", "", repo.replace("git://", "https://").replace("ssh://git@", "https://"))
 
 
+UNREACHABLE = object()   # the host never answered, as opposed to answering "no such thing"
+
+
 def fetch(url):
-    """Body text or None. Fixture dir first (tests), then cache, then curl."""
+    """Body text, None for a definite miss (HTTP error), UNREACHABLE for no answer at
+    all. Fixture dir first (tests: `<key>.unreachable` marks the third case), then
+    cache, then curl."""
     key = hashlib.sha1(url.encode()).hexdigest()[:16]
     fixtures = os.environ.get("LOOP_SPEC_DOCS_FIXTURES")
     if fixtures:
         path = os.path.join(fixtures, key)
+        if os.path.isfile(path + ".unreachable"):
+            return UNREACHABLE
         return open(path, encoding="utf-8").read() if os.path.isfile(path) else None
     cache_dir = os.environ.get("LOOP_SPEC_DOCS_CACHE_DIR") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "loop-spec-docs-cache")
     ttl = int(os.environ.get("LOOP_SPEC_DOCS_CACHE_TTL_SECS") or 3600)
@@ -133,7 +153,11 @@ def fetch(url):
                               capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return None
-    if proc.returncode != 0 or not proc.stdout:
+    if proc.returncode == 22:   # curl --fail: the host answered with an HTTP error
+        return None
+    if proc.returncode != 0:
+        return UNREACHABLE
+    if not proc.stdout:
         return None
     try:
         os.makedirs(cache_dir, exist_ok=True)
@@ -154,30 +178,43 @@ def ecosystems_for(flag, directory):
 
 
 def resolve(name, ecosystems, version=None):
+    """(record, tried, refusal). A refusal is set when the runtime source could not be
+    consulted at all: a registry answer cannot stand in for a language release page,
+    so the bare lookup stops rather than name a same-named package."""
     tried = []
     for eco in ecosystems:
         src = SOURCES[eco]
-        url = src["url"].format(name=name)
+        answered = False
+        # A pinned version asks the version URL alone; otherwise the primary, then each mirror.
         if version and src.get("version_url"):
-            url = src["version_url"].format(name=name, version=version)
-        body = fetch(url)
-        if body is None:
+            fetchers = [(src["version_url"], src["parse"])]
+        else:
+            fetchers = [(src["url"], src["parse"])] + list(src.get("mirrors", ()))
+        for template, parse in fetchers:
+            url = template.format(name=name, version=version)
+            body = fetch(url)
             tried.append(url)
-            continue
-        try:
-            data = json.loads(body)
-        except ValueError:
-            tried.append(url)
-            continue
-        rec = src["parse"](data)
-        if not rec.get("version"):
-            tried.append(url)
-            continue
-        rec.update({"name": name, "ecosystem": eco, "source": url})
-        if version:
-            rec["version"] = version
-        return rec, tried
-    return None, tried
+            if body is UNREACHABLE:
+                continue
+            answered = True
+            if body is None:
+                continue
+            try:
+                data = json.loads(body)
+            except ValueError:
+                continue
+            rec = parse(data)
+            if not rec.get("version"):
+                continue
+            rec.update({"name": name, "ecosystem": eco, "source": url})
+            if version:
+                rec["version"] = version
+            return rec, tried, None
+        if eco == "runtime" and not answered and len(ecosystems) > 1:
+            return None, tried, ("runtime sources unreachable for '%s' (tried %s); a package registry "
+                                 "cannot stand in for a language release page, so pass --ecosystem "
+                                 "<pypi|npm|crates|rubygems|go> if '%s' is a package" % (name, ", ".join(tried), name))
+    return None, tried, None
 
 
 class _Text(html.parser.HTMLParser):
@@ -311,9 +348,9 @@ def main(argv):
         else:
             print("docs-probe: unknown option '%s'" % flag, file=sys.stderr)
             sys.exit(2)
-    rec, tried = resolve(name, ecosystems_for(eco, directory), version)
+    rec, tried, refusal = resolve(name, ecosystems_for(eco, directory), version)
     if rec is None:
-        reason = "no source answered for '%s' (tried %s)" % (name, ", ".join(tried) or "nothing")
+        reason = refusal or "no source answered for '%s' (tried %s)" % (name, ", ".join(tried) or "nothing")
         print(("docs: unverified reason=%s" if cmd == "docs" else "version=unverified reason=%s") % reason)
         return 1
     if cmd == "resolve":

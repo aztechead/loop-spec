@@ -91,8 +91,11 @@ read_head() {
   git -C "$root" rev-parse --verify HEAD 2>/dev/null
 }
 
+# The cycle's own artifacts under docs/loop-spec/ never change what test, lint, or
+# typecheck see; VERIFY died on a VERIFICATION.md the lead had rewritten in ITERATE
+# and not committed (6.3.0 fastapi runs), so they do not count as candidate dirt.
 read_worktree_status() {
-  git -C "$root" status --porcelain --untracked-files=all 2>/dev/null
+  git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude)docs/loop-spec' 2>/dev/null
 }
 
 assert_repo_state() {

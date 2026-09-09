@@ -11,5 +11,5 @@ if [[ "$first" == *early* && "$last" == *none* ]]; then echo "CHECK sort_due_ord
 if [[ "$out" == *2029-06-01* ]]; then echo "CHECK due_shown PASS"; else echo "CHECK due_shown FAIL"; fi
 python3 -m todo.cli --file "$f" add "bad" --due 2030-13-99 >/dev/null 2>&1; rc=$?
 if [[ $rc -eq 2 ]]; then echo "CHECK bad_date_exit_2 PASS"; else echo "CHECK bad_date_exit_2 FAIL rc=$rc"; fi
-if grep -rqi "due" tests/ 2>/dev/null; then echo "CHECK due_tests_added PASS"; else echo "CHECK due_tests_added FAIL"; fi
+if grep -rqi --include="*.py" "due" tests/ 2>/dev/null; then echo "CHECK due_tests_added PASS"; else echo "CHECK due_tests_added FAIL"; fi
 rm -f "$f"

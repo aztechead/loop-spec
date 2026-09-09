@@ -16,7 +16,8 @@
 # bare <role> before matching.
 #
 # Rules (by role):
-#   spec-writer, planner             -> docs/loop-spec/features/**
+#   spec-writer, planner             -> docs/loop-spec/features/**, in the checkout that
+#                                       holds the feature's feature.json when one does
 #   pattern-mapper                   -> docs/loop-spec/features/** + .claude/agent-memory/** (memory: project)
 #   code-reviewer                    -> .claude/agent-memory/** ONLY (read-only for code; the
 #                                       `memory: project` frontmatter auto-enables Write/Edit,
@@ -197,9 +198,38 @@ path_allowed() {
 CALLER="${CALLER#loop-spec:}"
 CALLER="${CALLER#loop-spec-}"
 
+# feature_checkout_deny: a Write under docs/loop-spec/features/<slug>/ must land in the
+# checkout that holds that feature's feature.json. Agents share the lead's cwd, which
+# is the main checkout when the feature lives in a worktree: the spec-writer wrote
+# SPEC.md next to the lead while phase-exit.sh read the worktree, and the 6.3.0 fastapi
+# bug-fix run escalated after four blind REDO attempts. No feature.json anywhere means
+# nothing to compare, so the write stays allowed.
+feature_checkout_deny() {
+  local rel slug project target target_dir wt home homes=()
+  rel="${FILE_PATH#*docs/loop-spec/features/}"
+  [[ "$rel" != "$FILE_PATH" && "$rel" == */* ]] || return 0
+  slug="${rel%%/*}"
+  project="$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null && pwd -P)" || return 0
+  target="$FILE_PATH"; [[ "$target" == /* ]] || target="$project/$target"
+  target_dir="$(cd "$(dirname "$target")" 2>/dev/null && pwd -P)" || target_dir="$(dirname "$target")"
+  while IFS= read -r wt; do
+    wt="${wt#worktree }"
+    if wt="$(cd "$wt" 2>/dev/null && pwd -P)" && [[ -f "$wt/docs/loop-spec/features/$slug/feature.json" ]]; then
+      homes[${#homes[@]}]="$wt"
+    fi
+  done < <(git -C "$project" worktree list --porcelain 2>/dev/null | grep '^worktree ' || true)
+  [[ ${#homes[@]} -gt 0 ]] || return 0
+  for home in "${homes[@]}"; do
+    if [[ "$target_dir" == "$home" || "$target_dir" == "$home"/* ]]; then return 0; fi
+  done
+  echo "DENY: $CALLER $TOOL_NAME targets $FILE_PATH, but feature '$slug' lives in the checkout ${homes[0]} (its feature.json is there) and the phase exit gate reads that copy, never this one. Write ${homes[0]}/docs/loop-spec/features/$rel instead. (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+  exit 2
+}
+
 case "$CALLER" in
   spec-writer|planner)
     if path_allowed "docs/loop-spec/features"; then
+      feature_checkout_deny
       exit 0
     fi
     echo "DENY: $CALLER may only $TOOL_NAME under docs/loop-spec/features/** (attempted: $FILE_PATH). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2

@@ -31,7 +31,7 @@ The orchestrator provides:
 
 ## Output
 
-A single file at `docs/loop-spec/features/{slug}/SPEC.md` populated from `skills/shared/artifact-templates/SPEC.md.template`.
+A single file at `spec_path` (`docs/loop-spec/features/{slug}/SPEC.md` in the feature's checkout, given absolute in the brief) populated from `skills/shared/artifact-templates/SPEC.md.template`.
 
 The SPEC.md must include a populated `<decisions>` block near the top, before Goals. Each entry records one binding design choice from DISCUSS: the decision, the rationale, and the alternatives considered and rejected.
 
@@ -78,6 +78,6 @@ If the orchestrator re-dispatches you with a `fix_list`, apply each fix to the e
 
 Return:
 - **Status**: DONE | NEEDS_CONTEXT
-- **Spec path**: `docs/loop-spec/features/{slug}/SPEC.md`
+- **Spec path**: `spec_path`, absolute. Your cwd is the lead's, which is the main checkout when the feature lives in a worktree: a relative `docs/loop-spec/features/{slug}/SPEC.md` lands where the exit gate never looks, and `hooks/restrict-agent-paths.sh` denies it once the feature's `feature.json` is elsewhere.
 - **Sections written**: list
 - **Open issues**: any concerns the orchestrator should know

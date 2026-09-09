@@ -65,6 +65,13 @@ rm -f "$FD/spec-draft.md"
 ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit spec: missing SPEC.md flags" "1" "$ec"
 check "exit spec: the answer line names the count" "phase-exit: 1 flag(s) (spec)" "$(tail -1 <<<"$out")"
+# The writer put SPEC.md in another checkout of this repository: name it and the move.
+git worktree add -q "$WORK/other" -b other >/dev/null 2>&1
+mkdir -p "$WORK/other/docs/loop-spec/features/my-feature"; printf '# stray\n' > "$WORK/other/docs/loop-spec/features/my-feature/SPEC.md"
+ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit spec: a SPEC.md in another checkout is named as misplaced" "1" "$(grep -c "FLAG \[misplaced\] SPEC.md was written to $WORK/other/docs/loop-spec/features/my-feature/SPEC.md" <<<"$out")"
+check "exit spec: the misplaced flag names the move" "1" "$(grep -c "mv $WORK/other/docs/loop-spec/features/my-feature/SPEC.md $REPO/docs/loop-spec/features/my-feature/SPEC.md" <<<"$out")"
+git worktree remove --force "$WORK/other" >/dev/null 2>&1; git branch -q -D other >/dev/null 2>&1
 
 cat > "$DOCS/SPEC.md" <<'MD'
 ---
@@ -240,6 +247,18 @@ ec=0; bash "$EXIT" verify --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit verify: grounded verification passes" "0" "$ec"
 check "exit verify: pointer recorded" "docs/loop-spec/features/my-feature/VERIFICATION.md" "$(fj '.artifacts.verification')"
 check "exit verify: team state cleared" "null" "$(fj '.currentTeamName')"
+# A table ITERATE's floor cannot read is VERIFY's REDO, never a converged-verdict veto
+# that rewinds through an empty EXECUTE (the 6.3.0 fastapi runs).
+cp "$DOCS/VERIFICATION.md" "$WORK/verification.shape"
+sed 's/| PASS |/| passed |/' "$WORK/verification.shape" > "$DOCS/VERIFICATION.md"
+ec=0; out="$(bash "$EXIT" verify --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit verify: an unreadable acceptance status is a flag" "1" "$ec"
+check "exit verify: the flag names the acceptance-table gate and the grammar" "1" "$(grep -c 'FLAG \[acceptance-table\] FLOOR GE-001 acceptance result is unreadable' <<<"$out")"
+sed 's/| PASS |/| FAIL |/' "$WORK/verification.shape" > "$DOCS/VERIFICATION.md"
+ec=0; bash "$EXIT" verify --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit verify: a FAIL result is readable, not a format flag" "0" "$ec"
+cp "$WORK/verification.shape" "$DOCS/VERIFICATION.md"
+bash "$EXIT" verify --feature-dir "$FD" >/dev/null 2>&1 || true
 
 # --- iterate ------------------------------------------------------------------------
 printf '# Iteration\n' > "$DOCS/ITERATION.md"
