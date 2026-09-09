@@ -71,7 +71,7 @@ if lint_out="$(lib artifact-lint tasks "$sidecar" 2>&1)"; then :; else
 fi
 remediation_registered=0
 if [[ "$sidecar_ok" == true ]]; then
-  registered="$(python3 - "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all)" "$sidecar" <<'PY'
+  registered="$(python3 - "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays)" "$sidecar" <<'PY'
 import json, sys
 feature, sidecar = json.loads(sys.argv[1]), sys.argv[2]
 tasks = json.load(open(sidecar))

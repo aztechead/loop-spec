@@ -28,8 +28,10 @@ Usage (lib/feature-read.sh is the launcher):
              `--arg`/`--argjson` after `--` pass to jq; jq's exit code is relayed.
   --all      the whole document projected onto the enum, compact, for the readers that
              render all of it; a key the schema does not declare is exit 1 with the key
-             named, unless --drop-strays follows (the driver's one stray-dropping
-             rewrite passes it, after reading --strays) (the
+             named, unless --drop-strays follows. The loud default is for a reader that
+             shows the document (a dashboard, a supervisor); the plugin's own projections
+             pass --drop-strays, and lib/phase-exit.sh's egress check is where a stray
+             key reaches a person (the
              run digest, the status dashboard, the egress diff)
   --strays   the top-level keys the enum does NOT declare, with their values, compact.
              The one consumer is lib/phase-exit.sh's egress guard, whose job is to name a

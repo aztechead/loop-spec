@@ -114,5 +114,40 @@ else
 fi
 
 echo ""
+# --- run: the session rung's launch is the driver's ---------------------------------
+# A stub CLI and profile stand in for the harness binary; the runner records the prompt.
+SBIN="$WORK/sbin"; SPROF="$WORK/sprofiles"; mkdir -p "$SBIN" "$SPROF"
+cat > "$SBIN/codex" <<'SH'
+#!/usr/bin/env bash
+{ printf '%s\n' "$@"; echo "cwd=$(pwd -P)"; } > "${FAKE_ARGS_OUT:-/dev/null}"
+echo '{"ok":true}'
+SH
+chmod +x "$SBIN/codex"
+printf 'name = "codex"\nbinary = "codex"\nlaunch_args = ["exec", "--json"]\nguarded_args = []\nbypass_args = []\nmodel_flag = "--model"\nprompt_template = "{prompt}"\n' > "$SPROF/codex.toml"
+FDS="$(LOOP_SPEC_HARNESS=codex LOOP_SPEC_WORKTREES=1 new_feature session)"
+ROOTS="$(git -C "$FDS" rev-parse --show-toplevel)"
+sess() { env PATH="$SBIN:$PATH" LOOP_SPEC_HARNESS=codex LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF" LOOP_SPEC_WORKTREES=1 FAKE_ARGS_OUT="$WORK/args" "$@"; }
+sess bash "$REPO_ROOT/lib/execute-prepare.sh" run --feature-dir "$FDS" >/dev/null 2>&1
+check "run: prepare selected the session rung" "session" "$(jq -r '.rung.rung' "$FDS/dispatch/prepare.json")"
+disp="$(sess bash "$STEP" dispatch --feature-dir "$FDS" --task task-001)"
+WT1="$(jq -r '.worktreePath' <<<"$disp")"
+check "run: the session rung isolates the task in a lead-created worktree" "1" "$([[ -d "$WT1" ]] && echo 1 || echo 0)"
+ec=0; out="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer 2>&1)" || ec=$?
+check "run implementer: the session completed" "completed" "$(jq -r '.status' <<<"$out")"
+check "run implementer: exit 0" "0" "$ec"
+check "run implementer: the prompt is one line and the paths" "1" "$(grep -c "^Implement the task in $FDS/dispatch/task-001.brief.md. The spec is .*. Write your report to $FDS/dispatch/task-001.report.md.$" "$FDS/dispatch/task-001.implementer.md")"
+check "run implementer: the CLI received the profile's launch line" "exec --json" "$(sed -n '1,2p' "$WORK/args" | paste -sd' ')"
+check "run implementer: the log lands under the feature's dispatch dir" "$FDS/dispatch/sessions" "$(dirname "$(jq -r '.stdout' <<<"$out")")"
+check "run implementer: the session ran in the task worktree" "1" "$(grep -c "^cwd=$(cd "$WT1" && pwd -P)$" "$WORK/args" 2>/dev/null || echo 0)"
+check "run: an unknown role is a bad invocation" "2" "$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role judge >/dev/null 2>&1; echo $?)"
+check "run reviewer: refused before package" "2" "$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role reviewer >/dev/null 2>&1; echo $?)"
+printf 'print(2)\n' > "$WT1/a.py"; git -C "$WT1" commit -qam "task-001"
+sess bash "$STEP" package --feature-dir "$FDS" --task task-001 --head "$(git -C "$WT1" rev-parse HEAD)" >/dev/null
+ec=0; out="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role reviewer 2>&1)" || ec=$?
+check "run reviewer: the session completed" "completed" "$(jq -r '.status' <<<"$out")"
+check "run reviewer: the prompt names the package and the verdict path" "1" "$(grep -c '^Review the package in .* against the spec .*\. Write your verdict to .*task-001.report.md.$' "$FDS/dispatch/task-001.reviewer.md")"
+check "run: a failing session is exit 1 with status failed" "failed:1" "$(printf '#!/usr/bin/env bash\nexit 3\n' > "$SBIN/codex"; ec=0; o="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer 2>/dev/null)" || ec=$?; echo "$(jq -r '.status' <<<"$o"):$ec")"
+check "run: on another rung the answer is in-harness" "in-harness" "$(jq '.rung.rung = "subagent"' "$FDS/dispatch/prepare.json" > "$WORK/p.json" && mv "$WORK/p.json" "$FDS/dispatch/prepare.json"; sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role implementer | jq -r '.action')"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

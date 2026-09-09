@@ -15,7 +15,7 @@ This file is for an agent or a person who was pointed at this repository and nee
 - Interactive, any harness: `/loop-spec:cycle <description>`; a bare `/loop-spec:cycle` resumes an incomplete feature.
 - Headless or from an SDK: `/loop-spec:auto <description>` routes to micro, debug, compact, or the full cycle and never asks a human ([skills/auto/SKILL.md](skills/auto/SKILL.md)).
 - Question-free full cycle: `/loop-spec:cycle autonomous <description>` ([skills/shared/autonomous-mode.md](skills/shared/autonomous-mode.md)).
-- One phase per process: set `LOOP_SPEC_PHASE_HANDOFF=1` (or the `supervised` profile preset); the run returns a paused `phase-handoff` result after each durable phase and a fresh invocation of `/loop-spec:cycle autonomous` continues it.
+- One phase per process is the only mode: the run returns a paused `phase-handoff` result after each durable phase and a fresh invocation of `/loop-spec:cycle autonomous` continues it (the graph's SPEC to ONESHOT edge is the one same-session exception).
 - Read the outcome from `.loop-spec/last-result.json` or the `LOOP_SPEC_RESULT {...}` line: judge `outcome` (`delivered`, `no-change-needed`, `completed-with-gaps`, `failed`, ...) and `converged`, not `status` alone ([docs/loop-spec/agent-output-contract.md](docs/loop-spec/agent-output-contract.md)).
 
 ## Embed it (supervisors on the Claude Agent SDK or Google ADK)

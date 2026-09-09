@@ -70,7 +70,7 @@ case "$cmd" in
     # and leaves the top-level keys null by design (feature-state-schema.md).
     # A flat feat[key] is None check treats that as a missing read, so the
     # shipped execute node (reads: [..., "branch"]) always failed the gate.
-    unsatisfied="$(python3 - "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" --all)" "$reads" <<'PY'
+    unsatisfied="$(python3 - "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" --all --drop-strays)" "$reads" <<'PY'
 import json, sys
 
 # The only keys the schema relocates. Every other key stays top-level in both

@@ -206,6 +206,15 @@ Done when: the eval driver runs a full cycle with `--phase-fresh` removed, becau
 is the only mode, and the `fastapi-items` task delivers at less than half the 24.39 USD
 recorded in the 9 September findings file on the PR 94 branch.
 
+As landed (6.4.0 and the follow-up): the driver is `lib/graph/driver.py`, and
+`lib/cycle-driver.sh` survives as a thirteen-line launcher that owns only the path.
+About forty callers keep one entry point, and the plan's "delete" is answered by the
+shim, not the file. `skills/cycle/SKILL.md` keeps its start, initialize, and resume
+steps because each needs a harness tool the driver cannot call: `AskUserQuestion` for
+the decisions `begin` hands back, `EnterWorktree` and `ExitWorktree` for the checkout.
+Everything mechanical in those steps is one `begin` call. The one exception to one
+phase per invocation is the graph's `sameSession` edge (SPEC to ONESHOT).
+
 ### WP5: headless session layer
 
 - Vendor `src/bmad_loop/adapters/` and `src/bmad_loop/plugins/` from bmad-loop
@@ -224,6 +233,17 @@ recorded in the 9 September findings file on the PR 94 branch.
 Done when: `LOOP_SPEC_NON_INTERACTIVE=1` runs of both fixtures deliver through the
 session rung on Claude Code and Codex, and `tests/` pins the rung selection.
 
+As landed, WP5 is partial. The adapters were not vendored: their import closure
+reaches bmad-loop's run and verify modules, which the plan excludes, so
+`extensions/sessions/session_run.py` is 216 lines written from scratch, with the
+profile shape and the fault patterns taken under the MIT notice in
+`extensions/sessions/NOTICE`. There is no hook relay; the process exit is the signal.
+The driver launches the session rung (`cycle-driver.sh task run`), and
+`tests/lib/execute-rung.test.sh` pins the selection. The live done condition, both
+fixtures delivered through the rung on Claude Code and Codex, is unverified: the
+9 September fastapi run on dda2cca inherited the lead's launch stamp and never took the
+rung (fixed in 6.4.0), and no run since has been spent on it.
+
 ### WP6: phase content from BMad
 
 - Spec template: replace the autonomous SPEC body with BMad's shape, Intent inside a
@@ -241,8 +261,11 @@ Done when: `lib/artifact-lint.sh` accepts both spec shapes and a fixture of each
 
 ## Non-goals
 
-- No fork of BMad Method or bmad-loop, and no BMad names anywhere in this tree. The
-  trademark terms allow "compatible with" and forbid derived names.
+- No fork of BMad Method or bmad-loop, and no BMad names in this tree's code, skills,
+  or product surface. The trademark terms allow "compatible with" and forbid derived
+  names. An attribution file (`extensions/sessions/NOTICE`) and the evidence documents
+  under `docs/loop-spec/` name BMad, because a license notice and a measurement must
+  name their source.
 - No tracking of BMad releases. The vendored session layer is pinned at `c47333d` and
   updated by hand when a profile for a new CLI is worth it.
 - No new stored map, index, or codebase document. The rule in `CLAUDE.md` stands.

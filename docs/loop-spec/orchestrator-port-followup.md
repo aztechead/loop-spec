@@ -291,3 +291,29 @@ bash tests/run-all.sh
 ```
 
 226 suites passed, 0 failed.
+
+## Landing record
+
+For the reviewer of PR 94. What each item above became on the branch, in the order the
+items were worked, with the decisions the plan did not anticipate taken by
+`docs/loop-spec/orchestrator-port-principles.md`. Offline evidence is
+`bash tests/run-all.sh`; the live done conditions (a haiku run per fixture) were not
+spent in this session, per `CLAUDE.md`, and stay open below.
+
+| item | state | evidence |
+|---|---|---|
+| F1 | done | `hooks/team/cycle-stamp-guard.sh` denies the stop on an unconsumed cycle stamp; `lib/harness.sh attended` gates `micro-inject.sh`; `evals/eval_run.py` records `cycle_begun` and reports "no cycle". Live `wc-json` run: open. |
+| F2 | done | `"sameSession": true` on the `human.after-spec` to `oneshot` edge; `lib/graph/phases.sh same-session`; the driver answers `NEXT`, the guard allows. Pinned in `tests/lib/graph-run.test.sh`, `graph-phases`, `cycle-driver`, and the guard test. Live `slugify-bug` round count: open. |
+| F3 | done | `lib/context-load.sh`; `tests/lib/context-load.test.sh` holds the oneshot path (the spec skill's lite section plus the oneshot skill, with cites) under 600 lines, today 453, and the spec skill body under 260. The four directive injections stand down when headless. The lite path is "1a. The oneshot candidate" in `skills/spec/SKILL.md`. Cost at or under 0.25 USD: open. |
+| F4 | done | `cycle-driver.sh spec skeleton` and the oneshot node's ingress `skeletons` (VERIFICATION.md) write the shapes; the gate drops an untouched non-test footprint file with a note; `tests/lib/oneshot-exit-gate.test.sh` runs the filled skeleton and the fixture through both lints. Zero format REDO rounds on a live run: open. |
+| F5 | done | `cycle-driver.sh spec write`; `hooks/restrict-agent-paths.sh` denies every caller, the main thread included; `tests/lib/phase-exit.test.sh` runs the SPEC exit from a worktree feature with a stale parent copy. |
+| F6 | done | `lib/oneshot-exit-gate.sh` scans and lints on `route: full`, flags an unreadable frontmatter, diffs per repo in workspace mode, and escalates a file outside the footprint. Four cases in its test. |
+| rule 1 | applied | `lib/footprint.sh` is the scout's ledger; the candidate probe and the skeleton read it and take no file argument. |
+| rule 4 | applied | The lite path has no score and no transcript; the template keeps the two keys the probe reads. |
+| rules 9, 12 | applied | The cycle skill's text about the same-session edge is deleted; the lite path's mechanical steps are one driver call; the session rung's launch is `cycle-driver.sh task run`. |
+| F7 | done | Six raw readers migrated; the coverage pin is a two-pass scan over `lib/`, `hooks/`, and `skills/`; `feature_read.py --all` fails on a stray key; the rewind rule is pinned. |
+| F8 | partial | The driver launches the session rung (`task run`, implementer and reviewer); the guard allow-lists launchers by path token; the plan records the vendoring decision and marks WP5 partial. The live `LOOP_SPEC_NON_INTERACTIVE=1` runs stay unverified. |
+| F9 | done differently | `tests/graph-phase-subsets.test.sh` reads every literal subset back against the graph; `tests/lib/graph-phases.test.sh` runs the validator on its copy. The driver is not stepped through the stub phase: the validator refuses a node whose body is not in the tree, and a test must not write into the shipped `skills/`. |
+| F10 | done | The `still FAIL` literal is pinned in both files; `lib/review-triage-lint.sh` reads every bullet under `## Code review` and requires a path or a known extension; the state-ref commit count on a driver-driven branch was already pinned (`tests/lib/cycle-driver.test.sh`, "carries no state commit"). |
+| F11 | done | `llms.txt` and `docs/loop-spec/configuration.md` no longer name the removed variable; the marker is `LOOP_SPEC_HANDOFF`; the plan's WP4 records the shim and the launcher's reason, WP5 the vendoring decision, and the non-goal allows attribution files. |
+| F12 | open | `lib/checkpoint-pr.sh` still pushes `refs/loop-spec/state/<slug>` with the checkpoint. The maintainer decides; nothing here changed it. |

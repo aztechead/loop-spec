@@ -74,7 +74,7 @@ case "${1:-}" in
       exit 1
     }
     fj="$feature_dir/feature.json"
-    bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all >/dev/null 2>&1 || {
+    bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays >/dev/null 2>&1 || {
       echo "greenfield-bootstrap: feature.json is not valid JSON: $fj" >&2
       exit 1
     }

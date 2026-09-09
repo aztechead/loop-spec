@@ -132,7 +132,7 @@ scan_feature_root() {
     fslug="$(basename "$(dirname "$fpath")")"
     parse_source="feature.json"
     doc=""
-    if ! doc="$(bash "$SCRIPT_DIR/feature-read.sh" "$fpath" --all 2>/dev/null)"; then
+    if ! doc="$(bash "$SCRIPT_DIR/feature-read.sh" "$fpath" --all --drop-strays 2>/dev/null)"; then
       if [[ -f "$fpath.bak" ]] && doc="$(jq -c . "$fpath.bak" 2>/dev/null)"; then
         parse_source="feature.json.bak"
         warnings+=("feature ${fslug}: feature.json unparseable; recovered from .bak")

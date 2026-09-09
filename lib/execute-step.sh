@@ -27,6 +27,18 @@
 #       HEAD advanced. Either way a published task is marked done, task_end is emitted,
 #       and task-001 of a greenfield feature runs the command backfill.
 #       Prints {published, reason, detail, sha, blocked}.
+#   execute-step.sh run       --feature-dir DIR --task ID --role implementer|reviewer
+#       The session rung's launch, in the driver and never in the lead
+#       (docs/loop-spec/orchestrator-port-principles.md, rule 12). On rung=session it
+#       writes the prompt, one line and the paths (the brief and the report for the
+#       implementer; the package, the spec, and the report for the reviewer, after
+#       `package`), runs extensions/sessions/session_run.py with the harness's profile
+#       in the task worktree (the feature root for the reviewer), and prints the
+#       runner's JSON line plus {role, prompt}. An env-fault or timeout is retried once
+#       inside; a second one is the answer. On any other rung it prints
+#       {action:"in-harness", rung} and the lead dispatches through the harness tool.
+#       Exit 0 completed or in-harness; 1 the session failed (the reason is in the
+#       JSON); 2 bad invocation, no profile, or no CLI.
 #
 # Per-task state lives in DIR/dispatch/<task>.json (base SHA, worktree, attempt, blocked).
 #
@@ -39,15 +51,16 @@ lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
 usage() { sed -n '2,40p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 cmd="${1:-}"; shift || true
-feature_dir="" task_id="" attempt=0 head_sha="" verdict=""
+feature_dir="" task_id="" attempt=0 head_sha="" verdict="" role="implementer"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --feature-dir) feature_dir="${2:-}" ;; --task) task_id="${2:-}" ;; --attempt) attempt="${2:-0}" ;;
-    --head) head_sha="${2:-}" ;; --verdict) verdict="${2:-}" ;; *) usage ;;
+    --head) head_sha="${2:-}" ;; --verdict) verdict="${2:-}" ;; --role) role="${2:-}" ;; *) usage ;;
   esac
   shift 2
 done
-case "$cmd" in dispatch|package|verdict|integrate) ;; *) usage ;; esac
+case "$cmd" in dispatch|package|verdict|integrate|run) ;; *) usage ;; esac
+case "$role" in implementer|reviewer) ;; *) usage ;; esac
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" && -n "$task_id" ]] || usage
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
@@ -93,7 +106,7 @@ case "$cmd" in
       [[ -n "$tier" ]] && model="$(lib model-tier model "$tier" 2>/dev/null || true)"
     fi
     [[ -n "$model" && "$model" != "inherit" ]] || model="$(fget '.models.implementer // "inherit"')"
-    sset taskBaseSha "\"$base_sha\""; sset worktree "\"$worktree\""; sset branch "\"$branch\""; sset attempt "$attempt"; sset inPlace "$in_place"
+    sset taskBaseSha "\"$base_sha\""; sset worktree "\"$worktree\""; sset branch "\"$branch\""; sset attempt "$attempt"; sset inPlace "$in_place"; sset model "\"$model\""
     emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"implementer",model:$m,rung:$r}')"
     emit task_start "$(jq -cn --argjson i "$index" --argjson t "$total" --arg id "$task_id" --arg s "$(jq -r '.subject' <<<"$task_json")" '{index:$i,total:$t,id:$id,subject:$s}')"
     jq -cn --argjson task "$task_json" --arg root "$root" --arg wt "$worktree" --arg br "$branch" --arg base "$base_sha" \
@@ -111,9 +124,44 @@ case "$cmd" in
     pkg="$(lib dispatch-files package --repo "$repo" --base "$base_sha" --head "$head_sha")" || { echo "execute-step: package failed" >&2; exit 2; }
     model="$(fget '.models.specComplianceReviewer // "inherit"')"
     emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"spec-compliance-reviewer",model:$m,rung:$r}')"
+    sset package "\"$pkg\""; sset reviewerModel "\"$model\""
     jq -cn --arg p "$pkg" --arg m "$model" --arg base "$base_sha" --arg head "$head_sha" --arg brief "$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id" 2>/dev/null || true)" \
       --arg report "$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")" \
       '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report}'
+    ;;
+  run)
+    rung="$(pget '.rung.rung')"
+    if [[ "$rung" != "session" ]]; then
+      jq -cn --arg r "$rung" '{action:"in-harness", rung:$r, reason:"this rung dispatches through the harness tool (skills/shared/execute-rungs.md)"}'
+      exit 0
+    fi
+    report="$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")"
+    spec="$(fget '.artifacts.spec // ""')"; [[ "$spec" == /* || -z "$spec" ]] || spec="$root/$spec"
+    prompt="$feature_dir/dispatch/$task_id.$role.md"
+    # A dispatch is a path and one line (orchestrator-port-principles.md, rule 5).
+    if [[ "$role" == "implementer" ]]; then
+      brief="$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id")" || { echo "execute-step: brief failed" >&2; exit 2; }
+      cwd="$(sget '.worktree')"; [[ -n "$cwd" && "$cwd" != "null" ]] || cwd="$root"
+      model="$(sget '.model')"; [[ -n "$model" && "$model" != "null" ]] || model="$(fget '.models.implementer // "inherit"')"
+      printf 'Implement the task in %s. The spec is %s. Write your report to %s.\n' "$brief" "$spec" "$report" > "$prompt"
+    else
+      pkg="$(sget '.package')"
+      [[ -n "$pkg" && "$pkg" != "null" ]] || { echo "execute-step: no review package for $task_id; run package first" >&2; exit 2; }
+      cwd="$root"
+      model="$(sget '.reviewerModel')"; [[ -n "$model" && "$model" != "null" ]] || model="$(fget '.models.specComplianceReviewer // "inherit"')"
+      printf 'Review the package in %s against the spec %s. Write your verdict to %s.\n' "$pkg" "$spec" "$report" > "$prompt"
+    fi
+    mkdir -p "$feature_dir/dispatch/sessions"
+    launch() {
+      python3 "$SCRIPT_DIR/../extensions/sessions/session_run.py" --profile "$(lib harness cli)" --cwd "$cwd" \
+        --prompt-file "$prompt" --model "$model" --seed-from "$root" --log-dir "$feature_dir/dispatch/sessions"
+    }
+    rc=0; line="$(launch)" || rc=$?
+    # A provider or transport fault is not an attempt: once more, then it is the answer.
+    if [[ "$rc" -eq 4 || "$rc" -eq 5 ]]; then rc=0; line="$(launch)" || rc=$?; fi
+    [[ "$rc" -le 1 || "$rc" -ge 4 ]] || { echo "execute-step: the session runner refused the launch (exit $rc): $line" >&2; exit 2; }
+    jq -c --arg role "$role" --arg prompt "$prompt" '. + {role:$role, prompt:$prompt}' <<<"${line:-{\}}"
+    exit "$(( rc == 0 ? 0 : 1 ))"
     ;;
   verdict)
     case "$verdict" in pass|rework|block) ;; *) usage ;; esac

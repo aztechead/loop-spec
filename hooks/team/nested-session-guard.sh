@@ -40,7 +40,10 @@ import shlex
 import sys
 
 LAUNCH = re.compile(r"(?:^|[\s;&|(`])(claude\s+(?:-p|--print)\b|codex\s+exec\b|opencode\s+run\b|adk\s+run\b)")
-LAUNCHERS = ("session_run.py", "loop-runner/scripts/", "eval_run.py")
+# The bundled launchers, matched as the path token the command runs, never as a
+# substring anywhere in the line: a comment naming session_run.py next to a `claude -p`
+# was a pass (orchestrator-port-followup.md, F8).
+LAUNCHERS = re.compile(r"(?:^|[\s\"\x27=])(?:[\w.~-]*/)*(?:extensions/sessions/session_run\.py|skills/loop-runner/scripts/[\w.-]+\.py|evals/eval_run\.py)(?=$|[\s\"\x27])")
 
 try:
     payload = json.load(sys.stdin)
@@ -51,7 +54,8 @@ if str(payload.get("tool_name") or "") != "Bash":
     print("allow")
     raise SystemExit(0)
 command = str((payload.get("tool_input") or {}).get("command") or "")
-if any(name in command for name in LAUNCHERS):
+# A launcher path in a comment is not a launcher the command runs.
+if LAUNCHERS.search(re.sub(r"(?:^|\s)#.*$", "", command, flags=re.M)):
     print("allow")
     raise SystemExit(0)
 
@@ -74,7 +78,7 @@ if not found:
                 text = fh.read(64 * 1024).decode("utf-8", errors="replace")
         except OSError:
             continue
-        if any(name in text for name in LAUNCHERS):
+        if LAUNCHERS.search(" " + path):
             continue
         found = LAUNCH.search(text)
         if found:
@@ -91,9 +95,10 @@ case "$VERDICT" in
     IFS=$'\t' read -r _ launch where <<<"$VERDICT"
     cat >&2 <<MSG
 loop-spec: a phase lead never launches a nested harness session ($launch in $where).
-After HANDOFF, print the LOOP_SPEC_PHASE_HANDOFF marker and stop; the caller re-invokes
-/loop-spec:cycle. EXECUTE's session rung spawns through extensions/sessions/session_run.py
-and the loop-fleet rung through the loop-runner scripts (skills/cycle/SKILL.md, HANDOFF).
+After HANDOFF, print the LOOP_SPEC_HANDOFF marker and stop; the caller re-invokes
+/loop-spec:cycle. EXECUTE's session rung is launched by the driver
+(cycle-driver.sh task run, through extensions/sessions/session_run.py) and the
+loop-fleet rung through the loop-runner scripts (skills/cycle/SKILL.md, HANDOFF).
 MSG
     exit 2
     ;;

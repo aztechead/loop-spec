@@ -126,7 +126,7 @@ Act on the first line of `ans`, then stop.
   `next --returned-from <p>` again. Phase skills never run the exit themselves.
 - `HANDOFF next=<p> model=<m>` or `REWIND next=<p>` — the phase is closed and the next
   one is ready in durable state. Print
-  `LOOP_SPEC_PHASE_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and stop. The user
+  `LOOP_SPEC_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and stop. The user
   or the supervisor re-invokes `/loop-spec:cycle`, and that invocation enters `<p>`
   with `lib/phase-entry.sh <p>` as its whole ingress. Do not invoke `Skill(loop-spec:<p>)`
   from here: `hooks/team/phase-handoff-guard.sh` denies a second phase in one

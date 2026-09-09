@@ -34,6 +34,12 @@ check "unreadable graph exits 2" "2" "$(bash "$LIB" list --graph "$WORK/none.jso
 jq '.nodes += [{"id":"triage","label":"Triage the report","kind":"agent","reads":["slug"],"writes":["artifacts","currentPhase"],"effort":"system1","body":"skills/triage/SKILL.md"}]' \
   "$ROOT/graph/cycle.graph.json" > "$WORK/graph.json"
 check "a graph copy with a new phase lists it" "1" "$(bash "$LIB" list --graph "$WORK/graph.json" | grep -cx triage)"
+# The validator runs on the copy and names exactly what the stub lacks: its body file
+# and the edge that would reach it. Nothing else about the copy is a finding.
+vout="$(bash "$ROOT/lib/graph/validate.sh" "$WORK/graph.json" 2>&1)"; vrc=$?
+check "validate.py runs on the copy and flags it" "1" "$vrc"
+check "validate.py names the stub's missing body" "1" "$(grep -c 'skills/triage/SKILL.md' <<<"$vout" | awk '{print ($1 > 0)}')"
+check "validate.py names the unreachable node" "1" "$(grep -ci 'triage.*reachab\|reachab.*triage' <<<"$vout" | awk '{print ($1 > 0)}')"
 check "LOOP_SPEC_GRAPH selects the copy for every caller" "1" "$(LOOP_SPEC_GRAPH="$WORK/graph.json" bash "$LIB" list | grep -cx triage)"
 check "feature-init validates the new phase from the copy" "0" \
   "$(LOOP_SPEC_GRAPH="$WORK/graph.json" bash "$ROOT/lib/feature-init.sh" phase-model triage >/dev/null 2>&1; echo $?)"

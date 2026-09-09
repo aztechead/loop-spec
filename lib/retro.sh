@@ -129,7 +129,7 @@ _collect_local() {
       local slug fstate rj events
       slug="$(basename "$fdir")"
       fstate="{}"; rj="null"; events="[]"
-      [[ -f "$fdir/feature.json" ]] && fstate="$(bash "$LIB_DIR/feature-read.sh" "$fdir" --all 2>/dev/null || echo '{}')"
+      [[ -f "$fdir/feature.json" ]] && fstate="$(bash "$LIB_DIR/feature-read.sh" "$fdir" --all || echo '{}')"
       [[ -f "$fdir/result.json" ]] && rj="$(cat "$fdir/result.json" 2>/dev/null || echo 'null')"
       jq -e . >/dev/null 2>&1 <<<"$rj" || rj="null"
       if [[ -f "$fdir/events.jsonl" ]]; then

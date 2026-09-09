@@ -433,7 +433,7 @@ delivery="$(jq -cn --arg status "$status" --arg attempted "$attempted_at" \
 
 remediations="[]"
 if [[ "$next_phase" == "execute" ]]; then
-  remediations="$(jq -cn --argjson targets "$targets" --argjson feature "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all)" '
+  remediations="$(jq -cn --argjson targets "$targets" --argjson feature "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays)" '
     def test_command($name):
       if $feature.workspace == null then ($feature.commands.test // "")
       else ([ $feature.workspace.repos[] | select(.name == $name) | (.commands.test // "") ][0] // "")

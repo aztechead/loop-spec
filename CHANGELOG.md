@@ -4,6 +4,99 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.5.0] - 2026-09-09
+
+The orchestrator port's follow-up (`docs/loop-spec/orchestrator-port-followup.md`,
+F1 to F11) and the rules behind it (`docs/loop-spec/orchestrator-port-principles.md`).
+The landing record at the end of the follow-up says what each item became.
+
+### Before you update
+
+- **The micro directive is injected only when a person is proven present.**
+  `lib/harness.sh attended` answers true for the Claude Code `cli` stamp, for opencode,
+  ADK, and Codex sessions with no one-shot assertion, and for
+  `LOOP_SPEC_EXECUTION_PROFILE=interactive`; a headless or unstamped launch (a `claude
+  -p` run, Claude Code on the web or in the desktop app) gets nothing. `ENABLED=1` in
+  `.loop-spec/micro.conf` restores it on an unstamped launch, never on a headless one.
+  The grill, simplicity, human-code, and discipline directives stand down only when the
+  launch is proven headless.
+- **A `/loop-spec:cycle` session that never calls the driver cannot stop.**
+  `hooks/team/cycle-stamp-guard.sh` (Stop) denies while the prompt stamp
+  `cycle-driver.sh start` consumes is still present and no newer
+  `.loop-spec/last-result.json` exists. `LOOP_SPEC_CYCLE_STAMP_GUARD=0` disables it.
+- **SPEC to ONESHOT is one session.** The graph's `human.after-spec` to `oneshot` edge
+  carries `"sameSession": true`; `cycle-driver.sh next --returned-from spec` answers
+  `NEXT phase=oneshot` instead of `HANDOFF`, and `hooks/team/phase-handoff-guard.sh`
+  allows the call. A supervisor counting rounds sees one round for a oneshot fix.
+- **The footprint is the scout's ledger.** `lib/footprint.sh cite <path>:<line>`
+  (with `--read-only`) writes `<featureDir>/footprint.jsonl`; `lib/graph/probes/oneshot.sh
+  --candidate` and `cycle-driver.sh spec skeleton` read it and take no file argument.
+  The oneshot spec template keeps only `gate_passed` and `unresolved_dimensions` in
+  its frontmatter.
+- **`lib/feature-read.sh --all` fails on a key the schema does not declare**, naming
+  it. `--drop-strays` projects without them; the driver passes it in its one
+  stray-dropping rewrite. A dashboard that called `--all` on a feature with legacy keys
+  now sees exit 1 until the driver's next phase activation drops them.
+- **The oneshot exit gate escalates on its own.** A changed file outside the footprint
+  writes `route: full` into SPEC.md with the file named and routes the run to DISCUSS;
+  an untouched non-test footprint file is dropped from the footprint with a note; a
+  test module named and untouched stays a flag. `route: full` still runs the scans
+  and the verification lints.
+- **The handoff marker is `LOOP_SPEC_HANDOFF`.** `LOOP_SPEC_PHASE_HANDOFF` was the
+  removed variable's name; the marker the cycle skill prints and the nested-session
+  guard names is renamed. A supervisor grepping the old marker updates its pattern.
+- **`lib/review-triage-lint.sh` reads every bullet under `## Code review`**, under
+  any subheading, and a location needs a path separator or a known source extension
+  (`Makefile`, `Dockerfile`, and the like count). A finding parked under
+  `### Resolution` is linted now.
+
+### Added
+
+- `lib/context-load.sh sum|cites`: the lines a phase skill makes the lead read, with
+  `path.md#Heading` counting one section; `tests/lib/context-load.test.sh` holds the
+  oneshot path under 600 lines and the spec skill body under 260.
+- `skills/spec/SKILL.md` "1a. The oneshot candidate": the lite path, one driver call,
+  no score, no transcript, intent gaps asked once.
+- `cycle-driver.sh spec skeleton` (the candidate's route and SPEC.md skeleton), `spec
+  write --file` (the one target a draft lands at), and `task run --role
+  implementer|reviewer` (the session rung's launch, in the driver).
+- A phase node's ingress may list `skeletons` ({path, template}); `phase-begin` writes
+  each absent one. The oneshot node lists VERIFICATION.md with one grounding row and
+  one acceptance row per Good Enough criterion.
+- `lib/graph/phases.sh same-session <from> <to>` and the edge key `sameSession` in
+  `graph/schema.json`.
+- `lib/harness.sh attended` and `attended-reason`.
+- `evals/eval_run.py` records `cycle_begun`; the summary reports a run with no
+  feature.json as "no cycle".
+- `tests/graph-phase-subsets.test.sh` reads every literal phase subset in the driver,
+  `lib/phase-mode.sh`, and the placeholder guard back against the graph.
+
+### Changed
+
+- `hooks/restrict-agent-paths.sh` applies the feature-checkout deny to every caller,
+  the main thread included: a feature artifact lands in the checkout that holds its
+  feature.json.
+- `hooks/team/nested-session-guard.sh` allow-lists the bundled launchers by path
+  token, never by substring, and scans a script that merely mentions one.
+- `skills/oneshot/SKILL.md` cites the compact directives and the telemetry section by
+  heading, not the whole contracts; the driver's skeleton is what it fills.
+- `skills/shared/execute-rungs.md` describes the session rung as the driver's launch.
+- `lib/pause-snapshot.sh`, `lib/ralph-remediation.sh`, `hooks/team/task-completed.sh`,
+  `lib/cycle-reconcile.sh`, `skills/pause/SKILL.md`, and
+  `skills/shared/execute-loop-fleet.md` read feature.json through the typed reader;
+  `tests/feature-read-coverage.test.sh` is a two-pass scan with a reasoned allow-list.
+- `docs/loop-spec/orchestrator-port-plan.md` records the WP4 shim and the cycle
+  skill's launcher steps, the WP5 vendoring decision and its partial state, and the
+  attribution exception to the BMad non-goal.
+
+### Fixed
+
+- The oneshot exit gate passed on a frontmatter the probe could not read, skipped the
+  footprint check in workspace mode, and never checked the diff against the footprint
+  in the other direction.
+- `llms.txt` and `docs/loop-spec/configuration.md` told the reader to set a variable
+  that no longer exists.
+
 ## [6.4.0] - 2026-09-09
 
 ### Before you update

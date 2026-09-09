@@ -6,7 +6,7 @@
 # next reader could not check. A head-to-head run wrote a false off-by-one to its
 # backlog because nobody had to say where the line was or why the finding was wrong
 # (docs/loop-spec/orchestrator-port-plan.md, WP6). The `verify` and `oneshot` exits run
-# this over the `## Code review` findings: one bullet per finding, shaped
+# this over every bullet under `## Code review`, whatever subheading: one bullet per finding, shaped
 #   - <file>:<line> — <claim> | verdict: true — <commit, backlog id, or fix>
 #   - <file>:<line> — <claim> | verdict: false — <disproof: what shows the finding wrong>
 # A `false` with no disproof sentence, a finding with no `file:line`, and a finding with
@@ -28,25 +28,23 @@ import sys
 path = sys.argv[1]
 lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
 SEVERITY = re.compile(r"^#### (Critical|Important|Minor|Performance)\b")
-LOCATION = re.compile(r"(?<![\w/.-])((?:[\w.-]+/)*[\w.-]+):(\d+)\b")
+# A location is a path (a separator, or a known source extension) and a line; a bare
+# `word:12` (a heading id, a time) is not one (orchestrator-port-followup.md, F10).
+LOCATION = re.compile(r"(?<![\w/.-])((?:[\w.-]+/)+[\w.-]+|[\w.-]+\.(?:py|pyi|js|jsx|ts|tsx|mjs|cjs|sh|bash|go|rs|java|kt|rb|php|cs|c|h|cc|cpp|hpp|swift|m|sql|md|json|jsonl|yaml|yml|toml|ini|cfg|html|css|scss|vue|svelte|tf|proto|graphql)|Makefile|Dockerfile|Justfile|Rakefile|Gemfile|Procfile|LICENSE|NOTICE|README|CHANGELOG):(\d+)\b")
 VERDICT = re.compile(r"\|\s*verdict:\s*(true|false)\b\s*(?:[—:-]\s*)?(.*)$")
 SHAPE = ("expected `- <file>:<line> — <claim> | verdict: true — <commit, backlog id, or fix>` "
          "or `| verdict: false — <disproof>`")
 
 flags = []
-in_review = in_findings = False
+in_review = False
 for no, line in enumerate(lines, 1):
     s = line.strip()
     if s.startswith("## "):
         in_review = s == "## Code review"
-        in_findings = False
         continue
-    if not in_review:
-        continue
-    if s.startswith("### "):
-        in_findings = s.startswith("### Findings")
-        continue
-    if not in_findings or SEVERITY.match(s) or not line.startswith("- "):
+    # Every bullet under `## Code review` is a finding, whatever subheading it sits
+    # under: a finding parked under `### Resolution` was a finding the lint never read.
+    if not in_review or s.startswith("#") or not line.startswith("- "):
         continue
     text = s[2:].strip()
     if text.lower() in ("none", "none.", "n/a"):

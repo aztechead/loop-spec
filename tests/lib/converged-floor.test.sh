@@ -118,6 +118,9 @@ sed 's/| PASS (12 passed) |/| FAIL (1 failed) |/' "$tmp/V-wide.md" > "$tmp/V-wid
 out="$(bash "$LIB" "$tmp/SPEC.md" "$tmp/V-wide-fail.md" 2>/dev/null)"; rc=$?
 check "FAIL prefix in the Result column vetoes" "$([[ $rc -eq 1 ]] && echo 1 || echo 0)"
 check "FAIL veto names the row key" "$(grep -q 'FLOOR acceptance table row still FAIL: GE-001' <<<"$out" && echo 1 || echo 0)"
+# lib/iterate-judged.sh routes a floor veto to VERIFY or EXECUTE by this literal; the
+# two files share it and neither may drift alone (orchestrator-port-followup.md, F10).
+check "the judge reads the same literal the floor emits" "$([[ "$(grep -c "still FAIL" "$REPO_ROOT/lib/iterate-judged.sh")" -ge 1 && "$(grep -c "row still FAIL" "$REPO_ROOT/lib/converged-floor.sh")" -ge 1 ]] && echo 1 || echo 0)"
 printf '| GE-002 | dup | `run` | PASS |\n' >> "$tmp/V-wide.md"
 out="$(bash "$LIB" "$tmp/SPEC.md" "$tmp/V-wide.md" 2>/dev/null)"
 check "duplicate rows for one criterion veto with the count" "$(grep -q 'FLOOR GE-002 acceptance result is duplicate (2 acceptance rows' <<<"$out" && echo 1 || echo 0)"

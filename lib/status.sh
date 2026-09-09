@@ -64,7 +64,7 @@ _collect() {
       [[ -n "$SLUG" && "$slug" != "$SLUG" ]] && continue
 
       local fstate="{}" dj="null" rj="null" last_event="null" events="[]"
-      [[ -f "$fdir/feature.json" ]] && fstate="$(bash "$SCRIPT_DIR/feature-read.sh" "$fdir" --all 2>/dev/null || echo '{}')"
+      [[ -f "$fdir/feature.json" ]] && fstate="$(bash "$SCRIPT_DIR/feature-read.sh" "$fdir" --all || echo '{}')"
       [[ -f "$fdir/delivery.json" ]] && dj="$(cat "$fdir/delivery.json" 2>/dev/null || echo 'null')"
       jq -e . >/dev/null 2>&1 <<<"$dj" || dj="null"
       [[ -f "$fdir/result.json" ]] && rj="$(cat "$fdir/result.json" 2>/dev/null || echo 'null')"

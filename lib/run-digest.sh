@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 fstate="{}"; rj="null"; events="[]"
-[[ -f "$feature_dir/feature.json" ]] && fstate="$(bash "$DIGEST_SCRIPT_DIR/feature-read.sh" "$feature_dir" --all 2>/dev/null || echo '{}')"
+[[ -f "$feature_dir/feature.json" ]] && fstate="$(bash "$DIGEST_SCRIPT_DIR/feature-read.sh" "$feature_dir" --all || echo '{}')"
 [[ -f "$feature_dir/result.json" ]] && rj="$(cat "$feature_dir/result.json" 2>/dev/null || echo 'null')"
 jq -e . >/dev/null 2>&1 <<<"$rj" || rj="null"
 if [[ -f "$feature_dir/events.jsonl" ]]; then

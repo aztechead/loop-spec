@@ -101,6 +101,17 @@ check "the flag asks for the commit or backlog id" "1" "$(grep -c 'verdict: true
 f="$(verification '- Makefile:7 — the lint target runs nothing | verdict: true — backlog 9f8e7d6c')"
 ec=0; bash "$LINT" "$f" >/dev/null 2>&1 || ec=$?
 check "a file without an extension still counts as a location" "0" "$ec"
+# A bare word:number (a heading id, a time) is not a location; a bullet under any
+# subheading of the Code review section is a finding (orchestrator-port-followup.md, F10).
+f="$(verification '- step:12 — the lint target runs nothing | verdict: true — backlog 9f8e7d6c')"
+ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
+check "a bare word:number is not a location" "1" "$ec"
+check "the flag asks for a path" "1" "$(grep -c 'finding has no file:line' <<<"$out")"
+f="$(verification 'none')"
+sed -i 's/^### Resolution$/### Resolution\n- src\/x.py:3 — parked here without a verdict/' "$f"
+ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
+check "a finding under another subheading of Code review is linted" "1" "$ec"
+check "the flag names the verdict rule" "1" "$(grep -c 'finding has no verdict' <<<"$out")"
 
 # Bullets outside the Findings block are not findings.
 f="$(verification 'none')"

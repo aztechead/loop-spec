@@ -714,7 +714,7 @@ PY
       esac
     fi
 
-    fj_content="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all 2>/dev/null)" || {
+    fj_content="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays 2>/dev/null)" || {
       echo "cycle-result.sh: cannot read $fj" >&2
       exit 0
     }
