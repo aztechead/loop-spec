@@ -12,6 +12,7 @@
 # Exit: 0 with one `style=<value> reason=<text>` line on stdout when resolved;
 # non-zero and silent otherwise.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   echo "usage: exec-style.sh --feature-dir DIR | --answers" >&2
@@ -35,7 +36,7 @@ done
 feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || exit 1
 
-style="$(jq -r '.execStyle // empty' "$feature_json" 2>/dev/null)" || exit 1
+style="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.execStyle // empty' 2>/dev/null)" || exit 1
 case "$style" in
   auto|step|interactive|review-only)
     echo "style=${style} reason=feature.json.execStyle=${style}"

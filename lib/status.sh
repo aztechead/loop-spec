@@ -29,6 +29,7 @@
 # Unlike the writers (events.sh/cycle-result.sh) this is a USER-FACING reader:
 # it uses normal exit codes. 0 = ok (including "no features yet"), 2 = bad args.
 set -uo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ROOT=""
 JSON=0
@@ -62,9 +63,8 @@ _collect() {
       local slug; slug="$(basename "$fdir")"
       [[ -n "$SLUG" && "$slug" != "$SLUG" ]] && continue
 
-      local fj="{}" dj="null" rj="null" last_event="null" events="[]"
-      [[ -f "$fdir/feature.json" ]] && fj="$(cat "$fdir/feature.json" 2>/dev/null || echo '{}')"
-      jq -e . >/dev/null 2>&1 <<<"$fj" || fj="{}"
+      local fstate="{}" dj="null" rj="null" last_event="null" events="[]"
+      [[ -f "$fdir/feature.json" ]] && fstate="$(bash "$SCRIPT_DIR/feature-read.sh" "$fdir" --all 2>/dev/null || echo '{}')"
       [[ -f "$fdir/delivery.json" ]] && dj="$(cat "$fdir/delivery.json" 2>/dev/null || echo 'null')"
       jq -e . >/dev/null 2>&1 <<<"$dj" || dj="null"
       [[ -f "$fdir/result.json" ]] && rj="$(cat "$fdir/result.json" 2>/dev/null || echo 'null')"
@@ -79,7 +79,7 @@ _collect() {
       jq -cn \
         --arg slug "$slug" \
         --argjson now "$now" \
-        --argjson fj "$fj" \
+        --argjson fstate "$fstate" \
         --argjson dj "$dj" \
         --argjson rj "$rj" \
         --argjson last_event "$last_event" \
@@ -92,18 +92,18 @@ _collect() {
                          (($dj.nextPhase // "") == "completed" and
                           (($dj.status // "") == "ready-for-review" or
                            ($dj.status // "") == "delivered-draft"))
-                  then "completed" else ($fj.currentPhase // null) end),
+                  then "completed" else ($fstate.currentPhase // null) end),
           iterations: {
-            used: ($fj.iterate.used // 0),
-            max: ($fj.iterate.maxIterations // null)
+            used: ($fstate.iterate.used // 0),
+            max: ($fstate.iterate.maxIterations // null)
           },
-          warnings: (($fj.warnings // []) | length),
+          warnings: (($fstate.warnings // []) | length),
           resultStatus: ($rj.status // null),
           converged: (if ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged else null end),
-          prUrl: (if $intentionalNoChange then null else ($rj.prUrl // $dj.prUrl // $fj.prUrl // null) end),
-          checkpointPrUrl: (if $intentionalNoChange then null else ($rj.checkpointPrUrl // $fj.checkpointPrUrl // null) end),
-          deliveryStatus: ($rj.delivery.status // $dj.status // $fj.delivery.status // null),
-          autonomous: ($fj.autonomous // false),
+          prUrl: (if $intentionalNoChange then null else ($rj.prUrl // $dj.prUrl // $fstate.prUrl // null) end),
+          checkpointPrUrl: (if $intentionalNoChange then null else ($rj.checkpointPrUrl // $fstate.checkpointPrUrl // null) end),
+          deliveryStatus: ($rj.delivery.status // $dj.status // $fstate.delivery.status // null),
+          autonomous: ($fstate.autonomous // false),
           lastEvent: (if $last_event == null then null else {
             event: $last_event.event,
             phase: $last_event.phase,

@@ -21,22 +21,7 @@ check() {
 # Scripts still reading feature.json themselves, one per line. Delete a line when its
 # script reads through lib/feature-read.sh; never add one.
 STILL_TO_MIGRATE="$(cat <<'LIST'
-hooks/team/oracle-record.sh
-hooks/team/teammate-idle.sh
-lib/active-cycle.sh
-lib/cycle-driver.sh
-lib/events.sh
-lib/feature-scan-each.sh
-lib/graph/probes/deliver-next.sh
-lib/graph/probes/exec-style.sh
-lib/graph/probes/execute-fanout.sh
-lib/graph/probes/human-gate.sh
-lib/graph/state.sh
-lib/retro.sh
-lib/run-digest.sh
-lib/state-ref.sh
-lib/status.sh
-lib/supervisor/oracle.sh
+
 LIST
 )"
 
@@ -44,7 +29,7 @@ LIST
 # its path, to jq, cat, python, or a file open. Existence checks and path assignments
 # are not reads; the snapshot copy in phase-entry.sh is a copy, not a read.
 readers() {
-  grep -rnE '^[^#]*\b(jq|cat|python3|open|json\.load|read_text|read_bytes)\b[^#]*(feature\.json|"\$fj"|\$\{?fj\b|\$\{?feature_json\b|\$\{?FEATURE_JSON\b|\$\{?FJ\b|\$\{?fjson\b)' \
+  grep -rnE '^[^#]*\b(jq|cat[[:space:]]|python3|open|json\.load|read_text|read_bytes)[^#]*(feature\.json|"\$fj"|\$\{?fj\b|\$\{?feature_json\b|\$\{?FEATURE_JSON\b|\$\{?FJ\b|\$\{?fjson\b)' \
     lib hooks --include='*.sh' --include='*.py' --exclude='*.test.sh' \
     | grep -vE '^lib/(feature_read|feature_write)\.py:' \
     | cut -d: -f1 | sort -u

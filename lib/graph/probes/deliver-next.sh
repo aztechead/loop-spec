@@ -29,6 +29,7 @@
 # Exit: 0 with one `nextPhase=<value> reason=<text>` line on stdout when
 # resolved; non-zero and silent otherwise.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   echo "usage: deliver-next.sh --feature-dir DIR | --answers" >&2
@@ -61,7 +62,7 @@ if [[ -f "$feature_dir/delivery.json" ]]; then
   fi
 fi
 if [[ -z "$next_phase" ]]; then
-  next_phase="$(jq -r '.delivery.nextPhase // empty' "$feature_json" 2>/dev/null)" || exit 1
+  next_phase="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.delivery.nextPhase // empty' 2>/dev/null)" || exit 1
 fi
 
 case "$next_phase" in

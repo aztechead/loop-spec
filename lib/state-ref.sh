@@ -24,6 +24,7 @@
 #
 # Exit codes: 0 done; 1 no such ref or no state to snapshot; 2 bad invocation.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   echo "usage: state-ref.sh commit <feature-dir> <message> | restore <repo> <slug> [<feature-dir>] | show <repo> <slug> [<path>] | ref <slug>" >&2
@@ -40,7 +41,7 @@ case "$cmd" in
     [[ $# -eq 2 && -n "$1" && -n "$2" ]] || usage
     feature_dir="$(cd "$1" && pwd -P)"; message="$2"
     [[ -f "$feature_dir/feature.json" ]] || { echo "state-ref: no feature.json in $feature_dir" >&2; exit 1; }
-    slug="$(jq -r '.slug // ""' "$feature_dir/feature.json")"
+    slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.slug // ""')"
     [[ -n "$slug" ]] || { echo "state-ref: feature.json names no slug" >&2; exit 1; }
     root="$(git -C "$feature_dir" rev-parse --show-toplevel)"
     ref="refs/loop-spec/state/$slug"

@@ -100,7 +100,7 @@ die() { echo "cycle-driver: $*" >&2; exit "${_rc:-1}"; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
 fset() { lib feature-write set "$1" "$2" "$3"; }
-fget() { jq -r "$2" "$1/feature.json"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$1" -r --filter "$2"; }
 
 # merge_invocation_stamp DIR INV_JSON: the UserPromptSubmit hook stamps the raw
 # /loop-spec:<skill> arguments before the skill rewrites its prose; a token the rewrite
@@ -774,8 +774,11 @@ cmd_next() {
   local label effort
   label="$(jq -r '.label' <<<"$step_json")"; effort="$(jq -r '.effort' <<<"$step_json")"
   lib feature-init activate "$feature_dir" "$next" >/dev/null
-  if [[ "$(jq 'has("preset") or has("tier")' "$feature_dir/feature.json")" == "true" ]]; then
-    lib feature-write "$feature_dir" "$(jq 'del(.preset) | del(.tier)' "$feature_dir/feature.json")" >/dev/null
+  # preset and tier predate schema 7; they are strays the reader keeps out of every
+  # typed view, so the one place that drops them reads the strays on purpose.
+  if [[ "$(lib feature-read "$feature_dir" --strays | jq 'has("preset") or has("tier")')" == "true" ]]; then
+    lib feature-write "$feature_dir" "$(jq -s 'add | del(.preset) | del(.tier)' \
+      <(lib feature-read "$feature_dir" --all) <(lib feature-read "$feature_dir" --strays))" >/dev/null
   fi
   # feature_title is the immutable goal the ITERATE judge scores against; the slug is
   # the only stand-in on features that predate it.
@@ -883,9 +886,9 @@ deliver_stalled() {
   local feature_dir="$1" delivery="$feature_dir/delivery.json"
   if jq -e '.status == "no-changes" and ((.targets // []) | length > 0) and
         ((.targets // []) | all(.errorCode == "no_commits" or .outcome == "skipped-no-commits"))' "$delivery" >/dev/null 2>&1 \
-     && jq -e '.iterate.lastVerdict.converged == true and .iterate.lastVerdict.deterministic_gate_passed == true and
+     && bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '.iterate.lastVerdict.converged == true and .iterate.lastVerdict.deterministic_gate_passed == true and
         ((.warnings // []) | map(type == "string" and (startswith("iterate-budget-spent:") or startswith("iterate-terminal:"))) | any | not) and
-        ((.iterate.lastVerdict.summary // "") | test("\\S"))' "$feature_dir/feature.json" >/dev/null 2>&1; then
+        ((.iterate.lastVerdict.summary // "") | test("\\S"))' >/dev/null 2>&1; then
     lib cycle-result write "$feature_dir" --status completed --summary "$(fget "$feature_dir" '.iterate.lastVerdict.summary')" \
       --no-change-reason already-satisfied >/dev/null
     echo "DONE status=completed reason=already-satisfied"

@@ -4,6 +4,7 @@
 # Usage: active-cycle.sh has-active [root ...]
 # Exit 0: active feature found; 1: no active feature; 2: resolution failed.
 set -uo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 [[ "${1:-}" == "has-active" ]] || {
   echo "usage: active-cycle.sh has-active [root ...]" >&2
@@ -52,7 +53,7 @@ for root in "${roots[@]}"; do
   [[ -d "$features_dir" ]] || continue
   for feature_json in "$features_dir"/*/feature.json; do
     [[ -f "$feature_json" ]] || continue
-    phase="$(jq -er '.currentPhase | select(type == "string")' "$feature_json" 2>/dev/null)" || {
+    phase="$(bash "$SCRIPT_DIR/feature-read.sh" "$(dirname "$feature_json")" -er --filter '.currentPhase | select(type == "string")' 2>/dev/null)" || {
       echo "active-cycle: unreadable feature state: $feature_json" >&2
       exit 2
     }

@@ -70,14 +70,14 @@ case "$cmd" in
     # and leaves the top-level keys null by design (feature-state-schema.md).
     # A flat feat[key] is None check treats that as a missing read, so the
     # shipped execute node (reads: [..., "branch"]) always failed the gate.
-    unsatisfied="$(python3 - "$feature_dir/feature.json" "$reads" <<'PY'
+    unsatisfied="$(python3 - "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" --all)" "$reads" <<'PY'
 import json, sys
 
 # The only keys the schema relocates. Every other key stays top-level in both
 # modes, so a null one is a missing read here exactly as it is in single mode.
 RELOCATED = ("branch", "baseSha", "baseBranch")
 
-feat = json.load(open(sys.argv[1]))
+feat = json.loads(sys.argv[1])
 reads = json.loads(sys.argv[2])
 ws = feat.get("workspace")
 repos = ws.get("repos") if isinstance(ws, dict) else None

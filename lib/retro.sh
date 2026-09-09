@@ -66,6 +66,7 @@ shift || true
 
 # `auto` runs on the cycle completion path: it must NEVER abort the cycle.
 _warn0() { echo "retro.sh: $*" >&2; exit 0; }
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FEATURE_DIR=""
 if [[ "$cmd" == "auto" ]]; then
   FEATURE_DIR="${1:-}"
@@ -98,7 +99,7 @@ if [[ "$cmd" == "auto" ]]; then
   gate="${LOOP_SPEC_RETRO_AUTO_APPLY:-}"
   autonomous="false"
   if [[ -f "$FEATURE_DIR/feature.json" ]]; then
-    autonomous="$(jq -r '.autonomous // false' "$FEATURE_DIR/feature.json" 2>/dev/null || echo false)"
+    autonomous="$(bash "$LIB_DIR/feature-read.sh" "$FEATURE_DIR" -r --filter '.autonomous // false' 2>/dev/null || echo false)"
   fi
   if [[ "$gate" == "0" ]]; then
     cmd="auto-report"
@@ -111,7 +112,6 @@ fi
 
 ROOT="${ROOT:-${CLAUDE_PROJECT_DIR:-.}/.loop-spec}"
 FEATURES_DIR="$ROOT/features"
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Collect one FACTS object per run: {slug, converged, resultStatus,
 #    iterationsUsed, gaps[], gateCaps[]} — from two sources, merged:
@@ -126,11 +126,10 @@ _collect_local() {
   if [[ -d "$FEATURES_DIR" ]]; then
     for fdir in "$FEATURES_DIR"/*/; do
       [[ -d "$fdir" ]] || continue
-      local slug fj rj events
+      local slug fstate rj events
       slug="$(basename "$fdir")"
-      fj="{}"; rj="null"; events="[]"
-      [[ -f "$fdir/feature.json" ]] && fj="$(cat "$fdir/feature.json" 2>/dev/null || echo '{}')"
-      jq -e . >/dev/null 2>&1 <<<"$fj" || fj="{}"
+      fstate="{}"; rj="null"; events="[]"
+      [[ -f "$fdir/feature.json" ]] && fstate="$(bash "$LIB_DIR/feature-read.sh" "$fdir" --all 2>/dev/null || echo '{}')"
       [[ -f "$fdir/result.json" ]] && rj="$(cat "$fdir/result.json" 2>/dev/null || echo 'null')"
       jq -e . >/dev/null 2>&1 <<<"$rj" || rj="null"
       if [[ -f "$fdir/events.jsonl" ]]; then
@@ -138,11 +137,11 @@ _collect_local() {
       fi
       [[ "$first" == "1" ]] || echo ","
       first=0
-      jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argjson events "$events" \
+      jq -cn --arg slug "$slug" --argjson fstate "$fstate" --argjson rj "$rj" --argjson events "$events" \
         '{slug: $slug,
           converged: (if ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged else null end),
           resultStatus: ($rj.status // null),
-          iterationsUsed: ($rj.iterations.used // $fj.iterate.used // 0),
+          iterationsUsed: ($rj.iterations.used // $fstate.iterate.used // 0),
           gaps: ([$events[] | select(.event == "iterate_verdict") | .data.gap // empty
                   | select(. != "" and . != "none")] | unique),
           gateCaps: ([$events[] | select(.event == "gate_round" and ((.data.round // 0) >= 2))
