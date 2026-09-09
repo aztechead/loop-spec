@@ -66,6 +66,20 @@ touches, and what to do.
 - **A converged-floor veto with no FAIL row rewinds to VERIFY.** `iterate-gap.sh` answers
   `gap=verify`, the graph routes `iterate -> verify`, and the verifier completes the
   record; no implementer runs. A FAIL row still rewinds to EXECUTE.
+- **A small change takes the oneshot route.** `lib/graph/probes/oneshot.sh` reads
+  SPEC.md's new frontmatter `footprint:` (the files the change touches): at most three,
+  `unresolved_dimensions` empty, and no security signal in SPEC.md or those files routes
+  `human.after-spec` to the new ONESHOT phase (`skills/oneshot/SKILL.md`: implement on
+  the main thread, one `loop-spec:code-reviewer` pass, verify, write VERIFICATION.md),
+  then DELIVER. DISCUSS, PLAN, EXECUTE, VERIFY, and ITERATE do not run. Escalation is
+  `route: full` in the frontmatter, written by SPEC or by ONESHOT, and routes to
+  DISCUSS; `LOOP_SPEC_ROUTE=full` is the operator's override, and nothing demotes a
+  full run. SPEC writes the oneshot spec shape
+  (`skills/shared/artifact-templates/SPEC-oneshot.md.template`, at most 60 lines) when
+  the same facts hold, and the autonomous paths write no interview transcript. A spec
+  writer of your own that omits `footprint:` gets the full path, unchanged.
+  `checkpoint.sh tag post-oneshot`, `LOOP_SPEC_PHASE_MODEL_ONESHOT`, and
+  `phaseModels.oneshot` follow from the graph.
 - **The phase vocabulary, and each phase's door and exit, are the graph's.**
   `lib/graph/phases.sh list|regex|validate|suffix` derives the phase ids from
   `graph/cycle.graph.json`; `feature-init.sh`, `phase-entry.sh`, `phase-exit.sh`,

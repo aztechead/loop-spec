@@ -49,8 +49,8 @@ for published_graph in "$ROOT/graph/cycle.graph.json" "$ROOT/graph/critique.grap
   check "$(basename "$published_graph") passes strict validation (every node labelled)" "0" "$strict_rc"
 done
 
-# Phase agent nodes present: the seven the cycle ships, whatever else the graph adds.
-for phase in spec discuss plan execute verify iterate deliver; do
+# Phase agent nodes present: the eight the cycle ships, whatever else the graph adds.
+for phase in spec oneshot discuss plan execute verify iterate deliver; do
   check "phases.sh lists $phase" "1" "$(bash "$ROOT/lib/graph/phases.sh" list | grep -cx "$phase")"
   n="$(jq -r --arg p "$phase" '[.nodes[] | select(.id==$p)] | length' "$GRAPH")"
   check "phase node $phase present" "1" "$n"
@@ -87,6 +87,23 @@ for pair in "spec:discuss" "discuss:plan" "plan:execute" "execute:verify" "verif
     check "successor $from->$to" "1" "0"
   fi
 done
+
+# The oneshot route (orchestrator-port-plan.md, WP1): the FIRST edge out of
+# human.after-spec, since the engine takes the first satisfied route; the phase then
+# routes to DELIVER, or to DISCUSS when the spec was escalated. The probe is one script
+# answering both readings so the decision never lives in prose.
+first_after_spec="$(jq -r '[.edges[] | select(.from=="human.after-spec")][0] | .to + " " + (.condition.expects // "")' "$GRAPH")"
+check "oneshot route is the first edge out of human.after-spec" "oneshot route=oneshot" "$first_after_spec"
+check "oneshot route probe is lib/graph/probes/oneshot.sh" "lib/graph/probes/oneshot.sh" \
+  "$(jq -r '[.edges[] | select(.from=="human.after-spec" and .to=="oneshot")][0].condition.probe' "$GRAPH")"
+check "oneshot -> deliver on route=oneshot (--after)" "1" \
+  "$(jq -r '[.edges[] | select(.from=="oneshot" and .to=="deliver" and .kind=="route" and .condition.expects=="route=oneshot" and (.condition.args | index("--after") != null))] | length' "$GRAPH")"
+check "oneshot -> discuss on route=full (--after)" "1" \
+  "$(jq -r '[.edges[] | select(.from=="oneshot" and .to=="discuss" and .kind=="route" and .condition.expects=="route=full" and (.condition.args | index("--after") != null))] | length' "$GRAPH")"
+check "oneshot node has no chain successor (the route decides)" "0" \
+  "$(jq -r '[.edges[] | select(.from=="oneshot" and .kind=="chain")] | length' "$GRAPH")"
+check "oneshot exit gate is lib/oneshot-exit-gate.sh" "lib/oneshot-exit-gate.sh" \
+  "$(jq -r '.nodes[] | select(.id=="oneshot") | .egress.gates[0].body' "$GRAPH")"
 
 # ITERATE rewind routes, each keyed on a deterministic gap probe
 # The gap CLASS and the target PHASE are not the same thing: a spec-level gap
@@ -188,7 +205,7 @@ residual_prose() {
   hits="$(grep -nE \
     -e "currentPhase[[:space:]]*=[[:space:]]*\"${ROUTE_TARGETS}\"" \
     -e "set[[:space:]]+currentPhase[[:space:]]+\"${ROUTE_TARGETS}\"" \
-    -e "[Rr]oute to .?loop-spec:(spec|discuss|plan|execute|verify|iterate|deliver)" \
+    -e "[Rr]oute to .?loop-spec:(spec|oneshot|discuss|plan|execute|verify|iterate|deliver)" \
     -e "fixed at [0-9]+" \
     -e "bounded to (two|[0-9]+) persisted" \
     -e "LOOP_SPEC_GRAPH" \

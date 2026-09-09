@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# Route probe: may this run take the oneshot route (SPEC -> ONESHOT -> DELIVER)?
+#
+# Why: every run walked DISCUSS, PLAN, EXECUTE, VERIFY, and ITERATE, so a two-line bug
+# fix paid the whole cycle (the 6.4.0 haiku slugify-bug run: 1.99 USD, 16 minutes, 384
+# artifact lines for 2 lines of code). The route is the cycle's single largest lever
+# (docs/loop-spec/orchestrator-port-plan.md, WP1), and it is decided here, from facts
+# SPEC wrote, never by the model picking a phase.
+#
+# Three inputs, all deterministic, and ALL must hold for `route=oneshot`:
+#   1. SPEC.md's frontmatter `footprint:` names 1 to 3 files the change touches.
+#   2. `ambiguity_scores.unresolved_dimensions` is empty and `gate_passed` is true.
+#   3. `lib/security-signal.sh` finds nothing in SPEC.md or the footprint files that
+#      exist: a change that touches a security surface takes the full path even when
+#      the spec never says so.
+# Escalation is one direction: the spec writer or the ONESHOT phase writes `route: full`
+# into the frontmatter and the answer is `route=full`; nothing demotes a full run to
+# oneshot. `LOOP_SPEC_ROUTE=full` is the operator's override (lengthen only).
+#
+# Usage:
+#   oneshot.sh --feature-dir DIR [--after]
+#   oneshot.sh --answers
+# `--after` is the reading the graph takes when the ONESHOT phase returns: only the
+# escalation key counts, because the phase's own edits to the footprint files are not
+# a reason to redo its work on the full path.
+#
+# Exit: 0 with one `route=<oneshot|full> reason=<text>` line. Anything undeterminable
+# answers `route=full`: the long path is the safe direction.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SECURITY_SIGNAL="$SCRIPT_DIR/../../security-signal.sh"
+FOOTPRINT_MAX=3
+
+if [[ "${1:-}" == "--answers" ]]; then
+  printf 'route=oneshot\nroute=full\n'
+  exit 0
+fi
+
+full() {
+  printf 'route=full reason=%s\n' "$1"
+  exit 0
+}
+
+feature_dir="" after=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --feature-dir) feature_dir="${2:-}"; shift 2 ;;
+    --after) after=1; shift ;;
+    *) echo "usage: oneshot.sh --feature-dir DIR [--after] | --answers" >&2; exit 2 ;;
+  esac
+done
+[[ -n "$feature_dir" ]] || { echo "usage: oneshot.sh --feature-dir DIR [--after] | --answers" >&2; exit 2; }
+
+case "${LOOP_SPEC_ROUTE:-}" in
+  "") ;;
+  full) full "LOOP_SPEC_ROUTE=full (operator override)" ;;
+  *) full "LOOP_SPEC_ROUTE=${LOOP_SPEC_ROUTE} is not an override this probe honors (an operator can lengthen the path, never shorten it)" ;;
+esac
+
+feature_json="$feature_dir/feature.json"
+[[ -f "$feature_json" ]] || full "no feature.json in $feature_dir"
+slug="$(jq -r '.slug // ""' "$feature_json" 2>/dev/null)" || full "feature.json could not be read"
+[[ -n "$slug" ]] || full "feature.json has no slug"
+ws_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end' "$feature_json")"
+if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || full "$feature_dir is not inside a git repository"; fi
+spec="$(jq -r '.artifacts.spec // ""' "$feature_json")"
+[[ -n "$spec" ]] || spec="docs/loop-spec/features/$slug/SPEC.md"
+[[ "$spec" == /* ]] || spec="$root/$spec"
+[[ -f "$spec" ]] || full "no SPEC.md at $spec"
+
+# The frontmatter facts, one per line: route=, gate=, unresolved=<count>, footprint=<path>.
+facts="$(python3 - "$spec" <<'PY'
+import re, sys
+lines = open(sys.argv[1], encoding="utf-8", errors="replace").read().split("\n")
+if not lines or lines[0].strip() != "---":
+    print("frontmatter=missing"); sys.exit(0)
+try:
+    end = lines.index("---", 1)
+except ValueError:
+    print("frontmatter=unterminated"); sys.exit(0)
+body = lines[1:end]
+route = gate = None
+unresolved = footprint = None
+section = None
+for raw in body:
+    line = raw.rstrip()
+    if not line.strip() or line.lstrip().startswith("#"):
+        continue
+    indent = len(line) - len(line.lstrip())
+    text = line.strip()
+    m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", text)
+    if m and (indent == 0 or section in ("ambiguity_scores",) and indent > 0):
+        key, val = m.group(1), m.group(2).strip()
+        if indent == 0:
+            section = key if val == "" else None
+        if key == "route" and indent == 0:
+            route = val.strip("'\"")
+        elif key == "gate_passed":
+            gate = val
+        elif key == "unresolved_dimensions":
+            unresolved = [] if val == "" else re.findall(r"[^\[\],\s'\"]+", val)
+            if val == "":
+                section = "unresolved_dimensions"
+        elif key == "footprint" and indent == 0:
+            footprint = [] if val == "" else [p.strip("'\"") for p in re.findall(r"[^\[\],\s'\"]+", val)]
+            section = "footprint" if val == "" else None
+        continue
+    if text.startswith("- ") and section == "footprint" and footprint is not None:
+        footprint.append(text[2:].strip().strip("'\""))
+    elif text.startswith("- ") and section == "unresolved_dimensions" and unresolved is not None:
+        unresolved.append(text[2:].strip())
+print("route=%s" % (route or ""))
+print("gate=%s" % (gate or ""))
+print("unresolved=%s" % ("missing" if unresolved is None else len(unresolved)))
+for p in (footprint or []):
+    print("footprint=%s" % p)
+if footprint is None:
+    print("footprint-key=missing")
+PY
+)" || full "SPEC.md frontmatter could not be read"
+
+grep -q '^frontmatter=' <<<"$facts" && full "SPEC.md frontmatter $(sed -n 's/^frontmatter=//p' <<<"$facts")"
+route_key="$(sed -n 's/^route=//p' <<<"$facts")"
+case "$route_key" in
+  full) full "SPEC.md frontmatter says route: full (escalated)" ;;
+  ""|oneshot) ;;
+  *) full "SPEC.md frontmatter route: $route_key is not oneshot or full" ;;
+esac
+if (( after )); then
+  echo "route=oneshot reason=ONESHOT returned without escalating (route: full absent from SPEC.md)"
+  exit 0
+fi
+
+grep -q '^footprint-key=missing' <<<"$facts" && full "SPEC.md frontmatter has no footprint: list"
+[[ "$(sed -n 's/^gate=//p' <<<"$facts")" == "true" ]] || full "ambiguity gate did not pass (gate_passed is not true)"
+unresolved="$(sed -n 's/^unresolved=//p' <<<"$facts")"
+[[ "$unresolved" == "0" ]] || full "unresolved_dimensions is ${unresolved/missing/absent}, not empty"
+footprint=()
+while IFS= read -r p; do [[ -n "$p" ]] && footprint+=("$p"); done < <(sed -n 's/^footprint=//p' <<<"$facts")
+(( ${#footprint[@]} >= 1 )) || full "footprint names no file"
+(( ${#footprint[@]} <= FOOTPRINT_MAX )) || full "footprint names ${#footprint[@]} files (oneshot allows at most $FOOTPRINT_MAX)"
+
+targets=("$spec")
+for p in "${footprint[@]}"; do
+  [[ "$p" == /* ]] && full "footprint path $p is absolute (repository-relative paths only)"
+  [[ -f "$root/$p" ]] && targets+=("$root/$p")
+done
+[[ -x "$SECURITY_SIGNAL" ]] || full "security-signal.sh is not executable"
+signal_rc=0
+signal="$(bash "$SECURITY_SIGNAL" first "${targets[@]}" 2>/dev/null)" || signal_rc=$?
+case "$signal_rc" in
+  0) full "security signal in SPEC.md or the footprint (${signal})" ;;
+  1) ;;
+  *) full "security-signal scan could not run (exit ${signal_rc})" ;;
+esac
+printf 'route=oneshot reason=footprint of %d file(s), ambiguity gate passed with no unresolved dimension, no security signal\n' "${#footprint[@]}"

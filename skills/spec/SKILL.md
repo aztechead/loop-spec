@@ -82,6 +82,16 @@ next run knew the final version, kept the stale installer, and pinned the releas
 candidate in SPEC anyway. The idiom in today's docs outranks the idiom in
 model memory.
 
+Name the footprint: the repository-relative files the change will touch, from the scout's
+evidence (the file that holds the bug, the module that gains the flag, its test). It goes
+into the frontmatter as `footprint:` and `lib/graph/probes/oneshot.sh` reads it: at most
+three files, no unresolved dimension, and no security signal in SPEC.md or those files
+routes the run through ONESHOT (implement, one review, verify, deliver) instead of
+DISCUSS through ITERATE. Write the footprint you can defend from `file:line` evidence,
+never a shorter one to earn the route; a fourth file found during ONESHOT escalates the
+run to the full path at the cost of the pass already spent. Greenfield names the files
+it will create.
+
 Score the four dimensions from what you know now and display the scoring block.
 
 ## 2. Interview (by `path`)
@@ -142,7 +152,11 @@ while a scout or reviewer subagent runs.
 
 ## 3. Write
 
-`SPEC.md` follows `skills/shared/artifact-templates/SPEC.md.template` and begins with:
+`SPEC.md` follows `skills/shared/artifact-templates/SPEC.md.template`, or the oneshot
+shape `skills/shared/artifact-templates/SPEC-oneshot.md.template` (at most 60 lines:
+Problem, Implementation notes, Good Enough criteria each with the command that checks
+it, Grounding) when the footprint is at most three files and no dimension is unresolved.
+The shape follows the facts; the route is the probe's. Both begin with:
 
 ```yaml
 ---
@@ -155,11 +169,20 @@ ambiguity_scores:
   rounds_completed: 3
   gate_passed: true
   unresolved_dimensions: []
+footprint:
+  - src/slugify.py
+  - tests/test_slugify.py
 ---
 ```
 
-Write the transcript (rounds, questions, scores; `source: spec-draft.md` or
-`synthesized` when applicable) to `feature_dir/spec-interview-transcript.md`.
+`route: full` at the top level is the one other key: the writer or ONESHOT adds it to
+send a run down the full path; nothing sends a full run to ONESHOT.
+
+On the `interview` and `ingest` paths write the transcript (rounds, questions, scores;
+`source: spec-draft.md` when applicable) to `feature_dir/spec-interview-transcript.md`.
+The `self-answer` and `synthesize` paths write none: an autonomous run's record is the
+`decisions.sh` ledger rendered into the `<decisions>` block, and a transcript of a
+conversation nobody had is artifact weight the next phase pays to read.
 
 **Pruning pass (advisory, skip under 60 lines):** dispatch ONE fresh reviewer
 (a nameless Agent with no `subagent_type`, never a cycle role; `run_in_background:
@@ -167,7 +190,7 @@ false`; its tool result is the listing) carrying
 `skills/shared/review-prompts/prose-pruning.md` verbatim plus SPEC.md and the template
 only (never the transcript). Apply `duplicate`/`narrative` cuts; judge the rest; never
 cut `### Good Enough` criteria, decisions, scores, or grounding lines; record every
-disposition in the transcript.
+disposition in the transcript when one exists, else in the `decisions.sh` ledger.
 
 ## 4. Exit
 
@@ -180,6 +203,6 @@ to fix it in place and return. In `step`/`interactive` styles say
 
 ## Resume
 
-`artifacts.spec` set: SPEC.md exists, return (step 4). Otherwise read the transcript, restore
-the prior round scores, and continue from the next round; never re-ask answered
-questions.
+`artifacts.spec` set: SPEC.md exists, return (step 4). Otherwise read the transcript
+(interview paths) or the decisions ledger (autonomous paths), restore the prior round
+scores, and continue from the next round; never re-ask answered questions.

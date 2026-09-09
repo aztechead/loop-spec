@@ -48,7 +48,7 @@ check "single commands.test set" "$(echo "$single" | jq -e '.commands.test == "n
 check "single commands.prepare set" "$(echo "$single" | jq -e '.commands.prepare == "npm ci"' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single verification baseline starts null" "$(echo "$single" | jq -e '.verificationBaseline == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single currentPhase==spec" "$(echo "$single" | jq -e '.currentPhase == "spec"' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "single has all seven phase model slots" "$(echo "$single" | jq -e '(.phaseModels | keys | sort) == ["deliver","discuss","execute","iterate","plan","spec","verify"]' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "single has a phase model slot per graph phase" "$(echo "$single" | jq -e '(.phaseModels | keys | sort) == ["deliver","discuss","execute","iterate","oneshot","plan","spec","verify"]' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single phase model slots default null" "$(echo "$single" | jq -e '[.phaseModels[]] | all(. == null)' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single currentPhaseStartedAt null" "$(echo "$single" | jq -e '.currentPhaseStartedAt == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "single phase handoff starts disabled" "$(echo "$single" | jq -e '.phaseHandoff == false' >/dev/null 2>&1 && echo 1 || echo 0)"

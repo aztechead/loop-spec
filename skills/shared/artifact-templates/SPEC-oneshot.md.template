@@ -1,0 +1,36 @@
+---
+ambiguity_scores:
+  goal_clarity: {0.00-1.00}
+  boundary_clarity: {0.00-1.00}
+  constraint_clarity: {0.00-1.00}
+  acceptance_clarity: {0.00-1.00}
+  ambiguity: {0.00-1.00}
+  rounds_completed: {n}
+  gate_passed: true
+  unresolved_dimensions: []
+footprint:
+  - {path/to/file-the-change-touches}
+---
+# {feature_title}
+
+**Slug:** `{slug}`
+
+## Problem
+
+{One paragraph: what is broken or missing, and the outcome the change must produce.}
+
+## Implementation notes
+
+- {What changes in each footprint file, one bullet per file, with the symbol or line it touches.}
+- {The behavior that must stay unchanged.}
+
+## Success criteria
+
+### Good Enough
+
+- [ ] `{check command}` exits 0: {what that proves}
+- [ ] `{check command}` prints {expected}: {what that proves}
+
+## Grounding
+
+- none

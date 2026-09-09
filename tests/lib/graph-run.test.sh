@@ -63,10 +63,33 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
   rc=$?
   set -e
   check "cycle.graph.json dry-run: execStyle auto reaches completed without pausing (rc 0)" "0" "$rc"
-  for phase in $(bash "$ROOT/lib/graph/phases.sh" list) completed; do
-    echo "$out" | grep -q "^${phase}"$'\t'
-    check "cycle.graph.json dry-run visits $phase" "0" "$?"
+  # The full path: every phase but ONESHOT, which lives on its own route.
+  for phase in spec discuss plan execute verify iterate deliver completed; do
+    echo "$out" | grep -q "^${phase}"$'\t' && visited=0 || visited=1
+    check "cycle.graph.json dry-run visits $phase" "0" "$visited"
   done
+  echo "$out" | grep -q "^oneshot"$'\t' && os_visited=0 || os_visited=1
+  check "cycle.graph.json dry-run without a oneshot SPEC.md skips oneshot" "1" "$os_visited"
+  # A gated SPEC.md with a footprint of one file takes the oneshot route (WP1): SPEC,
+  # ONESHOT, DELIVER, and none of the five phases between.
+  mkdir -p "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck"
+  printf -- '---\nambiguity_scores:\n  gate_passed: true\n  unresolved_dimensions: []\nfootprint:\n  - a.txt\n---\n# cyclecheck\n' \
+    > "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck/SPEC.md"
+  set +e
+  os_out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
+    --feature-dir ".loop-spec/features/cyclecheck" "$ROOT/graph/cycle.graph.json")"
+  os_rc=$?
+  set -e
+  check "cycle.graph.json dry-run on a oneshot spec reaches completed (rc 0)" "0" "$os_rc"
+  for phase in spec oneshot deliver completed; do
+    echo "$os_out" | grep -q "^${phase}"$'\t' && visited=0 || visited=1
+    check "oneshot dry-run visits $phase" "0" "$visited"
+  done
+  for phase in discuss plan execute verify iterate; do
+    echo "$os_out" | grep -q "^${phase}"$'\t' && visited=0 || visited=1
+    check "oneshot dry-run skips $phase" "1" "$visited"
+  done
+  rm -f "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck/SPEC.md"
   echo "$out" | grep -q "^execute.worker"$'\t' && empty_worker=0 || empty_worker=1
   check "cycle.graph.json dry-run skips execute.worker when mergeQueue is empty" "1" "$empty_worker"
   echo "$out" | grep -q "^execute.join"$'\t' && empty_join=0 || empty_join=1

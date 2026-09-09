@@ -195,7 +195,8 @@ at-end squash), makes the `commit`, tags the `checkpoint`, applies `set` resets,
 closes the phase (`close: always`, or `terminal` for ITERATE's `--terminal` pass).
 `writes` is the egress guard's allow-list: the feature.json paths the phase may change
 between entry and exit, by prefix. A PLAN or EXECUTE check that is more than one lint
-call is its own script (`lib/plan-exit-gate.sh`, `lib/execute-exit-gate.sh`) and is
+call is its own script (`lib/plan-exit-gate.sh`, `lib/execute-exit-gate.sh`,
+`lib/oneshot-exit-gate.sh`; they open through `lib/exit-gate-prelude.sh`) and is
 listed as a gate like any other.
 
 Paths and arguments in both blocks resolve through a closed placeholder set: `{docs}`

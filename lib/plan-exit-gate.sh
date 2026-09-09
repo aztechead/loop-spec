@@ -4,7 +4,7 @@
 # Why: these checks lived as a case branch inside lib/phase-exit.sh, which meant the
 # exit gate of a phase was code in a shared script rather than data on the phase's
 # graph node. graph/cycle.graph.json's `plan` node names this script in its
-# `exit.gates`; phase-exit.sh runs it like any other gate (orchestrator-port-plan.md,
+# `egress.gates`; phase-exit.sh runs it like any other gate (orchestrator-port-plan.md,
 # WP2). The checks themselves are unchanged: tasks.json must exist and mirror PLAN.md's
 # task ids, every task needs a parseable verify command that checks rather than
 # installs, at least one acceptance criterion, an acyclic DAG, and (in workspace mode)
@@ -15,28 +15,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-feature_dir="${1:-}"
-[[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || { echo "usage: plan-exit-gate.sh <feature-dir>" >&2; exit 2; }
-feature_dir="$(cd "$feature_dir" && pwd -P)"
-fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
-lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
-slug="$(fget '.slug')"
-ws_root="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"
-if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; fi
-cd "$root"
-docs="docs/loop-spec/features/$slug"
-flags=0
-flag() { echo "FLAG $*"; flags=$((flags + 1)); }
-run_gate() {
-  local label="$1"; shift
-  local out rc=0
-  out="$("$@" 2>&1)" || rc=$?
-  if (( rc != 0 )); then
-    printf '%s\n' "$out" | grep -E '^(FLAG|FLOOR)|^[^ ]|^ +- ' | sed "s/^/FLAG [$label] /" || true
-    flags=$((flags + 1))
-  fi
-}
+. "$SCRIPT_DIR/exit-gate-prelude.sh" "${1:-}"
 
 tasks="$feature_dir/tasks.json"
 extract="bash lib/plan-tasks.sh extract $docs/PLAN.md > $tasks"

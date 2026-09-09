@@ -2,7 +2,7 @@
 
 Spec-driven development loops for [Claude Code](https://claude.com/claude-code), [opencode](https://opencode.ai), [OpenAI Codex](https://developers.openai.com/codex), and an experimental [Google ADK](https://google.github.io/adk-docs/) adapter — four peer harness contracts from one source tree.
 
-Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
+Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. A change whose SPEC footprint is at most three files, with no open question and no security signal, takes the oneshot route instead: SPEC, ONESHOT (implement, one review, verify), DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
 
 Adjacent entry points on the same machinery:
 
@@ -135,7 +135,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 | Skill | Purpose |
 |---|---|
 | `auto` | Preferred headless/SDK entry. Routes to micro, debug, or full cycle fail-closed. |
-| `cycle` | Seven-phase prompt-to-ready-PR loop. Also: `new`, `backlog`, spec-file ingest, resume. |
+| `cycle` | Seven-phase prompt-to-ready-PR loop, or the three-phase oneshot route for a small footprint. Also: `new`, `backlog`, spec-file ingest, resume. |
 | `intake` | Any input → spec draft → cycle. `--no-run` stops after the draft. |
 | `debug` | Bounded debug: triage, red reproduction, fix, verify. Writes `BUG.md`. |
 | `loop-debug` | One-shot debug with autonomous mode forced on. |
@@ -158,6 +158,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 | Phase | Produces | Gates |
 |---|---|---|
 | SPEC | `SPEC.md` with `ambiguity_scores` | Interview (max 6); ambiguity ≤ 0.20 |
+| ONESHOT | one commit, `VERIFICATION.md` | Footprint ≤ 3 files, no open question, no security signal (`lib/graph/probes/oneshot.sh`); one review; scans and the converged floor at exit |
 | DISCUSS | revised SPEC.md | Challenger critique (skipped when the spec is already gated) |
 | PLAN | `PATTERNS.md` + `PLAN.md` | Critique + feasibility + criteria coverage |
 | EXECUTE | per-task commits on `feat/{slug}` | Spec-compliance review; dispatch by DAG width |

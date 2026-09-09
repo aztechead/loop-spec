@@ -192,7 +192,7 @@ loop-spec/
 ├── extensions/opencode/loop-spec.ts # opencode bridge: shell.env/chat.message/event hooks (node builtins only)
 ├── agents/                          # specialized agent definitions (teammates)
 ├── skills/
-│   ├── cycle/ spec/ discuss/ plan/ execute/ verify/ iterate/ deliver/ # seven phases + orchestrator
+│   ├── cycle/ spec/ oneshot/ discuss/ plan/ execute/ verify/ iterate/ deliver/ # phases + orchestrator
 │   ├── assess/ debug/ intake/ quality-loop/ revise/ retro/
 │   ├── status/ sentinel/ watch/ micro/ rules/ onboard/
 │   ├── grill/ simplicity/ human-code/ discipline/               # session-mode toggles

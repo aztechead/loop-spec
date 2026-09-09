@@ -13,11 +13,11 @@ check() {
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/graph-phases-test.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
-check "list: the shipped graph's seven phases in order" "spec discuss plan execute verify iterate deliver" "$(bash "$LIB" list | paste -sd' ')"
-check "regex: an alternation" "spec|discuss|plan|execute|verify|iterate|deliver" "$(bash "$LIB" regex)"
+check "list: the shipped graph's phases in order" "spec oneshot discuss plan execute verify iterate deliver" "$(bash "$LIB" list | paste -sd' ')"
+check "regex: an alternation" "spec|oneshot|discuss|plan|execute|verify|iterate|deliver" "$(bash "$LIB" regex)"
 check "validate: a phase exits 0" "0" "$(bash "$LIB" validate verify >/dev/null 2>&1; echo $?)"
 check "validate: a gate node is not a phase" "1" "$(bash "$LIB" validate verify.acceptance >/dev/null 2>&1; echo $?)"
-check "validate: the message names the phases" "1" "$(bash "$LIB" validate nope 2>&1 | grep -c 'phase must be one of: spec | discuss')"
+check "validate: the message names the phases" "1" "$(bash "$LIB" validate nope 2>&1 | grep -c 'phase must be one of: spec | oneshot | discuss')"
 check "suffix: uppercased id" "DELIVER" "$(bash "$LIB" suffix deliver)"
 check "bad invocation exits 2" "2" "$(bash "$LIB" bogus >/dev/null 2>&1; echo $?)"
 check "unreadable graph exits 2" "2" "$(bash "$LIB" list --graph "$WORK/none.json" >/dev/null 2>&1; echo $?)"

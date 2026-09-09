@@ -89,6 +89,71 @@
       "routeDefault": "discuss"
     },
     {
+      "id": "oneshot",
+      "label": "Implement the small change in one pass",
+      "kind": "agent",
+      "reads": [
+        "artifacts",
+        "commands",
+        "branch"
+      ],
+      "writes": [
+        "artifacts",
+        "currentPhase",
+        "warnings"
+      ],
+      "effort": "system2",
+      "body": "skills/oneshot/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "feature_title",
+          "execStyle",
+          "autonomous",
+          "branch",
+          "baseSha",
+          "commands",
+          "artifacts.spec",
+          "models.codeReviewer"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          }
+        ]
+      },
+      "egress": {
+        "misplaced": "VERIFICATION.md",
+        "gates": [
+          {
+            "label": "oneshot",
+            "body": "lib/oneshot-exit-gate.sh",
+            "args": [
+              "{featureDir}"
+            ]
+          }
+        ],
+        "writes": [
+          "artifacts.spec",
+          "artifacts.verification"
+        ],
+        "artifactsIfPresent": {
+          "verification": "{docs}/VERIFICATION.md"
+        },
+        "commit": {
+          "message": "oneshot: {slug}",
+          "paths": [
+            "{docs}/SPEC.md",
+            "{docs}/VERIFICATION.md",
+            "{docs}/EVIDENCE.md"
+          ]
+        },
+        "checkpoint": "post-oneshot",
+        "close": "always"
+      }
+    },
+    {
       "id": "discuss",
       "label": "Challenge and refine the specification",
       "kind": "agent",
@@ -882,6 +947,19 @@
     },
     {
       "from": "human.after-spec",
+      "to": "oneshot",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/oneshot.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "route=oneshot"
+      }
+    },
+    {
+      "from": "human.after-spec",
       "to": "plan",
       "kind": "route",
       "condition": {
@@ -934,6 +1012,34 @@
           "{featureDir}"
         ],
         "expects": "path=short"
+      }
+    },
+    {
+      "from": "oneshot",
+      "to": "discuss",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/oneshot.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--after"
+        ],
+        "expects": "route=full"
+      }
+    },
+    {
+      "from": "oneshot",
+      "to": "deliver",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/oneshot.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--after"
+        ],
+        "expects": "route=oneshot"
       }
     },
     {
