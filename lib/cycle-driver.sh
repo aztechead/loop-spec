@@ -49,6 +49,10 @@
 #   cycle-driver.sh task dispatch|package|verdict|integrate --feature-dir DIR --task ID ...
 #       One EXECUTE task step per call; lib/execute-step.sh owns the contract.
 #
+#   cycle-driver.sh critique open|findings|fail|revised|delta|pass --feature-dir DIR ...
+#       One critique-gate step per call for DISCUSS and PLAN; lib/critique-step.sh owns
+#       the contract. The lead keeps adjudication, the teammate messages, and the probes.
+#
 #   cycle-driver.sh verify gate|passes --feature-dir DIR ...
 #       VERIFY's verdict application (lib/verify-gate.sh) and advisory passes
 #       (lib/verify-passes.sh).
@@ -1058,6 +1062,7 @@ print(json.dumps({"fields": fields, "read": reads, "flags": flags}))' "$entry_ou
 
 case "${1:-}" in
   task) shift; lib execute-step "$@" ;;
+  critique) shift; lib critique-step "$@" ;;
   verify)
     shift
     case "${1:-}" in gate) shift; lib verify-gate run "$@" ;; passes) shift; lib verify-passes run "$@" ;; *) usage ;; esac ;;

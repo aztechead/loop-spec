@@ -18,7 +18,7 @@ check() {
 # --- models subcommand ---
 models="$(bash "$LIB" models)"
 check "models is valid JSON" "$(echo "$models" | jq -e . >/dev/null 2>&1 && echo 1 || echo 0)"
-check "models default every role to inherit" "$(echo "$models" | jq -e '[.[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "models default every role but the challenger to inherit" "$(echo "$models" | jq -e '[del(.challenger)[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # --- skeleton single ---
 single="$(bash "$LIB" skeleton --mode single --slug demo --now 2026-06-29T00:00:00Z \

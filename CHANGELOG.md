@@ -8,6 +8,16 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Changed
 
+- The critique gate's bookkeeping is one driver call per step: `cycle-driver.sh
+  critique open|findings|fail|revised|delta|pass` (`lib/critique-step.sh`) writes the
+  gate-logs, counts the round, emits the event, appends the history entry, asks the
+  probe, snapshots and diffs the artifact, runs `lib/delta-findings-lint.sh`, and closes
+  the gate on a verified delta or a spent ceiling. The lead keeps adjudication, the
+  teammate messages, and the probes; the reply no longer passes through its context
+  twice (`tests/lib/critique-step.test.sh`).
+- The challenger runs on `sonnet` by default under Claude Code. The critic reads and
+  writes nothing, and an Opus session paid Opus for every round. A phase route or
+  `LOOP_SPEC_MODEL_CHALLENGER` still outranks it; the peer harnesses keep `inherit`.
 - PLAN is one review round. The mechanical gates (`lib/phase-exit.sh plan`) and the
   challenger's findings pass run in the same response, their FLAG lines and findings go
   to the planner as ONE fix-list, and the one revision gets one delta re-verify that

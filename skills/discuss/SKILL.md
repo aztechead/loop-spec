@@ -96,14 +96,13 @@ maintenance profile, never on a security signal or re-entry): log
 `artifact=SPEC.md`, author = you (or `spec-writer-1` when spawned). Phase deltas: a
 finding that depends on user intent is a question in `grill=run` and otherwise the more
 reversible reading, recorded via `decisions.sh add`; an `UNGROUNDED:` finding gets its
-probe run by you, appended to the evidence ledger, and cited in the fix; hash SPEC.md
-before and after a revision, and when nothing changed skip only the challenger call:
-the round is still `gate.sh round`, a fail entry with the same fix-list, and
-`gate.sh next`, so an author that answers without editing is counted, not bounced;
-`gate.sh next` answering `close` ends the critique with SPEC.md as it stands (residue
-in `gate-logs/spec-critique-residue.md` only). Emit
-one `dispatch` event per agent launched and, per round,
-`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" gate_round --phase discuss --data '{"gate":"spec-critique","round":N,"mode":"single-critic|delta"}' || true`.
+probe run by you, appended to the evidence ledger, and cited in the fix; when
+`critique revised` answers `changed: false`, skip only the challenger call and hand
+`critique delta` a `DELTA-FINDINGS:` reply you write yourself, one `unaddressed: <item>`
+line per fix-list item, so an author that answers without editing is counted, not
+bounced; `critique fail` answering `close` ends the critique with SPEC.md as it stands
+(residue in `gate-logs/spec-critique-residue.md` only). Emit one `dispatch` event per
+agent launched; the critique steps emit the `gate_round` events.
 
 ## 4. Exit
 

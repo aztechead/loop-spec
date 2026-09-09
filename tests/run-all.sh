@@ -266,6 +266,7 @@ run_suite "hooks/team/oracle-record"        "bash hooks/team/oracle-record.test.
 run_suite "lib/deferral-lint"             "bash tests/lib/deferral-lint.test.sh"
 run_suite "lib/delta-findings-lint"       "bash tests/lib/delta-findings-lint.test.sh"
 run_suite "lib/plan-tasks"                "bash tests/lib/plan-tasks.test.sh"
+run_suite "lib/critique-step"             "bash tests/lib/critique-step.test.sh"
 run_suite "lib/validate-task-metadata" "bash tests/lib/validate-task-metadata.test.sh"
 run_suite "lib/decision-coverage"     "bash tests/lib/decision-coverage.test.sh"
 run_suite "lib/criteria-coverage"     "bash tests/lib/criteria-coverage.test.sh"

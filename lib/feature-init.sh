@@ -228,7 +228,13 @@ canonical_models() {
   v_specWriter=$(resolve_role_model SPEC_WRITER "${role_phase_default:-$INHERIT}")                           || return 1
   v_planner=$(resolve_role_model PLANNER "${role_phase_default:-$INHERIT}")                                  || return 1
   v_advocate=$(resolve_role_model ADVOCATE "${role_phase_default:-$INHERIT}")                                || return 1
-  v_challenger=$(resolve_role_model CHALLENGER "${role_phase_default:-$INHERIT}")                            || return 1
+  # The critic reads and writes nothing; on Claude Code it runs one tier under the
+  # session by default. An Opus session paid Opus for every critique round, and the
+  # challenger's reply is the smallest artifact in the phase. A phase route or
+  # LOOP_SPEC_MODEL_CHALLENGER still outranks this; the peer harnesses have no alias.
+  local challenger_default="$INHERIT"
+  [[ "$HARNESS" == "claude" ]] && challenger_default="sonnet"
+  v_challenger=$(resolve_role_model CHALLENGER "${role_phase_default:-$challenger_default}")                 || return 1
   v_specComplianceReviewer=$(resolve_role_model SPEC_COMPLIANCE_REVIEWER "${role_phase_default:-$INHERIT}") || return 1
   v_iterateJudge=$(resolve_role_model ITERATE_JUDGE "${role_phase_default:-$INHERIT}")                       || return 1
   v_codeReviewer=$(resolve_role_model CODE_REVIEWER "${role_phase_default:-$INHERIT}")                       || return 1

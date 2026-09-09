@@ -39,13 +39,21 @@ for entry in "${checks[@]}"; do
   fi
 done
 
-# gate_round must actually be emitted by both critique gates (it was a canonical
-# name with zero emitters before this suite existed).
+# gate_round must actually be emitted for both critique gates (it was a canonical
+# name with zero emitters before this suite existed). lib/critique-step.sh emits it
+# from `findings` and `delta`; each phase skill must route its rounds through those
+# steps and say so, or the telemetry is lost again.
+if grep -qE "events emit .* gate_round" lib/critique-step.sh; then
+  echo "PASS: lib/critique-step.sh emits gate_round"; PASS=$((PASS+1))
+else
+  echo "FAIL: lib/critique-step.sh does not emit gate_round (critique-gate telemetry lost)"
+  FAIL=$((FAIL+1))
+fi
 for f in skills/discuss/SKILL.md skills/plan/SKILL.md; do
-  if grep -qE "events.sh\" emit .* gate_round" "$f"; then
-    echo "PASS: $f emits gate_round"; PASS=$((PASS+1))
+  if grep -qF "the critique steps emit the \`gate_round\` events" "$f"; then
+    echo "PASS: $f routes gate_round through the critique steps"; PASS=$((PASS+1))
   else
-    echo "FAIL: $f does not emit gate_round (critique-gate telemetry lost)"
+    echo "FAIL: $f does not route gate_round through the critique steps (critique-gate telemetry lost)"
     FAIL=$((FAIL+1))
   fi
 done

@@ -102,16 +102,18 @@ as the more reversible reading recorded via
 and in `## User decisions (already made)` suffixed `(assumed)`; `UNGROUNDED:` findings
 get their probe run by you (`bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add ...`)
 and fed to the planner with the `EVID-NNN`. When the revision lands, re-run step 2's
-two commands before the delta re-verify, and add any FLAG that survives to the delta
-survivors. Emit one `dispatch` event per agent launched and, per round,
-`bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" gate_round --phase plan --data '{"gate":"plan-critique","round":N,"mode":"single-critic|delta"}' || true`.
+two commands before the delta re-verify, write the surviving FLAG lines to a file, and
+pass it as `critique delta --flags`. Emit one `dispatch` event per agent launched;
+the critique steps emit the `gate_round` events.
 
-With `.mode.critique == skip` the same gate still bounds the FLAG loop: `gate.sh open
---gate plan-critique` before the fix-list goes out, `gate.sh round`, `gate.sh fail` with
-the FLAG lines as `--findings`, then `gate.sh next`; `rerun` sends the list, `close`
-stops. On `close` (either mode) with FLAG lines still open: close the gate with the
-FLAG lines as `--notes`, skip the pruning pass, and return to the cycle; its exit
-answers `REDO` with the same lines and the driver bounds those retries (step 4).
+With `.mode.critique == skip` the same gate still bounds the FLAG loop: `critique open
+--gate plan-critique --artifact <PLAN.md>` before the fix-list goes out, `critique fail`
+with the FLAG lines as the fix-list (it runs `gate.sh next`); `rerun` sends the list,
+`close` stops. After the revision, `critique revised`, step 2's two commands, then
+`critique delta --flags <file>` with a one-line `DELTA-VERIFIED:` reply you write
+yourself: no FLAG left means the gate is closed. On `close` (either mode) with FLAG
+lines still open: skip the pruning pass and return to the cycle; its exit answers
+`REDO` with the same lines and the driver bounds those retries (step 4).
 Critique residue goes to `gate-logs/plan-critique-residue.md` only, and the phase
 proceeds to the pruning pass. The critique never re-opens on a `REDO` (step 4).
 

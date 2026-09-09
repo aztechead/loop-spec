@@ -30,7 +30,7 @@ checks=(
   "skills/shared/tier-matrix.md	gate.sh next"
   "docs/loop-spec/configuration.md	LOOP_SPEC_CRITIQUE_ROUNDS"
   "skills/plan/SKILL.md	gate.sh next"
-  "skills/discuss/SKILL.md	gate.sh next"
+  "skills/discuss/SKILL.md	`critique fail` answering `close`"
   "skills/shared/tier-matrix.md	There is no advocate and no debate"
   "graph/cycle.graph.json	lib/graph/probes/discuss-critique.sh"
   "lib/graph/probes/discuss-critique.sh	gate=skip"

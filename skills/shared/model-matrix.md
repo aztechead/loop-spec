@@ -24,7 +24,8 @@ harnesses, regardless of which models either account exposes.
 | Role family | Default |
 |---|---|
 | spec-writer, planner | inherit |
-| challenger, advocate | inherit |
+| challenger | `sonnet` on Claude Code (the critic reads and writes nothing; an Opus session paid Opus for every round); inherit on the peer harnesses, which have no alias surface |
+| advocate | inherit |
 | iterate-judge, code-reviewer | inherit |
 | spec-compliance-reviewer, verifier | inherit |
 | implementer | inherit |
