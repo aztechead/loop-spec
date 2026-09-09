@@ -97,7 +97,7 @@ numbers are copied below).
 | slugify-bug | haiku | 2/2 | pushed | oneshot | 1 | 0.88 | 6.1 | 82 | 1 | +2/-0 | +92 | 0.25x |
 | wc-json | haiku | 3/4 | pushed | oneshot | 1 | 1.35 | 8.3 | 113 | 1 | +6/-1 | +112 | 0.17x |
 | todo-due | haiku | 5/5 | pushed | oneshot | 5 | 1.38 | 10.9 | 132 | 1 | +57/-6 | +156 | 0.95x |
-| fastapi-items | sonnet | in flight | in flight | full | 5+ | 4.61 so far | 39+ | 179+ | - | - | - | - |
+| fastapi-items | sonnet | 1/7 | no | full | 7 | 12.22 | 54.2 | 219 | 9 | +0/-0 | +893 | 0.0x |
 
 ### WP1 bar, second reading
 
@@ -145,8 +145,10 @@ nothing here has executed it.
 
 ### WP4: one phase per invocation
 
-The `fastapi-items` run on dda2cca was still in round 5 (PLAN) when this record was
-committed; its final numbers follow in the next commit. What its first four rounds say:
+The plan's bar is delivered under 12.2 USD. Not met: the `fastapi-items` run on dda2cca
+spent the whole budget (12.22 USD, 54 minutes, 219 turns, 9 agents) and stopped in
+EXECUTE with nothing on the app branch. `check.sh` passed one of seven checks, the one
+that only asks whether Python 3.14 is installed. Round by round:
 
 | round | phase entered | cost USD | turns | ended |
 |---|---|---|---|---|
@@ -154,19 +156,26 @@ committed; its final numbers follow in the next commit. What its first four roun
 | 2 | DISCUSS | 0.38 | 13 | paused at DISCUSS again |
 | 3 | DISCUSS | 2.42 | 66 | handoff to PLAN |
 | 4 | PLAN | 0.33 | 11 | paused at PLAN again |
-| 5 | PLAN | running | | |
+| 5 | PLAN | 4.71 | 53 | handoff to EXECUTE, after two critique rounds in 24 minutes |
+| 6 | EXECUTE | 0.40 | 12 | paused at EXECUTE again |
+| 7 | EXECUTE | 2.50 | 16 | `error_max_budget_usd` while task-001 (the scaffold) was dispatched |
 
-Rounds 2 and 4 are the shared-transcript defect: on dda2cca the eval driver dropped only
+Where the money went: SPEC, DISCUSS, and PLAN cost 8.60 USD on rounds 1, 3, and 5, and
+the three wasted rounds 1.11 USD; EXECUTE opened with 2.48 USD for a five-task plan.
+PLAN's 893 artifact lines (SPEC, PATTERNS, PLAN, EVIDENCE, the discuss transcript) are
+the cost of the full route on a greenfield service. The phase-per-invocation protocol
+itself held on every boundary: each round entered exactly the phase the previous round
+handed off, through `lib/phase-entry.sh`, with the state on
+`refs/loop-spec/state/<slug>` and no state commit on the branch.
+
+Rounds 2, 4, and 6 are the shared-transcript defect: on dda2cca the eval driver dropped only
 `CLAUDE_CODE_SESSION_ID`, which was not enough (measured after the run: the child took
 its own transcript only once the remote-session plumbing was dropped too, daf2aef). A
 round that inherits the previous round's transcript meets the handoff guard's "one phase
 per invocation" on its first phase call, gives up, and is re-invoked; that costs about
 0.35 USD and a dozen turns per phase boundary and is charged to WP4 here although it is
-the harness's. Read the bar against rounds 1, 3, and 5 onward.
-
-The phase-per-invocation protocol itself held on every boundary: each round entered
-exactly the phase the previous round handed off, through `lib/phase-entry.sh`, with the
-state on `refs/loop-spec/state/<slug>` and no state commit on the branch.
+the harness's. Read the bar against rounds 1, 3, 5, and 7: 11.10 USD, and still short
+of EXECUTE's first commit.
 
 ### What the earlier rounds cost and taught
 
