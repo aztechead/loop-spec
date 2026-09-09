@@ -97,7 +97,7 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
   check "the oneshot to deliver edge carries sameSession too (the short route is one session end to end)" "true" \
     "$(jq -r '[.edges[] | select(.from == "oneshot" and .to == "deliver")] | all(.sameSession == true)' "$ROOT/graph/cycle.graph.json")"
   check "no other edge carries sameSession" "0" \
-    "$(jq -r '[.edges[] | select(.to != "oneshot" and .to != "deliver" and .sameSession == true)] | length' "$ROOT/graph/cycle.graph.json")"
+    "$(jq -r '[.edges[] | select((.to != "oneshot") and (.from != "oneshot" or .to != "deliver") and .sameSession == true)] | length' "$ROOT/graph/cycle.graph.json")"
   echo "$out" | grep -q "^execute.worker"$'\t' && empty_worker=0 || empty_worker=1
   check "cycle.graph.json dry-run skips execute.worker when mergeQueue is empty" "1" "$empty_worker"
   echo "$out" | grep -q "^execute.join"$'\t' && empty_join=0 || empty_join=1

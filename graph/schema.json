@@ -67,6 +67,7 @@
         "currentPhaseStartedAt",
         "iterate",
         "greenfield",
+        "protected",
         "autonomous",
         "backlogEntry",
         "backlogEntryId",

@@ -20,18 +20,19 @@ pb="$(bash "$DRV" phase-begin spec --feature-dir "$feature_dir")"
 
 Search the code by the ask's vocabulary and the obvious symbols, read the entry points
 you find, and follow imports and callers far enough to know where the change lands. As
-you read, cite each file the change will touch with the line that shows why; mark a
-file the change must not touch (a protected test, a generated file) read-only. The
-record is the footprint; you never type it anywhere else:
+you read, cite each file the change will touch with the line that shows why. The record
+is the footprint; you never type it anywhere else. Read-only is the task's word, not
+yours: a file the invocation named `protected:` is read-only, a `--read-only` mark on
+any other file is a plain cite, and a cited source file's test module is in the
+footprint by construction:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/footprint.sh" cite "$feature_dir" <path>:<line> "<why>"
 bash "${CLAUDE_SKILL_DIR}/../../lib/footprint.sh" cite "$feature_dir" <path>:<line> --read-only "<why>"
 ```
 
-Cite a footprint file's existing test module too: in the footprint when it changes,
-read-only when it must not. A claim about an external system gets its read-only probe
-first (`skills/shared/grounding-protocol.md#Probe-before-assert rule`).
+A claim about an external system gets its read-only probe first
+(`skills/shared/grounding-protocol.md#Probe-before-assert rule`).
 
 ## 2. The route, from the record
 
@@ -47,9 +48,11 @@ file escalates in ONESHOT.
 
 ## 3. Fill the skeleton
 
-The driver is the only writer of the spec; you never open it. Fill its values through
-`bash "$DRV" spec fill --feature-dir "$feature_dir"`, one value per call, and read the
-`flags` each answer carries (the exit gate's findings so far):
+The driver is the only writer of the spec; you never open it. Fill its values in one
+call, `bash "$DRV" spec fill --feature-dir "$feature_dir" --json -` with a JSON object
+`{intent, notes: {path: text}, criteria: [text], grounding: [text]}` on stdin (or one
+value per call with the flags below), and read the `flags` the answer carries (the
+exit gate's findings so far):
 
 - `--intent "<the ask, one paragraph, in the requester's terms>"`
 - `--file <path> --note "<what changes there, with the symbol or line>"` once per

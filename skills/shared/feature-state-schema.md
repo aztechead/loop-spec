@@ -161,6 +161,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "history": ["array of past verdicts"]
   },
   "greenfield": "boolean; set by lib/feature-bootstrap.sh when the repository has no code yet",
+  "protected": "array of repository-relative paths the task forbids the change to touch (the invocation token `protected:a,b`); the one source of a read-only footprint file (lib/footprint.sh list)",
   "autonomous": "boolean; set by lib/feature-bootstrap.sh for an unattended run",
   "backlogEntry": "string or null; the backlog text a cycle started from (cycle backlog)",
   "backlogEntryId": "string or null; its id, so DELIVER can close the entry",

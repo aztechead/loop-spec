@@ -247,6 +247,13 @@ if [[ "$msg" == *"verification fill --feature-dir $XREPO/.loop-spec/features/one
 else
   echo "FAIL: X8: the denial names the fill command with the feature dir ($msg)"; ((FAIL++)) || true
 fi
+# Fail closed: a spec the probe cannot read (an unterminated frontmatter, what a hand
+# write leaves behind) keeps both files the driver's; only a readable full route opens them.
+printf -- '---\nfootprint:\n  - a.py\n# no closing marker\n' > "$XREPO/docs/loop-spec/features/one/SPEC.md"
+check "X9: an unreadable spec denies (fail closed once the feature is known)" 2 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
+check "X10: and the spec itself stays the driver's" 2 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
 unset CLAUDE_PROJECT_DIR; rm -rf "$XREPO"
 
 echo ""

@@ -219,7 +219,7 @@ check "an untouched test module flags even with an unchanged bullet in the notes
 check "the flag names the drop command and its limit" "1" "$(grep -c 'spec footprint drop --feature-dir .* --file tests/test_slugify.py --reason .*; a test module of a footprint file cannot be dropped' <<<"$out")"
 ec=0; out="$(bash "$DRV" spec footprint drop --feature-dir "$FD" --file tests/test_slugify.py --reason "the existing case covers it" 2>&1)" || ec=$?
 check "dropping the test module of a footprint file is refused" "1" "$ec"
-check "the refusal names the file it tests" "1" "$(grep -c 'tests/test_slugify.py is the test module of src/slugify.py, which stays in the footprint' <<<"$out")"
+check "the refusal names the file it tests" "1" "$(grep -c 'tests/test_slugify.py is the test module of src/slugify.py, which \(stays in the footprint\|changed in the diff\)' <<<"$out")"
 check "a refused drop changes nothing" "1" "$(grep -c '^  - tests/test_slugify.py$' "$DOCS/SPEC.md")"
 spec
 sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - README.md|' "$DOCS/SPEC.md"
@@ -235,6 +235,13 @@ check "the decision is a ruling in decisions.jsonl" "1" "$(jq -c 'select(.kind =
 check "the Intent block is untouched by the drop" "Dots survive slugify." "$(sed -n '/^## Intent$/,/^<!-- \/intent -->$/p' "$DOCS/SPEC.md" | sed -n 3p)"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "after the recorded drop the gate passes" "0" "$ec"
+# The order hole (followup-4, N2): dropping the changed source first does not free its
+# test module; a test module of a file in the diff cannot be dropped.
+spec; sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|' "$DOCS/SPEC.md"
+bash "$DRV" spec footprint drop --feature-dir "$FD" --file src/slugify.py --reason "try to free the test" >/dev/null 2>&1
+ec=0; out="$(bash "$DRV" spec footprint drop --feature-dir "$FD" --file tests/test_slugify.py --reason "now it tests nothing" 2>&1)" || ec=$?
+check "dropping the test module after its changed source is still refused" "1" "$ec"
+check "the refusal says the source changed in the diff" "1" "$(grep -c 'test module of src/slugify.py, which changed in the diff' <<<"$out")"
 # The flow form of the list is handled the same way.
 spec; sed -i 's|^footprint:$|footprint: [src/slugify.py, README.md]|; /^  - src\/slugify.py$/d' "$DOCS/SPEC.md"
 bash "$DRV" spec footprint drop --feature-dir "$FD" --file README.md --reason "flow form" >/dev/null 2>&1

@@ -190,6 +190,7 @@ def run_round(project, prompt, model, budget, env, log_path, plugin_dir, timeout
         "cache_read_tokens": usage.get("cache_read_input_tokens"),
         "cache_create_tokens": usage.get("cache_creation_input_tokens"),
         "subagents_spawned": (payload.get("subagent_stats") or {}).get("spawned"),
+        "first_turn_input_tokens": first_turn_input_tokens(payload.get("session_id")),
         "result_text": (payload.get("result") or "")[:2000],
         "stderr_tail": stderr[-1500:],
         "cut_off": "usage-limit" if USAGE_LIMIT_RE.search(payload.get("result") or "") else None,
@@ -296,7 +297,11 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
     # Every phase returns and the next round starts the lead in a fresh context: the
     # 20260909-sonnet-fastapi-3 lead re-read ~277k tokens on each of 569 calls in one
     # continuous session, 71 percent of that run's cost.
-    prompt = f"/loop-spec:cycle autonomous {task['prompt']}"
+    # The task's protected files ride as the invocation token the driver reads
+    # (feature.json.protected): read-only is a fact from the task, never the lead's
+    # word (orchestrator-port-followup-4.md, item 1).
+    protected = ",".join(task.get("protected") or [])
+    prompt = f"/loop-spec:cycle autonomous {'protected:' + protected + ' ' if protected else ''}{task['prompt']}"
     for n in range(1, MAX_ROUNDS + 1):
         if measure_only:
             break
@@ -383,6 +388,7 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
         "delivered": delivery_status in ("ready-for-review", "delivered-draft", "pushed-no-pr"),
         "events": events,
         "redo": redo,
+        "first_turn_input_tokens": next((r.get("first_turn_input_tokens") for r in rounds if r.get("first_turn_input_tokens")), None),
         # The classes a driver-written shape makes impossible; a live run records zero here.
         "format_redo": sum(redo["by_class"].get(c, 0) for c in FORMAT_CLASSES),
         "branch": branch, "commits": commits,
@@ -424,9 +430,32 @@ def bar_verdict(bar, cost, artifacts, minutes, rounds):
         over.append("artifact lines %d > %d" % (artifacts["added"], bar["artifact_lines"]))
     if minutes > bar.get("minutes", float("inf")):
         over.append("minutes %.1f > %s" % (minutes, bar["minutes"]))
-    if rounds > 1:
-        over.append("rounds %d > 1" % rounds)
+    if rounds > bar.get("rounds", 1):
+        over.append("rounds %d > %d" % (rounds, bar.get("rounds", 1)))
     return {"met": not over, "over": over}
+
+
+def first_turn_input_tokens(session_id):
+    """The context the first assistant turn read (cache creation + cache read + input),
+    from the CLI's own transcript of the session: what every later turn re-reads, the
+    number the bill is made of (orchestrator-port-followup-4.md, item 5). None when the
+    transcript is not on this machine."""
+    if not session_id:
+        return None
+    home = Path(os.path.expanduser("~")) / ".claude" / "projects"
+    for path in home.glob("*/%s.jsonl" % session_id):
+        try:
+            for line in path.open(encoding="utf-8", errors="replace"):
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                if e.get("type") == "assistant":
+                    u = (e.get("message") or {}).get("usage") or {}
+                    return int(u.get("cache_creation_input_tokens") or 0) + int(u.get("cache_read_input_tokens") or 0) + int(u.get("input_tokens") or 0)
+        except OSError:
+            return None
+    return None
 
 
 def plugin_commit():
@@ -489,6 +518,8 @@ def write_summary(out_dir):
             if redo.get("rounds"):
                 by = ", ".join(f"{k} {v}" for k, v in sorted(redo.get("by_class", {}).items()))
                 lines.append(f"- **{r['task']}** REDO rounds: {redo['rounds']} ({by}); format classes: {r.get('format_redo', 0)}")
+            if r.get("first_turn_input_tokens"):
+                lines.append(f"- **{r['task']}** first turn read {r['first_turn_input_tokens'] // 1000}k tokens of context")
         if not r.get("cycle_begun"):
             lines.append(f"- **{r['task']}** never began a cycle: the driver wrote no feature.json, so the row measures the entry, not the plugin's phases")
         if r.get("forged_result"):

@@ -431,6 +431,7 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_HANDOFF` | The marker line the cycle skill prints after a `HANDOFF` or `REWIND` answer, read by the caller that re-invokes the cycle; not an input variable. |
 | `LOOP_SPEC_STAMP_INPUT` | The UserPromptSubmit payload, handed from `hooks/team/invocation-stamp.sh` to its Python reader; do not set. |
 | `LOOP_SPEC_GUARD_INPUT` | The PreToolUse payload, handed from `hooks/team/result-forgery-guard.sh` to its Python reader; do not set. |
+| `LOOP_SPEC_FOOTPRINT_ROOT` | The repository root, handed from `lib/footprint.sh list` to its Python reader so a cited source file's test module can be found; do not set. |
 | `LOOP_SPEC_PHASE_ALT` | The phase-id alternation `lib/graph/phases.sh regex` prints, handed from `hooks/team/phase-handoff-guard.sh` and `placeholder-question-guard.sh` to their Python readers; do not set. |
 | `LOOP_SPEC_PHASE_START`, `LOOP_SPEC_PHASE_END` | Event marker names printed to output, not input variables. |
 | `LOOP_SPEC_ACTIVE_CYCLE_BIN`, `LOOP_SPEC_CYCLE_RESULT_BIN`, `LOOP_SPEC_DEFERRAL_LINT_BIN`, `LOOP_SPEC_FINALIZE_CANDIDATE_BIN`, `LOOP_SPEC_PR_COMMENTS_BIN`, `LOOP_SPEC_PR_DELIVERY_BIN` | Test seams that replace internal executables. Unsupported in production wrappers. |

@@ -27,6 +27,8 @@ Usage:
     cycle-driver.sh init --dir DIR --slug S --title T --style ST --profile P
         [--classification JSON] [--autonomous 0|1] [--greenfield 0|1]
         [--spec-file PATH] [--commands JSON] [--repos JSON] [--backlog-entry JSON]
+        [--protected JSON]   the task's protected files (the `protected:a,b` token),
+                             recorded as feature.json.protected
         New feature: adopt-PR probe, clean guard, base, execution root, bootstrap.
         Prints {featureDir, slug, executionRoot, enterWorktree, branch, baseBranch,
         baseSha, greenfield}. `enterWorktree` non-null means the caller must call
@@ -89,7 +91,10 @@ Usage:
         refused (not in the footprint, or a test module); 2 bad invocation.
 
     cycle-driver.sh spec fill --feature-dir DIR [--intent TEXT] [--file PATH --note TEXT]
-        [--criterion TEXT] [--grounding TEXT]
+        [--criterion TEXT] [--grounding TEXT] | --json PATH|-
+        --json fills every field in one call from a JSON object {intent, notes: {path:
+        text}, criteria: [text], grounding: [text]} (`-` reads stdin): one turn for the
+        whole spec.
         Fill one value of the oneshot SPEC.md skeleton in place: the paragraph inside the
         frozen Intent block, the Implementation notes bullet of one footprint file, one
         Good Enough criterion (the text after `- [ ] `, the first real one replacing the
@@ -104,14 +109,32 @@ Usage:
         Implementation notes; the graph then routes the run to DISCUSS. Prints {spec}.
     cycle-driver.sh verification fill --feature-dir DIR
         --row GE-NNN --implementation FILE:LINE --proof TEXT
-          [--integration FILE:LINE|none --integration-proof TEXT] [--evidence TEXT] [--output TEXT]
-        --review TEXT [--reviewer-model M]     the Findings bullets (or "none")
-        --tests TEXT                          the final test suite output
-        Fill VERIFICATION.md's oneshot skeleton (phase-begin wrote it) one value at a
-        time: a criterion's grounding row, acceptance evidence, and command output; the
-        code review findings; the test suite output. Every write re-runs the four
+          [--integration FILE:LINE|none --integration-proof TEXT]
+        Fill VERIFICATION.md's oneshot skeleton (phase-begin wrote it) with what the
+        lead knows: a criterion's grounding row. Every write re-runs the four
         verification lints the exit gate runs and prints {verification, flags:[...]}.
-        Exit 0 written, 1 the row or field is not in the skeleton, 2 bad invocation.
+        Exit 0 written, 1 the row is not in the skeleton, 2 bad invocation.
+    cycle-driver.sh verification review --feature-dir DIR [--report PATH] [--reviewer-model M]
+        The Code review section from the reviewer's report (default
+        <featureDir>/dispatch/oneshot.review.md, where `oneshot review` writes it):
+        one `- <file>:<line> — <claim> | verdict: pending` bullet per finding, `none`
+        when the report holds none, the reviewer's PASS/PASS_WITH_MINOR/BLOCK on the
+        Reviewer line. The driver runs this at the ONESHOT boundary after its own
+        review session; in-harness the lead saves the reviewer's result to the report
+        path and calls it. Prints {verification, report, reviewerVerdict, findings,
+        flags}. Exit 0; 2 no report.
+    cycle-driver.sh verification verdict --feature-dir DIR --finding FILE:LINE --verdict true|false --reason TEXT
+        The lead's answer to one pending finding: `true — <fix or commit>` or
+        `false — <disproof>`. Prints {verification, finding, verdict, flags}. Exit 0;
+        1 no such pending finding; 2 bad invocation.
+    cycle-driver.sh verification run --feature-dir DIR [--row GE-NNN]
+        Observe what the lead must never assert: run each Good Enough criterion's
+        command (the first backticked span of its SPEC line) in the feature root and
+        write the exit as the row's Status (PASS on 0, FAIL otherwise), the command and
+        exit as its Evidence, and the output as its block; without --row also run
+        commands.test into the Final test suite block. `next --returned-from oneshot`
+        runs this before the exit gate. Prints {verification, ran:[{row, status, exit}],
+        flags}. Exit 0 every row passed; 1 a row failed; 2 bad invocation.
 
     cycle-driver.sh spec write --feature-dir DIR --file PATH
         Copy PATH (or stdin for `-`) to {docs}/SPEC.md, the only target this command
@@ -728,7 +751,7 @@ def detect_commands(root):
 
 # ------------------------------------------------------------------- init ----
 INIT_OPTS = ("--dir", "--slug", "--title", "--style", "--profile", "--classification", "--autonomous",
-             "--greenfield", "--spec-file", "--commands", "--repos", "--backlog-entry")
+             "--greenfield", "--spec-file", "--commands", "--repos", "--backlog-entry", "--protected")
 
 
 def plugin_home_refusal(directory, plugin_home, project_dir):
@@ -896,6 +919,11 @@ def cmd_init(argv):
     if finalize.returncode != 0:
         raise Die("feature bootstrap failed; a terminal cycle result was written (see stderr above).")
     feature_dir = os.path.join(exec_root, ".loop-spec", "features", slug)
+    protected = json.loads(o.get("protected") or "[]")
+    if protected:
+        # The task's own list (`protected:a,b`), the one source of a read-only footprint
+        # file (lib/footprint.sh; orchestrator-port-followup-4.md, item 1).
+        fset(feature_dir, "protected", protected)
     if spec_file:
         shutil.copy(spec_file, os.path.join(feature_dir, "spec-draft.md"))
     persist_backlog_entry(feature_dir, backlog_entry)
@@ -1145,6 +1173,17 @@ def cmd_next(argv):
         if answer is not None:
             print(answer)
             return 0
+        if returned == "oneshot":
+            # Observe before judging: every criterion's command and the test suite run
+            # here, by the driver, and the rows say what happened (followup-4, items 2, 4).
+            docs = docs_dir(feature_dir, feat)
+            vpath, spath = os.path.join(docs, "VERIFICATION.md"), os.path.join(docs, "SPEC.md")
+            if os.path.isfile(vpath) and os.path.isfile(spath) and \
+                    not re.search(r"^route: *full\s*$", open(spath, encoding="utf-8").read(), flags=re.M):
+                try:
+                    verification_run(feature_dir, feat, docs, vpath, spath, None, True)
+                except Die as exc:
+                    print("cycle-driver: verification run at the oneshot boundary: %s" % exc.message, file=sys.stderr)
         # The phase's exit gates run here, once, whatever the phase skill did: a lead that
         # skipped them or ran them from the wrong directory was every second eval finding.
         completed = feat.get("completedPhases") or []
@@ -1296,9 +1335,22 @@ def boundary_review(feature_dir, phase):
     if status != "completed":
         return ("REDO phase=oneshot flags=1\nFLAG [review] the driver-launched reviewer session ended %s (%s): "
                 "read %s, then return again" % (status, rec.get("stderr") or rec.get("envFault") or "no detail", rec.get("stdout") or "its log"))
-    return ("REDO phase=oneshot flags=1\nFLAG [review] the driver ran the one review pass; its verdict and findings are in %s: "
-            "record each finding under ## Code review with your verdict (skills/oneshot/SKILL.md, One review pass), "
-            "fix what needs fixing, then return" % rec.get("report"))
+    feat = state(feature_dir)
+    target = os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.md")
+    written = ""
+    if os.path.isfile(target) and os.path.isfile(rec.get("report") or ""):
+        try:
+            findings, verdict = verification_review(target, rec["report"],
+                                                    (feat.get("models") or {}).get("codeReviewer") or "inherit")
+            written = "; the Code review section holds %s (reviewer: %s)" % (
+                "%d finding(s) awaiting your verdict (verification verdict)" % len(findings) if findings else "none",
+                verdict or "no verdict line")
+        except Die as exc:
+            # A VERIFICATION.md without the skeleton's sections cannot take the section;
+            # the exit lints name that on the next return, the review still happened.
+            written = "; the Code review section could not be written (%s)" % exc.message
+    return ("REDO phase=oneshot flags=1\nFLAG [review] the driver ran the one review pass; its verdict and findings are in %s%s: "
+            "fix what needs fixing, answer each pending finding with `verification verdict`, then return" % (rec.get("report"), written))
 
 
 def returned_checks(feature_dir, phase):
@@ -1572,11 +1624,11 @@ def cmd_begin(argv):
         inv = st["invocation"]
         init_cmd = ('bash "$DRV" init --dir %s --slug <slug> --title "<title>" --style %s --profile %s '
                     '--classification %s --autonomous %s --greenfield <0|1> --spec-file "%s" '
-                    '--commands %s --repos %s' % (
+                    '--commands %s --repos %s --protected %s' % (
                         shlex.quote(st["workspace"]["root"]), inv["style"], st["profile"],
                         shlex.quote(json.dumps(st["classification"])), "1" if st["autonomous"] else "0",
                         inv.get("spec_path") or "", shlex.quote(json.dumps(st["commands"])),
-                        shlex.quote(json.dumps(st["workspace"]["repos"]))))
+                        shlex.quote(json.dumps(st["workspace"]["repos"])), shlex.quote(json.dumps(inv.get("protected") or []))))
         if inv.get("backlogEntry"):
             init_cmd += " --backlog-entry %s" % shlex.quote(json.dumps(inv["backlogEntry"]))
         resume_cmd = 'bash "$DRV" resume --dir %s --feature-root <featureRoot of the pick> --slug <slug of the pick>' % shlex.quote(directory)
@@ -1597,6 +1649,7 @@ def cmd_begin(argv):
         raise Die("", 3)
     init_args = ["--dir", st["workspace"]["root"], "--slug", slug, "--title", title,
                  "--style", inv["style"], "--profile", st["profile"],
+                 "--protected", json.dumps(inv.get("protected") or []),
                  "--classification", json.dumps(st["classification"]),
                  "--autonomous", "1" if st["autonomous"] else "0",
                  "--greenfield", "1" if st["greenfield"] else "0",
@@ -1612,7 +1665,8 @@ def cmd_begin(argv):
 
 
 def capture(command, argv):
-    """Run a subcommand in this process and return what it printed."""
+    """Run a subcommand (or any printer taking positional args) in this process and
+    return what it printed."""
     saved = sys.stdout
     sys.stdout = buffer = StringIO()
     try:
@@ -1728,9 +1782,12 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
             # A criterion is often a shell pipeline; a bare `|` splits the table row
             # and lib/converged-floor.sh reads its status from the wrong cell (live
             # run 3 paid a REDO and ten edits for one).
+            # The Status cell stays empty until `verification run` observes the command's
+            # exit: a PASS written before anyone ran anything is the self-graded gate one
+            # layer down (orchestrator-port-followup-4.md, item 2).
             text = text.replace(
-                "| 1 | {from SPEC} | PASS / FAIL / BLOCKED / N/A | `{verify command}` -> {output summary} |\n",
-                "".join("| GE-%03d | %s | PASS | `{verify command}` -> {output summary} |\n" % (i + 1, c.replace("|", "\\|"))
+                "| 1 | {from SPEC} |  | `{verify command}` -> {output summary} |\n",
+                "".join("| GE-%03d | %s |  | `{verify command}` -> {output summary} |\n" % (i + 1, c.replace("|", "\\|"))
                         for i, c in enumerate(criteria)))
             text = text.replace(
                 "### Criterion 1\n\n```\n{full output of verify command}\n```\n\n(repeat per criterion)\n",
@@ -1776,12 +1833,18 @@ def footprint_drop(feature_dir, feat, target, path, reason):
     if path not in footprint:
         raise Die("spec footprint drop: %s is not in the footprint of %s (%s)" % (path, target, ", ".join(footprint) or "empty"))
     remaining = [p for p in footprint if p != path]
-    for kept in remaining:
+    # A test module of a file that changed in the diff stays whatever the footprint says
+    # now: dropping the source first and its test second was accepted (followup-4, N2).
+    root = feature_root(feature_dir, feat)
+    base = feat.get("baseSha") or ""
+    changed = run(["git", "-C", root, "diff", "--name-only", base, "HEAD", "--"], quiet=True).stdout.splitlines() if base else []
+    for kept in sorted(set(remaining) | set(changed)):
         # The naming rules lib/oneshot-spec-lint.sh applies: test_<stem>, <stem>_test, <stem>.test.
         stem, ext = os.path.splitext(os.path.basename(kept))
         if os.path.basename(path) in ("test_%s%s" % (stem, ext), "%s_test%s" % (stem, ext), "%s.test%s" % (stem, ext)):
-            raise Die("spec footprint drop: %s is the test module of %s, which stays in the footprint: the change "
-                      "gets its test, or the run escalates (route: full)" % (path, kept))
+            raise Die("spec footprint drop: %s is the test module of %s, which %s: the change "
+                      "gets its test, or the run escalates (route: full)" % (
+                          path, kept, "changed in the diff" if kept in changed else "stays in the footprint"))
     lib("decisions", "add", feature_dir, "oneshot", "drop %s from the footprint" % path, "dropped", reason, "ruling")
     text = re.sub(r"^  - %s\n" % re.escape(path), "", text, count=1, flags=re.M)
     text = re.sub(r"^(footprint:[ \t]*\[)([^\]]*)(\])",
@@ -1875,7 +1938,7 @@ def cmd_spec(argv):
     if sub not in ("skeleton", "write", "drop", "fill", "escalate"):
         usage()
     opts = {"write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason"),
-            "fill": ("--feature-dir", "--intent", "--file", "--note", "--criterion", "--grounding"),
+            "fill": ("--feature-dir", "--intent", "--file", "--note", "--criterion", "--grounding", "--json"),
             "escalate": ("--feature-dir", "--reason")}.get(sub, ("--feature-dir",))
     o = parse_pairs(argv[1:], opts)
     feature_dir = o.get("feature_dir") or ""
@@ -1892,6 +1955,35 @@ def cmd_spec(argv):
             raise Die("spec footprint drop needs --file PATH and --reason TEXT", 2)
         return footprint_drop(feature_dir, feat, target, source, o["reason"].strip())
     if sub == "fill":
+        if o.get("json"):
+            # Every field in one call, one Bash turn: each fill was a turn that re-read the
+            # whole context (followup-4, item 5). {intent, notes: {path: text}, criteria:
+            # [text], grounding: [text]}; `-` reads stdin.
+            raw = sys.stdin.read() if o["json"] == "-" else open(o["json"], encoding="utf-8").read()
+            try:
+                batch = json.loads(raw)
+            except ValueError as exc:
+                raise Die("spec fill --json: not a JSON object: %s" % exc, 2)
+            if not isinstance(batch, dict):
+                raise Die("spec fill --json: the document is a JSON object", 2)
+            filled = []
+            calls = []
+            if batch.get("intent"):
+                calls.append({"intent": batch["intent"]})
+            for path, note in (batch.get("notes") or {}).items():
+                calls.append({"file": path, "note": note})
+            for c in batch.get("criteria") or []:
+                calls.append({"criterion": c})
+            for g in batch.get("grounding") or []:
+                calls.append({"grounding": g})
+            if not calls:
+                raise Die("spec fill --json: nothing to fill", 2)
+            out = None
+            for call in calls:
+                out = json.loads(capture(lambda a: spec_fill(a[0], a[1]), [target, call]))
+                filled += out["filled"]
+            print(json.dumps({"spec": target, "filled": filled, "flags": out["flags"]}))
+            return 0
         return spec_fill(target, o)
     if sub == "escalate":
         if not (o.get("reason") or "").strip():
@@ -1920,6 +2012,14 @@ def cmd_spec(argv):
         return 0
     if not source:
         raise Die("spec write needs --file PATH (or - for stdin)", 2)
+    # On the oneshot route the skeleton the driver wrote is the spec, filled through
+    # `spec fill`; a whole-file write over it was the one writer the hook could not
+    # see (orchestrator-port-followup-4.md, N1's remaining writers).
+    if os.path.isfile(target):
+        route = lib_run("graph/probes/oneshot", "--feature-dir", feature_dir, quiet=True).stdout.strip()
+        if route.startswith("route=oneshot"):
+            raise Die("spec write: %s is the oneshot skeleton (%s); fill it with `spec fill`, or escalate with "
+                      "`spec escalate --reason`" % (target, route.partition(" reason=")[2]), 1)
     if source == "-":
         body = sys.stdin.read()
     else:
@@ -1947,21 +2047,154 @@ def verification_lint_flags(root, target, spec):
     return flags
 
 
-def cmd_verification(argv):
-    if not argv or argv[0] != "fill":
-        usage()
-    o = parse_pairs(argv[1:], ("--feature-dir", "--row", "--implementation", "--proof", "--integration",
-                               "--integration-proof", "--evidence", "--output", "--review", "--reviewer-model", "--tests"))
+def observe(command, root):
+    """Run one command in the feature root and return (exit, output block): the block is
+    the output capped at 200 lines, or the exit when there was none."""
+    try:
+        proc = subprocess.run(["bash", "-c", command], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              universal_newlines=True, timeout=int(os.environ.get("LOOP_SPEC_PHASE_TIMEOUT_MINS") or 60) * 60)
+        code, output = proc.returncode, proc.stdout
+    except subprocess.TimeoutExpired:
+        code, output = 124, "(timed out)"
+    lines = output.rstrip("\n").splitlines()
+    if len(lines) > 200:
+        lines = lines[:200] + ["... (%d more lines)" % (len(lines) - 200)]
+    return code, ("\n".join(lines) or "(no output, exit %d)" % code)
+
+
+def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests):
+    """Observe, never assert: run each Good Enough criterion's command (the first
+    backticked span of its line) in the feature root and write the exit as the row's
+    status, the command and exit as its evidence, and the output as its block; then
+    commands.test into the Final test suite block. The lead supplies no status
+    (orchestrator-port-followup-4.md, items 2 and 4). Returns the rows written."""
+    root = feature_root(feature_dir, feat)
+    text = open(target, encoding="utf-8").read()
+    criteria = good_enough_criteria(spec)
+    written = []
+    for i, criterion in enumerate(criteria):
+        row = "GE-%03d" % (i + 1)
+        if only_row and row != only_row:
+            continue
+        m = re.search(r"`([^`]+)`", criterion)
+        if not m:
+            raise Die("verification run: criterion %s carries no backticked command to run: %s" % (row, criterion))
+        command = m.group(1)
+        code, block = observe(command, root)
+        status = "PASS" if code == 0 else "FAIL"
+        cell = re.compile(r"^(\| %s \| .* \| )([^|]*)( \| )(.*?)( \|)$" % re.escape(row), re.M)
+        if not cell.search(text):
+            raise Die("verification run: %s has no acceptance row for %s" % (target, row))
+        evidence = "`%s` -> exit %d" % (command.replace("|", "\\|"), code)
+        text = cell.sub(lambda mm: mm.group(1) + status + mm.group(3) + evidence + mm.group(5), text, count=1)
+        span = section_span(text, "Criterion %d" % (i + 1))
+        if span is None:
+            raise Die("verification run: %s has no ### Criterion %d block" % (target, i + 1))
+        text = text[:span[0]] + "\n```\n" + block + "\n```\n\n" + text[span[1]:]
+        written.append({"row": row, "status": status, "exit": code})
+    if with_tests:
+        test_cmd = ((feat.get("commands") or {}).get("test") or "").strip()
+        span = section_span(text, "Final test suite")
+        if span is None:
+            raise Die("verification run: %s has no ## Final test suite section" % target)
+        if test_cmd:
+            code, out_block = observe(test_cmd, root)
+            block = "$ %s\n%s\n(exit %d)" % (test_cmd, out_block, code)
+            written.append({"row": "tests", "status": "PASS" if code == 0 else "FAIL", "exit": code})
+        else:
+            block = "(no commands.test is configured for this feature)"
+            written.append({"row": "tests", "status": "N/A", "exit": None})
+        text = text[:span[0]] + "\n```\n" + block + "\n```\n" + text[span[1]:]
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return written
+
+
+FINDING_RE = re.compile(r"^\s*[-*]\s+(\S+:\d+)\s*(?:—|--|-|:)\s*(.+?)\s*$")
+
+
+def verification_review(target, report, model):
+    """The Code review section from the reviewer's report file, never from the lead's
+    transcription: one bullet per `- <file>:<line> — <claim>` line with `verdict:
+    pending`, or `none` when the report holds no finding. The d17da82 bug-fix run
+    carried an invented finding because the lead thought the lint wanted one
+    (orchestrator-port-followup-4.md, item 3). Returns the findings written."""
+    text = open(target, encoding="utf-8").read()
+    span = section_span(text, "Findings")
+    if span is None:
+        raise Die("verification review: %s has no ### Findings section" % target)
+    findings = []
+    verdict = ""
+    for line in open(report, encoding="utf-8", errors="replace"):
+        m = FINDING_RE.match(line)
+        if m and not m.group(1).startswith("verdict"):
+            findings.append((m.group(1), m.group(2).rstrip(".")))
+        mv = re.search(r"\b(PASS_WITH_MINOR|PASS|BLOCK)\b", line)
+        if mv and not verdict:
+            verdict = mv.group(1)
+    body = "\n".join("- %s — %s | verdict: pending" % f for f in findings) or "none"
+    text = text[:span[0]] + "\n" + body + "\n\n" + text[span[1]:]
+    text = re.sub(r"^\*\*Reviewer:\*\* code-reviewer \(.*\)(?::.*)?$",
+                  "**Reviewer:** code-reviewer (%s)%s" % (model, (": " + verdict) if verdict else ""), text, count=1, flags=re.M)
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return [{"finding": f[0], "claim": f[1]} for f in findings], verdict
+
+
+def verification_paths(o, what):
+    """The feature and its two artifacts for a `verification` subcommand: (feature_dir,
+    feat, docs, VERIFICATION.md, SPEC.md, root). The skeleton must exist: phase-begin
+    oneshot writes it."""
     feature_dir = o.get("feature_dir") or ""
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
     feat = state(feature_dir)
     docs = docs_dir(feature_dir, feat)
-    target = os.path.join(docs, "VERIFICATION.md")
-    spec = os.path.join(docs, "SPEC.md")
+    target, spec = os.path.join(docs, "VERIFICATION.md"), os.path.join(docs, "SPEC.md")
     if not os.path.isfile(target):
-        raise Die("verification fill: no VERIFICATION.md at %s (phase-begin oneshot writes the skeleton)" % target, 2)
+        raise Die("verification %s: no VERIFICATION.md at %s (phase-begin oneshot writes the skeleton)" % (what, target), 2)
+    return feature_dir, feat, docs, target, spec, feature_root(feature_dir, feat)
+
+
+def cmd_verification(argv):
+    if not argv or argv[0] not in ("fill", "run", "review", "verdict"):
+        usage()
+    if argv[0] in ("review", "verdict"):
+        o = parse_pairs(argv[1:], ("--feature-dir", "--report", "--reviewer-model", "--finding", "--verdict", "--reason"))
+        feature_dir, feat, docs, target, spec, root = verification_paths(o, argv[0])
+        if argv[0] == "review":
+            report = o.get("report") or os.path.join(feature_dir, "dispatch", "oneshot.review.md")
+            if not os.path.isfile(report):
+                raise Die("verification review: no report at %s (the reviewer writes it; in-harness, save the reviewer's result there first)" % report, 2)
+            model = o.get("reviewer_model") or (feat.get("models") or {}).get("codeReviewer") or "inherit"
+            findings, verdict = verification_review(target, report, model)
+            print(json.dumps({"verification": target, "report": report, "reviewerVerdict": verdict or None,
+                              "findings": findings, "flags": verification_lint_flags(root, target, spec)}))
+            return 0
+        finding, verdict, reason = o.get("finding") or "", o.get("verdict") or "", (o.get("reason") or "").strip()
+        if verdict not in ("true", "false") or not finding or not reason:
+            raise Die("verification verdict needs --finding FILE:LINE --verdict true|false --reason TEXT "
+                      "(false: the disproof, what shows the finding wrong)", 2)
+        text = open(target, encoding="utf-8").read()
+        line = re.compile(r"^(- %s — .*?) \| verdict: pending$" % re.escape(finding), re.M)
+        if not line.search(text):
+            raise Die("verification verdict: no pending finding at %s in %s (verification review writes them from the report)" % (finding, target))
+        text = line.sub(lambda m: "%s | verdict: %s — %s" % (m.group(1), verdict, reason), text, count=1)
+        with open(target, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(json.dumps({"verification": target, "finding": finding, "verdict": verdict,
+                          "flags": verification_lint_flags(root, target, spec)}))
+        return 0
+    if argv[0] == "run":
+        o = parse_pairs(argv[1:], ("--feature-dir", "--row"))
+        feature_dir, feat, docs, target, spec, root = verification_paths(o, "run")
+        rows = verification_run(feature_dir, feat, docs, target, spec, o.get("row"), not o.get("row"))
+        print(json.dumps({"verification": target, "ran": rows, "flags": verification_lint_flags(root, target, spec)}))
+        return 0 if all(r["status"] != "FAIL" for r in rows) else 1
+    o = parse_pairs(argv[1:], ("--feature-dir", "--row", "--implementation", "--proof", "--integration",
+                               "--integration-proof"))
+    feature_dir, feat, docs, target, spec, root = verification_paths(o, "fill")
     text = open(target, encoding="utf-8").read()
     filled = []
     row = o.get("row")
@@ -1982,38 +2215,11 @@ def cmd_verification(argv):
             text = line.sub(lambda _: "- criterion: %s | implementation: %s - %s | integration: %s - %s" % (
                 row, o["implementation"], o["proof"].strip(), integ, iproof.strip()), text, count=1)
             filled.append("grounding:" + row)
-        if o.get("evidence"):
-            cell = re.compile(r"^(\| %s \| .* \| PASS \| )(.*?)( \|)$" % re.escape(row), re.M)
-            if not cell.search(text):
-                raise Die("verification fill: %s has no acceptance row for %s" % (target, row))
-            text = cell.sub(lambda m: m.group(1) + o["evidence"].strip().replace("|", "\\|") + m.group(3), text, count=1)
-            filled.append("evidence:" + row)
-        if o.get("output") is not None:
-            span = section_span(text, "Criterion %d" % number)
-            if span is None:
-                raise Die("verification fill: %s has no ### Criterion %d block" % (target, number))
-            text = text[:span[0]] + "\n```\n" + o["output"].rstrip("\n") + "\n```\n\n" + text[span[1]:]
-            filled.append("output:" + row)
-    if o.get("review") is not None:
-        span = section_span(text, "Findings")
-        if span is None:
-            raise Die("verification fill: %s has no ### Findings section" % target)
-        text = text[:span[0]] + "\n" + o["review"].strip() + "\n\n" + text[span[1]:]
-        if o.get("reviewer_model"):
-            text = re.sub(r"^\*\*Reviewer:\*\* code-reviewer \(.*\)$", "**Reviewer:** code-reviewer (%s)" % o["reviewer_model"], text, count=1, flags=re.M)
-        filled.append("review")
-    if o.get("tests") is not None:
-        span = section_span(text, "Final test suite")
-        if span is None:
-            raise Die("verification fill: %s has no ## Final test suite section" % target)
-        text = text[:span[0]] + "\n```\n" + o["tests"].rstrip("\n") + "\n```\n" + text[span[1]:]
-        filled.append("tests")
     if not filled:
         raise Die("verification fill: nothing to fill", 2)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
-    print(json.dumps({"verification": target, "filled": filled,
-                      "flags": verification_lint_flags(feature_root(feature_dir, feat), target, spec)}))
+    print(json.dumps({"verification": target, "filled": filled, "flags": verification_lint_flags(root, target, spec)}))
     return 0
 
 

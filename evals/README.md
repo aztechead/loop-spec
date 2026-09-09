@@ -106,3 +106,9 @@ driver-written shape makes impossible (`artifact-lint`, `verification-grounding`
 `misplaced`, `oneshot-shape`, `review-triage`, `converged-floor`); the summary prints
 the same per task. A live bug-fix run on the short route is at its done condition for
 `docs/loop-spec/orchestrator-port-followup-3.md` N1 when `format_redo` is zero.
+
+`first_turn_input_tokens` is the context the first assistant turn read (cache creation,
+cache read, and input tokens from the CLI's transcript of the session): what every later
+turn re-reads, and the number the bill is made of once the format rounds are gone. The
+summary prints it per task. `bar.rounds` (1 for both tasks) is the round figure the
+verdict reads.

@@ -30,6 +30,27 @@ The landing record at the end of the follow-up says what each item became.
   `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
   the cycle skill binds, never a path to retype. It has no switch of its own;
   `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
+- **The driver observes what the lead used to assert** (`docs/loop-spec/orchestrator-port-followup-4.md`).
+  Read-only is the task's word: the invocation token `protected:a,b` lands in
+  `feature.json.protected`, `lib/footprint.sh list` honors a read-only mark only for a
+  protected file (a mark on any other file is a plain cite, with a notice) and adds a
+  cited source file's existing test module by construction, so a changed file's test
+  is in the footprint unless the task protects it; the eval passes each task's
+  protected list. The oneshot verification skeleton's Status cells are empty, and
+  `cycle-driver.sh verification run` executes each criterion's command (the backticked
+  span of its SPEC line) and `commands.test`, writing PASS or FAIL from the exit, the
+  evidence, and the output; `next --returned-from oneshot` runs it before the exit
+  gate, `artifact-lint` flags an empty Status cell and an empty fenced block, and
+  `verification fill` takes no evidence, output, or review text any more.
+  `verification review --report` writes the Code review section from the reviewer's
+  report (`none` when it holds no finding; the boundary review does this itself) and
+  `verification verdict` records the lead's answer per finding. The three remaining
+  writers of a driver-owned file are closed: `spec write --file` refuses over the
+  oneshot skeleton, `hooks/team/result-forgery-guard.sh` denies a shell write into a
+  oneshot feature's SPEC.md or VERIFICATION.md, and the path hook's deny fails closed
+  on an unreadable spec. `spec fill --json -` fills the whole spec in one call; a test
+  module of a file that changed in the diff cannot be dropped; the eval records
+  `first_turn_input_tokens` from the session transcript and reads `bar.rounds`.
 - **Live run 4** (`slugify-bug`, haiku, d17da82): delivered in one round at 0.41 USD, 3.8
   minutes, 74 artifact lines, 39 turns, zero REDO rounds; run 3 on the same fixture
   before this work was 0.80 USD, 79 turns, 124 lines. The bar (0.25 USD, 50 lines, 3

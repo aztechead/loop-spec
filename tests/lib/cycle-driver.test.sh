@@ -319,8 +319,15 @@ bash "$REPO_ROOT/lib/footprint.sh" cite "$FD7" slugify.py:2 "lower() drops nothi
 bash "$REPO_ROOT/lib/footprint.sh" cite "$FD7" README.md:1 --read-only "docs are not the change"
 out="$(cd "$WORK" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
 check "spec skeleton: one cited file is the oneshot route" "oneshot" "$(jq -r '.route' <<<"$out")"
-check "spec skeleton: the footprint is the record minus read-only" '["slugify.py"]' "$(jq -c '.footprint' <<<"$out")"
-check "spec skeleton: the read-only files ride along" '["README.md"]' "$(jq -c '.readOnly' <<<"$out")"
+# Read-only is the task's word (followup-4, item 1): README.md was marked read-only by
+# the scout but the task protects nothing, so it stays in the footprint.
+check "spec skeleton: a read-only mark on an unprotected file is not honored" '["slugify.py","README.md"]' "$(jq -c '.footprint' <<<"$out")"
+check "spec skeleton: nothing is read-only without a protected list" '[]' "$(jq -c '.readOnly' <<<"$out")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" protected '["README.md"]' >/dev/null
+rm -f "$DOCS7/SPEC.md"
+out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
+check "spec skeleton: the footprint is the record minus the protected file" '["slugify.py"]' "$(jq -c '.footprint' <<<"$out")"
+check "spec skeleton: the protected file is read-only" '["README.md"]' "$(jq -c '.readOnly' <<<"$out")"
 check "spec skeleton: prints the path in the feature's checkout, not the cwd" "$DOCS7/SPEC.md" "$(jq -r '.spec' <<<"$out")"
 check "spec skeleton: the title is filled" "# fix slugify dots" "$(sed -n '/^# /p' "$DOCS7/SPEC.md" | head -1)"
 check "spec skeleton: the footprint is filled" "1" "$(grep -c '^  - slugify.py$' "$DOCS7/SPEC.md")"
@@ -347,16 +354,35 @@ check "spec fill: a grounding bullet replaces none" "0" "$(grep -c '^- none$' "$
 check "spec fill: the filled skeleton passes both spec lints" "[]" "$(jq -c '.flags' <<<"$out")"
 ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" >/dev/null 2>&1) || ec=$?
 check "spec fill: nothing to fill is a bad invocation" "2" "$ec"
+# One call for the whole spec (followup-4, item 5): the same fills from a JSON object.
+cp "$DOCS7/SPEC.md" "$WORK/spec7.filled"; rm -f "$DOCS7/SPEC.md"
+(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" >/dev/null 2>&1)
+out="$(cd "$REPO7" && printf '%s' '{"intent":"Dots survive slugify.","notes":{"slugify.py":"strip dots in slugify()"},"criteria":["`true` exits 0: it runs"],"grounding":["slugify.py:2 is the one transform"]}' | drv spec fill --feature-dir "$FD7" --json - 2>/dev/null)"
+check "spec fill --json: every field in one call" "intent note:slugify.py criterion grounding" "$(jq -r '.filled | join(" ")' <<<"$out")"
+check "spec fill --json: the result passes both spec lints" "[]" "$(jq -c '.flags' <<<"$out")"
+ec=0; (cd "$REPO7" && printf 'not json' | drv spec fill --feature-dir "$FD7" --json - >/dev/null 2>&1) || ec=$?
+check "spec fill --json: a non-object is a bad invocation" "2" "$ec"
+cp "$WORK/spec7.filled" "$DOCS7/SPEC.md"
 cp "$DOCS7/SPEC.md" "$WORK/spec7.bak"
+# A whole-file write over the oneshot skeleton is refused; after an escalation the spec
+# is the lead's full shape again.
+printf '# a draft\n' > "$WORK/draft7.md"
+ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --file "$WORK/draft7.md" >/dev/null 2>&1) || ec=$?
+check "spec write: refused over the oneshot skeleton" "1" "$ec"
+check "spec write: the skeleton is untouched" "1" "$(grep -c '^## Intent$' "$DOCS7/SPEC.md")"
 out="$(cd "$REPO7" && drv spec escalate --feature-dir "$FD7" --reason "needs a fourth file" 2>/dev/null)"
 check "spec escalate: route: full lands in the frontmatter" "1" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS7/SPEC.md" | grep -c 'route: full')"
 check "spec escalate: the reason lands under Implementation notes" "1" "$(grep -c '^- escalated (route: full): needs a fourth file$' "$DOCS7/SPEC.md")"
 check "spec escalate: the probe now answers full" "route=full" "$(bash "$REPO_ROOT/lib/graph/probes/oneshot.sh" --feature-dir "$FD7" --after | cut -d' ' -f1)"
+ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --file "$WORK/draft7.md" >/dev/null 2>&1) || ec=$?
+check "spec write: allowed over an escalated spec (the full shape is the lead's)" "0" "$ec"
 cp "$WORK/spec7.bak" "$DOCS7/SPEC.md"
 printf '# edited by the lead\n' >> "$DOCS7/SPEC.md"
 out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
 check "spec skeleton: an existing SPEC.md is kept" "1" "$(grep -c '^# edited by the lead$' "$DOCS7/SPEC.md")"
 printf -- '---\nfootprint: [slugify.py]\n---\n# from a draft\n' > "$WORK/draft.md"
+# On the full route (no skeleton) the draft is the lead's whole spec.
+rm -f "$DOCS7/SPEC.md"
 out="$(cd "$WORK" && drv spec write --feature-dir "$FD7" --file "$WORK/draft.md" 2>/dev/null)"
 check "spec write: the draft lands at the one target" "$DOCS7/SPEC.md" "$out"
 check "spec write: the content is the draft's" "# from a draft" "$(sed -n 4p "$DOCS7/SPEC.md")"
@@ -409,37 +435,83 @@ check "phase-begin oneshot: the VERIFICATION.md skeleton is written" "$DOCS7/VER
 check "phase-begin oneshot: the skeleton's title is the feature's" "# fix slugify dots - Verification" "$(head -1 "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: no Plan line without a PLAN.md" "0" "$(grep -c '^\*\*Plan:\*\*' "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: one grounding row per criterion" "1" "$(grep -c '^- criterion: GE-001 |' "$DOCS7/VERIFICATION.md")"
-check "phase-begin oneshot: the acceptance row carries the criterion text" "1" "$(grep -c "^| GE-001 | .*slugify('a.b') == 'ab'.* | PASS |" "$DOCS7/VERIFICATION.md")"
+check "phase-begin oneshot: the acceptance row carries the criterion text and no status" "1" "$(grep -c "^| GE-001 | .*slugify('a.b') == 'ab'.* |  | " "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: the second criterion gets its own rows" "2" "$(grep -c '^- criterion: GE-00[12] |' "$DOCS7/VERIFICATION.md")"
 # A criterion that is a shell pipeline: the bare pipe would split the row and the
 # floor would read the wrong cell (live run 3 paid a REDO and ten edits for it).
-check "phase-begin oneshot: a pipe in the criterion is escaped in the table row" "1" "$(grep -c '^| GE-002 | `python3 -m unittest discover -s tests -v 2>&1 \\| grep -c .* | PASS |' "$DOCS7/VERIFICATION.md")"
-check "phase-begin oneshot: the floor reads the escaped row's status from the right cell" "0" "$(bash "$REPO_ROOT/lib/converged-floor.sh" "$DOCS7/SPEC.md" "$DOCS7/VERIFICATION.md" 2>&1 | grep -c 'FLOOR GE-002')"
+check "phase-begin oneshot: a pipe in the criterion is escaped in the table row" "1" "$(grep -c '^| GE-002 | `python3 -m unittest discover -s tests -v 2>&1 \\| grep -c .* |  | ' "$DOCS7/VERIFICATION.md")"
+check "phase-begin oneshot: an empty status cell is a flag until the driver runs the criterion" "2" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" verification "$DOCS7/VERIFICATION.md" 2>&1 | grep -c 'empty Status cell')"
 # The oneshot skeleton is the sections the gates read and nothing more (followup-3, N1).
 check "phase-begin oneshot: the skeleton carries no section the gates do not read" "0" "$(grep -c '^## Security review summary\|^## Branch state\|^#### Performance' "$DOCS7/VERIFICATION.md")"
 check "phase-begin oneshot: the skeleton is under 50 lines" "1" "$(( $(wc -l < "$DOCS7/VERIFICATION.md") < 50 ))"
 # verification fill: one criterion per call, the review, the tests; each answer carries
 # the four exit lints' flags over the file as it stands.
-printf 'def slugify(s):\n    return s.lower().replace(".", "")\n' > "$REPO7/slugify.py"
-out="$(cd "$REPO7" && drv verification fill --feature-dir "$FD7" --row GE-001 --implementation slugify.py:2 --proof "replace strips dots" --evidence "python3 -c ... -> exit 0" --output "(no output, exit 0)" 2>/dev/null)"
+# The lead fills what it knows (grounding rows, the review); the driver observes the
+# rest: `verification run` executes each criterion's command and writes the status from
+# its exit, the evidence, and the output, then commands.test (followup-4, items 2 and 4).
+out="$(cd "$REPO7" && drv verification fill --feature-dir "$FD7" --row GE-001 --implementation slugify.py:2 --proof "replace strips dots" 2>/dev/null)"
 check "verification fill: the grounding row is filled with integration none by default" "1" "$(grep -c '^- criterion: GE-001 | implementation: slugify.py:2 - replace strips dots | integration: none - ' "$DOCS7/VERIFICATION.md")"
-check "verification fill: the evidence cell is filled" "1" "$(grep -c '^| GE-001 | .* | PASS | python3 -c ... -> exit 0 |$' "$DOCS7/VERIFICATION.md")"
-check "verification fill: the output block is filled" "1" "$(grep -c '^(no output, exit 0)$' "$DOCS7/VERIFICATION.md")"
-check "verification fill: GE-002's placeholder row is still a flag" "1" "$(jq -r '.flags[]' <<<"$out" | grep -c 'GE-002\|implementation must be\|:8:')"
+check "verification fill: GE-002's placeholder row is still a flag" "1" "$(jq -r '.flags[]' <<<"$out" | grep -c 'implementation must be')"
 mkdir -p "$REPO7/tests"; printf 'from slugify import slugify\n' > "$REPO7/tests/test_slugify.py"
-out="$(cd "$REPO7" && drv verification fill --feature-dir "$FD7" --row GE-002 --implementation slugify.py:2 --proof "the same line" --integration tests/test_slugify.py:1 --integration-proof "the suite imports it" --evidence "grep -c -> 1" --output "1" 2>/dev/null)"
+out="$(cd "$REPO7" && drv verification fill --feature-dir "$FD7" --row GE-002 --implementation slugify.py:2 --proof "the same line" --integration tests/test_slugify.py:1 --integration-proof "the suite imports it" 2>/dev/null)"
 check "verification fill: an integration ref is written as given" "1" "$(grep -c '| integration: tests/test_slugify.py:1 - the suite imports it$' "$DOCS7/VERIFICATION.md")"
-out="$(cd "$REPO7" && drv verification fill --feature-dir "$FD7" --review "none" --reviewer-model haiku --tests "1 passed" 2>/dev/null)"
-check "verification fill: the reviewer model lands" "1" "$(grep -c '^\*\*Reviewer:\*\* code-reviewer (haiku)$' "$DOCS7/VERIFICATION.md")"
-check "verification fill: the test suite block lands" "1" "$(grep -c '^1 passed$' "$DOCS7/VERIFICATION.md")"
-check "verification fill: the filled skeleton has no flag from the four exit lints" "[]" "$(jq -c '.flags' <<<"$out")"
+ec=0; (cd "$REPO7" && drv verification fill --feature-dir "$FD7" --row GE-001 --evidence "PASS" >/dev/null 2>&1) || ec=$?
+check "verification fill: the lead cannot supply evidence or a status" "2" "$ec"
+# GE-001's command passes against the fixed slugify.py; GE-002's (a unittest run with no
+# tests dir on the path) fails: the driver records what happened, not what was hoped.
+printf 'def slugify(s):\n    return s.lower().replace(".", "")\n' > "$REPO7/slugify.py"
+ec=0; out="$(cd "$REPO7" && drv verification run --feature-dir "$FD7" 2>/dev/null)" || ec=$?
+check "verification run: a passing command is PASS from its exit" "1" "$(grep -c '^| GE-001 | .* | PASS | `python3 -c .* -> exit 0 |$' "$DOCS7/VERIFICATION.md")"
+check "verification run: a failing command is FAIL from its exit" "1" "$(grep -c '^| GE-002 | .* | FAIL | `python3 -m unittest .* -> exit [1-9][0-9]* |$' "$DOCS7/VERIFICATION.md")"
+check "verification run: a failing row is exit 1" "1" "$ec"
+check "verification run: the answer lists each row's exit" "PASS FAIL" "$(jq -r '[.ran[] | select(.row | startswith("GE")) | .status] | join(" ")' <<<"$out")"
+check "verification run: the output block is the command's output" "1" "$(grep -c '^(no output, exit 0)$' "$DOCS7/VERIFICATION.md")"
+check "verification run: the floor refuses convergence on the FAIL row" "1" "$(jq -r '.flags[]' <<<"$out" | grep -c '^FLOOR GE-002')"
+check "verification run: no commands.test means the block says so" "1" "$(grep -c '^(no commands.test is configured for this feature)$' "$DOCS7/VERIFICATION.md")"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" commands.test '"python3 -c \"print(\\\"2 passed\\\")\""' >/dev/null
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" protected '[]' >/dev/null
+# Fix the failing criterion's command in the spec and run again: the row turns PASS.
+python3 - "$DOCS7/SPEC.md" <<'PY'
+import re, sys
+p = sys.argv[1]; s = open(p).read()
+s = re.sub(r"^- \[ \] `python3 -m unittest discover[^`]*` prints 1$", "- [ ] `python3 -c \"print(1)\" | grep -c 1` prints 1", s, flags=re.M)
+open(p, "w").write(s)
+PY
+check "the fixture's second criterion now runs a passing pipeline" "1" "$(grep -c 'print(1)" | grep -c 1` prints 1' "$DOCS7/SPEC.md")"
+ec=0; out="$(cd "$REPO7" && drv verification run --feature-dir "$FD7" 2>/dev/null)" || ec=$?
+check "verification run: every row passing is exit 0" "0" "$ec"
+check "verification run: the test suite block is the command's output with its exit" "1" "$(grep -c '^2 passed$' "$DOCS7/VERIFICATION.md")"
+# The Code review section comes from the reviewer's report, never the lead's hand
+# (followup-4, item 3): findings become pending bullets the lead answers; none is none.
+mkdir -p "$FD7/dispatch"
+printf 'Verdict: PASS_WITH_MINOR\n\n- slugify.py:2 — replace runs before lower(), order is fine but undocumented\n- tests/test_slugify.py:1 — the suite has no dotted case.\n' > "$FD7/dispatch/oneshot.review.md"
+out="$(cd "$REPO7" && drv verification review --feature-dir "$FD7" --reviewer-model haiku 2>/dev/null)"
+check "verification review: the reviewer's verdict lands on the Reviewer line" "1" "$(grep -c '^\*\*Reviewer:\*\* code-reviewer (haiku): PASS_WITH_MINOR$' "$DOCS7/VERIFICATION.md")"
+check "verification review: one pending bullet per finding" "2" "$(grep -c '| verdict: pending$' "$DOCS7/VERIFICATION.md")"
+check "verification review: a pending finding is a flag until answered" "1" "$(jq -r '.flags[]' <<<"$out" | grep -c 'verdict' | awk '{print ($1 > 0)}')"
+ec=0; (cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding slugify.py:2 --verdict maybe --reason x >/dev/null 2>&1) || ec=$?
+check "verification verdict: true or false only" "2" "$ec"
+out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding slugify.py:2 --verdict false --reason "lower() never adds a dot, so the order cannot change the result" 2>/dev/null)"
+out="$(cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding tests/test_slugify.py:1 --verdict true --reason "added the dotted case in the fix commit" 2>/dev/null)"
+check "verification verdict: the answers replace pending" "0" "$(grep -c '| verdict: pending$' "$DOCS7/VERIFICATION.md")"
+check "verification verdict: a false carries its disproof" "1" "$(grep -c '^- slugify.py:2 — .* | verdict: false — lower() never adds a dot' "$DOCS7/VERIFICATION.md")"
+ec=0; (cd "$REPO7" && drv verification verdict --feature-dir "$FD7" --finding nope.py:9 --verdict true --reason x >/dev/null 2>&1) || ec=$?
+check "verification verdict: an unknown finding is refused" "1" "$ec"
+printf 'Verdict: PASS\nNo findings.\n' > "$FD7/dispatch/oneshot.review.md"
+out="$(cd "$REPO7" && drv verification review --feature-dir "$FD7" --reviewer-model haiku 2>/dev/null)"
+check "verification review: a report with no finding renders none" "1" "$(sed -n '/^### Findings$/,/^## /p' "$DOCS7/VERIFICATION.md" | grep -c '^none$')"
+check "verification review: none passes the triage lint" "0" "$(jq -r '.flags[]' <<<"$out" | grep -c 'review-triage\|verdict')"
+check "verification fill: the reviewer model lands" "1" "$(grep -c '^\*\*Reviewer:\*\* code-reviewer (haiku)' "$DOCS7/VERIFICATION.md")"
+rm -f "$FD7/dispatch/oneshot.review.md"
+check "verification: the observed and filled skeleton has no flag from the four exit lints" "[]" "$(jq -c '.flags' <<<"$out")"
 ec=0; (cd "$REPO7" && drv verification fill --feature-dir "$FD7" --row GE-009 --implementation a:1 --proof x >/dev/null 2>&1) || ec=$?
 check "verification fill: a row the skeleton does not hold is refused" "1" "$ec"
-check "verification fill: no placeholder is left" "0" "$(grep -c '{' "$DOCS7/VERIFICATION.md")"
+check "verification: no placeholder is left" "0" "$(grep -c '{' "$DOCS7/VERIFICATION.md")"
 printf '# filled by the lead\n' > "$DOCS7/VERIFICATION.md"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv phase-begin oneshot --feature-dir "$FD7" 2>/dev/null)"
 check "phase-begin oneshot: an existing VERIFICATION.md is kept" "null" "$(jq -r '.skeletons' <<<"$out")"
 check "phase-begin oneshot: kept means untouched" "# filled by the lead" "$(head -1 "$DOCS7/VERIFICATION.md")"
+rm -f "$DOCS7/VERIFICATION.md"; (cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv phase-begin oneshot --feature-dir "$FD7" >/dev/null 2>&1)
 # The one review pass is the driver's launch under the session layer, and the dispatch
 # event the exit gate reads is driver-observed; attended, the lead dispatches in-harness.
 out="$(cd "$REPO7" && drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
@@ -468,6 +540,7 @@ check "oneshot review: the exit gate's review check is satisfied by it" "0" "$(b
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot: the driver runs the review pass and answers one REDO" "REDO phase=oneshot flags=1" "$(head -1 <<<"$out")"
 check "next from oneshot: the FLAG hands the lead the report path" "1" "$(grep -c '^FLAG \[review\] the driver ran the one review pass; its verdict and findings are in .*oneshot.review.md' <<<"$out")"
+check "next from oneshot: the Code review section was written from the report (none)" "1" "$(grep -c 'the Code review section holds none' <<<"$out")"
 check "next from oneshot: the dispatch event is driver-observed" "1" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot again: no second review; the exit gate answers" "0" "$(grep -c 'the driver ran the one review pass' <<<"$out")"

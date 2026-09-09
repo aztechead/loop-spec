@@ -476,8 +476,12 @@ printf '{"slug":"c"}\n' > "$CAND/.loop-spec/features/c/feature.json"
 check_output "oneshot --candidate: no scout cite is the full path" "route=full reason=the scout cited no file" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
 bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" src/x.py:1 >/dev/null
 check_output "oneshot --candidate: one cited file is a oneshot candidate" "route=oneshot reason=candidate footprint of 1 file(s) from the scout record" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+# Read-only is the task's word (feature.json.protected), never the scout's mark alone
+# (followup-4, item 1): the unprotected mark counts, the protected file does not.
 bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" src/big.py:1 --read-only >/dev/null
-check_output "oneshot --candidate: a read-only cite is not in the footprint" "footprint of 1 file(s)" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+check_output "oneshot --candidate: a read-only mark on an unprotected file counts" "footprint of 2 file(s)" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+printf '{"slug":"c","protected":["src/big.py"]}\n' > "$CAND/.loop-spec/features/c/feature.json"
+check_output "oneshot --candidate: a protected file is not in the footprint" "footprint of 1 file(s)" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
 for f in a b c; do bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" "src/$f.py:1" >/dev/null; done
 check_output "oneshot --candidate: four cited files is the full path" "route=full reason=footprint names 4 files" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
 check "oneshot --candidate with a file argument is a bad invocation" 2 "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate src/x.py

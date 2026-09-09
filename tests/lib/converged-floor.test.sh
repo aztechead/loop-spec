@@ -67,6 +67,15 @@ sed 's/| 2 | output contains marker | PASS |/| 2 | output contains marker | FAIL
 bash "$LIB" "$tmp/SPEC.md" "$tmp/V-fail.md" >/dev/null 2>&1
 check "FAIL table row vetoes convergence" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 
+# An empty Status cell (the oneshot skeleton before `verification run` observes the
+# command) is a criterion nobody ran: a veto, never a pass (followup-4, item 2).
+sed 's/| 2 | output contains marker | PASS |/| 2 | output contains marker |  |/' "$tmp/V.md" > "$tmp/V-empty.md"
+bash "$LIB" "$tmp/SPEC.md" "$tmp/V-empty.md" >/dev/null 2>&1
+check "an empty Status cell vetoes convergence" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
+# The driver's own FAIL row shape: `| GE-002 | ... | FAIL | `cmd` -> exit 1 |`.
+sed 's/| 2 | output contains marker | PASS | `run` -> marker |/| GE-002 | output contains marker | FAIL | `run` -> exit 1 |/' "$tmp/V.md" > "$tmp/V-driver-fail.md"
+bash "$LIB" "$tmp/SPEC.md" "$tmp/V-driver-fail.md" >/dev/null 2>&1
+check "a driver-written FAIL row (exit code evidence) vetoes convergence" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 # FAIL as a substring elsewhere (evidence text) does not veto.
 sed 's/`run` -> marker/`run` -> no FAILURES seen/' "$tmp/V.md" > "$tmp/V-text.md"
 bash "$LIB" "$tmp/SPEC.md" "$tmp/V-text.md" >/dev/null 2>&1

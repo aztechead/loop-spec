@@ -10,6 +10,7 @@
   "bar": {
     "cost_usd": 0.25,
     "artifact_lines": 50,
-    "minutes": 3
+    "minutes": 3,
+    "rounds": 1
   }
 }

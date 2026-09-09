@@ -29,6 +29,12 @@
 #                            values are stripped and left unset (lib/cycle-profile.sh
 #                            owns the answer space and its own fail-safe)
 #   --no-run              -> .no_run = true (intake only; harmless elsewhere)
+#   protected:A,B         -> .protected = [A, B]: repository-relative files the task
+#                            forbids the change to touch (an eval task's protected
+#                            list, "do not change the tests"). The one source of a
+#                            read-only footprint file (lib/footprint.sh); a read-only
+#                            mark the lead writes on any other file is not honored
+#                            (orchestrator-port-followup-4.md, item 1)
 #   tier:X, preset:X      -> ignored, listed in .legacy[] (caller prints the notice)
 #   any other -flag       -> refused (exit 1) while it LEADS the arguments; after the
 #                            first description word it is description text
@@ -42,7 +48,7 @@
 #
 # Output: one JSON object:
 #   {mode, title, slug, style, profile, autonomous, greenfield, no_run,
-#    spec_path, legacy: []}
+#    spec_path, protected: [], legacy: []}
 #   .title is the token-stripped text ("" for bare/backlog; spec-file title is
 #   resolved by the caller from the file's first heading). .slug is the kebab-case
 #   of .title ("" when title is empty). .style defaults to "auto".
@@ -66,6 +72,7 @@ no_run=false
 style="auto"
 profile=""
 legacy=()
+protected=()
 remaining=()
 
 # noglob: the unquoted $tok below word-splits deliberately, but must never
@@ -84,7 +91,7 @@ done
 trail_start=${#words[@]}
 while (( trail_start > 0 )); do
   case "${words[trail_start-1]}" in
-    autonomous|new|--no-run|style:*|phase:fresh|phase:continuous|profile:*|tier:*|preset:*)
+    autonomous|new|--no-run|style:*|phase:fresh|phase:continuous|profile:*|protected:*|tier:*|preset:*)
       trail_start=$((trail_start - 1)) ;;
     *) break ;;
   esac
@@ -118,6 +125,9 @@ for w in ${words[@]+"${words[@]}"}; do
       profile="${w#profile:}" ;;
     profile:*)
       : ;;  # stripped from the title; an unrecognized profile is simply not set
+    protected:*)
+      IFS=',' read -r -a parts <<<"${w#protected:}"
+      for part in ${parts[@]+"${parts[@]}"}; do [[ -n "$part" ]] && protected+=("$part"); done ;;
     tier:*|preset:*)
       legacy+=("$w") ;;
     -*)
@@ -128,7 +138,7 @@ for w in ${words[@]+"${words[@]}"}; do
       # those made a lead rephrase the task, and the rephrased slug matched no paused
       # feature, so the next invocation started a second cycle.
       if [[ "${#remaining[@]}" -eq 0 ]]; then
-        echo "parse-invocation: unknown flag '$w'; the inline tokens are autonomous, new, style:<s>, phase:<m>, profile:<p>, --no-run" >&2
+        echo "parse-invocation: unknown flag '$w'; the inline tokens are autonomous, new, style:<s>, phase:<m>, profile:<p>, protected:<a,b>, --no-run" >&2
         exit 1
       fi
       remaining+=("$w") ;;
@@ -161,6 +171,10 @@ legacy_json="[]"
 if [[ "${#legacy[@]}" -gt 0 ]]; then
   legacy_json="$(printf '%s\n' "${legacy[@]}" | jq -R . | jq -cs .)"
 fi
+protected_json="[]"
+if [[ "${#protected[@]}" -gt 0 ]]; then
+  protected_json="$(printf '%s\n' "${protected[@]}" | jq -R . | jq -cs 'unique')"
+fi
 
 jq -cn \
   --arg mode "$mode" \
@@ -173,8 +187,9 @@ jq -cn \
   --argjson no_run "$no_run" \
   --arg spec_path "$spec_path" \
   --argjson legacy "$legacy_json" \
+  --argjson protected "$protected_json" \
   '{mode: $mode, title: $title, slug: $slug, style: $style,
     profile: (if $profile == "" then null else $profile end),
     autonomous: $autonomous, greenfield: $greenfield, no_run: $no_run,
     spec_path: (if $spec_path == "" then null else $spec_path end),
-    legacy: $legacy}'
+    protected: $protected, legacy: $legacy}'

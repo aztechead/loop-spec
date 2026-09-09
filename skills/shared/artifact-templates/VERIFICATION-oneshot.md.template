@@ -10,7 +10,7 @@
 
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
-| 1 | {from SPEC} | PASS / FAIL / BLOCKED / N/A | `{verify command}` -> {output summary} |
+| 1 | {from SPEC} |  | `{verify command}` -> {output summary} |
 
 ## Verify command outputs
 

@@ -13,6 +13,8 @@ checks=(
   $'evals/eval_run.py\tFORMAT_CLASSES = ("artifact-lint", "verification-grounding", "misplaced"'
   $'evals/eval_run.py\tREDO rounds: {redo[\'rounds\']}'
   $'evals/README.md\tformat_redo'
+  $'evals/eval_run.py\tdef first_turn_input_tokens'
+  $'evals/README.md\tfirst_turn_input_tokens'
 )
 
 check_fixed_strings "${checks[@]}"
@@ -24,9 +26,10 @@ plan_done="$(tr '\n' ' ' < "$PLAN")"
 for row in "slugify-bug 0.25 50 3" "wc-json 0.60 100 5"; do
   set -- $row
   task="evals/tasks/$1/task.json"
-  got="$(jq -r '"\(.bar.cost_usd) \(.bar.artifact_lines) \(.bar.minutes)"' "$task")"
-  if [[ "$got" == "$(printf '%s %s %s' "$(printf '%g' "$2")" "$3" "$4")" ]] \
-     && grep -qF "at most $2 USD, at most $3 artifact lines, at most $4 minutes" <<<"$plan_done"; then
+  got="$(jq -r '"\(.bar.cost_usd) \(.bar.artifact_lines) \(.bar.minutes) \(.bar.rounds)"' "$task")"
+  if [[ "$got" == "$(printf '%s %s %s 1' "$(printf '%g' "$2")" "$3" "$4")" ]] \
+     && grep -qF "at most $2 USD, at most $3 artifact lines, at most $4 minutes" <<<"$plan_done" \
+     && grep -qF "one round" <<<"$plan_done"; then
     echo "PASS: $1 bar ($2 USD, $3 lines, $4 minutes) is the plan's"; PASS=$((PASS+1))
   else
     echo "FAIL: $1 bar is not the plan's (task: $got; plan says: $(grep -o "On \`$1\`[^.]*\." <<<"$plan_done" | head -1))"; FAIL=$((FAIL+1))

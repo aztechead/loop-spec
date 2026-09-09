@@ -339,10 +339,28 @@ def lint_verification(display, data):
                 break
             if s.startswith('|'):
                 has_row = True
-                break
+                # An empty Status cell is a criterion nobody ran: the oneshot skeleton
+                # leaves it empty until `cycle-driver.sh verification run` observes the
+                # command's exit (orchestrator-port-followup-4.md, item 2).
+                cells = [c.strip() for c in re.split(r'(?<!\\)\|', s)[1:-1]]
+                if len(cells) >= 3 and cells[0] not in ('#', '') and not set(cells[0]) <= set('-') and cells[2] == '':
+                    flag(display, no, "acceptance row %s has an empty Status cell — the driver's "
+                         "`verification run` fills it from the command's exit; nobody writes a status by hand" % cells[0])
         if not has_row:
             flag(display, ac, "'## Acceptance criteria' has no table rows — the iterate "
                  'judge and regression-scan read this table')
+    # An empty fenced block is a value nobody wrote: the bug-fix run at d17da82 shipped
+    # an empty Final test suite fence and nothing said so (followup-4, item 4).
+    open_at = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith('```'):
+            if open_at is None:
+                open_at = i
+            else:
+                if all(not l.strip() for l in lines[open_at + 1:i]):
+                    flag(display, open_at + 1, 'empty fenced block — the block holds a command output '
+                         "the driver's `verification run` writes; an empty one is a value nobody observed")
+                open_at = None
 
 
 def decode_json_source(display, data):

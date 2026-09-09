@@ -256,8 +256,18 @@ driver_owned_deny() {
   [[ -n "$checkout" ]] || checkout="${CLAUDE_PROJECT_DIR:-$PWD}/"
   fd="${checkout}.loop-spec/features/$slug"
   [[ -f "$fd/feature.json" ]] || return 0
+  # Fail closed once the feature is known: the file opens to the lead only on a probe
+  # answer of route=full for a reason that is not an unreadable spec (a spec the
+  # probe cannot read may be what a hand write just broke); anything else, an empty
+  # answer included, is a deny (followup-4, N1's writers).
   route="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/graph/probes/oneshot.sh" --feature-dir "$fd" 2>/dev/null || true)"
-  [[ "${route%% *}" == "route=oneshot" ]] || return 0
+  if [[ "${route%% *}" == "route=full" ]]; then
+    case "$route" in
+      *"frontmatter missing"*|*"frontmatter unterminated"*|*"could not be read"*|*"not readable"*) ;;
+      *) return 0 ;;
+    esac
+  fi
+  [[ "${route%% *}" == "route=oneshot" ]] || route="route=oneshot reason=the route probe did not answer full for a readable spec (${route:-no answer}); a driver-owned file stays the driver's"
   echo "DENY: $TOOL_NAME targets $FILE_PATH, which the driver writes on the oneshot route (${route#route=oneshot reason=}). Fill it through the driver: cycle-driver.sh spec fill --feature-dir $fd (--intent, --file/--note, --criterion, --grounding), spec escalate --reason, spec footprint drop --file --reason, or verification fill --feature-dir $fd (--row/--implementation/--proof/--evidence/--output, --review, --tests). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
   exit 2
 }
