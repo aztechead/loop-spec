@@ -157,9 +157,16 @@ Usage:
         (`/loop-spec:cycle`), whose first call is `next` without --returned-from.
         Exit 0 answered; 1 graph abort or failure.
 
+    cycle-driver.sh decline [--dir DIR] --reason TEXT [--title TEXT] [--summary TEXT] [--autonomous 0|1]
+        A request that is not repository work, declined before the tree changes: the
+        protocol-mismatch terminal result (cycle-result.sh write-terminal). Prints
+        {status, outcome, reason, result}. Exit 0; 1 the writer refused (the tree has
+        changed: finish the work or declare the failure); 2 bad invocation.
     cycle-driver.sh finish --feature-dir DIR [--completed N]
         Terminal result + chain verdict. Prints {status, prUrl, targets, warnings,
-        feedback, chain, backlogCount, exitWorktree}. Exit 0; 1 delivery incomplete.
+        feedback, chain, backlogCount, exitWorktree, report}; `report` is the completion
+        text the lead prints as is (outcome first, one line per target, warnings,
+        elapsed, backlog count). Exit 0; 1 delivery incomplete.
 
     cycle-driver.sh escalate --feature-dir DIR --reason TEXT
         Clear team state, write the escalated result, checkpoint PR. Prints
@@ -1243,6 +1250,12 @@ def cmd_next(argv):
     # cycle-result.sh reads this: a failure published over an answered NEXT must say why.
     fset(feature_dir, "driverNext", {"phase": nxt, "at": now()})
     print('NEXT phase=%s label="%s" effort=%s' % (nxt, label, effort))
+    # The node may name a lighter skill than loop-spec:<phase> (the spec node names the
+    # candidate skill, so the short route never loads the full SPEC body): data on the
+    # graph, printed as an EXT line the cycle skill acts on (followup-3, N4).
+    node_skill = next((n.get("skill") for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == nxt), None)
+    if node_skill:
+        print("EXT skill=%s" % node_skill)
     ext = lib_run("extension-points", "instructions", nxt, "prepend", quiet=True).stdout
     ext += "\n" + lib_run("extension-points", "facts", quiet=True).stdout
     for line in ext.splitlines():
@@ -1450,11 +1463,44 @@ def cmd_finish(argv):
         lib_run("backlog", "done", entry, quiet=True)
     chain = json.loads(lib("autonomous-chain", "should-chain", feature_dir, "--completed", o.get("completed") or "0"))
     backlog_count = lib_run("backlog", "count", quiet=True).stdout or "0"
+    targets = delivery.get("targets") or []
+    feedback = delivery.get("feedback") if isinstance(delivery.get("feedback"), dict) else {}
+    # The completion report, rendered from the record (outcome first, then each target,
+    # the warnings, the elapsed time, the backlog). The lead prints it: a report built
+    # from data carries no self-authored deferral to lint and needs no style contract
+    # in the lead's context (followup-3, N4).
+    started = iso_epoch(feat.get("createdAt") or "") if feat.get("createdAt") else None
+    lines = [summary]
+    for t in targets:
+        fb = t.get("feedback") if isinstance(t.get("feedback"), dict) else feedback
+        parts = [t.get("name") or t.get("repo") or feat.get("slug") or "target"]
+        if t.get("prUrl"):
+            parts.append("PR " + t["prUrl"])
+        if t.get("targetSha"):
+            parts.append("sha " + str(t["targetSha"])[:12])
+        if t.get("checks") is not None:
+            parts.append("checks " + str(t["checks"]))
+        if fb.get("reviewDecision"):
+            parts.append("review " + str(fb["reviewDecision"]))
+        if fb.get("unresolved") is not None:
+            parts.append("%s unresolved" % fb["unresolved"])
+        if t.get("errorCode"):
+            parts.append("error " + str(t["errorCode"]))
+        lines.append("- " + ", ".join(parts))
+    for w in feat.get("warnings") or []:
+        lines.append("- warning: " + str(w))
+    if started:
+        mins = max(0, (int(time.time()) - started) // 60)
+        lines.append("elapsed %dh%02dm" % (mins // 60, mins % 60))
+    lines.append("backlog entries remaining: %s" % backlog_count)
+    if str(feedback.get("reviewDecision") or "").lower().replace("_", "") == "changesrequested" and pr_url:
+        lines.append("next: /loop-spec:revise " + pr_url)
     print(json.dumps({
         "status": status, "prUrl": pr_url or None, "summary": summary,
-        "targets": delivery.get("targets") or [], "feedback": delivery.get("feedback"),
+        "targets": targets, "feedback": delivery.get("feedback"),
         "warnings": feat.get("warnings") or [], "chain": chain, "backlogCount": int(backlog_count),
         "exitWorktree": is_claude_worktree_feature(feat),
+        "report": "\n".join(lines),
     }))
     return 0
 
@@ -1487,11 +1533,54 @@ def cmd_escalate(argv, silent=False):
 
 
 # ------------------------------------------------------------------ begin ----
+def cmd_decline(argv):
+    """The one honest way past the driver for a request that is not repository work:
+    the protocol-mismatch terminal result, written before the tree changes. The cycle
+    skill used to carry the write-terminal call as a nine-line snippet cited from the
+    route-exit contract; the call is the driver's (followup-3, N4)."""
+    o = parse_pairs(argv, ("--dir", "--title", "--reason", "--summary", "--autonomous"))
+    reason = (o.get("reason") or "").strip()
+    if not reason:
+        raise Die("decline needs --reason TEXT (why this is not repository work)", 2)
+    directory = os.path.realpath(o.get("dir") or os.getcwd())
+    root = lib("cycle-result", "resolve-root", directory)
+    autonomous = o.get("autonomous") or ("1" if os.environ.get("LOOP_SPEC_AUTONOMOUS") == "1" else "0")
+    if autonomous not in ("0", "1"):
+        raise Die("decline: --autonomous is 0 or 1", 2)
+    args = ["write-terminal", "--result-root", root, "--cycle-type", "full", "--status", "escalated",
+            "--outcome", "protocol-mismatch", "--converged", "false", "--title", o.get("title") or reason,
+            "--reason", reason, "--summary", o.get("summary") or "no work was done: " + reason,
+            "--autonomous", json_bool(autonomous == "1")]
+    # The writer never aborts (its observability contract): a refusal is one stderr line
+    # and no file, so the proof of publication is a result newer than this call.
+    result = os.path.join(root, ".loop-spec", "last-result.json")
+    before = os.stat(result).st_mtime_ns if os.path.isfile(result) else -1
+    proc = lib_run("cycle-result", *args, quiet=True)
+    after = os.stat(result).st_mtime_ns if os.path.isfile(result) else -1
+    if proc.returncode != 0 or after <= before:
+        raise Die("decline: the result writer refused: %s" % (proc.stderr.strip() or "no result was published"), 1)
+    print(json.dumps({"status": "escalated", "outcome": "protocol-mismatch", "reason": reason, "result": result}))
+    return 0
+
+
 def cmd_begin(argv):
     directory, args = split_dir_args(argv)
     st = json.loads(capture(cmd_start, ["--dir", directory, "--"] + args))
     if st.get("decisions"):
-        print(json.dumps(dict(st, action="decisions")))
+        # The commands the lead runs once a human has answered, rendered here with every
+        # value start already holds; the placeholders are the answers (followup-3, N4).
+        inv = st["invocation"]
+        init_cmd = ('bash "$DRV" init --dir %s --slug <slug> --title "<title>" --style %s --profile %s '
+                    '--classification %s --autonomous %s --greenfield <0|1> --spec-file "%s" '
+                    '--commands %s --repos %s' % (
+                        shlex.quote(st["workspace"]["root"]), inv["style"], st["profile"],
+                        shlex.quote(json.dumps(st["classification"])), "1" if st["autonomous"] else "0",
+                        inv.get("spec_path") or "", shlex.quote(json.dumps(st["commands"])),
+                        shlex.quote(json.dumps(st["workspace"]["repos"]))))
+        if inv.get("backlogEntry"):
+            init_cmd += " --backlog-entry %s" % shlex.quote(json.dumps(inv["backlogEntry"]))
+        resume_cmd = 'bash "$DRV" resume --dir %s --feature-root <featureRoot of the pick> --slug <slug of the pick>' % shlex.quote(directory)
+        print(json.dumps(dict(st, action="decisions", next={"init": init_cmd, "resume": resume_cmd})))
         return 0
     pick = (st.get("resume") or {}).get("autoPick")
     if pick:
@@ -2058,6 +2147,7 @@ def main(argv):
         "deliver": cmd_deliver, "begin": cmd_begin, "phase-begin": cmd_phase_begin, "start": cmd_start,
         "init": cmd_init, "resume": cmd_resume, "next": cmd_next, "finish": cmd_finish,
         "escalate": cmd_escalate, "spec": cmd_spec, "oneshot": cmd_oneshot, "verification": cmd_verification,
+        "decline": cmd_decline,
     }
     if command not in handlers:
         usage()

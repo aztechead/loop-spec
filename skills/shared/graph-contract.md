@@ -106,6 +106,12 @@ must be reachable from `entry` — both `FLAG`s from `lib/graph/validate.sh`.
    only when its source also declares a bounded `loop` edge — that is the declared form
    of ITERATE/DELIVER re-entry; an uncovered back-edge still `FLAG`s.
 
+An agent node may carry `skill: <name>`: the cycle invokes `Skill(loop-spec:<name>)` for
+it instead of `loop-spec:<id>`, from the `EXT skill=<name>` line `cycle-driver.sh next`
+prints under `NEXT`. The shipped graph sets it on `spec` (`spec-lite`, the scout and
+the oneshot candidate), so the short route never loads the full SPEC body
+(`tests/lib/context-load.test.sh` bounds the three bodies it does load).
+
 An edge into an agent node may carry `sameSession: true`: the phase it enters runs in
 the session that closed the previous phase, and `lib/cycle-driver.sh next` answers
 `NEXT` across it instead of `HANDOFF`. `lib/graph/phases.sh same-session <from> <to>`

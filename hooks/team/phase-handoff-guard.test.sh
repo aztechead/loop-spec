@@ -54,6 +54,15 @@ check "same-phase retry allowed" 0 "$SAME" \
   CLAUDE_PROJECT_DIR="$ROOT"
 check "non-phase skill allowed" 0 "$OTHER" \
   CLAUDE_PROJECT_DIR="$ROOT"
+# The spec node names skills/spec-lite/SKILL.md (graph `skill`, followup-3 N4): the
+# lite skill is not a phase name, and the full spec skill it hands to is the same
+# phase, so neither call is a second phase.
+LITE_THEN_FULL='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:spec"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec-lite"}}]}]}'
+check "the full spec skill after the lite one is the same phase, allowed" 0 "$LITE_THEN_FULL" \
+  CLAUDE_PROJECT_DIR="$ROOT"
+LITE='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:spec-lite"},"transcript":[]}'
+check "the lite spec skill is not a phase name, allowed" 0 "$LITE" \
+  CLAUDE_PROJECT_DIR="$ROOT"
 check "no switch exists: an active feature is enough to enforce" 2 "$SECOND" \
   CLAUDE_PROJECT_DIR="$ROOT"
 check "malformed payload fails open" 0 "not json" \

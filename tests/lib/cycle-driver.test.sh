@@ -131,7 +131,10 @@ ec=0; drv init --dir "$REPO" --slug again --title again --style auto --profile s
 check "init: refuses a second feature on a dirty/branched checkout" "1" "$ec"
 
 out="$(cd "$REPO" && drv next --feature-dir "$FD" 2>/dev/null)"
-check "next: first step names spec" 'NEXT phase=spec label="Write the specification" effort=system2' "$out"
+check "next: first step names spec" 'NEXT phase=spec label="Write the specification" effort=system2' "$(head -1 <<<"$out")"
+# The spec node names the lite skill (graph data, followup-3 N4): an EXT line the
+# cycle skill acts on, never a change to the NEXT line's shape.
+check "next: the spec node's skill is an EXT line" "EXT skill=spec-lite" "$(grep '^EXT skill=' <<<"$out")"
 check "next: activation persisted models" "true" "$(jq '.models | length > 0' "$FD/feature.json")"
 check "next: currentPhaseStartedAt stamped" "true" "$(jq '.currentPhaseStartedAt != null' "$FD/feature.json")"
 
@@ -250,6 +253,27 @@ check "begin: start's notices ride along" "1" "$(jq '.notices | length > 0' <<<"
 FD6="$(jq -r '.featureDir' <<<"$out")"
 out="$(cd "$REPO6" && drv begin -- "add a flag to the tool" 2>/dev/null)"
 check "begin: a human decision is handed back" "decisions" "$(jq -r '.action' <<<"$out")"
+check "begin: the init command the lead runs next is rendered with start's values" "1" "$(jq -r '.next.init' <<<"$out" | grep -c '^bash "\$DRV" init --dir .* --slug <slug> --title "<title>" --style .* --greenfield <0|1> ')"
+check "begin: the resume command is rendered for a pick" "1" "$(jq -r '.next.resume' <<<"$out" | grep -c '^bash "\$DRV" resume --dir .* --feature-root <featureRoot of the pick> --slug <slug of the pick>$')"
+
+# --- finish renders the completion report; decline writes the mismatch result (N4) ----
+REPO10="$(new_repo finish-report)"
+out="$(cd "$REPO10" && AUTONOMOUS=1 drv begin -- "autonomous add a flag" 2>/dev/null)"; FD10="$(jq -r '.featureDir' <<<"$out")"
+printf '{"status":"pushed-no-pr","nextPhase":"completed","targets":[{"name":"finish-report","targetSha":"0123456789abcdef0123","prUrl":null,"errorCode":null}],"feedback":null}\n' > "$FD10/delivery.json"
+out="$(cd "$REPO10" && drv finish --feature-dir "$FD10" --completed 1 2>/dev/null)"
+check "finish: the report opens with the outcome" "1" "$(jq -r '.report' <<<"$out" | head -1 | grep -c 'pushed to the remote')"
+check "finish: one line per target with its SHA" "1" "$(jq -r '.report' <<<"$out" | grep -c '^- finish-report, sha 0123456789ab$')"
+check "finish: the report ends with the backlog count" "1" "$(jq -r '.report' <<<"$out" | tail -1 | grep -c '^backlog entries remaining: [0-9]')"
+check "finish: the report is one string the lead prints as is" "string" "$(jq -r '.report | type' <<<"$out")"
+REPO11="$(new_repo decline)"; printf 'x\n' > "$REPO11/a.txt"; git -C "$REPO11" add -A && git -C "$REPO11" -c commit.gpgsign=false commit -q -m a
+out="$(cd "$REPO11" && drv decline --dir "$REPO11" --reason "a question about the architecture" --summary "answer it in chat" 2>/dev/null)"
+check "decline: the answer names the mismatch" "protocol-mismatch" "$(jq -r '.outcome' <<<"$out")"
+check "decline: the terminal result is published" "escalated protocol-mismatch" "$(jq -r '"\(.status) \(.outcome)"' "$REPO11/.loop-spec/last-result.json")"
+printf 'y\n' > "$REPO11/a.txt"
+ec=0; (cd "$REPO11" && drv decline --dir "$REPO11" --reason "too late" >/dev/null 2>&1) || ec=$?
+check "decline: a changed tree is work to finish, not a mismatch (the writer refuses)" "1" "$ec"
+ec=0; (cd "$REPO11" && drv decline --dir "$REPO11" >/dev/null 2>&1) || ec=$?
+check "decline: no reason is a bad invocation" "2" "$ec"
 
 # --- a cycle never runs in the plugin's own repository (followup-3, N6) ---------------
 # The checkout carries this plugin's manifest and is not the project the harness opened.

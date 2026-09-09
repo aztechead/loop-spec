@@ -57,19 +57,20 @@ check "bad invocation exits 2" "2" "$(bash "$LIB" tally x >/dev/null 2>&1; echo 
 check "no entry exits 2" "2" "$(bash "$LIB" sum --root "$WORK" >/dev/null 2>&1; echo $?)"
 
 # --- the bound: the short route's reading list ------------------------------------------
-# The oneshot path is the spec skill's lite section plus the oneshot skill, each with
-# what it cites. The bound is the follow-up's: 600 lines. A whole SKILL.md is loaded by
-# the harness whatever section runs, so the spec skill's whole-file total is reported
-# next to it, and bounded separately so it cannot creep.
+# The short route loads three bodies, the cycle skill, the lite spec skill the spec node
+# names, and the oneshot skill, each with what it cites. The bound is the audit's, over
+# the path and not one skill (followup-3, N4): 600 lines. The full SPEC body is loaded
+# only when the lite skill hands to it, and is bounded on its own so it cannot creep.
 ONESHOT_PATH_MAX=600
-SPEC_BODY_MAX=260
-total="$(bash "$LIB" sum 'skills/spec/SKILL.md#1a. The oneshot candidate' skills/oneshot/SKILL.md --root "$REPO_ROOT" | tail -1 | cut -d' ' -f2)"
-echo "oneshot path: $total lines (bound $ONESHOT_PATH_MAX)"
-check "the oneshot path (spec lite section + oneshot skill + cites) is under $ONESHOT_PATH_MAX lines" "1" "$(( total <= ONESHOT_PATH_MAX ))"
+SPEC_BODY_MAX=230
+total="$(bash "$LIB" sum skills/cycle/SKILL.md skills/spec-lite/SKILL.md skills/oneshot/SKILL.md --root "$REPO_ROOT" | tail -1 | cut -d' ' -f2)"
+echo "short route (cycle + spec-lite + oneshot, with cites): $total lines (bound $ONESHOT_PATH_MAX)"
+check "the short route's three bodies with their cites are at or under $ONESHOT_PATH_MAX lines" "1" "$(( total <= ONESHOT_PATH_MAX ))"
+check "the spec node names the lite skill the bound counts" "spec-lite" "$(jq -r '.nodes[] | select(.id == "spec") | .skill' "$REPO_ROOT/graph/cycle.graph.json")"
 spec_lines="$(wc -l < "$REPO_ROOT/skills/spec/SKILL.md")"
 echo "spec skill body: $spec_lines lines (bound $SPEC_BODY_MAX); its whole reading list: $(bash "$LIB" sum skills/spec/SKILL.md --root "$REPO_ROOT" | tail -1)"
 check "the spec skill body stays under $SPEC_BODY_MAX lines" "1" "$(( spec_lines <= SPEC_BODY_MAX ))"
-check "every cite on the short route resolves" "0" "$(bash "$LIB" sum skills/spec/SKILL.md skills/oneshot/SKILL.md skills/cycle/SKILL.md --root "$REPO_ROOT" >/dev/null 2>&1; echo $?)"
+check "every cite on the short route and the full spec resolves" "0" "$(bash "$LIB" sum skills/spec/SKILL.md skills/spec-lite/SKILL.md skills/oneshot/SKILL.md skills/cycle/SKILL.md --root "$REPO_ROOT" >/dev/null 2>&1; echo $?)"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

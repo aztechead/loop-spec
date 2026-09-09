@@ -68,7 +68,7 @@ for f in skills/cycle/SKILL.md agents/implementer.md; do
 done
 
 # A phase skill that still lists its inputs in prose has two ingress contracts.
-for f in skills/{spec,discuss,plan,execute,verify,iterate}/SKILL.md; do
+for f in skills/{spec,spec-lite,discuss,plan,execute,verify,iterate}/SKILL.md; do
   if grep -qE 'Inputs (come )?from' "$f"; then
     FAIL=$((FAIL+1)); echo "FAIL: $f lists inputs in prose beside the entry packet"
   else

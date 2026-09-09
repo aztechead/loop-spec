@@ -8,10 +8,9 @@ allowed-tools: Bash Read Write Edit Glob Grep Agent
 
 You run on the main thread and do the work yourself: the SPEC footprint names at most
 three files, so a task DAG, a planner, and an implementer wave would cost more than the
-change. What the full path spreads over DISCUSS, PLAN, EXECUTE, and VERIFY, this phase
-does in four steps against the same gates. `feature_dir` is `.loop-spec/features/{slug}`.
-Your inputs are the entry packet and nothing else; a FLAG is a prior phase's failure,
-relay it:
+change. What the full path spreads over four phases, this one does in four steps against
+the same gates. `feature_dir` is `.loop-spec/features/{slug}`. Your inputs are the entry
+packet and nothing else; a FLAG is a prior phase's failure, relay it:
 
 ```bash
 pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin oneshot --feature-dir "$feature_dir")"
@@ -28,10 +27,9 @@ checked it out.
 
 ## 1. Read, then decide whether this is still a oneshot
 
-Read SPEC.md (the oneshot shape: the ask inside the frozen `## Intent` block, which
-you never edit, then Implementation notes and Good Enough criteria, each with its
-check command) and every file in its `footprint:`. Follow callers and
-imports far enough to know the change stays inside the footprint.
+Read SPEC.md (the ask inside the frozen `## Intent` block, then Implementation notes
+and Good Enough criteria, each with its check command) and every file in its
+`footprint:`. Follow callers and imports far enough to know the change stays inside it.
 
 Escalate, and only escalate, when the code shows one of these:
 
@@ -73,19 +71,18 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" "${CLAUDE_SKILL_DIR}/.
 ## 3. One review pass
 
 Where the session layer answers, the driver runs this pass itself at the phase
-boundary: return after step 2 with VERIFICATION.md's grounding and acceptance rows
-filled, and the cycle's `next --returned-from oneshot` comes back once with `REDO` and
-the report path; record each finding under `## Code review` with your verdict as below,
-then return again. In-harness (the `REDO` never comes; an attended session), dispatch
-`loop-spec:code-reviewer` once (`Agent`, `subagent_type: "loop-spec:code-reviewer"`,
-model `models.codeReviewer` from the packet, `run_in_background: false`; then stop and
-read its result, never `AskUserQuestion` as a wait). Brief: `slug`, `branch`,
-`baseSha`, `spec_path`, and `probe_dir` (absolute `${CLAUDE_SKILL_DIR}/../../lib`);
-include `skills/shared/review-prompts/no-prejudge.md`; report
+boundary: return after step 2 with the verification rows filled (step 4), and the
+cycle's `next --returned-from oneshot` comes back once with `REDO` and the report
+path; record each finding as below, then return again. In-harness (the `REDO` never
+comes; an attended session), dispatch `loop-spec:code-reviewer` once (`Agent`,
+`subagent_type: "loop-spec:code-reviewer"`, model `models.codeReviewer` from the
+packet, `run_in_background: false`; then stop and read its result, never
+`AskUserQuestion` as a wait). Brief: `slug`, `branch`, `baseSha`, `spec_path`, and
+`probe_dir` (absolute `${CLAUDE_SKILL_DIR}/../../lib`); include
+`skills/shared/review-prompts/no-prejudge.md`; report
 `CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <findings>`. Record the launch as
 `skills/shared/dispatch.md#Telemetry (dispatch telemetry contract)` says, in the same
-Bash call that reads the result; the exit gate reads this event as the proof the review
-ran:
+Bash call that reads the result; the exit gate reads this event as the proof:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" dispatch \
@@ -125,9 +122,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verification fill --feature
 ```
 
 `--integration none` names the criterion's own command as the end-to-end proof. Each
-answer's `flags` are the four exit lints over the file as it stands; an empty list
-after the last call is the shape the gate accepts. A criterion that does not pass is
-not recorded as `FAIL` and worked around: fix it (step 2), or escalate (step 1).
+answer's `flags` are the four exit lints over the file as it stands. A criterion that
+does not pass is never recorded as `FAIL` and worked around: fix it, or escalate.
 
 Return to the cycle; never invoke a successor phase and never run the exit yourself.
 The cycle's `next --returned-from oneshot` runs `lib/phase-exit.sh oneshot`

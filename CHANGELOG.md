@@ -30,6 +30,17 @@ The landing record at the end of the follow-up says what each item became.
   `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
   the cycle skill binds, never a path to retype. It has no switch of its own;
   `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
+- **The short route's reading list is bounded as a path.** `skills/spec-lite/SKILL.md`
+  is SPEC's entry on every cycle (the graph's `spec` node names it with the new node
+  key `skill`, printed as `EXT skill=spec-lite` under `NEXT`): the scout, the oneshot
+  candidate from the scout's record, and the short route's spec fills; it hands to
+  `loop-spec:spec` on the full route, whose body lost the candidate section. The cycle
+  skill is the launcher: `begin` answers `decisions` with the init and resume commands
+  it wants next (`.next`), `finish` prints the completion `report`, and
+  `cycle-driver.sh decline --reason` writes the protocol-mismatch result; the
+  headless-run and team-dispatch sections, whose contracts belong to the docs and the
+  phase skills, are gone. `tests/lib/context-load.test.sh` holds the cycle, lite spec,
+  and oneshot bodies with their cites at or under 600 lines.
 - **The lead never writes a shape on the short route.** `cycle-driver.sh spec fill`
   (`--intent`, `--file/--note`, `--criterion`, `--grounding`), `spec escalate
   --reason`, and `verification fill` (`--row` with `--implementation/--proof`,

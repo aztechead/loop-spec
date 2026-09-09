@@ -4,6 +4,7 @@
   "nodes": [
     {
       "id": "spec",
+      "skill": "spec-lite",
       "label": "Write the specification",
       "kind": "agent",
       "reads": [
