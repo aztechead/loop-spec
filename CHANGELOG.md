@@ -30,6 +30,11 @@ The landing record at the end of the follow-up says what each item became.
   `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
   the cycle skill binds, never a path to retype. It has no switch of its own;
   `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
+- **Live run 4** (`slugify-bug`, haiku, d17da82): delivered in one round at 0.41 USD, 3.8
+  minutes, 74 artifact lines, 39 turns, zero REDO rounds; run 3 on the same fixture
+  before this work was 0.80 USD, 79 turns, 124 lines. The bar (0.25 USD, 50 lines, 3
+  minutes) is still missed; `docs/loop-spec/orchestrator-port-followup-3.md` records
+  where the rest sits.
 - **The small pins the third audit asked for.** A repeated handoff answer (`next` or
   `begin` in the session that handed off) adds no phase event pair, pinned in the
   driver test; each eval task's pass bar is checked against the plan's figures
