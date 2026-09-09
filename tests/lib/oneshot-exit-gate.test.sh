@@ -125,6 +125,23 @@ check "phase-exit oneshot: the phase is closed" "oneshot" "$(fj '.completedPhase
 check "phase-exit oneshot: SPEC.md with the escalation is committed" "1" "$(git log --oneline | grep -c 'oneshot: fix-slug')"
 check "phase-exit oneshot: no verification pointer on escalation" "null" "$(fj '.artifacts.verification')"
 check "the --after probe routes the escalated run to the full path" "route=full" "$(bash "$REPO_ROOT/lib/graph/probes/oneshot.sh" --feature-dir "$FD" --after | cut -d' ' -f1)"
+# The escalated exit is not a blind pass: the two scans and the verification lints
+# still run; only the oneshot's own checks (footprint, intent, review, floor) are skipped.
+printf 'import pytest\nfrom src.slugify import slugify\n\n@pytest.mark.skip\ndef test_lower():\n    assert slugify("A") == "a"\n' > "$REPO/tests/test_slugify.py"
+git -C "$REPO" add tests/test_slugify.py && git -C "$REPO" commit -q -m "test: weaken"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "an escalated run with a weakened test still flags under the tamper label" "1" "$(grep -c '^FLAG \[tamper\] ' <<<"$out" | awk '{print ($1 > 0)}')"
+check "an escalated run skips the review and footprint checks" "0" "$(grep -c '^FLAG \[review\]\|^FLAG \[footprint\]' <<<"$out")"
+git -C "$REPO" reset -q --hard HEAD~1
+printf '# not a verification record\n' > "$DOCS/VERIFICATION.md"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "an escalated run with a malformed VERIFICATION.md flags under artifact-lint" "1" "$(grep -c '^FLAG \[artifact-lint\] ' <<<"$out" | awk '{print ($1 > 0)}')"
+rm -f "$DOCS/VERIFICATION.md"
+# A SPEC.md the probe cannot read as either shape is a flag, never a pass.
+printf '# no frontmatter at all\n\n## Intent\n' > "$DOCS/SPEC.md"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "an unreadable frontmatter flags instead of passing" "1" "$ec"
+check "the flag names the probe's reason" "1" "$(grep -c '^FLAG \[oneshot\] .*not readable as a oneshot or an escalated spec (SPEC.md frontmatter missing)' <<<"$out")"
 
 # --- a finished oneshot: change committed, VERIFICATION.md proves the criterion ------
 spec
@@ -204,6 +221,17 @@ check "the file is gone from the footprint" "0" "$(grep -c '^  - README.md$' "$D
 check "the note lands under Implementation notes" "1" "$(grep -c '^- README.md: unchanged; dropped from the footprint by lib/oneshot-exit-gate.sh' "$DOCS/SPEC.md")"
 check "the Intent block is untouched by the drop" "Dots survive slugify." "$(sed -n '/^## Intent$/,/^<!-- \/intent -->$/p' "$DOCS/SPEC.md" | sed -n 3p)"
 spec
+# The other direction: a changed file outside the footprint is the fourth file. The
+# gate escalates the run itself, names the file, and the --after probe routes to DISCUSS.
+printf 'extra\n' >> "$REPO/README.md"; git -C "$REPO" add README.md && git -C "$REPO" commit -q -m "docs: touch readme"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "a diff file outside the footprint escalates instead of shipping" "0" "$ec"
+check "the gate names the file" "1" "$(grep -c '^NOTE \[footprint\] the diff touches README.md outside SPEC.md.s footprint: route: full written' <<<"$out")"
+check "route: full is written into the frontmatter" "1" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS/SPEC.md" | grep -c 'route: full')"
+check "the escalation note names the file under Implementation notes" "1" "$(grep -c '^- escalated by lib/oneshot-exit-gate.sh: the diff touches README.md, outside the footprint' "$DOCS/SPEC.md")"
+check "the --after probe now routes to the full path" "route=full" "$(bash "$REPO_ROOT/lib/graph/probes/oneshot.sh" --feature-dir "$FD" --after | cut -d' ' -f1)"
+git -C "$REPO" reset -q --hard HEAD~1
+spec
 # The converged floor is the full one: a FAIL row is a finding, not a shape.
 sed -i 's/| PASS |/| FAIL |/' "$DOCS/VERIFICATION.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
@@ -222,6 +250,26 @@ check "phase-exit oneshot: a finished oneshot closes clean" "phase-exit: ok (one
 check "phase-exit oneshot: the verification pointer is recorded" "docs/loop-spec/features/fix-slug/VERIFICATION.md" "$(fj '.artifacts.verification')"
 check "phase-exit oneshot: the checkpoint is tagged" "1" "$(git tag | grep -c 'post-oneshot' | awk '{print ($1 > 0)}')"
 check "the --after probe routes the finished run to DELIVER" "route=oneshot" "$(bash "$REPO_ROOT/lib/graph/probes/oneshot.sh" --feature-dir "$FD" --after | cut -d' ' -f1)"
+
+# --- workspace mode: the footprint is checked per repo, against each repo's baseSha ---
+WS="$WORK/ws"; mkdir -p "$WS/a/tests" "$WS/b"
+printf 'x = 1\n' > "$WS/a/x.py"; printf 'def test_x():\n    assert True\n' > "$WS/a/tests/test_x.py"; printf 'y = 1\n' > "$WS/b/y.py"
+for r in a b; do git -C "$WS/$r" init -q -b main && git -C "$WS/$r" add -A && git -C "$WS/$r" commit -q -m init; done
+A_SHA="$(git -C "$WS/a" rev-parse HEAD)"; B_SHA="$(git -C "$WS/b" rev-parse HEAD)"
+WFD="$WS/.loop-spec/features/ws-fix"; WDOCS="$WS/docs/loop-spec/features/ws-fix"; mkdir -p "$WFD" "$WDOCS"
+jq -n --arg ws "$WS" --arg a "$A_SHA" --arg b "$B_SHA" '{schemaVersion:7, slug:"ws-fix", feature_title:"ws fix", autonomous:true, execStyle:"auto",
+  workspace:{root:$ws, mode:"workspace", repos:[{name:"a", path:"a", baseSha:$a, branch:"feat/ws-fix", baseBranch:"main"}, {name:"b", path:"b", baseSha:$b, branch:"feat/ws-fix", baseBranch:"main"}]},
+  artifacts:{}, warnings:[]}' > "$WFD/feature.json"
+sed 's|^  - src/slugify.py$|  - a/x.py\n  - a/tests/test_x.py\n  - b/y.py|; s|^- src/slugify.py: strip dots in slugify().$|- a/x.py: bump x.|; /^- tests\/test_slugify.py: unchanged/d' "$DOCS/SPEC.md" > "$WDOCS/SPEC.md"
+printf 'x = 2\n' > "$WS/a/x.py"; git -C "$WS/a" add -A && git -C "$WS/a" commit -q -m "fix: bump x"
+ec=0; out="$(cd "$WS" && bash "$GATE" "$WFD" 2>&1)" || ec=$?
+check "workspace mode: the footprint check runs per repo (the untouched test module in repo a flags)" "1" "$(grep -c '^FLAG \[footprint\] a/tests/test_x.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
+check "workspace mode: an untouched non-test file in repo b is dropped with a note" "1" "$(grep -c '^NOTE \[footprint\] b/y.py was not in the diff' <<<"$out")"
+check "workspace mode: the changed file in repo a satisfies the footprint" "0" "$(grep -c 'a/x.py' <<<"$out")"
+printf 'z = 1\n' > "$WS/b/z.py"; git -C "$WS/b" add -A && git -C "$WS/b" commit -q -m "feat: z"
+sed -i 's|^  - a/tests/test_x.py$||' "$WDOCS/SPEC.md"; sed -i '/^- b\/y.py: unchanged; dropped/d; /^route: full$/d; /^- escalated by/d' "$WDOCS/SPEC.md"
+ec=0; out="$(cd "$WS" && bash "$GATE" "$WFD" 2>&1)" || ec=$?
+check "workspace mode: a changed file outside the footprint in repo b escalates" "1" "$(grep -c '^NOTE \[footprint\] the diff touches b/z.py outside' <<<"$out")"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
