@@ -14,7 +14,11 @@ Delta rounds are bounded. The bound is the loop edge `graph/critique.graph.json`
 declares from `critique.adjudicate` back to `critique.challenge`, and
 `lib/graph/gate.sh next` is the only thing that reads it: after every fail entry it
 answers `ANSWER=rerun` or `ANSWER=close` with a reason. No prose here restates the
-number, and no round is counted by hand. `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph
+number, and no round is counted by hand. The shape it bounds is one exhaustive
+findings pass, one revision, one delta re-verify: the challenger raises everything in
+the findings pass, and the delta reply passes through `lib/delta-findings-lint.sh`
+before the lead adjudicates it, so a delta round cannot open findings the first pass
+could have raised. `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph
 (`0` restores unbounded retries). A run once spent over an hour bouncing PLAN.md between
 the challenger and the planner because the ceiling lived inside a `contain` loop the
 engine never counts; the probe is what counts it.
@@ -185,14 +189,24 @@ SendMessage({
 
 Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `challenger-1`. Never AskUserQuestion as a wait. Append the reply to a new
 `gate-logs/{gate}-round-{next}.md` (titled `(delta re-verify)`) — `gate.sh round` supplies
-`{next}` — and emit a `gate_round` event with `"mode":"delta"`:
+`{next}` — and emit a `gate_round` event with `"mode":"delta"`. Then filter the reply:
 
-- **`DELTA-VERIFIED`**: the gate passes — append the `gateHistory` pass entry
-  (convergence: `"delta-verified"`), reset `currentGate` (below), proceed to `{next_step}`.
-- **`DELTA-FINDINGS`**: adjudicate the tagged findings per the table above. A delta
-  finding is in scope only when it names an unaddressed fix-list item or quotes a line
-  the revision added (`skills/shared/team-prompts/critic.md`); anything else is dropped
-  with a one-line reason in the gate-log. A surviving item stays:
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/delta-findings-lint.sh" filter \
+  --diff /tmp/{gate}-delta.diff .loop-spec/features/{slug}/gate-logs/{gate}-round-{next}.md
+# stdout: the lines the lead adjudicates; stderr: one DROP line per dropped line
+```
+
+Append its stderr to the same gate-log. Then:
+
+- **`DELTA-VERIFIED`, or a `DELTA-FINDINGS` reply the lint reduced to nothing**: the
+  gate passes — append the `gateHistory` pass entry (convergence: `"delta-verified"`),
+  reset `currentGate` (below), proceed to `{next_step}`.
+- **`DELTA-FINDINGS` with surviving lines**: adjudicate only the survivors per the table
+  above (an `unaddressed:` item, or a `[major]` `introduced:` line quoting text the
+  revision added; `skills/shared/team-prompts/critic.md`). A non-zero lint exit is a
+  message on stderr (an unreadable diff or reply): relay it and stop; never
+  adjudicate the unfiltered reply in its place. A surviving item stays:
   keep it on the fix-list (stricter bias), and the next fail entry's `--findings`
   carries it in the exact words the first fail entry recorded — that identity is what
   the probe's deadlock rule matches on. Then start a new fix round from the top of

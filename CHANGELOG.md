@@ -4,6 +4,20 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.3.0] - 2026-09-09
+
+### Changed
+
+- The critique gate is one exhaustive findings pass, one revision, one delta re-verify.
+  `agents/challenger.md` and `skills/shared/team-prompts/critic.md` drop the "top 5-7"
+  and 500-word caps: a challenger capped at seven held findings back and raised them in
+  the delta round as `introduced:` lines on rewritten text, so every revision bought
+  another revision. `graph/critique.graph.json` allows one delta round instead of two
+  (`LOOP_SPEC_CRITIQUE_ROUNDS` still overrides). `lib/delta-findings-lint.sh` applies
+  the delta scope the prose already stated: only `unaddressed:` lines and `[major]`
+  `introduced:` lines that quote a line the diff added reach the lead; every other line
+  is dropped with a reason in the gate-log (`tests/lib/delta-findings-lint.test.sh`).
+
 ### Fixed
 
 - Every one-shot `Agent` dispatch carries `run_in_background: false`. Claude Code now

@@ -34,8 +34,11 @@ both paths.
 
 **Critique ladder**: skip (above) or a single critic. There is no advocate and no debate.
 The lead may accept any finding and may never drop a `[major]`; a solo gate biases only
-stricter. A revision gets a delta re-verify (fix-list plus diff), never a full re-run. Delta
-rounds are bounded by the loop ceiling `graph/critique.graph.json` declares;
+stricter. The findings pass is exhaustive (no cap on count or length). A revision gets a
+delta re-verify (fix-list plus diff), never a full re-run, and
+`lib/delta-findings-lint.sh` keeps only `unaddressed:` lines and `[major]` `introduced:`
+lines that quote added text. Delta rounds are bounded by the loop ceiling
+`graph/critique.graph.json` declares;
 `lib/graph/gate.sh next` reads it and closes the gate with `cap-reached` when it is
 spent; when `LOOP_SPEC_CRITIQUE_ROUNDS` raises the ceiling, a finding that survives
 two consecutive delta rounds closes it too (`critique-gate-protocol.md`).

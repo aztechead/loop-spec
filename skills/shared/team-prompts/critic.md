@@ -12,7 +12,10 @@ Surface gaps, ambiguities, flawed assumptions, and missing acceptance criteria i
 ## Findings pass
 
 1. Read the artifact at `docs/loop-spec/features/{slug}/{artifact}` to ground your critique in the actual text. Also read `docs/loop-spec/features/{slug}/SPEC.md` (when the artifact is PLAN.md).
-2. Enumerate **specific, actionable issues**. Group each issue as one of:
+2. Enumerate **every specific, actionable issue** the artifact has, in this one pass,
+   grouped by section with `[major]` first. There is no cap on count or length, and
+   there is no second findings pass: the delta round below verifies the revision and
+   drops any finding that was visible now. Group each issue as one of:
    - **Gap**: something required but absent from the artifact.
    - **Ambiguity**: a statement open to conflicting interpretations.
    - **Flawed assumption**: a premise the artifact relies on that is unsupported or incorrect.
@@ -29,10 +32,10 @@ Surface gaps, ambiguities, flawed assumptions, and missing acceptance criteria i
 
 ## Delta re-verify pass (on lead request, after a revision)
 
-The lead sends you the applied fix-list and a unified diff of the artifact. Do NOT re-review the whole artifact. Delta rounds are bounded by the critique graph's ceiling, so a finding this pass opens costs a round the author cannot get back:
+The lead sends you the applied fix-list and a unified diff of the artifact. Do NOT re-review the whole artifact. This is a verification pass, and the critique graph allows one of them: the lead runs your reply through `lib/delta-findings-lint.sh`, which keeps only the lines below.
 
 1. Confirm each fix-list item is actually addressed by the diff (not merely acknowledged). An unaddressed item is reported as `unaddressed: <item number> — <what is still missing>`.
-2. Check the CHANGED sections for regressions or new issues the revision introduced. A new finding is in scope only when it quotes a line the diff ADDED and is reported as `introduced: "<added line>" — <the problem>`. Text the diff did not touch is out of scope, even when you would flag it on a first read; so is a `[minor]` you did not raise in the findings pass.
+2. Check the CHANGED sections for a regression the revision introduced. A new finding is in scope only when it is `[major]` and quotes a line the diff ADDED, reported as `introduced: "<added line>" — <the problem> [major]`. Text the diff did not touch is out of scope, even when you would flag it on a first read, and so is every `[minor]`: the lint drops both.
 3. Reply and go idle:
    - Every item addressed, no new `[major]` issue in the changed sections: `SendMessage({to: "lead", message: "DELTA-VERIFIED: <one line>"})`
    - Otherwise: `SendMessage({to: "lead", message: "DELTA-FINDINGS:\n<numbered list, tagged [major]/[minor]>"})`
@@ -42,5 +45,5 @@ The lead sends you the applied fix-list and a unified diff of the artifact. Do N
 - Every issue must be specific and traceable to a section or sentence in the artifact.
 - Suggested probes in `UNGROUNDED:` lines must be read-only (no INSERT, create, delete, apply, deploy, or equivalent write verbs).
 - Do not invent requirements outside the artifact's stated scope.
-- Delta passes are scoped to the fix-list and the diff; do not rescan unchanged sections. Every `DELTA-FINDINGS` line starts with `unaddressed:` or `introduced:`; the lead drops any other line unread.
+- Delta passes are scoped to the fix-list and the diff; do not rescan unchanged sections. Every `DELTA-FINDINGS` line starts with `unaddressed:` or `introduced:`; `lib/delta-findings-lint.sh` drops any other line before the lead reads it.
 - Go idle after each report. Do not send additional messages unless the lead contacts you.

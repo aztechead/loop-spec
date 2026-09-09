@@ -40,7 +40,7 @@
       "from": "critique.adjudicate",
       "to": "critique.challenge",
       "kind": "loop",
-      "ceiling": 2,
+      "ceiling": 1,
       "strategy": "contain"
     },
     {

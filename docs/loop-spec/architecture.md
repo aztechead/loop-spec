@@ -80,7 +80,9 @@ flowchart TD
     fix -->|"non-empty"| author[SendMessage author:<br/>revise with fix-list]
     author --> delta[challenger delta re-verify]
     delta -->|"DELTA-VERIFIED"| pass
-    delta -->|"DELTA-FINDINGS"| adj
+    delta -->|"DELTA-FINDINGS"| lint[delta-findings-lint.sh:<br/>unaddressed + major introduced only]
+    lint -->|"nothing survives"| pass
+    lint -->|"survivors"| adj
 ```
 
 Gate transcripts persist under `gate-logs/` so a delta re-verify has the prior findings.
