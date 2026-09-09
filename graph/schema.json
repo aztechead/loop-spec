@@ -72,6 +72,7 @@
         "backlogEntryId",
         "driverNext",
         "driverRedo",
+        "handoffSession",
         "artifactSink"
       ]
     },

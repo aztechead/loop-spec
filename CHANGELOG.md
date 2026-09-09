@@ -223,6 +223,16 @@ touches, and what to do.
   from the child's environment: a nested `claude -p` that inherits it appends every
   round to the parent's transcript, and the handoff guard then reads an earlier round's
   phase as this invocation's.
+- `cycle-driver.sh` holds the handoff line itself: `next` answers `HANDOFF` or `REWIND`
+  and records the session (`feature.json.handoffSession`); from that session `next`
+  repeats the answer and `phase-begin` of the next phase exits 4. A lead denied by the
+  Skill-tool guard had read the next phase's SKILL.md by hand and run it in the session
+  that had handed off (`tests/lib/cycle-driver.test.sh`).
+- `lib/cycle-result.sh write --status completed` publishes nothing, whatever the phase,
+  when the feature has no delivery record and no PR (the proven no-change path still
+  names its reason): the check used to exempt `deliver`, and a lead whose `finish` was
+  refused called the writer itself from that phase, so the eval read a finished run
+  whose fix never left the worktree (`tests/lib/cycle-result.test.sh`, case A0).
 - `hooks/team/phase-handoff-guard.sh` no longer counts a denied attempt as a prior
   phase: a lead denied once for the next phase invoked it again and passed as a
   same-phase retry, so the oneshot route ran SPEC, ONESHOT, and DELIVER in one session.

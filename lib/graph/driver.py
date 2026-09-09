@@ -48,6 +48,8 @@ Usage:
         execute:{...}|verify:{...}}. The execute and verify blocks are
         lib/execute-prepare.sh and lib/verify-prepare.sh. Exit 1 when the entry packet
         FLAGs a missing ingress (the flags are in the JSON); 2 bad invocation.
+        Exit 4: this session already answered HANDOFF for the feature; the phase
+        starts in a fresh invocation (feature.json.handoffSession).
 
     cycle-driver.sh task dispatch|package|verdict|integrate --feature-dir DIR --task ID ...
         One EXECUTE task step per call; lib/execute-step.sh owns the contract.
@@ -221,6 +223,35 @@ def read_json(path, default=None):
             return json.load(fh)
     except (IOError, OSError, ValueError):
         return default
+
+
+def session_id():
+    """The harness's id for this model session, or "" where the harness stamps none."""
+    return os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CLAUDE_SESSION_ID") or ""
+
+
+def handed_off_here(feat):
+    """The handoff this same session produced, or None. A session that answered HANDOFF is
+    done: the next phase starts in a fresh invocation, and the driver holds that line
+    itself because the Skill-tool guard only sees Skill calls. A lead denied there read
+    the next phase's SKILL.md by hand and ran it in the session that had handed off.
+    Where the harness stamps no session id nothing can be compared, and the guard alone
+    stands."""
+    rec = feat.get("handoffSession")
+    sid = session_id()
+    if isinstance(rec, dict) and sid and rec.get("id") == sid:
+        return rec
+    return None
+
+
+def handoff_answer(feature_dir, rec):
+    nxt = rec.get("next") or ""
+    order = lib("graph/phases", "list").splitlines()
+    frm = rec.get("from") or ""
+    if nxt in order and frm in order and order.index(nxt) < order.index(frm):
+        return "REWIND next=%s" % nxt
+    model = lib_run("feature-init", "phase-model", nxt, quiet=True).stdout or "inherit"
+    return "HANDOFF next=%s model=%s" % (nxt, model)
 
 
 def workspace_of(feat):
@@ -961,6 +992,11 @@ def cmd_next(argv):
     repo_root = lib("cycle-result", "resolve-root", os.path.join(feature_dir, "..", "..", ".."))
     os.chdir(repo_root)
 
+    handed = handed_off_here(feat)
+    if handed is not None and returned != (handed.get("from") or ""):
+        print(handoff_answer(feature_dir, handed))
+        return 0
+
     if returned:
         answer = returned_checks(feature_dir, returned)
         if answer is not None:
@@ -1142,6 +1178,7 @@ def record_transition(feature_dir, phase, nxt, note, ws_mode):
     # is lib/phase-entry.sh. A rewind is a next phase the graph lists before this one.
     lib("cycle-result", "write", feature_dir, "--status", "paused", "--reason", "phase-handoff",
         "--summary", "Phase %s completed; %s is ready in durable state." % (phase, nxt))
+    fset(feature_dir, "handoffSession", {"id": session_id(), "from": phase, "next": nxt, "at": now()})
     order = lib("graph/phases", "list").splitlines()
     if nxt in order and phase in order and order.index(nxt) < order.index(phase):
         return "REWIND next=%s" % nxt
@@ -1357,6 +1394,11 @@ def cmd_phase_begin(argv):
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
+    handed = handed_off_here(state(feature_dir))
+    if handed is not None and phase != (handed.get("from") or ""):
+        print("cycle-driver: this session handed off after %s; %s starts in a fresh invocation (%s)"
+              % (handed.get("from"), phase, handoff_answer(feature_dir, handed)), file=sys.stderr)
+        return 4
     entry = subprocess.run(["bash", str(LIB_DIR / "phase-entry.sh"), phase, "--feature-dir", feature_dir],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     if entry.returncode > 1:

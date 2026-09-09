@@ -151,6 +151,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "warnings": ["array of strings"],
   "driverNext": {"phase": "string; the phase cycle-driver.sh last answered NEXT with", "at": "ISO-8601"},
   "driverRedo": {"phase": "string", "hash": "string; the FLAG lines of the last REDO", "count": "integer; identical REDO rounds so far, capped by LOOP_SPEC_REDO_MAX"},
+  "handoffSession": {"id": "string; the harness session id that answered HANDOFF, or empty", "from": "string; the phase that closed", "next": "string; the phase a fresh invocation enters", "at": "ISO-8601"},
   "iterate": {
     "maxIterations": "integer (LOOP_SPEC_ITERATE_MAX_ITERATIONS)",
     "used": "integer",
@@ -258,6 +259,11 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - The optional `workspace` block enables multi-root workspace mode. Rules: (1) `workspace` absent or null means single-repo mode (`worktreePath` set). (2) In workspace mode the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` are null; per-repo values in `workspace.repos[]` are authoritative. `lib/graph/state.sh assert-reads` honors that relocation, so a declared read of `branch` (or `baseSha`/`baseBranch`) is satisfied by every `workspace.repos[]` entry rather than the null top-level field. `worktreePath` is not relocated and has no per-repo equivalent; a node that needs it in workspace mode declares it in `optionalReads[]`. (3) The top-level `commands` block holds empty strings (per-repo commands live in `workspace.repos[].commands`). (4) State and artifact dirs are rooted at `workspace.root`. (5) Resume requires the session cwd to be `workspace.root`; the cycle skill instructs the user to cd there before re-invoking.
 - **Schema is 7-only.** A `feature.json` with `schemaVersion != 7` is unsupported and skipped on resume with a warning; there is no in-place migration path for older schemas. New features are always created at schema 7 by `lib/feature-init.sh`.
 
+- `handoffSession` is written by `lib/cycle-driver.sh next` each time it answers `HANDOFF`
+  or `REWIND`. While the session named by `id` is the one calling, `next` repeats the
+  handoff answer and `phase-begin` of any other phase exits 4: the next phase starts in a
+  fresh invocation, whatever tool the lead reaches for. An empty `id` (a harness that
+  stamps no session id) enforces nothing.
 - `driverNext` is written by `lib/cycle-driver.sh next` each time it answers `NEXT`.
   `lib/cycle-result.sh write` reads it: publishing `failed`, `terminal`, or `escalated`
   while it is set needs `--reason`, because a lead that was told to run a phase and

@@ -46,6 +46,17 @@ FIXTURE_FJ="$(jq -n '{
 }')"
 printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 
+# Case A0: a completed status needs a delivered feature; a lead whose finish was
+# refused wrote this itself and a supervisor read a finished run.
+UNDELIVERED="$LOOP_DIR/features/undelivered"; mkdir -p "$UNDELIVERED"
+jq '.slug="undelivered" | .currentPhase="deliver" | .prUrl=null | .delivery={status:"pending"}' <<<"$FIXTURE_FJ" > "$UNDELIVERED/feature.json"
+ec=0; err="$(bash "$LIB" write "$UNDELIVERED" --status completed --summary "Fix implemented and verified." 2>&1 >/dev/null)" || ec=$?
+check "A0: completed in DELIVER without a delivery record publishes nothing" "0" "$([[ -f "$UNDELIVERED/result.json" ]] && echo 1 || echo 0)"
+check "A0: the refusal says DELIVER has not run" "1" "$(grep -c 'DELIVER has not run' <<<"$err")"
+ec=0; bash "$LIB" write "$UNDELIVERED" --status completed --summary "Nothing to change." --no-change-reason already-satisfied >/dev/null 2>&1 || ec=$?
+check "A0: the proven no-change path still completes" "0" "$ec"
+rm -rf "$UNDELIVERED"
+
 # Case A: write --status completed produces valid result.json
 bash "$LIB" write "$FEAT_DIR" --status completed --summary "Rate limiting was implemented and verified." >/dev/null 2>&1
 check "A: result.json created" "1" "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"

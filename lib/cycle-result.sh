@@ -694,9 +694,11 @@ PY
     # cause is the eval's fib-cli run, not a result anyone can act on.
     # A full cycle completes through cycle-driver.sh finish, after DELIVER wrote its
     # sidecar. A lead that publishes completed from EXECUTE (the 6.2.0 smoke run) is the
-    # false success a supervisor cannot tell from a delivered one.
+    # false success a supervisor cannot tell from a delivered one, and so is a lead in
+    # DELIVER whose finish was refused and who called this writer itself (the final
+    # slugify-bug run: "completed", nothing pushed). The phase is no evidence; the
+    # delivery record or the PR is.
     if [[ "$status" == "completed" && -z "$no_change_reason" && -z "$pr_url" ]] \
-       && bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '(.currentPhase // "") | IN("deliver", "completed") | not' >/dev/null 2>&1 \
        && ! jq -e '(.nextPhase // "") == "completed"' "$feature_dir/delivery.json" >/dev/null 2>&1 \
        && ! bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '((.delivery.status // "") | IN("ready-for-review", "delivered-draft", "pushed-no-pr")) or ((.prUrl // "") != "")' >/dev/null 2>&1; then
       echo "cycle-result.sh: --status completed at currentPhase=$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.currentPhase // "?"') with no delivery record and no PR: DELIVER has not run. Return to the cycle, or publish the honest status with --reason" >&2

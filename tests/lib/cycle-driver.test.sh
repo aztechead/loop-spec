@@ -31,6 +31,7 @@ new_repo() {
 # Pinned probes: no harness binary, no teams, no workflows, no network.
 drv() {
   env -u CLAUDE_CODE_ENTRYPOINT -u LOOP_SPEC_AUTONOMOUS -u LOOP_SPEC_NON_INTERACTIVE \
+    -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID ${SESSION:+CLAUDE_CODE_SESSION_ID="$SESSION"} \
     ${AUTONOMOUS:+LOOP_SPEC_AUTONOMOUS="$AUTONOMOUS"} \
     ${NON_INTERACTIVE:+LOOP_SPEC_NON_INTERACTIVE="$NON_INTERACTIVE"} \
     LOOP_SPEC_HARNESS="${HARNESS:-codex}" LOOP_SPEC_TEAMS_MODE=none \
@@ -153,9 +154,19 @@ rm -f "$FD/result.json"
 
 # every phase boundary hands off after bookkeeping (style auto: no human gate)
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
-out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
+out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
 check "next: handoff answer names the successor" "HANDOFF next=" "${out:0:13}"
 check "next: handoff writes a paused result" "phase-handoff" "$(jq -r '.reason' "$FD/result.json")"
+
+# The session that handed off is done: the driver refuses to carry it into the next
+# phase whatever tool it reaches for; a fresh session (another id) proceeds.
+check "next: the handoff records the session" "s1" "$(jq -r '.handoffSession.id' "$FD/feature.json")"
+out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" 2>/dev/null)"
+check "next: the same session gets the handoff answer again" "HANDOFF next=plan" "${out:0:17}"
+ec=0; (cd "$REPO" && SESSION=s1 drv phase-begin plan --feature-dir "$FD" >/dev/null 2>&1) || ec=$?
+check "phase-begin: the same session is refused with 4" "4" "$ec"
+ec=0; (cd "$REPO" && SESSION=s2 drv phase-begin plan --feature-dir "$FD" >/dev/null 2>&1) || ec=$?
+check "phase-begin: a fresh session is not refused by the handoff" "0" "$([[ "$ec" -eq 4 ]] && echo 4 || echo 0)"
 
 # --- start: an autonomous re-invocation resumes the one paused feature ------------
 out="$(AUTONOMOUS=1 drv start --dir "$REPO" -- add a json flag reworded 2>/dev/null)"
