@@ -13,7 +13,11 @@
 #      the discuss node itself already takes via short-path.sh).
 #   2. SPEC.md is already gated: ambiguity_scores.gate_passed is true AND
 #      unresolved_dimensions is empty AND no security signal AND this is not
-#      an ITERATE re-entry (iterate.feedback non-null always runs).
+#      an ITERATE re-entry (iterate.feedback non-null always runs) AND the gate
+#      was not self-scored: an autonomous run with no supervisor answers its own
+#      interview and grades its own ambiguity, so gate_passed is true by
+#      construction there and the critic is the only independent read the spec
+#      gets. Two live runs skipped it that way.
 # Fail closed: missing/unreadable inputs, a security-signal scan failure, or
 # an ungated spec all answer gate=run. An unresolved probe never satisfies a
 # skip route (graph-contract.md).
@@ -98,6 +102,12 @@ esac
 
 [[ "$profile" == "maintenance" ]] && \
   skip "maintenance profile, no security signal"
+
+oracle="$(bash "$SCRIPT_DIR/../../supervisor/oracle.sh" mode --feature-dir "$feature_dir" 2>/dev/null)" \
+  || run "oracle probe could not run"
+case "$oracle" in
+  oracle=self*) run "self-scored gate (autonomous, oracle=self): the critic is the spec's only independent read" ;;
+esac
 
 gate_status="$(python3 - "$spec_path" <<'PY'
 from __future__ import print_function

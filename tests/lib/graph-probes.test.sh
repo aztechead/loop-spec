@@ -582,6 +582,13 @@ check_output "unresolved dimensions force critique" \
   "gate=run reason=spec not already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
 
 write_spec "$DC/SPEC.md" true '[]'
+jq -n --arg spec "$DC/SPEC.md" \
+  '{slug:"dc",executionProfile:"standard",autonomous:true,iterate:{feedback:null},artifacts:{spec:$spec}}' \
+  > "$DC/feature.json"
+check_output "a self-scored gate in an autonomous run still runs critique" \
+  "gate=run reason=self-scored gate" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+
+write_spec "$DC/SPEC.md" true '[]'
 seed_dc standard '{"type":"spec"}'
 check_output "iterate re-entry runs critique even when gated" \
   "gate=run reason=iterate re-entry" "$DISCUSS_CRITIQUE" --feature-dir "$DC"

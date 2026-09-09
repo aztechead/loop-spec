@@ -88,8 +88,9 @@ poll; PLAN joins it). GSD ingest first:
 
 ## 3. Critique (by `critique`)
 
-`skip` (`lib/graph/probes/discuss-critique.sh` answered skip: spec already gated, or
-maintenance profile, never on a security signal or re-entry): log
+`skip` (`lib/graph/probes/discuss-critique.sh` answered skip: spec already gated by a
+human or a supervisor, or maintenance profile; never on a security signal, a re-entry,
+or a gate the autonomous run scored itself): log
 `discuss critique skipped (<reason>)`. `run`: the challenger-only protocol
 (`loop-spec:challenger`, topology `graph/critique.graph.json`) in
 `skills/shared/critique-gate-protocol.md` with `phase=discuss`, `gate=spec-critique`,

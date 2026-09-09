@@ -96,6 +96,11 @@ touches, and what to do.
 
 ### Fixed
 
+- `lib/graph/probes/discuss-critique.sh` no longer skips the spec critique on a gate the
+  autonomous run scored itself: with no supervisor, the interview self-answers and
+  `gate_passed` is true by construction, so the challenger was the spec's only
+  independent read and two live runs skipped it. A human-answered or supervisor-answered
+  gate still skips. Costs one challenger pass per autonomous run.
 - Five defects from the first live run on 6.3.0 (`evals/findings-2026-09-09.md`):
   `lib/git-ops.sh slugify` bounds a slug at 64 characters on a word boundary (a
   whole-description title made a 470-character branch git could not lock);
