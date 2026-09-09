@@ -358,6 +358,18 @@ check "oneshot review: the prompt is one line naming the package, the spec, and 
 check "oneshot review: the package holds the diff since baseSha" "1" "$(grep -c 'replace' "$(jq -r '.package' <<<"$out")")"
 check "oneshot review: the dispatch event is driver-observed" "1" "$(jq -c 'select(.event == "dispatch" and .phase == "oneshot" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
 check "oneshot review: the exit gate's review check is satisfied by it" "0" "$(bash "$REPO_ROOT/lib/oneshot-exit-gate.sh" "$FD7" 2>&1 | grep -c '\[review\]')"
+# At the boundary the driver runs the review itself when none is on record: one REDO
+# carrying the report path, and the second return goes on to the exit gate.
+: > "$FD7/events.jsonl"; rm -f "$FD7/dispatch/oneshot.review.md"
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+check "next from oneshot: the driver runs the review pass and answers one REDO" "REDO phase=oneshot flags=1" "$(head -1 <<<"$out")"
+check "next from oneshot: the FLAG hands the lead the report path" "1" "$(grep -c '^FLAG \[review\] the driver ran the one review pass; its verdict and findings are in .*oneshot.review.md' <<<"$out")"
+check "next from oneshot: the dispatch event is driver-observed" "1" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+check "next from oneshot again: no second review; the exit gate answers" "0" "$(grep -c 'the driver ran the one review pass' <<<"$out")"
+check "next from oneshot again: one dispatch event, not two" "1" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+check "next from oneshot in-harness: the driver launches nothing and the gate names the missing dispatch" "0" "$(grep -c 'the driver ran the one review pass' <<<"$out")"
 
 # --- the rewind rule: a next phase the graph lists earlier answers REWIND -------------
 # The port made every earlier phase a rewind (iterate to verify prints REWIND where it

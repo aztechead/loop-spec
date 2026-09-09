@@ -1044,6 +1044,10 @@ def cmd_next(argv):
         if answer is not None:
             print(answer)
             return 0
+        answer = boundary_review(feature_dir, returned)
+        if answer is not None:
+            print(answer)
+            return 0
         # The phase's exit gates run here, once, whatever the phase skill did: a lead that
         # skipped them or ran them from the wrong directory was every second eval finding.
         completed = feat.get("completedPhases") or []
@@ -1148,6 +1152,43 @@ def cmd_next(argv):
         if line:
             print("EXT " + line)
     return 0
+
+
+def reviewer_dispatched(feature_dir, phase):
+    events = os.path.join(feature_dir, "events.jsonl")
+    if not os.path.isfile(events):
+        return False
+    for line in open(events, encoding="utf-8", errors="replace"):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("event") == "dispatch" and e.get("phase") == phase \
+                and "code-reviewer" in str((e.get("data") or {}).get("role") or ""):
+            return True
+    return False
+
+
+def boundary_review(feature_dir, phase):
+    """ONESHOT's one review pass, run by the driver at the phase boundary when the
+    session layer answers and no reviewer dispatch is on record. The live followup-haiku
+    run implemented the fix, wrote a dispatch event by hand in the wrong shape, and
+    escalated on the gate that could not find it: the lead's step was the failure, so
+    the step is the driver's (orchestrator-port-principles.md, rules 6 and 12). Returns
+    the one REDO that hands the lead the report, or None."""
+    if phase != "oneshot" or reviewer_dispatched(feature_dir, phase):
+        return None
+    if lib("harness", "session-layer") != "session":
+        return None
+    out = capture(cmd_oneshot, ["review", "--feature-dir", feature_dir])
+    rec = json.loads(out.strip() or "{}")
+    status = rec.get("status") or "failed"
+    if status != "completed":
+        return ("REDO phase=oneshot flags=1\nFLAG [review] the driver-launched reviewer session ended %s (%s): "
+                "read %s, then return again" % (status, rec.get("stderr") or rec.get("envFault") or "no detail", rec.get("stdout") or "its log"))
+    return ("REDO phase=oneshot flags=1\nFLAG [review] the driver ran the one review pass; its verdict and findings are in %s: "
+            "record each finding under ## Code review with your verdict (skills/oneshot/SKILL.md, One review pass), "
+            "fix what needs fixing, then return" % rec.get("report"))
 
 
 def returned_checks(feature_dir, phase):
