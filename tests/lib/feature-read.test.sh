@@ -39,6 +39,17 @@ check "the feature.json path itself is accepted" "my-feature" "$(bash "$READ" "$
 check "--jq shapes the value" "api" "$(bash "$READ" "$FD" workspace --jq '.repos[].path' -r)"
 check "--jq sees null for an absent key" "none" "$(bash "$READ" "$FD" delivery --jq '.status // "none"' -r)"
 check "--jq without -r prints compact JSON" '["api"]' "$(bash "$READ" "$FD" workspace --jq '[.repos[].name]')"
+# --all is the whole document: a key the schema does not declare is a loud failure
+# naming it, never a silent drop; --drop-strays is the one caller's explicit choice.
+check "--all prints the typed document" "my-feature" "$(bash "$READ" "$FD" --all | jq -r '.slug')"
+cp "$FD/feature.json" "$FD/feature.json.keep"
+jq '. + {preset: "old", tier: 2}' "$FD/feature.json.keep" > "$FD/feature.json"
+ec=0; bash "$READ" "$FD" --all >/dev/null 2>&1 || ec=$?
+check "--all fails on a stray key" "1" "$ec"
+check "--all names the stray keys" "1" "$(bash "$READ" "$FD" --all 2>&1 >/dev/null | grep -c 'does not declare: preset, tier')"
+check "--all --drop-strays projects without them" "false" "$(bash "$READ" "$FD" --all --drop-strays | jq 'has("preset")')"
+check "--strays lists them" '{"preset":"old","tier":2}' "$(bash "$READ" "$FD" --strays)"
+mv "$FD/feature.json.keep" "$FD/feature.json"
 check "--jq and --default compose" "main" "$(bash "$READ" "$FD" baseBranch --default '"main"' --jq '. ' -r)"
 ec=0; bash "$READ" "$FD" workspace --jq '.repos[' >/dev/null 2>&1 || ec=$?
 check "a bad --jq filter is exit 1" "1" "$ec"
@@ -80,7 +91,8 @@ ec=0; bash "$READ" "$FD" slug --default '{' >/dev/null 2>&1 || ec=$?
 check "a non-JSON default is exit 1" "1" "$ec"
 
 printf '{"slug":"s","stray":1,"warnings":[]}' > "$WORK/badfd/feature.json"
-check "--all projects the document onto the enum" '{"slug":"s","warnings":[]}' "$(bash "$READ" "$WORK/badfd" --all)"
+check "--all refuses a stray key (a writer set what the reader would hide)" "1" "$(bash "$READ" "$WORK/badfd" --all >/dev/null 2>&1; echo $?)"
+check "--all --drop-strays projects the document onto the enum" '{"slug":"s","warnings":[]}' "$(bash "$READ" "$WORK/badfd" --all --drop-strays)"
 check "--strays is the complement" '{"stray":1}' "$(bash "$READ" "$WORK/badfd" --strays)"
 ec=0; bash "$READ" "$WORK/none" --all >/dev/null 2>&1 || ec=$?
 check "--all on a missing feature.json is exit 2" "2" "$ec"

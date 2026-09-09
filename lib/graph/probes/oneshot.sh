@@ -19,15 +19,17 @@
 #
 # Usage:
 #   oneshot.sh --feature-dir DIR [--after]
-#   oneshot.sh --feature-dir DIR --candidate FILE [FILE ...]
+#   oneshot.sh --feature-dir DIR --candidate
 #   oneshot.sh --answers
 # `--after` is the reading the graph takes when the ONESHOT phase returns: only the
 # escalation key counts, because the phase's own edits to the footprint files are not
 # a reason to redo its work on the full path.
-# `--candidate` is the reading SPEC takes before its interview, from the footprint the
-# scout found and no SPEC.md yet: inputs 1 and 3 on those files. `route=oneshot` selects
-# the lite spec path (skills/spec/SKILL.md, "The oneshot candidate"); the graph's own
-# reading after SPEC still decides the route, from the spec as written.
+# `--candidate` is the reading SPEC takes before its interview, with no SPEC.md yet:
+# inputs 1 and 3 over the footprint the scout wrote to disk (`lib/footprint.sh list`,
+# the cited files minus the read-only ones). The lead never types the files the probe
+# reads (docs/loop-spec/orchestrator-port-principles.md, rule 1). `route=oneshot`
+# selects the lite spec path (skills/spec/SKILL.md, "The oneshot candidate"); the graph's
+# own reading after SPEC still decides the route, from the spec as written.
 #
 # Exit: 0 with one `route=<oneshot|full> reason=<text>` line. Anything undeterminable
 # answers `route=full`: the long path is the safe direction.
@@ -47,16 +49,16 @@ full() {
   exit 0
 }
 
-feature_dir="" after=0 candidate=0 candidates=()
+feature_dir="" after=0 candidate=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --feature-dir) feature_dir="${2:-}"; shift 2 ;;
     --after) after=1; shift ;;
-    --candidate) candidate=1; shift; while [[ $# -gt 0 && "$1" != --* ]]; do candidates+=("$1"); shift; done ;;
-    *) echo "usage: oneshot.sh --feature-dir DIR [--after | --candidate FILE...] | --answers" >&2; exit 2 ;;
+    --candidate) candidate=1; shift ;;
+    *) echo "usage: oneshot.sh --feature-dir DIR [--after | --candidate] | --answers" >&2; exit 2 ;;
   esac
 done
-[[ -n "$feature_dir" ]] || { echo "usage: oneshot.sh --feature-dir DIR [--after | --candidate FILE...] | --answers" >&2; exit 2; }
+[[ -n "$feature_dir" ]] || { echo "usage: oneshot.sh --feature-dir DIR [--after | --candidate] | --answers" >&2; exit 2; }
 
 case "${LOOP_SPEC_ROUTE:-}" in
   "") ;;
@@ -101,11 +103,14 @@ footprint_existing() {
   return 0
 }
 if (( candidate )); then
+  candidates=()
+  while IFS= read -r p; do [[ -n "$p" ]] && candidates+=("$p"); done < <(bash "$SCRIPT_DIR/../../footprint.sh" list "$feature_dir")
+  (( ${#candidates[@]} )) || full "the scout cited no file (lib/footprint.sh cite writes the footprint the probe reads)"
   footprint_shape "${candidates[@]}"
   targets=()
   while IFS= read -r t; do [[ -n "$t" ]] && targets+=("$t"); done < <(footprint_existing "${candidates[@]}")
   (( ${#targets[@]} )) && security_signal "${targets[@]}"
-  printf 'route=oneshot reason=candidate footprint of %d file(s) with no security signal (the ambiguity gate is read after SPEC)\n' "${#candidates[@]}"
+  printf 'route=oneshot reason=candidate footprint of %d file(s) from the scout record with no security signal (the ambiguity gate is read after SPEC)\n' "${#candidates[@]}"
   exit 0
 fi
 [[ -f "$spec" ]] || full "no SPEC.md at $spec"

@@ -41,7 +41,7 @@ Write the machine-readable result contract (non-fatal — must not block the pau
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "${feature_dir}" \
   --status paused --reason "user pause" \
-  --summary "Paused $(jq -r '.feature_title // .slug' "${feature_dir}/feature.json") during $(jq -r '.currentPhase' "${feature_dir}/feature.json"); the resume snapshot preserves pending work." || true
+  --summary "Paused $(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-read.sh" "${feature_dir}" -r --filter '"\(.feature_title // .slug) during \(.currentPhase)"'); the resume snapshot preserves pending work." || true
 ```
 
 This also emits the `paused` event to `events.jsonl`.

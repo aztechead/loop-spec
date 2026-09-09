@@ -36,6 +36,7 @@ INPUT=$(cat 2>/dev/null) || true
 # Locate feature.json
 FEATURE_DIR="${LOOP_SPEC_FEATURE_DIR:-}"
 FEATURE_JSON=""
+FEATURE_READ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/feature-read.sh"
 
 if [[ -n "$FEATURE_DIR" ]]; then
   FEATURE_JSON="$FEATURE_DIR/feature.json"
@@ -75,15 +76,7 @@ if [[ "$MARKED" != "yes" ]]; then
 fi
 
 # Read phase using python3 with path as argument (avoids interpolation issues)
-CURRENT_PHASE=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    print(d.get('currentPhase', ''))
-except Exception:
-    print('')
-" "$FEATURE_JSON" 2>/dev/null) || CURRENT_PHASE=""
+CURRENT_PHASE=$(bash "$FEATURE_READ" "$FEATURE_JSON" currentPhase -r 2>/dev/null) || CURRENT_PHASE=""
 
 validate_metadata() {
   printf '%s' "$INPUT" | python3 -c "
@@ -143,25 +136,9 @@ run_check() {
 
 case "$CURRENT_PHASE" in
   execute)
-    LINT_CMD=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    print(d.get('commands', {}).get('lint', '') or '')
-except Exception:
-    print('')
-" "$FEATURE_JSON" 2>/dev/null) || LINT_CMD=""
+    LINT_CMD=$(bash "$FEATURE_READ" "$FEATURE_JSON" commands.lint -r 2>/dev/null) || LINT_CMD=""
 
-    TYPECHECK_CMD=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    print(d.get('commands', {}).get('typecheck', '') or '')
-except Exception:
-    print('')
-" "$FEATURE_JSON" 2>/dev/null) || TYPECHECK_CMD=""
+    TYPECHECK_CMD=$(bash "$FEATURE_READ" "$FEATURE_JSON" commands.typecheck -r 2>/dev/null) || TYPECHECK_CMD=""
 
     if [[ -n "$LINT_CMD" ]]; then
       lint_rc=0

@@ -98,42 +98,45 @@ Score the four dimensions from what you know now and display the scoring block.
 
 ## 1a. The oneshot candidate
 
-A footprint of at most three files is asked about before the interview, from the files
-alone (the graph asks again after this phase, from the spec as written):
+The scout's record is the footprint. As you read, cite each file the change will touch
+with the line that shows why, and mark a file the change must not touch (a test the
+task protects, a generated file) as read-only:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/graph/probes/oneshot.sh" --feature-dir "$feature_dir" --candidate <footprint files>
+bash "${CLAUDE_SKILL_DIR}/../../lib/footprint.sh" cite "$feature_dir" <path>:<line> "<why>"
+bash "${CLAUDE_SKILL_DIR}/../../lib/footprint.sh" cite "$feature_dir" <path>:<line> --read-only "<why>"
 ```
 
-`route=full` (a fourth file, an absolute path, a security signal): continue at step 2 as
-written. `route=oneshot`: the rest of this phase is the lite path, one pass, and steps 2
-and 3 apply only where this list says so. It exists because the short route read about
-1,850 lines of contract for a two-line fix (`docs/loop-spec/orchestrator-port-followup.md`,
-F3); `lib/context-load.sh` holds this path under its line budget.
+One call then decides the route from that record (`lib/graph/probes/oneshot.sh
+--candidate`: at most three files, none read-only, no security signal) and, on the
+short route, writes the spec skeleton where the exit gate reads it:
+
+```bash
+sk="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" spec skeleton --feature-dir "$feature_dir")"
+```
+
+`.route` is `full`: continue at step 2 as written (`.reason` says why). `.route` is
+`oneshot`: `.spec` is the skeleton, the rest of this phase is the list below, and steps
+2 and 3 apply only where it says so. The route lengthens only: a fourth file found
+later escalates in ONESHOT, and nothing here shortens it.
 
 - The scout is done. No `doc-deps.sh`, no `docs-probe.sh`, no pattern fan-out. A claim
   about an external system still gets its read-only probe first
   (`skills/shared/grounding-protocol.md#Probe-before-assert rule`).
-- The driver writes the skeleton, in the shape the exit gates accept and in the checkout
-  they read:
-
-  ```bash
-  bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" spec skeleton --feature-dir "$feature_dir" --footprint <footprint files>
-  ```
-
-  It prints the path. Fill the values in place and add no heading: the ask inside the
-  frozen Intent block, one Implementation notes bullet per footprint file (a test module
-  that stays unchanged says so there), one Good Enough criterion per observable outcome
-  with the command that checks it, and the Grounding rows. The template
+- Fill the skeleton's values in place and add no heading: the ask inside the frozen
+  Intent block, what changes in each footprint file (a file that stays unchanged says
+  so in its bullet), one Good Enough criterion per observable outcome with the command
+  that checks it, and the Grounding rows. The template
   (`skills/shared/artifact-templates/SPEC-oneshot.md.template`) is the whole shape.
-- The interview is one pass. `self-answer` and `synthesize`: answer every perspective's
-  questions yourself, the option you would have marked recommended, and record each
-  with `decisions.sh add` as step 2 says
-  (`skills/shared/autonomous-mode.md#The self-answer rule`). `interview` and `ingest`:
-  at most one `AskUserQuestion` round, and only for an answer that would change a
-  footprint file.
-- Score once, honestly, into the frontmatter (`gate_passed`, `unresolved_dimensions`).
-  No pruning pass: the shape is under 60 lines. Then step 4.
+- There is no score and no transcript on this path. An intent gap is a choice the user
+  would notice in the result that the code cannot settle; everything else you decide
+  and record with one line of reason
+  (`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<q>" "<a>" "<why>"`).
+  Gaps are one list, asked once: `interview` and `ingest` ask them in one
+  `AskUserQuestion` round; `self-answer` and `synthesize` take the recommended answer
+  into the same record (`skills/shared/autonomous-mode.md#The self-answer rule`). A gap
+  left open goes into `unresolved_dimensions`, which sends the run down the full path.
+- No pruning pass: the shape is under 60 lines. Then step 4.
 
 ## 2. Interview (by `path`)
 
@@ -220,14 +223,9 @@ footprint:
 `route: full` at the top level is the one other key: the writer or ONESHOT adds it to
 send a run down the full path; nothing sends a full run to ONESHOT.
 
-SPEC.md lives at `docs/loop-spec/features/{slug}/SPEC.md` in the checkout that holds
-`feature.json`, which is where `lib/phase-exit.sh` reads it. A draft written anywhere
-else (a spec-writer's file, the main checkout while the feature lives in a worktree)
-lands through the driver, which resolves that path and accepts no other:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" spec write --feature-dir "$feature_dir" --file <draft>
-```
+A draft written anywhere but `docs/loop-spec/features/{slug}/SPEC.md` in the checkout
+that holds `feature.json` lands through `bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
+spec write --feature-dir "$feature_dir" --file <draft>`, which accepts no other target.
 
 On the `interview` and `ingest` paths write the transcript (rounds, questions, scores;
 `source: spec-draft.md` when applicable) to `feature_dir/spec-interview-transcript.md`.

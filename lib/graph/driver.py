@@ -53,13 +53,17 @@ Usage:
         A node whose ingress lists `skeletons` gets each absent file written from its
         template first, in the shape the exit gates accept (`skeletons` in the packet).
 
-    cycle-driver.sh spec skeleton --feature-dir DIR --footprint FILE [FILE FILE]
-        Write {docs}/SPEC.md in the oneshot shape from
-        skills/shared/artifact-templates/SPEC-oneshot.md.template, with the title, slug,
-        footprint, and one Implementation notes bullet per footprint file filled, in the
-        checkout that holds feature.json (the one the exit gate reads). Prints the path.
-        An existing SPEC.md is kept (the path is printed, a note goes to stderr).
-        Exit 0; 2 bad invocation (no footprint, more than three files, absolute path).
+    cycle-driver.sh spec skeleton --feature-dir DIR
+        The oneshot candidate, decided from the scout's record (lib/footprint.sh list)
+        by lib/graph/probes/oneshot.sh --candidate, never from files the lead types.
+        Prints one JSON object {route, reason, footprint, readOnly, spec}. On
+        route=oneshot, {docs}/SPEC.md is written in the oneshot shape from
+        skills/shared/artifact-templates/SPEC-oneshot.md.template with the title, slug,
+        footprint, one Implementation notes bullet per footprint file, and one
+        read-only bullet per read-only cite filled, in the checkout that holds
+        feature.json (the one the exit gate reads); `spec` is its path. An existing
+        SPEC.md is kept. On route=full nothing is written and `spec` is null: the lead
+        writes the full shape. Exit 0; 2 bad invocation.
 
     cycle-driver.sh spec write --feature-dir DIR --file PATH
         Copy PATH (or stdin for `-`) to {docs}/SPEC.md, the only target this command
@@ -1109,7 +1113,7 @@ def cmd_next(argv):
     # out of every typed view, so the one place that drops them reads the strays on purpose.
     strays = json.loads(lib("feature-read", feature_dir, "--strays"))
     if any(key in strays for key in ("preset", "tier", "phaseHandoff")):
-        merged = dict(json.loads(lib("feature-read", feature_dir, "--all")))
+        merged = dict(json.loads(lib("feature-read", feature_dir, "--all", "--drop-strays")))
         merged.update({k: v for k, v in strays.items() if k not in ("preset", "tier", "phaseHandoff")})
         lib("feature-write", feature_dir, json.dumps(merged))
     feat = state(feature_dir)
@@ -1419,7 +1423,6 @@ def cmd_deliver(argv):
 
 # -------------------------------------------------------------- skeletons ----
 TEMPLATES = REPO_ROOT / "skills" / "shared" / "artifact-templates"
-ONESHOT_FOOTPRINT_MAX = 3
 
 
 def feature_root(feature_dir, feat):
@@ -1451,7 +1454,7 @@ def good_enough_criteria(spec_path):
     return out
 
 
-def render_skeleton(template, feat, footprint=None, spec_path=None):
+def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=None):
     """A template with the facts the driver holds filled in and every value the lead
     owns left as a {placeholder}. The shape is the gates' business, so it is written
     here once instead of retyped by the lead per run (six REDO rounds on the dda2cca
@@ -1461,9 +1464,10 @@ def render_skeleton(template, feat, footprint=None, spec_path=None):
     text = text.replace("{slug}", feat.get("slug") or "")
     if footprint is not None:
         text = text.replace("  - {path/to/file-the-change-touches}\n", "".join("  - %s\n" % p for p in footprint))
+        bullets = "".join("- %s: {what changes here, with the symbol or line it touches; or `unchanged`, and why}\n" % p for p in footprint)
+        bullets += "".join("- %s: read-only; the change does not touch it.\n" % p for p in (read_only or []))
         text = text.replace(
-            "- {What changes in each footprint file, one bullet per file, with the symbol or line it touches.}\n",
-            "".join("- %s: {what changes here, with the symbol or line it touches; or `unchanged`, and why}\n" % p for p in footprint))
+            "- {What changes in each footprint file, one bullet per file, with the symbol or line it touches.}\n", bullets)
     if "GE-001" in text:
         criteria = good_enough_criteria(spec_path or "")
         if not (feat.get("artifacts") or {}).get("plan"):
@@ -1508,40 +1512,34 @@ def cmd_spec(argv):
     sub = argv[0] if argv else ""
     if sub not in ("skeleton", "write"):
         usage()
-    feature_dir, footprint, source = "", [], None
-    i = 1
-    while i < len(argv):
-        if argv[i] == "--feature-dir" and i + 1 < len(argv):
-            feature_dir = argv[i + 1]; i += 2
-        elif argv[i] == "--footprint" and sub == "skeleton":
-            i += 1
-            while i < len(argv) and not argv[i].startswith("--"):
-                footprint.append(argv[i]); i += 1
-        elif argv[i] == "--file" and sub == "write" and i + 1 < len(argv):
-            source = argv[i + 1]; i += 2
-        else:
-            usage()
+    o = parse_pairs(argv[1:], ("--feature-dir", "--file") if sub == "write" else ("--feature-dir",))
+    feature_dir = o.get("feature_dir") or ""
+    source = o.get("file")
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
         usage()
     feature_dir = os.path.realpath(feature_dir)
     feat = state(feature_dir)
     target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
     if sub == "skeleton":
-        if not footprint:
-            raise Die("spec skeleton needs --footprint with one to %d repository-relative files" % ONESHOT_FOOTPRINT_MAX, 2)
-        if len(footprint) > ONESHOT_FOOTPRINT_MAX:
-            raise Die("spec skeleton: %d footprint files; the oneshot shape holds at most %d (write the full shape from %s)"
-                      % (len(footprint), ONESHOT_FOOTPRINT_MAX, TEMPLATES / "SPEC.md.template"), 2)
-        for p in footprint:
-            if os.path.isabs(p):
-                raise Die("spec skeleton: footprint path %s is absolute (repository-relative paths only)" % p, 2)
-        if os.path.exists(target):
-            print("cycle-driver: %s exists; kept as written (delete it to start over)" % target, file=sys.stderr)
-        else:
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            with open(target, "w", encoding="utf-8") as fh:
-                fh.write(render_skeleton(str(TEMPLATES / "SPEC-oneshot.md.template"), feat, footprint=footprint))
-        print(target)
+        # The route is a function of the scout's record, and the model may lengthen it,
+        # never shorten it (orchestrator-port-principles.md, rule 1). The probe reads the
+        # same ledger this reads, so the two cannot disagree about the footprint.
+        footprint = lib("footprint", "list", feature_dir).splitlines()
+        read_only = lib("footprint", "list", feature_dir, "--read-only").splitlines()
+        probe = lib_run("graph/probes/oneshot", "--feature-dir", feature_dir, "--candidate", quiet=True).stdout.strip()
+        route, _, reason = probe.partition(" reason=")
+        route = route.replace("route=", "") or "full"
+        spec = None
+        if route == "oneshot":
+            if os.path.exists(target):
+                print("cycle-driver: %s exists; kept as written (delete it to start over)" % target, file=sys.stderr)
+            else:
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with open(target, "w", encoding="utf-8") as fh:
+                    fh.write(render_skeleton(str(TEMPLATES / "SPEC-oneshot.md.template"), feat,
+                                             footprint=footprint, read_only=read_only))
+            spec = target
+        print(json.dumps({"route": route, "reason": reason, "footprint": footprint, "readOnly": read_only, "spec": spec}))
         return 0
     if not source:
         raise Die("spec write needs --file PATH (or - for stdin)", 2)

@@ -258,23 +258,34 @@ git -C "$REPO7" add -A && git -C "$REPO7" -c commit.gpgsign=false commit -q -m "
 out="$(cd "$REPO7" && AUTONOMOUS=1 drv begin -- "autonomous fix slugify dots" 2>/dev/null)"
 FD7="$(jq -r '.featureDir' <<<"$out")"
 DOCS7="$REPO7/docs/loop-spec/features/$(jq -r '.slug' "$FD7/feature.json")"
-# The driver writes the oneshot skeleton where the exit gate reads it, with the facts it
-# holds filled and the lead's values left as placeholders.
-ec=0; (cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" >/dev/null 2>&1) || ec=$?
-check "spec skeleton: no footprint is a bad invocation" "2" "$ec"
-ec=0; (cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" --footprint a b c d >/dev/null 2>&1) || ec=$?
-check "spec skeleton: four files is the full shape, refused" "2" "$ec"
-ec=0; (cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" --footprint /etc/passwd >/dev/null 2>&1) || ec=$?
-check "spec skeleton: an absolute footprint path is refused" "2" "$ec"
-out="$(cd "$WORK" && drv spec skeleton --feature-dir "$FD7" --footprint slugify.py 2>/dev/null)"
-check "spec skeleton: prints the path in the feature's checkout, not the cwd" "$DOCS7/SPEC.md" "$out"
+# The driver decides the oneshot candidate from the scout's record and writes the
+# skeleton where the exit gate reads it, with the facts it holds filled and the lead's
+# values left as placeholders. The lead never types the footprint into the driver.
+out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
+check "spec skeleton: no scout cite is the full route" "full" "$(jq -r '.route' <<<"$out")"
+check "spec skeleton: the reason says the scout cited nothing" "1" "$(jq -r '.reason' <<<"$out" | grep -c 'the scout cited no file')"
+check "spec skeleton: nothing is written on the full route" "0" "$([[ -f "$DOCS7/SPEC.md" ]] && echo 1 || echo 0)"
+for f in a b c d; do bash "$REPO_ROOT/lib/footprint.sh" cite "$FD7" "$f.py:1"; done
+out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
+check "spec skeleton: four cited files is the full route" "1" "$(jq -r '.reason' <<<"$out" | grep -c 'footprint names 4 files')"
+rm -f "$FD7/footprint.jsonl"
+bash "$REPO_ROOT/lib/footprint.sh" cite "$FD7" slugify.py:2 "lower() drops nothing"
+bash "$REPO_ROOT/lib/footprint.sh" cite "$FD7" README.md:1 --read-only "docs are not the change"
+out="$(cd "$WORK" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
+check "spec skeleton: one cited file is the oneshot route" "oneshot" "$(jq -r '.route' <<<"$out")"
+check "spec skeleton: the footprint is the record minus read-only" '["slugify.py"]' "$(jq -c '.footprint' <<<"$out")"
+check "spec skeleton: the read-only files ride along" '["README.md"]' "$(jq -c '.readOnly' <<<"$out")"
+check "spec skeleton: prints the path in the feature's checkout, not the cwd" "$DOCS7/SPEC.md" "$(jq -r '.spec' <<<"$out")"
 check "spec skeleton: the title is filled" "# fix slugify dots" "$(sed -n '/^# /p' "$DOCS7/SPEC.md" | head -1)"
 check "spec skeleton: the footprint is filled" "1" "$(grep -c '^  - slugify.py$' "$DOCS7/SPEC.md")"
+check "spec skeleton: the read-only file is not in the footprint" "0" "$(grep -c '^  - README.md$' "$DOCS7/SPEC.md")"
 check "spec skeleton: one Implementation notes bullet per footprint file" "1" "$(grep -c '^- slugify.py: {' "$DOCS7/SPEC.md")"
+check "spec skeleton: a read-only bullet per read-only cite" "1" "$(grep -c '^- README.md: read-only; the change does not touch it.$' "$DOCS7/SPEC.md")"
+check "spec skeleton: no score to fill, only the two keys the probe reads" "0" "$(grep -c 'goal_clarity\|{0.00-1.00}' "$DOCS7/SPEC.md")"
 check "spec skeleton: the frozen Intent block is in place" "2" "$(grep -c '^<!-- intent: frozen\|^<!-- /intent -->' "$DOCS7/SPEC.md")"
 check "spec skeleton: the oneshot spec lint accepts the shape" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$DOCS7/SPEC.md" >/dev/null 2>&1; echo $?)"
 printf '# edited by the lead\n' >> "$DOCS7/SPEC.md"
-out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" --footprint slugify.py 2>/dev/null)"
+out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
 check "spec skeleton: an existing SPEC.md is kept" "1" "$(grep -c '^# edited by the lead$' "$DOCS7/SPEC.md")"
 printf -- '---\nfootprint: [slugify.py]\n---\n# from a draft\n' > "$WORK/draft.md"
 out="$(cd "$WORK" && drv spec write --feature-dir "$FD7" --file "$WORK/draft.md" 2>/dev/null)"
@@ -333,6 +344,18 @@ printf '# filled by the lead\n' > "$DOCS7/VERIFICATION.md"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv phase-begin oneshot --feature-dir "$FD7" 2>/dev/null)"
 check "phase-begin oneshot: an existing VERIFICATION.md is kept" "null" "$(jq -r '.skeletons' <<<"$out")"
 check "phase-begin oneshot: kept means untouched" "# filled by the lead" "$(head -1 "$DOCS7/VERIFICATION.md")"
+
+# --- the rewind rule: a next phase the graph lists earlier answers REWIND -------------
+# The port made every earlier phase a rewind (iterate to verify prints REWIND where it
+# did not before); the record of that protocol change is this pin, through the driver's
+# own replay of a recorded handoff.
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" handoffSession '{"id":"s9","from":"iterate","next":"verify","at":"2026-09-09T00:00:00Z"}' >/dev/null
+out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=s9 drv next --feature-dir "$FD6" 2>/dev/null)"
+check "next: iterate to verify is a REWIND (verify precedes iterate on the graph)" "REWIND next=verify" "$out"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" handoffSession '{"id":"s9","from":"verify","next":"iterate","at":"2026-09-09T00:00:00Z"}' >/dev/null
+out="$(cd "$REPO6" && AUTONOMOUS=1 SESSION=s9 drv next --feature-dir "$FD6" 2>/dev/null)"
+check "next: verify to iterate is a HANDOFF (forward on the graph)" "HANDOFF next=iterate" "${out:0:20}"
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD6" handoffSession null >/dev/null
 
 # --- phase-begin: one ingress call per phase ------------------------------------------
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv phase-begin spec --feature-dir "$FD6" 2>/dev/null)"

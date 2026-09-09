@@ -91,7 +91,7 @@ parallel=$(( W < maxParallelImplementers ? W : maxParallelImplementers ))
 worker_model="{feature.models.implementer}"
 supervisor_args=(
   --plan "$fdir/loop-plan.json"
-  --prepare-command "$(jq -r '.commands.prepare // ""' "$fdir/feature.json")"
+  --prepare-command "$(bash "${CLAUDE_SKILL_DIR}/../../lib/feature-read.sh" "$fdir" commands.prepare -r --default '""')"
   --parallel "$parallel"
   --retries "2"
 )

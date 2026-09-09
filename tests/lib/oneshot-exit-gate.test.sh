@@ -101,10 +101,12 @@ check "a spec without a footprint passes the lint" "0" "$(printf -- '---\nambigu
 check "the oneshot template is under 60 lines" "1" "$([[ $(wc -l < "$REPO_ROOT/skills/shared/artifact-templates/SPEC-oneshot.md.template") -lt 60 ]] && echo 1 || echo 0)"
 # The driver's skeleton, with the lead's values filled by a blunt substitution, passes
 # both lints: a shape the driver wrote that a gate flags is a driver bug, not a REDO.
-rm -f "$DOCS/SPEC.md"
-skel="$(bash "$REPO_ROOT/lib/cycle-driver.sh" spec skeleton --feature-dir "$FD" --footprint src/slugify.py tests/test_slugify.py 2>/dev/null)"
+rm -f "$DOCS/SPEC.md" "$FD/footprint.jsonl"
+bash "$REPO_ROOT/lib/footprint.sh" cite "$FD" src/slugify.py:2 "the lower() pass"
+bash "$REPO_ROOT/lib/footprint.sh" cite "$FD" tests/test_slugify.py:3 "the existing case"
+skel="$(bash "$REPO_ROOT/lib/cycle-driver.sh" spec skeleton --feature-dir "$FD" 2>/dev/null | jq -r '.spec')"
 check "spec skeleton lands where the gate reads" "$DOCS/SPEC.md" "$skel"
-sed -i 's/{0\.00-1\.00}/0.9/; s/{n}/1/; s/{what changes here[^}]*}/strip dots/; s/{One paragraph:[^}]*}/Dots survive slugify./; s/{The behavior that must stay unchanged.}/Lower-casing stays./; s/{check command}/true/g; s/{what that proves}/it runs/g; s/{expected}/ok/' "$DOCS/SPEC.md"
+sed -i 's/{what changes here[^}]*}/strip dots/; s/{One paragraph:[^}]*}/Dots survive slugify./; s/{The behavior that must stay unchanged.}/Lower-casing stays./; s/{check command}/true/g; s/{what that proves}/it runs/g; s/{expected}/ok/' "$DOCS/SPEC.md"
 check "the filled skeleton passes artifact-lint spec" "0" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" spec "$DOCS/SPEC.md" >/dev/null 2>&1; echo $?)"
 check "the filled skeleton passes the oneshot spec lint" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$DOCS/SPEC.md" >/dev/null 2>&1; echo $?)"
 check "the fixture is the filled skeleton's shape (both lints)" "0" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" spec "$REPO_ROOT/tests/fixtures/oneshot-SPEC.md" >/dev/null 2>&1 && bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$REPO_ROOT/tests/fixtures/oneshot-SPEC.md" >/dev/null 2>&1; echo $?)"

@@ -1,11 +1,5 @@
 ---
 ambiguity_scores:
-  goal_clarity: {0.00-1.00}
-  boundary_clarity: {0.00-1.00}
-  constraint_clarity: {0.00-1.00}
-  acceptance_clarity: {0.00-1.00}
-  ambiguity: {0.00-1.00}
-  rounds_completed: {n}
   gate_passed: true
   unresolved_dimensions: []
 footprint:

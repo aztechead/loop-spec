@@ -469,6 +469,18 @@ ONESHOT="$PROBES/oneshot.sh"
 check_output "oneshot enumerates route=oneshot" "route=oneshot" "$ONESHOT" --answers
 check_output "oneshot enumerates route=full" "route=full" "$ONESHOT" --answers
 check "oneshot needs a feature dir" 2 "$ONESHOT"
+# --candidate reads the scout's ledger (lib/footprint.sh), never files on the command line.
+CAND="$WORK/oneshot-candidate"; mkdir -p "$CAND/.loop-spec/features/c" "$CAND/src"
+git -C "$CAND" init -q && printf 'x = 1\n' > "$CAND/src/x.py" && git -C "$CAND" add -A && git -C "$CAND" -c user.email=t@t -c user.name=t commit -q -m init
+printf '{"slug":"c"}\n' > "$CAND/.loop-spec/features/c/feature.json"
+check_output "oneshot --candidate: no scout cite is the full path" "route=full reason=the scout cited no file" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" src/x.py:1 >/dev/null
+check_output "oneshot --candidate: one cited file is a oneshot candidate" "route=oneshot reason=candidate footprint of 1 file(s) from the scout record" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" src/big.py:1 --read-only >/dev/null
+check_output "oneshot --candidate: a read-only cite is not in the footprint" "footprint of 1 file(s)" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+for f in a b c; do bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" "src/$f.py:1" >/dev/null; done
+check_output "oneshot --candidate: four cited files is the full path" "route=full reason=footprint names 4 files" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+check "oneshot --candidate with a file argument is a bad invocation" 2 "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate src/x.py
 check_output "oneshot: no feature.json is the full path" "route=full reason=no feature.json" "$ONESHOT" --feature-dir "$WORK/oneshot-none"
 
 OS_REPO="$WORK/oneshot-repo"; mkdir -p "$OS_REPO/.loop-spec/features/os" "$OS_REPO/docs/loop-spec/features/os" "$OS_REPO/src"

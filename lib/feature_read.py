@@ -26,8 +26,10 @@ Usage (lib/feature-read.sh is the launcher):
              are typed: one outside the enum is exit 1, and only those keys are handed
              to jq, so the filter cannot read what it did not name. -c/-r/-e and any
              `--arg`/`--argjson` after `--` pass to jq; jq's exit code is relayed.
-  --all      the whole document projected onto the enum (a key the schema does not
-             declare is dropped), compact, for the readers that render all of it (the
+  --all      the whole document projected onto the enum, compact, for the readers that
+             render all of it; a key the schema does not declare is exit 1 with the key
+             named, unless --drop-strays follows (the driver's one stray-dropping
+             rewrite passes it, after reading --strays) (the
              run digest, the status dashboard, the egress diff)
   --strays   the top-level keys the enum does NOT declare, with their values, compact.
              The one consumer is lib/phase-exit.sh's egress guard, whose job is to name a
@@ -110,9 +112,17 @@ def main(argv):
     if argv == ["--keys"]:
         print("\n".join(state_keys()))
         return 0
-    if len(argv) == 2 and argv[1] in ("--all", "--strays"):
+    if len(argv) in (2, 3) and argv[1] in ("--all", "--strays") and argv[2:] in ([], ["--drop-strays"]):
         keys = state_keys()
         state = load_state(argv[0])
+        strays = [k for k in state if k not in keys]
+        if argv[1] == "--all" and strays and argv[2:] != ["--drop-strays"]:
+            # A key a writer set that the reader would not show is the silent failure a
+            # dashboard reading null cannot tell from an unset value.
+            print("feature_read.py: %s carries keys graph/schema.json does not declare: %s "
+                  "(declare them in the stateKey enum, or pass --drop-strays to project without them)"
+                  % (argv[0], ", ".join(strays)), file=sys.stderr)
+            return 1
         wanted = (lambda k: k in keys) if argv[1] == "--all" else (lambda k: k not in keys)
         print(json.dumps({k: v for k, v in state.items() if wanted(k)}, ensure_ascii=False, separators=(",", ":")))
         return 0
