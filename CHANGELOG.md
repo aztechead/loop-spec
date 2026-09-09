@@ -6,6 +6,45 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [6.3.0] - 2026-09-09
 
+### Before you update
+
+For the operator who runs the plugin and the engineer who embeds it
+(`docs/loop-spec/supervisor-interface.md`). Each item names what changed, who it
+touches, and what to do.
+
+- **The `autonomous` token counts only at the edges of the arguments.** A prompt builder
+  that puts the word inside the description (`/loop-spec:cycle fix the autonomous chain`)
+  no longer arms autonomous mode. Put it first (`/loop-spec:cycle autonomous <task>`),
+  last, or set `LOOP_SPEC_AUTONOMOUS=1`. `/loop-spec:auto <task>` is unchanged.
+- **The challenger runs on `sonnet` under Claude Code.** A `CLAUDE.md` alias allow-list
+  built from `bash lib/feature-init.sh all-models` now needs `sonnet`; re-run the command
+  and copy the list. `LOOP_SPEC_MODEL_CHALLENGER=inherit` restores the old default. Under
+  implicit agent teams an alias selector makes the challenger a nameless one-shot Agent
+  instead of a named teammate (`skills/shared/dispatch.md`); nothing to do unless a
+  hook keys on the teammate name `challenger-1`.
+- **The `plan-feasibility` gate is gone.** `feature.json.currentGate.gate` and
+  `gateHistory[].gate` carry `plan-critique` for the whole PLAN review; the paused
+  reason `plan-feasibility-cap` is gone with it (a mechanical FLAG that survives the
+  review round now reaches the driver's bounded `REDO`, then escalation). A sink or a
+  dashboard that matches either string needs the new names.
+- **One delta round per critique gate.** `graph/critique.graph.json` declares a ceiling
+  of 1. `LOOP_SPEC_CRITIQUE_ROUNDS=2` restores the old bound; `0` is still unbounded.
+- **`tasks.json` is derived from PLAN.md.** A custom planner agent (an OpenCode or Codex
+  agent generated from `agents/planner.md`, or an ADK role) must write every field in
+  the task block: `**Files:**`, `**Verify:**`, `**Acceptance criteria:**`, and
+  `**BlockedBy:**` (the Task DAG table is the fallback), plus `**Repo:**` in workspace
+  mode. A `tasks[]` array in the completion message is no longer read. `lib/phase-exit.sh
+  plan` refuses a sidecar whose ids differ from PLAN.md; `bash lib/plan-tasks.sh extract
+  PLAN.md` is the recovery for a feature paused mid-PLAN on 6.2.0.
+- **New gate-log files.** `gate-logs/<gate>-state.json`, `gate-logs/<gate>-delta.diff`,
+  and a `## delta-findings-lint` section in every delta round log. A mirror store that
+  copies `gate-logs/` picks them up; nothing else reads them.
+- **Every one-shot `Agent` call carries `run_in_background: false`.** An SDK
+  `can_use_tool` hook that inspects `Agent` tool input sees the new key. The peer
+  harnesses drop it.
+- **Longer challenger replies.** The "top 5-7, under 500 words" caps are gone; a sink
+  that stores `gate_round` payloads or gate-logs sees the full findings pass.
+
 ### Changed
 
 - The critique gate's bookkeeping is one driver call per step: `cycle-driver.sh

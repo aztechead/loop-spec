@@ -42,7 +42,7 @@ claude plugin marketplace add https://github.com/aztechead/loop-spec.git
 claude plugin install loop-spec@loop-spec-marketplace
 ```
 
-Optional: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables agent teams. Without it, critique/verify use one-shot subagents and EXECUTE uses the loop-fleet rung (needs `claude` on PATH). Every role inherits the model that launched the session; model-specific routing is optional (`skills/shared/model-matrix.md`).
+Optional: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables agent teams. Without it, critique/verify use one-shot subagents and EXECUTE uses the loop-fleet rung (needs `claude` on PATH). Every role but the challenger inherits the model that launched the session; the challenger runs on `sonnet`, and model-specific routing is optional (`skills/shared/model-matrix.md`). Updating from 6.2.x: read "Before you update" under 6.3.0 in [CHANGELOG.md](CHANGELOG.md) first.
 
 Adoption walkthrough: [docs/adopting.md](docs/adopting.md).
 
@@ -234,8 +234,8 @@ Multi-repo workspaces: [docs/adopting.md](docs/adopting.md#workspace-multi-repo-
 
 ## Troubleshooting
 
-- Health check fails: allow every alias from `bash lib/feature-init.sh all-models` in `CLAUDE.md`.
-- Critique gate keeps bouncing: the spec/plan is ambiguous — use `style:step`, edit, resume.
+- Health check fails: allow every alias from `bash lib/feature-init.sh all-models` in `CLAUDE.md` (6.3.0 adds `sonnet`, the challenger's default).
+- Critique gate closed with residue (`gate-logs/<gate>-residue.md`): the one delta round is spent; the spec/plan is ambiguous — use `style:step`, edit, resume. `LOOP_SPEC_CRITIQUE_ROUNDS` raises the bound.
 - Loop-fleet halt: read `halt_reason` in `.loop/fleet-result.json` (table in `skills/shared/execute-loop-fleet.md`).
 - Teams unavailable: not a failure; set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to restore persistent teams.
 

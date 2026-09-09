@@ -43,6 +43,28 @@ and one of: `pip install claude-agent-sdk` with a Claude login, or Google ADK wi
 
 Runnable form of all six steps: `examples/supervisor/supervisor.py`.
 
+### Updating an embedding to 6.3.0
+
+The boundary is unchanged; four things an embedding touches moved. The full list is
+the "Before you update" section of `CHANGELOG.md` under 6.3.0.
+
+1. **Prompt builders.** The `autonomous` token counts only among the leading or
+   trailing tokens. `/loop-spec:cycle autonomous <task>` and `/loop-spec:auto <task>`
+   still arm the run; the word inside the task text no longer does. Presets that set
+   `LOOP_SPEC_AUTONOMOUS=1` are unaffected.
+2. **Gate names in state and events.** `plan-feasibility` no longer appears in
+   `currentGate.gate`, `gateHistory[].gate`, or a paused result's `reason`
+   (`plan-feasibility-cap`); PLAN's whole review is `plan-critique`. `gate_round` events
+   keep their shape and are now emitted by `cycle-driver.sh critique`.
+3. **Model allow-lists.** The challenger defaults to `sonnet` on Claude Code, so
+   `bash lib/feature-init.sh all-models` now lists it; a health check built from that
+   list needs the new entry. `LOOP_SPEC_MODEL_CHALLENGER` in the profile's `env` overrides
+   it.
+4. **A custom planner.** `tasks.json` is derived from PLAN.md's task blocks
+   (`lib/plan-tasks.sh extract`), never from the planner's completion message. A
+   planner you generated or ported must write `**BlockedBy:**` in every block; the exit
+   gate refuses a sidecar whose ids differ from PLAN.md.
+
 ## Checklist for an agent pointed at a supervised run
 
 You are the agent inside the cycle, not the supervisor. The mode line each phase
