@@ -108,11 +108,13 @@ def child_env(profile_env):
     # The session is an implementer, not a member of the cycle that dispatched it: the
     # plugin bindings and every LOOP_SPEC_* setting would make it act as the lead, and
     # the lead's session identity (id and remote-session plumbing) would make the child
-    # append its transcript to the lead's.
+    # append its transcript to the lead's. The launch stamp is dropped because the CLI
+    # writes CLAUDE_CODE_ENTRYPOINT only when it is unset: the child's own launch is the
+    # fact, not the lead's.
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("LOOP_SPEC_")
            and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
-           and k not in SESSION_IDENTITY}
+           and k not in SESSION_IDENTITY and k != "CLAUDE_CODE_ENTRYPOINT"}
     env.update(profile_env)
     return env
 

@@ -72,11 +72,14 @@ def child_env():
     # the session id and the remote-session plumbing appends every round to the parent's
     # transcript, and the phase-handoff guard then reads round one's phase as "already
     # run in this invocation" in round three. Measured: only dropping all of these gave
-    # the child its own transcript.
+    # the child its own transcript. The launch stamp goes too: the CLI writes
+    # CLAUDE_CODE_ENTRYPOINT only when it is unset, so a child under an attended session
+    # inherited `remote_mobile`, answered the session-layer probe "attended", and never
+    # took the session rung (final-sonnet-fastapi, round 7).
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("LOOP_SPEC_")
            and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
-           and k not in SESSION_IDENTITY}
+           and k not in SESSION_IDENTITY and k != "CLAUDE_CODE_ENTRYPOINT"}
     # Fork mode backgrounds every Agent and ignores run_in_background on the call; the
     # 20260909-sonnet-fastapi run saw the launch stub on all eight dispatches and paid
     # a wait turn for each report. This is the harness's documented foreground switch.

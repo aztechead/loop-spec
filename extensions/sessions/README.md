@@ -40,8 +40,9 @@ The result line:
 The child inherits the environment minus every `LOOP_SPEC_*` name, the harness's
 plugin bindings (`CLAUDE_PROJECT_DIR`, `CLAUDE_SKILL_DIR`, `CLAUDE_PLUGIN_ROOT`), and
 the lead's session identity (`CLAUDE_CODE_SESSION_ID` and the remote-session plumbing
-next to it): the session is an implementer, not a member of the cycle that dispatched
-it, and it writes its own transcript.
+next to it), and the lead's launch stamp (`CLAUDE_CODE_ENTRYPOINT`, which the CLI writes
+only when it is unset): the session is an implementer, not a member of the cycle that
+dispatched it, it writes its own transcript, and its stamp names its own launch.
 
 ## Profiles
 

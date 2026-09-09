@@ -222,7 +222,10 @@ touches, and what to do.
   session identity (`CLAUDE_CODE_SESSION_ID` and the remote-session plumbing next to it)
   from the child's environment: a nested `claude -p` that inherits it appends every
   round to the parent's transcript, and the handoff guard then reads an earlier round's
-  phase as this invocation's.
+  phase as this invocation's. Both drop the parent's launch stamp
+  (`CLAUDE_CODE_ENTRYPOINT`) too: the CLI writes it only when it is unset, so a child
+  under an attended session inherited `remote_mobile`, `lib/harness.sh session-layer`
+  answered `attended`, and the session rung never ran (`tests/sessions-extension.test.sh`).
 - `cycle-driver.sh` holds the handoff line itself: `next` answers `HANDOFF` or `REWIND`
   and records the session (`feature.json.handoffSession`); from that session `next`
   repeats the answer and `phase-begin` of the next phase exits 4. A lead denied by the
