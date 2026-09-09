@@ -28,8 +28,9 @@ Join a DISCUSS prefetch: check once whether PATTERNS.md exists
 never AskUserQuestion as a wait. If PATTERNS.md exists, keep it. Else
 `lib/gsd-ingest.sh patterns {slug} <target>` (`INGESTED` sets
 `artifacts.patternsSource = "gsd-ingest"`). Else dispatch a one-shot `loop-spec:pattern-mapper`
-Agent with absolute paths for SPEC.md and the target,
-then stop; the planner's brief covers the last-resort fallback. Greenfield: PATTERNS.md
+Agent with absolute paths for SPEC.md, the target, and
+`${CLAUDE_SKILL_DIR}/../shared/artifact-templates/PATTERNS.md.template` (a subagent
+cannot resolve a plugin-relative path), then stop; the planner's brief covers the last-resort fallback. Greenfield: PATTERNS.md
 records the chosen stack's conventions instead of mined analogs.
 
 ## 2. Author PLAN.md
@@ -41,7 +42,11 @@ existing decision path before accepting conflicting tasks.
 Spawn `planner-1` (`loop-spec:planner`, model `feature.models.planner`) and, in team
 modes, warm up `challenger-1` with SPEC.md meanwhile. The
 planner brief carries: `slug`, `spec_path`, `patterns_path`,
-`evidence_path`; the grounding rule (every external fact cites `EVID-NNN` or is an
+`evidence_path`, and `template_path` = the absolute
+`${CLAUDE_SKILL_DIR}/../shared/artifact-templates/PLAN.md.template` with "PLAN.md in
+exactly that shape: a `## Task DAG` table and, per task block, `**Files:**`,
+`**Verify:**`, `**Acceptance criteria:**`" (a live planner given no template wrote its
+own shape and the artifact lint flagged every task block); the grounding rule (every external fact cites `EVID-NNN` or is an
 `ASSUMPTION: ... | verify: ...`); the dependency-idiom rule (every dependency
 `lib/doc-deps.sh scan` names on the task files needs a doc-backed `EVID-NNN` or an
 `ASSUMPTION` in `## Grounding` — fetch current docs with any web tool available, or
@@ -69,8 +74,14 @@ arrives empty or stale never becomes the dispatch list:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../lib/plan-tasks.sh" extract docs/loop-spec/features/{slug}/PLAN.md > "$feature_dir/tasks.json"
+bash "${CLAUDE_SKILL_DIR}/../../lib/plan-conflicts.sh" edges "$feature_dir/tasks.json"
 bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir"
 ```
+
+`edges` writes tasks.json back with a `blockedBy` for every task whose `interfaces.consumes`, `goal`,
+or `brief` names another task it does not wait on (a live critique spent a round on that
+omission; EXECUTE would have serialized the pair anyway). An edge that would close a
+cycle is refused with exit 1: that is a planner finding, send it back.
 
 A non-zero extract exit is a message on stderr (no task blocks, or an unreadable
 plan): it is a fix-list item for the planner, never an empty `tasks.json`. The gate

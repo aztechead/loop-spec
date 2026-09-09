@@ -18,6 +18,9 @@ state, re-scan directories, or narrate the preflight.
 DRV="${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
 ```
 
+Run it; do not `ls`, `stat`, or `cat` it first (two live leads spent their first turn
+checking the path exists).
+
 The frontmatter lists the tools this skill and its phase skills use. Any other tool the
 harness offers (a web or registry lookup, an MCP server) is available to a phase that
 needs it; the plugin restricts nothing beyond what a role's own charter says.
@@ -66,6 +69,10 @@ probe each with `TaskList({team})`, and if it answers, tell the user to `TeamDel
 that team before resuming (those features are not offered).
 
 ## 2. Initialize a new feature
+
+Only after `begin` answered `decisions` (a human chose). When `.action` was `init` or
+`resume`, the feature is already initialized: do not call `init` again (a live lead did,
+with `$st` from a previous Bash call, which is empty, and got the usage text).
 
 ```bash
 init="$(bash "$DRV" init --dir "$(jq -r '.workspace.root' <<<"$st")" \
@@ -167,7 +174,7 @@ delete the feature dir to abort). `ExitWorktree({action:"keep"})` when
 ## 5. Finish
 
 ```bash
-fin="$(bash "$DRV" finish --feature-dir "$featureDir" --completed "<features completed this invocation>")"
+fin="$(bash "$DRV" finish --feature-dir "$featureDir" --completed <N>)"   # N = how many features this invocation completed, counting this one (1 on a single-feature run); a live lead passed the slug
 ```
 
 Exit 1 is `delivery-incomplete`: relay and stop without touching state. Otherwise write

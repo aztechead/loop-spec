@@ -157,8 +157,10 @@ SendMessage({
 })
 ```
 
-Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from
-`challenger-1`. Never AskUserQuestion as a wait. Hand the reply to
+The challenger reads the round's diff from `diffPath` (`gate-logs/{gate}-delta.diff`)
+itself; the lead does not inline it into the message. Stop after SendMessage. The
+harness resumes this turn on `TeammateIdle` from `challenger-1`, under `claude -p` as
+well. Never AskUserQuestion as a wait. Hand the reply to
 `critique delta --reply -` (PLAN adds `--flags` with the re-run gate's FLAG lines): it
 writes the round's gate-log with the lint's `DROP` lines, counts the round, emits the
 event, and answers `{verified, survivors[]}`.
@@ -170,7 +172,13 @@ event, and answers `{verified, survivors[]}`.
   surviving item stays: keep it on the fix-list (stricter bias), in the exact words the
   first fail entry recorded — that identity is what the probe's deadlock rule matches
   on — and call `critique fail` again; with the shipped ceiling it answers `close`.
-  Never spawn a second critic and never loop without the probe's answer.
+  Never spawn a second critic and never loop without the probe's answer. `close` ends
+  the gate now: first apply, as lead edits with no re-dispatch and no re-verify, every
+  fix-list item the lead already ACCEPTED as `[minor]` (the ceiling bounds challenger
+  rounds, not agreed one-line fixes; a live gate closed with two accepted minors
+  unapplied), then record the pass entry with the items still open in its notes.
+  Dispatch, then stop, holds here under `claude -p` as well: a pending teammate keeps
+  the process alive and its reply re-invokes the lead.
 
 ## fix_list empty
 

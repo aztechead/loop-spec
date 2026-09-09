@@ -97,6 +97,23 @@ The landing record at the end of the follow-up says what each item became.
   skill's launcher steps, the WP5 vendoring decision and its partial state, and the
   attribution exception to the BMad non-goal.
 
+### Merged from 6.3.0 (PR 93)
+
+The 6.3.0 fixes are combined here. Where the two branches collided the port's version
+stands, and what 6.3.0 had that the port lacked is adopted: the BLOCKED acceptance
+status and the veto of a PASS whose evidence says the check never ran
+(`lib/converged-floor.sh`); the ITERATE `escalate` route for a gap only an operator can
+close (`lib/iterate-judged.sh`, ended by the driver as `DONE status=escalated`); a
+headless or gitfile checkout works in place on the feature branch (`lib/graph/driver.py`);
+the dispatch contract's "dispatch, then stop" holds under `claude -p`; the critic reads
+only the EVID rows the artifact cites; PLAN adds the `blockedBy` edges its prose states
+(`lib/plan-conflicts.sh edges`); accepted `[minor]` items are applied before a critique
+gate closes at its ceiling. Not adopted: `plan-render.sh` as the source of PLAN.md's task
+sections (the port derives tasks.json from PLAN.md), and the fix-list `@file` form (the
+port's `critique fail` takes a path or stdin). 6.3.0's `dispatch-prompt-guard.sh` and
+`artifact-lint-feedback.sh` hooks and its `plan-render.sh`, `task-batch.sh`, and
+environment probe come along unchanged.
+
 ### Fixed
 
 - The oneshot exit gate passed on a frontmatter the probe could not read, skipped the
@@ -427,6 +444,116 @@ touches, and what to do.
   the autonomous chain bound" armed autonomous mode, stripped the word from the title,
   and ran the cycle without asking a question.
 
+## [6.3.0] - 2026-09-07
+
+### Fixed
+
+- A live headless cycle on a real Terragrunt repository (the 2026-09-07 tf-meldn runs)
+  lost about a third of its tool calls to twelve deterministic defects, each now fixed
+  with a test: `git-ops.sh slugify` caps a prose-derived slug at 60 characters (a 400-char
+  branch name failed `git worktree add`); `LOOP_SPEC_ANSWER_*` are honored under the inline
+  `autonomous` token; a gitfile checkout (submodule or linked worktree) works in place
+  because Claude Code's `EnterWorktree` refuses worktrees there; `.gitignore` exceptions
+  land as one delimited block (`owned-gitignore.sh ensure`); `acceptance-lint.sh` no longer
+  takes minutes on bash 3.2 (`${var//[[:space:]]/}` replaced by a regex test, four sibling
+  sites swept); `evidence.sh add` refuses email addresses and credential paths; the
+  preflight headless warning is dropped once the `autonomous` token is parsed; an
+  autonomous `begin` auto-picks the single resumable feature and `.claude/agent-memory/` no
+  longer counts as dirt. The plugin no longer refuses its own state as dirt: `execute-step
+  integrate` commits tracked `.loop-spec` changes before publishing, the verification
+  baseline ignores `.loop-spec`, `finalize-delivery-candidate` stages feature.json,
+  PROGRESS.md, and the artifact directory in every state-commit mode, `task dispatch`
+  refuses a task whose blockers are not done, `task package` names the task worktree
+  for the reviewer, and `phase-exit` records a re-entered phase once.
+- Subagent dispatches carry absolute template paths (a pattern-mapper searched the whole
+  disk for a plugin-relative one) and the planner brief names `PLAN.md.template` and the
+  three labels the artifact lint parses; DISCUSS names the exact `feature-write.sh`
+  command and the forgery guard's deny text carries its usage.
+
+- EXECUTE spends fewer seats and less context per seat, all of it deterministic. On the
+  live run eleven tasks cost twenty-two subagents, each re-reading four artifacts (about
+  100 KB) and re-probing the toolchain, and each reviewer re-ran the implementer's verify
+  including live `terragrunt plan`. `lib/task-batch.sh` now merges a linear chain of
+  local-verify tasks into one dispatch and tiers a doc/config-only task with a local
+  verify as `mechanical` (`LOOP_SPEC_TASK_BATCH_AUTO`, `LOOP_SPEC_TASK_BATCH_CHAIN_FILES`);
+  `execute-step` dispatches the collapsed task and marks every member done (the
+  `batchGroup` collapse never reached the dispatch before). The brief carries PLAN.md's
+  Global constraints verbatim, the EVIDENCE rows the task cites, and `dispatch/environment.txt`
+  (tool versions `execute-prepare` probes once), and both prompts tell the subagent not to
+  open the artifacts. The reviewer packet names the verify command so the reviewer can be
+  told not to run it.
+
+- A second observed run on the same repository (the 2026-09-07 tf-meldn runs,
+  round 4) ended with the lead asking an absent operator a question after the ITERATE
+  judge found the only gap was an expired gcloud token, and with two plan-dependent
+  criteria marked PASS because PASS was the only cell that converged. ITERATE now routes
+  `escalate` when the judge marks a gap `needs_operator` or the same `fix_first` survives
+  a remediation round, and the cycle's `next` ends the run `DONE status=escalated` with
+  the operator action as the reason; `VERIFICATION.md` has a `BLOCKED` status that the
+  converged floor refuses to converge on, and a PASS row whose evidence says the check
+  did not run is a floor violation. Also from that run: `grounding-lint` lints the
+  backticked command of an ASSUMPTION, not the prose after it (two false flags);
+  `acceptance-lint` accepts a whole-line or key = value grep against a declarative file
+  (HCL, YAML, TOML, INI, JSON); `task-batch` and the environment probe split pipelines
+  outside quotes (a quoted `a|b` pattern was probed as two programs) and treat
+  `terragrunt hcl format` and `tofu fmt` as local; `execute-step` labels a failed
+  integrate with its real reason instead of `rebase-conflict`; `.claude/agent-memory` is
+  not dirt for the dirty checks, and `pattern-mapper` and `code-reviewer` no longer keep
+  a per-repository memory (a one-shot reviewer's notes have no reader and were landing
+  in the user's PR); the execute contract says to pass the packet's `.model`, to issue a
+  wave's Agent calls in one message, and that a subagent's final message is its result
+  (three `SendMessage` failures per reviewer); the cycle skill says `begin` already
+  initialized the feature.
+
+- PLAN was 42 of round 4's 110 minutes: five planner round trips (two lint rounds, three
+  critique rounds), each a fresh planner context re-reading everything to change one
+  field, plus a prose pruner over a plan that was mostly rendered task blocks.
+  `plan-conflicts.sh edges` adds the `blockedBy` edges the task prose
+  already states before the challenger reads the plan (a live round was spent on one such
+  omission); the delta re-verify hands the challenger the diff path instead of inlining
+  it into the lead's context; the prose-pruning pass runs only when
+  `plan-render.sh prose-lines` counts 120 or more prose lines.
+
+- Round 5 (the PLAN wave measured live) spent a lint round on seven SPEC decisions the
+  planner paraphrased instead of copying; `plan-render.sh decisions` copies the missing
+  statements verbatim before the gate.
+  Also from round 5: headless runs work in place instead of entering a session worktree
+  (Claude Code's worktree guard refused four plugin calls whose quoted text it could not
+  prove git-free); the dispatch-prompt guard denies a brief with a line that is
+  only a `$(...)` substitution (a pruner was dispatched twice for one); the critic reads
+  only the EVIDENCE rows the artifact cites and never PATTERNS, transcripts, or gate logs;
+  `plan-conflicts.sh edges` prints the updated array on stdout; the checkpoint PR of an
+  escalated run carries the BLOCKED verification rows and the operator action; and a
+  headless run never selects the team rung, because `claude -p` disables the harness
+  task list that rung runs on (three teammates each failed on `TaskList`); `execute-step`
+  commits new `.loop-spec` files (a pruner's BACKLOG.md) as state before integrating, and
+  `integrate-task` no longer counts tool caches a verify leaves behind (`.terraform/`, a
+  lock file, `node_modules/`, `__pycache__/`) as task dirt; the verify gate and the
+  critique gate read their JSON arrays from `@path` files (a `\.github` path inside inline
+  JSON killed a live gate call on quoting); the write-time hook runs the verification
+  grounding lint on VERIFICATION.md.
+
+### Added
+
+- `lib/plan-render.sh`: renders PLAN.md's `## Task DAG` and `## Tasks` from tasks.json,
+  preserving every other section. tasks.json is the single source for task fields; the
+  planner writes the prose sections and returns `tasks[]` with `goal`, `read_first`,
+  `interfaces`, `steps`, and `expected`. The shape the artifact lint parses is produced,
+  not checked, and a critique fix to a task is one edit plus a re-render.
+- `hooks/team/artifact-lint-feedback.sh` (PostToolUse on Write/Edit): runs the matching
+  artifact lint on SPEC.md, PLAN.md, PATTERNS.md, and tasks.json the moment they are
+  written and returns the flags to the author, lead or subagent. On the live run every
+  lint ran only at phase exit, so three 20-millisecond checks cost three planner
+  round trips; the exit gate stays as the backstop.
+- `hooks/team/dispatch-prompt-guard.sh` (PreToolUse on Agent): denies a prompt that is an
+  unexpanded `$(...)` substitution or under 40 characters (a live lead dispatched both
+  wave-one implementers with `$(cat /tmp/prompt.txt)` as their whole brief).
+  `execute-step.sh dispatch` now refuses a task whose `blockedBy` are not done.
+- `skills/shared/dispatch.md` and the critique protocol state that "dispatch, then stop"
+  holds under `claude -p`, verified live (a lead ran 24 background sleep loops waiting for
+  a reply the harness delivers by resuming the turn); the critique protocol applies
+  accepted `[minor]` items before closing at the round ceiling.
+
 ## [6.2.0] - 2026-09-06
 
 ### Changed
@@ -452,8 +579,7 @@ touches, and what to do.
   scripts, a driver that runs each through `claude -p "/loop-spec:cycle autonomous …"`
   against a snapshot of the plugin and records cost, time, diff shape, workarounds,
   and plugin tampering). Not registered by `tests/run-all.sh`; refuses to run without
-  `LOOP_SPEC_EVAL_LIVE=1` and `--confirm-spend`. Findings from the first runs:
-  `evals/findings-2026-09-06.md`.
+  `LOOP_SPEC_EVAL_LIVE=1` and `--confirm-spend`.
 - `feature.json.driverNext`: the phase the driver last answered with `NEXT`.
   `cycle-result.sh write` refuses `--status failed|terminal|escalated` over it unless
   `--reason` says what stopped the phase.

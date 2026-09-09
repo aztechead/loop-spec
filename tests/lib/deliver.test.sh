@@ -453,6 +453,15 @@ check "single dirty: the refusal names the path" "1" "$(grep -c 'uncommitted cha
 check "single dirty: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 
 git -C "$DIRTY" checkout -q -- b
+# The plugin's own artifacts are committed by DELIVER itself, never refused as dirt.
+jq '.touched = "by iterate"' "$DDIR/feature.json" > "$DDIR/feature.json.tmp" && mv "$DDIR/feature.json.tmp" "$DDIR/feature.json"
+mkdir -p "$DIRTY/docs/loop-spec/features/dirty"; printf '# Iteration\n' > "$DIRTY/docs/loop-spec/features/dirty/ITERATION.md"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DDIR")" || ec=$?
+check "plugin-owned dirt: DELIVER commits it and proceeds" "0" "$ec"
+check "plugin-owned dirt: the finalize commit is on the branch" "1" "$(git -C "$DIRTY" log --oneline | grep -c 'finalize delivery candidate')"
+check "plugin-owned dirt: ITERATION.md is tracked" "1" "$(git -C "$DIRTY" ls-files docs/loop-spec/features/dirty/ITERATION.md | wc -l | tr -d ' ')"
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DDIR")" || ec=$?

@@ -148,6 +148,8 @@ check "exit spec: well-formed SPEC.md passes" "0" "$ec"
 check "exit spec: artifact pointer recorded" "docs/loop-spec/features/my-feature/SPEC.md" "$(fj '.artifacts.spec')"
 check "exit spec: transcript pointer recorded" "1" "$([[ "$(fj '.artifacts.specInterview')" == *transcript.md ]] && echo 1 || echo 0)"
 check "exit spec: phase closed" "spec" "$(fj '.completedPhases[-1]')"
+bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || true
+check "exit spec: a re-entered phase closes once" "1" "$(fj '[.completedPhases[] | select(. == "spec")] | length')"
 check "exit spec: SPEC.md committed" "1" "$(git log --oneline | grep -c 'spec: my-feature')"
 # A single-mode workspace record (what lib/workspace.sh detect reports for an ordinary
 # repository) must not read as workspace mode: the haiku re-run of todo-due carried one

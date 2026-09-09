@@ -93,6 +93,7 @@ table_rows="$(awk '
     }
     if (!key_col) key_col = 2
     if (!status_col) status_col = 4
+    evidence_col = status_col + 1
     next
   }
   {
@@ -100,11 +101,13 @@ table_rows="$(awk '
     for (k = 2; k < n; k++) if (trim(c[k]) !~ /^:?-+:?$/) all_sep = 0
     if (all_sep) next
     key = trim(c[key_col]); s = trim(c[status_col]); gsub(/\001/, "|", s)
+    ev = tolower(trim(c[evidence_col])); gsub(/\001/, "|", ev)
     if (s ~ /^PASS([^A-Za-z]|$)/) s = "PASS"
     else if (s ~ /^FAIL([^A-Za-z]|$)/) s = "FAIL"
+    else if (s ~ /^BLOCKED([^A-Za-z]|$)/) s = "BLOCKED"
     else if (s ~ /^N\/A([^A-Za-z]|$)/) s = "N/A"
     else if (s == "") s = "empty"
-    print key "\t" s
+    print key "\t" s "\t" ev
   }
 ' <<<"$acceptance_rows")"
 
@@ -120,7 +123,7 @@ for ((i = 1; i <= criteria_count; i++)); do
   if (( count != 1 )); then
     (( count == 0 )) && result="missing (no acceptance row keyed $ge_id or $i)" || result="duplicate ($count acceptance rows keyed $ge_id or $i)"
   elif (( shape )); then
-    case "$status" in PASS|FAIL|N/A) result="PASS" ;; *) result="unreadable (status cell '$status' must begin with PASS, FAIL, or N/A)" ;; esac
+    case "$status" in PASS|FAIL|BLOCKED|N/A) result="PASS" ;; *) result="unreadable (status cell '$status' must begin with PASS, FAIL, BLOCKED, or N/A)" ;; esac
   else
     [[ "$status" == "PASS" ]] && result="PASS" || result="non-PASS ($status)"
   fi
@@ -130,11 +133,23 @@ for ((i = 1; i <= criteria_count; i++)); do
   fi
 done
 
-# Acceptance table: any FAIL status cell vetoes convergence outright.
+# Acceptance table: any FAIL or BLOCKED status cell vetoes convergence outright, and so
+# does a PASS whose evidence says the check never ran. A live verifier wrote PASS for
+# "terragrunt plan succeeds" with the evidence "plan invocation is blocked by the reauth
+# lock" because PASS was the only cell that let the feature converge (PR 93); BLOCKED is
+# that cell now, and it does not converge either.
+blocked_evidence='(^|[^a-z])(blocked|could not run|not run|never ran|did not run|unable to run|skipped|reauth|credentials? (expired|locked)|not verified|unverified)([^a-z]|$)'
 if (( shape == 0 )); then
-  while IFS=$'\t' read -r key status; do
-    [[ "$status" == "FAIL" ]] || continue
-    echo "FLOOR acceptance table row still FAIL: $key"
+  while IFS=$'\t' read -r key status evidence; do
+    if [[ "$status" == "FAIL" ]]; then
+      echo "FLOOR acceptance table row still FAIL: $key"
+    elif [[ "$status" == "BLOCKED" ]]; then
+      echo "FLOOR acceptance table row BLOCKED (an operator must clear it before this can converge): $key"
+    elif [[ "$status" == "PASS" && "$evidence" =~ $blocked_evidence ]]; then
+      echo "FLOOR acceptance table row is PASS but its evidence says the check did not run (mark it BLOCKED): $key"
+    else
+      continue
+    fi
     violations=$((violations + 1))
   done <<<"$table_rows"
 fi

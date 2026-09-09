@@ -468,6 +468,43 @@ check "resume: claude re-enters the recorded worktree" "$WT" "$(jq -r '.enterWor
 ec=0; HARNESS=claude LOOP_SPEC_WORKTREES=0 drv resume --dir "$REPO2" --feature-root "$WT" >/dev/null 2>&1 || ec=$?
 check "resume: LOOP_SPEC_WORKTREES=0 refuses a worktree feature" "1" "$ec"
 
+# --- live-run findings (tf-meldn, 2026-09-07) -------------------------------------------
+# The inline `autonomous` token honors LOOP_SPEC_ANSWER_TITLE (only the env var did).
+REPO7="$(new_repo answers)"
+out="$(AUTONOMOUS=1 LOOP_SPEC_ANSWER_TITLE="Short title" drv start --dir "$REPO7" -- a very long prose description that would slug badly 2>/dev/null)"
+check "start: autonomous honors LOOP_SPEC_ANSWER_TITLE" "short-title" "$(jq -r '.invocation.slug' <<<"$out")"
+check "start: autonomous keeps style auto under an env answer" "auto" "$(LOOP_SPEC_ANSWER_STYLE=step AUTONOMOUS=1 LOOP_SPEC_ANSWER_TITLE=t drv start --dir "$REPO7" -- x 2>/dev/null | jq -r '.invocation.style')"
+# The headless warning is dropped when the invocation carries the token.
+out="$(CLAUDE_CODE_ENTRYPOINT=sdk-cli LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0 LOOP_SPEC_CHECKPOINT_PR=0 bash "$SCRIPT" start --dir "$REPO7" -- autonomous ship it 2>/dev/null)"
+check "start: no headless warning with the autonomous token" "0" "$(jq -r '[.warnings[] | select(startswith("headless invocation"))] | length' <<<"$out")"
+out="$(CLAUDE_CODE_ENTRYPOINT=sdk-cli LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0 LOOP_SPEC_CHECKPOINT_PR=0 bash "$SCRIPT" start --dir "$REPO7" -- ship it 2>/dev/null)"
+check "start: headless warning kept without the token" "1" "$(jq -r '[.warnings[] | select(startswith("headless invocation"))] | length' <<<"$out")"
+
+# An interrupted round leaves plugin-owned files dirty; begin must resume, not refuse.
+REPO8="$(new_repo interrupted)"
+AUTONOMOUS=1 drv start --dir "$REPO8" -- add a json flag >/dev/null 2>&1
+init="$(drv init --dir "$REPO8" --slug add-a-json-flag --title "add a json flag" --style auto --profile standard --autonomous 1 2>/dev/null)"
+FD8="$(jq -r '.featureDir' <<<"$init")"
+mkdir -p "$REPO8/docs/loop-spec/features/add-a-json-flag" "$REPO8/.claude/agent-memory/loop-spec-pattern-mapper"
+printf '# draft\n' > "$REPO8/docs/loop-spec/features/add-a-json-flag/PLAN.md"
+printf 'memory\n' > "$REPO8/.claude/agent-memory/loop-spec-pattern-mapper/MEMORY.md"
+printf '{"x":1}\n' > "$FD8/scratch.json"
+out="$(cd "$REPO8" && AUTONOMOUS=1 drv begin -- a different sentence than before 2>/dev/null)"
+check "begin: plugin-owned dirt does not refuse the resume" "resume" "$(jq -r '.action' <<<"$out")"
+check "begin: autonomous auto-picks the single resumable feature" "add-a-json-flag" "$(jq -r '.slug' <<<"$out")"
+printf 'wip\n' > "$REPO8/notes.txt"
+ec=0; (cd "$REPO8" && AUTONOMOUS=1 drv init --dir "$REPO8" --slug other --title other --style auto --profile standard --autonomous 1 >/dev/null 2>&1) || ec=$?
+check "init: user dirt still refuses" "1" "$ec"
+
+# A gitfile checkout (submodule or linked worktree) works in place: EnterWorktree refuses it.
+REPO9="$(new_repo gitfile)"
+GITDIR9="$WORK/gitfile.git"; mv "$REPO9/.git" "$GITDIR9"; printf 'gitdir: %s\n' "$GITDIR9" > "$REPO9/.git"
+HARNESS=claude AUTONOMOUS=1 drv start --dir "$REPO9" -- ship it >/dev/null 2>&1
+init="$(HARNESS=claude drv init --dir "$REPO9" --slug ship-it --title "ship it" --style auto --profile standard --autonomous 1 2>/tmp/gitfile.err)"
+check "init: gitfile checkout enters no worktree" "null" "$(jq -r '.enterWorktree' <<<"$init")"
+check "init: gitfile checkout names the reason" "1" "$(grep -c 'working in place' /tmp/gitfile.err)"
+
+
 echo
 echo "cycle-driver: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

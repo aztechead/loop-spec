@@ -38,6 +38,7 @@ and inspect the evidence and decision updates behind any material departure.
    - `execute` — the design is right but the implementation is incomplete/buggy (a test gap, a missed edge case, a wrong value). The cheapest re-entry.
    - `plan` — the task decomposition is wrong or missing tasks; re-implementing against the current plan cannot close the gap.
    - `spec` — the goal is unmet because the SPEC captured the wrong thing or missed scope. The most expensive re-entry; the orchestrator will require human approval before acting on this.
+   Set `needs_operator: true` on a gap whose `fix_first` is an action only a human can take (re-authenticate, approve, grant access); the orchestrator ends the run escalated with that action as the reason instead of re-entering a phase that will hit the same wall. Leave it false (or absent) for anything an implementer can do in the repository.
    Pick the **one** gap whose fix most moves the result toward the goal (fix the weakest point first) as `gap`. Then list every OTHER known miss in `remaining_gaps[]` with the same `{type, description, fix_first}` shape (empty array when the primary gap is the only one). The orchestrator routes on `gap` alone, but it remediates `remaining_gaps` execute-level entries in the same pass and reports all of them if the iteration limit runs out — an unlisted gap is a gap that ships silently.
 
 ## Report format (return EXACTLY this JSON in your completion message)
@@ -54,7 +55,8 @@ and inspect the evidence and decision updates behind any material departure.
   "gap": {
     "type": "execute|plan|spec",
     "description": "<what is wrong and what re-entering that phase must change, naming the artifact and its current state>",
-    "fix_first": "<the one concrete change to make next>"
+    "fix_first": "<the one concrete change to make next>",
+    "needs_operator": <true only when no agent can make that change: expired or missing credentials, a human approval, a network or account the sandbox lacks>
   },
   "remaining_gaps": [
     {"type": "execute|plan|spec", "description": "<another known miss>", "fix_first": "<its concrete fix>"}

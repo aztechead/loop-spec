@@ -27,7 +27,9 @@ exact reviewer this pass exists to replace.
 
 - **SPEC**, on `SPEC.md` after the structural lint passes, before commit
   (`skills/spec/SKILL.md`).
-- **PLAN**, on `PLAN.md` after the coverage and grounding gates pass, before commit
+- **PLAN**, on `PLAN.md` after the coverage and grounding gates pass, before commit,
+  only when `lib/plan-render.sh prose-lines` counts 120 or more prose lines; the rendered
+  task sections are out of scope
   (`skills/plan/SKILL.md`).
 
 ## The pruning tests

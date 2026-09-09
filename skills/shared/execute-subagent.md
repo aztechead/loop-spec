@@ -174,6 +174,12 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    # .acceptanceCriteria .readFirst .specPath .prepareCommand .index .total .maxRetries
    ```
 
+   `.model` is the resolved selector (a concrete pin, else the task's tier, else the
+   role default): pass it as the Agent `model` field whenever it is not `inherit`. A live
+   lead read only `.dispatchable` and dispatched a `haiku`-tiered task on the lead's
+   model. The packet already emitted the `dispatch` event; do not emit another. Issue
+   every Agent call of the wave in ONE assistant message so the wave runs in parallel.
+
    `.brief` and `.report` are `lib/dispatch-files.sh brief` and `report-path`. The
    dispatch prompt carries those paths plus a one-line fit. Exact values live only in
    the brief. On rung 2 emit all wave calls in ONE assistant message so they run in
@@ -195,7 +201,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    ```bash
    pk="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task package \
      --feature-dir "$fdir" --task "{taskId}" --head "{implHead}")"
-   # .package .model .base .head .brief .report
+   # .package .model .base .head .brief .report .worktree
    ```
 
    Then dispatch a spec-compliance reviewer `Agent` using `.model` (the activated
@@ -269,7 +275,7 @@ the task worktree. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 
-**Dispatch telemetry (`skills/shared/dispatch.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved selector>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** `task dispatch` and `task package` emit the `dispatch` event for the implementer and the reviewer with the resolved model; the lead emits none itself (a live lead emitted a second one with the wrong model). Retries of the same task go through `task dispatch` again and DO re-emit.
 
 **Task progress (emitted for you).** EXECUTE is the longest phase; without progress
 events it reports only `[EXECUTE] start` and an operator watching a streamed log cannot
@@ -370,8 +376,10 @@ Write your full report (status, commits, test command, output, concerns) to:
   {report path from dispatch-files.sh}
 Return only JSON plus a one-line test summary. Exact values live in the brief; do not
 ask the lead to paste them.
-Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
-{global constraints lines, or "- none"}
+The brief also carries PLAN.md's Global constraints verbatim, the EVIDENCE rows this
+task cites, and the tool versions the lead probed. Do not open SPEC.md, PLAN.md,
+PATTERNS.md, or EVIDENCE.md, and do not re-run version or auth checks: if a value you
+need is not in the brief or the listed files, stop and report it as a blocker.
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}
 Acceptance criteria are in the brief.
@@ -390,6 +398,8 @@ Step 5 - Stage and commit inside the worktree branch:
 Do NOT push. Do NOT run git outside the task worktree.
 
 Return JSON: { taskId: "{taskId}", branch: "task/{taskId}-{slug}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
+Your final message IS the return value. Never call SendMessage to deliver it: you are a
+one-shot subagent, there is no teammate named "main", and the lead reads your completion.
 ```
 
 ## Reviewer Agent prompt
@@ -405,6 +415,13 @@ NO NESTED SUBAGENTS. Do this review yourself. Never spawn a helper or a second r
 
 Read the task brief: {brief path}
 Read the implementer's report: {report path}
+The implementation is checked out at {worktree path from the package packet's .worktree}.
+Do NOT run the task's verify command ({verifyCommand from the packet}): the implementer ran
+it (its output is in the report) and the integration step reruns it after rebase. Run a
+command there only when the diff makes a specific criterion suspicious, and only one that
+reads the checkout (grep, test, jq, diff). Never run a plan, an apply, a test suite, or
+anything that reaches a network or a cloud API. Never `git worktree add` another checkout
+for this review.
 Read the review package once (commit list, stat, diff -U10). Do not re-run git for this
 range if the file exists:
   {package path from: bash lib/dispatch-files.sh package --repo ... --base {taskBaseSha} --head {implHead}}
@@ -433,6 +450,8 @@ Return one of:
   - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
 
 Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] }
+Your final message IS the verdict. Never call SendMessage to deliver it (a live reviewer
+lost three calls to InputValidationError sending JSON to a "main" that does not exist).
 ```
 
 ## Workspace mode
@@ -486,8 +505,10 @@ Read this first — it is your requirements, with the exact values to use verbat
   {brief path from dispatch-files.sh}
 Write your full report to:
   {report path from dispatch-files.sh}
-Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
-{global constraints lines, or "- none"}
+The brief also carries PLAN.md's Global constraints verbatim, the EVIDENCE rows this
+task cites, and the tool versions the lead probed. Do not open SPEC.md, PLAN.md,
+PATTERNS.md, or EVIDENCE.md, and do not re-run version or auth checks: if a value you
+need is not in the brief or the listed files, stop and report it as a blocker.
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}
 Acceptance criteria are in the brief.
@@ -506,6 +527,7 @@ Step 4 - Stage and commit using git -C so git does not depend on cwd:
 Do NOT push. Do NOT run git against any path other than {abs_repo}.
 
 Return JSON: { taskId: "{taskId}", repo: "{repo}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
+Your final message IS the return value; never call SendMessage to deliver it.
 ```
 
 ### Merge and ff steps (workspace mode -- skipped)

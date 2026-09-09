@@ -122,11 +122,25 @@ task_before="$(git -C "$task_worktree" rev-parse --verify "refs/heads/$task_bran
   || fail invalid-arguments task-ref-not-found 2
 
 clean_detail=""
+# Tool caches a verify command leaves behind (`tofu init`, `terragrunt plan`, a test
+# runner) are by-products, not the task's work: two live integrates stopped on a
+# module's .terraform/ and lock file after `tofu validate`. Anything a task means to
+# ship is in its files[] and already committed.
+is_tool_cache_path() {
+  case "$1" in
+    *.terraform/*|*/.terraform.lock.hcl|.terraform.lock.hcl|*.terragrunt-cache/*|*node_modules/*|\
+    *__pycache__/*|*.pytest_cache/*|*.mypy_cache/*|*.ruff_cache/*|*.tox/*|*.venv/*|\
+    *.gradle/*|*.cache/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Everything under .loop-spec is the plugin's own state, on refs/loop-spec/state/<slug>
+# or ignored, never dirt and never a branch commit (WP0; a pruning pass wrote
+# .loop-spec/BACKLOG.md and a live integrate stopped on it as dirt, PR 93).
 is_known_runtime_path() {
   case "$1" in
-    .loop-spec/features/*/*|.loop-spec/runtime.json|.loop-spec/decisions-staging/*|\
-    .loop-spec/last-result.json|.loop-spec/results/*|.loop-spec/worktrees/*|\
-    .loop-spec/learnings.jsonl|.loop/*|graphify-out/*|\
+    .loop-spec/*|.loop/*|graphify-out/*|\
     graphify-out/.graphify_python|graphify-out/.graphify_root|\
     graphify-out/.graphify_chunk_*.json|graphify-out/.graphify_detect*.json|\
     graphify-out/.graphify_extract*.json|graphify-out/.graphify_ast*.json|\
@@ -147,9 +161,12 @@ check_clean() {
   fi
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
+    path="${line:3}"
+    # A tracked state file (a branch from before 6.4 tracks feature.json) modified by
+    # the driver is the plugin's own, the same as an untracked one.
+    is_known_runtime_path "$path" && continue
     if [[ "$line" == "?? "* ]]; then
-      path="${line:3}"
-      is_known_runtime_path "$path" && continue
+      is_tool_cache_path "$path" && continue
     fi
     # Name the dirt: a refusal that only said "dirty" cost a lead a git status, a diff,
     # and a retry to learn it had left SPEC.md uncommitted in the feature worktree.

@@ -4,7 +4,7 @@
 # Why: after the verifier and the code reviewer report, the skill asked the lead to run
 # the exit lint, read two DONE lines, append remediation tasks, a gate entry, an event, a
 # backlog line per Minor, a rule on a repeat, and tear the team down, one Bash call each
-# (evals/findings-2026-09-06.md, finding 7). Only the verdicts are model work. This takes
+# (the 2026-09-06 live evals, finding 7). Only the verdicts are model work. This takes
 # them as arguments and does the rest.
 #
 # Usage:
@@ -14,6 +14,8 @@
 #         findings; when absent on a failure, one task per exit FLAG or one per verdict is
 #         synthesized with the project test command.
 #       --minors: a JSON array of "file:line - claim" strings for the backlog.
+#       Both arrays accept @path (a file holding the JSON; for --minors, one finding
+#       per line is enough) so shell quoting never decides whether a gate call parses.
 #
 # Output (one JSON object):
 #   {exit:{ok,flags[]}, route:"redo"|"pass"|"remediate", class:null|"acceptance"|"suite-regression"|"code-review",
@@ -47,8 +49,17 @@ done
 case "$verifier" in ALL_PASS|FAIL) ;; *) usage ;; esac
 case "$suite" in PASS|FAIL|N/A) ;; *) usage ;; esac
 case "$reviewer" in PASS|PASS_WITH_MINOR|BLOCK) ;; *) usage ;; esac
-jq -e 'type == "array"' <<<"$tasks" >/dev/null 2>&1 || { echo "verify-gate: --remediation-tasks must be a JSON array" >&2; exit 2; }
-jq -e 'type == "array"' <<<"$minors" >/dev/null 2>&1 || { echo "verify-gate: --minors must be a JSON array" >&2; exit 2; }
+# `@path` reads the array from a file: a live lead's inline --minors carried a `\.github`
+# path whose backslash is not a JSON escape, and the call died on quoting, not substance.
+[[ "$tasks" == @* ]] && { tasks="$(cat "${tasks#@}" 2>/dev/null)" || { echo "verify-gate: cannot read ${tasks#@}" >&2; exit 2; }; }
+if [[ "$minors" == @* ]]; then
+  minors="$(cat "${minors#@}" 2>/dev/null)" || { echo "verify-gate: cannot read ${minors#@}" >&2; exit 2; }
+  # A file of one finding per line needs no JSON at all (the live failure was `\.`, an
+  # escape JSON does not have, inside an inline array).
+  jq -e 'type == "array"' <<<"$minors" >/dev/null 2>&1 || minors="$(jq -R . <<<"$minors" | jq -cs 'map(select(. != ""))')"
+fi
+jq -e 'type == "array"' <<<"$tasks" >/dev/null 2>&1 || { echo "verify-gate: --remediation-tasks must be a JSON array (write it to a file and pass @path when quoting bites)" >&2; exit 2; }
+jq -e 'type == "array"' <<<"$minors" >/dev/null 2>&1 || { echo "verify-gate: --minors must be a JSON array (write it to a file and pass @path when quoting bites)" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }

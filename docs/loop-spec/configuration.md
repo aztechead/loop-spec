@@ -264,6 +264,10 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_PATH_GUARD_FORCE` | `0` | Applies path restrictions to otherwise open dispatches. |
 | `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD` | `1` | Blocks `AskUserQuestion` used as a wait or keep-alive (`n/a`, "Type something", "not a real question", header `wait`, or any question while an Agent is still running). VERIFY and DELIVER have no user questions; ITERATE only allows the Re-open SPEC gate; EXECUTE only allows Plan gap and specifying-gates. |
 | `LOOP_SPEC_BLOCKEDBY_GUARD` | `1` | Refuses completion or claim of tasks with unfinished `blockedBy` dependencies. |
+| `LOOP_SPEC_DISPATCH_PROMPT_GUARD` | `1` | `0` disables `hooks/team/dispatch-prompt-guard.sh`, the PreToolUse Agent hook that denies a prompt that is an unexpanded `$(...)` or backtick substitution, or under 40 characters. The Agent tool runs no shell; read the brief and pass its contents. |
+| `LOOP_SPEC_ARTIFACT_LINT_FEEDBACK` | `1` | `0` disables `hooks/team/artifact-lint-feedback.sh`, the PostToolUse Write/Edit hook that runs the matching artifact lint (and `acceptance-lint` for tasks.json, the converged floor for VERIFICATION.md) on a cycle artifact the moment it is written and returns the flags to the author. The phase exit stays the backstop. |
+| `LOOP_SPEC_TASK_BATCH_AUTO` | `1` | `0` limits `lib/task-batch.sh` to the explicit `batchGroup` collapse. By default EXECUTE also merges a linear chain of tasks whose verify commands only read the checkout (grep, test, jq, diff; never a test runner, a plan, or the network) into one dispatch, and sets `modelTier: mechanical` on a doc/config-only task with such a verify. A planner-set tier, model pin, or `batchGroup` always wins. |
+| `LOOP_SPEC_TASK_BATCH_CHAIN_FILES` | `6` | Most files a merged chain may touch; the merge stops at the task that would exceed it. |
 | `LOOP_SPEC_USERGATE_GUARD` | `1` | Enforces user-gate evidence at task completion. |
 | `LOOP_SPEC_USERGATE_STOP_GUARD` | `1` | Enforces user-gate evidence at Stop. |
 | `LOOP_SPEC_STRATEGY_ROTATION` | `1` | Injects a strategy-change directive after repeated failures. |

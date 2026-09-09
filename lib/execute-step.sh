@@ -4,7 +4,7 @@
 # Why: per task the subagent wave loop asked the lead for a worktree resolve, a worktree
 # add, a base SHA, a brief, a report path, two events, a review package, a fix-loop
 # action, an integration, a mark-done, and a closing event, each as its own Bash call
-# (evals/findings-2026-09-06.md, finding 7). Every one is deterministic. These four
+# (the 2026-09-06 live evals, finding 7). Every one is deterministic. These four
 # subcommands are the steps a lead still has to sequence around its Agent calls; the
 # rest happens inside them. lib/execute-prepare.sh must have run first: the rung, the
 # roots, and the caps are read from dispatch/prepare.json, never re-measured.
@@ -71,7 +71,11 @@ pget() { jq -r "$1" "$prep"; }
 slug="$(fget '.slug')"
 root="$(pget '.featureRoot')"
 sidecar="$(pget '.sidecar')"
-task_json="$(jq -c --arg id "$task_id" '(if type == "object" and has("tasks") then .tasks else . end) | map(select(.id == $id)) | first // empty' "$sidecar")"
+# The dispatch list is the collapsed one (lib/task-batch.sh): a merged chain or batch
+# carries the union of its members' files and verifies, which the sidecar row for the
+# surviving id does not. The sidecar is the fallback for a task that is not listed.
+task_json="$(jq -c --arg id "$task_id" '.tasks | map(select(.id == $id)) | first // empty' "$prep")"
+[[ -n "$task_json" ]] || task_json="$(jq -c --arg id "$task_id" '(if type == "object" and has("tasks") then .tasks else . end) | map(select(.id == $id)) | first // empty' "$sidecar")"
 [[ -n "$task_json" ]] || { echo "execute-step: no task $task_id in $sidecar" >&2; exit 2; }
 state="$feature_dir/dispatch/$task_id.json"
 sget() { jq -r "$1" "$state" 2>/dev/null || true; }
@@ -84,6 +88,11 @@ task_end() { emit task_end "$(jq -cn --argjson i "$index" --argjson t "$total" -
 
 case "$cmd" in
   dispatch)
+    # A dispatch is not a query: it creates a worktree and records a base SHA. A live
+    # lead called it on a blocked task while diagnosing and had to tear the worktree down.
+    unmet="$(jq -r --arg done "$(lib task-progress done "$sidecar" 2>/dev/null | tr '\n' ' ')" \
+      '[.blockedBy // [] | .[] | . as $b | select((" " + $done + " ") | contains(" " + $b + " ") | not)] | join(",")' <<<"$task_json")"
+    [[ -z "$unmet" ]] || { jq -cn --arg id "$task_id" --arg u "$unmet" '{taskId:$id, dispatchable:false, reason:"blocked", detail:("waiting on " + $u)}'; exit 1; }
     branch="task/$task_id-$slug"; worktree=""; base_sha=""
     if [[ "$in_place" == false ]]; then
       worktree="$(lib worktree-base resolve "$root" task "$slug/$task_id" | jq -r '.path')"
@@ -93,7 +102,7 @@ case "$cmd" in
       fi
       base_sha="$(git -C "$worktree" rev-parse HEAD)"
     else
-      dirty="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' 2>/dev/null)"
+      dirty="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude).claude/agent-memory' 2>/dev/null)"
       [[ -z "$dirty" ]] || { jq -cn --arg id "$task_id" --arg d "$dirty" '{taskId:$id, dispatchable:false, reason:"feature-root-dirty", detail:$d}'; exit 1; }
       base_sha="$(git -C "$root" rev-parse HEAD)"
     fi
@@ -126,8 +135,9 @@ case "$cmd" in
     emit dispatch "$(jq -cn --arg m "$model" --arg r "$(pget '.rung.rung')" '{role:"spec-compliance-reviewer",model:$m,rung:$r}')"
     sset package "\"$pkg\""; sset reviewerModel "\"$model\""
     jq -cn --arg p "$pkg" --arg m "$model" --arg base "$base_sha" --arg head "$head_sha" --arg brief "$(lib dispatch-files brief --feature-dir "$feature_dir" --task-id "$task_id" 2>/dev/null || true)" \
-      --arg report "$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")" \
-      '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report}'
+      --arg report "$(lib dispatch-files report-path --feature-dir "$feature_dir" --task-id "$task_id")" --arg wt "$repo" \
+      --arg vc "$(jq -r '.verifyCommand // ""' <<<"$task_json")" \
+      '{package:$p, model:$m, base:$base, head:$head, brief:$brief, report:$report, worktree:$wt, verifyCommand:$vc}'
     ;;
   run)
     rung="$(pget '.rung.rung')"
@@ -203,7 +213,7 @@ case "$cmd" in
         while IFS= read -r f; do [[ -n "$f" ]] && git -C "$root" add -- "$f" 2>/dev/null; done < <(jq -r '.[]' <<<"$files_json")
         git -C "$root" commit -q -m "feat: NO_JIRA $(jq -r '.subject' <<<"$task_json")" >/dev/null 2>&1 || true
         after="$(git -C "$root" rev-parse HEAD)"
-        outside="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude)docs/loop-spec' 2>/dev/null)"
+        outside="$(git -C "$root" status --porcelain --untracked-files=all -- . ':(exclude).loop-spec' ':(exclude)docs/loop-spec' ':(exclude).claude/agent-memory' 2>/dev/null)"
         if [[ "$before" == "$after" ]]; then
           answer="$(jq -cn '{published:false, reason:"commit-missing", detail:"nothing to commit under task.files", sha:null, blocked:"commit-missing"}')"
         elif [[ -n "$outside" ]]; then
@@ -214,7 +224,9 @@ case "$cmd" in
       fi
     fi
     if [[ "$(jq -r '.published' <<<"$answer")" == "true" ]]; then
-      lib task-progress mark-done "$sidecar" "$task_id" >/dev/null
+      for member in $(jq -r '(.memberIds // [.id])[]' <<<"$task_json"); do
+        lib task-progress mark-done "$sidecar" "$member" >/dev/null
+      done
       task_end merged
       if [[ "$task_id" == "task-001" && "$(fget '.greenfield // false')" == "true" ]]; then
         test_cmd="$(lib detect-test-cmd "$root" 2>/dev/null || true)"

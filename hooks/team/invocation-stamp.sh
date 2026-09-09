@@ -5,7 +5,7 @@
 #
 # Why: the cycle skill rewrites the free prose of $ARGUMENTS before it calls
 # `cycle-driver.sh start`, and two of five eval runs dropped the `autonomous` token in
-# that rewrite (evals/findings-2026-09-06.md, finding 3). The raw prompt is the one
+# that rewrite (the 2026-09-06 live evals, finding 3). The raw prompt is the one
 # place the tokens are certain, and this hook is the one reader that sees it. It writes
 # `.loop-spec/invocation-stamp.json`; `cycle-driver.sh start` merges any token the
 # rewritten arguments lost and deletes the stamp, so a stale stamp never binds a later

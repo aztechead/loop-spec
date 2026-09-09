@@ -101,24 +101,35 @@ out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=c
   --workflows-available true --workflow-optin true)"
 check "workflow still wins when opted in" "workflow" "$(jq -r '.rung' <<<"$out")"
 
-out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
-  LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 3 --teams-mode implicit \
-  --workflows-available false --workflow-optin false)"
+# Interactive sessions keep the team rung; headless never gets it (claude -p disables the
+# harness task list the rung runs on; a live run spawned three teammates that each failed
+# on TaskList, PR 93).
+interactive() {
+  env -u LOOP_SPEC_EXECUTE_LOOPS -u LOOP_SPEC_NON_INTERACTIVE -u CLAUDE_CODE_ENTRYPOINT -u LOOP_SPEC_EXECUTION_PROFILE \
+    PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 bash "$SCRIPT" select "$@"
+}
+out="$(interactive --width 3 --teams-mode implicit --workflows-available false --workflow-optin false)"
 check "implicit inherit still selects team" "team" "$(jq -r '.rung' <<<"$out")"
 
-out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
-  LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 3 --teams-mode implicit \
-  --workflows-available false --workflow-optin false --implementer-model sonnet)"
+out="$(interactive --width 3 --teams-mode implicit --workflows-available false --workflow-optin false --implementer-model sonnet)"
 check "implicit sonnet skips team for a nameless subagent" "subagent" "$(jq -r '.rung' <<<"$out")"
 check "implicit sonnet reason names session inheritance" "1" \
   "$(grep -Fq 'inherit the session model' <<<"$(jq -r '.reason' <<<"$out")" && echo 1 || echo 0)"
 check "implicit sonnet still reports teamsMode implicit" "implicit" \
   "$(jq -r '.teamsMode' <<<"$out")"
 
-out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
-  LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 3 --teams-mode explicit \
-  --workflows-available false --workflow-optin false --implementer-model sonnet)"
+out="$(interactive --width 3 --teams-mode explicit --workflows-available false --workflow-optin false --implementer-model sonnet)"
 check "explicit sonnet still selects team" "team" "$(jq -r '.rung' <<<"$out")"
+
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
+  LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 4 --teams-mode implicit \
+  --workflows-available false --workflow-optin false)"
+check "headless: width 4 with implicit teams is not the team rung" "subagent" "$(jq -r '.rung' <<<"$out")"
+check "headless: the reason names the disabled task list" "1" "$(jq -r '.reason' <<<"$out" | grep -c 'task list is disabled')"
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS -u LOOP_SPEC_NON_INTERACTIVE PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+  LOOP_SPEC_SESSION_LAYER=0 CLAUDE_CODE_ENTRYPOINT=sdk-cli bash "$SCRIPT" select --width 4 --teams-mode implicit \
+  --workflows-available false --workflow-optin false)"
+check "headless by entrypoint stamp: subagent rung" "subagent" "$(jq -r '.rung' <<<"$out")"
 
 out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 08 --teams-mode implicit \
@@ -149,5 +160,6 @@ check "EXECUTE passes implementer model into the rung probe" "1" \
   "$(grep -Fq -- '--implementer-model' "$EXEC_PREP" && echo 1 || echo 0)"
 
 echo ""
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

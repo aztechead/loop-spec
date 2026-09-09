@@ -25,6 +25,13 @@ check "behavioral criterion ok (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 echo '[{"id":"task-001","acceptanceCriteria":["grep -w \"allVersions\" src/app.ts exits 0"]}]' | bash "$LIB" >/dev/null 2>&1
 check "grep -w exempt (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 
+# A whole-line or key = value grep against a declarative file is behavioral (exit 0);
+# a bare word against the same file is still flagged.
+echo '[{"id":"task-001","acceptanceCriteria":["grep -qF '"'"'expose = true'"'"' root.hcl exits 0","grep -qE '"'"'^terraform_version_constraint'"'"' root.hcl exits 0","grep -c '"'"'image: nginx'"'"' deploy.yaml returns 1"]}]' | bash "$LIB" >/dev/null 2>&1
+check "key = value grep on a config file exempt (exit 0)" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
+echo '[{"id":"task-001","acceptanceCriteria":["grep -q bar config.yaml exits 0"]}]' | bash "$LIB" >/dev/null 2>&1
+check "bare word grep on a config file still flagged (exit 1)" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
+
 # Comment-excluding pipeline -> exempt (exit 0).
 echo '[{"id":"task-001","acceptanceCriteria":["grep -v \"//\" f | grep -c x returns 1"]}]' | bash "$LIB" >/dev/null 2>&1
 check "grep -v comment strip exempt" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
@@ -36,6 +43,15 @@ check "mixed set flags the bad one" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 # Flag output names the offending task id.
 out="$(echo '[{"id":"task-099","acceptanceCriteria":["grep -c \"foo\" f returns 2"]}]' | bash "$LIB" 2>/dev/null)"
 check "flag output names the task" "$(echo "$out" | grep -q 'task-099' && echo 1 || echo 0)"
+
+# A live 17KB tasks.json hung the PLAN gate for minutes under bash 3.2 (the empty-input
+# check used ${input//[[:space:]]/}); 62 criteria must lint in well under a second.
+big="$(python3 -c '
+import json
+crit=["python -m pytest tests/test_%d.py::test_case exits 0 and prints 1 passed" % i for i in range(70)]
+print(json.dumps([{"id":"task-%03d" % t,"acceptanceCriteria":crit[t*7:(t+1)*7]} for t in range(10)]))')"
+start=$(date +%s); echo "$big" | bash "$LIB" >/dev/null 2>&1; elapsed=$(( $(date +%s) - start ))
+check "20KB tasks.json lints in under 3s (was minutes on bash 3.2)" "$([[ $elapsed -lt 3 ]] && echo 1 || echo 0)"
 
 # Malformed input is a USAGE error (2), never a criterion finding (1): a caller
 # that treats every non-zero exit as "criteria are bad" would remediate the wrong thing.

@@ -3,7 +3,7 @@
 #
 # Why: the sonnet eval's two-line fix spent 47 lead Bash calls in EXECUTE, and the first
 # dozen were this bookkeeping run one script at a time, each call a turn that re-read the
-# whole context (evals/findings-2026-09-06.md, finding 7). Every step here is
+# whole context (the 2026-09-06 live evals, finding 7). Every step here is
 # deterministic and already bundled; this is the one call that runs them in order.
 #
 # Usage:
@@ -107,6 +107,50 @@ if [[ "$sidecar_ok" == true ]]; then
   mkdir -p "$feature_dir/dispatch"
   lib plan-conflicts table "$sidecar" > "$feature_dir/dispatch/conflict-table.json"
   lib task-batch collapse "$sidecar" > "$feature_dir/dispatch/tasks-collapsed.json"
+  # Tool versions, probed once here and inlined into every brief (lib/dispatch-files.sh),
+  # so implementers stop re-running `tofu version` and friends per seat. Programs are the
+  # first word of each verify/prepare/test pipeline segment; shell builtins and coreutils
+  # are skipped. Each probe is bounded so an interactive tool cannot hang preparation.
+  python3 - "$feature_dir/dispatch/tasks-collapsed.json" <(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays) > "$feature_dir/dispatch/environment.txt" <<'PYENV' || true
+import json, os, re, shlex, shutil, subprocess, sys
+tasks = json.load(open(sys.argv[1])); feature = json.load(open(sys.argv[2]))
+cmds = [t.get("verifyCommand") or "" for t in tasks if isinstance(t, dict)]
+cmds += [v for v in (feature.get("commands") or {}).values() if isinstance(v, str)]
+skip = {"true", "false", "test", "[", "[[", "cd", "echo", "printf", "cat", "head", "tail", "sed", "awk", "wc",
+        "sort", "uniq", "ls", "stat", "cut", "tr", "find", "xargs", "cmp", "diff", "grep", "egrep", "fgrep", "env", "!"}
+names = []
+for cmd in cmds:
+    # Split outside quotes: a `|` inside a grep pattern is one argument. The first cut of
+    # this probe ran /usr/bin/apply --version because "apply" sat inside a quoted regex.
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars="|&;()"); lex.whitespace_split = True
+    try:
+        toks = list(lex)
+    except ValueError:
+        continue
+    at_start = True
+    for tok in toks:
+        if tok in ("|", "||", "&&", ";", "(", ")"):
+            at_start = True; continue
+        if at_start:
+            if tok in ("!", "env") or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tok):
+                continue
+            at_start = False
+            if re.match(r"^[A-Za-z0-9_.+-]+$", tok) and tok not in skip and tok not in names:
+                names.append(tok)
+for name in names:
+    if not shutil.which(name):
+        print("%s: not on PATH" % name); continue
+    line = ""
+    for flag in ("--version", "version"):
+        try:
+            out = subprocess.run([name, flag], capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        text = (out.stdout or out.stderr or "").strip().splitlines()
+        if out.returncode == 0 and text:
+            line = text[0].strip(); break
+    print("%s: %s" % (name, line or "present (no version output)"))
+PYENV
   excludes="$(fget '(.fileConflictExcludeGlobs // []) | join("\n")')"
   [[ -f "$root/.loop-spec/file-conflict-exclude.txt" ]] && excludes="$excludes
 $(cat "$root/.loop-spec/file-conflict-exclude.txt")"
@@ -145,8 +189,11 @@ for row in rows:
         stops.append({"summary": summary, "reason": fields.get("reason"), "matched": fields.get("matched")})
     else:
         rulings.append(summary)
-        subprocess.run(["bash", libdir + "/decisions.sh", "add", fd, "execute", summary,
-                        "serialized by a synthetic blockedBy edge", "reversible file overlap; execute-stop.sh ruled continue", "ruling"],
+        if "a" in row:
+            answer, why = "serialized by a synthetic blockedBy edge", "reversible file overlap; execute-stop.sh ruled continue"
+        else:
+            answer, why = "dispatched as planned; the interface is prose, not a contract another task produces", "interface row without a producer; execute-stop.sh ruled continue"
+        subprocess.run(["bash", libdir + "/decisions.sh", "add", fd, "execute", summary, answer, why, "ruling"],
                        capture_output=True, text=True)
 print(json.dumps({"rows": len(rows), "stops": stops, "rulings": rulings}))
 PY

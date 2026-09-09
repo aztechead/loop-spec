@@ -73,6 +73,10 @@ run_helper --verify 'test -f task.txt'
 check "known runtime files do not block" success "$(jq -r .status <<<"$OUT")"
 
 make_fixture
+run_helper --verify 'test -f task.txt && mkdir -p modules/m/.terraform/providers && printf "x" > modules/m/.terraform/providers/lock && printf "lock" > modules/m/.terraform.lock.hcl'
+check "tool caches a verify leaves behind do not block" success "$(jq -r .status <<<"$OUT")"
+
+make_fixture
 run_helper --verify false --cleanup
 check "verify failure is structured" verify-failed "$(jq -r .reason <<<"$OUT")"
 check "verify failure leaves feature unchanged" "$FEATURE_BEFORE" "$(git -C "$REPO" rev-parse HEAD)"

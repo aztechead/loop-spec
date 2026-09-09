@@ -108,7 +108,7 @@ else
   emit standard "classification file not found: $source_path"
 fi
 
-[[ -n "${raw//[[:space:]]/}" ]] || emit standard "empty classification"
+[[ "$raw" =~ [^[:space:]] ]] || emit standard "empty classification"
 jq -e 'type == "object"' >/dev/null 2>&1 <<<"$raw" || emit standard "classification is not a JSON object"
 
 # Compact is evidence-driven: route=compact is accepted only with the full typed plan

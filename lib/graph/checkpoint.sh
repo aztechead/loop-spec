@@ -55,7 +55,7 @@ case "$cmd" in
     fi
     latest_record=""
     while IFS= read -r record || [[ -n "$record" ]]; do
-      [[ -n "${record//[[:space:]]/}" ]] || continue
+      [[ "$record" =~ [^[:space:]] ]] || continue
       jq -e 'type == "object" and (.node | type == "string") and (.edge | type == "string")' >/dev/null 2>&1 <<<"$record" || continue
       latest_record="$record"
     done < "$ledger"

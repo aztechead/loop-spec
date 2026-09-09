@@ -79,8 +79,9 @@ call each (`cycle-driver.sh task dispatch|package|verdict|integrate`,
 `lib/execute-step.sh`): `dispatch` creates the task worktree, records the base SHA,
 writes the brief and report paths, resolves the model, and emits the `dispatch` and
 `task_start` events; `integrate` publishes, runs `lib/task-progress.sh mark-done`, and
-emits `task_end`. Emit one `dispatch` event per agent launched: `dispatch` and `package`
-do it for the implementer and the reviewer.
+emits `task_end`. `dispatch` and `package` emit the `dispatch` event for the implementer
+and the reviewer; the lead emits none. Pass the packet's `.model` to the Agent call when
+it is not `inherit`, and issue a wave's Agent calls in one message.
 
 **Greenfield backfill:** `task integrate` on task-001 (the scaffold) re-detects
 `commands.test` (`lib/detect-test-cmd.sh`) and `commands.prepare`

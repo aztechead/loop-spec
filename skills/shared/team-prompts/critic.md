@@ -11,7 +11,7 @@ Surface gaps, ambiguities, flawed assumptions, and missing acceptance criteria i
 
 ## Findings pass
 
-1. Read the artifact at `docs/loop-spec/features/{slug}/{artifact}` to ground your critique in the actual text. Also read `docs/loop-spec/features/{slug}/SPEC.md` (when the artifact is PLAN.md).
+1. Read the artifact at `docs/loop-spec/features/{slug}/{artifact}` to ground your critique in the actual text. Also read `docs/loop-spec/features/{slug}/SPEC.md` (when the artifact is PLAN.md). For the `EVID-NNN` ids the artifact cites, read only those rows (`grep -E '^- EVID-(001|007) ' docs/loop-spec/features/{slug}/EVIDENCE.md`), never the whole ledger. Do not open PATTERNS.md, the interview or discuss transcripts, or `gate-logs/`: a critic who has read the justifications is the reviewer this pass replaces, and every artifact you read is context the next round pays for again. Grep the tree for the claims you check.
 2. Enumerate **every specific, actionable issue** the artifact has, in this one pass,
    grouped by section with `[major]` first. There is no cap on count or length, and
    there is no second findings pass: the delta round below verifies the revision and

@@ -33,6 +33,15 @@ case "$teams_mode" in none|explicit|implicit) ;; *) teams_mode="none" ;; esac
 case "$workflows_available" in true|false) ;; *) workflows_available="false" ;; esac
 case "$workflow_optin" in true|false) ;; *) workflow_optin="false" ;; esac
 
+# The team rung runs on the harness task list (TaskCreate/TaskList), and `claude -p`
+# disables those tools "in subagents as well as here": a live headless run spawned three
+# teammates that each failed on TaskList and improvised. Headless is one-shot subagents.
+if [[ "$(bash "$SCRIPT_DIR/harness.sh" headless 2>/dev/null)" == "true" && "$teams_mode" != "none" ]]; then
+  teams_mode="none"
+  headless_note="headless: the harness task list is disabled under claude -p, so the team rung is out"
+else
+  headless_note=""
+fi
 subagents="$(bash "$SCRIPT_DIR/harness.sh" subagents)"
 agent_cli="$(bash "$SCRIPT_DIR/harness.sh" cli)"
 loop_runtime="$(bash "$SCRIPT_DIR/harness.sh" loop-runtime)"
@@ -92,7 +101,7 @@ spawn_line="$(bash "$SCRIPT_DIR/implicit-team-model.sh" spawn-kind \
   --teams-mode "$teams_mode" --selector "$implementer_model")"
 spawn_kind="${spawn_line%% *}"
 team_usable="false"
-team_skip_reason=""
+team_skip_reason="$headless_note"
 if [[ "$teams_mode" != "none" && "$spawn_kind" == "named" ]]; then
   team_usable="true"
 elif [[ "$teams_mode" != "none" ]]; then

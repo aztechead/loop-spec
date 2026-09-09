@@ -75,7 +75,10 @@ One call applies both verdicts and the deterministic half of the acceptance gate
 ```bash
 gate="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verify gate --feature-dir "$feature_dir" \
   --verifier ALL_PASS|FAIL --suite PASS|FAIL|N/A --reviewer PASS|PASS_WITH_MINOR|BLOCK \
-  --remediation-tasks '<JSON array of FULL-SHAPE tasks>' --minors '<JSON array of "file:line — claim">')"
+  --remediation-tasks @"$feature_dir/verify-remediation.json" --minors @"$feature_dir/verify-minors.json")"
+# Write each to its file first: the minors file is one finding per line (no JSON), the
+# tasks file is a JSON array. Both flags also take inline JSON, but a backslash in a
+# finding is not a JSON escape and a live call died on `\.github`.
 # .exit{ok,flags[]} .route=redo|pass|remediate .class .tasks[] .minorsQueued .repeat
 ```
 

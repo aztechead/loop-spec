@@ -164,9 +164,12 @@ case "$cmd" in
     # Startup writes these local files before the feature branch/worktree exists.
     # They are not user work and must not make the clean-base guard reject itself.
     status_output=""
+    # Agent memory is written by subagents during a cycle and never committed; left in
+    # place, it made the next cycle in the same checkout refuse to start.
     if ! status_output="$("${G[@]}" status --porcelain --untracked-files=all -- . \
       ':(top,exclude).loop-spec/runtime.json' \
-      ':(top,exclude).loop-spec/decisions-staging/**')"; then
+      ':(top,exclude).loop-spec/decisions-staging/**' \
+      ':(top,exclude).claude/agent-memory/**')"; then
       printf 'dirty\n'
     elif [[ -z "$status_output" ]]; then
       printf 'clean\n'

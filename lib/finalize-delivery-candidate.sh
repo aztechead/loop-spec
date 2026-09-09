@@ -136,6 +136,10 @@ validate_status() {
         # State lives on refs/loop-spec/state/<slug>; a checkout whose .gitignore still
         # negates these paths shows them as dirt, and they are never a delivery target.
         "$feature_rel/feature.json"|"$progress_path") ;;
+        # VERIFY and ITERATE write into the artifact directory: loop-spec's own files,
+        # staged and committed below rather than refused (a live DELIVER refused them
+        # four phases running, PR 93).
+        "$docs_path"/*) ;;
         *)
           echo "finalize-delivery-candidate: unexpected pre-existing worktree change: $path" >&2
           return 1
@@ -145,12 +149,9 @@ validate_status() {
       case "$path" in
         "$rules_path"|"$ignore_path"|"$digest_path") ;;
         "$feature_rel/feature.json"|"$progress_path") ;;
-        "$docs_path"/*)
-          [[ "$artifact_mode" == "0" ]] || {
-            echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
-            return 1
-          }
-          ;;
+        # The same loop-spec-owned set as the initial pass: staged and committed below
+        # in every artifact mode (the external store has already taken its copy).
+        "$docs_path"/*) ;;
         *)
           echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
           return 1
@@ -212,9 +213,7 @@ validate_status final "$status" || exit $?
 if [[ "$commit_requested" -eq 1 ]]; then
   finalize_paths=("$rules_path" "$ignore_path")
   [[ "$commit_telemetry" -eq 1 ]] && finalize_paths+=("$digest_path")
-  if [[ "$artifact_mode" == "0" ]]; then
-    finalize_paths+=("$docs_path")
-  fi
+  finalize_paths+=("$docs_path")
   # A branch from before 6.4 tracks its state files; keep it consistent rather than
   # leave a tracked file modified. A new run never tracks them (lib/state-ref.sh).
   for path in "$feature_rel/feature.json" "$progress_path"; do

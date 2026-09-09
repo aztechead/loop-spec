@@ -65,7 +65,7 @@ converged floor, and writes the feedback and remediation tasks a gap needs:
 ```bash
 rec="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" iterate record --feature-dir "$feature_dir" \
   --judge-out "$feature_dir/.iterate-judge.out" [--confirmation])"
-# .verdict .converged .floor[] .route=deliver|execute|plan|spec|harvest .tasks[]
+# .verdict .converged .floor[] .route=deliver|execute|plan|spec|harvest|escalate .tasks[]
 ```
 
 Exit 1 is a malformed verdict, never "converged": re-dispatch once, then escalate.
@@ -100,6 +100,11 @@ weakest point first; by `.route` (`gap.type`):
   FAIL row (a missing grounding row, a non-PASS result). VERIFY re-runs the verifier,
   which completes VERIFICATION.md; nothing is dispatched to an implementer.
 - `plan`: PLAN re-plans the affected slice from `iterate.feedback`.
+- `escalate`: the gap needs an operator (`gap.needs_operator`, or the same `fix_first`
+  survived a remediation round). Print the fix and return; the cycle's `next` ends the
+  run `DONE status=escalated` with that fix as the reason, in every mode. Never rewind
+  again for it and never `AskUserQuestion` (autonomous and headless runs have nobody to
+  answer; the result record carries the action).
 - `spec`: the expensive rewind. `auto`/`review-only`/autonomous (ITERATE re-entry; do not block an unattended loop):
   proceed without asking; DISCUSS refines toward the immutable original goal. `step`/`interactive`
   only: emit as written

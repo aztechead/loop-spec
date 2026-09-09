@@ -418,9 +418,14 @@ def cmd_start(argv):
     title = inv.get("title") or ""
     spec_path = inv.get("spec_path") or ""
 
-    # Non-interactive answers come from the environment and are validated here.
-    if os.environ.get("LOOP_SPEC_NON_INTERACTIVE") == "1":
+    # Non-interactive answers come from the environment and are validated here. The
+    # inline `autonomous` token counts: a live run set LOOP_SPEC_ANSWER_TITLE to escape
+    # an overlong prose slug and the driver ignored it because only the env var was
+    # read (PR 93).
+    if non_interactive:
         style = os.environ.get("LOOP_SPEC_ANSWER_STYLE") or style
+        if autonomous:
+            style = "auto"
         if style not in ("auto", "step", "interactive", "review-only"):
             raise Die("LOOP_SPEC_ANSWER_STYLE must be auto, step, interactive, or review-only", 2)
         spec_env = os.environ.get("LOOP_SPEC_SPEC_FILE") or ""
@@ -454,6 +459,11 @@ def cmd_start(argv):
 
     decisions, notices = [], []
     warnings = pf.get("warnings") or []
+    # Preflight runs before the invocation tokens are parsed, so its headless warning
+    # cannot see the inline `autonomous` token; every documented `claude -p
+    # "/loop-spec:cycle autonomous ..."` run printed it (PR 93).
+    if inv.get("autonomous"):
+        warnings = [w for w in warnings if not str(w).startswith("headless invocation")]
 
     def record(question, answer, why):
         lib("decisions", "add", ".loop-spec/decisions-staging", "cycle", question, answer, why)
@@ -771,6 +781,19 @@ def cmd_init(argv):
     if worktrees not in ("0", "1"):
         raise Die("LOOP_SPEC_WORKTREES must be 0 or 1.", 2)
     worktree_abs, exec_root = "", repo_root
+    if worktrees == "1" and os.path.isfile(os.path.join(repo_root, ".git")):
+        # A gitfile means a submodule or a linked worktree. git adds a worktree there,
+        # but Claude Code's EnterWorktree then refuses it as "not a linked worktree of
+        # <repo>", so a live run spent four turns tearing it down (PR 93). Work in place.
+        worktrees = "0"
+        print("loop-spec: %s/.git is a file (submodule or linked worktree); working in place on the feature branch (LOOP_SPEC_WORKTREES=0)." % repo_root, file=sys.stderr)
+    if worktrees == "1" and lib("harness", "headless") == "true":
+        # A session worktree exists so a human can keep editing the checkout while the
+        # cycle runs. Headless has no such human, and Claude Code's worktree guard then
+        # refuses plugin calls whose quoted text it cannot prove git-free (PR 93). In
+        # place, on the feature branch, is the same isolation for free.
+        worktrees = "0"
+        print("loop-spec: headless invocation; working in place on the feature branch (LOOP_SPEC_WORKTREES=0).", file=sys.stderr)
     if harness == "claude" and worktrees == "1":
         if adopted:
             attach = lib_run("git-ops", "-C", repo_root, "attach-feature-worktree", slug, feature_branch)
@@ -1208,6 +1231,15 @@ def returned_checks(feature_dir, phase):
             # The watchdog never kills work; it makes a wedged loop visible.
             print("loop-spec: phase %s took %dm, ceiling %sm" % (phase, mins, ceiling), file=sys.stderr)
             fappend(feature_dir, "warnings", "phase %s took %dm, ceiling %sm" % (phase, mins, ceiling))
+    # An ITERATE gap only an operator can close ends the run here with the fix as the
+    # reason, instead of a rewind that reproduces the gap or a question to an absent
+    # human (PR 93).
+    if phase == "iterate" and fget(feature_dir, "iterate.lastRoute", "") == "escalate":
+        feedback = fget(feature_dir, "iterate.feedback", {}) or {}
+        fix = feedback.get("fix_first") or feedback.get("description") or "iterate gap needs an operator"
+        reason = "operator action needed: %s" % fix
+        cmd_escalate(["--feature-dir", feature_dir, "--reason", reason], silent=True)
+        return 'DONE status=escalated reason="%s"' % reason
     # deliver -> deliver is a stop that needs an external condition to change (or a
     # proven no-change completion); the graph must not re-enter DELIVER.
     delivery_path = os.path.join(feature_dir, "delivery.json")
@@ -1530,7 +1562,7 @@ def render_skeleton(template, feat, footprint=None, spec_path=None, read_only=No
                 "".join("- criterion: GE-%03d | implementation: {path}:{line} - {what it proves} | integration: {path}:{line} - {what it proves}\n" % (i + 1)
                         for i in range(len(criteria))))
             text = text.replace(
-                "| 1 | {from SPEC} | PASS / FAIL / N/A | `{verify command}` -> {output summary} |\n",
+                "| 1 | {from SPEC} | PASS / FAIL / BLOCKED / N/A | `{verify command}` -> {output summary} |\n",
                 "".join("| GE-%03d | %s | PASS | `{verify command}` -> {output summary} |\n" % (i + 1, c) for i, c in enumerate(criteria)))
             text = text.replace(
                 "### Criterion 1\n\n```\n{full output of verify command}\n```\n\n(repeat per criterion)\n",

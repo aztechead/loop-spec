@@ -219,5 +219,12 @@ bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" 
 check "an uncommitted file outside docs/loop-spec is still candidate dirt" "21" "$ec"
 rm -rf "$REPO/stray.txt" "$REPO/docs" "$REPO/.loop-spec"
 
+# The plugin's own state under .loop-spec never counts as dirt for the baseline.
+git -C "$REPO" checkout -q "$BASE" 2>/dev/null
+mkdir -p "$REPO/.loop-spec/features/x"; printf '{"phase":"verify"}\n' > "$REPO/.loop-spec/features/x/feature.json"
+ec=0; capture --test 'true' --lint '' --typecheck '' >/dev/null 2>&1 || ec=$?
+check "capture ignores .loop-spec state as dirt" "0" "$ec"
+rm -rf "$REPO/.loop-spec"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

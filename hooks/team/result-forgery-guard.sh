@@ -9,7 +9,7 @@
 # Why: twice in the evals a lead whose result the writer refused wrote
 # .loop-spec/last-result.json itself -- once with the Write tool, once with a heredoc --
 # and a supervisor read a completed run that had never reached DELIVER
-# (evals/findings-2026-09-06.md). hooks/restrict-agent-paths.sh covers Write and Edit;
+# (the 2026-09-06 live evals). hooks/restrict-agent-paths.sh covers Write and Edit;
 # this covers the shell: `>`, `>>`, `tee`, `cp`, `mv`, `install`, `sed -i`, and a Python
 # `open(..., "w")` whose target is one of the contract files. Reading them stays free.
 #
@@ -51,5 +51,5 @@ for pat in patterns:
 PY
 )"
 [[ -n "$VERDICT" ]] || exit 0
-echo "DENY: '$VERDICT' writes a loop-spec contract file by hand. The terminal result is published only by lib/cycle-result.sh (write, write-terminal) and feature state only by lib/feature-write.sh; a result those writers refuse is a run that has not earned it. Return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
+echo "DENY: '$VERDICT' writes a loop-spec contract file by hand. The terminal result is published only by lib/cycle-result.sh (write, write-terminal) and feature state only by lib/feature-write.sh (usage: bash lib/feature-write.sh set <feature_dir> <dot.path> '<json-value>' -- strings JSON-quoted, e.g. '\"in-flight\"'); a result those writers refuse is a run that has not earned it. Return to the cycle, or publish the honest status with --reason. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
 exit 2

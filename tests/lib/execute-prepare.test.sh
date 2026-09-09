@@ -32,7 +32,7 @@ cat > "$FD/tasks.json" <<'JSON'
 [
  {"id":"task-001","subject":"first","files":["a.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["a"]},
  {"id":"task-002","subject":"second","files":["a.py","b.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["b"]},
- {"id":"task-003","subject":"third","files":["c.py"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["c"]}
+ {"id":"task-003","subject":"third","files":["c.py"],"blockedBy":[],"verifyCommand":"jq -e . c.json && ! grep -E '(apply|\\bdestroy)' c.json","acceptanceCriteria":["c"]}
 ]
 JSON
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" artifacts.tasks "\"$FD/tasks.json\"" >/dev/null
@@ -54,6 +54,8 @@ check "run: retries cap is read" "6" "$(jq -r '.maxRetries' <<<"$out")"
 check "run: conflict rows are rulings, not stops" "false" "$(jq -r '.stop' <<<"$out")"
 check "run: rulings are recorded as decisions" "1" "$(grep -c '"kind":"ruling"' "$FD/decisions.jsonl" 2>/dev/null || echo 0)"
 check "run: dispatch files are written" "2" "$(ls "$FD/dispatch" | grep -cE 'conflict-table.json|tasks-collapsed.json')"
+check "run: the toolchain is probed once for the briefs" "1" "$(grep -c '^jq: jq-' "$FD/dispatch/environment.txt")"
+check "run: quoted pattern fragments are not probed as programs" "0" "$(grep -c 'apply\|\\b' "$FD/dispatch/environment.txt")"
 
 # --- remediation intake ------------------------------------------------------------
 bash "$REPO_ROOT/lib/feature-write.sh" append "$FD" pendingRemediationTasks '{"id":"task-001+remediate-1","subject":"Fix: a"}' >/dev/null

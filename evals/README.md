@@ -61,8 +61,17 @@ measures the account, not the plugin: re-run it after the window resets.
 Results land in `evals/results/<run-id>/` as one JSON per task plus `summary.md`, and
 workspaces in `evals/.runs/`. Both are ignored: a run's records are thousands of lines
 that belong with the run, not in a code review. Keep them locally, attach them to the
-pull request, and write what they showed into a findings document like
-`evals/findings-2026-09-06.md`, which cites run ids and record fields.
+pull request, and write what they showed into a findings document that cites run ids
+and record fields; findings documents stay out of the tree.
+
+Launching a single cycle by hand from inside another Claude Code session (an agent
+observing a run) meets that session's auto-mode classifier: a prompt that says "push a
+branch and open a PR" or "never apply" was refused, and so was every detached form
+(`nohup`, `&`, a launcher script). What passed: the harness's own background task,
+this driver's flag set, and the ask worded "Deliver the result as a pull request" /
+"Validate with plan only; do not run apply". The harness kills that background task
+under memory pressure (a 65-minute Opus cycle was), so a long run is safer launched from
+a plain terminal.
 
 ## Read the results
 

@@ -214,6 +214,22 @@ ${progress_tail}"
         fi
       fi
 
+      # An escalated run leaves BLOCKED verification rows behind: the operator action is
+      # the first thing a reader needs, not the progress tail.
+      verification_doc="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null || true)/docs/loop-spec/features/$(basename "$feature_dir")/VERIFICATION.md"
+      if [[ -f "$verification_doc" ]]; then
+        blocked_rows=$(grep -E '^\| [^|]*\| [^|]*\| *BLOCKED *\|' "$verification_doc" 2>/dev/null || true)
+        if [[ -n "$blocked_rows" ]]; then
+          pr_body="${pr_body}
+
+## Blocked verification (an operator must clear these before this can converge)
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+${blocked_rows}"
+        fi
+      fi
+
       pr_body="${pr_body}
 
 Resuming \`/loop-spec:cycle\` on this branch continues the run. Re-review this PR after cycle completion."

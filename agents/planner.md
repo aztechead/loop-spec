@@ -50,13 +50,13 @@ Otherwise, produce PATTERNS.md by following the pattern-mapper role definition a
 4. For each chosen analog, capture: path+lines, imports, the 5-30 line core pattern verbatim, surrounding error handling, and a test analog if one exists.
 5. Note gotchas: 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells you saw while reading, etc.).
 6. If no clear analog exists for a concept, list it under `## Concepts with no clear analog`. Do not invent a plausible-looking analog.
-7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md`, using `skills/shared/artifact-templates/PATTERNS.md.template` as the shape.
+7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md`, using the PATTERNS template the lead named as an absolute path (plugin-relative paths like `skills/shared/artifact-templates/...` do not resolve from a subagent; if no path was given, ask the lead rather than searching the disk).
 
 Top-2 analogs per concept with rationale.
 
 ### Step 1 - Read inputs and produce PLAN.md
 
-Read SPEC.md and the PATTERNS.md just produced (or pre-existing). Then produce PLAN.md.
+Read SPEC.md and the PATTERNS.md just produced (or pre-existing). Then produce PLAN.md in the shape of `template_path` (the lead's absolute path to `PLAN.md.template`) for the prose sections, and leave `## Task DAG` and `## Tasks` as bare headings: the lead renders both from your `tasks[]` with `lib/plan-render.sh`, so every task field (`goal`, `read_first`, `interfaces`, `steps`, `expected`, `files`, `verifyCommand`, `acceptanceCriteria`, `blockedBy`) belongs in the JSON, once.
 
 ## Navigation (required)
 
@@ -158,6 +158,16 @@ PLAN.md MUST carry a `## User decisions (already made)` section near the top. Fo
 Autonomous-mode runs (`feature.json.autonomous == true`) surface self-answered decisions in the SPEC `<decisions>` block under `## Decisions (assumed — autonomous)`; copy them into this record like any other decision, suffixed `(assumed)` — they carry the same authority during EXECUTE and the same decision-coverage obligation (`skills/shared/autonomous-mode.md`).
 
 This record is the authority during EXECUTE: a coordinator that hits a question already answered here resolves it from the record instead of re-escalating to the user. Never write a deferred/open question whose answer is already in this record, and never recommend an option that contradicts a recorded decision. If a decision is genuinely still open, state it as an explicit assumption in the relevant task's notes, naming the artifact and its current state — not a vague "TBD".
+
+### Task granularity
+
+One task is one dispatch: an implementer seat plus a reviewer seat, each re-oriented from
+scratch. A task that edits one or two files and is verified by grep does not earn two seats.
+Downstream, `lib/task-batch.sh` merges a linear chain of such tasks (verify commands that
+only read the checkout, no test runner, no plan) into its head, and routes a doc/config-only
+task with a local verify to the mechanical tier, both deterministically. Plan for that: keep
+a task that needs a real run (`terragrunt plan`, a test suite) on its own, and let the small
+edits around it chain rather than padding them into separate tasks with invented blockers.
 
 ### Optional per-task model tier
 

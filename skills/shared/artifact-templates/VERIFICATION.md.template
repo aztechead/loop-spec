@@ -15,7 +15,12 @@ root. `integration: none` requires a concrete reason.
 
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
-| 1 | {from SPEC} | PASS / FAIL / N/A | `{verify command}` -> {output summary} |
+| 1 | {from SPEC} | PASS / FAIL / BLOCKED / N/A | `{verify command}` -> {output summary} |
+
+<!-- BLOCKED: the check could not run for a reason outside the repository (expired
+     credentials, an unreachable service, a missing approval). Name the reason and the
+     operator action. Never write PASS for a check that did not run: the converged floor
+     rejects PASS rows whose evidence says blocked, not run, skipped, or reauth. -->
 
 ## Verify command outputs
 

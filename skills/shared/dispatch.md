@@ -100,8 +100,12 @@ the notification; never re-dispatch on a stub. Independent lead work belongs bef
 the Agent call, not in the wait.
 
 Named teammates (explicit and implicit team modes) are the exception: send the work,
-then stop. The harness resumes the turn when a teammate goes idle (`TeammateIdle`);
-adjudicate then. Do independent lead work while a wave runs; stop only at the join. Never AskUserQuestion as a wait, keep-alive, or placeholder
+then stop. The harness resumes the turn when an Agent returns, a teammate goes idle
+(`TeammateIdle`), or a background Bash task exits; adjudicate then. This holds
+under `claude -p` too: a pending Agent, teammate reply, or background task keeps the
+process alive and its completion re-invokes the lead, so ending the turn never ends the
+run (verified on the 2026-09-07 live headless runs). Do independent lead work while a
+wave runs; stop only at the join. Never AskUserQuestion as a wait, keep-alive, or placeholder
 (`hooks/team/placeholder-question-guard.sh` blocks it on Claude Code).
 Never `sleep` to join a background Agent, and never poll. A teammate's plain-text output is invisible
 and its last `SendMessage` can be dropped: on the team rung the source of truth is
