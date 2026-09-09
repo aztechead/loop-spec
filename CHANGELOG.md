@@ -8,6 +8,15 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Changed
 
+- PLAN is one review round. The mechanical gates (`lib/phase-exit.sh plan`) and the
+  challenger's findings pass run in the same response, their FLAG lines and findings go
+  to the planner as ONE fix-list, and the one revision gets one delta re-verify that
+  counts surviving FLAGs with the delta survivors. The separate `plan-feasibility` gate
+  is gone, a `REDO` from the driver is one planner dispatch with the FLAG lines and never
+  re-opens the critique, and the pruning pass runs once. A field run spent an hour and
+  fifty dollars on Opus bouncing PLAN.md through the feasibility loop, the critique
+  loop, and the feasibility loop again. Worst case is now five planner dispatches and
+  two challenger calls; the common case is two and two.
 - The critique gate is one exhaustive findings pass, one revision, one delta re-verify.
   `agents/challenger.md` and `skills/shared/team-prompts/critic.md` drop the "top 5-7"
   and 500-word caps: a challenger capped at seven held findings back and raised them in
@@ -20,6 +29,17 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ### Fixed
 
+- `tasks.json` is derived from PLAN.md, never copied from the planner's completion
+  message. `lib/plan-tasks.sh extract` reads every `### task-NNN:` block (files,
+  read_first, verify command, acceptance criteria, `**BlockedBy:**` with the Task DAG
+  table as the fallback, interfaces, and the optional repo, batch group, model tier, and
+  spec path lines); `skills/plan/SKILL.md` runs it after every planner report and
+  revision. A run wrote PLAN.md whole and saved an empty `tasks[]` from the message, and
+  EXECUTE, which reads only the sidecar, finished with nothing built.
+  `lib/phase-exit.sh plan` now also flags a sidecar whose task ids differ from PLAN.md's
+  and names the extract command in both that flag and the missing-sidecar flag
+  (`tests/lib/plan-tasks.test.sh`, `tests/lib/phase-exit.test.sh`). The PLAN template's
+  task block carries the `**BlockedBy:**` line.
 - Every one-shot `Agent` dispatch carries `run_in_background: false`. Claude Code now
   launches an Agent in the background by default, and a background launch answers with
   a launch stub instead of the report; a lead that read the stub as an empty report

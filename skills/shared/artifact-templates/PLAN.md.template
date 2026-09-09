@@ -63,6 +63,8 @@
 **Acceptance criteria:**
 - [ ] {criterion}
 
+**BlockedBy:** [{task ids this task logically depends on; [] when none}]
+
 **Steps (TDD where applicable):**
 
 - [ ] Step 1: Write failing test ({path})

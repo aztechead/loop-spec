@@ -46,7 +46,8 @@ planner brief carries: `slug`, `spec_path`, `patterns_path`,
 `lib/doc-deps.sh scan` names on the task files needs a doc-backed `EVID-NNN` or an
 `ASSUMPTION` in `## Grounding` — fetch current docs with any web tool available, or
 return the need); "cite PATTERNS.md analogs in each task's steps";
-"return tasks[] as JSON in your completion message; do not compute waves"; the
+"every task block carries the fields `lib/plan-tasks.sh` reads, including
+`**BlockedBy:**`; do not compute waves"; the
 pre-submit self-check against `agents/planner.md` and a verbatim
 `## Global constraints` section (or `- none`). Workspace mode adds: every task carries
 `repo` (one repo per task), `files[]` are `<repo>/<path>`, cross-repo order is a
@@ -61,48 +62,58 @@ With `workflowsAvailable` and `LOOP_SPEC_PLAN_MULTI_ANGLE=1`, the
 `lib/workflows/plan-multi-angle.js` Workflow authors instead; log its angles to
 `feature_dir/gate-logs/plan-multi-angle.json`.
 
-When the planner reports, save its `tasks[]` JSON to `feature_dir/tasks.json` and run
-the gates:
+When the planner reports, derive `tasks.json` from PLAN.md and run the mechanical
+gates. PLAN.md is the source; the completion message is a report, and a message that
+arrives empty or stale never becomes the dispatch list:
 
 ```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/plan-tasks.sh" extract docs/loop-spec/features/{slug}/PLAN.md > "$feature_dir/tasks.json"
 bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir"
 ```
 
-This is also the exit (step 4); feasibility and coverage run BEFORE the critique. Every
-`FLAG` (format, `lib/acceptance-lint.sh`, unparseable verify command, missing
-criterion, DAG cycle, workspace repo, uncovered decision or `### Good Enough` criterion,
-`grounding-lint.sh"` claim, `doc-deps` uncovered dependency) goes back to `planner-1`
-as a numbered list via `SendMessage`
-(re-parse `tasks[]` from every revision). This loop is counted like the critique's:
-before the first FLAG list, `bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" open
---feature-dir "$feature_dir" --phase plan --gate plan-feasibility`; per revision,
-`gate.sh round` and `gate.sh fail` with the FLAG lines as `--findings`, then
-`gate.sh next`. `rerun` re-dispatches; `close` stops: relay the FLAG list, and in
-`step`/`interactive` ask the user how to proceed, otherwise publish a paused result
-with reason `plan-feasibility-cap` via `lib/cycle-result.sh write` and return. When
-the gate command prints ok, `gate.sh pass --convergence delta-verified` closes the
-gate (the critique cannot open over it). A coverage-only or lint-only failure never
-enters the critique.
+A non-zero extract exit is a message on stderr (no task blocks, or an unreadable
+plan): it is a fix-list item for the planner, never an empty `tasks.json`. The gate
+command is also the exit (step 4). Every `FLAG` (format, `lib/acceptance-lint.sh`,
+unparseable verify command, missing criterion, DAG cycle, workspace repo, uncovered
+decision or `### Good Enough` criterion, `grounding-lint.sh"` claim, `doc-deps`
+uncovered dependency, task ids that differ from PLAN.md) is a fix-list item. Keep the
+lines verbatim; they join the critique findings below.
 
-## 3. Critique
+## 3. One review round
+
+The planner sees ONE fix-list and revises ONCE. A field run spent an hour and fifty
+dollars bouncing PLAN.md through a feasibility loop, then a critique loop, then the
+feasibility loop again; mechanical FLAGs and critique findings now go to the planner
+together, and the delta re-verify checks both.
 
 `.mode.critique` from the entry call (`lib/phase-mode.sh plan` folded in; the fast-path
 decision reads the plan you just wrote, so re-run
 `bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" plan --feature-dir "$feature_dir"`
-once the gate command printed ok).
-`skip`: log `plan critique skipped (<reason>)`. `run`: the challenger-only protocol
-(`loop-spec:challenger`, topology `graph/critique.graph.json`) in
-`skills/shared/critique-gate-protocol.md` with `phase=plan`, `gate=plan-critique`,
-`artifact=PLAN.md`, author `planner-1`. Never spawn `advocate-1`. Phase deltas:
+once PLAN.md exists). `skip`: log `plan critique skipped (<reason>)`; the fix-list is
+the FLAG lines alone. `run`: the challenger-only protocol (`loop-spec:challenger`,
+topology `graph/critique.graph.json`) in `skills/shared/critique-gate-protocol.md`
+with `phase=plan`, `gate=plan-critique`, `artifact=PLAN.md`, author `planner-1`,
+dispatched in the same response as the gate command (the findings pass reads PLAN.md,
+not the gate's answer). Never spawn `advocate-1`. The protocol's fix-list is the
+union: the FLAG lines verbatim, then the adjudicated findings. Phase deltas:
 user-intent findings resolve as a question in interactive styles and, when autonomous,
 as the more reversible reading recorded via
 `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" plan "<q>" "<a>" "more reversible"`
 and in `## User decisions (already made)` suffixed `(assumed)`; `UNGROUNDED:` findings
 get their probe run by you (`bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add ...`)
-and fed to the planner with the `EVID-NNN`; re-run step 2's gate command after any
-revision. `gate.sh next` answering `close` ends the critique with the plan as it stands
-(residue in `gate-logs/plan-critique-residue.md` only); go to the pruning pass. Emit one `dispatch` event per agent launched and, per round,
+and fed to the planner with the `EVID-NNN`. When the revision lands, re-run step 2's
+two commands before the delta re-verify, and add any FLAG that survives to the delta
+survivors. Emit one `dispatch` event per agent launched and, per round,
 `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" gate_round --phase plan --data '{"gate":"plan-critique","round":N,"mode":"single-critic|delta"}' || true`.
+
+With `.mode.critique == skip` the same gate still bounds the FLAG loop: `gate.sh open
+--gate plan-critique` before the fix-list goes out, `gate.sh round`, `gate.sh fail` with
+the FLAG lines as `--findings`, then `gate.sh next`; `rerun` sends the list, `close`
+stops. On `close` (either mode) with FLAG lines still open: close the gate with the
+FLAG lines as `--notes`, skip the pruning pass, and return to the cycle; its exit
+answers `REDO` with the same lines and the driver bounds those retries (step 4).
+Critique residue goes to `gate-logs/plan-critique-residue.md` only, and the phase
+proceeds to the pruning pass. The critique never re-opens on a `REDO` (step 4).
 
 **Pruning pass (advisory, skip under 60 lines):** ONE fresh reviewer
 (`run_in_background: false`; its tool result is the listing) with
@@ -116,12 +127,13 @@ In explicit teams mode `TeamDelete` first. Return to the cycle. Its
 `next --returned-from plan` runs the gate command from step 2 once more on the final
 revision (`lib/phase-exit.sh plan`): ok records `artifacts.plan|patterns|tasks`,
 commits PLAN.md and PATTERNS.md, tags `post-plan`, and closes the phase; a `FLAG`
-answers `REDO` and you are invoked again to run step 2's loop on it. In
+answers `REDO` and you are invoked again: one planner dispatch with the FLAG lines,
+step 2's two commands, return. No critique, no pruning; the driver bounds the REDOs
+(`LOOP_SPEC_REDO_MAX`). In
 `step`/`interactive` say `PLAN complete. PLAN.md at docs/loop-spec/features/{slug}/PLAN.md.`
 
 ## Resume
 
-`artifacts.plan` null: start at step 1 or 2 by what exists. `currentGate.round > 0`
-with `currentGate.gate == "plan-feasibility"`: re-run the gate command and continue
-step 2's loop; any other open gate: resume the critique per the protocol. Otherwise run the gate command and continue from
-its answer. Teammates never survive a session; spawn fresh.
+`artifacts.plan` null: start at step 1 or 2 by what exists. An open `plan-critique`
+gate: re-run step 2's two commands and resume the review round per the protocol with
+the existing gate-logs. Otherwise run the gate command and continue from its answer. Teammates never survive a session; spawn fresh.

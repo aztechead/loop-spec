@@ -197,11 +197,18 @@ case "$phase" in
     ;;
   plan)
     tasks="$feature_dir/tasks.json"
-    [[ -f "$tasks" ]] || flag "[tasks] $tasks missing: write the planner's tasks[] JSON there first"
+    extract="bash lib/plan-tasks.sh extract $docs/PLAN.md > $tasks"
+    [[ -f "$tasks" ]] || flag "[tasks] $tasks missing: derive it from PLAN.md first ($extract)"
     run_gate artifact-lint lib artifact-lint plan "$docs/PLAN.md"
     run_gate artifact-lint lib artifact-lint patterns "$docs/PATTERNS.md"
     if [[ -f "$tasks" ]]; then
       run_gate artifact-lint lib artifact-lint tasks "$tasks"
+      # PLAN.md is the source of tasks.json; a sidecar copied from a chat message can
+      # be empty or stale while the plan is whole, and EXECUTE reads only the sidecar.
+      plan_ids="$(lib plan-adherence "$docs/PLAN.md" | jq -r '.plan_task_ids | sort | join(" ")')"
+      sidecar_ids="$(jq -r 'if type == "array" then [.[] | .id // empty] | sort | join(" ") else "" end' "$tasks" 2>/dev/null || true)"
+      [[ "$plan_ids" == "$sidecar_ids" ]] \
+        || flag "[tasks] PLAN.md task ids (${plan_ids:-none}) differ from $tasks (${sidecar_ids:-none}): derive it from PLAN.md ($extract)"
       run_gate acceptance-lint lib acceptance-lint "$tasks"
       run_gate doc-deps lib doc-deps gate --tasks "$tasks" --artifact "$docs/PLAN.md"
       # Structural feasibility: a task with no runnable check or no criterion cannot be

@@ -183,6 +183,17 @@ printf '# PATTERNS.md - my feature\n\n## Concept: writer\n\ndetail\n' > "$DOCS/P
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: missing tasks.json flags" "1" "$ec"
 check "exit plan: names the sidecar" "1" "$(grep -c 'tasks.json missing' <<<"$out")"
+check "exit plan: missing sidecar names the extract command" "1" "$(grep -c 'plan-tasks.sh extract' <<<"$out")"
+printf '[]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: an empty tasks.json flags" "1" "$ec"
+check "exit plan: empty sidecar differs from PLAN.md ids" "1" "$(grep -c 'task-001) differ from' <<<"$out")"
+printf '[{"id":"task-009","brief":"stale","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: a sidecar whose ids differ from PLAN.md flags" "1" "$(grep -c 'differ from' <<<"$out")"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCS/PLAN.md" > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: the derived sidecar carries no [tasks] flag" "0" "$(grep -c '^FLAG \[tasks\]' <<<"$out")"
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":["task-001"],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: a self-blocking task is a cycle" "1" "$(grep -c 'dependency cycle' <<<"$out")"

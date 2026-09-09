@@ -50,7 +50,7 @@ case "$CURRENT_PHASE" in
     advisory "Phase: discuss. Teammate idle during DISCUSS. Await spec-critique gate or lead instruction before claiming new work."
     ;;
   plan)
-    advisory "Phase: plan. Teammate idle during PLAN. Await plan-critique/plan-feasibility gate or lead instruction."
+    advisory "Phase: plan. Teammate idle during PLAN. Await the plan-critique gate or lead instruction."
     ;;
   execute)
     advisory "Phase: execute. Teammate idle during EXECUTE. Check task list for unclaimed or needs_rework tasks before going idle."

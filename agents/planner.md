@@ -30,7 +30,7 @@ You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and t
 1. `docs/loop-spec/features/{slug}/PATTERNS.md` - concept analogs from the existing codebase (produced first, in Step 0)
 2. `docs/loop-spec/features/{slug}/PLAN.md` - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
 
-Plus a `tasks` array returned in the completion message for the lead to seed the EXECUTE harness task list via `TaskCreate`. Concurrency safety is enforced by EXECUTE Step 2b, which adds synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap, so the planner does not assign waves. In workspace mode each task object also carries `"repo": "<name>"` (matching a `workspace.repos[].name` value) so the EXECUTE harness knows which repo the task targets.
+The lead derives `tasks.json` from PLAN.md's task blocks with `lib/plan-tasks.sh extract`, so every field EXECUTE needs lives in the block: `**Files:**`, `**Verify:**`, `**Acceptance criteria:**`, `**BlockedBy:**`, and `**read_first:**`, plus `**Repo:**` in workspace mode and the optional `**Batch group:**`, `**Model tier:**`, and `**Spec path:**` lines. A `tasks` array in your completion message is a courtesy copy the lead never dispatches from. Concurrency safety is enforced by EXECUTE Step 2b, which adds synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap, so the planner does not assign waves. In workspace mode each task object also carries `"repo": "<name>"` (matching a `workspace.repos[].name` value) so the EXECUTE harness knows which repo the task targets.
 
 ## Procedure
 
@@ -197,4 +197,4 @@ Same as spec-writer: apply fix-list via Edit, preserve untouched content.
 - **Status**: DONE | NEEDS_CONTEXT
 - **Plan path**: ...
 - **Task count**: N
-- **Tasks JSON**: full tasks[] for the lead to seed the EXECUTE harness task list via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst` (from each task's `read_first` list), `specPath` (a per-task spec file path if you wrote one for a complex task, else `null`), optional `batchGroup`, optional `modelTier`, and `interfaces`)
+- **Task ids**: every `### task-NNN:` id in PLAN.md, in order. The lead derives `tasks.json` from the blocks (`lib/plan-tasks.sh extract`); EXECUTE seeds its harness task list from that file via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, `specPath`, optional `batchGroup`, optional `modelTier`, and `interfaces`)

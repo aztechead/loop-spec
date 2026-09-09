@@ -32,9 +32,9 @@ engine never counts; the probe is what counts it.
 | `{artifact}` | `SPEC.md` | `PLAN.md` |
 | `{artifact_path}` | `docs/loop-spec/features/{slug}/SPEC.md` | `docs/loop-spec/features/{slug}/PLAN.md` |
 | `{author}` | `spec-writer-1` when SPEC.md was missing; otherwise the LEAD edits directly | `planner-1` |
-| `{next_step}` | phase Step 5.75 | phase Step 5.7 (prune; mechanical gates already ran) |
+| `{next_step}` | phase Step 5.75 | the pruning pass (step 3 of the phase) |
 | Skip policy | `lib/graph/probes/discuss-critique.sh` answers `gate=skip` (maintenance ∪ spec already gated; never on a security signal or ITERATE re-entry) | structural fast-path ∪ maintenance profile (no security signal) |
-| Phase deltas | no-op-revision hash shortcut; lead-authored fixes when there is no spec-writer | re-parse `tasks[]` after every revision; re-run feasibility + coverage if PLAN.md changed |
+| Phase deltas | no-op-revision hash shortcut; lead-authored fixes when there is no spec-writer | the fix-list is the union of `lib/phase-exit.sh plan` FLAG lines and the adjudicated findings; after the one revision, re-extract `tasks.json` (`lib/plan-tasks.sh extract`), re-run the gate command, and count surviving FLAGs with the delta survivors |
 
 The phase skill also declares the two adjudication actions that differ by phase:
 `{user_intent_action}` (what to do when a finding depends on user intent) and
@@ -157,8 +157,8 @@ cp {artifact_path} .loop-spec/features/{slug}/gate-logs/{artifact}.pre-revision.
 Re-dispatch `{author}` via `SendMessage` (not a fresh Agent call) with the numbered
 fix-list, instructing it to read the current artifact, apply every item in place, send
 lead its completion message, then go idle. (Phase deltas apply: DISCUSS has the LEAD
-edit directly when there is no spec-writer; PLAN re-parses `tasks[]` from the
-completion message.)
+edit directly when there is no spec-writer; PLAN re-extracts `tasks.json` from
+PLAN.md.)
 
 When the revision lands, run the **delta re-verify** — do NOT re-run the full gate
 protocol (`skills/shared/tier-matrix.md`, critique gate ladder):
