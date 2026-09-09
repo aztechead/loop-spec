@@ -63,14 +63,14 @@ case "$cmd" in
       _skip "feature.json not found in $feature_dir"
     fi
 
-    branch=$(jq -r '.branch // empty' "$feature_dir/feature.json" 2>/dev/null || true)
+    branch=$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.branch // empty' 2>/dev/null || true)
     if [[ -z "$branch" ]]; then
       _skip ".branch is null/empty in feature.json (workspace mode is out of scope; callers handle per-repo PRs)"
     fi
 
-    base_branch=$(jq -r '.baseBranch // "main"' "$feature_dir/feature.json" 2>/dev/null || echo "main")
-    feature_title=$(jq -r '.feature_title // .slug // "unknown"' "$feature_dir/feature.json" 2>/dev/null || echo "unknown")
-    current_phase=$(jq -r '.currentPhase // "unknown"' "$feature_dir/feature.json" 2>/dev/null || echo "unknown")
+    base_branch=$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.baseBranch // "main"' 2>/dev/null || echo "main")
+    feature_title=$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.feature_title // .slug // "unknown"' 2>/dev/null || echo "unknown")
+    current_phase=$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.currentPhase // "unknown"' 2>/dev/null || echo "unknown")
 
     # ── Step 3: Preconditions (each a skip, never a failure) ───────────────────
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -175,7 +175,7 @@ PY
     fi
 
     # The branch carries no state (lib/state-ref.sh); the ref rides along, best effort.
-    state_ref="refs/loop-spec/state/$(jq -r '.slug // ""' "$feature_dir/feature.json" 2>/dev/null)"
+    state_ref="refs/loop-spec/state/$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.slug // ""' 2>/dev/null)"
     if git rev-parse -q --verify "$state_ref^{commit}" >/dev/null 2>&1; then
       run_without_auth_retry push git push origin "$state_ref:$state_ref" >/dev/null 2>&1 \
         || echo "checkpoint-pr: state ref $state_ref not pushed (state stays local)" >&2

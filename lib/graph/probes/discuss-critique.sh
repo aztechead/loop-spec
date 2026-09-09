@@ -61,7 +61,7 @@ done
 feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || run "no feature.json in $feature_dir"
 
-profile="$(jq -r '.executionProfile // "standard"' "$feature_json" 2>/dev/null)" \
+profile="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.executionProfile // "standard"' 2>/dev/null)" \
   || run "feature.json could not be read"
 if [[ "$profile" == "compact" ]]; then
   echo 'gate=compact reason=compact gate plan owns spec critique'
@@ -70,17 +70,17 @@ fi
 
 # ITERATE re-entry revises a spec that was already gated; the old frontmatter
 # must not skip the critic that is supposed to catch the gap.
-feedback="$(jq -c '.iterate.feedback // null' "$feature_json" 2>/dev/null)" \
+feedback="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -c --filter '.iterate.feedback // null' 2>/dev/null)" \
   || run "feature.json iterate.feedback could not be read"
 [[ "$feedback" == "null" ]] || run "iterate re-entry (feedback present)"
 
 repo_root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null || true)"
-spec_path="$(jq -r '.artifacts.spec // empty' "$feature_json" 2>/dev/null)" || spec_path=""
+spec_path="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.artifacts.spec // empty' 2>/dev/null)" || spec_path=""
 if [[ -n "$spec_path" && "$spec_path" != /* && -n "$repo_root" ]]; then
   spec_path="$repo_root/$spec_path"
 fi
 if [[ -z "$spec_path" || ! -f "$spec_path" ]]; then
-  slug="$(jq -r '.slug // empty' "$feature_json" 2>/dev/null)" || slug=""
+  slug="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.slug // empty' 2>/dev/null)" || slug=""
   if [[ -n "$repo_root" && -n "$slug" && -f "$repo_root/docs/loop-spec/features/$slug/SPEC.md" ]]; then
     spec_path="$repo_root/docs/loop-spec/features/$slug/SPEC.md"
   fi

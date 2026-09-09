@@ -164,6 +164,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "autonomous": "boolean; set by lib/feature-bootstrap.sh for an unattended run",
   "backlogEntry": "string or null; the backlog text a cycle started from (cycle backlog)",
   "backlogEntryId": "string or null; its id, so DELIVER can close the entry",
+  "artifactSink": "{mode: store, manifest: <slug>/<sha>/manifest.json} once lib/artifact-sink.sh moved the artifacts to a store; absent otherwise",
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
   "pendingRemediationTasks": ["array of remediation task objects appended by VERIFY (lib/feature-write.sh append) and consumed+cleared by EXECUTE Step 2a; empty between phases"],
   "activeWorkflow": {

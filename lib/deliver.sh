@@ -31,14 +31,14 @@ feature_dir="${2:-}"
 feature_dir="$(cd "$feature_dir" && pwd)"
 feature_json="$feature_dir/feature.json"
 delivery_file="$feature_dir/delivery.json"
-jq -e '.schemaVersion == 7 and (.currentPhase == "deliver")' "$feature_json" >/dev/null 2>&1 || {
+bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '.schemaVersion == 7 and (.currentPhase == "deliver")' >/dev/null 2>&1 || {
   echo "deliver: feature must be schema 7 at currentPhase=deliver" >&2
   exit 2
 }
 
-slug="$(jq -r '.slug' "$feature_json")"
-feature_title="$(jq -r '.feature_title // .slug' "$feature_json")"
-workspace_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end' "$feature_json")"
+slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.slug')"
+feature_title="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.feature_title // .slug')"
+workspace_root="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end')"
 if [[ -n "$workspace_root" ]]; then
   artifact_root="$workspace_root"
 else
@@ -144,12 +144,12 @@ if [[ -z "$workspace_root" ]]; then
     echo "deliver: failed to install local-artifact exclusions" >&2
     exit 2
   }
-  branch="$(jq -r '.branch // empty' "$feature_json")"
-  base_branch="$(jq -r '.baseBranch // "main"' "$feature_json")"
-  base_sha="$(jq -r '.baseSha // empty' "$feature_json")"
+  branch="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.branch // empty')"
+  base_branch="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.baseBranch // "main"')"
+  base_sha="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.baseSha // empty')"
   hint=""
   [[ -f "$delivery_file" ]] && hint="$(jq -r '.prUrl // empty' "$delivery_file" 2>/dev/null || true)"
-  [[ -n "$hint" ]] || hint="$(jq -r '.prUrl // .checkpointPrUrl // empty' "$feature_json")"
+  [[ -n "$hint" ]] || hint="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.prUrl // .checkpointPrUrl // empty')"
 
   # Candidate preflight (parity with the workspace path): the artifact root must be
   # a git work tree at the repository root, on the recorded feature branch, with at
@@ -306,7 +306,7 @@ else
     deliverables="$(jq -c --arg name "$name" --arg path "$repo_dir" --arg branch "$branch" \
       --arg base "$base_branch" --arg sha "$target_sha" --arg hint "$hint" \
       '. + [{name:$name,path:$path,branch:$branch,base:$base,sha:$sha,hint:$hint}]' <<<"$deliverables")"
-  done < <(jq -c '.workspace.repos[]' "$feature_json")
+  done < <(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '.workspace.repos[]')
 
   # Readiness is a feature-level invariant. If any configured target failed local
   # preflight, do not touch GitHub for otherwise-valid siblings.
@@ -385,10 +385,10 @@ finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ok=true
 next_phase="completed"
 ci_remediation_limit=2
-ci_remediation_attempts="$(jq -r '
+ci_remediation_attempts="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '
   (.delivery.ciRemediationAttempts // 0)
   | if type == "number" and . >= 0 and floor == . then . else 0 end
-' "$feature_json")"
+')"
 if [[ "$failure_count" -gt 0 || "$held_count" -gt 0 ]]; then
   ok=false
   finished_at=""
@@ -433,7 +433,7 @@ delivery="$(jq -cn --arg status "$status" --arg attempted "$attempted_at" \
 
 remediations="[]"
 if [[ "$next_phase" == "execute" ]]; then
-  remediations="$(jq -cn --argjson targets "$targets" --argjson feature "$(cat "$feature_json")" '
+  remediations="$(jq -cn --argjson targets "$targets" --argjson feature "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all)" '
     def test_command($name):
       if $feature.workspace == null then ($feature.commands.test // "")
       else ([ $feature.workspace.repos[] | select(.name == $name) | (.commands.test // "") ][0] // "")

@@ -127,13 +127,13 @@ scan_feature_root() {
   local updated_epoch age needs_probe candidate_branch worktree_abs
   [[ -d "$features_dir" ]] || return 0
 
-  for fj in "$features_dir"/*/feature.json; do
-    [[ -f "$fj" ]] || continue
-    fslug="$(basename "$(dirname "$fj")")"
+  for fpath in "$features_dir"/*/feature.json; do
+    [[ -f "$fpath" ]] || continue
+    fslug="$(basename "$(dirname "$fpath")")"
     parse_source="feature.json"
     doc=""
-    if ! doc="$(jq -c . "$fj" 2>/dev/null)"; then
-      if [[ -f "$fj.bak" ]] && doc="$(jq -c . "$fj.bak" 2>/dev/null)"; then
+    if ! doc="$(bash "$SCRIPT_DIR/feature-read.sh" "$fpath" --all 2>/dev/null)"; then
+      if [[ -f "$fpath.bak" ]] && doc="$(jq -c . "$fpath.bak" 2>/dev/null)"; then
         parse_source="feature.json.bak"
         warnings+=("feature ${fslug}: feature.json unparseable; recovered from .bak")
       else
@@ -153,8 +153,8 @@ scan_feature_root() {
       continue
     fi
     if [[ "$phase" == "deliver" ]]; then
-      result_file="$(dirname "$fj")/result.json"
-      delivery_file="$(dirname "$fj")/delivery.json"
+      result_file="$(dirname "$fpath")/result.json"
+      delivery_file="$(dirname "$fpath")/delivery.json"
       if [[ -f "$result_file" && -f "$delivery_file" ]]; then
         result_doc="$(jq -c . "$result_file" 2>/dev/null || echo null)"
         delivery_doc="$(jq -c . "$delivery_file" 2>/dev/null || echo null)"
@@ -227,7 +227,7 @@ print(int(dt.timestamp()) if dt else 0)
       --arg slug "$fslug" --arg phase "$phase" --arg updatedAt "$updated_at" \
       --arg team "$team" --argjson probe "$needs_probe" --argjson age "$age" \
       --arg src "$parse_source" --arg source "$source" --arg root "$root" \
-      --arg jsonPath "$fj" --arg branchHint "$branch_hint" \
+      --arg jsonPath "$fpath" --arg branchHint "$branch_hint" \
       --arg currentTeamsMode "$teams_mode" \
       --argjson f "$doc" \
       '. + [{slug: $slug, currentPhase: $phase, updatedAt: $updatedAt, age_seconds: $age,

@@ -59,7 +59,7 @@ fi
 feature_dir="$(cd "$feature_dir" && pwd)"
 feature_json="$feature_dir/feature.json"
 delivery_file="$feature_dir/delivery.json"
-jq -e '.schemaVersion == 7' "$feature_json" >/dev/null 2>&1 || {
+bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '.schemaVersion == 7' >/dev/null 2>&1 || {
   echo "delivery-reconcile: feature must be schema 7" >&2
   exit 2
 }
@@ -79,15 +79,15 @@ if canonical_sidecar "$delivery_file"; then
   exit 0
 fi
 
-workspace_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end' "$feature_json")"
+workspace_root="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end')"
 if [[ -n "$workspace_root" ]]; then
   echo "delivery-reconcile: workspace mode is out of scope" >&2
   exit 1
 fi
 
-slug="$(jq -r '.slug' "$feature_json")"
-branch="$(jq -r '.branch // empty' "$feature_json")"
-base_branch="$(jq -r '.baseBranch // empty' "$feature_json")"
+slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.slug')"
+branch="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.branch // empty')"
+base_branch="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.baseBranch // empty')"
 [[ -n "$branch" ]] || {
   echo "delivery-reconcile: feature has no branch" >&2
   exit 1
@@ -102,10 +102,10 @@ target_sha="$(git -C "$artifact_root" rev-parse --verify HEAD 2>/dev/null)" || {
   exit 1
 }
 
-checkpoint_url="$(jq -r '.checkpointPrUrl // empty' "$feature_json")"
+checkpoint_url="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.checkpointPrUrl // empty')"
 hint=""
 [[ -f "$delivery_file" ]] && hint="$(jq -r '.prUrl // empty' "$delivery_file" 2>/dev/null || true)"
-[[ -n "$hint" ]] || hint="$(jq -r '.prUrl // empty' "$feature_json")"
+[[ -n "$hint" ]] || hint="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.prUrl // empty')"
 if [[ "$accept_checkpoint" -eq 0 && -z "$hint" ]]; then
   hint="$checkpoint_url"
 fi

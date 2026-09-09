@@ -60,11 +60,11 @@ esac
 
 feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || full "no feature.json in $feature_dir"
-slug="$(jq -r '.slug // ""' "$feature_json" 2>/dev/null)" || full "feature.json could not be read"
+slug="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.slug // ""' 2>/dev/null)" || full "feature.json could not be read"
 [[ -n "$slug" ]] || full "feature.json has no slug"
-ws_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end' "$feature_json")"
+ws_root="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || full "$feature_dir is not inside a git repository"; fi
-spec="$(jq -r '.artifacts.spec // ""' "$feature_json")"
+spec="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.artifacts.spec // ""')"
 [[ -n "$spec" ]] || spec="docs/loop-spec/features/$slug/SPEC.md"
 [[ "$spec" == /* ]] || spec="$root/$spec"
 [[ -f "$spec" ]] || full "no SPEC.md at $spec"

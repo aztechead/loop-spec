@@ -42,6 +42,28 @@ check "--jq without -r prints compact JSON" '["api"]' "$(bash "$READ" "$FD" work
 check "--jq and --default compose" "main" "$(bash "$READ" "$FD" baseBranch --default '"main"' --jq '. ' -r)"
 ec=0; bash "$READ" "$FD" workspace --jq '.repos[' >/dev/null 2>&1 || ec=$?
 check "a bad --jq filter is exit 1" "1" "$ec"
+# --filter: the old readers' whole-document filters, typed at the root.
+check "--filter reads a root key" "my-feature" "$(bash "$READ" "$FD" -r --filter '.slug')"
+check "--filter with a default" "" "$(bash "$READ" "$FD" -r --filter '.artifacts.plan // empty')"
+check "--filter reads two roots" "my-feature docs/SPEC.md" "$(bash "$READ" "$FD" -r --filter '.slug + " " + .artifacts.spec')"
+check "--filter with a conditional over a root" "null" "$(bash "$READ" "$FD" -r --filter 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "none" end')"
+check "--filter -c prints compact JSON" '[{"name":"api","path":"api"}]' "$(bash "$READ" "$FD" -c --filter '[.workspace.repos[]]')"
+check "--filter: a field after a pipe is not a root" "2" "$(bash "$READ" "$FD" -r --filter '[.iterate.history[] | select(.round > 0)] | length')"
+check "--filter with --arg after --" "verify" "$(bash "$READ" "$FD" -r --filter '.iterate.feedback[$k]' -- --arg k type)"
+ec=0; bash "$READ" "$FD" -e --filter '.artifacts.plan' >/dev/null 2>&1 || ec=$?
+check "--filter -e relays jq's exit 1 on null" "1" "$ec"
+ec=0; bash "$READ" "$FD" -e --filter '.slug' >/dev/null 2>&1 || ec=$?
+check "--filter -e is 0 on a value" "0" "$ec"
+ec=0; out="$(bash "$READ" "$FD" -r --filter '.nope // "x"' 2>&1)" || ec=$?
+check "--filter: a root outside the enum is exit 1" "1" "$ec"
+check "--filter: the message names the key and the filter" "1" "$(grep -c "'nope' in filter '.nope // \"x\"' is not a feature.json state key" <<<"$out")"
+ec=0; bash "$READ" "$FD" -r --filter 'has("slug")' >/dev/null 2>&1 || ec=$?
+check "--filter naming no key is exit 1" "1" "$ec"
+check "--filter never sees keys it did not name" "false" "$(bash "$READ" "$FD" -r --filter '.slug | length > 0 | not')" 
+ec=0; bash "$READ" "$WORK/none" -r --filter '.slug' >/dev/null 2>&1 || ec=$?
+check "--filter on a missing feature.json is exit 2" "2" "$ec"
+ec=0; out="$(bash "$READ" "$FD" -r --filter '.slug | ' 2>&1)" || ec=$?
+check "--filter relays a jq compile error as non-zero" "1" "$([[ $ec -ne 0 ]] && echo 1 || echo 0)"
 ec=0; out="$(bash "$READ" "$FD" nope 2>&1)" || ec=$?
 check "a key outside the enum is exit 1" "1" "$ec"
 check "the message names the enum" "1" "$(grep -c "not a feature.json state key (graph/schema.json stateKey: schemaVersion, slug" <<<"$out")"
@@ -56,6 +78,12 @@ ec=0; bash "$READ" "$FD" >/dev/null 2>&1 || ec=$?
 check "a missing key argument is exit 1" "1" "$ec"
 ec=0; bash "$READ" "$FD" slug --default '{' >/dev/null 2>&1 || ec=$?
 check "a non-JSON default is exit 1" "1" "$ec"
+
+printf '{"slug":"s","stray":1,"warnings":[]}' > "$WORK/badfd/feature.json"
+check "--all projects the document onto the enum" '{"slug":"s","warnings":[]}' "$(bash "$READ" "$WORK/badfd" --all)"
+check "--strays is the complement" '{"stray":1}' "$(bash "$READ" "$WORK/badfd" --strays)"
+ec=0; bash "$READ" "$WORK/none" --all >/dev/null 2>&1 || ec=$?
+check "--all on a missing feature.json is exit 2" "2" "$ec"
 
 # The key space is the schema's, read at call time, and it covers everything the
 # skeleton seeds and the documented v7 key space.

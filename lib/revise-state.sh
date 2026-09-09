@@ -66,7 +66,7 @@ resolve_test_cmd() {
 
 if [[ -f "$fj" ]]; then
   bash "$SCRIPT_DIR/feature-write.sh" set "$fdir" currentPhase '"revise"'
-  existing_test="$(jq -r '.commands.test // ""' "$fj")"
+  existing_test="$(bash "$SCRIPT_DIR/feature-read.sh" "$fdir" -r --filter '.commands.test // ""')"
   if [[ -z "$existing_test" ]]; then
     test_cmd="$(resolve_test_cmd)"
     bash "$SCRIPT_DIR/feature-write.sh" set "$fdir" commands.test "$(jq -cn --arg t "$test_cmd" '$t')"

@@ -52,7 +52,7 @@ node="$(jq -c --arg p "$phase" '.nodes[] | select(.id == $p) | .ingress // empty
   || { echo "phase-entry: the '$phase' node of $GRAPH declares no ingress block; nothing opens it here" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 
 slug="$(fget '.slug')"
 cp "$fj" "$feature_dir/.phase-entry.json"
@@ -71,7 +71,7 @@ resolve() { loop_spec_resolve_phase_path "$1"; }
 fields() {
   local filter="" k
   for k in "$@"; do filter="$filter\"$k\": (.$k // null),"; done
-  echo "fields=$(jq -c "{${filter%,}}" "$fj")"
+  echo "fields=$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter "{${filter%,}}")"
 }
 # required WRITER PATH / optional PATH: list what exists; flag a required absence.
 required() { if [[ -f "$2" ]]; then echo "read=$2"; else echo "FLAG [ingress] $2 missing: $1 did not write it"; flags=$((flags + 1)); fi; }

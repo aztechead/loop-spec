@@ -46,7 +46,7 @@ feature_json="$feature_dir/feature.json"
   exit 0
 }
 
-profile="$(jq -r '.executionProfile // "standard"' "$feature_json" 2>/dev/null)" || {
+profile="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.executionProfile // "standard"' 2>/dev/null)" || {
   echo 'gate=run reason=feature.json could not be read'
   exit 0
 }
@@ -60,10 +60,10 @@ if ! bash "$SCRIPT_DIR/../../cycle-profile.sh" validate-gate-plan "$feature_json
   exit 0
 fi
 
-jq -e --arg gate "$gate_name" '.gatePlan | has($gate)' "$feature_json" >/dev/null || usage
+bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -e --filter '.gatePlan | has($gate)' -- --arg gate "$gate_name" >/dev/null || usage
 
-run="$(jq -r --arg gate "$gate_name" '.gatePlan[$gate].run' "$feature_json")"
-reason="$(jq -r --arg gate "$gate_name" '.gatePlan[$gate].reason' "$feature_json")"
+run="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.gatePlan[$gate].run' -- --arg gate "$gate_name")"
+reason="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.gatePlan[$gate].reason' -- --arg gate "$gate_name")"
 if [[ "$run" == "true" ]]; then
   printf 'gate=run reason=compact gatePlan %s: %s\n' "$gate_name" "$reason"
 else

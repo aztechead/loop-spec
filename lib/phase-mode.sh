@@ -40,7 +40,7 @@ esac
   || { echo "phase-mode: --feature-dir must hold a feature.json" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj" 2>/dev/null || echo ""; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1" 2>/dev/null || echo ""; }
 
 autonomous=false
 [[ "$(fget '.autonomous // false')" == "true" || "${LOOP_SPEC_AUTONOMOUS:-}" == "1" ]] && autonomous=true

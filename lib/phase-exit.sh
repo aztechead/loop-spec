@@ -72,7 +72,7 @@ feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 fset() { lib feature-write set "$feature_dir" "$1" "$2" >/dev/null; }
 # nget FILTER: a field of the node's egress block, raw.
 nget() { jq -r "$1" <<<"$node"; }
@@ -196,8 +196,12 @@ egress_check() {
   allowed="$WRITES_ALL $(nget '.writes | join(" ")')"
   # Every non-object path whose value differs, reduced to its key segments: an appended
   # array element reports as the array's own path.
-  changed="$(jq -rn --slurpfile a "$snap" --slurpfile b "$fj" '
-    ($a[0]) as $A | ($b[0]) as $B
+  # The typed view plus the keys the schema does not declare: a write outside the
+  # schema is exactly what this guard exists to name, so it is the one reader of --strays.
+  changed="$(jq -rn --slurpfile a "$snap" \
+      --argjson B "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all)" \
+      --argjson S "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --strays)" '
+    ($a[0]) as $A | ($B + $S) as $B
     | ([($A, $B) | paths(type != "object")] | unique)
     | map(select(. as $p | ($A | getpath($p)) != ($B | getpath($p))))
     | map(map(select(type == "string")) | join(".")) | unique | .[]')"

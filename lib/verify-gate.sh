@@ -51,7 +51,7 @@ jq -e 'type == "array"' <<<"$tasks" >/dev/null 2>&1 || { echo "verify-gate: --re
 jq -e 'type == "array"' <<<"$minors" >/dev/null 2>&1 || { echo "verify-gate: --minors must be a JSON array" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 slug="$(fget '.slug')"
 default_verify="$(fget '.commands.test // ""')"
 
@@ -90,7 +90,7 @@ if [[ "$route" == "remediate" ]]; then
   gate="acceptance"; [[ "$class" == "code-review" ]] && gate="code-review"
   findings="$(jq -c 'map(.subject)' <<<"$tasks")"
   # A finding the same gate already failed on is a lesson worth a rule, recorded once.
-  if jq -e --arg g "$gate" --argjson f "$findings" '[.gateHistory[]? | select(.phase == "verify" and .gate == $g and .result == "fail") | .findingsAddressed[]?] as $prior | ($f | map(select(. as $x | $prior | index($x) != null)) | length) > 0' "$fj" >/dev/null 2>&1; then
+  if bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '[.gateHistory[]? | select(.phase == "verify" and .gate == $g and .result == "fail") | .findingsAddressed[]?] as $prior | ($f | map(select(. as $x | $prior | index($x) != null)) | length) > 0' -- --arg g "$gate" --argjson f "$findings" >/dev/null 2>&1; then
     repeat=true
     lib rules add "VERIFY repeat-fail on '$(jq -r '.[0]' <<<"$findings")' ($slug): the first remediation did not hold" --check "$default_verify" >/dev/null 2>&1 || true
   fi

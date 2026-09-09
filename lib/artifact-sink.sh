@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Preserve feature documents outside the delivery branch when explicitly requested.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 [[ "${1:-}" == "store" && -n "${2:-}" && -n "${3:-}" && $# -eq 3 ]] || {
   echo "usage: artifact-sink.sh store <feature_dir> <repo_root>" >&2
@@ -31,7 +32,7 @@ slug="$(jq -er '.slug | select(type == "string" and test("^[a-z0-9][a-z0-9._-]*$
   echo "artifact-sink.sh: feature slug is missing or unsafe" >&2
   exit 2
 }
-base_sha="$(jq -r '.baseSha // ""' "$feature_json")"
+base_sha="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.baseSha // ""')"
 head_sha="$(git -C "$repo_root" rev-parse --verify HEAD)"
 [[ -n "$base_sha" ]] && git -C "$repo_root" rev-parse --verify "${base_sha}^{commit}" >/dev/null 2>&1 || {
   echo "artifact-sink.sh: recorded base SHA is unavailable" >&2
@@ -87,11 +88,7 @@ fi
 
 metadata="$(jq -cn --arg manifest "$slug/$head_sha/manifest.json" \
   '{mode:"store",manifest:$manifest}')"
-tmp_json="$(mktemp "$feature_dir/.artifact-sink.XXXXXX")"
-trap 'rm -f "$tmp_json"' EXIT
-jq --argjson metadata "$metadata" '.artifactSink = $metadata' "$feature_json" > "$tmp_json"
-mv "$tmp_json" "$feature_json"
-trap - EXIT
+bash "$SCRIPT_DIR/feature-write.sh" set "$feature_dir" artifactSink "$metadata" >/dev/null
 rm -rf "$destination/state"
 cp -R "$feature_dir" "$destination/state"
 if [[ "$reuse" -eq 0 ]]; then

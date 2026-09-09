@@ -59,17 +59,17 @@ commit_requested=0
 
 feature_dir="$(cd "$feature_dir" && pwd -P)" || exit 2
 feature_json="$feature_dir/feature.json"
-jq -e '.schemaVersion == 7 and .currentPhase == "deliver"' "$feature_json" >/dev/null 2>&1 || {
+bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '.schemaVersion == 7 and .currentPhase == "deliver"' >/dev/null 2>&1 || {
   echo "finalize-delivery-candidate: feature must be schema 7 at currentPhase=deliver" >&2
   exit 2
 }
 
 # Workspace delivery has no single candidate branch at the feature root.
-if jq -e '(.workspace != null and (.workspace.mode // "") != "single")' "$feature_json" >/dev/null 2>&1; then
+if bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '(.workspace != null and (.workspace.mode // "") != "single")' >/dev/null 2>&1; then
   exit 0
 fi
 
-slug="$(jq -er '.slug | select(type == "string" and length > 0)' "$feature_json" 2>/dev/null)" || {
+slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -er --filter '.slug | select(type == "string" and length > 0)' 2>/dev/null)" || {
   echo "finalize-delivery-candidate: feature slug is missing" >&2
   exit 2
 }
@@ -102,9 +102,9 @@ artifact_mode="${LOOP_SPEC_ARTIFACTS_IN_PR:-1}"
   echo "finalize-delivery-candidate: LOOP_SPEC_ARTIFACTS_IN_PR must be 0 or 1" >&2
   exit 2
 }
-expected_branch="$(jq -r '.branch // ""' "$feature_json")"
+expected_branch="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.branch // ""')"
 actual_branch="$(git -C "$repo_root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
-base_sha="$(jq -r '.baseSha // ""' "$feature_json")"
+base_sha="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.baseSha // ""')"
 head_sha="$(git -C "$repo_root" rev-parse --verify HEAD 2>/dev/null || true)"
 if [[ -z "$expected_branch" || "$actual_branch" != "$expected_branch" ]]; then
   echo "finalize-delivery-candidate: checkout is not on the recorded feature branch" >&2

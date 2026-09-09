@@ -44,7 +44,7 @@ case "$cmd" in limit|record|harvest) ;; *) usage ;; esac
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 fset() { lib feature-write set "$feature_dir" "$1" "$2" >/dev/null; }
 slug="$(fget '.slug')"
 used="$(fget '.iterate.used // 0')"; max="$(fget '.iterate.maxIterations // 10')"

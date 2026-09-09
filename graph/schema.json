@@ -72,7 +72,8 @@
         "backlogEntry",
         "backlogEntryId",
         "driverNext",
-        "driverRedo"
+        "driverRedo",
+        "artifactSink"
       ]
     },
     "effort": {

@@ -17,7 +17,7 @@ feature_dir="$2"
 }
 feature_dir="$(cd "$feature_dir" && pwd -P)" || exit 2
 feature_json="$feature_dir/feature.json"
-jq -e '
+bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '
   .schemaVersion == 7 and
   (if .workspace == null then
      (.branch | type == "string" and length > 0) and
@@ -33,12 +33,12 @@ jq -e '
        (.baseSha | type == "string" and length > 0) and
        (.commands | type == "object"))
    end)
-' "$feature_json" >/dev/null 2>&1 || {
+' >/dev/null 2>&1 || {
   echo "feature-validation: unsupported or malformed feature state" >&2
   exit 2
 }
 
-slug="$(jq -er '.slug | select(type == "string" and length > 0)' "$feature_json" 2>/dev/null)" || exit 2
+slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -er --filter '.slug | select(type == "string" and length > 0)' 2>/dev/null)" || exit 2
 targets='[]'
 overall="accepted"
 
@@ -127,22 +127,22 @@ run_target() {
   targets="$(jq -c --argjson record "$record" '. + [$record]' <<<"$targets")"
 }
 
-if jq -e '.workspace == null' "$feature_json" >/dev/null 2>&1; then
+if bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '.workspace == null' >/dev/null 2>&1; then
   root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || exit 2
   run_target "$slug" "$root" \
-    "$(jq -r '.branch' "$feature_json")" \
-    "$(jq -r '.baseSha // ""' "$feature_json")" \
-    "$(jq -c '.commands // {}' "$feature_json")" \
-    "$(jq -c '.verificationBaseline // null' "$feature_json")"
+    "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.branch')" \
+    "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.baseSha // ""')" \
+    "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '.commands // {}')" \
+    "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '.verificationBaseline // null')"
 else
-  workspace_root="$(jq -r '.workspace.root // ""' "$feature_json")"
+  workspace_root="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.workspace.root // ""')"
   while IFS= read -r repo; do
     name="$(jq -r '.name' <<<"$repo")"
     root="$workspace_root/$(jq -r '.path' <<<"$repo")"
     run_target "$name" "$root" "$(jq -r '.branch' <<<"$repo")" "$(jq -r '.baseSha' <<<"$repo")" \
       "$(jq -c '.commands // {}' <<<"$repo")" \
       "$(jq -c '.verificationBaseline // null' <<<"$repo")"
-  done < <(jq -c '.workspace.repos[]' "$feature_json")
+  done < <(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '.workspace.repos[]')
 fi
 
 jq -cn --arg outcome "$overall" --argjson targets "$targets" \

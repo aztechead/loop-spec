@@ -64,7 +64,7 @@ done
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
 fj="$feature_dir/feature.json"
 logs="$feature_dir/gate-logs"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 
 # `-` means stdin; slurp it so every reader below sees a real file.
 slurp() {
@@ -145,9 +145,9 @@ case "$cmd" in
     load_state
     [[ -f "$snapshot" ]] || die "$snapshot missing: 'findings' was never called, or 'fail' answered close"
     diff -u "$snapshot" "$artifact" > "$delta_diff"; changed=$(( $? == 1 ))
-    fixlist="$(jq -r --arg p "$phase" --arg g "$gate_name" '
+    fixlist="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '
       [.gateHistory[]? | select(.phase == $p and .gate == $g and .result == "fail")] | last
-      | (.findingsAddressed // []) | to_entries[] | "\(.key + 1). \(.value)"' "$fj")"
+      | (.findingsAddressed // []) | to_entries[] | "\(.key + 1). \(.value)"' -- --arg p "$phase" --arg g "$gate_name")"
     jq -n --arg d "$delta_diff" --argjson c "$changed" --argjson n "$(wc -l < "$delta_diff")" --arg f "$fixlist" \
       '{diffPath:$d, changed:($c == 1), lines:$n, fixList:$f}'
     ;;

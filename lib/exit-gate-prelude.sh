@@ -21,7 +21,7 @@
 [[ -n "${1:-}" && -f "$1/feature.json" ]] || { echo "usage: $(basename "$0") ${gate_usage:-<feature-dir>}" >&2; exit 2; }
 feature_dir="$(cd "$1" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
 slug="$(fget '.slug')"
 ws_root="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"

@@ -53,7 +53,7 @@ feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 prep="$feature_dir/dispatch/prepare.json"
 [[ -f "$prep" ]] || { echo "execute-step: $prep is missing; run lib/execute-prepare.sh first" >&2; exit 2; }
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 pget() { jq -r "$1" "$prep"; }
 slug="$(fget '.slug')"
 root="$(pget '.featureRoot')"

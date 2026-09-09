@@ -39,7 +39,7 @@ case "$cmd" in
     [[ -n "$feature_dir" && -n "$node" && -n "$verify" && -n "$out" ]] || usage
     [[ -f "$feature_dir/feature.json" ]] || { echo "handoff: missing feature.json" >&2; exit 1; }
     state_hash="$(cksum <"$feature_dir/feature.json" | awk '{print $1"-"$2}')"
-    base_sha="$(jq -r '.baseSha // empty' "$feature_dir/feature.json")"
+    base_sha="$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" -r --filter '.baseSha // empty')"
     [[ -z "$graph" ]] && graph="$REPO_ROOT/graph/cycle.graph.json"
     contract="$(jq -c --arg id "$node" '.nodes[] | select(.id==$id)' "$graph" 2>/dev/null || echo '{}')"
     # inputs must cover every key contract.reads declares, or a claimant can't

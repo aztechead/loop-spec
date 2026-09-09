@@ -50,7 +50,7 @@ done
 feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || full "no feature.json in $feature_dir"
 
-profile="$(jq -r '.executionProfile // "standard"' "$feature_json" 2>/dev/null)" \
+profile="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.executionProfile // "standard"' 2>/dev/null)" \
   || full "feature.json could not be read"
 if [[ "$profile" == "compact" ]]; then
   echo 'path=compact reason=compact gate plan owns adaptable graph decisions'

@@ -426,7 +426,7 @@ PY
     if [[ "$outcome" == "interrupted" && -n "$result_root" && -f "$result_root/.loop-spec/active-run.json" ]] \
        && ! _is_nonblank "$reason"; then
       feat_dir="$(_resolve_full_feature_dir "$(_resolve_result_root "$result_root" 2>/dev/null || echo "$result_root")" "$slug" 2>/dev/null || true)"
-      next_phase="$(jq -r '.driverNext.phase // empty' "$feat_dir/feature.json" 2>/dev/null || true)"
+      next_phase="$(bash "$SCRIPT_DIR/feature-read.sh" "$feat_dir" -r --filter '.driverNext.phase // empty' 2>/dev/null || true)"
       if [[ -n "$next_phase" ]]; then
         echo "cycle-result.sh: the driver answered NEXT phase=$next_phase for $feat_dir and nothing says that phase cannot continue; write-terminal will not record 'interrupted' without --reason. Continue the cycle instead: bash lib/cycle-driver.sh next --feature-dir $feat_dir --returned-from $next_phase --note '<what the phase produced>' and act on its answer. Only a run that cannot continue publishes --status failed --outcome interrupted --reason '<what stopped it>'" >&2
         exit 3
@@ -696,13 +696,13 @@ PY
     # sidecar. A lead that publishes completed from EXECUTE (the 6.2.0 smoke run) is the
     # false success a supervisor cannot tell from a delivered one.
     if [[ "$status" == "completed" && -z "$no_change_reason" && -z "$pr_url" ]] \
-       && jq -e '(.currentPhase // "") | IN("deliver", "completed") | not' "$fj" >/dev/null 2>&1 \
+       && bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '(.currentPhase // "") | IN("deliver", "completed") | not' >/dev/null 2>&1 \
        && ! jq -e '(.nextPhase // "") == "completed"' "$feature_dir/delivery.json" >/dev/null 2>&1 \
-       && ! jq -e '((.delivery.status // "") | IN("ready-for-review", "delivered-draft", "pushed-no-pr")) or ((.prUrl // "") != "")' "$fj" >/dev/null 2>&1; then
-      echo "cycle-result.sh: --status completed at currentPhase=$(jq -r '.currentPhase // "?"' "$fj") with no delivery record and no PR: DELIVER has not run. Return to the cycle, or publish the honest status with --reason" >&2
+       && ! bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '((.delivery.status // "") | IN("ready-for-review", "delivered-draft", "pushed-no-pr")) or ((.prUrl // "") != "")' >/dev/null 2>&1; then
+      echo "cycle-result.sh: --status completed at currentPhase=$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.currentPhase // "?"') with no delivery record and no PR: DELIVER has not run. Return to the cycle, or publish the honest status with --reason" >&2
       exit 0
     fi
-    answered_next="$(jq -r '.driverNext.phase // empty' "$fj" 2>/dev/null || true)"
+    answered_next="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.driverNext.phase // empty' 2>/dev/null || true)"
     if [[ -n "$answered_next" && -z "$reason" ]]; then
       case "$status" in
         failed|terminal|escalated)
@@ -712,7 +712,7 @@ PY
       esac
     fi
 
-    fj_content="$(cat "$fj" 2>/dev/null)" || {
+    fj_content="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all 2>/dev/null)" || {
       echo "cycle-result.sh: cannot read $fj" >&2
       exit 0
     }

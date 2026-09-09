@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="${2:-}"; shift
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || { echo "usage: execute-prepare.sh run --feature-dir DIR" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 
 slug="$(fget '.slug')"
 workspace="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')"
@@ -52,7 +52,7 @@ if [[ "$workspace" == "null" ]]; then
   ok=true; [[ -z "$expected" || "$expected" == "$actual" ]] || ok=false
   branch_json="$(jq -cn --argjson ok "$ok" --arg e "$expected" --arg a "$actual" '{ok:$ok,expected:$e,actual:$a}')"
 else
-  branch_json="$(jq -c --arg slug "$slug" '[.workspace.repos[] | {name, path, expected:("feat/" + $slug)}]' "$fj" \
+  branch_json="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '[.workspace.repos[] | {name, path, expected:("feat/" + $slug)}]' -- --arg slug "$slug" \
     | python3 -c '
 import json, subprocess, sys
 root = sys.argv[1]; repos = json.load(sys.stdin); bad = []
@@ -71,10 +71,10 @@ if lint_out="$(lib artifact-lint tasks "$sidecar" 2>&1)"; then :; else
 fi
 remediation_registered=0
 if [[ "$sidecar_ok" == true ]]; then
-  registered="$(python3 - "$fj" "$sidecar" <<'PY'
+  registered="$(python3 - "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all)" "$sidecar" <<'PY'
 import json, sys
-fj, sidecar = sys.argv[1], sys.argv[2]
-feature = json.load(open(fj)); tasks = json.load(open(sidecar))
+feature, sidecar = json.loads(sys.argv[1]), sys.argv[2]
+tasks = json.load(open(sidecar))
 tasks = tasks.get("tasks") if isinstance(tasks, dict) and "tasks" in tasks else tasks
 ids = {t.get("id") for t in tasks}
 default_verify = ((feature.get("commands") or {}).get("test") or "")
