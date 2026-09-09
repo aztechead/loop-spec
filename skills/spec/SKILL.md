@@ -124,9 +124,12 @@ later escalates in ONESHOT, and nothing here shortens it.
   about an external system still gets its read-only probe first
   (`skills/shared/grounding-protocol.md#Probe-before-assert rule`).
 - Fill the skeleton's values in place and add no heading: the ask inside the frozen
-  Intent block, what changes in each footprint file (a file that stays unchanged says
-  so in its bullet), one Good Enough criterion per observable outcome with the command
-  that checks it, and the Grounding rows. The template
+  Intent block, what changes in each footprint file, one Good Enough criterion per
+  observable outcome with the command that checks it, and the Grounding rows. Every
+  footprint file is a promise the ONESHOT exit checks against the diff; a cited file
+  the change will not touch leaves the footprint through
+  `cycle-driver.sh spec footprint drop --file <path> --reason "<why>"`, never through a
+  bullet, and a test module of a footprint file cannot leave it. The template
   (`skills/shared/artifact-templates/SPEC-oneshot.md.template`) is the whole shape.
 - There is no score and no transcript on this path. An intent gap is a choice the user
   would notice in the result that the code cannot settle; everything else you decide

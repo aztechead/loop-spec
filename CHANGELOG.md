@@ -30,6 +30,12 @@ The landing record at the end of the follow-up says what each item became.
   `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
   the cycle skill binds, never a path to retype. It has no switch of its own;
   `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
+- **The footprint has no prose exit.** `lib/oneshot-exit-gate.sh` flags every
+  footprint file the diff since `baseSha` never touched, whatever Implementation notes
+  say; `cycle-driver.sh spec footprint drop --file --reason` is the one way out, a
+  ruling in `decisions.jsonl` and a line in the spec, and it refuses the test module of
+  a file that stays in the footprint. The gate's `unchanged`/`read-only` bullet reading
+  and its silent drop of an untouched non-test file are gone.
 - **A cycle never initializes the plugin's own repository.** `cycle-driver.sh init`
   exits 3 when the checkout carries this plugin's `.claude-plugin/plugin.json` and is
   not the project the harness opened, or when the driver runs from a copy inside that

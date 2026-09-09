@@ -49,7 +49,10 @@ and you never pick the next phase.
 ## 2. Implement
 
 Make the change in the footprint files, every one of them: the footprint is a promise
-the exit gate checks against the diff, so a test file it names gets its test. Keep the
+the exit gate checks against the diff, so a test file it names gets its test. A file the
+change turns out not to need leaves the footprint as a recorded decision,
+`bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" spec footprint drop --feature-dir "$feature_dir" --file <path> --reason "<why>"`;
+the driver refuses to drop a test module of a file that stays. Keep the
 change the size the spec describes: no refactor of neighbors, no new abstraction, no
 file the footprint does not name. Match the neighbors' style. Run `commands.test` from the packet (and `commands.lint` when
 set) until green. Never edit a test to make it pass; a test that is wrong is an

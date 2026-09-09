@@ -78,6 +78,16 @@ Usage:
         it prints {action: "in-harness"} and the lead dispatches the reviewer through
         the harness tool. Exit 0; 1 the session failed; 2 bad invocation.
 
+    cycle-driver.sh spec footprint drop --feature-dir DIR --file PATH --reason TEXT
+        Take one file out of SPEC.md's footprint as a recorded decision: the reason lands
+        in decisions.jsonl (kind ruling) and as a line under Implementation notes, and
+        the frontmatter list loses the file. The footprint is a promise the ONESHOT exit
+        gate checks against the diff, and this is the only way out of it (the gate has
+        no prose exit, orchestrator-port-followup-3.md, N2). Refused (exit 1) when the
+        file is the test module of a file that stays in the footprint: the change gets
+        its test, or the run escalates. Prints {spec, dropped, footprint}. Exit 0; 1
+        refused (not in the footprint, or a test module); 2 bad invocation.
+
     cycle-driver.sh spec write --feature-dir DIR --file PATH
         Copy PATH (or stdin for `-`) to {docs}/SPEC.md, the only target this command
         accepts, and print the path. The lead never resolves the docs directory itself:
@@ -1627,11 +1637,49 @@ def write_skeletons(feature_dir, feat, node):
     return written
 
 
+def spec_footprint(text):
+    """The frontmatter footprint list of a spec, in order."""
+    m = re.search(r"^footprint:[ \t]*(\[.*?\])?[ \t]*$((?:\n  - .*)*)", text, flags=re.M)
+    if not m:
+        return []
+    if m.group(1):
+        return [p for p in re.findall(r"[^\[\],\s'\"]+", m.group(1))]
+    return [line[4:].strip() for line in m.group(2).splitlines() if line.startswith("  - ")]
+
+
+def footprint_drop(feature_dir, feat, target, path, reason):
+    text = open(target, encoding="utf-8").read()
+    footprint = spec_footprint(text)
+    if path not in footprint:
+        raise Die("spec footprint drop: %s is not in the footprint of %s (%s)" % (path, target, ", ".join(footprint) or "empty"))
+    remaining = [p for p in footprint if p != path]
+    for kept in remaining:
+        # The naming rules lib/oneshot-spec-lint.sh applies: test_<stem>, <stem>_test, <stem>.test.
+        stem, ext = os.path.splitext(os.path.basename(kept))
+        if os.path.basename(path) in ("test_%s%s" % (stem, ext), "%s_test%s" % (stem, ext), "%s.test%s" % (stem, ext)):
+            raise Die("spec footprint drop: %s is the test module of %s, which stays in the footprint: the change "
+                      "gets its test, or the run escalates (route: full)" % (path, kept))
+    lib("decisions", "add", feature_dir, "oneshot", "drop %s from the footprint" % path, "dropped", reason, "ruling")
+    text = re.sub(r"^  - %s\n" % re.escape(path), "", text, count=1, flags=re.M)
+    text = re.sub(r"^(footprint:[ \t]*\[)([^\]]*)(\])",
+                  lambda m: m.group(1) + ", ".join(p for p in re.split(r"\s*,\s*", m.group(2)) if p and p != path) + m.group(3),
+                  text, count=1, flags=re.M)
+    note = "- %s: dropped from the footprint by cycle-driver.sh spec footprint drop: %s\n" % (path, reason)
+    text = text.replace("## Implementation notes\n\n", "## Implementation notes\n\n" + note, 1)
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    print(json.dumps({"spec": target, "dropped": path, "reason": reason, "footprint": remaining}))
+    return 0
+
+
 def cmd_spec(argv):
     sub = argv[0] if argv else ""
-    if sub not in ("skeleton", "write"):
+    if sub == "footprint" and argv[1:2] == ["drop"]:
+        sub, argv = "drop", argv[1:]
+    if sub not in ("skeleton", "write", "drop"):
         usage()
-    o = parse_pairs(argv[1:], ("--feature-dir", "--file") if sub == "write" else ("--feature-dir",))
+    opts = {"write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason")}.get(sub, ("--feature-dir",))
+    o = parse_pairs(argv[1:], opts)
     feature_dir = o.get("feature_dir") or ""
     source = o.get("file")
     if not feature_dir or not os.path.isfile(os.path.join(feature_dir, "feature.json")):
@@ -1639,6 +1687,12 @@ def cmd_spec(argv):
     feature_dir = os.path.realpath(feature_dir)
     feat = state(feature_dir)
     target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
+    if sub == "drop":
+        if not source or not (o.get("reason") or "").strip():
+            raise Die("spec footprint drop needs --file PATH and --reason TEXT", 2)
+        if not os.path.isfile(target):
+            raise Die("spec footprint drop: no SPEC.md at %s" % target, 2)
+        return footprint_drop(feature_dir, feat, target, source, o["reason"].strip())
     if sub == "skeleton":
         # The route is a function of the scout's record, and the model may lengthen it,
         # never shorten it (orchestrator-port-principles.md, rule 1). The probe reads the

@@ -209,19 +209,36 @@ check "a finding without a verdict flags under the review-triage label" "1" "$(g
 sed -i 's/^- src\/slugify.py:2 — the replace runs before lower()$/- src\/slugify.py:2 — the replace runs before lower() | verdict: false — lower() never adds a dot, so the order cannot change the result/' "$DOCS/VERIFICATION.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a rejected finding with its disproof passes" "0" "$ec"
-# The footprint is a promise: a test module it names that the diff never touched is a
-# flag; any other untouched file is dropped with a note; the spec's own word stands.
-sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|; /^- tests\/test_slugify.py: unchanged/d' "$DOCS/SPEC.md"
+# The footprint is a promise with no prose exit: an untouched file it names is a flag
+# whatever Implementation notes say, and the one way out is the driver's recorded drop,
+# which refuses a test module of a file that stays (followup-3, N2).
+DRV="$REPO_ROOT/lib/cycle-driver.sh"
+sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|' "$DOCS/SPEC.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
-check "an untouched test module flags" "1" "$(grep -c '^FLAG \[footprint\] tests/test_slugify.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
+check "an untouched test module flags even with an unchanged bullet in the notes" "1" "$(grep -c '^FLAG \[footprint\] tests/test_slugify.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
+check "the flag names the drop command and its limit" "1" "$(grep -c 'spec footprint drop --feature-dir .* --file tests/test_slugify.py --reason .*; a test module of a footprint file cannot be dropped' <<<"$out")"
+ec=0; out="$(bash "$DRV" spec footprint drop --feature-dir "$FD" --file tests/test_slugify.py --reason "the existing case covers it" 2>&1)" || ec=$?
+check "dropping the test module of a footprint file is refused" "1" "$ec"
+check "the refusal names the file it tests" "1" "$(grep -c 'tests/test_slugify.py is the test module of src/slugify.py, which stays in the footprint' <<<"$out")"
+check "a refused drop changes nothing" "1" "$(grep -c '^  - tests/test_slugify.py$' "$DOCS/SPEC.md")"
 spec
 sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - README.md|' "$DOCS/SPEC.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
-check "an untouched non-test file is not a flag" "0" "$ec"
-check "the gate says what it dropped" "1" "$(grep -c '^NOTE \[footprint\] README.md was not in the diff' <<<"$out")"
+check "an untouched non-test file is a flag too" "1" "$(grep -c '^FLAG \[footprint\] README.md is in SPEC.md.s footprint but not in the diff' <<<"$out")"
+ec=0; out="$(bash "$DRV" spec footprint drop --feature-dir "$FD" --file docs/none.md --reason "x" 2>&1)" || ec=$?
+check "a file outside the footprint cannot be dropped" "1" "$ec"
+out="$(bash "$DRV" spec footprint drop --feature-dir "$FD" --file README.md --reason "the fix needs no doc change" 2>/dev/null)"
+check "the drop answers with the remaining footprint" "src/slugify.py" "$(jq -r '.footprint | join(",")' <<<"$out")"
 check "the file is gone from the footprint" "0" "$(grep -c '^  - README.md$' "$DOCS/SPEC.md")"
-check "the note lands under Implementation notes" "1" "$(grep -c '^- README.md: unchanged; dropped from the footprint by lib/oneshot-exit-gate.sh' "$DOCS/SPEC.md")"
+check "the decision lands under Implementation notes with its reason" "1" "$(grep -c '^- README.md: dropped from the footprint by cycle-driver.sh spec footprint drop: the fix needs no doc change$' "$DOCS/SPEC.md")"
+check "the decision is a ruling in decisions.jsonl" "1" "$(jq -c 'select(.kind == "ruling" and (.question | test("drop README.md")) and .rationale == "the fix needs no doc change")' "$FD/decisions.jsonl" | wc -l | tr -d ' ')"
 check "the Intent block is untouched by the drop" "Dots survive slugify." "$(sed -n '/^## Intent$/,/^<!-- \/intent -->$/p' "$DOCS/SPEC.md" | sed -n 3p)"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "after the recorded drop the gate passes" "0" "$ec"
+# The flow form of the list is handled the same way.
+spec; sed -i 's|^footprint:$|footprint: [src/slugify.py, README.md]|; /^  - src\/slugify.py$/d' "$DOCS/SPEC.md"
+bash "$DRV" spec footprint drop --feature-dir "$FD" --file README.md --reason "flow form" >/dev/null 2>&1
+check "a flow-form footprint loses the file too" "1" "$(grep -c '^footprint: \[src/slugify.py\]$' "$DOCS/SPEC.md")"
 spec
 # The other direction: a changed file outside the footprint is the fourth file. The
 # gate escalates the run itself, names the file, and the --after probe routes to DISCUSS.
@@ -266,7 +283,7 @@ sed 's|^  - src/slugify.py$|  - a/x.py\n  - a/tests/test_x.py\n  - b/y.py|; s|^-
 printf 'x = 2\n' > "$WS/a/x.py"; git -C "$WS/a" add -A && git -C "$WS/a" commit -q -m "fix: bump x"
 ec=0; out="$(cd "$WS" && bash "$GATE" "$WFD" 2>&1)" || ec=$?
 check "workspace mode: the footprint check runs per repo (the untouched test module in repo a flags)" "1" "$(grep -c '^FLAG \[footprint\] a/tests/test_x.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
-check "workspace mode: an untouched non-test file in repo b is dropped with a note" "1" "$(grep -c '^NOTE \[footprint\] b/y.py was not in the diff' <<<"$out")"
+check "workspace mode: an untouched non-test file in repo b flags too" "1" "$(grep -c '^FLAG \[footprint\] b/y.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
 check "workspace mode: the changed file in repo a satisfies the footprint" "0" "$(grep -c 'a/x.py' <<<"$out")"
 printf 'z = 1\n' > "$WS/b/z.py"; git -C "$WS/b" add -A && git -C "$WS/b" commit -q -m "feat: z"
 sed -i 's|^  - a/tests/test_x.py$||' "$WDOCS/SPEC.md"; sed -i '/^- b\/y.py: unchanged; dropped/d; /^route: full$/d; /^- escalated by/d' "$WDOCS/SPEC.md"
