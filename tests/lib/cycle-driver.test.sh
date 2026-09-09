@@ -355,10 +355,18 @@ check "phase-begin oneshot: kept means untouched" "# filled by the lead" "$(head
 out="$(cd "$REPO7" && drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
 check "oneshot review: attended is in-harness" "in-harness" "$(jq -r '.action' <<<"$out")"
 SBIN7="$WORK/sbin7"; SPROF7="$WORK/sprof7"; mkdir -p "$SBIN7" "$SPROF7"
-printf '#!/usr/bin/env bash\necho "{\"ok\":true}"\n' > "$SBIN7/codex"; chmod +x "$SBIN7/codex"
+# The stub reviewer writes its report when asked to; a reviewer that completes with
+# no report, or fails, leaves no dispatch event (orchestrator-port-followup-3.md, N5).
+printf '#!/usr/bin/env bash\nif [[ -n "${STUB_REPORT:-}" ]]; then echo "verdict: PASS" > "$STUB_REPORT"; fi\n[[ "${STUB_FAIL:-0}" == "1" ]] && exit 1\necho "{\"ok\":true}"\n' > "$SBIN7/codex"; chmod +x "$SBIN7/codex"
 printf 'name = "codex"\nbinary = "codex"\nlaunch_args = ["exec"]\nguarded_args = []\nbypass_args = []\nmodel_flag = "--model"\nprompt_template = "{prompt}"\n' > "$SPROF7/codex.toml"
 printf 'def slugify(s):\n    return s.lower().replace(".", "")\n' > "$REPO7/slugify.py"; git -C "$REPO7" -c commit.gpgsign=false commit -qam "fix: strip dots"
 out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
+check "oneshot review: a reviewer that completes without its report leaves no dispatch event" "0" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" 2>/dev/null | wc -l | tr -d ' ')"
+check "oneshot review: the withheld event is named in the answer" "1" "$(jq -r '.dispatchEvent // ""' <<<"$out" | grep -c '^withheld')"
+out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" STUB_FAIL=1 STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
+check "oneshot review: a failed reviewer session leaves no dispatch event even with a report" "0" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" 2>/dev/null | wc -l | tr -d ' ')"
+rm -f "$FD7/dispatch/oneshot.review.md"
+out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
 check "oneshot review: the reviewer ran as a session" "completed" "$(jq -r '.status' <<<"$out")"
 check "oneshot review: the prompt is one line naming the package, the spec, and the report" "1" "$(grep -c '^Review the package in .* against the spec .*SPEC.md. Write your verdict .* to .*oneshot.review.md.$' "$FD7/dispatch/oneshot.reviewer.md")"
 check "oneshot review: the package holds the diff since baseSha" "1" "$(grep -c 'replace' "$(jq -r '.package' <<<"$out")")"
@@ -367,11 +375,11 @@ check "oneshot review: the exit gate's review check is satisfied by it" "0" "$(b
 # At the boundary the driver runs the review itself when none is on record: one REDO
 # carrying the report path, and the second return goes on to the exit gate.
 : > "$FD7/events.jsonl"; rm -f "$FD7/dispatch/oneshot.review.md"
-out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot: the driver runs the review pass and answers one REDO" "REDO phase=oneshot flags=1" "$(head -1 <<<"$out")"
 check "next from oneshot: the FLAG hands the lead the report path" "1" "$(grep -c '^FLAG \[review\] the driver ran the one review pass; its verdict and findings are in .*oneshot.review.md' <<<"$out")"
 check "next from oneshot: the dispatch event is driver-observed" "1" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
-out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot again: no second review; the exit gate answers" "0" "$(grep -c 'the driver ran the one review pass' <<<"$out")"
 check "next from oneshot again: one dispatch event, not two" "1" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"

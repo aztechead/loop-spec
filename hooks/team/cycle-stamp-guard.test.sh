@@ -36,28 +36,25 @@ stamp() {
     > "$1/.loop-spec/invocation-stamp.json"
 }
 
-# a: the reported run. The prompt was stamped, the lead edited in place, no driver call,
-# and the Stop payload names a transcript with no cycle-driver call in it -> BLOCK.
+# a: the reported run. The prompt was stamped and the driver never consumed it: the
+# hook reads the stamp and the result file, nothing else (what the lead edited is not
+# its evidence) -> BLOCK.
 DRIFT="$ROOT/drift"; mkdir -p "$DRIFT/.loop-spec"
 printf '%s\n' '{"prompt":"/loop-spec:cycle autonomous add a --json flag to wc_tool.py"}' \
   | env CLAUDE_PROJECT_DIR="$DRIFT" bash "$STAMP_HOOK" >/dev/null
-TRANSCRIPT="$DRIFT/transcript.jsonl"
-{
-  printf '%s\n' '{"type":"user","message":{"role":"user","content":"/loop-spec:cycle autonomous add a --json flag to wc_tool.py"}}'
-  printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"MICRO: done-criteria ..."}]}}'
-  printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Edit","input":{"file_path":"wc_tool.py"}}]}}'
-} > "$TRANSCRIPT"
-PAYLOAD="$(jq -cn --arg p "$TRANSCRIPT" '{transcript_path:$p,stop_hook_active:false}')" \
-  check "a: unconsumed cycle stamp, edits, no driver call -> BLOCK" 2 "$DRIFT"
+[[ -f "$DRIFT/.loop-spec/invocation-stamp.json" ]] && { echo "PASS: a0: the prompt hook stamped the invocation"; PASS=$((PASS+1)); } || { echo "FAIL: a0: the prompt hook stamped the invocation"; FAIL=$((FAIL+1)); }
+PAYLOAD='{"stop_hook_active":false}' check "a: unconsumed cycle stamp, no result -> BLOCK" 2 "$DRIFT"
+# The deny names the begin call through the DRV the cycle skill binds, never a path to
+# retype (a live lead retyped a 120-character path with one digit wrong).
 msg="$(env CLAUDE_PROJECT_DIR="$DRIFT" CLAUDE_PLUGIN_ROOT=/opt/plugin bash "$HOOK" 2>&1 >/dev/null <<<'{}' || true)"
-for needle in '/opt/plugin/lib/cycle-driver.sh" begin -- "autonomous add a --json flag to wc_tool.py"' \
-              "write-terminal" "micro protocol stands down"; do
+for needle in 'bash "$DRV" begin -- "autonomous add a --json flag to wc_tool.py"' "write-terminal"; do
   if grep -qF -- "$needle" <<<"$msg"; then
     echo "PASS: a2: denial carries: $needle"; PASS=$((PASS+1))
   else
     echo "FAIL: a2: denial carries: $needle"; FAIL=$((FAIL+1)); echo "$msg"
   fi
 done
+if grep -q '/opt/plugin' <<<"$msg"; then echo "FAIL: a3: the denial prints no absolute driver path"; FAIL=$((FAIL+1)); else echo "PASS: a3: the denial prints no absolute driver path"; PASS=$((PASS+1)); fi
 
 # b: the driver consumed the stamp -> ALLOW. The real `start`, so the two agree on
 # what "consumed" means.
@@ -104,6 +101,41 @@ PAYLOAD='{"stop_hook_active":true}' check "h: stop_hook_active -> ALLOW" 0 "$DRI
 BROKEN="$ROOT/broken"; mkdir -p "$BROKEN/.loop-spec"; printf 'not json' > "$BROKEN/.loop-spec/invocation-stamp.json"
 check "i: unreadable stamp -> ALLOW (fail-open)" 0 "$BROKEN"
 PAYLOAD='not json' check "j: malformed payload -> BLOCK (the stamp stands)" 2 "$DRIFT"
+
+# k: an open phase. The driver's engine emitted phase_start and nothing closed it: no
+# phase_end, no newer result. A lead that declares the phase done in prose -> BLOCK.
+ledger() { # ledger <project> <slug> <event> <phase> <age seconds>
+  mkdir -p "$1/.loop-spec/features/$2"
+  printf '{"ts":"%s","slug":"%s","event":"%s","phase":"%s","data":{}}\n' \
+    "$(date -u -d "@$(( $(date +%s) - $5 ))" +%Y-%m-%dT%H:%M:%SZ)" "$2" "$3" "$4" >> "$1/.loop-spec/features/$2/events.jsonl"
+}
+OPEN="$ROOT/open"; mkdir -p "$OPEN/.loop-spec"
+ledger "$OPEN" fix-slug phase_start spec 300
+ledger "$OPEN" fix-slug phase_end spec 200
+ledger "$OPEN" fix-slug phase_start oneshot 100
+check "k: phase_start with no phase_end and no newer result -> BLOCK" 2 "$OPEN"
+msg="$(env CLAUDE_PROJECT_DIR="$OPEN" bash "$HOOK" 2>&1 >/dev/null <<<'{}' || true)"
+for needle in 'next --feature-dir "'"$OPEN"'/.loop-spec/features/fix-slug" --returned-from oneshot' 'escalate --feature-dir'; do
+  if grep -qF -- "$needle" <<<"$msg"; then echo "PASS: k2: denial carries: $needle"; PASS=$((PASS+1)); else echo "FAIL: k2: denial carries: $needle"; FAIL=$((FAIL+1)); echo "$msg"; fi
+done
+printf '{"schema":1,"status":"paused","reason":"phase-handoff"}\n' > "$OPEN/.loop-spec/last-result.json"
+check "k3: a result newer than the open phase_start (the driver ended the session) -> ALLOW" 0 "$OPEN"
+rm -f "$OPEN/.loop-spec/last-result.json"
+ledger "$OPEN" fix-slug phase_end oneshot 50
+check "k4: phase_end after the phase_start -> ALLOW" 0 "$OPEN"
+STALEPHASE="$ROOT/stale-phase"; mkdir -p "$STALEPHASE/.loop-spec"
+ledger "$STALEPHASE" fix-slug phase_start execute 7200
+check "k5: an open phase past LOOP_SPEC_PHASE_TIMEOUT_MINS is a dead session's -> ALLOW" 0 "$STALEPHASE"
+check "k6: the age is the driver's watchdog ceiling" 2 "$STALEPHASE" LOOP_SPEC_PHASE_TIMEOUT_MINS=99999
+# The feature lives in a linked worktree of the project (Claude enters one): its
+# ledger is read from there.
+WTROOT="$ROOT/wt-root"; mkdir -p "$WTROOT/.loop-spec"
+git -C "$WTROOT" init -q -b main && git -C "$WTROOT" commit -q --allow-empty -m init
+git -C "$WTROOT" worktree add -q "$WTROOT/.claude/worktrees/fix-slug" -b feat/fix-slug
+ledger "$WTROOT/.claude/worktrees/fix-slug" fix-slug phase_start oneshot 100
+check "k8: an open phase in the feature's linked worktree -> BLOCK" 2 "$WTROOT"
+BADLEDGER="$ROOT/bad-ledger"; mkdir -p "$BADLEDGER/.loop-spec/features/x"; printf 'not json\n' > "$BADLEDGER/.loop-spec/features/x/events.jsonl"
+check "k7: an unreadable ledger -> ALLOW (fail-open)" 0 "$BADLEDGER"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -75,9 +75,12 @@ ending this contract exists to prevent.
 - `hooks/team/route-terminal-guard.sh` (Stop) blocks the end of an autonomous session
   whose armed run published nothing. Kill switch: `LOOP_SPEC_ROUTE_GUARD=0`.
 - `hooks/team/cycle-stamp-guard.sh` (Stop) blocks the end of a session that was
-  invoked as `/loop-spec:cycle` and never called the driver: the prompt stamp
-  `cycle-driver.sh start` consumes is still there. The decline above is the one way
-  past it; `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the deny.
+  invoked as `/loop-spec:cycle` and never called the driver (the prompt stamp
+  `cycle-driver.sh start` consumes is still there; the decline above is the one way
+  past it, and `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the deny),
+  and the end of a session that opened a phase and never returned it to the driver
+  (a `phase_start` with no `phase_end` and no newer result; `next --returned-from`
+  or `escalate` is the way past it).
 - `lib/cycle-reconcile.sh --result-root <root>` converts a surviving armed run into a
   terminal result after the fact. It is the out-of-band backstop and the in-band
   confirmation `/loop-spec:auto` runs after its delegated route returns. A PR

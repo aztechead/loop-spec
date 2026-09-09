@@ -22,11 +22,14 @@ The landing record at the end of the follow-up says what each item became.
   `.loop-spec/micro.conf` restores it on an unstamped launch, never on a headless one.
   The grill, simplicity, human-code, and discipline directives stand down only when the
   launch is proven headless.
-- **A `/loop-spec:cycle` session that never calls the driver cannot stop.**
-  `hooks/team/cycle-stamp-guard.sh` (Stop) denies while the prompt stamp
-  `cycle-driver.sh start` consumes is still present and no newer
-  `.loop-spec/last-result.json` exists. It has no switch of its own;
-  `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the deny.
+- **A `/loop-spec:cycle` session that never calls the driver cannot stop, and neither
+  can one that walked out of an open phase.** `hooks/team/cycle-stamp-guard.sh` (Stop)
+  denies while the prompt stamp `cycle-driver.sh start` consumes is still present and
+  no newer `.loop-spec/last-result.json` exists, and while a feature's newest
+  `phase_start` has no `phase_end` and no newer result (until the phase is older than
+  `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
+  the cycle skill binds, never a path to retype. It has no switch of its own;
+  `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
 - **The short route is one session end to end.** The graph's `human.after-spec` to
   `oneshot` edge and its `oneshot` to `deliver` edge carry `"sameSession": true`;
   `cycle-driver.sh next` answers `NEXT` across them instead of `HANDOFF`, and

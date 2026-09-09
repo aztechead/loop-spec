@@ -1682,10 +1682,17 @@ def cmd_oneshot(argv):
         proc = subprocess.run(argv_run, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if proc.returncode not in (0, 1, 4, 5):
         raise Die("the session runner refused the reviewer launch (exit %d): %s" % (proc.returncode, proc.stderr.strip()), 2)
-    lib("events", "emit", feature_dir, "dispatch", "--phase", "oneshot",
-        "--data", json.dumps({"role": "code-reviewer", "model": model, "rung": "session", "launchedBy": "driver"}))
     line = json.loads(proc.stdout.strip() or "{}")
     line.update({"report": report, "package": package})
+    # The event is the exit gate's proof that the review ran, so a session that ended
+    # any other way, or completed without writing its report, leaves no event: the gate
+    # then names the missing review instead of passing on a reviewer that never spoke
+    # (orchestrator-port-followup-3.md, N5).
+    if proc.returncode == 0 and (line.get("status") or "") == "completed" and os.path.isfile(report):
+        lib("events", "emit", feature_dir, "dispatch", "--phase", "oneshot",
+            "--data", json.dumps({"role": "code-reviewer", "model": model, "rung": "session", "launchedBy": "driver"}))
+    else:
+        line["dispatchEvent"] = "withheld: the reviewer session did not complete with a report"
     print(json.dumps(line))
     return 0 if proc.returncode == 0 else 1
 
