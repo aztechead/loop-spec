@@ -96,6 +96,12 @@ verifier FAIL regardless of green commands: pass `--verifier FAIL`. Then:
 - `PASS_WITH_MINOR`: pass every Minor in `--minors`; the call appends each to the
   backlog (`lib/backlog.sh add {slug} verify-deferred "<file:line — claim>"`); write the
   code-review section to VERIFICATION.md.
+- Every finding the reviewer reported gets one bullet in that section with your verdict:
+  `- <file>:<line> — <claim> | verdict: true — <commit, backlog id, or fix>`, or
+  `| verdict: false — <disproof>` naming what you ran or read that shows the finding
+  wrong. A finding you cannot place at a `file:line` is not a finding yet: send it back
+  to the reviewer. `lib/review-triage-lint.sh` at the exit rejects a bullet without a
+  location, without a verdict, or a `false` without its disproof sentence.
 - Second failure of the same criterion or finding across `gateHistory[]`: the call
   records the lesson once (`lib/rules.sh add "VERIFY repeat-fail on '<criterion>'
   ({slug}): ..." --check "<verify command>"`) and reports `.repeat`.

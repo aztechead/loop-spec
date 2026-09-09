@@ -33,17 +33,23 @@ root. `integration: none` requires a concrete reason.
 
 ### Findings
 
+One bullet per finding, or "none": `- <file>:<line> — <claim> | verdict: true — <commit,
+backlog id, or fix>` for a finding you accepted, `- <file>:<line> — <claim> | verdict:
+false — <disproof: what you ran or read that shows it wrong>` for one you rejected.
+`lib/review-triage-lint.sh` at the exit rejects a bullet without `file:line`, without a
+verdict, or a `false` without its disproof sentence.
+
 #### Critical
-{list or "none"}
+{bullets or "none"}
 
 #### Important
-{list or "none"}
+{bullets or "none"}
 
 #### Minor (deferred)
-{list or "none"}
+{bullets or "none"; a Minor's verdict is `true — backlog <id>`}
 
 #### Performance
-{`perf:` findings from the code-reviewer's performance pass, each with the input that
+{`perf:` bullets from the code-reviewer's performance pass, each with the input that
 makes it cost and the measurement, or "none"}
 
 ### Resolution

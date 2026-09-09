@@ -24,8 +24,9 @@ work lands on the feature branch the packet names; the cycle already checked it 
 
 ## 1. Read, then decide whether this is still a oneshot
 
-Read SPEC.md (the oneshot shape: Problem, Implementation notes, Good Enough criteria,
-each with its check command) and every file in its `footprint:`. Follow callers and
+Read SPEC.md (the oneshot shape: the ask inside the frozen `## Intent` block, which
+you never edit, then Implementation notes and Good Enough criteria, each with its
+check command) and every file in its `footprint:`. Follow callers and
 imports far enough to know the change stays inside the footprint.
 
 Escalate, and only escalate, when the code shows one of these:
@@ -77,7 +78,11 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" dispatch \
 
 Fix every Critical and Important finding in the footprint and commit; a finding that
 needs a file outside the footprint is an escalation (step 1). Minor findings are
-recorded in VERIFICATION.md's code review section and never block. There is one review
+recorded in VERIFICATION.md's code review section and never block. Every finding gets
+one bullet there with your verdict: `- <file>:<line> — <claim> | verdict: true —
+<commit or fix>`, or `| verdict: false — <disproof>` naming what shows it wrong
+(`lib/review-triage-lint.sh` at the exit rejects a bullet without a location, without
+a verdict, or a `false` without its disproof). There is one review
 pass: a second BLOCK after your fix is an escalation, not a third round.
 
 ## 4. Verify and record
@@ -96,7 +101,8 @@ A criterion that does not pass is not recorded as `FAIL` and worked around: fix 
 Return to the cycle; never invoke a successor phase and never run the exit yourself.
 The cycle's `next --returned-from oneshot` runs `lib/phase-exit.sh oneshot`
 (`lib/oneshot-exit-gate.sh`: the two scans, every footprint file in the diff, the
-recorded reviewer dispatch, `artifact-lint verification`, `verification-grounding-lint`,
+Intent block unchanged since SPEC committed it, the recorded reviewer dispatch,
+`artifact-lint verification`, `verification-grounding-lint`, `review-triage-lint`,
 and the converged floor over the acceptance table), commits
 SPEC.md and VERIFICATION.md, tags `post-oneshot`, and routes to DELIVER; `REDO` with
 `FLAG` lines means fix VERIFICATION.md or the change in place and return again. An

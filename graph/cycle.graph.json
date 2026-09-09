@@ -628,6 +628,13 @@
             ]
           },
           {
+            "label": "review-triage",
+            "body": "lib/review-triage-lint.sh",
+            "args": [
+              "{docs}/VERIFICATION.md"
+            ]
+          },
+          {
             "label": "acceptance-table",
             "body": "lib/converged-floor.sh",
             "args": [

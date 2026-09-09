@@ -94,8 +94,12 @@ touches, and what to do.
   DISCUSS; `LOOP_SPEC_ROUTE=full` is the operator's override, and nothing demotes a
   full run. SPEC writes the oneshot spec shape
   (`skills/shared/artifact-templates/SPEC-oneshot.md.template`, at most 60 lines) when
-  the same facts hold, and the autonomous paths write no interview transcript. A spec
-  writer of your own that omits `footprint:` gets the full path, unchanged.
+  the same facts hold, and the autonomous paths write no interview transcript. That
+  shape opens with the ask inside a frozen `## Intent` block (`<!-- intent: frozen -->`
+  to `<!-- /intent -->`) that ONESHOT's exit proves unchanged since SPEC committed it;
+  `lib/artifact-lint.sh spec` accepts both shapes (`tests/fixtures/real-SPEC.md`,
+  `tests/fixtures/oneshot-SPEC.md`). A spec writer of your own that omits `footprint:`
+  gets the full path, unchanged.
   `checkpoint.sh tag post-oneshot`, `LOOP_SPEC_PHASE_MODEL_ONESHOT`, and
   `phaseModels.oneshot` follow from the graph.
 - **The phase vocabulary, and each phase's door and exit, are the graph's.**
@@ -169,6 +173,11 @@ touches, and what to do.
 
 ### Added
 
+- `lib/review-triage-lint.sh`: every code-review finding in VERIFICATION.md is one bullet
+  with a `file:line`, a `verdict: true` with its commit or backlog id, or a `verdict:
+  false` with a disproof sentence. The `verify` and `oneshot` exits run it; a finding
+  nobody could place, or a rejection nobody could explain, is a FLAG instead of a
+  backlog line (the false off-by-one a head-to-head run wrote to its backlog).
 - `lib/docs-probe.sh`: the plugin's own current-version and current-docs lookup.
   `latest <name>` answers `version=<v> source=<url>` from the registry or the release
   tracker over the network; `docs <name> --topic <question>` returns the sections of the

@@ -49,8 +49,10 @@ if footprint is None or not (1 <= len(footprint) <= footprint_max):
     sys.exit(0)
 flags = []
 if len(lines) > max_lines:
-    flags.append("FLAG [oneshot-shape] SPEC.md is %d lines; a spec with a oneshot footprint keeps to %d (skills/shared/artifact-templates/SPEC-oneshot.md.template): cut narrative, keep Problem, Implementation notes, the Good Enough criteria with their check commands, and Grounding" % (len(lines), max_lines))
+    flags.append("FLAG [oneshot-shape] SPEC.md is %d lines; a spec with a oneshot footprint keeps to %d (skills/shared/artifact-templates/SPEC-oneshot.md.template): cut narrative, keep the frozen Intent block, Implementation notes, the Good Enough criteria with their check commands, and Grounding" % (len(lines), max_lines))
 body = lines[end + 1:]
+if not any(l.strip() == "## Intent" for l in body):
+    flags.append("FLAG [oneshot-shape] SPEC.md has no '## Intent' block: the ask goes inside `<!-- intent: frozen ... -->` and `<!-- /intent -->` (skills/shared/artifact-templates/SPEC-oneshot.md.template); no later phase edits it")
 if not any(l.strip() == "## Implementation notes" for l in body):
     flags.append("FLAG [oneshot-shape] SPEC.md has no '## Implementation notes' section: one bullet per footprint file naming what changes in it")
 for f in flags:

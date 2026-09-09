@@ -15,9 +15,11 @@ footprint:
 
 **Slug:** `{slug}`
 
-## Problem
+<!-- intent: frozen. The ask as SPEC understood it; ONESHOT, the reviewer, and the verifier read it as the goal and no later phase edits this block. -->
+## Intent
 
-{One paragraph: what is broken or missing, and the outcome the change must produce.}
+{One paragraph: what is broken or missing, and the outcome the change must produce, in the requester's terms.}
+<!-- /intent -->
 
 ## Implementation notes
 

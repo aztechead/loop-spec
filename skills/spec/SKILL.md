@@ -154,8 +154,9 @@ while a scout or reviewer subagent runs.
 
 `SPEC.md` follows `skills/shared/artifact-templates/SPEC.md.template`, or the oneshot
 shape `skills/shared/artifact-templates/SPEC-oneshot.md.template` (at most 60 lines:
-Problem, Implementation notes, Good Enough criteria each with the command that checks
-it, Grounding) when the footprint is at most three files and no dimension is unresolved.
+the ask inside the frozen `## Intent` block, which no later phase edits, Implementation
+notes, Good Enough criteria each with the command that checks it, Grounding) when the
+footprint is at most three files and no dimension is unresolved.
 The shape follows the facts; the route is the probe's. Both begin with:
 
 ```yaml

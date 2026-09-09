@@ -13,8 +13,9 @@
 # Output: `FLAG [<gate>] <finding>` lines; exit 1 when any, 0 when clean, 2 bad call.
 # Gates on a finished run: placeholder scan and test-tamper scan over the diff since
 # baseSha (the same bodies VERIFY's gate nodes run), every footprint file in that diff,
-# a recorded code-reviewer dispatch, artifact-lint verification,
-# verification-grounding-lint, and the converged floor (every Good Enough row PASS).
+# the frozen Intent block unchanged since SPEC committed it, a recorded code-reviewer
+# dispatch, artifact-lint verification, verification-grounding-lint, review-triage-lint
+# over the findings, and the converged floor (every Good Enough row PASS).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,6 +43,14 @@ if [[ -z "$ws_root" && -n "$base_sha" ]]; then
       || flag "[footprint] $f is in SPEC.md's footprint but not in the diff since $base_sha: make the change there, or drop it from the footprint with a line under Implementation notes saying why"
   done < <(sed -n '/^footprint:/,/^[^ ]/p' "$spec" | sed -n 's/^  - //p; s/^footprint: *\[\(.*\)\]$/\1/p' | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sed '/^$/d')
 fi
+# The Intent block is the ask and it is frozen: ONESHOT changes code to meet it, never
+# the block to meet the code. A changed ask is an escalation (route: full), not an edit.
+intent_block() { sed -n '/^<!-- intent: frozen/,/^<!-- \/intent -->$/p'; }
+rel="${spec#"$root/"}"
+committed="$(git show "HEAD:$rel" 2>/dev/null | intent_block)"
+if [[ -n "$committed" && "$committed" != "$(intent_block < "$spec")" ]]; then
+  flag "[intent] the frozen Intent block of $rel changed since its commit: restore it (git show HEAD:$rel); when the ask itself is wrong, escalate with route: full instead"
+fi
 # One review pass, and it happened: the dispatch event the skill emits when it launches
 # the reviewer (skills/shared/dispatch.md). The first slugify run on the route wrote
 # "No findings" under Code review with nobody dispatched.
@@ -52,6 +61,7 @@ fi
 if [[ -f "$docs/VERIFICATION.md" ]]; then
   run_gate artifact-lint lib artifact-lint verification "$docs/VERIFICATION.md"
   run_gate verification-grounding lib verification-grounding-lint "$docs/VERIFICATION.md" --repo "$root" --spec "$spec"
+  run_gate review-triage lib review-triage-lint "$docs/VERIFICATION.md"
   run_gate converged-floor lib converged-floor "$spec" "$docs/VERIFICATION.md"
 else
   flag "[verification] $docs/VERIFICATION.md missing: ONESHOT writes it after the criteria pass (skills/oneshot/SKILL.md, Verify)"

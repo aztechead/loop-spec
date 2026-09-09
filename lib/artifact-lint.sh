@@ -187,11 +187,44 @@ def require_heading(display, lines, mask, heading):
     return None
 
 
+FROZEN_OPEN = re.compile(r'^<!--\s*intent:\s*frozen\b')
+FROZEN_CLOSE = '<!-- /intent -->'
+
+
+def require_frozen_intent(display, lines, mask, intent_no):
+    """The oneshot shape keeps the ask inside a frozen block: the comment line above
+    '## Intent' opens it and `<!-- /intent -->` closes it before the next section, so
+    ONESHOT's exit can prove the block never changed after SPEC committed it."""
+    above = [line.strip() for no, line in visible(lines, mask) if no < intent_no and line.strip()]
+    if not above or not FROZEN_OPEN.match(above[-1]):
+        flag(display, intent_no, "'## Intent' has no `<!-- intent: frozen ... -->` line above it "
+             '(the oneshot shape keeps the ask in a frozen block: SPEC-oneshot.md.template)')
+    for no, line in visible(lines, mask):
+        if no <= intent_no:
+            continue
+        s = line.strip()
+        if s == FROZEN_CLOSE:
+            return
+        if s.startswith('## '):
+            break
+    flag(display, intent_no, "'## Intent' block is not closed with `<!-- /intent -->` before the next section")
+
+
 def lint_spec(display, data):
     lines, mask = markdown_scan(display, data, allow_frontmatter=True)
     if lines is None:
         return
-    require_heading(display, lines, mask, '## Problem')
+    # Two shapes share the criteria and grounding sections: the full SPEC opens with
+    # '## Problem'; the oneshot SPEC opens with the ask in a frozen '## Intent' block
+    # and says what changes per footprint file (skills/shared/artifact-templates/).
+    intent = next((no for no, line in visible(lines, mask) if line.strip() == '## Intent'), None)
+    if intent is not None:
+        require_frozen_intent(display, lines, mask, intent)
+        require_heading(display, lines, mask, '## Implementation notes')
+    elif not any(line.strip() == '## Problem' or line.strip().startswith('## Problem ')
+                 for _, line in visible(lines, mask)):
+        flag(display, 0, "missing required section heading '## Problem' (the full shape) "
+             "or a frozen '## Intent' block (the oneshot shape, SPEC-oneshot.md.template)")
     require_heading(display, lines, mask, '## Success criteria')
     ge = require_heading(display, lines, mask, '### Good Enough')
     require_heading(display, lines, mask, '## Grounding')

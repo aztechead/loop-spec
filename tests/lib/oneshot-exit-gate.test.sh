@@ -55,9 +55,11 @@ ${1:-}
 ---
 # fix slug
 
-## Problem
+<!-- intent: frozen. The ask as SPEC understood it. -->
+## Intent
 
 Dots survive slugify.
+<!-- /intent -->
 
 ## Implementation notes
 
@@ -83,6 +85,8 @@ check "a oneshot spec over 60 lines flags" "1" "$ec"
 check "the flag names the line count and the template" "1" "$(grep -c 'FLAG \[oneshot-shape\] SPEC.md is 7[0-9] lines; a spec with a oneshot footprint keeps to 60' <<<"$out")"
 sed 's/^## Implementation notes$/## Notes/' "$DOCS/SPEC.md" > "$WORK/nonotes.md"
 check "a oneshot spec without Implementation notes flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nonotes.md" 2>&1 | grep -c 'no .## Implementation notes. section')"
+sed 's/^## Intent$/## Problem/' "$DOCS/SPEC.md" > "$WORK/nointent.md"
+check "a oneshot spec without the Intent block flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nointent.md" 2>&1 | grep -c 'no .## Intent. block')"
 sed 's/^footprint:$/footprint: [a.py, b.py, c.py, d.py]/; /^  - src\/slugify.py$/d' "$WORK/long.md" > "$WORK/full.md"
 check "a full-shape spec (four files) passes the lint untouched" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/full.md" >/dev/null 2>&1; echo $?)"
 check "a spec without a footprint passes the lint" "0" "$(printf -- '---\nambiguity_scores:\n  gate_passed: true\n---\n# x\n' > "$WORK/nofp.md"; bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nofp.md" >/dev/null 2>&1; echo $?)"
@@ -152,6 +156,23 @@ bash "$REPO_ROOT/lib/events.sh" emit "$FD" dispatch --phase oneshot --data '{"ro
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a finished oneshot passes the gate" "0" "$ec"
 check "a clean gate prints nothing" "" "$out"
+# The Intent block is frozen: the escalated SPEC.md is committed above, so a rewrite
+# of the ask after that commit is a flag, and a change outside the block is not.
+sed -i 's/^Dots survive slugify\.$/Dots and dashes survive slugify./' "$DOCS/SPEC.md"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "an Intent block edited after its commit flags" "1" "$(grep -c '^FLAG \[intent\] the frozen Intent block of docs/loop-spec/features/fix-slug/SPEC.md changed since its commit' <<<"$out")"
+spec
+printf -- '- also: nothing else changes.\n' >> "$DOCS/SPEC.md"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "a change outside the Intent block passes" "0" "$ec"
+spec
+# A review finding without its verdict is the triage lint's flag.
+sed -i 's/^none$/- src\/slugify.py:2 — the replace runs before lower()/' "$DOCS/VERIFICATION.md"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "a finding without a verdict flags under the review-triage label" "1" "$(grep -c '^FLAG \[review-triage\] .*finding has no verdict' <<<"$out")"
+sed -i 's/^- src\/slugify.py:2 — the replace runs before lower()$/- src\/slugify.py:2 — the replace runs before lower() | verdict: false — lower() never adds a dot, so the order cannot change the result/' "$DOCS/VERIFICATION.md"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "a rejected finding with its disproof passes" "0" "$ec"
 # The footprint is a promise: a file it names that the diff never touched is a flag.
 sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|' "$DOCS/SPEC.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
