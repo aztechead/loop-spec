@@ -43,9 +43,10 @@ and you never pick the next phase.
 
 ## 2. Implement
 
-Make the change in the footprint files. Keep it the size the spec describes: no
-refactor of neighbors, no new abstraction, no file the footprint does not name. Match
-the neighbors' style. Run `commands.test` from the packet (and `commands.lint` when
+Make the change in the footprint files, every one of them: the footprint is a promise
+the exit gate checks against the diff, so a test file it names gets its test. Keep the
+change the size the spec describes: no refactor of neighbors, no new abstraction, no
+file the footprint does not name. Match the neighbors' style. Run `commands.test` from the packet (and `commands.lint` when
 set) until green. Never edit a test to make it pass; a test that is wrong is an
 escalation (step 1).
 
@@ -65,7 +66,14 @@ model `models.codeReviewer` from the packet, `run_in_background: false`; then st
 read its result, never `AskUserQuestion` as a wait). Brief: `slug`, `branch`,
 `baseSha`, `spec_path`, and `probe_dir` (absolute `${CLAUDE_SKILL_DIR}/../../lib`);
 include `skills/shared/review-prompts/no-prejudge.md`; report
-`CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <findings>`.
+`CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <findings>`. Record the launch as
+the dispatch telemetry contract in `skills/shared/dispatch.md` says, in the same Bash
+call that reads the result; the exit gate reads this event as the proof the review ran:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" dispatch \
+  --phase oneshot --data '{"role":"code-reviewer","model":"<models.codeReviewer>","rung":"subagent"}' || true
+```
 
 Fix every Critical and Important finding in the footprint and commit; a finding that
 needs a file outside the footprint is an escalation (step 1). Minor findings are
@@ -87,8 +95,9 @@ A criterion that does not pass is not recorded as `FAIL` and worked around: fix 
 
 Return to the cycle; never invoke a successor phase and never run the exit yourself.
 The cycle's `next --returned-from oneshot` runs `lib/phase-exit.sh oneshot`
-(`lib/oneshot-exit-gate.sh`: the two scans, `artifact-lint verification`,
-`verification-grounding-lint`, and the converged floor over the acceptance table), commits
+(`lib/oneshot-exit-gate.sh`: the two scans, every footprint file in the diff, the
+recorded reviewer dispatch, `artifact-lint verification`, `verification-grounding-lint`,
+and the converged floor over the acceptance table), commits
 SPEC.md and VERIFICATION.md, tags `post-oneshot`, and routes to DELIVER; `REDO` with
 `FLAG` lines means fix VERIFICATION.md or the change in place and return again. An
 escalated spec passes the exit with nothing to check and routes to DISCUSS.

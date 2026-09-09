@@ -42,6 +42,13 @@
               "spec",
               "{docs}/SPEC.md"
             ]
+          },
+          {
+            "label": "oneshot-shape",
+            "body": "lib/oneshot-spec-lint.sh",
+            "args": [
+              "{docs}/SPEC.md"
+            ]
           }
         ],
         "oracle": true,

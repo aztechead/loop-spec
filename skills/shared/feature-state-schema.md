@@ -38,7 +38,8 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "iterate": {"run": "boolean", "reason": "nonblank classifier reason"}
   },
   "phaseHandoff": "boolean; return after each durable phase for a fresh main-agent context",
-  "currentPhase": "spec | discuss | plan | execute | verify | iterate | deliver | completed",
+  "currentPhase": "a phase id of lib/graph/phases.sh list (spec | oneshot | discuss | plan | execute | verify | iterate | deliver) | completed",
+  "currentPhaseStartedAt": "ISO-8601 timestamp or null; set by cycle-driver.sh next when it answers NEXT for a phase (the watchdog reads it)",
   "completedPhases": ["array of phase names"],
   "branch": "string (feat/{slug})",
   "worktreePath": "string (absolute path of the created feature worktree, .claude/worktrees/{slug} by default) in single-repo mode; null in workspace mode",
@@ -59,6 +60,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   },
   "phaseModels": {
     "spec": "Claude selector | null",
+    "oneshot": "Claude selector | null",
     "discuss": "Claude selector | null",
     "plan": "Claude selector | null",
     "execute": "Claude selector | null",
@@ -149,6 +151,19 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   },
   "warnings": ["array of strings"],
   "driverNext": {"phase": "string; the phase cycle-driver.sh last answered NEXT with", "at": "ISO-8601"},
+  "driverRedo": {"phase": "string", "hash": "string; the FLAG lines of the last REDO", "count": "integer; identical REDO rounds so far, capped by LOOP_SPEC_REDO_MAX"},
+  "iterate": {
+    "maxIterations": "integer (LOOP_SPEC_ITERATE_MAX_ITERATIONS)",
+    "used": "integer",
+    "confirmationUsed": "boolean",
+    "lastVerdict": "judge verdict object or null",
+    "feedback": "{type: execute | plan | spec | verify, description, fix_first} on a rewind; null when converged",
+    "history": ["array of past verdicts"]
+  },
+  "greenfield": "boolean; set by lib/feature-bootstrap.sh when the repository has no code yet",
+  "autonomous": "boolean; set by lib/feature-bootstrap.sh for an unattended run",
+  "backlogEntry": "string or null; the backlog text a cycle started from (cycle backlog)",
+  "backlogEntryId": "string or null; its id, so DELIVER can close the entry",
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
   "pendingRemediationTasks": ["array of remediation task objects appended by VERIFY (lib/feature-write.sh append) and consumed+cleared by EXECUTE Step 2a; empty between phases"],
   "activeWorkflow": {

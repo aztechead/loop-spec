@@ -76,6 +76,16 @@ MD
 }
 spec
 check "artifact-lint accepts the oneshot spec shape" "0" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" spec "$DOCS/SPEC.md" >/dev/null 2>&1; echo $?)"
+check "the oneshot spec lint accepts the shape" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$DOCS/SPEC.md" >/dev/null 2>&1; echo $?)"
+{ cat "$DOCS/SPEC.md"; for i in $(seq 1 45); do echo "narrative line $i"; done; } > "$WORK/long.md"
+out="$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/long.md" 2>&1)"; ec=$?
+check "a oneshot spec over 60 lines flags" "1" "$ec"
+check "the flag names the line count and the template" "1" "$(grep -c 'FLAG \[oneshot-shape\] SPEC.md is 7[0-9] lines; a spec with a oneshot footprint keeps to 60' <<<"$out")"
+sed 's/^## Implementation notes$/## Notes/' "$DOCS/SPEC.md" > "$WORK/nonotes.md"
+check "a oneshot spec without Implementation notes flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nonotes.md" 2>&1 | grep -c 'no .## Implementation notes. section')"
+sed 's/^footprint:$/footprint: [a.py, b.py, c.py, d.py]/; /^  - src\/slugify.py$/d' "$WORK/long.md" > "$WORK/full.md"
+check "a full-shape spec (four files) passes the lint untouched" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/full.md" >/dev/null 2>&1; echo $?)"
+check "a spec without a footprint passes the lint" "0" "$(printf -- '---\nambiguity_scores:\n  gate_passed: true\n---\n# x\n' > "$WORK/nofp.md"; bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nofp.md" >/dev/null 2>&1; echo $?)"
 check "the oneshot template is under 60 lines" "1" "$([[ $(wc -l < "$REPO_ROOT/skills/shared/artifact-templates/SPEC-oneshot.md.template") -lt 60 ]] && echo 1 || echo 0)"
 
 # --- an unfinished oneshot: no VERIFICATION.md ----------------------------------------
@@ -137,8 +147,16 @@ none
 ```
 MD
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "no recorded reviewer dispatch flags" "1" "$(grep -c '^FLAG \[review\] no code-reviewer dispatch recorded for oneshot' <<<"$out")"
+bash "$REPO_ROOT/lib/events.sh" emit "$FD" dispatch --phase oneshot --data '{"role":"code-reviewer","model":"haiku","rung":"subagent"}' >/dev/null 2>&1
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a finished oneshot passes the gate" "0" "$ec"
 check "a clean gate prints nothing" "" "$out"
+# The footprint is a promise: a file it names that the diff never touched is a flag.
+sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|' "$DOCS/SPEC.md"
+ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
+check "an untouched footprint file flags" "1" "$(grep -c '^FLAG \[footprint\] tests/test_slugify.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
+spec
 # The converged floor is the full one: a FAIL row is a finding, not a shape.
 sed -i 's/| PASS |/| FAIL |/' "$DOCS/VERIFICATION.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?

@@ -62,7 +62,17 @@
         "harnessTaskMetadataMode",
         "harnessStatusMode",
         "fileConflictExcludeGlobs",
-        "gateHistory"
+        "gateHistory",
+        "autonomousClassification",
+        "gatePlan",
+        "currentPhaseStartedAt",
+        "iterate",
+        "greenfield",
+        "autonomous",
+        "backlogEntry",
+        "backlogEntryId",
+        "driverNext",
+        "driverRedo"
       ]
     },
     "effort": {

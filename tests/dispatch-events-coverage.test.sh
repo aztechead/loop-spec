@@ -19,6 +19,7 @@ checks=(
   "skills/plan/SKILL.md	dispatch.md"
   "skills/execute/SKILL.md	dispatch.md"
   "skills/verify/SKILL.md	dispatch.md"
+  "skills/oneshot/SKILL.md	dispatch.md"
   "skills/iterate/SKILL.md	dispatch.md"
   "skills/shared/execute-subagent.md	dispatch.md"
   "skills/shared/execute-loop-fleet.md	dispatch.md"
