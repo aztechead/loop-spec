@@ -30,7 +30,9 @@ Usage:
         New feature: adopt-PR probe, clean guard, base, execution root, bootstrap.
         Prints {featureDir, slug, executionRoot, enterWorktree, branch, baseBranch,
         baseSha, greenfield}. `enterWorktree` non-null means the caller must call
-        EnterWorktree({path}) before anything else. Exit 0/1/2.
+        EnterWorktree({path}) before anything else. Exit 0/1/2; 3 the checkout is the
+        plugin's own repository and not the project the harness opened (the reason
+        names which of the two probes answered), which no cycle initializes.
 
     cycle-driver.sh resume --dir DIR --feature-root PATH [--slug SLUG]
         Adopt a resumable feature's execution root. Prints {featureDir, slug,
@@ -685,12 +687,40 @@ INIT_OPTS = ("--dir", "--slug", "--title", "--style", "--profile", "--classifica
              "--greenfield", "--spec-file", "--commands", "--repos", "--backlog-entry")
 
 
+def plugin_home_refusal(directory, plugin_home, project_dir):
+    """Why a cycle must not initialize `directory`, or None. Two probes, both facts on
+    disk: the checkout carries this plugin's own manifest and is not the project the
+    harness opened (self-development is the one case where it is), or the driver runs
+    from a copy inside that checkout (the eval's layout: its plugin snapshot lives under
+    the repository the eval launched from). The f0959f6 wc-json run initialized the
+    plugin checkout itself and left a feature worktree there that two guard suites
+    later read as an in-flight cycle (orchestrator-port-followup-3.md, N6)."""
+    directory = os.path.realpath(directory)
+    plugin_home = os.path.realpath(plugin_home)
+    manifest = os.path.join(directory, ".claude-plugin", "plugin.json")
+    own = read_json(os.path.join(plugin_home, ".claude-plugin", "plugin.json"), {}) or {}
+    if plugin_home != directory and plugin_home.startswith(directory + os.sep):
+        return ("%s holds the driver that would initialize it (%s): the plugin runs from a copy inside "
+                "the checkout, the eval's layout, and the project is elsewhere" % (directory, plugin_home))
+    named = (read_json(manifest, {}) or {}).get("name")
+    if named and named == own.get("name"):
+        if project_dir and os.path.realpath(project_dir) == directory:
+            return None
+        return ("%s is the %s plugin's own repository (.claude-plugin/plugin.json) and not the project the "
+                "harness opened%s; a cycle runs in the project" % (
+                    directory, named, " (%s)" % project_dir if project_dir else ""))
+    return None
+
+
 def cmd_init(argv):
     o = parse_pairs(argv, INIT_OPTS)
     slug, title = o.get("slug", ""), o.get("title", "")
     if not slug or not title:
         usage()
     directory = os.path.realpath(o.get("dir") or os.getcwd())
+    refusal = plugin_home_refusal(directory, str(REPO_ROOT), os.environ.get("CLAUDE_PROJECT_DIR") or "")
+    if refusal:
+        raise Die("cycle-driver: refusing to initialize a cycle: %s" % refusal, 3)
     os.chdir(directory)
     style = o.get("style") or "auto"
     profile = o.get("profile") or "standard"

@@ -20,6 +20,20 @@ done
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# A cycle leaked into another worktree of this repository (the f0959f6 eval run left
+# one in the plugin checkout) is read by every suite whose hook scans the working
+# directory's worktrees, and two guard suites stood down on it. Refuse to start rather
+# than score a guard green by accident; a cycle in this very checkout (the plugin
+# verifying itself from its feature worktree) is the one active feature the suite
+# runs inside of, and stays.
+if active="$(bash lib/active-cycle.sh has-active "$REPO_ROOT" 2>/dev/null)"; then
+  active_root="${active%%$'\t'*}"
+  if [[ "$active_root" != "$REPO_ROOT" ]]; then
+    echo "run-all.sh: an active cycle lives in another worktree of this repository: ${active//$'\t'/ } (root, slug, phase). Finish it or remove that worktree (git worktree remove <root>) before running the suite; its state would leak into every guard suite that scans the checkout." >&2
+    exit 2
+  fi
+fi
+
 TOTAL_PASS=0
 TOTAL_FAIL=0
 TOTAL_SKIP=0

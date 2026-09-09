@@ -30,6 +30,13 @@ The landing record at the end of the follow-up says what each item became.
   `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
   the cycle skill binds, never a path to retype. It has no switch of its own;
   `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
+- **A cycle never initializes the plugin's own repository.** `cycle-driver.sh init`
+  exits 3 when the checkout carries this plugin's `.claude-plugin/plugin.json` and is
+  not the project the harness opened, or when the driver runs from a copy inside that
+  checkout (the eval's layout). `tests/run-all.sh` refuses to start while an active
+  cycle lives in another worktree of the repository, naming it, so a leaked feature
+  cannot turn a guard suite green or red by accident; the ad-hoc verify guard's suite
+  runs from its fixture directory for the same reason.
 - **The short route is one session end to end.** The graph's `human.after-spec` to
   `oneshot` edge and its `oneshot` to `deliver` edge carry `"sameSession": true`;
   `cycle-driver.sh next` answers `NEXT` across them instead of `HANDOFF`, and

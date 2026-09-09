@@ -251,6 +251,22 @@ FD6="$(jq -r '.featureDir' <<<"$out")"
 out="$(cd "$REPO6" && drv begin -- "add a flag to the tool" 2>/dev/null)"
 check "begin: a human decision is handed back" "decisions" "$(jq -r '.action' <<<"$out")"
 
+# --- a cycle never runs in the plugin's own repository (followup-3, N6) ---------------
+# The checkout carries this plugin's manifest and is not the project the harness opened.
+REPO8="$(new_repo plugin-home)"; mkdir -p "$REPO8/.claude-plugin"
+printf '{"name":"loop-spec","version":"0.0.0"}\n' > "$REPO8/.claude-plugin/plugin.json"
+git -C "$REPO8" add -A && git -C "$REPO8" -c commit.gpgsign=false commit -q -m "manifest"
+ec=0; out="$(cd "$REPO8" && CLAUDE_PROJECT_DIR= drv init --dir "$REPO8" --slug x --title x --style auto --profile standard 2>&1 >/dev/null)" || ec=$?
+check "init: the plugin's own repository is refused with exit 3" "3" "$ec"
+check "init: the refusal names the manifest and the rule" "1" "$(grep -c "plugin's own repository (.claude-plugin/plugin.json)" <<<"$out")"
+check "init: nothing was initialized" "0" "$(ls -d "$REPO8"/.loop-spec/features/*/ 2>/dev/null | wc -l | tr -d ' ')"
+ec=0; (cd "$REPO8" && CLAUDE_PROJECT_DIR="$REPO8" drv init --dir "$REPO8" --slug x --title x --style auto --profile standard >/dev/null 2>&1) || ec=$?
+check "init: the plugin developing itself (the project the harness opened) is allowed" "0" "$ec"
+# The driver running from a copy inside the checkout it would initialize (the eval's
+# layout) is the second probe; a pure function, so the layout is a pair of paths.
+check "init: a driver copy inside the target checkout is refused" "1" "$(cd "$REPO_ROOT/lib/graph" && python3 -c 'import driver; print(1 if driver.plugin_home_refusal("/w/loop-spec", "/w/loop-spec/evals/.runs/x/plugin", "/w/loop-spec/evals/.runs/x/t/project") else 0)')"
+check "init: an installed plugin outside the project is not refused" "0" "$(cd "$REPO_ROOT/lib/graph" && python3 -c 'import driver; print(1 if driver.plugin_home_refusal("/w/project", "/home/u/.claude/plugins/loop-spec", "/w/project") else 0)')"
+
 # --- the short route is one session: spec -> oneshot answers NEXT, not HANDOFF --------
 REPO7="$(new_repo oneshot)"
 printf 'def slugify(s):\n    return s.lower()\n' > "$REPO7/slugify.py"
