@@ -123,13 +123,21 @@ transcripts say the money went to, in order:
 
 ### WP5: the session rung
 
-`lib/harness.sh session-layer` answered `session` on every headless run here (`claude`
-on PATH, `profiles/claude.toml`, python 3.11). The rung is EXECUTE's, and every haiku
-fixture took the oneshot route, which has no EXECUTE: `todo-due` is a three-file
-footprint and went oneshot in five rounds. `fastapi-items` is the one full-route run;
-its EXECUTE is where the rung shows (see the WP4 section). The runner itself was proven
-against the real CLI before the runs: `session_run.py --profile claude --model haiku` on
-a one-line prompt created the file and returned `status: completed` in 6.4 seconds.
+The rung did not run in any of these runs, and the reason is the eval harness's. The
+rung is EXECUTE's, and every haiku fixture took the oneshot route, which has no EXECUTE:
+`todo-due` is a three-file footprint and went oneshot in five rounds. `fastapi-items` is
+the one full-route run, and its EXECUTE (round 7) dispatched every task on the
+`subagent` rung: `execute-rung.sh` reported `sessionLayer: {answer: in-harness, reason:
+attended/remote_mobile}`. The child `claude -p` had inherited this session's
+`CLAUDE_CODE_ENTRYPOINT=remote_mobile`; the CLI writes that stamp only when it is
+unset, so the probe read an attended launch and answered `in-harness`, as designed. The
+probe was right about the environment it saw and the environment was wrong: fixed after
+the run in `evals/eval_run.py` and `extensions/sessions/session_run.py`, which now drop
+the stamp with the session identity so the child stamps `sdk-cli` itself. The runner
+was proven against the real CLI before the runs: `session_run.py --profile claude
+--model haiku` on a one-line prompt created the file and returned `status: completed`
+in 6.4 seconds. A rerun on the fixed driver (`final2-sonnet-fastapi`, plugin f7a5b53)
+is in flight; its record, the rung's first live dispatch or its absence, follows.
 
 The Codex half of the done condition did not run: the sandbox has no `codex` binary.
 `profiles/codex.toml` is the launch line `skills/shared/codex-harness.md` documents;
