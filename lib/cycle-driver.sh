@@ -434,10 +434,9 @@ cmd_init() {
   for active_fj in "$repo_root"/.loop-spec/features/*/feature.json; do
     [[ -f "$active_fj" ]] || continue
     [[ "$adopted" == true ]] && continue
-    case "$(jq -r '.currentPhase // ""' "$active_fj")" in
-      spec|discuss|plan|execute|verify|iterate|deliver)
-        die "feature $(jq -r '.slug' "$active_fj") is already active in this checkout (phase $(jq -r '.currentPhase' "$active_fj")); resume it, or finish it before starting another." ;;
-    esac
+    if lib graph/phases validate "$(jq -r '.currentPhase // ""' "$active_fj")" >/dev/null 2>&1; then
+      die "feature $(jq -r '.slug' "$active_fj") is already active in this checkout (phase $(jq -r '.currentPhase' "$active_fj")); resume it, or finish it before starting another."
+    fi
   done
   local current_branch; current_branch="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)"
   if ! { [[ "$adopted" == true && "$current_branch" == "$feature_branch" ]]; }; then
@@ -868,8 +867,12 @@ record_transition() {
     echo "HANDOFF next=$next model=${m:-inherit}"
     return 10
   fi
+  # A rewind is a next phase the graph lists before this one.
   if [[ "${LOOP_SPEC_ITERATE_FRESH:-}" == "1" && "$phase" == "iterate" ]]; then
-    case "$next" in execute|plan|spec|discuss) echo "REWIND next=$next"; return 10 ;; esac
+    local order next_at phase_at
+    order="$(lib graph/phases list)"
+    next_at="$(grep -nx "$next" <<<"$order" | cut -d: -f1)"; phase_at="$(grep -nx "$phase" <<<"$order" | cut -d: -f1)"
+    if [[ -n "$next_at" && -n "$phase_at" && "$next_at" -lt "$phase_at" ]]; then echo "REWIND next=$next"; return 10; fi
   fi
   return 0
 }

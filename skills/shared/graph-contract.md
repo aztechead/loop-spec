@@ -169,6 +169,50 @@ must run in both modes takes `{featureDir}` and enumerates targets itself
 (`lib/feature-scan-each.sh`); `verify.marker` and `verify.tamper` do this. Covered by
 `tests/lib/graph-gate-dispatch.test.sh`.
 
+## Phase ingress and egress
+
+A phase agent node (body `skills/<id>/SKILL.md`) carries its door and its exit as data:
+`ingress` (schema `phaseIngress`) is what `lib/phase-entry.sh` lists when the phase
+opens, `egress` (schema `phaseEgress`) is what `lib/phase-exit.sh` checks and records
+when it closes. The two scripts are loops over those blocks; neither holds a `case` on
+the phase id. Adding a phase is one edit in `graph/cycle.graph.json` plus its SKILL.md,
+and `tests/lib/graph-phases.test.sh` proves it: a graph copy with a new phase runs
+through `phase-entry.sh`, `phase-exit.sh`, `feature-init.sh`, the hooks' phase
+alternation, and `checkpoint.sh tag post-<phase>` with nothing else edited, selected
+through `LOOP_SPEC_GRAPH`.
+
+`ingress` names `fields` (the feature.json keys the packet carries), `required` files
+(each with the `writer` phase the FLAG names when the file is absent), and `optional`
+files (listed only when present). `egress` runs in the order the schema lists:
+`misplaced` (an artifact absent here but present in another checkout of the repository
+is named with its move), `required` files (`FLAG [label] <path> missing`), `gates` (each
+the same shape as a gate node, a `.sh` body and an argument vector, relayed as
+`FLAG [label]` lines on a non-zero exit; a `when` clause keys the gate on a feature.json
+value, the way ITERATE's converged floor runs only for a converged verdict), and
+`oracle` (a named supervisor was asked). On ok it records `artifacts`,
+`artifactsIfPresent`, and `artifactsDefault` pointers, runs `onOk` bodies (EXECUTE's
+at-end squash), makes the `commit`, tags the `checkpoint`, applies `set` resets, and
+closes the phase (`close: always`, or `terminal` for ITERATE's `--terminal` pass).
+`writes` is the egress guard's allow-list: the feature.json paths the phase may change
+between entry and exit, by prefix. A PLAN or EXECUTE check that is more than one lint
+call is its own script (`lib/plan-exit-gate.sh`, `lib/execute-exit-gate.sh`) and is
+listed as a gate like any other.
+
+Paths and arguments in both blocks resolve through a closed placeholder set: `{docs}`
+(the feature's docs directory, `docs/loop-spec/features/<slug>`, absolute in
+`phase-entry.sh` so a `read=` line opens from any cwd, relative in `phase-exit.sh`
+because that is what `artifacts.*` pointers record), `{featureDir}`, `{root}` (the
+repository root, or the workspace root in workspace mode), `{slug}`, `{spec}`
+(`artifacts.spec` or `{docs}/SPEC.md`), `{tasks}` (`artifacts.tasks` or
+`{featureDir}/tasks.json`), and `{f:<dotted.key>}` (that feature.json value). This is
+not the engine's `bodyArgs` set above: the engine dispatches gate NODES, these scripts
+run inside a phase. `lib/graph/validate.sh` flags an unknown placeholder, a gate body
+that does not exist, an `ingress`/`egress` on a node that is not a phase agent node, and
+(under `--strict`) a published phase node with no `ingress`; each is exercised in
+`tests/lib/graph-validate.test.sh`. A phase node without `egress` has no exit gate
+(DELIVER: its terminal states are observation-only, `lib/cycle-driver.sh`), and
+`phase-exit.sh` refuses it as a bad invocation.
+
 ## State declaration rule
 
 Every node declares `reads[]` and `writes[]` from the `stateKey` enum in

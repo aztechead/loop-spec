@@ -66,6 +66,19 @@ touches, and what to do.
 - **A converged-floor veto with no FAIL row rewinds to VERIFY.** `iterate-gap.sh` answers
   `gap=verify`, the graph routes `iterate -> verify`, and the verifier completes the
   record; no implementer runs. A FAIL row still rewinds to EXECUTE.
+- **The phase vocabulary, and each phase's door and exit, are the graph's.**
+  `lib/graph/phases.sh list|regex|validate|suffix` derives the phase ids from
+  `graph/cycle.graph.json`; `feature-init.sh`, `phase-entry.sh`, `phase-exit.sh`,
+  `checkpoint.sh`, the driver, the engine, and the team hooks read it, and
+  `LOOP_SPEC_GRAPH` names another graph for all of them. Each phase agent node now
+  carries `ingress` (the entry packet) and `egress` (the exit gates, pointers, commit,
+  checkpoint, and the egress guard's allow-list); `phase-entry.sh` and `phase-exit.sh`
+  are loops over those blocks (`skills/shared/graph-contract.md`, Phase ingress and
+  egress). PLAN's and EXECUTE's multi-step checks are `lib/plan-exit-gate.sh` and
+  `lib/execute-exit-gate.sh`, listed as gates. A graph of your own that adds a phase
+  gives its node both blocks; `lib/graph/validate.sh --strict` flags a phase node
+  without `ingress`. `checkpoint.sh tag` accepts `post-<phase>` for every phase of the
+  graph; the four-name list is gone.
 - **The eval driver has no judge model.** `evals/eval_run.py` reports over-build as app
   lines added over `reference_app_lines`; the `judge` record key and the summary's
   `judge meets/over` column are gone.

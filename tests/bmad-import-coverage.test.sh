@@ -17,7 +17,7 @@ checks=(
   # B1 -- the reviewer's guide
   "skills/walkthrough/SKILL.md	review-trail\.sh	the walkthrough skill must call the trail script, not eyeball the diff"
   "skills/verify/SKILL.md	review-trail\.sh.? lint	VERIFY must lint the written trail against the real diff"
-  "lib/phase-exit.sh	artifacts\.reviewOrder	VERIFY must record the trail so DELIVER can inline it"
+  "graph/cycle.graph.json	reviewOrder.*REVIEW-ORDER\.md	VERIFY must record the trail so DELIVER can inline it"
   "lib/pr-body.sh	reviewOrder	the PR body must inline the trail"
   "lib/pr-body.sh	Suggested review order	the trail needs its own PR body heading"
   "README.md	walkthrough	the skills table must list the walkthrough skill"

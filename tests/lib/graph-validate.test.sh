@@ -365,6 +365,67 @@ jq '.nodes[0].optionalReads = ["activeWorkflow"] | .nodes[0].writes = []' \
   "$WORK/optional.json" > "$WORK/optional-unwritten.json"
 check "an optionalReads key no node writes is still rejected" 1 "$WORK/optional-unwritten.json"
 
+# --- ingress/egress: a phase's door and exit as data on its node ---
+cat > "$WORK/phase.json" <<EOF
+{
+  "entry": "p",
+  "nodes": [
+    {"id": "p", "label": "Phase", "kind": "agent", "reads": [], "writes": ["artifacts"],
+     "effort": "system2", "body": "skills/verify/SKILL.md",
+     "ingress": {"fields": ["slug"], "required": [{"writer": "SPEC", "path": "{docs}/SPEC.md"}], "optional": ["{featureDir}/notes.md"]},
+     "egress": {"misplaced": "VERIFICATION.md",
+                "required": [{"label": "iteration", "path": "{docs}/ITERATION.md"}],
+                "gates": [{"label": "artifact-lint", "body": "lib/artifact-lint.sh", "args": ["verification", "{docs}/VERIFICATION.md"],
+                           "when": {"field": "iterate.lastVerdict.converged", "equals": "true"}}],
+                "oracle": true, "writes": ["artifacts.verification"],
+                "artifacts": {"verification": "{docs}/VERIFICATION.md"},
+                "artifactsIfPresent": {"reviewOrder": "{docs}/REVIEW-ORDER.md"},
+                "artifactsDefault": {"patternsSource": "pattern-mapper"},
+                "onOk": [{"label": "finish", "body": "lib/execute-exit-gate.sh", "args": ["finish", "{featureDir}"]}],
+                "commit": {"message": "verify: {slug} {f:iterate.used}", "paths": ["{docs}/VERIFICATION.md"]},
+                "checkpoint": "post-verify", "set": {"mergeQueue": []}, "close": "terminal"}}
+  ],
+  "edges": []
+}
+EOF
+check "a full ingress/egress declaration validates" 0 "$WORK/phase.json"
+check "a phase node with ingress and egress passes --strict" 0 --strict "$WORK/phase.json"
+
+jq 'del(.nodes[0].ingress)' "$WORK/phase.json" > "$WORK/phase-noingress.json"
+check "a phase node without ingress validates" 0 "$WORK/phase-noingress.json"
+check "a published phase node without ingress fails --strict" 1 --strict "$WORK/phase-noingress.json"
+check_output "strict names the missing ingress" "declares no ingress" --strict "$WORK/phase-noingress.json"
+
+jq '.nodes[0].kind = "gate" | .nodes[0].body = "lib/placeholder-scan.sh"' "$WORK/phase.json" > "$WORK/phase-gate.json"
+check "only a phase agent node may declare ingress/egress" 1 "$WORK/phase-gate.json"
+check_output "the non-phase node is named" "only a phase agent node" "$WORK/phase-gate.json"
+
+jq '.nodes[0].egress.gates[0].args = ["{nope}"]' "$WORK/phase.json" > "$WORK/phase-placeholder.json"
+check "an unknown placeholder in a gate arg is rejected" 1 "$WORK/phase-placeholder.json"
+check_output "the unknown placeholder is named with the legal set" "unknown placeholder {nope} (legal: {docs}, {featureDir}, {root}, {slug}, {spec}, {tasks}, {f:<dotted.key>})" "$WORK/phase-placeholder.json"
+
+jq '.nodes[0].ingress.required[0].path = "{repoRoot}/SPEC.md"' "$WORK/phase.json" > "$WORK/phase-engine-placeholder.json"
+check "an engine-only placeholder is not a phase placeholder" 1 "$WORK/phase-engine-placeholder.json"
+
+jq '.nodes[0].egress.gates[0].body = "lib/does-not-exist.sh"' "$WORK/phase.json" > "$WORK/phase-nobody.json"
+check "a gate body that does not exist is rejected" 1 "$WORK/phase-nobody.json"
+check_output "the missing body is named" "gate body path does not exist" "$WORK/phase-nobody.json"
+
+jq 'del(.nodes[0].egress.writes)' "$WORK/phase.json" > "$WORK/phase-nowrites.json"
+check "egress without writes is rejected (the guard needs its allow-list)" 1 "$WORK/phase-nowrites.json"
+
+jq '.nodes[0].egress.close = "sometimes"' "$WORK/phase.json" > "$WORK/phase-close.json"
+check "close outside always|terminal is rejected" 1 "$WORK/phase-close.json"
+
+jq '.nodes[0].egress.gates[0].when = {"field": "x"}' "$WORK/phase.json" > "$WORK/phase-when.json"
+check "a when clause without equals is rejected" 1 "$WORK/phase-when.json"
+
+jq '.nodes[0].egress.extra = 1' "$WORK/phase.json" > "$WORK/phase-extra.json"
+check "an unknown egress key is rejected" 1 "$WORK/phase-extra.json"
+
+jq '.nodes[0].egress.misplaced = "docs/SPEC.md"' "$WORK/phase.json" > "$WORK/phase-misplaced.json"
+check "misplaced is a file name, not a path" 1 "$WORK/phase-misplaced.json"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

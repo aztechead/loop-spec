@@ -9,6 +9,15 @@
 # required file is the previous phase's egress failure surfaced at the door instead of
 # three tool calls later. phase-exit.sh is the matching egress.
 #
+# What a phase reads is DATA on its graph node: the `ingress` block of the phase's agent
+# node in graph/cycle.graph.json (schema `phaseIngress`, contract
+# skills/shared/graph-contract.md, Phase ingress and egress). This script is the loop
+# over that block: `fields` is the packet, `required` files are FLAGged when absent
+# (the flag names the phase that should have written each), `optional` files are listed
+# only when present. Placeholders resolve here: {docs} {featureDir} {root} {slug} {spec}
+# {tasks} {f:<dotted.key>}; lib/graph/validate.sh refuses any other. A graph copy is
+# selected with LOOP_SPEC_GRAPH (tests/lib/graph-phases.test.sh).
+#
 # Usage:
 #   phase-entry.sh <phase> --feature-dir DIR      (a phase id of lib/graph/phases.sh list)
 #
@@ -22,26 +31,7 @@
 #   FLAG [ingress] <path> missing: <which phase should have written it>
 #   phase-entry: ok (<phase>)          exit 0
 #   phase-entry: <n> flag(s) (<phase>) exit 1
-# Exit 2 is a bad invocation.
-#
-# Ingress per phase (required files are FLAGged when absent; optional ones are listed
-# only when present):
-#   spec      fields slug feature_title execStyle greenfield autonomous artifacts.spec
-#             optional spec-draft.md, spec-interview-transcript.md
-#   discuss   fields slug feature_title execStyle autonomous iterate.feedback
-#             currentGate; requires SPEC.md
-#   plan      fields slug greenfield workspace iterate.feedback currentGate artifacts
-#             models.planner models.challenger; requires SPEC.md; optional PATTERNS.md,
-#             EVIDENCE.md
-#   execute   fields slug branch baseSha commands workspace executionRootMode
-#             worktreePath greenfield artifacts.tasks pendingRemediationTasks
-#             models.implementer models.specComplianceReviewer; requires tasks.json,
-#             PLAN.md; optional PATTERNS.md
-#   verify    fields slug baseSha branch commands workspace artifacts.spec artifacts.plan
-#             models.verifier models.codeReviewer; requires SPEC.md, PLAN.md
-#   iterate   fields slug feature_title execStyle autonomous backlogEntryId iterate
-#             artifacts models.iterateJudge; requires SPEC.md, VERIFICATION.md
-#   deliver   fields slug branch baseBranch workspace artifacts; optional delivery.json
+# Exit 2 is a bad invocation, including a phase whose node declares no ingress block.
 set -euo pipefail
 
 phase="${1:-}"; shift || true
@@ -52,20 +42,31 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GRAPH="${LOOP_SPEC_GRAPH:-$SCRIPT_DIR/../graph/cycle.graph.json}"
 bash "$SCRIPT_DIR/graph/phases.sh" validate "$phase" 2>/dev/null \
   || { echo "usage: phase-entry.sh <phase> --feature-dir DIR ($(bash "$SCRIPT_DIR/graph/phases.sh" validate "$phase" 2>&1))" >&2; exit 2; }
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] \
   || { echo "phase-entry: --feature-dir must hold a feature.json" >&2; exit 2; }
+node="$(jq -c --arg p "$phase" '.nodes[] | select(.id == $p) | .ingress // empty' "$GRAPH" 2>/dev/null || true)"
+[[ -n "$node" ]] \
+  || { echo "phase-entry: the '$phase' node of $GRAPH declares no ingress block; nothing opens it here" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
+fget() { jq -r "$1" "$fj"; }
 
-slug="$(jq -r '.slug' "$fj")"
+slug="$(fget '.slug')"
 cp "$fj" "$feature_dir/.phase-entry.json"
-ws_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end' "$fj")"
+ws_root="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else "" end')"
 if [[ -n "$ws_root" ]]; then root="$ws_root"; else root="$(git -C "$feature_dir" rev-parse --show-toplevel)"; fi
 docs="$root/docs/loop-spec/features/$slug"
+spec="$(fget '.artifacts.spec // ""')"; [[ -n "$spec" ]] || spec="$docs/SPEC.md"
+tasks="$(fget '.artifacts.tasks // ""')"; [[ -n "$tasks" ]] || tasks="$feature_dir/tasks.json"
 flags=0
 
+# {docs} resolves absolute,
+# so a `read=` line opens from any cwd.
+. "$SCRIPT_DIR/phase-placeholders.sh"
+resolve() { loop_spec_resolve_phase_path "$1"; }
 # fields KEY...: the packet is exactly these keys, dotted paths allowed, absent ones null.
 fields() {
   local filter="" k
@@ -76,45 +77,17 @@ fields() {
 required() { if [[ -f "$2" ]]; then echo "read=$2"; else echo "FLAG [ingress] $2 missing: $1 did not write it"; flags=$((flags + 1)); fi; }
 optional() { [[ -f "$1" ]] && echo "read=$1" || true; }
 
-case "$phase" in
-  spec)
-    fields slug feature_title execStyle greenfield autonomous artifacts.spec
-    optional "$feature_dir/spec-draft.md"
-    optional "$feature_dir/spec-interview-transcript.md"
-    ;;
-  discuss)
-    fields slug feature_title execStyle autonomous iterate.feedback currentGate
-    required SPEC "$docs/SPEC.md"
-    ;;
-  plan)
-    fields slug greenfield workspace iterate.feedback currentGate artifacts models.planner models.challenger
-    required SPEC "$docs/SPEC.md"
-    optional "$docs/PATTERNS.md"
-    optional "$docs/EVIDENCE.md"
-    ;;
-  execute)
-    fields slug branch baseSha commands workspace executionRootMode worktreePath greenfield \
-      artifacts.tasks pendingRemediationTasks models.implementer models.specComplianceReviewer
-    sidecar="$(jq -r '.artifacts.tasks // ""' "$fj")"
-    required PLAN "${sidecar:-$feature_dir/tasks.json}"
-    required PLAN "$docs/PLAN.md"
-    optional "$docs/PATTERNS.md"
-    ;;
-  verify)
-    fields slug baseSha branch commands workspace artifacts.spec artifacts.plan models.verifier models.codeReviewer
-    required SPEC "$docs/SPEC.md"
-    required PLAN "$docs/PLAN.md"
-    ;;
-  iterate)
-    fields slug feature_title execStyle autonomous backlogEntryId iterate artifacts models.iterateJudge
-    required SPEC "$docs/SPEC.md"
-    required VERIFY "$docs/VERIFICATION.md"
-    ;;
-  deliver)
-    fields slug branch baseBranch workspace artifacts
-    optional "$feature_dir/delivery.json"
-    ;;
-esac
+keys=()
+while IFS= read -r k; do keys+=("$k"); done < <(jq -r '.fields[]' <<<"$node")
+fields ${keys[@]+"${keys[@]}"}
+while IFS=$'\t' read -r writer path; do
+  [[ -n "$writer" ]] || continue
+  required "$writer" "$(resolve "$path")"
+done < <(jq -r '.required[]? | [.writer, .path] | @tsv' <<<"$node")
+while IFS= read -r path; do
+  [[ -n "$path" ]] || continue
+  optional "$(resolve "$path")"
+done < <(jq -r '.optional[]?' <<<"$node")
 
 if (( flags == 0 )); then
   echo "phase-entry: ok ($phase)"

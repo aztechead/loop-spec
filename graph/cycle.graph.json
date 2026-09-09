@@ -17,7 +17,54 @@
         "warnings"
       ],
       "effort": "system2",
-      "body": "skills/spec/SKILL.md"
+      "body": "skills/spec/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "feature_title",
+          "execStyle",
+          "greenfield",
+          "autonomous",
+          "artifacts.spec"
+        ],
+        "optional": [
+          "{featureDir}/spec-draft.md",
+          "{featureDir}/spec-interview-transcript.md"
+        ]
+      },
+      "egress": {
+        "misplaced": "SPEC.md",
+        "gates": [
+          {
+            "label": "artifact-lint",
+            "body": "lib/artifact-lint.sh",
+            "args": [
+              "spec",
+              "{docs}/SPEC.md"
+            ]
+          }
+        ],
+        "oracle": true,
+        "writes": [
+          "artifacts.spec",
+          "artifacts.specInterview"
+        ],
+        "artifacts": {
+          "spec": "{docs}/SPEC.md"
+        },
+        "artifactsIfPresent": {
+          "specInterview": "{featureDir}/spec-interview-transcript.md"
+        },
+        "commit": {
+          "message": "spec: {slug}",
+          "paths": [
+            "{docs}/SPEC.md",
+            "{docs}/EVIDENCE.md",
+            "{featureDir}/spec-interview-transcript.md"
+          ]
+        },
+        "close": "always"
+      }
     },
     {
       "id": "human.after-spec",
@@ -55,7 +102,60 @@
         "warnings"
       ],
       "effort": "system2",
-      "body": "skills/discuss/SKILL.md"
+      "body": "skills/discuss/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "feature_title",
+          "execStyle",
+          "autonomous",
+          "iterate.feedback",
+          "currentGate"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          }
+        ]
+      },
+      "egress": {
+        "misplaced": "SPEC.md",
+        "gates": [
+          {
+            "label": "artifact-lint",
+            "body": "lib/artifact-lint.sh",
+            "args": [
+              "spec",
+              "{docs}/SPEC.md"
+            ]
+          },
+          {
+            "label": "grounding-lint",
+            "body": "lib/grounding-lint.sh",
+            "args": [
+              "{docs}/SPEC.md"
+            ]
+          }
+        ],
+        "oracle": true,
+        "writes": [
+          "artifacts.spec",
+          "artifacts.patternsPrefetch"
+        ],
+        "artifacts": {
+          "spec": "{docs}/SPEC.md"
+        },
+        "commit": {
+          "message": "spec: {slug}",
+          "paths": [
+            "{docs}/SPEC.md",
+            "{docs}/EVIDENCE.md"
+          ]
+        },
+        "checkpoint": "post-discuss",
+        "close": "always"
+      }
     },
     {
       "id": "discuss.critique.gate",
@@ -122,7 +222,89 @@
         "warnings"
       ],
       "effort": "system2",
-      "body": "skills/plan/SKILL.md"
+      "body": "skills/plan/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "greenfield",
+          "workspace",
+          "iterate.feedback",
+          "currentGate",
+          "artifacts",
+          "models.planner",
+          "models.challenger"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          }
+        ],
+        "optional": [
+          "{docs}/PATTERNS.md",
+          "{docs}/EVIDENCE.md"
+        ]
+      },
+      "egress": {
+        "misplaced": "PLAN.md",
+        "gates": [
+          {
+            "label": "plan",
+            "body": "lib/plan-exit-gate.sh",
+            "args": [
+              "{featureDir}"
+            ]
+          },
+          {
+            "label": "decision-coverage",
+            "body": "lib/decision-coverage.sh",
+            "args": [
+              "{spec}",
+              "{docs}/PLAN.md"
+            ]
+          },
+          {
+            "label": "criteria-coverage",
+            "body": "lib/criteria-coverage.sh",
+            "args": [
+              "{spec}",
+              "{docs}/PLAN.md"
+            ]
+          },
+          {
+            "label": "grounding-lint",
+            "body": "lib/grounding-lint.sh",
+            "args": [
+              "{docs}/PLAN.md"
+            ]
+          }
+        ],
+        "writes": [
+          "artifacts.patternsPrefetch",
+          "artifacts.patternsSource",
+          "artifacts.patterns",
+          "artifacts.plan",
+          "artifacts.tasks"
+        ],
+        "artifacts": {
+          "plan": "{docs}/PLAN.md",
+          "patterns": "{docs}/PATTERNS.md",
+          "tasks": "{featureDir}/tasks.json"
+        },
+        "artifactsDefault": {
+          "patternsSource": "pattern-mapper"
+        },
+        "commit": {
+          "message": "plan: {slug}",
+          "paths": [
+            "{docs}/PLAN.md",
+            "{docs}/PATTERNS.md",
+            "{docs}/EVIDENCE.md"
+          ]
+        },
+        "checkpoint": "post-plan",
+        "close": "always"
+      }
     },
     {
       "id": "plan.critique.gate",
@@ -195,7 +377,73 @@
       ],
       "effort": "system2",
       "body": "skills/execute/SKILL.md",
-      "routeDefault": "human.after-execute"
+      "routeDefault": "human.after-execute",
+      "ingress": {
+        "fields": [
+          "slug",
+          "branch",
+          "baseSha",
+          "commands",
+          "workspace",
+          "executionRootMode",
+          "worktreePath",
+          "greenfield",
+          "artifacts.tasks",
+          "pendingRemediationTasks",
+          "models.implementer",
+          "models.specComplianceReviewer"
+        ],
+        "required": [
+          {
+            "writer": "PLAN",
+            "path": "{tasks}"
+          },
+          {
+            "writer": "PLAN",
+            "path": "{docs}/PLAN.md"
+          }
+        ],
+        "optional": [
+          "{docs}/PATTERNS.md"
+        ]
+      },
+      "egress": {
+        "gates": [
+          {
+            "label": "execute",
+            "body": "lib/execute-exit-gate.sh",
+            "args": [
+              "check",
+              "{featureDir}"
+            ]
+          }
+        ],
+        "writes": [
+          "mergeQueue",
+          "pendingRemediationTasks",
+          "commands",
+          "greenfield",
+          "artifacts.tasks",
+          "artifacts.execution",
+          "workspace"
+        ],
+        "onOk": [
+          {
+            "label": "commit-strategy",
+            "body": "lib/execute-exit-gate.sh",
+            "args": [
+              "finish",
+              "{featureDir}"
+            ]
+          }
+        ],
+        "checkpoint": "post-execute",
+        "set": {
+          "mergeQueue": [],
+          "pendingRemediationTasks": []
+        },
+        "close": "always"
+      }
     },
     {
       "id": "execute.worker",
@@ -265,7 +513,86 @@
         "warnings"
       ],
       "effort": "system2",
-      "body": "skills/verify/SKILL.md"
+      "body": "skills/verify/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "baseSha",
+          "branch",
+          "commands",
+          "workspace",
+          "artifacts.spec",
+          "artifacts.plan",
+          "models.verifier",
+          "models.codeReviewer"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          },
+          {
+            "writer": "PLAN",
+            "path": "{docs}/PLAN.md"
+          }
+        ]
+      },
+      "egress": {
+        "misplaced": "VERIFICATION.md",
+        "gates": [
+          {
+            "label": "artifact-lint",
+            "body": "lib/artifact-lint.sh",
+            "args": [
+              "verification",
+              "{docs}/VERIFICATION.md"
+            ]
+          },
+          {
+            "label": "verification-grounding",
+            "body": "lib/verification-grounding-lint.sh",
+            "args": [
+              "{docs}/VERIFICATION.md",
+              "--repo",
+              "{root}",
+              "--spec",
+              "{spec}"
+            ]
+          },
+          {
+            "label": "acceptance-table",
+            "body": "lib/converged-floor.sh",
+            "args": [
+              "--shape",
+              "{spec}",
+              "{docs}/VERIFICATION.md"
+            ]
+          }
+        ],
+        "writes": [
+          "pendingRemediationTasks",
+          "artifacts.verification",
+          "artifacts.reviewOrder",
+          "verificationBaseline",
+          "workspace"
+        ],
+        "artifacts": {
+          "verification": "{docs}/VERIFICATION.md"
+        },
+        "artifactsIfPresent": {
+          "reviewOrder": "{docs}/REVIEW-ORDER.md"
+        },
+        "commit": {
+          "message": "verify: {slug}",
+          "paths": [
+            "{docs}/VERIFICATION.md",
+            "{docs}/REVIEW-ORDER.md",
+            "{docs}/EVIDENCE.md"
+          ]
+        },
+        "checkpoint": "post-verify",
+        "close": "always"
+      }
     },
     {
       "id": "verify.placeholder.gate",
@@ -416,7 +743,68 @@
         "pendingRemediationTasks"
       ],
       "effort": "system2",
-      "body": "skills/iterate/SKILL.md"
+      "body": "skills/iterate/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "feature_title",
+          "execStyle",
+          "autonomous",
+          "backlogEntryId",
+          "iterate",
+          "artifacts",
+          "models.iterateJudge"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          },
+          {
+            "writer": "VERIFY",
+            "path": "{docs}/VERIFICATION.md"
+          }
+        ]
+      },
+      "egress": {
+        "required": [
+          {
+            "label": "iteration",
+            "path": "{docs}/ITERATION.md"
+          }
+        ],
+        "gates": [
+          {
+            "label": "converged-floor",
+            "body": "lib/converged-floor.sh",
+            "args": [
+              "{spec}",
+              "{docs}/VERIFICATION.md"
+            ],
+            "when": {
+              "field": "iterate.lastVerdict.converged",
+              "equals": "true"
+            }
+          }
+        ],
+        "writes": [
+          "iterate",
+          "artifacts.iteration",
+          "pendingRemediationTasks",
+          "backlogEntryId"
+        ],
+        "artifacts": {
+          "iteration": "{docs}/ITERATION.md"
+        },
+        "commit": {
+          "message": "iterate: {slug} iteration {f:iterate.used}",
+          "paths": [
+            "{docs}/ITERATION.md",
+            ".loop-spec/BACKLOG.md"
+          ]
+        },
+        "close": "terminal"
+      }
     },
     {
       "id": "human.iterate-spec-approval",
@@ -457,7 +845,19 @@
       ],
       "effort": "system2",
       "authorizesDelivery": true,
-      "body": "skills/deliver/SKILL.md"
+      "body": "skills/deliver/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "branch",
+          "baseBranch",
+          "workspace",
+          "artifacts"
+        ],
+        "optional": [
+          "{featureDir}/delivery.json"
+        ]
+      }
     },
     {
       "id": "completed",

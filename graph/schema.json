@@ -91,6 +91,148 @@
         }
       }
     },
+    "phasePath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A path or argument phase-entry.sh / phase-exit.sh resolves at call time. Placeholders: {docs} (the feature's docs directory, docs/loop-spec/features/<slug>), {featureDir}, {root} (the repository root, or the workspace root in workspace mode), {slug}, {spec} (artifacts.spec or {docs}/SPEC.md), {tasks} (artifacts.tasks or {featureDir}/tasks.json), {f:<dotted.key>} (that feature.json value). No other placeholder is legal."
+    },
+    "phaseIngress": {
+      "type": "object",
+      "required": ["fields"],
+      "additionalProperties": false,
+      "description": "What lib/phase-entry.sh lists when the phase opens: the feature.json keys its packet carries and the files it reads. Only a phase agent node (body skills/<id>/SKILL.md) may declare it.",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "feature.json keys (dotted paths allowed) the packet carries; absent ones read null"
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["writer", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "writer": { "type": "string", "minLength": 1, "description": "The phase that should have written the file, named in the FLAG when it is absent" },
+              "path": { "$ref": "#/definitions/phasePath" }
+            }
+          }
+        },
+        "optional": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/phasePath" },
+          "description": "Files listed only when present"
+        }
+      }
+    },
+    "phaseGate": {
+      "type": "object",
+      "required": ["label", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "description": "The [label] every relayed finding carries" },
+        "body": { "type": "string", "minLength": 1, "description": "Repo-relative .sh script, the same shape as a gate node body" },
+        "args": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/phasePath" }
+        },
+        "when": {
+          "type": "object",
+          "required": ["field", "equals"],
+          "additionalProperties": false,
+          "description": "Run only when this feature.json key (dotted path) reads as this string; absent means always",
+          "properties": {
+            "field": { "type": "string", "minLength": 1 },
+            "equals": { "type": "string" }
+          }
+        }
+      }
+    },
+    "phaseEgress": {
+      "type": "object",
+      "required": ["writes"],
+      "additionalProperties": false,
+      "description": "What lib/phase-exit.sh checks and records when the phase closes, in the order listed here. Only a phase agent node may declare it; a phase node without one has no exit gate (DELIVER: its terminal states are observation-only).",
+      "properties": {
+        "misplaced": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Artifact file name under {docs} to look for in the repository's other checkouts when it is absent here"
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "label": { "type": "string", "minLength": 1 },
+              "path": { "$ref": "#/definitions/phasePath" }
+            }
+          },
+          "description": "Files whose absence is a FLAG [label] <path> missing"
+        },
+        "gates": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/phaseGate" },
+          "description": "Deterministic checks, run in order; a non-zero exit relays the body's findings as FLAG [label] lines"
+        },
+        "oracle": {
+          "type": "boolean",
+          "description": "When a supervisor is the run's oracle, the phase must have put a question to it"
+        },
+        "writes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "feature.json paths (by prefix) the phase may change between entry and exit; the egress guard names any other"
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/phasePath" },
+          "description": "artifacts.<key> pointers recorded on ok"
+        },
+        "artifactsIfPresent": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/phasePath" },
+          "description": "artifacts.<key> pointers recorded on ok only when the file exists"
+        },
+        "artifactsDefault": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "artifacts.<key> values recorded on ok only when the key is still null"
+        },
+        "onOk": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/phaseGate" },
+          "description": "Scripts run after every gate passed and before the commit (EXECUTE's at-end squash); a non-zero exit is a FLAG"
+        },
+        "commit": {
+          "type": "object",
+          "required": ["message", "paths"],
+          "additionalProperties": false,
+          "properties": {
+            "message": { "$ref": "#/definitions/phasePath" },
+            "paths": { "type": "array", "items": { "$ref": "#/definitions/phasePath" } }
+          },
+          "description": "Single-repo commit of the listed paths that exist; workspace mode keeps them local"
+        },
+        "checkpoint": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Checkpoint tag name recorded on ok (lib/checkpoint.sh tag)"
+        },
+        "set": {
+          "type": "object",
+          "description": "feature.json keys reset on ok, each to the JSON value given"
+        },
+        "close": {
+          "type": "string",
+          "enum": ["always", "terminal"],
+          "description": "always: ok appends the phase to completedPhases and clears the team; terminal: only with --terminal (ITERATE's rewind pass leaves the phase open)"
+        }
+      }
+    },
     "node": {
       "type": "object",
       "required": ["id", "kind", "reads", "writes", "effort"],
@@ -131,6 +273,14 @@
         "admit": {
           "$ref": "#/definitions/routeCondition",
           "description": "Human-node pause gate (contract sec 4): admitted on entry writes a checkpoint and pauses; not admitted (including unresolved) skips the node. Only a human node may declare it."
+        },
+        "ingress": {
+          "$ref": "#/definitions/phaseIngress",
+          "description": "The phase's entry packet, read by lib/phase-entry.sh"
+        },
+        "egress": {
+          "$ref": "#/definitions/phaseEgress",
+          "description": "The phase's exit gate, run by lib/phase-exit.sh"
         },
         "routeDefault": {
           "type": "string",

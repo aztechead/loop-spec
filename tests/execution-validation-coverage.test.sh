@@ -70,7 +70,7 @@ check_contains "subagent protocol persists mark-done" \
 check_contains "inline protocol persists mark-done" \
   skills/shared/execute-rungs.md 'mark-done'
 check_contains "team protocol persists mark-done" \
-  lib/phase-exit.sh 'task-progress remaining'
+  lib/execute-exit-gate.sh 'task-progress remaining'
 check_contains "workflow DAG persists mark-done" \
   lib/workflows/execute-dag.js 'task-progress.sh'
 check_contains "workflow DAG seeds doneTaskIds" \

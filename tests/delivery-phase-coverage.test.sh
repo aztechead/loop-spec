@@ -44,14 +44,14 @@ present "empty ITERATE summary still publishes" lib/cycle-driver.sh "Cycle compl
 present "named open PRs are adopted" lib/cycle-driver.sh "adopt-pr resolve"
 present "micro adopts a named open PR" skills/micro/SKILL.md "adopt-pr.sh"
 present "cycle exits worktree only after delivery" skills/cycle/SKILL.md "keep the worktree until"
-present "fresh rewind set is explicit" lib/cycle-driver.sh "execute|plan|spec|discuss"
+present "fresh rewind set is the graph order" lib/cycle-driver.sh "A rewind is a next phase the graph lists before this one"
 present "blocked delivery cannot spin" lib/cycle-driver.sh "the graph must not re-enter DELIVER"
 present "single-repo base is fetched" lib/cycle-driver.sh 'fetch --quiet origin "$base_branch"'
 present "workspace cleanliness checks output" lib/cycle-driver.sh '== "clean" ]] || dirty+='
 present "workspace bases are fetched" lib/cycle-driver.sh 'fetch --quiet origin "$bb"'
 present "candidate finalization is deterministic" lib/deliver.sh 'finalize-delivery-candidate.sh'
 present "candidate finalizer scopes digest" lib/finalize-delivery-candidate.sh 'docs/loop-spec/telemetry/runs/$slug.json'
-present "terminal iteration evidence is committed" lib/phase-exit.sh 'commit_paths "iterate: $slug'
+present "terminal iteration evidence is committed" graph/cycle.graph.json '"message": "iterate: {slug} iteration'
 present "terminal backlog commit is path scoped" lib/phase-exit.sh 'git diff --cached --quiet -- "${existing[@]}"'
 present "VERIFY commit is path scoped" lib/phase-exit.sh 'git commit -q -m "$msg" -- "${existing[@]}"'
 present "workspace VERIFY avoids parent commit" lib/phase-exit.sh 'workspace root is not a delivery target'

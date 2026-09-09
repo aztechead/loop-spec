@@ -22,7 +22,7 @@ check "suffix: uppercased id" "DELIVER" "$(bash "$LIB" suffix deliver)"
 check "bad invocation exits 2" "2" "$(bash "$LIB" bogus >/dev/null 2>&1; echo $?)"
 check "unreadable graph exits 2" "2" "$(bash "$LIB" list --graph "$WORK/none.json" >/dev/null 2>&1; echo $?)"
 
-# Adding a phase is one graph edit: every consumer reads the copy through LOOP_SPEC_GRAPH.
+# Every consumer reads a graph copy through LOOP_SPEC_GRAPH, so one graph edit adds a phase.
 jq '.nodes += [{"id":"triage","label":"Triage the report","kind":"agent","reads":["slug"],"writes":["artifacts","currentPhase"],"effort":"system1","body":"skills/triage/SKILL.md"}]' \
   "$ROOT/graph/cycle.graph.json" > "$WORK/graph.json"
 check "a graph copy with a new phase lists it" "1" "$(bash "$LIB" list --graph "$WORK/graph.json" | grep -cx triage)"
@@ -37,5 +37,52 @@ check "the hooks' alternation carries it" "1" \
   "$(LOOP_SPEC_GRAPH="$WORK/graph.json" bash "$LIB" regex | grep -c '|triage')"
 check "the engine keeps no literal phase list (tests/lib/graph-run.test.sh proves the derived one)" "0" \
   "$(grep -c '"spec", "discuss", "plan"' "$ROOT/lib/graph/engine.py")"
+
+# The phase's door and exit are data on its node: phase-entry.sh and phase-exit.sh run
+# the new phase from the copy with nothing else edited (orchestrator-port-plan.md, WP2).
+jq '(.nodes[] | select(.id == "triage")) += {
+      "ingress": {"fields": ["slug", "execStyle"], "required": [{"writer": "SPEC", "path": "{docs}/SPEC.md"}],
+                  "optional": ["{featureDir}/triage-notes.md"]},
+      "egress": {"required": [{"label": "triage", "path": "{docs}/TRIAGE.md"}],
+                 "gates": [{"label": "grounding-lint", "body": "lib/grounding-lint.sh", "args": ["{docs}/TRIAGE.md"]},
+                           {"label": "never", "body": "lib/does-not-run.sh", "args": [], "when": {"field": "execStyle", "equals": "nope"}}],
+                 "writes": ["artifacts.triage"],
+                 "artifacts": {"triage": "{docs}/TRIAGE.md"},
+                 "commit": {"message": "triage: {slug} in {f:execStyle} style", "paths": ["{docs}/TRIAGE.md"]},
+                 "checkpoint": "post-triage", "close": "always"}}' "$WORK/graph.json" > "$WORK/graph2.json"
+REPO="$WORK/repo"; mkdir -p "$REPO"
+git -C "$REPO" init -q -b main
+git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+export LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0 LOOP_SPEC_CHECKPOINT_PR=0
+( cd "$REPO" && bash "$ROOT/lib/cycle-driver.sh" start --dir "$REPO" -- my feature >/dev/null 2>&1
+  bash "$ROOT/lib/cycle-driver.sh" init --dir "$REPO" --slug my-feature --title "my feature" \
+    --style auto --profile standard --autonomous 0 >/dev/null 2>&1 )
+FD="$REPO/.loop-spec/features/my-feature"; DOCS="$REPO/docs/loop-spec/features/my-feature"; mkdir -p "$DOCS"
+ENTRY="$ROOT/lib/phase-entry.sh"; EXIT_="$ROOT/lib/phase-exit.sh"
+
+check "phase-entry refuses the phase against the shipped graph" "2" "$(bash "$ENTRY" triage --feature-dir "$FD" >/dev/null 2>&1; echo $?)"
+out="$(LOOP_SPEC_GRAPH="$WORK/graph2.json" bash "$ENTRY" triage --feature-dir "$FD" 2>&1)"; ec=$?
+check "phase-entry: the copy's required file is flagged with its writer" "1" "$(grep -c "^FLAG \[ingress\] $DOCS/SPEC.md missing: SPEC did not write it" <<<"$out")"
+check "phase-entry: exit 1 on the missing file" "1" "$ec"
+printf '# spec\n' > "$DOCS/SPEC.md"; printf 'notes\n' > "$FD/triage-notes.md"
+out="$(LOOP_SPEC_GRAPH="$WORK/graph2.json" bash "$ENTRY" triage --feature-dir "$FD" 2>&1)"; ec=$?
+check "phase-entry: the copy's phase opens clean" "phase-entry: ok (triage)" "$(tail -1 <<<"$out")"
+check "phase-entry: the packet is the node's fields" '{"slug":"my-feature","execStyle":"auto"}' "$(grep '^fields=' <<<"$out" | sed 's/^fields=//')"
+check "phase-entry: required and optional files are the reading list" "2" "$(grep -c '^read=' <<<"$out")"
+
+check "phase-exit refuses the phase against the shipped graph" "2" "$(bash "$EXIT_" triage --feature-dir "$FD" >/dev/null 2>&1; echo $?)"
+out="$(LOOP_SPEC_GRAPH="$WORK/graph2.json" bash "$EXIT_" triage --feature-dir "$FD" 2>&1)"; ec=$?
+check "phase-exit: the copy's required artifact is flagged under its label" "1" "$(grep -c "^FLAG \[triage\] docs/loop-spec/features/my-feature/TRIAGE.md missing" <<<"$out")"
+check "phase-exit: a gate on the absent artifact relays under its label" "1" "$(grep -c '^FLAG \[grounding-lint\] ' <<<"$out" | awk '{print ($1 > 0)}')"
+check "phase-exit: a gate whose when clause does not match never runs" "0" "$(grep -c 'does-not-run' <<<"$out")"
+printf '# Triage\n\n## Grounding\n\n- none\n' > "$DOCS/TRIAGE.md"
+out="$(LOOP_SPEC_GRAPH="$WORK/graph2.json" bash "$EXIT_" triage --feature-dir "$FD" 2>&1)"; ec=$?
+check "phase-exit: the copy's phase closes clean" "phase-exit: ok (triage)" "$(tail -1 <<<"$out")"
+check "phase-exit: the artifact pointer is the node's" "docs/loop-spec/features/my-feature/TRIAGE.md" "$(jq -r '.artifacts.triage' "$FD/feature.json")"
+check "phase-exit: the commit message resolves {slug} and {f:key}" "1" "$(git -C "$REPO" log --oneline | grep -c 'triage: my-feature in auto style')"
+check "phase-exit: the checkpoint is tagged" "1" "$(git -C "$REPO" tag | grep -c 'post-triage')"
+check "phase-exit: the phase is closed" "triage" "$(jq -r '.completedPhases[-1]' "$FD/feature.json")"
+check "phase-exit: the egress snapshot is consumed" "missing" "$([[ -f "$FD/.phase-entry.json" ]] && echo present || echo missing)"
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
