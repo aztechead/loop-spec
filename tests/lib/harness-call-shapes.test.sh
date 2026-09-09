@@ -107,11 +107,26 @@ grep -qF 'in-process teammate' skills/shared/dispatch.md \
   && v=1 || v=0
 check "contract docs record named implicit-team model inheritance" "$v"
 
-# 8) No run_in_background anywhere in skills/ agents/ *.md
-#    (dispatch.md is excluded — it documents the portability rule).
-bad=$(grep -rn 'run_in_background' skills agents --include='*.md' 2>/dev/null \
+# 8) Every one-shot Agent({ template carries run_in_background: false. Claude Code
+#    launches Agents in the background by default; a background launch answers with a
+#    stub, and a lead that read the stub as an empty report dispatched the SPEC pruner
+#    twice. Named teammates (an Agent({name}) spawn) join on TeammateIdle instead.
+bad=""
+for f in $CORPUS; do
+  while IFS=: read -r ln _; do
+    [[ -z "$ln" ]] && continue
+    window=$(sed -n "${ln},$((ln+12))p" "$f")
+    echo "$window" | grep -q 'prompt' || continue
+    echo "$window" | grep -qE 'name[,:]' && continue
+    echo "$window" | grep -q 'run_in_background: false' || bad="$bad $f:$ln"
+  done < <(grep -n 'Agent({' "$f" 2>/dev/null)
+done
+check "one-shot Agent templates carry run_in_background: false" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+bad=$(grep -rn 'run_in_background: true' skills agents --include='*.md' 2>/dev/null \
         | grep -v 'shared/dispatch.md' | head -5 || true)
-check "no run_in_background in skill/agent corpus" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+check "no run_in_background: true in skill/agent corpus" "$([[ -z "$bad" ]] && echo 1 || echo 0)" "$bad"
+grep -qF 'never re-dispatch on a stub' skills/shared/dispatch.md && v=1 || v=0
+check "contract doc says a launch stub is not a report" "$v"
 
 # 8b) Waiting on a background Agent is dispatch-then-stop, never a fake question.
 #     Live /cycle invented AskUserQuestion({header: wait, question: "not a real

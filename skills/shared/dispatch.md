@@ -13,8 +13,8 @@ apply that file on top, never a from-memory translation.
 | Mode | When | Spawn a role | Rework a role | Phase end |
 |---|---|---|---|---|
 | `explicit` | Claude Code < 2.1.178 with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` | `TeamCreate({name, teammates:[{name, subagent_type}]})` then `SendMessage` the work prompt | `SendMessage` to the same teammate | `TeamDelete({name})` |
-| `implicit` | Claude Code >= 2.1.178 with the flag | probe `lib/implicit-team-model.sh spawn-kind --teams-mode implicit --selector <feature.models.role>`: `named` → `Agent({name, description, subagent_type, prompt})` with NO `model` key; `oneshot` → nameless `Agent({description, subagent_type, model, prompt})` | `named`: `SendMessage`; `oneshot`: a fresh nameless Agent with the prior round inlined | no call; the driver clears team state |
-| `none` | flag unset, or any non-Claude harness | one-shot `Agent({description, subagent_type, prompt})` with the same role and prompt template | a fresh Agent with the prior round (from `gate-logs/`) inlined | nothing |
+| `implicit` | Claude Code >= 2.1.178 with the flag | probe `lib/implicit-team-model.sh spawn-kind --teams-mode implicit --selector <feature.models.role>`: `named` → `Agent({name, description, subagent_type, prompt})` with NO `model` key; `oneshot` → nameless `Agent({description, subagent_type, run_in_background: false, model, prompt})` | `named`: `SendMessage`; `oneshot`: a fresh nameless Agent with the prior round inlined | no call; the driver clears team state |
+| `none` | flag unset, or any non-Claude harness | one-shot `Agent({description, subagent_type, run_in_background: false, prompt})` with the same role and prompt template | a fresh Agent with the prior round (from `gate-logs/`) inlined | nothing |
 
 Artifacts, gates, and result shapes are identical in every mode; a feature can resume
 under a different mode. Teams are an accelerator, never a prerequisite. A named
@@ -45,6 +45,7 @@ Agent({
   description: "<3-5 word task label>",   // REQUIRED
   prompt: "<the task>",                    // REQUIRED
   subagent_type: "loop-spec:<role>",       // optional; omit = general-purpose
+  run_in_background: false,                // REQUIRED on every one-shot Agent; see Waiting
   model: "sonnet" | "opus" | "haiku" | "fable",  // optional; ALIAS ENUM — "inherit" and literal IDs REJECTED
   name: "<teammate-name>",                 // optional; named = persistent in-process teammate, SendMessage-addressable
   mode: "acceptEdits" | ... | "plan",      // deprecated and ignored since CC 2.1.212
@@ -64,8 +65,9 @@ Skill({ skill: "loop-spec:<name>", args: "..." })
 `model` never carries `inherit` or a full model ID; inheritance is expressed by
 omitting the key (`model-matrix.md`). A named `Agent({name})` is an in-process teammate
 that inherits the session model and ignores `model` (that is why `lib/implicit-team-model.sh`
-routes an alias to a nameless one-shot). `run_in_background`, `team_name`, and `mode`
-are never emitted. "Other" is added to `AskUserQuestion` automatically; a question that
+routes an alias to a nameless one-shot). Every one-shot (nameless) Agent carries
+`run_in_background: false`; `run_in_background: true`, `team_name`, and `mode` are
+never emitted. "Other" is added to `AskUserQuestion` automatically; a question that
 says it is "not a real question", or carries dummy options, is forbidden.
 
 Peer harness surfaces (full tables in each adaptation contract):
@@ -78,12 +80,24 @@ Peer harness surfaces (full tables in each adaptation contract):
 - **Codex harness**: `Agent` → `spawn_agent`; `AskUserQuestion` → `request_user_input`,
   which blocks when a human is attached, so apply the HITL rule before calling
   (`codex-harness.md`).
+- `run_in_background` has no peer equivalent: `task`, `spawn_agent`, and
+  `dispatch_subagent` block until the child returns, and each adaptation contract
+  drops the key.
 
 ## Waiting
 
-Dispatch, then stop. The harness resumes the turn when an Agent returns or a teammate
-goes idle (`TeammateIdle`); adjudicate then. Do independent lead work while a wave runs;
-stop only at the join. Never AskUserQuestion as a wait, keep-alive, or placeholder
+A one-shot Agent runs in the foreground: `run_in_background: false` on the call, so the
+tool result IS the subagent's report and the step reads it there. Claude Code now
+launches an Agent in the background by default, and a background launch answers with a
+launch stub ("Async agent launched"), not the report; the report arrives later as a
+task notification. A lead that read the stub as an empty report dispatched the SPEC
+pruner twice. A stub therefore means the key was dropped: end the turn and wait for
+the notification; never re-dispatch on a stub. Independent lead work belongs before
+the Agent call, not in the wait.
+
+Named teammates (explicit and implicit team modes) are the exception: send the work,
+then stop. The harness resumes the turn when a teammate goes idle (`TeammateIdle`);
+adjudicate then. Do independent lead work while a wave runs; stop only at the join. Never AskUserQuestion as a wait, keep-alive, or placeholder
 (`hooks/team/placeholder-question-guard.sh` blocks it on Claude Code).
 Never `sleep` to join a background Agent, and never poll. A teammate's plain-text output is invisible
 and its last `SendMessage` can be dropped: on the team rung the source of truth is

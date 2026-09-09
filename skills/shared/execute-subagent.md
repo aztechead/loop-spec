@@ -186,9 +186,9 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    On this Agent rung, add `model` only when the result is one of the four
    aliases and omit it for `inherit`. A full/native ID requires the loop-fleet
    rung; fail loud if it reaches this Agent boundary.
-   Issue the Agent call(s), then stop. Never AskUserQuestion as a wait
-   (`skills/shared/dispatch.md`). The harness resumes this turn
-   when they complete. Then review.
+   Issue the Agent call(s) with `run_in_background: false`; each tool result is that
+   implementer's report. Never AskUserQuestion as a wait (`skills/shared/dispatch.md`).
+   Then review.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
 5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, one call writes the review package from the recorded BASE to the implementer's HEAD and emits the reviewer's `dispatch` event:
 

@@ -11,7 +11,12 @@
 #   parse-invocation.sh parse [--] <arguments...>
 #
 # Recognized tokens (order-independent unless noted):
-#   autonomous            -> .autonomous = true
+#   autonomous            -> .autonomous = true when it sits at an EDGE of the
+#                            arguments: among the leading tokens, or among the
+#                            trailing ones ("<description> autonomous style:step").
+#                            Inside the description it is ordinary title text: a
+#                            loop-spec feature described as "fix the autonomous chain
+#                            bound" armed autonomous mode and stripped the word.
 #   new                   -> .greenfield = true when it appears BEFORE any title
 #                            text (i.e. among the leading tokens, in any order with
 #                            autonomous/style:); after title text has started it is
@@ -65,37 +70,57 @@ remaining=()
 # glob-expand ("fix *.md handling" would otherwise match files in cwd).
 set -f
 
+# Split on whitespace inside a single quoted blob too: callers may pass
+# "$ARGUMENTS" as one string or word-split — both must parse identically.
+words=()
 for tok in "$@"; do
-  # Split on whitespace inside a single quoted blob too: callers may pass
-  # "$ARGUMENTS" as one string or word-split — both must parse identically.
-  for w in $tok; do
-    case "$w" in
-      autonomous)
-        autonomous=true ;;
-      new)
-        if [[ "${#remaining[@]}" -eq 0 ]]; then
-          greenfield=true
-        else
-          remaining+=("$w")
-        fi ;;
-      --no-run)
-        no_run=true ;;
-      style:*)
-        style="${w#style:}" ;;  # unknown value still stripped from title; caller validates
-      phase:fresh)
-        phase_mode="fresh" ;;
-      phase:continuous)
-        phase_mode="continuous" ;;
-      profile:compact|profile:maintenance|profile:standard)
-        profile="${w#profile:}" ;;
-      profile:*)
-        : ;;  # stripped from the title; an unrecognized profile is simply not set
-      tier:*|preset:*)
-        legacy+=("$w") ;;
-      *)
-        remaining+=("$w") ;;
-    esac
-  done
+  for w in $tok; do words+=("$w"); done
+done
+
+# The trailing token zone starts after the last non-token word; `autonomous` is
+# honored only before the first non-token word or from that index on.
+trail_start=${#words[@]}
+while (( trail_start > 0 )); do
+  case "${words[trail_start-1]}" in
+    autonomous|new|--no-run|style:*|phase:fresh|phase:continuous|profile:*|tier:*|preset:*)
+      trail_start=$((trail_start - 1)) ;;
+    *) break ;;
+  esac
+done
+
+i=0
+for w in ${words[@]+"${words[@]}"}; do
+  idx=$i; i=$((i + 1))
+  case "$w" in
+    autonomous)
+      if [[ "${#remaining[@]}" -eq 0 || "$idx" -ge "$trail_start" ]]; then
+        autonomous=true
+      else
+        remaining+=("$w")
+      fi ;;
+    new)
+      if [[ "${#remaining[@]}" -eq 0 ]]; then
+        greenfield=true
+      else
+        remaining+=("$w")
+      fi ;;
+    --no-run)
+      no_run=true ;;
+    style:*)
+      style="${w#style:}" ;;  # unknown value still stripped from title; caller validates
+    phase:fresh)
+      phase_mode="fresh" ;;
+    phase:continuous)
+      phase_mode="continuous" ;;
+    profile:compact|profile:maintenance|profile:standard)
+      profile="${w#profile:}" ;;
+    profile:*)
+      : ;;  # stripped from the title; an unrecognized profile is simply not set
+    tier:*|preset:*)
+      legacy+=("$w") ;;
+    *)
+      remaining+=("$w") ;;
+  esac
 done
 
 text="${remaining[*]:-}"

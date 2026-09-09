@@ -4,7 +4,8 @@ Autonomous mode makes a run question-free: at every point loop-spec would call
 `AskUserQuestion`, the orchestrator takes the answer it would have recommended, records
 it as an assumed decision, and proceeds. The one exception is a supervisor that
 answers ("The supervised path", below), and the probe that names it is
-`lib/supervisor/oracle.sh`. It is ON when the inline token `autonomous`
+`lib/supervisor/oracle.sh`. It is ON when the inline token `autonomous` (at the leading
+or trailing edge of the arguments; inside the description the word is prose)
 appears in the invocation (stripped from the title) or `LOOP_SPEC_AUTONOMOUS=1` is set;
 the cycle persists it as `feature.json.autonomous = true` so phases and resumes see it.
 

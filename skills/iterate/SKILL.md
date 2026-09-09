@@ -52,11 +52,12 @@ LOUD, never silent:
 ## 2. Judge
 
 Emit the `dispatch` event, then ONE `Agent({description: "Iterate goal re-judge",
-subagent_type: "loop-spec:iterate-judge", prompt: ...})` (add `model` only for an
-alias) with: `slug`, `iteration = used + 1`, `original_goal = feature_title`, the
-SPEC.md / PLAN.md / VERIFICATION.md paths, the `feat/{slug}` diff, and
-`prior_feedback = iterate.feedback`. Dispatch, then stop. Never AskUserQuestion as a wait
-(`skills/shared/dispatch.md`). Save its completion message to `$feature_dir/.iterate-judge.out` and record it with
+subagent_type: "loop-spec:iterate-judge", run_in_background: false, prompt: ...})` (add
+`model` only for an alias) with: `slug`, `iteration = used + 1`, `original_goal =
+feature_title`, the SPEC.md / PLAN.md / VERIFICATION.md paths, the `feat/{slug}` diff, and
+`prior_feedback = iterate.feedback`. The tool result is its completion message.
+Never AskUserQuestion as a wait (`skills/shared/dispatch.md`). Save that message to
+`$feature_dir/.iterate-judge.out` and record it with
 one call, which extracts the verdict deterministically, writes `iterate.used`,
 `iterate.lastVerdict`, and `iterate.history[]`, emits `iterate_verdict`, runs the
 converged floor, and writes the feedback and remediation tasks a gap needs:

@@ -189,6 +189,7 @@ https://developers.openai.com/codex/subagents):
   `.codex/agents/loop-spec-<role>.toml`; hyphens are the Codex custom-agent
   `name`).
 - `prompt` becomes `message`.
+- `run_in_background: false` is dropped: `spawn_agent` returns the child's result.
 - `description` becomes `task_name` when the schema includes that field
   (multi-agent v2 currently requires `task_name` and `message`).
 - Pass `fork_turns: "none"` (or `fork_context: false` on v1) when the schema

@@ -127,6 +127,7 @@ team rung survives, and every one-shot dispatch a phase skill (or
   stripped for you; either spelling works). Roles are the filenames in
   `agents/`, parsed at build time — the same charters Claude Code dispatches.
 - `prompt` and `description` pass through verbatim.
+- `run_in_background: false` is dropped: `dispatch_subagent` blocks until the child returns.
 - Optional `model` is an ADK id (`gemini-*` or `provider/model`). Pass
   `feature.models.<role>` when that value is an ADK id so
   `LOOP_SPEC_PHASE_MODEL_*` / `LOOP_SPEC_MODEL_<ROLE>` bind at dispatch.

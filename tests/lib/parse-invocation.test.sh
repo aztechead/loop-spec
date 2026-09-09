@@ -57,10 +57,21 @@ out="$(bash "$SCRIPT" parse "tier:quality add csv export preset:full")"
 check "legacy stripped from title" "add csv export" "$(field "$out" title)"
 check "legacy list" "tier:quality preset:full" "$(jq -r '.legacy | join(" ")' <<<"$out")"
 
-# autonomous token
+# autonomous token: honored at either edge of the arguments, prose in the middle
 out="$(bash "$SCRIPT" parse "autonomous add csv export")"
 check "autonomous parsed" "true" "$(field "$out" autonomous)"
 check "autonomous stripped from title" "add csv export" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "add csv export autonomous")"
+check "trailing autonomous parsed" "true" "$(field "$out" autonomous)"
+check "trailing autonomous stripped from title" "add csv export" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "add csv export autonomous style:step phase:fresh")"
+check "autonomous inside the trailing token zone parsed" "true" "$(field "$out" autonomous)"
+check "trailing token zone stripped from title" "add csv export" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "fix the autonomous chain bound")"
+check "mid-text autonomous is prose" "false" "$(field "$out" autonomous)"
+check "mid-text autonomous kept in title" "fix the autonomous chain bound" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "style:step fix the autonomous chain bound")"
+check "mid-text autonomous after a leading token is prose" "false" "$(field "$out" autonomous)"
 
 # leading new = greenfield, in any order with other leading tokens
 out="$(bash "$SCRIPT" parse "new build a todo app")"
@@ -95,6 +106,9 @@ check "spec-file mode" "spec-file" "$(field "$out" mode)"
 check "spec path absolutized" "$WORK/spec.md" "$(field "$out" spec_path)"
 out="$(cd "$WORK" && bash "$SCRIPT" parse "autonomous spec.md")"
 check "spec-file with autonomous" "spec-file" "$(field "$out" mode)"
+out="$(cd "$WORK" && bash "$SCRIPT" parse "spec.md autonomous")"
+check "spec-file with trailing autonomous" "spec-file" "$(field "$out" mode)"
+check "spec-file trailing autonomous flag" "true" "$(field "$out" autonomous)"
 
 # a .md path that does not exist is a description, not spec-file
 out="$(bash "$SCRIPT" parse "no-such-file.md")"

@@ -149,7 +149,8 @@ ambiguity_scores:
 Write the transcript (rounds, questions, scores; `source: spec-draft.md` or
 `synthesized` when applicable) to `feature_dir/spec-interview-transcript.md`.
 
-**Pruning pass (advisory, skip under 60 lines):** dispatch ONE fresh reviewer carrying
+**Pruning pass (advisory, skip under 60 lines):** dispatch ONE fresh reviewer
+(`run_in_background: false`; its tool result is the listing) carrying
 `skills/shared/review-prompts/prose-pruning.md` verbatim plus SPEC.md and the template
 only (never the transcript). Apply `duplicate`/`narrative` cuts; judge the rest; never
 cut `### Good Enough` criteria, decisions, scores, or grounding lines; record every

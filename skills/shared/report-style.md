@@ -31,8 +31,10 @@ or `LOOP_SPEC_AUTONOMOUS=1` self-answers.
 
 AskUserQuestion is never a wait, keep-alive, or placeholder while a subagent runs.
 Dummy options (`n/a`, "Type something", "not a real question") are forbidden.
-After dispatch, do safe independent lead work that does not require the child result.
-Stop only at the join; the harness resumes this turn when the child completes.
+Do safe independent lead work before the dispatch, never as a wait. A one-shot Agent
+carries `run_in_background: false`, so its tool result is the report; a launch stub is
+not a report and never a reason to re-dispatch. Named teammates join on `TeammateIdle`;
+stop only at that join.
 
 This file remains the contract for durable reports on every harness (phase summaries,
 PR bodies, completion artifacts) and for the greppable `[PHASE]` lines `lib/events.sh`

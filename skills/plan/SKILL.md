@@ -104,7 +104,8 @@ revision. `gate.sh next` answering `close` ends the critique with the plan as it
 (residue in `gate-logs/plan-critique-residue.md` only); go to the pruning pass. Emit one `dispatch` event per agent launched and, per round,
 `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" gate_round --phase plan --data '{"gate":"plan-critique","round":N,"mode":"single-critic|delta"}' || true`.
 
-**Pruning pass (advisory, skip under 60 lines):** ONE fresh reviewer with
+**Pruning pass (advisory, skip under 60 lines):** ONE fresh reviewer
+(`run_in_background: false`; its tool result is the listing) with
 `skills/shared/review-prompts/prose-pruning.md`, PLAN.md, and the template only. A cut
 that breaks a gate is reverted. Declined proposals and `out-of-scope:` lines go to
 `.loop-spec/BACKLOG.md`.

@@ -137,6 +137,7 @@ Dispatch prompt (read-only; ask for JSON findings in the reply):
 Agent({
   description: "Assess hotspot review",
   subagent_type: "loop-spec:code-reviewer",
+  run_in_background: false,
   prompt: """
 You are reviewing a high-fragility file for code quality and correctness issues.
 

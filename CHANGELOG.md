@@ -4,6 +4,20 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+### Fixed
+
+- Every one-shot `Agent` dispatch carries `run_in_background: false`. Claude Code now
+  launches an Agent in the background by default, and a background launch answers with
+  a launch stub instead of the report; a lead that read the stub as an empty report
+  dispatched the SPEC pruner twice. `skills/shared/dispatch.md` says a stub is never a
+  reason to re-dispatch, the three peer harness contracts drop the key, and
+  `tests/lib/harness-call-shapes.test.sh` case 8 now requires the key on every one-shot
+  template instead of forbidding it.
+- `lib/parse-invocation.sh` honors the `autonomous` token only at the leading or trailing
+  edge of the arguments. Inside the description it is prose: a feature described as "fix
+  the autonomous chain bound" armed autonomous mode, stripped the word from the title,
+  and ran the cycle without asking a question.
+
 ## [6.2.0] - 2026-09-06
 
 ### Changed

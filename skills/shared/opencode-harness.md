@@ -106,6 +106,7 @@ native `task` tool:
   config dir; colons are Claude Code plugin namespacing, hyphens are the
   opencode agent id).
 - `prompt` and `description` pass through verbatim.
+- `run_in_background: false` is dropped: `task` blocks until the child returns.
 - `task_id` resumes the child session returned by an earlier `task` call. Use it
   for follow-up work by the same logical reviewer or implementer when that id is
   still available; omit it for a fresh dispatch. `subagent_type` remains required
