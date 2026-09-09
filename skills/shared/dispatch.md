@@ -86,11 +86,15 @@ Peer harness surfaces (full tables in each adaptation contract):
 
 ## Waiting
 
-A one-shot Agent runs in the foreground: `run_in_background: false` on the call, so the
-tool result IS the subagent's report and the step reads it there. Claude Code now
-launches an Agent in the background by default, and a background launch answers with a
-launch stub ("Async agent launched"), not the report; the report arrives later as a
-task notification. A lead that read the stub as an empty report dispatched the SPEC
+A one-shot Agent is meant to run in the foreground: `run_in_background: false` on the
+call, so the tool result IS the subagent's report and the step reads it there. Claude
+Code's fork mode launches an Agent in the background by default, the key on the call
+does not override it (a headless 6.3.0 run saw the stub on all eight calls), and a
+background launch answers with a launch stub ("Async agent launched"), not the report;
+the report arrives later as a task notification. The operator's switch is the harness's
+own: `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` in the session environment forces
+foreground execution (`skills/shared/claude-harness.md`); every headless launcher this
+plugin ships sets it. A lead that read the stub as an empty report dispatched the SPEC
 pruner twice. A stub therefore means the key was dropped: end the turn and wait for
 the notification; never re-dispatch on a stub. Independent lead work belongs before
 the Agent call, not in the wait.

@@ -86,6 +86,13 @@ out="$(bash "$SCRIPT" parse "add new export button")"
 check "mid-text new not greenfield" "false" "$(field "$out" greenfield)"
 check "mid-text new kept in title" "add new export button" "$(field "$out" title)"
 
+# a flag is refused, never a title (`begin --help` once initialized a feature "help")
+ec=0; err="$(bash "$SCRIPT" parse "--help" 2>&1 >/dev/null)" || ec=$?
+check "--help is refused" "1" "$ec"
+check "the refusal names the flag and the tokens" "1" "$(grep -c "unknown flag '--help'.*--no-run" <<<"$err")"
+ec=0; bash "$SCRIPT" parse "add csv export -v" >/dev/null 2>&1 || ec=$?
+check "a stray flag inside the text is refused" "1" "$ec"
+
 # --no-run
 out="$(bash "$SCRIPT" parse "--no-run some pasted text")"
 check "no-run parsed" "true" "$(field "$out" no_run)"

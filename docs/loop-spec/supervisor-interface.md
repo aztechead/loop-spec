@@ -24,8 +24,11 @@ and one of: `pip install claude-agent-sdk` with a Claude login, or Google ADK wi
    ```
    Check it: `bash lib/profile.sh validate` prints `profile: ok (...)`.
 2. **Hand the resolved profile to the harness.** Claude Agent SDK: pass
-   `bash lib/profile.sh resolve` `.env` as `ClaudeAgentOptions.env`. ADK: nothing; the
-   bridge reads the file. A variable you already set in the process wins over the file.
+   `bash lib/profile.sh resolve` `.env` as `ClaudeAgentOptions.env`, plus
+   `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` so one-shot Agents answer in the foreground
+   (fork mode backgrounds them otherwise, and every report costs the lead a wait turn).
+   ADK: nothing; the bridge reads the file. A variable you already set in the process
+   wins over the file.
 3. **Point at the plugin.** SDK: `plugins=[{"type": "local", "path": "<plugin>"}]`; the
    init `SystemMessage` lists `loop-spec` under `plugins`. ADK: `lib/adk-install.sh`.
 4. **Answer questions.** SDK: a `can_use_tool` callback that handles

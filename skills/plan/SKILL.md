@@ -95,7 +95,9 @@ topology `graph/critique.graph.json`) in `skills/shared/critique-gate-protocol.m
 with `phase=plan`, `gate=plan-critique`, `artifact=PLAN.md`, author `planner-1`,
 dispatched in the same response as the gate command (the findings pass reads PLAN.md,
 not the gate's answer). Never spawn `advocate-1`. The protocol's fix-list is the
-union: the FLAG lines verbatim, then the adjudicated findings. Phase deltas:
+union: the FLAG lines verbatim, then the adjudicated findings. Never send the planner
+the FLAG lines alone and the findings later: that FLAG-only round is the second loop
+this section removed, and a run that took it paid a third planner dispatch. Phase deltas:
 user-intent findings resolve as a question in interactive styles and, when autonomous,
 as the more reversible reading recorded via
 `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" plan "<q>" "<a>" "more reversible"`

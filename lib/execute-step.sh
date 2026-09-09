@@ -178,10 +178,14 @@ case "$cmd" in
       printf '%s\n' "$answer"; exit 0
     fi
     reason="$(jq -r '.reason' <<<"$answer")"
+    # A refusal keeps its own name: every unlisted reason used to read as
+    # `rebase-conflict`, and a dirty feature worktree sent a lead hunting for a conflict.
     case "$reason" in
       verify-failed|prepare-failed) sset blocked '"retry-exhausted"' ;;
       zero-commit|commit-missing) sset blocked '"commit-missing"' ;;
-      *) sset blocked '"rebase-conflict"' ;;
+      check-dirty-worktree|candidate-changed|feature-moved) sset blocked '"dirty-worktree"' ;;
+      rebase-conflict) sset blocked '"rebase-conflict"' ;;
+      *) sset blocked "$(jq -cn --arg r "$reason" '$r')" ;;
     esac
     task_end failed
     jq -c --arg b "$(sget '.blocked')" '.blocked = $b' <<<"$answer"; exit 1

@@ -152,7 +152,9 @@ check_clean() {
       path="${line:3}"
       is_known_runtime_path "$path" && continue
     fi
-    clean_detail="${label}-dirty"
+    # Name the dirt: a refusal that only said "dirty" cost a lead a git status, a diff,
+    # and a retry to learn it had left SPEC.md uncommitted in the feature worktree.
+    clean_detail="${label}-dirty: $(printf '%s' "$status_output" | tr '\n' ' ' | cut -c1-300)"
     return 1
   done <<< "$status_output"
   return 0

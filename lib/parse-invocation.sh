@@ -118,6 +118,11 @@ for w in ${words[@]+"${words[@]}"}; do
       : ;;  # stripped from the title; an unrecognized profile is simply not set
     tier:*|preset:*)
       legacy+=("$w") ;;
+    -*)
+      # A flag is never a description. `begin --help` once initialized a feature titled
+      # "--help" in autonomous mode, with a branch and a worktree to clean up by hand.
+      echo "parse-invocation: unknown flag '$w'; the inline tokens are autonomous, new, style:<s>, phase:<m>, profile:<p>, --no-run" >&2
+      exit 1 ;;
     *)
       remaining+=("$w") ;;
   esac

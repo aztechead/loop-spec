@@ -63,6 +63,10 @@ def child_env():
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("LOOP_SPEC_")
            and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")}
+    # Fork mode backgrounds every Agent and ignores run_in_background on the call; the
+    # 20260909-sonnet-fastapi run saw the launch stub on all eight dispatches and paid
+    # a wait turn for each report. This is the harness's documented foreground switch.
+    env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
     env["GIT_AUTHOR_NAME"] = env["GIT_COMMITTER_NAME"] = "loop-spec-eval"
     env["GIT_AUTHOR_EMAIL"] = env["GIT_COMMITTER_EMAIL"] = "eval@loop-spec.invalid"
     return env

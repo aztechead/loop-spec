@@ -91,7 +91,7 @@ Agent when `lib/implicit-team-model.sh` returns `oneshot`
 | Mode | Invocation |
 |---|---|
 | interactive session | the Claude Code TUI (`claude`) |
-| headless / autonomous | `claude -p "/loop-spec:auto <description>"` |
+| headless / autonomous | `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 claude -p "/loop-spec:auto <description>"` (the variable forces one-shot Agents to run in the foreground; without it fork mode backgrounds every dispatch and each report costs the lead a wait turn) |
 | SDK-embedded | the Claude Agent SDK for Python (`claude-agent-sdk`) or TypeScript, which loads plugins and skills natively — the same harness, not a fourth one |
 | loop-runner fleet | `claude -p --output-format json`, resolved by `bash lib/harness.sh cli` and driven as `loop.py --agent-cli claude` |
 

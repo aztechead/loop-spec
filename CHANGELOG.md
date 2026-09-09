@@ -39,9 +39,13 @@ touches, and what to do.
 - **New gate-log files.** `gate-logs/<gate>-state.json`, `gate-logs/<gate>-delta.diff`,
   and a `## delta-findings-lint` section in every delta round log. A mirror store that
   copies `gate-logs/` picks them up; nothing else reads them.
-- **Every one-shot `Agent` call carries `run_in_background: false`.** An SDK
-  `can_use_tool` hook that inspects `Agent` tool input sees the new key. The peer
-  harnesses drop it.
+- **Every one-shot `Agent` call carries `run_in_background: false`, and headless
+  launchers need `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`.** Claude Code's fork mode
+  backgrounds every Agent regardless of the key (a headless run saw the stub on all eight
+  calls), and the variable is the documented switch that forces the foreground. The eval
+  driver and the cloud profile docs set it; an SDK embedding sets it in
+  `ClaudeAgentOptions.env`. An SDK `can_use_tool` hook that inspects `Agent` tool input
+  sees the new key. The peer harnesses drop it.
 - **Longer challenger replies.** The "top 5-7, under 500 words" caps are gone; a sink
   that stores `gate_round` payloads or gate-logs sees the full findings pass.
 
@@ -78,6 +82,15 @@ touches, and what to do.
 
 ### Fixed
 
+- Five defects from the first live run on 6.3.0 (`evals/findings-2026-09-09.md`):
+  `lib/git-ops.sh slugify` bounds a slug at 64 characters on a word boundary (a
+  whole-description title made a 470-character branch git could not lock);
+  `lib/parse-invocation.sh` refuses a flag as a title (`begin --help` initialized a
+  feature named "help"); `lib/execute-step.sh integrate` names a dirty feature worktree
+  `dirty-worktree` with the paths instead of `rebase-conflict`; `task_start` and
+  `task_end` are emitted once, by the driver steps, and `execute-subagent.md` no longer
+  asks the lead to emit them too; the version directive sends a runtime version to the
+  language's release page or a network registry, never a local catalog.
 - `tasks.json` is derived from PLAN.md, never copied from the planner's completion
   message. `lib/plan-tasks.sh extract` reads every `### task-NNN:` block (files,
   read_first, verify command, acceptance criteria, `**BlockedBy:**` with the Task DAG

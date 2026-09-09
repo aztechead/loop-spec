@@ -9,6 +9,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.
 checks=(
   "skills/shared/engineering-directives.md	Canonical compact directive"
   "skills/shared/engineering-directives.md	never from recall"
+  "skills/shared/engineering-directives.md	never from a local catalog"
   "skills/shared/engineering-directives.md	One test, one break"
   "skills/shared/engineering-directives.md	phase-entry.sh"
   "skills/shared/execute-subagent.md	engineering-directives.md"
