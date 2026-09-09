@@ -64,6 +64,7 @@ Dots survive slugify.
 ## Implementation notes
 
 - src/slugify.py: strip dots in slugify().
+- tests/test_slugify.py: unchanged; the existing case covers the fix.
 
 ## Success criteria
 
@@ -86,6 +87,13 @@ check "the flag names the line count and the template" "1" "$(grep -c 'FLAG \[on
 sed 's/^## Implementation notes$/## Notes/' "$DOCS/SPEC.md" > "$WORK/nonotes.md"
 check "a oneshot spec without Implementation notes flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nonotes.md" 2>&1 | grep -c 'no .## Implementation notes. section')"
 sed 's/^## Intent$/## Problem/' "$DOCS/SPEC.md" > "$WORK/nointent.md"
+# The variant stays inside the repository: the rule resolves the test module against
+# the spec's own git toplevel.
+grep -v 'tests/test_slugify.py' "$DOCS/SPEC.md" > "$DOCS/notest.md"
+out="$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$DOCS/notest.md" 2>&1)"; ec=$?
+rm -f "$DOCS/notest.md"
+check "a footprint file whose test module the spec never names flags" "1" "$ec"
+check "the flag names the module" "1" "$(grep -c 'src/slugify.py has a test module tests/test_slugify.py' <<<"$out")"
 check "a oneshot spec without the Intent block flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nointent.md" 2>&1 | grep -c 'no .## Intent. block')"
 sed 's/^footprint:$/footprint: [a.py, b.py, c.py, d.py]/; /^  - src\/slugify.py$/d' "$WORK/long.md" > "$WORK/full.md"
 check "a full-shape spec (four files) passes the lint untouched" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/full.md" >/dev/null 2>&1; echo $?)"

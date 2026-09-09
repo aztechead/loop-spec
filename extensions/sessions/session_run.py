@@ -43,6 +43,9 @@ PROFILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profile
 TAIL_BYTES = 64 * 1024
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 LIST_KEYS = ("launch_args", "guarded_args", "bypass_args", "seed_files", "env_fault_patterns")
+SESSION_IDENTITY = ("CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
+                    "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_REMOTE_SESSION_ID",
+                    "CLAUDE_CODE_SYNC_SESSION_REFS")
 
 
 def die(message, code=2):
@@ -103,12 +106,13 @@ def build_argv(profile, prompt, model, bypass):
 
 def child_env(profile_env):
     # The session is an implementer, not a member of the cycle that dispatched it: the
-    # plugin bindings and every LOOP_SPEC_* setting would make it act as the lead, and an
-    # inherited session id would append its transcript to the lead's.
+    # plugin bindings and every LOOP_SPEC_* setting would make it act as the lead, and
+    # the lead's session identity (id and remote-session plumbing) would make the child
+    # append its transcript to the lead's.
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("LOOP_SPEC_")
-           and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT",
-                         "CLAUDE_CODE_SESSION_ID")}
+           and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
+           and k not in SESSION_IDENTITY}
     env.update(profile_env)
     return env
 

@@ -39,8 +39,9 @@ The result line:
 
 The child inherits the environment minus every `LOOP_SPEC_*` name, the harness's
 plugin bindings (`CLAUDE_PROJECT_DIR`, `CLAUDE_SKILL_DIR`, `CLAUDE_PLUGIN_ROOT`), and
-`CLAUDE_CODE_SESSION_ID`: the session is an implementer, not a member of the cycle that
-dispatched it, and it writes its own transcript.
+the lead's session identity (`CLAUDE_CODE_SESSION_ID` and the remote-session plumbing
+next to it): the session is an implementer, not a member of the cycle that dispatched
+it, and it writes its own transcript.
 
 ## Profiles
 

@@ -63,20 +63,45 @@ if transcript_path and os.path.isfile(transcript_path):
             (entry.get("message") or {}).get("content") or []
             for entry in entries if entry.get("type") == "assistant"
         ]
+        results = [
+            (entry.get("message") or {}).get("content") or []
+            for entry in entries if entry.get("type") == "user"
+        ]
     except Exception:
-        contents = []
+        contents, results = [], []
 else:
     contents = [
         entry.get("content") or []
         for entry in (payload.get("transcript") or [])
         if isinstance(entry, dict) and entry.get("role") == "assistant"
     ]
+    results = [
+        entry.get("content") or []
+        for entry in (payload.get("transcript") or [])
+        if isinstance(entry, dict) and entry.get("role") == "user"
+    ]
+
+# A denied attempt never ran the phase. Counting it made the retry rule below a
+# loophole: a lead denied once for the next phase invoked it again, the denial was
+# now the "prior" phase, and the second call passed as a same-phase retry.
+denied = set()
+for content in results:
+    if not isinstance(content, list):
+        continue
+    for item in content:
+        if not isinstance(item, dict) or item.get("type") != "tool_result":
+            continue
+        body = item.get("content")
+        if isinstance(body, list):
+            body = " ".join(str(b.get("text", "")) for b in body if isinstance(b, dict))
+        if item.get("is_error") or "hook error" in str(body or ""):
+            denied.add(item.get("tool_use_id"))
 
 for content in contents:
     for item in content:
         if not isinstance(item, dict) or item.get("type") != "tool_use":
             continue
-        if item.get("name") != "Skill":
+        if item.get("name") != "Skill" or item.get("id") in denied:
             continue
         phase = phase_name((item.get("input") or {}).get("skill"))
         if phase:

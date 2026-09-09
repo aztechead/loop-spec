@@ -218,10 +218,17 @@ touches, and what to do.
 - `cycle-driver.sh start`: an autonomous invocation with exactly one paused feature
   resumes it even when the title differs; a different feature is a human decision
   (`tests/lib/cycle-driver.test.sh`).
-- `evals/eval_run.py` and `extensions/sessions/session_run.py` drop
-  `CLAUDE_CODE_SESSION_ID` from the child's environment: a nested `claude -p` that
-  inherits it appends every round to the parent's transcript, and the handoff guard then
-  reads an earlier round's phase as this invocation's.
+- `evals/eval_run.py` and `extensions/sessions/session_run.py` drop the parent's
+  session identity (`CLAUDE_CODE_SESSION_ID` and the remote-session plumbing next to it)
+  from the child's environment: a nested `claude -p` that inherits it appends every
+  round to the parent's transcript, and the handoff guard then reads an earlier round's
+  phase as this invocation's.
+- `hooks/team/phase-handoff-guard.sh` no longer counts a denied attempt as a prior
+  phase: a lead denied once for the next phase invoked it again and passed as a
+  same-phase retry, so the oneshot route ran SPEC, ONESHOT, and DELIVER in one session.
+- `lib/oneshot-spec-lint.sh` flags a footprint file whose existing test module the spec
+  never names: in the footprint when it changes, in Implementation notes as unchanged
+  when it does not. A run shipped a flag without its test and the reviewer deferred it.
 - Ten findings from the second and third live runs (`evals/findings-2026-09-09-rounds-2-3.md`):
   the version directive and SPEC's greenfield lookup say a stale installer is upgraded
   before anything is installed, never worked around with an older build or a

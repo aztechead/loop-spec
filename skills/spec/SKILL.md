@@ -90,7 +90,9 @@ routes the run through ONESHOT (implement, one review, verify, deliver) instead 
 DISCUSS through ITERATE. Write the footprint you can defend from `file:line` evidence,
 never a shorter one to earn the route; a fourth file found during ONESHOT escalates the
 run to the full path at the cost of the pass already spent. Greenfield names the files
-it will create.
+it will create. A footprint file's existing test module is named either way: in the
+footprint when it changes, in Implementation notes as unchanged when it does not
+(`lib/oneshot-spec-lint.sh` flags a test module the spec never names).
 
 Score the four dimensions from what you know now and display the scoring block.
 

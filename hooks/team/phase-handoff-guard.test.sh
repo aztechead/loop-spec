@@ -76,6 +76,20 @@ JSONL_SECOND="$(jq -cn --arg p "$TRANSCRIPT" \
 JSONL_SAME="$(jq -cn --arg p "$TRANSCRIPT" \
   '{tool_name:"Skill",tool_input:{skill:"loop-spec:spec"},transcript_path:$p}')"
 
+# A denied attempt is not a prior phase: spec ran, discuss was denied once, and the
+# second discuss call must still be denied instead of passing as a same-phase retry.
+DENIED="$ROOT/transcript-denied.jsonl"
+{
+  cat "$TRANSCRIPT"
+  printf '%s\n' '{"type":"assistant","uuid":"a3","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Skill","input":{"skill":"loop-spec:discuss"}}]}}'
+  printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_2","is_error":true,"content":"PreToolUse:Skill hook error: DENY: loop-spec runs one phase per main-agent invocation."}]}}'
+} > "$DENIED"
+JSONL_AFTER_DENIAL="$(jq -cn --arg p "$DENIED" \
+  '{tool_name:"Skill",tool_input:{skill:"loop-spec:discuss"},transcript_path:$p}')"
+rm -f "$ROOT/.loop-spec/last-result.json"
+check "JSONL transcript: a phase denied once is denied again, not a retry" 2 "$JSONL_AFTER_DENIAL" \
+  CLAUDE_PROJECT_DIR="$ROOT"
+
 rm -f "$ROOT/.loop-spec/last-result.json"
 check "JSONL transcript: second phase denied" 2 "$JSONL_SECOND" \
   CLAUDE_PROJECT_DIR="$ROOT"

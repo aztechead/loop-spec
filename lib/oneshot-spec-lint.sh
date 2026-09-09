@@ -19,10 +19,10 @@ MAX_LINES=60
 FOOTPRINT_MAX=3
 
 python3 - "$spec" "$MAX_LINES" "$FOOTPRINT_MAX" <<'PY'
-import re, sys
+import os, re, subprocess, sys
 path, max_lines, footprint_max = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-text = open(path, encoding="utf-8", errors="replace").read()
-lines = text.split("\n")
+whole = open(path, encoding="utf-8", errors="replace").read()
+lines = whole.split("\n")
 if lines and lines[-1] == "":
     lines = lines[:-1]
 if not lines or lines[0].strip() != "---" or "---" not in lines[1:]:
@@ -55,6 +55,29 @@ if not any(l.strip() == "## Intent" for l in body):
     flags.append("FLAG [oneshot-shape] SPEC.md has no '## Intent' block: the ask goes inside `<!-- intent: frozen ... -->` and `<!-- /intent -->` (skills/shared/artifact-templates/SPEC-oneshot.md.template); no later phase edits it")
 if not any(l.strip() == "## Implementation notes" for l in body):
     flags.append("FLAG [oneshot-shape] SPEC.md has no '## Implementation notes' section: one bullet per footprint file naming what changes in it")
+# A footprint file's existing test module is a decision the spec makes out loud: in the
+# footprint when it changes, in Implementation notes as unchanged when it does not. A
+# haiku run named only wc_tool.py, shipped the flag without a test, and the reviewer
+# deferred "consider adding tests" to Minor; the acceptance check for the test failed.
+root = subprocess.run(["git", "-C", os.path.dirname(os.path.abspath(path)), "rev-parse", "--show-toplevel"],
+                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True).stdout.strip()
+for p in footprint if root else []:
+    base = os.path.basename(p)
+    stem, ext = os.path.splitext(base)
+    if p.startswith("tests/") or "/tests/" in p or base.startswith("test_") or stem.endswith("_test") or stem.endswith(".test"):
+        continue
+    d = os.path.dirname(p)
+    names = ["test_%s%s" % (stem, ext), "%s_test%s" % (stem, ext), "%s.test%s" % (stem, ext)]
+    places = ["tests", d, os.path.join(d, "tests"), os.path.join(d, "__tests__"), "test"]
+    for place in places:
+        for name in names:
+            cand = os.path.normpath(os.path.join(place, name))
+            if os.path.isfile(os.path.join(root, cand)) and cand not in whole:
+                flags.append("FLAG [oneshot-footprint] %s has a test module %s the spec does not name: add it to the footprint when it changes, or say in Implementation notes that it stays unchanged" % (p, cand))
+                break
+        else:
+            continue
+        break
 for f in flags:
     print(f)
 sys.exit(1 if flags else 0)
