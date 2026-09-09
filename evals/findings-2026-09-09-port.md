@@ -1,7 +1,8 @@
-# Outcome eval findings, 9 September 2026, orchestrator port (WP0 and WP1)
+# Outcome eval findings, 9 September 2026, orchestrator port (WP0 to WP6)
 
 For the maintainer checking the done conditions of `docs/loop-spec/orchestrator-port-plan.md`
-work packages 0 and 1 against live haiku runs. Same driver as
+work packages 0 to 6 against live runs (haiku for the oneshot fixtures, sonnet for
+`fastapi-items`). Same driver as
 `evals/findings-2026-09-09-round-4.md`, no judge model (over-build is app lines added
 over the task's reference size). Records: `evals/results/wp0-haiku-slugify/`,
 `evals/results/wp1-haiku/` (ignored, as every record under `evals/results/`; the numbers are copied below).
@@ -80,4 +81,104 @@ work, and the driver leaving the lead (WP4). Not changed here.
 ```bash
 LOOP_SPEC_EVAL_LIVE=1 bash evals/run.sh --model haiku --confirm-spend \
   --tasks slugify-bug,wc-json --parallel 2 --budget-usd 3 --run-id wp1-haiku
+```
+
+## WP4, WP5, WP6 on the final plugin (dda2cca)
+
+Every run below is on plugin dda2cca: the Python driver with one phase per invocation
+(WP4), the session layer and rung (WP5), the two spec shapes and the review triage gate
+(WP6), plus the guards the earlier rounds forced (`nested-session-guard.sh`, the parser's
+leading-flag rule, the one-paused-feature resume). Records: `evals/results/final-haiku-oneshot/`,
+`evals/results/final-haiku-todo/`, `evals/results/final-sonnet-fastapi/` (ignored; the
+numbers are copied below).
+
+| task | model | accepted | delivered | route | rounds | cost USD | min | turns | agents | app +/- | artifact + | over-build |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| slugify-bug | haiku | 2/2 | pushed | oneshot | 1 | 0.88 | 6.1 | 82 | 1 | +2/-0 | +92 | 0.25x |
+| wc-json | haiku | 3/4 | pushed | oneshot | 1 | 1.35 | 8.3 | 113 | 1 | +6/-1 | +112 | 0.17x |
+| todo-due | haiku | 5/5 | pushed | oneshot | 5 | 1.38 | 10.9 | 132 | 1 | +57/-6 | +156 | 0.95x |
+| fastapi-items | sonnet | in flight | in flight | full | 5+ | 4.61 so far | 39+ | 179+ | - | - | - | - |
+
+### WP1 bar, second reading
+
+Not met, and further from it than the first reading (0.56 and 0.80 USD). What the
+transcripts say the money went to, in order:
+
+1. **One session ran every phase.** Both oneshot runs completed in one round. The
+   driver handed off after SPEC (`paused` events at 16:02:48 and 16:03:17), the handoff
+   guard denied `Skill(loop-spec:oneshot)`, and the lead invoked it again: the denied
+   attempt was now the transcript's last phase, so the second call passed as a
+   same-phase retry. The guard counted a denied attempt as a prior phase. Fixed after
+   these runs (`hooks/team/phase-handoff-guard.sh`, "a phase denied once is denied again").
+   The next reading pays a fresh session per phase, so cost per phase drops and cost per
+   run may not.
+2. **The footprint left the test out.** wc-json's SPEC named `wc_tool.py` alone, the
+   implementation added no test, the reviewer wrote "consider adding tests" under
+   Minor, and `json_test_added` failed again, as in the first reading. Fixed after these
+   runs: `lib/oneshot-spec-lint.sh` flags a footprint file whose existing test module
+   the spec never names.
+3. **82 and 113 turns for two and six lines.** SPEC's scout and grounding, the frozen
+   Intent block, the code-review dispatch, the review triage, and DELIVER each cost
+   their turns. The route is right; the phases on it are still sized for a feature.
+
+### WP5: the session rung
+
+`lib/harness.sh session-layer` answered `session` on every headless run here (`claude`
+on PATH, `profiles/claude.toml`, python 3.11). The rung is EXECUTE's, and every haiku
+fixture took the oneshot route, which has no EXECUTE: `todo-due` is a three-file
+footprint and went oneshot in five rounds. `fastapi-items` is the one full-route run;
+its EXECUTE is where the rung shows (see the WP4 section). The runner itself was proven
+against the real CLI before the runs: `session_run.py --profile claude --model haiku` on
+a one-line prompt created the file and returned `status: completed` in 6.4 seconds.
+
+The Codex half of the done condition did not run: the sandbox has no `codex` binary.
+`profiles/codex.toml` is the launch line `skills/shared/codex-harness.md` documents;
+nothing here has executed it.
+
+### WP4: one phase per invocation
+
+The `fastapi-items` run on dda2cca was still in round 5 (PLAN) when this record was
+committed; its final numbers follow in the next commit. What its first four rounds say:
+
+| round | phase entered | cost USD | turns | ended |
+|---|---|---|---|---|
+| 1 | SPEC | 1.47 | 89 | handoff to DISCUSS |
+| 2 | DISCUSS | 0.38 | 13 | paused at DISCUSS again |
+| 3 | DISCUSS | 2.42 | 66 | handoff to PLAN |
+| 4 | PLAN | 0.33 | 11 | paused at PLAN again |
+| 5 | PLAN | running | | |
+
+Rounds 2 and 4 are the shared-transcript defect: on dda2cca the eval driver dropped only
+`CLAUDE_CODE_SESSION_ID`, which was not enough (measured after the run: the child took
+its own transcript only once the remote-session plumbing was dropped too, daf2aef). A
+round that inherits the previous round's transcript meets the handoff guard's "one phase
+per invocation" on its first phase call, gives up, and is re-invoked; that costs about
+0.35 USD and a dozen turns per phase boundary and is charged to WP4 here although it is
+the harness's. Read the bar against rounds 1, 3, and 5 onward.
+
+The phase-per-invocation protocol itself held on every boundary: each round entered
+exactly the phase the previous round handed off, through `lib/phase-entry.sh`, with the
+state on `refs/loop-spec/state/<slug>` and no state commit on the branch.
+
+### What the earlier rounds cost and taught
+
+The rounds before dda2cca were stopped and are not in the table. Three of their
+defects are fixed on dda2cca and named in the changelog: a sonnet lead wrote its own
+round script after the DISCUSS handoff and spent its budget twice; a haiku lead
+reworded the task because the parser refused `python3 -m unittest` as a flag, and the
+reworded slug matched no paused feature, so a second cycle started in the plugin's own
+repository; and every nested `claude -p` inherited this session's identity, so all
+rounds of a run shared one transcript and the handoff guard read round one's phase as
+round three's. The last is an eval-harness defect, not a plugin one, and it invalidates
+the earlier rounds' handoff numbers.
+
+### Reproduce
+
+```bash
+LOOP_SPEC_EVAL_LIVE=1 bash evals/run.sh --model haiku --confirm-spend \
+  --tasks slugify-bug,wc-json --parallel 2 --budget-usd 3 --run-id final-haiku-oneshot
+LOOP_SPEC_EVAL_LIVE=1 bash evals/run.sh --model haiku --confirm-spend \
+  --tasks todo-due --budget-usd 6 --run-id final-haiku-todo
+LOOP_SPEC_EVAL_LIVE=1 bash evals/run.sh --model sonnet --confirm-spend \
+  --tasks fastapi-items --budget-usd 12.2 --run-id final-sonnet-fastapi
 ```
