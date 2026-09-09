@@ -1,0 +1,15 @@
+# opencode: the headless entry skills/shared/opencode-harness.md documents. `opencode
+# run` has no permission flag; the project's opencode config decides.
+name = "opencode"
+binary = "opencode"
+launch_args = ["run", "--format", "json"]
+guarded_args = []
+bypass_args = []
+model_flag = "--model"
+prompt_template = "{prompt}"
+seed_files = []
+# Provider lines the opencode server logs on a failed call, captured from runs.
+env_fault_patterns = [
+  'error[.]error="AI_APICallError: [^"]{0,400}?(?i:usage limit reached|429|too many requests|rate[ _-]?limit|quota|overloaded)',
+  'error[.]error="AI_APICallError: [^"]{0,400}?(?i:cannot connect to api|socket connection was closed|connection ?(error|refused|reset|timed ?out)|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN)',
+]

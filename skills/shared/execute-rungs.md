@@ -1,4 +1,4 @@
-# EXECUTE rungs: inline, agent team, Workflow DAG
+# EXECUTE rungs: inline, agent team, Workflow DAG, disposable session
 
 The rungs of the EXECUTE concurrency ladder other than the subagent waves
 (`execute-subagent.md`) and the headless loop fleet (`execute-loop-fleet.md`).
@@ -9,7 +9,7 @@ result object, with the same fixed vocabulary, so the consuming code never branc
 ```json
 { "merged": ["task-001", ...],
   "blocked": [{"taskId": "...", "reason": "spec-compliance-block|retry-exhausted|commit-missing|zero-commit"}],
-  "escalation": null | {"reason": "deadlock|rebase-conflict", "detail": "..."} }
+  "escalation": null | {"reason": "deadlock|rebase-conflict|env-fault", "detail": "..."} }
 ```
 
 Common to every rung: `mergedSet` is seeded from `lib/task-progress.sh done` and each
@@ -144,3 +144,53 @@ There is no supervisor loop: after putting the bundles, return control like a
 stale state hash is rejected and the task re-offered); a merged import still re-runs
 `verifyCommand` on the integrated branch before it counts as done. Continue to the
 phase exit once every task assigned to this rung has merged or exhausted its retries.
+
+## Disposable session (headless)
+
+Selected when `lib/harness.sh session-layer` answers `session`: the invocation is
+headless (`claude -p`, `codex exec`, `opencode run`, or `LOOP_SPEC_NON_INTERACTIVE=1`),
+`extensions/sessions/profiles/<cli>.toml` exists for `lib/harness.sh cli`, that CLI is
+on PATH, and `python3` is 3.11 or newer. `LOOP_SPEC_SESSION_LAYER=0` keeps a headless
+run on the subagent waves; `=1` forces the rung and fails loudly without the CLI. In
+every other respect this is the subagent path (`execute-subagent.md`): the same wave
+loop, the same `dispatch`/`package`/`verdict`/`integrate` driver steps, the same
+lead-created task worktrees (`subagentIsolation=lead-worktree`), the same ff-merge.
+Only the launch differs: each implementer and each reviewer is its own headless CLI
+process instead of an `Agent` call, so nothing it reads or writes lands in the lead's
+context.
+
+Per task, after `cycle-driver.sh task dispatch` returns `{worktreePath, brief, report,
+model, ...}`:
+
+1. Write the implementer prompt (the "Implementer Agent prompt" of
+   `execute-subagent.md`, contract stanza first, verbatim) to
+   `{featureDir}/dispatch/{taskId}.implementer.md`.
+2. Run the session and read its one JSON line:
+
+   ```bash
+   python3 "${CLAUDE_SKILL_DIR}/../../extensions/sessions/session_run.py" \
+     --profile "$(bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli)" \
+     --cwd "$worktreePath" --prompt-file "{featureDir}/dispatch/{taskId}.implementer.md" \
+     --model "$model" --seed-from "$featureRoot" \
+     --log-dir "{featureDir}/dispatch/sessions"
+   ```
+
+   The profile's guarded line already grants the implementer's tools. Add `--bypass`
+   only when the operator asked for it: Claude Code refuses bypassPermissions under
+   root, so a container run would fail every session.
+
+   `status: completed` continues to `package`. `failed` is one attempt: read the report
+   file and the `stderr` path, then `verdict rework` as for a failed subagent.
+   `env-fault` or `timeout` is not an attempt: run the same session once more; a second
+   fault escalates with `reason: "env-fault"` and the `envFault` pattern or the timeout as
+   `detail`. Exit 2 or 3 is a configuration fault (no profile, no CLI, old interpreter):
+   stop and escalate with the runner's stderr; do not fall back to `Agent` by hand,
+   because the probe already answered `session` for this run.
+3. The reviewer is a session too: write the "Reviewer Agent prompt" to
+   `{featureDir}/dispatch/{taskId}.reviewer.md` and run it with `--cwd "$featureRoot"`
+   and the reviewer's model. Its verdict is read from the report file as on the
+   subagent path.
+
+`extensions/sessions/README.md` lists the profile keys, the child's environment, and the
+exit codes. The session's own log stays under `{featureDir}/dispatch/sessions/`; quote
+paths, never the log body.

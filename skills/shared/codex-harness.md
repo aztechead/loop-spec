@@ -263,6 +263,7 @@ must be a Codex slug.
 | interactive session | Codex TUI (`codex`); `$loop-spec-cycle` waits on `request_user_input` |
 | `claude -p` headless / autonomous mode | `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'` |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `codex exec --json --sandbox workspace-write` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli codex` (see `skills/shared/execute-loop-fleet.md`) |
+| EXECUTE `session` rung spawning `claude -p` | same rung spawning `codex exec --json` from `extensions/sessions/profiles/codex.toml` (`--sandbox workspace-write`, or `--dangerously-bypass-approvals-and-sandbox` with `--bypass`); `bash lib/harness.sh session-layer` answers `session` only under `LOOP_SPEC_NON_INTERACTIVE=1` with `codex` on PATH (`execute-rungs.md`, "Disposable session") |
 
 Headless permission note: `codex exec` defaults to a read-only sandbox.
 Work ticks pass `--sandbox workspace-write` so in-repo edits can proceed;

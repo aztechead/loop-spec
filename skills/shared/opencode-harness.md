@@ -212,6 +212,7 @@ never treat `modelID` alone as globally unique.
 | interactive session | opencode TUI (`opencode`) |
 | `claude -p` headless / autonomous mode | `opencode run --format json "Load the loop-spec-auto skill and run: <description>"` (or the SDK: `createOpencode()` / `createOpencodeClient()` from `@opencode-ai/sdk`, then `client.session.prompt(...)` against `opencode serve`; load `loop-spec-cycle` with `autonomous` to force the full cycle) |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `opencode run --format json` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli opencode` (see `skills/shared/execute-loop-fleet.md`) |
+| EXECUTE `session` rung spawning `claude -p` | same rung spawning `opencode run --format json` from `extensions/sessions/profiles/opencode.toml` (no permission flag exists; the project's opencode config decides); `bash lib/harness.sh session-layer` answers `session` only under `LOOP_SPEC_NON_INTERACTIVE=1` with `opencode` on PATH (`execute-rungs.md`, "Disposable session") |
 
 Headless permission note: `opencode run` rejects permission asks. Work ticks do
 not pass `--auto`: normal in-worktree build-agent edits remain allowed, while

@@ -94,6 +94,7 @@ Agent when `lib/implicit-team-model.sh` returns `oneshot`
 | headless / autonomous | `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 claude -p "/loop-spec:auto <description>"` (the variable forces one-shot Agents to run in the foreground; without it fork mode backgrounds every dispatch and each report costs the lead a wait turn) |
 | SDK-embedded | the Claude Agent SDK for Python (`claude-agent-sdk`) or TypeScript, which loads plugins and skills natively — the same harness, not a fourth one |
 | loop-runner fleet | `claude -p --output-format json`, resolved by `bash lib/harness.sh cli` and driven as `loop.py --agent-cli claude` |
+| EXECUTE `session` rung (headless) | one `claude -p --output-format json` process per implementer and reviewer, launched by `extensions/sessions/session_run.py` from `profiles/claude.toml`; `bash lib/harness.sh session-layer` answers `session` only for a proven-headless invocation with `claude` on PATH (`execute-rungs.md`, "Disposable session") |
 
 **Headless proof:** Claude Code stamps `CLAUDE_CODE_ENTRYPOINT` into every child
 process, and three values prove a one-shot unattended invocation — `sdk-cli`

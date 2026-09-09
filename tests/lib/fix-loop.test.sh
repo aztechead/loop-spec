@@ -42,6 +42,7 @@ check "live loop-fleet is resumeable" "resumeable" "$(bash "$SCRIPT" live loop-f
 check "live subagent is oneshot" "oneshot" "$(bash "$SCRIPT" live subagent)"
 check "live inline is oneshot" "oneshot" "$(bash "$SCRIPT" live inline)"
 check "live workflow is oneshot" "oneshot" "$(bash "$SCRIPT" live workflow)"
+check "live session is oneshot" "oneshot" "$(bash "$SCRIPT" live session)"
 check "live unknown is oneshot" "oneshot" "$(bash "$SCRIPT" live other)"
 
 ec=0; bash "$SCRIPT" action >/dev/null 2>&1 || ec=$?

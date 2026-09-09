@@ -67,6 +67,7 @@ there). Operating parameters: `maxParallelImplementers = 3`, lowered by
 | `subagent` | `skills/shared/execute-subagent.md` | one-shot implementer + reviewer Agents per wave, lead ff-merges; workspace mode always lands here |
 | `team` | `skills/shared/execute-rungs.md` "Agent team" | self-claiming `loop-spec:implementer` teammates over `TaskCreate`; `TaskList` is the source of truth at every wake |
 | `loop` | `skills/shared/execute-loop-fleet.md` | headless loop-runner fleet |
+| `session` | `skills/shared/execute-rungs.md` "Disposable session" | headless: each implementer and reviewer is its own `claude -p` / `codex exec` / `opencode run` process through `extensions/sessions/session_run.py`; the lead ff-merges as on the subagent rung |
 | `inline` | `skills/shared/execute-rungs.md` "Inline" | no dispatch tool: you implement each task on `feat/{slug}` |
 | `workflow` | `skills/shared/execute-rungs.md` "Workflow DAG" | `lib/workflows/execute-dag.js`, opt-in |
 | `foreign` | `skills/shared/execute-rungs.md` "Foreign claimants" | bundles on the handoff port; results collected on re-entry |

@@ -52,6 +52,7 @@ checks=(
   "skills/cycle/SKILL.md	protocol-mismatch"
   "skills/cycle/SKILL.md	genuinely not repository work"
   "skills/cycle/SKILL.md	never skips ITERATE or DELIVER"
+  "skills/cycle/SKILL.md	Never launch the next invocation yourself"
   "skills/micro/SKILL.md	protocol-mismatch"
   "skills/micro/SKILL.md	not repository work at all"
   "skills/debug/SKILL.md	protocol-mismatch"

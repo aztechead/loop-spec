@@ -180,6 +180,7 @@ routes fleet workers independently.
 | interactive session | `adk web` / `adk api_server` against the mounted agent, or your own `Runner` over `build_app()` |
 | `claude -p` headless / autonomous mode | `LOOP_SPEC_NON_INTERACTIVE=1 adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl` |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `adk run <agent-dir> --jsonl` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli adk` (see `skills/shared/execute-loop-fleet.md`) |
+| EXECUTE `session` rung spawning `claude -p` | never selected: `extensions/sessions/profiles/` has no `adk.toml` (an ADK agent is a Python program, not a CLI with a prompt argument), so `bash lib/harness.sh session-layer` answers `in-harness` with reason `no-profile/adk` and a headless ADK run stays on the subagent waves |
 
 Two ADK CLI facts the fleet backend encodes, both worth knowing before debugging
 a run: dispatch targets a mounted agent DIRECTORY (hence

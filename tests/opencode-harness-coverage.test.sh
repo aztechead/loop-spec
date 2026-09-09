@@ -33,6 +33,11 @@ checks=(
   # -- the harness probe knows opencode and grants the subagent capability
   "lib/harness.sh	opencode"
   "lib/execute-rung.sh	harness.sh"
+  # -- the session layer is one probe question, and every contract says how it answers there
+  "lib/harness.sh	session-layer"
+  "lib/execute-rung.sh	session-layer"
+  "skills/shared/opencode-harness.md	session-layer"
+  "skills/shared/execute-rungs.md	session-layer"
   # -- capability gates are non-claude-gated (the bash side of the contract)
   "lib/teams-capability.sh	!= \"claude\""
   "lib/workflow-availability.sh	!= \"claude\""

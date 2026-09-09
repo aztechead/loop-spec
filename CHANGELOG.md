@@ -173,6 +173,18 @@ touches, and what to do.
 
 ### Added
 
+- `extensions/sessions/`: the headless session layer. `lib/harness.sh session-layer`
+  answers `session` when the invocation is headless, a profile exists for the harness
+  CLI (`profiles/claude.toml`, `codex.toml`, `opencode.toml`), the CLI is on PATH, and
+  `python3` is 3.11 or newer; `lib/execute-rung.sh` then selects the new `session` rung,
+  and each implementer and reviewer runs as its own `claude -p` / `codex exec` /
+  `opencode run` process through `session_run.py` (one profile, one prompt file, one
+  JSON result line; provider faults the profile names are `env-fault`, not an attempt).
+  Every unknown leg answers `in-harness`; `LOOP_SPEC_SESSION_LAYER=1|0` is the operator's
+  word. The profile shape and the fault patterns are vendored under MIT (`NOTICE`); the
+  source project's adapters are not, because their import closure reaches the modules
+  the port plan excludes (`tests/sessions-extension.test.sh`, `tests/lib/harness.test.sh`,
+  `tests/lib/execute-rung.test.sh`).
 - `lib/review-triage-lint.sh`: every code-review finding in VERIFICATION.md is one bullet
   with a `file:line`, a `verdict: true` with its commit or backlog id, or a `verdict:
   false` with a disproof sentence. The `verify` and `oneshot` exits run it; a finding

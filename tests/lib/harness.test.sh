@@ -26,7 +26,7 @@ run() {
   local verb="$1"; shift
   env -u LOOP_SPEC_HARNESS -u CLAUDECODE -u PI_CODING_AGENT_DIR \
     -u LOOP_SPEC_NON_INTERACTIVE -u LOOP_SPEC_EXECUTION_PROFILE \
-    -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT "$@" \
+    -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT -u LOOP_SPEC_SESSION_LAYER "$@" \
     bash "$LIB" "$verb"
 }
 
@@ -195,6 +195,42 @@ check "interactive entrypoint alone stays unproven" "false" "$got"
 
 got=$(run loop-runtime-reason CLAUDE_CODE_ENTRYPOINT=cli)
 check "interactive entrypoint alone stays unproven (reason)" "unproven-runtime" "$got"
+
+# --- session-layer: every leg proven, or in-harness ---
+# A stub CLI on PATH stands in for the harness binary; tomllib decides the last leg.
+STUB="$(mktemp -d)"; trap 'rm -rf "$STUB"' EXIT
+mkdir -p "$STUB/nocli"
+# A PATH with the shell and interpreters but no harness CLI.
+BARE="$STUB/nocli:$(dirname "$(command -v bash)"):$(dirname "$(command -v python3)")"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/claude"; chmod +x "$STUB/claude"
+have_toml="in-harness"; toml_reason="python-below-3.11"
+if python3 -c 'import tomllib' >/dev/null 2>&1; then have_toml="session"; toml_reason="headless/claude"; fi
+
+got=$(run session-layer PATH="$STUB:$PATH")
+check "attended invocation stays in-harness" "in-harness" "$got"
+got=$(run session-layer-reason PATH="$STUB:$PATH")
+check "attended reason names the entrypoint" "attended/unknown" "$got"
+got=$(run session-layer-reason PATH="$STUB:$PATH" CLAUDE_CODE_ENTRYPOINT=cli)
+check "the interactive TUI stays in-harness" "attended/cli" "$got"
+
+got=$(run session-layer PATH="$STUB:$PATH" LOOP_SPEC_NON_INTERACTIVE=1)
+check "headless with a profile, the CLI, and tomllib is session" "$have_toml" "$got"
+got=$(run session-layer-reason PATH="$STUB:$PATH" LOOP_SPEC_NON_INTERACTIVE=1)
+check "session reason names the CLI" "$toml_reason" "$got"
+got=$(run session-layer PATH="$STUB:$PATH" CLAUDE_CODE_ENTRYPOINT=sdk-cli)
+check "a headless entrypoint stamp is enough" "$have_toml" "$got"
+
+got=$(run session-layer-reason PATH="$BARE" LOOP_SPEC_NON_INTERACTIVE=1)
+check "headless without the CLI on PATH is in-harness" "cli-missing/claude" "$got"
+got=$(run session-layer-reason PATH="$STUB:$PATH" LOOP_SPEC_NON_INTERACTIVE=1 LOOP_SPEC_HARNESS=adk)
+check "a harness with no profile is in-harness" "no-profile/adk" "$got"
+
+got=$(run session-layer-reason PATH="$STUB:$PATH" LOOP_SPEC_NON_INTERACTIVE=1 LOOP_SPEC_SESSION_LAYER=0)
+check "operator off outranks the probe" "operator-disabled" "$got"
+got=$(run session-layer PATH="$BARE" LOOP_SPEC_SESSION_LAYER=1)
+check "operator on outranks the probe" "session" "$got"
+got=$(run session-layer-reason PATH="$BARE" LOOP_SPEC_SESSION_LAYER=1)
+check "operator on is named as such" "operator-enabled" "$got"
 
 # --- unknown command exits 2 ---
 rc=0

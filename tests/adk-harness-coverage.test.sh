@@ -31,6 +31,11 @@ checks=(
   "lib/harness.sh	adk"
   "lib/harness.sh	claude|opencode|adk|codex"
   "lib/execute-rung.sh	harness.sh"
+  # -- the session layer is one probe question, and every contract says how it answers there
+  "lib/harness.sh	session-layer"
+  "lib/execute-rung.sh	session-layer"
+  "skills/shared/adk-harness.md	session-layer"
+  "skills/shared/execute-rungs.md	session-layer"
   # -- capability gates are non-claude-gated (the bash side of the contract)
   "lib/teams-capability.sh	!= \"claude\""
   "lib/workflow-availability.sh	!= \"claude\""

@@ -19,17 +19,39 @@ check() {
   fi
 }
 
+# The stub `claude` above plus a headless invocation is exactly what selects the
+# session rung; LOOP_SPEC_SESSION_LAYER=0 pins the in-harness ladder beneath it.
 select_rung() {
   env -u LOOP_SPEC_EXECUTE_LOOPS -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT \
-    PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude "$@" bash "$SCRIPT" select \
+    PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 "$@" bash "$SCRIPT" select \
     --width 3 --teams-mode none --workflows-available false --workflow-optin false
 }
+session_rung="session"; session_reason="headless/claude"
+if ! python3 -c 'import tomllib' >/dev/null 2>&1; then session_rung="subagent"; session_reason="python-below-3.11"; fi
 
 out="$(select_rung LOOP_SPEC_NON_INTERACTIVE=1)"
 check "headless wide DAG uses subagent" "subagent" "$(jq -r '.rung' <<<"$out")"
 check "headless fallback reason is auditable" "headless/non-interactive" "$(jq -r '.loop.runtimeReason' <<<"$out")"
 check "headless subagent isolation is lead-created worktrees" "lead-worktree" \
   "$(jq -r '.subagentIsolation' <<<"$out")"
+
+out="$(env -u LOOP_SPEC_SESSION_LAYER PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_NON_INTERACTIVE=1 \
+  bash "$SCRIPT" select --width 1 --teams-mode none --workflows-available false --workflow-optin false)"
+check "headless with the CLI and a profile uses the session rung" "$session_rung" "$(jq -r '.rung' <<<"$out")"
+check "the session rung reports the probe's reason" "$session_reason" "$(jq -r '.sessionLayer.reason' <<<"$out")"
+check "the session rung isolates by lead-created worktrees" "lead-worktree" "$(jq -r '.subagentIsolation' <<<"$out")"
+out="$(env -u LOOP_SPEC_SESSION_LAYER PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude CLAUDE_CODE_ENTRYPOINT=sdk-cli \
+  bash "$SCRIPT" select --width 3 --teams-mode implicit --workflows-available false --workflow-optin false)"
+check "claude -p with the CLI outranks the team rung" "$session_rung" "$(jq -r '.rung' <<<"$out")"
+out="$(env -u LOOP_SPEC_SESSION_LAYER PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+  bash "$SCRIPT" select --width 3 --teams-mode none --workflows-available false --workflow-optin false)"
+check "an attended run never selects the session rung" "subagent" "$(jq -r '.rung' <<<"$out")"
+check "the attended answer is in-harness" "in-harness" "$(jq -r '.sessionLayer.answer' <<<"$out")"
+rc=0
+out="$(env PATH="$WORK/nobin:$(dirname "$(command -v bash)"):$(dirname "$(command -v jq)"):$(dirname "$(command -v python3)")" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=1 \
+  bash "$SCRIPT" select --width 1 --teams-mode none --workflows-available false --workflow-optin false)" || rc=$?
+check "a forced session layer without the CLI fails loudly" "1" "$rc"
+check "the forced session error is structured" "session-layer-unavailable" "$(jq -r '.error' <<<"$out")"
 
 out="$(select_rung LOOP_SPEC_EXECUTION_PROFILE=interactive)"
 check "persistent runtime may auto-select loop" "loop" "$(jq -r '.rung' <<<"$out")"
@@ -74,17 +96,17 @@ out="$(select_rung LOOP_SPEC_NON_INTERACTIVE=1 LOOP_SPEC_EXECUTE_LOOPS=1)" || rc
 check "forced loop without runtime fails loudly" "1" "$rc"
 check "forced loop error is structured" "loop-runtime-unavailable" "$(jq -r '.error' <<<"$out")"
 
-out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 8 --teams-mode implicit \
   --workflows-available true --workflow-optin true)"
 check "workflow still wins when opted in" "workflow" "$(jq -r '.rung' <<<"$out")"
 
-out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 3 --teams-mode implicit \
   --workflows-available false --workflow-optin false)"
 check "implicit inherit still selects team" "team" "$(jq -r '.rung' <<<"$out")"
 
-out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 3 --teams-mode implicit \
   --workflows-available false --workflow-optin false --implementer-model sonnet)"
 check "implicit sonnet skips team for a nameless subagent" "subagent" "$(jq -r '.rung' <<<"$out")"
@@ -93,12 +115,12 @@ check "implicit sonnet reason names session inheritance" "1" \
 check "implicit sonnet still reports teamsMode implicit" "implicit" \
   "$(jq -r '.teamsMode' <<<"$out")"
 
-out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 3 --teams-mode explicit \
   --workflows-available false --workflow-optin false --implementer-model sonnet)"
 check "explicit sonnet still selects team" "team" "$(jq -r '.rung' <<<"$out")"
 
-out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude \
+out="$(env -u LOOP_SPEC_EXECUTE_LOOPS PATH="$WORK/bin:$PATH" LOOP_SPEC_HARNESS=claude LOOP_SPEC_SESSION_LAYER=0 \
   LOOP_SPEC_NON_INTERACTIVE=1 bash "$SCRIPT" select --width 08 --teams-mode implicit \
   --workflows-available true --workflow-optin true)"
 check "leading-zero width is decimal" "workflow" "$(jq -r '.rung' <<<"$out")"

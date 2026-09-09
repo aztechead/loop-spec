@@ -132,7 +132,10 @@ Act on the first line of `ans`, then stop. This invocation runs at most one phas
   or the supervisor re-invokes `/loop-spec:cycle`, and that invocation enters `<p>`
   with `lib/phase-entry.sh <p>` as its whole ingress. Do not invoke `Skill(loop-spec:<p>)`
   from here: `hooks/team/phase-handoff-guard.sh` denies a second phase in one
-  invocation. For a Claude worktree feature, `ExitWorktree({action:"keep"})` first.
+  invocation. Never launch the next invocation yourself either (no `claude -p`, no
+  script around one): the caller that started this invocation re-invokes, and a nested
+  session spends this invocation's budget a second time. For a Claude worktree feature,
+  `ExitWorktree({action:"keep"})` first.
 - `PAUSED node=...` — a human gate (`style:step|interactive`). Print
   `loop-spec: paused at <node>; re-invoke /loop-spec:cycle to continue.` and, for a
   Claude worktree feature, `ExitWorktree({action:"keep"})`. Stop.

@@ -32,6 +32,13 @@
 #   harness.sh loop-runtime -> "true" | "false" (can this invocation keep a
 #                              synchronous, long-running fleet tool call alive?)
 #   harness.sh loop-runtime-reason -> stable reason for rung telemetry
+#   harness.sh session-layer -> "session" | "in-harness" (may EXECUTE run each
+#                               agent node as its own headless CLI process through
+#                               extensions/sessions/? "session" only when the
+#                               invocation is headless, a profile exists for this
+#                               harness's CLI, the CLI is on PATH, and python3 has
+#                               tomllib; every unknown leg answers "in-harness")
+#   harness.sh session-layer-reason -> stable reason for rung telemetry
 #
 # Detection order (first match wins):
 #   1. LOOP_SPEC_HARNESS=claude|opencode|adk|codex   explicit override. The retired
@@ -87,9 +94,18 @@
 #   an assertion rather than a proof, which is why it ranks below a stamp and
 #   above an inherited EXECUTION_PROFILE claim.
 #
-# detect/cli/subagents/entrypoint/headless always exit 0 with the answer on
-# stdout; an unknown command exits 2.
+# Session layer (`session-layer`):
+#   LOOP_SPEC_SESSION_LAYER=1|0 is the operator's word and outranks the probe; unset,
+#   the answer is "session" only when every leg above is proven. The probe never
+#   launches anything: extensions/sessions/session_run.py exits 3 on its own when
+#   the binary or the interpreter is missing at launch time.
+#
+# detect/cli/subagents/entrypoint/headless/session-layer always exit 0 with the
+# answer on stdout; an unknown command exits 2.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SESSION_PROFILES="$SCRIPT_DIR/../extensions/sessions/profiles"
 
 # Entrypoint stamps that prove a one-shot, unattended invocation.
 HEADLESS_ENTRYPOINTS=" sdk-cli sdk-py sdk-ts "
@@ -104,6 +120,18 @@ entrypoint_headless() {
   local ep
   ep="$(entrypoint)"
   if [[ "$HEADLESS_ENTRYPOINTS" == *" $ep "* ]]; then echo "true"; else echo "false"; fi
+}
+
+# One execution-profile answer, from strongest evidence down:
+#   1. operator assertion (LOOP_SPEC_NON_INTERACTIVE / EXECUTION_PROFILE=headless)
+#   2. the harness's own entrypoint stamp
+#   3. EXECUTION_PROFILE=interactive, or no evidence -> not headless
+headless() {
+  if [[ "${LOOP_SPEC_NON_INTERACTIVE:-}" == "1" || "${LOOP_SPEC_EXECUTION_PROFILE:-}" == "headless" ]]; then
+    echo "true"
+  else
+    entrypoint_headless
+  fi
 }
 
 detect() {
@@ -151,15 +179,30 @@ case "$cmd" in
     entrypoint
     ;;
   headless)
-    # One execution-profile answer, from strongest evidence down:
-    #   1. operator assertion (LOOP_SPEC_NON_INTERACTIVE / EXECUTION_PROFILE=headless)
-    #   2. the harness's own entrypoint stamp
-    #   3. EXECUTION_PROFILE=interactive, or no evidence -> not headless
-    if [[ "${LOOP_SPEC_NON_INTERACTIVE:-}" == "1" || "${LOOP_SPEC_EXECUTION_PROFILE:-}" == "headless" ]]; then
-      echo "true"
-    else
-      entrypoint_headless
-    fi
+    headless
+    ;;
+  session-layer|session-layer-reason)
+    layer="in-harness"
+    case "${LOOP_SPEC_SESSION_LAYER:-}" in
+      1) layer="session"; reason="operator-enabled" ;;
+      0) reason="operator-disabled" ;;
+      *)
+        cli="$(detect)" || exit $?
+        if [[ "$(headless)" != "true" ]]; then
+          reason="attended/$(entrypoint)"
+        elif [[ ! -f "$SESSION_PROFILES/$cli.toml" ]]; then
+          reason="no-profile/$cli"
+        elif ! command -v "$cli" >/dev/null 2>&1; then
+          reason="cli-missing/$cli"
+        elif ! python3 -c 'import tomllib' >/dev/null 2>&1; then
+          reason="python-below-3.11"
+        else
+          layer="session"
+          reason="headless/$cli"
+        fi
+        ;;
+    esac
+    if [[ "$cmd" == "session-layer" ]]; then echo "$layer"; else echo "$reason"; fi
     ;;
   loop-runtime|loop-runtime-reason)
     runtime="false"
@@ -190,7 +233,7 @@ case "$cmd" in
     if [[ "$cmd" == "loop-runtime" ]]; then echo "$runtime"; else echo "$reason"; fi
     ;;
   *)
-    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|entrypoint|headless|loop-runtime|loop-runtime-reason)" >&2
+    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|entrypoint|headless|loop-runtime|loop-runtime-reason|session-layer|session-layer-reason)" >&2
     exit 2
     ;;
 esac

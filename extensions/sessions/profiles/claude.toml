@@ -1,0 +1,38 @@
+# Claude Code in print mode: the headless entry skills/shared/claude-harness.md
+# documents. The prompt is the last argument. The guarded line names the implementer's
+# tools outright because print mode denies every unlisted tool without asking, and
+# bypassPermissions is refused under root, which is what a container runs as.
+name = "claude"
+binary = "claude"
+launch_args = ["-p", "--output-format", "json"]
+guarded_args = ["--permission-mode", "acceptEdits", "--allowedTools", "Bash,Read,Write,Edit,MultiEdit,Glob,Grep"]
+bypass_args = ["--permission-mode", "bypassPermissions"]
+model_flag = "--model"
+prompt_template = "{prompt}"
+# Gitignored configs a worktree checkout omits: project MCP servers and Claude settings.
+seed_files = [
+  ".mcp.json",
+  ".claude/settings.json",
+  ".claude/settings.local.json",
+]
+
+# Transport-failure lines, matched against the ANSI-stripped 64 KiB tail of a failed
+# session's output. Each alternative is one complete Claude Code error sentence as a
+# run captured it, never a framing token plus a loose cause: the log carries the
+# model's own output, and a task that writes about an API error must not read as an
+# outage. The 5xx statuses are enumerated, not ranged, for the same reason. The
+# single-character classes (`t[o]`, `respons[e]`, `5[2]9`, `5[0]0`) make each pattern
+# fail to match its own line here, so a session that prints or diffs this profile does
+# not read its configuration as a provider fault. No quota line is seeded: none was
+# captured, and that vocabulary is what a task implementing rate limiting prints.
+env_fault_patterns = [
+  "API Error: Unable to connect t[o] API",
+  "API Error: Connection closed mid-respons[e]",
+  "API Error: (5[2]9 Overloaded|5[0]0 Internal server error)",
+]
+
+# A session that ends its turn to await a background subagent yields a result-less
+# exit with the task half done; this forces every Agent and Bash call to run in the
+# foreground, which the implementer contract already requires.
+[env]
+CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1"

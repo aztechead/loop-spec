@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 [[ "${1:-}" == "select" ]] || {
   echo "usage: execute-rung.sh select --width N --teams-mode MODE --workflows-available BOOL --workflow-optin BOOL [--implementer-model SELECTOR]" >&2
+  echo "  rungs: inline | subagent | session | team | loop | workflow | foreign (lib/harness.sh session-layer gates session)" >&2
   exit 2
 }
 shift
@@ -36,6 +37,8 @@ subagents="$(bash "$SCRIPT_DIR/harness.sh" subagents)"
 agent_cli="$(bash "$SCRIPT_DIR/harness.sh" cli)"
 loop_runtime="$(bash "$SCRIPT_DIR/harness.sh" loop-runtime)"
 loop_runtime_reason="$(bash "$SCRIPT_DIR/harness.sh" loop-runtime-reason)"
+session_layer="$(bash "$SCRIPT_DIR/harness.sh" session-layer)"
+session_layer_reason="$(bash "$SCRIPT_DIR/harness.sh" session-layer-reason)"
 cli_available="false"
 command -v "$agent_cli" >/dev/null 2>&1 && cli_available="true"
 loops_available="false"
@@ -69,6 +72,16 @@ if [[ "$worktrees_enabled" != "0" && "$loops_optin" == "1" && "$loops_available"
     '{error:"loop-runtime-unavailable", cli:$cli, cliAvailable:$cliAvailable,
       runtimeReason:$runtimeReason,
       message:("LOOP_SPEC_EXECUTE_LOOPS=1 requested loop-fleet, but its persistent runtime is unavailable (" + $runtimeReason + ")")}'
+  exit 1
+fi
+
+# The operator's word (LOOP_SPEC_SESSION_LAYER=1) outranks the probe, so this is the
+# one way to reach the session rung without the CLI: fail loudly, never silently
+# in-harness, the same shape as a forced loop without its runtime.
+if [[ "$session_layer" == "session" && "$cli_available" != "true" ]]; then
+  jq -cn --arg cli "$agent_cli" --arg reason "$session_layer_reason" \
+    '{error:"session-layer-unavailable", cli:$cli, cliAvailable:false, sessionLayerReason:$reason,
+      message:("the session layer was selected (" + $reason + ") but " + $cli + " is not on PATH")}'
   exit 1
 fi
 
@@ -114,6 +127,11 @@ elif [[ "${LOOP_SPEC_FOREIGN_CLAIMANTS:-0}" == "1" ]] \
   # selects this rung and never removes a node.
   rung="foreign"
   reason="foreign claimants opted in; handoff port reachable"
+elif [[ "$session_layer" == "session" ]]; then
+  # Headless with a profile for this CLI: each agent node runs as its own disposable
+  # CLI process (extensions/sessions/) instead of an in-harness subagent.
+  rung="session"
+  reason="session layer ${session_layer_reason}"
 elif (( width >= 6 )) && [[ "$workflows_available" == "true" && "$workflow_optin" == "true" ]]; then
   rung="workflow"
   reason="workflow opted in and available"
@@ -144,8 +162,9 @@ fi
 # is therefore the lead creating each task worktree BEFORE dispatch — never the
 # subagent running `git worktree add` itself. Fan-out wider than 1 is gated on
 # that lead-created worktree existing; a failed add serializes the wave.
+# A session shares the lead's cwd the same way, so it takes the same isolation.
 subagent_isolation="none"
-if [[ "$rung" == "subagent" && "$worktrees_enabled" == "1" ]]; then
+if [[ ("$rung" == "subagent" || "$rung" == "session") && "$worktrees_enabled" == "1" ]]; then
   subagent_isolation="lead-worktree"
 fi
 
@@ -155,10 +174,12 @@ jq -cn --arg rung "$rung" --argjson width "$width" --arg reason "$reason" \
   --argjson loopRuntime "$loop_runtime" --arg loopRuntimeReason "$loop_runtime_reason" \
   --arg loopOptIn "$loops_optin" --argjson worktreesEnabled "$worktrees_json" \
   --arg subagentCap "$subagent_cap" --arg subagentIsolation "$subagent_isolation" \
+  --arg sessionLayer "$session_layer" --arg sessionLayerReason "$session_layer_reason" \
   '{rung:$rung,width:$width,reason:$reason,teamsMode:$teamsMode,
     subagentsAvailable:$subagents,
     maxParallelSubagents:(if $subagentCap == "" then null else ($subagentCap | tonumber) end),
     worktreesEnabled:$worktreesEnabled,
     subagentIsolation:$subagentIsolation,
     loop:{cli:$cli,cliAvailable:$cliAvailable,runtimeAvailable:$loopRuntime,
-      runtimeReason:$loopRuntimeReason,optIn:$loopOptIn}}'
+      runtimeReason:$loopRuntimeReason,optIn:$loopOptIn},
+    sessionLayer:{answer:$sessionLayer,reason:$sessionLayerReason}}'

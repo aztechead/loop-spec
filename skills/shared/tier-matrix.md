@@ -70,6 +70,7 @@ effective value at use time (`bash "$TUNE" get fastPathMaxTasks 2`,
 | W | Mechanism |
 |---|---|
 | any, `LOOP_SPEC_EXECUTE_LOOPS=1` + agent CLI + persistent runtime | loop fleet (`execute-loop-fleet.md`) |
+| any, headless + agent CLI + `extensions/sessions/profiles/<cli>.toml` (`lib/harness.sh session-layer`) | disposable sessions (`execute-rungs.md`); `LOOP_SPEC_SESSION_LAYER=0` keeps the subagent waves |
 | any, no subagent tool | inline (`execute-rungs.md`); the fleet takes it at `W >= t_team` when available |
 | `W == 1` | subagent, sequential (`execute-subagent.md`) |
 | `2 <= W < t_team` | subagent, batched wave |

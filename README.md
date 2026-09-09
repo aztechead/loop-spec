@@ -134,7 +134,7 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 
 | Skill | Purpose |
 |---|---|
-| `auto` | Preferred headless/SDK entry. Routes to micro, debug, or full cycle fail-closed. |
+| `auto` | Preferred headless/SDK entry. Routes to micro, debug, or full cycle fail-closed. Headless runs dispatch EXECUTE implementers as disposable CLI sessions (`extensions/sessions/`). |
 | `cycle` | Seven-phase prompt-to-ready-PR loop, or the three-phase oneshot route for a small footprint. Also: `new`, `backlog`, spec-file ingest, resume. |
 | `intake` | Any input → spec draft → cycle. `--no-run` stops after the draft. |
 | `debug` | Bounded debug: triage, red reproduction, fix, verify. Writes `BUG.md`. |
