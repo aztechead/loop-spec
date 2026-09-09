@@ -27,10 +27,12 @@ The landing record at the end of the follow-up says what each item became.
   `cycle-driver.sh start` consumes is still present and no newer
   `.loop-spec/last-result.json` exists. It has no switch of its own;
   `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the deny.
-- **SPEC to ONESHOT is one session.** The graph's `human.after-spec` to `oneshot` edge
-  carries `"sameSession": true`; `cycle-driver.sh next --returned-from spec` answers
-  `NEXT phase=oneshot` instead of `HANDOFF`, and `hooks/team/phase-handoff-guard.sh`
-  allows the call. A supervisor counting rounds sees one round for a oneshot fix.
+- **The short route is one session end to end.** The graph's `human.after-spec` to
+  `oneshot` edge and its `oneshot` to `deliver` edge carry `"sameSession": true`;
+  `cycle-driver.sh next` answers `NEXT` across them instead of `HANDOFF`, and
+  `hooks/team/phase-handoff-guard.sh` allows the calls. A supervisor counting rounds
+  sees one round for a oneshot fix; the escalated route (`oneshot` to `discuss`) still
+  hands off.
 - **The footprint is the scout's ledger.** `lib/footprint.sh cite <path>:<line>`
   (with `--read-only`) writes `<featureDir>/footprint.jsonl`; `lib/graph/probes/oneshot.sh
   --candidate` and `cycle-driver.sh spec skeleton` read it and take no file argument.

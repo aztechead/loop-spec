@@ -297,13 +297,15 @@ bash tests/run-all.sh
 For the reviewer of PR 94. What each item above became on the branch, in the order the
 items were worked, with the decisions the plan did not anticipate taken by
 `docs/loop-spec/orchestrator-port-principles.md`. Offline evidence is
-`bash tests/run-all.sh`; the live done conditions (a haiku run per fixture) were not
-spent in this session, per `CLAUDE.md`, and stay open below.
+`bash tests/run-all.sh`. The live done conditions are the `live run` rows: the user
+authorized the spend after the reviewer's bounded bet (F1 through F3 only, no new
+guards, no new prose, a live bug-fix run as the only accepted evidence, 0.25 USD the
+line).
 
 | item | state | evidence |
 |---|---|---|
 | F1 | done | `hooks/team/cycle-stamp-guard.sh` denies the stop on an unconsumed cycle stamp; `lib/harness.sh attended` gates `micro-inject.sh`; `evals/eval_run.py` records `cycle_begun` and reports "no cycle". Live `wc-json` run: open. |
-| F2 | done | `"sameSession": true` on the `human.after-spec` to `oneshot` edge; `lib/graph/phases.sh same-session`; the driver answers `NEXT`, the guard allows. Pinned in `tests/lib/graph-run.test.sh`, `graph-phases`, `cycle-driver`, and the guard test. Live `slugify-bug` round count: open. |
+| F2 | done | `"sameSession": true` on the `human.after-spec` to `oneshot` edge and, after live run 2 paid the DELIVER handoff as a second round, on the `oneshot` to `deliver` edge; `lib/graph/phases.sh same-session`; the driver answers `NEXT`, the guard allows. Pinned in `tests/lib/graph-run.test.sh`, `graph-phases`, `cycle-driver`, and the guard test. Live `slugify-bug` round count: two at b5008b4 (the DELIVER handoff); the second edge is unmeasured. |
 | F3 | done | `lib/context-load.sh`; `tests/lib/context-load.test.sh` holds the oneshot path (the spec skill's lite section plus the oneshot skill, with cites) under 600 lines, today 453, and the spec skill body under 260. The four directive injections stand down when headless. The lite path is "1a. The oneshot candidate" in `skills/spec/SKILL.md`. Cost at or under 0.25 USD: open. |
 | F4 | done | `cycle-driver.sh spec skeleton` and the oneshot node's ingress `skeletons` (VERIFICATION.md) write the shapes; the gate drops an untouched non-test footprint file with a note; `tests/lib/oneshot-exit-gate.test.sh` runs the filled skeleton and the fixture through both lints. Zero format REDO rounds on a live run: open. |
 | F5 | done | `cycle-driver.sh spec write`; `hooks/restrict-agent-paths.sh` denies every caller, the main thread included; `tests/lib/phase-exit.test.sh` runs the SPEC exit from a worktree feature with a stale parent copy. |
@@ -320,4 +322,5 @@ spent in this session, per `CLAUDE.md`, and stay open below.
 | rule 9, again | applied | The F1 guard has no switch of its own (`LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and the deny), and the micro directive lost the two sentences about standing down that the guard and the attended probe now enforce. Net new variables: zero. |
 | rule 6 | applied | `cycle-driver.sh oneshot review` launches the one review pass as a session where the session layer answers, and emits the dispatch event itself; the lead's `Agent` dispatch is the in-harness fallback. |
 | live run 1 | over the bar | `slugify-bug` on haiku at e325085, one round: the correct two-line fix, checks 2 of 2, 72 turns, 0.76 USD, 6.4 minutes, 39 artifact lines. Not delivered: the lead wrote the reviewer's dispatch event by hand in the wrong shape and escalated on the gate that could not find it. Fixed on the next commit: the driver runs the review pass at the ONESHOT boundary and hands the lead one REDO with the report; the lead writes no event. |
+| live run 2 | over the bar | `slugify-bug` on haiku at b5008b4, delivered (`pushed-no-pr`), the correct fix, checks 2 of 2: two rounds, 0.56 USD, 5.3 minutes, 139 artifact lines against a bar of one round, 0.25 USD, 3 minutes, 50 lines. Round 2 was the DELIVER handoff (a whole context reload for 0.09 USD); 99 of the artifact lines were VERIFICATION.md filled to the full template where `lib/artifact-lint.sh` requires two sections. The next commit makes `oneshot` to `deliver` same-session. The template is untouched: trimming it is new shape, and the bet allows none. |
 | stopping rule | mechanical | `evals/tasks/slugify-bug` and `wc-json` carry `bar` figures; `evals/eval_run.py` records `bar.met` and the summary says "at the bar" or "over the bar: <figure>" per task. |

@@ -25,7 +25,8 @@ check "bad invocation exits 2" "2" "$(bash "$LIB" bogus >/dev/null 2>&1; echo $?
 # hands off.
 check "same-session: spec to oneshot stays in the session" "0" "$(bash "$LIB" same-session spec oneshot >/dev/null 2>&1; echo $?)"
 check "same-session: spec to discuss hands off" "1" "$(bash "$LIB" same-session spec discuss >/dev/null 2>&1; echo $?)"
-check "same-session: oneshot to deliver hands off" "1" "$(bash "$LIB" same-session oneshot deliver >/dev/null 2>&1; echo $?)"
+check "same-session: oneshot to deliver stays in the session (the short route is one session end to end)" "0" "$(bash "$LIB" same-session oneshot deliver >/dev/null 2>&1; echo $?)"
+check "same-session: the escalated oneshot to discuss hands off" "1" "$(bash "$LIB" same-session oneshot discuss >/dev/null 2>&1; echo $?)"
 check "same-session: every full-path boundary hands off" "0" "$(for pair in 'discuss plan' 'plan execute' 'execute verify' 'verify iterate' 'iterate deliver'; do bash "$LIB" same-session $pair >/dev/null 2>&1 && echo "$pair"; done | wc -l | tr -d ' ')"
 check "same-session: one id is a bad invocation" "2" "$(bash "$LIB" same-session spec >/dev/null 2>&1; echo $?)"
 check "unreadable graph exits 2" "2" "$(bash "$LIB" list --graph "$WORK/none.json" >/dev/null 2>&1; echo $?)"

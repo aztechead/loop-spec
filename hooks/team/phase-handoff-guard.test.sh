@@ -68,7 +68,11 @@ check "oneshot after spec is the same session (graph sameSession edge)" 0 "$ONES
   CLAUDE_PROJECT_DIR="$ONESHOT_ROOT"
 jq '.currentPhase = "deliver" | .completedPhases = ["spec","oneshot"]' "$FDIR/feature.json" > "$ODIR/feature.json"
 DELIVER_AFTER_ONESHOT='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:deliver"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:oneshot"}}]}]}'
-check "deliver after oneshot still hands off" 2 "$DELIVER_AFTER_ONESHOT" \
+check "deliver after oneshot is the same session too" 0 "$DELIVER_AFTER_ONESHOT" \
+  CLAUDE_PROJECT_DIR="$ONESHOT_ROOT"
+jq '.currentPhase = "discuss" | .completedPhases = ["spec","oneshot"]' "$FDIR/feature.json" > "$ODIR/feature.json"
+DISCUSS_AFTER_ONESHOT='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:discuss"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:oneshot"}}]}]}'
+check "discuss after an escalated oneshot still hands off" 2 "$DISCUSS_AFTER_ONESHOT" \
   CLAUDE_PROJECT_DIR="$ONESHOT_ROOT"
 
 # Production path: Claude Code passes `transcript_path`, not an inline transcript.
