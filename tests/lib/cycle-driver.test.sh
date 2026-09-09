@@ -166,6 +166,11 @@ check "next: handoff writes a paused result" "phase-handoff" "$(jq -r '.reason' 
 check "next: the handoff records the session" "s1" "$(jq -r '.handoffSession.id' "$FD/feature.json")"
 out="$(cd "$REPO" && SESSION=s1 drv next --feature-dir "$FD" 2>/dev/null)"
 check "next: the same session gets the handoff answer again" "HANDOFF next=plan" "${out:0:17}"
+# The repeat answers from the record: no second phase_end/phase_start pair lands in the
+# ledger (a sink counting phase ends read two on the f0959f6 run; followup-3, N7).
+pairs_before="$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
+(cd "$REPO" && AUTONOMOUS=1 SESSION=s1 drv next --feature-dir "$FD" >/dev/null 2>&1)
+check "next: a repeated handoff answer emits no phase event pair" "$pairs_before" "$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
 ec=0; (cd "$REPO" && SESSION=s1 drv phase-begin plan --feature-dir "$FD" >/dev/null 2>&1) || ec=$?
 check "phase-begin: the same session is refused with 4" "4" "$ec"
 ec=0; (cd "$REPO" && SESSION=s2 drv phase-begin plan --feature-dir "$FD" >/dev/null 2>&1) || ec=$?
@@ -180,6 +185,7 @@ bash "$REPO_ROOT/lib/cycle-result.sh" clear --result-root "$REPO"
 ec=0; err="$(cd "$REPO" && SESSION=s1 AUTONOMOUS=1 drv begin --dir "$REPO" -- add a json flag 2>&1 >/dev/null)" || ec=$?
 check "begin: the session that handed off is refused with 4" "4" "$ec"
 check "begin: the refusal carries the handoff answer" "1" "$(grep -c 'HANDOFF next=plan' <<<"$err")"
+check "begin: the refused re-entry emits no phase event pair" "$pairs_before" "$(grep -c '"event":"phase_\(start\|end\)"' "$FD/events.jsonl")"
 check "begin: the refusal puts the result pointer back" "phase-handoff" "$(jq -r '.reason' "$REPO/.loop-spec/last-result.json" 2>/dev/null)"
 
 # --- start: an autonomous re-invocation resumes the one paused feature ------------

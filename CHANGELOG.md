@@ -30,6 +30,15 @@ The landing record at the end of the follow-up says what each item became.
   `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
   the cycle skill binds, never a path to retype. It has no switch of its own;
   `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
+- **The small pins the third audit asked for.** A repeated handoff answer (`next` or
+  `begin` in the session that handed off) adds no phase event pair, pinned in the
+  driver test; each eval task's pass bar is checked against the plan's figures
+  (`tests/eval-record-coverage.test.sh`); the four port findings documents under
+  `evals/` leave the tree per the policy PR 93 set, and the changelog names the runs
+  instead. The state-ref commit count on a driver-delivered branch was already pinned
+  (`tests/lib/cycle-driver.test.sh`, "carries no state commit", in place and in a
+  worktree). PR 93's four variables and three guards stay as merged, each recorded
+  with its observed failure in `docs/loop-spec/orchestrator-port-followup-3.md`.
 - **The short route's reading list is bounded as a path.** `skills/spec-lite/SKILL.md`
   is SPEC's entry on every cycle (the graph's `spec` node names it with the new node
   key `skill`, printed as `EXT skill=spec-lite` under `NEXT`): the scout, the oneshot
@@ -410,7 +419,7 @@ touches, and what to do.
 - `lib/oneshot-spec-lint.sh` flags a footprint file whose existing test module the spec
   never names: in the footprint when it changes, in Implementation notes as unchanged
   when it does not. A run shipped a flag without its test and the reviewer deferred it.
-- Ten findings from the second and third live runs (`evals/findings-2026-09-09-rounds-2-3.md`):
+- Ten findings from the second and third live runs (the 2026-09-09 haiku runs, rounds two and three; the findings document stays out of the tree):
   the version directive and SPEC's greenfield lookup say a stale installer is upgraded
   before anything is installed, never worked around with an older build or a
   pre-release; `critique open` answers the challenger's model alias for the Agent call;
@@ -428,7 +437,7 @@ touches, and what to do.
   `gate_passed` is true by construction, so the challenger was the spec's only
   independent read and two live runs skipped it. A human-answered or supervisor-answered
   gate still skips. Costs one challenger pass per autonomous run.
-- Five defects from the first live run on 6.3.0 (`evals/findings-2026-09-09.md`):
+- Five defects from the first live run on 6.3.0 (the first live run on 6.3.0; the findings document stays out of the tree):
   `lib/git-ops.sh slugify` bounds a slug at 64 characters on a word boundary (a
   whole-description title made a 470-character branch git could not lock);
   `lib/parse-invocation.sh` refuses a flag as a title (`begin --help` initialized a
@@ -479,7 +488,7 @@ touches, and what to do.
   answer a bare runtime lookup whose sources never answered: on a network that blocks
   endoflife.date, `latest python` had answered `0.0.4` from an npm package of that name,
   and the fourth live run pinned Python 3.14.0rc2 from a stale `uv` and escalated
-  (`evals/findings-2026-09-09-round-4.md`). `agents/implementer.md` binds the
+  (the fourth live run; the findings document stays out of the tree). `agents/implementer.md` binds the
   stale-installer rule where installs happen.
 - `phase-exit.sh plan` also flags `uv sync`, `npm ci`, and `poetry install` in a verify
   command.
