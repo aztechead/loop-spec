@@ -65,8 +65,9 @@ Claude Code is the only harness with a vetoable `Stop` event, so it is the only
 one where ambient enforcement can BLOCK rather than merely instruct:
 `hooks/hooks.json` wires `SessionStart`, `UserPromptSubmit`, `PreToolUse`,
 `PostToolUse`, `Stop`, `TaskCompleted`, and `TeammateIdle`, and
-`hooks/team/adhoc-verify-guard.sh` plus `route-terminal-guard.sh` can refuse a
-termination.
+`hooks/team/adhoc-verify-guard.sh`, `route-terminal-guard.sh`, and
+`cycle-stamp-guard.sh` (a `/loop-spec:cycle` prompt whose driver was never called)
+can refuse a termination.
 
 Do not read that as the other harnesses being broken. The deterministic gates
 (`lib/verification-grounding-lint.sh`, `lib/cycle-reconcile.sh`) hold the same

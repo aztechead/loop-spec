@@ -266,6 +266,7 @@ run_suite "hooks/team/pre-task-blockedby-enforce" "bash hooks/team/pre-task-bloc
 run_suite "hooks/team/adhoc-verify-guard" "bash hooks/team/adhoc-verify-guard.test.sh"
 run_suite "hooks/team/deferral-guard"     "bash hooks/team/deferral-guard.test.sh"
 run_suite "hooks/team/route-terminal-guard" "bash hooks/team/route-terminal-guard.test.sh"
+run_suite "hooks/team/cycle-stamp-guard"   "bash hooks/team/cycle-stamp-guard.test.sh"
 run_suite "hooks/team/oracle-record"        "bash hooks/team/oracle-record.test.sh"
 run_suite "lib/deferral-lint"             "bash tests/lib/deferral-lint.test.sh"
 run_suite "lib/delta-findings-lint"       "bash tests/lib/delta-findings-lint.test.sh"

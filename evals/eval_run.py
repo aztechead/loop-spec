@@ -358,6 +358,10 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
         # written by hand (the 6.1.0 readme-sync and 6.2.0 wc-json runs both did).
         "forged_result": bool(result) and not (result.get("schema") and result.get("loopSpecVersion")),
         "iterations": ((feature or {}).get("iterate") or {}).get("used"),
+        # The driver writes feature.json when the cycle begins; a run with no feature
+        # never entered a phase, whatever the lead edited (the dda2cca wc-json run
+        # followed the ad-hoc micro directive instead and stopped with nothing).
+        "cycle_begun": feature_file is not None,
         "phase": (feature or {}).get("currentPhase"),
         "delivery_status": delivery_status,
         "delivered": delivery_status in ("ready-for-review", "delivered-draft", "pushed-no-pr"),
@@ -421,7 +425,7 @@ def write_summary(out_dir):
         lines.append(
             f"| {r['task']} | {'yes' if r['accepted'] else 'NO'} | {'yes' if r.get('delivered') else 'no'} "
             f"| {r['checks_passed']}/{r['checks_total']} "
-            f"| {r.get('phase')} | {r['result'].get('status')} | {r['rounds']} | {r['turns']} "
+            f"| {r.get('phase')} | {r['result'].get('status') or ('no cycle' if not r.get('cycle_begun') else None)} | {r['rounds']} | {r['turns']} "
             f"| {r['subagents']} | {r['cost_usd']:.2f} | {r['minutes']} | {r['app_diff']['files']} "
             f"| +{r['app_diff']['added']}/-{r['app_diff']['removed']} | +{r['artifact_diff']['added']} "
             f"| {r['overbuild_ratio']}x | {', '.join(r['protected_touched']) or '-'} |")
@@ -437,6 +441,8 @@ def write_summary(out_dir):
     for r in records:
         if r.get("cut_off"):
             lines.append(f"- **{r['task']}** cut off by the account usage limit after {r['minutes']} min; not a plugin outcome")
+        if not r.get("cycle_begun"):
+            lines.append(f"- **{r['task']}** never began a cycle: the driver wrote no feature.json, so the row measures the entry, not the plugin's phases")
         if r.get("forged_result"):
             lines.append(f"- **{r['task']}** wrote its terminal result by hand (no schema or version stamp): status untrusted")
         failed = [f"{k}: {v['note']}".rstrip(": ") for k, v in r["checks"].items() if not v["pass"]]

@@ -165,6 +165,51 @@ check "operator headless profile is headless" "true" "$got"
 got=$(run headless LOOP_SPEC_EXECUTION_PROFILE=interactive CLAUDE_CODE_ENTRYPOINT=cli)
 check "interactive profile is not headless" "false" "$got"
 
+# --- attended: a person is proven, or the answer is false ---
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=cli)
+check "the interactive TUI stamp is attended" "true" "$got"
+
+got=$(run attended-reason CLAUDE_CODE_ENTRYPOINT=cli)
+check "the TUI reason names the stamp" "attended/cli" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=sdk-cli)
+check "claude -p is not attended" "false" "$got"
+
+got=$(run attended-reason CLAUDE_CODE_ENTRYPOINT=sdk-cli)
+check "the headless reason names the stamp" "headless/sdk-cli" "$got"
+
+# Unknown is not attended: the directive a person earns went to a headless run once.
+got=$(run attended)
+check "no stamp is not attended" "false" "$got"
+
+got=$(run attended-reason)
+check "no stamp reason is unproven" "unproven/unknown" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=remote_mobile)
+check "an unlisted stamp is not attended" "false" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=remote_mobile LOOP_SPEC_EXECUTION_PROFILE=interactive)
+check "the operator's interactive word makes an unlisted stamp attended" "true" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=sdk-cli LOOP_SPEC_EXECUTION_PROFILE=interactive)
+check "a headless stamp outranks the interactive claim" "false" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=cli LOOP_SPEC_NON_INTERACTIVE=1)
+check "the operator's non-interactive word outranks the TUI stamp" "false" "$got"
+
+got=$(run attended-reason CLAUDE_CODE_ENTRYPOINT=cli LOOP_SPEC_NON_INTERACTIVE=1)
+check "the operator headless reason is stable" "headless/operator" "$got"
+
+# The bridge harnesses stamp nothing; their one-shot launchers assert non-interactive.
+for h in opencode adk codex; do
+  got=$(run attended LOOP_SPEC_HARNESS=$h)
+  check "$h without a non-interactive assertion is attended" "true" "$got"
+  got=$(run attended-reason LOOP_SPEC_HARNESS=$h)
+  check "$h attended reason names the bridge" "bridge/$h" "$got"
+  got=$(run attended LOOP_SPEC_HARNESS=$h LOOP_SPEC_NON_INTERACTIVE=1)
+  check "$h one-shot launch is not attended" "false" "$got"
+done
+
 # --- entrypoint feeds loop-runtime ---
 got=$(run loop-runtime CLAUDE_CODE_ENTRYPOINT=sdk-cli)
 check "claude -p has no persistent loop runtime" "false" "$got"
