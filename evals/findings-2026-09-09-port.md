@@ -191,7 +191,9 @@ result and ended the run. Fixed after the run: `handoff_answer` writes the pause
 result again before it answers, and `begin` refuses the session that handed off with
 exit 4, as `phase-begin` already did (`tests/lib/cycle-driver.test.sh`). The
 phase-handoff guard sees `Skill` calls for phases only; the cycle skill itself is not a
-phase, which is why the driver, not the guard, is the line.
+phase, which is why the driver, not the guard, is the line. A third run on that fix
+(`final3-sonnet-fastapi`, plugin 5de3b59) was stopped by the operator in its first
+round; no number from it is recorded.
 
 ### What the earlier rounds cost and taught
 
