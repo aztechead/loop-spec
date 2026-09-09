@@ -17,6 +17,10 @@ trap 'exit 0' ERR
 command -v python3 &>/dev/null || exit 0
 
 INPUT=$(cat)
+# The phase ids come from the graph (lib/graph/phases.sh); an unreadable graph leaves
+# the alternation empty and the guard matches nothing, which is the fail-open side.
+LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+export LOOP_SPEC_PHASE_ALT
 PARSED=$(printf '%s' "$INPUT" | python3 -c '
 import json
 import os
@@ -24,7 +28,7 @@ import re
 import sys
 
 phase_re = re.compile(
-    r"(?:^|/|:)loop-spec:(spec|discuss|plan|execute|verify|iterate|deliver)$"
+    r"(?:^|/|:)loop-spec:(" + os.environ.get("LOOP_SPEC_PHASE_ALT", "") + r")$"
 )
 
 def phase_name(value):

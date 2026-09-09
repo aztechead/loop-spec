@@ -10,7 +10,7 @@
 # three tool calls later. phase-exit.sh is the matching egress.
 #
 # Usage:
-#   phase-entry.sh <spec|discuss|plan|execute|verify|iterate|deliver> --feature-dir DIR
+#   phase-entry.sh <phase> --feature-dir DIR      (a phase id of lib/graph/phases.sh list)
 #
 # The call also copies feature.json to <DIR>/.phase-entry.json (ignored by the
 # runtime ignore rules): phase-exit.sh diffs the file against it and names every key the
@@ -48,12 +48,12 @@ phase="${1:-}"; shift || true
 feature_dir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in --feature-dir) feature_dir="${2:-}"; shift 2 ;;
-    *) echo "usage: phase-entry.sh <spec|discuss|plan|execute|verify|iterate|deliver> --feature-dir DIR" >&2; exit 2 ;;
+    *) echo "usage: phase-entry.sh <phase> --feature-dir DIR" >&2; exit 2 ;;
   esac
 done
-case "$phase" in spec|discuss|plan|execute|verify|iterate|deliver) ;;
-  *) echo "usage: phase-entry.sh <spec|discuss|plan|execute|verify|iterate|deliver> --feature-dir DIR" >&2; exit 2 ;;
-esac
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$SCRIPT_DIR/graph/phases.sh" validate "$phase" 2>/dev/null \
+  || { echo "usage: phase-entry.sh <phase> --feature-dir DIR ($(bash "$SCRIPT_DIR/graph/phases.sh" validate "$phase" 2>&1))" >&2; exit 2; }
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] \
   || { echo "phase-entry: --feature-dir must hold a feature.json" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"

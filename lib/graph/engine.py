@@ -28,6 +28,14 @@ with open(graph_path, "r", encoding="utf-8") as fh:
     graph = json.load(fh)
 
 nodes = {n["id"]: n for n in graph["nodes"]}
+
+# Working phases an operator (and the console) can be *in*: the agent nodes whose body
+# is a phase skill, the one rule lib/graph/phases.sh also applies. `completed` is a
+# pointer the engine writes, not a phase that emits start/end markers.
+PHASE_NODE_IDS = tuple(
+    n["id"] for n in graph["nodes"]
+    if n.get("kind") == "agent" and re.match(r"^skills/[^/]+/SKILL\.md$", n.get("body") or ""))
+PHASE_POINTER_IDS = PHASE_NODE_IDS + ("completed",)
 edges = graph["edges"]
 entry = graph.get("entry")
 if isinstance(entry, list):
@@ -376,12 +384,6 @@ def compute_effort(node_id, node, attempt):
 
 CYCLE_RESULT = os.path.realpath(os.path.join(repo_root, "lib", "cycle-result.sh"))
 
-# Working phases an operator (and the console) can be *in*. `completed` is a
-# pointer the engine writes, not a phase that emits start/end markers.
-PHASE_NODE_IDS = (
-    "spec", "discuss", "plan", "execute", "verify", "iterate", "deliver",
-)
-PHASE_POINTER_IDS = PHASE_NODE_IDS + ("completed",)
 EDGE_KIND_RE = re.compile(
     r"^(?:chain|route|fanout|fanin|loop|routeDefault):(.+)->(.+)$"
 )

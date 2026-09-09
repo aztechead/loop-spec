@@ -49,8 +49,9 @@ for published_graph in "$ROOT/graph/cycle.graph.json" "$ROOT/graph/critique.grap
   check "$(basename "$published_graph") passes strict validation (every node labelled)" "0" "$strict_rc"
 done
 
-# Phase agent nodes present
+# Phase agent nodes present: the seven the cycle ships, whatever else the graph adds.
 for phase in spec discuss plan execute verify iterate deliver; do
+  check "phases.sh lists $phase" "1" "$(bash "$ROOT/lib/graph/phases.sh" list | grep -cx "$phase")"
   n="$(jq -r --arg p "$phase" '[.nodes[] | select(.id==$p)] | length' "$GRAPH")"
   check "phase node $phase present" "1" "$n"
 done
@@ -199,7 +200,7 @@ residual_prose() {
   return 0
 }
 
-for phase in spec discuss plan execute verify iterate deliver; do
+for phase in $(bash "$ROOT/lib/graph/phases.sh" list); do
   skill="$ROOT/skills/$phase/SKILL.md"
   if out="$(residual_prose "$skill")"; then
     check "no residual routing prose in $phase" "clean" "clean"

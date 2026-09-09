@@ -63,7 +63,7 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
   rc=$?
   set -e
   check "cycle.graph.json dry-run: execStyle auto reaches completed without pausing (rc 0)" "0" "$rc"
-  for phase in spec discuss plan execute verify iterate deliver completed; do
+  for phase in $(bash "$ROOT/lib/graph/phases.sh" list) completed; do
     echo "$out" | grep -q "^${phase}"$'\t'
     check "cycle.graph.json dry-run visits $phase" "0" "$?"
   done
@@ -743,8 +743,8 @@ cat > "$WORK/phase-advance.json" <<'EOF'
 {
   "entry": "spec",
   "nodes": [
-    {"id":"spec","kind":"function","reads":[],"writes":["currentPhase"],"effort":"system1"},
-    {"id":"discuss","kind":"function","reads":[],"writes":["currentPhase"],"effort":"system1"}
+    {"id":"spec","kind":"agent","body":"skills/spec/SKILL.md","reads":[],"writes":["currentPhase"],"effort":"system1"},
+    {"id":"discuss","kind":"agent","body":"skills/discuss/SKILL.md","reads":[],"writes":["currentPhase"],"effort":"system1"}
   ],
   "edges": [{"from":"spec","to":"discuss","kind":"chain"}]
 }
@@ -833,7 +833,7 @@ echo "--- mutation proof 1: substring match (\"expects in text\") ---"
 MUTATION_ROOT="$WORK/mutation-root"
 mkdir -p "$MUTATION_ROOT" "$MUTATION_ROOT/graph"
 cp -R "$ROOT/lib" "$MUTATION_ROOT/lib"
-cp "$ROOT/graph/schema.json" "$MUTATION_ROOT/graph/schema.json"
+cp "$ROOT/graph/schema.json" "$ROOT/graph/cycle.graph.json" "$MUTATION_ROOT/graph/"
 MUTATION_GRAPH="$MUTATION_ROOT/lib/graph"
 MUTATION_SCRIPT="$MUTATION_GRAPH/run.sh"
 MUTATION_ENGINE="$MUTATION_GRAPH/engine.py"

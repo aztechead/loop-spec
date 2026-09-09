@@ -42,6 +42,10 @@ command -v python3 &>/dev/null || exit 0
 
 INPUT=$(cat 2>/dev/null) || true
 [[ -z "$INPUT" ]] && exit 0
+# The phase ids come from the graph (lib/graph/phases.sh); an unreadable graph leaves
+# the alternation empty and the guard matches nothing, which is the fail-open side.
+LOOP_SPEC_PHASE_ALT="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/phases.sh" regex 2>/dev/null || true)"
+export LOOP_SPEC_PHASE_ALT
 
 RESULT=$(printf '%s' "$INPUT" | python3 -c "$(cat <<'PY'
 import json
@@ -60,7 +64,7 @@ DUMMY_QUESTION = re.compile(
 DUMMY_LABEL = re.compile(r"^(n/?a\d*|type something|dummy|placeholder)$", re.I)
 LATE_PHASES = {"verify", "deliver"}
 ACTIVE_SKILL = re.compile(
-    r"(?:^|/|:)loop-spec:(cycle|spec|discuss|plan|execute|verify|iterate|deliver|specifying-gates)$"
+    r"(?:^|/|:)loop-spec:(cycle|" + os.environ.get("LOOP_SPEC_PHASE_ALT", "") + r"|specifying-gates)$"
 )
 EXECUTE_CONTRACTS = {
     "plan gap": (

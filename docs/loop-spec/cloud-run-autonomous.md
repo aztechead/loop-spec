@@ -194,7 +194,10 @@ def positive_float(name: str) -> float | None:
     return value
 
 
-PHASES = ("spec", "discuss", "plan", "execute", "verify", "iterate", "deliver")
+# The phase vocabulary is the graph's: never a tuple kept here.
+PHASES = tuple(subprocess.run(
+    ["bash", str(PLUGIN / "lib" / "graph" / "phases.sh"), "list"],
+    capture_output=True, text=True, check=True).stdout.split())
 
 
 def configured_phase_model(phase: str) -> str | None:

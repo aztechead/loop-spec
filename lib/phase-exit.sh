@@ -50,12 +50,12 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --feature-dir) feature_dir="${2:-}"; shift 2 ;;
     --terminal) terminal=1; shift ;;
-    *) echo "usage: phase-exit.sh <spec|discuss|plan|execute|verify|iterate> --feature-dir DIR [--terminal]" >&2; exit 2 ;;
+    *) echo "usage: phase-exit.sh <phase> --feature-dir DIR [--terminal]" >&2; exit 2 ;;
   esac
 done
-case "$phase" in spec|discuss|plan|execute|verify|iterate) ;;
-  *) echo "usage: phase-exit.sh <spec|discuss|plan|execute|verify|iterate> --feature-dir DIR [--terminal]" >&2; exit 2 ;;
-esac
+# DELIVER has no exit gate: its terminal states are observation-only (cycle-driver.sh).
+[[ "$phase" != "deliver" ]] && bash "$SCRIPT_DIR/graph/phases.sh" validate "$phase" >/dev/null 2>&1 \
+  || { echo "usage: phase-exit.sh <phase> --feature-dir DIR [--terminal] ($(bash "$SCRIPT_DIR/graph/phases.sh" validate "$phase" 2>&1 || true))" >&2; exit 2; }
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] \
   || { echo "phase-exit: --feature-dir must hold a feature.json" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"

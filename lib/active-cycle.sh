@@ -56,10 +56,7 @@ for root in "${roots[@]}"; do
       echo "active-cycle: unreadable feature state: $feature_json" >&2
       exit 2
     }
-    case "$phase" in
-      spec|discuss|plan|execute|verify|iterate|deliver) ;;
-      *) continue ;;
-    esac
+    bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/graph/phases.sh" validate "$phase" >/dev/null 2>&1 || continue
 
     delivery_file="$(dirname "$feature_json")/delivery.json"
     if [[ -f "$delivery_file" ]]; then

@@ -50,6 +50,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | integer `1..100`; `10` | Sets the full cycle's persisted ITERATE convergence ceiling. This is independent of `LOOP_SPEC_LOOP_MAX_ITERATIONS`, which bounds each loop-fleet task. |
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
+| `LOOP_SPEC_GRAPH` | path; `graph/cycle.graph.json` | Names the workflow graph every phase-vocabulary reader uses (`lib/graph/phases.sh`, the driver, feature-init, the entry and exit gates, the hooks). An embedding that ships its own graph sets it; a test that adds a phase to a copy sets it. |
 | `LOOP_SPEC_CYCLE_PROFILE` | `maintenance`/`compact`/`standard`/`auto`; `auto` | Selects the cycle's gate ladder through `lib/cycle-profile.sh`. `auto` uses validated autonomous classification; a bounded feature or refactor may select `compact`, whose auditable run/skip plan gives every skipped gate a reason. `compact` requests (inline or environment) still require that persisted valid classification; without it they resolve `standard`. Destructive, malformed, uncertain, or unbounded compact proposals also fail upward to `standard`; exact-SHA delivery and terminal publication do not change. `maintenance` lightens SPEC and may take the existing short path. The compact schema and gate rules live in [`skills/shared/compact-profile.md`](../../skills/shared/compact-profile.md). Inline `profile:` tokens outrank this variable; invalid values fail safe to `standard`. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
@@ -189,7 +190,7 @@ variables. They configure that published recipe, not plugin internals:
 
 | Variable | Accepted values / default | Exact effect |
 |---|---|---|
-| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and to **nameless** role Agents. A named implicit-team spawn inherits the session model regardless (`skills/shared/dispatch.md`); `lib/implicit-team-model.sh` selects the nameless path when an alias is set. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. OpenCode consumes an explicit value only on loop-fleet subprocesses; its `task` tool has no per-call model — pin task roles with `opencode-install.sh install --model`. Codex `spawn_agent` consumes a Codex slug; pin generated custom agents with `codex-install.sh install --model`. ADK `dispatch_subagent` consumes a native role id. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. |
+| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and to **nameless** role Agents. A named implicit-team spawn inherits the session model regardless (`skills/shared/dispatch.md`); `lib/implicit-team-model.sh` selects the nameless path when an alias is set. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. OpenCode consumes an explicit value only on loop-fleet subprocesses; its `task` tool has no per-call model — pin task roles with `opencode-install.sh install --model`. Codex `spawn_agent` consumes a Codex slug; pin generated custom agents with `codex-install.sh install --model`. ADK `dispatch_subagent` consumes a native role id. Unset inherits. The suffix is a phase id of `bash lib/graph/phases.sh list`, uppercased (`SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, `DELIVER`, and any phase a graph adds). |
 | `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` (`LOOP_SPEC_MODEL_CHALLENGER`: `sonnet` on Claude Code) | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. OpenCode accepts a native ID only for `IMPLEMENTER` on the loop-fleet rung (`provider/model`); configure other OpenCode roles through generated agents. ADK accepts a native ID (`gemini-*` or `provider/model`) for every role and forwards it on `dispatch_subagent({model})`. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, and `PATTERN_MAPPER`. |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
 | `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
@@ -203,10 +204,8 @@ Concrete variables such as `LOOP_SPEC_MODEL_PLANNER`,
 `LOOP_SPEC_MODEL_IMPLEMENTER`, and
 `LOOP_SPEC_MODEL_ITERATE_JUDGE` follow the `LOOP_SPEC_MODEL_<ROLE>` contract; the
 family form is canonical for every supported role. Likewise,
-`LOOP_SPEC_PHASE_MODEL_SPEC`, `LOOP_SPEC_PHASE_MODEL_DISCUSS`,
-`LOOP_SPEC_PHASE_MODEL_PLAN`, `LOOP_SPEC_PHASE_MODEL_EXECUTE`,
-`LOOP_SPEC_PHASE_MODEL_VERIFY`, `LOOP_SPEC_PHASE_MODEL_ITERATE`, and
-`LOOP_SPEC_PHASE_MODEL_DELIVER` follow the phase-family contract.
+`LOOP_SPEC_PHASE_MODEL_<PHASE>` (one per phase id of `bash lib/graph/phases.sh list`,
+uppercased) follows the phase-family contract.
 `lib/feature-init.sh phase-model <phase>` exposes the validated value to Claude
 CLI/Agent SDK supervisors, and
 `feature.phaseModels.<phase>` persists it in durable state.
@@ -426,6 +425,7 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_RESULT` | Machine-output marker printed to stdout, not an input variable. |
 | `LOOP_SPEC_STAMP_INPUT` | The UserPromptSubmit payload, handed from `hooks/team/invocation-stamp.sh` to its Python reader; do not set. |
 | `LOOP_SPEC_GUARD_INPUT` | The PreToolUse payload, handed from `hooks/team/result-forgery-guard.sh` to its Python reader; do not set. |
+| `LOOP_SPEC_PHASE_ALT` | The phase-id alternation `lib/graph/phases.sh regex` prints, handed from `hooks/team/phase-handoff-guard.sh` and `placeholder-question-guard.sh` to their Python readers; do not set. |
 | `LOOP_SPEC_PHASE_START`, `LOOP_SPEC_PHASE_END` | Event marker names printed to output, not input variables. |
 | `LOOP_SPEC_ACTIVE_CYCLE_BIN`, `LOOP_SPEC_CYCLE_RESULT_BIN`, `LOOP_SPEC_DEFERRAL_LINT_BIN`, `LOOP_SPEC_FINALIZE_CANDIDATE_BIN`, `LOOP_SPEC_PR_COMMENTS_BIN`, `LOOP_SPEC_PR_DELIVERY_BIN` | Test seams that replace internal executables. Unsupported in production wrappers. |
 | `LOOP_SPEC_FEATURE_DIR` | Hook-scoped feature-directory override used by team hooks/tests. Normal runs discover the active feature. |

@@ -93,7 +93,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-GRAPH="$REPO_ROOT/graph/cycle.graph.json"
+GRAPH="${LOOP_SPEC_GRAPH:-$REPO_ROOT/graph/cycle.graph.json}"
 
 usage() { sed -n '2,60p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "cycle-driver: $*" >&2; exit "${_rc:-1}"; }
@@ -1031,7 +1031,7 @@ cmd_deliver() {
 cmd_phase_begin() {
   local phase="${1:-}" feature_dir=""; shift || true
   while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="$2" ;; *) usage ;; esac; shift 2; done
-  case "$phase" in spec|discuss|plan|execute|verify|iterate|deliver) ;; *) usage ;; esac
+  lib graph/phases validate "$phase" >/dev/null 2>&1 || usage
   [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
   feature_dir="$(cd "$feature_dir" && pwd -P)"
   local entry_out entry_rc=0
