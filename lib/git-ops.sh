@@ -22,6 +22,12 @@
 #   slugify <text>                      Print kebab-case slug of <text>.
 #   ensure-clean-or-stash               Print "clean" if working tree clean apart from
 #                                       loop-spec's pre-feature runtime cache, else "dirty".
+#   dirt                                Print `git status --porcelain --untracked-files=all`
+#                                       without the feature state paths (feature.json,
+#                                       PROGRESS.md under .loop-spec/features/): state lives
+#                                       on refs/loop-spec/state/<slug> (lib/state-ref.sh) and
+#                                       a .gitignore that still negates it must not turn it
+#                                       into delivery dirt. Every dirt check reads this.
 #   current-sha                         Print HEAD short sha.
 #   create-feature-worktree <slug> <base_sha>
 #                                       Create a worktree at the resolved feature base
@@ -167,6 +173,11 @@ case "$cmd" in
     else
       printf 'dirty\n'
     fi
+    ;;
+  dirt)
+    "${G[@]}" status --porcelain --untracked-files=all -- . \
+      ':(top,exclude).loop-spec/features/*/feature.json' \
+      ':(top,exclude).loop-spec/features/*/PROGRESS.md'
     ;;
   current-sha)
     "${G[@]}" rev-parse --short HEAD

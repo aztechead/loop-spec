@@ -207,16 +207,17 @@ rm -f "$FAIL_FLAG"
 printf '%s\n' "$pass_base" > "$BASELINE"
 mkdir -p "$REPO/docs/loop-spec/features/x"
 printf '| GE-001 | it | PASS |\n' > "$REPO/docs/loop-spec/features/x/VERIFICATION.md"
+mkdir -p "$REPO/.loop-spec/features/x"; printf '{"slug":"x"}\n' > "$REPO/.loop-spec/features/x/feature.json"
 ec=0
 out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" \
   --prepare-key prep-1 --log-dir "$LOGS/docs-dirty" --test "$pass_fail_cmd" --lint '' --typecheck '')" || ec=$?
-check "an uncommitted docs/loop-spec artifact is not candidate dirt" "0:accepted" "$ec:$(jq -r '.outcome' <<<"$out")"
+check "an uncommitted docs/loop-spec artifact or .loop-spec state file is not candidate dirt" "0:accepted" "$ec:$(jq -r '.outcome' <<<"$out")"
 printf 'stray\n' > "$REPO/stray.txt"
 ec=0
 bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" \
   --prepare-key prep-1 --log-dir "$LOGS/code-dirty" --test "$pass_fail_cmd" --lint '' --typecheck '' >/dev/null 2>&1 || ec=$?
 check "an uncommitted file outside docs/loop-spec is still candidate dirt" "21" "$ec"
-rm -rf "$REPO/stray.txt" "$REPO/docs"
+rm -rf "$REPO/stray.txt" "$REPO/docs" "$REPO/.loop-spec"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

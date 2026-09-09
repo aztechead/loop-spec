@@ -135,7 +135,8 @@ Act on the first line of `ans`:
 - `ABORT ...` (exit 1) — relay stderr and stop.
 
 The driver owns `currentPhase`, the model map, the watchdog, `PROGRESS.md`, the state
-commit, and the autonomous checkpoint PR; phase skills never write `currentPhase`.
+snapshot on `refs/loop-spec/state/{slug}` (`lib/state-ref.sh`; the feature branch
+carries only task and artifact commits), and the autonomous checkpoint PR; phase skills never write `currentPhase`.
 When a phase pauses or escalates on its own (iteration limit spent, NEEDS_CONTEXT):
 
 ```bash

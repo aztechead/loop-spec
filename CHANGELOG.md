@@ -4,7 +4,7 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
-## [6.3.0] - 2026-09-09
+## [6.4.0] - 2026-09-09
 
 ### Before you update
 
@@ -49,6 +49,26 @@ touches, and what to do.
 - **Longer challenger replies.** The "top 5-7, under 500 words" caps are gone; a sink
   that stores `gate_round` payloads or gate-logs sees the full findings pass.
 
+- **Feature state never lands on the feature branch.** `feature.json` and `PROGRESS.md`
+  are snapshotted onto `refs/loop-spec/state/<slug>` at every phase transition
+  (`lib/state-ref.sh commit|restore|show`); the checkpoint push carries that ref; a
+  recreated worktree restores from it. The driver no longer commits `chore: <slug> state
+  @ <phase>` and never writes the project's `.gitignore`. `LOOP_SPEC_SQUASH_STATE_COMMITS`
+  is gone (`lib/state-commit-policy.sh` with it). A supervisor that read state from the
+  branch reads `git show refs/loop-spec/state/<slug>:feature.json` instead, and a
+  checkout whose `.gitignore` still carries the two `!/.loop-spec/features/*/...`
+  negations can delete them: every dirt check now goes through `git-ops.sh dirt`, which
+  skips the state paths, and `runtime-ignore.sh ensure` removes the same negations
+  from `info/exclude`.
+- **One feature per checkout is a guard, not a side effect.** `cycle-driver.sh init`
+  refuses a second feature while another is active in the same checkout; before, the
+  clean guard tripped on state dirt that no longer exists.
+- **A converged-floor veto with no FAIL row rewinds to VERIFY.** `iterate-gap.sh` answers
+  `gap=verify`, the graph routes `iterate -> verify`, and the verifier completes the
+  record; no implementer runs. A FAIL row still rewinds to EXECUTE.
+- **The eval driver has no judge model.** `evals/eval_run.py` reports over-build as app
+  lines added over `reference_app_lines`; the `judge` record key and the summary's
+  `judge meets/over` column are gone.
 - **VERIFICATION.md's acceptance table has a grammar, and VERIFY's exit enforces it.**
   One row per Good Enough criterion keyed `GE-NNN` or its number in the `#` column; the
   status in the `Status` or `Result` column begins with `PASS`, `FAIL`, or `N/A`. A
@@ -163,6 +183,9 @@ touches, and what to do.
   reason to re-dispatch, the three peer harness contracts drop the key, and
   `tests/lib/harness-call-shapes.test.sh` case 8 now requires the key on every one-shot
   template instead of forbidding it.
+- `docs/loop-spec/orchestrator-port-plan.md` is the ordered plan from the head-to-head
+  against BMad; this release lands its WP0 (the defects that run showed) and WP1 (the
+  oneshot route).
 - `lib/converged-floor.sh` reads the acceptance table the verifier writes: the header
   names the status column, `PASS (12 passed)` is PASS, `\|` inside a cell is a literal
   pipe, and `--shape` checks the grammar alone. `phase-exit.sh verify` runs `--shape`, so

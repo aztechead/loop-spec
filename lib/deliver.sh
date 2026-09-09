@@ -160,7 +160,7 @@ if [[ -z "$workspace_root" ]]; then
   target_sha="$(git -C "$artifact_root" rev-parse --verify HEAD 2>/dev/null || true)"
   dirty_state=""
   status_ok=1
-  dirty_state="$(git -C "$artifact_root" status --porcelain --untracked-files=all 2>/dev/null)" || status_ok=0
+  dirty_state="$(bash "$SCRIPT_DIR/git-ops.sh" -C "$artifact_root" dirt 2>/dev/null)" || status_ok=0
   if [[ -z "$target_sha" ]]; then
     append_target_failure "$slug" "$artifact_root" "$branch" "$base_branch" "" "$hint" \
       "git_history_failed" "cannot resolve feature HEAD"
@@ -261,7 +261,7 @@ else
     target_sha="$(git -C "$repo_dir" rev-parse --verify HEAD 2>/dev/null || true)"
     dirty_state=""
     status_ok=1
-    dirty_state="$(git -C "$repo_dir" status --porcelain --untracked-files=all 2>/dev/null)" || status_ok=0
+    dirty_state="$(bash "$SCRIPT_DIR/git-ops.sh" -C "$repo_dir" dirt 2>/dev/null)" || status_ok=0
     if ! git -C "$repo_dir" rev-parse --verify "${base_sha}^{commit}" >/dev/null 2>&1; then
       append_target_failure "$name" "$repo_dir" "$branch" "$base_branch" "" "$hint" \
         "base_sha_invalid" "workspace base SHA is not a local commit"

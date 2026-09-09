@@ -174,6 +174,13 @@ PY
       fi
     fi
 
+    # The branch carries no state (lib/state-ref.sh); the ref rides along, best effort.
+    state_ref="refs/loop-spec/state/$(jq -r '.slug // ""' "$feature_dir/feature.json" 2>/dev/null)"
+    if git rev-parse -q --verify "$state_ref^{commit}" >/dev/null 2>&1; then
+      run_without_auth_retry push git push origin "$state_ref:$state_ref" >/dev/null 2>&1 \
+        || echo "checkpoint-pr: state ref $state_ref not pushed (state stays local)" >&2
+    fi
+
     # ── Step 5: Idempotency — check for existing open PR ───────────────────────
     list_rc=0
     run_authenticated github-pr gh pr list --head "$branch" --state open \

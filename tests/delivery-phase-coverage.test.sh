@@ -60,8 +60,9 @@ present "single-repo delivery has candidate preflight" lib/deliver.sh "Candidate
 present "hard retries bind to the recorded SHA" lib/deliver.sh "candidate_sha_drift"
 present "hard delivery failure skips tracked commit" lib/cycle-driver.sh '"$phase" == "deliver" && "$next" != "execute"'
 present "hard delivery retry skips finalization commits" lib/finalize-delivery-candidate.sh 'Exact-SHA retries and completion recovery are observation-only'
-present "cycle commits its own ignore mutation" lib/cycle-driver.sh 'git -C "$root" add -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore'
-present "cycle rejects pre-existing ignore dirt" lib/cycle-driver.sh 'refusing to mix pre-existing .gitignore changes'
+present "cycle snapshots state onto its ref, never the branch" lib/cycle-driver.sh 'lib state-ref commit "$feature_dir" "state @ $next"'
+present "cycle never writes the project .gitignore" lib/cycle-driver.sh 'State lives on refs/loop-spec/state/<slug> (lib/state-ref.sh)'
+present "delivery dirt checks skip the state paths" lib/finalize-delivery-candidate.sh 'git-ops.sh" -C "$repo_root" dirt'
 present "fleet consumer rejects startup failures" skills/shared/execute-loop-fleet.md 'rc" -ne 0 && "$rc" -ne 1'
 present "completion recovery bypasses project tests" skills/cycle/SKILL.md 'PR was already proven'
 present "workspace readiness is staged" lib/deliver.sh "stage readiness"

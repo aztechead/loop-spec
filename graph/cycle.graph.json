@@ -743,7 +743,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "placeholderScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "placeholderScan"
+        ],
         "expects": "gate=run"
       }
     },
@@ -753,7 +758,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "placeholderScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "placeholderScan"
+        ],
         "expects": "gate=skip"
       }
     },
@@ -763,7 +773,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "placeholderScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "placeholderScan"
+        ],
         "expects": "gate=unplanned"
       }
     },
@@ -778,7 +793,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "tamperScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "tamperScan"
+        ],
         "expects": "gate=run"
       }
     },
@@ -788,7 +808,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "tamperScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "tamperScan"
+        ],
         "expects": "gate=skip"
       }
     },
@@ -798,7 +823,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "tamperScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "tamperScan"
+        ],
         "expects": "gate=unplanned"
       }
     },
@@ -813,7 +843,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "acceptance"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "acceptance"
+        ],
         "expects": "gate=run"
       }
     },
@@ -823,7 +858,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "acceptance"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "acceptance"
+        ],
         "expects": "gate=skip"
       }
     },
@@ -833,7 +873,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "acceptance"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "acceptance"
+        ],
         "expects": "gate=unplanned"
       }
     },
@@ -999,6 +1044,20 @@
         ],
         "expects": "gap=spec"
       }
+    },
+    {
+      "from": "iterate",
+      "to": "verify",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/iterate-gap.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "gap=verify"
+      },
+      "note": "converged-floor veto with no FAIL row: the verification record is incomplete, so the verifier completes it; no implementer runs"
     },
     {
       "from": "iterate",

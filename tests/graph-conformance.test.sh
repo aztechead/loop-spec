@@ -91,7 +91,7 @@ done
 # The gap CLASS and the target PHASE are not the same thing: a spec-level gap
 # rewinds to DISCUSS (autonomous refinement mode), never to SPEC. Asserting
 # to==spec here is what let that regression through in the first place.
-for pair in "execute:execute" "plan:plan" "spec:discuss"; do
+for pair in "execute:execute" "plan:plan" "spec:discuss" "verify:verify"; do
   gap="${pair%%:*}"; target="${pair##*:}"
   n="$(jq -r --arg t "$target" --arg e "gap=$gap" '[.edges[] | select(.from=="iterate" and .kind=="route" and .to==$t and .condition.expects==$e)] | length' "$GRAPH")"
   check "iterate rewind route: gap=$gap -> $target" "1" "$([[ "$n" -ge 1 ]] && echo 1 || echo 0)"

@@ -14,8 +14,8 @@ What one task run does:
      --plugin-dir, re-issuing the prompt while the cycle returns a paused result.
   4. Reads .loop-spec/last-result.json, the feature directory, and the git diff.
   5. Exports the feature branch and runs evals/tasks/<id>/check.sh against it.
-  6. Asks a cheap judge model whether the diff matches the request and how over-built
-     it is. The judge is advisory; check.sh is the acceptance.
+  6. Reports over-build as app lines added over the task's reference size; a judge
+     model that graded request match 3 of 3 on every run graded nothing.
   7. Writes evals/results/<run-id>/<id>.json and regenerates summary.md.
 
 Exit: 0 when every requested task produced a result file (pass or fail); 1 when a task
@@ -250,38 +250,6 @@ def export_and_check(task, project, branch, root, env):
     return checks
 
 
-def judge(task, project, base, branch, env, log_path):
-    diff = sh(["git", "diff", f"{base}..{branch}", "--", ".", ":(exclude)docs/loop-spec",
-               ":(exclude).loop-spec", ":(exclude).claude"], cwd=project, env=env).stdout
-    lines = diff.splitlines()
-    if len(lines) > 400:
-        diff = "\n".join(lines[:400]) + f"\n... ({len(lines) - 400} more diff lines)"
-    prompt = (
-        "You grade a code change against the request that produced it.\n"
-        f"REQUEST:\n{task['prompt']}\n\nDIFF (project files only):\n{diff or '(empty diff)'}\n\n"
-        "Do not use any tool. Answer with one JSON object and nothing else: "
-        '{"meets_request": 0-3, "overbuilt": 0-3, "note": "<one sentence>"}. '
-        "meets_request: 3 = does exactly what was asked, 0 = does not address it. "
-        "overbuilt: 0 = no more than the request needs, 3 = large unrequested additions."
-    )
-    # No --bare: it skips credential reads and the call fails with an auth error.
-    # One turn and no tools: a judge that opens a file instead of answering returns nothing.
-    proc = subprocess.run(["claude", "-p", prompt, "--model", "haiku", "--max-turns", "1",
-                           "--disallowedTools", ALLOWED_TOOLS,
-                           "--setting-sources", "project", "--output-format", "json"],
-                          cwd=str(project), env=env, capture_output=True, text=True, timeout=300)
-    log_path.write_text(proc.stdout + "\n--- stderr ---\n" + proc.stderr)
-    try:
-        text = json.loads(proc.stdout).get("result", "")
-        m = re.search(r"\{.*\}", text, re.S)
-        verdict = json.loads(m.group(0)) if m else {}
-    except (json.JSONDecodeError, AttributeError):
-        verdict = {}
-    return {"meets_request": verdict.get("meets_request"),
-            "overbuilt": verdict.get("overbuilt"),
-            "note": str(verdict.get("note", ""))[:300]}
-
-
 def run_task(task_id, model, run_id, budget, measure_only=False, commit=None,
              phase_fresh=False, timeout_s=None):
     task = load_task(task_id)
@@ -347,7 +315,6 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None,
     app, artifacts, protected_touched, commits = diff_metrics(
         project, base, branch, task.get("protected", []), env)
     checks = export_and_check(task, project, branch, root, env)
-    verdict = judge(task, project, base, branch, env, root / "judge.log")
     # DELIVER's word is the sidecar; feature.json's delivery block stays pending after it.
     delivery = read_json(fdir / "delivery.json") if fdir and (fdir / "delivery.json").is_file() else None
     delivery_status = (delivery or (feature or {}).get("delivery") or {}).get("status")
@@ -390,7 +357,6 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None,
         "workarounds": workarounds(project, env),
         "checks": checks, "checks_passed": passed, "checks_total": len(checks),
         "accepted": bool(checks) and passed == len(checks) and not protected_touched,
-        "judge": verdict,
         "rounds_detail": [{k: v for k, v in r.items() if k not in ("result_text", "stderr_tail")}
                           for r in rounds],
         "last_result_text": rounds[-1]["result_text"] if rounds else "",
@@ -433,19 +399,17 @@ def write_summary(out_dir):
     lines = [f"# Eval run {out_dir.name}", "",
              f"Plugin {records[0].get('plugin_version')} at {records[0].get('plugin_commit')}, "
              f"model {records[0].get('model')}, "
-             f"{len(records)} task(s). Acceptance is `check.sh`; the judge is advisory.", "",
-             "| task | accepted | delivered | checks | phase | status | rounds | turns | agents | cost USD | min | app files | app +/- | artifact + | over-build | protected touched | judge meets/over |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             f"{len(records)} task(s). Acceptance is `check.sh`; over-build is app lines added over the task's reference size.", "",
+             "| task | accepted | delivered | checks | phase | status | rounds | turns | agents | cost USD | min | app files | app +/- | artifact + | over-build | protected touched |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in records:
-        j = r.get("judge") or {}
         lines.append(
             f"| {r['task']} | {'yes' if r['accepted'] else 'NO'} | {'yes' if r.get('delivered') else 'no'} "
             f"| {r['checks_passed']}/{r['checks_total']} "
             f"| {r.get('phase')} | {r['result'].get('status')} | {r['rounds']} | {r['turns']} "
             f"| {r['subagents']} | {r['cost_usd']:.2f} | {r['minutes']} | {r['app_diff']['files']} "
             f"| +{r['app_diff']['added']}/-{r['app_diff']['removed']} | +{r['artifact_diff']['added']} "
-            f"| {r['overbuild_ratio']}x | {', '.join(r['protected_touched']) or '-'} "
-            f"| {j.get('meets_request')}/{j.get('overbuilt')} |")
+            f"| {r['overbuild_ratio']}x | {', '.join(r['protected_touched']) or '-'} |")
     total_cost = sum(r["cost_usd"] for r in records)
     accepted = sum(1 for r in records if r["accepted"])
     delivered = sum(1 for r in records if r.get("delivered"))
@@ -475,8 +439,7 @@ def write_summary(out_dir):
 def preflight(models):
     """Prove, for about three cents, every condition whose failure cost a re-run last time:
     the CLI is on PATH and signed in; a tool call runs under the permission mode the
-    driver uses (bypass is refused for root); the judge answers JSON without tools; the
-    fixtures carry no compiled files; the plugin checkout is committed, so the snapshot
+    driver uses (bypass is refused for root); the fixtures carry no compiled files; the plugin checkout is committed, so the snapshot
     and the record's commit agree. Returns a list of failures; empty means go."""
     failures = []
     if shutil.which("claude") is None:
@@ -497,15 +460,6 @@ def preflight(models):
         elif payload.get("is_error") or "preflight-ok" not in (payload.get("result") or ""):
             failures.append(f"{model}: a tool call under acceptEdits did not run "
                             f"(result={str(payload.get('result') or proc.stderr)[:160]!r})")
-    proc = subprocess.run(["claude", "-p", 'Do not use any tool. Reply with exactly this JSON and nothing else: {"ok": true}',
-                           "--model", "haiku", "--max-turns", "1", "--disallowedTools", ALLOWED_TOOLS,
-                           "--setting-sources", "project", "--output-format", "json"],
-                          capture_output=True, text=True, timeout=180, env=env, cwd=str(REPO))
-    try:
-        text = json.loads(proc.stdout).get("result", "")
-        json.loads(re.search(r"\{.*\}", text, re.S).group(0))
-    except (json.JSONDecodeError, AttributeError, ValueError):
-        failures.append(f"judge: no JSON came back ({proc.stdout[:160]!r})")
     stray = [str(f) for f in TASKS_DIR.rglob("*") if f.name == "__pycache__" or f.suffix == ".pyc"]
     if stray:
         failures.append(f"fixtures carry compiled files: {stray[:3]}")
@@ -554,7 +508,7 @@ def main(argv=None):
         if problems:
             print("eval_run: refusing to start; every item above cost a re-run last time", file=sys.stderr)
             return 2
-        print("eval_run: preflight ok (CLI, permissions, judge, fixtures, clean checkout, disk)", flush=True)
+        print("eval_run: preflight ok (CLI, permissions, fixtures, clean checkout, disk)", flush=True)
         if args.preflight_only:
             return 0
     task_ids = ([p.name for p in sorted(TASKS_DIR.iterdir()) if (p / "task.json").is_file()]

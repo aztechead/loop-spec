@@ -44,10 +44,15 @@ touch "$WORK/.loop-spec/features/demo/feature.json" \
   "$WORK/graphify-out/cost.json" \
   "$WORK/graphify-out/graph.json"
 
-check "feature state remains trackable" "not-ignored" \
+check "feature state is ignored (it lives on refs/loop-spec/state/<slug>)" "ignored" \
   "$(git -C "$WORK" check-ignore -q .loop-spec/features/demo/feature.json && echo ignored || echo not-ignored)"
-check "progress remains trackable" "not-ignored" \
+check "progress is ignored" "ignored" \
   "$(git -C "$WORK" check-ignore -q .loop-spec/features/demo/PROGRESS.md && echo ignored || echo not-ignored)"
+# A checkout from before 6.4 carries the negations the driver used to need; ensure removes them.
+EXC="$WORK/.git/info/exclude"
+printf '!/.loop-spec/features/*/feature.json\n!/.loop-spec/features/*/PROGRESS.md\n' >> "$EXC"
+bash "$SCRIPT" ensure "$WORK" >/dev/null
+check "ensure removes the legacy state negations" "0" "$(grep -c 'features/\*/feature.json\|features/\*/PROGRESS.md' "$EXC")"
 for path in \
   .loop-spec/features/demo/delivery.json \
   .loop-spec/features/demo/events.jsonl \
@@ -75,7 +80,7 @@ check ".loop-spec/invocation-stamp.json ignored" "ignored" \
 
 # /revise must reuse feature-shaped runtime state without allowing it to enter a
 # remediation commit, even in repositories that historically tracked it.
-git -C "$WORK" add .loop-spec/features/demo/feature.json .loop-spec/features/demo/PROGRESS.md
+git -C "$WORK" add -f .loop-spec/features/demo/feature.json .loop-spec/features/demo/PROGRESS.md
 git -C "$WORK" commit -qm "legacy feature state"
 printf 'changed\n' >> "$WORK/.loop-spec/features/demo/feature.json"
 printf 'changed\n' >> "$WORK/.loop-spec/features/demo/PROGRESS.md"

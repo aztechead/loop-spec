@@ -29,7 +29,7 @@ acceptance script:
 Per task the driver records: rounds, turns, subagents, cost, wall-clock, tokens, terminal
 result, project diff versus artifact diff, an over-build ratio (project lines added over
 a hand-written reference), protected files touched, `check.sh` results, and a cheap
-judge's match and over-build scores. `check.sh` is the acceptance; the judge is advisory.
+over-build ratio (app lines added over `reference_app_lines`). `check.sh` is the acceptance; a judge model that scored every run 3 of 3 was removed.
 
 ## Run it
 
@@ -45,8 +45,7 @@ existing run for free).
 
 Every run starts with a preflight that proves, for a few cents, each condition whose
 failure cost a re-run on 6 September: the CLI is signed in, a tool call runs under the
-permission mode the driver uses (bypass is refused for root), the judge answers JSON
-without tools, the fixtures carry no compiled files, the plugin checkout is committed
+permission mode the driver uses (bypass is refused for root), the fixtures carry no compiled files, the plugin checkout is committed
 (the snapshot and the record's `plugin_commit` must agree), and there is disk. A failed
 check refuses to start. Do not edit the driver or the plugin while cycles are in flight:
 the running processes keep the old code and the records stop agreeing with the tree. Needs `claude` on PATH with a login, `git`, and

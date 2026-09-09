@@ -101,7 +101,13 @@ PY
       else
         floor="$(grep '^FLOOR' <<<"$fout" | jq -R . | jq -cs .)"
         first="$(jq -r '.[0] // "verification record does not support the verdict"' <<<"$floor")"
-        verdict="$(jq -c --arg f "$first" '.converged = false | .gap = {type:"execute", description:("converged floor: " + $f), fix_first:$f}' <<<"$verdict")"
+        # A FAIL row is code work; anything else (a missing grounding row, a non-PASS
+        # result) is a verification record VERIFY has to complete. Rewinding those to
+        # EXECUTE dispatched an implementer with nothing to do (orchestrator-port-plan.md,
+        # defect 2).
+        floor_type=verify
+        grep -q 'still FAIL' <<<"$fout" && floor_type=execute
+        verdict="$(jq -c --arg f "$first" --arg t "$floor_type" '.converged = false | .gap = {type:$t, description:("converged floor: " + $f), fix_first:$f}' <<<"$verdict")"
         fset iterate.lastVerdict "$verdict"
       fi
     fi
@@ -111,7 +117,7 @@ PY
         gap="$(jq -c '.gap // {type:"execute", description:"goal not met", fix_first:(.weakest // .summary)}' <<<"$verdict")"
         fset iterate.feedback "$gap"
         route="$(jq -r '.type // "execute"' <<<"$gap")"
-        case "$route" in execute|plan|spec) ;; *) route=execute ;; esac
+        case "$route" in execute|plan|spec|verify) ;; *) route=execute ;; esac
         if [[ "$route" == "execute" ]]; then
           tasks="$(jq -c --arg v "$default_verify" --argjson g "$gap" '
             ([$g] + [(.remaining_gaps // [])[] | select(.type == "execute")])

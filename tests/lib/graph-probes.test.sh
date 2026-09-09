@@ -134,9 +134,9 @@ ITERATE_GAP="$PROBES/iterate-gap.sh"
 
 out="$(bash "$ITERATE_GAP" --answers)"
 check "iterate-gap --answers exits 0" 0 "$ITERATE_GAP" --answers
-[[ "$out" == $'gap=execute\ngap=plan\ngap=spec\ngap=none' ]] \
-  && { echo "PASS: iterate-gap --answers lists exactly the four gap tokens"; PASS=$((PASS+1)); } \
-  || { echo "FAIL: iterate-gap --answers lists exactly the four gap tokens (got: $out)"; FAIL=$((FAIL+1)); }
+[[ "$out" == $'gap=execute\ngap=plan\ngap=spec\ngap=verify\ngap=none' ]] \
+  && { echo "PASS: iterate-gap --answers lists exactly the five gap tokens"; PASS=$((PASS+1)); } \
+  || { echo "FAIL: iterate-gap --answers lists exactly the five gap tokens (got: $out)"; FAIL=$((FAIL+1)); }
 
 d="$(feature_dir gap-execute '{"iterate":{"feedback":{"type":"execute","fix_first":"x"}}}')"
 check "iterate-gap resolves gap=execute" 0 "$ITERATE_GAP" --feature-dir "$d"

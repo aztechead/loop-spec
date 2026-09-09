@@ -124,7 +124,6 @@ task_before="$(git -C "$task_worktree" rev-parse --verify "refs/heads/$task_bran
 clean_detail=""
 is_known_runtime_path() {
   case "$1" in
-    .loop-spec/features/*/feature.json|.loop-spec/features/*/PROGRESS.md) return 1 ;;
     .loop-spec/features/*/*|.loop-spec/runtime.json|.loop-spec/decisions-staging/*|\
     .loop-spec/last-result.json|.loop-spec/results/*|.loop-spec/worktrees/*|\
     .loop-spec/learnings.jsonl|.loop/*|graphify-out/*|\

@@ -428,6 +428,17 @@ cmd_init() {
     base_branch="$(lib git-ops -C "$repo_root" detect-base-branch)"
   fi
   lib runtime-ignore ensure "$repo_root" >/dev/null
+  # One feature per checkout: state used to be branch dirt that tripped the clean guard
+  # below; now that it lives on a ref (lib/state-ref.sh) the guard has to say so itself.
+  local active_fj
+  for active_fj in "$repo_root"/.loop-spec/features/*/feature.json; do
+    [[ -f "$active_fj" ]] || continue
+    [[ "$adopted" == true ]] && continue
+    case "$(jq -r '.currentPhase // ""' "$active_fj")" in
+      spec|discuss|plan|execute|verify|iterate|deliver)
+        die "feature $(jq -r '.slug' "$active_fj") is already active in this checkout (phase $(jq -r '.currentPhase' "$active_fj")); resume it, or finish it before starting another." ;;
+    esac
+  done
   local current_branch; current_branch="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)"
   if ! { [[ "$adopted" == true && "$current_branch" == "$feature_branch" ]]; }; then
     [[ "$(lib git-ops -C "$repo_root" ensure-clean-or-stash)" == "clean" ]] \
@@ -635,6 +646,8 @@ cmd_resume() {
         else
           wt="$(lib git-ops create-feature-worktree "$slug" "$base")" || die "could not recreate worktree for $slug"
         fi
+        # The branch carries no state; the state ref does.
+        lib state-ref restore "$wt" "$slug" >/dev/null || die "could not restore state for $slug from $(lib state-ref ref "$slug")"
       fi
       enter="$wt"; feature_dir="$wt/.loop-spec/features/$slug"
     fi
@@ -826,25 +839,18 @@ record_transition() {
     printf '\n## %s — %s → %s\n- did: %s\n' "$(now)" "$phase" "$next" "${note:-phase $phase returned}"
   } >> "$feature_dir/PROGRESS.md"
 
-  # The feature's own repository, not $PWD: the lead often calls this from the project
-  # root while the feature lives in a worktree, and a state commit that silently missed
-  # left feature.json untracked for DELIVER to refuse as dirt (eval finding 2).
+  # State lives on refs/loop-spec/state/<slug> (lib/state-ref.sh), never on the feature
+  # branch: ten of seventeen commits on a delivered branch were state commits, and the
+  # driver had edited the project's .gitignore to make them (orchestrator-port-plan.md,
+  # defects 3 and 4). The ref is shared by every worktree of the repository, so the
+  # snapshot lands wherever the feature lives.
   local root=""
   root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || root=""
-  if [[ "$(lib state-commit-policy mode)" == "phase" && "$ws_mode" != "workspace" && -n "$root" ]]; then
-    lib owned-gitignore check "$root" || die "refusing to mix pre-existing .gitignore changes with loop-spec policy"
-    grep -qxF '!/.loop-spec/features/*/PROGRESS.md' "$root/.gitignore" 2>/dev/null || printf '!/.loop-spec/features/*/PROGRESS.md\n' >> "$root/.gitignore"
-    grep -qxF '!/.loop-spec/RULES.md' "$root/.gitignore" 2>/dev/null || printf '!/.loop-spec/RULES.md\n' >> "$root/.gitignore"
-    local rel; rel="$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' "$feature_dir" "$root")"
+  if [[ "$ws_mode" != "workspace" && -n "$root" ]]; then
     local git_err=""
-    if ! git_err="$(git -C "$root" add -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>&1)"; then
-      echo "cycle-driver: state commit failed in $root: $git_err" >&2
-      lib feature-write append "$feature_dir" warnings "\"state commit failed at $phase -> $next: $git_err\"" >/dev/null
-    elif ! git -C "$root" diff --cached --quiet -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>/dev/null; then
-      git_err="$(git -C "$root" commit -q -m "chore: $slug state @ $next" -- "$rel/feature.json" "$rel/PROGRESS.md" .gitignore 2>&1)" || {
-        echo "cycle-driver: state commit failed in $root: $git_err" >&2
-        lib feature-write append "$feature_dir" warnings "\"state commit failed at $phase -> $next: $git_err\"" >/dev/null
-      }
+    if ! git_err="$(lib state-ref commit "$feature_dir" "state @ $next" 2>&1 >/dev/null)"; then
+      echo "cycle-driver: state snapshot failed in $root: $git_err" >&2
+      lib feature-write append "$feature_dir" warnings "\"state snapshot failed at $phase -> $next: $git_err\"" >/dev/null
     fi
     local checkpoint_default=0
     [[ "$(fget "$feature_dir" '.autonomous // false')" == "true" ]] && checkpoint_default=1

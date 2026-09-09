@@ -96,6 +96,9 @@ weakest point first; by `.route` (`gap.type`):
   `verifyCommand` from `commands.test` or the criterion's check, `files` as implicated
   or `[]`, `acceptanceCriteria: ["<fix_first>"]`), is already appended to
   `pendingRemediationTasks[]` (`.tasks[]`).
+- `verify`: the converged floor vetoed over an incomplete verification record with no
+  FAIL row (a missing grounding row, a non-PASS result). VERIFY re-runs the verifier,
+  which completes VERIFICATION.md; nothing is dispatched to an implementer.
 - `plan`: PLAN re-plans the affected slice from `iterate.feedback`.
 - `spec`: the expensive rewind. `auto`/`review-only`/autonomous (ITERATE re-entry; do not block an unattended loop):
   proceed without asking; DISCUSS refines toward the immutable original goal. `step`/`interactive`

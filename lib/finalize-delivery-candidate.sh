@@ -93,7 +93,6 @@ repo_root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || {
 repo_root="$(cd "$repo_root" && pwd -P)" || exit 2
 feature_rel="${feature_dir#"$repo_root"/}"
 progress_path="$feature_rel/PROGRESS.md"
-state_commit_mode="$(bash "$SCRIPT_DIR/state-commit-policy.sh" mode)" || exit $?
 rules_path=".loop-spec/RULES.md"
 ignore_path=".gitignore"
 digest_path="docs/loop-spec/telemetry/runs/$slug.json"
@@ -134,12 +133,9 @@ validate_status() {
             return 1
           }
           ;;
-        "$feature_rel/feature.json"|"$progress_path")
-          [[ "$state_commit_mode" == "final" ]] || {
-            echo "finalize-delivery-candidate: unexpected pre-existing worktree change: $path" >&2
-            return 1
-          }
-          ;;
+        # State lives on refs/loop-spec/state/<slug>; a checkout whose .gitignore still
+        # negates these paths shows them as dirt, and they are never a delivery target.
+        "$feature_rel/feature.json"|"$progress_path") ;;
         *)
           echo "finalize-delivery-candidate: unexpected pre-existing worktree change: $path" >&2
           return 1
@@ -148,18 +144,7 @@ validate_status() {
     else
       case "$path" in
         "$rules_path"|"$ignore_path"|"$digest_path") ;;
-        "$feature_rel/feature.json")
-          [[ "$artifact_mode" == "0" || "$state_commit_mode" == "final" ]] || {
-            echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
-            return 1
-          }
-          ;;
-        "$progress_path")
-          [[ "$state_commit_mode" == "final" ]] || {
-            echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
-            return 1
-          }
-          ;;
+        "$feature_rel/feature.json"|"$progress_path") ;;
         "$docs_path"/*)
           [[ "$artifact_mode" == "0" ]] || {
             echo "finalize-delivery-candidate: unexpected generated change: $path" >&2
@@ -180,7 +165,7 @@ bash "$SCRIPT_DIR/runtime-ignore.sh" ensure "$repo_root" >/dev/null || {
   exit 2
 }
 
-initial_status="$(git -C "$repo_root" status --porcelain --untracked-files=all 2>/dev/null)" || {
+initial_status="$(bash "$SCRIPT_DIR/git-ops.sh" -C "$repo_root" dirt 2>/dev/null)" || {
   echo "finalize-delivery-candidate: cannot establish candidate cleanliness" >&2
   exit 2
 }
@@ -218,7 +203,7 @@ if [[ "$artifact_mode" == "0" ]]; then
   }
 fi
 
-status="$(git -C "$repo_root" status --porcelain --untracked-files=all 2>/dev/null)" || {
+status="$(bash "$SCRIPT_DIR/git-ops.sh" -C "$repo_root" dirt 2>/dev/null)" || {
   echo "finalize-delivery-candidate: cannot inspect finalized artifacts" >&2
   exit 2
 }
@@ -228,11 +213,13 @@ if [[ "$commit_requested" -eq 1 ]]; then
   finalize_paths=("$rules_path" "$ignore_path")
   [[ "$commit_telemetry" -eq 1 ]] && finalize_paths+=("$digest_path")
   if [[ "$artifact_mode" == "0" ]]; then
-    finalize_paths+=("$feature_rel/feature.json" "$docs_path")
+    finalize_paths+=("$docs_path")
   fi
-  if [[ "$state_commit_mode" == "final" ]]; then
-    finalize_paths+=("$feature_rel/feature.json" "$progress_path")
-  fi
+  # A branch from before 6.4 tracks its state files; keep it consistent rather than
+  # leave a tracked file modified. A new run never tracks them (lib/state-ref.sh).
+  for path in "$feature_rel/feature.json" "$progress_path"; do
+    git -C "$repo_root" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 && finalize_paths+=("$path")
+  done
   stage_paths=()
   for path in "${finalize_paths[@]}"; do
     if [[ -e "$repo_root/$path" ]] || git -C "$repo_root" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
@@ -251,7 +238,7 @@ if [[ "$commit_requested" -eq 1 ]]; then
         || exit 2
     fi
   fi
-  final_status="$(git -C "$repo_root" status --porcelain --untracked-files=all 2>/dev/null)" || exit 2
+  final_status="$(bash "$SCRIPT_DIR/git-ops.sh" -C "$repo_root" dirt 2>/dev/null)" || exit 2
   [[ -z "$final_status" ]] || {
     echo "finalize-delivery-candidate: candidate is not clean after commit" >&2
     exit 1
