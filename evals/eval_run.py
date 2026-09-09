@@ -46,7 +46,9 @@ ROUND_TIMEOUT_S = 150 * 60  # --round-timeout-mins overrides; a six-task sonnet 
 # window is spent; ten concurrent runs hit it eleven minutes in and every record read
 # as a plugin failure. A round that says this measured the account, not the plugin.
 USAGE_LIMIT_RE = re.compile(r"hit your (?:session|usage|weekly|daily) limit|usage limit reached|rate.?limit", re.I)
-MAX_ROUNDS = 8
+# One round per phase (up to eight on the full route) plus a REDO, a rewind, or a
+# recovery round: every phase hands off, so a delivered cycle is many rounds by design.
+MAX_ROUNDS = 16
 ALLOWED_TOOLS = ",".join((
     "Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Agent", "Skill",
     "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "SendMessage", "TeamCreate",
@@ -250,8 +252,7 @@ def export_and_check(task, project, branch, root, env):
     return checks
 
 
-def run_task(task_id, model, run_id, budget, measure_only=False, commit=None,
-             phase_fresh=False, timeout_s=None):
+def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, timeout_s=None):
     task = load_task(task_id)
     env = child_env()
     run_dir = RUNS_DIR / run_id
@@ -277,12 +278,11 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None,
     else:
         project, base = prepare_workspace(task, run_dir, env)
     plugin_dir = plugin_snapshot(run_dir)
-    # phase:fresh returns after every durable phase, so each round starts the lead in
-    # a fresh context: the 20260909-sonnet-fastapi-3 lead re-read ~277k tokens on each
-    # of 569 calls in one session, 71 percent of that run's cost.
-    prompt = f"/loop-spec:cycle autonomous {'phase:fresh ' if phase_fresh else ''}{task['prompt']}"
-    max_rounds = MAX_ROUNDS * 2 if phase_fresh else MAX_ROUNDS
-    for n in range(1, max_rounds + 1):
+    # Every phase returns and the next round starts the lead in a fresh context: the
+    # 20260909-sonnet-fastapi-3 lead re-read ~277k tokens on each of 569 calls in one
+    # continuous session, 71 percent of that run's cost.
+    prompt = f"/loop-spec:cycle autonomous {task['prompt']}"
+    for n in range(1, MAX_ROUNDS + 1):
         if measure_only:
             break
         remaining = budget - spent
@@ -482,8 +482,6 @@ def main(argv=None):
     ap.add_argument("--budget-usd", type=float, default=None, help="per task; default by model")
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--confirm-spend", action="store_true")
-    ap.add_argument("--phase-fresh", action="store_true",
-                    help="add the phase:fresh token so each phase runs in a fresh lead context")
     ap.add_argument("--round-timeout-mins", type=int, default=None,
                     help="kill a round after this many minutes (default 150)")
     ap.add_argument("--measure-only", action="store_true",
@@ -521,7 +519,7 @@ def main(argv=None):
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.parallel)) as pool:
         timeout_s = args.round_timeout_mins * 60 if args.round_timeout_mins else None
         futures = {pool.submit(run_task, t, args.model, run_id, budget, args.measure_only, commit,
-                               args.phase_fresh, timeout_s): t
+                               timeout_s): t
                    for t in task_ids}
         for fut in concurrent.futures.as_completed(futures):
             try:

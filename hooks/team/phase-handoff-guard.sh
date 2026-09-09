@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # PreToolUse hook: enforce one durable loop-spec phase per main-agent invocation.
 #
-# When phase handoff is enabled, cycle may invoke one phase skill. A second, different
-# phase skill in the same transcript means a phase tried to chain directly instead of
-# returning to cycle. This hook writes the paused machine result itself and denies the
-# second phase invocation, so the outer SDK process receives a deterministic handoff
-# even if the model ignored the routing prose.
+# Every phase hands off (orchestrator-port-plan.md, WP4): cycle invokes one phase skill,
+# the driver answers HANDOFF, and the next phase starts in a fresh session. A second,
+# different phase skill in the same transcript means a phase tried to chain directly
+# instead of returning to cycle. This hook writes the paused machine result itself and
+# denies the second phase invocation, so the outer process receives a deterministic
+# handoff even if the model ignored the routing prose.
 set -euo pipefail
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
@@ -89,18 +90,6 @@ TARGET=$(printf '%s' "$PARSED" | python3 -c \
   'import json,sys; print(json.load(sys.stdin).get("target",""))' 2>/dev/null || echo "")
 [[ -n "$TARGET" ]] || exit 0
 
-# Environment is authoritative. When unset, use the persisted feature policy so the
-# inline `phase:fresh` token and later bare resume invocations remain enforced.
-case "${LOOP_SPEC_PHASE_HANDOFF:-}" in
-  0) exit 0 ;;
-  1) enabled=true ;;
-  "") enabled="" ;;
-  *)
-    echo "DENY: LOOP_SPEC_PHASE_HANDOFF must be 0 or 1." >&2
-    exit 2
-    ;;
-esac
-
 FEATURE_DIR=$(LOOP_SPEC_PROJECT_DIR="$PROJECT_DIR" LOOP_SPEC_PWD="$PWD" python3 -c '
 import json
 import os
@@ -129,23 +118,16 @@ for root in roots:
         candidates.append((
             str(data.get("updatedAt") or ""),
             path.parent,
-            bool(data.get("phaseHandoff")),
             str(data.get("currentPhase") or ""),
         ))
 
 if not candidates:
     print("")
 else:
-    _, path, handoff, phase = max(candidates, key=lambda item: item[0])
-    print(json.dumps({"path": str(path), "phaseHandoff": handoff, "phase": phase}))
+    _, path, phase = max(candidates, key=lambda item: item[0])
+    print(json.dumps({"path": str(path), "phase": phase}))
 ' 2>/dev/null || echo "")
-
-if [[ -z "$enabled" ]]; then
-  enabled=$(printf '%s' "$FEATURE_DIR" | python3 -c \
-    'import json,sys; print("true" if json.load(sys.stdin).get("phaseHandoff") else "false")' \
-    2>/dev/null || echo "false")
-fi
-[[ "$enabled" == "true" ]] || exit 0
+[[ -n "$FEATURE_DIR" ]] || exit 0
 
 PRIOR=$(printf '%s' "$PARSED" | python3 -c \
   'import json,sys; p=json.load(sys.stdin).get("prior") or []; print(p[-1] if p else "")' \
@@ -169,5 +151,5 @@ summary="Phase ${PRIOR} completed; ${TARGET} is ready in durable state."
 bash "$SCRIPT_DIR/../../lib/cycle-result.sh" write "$FEATURE_PATH" \
   --status paused --reason phase-handoff --summary "$summary" >/dev/null 2>&1 || true
 
-echo "DENY: LOOP_SPEC_PHASE_HANDOFF=1 permits one loop-spec phase per main-agent invocation. Phase '$PRIOR' completed and '$TARGET' is persisted as next; the paused phase-handoff result has been written. Return immediately without invoking '$TARGET'." >&2
+echo "DENY: loop-spec runs one phase per main-agent invocation. Phase '$PRIOR' completed and '$TARGET' is persisted as next; the paused phase-handoff result has been written. Return immediately without invoking '$TARGET'." >&2
 exit 2

@@ -12,8 +12,8 @@ The release’s source-to-contract utilization review is recorded in
 
 - Boolean environment variables accept only `0` or `1` when the consuming command
   validates them. `1` means enabled and `0` means disabled. Do not use
-  `true`/`false`. Safety-critical controls (`LOOP_SPEC_WORKTREES` and
-  `LOOP_SPEC_PHASE_HANDOFF`) reject any other non-empty value.
+  `true`/`false`. The safety-critical control (`LOOP_SPEC_WORKTREES`) rejects any
+  other non-empty value.
 - An explicit command token or CLI flag wins over an environment variable for the
   same invocation. An explicit environment variable wins over persisted project or feature state.
   Persisted state wins over the built-in default.
@@ -23,9 +23,11 @@ The release’s source-to-contract utilization review is recorded in
   foreground loop alive.
 - Empty is not generally the same as `0`. The documented exception is
   `LOOP_SPEC_CMD_PREPARE=""`, which explicitly disables preparation.
-- `phase:fresh` and `phase:continuous` are persisted in `feature.json`. On a later
-  bare resume, that stored policy remains active unless another inline phase token
-  or `LOOP_SPEC_PHASE_HANDOFF` overrides it.
+- Every phase hands off. The driver returns after each phase with a paused
+  `phase-handoff` result, and the next `cycle` invocation enters the next phase in a
+  fresh context. `phase:fresh` is accepted and changes nothing; `phase:continuous` is a
+  legacy token the parser reports and ignores. `LOOP_SPEC_PHASE_HANDOFF` and
+  `LOOP_SPEC_ITERATE_FRESH` are gone with the continuous mode (6.4.0).
 - `LOOP_SPEC_WORKTREES=0` is not advisory. It selects the in-place feature branch,
   forces serial implementation, makes loop-runner imply `--no-worktree`, and blocks
   worktree creation or entry at the tool boundary.
@@ -45,9 +47,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_MAX_FEATURES` | positive integer; `1` | Maximum backlog features selected per invocation. Sentinel batch requests above one are still restricted by the trust level. |
 | `LOOP_SPEC_PHASE_TIMEOUT_MINS` | positive integer; `60` | Wall-clock watchdog ceiling for a phase. A non-integer or non-positive value is a configuration error, not a fallback. |
 | `LOOP_SPEC_CRITIQUE_ROUNDS` | non-negative integer; unset | Replaces the delta-round ceiling `graph/critique.graph.json` declares for the SPEC and PLAN critique gates. `0` restores unbounded retries. `lib/graph/gate.sh next` reads it; any other value is a configuration error. |
-| `LOOP_SPEC_PHASE_HANDOFF` | `0`/`1`; unset | `1` permits one phase per main-agent invocation, persists the next phase, and returns `status=paused`, `reason=phase-handoff`. `0` runs phase routing continuously. The environment overrides persisted state; inline `phase:fresh`/`phase:continuous` overrides the environment. A tool-boundary guard enforces the boundary. |
 | `LOOP_SPEC_ROUTE` | `full`; unset | `full` keeps a run off the oneshot route (`lib/graph/probes/oneshot.sh` answers `route=full`). The override lengthens only: any other value also answers `full`, because nothing demotes a full run to a oneshot. |
-| `LOOP_SPEC_ITERATE_FRESH` | `0`/`1`; unset | `1` makes an ITERATE rewind persist state and relaunch instead of continuing in the current main-agent context. |
 | `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | integer `1..100`; `10` | Sets the full cycle's persisted ITERATE convergence ceiling. This is independent of `LOOP_SPEC_LOOP_MAX_ITERATIONS`, which bounds each loop-fleet task. |
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
@@ -268,9 +268,6 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_ROUTE_GUARD` | `1` | Blocks stopping an autonomous session whose routed run never published `.loop-spec/last-result.json`. Stands down for interactive runs and for armed records past the stand-down age. |
 | `LOOP_SPEC_REDO_MAX` | `3` | `cycle-driver.sh next` answers `REDO` with the exit gate's FLAG lines when a returned phase's artifact is not ready; the same flags this many times escalate the run with them as the reason instead of looping. |
 | `LOOP_SPEC_ROUTE_GUARD_MAX_AGE_MIN` | `720` | Minutes after which an armed run is treated as a dead record rather than this session's contract. |
-| `LOOP_SPEC_DEFLECTION_GUARD` | `1` | Blocks premature “out of context” stops below the configured usage threshold. |
-| `LOOP_SPEC_DEFLECTION_THRESHOLD_PCT` | `50` | Percent of context that must be consumed before a context-exhaustion stop is accepted. |
-| `LOOP_SPEC_CONTEXT_LIMIT` | `200000` | Token context size used to compute the deflection threshold. |
 | `LOOP_SPEC_LEARNINGS` | `1` | Writes session-end learnings to `.loop-spec/learnings.jsonl`. |
 | `LOOP_SPEC_PAUSE` | `1` | Controls pause snapshot writing. |
 
@@ -283,7 +280,6 @@ not enable the guard; its switch above must also be enabled.
 |---|---|
 | `LOOP_SPEC_BLOCKEDBY_TRACE_LOG` | no file unless set |
 | `LOOP_SPEC_USERGATE_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-user-gate-trace.log` |
-| `LOOP_SPEC_DEFLECTION_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-deflection-trace.log` |
 | `LOOP_SPEC_MICRO_GUARD_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-micro-guard-trace.log` |
 | `LOOP_SPEC_DEFERRAL_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-deferral-trace.log` |
 | `LOOP_SPEC_ROUTE_GUARD_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-route-guard-trace.log` |
@@ -297,7 +293,7 @@ angle brackets mean required. Inline words are tokens, not GNU flags.
 | Command | Arguments | Exact behavior |
 |---|---|---|
 | `auto` | `<task description>` | Chooses micro or full-cycle routing from task scope. |
-| `cycle` | `[new] [description \| path/to/spec.md \| backlog] [style:auto\|step\|interactive\|review-only] [autonomous] [phase:fresh\|phase:continuous]` | Starts or resumes a cycle. `new` prevents automatic resume. `backlog` selects queued work. `phase:fresh` persists one-phase-per-invocation; `phase:continuous` persists same-session routing. |
+| `cycle` | `[new] [description \| path/to/spec.md \| backlog] [style:auto\|step\|interactive\|review-only] [autonomous]` | Starts or resumes a cycle. `new` prevents automatic resume. `backlog` selects queued work. `phase:fresh` persists one-phase-per-invocation; `phase:continuous` persists same-session routing. |
 | `debug` | `<error text \| stack trace \| failing test \| symptom>` | Starts evidence-first debugging. |
 | `discipline` | `[on\|off\|status]` | Changes or reports the session discipline directive. |
 | `forensics` | `[feature slug \| failed-workflow description]` | Reconstructs a stuck/failed run. |

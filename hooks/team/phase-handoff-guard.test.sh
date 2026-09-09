@@ -36,7 +36,7 @@ trap 'rm -rf "$ROOT"' EXIT
 FDIR="$ROOT/.loop-spec/features/demo"
 mkdir -p "$FDIR"
 printf '%s\n' \
-  '{"schemaVersion":7,"slug":"demo","feature_title":"Demo","branch":"feat/demo","baseBranch":"main","currentPhase":"discuss","completedPhases":["spec"],"phaseHandoff":true,"warnings":[],"iterate":{"used":0,"maxIterations":3},"autonomous":true,"updatedAt":"2026-07-30T12:00:00Z"}' \
+  '{"schemaVersion":7,"slug":"demo","feature_title":"Demo","branch":"feat/demo","baseBranch":"main","currentPhase":"discuss","completedPhases":["spec"],"warnings":[],"iterate":{"used":0,"maxIterations":3},"autonomous":true,"updatedAt":"2026-07-30T12:00:00Z"}' \
   > "$FDIR/feature.json"
 
 FIRST='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:spec"},"transcript":[]}'
@@ -45,23 +45,19 @@ SAME='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:spec"},"transcript":
 OTHER='{"tool_name":"Skill","tool_input":{"skill":"loop-spec:retro"},"transcript":[{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"loop-spec:spec"}}]}]}'
 
 check "first phase in transcript allowed" 0 "$FIRST" \
-  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=1
-check "second phase denied from env policy" 2 "$SECOND" \
-  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=1
+  CLAUDE_PROJECT_DIR="$ROOT"
+check "second phase denied" 2 "$SECOND" \
+  CLAUDE_PROJECT_DIR="$ROOT"
 check_value "denial writes paused result" "paused:phase-handoff:discuss" \
   "$(jq -r '[.status,.reason,.phaseReached] | join(":")' "$ROOT/.loop-spec/last-result.json")"
 check "same-phase retry allowed" 0 "$SAME" \
-  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=1
-check "non-phase skill allowed" 0 "$OTHER" \
-  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=1
-check "explicit env zero overrides persisted true" 0 "$SECOND" \
-  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=0
-check "persisted true enforces when env unset" 2 "$SECOND" \
   CLAUDE_PROJECT_DIR="$ROOT"
-check "invalid env value denied" 2 "$FIRST" \
-  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=maybe
+check "non-phase skill allowed" 0 "$OTHER" \
+  CLAUDE_PROJECT_DIR="$ROOT"
+check "no switch exists: an active feature is enough to enforce" 2 "$SECOND" \
+  CLAUDE_PROJECT_DIR="$ROOT"
 check "malformed payload fails open" 0 "not json" \
-  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=1
+  CLAUDE_PROJECT_DIR="$ROOT"
 
 # Production path: Claude Code passes `transcript_path`, not an inline transcript.
 # Entries are JSONL with top-level `type:"assistant"` and the blocks under
@@ -82,11 +78,11 @@ JSONL_SAME="$(jq -cn --arg p "$TRANSCRIPT" \
 
 rm -f "$ROOT/.loop-spec/last-result.json"
 check "JSONL transcript: second phase denied" 2 "$JSONL_SECOND" \
-  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=1
+  CLAUDE_PROJECT_DIR="$ROOT"
 check_value "JSONL transcript: denial writes paused result" "paused:phase-handoff:discuss" \
   "$(jq -r '[.status,.reason,.phaseReached] | join(":")' "$ROOT/.loop-spec/last-result.json")"
 check "JSONL transcript: same-phase retry allowed" 0 "$JSONL_SAME" \
-  CLAUDE_PROJECT_DIR="$ROOT" LOOP_SPEC_PHASE_HANDOFF=1
+  CLAUDE_PROJECT_DIR="$ROOT"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

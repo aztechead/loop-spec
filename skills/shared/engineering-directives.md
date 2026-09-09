@@ -51,7 +51,7 @@ design or task boundaries through the existing phase path.
 |---|---|---|---|
 | A phase starts or resumes | Read the entry packet and nothing else: `bash lib/phase-entry.sh <phase> --feature-dir DIR` lists the exact fields and files this phase consumes. Do not re-read `feature.json` whole, re-scan the tree, or re-derive what a prior phase already wrote. | The packet's `read=` list is the phase's whole ingress | `lib/phase-entry.sh` (`FLAG` on a missing ingress artifact) |
 | A phase ends | Write only the egress artifacts the next phase's packet names, then close with `bash lib/phase-exit.sh <phase> --feature-dir DIR`. Never set `currentPhase`; the driver owns it. | `artifacts.*` pointers and the commit | `lib/phase-exit.sh` (`FLAG` per missing gate; `WARN [egress]` per `feature.json` key changed outside the phase's allow-list, a `FLAG` under `LOOP_SPEC_EGRESS_GUARD=deny`) |
-| The driver answers `HANDOFF next=<p>` | Print the line and stop. The fresh session runs `phase-entry.sh <p>` first; nothing from this session's context is needed. | The `LOOP_SPEC_PHASE_HANDOFF` line | `hooks/team/phase-handoff-guard.sh` |
+| The driver answers `HANDOFF next=<p>` or `REWIND next=<p>` | Print the line and stop. The fresh session runs `phase-entry.sh <p>` first; nothing from this session's context is needed. | The `LOOP_SPEC_PHASE_HANDOFF` marker line | `hooks/team/phase-handoff-guard.sh` |
 | The cycle starts | `cycle-driver.sh start` is the whole preflight. Print its notices and warnings, resolve its decisions, nothing else. | The `start` JSON | `lib/feature-init.sh validate` (selector routing, fork-free) |
 
 ## Stance directives

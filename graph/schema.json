@@ -34,7 +34,6 @@
         "updatedAt",
         "execStyle",
         "executionProfile",
-        "phaseHandoff",
         "currentPhase",
         "completedPhases",
         "branch",

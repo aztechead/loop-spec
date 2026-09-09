@@ -3,7 +3,7 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.sh"
 
 checks=(
-  "lib/cycle-driver.sh	cycle-result write"
+  "lib/graph/driver.py	\"cycle-result\", \"write\""
   "skills/micro/SKILL.md	write-terminal"
   "skills/debug/SKILL.md	write-terminal"
   "skills/micro/SKILL.md	LOOP_SPEC_RESULT"
@@ -12,7 +12,7 @@ checks=(
   "skills/assess/SKILL.md	write-terminal"
   "skills/retro/SKILL.md	write-terminal"
   "skills/shared/route-exit-contract.md	--summary"
-  "lib/cycle-driver.sh	already-satisfied"
+  "lib/graph/driver.py	already-satisfied"
   "skills/micro/SKILL.md	--summary"
   "skills/debug/SKILL.md	--summary"
   "skills/forensics/SKILL.md	diagnostic-only"
@@ -26,7 +26,7 @@ checks=(
   "lib/cycle-result.sh	Cycle completed; PR delivered."
   "lib/cycle-reconcile.sh	a PR was delivered"
   "lib/cycle-result.sh	LOOP_SPEC_RESULT"
-  "lib/cycle-driver.sh	retrying once"
+  "lib/graph/driver.py	retrying once"
   "lib/cycle-result.sh	noChangeReason"
   "lib/cycle-result.sh	no-change-needed"
   "lib/cycle-result.sh	worktree list --porcelain"

@@ -221,7 +221,6 @@ Common knobs:
 |---|---|---|
 | `LOOP_SPEC_AUTONOMOUS` | unset | `1` ≡ inline `autonomous` token |
 | `LOOP_SPEC_WORKTREES` | `1` | `0` = in-place branch, serial EXECUTE |
-| `LOOP_SPEC_PHASE_HANDOFF` | unset | `1` = one durable phase per invocation |
 | `LOOP_SPEC_MAX_FEATURES` | `1` | Backlog / sentinel batch size (L1+ for sentinel) |
 | `LOOP_SPEC_CHECKPOINT_PR` | on | `0` disables draft checkpoint PRs |
 | `LOOP_SPEC_CMD_TEST` (and `LOOP_SPEC_CMD_*`) | detected | Pin test/lint/typecheck/prepare commands |

@@ -38,8 +38,8 @@ LOOP_SPEC_EVAL_LIVE=1 bash evals/run.sh --model haiku --parallel 5 --confirm-spe
 LOOP_SPEC_EVAL_LIVE=1 bash evals/run.sh --model sonnet --parallel 5 --confirm-spend
 ```
 
-Both guards are required. Options: `--phase-fresh` (each phase in a fresh lead context; the
-largest cost lever measured so far), `--round-timeout-mins N` (default 150), `--tasks a,b`, `--budget-usd N` per task (default
+Both guards are required. Every phase runs in a fresh lead context (one round per phase,
+the largest cost lever measured so far). Options: `--round-timeout-mins N` (default 150), `--tasks a,b`, `--budget-usd N` per task (default
 8 haiku, 40 sonnet), `--run-id NAME`, `--preflight-only`, `--measure-only` (re-score an
 existing run for free).
 

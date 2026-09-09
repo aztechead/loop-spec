@@ -37,7 +37,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "codeReview": {"run": "boolean", "reason": "nonblank classifier reason"},
     "iterate": {"run": "boolean", "reason": "nonblank classifier reason"}
   },
-  "phaseHandoff": "boolean; return after each durable phase for a fresh main-agent context",
   "currentPhase": "a phase id of lib/graph/phases.sh list (spec | oneshot | discuss | plan | execute | verify | iterate | deliver) | completed",
   "currentPhaseStartedAt": "ISO-8601 timestamp or null; set by cycle-driver.sh next when it answers NEXT for a phase (the watchdog reads it)",
   "completedPhases": ["array of phase names"],
@@ -217,9 +216,9 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   malformed compact state fails upward by running the affected gate. A false gate remains
   observable through its persisted classifier reason; VERIFY also records skipped
   verification gates in `VERIFICATION.md`.
-- `phaseHandoff` is independent of `execStyle` and subagent dispatch. When true,
-  cycle writes a paused `phase-handoff` result after a phase transition and a fresh
-  invocation resumes at `currentPhase`.
+- Every phase boundary hands off: the driver writes a paused `phase-handoff` result
+  after a phase transition and a fresh invocation resumes at `currentPhase`. A feature
+  written before 6.4.0 may carry a `phaseHandoff` key; the driver drops it as a stray.
 - `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
 - `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null` unless the cycle's Step 2 capability probe signals a specific mode.

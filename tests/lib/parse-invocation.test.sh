@@ -45,12 +45,13 @@ out="$(bash "$SCRIPT" parse "profile:compact add bounded export")"
 check "compact profile parsed" "compact" "$(field "$out" profile)"
 check "compact profile stripped from title" "add bounded export" "$(field "$out" title)"
 
-# phase mode tokens are execution controls, never goal text
+# phase tokens are execution controls, never goal text; fresh is the only mode
 out="$(bash "$SCRIPT" parse "phase:fresh autonomous add csv export")"
-check "fresh phase mode parsed" "fresh" "$(field "$out" phase_mode)"
+check "phase:fresh is stripped without a mode field" "null" "$(field "$out" phase_mode)"
 check "phase mode stripped from title" "add csv export" "$(field "$out" title)"
 out="$(bash "$SCRIPT" parse "phase:continuous add csv export")"
-check "continuous phase mode parsed" "continuous" "$(field "$out" phase_mode)"
+check "phase:continuous is a legacy token" "phase:continuous" "$(jq -r '.legacy | join(" ")' <<<"$out")"
+check "legacy phase token stripped from title" "add csv export" "$(field "$out" title)"
 
 # legacy tokens stripped, reported, never in the title (the oracle-pollution bug)
 out="$(bash "$SCRIPT" parse "tier:quality add csv export preset:full")"

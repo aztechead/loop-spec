@@ -78,8 +78,7 @@
       "label": "Review the specification",
       "kind": "human",
       "reads": [
-        "execStyle",
-        "phaseHandoff"
+        "execStyle"
       ],
       "writes": [
         "currentPhase"
@@ -263,8 +262,7 @@
       "label": "Review the refined specification",
       "kind": "human",
       "reads": [
-        "execStyle",
-        "phaseHandoff"
+        "execStyle"
       ],
       "writes": [
         "currentPhase"
@@ -413,8 +411,7 @@
       "label": "Review the implementation plan",
       "kind": "human",
       "reads": [
-        "execStyle",
-        "phaseHandoff"
+        "execStyle"
       ],
       "writes": [
         "currentPhase"
@@ -551,8 +548,7 @@
       "label": "Review the implementation",
       "kind": "human",
       "reads": [
-        "execStyle",
-        "phaseHandoff"
+        "execStyle"
       ],
       "writes": [
         "currentPhase"

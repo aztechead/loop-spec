@@ -142,8 +142,8 @@ For phase-specific models, pass
 `LOOP_SPEC_PHASE_MODEL_SPEC`/`DISCUSS`/`PLAN`/`EXECUTE`/`VERIFY`/`ITERATE`/`DELIVER`
 through `ClaudeAgentOptions.env`. loop-spec activates each phase value on every
 subagent and gate launch. To move the main SDK query between those models too,
-set `LOOP_SPEC_PHASE_HANDOFF=1` and construct a fresh `ClaudeAgentOptions` for
-each paused handoff with `model` set to the next phase alias. The complete,
+construct a fresh `ClaudeAgentOptions` for each paused handoff (every phase hands
+off) with `model` set to the next phase alias. The complete,
 bounded controller is in
 [`cloud-run-autonomous.md`](cloud-run-autonomous.md); a continuous `query()`
 cannot change its already-running main model.

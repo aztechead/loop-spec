@@ -23,11 +23,11 @@ size; operators select the controls below for each deployment shape.
 - Set `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` for one enforceable cap across phase
   role agents. Any explicit cap selects bounded one-shot waves and disables
   teams, workflows, and fleets automatically.
-- Use `LOOP_SPEC_PHASE_HANDOFF=1` to run one durable phase per main-agent
-  invocation. A user or supervisor reissues the cycle command and resume
-  detection starts the next phase in a fresh context. The plugin enforces this at
-  the phase-skill tool boundary: a second phase invocation is denied and the paused
-  handoff result is written deterministically.
+- Every phase runs in its own main-agent invocation. The cycle returns after each
+  phase with a paused `phase-handoff` result; a user or supervisor reissues the cycle
+  command and resume detection starts the next phase in a fresh context. The plugin
+  enforces this at the phase-skill tool boundary: a second phase invocation is denied
+  and the paused handoff result is written deterministically.
 - If worktrees stay enabled, leave `LOOP_SPEC_SHARE_DEPENDENCIES=1` so task
   worktrees link a matching successfully prepared `node_modules`.
 - Set the Cloud Run task timeout above the SDK timeout. Keep enough margin for
@@ -70,8 +70,7 @@ The same controls can be scoped to one CLI invocation:
 ```bash
 LOOP_SPEC_WORKTREES=0 \
 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1 \
-LOOP_SPEC_PHASE_HANDOFF=1 \
-claude -p "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}"
+claude -p "/loop-spec:cycle autonomous ${TASK_PROMPT}"
 ```
 
 To switch the Claude Code main model as well as the phase’s subagents, the CLI
@@ -86,7 +85,7 @@ for _ in $(seq 1 "${MAX_PHASE_INVOCATIONS:-12}"); do
   phase_model="$(
     bash "${LOOP_SPEC_PLUGIN}/lib/feature-init.sh" phase-model "$phase"
   )"
-  claude_args=(-p "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}")
+  claude_args=(-p "/loop-spec:cycle autonomous ${TASK_PROMPT}")
   [[ -n "$phase_model" && "$phase_model" != "inherit" ]] \
     && claude_args+=(--model "$phase_model")
 
@@ -138,10 +137,9 @@ remedies.
   and set a bounded subagent cap (normally `2` first). Every task still has its
   focused proof, the integrated wave still has one repository-wide comparison,
   and VERIFY remains mandatory.
-- `LOOP_SPEC_PHASE_HANDOFF=1` trades speed for a fresh main context, per-phase
-  main-model selection, and a durable recovery point after every phase. Set it to
-  `0` only when those operational benefits are not required; continuous mode keeps
-  the same SPEC/PLAN/verification/delivery artifacts and hard gates.
+- One phase per invocation is the only mode: it gives a fresh main context, per-phase
+  main-model selection, and a durable recovery point after every phase. The SPEC, PLAN,
+  verification, and delivery artifacts and the hard gates are the same in every phase.
 - Keep `LOOP_SPEC_CHECKPOINT_EACH_PHASE=1` unless an operator has separately
   accepted a larger recovery window. Network checkpoint cost is intentional crash
   protection, not a candidate for a silent default bypass.
@@ -266,17 +264,7 @@ async def run() -> None:
             env=dict(os.environ),
             **query_overrides,
         )
-        phase_token = (
-            " phase:fresh"
-            if os.environ.get("LOOP_SPEC_PHASE_HANDOFF") == "1"
-            else ""
-        )
-        prompt = (
-            "/loop-spec:cycle autonomous"
-            + phase_token
-            + " "
-            + os.environ["TASK_PROMPT"]
-        )
+        prompt = "/loop-spec:cycle autonomous " + os.environ["TASK_PROMPT"]
         async with asyncio.timeout(CYCLE_TIMEOUT_SECONDS):
             async for message in query(prompt=prompt, options=options):
                 print(message, flush=True)

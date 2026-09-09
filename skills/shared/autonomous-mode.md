@@ -28,8 +28,8 @@ input. Per harness: `claude -p "/loop-spec:auto <description>"` (or the Claude A
 `adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl`,
 and `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`.
 All stamp `CLAUDE_CODE_ENTRYPOINT`, so `lib/harness.sh headless` detects the profile.
-`LOOP_SPEC_PHASE_HANDOFF=1` (or `phase:fresh`) returns after each durable phase with a
-paused `phase-handoff` result so a supervisor can relaunch with fresh context.
+Every phase returns with a paused `phase-handoff` result; the supervisor relaunches the
+cycle and the next phase starts in a fresh context.
 
 The compact route (`/loop-spec:auto` classifier) writes an auditable per-gate run/skip
 plan; every skip has a reason, a malformed or unbounded proposal promotes to the full

@@ -124,7 +124,6 @@ check "init: in-place harness enters no worktree" "null" "$(jq -r '.enterWorktre
 check "init: feature branch checked out" "feat/add-a-json-flag" "$(git -C "$REPO" branch --show-current)"
 check "init: schema-7 feature.json" "7" "$(jq -r '.schemaVersion' "$FD/feature.json")"
 check "init: spec draft copied" "1" "$([[ -f "$FD/spec-draft.md" ]] && echo 1 || echo 0)"
-check "init: phaseHandoff persisted false" "false" "$(jq -r '.phaseHandoff' "$FD/feature.json")"
 check "init: no backlog entry recorded by default" "null" "$(jq -r '.backlogEntryId' "$FD/feature.json")"
 
 ec=0; drv init --dir "$REPO" --slug again --title again --style auto --profile standard >/dev/null 2>&1 || ec=$?
@@ -152,9 +151,8 @@ out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from spec 2>/dev/nu
 check "next: declined SPEC gate ends the loop" "DONE status=paused reason=spec-confirmation-declined" "$out"
 rm -f "$FD/result.json"
 
-# phase handoff exits after bookkeeping with the next phase named (style auto: no human gate)
+# every phase boundary hands off after bookkeeping (style auto: no human gate)
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" execStyle '"auto"' >/dev/null
-bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" phaseHandoff true >/dev/null
 out="$(cd "$REPO" && drv next --feature-dir "$FD" --returned-from discuss 2>/dev/null)"
 check "next: handoff answer names the successor" "HANDOFF next=" "${out:0:13}"
 check "next: handoff writes a paused result" "phase-handoff" "$(jq -r '.reason' "$FD/result.json")"
@@ -276,7 +274,10 @@ Something is broken.
 MD
 printf '# transcript\n' > "$FD6/spec-interview-transcript.md"
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
-check "next: a clean exit advances" "NEXT phase=discuss" "${out:0:18}"
+check "next: a clean exit hands the successor to a fresh session" "HANDOFF next=discuss model=" "${out:0:27}"
+check "next: the handoff wrote the paused result" "phase-handoff" "$(jq -r '.reason' "$FD6/result.json")"
+out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" 2>/dev/null)"
+check "next: the fresh session enters the handed phase" "NEXT phase=discuss" "${out:0:18}"
 check "next: the exit committed the artifact" "1" "$(git -C "$REPO6" log --oneline | grep -c 'spec: ')"
 
 # --- claude worktree path -------------------------------------------------------------
@@ -296,7 +297,7 @@ check "next: records the answered phase for cycle-result" "spec" "$(jq -r '.driv
 # .gitignore in the root checkout, and never fail silently.
 write_spec "$WT" "$WT/.loop-spec/features/ship-it"
 out="$(cd "$REPO2" && HARNESS=claude drv next --feature-dir "$WT/.loop-spec/features/ship-it" --returned-from spec --note "wrote SPEC" 2>/dev/null)"
-check "next: from the project root still answers" "NEXT phase=" "${out:0:11}"
+check "next: from the project root still answers" "HANDOFF next=" "${out:0:13}"
 check "next: the state ref is shared by the worktree and the root checkout" "$(git -C "$WT" rev-parse refs/loop-spec/state/ship-it)" "$(git -C "$REPO2" rev-parse refs/loop-spec/state/ship-it)"
 check "next: the feature branch in the worktree carries no state commit" "0" "$(git -C "$WT" log --oneline | grep -c 'state @')"
 check "next: the root checkout stays untouched" "" "$(git -C "$REPO2" status --porcelain -- .gitignore)"

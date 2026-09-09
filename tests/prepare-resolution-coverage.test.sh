@@ -7,7 +7,7 @@
 # that rewrote package-lock.json, and preparation failed the "tree unchanged" guard --
 # costing a restore plus a redo before the cycle could start. The resolver now answers for
 # a subdirectory ecosystem (lib/prepare-environment.sh, unit-tested in
-# tests/lib/prepare-environment.test.sh), and lib/cycle-driver.sh feeds its answer
+# tests/lib/prepare-environment.test.sh), and lib/graph/driver.py feeds its answer
 # straight into feature.json so no model ever composes an install command.
 set -uo pipefail
 
@@ -21,7 +21,7 @@ checks=(
   "lib/prepare-environment.sh	\\(cd \\\$dir && "
   "lib/prepare-environment.sh	ecosystem_subdirs"
   "lib/prepare-environment.sh	command_dirs"
-  "lib/cycle-driver.sh	prepare-environment resolve"
+  "lib/graph/driver.py	\"prepare-environment\", \"resolve\""
   "skills/shared/feature-state-schema.md	webapp/frontend && npm ci"
 )
 

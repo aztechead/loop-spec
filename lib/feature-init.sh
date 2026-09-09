@@ -354,7 +354,6 @@ common_skeleton() {
       createdAt: $now, updatedAt: $now,
       execStyle: $style,
       executionProfile: "standard",
-      phaseHandoff: false,
       models: $models,
       phaseModels: $phaseModels,
       currentPhase: "spec",

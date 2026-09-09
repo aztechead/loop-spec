@@ -45,7 +45,7 @@ checks=(
 check_fixed_strings "${checks[@]}"
 
 # A stance is applied inside a phase; it must never appear as a route or phase selector.
-for f in lib/task-route.sh lib/cycle-driver.sh lib/parse-invocation.sh; do
+for f in lib/task-route.sh lib/graph/driver.py lib/parse-invocation.sh; do
   if [[ ! -f "$f" ]]; then
     FAIL=$((FAIL+1)); echo "FAIL: $f is gone; re-point this pin at the route selector"
   elif grep -qF "engineering-stances" "$f"; then

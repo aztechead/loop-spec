@@ -23,8 +23,8 @@
 #                            ordinary title text ("add new export button")
 #   style:X               -> .style = X when X in auto|step|interactive|review-only;
 #                            unknown style values are kept with a notice
-#   phase:fresh           -> .phase_mode = "fresh"; return after each durable phase
-#   phase:continuous      -> .phase_mode = "continuous"; keep routing in one session
+#   phase:fresh           -> stripped; every phase already hands off (the only mode)
+#   phase:continuous      -> ignored, listed in .legacy[] (continuous routing is gone)
 #   profile:X             -> .profile = X when X in compact|maintenance|standard; unknown
 #                            values are stripped and left unset (lib/cycle-profile.sh
 #                            owns the answer space and its own fail-safe)
@@ -38,7 +38,7 @@
 #   empty                                  -> .mode = "bare"
 #
 # Output: one JSON object:
-#   {mode, title, slug, style, phase_mode, profile, autonomous, greenfield, no_run,
+#   {mode, title, slug, style, profile, autonomous, greenfield, no_run,
 #    spec_path, legacy: []}
 #   .title is the token-stripped text ("" for bare/backlog; spec-file title is
 #   resolved by the caller from the file's first heading). .slug is the kebab-case
@@ -61,7 +61,6 @@ autonomous=false
 greenfield=false
 no_run=false
 style="auto"
-phase_mode=""
 profile=""
 legacy=()
 remaining=()
@@ -109,9 +108,9 @@ for w in ${words[@]+"${words[@]}"}; do
     style:*)
       style="${w#style:}" ;;  # unknown value still stripped from title; caller validates
     phase:fresh)
-      phase_mode="fresh" ;;
+      : ;;  # stripped from the title; handoff after every phase is the only mode
     phase:continuous)
-      phase_mode="continuous" ;;
+      legacy+=("$w") ;;
     profile:compact|profile:maintenance|profile:standard)
       profile="${w#profile:}" ;;
     profile:*)
@@ -158,7 +157,6 @@ jq -cn \
   --arg title "$text" \
   --arg slug "$slug" \
   --arg style "$style" \
-  --arg phase_mode "$phase_mode" \
   --arg profile "$profile" \
   --argjson autonomous "$autonomous" \
   --argjson greenfield "$greenfield" \
@@ -166,7 +164,6 @@ jq -cn \
   --arg spec_path "$spec_path" \
   --argjson legacy "$legacy_json" \
   '{mode: $mode, title: $title, slug: $slug, style: $style,
-    phase_mode: (if $phase_mode == "" then null else $phase_mode end),
     profile: (if $profile == "" then null else $profile end),
     autonomous: $autonomous, greenfield: $greenfield, no_run: $no_run,
     spec_path: (if $spec_path == "" then null else $spec_path end),

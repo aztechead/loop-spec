@@ -94,8 +94,8 @@ constraint the rest of the page must satisfy.
   Google ADK. Humans use Claude Code and opencode. All four harnesses stay peers behind
   `lib/harness.sh`; the two agent harnesses are proven first.
 - **One agent takes a request end to end.** There is no swarm splitting a plan. The
-  agent dies sometimes, and context fills up. Phase handoff
-  (`LOOP_SPEC_PHASE_HANDOFF=1`) is how the run survives both.
+  agent dies sometimes, and context fills up. Phase handoff (every phase returns; the
+  supervisor relaunches) is how the run survives both.
 - **The plugin ships interfaces, not opinions.** It owns the artifacts (`feature.json`,
   the phase markdown, `events.jsonl`, `decisions.jsonl`, the terminal result) and the
   contract each port obeys. The supervisor owns transport and policy: where state lives
@@ -244,8 +244,7 @@ No new code. The supervisor owns retry, timeout, budget, and relaunch; the plugi
 idempotent phases and a claimable unit of work. The pieces exist and this page names
 them as one port:
 
-- **Phase handoff.** `LOOP_SPEC_PHASE_HANDOFF=1` returns after each durable phase with a
-  paused `phase-handoff` result. The supervisor reissues the cycle command and resume
+- **Phase handoff.** Every phase returns with a paused `phase-handoff` result. The supervisor reissues the cycle command and resume
   detection continues (`docs/loop-spec/cloud-run-autonomous.md`).
 - **Armed runs.** `.loop-spec/active-run.json` is armed at routing and disarmed only by
   a published terminal result; `lib/cycle-reconcile.sh` converts a surviving armed run

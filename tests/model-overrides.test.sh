@@ -231,15 +231,15 @@ validate_stderr="$(LOOP_SPEC_MODEL_PLANNER=bogus bash "$LIB" validate 2>&1 1>/de
 check "validate: stderr names the offending var" \
   "$([[ "$validate_stderr" == *"LOOP_SPEC_MODEL_PLANNER"* ]] && echo 1 || echo 0)"
 check "cycle boundary: startup validates routing through validate, not all-models" \
-  "$(grep -Fq 'feature-init validate' "$REPO_ROOT/lib/cycle-driver.sh" \
-    && ! grep -Fq 'feature-init all-models' "$REPO_ROOT/lib/cycle-driver.sh" \
+  "$(grep -Fq '"feature-init", "validate"' "$REPO_ROOT/lib/graph/driver.py" \
+    && ! grep -Fq '"feature-init", "all-models"' "$REPO_ROOT/lib/graph/driver.py" \
     && echo 1 || echo 0)"
 
 # --- Test 11: Instruction/SDK boundaries call the executable router ---
-CYCLE="$REPO_ROOT/lib/cycle-driver.sh"
+CYCLE="$REPO_ROOT/lib/graph/driver.py"
 CLOUD="$REPO_ROOT/docs/loop-spec/cloud-run-autonomous.md"
 check "cycle boundary: activation is mandatory before every phase skill" \
-  "$([[ "$(grep -c 'feature-init activate' "$CYCLE")" -ge 1 ]] && echo 1 || echo 0)"
+  "$([[ "$(grep -c '"feature-init", "activate"' "$CYCLE")" -ge 1 ]] && echo 1 || echo 0)"
 check "SDK controller: resolves model inside the per-phase query loop" \
   "$(grep -Fq 'phase = resumable_phase(ROOT)' "$CLOUD" \
     && grep -Fq 'query_overrides["model"] = value' "$CLOUD" \

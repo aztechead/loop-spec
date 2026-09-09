@@ -39,16 +39,16 @@ present "DELIVER skill names the reconciler" skills/deliver/SKILL.md "delivery-r
 present "ITERATE closes the phase on the terminal pass" skills/iterate/SKILL.md '--terminal'
 present "cycle documents seven-phase chain" skills/cycle/SKILL.md "VERIFY -> ITERATE -> DELIVER"
 present "short path still walks ITERATE and DELIVER" skills/cycle/SKILL.md "never skips ITERATE or DELIVER"
-present "completion still emits the terminal result" lib/cycle-driver.sh "cycle-result write"
-present "empty ITERATE summary still publishes" lib/cycle-driver.sh "Cycle completed; PR delivered."
-present "named open PRs are adopted" lib/cycle-driver.sh "adopt-pr resolve"
+present "completion still emits the terminal result" lib/graph/driver.py '"cycle-result", "write"'
+present "empty ITERATE summary still publishes" lib/graph/driver.py "Cycle completed; PR delivered."
+present "named open PRs are adopted" lib/graph/driver.py '"adopt-pr", "resolve"'
 present "micro adopts a named open PR" skills/micro/SKILL.md "adopt-pr.sh"
 present "cycle exits worktree only after delivery" skills/cycle/SKILL.md "keep the worktree until"
-present "fresh rewind set is the graph order" lib/cycle-driver.sh "A rewind is a next phase the graph lists before this one"
-present "blocked delivery cannot spin" lib/cycle-driver.sh "the graph must not re-enter DELIVER"
-present "single-repo base is fetched" lib/cycle-driver.sh 'fetch --quiet origin "$base_branch"'
-present "workspace cleanliness checks output" lib/cycle-driver.sh '== "clean" ]] || dirty+='
-present "workspace bases are fetched" lib/cycle-driver.sh 'fetch --quiet origin "$bb"'
+present "fresh rewind set is the graph order" lib/graph/driver.py "A rewind is a next phase the graph lists before this one"
+present "blocked delivery cannot spin" lib/graph/driver.py "the graph must not re-enter DELIVER"
+present "single-repo base is fetched" lib/graph/driver.py '"fetch", "--quiet", "origin", base_branch'
+present "workspace cleanliness checks output" lib/graph/driver.py 'dirty.append("%s (%s)"'
+present "workspace bases are fetched" lib/graph/driver.py '"fetch", "--quiet", "origin", bb'
 present "candidate finalization is deterministic" lib/deliver.sh 'finalize-delivery-candidate.sh'
 present "candidate finalizer scopes digest" lib/finalize-delivery-candidate.sh 'docs/loop-spec/telemetry/runs/$slug.json'
 present "terminal iteration evidence is committed" graph/cycle.graph.json '"message": "iterate: {slug} iteration'
@@ -58,16 +58,16 @@ present "workspace VERIFY avoids parent commit" lib/phase-exit.sh 'workspace roo
 absent "workspace VERIFY does not commit parent" lib/phase-exit.sh 'git -C "$feature_workspace_root" commit'
 present "single-repo delivery has candidate preflight" lib/deliver.sh "Candidate preflight"
 present "hard retries bind to the recorded SHA" lib/deliver.sh "candidate_sha_drift"
-present "hard delivery failure skips tracked commit" lib/cycle-driver.sh '"$phase" == "deliver" && "$next" != "execute"'
+present "hard delivery failure skips tracked commit" lib/graph/driver.py 'if phase == "deliver" and nxt != "execute":'
 present "hard delivery retry skips finalization commits" lib/finalize-delivery-candidate.sh 'Exact-SHA retries and completion recovery are observation-only'
-present "cycle snapshots state onto its ref, never the branch" lib/cycle-driver.sh 'lib state-ref commit "$feature_dir" "state @ $next"'
-present "cycle never writes the project .gitignore" lib/cycle-driver.sh 'State lives on refs/loop-spec/state/<slug> (lib/state-ref.sh)'
+present "cycle snapshots state onto its ref, never the branch" lib/graph/driver.py '"state-ref.sh"), "commit", feature_dir, "state @ " + nxt'
+present "cycle never writes the project .gitignore" lib/graph/driver.py 'State lives on refs/loop-spec/state/<slug> (lib/state-ref.sh)'
 present "delivery dirt checks skip the state paths" lib/finalize-delivery-candidate.sh 'git-ops.sh" -C "$repo_root" dirt'
 present "fleet consumer rejects startup failures" skills/shared/execute-loop-fleet.md 'rc" -ne 0 && "$rc" -ne 1'
 present "completion recovery bypasses project tests" skills/cycle/SKILL.md 'PR was already proven'
 present "workspace readiness is staged" lib/deliver.sh "stage readiness"
 present "workspace promotion rollback is supported" lib/pr-delivery.sh "restore_draft"
-present "workspace lifecycle avoids parent commits" lib/cycle-driver.sh '"$ws_mode" != "workspace"'
+present "workspace lifecycle avoids parent commits" lib/graph/driver.py 'ws_mode != "workspace"'
 present "controller supports held readiness" lib/pr-delivery.sh "hold_ready"
 present "workspace surfaces a representative PR url" lib/deliver.sh 'select(.outcome == "delivered")'
 absent "VERIFY does not create PRs" skills/verify/SKILL.md "gh pr create"

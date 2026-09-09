@@ -29,8 +29,8 @@ checks=(
 
   # B3 -- extension points
   "skills/verify/SKILL.md	extension-points\.sh.? layers verify	VERIFY must offer the project its review layers"
-  "lib/cycle-driver.sh	extension-points instructions	the cycle must load per-phase instructions"
-  "lib/cycle-driver.sh	extension-points facts	the cycle must load standing facts"
+  "lib/graph/driver.py	\"extension-points\", \"instructions\"	the cycle must load per-phase instructions"
+  "lib/graph/driver.py	\"extension-points\", \"facts\"	the cycle must load standing facts"
 
   # B7 -- fresh-eyes prose pruning
   "skills/spec/SKILL.md	review-prompts/prose-pruning\.md	SPEC must run the fresh-eyes pass on its own artifact"

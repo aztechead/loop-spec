@@ -60,7 +60,7 @@ check_not_contains "cycle resume does not run the comparison" \
 check_contains "cycle resume names VERIFY as the only suite" \
   skills/cycle/SKILL.md 'VERIFY is the only place'
 check_contains "cycle resume prints remaining task ids" \
-  lib/cycle-driver.sh 'task-progress remaining'
+  lib/graph/driver.py '"task-progress", "remaining"'
 check_contains "EXECUTE seeds mergedSet from done ids" \
   skills/execute/SKILL.md 'task-progress.sh done'
 check_contains "EXECUTE persists mark-done" \
@@ -80,14 +80,14 @@ check_contains "loop-fleet passes the sidecar" \
 check_contains "supervisor accepts the sidecar" \
   skills/loop-runner/scripts/supervisor.py '--tasks-json'
 check_contains "resume reference picks up remaining ids" \
-  lib/cycle-driver.sh 'task-progress remaining'
+  lib/graph/driver.py '"task-progress", "remaining"'
 
 # Startup must not pay for a repository-wide suite on the untouched base. The capture
 # survives only as an opt-in for repositories whose base commit is already red.
 check_contains "startup baseline capture is opt-in" \
   lib/feature-bootstrap.sh 'if [[ "${LOOP_SPEC_STARTUP_BASELINE:-0}" == "1" && "${greenfield:-0}" != "1" ]]; then'
 check_contains "workspace prepare/baseline uses the shared bootstrap" \
-  lib/cycle-driver.sh 'feature-bootstrap prepare-repo'
+  lib/graph/driver.py '"feature-bootstrap", "prepare-repo"'
 check_contains "the opt-in is documented" \
   docs/loop-spec/configuration.md '`LOOP_SPEC_STARTUP_BASELINE`'
 

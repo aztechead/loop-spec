@@ -48,6 +48,24 @@ touches, and what to do.
   sees the new key. The peer harnesses drop it.
 - **Longer challenger replies.** The "top 5-7, under 500 words" caps are gone; a sink
   that stores `gate_round` payloads or gate-logs sees the full findings pass.
+- **One phase per invocation is the only mode.** `/loop-spec:cycle` runs one phase
+  and returns with a paused `phase-handoff` result; the next invocation enters the next
+  phase in a fresh context. A caller that ran a whole cycle in one `claude -p` now loops
+  until `.loop-spec/last-result.json` is not `paused`/`phase-handoff`
+  (`docs/loop-spec/cloud-run-autonomous.md` is the bounded controller; the eval driver
+  does the same). `LOOP_SPEC_PHASE_HANDOFF`, `LOOP_SPEC_ITERATE_FRESH`, and the
+  `phaseHandoff` state key are gone; `phase:fresh` is accepted and changes nothing;
+  `phase:continuous` is reported as a legacy token and ignored. The driver answers
+  `HANDOFF next=<p> model=<m>` at every phase boundary and `REWIND next=<p>` when the
+  graph lists the next phase before the one that returned; both mean relaunch.
+  `hooks/team/phase-handoff-guard.sh` enforces the one-phase rule whenever a feature is
+  active, with no switch. `hooks/team/stop-deflection-guard.sh` is removed with its
+  three variables: it denied a stop that said "fresh session", which is now the
+  designed ending of every phase.
+- **The cycle driver is Python.** `lib/cycle-driver.sh` is a launcher for
+  `lib/graph/driver.py`, which runs the graph engine (`lib/graph/engine.py`) in
+  process; every subcommand, answer line, and exit code is unchanged. A test or a
+  supervisor that grepped the Bash driver for a contract string reads the module now.
 
 - **Feature state never lands on the feature branch.** `feature.json` and `PROGRESS.md`
   are snapshotted onto `refs/loop-spec/state/<slug>` at every phase transition
