@@ -106,7 +106,9 @@ esac
 oracle="$(bash "$SCRIPT_DIR/../../supervisor/oracle.sh" mode --feature-dir "$feature_dir" 2>/dev/null)" \
   || run "oracle probe could not run"
 case "$oracle" in
-  oracle=self*) run "self-scored gate (autonomous, oracle=self): the critic is the spec's only independent read" ;;
+  # No `=` and no comma in the reason: the driver splits a mode line on spaces and `=`
+  # to build its JSON, and a reason that carried `oracle=self` became a field.
+  oracle=self*) run "self-scored gate; autonomous run with no supervisor; the critic is the spec's only independent read" ;;
 esac
 
 gate_status="$(python3 - "$spec_path" <<'PY'
