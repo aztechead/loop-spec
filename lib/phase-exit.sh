@@ -236,7 +236,7 @@ case "$phase" in
         # A verify command checks; an install belongs to commands.prepare. A plan that
         # bootstrapped the runtime inside every verify failed integration on a venv that
         # already existed and paid a planner round to add --clear.
-        if grep -qE '(^|[ ;&|(])(pip3?|uv|npm|yarn|pnpm|cargo|gem|bundle|apt(-get)?|brew) +(install|add|python install)|uv +venv|python3? +-m +venv' <<<"$cmd"; then
+        if grep -qE '(^|[ ;&|(])(pip3?|uv|npm|yarn|pnpm|cargo|gem|bundle|poetry|apt(-get)?|brew) +(install|add|sync|ci|python install)|uv +venv|python3? +-m +venv' <<<"$cmd"; then
           flag "[feasibility] $id verifyCommand installs or creates an environment; move that step to commands.prepare and keep the command a check: $cmd"
         fi
         [[ "$ncrit" != "0" ]] || flag "[feasibility] $id has no acceptance criteria"

@@ -207,6 +207,11 @@ check "exit plan: a self-blocking task is a cycle" "1" "$(grep -c 'dependency cy
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"pip install -e . && uv venv --python 3.14 && bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: a verify command that installs is a feasibility flag" "1" "$(grep -c 'installs or creates an environment' <<<"$out")"
+for cmd in "uv sync && bash -n a.sh" "npm ci && bash -n a.sh" "poetry install && bash -n a.sh"; do
+  printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"%s","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' "$cmd" > "$FD/tasks.json"
+  out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1 || true)"
+  check "exit plan: '$cmd' is an install flag" "1" "$(grep -c 'installs or creates an environment' <<<"$out")"
+done
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 out="$(bash "$MODE" plan --feature-dir "$FD")"
 check "mode plan: one small task takes the fast path" "critique=skip" "${out%% *}"

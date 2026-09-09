@@ -186,6 +186,8 @@ touches, and what to do.
   and the fourth live run pinned Python 3.14.0rc2 from a stale `uv` and escalated
   (`evals/findings-2026-09-09-round-4.md`). `agents/implementer.md` binds the
   stale-installer rule where installs happen.
+- `phase-exit.sh plan` also flags `uv sync`, `npm ci`, and `poetry install` in a verify
+  command.
 - `evals/tasks/wc-json/check.sh` and `evals/tasks/todo-due/check.sh` grep test sources
   only (`--include="*.py"`): after a test run, `tests/__pycache__/*.pyc` matched the
   word and passed a control that had added no test.
