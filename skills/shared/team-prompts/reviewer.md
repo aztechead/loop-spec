@@ -61,7 +61,9 @@ Repeat until idle:
 
 ### On Pass
 
-Call `TaskUpdate` BEFORE the `SendMessage`. The `completed` status is the source of truth; the `REVIEW PASS` message is only a wake hint. The lead reconciles the merge queue from `TaskList` state on every wake and does not block waiting for this message, so a dropped `REVIEW PASS` cannot strand the task -- but only if the `TaskUpdate` landed first.
+Call `TaskUpdate` before `SendMessage`.
+The lead reads `TaskList` to rebuild the merge queue on each wake. `REVIEW PASS` only notifies the lead.
+Writing status first preserves task completion even if the message is lost.
 
 ```
 TaskUpdate({taskId: "<id>", status: "completed"})

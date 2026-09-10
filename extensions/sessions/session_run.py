@@ -114,7 +114,7 @@ def child_env(profile_env, lead=False):
     # fact, not the lead's.
     env = {k: v for k, v in os.environ.items()
            if (lead or not k.startswith("LOOP_SPEC_"))
-           and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
+           and k not in ("CLAUDE_PROJECT_DIR", "LOOP_SPEC_SKILL_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
            and k not in SESSION_IDENTITY and k != "CLAUDE_CODE_ENTRYPOINT"}
     env.update(profile_env)
     return env

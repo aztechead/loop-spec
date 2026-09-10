@@ -86,7 +86,7 @@ The landing record at the end of the follow-up says what each item became.
 - **The port's records live on the audit branch.** The port plan, the port principles,
   and the five port audits (items F1 to F12, N1 to N7, the fourth audit's five items,
   and R1 to R7, each with its landing record) are the `docs/loop-spec/orchestrator-port`
-  files on `claude/loop-spec-bmad-eval-w7odpb`; code comments, the tests, and this
+  files at commit `28c3dded3f3b0661a9936c508bd09f8873bcbf25`; code comments, the tests, and this
   changelog cite them by those names. They change nothing the plugin does, so the
   branch that judges outcomes carries only the plugin.
 - **The small pins the third audit asked for.** A repeated handoff answer (`next` or
@@ -205,7 +205,7 @@ The landing record at the end of the follow-up says what each item became.
   `tests/feature-read-coverage.test.sh` is a two-pass scan with a reasoned allow-list.
 - the port plan records the WP4 shim and the cycle
   skill's launcher steps, the WP5 vendoring decision and its partial state, and the
-  attribution exception to the BMad non-goal.
+  required third-party attribution exception.
 
 ### Merged from 6.3.0 (PR 93)
 
@@ -524,7 +524,7 @@ touches, and what to do.
   `tests/lib/harness-call-shapes.test.sh` case 8 now requires the key on every one-shot
   template instead of forbidding it.
 - the port plan is the ordered plan from the head-to-head
-  against BMad; this release lands its WP0 (the defects that run showed) and WP1 (the
+  against the reference implementation; this release lands its WP0 (the defects that run showed) and WP1 (the
   oneshot route).
 - `lib/converged-floor.sh` reads the acceptance table the verifier writes: the header
   names the status column, `PASS (12 passed)` is PASS, `\|` inside a cell is a literal
@@ -1240,7 +1240,7 @@ harness resumes this turn. Dummy wait questions are forbidden.
   never emit `run_in_background`. Pinned by
   `tests/output-style-coverage.test.sh`,
   `tests/lib/harness-call-shapes.test.sh`, and
-  `tests/bmad-import-coverage.test.sh`.
+  `tests/review-extension-coverage.test.sh`.
 
 ## [4.6.0] - 2026-08-28
 

@@ -23,7 +23,7 @@ You review the full feature diff for code quality and security. Do this review y
 - `base_sha`
 - `spec_path`: SPEC.md (for the Boundaries / anti-goals the diff must not violate)
 - `plan_path`: PLAN.md (for context on what was supposed to be built)
-- `probe_dir`: absolute path to the plugin's `lib/` directory, supplied by the dispatching skill (`${CLAUDE_SKILL_DIR}/../../lib`). The code-for-humans pass runs its probes from here; absent, that pass degrades to reading neighbors and reports Minor only.
+- `probe_dir`: absolute path to the plugin's `lib/` directory, supplied by the dispatching skill (`${LOOP_SPEC_SKILL_DIR}/../../lib`). The code-for-humans pass runs its probes from here; absent, that pass degrades to reading neighbors and reports Minor only.
 
 ## Procedure
 

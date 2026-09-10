@@ -1,18 +1,17 @@
 ---
 name: discuss
-description: DISCUSS phase - conversational requirements gathering that refines SPEC.md, then a challenger-only critique (skipped when the spec is already gated). Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
+description: "Resolve design choices in SPEC.md and run the selected challenger review. Internal phase of /loop-spec:cycle. Start there for repository work."
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch
 ---
 
 # DISCUSS
 
-SPEC pinned the requirements; DISCUSS pins the design and approach, then has a
-challenger critique the spec. `feature_dir` is `.loop-spec/features/{slug}`; the
-spec is `docs/loop-spec/features/{slug}/SPEC.md`. Dispatch follows
-`skills/shared/dispatch.md`. Your inputs are the entry packet and nothing else:
+SPEC defines the requirements. DISCUSS resolves the design and approach, then requests a challenger review when required.
+Use `.loop-spec/features/{slug}` as `feature_dir` and `docs/loop-spec/features/{slug}/SPEC.md` as the spec.
+Follow `skills/shared/dispatch.md` for dispatch. Read only the entry packet as input:
 
 ```bash
-pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin discuss --feature-dir "$feature_dir")"
+pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin discuss --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 # .mode.grill=run|self-answer|skip .mode.oracle=supervisor|self .mode.critique=run|skip .mode.reentry=true|false .mode.reason
 ```
@@ -48,12 +47,15 @@ existing decisions block. This applies even when `grill=skip`; it adds no interv
 
 This is the in-phase grill. A human is attached unless the run is autonomous or
 non-interactive; `execStyle: auto` is not autonomous mode, and `execStyle == "auto"` is none of those.
-A passed SPEC gate does not skip the design loop. Ground in the code first: search the area, read entry points in full, follow callers
-and imports to the integration points and ripple paths; those become the options in
-your questions. Fan scanning out to subagents that return `file:line` evidence
-(dispatch, then stop; never AskUserQuestion as a wait). Probe external systems read-only before asserting anything about
-them (`bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add <ledger> "<claim>" "<command>" "<probe output>"`,
-cite `EVID-NNN`, or write an ASSUMPTION; `skills/shared/grounding-protocol.md`).
+A passed SPEC gate does not skip the design loop.
+Search the feature area and read its entry points in full.
+Follow callers and imports to identify integration points and affected code. Use those findings to form the design options.
+Delegate scans to subagents that return `file:line` evidence.
+Dispatch, then stop. Never AskUserQuestion as a wait.
+
+Probe external systems with read-only commands before making factual claims about them.
+Record results with `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/evidence.sh" add <ledger> "<claim>" "<command>" "<probe output>"`.
+Cite `EVID-NNN`, or record an ASSUMPTION when a probe is unavailable (`skills/shared/grounding-protocol.md`).
 
 - **`run`**: a one-question-at-a-time loop, structured multiple-choice with tradeoffs.
   **`auto`:** MUST grill. Cap at 5 rounds, then proceed. **`step` / `interactive`:** MUST grill.
@@ -71,25 +73,27 @@ cite `EVID-NNN`, or write an ASSUMPTION; `skills/shared/grounding-protocol.md`).
   asks them through `AskUserQuestion` per `skills/shared/autonomous-mode.md`
   "The supervised path" and records answers as `supervised` (`phase-exit.sh` flags a
   named supervisor that was never asked); otherwise answered by you from the code,
-  each recorded with `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" discuss "<q>" "<a>" "<why>"`.
+  each recorded with `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" discuss "<q>" "<a>" "<why>"`.
 - **`skip`** (`review-only` or non-interactive): only the unresolved-question
   assumptions above.
 
 Save the transcript to `feature_dir/discuss-transcript.md`. If `docs/loop-spec/features/{slug}/SPEC.md` exists,
 edit its design decisions in place and preserve the approved Goal and Boundary.
-Record resolved questions and their reasons in the decisions ledger. Spawn `spec-writer-1` (`loop-spec:spec-writer`) only when SPEC.md is missing
-entirely, with `spec_path` and the transcript path absolute (`$(git -C "$feature_dir" rev-parse --show-toplevel)/docs/loop-spec/features/{slug}/SPEC.md`, never relative: agents share your cwd, and the exit gate reads the feature's checkout). Never spawn `advocate-1`.
+Record resolved questions and their reasons in the decisions ledger.
+Spawn `spec-writer-1` (`loop-spec:spec-writer`) only when SPEC.md is missing.
+Give it absolute `spec_path` and transcript paths. Agents share your current directory, but the exit gate reads the feature's checkout.
+Use `$(git -C "$feature_dir" rev-parse --show-toplevel)/docs/loop-spec/features/{slug}/SPEC.md` for the spec.
+Never spawn `advocate-1`.
 
 **PATTERNS.md prefetch (background, best effort).** Unless greenfield, workspace mode,
 PATTERNS.md already present, or
 `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` set, fire ONE background `Agent`
 (`subagent_type: "loop-spec:pattern-mapper"`, `description: "Prefetch PATTERNS.md: {slug}"`,
 absolute paths for SPEC.md, the output, and the template
-`${CLAUDE_SKILL_DIR}/../shared/artifact-templates/PATTERNS.md.template` — a subagent
-has no `${CLAUDE_SKILL_DIR}` and searched the whole disk for a plugin-relative path;
+`${LOOP_SPEC_SKILL_DIR}/../shared/artifact-templates/PATTERNS.md.template` — resolve the path before dispatch because the subagent has no `${LOOP_SPEC_SKILL_DIR}`;
 "STOP without writing if PATTERNS.md already exists; do not commit; reply DONE:
 patterns"), run
-`bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$feature_dir" artifacts.patternsPrefetch '"in-flight"'`
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh" set "$feature_dir" artifacts.patternsPrefetch '"in-flight"'`
 (feature.json is never edited by hand; the forgery guard denies it), and do not wait
 (do not sleep, do not poll; PLAN joins it). GSD ingest first:
 `lib/gsd-ingest.sh patterns {slug} <target>` printing `INGESTED` sets

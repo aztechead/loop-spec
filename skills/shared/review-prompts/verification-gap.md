@@ -1,22 +1,13 @@
-# Verification-gap review — canonical prompt directive
+# Verification-gap review
 
-Single source of truth for the verification-gap pass. It answers one question the other
-VERIFY gates do not ask:
+Check whether existing verification detects failures where the changed behavior is used:
 
 > If the behavior this change is supposed to produce broke where it is actually used,
 > would any verification fail?
 
-The existing scans each answer something else. `lib/test-tamper-scan.sh` defends the tests
-that already exist against deletion, skipping, and swallowed exit codes. `lib/criteria-coverage.sh`
-checks that every acceptance criterion carries a verify command. `agents/code-reviewer.md`
-lists missed coverage as one Important-bucket item among many. None of them traces new
-behavior out to the places that observe it, so a change can ship green with its behavior
-pinned nowhere.
-
-Ported from [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD)'s Build review
-layer (`src/bmm-skills/ship/bmad-build/review-prompts/verification-gap.md`, v6.10.0), with
-its "search the repo by symbol before claiming no test exists" instruction replaced by a
-probe — see *Grounding* below.
+`lib/test-tamper-scan.sh` checks for deleted or skipped tests and ignored exit codes.
+`lib/criteria-coverage.sh` checks that each acceptance criterion has a verify command.
+This review traces changed behavior to its consumers and checks whether test assertions protect that behavior.
 
 ## Where this runs
 
@@ -29,14 +20,14 @@ probe — see *Grounding* below.
 
 Before writing a single finding, run:
 
+`<base-sha>` is the comparison base commit. `<head-sha>` is the reviewed commit.
+
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/verification-gap-scan.sh" <base-sha> <head-sha>
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/verification-gap-scan.sh" <base-sha> <head-sha>
 ```
 
-It reports, for every definition this change added or edited in a non-test file, whether
-any test file in the post-change tree names that symbol, and cites the files it found.
-This is the repo-wide symbol search a reviewer would otherwise perform from memory and get
-wrong.
+The probe examines each added or edited definition outside test files.
+It reports whether tests in the resulting tree name that symbol and cites those files.
 
 Read what it gives you and what it does not:
 
@@ -47,8 +38,7 @@ Read what it gives you and what it does not:
 - `scanned=0` means no definition changed. The change may still carry a verification gap
   through configuration, data, or a dependency bump — screen for that yourself.
 
-The probe measures reachability of a name. Whether an assertion would actually fail is
-your judgment, and it is the whole job.
+The probe finds symbol references. You must determine whether the assertions would detect a failure.
 
 ## The three gap shapes
 
@@ -67,9 +57,7 @@ your judgment, and it is the whole job.
 
 ## Evidence rules
 
-These are not style preferences. A verification-gap finding that turns out to be wrong
-costs more than the gap it claimed, because it sends EXECUTE to write a test for behavior
-that was already pinned.
+Check each finding before reporting it. Incorrect findings can cause EXECUTE to add tests for behavior that existing tests already cover.
 
 - Read a test before claiming what it covers, runs, asserts, or misses.
 - Never assert what you did not verify. State what you actually checked — "none of the

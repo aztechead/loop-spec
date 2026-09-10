@@ -32,13 +32,19 @@ out2="$(printf '%s' '{"tool_name":"Bash","cwd":"/tmp/proj","tool_input":{"comman
 check "partial env gets missing roots" "allow" "$(printf '%s' "$out2" | jq -r '.hookSpecificOutput.permissionDecision')"
 check "partial env keeps original command" "yes" "$(printf '%s' "$out2" | jq -r '.hookSpecificOutput.updatedInput.command' | grep -q 'echo hi' && echo yes || echo no)"
 
-out_full="$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"/tmp/proj\",\"tool_input\":{\"command\":\"export LOOP_SPEC_HARNESS=codex CLAUDE_PLUGIN_ROOT=x CLAUDE_PROJECT_DIR=y CLAUDE_SKILL_DIR=z\\necho hi\"}}" \
+out_full="$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"/tmp/proj\",\"tool_input\":{\"command\":\"export LOOP_SPEC_HARNESS=codex CLAUDE_PLUGIN_ROOT=x CLAUDE_PROJECT_DIR=y LOOP_SPEC_SKILL_DIR=z CLAUDE_SKILL_DIR=z\\necho hi\"}}" \
   | bash "$HOOK")"
 check "does not double-prefix complete env" "" "$out_full"
 
 out3="$(printf '%s' '{"tool_name":"spawn_agent","tool_input":{"message":"x"}}' \
   | bash "$HOOK")"
 check "ignores non-Bash tools" "" "$out3"
+
+payload='{"tool_name":"Bash","tool_input":{"command":"test \"$LOOP_SPEC_SKILL_DIR\" = \"$CLAUDE_SKILL_DIR\" && bash \"$LOOP_SPEC_SKILL_DIR/../../lib/harness.sh\" detect"}}'
+neutral="$(printf '%s' "$payload" | LOOP_SPEC_SKILL_DIR="$REPO/skills/spec" CLAUDE_SKILL_DIR=/stale bash "$HOOK")"
+check "neutral directory and compatibility alias execute" "codex" "$(bash -c "$(printf '%s' "$neutral" | jq -r '.hookSpecificOutput.updatedInput.command')")"
+legacy="$(printf '%s' "$payload" | LOOP_SPEC_SKILL_DIR= CLAUDE_SKILL_DIR="$REPO/skills/spec" bash "$HOOK")"
+check "legacy environment supplies neutral directory" "codex" "$(bash -c "$(printf '%s' "$legacy" | jq -r '.hookSpecificOutput.updatedInput.command')")"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

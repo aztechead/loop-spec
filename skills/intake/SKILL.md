@@ -1,26 +1,18 @@
 ---
 name: intake
-description: Turn ANY input into a cycle-ready spec draft and kick off the cycle - a Slack message, Jira ticket, .txt/.md file, pasted email, or bare prompt; anything not already SPEC.md-shaped. Do not use when the input is already a SPEC.md (pass that path to /loop-spec:cycle) or a pasted stack trace (that's /loop-spec:debug).
+description: "Use when converting pasted text or a local file into a spec draft before starting the cycle. Pass existing SPEC.md files to /loop-spec:cycle and stack traces to /loop-spec:debug."
 argument-hint: "<file path | pasted text (slack/jira/email/prompt/...)>  (optional pass-through tokens: autonomous, new, style:...; --no-run to stop after writing the draft)"
 allowed-tools: Bash Read Write Glob Grep Skill AskUserQuestion
 ---
 
 # Intake — anything → SPEC draft → cycle
 
-The cycle already knows how to run from a pre-authored spec file (`/loop-spec:cycle
-path/to/spec.md` → SPEC phase spec-file ingest: graph-ground, resolve concrete intent questions,
-normalize). What it cannot eat is a Slack thread, a Jira ticket, or a rambling prompt.
-This skill is the converter in front of that path — and ONLY the converter (ponytail:
-the ingest machinery already exists; do not rebuild it here). Scoring, normalization,
-interviews, and gates all stay in the SPEC phase.
+Convert a message, ticket, email, or notes into a draft for the cycle's spec-file input.
+SPEC handles investigation, format validation, interviews, and approval. Do not duplicate those steps here.
 
-**The fidelity rule (CRITICAL): restructure, never invent.** Every requirement,
-constraint, and decision in the draft must be traceable to the source text. Where the
-source is silent, the draft stays silent — the question gate and DISCUSS exist
-precisely to catch and resolve those holes (a non-empty `unresolved_questions` list is the designed outcome for a thin source, not a failure of
-this skill). An intake that pads a two-line Slack message into a confident 10-requirement
-spec has fabricated a goal the user never stated — worse than useless, because
-downstream gates will faithfully verify the fabrication.
+**Restructure, never invent.** Every requirement, constraint, and decision must come from the source text.
+Leave gaps unresolved. SPEC and DISCUSS resolve them later.
+A thin source may correctly produce a non-empty `unresolved_questions` list.
 
 ## Step 1 - Acquire the source
 
@@ -28,7 +20,7 @@ Strip pass-through tokens (`autonomous`, `new`, `style:...`, `--no-run`) with th
 shared parser — never by prose (one grammar, one implementation):
 
 ```bash
-inv="$(bash "${CLAUDE_SKILL_DIR}/../../lib/parse-invocation.sh" parse -- "$ARGUMENTS")"
+inv="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/parse-invocation.sh" parse -- "$ARGUMENTS")"
 # .autonomous/.greenfield/.style/.no_run are the Step 4 pass-through tokens;
 # .spec_path (readable .md) or .title (everything else) is the remaining source.
 ```
@@ -114,14 +106,11 @@ Type: {slack message | jira ticket | email | file: path | prompt} — captured {
 - {question the source raises but does not answer}
 ```
 
-The `## Source` block is the provenance trail: when DISCUSS or a PR reviewer wonders
-"who asked for this?", the answer is in the artifact - the normalized source in full,
-its artifacts and quoted criteria byte-for-byte. The SPEC phase copies
-the draft into `.loop-spec/features/{slug}/spec-draft.md` and normalizes from there,
-so this file is the durable record of the normalized source and what intake produced
-from it (the pre-normalize paste is not kept anywhere).
+The `## Source` block records the normalized source, including unchanged artifacts and quoted criteria.
+SPEC copies this draft to `.loop-spec/features/{slug}/spec-draft.md` and normalizes its format there.
+The intake file preserves the normalized source and extracted draft. It does not preserve the original prose before normalization.
 
-## Step 4 - Kick off the cycle
+## Step 4 - Start the cycle
 
 Default: hand off immediately —
 
@@ -131,11 +120,9 @@ Skill(loop-spec:cycle) with arguments: "{pass-through tokens} .loop-spec/intake/
 
 - Pass-through tokens (`autonomous`, `new`, `style:...`) go through verbatim — a Slack
   message describing a brand-new app runs `new autonomous .loop-spec/intake/{slug}.md`.
-- The cycle's Step 3 branch 3 takes it from here: title from the draft's `# ` heading,
-  SPEC phase in spec-file ingest mode, unresolved questions recorded from the draft itself. A
-  thin source (most Slack messages) fails dimensions and lands in the designed
-  resolution path: targeted questions in `step`/`interactive`, graph-grounded recorded
-  assumptions in `auto`/autonomous.
+- The cycle reads the title from the draft's `# ` heading and sends the draft to SPEC's ingest path.
+  SPEC records unresolved questions from the draft.
+  Attended runs ask intent questions, including `style:auto`. Autonomous runs use recorded recommended answers or the supervisor.
 - `--no-run`: stop after Step 3. Print the draft path and the exact cycle invocation
   the user would run. (Use when the user wants to eyeball the conversion first.)
 
@@ -146,5 +133,4 @@ Skill(loop-spec:cycle) with arguments: "{pass-through tokens} .loop-spec/intake/
   self-answers happen THERE, with the decision record).
 - Never resolves intent questions or normalizes format — that is the SPEC
   phase's spec-file ingest mode, already built and gated.
-- Never fetches remote content (offline by design, like the rest of the plugin): a Jira
-  ticket or Slack thread arrives as pasted text or a saved file, not a URL.
+- Never fetches remote content. Supply ticket or thread content as pasted text or a local file, not a URL.

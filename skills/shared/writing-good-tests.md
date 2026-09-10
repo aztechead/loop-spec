@@ -1,8 +1,6 @@
 # Writing good tests
 
-Canonical test-authoring reference for implementer dispatches. Load this when
-writing or changing tests. Superpowers v6.2.0 rebuilt anti-pattern prose as a
-positive catalog; loop-spec keeps the two named traps as a gate, not a sermon.
+Read this contract when writing or changing tests in an implementer task.
 
 A test exists to catch a specific break.
 

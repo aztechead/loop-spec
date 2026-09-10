@@ -1,23 +1,9 @@
 # Code for humans (house style over habit) — canonical prompt directive
 
-Single source of truth for the code-for-humans directive that every **code-producing
-phase dispatch** must carry. It is the third member of a set: the laziness ladder
-(`skills/shared/laziness-ladder.md`) governs *how much* code exists, design for change
-(`skills/shared/design-for-change.md`) governs *where its boundaries sit*, and this one
-governs *how it reads to the next person who opens the file*. Enforced by
-`tests/human-code-coverage.test.sh`.
-
-This directive has two halves, and the same person needs both. At read time they are
-changing the file; at run time they are on call, holding whatever the software chose to
-say. House style serves the first. The failure path -- what a caught error does, what a
-message names, what an exit says before it goes -- serves the second, and it is the half
-nobody rereads, because it only runs when something is already wrong.
-
-Code is read far more often than it is written, and the reader is a person with a
-half-loaded mental model of the module. Generated code fails that reader in a specific,
-recognisable way: it is correct, and it looks nothing like the code around it. Different
-naming, different error idiom, a docstring on every function in a module that has none, a
-comment above every line explaining the line. That is the failure this directive addresses.
+Include this contract in every dispatch that produces code.
+Match the surrounding code's style and keep failure messages useful to operators.
+Use `skills/shared/laziness-ladder.md` for implementation size and `skills/shared/design-for-change.md` for boundaries.
+`tests/human-code-coverage.test.sh` checks dispatch references.
 
 Relevant phases:
 - **PLAN / planner** — tasks name the files, so the brief can carry their conventions (`agents/planner.md`).
@@ -111,7 +97,7 @@ these sites carries alongside these two:
 
 | Site | How it resolves |
 |---|---|
-| Skill-context prompts (`execute-subagent.md`, `team-prompts/implementer.md`) | `${CLAUDE_SKILL_DIR}/../../lib` |
+| Skill-context prompts (`execute-subagent.md`, `team-prompts/implementer.md`) | `${LOOP_SPEC_SKILL_DIR}/../../lib` |
 | `lib/plan-to-loop.sh` | its own directory, from `BASH_SOURCE` |
 | `lib/workflows/execute-dag.js` | the injected `skillDir` arg |
 | `hooks/team/human-code-inject.sh` | its own directory, from `BASH_SOURCE` |
@@ -161,40 +147,27 @@ collide the resolution is fixed:
 
 ## Compact directive (read this file; do not paste it into a prompt)
 
-Dispatch names this file and the resolved probes. A SessionStart hook does not reach a
-dispatched agent, so the prompt still says to Read this file.
+Give dispatched agents this file and absolute probe paths. SessionStart instructions do not reach them.
 
-> CODE FOR HUMANS (house style over habit — on by default). Code is read far more than it
-> is written; the diff must read like the code around it. Read the neighbors FIRST and
-> match them: naming, error idiom, test structure, file layout, import order — the house
-> convention outranks your defaults even when you would have chosen differently, and
-> disagreeing with it is a review finding, never a licence to deviate. Where the convention
-> is unclear, measure it: `bash <probe_dir>/house-style.sh probe <your files>` reports comment
-> density, doc-comment usage, indentation, and naming case from the actual neighbors. Before
-> you report DONE, judge your own work with `bash <probe_dir>/house-style.sh compare <files
-> you touched>`: it holds each file out of its own baseline and names where it deviates from
-> its same-language neighbors (indent, naming, quotes, semicolons, module system). `probe`
-> pools your file into the sample and therefore can never show you a deviation — only
-> `compare` can.
-> Comments carry WHY, never what: a constraint that is not visible locally, a decision and
-> the alternative it beat, a workaround and its reason. Never narrate the code, restate a
-> signature, announce the edit ("Added…", "Updated…"), or narrate history ("previously…",
-> "renamed from…") — `bash <probe_dir>/comment-tells.sh scan <files>` catches those three. Comment
-> DENSITY matches the file, not an absolute: do not add docstrings to a module that has
-> none, or strip them from one that documents everything. A good name deletes a comment —
-> reach for the name first. Early return over nested branch; one idea per function. Keep
-> the diff readable: no drive-by reformatting, renames, or churn that buries the change.
-> NEVER cut: `simplicity:` shortcut markers, file-header purpose blocks where the codebase
-> uses them, TODO/FIXME/NOTE/HACK/SAFETY/SECURITY markers, spec- or API-required contract
-> docs, or any comment encoding a non-obvious why.
->
-> CODE A HUMAN CAN OPERATE (the failure path, same directive's second half). When this
-> breaks at 03:00 the person on call has only what the code said. Never swallow an error:
-> a handler that catches and does nothing erases the one record of what happened — log it,
-> re-raise it, or state why the failure is uninteresting (a narrow exception type states it
-> for you; `except Exception: pass` states nothing). An error message names what broke and,
-> where you know it, the next move — which file, which field, which limit; "invalid input"
-> is not actionable. Never exit non-zero in silence: say why on stderr first, or leave the
-> failing command to speak. Before you report DONE run `bash <probe_dir>/failure-tells.sh
-> scan <files you touched>`, which flags those three shapes and stays quiet on the
-> deliberate ones.
+CODE FOR HUMANS (house style over habit — on by default).
+
+1. Read neighboring code before editing. Match its naming, error handling, tests, layout, and imports.
+   Report a questionable convention as a finding. Do not change it in unrelated work.
+2. Run `bash <probe_dir>/house-style.sh probe <files>` when conventions are unclear.
+   Use `bash <probe_dir>/house-style.sh compare <files>` before DONE.
+   Only `compare` excludes the target from its baseline and can demonstrate a deviation.
+3. Comments explain constraints, decisions, alternatives, and workarounds that the code cannot express.
+   Run `bash <probe_dir>/comment-tells.sh scan <files>`.
+   Remove comments that narrate edits, history, signatures, or adjacent code.
+4. Match the file's comment density. Prefer a clear name when it removes the need for a comment.
+   Prefer early returns, clear control flow, and one responsibility per function.
+5. Keep the diff focused. Avoid unrelated reformatting and renames.
+6. Preserve `simplicity:` markers, required headers, TODO/FIXME/NOTE/HACK/SAFETY/SECURITY markers, contract documentation, and comments with non-obvious reasons.
+
+CODE A HUMAN CAN OPERATE (the failure path).
+
+7. Report or re-raise errors, or explain why ignoring the specific failure is correct.
+   A narrow exception type can supply that explanation. A bare `except Exception: pass` cannot.
+8. Name the failed file, field, limit, or operation in an error message.
+   Include a recovery action when known. A non-zero exit must report its reason or preserve the failing command's diagnostic.
+9. Before DONE, run `bash <probe_dir>/failure-tells.sh scan <files>`.

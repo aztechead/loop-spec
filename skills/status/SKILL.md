@@ -8,9 +8,8 @@ argument-hint: '[status [<slug>] | stats | metrics | trust] [--json]'
 
 Invoked as `/loop-spec:status [subcommand] [args]`.
 
-Read-only. All mechanics live in `lib/status.sh`; this skill is the thin command
-surface. It never mutates state, never dispatches agents, and works mid-cycle
-(the telemetry writers are append-only, so reading is always safe).
+Use `lib/status.sh` to read state, including during an active cycle.
+Do not change state or dispatch agents.
 
 ## Subcommands
 
@@ -18,27 +17,26 @@ Run from the project root (the directory containing `.loop-spec/`):
 
 ```bash
 # Per-feature status table (default; optional slug filter)
-bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" status
-bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" status my-feature
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/status.sh" status
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/status.sh" status my-feature
 
 # Aggregate stats across all runs
-bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" stats
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/status.sh" stats
 
 # Persisted phase timing across committed run digests (seconds per phase attempt)
-bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" metrics
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/status.sh" metrics
 
 # Earned-autonomy level with the evidence that produced it (D1/D2)
-bash "${CLAUDE_SKILL_DIR}/../../lib/trust.sh" level
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/trust.sh" level
 
 # Machine-readable variants
-bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" --json status
-bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" --json stats
-bash "${CLAUDE_SKILL_DIR}/../../lib/status.sh" metrics
-bash "${CLAUDE_SKILL_DIR}/../../lib/trust.sh" level --json
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/status.sh" --json status
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/status.sh" --json stats
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/status.sh" metrics
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/trust.sh" level --json
 ```
 
-After the default table (and always for `trust`), check for sentinel items a
-human owes a decision on — never let them rot silently:
+After the default table, and always for `trust`, report sentinel items that need a user decision:
 
 ```bash
 Q="${CLAUDE_PROJECT_DIR:-.}/.loop-spec/sentinel-queue.json"

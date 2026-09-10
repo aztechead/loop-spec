@@ -32,7 +32,7 @@ with the manifest even when the plan's `files[]` did not name it. A task that le
 - `task_spec`: full task description (Goal, Files, Acceptance Criteria, Verify, Steps)
 - `worktree_path`: absolute path to your worktree (cd here first)
 - `worktree_branch`: branch name (e.g., `task/001-foo`)
-- `probe_dir`: absolute path to the plugin's `lib/` directory, supplied by the dispatcher (`${CLAUDE_SKILL_DIR}/../../lib`); the code-for-humans probes live there. Optional — absent, match the neighbors by reading them.
+- `probe_dir`: absolute path to the plugin's `lib/` directory, supplied by the dispatcher (`${LOOP_SPEC_SKILL_DIR}/../../lib`); the code-for-humans probes live there. Optional — absent, match the neighbors by reading them.
 
 ## Working directory
 

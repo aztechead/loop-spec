@@ -115,7 +115,7 @@ Selected only with `LOOP_SPEC_EXECUTE_WORKFLOW=1`, `workflowsAvailable`, and
 
 ```
 Workflow({
-  scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/execute-dag.js",
+  scriptPath: "${LOOP_SPEC_SKILL_DIR}/../../lib/workflows/execute-dag.js",
   args: { slug, featureWorktreeRoot, featureBranch: "feat/{slug}",
           models: {implementer, specComplianceReviewer}, maxParallelImplementers,
           maxRetriesPerTask, reviewersEnabled: true, commands: feature.commands, skillDir,
@@ -163,7 +163,7 @@ lands in the lead's context, and the lead never sees a launch command
 Per task, after `cycle-driver.sh task dispatch` returns the packet:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task run --feature-dir "$feature_dir" --task "$taskId" --role implementer
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task run --feature-dir "$feature_dir" --task "$taskId" --role implementer
 ```
 
 The driver writes the prompt (one line: the brief, the spec, the report path), runs
@@ -179,7 +179,7 @@ hand, because the probe already answered `session` for this run.
 After `package`, the reviewer is a session too:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task run --feature-dir "$feature_dir" --task "$taskId" --role reviewer
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task run --feature-dir "$feature_dir" --task "$taskId" --role reviewer
 ```
 
 It runs in the feature root with the reviewer's model; the verdict is read from the

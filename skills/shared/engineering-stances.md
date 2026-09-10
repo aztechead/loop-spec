@@ -1,25 +1,12 @@
 # Engineering stances — canonical prompt directive
 
-Single source of truth for the five senior-engineer stances a phase adopts when the work
-has that shape: build from scratch, system design, refactor, debug, and performance. A
-stance is a mindset plus the deliverables that prove it was held. A stance
-never selects a route or a phase (`lib/task-route.sh` and the graph do that); it says
-how the phase already running does its job and what its artifact must contain. Enforced by
-`tests/engineering-stances-coverage.test.sh`.
+Use the applicable stance below when writing, planning, reviewing, or debugging.
+A stance defines required deliverables for the current phase. It never selects a route or phase.
+`lib/task-route.sh` and the graph select those.
 
-Reader: an agent about to write, plan, review, or debug under loop-spec, and the
-maintainer editing a dispatch prompt. The quality contracts stay where they are: the
-laziness ladder (how much code), design for change (where the boundaries sit), code for
-humans (how it reads), docs for humans (the markdown), engineering directives (versions,
-idiom, scale, tests). This file adds the *posture* each phase takes toward the work.
-
-## Why a stance is not a prompt
-
-"Think like a senior engineer" is a fine opening line for a chat and a useless one in a
-dispatch: the executor cannot tell whether it held the stance. Each row below therefore
-pairs the mindset with an artifact section, so VERIFY and ITERATE can check the section
-instead of the attitude. A phase that adopts a stance writes the deliverables; a phase
-that skips a deliverable says why in one line where the section would be.
+Write the deliverables for each applicable stance. If a deliverable does not apply, explain why where its section would appear.
+VERIFY and ITERATE check those sections. Existing code, design, documentation, and engineering contracts still apply.
+`tests/engineering-stances-coverage.test.sh` checks references to this contract.
 
 ## The five stances
 

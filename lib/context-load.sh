@@ -2,7 +2,7 @@
 # context-load.sh - How many lines a phase skill makes the lead read.
 #
 # Why: on the short route the lead read about 1,850 lines of skill and contract prose
-# for a two-line fix, against BMad's 475 for the same job, and every line is paid for
+# for a two-line fix, against the reference implementation's 475 for the same job. Each line adds cost
 # on every turn (port audit 1, F3). Nothing measured
 # it, so nothing could bound it. This probe sums the body and every file the body tells
 # the lead to read, so a test can hold a path under a number.
@@ -46,12 +46,12 @@ python3 - "$cmd" "$root" "$transitive" "${entries[@]}" <<'PY'
 import os, re, sys
 cmd, root, transitive = sys.argv[1], os.path.realpath(sys.argv[2]), sys.argv[3] == "1"
 entries = sys.argv[4:]
-CITE = re.compile(r"`((?:\$\{CLAUDE_SKILL_DIR\}/references/|skills/)[A-Za-z0-9_./-]+?\.md(?:\.template)?)(#[^`]+)?`")
+CITE = re.compile(r"`((?:\$\{(?:LOOP_SPEC_SKILL_DIR|CLAUDE_SKILL_DIR)\}/references/|skills/)[A-Za-z0-9_./-]+?\.md(?:\.template)?)(#[^`]+)?`")
 
 def resolve(raw, from_path):
-    if raw.startswith("${CLAUDE_SKILL_DIR}/"):
+    if raw.startswith(("${LOOP_SPEC_SKILL_DIR}/", "${CLAUDE_SKILL_DIR}/")):
         skill_dir = from_path.split("/")[0] + "/" + from_path.split("/")[1]
-        return skill_dir + raw[len("${CLAUDE_SKILL_DIR}"):]
+        return skill_dir + raw[raw.index("}") + 1:]
     return raw
 
 def section(lines, heading):

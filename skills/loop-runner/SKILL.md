@@ -25,17 +25,11 @@ tasks are converted to a loop plan via `lib/plan-to-loop.sh` and run as a
 supervised fleet with SPEC.md/PLAN.md integrity-protected. It is equally usable
 standalone — "implement this spec", "keep going until tests pass", overnight
 runs — exactly as documented below. When running from the plugin, reach the
-scripts via `${CLAUDE_SKILL_DIR}/scripts/...` (e.g.
-`python3 "${CLAUDE_SKILL_DIR}/scripts/loop.py" ...`); the relative
+scripts via `${LOOP_SPEC_SKILL_DIR}/scripts/...` (e.g.
+`python3 "${LOOP_SPEC_SKILL_DIR}/scripts/loop.py" ...`); the relative
 `scripts/...` paths below assume your cwd is the skill directory.
 
-Stop being the thing inside the loop typing prompts. Write a spec the way you
-normally would; compile it into loops; let the loops run with guardrails that
-guarantee they halt; read a machine-readable result.
-
-A loop is **cron plus a decision-maker in the body**. This skill is everything wrapped
-around that decision so it converges instead of running off a cliff — and a compiler
-so you don't hand-build the loops at all.
+Compile the spec into tasks, run the bounded loops, and read the result files.
 
 ## The three layers
 
@@ -55,7 +49,7 @@ Derivative skills plug in at the layer that fits: emit a plan and call the super
 (`from loop import LoopConfig, run_loop`) for a single embedded loop. Never scrape
 stdout — read `result.json`.
 
-## The spec-driven path (the main road)
+## Run from a spec
 
 ```bash
 # 1. Compile. One bounded, read-only agent invocation; output is validated
@@ -174,9 +168,7 @@ agent touched the exam, the run halts immediately with `halt_reason=verifier_int
 — which the supervisor treats as **fleet-fatal**, because nothing downstream of a
 compromised verifier is trustworthy.
 
-**Hard stops.** Iteration cap (the loop's iterate rounds), wall-clock timeout, and
-stall detection. Everything else runs full bore — the loop is bounded by rounds and
-crash protection, nothing more.
+**Hard stops.** The iteration limit, wall-clock timeout, and stall detection bound each loop.
 
 **Real progress, not motion.** Stall detection counts an iteration as progress only
 if files changed *or the verifier failure changed* (failures are fingerprinted with
@@ -184,10 +176,8 @@ digits normalized, so the same error at a new line number still counts as stuck)
 agent churning files in circles halts just like a frozen one. Pass→fail flapping
 halts as `verifier_thrash`.
 
-**Memory across resets.** Fresh mode (default) is real ralph discipline: every
-iteration re-anchors on the task + the latest verifier output + a `PROGRESS.md` the
-agent is instructed to maintain — so context resets don't mean re-learning the
-codebase each tick. `--mode continue` keeps one session via `--resume` instead.
+**Memory across resets.** Fresh mode, the default, supplies the task, latest verifier output, and maintained `PROGRESS.md` on each iteration.
+`--mode continue` keeps one session through `--resume`.
 
 **Observability and durability.** Every iteration's raw Claude Code output is kept
 (`.loop/<task>/iter-NNN.raw.json`), every verifier run is saved in full, the agent's
@@ -239,13 +229,11 @@ model paper over it. The supervisor requires a clean tree to start
    its spec excerpts and its don'ts.
 3. **Start small.** First run of a new plan: `--parallel 1`. Trust
    the verifiers before you scale.
-4. **On failure, read `halt_reason`, not vibes.** `no_progress` → the task is
+4. **On failure, inspect `halt_reason`.** `no_progress` → the task is
    under-specified or too big (split it); `max_iterations` → too few rounds or
    thrashing (read the iteration logs, raise the cap); `verifier_integrity` →
    inspect the diff with suspicion.
-5. **Capture repeated work as skills.** The reusable unit inside a loop is a skill,
-   not a prompt. Loops that call sharp named skills compound; loops that re-derive
-   everything converge slower.
+5. **Capture repeated procedures as skills** when they would reduce repeated work in later runs.
 
 ## When NOT to loop
 
@@ -263,16 +251,15 @@ skill, this suite is the floor.
 
 ## Deeper material
 
-`references/patterns.md`: the loop lineage (ReAct → AutoGPT → ralph → /goal →
-orchestration), verifier design, anchoring discipline, and failure modes.
+Read `references/patterns.md` when choosing a loop mode, designing verifiers, or investigating loop failures.
 `scripts/examples/`: babysit-PRs and nightly-cron recipes.
 
 ## Prerequisites
 
 - One installed and authenticated headless agent CLI: Claude Code
   (`claude -p --output-format json`), OpenCode (`opencode run --format json`),
-  or Google ADK (`adk run <agent-dir> --jsonl`). Select the protocol with
-  `--agent-cli`; binaries named `claude`, `opencode`, and `adk` are auto-detected.
+  Google ADK (`adk run <agent-dir> --jsonl`), or Codex (`codex exec --json`). Select the protocol with
+  `--agent-cli`; binaries named `claude`, `opencode`, `adk`, and `codex` are auto-detected.
   ADK also needs a mount from `lib/adk-install.sh` and `--adk-agent-dir` (or
   `LOOP_SPEC_ADK_AGENT_DIR`).
 - A git repo: required for the supervisor (worktrees/merges) and for loop.py's

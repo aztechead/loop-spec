@@ -122,9 +122,13 @@ try {
   const envB = { env: {} };
   await hooks["shell.env"]({ cwd: projects[0], sessionID: "ses_anthropic" }, envA);
   await hooks["shell.env"]({ cwd: projects[1], sessionID: "ses_openai" }, envB);
-  if (envA.env.CLAUDE_SKILL_DIR !== fs.realpathSync(skillA) ||
-      envB.env.CLAUDE_SKILL_DIR !== fs.realpathSync(skillB)) {
+  if (envA.env.LOOP_SPEC_SKILL_DIR !== fs.realpathSync(skillA) ||
+      envB.env.LOOP_SPEC_SKILL_DIR !== fs.realpathSync(skillB)) {
     fail("shell.env leaked the active skill directory between sessions");
+  }
+  if (envA.env.CLAUDE_SKILL_DIR !== envA.env.LOOP_SPEC_SKILL_DIR ||
+      envB.env.CLAUDE_SKILL_DIR !== envB.env.LOOP_SPEC_SKILL_DIR) {
+    fail("shell.env lost the legacy skill-directory alias");
   }
   if (envA.env.CLAUDE_PROJECT_DIR !== projects[0] || envB.env.CLAUDE_PROJECT_DIR !== projects[1]) {
     fail("shell.env leaked the project directory between sessions");
@@ -136,8 +140,8 @@ try {
   const adapterEnv = { env: {} };
   await hooks["shell.env"]({ cwd: projects[0], sessionID: "ses_anthropic" }, adapterEnv);
   const packageRoot = path.resolve(path.dirname(process.env.PLUGIN_PATH), "..", "..");
-  if (adapterEnv.env.CLAUDE_SKILL_DIR !== path.join(packageRoot, "skills", "cycle")) {
-    fail("namespaced skill adapter did not map CLAUDE_SKILL_DIR to its source skill");
+  if (adapterEnv.env.LOOP_SPEC_SKILL_DIR !== path.join(packageRoot, "skills", "cycle")) {
+    fail("namespaced skill adapter did not map LOOP_SPEC_SKILL_DIR to its source skill");
   }
 
   const childID = "ses_child";

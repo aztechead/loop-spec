@@ -80,22 +80,19 @@ Peer harness surfaces (full tables in each adaptation contract):
 - **Codex harness**: `Agent` → `spawn_agent`; `AskUserQuestion` → `request_user_input`,
   which blocks when a human is attached, so apply the HITL rule before calling
   (`codex-harness.md`).
-- `run_in_background` has no peer equivalent: `task`, `spawn_agent`, and
-  `dispatch_subagent` block until the child returns, and each adaptation contract
-  drops the key.
+- Peer adapters omit `run_in_background`.
+  Use each harness's completion mechanism. A returned child handle is not a completed report.
 
 ## Waiting
 
 A one-shot Agent is meant to run in the foreground: `run_in_background: false` on the
 call, so the tool result IS the subagent's report and the step reads it there. Claude
-Code's fork mode launches an Agent in the background by default, the key on the call
-does not override it (a headless 6.3.0 run saw the stub on all eight calls), and a
+Code's fork mode may launch an Agent in the background despite that key. A
 background launch answers with a launch stub ("Async agent launched"), not the report;
 the report arrives later as a task notification. The operator's switch is the harness's
 own: `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` in the session environment forces
 foreground execution (`skills/shared/claude-harness.md`); every headless launcher this
-plugin ships sets it. A lead that read the stub as an empty report dispatched the SPEC
-pruner twice. A stub therefore means the key was dropped: end the turn and wait for
+plugin ships sets it. A launch stub means the report is pending: end the turn and wait for
 the notification; never re-dispatch on a stub. Independent lead work belongs before
 the Agent call, not in the wait.
 
@@ -129,7 +126,7 @@ Agents share the lead's cwd, so parallel implementers need lead-created task wor
 Fan-out points (`plan` multi-angle, `verify` acceptance and code-review, `execute` DAG)
 read `.loop-spec/runtime.json.workflowsAvailable` (missing file = false). When true and
 the point's opt-in holds, dispatch
-`Workflow({scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/<name>.js", args})`,
+`Workflow({scriptPath: "${LOOP_SPEC_SKILL_DIR}/../../lib/workflows/<name>.js", args})`,
 persist `feature.json.activeWorkflow = {scriptPath, args, startedAt}` while it runs, and
 clear it after. Otherwise run the Agent path; both branches return the same JSON shape.
 
@@ -139,6 +136,6 @@ Emit one event per agent launched (never per `SendMessage` rework round; one per
 compiled task at loop-fleet launch), always non-fatal:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch \
   --phase "<phase>" --data '{"role":"<role>","model":"<resolved selector>","rung":"<team|subagent|loop-fleet|workflow>"}' || true
 ```

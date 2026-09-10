@@ -43,6 +43,7 @@ const SELF = (() => {
 const PKG_ROOT = path.resolve(path.dirname(SELF), "..", "..");
 const HOOK_TIMEOUT_MS = 15000;
 const SESSION_START_SCRIPTS = [
+  "hooks/team/skill-paths-inject.sh",
   "hooks/team/discipline-inject.sh",
   "hooks/team/grill-inject.sh",
   "hooks/team/simplicity-inject.sh",
@@ -196,7 +197,10 @@ export const LoopSpecPlugin = async (input) => {
       CLAUDE_PLUGIN_ROOT: PKG_ROOT,
       CLAUDE_PROJECT_DIR: state.projectDir,
     };
-    if (state.skillDir) env.CLAUDE_SKILL_DIR = state.skillDir;
+    if (state.skillDir) {
+      env.LOOP_SPEC_SKILL_DIR = state.skillDir;
+      env.CLAUDE_SKILL_DIR = state.skillDir;
+    }
     if (sessionID) {
       env.CLAUDE_CODE_SESSION_ID = sessionID;
       env.CLAUDE_SESSION_ID = sessionID;

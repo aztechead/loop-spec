@@ -44,13 +44,13 @@ checks=(
   # false-negative failure this pins shut. Declining accepted repository work as
   # protocol-mismatch is the complementary failure (v4.2.1).
   "skills/shared/route-exit-contract.md	protocol-mismatch"
-  "skills/shared/route-exit-contract.md	genuine **non-task**"
-  "skills/shared/route-exit-contract.md	ITERATE and DELIVER included"
+  'skills/shared/route-exit-contract.md	Use `protocol-mismatch` only for pure questions'
+  "skills/shared/route-exit-contract.md	including ITERATE and DELIVER"
   "skills/auto/SKILL.md	route-exit-contract.md"
   "skills/auto/SKILL.md	cycle-reconcile.sh"
   "skills/auto/SKILL.md	executed, not declined"
   "skills/cycle/SKILL.md	protocol-mismatch"
-  "skills/cycle/SKILL.md	genuinely not repository work"
+  "skills/cycle/SKILL.md	decline requests outside repository work"
   "skills/cycle/SKILL.md	never skips ITERATE or DELIVER"
   "skills/cycle/SKILL.md	Never launch the next invocation yourself"
   "skills/micro/SKILL.md	protocol-mismatch"

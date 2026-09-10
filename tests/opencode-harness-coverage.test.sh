@@ -101,18 +101,18 @@ done < <(find lib/graph -type f \( -name '*.sh' -o -name '*.py' \) 2>/dev/null)
 
 # The OpenCode install generates an ADAPTER at <config>/skills/loop-spec-<name>/;
 # its `../../lib` does not exist. A live cycle died here: the model followed an
-# unconditional "export CLAUDE_SKILL_DIR yourself" instruction, clobbered the
+# unconditional "export LOOP_SPEC_SKILL_DIR yourself" instruction, clobbered the
 # correct plugin-provided path with the adapter directory, then hunted the user's
 # home directory for lib/ and was permission-denied. The fallback must only ever
 # fill an EMPTY value.
 OC_DOC="skills/shared/opencode-harness.md"
-if grep -qE '^export CLAUDE_SKILL_DIR=' "$OC_DOC"; then
-  FAIL=$((FAIL+1)); echo "FAIL: $OC_DOC tells the model to overwrite CLAUDE_SKILL_DIR unconditionally"
+if grep -qE '^export LOOP_SPEC_SKILL_DIR=' "$OC_DOC"; then
+  FAIL=$((FAIL+1)); echo "FAIL: $OC_DOC tells the model to overwrite LOOP_SPEC_SKILL_DIR unconditionally"
 else
-  PASS=$((PASS+1)); echo "PASS: $OC_DOC never overwrites CLAUDE_SKILL_DIR unconditionally"
+  PASS=$((PASS+1)); echo "PASS: $OC_DOC never overwrites LOOP_SPEC_SKILL_DIR unconditionally"
 fi
-if grep -qF ': "${CLAUDE_SKILL_DIR:=' "$OC_DOC"; then
-  PASS=$((PASS+1)); echo "PASS: $OC_DOC assigns CLAUDE_SKILL_DIR only when empty"
+if grep -qF ': "${LOOP_SPEC_SKILL_DIR:=' "$OC_DOC"; then
+  PASS=$((PASS+1)); echo "PASS: $OC_DOC assigns LOOP_SPEC_SKILL_DIR only when empty"
 else
   FAIL=$((FAIL+1)); echo "FAIL: $OC_DOC lost the assign-only-when-empty fallback"
 fi

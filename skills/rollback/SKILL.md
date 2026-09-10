@@ -45,7 +45,8 @@ The implementation is in `lib/checkpoint.sh` (`rollback` subcommand).
 
 ## Confirmation requirement
 
-Before rollback executes, the user must confirm by typing **ROLLBACK** (all caps). In a skill context the confirmation is supplied by setting the environment variable:
+Before rollback, require the user to type **ROLLBACK** in uppercase.
+After that confirmation, set:
 
 ```bash
 LOOP_SPEC_ROLLBACK_CONFIRMED=1
@@ -69,28 +70,30 @@ Present the list to the user so they can choose the target tag.
 
 ### Step 2 - Confirm
 
-Ask the user to type **ROLLBACK** to confirm. Do not proceed until the literal string `ROLLBACK` is received. Set `LOOP_SPEC_ROLLBACK_CONFIRMED=1` once confirmed.
+Ask the user to type **ROLLBACK**. Wait for that exact response, then set `LOOP_SPEC_ROLLBACK_CONFIRMED=1`.
 
 Before executing, create a `pre-rollback` checkpoint of the current state so the forward path can be recovered:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" tag pre-rollback
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/checkpoint.sh" tag pre-rollback
 ```
 
 ### Step 3 - Run checkpoint rollback
 
 ```bash
-LOOP_SPEC_ROLLBACK_CONFIRMED=1 bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint.sh" rollback <tag>
+LOOP_SPEC_ROLLBACK_CONFIRMED=1 bash "${LOOP_SPEC_SKILL_DIR}/../../lib/checkpoint.sh" rollback <tag>
 ```
 
 `lib/checkpoint.sh` will:
+
 1. Run `git checkout <tag> -- .`
 2. Stage all restored files via `git add -A`
 3. Commit with message `chore: NO_JIRA rollback to <tag>`
 
 ### Step 4 - Confirm result
 
-Print the new commit SHA and the list of restored files. Notify the user that history is preserved and the `pre-rollback` tag marks the state before this operation.
+Print the new commit SHA and restored files.
+Explain that the operation preserved history and that `pre-rollback` marks the prior state.
 
 ## Notes
 

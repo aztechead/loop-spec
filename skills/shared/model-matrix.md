@@ -1,8 +1,8 @@
 # Model routing
 
-loop-spec is model-portable by default. Every role uses `inherit`, so the model
-that launched the Claude Code, OpenCode, Codex, or ADK session can run the
-complete cycle. No provider, model family, or premium tier is a prerequisite.
+Roles generally inherit the session model across Claude Code, OpenCode, Codex, and ADK.
+Claude's challenger defaults to `sonnet` unless a phase or role override applies.
+The table below records the defaults.
 
 This follows the current host contracts:
 
@@ -24,7 +24,7 @@ harnesses, regardless of which models either account exposes.
 | Role family | Default |
 |---|---|
 | spec-writer, planner | inherit |
-| challenger | `sonnet` on Claude Code (the critic reads and writes nothing; an Opus session paid Opus for every round); inherit on the peer harnesses, which have no alias surface |
+| challenger | `sonnet` on Claude Code, inherit on peer harnesses |
 | advocate | inherit |
 | iterate-judge, code-reviewer | inherit |
 | spec-compliance-reviewer, verifier | inherit |
@@ -100,9 +100,9 @@ role overrides reject native IDs because no shipped `task` dispatch consumes
 them. Set a native selector only when the selected rung will consume it;
 neither harness consumes Claude aliases.
 
-Legacy task `modelTier` values remain accepted so old plans resume, but
-`lib/model-tier.sh` resolves every tier to `inherit`. A plan that truly needs a
-specific model must carry an explicit operator-approved `model` value.
+Legacy task `modelTier` values remain accepted so old plans resume.
+`lib/model-tier.sh` uses `haiku` for Claude's `mechanical` tier and `inherit` for other tiers or harnesses.
+A plan that requires a specific model must carry an explicit operator-approved `model` value.
 
 ## Dispatch rule
 

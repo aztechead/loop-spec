@@ -1,15 +1,23 @@
 # Feature State Schema
 
-Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json`. It is the **committed resume contract** (tracked in git so resume survives a clone / hand-off; the cycle commits it on each phase transition). `PROGRESS.md` (the phase-transition journal) is committed alongside it. The remaining siblings -- `feature.json.bak`, `.feature-write.lock`, `gate-logs/`, transcripts -- stay gitignored as per-machine churn. All writes go through `lib/feature-write.sh`, whose Python transaction locks before reading, fsyncs a unique temporary file, and atomically replaces the destination. The previous state is copied to `feature.json.bak` before replacement; the live file is never moved away.
+Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json`.
+The driver saves resume snapshots, including `PROGRESS.md`, on `refs/loop-spec/state/{slug}` through `lib/state-ref.sh`.
+Do not commit runtime state on the feature branch.
+Backups, locks, gate logs, and transcripts remain local.
+
+Write state through `lib/feature-write.sh`. It locks before reading, saves the prior state to `feature.json.bak`, and atomically replaces the live file.
+It flushes a unique temporary file before replacement. The live path remains present throughout the write.
 
 **Writing rules (every phase, no exceptions):** never mutate `feature.json` with raw `jq`/`python3` — that bypasses the atomic write and `.bak` rotation that resume depends on. `feature-write.sh set` takes **nested dot paths** (object keys only, no array indices) and a **JSON value** (strings must be quoted):
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patterns '"docs/loop-spec/features/'"${slug}"'/PATTERNS.md"'
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" warnings '"some warning"'
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patterns '"docs/loop-spec/features/'"${slug}"'/PATTERNS.md"'
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" warnings '"some warning"'
 ```
 
-If a `set`/`append` call errors, read the message — the common causes are an unquoted string value or an array-index path (replace the whole array via `set` on its parent instead) — and retry with the corrected call; do NOT fall back to raw jq.
+If `set` or `append` fails, read the error and correct the call.
+Quote JSON strings. Replace an array through `set` on its parent path instead of using an array index.
+Never bypass the writer with raw jq.
 
 Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet`) per phase team, not in `feature.json`. See "Harness task list usage" below.
 
@@ -220,14 +228,15 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   malformed compact state fails upward by running the affected gate. A false gate remains
   observable through its persisted classifier reason; VERIFY also records skipped
   verification gates in `VERIFICATION.md`.
-- Every phase boundary hands off: the driver writes a paused `phase-handoff` result
-  after a phase transition and a fresh invocation resumes at `currentPhase`. A feature
+- Full-route phase boundaries hand off through a paused `phase-handoff` result.
+  A fresh invocation resumes at `currentPhase`. Graph edges with `sameSession` continue in the current invocation. A feature
   written before 6.4.0 may carry a `phaseHandoff` key; the driver drops it as a stray.
 - `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
 - `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null` unless the cycle's Step 2 capability probe signals a specific mode.
 - `artifacts.specInterview` is a nullable path to the SPEC-phase interview transcript (written by the spec orchestrator on the main thread). `currentPhase` includes `"spec"` as its first value.
-- `pendingRemediationTasks` and `activeWorkflow` are runtime-only working fields written by the code (VERIFY remediation routing and the workflow dispatch contract in `dispatch-fanout.md`); both are absent or empty/null between phases.
+- `pendingRemediationTasks` carries remediation tasks until EXECUTE consumes them. `activeWorkflow` records an active workflow under `skills/shared/dispatch.md`.
+  Both are runtime state. Do not clear pending remediation merely because the phase changes.
 - `commands.prepare` is persisted beside the quality commands. Resolution precedence is an already-persisted explicit command, `LOOP_SPEC_CMD_PREPARE` (including an explicit empty value), `.loop-spec/workflow.json.prepareCommand`, then conservative lockfile detection by `lib/prepare-environment.sh`; ambiguous lockfiles produce an empty command rather than a mutable install guess. Detection covers workspace layouts: when the root carries no lockfile for an ecosystem, a single tracked `manifest + lockfile` pair within three directories of the root resolves to the same frozen install scoped to that directory (`(cd webapp/frontend && npm ci)`), and the preparation key hashes that directory's manifests alongside the root's. In workspace mode each repo owns its command and preparation key independently.
 - `verificationBaseline` is `null` unless `LOOP_SPEC_STARTUP_BASELINE=1` opted the cycle into a clean, exact `HEAD == baseSha` capture at startup. Default runs never capture one: the cycle spends no fresh-checkout time on repository-wide validation before the feature exists, and VERIFY's end-of-cycle comparison blocks on every failure it observes. Single-repo mode uses the top-level field; workspace mode leaves that field null and uses `workspace.repos[].verificationBaseline`. Its compact JSON is committed with feature state, but command logs remain machine-local. Comparison requires matching `baseSha`, preparation key, and test/lint/typecheck command strings. Pass-to-fail and added fingerprints are regressions; unchanged or subset known failures are accepted; command/runtime infrastructure errors are distinct. Criterion-specific acceptance commands are never included. A missing baseline on an older feature is strict: current failures regress and are never learned from the modified feature head.
 - `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base.

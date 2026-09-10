@@ -43,7 +43,7 @@ present "completion still emits the terminal result" lib/graph/driver.py '"cycle
 present "empty ITERATE summary still publishes" lib/graph/driver.py "Cycle completed; PR delivered."
 present "named open PRs are adopted" lib/graph/driver.py '"adopt-pr", "resolve"'
 present "micro adopts a named open PR" skills/micro/SKILL.md "adopt-pr.sh"
-present "cycle exits worktree only after delivery" skills/cycle/SKILL.md "keep the worktree until"
+present "cycle exits worktree only after delivery" skills/cycle/SKILL.md "Keep the worktree until"
 present "fresh rewind set is the graph order" lib/graph/driver.py "A rewind is a next phase the graph lists before this one"
 present "blocked delivery cannot spin" lib/graph/driver.py "the graph must not re-enter DELIVER"
 present "single-repo base is fetched" lib/graph/driver.py '"fetch", "--quiet", "origin", base_branch'
@@ -64,7 +64,7 @@ present "cycle snapshots state onto its ref, never the branch" lib/graph/driver.
 present "cycle never writes the project .gitignore" lib/graph/driver.py 'State lives on refs/loop-spec/state/<slug> (lib/state-ref.sh)'
 present "delivery dirt checks skip the state paths" lib/finalize-delivery-candidate.sh 'git-ops.sh" -C "$repo_root" dirt'
 present "fleet consumer rejects startup failures" skills/shared/execute-loop-fleet.md 'rc" -ne 0 && "$rc" -ne 1'
-present "completion recovery bypasses project tests" skills/cycle/SKILL.md 'PR was already proven'
+present "completion recovery bypasses project tests" skills/cycle/SKILL.md 'Never re-run project tests here'
 present "workspace readiness is staged" lib/deliver.sh "stage readiness"
 present "workspace promotion rollback is supported" lib/pr-delivery.sh "restore_draft"
 present "workspace lifecycle avoids parent commits" lib/graph/driver.py 'ws_mode != "workspace"'

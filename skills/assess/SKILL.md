@@ -1,6 +1,6 @@
 ---
 name: assess
-description: Use when the user asks for a health check, fragility assessment, hotspot review, or "what's wrong with this codebase". Workspace-aware read-only scan; writes docs/loop-spec/assessment/ASSESSMENT.md and does not commit. Do not use to implement the fixes (that's /loop-spec:cycle or /loop-spec:micro) or to debug one failing test (that's /loop-spec:debug).
+description: "Use when asked to assess codebase health or review fragile files across repositories. Writes ASSESSMENT.md without changing source code or committing. Use /loop-spec:debug for a specific failure."
 allowed-tools: Bash Read Glob Grep Agent AskUserQuestion Write
 ---
 
@@ -25,14 +25,14 @@ Before scanning, clear the stable terminal pointer from the invocation root. A c
 failure stops the assessment so consumers cannot reuse a stale result:
 
 ```bash
-result_root="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" resolve-root "$PWD")"
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$result_root"
+result_root="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" resolve-root "$PWD")"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$result_root"
 ```
 
 Run the workspace resolver to determine the scope:
 
 ```bash
-WORKSPACE_JSON=$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect)
+WORKSPACE_JSON=$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/workspace.sh" detect)
 WORKSPACE_MODE=$(echo "$WORKSPACE_JSON" | jq -r '.mode')
 ```
 
@@ -75,7 +75,7 @@ for repo in $(echo "$REPOS" | jq -c '.[]'); do
   REPO_NAME=$(echo "$repo" | jq -r '.name')
   REPO_ABS=$(echo "$repo" | jq -r '.abs')
 
-  SCAN_JSON=$(bash "${CLAUDE_SKILL_DIR}/../../lib/fragility-scan.sh" \
+  SCAN_JSON=$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/fragility-scan.sh" \
     "$REPO_ABS" --top 20 "${SINCE_ARGS[@]}")
 
   # Store scan result keyed by repo name for use in subsequent steps.
@@ -168,7 +168,8 @@ Do not include any text outside the JSON object in your reply.
 })
 ```
 
-Run all dispatches in parallel across repos and files. Collect each agent reply and parse the JSON findings. If a reply cannot be parsed as JSON, record a single LOW finding: `"claim": "reviewer reply was not valid JSON; manual review needed"`.
+Run reviewer calls in parallel across repositories and files. Parse each reply as JSON.
+For invalid JSON, record one LOW finding: `"claim": "reviewer reply was not valid JSON; manual review needed"`.
 
 Store all findings per repo in `FINDINGS[$REPO_NAME]`.
 
@@ -266,7 +267,7 @@ Based on the cross-repo ranked findings, the following changes are highest prior
 
 ---
 
-Use `Write` to produce the file. The assessment document is the only file written by this skill.
+Write the assessment document. Apart from terminal-result telemetry, this is the only file the skill writes.
 
 Severity sort order for all tables: CRITICAL before HIGH before MEDIUM before LOW. Within the same severity tier, sort by the file's fragility score descending.
 
@@ -299,7 +300,7 @@ Build a concise, non-empty `summary` from the actual highest-severity finding an
 when there are no findings, say that explicitly. Then emit the shared terminal result:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
   --result-root "$result_root" --cycle-type diagnostic \
   --status completed --outcome no-change-needed --slug assess \
   --title "Codebase assessment" --converged true --verification-status not-run \

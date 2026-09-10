@@ -1,6 +1,6 @@
 ---
 name: plan
-description: PLAN phase - pattern-mapper produces PATTERNS.md, the planner produces PLAN.md, deterministic gates run, then a challenger-only critique; updates feature.json. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
+description: "Create PATTERNS.md, PLAN.md, and tasks.json. Check task structure and evidence, then run the selected challenger review. Internal phase of /loop-spec:cycle. Start there for repository work."
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
@@ -12,7 +12,7 @@ commands) under `docs/loop-spec/features/{slug}/`, plus the machine-readable
 Your inputs are the entry packet and nothing else:
 
 ```bash
-pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin plan --feature-dir "$feature_dir")"
+pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin plan --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 # .mode.critique=run|skip .mode.reentry=true|false .mode.reason (structural fast-path | maintenance | compact | security signal | ...)
 ```
@@ -29,7 +29,7 @@ never AskUserQuestion as a wait. If PATTERNS.md exists, keep it. Else
 `lib/gsd-ingest.sh patterns {slug} <target>` (`INGESTED` sets
 `artifacts.patternsSource = "gsd-ingest"`). Else dispatch a one-shot `loop-spec:pattern-mapper`
 Agent with absolute paths for SPEC.md, the target, and
-`${CLAUDE_SKILL_DIR}/../shared/artifact-templates/PATTERNS.md.template` (a subagent
+`${LOOP_SPEC_SKILL_DIR}/../shared/artifact-templates/PATTERNS.md.template` (a subagent
 cannot resolve a plugin-relative path), then stop; the planner's brief covers the last-resort fallback. Greenfield: PATTERNS.md
 records the chosen stack's conventions instead of mined analogs.
 
@@ -39,30 +39,28 @@ Read `skills/shared/approach-selection.md` and include it in the authoring brief
 every path below. Resolve evidence that challenges a settled design through the
 existing decision path before accepting conflicting tasks.
 
-Spawn `planner-1` (`loop-spec:planner`, model `feature.models.planner`) and, in team
-modes, warm up `challenger-1` with SPEC.md meanwhile. The
-planner brief carries: `slug`, `spec_path`, `patterns_path`,
-`evidence_path`, and `template_path` = the absolute
-`${CLAUDE_SKILL_DIR}/../shared/artifact-templates/PLAN.md.template` with "PLAN.md in
-exactly that shape: a `## Task DAG` table and, per task block, `**Files:**`,
-`**Verify:**`, `**Acceptance criteria:**`" (a live planner given no template wrote its
-own shape and the artifact lint flagged every task block); the grounding rule (every external fact cites `EVID-NNN` or is an
-`ASSUMPTION: ... | verify: ...`); the dependency-idiom rule (every dependency
-`lib/doc-deps.sh scan` names on the task files needs a doc-backed `EVID-NNN` or an
-`ASSUMPTION` in `## Grounding` — fetch current docs with any web tool available, or
-return the need); "cite PATTERNS.md analogs in each task's steps";
-"every task block carries the fields `lib/plan-tasks.sh` reads, including
-`**BlockedBy:**`; do not compute waves"; the
-pre-submit self-check against `agents/planner.md` and a verbatim
-`## Global constraints` section (or `- none`). Workspace mode adds: every task carries
-`repo` (one repo per task), `files[]` are `<repo>/<path>`, cross-repo order is a
-`blockedBy` edge. Greenfield adds: task-001 is the scaffold (structure, manifest, the lockfile the
-package manager writes next to it, test harness, a passing walking-skeleton test;
-`verifyCommand` is the stack's canonical test command and never an install step, which
-belongs to `commands.prepare`), every other task is blocked by it, and PLAN.md's `## System design` is filled
-in full (the build-from-scratch and system-design stances,
-`skills/shared/engineering-stances.md`; a refactor spec binds the refactor stance the
-same way).
+Spawn `planner-1` with role `loop-spec:planner` and model `feature.models.planner`.
+In team modes, also start `challenger-1` with SPEC.md.
+Include these fields and instructions in the planner brief:
+
+- `slug`, `spec_path`, `patterns_path`, and `evidence_path`.
+- `template_path`: the absolute `${LOOP_SPEC_SKILL_DIR}/../shared/artifact-templates/PLAN.md.template`.
+  Require its exact shape, including `## Task DAG`, `**Files:**`, `**Verify:**`, and `**Acceptance criteria:**`.
+- Every external fact must cite `EVID-NNN` or use `ASSUMPTION: ... | verify: ...`.
+- Every dependency from `lib/doc-deps.sh scan` on task files needs documentation evidence in `## Grounding`.
+  Use `EVID-NNN` or an `ASSUMPTION`. Fetch current documentation with an available web tool, or report the missing evidence.
+- Cite PATTERNS.md analogs in each task's steps.
+- Include every field that `lib/plan-tasks.sh` reads, including `**BlockedBy:**`. Do not compute waves.
+- Check the draft against `agents/planner.md` before submission.
+- Copy `## Global constraints` verbatim, or write `- none`.
+
+In workspace mode, each task has one `repo`. Use `<repo>/<path>` in `files[]` and `blockedBy` edges for cross-repository ordering.
+
+For greenfield work, task-001 creates the scaffold: structure, manifest, adjacent generated lockfile, test harness, and a passing walking-skeleton test.
+Its `verifyCommand` must be the stack's test command. Put installation steps in `commands.prepare`.
+Every other task depends on task-001.
+Complete `## System design` using the build-from-scratch and system-design stances in `skills/shared/engineering-stances.md`.
+For refactor specs, apply that file's refactor stance.
 
 With `workflowsAvailable` and `LOOP_SPEC_PLAN_MULTI_ANGLE=1`, the
 `lib/workflows/plan-multi-angle.js` Workflow authors instead; log its angles to
@@ -73,15 +71,14 @@ gates. PLAN.md is the source; the completion message is a report, and a message 
 arrives empty or stale never becomes the dispatch list:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/plan-tasks.sh" extract docs/loop-spec/features/{slug}/PLAN.md > "$feature_dir/tasks.json"
-bash "${CLAUDE_SKILL_DIR}/../../lib/plan-conflicts.sh" edges "$feature_dir/tasks.json"
-bash "${CLAUDE_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-tasks.sh" extract docs/loop-spec/features/{slug}/PLAN.md > "$feature_dir/tasks.json"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-conflicts.sh" edges "$feature_dir/tasks.json"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-exit.sh" plan --feature-dir "$feature_dir"
 ```
 
-`edges` writes tasks.json back with a `blockedBy` for every task whose `interfaces.consumes`, `goal`,
-or `brief` names another task it does not wait on (a live critique spent a round on that
-omission; EXECUTE would have serialized the pair anyway). An edge that would close a
-cycle is refused with exit 1: that is a planner finding, send it back.
+`edges` adds missing dependencies to tasks.json when `interfaces.consumes`, `goal`, or `brief` names another task.
+It rejects an edge that would create a dependency cycle with exit 1.
+Send that failure to the planner as a finding.
 
 A non-zero extract exit is a message on stderr (no task blocks, or an unreadable
 plan): it is a fix-list item for the planner, never an empty `tasks.json`. The gate
@@ -93,28 +90,25 @@ lines verbatim; they join the critique findings below.
 
 ## 3. One review round
 
-The planner sees ONE fix-list and revises ONCE. A field run spent an hour and fifty
-dollars bouncing PLAN.md through a feasibility loop, then a critique loop, then the
-feasibility loop again; mechanical FLAGs and critique findings now go to the planner
-together, and the delta re-verify checks both.
+Send the planner one combined list of mechanical FLAGs and critique findings.
+Allow one revision, then check both types of findings in the delta review.
 
 `.mode.critique` from the entry call (`lib/phase-mode.sh plan` folded in; the fast-path
 decision reads the plan you just wrote, so re-run
-`bash "${CLAUDE_SKILL_DIR}/../../lib/phase-mode.sh" plan --feature-dir "$feature_dir"`
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/phase-mode.sh" plan --feature-dir "$feature_dir"`
 once PLAN.md exists). `skip`: log `plan critique skipped (<reason>)`; the fix-list is
 the FLAG lines alone. `run`: the challenger-only protocol (`loop-spec:challenger`,
 topology `graph/critique.graph.json`) in `skills/shared/critique-gate-protocol.md`
 with `phase=plan`, `gate=plan-critique`, `artifact=PLAN.md`, author `planner-1`,
 dispatched in the same response as the gate command (the findings pass reads PLAN.md,
 not the gate's answer). Never spawn `advocate-1`. The protocol's fix-list is the
-union: the FLAG lines verbatim, then the adjudicated findings. Never send the planner
-the FLAG lines alone and the findings later: that FLAG-only round is the second loop
-this section removed, and a run that took it paid a third planner dispatch. Phase deltas:
+union: the FLAG lines verbatim, then the adjudicated findings.
+Never send the planner FLAGs and critique findings as separate revision rounds. Phase deltas:
 user-intent findings resolve as a question in interactive styles and, when autonomous,
 as the more reversible reading recorded via
-`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" plan "<q>" "<a>" "more reversible"`
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" plan "<q>" "<a>" "more reversible"`
 and in `## User decisions (already made)` suffixed `(assumed)`; `UNGROUNDED:` findings
-get their probe run by you (`bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add ...`)
+get their probe run by you (`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/evidence.sh" add ...`)
 and fed to the planner with the `EVID-NNN`. When the revision lands, re-run step 2's
 two commands before the delta re-verify, write the surviving FLAG lines to a file, and
 pass it as `critique delta --flags`. Emit one `dispatch` event per agent launched;

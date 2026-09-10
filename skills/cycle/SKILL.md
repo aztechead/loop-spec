@@ -1,58 +1,55 @@
 ---
 name: cycle
-description: "ENTRY POINT for loop-spec. Give it a feature description OR a path to a pre-authored spec .md file. Runs SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER one phase per invocation; re-invoke it to enter the next phase, and it resumes incomplete features automatically. Do not use for a pasted stack trace (that's /loop-spec:debug) or a one-file ad-hoc fix (that's /loop-spec:micro)."
+description: "Use when starting or resuming repository work from a feature description or spec file. Runs SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER, one phase per invocation. Use /loop-spec:debug for stack traces and /loop-spec:micro for one-file fixes."
 argument-hint: "[new] [feature description | path/to/spec.md | backlog]  (optional inline overrides: style:auto|step|interactive|review-only, autonomous, profile:compact|maintenance|standard)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
 
 # loop-spec:cycle
 
-You are the lead of one phase. `lib/cycle-driver.sh` owns the loop and answers each
-call with one JSON object or one line; every phase boundary hands the next phase to a
-fresh invocation of this skill, so nothing from this context travels. Your job is the
-parts that need a harness tool or a human: answer questions, enter and leave the
-worktree, invoke the one phase skill the driver names, and stop. Do not re-derive
-state, re-scan directories, or narrate the preflight.
+Lead the phase that the driver selects. `lib/cycle-driver.sh` controls the loop and returns JSON or protocol lines.
+Full-route phases start in fresh invocations. Only saved state passes between invocations.
+
+Resolve the driver's questions. Enter or leave the worktree when directed.
+Run the phase instructions that the driver selects. Stop at the phase boundary.
+
+Do not reconstruct state, scan directories again, or narrate startup checks.
 
 ```bash
-DRV="${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
+DRV="${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 ```
 
-Run it; do not `ls`, `stat`, or `cat` it first (two live leads spent their first turn
-checking the path exists).
+Run the driver directly. Do not check its path with `ls`, `stat`, or `cat` first.
 
-The frontmatter lists the tools this skill and its phase skills use. Any other tool the
-harness offers (a web or registry lookup, an MCP server) is available to a phase that
-needs it; the plugin restricts nothing beyond what a role's own charter says. On
-OpenCode and Codex the generated adapter prepends this harness's contract
-(`opencode-harness.md`, `codex-harness.md` under `skills/shared/`); on Claude Code
-the hooks carry it.
+The frontmatter lists the tools this skill and its phase skills use.
+Phases may use other available tools, subject to their role instructions.
+The generated adapters prepend `opencode-harness.md` or `codex-harness.md` from `skills/shared/`.
+Claude Code hooks supply its contract.
 
 ## 1. Start
 
-Rewrite the free-prose portion of `$ARGUMENTS` per `skills/shared/prompt-normalize.md`
-and splice it back between the verbatim tokens and paths; the spliced string is what
-`$ARGUMENTS` means in the call below. Tokens, file paths, and `backlog` are grammar,
-not prose: an invocation carrying no prose passes through unchanged.
+Rewrite only the prose in `$ARGUMENTS`, following `skills/shared/prompt-normalize.md`.
+Keep tokens, file paths, and `backlog` unchanged and in place.
+Use the resulting string as `$ARGUMENTS` below. If the arguments contain no prose, use them unchanged.
 
 ```bash
 st="$(bash "$DRV" begin -- "$ARGUMENTS")"
 ```
 
-`begin` is `start` followed by `init` or `resume` whenever no human decision is
-pending (every autonomous run, every re-invocation that continues a feature). Print
-each line of `.notices[]` and `.warnings[]`, nothing else. Exit 3 is an abort whose
-message is already on stderr: relay it and stop. Read `.action`:
+`begin` runs `start`, then `init` or `resume` when no user decision is pending.
+This includes autonomous runs and invocations that continue a feature.
+Print only the lines from `.notices[]` and `.warnings[]`.
+On exit 3, relay the abort message from stderr and stop.
+Otherwise, read `.action`:
 
-- `init` or `resume`: the feature is ready. `.featureDir` is the feature directory for
-  the rest of the run; call `EnterWorktree({path: .enterWorktree})` when non-null; print
-  `Launching: style=<style> title="<title>".` (on resume: `.watchdog` when non-null,
-  `.progressTail`, and `[RESUME] tasks done/remaining` from `.tasksDone` /
-  `.tasksRemaining` when either is non-empty); go to step 3. When
-  `.recoverCompletion` is true the PR was already proven: skip to step 4 and run only
-  DELIVER's feedback check on the existing targets before finishing; recovery
-  must not skip terminal feedback observation. Never re-run project tests here
-  (VERIFY is the only place that suite runs).
+- `init` or `resume`: use `.featureDir` as the feature directory for this run.
+  If `.enterWorktree` is non-null, call `EnterWorktree({path: .enterWorktree})`.
+  Print `Launching: style=<style> title="<title>".`
+  On resume, print `.watchdog` when non-null and `.progressTail`.
+  Print `[RESUME] tasks done/remaining` from `.tasksDone` and `.tasksRemaining` when either is non-empty.
+  Continue to step 3 unless `.recoverCompletion` is true.
+  When `.recoverCompletion` is true, skip to step 4. Run only DELIVER's feedback check on the existing targets before finishing.
+  Recovery must not skip terminal feedback observation. Never re-run project tests here. VERIFY is the only place that suite runs.
 - `decisions`: resolve `.decisions[]`, in order, with ONE `AskUserQuestion` per entry
   (`question`, `options`; `title` is free text), then step 2.
 
@@ -73,13 +70,14 @@ the user to `TeamDelete` that team before resuming.
 
 ## 2. Run the command `begin` rendered
 
-Only after `begin` answered `decisions` (a human chose). When `.action` was `init` or
-`resume`, the feature is already initialized: do not call `init` again (a live lead
-did, with `$st` from a previous Bash call, which is empty, and got the usage text).
-`.next.init` is the init call with every value `start` holds in place; put the answers
-in its `<slug>`, `<title>`, and `<0|1>` placeholders and run it; `.next.resume` is the
-resume call for a pick. Treat the answer as step 1's `init` or `resume`. A non-zero
-exit already wrote a terminal result: relay stderr and stop.
+Run this step only when `begin` returned `decisions` and the user answered.
+If `.action` was `init` or `resume`, initialization is complete. Do not call `init` again.
+
+Use `.next.init` for a new feature. Replace its `<slug>`, `<title>`, and `<0|1>` placeholders with the answers.
+Use `.next.resume` for the selected existing feature. Run the selected command.
+
+Handle its answer as step 1's `init` or `resume`.
+A non-zero exit means the driver wrote a terminal result. Relay stderr and stop.
 
 ## 3. One phase
 
@@ -87,7 +85,7 @@ exit already wrote a terminal result: relay stderr and stop.
 ans="$(bash "$DRV" next --feature-dir "$featureDir")"
 ```
 
-Act on the first line of `ans`, then stop.
+Handle the first line of `ans` using these rules. Stop when the selected rule requires it.
 
 - `NEXT phase=<p> label="..." effort=<system1|system2>` — print it, treat every
   following `EXT instructions=<path> sha256=<hash>` line as the phase's rendered
@@ -102,18 +100,17 @@ Act on the first line of `ans`, then stop.
 
   and act on that answer with the same list.
 - `REDO phase=<p> flags=<n>` followed by `FLAG ...` lines — `next` ran the phase's exit
-  gates (`lib/phase-exit.sh`) and the artifact is not ready. Follow the same instruction
-  snapshot again with the FLAG lines; the phase fixes its artifact in place and returns; then call
-  `next --returned-from <p>` again. Phase skills never run the exit themselves.
-- `HANDOFF next=<p> model=<m>` or `REWIND next=<p>` — the phase is closed and the next
-  one is ready in durable state. Print
+  gates (`lib/phase-exit.sh`) and the artifact is not ready.
+  Follow the same instruction snapshot again with the FLAG lines.
+  The phase fixes its artifact in place and returns.
+  Then call `next --returned-from <p>` again. Phase skills never run the exit themselves.
+- `HANDOFF next=<p> model=<m>` or `REWIND next=<p>` — the driver saved the next phase and closed this phase. Print
   `LOOP_SPEC_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and stop. The caller
   re-invokes `/loop-spec:cycle`, and that invocation enters `<p>` with
   `lib/phase-entry.sh <p>` as its whole ingress. Do not invoke `Skill(loop-spec:<p>)`
   from here (`hooks/team/phase-handoff-guard.sh` denies a second phase in one
-  invocation). Never launch the next invocation yourself either, with no `claude -p`
-  and no script around one: a nested session spends this invocation's budget a second
-  time (`hooks/team/nested-session-guard.sh` denies the launch). For a Claude worktree
+  invocation). Never launch the next invocation yourself, directly or through a script.
+  `hooks/team/nested-session-guard.sh` blocks nested sessions because they spend this invocation's budget again. For a Claude worktree
   feature, `ExitWorktree({action:"keep"})` first.
 - `PAUSED node=...` — a human gate (`style:step|interactive`). Print `loop-spec: paused
   at <node>; re-invoke /loop-spec:cycle to continue.`, exit a Claude worktree, stop.
@@ -142,25 +139,26 @@ the feature dir to abort). `ExitWorktree({action:"keep"})` when `.exitWorktree`.
 ## 4. Finish
 
 ```bash
-fin="$(bash "$DRV" finish --feature-dir "$featureDir" --completed <N>)"   # N = how many features this invocation completed, counting this one (1 on a single-feature run); a live lead passed the slug
+fin="$(bash "$DRV" finish --feature-dir "$featureDir" --completed <N>)"
 ```
 
-Exit 1 is `delivery-incomplete`: relay and stop without touching state. Otherwise print
-`.report` as is: the outcome first, then per target (repo, PR URL, exact SHA, checks,
-review decision and unresolved count), `.warnings[]`, elapsed time, and
-`.backlogCount`; when the feedback check reported `changesRequested` its last line
-is `/loop-spec:revise <pr>`. `ExitWorktree({action:"keep"})` when `.exitWorktree` is
-true; keep the worktree until merge. When `.chain.chain` is true (autonomous backlog
-drain within `LOOP_SPEC_MAX_FEATURES`), start the next feature from step 1 with
-`.chain.entry.text` as the description; stop on any paused or escalated feature.
+`N` is the number of features this invocation completed, including this feature. Use `1` for a single-feature run.
+
+On exit 1 (`delivery-incomplete`), relay the error and stop without changing state.
+Otherwise, print `.report` unchanged.
+It gives the outcome, target details, warnings, elapsed time, and backlog count.
+Target details include the repo, PR URL, exact SHA, checks, review decision, and unresolved count.
+For `changesRequested`, the report ends with `/loop-spec:revise <pr>`.
+
+If `.exitWorktree` is true, call `ExitWorktree({action:"keep"})`. Keep the worktree until merge.
+If `.chain.chain` is true, start the next feature at step 1 with `.chain.entry.text` as its description.
+This drains the autonomous backlog within `LOOP_SPEC_MAX_FEATURES`. Stop on any paused or escalated feature.
 
 ## Route exit
 
-This skill is a route: it ends by publishing `.loop-spec/last-result.json`, which the
-driver does on every DONE, HANDOFF, REWIND, PAUSED, and escalate answer. A request that
-is genuinely not repository work (a pure question, or work that needs a different
-product) is declined BEFORE `begin`, with the protocol-mismatch result the driver
-writes:
+The driver writes `.loop-spec/last-result.json` for every DONE, HANDOFF, REWIND, PAUSED, and escalate answer.
+Before `begin`, decline requests outside repository work, such as pure questions or work that needs another product.
+Use the driver to write the protocol-mismatch result:
 
 ```bash
 bash "$DRV" decline --reason "<why this is not repository work>" --summary "<what the request needs>"

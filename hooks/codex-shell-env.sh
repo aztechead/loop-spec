@@ -48,17 +48,20 @@ required = (
     "LOOP_SPEC_HARNESS=codex",
     "CLAUDE_PLUGIN_ROOT=",
     "CLAUDE_PROJECT_DIR=",
+    "LOOP_SPEC_SKILL_DIR=",
     "CLAUDE_SKILL_DIR=",
 )
 if all(item in command for item in required):
     raise SystemExit(0)
 
 cwd = payload.get("cwd") or os.getcwd()
-skill_dir = os.environ.get("CLAUDE_SKILL_DIR") or os.path.join(plugin_root, "skills", "cycle")
+skill_dir = (os.environ.get("LOOP_SPEC_SKILL_DIR") or os.environ.get("CLAUDE_SKILL_DIR")
+             or os.path.join(plugin_root, "skills", "cycle"))
 prefix = " ".join((
     "export LOOP_SPEC_HARNESS=codex",
     "CLAUDE_PLUGIN_ROOT=" + shlex.quote(plugin_root),
     "CLAUDE_PROJECT_DIR=" + shlex.quote(cwd),
+    "LOOP_SPEC_SKILL_DIR=" + shlex.quote(skill_dir),
     "CLAUDE_SKILL_DIR=" + shlex.quote(skill_dir),
 ))
 updated = dict(tool_input)

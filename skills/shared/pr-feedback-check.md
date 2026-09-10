@@ -6,7 +6,7 @@ claiming done. This file is the single contract; the flows that must apply it ar
 
 | Cycle type | Terminal step that runs the check |
 |---|---|
-| `/loop-spec:cycle` | DELIVER, after `ready-for-review` (`skills/deliver/SKILL.md` Step 4) |
+| `/loop-spec:cycle` | DELIVER's terminal feedback check for every target with a PR (`skills/deliver/SKILL.md` Step 3) |
 | `/loop-spec:micro` | Protocol step 6 "Deliver as a PR" (`skills/micro/SKILL.md`) |
 | `/loop-spec:debug` | Step 4 "VERIFY and land" (`skills/debug/SKILL.md`) |
 
@@ -21,7 +21,7 @@ One call per delivered PR:
 ```bash
 feedback_args=("$pr_number")
 [[ -n "$repo" ]] && feedback_args+=(--repo "$repo")
-fb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/pr-feedback.sh" check "${feedback_args[@]}")"
+fb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/pr-feedback.sh" check "${feedback_args[@]}")"
 # {schema, observationStatus: complete|degraded|delegated, owner,
 #  reviewDecision, changesRequested, requestedReviewers, unresolved, items, error}
 ```

@@ -1,6 +1,6 @@
 ---
 name: retro
-description: Use when the user says "retro", "what keeps failing", or "mine the telemetry". Reads events.jsonl/result.json. "report" is read-only; "apply" writes rule candidates. Do not use this to start a feature or to debug one run (that's /loop-spec:forensics).
+description: "Use when finding repeated patterns in loop-spec telemetry. Report writes RETRO.md; apply adds rule candidates. Use /loop-spec:forensics to investigate one run."
 argument-hint: '[report | apply] [--min-repeats N]'
 ---
 
@@ -8,11 +8,8 @@ argument-hint: '[report | apply] [--min-repeats N]'
 
 Invoked as `/loop-spec:retro [report|apply] [--min-repeats N]`.
 
-Closes the telemetry circuit: `lib/status.sh` measures, this skill turns the
-measurements into permanent improvements. Every pattern detection is
-deterministic (explicit thresholds in `lib/retro.sh`, default 3 repeats) — the
-model never "judges" a pattern into existence. All mechanics live in
-`lib/retro.sh`; this skill is the thin surface plus the RETRO.md artifact.
+Use `lib/retro.sh` to detect repeated patterns and write RETRO.md.
+The script uses explicit thresholds, with 3 repeats by default. Do not invent patterns from model judgment.
 
 Finding kinds and what happens to them:
 
@@ -29,14 +26,14 @@ pointer. The cycle-internal `lib/retro.sh auto` path does not do this because th
 full cycle will emit its own result:
 
 ```bash
-result_root="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" resolve-root "$PWD")"
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$result_root"
+result_root="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" resolve-root "$PWD")"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$result_root"
 ```
 
 ### report (default)
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" report [--min-repeats N]
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/retro.sh" report [--min-repeats N]
 ```
 
 1. Print the output verbatim (do not paraphrase counts).
@@ -48,7 +45,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" report [--min-repeats N]
 4. Summarize the exact candidate/suggestion/info counts and strongest repeated pattern
    in one non-empty sentence, then emit:
    ```bash
-   bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
+   bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal \
      --result-root "$result_root" --cycle-type diagnostic \
      --status completed --outcome no-change-needed --slug retro-report \
      --title "Loop retrospective" --converged true --verification-status not-run \
@@ -58,7 +55,7 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" report [--min-repeats N]
 ### apply
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/retro.sh" apply [--min-repeats N]
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/retro.sh" apply [--min-repeats N]
 ```
 
 Prints `added`/`exists` per rule candidate (idempotent — re-applying is safe).
@@ -72,13 +69,10 @@ implementation was requested, even though explicit apply may update rules. If re
 apply fails, emit `--status failed --outcome diagnostic-failed --converged false` with a
 concise `reason` and non-empty failure `summary`, omitting `noChangeReason`.
 
-**Autonomous mode note:** interactive cycles only print the read-only candidate
-count at completion — the human decides. Autonomous cycles auto-apply via
-`lib/retro.sh auto` (kill switch `LOOP_SPEC_RETRO_AUTO_APPLY=0`), which is safe
-because the appliable texts are a closed, versioned template set with
-deterministic triggers that only ever tighten the loop; the model cannot author
-or weaken a rule on this path. The human remains the curator of the FILE —
-prune or reword rules any time with `/loop-spec:rules`.
+**Autonomous mode:** interactive cycles report candidate counts at completion and leave application to the user.
+Autonomous cycles apply candidates through `lib/retro.sh auto`. `LOOP_SPEC_RETRO_AUTO_APPLY=0` disables this.
+The script selects versioned rule templates using deterministic triggers. The model cannot author or weaken rules on this path.
+The user can edit rules with `/loop-spec:rules`.
 
 ## Interpreting findings
 

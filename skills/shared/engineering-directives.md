@@ -26,9 +26,23 @@ design or task boundaries through the existing phase path.
 | You reach for a comment | Say why, never what: the constraint, the decision and the alternative it beat, the landmine (`human-code.md` §2–§4). A name that states intent deletes the comment. | Comments the file's density allows, spent on why | `lib/comment-tells.sh scan` |
 | You use a language feature or library call | Use the idiom the language's current documentation recommends for the version the repo pins (the manifest, lockfile, `.tool-versions`, CI matrix). An older idiom the neighbors use outranks a newer one you prefer; note the newer one in the report. | The construct a maintainer of that language expects | `lib/house-style.sh compare` |
 | You are unsure how a dependency the file imports does something | Fetch the dependency's current documentation before writing the call: `bash lib/docs-probe.sh docs <dep> --topic <question>` first, then any web search or URL-fetch tool the session provides, `curl -s <url>` through Bash as the floor. Model memory of a fast-moving framework is a hypothesis; the current docs are the fact (`skills/shared/grounding-protocol.md`, "Current documentation"). | The doc-backed idiom in the diff; in design phases, an `EVID-NNN` ledger cite | `lib/doc-deps.sh gate` (PLAN exit) |
-| You name a language, runtime, or package version | Ask a tool, never recall: the repo's manifest first, then the package manager (`npm view <pkg> version`, `pip index versions <pkg>`, `cargo search <crate>`, `go list -m -versions <mod>`, `gem info <gem>`), then any web or registry tool the harness offers. `bash lib/docs-probe.sh latest <name>` is that tool for any ecosystem it lists, and `--ecosystem runtime` for a language. A runtime version (Python, Node, Go, Ruby) comes from the language's release page or a registry the tool queries over the network, never from a local catalog (`uv python list`, `pyenv install --list`, `nvm ls-remote` from a cache) whose freshness is the installer's, not the language's; a claim that a version is the latest, or does not exist, needs one web source. An installer whose catalog lacks the version the probe named is stale: ask the probe for the installer's own current version (`docs-probe.sh latest uv --ecosystem pypi`) and upgrade it before installing, never settle for an older build, and never a pre-release when a final exists. A run took a stale uv catalog's answer that 3.14.0rc2 was the newest 3.14, and spent twenty commands on a pydantic crash that 3.14.7 did not have; the next run knew 3.14.7 was current, kept the stale installer, and pinned rc2 anyway. Check advisories the same way (`npm audit`, `pip-audit`, `cargo audit`, `govulncheck`, `gh api /advisories`). Model knowledge is a hypothesis; the tool's answer is the fact. | One line in the report per version chosen: `version: <name>@<v> source: <command or URL>`; `unverified` when no tool answered, pinned to what the repo already uses | `lib/grounding-lint.sh` (an unverified version is an `ASSUMPTION ... \| verify:` line) |
+| You name a language, runtime, or package version | Follow Version evidence below. Check the repository pin, current release source, and relevant advisories. | `version: <name>@<v> source: <command or URL>`, or `unverified` with the existing pin | `lib/grounding-lint.sh` requires an `ASSUMPTION ... \| verify:` line for an unverified version. |
 | You add a boundary, helper, or second implementation | Design to an interface; one unit, one reason to change; receive collaborators (`design-for-change.md`). Then the four questions (`implementer-contract.md`). | A seam the next change can use | — |
 | The change has an input the deployment controls | Name it (rows, files, events, concurrent callers) and bound memory and work against it before writing the code, not after the test passes (`implementer-contract.md` Q4). | The bound stated in the task report | — |
+
+## Version evidence
+
+1. Read the repository's manifest and version pins.
+2. Query the package manager, registry, or release page before naming a current version.
+   Use `docs-probe.sh latest <name>`, with `--ecosystem runtime` for languages.
+   Other sources include `npm view`, `pip index versions`, `cargo search`, `go list -m -versions`, and `gem info`.
+3. Support claims that a version is latest or nonexistent with a web source.
+   Local catalogs and cached results do not prove release status.
+4. If an installer cannot find the verified release, check and upgrade that installer first.
+   For example, query `docs-probe.sh latest uv --ecosystem pypi`.
+   Do not substitute an older build or prerelease when the final release exists.
+5. Check relevant advisories with tools such as `npm audit`, `pip-audit`, `cargo audit`, `govulncheck`, or `gh api /advisories`.
+6. Record the selected version and its source. If no tool answers, retain the repository pin and mark it `unverified`.
 
 ## Test directives
 
@@ -50,7 +64,7 @@ design or task boundaries through the existing phase path.
 | Fires when | Do | Artifact | Probe |
 |---|---|---|---|
 | A phase starts or resumes | Read the entry packet and nothing else: `bash lib/phase-entry.sh <phase> --feature-dir DIR` lists the exact fields and files this phase consumes. Do not re-read `feature.json` whole, re-scan the tree, or re-derive what a prior phase already wrote. | The packet's `read=` list is the phase's whole ingress | `lib/phase-entry.sh` (`FLAG` on a missing ingress artifact) |
-| A phase ends | Write only the egress artifacts the next phase's packet names, then close with `bash lib/phase-exit.sh <phase> --feature-dir DIR`. Never set `currentPhase`; the driver owns it. | `artifacts.*` pointers and the commit | `lib/phase-exit.sh` (`FLAG` per missing gate; `WARN [egress]` per `feature.json` key changed outside the phase's allow-list, a `FLAG` under `LOOP_SPEC_EGRESS_GUARD=deny`) |
+| A phase ends | Write the required output artifacts and return to the cycle. The driver runs `phase-exit.sh`. Never set `currentPhase`. | Artifact pointers and the phase commit | `lib/phase-exit.sh` checks gates and output fields. `LOOP_SPEC_EGRESS_GUARD=deny` makes unexpected state writes fail. |
 | The driver answers `HANDOFF next=<p>` or `REWIND next=<p>` | Print the line and stop. The fresh session runs `phase-entry.sh <p>` first; nothing from this session's context is needed. | The `LOOP_SPEC_HANDOFF` marker line | `hooks/team/phase-handoff-guard.sh` |
 | The cycle starts | `cycle-driver.sh start` is the whole preflight. Print its notices and warnings, resolve its decisions, nothing else. | The `start` JSON | `lib/feature-init.sh validate` (selector routing, fork-free) |
 

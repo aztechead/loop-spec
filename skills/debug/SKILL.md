@@ -7,10 +7,9 @@ allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 
 # Debug Loop
 
-Invoked as `/loop-spec:debug <input>`. The cycle's archetypes, scaled down to a bug:
-the SPEC analog is BUG.md, the acceptance oracle is a failing reproduction, and the
-loop is bounded. No teams, no phases DAG — a bug is narrow; main thread plus at most
-one-shot subagents (ponytail: the cheapest orchestration that works).
+Run as `/loop-spec:debug <input>`.
+Record the investigation in BUG.md and use a failing reproduction to verify the fix.
+Work in the main thread, with one-shot subagents when needed. Do not create teams or a phase graph.
 
 Honors autonomous mode (`skills/shared/autonomous-mode.md`): with the `autonomous`
 token or `LOOP_SPEC_AUTONOMOUS=1`, strategy questions self-answer with the
@@ -19,12 +18,9 @@ recommended option and are recorded in BUG.md's `## Decisions` section. Styles: 
 
 ## The one hard gate
 
-**No fix before a red reproduction.** A fix scored against the symptom that produced
-it, not against the fixer's opinion — the same maker≠checker principle as the cycle.
-Until a command exists that fails BECAUSE of the bug, you are guessing, and the loop
-does not advance to FIX. The only exception is the recorded observation plan for
-genuinely unreproducible bugs (REPRODUCE step 3), and that exception must be written
-into BUG.md before any change is made.
+**No fix before a red reproduction.** The reproduction command must fail because of the reported bug before FIX begins.
+For an unreproducible bug, follow REPRODUCE step 3's observation plan.
+Record that plan in BUG.md before changing instrumentation.
 
 ## Step 0 - Classify and initialize
 
@@ -37,9 +33,9 @@ through unchanged.
 1. **Initialize deterministically** — one call does the mechanics (token stripping,
    slug, BUG.md dir, branch discipline, branch-point SHA capture, test-cmd detection):
    ```bash
-   dbg="$(bash "${CLAUDE_SKILL_DIR}/../../lib/debug-init.sh" init -- "$ARGUMENTS")"
+   dbg="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/debug-init.sh" init -- "$ARGUMENTS")"
    # Observability: debug is an autonomous-router target and used to emit nothing.
-   bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$(jq -r '.bug_dir' <<<"$dbg")" phase_start --phase debug || true
+   bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit "$(jq -r '.bug_dir' <<<"$dbg")" phase_start --phase debug || true
    # {slug, bug_dir, branch, branch_action: created|switched|kept, default_branch,
    #  dirty, sha_before, test_cmd, autonomous, style}
    ```
@@ -75,7 +71,7 @@ gathering, cheapest first — record every finding in BUG.md `## Triage evidence
    the symptom is checkable by command, `git bisect` with that command is the fastest
    convergence tool there is; use it.
 4. **Hotspots.** Search the symptom area to find what implements the behavior, then
-   `bash "${CLAUDE_SKILL_DIR}/../../lib/fragility-scan.sh" . --top 10`
+   `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/fragility-scan.sh" . --top 10`
    — entries overlapping that area rank where bugs historically cluster.
 5. **Logs/artifacts the user named.** Read them for the first concrete error, timeout,
    or anomaly around the symptom.
@@ -112,37 +108,29 @@ Exit conditions:
 
 ## Step 3 - FIX loop (evidence-disciplined, unbounded)
 
-Hypotheses and fix attempts are unbounded (full bore) — the loop runs until the
-mechanism is confirmed and fixed, the scope tripwire escalates it, or no remaining
-observation can discriminate between hypotheses (then instrument and stop, exactly
-like TRIAGE's not-converged exit). What replaces a numeric cap is DISCIPLINE: every
-hypothesis and every attempt is recorded in BUG.md `## Hypothesis log` (mechanism,
-evidence, verdict) BEFORE the next one opens — recorded verdicts are progress;
-unrecorded thrash is not. Never reopen a hypothesis whose verdict is REFUTED without
-new evidence.
+There is no numeric limit on hypotheses or fix attempts.
+Continue until you confirm and fix the mechanism, reach the scope limit, or cannot distinguish the remaining hypotheses.
+If no useful observation remains, instrument and stop as in TRIAGE's not-converged exit.
+
+Record each hypothesis and attempt in BUG.md's `## Hypothesis log`, with its mechanism, evidence, and verdict.
+Complete that record before starting another attempt. Never reopen a REFUTED hypothesis without new evidence.
 
 For each hypothesis, in ranked order:
 
-1. **State the mechanism, not the location:** "X returns a stale value when Y because
-   Z" — falsifiable, not "something in X". Ground it: read the implicated code, trace the
-   call path from symptom site to suspect by reading it, check `git log -p` on the
-   suspect for the introducing change.
-2. **Confirm before changing:** find the cheapest observation that would falsify the
-   hypothesis (a log line in the repro run, an inspected intermediate value, a
-   narrower assertion). If falsified — record the verdict `REFUTED: <evidence>` and
-   move to the next hypothesis WITHOUT changing code. This is what keeps the loop from
-   shotgun-patching.
-3. **Fix minimally** (simplicity mode applies): the smallest change that corrects the
-   mechanism, written as a senior engineer fixing production (the debug stance,
-   `skills/shared/engineering-stances.md`): `## Fix` states what the code does, what
-   the problem is, why it fails, the edge cases the fix covers (each with the test that
-   proves it), and the change itself, ready to ship. Not the refactor the area deserves — record that as a
-   `new-mechanism:` entry in `## Deferred` and backlog it (`lib/backlog.sh add`).
-4. **Verify:** repro goes green AND the full test suite passes AND nothing else changed
-   behavior (`git diff` review — the diff should read as exactly the mechanism fix).
-   Record `CONFIRMED` with the green output. If the repro stays red: record the
-   failed attempt, revert it (`git checkout -- <files>` or revert commit), refine or
-   re-rank hypotheses.
+1. **State a testable mechanism**, such as "X returns a stale value when Y because Z".
+   Read the implicated code and call path. Check `git log -p` for the introducing change.
+2. **Confirm before changing.** Find the smallest observation that could refute the hypothesis.
+   Examples include a log line, intermediate value, or narrower assertion.
+   If refuted, record `REFUTED: <evidence>`. Continue to the next hypothesis without changing code.
+3. **Fix minimally**, following the debug stance in `skills/shared/engineering-stances.md`.
+   Correct the confirmed mechanism. Do not refactor unrelated code.
+   In `## Fix`, explain current behavior, the defect, its cause, the change, and covered edge cases.
+   Name the test for each edge case.
+   Record separate work as `new-mechanism:` in `## Deferred` and add it through `lib/backlog.sh add`.
+4. **Verify.** Require the reproduction and full test suite to pass.
+   Review `git diff` for unrelated behavior changes. Record `CONFIRMED` with the passing output.
+   If reproduction still fails, record the failed attempt. Revert only that attempt, preserving pre-existing user changes.
+   Refine or reorder the hypotheses.
 5. **Scope tripwire:** the moment a correct fix demonstrably requires feature-scale
    work (schema change, cross-cutting redesign, new dependency), stop fixing. BUG.md
    becomes the spec draft. Emit the `escalated/promoted-to-full` terminal result described
@@ -156,19 +144,15 @@ For each hypothesis, in ranked order:
 
 ## Step 3b - SIBLING SWEEP (mandatory after CONFIRMED)
 
-A confirmed root cause is rarely alone: the same mechanism tends to recur in sibling
-code. This step is not optional — the hypothesis is already
-CONFIRMED, so the sweep extends the fix, it does not open new hypotheses.
+After confirming the root cause, check sibling code for the same mechanism.
+This sweep is mandatory. Treat different mechanisms as new bugs under step 3 below.
 
-1. **Sweep for the same mechanism** (canonical reference
-   `skills/shared/design-for-change.md`): grep every caller of the fixed function,
-   grep for copy-pasted instances of the flawed pattern, and follow imports from the
-   fixed site to parallel code paths that share the mechanism.
-2. **Same mechanism found elsewhere → fix it in the same branch.** A sibling is covered
-   by the already-confirmed hypothesis; apply the same minimal fix, extend the
-   regression coverage where the sibling is independently reachable, and re-run the
-   verify battery from Step 3.4. The scope tripwire (Step 3.5) still applies: siblings
-   that push the fix to feature scale escalate to the cycle instead.
+1. **Sweep for the same mechanism** under `skills/shared/design-for-change.md`.
+   Search every caller of the fixed function and copied instances of the flawed pattern.
+   Follow imports to parallel code paths with the same mechanism.
+2. **Fix same-mechanism siblings on this branch.** Apply the same minimal correction.
+   Extend regression coverage for independently reachable siblings. Repeat Step 3.4 verification.
+   If sibling fixes require feature-scale work, escalate through Step 3.5.
 3. **Different mechanism found during the sweep → it is a new bug, not a sibling.**
    Record it under `## Deferred` as a `new-mechanism:` entry and backlog it
    (`lib/backlog.sh add "$slug" new-mechanism "..."` — mandatory); do not fix it in
@@ -192,11 +176,11 @@ returns to the FIX loop; a green repro cannot substitute for this grounding gate
    the bug, asserting the fixed behavior. A fix without its regression test is half a
    fix. (Command-style repros get distilled into a test where feasible; where not,
    record the manual verification command in BUG.md.)
-2. Run: full test suite, lint + typecheck when configured, and the anti-reward-hacking
-   scan on the diff — `bash "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" "{sha_before}"`
-   (the fix must not delete/skip tests or swallow exit codes to go green; `sha_before`
-   is in debug-init's Step 0 output, captured before any change). Exception: the
-   regression test ADDED here is expected new test content, not tampering.
+2. Run the full test suite and configured lint and typecheck commands.
+   Run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/test-tamper-scan.sh" "{sha_before}"` on the diff.
+   Use `sha_before` from debug-init's Step 0 output, before any edit.
+   Do not delete or skip tests, or ignore failed exit codes, to obtain a passing result.
+   Adding the regression test is expected, not tampering.
 3. Complete BUG.md (`## Fix` — root cause, mechanism, why this change is sufficient)
    and commit: BUG.md + fix + regression test on `fix/{slug}`, message
    `fix: {symptom summary}` with body naming the root cause.
@@ -209,16 +193,15 @@ returns to the FIX loop; a green repro cannot substitute for this grounding gate
     feedback re-check. Evidence from before that edit is stale. New-mechanism asks go to `## Deferred`
    / `/loop-spec:intake`. Keep the PR body short GitHub-flavored markdown: symptom,
    root cause, fix summary, regression test — link BUG.md rather than inlining it.
-   Write the body to a file and gate it before creating the PR
-   (`bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text "$body_file"`) —
-   debug PRs get the same no-deferral guarantee as DELIVER; sibling-sweep entries
-   pass only with their `new-mechanism:` marker. Then `gh pr create --body-file`.
+   Write the PR body to a file.
+   Check it with `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/deferral-lint.sh" text "$body_file"` before creating the PR.
+   Sibling-sweep entries require their `new-mechanism:` marker. Then run `gh pr create --body-file`.
    No origin remote or no `gh`: degrade loudly — leave the branch, state exactly what
    blocked the PR. Record the PR URL and check outcome in BUG.md `## Fix`.
 5. Report: root cause, the fix diffstat, the regression test, the PR URL + feedback
    check result, and anything in `## Deferred` — each line keeps its `new-mechanism:`
    marker and MUST already be backlogged
-   (`bash "${CLAUDE_SKILL_DIR}/../../lib/backlog.sh" add "$slug" new-mechanism "..."` —
+   (`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/backlog.sh" add "$slug" new-mechanism "..."` —
    recording is mandatory, not offered; nothing evaporates). No other deferral
    language belongs in the report (`skills/shared/no-deferral.md`); probe the draft
    with `lib/deferral-lint.sh text -` before printing.
@@ -239,10 +222,10 @@ result_args=(
   --autonomous "$autonomous" --summary "$summary"
 )
 [[ -n "$no_change_reason" ]] && result_args+=(--no-change-reason "$no_change_reason")
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal "${result_args[@]}"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal "${result_args[@]}"
 # Close the observability pair opened at Step 0 -- a [DEBUG] start with no [DEBUG]
 # done is what a stall looks like to a log watcher. $outcome is the terminal outcome.
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$bug_dir" phase_end --phase debug --data "{\"next\":\"$outcome\"}" || true
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit "$bug_dir" phase_end --phase debug --data "{\"next\":\"$outcome\"}" || true
 ```
 
 `summary` is the concise root-cause/fix conclusion for every exit. `fixed` requires passed

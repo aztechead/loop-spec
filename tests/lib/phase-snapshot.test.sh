@@ -16,7 +16,9 @@ with tempfile.TemporaryDirectory() as temp:
     (plugin / "skills/spec").mkdir(parents=True)
     (plugin / "skills/shared").mkdir()
     body = plugin / "skills/spec/SKILL.md"
-    body.write_text('# SPEC\nRead `skills/shared/decision.md`.\nRun "${CLAUDE_SKILL_DIR}/../../lib/check.sh".\n')
+    (plugin / "skills/spec/references").mkdir()
+    (plugin / "skills/spec/references/questions.md").write_text("Interview questions.\n")
+    body.write_text('# SPEC\nRead `skills/shared/decision.md`.\nRun "${LOOP_SPEC_SKILL_DIR}/../../lib/check.sh".\nLegacy "${CLAUDE_SKILL_DIR}/../../lib/check.sh".\nRead `${LOOP_SPEC_SKILL_DIR}/references/questions.md`.\n')
     shared = plugin / "skills/shared/decision.md"
     shared.write_text("Original decision contract.\n")
     (plugin / "skills/shared/codex-harness.md").write_text("Codex contract.\n")
@@ -25,6 +27,9 @@ with tempfile.TemporaryDirectory() as temp:
     prompt = pathlib.Path(record["prompt"]).read_text()
     assert "Codex contract." in prompt and "Project rule." in prompt and "Final rule." in prompt
     assert str(plugin / "skills/spec") + "/../../lib/check.sh" in prompt
+    assert prompt.count(str(plugin / "skills/spec") + "/../../lib/check.sh") == 2
+    assert "${LOOP_SPEC_SKILL_DIR}" not in prompt and "${CLAUDE_SKILL_DIR}" not in prompt
+    assert str(pathlib.Path(record["manifest"]).parent / "skills/spec/references/questions.md") in prompt
     captured = pathlib.Path(record["manifest"]).parent / "skills/shared/decision.md"
     assert str(captured) in prompt
     restored = pathlib.Path(temp) / "restored"

@@ -9,8 +9,8 @@ checks=(
   "skills/discuss/SKILL.md	lib/graph/probes/discuss-critique.sh"
   "skills/discuss/SKILL.md	If \`docs/loop-spec/features/{slug}/SPEC.md\` exists"
   "skills/discuss/SKILL.md	Never spawn \`advocate-1\`"
-  "skills/plan/SKILL.md	The planner sees ONE fix-list and revises ONCE"
-  "skills/plan/SKILL.md	The critique never re-opens on a `REDO`"
+  "skills/plan/SKILL.md	Send the planner one combined list"
+  'skills/plan/SKILL.md	The critique never re-opens on a `REDO`'
   "skills/plan/SKILL.md	Never spawn \`advocate-1\`"
   "skills/plan/SKILL.md	one-shot \`loop-spec:pattern-mapper\`"
   "agents/challenger.md	Critique is challenger-only"
@@ -19,7 +19,7 @@ checks=(
   "docs/loop-spec/architecture.md	Critique gate protocol (challenger-only)"
   "skills/plan/SKILL.md	Never \`sleep\` to join a background Agent"
   "skills/plan/SKILL.md	loop-spec:pattern-mapper"
-  "skills/shared/critique-gate-protocol.md	there is no advocate and no debate round"
+  "skills/shared/critique-gate-protocol.md	without an advocate or debate round"
   "skills/shared/critique-gate-protocol.md	Do NOT drop it — add it to the fix-list"
   "skills/shared/critique-gate-protocol.md	keep it on the fix-list (stricter bias)"
   "skills/shared/critique-gate-protocol.md	gate.sh next"
@@ -30,7 +30,7 @@ checks=(
   "skills/shared/tier-matrix.md	gate.sh next"
   "docs/loop-spec/configuration.md	LOOP_SPEC_CRITIQUE_ROUNDS"
   "skills/plan/SKILL.md	gate.sh next"
-  "skills/discuss/SKILL.md	`critique fail` answering `close`"
+  'skills/discuss/SKILL.md	`critique fail` answering `close`'
   "skills/shared/tier-matrix.md	There is no advocate and no debate"
   "graph/cycle.graph.json	lib/graph/probes/discuss-critique.sh"
   "lib/graph/probes/discuss-critique.sh	gate=skip"

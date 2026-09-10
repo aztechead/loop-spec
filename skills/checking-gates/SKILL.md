@@ -1,23 +1,18 @@
 ---
 name: checking-gates
-description: Use when picking up a user-gate task OR when a hook demands re-validation. If the verification HOW is clear, runs it and posts evidence; otherwise hands off to specifying-gates. Do not use to invent verification mechanics (that's specifying-gates) or to run the full VERIFY phase (that's /loop-spec:verify).
+description: "Verify a user-gate task when the user or an enabled hook requests it. Report evidence from the specified check. Use /loop-spec:specifying-gates for unclear methods and /loop-spec:verify for the full VERIFY phase."
 ---
 
 # Checking User-Thrown Gates
 
-## Why this skill is separate from skills/execute/SKILL.md
-
-User-gate enforcement is an opt-in flow. When the opt-in hook is not registered, the execute skill runs unchanged -- no extra checks, no extra context, no extra questions. When the hook IS registered, it routes user-gate tasks through this skill. Keeping the decision logic in a separate skill means:
-
-- Users who do not want the flow get zero friction.
-- Users who do want it get a focused, scoped handler.
-- `skills/execute/SKILL.md` stays short and readable.
+User-gate hooks are optional. Enabled hooks route user-gate tasks here.
+Without those hooks, `skills/execute/SKILL.md` runs unchanged.
 
 ## When to invoke
 
 Any one of:
 
-1. You are about to start a task whose `json:metadata` has `"userGate": true` or whose `tags` contains `"user-gate"` AND the opt-in hook is active (if you were invoked via `Skill(loop-spec:checking-gates)`, the hook is active by definition).
+1. An enabled hook routes a task whose `json:metadata` has `"userGate": true` or whose `tags` contains `"user-gate"`.
 2. A hook fired stderr telling you to run `Skill(loop-spec:checking-gates)` for a task id.
 3. The user manually invoked `Skill(loop-spec:checking-gates)` for a task id.
 
@@ -38,7 +33,9 @@ If none of these apply, return to the execute skill without running this skill.
 
 ### Step 2 -- Route
 
-**Path A -- HOW is ambiguous.** Invoke `Skill(loop-spec:specifying-gates)` (or tell the user to run `Skill(loop-spec:specifying-gates)` for this task id). Stop. Let that skill lock down the mechanics. When it returns, re-enter this skill from Step 1.
+**Path A -- HOW is ambiguous.** Invoke `Skill(loop-spec:specifying-gates)` for this task ID.
+If you cannot invoke it, tell the user to run it. Stop until that skill defines the verification method.
+When it returns, restart at Step 1.
 
 **Path B -- HOW is clear.** Continue to Step 3.
 
@@ -46,7 +43,7 @@ If none of these apply, return to the execute skill without running this skill.
 
 1. Run the `verifyCommand` (or dispatch the subagent with `dispatchBrief`). Capture exact output.
 2. Map each `acceptanceCriteria` entry to an observable in the output.
-3. Post one block of text back to the user, using EXACTLY this format (the sibling hooks key off the `AC:` + `PROVEN BY` markers):
+3. Report one text block in this exact format. The hooks require the `AC:` and `PROVEN BY` markers:
 
    ```
    Gate: <task subject>
@@ -71,13 +68,13 @@ A criterion has a clear HOW when all three hold:
 
 If any of the three is missing for any criterion, HOW is NOT clear -- Path A.
 
-**Err on the side of Path A.** Inventing a HOW silently is the exact failure this flow exists to prevent.
+If uncertain, use Path A. Do not invent a verification method.
 
 ## What NOT to do
 
-- Do NOT modify the execute skill's behavior from inside this skill. This skill is a leaf -- it returns control when done.
+- Do not modify the execute skill's behavior. Return control to the caller when done.
 - Do NOT invoke `EnterPlanMode` or `ExitPlanMode`.
-- Do NOT substitute a cheaper verification for the one specified. If you think the spec is wrong, reopen via `Skill(loop-spec:specifying-gates)` -- do not walk around it.
+- Run the specified verification. If you think it is wrong, reopen the specification through `Skill(loop-spec:specifying-gates)`.
 - Do NOT close the task if any criterion lacks concrete evidence. "Looks fine" is not evidence.
 
 ## Integration

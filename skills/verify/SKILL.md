@@ -1,18 +1,18 @@
 ---
 name: verify
-description: VERIFY phase - acceptance gate, code-review HARD-GATE via the verify team, and evidence commit. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
+description: "Check acceptance criteria and code review, record evidence, and route failures for remediation. Internal phase of /loop-spec:cycle. Start there for repository work."
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet ToolSearch Workflow
 ---
 
 # VERIFY
 
-You prove the integrated branch meets SPEC's `### Good Enough` criteria with
-post-change `file:line` evidence, and that a reviewer would merge it. Dispatch follows
-`skills/shared/dispatch.md`. Gates are satisfied by remediation, never self-answered
-past, in every mode. Your inputs are the entry packet and nothing else, and the pre-team scans come with it:
+Check the integrated branch against SPEC's `### Good Enough` criteria using post-change `file:line` evidence.
+Obtain a code-review verdict. Follow `skills/shared/dispatch.md` for dispatch.
+Resolve failed gates through remediation in every mode. Never bypass them with your own approval.
+Read only the entry packet as input. It includes the preliminary scans:
 
 ```bash
-pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin verify --feature-dir "$feature_dir")"
+pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin verify --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 # .mode: placeholder=run|skip tamper=... validation=... acceptance=... codeReview=... regression=... reason=...
 # .verify = lib/verify-prepare.sh: placeholder{ran,ok,signals}, tamper{...}, validation{rc,outcome,result},
@@ -25,23 +25,27 @@ a pass.
 
 ## 1. Pre-team scans (fail fast, no agents yet)
 
-`.verify` already ran them: `lib/feature-scan-each.sh` over `lib/placeholder-scan.sh`
-and `lib/test-tamper-scan.sh` (every git target: single-repo toplevel or each workspace
-repo with its own `baseSha`; never pass `.` or a top-level SHA yourself), then
-`lib/feature-validation.sh compare` (`VALIDATION_JSON` is `.verify.validation.result`),
-then the advisory `lib/regression-scan.sh` when `regression=run`. Placeholder signals
-(TODO, FIXME, "not implemented" in ADDED lines) and tamper signals (deleted tests, new
-skip/focus annotations, `|| true` on a test command) each fail VERIFY at once:
-`.verify.route` is `remediate` with class `marker` or `tamper`, the `file:line: signal`
-lines are `.verify.<scan>.signals[]`, `verify_failure` is emitted, and one full-shape
-task per signal is already in `pendingRemediationTasks[]` (a tamper task names the
-specific tampering; a legitimate skip is the human's call in `step`/`interactive` and is
-treated as tampering when autonomous): print the signals and return to the cycle
-(**Remediation** below is already recorded). The validation adapter is the ONLY place
-the repository-wide test/lint/typecheck suite runs: exit 20 is a suite regression
-(class `suite-regression`, one remediation task, no agents, route `remediate`); exit 21
-is infrastructure (route `escalate`; never relabel setup repair as implementation
-work). `route=continue` proceeds.
+The entry call already ran these checks and stored their results in `.verify`:
+
+1. `lib/feature-scan-each.sh` runs `lib/placeholder-scan.sh` and `lib/test-tamper-scan.sh` on every Git target.
+   Each workspace repository uses its own `baseSha`. Never supply `.` or a shared top-level SHA yourself.
+2. `lib/feature-validation.sh compare` runs repository validation. Use `.verify.validation.result` as `VALIDATION_JSON`.
+3. `lib/regression-scan.sh` runs as an advisory check when `regression=run`.
+
+Placeholder and tamper signals fail VERIFY immediately.
+Examples include added TODOs, FIXMEs, or "not implemented" text, deleted tests, new skip or focus annotations, and ignored test failures.
+For these failures, `.verify.route` is `remediate`, with class `marker` or `tamper`.
+The call emits `verify_failure` and adds one full-shape task per signal to `pendingRemediationTasks[]`.
+Each tamper task names the specific change.
+
+Print `.verify.<scan>.signals[]` and return to the cycle. The call already recorded **Remediation**.
+In `step` or `interactive` styles, the user decides whether a skip is legitimate.
+Autonomous runs treat the skip as tampering.
+
+Only the validation adapter runs the repository-wide test, lint, and typecheck suite.
+Exit 20 means a suite regression: class `suite-regression`, one remediation task, route `remediate`, and no agents.
+Exit 21 means an infrastructure failure: route `escalate`. Never classify setup repair as implementation work.
+Proceed only for `route=continue`.
 
 ## 2. Verifier and code reviewer
 
@@ -61,7 +65,7 @@ separate site exists); Exceptional is informational; report
 `VERIFIER DONE: <ALL_PASS|FAIL> <Test suite status: PASS|FAIL|N/A> <summary>`.
 
 Reviewer brief: `slug`, `branch`, `baseSha`, `spec_path`, `plan_path`, and `probe_dir`
-(absolute `${CLAUDE_SKILL_DIR}/../../lib`, so its code-for-humans and duplication passes
+(absolute `${LOOP_SPEC_SKILL_DIR}/../../lib`, so its code-for-humans and duplication passes
 measure instead of guess); check every SPEC `## Boundaries (what NOT to do)` anti-goal
 against the diff and flag violations Critical; Critical and Important block, Minor is
 recorded and never blocks; include `skills/shared/review-prompts/no-prejudge.md` (never
@@ -73,7 +77,7 @@ tell a reviewer what not to flag); report
 One call applies both verdicts and the deterministic half of the acceptance gate:
 
 ```bash
-gate="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verify gate --feature-dir "$feature_dir" \
+gate="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" verify gate --feature-dir "$feature_dir" \
   --verifier ALL_PASS|FAIL --suite PASS|FAIL|N/A --reviewer PASS|PASS_WITH_MINOR|BLOCK \
   --remediation-tasks @"$feature_dir/verify-remediation.json" --minors @"$feature_dir/verify-minors.json")"
 # Write each to its file first: the minors file is one finding per line (no JSON), the
@@ -126,7 +130,7 @@ full EXECUTE re-entry from the recorded tasks; VERIFY re-enters at step 1 afterw
 One call runs every advisory pass and hands back their findings:
 
 ```bash
-passes="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verify passes --feature-dir "$feature_dir")"
+passes="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" verify passes --feature-dir "$feature_dir")"
 # .live{configured,rc,result} .gaps{rc,lines[]} .plainLanguage{prose,comments} .docTells{rc,lines[]} .layers[] .reviewTrail{present,rc,findings[]}
 ```
 

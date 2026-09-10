@@ -8,13 +8,9 @@ argument-hint: '<add "<rule text>" [--check "<cmd>"] | list | render | path>'
 
 Invoked as `/loop-spec:rules <subcommand> [args]`.
 
-Implements the **self-learning loop**: a mistake should become a permanent, enforced
-check, not a note that lives only in chat. Rules live in `.loop-spec/RULES.md`, a file
-**you own and curate**. The `hooks/team/rules-inject.sh` SessionStart hook injects the
-current rules into every session so the loop is held to its past lessons (default on;
-`LOOP_SPEC_RULES=0` is the kill switch).
-
-All mechanics are in `lib/rules.sh`; this skill is the thin command surface.
+Manage reusable rules in `.loop-spec/RULES.md` through `lib/rules.sh`.
+The user owns and maintains this file.
+`hooks/team/rules-inject.sh` adds current rules to each session by default. `LOOP_SPEC_RULES=0` disables that injection.
 
 ## Subcommands
 
@@ -34,7 +30,7 @@ All mechanics are in `lib/rules.sh`; this skill is the thin command surface.
 Resolve the lib relative to this skill and pass the subcommand through:
 
 ```bash
-RULES_LIB="${CLAUDE_SKILL_DIR}/../../lib/rules.sh"
+RULES_LIB="${LOOP_SPEC_SKILL_DIR}/../../lib/rules.sh"
 bash "$RULES_LIB" <subcommand> "$@"
 ```
 
@@ -52,10 +48,9 @@ Run the corresponding `lib/rules.sh` subcommand and print the output verbatim.
 
 ## When the loop should add a rule
 
-The cycle and its phases should call `lib/rules.sh add` (or suggest `/loop-spec:rules add`)
-when a gate or verifier rejects the **same class** of mistake more than once — a repeated
-spec-compliance miss, a recurring review finding, a flaky-by-construction test. Capture the
-lesson as a rule so the next run cannot repeat it. One mistake, one permanent check.
+When a gate or verifier rejects the same class of mistake more than once, record a reusable rule.
+Call `lib/rules.sh add`, or suggest `/loop-spec:rules add`.
+Prefer a deterministic check when one can detect the mistake.
 
 ## Notes
 

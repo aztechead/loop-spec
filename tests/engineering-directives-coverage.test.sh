@@ -9,7 +9,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.
 checks=(
   "skills/shared/engineering-directives.md	Canonical compact directive"
   "skills/shared/engineering-directives.md	never from recall"
-  "skills/shared/engineering-directives.md	never from a local catalog"
+  "skills/shared/engineering-directives.md	Local catalogs and cached results do not prove release status"
   "skills/shared/engineering-directives.md	docs-probe.sh"
   "skills/shared/grounding-protocol.md	docs-probe.sh latest"
   "skills/shared/grounding-protocol.md	docs-probe.sh docs"

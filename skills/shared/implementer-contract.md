@@ -1,19 +1,9 @@
 # Implementer contract (four questions) — canonical prompt directive
 
-Single source of truth for the design gate that every **code-producing dispatch** carries,
-and the index of the engineering directives that travel with it. Enforced by
-`tests/implementer-contract-coverage.test.sh`, mirroring
-`tests/execution-discipline-coverage.test.sh`.
-
-## Why this exists
-
-The same engineering contract rides in every implementer prompt — the subagent rung's two
-prompt templates, the team prompt, the implementer agent charter, the loop-fleet compiler
-(`lib/plan-to-loop.sh`), and the workflow engine (`lib/workflows/execute-dag.js`) — because
-a dispatched executor sees only its prompt; a pointer it will never follow is not a
-contract. This file is the one place the assembly is defined, so a new rung or compiler
-copies from here instead of from whichever prompt it happened to open, and the inline rung
-(lead as implementer) binds it by cite.
+Include this design gate in every dispatch that produces code.
+Use the compact directive below when assembling subagent, team, loop-fleet, or workflow prompts.
+For inline work, the lead reads this contract directly.
+`tests/implementer-contract-coverage.test.sh` checks that all dispatch paths include it.
 
 ## The four questions (design gate — on by default)
 
@@ -26,11 +16,9 @@ Before implementing, and again before DONE, ask of the change:
 3. **Is this the least amount of code that makes it happen?** Climb the ladder — YAGNI,
    then DRY: reuse what is already here before writing anything new
    (`skills/shared/laziness-ladder.md`).
-4. **Does this hold at production scale?** The fixture is small; the deployed input is
-   not. Name the input whose size or rate the deployment controls (rows, files, events,
-   concurrent callers) and keep memory and work bounded against it. A path that
-   materializes or accumulates the whole input when the consumer needs a piece at a time
-   survives the test and dies in production — that is not done.
+4. **Does this hold at production scale?** Name the input whose size or rate the deployment controls.
+   Examples include rows, files, events, and concurrent callers.
+   Bound memory and work against that input. Avoid loading the whole input when the consumer needs only one part at a time.
 
 A "yes, but not doing it" is fine when the rung says skip — say so in one line in the
 report. A question never asked is the failure mode.

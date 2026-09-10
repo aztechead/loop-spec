@@ -1,6 +1,6 @@
 ---
 name: spec-lite
-description: SPEC's entry on every cycle - scouts the ask, decides the oneshot candidate from the scout's record, and on the short route fills the driver-written spec skeleton; on the full route it hands to loop-spec:spec. Cycle-internal - the driver names it under NEXT phase=spec; not for ad-hoc invocation (start at /loop-spec:cycle).
+description: "Inspect the requested change and record its footprint. Fill the driver's short spec or continue to the full SPEC instructions. Internal cycle entry for NEXT phase=spec. Start at /loop-spec:cycle."
 allowed-tools: Bash Read Glob Grep Skill AskUserQuestion
 ---
 
@@ -10,7 +10,7 @@ You are the lead of SPEC. `feature_dir` is `.loop-spec/features/{slug}`. Your in
 are the entry packet and nothing else; a FLAG is a prior phase's failure, relay it:
 
 ```bash
-DRV="${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
+DRV="${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 pb="$(bash "$DRV" phase-begin spec --feature-dir "$feature_dir")"
 # .entry.fields (slug, feature_title, execStyle, greenfield, autonomous)
 # .entry.read[] (spec-draft.md, prior decisions)  .entry.flags[]
@@ -18,17 +18,18 @@ pb="$(bash "$DRV" phase-begin spec --feature-dir "$feature_dir")"
 
 ## 1. Scout
 
-Search the code by the ask's vocabulary and the obvious symbols, read the entry points
-you find, and follow imports and callers far enough to know where the change lands. As
-you read, cite each file the change will touch with the line that shows why. The record
-is the footprint; you never type it anywhere else. Read-only is the task's word, not
-yours: a file the invocation named `protected:` is read-only, a `--read-only` mark on
-any other file is a plain cite, and a cited source file's test module is in the
-footprint by construction:
+Search the code using the request's terms and relevant symbols.
+Read entry points. Follow imports and callers until you can locate the change.
+Cite each affected file with a line that shows why it must change.
+These citations form the footprint. Do not write a separate footprint list.
+
+Only files marked `protected:` in the invocation are read-only.
+For other files, `--read-only` records an ordinary citation.
+The footprint automatically includes each cited source file's test module:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/footprint.sh" cite "$feature_dir" <path>:<line> "<why>"
-bash "${CLAUDE_SKILL_DIR}/../../lib/footprint.sh" cite "$feature_dir" <path>:<line> --read-only "<why>"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/footprint.sh" cite "$feature_dir" <path>:<line> "<why>"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/footprint.sh" cite "$feature_dir" <path>:<line> --read-only "<why>"
 ```
 
 A claim about an external system gets its read-only probe first
@@ -48,11 +49,11 @@ gate lengthens it: a fourth file in the diff, a reviewer BLOCK, or a held exit.
 
 ## 3. Fill the skeleton
 
-The driver is the only writer of the spec; you never open it. Fill its values in one
-call, `bash "$DRV" spec fill --feature-dir "$feature_dir" --json -` with a JSON object
-`{intent, notes: {path: text}, criteria: [text], grounding: [text]}` on stdin (or one
-value per call with the flags below), and read the `flags` the answer carries (the
-exit gate's findings so far):
+Only the driver writes the spec. Never open it for editing.
+Fill its values through `bash "$DRV" spec fill --feature-dir "$feature_dir" --json -`.
+Send `{intent, notes: {path: text}, criteria: [text], grounding: [text]}` on stdin.
+Alternatively, send one value per call with the flags below.
+Read the returned `flags` for current exit-gate findings:
 
 - `--intent "<the ask, one paragraph, in the requester's terms>"`
 - `--file <path> --note "<what changes there, with the symbol or line>"` once per
@@ -69,7 +70,7 @@ which is refused while the file it tests changes.
 
 An intent gap is a choice the user would notice in the result that the code cannot
 settle; everything else you decide and record
-(`bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<q>" "<a>" "<why>"`).
+(`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<q>" "<a>" "<why>"`).
 Gaps are one list, asked once (one `AskUserQuestion` round attended; the recommended
 answer into the same record autonomous). You never escalate: a gate does, from
 evidence. No score, no transcript, no pruning pass: the shape is under 60 lines.

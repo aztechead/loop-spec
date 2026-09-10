@@ -136,10 +136,10 @@ root = pathlib.Path(sys.argv[1])
 WHEN = re.compile(
     r"(?i)(use when|use whenever|use after|when the user|when you |when picking|"
     r"when a |when handing|when cron|when the caller|when the input|"
-    r"toggle |give it|feed it|after a |preferred |cycle-internal|invoked by)"
+    r"toggle |give it|feed it|after a |preferred |cycle-internal|internal phase|internal cycle|invoked by)"
 )
 NOT = re.compile(
-    r"(?i)(not for|do not |does not |doesn.t |never |don.t |cycle-internal)"
+    r"(?i)(not for|do not |does not |doesn.t |never |don.t |cycle-internal|internal phase|internal cycle|use /loop-spec:|pass existing)"
 )
 
 def description_of(path):

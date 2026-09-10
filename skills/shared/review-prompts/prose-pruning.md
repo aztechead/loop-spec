@@ -1,27 +1,18 @@
-# Fresh-eyes prose pruning — canonical prompt directive
+# Independent prose review
 
-Single source of truth for the pruning pass over prose artifacts. It asks the one
-question the structural and grounding lints do not:
+Use this contract to find artifact text that adds no useful information:
 
 > Which lines of this artifact could be removed without changing what its reader
 > would do next?
 
-`lib/artifact-lint.sh` catches malformed content and `lib/grounding-lint.sh` catches
-ungrounded content; neither catches **surplus** content. The code side already has this
-pass — the over-engineering review in `agents/code-reviewer.md` ("the diff's best outcome
-is getting shorter"), pinned into every dispatch by `tests/ponytail-coverage.test.sh`.
-This is the same pass pointed at prose.
-
-Ported from [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD)'s ingest-closing
-pruning subagent (v6.10.0), on its stated grounds: *the writer who just heard every line
-justified cannot honestly run the pruning test on it.*
+`lib/artifact-lint.sh` checks structure. `lib/grounding-lint.sh` checks supporting evidence.
+This review checks for unnecessary prose, like the code review in `agents/code-reviewer.md` checks for unnecessary code.
 
 ## The fresh-eyes contract
 
-You receive ONLY the artifact and the template contract it was written against — never
-the authoring conversation, the interview transcript, or the justifications. If you were
-given more than that, say so and stop: a pruner who has heard the justifications is the
-exact reviewer this pass exists to replace.
+Read only the artifact and its template contract.
+Do not read the authoring conversation, interview transcript, or reasons for the wording.
+If you received that extra context, report it and stop. This review requires an independent reader.
 
 ## Where this runs
 
@@ -34,9 +25,8 @@ exact reviewer this pass exists to replace.
 
 ## The pruning tests
 
-Every proposal names exactly one test the lines fail. A line that fails none of these
-stays — pruning is not compression, and shorter prose that loses a decision is a defect,
-not a cut.
+For each proposal, name exactly one failed test below.
+Keep lines that fail none of these tests. Preserve every decision.
 
 1. **derivable** — restates what the file it cites plainly shows on one read.
 2. **duplicate** — the same fact or decision already stated elsewhere in this artifact.
@@ -51,7 +41,7 @@ not a cut.
 
 ## Never propose — the carve-outs
 
-These are load-bearing for other machinery, whatever they look like to fresh eyes:
+Do not propose changes to these items:
 
 - `### Good Enough` acceptance criteria and `## Decisions` entries — coverage gates match
   them verbatim; cutting one is a **scope change**, not a prune. If one genuinely looks
@@ -63,8 +53,8 @@ These are load-bearing for other machinery, whatever they look like to fresh eye
 
 ## Output — listing only
 
-You never rewrite. The maker applies or declines each proposal; your job ends at the
-list. One line per proposal:
+You never rewrite. The author accepts or rejects each proposal.
+Return one line per proposal:
 
 ```text
 cut: <path>:<start>-<end> fails=<test> -- <one line: what the reader loses (nothing)>

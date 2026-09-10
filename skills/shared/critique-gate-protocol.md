@@ -1,11 +1,9 @@
 # Critique gate protocol — shared procedure for the DISCUSS and PLAN gates
 
-Single source of truth for the critique-gate procedure both artifact gates run
-(`spec-critique` in DISCUSS, `plan-critique` in PLAN). The phase skill invokes this
-protocol with the parameters below and keeps only its deltas; the routing topology is
-owned by `graph/critique.graph.json` and the skip policy by `skills/shared/tier-matrix.md`
-— this file owns the operational procedure between those two. Critique is
-**challenger-only**: there is no advocate and no debate round.
+Use this procedure for DISCUSS's `spec-critique` and PLAN's `plan-critique` gates.
+The phase supplies the parameters below and its specific handling rules.
+`graph/critique.graph.json` owns routing. `skills/shared/tier-matrix.md` defines skip policy.
+Critique is **challenger-only**, without an advocate or debate round.
 
 Contents: parameters · gate open · single-critic pass · adjudication · fix_list
     non-empty / empty · resume.
@@ -19,9 +17,7 @@ findings pass, one revision, one delta re-verify: the challenger raises everythi
 the findings pass, and the delta reply passes through `lib/delta-findings-lint.sh`
 before the lead adjudicates it, so a delta round cannot open findings the first pass
 could have raised. `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph
-(`0` restores unbounded retries). A run once spent over an hour bouncing PLAN.md between
-the challenger and the planner because the ceiling lived inside a `contain` loop the
-engine never counts; the probe is what counts it.
+(`0` restores unbounded retries). The probe counts rounds, including loops contained inside a phase.
 
 ## Parameters (declared by the invoking phase)
 
@@ -51,7 +47,7 @@ event, and runs `lib/delta-findings-lint.sh`. The lead never copies a reply into
 file, never counts a round, and never calls `gate.sh` directly. Six steps, in order:
 
 ```bash
-DRV="${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
+DRV="${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 bash "$DRV" critique open     --feature-dir "$feature_dir" --phase {phase} --gate {gate} --artifact {artifact_path}   # {..., model}
 bash "$DRV" critique findings --feature-dir "$feature_dir" --reply <path|->      # round 1: {verdict, lines[]}; snapshots the artifact
 bash "$DRV" critique fail     --feature-dir "$feature_dir" --fix-list <path|->   # {answer: rerun|close, reason, fixList|residue}
@@ -64,8 +60,7 @@ Opening over an already-open gate is refused rather than overwritten: on a resum
 gate is already open, and "Resume" below is the entry point, not `open`. The reset a
 `pass` or a `close` performs is a zeroed OBJECT, never null: `graph/cycle.graph.json`
 declares `currentGate` in the `reads[]` of both critique subgraph nodes, and
-`lib/graph/state.sh assert-reads` fails a node whose declared read is null. A run
-that nulled it by hand dead-ended the engine mid-gate.
+`lib/graph/state.sh assert-reads` fails a node whose declared read is null.
 
 ## Single-critic pass
 
@@ -73,8 +68,7 @@ that nulled it by hand dead-ended the engine mid-gate.
 spawn kind (`skills/shared/dispatch.md`) this and every later message is a nameless
 `Agent({description, subagent_type: "loop-spec:challenger", run_in_background: false,
 model: <open's .model>, prompt})` with the prior gate-logs inlined; omit `model` only
-when `open` answered null. A lead that chose the key itself omitted it and ran the
-critic on the session model:
+when `open` answered null:
 
 ```
 SendMessage({

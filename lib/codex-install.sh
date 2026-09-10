@@ -185,6 +185,7 @@ if kind == "config":
         "# END loop-spec",
         'LOOP_SPEC_HARNESS = "codex"',
         "CLAUDE_PLUGIN_ROOT = ",
+        "LOOP_SPEC_SKILL_DIR = ",
         "CLAUDE_SKILL_DIR = ",
     )
     ok = all(item in text for item in required)
@@ -418,7 +419,7 @@ if not match:
 next_header = re.search(r"(?m)^\s*\[[^\n]+\][ \t]*(?:#.*)?$", text[match.end():])
 section_end = match.end() + next_header.start() if next_header else len(text)
 section = text[match.end():section_end]
-keys = ["LOOP_SPEC_HARNESS", "CLAUDE_PLUGIN_ROOT", "CLAUDE_SKILL_DIR"]
+keys = ["LOOP_SPEC_HARNESS", "CLAUDE_PLUGIN_ROOT", "LOOP_SPEC_SKILL_DIR", "CLAUDE_SKILL_DIR"]
 if project:
     keys.append("CLAUDE_PROJECT_DIR")
 for key in keys:
@@ -492,9 +493,10 @@ for directory in sorted(os.listdir(src_root)):
         "process, and the installer's package anchor may point at `skills/cycle`:",
         "",
         "```bash",
-        "export CLAUDE_SKILL_DIR=" + shlex.quote(os.path.join(src_root, source_name)),
-        "[ -f \"${CLAUDE_SKILL_DIR}/../../lib/harness.sh\" ] || {",
-        "  echo \"loop-spec: CLAUDE_SKILL_DIR does not resolve lib/; re-run bash lib/codex-install.sh install\" >&2",
+        "export LOOP_SPEC_SKILL_DIR=" + shlex.quote(os.path.join(src_root, source_name)),
+        "export CLAUDE_SKILL_DIR=\"$LOOP_SPEC_SKILL_DIR\"",
+        "[ -f \"${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh\" ] || {",
+        "  echo \"loop-spec: LOOP_SPEC_SKILL_DIR does not resolve lib/; re-run bash lib/codex-install.sh install\" >&2",
         "  exit 2",
         "}",
         "```",
@@ -612,6 +614,7 @@ skill_dir = os.path.join(repo, "skills", "cycle")
 assignments = [
     'LOOP_SPEC_HARNESS = "codex"',
     'CLAUDE_PLUGIN_ROOT = "%s"' % repo.replace("\\", "\\\\").replace('"', '\\"'),
+    'LOOP_SPEC_SKILL_DIR = "%s"' % skill_dir.replace("\\", "\\\\").replace('"', '\\"'),
     'CLAUDE_SKILL_DIR = "%s"' % skill_dir.replace("\\", "\\\\").replace('"', '\\"'),
 ]
 if project:

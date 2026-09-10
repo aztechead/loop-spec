@@ -27,8 +27,9 @@ input. Per harness: `claude -p "/loop-spec:auto <description>"` (or the Claude A
 `opencode run --format json "Load the loop-spec-auto skill and run: <description>"`,
 `adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl`,
 and `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`.
-All stamp `CLAUDE_CODE_ENTRYPOINT`, so `lib/harness.sh headless` detects the profile.
-Every phase returns with a paused `phase-handoff` result. `lib/cycle-launch.sh` owns
+Claude stamps `CLAUDE_CODE_ENTRYPOINT`. Peer harnesses use explicit non-interactive settings that `lib/harness.sh headless` reads.
+Full-route phases return a paused `phase-handoff` result. Graph-declared same-session transitions continue without a new invocation.
+`lib/cycle-launch.sh` owns
 CLI relaunches; SDK and ADK supervisors may retain their native relaunch loop. The next
 phase starts in a fresh context.
 
@@ -56,12 +57,12 @@ autonomous derives the recommended answer.
 
 ## The self-answer rule
 
-1. Formulate the question anyway; it names the ambiguity being collapsed.
+1. State the unresolved choice as a question.
 2. Answer as the options' author would recommend: what the codebase already does
    (map, PATTERNS, evidence) first, then industry practice, then the most reversible
-   option. Boring beats clever.
+   option.
 3. Record it to disk at once, never in model memory:
-   `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$dir" "$phase" "$question" "$answer" "$rationale"`
+   `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$dir" "$phase" "$question" "$answer" "$rationale"`
    (`$dir` is the feature dir; setup answers use `.loop-spec/decisions-staging` and the
    cycle migrates them). SPEC renders the record into its `<decisions>` block
    (`decisions.sh render`); PLAN copies it into `## User decisions (already made)`
@@ -75,7 +76,7 @@ autonomous derives the recommended answer.
 An SDK or ADK supervisor can answer the harness's question tool while the run stays
 autonomous: the Claude Agent SDK routes `AskUserQuestion` to its `canUseTool`
 callback, ADK routes `get_user_choice` to the caller. `bash
-"${CLAUDE_SKILL_DIR}/../../lib/supervisor/oracle.sh" mode --feature-dir "$feature_dir"`
+"${LOOP_SPEC_SKILL_DIR}/../../lib/supervisor/oracle.sh" mode --feature-dir "$feature_dir"`
 answers `oracle=supervisor` when `LOOP_SPEC_ORACLE=supervisor` (the `supervised`
 profile preset sets it, `docs/loop-spec/supervisor-interface.md`); `lib/phase-mode.sh`
 carries that answer on the SPEC and DISCUSS mode lines as `oracle=`, and
@@ -116,8 +117,8 @@ approval in `step`/`interactive`) take the grounded assumption here.
 
 ## The continuation ladder (warnings are a record, not a handler)
 
-`warnings[]` is the audit trail; nobody reads it mid-flight. When an escalation path
-fires, climb instead of stopping:
+`warnings[]` records outcomes but does not resolve them.
+Use these recovery paths within existing authorization and gate limits:
 
 1. **Self-heal in phase**: gate retry loops run as written; a critique gate closes at the graph's delta ceiling (`lib/graph/gate.sh next`) and the run proceeds.
 2. **Lead-authored fallback**: a teammate that produces nothing after one fresh

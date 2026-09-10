@@ -19,7 +19,7 @@ checks=(
 
 check_fixed_strings "${checks[@]}"
 
-# The pass bar in each task is the port plan's WP1 done condition (BMad's measured
+# The pass bar in each task is the port plan's WP1 done condition (the reference implementation's measured
 # figures plus DELIVER: a delivered run in one round at or under the cost, the artifact
 # lines, and the minutes), held here as the one literal so the two task files cannot
 # drift from it or from each other (port audit 3, N7). The plan is a record on the audit

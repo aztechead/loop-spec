@@ -78,7 +78,7 @@ def child_env():
     # took the session rung (final-sonnet-fastapi, round 7).
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("LOOP_SPEC_")
-           and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
+           and k not in ("CLAUDE_PROJECT_DIR", "LOOP_SPEC_SKILL_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
            and k not in SESSION_IDENTITY and k != "CLAUDE_CODE_ENTRYPOINT"}
     # Fork mode backgrounds every Agent and ignores run_in_background on the call; the
     # 20260909-sonnet-fastapi run saw the launch stub on all eight dispatches and paid

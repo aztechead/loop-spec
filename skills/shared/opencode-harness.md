@@ -1,7 +1,7 @@
 # opencode harness adaptation (reference)
 
 Applies when loop-spec runs under **opencode** (https://opencode.ai) instead of
-Claude Code: `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect` prints
+Claude Code: `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" detect` prints
 `opencode` (equivalently, `cycle-preflight.sh` reports `harness.name ==
 "opencode"` / `.loop-spec/runtime.json.harness == "opencode"`). loop-spec
 installs there via the bundled installer (`bash lib/opencode-install.sh
@@ -19,9 +19,8 @@ namespace keeps them clear of opencode's built-in `/debug`, `/status`, and
 ADDITIVE — when the harness is `claude`, nothing here applies and every skill
 runs exactly as written.
 
-OpenCode provides skills, resumable subagents,
-questions, and commands all have NATIVE equivalents. The deltas below are the
-complete list.
+OpenCode has native skills, resumable subagents, questions, and commands.
+Apply the mappings below.
 
 ## Environment contract (who sets what)
 
@@ -29,20 +28,22 @@ The opencode plugin delivers, into every bash invocation (via the documented
 `shell.env` plugin hook — opencode merges the returned env over `process.env`
 for each shell call): `LOOP_SPEC_HARNESS=opencode`, `CLAUDE_PLUGIN_ROOT`
 (package root, realpath'd through the install symlink), `CLAUDE_PROJECT_DIR`
-(session directory), and `CLAUDE_SKILL_DIR` (the active skill's directory —
+(session directory), and `LOOP_SPEC_SKILL_DIR` (the active skill's directory —
 set from the native `skill` tool's result metadata, or from the last SKILL.md
 `read`, and realpath'd so symlinked installs still resolve
-`${CLAUDE_SKILL_DIR}/../../lib/...`).
+`${LOOP_SPEC_SKILL_DIR}/../../lib/...`).
+
+The adapter also exports the same value as `CLAUDE_SKILL_DIR` for older integrations.
 
 **Re-export rule (cross-skill reads):** the tracked
-`CLAUDE_SKILL_DIR` follows the LAST skill loaded (skill tool call or SKILL.md
+`LOOP_SPEC_SKILL_DIR` follows the LAST skill loaded (skill tool call or SKILL.md
 read). When a skill reads another skill's SKILL.md mid-flow and then needs a
 **skill-local** path of the skill it is still executing, re-export the
 variable to that skill's directory first. Sibling paths like
-`${CLAUDE_SKILL_DIR}/../../lib/...` are unaffected.
+`${LOOP_SPEC_SKILL_DIR}/../../lib/...` are unaffected.
 
 **Fallback rule (plugin not loaded) — only when the variable is EMPTY:** an
-already-set `CLAUDE_SKILL_DIR` came from the plugin and already points into the
+already-set `LOOP_SPEC_SKILL_DIR` came from the plugin and already points into the
 package. Overwriting it with the installed skill's own directory breaks every
 sibling path, because the installed skill is a GENERATED ADAPTER at
 `<config>/skills/loop-spec-<name>/` and `<config>/lib` does not exist — the
@@ -50,15 +51,15 @@ package's `lib/` is only reachable from the package's own `skills/<name>/`.
 Assign only into an empty value:
 
 ```bash
-: "${CLAUDE_SKILL_DIR:=<base directory the skill tool reported>}"
+: "${LOOP_SPEC_SKILL_DIR:=<base directory the skill tool reported>}"
 ```
 
 Verify before relying on it; if this fails, the plugin is not loaded and the
 adapter directory is the wrong base:
 
 ```bash
-[ -f "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" ] || \
-  CLAUDE_SKILL_DIR="${CLAUDE_PLUGIN_ROOT}/skills/<name>"
+[ -f "${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" ] || \
+  LOOP_SPEC_SKILL_DIR="${CLAUDE_PLUGIN_ROOT}/skills/<name>"
 ```
 
 ## Tool substitution table

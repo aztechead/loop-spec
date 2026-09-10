@@ -41,7 +41,7 @@ checks=(
   "lib/workflow-availability.sh	!= \"claude\""
   # -- the bridge: env delivery, skill dir tracking, SessionStart scripts
   "extensions/adk/loop_spec_adk/bridge.py	LOOP_SPEC_HARNESS"
-  "extensions/adk/loop_spec_adk/bridge.py	CLAUDE_SKILL_DIR"
+  "extensions/adk/loop_spec_adk/bridge.py	LOOP_SPEC_SKILL_DIR"
   "extensions/adk/loop_spec_adk/bridge.py	SESSION_START_HOOKS"
   "extensions/adk/loop_spec_adk/bridge.py	LocalEnvironment"
   "extensions/adk/loop_spec_adk/bridge.py	profile.sh"

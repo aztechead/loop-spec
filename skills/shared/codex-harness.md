@@ -2,7 +2,7 @@
 
 Applies when loop-spec runs under **OpenAI Codex**
 (https://developers.openai.com/codex): `bash
-"${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect` prints `codex`
+"${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" detect` prints `codex`
 (equivalently, `cycle-preflight.sh` reports `harness.name == "codex"` /
 `.loop-spec/runtime.json.harness == "codex"`). loop-spec installs there as a
 native Codex plugin (`.codex-plugin/plugin.json`) plus the bundled installer
@@ -25,7 +25,7 @@ hooks.
 | `.agents/plugins/marketplace.json` | repo marketplace Codex auto-discovers next to a clone |
 | `<codex-home>/agents/loop-spec-<role>.toml` | custom agents for `spawn_agent` (`name` / `description` / `developer_instructions`) |
 | `<skills-root>/loop-spec-<name>/SKILL.md` | generated adapters (`$loop-spec-cycle`, …) that embed this contract then the source skill |
-| `<codex-home>/config.toml` `[shell_environment_policy.set]` | `LOOP_SPEC_HARNESS=codex` plus `CLAUDE_PLUGIN_ROOT` / `CLAUDE_SKILL_DIR` for every Bash subprocess |
+| `<codex-home>/config.toml` `[shell_environment_policy.set]` | `LOOP_SPEC_HARNESS=codex` plus `CLAUDE_PLUGIN_ROOT` / `LOOP_SPEC_SKILL_DIR` for every Bash subprocess |
 | `<codex-home>/hooks.json` | SessionStart / UserPromptSubmit / PreToolUse Bash env rewrite, merged without clobbering other hooks |
 
 Preferred headless entry: `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`. Plugin install: `codex plugin marketplace add https://github.com/aztechead/loop-spec.git` then `codex plugin add loop-spec`. Plugin-bundled hooks stay skipped until `/hooks` trusts them; the installer-written `shell_environment_policy.set` block does not wait on that review.
@@ -40,36 +40,40 @@ Bash tool.
 
 Three deterministic injections close that gap:
 
+The installer and shell hook also supply `CLAUDE_SKILL_DIR` as a compatibility alias.
+Shared skills use `LOOP_SPEC_SKILL_DIR`.
+
 1. `lib/codex-install.sh` writes a marked `[shell_environment_policy.set]`
    block so every Codex-spawned subprocess gets `LOOP_SPEC_HARNESS=codex`,
-   `CLAUDE_PLUGIN_ROOT` (this checkout), and `CLAUDE_SKILL_DIR` pointing at
+   `CLAUDE_PLUGIN_ROOT` (this checkout), and `LOOP_SPEC_SKILL_DIR` pointing at
    `skills/cycle` as the package-relative anchor (`../../lib` and `../../hooks`
    resolve from any skill directory).
 2. `hooks/codex-shell-env.sh` is a PreToolUse Bash rewrite that prefixes the
    same exports onto the command. It is the fallback when hook trust is on
    and the config block is missing.
-3. Generated skill adapters re-export `CLAUDE_SKILL_DIR` to the **source** skill
+3. Generated skill adapters re-export `LOOP_SPEC_SKILL_DIR` to the **source** skill
    directory before every bundled command. Codex starts each Bash tool in a new
    process, while the installer and PreToolUse fallback deliberately provide
    `skills/cycle` only as a package anchor. Keeping that anchor during another
-   skill would break local paths such as `${CLAUDE_SKILL_DIR}/scripts/...`.
+   skill would break local paths such as `${LOOP_SPEC_SKILL_DIR}/scripts/...`.
 
-**Re-export rule (cross-skill reads):** `CLAUDE_SKILL_DIR` must point at the
+**Re-export rule (cross-skill reads):** `LOOP_SPEC_SKILL_DIR` must point at the
 skill that is still executing when a skill-local path is needed. Sibling
-package paths (`${CLAUDE_SKILL_DIR}/../../lib/...`) are unaffected by which
+package paths (`${LOOP_SPEC_SKILL_DIR}/../../lib/...`) are unaffected by which
 skill directory is the anchor.
 
 **Per-skill re-export rule:**
 
 ```bash
-export CLAUDE_SKILL_DIR="<package>/skills/<name>"
+export LOOP_SPEC_SKILL_DIR="<package>/skills/<name>"
+export CLAUDE_SKILL_DIR="$LOOP_SPEC_SKILL_DIR"
 ```
 
 Verify before relying on it:
 
 ```bash
-[ -f "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" ] || \
-  CLAUDE_SKILL_DIR="${CLAUDE_PLUGIN_ROOT}/skills/<name>"
+[ -f "${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" ] || \
+  LOOP_SPEC_SKILL_DIR="${CLAUDE_PLUGIN_ROOT}/skills/<name>"
 ```
 
 Detection requires that injection. Codex stamps no `CLAUDECODE`-equivalent
@@ -116,7 +120,7 @@ request_user_input({
     header: "<12 chars>",        // required chip label
     question: "…ends with a question mark?",
     options: [                   // omit for free-text
-      { value: "snake_case", label: "Short choice", description: "What picking it means" },
+      { label: "Short choice", description: "What choosing it means" },
       ...
     ]
   }]
@@ -126,8 +130,8 @@ request_user_input({
 - Keep `questions`, `question`, and `header`. Add `id`. Drop `multiSelect`
   (Codex options are mutually exclusive; a Claude `multiSelect: true` site
   becomes sequential single-select calls).
-- Each option needs `value` (snake_case) plus Claude's `label` /
-  `description`. Codex allows 2–3 options; a 4-option Claude call keeps the
+- Use the option fields in the current tool schema, normally `label` and `description`.
+  Codex allows 2–3 options; a 4-option Claude call keeps the
   first three (put the recommended option first) and asks the remainder on
   the next call. Do not add an `"Other"` option — the UI already offers
   free-form.
@@ -195,7 +199,8 @@ https://developers.openai.com/codex/subagents):
   `.codex/agents/loop-spec-<role>.toml`; hyphens are the Codex custom-agent
   `name`).
 - `prompt` becomes `message`.
-- `run_in_background: false` is dropped: `spawn_agent` returns the child's result.
+- Omit `run_in_background`. A `spawn_agent` result may be a child handle rather than the completed report.
+  Use the current schema's wait or completion notification mechanism to collect that report before dependent work.
 - `description` becomes `task_name` when the schema includes that field
   (multi-agent v2 currently requires `task_name` and `message`).
 - Pass `fork_turns: "none"` (or `fork_context: false` on v1) when the schema

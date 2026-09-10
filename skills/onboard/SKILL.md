@@ -8,10 +8,8 @@ allowed-tools: Bash Read Write AskUserQuestion
 
 Invoked as `/loop-spec:onboard`.
 
-A short walkthrough of loop-spec's optional, opt-in/opt-out features. It asks a handful of
-multiple-choice questions and writes the chosen config files to `.loop-spec/` in the current
-project, confirming each write with its absolute path. Nothing here is required — the README
-documents every setting for manual configuration; this just does it for you.
+Ask the configuration questions below. Write the selected settings to the current project's `.loop-spec/` directory.
+Report each changed file by absolute path. The README also describes manual configuration.
 
 All writes target the **project** `.loop-spec/` directory. Onboarding never modifies global
 user settings.
@@ -33,10 +31,10 @@ defaulted option so re-running onboarding is non-destructive.
 ```
 AskUserQuestion({
   questions: [{
-    question: "Grill mode front-loads 2-4 sharp clarifying questions right after your initial prompt to lower ambiguity before work starts. It is ON by default. Keep it on?",
+    question: "Grill mode asks 2-4 clarifying questions before work starts. It is ON by default. Keep it on?",
     header: "Grill mode",
     options: [
-      { label: "On (recommended)", description: "Front-load clarifying questions before work starts" },
+      { label: "On (recommended)", description: "Ask clarifying questions before work starts" },
       { label: "Off", description: "Skip the grill pass; ambiguity is resolved during SPEC instead" }
     ],
     multiSelect: false
@@ -63,7 +61,7 @@ AskUserQuestion({
 })
 ```
 
-- "On": seed `.loop-spec/RULES.md` if absent via `bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" path` (the file is created lazily on first `add`; optionally seed a starter rule). Leave `LOOP_SPEC_RULES` unset (on by default).
+- "On": seed `.loop-spec/RULES.md` if absent via `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/rules.sh" path` (the file is created lazily on first `add`; optionally seed a starter rule). Leave `LOOP_SPEC_RULES` unset (on by default).
 - "Off": tell the user to set `LOOP_SPEC_RULES=0` in their environment (session-level kill switch; onboarding does not edit shell profiles).
 
 ### Step 3 - Discipline mode
@@ -90,11 +88,11 @@ AskUserQuestion({
 ```
 AskUserQuestion({
   questions: [{
-    question: "How should EXECUTE commit? Per-task (one commit per completed task, default) or at-end (tasks stage changes; one final commit closes the plan)?",
+    question: "Keep one commit per completed task, or combine task commits into one final commit?",
     header: "Commits",
     options: [
       { label: "Per-task (default)", description: "One commit per completed task" },
-      { label: "At-end", description: "Tasks stage changes; one final commit closes the plan" }
+      { label: "At-end", description: "Combine task commits when EXECUTE finishes" }
     ],
     multiSelect: false
   }]

@@ -2,7 +2,7 @@
 
 Applies when loop-spec runs under **Google's Agent Development Kit**
 (https://google.github.io/adk-docs/): `bash
-"${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect` prints `adk` (equivalently,
+"${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" detect` prints `adk` (equivalently,
 `cycle-preflight.sh` reports `harness.name == "adk"` /
 `.loop-spec/runtime.json.harness == "adk"`). loop-spec mounts there through the
 bundled installer (`bash lib/adk-install.sh install --project <dir>`), which
@@ -34,7 +34,8 @@ static environment delivers `LOOP_SPEC_HARNESS=adk`, `CLAUDE_PLUGIN_ROOT`
 (package root), and `CLAUDE_PROJECT_DIR` (the mounted project). The plugin's
 `after_tool_callback` records the active skill's real directory in ADK session
 state whenever `load_skill` runs. The custom Execute tool creates each shell
-environment from that state and exports it as `CLAUDE_SKILL_DIR`.
+environment from that state and exports it as `LOOP_SPEC_SKILL_DIR`.
+It also exports `CLAUDE_SKILL_DIR` as a compatibility alias.
 
 The state is per session. Concurrent sessions in one `adk web` or
 `adk api_server` process therefore cannot overwrite one global active-skill
@@ -44,7 +45,7 @@ directory and send another session's command through the wrong skill.
 memory and carries NO source path, so the name→directory map comes from
 loop-spec's own loader. An unknown skill name leaves the previous value in place:
 a skill that is still executing must not lose its directory because an unrelated
-lookup missed. Sibling paths (`${CLAUDE_SKILL_DIR}/../../lib/...`) resolve
+lookup missed. Sibling paths (`${LOOP_SPEC_SKILL_DIR}/../../lib/...`) resolve
 because the map points into the real package, never into a materialized copy.
 
 **Why skills are not materialized:** `SkillToolset` is built WITHOUT

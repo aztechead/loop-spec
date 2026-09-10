@@ -37,28 +37,16 @@ breaking checkpoints or edge references. The schema permits labels and
    `CLAUDE.md` applied to graph vocabulary. The kind is enforced by
    `lib/graph/validate.sh`; each body is an ordinary `lib/` script with its own unit
    test.
-3. **`gate`.** Runs a probe and admits or blocks — the marker scan, the tamper scan, the
-   acceptance lint, code review. A gate that is unnecessary for a given run is ROUTED
-   AROUND, never marked skippable: `route` skips the node, works for every node kind, and
-   shows up in a dry run, whereas the `skippable` field this vocabulary carried through
-   4.0 skipped only a `.sh` BODY and was never evaluated by the engine. The only shipped
-   declaration was `plan.critique.gate`, whose body is a fast-path token rather than a
-   script — so it skipped nothing, invisibly. One mechanism for "do not run this", not
-   two. `tests/lib/graph-schema.test.sh` pins the field absent from the schema;
-   `tests/lib/graph-run.test.sh` section 20 pins it absent from `graph/cycle.graph.json`.
-4. **`human`.** Interrupts and waits for a person — the `step` style's inter-phase
-   pause, ITERATE's spec-change approval. A human node is a real stop: a checkpoint is
-   written to the node ledger by `lib/graph/checkpoint.sh` (covered by
-   `tests/lib/graph-checkpoint.test.sh`), a resumable pause record is emitted, and any
-   later invocation resumes at exactly that node — resume is a lookup, not a
-   scan-and-infer procedure. Its `admit` decides whether this run pauses here, and only
-   an ANSWERED admit decides anything: a resolved non-match skips the node (`auto` and
-   `review-only` answer `gate=skip`), while an UNRESOLVED admit — an unreadable
-   `feature.json`, an `execStyle` outside the enum, a missing probe, or no `admit`
-   declared at all — aborts the run with a published `failed` result. Falling through
-   there is how a run with hand-damaged state walked past `human.after-plan` into
-   EXECUTE with nobody having decided to skip it. Pinned by section 22 of
-   `tests/lib/graph-run.test.sh`.
+3. **`gate`.** Runs a probe that admits or blocks progress.
+   Use a `route` edge to bypass an unnecessary gate. Do not add a `skippable` field.
+   The schema and shipped-graph tests reject that field.
+4. **`human`.** Pauses for a person and records a checkpoint through `lib/graph/checkpoint.sh`.
+   The next invocation resumes at the saved node.
+   The node's `admit` probe decides whether this run pauses.
+   A resolved non-match skips the node, as for `gate=skip` in `auto` and `review-only`.
+   An unresolved or missing `admit` aborts with a published `failed` result.
+   Examples include unreadable state, an invalid `execStyle`, or a missing probe.
+   `tests/lib/graph-run.test.sh` covers this distinction.
 5. **`subgraph`.** Nests another graph file via its `graph` path so a protocol is
    declared once and reused — the critique protocol lives in
    `graph/critique.graph.json` and is referenced by both `discuss.critique` and
@@ -118,8 +106,7 @@ the session that closed the previous phase, and `lib/cycle-driver.sh next` answe
 answers for the driver and for `hooks/team/phase-handoff-guard.sh` alike, walking
 through the non-agent nodes between the two phases, so the exception is never prose.
 The shipped graph sets it on `human.after-spec` to `oneshot` and on `oneshot` to
-`deliver`, and nowhere else: the short route is one session end to end, where it paid a
-session's fixed cost per phase for a two-line fix. Pinned by
+`deliver`, and nowhere else. The short route stays in one session. Covered by
 `tests/lib/graph-run.test.sh` and `tests/lib/graph-phases.test.sh`.
 
 ## Path-length rule

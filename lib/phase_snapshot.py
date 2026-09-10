@@ -35,8 +35,9 @@ def render(plugin, feature_dir, phase, skill, harness, customization):
         text = raw.decode("utf-8")
         # Runtime scripts remain executable from the plugin, while Markdown references
         # point to this attempt's captured text, including the full SPEC fallback.
-        text = text.replace("${CLAUDE_SKILL_DIR}/references/", str(destination / source.parent.relative_to(plugin) / "references") + "/")
-        text = text.replace("${CLAUDE_SKILL_DIR}", str(source.parent))
+        for variable in ("LOOP_SPEC_SKILL_DIR", "CLAUDE_SKILL_DIR"):
+            text = text.replace("${" + variable + "}/references/", str(destination / source.parent.relative_to(plugin) / "references") + "/")
+            text = text.replace("${" + variable + "}", str(source.parent))
         text = re.sub(r"(?<![\w/])((?:skills|agents)/[\w./-]+\.md(?:\.template)?)",
                       lambda m: str(destination / m.group(1)), text)
         target = destination / relative

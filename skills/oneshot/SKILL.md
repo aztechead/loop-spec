@@ -1,29 +1,27 @@
 ---
 name: oneshot
-description: ONESHOT phase - implements a change whose SPEC footprint is at most three files in one pass (implement, one code review, verify, record), then the cycle delivers. Cycle-internal - entered only when lib/graph/probes/oneshot.sh routes to it; not for ad-hoc invocation (start at /loop-spec:cycle).
+description: "Implement, review, and verify a change with at most three files in its SPEC footprint. Internal cycle phase selected by lib/graph/probes/oneshot.sh. Start at /loop-spec:cycle."
 allowed-tools: Bash Read Write Edit Glob Grep Agent
 ---
 
 # ONESHOT
 
-You run on the main thread and do the work yourself: the SPEC footprint names at most
-three files, so a planner and an implementer wave would cost more than the change; four
-steps here stand in for four phases, against the same gates. `feature_dir` is
-`.loop-spec/features/{slug}`. Your inputs are the entry packet and nothing else; a FLAG
-is a prior phase's failure, relay it:
+Implement the change in the main thread. The SPEC footprint contains at most three files.
+The four steps below replace four phases and retain their gates.
+Use `.loop-spec/features/{slug}` as `feature_dir`. Read only the entry packet as input.
+Relay entry FLAGs and return:
 
 ```bash
-pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin oneshot --feature-dir "$feature_dir")"
+pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin oneshot --feature-dir "$feature_dir")"
 # .entry.fields (slug, branch, baseSha, commands, artifacts.spec, models.codeReviewer)
 # .entry.read[] (SPEC.md)  .entry.flags[] (a missing ingress; relay and return)
 ```
 
 Read `skills/shared/engineering-directives.md#Canonical compact directive` and
 `skills/shared/human-code.md#Compact directive (read this file; do not paste it into a prompt)`:
-the compact directives are the whole contract for a three-file change, and the rest of
-each file is the reasoning behind them (`lib/context-load.sh` holds this phase under its
-line budget). The work lands on the feature branch the packet names; the cycle already
-checked it out.
+These sections contain the full directives for a three-file change.
+`lib/context-load.sh` checks this phase's context budget.
+Work on the feature branch named in the packet. The cycle already selected it.
 
 ## 1. Read, then decide whether this is still a oneshot
 
@@ -46,7 +44,7 @@ SPEC.md and VERIFICATION.md on this route.
 Make the change in the footprint files, every one of them: the footprint is a promise
 the exit gate checks against the diff, so a test file it names gets its test. A file the
 change turns out not to need leaves the footprint as a recorded decision,
-`bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" spec footprint drop --feature-dir "$feature_dir" --file <path> --reason "<why>"`;
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" spec footprint drop --feature-dir "$feature_dir" --file <path> --reason "<why>"`;
 the driver refuses to drop a test module of a file that stays. Keep the
 change the size the spec describes: no refactor of neighbors, no new abstraction, no
 file the footprint does not name. Match the neighbors' style. Run `commands.test` from the packet (and `commands.lint` when
@@ -58,8 +56,8 @@ Commit once on the feature branch with a conventional subject (`fix:` for a bug,
 path runs at VERIFY and fix what they name before going on:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" "${CLAUDE_SKILL_DIR}/../../lib/placeholder-scan.sh" --feature-dir "$feature_dir"
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-scan-each.sh" "${CLAUDE_SKILL_DIR}/../../lib/test-tamper-scan.sh" --feature-dir "$feature_dir"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-scan-each.sh" "${LOOP_SPEC_SKILL_DIR}/../../lib/placeholder-scan.sh" --feature-dir "$feature_dir"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-scan-each.sh" "${LOOP_SPEC_SKILL_DIR}/../../lib/test-tamper-scan.sh" --feature-dir "$feature_dir"
 ```
 
 ## 3. One review pass
@@ -72,27 +70,27 @@ comes, or names a failed session), dispatch `loop-spec:code-reviewer` once (`Age
 `subagent_type: "loop-spec:code-reviewer"`, model `models.codeReviewer` from the
 packet, `run_in_background: false`; then stop and read its result, never
 `AskUserQuestion` as a wait). Brief: `slug`, `branch`, `baseSha`, `spec_path`, and
-`probe_dir` (absolute `${CLAUDE_SKILL_DIR}/../../lib`); include
+`probe_dir` (absolute `${LOOP_SPEC_SKILL_DIR}/../../lib`); include
 `skills/shared/review-prompts/no-prejudge.md`; report
 `CODE-REVIEWER DONE: <PASS|PASS_WITH_MINOR|BLOCK> <findings>`. Record the launch as
 `skills/shared/dispatch.md#Telemetry (dispatch telemetry contract)` says, in the same
 Bash call that reads the result; the exit gate reads this event as the proof:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" dispatch \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit "$feature_dir" dispatch \
   --phase oneshot --data '{"role":"code-reviewer","model":"<models.codeReviewer>","rung":"subagent"}' || true
 ```
 
 The Code review section is written from the reviewer's report, never by you: the
 driver does it after its own session; in-harness, save the reviewer's result to
 `$feature_dir/dispatch/oneshot.review.md` and run
-`bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verification review --feature-dir "$feature_dir"`
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" verification review --feature-dir "$feature_dir"`
 (no finding renders `none`; never invent one). Fix every Critical and Important
 finding in the footprint and commit; one outside the footprint is an escalation
 (step 1). Minor findings never block. Answer each pending finding once:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verification verdict --feature-dir "$feature_dir" \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" verification verdict --feature-dir "$feature_dir" \
   --finding <file>:<line> --verdict true --reason "<the fix or commit>" --routing '<routing JSON>'      # or --verdict false --reason "<disproof: what shows it wrong>"
 ```
 
@@ -108,10 +106,10 @@ in the packet) with one grounding row and one acceptance row per criterion, keye
 row per criterion; the driver observes the rest:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verification fill --feature-dir "$feature_dir" \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" verification fill --feature-dir "$feature_dir" \
   --row GE-001 --implementation <file>:<line> --proof "<what that line proves>" \
   --integration <test file>:<line> --integration-proof "<what it proves>"
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" verification run --feature-dir "$feature_dir"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" verification run --feature-dir "$feature_dir"
 ```
 
 `--integration none` names the criterion's own command as the end-to-end proof. `run`

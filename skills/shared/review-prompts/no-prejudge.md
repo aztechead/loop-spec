@@ -1,9 +1,7 @@
 # Reviewer independence — do not pre-judge findings
 
-Canonical prompt directive for every EXECUTE, quality-loop, and VERIFY reviewer
-dispatch. Superpowers v6.0.0 caught controllers coaching "do not flag X" or
-"at most Minor"; the flaw shipped. `lib/prejudge-lint.sh` scans templates for
-those phrases. This file is the instruction the prompt must include.
+Include this contract in every EXECUTE, quality-loop, and VERIFY reviewer dispatch.
+`lib/prejudge-lint.sh` checks templates for instructions that suppress findings or prescribe severity.
 
 ## Contract
 

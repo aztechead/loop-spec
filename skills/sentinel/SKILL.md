@@ -1,6 +1,6 @@
 ---
 name: sentinel
-description: Use when the user says "scan the queue", "run sentinel", or "what's next in the backlog". "scan" writes .loop-spec/sentinel-queue.json (read-only). "run" starts one autonomous cycle. Do not use to implement an arbitrary prompt (that's /loop-spec:cycle) or to assess codebase health (that's /loop-spec:assess).
+description: "Use when scanning work sources into the sentinel queue or running its eligible work through autonomous cycles. Use /loop-spec:cycle for a specific task and /loop-spec:assess for codebase health."
 argument-hint: 'scan | run'
 ---
 
@@ -8,9 +8,8 @@ argument-hint: 'scan | run'
 
 Invoked as `/loop-spec:sentinel scan` or `/loop-spec:sentinel run`.
 
-The self-sourcing seam (ROADMAP-3.0 Pillar A): instead of waiting for a human
-to paste work into `/loop-spec:intake`, the sentinel watches the repo's work
-sources and keeps a triaged queue (`scan`), and operates that queue (`run`).
+`scan` reads repository work sources and updates the triaged queue.
+`run` selects eligible queue items and starts autonomous cycles.
 
 All mechanics live in scripts; this skill is the thin command surface and
 obeys their verdicts verbatim:
@@ -24,7 +23,7 @@ obeys their verdicts verbatim:
 Run from the project root (the directory containing `.loop-spec/`):
 
 ```bash
-LIB="${CLAUDE_SKILL_DIR}/../../lib"
+LIB="${LOOP_SPEC_SKILL_DIR}/../../lib"
 for src in $(bash "$LIB/sentinel-triage.sh" sources); do
   bash "$LIB/sentinel-sources.sh" "$src" || echo "[]"
 done | jq -cs 'add // []' | bash "$LIB/sentinel-triage.sh" run
@@ -37,9 +36,8 @@ not authenticated), say which one and that the scan proceeded without it.
 
 ## run
 
-The drive loop (ROADMAP-3.0 A3). Sentinel runs are autonomous by construction
-— never ask a question mid-run; every conversion and cycle below runs with the
-`autonomous` token.
+Sentinel runs are autonomous. Never ask a question during the run.
+Pass `autonomous` to every conversion and cycle below.
 
 **Safety rails (A4 — non-negotiable, all enforced by scripts, not by you):**
 
@@ -68,7 +66,7 @@ The drive loop (ROADMAP-3.0 A3). Sentinel runs are autonomous by construction
    `gh issue edit <number> --add-label loop-spec:in-progress`
    (the item id `gh-N` carries the number).
 4. **Convert** — `Skill(loop-spec:intake)` with arguments:
-   `--no-run <item title, body, and url from the popped JSON>`. Intake's
+   `autonomous --no-run <item title, body, and url from the popped JSON>`. Intake's
    fidelity rule applies: the draft restructures the item, never invents
    scope. Note the draft path it prints.
 5. **Cycle** — `Skill(loop-spec:cycle)` with arguments:
@@ -82,6 +80,9 @@ The drive loop (ROADMAP-3.0 A3). Sentinel runs are autonomous by construction
    assessment items have nothing to mutate.
 7. **Chain or stop** — with the just-finished feature dir and the count of
    items completed this invocation:
+
+   Replace `<slug>` with that feature's slug and `<n>` with the completed item count.
+
    ```bash
    bash "$LIB/autonomous-chain.sh" should-chain .loop-spec/features/<slug> \
      --scope queue --completed <n>

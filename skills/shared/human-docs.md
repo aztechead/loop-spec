@@ -1,21 +1,9 @@
 # Docs for humans (maintain and operate) — canonical prompt directive
 
-Single source of truth for the docs-for-humans directive that every **document-producing
-phase dispatch** must carry. It is the fourth member of a set. The laziness ladder
-(`skills/shared/laziness-ladder.md`) governs *how much* code exists. Design for change
-(`skills/shared/design-for-change.md`) governs *where its boundaries sit*. Code for humans
-(`skills/shared/human-code.md`) governs *how the code reads to the next person who opens
-the file*. This one governs *the markdown that person reaches for when the code is not
-enough*. `tests/human-docs-coverage.test.sh` enforces the wiring; `lib/doc-tells.sh`
-measures one corner of the content.
-
-The plugin's output is not just code. Every cycle also writes markdown: SPEC, PLAN,
-PATTERNS, VERIFICATION, the reviewer's guide, a PR body, commit messages, and whatever
-README, guide, or runbook the change itself makes true or false. A person maintains and
-operates all of it long after the run ends. That artifact class had three deterministic
-gates on its STRUCTURE (`lib/artifact-lint.sh`), its GROUNDING (`lib/grounding-lint.sh`),
-and its SENTENCES (`lib/plain-language-lint.sh`), and nothing at all on whether a human
-could use it.
+Include this contract in every dispatch that produces documentation.
+Write for the person who will maintain or operate the system.
+`tests/human-docs-coverage.test.sh` checks dispatch references. `lib/doc-tells.sh` checks links, paths, and placeholders.
+Artifact structure and grounding have separate gates. Plain-language findings are advisory.
 
 ## The two jobs a document does
 
@@ -38,7 +26,7 @@ paragraph serves neither — the reader has to change mental gears mid-page.
 - **EXECUTE / implementer** — every rung: team (`agents/implementer.md`,
   `skills/shared/team-prompts/implementer.md`), subagent (`skills/shared/execute-subagent.md`),
   loop-fleet (`lib/plan-to-loop.sh`), workflow (`lib/workflows/execute-dag.js`).
-- **VERIFY / code-reviewer** — the docs-for-humans pass (`agents/code-reviewer.md`, `skills/verify/SKILL.md` Step 7.66).
+- **VERIFY / code-reviewer** — the docs-for-humans pass (`agents/code-reviewer.md`, `skills/verify/SKILL.md` Step 4).
 - **Main thread** — `hooks/team/human-code-inject.sh` at SessionStart, toggled by `skills/settings/SKILL.md` (`human-code`).
 
 ## The principles
@@ -112,12 +100,6 @@ The three checks:
 
 ## Known false-positive sources (report them, do not hide them)
 
-Measured across this repository's own 170 markdown documents: **181 findings**, of which
-149 sit in delivered feature artifacts (SPEC/PLAN/PATTERNS from closed cycles, frozen
-records of what was true then) and 32 in live documents. The live findings were sampled and
-were real: `tests/smoke.sh` renamed years ago, `lib/state-write.sh` deleted, a relative link
-written as if from the repository root. The known misfires:
-
 - **A design artifact naming a file the change has not created yet** flags until the file
   exists. That is noise at SPEC and the check working at VERIFY, which is why the reviewer
   path is `doc-tells.sh diff <base>` — only what the change introduced.
@@ -142,7 +124,7 @@ governs `house-style.sh` and `duplication-scan.sh`:
 
 | Site | How it resolves |
 |---|---|
-| Skill-context prompts (`execute-subagent.md`, `team-prompts/implementer.md`) | `${CLAUDE_SKILL_DIR}/../../lib` |
+| Skill-context prompts (`execute-subagent.md`, `team-prompts/implementer.md`) | `${LOOP_SPEC_SKILL_DIR}/../../lib` |
 | `lib/plan-to-loop.sh` | its own directory, from `BASH_SOURCE` |
 | `lib/workflows/execute-dag.js` | the injected `skillDir` arg |
 | `hooks/team/human-code-inject.sh` | its own directory, from `BASH_SOURCE` |
@@ -212,4 +194,4 @@ dispatched agent, so the prompt still says to Read this file.
 - **On-call runbook practice** — one failure mode per runbook, prerequisites up front,
   expected output beside each command, an explicit branch for each failure.
 - This repository's own evidence — the generated code map removed in 2.35 because a rotted
-  map is wrong with authority (CLAUDE.md), and the 181-finding survey recorded above.
+  map is wrong with authority (CLAUDE.md), and the probe limitations above.

@@ -1,15 +1,9 @@
 # Dual-process effort
 
-Per-node effort selection: two deterministic probes decide, node by node, how
-hard to think (`lib/effort-probe.sh`) and when deliberation wakes up
-(`lib/conflict-monitor.sh`). This is the canonical contract. Effort changes the
-guidance for a node; it never selects a model.
-
-Two misreadings this design must not encode: the modes are not sequential (there
-is no System 1 pass followed by a System 2 pass — the probe picks an effort mode
-for a node, not a stage the run passes through), and `system2` is not a
-correctness oracle (both modes stay subject to every gate that checks them;
-escalation buys effort, not a guarantee).
+`lib/effort-probe.sh` selects effort for each node. `lib/conflict-monitor.sh` raises effort after conflicts or failures.
+Effort changes node instructions, never the model.
+Each node uses one effort mode. Do not run System 1 and System 2 as sequential passes.
+Both modes must pass the same gates. Higher effort does not guarantee correctness.
 
 ## The effort probe — `lib/effort-probe.sh`
 
@@ -39,9 +33,7 @@ More-specific forms win; the reason field names the override as the cause.
 
 ## The conflict monitor — `lib/conflict-monitor.sh`
 
-Answers when deliberation wakes up: System 2 is activated when an event violates
-the model of the world System 1 maintains, so the monitor keys on contradiction
-and failure, never on elapsed time or cost.
+Raise effort after a contradiction or failure. Never raise it based on elapsed time or cost.
 
 **Output contract:** exactly one stdout line, `conflict=(yes|no) reason=<text>`,
 exit 0 on every well-formed invocation. Enforced by
@@ -71,9 +63,7 @@ skipped only when its own deterministic licensing probe says so; effort does
 not license the skip. Model routing is also independent. Claude Code and
 OpenCode can therefore execute the same effort decision on any inherited model.
 
-The descriptor, checkpoint, and trace all record the final effort and its
-reason. That makes the instruction reviewable without pretending a provider's
-model catalog or reasoning controls are portable.
+The descriptor, checkpoint, and trace record the final effort and its reason.
 
 ## Binding to the graph
 

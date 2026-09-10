@@ -1,18 +1,18 @@
 ---
 name: spec
-description: SPEC phase - grounded questions and decisions; gates on no unresolved intent questions. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
+description: "Write SPEC.md from repository evidence and recorded decisions. Resolve intent questions before approval. Internal phase of /loop-spec:cycle. Start there for repository work."
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
 
 # SPEC
 
-You run on the main thread (a subagent cannot hold an interview). You produce
-`docs/loop-spec/features/{slug}/SPEC.md` from repository evidence and concrete decisions, and close the phase with one command. `feature_dir` is
-`.loop-spec/features/{slug}` (the cycle created it; this skill never bootstraps one).
-Your inputs are the entry packet and nothing else; a FLAG is a prior phase's failure, relay it:
+Run in the main thread so you can interview the user.
+Write `docs/loop-spec/features/{slug}/SPEC.md` from repository evidence and recorded decisions.
+Use the cycle's existing `.loop-spec/features/{slug}` as `feature_dir`. Never create a feature directory here.
+Read only the entry packet as input. Relay any entry FLAG and return:
 
 ```bash
-pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin spec --feature-dir "$feature_dir")"
+pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin spec --feature-dir "$feature_dir")"
 # .entry.fields (the feature.json keys this phase consumes)  .entry.read[] (each file to read)
 # .entry.flags[] (a missing ingress; relay and return)  .mode.path=ingest|self-answer|synthesize|interview
 # .mode.oracle=supervisor|self  .mode.reason  .mode.greenfield=true|false
@@ -27,7 +27,7 @@ An intent gap is a choice the user would notice in the result that repository ev
 cannot settle. Investigate first. Decide implementation details with a one-line reason;
 collect genuine intent gaps in one list with a recommended answer and its tradeoff.
 The gate is an empty `unresolved_questions` list, never a self-assessed number.
-`${CLAUDE_SKILL_DIR}/references/interview-prompts.md` gives examples of questions worth asking.
+`${LOOP_SPEC_SKILL_DIR}/references/interview-prompts.md` gives examples of questions worth asking.
 
 ## 1. Scout
 
@@ -40,14 +40,13 @@ constraints from a suggested method before the interview or draft. Preserve that
 distinction in every path below, including synthesis and ingest.
 
 Read `feature_dir/` (decisions ledger on resume) and `docs/loop-spec/features/{slug}/`.
-Then read the code: search the feature
-area by the user's vocabulary and the obvious symbols, read the entry points you find,
-follow imports and callers far enough to name the boundaries the change crosses. Fan
-scanning out to subagents that return `file:line` evidence (dispatch, then stop;
-`skills/shared/dispatch.md`). Workspace mode scans each repo separately and keeps the
-repo name on every finding. Greenfield has no code: ground in the goal and the chosen
-stack's conventions. Use `skills/shared/engineering-stances.md` for the build-from-scratch
-stance: data model, API surface, interface, and the input whose growth sets the bound.
+Search the feature area using the user's terms and relevant symbols.
+Read the entry points. Follow imports and callers until you can name the boundaries the change crosses.
+Delegate scans to subagents that return `file:line` evidence. Dispatch, then stop, following `skills/shared/dispatch.md`.
+
+In workspace mode, scan each repository separately. Label each finding with its repository.
+For greenfield work, use the goal and chosen stack's conventions as evidence.
+Follow the build-from-scratch stance in `skills/shared/engineering-stances.md` for data, APIs, interfaces, and scale limits.
 
 Before any factual claim about an external system (dataset, API, service, infra), run
 the cheapest read-only probe and record it; cite the `EVID-NNN` it prints, or write
@@ -55,40 +54,37 @@ the cheapest read-only probe and record it; cite the `EVID-NNN` it prints, or wr
 (`skills/shared/grounding-protocol.md`):
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<probe output>"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<probe output>"
 ```
 
-Then name the frameworks in play:
-`bash "${CLAUDE_SKILL_DIR}/../../lib/doc-deps.sh" scan <the files the scout found>` lists
-the third-party dependencies those files import. For each one the feature will lean on,
-and for every runtime or library the ask names by version, ask the plugin's own tool
-before anything else: `bash "${CLAUDE_SKILL_DIR}/../../lib/docs-probe.sh" latest <name>`
-(`--ecosystem runtime` for a language) is the version, and
-`bash "${CLAUDE_SKILL_DIR}/../../lib/docs-probe.sh" docs <name> --topic <what the feature needs>`
-is how its current release does it; `unverified` means record an `ASSUMPTION`, then
-try any web search or URL-fetch tool the session provides. `evidence.sh add` the
-finding with the probe's `source=` URL as the command (the dependency-idiom rule,
-`skills/shared/grounding-protocol.md` "Current documentation"). A local catalog
-(`uv python list`, `pyenv install --list`) is never the version source, and an installer
-whose catalog lacks the version the probe named gets upgraded before anything is
-installed (its own current version is one more probe call), never worked around with an
-older build or a pre-release: a run took a stale catalog's release candidate as the
-current Python and paid twenty commands for a crash the final release did not have; the
-next run knew the final version, kept the stale installer, and pinned the release
-candidate in SPEC anyway. The idiom in today's docs outranks the idiom in
-model memory.
+Check the dependencies that the feature uses:
 
-Name the footprint: the repository-relative files the change will touch, from the scout's
-evidence (the file that holds the bug, the module that gains the flag, its test). It goes
-into the frontmatter as `footprint:` and `lib/graph/probes/oneshot.sh` reads it: at most
-three files, no unresolved question, and no security signal in SPEC.md or those files
-routes the run through ONESHOT (implement, one review, verify, deliver) instead of
-DISCUSS through ITERATE. Write the footprint you can defend from `file:line` evidence,
-never a shorter one to earn the route; a fourth file found during ONESHOT escalates the
-run to the full path at the cost of the pass already spent. Greenfield names the files
-it will create. A footprint file's existing test module is named either way: in the
-footprint when it changes, in Implementation notes as unchanged when it does not
-(`lib/oneshot-spec-lint.sh` flags a test module the spec never names).
+1. Run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/doc-deps.sh" scan <the files the scout found>` to list imported third-party dependencies.
+2. For each relevant dependency, run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/docs-probe.sh" latest <name>` first.
+   Include runtimes and libraries the request names by version. Use `--ecosystem runtime` for a language.
+3. Run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/docs-probe.sh" docs <name> --topic <what the feature needs>` for current usage.
+4. For `unverified`, record an `ASSUMPTION`, then try available web search or URL-fetch tools.
+5. Record findings with `evidence.sh add`. Use the probe's `source=` URL as the command.
+
+Follow `skills/shared/grounding-protocol.md`, "Current documentation".
+Never use a local catalog such as `uv python list` or `pyenv install --list` as the version source.
+If the installer lacks the verified version, probe the installer's current version and upgrade it before installing.
+Do not substitute an older build or prerelease to accommodate a stale installer.
+Use current documentation instead of remembered library conventions.
+
+Write `footprint:` in the frontmatter with the repository-relative files the change will touch.
+Support that list with scout `file:line` evidence. For greenfield work, list the files to create.
+Never omit a file to qualify for a shorter route.
+
+`lib/graph/probes/oneshot.sh` selects ONESHOT only when all these conditions hold:
+
+- The footprint has at most three files.
+- No intent questions remain unresolved.
+- SPEC.md and the footprint files have no security signal.
+
+ONESHOT implements, reviews once, verifies, and delivers. A fourth file requires promotion to the full route.
+Name each footprint file's existing test module. Include it in the footprint if it changes, or mark it unchanged in Implementation notes.
+`lib/oneshot-spec-lint.sh` flags omitted test modules.
 
 ## 2. Resolve questions (by `path`)
 
@@ -118,7 +114,7 @@ observable consequence. Do not invent questions when the request and code settle
 Record decisions through:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<question>" "<answer>" "<reason>"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<question>" "<answer>" "<reason>"
 ```
 
 Render the ledger into SPEC.md's `<decisions>` block with `decisions.sh render`.
@@ -142,11 +138,11 @@ footprint:
 
 While waiting for an answer, use for example
 `unresolved_questions: ["Should empty names be rejected or preserved?"]`.
-Remove a question only after its answer and rationale are recorded. No ambiguity
-scores or interview transcript. The oneshot skeleton is owned by spec-lite.
+Record the answer and rationale before removing a question.
+Do not include ambiguity scores or an interview transcript. Spec-lite owns the oneshot skeleton.
 
 A draft written anywhere but `docs/loop-spec/features/{slug}/SPEC.md` in the checkout
-that holds `feature.json` lands through `bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
+that holds `feature.json` lands through `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 spec write --feature-dir "$feature_dir" --file <draft>`, which accepts no other target.
 
 Before approval, for drafts over 60 lines, dispatch one fresh reviewer with SPEC.md,
@@ -159,7 +155,7 @@ ledger. This pass does not invent a transcript or score.
 After the human approves the written Goal and Boundary, record the freeze:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" spec approve --feature-dir "$feature_dir" --source human
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" spec approve --feature-dir "$feature_dir" --source human
 ```
 
 For unattended runs use `--source autonomous` after recording recommended decisions;

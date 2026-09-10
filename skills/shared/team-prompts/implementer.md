@@ -66,7 +66,7 @@ Repeat until idle:
    ```
    Load `metadata.files`, `metadata.verifyCommand`, `metadata.acceptanceCriteria`, `metadata.readFirst`, and `metadata.specPath`.
 5. **Implement** the task in the worktree at `{worktreeBase}/task-<id>/`. (Create the worktree on first claim; the worktree persists across rework rounds for the same task.)
-   - Immediately after first creation, run `bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root <absolute-worktree> --command "<feature.commands.prepare>" --reuse-from "<absolute-feature-root>"`. A matching prepared `node_modules` is linked read-only-by-contract from the feature root; `LOOP_SPEC_SHARE_DEPENDENCIES=0` disables reuse. Preparation failure is infrastructure failure; do not repair it by changing product code.
+   - Immediately after first creation, run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/prepare-environment.sh" run --root <absolute-worktree> --command "<feature.commands.prepare>" --reuse-from "<absolute-feature-root>"`. A matching prepared `node_modules` is linked read-only-by-contract from the feature root; `LOOP_SPEC_SHARE_DEPENDENCIES=0` disables reuse. Preparation failure is infrastructure failure; do not repair it by changing product code.
    - Read every path in `metadata.readFirst` before writing code -- these are the concept analogs and files the planner anchored this task on.
    - For exact requirements: if `metadata.specPath` is non-null, read that per-task spec file; otherwise read `docs/loop-spec/features/{slug}/SPEC.md`.
    - Read PLAN.md's `## Global constraints` section (if present) and the task block's `**Interfaces:**` entry before writing code — every global constraint binds verbatim, and the interfaces name the contracts neighboring tasks consume/produce.
@@ -83,15 +83,15 @@ Repeat until idle:
      `skills/shared/engineering-directives.md`: simple over clever, idiomatic for the
      pinned version, versions from a tool never from recall, scaling input named
      before code, tests first with one test one break). Probe paths use
-     `${CLAUDE_SKILL_DIR}/../../lib/` not `{probe_dir}`: run
-     `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>`
-     and `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>`
+     `${LOOP_SPEC_SKILL_DIR}/../../lib/` not `{probe_dir}`: run
+     `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/indirection-scan.sh" scan <files you touched>`
+     and `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/duplication-scan.sh" scan <files you touched>`
      (`duplicate=` same lines, `similar=` names-changed; both count);
-     `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <files>`;
-     `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`;
-     `bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>`;
-     `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <files you touched>`;
-     `bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <the markdown you touched>`.
+     `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/house-style.sh" probe <files>`;
+     `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/house-style.sh" compare <files you touched>`;
+     `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/comment-tells.sh" scan <files>`;
+     `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/failure-tells.sh" scan <files you touched>`;
+     `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/doc-tells.sh" scan <the markdown you touched>`.
    - On rework: read the most recent `REWORK NEEDED` message from the reviewer and apply the listed fixes.
 6. **Verify** by running the verify command from the task metadata:
    ```
@@ -100,7 +100,8 @@ Repeat until idle:
    - On pass: continue to step 7.
    - On fail: fix the implementation and re-run. Do not hand off until the verify command passes.
 7. **Commit** the work in the worktree branch (follow the project commit format: `feat: NO_JIRA task-<id> {subject}`).
-8. **Complete or hand off:** Always call `TaskUpdate` BEFORE the `SendMessage`. The status transition is the source of truth; the message is only a wake hint. The lead reconciles from `TaskList` state on every wake and does not block waiting for your message, so a dropped message cannot lose your work -- but only if the `TaskUpdate` landed first.
+8. **Complete or hand off:** Call `TaskUpdate` before `SendMessage`.
+   The lead reads `TaskList` on each wake. Writing status first preserves the result even if the notification is lost.
    - If no reviewer is assigned in the roster: mark complete directly:
      ```
      TaskUpdate({taskId: "<id>", status: "completed"})

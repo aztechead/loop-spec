@@ -240,6 +240,7 @@ run_suite "opencode-harness-coverage" "bash tests/opencode-harness-coverage.test
 run_suite "lib/opencode-install"      "bash tests/lib/opencode-install.test.sh" integration
 run_suite "lib/codex-install"         "bash tests/lib/codex-install.test.sh" integration
 run_suite "lib/codex-shell-env"       "bash tests/lib/codex-shell-env.test.sh"
+run_suite "lib/skill-paths"           "bash tests/lib/skill-paths.test.sh"
 run_suite "validate-agents-frontmatter" "bash tests/validate-agents.test.sh"
 run_suite "restrict-agent-paths"      "bash hooks/restrict-agent-paths.test.sh"
 run_suite "hooks/team/no-worktrees-guard" "bash hooks/team/no-worktrees-guard.test.sh"
@@ -409,7 +410,7 @@ run_suite "tests/human-code-coverage" "bash tests/human-code-coverage.test.sh"
 run_suite "tests/human-docs-coverage" "bash tests/human-docs-coverage.test.sh"
 run_suite "tests/feature-read-coverage" "bash tests/feature-read-coverage.test.sh"
 run_suite "tests/plain-language-coverage" "bash tests/plain-language-coverage.test.sh"
-run_suite "tests/bmad-import-coverage" "bash tests/bmad-import-coverage.test.sh"
+run_suite "tests/review-extension-coverage" "bash tests/review-extension-coverage.test.sh"
 run_suite "tests/pr-feedback-coverage" "bash tests/pr-feedback-coverage.test.sh"
 run_suite "tests/revise-safety-coverage" "bash tests/revise-safety-coverage.test.sh"
 run_suite "tests/terminal-result-coverage" "bash tests/terminal-result-coverage.test.sh"
