@@ -15,7 +15,7 @@ Retain the approved shared stdlib inventory behind existing Bash entry points. `
 - Component structure: new `lib/requirements.py` and `lib/requirements.sh` expose the inventory; `lib/artifact_publication.py` and `lib/artifact-publication.sh` own capture/stage/commit; `lib/execution_inputs.py` owns declared input identities; `lib/execution_observation.py` owns bounded process capture; `lib/requirements_migrate.py` and `lib/requirements-migrate.sh` own legacy conversion and recovery. Each boundary receives paths/contracts, not hidden global collaborators.
 - Data flows: authored SPEC -> inventory -> ledger reconciliation -> PLAN task references -> derived tasks.json -> dispatch -> driver observation -> guarded VERIFICATION publication -> grounding/floor/phase exit -> exact-SHA delivery. Migration preview -> approved digest -> publication lock -> preserved generation -> durable marker -> replacements -> state and receipt -> fresh observations.
 - API design: Python `parse_spec(text, source, contract)` returns `{version, owner, requirements, obligations, locations}`; requirement objects contain `{id, revision, text, scenarios, location}` and scenarios contain `{id, text, examples, location}`. `load_inventory(spec_path, feature_state)` validates the persisted format boundary and ledger. Both are pure readers; `reconcile_inventory(previous_contract, inventory)` returns a candidate ledger and never writes. CLI `requirements.sh inventory --spec PATH --feature-dir DIR` prints JSON; validation failure exits 1 with file/line/ID; bad invocation exits 2. Legacy dispatch is explicit through the persisted contract, never guessed by a gate.
-- Database schema: no database. Keep feature schema 7 and add declared, nested-validated top-level `requirementsContract` and `artifactPublication` objects. `requirementsContract={version:1, format:"legacy"|"v1", owner:{repository,feature}, inventoryDigest:null|sha256, nextRequirementId:positive-int, issued:{GE-ID:{revision:sha256,nextScenarioId:positive-int,scenarios:[SC-ID]}}, retired:[GE-ID], retiredScenarios:{GE-ID:[SC-ID]}}`. `artifactPublication={version:1,generation:nonnegative-int,migration:null|{id,previewDigest,phase,originalGeneration,publishedHashes},participantsVersion:1}`. Ledger entries persist after retirement. All hashes are lowercase SHA-256; all IDs and nested keys are validated. Old schema-7 state without these fields is legacy only after the trusted existing-cycle bootstrap records that fact; new-cycle initialization always writes v1. Once recorded, format/version/owner cannot be removed or downgraded by ordinary writes, including whole-state replacement. Completed old cycles are read without bootstrap mutation.
+- Database schema: no database. Keep feature schema 7 and add declared, nested-validated top-level `requirementsContract` and `artifactPublication` objects. `requirementsContract={version:1, format:"legacy"|"v1", owner:{repository,feature}, inventoryDigest:null|sha256, nextRequirementId:positive-int, issued:{GE-ID:{revision:sha256,nextScenarioId:positive-int,scenarios:[SC-ID]}}, retired:[GE-ID], retiredScenarios:{GE-ID:[SC-ID]}}`. `artifactPublication={version:1,generation:nonnegative-int,evidenceEpoch:nonnegative-int,migration:null|{id,previewDigest,phase,originalGeneration,publishedHashes},participantsVersion:1}`. Ledger entries persist after retirement. All hashes are lowercase SHA-256; all IDs and nested keys are validated. Old schema-7 state without these fields is legacy only after the trusted existing-cycle bootstrap records that fact; new-cycle initialization writes v1 only after task-009 activates the complete integration. Tasks 001–008 expose fixture-only opt-in internals while ordinary new cycles retain the pre-release behavior; this transitional build condition is removed at activation and is not a shipped user downgrade switch. Once recorded, format/version/owner cannot be removed or downgraded by ordinary writes, including whole-state replacement. Completed old cycles are read without bootstrap mutation.
 - Interface architecture: humans edit staging SPEC/PLAN and review migration preview; driver publication validates and replaces authoritative paths. Command `artifact-publication.sh capture --feature-dir DIR` returns a token containing generation and authoritative input hashes; `publish --feature-dir DIR --token PATH --manifest PATH` commits staged paths and permitted state changes after revalidation. No caller supplies a PASS result. Migration CLI is `requirements-migrate.sh preview|apply|status|resume|rollback --feature-dir DIR`; apply additionally requires `--preview PATH --digest SHA256`, resume/rollback require `--transaction ID`. Preview stdout contains source digests, exact proposed replacements, unresolved file/line relationships, and preview digest; preview creates no repository files.
 - Caching strategy: no verification reuse or new cache. Inventories are derived on demand; immutable migration backups and observation output are provenance/recovery records, not editable requirements.
 - Scale bound: reject SPEC/PLAN inputs above a documented 16 MiB each; parse one artifact at a time. Stream all file hashes in 64 KiB chunks and deterministic relative-path order. Observations default to a 16 MiB output ceiling, 64 KiB display tail and existing finite phase timeout; positive bounded configuration is validated. Kill and reap the entire process group on timeout/overflow, label partial digests, and never emit PASS for either.
@@ -32,11 +32,17 @@ PLAN task blocks add `**Requirements:**` followed by single-line JSON bullets `-
 
 Toolchains are `{name,argv,expectedIdentity}` version probes run without shell expansion and with bounded output/time; store only reviewed non-secret version output. Local inputs are `{root,paths}` sets including installed trees, ignored generated executables and non-sensitive ignored config actually read by the check. Traverse paths deterministically, hash path/type/content, resolve symlinks within their declared root, and reject escapes/unreadable files or pre/post changes. External inputs use `{name,argv,expectedIdentity}` probes returning `{identity,immutable:true}`; empty, unavailable or mutable identity blocks current evidence. Sensitive inputs use the same trusted non-secret version probe, never contents or a content digest. A preparation receipt is optional context and never replaces installed-input validation. The reviewed input-set digest, actual environment digest and probe implementation identities are recorded; arbitrary dependency discovery is explicitly unsupported.
 
-Observation records live at exact driver-owned paths under feature state: `observations/<execution-id>.json` plus `observations/<execution-id>.output`. Record schema 1 includes execution ID, owner, requirement/scenario/revision bindings, command and command digest, exit status, failure reason, output path/digest/completeness, clean HEAD identity, authoritative SPEC/PLAN/command-input hashes, input-set digest, environment identity, generation and timestamps. VERIFICATION rows name owner/requirement/revision/scenario/execution ID/status; the gate loads the record and captured output and rechecks bindings. Before/after execution require identical HEAD and no tracked or non-ignored untracked input changes, excluding only individually enumerated driver output/state files and separately fingerprinted authoring artifacts. No directory-wide source exemption and no input/output path overlap. Multi-repository checks record each examined repository HEAD; an unknown input makes the record non-PASS.
+Observation records live at exact driver-owned paths under feature state: `observations/<execution-id>.json` plus `observations/<execution-id>.output`. Record schema 1 includes execution ID, owner, requirement/scenario/revision bindings, command and command digest, exit status, failure reason, output path/digest/completeness, clean HEAD identity, authoritative SPEC/PLAN/command-input hashes, input-set digest, environment identity, publicationGenerationAtCapture, evidenceEpoch and timestamps. VERIFICATION rows name owner/requirement/revision/scenario/execution ID/status; the gate loads the record and captured output and rechecks bindings. Before/after execution require identical HEAD and no tracked or non-ignored untracked input changes, excluding only individually enumerated driver output/state files and separately fingerprinted authoring artifacts. No directory-wide source exemption and no input/output path overlap. Multi-repository checks record each examined repository HEAD; an unknown input makes the record non-PASS.
 
 ### Publication and execution setup
 
-Capture generation plus SPEC/PLAN/tasks/command-input hashes on entry. Every producer stages outside authoritative paths; final publication and phase acknowledgement take publication lock first and state lock second, validate token/current hashes and migration status, then commit through one in-process locked primitive. A producer's own accepted changes return a refreshed token; unrelated changes invalidate the old token. Never refresh silently to accept stale output. Do not hold either lock across commands/model work. Register supported participants version 1; migration refuses a runtime/participant that lacks this path. Durable migration journal/backups stay under `migration-generations/<transaction-id>/` in feature state. Extend state-ref snapshot/restore as well as store-mirror coverage so recovery and observations survive a resumed checkout. Increment generation for every accepted publication and migration/rollback transition; never roll the generation counter backward.
+Capture generation plus SPEC/PLAN/tasks/command-input hashes on entry. Every producer stages outside authoritative paths; final publication and phase acknowledgement take publication lock first and state lock second, validate token/current hashes and migration status, then commit through one in-process locked primitive. A producer's own accepted changes return a refreshed token; unrelated changes invalidate the old token. Never refresh silently to accept stale output. Do not hold either lock across commands/model work. Register supported participants version 1; migration refuses a runtime/participant that lacks this path. Durable migration journal/backups stay under `migration-generations/<transaction-id>/` in feature state. Extend state-ref snapshot/restore as well as store-mirror coverage so recovery and observations survive a resumed checkout. Increment generation for every accepted publication and migration/rollback transition; never roll the generation counter backward. This counter is compare-and-swap protection for pending work, not an evidence freshness test. Evidence validity compares owner, requirement/scenario revision, command/input-set digests, examined HEADs, actual environment/local input identities, output integrity and evidenceEpoch. Increment evidenceEpoch only on migration/rollback or an explicit provenance-invalidating reset; ordinary output, VERIFICATION and unrelated state publication never advance it. A record may remain valid across later publication generations when all evidence inputs remain identical. A still-running producer must nevertheless hold its original ingress token and fail publication after an intervening generation change; it cannot recapture a token to legitimize old work.
+
+### Final candidate observations
+
+Task-008 integrates the real finalization sequence: `lib/deliver.sh:140-160` currently invokes `finalize-delivery-candidate.sh run --commit` and then selects HEAD, while `lib/finalize-delivery-candidate.sh:214-238` can commit docs, rules, ignore changes and optional telemetry after VERIFY. Therefore ordinary VERIFY observations on A never authorize a later candidate B, even when B changed only a report. First finalize all tracked artifacts using the existing finalizer (including artifact-sink mode), resolve the exact candidate SHA set, then run every required scenario and mandatory final command fresh against that clean final candidate. Add driver `verification run --final-candidate SHA` (single repo) or `--final-candidates PATH` (reviewed workspace name/SHA JSON) and write its final VERIFICATION projection only to `observations/final/<candidate-digest>/VERIFICATION.md` in durable runtime state. Final output records and this projection are driver-owned and never staged onto the feature branch. The tracked VERIFICATION is the preceding phase report and may link by stable runtime record location; do not rewrite it after the final candidate is formed. This breaks the commit-evidence-commit cycle without treating a changed HEAD as equivalent or exempting a source directory.
+
+For artifact-sink mode, resolve preserved SPEC/PLAN/command inputs from its manifest and bind their exact hashes in the final observations; validate that store before running. Workspace delivery uses the existing per-target branch validation and freshly observes each bound target; no workspace bypass through the single-repo finalizer's early return. `deliver.sh` must validate the final runtime report and observations against the selected target SHA before invoking `pr-delivery.sh final`; it also rechecks HEAD/input identity and ingress token before accepting delivery/result state. On a missing/stale final report it runs the supported final-candidate observer before invoking delivery, not a source-equality shortcut. `delivery-reconcile.sh` and terminal cycle-result consumers require the same checked target binding. Existing exact-SHA retries remain observation-only with respect to remote delivery; they cannot turn stale A evidence into B proof. A newly selected candidate requires fresh executions. Any source/authoritative-input change after final observations fails the delivery gate; do not generate another tracked report or silently rebind the candidate.
 
 Before EXECUTE edits this self-hosting repository, pin an immutable copy of the driver/plugin runtime and instructions from the approved starting revision and execute the cycle through that copy. `lib/phase_snapshot.py:20-26` snapshots every skills/agents source; modifying the runtime in place would invalidate that contract. Validate the copy and route the existing cycle through it before dispatch; do not weaken source-hash checks or add a new product-level runtime manager. The lead must add every planned path below to SPEC footprint before dispatch, because this planner writes PLAN only. PLAN authoring makes no commits. EXECUTE follows the cycle commit contract; it does not run live evals, merge, or publish a release.
 
@@ -65,7 +71,7 @@ Before EXECUTE edits this self-hosting repository, pin an immutable copy of the 
 
 Task Files lists below are the exact write ownership map; paths described as new are created by their first owner. No source file is deleted. New modules/commands: requirements (task-001), artifact publication (task-003), execution inputs (task-006), observation (task-007), and migration (task-010). New docs: `docs/loop-spec/requirements-format.md` (task-001) and `docs/loop-spec/requirements-migration.md` (task-010). Every new helper has a registered test in its creating task.
 
-Shared-file sequencing: tests/run-all.sh is updated by each creator after its predecessors; driver.py belongs successively to task-004, task-007 and task-008; artifact-lint.sh to task-001, task-005 and task-008; graph/cycle.graph.json to task-002, task-004 and task-008; feature_write.py to task-002 then task-003; requirements_migrate.py to task-010 then task-011. Logical dependencies below also make these successive integrations executable; EXECUTE may add file-overlap edges but must not remove these dependencies.
+Shared-file sequencing: tests/run-all.sh is updated by each creator after its predecessors; driver.py belongs successively to task-004, task-007, task-008 and task-009; artifact-lint.sh to task-001, task-005 and task-008; graph/cycle.graph.json to task-002, task-004 and task-008; feature_write.py to task-002, task-003 and activation task-009; requirements_migrate.py to task-010 then task-011. Logical dependencies below also make these successive integrations executable; EXECUTE may add file-overlap edges but must not remove these dependencies.
 
 ## Task DAG
 
@@ -135,7 +141,6 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - graph/cycle.graph.json
 - lib/feature_read.py
 - lib/feature_write.py
-- lib/feature-init.sh
 - lib/requirements.py
 - skills/shared/feature-state-schema.md
 - tests/lib/feature-read.test.sh
@@ -161,7 +166,7 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 
 **Acceptance criteria:**
 - [ ] feature-write.test.sh rejects malformed nested state, removal/downgrade of a recorded v1 contract, owner changes, retired requirement/scenario reuse and next-ID rollback, including whole-state replacement.
-- [ ] feature-init.test.sh proves new single/workspace cycles select v1 and stable owner; imported incomplete pre-7 cycles record legacy through explicit trusted bootstrap; completed legacy state remains byte-identical.
+- [ ] feature-init.test.sh proves fixture-only v1 contracts have stable owner while ordinary single/workspace initialization remains unchanged until task-009; imported incomplete pre-7 fixtures record legacy through explicit trusted bootstrap and completed legacy state remains byte-identical.
 - [ ] feature-read.test.sh validates the two declared fields and rejects unknown nested keys; graph-schema.test.sh validates every added read/write/egress declaration.
 
 **BlockedBy:** [task-001]
@@ -169,7 +174,7 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 **Steps (TDD where applicable):**
 - [ ] Step 1: TDD: write state lifecycle and legacy fixture tests and run red.
 - [ ] Step 2: Reuse PATTERNS lib/feature_read.py:189-193 and lib/feature_write.py:114-117; put nested requirements/publication field validation in requirements.py and call it at state load and before writer publication. Add graph stateKey entries and phase read/write declarations; do not claim the enum validates nested types.
-- [ ] Step 3: Reconcile accepted inventory under state lock; retain specApproval immutability and schemaVersion 7; run green.
+- [ ] Step 3: Reconcile accepted inventory under state lock for explicit test fixtures; retain specApproval immutability and schemaVersion 7. Do not enable default v1 or missing-token enforcement for ordinary cycles yet; run green and the existing legacy cycle fixture.
 
 ### task-003: Add generation-aware publication transactions
 
@@ -211,7 +216,7 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 **Steps (TDD where applicable):**
 - [ ] Step 1: TDD: use subprocess barriers/failure injection and run concurrency tests red.
 - [ ] Step 2: Apply PATTERNS lib/feature_write.py:24-43 for atomic replacement; factor an in-process state update primitive that accepts already-held locks. Implement capture and manifest publication, validated exact paths, fsync journals and monotonically advancing generations.
-- [ ] Step 3: Extend lib/state-ref.sh snapshot/restore allow-list to observations and migration-generations (journal and immutable originals), excluding transient staging/locks; state-ref.test.sh must restore identical hashes, permissions and recovery state into a fresh checkout, and supervisor-store.test.sh proves parity for mirror/local persistence. Register the new suite. Ordinary state writes capture/recheck a token; prohibit writer bypass and reject missing-token writes once a participant is active. Run green.
+- [ ] Step 3: Extend lib/state-ref.sh snapshot/restore allow-list to observations and migration-generations (journal and immutable originals), excluding transient staging/locks; state-ref.test.sh must restore identical hashes, permissions and recovery state into a fresh checkout, and supervisor-store.test.sh proves parity for mirror/local persistence. Register the new suite. Fixture participants use their original ingress token and refresh it only from their own successful publication. Do not recapture inside feature-write or at egress. Keep ordinary-cycle behavior runnable until the caller sweep and guards land in tasks 004–009; strict missing-token enforcement activates with task-009. Run green.
 
 ### task-004: Integrate staging and stable identities into every producer route
 
@@ -240,6 +245,34 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - tests/lib/cycle-result.test.sh
 - tests/lib/spec-intent.test.sh
 
+- lib/graph/state.sh
+- lib/graph/engine.py
+- lib/graph/gate.sh
+- lib/artifact-sink.sh
+- lib/quality-loop-state.sh
+- lib/iterate-judged.sh
+- lib/execute_remediation.py
+- lib/execute-step.sh
+- lib/verify-gate.sh
+- lib/verify-prepare.sh
+- lib/checkpoint-pr.sh
+- lib/revise-state.sh
+- lib/feature-bootstrap.sh
+- lib/feature-init.sh
+- tests/lib/graph-state.test.sh
+- tests/lib/graph-run.test.sh
+- tests/lib/graph-gate.test.sh
+- tests/lib/artifact-sink.test.sh
+- tests/lib/quality-loop-state.test.sh
+- tests/lib/execute-prepare.test.sh
+- tests/lib/execute-step.test.sh
+- tests/lib/verify-prepare.test.sh
+- tests/lib/checkpoint-pr.test.sh
+- tests/lib/revise-state.test.sh
+- tests/lib/feature-init.test.sh
+- tests/lib/publication-callers.test.sh
+- tests/run-all.sh
+
 **read_first:**
 - lib/graph/driver.py
 - lib/phase-entry.sh
@@ -257,16 +290,26 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)
 - docs/loop-spec/features/release-7-0/PLAN.md (System design)
 
+- lib/graph/state.sh:118
+- lib/graph/engine.py:610-620
+- lib/artifact-sink.sh:91-112
+- lib/quality-loop-state.sh:42-73
+- lib/execute_remediation.py:16-36
+
 **Interfaces:**
 - consumes: task-003
 - produces: All-route staging producers and generation-aware lifecycle consumers.
 
-**Verify:** `rtk bash tests/lib/cycle-driver.test.sh && rtk bash tests/lib/phase-entry.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/lib/deliver.test.sh && rtk bash tests/lib/cycle-result.test.sh && rtk bash tests/lib/spec-intent.test.sh` -> exit 0; named offline suites pass.
+**Verify:** `rtk bash tests/lib/cycle-driver.test.sh && rtk bash tests/lib/phase-entry.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/lib/deliver.test.sh && rtk bash tests/lib/cycle-result.test.sh && rtk bash tests/lib/spec-intent.test.sh && rtk bash tests/lib/publication-callers.test.sh && rtk bash tests/lib/graph-state.test.sh && rtk bash tests/lib/graph-run.test.sh && rtk bash tests/lib/graph-gate.test.sh && rtk bash tests/lib/artifact-sink.test.sh && rtk bash tests/lib/quality-loop-state.test.sh && rtk bash tests/lib/execute-prepare.test.sh && rtk bash tests/lib/execute-step.test.sh && rtk bash tests/lib/verify-prepare.test.sh && rtk bash tests/lib/checkpoint-pr.test.sh && rtk bash tests/lib/revise-state.test.sh && rtk bash tests/lib/feature-init.test.sh` -> exit 0; named offline suites pass.
 
 **Acceptance criteria:**
 - [ ] cycle-driver.test.sh exercises new full/spec-lite/oneshot creation, spec ingest/write/fill, replacement by stable ID, route escalation and reordered criteria; all preserve owner/IDs and reject numeric positional aliases for v1.
 - [ ] phase-exit.test.sh starts before a generation change and proves subsequent exit cannot acknowledge work; cycle-driver/deliver/cycle-result fixtures reject migration-in-progress before any side effect and again before accepted state/result publication.
 - [ ] spec-intent.test.sh verifies byte-preserved Goals/Boundaries and unchanged specApproval through implementation-only writes; legacy completion remains supported with no new legacy writer selected at creation.
+
+- [ ] publication-callers.test.sh executes each enumerated state writer with a valid original ingress token and then with a stale token; valid writes succeed and stale writes leave state/artifact hashes and acknowledgements unchanged. It registers a source-callsite completeness check for feature-write shell calls, feature_write Python imports and direct phase-state publishers, so newly discovered callers fail the test until explicitly handled.
+- [ ] graph-state/graph-run/graph-gate tests prove graph transitions preserve the original node ingress token across subprocesses. Artifact-sink and quality-loop-state tests hold old read results across a migration and prove stale publication cannot overwrite current artifacts or mark findings clean.
+- [ ] cycle-driver.test.sh resumes an incomplete legacy fixture through SPEC/PLAN/EXECUTE/VERIFY/ITERATE and ordinary new-cycle fixtures remain runnable at this intermediate revision; no default v1 activation occurs.
 
 **BlockedBy:** [task-003]
 
@@ -275,6 +318,9 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - [ ] Step 2: Use PATTERNS lib/graph/driver.py:2180-2198 as the positional sibling sweep target and lib/spec_intent.py:12-42 for intent separation. Replace all current-criterion enumerations and criteria command writers with inventory IDs, exact scenario_checks metadata and ledger allocation.
 - [ ] Step 3: Make skill/agent dispatch target staging paths; use capture at ingress and shared publication for spec/plan/verification skeletons, state changes, phase acknowledgement and terminal/delivery records. Thread refreshed tokens only after this producer succeeds; preflight/entry checks alone are insufficient. Preserve legacy participants through the same publication boundary.
 - [ ] Step 4: Update templates and producer instructions in the same diff; test from the pinned runtime copy and run green.
+
+- [ ] Step 10: Sweep all actual writer callsites with rg before editing. Thread the original operation/phase ingress token through graph/state.sh, engine.py and gate.sh; driver fset/fappend/whole replacements; feature-init activation; feature-bootstrap/revise initialization; execute-step/remediation; verify-prepare/gate; iterate-judged; checkpoint-pr; deliver and cycle-result. Initial creation is a narrow atomic create-if-absent operation, never a missing-token bypass for existing state. Group a caller's consecutive writes or return a refreshed token from its own accepted transaction; never capture again to make stale computation pass.
+- [ ] Step 11: quality-loop-state.sh writes a separate quality-loop JSON, not feature.json: preserve standalone non-cycle use, but require the owning feature ingress token when its findings/clean state participate in a cycle. Stage artifact-sink copies/restoration and quality-loop state then commit under the same publication protocol; do not delete authoritative docs before checking the token. Register publication-callers.test.sh and retain original token in supported legacy participants.
 
 ### task-005: Validate coverage against the complete dispatch representation
 
@@ -368,6 +414,7 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - tests/lib/cycle-driver.test.sh
 - tests/run-all.sh
 
+
 **read_first:**
 - lib/graph/driver.py
 - lib/execution_inputs.py
@@ -375,6 +422,7 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - tests/lib/cycle-driver.test.sh
 - docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)
 - docs/loop-spec/features/release-7-0/PLAN.md (System design)
+
 
 **Interfaces:**
 - consumes: task-006
@@ -387,12 +435,16 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - [ ] execution-observation.test.sh runs a verbose child and a timed-out child with grandchildren; output spool stays within byte ceiling, retained tail stays within 64 KiB, partial digest is marked and no child survives reaping.
 - [ ] cycle-driver.test.sh rejects caller PASS/evidence injection and altered output bytes; full/short checks record execution ID, owner/revision/scenario, command, actual exit, code/environment identities and captured output digest.
 
+- [ ] execution-observation.test.sh executes two distinct required commands in sequence, then publishes VERIFICATION and ordinary state updates: both records remain eligible when semantic inputs/evidenceEpoch are unchanged despite increasing publication generations. A concurrent old-token producer still fails publication; migration/rollback evidenceEpoch changes invalidate both records.
+
 **BlockedBy:** [task-006]
 
 **Steps (TDD where applicable):**
 - [ ] Step 1: TDD: extend PATTERNS observed PASS/FAIL test at tests/lib/cycle-driver.test.sh:458-469; add process-group and filesystem mutation regressions and run red.
 - [ ] Step 2: Extract observation concern from PATTERNS lib/graph/driver.py:2407-2497 into execution_observation.py; stream/hash/spool binary output with bounded tail and finite timeout, then use shared publication to publish record/output and refreshed token.
 - [ ] Step 3: Run each integrated revision check fresh; represent failed clean/input checks as failed observations and actionable commit/restore/rerun diagnostics. Register suite and run green.
+
+- [ ] Step 10: Keep publicationGenerationAtCapture diagnostic and CAS-only. Evidence validation uses the explicit freshness tuple and evidenceEpoch above, never equality with the latest artifactPublication.generation. Add multi-command integration regression before implementation.
 
 ### task-008: Enforce observed scenario evidence in VERIFY and ITERATE
 
@@ -416,6 +468,18 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - tests/lib/phase-exit.test.sh
 - tests/verification-grounding-coverage.test.sh
 
+- lib/deliver.sh
+- lib/finalize-delivery-candidate.sh
+- lib/delivery-reconcile.sh
+- lib/cycle-result.sh
+- lib/artifact-sink.sh
+- tests/lib/deliver.test.sh
+- tests/lib/delivery-reconcile.test.sh
+- tests/lib/cycle-result.test.sh
+- tests/lib/artifact-sink.test.sh
+- tests/lib/final-candidate-observations.test.sh
+- tests/run-all.sh
+
 **read_first:**
 - lib/verification-grounding-lint.sh
 - lib/converged-floor.sh
@@ -425,16 +489,26 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)
 - docs/loop-spec/features/release-7-0/PLAN.md (System design)
 
+- lib/deliver.sh:140-160
+- lib/finalize-delivery-candidate.sh:214-238
+- lib/delivery-reconcile.sh:100-118
+- lib/pr-delivery.sh:223-240
+- lib/artifact-sink.sh:91-112
+
 **Interfaces:**
 - consumes: task-007
 - produces: Current-evidence requirement at shape, grounding, convergence and real phase exit.
 
-**Verify:** `rtk bash tests/lib/verification-grounding-lint.test.sh && rtk bash tests/lib/converged-floor.test.sh && rtk bash tests/lib/artifact-lint.test.sh && rtk bash tests/lib/oneshot-exit-gate.test.sh && rtk bash tests/lib/cycle-driver.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/verification-grounding-coverage.test.sh` -> exit 0; named offline suites pass.
+**Verify:** `rtk bash tests/lib/verification-grounding-lint.test.sh && rtk bash tests/lib/converged-floor.test.sh && rtk bash tests/lib/artifact-lint.test.sh && rtk bash tests/lib/oneshot-exit-gate.test.sh && rtk bash tests/lib/cycle-driver.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/verification-grounding-coverage.test.sh && rtk bash tests/lib/final-candidate-observations.test.sh && rtk bash tests/lib/deliver.test.sh && rtk bash tests/lib/delivery-reconcile.test.sh && rtk bash tests/lib/cycle-result.test.sh && rtk bash tests/lib/artifact-sink.test.sh` -> exit 0; named offline suites pass.
 
 **Acceptance criteria:**
 - [ ] verification-grounding-lint.test.sh rejects fabricated PASS text, missing/unknown/extra scenario references, missing output, altered output digest, stale revision/command/HEAD/environment/input contract and numeric aliases; valid fresh observed rows pass.
 - [ ] phase-exit.test.sh and oneshot-exit-gate.test.sh exercise v1 VERIFY shape and actual egress; converged-floor.test.sh refuses convergence for any uncovered or stale required scenario on both routes.
 - [ ] cycle-driver.test.sh proves reordered required items keep verification association, changed scenario behavior needs a fresh run, and legacy incomplete fixtures finish unchanged under legacy validation through the 7.x window.
+
+- [ ] final-candidate-observations.test.sh drives the real finalizer plus offline delivery adapter: successful observations on A, followed by a source commit B or a post-VERIFY artifact-only finalizer commit B, cannot authorize B; no push/final adapter call occurs before fresh final-candidate checks on B pass.
+- [ ] deliver/delivery-reconcile/cycle-result tests prove all terminal paths require final observations for the exact target SHA, including workspace targets and artifact-sink mode; unchanged final B observations pass without creating another tracked commit.
+- [ ] final-candidate-observations.test.sh changes HEAD or declared inputs after final observation and before delivery acknowledgement and asserts failure with no success result; two passing commands plus final runtime report publication retain valid evidence.
 
 **BlockedBy:** [task-007]
 
@@ -442,6 +516,9 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - [ ] Step 1: TDD: add gate-level failure fixtures before replacing positional readers.
 - [ ] Step 2: Use PATTERNS lib/graph/driver.py:2434-2435 as the sibling sweep; grounding, floor and verification writers consume requirements.py and the same observation validator instead of indexing checkbox rows.
 - [ ] Step 3: Update verifier/templates and graph gate arguments to provide feature contract context; retain maker/checker judgment and mandatory final suite/review gates; run green.
+
+- [ ] Step 10: TDD: register final-candidate-observations.test.sh with temporary repositories and injected existing PR delivery binaries. Preserve the pr-delivery --sha API; the feature adapter supplies a target only after the common observation validator accepts it.
+- [ ] Step 11: Implement the finalization sequence specified above: finish tracked output/optional telemetry/artifact-sink first, select candidate SHA(s), execute checks fresh, and write the final projection only under durable observations/final. Bind stored authoritative inputs when artifact-sink removes the working docs. Reconcile and terminal-result paths validate the same candidate record; never authorize a later commit by tree similarity or by the phase having previously passed.
 
 ### task-009: Protect authoritative publication on all four harnesses
 
@@ -466,6 +543,13 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - hooks/team/result-forgery-guard.test.sh
 - hooks/restrict-agent-paths.test.sh
 
+- lib/feature-init.sh
+- lib/feature_write.py
+- lib/graph/driver.py
+- tests/lib/feature-init.test.sh
+- tests/lib/feature-write.test.sh
+- tests/lib/cycle-driver.test.sh
+
 **read_first:**
 - lib/harness.sh
 - hooks/pre-tool-guard.py
@@ -477,16 +561,20 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)
 - docs/loop-spec/features/release-7-0/PLAN.md (System design)
 
+
 **Interfaces:**
 - consumes: task-008
 - produces: Guarded publication participant coverage required before migration can be enabled.
 
-**Verify:** `rtk bash hooks/team/result-forgery-guard.test.sh && rtk bash hooks/restrict-agent-paths.test.sh && rtk bash tests/opencode-plugin.test.sh && rtk bash tests/adk-extension.test.sh && rtk bash tests/codex-harness-coverage.test.sh && rtk bash tests/opencode-harness-coverage.test.sh && rtk bash tests/adk-harness-coverage.test.sh` -> exit 0; named offline suites pass.
+**Verify:** `rtk bash hooks/team/result-forgery-guard.test.sh && rtk bash hooks/restrict-agent-paths.test.sh && rtk bash tests/opencode-plugin.test.sh && rtk bash tests/adk-extension.test.sh && rtk bash tests/codex-harness-coverage.test.sh && rtk bash tests/opencode-harness-coverage.test.sh && rtk bash tests/adk-harness-coverage.test.sh && rtk bash tests/lib/feature-init.test.sh && rtk bash tests/lib/feature-write.test.sh && rtk bash tests/lib/cycle-driver.test.sh` -> exit 0; named offline suites pass.
 
 **Acceptance criteria:**
 - [ ] Guard tests execute Write/Edit/patch/move and shell-redirection attempts against SPEC/PLAN/VERIFICATION, feature contract, observations and migration journal; each authoritative bypass exits 2 while permitted staging edits and validated driver publication succeed.
 - [ ] Adapter tests inject native tool payloads for Claude, opencode, ADK and Codex and prove denial reaches the caller; unknown harness/probe failure fails safe rather than reporting protected evidence.
 - [ ] Harness coverage suites exercise short and full route records with identical owner/revision/scenario format and describe only the supported guarded path, without an unrestricted-host adversary guarantee.
+
+- [ ] Only after tasks 004–008 and this task's guard tests pass, ordinary new single/workspace/full/short cycles initialize v1 automatically; a registered cycle-driver fixture proves authoring, PLAN, execution observations and actual egress complete. Existing legacy cycles still resume, and removing v1 metadata cannot select legacy.
+- [ ] feature-write.test.sh now rejects missing original-token mutations for every enrolled participant, including resumed legacy cycles; test fixture setup uses explicit create-if-absent/bootstrap APIs, not an operator downgrade switch.
 
 **BlockedBy:** [task-008]
 
@@ -494,6 +582,8 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - [ ] Step 1: TDD: extend actual adapter/guard invocation fixtures before guard changes.
 - [ ] Step 2: Apply the shared-boundary pattern from PATTERNS lib/feature_read.py:60-93 to harness capability dispatch; route any harness-specific capability through lib/harness.sh with deterministic answer/reason for all four peers.
 - [ ] Step 3: Extend existing guards instead of relying on regex presence; protect exact driver-owned paths for v1/full as well as oneshot, retain legitimate staged maker writes, and document operational guard prerequisites; run green.
+
+- [ ] Step 10: Activate default v1 and strict enrolled-participant token enforcement as the last change in this task, after all producer/consumer/adapter integration fixtures pass. Remove temporary fixture opt-in activation plumbing from normal initialization and test that no shipped new-cycle legacy selector exists.
 
 ### task-010: Provide deterministic read-only migration previews
 
@@ -657,7 +747,7 @@ Each Good Enough statement below is copied verbatim from SPEC; these mappings ex
 
 ## Test strategy
 
-Each code task writes behavioral regressions before implementation and runs its exact Verify command red then green. Tests use temporary repositories, injected commands and local offline fixtures; migration concurrency uses barriers, not timing guesses. Newly created helpers are registered in tests/run-all.sh in the same task. Existing consumer tests stay registered and retain legacy fixtures. The final task runs the complete offline suite before and after readiness/version changes; no evals/run.sh or model/provider call is authorized.
+Through task-008, existing ordinary full/short cycle fixtures must still run using the pre-release format; v1 integration fixtures opt into internal contracts only. Task-009 activates v1 by default after all consumers and guards are present. Each code task writes behavioral regressions before implementation and runs its exact Verify command red then green. Tests use temporary repositories, injected commands and local offline fixtures; migration concurrency uses barriers, not timing guesses. Newly created helpers are registered in tests/run-all.sh in the same task. Existing consumer tests stay registered and retain legacy fixtures. The final task runs the complete offline suite before and after readiness/version changes; no evals/run.sh or model/provider call is authorized.
 
 For each task's touched lib/hooks/skills/extensions/tests files, run `rtk bash lib/indirection-scan.sh scan` and `rtk bash lib/duplication-scan.sh scan` with that task's concrete Files paths as arguments; likewise `rtk bash lib/house-style.sh compare`, `rtk bash lib/comment-tells.sh scan`, and `rtk bash lib/failure-tells.sh scan`. For each touched shipped Markdown file run `rtk bash lib/doc-tells.sh scan` with those paths. These command prefixes are followed by the task's actual paths, not literal placeholders. Findings must be fixed or explicitly adjudicated as non-blocking with evidence before task completion. Final release coverage tests register all new helpers and verify wiring; they do not stand in for behavioral suites.
 
