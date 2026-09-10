@@ -198,7 +198,7 @@ check "failed acknowledgment: recovered work is dispatched" "1" "$(jq '[.tasks[]
 
 
 # A real marker scan reuses its fallback ID on every VERIFY visit.
-printf 'def unfinished():\n    raise NotImplementedError\n' > "$REPO/stub.py"
+cp "$REPO_ROOT/tests/fixtures/remediation-marker.py.txt" "$REPO/stub.py"
 git -C "$REPO" add stub.py; git -C "$REPO" commit -q -m "test: marker fixture"
 for attempt in 1 2; do
   ec=0; scanned="$(bash "$REPO_ROOT/lib/verify-prepare.sh" run --feature-dir "$FD" 2>/dev/null)" || ec=$?

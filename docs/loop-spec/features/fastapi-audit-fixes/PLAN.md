@@ -46,6 +46,7 @@ These decisions are copied from SPEC's recorded autonomous decisions. They remai
 - Modify: `graph/cycle.graph.json`, `lib/graph/probes/review-route.sh` - queued-remediation recovery before ordinary VERIFY successors.
 - Modify: `lib/execute-prepare.sh`, `lib/execute-exit-gate.sh` - fail-closed intake and exit.
 - Modify: `lib/feature_write.py`, `lib/feature-write.sh` - minimal locked snapshot acknowledgment through the existing writer, if required to preserve concurrent appends.
+- Create: `tests/fixtures/remediation-marker.py.txt` - negative-test input copied into a temporary repository.
 - Modify: `tests/lib/execute-prepare.test.sh`, `tests/lib/graph-run.test.sh`, `tests/lib/phase-exit.test.sh`, `tests/lib/feature-write.test.sh`, `tests/graph-conformance.test.sh` - routing, bounded recovery, publication failure, replay, and acknowledgment evidence.
 - Modify: `skills/verify/SKILL.md` - operator guidance for remediation recovery.
 - Modify: `lib/cycle-result.sh`, `tests/lib/cycle-result.test.sh` - early terminal mode preservation.
@@ -75,6 +76,7 @@ These decisions are copied from SPEC's recorded autonomous decisions. They remai
 - lib/feature_write.py
 - lib/feature-write.sh
 - tests/lib/execute-prepare.test.sh
+- tests/fixtures/remediation-marker.py.txt
 - tests/lib/graph-run.test.sh
 - tests/graph-conformance.test.sh
 - tests/lib/phase-exit.test.sh
