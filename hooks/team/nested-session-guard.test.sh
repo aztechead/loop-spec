@@ -12,7 +12,7 @@ check() {
   local actual=0
   # The hook also reads $PWD/.loop-spec, and this repository has one: every case runs
   # from the fixture root so the repository never stands in for the project.
-  env --chdir="${CASE_CWD:-$ROOT}" "$@" bash "$HOOK" >/dev/null 2>&1 <<<"$payload" || actual=$?
+  (cd "${CASE_CWD:-$ROOT}" && env "$@" bash "$HOOK") >/dev/null 2>&1 <<<"$payload" || actual=$?
   if [[ "$actual" -eq "$expected" ]]; then
     echo "PASS: $name"
     ((PASS++)) || true
@@ -57,7 +57,7 @@ check "kill switch stands down" 0 "$(bash_cmd 'claude -p hi')" CLAUDE_PROJECT_DI
 check "a non-Bash tool is allowed" 0 '{"tool_name":"Write","tool_input":{"file_path":"x","content":"claude -p hi"}}' CLAUDE_PROJECT_DIR="$ROOT"
 check "malformed payload fails open" 0 "not json" CLAUDE_PROJECT_DIR="$ROOT"
 
-msg="$(env --chdir="$ROOT" CLAUDE_PROJECT_DIR="$ROOT" bash "$HOOK" 2>&1 >/dev/null <<<"$(bash_cmd 'claude -p x')" || true)"
+msg="$((cd "$ROOT" && env CLAUDE_PROJECT_DIR="$ROOT" bash "$HOOK") 2>&1 >/dev/null <<<"$(bash_cmd 'claude -p x')" || true)"
 if grep -q 'claude -p in the command' <<<"$msg" && grep -q 'session_run.py' <<<"$msg"; then
   echo "PASS: the denial names the launch and the sanctioned launcher"; ((PASS++)) || true
 else

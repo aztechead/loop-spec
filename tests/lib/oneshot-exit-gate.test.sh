@@ -19,6 +19,8 @@ check() {
 }
 
 WORK="${TMPDIR:-/tmp}"; WORK="${WORK%/}/oneshot-exit-test.$$"
+mkdir -p "$WORK"
+WORK="$(cd "$WORK" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
 REPO="$WORK/repo"; mkdir -p "$REPO"
 git -C "$REPO" init -q -b main
@@ -110,7 +112,7 @@ bash "$REPO_ROOT/lib/footprint.sh" cite "$FD" src/slugify.py:2 "the lower() pass
 bash "$REPO_ROOT/lib/footprint.sh" cite "$FD" tests/test_slugify.py:3 "the existing case"
 skel="$(bash "$REPO_ROOT/lib/cycle-driver.sh" spec skeleton --feature-dir "$FD" 2>/dev/null | jq -r '.spec')"
 check "spec skeleton lands where the gate reads" "$DOCS/SPEC.md" "$skel"
-sed -i 's/{what changes here[^}]*}/strip dots/; s/{One paragraph:[^}]*}/Dots survive slugify./; s/{check command}/true/g; s/{what that proves}/it runs/g; s/{expected}/ok/' "$DOCS/SPEC.md"
+sed -i.bak 's/{what changes here[^}]*}/strip dots/; s/{One paragraph:[^}]*}/Dots survive slugify./; s/{check command}/true/g; s/{what that proves}/it runs/g; s/{expected}/ok/' "$DOCS/SPEC.md"
 check "the filled skeleton passes artifact-lint spec" "0" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" spec "$DOCS/SPEC.md" >/dev/null 2>&1; echo $?)"
 check "the filled skeleton passes the oneshot spec lint" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$DOCS/SPEC.md" >/dev/null 2>&1; echo $?)"
 check "the fixture is the filled skeleton's shape (both lints)" "0" "$(bash "$REPO_ROOT/lib/artifact-lint.sh" spec "$REPO_ROOT/tests/fixtures/oneshot-SPEC.md" >/dev/null 2>&1 && bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$REPO_ROOT/tests/fixtures/oneshot-SPEC.md" >/dev/null 2>&1; echo $?)"
@@ -198,7 +200,7 @@ check "a finished oneshot passes the gate" "0" "$ec"
 check "a clean gate prints nothing" "" "$out"
 # The Intent block is frozen: the escalated SPEC.md is committed above, so a rewrite
 # of the ask after that commit is a flag, and a change outside the block is not.
-sed -i 's/^Dots survive slugify\.$/Dots and dashes survive slugify./' "$DOCS/SPEC.md"
+sed -i.bak 's/^Dots survive slugify\.$/Dots and dashes survive slugify./' "$DOCS/SPEC.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "an Intent block edited after its commit flags" "1" "$(grep -c '^FLAG \[intent\] the frozen Intent block of docs/loop-spec/features/fix-slug/SPEC.md changed since its commit' <<<"$out")"
 spec
@@ -207,17 +209,18 @@ ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a change outside the Intent block passes" "0" "$ec"
 spec
 # A review finding without its verdict is the triage lint's flag.
-sed -i 's/^none$/- src\/slugify.py:2 — the replace runs before lower()/' "$DOCS/VERIFICATION.md"
+sed -i.bak 's/^none$/- src\/slugify.py:2 — the replace runs before lower()/' "$DOCS/VERIFICATION.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a finding without a verdict flags under the review-triage label" "1" "$(grep -c '^FLAG \[review-triage\] .*finding has no verdict' <<<"$out")"
-sed -i 's/^- src\/slugify.py:2 — the replace runs before lower()$/- src\/slugify.py:2 — the replace runs before lower() | verdict: false — lower() never adds a dot, so the order cannot change the result/' "$DOCS/VERIFICATION.md"
+sed -i.bak 's/^- src\/slugify.py:2 — the replace runs before lower()$/- src\/slugify.py:2 — the replace runs before lower() | verdict: false — lower() never adds a dot, so the order cannot change the result/' "$DOCS/VERIFICATION.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a rejected finding with its disproof passes" "0" "$ec"
 # The footprint is a promise with no prose exit: an untouched file it names is a flag
 # whatever Implementation notes say, and the one way out is the driver's recorded drop,
 # which refuses a test module of a file that stays (port audit 3, N2).
 DRV="$REPO_ROOT/lib/cycle-driver.sh"
-sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|' "$DOCS/SPEC.md"
+sed -i.bak 's|^  - src/slugify.py$|  - src/slugify.py\
+  - tests/test_slugify.py|' "$DOCS/SPEC.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "an untouched test module flags even with an unchanged bullet in the notes" "1" "$(grep -c '^FLAG \[footprint\] tests/test_slugify.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
 check "the flag names the drop command and its limit" "1" "$(grep -c 'spec footprint drop --feature-dir .* --file tests/test_slugify.py --reason .*; a test module of a footprint file cannot be dropped' <<<"$out")"
@@ -226,7 +229,8 @@ check "dropping the test module of a footprint file is refused" "1" "$ec"
 check "the refusal names the file it tests" "1" "$(grep -c 'tests/test_slugify.py is the test module of src/slugify.py, which \(stays in the footprint\|changed in the diff\)' <<<"$out")"
 check "a refused drop changes nothing" "1" "$(grep -c '^  - tests/test_slugify.py$' "$DOCS/SPEC.md")"
 spec
-sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - README.md|' "$DOCS/SPEC.md"
+sed -i.bak 's|^  - src/slugify.py$|  - src/slugify.py\
+  - README.md|' "$DOCS/SPEC.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "an untouched non-test file is a flag too" "1" "$(grep -c '^FLAG \[footprint\] README.md is in SPEC.md.s footprint but not in the diff' <<<"$out")"
 ec=0; out="$(bash "$DRV" spec footprint drop --feature-dir "$FD" --file docs/none.md --reason "x" 2>&1)" || ec=$?
@@ -241,13 +245,14 @@ ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "after the recorded drop the gate passes" "0" "$ec"
 # The order hole (port audit 4, N2): dropping the changed source first does not free its
 # test module; a test module of a file in the diff cannot be dropped.
-spec; sed -i 's|^  - src/slugify.py$|  - src/slugify.py\n  - tests/test_slugify.py|' "$DOCS/SPEC.md"
+spec; sed -i.bak 's|^  - src/slugify.py$|  - src/slugify.py\
+  - tests/test_slugify.py|' "$DOCS/SPEC.md"
 bash "$DRV" spec footprint drop --feature-dir "$FD" --file src/slugify.py --reason "try to free the test" >/dev/null 2>&1
 ec=0; out="$(bash "$DRV" spec footprint drop --feature-dir "$FD" --file tests/test_slugify.py --reason "now it tests nothing" 2>&1)" || ec=$?
 check "dropping the test module after its changed source is still refused" "1" "$ec"
 check "the refusal says the source changed in the diff" "1" "$(grep -c 'test module of src/slugify.py, which changed in the diff' <<<"$out")"
 # The flow form of the list is handled the same way.
-spec; sed -i 's|^footprint:$|footprint: [src/slugify.py, README.md]|; /^  - src\/slugify.py$/d' "$DOCS/SPEC.md"
+spec; sed -i.bak 's|^footprint:$|footprint: [src/slugify.py, README.md]|; /^  - src\/slugify.py$/d' "$DOCS/SPEC.md"
 bash "$DRV" spec footprint drop --feature-dir "$FD" --file README.md --reason "flow form" >/dev/null 2>&1
 check "a flow-form footprint loses the file too" "1" "$(grep -c '^footprint: \[src/slugify.py\]$' "$DOCS/SPEC.md")"
 spec
@@ -263,10 +268,10 @@ check "the --after probe now routes to the full path" "route=full" "$(bash "$REP
 git -C "$REPO" reset -q --hard HEAD~1
 spec
 # The converged floor is the full one: a FAIL row is a finding, not a shape.
-sed -i 's/| PASS |/| FAIL |/' "$DOCS/VERIFICATION.md"
+sed -i.bak 's/| PASS |/| FAIL |/' "$DOCS/VERIFICATION.md"
 ec=0; out="$(bash "$GATE" "$FD" 2>&1)" || ec=$?
 check "a FAIL row flags under the converged-floor label" "1" "$(grep -c '^FLAG \[converged-floor\] ' <<<"$out" | awk '{print ($1 > 0)}')"
-sed -i 's/| FAIL |/| PASS |/' "$DOCS/VERIFICATION.md"
+sed -i.bak 's/| FAIL |/| PASS |/' "$DOCS/VERIFICATION.md"
 # A weakened test is caught by the same tamper scan VERIFY runs.
 printf 'import pytest\nfrom src.slugify import slugify\n\n@pytest.mark.skip\ndef test_lower():\n    assert slugify("A") == "a"\n' > "$REPO/tests/test_slugify.py"
 git -C "$REPO" add tests/test_slugify.py && git -C "$REPO" commit -q -m "test: weaken"
@@ -297,7 +302,7 @@ check "workspace mode: the footprint check runs per repo (the untouched test mod
 check "workspace mode: an untouched non-test file in repo b flags too" "1" "$(grep -c '^FLAG \[footprint\] b/y.py is in SPEC.md.s footprint but not in the diff' <<<"$out")"
 check "workspace mode: the changed file in repo a satisfies the footprint" "0" "$(grep -c 'a/x.py' <<<"$out")"
 printf 'z = 1\n' > "$WS/b/z.py"; git -C "$WS/b" add -A && git -C "$WS/b" commit -q -m "feat: z"
-sed -i 's|^  - a/tests/test_x.py$||' "$WDOCS/SPEC.md"; sed -i '/^- b\/y.py: unchanged; dropped/d; /^route: full$/d; /^- escalated by/d' "$WDOCS/SPEC.md"
+sed -i.bak 's|^  - a/tests/test_x.py$||' "$WDOCS/SPEC.md"; sed -i.bak '/^- b\/y.py: unchanged; dropped/d; /^route: full$/d; /^- escalated by/d' "$WDOCS/SPEC.md"
 ec=0; out="$(cd "$WS" && bash "$GATE" "$WFD" 2>&1)" || ec=$?
 check "workspace mode: a changed file outside the footprint in repo b escalates" "1" "$(grep -c '^NOTE \[footprint\] the diff touches b/z.py outside' <<<"$out")"
 

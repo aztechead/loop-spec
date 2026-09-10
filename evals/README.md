@@ -101,7 +101,7 @@ criterion. Keep fixtures small: cost scales with the tree the cycle reads.
 
 `cycle-driver.sh next` emits a `redo` event into the feature's `events.jsonl` for every
 REDO answer, with the bracketed class of each FLAG line. The record sums them as `redo`
-(`rounds`, `by_class`) and `format_redo`, the rounds spent on the classes a
+(`rounds`, `by_class`, and `events` with phase, attempt, classes, and full FLAG messages) and `format_redo`, the rounds spent on the classes a
 driver-written shape makes impossible (`artifact-lint`, `verification-grounding`,
 `misplaced`, `oneshot-shape`, `review-triage`, `converged-floor`); the summary prints
 the same per task. A live bug-fix run on the short route is at its done condition for

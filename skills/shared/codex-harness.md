@@ -156,21 +156,22 @@ the one-message close follow `skills/shared/report-style.md`. Do not expect
 
 ## Ambient verification enforcement
 
-Codex Stop is **not** Claude Code Stop. On Codex, `decision: "block"` on Stop
-continues the turn with a new user prompt; `continue: false` allows the stop
-(https://developers.openai.com/codex/hooks). Shipping Claude Code's Stop
-guards unchanged would invert their polarity, so they are not bridged.
+Codex Stop supports the shared guards: exit 2 with stderr continues the
+turn, as it does in Claude Code. `decision: "block"` also continues the
+turn; `continue: false` takes precedence and ends it.
+See the [Codex hook contract](https://learn.chatgpt.com/docs/hooks).
 
-Ambient enforcement is therefore directive-only, matching OpenCode and ADK:
-SessionStart injects the micro protocol, UserPromptSubmit runs
-`done-criteria.sh`, and full cycles still use
-`lib/verification-grounding-lint.sh`. `adhoc-verify-guard.sh` and
-`route-terminal-guard.sh` are unbridged.
+UserPromptSubmit stamps `$loop-spec-cycle` arguments and runs
+`done-criteria.sh`. Stop runs `cycle-stamp-guard.sh` and
+`route-terminal-guard.sh`, which read driver-owned state and the payload's
+`cwd`. Their `stop_hook_active` check prevents repeated continuation loops.
+The Step 4 `lib/cycle-reconcile.sh` call in `/loop-spec/auto` still runs on
+every route (`skills/shared/route-exit-contract.md`).
 
-`route-terminal-guard.sh` being unbridged makes the Step 4
-`lib/cycle-reconcile.sh` call in `/loop-spec/auto` the only thing holding the
-route-exit contract here (`skills/shared/route-exit-contract.md`). Run it on
-every route.
+Ambient ad-hoc verification remains directive-only: SessionStart injects
+the micro protocol, and `adhoc-verify-guard.sh` is unbridged because its
+transcript reader targets Claude's format. Full cycles also use
+`lib/verification-grounding-lint.sh`.
 
 Plugin-bundled hooks remain skipped until the user reviews and trusts the
 current definition (`/hooks`). `--dangerously-bypass-hook-trust` exists for

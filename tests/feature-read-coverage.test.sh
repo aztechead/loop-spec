@@ -25,15 +25,15 @@ check() {
 
 # file:line of reads that are not key reads. A content hash of the document is the
 # document, not a key, and the typed reader cannot answer it.
-ALLOWED="$(cat <<'LIST'
+ALLOWED=$(cat <<'LIST'
 lib/graph/checkpoint.sh	cksum	the ledger records a hash of the whole document
 lib/graph/port-local.sh	cksum	the port compares a hash of the whole document
-lib/state-ref.sh	cat	git cat-file reads the snapshot blob on the ref, the state module's own store
+lib/state-ref.sh	cat	git cat-file reads the snapshot blob on the ref, the store owned by the state module
 lib/graph/handoff.sh	cksum	the handoff id hashes the whole document
 LIST
-)"
+)
 
-offenders="$(LOOP_SPEC_ALLOWED="$ALLOWED" python3 - <<'PY'
+offenders=$(LOOP_SPEC_ALLOWED="$ALLOWED" python3 - <<'PY'
 import os, re, sys
 allowed = set()
 for line in os.environ.get("LOOP_SPEC_ALLOWED", "").splitlines():
@@ -80,7 +80,7 @@ for p in sorted(files):
         out.append("%s:%d\t%s\t%s" % (p, i, tool, code.strip()[:90]))
 print("\n".join(out))
 PY
-)"
+)
 check "no feature.json read outside the state modules and the allow-list" "" "$offenders"
 # The allow-list is a ratchet: every entry must still name a read the scan sees.
 for entry in $(printf '%s\n' "$ALLOWED" | cut -f1 | sed '/^$/d'); do

@@ -19,6 +19,8 @@ check() {
 }
 
 WORK="${TMPDIR:-/tmp}"; WORK="${WORK%/}/phase-exit-test.$$"
+mkdir -p "$WORK"
+WORK="$(cd "$WORK" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
 REPO="$WORK/repo"; mkdir -p "$REPO"
 git -C "$REPO" init -q -b main

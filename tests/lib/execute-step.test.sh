@@ -15,6 +15,8 @@ check() {
   fi
 }
 WORK="${TMPDIR:-/tmp}"; WORK="${WORK%/}/execute-step-test.$$"
+mkdir -p "$WORK"
+WORK="$(cd "$WORK" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 export LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0 LOOP_SPEC_CHECKPOINT_PR=0
@@ -147,7 +149,7 @@ ec=0; out="$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role i
 check "run implementer: the session completed" "completed" "$(jq -r '.status' <<<"$out")"
 check "run implementer: exit 0" "0" "$ec"
 check "run implementer: the prompt is one line and the paths" "1" "$(grep -c "^Implement the task in $FDS/dispatch/task-001.brief.md. The spec is .*. Write your report to $FDS/dispatch/task-001.report.md.$" "$FDS/dispatch/task-001.implementer.md")"
-check "run implementer: the CLI received the profile's launch line" "exec --json" "$(sed -n '1,2p' "$WORK/args" | paste -sd' ')"
+check "run implementer: the CLI received the profile's launch line" "exec --json" "$(sed -n '1,2p' "$WORK/args" | paste -sd' ' -)"
 check "run implementer: the log lands under the feature's dispatch dir" "$FDS/dispatch/sessions" "$(dirname "$(jq -r '.stdout' <<<"$out")")"
 check "run implementer: the session ran in the task worktree" "1" "$(grep -c "^cwd=$(cd "$WT1" && pwd -P)$" "$WORK/args" 2>/dev/null || echo 0)"
 check "run: an unknown role is a bad invocation" "2" "$(sess bash "$STEP" run --feature-dir "$FDS" --task task-001 --role judge >/dev/null 2>&1; echo $?)"

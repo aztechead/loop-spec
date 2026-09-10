@@ -53,16 +53,16 @@ phases="$(jq -r '.nodes[] | select(.kind == "agent" and ((.body // "") | test("^
 
 case "$cmd" in
   list) printf '%s\n' "$phases" ;;
-  regex) paste -sd'|' <<<"$phases" ;;
+  regex) paste -sd'|' - <<<"$phases" ;;
   validate)
     [[ -n "$id" ]] || { echo "usage: phases.sh validate <id> [--graph PATH]" >&2; exit 2; }
     grep -qxF -- "$id" <<<"$phases" \
-      || { echo "phase must be one of: $(paste -sd' ' <<<"$phases" | sed 's/ / | /g') (got '$id')" >&2; exit 1; }
+      || { echo "phase must be one of: $(paste -sd' ' - <<<"$phases" | sed 's/ / | /g') (got '$id')" >&2; exit 1; }
     ;;
   suffix)
     [[ -n "$id" ]] || { echo "usage: phases.sh suffix <id> [--graph PATH]" >&2; exit 2; }
     grep -qxF -- "$id" <<<"$phases" \
-      || { echo "phase must be one of: $(paste -sd' ' <<<"$phases" | sed 's/ / | /g') (got '$id')" >&2; exit 1; }
+      || { echo "phase must be one of: $(paste -sd' ' - <<<"$phases" | sed 's/ / | /g') (got '$id')" >&2; exit 1; }
     printf '%s\n' "$id" | tr 'a-z-' 'A-Z_'
     ;;
   same-session)

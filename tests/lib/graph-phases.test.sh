@@ -11,9 +11,10 @@ check() {
   else echo "FAIL: $name (expected '$expected', got '$actual')"; FAIL=$((FAIL+1)); fi
 }
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/graph-phases-test.XXXXXX")"
+WORK="$(cd "$WORK" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
 
-check "list: the shipped graph's phases in order" "spec oneshot discuss plan execute verify iterate deliver" "$(bash "$LIB" list | paste -sd' ')"
+check "list: the shipped graph's phases in order" "spec oneshot discuss plan execute verify iterate deliver" "$(bash "$LIB" list | paste -sd' ' -)"
 check "regex: an alternation" "spec|oneshot|discuss|plan|execute|verify|iterate|deliver" "$(bash "$LIB" regex)"
 check "validate: a phase exits 0" "0" "$(bash "$LIB" validate verify >/dev/null 2>&1; echo $?)"
 check "validate: a gate node is not a phase" "1" "$(bash "$LIB" validate verify.acceptance >/dev/null 2>&1; echo $?)"

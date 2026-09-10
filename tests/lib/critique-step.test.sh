@@ -7,6 +7,7 @@ STEP="$ROOT/lib/critique-step.sh"
 WORK="${TMPDIR:-/tmp}/loop-spec-critique-step.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/feature" "$WORK/docs"
+WORK="$(cd "$WORK" && pwd -P)"
 PASS=0; FAIL=0
 
 check() {

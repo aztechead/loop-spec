@@ -184,7 +184,7 @@ unresolved="$(sed -n 's/^unresolved=//p' <<<"$facts")"
 [[ "$unresolved" == "0" ]] || full "unresolved_dimensions is ${unresolved/missing/absent}, not empty"
 footprint=()
 while IFS= read -r p; do [[ -n "$p" ]] && footprint+=("$p"); done < <(sed -n 's/^footprint=//p' <<<"$facts")
-footprint_shape "${footprint[@]}"
+footprint_shape ${footprint[@]+"${footprint[@]}"}
 targets=("$spec")
 while IFS= read -r t; do [[ -n "$t" ]] && targets+=("$t"); done < <(footprint_existing "${footprint[@]}")
 security_signal "${targets[@]}"

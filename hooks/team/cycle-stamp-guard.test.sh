@@ -9,6 +9,7 @@ STAMP_HOOK="$HERE/invocation-stamp.sh"
 DRIVER="$HERE/../../lib/cycle-driver.sh"
 ROOT="${TMPDIR:-/tmp}/cycle-stamp-guard-test-$$"
 mkdir -p "$ROOT"
+ROOT="$(cd "$ROOT" && pwd -P)"
 trap 'rm -rf "$ROOT"' EXIT
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 export LOOP_SPEC_HARNESS=codex LOOP_SPEC_TEAMS_MODE=none LOOP_SPEC_WORKFLOWS_AVAILABLE=0
@@ -73,7 +74,7 @@ check "c: last-result.json newer than the stamp -> ALLOW" 0 "$DECLINED"
 # c2: a result older than the stamp is a previous run's, not this one's.
 OLDRESULT="$ROOT/old-result"; mkdir -p "$OLDRESULT/.loop-spec"
 printf '{"schema":1,"status":"completed"}\n' > "$OLDRESULT/.loop-spec/last-result.json"
-touch -d '2020-01-01' "$OLDRESULT/.loop-spec/last-result.json"
+touch -t 202001010000 "$OLDRESULT/.loop-spec/last-result.json"
 stamp "$OLDRESULT" cycle "add a flag"
 check "c2: last-result.json older than the stamp -> BLOCK" 2 "$OLDRESULT"
 
@@ -107,7 +108,7 @@ PAYLOAD='not json' check "j: malformed payload -> BLOCK (the stamp stands)" 2 "$
 ledger() { # ledger <project> <slug> <event> <phase> <age seconds>
   mkdir -p "$1/.loop-spec/features/$2"
   printf '{"ts":"%s","slug":"%s","event":"%s","phase":"%s","data":{}}\n' \
-    "$(date -u -d "@$(( $(date +%s) - $5 ))" +%Y-%m-%dT%H:%M:%SZ)" "$2" "$3" "$4" >> "$1/.loop-spec/features/$2/events.jsonl"
+    "$(python3 -c 'import sys,time; print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time()-int(sys.argv[1]))))' "$5")" "$2" "$3" "$4" >> "$1/.loop-spec/features/$2/events.jsonl"
 }
 OPEN="$ROOT/open"; mkdir -p "$OPEN/.loop-spec"
 ledger "$OPEN" fix-slug phase_start spec 300

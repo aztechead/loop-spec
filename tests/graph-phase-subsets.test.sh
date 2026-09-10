@@ -17,7 +17,7 @@ check() {
 }
 phases="$(bash lib/graph/phases.sh list)"
 not_phases() { # names on stdin that the graph does not list
-  while IFS= read -r n; do [[ -n "$n" ]] && ! grep -qxF "$n" <<<"$phases" && echo "$n"; done | paste -sd' '
+  while IFS= read -r n; do [[ -n "$n" ]] && ! grep -qxF "$n" <<<"$phases" && echo "$n"; done | paste -sd' ' -
 }
 
 driver_sets="$(grep -oE 'phase in \("[a-z", ]+"\)' lib/graph/driver.py | grep -oE '"[a-z]+"' | tr -d '"' | sort -u)"
@@ -27,7 +27,7 @@ check "every phase the driver's literal subsets name is on the graph" "" "$(not_
 mode_set="$(grep -oE '^case "\$phase" in [a-z|]+\)' lib/phase-mode.sh | grep -oE '[a-z]+(\|[a-z]+)*\)' | tr -d ')' | tr '|' '\n')"
 check "phase-mode.sh answers for at least one phase" "1" "$([[ -n "$mode_set" ]] && echo 1 || echo 0)"
 check "every phase phase-mode.sh answers for is on the graph" "" "$(not_phases <<<"$mode_set")"
-check "the driver asks phase-mode.sh only about phases it answers for" "" "$(comm -23 <(grep -oE 'phase in \("spec"[^)]*\)' lib/graph/driver.py | grep -oE '"[a-z]+"' | tr -d '"' | sort -u) <(sort -u <<<"$mode_set") | paste -sd' ')"
+check "the driver asks phase-mode.sh only about phases it answers for" "" "$(comm -23 <(grep -oE 'phase in \("spec"[^)]*\)' lib/graph/driver.py | grep -oE '"[a-z]+"' | tr -d '"' | sort -u) <(sort -u <<<"$mode_set") | paste -sd' ' -)"
 
 guard_sets="$(grep -oE '\{"[a-z]+"(, "[a-z]+")*\}' hooks/team/placeholder-question-guard.sh | grep -oE '"[a-z]+"' | tr -d '"' | sort -u | grep -vx cycle)"
 check "the placeholder guard names at least one literal phase subset" "1" "$([[ -n "$guard_sets" ]] && echo 1 || echo 0)"

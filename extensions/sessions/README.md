@@ -35,7 +35,7 @@ The result line:
 | 2 | | bad call, or the profile is missing or malformed |
 | 3 | | the CLI binary is not on PATH, or `python3` is older than 3.11 |
 | 4 | `env-fault` | the CLI failed on a provider or transport line the profile names; retry, do not charge the attempt |
-| 5 | `timeout` | `--timeout` (else `LOOP_SPEC_SESSION_TIMEOUT_SECS`, else 3600) elapsed; the process was killed |
+| 5 | `timeout` | `--timeout` (else `LOOP_SPEC_SESSION_TIMEOUT_SECS`, else 3600) elapsed; the CLI and processes in its session group were killed |
 
 The child inherits the environment minus every `LOOP_SPEC_*` name, the harness's
 plugin bindings (`CLAUDE_PROJECT_DIR`, `CLAUDE_SKILL_DIR`, `CLAUDE_PLUGIN_ROOT`), and

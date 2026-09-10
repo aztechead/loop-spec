@@ -29,6 +29,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -200,11 +201,15 @@ def main(argv):
     status, code = "completed", None
     with open(out_path, "wb") as out, open(err_path, "wb") as err:
         proc = subprocess.Popen(command, cwd=args.cwd, env=child_env(profile["env"]),
-                                stdin=subprocess.DEVNULL, stdout=out, stderr=err)
+                                stdin=subprocess.DEVNULL, stdout=out, stderr=err, start_new_session=True)
         try:
             code = proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            # CLI tools spawn test and shell processes that can outlive the CLI.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             proc.wait()
             status = "timeout"
     fault = None

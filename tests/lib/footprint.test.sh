@@ -35,19 +35,19 @@ bash "$LIB" cite "$FD" src/a.py:12 "holds the bug"
 bash "$LIB" cite "$FD" src/a.py:40
 bash "$LIB" cite "$FD" tests/test_a.py:3 --read-only "the task protects it"
 bash "$LIB" cite "$FD" src/b.py:1
-check "list: cited files once each, first-cite order, the protected file left out, b's test module added by construction" "src/a.py src/b.py tests/test_b.py" "$(bash "$LIB" list "$FD" 2>/dev/null | paste -sd' ')"
+check "list: cited files once each, first-cite order, the protected file left out, b's test module added by construction" "src/a.py src/b.py tests/test_b.py" "$(bash "$LIB" list "$FD" 2>/dev/null | paste -sd' ' -)"
 check "list --read-only: the protected file" "tests/test_a.py" "$(bash "$LIB" list "$FD" --read-only 2>/dev/null)"
 check "show: every cite" "4" "$(bash "$LIB" show "$FD" | wc -l | tr -d ' ')"
 check "show: a cite carries its why" "holds the bug" "$(bash "$LIB" show "$FD" | head -1 | jq -r '.why')"
 check "show: a cite carries its line" "40" "$(bash "$LIB" show "$FD" | sed -n 2p | jq -r '.line')"
 bash "$LIB" cite "$FD" src/b.py:9 --read-only
-check "a read-only mark on a file the task does not protect is not honored" "src/a.py src/b.py tests/test_b.py" "$(bash "$LIB" list "$FD" 2>/dev/null | paste -sd' ')"
+check "a read-only mark on a file the task does not protect is not honored" "src/a.py src/b.py tests/test_b.py" "$(bash "$LIB" list "$FD" 2>/dev/null | paste -sd' ' -)"
 check "and the notice says so" "1" "$(bash "$LIB" list "$FD" 2>&1 >/dev/null | grep -c 'src/b.py is marked read-only by the scout but the task protects no such file')"
-check "the read-only list is the protected list" "tests/test_a.py" "$(bash "$LIB" list "$FD" --read-only 2>/dev/null | paste -sd' ')"
+check "the read-only list is the protected list" "tests/test_a.py" "$(bash "$LIB" list "$FD" --read-only 2>/dev/null | paste -sd' ' -)"
 # A protected test module is read-only even when the scout never cited it.
 printf '{"slug":"fd","protected":["tests/test_a.py","tests/test_b.py"]}\n' > "$FD/feature.json"
-check "a protected test module of a cited file is read-only by construction" "tests/test_a.py tests/test_b.py" "$(bash "$LIB" list "$FD" --read-only 2>/dev/null | paste -sd' ')"
-check "and out of the footprint" "src/a.py src/b.py" "$(bash "$LIB" list "$FD" 2>/dev/null | paste -sd' ')"
+check "a protected test module of a cited file is read-only by construction" "tests/test_a.py tests/test_b.py" "$(bash "$LIB" list "$FD" --read-only 2>/dev/null | paste -sd' ' -)"
+check "and out of the footprint" "src/a.py src/b.py" "$(bash "$LIB" list "$FD" 2>/dev/null | paste -sd' ' -)"
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

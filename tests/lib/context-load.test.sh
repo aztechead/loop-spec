@@ -47,7 +47,7 @@ check "sum: a file cited twice is counted once" "1" "$(grep -c 'whole.md' <<<"$o
 check "sum: the total is the sum of the rows" "TOTAL 20" "$(tail -1 <<<"$out")"
 check "sum --transitive follows the contract's own cites" "TOTAL 29" "$(bash "$LIB" sum skills/demo/SKILL.md --root "$WORK" --transitive | tail -1)"
 check "cites: the reading list, body excluded" "skills/shared/whole.md skills/shared/parts.md#Second part skills/shared/artifact-templates/T.md.template skills/demo/references/bank.md" \
-  "$(bash "$LIB" cites skills/demo/SKILL.md --root "$WORK" | paste -sd' ')"
+  "$(bash "$LIB" cites skills/demo/SKILL.md --root "$WORK" | paste -sd' ' -)"
 check "a section entry as the body counts only that section" "TOTAL 6" "$(bash "$LIB" sum 'skills/shared/parts.md#Second part' --root "$WORK" | tail -1)"
 printf 'Read `skills/shared/gone.md`.\n' > "$WORK/skills/demo/references/dead.md"
 check "a cite to nothing is a failure, not an average" "2" "$(bash "$LIB" sum skills/demo/references/dead.md --root "$WORK" >/dev/null 2>&1; echo $?)"

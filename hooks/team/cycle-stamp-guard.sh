@@ -56,7 +56,9 @@
 #   CLAUDE_PROJECT_DIR            Project root; default $PWD.
 set -euo pipefail
 
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
+INPUT="$(cat 2>/dev/null || true)"
+payload_cwd="$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("cwd") or "")' 2>/dev/null || true)"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-${payload_cwd:-$PWD}}"
 if [[ ! -d "${PROJECT_DIR}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]; then
   exit 0
 fi
@@ -69,7 +71,6 @@ command -v python3 >/dev/null 2>&1 || exit 0
 STAMP="$PROJECT_DIR/.loop-spec/invocation-stamp.json"
 RESULT="$PROJECT_DIR/.loop-spec/last-result.json"
 
-INPUT="$(cat 2>/dev/null || true)"
 if printf '%s' "$INPUT" | python3 -c \
   "import json,sys; sys.exit(0 if json.load(sys.stdin).get('stop_hook_active') else 1)" 2>/dev/null; then
   exit 0

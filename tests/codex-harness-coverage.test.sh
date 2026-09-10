@@ -137,4 +137,43 @@ else
   FAIL=$((FAIL+1)); echo "FAIL: .codex-plugin/plugin.json missing skills or hooks"
 fi
 
+# Run the registered hooks from outside the payload cwd, as a plugin host can.
+if python3 - <<'PY'
+import json, os, pathlib, subprocess, tempfile
+root = pathlib.Path.cwd()
+config = json.loads((root / 'hooks/codex-hooks.json').read_text())['hooks']
+env = dict(os.environ, PLUGIN_ROOT=str(root))
+env.pop('CLAUDE_PROJECT_DIR', None)
+with tempfile.TemporaryDirectory() as tmp:
+    project = pathlib.Path(tmp) / 'project'
+    project.mkdir()
+    payload = dict(cwd=str(project), prompt='$loop-spec-cycle autonomous fix x')
+    def run(event, active=False):
+        results = []
+        for group in config.get(event, []):
+            for hook in group['hooks']:
+                results.append(subprocess.run(
+                    hook['command'], shell=True, env=env, cwd=tmp,
+                    input=json.dumps(dict(payload, stop_hook_active=active)),
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    universal_newlines=True))
+        return results
+    assert all(p.returncode == 0 for p in run('UserPromptSubmit'))
+    stamp = json.loads((project / '.loop-spec/invocation-stamp.json').read_text())
+    assert stamp['skill'] == 'cycle' and stamp['args'] == 'autonomous fix x'
+    assert any(p.returncode == 2 and 'never began' in p.stderr for p in run('Stop'))
+    assert all(p.returncode == 0 for p in run('Stop', active=True))
+    (project / '.loop-spec/invocation-stamp.json').unlink()
+    assert all(p.returncode == 0 for p in run('Stop'))
+    probe = pathlib.Path(tmp) / 'probe.sh'
+    probe.write_text('echo "unaccounted ageSeconds=0 autonomous=true"\n')
+    env['LOOP_SPEC_CYCLE_RESULT_BIN'] = str(probe)
+    assert any(p.returncode == 2 and 'terminal result' in p.stderr for p in run('Stop'))
+PY
+then
+  PASS=$((PASS+1)); echo "PASS: registered Codex prompt and Stop hooks enforce driver state"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: registered Codex prompt and Stop hooks lost enforcement"
+fi
+
 finish_fixed_string_coverage

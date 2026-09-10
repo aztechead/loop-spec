@@ -766,7 +766,8 @@ check "observe auth failure: one auth refresh" "1" \
 
 # --- no gh: final mode pushes the exact SHA and stops with its own outcome ----------
 NOGH="$WORK/nogh-bin"; mkdir -p "$NOGH"; ln -sf "$REAL_GIT" "$NOGH/git"
-for tool in jq python3 bash cut tr date mktemp rm cat sed grep head; do
+ln -sf "$(python3 -c 'import sys; print(sys.executable)')" "$NOGH/python3"
+for tool in jq bash cut tr date mktemp rm cat sed grep head; do
   p="$(command -v "$tool")"; [[ -n "$p" ]] && ln -sf "$p" "$NOGH/$tool"
 done
 out="$(PATH="$NOGH" bash "$SCRIPT" final -C "$WORK/repo" --branch feat/nogh --base main --sha "$TARGET_SHA" \

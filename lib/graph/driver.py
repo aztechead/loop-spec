@@ -1187,6 +1187,9 @@ def cmd_next(argv):
             return 0
         answer = boundary_review(feature_dir, returned)
         if answer is not None:
+            flags = [line for line in answer.splitlines() if line.startswith("FLAG ")]
+            lib("events", "emit", feature_dir, "redo", "--phase", returned,
+                "--data", json.dumps({"flags": len(flags), "classes": {"review": len(flags)}, "messages": flags}))
             print(answer)
             return 0
         if returned == "oneshot":
@@ -1240,7 +1243,7 @@ def cmd_next(argv):
                         if os.path.isfile(vpath):
                             os.replace(vpath, os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.oneshot-attempt.md"))
                         lib("events", "emit", feature_dir, "escalate", "--phase", returned,
-                            "--data", json.dumps({"attempts": redo_count, "classes": classes}))
+                            "--data", json.dumps({"attempts": redo_count, "classes": classes, "messages": flags}))
                         print("NOTE [escalate] the oneshot exit gate held after %d attempts (%s): route: full written; the run continues on the full path" % (redo_count, ", ".join(classes)))
                         exit_proc = subprocess.run(["bash", str(LIB_DIR / "phase-exit.sh")] + exit_args,
                                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
@@ -1259,7 +1262,7 @@ def cmd_next(argv):
                         label = m.group(1) if m else "unlabeled"
                         classes[label] = classes.get(label, 0) + 1
                     lib("events", "emit", feature_dir, "redo", "--phase", returned,
-                        "--data", json.dumps({"attempt": redo_count, "flags": len(flags), "classes": classes}))
+                        "--data", json.dumps({"attempt": redo_count, "flags": len(flags), "classes": classes, "messages": flags}))
                     print("REDO phase=%s flags=%d attempt=%d" % (returned, len(flags), redo_count))
                     for flag in flags:
                         print(flag)
@@ -2212,9 +2215,10 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
             code, block = 1, "(no command on record for this criterion: the frontmatter criteria map has no %s)" % row
             evidence = "no command on record: `spec fill --command --expect --row %s` writes one" % row
         status = "PASS" if code == 0 else "FAIL"
-        cell = re.compile(r"^(\| %s \| .* \| )([^|]*)( \| )(.*?)( \|)$" % re.escape(row), re.M)
+        cell = re.compile(r"^\| %s \| .* \|$" % re.escape(row), re.M)
+        row_text = "| %s | %s | %s | %s |" % (row, criterion.replace("|", "\\|"), status, evidence)
         if cell.search(text):
-            text = cell.sub(lambda mm: mm.group(1) + status + mm.group(3) + evidence + mm.group(5), text, count=1)
+            text = cell.sub(lambda mm: row_text, text, count=1)
         else:
             # A criterion added after the skeleton: the driver owns the shape, so the
             # row joins the table (after its last row) rather than failing the run.
@@ -2224,7 +2228,7 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
             rows_end = table[0]
             for mm in re.finditer(r"^\|.*\|$", text[table[0]:table[1]], flags=re.M):
                 rows_end = table[0] + mm.end()
-            text = text[:rows_end] + "\n| %s | %s | %s | %s |" % (row, criterion.replace("|", "\\|"), status, evidence) + text[rows_end:]
+            text = text[:rows_end] + "\n" + row_text + text[rows_end:]
         span = section_span(text, "Criterion %d" % (i + 1))
         if span is not None:
             text = text[:span[0]] + "\n```\n" + block + "\n```\n\n" + text[span[1]:]

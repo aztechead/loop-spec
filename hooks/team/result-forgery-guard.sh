@@ -30,7 +30,9 @@ if [[ ! -d "${CLAUDE_PROJECT_DIR:-$PWD}/.loop-spec" && ! -d "$PWD/.loop-spec" ]]
 command -v python3 >/dev/null 2>&1 || exit 0
 
 INPUT="$(cat)"
-VERDICT="$(LOOP_SPEC_GUARD_INPUT="$INPUT" python3 - <<'PY' 2>/dev/null || true
+# Bash 3.2 misparses this heredoc inside quoted command substitution; assignments
+# already preserve whitespace without word splitting.
+VERDICT=$(LOOP_SPEC_GUARD_INPUT="$INPUT" python3 - <<'PY' 2>/dev/null || true
 import json, os, re, sys
 try:
     payload = json.loads(os.environ.get("LOOP_SPEC_GUARD_INPUT") or "")
@@ -65,7 +67,7 @@ else:
             print("artifact %s %s" % (m.group(1), m.group(0)[:120]))
             break
 PY
-)"
+)
 [[ -n "$VERDICT" ]] || exit 0
 if [[ "$VERDICT" == artifact\ * ]]; then
   slug="$(cut -d' ' -f2 <<<"$VERDICT")"; match="$(cut -d' ' -f3- <<<"$VERDICT")"

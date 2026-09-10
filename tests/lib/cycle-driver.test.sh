@@ -19,6 +19,7 @@ check() {
 WORK="${TMPDIR:-/tmp}"; WORK="${WORK%/}/cycle-driver-test.$$"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK"
+WORK="$(cd "$WORK" && pwd -P)"
 
 new_repo() {
   local dir="$WORK/$1"
@@ -525,6 +526,7 @@ check "the fixture's second criterion now runs a passing pipeline, replaced by r
 check "and the frontmatter map carries the new command" "1" "$(sed -n '1,/^---$/!d; /^  GE-002: .*print(1)/p' "$DOCS7/SPEC.md" | grep -c .)"
 ec=0; out="$(cd "$REPO7" && drv verification run --feature-dir "$FD7" 2>/dev/null)" || ec=$?
 check "verification run: every row passing is exit 0" "0" "$ec"
+check "verification run: the acceptance row follows the revised spec criterion" "1" "$(grep -c '^| GE-002 | `python3 -c "print(1)" \\| grep -c 1` exits 0: prints 1 | PASS |' "$DOCS7/VERIFICATION.md")"
 check "verification run: the test suite block is the command's output with its exit" "1" "$(grep -c '^2 passed$' "$DOCS7/VERIFICATION.md")"
 # The Code review section comes from the reviewer's report, never the lead's hand
 # (port audit 4, item 3): findings become pending bullets the lead answers; none is none.
@@ -604,6 +606,7 @@ check "oneshot review: the exit gate's review check is satisfied by it" "0" "$(b
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot: the driver runs the review pass and answers one REDO" "REDO phase=oneshot flags=1" "$(head -1 <<<"$out")"
 check "next from oneshot: the FLAG hands the lead the report path" "1" "$(grep -c '^FLAG \[review\] the driver ran the one review pass; its verdict and findings are in .*oneshot.review.md' <<<"$out")"
+check "boundary review: full FLAG is retained in redo telemetry" "$(printf '%s\n' "$out" | grep '^FLAG ')" "$(jq -r 'select(.event == "redo") | .data.messages[]?' "$FD7/events.jsonl" | tail -1)"
 check "next from oneshot: the Code review section was written from the report (none)" "1" "$(grep -c 'the Code review section holds none' <<<"$out")"
 check "next from oneshot: the dispatch event is driver-observed" "1" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
@@ -654,6 +657,8 @@ check "next: first entry is SPEC" "NEXT phase=spec" "${out:0:15}"
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
 check "next: a phase that wrote nothing is sent back" "REDO phase=spec" "${out:0:15}"
 check "next: the FLAG lines follow the answer" "true" "$([[ "$(grep -c '^FLAG' <<<"$out")" -gt 0 ]] && echo true || echo false)"
+check "next: the redo event retains the exact gate messages" "$(grep '^FLAG' <<<"$out")" \
+  "$(jq -r 'select(.event == "redo") | .data.messages[]' "$FD6/events.jsonl")"
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" --returned-from spec 2>/dev/null)"
 check "next: the same flags again count the attempt" "REDO phase=spec flags=" "${out:0:22}"
 check "next: attempt two is reported" "1" "$(head -1 <<<"$out" | grep -c 'attempt=2')"

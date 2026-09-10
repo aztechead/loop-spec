@@ -268,6 +268,28 @@ def export_and_check(task, project, branch, root, env):
     return checks
 
 
+def read_gate_events(fdir):
+    """Keep each retry's evidence alongside the totals, including older class-only events."""
+    events = 0
+    redo = {"rounds": 0, "by_class": {}, "events": []}
+    if fdir and (fdir / "events.jsonl").is_file():
+        for line in (fdir / "events.jsonl").open():
+            events += 1
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            # The driver emits one per REDO answer, with the bracketed label of every
+            # FLAG line (port audit 3, N1): the record says which
+            # gate bounced the lead, not just how often.
+            if e.get("event") == "redo":
+                redo["rounds"] += 1
+                redo["events"].append({"phase": e.get("phase"), **(e.get("data") or {})})
+                for label, n in ((e.get("data") or {}).get("classes") or {}).items():
+                    redo["by_class"][label] = redo["by_class"].get(label, 0) + int(n or 0)
+    return events, redo
+
+
 def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, timeout_s=None):
     task = load_task(task_id)
     env = child_env()
@@ -338,22 +360,7 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, ti
     # DELIVER's word is the sidecar; feature.json's delivery block stays pending after it.
     delivery = read_json(fdir / "delivery.json") if fdir and (fdir / "delivery.json").is_file() else None
     delivery_status = (delivery or (feature or {}).get("delivery") or {}).get("status")
-    events = 0
-    redo = {"rounds": 0, "by_class": {}}
-    if fdir and (fdir / "events.jsonl").is_file():
-        for line in (fdir / "events.jsonl").open():
-            events += 1
-            try:
-                e = json.loads(line)
-            except ValueError:
-                continue
-            # The driver emits one per REDO answer, with the bracketed label of every
-            # FLAG line (port audit 3, N1): the record says which
-            # gate bounced the lead, not just how often.
-            if e.get("event") == "redo":
-                redo["rounds"] += 1
-                for label, n in ((e.get("data") or {}).get("classes") or {}).items():
-                    redo["by_class"][label] = redo["by_class"].get(label, 0) + int(n or 0)
+    events, redo = read_gate_events(fdir)
     passed = sum(1 for c in checks.values() if c["pass"])
     record = {
         "task": task_id, "size": task.get("size"), "kind": task.get("kind"),

@@ -39,6 +39,9 @@ echo "probe=${FAKE_PROBE:-unset}"
 echo "cwd=$(pwd -P)"
 echo "loop=${LOOP_SPEC_LEAK:-unset} plugin=${CLAUDE_PLUGIN_ROOT:-unset} session=${CLAUDE_CODE_SESSION_ID:-unset}${CLAUDE_CODE_MESSAGING_SOCKET:-}${CLAUDE_CODE_REMOTE_SESSION_ID:-} stamp=${CLAUDE_CODE_ENTRYPOINT:-unset}"
 [[ -n "${FAKE_SAY:-}" ]] && echo "$FAKE_SAY"
+if [[ -n "${FAKE_CHILD_MARKER:-}" ]]; then
+  (sleep 2; printf survived > "$FAKE_CHILD_MARKER") &
+fi
 sleep "${FAKE_SLEEP:-0}"
 exit "${FAKE_EXIT:-0}"
 SH
@@ -114,9 +117,11 @@ check "env-fault exits 4" "4" "$rc"
 run FAKE_SAY='API Error: 529 Overloaded' "${common[@]}"
 check "a provider line in a successful run is still completed" "completed" "$(jq -r '.status' <<<"$out")"
 
-run FAKE_SLEEP=3 "${common[@]}" --timeout 1
+run FAKE_SLEEP=3 FAKE_CHILD_MARKER="$WORK/child-survived" "${common[@]}" --timeout 1
 check "the timeout kills the session" "timeout" "$(jq -r '.status' <<<"$out")"
 check "timeout exits 5" "5" "$rc"
+sleep 2
+check "a timed-out session cannot keep writing through its child" "absent" "$([[ -e "$WORK/child-survived" ]] && echo present || echo absent)"
 run "${common[@]}" --timeout 0
 check "a non-positive timeout is a bad call" "2" "$rc"
 

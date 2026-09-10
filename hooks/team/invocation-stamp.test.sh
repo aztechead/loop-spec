@@ -33,6 +33,15 @@ run '{"prompt":"/loop-spec:auto new build a fib tool"}'
 check "auto prompt is stamped" "auto" "$(jq -r '.skill' "$STAMP")"
 rm -f "$STAMP"
 
+for invocation in '$loop-spec-cycle' '/loop-spec-cycle'; do
+  run "$(jq -n --arg prompt "$invocation autonomous preserve these tokens" '{prompt:$prompt}')"
+  check "$invocation carries the skill" "cycle" "$(jq -r '.skill' "$STAMP")"
+  check "$invocation preserves arguments" "autonomous preserve these tokens" "$(jq -r '.args' "$STAMP")"
+  rm -f "$STAMP"
+done
+run '{"prompt":"$loop-spec-cycle-extra autonomous x"}'
+check "a different skill name writes nothing" "0" "$([[ -f "$STAMP" ]] && echo 1 || echo 0)"
+
 LOOP_SPEC_INVOCATION_STAMP=0 run '{"prompt":"/loop-spec:cycle autonomous x"}'
 check "kill switch writes nothing" "0" "$([[ -f "$STAMP" ]] && echo 1 || echo 0)"
 

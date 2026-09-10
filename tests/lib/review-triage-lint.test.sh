@@ -108,7 +108,8 @@ ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
 check "a bare word:number is not a location" "1" "$ec"
 check "the flag asks for a path" "1" "$(grep -c 'finding has no file:line' <<<"$out")"
 f="$(verification 'none')"
-sed -i 's/^### Resolution$/### Resolution\n- src\/x.py:3 — parked here without a verdict/' "$f"
+sed -i.bak 's/^### Resolution$/### Resolution\
+- src\/x.py:3 — parked here without a verdict/' "$f"
 ec=0; out="$(bash "$LINT" "$f" 2>&1)" || ec=$?
 check "a finding under another subheading of Code review is linted" "1" "$ec"
 check "the flag names the verdict rule" "1" "$(grep -c 'finding has no verdict' <<<"$out")"

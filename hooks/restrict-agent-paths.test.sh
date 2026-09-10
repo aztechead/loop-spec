@@ -180,6 +180,7 @@ check "W: code-reviewer Edit to /abs/proj/.claude/agent-memory/code-reviewer/MEM
 # Cases W: a feature artifact must land in the checkout that holds the feature's
 # feature.json. The lead's cwd is the main checkout; the feature lives in a worktree.
 WREPO="$(mktemp -d)"
+WREPO="$(cd "$WREPO" && pwd -P)"
 git -C "$WREPO" init -q && git -C "$WREPO" commit -q --allow-empty -m seed
 git -C "$WREPO" worktree add -q "$WREPO/.claude/worktrees/foo" -b feat/foo
 mkdir -p "$WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo"
@@ -216,6 +217,7 @@ unset CLAUDE_PROJECT_DIR; rm -rf "$WREPO"
 # Cases X: on the oneshot route the driver is the only writer of SPEC.md and
 # VERIFICATION.md (port audit 3, N1); the full route and a spec not yet written stay open.
 XREPO="$(mktemp -d)"
+XREPO="$(cd "$XREPO" && pwd -P)"
 git -C "$XREPO" init -q && git -C "$XREPO" commit -q --allow-empty -m seed
 mkdir -p "$XREPO/.loop-spec/features/one" "$XREPO/docs/loop-spec/features/one" "$XREPO/.loop-spec/features/big" "$XREPO/docs/loop-spec/features/big"
 printf '{"slug":"one","schemaVersion":7}\n' > "$XREPO/.loop-spec/features/one/feature.json"
@@ -236,11 +238,12 @@ check "X5: a SPEC.md not yet written (the full shape's first Write) stays ALLOW"
 check "X6: another artifact of the oneshot feature stays ALLOW" 0 \
   "$(payload "Write" "$XREPO/docs/loop-spec/features/one/EVIDENCE.md" "$FIXTURES/main-thread.jsonl")"
 printf 'route: full\n' >> "$XREPO/docs/loop-spec/features/one/SPEC.md"
-sed -i 's/^footprint:$/route: full\nfootprint:/' "$XREPO/docs/loop-spec/features/one/SPEC.md"
+sed -i.bak 's/^footprint:$/route: full\
+footprint:/' "$XREPO/docs/loop-spec/features/one/SPEC.md"
 check "X7: an escalated spec (route: full) is the lead's again ALLOW" 0 \
   "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
 msg="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")" || true)"
-sed -i '/^route: full$/d' "$XREPO/docs/loop-spec/features/one/SPEC.md"
+sed -i.bak '/^route: full$/d' "$XREPO/docs/loop-spec/features/one/SPEC.md"
 msg="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")" || true)"
 if [[ "$msg" == *"verification fill --feature-dir $XREPO/.loop-spec/features/one"* ]]; then
   echo "PASS: X8: the denial names the fill command with the feature dir"; ((PASS++)) || true

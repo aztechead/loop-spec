@@ -246,7 +246,8 @@ check "interactive entrypoint alone stays unproven (reason)" "unproven-runtime" 
 STUB="$(mktemp -d)"; trap 'rm -rf "$STUB"' EXIT
 mkdir -p "$STUB/nocli"
 # A PATH with the shell and interpreters but no harness CLI.
-BARE="$STUB/nocli:$(dirname "$(command -v bash)"):$(dirname "$(command -v python3)")"
+BARE="$STUB/nocli"
+for tool in bash dirname; do ln -s "$(command -v "$tool")" "$STUB/nocli/$tool"; done
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/claude"; chmod +x "$STUB/claude"
 have_toml="in-harness"; toml_reason="python-below-3.11"
 if python3 -c 'import tomllib' >/dev/null 2>&1; then have_toml="session"; toml_reason="headless/claude"; fi
