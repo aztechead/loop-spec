@@ -31,7 +31,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
+lib() { loop_spec_publication_lib "$SCRIPT_DIR" "$@"; }
 usage() { sed -n '2,30p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 cmd="${1:-}"; shift || true
@@ -45,6 +45,8 @@ done
 case "$cmd" in limit|record|harvest) ;; *) usage ;; esac
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
 feature_dir="$(cd "$feature_dir" && pwd -P)"
+. "$SCRIPT_DIR/feature-write.sh"
+loop_spec_publication_begin "$feature_dir" || exit 1
 fj="$feature_dir/feature.json"
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 fset() { lib feature-write set "$feature_dir" "$1" "$2" >/dev/null; }

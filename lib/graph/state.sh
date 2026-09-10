@@ -57,6 +57,8 @@ done
   exit 1
 }
 
+. "$SCRIPT_DIR/../feature-write.sh"
+
 node_json="$(jq -c --arg id "$node_id" '.nodes[] | select(.id==$id)' "$graph_path")"
 [[ -n "$node_json" ]] || {
   echo "state.sh: unknown node: $node_id" >&2
@@ -65,6 +67,7 @@ node_json="$(jq -c --arg id "$node_id" '.nodes[] | select(.id==$id)' "$graph_pat
 
 case "$cmd" in
   assert-reads)
+    loop_spec_publication_begin "$feature_dir" read-only || exit 1
     reads="$(jq -c '.reads // []' <<<"$node_json")"
     # Workspace mode relocates branch/baseSha/baseBranch onto workspace.repos[]
     # and leaves the top-level keys null by design (feature-state-schema.md).
@@ -115,7 +118,12 @@ PY
       echo "state.sh: key '$key' not in writes[] for node $node_id" >&2
       exit 1
     fi
-    bash "$FEATURE_WRITE" set "$feature_dir" "$key" "$value"
+    loop_spec_publication_begin "$feature_dir" || exit 1
+    if [[ "$FEATURE_WRITE" == "$REPO_ROOT/lib/feature-write.sh" ]]; then
+      loop_spec_feature_write set "$feature_dir" "$key" "$value"
+    else
+      loop_spec_publication_run bash "$FEATURE_WRITE" set "$feature_dir" "$key" "$value"
+    fi
     exit $?
     ;;
   *)

@@ -63,6 +63,9 @@ case "$cmd" in
       _skip "feature.json not found in $feature_dir"
     fi
 
+    . "$script_dir/feature-write.sh"
+    loop_spec_publication_begin "$feature_dir" || exit 1
+
     branch=$(bash "$script_dir/feature-read.sh" "$feature_dir" -r --filter '.branch // empty' 2>/dev/null || true)
     if [[ -z "$branch" ]]; then
       _skip ".branch is null/empty in feature.json (workspace mode is out of scope; callers handle per-repo PRs)"
@@ -290,7 +293,7 @@ Resuming \`/loop-spec:cycle\` on this branch continues the run. Re-review this P
     fi
 
     # ── Step 7: Persist + emit (both best-effort) ───────────────────────────────
-    bash "$(dirname "${BASH_SOURCE[0]}")/feature-write.sh" set "$feature_dir" checkpointPrUrl "\"$pr_url\"" 2>/dev/null || true
+    loop_spec_feature_write set "$feature_dir" checkpointPrUrl "\"$pr_url\"" || exit 1
 
     data_json=$(jq -cn --arg url "$pr_url" '{"url": $url}')
     bash "$(dirname "${BASH_SOURCE[0]}")/events.sh" emit "$feature_dir" checkpoint_pr --data "$data_json" 2>/dev/null || true

@@ -49,6 +49,12 @@ revision_root="$(git -C "$revision_root" rev-parse --show-toplevel 2>/dev/null)"
   || die "not a git repository: $orig_root"
 case "$autonomous" in 0|1) ;; *) die "--autonomous must be 0 or 1" ;; esac
 
+fdir="$revision_root/.loop-spec/features/$slug"
+. "$SCRIPT_DIR/feature-write.sh"
+if [[ -f "$fdir/feature.json" ]]; then
+  loop_spec_publication_begin "$fdir" || exit 1
+fi
+
 bash "$SCRIPT_DIR/runtime-ignore.sh" revise-state "$revision_root" "$slug"
 
 fdir="$revision_root/.loop-spec/features/$slug"
@@ -65,16 +71,16 @@ resolve_test_cmd() {
 }
 
 if [[ -f "$fj" ]]; then
-  bash "$SCRIPT_DIR/feature-write.sh" set "$fdir" currentPhase '"revise"'
+  loop_spec_feature_write set "$fdir" currentPhase '"revise"'
   existing_test="$(bash "$SCRIPT_DIR/feature-read.sh" "$fdir" -r --filter '.commands.test // ""')"
   if [[ -z "$existing_test" ]]; then
     test_cmd="$(resolve_test_cmd)"
-    bash "$SCRIPT_DIR/feature-write.sh" set "$fdir" commands.test "$(jq -cn --arg t "$test_cmd" '$t')"
+    loop_spec_feature_write set "$fdir" commands.test "$(jq -cn --arg t "$test_cmd" '$t')"
   else
     test_cmd="$existing_test"
   fi
   if [[ "$autonomous" == "1" ]]; then
-    bash "$SCRIPT_DIR/feature-write.sh" set "$fdir" autonomous true
+    loop_spec_feature_write set "$fdir" autonomous true
   fi
 else
   [[ -n "$branch" ]] || die "missing feature.json requires --branch"

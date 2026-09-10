@@ -32,7 +32,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
+lib() { loop_spec_publication_lib "$SCRIPT_DIR" "$@"; }
 usage() { sed -n '2,30p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 [[ "${1:-}" == "run" ]] || usage
@@ -46,6 +46,9 @@ while [[ $# -gt 0 ]]; do
   shift 2
 done
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
+feature_dir="$(cd "$feature_dir" && pwd -P)"
+. "$SCRIPT_DIR/feature-write.sh"
+loop_spec_publication_begin "$feature_dir" || exit 1
 case "$verifier" in ALL_PASS|FAIL) ;; *) usage ;; esac
 case "$suite" in PASS|FAIL|N/A) ;; *) usage ;; esac
 case "$reviewer" in PASS|PASS_WITH_MINOR|BLOCK) ;; *) usage ;; esac
@@ -60,7 +63,6 @@ if [[ "$minors" == @* ]]; then
 fi
 jq -e 'type == "array"' <<<"$tasks" >/dev/null 2>&1 || { echo "verify-gate: --remediation-tasks must be a JSON array (write it to a file and pass @path when quoting bites)" >&2; exit 2; }
 jq -e 'type == "array"' <<<"$minors" >/dev/null 2>&1 || { echo "verify-gate: --minors must be a JSON array (write it to a file and pass @path when quoting bites)" >&2; exit 2; }
-feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 slug="$(fget '.slug')"

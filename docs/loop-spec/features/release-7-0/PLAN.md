@@ -273,6 +273,20 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - tests/lib/publication-callers.test.sh
 - tests/run-all.sh
 
+- skills/quality-loop/SKILL.md
+- lib/feature_write.py
+- lib/feature-write.sh
+- tests/lib/feature-write.test.sh
+- docs/loop-spec/features/release-7-0/PLAN.md
+- docs/loop-spec/features/release-7-0/SPEC.md
+
+- lib/artifact_publication.py
+- tests/lib/artifact-publication.test.sh
+
+- lib/execute-prepare.sh
+
+- lib/artifact_sink.py
+
 **read_first:**
 - lib/graph/driver.py
 - lib/phase-entry.sh
@@ -300,7 +314,7 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 - consumes: task-003
 - produces: All-route staging producers and generation-aware lifecycle consumers.
 
-**Verify:** `rtk bash tests/lib/cycle-driver.test.sh && rtk bash tests/lib/phase-entry.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/lib/deliver.test.sh && rtk bash tests/lib/cycle-result.test.sh && rtk bash tests/lib/spec-intent.test.sh && rtk bash tests/lib/publication-callers.test.sh && rtk bash tests/lib/graph-state.test.sh && rtk bash tests/lib/graph-run.test.sh && rtk bash tests/lib/graph-gate.test.sh && rtk bash tests/lib/artifact-sink.test.sh && rtk bash tests/lib/quality-loop-state.test.sh && rtk bash tests/lib/execute-prepare.test.sh && rtk bash tests/lib/execute-step.test.sh && rtk bash tests/lib/verify-prepare.test.sh && rtk bash tests/lib/checkpoint-pr.test.sh && rtk bash tests/lib/revise-state.test.sh && rtk bash tests/lib/feature-init.test.sh` -> exit 0; named offline suites pass.
+**Verify:** `rtk bash tests/lib/cycle-driver.test.sh && rtk bash tests/lib/phase-entry.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/lib/deliver.test.sh && rtk bash tests/lib/cycle-result.test.sh && rtk bash tests/lib/spec-intent.test.sh && rtk bash tests/lib/publication-callers.test.sh && rtk bash tests/lib/graph-state.test.sh && rtk bash tests/lib/graph-run.test.sh && rtk bash tests/lib/graph-gate.test.sh && rtk bash tests/lib/artifact-sink.test.sh && rtk bash tests/lib/quality-loop-state.test.sh && rtk bash tests/lib/execute-prepare.test.sh && rtk bash tests/lib/execute-step.test.sh && rtk bash tests/lib/verify-prepare.test.sh && rtk bash tests/lib/checkpoint-pr.test.sh && rtk bash tests/lib/revise-state.test.sh && rtk bash tests/lib/feature-init.test.sh && rtk bash tests/lib/feature-write.test.sh && rtk bash tests/lib/artifact-publication.test.sh` -> exit 0; named offline suites pass.
 
 **Acceptance criteria:**
 - [ ] cycle-driver.test.sh exercises new full/spec-lite/oneshot creation, spec ingest/write/fill, replacement by stable ID, route escalation and reordered criteria; all preserve owner/IDs and reject numeric positional aliases for v1.
@@ -321,6 +335,11 @@ Shared-file sequencing: tests/run-all.sh is updated by each creator after its pr
 
 - [ ] Step 10: Sweep all actual writer callsites with rg before editing. Thread the original operation/phase ingress token through graph/state.sh, engine.py and gate.sh; driver fset/fappend/whole replacements; feature-init activation; feature-bootstrap/revise initialization; execute-step/remediation; verify-prepare/gate; iterate-judged; checkpoint-pr; deliver and cycle-result. Initial creation is a narrow atomic create-if-absent operation, never a missing-token bypass for existing state. Group a caller's consecutive writes or return a refreshed token from its own accepted transaction; never capture again to make stale computation pass.
 - [ ] Step 11: quality-loop-state.sh writes a separate quality-loop JSON, not feature.json: preserve standalone non-cycle use, but require the owning feature ingress token when its findings/clean state participate in a cycle. Stage artifact-sink copies/restoration and quality-loop state then commit under the same publication protocol; do not delete authoritative docs before checking the token. Register publication-callers.test.sh and retain original token in supported legacy participants.
+
+
+Execution scope refinement: the caller sweep found the quality-loop skill owns separate read/record/mark-clean operations, so it must retain the original ingress token. The existing feature writer also needs a trusted registry argument shared with its CLI transaction policy so relocated absolute task pointers can be resolved without duplicating the writer. The plan and footprint changes record these discovered integration dependencies; approved Goals and Boundaries remain unchanged.
+
+The artifact sink additionally requires the existing publication primitive to accept explicitly trusted external roots and absent desired files. Sink copies, baseline document restoration/deletion, and prepared Git index bytes share the same journal and ingress validation; Git index locking remains the sink controller’s responsibility.
 
 ### task-005: Validate coverage against the complete dispatch representation
 

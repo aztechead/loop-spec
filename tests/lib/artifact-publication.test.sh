@@ -203,4 +203,59 @@ with tempfile.TemporaryDirectory() as work:
         assert (interrupted/'feature.json').read_bytes() == durable_state
         assert not (interrupted/'publication-generations/active.json').exists()
     print('PASS: repeated recovery interruptions reuse one generation and still refuse later user edits')
+    for point in ('1', '2', '3', 'state'):
+        participant = Path(work)/('sink-' + point)
+        participant.mkdir()
+        external = Path(work)/('private-' + point)
+        external.mkdir()
+        (participant/'feature.json').write_text(json.dumps(initial))
+        (participant/'SPEC.md').write_text('approved document')
+        (external/'index').write_bytes(b'original index')
+        archive = external/'state/feature.json'
+        registry = {'archive':str(archive), 'index':str(external/'index')}
+        with locked_feature(participant):
+            with assertions.assertRaisesRegex(ValueError, 'escapes'):
+                capture_locked(participant, registry=registry)
+            ingress = capture_locked(participant, registry=registry, external_roots=[external])
+            files = [
+                {'source':stage(participant, 'archive', b'approved document'), 'target':'archive'},
+                {'source':None, 'target':'spec'},
+                {'source':stage(participant, 'index', b'candidate index'), 'target':'index'},
+            ]
+            def stop_sink(location):
+                if location == point:
+                    raise OSError('sink interrupted at ' + point)
+            with assertions.assertRaises(OSError):
+                publish_locked(participant, ingress, {'version':1,'files':files,'updates':[]},
+                               registry=registry, external_roots=[external], failure=stop_sink)
+            recovered = recover_locked(participant, registry=registry, external_roots=[external])
+            assert (participant/'SPEC.md').read_text() == 'approved document'
+            assert (external/'index').read_bytes() == b'original index'
+            assert not archive.exists()
+            (external/'index').write_bytes(b'later user index')
+            with assertions.assertRaisesRegex(ValueError, 'stale publication token'):
+                publish_locked(participant, recovered, {'version':1,'files':files,'updates':[]},
+                               registry=registry, external_roots=[external])
+            assert (participant/'SPEC.md').read_text() == 'approved document'
+            assert (external/'index').read_bytes() == b'later user index'
+            ingress = capture_locked(participant, registry=registry, external_roots=[external])
+            publish_locked(participant, ingress, {'version':1,'files':files,'updates':[]},
+                           registry=registry, external_roots=[external])
+            assert not (participant/'SPEC.md').exists()
+            assert archive.read_text() == 'approved document'
+            assert (external/'index').read_bytes() == b'candidate index'
+    print('PASS: trusted sink copies, document deletions and index bytes recover together and reject stale inputs')
+    linked_root = Path(work)/'linked-private'
+    linked_root.symlink_to(external, target_is_directory=True)
+    with locked_feature(participant):
+        for roots in ([Path('relative')], [linked_root]):
+            with assertions.assertRaisesRegex(ValueError, 'absolute real directory'):
+                capture_locked(participant, registry=registry, external_roots=roots)
+        with assertions.assertRaisesRegex(ValueError, 'state and internal paths'):
+            capture_locked(participant, registry={'archive':str(participant/'feature.json')},
+                           external_roots=[participant])
+        with assertions.assertRaisesRegex(ValueError, 'escapes'):
+            capture_locked(participant, registry={'archive':str(Path(work)/'unregistered')},
+                           external_roots=[external])
+    print('PASS: external registration rejects symlink roots, escaping files and live-state aliases')
 PYTEST

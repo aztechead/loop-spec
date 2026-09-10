@@ -2,6 +2,12 @@
 route: full
 unresolved_questions: []
 footprint:
+  - lib/artifact_sink.py
+  - lib/execute-prepare.sh
+  - lib/feature-write.sh
+  - docs/loop-spec/features/release-7-0/SPEC.md
+  - docs/loop-spec/features/release-7-0/PLAN.md
+  - skills/quality-loop/SKILL.md
   - .claude-plugin/marketplace.json
   - .claude-plugin/plugin.json
   - .codex-plugin/plugin.json

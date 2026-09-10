@@ -5,16 +5,29 @@
 import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
+import uuid
 
 from feature_read import load_state
-from feature_write import main as write_feature, publish
+from feature_write import main as write_feature, publish, read_bounded, write_operation
+from artifact_publication import capture_locked, locked_feature, publish_locked, stage
 
 
-def register(feature_dir, sidecar, reader=load_state, writer=write_feature, publisher=publish):
+def register(feature_dir, sidecar, reader=load_state, writer=write_feature, publisher=publish, token=None, token_output=None):
     feature_dir, sidecar = Path(feature_dir), Path(sidecar)
+    registry = {"tasks": str(sidecar.absolute())}
+    with locked_feature(feature_dir):
+        initial = load_state(feature_dir)
+        guarded = initial.get("artifactPublication") is not None
+        if guarded:
+            current = capture_locked(feature_dir, registry)
+            if token is None:
+                token = current
+            elif token != current:
+                raise ValueError("stale publication token; discard pending remediation")
     # Serialize preparers without blocking appenders on the feature writer's lock.
     with (feature_dir / ".execute-remediation.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -33,9 +46,15 @@ def register(feature_dir, sidecar, reader=load_state, writer=write_feature, publ
         if not queue:
             if generation is not None:
                 # Local acknowledgment can outlive a failed store persist.
-                writer(["set", str(feature_dir), "artifacts.remediationReceipt", json.dumps(generation)])
+                if guarded:
+                    refreshed = write_operation(feature_dir, "set", generation, ["artifacts", "remediationReceipt"],
+                                                token=token, registry=registry)
+                    if token_output:
+                        publish(Path(token_output), json.dumps(refreshed).encode("utf-8"))
+                else:
+                    writer(["set", str(feature_dir), "artifacts.remediationReceipt", json.dumps(generation)])
             return 0
-        tasks = json.loads(sidecar.read_text(encoding="utf-8"))
+        tasks = json.loads(read_bounded(sidecar))
         if not isinstance(tasks, list) or any(not isinstance(task, dict) for task in tasks):
             raise ValueError("{} must be an array of task objects".format(sidecar))
         ids = {task.get("id") for task in tasks}
@@ -96,12 +115,23 @@ def register(feature_dir, sidecar, reader=load_state, writer=write_feature, publ
         if lint.returncode:
             raise ValueError("remediation sidecar validation failed; repair pendingRemediationTasks: "
                              + (lint.stdout or lint.stderr).strip())
-        if added:
-            publisher(sidecar, candidate.encode("utf-8"))
         receipt = hashlib.sha256(json.dumps([generation, queue], sort_keys=True,
                                            allow_nan=False).encode("utf-8")).hexdigest()
-        writer(["ack-remediation", str(feature_dir), json.dumps({"snapshot": queue,
-                "generation": generation, "receipt": receipt})])
+        if guarded:
+            files = [{"source": stage(feature_dir, "remediation-" + uuid.uuid4().hex, candidate.encode("utf-8")),
+                      "target": "tasks"}] if added else []
+            updates = [{"path": "pendingRemediationTasks", "value": []},
+                       {"path": "artifacts.remediationReceipt", "value": receipt}]
+            with locked_feature(feature_dir):
+                refreshed = publish_locked(feature_dir, token, {"version": 1, "files": files, "updates": updates},
+                                           registry=registry, allowed_updates={entry["path"] for entry in updates})
+            if token_output:
+                publish(Path(token_output), json.dumps(refreshed).encode("utf-8"))
+        else:
+            if added:
+                publisher(sidecar, candidate.encode("utf-8"))
+            writer(["ack-remediation", str(feature_dir), json.dumps({"snapshot": queue,
+                    "generation": generation, "receipt": receipt})])
         return len(added)
 
 
@@ -109,7 +139,10 @@ if __name__ == "__main__":
     try:
         if len(sys.argv) != 3:
             raise ValueError("usage: execute_remediation.py <feature-dir> <tasks-path>")
-        print(json.dumps({"registered": register(*sys.argv[1:])}))
+        incoming = os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN")
+        token = json.loads(read_bounded(Path(incoming))) if incoming else None
+        print(json.dumps({"registered": register(*sys.argv[1:], token=token,
+                                                token_output=os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"))}))
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         message = "execute-prepare: remediation intake failed: {}".format(exc)
         print(message, file=sys.stderr)

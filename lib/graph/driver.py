@@ -2141,7 +2141,58 @@ def section_span(text, heading):
     return m.end(), (nxt.start() if nxt else len(text))
 
 
-def spec_fill(target, o):
+def fill_requirement(text, source, options, contract):
+    """Keep GE/SC identity separate from scenario_checks command and executionInputs."""
+    from requirements import parse_spec, unique_object, valid_id
+    inventory = parse_spec(text, source, contract)
+    row = options.get("row")
+    if row is not None and not valid_id(row, "GE"):
+        raise Die("spec fill: v1 --row requires a stable GE-ID, never a numeric position", 2)
+    inputs = options.get("execution_inputs")
+    if isinstance(inputs, str):
+        inputs = json.loads(inputs, object_pairs_hook=unique_object)
+    if not isinstance(inputs, dict):
+        raise Die("spec fill: v1 requires --execution-inputs with the reviewed JSON input contract", 2)
+    command, expect = options["command"].strip(), options["expect"].strip()
+    if not command or not expect or "\n" in expect:
+        raise Die("spec fill: command and single-line outcome prose must be nonempty", 2)
+    lines = text.splitlines(keepends=True)
+    requirement = next((r for r in inventory["requirements"] if r["id"] == row), None)
+    if row is not None and requirement is None:
+        raise Die("spec fill: no active requirement " + row)
+    scenario_id = options.get("scenario")
+    if requirement:
+        scenarios = requirement["scenarios"]
+        if scenario_id is None and len(scenarios) == 1:
+            scenario_id = scenarios[0]["id"]
+        if scenario_id not in {scenario["id"] for scenario in scenarios}:
+            raise Die("spec fill: --scenario must name an active scenario of " + row, 2)
+        start = requirement["location"]["line"] - 1
+        end = scenarios[0]["location"]["line"] - 1
+        lines[start:end] = ["- [ ] %s: %s\n" % (row, expect)]
+        text = "".join(lines)
+    else:
+        row = "GE-%03d" % contract["nextRequirementId"]
+        scenario_id = "SC-001"
+        span = section_span(text, "Good Enough")
+        text = text[:span[1]] + "- [ ] %s: %s\n  - %s: %s\n\n" % (row, expect, scenario_id, expect) + text[span[1]:]
+    match = re.search(r"^scenario_checks: *(.*)$", text, re.M)
+    checks = json.loads(match.group(1), object_pairs_hook=unique_object) if match else {}
+    for identity in checks:
+        parts = identity.split("/")
+        if len(parts) != 2 or not valid_id(parts[0], "GE") or not valid_id(parts[1], "SC"):
+            raise Die("spec fill: scenario_checks requires GE-ID/SC-ID keys", 2)
+    checks[row + "/" + scenario_id] = {"command": command, "executionInputs": inputs}
+    declaration = "scenario_checks: " + json.dumps(checks, ensure_ascii=False, separators=(",", ":"))
+    if match:
+        text = text[:match.start()] + declaration + text[match.end():]
+    else:
+        text = text.replace("---\n", "---\n" + declaration + "\n", 1)
+    parse_spec(text, source, contract)
+    return text, row
+
+
+def spec_fill(target, o, contract=None):
     text = open(target, encoding="utf-8").read()
     filled = []
     if o.get("intent"):
@@ -2165,42 +2216,49 @@ def spec_fill(target, o):
     if o.get("criterion"):
         raise Die("spec fill: a criterion is two fields, --command <shell> and --expect <what exit 0 proves>; "
                   "the driver writes the line (port audit 5, R1)", 2)
-    if o.get("command") or o.get("expect"):
-        command, expect = (o.get("command") or "").strip(), (o.get("expect") or "").strip()
-        if not command or not expect:
-            raise Die("spec fill: --command <shell> and --expect <what exit 0 proves> go together", 2)
-        if "`" in command:
-            raise Die("spec fill: the command carries no backtick; the driver writes the line", 2)
-        span = section_span(text, "Good Enough")
-        if span is None:
-            raise Die("spec fill: no ### Good Enough section in %s" % target)
-        body = text[span[0]:span[1]]
-        kept = [l for l in body.splitlines() if l.strip() and "{check command}" not in l]
-        line = "- [ ] `%s` exits 0: %s" % (command, expect)
-        row = o.get("row")
-        if row:
-            if not re.match(r"^GE-\d{3}$", row):
-                raise Die("spec fill: --row names a criterion as GE-NNN", 2)
-            idx = int(row[3:]) - 1
-            if not 0 <= idx < len(kept):
-                raise Die("spec fill: %s has no criterion %s to replace (%d present)" % (target, row, len(kept)), 1)
-            kept[idx] = line
-            filled.append("criterion:%s" % row)
-        elif line in kept:
-            filled.append("criterion (already present)")
-        else:
-            kept.append(line)
-            filled.append("criterion:GE-%03d" % len(kept))
-        text = text[:span[0]] + "\n" + "\n".join(kept) + "\n\n" + text[span[1]:]
-        # The command the driver will run lives in the frontmatter too, keyed by row:
-        # `verification run` reads this map, never the sentence.
-        commands = [re.search(r"`([^`]+)`", l).group(1) if re.search(r"`([^`]+)`", l) else "" for l in kept]
-        block = "criteria:\n" + "".join("  GE-%03d: %s\n" % (i + 1, json.dumps(c)) for i, c in enumerate(commands))
-        fm = re.match(r"^---\n(.*?)^---\n", text, flags=re.M | re.S)
-        if not fm:
-            raise Die("spec fill: %s has no frontmatter to hold the criteria map" % target)
-        front = re.sub(r"^criteria:\n(?:  GE-\d{3}: .*\n)*", "", fm.group(1), flags=re.M)
-        text = "---\n" + front + block + "---\n" + text[fm.end():]
+    versioned = bool(contract and contract.get("format") == "v1")
+    if versioned and (o.get("command") or o.get("expect")):
+        if not (o.get("command") and o.get("expect")):
+            raise Die("spec fill: --command and --expect go together", 2)
+        text, row = fill_requirement(text, target, o, contract)
+        filled.append("criterion:" + row)
+    elif not versioned:
+        if o.get("command") or o.get("expect"):
+            command, expect = (o.get("command") or "").strip(), (o.get("expect") or "").strip()
+            if not command or not expect:
+                raise Die("spec fill: --command <shell> and --expect <what exit 0 proves> go together", 2)
+            if "`" in command:
+                raise Die("spec fill: the command carries no backtick; the driver writes the line", 2)
+            span = section_span(text, "Good Enough")
+            if span is None:
+                raise Die("spec fill: no ### Good Enough section in %s" % target)
+            body = text[span[0]:span[1]]
+            kept = [l for l in body.splitlines() if l.strip() and "{check command}" not in l]
+            line = "- [ ] `%s` exits 0: %s" % (command, expect)
+            row = o.get("row")
+            if row:
+                if not re.match(r"^GE-\d{3}$", row):
+                    raise Die("spec fill: --row names a criterion as GE-NNN", 2)
+                idx = int(row[3:]) - 1
+                if not 0 <= idx < len(kept):
+                    raise Die("spec fill: %s has no criterion %s to replace (%d present)" % (target, row, len(kept)), 1)
+                kept[idx] = line
+                filled.append("criterion:%s" % row)
+            elif line in kept:
+                filled.append("criterion (already present)")
+            else:
+                kept.append(line)
+                filled.append("criterion:GE-%03d" % len(kept))
+            text = text[:span[0]] + "\n" + "\n".join(kept) + "\n\n" + text[span[1]:]
+            # The command the driver will run lives in the frontmatter too, keyed by row:
+            # `verification run` reads this map, never the sentence.
+            commands = [re.search(r"`([^`]+)`", l).group(1) if re.search(r"`([^`]+)`", l) else "" for l in kept]
+            block = "criteria:\n" + "".join("  GE-%03d: %s\n" % (i + 1, json.dumps(c)) for i, c in enumerate(commands))
+            fm = re.match(r"^---\n(.*?)^---\n", text, flags=re.M | re.S)
+            if not fm:
+                raise Die("spec fill: %s has no frontmatter to hold the criteria map" % target)
+            front = re.sub(r"^criteria:\n(?:  GE-\d{3}: .*\n)*", "", fm.group(1), flags=re.M)
+            text = "---\n" + front + block + "---\n" + text[fm.end():]
     if o.get("grounding"):
         span = section_span(text, "Grounding")
         if span is None:
@@ -2222,7 +2280,8 @@ def spec_fill(target, o):
         text = text[:span[0]] + "\n" + "\n".join(kept) + "\n" + text[span[1]:]
     if not filled:
         raise Die("spec fill: nothing to fill (--intent, --file/--note, --command/--expect, or --grounding)", 2)
-    text = compact_artifact(text)
+    if not versioned:
+        text = compact_artifact(text)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
     flags = []
@@ -2245,6 +2304,58 @@ def spec_escalate(target, reason):
 
 
 def cmd_spec(argv):
+    """Author a private candidate, then publish its inventory with the original token."""
+    from artifact_publication import capture_locked, locked_feature, publish_locked, stage
+    from feature_write import begin_operation, participant_registry, read_bounded
+    from requirements import parse_spec, reconcile_inventory
+    import uuid
+    if "--feature-dir" not in argv:
+        return author_spec(argv)
+    index = argv.index("--feature-dir")
+    if index + 1 == len(argv):
+        usage()
+    directory = Path(argv[index + 1]).resolve()
+    if not (directory / "feature.json").is_file():
+        return author_spec(argv)
+    token_path = Path(os.environ["LOOP_SPEC_PUBLICATION_TOKEN"]) if os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN") else None
+    if "--token" in argv:
+        index = argv.index("--token")
+        if index + 1 == len(argv):
+            usage()
+        token_path = Path(argv[index + 1])
+        argv = argv[:index] + argv[index + 2:]
+    supplied = json.loads(read_bounded(token_path)) if token_path else None
+    token = current = begin_operation(directory, token=supplied)
+    feat = state(directory)
+    registry = participant_registry(directory)
+    if current is None:
+        return author_spec(argv)
+    if argv[:1] == ["approve"]:
+        return author_spec(argv, publication_token=token)
+    target = Path(docs_dir(str(directory), feat)) / "SPEC.md"
+    staged = directory / "publication-staging" / ("spec-" + uuid.uuid4().hex)
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        staged.write_bytes(read_bounded(target))
+    output = capture(lambda args: author_spec(args, str(staged)), argv)
+    if staged.exists():
+        content = read_bounded(staged)
+        contract = feat.get("requirementsContract")
+        updates = []
+        if contract:
+            inventory = parse_spec(content.decode("utf-8"), str(target), contract)
+            updates = [{"path": "requirementsContract", "value": reconcile_inventory(contract, inventory)}]
+        source = stage(directory, "accepted-spec-" + uuid.uuid4().hex, content)
+        with locked_feature(directory):
+            refreshed = publish_locked(directory, token, {"version": 1, "files": [{"source": source, "target": "spec"}],
+                                                         "updates": updates}, registry=registry, allowed_updates={"requirementsContract"})
+        if os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"):
+            Path(os.environ["LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"]).write_text(json.dumps(refreshed), encoding="utf-8")
+    print(output.replace(str(staged), str(target)), end="")
+    return 0
+
+
+def author_spec(argv, target_override=None, publication_token=None):
     sub = argv[0] if argv else ""
     if sub == "footprint" and argv[1:2] == ["drop"]:
         sub, argv = "drop", argv[1:]
@@ -2254,7 +2365,7 @@ def cmd_spec(argv):
     if sub not in ("skeleton", "write", "drop", "fill", "approve"):
         usage()
     opts = {"approve": ("--feature-dir", "--source"), "write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason"),
-            "fill": ("--feature-dir", "--intent", "--file", "--note", "--criterion", "--command", "--expect", "--row", "--grounding", "--json"),
+            "fill": ("--feature-dir", "--intent", "--file", "--note", "--criterion", "--command", "--expect", "--row", "--scenario", "--execution-inputs", "--grounding", "--json"),
             "escalate": ("--feature-dir", "--reason")}.get(sub, ("--feature-dir",))
     o = parse_pairs(argv[1:], opts)
     feature_dir = o.get("feature_dir") or ""
@@ -2263,7 +2374,7 @@ def cmd_spec(argv):
         usage()
     feature_dir = os.path.realpath(feature_dir)
     feat = state(feature_dir)
-    target = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
+    target = target_override or os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
     if sub in ("drop", "fill", "escalate") and not os.path.isfile(target):
         raise Die("spec %s: no SPEC.md at %s" % (sub, target), 2)
     if sub == "approve":
@@ -2282,7 +2393,13 @@ def cmd_spec(argv):
                 verify_intent(text, feat["specApproval"])
             else:
                 approval = {"sha256": intent_digest(text), "source": approval_source, "approvedAt": now()}
-                fset(feature_dir, "specApproval", approval)
+                if publication_token is not None:
+                    from feature_write import write_operation
+                    refreshed = write_operation(feature_dir, "set", approval, ["specApproval"], token=publication_token)
+                    if os.environ.get("LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"):
+                        Path(os.environ["LOOP_SPEC_PUBLICATION_TOKEN_OUTPUT"]).write_text(json.dumps(refreshed), encoding="utf-8")
+                else:
+                    fset(feature_dir, "specApproval", approval)
                 lib("events", "emit", feature_dir, "spec-approved", "--phase", "spec", "--data", json.dumps(approval))
         except (OSError, ValueError) as exc:
             raise Die("spec approve: %s" % exc, 1)
@@ -2313,18 +2430,18 @@ def cmd_spec(argv):
             for c in batch.get("criteria") or []:
                 if not isinstance(c, dict):
                     raise Die("spec fill --json: each criterion is {command, expect}, never a sentence (port audit 5, R1)", 2)
-                calls.append({"command": c.get("command"), "expect": c.get("expect"), "row": c.get("row")})
+                calls.append({"command": c.get("command"), "expect": c.get("expect"), "row": c.get("row"), "scenario": c.get("scenario"), "execution_inputs": c.get("executionInputs")})
             for g in batch.get("grounding") or []:
                 calls.append({"grounding": g})
             if not calls:
                 raise Die("spec fill --json: nothing to fill", 2)
             out = None
             for call in calls:
-                out = json.loads(capture(lambda a: spec_fill(a[0], a[1]), [target, call]))
+                out = json.loads(capture(lambda a: spec_fill(a[0], a[1], contract=feat.get("requirementsContract")), [target, call]))
                 filled += out["filled"]
             print(json.dumps({"spec": target, "filled": filled, "flags": out["flags"]}))
             return 0
-        return spec_fill(target, o)
+        return spec_fill(target, o, contract=feat.get("requirementsContract"))
     if sub == "skeleton":
         # The route is a function of the scout's record, and the model may lengthen it,
         # never shorten it (the port principles, rule 1). The probe reads the

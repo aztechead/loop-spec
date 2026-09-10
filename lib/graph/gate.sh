@@ -98,11 +98,14 @@ feature_json="$feature_dir/feature.json"
   exit 1
 }
 
+. "$SCRIPT_DIR/../feature-write.sh"
+loop_spec_publication_begin "$feature_dir" || exit 1
+
 # state.sh enforces the graph's writes[]; feature-write.sh refuses these two keys to
 # anything that has not come through here.
 write_key() {
   local key="$1" value="$2"
-  LOOP_SPEC_GATE_WRITE=1 bash "$STATE" write \
+  LOOP_SPEC_GATE_WRITE=1 loop_spec_publication_run bash "$STATE" write \
     --feature-dir "$feature_dir" --node "$WRITE_NODE" --graph "$CRITIQUE_GRAPH" \
     --key "$key" "$value"
 }

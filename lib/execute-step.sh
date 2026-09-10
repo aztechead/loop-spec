@@ -47,7 +47,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
+lib() { loop_spec_publication_lib "$SCRIPT_DIR" "$@"; }
 usage() { sed -n '2,40p' "$0" | grep -E '^#( |$)' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 cmd="${1:-}"; shift || true
@@ -63,6 +63,8 @@ case "$cmd" in dispatch|package|verdict|integrate|run) ;; *) usage ;; esac
 case "$role" in implementer|reviewer) ;; *) usage ;; esac
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" && -n "$task_id" ]] || usage
 feature_dir="$(cd "$feature_dir" && pwd -P)"
+. "$SCRIPT_DIR/feature-write.sh"
+loop_spec_publication_begin "$feature_dir" || exit 1
 fj="$feature_dir/feature.json"
 prep="$feature_dir/dispatch/prepare.json"
 [[ -f "$prep" ]] || { echo "execute-step: $prep is missing; run lib/execute-prepare.sh first" >&2; exit 2; }

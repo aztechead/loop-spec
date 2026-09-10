@@ -1,0 +1,474 @@
+PASS: no subcommand exits 2
+PASS: next without --feature-dir exits 2
+PASS: start: description mode
+PASS: start: slug derived
+PASS: start: profile standard without evidence
+PASS: start: interactive asks only commands
+PASS: start: runtime.json carries teamsMode
+PASS: start: autonomous asks nothing
+PASS: start: autonomous forces style auto
+PASS: start: autonomous records the commands assumption
+PASS: start: bare interactive asks for a title
+PASS: start: bare autonomous aborts with 3
+PASS: start: bad LOOP_SPEC_ANSWER_STYLE exits 2
+PASS: start: bad model selector exits 2
+PASS: start: spec file mode from env
+PASS: start: spec file title from heading
+PASS: start: not a repo, non-autonomous, no new token -> asks greenfield
+PASS: start: greenfield decision offered
+PASS: start: new token marks greenfield
+PASS: init: in-place harness enters no worktree
+PASS: init: feature branch checked out
+PASS: init: schema-7 feature.json
+PASS: init: spec draft copied
+PASS: init: no backlog entry recorded by default
+PASS: init: refuses a second feature on a dirty/branched checkout
+PASS: next: first step names spec
+PASS: next: the spec node's skill is an EXT line
+PASS: next: activation persisted models
+PASS: next: currentPhaseStartedAt stamped
+/Users/aztechead/Projects/loop-spec/lib/graph/driver.py:2: SyntaxWarning: invalid escape sequence '\`'
+  """driver.py - The cycle's mechanical loop, in one program with one-line answers.
+/Users/aztechead/Projects/loop-spec/lib/graph/driver.py:252: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+[SPEC] spec-approved
+PASS: next: style=step pauses at the human gate
+PASS: next: journal records the real successor
+PASS: next: state snapshot on the ref at the boundary
+PASS: next: the feature branch carries no state commit
+PASS: next: the project .gitignore is never written
+PASS: next: re-invoke after pause continues to discuss
+PASS: next: declined SPEC gate ends the loop
+PASS: next: handoff answer names the successor
+PASS: next: handoff writes a paused result
+PASS: next: the handoff records the session
+PASS: next: the same session gets the handoff answer again
+PASS: next: a repeated handoff answer emits no phase event pair
+PASS: phase-begin: the same session is refused with 4
+PASS: phase-begin: a fresh session is not refused by the handoff
+PASS: next: the repeated handoff answer puts the result pointer back
+PASS: begin: the session that handed off is refused with 4
+PASS: begin: the refusal carries the handoff answer
+PASS: begin: the refused re-entry emits no phase event pair
+PASS: begin: the refusal puts the result pointer back
+PASS: start: autonomous with one paused feature and a new title resumes it
+PASS: start: the resume decision names the reworded slug
+PASS: resume: in-place feature resumes from its root
+PASS: resume: in-place feature refuses another root
+PASS: resume: shared root without identity refuses ambiguity
+PASS: resume: selected slug survives shared checkout
+PASS: resume: other feature remains untouched
+PASS: start: two paused features and a new title pick nothing
+PASS: resume: missing selected feature never falls back
+PASS: resume: slug cannot traverse directories
+PASS: finish: no delivery sidecar is delivery-incomplete
+PASS: escalate: result is escalated
+PASS: escalate: team state cleared
+PASS: escalate: in-place feature exits no worktree
+PASS: start: the profile's autonomous preset leaves no human decisions
+PASS: init: an untracked profile.json is not dirt
+PASS: init: the profile's preset arms the run autonomous
+PASS: start: a stamped autonomous token survives the prose rewrite
+PASS: start: the stamp is consumed
+PASS: start: a stale stamp is ignored
+PASS: init: dirty refusal names the dirty path
+PASS: begin: an autonomous run initializes without a second call
+PASS: begin: the feature dir is created
+PASS: begin: start's notices ride along
+PASS: begin: a human decision is handed back
+PASS: begin: the init command the lead runs next is rendered with start's values
+PASS: begin: the resume command is rendered for a pick
+PASS: finish: the report opens with the outcome
+PASS: finish: one line per target with its SHA
+PASS: finish: the report ends with the backlog count
+PASS: finish: the report is one string the lead prints as is
+PASS: decline: the answer names the mismatch
+PASS: decline: the terminal result is published
+PASS: decline: a changed tree is work to finish, not a mismatch (the writer refuses)
+PASS: decline: no reason is a bad invocation
+PASS: decline: refused once a feature has begun in the checkout
+PASS: decline: the refusal names the feature and the way out
+PASS: init: the plugin's own repository is refused with exit 3
+PASS: init: the refusal names the manifest and the rule
+PASS: init: nothing was initialized
+PASS: init: the plugin developing itself (the project the harness opened) is allowed
+PASS: init: a driver copy inside the target checkout is refused
+PASS: init: an installed plugin outside the project is not refused
+PASS: spec skeleton: no scout cite is the full route
+PASS: spec skeleton: the reason says the scout cited nothing
+PASS: spec skeleton: nothing is written on the full route
+PASS: spec skeleton: four cited files is the full route
+PASS: spec skeleton: one cited file is the oneshot route
+PASS: spec skeleton: a read-only mark on an unprotected file is not honored
+PASS: spec skeleton: nothing is read-only without a protected list
+PASS: spec skeleton: the footprint is the record minus the protected file
+PASS: spec skeleton: the protected file is read-only
+PASS: spec skeleton: prints the path in the feature's checkout, not the cwd
+PASS: spec skeleton: the title is filled
+PASS: spec skeleton: the footprint is filled
+PASS: spec skeleton: the read-only file is not in the footprint
+PASS: spec skeleton: one Implementation notes bullet per footprint file
+PASS: spec skeleton: a read-only bullet per read-only cite
+PASS: spec skeleton: no score to fill, only the two keys the probe reads
+PASS: spec skeleton: the frozen Intent block is in place
+PASS: spec skeleton: the oneshot spec lint accepts the shape
+PASS: spec fill: the intent lands inside the frozen block
+PASS: spec fill: the answer names what it filled and the flags so far
+PASS: spec fill: a footprint file's bullet is replaced in place
+PASS: spec fill: a file with no bullet is refused
+PASS: spec fill: a criterion sentence is refused
+PASS: spec fill: a command without its expectation is refused
+PASS: spec fill: the first criterion replaces the placeholders
+PASS: spec fill: the driver writes the line
+PASS: spec fill: the answer names the row
+PASS: spec fill: the command lands in the frontmatter criteria map
+PASS: spec fill: a repeated criterion is not appended twice
+PASS: spec fill --row: the criterion is replaced, not appended
+PASS: spec fill --row: the new expectation stands
+PASS: spec fill --row: a row the spec does not hold is refused
+PASS: spec fill: a grounding bullet replaces none
+PASS: spec fill: the filled skeleton passes both spec lints
+PASS: spec fill: nothing to fill is a bad invocation
+PASS: spec fill --json: every field in one call
+PASS: spec fill --json: a criterion sentence is refused
+PASS: spec fill --json: the result passes both spec lints
+PASS: spec fill --json: a non-object is a bad invocation
+PASS: spec write: refused over the oneshot skeleton
+PASS: spec write: the skeleton is untouched
+PASS: spec escalate: not the lead's call
+PASS: spec escalate: nothing was written
+PASS: spec skeleton: an existing SPEC.md is kept
+PASS: spec write: the draft lands at the one target
+PASS: spec write: the content is the draft's
+PASS: spec write: any other target is a bad invocation
+PASS: next: the oneshot candidate enters SPEC first
+PASS: next: a oneshot spec enters ONESHOT in the same session (graph sameSession edge)
+PASS: next: no handoff is recorded across the same-session edge
+PASS: next: driverNext names oneshot
+PASS: next: SPEC closed before ONESHOT opened
+PASS: phase-begin oneshot: the same session opens the phase (no exit 4)
+PASS: phase-begin oneshot: the VERIFICATION.md skeleton is written
+PASS: phase-begin oneshot: the skeleton's title is the feature's
+PASS: phase-begin oneshot: no Plan line without a PLAN.md
+PASS: phase-begin oneshot: one grounding row per criterion
+PASS: phase-begin oneshot: the acceptance row carries the criterion text and no status
+PASS: phase-begin oneshot: the second criterion gets its own rows
+PASS: phase-begin oneshot: a pipe in the criterion is escaped in the table row
+PASS: phase-begin oneshot: an empty status cell is a flag until the driver runs the criterion
+PASS: phase-begin oneshot: the skeleton carries no section the gates do not read
+PASS: phase-begin oneshot: the skeleton is under 50 lines
+PASS: verification fill: the grounding row is filled with integration none by default
+PASS: verification fill: GE-002's placeholder row is still a flag
+PASS: verification fill: an integration ref is written as given
+PASS: verification fill: the lead cannot supply evidence or a status
+PASS: verification run: a passing command is PASS from its exit
+PASS: verification run: a failing command is FAIL from its exit
+PASS: verification run: a failing row is exit 1
+PASS: verification run: the answer lists each row's exit
+PASS: verification run: the output block is the command's output
+PASS: verification run: the floor refuses convergence on the FAIL row
+PASS: verification run: no commands.test means the block says so
+PASS: verification run: a criterion with no command on record is a FAIL row that says so
+PASS: verification run: the block for the added criterion exists
+PASS: verification run: the earlier rows were still written
+PASS: the fixture's second criterion now runs a passing pipeline, replaced by row
+PASS: and the frontmatter map carries the new command
+PASS: verification run: every row passing is exit 0
+PASS: verification run: the acceptance row follows the revised spec criterion
+PASS: verification run: the test suite block is the command's output with its exit
+PASS: verification review: the reviewer's verdict lands on the Reviewer line
+PASS: verification review: one pending bullet per finding
+PASS: verification review: a pending finding is a flag until answered
+PASS: verification verdict: true or false only
+PASS: verification verdict: the answers replace pending
+PASS: verification verdict: a false carries its disproof
+PASS: verification verdict: an unknown finding is refused
+PASS: verification review: a report with no finding renders none
+PASS: verification review: none passes the triage lint
+PASS: verification fill: the reviewer model lands
+PASS: verification: the observed and filled skeleton has no flag from the four exit lints
+PASS: verification fill: a row the skeleton does not hold is refused
+PASS: verification: no placeholder is left
+PASS: phase-begin oneshot: an existing VERIFICATION.md is kept
+PASS: phase-begin oneshot: kept means untouched
+PASS: oneshot review: attended is in-harness
+PASS: oneshot review: a reviewer that completes without its report leaves no dispatch event
+PASS: oneshot review: the withheld event is named in the answer
+PASS: oneshot review: a failed reviewer session leaves no dispatch event even with a report
+PASS: oneshot review: the session log is kept next to the report
+PASS: oneshot review: the log records the session's status
+PASS: next from oneshot: a failed reviewer session is one REDO naming the in-harness dispatch
+PASS: next from oneshot: the REDO quotes stderr's last line and names the log
+PASS: next from oneshot: the failure is on record
+PASS: next from oneshot again: no relaunch; the gate names the missing dispatch
+PASS: next from oneshot again: one failure on record, not two
+PASS: oneshot review: the reviewer ran as a session
+PASS: oneshot review: the prompt is one line naming the package, the spec, and the report
+PASS: oneshot review: the package holds the diff since baseSha
+PASS: oneshot review: the dispatch event is driver-observed
+PASS: oneshot review: the exit gate's review check is satisfied by it
+PASS: next from oneshot: the driver runs the review pass and answers one REDO
+PASS: next from oneshot: the FLAG hands the lead the report path
+PASS: boundary review: full FLAG is retained in redo telemetry
+PASS: next from oneshot: the Code review section was written from the report (none)
+PASS: next from oneshot: the dispatch event is driver-observed
+PASS: next from oneshot again: no second review; the exit gate answers
+PASS: next from oneshot again: one dispatch event, not two
+PASS: next from oneshot in-harness: the driver launches nothing and the gate names the missing dispatch
+PASS: next from oneshot: the first two identical gates are REDOs
+PASS: next from oneshot: the third identical gate escalates the route, never the lead
+PASS: next from oneshot: route: full is on the spec with the deadlock's classes
+PASS: next from oneshot: the escalation is an event with its classes
+PASS: next from oneshot: the attempt's verification record is set aside
+PASS: next from oneshot: the run continues to DISCUSS in a fresh session
+PASS: spec write: allowed over an escalated spec (the full shape is the lead's)
+PASS: next: iterate to verify is a REWIND (verify precedes iterate on the graph)
+PASS: next: verify to iterate is a HANDOFF (forward on the graph)
+PASS: phase-begin spec: entry packet is parsed
+PASS: phase-begin spec: the mode line is an object
+PASS: phase-begin spec: no flags on a fresh feature
+PASS: phase-begin execute: a missing PLAN.md is a flagged ingress
+PASS: phase-begin execute: the flags name the missing artifacts
+PASS: next: first entry is SPEC
+PASS: next: a phase that wrote nothing is sent back
+PASS: next: the FLAG lines follow the answer
+PASS: next: the redo event retains the exact gate messages
+PASS: next: the same flags again count the attempt
+PASS: next: attempt two is reported
+PASS: next: the third identical REDO escalates
+PASS: next: the escalation names the gate
+PASS: next: an escalated result is published
+/Users/aztechead/Projects/loop-spec/lib/graph/driver.py:2: SyntaxWarning: invalid escape sequence '\`'
+  """driver.py - The cycle's mechanical loop, in one program with one-line answers.
+/Users/aztechead/Projects/loop-spec/lib/graph/driver.py:252: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+[SPEC] spec-approved
+PASS: next: a clean exit hands the successor to a fresh session
+PASS: next: the handoff wrote the paused result
+PASS: next: the fresh session enters the handed phase
+PASS: next: the fresh session's entry adds no second phase_start
+PASS: next: the handoff record is consumed by the entry
+PASS: next: the exit committed the artifact
+PASS: init: backlog entry id persisted
+FAIL: init: claude gets a worktree to enter (expected '1', got '0')
+FAIL: init: control checkout stays on main (expected 'main', got 'feat/ship-it')
+tests/lib/cycle-driver.test.sh: line 664: cd: null: No such file or directory
+FAIL: next: works from inside the worktree (expected 'NEXT phase=spec', got '')
+jq: error: Could not open file null/.loop-spec/features/ship-it/feature.json: No such file or directory
+FAIL: next: records the answered phase for cycle-result (expected 'spec', got '')
+jq: error: Could not open file null/.loop-spec/features/ship-it/feature.json: No such file or directory
+/Users/aztechead/Projects/loop-spec/lib/graph/driver.py:2: SyntaxWarning: invalid escape sequence '\`'
+  """driver.py - The cycle's mechanical loop, in one program with one-line answers.
+
+    cycle-driver.sh start [--dir DIR] -- <invocation arguments...>
+        Preflight + parse + profile + command detection. Prints one JSON object:
+        {invocation, profile, classification, harness, teams, workflows, workspace,
+         commands, resume:{candidates,cleanup,autoPick}, decisions:[...], notices:[...],
+         warnings:[...]}
+        decisions[] are the questions the caller must still answer (empty when
+        autonomous or non-interactive answered them): {id, question, options, default}.
+        ids: greenfield | resume | repos | title | commands.
+        Exit 0 answer; 2 bad invocation/env; 3 abort (message on stderr).
+
+    cycle-driver.sh init --dir DIR --slug S --title T --style ST --profile P
+        [--classification JSON] [--autonomous 0|1] [--greenfield 0|1]
+        [--spec-file PATH] [--commands JSON] [--repos JSON] [--backlog-entry JSON]
+        [--protected JSON]   the task's protected files (the `protected:a,b` token),
+                             recorded as feature.json.protected
+        New feature: adopt-PR probe, clean guard, base, execution root, bootstrap.
+        Prints {featureDir, slug, executionRoot, enterWorktree, branch, baseBranch,
+        baseSha, greenfield}. `enterWorktree` non-null means the caller must call
+        EnterWorktree({path}) before anything else. Exit 0/1/2; 3 the checkout is the
+        plugin's own repository and not the project the harness opened (the reason
+        names which of the two probes answered), which no cycle initializes.
+
+    cycle-driver.sh resume --dir DIR --feature-root PATH [--slug SLUG]
+        Adopt a resumable feature's execution root. Prints {featureDir, slug,
+        currentPhase, enterWorktree, tasksDone, tasksRemaining, progressTail,
+        recoverCompletion, watchdog}. Exit 0; 1 refused (message says where to relaunch).
+
+    cycle-driver.sh begin [--dir DIR] -- <invocation arguments...>
+        start, then init or resume when no human decision is pending. Prints start's
+        object plus {action: "init"|"resume"|"decisions", ...the init or resume object}.
+        action=decisions means the caller answers .decisions[] and calls init or resume
+        itself. Exit codes as start, init, and resume.
+
+    cycle-driver.sh phase-begin <phase> --feature-dir DIR
+        The phase's whole ingress in one call: {entry:{fields,read,flags}, mode:{...},
+        execute:{...}|verify:{...}}. The execute and verify blocks are
+        lib/execute-prepare.sh and lib/verify-prepare.sh. Exit 1 when the entry packet
+        FLAGs a missing ingress (the flags are in the JSON); 2 bad invocation.
+        Exit 4: this session already answered HANDOFF for the feature; the phase
+        starts in a fresh invocation (feature.json.handoffSession).
+        A node whose ingress lists `skeletons` gets each absent file written from its
+        template first, in the shape the exit gates accept (`skeletons` in the packet).
+
+    cycle-driver.sh spec skeleton --feature-dir DIR
+        The oneshot candidate, decided from the scout's record (lib/footprint.sh list)
+        by lib/graph/probes/oneshot.sh --candidate, never from files the lead types.
+        Prints one JSON object {route, reason, footprint, readOnly, spec}. On
+        route=oneshot, {docs}/SPEC.md is written in the oneshot shape from
+        skills/shared/artifact-templates/SPEC-oneshot.md.template with the title, slug,
+        footprint, one Implementation notes bullet per footprint file, and one
+        read-only bullet per read-only cite filled, in the checkout that holds
+        feature.json (the one the exit gate reads); `spec` is its path. An existing
+        SPEC.md is kept. On route=full nothing is written and `spec` is null: the lead
+        writes the full shape. Exit 0; 2 bad invocation.
+
+    cycle-driver.sh oneshot review --feature-dir DIR
+        ONESHOT's one review pass, launched by the driver when lib/harness.sh
+        session-layer answers "session": the package (the diff since baseSha) is
+        written by lib/dispatch-files.sh, the reviewer runs as its own headless CLI
+        session with a one-line prompt (the package, the spec, the report path), and
+        the dispatch event the exit gate reads is emitted here, driver-observed, never
+        self-reported (the port principles, rule 6). Prints the runner's
+        JSON line plus {report, package}. In-harness (an attended session, no profile)
+        it prints {action: "in-harness"} and the lead dispatches the reviewer through
+        the harness tool. Exit 0; 1 the session failed; 2 bad invocation.
+
+    cycle-driver.sh spec footprint drop --feature-dir DIR --file PATH --reason TEXT
+        Take one file out of SPEC.md's footprint as a recorded decision: the reason lands
+        in decisions.jsonl (kind ruling) and as a line under Implementation notes, and
+        the frontmatter list loses the file. The footprint is a promise the ONESHOT exit
+        gate checks against the diff, and this is the only way out of it (the gate has
+        no prose exit, port audit 3, N2). Refused (exit 1) when the
+        file is the test module of a file that stays in the footprint: the change gets
+        its test, or the run escalates. Prints {spec, dropped, footprint}. Exit 0; 1
+        refused (not in the footprint, or a test module); 2 bad invocation.
+
+    cycle-driver.sh spec fill --feature-dir DIR [--intent TEXT] [--file PATH --note TEXT]
+        [--command SHELL --expect TEXT [--row GE-NNN]] [--grounding TEXT [--row N]] | --json PATH|-
+        A criterion is two fields: the driver writes `- [ ] \`<command>\` exits 0: <expect>`
+        and the command into the frontmatter `criteria:` map that `verification run`
+        executes; --row replaces that criterion (or the Nth grounding bullet), no --row
+        appends the next one, and the same criterion is never appended twice. --json
+        fills every field in one call from {intent, notes: {path: text}, criteria:
+        [{command, expect}], grounding: [text]} (`-` reads stdin).
+        Fill one value of the oneshot SPEC.md skeleton in place: the paragraph inside the
+        frozen Intent block, the Implementation notes bullet of one footprint file, one
+        Good Enough criterion (the text after `- [ ] `, the first real one replacing the
+        placeholders), or one Grounding bullet (replacing `- none`). The driver is the
+        only writer of the shape (port audit 3, N1): the lead never
+        has the file open, so the exit gate cannot see a heading it typed. Every write
+        re-runs the two spec lints and prints {spec, flags:[...]}; exit 0 written (flags
+        are the gate's findings so far), 1 nothing to fill or the field is not in the
+        skeleton, 2 bad invocation.
+    (there is no `spec escalate`: a gate escalates from evidence, never the lead; the
+        third identical REDO on ONESHOT writes `route: full` with the flag classes as
+        the reason and the run takes the full path from DISCUSS)
+    cycle-driver.sh verification fill --feature-dir DIR
+        --row GE-NNN --implementation FILE:LINE --proof TEXT
+          [--integration FILE:LINE|none --integration-proof TEXT]
+        Fill VERIFICATION.md's oneshot skeleton (phase-begin wrote it) with what the
+        lead knows: a criterion's grounding row. Every write re-runs the four
+        verification lints the exit gate runs and prints {verification, flags:[...]}.
+        Exit 0 written, 1 the row is not in the skeleton, 2 bad invocation.
+    cycle-driver.sh verification review --feature-dir DIR [--report PATH] [--reviewer-model M]
+        The Code review section from the reviewer's report (default
+        <featureDir>/dispatch/oneshot.review.md, where `oneshot review` writes it):
+        one `- <file>:<line> — <claim> | verdict: pending` bullet per finding, `none`
+        when the report holds none, the reviewer's PASS/PASS_WITH_MINOR/BLOCK on the
+        Reviewer line. The driver runs this at the ONESHOT boundary after its own
+        review session; in-harness the lead saves the reviewer's result to the report
+        path and calls it. Prints {verification, report, reviewerVerdict, findings,
+        flags}. Exit 0; 2 no report.
+    cycle-driver.sh verification verdict --feature-dir DIR --finding FILE:LINE --verdict true|false --reason TEXT
+        The lead's answer to one pending finding: `true — <fix or commit>` or
+        `false — <disproof>`. Prints {verification, finding, verdict, flags}. Exit 0;
+        1 no such pending finding; 2 bad invocation.
+    cycle-driver.sh verification run --feature-dir DIR [--row GE-NNN]
+        Observe what the lead must never assert: run each Good Enough criterion's
+        command (the first backticked span of its SPEC line) in the feature root and
+        write the exit as the row's Status (PASS on 0, FAIL otherwise), the command and
+        exit as its Evidence, and the output as its block; without --row also run
+        commands.test into the Final test suite block. `next --returned-from oneshot`
+        runs this before the exit gate. Prints {verification, ran:[{row, status, exit}],
+        flags}. Exit 0 every row passed; 1 a row failed; 2 bad invocation.
+
+    cycle-driver.sh spec approve --feature-dir DIR --source human|autonomous|supervised
+        Freeze full-spec Goal and Boundary after approval; repeat calls only verify.
+
+    cycle-driver.sh spec write --feature-dir DIR --file PATH
+        Copy PATH (or stdin for `-`) to {docs}/SPEC.md, the only target this command
+        accepts, and print the path. The lead never resolves the docs directory itself:
+        a spec written next to the lead in the main checkout while the feature lived in
+        a worktree was the misplaced-artifact REDO on two runs. Exit 0; 2 bad invocation.
+
+    cycle-driver.sh task dispatch|package|verdict|integrate --feature-dir DIR --task ID ...
+        One EXECUTE task step per call; lib/execute-step.sh owns the contract.
+
+    cycle-driver.sh critique open|findings|fail|revised|delta|pass --feature-dir DIR ...
+        One critique-gate step per call for DISCUSS and PLAN; lib/critique-step.sh owns
+        the contract.
+
+    cycle-driver.sh verify gate|passes --feature-dir DIR ...
+        VERIFY's verdict application (lib/verify-gate.sh) and advisory passes
+        (lib/verify-passes.sh).
+
+    cycle-driver.sh iterate limit|record|harvest --feature-dir DIR ...
+        ITERATE's bookkeeping around the judge (lib/iterate-judged.sh).
+
+    cycle-driver.sh deliver --feature-dir DIR
+        The whole DELIVER phase: lib/deliver.sh run, then the terminal PR feedback check
+        per target with a PR. Prints {rc, status, nextPhase, route, targets, feedback}.
+        route: completed | execute | deliver | deferral (exit 3: restore the dropped scope,
+        then call again). Exit 0 completed; 1 otherwise (the route says what to do).
+
+    cycle-driver.sh next --feature-dir DIR [--returned-from PHASE] [--note TEXT]
+        Runs phase-exit for the returned phase first: a FLAG answers
+          REDO phase=<id> flags=<n> attempt=<k>   followed by the FLAG lines; fix and call again
+        The same flags LOOP_SPEC_REDO_MAX (3) times escalate the run with them as the reason.
+        Each REDO is also a driver-observed `redo` event in events.jsonl with the flag
+        classes (the bracketed label of every FLAG line), which evals/eval_run.py counts.
+        Then post-phase bookkeeping and the graph step. Prints exactly ONE answer line:
+          NEXT phase=<id> label="<label>" effort=<system1|system2>
+          PAUSED node=<id>            (human gate; re-invoke the cycle to continue)
+          HANDOFF next=<phase> model=<selector>   (one phase per session; relaunch)
+          REWIND next=<phase>         (the graph lists <phase> before the returned one; relaunch)
+          DONE status=<completed|escalated|paused> [reason=<r>]
+          ABORT reason=<r>            (exit 1; diagnostics on stderr)
+        followed by zero or more `EXT <instruction or fact=path>` lines for NEXT.
+        A phase that returns hands off: the next phase starts in a fresh session
+        (`/loop-spec:cycle`), whose first call is `next` without --returned-from.
+        Exit 0 answered; 1 graph abort or failure.
+
+    cycle-driver.sh decline [--dir DIR] --reason TEXT [--title TEXT] [--summary TEXT] [--autonomous 0|1]
+        A request that is not repository work, declined before the tree changes: the
+        protocol-mismatch terminal result (cycle-result.sh write-terminal). Prints
+        {status, outcome, reason, result}. Exit 0; 1 the writer refused (the tree has
+        changed: finish the work or declare the failure); 2 bad invocation.
+    cycle-driver.sh finish --feature-dir DIR [--completed N]
+        Terminal result + chain verdict. Prints {status, prUrl, targets, warnings,
+        feedback, chain, backlogCount, exitWorktree, report}; `report` is the completion
+        text the lead prints as is (outcome first, one line per target, warnings,
+        elapsed, backlog count). Exit 0; 1 delivery incomplete.
+
+    cycle-driver.sh escalate --feature-dir DIR --reason TEXT
+        Clear team state, write the escalated result, checkpoint PR. Prints
+        {gateHistory, artifacts, delivery, exitWorktree}. Exit 0.
+
+Every subcommand is idempotent on its inputs; reading state twice is free, writing
+it twice is the same write. harness-neutral: branches only via lib/harness.sh.
+FAIL: next: from the project root still answers (expected 'HANDOFF next=', got '')
+fatal: ambiguous argument 'refs/loop-spec/state/ship-it': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+fatal: ambiguous argument 'refs/loop-spec/state/ship-it': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+PASS: next: the state ref is shared by the worktree and the root checkout
+PASS: next: the feature branch in the worktree carries no state commit
+PASS: next: the root checkout stays untouched
+FAIL: resume: claude re-enters the recorded worktree (expected 'null', got '')
+PASS: resume: LOOP_SPEC_WORKTREES=0 refuses a worktree feature
+PASS: start: autonomous honors LOOP_SPEC_ANSWER_TITLE
+PASS: start: autonomous keeps style auto under an env answer
+PASS: start: no headless warning with the autonomous token
+PASS: start: headless warning kept without the token
+PASS: begin: plugin-owned dirt does not refuse the resume
+PASS: begin: autonomous auto-picks the single resumable feature
+PASS: init: user dirt still refuses
+PASS: init: gitfile checkout enters no worktree
+FAIL: init: gitfile checkout names the reason (expected '1', got '0')
+
+cycle-driver: 254 passed, 7 failed

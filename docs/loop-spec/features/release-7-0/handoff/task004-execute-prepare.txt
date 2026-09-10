@@ -1,0 +1,92 @@
+PASS: usage: no subcommand is a bad invocation
+FAIL: run: ready feature exits 0 (expected '0', got '1')
+PASS: run: branch check passes
+FAIL: run: three tasks to dispatch (expected '3', got '0')
+FAIL: run: overlapping files add a synthetic edge, lower id first (expected 'task-001', got '')
+FAIL: run: width counts the serialized pair once (expected '2', got '0')
+PASS: run: the rung is selected
+PASS: run: retries cap is read
+FAIL: run: conflict rows are rulings, not stops (expected 'false', got 'true')
+FAIL: run: rulings are recorded as decisions (expected '1', got '0')
+FAIL: run: dispatch files are written (expected '2', got '0')
+grep: /var/folders/_5/0dx0387s4j78qf_v1qjv3rsw0000gn/T/execute-prepare-test.48350/repo/.loop-spec/features/my-feature/dispatch/environment.txt: No such file or directory
+FAIL: run: the toolchain is probed once for the briefs (expected '1', got '')
+grep: /var/folders/_5/0dx0387s4j78qf_v1qjv3rsw0000gn/T/execute-prepare-test.48350/repo/.loop-spec/features/my-feature/dispatch/environment.txt: No such file or directory
+FAIL: run: quoted pattern fragments are not probed as programs (expected '0', got '')
+FAIL: remediation: the task is registered in the sidecar (expected '1', got '0')
+FAIL: remediation: it takes the project test command (expected 'true', got '')
+FAIL: remediation: the pending array is cleared (expected '0', got '2')
+FAIL: remediation: the count is reported (expected '2', got '0')
+FAIL: remediation: both queued findings appear in dispatch (expected '2', got '0')
+PASS: invalid remediation [{"id":"bad-verify","subject":"repair verification"}]: preparation stops
+PASS: invalid remediation [{"id":"bad-verify","subject":"repair verification"}]: readable sidecar stays valid
+PASS: invalid remediation [{"id":"bad-verify","subject":"repair verification"}]: intake failure names its own error
+PASS: invalid remediation [{"id":"bad-verify","subject":"repair verification"}]: dispatch is stopped
+FAIL: invalid remediation [{"id":"bad-verify","subject":"repair verification"}]: diagnostic identifies repair (expected '1', got '0')
+PASS: invalid remediation [{"id":"bad-verify","subject":"repair verification"}]: queue unchanged
+PASS: invalid remediation [{"id":"bad-verify","subject":"repair verification"}]: sidecar unchanged
+PASS: invalid remediation [{"id":"bad-shape","subject":"repair shape","files":"a.py","verifyCommand":"true"}]: preparation stops
+PASS: invalid remediation [{"id":"bad-shape","subject":"repair shape","files":"a.py","verifyCommand":"true"}]: readable sidecar stays valid
+PASS: invalid remediation [{"id":"bad-shape","subject":"repair shape","files":"a.py","verifyCommand":"true"}]: intake failure names its own error
+PASS: invalid remediation [{"id":"bad-shape","subject":"repair shape","files":"a.py","verifyCommand":"true"}]: dispatch is stopped
+FAIL: invalid remediation [{"id":"bad-shape","subject":"repair shape","files":"a.py","verifyCommand":"true"}]: diagnostic identifies repair (expected '1', got '0')
+PASS: invalid remediation [{"id":"bad-shape","subject":"repair shape","files":"a.py","verifyCommand":"true"}]: queue unchanged
+PASS: invalid remediation [{"id":"bad-shape","subject":"repair shape","files":"a.py","verifyCommand":"true"}]: sidecar unchanged
+PASS: invalid remediation false: preparation stops
+PASS: invalid remediation false: readable sidecar stays valid
+PASS: invalid remediation false: intake failure names its own error
+PASS: invalid remediation false: dispatch is stopped
+FAIL: invalid remediation false: diagnostic identifies repair (expected '1', got '0')
+PASS: invalid remediation false: queue unchanged
+PASS: invalid remediation false: sidecar unchanged
+PASS: invalid remediation null: preparation stops
+PASS: invalid remediation null: readable sidecar stays valid
+PASS: invalid remediation null: intake failure names its own error
+PASS: invalid remediation null: dispatch is stopped
+FAIL: invalid remediation null: diagnostic identifies repair (expected '1', got '0')
+PASS: invalid remediation null: queue unchanged
+PASS: invalid remediation null: sidecar unchanged
+PASS: invalid remediation [null]: preparation stops
+PASS: invalid remediation [null]: readable sidecar stays valid
+PASS: invalid remediation [null]: intake failure names its own error
+PASS: invalid remediation [null]: dispatch is stopped
+FAIL: invalid remediation [null]: diagnostic identifies repair (expected '1', got '0')
+PASS: invalid remediation [null]: queue unchanged
+PASS: invalid remediation [null]: sidecar unchanged
+PASS: invalid remediation [{"id":"valid-prefix","subject":"keep this too","verifyCommand":"true"},{"id":"invalid-suffix","subject":"cannot verify"}]: preparation stops
+PASS: invalid remediation [{"id":"valid-prefix","subject":"keep this too","verifyCommand":"true"},{"id":"invalid-suffix","subject":"cannot verify"}]: readable sidecar stays valid
+PASS: invalid remediation [{"id":"valid-prefix","subject":"keep this too","verifyCommand":"true"},{"id":"invalid-suffix","subject":"cannot verify"}]: intake failure names its own error
+PASS: invalid remediation [{"id":"valid-prefix","subject":"keep this too","verifyCommand":"true"},{"id":"invalid-suffix","subject":"cannot verify"}]: dispatch is stopped
+FAIL: invalid remediation [{"id":"valid-prefix","subject":"keep this too","verifyCommand":"true"},{"id":"invalid-suffix","subject":"cannot verify"}]: diagnostic identifies repair (expected '1', got '0')
+PASS: invalid remediation [{"id":"valid-prefix","subject":"keep this too","verifyCommand":"true"},{"id":"invalid-suffix","subject":"cannot verify"}]: queue unchanged
+PASS: invalid remediation [{"id":"valid-prefix","subject":"keep this too","verifyCommand":"true"},{"id":"invalid-suffix","subject":"cannot verify"}]: sidecar unchanged
+PASS: malformed sidecar: failure is distinct from remediation intake
+PASS: malformed sidecar: preparation stops
+PASS: failed atomic publication is visible
+PASS: failed publication preserves readable sidecar and entire queue
+PASS: failed acknowledgment is visible
+PASS: replay adds zero duplicates and preserves recorded progress
+PASS: completed fallback IDs recur as executable work
+PASS: ID collision retains both distinct findings
+PASS: concurrent append survives acknowledgment with unrelated state intact
+PASS: publication before crash leaves replay evidence
+PASS: appended work after failed acknowledgment does not duplicate the published prefix
+PASS: failed acknowledgment: store failure never reports ready
+FAIL: failed acknowledgment: store failure diagnostic survives (expected '1', got '0')
+FAIL: failed acknowledgment: published work remains dispatchable (expected '1', got '0')
+PASS: failed acknowledgment: retry remains blocked until store persistence succeeds
+FAIL: failed acknowledgment: successful store recovery makes preparation ready (expected '0', got '1')
+FAIL: failed acknowledgment: recovered work is dispatched (expected '1', got '0')
+PASS: marker recurrence 1: real VERIFY intake reports remediation
+FAIL: marker recurrence 1: fallback task is executable (expected '1', got '0')
+usage: task-progress.sh done PATH | remaining PATH | mark-done PATH ID
+PASS: marker recurrence 2: real VERIFY intake reports remediation
+FAIL: marker recurrence 2: fallback task is executable (expected '1', got '0')
+usage: task-progress.sh done PATH | remaining PATH | mark-done PATH ID
+FAIL: progress: done ids are reported (expected 'task-001', got 'null')
+PASS: progress: a done task leaves the dispatch list
+FAIL: progress: a done blocker is pruned from blockedBy (expected '0', got '')
+PASS: branch: a wrong checkout is not ready
+PASS: branch: the mismatch is named
+
+Results: 49 passed, 28 failed

@@ -442,6 +442,8 @@ case "${1:-}" in
       echo "feature-init: feature.json not found in '$feature_dir'." >&2
       exit 1
     }
+    . "$SCRIPT_DIR/feature-write.sh"
+    loop_spec_publication_begin "$feature_dir" || exit 1
     effective_models="$(canonical_models "$phase")" || exit 1
     effective_phases="$(canonical_phase_models)" || exit 1
     updated_json="$(jq \
@@ -449,8 +451,7 @@ case "${1:-}" in
       --argjson phaseModels "$effective_phases" \
       '.models = ((.models // {}) * $models) | .phaseModels = $phaseModels' \
       "$feature_dir/feature.json")" || exit 1
-    bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/feature-write.sh" \
-      "$feature_dir" "$updated_json"
+    loop_spec_feature_write "$feature_dir" "$updated_json"
     ;;
   skeleton)
     shift

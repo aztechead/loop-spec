@@ -136,6 +136,89 @@ def persist(directory):
         raise OSError("store persist failed for {} (LOOP_SPEC_STORE); local state was written".format(directory))
 
 
+def participant_registry(directory):
+    """Rebind the known tasks sidecar after a checkout relocation."""
+    from feature_read import load_state
+    directory = Path(directory).absolute()
+    if not (directory / "feature.json").exists():
+        return None
+    pointer = load_state(directory).get("artifacts", {}).get("tasks")
+    if not isinstance(pointer, str) or not Path(pointer).is_absolute():
+        return None
+    source = Path(pointer)
+    if (source.name == "tasks.json" and source.parent.name == directory.name
+            and source.parent.parent.name == "features" and source.parent.parent.parent.name == ".loop-spec"
+            and source.parent != directory):
+        return {"tasks": "tasks.json"}
+    return None
+
+
+def begin_operation(directory, token=None, registry=None, bootstrap=True):
+    """Capture before reading producer inputs, or validate a caller's original token."""
+    from artifact_publication import capture_locked, locked_feature, refuse_pending
+    from feature_read import load_state
+    directory = Path(directory)
+    with locked_feature(directory):
+        refuse_pending(directory)
+        if registry is None:
+            registry = participant_registry(directory)
+        feature = load_state(directory)
+        if (bootstrap and not feature.get("artifactPublication") and feature.get("schemaVersion") == 7
+                and feature.get("currentPhase") != "completed"):
+            if token is not None:
+                raise ValueError("stale publication token; feature has no matching publication contract")
+            from requirements import bootstrap_state
+            import uuid
+            owner = {"repository": str(uuid.uuid4()), "feature": feature["slug"]}
+            feature = bootstrap_state(feature, owner, format="legacy")
+            previous = state_snapshot(directory)
+            write_state_locked(directory, feature, previous)
+            persist(directory)
+        current = capture_locked(directory, registry) if feature.get("artifactPublication") else None
+        if token is not None and token != current:
+            raise ValueError("stale publication token; discard the pending operation")
+        return current
+
+
+def write_operation(directory, operation, value, keys=(), token=None, registry=None):
+    """Apply one trusted controller operation with its original ingress token.
+
+    Registry paths come from the controller, never from token input paths.
+    """
+    directory = Path(directory)
+    if operation not in ("replace", "set", "append", "ack-remediation", "reconcile-inventory"):
+        raise ValueError("unknown feature write operation: {}".format(operation))
+    if operation in ("set", "append"):
+        if not keys or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*", ".".join(keys)):
+            raise ValueError("invalid feature write path")
+        if keys[0] in ("currentGate", "gateHistory") and os.environ.get("LOOP_SPEC_GATE_WRITE") != "1":
+            raise ValueError("{} is written only by lib/graph/gate.sh; use gate.sh open|round|fail|pass".format(keys[0]))
+    if operation == "replace" and not isinstance(value, dict):
+        raise ValueError("feature state must be one JSON object")
+    from artifact_publication import capture_locked, locked_feature, refuse_pending
+    with locked_feature(directory):
+        refuse_pending(directory)
+        if registry is None:
+            registry = participant_registry(directory)
+        if token is not None:
+            if (not isinstance(token, dict) or type(token.get("generation")) is not int
+                    or type(token.get("version")) is not int or token != capture_locked(directory, registry)):
+                raise ValueError("stale publication token; discard the pending state update")
+        path = directory / "feature.json"
+        previous = state_snapshot(directory)
+        state = prepare_state(directory, previous, operation, value, keys)
+        publication = state.get("artifactPublication")
+        if previous is not None and publication:
+            old_publication = parse_json(previous).get("artifactPublication")
+            if old_publication:
+                if publication != old_publication:
+                    raise ValueError("artifactPublication is managed by publication transactions")
+                publication["generation"] += 1
+        write_state_locked(directory, state, previous)
+        persist(directory)
+        return capture_locked(directory, registry) if token is not None else None
+
+
 def main(args):
     token = None
     if "--token" in args:
@@ -144,6 +227,9 @@ def main(args):
             raise ValueError("--token PATH must be the final arguments")
         token = parse_json(read_bounded(Path(args[index + 1])))
         args = args[:index]
+    if len(args) == 2 and args[0] in ("ingress", "ingress-read"):
+        print(json.dumps(begin_operation(args[1], token=token, bootstrap=args[0] == "ingress"), sort_keys=True))
+        return 0
     operation = "replace"
     keys = []
     if len(args) == 4 and args[0] in ("set", "append"):
@@ -151,8 +237,6 @@ def main(args):
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*", dot_path):
             raise ValueError("invalid dot_path: {}; array indices are not supported".format(dot_path))
         keys = dot_path.split(".")
-        if keys[0] in ("currentGate", "gateHistory") and os.environ.get("LOOP_SPEC_GATE_WRITE") != "1":
-            raise ValueError("{} is written only by lib/graph/gate.sh; use gate.sh open|round|fail|pass".format(keys[0]))
     elif len(args) == 3 and args[0] in ("ack-remediation", "reconcile-inventory"):
         operation, directory, raw = args
     elif len(args) == 2:
@@ -167,27 +251,9 @@ def main(args):
     if operation == "replace" and not isinstance(value, dict):
         raise ValueError("feature state must be one JSON object")
 
-    from artifact_publication import capture_locked, locked_feature, refuse_pending
-    with locked_feature(directory):
-        refuse_pending(directory)
-        if token is not None:
-            if (not isinstance(token, dict) or type(token.get("generation")) is not int
-                    or type(token.get("version")) is not int or token != capture_locked(directory)):
-                raise ValueError("stale publication token; discard the pending state update")
-        path = directory / "feature.json"
-        previous = state_snapshot(directory)
-        state = prepare_state(directory, previous, operation, value, keys)
-        publication = state.get("artifactPublication")
-        if previous is not None and publication:
-            old_publication = parse_json(previous).get("artifactPublication")
-            if old_publication:
-                if publication != old_publication:
-                    raise ValueError("artifactPublication is managed by publication transactions")
-                publication["generation"] += 1
-        write_state_locked(directory, state, previous)
-        persist(directory)
-        if token is not None:
-            print(json.dumps(capture_locked(directory), sort_keys=True))
+    refreshed = write_operation(directory, operation, value, keys, token=token)
+    if refreshed is not None:
+        print(json.dumps(refreshed, sort_keys=True))
     return 0
 
 

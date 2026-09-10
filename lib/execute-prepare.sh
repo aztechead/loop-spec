@@ -28,7 +28,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-lib() { bash "$SCRIPT_DIR/$1.sh" "${@:2}"; }
+lib() { loop_spec_publication_lib "$SCRIPT_DIR" "$@"; }
 
 [[ "${1:-}" == "run" ]] || { echo "usage: execute-prepare.sh run --feature-dir DIR" >&2; exit 2; }
 shift
@@ -36,6 +36,8 @@ feature_dir=""
 while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="${2:-}"; shift 2 ;; *) echo "execute-prepare: unknown argument '$1'" >&2; exit 2 ;; esac; done
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || { echo "usage: execute-prepare.sh run --feature-dir DIR" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
+. "$SCRIPT_DIR/feature-write.sh"
+loop_spec_publication_begin "$feature_dir" || exit 1
 fj="$feature_dir/feature.json"
 fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 
@@ -72,7 +74,7 @@ if lint_out="$(lib artifact-lint tasks "$sidecar" 2>&1)"; then :; else
 fi
 remediation_registered=0; remediation_error=null
 if [[ "$sidecar_ok" == true ]]; then
-  if intake="$(python3 "$SCRIPT_DIR/execute_remediation.py" "$feature_dir" "$sidecar")"; then
+  if intake="$(loop_spec_publication_run python3 "$SCRIPT_DIR/execute_remediation.py" "$feature_dir" "$sidecar")"; then
     remediation_registered="$(jq -r '.registered' <<<"$intake")"
   else
     remediation_error="$(jq -Rsc 'try (fromjson | .error // "remediation intake failed; retry preparation") catch "remediation intake failed; retry preparation"' <<<"$intake")"

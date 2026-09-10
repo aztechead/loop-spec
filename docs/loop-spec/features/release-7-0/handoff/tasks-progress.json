@@ -1,0 +1,549 @@
+[
+  {
+    "id": "task-001",
+    "subject": "Define the versioned inventory and grammar",
+    "files": [
+      "lib/requirements.py",
+      "lib/requirements.sh",
+      "lib/artifact-lint.sh",
+      "tests/lib/requirements.test.sh",
+      "tests/lib/artifact-lint.test.sh",
+      "tests/run-all.sh",
+      "docs/loop-spec/requirements-format.md"
+    ],
+    "blockedBy": [],
+    "verifyCommand": "rtk bash tests/lib/requirements.test.sh && rtk bash tests/lib/artifact-lint.test.sh",
+    "acceptanceCriteria": [
+      "requirements.test.sh proves reordering, checkbox changes, CRLF and prose wrapping retain revision; scenario text or example edits change revision; command-only edits do not.",
+      "requirements.test.sh exits 1 with source line for duplicate/malformed IDs, sections, metadata or JSON keys, empty scenarios, fenced decoys, unknown versions and removed metadata against a v1 contract.",
+      "artifact-lint.test.sh accepts legacy fixtures under legacy context and rejects malformed explicit v1 without legacy fallback."
+    ],
+    "readFirst": [
+      "lib/feature_read.py",
+      "lib/spec_intent.py",
+      "lib/artifact-lint.sh",
+      "tests/lib/spec-intent.test.sh",
+      "docs/loop-spec/features/release-7-0/PATTERNS.md",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "approved SPEC and existing shared-reader interface",
+      "produces": "Pure versioned inventory API and documented grammar used by all later tasks."
+    },
+    "status": "done"
+  },
+  {
+    "id": "task-002",
+    "subject": "Declare and enforce driver-owned identity state",
+    "files": [
+      "graph/schema.json",
+      "graph/cycle.graph.json",
+      "lib/feature_read.py",
+      "lib/feature_write.py",
+      "lib/requirements.py",
+      "skills/shared/feature-state-schema.md",
+      "tests/lib/feature-read.test.sh",
+      "tests/lib/feature-write.test.sh",
+      "tests/lib/feature-init.test.sh",
+      "tests/lib/graph-schema.test.sh",
+      "tests/lib/requirements.test.sh"
+    ],
+    "blockedBy": [
+      "task-001"
+    ],
+    "verifyCommand": "rtk bash tests/lib/feature-read.test.sh && rtk bash tests/lib/feature-write.test.sh && rtk bash tests/lib/feature-init.test.sh && rtk bash tests/lib/graph-schema.test.sh && rtk bash tests/lib/requirements.test.sh",
+    "acceptanceCriteria": [
+      "feature-write.test.sh rejects malformed nested state, removal/downgrade of a recorded v1 contract, owner changes, retired requirement/scenario reuse and next-ID rollback, including whole-state replacement.",
+      "feature-init.test.sh proves fixture-only v1 contracts have stable owner while ordinary single/workspace initialization remains unchanged until task-009; imported incomplete pre-7 fixtures record legacy through explicit trusted bootstrap and completed legacy state remains byte-identical.",
+      "feature-read.test.sh validates the two declared fields and rejects unknown nested keys; graph-schema.test.sh validates every added read/write/egress declaration."
+    ],
+    "readFirst": [
+      "graph/schema.json",
+      "lib/feature_read.py",
+      "lib/feature_write.py",
+      "lib/feature-init.sh",
+      "skills/shared/feature-state-schema.md",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "task-001",
+      "produces": "Typed requirementsContract/artifactPublication and reconciliation rules."
+    },
+    "status": "done"
+  },
+  {
+    "id": "task-003",
+    "subject": "Add generation-aware publication transactions",
+    "files": [
+      "lib/artifact_publication.py",
+      "lib/artifact-publication.sh",
+      "lib/feature_write.py",
+      "lib/state-ref.sh",
+      "tests/lib/state-ref.test.sh",
+      "tests/lib/artifact-publication.test.sh",
+      "tests/lib/feature-write.test.sh",
+      "tests/lib/supervisor-store.test.sh",
+      "tests/run-all.sh"
+    ],
+    "blockedBy": [
+      "task-002"
+    ],
+    "verifyCommand": "rtk bash tests/lib/artifact-publication.test.sh && rtk bash tests/lib/feature-write.test.sh && rtk bash tests/lib/supervisor-store.test.sh && rtk bash tests/lib/state-ref.test.sh",
+    "acceptanceCriteria": [
+      "artifact-publication.test.sh starts two readers, publishes one, then proves the stale reader exits 1 without replacing artifact/state bytes or acknowledging a phase.",
+      "feature-write.test.sh races ordinary state updates with publication and proves lock order publication-first/state-second completes without deadlock or lost updates; recursive writer acquisition is absent from the executed path.",
+      "artifact-publication.test.sh injects failure after staging and each single-file replace, rejects active migration to ordinary callers, and verifies durable recovery metadata through store-mirror reopen."
+    ],
+    "readFirst": [
+      "lib/feature_write.py",
+      "lib/supervisor/store.sh",
+      "lib/supervisor/store-mirror.sh",
+      "lib/state-ref.sh",
+      "tests/lib/feature-write.test.sh",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "task-002",
+      "produces": "Capture/token/staged publication interface shared by producers, state updates and migration."
+    },
+    "status": "done"
+  },
+  {
+    "id": "task-004",
+    "subject": "Integrate staging and stable identities into every producer route",
+    "files": [
+      "lib/graph/driver.py",
+      "lib/phase-entry.sh",
+      "lib/phase-exit.sh",
+      "lib/cycle-preflight.sh",
+      "lib/deliver.sh",
+      "lib/cycle-result.sh",
+      "graph/cycle.graph.json",
+      "skills/spec/SKILL.md",
+      "skills/spec-lite/SKILL.md",
+      "skills/oneshot/SKILL.md",
+      "skills/plan/SKILL.md",
+      "agents/spec-writer.md",
+      "agents/planner.md",
+      "skills/shared/artifact-templates/SPEC.md.template",
+      "skills/shared/artifact-templates/SPEC-oneshot.md.template",
+      "tests/lib/cycle-driver.test.sh",
+      "tests/lib/phase-entry.test.sh",
+      "tests/lib/phase-exit.test.sh",
+      "tests/lib/deliver.test.sh",
+      "tests/lib/cycle-result.test.sh",
+      "tests/lib/spec-intent.test.sh",
+      "lib/graph/state.sh",
+      "lib/graph/engine.py",
+      "lib/graph/gate.sh",
+      "lib/artifact-sink.sh",
+      "lib/quality-loop-state.sh",
+      "lib/iterate-judged.sh",
+      "lib/execute_remediation.py",
+      "lib/execute-step.sh",
+      "lib/verify-gate.sh",
+      "lib/verify-prepare.sh",
+      "lib/checkpoint-pr.sh",
+      "lib/revise-state.sh",
+      "lib/feature-bootstrap.sh",
+      "lib/feature-init.sh",
+      "tests/lib/graph-state.test.sh",
+      "tests/lib/graph-run.test.sh",
+      "tests/lib/graph-gate.test.sh",
+      "tests/lib/artifact-sink.test.sh",
+      "tests/lib/quality-loop-state.test.sh",
+      "tests/lib/execute-prepare.test.sh",
+      "tests/lib/execute-step.test.sh",
+      "tests/lib/verify-prepare.test.sh",
+      "tests/lib/checkpoint-pr.test.sh",
+      "tests/lib/revise-state.test.sh",
+      "tests/lib/feature-init.test.sh",
+      "tests/lib/publication-callers.test.sh",
+      "tests/run-all.sh",
+      "skills/quality-loop/SKILL.md",
+      "lib/feature_write.py",
+      "tests/lib/feature-write.test.sh",
+      "docs/loop-spec/features/release-7-0/PLAN.md",
+      "docs/loop-spec/features/release-7-0/SPEC.md",
+      "lib/feature-write.sh",
+      "lib/artifact_publication.py",
+      "tests/lib/artifact-publication.test.sh",
+      "lib/execute-prepare.sh",
+      "lib/artifact_sink.py"
+    ],
+    "blockedBy": [
+      "task-003"
+    ],
+    "verifyCommand": "rtk bash tests/lib/cycle-driver.test.sh && rtk bash tests/lib/phase-entry.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/lib/deliver.test.sh && rtk bash tests/lib/cycle-result.test.sh && rtk bash tests/lib/spec-intent.test.sh && rtk bash tests/lib/publication-callers.test.sh && rtk bash tests/lib/graph-state.test.sh && rtk bash tests/lib/graph-run.test.sh && rtk bash tests/lib/graph-gate.test.sh && rtk bash tests/lib/artifact-sink.test.sh && rtk bash tests/lib/quality-loop-state.test.sh && rtk bash tests/lib/execute-prepare.test.sh && rtk bash tests/lib/execute-step.test.sh && rtk bash tests/lib/verify-prepare.test.sh && rtk bash tests/lib/checkpoint-pr.test.sh && rtk bash tests/lib/revise-state.test.sh && rtk bash tests/lib/feature-init.test.sh && rtk bash tests/lib/feature-write.test.sh && rtk bash tests/lib/artifact-publication.test.sh",
+    "acceptanceCriteria": [
+      "cycle-driver.test.sh exercises new full/spec-lite/oneshot creation, spec ingest/write/fill, replacement by stable ID, route escalation and reordered criteria; all preserve owner/IDs and reject numeric positional aliases for v1.",
+      "phase-exit.test.sh starts before a generation change and proves subsequent exit cannot acknowledge work; cycle-driver/deliver/cycle-result fixtures reject migration-in-progress before any side effect and again before accepted state/result publication.",
+      "spec-intent.test.sh verifies byte-preserved Goals/Boundaries and unchanged specApproval through implementation-only writes; legacy completion remains supported with no new legacy writer selected at creation.",
+      "publication-callers.test.sh executes each enumerated state writer with a valid original ingress token and then with a stale token; valid writes succeed and stale writes leave state/artifact hashes and acknowledgements unchanged. It registers a source-callsite completeness check for feature-write shell calls, feature_write Python imports and direct phase-state publishers, so newly discovered callers fail the test until explicitly handled.",
+      "graph-state/graph-run/graph-gate tests prove graph transitions preserve the original node ingress token across subprocesses. Artifact-sink and quality-loop-state tests hold old read results across a migration and prove stale publication cannot overwrite current artifacts or mark findings clean.",
+      "cycle-driver.test.sh resumes an incomplete legacy fixture through SPEC/PLAN/EXECUTE/VERIFY/ITERATE and ordinary new-cycle fixtures remain runnable at this intermediate revision; no default v1 activation occurs."
+    ],
+    "readFirst": [
+      "lib/graph/driver.py",
+      "lib/phase-entry.sh",
+      "lib/phase-exit.sh",
+      "lib/cycle-preflight.sh",
+      "lib/deliver.sh",
+      "lib/cycle-result.sh",
+      "lib/phase_snapshot.py",
+      "skills/spec/SKILL.md",
+      "skills/spec-lite/SKILL.md",
+      "skills/oneshot/SKILL.md",
+      "skills/plan/SKILL.md",
+      "agents/spec-writer.md",
+      "agents/planner.md",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)",
+      "lib/graph/state.sh:118",
+      "lib/graph/engine.py:610-620",
+      "lib/artifact-sink.sh:91-112",
+      "lib/quality-loop-state.sh:42-73",
+      "lib/execute_remediation.py:16-36"
+    ],
+    "interfaces": {
+      "consumes": "task-003",
+      "produces": "All-route staging producers and generation-aware lifecycle consumers."
+    }
+  },
+  {
+    "id": "task-005",
+    "subject": "Validate coverage against the complete dispatch representation",
+    "files": [
+      "lib/plan-tasks.sh",
+      "lib/plan-render.sh",
+      "lib/criteria-coverage.sh",
+      "lib/plan-exit-gate.sh",
+      "lib/artifact-lint.sh",
+      "skills/shared/artifact-templates/PLAN.md.template",
+      "tests/lib/plan-tasks.test.sh",
+      "tests/lib/plan-render.test.sh",
+      "tests/lib/criteria-coverage.test.sh",
+      "tests/lib/phase-exit.test.sh",
+      "tests/lib/artifact-lint.test.sh"
+    ],
+    "blockedBy": [
+      "task-004"
+    ],
+    "verifyCommand": "rtk bash tests/lib/plan-tasks.test.sh && rtk bash tests/lib/plan-render.test.sh && rtk bash tests/lib/criteria-coverage.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/lib/artifact-lint.test.sh",
+    "acceptanceCriteria": [
+      "criteria-coverage.test.sh reproduces and rejects legacy dangling task-999 mappings and notes-only criterion copies while valid legacy coverage remains accepted.",
+      "phase-exit.test.sh drives actual PLAN egress: v1 missing scenario/revision, dangling task, unsupported exemption, unknown obligation, and tasks.json with same IDs but altered command/files/coverage all exit 1.",
+      "plan-tasks/plan-render fixtures round-trip requirements, obligations and executionInputs; multiline criteria and valid many-to-many/scaffolding mappings pass without deriving coverage from summary prose."
+    ],
+    "readFirst": [
+      "lib/plan-tasks.sh",
+      "lib/plan-render.sh",
+      "lib/criteria-coverage.sh",
+      "lib/plan-exit-gate.sh",
+      "lib/artifact-lint.sh",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "task-004",
+      "produces": "Reviewed task relation plus executionInputs and exact sidecar comparison."
+    }
+  },
+  {
+    "id": "task-006",
+    "subject": "Implement declared environment and runtime input identities",
+    "files": [
+      "lib/execution_inputs.py",
+      "tests/lib/execution-inputs.test.sh",
+      "tests/lib/prepare-environment.test.sh",
+      "tests/run-all.sh",
+      "docs/loop-spec/requirements-format.md"
+    ],
+    "blockedBy": [
+      "task-005"
+    ],
+    "verifyCommand": "rtk bash tests/lib/execution-inputs.test.sh && rtk bash tests/lib/prepare-environment.test.sh",
+    "acceptanceCriteria": [
+      "execution-inputs.test.sh changes an ignored installed dependency with unchanged lockfile and changes ignored config; both produce different identity and pre/post failure.",
+      "execution-inputs.test.sh rejects escaping symlink, unreadable input, unavailable external identity, mutable external response, absent required declaration and overlapping input/output paths with actionable diagnostics.",
+      "execution-inputs.test.sh verifies deterministic streaming directory hashes, bounded argv probes and non-secret sensitive version identity; fixture secret bytes and guessable secret digests are absent from output/records.",
+      "prepare-environment.test.sh shows receipt-only validation cannot authorize PASS and an unchanged actual installed-input set can."
+    ],
+    "readFirst": [
+      "lib/prepare-environment.sh",
+      "tests/lib/prepare-environment.test.sh",
+      "lib/requirements.py",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "task-005",
+      "produces": "capture_inputs(root, contract, outputs) identity/result API for observed execution."
+    }
+  },
+  {
+    "id": "task-007",
+    "subject": "Produce bounded driver-owned execution observations",
+    "files": [
+      "lib/execution_observation.py",
+      "lib/graph/driver.py",
+      "tests/lib/execution-observation.test.sh",
+      "tests/lib/cycle-driver.test.sh",
+      "tests/run-all.sh"
+    ],
+    "blockedBy": [
+      "task-006"
+    ],
+    "verifyCommand": "rtk bash tests/lib/execution-observation.test.sh && rtk bash tests/lib/cycle-driver.test.sh",
+    "acceptanceCriteria": [
+      "execution-observation.test.sh proves exit 0 creates PASS only with identical before/after HEAD, input identity and generation; source edits, new non-ignored inputs, changed authoring artifacts or unknown environment yield non-PASS.",
+      "execution-observation.test.sh runs a verbose child and a timed-out child with grandchildren; output spool stays within byte ceiling, retained tail stays within 64 KiB, partial digest is marked and no child survives reaping.",
+      "cycle-driver.test.sh rejects caller PASS/evidence injection and altered output bytes; full/short checks record execution ID, owner/revision/scenario, command, actual exit, code/environment identities and captured output digest.",
+      "execution-observation.test.sh executes two distinct required commands in sequence, then publishes VERIFICATION and ordinary state updates: both records remain eligible when semantic inputs/evidenceEpoch are unchanged despite increasing publication generations. A concurrent old-token producer still fails publication; migration/rollback evidenceEpoch changes invalidate both records."
+    ],
+    "readFirst": [
+      "lib/graph/driver.py",
+      "lib/execution_inputs.py",
+      "lib/artifact_publication.py",
+      "tests/lib/cycle-driver.test.sh",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "task-006",
+      "produces": "Driver-observed schema-1 records and output files, no caller-written status."
+    }
+  },
+  {
+    "id": "task-008",
+    "subject": "Enforce observed scenario evidence in VERIFY and ITERATE",
+    "files": [
+      "lib/verification-grounding-lint.sh",
+      "lib/converged-floor.sh",
+      "lib/artifact-lint.sh",
+      "lib/oneshot-exit-gate.sh",
+      "lib/graph/driver.py",
+      "graph/cycle.graph.json",
+      "agents/verifier.md",
+      "skills/shared/artifact-templates/VERIFICATION.md.template",
+      "skills/shared/artifact-templates/VERIFICATION-oneshot.md.template",
+      "tests/lib/verification-grounding-lint.test.sh",
+      "tests/lib/converged-floor.test.sh",
+      "tests/lib/artifact-lint.test.sh",
+      "tests/lib/oneshot-exit-gate.test.sh",
+      "tests/lib/cycle-driver.test.sh",
+      "tests/lib/phase-exit.test.sh",
+      "tests/verification-grounding-coverage.test.sh",
+      "lib/deliver.sh",
+      "lib/finalize-delivery-candidate.sh",
+      "lib/delivery-reconcile.sh",
+      "lib/cycle-result.sh",
+      "lib/artifact-sink.sh",
+      "tests/lib/deliver.test.sh",
+      "tests/lib/delivery-reconcile.test.sh",
+      "tests/lib/cycle-result.test.sh",
+      "tests/lib/artifact-sink.test.sh",
+      "tests/lib/final-candidate-observations.test.sh",
+      "tests/run-all.sh"
+    ],
+    "blockedBy": [
+      "task-007"
+    ],
+    "verifyCommand": "rtk bash tests/lib/verification-grounding-lint.test.sh && rtk bash tests/lib/converged-floor.test.sh && rtk bash tests/lib/artifact-lint.test.sh && rtk bash tests/lib/oneshot-exit-gate.test.sh && rtk bash tests/lib/cycle-driver.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/verification-grounding-coverage.test.sh && rtk bash tests/lib/final-candidate-observations.test.sh && rtk bash tests/lib/deliver.test.sh && rtk bash tests/lib/delivery-reconcile.test.sh && rtk bash tests/lib/cycle-result.test.sh && rtk bash tests/lib/artifact-sink.test.sh",
+    "acceptanceCriteria": [
+      "verification-grounding-lint.test.sh rejects fabricated PASS text, missing/unknown/extra scenario references, missing output, altered output digest, stale revision/command/HEAD/environment/input contract and numeric aliases; valid fresh observed rows pass.",
+      "phase-exit.test.sh and oneshot-exit-gate.test.sh exercise v1 VERIFY shape and actual egress; converged-floor.test.sh refuses convergence for any uncovered or stale required scenario on both routes.",
+      "cycle-driver.test.sh proves reordered required items keep verification association, changed scenario behavior needs a fresh run, and legacy incomplete fixtures finish unchanged under legacy validation through the 7.x window.",
+      "final-candidate-observations.test.sh drives the real finalizer plus offline delivery adapter: successful observations on A, followed by a source commit B or a post-VERIFY artifact-only finalizer commit B, cannot authorize B; no push/final adapter call occurs before fresh final-candidate checks on B pass.",
+      "deliver/delivery-reconcile/cycle-result tests prove all terminal paths require final observations for the exact target SHA, including workspace targets and artifact-sink mode; unchanged final B observations pass without creating another tracked commit.",
+      "final-candidate-observations.test.sh changes HEAD or declared inputs after final observation and before delivery acknowledgement and asserts failure with no success result; two passing commands plus final runtime report publication retain valid evidence."
+    ],
+    "readFirst": [
+      "lib/verification-grounding-lint.sh",
+      "lib/converged-floor.sh",
+      "lib/oneshot-exit-gate.sh",
+      "lib/graph/driver.py",
+      "agents/verifier.md",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)",
+      "lib/deliver.sh:140-160",
+      "lib/finalize-delivery-candidate.sh:214-238",
+      "lib/delivery-reconcile.sh:100-118",
+      "lib/pr-delivery.sh:223-240",
+      "lib/artifact-sink.sh:91-112"
+    ],
+    "interfaces": {
+      "consumes": "task-007",
+      "produces": "Current-evidence requirement at shape, grounding, convergence and real phase exit."
+    }
+  },
+  {
+    "id": "task-009",
+    "subject": "Protect authoritative publication on all four harnesses",
+    "files": [
+      "lib/harness.sh",
+      "hooks/pre-tool-guard.py",
+      "hooks/restrict-agent-paths.sh",
+      "hooks/team/result-forgery-guard.sh",
+      "extensions/opencode/loop-spec.ts",
+      "extensions/adk/loop_spec_adk/plugin.py",
+      "skills/shared/claude-harness.md",
+      "skills/shared/opencode-harness.md",
+      "skills/shared/adk-harness.md",
+      "skills/shared/codex-harness.md",
+      "tests/opencode-plugin.test.sh",
+      "tests/adk-extension.test.sh",
+      "tests/codex-harness-coverage.test.sh",
+      "tests/opencode-harness-coverage.test.sh",
+      "tests/adk-harness-coverage.test.sh",
+      "hooks/team/result-forgery-guard.test.sh",
+      "hooks/restrict-agent-paths.test.sh",
+      "lib/feature-init.sh",
+      "lib/feature_write.py",
+      "lib/graph/driver.py",
+      "tests/lib/feature-init.test.sh",
+      "tests/lib/feature-write.test.sh",
+      "tests/lib/cycle-driver.test.sh"
+    ],
+    "blockedBy": [
+      "task-008"
+    ],
+    "verifyCommand": "rtk bash hooks/team/result-forgery-guard.test.sh && rtk bash hooks/restrict-agent-paths.test.sh && rtk bash tests/opencode-plugin.test.sh && rtk bash tests/adk-extension.test.sh && rtk bash tests/codex-harness-coverage.test.sh && rtk bash tests/opencode-harness-coverage.test.sh && rtk bash tests/adk-harness-coverage.test.sh && rtk bash tests/lib/feature-init.test.sh && rtk bash tests/lib/feature-write.test.sh && rtk bash tests/lib/cycle-driver.test.sh",
+    "acceptanceCriteria": [
+      "Guard tests execute Write/Edit/patch/move and shell-redirection attempts against SPEC/PLAN/VERIFICATION, feature contract, observations and migration journal; each authoritative bypass exits 2 while permitted staging edits and validated driver publication succeed.",
+      "Adapter tests inject native tool payloads for Claude, opencode, ADK and Codex and prove denial reaches the caller; unknown harness/probe failure fails safe rather than reporting protected evidence.",
+      "Harness coverage suites exercise short and full route records with identical owner/revision/scenario format and describe only the supported guarded path, without an unrestricted-host adversary guarantee.",
+      "Only after tasks 004\u2013008 and this task's guard tests pass, ordinary new single/workspace/full/short cycles initialize v1 automatically; a registered cycle-driver fixture proves authoring, PLAN, execution observations and actual egress complete. Existing legacy cycles still resume, and removing v1 metadata cannot select legacy.",
+      "feature-write.test.sh now rejects missing original-token mutations for every enrolled participant, including resumed legacy cycles; test fixture setup uses explicit create-if-absent/bootstrap APIs, not an operator downgrade switch."
+    ],
+    "readFirst": [
+      "lib/harness.sh",
+      "hooks/pre-tool-guard.py",
+      "hooks/restrict-agent-paths.sh",
+      "hooks/team/result-forgery-guard.sh",
+      "extensions/opencode/loop-spec.ts",
+      "extensions/adk/loop_spec_adk/plugin.py",
+      "skills/shared/codex-harness.md",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "task-008",
+      "produces": "Guarded publication participant coverage required before migration can be enabled."
+    }
+  },
+  {
+    "id": "task-010",
+    "subject": "Provide deterministic read-only migration previews",
+    "files": [
+      "lib/requirements_migrate.py",
+      "lib/requirements-migrate.sh",
+      "tests/lib/requirements-migrate.test.sh",
+      "tests/run-all.sh",
+      "docs/loop-spec/requirements-migration.md"
+    ],
+    "blockedBy": [
+      "task-009"
+    ],
+    "verifyCommand": "rtk bash tests/lib/requirements-migrate.test.sh",
+    "acceptanceCriteria": [
+      "requirements-migrate.test.sh runs preview twice and compares identical JSON/digest while all repository and feature-state bytes remain unchanged.",
+      "Preview fixtures allocate IDs by original order, preserve Goal/Boundary bytes and approval, derive scenarios only from explicit examples and report ambiguous criteria/task relationships by file/line without invented commands or evidence.",
+      "Preview rejects completed cycles, unsupported shapes, oversized artifacts and unsupported participants before any write; old VERIFICATION remains historical and candidate requires fresh observations."
+    ],
+    "readFirst": [
+      "lib/requirements.py",
+      "lib/artifact_publication.py",
+      "lib/spec_intent.py",
+      "lib/decisions.sh",
+      "tests/lib/decisions.test.sh",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "task-009",
+      "produces": "Canonical preview JSON, approved digest and candidate validation for transaction apply."
+    }
+  },
+  {
+    "id": "task-011",
+    "subject": "Publish, resume and roll back migration safely",
+    "files": [
+      "lib/requirements_migrate.py",
+      "lib/requirements-migrate.sh",
+      "lib/artifact_publication.py",
+      "tests/lib/requirements-migrate.test.sh",
+      "tests/lib/artifact-publication.test.sh",
+      "tests/lib/phase-exit.test.sh",
+      "tests/lib/supervisor-store.test.sh",
+      "docs/loop-spec/requirements-migration.md"
+    ],
+    "blockedBy": [
+      "task-010"
+    ],
+    "verifyCommand": "rtk bash tests/lib/requirements-migrate.test.sh && rtk bash tests/lib/artifact-publication.test.sh && rtk bash tests/lib/phase-exit.test.sh && rtk bash tests/lib/supervisor-store.test.sh",
+    "acceptanceCriteria": [
+      "Migration tests reject changed source inputs or preview digest, simultaneous apply and completed-cycle apply without replacing artifacts; originals and approval hashes are preserved byte-for-byte in immutable generation storage.",
+      "Failure injection after backup persistence, marker persistence, each SPEC/PLAN replacement, state publication and receipt persistence proves status/resume finishes or restores the same transaction without reallocated IDs; replay is idempotent.",
+      "A legacy reader started before the marker cannot publish/acknowledge after migration; ordinary state-update concurrency completes without deadlock and unfinished migration blocks cycle entry/exit/verification/delivery.",
+      "Rollback restores originals only when current migrated files still equal recorded published hashes, refuses later edits with actionable conflicts, preserves journal/history, increments generation and survives durable store reopen."
+    ],
+    "readFirst": [
+      "lib/requirements_migrate.py",
+      "lib/artifact_publication.py",
+      "lib/feature_write.py",
+      "lib/supervisor/store-mirror.sh",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "task-010",
+      "produces": "Explicit recoverable migration available only to generation-aware guarded participants."
+    }
+  },
+  {
+    "id": "task-012",
+    "subject": "Verify the complete release and declare 7.0.0 readiness",
+    "files": [
+      "CHANGELOG.md",
+      "README.md",
+      "docs/loop-spec/reliability.md",
+      "docs/loop-spec/7.x-roadmap.md",
+      "docs/loop-spec/requirements-format.md",
+      "docs/loop-spec/requirements-migration.md",
+      ".claude-plugin/plugin.json",
+      ".claude-plugin/marketplace.json",
+      ".codex-plugin/plugin.json",
+      "tests/release-7-0-coverage.test.sh",
+      "tests/run-all.sh"
+    ],
+    "blockedBy": [
+      "task-011"
+    ],
+    "verifyCommand": "rtk bash tests/run-all.sh && rtk bash lib/bump-version.sh --check",
+    "acceptanceCriteria": [
+      "tests/run-all.sh passes every registered suite including new parsing, publication, input, observation, migration and release-coverage suites; no live eval is invoked.",
+      "release-7-0-coverage.test.sh exercises the four-harness/full-short contract wiring and fails if any new helper suite is unregistered; required source probes report no unresolved blocking finding.",
+      "After the pre-bump suite passes, bump-version.sh 7.0.0 updates all three manifests and README together; bump-version.sh --check exits 0 and all declarations read 7.0.0.",
+      "Operator docs contain runnable preview/apply/status/resume/rollback commands, prerequisites, success/failure examples, 7.x legacy window, clean-source and declared-input limits; changelog makes no unmeasured latency/cost claim."
+    ],
+    "readFirst": [
+      "lib/bump-version.sh",
+      "tests/run-all.sh",
+      "tests/README.md",
+      "docs/loop-spec/reliability.md",
+      "docs/loop-spec/7.x-roadmap.md",
+      "CHANGELOG.md",
+      "README.md",
+      "docs/loop-spec/features/release-7-0/SPEC.md (Design decisions)",
+      "docs/loop-spec/features/release-7-0/PLAN.md (System design)"
+    ],
+    "interfaces": {
+      "consumes": "task-011",
+      "produces": "Locally verified 7.0.0 readiness, documentation and synchronized declarations."
+    }
+  }
+]

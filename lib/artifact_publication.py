@@ -16,6 +16,11 @@ The controller retains that resolver until it updates its persisted pointer.
 Locks must be held when calling *_locked functions. Publish returns
 an explicit refreshed token for the caller's own next write. Recover rolls back
 an unfinished transaction before new work; generation never decreases.
+Sink controllers may additionally receive external_roots and register exact paths
+inside them. This authority is never read from tokens or exposed by the CLI.
+A manifest source of null removes its registered target, with originals retained
+for recovery. Prepared Git index bytes are ordinary registered bytes; the caller
+must hold Git's index lock after the publication/state locks during acceptance.
 """
 import argparse
 from contextlib import contextmanager
@@ -86,8 +91,12 @@ def refuse_pending(directory):
     raise ValueError("unfinished publication; run artifact-publication.sh recover")
 
 
-def artifact_paths(directory, state, registry=None):
+def artifact_paths(directory, state, registry=None, external_roots=None):
   paths = {}
+  extra_roots = [Path(value) for value in (external_roots or [])]
+  for allowed in extra_roots:
+    if not allowed.is_absolute() or allowed.is_symlink() or not allowed.is_dir():
+      raise ValueError("external publication root must be an absolute real directory: {}".format(allowed))
   root = next((p for p in directory.parents if (p / ".git").exists()), None)
   if directory.parent.name == "features" and directory.parent.parent.name == ".loop-spec":
     root = directory.parent.parent.parent
@@ -107,12 +116,16 @@ def artifact_paths(directory, state, registry=None):
     if not isinstance(value, str) or not value:
       raise ValueError("artifact registry requires relative path strings")
     relative = Path(value)
+    external_target = False
     if ".." in relative.parts:
       raise ValueError("artifact path contains traversal")
     if relative.is_absolute():
       roots = [directory]
       if root:
         roots.append(safe_path(root, "docs/loop-spec/features/" + slug))
+      internal_roots = tuple(roots)
+      if registry and key in registry:
+        roots.extend(extra_roots)
       path = None
       for allowed in roots:
         for alias in (allowed, allowed.resolve()):
@@ -121,6 +134,7 @@ def artifact_paths(directory, state, registry=None):
           except ValueError:
             continue
           path = safe_path(alias, str(name))
+          external_target = allowed not in internal_roots
           break
         if path is not None:
           break
@@ -135,14 +149,14 @@ def artifact_paths(directory, state, registry=None):
       if root is None:
         raise ValueError("repository artifact requires a workspace root")
       path = safe_path(root, value)
-    if (path.name in ("feature.json", "feature.json.bak") or path.name.startswith(".")
+    if not external_target and (path.name in ("feature.json", "feature.json.bak") or path.name.startswith(".")
         or any(part in ("publication-staging", "publication-generations", "migration-generations") for part in Path(value).parts)):
       raise ValueError("state and internal paths cannot be artifacts")
     paths[key] = path
   return paths
 
 
-def capture_locked(directory, registry=None):
+def capture_locked(directory, registry=None, external_roots=None):
   refuse_pending(directory)
   state = load_state(directory)
   publication = state.get("artifactPublication")
@@ -151,7 +165,7 @@ def capture_locked(directory, registry=None):
   return {"version": 1, "generation": publication["generation"],
       "stateHash": digest(directory / "feature.json"),
       "inputs": {key: {"path": str(path), "hash": digest(path)}
-           for key, path in sorted(artifact_paths(directory, state, registry).items())}}
+           for key, path in sorted(artifact_paths(directory, state, registry, external_roots).items())}}
 
 
 def stage(directory, name, content):
@@ -169,8 +183,8 @@ def journal_write(path, value):
   publish(path, (json.dumps(value, sort_keys=True) + "\n").encode())
 
 
-def publish_locked(directory, token, manifest, registry=None, failure=None, allowed_updates=None):
-  current = capture_locked(directory, registry)
+def publish_locked(directory, token, manifest, registry=None, failure=None, allowed_updates=None, external_roots=None):
+  current = capture_locked(directory, registry, external_roots)
   if (not isinstance(token, dict) or type(token.get("version")) is not int
       or type(token.get("generation")) is not int or token != current):
     raise ValueError("stale publication token; discard the staged result")
@@ -182,7 +196,7 @@ def publish_locked(directory, token, manifest, registry=None, failure=None, allo
     raise ValueError("transaction exceeds 256 files or updates")
   previous = state_snapshot(directory)
   state = load_state(directory)
-  paths = artifact_paths(directory, state, registry)
+  paths = artifact_paths(directory, state, registry, external_roots)
   replacements = []
   total_size = 0
   seen = set()
@@ -190,16 +204,20 @@ def publish_locked(directory, token, manifest, registry=None, failure=None, allo
     if not isinstance(entry, dict) or set(entry) != {"source", "target"}:
       raise ValueError("invalid manifest file")
     target = paths.get(entry["target"])
-    source = safe_path(directory, entry["source"])
-    if target is None or Path(entry["source"]).parts[0] != "publication-staging" or not source.is_file():
-      raise ValueError("file requires a staged source and registered artifact target")
-    if target in seen or source == target:
+    if target is None:
+      raise ValueError("file requires a registered artifact target")
+    if target in seen:
       raise ValueError("duplicate or overlapping artifact target")
     seen.add(target)
-    if source.stat().st_size > 16 * 1024 * 1024 or (target.exists() and target.stat().st_size > 16 * 1024 * 1024):
+    content = None
+    if entry["source"] is not None:
+      source = safe_path(directory, entry["source"])
+      if Path(entry["source"]).parts[0] != "publication-staging" or not source.is_file() or source == target:
+        raise ValueError("file requires a distinct staged source")
+      content = read_bounded(source)
+    if target.exists() and target.stat().st_size > 16 * 1024 * 1024:
       raise ValueError("publication file exceeds 16 MiB")
-    content = read_bounded(source)
-    total_size += len(content) + (target.stat().st_size if target.exists() else 0)
+    total_size += (len(content) if content is not None else 0) + (target.stat().st_size if target.exists() else 0)
     if total_size > 64 * 1024 * 1024:
       raise ValueError("transaction exceeds 64 MiB")
     replacements.append((target, content))
@@ -213,7 +231,7 @@ def publish_locked(directory, token, manifest, registry=None, failure=None, allo
     if dot_path not in permitted or dot_path.split(".")[0] in ("artifactPublication", "specApproval", "currentGate", "gateHistory"):
       raise ValueError("protected state field: " + dot_path)
     state = prepare_state(directory, json.dumps(state).encode(), "set", update["value"], dot_path.split("."))
-  if artifact_paths(directory, state, registry) != paths:
+  if artifact_paths(directory, state, registry, external_roots) != paths:
     raise ValueError("publication updates cannot redirect registered targets")
   state["artifactPublication"]["generation"] += 1
   transaction = uuid.uuid4().hex
@@ -225,7 +243,7 @@ def publish_locked(directory, token, manifest, registry=None, failure=None, allo
   state_content = (json.dumps(state, indent=2, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
   for index, (target, content) in enumerate(replacements + [(directory / "feature.json", state_content)]):
     original = read_bounded(target) if target.exists() else None
-    journal_bytes += len(content) + (len(original) if original is not None else 0)
+    journal_bytes += (len(content) if content is not None else 0) + (len(original) if original is not None else 0)
     if journal_bytes > 64 * 1024 * 1024:
       raise ValueError("transaction originals and replacements exceed 64 MiB")
     name = str(index)
@@ -233,8 +251,8 @@ def publish_locked(directory, token, manifest, registry=None, failure=None, allo
       publish(backup / name, original)
       os.chmod(backup / name, 0o400)
     entries.append({"target": next((key for key, value in paths.items() if value == target), "__state__"), "backup": name if original is not None else None,
-            "before": hashlib.sha256(original).hexdigest() if original is not None else None, "after": hashlib.sha256(content).hexdigest(), "mode": stat.S_IMODE(target.stat().st_mode) if target.exists() else None})
-  if capture_locked(directory, registry) != current:
+            "before": hashlib.sha256(original).hexdigest() if original is not None else None, "after": hashlib.sha256(content).hexdigest() if content is not None else None, "mode": stat.S_IMODE(target.stat().st_mode) if target.exists() else None})
+  if capture_locked(directory, registry, external_roots) != current:
     raise ValueError("publication inputs changed during staging")
   journal = {"version": 1, "id": transaction, "generation": current["generation"], "entries": entries}
   journal_write(base / "active.json", journal)
@@ -242,8 +260,13 @@ def publish_locked(directory, token, manifest, registry=None, failure=None, allo
   if failure:
     failure("staging")
   for index, (target, content) in enumerate(replacements):
-    target.parent.mkdir(parents=True, exist_ok=True)
-    publish(target, content)
+    if content is None:
+      if target.exists():
+        target.unlink()
+        sync_directory(target.parent)
+    else:
+      target.parent.mkdir(parents=True, exist_ok=True)
+      publish(target, content)
     persist(directory)
     if failure:
       failure(str(index + 1))
@@ -255,15 +278,15 @@ def publish_locked(directory, token, manifest, registry=None, failure=None, allo
   sync_directory(backup)
   sync_directory(base)
   persist(directory)
-  return capture_locked(directory, registry)
+  return capture_locked(directory, registry, external_roots)
 
 
-def recover_locked(directory, registry=None):
+def recover_locked(directory, registry=None, external_roots=None):
   base = safe_path(directory, "publication-generations")
   active = safe_path(directory, "publication-generations/active.json")
   journal = parse_json(read_bounded(active))
   state = load_state(directory)
-  allowed = artifact_paths(directory, state, registry)
+  allowed = artifact_paths(directory, state, registry, external_roots)
   allowed["__state__"] = directory / "feature.json"
   if (not isinstance(journal, dict) or journal.get("version") != 1
       or type(journal.get("version")) is not int
@@ -317,6 +340,7 @@ def recover_locked(directory, registry=None):
     if entry["backup"] is None:
       if target.exists():
         target.unlink()
+        sync_directory(target.parent)
     else:
       publish(target, read_bounded(safe_path(backup, entry["backup"])))
       os.chmod(target, entry["mode"])
@@ -325,7 +349,7 @@ def recover_locked(directory, registry=None):
   sync_directory(backup)
   sync_directory(base)
   persist(directory)
-  return capture_locked(directory, registry)
+  return capture_locked(directory, registry, external_roots)
 
 
 def main(args, failure=None, allowed_updates=None):
