@@ -2,34 +2,27 @@
 
 Spec-driven development loops for [Claude Code](https://claude.com/claude-code), [opencode](https://opencode.ai), [OpenAI Codex](https://developers.openai.com/codex), and an experimental [Google ADK](https://google.github.io/adk-docs/) adapter — four peer harness contracts from one source tree.
 
-Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. A change whose SPEC footprint is at most three files, with no open question and no security signal, takes the oneshot route instead: SPEC, ONESHOT (implement, one review, verify), DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
-
-Adjacent entry points on the same machinery:
-
-- `/loop-spec:cycle new <description>` — greenfield bootstrap in an empty directory
-- `/loop-spec:debug <error or symptom>` — bounded debug loop; red reproduction before any fix
-- `/loop-spec:intake <anything>` — Slack / Jira / email / prompt → spec draft → cycle
-- `autonomous` — question-free; recommended answers land in an auditable decision log
-- `/loop-spec:sentinel` — watch work sources and drive the queue within script-enforced bounds
-
-Design constraints:
-
-- Suggested methods are candidates: SPEC separates intent from constraints, DISCUSS
-  compares approaches, and PLAN checks them against existing code patterns. EXECUTE
-  may improve local choices when new evidence warrants it; binding decisions and
-  acceptance criteria remain intact. See [approach selection](skills/shared/approach-selection.md).
-- The base runtime is bash, jq, python3, and markdown. The optional ADK harness
-  installs Google's Python package; no loop-spec daemon or database is required.
-- Whether the loop may act without a human is decided by tested shell scripts, not skill prose.
-- No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`.
-- `lib/surface.sh find|show|covers` locates any bundled script, shared contract, or agent role — derived from the tree at call time, never a stored index.
-- Generated code is written for the person who maintains and operates it: `lib/house-style.sh` and `lib/comment-tells.sh` measure how it reads, and `lib/failure-tells.sh` measures what it says when it breaks — no swallowed errors, no silent exits, no message a person cannot act on.
-- The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
-- Works with or without Claude Code agent teams, and on both team harness generations.
+Use this guide to install loop-spec, start a cycle, and find its operating reference.
 
 Current version: 6.5.0
 
-Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+## Contents
+
+- [Install](#install)
+  - [Claude Code](#claude-code)
+  - [opencode](#opencode)
+  - [Codex](#codex)
+  - [Google ADK](#google-adk)
+- [Quick start](#quick-start)
+- [The cycle](#the-cycle)
+- [Skills](#skills)
+- [Headless and autonomous use](#headless-and-autonomous-use)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Design principles](#design-principles)
+- [Docs map](#docs-map)
+- [Tests](#tests)
+- [License](#license)
 
 ## Install
 
@@ -128,33 +121,9 @@ Variations: `style:step` pauses after every phase; pass a spec file path to skip
 
 On Claude Code, installing the plugin binds the `loop-spec` output style (`output-styles/loop-spec.md`): name the phase when it changes, one thought per action, then one outcome-first close. Built-in Concise does not do that. OpenCode, Codex, and ADK have no output-style slot; they follow [`skills/shared/report-style.md`](skills/shared/report-style.md).
 
-## Skills
-
-Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills can run alone; `cycle` chains them.
-
-| Skill | Purpose |
-|---|---|
-| `auto` | Preferred headless/SDK entry. Routes to micro, debug, or full cycle fail-closed. Headless runs dispatch EXECUTE implementers as disposable CLI sessions (`extensions/sessions/`). |
-| `cycle` | Seven-phase prompt-to-ready-PR loop, or the three-phase oneshot route for a small footprint. Also: `new`, `backlog`, spec-file ingest, resume. |
-| `spec-lite` | SPEC's entry on every cycle: the scout, the oneshot candidate from its record, and the short route's spec fills; hands to `spec` on the full route. Cycle-internal. |
-| `intake` | Any input → spec draft → cycle. `--no-run` stops after the draft. |
-| `debug` | Bounded debug: triage, red reproduction, fix, verify. Writes `BUG.md`. |
-| `loop-debug` | One-shot debug with autonomous mode forced on. |
-| `assess` | Read-only fragility/health assessment → `docs/loop-spec/assessment/ASSESSMENT.md`. |
-| `quality-loop` | Iterative pre-commit review until convergence. |
-| `revise` | Ingest PR review feedback, fix on the branch, answer or backlog the rest. |
-| `retro` | Mine telemetry for rule candidates and parameter tuning. |
-| `status` | Read-only dashboard: features, stats, metrics, trust, needs-human. |
-| `sentinel` | Watch work sources (`scan`); drive the queue (`run`). |
-| `watch` | Post-merge check: default branch green? feature files patched? |
-| `walkthrough` | Reviewer's guide: ordered `path:line` stops; writes/lints `REVIEW-ORDER.md`. |
-| `micro` | Lightweight ad-hoc protocol (on by default as a session mode). |
-| `loop-runner` | Bundled loop engine, standalone. |
-| `settings` / `rules` | Session-mode toggles (`grill`, `discipline`, `simplicity`, `human-code`) and the self-learning rules file. |
-| `onboard` | Guided one-time setup for optional modes. |
-| `pause` / `rollback` / `forensics` | Cycle lifecycle utilities. |
-
 ## The cycle
+
+Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. A change whose SPEC footprint is at most three files, with no open question and no security signal, takes the oneshot route instead: SPEC, ONESHOT (implement, one review, verify), DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
 
 | Phase | Produces | Gates |
 |---|---|---|
@@ -180,12 +149,46 @@ Styles (`style:step`, default `auto`): `auto` · `step` · `interactive` · `rev
 
 Greenfield: `/loop-spec:cycle new autonomous a CLI tool that ...` in an empty directory. Backlog drain: `/loop-spec:cycle backlog`. Diagrams, artifact tree, and team lifecycle: [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md).
 
+## Skills
+
+Additional entry points:
+
+- `/loop-spec:cycle new <description>` — greenfield bootstrap in an empty directory
+- `/loop-spec:debug <error or symptom>` — bounded debug loop; red reproduction before any fix
+- `/loop-spec:intake <anything>` — Slack / Jira / email / prompt → spec draft → cycle
+- `autonomous` — question-free; recommended answers land in an auditable decision log
+- `/loop-spec:sentinel` — watch work sources and drive the queue within script-enforced bounds
+
+Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills can run alone; `cycle` chains them.
+
+| Skill | Purpose |
+|---|---|
+| `auto` | Preferred headless/SDK entry. Routes to micro, debug, or full cycle fail-closed. Headless runs dispatch EXECUTE implementers as disposable CLI sessions (`extensions/sessions/`). |
+| `cycle` | Seven-phase prompt-to-ready-PR loop, or the three-phase oneshot route for a small footprint. Also: `new`, `backlog`, spec-file ingest, resume. |
+| `spec-lite` | SPEC's entry on every cycle: the scout, the oneshot candidate from its record, and the short route's spec fills; hands to `spec` on the full route. Cycle-internal. |
+| `intake` | Any input → spec draft → cycle. `--no-run` stops after the draft. |
+| `debug` | Bounded debug: triage, red reproduction, fix, verify. Writes `BUG.md`. |
+| `loop-debug` | One-shot debug with autonomous mode forced on. |
+| `assess` | Read-only fragility/health assessment → `docs/loop-spec/assessment/ASSESSMENT.md`. |
+| `quality-loop` | Iterative pre-commit review until convergence. |
+| `revise` | Ingest PR review feedback, fix on the branch, answer or backlog the rest. |
+| `retro` | Mine telemetry for rule candidates and parameter tuning. |
+| `status` | Read-only dashboard: features, stats, metrics, trust, needs-human. |
+| `sentinel` | Watch work sources (`scan`); drive the queue (`run`). |
+| `watch` | Post-merge check: default branch green? feature files patched? |
+| `walkthrough` | Reviewer's guide: ordered `path:line` stops; writes/lints `REVIEW-ORDER.md`. |
+| `micro` | Lightweight ad-hoc protocol (on by default as a session mode). |
+| `loop-runner` | Bundled loop engine, standalone. |
+| `settings` / `rules` | Session-mode toggles (`grill`, `discipline`, `simplicity`, `human-code`) and the self-learning rules file. |
+| `onboard` | Guided one-time setup for optional modes. |
+| `pause` / `rollback` / `forensics` | Cycle lifecycle utilities. |
+
 ## Headless and autonomous use
 
 ```bash
 claude -p "/loop-spec:auto update CLAUDE.md with relevant changes"
 # Force the full seven-phase cycle:
-claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
+LOOP_SPEC_ROUTE=full claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
 ```
 
 `/loop-spec:auto` inspects likely files/tests, proposes a route, and `lib/task-route.sh` validates it fail-closed. Small maintenance → micro; bounded bugs → debug; bounded features and refactors may use compact; everything else → full cycle. Compact records the classifier's per-gate run/skip plan, including a reason for each skip; destructive, malformed, uncertain, and unbounded proposals promote to full. Exact-SHA delivery and terminal-result publication stay mandatory. SDK callers get one `AUTONOMOUS_ROUTE {...}` line; route selection writes nothing into the target repo. Full contract: [`skills/shared/autonomous-mode.md`](skills/shared/autonomous-mode.md) and the canonical [`compact profile`](skills/shared/compact-profile.md).
@@ -241,6 +244,23 @@ Multi-repo workspaces: [docs/adopting.md](docs/adopting.md#workspace-multi-repo-
 - Teams unavailable: not a failure; set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to restore persistent teams.
 
 More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md).
+
+## Design principles
+
+- Suggested methods are candidates: SPEC separates intent from constraints, DISCUSS
+  compares approaches, and PLAN checks them against existing code patterns. EXECUTE
+  may improve local choices when new evidence warrants it; binding decisions and
+  acceptance criteria remain intact. See [approach selection](skills/shared/approach-selection.md).
+- The base runtime is bash, jq, python3, and markdown. The optional ADK harness
+  installs Google's Python package; no loop-spec daemon or database is required.
+- Whether the loop may act without a human is decided by tested shell scripts, not skill prose.
+- No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`.
+- `lib/surface.sh find|show|covers` locates any bundled script, shared contract, or agent role — derived from the tree at call time, never a stored index.
+- Generated code is written for the person who maintains and operates it: `lib/house-style.sh` and `lib/comment-tells.sh` measure how it reads, and `lib/failure-tells.sh` measures what it says when it breaks — no swallowed errors, no silent exits, no message a person cannot act on.
+- The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
+- Works with or without Claude Code agent teams, and on both team harness generations.
+
+Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Docs map
 
