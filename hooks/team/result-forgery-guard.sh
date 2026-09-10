@@ -74,8 +74,16 @@ if [[ "$VERDICT" == artifact\ * ]]; then
     [[ -f "$root/.loop-spec/features/$slug/feature.json" ]] && { fd="$root/.loop-spec/features/$slug"; break; }
   done
   [[ -n "$fd" ]] || exit 0
+  # The same rule as hooks/restrict-agent-paths.sh: the file opens only on a readable
+  # route=full; an unreadable spec keeps it the driver's (followup-5, R7).
   route="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/graph/probes/oneshot.sh" --feature-dir "$fd" 2>/dev/null || true)"
-  [[ "${route%% *}" == "route=oneshot" ]] || exit 0
+  if [[ "${route%% *}" == "route=full" ]]; then
+    case "$route" in
+      *"frontmatter missing"*|*"frontmatter unterminated"*|*"could not be read"*|*"not readable"*) ;;
+      *) exit 0 ;;
+    esac
+  fi
+  [[ "${route%% *}" == "route=oneshot" ]] || route="route=oneshot reason=the route probe did not answer full for a readable spec (${route:-no answer})"
   echo "DENY: '$match' writes a driver-owned artifact of feature '$slug' by shell on the oneshot route (${route#route=oneshot reason=}). The driver fills it: cycle-driver.sh spec fill|escalate|footprint drop, verification fill|run|review|verdict --feature-dir $fd. (Disable: LOOP_SPEC_FORGERY_GUARD=0)" >&2
   exit 2
 fi

@@ -91,10 +91,13 @@ Usage:
         refused (not in the footprint, or a test module); 2 bad invocation.
 
     cycle-driver.sh spec fill --feature-dir DIR [--intent TEXT] [--file PATH --note TEXT]
-        [--criterion TEXT] [--grounding TEXT] | --json PATH|-
-        --json fills every field in one call from a JSON object {intent, notes: {path:
-        text}, criteria: [text], grounding: [text]} (`-` reads stdin): one turn for the
-        whole spec.
+        [--command SHELL --expect TEXT [--row GE-NNN]] [--grounding TEXT [--row N]] | --json PATH|-
+        A criterion is two fields: the driver writes `- [ ] \`<command>\` exits 0: <expect>`
+        and the command into the frontmatter `criteria:` map that `verification run`
+        executes; --row replaces that criterion (or the Nth grounding bullet), no --row
+        appends the next one, and the same criterion is never appended twice. --json
+        fills every field in one call from {intent, notes: {path: text}, criteria:
+        [{command, expect}], grounding: [text]} (`-` reads stdin).
         Fill one value of the oneshot SPEC.md skeleton in place: the paragraph inside the
         frozen Intent block, the Implementation notes bullet of one footprint file, one
         Good Enough criterion (the text after `- [ ] `, the first real one replacing the
@@ -104,9 +107,9 @@ Usage:
         re-runs the two spec lints and prints {spec, flags:[...]}; exit 0 written (flags
         are the gate's findings so far), 1 nothing to fill or the field is not in the
         skeleton, 2 bad invocation.
-    cycle-driver.sh spec escalate --feature-dir DIR --reason TEXT
-        Write `route: full` into SPEC.md's frontmatter and the reason under
-        Implementation notes; the graph then routes the run to DISCUSS. Prints {spec}.
+    (there is no `spec escalate`: a gate escalates from evidence, never the lead; the
+        third identical REDO on ONESHOT writes `route: full` with the flag classes as
+        the reason and the run takes the full path from DISCUSS)
     cycle-driver.sh verification fill --feature-dir DIR
         --row GE-NNN --implementation FILE:LINE --proof TEXT
           [--integration FILE:LINE|none --integration-proof TEXT]
@@ -1163,6 +1166,19 @@ def cmd_next(argv):
     if handed is not None and returned != (handed.get("from") or ""):
         print(handoff_answer(feature_dir, handed))
         return 0
+    rec = feat.get("handoffSession")
+    if not returned and isinstance(rec, dict) and rec.get("next") == feat.get("currentPhase") \
+            and rec.get("next") not in (None, "", "completed"):
+        # The fresh session the handoff asked for: the phase it enters is already on
+        # record, so it is answered from the record, never stepped again (the full-route
+        # runs entered DISCUSS and PLAN twice and one ended with no result; followup-5, R5).
+        nxt = rec["next"]
+        node = next((n for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == nxt), {})
+        fset(feature_dir, "handoffSession", None)
+        fset(feature_dir, "currentPhaseStartedAt", now())
+        fset(feature_dir, "driverNext", {"phase": nxt, "at": now()})
+        print_next(nxt, node.get("label") or nxt, node.get("effort") or "system2")
+        return 0
 
     if returned:
         answer = returned_checks(feature_dir, returned)
@@ -1208,21 +1224,47 @@ def cmd_next(argv):
                 if redo_count >= int(os.environ.get("LOOP_SPEC_REDO_MAX") or 3):
                     reason = "%s exit gate unsatisfied after %d attempts: %s" % (
                         returned, redo_count, "".join(f + " " for f in flags[:3]))
-                    cmd_escalate(["--feature-dir", feature_dir, "--reason", reason], silent=True)
-                    print("DONE status=escalated reason=%s" % reason)
+                    spath = os.path.join(docs_dir(feature_dir, feat), "SPEC.md")
+                    if returned == "oneshot" and os.path.isfile(spath) and \
+                            not re.search(r"^route: *full\s*$", open(spath, encoding="utf-8").read(), flags=re.M):
+                        # The one escalation the short route has, and it is the gate's, never
+                        # the lead's: the deadlock's flag classes go on record and the run
+                        # takes the full path from DISCUSS (followup-5, R3).
+                        classes = sorted({(re.match(r"^FLAG \[([^\]]+)\]", f) or [None, "unlabeled"])[1] for f in flags})
+                        capture(lambda a: spec_escalate(a[0], a[1]),
+                                [spath, "the exit gate held after %d attempts on %s" % (redo_count, ", ".join(classes))])
+                        # The attempt's VERIFICATION.md is a record, not the full route's
+                        # artifact: set aside so the escalated exit closes with nothing to
+                        # lint, and VERIFY writes its own.
+                        vpath = os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.md")
+                        if os.path.isfile(vpath):
+                            os.replace(vpath, os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.oneshot-attempt.md"))
+                        lib("events", "emit", feature_dir, "escalate", "--phase", returned,
+                            "--data", json.dumps({"attempts": redo_count, "classes": classes}))
+                        print("NOTE [escalate] the oneshot exit gate held after %d attempts (%s): route: full written; the run continues on the full path" % (redo_count, ", ".join(classes)))
+                        exit_proc = subprocess.run(["bash", str(LIB_DIR / "phase-exit.sh")] + exit_args,
+                                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                        if exit_proc.returncode != 0:
+                            print("ABORT reason=phase-exit-failed exit=%d" % exit_proc.returncode)
+                            print(exit_proc.stdout, file=sys.stderr)
+                            return 1
+                    else:
+                        cmd_escalate(["--feature-dir", feature_dir, "--reason", reason], silent=True)
+                        print("DONE status=escalated reason=%s" % reason)
+                        return 0
+                else:
+                    classes = {}
+                    for flag in flags:
+                        m = re.match(r"^FLAG \[([^\]]+)\]", flag)
+                        label = m.group(1) if m else "unlabeled"
+                        classes[label] = classes.get(label, 0) + 1
+                    lib("events", "emit", feature_dir, "redo", "--phase", returned,
+                        "--data", json.dumps({"attempt": redo_count, "flags": len(flags), "classes": classes}))
+                    print("REDO phase=%s flags=%d attempt=%d" % (returned, len(flags), redo_count))
+                    for flag in flags:
+                        print(flag)
                     return 0
-                classes = {}
-                for flag in flags:
-                    m = re.match(r"^FLAG \[([^\]]+)\]", flag)
-                    label = m.group(1) if m else "unlabeled"
-                    classes[label] = classes.get(label, 0) + 1
-                lib("events", "emit", feature_dir, "redo", "--phase", returned,
-                    "--data", json.dumps({"attempt": redo_count, "flags": len(flags), "classes": classes}))
-                print("REDO phase=%s flags=%d attempt=%d" % (returned, len(flags), redo_count))
-                for flag in flags:
-                    print(flag)
-                return 0
-            if exit_proc.returncode != 0:
+            if exit_proc.returncode != 0 and exit_proc.returncode != 1:
                 print("ABORT reason=phase-exit-failed exit=%d" % exit_proc.returncode)
                 print(exit_out, file=sys.stderr)
                 return 1
@@ -1288,10 +1330,16 @@ def cmd_next(argv):
         "--feature-dir", feature_dir, "--phase", nxt, "--autonomous", json_bool(feat.get("autonomous")))
     # cycle-result.sh reads this: a failure published over an answered NEXT must say why.
     fset(feature_dir, "driverNext", {"phase": nxt, "at": now()})
+    print_next(nxt, label, effort)
+    return 0
+
+
+def print_next(nxt, label, effort):
+    """The NEXT answer and its EXT lines. The node may name a lighter skill than
+    loop-spec:<phase> (the spec node names the candidate skill, so the short route never
+    loads the full SPEC body): data on the graph, printed as an EXT line the cycle skill
+    acts on (followup-3, N4)."""
     print('NEXT phase=%s label="%s" effort=%s' % (nxt, label, effort))
-    # The node may name a lighter skill than loop-spec:<phase> (the spec node names the
-    # candidate skill, so the short route never loads the full SPEC body): data on the
-    # graph, printed as an EXT line the cycle skill acts on (followup-3, N4).
     node_skill = next((n.get("skill") for n in (read_json(GRAPH, {}) or {}).get("nodes", []) if n.get("id") == nxt), None)
     if node_skill:
         print("EXT skill=%s" % node_skill)
@@ -1300,7 +1348,6 @@ def cmd_next(argv):
     for line in ext.splitlines():
         if line:
             print("EXT " + line)
-    return 0
 
 
 def reviewer_dispatched(feature_dir, phase):
@@ -1342,10 +1389,11 @@ def boundary_review(feature_dir, phase):
     if status != "completed":
         lib("events", "emit", feature_dir, "review-session-failed", "--phase", "oneshot",
             "--data", json.dumps({"status": status, "stderr": rec.get("stderr"), "envFault": rec.get("envFault")}))
-        return ("REDO phase=oneshot flags=1\nFLAG [review] the driver-launched reviewer session ended %s (%s); the driver will "
+        return ("REDO phase=oneshot flags=1\nFLAG [review] the driver-launched reviewer session ended %s (%s; log %s); the driver will "
                 "not relaunch it: dispatch loop-spec:code-reviewer in-harness once (skills/oneshot/SKILL.md, One review pass), "
                 "save its result to %s, run `verification review`, emit the dispatch event, then return"
-                % (status, rec.get("stderr") or rec.get("envFault") or "no detail", rec.get("report") or "the report path"))
+                % (status, rec.get("lastStderrLine") or rec.get("envFault") or "no detail", rec.get("log") or "none",
+                   rec.get("report") or "the report path"))
     feat = state(feature_dir)
     target = os.path.join(docs_dir(feature_dir, feat), "VERIFICATION.md")
     written = ""
@@ -1910,35 +1958,65 @@ def spec_fill(target, o):
         text = line.sub(lambda _: "- %s: %s" % (o["file"], o["note"].strip()), text, count=1)
         filled.append("note:" + o["file"])
     if o.get("criterion"):
+        raise Die("spec fill: a criterion is two fields, --command <shell> and --expect <what exit 0 proves>; "
+                  "the driver writes the line (orchestrator-port-followup-5.md, R1)", 2)
+    if o.get("command") or o.get("expect"):
+        command, expect = (o.get("command") or "").strip(), (o.get("expect") or "").strip()
+        if not command or not expect:
+            raise Die("spec fill: --command <shell> and --expect <what exit 0 proves> go together", 2)
+        if "`" in command:
+            raise Die("spec fill: the command carries no backtick; the driver writes the line", 2)
         span = section_span(text, "Good Enough")
         if span is None:
             raise Die("spec fill: no ### Good Enough section in %s" % target)
-        criterion = o["criterion"].strip()
-        # `verification run` executes the backticked span: a criterion without one is a
-        # row nobody can observe (the port4-haiku-2 bug fix wrote four such lines and
-        # stalled on their empty Status cells).
-        if not re.search(r"`[^`]+`", criterion):
-            raise Die("spec fill: a criterion carries its check command in backticks (`<command>` exits 0: <what it proves>); got: %s" % criterion, 2)
         body = text[span[0]:span[1]]
         kept = [l for l in body.splitlines() if l.strip() and "{check command}" not in l]
-        line = "- [ ] " + criterion
-        if line not in kept:
-            kept.append(line)
-            filled.append("criterion")
-        else:
+        line = "- [ ] `%s` exits 0: %s" % (command, expect)
+        row = o.get("row")
+        if row:
+            if not re.match(r"^GE-\d{3}$", row):
+                raise Die("spec fill: --row names a criterion as GE-NNN", 2)
+            idx = int(row[3:]) - 1
+            if not 0 <= idx < len(kept):
+                raise Die("spec fill: %s has no criterion %s to replace (%d present)" % (target, row, len(kept)), 1)
+            kept[idx] = line
+            filled.append("criterion:%s" % row)
+        elif line in kept:
             filled.append("criterion (already present)")
+        else:
+            kept.append(line)
+            filled.append("criterion:GE-%03d" % len(kept))
         text = text[:span[0]] + "\n" + "\n".join(kept) + "\n\n" + text[span[1]:]
+        # The command the driver will run lives in the frontmatter too, keyed by row:
+        # `verification run` reads this map, never the sentence.
+        commands = [re.search(r"`([^`]+)`", l).group(1) if re.search(r"`([^`]+)`", l) else "" for l in kept]
+        block = "criteria:\n" + "".join("  GE-%03d: %s\n" % (i + 1, json.dumps(c)) for i, c in enumerate(commands))
+        fm = re.match(r"^---\n(.*?)^---\n", text, flags=re.M | re.S)
+        if not fm:
+            raise Die("spec fill: %s has no frontmatter to hold the criteria map" % target)
+        front = re.sub(r"^criteria:\n(?:  GE-\d{3}: .*\n)*", "", fm.group(1), flags=re.M)
+        text = "---\n" + front + block + "---\n" + text[fm.end():]
     if o.get("grounding"):
         span = section_span(text, "Grounding")
         if span is None:
             raise Die("spec fill: no ## Grounding section in %s" % target)
         body = text[span[0]:span[1]]
         kept = [l for l in body.splitlines() if l.strip() and l.strip() != "- none"]
-        kept.append("- " + o["grounding"].strip())
+        line = "- " + o["grounding"].strip()
+        row = o.get("row")
+        if row and not (o.get("command") or o.get("expect")):
+            if not row.isdigit() or not 1 <= int(row) <= len(kept):
+                raise Die("spec fill: --row for a grounding bullet is its 1-based index (%d present)" % len(kept), 2)
+            kept[int(row) - 1] = line
+            filled.append("grounding:%s" % row)
+        elif line in kept:
+            filled.append("grounding (already present)")
+        else:
+            kept.append(line)
+            filled.append("grounding")
         text = text[:span[0]] + "\n" + "\n".join(kept) + "\n" + text[span[1]:]
-        filled.append("grounding")
     if not filled:
-        raise Die("spec fill: nothing to fill (--intent, --file/--note, --criterion, or --grounding)", 2)
+        raise Die("spec fill: nothing to fill (--intent, --file/--note, --command/--expect, or --grounding)", 2)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(text)
     flags = []
@@ -1964,10 +2042,13 @@ def cmd_spec(argv):
     sub = argv[0] if argv else ""
     if sub == "footprint" and argv[1:2] == ["drop"]:
         sub, argv = "drop", argv[1:]
-    if sub not in ("skeleton", "write", "drop", "fill", "escalate"):
+    if sub == "escalate":
+        raise Die("spec escalate is not the lead's call: a gate escalates from evidence (a diff outside the footprint, "
+                  "a reviewer BLOCK, or the third identical REDO), with the reason on record (followup-5, R3)", 2)
+    if sub not in ("skeleton", "write", "drop", "fill"):
         usage()
     opts = {"write": ("--feature-dir", "--file"), "drop": ("--feature-dir", "--file", "--reason"),
-            "fill": ("--feature-dir", "--intent", "--file", "--note", "--criterion", "--grounding", "--json"),
+            "fill": ("--feature-dir", "--intent", "--file", "--note", "--criterion", "--command", "--expect", "--row", "--grounding", "--json"),
             "escalate": ("--feature-dir", "--reason")}.get(sub, ("--feature-dir",))
     o = parse_pairs(argv[1:], opts)
     feature_dir = o.get("feature_dir") or ""
@@ -2002,7 +2083,9 @@ def cmd_spec(argv):
             for path, note in (batch.get("notes") or {}).items():
                 calls.append({"file": path, "note": note})
             for c in batch.get("criteria") or []:
-                calls.append({"criterion": c})
+                if not isinstance(c, dict):
+                    raise Die("spec fill --json: each criterion is {command, expect}, never a sentence (followup-5, R1)", 2)
+                calls.append({"command": c.get("command"), "expect": c.get("expect"), "row": c.get("row")})
             for g in batch.get("grounding") or []:
                 calls.append({"grounding": g})
             if not calls:
@@ -2014,10 +2097,6 @@ def cmd_spec(argv):
             print(json.dumps({"spec": target, "filled": filled, "flags": out["flags"]}))
             return 0
         return spec_fill(target, o)
-    if sub == "escalate":
-        if not (o.get("reason") or "").strip():
-            raise Die("spec escalate needs --reason TEXT", 2)
-        return spec_escalate(target, o["reason"].strip())
     if sub == "skeleton":
         # The route is a function of the scout's record, and the model may lengthen it,
         # never shorten it (orchestrator-port-principles.md, rule 1). The probe reads the
@@ -2076,6 +2155,23 @@ def verification_lint_flags(root, target, spec):
     return flags
 
 
+def criteria_commands(spec_path):
+    """The frontmatter `criteria:` map of a oneshot spec, {GE-NNN: command}: the commands
+    the driver wrote with `spec fill --command`, the only ones `verification run` runs."""
+    if not os.path.isfile(spec_path):
+        return {}
+    fm = re.match(r"^---\n(.*?)^---\n", open(spec_path, encoding="utf-8", errors="replace").read(), flags=re.M | re.S)
+    if not fm:
+        return {}
+    out = {}
+    for m in re.finditer(r"^  (GE-\d{3}): (.*)$", fm.group(1), flags=re.M):
+        try:
+            out[m.group(1)] = json.loads(m.group(2))
+        except ValueError:
+            out[m.group(1)] = m.group(2).strip()
+    return out
+
+
 def observe(command, root):
     """Run one command in the feature root and return (exit, output block): the block is
     the output capped at 200 lines, or the exit when there was none."""
@@ -2100,21 +2196,21 @@ def verification_run(feature_dir, feat, docs, target, spec, only_row, with_tests
     root = feature_root(feature_dir, feat)
     text = open(target, encoding="utf-8").read()
     criteria = good_enough_criteria(spec)
+    commands = criteria_commands(spec)
     written = []
     for i, criterion in enumerate(criteria):
         row = "GE-%03d" % (i + 1)
         if only_row and row != only_row:
             continue
-        m = re.search(r"`([^`]+)`", criterion)
-        if m:
-            command = m.group(1)
+        command = commands.get(row)
+        if command:
             code, block = observe(command, root)
             evidence = "`%s` -> exit %d" % (command.replace("|", "\\|"), code)
         else:
-            # A criterion nobody can run is a FAIL the row says out loud, never a
-            # crash that leaves every row empty (the port4-haiku-2 bug fix).
-            code, block = 1, "(no command to run: the criterion carries none in backticks)"
-            evidence = "no backticked command in the criterion: `spec fill --criterion` names one"
+            # A criterion the driver never wrote has no command on record: a FAIL the
+            # row says out loud, never a crash that leaves every row empty (followup-5, R1).
+            code, block = 1, "(no command on record for this criterion: the frontmatter criteria map has no %s)" % row
+            evidence = "no command on record: `spec fill --command --expect --row %s` writes one" % row
         status = "PASS" if code == 0 else "FAIL"
         cell = re.compile(r"^(\| %s \| .* \| )([^|]*)( \| )(.*?)( \|)$" % re.escape(row), re.M)
         if cell.search(text):
@@ -2307,6 +2403,21 @@ def cmd_oneshot(argv):
         raise Die("the session runner refused the reviewer launch (exit %d): %s" % (proc.returncode, proc.stderr.strip()), 2)
     line = json.loads(proc.stdout.strip() or "{}")
     line.update({"report": report, "package": package})
+    # A durable log next to the report: the run that gave up on three failed reviewer
+    # sessions took their stderr with it when the feature directory went (followup-5, R6).
+    log = os.path.join(dispatch, "oneshot.reviewer.log")
+    tail = ""
+    for key in ("stdout", "stderr"):
+        path = line.get(key) or ""
+        if path and os.path.isfile(path):
+            body = open(path, encoding="utf-8", errors="replace").read()
+            with open(log, "a", encoding="utf-8") as fh:
+                fh.write("=== %s %s (%s)\n%s\n" % (now(), key, line.get("status") or "?", body))
+            if key == "stderr" and body.strip():
+                tail = body.strip().splitlines()[-1]
+    line["log"] = log
+    if tail:
+        line["lastStderrLine"] = tail[:200]
     # The event is the exit gate's proof that the review ran, so a session that ended
     # any other way, or completed without writing its report, leaves no event: the gate
     # then names the missing review instead of passing on a reviewer that never spoke

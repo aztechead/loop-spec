@@ -51,6 +51,20 @@ The landing record at the end of the follow-up says what each item became.
   on an unreadable spec. `spec fill --json -` fills the whole spec in one call; a test
   module of a file that changed in the diff cannot be dropped; the eval records
   `first_turn_input_tokens` from the session transcript and reads `bar.rounds`.
+- **A criterion is two fields, escalation is a gate's, and the four other fifth-audit
+  items** (`docs/loop-spec/orchestrator-port-followup-5.md`). `spec fill --command
+  <shell> --expect <text>` writes the Good Enough line and the command into the
+  frontmatter `criteria:` map that `verification run` executes; a sentence is refused,
+  `--row GE-NNN` replaces (a grounding bullet by index), a repeat is never appended,
+  and `lib/oneshot-spec-lint.sh` flags a bare Good Enough line at SPEC's exit. `spec
+  escalate` is gone from the lead's reach: the third identical REDO on ONESHOT writes
+  `route: full` with the flag classes as the reason, sets the attempt's
+  VERIFICATION.md aside, emits an `escalate` event, and hands the run to DISCUSS. A
+  fresh session that enters the phase a handoff named answers from the record instead
+  of stepping the graph again, so a phase is entered once. The reviewer session leaves
+  `dispatch/oneshot.reviewer.log` and the REDO quotes stderr's last line. The shell
+  guard denies on an unreadable spec like the path hook. The lite spec skill names the
+  one drop call beside the footprint.
 - **Three defects the first six-run reading exposed, fixed.** A criterion without a
   backticked command made the boundary's `verification run` die before it wrote any
   row, so every Status cell stayed empty and the run escalated; `spec fill
@@ -63,8 +77,9 @@ The landing record at the end of the follow-up says what each item became.
   ends with `--permission-mode acceptEdits`. A failed reviewer session is handed to
   the lead once, as the in-harness dispatch, instead of relaunched on every return.
   `cycle-driver.sh decline` refuses once a feature has begun in the checkout.
-- **Live run 4** (`slugify-bug`, haiku, d17da82): delivered in one round at 0.41 USD, 3.8
-  minutes, 74 artifact lines, 39 turns, zero REDO rounds; run 3 on the same fixture
+- **Live run 4** (`slugify-bug`, haiku, d17da82, this branch's run; the auditor's own run
+  on the same head read 0.42 USD, 3.5 minutes, 68 lines, 47 turns): delivered in one
+  round at 0.41 USD, 3.8 minutes, 74 artifact lines, 39 turns, zero REDO rounds; run 3 on the same fixture
   before this work was 0.80 USD, 79 turns, 124 lines. The bar (0.25 USD, 50 lines, 3
   minutes) is still missed; `docs/loop-spec/orchestrator-port-followup-3.md` records
   where the rest sits.

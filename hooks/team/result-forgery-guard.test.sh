@@ -48,6 +48,10 @@ check "a python open for writing on the artifact is denied" 2 'python3 -c "open(
 check "reading the artifact is allowed" 0 'cat docs/loop-spec/features/one/SPEC.md' "$ONE"
 check "a full-route feature's spec is the lead's" 0 'cat > docs/loop-spec/features/big/SPEC.md <<< "# big"' "$ONE"
 check "a feature the project does not hold is not this guard's" 0 'cat > docs/loop-spec/features/none/SPEC.md <<< "# x"' "$ONE"
+# The same rule as the path hook: an unreadable spec keeps both files the driver's
+# (followup-5, R7 closed the inversion where the shell path opened here).
+printf -- '---\nfootprint:\n  - a.py\n# no closing marker\n' > "$ONE/docs/loop-spec/features/one/SPEC.md"
+check "an unreadable spec denies the shell write too (fail closed)" 2 'cat > docs/loop-spec/features/one/VERIFICATION.md <<< "# v"' "$ONE"
 ec=0; CLAUDE_PROJECT_DIR="$WORK/proj" bash "$HOOK" >/dev/null 2>&1 <<<"not json" || ec=$?
 check_m() { [[ "$ec" -eq 0 ]] && { echo "PASS: malformed payload allows"; ((PASS++)) || true; } || { echo "FAIL: malformed payload allows"; ((FAIL++)) || true; }; }; check_m
 echo ""

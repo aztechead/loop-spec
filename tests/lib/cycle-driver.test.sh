@@ -351,15 +351,25 @@ out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --file slugify.py --not
 check "spec fill: a footprint file's bullet is replaced in place" "1" "$(grep -c '^- slugify.py: strip dots in slugify()$' "$DOCS7/SPEC.md")"
 ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --file nope.py --note "x" >/dev/null 2>&1) || ec=$?
 check "spec fill: a file with no bullet is refused" "1" "$ec"
-(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --criterion '`python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"` exits 0' >/dev/null 2>&1)
-check "spec fill: the first criterion replaces the placeholders" "0" "$(grep -c '{check command}' "$DOCS7/SPEC.md")"
-check "spec fill: the criterion is a checkbox line" "1" "$(grep -c '^- \[ \] `python3 -c' "$DOCS7/SPEC.md")"
-# A criterion carries its command in backticks or it is refused (nobody can run a bare
-# sentence), and the same criterion is never appended twice (port4-haiku-2 had twelve).
+# A criterion is two fields the driver writes, never a sentence the lead composes; the
+# command also lands in the frontmatter map `verification run` executes (followup-5, R1).
 ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --criterion 'python3 -m unittest exits 0: all pass' >/dev/null 2>&1) || ec=$?
-check "spec fill: a criterion without a backticked command is refused" "2" "$ec"
-(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --criterion '`python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"` exits 0' >/dev/null 2>&1)
+check "spec fill: a criterion sentence is refused" "2" "$ec"
+ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'true' >/dev/null 2>&1) || ec=$?
+check "spec fill: a command without its expectation is refused" "2" "$ec"
+out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"' --expect "dots are gone" 2>/dev/null)"
+check "spec fill: the first criterion replaces the placeholders" "0" "$(grep -c '{check command}' "$DOCS7/SPEC.md")"
+check "spec fill: the driver writes the line" "1" "$(grep -c '^- \[ \] `python3 -c "from slugify import slugify; assert slugify(.*` exits 0: dots are gone$' "$DOCS7/SPEC.md")"
+check "spec fill: the answer names the row" "criterion:GE-001" "$(jq -r '.filled[0]' <<<"$out")"
+check "spec fill: the command lands in the frontmatter criteria map" "1" "$(sed -n '1,/^---$/!d; /^  GE-001: "python3 -c /p' "$DOCS7/SPEC.md" | grep -c .)"
+(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"' --expect "dots are gone" >/dev/null 2>&1)
 check "spec fill: a repeated criterion is not appended twice" "1" "$(grep -c '^- \[ \] `python3 -c' "$DOCS7/SPEC.md")"
+# --row replaces (followup-5, R2): the same row, a new command, still one criterion.
+out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'python3 -c "from slugify import slugify; assert slugify(\x27a.b\x27) == \x27ab\x27"' --expect "dots are gone, checked again" --row GE-001 2>/dev/null)"
+check "spec fill --row: the criterion is replaced, not appended" "1" "$(grep -c '^- \[ \] ' "$DOCS7/SPEC.md")"
+check "spec fill --row: the new expectation stands" "1" "$(grep -c 'exits 0: dots are gone, checked again$' "$DOCS7/SPEC.md")"
+ec=0; (cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command true --expect x --row GE-009 >/dev/null 2>&1) || ec=$?
+check "spec fill --row: a row the spec does not hold is refused" "1" "$ec"
 out="$(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --grounding "slugify.py:2 is the one transform" 2>/dev/null)"
 check "spec fill: a grounding bullet replaces none" "0" "$(grep -c '^- none$' "$DOCS7/SPEC.md")"
 check "spec fill: the filled skeleton passes both spec lints" "[]" "$(jq -c '.flags' <<<"$out")"
@@ -368,8 +378,10 @@ check "spec fill: nothing to fill is a bad invocation" "2" "$ec"
 # One call for the whole spec (followup-4, item 5): the same fills from a JSON object.
 cp "$DOCS7/SPEC.md" "$WORK/spec7.filled"; rm -f "$DOCS7/SPEC.md"
 (cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" >/dev/null 2>&1)
-out="$(cd "$REPO7" && printf '%s' '{"intent":"Dots survive slugify.","notes":{"slugify.py":"strip dots in slugify()"},"criteria":["`true` exits 0: it runs"],"grounding":["slugify.py:2 is the one transform"]}' | drv spec fill --feature-dir "$FD7" --json - 2>/dev/null)"
-check "spec fill --json: every field in one call" "intent note:slugify.py criterion grounding" "$(jq -r '.filled | join(" ")' <<<"$out")"
+out="$(cd "$REPO7" && printf '%s' '{"intent":"Dots survive slugify.","notes":{"slugify.py":"strip dots in slugify()"},"criteria":[{"command":"true","expect":"it runs"}],"grounding":["slugify.py:2 is the one transform"]}' | drv spec fill --feature-dir "$FD7" --json - 2>/dev/null)"
+check "spec fill --json: every field in one call" "intent note:slugify.py criterion:GE-001 grounding" "$(jq -r '.filled | join(" ")' <<<"$out")"
+ec=0; (cd "$REPO7" && printf '%s' '{"criteria":["`true` exits 0: a sentence"]}' | drv spec fill --feature-dir "$FD7" --json - >/dev/null 2>&1) || ec=$?
+check "spec fill --json: a criterion sentence is refused" "2" "$ec"
 check "spec fill --json: the result passes both spec lints" "[]" "$(jq -c '.flags' <<<"$out")"
 ec=0; (cd "$REPO7" && printf 'not json' | drv spec fill --feature-dir "$FD7" --json - >/dev/null 2>&1) || ec=$?
 check "spec fill --json: a non-object is a bad invocation" "2" "$ec"
@@ -381,12 +393,10 @@ printf '# a draft\n' > "$WORK/draft7.md"
 ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --file "$WORK/draft7.md" >/dev/null 2>&1) || ec=$?
 check "spec write: refused over the oneshot skeleton" "1" "$ec"
 check "spec write: the skeleton is untouched" "1" "$(grep -c '^## Intent$' "$DOCS7/SPEC.md")"
-out="$(cd "$REPO7" && drv spec escalate --feature-dir "$FD7" --reason "needs a fourth file" 2>/dev/null)"
-check "spec escalate: route: full lands in the frontmatter" "1" "$(sed -n '1,/^---$/!d; /^route: full$/p' "$DOCS7/SPEC.md" | grep -c 'route: full')"
-check "spec escalate: the reason lands under Implementation notes" "1" "$(grep -c '^- escalated (route: full): needs a fourth file$' "$DOCS7/SPEC.md")"
-check "spec escalate: the probe now answers full" "route=full" "$(bash "$REPO_ROOT/lib/graph/probes/oneshot.sh" --feature-dir "$FD7" --after | cut -d' ' -f1)"
-ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --file "$WORK/draft7.md" >/dev/null 2>&1) || ec=$?
-check "spec write: allowed over an escalated spec (the full shape is the lead's)" "0" "$ec"
+# Escalation is a gate's decision from evidence, never the lead's (followup-5, R3).
+ec=0; (cd "$REPO7" && drv spec escalate --feature-dir "$FD7" --reason "needs a fourth file" >/dev/null 2>&1) || ec=$?
+check "spec escalate: not the lead's call" "2" "$ec"
+check "spec escalate: nothing was written" "0" "$(grep -c '^route: full$' "$DOCS7/SPEC.md")"
 cp "$WORK/spec7.bak" "$DOCS7/SPEC.md"
 printf '# edited by the lead\n' >> "$DOCS7/SPEC.md"
 out="$(cd "$REPO7" && drv spec skeleton --feature-dir "$FD7" 2>/dev/null)"
@@ -431,6 +441,13 @@ Dots survive slugify.
 
 - none
 MD
+# The frontmatter map the driver would have written: what `verification run` executes.
+python3 - "$DOCS7/SPEC.md" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p).read()
+s = s.replace("footprint:\n  - slugify.py\n---", "footprint:\n  - slugify.py\ncriteria:\n  GE-001: \"python3 -c \\\"from slugify import slugify; assert slugify('a.b') == 'ab'\\\"\"\n  GE-002: \"python3 -m unittest discover -s tests -v 2>&1 | grep -c ' ok$'\"\n---", 1)
+open(p, "w").write(s)
+PY
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" 2>/dev/null)"
 check "next: the oneshot candidate enters SPEC first" "NEXT phase=spec" "${out:0:15}"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from spec --note "oneshot spec" 2>/dev/null)"
@@ -481,7 +498,6 @@ check "verification run: the floor refuses convergence on the FAIL row" "1" "$(j
 check "verification run: no commands.test means the block says so" "1" "$(grep -c '^(no commands.test is configured for this feature)$' "$DOCS7/VERIFICATION.md")"
 # A criterion the spec gained after the skeleton, and one with no command: the driver
 # owns the shape, so the row and the block are added, and the bare one is a FAIL row.
-printf -- '- [ ] all tests pass\n' >> "$WORK/ge3.txt"
 python3 - "$DOCS7/SPEC.md" <<'PY'
 import sys
 p = sys.argv[1]; s = open(p).read()
@@ -489,7 +505,7 @@ s = s.replace("\n## Grounding", "- [ ] all tests pass\n\n## Grounding", 1)
 open(p, "w").write(s)
 PY
 ec=0; out="$(cd "$REPO7" && drv verification run --feature-dir "$FD7" 2>/dev/null)" || ec=$?
-check "verification run: a criterion with no command is a FAIL row that says so" "1" "$(grep -c '^| GE-003 | all tests pass | FAIL | no backticked command in the criterion' "$DOCS7/VERIFICATION.md")"
+check "verification run: a criterion with no command on record is a FAIL row that says so" "1" "$(grep -c '^| GE-003 | all tests pass | FAIL | no command on record' "$DOCS7/VERIFICATION.md")"
 check "verification run: the block for the added criterion exists" "1" "$(grep -c '^### Criterion 3$' "$DOCS7/VERIFICATION.md")"
 check "verification run: the earlier rows were still written" "1" "$(grep -c '^| GE-001 | .* | PASS | ' "$DOCS7/VERIFICATION.md")"
 python3 - "$DOCS7/SPEC.md" "$DOCS7/VERIFICATION.md" <<'PY'
@@ -504,13 +520,9 @@ PY
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" commands.test '"python3 -c \"print(\\\"2 passed\\\")\""' >/dev/null
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" protected '[]' >/dev/null
 # Fix the failing criterion's command in the spec and run again: the row turns PASS.
-python3 - "$DOCS7/SPEC.md" <<'PY'
-import re, sys
-p = sys.argv[1]; s = open(p).read()
-s = re.sub(r"^- \[ \] `python3 -m unittest discover[^`]*` prints 1$", "- [ ] `python3 -c \"print(1)\" | grep -c 1` prints 1", s, flags=re.M)
-open(p, "w").write(s)
-PY
-check "the fixture's second criterion now runs a passing pipeline" "1" "$(grep -c 'print(1)" | grep -c 1` prints 1' "$DOCS7/SPEC.md")"
+(cd "$REPO7" && drv spec fill --feature-dir "$FD7" --command 'python3 -c "print(1)" | grep -c 1' --expect "prints 1" --row GE-002 >/dev/null 2>&1)
+check "the fixture's second criterion now runs a passing pipeline, replaced by row" "1" "$(grep -c 'print(1)" | grep -c 1` exits 0: prints 1' "$DOCS7/SPEC.md")"
+check "and the frontmatter map carries the new command" "1" "$(sed -n '1,/^---$/!d; /^  GE-002: .*print(1)/p' "$DOCS7/SPEC.md" | grep -c .)"
 ec=0; out="$(cd "$REPO7" && drv verification run --feature-dir "$FD7" 2>/dev/null)" || ec=$?
 check "verification run: every row passing is exit 0" "0" "$ec"
 check "verification run: the test suite block is the command's output with its exit" "1" "$(grep -c '^2 passed$' "$DOCS7/VERIFICATION.md")"
@@ -552,7 +564,7 @@ check "oneshot review: attended is in-harness" "in-harness" "$(jq -r '.action' <
 SBIN7="$WORK/sbin7"; SPROF7="$WORK/sprof7"; mkdir -p "$SBIN7" "$SPROF7"
 # The stub reviewer writes its report when asked to; a reviewer that completes with
 # no report, or fails, leaves no dispatch event (orchestrator-port-followup-3.md, N5).
-printf '#!/usr/bin/env bash\nif [[ -n "${STUB_REPORT:-}" ]]; then echo "verdict: PASS" > "$STUB_REPORT"; fi\n[[ "${STUB_FAIL:-0}" == "1" ]] && exit 1\necho "{\"ok\":true}"\n' > "$SBIN7/codex"; chmod +x "$SBIN7/codex"
+printf '#!/usr/bin/env bash\nif [[ -n "${STUB_REPORT:-}" ]]; then echo "verdict: PASS" > "$STUB_REPORT"; fi\n[[ "${STUB_FAIL:-0}" == "1" ]] && { echo "Error: the stub refused" >&2; exit 1; }\necho "{\"ok\":true}"\n' > "$SBIN7/codex"; chmod +x "$SBIN7/codex"
 printf 'name = "codex"\nbinary = "codex"\nlaunch_args = ["exec"]\nguarded_args = []\nbypass_args = []\nmodel_flag = "--model"\nprompt_template = "{prompt}"\n' > "$SPROF7/codex.toml"
 printf 'def slugify(s):\n    return s.lower().replace(".", "")\n' > "$REPO7/slugify.py"; git -C "$REPO7" -c commit.gpgsign=false commit -qam "fix: strip dots"
 out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
@@ -560,11 +572,16 @@ check "oneshot review: a reviewer that completes without its report leaves no di
 check "oneshot review: the withheld event is named in the answer" "1" "$(jq -r '.dispatchEvent // ""' <<<"$out" | grep -c '^withheld')"
 out="$(cd "$REPO7" && PATH="$SBIN7:$PATH" STUB_FAIL=1 STUB_REPORT="$FD7/dispatch/oneshot.review.md" LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv oneshot review --feature-dir "$FD7" 2>/dev/null)"
 check "oneshot review: a failed reviewer session leaves no dispatch event even with a report" "0" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" 2>/dev/null | wc -l | tr -d ' ')"
+# The session leaves a durable log next to the report, and the answer quotes stderr's
+# last line, so a failed reviewer is readable after the run ends (followup-5, R6).
+check "oneshot review: the session log is kept next to the report" "1" "$([[ -s "$FD7/dispatch/oneshot.reviewer.log" ]] && echo 1 || echo 0)"
+check "oneshot review: the log records the session's status" "1" "$(grep -c '^=== .* stderr (failed)' "$FD7/dispatch/oneshot.reviewer.log")"
 # At the boundary a failed session is handed to the lead once, in-harness; the driver
 # does not relaunch it on the next return (port4-haiku-2 escalated out of that loop).
 rm -f "$FD7/dispatch/oneshot.review.md"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_FAIL=1 LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot: a failed reviewer session is one REDO naming the in-harness dispatch" "1" "$(grep -c 'the driver will not relaunch it: dispatch loop-spec:code-reviewer in-harness once' <<<"$out")"
+check "next from oneshot: the REDO quotes stderr's last line and names the log" "1" "$(grep -c 'ended failed (Error: the stub refused; log .*oneshot.reviewer.log)' <<<"$out")"
 check "next from oneshot: the failure is on record" "1" "$(jq -c 'select(.event == "review-session-failed")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 PATH="$SBIN7:$PATH" STUB_FAIL=1 LOOP_SPEC_SESSION_LAYER=1 LOOP_SPEC_SESSION_PROFILES="$SPROF7" drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot again: no relaunch; the gate names the missing dispatch" "1" "$(grep -c 'no code-reviewer dispatch recorded' <<<"$out")"
@@ -594,6 +611,21 @@ check "next from oneshot again: no second review; the exit gate answers" "0" "$(
 check "next from oneshot again: one dispatch event, not two" "1" "$(jq -c 'select(.event == "dispatch" and .data.launchedBy == "driver")' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
 out="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
 check "next from oneshot in-harness: the driver launches nothing and the gate names the missing dispatch" "0" "$(grep -c 'the driver ran the one review pass' <<<"$out")"
+# The third identical REDO is the gate's escalation (followup-5, R3): route: full with
+# the flag classes on record, and the run continues on the full path from DISCUSS.
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD7" driverRedo 'null' >/dev/null
+out1="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+out2="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+out3="$(cd "$REPO7" && AUTONOMOUS=1 SESSION=s7 drv next --feature-dir "$FD7" --returned-from oneshot 2>/dev/null)"
+check "next from oneshot: the first two identical gates are REDOs" "REDO REDO" "$(printf '%s %s' "$(head -1 <<<"$out1" | cut -d' ' -f1)" "$(head -1 <<<"$out2" | cut -d' ' -f1)")"
+check "next from oneshot: the third identical gate escalates the route, never the lead" "1" "$(grep -c '^NOTE \[escalate\] the oneshot exit gate held after 3 attempts' <<<"$out3")"
+check "next from oneshot: route: full is on the spec with the deadlock's classes" "1" "$(grep -c '^- escalated (route: full): the exit gate held after 3 attempts on ' "$DOCS7/SPEC.md")"
+check "next from oneshot: the escalation is an event with its classes" "1" "$(jq -c 'select(.event == "escalate" and .phase == "oneshot" and (.data.classes | length) > 0)' "$FD7/events.jsonl" | wc -l | tr -d ' ')"
+check "next from oneshot: the attempt's verification record is set aside" "1" "$([[ -f "$DOCS7/VERIFICATION.oneshot-attempt.md" ]] && echo 1 || echo 0)"
+check "next from oneshot: the run continues to DISCUSS in a fresh session" "HANDOFF next=discuss" "$(grep -o '^HANDOFF next=discuss' <<<"$out3")"
+[[ -n "$(grep -o '^HANDOFF next=discuss' <<<"$out3")" ]] || printf '%s\n' "$out3" | head -5 | sed 's/^/  out3: /'
+ec=0; (cd "$REPO7" && drv spec write --feature-dir "$FD7" --file "$WORK/draft7.md" >/dev/null 2>&1) || ec=$?
+check "spec write: allowed over an escalated spec (the full shape is the lead's)" "0" "$ec"
 
 # --- the rewind rule: a next phase the graph lists earlier answers REWIND -------------
 # The port made every earlier phase a rewind (iterate to verify prints REWIND where it
@@ -664,6 +696,10 @@ check "next: a clean exit hands the successor to a fresh session" "HANDOFF next=
 check "next: the handoff wrote the paused result" "phase-handoff" "$(jq -r '.reason' "$FD6/result.json")"
 out="$(cd "$REPO6" && AUTONOMOUS=1 drv next --feature-dir "$FD6" 2>/dev/null)"
 check "next: the fresh session enters the handed phase" "NEXT phase=discuss" "${out:0:18}"
+# From the record, never a second graph step: one phase_start for DISCUSS, the handoff
+# record consumed (the full-route runs entered DISCUSS and PLAN twice; followup-5, R5).
+check "next: the fresh session's entry adds no second phase_start" "1" "$(jq -c 'select(.event == "phase_start" and .phase == "discuss")' "$FD6/events.jsonl" | wc -l | tr -d ' ')"
+check "next: the handoff record is consumed by the entry" "null" "$(jq -r '.handoffSession' "$FD6/feature.json")"
 check "next: the exit committed the artifact" "1" "$(git -C "$REPO6" log --oneline | grep -c 'spec: ')"
 
 # --- claude worktree path -------------------------------------------------------------

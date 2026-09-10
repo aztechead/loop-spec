@@ -31,19 +31,15 @@ Read SPEC.md (the ask inside the frozen `## Intent` block, the Implementation no
 the Good Enough criteria with their check commands) and every footprint file; follow
 callers and imports far enough to know the change stays inside the footprint.
 
-Escalate, and only escalate, when the code shows one of these:
-
-- the change needs a fourth file, or a file the footprint does not name;
-- a Good Enough criterion cannot be checked by a command you can run here;
-- a question the spec leaves open changes what you would write;
-- the footprint or the spec touches a security surface the probe could not see.
-
-To escalate, run
-`bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" spec escalate --feature-dir "$feature_dir" --reason "<why>"`
-and return. The cycle routes the run to DISCUSS on the full path
-(`lib/graph/probes/oneshot.sh --after`); nothing you found is lost. A oneshot never
-turns a full run into a oneshot, and you never pick the next phase. The driver is the
-only writer of SPEC.md and VERIFICATION.md on this route.
+You never escalate; a gate does, from evidence, and the run then takes the full path
+from DISCUSS with the reason on record: a file outside the footprint in the diff, a
+reviewer BLOCK that stands after your fix, or the exit gate held three times on the
+same flags. When the change needs a fourth file, make it and return: the gate reads
+the diff. When a criterion's command is wrong, the spec's owner is the driver:
+`spec fill --command --expect --row GE-NNN` replaces it. A question the spec leaves
+open is a decision you record (`decisions.sh add`). A oneshot never turns a full run
+into a oneshot, and you never pick the next phase. The driver is the only writer of
+SPEC.md and VERIFICATION.md on this route.
 
 ## 2. Implement
 

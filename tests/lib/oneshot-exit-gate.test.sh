@@ -95,6 +95,10 @@ rm -f "$DOCS/notest.md"
 check "a footprint file whose test module the spec never names flags" "1" "$ec"
 check "the flag names the module" "1" "$(grep -c 'src/slugify.py has a test module tests/test_slugify.py' <<<"$out")"
 check "a oneshot spec without the Intent block flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nointent.md" 2>&1 | grep -c 'no .## Intent. block')"
+# A Good Enough line with no backticked command is flagged at SPEC's exit, before the
+# oneshot boundary can ever meet it (followup-5, R1).
+sed 's/^- \[ \] \\`python3 -c[^`]*\\` exits 0$/- [ ] the tests pass/; s/^- \[ \] `python3 -c[^`]*` exits 0$/- [ ] the tests pass/' "$DOCS/SPEC.md" > "$WORK/bare.md"
+check "a Good Enough line without a backticked command flags" "1" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/bare.md" 2>&1 | grep -c 'carries no backticked command')"
 sed 's/^footprint:$/footprint: [a.py, b.py, c.py, d.py]/; /^  - src\/slugify.py$/d' "$WORK/long.md" > "$WORK/full.md"
 check "a full-shape spec (four files) passes the lint untouched" "0" "$(bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/full.md" >/dev/null 2>&1; echo $?)"
 check "a spec without a footprint passes the lint" "0" "$(printf -- '---\nambiguity_scores:\n  gate_passed: true\n---\n# x\n' > "$WORK/nofp.md"; bash "$REPO_ROOT/lib/oneshot-spec-lint.sh" "$WORK/nofp.md" >/dev/null 2>&1; echo $?)"

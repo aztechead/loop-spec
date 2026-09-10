@@ -62,7 +62,7 @@ out="$(cd "$DREPO" && drv begin -- "autonomous fix slugify dots" 2>/dev/null)"; 
 (cd "$DREPO" && drv next --feature-dir "$DFD" >/dev/null 2>&1)
 bash "$REPO_ROOT/lib/footprint.sh" cite "$DFD" slugify.py:2 "the lower pass" >/dev/null
 (cd "$DREPO" && drv spec skeleton --feature-dir "$DFD" >/dev/null 2>&1)
-(cd "$DREPO" && drv spec fill --feature-dir "$DFD" --intent "Dots survive slugify." >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --file slugify.py --note "strip dots" >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --criterion '`true` exits 0: it runs' >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --grounding "slugify.py:2 is the transform" >/dev/null 2>&1)
+(cd "$DREPO" && drv spec fill --feature-dir "$DFD" --intent "Dots survive slugify." >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --file slugify.py --note "strip dots" >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --command true --expect "it runs" >/dev/null 2>&1; drv spec fill --feature-dir "$DFD" --grounding "slugify.py:2 is the transform" >/dev/null 2>&1)
 (cd "$DREPO" && drv next --feature-dir "$DFD" --returned-from spec --note "spec" >/dev/null 2>&1)
 check "driven branch: the spec exit committed the artifact" "1" "$(git -C "$DREPO" log --oneline "feat/$DSLUG" | grep -c "spec: $DSLUG")"
 check "driven branch: no state commit on the branch" "0" "$(git -C "$DREPO" log --oneline "feat/$DSLUG" | grep -c 'state @')"
