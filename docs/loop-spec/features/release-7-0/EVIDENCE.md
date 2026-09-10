@@ -1,0 +1,9 @@
+# Evidence ledger
+
+For maintainers reviewing the 7.0 specification: these observations ground the release
+scope. Passing baseline tests do not establish the unimplemented 7.0 behavior.
+- EVID-001 | 2026-09-10T20:49:21Z | claim: Coverage validates text rather than real task links | cmd: Focused temporary SPEC and PLAN fixtures passed to bash lib/criteria-coverage.sh | out: Missing criterion exited 1; criterion mapped to nonexistent task-999 exited 0; criterion in Notes without a mapping exited 0.
+- EVID-002 | 2026-09-10T20:49:22Z | claim: Requirement identities are positional in several readers and writers | cmd: Source inspection: lib/graph/driver.py:2016,2180,2435; lib/verification-grounding-lint.sh:70; lib/converged-floor.sh:58 | out: Driver edits and verification writers index checkbox order; grounding and convergence derive their own sequential GE IDs.
+- EVID-003 | 2026-09-10T20:49:22Z | claim: Approved outcome digest must remain separate from requirement revisions | cmd: Source inspection: lib/spec_intent.py:12,37; lib/graph/driver.py:2284; lib/phase-exit.sh:239 | out: Goal/Boundary are hashed and checked against specApproval; changing approved sections invalidates approval.
+- EVID-004 | 2026-09-10T20:49:22Z | claim: Product version does not select feature schema compatibility | cmd: Source inspection: skills/shared/feature-state-schema.md:272; lib/cycle-preflight.sh:150; lib/feature-validation.sh:21 | out: Feature schema is 7-only; current contract explicitly does not implement in-place schema migration.
+- EVID-005 | 2026-09-10T20:50:16Z | claim: The four targeted baseline suites pass before implementation | cmd: RUN_ALL_PROFILE=selected with criteria-coverage, spec-intent, verification-grounding-lint, and converged-floor suites | out: 4 suites passed; 0 failed; 237 unrelated suites skipped. This is baseline evidence, not proof of the proposed new contract.
