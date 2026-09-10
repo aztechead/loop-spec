@@ -69,7 +69,7 @@ Before EXECUTE edits this self-hosting repository, pin an immutable copy of the 
 
 ## File map
 
-Task Files lists below are the exact write ownership map; paths described as new are created by their first owner. No source file is deleted. New modules/commands: requirements (task-001), artifact publication (task-003), execution inputs (task-006), observation (task-007), and migration (task-010). New docs: `docs/loop-spec/requirements-format.md` (task-001) and `docs/loop-spec/requirements-migration.md` (task-010). Every new helper has a registered test in its creating task.
+Task Files lists below are the exact write ownership map; paths described as new are created by their first owner. No source file is deleted. New modules/commands: requirements (task-001), artifact publication (task-003), execution inputs (task-006), observation (task-007), and migration (task-010). New docs: `docs/loop-spec/requirements-format.md` (task-001) and `docs/loop-spec/requirements-migration.md` (task-010).
 
 Shared-file sequencing: tests/run-all.sh is updated by each creator after its predecessors; driver.py belongs successively to task-004, task-007, task-008 and task-009; artifact-lint.sh to task-001, task-005 and task-008; graph/cycle.graph.json to task-002, task-004 and task-008; feature_write.py to task-002, task-003 and activation task-009; requirements_migrate.py to task-010 then task-011. Logical dependencies below also make these successive integrations executable; EXECUTE may add file-overlap edges but must not remove these dependencies.
 
@@ -753,7 +753,7 @@ For each task's touched lib/hooks/skills/extensions/tests files, run `rtk bash l
 
 ## Rollback plan
 
-Before execution preserve the original checkout state and run through the immutable pinned runtime. If a task fails, keep release declarations at their pre-release value and repair/revert only that task's edits; do not reset unrelated user work. If integrated VERIFY fails, reopen the owning task with its failing fixture and rerun dependents that consume its contract. No migration is automatic. An operator who applied a preview uses the documented status/resume/rollback command and transaction ID; never manually overwrite a changed migrated artifact or restore an old generation counter. Preserved originals and approval remain available in durable state, and legacy verification remains historical output. Implementation itself performs no release merge/publication.
+Before execution preserve the original checkout state and run through the immutable pinned runtime. If a task fails, keep release declarations at their pre-release value and repair/revert only that task's edits; do not reset unrelated user work. If integrated VERIFY fails, reopen the owning task with its failing fixture and rerun dependents that consume its contract. No migration is automatic. An operator who applied a preview uses the documented status/resume/rollback command and transaction ID; never manually overwrite a changed migrated artifact or restore an old generation counter. Preserved originals and approval remain available in durable state, and legacy verification remains historical output.
 
 ## Grounding
 
