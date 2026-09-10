@@ -50,7 +50,7 @@ These decisions are copied from SPEC's recorded autonomous decisions. They remai
 - Modify: `skills/verify/SKILL.md` - operator guidance for remediation recovery.
 - Modify: `lib/cycle-result.sh`, `tests/lib/cycle-result.test.sh` - early terminal mode preservation.
 - Modify: `.gitignore`, `lib/runtime-ignore.sh`, `tests/lib/runtime-ignore.test.sh` - explicit launcher and session ignores with visibility controls.
-- Modify: `skills/spec/SKILL.md`, `skills/shared/autonomous-mode.md` - outcome wording before approval and immutable intent afterward.
+- Modify: `skills/spec/SKILL.md`, `skills/shared/autonomous-mode.md`, `skills/execute/SKILL.md` - outcome wording, immutable intent, and queue intake failure guidance.
 
 ## Task DAG
 
@@ -181,6 +181,7 @@ These decisions are copied from SPEC's recorded autonomous decisions. They remai
 - tests/lib/runtime-ignore.test.sh
 - skills/spec/SKILL.md
 - skills/shared/autonomous-mode.md
+- skills/execute/SKILL.md
 
 **read_first:**
 - docs/loop-spec/features/fastapi-audit-fixes/PATTERNS.md
@@ -210,7 +211,7 @@ These decisions are copied from SPEC's recorded autonomous decisions. They remai
 
 - [ ] Step 1: Add failing behavior cases to tests/lib/runtime-ignore.test.sh using PATTERNS tests/lib/runtime-ignore.test.sh:61-70. Test root .gitignore in an isolated repository without managed excludes, then the runtime-ignore sibling separately. Run red before changing the runtime helper.
 - [ ] Step 2: Add explicit sessions directory, launcher-result.json, and launcher.lock patterns to .gitignore and the existing runtime-ignore pattern array. Follow the neighboring layout and keep source/configuration visible; never ignore the whole .loop-spec tree. Scale: none (three fixed patterns).
-- [ ] Step 3: Edit the existing SPEC author guidance for maintainers: state outcomes such as returning all accepted strings in Goals; put a revisable path-versus-query design in an implementation section before approval, unless the user explicitly required that interface. Follow PATTERNS lib/spec_intent.py:37-42 and tests/lib/spec-intent.test.sh:57-68. Explain to autonomous operators that self-answering cannot change already frozen intent or rewrite the approval digest. Preserve the existing section structure; docs/config changes themselves are exempt from TDD.
+- [ ] Step 3: Edit the existing SPEC author guidance for maintainers: state outcomes such as returning all accepted strings in Goals; put a revisable path-versus-query design in an implementation section before approval, unless the user explicitly required that interface. Follow PATTERNS lib/spec_intent.py:37-42 and tests/lib/spec-intent.test.sh:57-68. Explain to autonomous operators that self-answering cannot change already frozen intent or rewrite the approval digest. Update skills/execute/SKILL.md to remove the obsolete instruction that tasks lacking a verify command are omitted; describe retained queue and failed intake. Preserve the existing section structure; docs/config changes themselves are exempt from TDD.
 - [ ] Step 4: Run Verify, required code probes on the runtime helper/test, and doc-tells on the two guidance files. Existing spec-intent tests supply the safety regression; do not modify the guard. Commit the ignore and guidance fix.
 
 ## Spec coverage
