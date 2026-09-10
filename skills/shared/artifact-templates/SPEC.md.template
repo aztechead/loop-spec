@@ -1,3 +1,7 @@
+---
+route: full
+unresolved_questions: []
+---
 # {feature_title}
 
 **Slug:** `{slug}`
@@ -64,4 +68,4 @@
 
 ## Open questions
 
-(none - resolved during DISCUSS phase)
+(none)

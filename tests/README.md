@@ -62,7 +62,7 @@ Additional scenario rows (run alongside the grid):
 
 | # | Scenario | How | Status |
 |---|----------|-----|--------|
-| S1 | spec-file ingest | `/loop-spec:cycle path/to/spec.md` with a pre-authored spec (also headless: `LOOP_SPEC_SPEC_FILE=path`). Confirm: NO interview questions; SPEC.md preserves the draft's requirements verbatim; `spec-draft.md` exists in the feature dir; ambiguity gate scored on the draft. | not run |
+| S1 | spec-file ingest | `/loop-spec:cycle path/to/spec.md` with a pre-authored spec (also headless: `LOOP_SPEC_SPEC_FILE=path`). Confirm: NO interview questions; SPEC.md preserves the draft's requirements verbatim; `spec-draft.md` exists in the feature dir; unresolved questions recorded from the draft. | not run |
 | S2 | implicit-team harness (CC >= 2.1.178) | Any trivial cell with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` on a modern CC. Confirm: `runtime.json.teamsMode == "implicit"`; NO `TeamCreate`/`TeamDelete` calls appear; teammates spawn via `Agent({name})` and rework rides `SendMessage`. | not run |
 | S3 | explicit-team harness (CC < 2.1.178) | Same as S2 on a legacy CC. Confirm `teamsMode == "explicit"` and per-phase `TeamCreate`/`TeamDelete`. | not run |
 | S4 | iterate budget ship | Force a persistent gap (spec asks for X+Y, sabotage Y) with `LOOP_SPEC_PHASE_TIMEOUT_MINS` low or a shrunken maxIterations via manual feature.json edit. Confirm: confirmation runs once; gaps land in `warnings[]` and BACKLOG.md; ITERATE advances to DELIVER; no PR is opened before that; DELIVER reports the warnings in the final PR. | not run |

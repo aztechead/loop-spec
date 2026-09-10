@@ -25,6 +25,7 @@
 # Exit: 0 with one `fanout=<skip|worker> reason=<text>` line when
 # resolved; non-zero and silent otherwise.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   echo "usage: execute-fanout.sh --feature-dir DIR | --answers" >&2
@@ -53,7 +54,7 @@ queue_type="$(jq -r 'if has("mergeQueue") then (.mergeQueue | type) else "null" 
 
 case "$queue_type" in
   array)
-    length="$(jq -r '.mergeQueue | length' "$feature_json" 2>/dev/null)" || exit 1
+    length="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.mergeQueue | length' 2>/dev/null)" || exit 1
     if [[ "$length" -gt 0 ]]; then
       echo "fanout=worker reason=mergeQueue-length=${length}"
     else

@@ -28,9 +28,16 @@ nor proven interactive.
 `lib/harness.sh` exposes this:
 
 ```bash
-bash lib/harness.sh entrypoint   # the raw stamp, or "unknown"
-bash lib/harness.sh headless     # true | false — the one execution-profile answer
+bash lib/harness.sh entrypoint     # the raw stamp, or "unknown"
+bash lib/harness.sh headless       # true | false — the one execution-profile answer
+bash lib/harness.sh session-layer  # session | in-harness — may EXECUTE run each agent
+                                   # node as its own headless CLI process?
 ```
+
+`session-layer` answers `session` only when `headless` is true, `claude` is on PATH,
+`extensions/sessions/profiles/claude.toml` exists, and `python3` has `tomllib`;
+`LOOP_SPEC_SESSION_LAYER=1|0` is the operator's word over it. Every unknown leg is
+`in-harness`, the path every harness has.
 
 `cycle-preflight.sh` reports it once at startup as `execution:{entrypoint,headless}`,
 and warns when a proven-headless invocation carries neither autonomous mode nor
@@ -142,8 +149,8 @@ For phase-specific models, pass
 `LOOP_SPEC_PHASE_MODEL_SPEC`/`DISCUSS`/`PLAN`/`EXECUTE`/`VERIFY`/`ITERATE`/`DELIVER`
 through `ClaudeAgentOptions.env`. loop-spec activates each phase value on every
 subagent and gate launch. To move the main SDK query between those models too,
-set `LOOP_SPEC_PHASE_HANDOFF=1` and construct a fresh `ClaudeAgentOptions` for
-each paused handoff with `model` set to the next phase alias. The complete,
+construct a fresh `ClaudeAgentOptions` for each paused handoff (every phase hands
+off) with `model` set to the next phase alias. The complete,
 bounded controller is in
 [`cloud-run-autonomous.md`](cloud-run-autonomous.md); a continuous `query()`
 cannot change its already-running main model.

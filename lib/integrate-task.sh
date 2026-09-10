@@ -122,12 +122,25 @@ task_before="$(git -C "$task_worktree" rev-parse --verify "refs/heads/$task_bran
   || fail invalid-arguments task-ref-not-found 2
 
 clean_detail=""
+# Tool caches a verify command leaves behind (`tofu init`, `terragrunt plan`, a test
+# runner) are by-products, not the task's work: two live integrates stopped on a
+# module's .terraform/ and lock file after `tofu validate`. Anything a task means to
+# ship is in its files[] and already committed.
+is_tool_cache_path() {
+  case "$1" in
+    *.terraform/*|*/.terraform.lock.hcl|.terraform.lock.hcl|*.terragrunt-cache/*|*node_modules/*|\
+    *__pycache__/*|*.pytest_cache/*|*.mypy_cache/*|*.ruff_cache/*|*.tox/*|*.venv/*|\
+    *.gradle/*|*.cache/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Everything under .loop-spec is the plugin's own state, on refs/loop-spec/state/<slug>
+# or ignored, never dirt and never a branch commit (WP0; a pruning pass wrote
+# .loop-spec/BACKLOG.md and a live integrate stopped on it as dirt, PR 93).
 is_known_runtime_path() {
   case "$1" in
-    .loop-spec/features/*/feature.json|.loop-spec/features/*/PROGRESS.md) return 1 ;;
-    .loop-spec/features/*/*|.loop-spec/runtime.json|.loop-spec/decisions-staging/*|\
-    .loop-spec/last-result.json|.loop-spec/results/*|.loop-spec/worktrees/*|\
-    .loop-spec/learnings.jsonl|.loop/*|graphify-out/*|\
+    .loop-spec/*|.loop/*|graphify-out/*|\
     graphify-out/.graphify_python|graphify-out/.graphify_root|\
     graphify-out/.graphify_chunk_*.json|graphify-out/.graphify_detect*.json|\
     graphify-out/.graphify_extract*.json|graphify-out/.graphify_ast*.json|\
@@ -148,11 +161,16 @@ check_clean() {
   fi
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
+    path="${line:3}"
+    # A tracked state file (a branch from before 6.4 tracks feature.json) modified by
+    # the driver is the plugin's own, the same as an untracked one.
+    is_known_runtime_path "$path" && continue
     if [[ "$line" == "?? "* ]]; then
-      path="${line:3}"
-      is_known_runtime_path "$path" && continue
+      is_tool_cache_path "$path" && continue
     fi
-    clean_detail="${label}-dirty"
+    # Name the dirt: a refusal that only said "dirty" cost a lead a git status, a diff,
+    # and a retry to learn it had left SPEC.md uncommitted in the feature worktree.
+    clean_detail="${label}-dirty: $(printf '%s' "$status_output" | tr '\n' ' ' | cut -c1-300)"
     return 1
   done <<< "$status_output"
   return 0
@@ -198,13 +216,19 @@ if [[ -n "$prepare_command" ]]; then
 fi
 
 verify_rc=0
-(cd "$task_worktree" && LOOP_SPEC_INTEGRATION_CANDIDATE="$candidate" bash -o pipefail -c "$verify_command") >&2 \
-  || verify_rc=$?
+verify_log="$(mktemp "${TMPDIR:-/tmp}/integrate-verify.XXXXXX")"
+(cd "$task_worktree" && LOOP_SPEC_INTEGRATION_CANDIDATE="$candidate" bash -o pipefail -c "$verify_command") 2>&1 \
+  | tee "$verify_log" >&2 || verify_rc=$?
 if ! check_clean "$task_worktree" task-after-verify; then
+  rm -f "$verify_log"
   fail check-dirty-worktree "$clean_detail"
 fi
 if [[ "$verify_rc" -ne 0 ]]; then
-  fail verify-failed command-exited-nonzero
+  # The last lines of the output ride in the detail: a refusal that said only
+  # "command-exited-nonzero" made a lead re-run the command to learn which step failed.
+  verify_tail="$(tail -n 5 "$verify_log" | tr '\n' ' ' | cut -c1-400)"
+  rm -f "$verify_log"
+  fail verify-failed "command-exited-nonzero: ${verify_tail}"
 fi
 if [[ "$(git -C "$task_worktree" rev-parse HEAD 2>/dev/null)" != "$candidate" ]]; then
   fail candidate-changed verify-moved-task-head

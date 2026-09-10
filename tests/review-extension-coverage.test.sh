@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# BMAD-import coverage: the imports adopted from the BMAD method scan are
-# cross-file mechanisms -- a script plus the phase that calls it plus the docs that
-# describe it. Each coupling below broke silently at least once while it was being built,
-# so each is pinned here.
+# Check connections between review scripts, phase instructions, and documentation.
 #
 # This checks WIRING, not behavior; the behavior lives in tests/lib/*.test.sh.
 set -uo pipefail
@@ -17,7 +14,7 @@ checks=(
   # B1 -- the reviewer's guide
   "skills/walkthrough/SKILL.md	review-trail\.sh	the walkthrough skill must call the trail script, not eyeball the diff"
   "skills/verify/SKILL.md	review-trail\.sh.? lint	VERIFY must lint the written trail against the real diff"
-  "lib/phase-exit.sh	artifacts\.reviewOrder	VERIFY must record the trail so DELIVER can inline it"
+  "graph/cycle.graph.json	reviewOrder.*REVIEW-ORDER\.md	VERIFY must record the trail so DELIVER can inline it"
   "lib/pr-body.sh	reviewOrder	the PR body must inline the trail"
   "lib/pr-body.sh	Suggested review order	the trail needs its own PR body heading"
   "README.md	walkthrough	the skills table must list the walkthrough skill"
@@ -29,8 +26,8 @@ checks=(
 
   # B3 -- extension points
   "skills/verify/SKILL.md	extension-points\.sh.? layers verify	VERIFY must offer the project its review layers"
-  "lib/cycle-driver.sh	extension-points instructions	the cycle must load per-phase instructions"
-  "lib/cycle-driver.sh	extension-points facts	the cycle must load standing facts"
+  "lib/graph/driver.py	\"extension-points\", \"instructions\"	the cycle must load per-phase instructions"
+  "lib/graph/driver.py	\"extension-points\", \"facts\"	the cycle must load standing facts"
 
   # B7 -- fresh-eyes prose pruning
   "skills/spec/SKILL.md	review-prompts/prose-pruning\.md	SPEC must run the fresh-eyes pass on its own artifact"
@@ -66,11 +63,9 @@ for knob in LOOP_SPEC_EXTENSIONS; do
   fi
 done
 
-# The guardrail that separates this from BMAD's customize.toml: extensions add, never
-# subtract. If a built-in gate id ever becomes claimable, the whole authority argument in
-# the B3 proposal is void.
+# Extensions can add checks but cannot replace a built-in gate.
 if bash lib/extension-points.sh validate >/dev/null 2>&1; then :; fi
-GUARD_DIR="${TMPDIR:-/tmp}/loop-spec-bmad-guard.$$"
+GUARD_DIR="${TMPDIR:-/tmp}/loop-spec-extension-guard.$$"
 mkdir -p "$GUARD_DIR"
 trap 'rm -rf "$GUARD_DIR"' EXIT
 printf '{"schemaVersion":1,"reviewLayers":[{"id":"security","name":"x"}]}\n' > "$GUARD_DIR/ext.json"

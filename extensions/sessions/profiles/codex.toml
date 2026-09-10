@@ -1,0 +1,16 @@
+cycle_entry = "$loop-spec-auto {task}"
+cycle_resume = "$loop-spec-cycle autonomous"
+# OpenAI Codex CLI: the headless entry skills/shared/codex-harness.md documents.
+# `codex exec` takes the prompt as its last argument. Without --bypass the sandbox
+# stays at workspace-write; with it Codex skips approvals and the sandbox.
+name = "codex"
+binary = "codex"
+launch_args = ["exec", "--json"]
+guarded_args = ["--sandbox", "workspace-write"]
+bypass_args = ["--dangerously-bypass-approvals-and-sandbox"]
+model_flag = "--model"
+prompt_template = "{prompt}"
+# Project-scoped Codex config (MCP servers) is gitignored, so a worktree checkout
+# omits it and the session loses its MCP servers.
+seed_files = [".codex/config.toml"]
+env_fault_patterns = []

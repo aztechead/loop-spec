@@ -4,13 +4,14 @@ Autonomous mode makes a run question-free: at every point loop-spec would call
 `AskUserQuestion`, the orchestrator takes the answer it would have recommended, records
 it as an assumed decision, and proceeds. The one exception is a supervisor that
 answers ("The supervised path", below), and the probe that names it is
-`lib/supervisor/oracle.sh`. It is ON when the inline token `autonomous`
+`lib/supervisor/oracle.sh`. It is ON when the inline token `autonomous` (at the leading
+or trailing edge of the arguments; inside the description the word is prose)
 appears in the invocation (stripped from the title) or `LOOP_SPEC_AUTONOMOUS=1` is set;
 the cycle persists it as `feature.json.autonomous = true` so phases and resumes see it.
 
 `execStyle: auto` is not this mode. Auto is the default style: the cycle does not pause
 between phases, but a human is attached and grill, SPEC, and DISCUSS questions still
-fire (the SPEC interview is an AskUserQuestion loop (`auto` included)).
+fire (the SPEC checkpoint uses consolidated AskUserQuestion questions (`auto` included)).
 
 Do not ask for permission to perform work the original request already authorizes;
 carry out the next step and keep going until the work is complete. Human gates,
@@ -26,9 +27,11 @@ input. Per harness: `claude -p "/loop-spec:auto <description>"` (or the Claude A
 `opencode run --format json "Load the loop-spec-auto skill and run: <description>"`,
 `adk run "$LOOP_SPEC_ADK_AGENT_DIR" "Load the loop-spec auto skill and run: <description>" --jsonl`,
 and `LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1 codex exec --json --sandbox workspace-write '$loop-spec-auto <description>'`.
-All stamp `CLAUDE_CODE_ENTRYPOINT`, so `lib/harness.sh headless` detects the profile.
-`LOOP_SPEC_PHASE_HANDOFF=1` (or `phase:fresh`) returns after each durable phase with a
-paused `phase-handoff` result so a supervisor can relaunch with fresh context.
+Claude stamps `CLAUDE_CODE_ENTRYPOINT`. Peer harnesses use explicit non-interactive settings that `lib/harness.sh headless` reads.
+Full-route phases return a paused `phase-handoff` result. Graph-declared same-session transitions continue without a new invocation.
+`lib/cycle-launch.sh` owns
+CLI relaunches; SDK and ADK supervisors may retain their native relaunch loop. The next
+phase starts in a fresh context.
 
 The compact route (`/loop-spec:auto` classifier) writes an auditable per-gate run/skip
 plan; every skip has a reason, a malformed or unbounded proposal promotes to the full
@@ -54,12 +57,12 @@ autonomous derives the recommended answer.
 
 ## The self-answer rule
 
-1. Formulate the question anyway; it names the ambiguity being collapsed.
+1. State the unresolved choice as a question.
 2. Answer as the options' author would recommend: what the codebase already does
    (map, PATTERNS, evidence) first, then industry practice, then the most reversible
-   option. Boring beats clever.
+   option.
 3. Record it to disk at once, never in model memory:
-   `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$dir" "$phase" "$question" "$answer" "$rationale"`
+   `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$dir" "$phase" "$question" "$answer" "$rationale"`
    (`$dir` is the feature dir; setup answers use `.loop-spec/decisions-staging` and the
    cycle migrates them). SPEC renders the record into its `<decisions>` block
    (`decisions.sh render`); PLAN copies it into `## User decisions (already made)`
@@ -73,7 +76,7 @@ autonomous derives the recommended answer.
 An SDK or ADK supervisor can answer the harness's question tool while the run stays
 autonomous: the Claude Agent SDK routes `AskUserQuestion` to its `canUseTool`
 callback, ADK routes `get_user_choice` to the caller. `bash
-"${CLAUDE_SKILL_DIR}/../../lib/supervisor/oracle.sh" mode --feature-dir "$feature_dir"`
+"${LOOP_SPEC_SKILL_DIR}/../../lib/supervisor/oracle.sh" mode --feature-dir "$feature_dir"`
 answers `oracle=supervisor` when `LOOP_SPEC_ORACLE=supervisor` (the `supervised`
 profile preset sets it, `docs/loop-spec/supervisor-interface.md`); `lib/phase-mode.sh`
 carries that answer on the SPEC and DISCUSS mode lines as `oracle=`, and
@@ -82,7 +85,7 @@ On that answer, at every self-answer site in SPEC and DISCUSS:
 
 1. Formulate the question exactly as the self-answer rule would, and ask it through the
    native question tool with the recommended option FIRST and labeled `(Recommended)`.
-   One call per interview round; the placeholder guard still applies, so every question
+   One consolidated call per checkpoint; the placeholder guard still applies, so every question
    is a real one.
 2. The answer is recorded for you on Claude Code and the Agent SDK:
    `hooks/team/oracle-record.sh` writes kind `supervised` from the question tool's
@@ -107,15 +110,19 @@ paths, and the exact commands needed to resume.
 
 Self-answering collapses preference questions, never safety aborts: dirty-repo aborts,
 schema guards, the iteration ceiling, VERIFY's code-review HARD-GATE and tamper scan,
-and DELIVER's exact-SHA, required-check, and unique-PR gates stay hard failures. Sites
+and DELIVER's exact-SHA, required-check, and unique-PR gates stay hard failures.
+Approved Goal and Boundary remain frozen (`lib/spec_intent.py`). Self-answering
+cannot change them or rewrite the approval digest: return genuine post-approval
+intent gaps to the human. Implementation choices outside those sections can change
+within the approved outcomes and constraints. Subject to that freeze, sites
 that normally reach a human only in one style (DISCUSS unresolved dimensions and
 intent findings: AskUserQuestion in `auto`/`step`/`interactive`; ITERATE's spec-rewind
 approval in `step`/`interactive`) take the grounded assumption here.
 
 ## The continuation ladder (warnings are a record, not a handler)
 
-`warnings[]` is the audit trail; nobody reads it mid-flight. When an escalation path
-fires, climb instead of stopping:
+`warnings[]` records outcomes but does not resolve them.
+Use these recovery paths within existing authorization and gate limits:
 
 1. **Self-heal in phase**: gate retry loops run as written; a critique gate closes at the graph's delta ceiling (`lib/graph/gate.sh next`) and the run proceeds.
 2. **Lead-authored fallback**: a teammate that produces nothing after one fresh

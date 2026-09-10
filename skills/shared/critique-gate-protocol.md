@@ -1,11 +1,9 @@
 # Critique gate protocol — shared procedure for the DISCUSS and PLAN gates
 
-Single source of truth for the critique-gate procedure both artifact gates run
-(`spec-critique` in DISCUSS, `plan-critique` in PLAN). The phase skill invokes this
-protocol with the parameters below and keeps only its deltas; the routing topology is
-owned by `graph/critique.graph.json` and the skip policy by `skills/shared/tier-matrix.md`
-— this file owns the operational procedure between those two. Critique is
-**challenger-only**: there is no advocate and no debate round.
+Use this procedure for DISCUSS's `spec-critique` and PLAN's `plan-critique` gates.
+The phase supplies the parameters below and its specific handling rules.
+`graph/critique.graph.json` owns routing. `skills/shared/tier-matrix.md` defines skip policy.
+Critique is **challenger-only**, without an advocate or debate round.
 
 Contents: parameters · gate open · single-critic pass · adjudication · fix_list
     non-empty / empty · resume.
@@ -14,10 +12,12 @@ Delta rounds are bounded. The bound is the loop edge `graph/critique.graph.json`
 declares from `critique.adjudicate` back to `critique.challenge`, and
 `lib/graph/gate.sh next` is the only thing that reads it: after every fail entry it
 answers `ANSWER=rerun` or `ANSWER=close` with a reason. No prose here restates the
-number, and no round is counted by hand. `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph
-(`0` restores unbounded retries). A run once spent over an hour bouncing PLAN.md between
-the challenger and the planner because the ceiling lived inside a `contain` loop the
-engine never counts; the probe is what counts it.
+number, and no round is counted by hand. The shape it bounds is one exhaustive
+findings pass, one revision, one delta re-verify: the challenger raises everything in
+the findings pass, and the delta reply passes through `lib/delta-findings-lint.sh`
+before the lead adjudicates it, so a delta round cannot open findings the first pass
+could have raised. `LOOP_SPEC_CRITIQUE_ROUNDS` outranks the graph
+(`0` restores unbounded retries). The probe counts rounds, including loops contained inside a phase.
 
 ## Parameters (declared by the invoking phase)
 
@@ -28,9 +28,9 @@ engine never counts; the probe is what counts it.
 | `{artifact}` | `SPEC.md` | `PLAN.md` |
 | `{artifact_path}` | `docs/loop-spec/features/{slug}/SPEC.md` | `docs/loop-spec/features/{slug}/PLAN.md` |
 | `{author}` | `spec-writer-1` when SPEC.md was missing; otherwise the LEAD edits directly | `planner-1` |
-| `{next_step}` | phase Step 5.75 | phase Step 5.7 (prune; mechanical gates already ran) |
+| `{next_step}` | the phase's exit (step 4) | the pruning pass (step 3 of the phase) |
 | Skip policy | `lib/graph/probes/discuss-critique.sh` answers `gate=skip` (maintenance ∪ spec already gated; never on a security signal or ITERATE re-entry) | structural fast-path ∪ maintenance profile (no security signal) |
-| Phase deltas | no-op-revision hash shortcut; lead-authored fixes when there is no spec-writer | re-parse `tasks[]` after every revision; re-run feasibility + coverage if PLAN.md changed |
+| Phase deltas | no-op-revision hash shortcut; lead-authored fixes when there is no spec-writer | the fix-list is the union of `lib/phase-exit.sh plan` FLAG lines and the adjudicated findings; after the one revision, re-extract `tasks.json` (`lib/plan-tasks.sh extract`), re-run the gate command, and count surviving FLAGs with the delta survivors |
 
 The phase skill also declares the two adjudication actions that differ by phase:
 `{user_intent_action}` (what to do when a finding depends on user intent) and
@@ -38,26 +38,37 @@ The phase skill also declares the two adjudication actions that differ by phase:
 `gate_round` / `dispatch` telemetry emits stay in the phase skill — they carry
 phase-specific arguments and are pinned there.
 
-## Gate open
+## The calls
 
-`lib/graph/gate.sh` owns every `currentGate` / `gateHistory` write in this protocol —
-`lib/feature-write.sh` refuses those two keys to anything else. It stamps `startedAt`,
-zeroes the round, and leaves `advocateName` null (schema key retained for resume; no
-advocate is spawned):
+`cycle-driver.sh critique <step>` (`lib/critique-step.sh`) is the only writer this
+protocol uses: it drives `lib/graph/gate.sh` (the sole writer of `currentGate` /
+`gateHistory`), writes every gate-log, counts every round, emits every `gate_round`
+event, and runs `lib/delta-findings-lint.sh`. The lead never copies a reply into a
+file, never counts a round, and never calls `gate.sh` directly. Six steps, in order:
 
 ```bash
-feature_dir=".loop-spec/features/{slug}"
-bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" open --feature-dir "$feature_dir" \
-  --phase {phase} --gate {gate} --challenger challenger-1
-mkdir -p "$feature_dir/gate-logs/"
+DRV="${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
+bash "$DRV" critique open     --feature-dir "$feature_dir" --phase {phase} --gate {gate} --artifact {artifact_path}   # {..., model}
+bash "$DRV" critique findings --feature-dir "$feature_dir" --reply <path|->      # round 1: {verdict, lines[]}; snapshots the artifact
+bash "$DRV" critique fail     --feature-dir "$feature_dir" --fix-list <path|->   # {answer: rerun|close, reason, fixList|residue}
+bash "$DRV" critique revised  --feature-dir "$feature_dir"                        # {diffPath, changed, lines, fixList}
+bash "$DRV" critique delta    --feature-dir "$feature_dir" --reply <path|-> [--flags <path>]   # {round, verified, survivors[]}
+bash "$DRV" critique pass     --feature-dir "$feature_dir"                        # the fix-list-empty close
 ```
 
 Opening over an already-open gate is refused rather than overwritten: on a resume the
-gate is already open, and "Resume" below is the entry point, not this one.
+gate is already open, and "Resume" below is the entry point, not `open`. The reset a
+`pass` or a `close` performs is a zeroed OBJECT, never null: `graph/cycle.graph.json`
+declares `currentGate` in the `reads[]` of both critique subgraph nodes, and
+`lib/graph/state.sh assert-reads` fails a node whose declared read is null.
 
 ## Single-critic pass
 
-Model: `feature.models.challenger`. Send `challenger-1` the solo-critic brief:
+`critique open`, then send `challenger-1` the solo-critic brief. Under the `oneshot`
+spawn kind (`skills/shared/dispatch.md`) this and every later message is a nameless
+`Agent({description, subagent_type: "loop-spec:challenger", run_in_background: false,
+model: <open's .model>, prompt})` with the prior gate-logs inlined; omit `model` only
+when `open` answered null:
 
 ```
 SendMessage({
@@ -75,31 +86,16 @@ SendMessage({
 })
 ```
 
-Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `challenger-1`. Never AskUserQuestion as a wait. Read its `FINDINGS:` / `NO-FINDINGS:`
-message. Write it to `gate-logs/{gate}-round-1.md`:
-
-```
-# {gate} Round 1 (single-critic)
-
-## challenger-1
-<the FINDINGS/NO-FINDINGS message body>
-```
-
-Record the round before adjudicating — `Resume` below re-enters on `currentGate.round > 0`,
-so a round that is logged to disk but never counted resumes as a gate that never opened:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" round --feature-dir "$feature_dir"
-```
-
-Emit the phase's `gate_round` event (`"mode":"single-critic"`), then adjudicate.
+Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from
+`challenger-1`. Never AskUserQuestion as a wait. Hand the reply to
+`critique findings --reply -` on stdin, verbatim: it writes `gate-logs/{gate}-round-1.md`,
+counts the round, emits the event, and answers `{verdict: findings|no-findings,
+lines[]}`. Adjudicate `lines[]`; never count rounds by hand.
 
 A security signal still runs this pass (never skip). It does not spawn a second
 critic.
 
 ## Adjudication
-
-Read all `gate-logs/{gate}-round-*.md`.
 
 | Situation | Action |
 |-----------|--------|
@@ -109,60 +105,33 @@ Read all `gate-logs/{gate}-round-*.md`.
 | Finding depends on user intent | Escalate via `AskUserQuestion`. Autonomous mode: no escalation — `{user_intent_action}` per the phase skill, and add it to the fix-list so the artifact states it explicitly. |
 | Finding is an ungrounded external claim (`UNGROUNDED:` line) | Lead runs the suggested read-only probe ITSELF (teammates have no Bash), appends it to the evidence ledger, then `{ungrounded_action}` per the phase skill (or converts the claim to an ASSUMPTION if the probe is impossible). |
 
-Build `fix_list` (may be empty).
+Build `fix_list` (may be empty). PLAN prepends its mechanical FLAG lines verbatim.
 
 ## fix_list non-empty
 
-Append the fail entry BEFORE anything else (the re-dispatch path returns to the gate and
-would never reach an append placed after the return). `attempt` is counted from the
-entries already recorded for this phase and gate — never supplied:
+One item per line, verbatim, to `critique fail --fix-list -`. It appends the fail entry
+BEFORE anything else and asks `gate.sh next` whether another delta round is inside the
+ceiling:
 
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" fail --feature-dir "$feature_dir" \
-  --rounds <N (single-critic: 1 + delta rounds)> \
-  --convergence <single-critic | delta-verified> \
-  --challenger-model "<model>" \
-  --findings '<fix_list items as a JSON array of strings>'
-```
+- `{answer: "rerun", fixList}`: the artifact is snapshotted for the diff. Re-dispatch
+  `{author}` via `SendMessage` (not a fresh Agent call) with `fixList` as written,
+  instructing it to read the current artifact, apply every item in place, send lead
+  its completion message, then go idle. (Phase deltas apply: DISCUSS has the LEAD edit
+  directly when there is no spec-writer.)
+- `{answer: "close", reason, residue}`: the gate is closed with `--convergence cap-reached`,
+  the open items are in `gate-logs/{gate}-residue.md`, and the phase proceeds to
+  `{next_step}` with the artifact as it stands. The residue goes nowhere else: not into
+  the artifact, not into the backlog, not to the user.
 
-The gate stays open across a fail — only `pass` closes it.
+A non-zero exit is a message on stderr (no open gate, a graph with no ceiling, a
+malformed override): relay it and stop.
 
-Then ask the probe whether another delta round is inside the ceiling:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" next --feature-dir "$feature_dir"
-# ANSWER=rerun REASON=<n> of <ceiling> delta rounds spent
-# ANSWER=close REASON=ceiling: ... | deadlock: finding survived two consecutive delta rounds: ...
-```
-
-`close` ends the gate now: append the pass entry with `--convergence cap-reached` and
-`--notes` carrying every fix-list item still open, write those items to
-`gate-logs/{gate}-residue.md`, and proceed to `{next_step}` with the artifact as it
-stands. The residue goes nowhere else: not into the artifact, not into the backlog, not
-to the user. `rerun` continues below. A non-zero exit is a message on stderr (no open
-gate, a graph with no ceiling, a malformed override): relay it and stop, and
-never count rounds by hand in its place.
-
-Snapshot the artifact (feeds the delta re-verify diff; DISCUSS also hashes it for the
-no-op shortcut):
-
-```bash
-cp {artifact_path} .loop-spec/features/{slug}/gate-logs/{artifact}.pre-revision.md
-```
-
-Re-dispatch `{author}` via `SendMessage` (not a fresh Agent call) with the numbered
-fix-list, instructing it to read the current artifact, apply every item in place, send
-lead its completion message, then go idle. (Phase deltas apply: DISCUSS has the LEAD
-edit directly when there is no spec-writer; PLAN re-parses `tasks[]` from the
-completion message.)
-
-When the revision lands, run the **delta re-verify** — do NOT re-run the full gate
-protocol (`skills/shared/tier-matrix.md`, critique gate ladder):
-
-```bash
-diff -u .loop-spec/features/{slug}/gate-logs/{artifact}.pre-revision.md \
-        {artifact_path} > /tmp/{gate}-delta.diff || true
-```
+When the revision lands, `critique revised` diffs the snapshot `findings` took against
+the artifact and answers `{diffPath, lines, fixList}`. The author may have edited the
+artifact before or after `fail`; the snapshot is what the challenger read. Send the
+**delta re-verify** naming the diff file, never pasting it (the challenger has Read,
+and the diff in the lead's context is paid on every later call) — and never the full
+gate protocol again (`skills/shared/tier-matrix.md`, critique gate ladder):
 
 ```
 SendMessage({
@@ -170,55 +139,49 @@ SendMessage({
   message: """
     Delta re-verify (per your solo-critic brief). The fix-list below was applied to {artifact}.
     Confirm each item is addressed and check the CHANGED sections only for new issues.
-    Every DELTA-FINDINGS line is `unaddressed: <item>` or `introduced: "<added line>"`.
+    Every DELTA-FINDINGS line is `unaddressed: <item>` or `introduced: "<added line>" ... [major]`.
 
     Fix-list applied:
-    {fix_list items, numbered}
+    {.fixList}
 
-    Diff:
-    {content of /tmp/{gate}-delta.diff}
+    Diff: Read {.diffPath} ({.lines} lines).
 
     Reply to lead with DELTA-VERIFIED or DELTA-FINDINGS, then go idle.
   """
 })
 ```
 
-Stop after SendMessage. The harness resumes this turn on `TeammateIdle` from `challenger-1`. Never AskUserQuestion as a wait. Append the reply to a new
-`gate-logs/{gate}-round-{next}.md` (titled `(delta re-verify)`) — `gate.sh round` supplies
-`{next}` — and emit a `gate_round` event with `"mode":"delta"`:
+The challenger reads the round's diff from `diffPath` (`gate-logs/{gate}-delta.diff`)
+itself; the lead does not inline it into the message. Stop after SendMessage. The
+harness resumes this turn on `TeammateIdle` from `challenger-1`, under `claude -p` as
+well. Never AskUserQuestion as a wait. Hand the reply to
+`critique delta --reply -` (PLAN adds `--flags` with the re-run gate's FLAG lines): it
+writes the round's gate-log with the lint's `DROP` lines, counts the round, emits the
+event, and answers `{verified, survivors[]}`.
 
-- **`DELTA-VERIFIED`**: the gate passes — append the `gateHistory` pass entry
-  (convergence: `"delta-verified"`), reset `currentGate` (below), proceed to `{next_step}`.
-- **`DELTA-FINDINGS`**: adjudicate the tagged findings per the table above. A delta
-  finding is in scope only when it names an unaddressed fix-list item or quotes a line
-  the revision added (`skills/shared/team-prompts/critic.md`); anything else is dropped
-  with a one-line reason in the gate-log. A surviving item stays:
-  keep it on the fix-list (stricter bias), and the next fail entry's `--findings`
-  carries it in the exact words the first fail entry recorded — that identity is what
-  the probe's deadlock rule matches on. Then start a new fix round from the top of
-  this section — the fail entry, then `gate.sh next`, which decides whether the round
-  runs. Never spawn a second critic and never loop without the probe's answer.
+- **`verified: true`**: the gate is already closed with `--convergence delta-verified`;
+  proceed to `{next_step}`.
+- **`survivors[]`**: adjudicate only these per the table above (an `unaddressed:` item,
+  a `[major]` `introduced:` line quoting text the revision added, or a FLAG line). A
+  surviving item stays: keep it on the fix-list (stricter bias), in the exact words the
+  first fail entry recorded — that identity is what the probe's deadlock rule matches
+  on — and call `critique fail` again; with the shipped ceiling it answers `close`.
+  Never spawn a second critic and never loop without the probe's answer. `close` ends
+  the gate now: first apply, as lead edits with no re-dispatch and no re-verify, every
+  fix-list item the lead already ACCEPTED as `[minor]` (the ceiling bounds challenger
+  rounds, not agreed one-line fixes; a live gate closed with two accepted minors
+  unapplied), then record the pass entry with the items still open in its notes.
+  Dispatch, then stop, holds here under `claude -p` as well: a pending teammate keeps
+  the process alive and its reply re-invokes the lead.
 
 ## fix_list empty
 
-One call appends the pass entry and closes the gate, in that order:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/graph/gate.sh" pass --feature-dir "$feature_dir" \
-  --rounds <N> --convergence <single-critic | delta-verified | cap-reached> \
-  --challenger-model "<model>"
-```
-
-Do not clear `currentGate` any other way, and never before this call. The reset is a
-zeroed OBJECT, never null: `graph/cycle.graph.json` declares `currentGate` in the
-`reads[]` of both critique subgraph nodes, and `lib/graph/state.sh assert-reads` fails a
-node whose declared read is null. A run that nulled it by hand dead-ended the engine
-mid-gate and lost a human gate during the hand-repair that followed.
-
-Proceed to `{next_step}`.
+`critique pass` appends the `single-critic` pass entry and closes the gate, in that
+order. Proceed to `{next_step}`.
 
 ## Resume (gate in progress)
 
-When the phase resumes with `currentGate.round > 0`: re-run from the single-critic
-findings pass with the existing gate-logs inlined as prior context. There is no
-advocate transcript to reload.
+When the phase resumes with `currentGate.round > 0`: the gate is open and
+`gate-logs/{gate}-state.json` names the artifact, so skip `open` and re-run from the
+single-critic findings pass with the existing gate-logs inlined as prior context. There
+is no advocate transcript to reload.

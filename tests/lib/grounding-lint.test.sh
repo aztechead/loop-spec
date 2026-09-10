@@ -66,6 +66,26 @@ EOF
 check "ASSUMPTION with | in verify command exits 0" \
   "$([[ "$(lint_exit "$WORK/assumption-pipe.md")" == "0" ]] && echo 1 || echo 0)"
 
+# ─── Fixture 3b: the verify command in backticks, prose after it ────────────
+cat > "$WORK/assumption-prose.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- ASSUMPTION: the binaries are installed | verify: `terragrunt --version && tofu --version` (confirmed directly in this environment: `terragrunt version 1.1.4`)
+EOF
+check "ASSUMPTION verify in backticks with trailing prose exits 0" \
+  "$([[ "$(lint_exit "$WORK/assumption-prose.md")" == "0" ]] && echo 1 || echo 0)"
+cat > "$WORK/assumption-bad-bt.md" <<'EOF'
+# Test artifact
+
+## Grounding
+
+- ASSUMPTION: broken | verify: `if then (` (confirmed)
+EOF
+check "a broken command inside backticks still flags" \
+  "$([[ "$(lint_exit "$WORK/assumption-bad-bt.md")" == "1" ]] && echo 1 || echo 0)"
+
 # ─── Fixture 4: resolved EVID ref + well-formed ASSUMPTION ──────────────────
 ledger4="$WORK/EVIDENCE-4.md"
 cat > "$ledger4" <<'EOF'

@@ -202,5 +202,29 @@ ec=0
 capture --test true --lint '' --typecheck '' >/dev/null 2>&1 || ec=$?
 check "capture refuses HEAD different from base SHA" "21" "$ec"
 
+# The cycle's own docs are not candidate dirt; any other uncommitted file still is.
+rm -f "$FAIL_FLAG"
+printf '%s\n' "$pass_base" > "$BASELINE"
+mkdir -p "$REPO/docs/loop-spec/features/x"
+printf '| GE-001 | it | PASS |\n' > "$REPO/docs/loop-spec/features/x/VERIFICATION.md"
+mkdir -p "$REPO/.loop-spec/features/x"; printf '{"slug":"x"}\n' > "$REPO/.loop-spec/features/x/feature.json"
+ec=0
+out="$(bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" \
+  --prepare-key prep-1 --log-dir "$LOGS/docs-dirty" --test "$pass_fail_cmd" --lint '' --typecheck '')" || ec=$?
+check "an uncommitted docs/loop-spec artifact or .loop-spec state file is not candidate dirt" "0:accepted" "$ec:$(jq -r '.outcome' <<<"$out")"
+printf 'stray\n' > "$REPO/stray.txt"
+ec=0
+bash "$SCRIPT" compare --baseline "$BASELINE" --root "$REPO" --base-sha "$BASE" \
+  --prepare-key prep-1 --log-dir "$LOGS/code-dirty" --test "$pass_fail_cmd" --lint '' --typecheck '' >/dev/null 2>&1 || ec=$?
+check "an uncommitted file outside docs/loop-spec is still candidate dirt" "21" "$ec"
+rm -rf "$REPO/stray.txt" "$REPO/docs" "$REPO/.loop-spec"
+
+# The plugin's own state under .loop-spec never counts as dirt for the baseline.
+git -C "$REPO" checkout -q "$BASE" 2>/dev/null
+mkdir -p "$REPO/.loop-spec/features/x"; printf '{"phase":"verify"}\n' > "$REPO/.loop-spec/features/x/feature.json"
+ec=0; capture --test 'true' --lint '' --typecheck '' >/dev/null 2>&1 || ec=$?
+check "capture ignores .loop-spec state as dirt" "0" "$ec"
+rm -rf "$REPO/.loop-spec"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

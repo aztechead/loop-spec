@@ -1,4 +1,4 @@
-# EXECUTE rungs: inline, agent team, Workflow DAG
+# EXECUTE rungs: inline, agent team, Workflow DAG, disposable session
 
 The rungs of the EXECUTE concurrency ladder other than the subagent waves
 (`execute-subagent.md`) and the headless loop fleet (`execute-loop-fleet.md`).
@@ -9,7 +9,7 @@ result object, with the same fixed vocabulary, so the consuming code never branc
 ```json
 { "merged": ["task-001", ...],
   "blocked": [{"taskId": "...", "reason": "spec-compliance-block|retry-exhausted|commit-missing|zero-commit"}],
-  "escalation": null | {"reason": "deadlock|rebase-conflict", "detail": "..."} }
+  "escalation": null | {"reason": "deadlock|rebase-conflict|env-fault", "detail": "..."} }
 ```
 
 Common to every rung: `mergedSet` is seeded from `lib/task-progress.sh done` and each
@@ -115,7 +115,7 @@ Selected only with `LOOP_SPEC_EXECUTE_WORKFLOW=1`, `workflowsAvailable`, and
 
 ```
 Workflow({
-  scriptPath: "${CLAUDE_SKILL_DIR}/../../lib/workflows/execute-dag.js",
+  scriptPath: "${LOOP_SPEC_SKILL_DIR}/../../lib/workflows/execute-dag.js",
   args: { slug, featureWorktreeRoot, featureBranch: "feat/{slug}",
           models: {implementer, specComplianceReviewer}, maxParallelImplementers,
           maxRetriesPerTask, reviewersEnabled: true, commands: feature.commands, skillDir,
@@ -144,3 +144,48 @@ There is no supervisor loop: after putting the bundles, return control like a
 stale state hash is rejected and the task re-offered); a merged import still re-runs
 `verifyCommand` on the integrated branch before it counts as done. Continue to the
 phase exit once every task assigned to this rung has merged or exhausted its retries.
+
+## Disposable session (headless)
+
+Selected when `lib/harness.sh session-layer` answers `session`: the invocation is
+headless (`claude -p`, `codex exec`, `opencode run`, or `LOOP_SPEC_NON_INTERACTIVE=1`),
+`extensions/sessions/profiles/<cli>.toml` exists for `lib/harness.sh cli`, that CLI is
+on PATH, and `python3` is 3.11 or newer. `LOOP_SPEC_SESSION_LAYER=0` keeps a headless
+run on the subagent waves; `=1` forces the rung and fails loudly without the CLI. In
+every other respect this is the subagent path (`execute-subagent.md`): the same wave
+loop, the same `dispatch`/`package`/`verdict`/`integrate` driver steps, the same
+lead-created task worktrees (`subagentIsolation=lead-worktree`), the same ff-merge.
+Only the launch differs, and the driver owns it: each implementer and each reviewer is
+its own headless CLI process that the driver starts, so nothing it reads or writes
+lands in the lead's context, and the lead never sees a launch command
+(the port principles, rule 12).
+
+Per task, after `cycle-driver.sh task dispatch` returns the packet:
+
+```bash
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task run --feature-dir "$feature_dir" --task "$taskId" --role implementer
+```
+
+The driver writes the prompt (one line: the brief, the spec, the report path), runs
+`extensions/sessions/session_run.py` with this harness's profile in the task worktree,
+retries an `env-fault` or `timeout` once, and prints the runner's JSON line. `status:
+completed` continues to `package`. `failed` is one attempt: read the report file and
+the `stderr` path, then `verdict rework` as for a failed subagent. A second fault is
+the answer: escalate with `reason: "env-fault"` and the `envFault` pattern or the
+timeout as `detail`. Exit 2 is a configuration fault (no profile, no CLI, old
+interpreter): stop and escalate with the driver's stderr; never fall back to `Agent` by
+hand, because the probe already answered `session` for this run.
+
+After `package`, the reviewer is a session too:
+
+```bash
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task run --feature-dir "$feature_dir" --task "$taskId" --role reviewer
+```
+
+It runs in the feature root with the reviewer's model; the verdict is read from the
+report file as on the subagent path. On any other rung `task run` answers
+`{action: "in-harness"}` and the harness tool dispatches as that rung says.
+
+`extensions/sessions/README.md` lists the profile keys, the child's environment, and the
+exit codes. The session's own log stays under `{featureDir}/dispatch/sessions/`; quote
+paths, never the log body.

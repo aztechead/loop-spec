@@ -1,15 +1,23 @@
 # Feature State Schema
 
-Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json`. It is the **committed resume contract** (tracked in git so resume survives a clone / hand-off; the cycle commits it on each phase transition). `PROGRESS.md` (the phase-transition journal) is committed alongside it. The remaining siblings -- `feature.json.bak`, `.feature-write.lock`, `gate-logs/`, transcripts -- stay gitignored as per-machine churn. All writes go through `lib/feature-write.sh`, whose Python transaction locks before reading, fsyncs a unique temporary file, and atomically replaces the destination. The previous state is copied to `feature.json.bak` before replacement; the live file is never moved away.
+Per-feature runtime state lives at `.loop-spec/features/{slug}/feature.json`.
+The driver saves resume snapshots, including `PROGRESS.md`, on `refs/loop-spec/state/{slug}` through `lib/state-ref.sh`.
+Do not commit runtime state on the feature branch.
+Backups, locks, gate logs, and transcripts remain local.
+
+Write state through `lib/feature-write.sh`. It locks before reading, saves the prior state to `feature.json.bak`, and atomically replaces the live file.
+It flushes a unique temporary file before replacement. The live path remains present throughout the write.
 
 **Writing rules (every phase, no exceptions):** never mutate `feature.json` with raw `jq`/`python3` — that bypasses the atomic write and `.bak` rotation that resume depends on. `feature-write.sh set` takes **nested dot paths** (object keys only, no array indices) and a **JSON value** (strings must be quoted):
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patterns '"docs/loop-spec/features/'"${slug}"'/PATTERNS.md"'
-bash "${CLAUDE_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" warnings '"some warning"'
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh" set "$fdir" artifacts.patterns '"docs/loop-spec/features/'"${slug}"'/PATTERNS.md"'
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-write.sh" append "$fdir" warnings '"some warning"'
 ```
 
-If a `set`/`append` call errors, read the message — the common causes are an unquoted string value or an array-index path (replace the whole array via `set` on its parent instead) — and retry with the corrected call; do NOT fall back to raw jq.
+If `set` or `append` fails, read the error and correct the call.
+Quote JSON strings. Replace an array through `set` on its parent path instead of using an array index.
+Never bypass the writer with raw jq.
 
 Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet`) per phase team, not in `feature.json`. See "Harness task list usage" below.
 
@@ -37,9 +45,12 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "codeReview": {"run": "boolean", "reason": "nonblank classifier reason"},
     "iterate": {"run": "boolean", "reason": "nonblank classifier reason"}
   },
-  "phaseHandoff": "boolean; return after each durable phase for a fresh main-agent context",
-  "currentPhase": "spec | discuss | plan | execute | verify | iterate | deliver | completed",
+  "currentPhase": "a phase id of lib/graph/phases.sh list (spec | oneshot | discuss | plan | execute | verify | iterate | deliver) | completed",
+  "currentPhaseStartedAt": "ISO-8601 timestamp or null; set by cycle-driver.sh next when it answers NEXT for a phase (the watchdog reads it)",
   "completedPhases": ["array of phase names"],
+  "specApproval": {"sha256":"approved Goal and Boundary digest", "source":"human | supervised | autonomous", "approvedAt":"ISO-8601 timestamp"},
+  "instructionSnapshots": [{"phase":"phase id", "manifest":"absolute path", "sha256":"manifest digest", "prompt":"absolute path", "promptSha256":"rendered body digest"}],
+  "reviewRouting": {"route":"intent-gap | bad-spec", "used":0, "pending":false, "reportSha256":"review digest", "findings":[]},
   "branch": "string (feat/{slug})",
   "worktreePath": "string (absolute path of the created feature worktree, .claude/worktrees/{slug} by default) in single-repo mode; null in workspace mode",
   "executionRootMode": "worktree | in-place | workspace",
@@ -59,6 +70,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   },
   "phaseModels": {
     "spec": "Claude selector | null",
+    "oneshot": "Claude selector | null",
     "discuss": "Claude selector | null",
     "plan": "Claude selector | null",
     "execute": "Claude selector | null",
@@ -67,7 +79,6 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
     "deliver": "Claude selector | null"
   },
   "artifacts": {
-    "specInterview": "path or null (.loop-spec/features/{slug}/spec-interview-transcript.md)",
     "spec": "path or null",
     "patterns": "path or null (docs/loop-spec/features/{slug}/PATTERNS.md, written at PLAN Step 0)",
     "patternsSource": "gsd-ingest | pattern-mapper | manual | null",
@@ -149,6 +160,22 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   },
   "warnings": ["array of strings"],
   "driverNext": {"phase": "string; the phase cycle-driver.sh last answered NEXT with", "at": "ISO-8601"},
+  "driverRedo": {"phase": "string", "hash": "string; the FLAG lines of the last REDO", "count": "integer; identical REDO rounds so far, capped by LOOP_SPEC_REDO_MAX"},
+  "handoffSession": {"id": "string; the harness session id that answered HANDOFF, or empty", "from": "string; the phase that closed", "next": "string; the phase a fresh invocation enters", "at": "ISO-8601"},
+  "iterate": {
+    "maxIterations": "integer (LOOP_SPEC_ITERATE_MAX_ITERATIONS)",
+    "used": "integer",
+    "confirmationUsed": "boolean",
+    "lastVerdict": "judge verdict object or null",
+    "feedback": "{type: execute | plan | spec | verify, description, fix_first} on a rewind; null when converged",
+    "history": ["array of past verdicts"]
+  },
+  "greenfield": "boolean; set by lib/feature-bootstrap.sh when the repository has no code yet",
+  "protected": "array of repository-relative paths the task forbids the change to touch (the invocation token `protected:a,b`); the one source of a read-only footprint file (lib/footprint.sh list)",
+  "autonomous": "boolean; set by lib/feature-bootstrap.sh for an unattended run",
+  "backlogEntry": "string or null; the backlog text a cycle started from (cycle backlog)",
+  "backlogEntryId": "string or null; its id, so DELIVER can close the entry",
+  "artifactSink": "{mode: store, manifest: <slug>/<sha>/manifest.json} once lib/artifact-sink.sh moved the artifacts to a store; absent otherwise",
   "mergeQueue": ["array of task ids in FIFO arrival order awaiting merge to feat/{slug}; empty between phases and at EXECUTE exit"],
   "pendingRemediationTasks": ["array of remediation task objects appended by VERIFY (lib/feature-write.sh append) and consumed+cleared by EXECUTE Step 2a; empty between phases"],
   "activeWorkflow": {
@@ -164,7 +191,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   "gateHistory": [
     {
       "phase": "string",
-      "gate": "spec-critique | plan-critique | plan-feasibility | spec-compliance | acceptance | code-review",
+      "gate": "spec-critique | plan-critique | spec-compliance | acceptance | code-review",
       "attempt": "integer",
       "result": "pass | fail",
       "advocateModel": "string or null",
@@ -189,7 +216,7 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   classification (or an explicit operator override): SPEC synthesizes its spec instead of
   interviewing, and the graph short path skips DISCUSS, spec-critique, and the
   code-review agent when `lib/security-signal.sh` reports no match. PLAN critique skip is
-  `plan-critique.sh` / the skill fast-path, not that short path. The ambiguity gate, the
+  `plan-critique.sh` / the skill fast-path, not that short path. The question gate, the
   feasibility check, and the deterministic VERIFY gates stay; code review is the one
   quality gate the short path drops, and only behind this classification.
 - `compact` is a separate, classifier-authored ladder. Bootstrap records the normalized
@@ -201,14 +228,15 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
   malformed compact state fails upward by running the affected gate. A false gate remains
   observable through its persisted classifier reason; VERIFY also records skipped
   verification gates in `VERIFICATION.md`.
-- `phaseHandoff` is independent of `execStyle` and subagent dispatch. When true,
-  cycle writes a paused `phase-handoff` result after a phase transition and a fresh
-  invocation resumes at `currentPhase`.
+- Full-route phase boundaries hand off through a paused `phase-handoff` result.
+  A fresh invocation resumes at `currentPhase`. Graph edges with `sameSession` continue in the current invocation. A feature
+  written before 6.4.0 may carry a `phaseHandoff` key; the driver drops it as a stray.
 - `mergeQueue` is the FIFO merge queue for EXECUTE. The lead appends a task id when a reviewer marks it `completed`, then processes the queue sequentially in dependency-aware FIFO order.
 - `fileConflictExcludeGlobs` provides per-feature overrides for file-conflict detection. Repo-wide overrides live in `.loop-spec/file-conflict-exclude.txt` (one glob per line). Both sources are unioned.
 - `harnessTaskMetadataMode` and `harnessStatusMode` are reserved for future capability negotiation. Set to `null` unless the cycle's Step 2 capability probe signals a specific mode.
 - `artifacts.specInterview` is a nullable path to the SPEC-phase interview transcript (written by the spec orchestrator on the main thread). `currentPhase` includes `"spec"` as its first value.
-- `pendingRemediationTasks` and `activeWorkflow` are runtime-only working fields written by the code (VERIFY remediation routing and the workflow dispatch contract in `dispatch-fanout.md`); both are absent or empty/null between phases.
+- `pendingRemediationTasks` carries remediation tasks until EXECUTE consumes them. `activeWorkflow` records an active workflow under `skills/shared/dispatch.md`.
+  Both are runtime state. Do not clear pending remediation merely because the phase changes.
 - `commands.prepare` is persisted beside the quality commands. Resolution precedence is an already-persisted explicit command, `LOOP_SPEC_CMD_PREPARE` (including an explicit empty value), `.loop-spec/workflow.json.prepareCommand`, then conservative lockfile detection by `lib/prepare-environment.sh`; ambiguous lockfiles produce an empty command rather than a mutable install guess. Detection covers workspace layouts: when the root carries no lockfile for an ecosystem, a single tracked `manifest + lockfile` pair within three directories of the root resolves to the same frozen install scoped to that directory (`(cd webapp/frontend && npm ci)`), and the preparation key hashes that directory's manifests alongside the root's. In workspace mode each repo owns its command and preparation key independently.
 - `verificationBaseline` is `null` unless `LOOP_SPEC_STARTUP_BASELINE=1` opted the cycle into a clean, exact `HEAD == baseSha` capture at startup. Default runs never capture one: the cycle spends no fresh-checkout time on repository-wide validation before the feature exists, and VERIFY's end-of-cycle comparison blocks on every failure it observes. Single-repo mode uses the top-level field; workspace mode leaves that field null and uses `workspace.repos[].verificationBaseline`. Its compact JSON is committed with feature state, but command logs remain machine-local. Comparison requires matching `baseSha`, preparation key, and test/lint/typecheck command strings. Pass-to-fail and added fingerprints are regressions; unchanged or subset known failures are accepted; command/runtime infrastructure errors are distinct. Criterion-specific acceptance commands are never included. A missing baseline on an older feature is strict: current failures regress and are never learned from the modified feature head.
 - `baseBranch` is initialized at feature creation (cycle Step 5, via `lib/git-ops.sh detect-base-branch`) so a plan-only or early-exit feature opens its PR against the correct base.
@@ -243,6 +271,14 @@ Tasks and waves are managed by the harness task list (`TaskCreate` / `TaskUpdate
 - The optional `workspace` block enables multi-root workspace mode. Rules: (1) `workspace` absent or null means single-repo mode (`worktreePath` set). (2) In workspace mode the top-level `branch`, `baseSha`, `baseBranch`, and `worktreePath` are null; per-repo values in `workspace.repos[]` are authoritative. `lib/graph/state.sh assert-reads` honors that relocation, so a declared read of `branch` (or `baseSha`/`baseBranch`) is satisfied by every `workspace.repos[]` entry rather than the null top-level field. `worktreePath` is not relocated and has no per-repo equivalent; a node that needs it in workspace mode declares it in `optionalReads[]`. (3) The top-level `commands` block holds empty strings (per-repo commands live in `workspace.repos[].commands`). (4) State and artifact dirs are rooted at `workspace.root`. (5) Resume requires the session cwd to be `workspace.root`; the cycle skill instructs the user to cd there before re-invoking.
 - **Schema is 7-only.** A `feature.json` with `schemaVersion != 7` is unsupported and skipped on resume with a warning; there is no in-place migration path for older schemas. New features are always created at schema 7 by `lib/feature-init.sh`.
 
+- `handoffSession` is written by `lib/cycle-driver.sh next` each time it answers `HANDOFF`
+  or `REWIND`. While the session named by `id` is the one calling, `next` repeats the
+  handoff answer, and `begin` or `phase-begin` of any other phase exits 4; each writes
+  the paused result again, since `begin`'s preflight clears it. The next phase starts in
+  a fresh invocation, whatever tool the lead reaches for. An empty `id` (a harness that
+  stamps no session id) enforces nothing. A graph edge carrying `sameSession` (the
+  `human.after-spec` to `oneshot` route) writes no record: the driver answers `NEXT`
+  and the phase runs in the session that closed SPEC.
 - `driverNext` is written by `lib/cycle-driver.sh next` each time it answers `NEXT`.
   `lib/cycle-result.sh write` reads it: publishing `failed`, `terminal`, or `escalated`
   while it is set needs `--reason`, because a lead that was told to run a phase and
@@ -298,7 +334,7 @@ Each phase team maintains its own harness task list via `TaskCreate` / `TaskUpda
 
 **DISCUSS.** No harness task list. The challenger (and spec-writer only when SPEC.md was missing) communicate via `SendMessage`; the lead tracks gate state in `feature.json.currentGate` and appends round-end messages to `.loop-spec/features/{slug}/gate-logs/`.
 
-**PLAN.** No harness task list for PLAN's internal teammates (pattern-mapper, planner, challenger). PLAN emits the validated `tasks[]` JSON in the planner's completion message; the EXECUTE team's harness task list is created from it later, by `TaskCreate` calls in EXECUTE Step 3 (one task per planned task), populated with `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, and `specPath` in task `metadata`. It is not pre-created at PLAN exit and there is no EXECUTE Step 0.
+**PLAN.** No harness task list for PLAN's internal teammates (pattern-mapper, planner, challenger). PLAN derives the validated `tasks[]` JSON from PLAN.md's task blocks (`lib/plan-tasks.sh extract`) into `tasks.json`; the EXECUTE team's harness task list is created from it later, by `TaskCreate` calls in EXECUTE Step 3 (one task per planned task), populated with `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, and `specPath` in task `metadata`. It is not pre-created at PLAN exit and there is no EXECUTE Step 0.
 
 **EXECUTE.** One task per planned task. Implementers self-claim by calling `TaskUpdate({taskId, status: "in_progress", owner: "<own-name>"})`. The harness serializes concurrent claims on the same task id; the losing implementer must re-query and retry. Task lifecycle: `pending -> in_progress -> awaiting_review -> completed | needs_rework`. Per-task `retries` in metadata is the retry counter; `claimedBy` identifies the owner for reviewer-to-implementer messaging.
 
@@ -318,3 +354,12 @@ documents. Never write the file directly.
 ## Resume
 
 On `cycle` skill startup, candidate `feature.json` files are enumerated, filtered (completed/stale skip, `TaskList({team: currentTeamName})` live-team probe — explicit teams mode only), and routed back into their phase. The full algorithm, the orphan/stale-team handling, worktree/workspace re-entry, and `currentGate` transcript reload are documented authoritatively in `lib/cycle-driver.sh` (resume).
+
+## Approved full-spec intent
+
+`specApproval` records `sha256`, `source` (`human`, `supervised`, or `autonomous`),
+and `approvedAt`. `cycle-driver.sh spec approve --feature-dir DIR --source SOURCE`
+creates it after the questions are resolved and the Goal and Boundary are approved.
+The state writer refuses replacement or deletion. Phase exit passes the feature dir
+to artifact lint, which compares those sections with the approved digest even after
+intervening commits. Implementation and acceptance details remain editable.

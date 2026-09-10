@@ -34,9 +34,10 @@ ensure_line() {
 ensure_line "# loop-spec managed local artifacts"
 patterns=(
   '/.loop-spec/features/*/*'
-  '!/.loop-spec/features/*/feature.json'
-  '!/.loop-spec/features/*/PROGRESS.md'
   '/.loop-spec/runtime.json'
+  '/.loop-spec/sessions/'
+  '/.loop-spec/launcher-result.json'
+  '/.loop-spec/launcher.lock'
   '/.loop-spec/active-run.json'
   '/.loop-spec/profile.json'
   '/.loop-spec/invocation-stamp.json'
@@ -76,6 +77,14 @@ patterns=(
   '/graphify-out/*.lock'
   '/graphify-out/????-??-??/'
 )
+# feature.json and PROGRESS.md were negated here while the driver committed them to the
+# feature branch; state now lives on refs/loop-spec/state/<slug> (lib/state-ref.sh), and
+# a negation left behind would show them as dirt to every clean-tree check.
+for legacy in '!/.loop-spec/features/*/feature.json' '!/.loop-spec/features/*/PROGRESS.md'; do
+  if grep -qxF -- "$legacy" "$exclude_file" 2>/dev/null; then
+    grep -vxF -- "$legacy" "$exclude_file" > "$exclude_file.tmp" && mv "$exclude_file.tmp" "$exclude_file"
+  fi
+done
 for pattern in "${patterns[@]}"; do
   ensure_line "$pattern"
 done

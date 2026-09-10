@@ -35,8 +35,10 @@ Break the one-sentence cap only when one of these is literally true:
 Background notifications, subagent completions, and scheduled wakeups continue the same turn. Keep naming the phase when it changes. Keep one thought per action. Write the final message when the whole chain finishes.
 
 When you dispatch an Agent whose result this step still needs, first complete any safe
-independent lead work. Then stop at the join; the harness resumes this turn when the
-subagent completes. Do not fill the wait with AskUserQuestion.
+independent lead work. Then issue the call with `run_in_background: false`; the tool
+result is the report. A launch stub ("Async agent launched") is not a report: end the
+turn and wait for the notification, never re-dispatch. Named teammates join on
+`TeammateIdle`; stop at that join. Do not fill a wait with AskUserQuestion.
 
 ## Required questions
 

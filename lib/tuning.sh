@@ -164,7 +164,7 @@ if [[ "$cmd" == "auto" ]]; then
   gate="${LOOP_SPEC_TUNING_AUTO_APPLY:-}"
   autonomous="false"
   if [[ -f "$FEATURE_DIR/feature.json" ]]; then
-    autonomous="$(jq -r '.autonomous // false' "$FEATURE_DIR/feature.json" 2>/dev/null || echo false)"
+    autonomous="$(bash "$SCRIPT_DIR/feature-read.sh" "$FEATURE_DIR" -r --filter '.autonomous // false' 2>/dev/null || echo false)"
   fi
   if [[ "$gate" == "1" || ( "$gate" != "0" && "$autonomous" == "true" ) ]]; then
     cmd="auto-apply"

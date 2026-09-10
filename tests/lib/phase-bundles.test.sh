@@ -28,33 +28,8 @@ bash "$DRV" init --dir "$REPO" --slug my-feature --title "my feature" --style au
 FD="$REPO/.loop-spec/features/my-feature"
 DOCS="$REPO/docs/loop-spec/features/my-feature"; mkdir -p "$DOCS"
 fj() { jq -r "$1" "$FD/feature.json"; }
-cat > "$DOCS/SPEC.md" <<'MD'
----
-ambiguity_scores:
-  ambiguity: 0.1
-  gate_passed: true
-  unresolved_dimensions: []
----
-# My Feature
-
-## Problem
-
-Something is broken.
-
-## Success criteria
-
-### Good Enough
-
-- [ ] `bash -n a.sh` exits 0
-
-### Exceptional
-
-- [ ] stretch
-
-## Grounding
-
-- none
-MD
+cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS/SPEC.md"
+bash "$DRV" spec approve --feature-dir "$FD" --source human >/dev/null
 printf '# PLAN\n' > "$DOCS/PLAN.md"
 bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" commands '{"prepare":"","test":"true","lint":"","typecheck":""}' >/dev/null
 printf 'echo ok\n' > a.sh; git add -A; git commit -q -m "feat: a.sh"
@@ -76,6 +51,14 @@ check "gate pass: the exit lint ran clean" "true" "$(jq -r '.exit.ok' <<<"$out")
 check "gate pass: minors go to the backlog" "1" "$(jq -r '.minorsQueued' <<<"$out")"
 check "gate pass: the backlog holds the minor" "1" "$(grep -c 'naming' "$REPO/.loop-spec/BACKLOG.md" 2>/dev/null || echo 0)"
 check "gate pass: the acceptance gate recorded a pass" "pass" "$(fj '[.gateHistory[] | select(.gate == "acceptance")][-1].result')"
+
+# A minors list with quotes and backslashes breaks inline JSON; @path reads one finding
+# per line from a file and needs no JSON at all.
+printf '.github/workflows/checks.yml:20 - curl "unpinned" \\ escape\n' > "$FD/minors.json"
+ec=0; out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer PASS_WITH_MINOR --minors "@$FD/minors.json" 2>/dev/null)" || ec=$?
+check "verify gate: --minors @path is read from the file" "1" "$(jq -r '.minorsQueued' <<<"$out")"
+ec=0; bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer PASS_WITH_MINOR --minors "@$FD/nope.json" >/dev/null 2>&1 || ec=$?
+check "verify gate: a missing @path is a usage error" "2" "$ec"
 
 # --- verify gate: reviewer blocks ------------------------------------------------------
 ec=0; out="$(bash "$DRV" verify gate --feature-dir "$FD" --verifier ALL_PASS --suite PASS --reviewer BLOCK \
@@ -142,6 +125,25 @@ out="$(bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-
 check "iterate record: an execute gap routes to execute" "execute" "$(jq -r '.route' <<<"$out")"
 check "iterate record: one task per execute gap" "2" "$(fj '.pendingRemediationTasks | length')"
 check "iterate record: feedback carries the gap" "add the flag" "$(fj '.iterate.feedback.fix_first')"
+# A gap only an operator can close escalates instead of rewinding: by the judge's flag,
+# or when the same fix_first survives a remediation round.
+printf '{"converged": false, "deterministic_gate_passed": true, "summary": "locked", "gap": {"type": "execute", "description": "plan cannot run", "fix_first": "run gcloud auth login", "needs_operator": true}, "remaining_gaps": []}\n' > "$FD/.iterate-judge.out"
+out="$(bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-judge.out")"
+check "iterate record: needs_operator routes to escalate" "escalate" "$(jq -r '.route' <<<"$out")"
+check "iterate record: an escalated gap adds no remediation task" "2" "$(fj '.pendingRemediationTasks | length')"
+printf '{"converged": false, "deterministic_gate_passed": true, "summary": "still", "gap": {"type": "execute", "description": "x", "fix_first": "Add the flag"}, "remaining_gaps": []}\n' > "$FD/.iterate-judge.out"
+out="$(bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-judge.out")"
+check "iterate record: a fresh execute gap still rewinds" "execute" "$(jq -r '.route' <<<"$out")"
+printf '{"converged": false, "deterministic_gate_passed": true, "summary": "again", "gap": {"type": "execute", "description": "y", "fix_first": "add the  flag"}, "remaining_gaps": []}\n' > "$FD/.iterate-judge.out"
+out="$(bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-judge.out")"
+check "iterate record: the same fix_first after a round escalates" "escalate" "$(jq -r '.route' <<<"$out")"
+ec=0; out="$(bash "$DRV" next --feature-dir "$FD" --returned-from iterate 2>/dev/null)" || ec=$?
+check "next after an escalate route ends the run escalated" "1" "$(grep -c '^DONE status=escalated reason="operator action needed: add the  flag"' <<<"$out")"
+check "next after an escalate route writes the result" "escalated" "$(jq -r '.status' "$FD/result.json")"
+rm -f "$FD/result.json"
+# Restore the two-gap verdict the harvest checks below read as the freshest one.
+printf '{"converged": false, "deterministic_gate_passed": true, "summary": "not yet", "gap": {"type": "execute", "description": "flag missing", "fix_first": "add the flag"}, "remaining_gaps": [{"type": "execute", "description": "docs", "fix_first": "update README"}]}\n' > "$FD/.iterate-judge.out"
+bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-judge.out" >/dev/null
 printf 'no verdict here\n' > "$FD/.iterate-judge.out"
 ec=0; bash "$DRV" iterate record --feature-dir "$FD" --judge-out "$FD/.iterate-judge.out" >/dev/null 2>&1 || ec=$?
 check "iterate record: a malformed verdict is refused" "1" "$ec"

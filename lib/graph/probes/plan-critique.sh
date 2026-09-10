@@ -47,7 +47,7 @@ feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || exit 1
 [[ -x "$SECURITY_SIGNAL" ]] || exit 1
 
-profile="$(jq -r '.executionProfile // "standard"' "$feature_json" 2>/dev/null)" || exit 1
+profile="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.executionProfile // "standard"' 2>/dev/null)" || exit 1
 if [[ "$profile" == "compact" ]]; then
   echo 'signal=compact reason=compact gate plan owns plan critique'
   exit 0
@@ -67,10 +67,10 @@ changed_files() {
 files=()
 # lib/workspace.sh detect records {root, mode:"single", repos:[]} for an ordinary
 # repository too, so the mode, not the presence of a root, says which branch applies.
-workspace_mode="$(jq -r '.workspace.mode // empty' "$feature_json" 2>/dev/null)" || exit 1
-workspace_root="$(jq -r '.workspace.root // empty' "$feature_json" 2>/dev/null)" || exit 1
+workspace_mode="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.workspace.mode // empty' 2>/dev/null)" || exit 1
+workspace_root="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.workspace.root // empty' 2>/dev/null)" || exit 1
 if [[ -n "$workspace_root" && "$workspace_mode" != "single" ]]; then
-  repo_entries="$(jq -c '.workspace.repos[]?' "$feature_json" 2>/dev/null)" || exit 1
+  repo_entries="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -c --filter '.workspace.repos[]?' 2>/dev/null)" || exit 1
   [[ -n "$repo_entries" ]] || { echo "plan-critique: workspace mode with no repos in $feature_json" >&2; exit 1; }
   while IFS= read -r repo_entry; do
     [[ -n "$repo_entry" ]] || continue
@@ -84,7 +84,7 @@ if [[ -n "$workspace_root" && "$workspace_mode" != "single" ]]; then
     done <<<"$diff_out"
   done <<<"$repo_entries"
 else
-  base_sha="$(jq -r '.baseSha // empty' "$feature_json" 2>/dev/null)" || exit 1
+  base_sha="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.baseSha // empty' 2>/dev/null)" || exit 1
   [[ -n "$base_sha" ]] || exit 1
   repo_root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null)" || exit 1
   diff_out="$(changed_files "$repo_root" "$base_sha")" || exit 1

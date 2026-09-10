@@ -4,7 +4,7 @@
 # Usage:
 #   gate.sh open  --feature-dir DIR --phase PHASE --gate GATE [--challenger NAME] [--now ISO]
 #   gate.sh round --feature-dir DIR
-#   gate.sh fail  --feature-dir DIR --rounds N --convergence C --challenger-model M [--findings JSON] [--notes TEXT]
+#   gate.sh fail  --feature-dir DIR --rounds N --convergence C --challenger-model M [--findings JSON|@path] [--notes TEXT]
 #   gate.sh pass  --feature-dir DIR --rounds N --convergence C --challenger-model M [--notes TEXT]
 #   gate.sh next  --feature-dir DIR
 #   gate.sh show  --feature-dir DIR
@@ -78,7 +78,14 @@ while [[ $# -gt 0 ]]; do
     --rounds) rounds="${2:-}"; shift 2 ;;
     --convergence) convergence="${2:-}"; shift 2 ;;
     --challenger-model) challenger_model="${2:-}"; shift 2 ;;
-    --findings) findings="${2:-}"; shift 2 ;;
+    --findings)
+      findings="${2:-}"
+      # @path: the file holds the JSON array, or one finding per line.
+      if [[ "$findings" == @* ]]; then
+        findings="$(cat "${findings#@}")"
+        jq -e 'type == "array"' <<<"$findings" >/dev/null 2>&1 || findings="$(jq -R . <<<"$findings" | jq -cs 'map(select(. != ""))')"
+      fi
+      shift 2 ;;
     --notes) notes="$(jq -Rn --arg n "${2:-}" '$n')"; shift 2 ;;
     *) usage ;;
   esac
@@ -100,7 +107,7 @@ write_key() {
     --key "$key" "$value"
 }
 
-open_phase="$(jq -r '.currentGate.phase // empty' "$feature_json")" || exit 1
+open_phase="$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" -r --filter '.currentGate.phase // empty')" || exit 1
 
 require_open() {
   [[ -n "$open_phase" ]] || {
@@ -116,7 +123,7 @@ append_history() {
   local result="$1" entry history
   entry="$(jq -n \
     --arg phase "$open_phase" \
-    --arg gate "$(jq -r '.currentGate.gate // ""' "$feature_json")" \
+    --arg gate "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" -r --filter '.currentGate.gate // ""')" \
     --arg result "$result" \
     --arg convergence "$convergence" \
     --arg model "$challenger_model" \
@@ -126,11 +133,11 @@ append_history() {
     '{phase: $phase, gate: $gate, attempt: 0, result: $result,
       advocateModel: null, challengerModel: $model, rounds: $rounds,
       convergence: $convergence, findingsAddressed: $findings, notes: $notes}')" || exit 1
-  history="$(jq --argjson e "$entry" '
+  history="$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" --filter '
     (.gateHistory // [])
     | ([.[] | select(.phase == $e.phase and .gate == $e.gate)] | length + 1) as $attempt
     | . + [$e | .attempt = $attempt]
-  ' "$feature_json")" || exit 1
+  ' -- --argjson e "$entry")" || exit 1
   write_key gateHistory "$history"
 }
 
@@ -164,7 +171,7 @@ critique_ceiling() {
 # rounds; a DELTA-VERIFIED round would have closed the gate instead.
 surviving_finding() {
   jq -r --arg phase "$open_phase" \
-    --arg gate "$(jq -r '.currentGate.gate // ""' "$feature_json")" '
+    --arg gate "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" -r --filter '.currentGate.gate // ""')" '
     [.gateHistory[]? | select(.phase == $phase and .gate == $gate and .result == "fail")]
     | if length < 2 then empty
       else (.[-2].findingsAddressed // []) as $prev
@@ -176,7 +183,7 @@ case "$cmd" in
   open)
     [[ -n "$phase" && -n "$gate" ]] || usage
     [[ -z "$open_phase" ]] || {
-      echo "gate.sh: gate '$(jq -r '.currentGate.gate' "$feature_json")' is already open for phase '$open_phase'" >&2
+      echo "gate.sh: gate '$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" -r --filter '.currentGate.gate')' is already open for phase '$open_phase'" >&2
       echo "  close it with 'gate.sh pass' before opening another" >&2
       exit 1
     }
@@ -188,8 +195,8 @@ case "$cmd" in
     ;;
   round)
     require_open
-    next="$(jq '.currentGate.round + 1' "$feature_json")" || exit 1
-    write_key currentGate "$(jq --argjson r "$next" '.currentGate | .round = $r' "$feature_json")"
+    next="$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" --filter '.currentGate.round + 1')" || exit 1
+    write_key currentGate "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" --filter '.currentGate | .round = $r' -- --argjson r "$next")"
     echo "$next"
     ;;
   fail)
@@ -220,7 +227,7 @@ case "$cmd" in
       echo "ANSWER=rerun REASON=LOOP_SPEC_CRITIQUE_ROUNDS=0 (unbounded by operator)"
       exit 0
     fi
-    round="$(jq -r '.currentGate.round' "$feature_json")" || exit 1
+    round="$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" -r --filter '.currentGate.round')" || exit 1
     # Round 1 is the single-critic pass; every later round is a delta re-verify.
     delta_spent=$(( round > 0 ? round - 1 : 0 ))
     if (( delta_spent >= ceiling )); then

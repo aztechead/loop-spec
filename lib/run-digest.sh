@@ -65,16 +65,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-fj="{}"; rj="null"; events="[]"
-[[ -f "$feature_dir/feature.json" ]] && fj="$(cat "$feature_dir/feature.json" 2>/dev/null || echo '{}')"
-jq -e . >/dev/null 2>&1 <<<"$fj" || fj="{}"
+fstate="{}"; rj="null"; events="[]"
+[[ -f "$feature_dir/feature.json" ]] && fstate="$(bash "$DIGEST_SCRIPT_DIR/feature-read.sh" "$feature_dir" --all || echo '{}')"
 [[ -f "$feature_dir/result.json" ]] && rj="$(cat "$feature_dir/result.json" 2>/dev/null || echo 'null')"
 jq -e . >/dev/null 2>&1 <<<"$rj" || rj="null"
 if [[ -f "$feature_dir/events.jsonl" ]]; then
   events="$(jq -cs 'map(select(type == "object"))' "$feature_dir/events.jsonl" 2>/dev/null || echo '[]')"
 fi
 
-slug="$(jq -r '.slug // empty' <<<"$fj")"
+slug="$(jq -r '.slug // empty' <<<"$fstate")"
 [[ -n "$slug" ]] || slug="$(basename "$feature_dir")"
 
 if [[ -z "$OUT_DIR" ]]; then
@@ -94,7 +93,7 @@ if [[ -f "$OUT_DIR/$slug.json" ]]; then
   jq -e . >/dev/null 2>&1 <<<"$prev_watch" || prev_watch="null"
 fi
 
-digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argjson events "$events" \
+digest="$(jq -cn --arg slug "$slug" --argjson fstate "$fstate" --argjson rj "$rj" --argjson events "$events" \
   --argjson candidate "$CANDIDATE" \
   --argjson prev_watch "$prev_watch" \
   --arg loopSpecVersion "$loop_spec_version" '
@@ -102,20 +101,20 @@ digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argj
     schema: 2,
     loopSpecVersion: $loopSpecVersion,
     slug: $slug,
-    branch: ($fj.branch // null),
+    branch: ($fstate.branch // null),
     status: (if $candidate == 1 then "completed" else ($rj.status // null) end),
     converged: (if $candidate == 1 then
-                  (($fj.warnings // [])
+                  (($fstate.warnings // [])
                    | map((type == "string") and
                          (startswith("iterate-budget-spent:") or startswith("iterate-terminal:")))
                    | any | not)
                 elif ($rj | type) == "object" and ($rj | has("converged")) then $rj.converged
                 else null end),
     iterations: {
-      used: (if $candidate == 1 then ($fj.iterate.used // 0)
-             else ($rj.iterations.used // $fj.iterate.used // 0) end),
-      max: (if $candidate == 1 then ($fj.iterate.maxIterations // null)
-            else ($rj.iterations.max // $fj.iterate.maxIterations // null) end)
+      used: (if $candidate == 1 then ($fstate.iterate.used // 0)
+             else ($rj.iterations.used // $fstate.iterate.used // 0) end),
+      max: (if $candidate == 1 then ($fstate.iterate.maxIterations // null)
+            else ($rj.iterations.max // $fstate.iterate.maxIterations // null) end)
     },
     gaps: ([$events[] | select(.event == "iterate_verdict") | .data.gap // empty
             | select(. != "" and . != "none")] | unique),
@@ -142,9 +141,9 @@ digest="$(jq -cn --arg slug "$slug" --argjson fj "$fj" --argjson rj "$rj" --argj
                          maxSeconds: (map(.elapsedSeconds) | max)
                        }})
                      | from_entries),
-    warnings: (($fj.warnings // []) | length),
+    warnings: (($fstate.warnings // []) | length),
     finishedAt: (if $candidate == 1 then
-                   ($fj.updatedAt //
+                   ($fstate.updatedAt //
                     ([$events[] | select(.event == "iterate_verdict") | .ts // empty] | last) //
                     null)
                  else ($rj.finishedAt // null) end)

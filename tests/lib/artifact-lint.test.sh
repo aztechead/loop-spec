@@ -42,8 +42,7 @@ check "missing file flags, does not crash" 1 spec "$WORK/does-not-exist.md"
 # --- spec ---
 cat > "$WORK/spec-good.md" <<'EOF'
 ---
-ambiguity_scores:
-  ambiguity: 0.1
+unresolved_questions: []
 ---
 # My Feature
 
@@ -67,6 +66,29 @@ Something is broken.
 - none
 EOF
 check "well-formed spec passes (frontmatter allowed)" 0 spec "$WORK/spec-good.md"
+sed 's/unresolved_questions: .*/unresolved_questions: ["Should empty input fail, or return nothing?"]/' "$WORK/spec-good.md" > "$WORK/spec-open.md"
+check "a concrete unanswered question blocks SPEC" 1 spec "$WORK/spec-open.md"
+check_output "question itself appears in the failure" "Should empty input fail, or return nothing?" spec "$WORK/spec-open.md"
+sed 's/unresolved_questions: .*/unresolved_questions: null/' "$WORK/spec-good.md" > "$WORK/spec-invalid.md"
+check "null questions cannot pass as resolved" 1 spec "$WORK/spec-invalid.md"
+sed '/unresolved_questions:/d' "$WORK/spec-good.md" > "$WORK/spec-missing-questions.md"
+check "missing question field fails closed" 1 spec "$WORK/spec-missing-questions.md"
+
+# Both shapes, from the fixtures: the full SPEC opens with Problem, the oneshot SPEC
+# with the ask in a frozen Intent block and Implementation notes.
+check "the full-shape fixture passes" 0 spec "$ROOT/tests/fixtures/real-SPEC.md"
+check "the oneshot-shape fixture passes" 0 spec "$ROOT/tests/fixtures/oneshot-SPEC.md"
+sed '/^<!-- intent: frozen/d' "$ROOT/tests/fixtures/oneshot-SPEC.md" > "$WORK/spec-unfrozen.md"
+check "an Intent without the frozen opener flags" 1 spec "$WORK/spec-unfrozen.md"
+check_output "the flag names the frozen block" "has no \`<!-- intent: frozen" spec "$WORK/spec-unfrozen.md"
+sed '/^<!-- \/intent -->$/d' "$ROOT/tests/fixtures/oneshot-SPEC.md" > "$WORK/spec-unclosed-intent.md"
+check "an Intent block without its close flags" 1 spec "$WORK/spec-unclosed-intent.md"
+check_output "the flag names the close marker" "not closed with" spec "$WORK/spec-unclosed-intent.md"
+sed 's/^## Implementation notes$/## Notes/' "$ROOT/tests/fixtures/oneshot-SPEC.md" > "$WORK/spec-nonotes.md"
+check "an oneshot spec without Implementation notes flags" 1 spec "$WORK/spec-nonotes.md"
+sed 's/^## Problem$/## Context/' "$WORK/spec-good.md" > "$WORK/spec-noproblem.md"
+check "a spec with neither Problem nor Intent flags" 1 spec "$WORK/spec-noproblem.md"
+check_output "the flag names both shapes" "or a frozen '## Intent' block" spec "$WORK/spec-noproblem.md"
 
 sed 's/### Good Enough/### Good enough/' "$WORK/spec-good.md" > "$WORK/spec-heading.md"
 check "case-drifted Good Enough heading flags" 1 spec "$WORK/spec-heading.md"

@@ -177,6 +177,88 @@ check "V: pattern-mapper Write to .claude/agent-memory/pattern-mapper/notes.md A
 check "W: code-reviewer Edit to /abs/proj/.claude/agent-memory/code-reviewer/MEMORY.md ALLOW" 0 \
   "$(payload "Edit" "/abs/proj/.claude/agent-memory/code-reviewer/MEMORY.md" "$FIXTURES/code-reviewer.jsonl")"
 
+# Cases W: a feature artifact must land in the checkout that holds the feature's
+# feature.json. The lead's cwd is the main checkout; the feature lives in a worktree.
+WREPO="$(mktemp -d)"
+WREPO="$(cd "$WREPO" && pwd -P)"
+git -C "$WREPO" init -q && git -C "$WREPO" commit -q --allow-empty -m seed
+git -C "$WREPO" worktree add -q "$WREPO/.claude/worktrees/foo" -b feat/foo
+mkdir -p "$WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo"
+printf '{"slug":"foo"}\n' > "$WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo/feature.json"
+export CLAUDE_PROJECT_DIR="$WREPO"
+check "W1: spec-writer Write of SPEC.md relative to the main checkout DENY (feature lives in the worktree)" 2 \
+  "$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "W2: spec-writer Write of SPEC.md under the feature worktree ALLOW" 0 \
+  "$(payload "Write" "$WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+check "W3: planner Edit of PLAN.md in the main checkout DENY" 2 \
+  "$(payload "Edit" "$WREPO/docs/loop-spec/features/foo/PLAN.md" "$FIXTURES/planner.jsonl")"
+check "W4: a slug with no feature.json anywhere stays ALLOW" 0 \
+  "$(payload "Write" "docs/loop-spec/features/bar/SPEC.md" "$FIXTURES/spec-writer.jsonl")"
+# The lead writes the spec itself on the short route (the dda2cca run wrote it to the
+# main checkout again): the rule holds for the main thread and for every other caller.
+check "W4b: main-thread Write of SPEC.md relative to the main checkout DENY" 2 \
+  "$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "W4c: main-thread Edit of the stale parent copy DENY" 2 \
+  "$(payload "Edit" "$WREPO/docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "W4d: main-thread Write under the feature worktree ALLOW" 0 \
+  "$(payload "Write" "$WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
+check "W4e: implementer Write of a feature artifact in the main checkout DENY" 2 \
+  "$(payload "Write" "docs/loop-spec/features/foo/VERIFICATION.md" "$FIXTURES/implementer.jsonl")"
+check "W4f: main-thread Write outside the feature docs stays ALLOW" 0 \
+  "$(payload "Write" "src/x.py" "$FIXTURES/main-thread.jsonl")"
+msg="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "Write" "docs/loop-spec/features/foo/SPEC.md" "$FIXTURES/spec-writer.jsonl")" || true)"
+if [[ "$msg" == *"Write $WREPO/.claude/worktrees/foo/docs/loop-spec/features/foo/SPEC.md instead"* ]]; then
+  echo "PASS: W5: the denial names the path to write"; ((PASS++)) || true
+else
+  echo "FAIL: W5: the denial names the path to write ($msg)"; ((FAIL++)) || true
+fi
+unset CLAUDE_PROJECT_DIR; rm -rf "$WREPO"
+
+# Cases X: on the oneshot route the driver is the only writer of SPEC.md and
+# VERIFICATION.md (port audit 3, N1); the full route and a spec not yet written stay open.
+XREPO="$(mktemp -d)"
+XREPO="$(cd "$XREPO" && pwd -P)"
+git -C "$XREPO" init -q && git -C "$XREPO" commit -q --allow-empty -m seed
+mkdir -p "$XREPO/.loop-spec/features/one" "$XREPO/docs/loop-spec/features/one" "$XREPO/.loop-spec/features/big" "$XREPO/docs/loop-spec/features/big"
+printf '{"slug":"one","schemaVersion":7}\n' > "$XREPO/.loop-spec/features/one/feature.json"
+printf '{"slug":"big","schemaVersion":7}\n' > "$XREPO/.loop-spec/features/big/feature.json"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - a.py\n---\n# one\n\n## Intent\n\nx\n<!-- /intent -->\n\n## Implementation notes\n\n- a.py: x\n' > "$XREPO/docs/loop-spec/features/one/SPEC.md"
+printf -- '---\nunresolved_questions: []\nfootprint: [a.py, b.py, c.py, d.py]\n---\n# big\n\n## Problem\n\nx\n' > "$XREPO/docs/loop-spec/features/big/SPEC.md"
+export CLAUDE_PROJECT_DIR="$XREPO"
+check "X1: main-thread Edit of a oneshot-route SPEC.md DENY (the driver fills it)" 2 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X2: main-thread Write of a oneshot-route VERIFICATION.md DENY" 2 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
+check "X3: the same paths relative to the project DENY" 2 \
+  "$(payload "Edit" "docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X4: a full-route SPEC.md (four files) stays ALLOW" 0 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/big/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X5: a SPEC.md not yet written (the full shape's first Write) stays ALLOW" 0 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/new/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+check "X6: another artifact of the oneshot feature stays ALLOW" 0 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/EVIDENCE.md" "$FIXTURES/main-thread.jsonl")"
+printf 'route: full\n' >> "$XREPO/docs/loop-spec/features/one/SPEC.md"
+sed -i.bak 's/^footprint:$/route: full\
+footprint:/' "$XREPO/docs/loop-spec/features/one/SPEC.md"
+check "X7: an escalated spec (route: full) is the lead's again ALLOW" 0 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+msg="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")" || true)"
+sed -i.bak '/^route: full$/d' "$XREPO/docs/loop-spec/features/one/SPEC.md"
+msg="$(bash "$HOOK" 2>&1 >/dev/null <<<"$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")" || true)"
+if [[ "$msg" == *"verification fill --feature-dir $XREPO/.loop-spec/features/one"* ]]; then
+  echo "PASS: X8: the denial names the fill command with the feature dir"; ((PASS++)) || true
+else
+  echo "FAIL: X8: the denial names the fill command with the feature dir ($msg)"; ((FAIL++)) || true
+fi
+# Fail closed: a spec the probe cannot read (an unterminated frontmatter, what a hand
+# write leaves behind) keeps both files the driver's; only a readable full route opens them.
+printf -- '---\nfootprint:\n  - a.py\n# no closing marker\n' > "$XREPO/docs/loop-spec/features/one/SPEC.md"
+check "X9: an unreadable spec denies (fail closed once the feature is known)" 2 \
+  "$(payload "Write" "$XREPO/docs/loop-spec/features/one/VERIFICATION.md" "$FIXTURES/main-thread.jsonl")"
+check "X10: and the spec itself stays the driver's" 2 \
+  "$(payload "Edit" "$XREPO/docs/loop-spec/features/one/SPEC.md" "$FIXTURES/main-thread.jsonl")"
+unset CLAUDE_PROJECT_DIR; rm -rf "$XREPO"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

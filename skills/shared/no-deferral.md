@@ -1,23 +1,18 @@
 # No self-authored deferral (shared contract)
 
-Once SPEC/DISCUSS/PLAN fix the design, the run's only job is to complete it.
-**Everything in the spec ships.** There is no valid successful conclusion — in any
-harness, any style, any cycle type — that includes an explicit model-authored
-deferred-scope declaration. A "done" report with a `Deferred scope:` list is a failed
-run wearing a green checkmark: it claims the design's scope while silently narrowing
-it. Naming the concept in a negation, a template default, a quoted report, or a
-runtime warning is not itself evidence that scope was dropped.
+Complete the scope set by SPEC, DISCUSS, and PLAN.
+**Everything in the spec ships**, except work recorded by the bounded gates below.
+No harness, style, or cycle type permits the model to declare completion after deferring scope on its own.
+Negations, template defaults, quoted reports, and runtime warnings do not by themselves prove that the run dropped scope.
 
 ## The rule
 
 - If it is in the spec/design, it is in scope. Implement it before concluding.
-- Never SUGGEST deferring spec scope, in any phase. Scope questions belong to the
-  design phases (SPEC's interview, DISCUSS's boundary work) where the USER (or the
-  autonomous decision record) sets them — a spec's "Out of scope" section is design,
-  not deferral.
-- If mid-EXECUTE/VERIFY you believe an item cannot or should not ship, that is a gap:
-  route it through ITERATE's rewind machinery, not into a "deferred" note. The loop
-  works gaps; it does not annotate them away.
+- Never suggest deferring spec scope.
+  Resolve scope questions during SPEC or DISCUSS through the user or autonomous decision record.
+  The spec's "Out of scope" section defines the design boundary.
+- If an item cannot or should not ship during EXECUTE or VERIFY, route the gap through ITERATE's rewind machinery.
+  Do not replace that route with a deferral note.
 
 ## The only legitimate deferral writers (bounded gates, not judgment)
 
@@ -33,7 +28,7 @@ the line it writes — that marker is what the probes exempt:
 Anything else that explicitly declares unshipped scope on a completion surface is a
 violation.
 
-## Enforcement (deterministic probes, not prose hope)
+## Enforcement
 
 - `lib/deferral-lint.sh text <path|->` — scans a completion surface (PR body, final
   report draft) for structured `Deferred scope:`, `Follow-ups:`, `Future work:`, or
@@ -61,8 +56,7 @@ violation.
 Draft it, then probe it:
 
 ```bash
-printf '%s' "$report" | bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text -
+printf '%s' "$report" | bash "${LOOP_SPEC_SKILL_DIR}/../../lib/deferral-lint.sh" text -
 ```
 
-If it flags, do not soften the wording to slip past the probe — the declared dropped
-scope is the defect. Ship the work.
+If the report identifies unfinished scope, complete that work. Do not hide it by changing the report's wording.

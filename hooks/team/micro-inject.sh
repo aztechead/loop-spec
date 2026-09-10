@@ -14,10 +14,20 @@
 #   - LOOP_SPEC_MICRO=0 is set (session-level kill switch), OR
 #   - LOOP_SPEC_AUTONOMOUS=1 is set (headless runs are cycle/loop-runner driven;
 #     the cycle phases own these invariants at feature scale), OR
+#   - no person is proven at the keyboard (`lib/harness.sh attended` answers false).
+#     A headless cycle run carries no LOOP_SPEC_* name (the eval strips them and
+#     passes `autonomous` as a prompt token), so the check above never fired, this
+#     directive landed on top of the cycle skill, and the lead followed the one that
+#     needs no driver call: it edited in place and never began a cycle (the dda2cca
+#     wc-json run, port audit 1 F1). The probe fails
+#     safe: an unknown launch answers false. `ENABLED=1` in micro.conf is the
+#     project's word and outranks an unknown launch, never a proven headless one, OR
 #   - the project has no .loop-spec/ dir (never hijack unrelated projects).
 #
 # Environment variables:
 #   LOOP_SPEC_MICRO     Set to "0" to disable (kill switch). Default: on.
+#   LOOP_SPEC_EXECUTION_PROFILE=interactive  The operator's word that a person is
+#                       present on a launch the harness does not stamp as `cli`.
 #   CLAUDE_PROJECT_DIR  Project root to find conf file. Defaults to CWD.
 
 set -euo pipefail
@@ -54,6 +64,22 @@ if [[ -f "$CONF_FILE" ]] && grep -q "ENABLED=0" "$CONF_FILE" 2>/dev/null; then
   exit 0
 fi
 
+# A person is proven, or this directive is not injected.
+HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/harness.sh"
+case "$(bash "$HARNESS" attended-reason 2>/dev/null || echo unknown)" in
+  attended/*|interactive-profile|bridge/*) ;;
+  unproven/*)
+    if ! { [[ -f "$CONF_FILE" ]] && grep -q "ENABLED=1" "$CONF_FILE" 2>/dev/null; }; then
+      printf '{}\n'
+      exit 0
+    fi
+    ;;
+  *)
+    printf '{}\n'
+    exit 0
+    ;;
+esac
+
 # Resolve the plugin root so the directive carries a runnable ledger path.
 # In CC hooks CLAUDE_PLUGIN_ROOT is set; fall back to this script's grandparent.
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -62,14 +88,13 @@ case "${LOOP_SPEC_HARNESS:-claude}" in
   adk)
     # ADK has no slash commands: skills are entered through the skill tool.
     MICRO_CMD='load_skill({skill_name: "micro"})'
-    INTAKE_CMD='load_skill({skill_name: "intake"})'
-    AUTO_CMD='load_skill({skill_name: "auto"})';;
+    INTAKE_CMD='load_skill({skill_name: "intake"})';;
   opencode)
-    MICRO_CMD="/loop-spec/micro"; INTAKE_CMD="/loop-spec/intake"; AUTO_CMD="/loop-spec/auto";;
+    MICRO_CMD="/loop-spec/micro"; INTAKE_CMD="/loop-spec/intake";;
   codex)
-    MICRO_CMD='$loop-spec-micro'; INTAKE_CMD='$loop-spec-intake'; AUTO_CMD='$loop-spec-auto';;
+    MICRO_CMD='$loop-spec-micro'; INTAKE_CMD='$loop-spec-intake';;
   *)
-    MICRO_CMD="/loop-spec:micro"; INTAKE_CMD="/loop-spec:intake"; AUTO_CMD="/loop-spec:auto";;
+    MICRO_CMD="/loop-spec:micro"; INTAKE_CMD="/loop-spec:intake";;
 esac
 
 DIRECTIVE="MICRO MODE ACTIVE (default): for small ad-hoc tasks outside a running loop-spec cycle, apply the micro-cycle protocol inline (full definition: ${MICRO_CMD}).
@@ -83,7 +108,7 @@ DIRECTIVE="MICRO MODE ACTIVE (default): for small ad-hoc tasks outside a running
 7. If the task outgrows ad-hoc scale (>~5 files, a new seam or dependency, criteria will not fit in 3 bullets, ambiguity survives one question), stop expanding scope and promote it via ${INTAKE_CMD}.
 8. A repeated mistake becomes a permanent rule: bash \"${PLUGIN_ROOT}/lib/rules.sh\" add.
 
-During explicit autonomous routing (${AUTO_CMD}) this ambient directive stands down until the router delegates; the selected protocol owns the task. Inside a running cycle this protocol also stands down - the phases own these invariants at feature scale. Micro mode is ON by default; disable with ${MICRO_CMD} off or LOOP_SPEC_MICRO=0."
+Micro mode is ON by default; disable with ${MICRO_CMD} off or LOOP_SPEC_MICRO=0."
 
 # Emit valid JSON via jq (hard dependency) rather than a hand-rolled escaper.
 jq -n --arg ctx "$DIRECTIVE" \

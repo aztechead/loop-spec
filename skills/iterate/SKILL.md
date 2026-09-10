@@ -1,32 +1,32 @@
 ---
 name: iterate
-description: ITERATE phase - the outer convergence loop. Judges the integrated result against the ORIGINAL goal, then advances to DELIVER or classifies the highest-leverage gap so the graph's rewind routes send the cycle back to EXECUTE, PLAN, or (with human approval) SPEC/DISCUSS. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
+description: "Judge the integrated result against the original goal. Route unresolved gaps through the graph or advance to DELIVER. Internal phase of /loop-spec:cycle. Start there for repository work."
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
 
 # ITERATE
 
-VERIFY proved the acceptance checklist; you ask whether the ORIGINAL goal
-(`feature_title`, immutable, in the user's words) is met, and if not, what to fix
-first. Main thread, no team: one fresh `iterate-judge` per pass (maker ≠ checker).
-The `iterate` block (`maxIterations`, `used`, `confirmationUsed`, `lastVerdict`,
-`feedback`, `history[]`) holds the one bound the cycle respects. Your inputs are the
-entry packet and nothing else:
+Check whether the integrated result meets the original goal after VERIFY passes the acceptance checklist.
+Use the immutable `feature_title` in the user's words. If the goal remains unmet, identify what to fix first.
+Run in the main thread without a team. Use one fresh `iterate-judge` per pass, separate from the implementation author.
+
+The `iterate` block stores `maxIterations`, `used`, `confirmationUsed`, `lastVerdict`, `feedback`, and `history[]`.
+It controls the iteration limit. Read only the entry packet as input:
 
 ```bash
-pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin iterate --feature-dir "$feature_dir")"
+pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin iterate --feature-dir "$feature_dir")"
 # .entry.fields .entry.read[] .entry.flags[] (a missing ingress; relay and return)
 ```
 
 ## 1. Limit gate
 
 ```bash
-lim="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" iterate limit --feature-dir "$feature_dir")"
+lim="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" iterate limit --feature-dir "$feature_dir")"
 # .route=judge|confirmation|harvest .used .max
 ```
 
-`judge`: rounds remain, go to step 2. `used >= maxIterations` stops iterating and ships
-LOUD, never silent:
+For `judge`, continue to step 2.
+When `used >= maxIterations`, stop ordinary iterations and record the remaining gaps before delivery:
 
 1. **Confirmation pass** (`confirmation`, once): `confirmationUsed` is now set; dispatch
    the judge as in step 2 with `mode=confirmation` and record it with `--confirmation`.
@@ -36,7 +36,7 @@ LOUD, never silent:
    `warnings[]`, each prefixed `iterate-budget-spent:`, and onto the backlog with its
    deterministic id (`lib/backlog.sh gap-id`, `lib/backlog.sh add {slug} iterate-gap ... --id`):
    ```bash
-   harvest="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" iterate harvest --feature-dir "$feature_dir")"
+   harvest="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" iterate harvest --feature-dir "$feature_dir")"
    # .route=deliver .warnings[] .terminal
    ```
    This is the only point where ITERATE writes the backlog. **Terminal rule** (autonomous
@@ -52,19 +52,20 @@ LOUD, never silent:
 ## 2. Judge
 
 Emit the `dispatch` event, then ONE `Agent({description: "Iterate goal re-judge",
-subagent_type: "loop-spec:iterate-judge", prompt: ...})` (add `model` only for an
-alias) with: `slug`, `iteration = used + 1`, `original_goal = feature_title`, the
-SPEC.md / PLAN.md / VERIFICATION.md paths, the `feat/{slug}` diff, and
-`prior_feedback = iterate.feedback`. Dispatch, then stop. Never AskUserQuestion as a wait
-(`skills/shared/dispatch.md`). Save its completion message to `$feature_dir/.iterate-judge.out` and record it with
+subagent_type: "loop-spec:iterate-judge", run_in_background: false, prompt: ...})` (add
+`model` only for an alias) with: `slug`, `iteration = used + 1`, `original_goal =
+feature_title`, the SPEC.md / PLAN.md / VERIFICATION.md paths, the `feat/{slug}` diff, and
+`prior_feedback = iterate.feedback`. The tool result is its completion message.
+Never AskUserQuestion as a wait (`skills/shared/dispatch.md`). Save that message to
+`$feature_dir/.iterate-judge.out` and record it with
 one call, which extracts the verdict deterministically, writes `iterate.used`,
 `iterate.lastVerdict`, and `iterate.history[]`, emits `iterate_verdict`, runs the
 converged floor, and writes the feedback and remediation tasks a gap needs:
 
 ```bash
-rec="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" iterate record --feature-dir "$feature_dir" \
+rec="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" iterate record --feature-dir "$feature_dir" \
   --judge-out "$feature_dir/.iterate-judge.out" [--confirmation])"
-# .verdict .converged .floor[] .route=deliver|execute|plan|spec|harvest .tasks[]
+# .verdict .converged .floor[] .route=deliver|execute|plan|spec|harvest|escalate .tasks[]
 ```
 
 Exit 1 is a malformed verdict, never "converged": re-dispatch once, then escalate.
@@ -82,7 +83,9 @@ converged?, per-criterion scores, weakest point, gap and fix-first, summary).
 cleared; return, the cycle's `next` closes the phase with `--terminal` and the graph
 routes to DELIVER. A violated floor (`.floor[]` holds the `FLOOR` lines) was already
 treated as not converged with an `execute`-type gap whose `fix_first` is the first
-FLOOR line: print the lines.
+FLOOR line: print the lines. Never edit VERIFICATION.md here: the verifier owns it, and
+VERIFY's exit already ran `converged-floor.sh --shape` on the table.
+Follow the recorded route for the failed result or incomplete evidence. Do not repair verification records in ITERATE.
 
 **Not converged:** `iterate.feedback` holds the gap so the re-entered phase fixes the
 weakest point first; by `.route` (`gap.type`):
@@ -92,7 +95,15 @@ weakest point first; by `.route` (`gap.type`):
   `verifyCommand` from `commands.test` or the criterion's check, `files` as implicated
   or `[]`, `acceptanceCriteria: ["<fix_first>"]`), is already appended to
   `pendingRemediationTasks[]` (`.tasks[]`).
+- `verify`: the converged floor vetoed over an incomplete verification record with no
+  FAIL row (a missing grounding row, a non-PASS result). VERIFY re-runs the verifier,
+  which completes VERIFICATION.md; nothing is dispatched to an implementer.
 - `plan`: PLAN re-plans the affected slice from `iterate.feedback`.
+- `escalate`: the gap needs an operator (`gap.needs_operator`, or the same `fix_first`
+  survived a remediation round). Print the fix and return; the cycle's `next` ends the
+  run `DONE status=escalated` with that fix as the reason, in every mode. Never rewind
+  again for it and never `AskUserQuestion` (autonomous and headless runs have nobody to
+  answer; the result record carries the action).
 - `spec`: the expensive rewind. `auto`/`review-only`/autonomous (ITERATE re-entry; do not block an unattended loop):
   proceed without asking; DISCUSS refines toward the immutable original goal. `step`/`interactive`
   only: emit as written

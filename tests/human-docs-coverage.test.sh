@@ -93,8 +93,8 @@ done
 
 # Each site resolves the path by its own available mechanism.
 resolvers=(
-  "skills/shared/execute-subagent.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib\"? doc-tells|CLAUDE_SKILL_DIR}/\.\./\.\./lib\"?/doc-tells"
-  "skills/shared/team-prompts/implementer.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib"
+  "skills/shared/execute-subagent.md	LOOP_SPEC_SKILL_DIR}/\.\./\.\./lib\"? doc-tells|LOOP_SPEC_SKILL_DIR}/\.\./\.\./lib\"?/doc-tells"
+  "skills/shared/team-prompts/implementer.md	LOOP_SPEC_SKILL_DIR}/\.\./\.\./lib"
   "lib/verify-passes.sh	lib doc-tells diff"
   "lib/plan-to-loop.sh	\{lib_dir\}/doc-tells\.sh"
   "lib/workflows/execute-dag.js	libDir \+ '/doc-tells\.sh"

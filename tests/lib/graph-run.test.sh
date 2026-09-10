@@ -63,10 +63,41 @@ if bash "$ROOT/lib/graph/validate.sh" "$ROOT/graph/cycle.graph.json" >/dev/null 
   rc=$?
   set -e
   check "cycle.graph.json dry-run: execStyle auto reaches completed without pausing (rc 0)" "0" "$rc"
+  # The full path: every phase but ONESHOT, which lives on its own route.
   for phase in spec discuss plan execute verify iterate deliver completed; do
-    echo "$out" | grep -q "^${phase}"$'\t'
-    check "cycle.graph.json dry-run visits $phase" "0" "$?"
+    echo "$out" | grep -q "^${phase}"$'\t' && visited=0 || visited=1
+    check "cycle.graph.json dry-run visits $phase" "0" "$visited"
   done
+  echo "$out" | grep -q "^oneshot"$'\t' && os_visited=0 || os_visited=1
+  check "cycle.graph.json dry-run without a oneshot SPEC.md skips oneshot" "1" "$os_visited"
+  # A gated SPEC.md with a footprint of one file takes the oneshot route (WP1): SPEC,
+  # ONESHOT, DELIVER, and none of the five phases between.
+  mkdir -p "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck"
+  printf -- '---\nunresolved_questions: []\nfootprint:\n  - a.txt\n---\n# cyclecheck\n' \
+    > "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck/SPEC.md"
+  set +e
+  os_out="$(cd "$WORK/cyclerepo" && bash "$SCRIPT" --dry-run \
+    --feature-dir ".loop-spec/features/cyclecheck" "$ROOT/graph/cycle.graph.json")"
+  os_rc=$?
+  set -e
+  check "cycle.graph.json dry-run on a oneshot spec reaches completed (rc 0)" "0" "$os_rc"
+  for phase in spec oneshot deliver completed; do
+    echo "$os_out" | grep -q "^${phase}"$'\t' && visited=0 || visited=1
+    check "oneshot dry-run visits $phase" "0" "$visited"
+  done
+  for phase in discuss plan execute verify iterate; do
+    echo "$os_out" | grep -q "^${phase}"$'\t' && visited=0 || visited=1
+    check "oneshot dry-run skips $phase" "1" "$visited"
+  done
+  rm -f "$WORK/cyclerepo/docs/loop-spec/features/cyclecheck/SPEC.md"
+  # The spec to oneshot edge does not hand off: the short route is one session
+  # (port audit 1, F2), and the exception is data on the edge.
+  check "the edge into oneshot carries sameSession" "true" \
+    "$(jq -r '[.edges[] | select(.to == "oneshot" and .from != "oneshot")] | all(.sameSession == true)' "$ROOT/graph/cycle.graph.json")"
+  check "the oneshot to deliver edge carries sameSession too (the short route is one session end to end)" "true" \
+    "$(jq -r '[.edges[] | select(.from == "oneshot" and .to == "deliver")] | all(.sameSession == true)' "$ROOT/graph/cycle.graph.json")"
+  check "no other edge carries sameSession" "0" \
+    "$(jq -r '[.edges[] | select((.to != "oneshot") and (.from != "oneshot" or .to != "deliver") and .sameSession == true)] | length' "$ROOT/graph/cycle.graph.json")"
   echo "$out" | grep -q "^execute.worker"$'\t' && empty_worker=0 || empty_worker=1
   check "cycle.graph.json dry-run skips execute.worker when mergeQueue is empty" "1" "$empty_worker"
   echo "$out" | grep -q "^execute.join"$'\t' && empty_join=0 || empty_join=1
@@ -132,6 +163,105 @@ if [[ -d "$WORK/cyclerepo" ]]; then
   echo "$qout" | grep -q "^execute.join"$'\t' && q_join=0 || q_join=1
   check "non-empty mergeQueue visits execute.join" "0" "$q_join"
 fi
+
+## --- VERIFY resumes must dispatch queued findings before ITERATE. ------------------
+remrepo="$WORK/remediation-repo"
+mkdir -p "$remrepo"
+git -C "$remrepo" init -q -b main
+git -C "$remrepo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+(
+  cd "$remrepo"
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+  export LOOP_SPEC_HARNESS=codex LOOP_SPEC_CHECKPOINT_PR=0 LOOP_SPEC_WORKTREES=0
+  bash "$ROOT/lib/cycle-driver.sh" start --dir "$remrepo" -- remediation >/dev/null 2>&1
+  bash "$ROOT/lib/cycle-driver.sh" init --dir "$remrepo" --slug remediation --title remediation --style auto --profile standard --autonomous 1 >/dev/null 2>&1
+)
+rfd="$remrepo/.loop-spec/features/remediation"
+rdocs="$remrepo/docs/loop-spec/features/remediation"
+mkdir -p "$rdocs"
+cp "$ROOT/tests/fixtures/minimal-SPEC.md" "$rdocs/SPEC.md"
+(
+  cd "$remrepo"
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+  bash "$ROOT/lib/cycle-driver.sh" spec approve --feature-dir "$rfd" --source human >/dev/null 2>&1
+)
+printf 'echo ok\n' > "$remrepo/a.sh"
+printf '# PLAN\n' > "$rdocs/PLAN.md"
+cat > "$rdocs/VERIFICATION.md" <<'MD'
+# Remediation verification
+## Repository grounding
+- criterion: GE-001 | implementation: a.sh:1 - executable implementation | integration: none - unit scope
+## Acceptance criteria
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| 1 | it works | PASS | `bash -n a.sh` -> ok |
+MD
+printf '[{"id":"original","subject":"original work","files":[],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["done"],"status":"done"}]' > "$rfd/tasks.json"
+bash "$ROOT/lib/feature-write.sh" set "$rfd" artifacts.tasks "\"$rfd/tasks.json\"" >/dev/null
+bash "$ROOT/lib/feature-write.sh" set "$rfd" commands.test '"true"' >/dev/null
+bash "$ROOT/lib/feature-write.sh" set "$rfd" currentPhase '"verify"' >/dev/null
+out="$(bash "$SCRIPT" --step --feature-dir "$rfd" "$ROOT/graph/cycle.graph.json")"
+check "remediation: real graph starts at VERIFY boundary" "verify" "$(jq -r '.node' <<<"$out")"
+rc=0
+out="$(cd "$remrepo" && GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+  bash "$ROOT/lib/verify-gate.sh" run --feature-dir "$rfd" --verifier ALL_PASS --suite PASS --reviewer BLOCK \
+  --remediation-tasks '[{"id":"review-first","subject":"repair first finding"},{"id":"review-second","subject":"repair second finding"}]')" || rc=$?
+check "remediation: real VERIFY failure queues both findings" "remediate:2" "$(jq -r '.route + ":" + (.tasks | length | tostring)' <<<"$out")"
+check "remediation: real VERIFY reports failure" "1" "$rc"
+queued="$(jq -c '.pendingRemediationTasks' "$rfd/feature.json")"
+cp -R "$rfd" "$WORK/remediation-boundary"
+out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$rfd" "$ROOT/graph/cycle.graph.json")"
+check "remediation: completed VERIFY dispatches EXECUTE before ITERATE" "execute" "$(jq -r '.node' <<<"$out")"
+prepared="$(cd "$remrepo" && LOOP_SPEC_HARNESS=codex LOOP_SPEC_WORKTREES=0 bash "$ROOT/lib/execute-prepare.sh" run --feature-dir "$rfd")"
+check "remediation: both real findings reach EXECUTE dispatch" '["review-first","review-second"]' "$(jq -c '[.tasks[].id]' <<<"$prepared")"
+
+for attempt in 1 2; do
+  rc=0; fallback="$(cd "$remrepo" && GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+    bash "$ROOT/lib/verify-gate.sh" run --feature-dir "$rfd" --verifier ALL_PASS --suite PASS --reviewer BLOCK)" || rc=$?
+  check "review recurrence $attempt: real gate repeats its fallback ID" "task-verify-code-review-1" "$(jq -r '.tasks[0].id' <<<"$fallback")"
+  prepared="$(cd "$remrepo" && LOOP_SPEC_HARNESS=codex LOOP_SPEC_WORKTREES=0 bash "$ROOT/lib/execute-prepare.sh" run --feature-dir "$rfd")"
+  check "review recurrence $attempt: fallback task is executable" "1" "$(jq '[.tasks[] | select(.id | startswith("task-verify-code-review-1"))] | length' <<<"$prepared")"
+  fallback_id="$(jq -r '.tasks[] | select(.id | startswith("task-verify-code-review-1")) | .id' <<<"$prepared")"
+  bash "$ROOT/lib/task-progress.sh" mark-done "$rfd/tasks.json" "$fallback_id" >/dev/null
+done
+
+# Fresh copies retain the same VERIFY boundary while isolating priority and budgets.
+cp -R "$WORK/remediation-boundary" "$remrepo/.loop-spec/features/bad-spec-priority"
+bfd="$remrepo/.loop-spec/features/bad-spec-priority"
+bash "$ROOT/lib/feature-write.sh" set "$bfd" reviewRouting '{"route":"bad-spec","pending":true}' >/dev/null
+out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$bfd" "$ROOT/graph/cycle.graph.json")"
+check "remediation: bad-spec keeps priority over queued work" "discuss" "$(jq -r '.node' <<<"$out")"
+check "remediation: bad-spec leaves queued findings intact" "$queued" "$(jq -c '.pendingRemediationTasks' "$bfd/feature.json")"
+
+cp -R "$WORK/remediation-boundary" "$remrepo/.loop-spec/features/ceiling"
+cfd="$remrepo/.loop-spec/features/ceiling"
+for round in 1 2 3 4 5; do
+  out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$cfd" "$ROOT/graph/cycle.graph.json")"
+  check "remediation: traversal $round reaches EXECUTE" "execute" "$(jq -r '.node' <<<"$out")"
+  counts="$(bash "$ROOT/lib/graph/checkpoint.sh" latest --feature-dir "$cfd" | jq -c '.loopCounts')"
+  check "remediation: traversal $round persists the exact loop count" "$round" "$(jq -r '.["[\"verify\", \"execute\"]"] // 0' <<<"$counts")"
+  out="$(bash "$SCRIPT" --step --completed-node execute --feature-dir "$cfd" "$ROOT/graph/cycle.graph.json")"
+  for hop in 1 2 3 4 5 6 7 8; do
+    [[ "$(jq -r '.node' <<<"$out")" == verify ]] && break
+    out="$(bash "$SCRIPT" --step --feature-dir "$cfd" "$ROOT/graph/cycle.graph.json")"
+  done
+  check "remediation: traversal $round returns to the actual VERIFY boundary" "verify" "$(jq -r '.node' <<<"$out")"
+done
+rc=0; out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$cfd" "$ROOT/graph/cycle.graph.json" 2>"$WORK/remediation-limit.err")" || rc=$?
+check "remediation: sixth matching route exits 5" "5" "$rc"
+check "remediation: exhausted route publishes loop-ceiling-exhausted" "1" "$(jq -r '.summary' "$cfd/result.json" | grep -c 'loop-ceiling-exhausted')"
+check "remediation: exhausted route keeps every queued task" "$queued" "$(jq -c '.pendingRemediationTasks' "$cfd/feature.json")"
+check "remediation: exhausted route cannot advance to ITERATE or DELIVER" "verify" "$(jq -r '.currentPhase' "$cfd/feature.json")"
+
+for invalid in false '{}' null; do
+  invalid_dir="$remrepo/.loop-spec/features/invalid-queue-$invalid"
+  cp -R "$WORK/remediation-boundary" "$invalid_dir"
+  bash "$ROOT/lib/feature-write.sh" set "$invalid_dir" pendingRemediationTasks "$invalid" >/dev/null
+  rc=0; out="$(bash "$SCRIPT" --step --completed-node verify --feature-dir "$invalid_dir" "$ROOT/graph/cycle.graph.json" 2>"$WORK/invalid-route.err")" || rc=$?
+  check "remediation: invalid queue $invalid aborts routing" "5" "$rc"
+  check "remediation: invalid queue $invalid retains VERIFY phase" "verify" "$(jq -r '.currentPhase' "$invalid_dir/feature.json")"
+  check "remediation: invalid queue $invalid remains intact" "$invalid" "$(jq -c '.pendingRemediationTasks' "$invalid_dir/feature.json")"
+done
 
 ## --- 1. dry-run: structural walk, no state/dispatch side effects ---
 cat > "$WORK/basic.json" <<'EOF'
@@ -743,8 +873,8 @@ cat > "$WORK/phase-advance.json" <<'EOF'
 {
   "entry": "spec",
   "nodes": [
-    {"id":"spec","kind":"function","reads":[],"writes":["currentPhase"],"effort":"system1"},
-    {"id":"discuss","kind":"function","reads":[],"writes":["currentPhase"],"effort":"system1"}
+    {"id":"spec","kind":"agent","body":"skills/spec/SKILL.md","reads":[],"writes":["currentPhase"],"effort":"system1"},
+    {"id":"discuss","kind":"agent","body":"skills/discuss/SKILL.md","reads":[],"writes":["currentPhase"],"effort":"system1"}
   ],
   "edges": [{"from":"spec","to":"discuss","kind":"chain"}]
 }
@@ -833,7 +963,7 @@ echo "--- mutation proof 1: substring match (\"expects in text\") ---"
 MUTATION_ROOT="$WORK/mutation-root"
 mkdir -p "$MUTATION_ROOT" "$MUTATION_ROOT/graph"
 cp -R "$ROOT/lib" "$MUTATION_ROOT/lib"
-cp "$ROOT/graph/schema.json" "$MUTATION_ROOT/graph/schema.json"
+cp "$ROOT/graph/schema.json" "$ROOT/graph/cycle.graph.json" "$MUTATION_ROOT/graph/"
 MUTATION_GRAPH="$MUTATION_ROOT/lib/graph"
 MUTATION_SCRIPT="$MUTATION_GRAPH/run.sh"
 MUTATION_ENGINE="$MUTATION_GRAPH/engine.py"

@@ -1,42 +1,11 @@
 # Execution discipline (evidence over recall) — canonical prompt directive
 
-Single source of truth for the execution-discipline directive that every **EXECUTE/VERIFY
-dispatch** must carry. Enforced by `tests/execution-discipline-coverage.test.sh`,
-mirroring `tests/ponytail-coverage.test.sh` and `tests/design-coverage.test.sh`.
+Include this directive in every EXECUTE and VERIFY dispatch.
+`tests/execution-discipline-coverage.test.sh` checks those references.
+The directive applies to every model and preserves existing grounding, test-integrity, and independent-review gates.
 
-## Why this exists
-
-Every phase may run on any inherited model, subject to explicit phase or role routes.
-The execution failures this directive prevents are consistent across model catalogs:
-
-- **Pattern-completion instead of verification.** A model asserts what a file
-  or API "does" because it looks like something it has seen, instead of reading or
-  running it. Continuously self-verify: every load-bearing claim is
-  checked against the artifact before it is used.
-- **Rationalizing anomalies away.** When output contradicts expectation, the weaker
-  habit is to explain it away and keep going; the stronger habit treats the anomaly as
-  the most valuable data point in the session.
-- **Declaring victory on plausible-looking output.** Green-ish text is not a passed
-  gate. The stronger habit re-opens the contract (acceptance criteria) and checks each
-  item against actual output before saying DONE.
-- **Breadth over depth under pressure.** Skimming five files feels productive; reading
-  the one load-bearing file completely is what actually prevents the wrong fix.
-- **Confident filler over calibrated uncertainty.** The weaker habit papers over a
-  missing fact with fluent prose; the stronger habit names the missing fact and stops.
-
-The directive below compresses those habits into instructions a dispatched executor can
-follow mechanically. It complements — never replaces — the laziness ladder
-(`skills/shared/laziness-ladder.md`, how much code) and design-for-change
-(`skills/shared/design-for-change.md`, where the boundaries sit): this one governs
-**how the work is verified while it happens**.
-
-## Relationship to existing gates
-
-The cycle already externalizes several of these habits into machinery — probe-before-
-assert grounding (`skills/shared/grounding-protocol.md`), the test-tamper scan,
-maker≠checker gates. The directive is the
-in-prompt counterpart: it shapes the executor's moment-to-moment behavior so the
-machinery catches less, not more.
+Use `skills/shared/laziness-ladder.md` for implementation size and `skills/shared/design-for-change.md` for design boundaries.
+This contract governs evidence and scope during execution.
 
 ## Canonical compact directive (inline this verbatim into dispatch prompts)
 

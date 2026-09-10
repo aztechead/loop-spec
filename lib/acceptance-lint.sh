@@ -35,7 +35,9 @@ else
   exit 2
 fi
 
-[[ -n "${input//[[:space:]]/}" ]] || { echo "acceptance-lint: empty input" >&2; exit 2; }
+# A regex test, not ${input//[[:space:]]/}: bash 3.2 (the declared floor) takes minutes to
+# strip whitespace from a 17KB tasks.json, which hung the PLAN gate on a live run.
+[[ "$input" =~ [^[:space:]] ]] || { echo "acceptance-lint: empty input" >&2; exit 2; }
 jq -e 'type == "array"' >/dev/null 2>&1 <<<"$input" || {
   echo "acceptance-lint: input is not a JSON array of tasks" >&2
   exit 2
@@ -62,6 +64,14 @@ while IFS=$'\t' read -r tid crit; do
     *'grep -E'*'def '*) exempt=1 ;;
     *'grep -E'*'class '*) exempt=1 ;;
   esac
+  # Declarative files have no functions to anchor on: a whole-line or key = value match
+  # in HCL, YAML, TOML, INI, or JSON is the honest check, not a substring accident. A
+  # live IaC plan paid two planner rounds rewriting 37 such criteria (and three rewrites
+  # were wrong: -w cannot anchor a target that starts with $ or ").
+  if [[ "$exempt" -eq 0 ]] && [[ "$crit" =~ \.(hcl|tf|tfvars|ya?ml|toml|ini|json|cfg|conf|env|properties)([^a-zA-Z0-9]|$) ]] \
+     && [[ "$crit" =~ grep.*(-F|-x|-q|-c|-E).*(=|:|^\^|\^[a-zA-Z_]) ]]; then
+    exempt=1
+  fi
   if [[ "$exempt" -eq 0 ]]; then
     echo "FLAG ${tid}: bare-substring grep acceptance -> $crit"
     flagged=$((flagged+1))

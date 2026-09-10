@@ -22,19 +22,16 @@ consuming code in `execute` SKILL Step 3 is shape-identical:
 
 `blocked[].reason` and `escalation.reason` use the SAME fixed vocabulary as
 `lib/workflows/execute-dag.js` (`spec-compliance-block`, `retry-exhausted`,
-`commit-missing`, `zero-commit`; `deadlock`, `rebase-conflict`). Display only.
+`commit-missing`, `zero-commit`, `dirty-worktree`; `deadlock`, `rebase-conflict`). Display only.
 
 ## When this path runs
 
 - **Rung 1 (`W == 1`):** the DAG is a serial chain (or a single task). Each wave has
-  exactly one ready task. The lead dispatches one implementer `Agent`, reviews it
-  , merges it, then advances. No real concurrency exists, so the
-  team/workflow machinery would be pure overhead.
+  exactly one ready task. The lead dispatches an implementer, reviews the result, merges it, and advances.
 - **Rung 2 (`2 <= W < t_team`):** modest concurrency. Each wave has a handful of ready
   tasks; the lead fires them as parallel `Agent` calls **in a single assistant
   message** (the harness runs independent tool calls concurrently), then reviews and
-  merges the wave before advancing. A persistent team is not worth its coordination
-  cost at this width.
+  merges the wave before advancing.
 
 Both rungs share the loop below; they differ only in how many `Agent` calls go out per
 wave (`min(|ready|, maxParallelImplementers)`).
@@ -55,7 +52,7 @@ wave (`min(|ready|, maxParallelImplementers)`).
   prompt, and the integration call:
 
   ```bash
-  worktree_path="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+  worktree_path="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/worktree-base.sh" \
     resolve "$featureWorktreeRoot" task "{slug}/task-{taskId}" | jq -r '.path')"
   ```
 
@@ -101,7 +98,7 @@ Apply these replacements to the lead wave loop:
    `task.files`. Dispatch the reviewer against the uncommitted diff:
    `git -C "{featureWorktreeRoot}" diff -- {task.files}`. Rework agents edit the same
    working tree serially; no other task starts while it is dirty.
-   4. On reviewer `pass`, `task integrate` (the same call as step 6 of the wave loop;
+4. On reviewer `pass`, `task integrate` (the same call as step 6 of the wave loop;
    in-place mode is recorded at dispatch) reruns `task.verifyCommand` through
    `lib/output-digest.sh` — once per merged task is the largest single thing that
    accumulates in the lead's window across a wave loop, and the full log stays on disk
@@ -147,7 +144,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
 2. **Compute the ready set:** `ready = [t in remaining if every dep in t.blockedBy is in mergedSet]`.
    - If `ready` is empty while `remaining` is non-empty: set `escalation = {reason: "deadlock", detail: "unmergeable dependency cycle or all remaining blocked"}` and exit.
 3. **Form the wave:** `wave = ready[:maxParallelImplementers]`. Collapse same-shape
-   members first: `bash "${CLAUDE_SKILL_DIR}/../../lib/task-batch.sh" collapse
+   members first: `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/task-batch.sh" collapse
    ".loop-spec/features/${slug}/tasks.json"` — a `batchGroup` with matching
    verifyCommand and no cross-group `blockedBy` becomes one dispatch whose
    `files[]` is the union. Fail-closed: no hint, or an outside task waiting on a
@@ -168,11 +165,16 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    `Agent` call:
 
    ```bash
-   d="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task dispatch \
+   d="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task dispatch \
      --feature-dir "$fdir" --task "{taskId}" --attempt {attempt})"
    # .dispatchable .worktreePath .branch .taskBaseSha .brief .report .model .files .verifyCommand
    # .acceptanceCriteria .readFirst .specPath .prepareCommand .index .total .maxRetries
    ```
+
+   `.model` is the resolved selector (a concrete pin, else the task's tier, else the
+   role default): pass it according to the harness's model contract.
+   The packet already emitted the `dispatch` event. Do not emit another. Issue
+   every Agent call of the wave in ONE assistant message so the wave runs in parallel.
 
    `.brief` and `.report` are `lib/dispatch-files.sh brief` and `report-path`. The
    dispatch prompt carries those paths plus a one-line fit. Exact values live only in
@@ -186,16 +188,16 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    On this Agent rung, add `model` only when the result is one of the four
    aliases and omit it for `inherit`. A full/native ID requires the loop-fleet
    rung; fail loud if it reaches this Agent boundary.
-   Issue the Agent call(s), then stop. Never AskUserQuestion as a wait
-   (`skills/shared/dispatch.md`). The harness resumes this turn
-   when they complete. Then review.
+   Issue the Agent call(s) with `run_in_background: false`; each tool result is that
+   implementer's report. Never AskUserQuestion as a wait (`skills/shared/dispatch.md`).
+   Then review.
    Each call returns `{taskId, branch, committed, sha, notes}`. (Per-task model override applies to the subagent and loop rungs; the team rung pre-spawns implementer teammates and uses the role default for all of them.)
 5. **Review each committed task** (`reviewersEnabled` is fixed true). For each implementer result with `committed == true`, one call writes the review package from the recorded BASE to the implementer's HEAD and emits the reviewer's `dispatch` event:
 
    ```bash
-   pk="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task package \
+   pk="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task package \
      --feature-dir "$fdir" --task "{taskId}" --head "{implHead}")"
-   # .package .model .base .head .brief .report
+   # .package .model .base .head .brief .report .worktree
    ```
 
    Then dispatch a spec-compliance reviewer `Agent` using `.model` (the activated
@@ -207,7 +209,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    - Apply the verdict with one call:
 
      ```bash
-     v="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task verdict \
+     v="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task verdict \
        --feature-dir "$fdir" --task "{taskId}" --verdict pass|rework|block --attempt {attempt})"
      # .action=integrate|resume|oneshot|fresh-upgrade|blocked  .model  .nextAttempt  .reason
      ```
@@ -237,7 +239,7 @@ protocol is entered directly, seed it the same way before the loop. Maintain `me
    `lib/task-progress.sh mark-done` and emits `task_end`:
 
    ```bash
-   integration_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" task integrate \
+   integration_json="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" task integrate \
      --feature-dir "$fdir" --task "{taskId}")"
    # .published .reason .detail .sha .blocked
    ```
@@ -269,27 +271,19 @@ the task worktree. Read the role selector
 from `models.implementer` or `models.specComplianceReviewer`; add the Agent
 `model` field only for an alias and omit it for `inherit`.
 
-**Dispatch telemetry (`skills/shared/dispatch.md`):** emit one `dispatch` event per implementer/reviewer Agent call — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" dispatch --phase "execute" --data '{"role":"<implementer|spec-compliance-reviewer>","model":"<resolved selector>","rung":"subagent"}' || true`. Retries of the same task are new launches and DO re-emit.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** `task dispatch` and `task package` emit `dispatch` with the resolved model.
+The lead emits no duplicate event. Retries use `task dispatch` again and emit a new event.
 
-**Task progress (required).** EXECUTE is the longest phase; without this it reports
-only `[EXECUTE] start` and an operator watching a streamed log cannot tell task 1 of 6
-from task 5 of 6, or steady progress from a stall. Emit one `task_start` before
-dispatching each task and one `task_end` after its merge/failure is decided:
-
-```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" \
-  task_start --phase execute \
-  --data '{"index":<1-based position>,"total":<total tasks in the DAG>,"id":"<task id>","subject":"<task subject>"}' || true
-# ... dispatch, verify, merge ...
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit ".loop-spec/features/${slug}" \
-  task_end --phase execute \
-  --data '{"index":<same>,"total":<same>,"id":"<task id>","result":"<merged|failed|skipped>"}' || true
-```
-
-`total` is the task count for the whole DAG, not the current wave, so the ratio
-advances monotonically across waves. In a parallel wave emit every `task_start` as the
-wave launches; `index` is the task's position in the DAG order. `lib/events.sh` renders
-these as `[EXECUTE] task 2/5 start - task-002: <subject>`. Retries re-emit.
+**Task progress (emitted for you).** EXECUTE is the longest phase; without progress
+events it reports only `[EXECUTE] start` and an operator watching a streamed log cannot
+tell task 1 of 6 from task 5 of 6. `task dispatch` emits `task_start --phase execute`
+and `task verdict` (a block) or `task integrate` emits `task_end --phase execute`
+(`lib/execute-step.sh`), with `index` as the task's position in the DAG order and
+`total` as the task count for the whole DAG, not the current wave, so the ratio
+advances monotonically across waves.
+Never emit either event by hand.
+`lib/events.sh` renders them as `[EXECUTE] task 2/5 start - task-002: <subject>`.
+Retries re-emit through the same steps.
 
 ## Implementer contract stanza (open EVERY implementer prompt with this, verbatim)
 
@@ -305,18 +299,18 @@ templates cannot drift.
 IMPORTANT: All paths must be ABSOLUTE. Do not use relative paths. Do not use em-dashes.
 
 ENGINEERING CONTRACT (on by default; every directive binds). The index is
-`${CLAUDE_SKILL_DIR}/../../skills/shared/engineering-directives.md`. Read these before writing code, never paste them:
-`${CLAUDE_SKILL_DIR}/../../skills/shared/implementer-contract.md` (FOUR QUESTIONS (design gate): can I make it more modular?
+`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/engineering-directives.md`. Read these before writing code, never paste them:
+`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/implementer-contract.md` (FOUR QUESTIONS (design gate): can I make it more modular?
 more extensible? is this the least amount of code that makes it happen?
 does this hold at production scale, memory and work bounded against deployment-sized
-input, not the fixture?); `${CLAUDE_SKILL_DIR}/../../skills/shared/laziness-ladder.md` (ponytail laziness ladder: YAGNI, then DRY, reuse
-what is already here); `${CLAUDE_SKILL_DIR}/../../skills/shared/design-for-change.md` (seams, not speculation);
-`${CLAUDE_SKILL_DIR}/../../skills/shared/human-code.md` (house style over habit: read the neighbors, comments carry WHY,
+input, not the fixture?); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/laziness-ladder.md` (ponytail laziness ladder: YAGNI, then DRY, reuse
+what is already here); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/design-for-change.md` (seams, not speculation);
+`${LOOP_SPEC_SKILL_DIR}/../../skills/shared/human-code.md` (house style over habit: read the neighbors, comments carry WHY,
 density matches the file, never cut `simplicity:` markers; CODE A HUMAN CAN OPERATE: fail
-loudly, or say why not); `${CLAUDE_SKILL_DIR}/../../skills/shared/human-docs.md` (DOCS FOR HUMANS: one job per document,
+loudly, or say why not); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/human-docs.md` (DOCS FOR HUMANS: one job per document,
 cite never copy, a document your change makes false is fixed IN THIS DIFF and never a
 deferred follow-up; NEVER cut frontmatter, machine-read contract sections, artifact
-headings, EVID lines, or licenses); `${CLAUDE_SKILL_DIR}/../../skills/shared/writing-good-tests.md` (WRITING GOOD TESTS:
+headings, EVID lines, or licenses); `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/writing-good-tests.md` (WRITING GOOD TESTS:
 name the break; no string-presence traps; no change detectors).
 
 Rules that bind without a file read. TDD, red then green: code-producing tasks write the
@@ -328,16 +322,16 @@ check), never from recall; report `version: <name>@<v> source: <command>` or
 `unverified`. Name the scaling input before writing code. Tests first; one test, one
 break, smallest input.
 
-Before DONE, on <files you touched>: `bash "${CLAUDE_SKILL_DIR}/../../lib/indirection-scan.sh" scan` (one-caller
-helpers to inline); `bash "${CLAUDE_SKILL_DIR}/../../lib/duplication-scan.sh" scan` (`duplicate=` same lines,
-`similar=` names changed; both count); `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare`;
-`bash "${CLAUDE_SKILL_DIR}/../../lib/comment-tells.sh" scan`; `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan`;
-`bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <markdown you touched>`.
+Before DONE, on <files you touched>: `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/indirection-scan.sh" scan` (one-caller
+helpers to inline); `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/duplication-scan.sh" scan` (`duplicate=` same lines,
+`similar=` names changed; both count); `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/house-style.sh" compare`;
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/comment-tells.sh" scan`; `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/failure-tells.sh" scan`;
+`bash "${LOOP_SPEC_SKILL_DIR}/../../lib/doc-tells.sh" scan <markdown you touched>`.
 
 NO NESTED SUBAGENTS. Do this task yourself. Never dispatch a helper or a reviewer.
 Review arrives from the lead after your report.
 
-EXECUTION DISCIPLINE (evidence over recall). Read `${CLAUDE_SKILL_DIR}/../../skills/shared/execution-discipline.md`, do not
+EXECUTION DISCIPLINE (evidence over recall). Read `${LOOP_SPEC_SKILL_DIR}/../../skills/shared/execution-discipline.md`, do not
 paste it. You execute a brief a stronger reasoning pass produced: fidelity, not
 improvisation. Never assert what a file, command, or API does from memory; read it, run
 it, paste the output. Output that contradicts your expectation is signal: stop, re-read,
@@ -365,7 +359,7 @@ Step 1 - The task worktree already exists at {worktree_path} on branch
   All git and file operations use that directory (`git -C "{worktree_path}"`).
 
 Step 1.5 - Prepare declared dev/test dependencies inside the task worktree:
-  bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{worktree_path}" --command "{commands.prepare}" --reuse-from "{featureWorktreeRoot}"
+  bash "${LOOP_SPEC_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{worktree_path}" --command "{commands.prepare}" --reuse-from "{featureWorktreeRoot}"
 Preparation failure is infrastructure failure; do not edit around it.
 
 Step 2 - {readFirst clause} Read the assigned files: {task.files}.
@@ -379,8 +373,10 @@ Write your full report (status, commits, test command, output, concerns) to:
   {report path from dispatch-files.sh}
 Return only JSON plus a one-line test summary. Exact values live in the brief; do not
 ask the lead to paste them.
-Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
-{global constraints lines, or "- none"}
+The brief also carries PLAN.md's Global constraints verbatim, the EVIDENCE rows this
+task cites, and the tool versions the lead probed. Do not open SPEC.md, PLAN.md,
+PATTERNS.md, or EVIDENCE.md, and do not re-run version or auth checks: if a value you
+need is not in the brief or the listed files, stop and report it as a blocker.
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}
 Acceptance criteria are in the brief.
@@ -399,6 +395,8 @@ Step 5 - Stage and commit inside the worktree branch:
 Do NOT push. Do NOT run git outside the task worktree.
 
 Return JSON: { taskId: "{taskId}", branch: "task/{taskId}-{slug}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
+Your final message IS the return value. Never call SendMessage to deliver it: you are a
+one-shot subagent, there is no teammate named "main", and the lead reads your completion.
 ```
 
 ## Reviewer Agent prompt
@@ -414,6 +412,13 @@ NO NESTED SUBAGENTS. Do this review yourself. Never spawn a helper or a second r
 
 Read the task brief: {brief path}
 Read the implementer's report: {report path}
+The implementation is checked out at {worktree path from the package packet's .worktree}.
+Do NOT run the task's verify command ({verifyCommand from the packet}): the implementer ran
+it (its output is in the report) and the integration step reruns it after rebase. Run a
+command there only when the diff makes a specific criterion suspicious, and only one that
+reads the checkout (grep, test, jq, diff). Never run a plan, an apply, a test suite, or
+anything that reaches a network or a cloud API. Never `git worktree add` another checkout
+for this review.
 Read the review package once (commit list, stat, diff -U10). Do not re-run git for this
 range if the file exists:
   {package path from: bash lib/dispatch-files.sh package --repo ... --base {taskBaseSha} --head {implHead}}
@@ -442,6 +447,8 @@ Return one of:
   - verdict "block"  if the implementation is fundamentally wrong or unrecoverable
 
 Return JSON: { verdict: "pass"|"rework"|"block", findings: ["<finding 1>", ...], unverified: [{"requirement":"...","why":"..."}] }
+Your final message IS the verdict. Never call SendMessage to deliver it (a live reviewer
+lost three calls to InputValidationError sending JSON to a "main" that does not exist).
 ```
 
 ## Workspace mode
@@ -495,8 +502,10 @@ Read this first — it is your requirements, with the exact values to use verbat
   {brief path from dispatch-files.sh}
 Write your full report to:
   {report path from dispatch-files.sh}
-Global constraints (from PLAN.md "## Global constraints", verbatim; every one binds):
-{global constraints lines, or "- none"}
+The brief also carries PLAN.md's Global constraints verbatim, the EVIDENCE rows this
+task cites, and the tool versions the lead probed. Do not open SPEC.md, PLAN.md,
+PATTERNS.md, or EVIDENCE.md, and do not re-run version or auth checks: if a value you
+need is not in the brief or the listed files, stop and report it as a blocker.
 Interfaces (from the task block; contracts your neighbors consume/produce):
 {task Interfaces lines, or "- none"}
 Acceptance criteria are in the brief.
@@ -506,7 +515,7 @@ Touch ONLY the files listed ({task.files}). Do NOT edit unrelated files.
 Do NOT create a git worktree. Edit files directly in {abs_repo}.
 
 Step 3 - Prepare dependencies, then run the task-specific verify command with cwd = {abs_repo}:
-  bash "${CLAUDE_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{abs_repo}" --command "{repo.commands.prepare}"
+  bash "${LOOP_SPEC_SKILL_DIR}/../../lib/prepare-environment.sh" run --root "{abs_repo}" --command "{repo.commands.prepare}"
   {task.verifyCommand}
 
 Step 4 - Stage and commit using git -C so git does not depend on cwd:
@@ -515,6 +524,7 @@ Step 4 - Stage and commit using git -C so git does not depend on cwd:
 Do NOT push. Do NOT run git against any path other than {abs_repo}.
 
 Return JSON: { taskId: "{taskId}", repo: "{repo}", committed: <true|false>, sha: "<sha or empty>", notes: "<notes>" }
+Your final message IS the return value; never call SendMessage to deliver it.
 ```
 
 ### Merge and ff steps (workspace mode -- skipped)
@@ -535,7 +545,7 @@ repo's `baseSha`:
 abs_repo="${workspace_root}/${repo.path}"
 base_sha="${repo.baseSha}"   # from feature.workspace.repos[] entry
 
-if ! bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-commit-check.sh" \
+if ! bash "${LOOP_SPEC_SKILL_DIR}/../../lib/worktree-commit-check.sh" \
     -C "$abs_repo" "$base_sha" "feat/${slug}"; then
   # No commits over baseSha on feat/{slug} in this repo -- task commit is missing.
   blocked+=("{taskId}:zero-commit")

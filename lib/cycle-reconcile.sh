@@ -54,25 +54,23 @@ _delivery_succeeded() {
   local fdir="$1"
   [[ -f "$fdir/feature.json" ]] || return 1
   local delivery="$fdir/delivery.json"
-  [[ -f "$delivery" ]] || delivery="$fdir/feature.json"
-  if jq -e '
+  if [[ -f "$delivery" ]] && jq -e '
     .status == "ready-for-review"
     or .status == "delivered-draft"
     or ((.targets // []) | map(select(
           (.outcome == "delivered" or .outcome == "delivered-draft")
           and ((.prUrl // "") != ""))) | length) > 0
-    or ((.delivery.status // "") == "ready-for-review")
+  ' "$delivery" >/dev/null 2>&1; then
+    return 0
+  fi
+  bash "$script_dir/feature-read.sh" "$fdir" -e --filter '
+    ((.delivery.status // "") == "ready-for-review")
     or ((.delivery.status // "") == "delivered-draft")
     or ((.delivery.targets // []) | map(select(
           (.outcome == "delivered" or .outcome == "delivered-draft")
           and ((.prUrl // "") != ""))) | length) > 0
-  ' "$delivery" >/dev/null 2>&1; then
-    return 0
-  fi
-  jq -e '
-    ((.prUrl // "") != "")
-    and ((.prUrl // "") != (.checkpointPrUrl // ""))
-  ' "$fdir/feature.json" >/dev/null 2>&1
+    or (((.prUrl // "") != "") and ((.prUrl // "") != (.checkpointPrUrl // "")))
+  ' >/dev/null 2>&1
 }
 
 if [[ ! -f "$feature_dir/feature.json" && -n "$slug" ]]; then
@@ -97,8 +95,7 @@ fi
 if [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]]; then
   bash "$script_dir/delivery-reconcile.sh" observe "$feature_dir" >/dev/null 2>&1 || true
   if _delivery_succeeded "$feature_dir"; then
-    delivered_summary="$(jq -r '.iterate.lastVerdict.summary // empty' \
-      "$feature_dir/feature.json" 2>/dev/null || true)"
+    delivered_summary="$(bash "$script_dir/feature-read.sh" "$feature_dir" iterate.lastVerdict.summary -r 2>/dev/null || true)"
     if ! jq -en --arg s "$delivered_summary" '$s | test("\\S")' >/dev/null 2>&1; then
       delivered_summary="Cycle completed; a PR was delivered."
     fi

@@ -24,6 +24,7 @@
 # because "nobody could decide" and "this run decided not to pause" are opposite
 # answers and only the second one may drop a human gate.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   echo "usage: human-gate.sh --feature-dir DIR | --answers" >&2
@@ -47,7 +48,7 @@ done
 feature_json="$feature_dir/feature.json"
 [[ -f "$feature_json" ]] || exit 1
 
-style="$(jq -r '.execStyle // empty' "$feature_json" 2>/dev/null)" || exit 1
+style="$(bash "$SCRIPT_DIR/../../feature-read.sh" "$feature_dir" -r --filter '.execStyle // empty' 2>/dev/null)" || exit 1
 case "$style" in
   step|interactive) echo "gate=pause reason=execStyle=${style} pauses at human gates" ;;
   auto|review-only) echo "gate=skip reason=execStyle=${style} runs unattended" ;;

@@ -1,7 +1,7 @@
 # opencode harness adaptation (reference)
 
 Applies when loop-spec runs under **opencode** (https://opencode.ai) instead of
-Claude Code: `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect` prints
+Claude Code: `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" detect` prints
 `opencode` (equivalently, `cycle-preflight.sh` reports `harness.name ==
 "opencode"` / `.loop-spec/runtime.json.harness == "opencode"`). loop-spec
 installs there via the bundled installer (`bash lib/opencode-install.sh
@@ -19,9 +19,8 @@ namespace keeps them clear of opencode's built-in `/debug`, `/status`, and
 ADDITIVE — when the harness is `claude`, nothing here applies and every skill
 runs exactly as written.
 
-OpenCode provides skills, resumable subagents,
-questions, and commands all have NATIVE equivalents. The deltas below are the
-complete list.
+OpenCode has native skills, resumable subagents, questions, and commands.
+Apply the mappings below.
 
 ## Environment contract (who sets what)
 
@@ -29,20 +28,22 @@ The opencode plugin delivers, into every bash invocation (via the documented
 `shell.env` plugin hook — opencode merges the returned env over `process.env`
 for each shell call): `LOOP_SPEC_HARNESS=opencode`, `CLAUDE_PLUGIN_ROOT`
 (package root, realpath'd through the install symlink), `CLAUDE_PROJECT_DIR`
-(session directory), and `CLAUDE_SKILL_DIR` (the active skill's directory —
+(session directory), and `LOOP_SPEC_SKILL_DIR` (the active skill's directory —
 set from the native `skill` tool's result metadata, or from the last SKILL.md
 `read`, and realpath'd so symlinked installs still resolve
-`${CLAUDE_SKILL_DIR}/../../lib/...`).
+`${LOOP_SPEC_SKILL_DIR}/../../lib/...`).
+
+The adapter also exports the same value as `CLAUDE_SKILL_DIR` for older integrations.
 
 **Re-export rule (cross-skill reads):** the tracked
-`CLAUDE_SKILL_DIR` follows the LAST skill loaded (skill tool call or SKILL.md
+`LOOP_SPEC_SKILL_DIR` follows the LAST skill loaded (skill tool call or SKILL.md
 read). When a skill reads another skill's SKILL.md mid-flow and then needs a
 **skill-local** path of the skill it is still executing, re-export the
 variable to that skill's directory first. Sibling paths like
-`${CLAUDE_SKILL_DIR}/../../lib/...` are unaffected.
+`${LOOP_SPEC_SKILL_DIR}/../../lib/...` are unaffected.
 
 **Fallback rule (plugin not loaded) — only when the variable is EMPTY:** an
-already-set `CLAUDE_SKILL_DIR` came from the plugin and already points into the
+already-set `LOOP_SPEC_SKILL_DIR` came from the plugin and already points into the
 package. Overwriting it with the installed skill's own directory breaks every
 sibling path, because the installed skill is a GENERATED ADAPTER at
 `<config>/skills/loop-spec-<name>/` and `<config>/lib` does not exist — the
@@ -50,15 +51,15 @@ package's `lib/` is only reachable from the package's own `skills/<name>/`.
 Assign only into an empty value:
 
 ```bash
-: "${CLAUDE_SKILL_DIR:=<base directory the skill tool reported>}"
+: "${LOOP_SPEC_SKILL_DIR:=<base directory the skill tool reported>}"
 ```
 
 Verify before relying on it; if this fails, the plugin is not loaded and the
 adapter directory is the wrong base:
 
 ```bash
-[ -f "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" ] || \
-  CLAUDE_SKILL_DIR="${CLAUDE_PLUGIN_ROOT}/skills/<name>"
+[ -f "${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" ] || \
+  LOOP_SPEC_SKILL_DIR="${CLAUDE_PLUGIN_ROOT}/skills/<name>"
 ```
 
 ## Tool substitution table
@@ -84,6 +85,11 @@ the one-message close follow `skills/shared/report-style.md`. Do not expect
 
 ## Ambient verification enforcement
 
+`tool.execute.before` runs `hooks/pre-tool-guard.py` and throws on a shared
+guard's denial or execution failure. Shell commands and file writes therefore
+use the same nested-session, result, worktree, and path checks as Claude.
+Patch calls check every target, including move destinations.
+
 OpenCode receives the harness-specific micro SessionStart directive
 (`/loop-spec/micro`, `/loop-spec/intake`), but its ambient enforcement is directive-only:
 `session.idle` cannot veto termination, so `adhoc-verify-guard.sh` is not bridged.
@@ -106,6 +112,7 @@ native `task` tool:
   config dir; colons are Claude Code plugin namespacing, hyphens are the
   opencode agent id).
 - `prompt` and `description` pass through verbatim.
+- `run_in_background: false` is dropped: `task` blocks until the child returns.
 - `task_id` resumes the child session returned by an earlier `task` call. Use it
   for follow-up work by the same logical reviewer or implementer when that id is
   still available; omit it for a fresh dispatch. `subagent_type` remains required
@@ -211,6 +218,7 @@ never treat `modelID` alone as globally unique.
 | interactive session | opencode TUI (`opencode`) |
 | `claude -p` headless / autonomous mode | `opencode run --format json "Load the loop-spec-auto skill and run: <description>"` (or the SDK: `createOpencode()` / `createOpencodeClient()` from `@opencode-ai/sdk`, then `client.session.prompt(...)` against `opencode serve`; load `loop-spec-cycle` with `autonomous` to force the full cycle) |
 | loop-runner fleet spawning `claude -p` | same fleet spawning `opencode run --format json` — the agent CLI is resolved by `bash lib/harness.sh cli` and passed to `loop.py --agent-cli opencode` (see `skills/shared/execute-loop-fleet.md`) |
+| EXECUTE `session` rung spawning `claude -p` | same rung spawning `opencode run --format json` from `extensions/sessions/profiles/opencode.toml` (no permission flag exists; the project's opencode config decides); `bash lib/harness.sh session-layer` answers `session` only under `LOOP_SPEC_NON_INTERACTIVE=1` with `opencode` on PATH (`execute-rungs.md`, "Disposable session") |
 
 Headless permission note: `opencode run` rejects permission asks. Work ticks do
 not pass `--auto`: normal in-worktree build-agent edits remain allowed, while

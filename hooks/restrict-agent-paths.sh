@@ -16,7 +16,10 @@
 # bare <role> before matching.
 #
 # Rules (by role):
-#   spec-writer, planner             -> docs/loop-spec/features/**
+#   spec-writer, planner             -> docs/loop-spec/features/** only
+#   any caller                       -> a write under docs/loop-spec/features/<slug>/ lands
+#                                       in the checkout that holds that feature's
+#                                       feature.json, when one does
 #   pattern-mapper                   -> docs/loop-spec/features/** + .claude/agent-memory/** (memory: project)
 #   code-reviewer                    -> .claude/agent-memory/** ONLY (read-only for code; the
 #                                       `memory: project` frontmatter auto-enables Write/Edit,
@@ -26,6 +29,11 @@
 #   all other subagent_types         -> unrestricted
 #   any caller                       -> never .loop-spec/**/{last-result,result,active-run,
 #                                       feature,delivery}.json, never the installed plugin
+#   any caller                       -> never SPEC.md or VERIFICATION.md of a feature on the
+#                                       oneshot route (lib/graph/probes/oneshot.sh answers
+#                                       route=oneshot for it): the driver's `spec fill`,
+#                                       `spec escalate`, `spec footprint drop`, and
+#                                       `verification fill` are the writers
 #
 # Fast path: when the project has no .loop-spec/ state (no cycle has
 # ever run here), exit 0 before parsing anything — this hook must not tax every
@@ -80,7 +88,7 @@ fi
 # The files lib/cycle-result.sh, lib/feature-write.sh, and lib/deliver.sh own are never
 # Write or Edit targets, whoever the caller is: a haiku eval run whose result the writer
 # refused twice wrote .loop-spec/last-result.json by hand and a supervisor read a run
-# that never reached DELIVER as completed (evals/findings-2026-09-06.md).
+# that never reached DELIVER as completed (the 2026-09-06 live evals).
 # hooks/team/result-forgery-guard.sh covers the same files from the shell.
 case "$FILE_PATH" in
   .loop-spec/*|*/.loop-spec/*)
@@ -95,7 +103,7 @@ esac
 
 # The installed plugin is never a write target, whoever the caller is: a sonnet eval
 # run patched lib/runtime-ignore.sh in the plugin checkout to get past a gate
-# (evals/findings-2026-09-06.md, finding 1). Paths resolve by real location, so a
+# (the 2026-09-06 live evals, finding 1). Paths resolve by real location, so a
 # feature worktree under the project stays writable, and the rule is off when the
 # plugin root is the project or inside it (loop-spec developing itself).
 plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
@@ -196,6 +204,74 @@ path_allowed() {
 # regardless of how the harness recorded the subagent_type.
 CALLER="${CALLER#loop-spec:}"
 CALLER="${CALLER#loop-spec-}"
+
+# feature_checkout_deny: a Write under docs/loop-spec/features/<slug>/ must land in the
+# checkout that holds that feature's feature.json. Agents share the lead's cwd, which
+# is the main checkout when the feature lives in a worktree: the spec-writer wrote
+# SPEC.md next to the lead while phase-exit.sh read the worktree, and the 6.3.0 fastapi
+# bug-fix run escalated after four blind REDO attempts. The lead did the same on the
+# dda2cca run, on the short route, where it writes the spec itself, so the rule holds
+# for every caller (port audit 1, F5); the driver's `spec skeleton`
+# and `spec write` are the path that cannot miss. No feature.json anywhere means
+# nothing to compare, so the write stays allowed.
+feature_checkout_deny() {
+  local rel slug project target target_dir wt home homes=()
+  rel="${FILE_PATH#*docs/loop-spec/features/}"
+  [[ "$rel" != "$FILE_PATH" && "$rel" == */* ]] || return 0
+  slug="${rel%%/*}"
+  project="$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null && pwd -P)" || return 0
+  target="$FILE_PATH"; [[ "$target" == /* ]] || target="$project/$target"
+  target_dir="$(cd "$(dirname "$target")" 2>/dev/null && pwd -P)" || target_dir="$(dirname "$target")"
+  while IFS= read -r wt; do
+    wt="${wt#worktree }"
+    if wt="$(cd "$wt" 2>/dev/null && pwd -P)" && [[ -f "$wt/docs/loop-spec/features/$slug/feature.json" ]]; then
+      homes[${#homes[@]}]="$wt"
+    fi
+  done < <(git -C "$project" worktree list --porcelain 2>/dev/null | grep '^worktree ' || true)
+  [[ ${#homes[@]} -gt 0 ]] || return 0
+  for home in "${homes[@]}"; do
+    if [[ "$target_dir" == "$home" || "$target_dir" == "$home"/* ]]; then return 0; fi
+  done
+  echo "DENY: $CALLER $TOOL_NAME targets $FILE_PATH, but feature '$slug' lives in the checkout ${homes[0]} (its feature.json is there) and the phase exit gate reads that copy, never this one. Write ${homes[0]}/docs/loop-spec/features/$rel instead. (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+  exit 2
+}
+
+if path_allowed "docs/loop-spec/features"; then
+  feature_checkout_deny
+fi
+
+# driver_owned_deny: on the oneshot route the driver is the only writer of SPEC.md and
+# VERIFICATION.md. Five format REDO rounds on a live bug fix came from a lead that
+# filled the driver-written skeleton by hand and left the shape the gates read
+# (port audit 3, N1). The route is the probe's answer over the
+# feature's own SPEC.md, so a full-route spec (no footprint, four files, `route: full`,
+# or no SPEC.md yet) stays the lead's to write.
+driver_owned_deny() {
+  local rel slug checkout fd route
+  case "$(basename "$FILE_PATH")" in SPEC.md|VERIFICATION.md) ;; *) return 0 ;; esac
+  rel="${FILE_PATH#*docs/loop-spec/features/}"
+  [[ "$rel" != "$FILE_PATH" && "$rel" == */* ]] || return 0
+  slug="${rel%%/*}"
+  checkout="${FILE_PATH%docs/loop-spec/features/*}"
+  [[ -n "$checkout" ]] || checkout="${CLAUDE_PROJECT_DIR:-$PWD}/"
+  fd="${checkout}.loop-spec/features/$slug"
+  [[ -f "$fd/feature.json" ]] || return 0
+  # Fail closed once the feature is known: the file opens to the lead only on a probe
+  # answer of route=full for a reason that is not an unreadable spec (a spec the
+  # probe cannot read may be what a hand write just broke); anything else, an empty
+  # answer included, is a deny (port audit 4, N1's writers).
+  route="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/graph/probes/oneshot.sh" --feature-dir "$fd" 2>/dev/null || true)"
+  if [[ "${route%% *}" == "route=full" ]]; then
+    case "$route" in
+      *"frontmatter missing"*|*"frontmatter unterminated"*|*"could not be read"*|*"not readable"*) ;;
+      *) return 0 ;;
+    esac
+  fi
+  [[ "${route%% *}" == "route=oneshot" ]] || route="route=oneshot reason=the route probe did not answer full for a readable spec (${route:-no answer}); a driver-owned file stays the driver's"
+  echo "DENY: $TOOL_NAME targets $FILE_PATH, which the driver writes on the oneshot route (${route#route=oneshot reason=}). Fill it through the driver: cycle-driver.sh spec fill --feature-dir $fd (--intent, --file/--note, --criterion, --grounding), spec escalate --reason, spec footprint drop --file --reason, or verification fill --feature-dir $fd (--row/--implementation/--proof/--evidence/--output, --review, --tests). (Disable: LOOP_SPEC_PATH_GUARD=0)" >&2
+  exit 2
+}
+driver_owned_deny
 
 case "$CALLER" in
   spec-writer|planner)

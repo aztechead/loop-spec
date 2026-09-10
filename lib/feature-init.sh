@@ -139,27 +139,16 @@ validate_phase_model_selector() {
   fi
 }
 
+# The phase vocabulary is the graph's (lib/graph/phases.sh), never a list kept here.
+phases() { bash "$SCRIPT_DIR/graph/phases.sh" "$@"; }
+
 validate_phase() {
-  case "${1:-}" in
-    spec|discuss|plan|execute|verify|iterate|deliver) return 0 ;;
-    *)
-      echo "feature-init: phase must be one of: spec | discuss | plan | execute | verify | iterate | deliver." >&2
-      return 1
-      ;;
-  esac
+  phases validate "${1:-}" 2>&1 >/dev/null | sed 's/^/feature-init: /' >&2
+  phases validate "${1:-}" >/dev/null 2>&1
 }
 
 phase_env_suffix() {
-  case "$1" in
-    spec) echo SPEC ;;
-    discuss) echo DISCUSS ;;
-    plan) echo PLAN ;;
-    execute) echo EXECUTE ;;
-    verify) echo VERIFY ;;
-    iterate) echo ITERATE ;;
-    deliver) echo DELIVER ;;
-    *) validate_phase "$1"; return 1 ;;
-  esac
+  phases suffix "$1" 2>/dev/null || { validate_phase "$1"; return 1; }
 }
 
 # resolve_phase_model <phase>
@@ -228,7 +217,13 @@ canonical_models() {
   v_specWriter=$(resolve_role_model SPEC_WRITER "${role_phase_default:-$INHERIT}")                           || return 1
   v_planner=$(resolve_role_model PLANNER "${role_phase_default:-$INHERIT}")                                  || return 1
   v_advocate=$(resolve_role_model ADVOCATE "${role_phase_default:-$INHERIT}")                                || return 1
-  v_challenger=$(resolve_role_model CHALLENGER "${role_phase_default:-$INHERIT}")                            || return 1
+  # The critic reads and writes nothing; on Claude Code it runs one tier under the
+  # session by default. An Opus session paid Opus for every critique round, and the
+  # challenger's reply is the smallest artifact in the phase. A phase route or
+  # LOOP_SPEC_MODEL_CHALLENGER still outranks this; the peer harnesses have no alias.
+  local challenger_default="$INHERIT"
+  [[ "$HARNESS" == "claude" ]] && challenger_default="sonnet"
+  v_challenger=$(resolve_role_model CHALLENGER "${role_phase_default:-$challenger_default}")                 || return 1
   v_specComplianceReviewer=$(resolve_role_model SPEC_COMPLIANCE_REVIEWER "${role_phase_default:-$INHERIT}") || return 1
   v_iterateJudge=$(resolve_role_model ITERATE_JUDGE "${role_phase_default:-$INHERIT}")                       || return 1
   v_codeReviewer=$(resolve_role_model CODE_REVIEWER "${role_phase_default:-$INHERIT}")                       || return 1
@@ -262,28 +257,12 @@ canonical_models() {
 }
 
 canonical_phase_models() {
-  local spec discuss plan execute verify iterate deliver
-  spec="$(resolve_phase_model spec)" || return 1
-  discuss="$(resolve_phase_model discuss)" || return 1
-  plan="$(resolve_phase_model plan)" || return 1
-  execute="$(resolve_phase_model execute)" || return 1
-  verify="$(resolve_phase_model verify)" || return 1
-  iterate="$(resolve_phase_model iterate)" || return 1
-  deliver="$(resolve_phase_model deliver)" || return 1
-
-  jq -n \
-    --arg spec "$spec" --arg discuss "$discuss" --arg plan "$plan" \
-    --arg execute "$execute" --arg verify "$verify" --arg iterate "$iterate" \
-    --arg deliver "$deliver" \
-    '{
-      spec: (if $spec == "" then null else $spec end),
-      discuss: (if $discuss == "" then null else $discuss end),
-      plan: (if $plan == "" then null else $plan end),
-      execute: (if $execute == "" then null else $execute end),
-      verify: (if $verify == "" then null else $verify end),
-      iterate: (if $iterate == "" then null else $iterate end),
-      deliver: (if $deliver == "" then null else $deliver end)
-    }'
+  local phase val map='{}'
+  while IFS= read -r phase; do
+    val="$(resolve_phase_model "$phase")" || return 1
+    map="$(jq -c --arg p "$phase" --arg v "$val" '.[$p] = (if $v == "" then null else $v end)' <<<"$map")"
+  done < <(phases list)
+  jq . <<<"$map"
 }
 
 # Every map is resolved BEFORE anything is printed. A brace-group pipeline would
@@ -293,7 +272,7 @@ canonical_phase_models() {
 all_effective_models() {
   local phase maps map phase_models
   maps="$(canonical_models)" || return 1
-  for phase in spec discuss plan execute verify iterate deliver; do
+  for phase in $(phases list); do
     map="$(canonical_models "$phase")" || return 1
     maps="${maps}"$'\n'"${map}"
   done
@@ -307,7 +286,7 @@ all_effective_models() {
 # union of selectors) at nine map resolutions, which cost two seconds of every start.
 validate_routing() {
   local phase suffix var role
-  for phase in spec discuss plan execute verify iterate deliver; do
+  for phase in $(phases list); do
     suffix="$(phase_env_suffix "$phase")"
     var="LOOP_SPEC_PHASE_MODEL_${suffix}"
     validate_phase_model_selector "$var" "${!var:-}" || return 1
@@ -375,7 +354,6 @@ common_skeleton() {
       createdAt: $now, updatedAt: $now,
       execStyle: $style,
       executionProfile: "standard",
-      phaseHandoff: false,
       models: $models,
       phaseModels: $phaseModels,
       currentPhase: "spec",

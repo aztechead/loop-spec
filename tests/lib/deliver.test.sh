@@ -270,8 +270,8 @@ check "candidate policy: legacy tracked digest stays committed clean" "0" \
 check "candidate policy: legacy digest still tracked" "1" \
   "$(git -C "$CAND" ls-files --error-unmatch docs/loop-spec/telemetry/runs/candidate.json >/dev/null 2>&1 && echo 1 || echo 0)"
 
-# State-squash mode leaves phase state uncommitted until candidate finalization,
-# which creates one clean final state commit instead of rewriting pushed history.
+# Feature state lives on refs/loop-spec/state/<slug>: a dirty feature.json or
+# PROGRESS.md is never a finalize error and never lands in the delivery commit.
 STATE="$WORK/state-policy"; init_repo "$STATE"
 STATE_BASE="$(git -C "$STATE" rev-parse HEAD)"
 git -C "$STATE" checkout -qb feat/state
@@ -280,20 +280,15 @@ printf '/.loop-spec/features/*/*\n!/.loop-spec/features/*/feature.json\n!/.loop-
 jq -n --arg base "$STATE_BASE" '{schemaVersion:7,slug:"state",feature_title:"State",
   currentPhase:"deliver",branch:"feat/state",baseSha:$base,baseBranch:"main",workspace:null,
   updatedAt:"old",warnings:[],iterate:{used:0,maxIterations:10},artifacts:{}}' > "$SDIR/feature.json"
-git -C "$STATE" add .gitignore "$SDIR/feature.json"
+git -C "$STATE" add .gitignore
 git -C "$STATE" commit -qm implementation
-jq '.updatedAt = "new"' "$SDIR/feature.json" > "$SDIR/feature.json.tmp"
-mv "$SDIR/feature.json.tmp" "$SDIR/feature.json"
 printf '# Progress\nready for delivery\n' > "$SDIR/PROGRESS.md"
 state_before="$(git -C "$STATE" rev-list --count HEAD)"
-ec=0; LOOP_SPEC_SQUASH_STATE_COMMITS=1 bash "$FINALIZER" run "$SDIR" --commit >/dev/null 2>&1 || ec=$?
-check "candidate policy: final-state mode exits 0" "0" "$ec"
-check "candidate policy: final-state mode creates one commit" "$((state_before + 1))" \
-  "$(git -C "$STATE" rev-list --count HEAD)"
-check "candidate policy: final-state commit carries feature state" "1" \
-  "$(git -C "$STATE" diff-tree --no-commit-id --name-only -r HEAD | grep -qx '.loop-spec/features/state/feature.json' && echo 1 || echo 0)"
-check "candidate policy: final-state checkout is clean" "0" \
-  "$(git -C "$STATE" status --porcelain | wc -l | tr -d ' ')"
+ec=0; bash "$FINALIZER" run "$SDIR" --commit >/dev/null 2>&1 || ec=$?
+check "candidate policy: dirty state files are not a finalize error" "0" "$ec"
+check "candidate policy: no commit carries feature state" "0" \
+  "$(git -C "$STATE" log --name-only --format= | grep -c '.loop-spec/features/state/')"
+check "candidate policy: state files stay out of the index" "" "$(git -C "$STATE" diff --cached --name-only)"
 
 # External artifact mode copies the audit trail before removing the generated
 # document directory from the exact delivery candidate.
@@ -429,7 +424,7 @@ check "single preflight wrong branch: no controller call" "0" "$(wc -l < "$LOG" 
 # A local preflight failure does not bind an ineligible SHA. Once the branch is fixed
 # and has a valid candidate, retry may deliver it.
 git -C "$PF" checkout -q -b feat/pf
-git -C "$PF" add ".loop-spec/features/pf/feature.json"
+printf 'fix\n' > "$PF/b"; git -C "$PF" add b
 git -C "$PF" commit -q -m candidate
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
@@ -458,6 +453,15 @@ check "single dirty: the refusal names the path" "1" "$(grep -c 'uncommitted cha
 check "single dirty: no controller call" "0" "$(wc -l < "$LOG" | tr -d ' ')"
 
 git -C "$DIRTY" checkout -q -- b
+# The plugin's own artifacts are committed by DELIVER itself, never refused as dirt.
+jq '.touched = "by iterate"' "$DDIR/feature.json" > "$DDIR/feature.json.tmp" && mv "$DDIR/feature.json.tmp" "$DDIR/feature.json"
+mkdir -p "$DIRTY/docs/loop-spec/features/dirty"; printf '# Iteration\n' > "$DIRTY/docs/loop-spec/features/dirty/ITERATION.md"
+: > "$LOG"; ec=0
+out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
+  LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DDIR")" || ec=$?
+check "plugin-owned dirt: DELIVER commits it and proceeds" "0" "$ec"
+check "plugin-owned dirt: the finalize commit is on the branch" "1" "$(git -C "$DIRTY" log --oneline | grep -c 'finalize delivery candidate')"
+check "plugin-owned dirt: ITERATION.md is tracked" "1" "$(git -C "$DIRTY" ls-files docs/loop-spec/features/dirty/ITERATION.md | wc -l | tr -d ' ')"
 : > "$LOG"; ec=0
 out="$(FAKE_DELIVERY_LOG="$LOG" FAKE_DELIVERY_BODY="$BODY" \
   LOOP_SPEC_PR_DELIVERY_BIN="$WORK/shims/pr-delivery" bash "$SCRIPT" run "$DDIR")" || ec=$?

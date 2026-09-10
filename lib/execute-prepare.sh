@@ -3,7 +3,7 @@
 #
 # Why: the sonnet eval's two-line fix spent 47 lead Bash calls in EXECUTE, and the first
 # dozen were this bookkeeping run one script at a time, each call a turn that re-read the
-# whole context (evals/findings-2026-09-06.md, finding 7). Every step here is
+# whole context (the 2026-09-06 live evals, finding 7). Every step here is
 # deterministic and already bundled; this is the one call that runs them in order.
 #
 # Usage:
@@ -14,11 +14,12 @@
 #    tasks[]           the dispatch list: collapsed batches, synthetic blockedBy edges added
 #    conflicts:{rows, stops:[{summary,reason,matched}], rulings:[summary]},
 #    width, rung:{...lib/execute-rung.sh...}, maxRetries, featureRoot, worktreeBase,
-#    greenfield, remediationRegistered, stop:bool}
+#    greenfield, remediationRegistered, remediationError:string|null, stop:bool}
 #
 # Side effects: pendingRemediationTasks[] are normalized to full shape, appended to the
-# sidecar, and cleared; dispatch/conflict-table.json, dispatch/tasks-collapsed.json, and
-# dispatch/prepare.json (this answer, read by lib/execute-step.sh) are written; each
+# sidecar, and acknowledged only after publication; dispatch/conflict-table.json,
+# dispatch/tasks-collapsed.json, and dispatch/prepare.json (read by execute-step.sh) are
+# written; each
 # conflict ruling is recorded with lib/decisions.sh.
 #
 # Exit: 0 ready to dispatch; 1 not ready (branch mismatch, unreadable sidecar, or a
@@ -36,7 +37,7 @@ while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="${2:-}"; shift
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || { echo "usage: execute-prepare.sh run --feature-dir DIR" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 
 slug="$(fget '.slug')"
 workspace="$(fget 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace else null end')"
@@ -52,7 +53,7 @@ if [[ "$workspace" == "null" ]]; then
   ok=true; [[ -z "$expected" || "$expected" == "$actual" ]] || ok=false
   branch_json="$(jq -cn --argjson ok "$ok" --arg e "$expected" --arg a "$actual" '{ok:$ok,expected:$e,actual:$a}')"
 else
-  branch_json="$(jq -c --arg slug "$slug" '[.workspace.repos[] | {name, path, expected:("feat/" + $slug)}]' "$fj" \
+  branch_json="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '[.workspace.repos[] | {name, path, expected:("feat/" + $slug)}]' -- --arg slug "$slug" \
     | python3 -c '
 import json, subprocess, sys
 root = sys.argv[1]; repos = json.load(sys.stdin); bad = []
@@ -69,44 +70,67 @@ sidecar_ok=true; sidecar_flags='[]'
 if lint_out="$(lib artifact-lint tasks "$sidecar" 2>&1)"; then :; else
   sidecar_ok=false; sidecar_flags="$(grep '^FLAG' <<<"$lint_out" | jq -R . | jq -cs .)"
 fi
-remediation_registered=0
+remediation_registered=0; remediation_error=null
 if [[ "$sidecar_ok" == true ]]; then
-  registered="$(python3 - "$fj" "$sidecar" <<'PY'
-import json, sys
-fj, sidecar = sys.argv[1], sys.argv[2]
-feature = json.load(open(fj)); tasks = json.load(open(sidecar))
-tasks = tasks.get("tasks") if isinstance(tasks, dict) and "tasks" in tasks else tasks
-ids = {t.get("id") for t in tasks}
-default_verify = ((feature.get("commands") or {}).get("test") or "")
-added = 0
-for raw in feature.get("pendingRemediationTasks") or []:
-    t = dict(raw)
-    t.setdefault("blockedBy", []); t.setdefault("files", [])
-    if not t.get("acceptanceCriteria"): t["acceptanceCriteria"] = [t.get("subject") or t.get("id") or "remediation"]
-    if not t.get("verifyCommand"): t["verifyCommand"] = default_verify
-    if not t["verifyCommand"]:
-        print("execute-prepare: dropped remediation task %s: no verify command" % t.get("id"), file=sys.stderr); continue
-    if t.get("id") in ids: continue
-    t.setdefault("retries", 0); t.pop("status", None)
-    tasks.append(t); ids.add(t.get("id")); added += 1
-if added:
-    json.dump(tasks, open(sidecar, "w"), indent=2)
-print(added)
-PY
-)" || registered=0
-  remediation_registered="${registered:-0}"
-  if (( remediation_registered > 0 )) || [[ "$(fget '(.pendingRemediationTasks // []) | length')" != "0" ]]; then
-    lib feature-write set "$feature_dir" pendingRemediationTasks '[]' >/dev/null
+  if intake="$(python3 "$SCRIPT_DIR/execute_remediation.py" "$feature_dir" "$sidecar")"; then
+    remediation_registered="$(jq -r '.registered' <<<"$intake")"
+  else
+    remediation_error="$(jq -Rsc 'try (fromjson | .error // "remediation intake failed; retry preparation") catch "remediation intake failed; retry preparation"' <<<"$intake")"
   fi
 fi
 
 done_json='[]'; remaining_json='[]'; dispatch='[]'; conflicts='{"rows":0,"stops":[],"rulings":[]}'; width=0; stop=false
-if [[ "$sidecar_ok" == true ]]; then
+[[ "$remediation_error" == null ]] || stop=true
+if [[ "$sidecar_ok" == true && "$stop" == false ]]; then
   done_json="$(lib task-progress done "$sidecar" | jq -R . | jq -cs .)"
   remaining_json="$(lib task-progress remaining "$sidecar" | jq -R . | jq -cs .)"
   mkdir -p "$feature_dir/dispatch"
   lib plan-conflicts table "$sidecar" > "$feature_dir/dispatch/conflict-table.json"
   lib task-batch collapse "$sidecar" > "$feature_dir/dispatch/tasks-collapsed.json"
+  # Tool versions, probed once here and inlined into every brief (lib/dispatch-files.sh),
+  # so implementers stop re-running `tofu version` and friends per seat. Programs are the
+  # first word of each verify/prepare/test pipeline segment; shell builtins and coreutils
+  # are skipped. Each probe is bounded so an interactive tool cannot hang preparation.
+  python3 - "$feature_dir/dispatch/tasks-collapsed.json" <(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays) > "$feature_dir/dispatch/environment.txt" <<'PYENV' || true
+import json, os, re, shlex, shutil, subprocess, sys
+tasks = json.load(open(sys.argv[1])); feature = json.load(open(sys.argv[2]))
+cmds = [t.get("verifyCommand") or "" for t in tasks if isinstance(t, dict)]
+cmds += [v for v in (feature.get("commands") or {}).values() if isinstance(v, str)]
+skip = {"true", "false", "test", "[", "[[", "cd", "echo", "printf", "cat", "head", "tail", "sed", "awk", "wc",
+        "sort", "uniq", "ls", "stat", "cut", "tr", "find", "xargs", "cmp", "diff", "grep", "egrep", "fgrep", "env", "!"}
+names = []
+for cmd in cmds:
+    # Split outside quotes: a `|` inside a grep pattern is one argument. The first cut of
+    # this probe ran /usr/bin/apply --version because "apply" sat inside a quoted regex.
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars="|&;()"); lex.whitespace_split = True
+    try:
+        toks = list(lex)
+    except ValueError:
+        continue
+    at_start = True
+    for tok in toks:
+        if tok in ("|", "||", "&&", ";", "(", ")"):
+            at_start = True; continue
+        if at_start:
+            if tok in ("!", "env") or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tok):
+                continue
+            at_start = False
+            if re.match(r"^[A-Za-z0-9_.+-]+$", tok) and tok not in skip and tok not in names:
+                names.append(tok)
+for name in names:
+    if not shutil.which(name):
+        print("%s: not on PATH" % name); continue
+    line = ""
+    for flag in ("--version", "version"):
+        try:
+            out = subprocess.run([name, flag], capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        text = (out.stdout or out.stderr or "").strip().splitlines()
+        if out.returncode == 0 and text:
+            line = text[0].strip(); break
+    print("%s: %s" % (name, line or "present (no version output)"))
+PYENV
   excludes="$(fget '(.fileConflictExcludeGlobs // []) | join("\n")')"
   [[ -f "$root/.loop-spec/file-conflict-exclude.txt" ]] && excludes="$excludes
 $(cat "$root/.loop-spec/file-conflict-exclude.txt")"
@@ -145,8 +169,11 @@ for row in rows:
         stops.append({"summary": summary, "reason": fields.get("reason"), "matched": fields.get("matched")})
     else:
         rulings.append(summary)
-        subprocess.run(["bash", libdir + "/decisions.sh", "add", fd, "execute", summary,
-                        "serialized by a synthetic blockedBy edge", "reversible file overlap; execute-stop.sh ruled continue", "ruling"],
+        if "a" in row:
+            answer, why = "serialized by a synthetic blockedBy edge", "reversible file overlap; execute-stop.sh ruled continue"
+        else:
+            answer, why = "dispatched as planned; the interface is prose, not a contract another task produces", "interface row without a producer; execute-stop.sh ruled continue"
+        subprocess.run(["bash", libdir + "/decisions.sh", "add", fd, "execute", summary, answer, why, "ruling"],
                        capture_output=True, text=True)
 print(json.dumps({"rows": len(rows), "stops": stops, "rulings": rulings}))
 PY
@@ -181,10 +208,10 @@ mkdir -p "$feature_dir/dispatch"
 answer="$(jq -cn --argjson b "$branch_json" --arg sidecar "$sidecar" --argjson sok "$sidecar_ok" --argjson sflags "$sidecar_flags" \
   --argjson done "$done_json" --argjson remaining "$remaining_json" --argjson tasks "$dispatch" \
   --argjson conflicts "$conflicts" --argjson width "${width:-0}" --argjson rung "$rung" --argjson retries "$max_retries" \
-  --arg root "$root" --arg wtb "$worktree_base" --argjson gf "$greenfield" --argjson reg "$remediation_registered" --argjson stop "$stop" \
+  --arg root "$root" --arg wtb "$worktree_base" --argjson gf "$greenfield" --argjson reg "$remediation_registered" --argjson error "$remediation_error" --argjson stop "$stop" \
   '{branch:$b, sidecar:$sidecar, sidecarOk:$sok, sidecarFlags:$sflags, done:$done, remaining:$remaining, tasks:$tasks,
     conflicts:$conflicts, width:$width, rung:$rung, maxRetries:$retries, featureRoot:$root,
-    worktreeBase:(if $wtb == "" then null else $wtb end), greenfield:$gf, remediationRegistered:$reg, stop:$stop}')"
+    worktreeBase:(if $wtb == "" then null else $wtb end), greenfield:$gf, remediationRegistered:$reg, remediationError:$error, stop:$stop}')"
 # lib/execute-step.sh reads the rung and roots from here per task instead of re-measuring.
 printf '%s\n' "$answer" > "$feature_dir/dispatch/prepare.json"
 printf '%s\n' "$answer"

@@ -1,88 +1,33 @@
-# SPEC interview prompts — calibration anchors, question banks, gate prompts
+# Intent questions for the SPEC author
 
-Reference for the SPEC orchestrator (`skills/spec/SKILL.md`). Loaded when running the
-Step 2 interview or the autonomous self-answered pass; the skill body holds the scoring
-model, the perspectives table, and the gate — this file holds the worked examples.
+Investigate the repository before presenting one consolidated list. Ask only about
+choices that change the result the user sees and cannot be settled from evidence.
 
-## Calibration anchors
+| Evidence leaves this open | Concrete question | Decision record must explain |
+|---|---|---|
+| Export is slow; no target is given | Which input size and latency must the export support? | The chosen bound and how it will be measured |
+| Empty input has inconsistent handling | Should empty input return an empty result or an error? | The observable behavior and compatibility impact |
+| Two existing storage conventions apply | Must data survive a restart? | The durability requirement; implementation details stay with the author |
+| Scope crosses an adjacent command | Should that command change too? | The explicit boundary and why |
 
-Anchor each dimension against these examples (at the dimension minimum vs near-done at ~0.85):
+For greenfield work: Which input grows in production, and what bound must the first
+release support? Investigate existing requirements before asking.
 
-| Dimension | At the minimum | At ~0.85 |
-|-----------|----------------|----------|
-| Goal Clarity (min 0.60) | "Make the export faster" (direction only, no measurable target) | "Cut p95 export latency from 4s to under 1.5s for a 10k-row sheet" |
-| Boundary Clarity (min 0.50) | "Mostly the export path" (fuzzy edges) | "Touch only `export/*`; CSV and PDF paths explicitly out of scope" |
-| Constraint Clarity (min 0.40) | "Should work on the current stack" | "Must stay on Python 3.12, no new deps, within the 2GB worker cap" |
-| Acceptance Clarity (min 0.50) | "It should feel snappy" (subjective) | "`pytest tests/export_test.py` passes AND latency assertion <1.5s holds in CI" |
+Each question includes a recommended answer and its consequence. Do not manufacture
+rounds, personas, scores, or a transcript. Record answers in the decisions ledger.
+When the list is empty, present the written Goal and Boundary for approval; autonomous
+runs use the recorded recommendation contract in `skills/shared/autonomous-mode.md`.
 
-## Example questions per perspective
+A concrete approval call after the draft is written:
 
-**Researcher (round 1):**
-- "What exists in the codebase today related to this feature?"
-- "What is the delta between today and the target state?"
-- "What triggers this work - what is broken or missing?"
-
-**Foundations (round 1 replacement when `feature.json.greenfield == true`):**
-- "What language/runtime and framework? What is the deployment target (CLI, web service, desktop, library)?"
-- "What project structure and tooling — test framework, linter, formatter, build tool?"
-- "What is the smallest end-to-end slice that proves the app works (the walking skeleton)?"
-- "What does the app store, and what does it expose? Name the core entities, the API surface (endpoints or commands), the interface the user meets, and any caching or background work."
-- "Which input grows in production (users, rows, files, events, concurrent callers), and what bound must the MVP hold against it?"
-
-**Simplifier (round 2):**
-- "What is the simplest version that solves the core problem?"
-- "If you had to cut 50%, what is the irreducible core?"
-- "What would make this feature a success even without the nice-to-haves?"
-
-**Boundary Keeper (round 3):**
-- "What explicitly will NOT be done in this phase?"
-- "What adjacent problems is it tempting to solve but should not be?"
-- "What does 'done' look like - what is the final deliverable?"
-
-**Failure Analyst (round 4):**
-- "What is the worst thing that could go wrong if we get the requirements wrong?"
-- "What does a broken version of this look like?"
-- "What would cause a verifier to reject the output?"
-
-**Seed Closer (rounds 5-6):**
-- "We have [dimension] at [score] - what would make it completely clear?"
-- "The remaining ambiguity is in [area] - can we make a decision now?"
-- "Is there anything you would regret not specifying before planning starts?"
-
-## Gate prompts (AskUserQuestion)
-
-Call shapes per `skills/shared/dispatch.md`; `multiSelect: false` on both.
-Routing after the answer lives in `skills/spec/SKILL.md`. Emit these as written —
-never a prose shorthand or a wait.
-
-**On gate pass:**
-
-```
+```javascript
 AskUserQuestion({
   questions: [{
-    question: "Ambiguity is [score] after round [N] - requirements are clear enough to write SPEC.md. Proceed?",
+    question: "Do the Goal and Boundary in SPEC.md describe the requested result?",
     header: "Spec gate",
     options: [
-      { label: "Yes - write SPEC.md", description: "Requirements are clear; proceed to the draft" },
-      { label: "One more round", description: "Ask another round of clarifying questions first" },
-      { label: "Done talking - write it", description: "Stop the interview and write with what we have" }
-    ],
-    multiSelect: false
-  }]
-})
-```
-
-**On round 6 reached with the gate still failing:**
-
-```
-AskUserQuestion({
-  questions: [{
-    question: "After 6 rounds, ambiguity is [score]. Dimensions still below minimum: [list]. What would you like to do?",
-    header: "Max rounds",
-    options: [
-      { label: "Write SPEC.md anyway", description: "Flag unresolved dimensions as assumptions; DISCUSS resolves them" },
-      { label: "Keep talking", description: "Continue the interview with no round limit from here" },
-      { label: "Abandon", description: "Exit without writing a spec" }
+      { label: "Approve", description: "Freeze these sections and proceed with implementation planning." },
+      { label: "Revise", description: "Record the requested correction before approval." }
     ],
     multiSelect: false
   }]

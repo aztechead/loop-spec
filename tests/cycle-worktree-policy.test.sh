@@ -2,14 +2,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-# The feature init procedure lives in lib/cycle-driver.sh (init).
-python3 - "$ROOT/lib/cycle-driver.sh" "$ROOT/skills/shared/execute-subagent.md" <<'PY'
+# The feature init procedure lives in lib/graph/driver.py (init).
+python3 - "$ROOT/lib/graph/driver.py" "$ROOT/skills/shared/execute-subagent.md" <<'PY'
 from pathlib import Path
 import sys
 
 cycle = Path(sys.argv[1]).read_text(encoding="utf-8")
-root = cycle[cycle.index("# Execution root: Claude enters a worktree"):cycle.index("local cmd_test")]
-enabled = root[root.index('"$harness" == "claude" && "$worktrees" == "1"'):root.index("elif")]
+root = cycle[cycle.index("# Execution root: Claude enters a worktree"):cycle.index("finalize = lib_run(")]
+enabled = root[root.index('harness == "claude" and worktrees == "1"'):root.index("elif")]
 disabled = root[root.index("elif"):]
 
 # EXECUTE's one-shot subagent rung is where LOOP_SPEC_WORKTREES=0 actually lands
@@ -26,7 +26,7 @@ prompt = execute[execute.index("Step 1 - The task worktree already exists"):exec
 checks = [
     ("adopted PR attaches instead of minting feat/{slug}",
      "attach-feature-worktree" in cycle and "adopting PR" in cycle),
-    ("disabled branch performs an in-place checkout", 'checkout -q -b "$feature_branch" "$base_sha"' in disabled),
+    ("disabled branch performs an in-place checkout", '"checkout", "-q", "-b", feature_branch, base_sha' in disabled),
     ("disabled branch never invokes the worktree helper", "create-feature-worktree" not in disabled),
     ("enabled branch invokes the worktree helper", "create-feature-worktree" in enabled),
     ("the rung's worktreesEnabled is read before any prompt is composed",

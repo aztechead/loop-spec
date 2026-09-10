@@ -46,6 +46,7 @@ AGENTS_DIR = PACKAGE_ROOT / "agents"
 # them. Each prints a hook JSON payload whose additionalContext is the text to
 # put in front of the model.
 SESSION_START_HOOKS = (
+    "hooks/team/skill-paths-inject.sh",
     "hooks/team/discipline-inject.sh",
     "hooks/team/grill-inject.sh",
     "hooks/team/simplicity-inject.sh",
@@ -154,6 +155,7 @@ class LoopSpecBridge:
         env_vars = dict(self.env_vars)
         skill_dir = state.get(SKILL_DIR_STATE_KEY) if state is not None else None
         if isinstance(skill_dir, str) and skill_dir:
+            env_vars["LOOP_SPEC_SKILL_DIR"] = skill_dir
             env_vars["CLAUDE_SKILL_DIR"] = skill_dir
         return env_vars
 

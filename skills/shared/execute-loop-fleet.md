@@ -2,7 +2,7 @@
 
 The loop-fleet rung runs EXECUTE's task DAG as a fleet of bounded headless loops
 via the bundled loop-runner skill (`skills/loop-runner/`), instead of an agent
-team. It is the only EXECUTE path with a mechanical spec-adherence guarantee:
+team. It checks spec adherence through protected requirements and task verification:
 every iteration of every worker re-runs the task's `verifyCommand`, and the
 feature's SPEC.md/PLAN.md are integrity-protected (hash-locked) so no worker can
 edit the requirements to match its work. It requires no agent-teams support and
@@ -10,7 +10,7 @@ no `Workflow` tool, but it does require the **agent CLI** on PATH, git, and a
 persistent harness runtime that can keep one synchronous long-running tool call alive.
 The agent CLI is the
 running harness's own headless binary (`claude`, `opencode`, `adk`, or `codex`), resolved
-by `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli`; under opencode every
+by `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" cli`; under opencode every
 `supervisor.py` / `loop.py` invocation below additionally carries
 `--agent-cli opencode --claude-bin opencode`
 (see `skills/shared/opencode-harness.md`), under ADK
@@ -19,7 +19,7 @@ by `bash "${CLAUDE_SKILL_DIR}/../../lib/harness.sh" cli`; under opencode every
 `--agent-cli codex --claude-bin codex`
 (see `skills/shared/codex-harness.md`).
 
-## When this rung is selected (see execute/SKILL.md Step 3b)
+## When this rung is selected (see execute/SKILL.md Step 3)
 
 1. `LOOP_SPEC_EXECUTE_LOOPS=1` and the agent CLI present — explicit opt-in, any W.
 2. Agent teams unavailable (`runtime.json.teamsAvailable == false`), the agent
@@ -52,7 +52,7 @@ not an LLM-authored judgment.
 ## Procedure
 
 All paths below are run from the feature worktree root (`feat/{slug}` checked
-out). `LOOP_DIR="${CLAUDE_SKILL_DIR}/../loop-runner/scripts"` from a phase skill,
+out). `LOOP_DIR="${LOOP_SPEC_SKILL_DIR}/../loop-runner/scripts"` from a phase skill,
 or `skills/loop-runner/scripts` from the repo.
 
 ### 1. Convert tasks[] to a loop plan
@@ -62,7 +62,7 @@ edges already unioned) and convert:
 
 ```bash
 fdir=".loop-spec/features/{slug}"
-printf '%s' "$tasks_json" | bash "${CLAUDE_SKILL_DIR}/../../lib/plan-to-loop.sh" \
+printf '%s' "$tasks_json" | bash "${LOOP_SPEC_SKILL_DIR}/../../lib/plan-to-loop.sh" \
   --slug "{slug}" \
   --spec "docs/loop-spec/features/{slug}/SPEC.md" \
   --plan "docs/loop-spec/features/{slug}/PLAN.md" \
@@ -91,7 +91,7 @@ parallel=$(( W < maxParallelImplementers ? W : maxParallelImplementers ))
 worker_model="{feature.models.implementer}"
 supervisor_args=(
   --plan "$fdir/loop-plan.json"
-  --prepare-command "$(jq -r '.commands.prepare // ""' "$fdir/feature.json")"
+  --prepare-command "$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-read.sh" "$fdir" commands.prepare -r --default '""')"
   --parallel "$parallel"
   --retries "2"
 )
@@ -136,7 +136,7 @@ subprocess by the task timeout plus shutdown grace, and writes an initial
 `.loop/fleet-result.json` before dispatch. If the call returns without a terminal fleet
 result, escalate with `loop-fleet supervisor made no progress` and do not advance.
 
-**Dispatch telemetry (`skills/shared/dispatch.md`):** before launching the supervisor, emit one `dispatch` event per compiled task — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "execute" --data '{"role":"implementer","model":"<feature.models.implementer>","rung":"loop-fleet"}' || true`. Worker iterations are not separate dispatches.
+**Dispatch telemetry (`skills/shared/dispatch.md`):** before launching the supervisor, emit one `dispatch` event per compiled task — `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit "$fdir" dispatch --phase "execute" --data '{"role":"implementer","model":"<feature.models.implementer>","rung":"loop-fleet"}' || true`. Worker iterations are not separate dispatches.
 
 ### 4. Consume the result (never scrape stdout)
 
@@ -187,16 +187,16 @@ EXECUTE and returns control to the user; clean proceeds to Phase exit.
 
 ### 5. Diagnostics on failure
 
-Read `halt_reason`, not vibes:
+Read `halt_reason` to select the recovery action:
 
 | halt_reason | Meaning | Action |
 |---|---|---|
 | `no_progress` | task under-specified or too big | split it in PLAN.md, re-enter |
 | `verifier_thrash` | pass→fail flapping | inspect `.loop/<id>/iter-*.raw.json` |
 | `max_iterations` / `timeout` | too few rounds or thrashing | read iteration logs, raise caps, re-enter (resumes) |
-| `verifier_integrity` | worker touched the exam | inspect diff with suspicion |
+| `verifier_integrity` | worker changed protected verification files | inspect the diff before resuming |
 | `budget_exhausted` | task reached its `--max-budget-usd` cap | work so far is committed; raise the cap and re-enter (resumes) |
-| `agent_error` | claude CLI failure | check `.loop/<id>.supervisor.log` |
+| `agent_error` | agent CLI failure | check `.loop/<id>.supervisor.log` |
 | `environment_error` | target environment preparation failed | fix the declared prepare command |
 | `supervisor_error` / `supervisor_timeout` | fleet infrastructure failed or exceeded its bound | inspect the flushed fleet output and task supervisor log |
 | `integration_error` | exact-candidate rebase/verification failed | inspect helper detail; add a missing dependency edge for conflicts |

@@ -74,13 +74,13 @@ case "${1:-}" in
       exit 1
     }
     fj="$feature_dir/feature.json"
-    jq -e . "$fj" >/dev/null 2>&1 || {
+    bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays >/dev/null 2>&1 || {
       echo "greenfield-bootstrap: feature.json is not valid JSON: $fj" >&2
       exit 1
     }
-    greenfield="$(jq -r '.greenfield // false' "$fj")"
+    greenfield="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.greenfield // false')"
     [[ "$greenfield" == "true" ]] || { echo "ok: not greenfield"; exit 0; }
-    test_cmd="$(jq -r '.commands.test // ""' "$fj")"
+    test_cmd="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.commands.test // ""')"
     if [[ -z "$test_cmd" ]]; then
       echo "greenfield backfill MISSING: commands.test is empty past task-001 — this is a bug, not a degraded mode. Re-run detection (lib/detect-test-cmd.sh) and persist via feature-write.sh before dispatching further tasks." >&2
       exit 3

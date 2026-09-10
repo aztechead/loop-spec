@@ -174,6 +174,162 @@ def check_body_args(node, ptr):
                      "unknown placeholder %s (legal: %s)" % (found, ", ".join(sorted(BODY_ARG_PLACEHOLDERS))))
 
 
+PHASE_BODY_RE = re.compile(r"^skills/[^/]+/SKILL\.md$")
+PHASE_PLACEHOLDERS = {"{docs}", "{featureDir}", "{root}", "{slug}", "{spec}", "{tasks}"}
+PHASE_PLACEHOLDER_RE = re.compile(r"\{[A-Za-z][A-Za-z0-9]*(?::[A-Za-z0-9_.]+)?\}")
+PHASE_INGRESS_KEYS = {"fields", "required", "optional", "skeletons"}
+PHASE_EGRESS_KEYS = {"misplaced", "required", "gates", "oracle", "writes", "artifacts", "artifactsIfPresent",
+                     "artifactsDefault", "onOk", "commit", "checkpoint", "set", "close"}
+
+
+def check_phase_path(text, ptr):
+    """A path or argument lib/phase-entry.sh and lib/phase-exit.sh resolve. The
+    placeholder set is closed there too; an unknown one would reach the gate
+    verbatim as a path that never exists, so it is refused here."""
+    if not isinstance(text, str) or not text:
+        flag(ptr, "must be a non-empty string")
+        return
+    for found in PHASE_PLACEHOLDER_RE.findall(text):
+        if found in PHASE_PLACEHOLDERS or found.startswith("{f:"):
+            continue
+        flag(ptr, "unknown placeholder %s (legal: %s, {f:<dotted.key>})"
+             % (found, ", ".join(sorted(PHASE_PLACEHOLDERS))))
+
+
+def check_phase_gate(gate, ptr):
+    """One entry of an egress gates/onOk list: the same shape as a gate node
+    (a .sh body that exists, an argument vector), plus a label for its findings."""
+    if not isinstance(gate, dict):
+        flag(ptr, "gate must be a {label, body, args?, when?} object")
+        return
+    extras = set(gate.keys()) - {"label", "body", "args", "when"}
+    if extras:
+        flag(ptr, "gate additionalProperties not allowed: %s" % sorted(extras))
+    if not isinstance(gate.get("label"), str) or not gate.get("label"):
+        flag(ptr + "/label", "gate label required")
+    body = gate.get("body")
+    if not isinstance(body, str) or not body.endswith(".sh"):
+        flag(ptr + "/body", "gate body must be a repo-relative .sh script")
+    elif not os.path.isfile(repo_path(body, repo_root)):
+        flag(ptr + "/body", "gate body path does not exist in the tree: %s" % body)
+    args = gate.get("args")
+    if args is not None:
+        if not isinstance(args, list):
+            flag(ptr + "/args", "args must be an array of strings")
+        else:
+            for j, arg in enumerate(args):
+                check_phase_path(arg, "%s/args/%d" % (ptr, j))
+    when = gate.get("when")
+    if when is not None:
+        if not isinstance(when, dict) or set(when.keys()) != {"field", "equals"} \
+                or not isinstance(when.get("field"), str) or not isinstance(when.get("equals"), str):
+            flag(ptr + "/when", "when must be {field: <dotted.key>, equals: <string>}")
+
+
+def check_phase_contract(node, ptr):
+    """`ingress` and `egress` are the phase's door and exit as data: only a phase
+    agent node (body skills/<id>/SKILL.md) may declare them, and every path in
+    them resolves through the closed placeholder set. Published graphs must give
+    every phase node an ingress; a node without an egress has no exit gate."""
+    ingress = node.get("ingress")
+    egress = node.get("egress")
+    is_phase = node.get("kind") == "agent" and isinstance(node.get("body"), str) \
+        and PHASE_BODY_RE.match(node.get("body")) is not None
+    if not is_phase:
+        for field in ("ingress", "egress"):
+            if node.get(field) is not None:
+                flag(ptr + "/" + field, "only a phase agent node (body skills/<id>/SKILL.md) may declare %s" % field)
+        return
+    if ingress is None:
+        if strict:
+            flag(ptr + "/ingress", "published phase node %r declares no ingress (lib/phase-entry.sh has nothing to open)" % node.get("id"))
+    elif not isinstance(ingress, dict):
+        flag(ptr + "/ingress", "ingress must be an object")
+    else:
+        extras = set(ingress.keys()) - PHASE_INGRESS_KEYS
+        if extras:
+            flag(ptr + "/ingress", "ingress additionalProperties not allowed: %s" % sorted(extras))
+        fields = ingress.get("fields")
+        if not isinstance(fields, list) or any(not isinstance(f, str) or not f for f in fields):
+            flag(ptr + "/ingress/fields", "fields must be an array of feature.json keys")
+        for j, sk in enumerate(ingress.get("skeletons") or []):
+            sptr = "%s/ingress/skeletons/%d" % (ptr, j)
+            if not isinstance(sk, dict) or set(sk.keys()) != {"path", "template"}:
+                flag(sptr, "skeleton entry must be {path, template}")
+                continue
+            if not os.path.isfile(os.path.join(repo_root, str(sk.get("template") or ""))):
+                flag(sptr + "/template", "skeleton template not found: %r" % sk.get("template"))
+        for j, req in enumerate(ingress.get("required") or []):
+            rptr = "%s/ingress/required/%d" % (ptr, j)
+            if not isinstance(req, dict) or set(req.keys()) != {"writer", "path"}:
+                flag(rptr, "required entry must be {writer, path}")
+                continue
+            if not isinstance(req.get("writer"), str) or not req.get("writer"):
+                flag(rptr + "/writer", "writer names the phase that should have written the file")
+            check_phase_path(req.get("path"), rptr + "/path")
+        for j, opt in enumerate(ingress.get("optional") or []):
+            check_phase_path(opt, "%s/ingress/optional/%d" % (ptr, j))
+    if egress is None:
+        return
+    if not isinstance(egress, dict):
+        flag(ptr + "/egress", "egress must be an object")
+        return
+    eptr = ptr + "/egress"
+    extras = set(egress.keys()) - PHASE_EGRESS_KEYS
+    if extras:
+        flag(eptr, "egress additionalProperties not allowed: %s" % sorted(extras))
+    writes = egress.get("writes")
+    if not isinstance(writes, list) or any(not isinstance(w, str) or not w for w in writes):
+        flag(eptr + "/writes", "writes must be an array of feature.json path prefixes (the egress guard's allow-list)")
+    if "misplaced" in egress and (not isinstance(egress["misplaced"], str) or "/" in egress["misplaced"]):
+        flag(eptr + "/misplaced", "misplaced is an artifact file name under {docs}, not a path")
+    for j, req in enumerate(egress.get("required") or []):
+        rptr = "%s/required/%d" % (eptr, j)
+        if not isinstance(req, dict) or set(req.keys()) != {"label", "path"}:
+            flag(rptr, "required entry must be {label, path}")
+            continue
+        check_phase_path(req.get("path"), rptr + "/path")
+    for field in ("gates", "onOk"):
+        gates = egress.get(field)
+        if gates is None:
+            continue
+        if not isinstance(gates, list):
+            flag("%s/%s" % (eptr, field), "%s must be an array of gates" % field)
+            continue
+        for j, gate in enumerate(gates):
+            check_phase_gate(gate, "%s/%s/%d" % (eptr, field, j))
+    if "oracle" in egress and not isinstance(egress["oracle"], bool):
+        flag(eptr + "/oracle", "oracle must be a boolean")
+    for field in ("artifacts", "artifactsIfPresent", "artifactsDefault"):
+        table = egress.get(field)
+        if table is None:
+            continue
+        if not isinstance(table, dict):
+            flag("%s/%s" % (eptr, field), "%s must be an object of artifacts.<key> to value" % field)
+            continue
+        for key, value in table.items():
+            if field == "artifactsDefault":
+                if not isinstance(value, str):
+                    flag("%s/%s/%s" % (eptr, field, key), "default must be a string")
+            else:
+                check_phase_path(value, "%s/%s/%s" % (eptr, field, key))
+    commit = egress.get("commit")
+    if commit is not None:
+        if not isinstance(commit, dict) or set(commit.keys()) != {"message", "paths"} \
+                or not isinstance(commit.get("paths"), list):
+            flag(eptr + "/commit", "commit must be {message, paths[]}")
+        else:
+            check_phase_path(commit.get("message"), eptr + "/commit/message")
+            for j, path in enumerate(commit["paths"]):
+                check_phase_path(path, "%s/commit/paths/%d" % (eptr, j))
+    if "checkpoint" in egress and (not isinstance(egress["checkpoint"], str) or not egress["checkpoint"]):
+        flag(eptr + "/checkpoint", "checkpoint must be a tag name")
+    if "set" in egress and not isinstance(egress["set"], dict):
+        flag(eptr + "/set", "set must be an object of feature.json key to JSON value")
+    if "close" in egress and egress["close"] not in ("always", "terminal"):
+        flag(eptr + "/close", "close must be always|terminal")
+
+
 node_ids = []
 node_by_id = {}
 for i, node in enumerate(nodes):
@@ -216,6 +372,7 @@ for i, node in enumerate(nodes):
         flag(ptr + "/optionalReads",
              "keys declared in both reads and optionalReads: %s" % sorted(both))
     check_body_args(node, ptr)
+    check_phase_contract(node, ptr)
     effort = node.get("effort")
     if effort not in effort_vals:
         flag(ptr + "/effort", "effort must be system1|system2")

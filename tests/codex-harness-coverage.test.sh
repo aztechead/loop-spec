@@ -50,6 +50,11 @@ checks=(
   "lib/harness.sh	codex"
   "lib/harness.sh	claude|opencode|adk|codex"
   "lib/execute-rung.sh	harness.sh"
+  # -- the session layer is one probe question, and every contract says how it answers there
+  "lib/harness.sh	session-layer"
+  "lib/execute-rung.sh	session-layer"
+  "skills/shared/codex-harness.md	session-layer"
+  "skills/shared/execute-rungs.md	session-layer"
   # -- capability gates are non-claude-gated
   "lib/teams-capability.sh	!= \"claude\""
   "lib/workflow-availability.sh	!= \"claude\""
@@ -115,7 +120,7 @@ for gate in "teams-capability.sh	none" "workflow-availability.sh	false"; do
 done
 
 CX_DOC="skills/shared/codex-harness.md"
-if grep -qF 'export CLAUDE_SKILL_DIR=' "$CX_DOC"; then
+if grep -qF 'export LOOP_SPEC_SKILL_DIR=' "$CX_DOC"; then
   PASS=$((PASS+1)); echo "PASS: $CX_DOC re-exports the active source skill directory"
 else
   FAIL=$((FAIL+1)); echo "FAIL: $CX_DOC lost the per-skill source-directory re-export"
@@ -123,13 +128,75 @@ fi
 if grep -qF 'Before EVERY bundled script' lib/codex-install.sh; then
   PASS=$((PASS+1)); echo "PASS: generated adapters re-export before every bundled command"
 else
-  FAIL=$((FAIL+1)); echo "FAIL: generated adapters do not scope CLAUDE_SKILL_DIR per command"
+  FAIL=$((FAIL+1)); echo "FAIL: generated adapters do not scope LOOP_SPEC_SKILL_DIR per command"
 fi
 
 if jq -e '.hooks and .skills' .codex-plugin/plugin.json >/dev/null; then
   PASS=$((PASS+1)); echo "PASS: .codex-plugin/plugin.json names skills and hooks"
 else
   FAIL=$((FAIL+1)); echo "FAIL: .codex-plugin/plugin.json missing skills or hooks"
+fi
+
+# Run the registered hooks from outside the payload cwd, as a plugin host can.
+if python3 - <<'PY'
+import json, os, pathlib, re, subprocess, tempfile
+root = pathlib.Path.cwd()
+config = json.loads((root / 'hooks/codex-hooks.json').read_text())['hooks']
+env = dict(os.environ, PLUGIN_ROOT=str(root))
+env.pop('CLAUDE_PROJECT_DIR', None)
+with tempfile.TemporaryDirectory() as tmp:
+    project = pathlib.Path(tmp) / 'project'
+    project.mkdir()
+    payload = dict(cwd=str(project), prompt='$loop-spec-cycle autonomous fix x')
+    def run(event, active=False):
+        results = []
+        for group in config.get(event, []):
+            if event == 'PreToolUse' and not re.fullmatch(group.get('matcher', '.*'), payload['tool_name']):
+                continue
+            for hook in group['hooks']:
+                results.append(subprocess.run(
+                    hook['command'], shell=True, env=env, cwd=tmp,
+                    input=json.dumps(dict(payload, stop_hook_active=active)),
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    universal_newlines=True))
+        return results
+    assert all(p.returncode == 0 for p in run('UserPromptSubmit'))
+    stamp = json.loads((project / '.loop-spec/invocation-stamp.json').read_text())
+    assert stamp['skill'] == 'cycle' and stamp['args'] == 'autonomous fix x'
+    assert any(p.returncode == 2 and 'never began' in p.stderr for p in run('Stop'))
+    assert all(p.returncode == 0 for p in run('Stop', active=True))
+    (project / '.loop-spec/invocation-stamp.json').unlink()
+    assert all(p.returncode == 0 for p in run('Stop'))
+    probe = pathlib.Path(tmp) / 'probe.sh'
+    probe.write_text('echo "unaccounted ageSeconds=0 autonomous=true"\n')
+    env['LOOP_SPEC_CYCLE_RESULT_BIN'] = str(probe)
+    assert any(p.returncode == 2 and 'terminal result' in p.stderr for p in run('Stop'))
+    for tool, args, expected in [
+        ('Bash', {'command': 'codex exec nested'}, 2),
+        ('apply_patch', {'command': '*** Begin Patch\n*** Add File: safe.txt\n+x\n*** Update File: .loop-spec/last-result.json\n@@\n-x\n+y\n*** End Patch'}, 2),
+        ('apply_patch', {'command': '*** Begin Patch\n*** Update File: safe.txt\n*** Move to: .loop-spec/result.json\n@@\n-x\n+y\n*** End Patch'}, 2),
+        ('apply_patch', {'command': '*** Begin Patch\n*** Add File: app.py\n+pass\n*** End Patch'}, 0),
+    ]:
+        payload.update(tool_name=tool, tool_input=args)
+        results = run('PreToolUse')
+        assert results, tool
+        assert any(p.returncode == expected for p in results) if expected else all(p.returncode == 0 for p in results)
+    subprocess.run(['git', 'init', '-q', str(project)], check=True)
+    feature = project / '.loop-spec/features/guarded'
+    feature.mkdir(parents=True)
+    (feature / 'feature.json').write_text('{"slug":"guarded","schemaVersion":7}')
+    docs = project / 'docs/loop-spec/features/guarded'
+    docs.mkdir(parents=True)
+    (docs / 'SPEC.md').write_text('---\nunresolved_questions: []\nfootprint:\n  - app.py\n---\n# guarded\n')
+    for artifact in ('SPEC.md', 'VERIFICATION.md'):
+        payload.update(tool_name='apply_patch', tool_input={'command':
+            '*** Begin Patch\n*** Update File: docs/loop-spec/features/guarded/' + artifact + '\n@@\n-x\n+y\n*** End Patch'})
+        assert any(p.returncode == 2 and 'driver writes' in p.stderr for p in run('PreToolUse')), artifact
+PY
+then
+  PASS=$((PASS+1)); echo "PASS: registered Codex prompt and Stop hooks enforce driver state"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: registered Codex prompt and Stop hooks lost enforcement"
 fi
 
 finish_fixed_string_coverage

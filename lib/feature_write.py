@@ -53,6 +53,8 @@ def main(args):
         keys = dot_path.split(".")
         if keys[0] in ("currentGate", "gateHistory") and os.environ.get("LOOP_SPEC_GATE_WRITE") != "1":
             raise ValueError("{} is written only by lib/graph/gate.sh; use gate.sh open|round|fail|pass".format(keys[0]))
+    elif len(args) == 3 and args[0] == "ack-remediation":
+        operation, directory, raw = args
     elif len(args) == 2:
         directory, raw = args
     else:
@@ -76,21 +78,43 @@ def main(args):
             if previous is None:
                 raise ValueError("feature.json not found in {}".format(directory))
             state = parse_json(previous)
+            if operation == "ack-remediation":
+                if not isinstance(value, dict) or not isinstance(value.get("snapshot"), list) or not value["snapshot"]:
+                    raise ValueError("ack-remediation requires a non-empty snapshot array")
+                artifacts = state.get("artifacts")
+                if not isinstance(artifacts, dict):
+                    raise ValueError("ack-remediation requires artifacts to be an object")
+                queue = state.get("pendingRemediationTasks")
+                snapshot = value["snapshot"]
+                if (not isinstance(queue, list) or queue[:len(snapshot)] != snapshot
+                        or artifacts.get("remediationReceipt") != value.get("generation")):
+                    raise ValueError("pendingRemediationTasks changed before acknowledgment; retry execute preparation")
+                receipt = value.get("receipt")
+                if not isinstance(receipt, str) or not receipt:
+                    raise ValueError("ack-remediation requires a non-empty receipt")
+                state["pendingRemediationTasks"] = queue[len(snapshot):]
+                artifacts["remediationReceipt"] = receipt
             target = state
-            for key in keys[:-1]:
+            if operation != "ack-remediation":
+                for key in keys[:-1]:
+                    if not isinstance(target, dict):
+                        raise ValueError("{} crosses a non-object value".format(dot_path))
+                    if target.get(key) is None:
+                        target[key] = {}
+                    target = target[key]
                 if not isinstance(target, dict):
-                    raise ValueError("{} crosses a non-object value".format(dot_path))
-                if target.get(key) is None:
-                    target[key] = {}
-                target = target[key]
-            if not isinstance(target, dict):
-                raise ValueError("{} requires an object parent".format(dot_path))
-            if operation == "append":
-                current = target.get(keys[-1])
-                if current is not None and not isinstance(current, list):
-                    raise ValueError("append target at {} is not an array".format(dot_path))
-                value = (current or []) + [value]
-            target[keys[-1]] = value
+                    raise ValueError("{} requires an object parent".format(dot_path))
+                if operation == "append":
+                    current = target.get(keys[-1])
+                    if current is not None and not isinstance(current, list):
+                        raise ValueError("append target at {} is not an array".format(dot_path))
+                    value = (current or []) + [value]
+                target[keys[-1]] = value
+
+        if previous is not None:
+            approved = parse_json(previous).get("specApproval")
+            if approved is not None and state.get("specApproval") != approved:
+                raise ValueError("specApproval is immutable; restore approved intent and request a new intent decision")
 
         content = (json.dumps(state, indent=2, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
         if previous is not None:

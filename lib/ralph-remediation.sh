@@ -38,24 +38,15 @@ fi
 
 FEATURE_DIR="$1"
 FEATURE_JSON="$FEATURE_DIR/feature.json"
+FEATURE_READ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/feature-read.sh"
 
 if [[ ! -f "$FEATURE_JSON" ]]; then
   echo "ralph-remediation: feature.json not found at $FEATURE_JSON" >&2
   exit 2
 fi
 
-# Read slug and pendingRemediationTasks via python3 inline (project pattern)
-read -r SLUG TASK_COUNT <<< "$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    slug = d.get('slug', 'unknown')
-    tasks = d.get('pendingRemediationTasks', [])
-    print(slug, len(tasks))
-except Exception as e:
-    print('unknown', 0)
-" "$FEATURE_JSON")"
+# Reads go through the typed reader (the port plan, WP3).
+read -r SLUG TASK_COUNT <<< "$(bash "$FEATURE_READ" "$FEATURE_DIR" -r --filter '"\(.slug // "unknown") \(.pendingRemediationTasks // [] | length)"')"
 
 LOG_FILE="${TMPDIR:-/tmp}/ralph-remediation-${SLUG}.log"
 
@@ -84,65 +75,9 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   log "ralph-remediation iteration ${i} of ${MAX_ITERATIONS}"
 
   # Read current tasks for this iteration (may have been updated by caller)
-  TASKS_JSON=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    tasks = d.get('pendingRemediationTasks', [])
-    print(json.dumps(tasks))
-except Exception:
-    print('[]')
-" "$FEATURE_JSON")
+  TASKS_JSON=$(bash "$FEATURE_READ" "$FEATURE_DIR" pendingRemediationTasks --default "[]")
 
-  CURRENT_COUNT=$(python3 -c "
-import json, sys
-tasks = json.loads(sys.argv[1])
-print(len(tasks))
-" "$TASKS_JSON")
-
-  if [[ "$CURRENT_COUNT" -eq 0 ]]; then
-    log "ralph-remediation all tasks cleared at iteration ${i}, exiting 0"
-    exit 0
-  fi
-
-  # Dispatch instruction for each pending task (actual Agent dispatch done by skill caller).
-  # Compose the brief from the keys VERIFY actually writes (skills/verify/SKILL.md):
-  # subject, verifyCommand, acceptanceCriteria. 'description' is kept only as a
-  # backward-compat fallback for older task shapes.
-  python3 -c "
-import json, sys
-tasks = json.loads(sys.argv[1])
-for t in tasks:
-    task_id = t.get('id', 'unknown')
-    subject = t.get('subject') or t.get('description') or ''
-    verify_cmd = t.get('verifyCommand', '')
-    criteria = '; '.join(t.get('acceptanceCriteria', []))
-    brief = subject
-    if criteria:
-        brief += ' | criteria: ' + criteria
-    if verify_cmd:
-        brief += ' | verify: ' + verify_cmd
-    print('would dispatch implementer for task {}: {}'.format(task_id, brief))
-" "$TASKS_JSON" | while IFS= read -r line; do
-    echo "$line"
-    log "ralph-remediation iteration ${i}: ${line}"
-  done
-
-  # Check feature.json updates field for COMPLETE signal
-  UPDATES_TEXT=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    updates = d.get('updates', [])
-    if isinstance(updates, list):
-        print(' '.join(str(u) for u in updates))
-    else:
-        print(str(updates))
-except Exception:
-    print('')
-" "$FEATURE_JSON")
+  CURRENT_COUNT=$(bash "$FEATURE_READ" "$FEATURE_DIR" -r --filter '"\(.slug // "unknown") \(.pendingRemediationTasks // [] | length)"')
 
   if echo "$UPDATES_TEXT" | grep -q "<promise>COMPLETE</promise>"; then
     log "ralph-remediation COMPLETE signal detected at iteration ${i}, exiting 0"

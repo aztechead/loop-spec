@@ -14,8 +14,8 @@ What one task run does:
      --plugin-dir, re-issuing the prompt while the cycle returns a paused result.
   4. Reads .loop-spec/last-result.json, the feature directory, and the git diff.
   5. Exports the feature branch and runs evals/tasks/<id>/check.sh against it.
-  6. Asks a cheap judge model whether the diff matches the request and how over-built
-     it is. The judge is advisory; check.sh is the acceptance.
+  6. Reports over-build as app lines added over the task's reference size; a judge
+     model that graded request match 3 of 3 on every run graded nothing.
   7. Writes evals/results/<run-id>/<id>.json and regenerates summary.md.
 
 Exit: 0 when every requested task produced a result file (pass or fail); 1 when a task
@@ -41,12 +41,14 @@ RESULTS_DIR = REPO / "evals" / "results"
 RUNS_DIR = REPO / "evals" / ".runs"
 ARTIFACT_PREFIXES = ("docs/loop-spec/", ".loop-spec/", ".claude/")
 DEFAULT_BUDGET = {"haiku": 8.0, "sonnet": 40.0, "opus": 80.0}
-ROUND_TIMEOUT_S = 90 * 60
+ROUND_TIMEOUT_S = 150 * 60  # --round-timeout-mins overrides; a six-task sonnet cycle ran 90 minutes and was killed in VERIFY
 # The CLI ends the turn with this text, subtype "success", when the account's usage
 # window is spent; ten concurrent runs hit it eleven minutes in and every record read
 # as a plugin failure. A round that says this measured the account, not the plugin.
 USAGE_LIMIT_RE = re.compile(r"hit your (?:session|usage|weekly|daily) limit|usage limit reached|rate.?limit", re.I)
-MAX_ROUNDS = 8
+# One round per phase (up to eight on the full route) plus a REDO, a rewind, or a
+# recovery round: every phase hands off, so a delivered cycle is many rounds by design.
+MAX_ROUNDS = 16
 ALLOWED_TOOLS = ",".join((
     "Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Agent", "Skill",
     "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "SendMessage", "TeamCreate",
@@ -58,11 +60,30 @@ def sh(args, cwd, env=None, check=True, timeout=None):
                           capture_output=True, text=True)
 
 
+# What makes a nested claude -p write into its parent's transcript instead of its own.
+SESSION_IDENTITY = ("CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
+                    "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_REMOTE_SESSION_ID",
+                    "CLAUDE_CODE_SYNC_SESSION_REFS")
+
+
 def child_env():
     """The nested CLI must not inherit this session's plugin or project bindings."""
+    # The parent session's identity is dropped too: a nested `claude -p` that inherits
+    # the session id and the remote-session plumbing appends every round to the parent's
+    # transcript, and the phase-handoff guard then reads round one's phase as "already
+    # run in this invocation" in round three. Measured: only dropping all of these gave
+    # the child its own transcript. The launch stamp goes too: the CLI writes
+    # CLAUDE_CODE_ENTRYPOINT only when it is unset, so a child under an attended session
+    # inherited `remote_mobile`, answered the session-layer probe "attended", and never
+    # took the session rung (final-sonnet-fastapi, round 7).
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("LOOP_SPEC_")
-           and k not in ("CLAUDE_PROJECT_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")}
+           and k not in ("CLAUDE_PROJECT_DIR", "LOOP_SPEC_SKILL_DIR", "CLAUDE_SKILL_DIR", "CLAUDE_PLUGIN_ROOT")
+           and k not in SESSION_IDENTITY and k != "CLAUDE_CODE_ENTRYPOINT"}
+    # Fork mode backgrounds every Agent and ignores run_in_background on the call; the
+    # 20260909-sonnet-fastapi run saw the launch stub on all eight dispatches and paid
+    # a wait turn for each report. This is the harness's documented foreground switch.
+    env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
     env["GIT_AUTHOR_NAME"] = env["GIT_COMMITTER_NAME"] = "loop-spec-eval"
     env["GIT_AUTHOR_EMAIL"] = env["GIT_COMMITTER_EMAIL"] = "eval@loop-spec.invalid"
     return env
@@ -127,7 +148,7 @@ def prepare_workspace(task, run_dir, env):
     return project, base
 
 
-def run_round(project, prompt, model, budget, env, log_path, plugin_dir):
+def run_round(project, prompt, model, budget, env, log_path, plugin_dir, timeout_s=None):
     cmd = ["claude", "-p", prompt, "--model", model,
            "--plugin-dir", str(plugin_dir),
            # bypassPermissions is refused for root, which CI containers often are;
@@ -140,7 +161,7 @@ def run_round(project, prompt, model, budget, env, log_path, plugin_dir):
     started = time.time()
     try:
         proc = subprocess.run(cmd, cwd=str(project), env=env, capture_output=True,
-                              text=True, timeout=ROUND_TIMEOUT_S)
+                              text=True, timeout=timeout_s or ROUND_TIMEOUT_S)
         timed_out = False
         stdout, stderr, rc = proc.stdout, proc.stderr, proc.returncode
     except subprocess.TimeoutExpired as exc:
@@ -169,6 +190,7 @@ def run_round(project, prompt, model, budget, env, log_path, plugin_dir):
         "cache_read_tokens": usage.get("cache_read_input_tokens"),
         "cache_create_tokens": usage.get("cache_creation_input_tokens"),
         "subagents_spawned": (payload.get("subagent_stats") or {}).get("spawned"),
+        "first_turn_input_tokens": first_turn_input_tokens(payload.get("session_id")),
         "result_text": (payload.get("result") or "")[:2000],
         "stderr_tail": stderr[-1500:],
         "cut_off": "usage-limit" if USAGE_LIMIT_RE.search(payload.get("result") or "") else None,
@@ -246,39 +268,29 @@ def export_and_check(task, project, branch, root, env):
     return checks
 
 
-def judge(task, project, base, branch, env, log_path):
-    diff = sh(["git", "diff", f"{base}..{branch}", "--", ".", ":(exclude)docs/loop-spec",
-               ":(exclude).loop-spec", ":(exclude).claude"], cwd=project, env=env).stdout
-    lines = diff.splitlines()
-    if len(lines) > 400:
-        diff = "\n".join(lines[:400]) + f"\n... ({len(lines) - 400} more diff lines)"
-    prompt = (
-        "You grade a code change against the request that produced it.\n"
-        f"REQUEST:\n{task['prompt']}\n\nDIFF (project files only):\n{diff or '(empty diff)'}\n\n"
-        "Do not use any tool. Answer with one JSON object and nothing else: "
-        '{"meets_request": 0-3, "overbuilt": 0-3, "note": "<one sentence>"}. '
-        "meets_request: 3 = does exactly what was asked, 0 = does not address it. "
-        "overbuilt: 0 = no more than the request needs, 3 = large unrequested additions."
-    )
-    # No --bare: it skips credential reads and the call fails with an auth error.
-    # One turn and no tools: a judge that opens a file instead of answering returns nothing.
-    proc = subprocess.run(["claude", "-p", prompt, "--model", "haiku", "--max-turns", "1",
-                           "--disallowedTools", ALLOWED_TOOLS,
-                           "--setting-sources", "project", "--output-format", "json"],
-                          cwd=str(project), env=env, capture_output=True, text=True, timeout=300)
-    log_path.write_text(proc.stdout + "\n--- stderr ---\n" + proc.stderr)
-    try:
-        text = json.loads(proc.stdout).get("result", "")
-        m = re.search(r"\{.*\}", text, re.S)
-        verdict = json.loads(m.group(0)) if m else {}
-    except (json.JSONDecodeError, AttributeError):
-        verdict = {}
-    return {"meets_request": verdict.get("meets_request"),
-            "overbuilt": verdict.get("overbuilt"),
-            "note": str(verdict.get("note", ""))[:300]}
+def read_gate_events(fdir):
+    """Keep each retry's evidence alongside the totals, including older class-only events."""
+    events = 0
+    redo = {"rounds": 0, "by_class": {}, "events": []}
+    if fdir and (fdir / "events.jsonl").is_file():
+        for line in (fdir / "events.jsonl").open():
+            events += 1
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            # The driver emits one per REDO answer, with the bracketed label of every
+            # FLAG line (port audit 3, N1): the record says which
+            # gate bounced the lead, not just how often.
+            if e.get("event") == "redo":
+                redo["rounds"] += 1
+                redo["events"].append({"phase": e.get("phase"), **(e.get("data") or {})})
+                for label, n in ((e.get("data") or {}).get("classes") or {}).items():
+                    redo["by_class"][label] = redo["by_class"].get(label, 0) + int(n or 0)
+    return events, redo
 
 
-def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
+def run_task(task_id, model, run_id, budget, measure_only=False, commit=None, timeout_s=None):
     task = load_task(task_id)
     env = child_env()
     run_dir = RUNS_DIR / run_id
@@ -304,7 +316,14 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
     else:
         project, base = prepare_workspace(task, run_dir, env)
     plugin_dir = plugin_snapshot(run_dir)
-    prompt = f"/loop-spec:cycle autonomous {task['prompt']}"
+    # Every phase returns and the next round starts the lead in a fresh context: the
+    # 20260909-sonnet-fastapi-3 lead re-read ~277k tokens on each of 569 calls in one
+    # continuous session, 71 percent of that run's cost.
+    # The task's protected files ride as the invocation token the driver reads
+    # (feature.json.protected): read-only is a fact from the task, never the lead's
+    # word (port audit 4, item 1).
+    protected = ",".join(task.get("protected") or [])
+    prompt = f"/loop-spec:cycle autonomous {'protected:' + protected + ' ' if protected else ''}{task['prompt']}"
     for n in range(1, MAX_ROUNDS + 1):
         if measure_only:
             break
@@ -312,7 +331,7 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
         if remaining <= 0.5:
             break
         print(f"[{task_id}/{model}] round {n} budget {remaining:.2f}", flush=True)
-        r = run_round(project, prompt, model, remaining, env, root / f"round-{n}.log", plugin_dir)
+        r = run_round(project, prompt, model, remaining, env, root / f"round-{n}.log", plugin_dir, timeout_s)
         rounds.append(r)
         spent += r["cost_usd"] or 0.0
         result = read_json(newest([r / ".loop-spec" / "last-result.json" for r in roots(project, env)]) or "")
@@ -338,14 +357,22 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
     app, artifacts, protected_touched, commits = diff_metrics(
         project, base, branch, task.get("protected", []), env)
     checks = export_and_check(task, project, branch, root, env)
-    verdict = judge(task, project, base, branch, env, root / "judge.log")
     # DELIVER's word is the sidecar; feature.json's delivery block stays pending after it.
     delivery = read_json(fdir / "delivery.json") if fdir and (fdir / "delivery.json").is_file() else None
     delivery_status = (delivery or (feature or {}).get("delivery") or {}).get("status")
-    events = 0
-    if fdir and (fdir / "events.jsonl").is_file():
-        events = sum(1 for _ in (fdir / "events.jsonl").open())
+    events, redo = read_gate_events(fdir)
     passed = sum(1 for c in checks.values() if c["pass"])
+    sys.path.insert(0, str(REPO / "lib"))
+    from phase_snapshot import verify as verify_snapshot
+    instruction_snapshots = (feature or {}).get("instructionSnapshots") or []
+    instruction_errors = []
+    if feature and not instruction_snapshots:
+        instruction_errors.append("cycle has no recorded instruction snapshots")
+    for snapshot in instruction_snapshots:
+        try:
+            verify_snapshot(snapshot, run_dir / "plugin-pristine", fdir)
+        except (OSError, ValueError, KeyError) as exc:
+            instruction_errors.append(str(exc))
     record = {
         "task": task_id, "size": task.get("size"), "kind": task.get("kind"),
         "model": model, "run_id": run_id, "plugin_version": plugin_version(),
@@ -367,10 +394,21 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
         # written by hand (the 6.1.0 readme-sync and 6.2.0 wc-json runs both did).
         "forged_result": bool(result) and not (result.get("schema") and result.get("loopSpecVersion")),
         "iterations": ((feature or {}).get("iterate") or {}).get("used"),
+        # The driver writes feature.json when the cycle begins; a run with no feature
+        # never entered a phase, whatever the lead edited (the dda2cca wc-json run
+        # followed the ad-hoc micro directive instead and stopped with nothing).
+        "cycle_begun": feature_file is not None,
+        # The pass bar (the port plan, WP1): a delivered run at or under
+        # every figure. Recorded so the stopping rule is read, not argued.
+        "bar": bar_verdict(task.get("bar"), spent, artifacts, sum(r["seconds"] for r in rounds) / 60, len(rounds)),
         "phase": (feature or {}).get("currentPhase"),
         "delivery_status": delivery_status,
         "delivered": delivery_status in ("ready-for-review", "delivered-draft", "pushed-no-pr"),
         "events": events,
+        "redo": redo,
+        "first_turn_input_tokens": next((r.get("first_turn_input_tokens") for r in rounds if r.get("first_turn_input_tokens")), None),
+        # The classes a driver-written shape makes impossible; a live run records zero here.
+        "format_redo": sum(redo["by_class"].get(c, 0) for c in FORMAT_CLASSES),
         "branch": branch, "commits": commits,
         "app_diff": app, "artifact_diff": artifacts,
         "overbuild_ratio": round(app["added"] / max(task.get("reference_app_lines", 1), 1), 2),
@@ -380,8 +418,9 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
             capture_output=True, text=True).stdout.splitlines() if line.strip()],
         "workarounds": workarounds(project, env),
         "checks": checks, "checks_passed": passed, "checks_total": len(checks),
-        "accepted": bool(checks) and passed == len(checks) and not protected_touched,
-        "judge": verdict,
+        "instruction_snapshots": instruction_snapshots,
+        "instruction_errors": instruction_errors,
+        "accepted": bool(checks) and passed == len(checks) and not protected_touched and not instruction_errors,
         "rounds_detail": [{k: v for k, v in r.items() if k not in ("result_text", "stderr_tail")}
                           for r in rounds],
         "last_result_text": rounds[-1]["result_text"] if rounds else "",
@@ -395,6 +434,48 @@ def run_task(task_id, model, run_id, budget, measure_only=False, commit=None):
     print(f"[{task_id}/{model}] accepted={record['accepted']} checks={passed}/{len(checks)} "
           f"cost={spent:.2f} minutes={record['minutes']}", flush=True)
     return record
+
+
+FORMAT_CLASSES = ("artifact-lint", "verification-grounding", "misplaced", "oneshot-shape", "review-triage", "converged-floor")
+
+
+def bar_verdict(bar, cost, artifacts, minutes, rounds):
+    """{met, over:[...]} against the task's bar, or None when the task sets none."""
+    if not bar:
+        return None
+    over = []
+    if cost > bar.get("cost_usd", float("inf")):
+        over.append("cost %.2f > %.2f USD" % (cost, bar["cost_usd"]))
+    if artifacts["added"] > bar.get("artifact_lines", float("inf")):
+        over.append("artifact lines %d > %d" % (artifacts["added"], bar["artifact_lines"]))
+    if minutes > bar.get("minutes", float("inf")):
+        over.append("minutes %.1f > %s" % (minutes, bar["minutes"]))
+    if rounds > bar.get("rounds", 1):
+        over.append("rounds %d > %d" % (rounds, bar.get("rounds", 1)))
+    return {"met": not over, "over": over}
+
+
+def first_turn_input_tokens(session_id):
+    """The context the first assistant turn read (cache creation + cache read + input),
+    from the CLI's own transcript of the session: what every later turn re-reads, the
+    number the bill is made of (port audit 4, item 5). None when the
+    transcript is not on this machine."""
+    if not session_id:
+        return None
+    home = Path(os.path.expanduser("~")) / ".claude" / "projects"
+    for path in home.glob("*/%s.jsonl" % session_id):
+        try:
+            for line in path.open(encoding="utf-8", errors="replace"):
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                if e.get("type") == "assistant":
+                    u = (e.get("message") or {}).get("usage") or {}
+                    return int(u.get("cache_creation_input_tokens") or 0) + int(u.get("cache_read_input_tokens") or 0) + int(u.get("input_tokens") or 0)
+        except OSError:
+            return None
+    return None
 
 
 def plugin_commit():
@@ -424,19 +505,17 @@ def write_summary(out_dir):
     lines = [f"# Eval run {out_dir.name}", "",
              f"Plugin {records[0].get('plugin_version')} at {records[0].get('plugin_commit')}, "
              f"model {records[0].get('model')}, "
-             f"{len(records)} task(s). Acceptance is `check.sh`; the judge is advisory.", "",
-             "| task | accepted | delivered | checks | phase | status | rounds | turns | agents | cost USD | min | app files | app +/- | artifact + | over-build | protected touched | judge meets/over |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             f"{len(records)} task(s). Acceptance is `check.sh`; over-build is app lines added over the task's reference size.", "",
+             "| task | accepted | delivered | checks | phase | status | rounds | turns | agents | cost USD | min | app files | app +/- | artifact + | over-build | protected touched |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in records:
-        j = r.get("judge") or {}
         lines.append(
             f"| {r['task']} | {'yes' if r['accepted'] else 'NO'} | {'yes' if r.get('delivered') else 'no'} "
             f"| {r['checks_passed']}/{r['checks_total']} "
-            f"| {r.get('phase')} | {r['result'].get('status')} | {r['rounds']} | {r['turns']} "
+            f"| {r.get('phase')} | {r['result'].get('status') or ('no cycle' if not r.get('cycle_begun') else None)} | {r['rounds']} | {r['turns']} "
             f"| {r['subagents']} | {r['cost_usd']:.2f} | {r['minutes']} | {r['app_diff']['files']} "
             f"| +{r['app_diff']['added']}/-{r['app_diff']['removed']} | +{r['artifact_diff']['added']} "
-            f"| {r['overbuild_ratio']}x | {', '.join(r['protected_touched']) or '-'} "
-            f"| {j.get('meets_request')}/{j.get('overbuilt')} |")
+            f"| {r['overbuild_ratio']}x | {', '.join(r['protected_touched']) or '-'} |")
     total_cost = sum(r["cost_usd"] for r in records)
     accepted = sum(1 for r in records if r["accepted"])
     delivered = sum(1 for r in records if r.get("delivered"))
@@ -449,6 +528,20 @@ def write_summary(out_dir):
     for r in records:
         if r.get("cut_off"):
             lines.append(f"- **{r['task']}** cut off by the account usage limit after {r['minutes']} min; not a plugin outcome")
+        bar = r.get("bar")
+        if bar is not None:
+            if bar["met"] and r.get("delivered"):
+                lines.append(f"- **{r['task']}** at the bar: delivered in one round at or under every figure")
+            else:
+                lines.append(f"- **{r['task']}** over the bar: {'; '.join(bar['over']) or 'not delivered'}")
+            redo = r.get("redo") or {}
+            if redo.get("rounds"):
+                by = ", ".join(f"{k} {v}" for k, v in sorted(redo.get("by_class", {}).items()))
+                lines.append(f"- **{r['task']}** REDO rounds: {redo['rounds']} ({by}); format classes: {r.get('format_redo', 0)}")
+            if r.get("first_turn_input_tokens"):
+                lines.append(f"- **{r['task']}** first turn read {r['first_turn_input_tokens'] // 1000}k tokens of context")
+        if not r.get("cycle_begun"):
+            lines.append(f"- **{r['task']}** never began a cycle: the driver wrote no feature.json, so the row measures the entry, not the plugin's phases")
         if r.get("forged_result"):
             lines.append(f"- **{r['task']}** wrote its terminal result by hand (no schema or version stamp): status untrusted")
         failed = [f"{k}: {v['note']}".rstrip(": ") for k, v in r["checks"].items() if not v["pass"]]
@@ -466,8 +559,7 @@ def write_summary(out_dir):
 def preflight(models):
     """Prove, for about three cents, every condition whose failure cost a re-run last time:
     the CLI is on PATH and signed in; a tool call runs under the permission mode the
-    driver uses (bypass is refused for root); the judge answers JSON without tools; the
-    fixtures carry no compiled files; the plugin checkout is committed, so the snapshot
+    driver uses (bypass is refused for root); the fixtures carry no compiled files; the plugin checkout is committed, so the snapshot
     and the record's commit agree. Returns a list of failures; empty means go."""
     failures = []
     if shutil.which("claude") is None:
@@ -488,15 +580,6 @@ def preflight(models):
         elif payload.get("is_error") or "preflight-ok" not in (payload.get("result") or ""):
             failures.append(f"{model}: a tool call under acceptEdits did not run "
                             f"(result={str(payload.get('result') or proc.stderr)[:160]!r})")
-    proc = subprocess.run(["claude", "-p", 'Do not use any tool. Reply with exactly this JSON and nothing else: {"ok": true}',
-                           "--model", "haiku", "--max-turns", "1", "--disallowedTools", ALLOWED_TOOLS,
-                           "--setting-sources", "project", "--output-format", "json"],
-                          capture_output=True, text=True, timeout=180, env=env, cwd=str(REPO))
-    try:
-        text = json.loads(proc.stdout).get("result", "")
-        json.loads(re.search(r"\{.*\}", text, re.S).group(0))
-    except (json.JSONDecodeError, AttributeError, ValueError):
-        failures.append(f"judge: no JSON came back ({proc.stdout[:160]!r})")
     stray = [str(f) for f in TASKS_DIR.rglob("*") if f.name == "__pycache__" or f.suffix == ".pyc"]
     if stray:
         failures.append(f"fixtures carry compiled files: {stray[:3]}")
@@ -519,6 +602,8 @@ def main(argv=None):
     ap.add_argument("--budget-usd", type=float, default=None, help="per task; default by model")
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--confirm-spend", action="store_true")
+    ap.add_argument("--round-timeout-mins", type=int, default=None,
+                    help="kill a round after this many minutes (default 150)")
     ap.add_argument("--measure-only", action="store_true",
                     help="re-score the workspaces of --run-id without running a cycle (free)")
     ap.add_argument("--preflight-only", action="store_true", help="run the preflight checks and stop")
@@ -541,7 +626,7 @@ def main(argv=None):
         if problems:
             print("eval_run: refusing to start; every item above cost a re-run last time", file=sys.stderr)
             return 2
-        print("eval_run: preflight ok (CLI, permissions, judge, fixtures, clean checkout, disk)", flush=True)
+        print("eval_run: preflight ok (CLI, permissions, fixtures, clean checkout, disk)", flush=True)
         if args.preflight_only:
             return 0
     task_ids = ([p.name for p in sorted(TASKS_DIR.iterdir()) if (p / "task.json").is_file()]
@@ -552,7 +637,9 @@ def main(argv=None):
     print(f"eval_run: run {run_id}, tasks {task_ids}, budget {budget} USD per task, plugin {commit}", flush=True)
     failures = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.parallel)) as pool:
-        futures = {pool.submit(run_task, t, args.model, run_id, budget, args.measure_only, commit): t
+        timeout_s = args.round_timeout_mins * 60 if args.round_timeout_mins else None
+        futures = {pool.submit(run_task, t, args.model, run_id, budget, args.measure_only, commit,
+                               timeout_s): t
                    for t in task_ids}
         for fut in concurrent.futures.as_completed(futures):
             try:

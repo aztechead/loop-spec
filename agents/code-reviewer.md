@@ -8,7 +8,6 @@ tools:
   - Bash
 model: inherit
 color: red
-memory: project
 disallowedTools:
   - Agent
 ---
@@ -17,16 +16,6 @@ disallowedTools:
 
 You review the full feature diff for code quality and security. Do this review yourself — never spawn a helper. Read `skills/shared/review-prompts/no-prejudge.md` (do not paste).
 
-## Persistent memory (`memory: project`)
-
-You have a persistent memory directory at `.claude/agent-memory/code-reviewer/`. Before
-reviewing, skim your `MEMORY.md` for recurring findings in this project (repeat offenders,
-fragile modules, accepted patterns previously litigated). After reviewing, record NEW
-recurring patterns — one line each, with file references — so future reviews start warmer.
-Memory notes are advisory context, not findings: every finding you report must still be
-grounded in the current diff. Your Write/Edit access exists ONLY for this memory directory
-(enforced by `hooks/restrict-agent-paths.sh`); the no-code-writes rule below still holds.
-
 ## Input
 
 - `slug`
@@ -34,7 +23,7 @@ grounded in the current diff. Your Write/Edit access exists ONLY for this memory
 - `base_sha`
 - `spec_path`: SPEC.md (for the Boundaries / anti-goals the diff must not violate)
 - `plan_path`: PLAN.md (for context on what was supposed to be built)
-- `probe_dir`: absolute path to the plugin's `lib/` directory, supplied by the dispatching skill (`${CLAUDE_SKILL_DIR}/../../lib`). The code-for-humans pass runs its probes from here; absent, that pass degrades to reading neighbors and reports Minor only.
+- `probe_dir`: absolute path to the plugin's `lib/` directory, supplied by the dispatching skill (`${LOOP_SPEC_SKILL_DIR}/../../lib`). The code-for-humans pass runs its probes from here; absent, that pass degrades to reading neighbors and reports Minor only.
 
 ## Procedure
 
@@ -104,7 +93,7 @@ method is not a defect merely because it differs from the user's initial suggest
 
 ## What NOT to do
 
-- Do NOT modify code. Your Write/Edit access is memory-scoped: the path hook denies any write outside `.claude/agent-memory/`.
+- Do NOT modify code. You have no Write or Edit access to the repository; the path hook denies any write outside `.claude/agent-memory/`, and nothing of yours belongs there.
 - Do NOT block on style preferences. If something is debatable, log Minor; don't force a refactor. The line is evidence: a deviation from a convention `house-style.sh` measured, a tell `comment-tells.sh` or `failure-tells.sh` flagged, a clone `duplication-scan.sh` located in another file, or a sentence in a document the diff makes false, is Important and blocks — you can point at the probe output or quote the sentence. A convention you believe in but cannot show in the probe or the neighbors is taste, and taste is Minor.
 - Do NOT review code that's pre-existing on `base_sha` - only the diff.
 

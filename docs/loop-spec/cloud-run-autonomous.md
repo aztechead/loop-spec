@@ -23,11 +23,11 @@ size; operators select the controls below for each deployment shape.
 - Set `LOOP_SPEC_MAX_PARALLEL_SUBAGENTS` for one enforceable cap across phase
   role agents. Any explicit cap selects bounded one-shot waves and disables
   teams, workflows, and fleets automatically.
-- Use `LOOP_SPEC_PHASE_HANDOFF=1` to run one durable phase per main-agent
-  invocation. A user or supervisor reissues the cycle command and resume
-  detection starts the next phase in a fresh context. The plugin enforces this at
-  the phase-skill tool boundary: a second phase invocation is denied and the paused
-  handoff result is written deterministically.
+- Every phase runs in its own main-agent invocation. The cycle returns after each
+  phase with a paused `phase-handoff` result; a user or supervisor reissues the cycle
+  command and resume detection starts the next phase in a fresh context. The plugin
+  enforces this at the phase-skill tool boundary: a second phase invocation is denied
+  and the paused handoff result is written deterministically.
 - If worktrees stay enabled, leave `LOOP_SPEC_SHARE_DEPENDENCIES=1` so task
   worktrees link a matching successfully prepared `node_modules`.
 - Set the Cloud Run task timeout above the SDK timeout. Keep enough margin for
@@ -57,11 +57,12 @@ checkout, these optional controls reduce reviewer and model overhead:
 LOOP_SPEC_ARTIFACTS_IN_PR=0
 LOOP_SPEC_ARTIFACT_DIR=/mounted-run-artifacts
 LOOP_SPEC_ITERATE_MAX_ITERATIONS=2
-LOOP_SPEC_SQUASH_STATE_COMMITS=1
 ```
 
-The final setting consolidates state into one DELIVER commit and therefore disables
-per-phase checkpoint pushes; do not combine it with a requirement to recover every
+Feature state (feature.json, PROGRESS.md) never lands on the feature branch: the driver
+snapshots it onto `refs/loop-spec/state/<slug>` at every phase transition
+(`lib/state-ref.sh`), and the checkpoint push carries that ref to the remote with the
+branch. Do not combine an ephemeral workspace with a requirement to recover every
 phase from the remote PR branch.
 
 The same controls can be scoped to one CLI invocation:
@@ -69,59 +70,22 @@ The same controls can be scoped to one CLI invocation:
 ```bash
 LOOP_SPEC_WORKTREES=0 \
 LOOP_SPEC_MAX_PARALLEL_SUBAGENTS=1 \
-LOOP_SPEC_PHASE_HANDOFF=1 \
-claude -p "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}"
+claude -p "/loop-spec:cycle autonomous ${TASK_PROMPT}"
 ```
 
-To switch the Claude Code main model as well as the phase’s subagents, the CLI
-supervisor must create a fresh process per handoff and pass the validated phase
-selector to `--model`. The plugin cannot mutate the model of an already-running
-main session:
+The bundled outer launcher selects the main model for each fresh phase and checks the
+child exit and durable result before relaunching:
 
 ```bash
-phase=spec
-result="${REPO_ROOT}/.loop-spec/last-result.json"
-for _ in $(seq 1 "${MAX_PHASE_INVOCATIONS:-12}"); do
-  phase_model="$(
-    bash "${LOOP_SPEC_PLUGIN}/lib/feature-init.sh" phase-model "$phase"
-  )"
-  claude_args=(-p "/loop-spec:cycle autonomous phase:fresh ${TASK_PROMPT}")
-  [[ -n "$phase_model" && "$phase_model" != "inherit" ]] \
-    && claude_args+=(--model "$phase_model")
-
-  # Check the child's status. A phase that dies -- OOM, a killed container, an
-  # expired credential, a crashed harness -- exits non-zero and may write nothing.
-  claude_rc=0
-  claude "${claude_args[@]}" || claude_rc=$?
-
-  # A missing or unparseable result is a FAILED run, not a finished one. Without
-  # this check the jq below errors, the "not a handoff" branch is taken, the loop
-  # breaks, and the supervisor exits 0 -- reporting success for a lost run.
-  if [[ "$claude_rc" -ne 0 ]] || ! jq -e . "$result" >/dev/null 2>&1; then
-    echo "loop-spec: phase '${phase}' failed (exit ${claude_rc}); reconciling" >&2
-    bash "${LOOP_SPEC_PLUGIN}/lib/cycle-reconcile.sh" --result-root "${REPO_ROOT}" || true
-    exit 1
-  fi
-
-  status_reason="$(jq -r '.status + ":" + (.reason // "")' "$result")"
-  [[ "$status_reason" == "paused:phase-handoff" ]] || break
-  phase="$(jq -r '.phaseReached' "$result")"
-done
-
-# Terminal state is whatever the last result says. `converged` is the single
-# authoritative success signal; `retryable` marks a delivery-only retry.
-jq -e '.converged == true' "$result" >/dev/null 2>&1 || exit 1
+bash "$LOOP_SPEC_PLUGIN/lib/cycle-launch.sh" --profile claude \
+  --cwd "$REPO_ROOT" --prompt-file task.txt --max-invocations 16 --timeout 3600
 ```
 
-The exit-status and result-existence checks are not optional. `claude -p` exiting
-non-zero, or exiting 0 having written no result, is precisely how an unattended run
-is lost silently — the supervisor has no other way to tell "finished" from "died".
-
-Regardless of whether handoff is enabled, cycle phase activation writes the
-effective map before it launches any explicit-team teammate, implicit named
-Agent, one-shot fallback, gate reviewer, or ITERATE judge. Thus continuous mode
-still honors phase routing for subagents; handoff is required only to change the
-main orchestrator model.
+Use `codex` or `opencode` for the other CLI profiles. The invocation cap bounds fresh
+sessions, including rewinds. Exit zero requires a fresh converged result; delivery
+stops, human gates, missing results, and exhausted limits remain nonzero with evidence
+in `.loop-spec/launcher-result.json`. A supervisor may still manage relaunches itself
+when it needs SDK callbacks or ADK sessions.
 
 ## Performance tuning without weaker outcomes
 
@@ -137,10 +101,12 @@ remedies.
   and set a bounded subagent cap (normally `2` first). Every task still has its
   focused proof, the integrated wave still has one repository-wide comparison,
   and VERIFY remains mandatory.
-- `LOOP_SPEC_PHASE_HANDOFF=1` trades speed for a fresh main context, per-phase
-  main-model selection, and a durable recovery point after every phase. Set it to
-  `0` only when those operational benefits are not required; continuous mode keeps
-  the same SPEC/PLAN/verification/delivery artifacts and hard gates.
+- One phase per invocation is the only mode: it gives a fresh main context, per-phase
+  main-model selection, and a durable recovery point after every phase. The SPEC, PLAN,
+  verification, and delivery artifacts and the hard gates are the same in every phase.
+  The one exception is the short route: the graph's SPEC to ONESHOT edge carries
+  `sameSession`, so a oneshot spec and its implementation share one invocation and one
+  context load (`graph/cycle.graph.json`).
 - Keep `LOOP_SPEC_CHECKPOINT_EACH_PHASE=1` unless an operator has separately
   accepted a larger recovery window. Network checkpoint cost is intentional crash
   protection, not a candidate for a silent default bypass.
@@ -193,7 +159,10 @@ def positive_float(name: str) -> float | None:
     return value
 
 
-PHASES = ("spec", "discuss", "plan", "execute", "verify", "iterate", "deliver")
+# The phase vocabulary is the graph's: never a tuple kept here.
+PHASES = tuple(subprocess.run(
+    ["bash", str(PLUGIN / "lib" / "graph" / "phases.sh"), "list"],
+    capture_output=True, text=True, check=True).stdout.split())
 
 
 def configured_phase_model(phase: str) -> str | None:
@@ -262,17 +231,7 @@ async def run() -> None:
             env=dict(os.environ),
             **query_overrides,
         )
-        phase_token = (
-            " phase:fresh"
-            if os.environ.get("LOOP_SPEC_PHASE_HANDOFF") == "1"
-            else ""
-        )
-        prompt = (
-            "/loop-spec:cycle autonomous"
-            + phase_token
-            + " "
-            + os.environ["TASK_PROMPT"]
-        )
+        prompt = "/loop-spec:cycle autonomous " + os.environ["TASK_PROMPT"]
         async with asyncio.timeout(CYCLE_TIMEOUT_SECONDS):
             async for message in query(prompt=prompt, options=options):
                 print(message, flush=True)

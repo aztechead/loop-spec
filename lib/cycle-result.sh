@@ -25,6 +25,7 @@
 #   cycle-result.sh write <feature_dir> --status <completed|paused|escalated|terminal|failed>
 #                        --summary <text> [--pr-url <url>] [--reason <text>]
 #                        [--no-change-reason <already-satisfied>]
+#                        [--autonomous <true|false>]
 #                        [--outcome delivered]   alias for --status completed
 #   cycle-result.sh write-terminal --result-root <root> --cycle-type <full|micro|debug|diagnostic>
 #                        --status <status> --outcome <outcome> --title <title>
@@ -74,7 +75,7 @@
 #   "verifiedSha": <single-repo delivery targetSha, else null>,
 #   "iterations": {"used": <.iterate.used // 0>, "max": <.iterate.maxIterations // null>},
 #   "warnings": <.warnings // []>,
-#   "autonomous": <.autonomous // false>,
+#   "autonomous": <explicit mode, stored boolean, LOOP_SPEC_AUTONOMOUS=1, or false>,
 #   "classification": "<persisted autonomous classifier decision, when present>",
 #   "gatePlan": "<persisted compact gate plan, when present>",
 #   "feature_title": "<.feature_title // .slug>",
@@ -118,6 +119,23 @@ _is_valid_no_change_reason() {
     [[ "$reason" == "$valid" ]] && return 0
   done
   return 1
+}
+
+_resolve_autonomous() {
+  local explicit="$1" value="$2" stored
+  shift 2
+  if [[ "$explicit" != "true" ]]; then
+    value="false"
+    [[ "${LOOP_SPEC_AUTONOMOUS:-}" != "1" ]] || value="true"
+    for stored in "$@"; do
+      if [[ "$stored" == "true" || "$stored" == "false" ]]; then
+        value="$stored"
+        break
+      fi
+    done
+  fi
+  [[ "$value" == "true" || "$value" == "false" ]] || value="false"
+  printf '%s\n' "$value"
 }
 
 _is_nonblank() {
@@ -362,7 +380,7 @@ PY
     result_root="" cycle_type="" status="" outcome="" slug="" title=""
     branch="" base_branch="" pr_url="" checkpoint_pr_url="" reason="" summary="" no_change_reason="" converged=""
     phase_reached=""
-    verification_status="not-run" verification_command="" autonomous="false"
+    verification_status="not-run" verification_command="" autonomous="false" autonomous_explicit="false"
     warnings_json="[]"
     while [[ $# -gt 0 ]]; do
       case "$1" in
@@ -383,7 +401,7 @@ PY
         --converged) converged="${2:-}"; shift 2 || true ;;
         --verification-status) verification_status="${2:-}"; shift 2 || true ;;
         --verification-command) verification_command="${2:-}"; shift 2 || true ;;
-        --autonomous) autonomous="${2:-}"; shift 2 || true ;;
+        --autonomous) autonomous="${2:-}"; autonomous_explicit="true"; shift 2 || true ;;
         --warnings-json) warnings_json="${2:-}"; shift 2 || true ;;
         *) shift || true ;;
       esac
@@ -407,6 +425,7 @@ PY
           write_args=(write "$feat_dir" --status completed --summary "$summary")
           [[ -z "$pr_url" ]] || write_args+=(--pr-url "$pr_url")
           [[ -z "$reason" ]] || write_args+=(--reason "$reason")
+          [[ "$autonomous_explicit" != "true" ]] || write_args+=(--autonomous "$autonomous")
           LOOP_SPEC_RESULT_ROOT="$result_root_abs" bash "$0" "${write_args[@]}"
           exit $?
         fi
@@ -426,7 +445,7 @@ PY
     if [[ "$outcome" == "interrupted" && -n "$result_root" && -f "$result_root/.loop-spec/active-run.json" ]] \
        && ! _is_nonblank "$reason"; then
       feat_dir="$(_resolve_full_feature_dir "$(_resolve_result_root "$result_root" 2>/dev/null || echo "$result_root")" "$slug" 2>/dev/null || true)"
-      next_phase="$(jq -r '.driverNext.phase // empty' "$feat_dir/feature.json" 2>/dev/null || true)"
+      next_phase="$(bash "$SCRIPT_DIR/feature-read.sh" "$feat_dir" -r --filter '.driverNext.phase // empty' 2>/dev/null || true)"
       if [[ -n "$next_phase" ]]; then
         echo "cycle-result.sh: the driver answered NEXT phase=$next_phase for $feat_dir and nothing says that phase cannot continue; write-terminal will not record 'interrupted' without --reason. Continue the cycle instead: bash lib/cycle-driver.sh next --feature-dir $feat_dir --returned-from $next_phase --note '<what the phase produced>' and act on its answer. Only a run that cannot continue publishes --status failed --outcome interrupted --reason '<what stopped it>'" >&2
         exit 3
@@ -547,7 +566,6 @@ PY
       echo "cycle-result.sh: full terminal fallback requires failed status" >&2
       exit 0
     fi
-    [[ "$autonomous" == "true" || "$autonomous" == "false" ]] || autonomous="false"
     jq -e 'type == "array"' <<<"$warnings_json" >/dev/null 2>&1 || warnings_json="[]"
     # Publication path: from here on, failure exits 3 (see header). Exiting 0 with
     # no pointer written is how an unattended run gets lost -- the supervisor reads
@@ -557,8 +575,9 @@ PY
     _prepare_result_root "$result_root_abs" || {
       echo "cycle-result.sh: TERMINAL RESULT NOT PUBLISHED - cannot prepare result root: $result_root_abs" >&2; exit 3; }
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    active_context="$(jq -c '{classification:(.classification // .autonomousClassification // null), gatePlan:(.gatePlan // .autonomousGatePlan // (.classification.gatePlan // null) // (.autonomousClassification.gatePlan // null))}' \
+    active_context="$(jq -c '{autonomous:.autonomous, classification:(.classification // .autonomousClassification // null), gatePlan:(.gatePlan // .autonomousGatePlan // (.classification.gatePlan // null) // (.autonomousClassification.gatePlan // null))}' \
       "$result_root_abs/.loop-spec/active-run.json" 2>/dev/null || printf '%s' '{}')"
+    autonomous="$(_resolve_autonomous "$autonomous_explicit" "$autonomous" "$(jq -c '.autonomous' <<<"$active_context")")"
     result_json="$(jq -cn --arg cycleType "$cycle_type" --arg status "$status" \
       --arg outcome "$outcome" --arg slug "$slug" --arg title "$title" \
       --arg branch "$branch" --arg base "$base_branch" --arg pr "$pr_url" \
@@ -621,11 +640,17 @@ PY
     summary=""
     no_change_reason=""
     outcome=""
+    autonomous="false" autonomous_explicit="false"
     shift 2 || true
     while [[ $# -gt 0 ]]; do
       case "${1:-}" in
         --status)
           status="${2:-}"
+          shift 2 || shift || true
+          ;;
+        --autonomous)
+          autonomous="${2:-}"
+          autonomous_explicit="true"
           shift 2 || shift || true
           ;;
         --outcome)
@@ -694,15 +719,17 @@ PY
     # cause is the eval's fib-cli run, not a result anyone can act on.
     # A full cycle completes through cycle-driver.sh finish, after DELIVER wrote its
     # sidecar. A lead that publishes completed from EXECUTE (the 6.2.0 smoke run) is the
-    # false success a supervisor cannot tell from a delivered one.
+    # false success a supervisor cannot tell from a delivered one, and so is a lead in
+    # DELIVER whose finish was refused and who called this writer itself (the final
+    # slugify-bug run: "completed", nothing pushed). The phase is no evidence; the
+    # delivery record or the PR is.
     if [[ "$status" == "completed" && -z "$no_change_reason" && -z "$pr_url" ]] \
-       && jq -e '(.currentPhase // "") | IN("deliver", "completed") | not' "$fj" >/dev/null 2>&1 \
        && ! jq -e '(.nextPhase // "") == "completed"' "$feature_dir/delivery.json" >/dev/null 2>&1 \
-       && ! jq -e '((.delivery.status // "") | IN("ready-for-review", "delivered-draft", "pushed-no-pr")) or ((.prUrl // "") != "")' "$fj" >/dev/null 2>&1; then
-      echo "cycle-result.sh: --status completed at currentPhase=$(jq -r '.currentPhase // "?"' "$fj") with no delivery record and no PR: DELIVER has not run. Return to the cycle, or publish the honest status with --reason" >&2
+       && ! bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -e --filter '((.delivery.status // "") | IN("ready-for-review", "delivered-draft", "pushed-no-pr")) or ((.prUrl // "") != "")' >/dev/null 2>&1; then
+      echo "cycle-result.sh: --status completed at currentPhase=$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.currentPhase // "?"') with no delivery record and no PR: DELIVER has not run. Return to the cycle, or publish the honest status with --reason" >&2
       exit 0
     fi
-    answered_next="$(jq -r '.driverNext.phase // empty' "$fj" 2>/dev/null || true)"
+    answered_next="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.driverNext.phase // empty' 2>/dev/null || true)"
     if [[ -n "$answered_next" && -z "$reason" ]]; then
       case "$status" in
         failed|terminal|escalated)
@@ -712,7 +739,7 @@ PY
       esac
     fi
 
-    fj_content="$(cat "$fj" 2>/dev/null)" || {
+    fj_content="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays 2>/dev/null)" || {
       echo "cycle-result.sh: cannot read $fj" >&2
       exit 0
     }
@@ -780,8 +807,11 @@ PY
     elif [[ -n "$compact_root" ]]; then
       compact_root="$(_resolve_result_root "$compact_root" 2>/dev/null || true)"
     fi
-    active_context="$(jq -c '{classification:(.classification // .autonomousClassification // null), gatePlan:(.gatePlan // .autonomousGatePlan // (.classification.gatePlan // null) // (.autonomousClassification.gatePlan // null))}' \
+    active_context="$(jq -c '{autonomous:.autonomous, classification:(.classification // .autonomousClassification // null), gatePlan:(.gatePlan // .autonomousGatePlan // (.classification.gatePlan // null) // (.autonomousClassification.gatePlan // null))}' \
       "$compact_root/.loop-spec/active-run.json" 2>/dev/null || printf '%s' '{}')"
+
+    autonomous="$(_resolve_autonomous "$autonomous_explicit" "$autonomous" "$(jq -c '.autonomous' <<<"$fj_content")" \
+      "$(jq -c '.autonomous' <<<"$active_context")")"
 
     # Feature state calls it autonomousClassification; terminal telemetry keeps
     # the established active-run name, classification, for one public shape.
@@ -793,6 +823,7 @@ PY
       --arg summary_arg "$summary" \
       --arg no_change_reason_arg "$no_change_reason" \
       --arg loopSpecVersion "$loop_spec_version" \
+      --argjson autonomous "$autonomous" \
       --argjson fj "$fj_content" \
       --argjson delivery "$delivery_content" \
       --argjson active "$active_context" \
@@ -911,7 +942,7 @@ PY
           max: ($fj.iterate.maxIterations // null)
         },
          warnings: $warnings,
-        autonomous: ($fj.autonomous // false),
+        autonomous: $autonomous,
         feature_title: ($fj.feature_title // $fj.slug),
         createdAt: ($fj.createdAt // null),
          finishedAt: $now,

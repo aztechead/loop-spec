@@ -26,7 +26,7 @@ run() {
   local verb="$1"; shift
   env -u LOOP_SPEC_HARNESS -u CLAUDECODE -u PI_CODING_AGENT_DIR \
     -u LOOP_SPEC_NON_INTERACTIVE -u LOOP_SPEC_EXECUTION_PROFILE \
-    -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT "$@" \
+    -u LOOP_SPEC_LOOP_RUNTIME -u CLAUDE_CODE_ENTRYPOINT -u LOOP_SPEC_SESSION_LAYER "$@" \
     bash "$LIB" "$verb"
 }
 
@@ -165,6 +165,51 @@ check "operator headless profile is headless" "true" "$got"
 got=$(run headless LOOP_SPEC_EXECUTION_PROFILE=interactive CLAUDE_CODE_ENTRYPOINT=cli)
 check "interactive profile is not headless" "false" "$got"
 
+# --- attended: a person is proven, or the answer is false ---
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=cli)
+check "the interactive TUI stamp is attended" "true" "$got"
+
+got=$(run attended-reason CLAUDE_CODE_ENTRYPOINT=cli)
+check "the TUI reason names the stamp" "attended/cli" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=sdk-cli)
+check "claude -p is not attended" "false" "$got"
+
+got=$(run attended-reason CLAUDE_CODE_ENTRYPOINT=sdk-cli)
+check "the headless reason names the stamp" "headless/sdk-cli" "$got"
+
+# Unknown is not attended: the directive a person earns went to a headless run once.
+got=$(run attended)
+check "no stamp is not attended" "false" "$got"
+
+got=$(run attended-reason)
+check "no stamp reason is unproven" "unproven/unknown" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=remote_mobile)
+check "an unlisted stamp is not attended" "false" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=remote_mobile LOOP_SPEC_EXECUTION_PROFILE=interactive)
+check "the operator's interactive word makes an unlisted stamp attended" "true" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=sdk-cli LOOP_SPEC_EXECUTION_PROFILE=interactive)
+check "a headless stamp outranks the interactive claim" "false" "$got"
+
+got=$(run attended CLAUDE_CODE_ENTRYPOINT=cli LOOP_SPEC_NON_INTERACTIVE=1)
+check "the operator's non-interactive word outranks the TUI stamp" "false" "$got"
+
+got=$(run attended-reason CLAUDE_CODE_ENTRYPOINT=cli LOOP_SPEC_NON_INTERACTIVE=1)
+check "the operator headless reason is stable" "headless/operator" "$got"
+
+# The bridge harnesses stamp nothing; their one-shot launchers assert non-interactive.
+for h in opencode adk codex; do
+  got=$(run attended LOOP_SPEC_HARNESS=$h)
+  check "$h without a non-interactive assertion is attended" "true" "$got"
+  got=$(run attended-reason LOOP_SPEC_HARNESS=$h)
+  check "$h attended reason names the bridge" "bridge/$h" "$got"
+  got=$(run attended LOOP_SPEC_HARNESS=$h LOOP_SPEC_NON_INTERACTIVE=1)
+  check "$h one-shot launch is not attended" "false" "$got"
+done
+
 # --- entrypoint feeds loop-runtime ---
 got=$(run loop-runtime CLAUDE_CODE_ENTRYPOINT=sdk-cli)
 check "claude -p has no persistent loop runtime" "false" "$got"
@@ -195,6 +240,43 @@ check "interactive entrypoint alone stays unproven" "false" "$got"
 
 got=$(run loop-runtime-reason CLAUDE_CODE_ENTRYPOINT=cli)
 check "interactive entrypoint alone stays unproven (reason)" "unproven-runtime" "$got"
+
+# --- session-layer: every leg proven, or in-harness ---
+# A stub CLI on PATH stands in for the harness binary; tomllib decides the last leg.
+STUB="$(mktemp -d)"; trap 'rm -rf "$STUB"' EXIT
+mkdir -p "$STUB/nocli"
+# A PATH with the shell and interpreters but no harness CLI.
+BARE="$STUB/nocli"
+for tool in bash dirname; do ln -s "$(command -v "$tool")" "$STUB/nocli/$tool"; done
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/claude"; chmod +x "$STUB/claude"
+have_toml="in-harness"; toml_reason="python-below-3.11"
+if python3 -c 'import tomllib' >/dev/null 2>&1; then have_toml="session"; toml_reason="headless/claude"; fi
+
+got=$(run session-layer PATH="$STUB:$PATH")
+check "attended invocation stays in-harness" "in-harness" "$got"
+got=$(run session-layer-reason PATH="$STUB:$PATH")
+check "attended reason names the entrypoint" "attended/unknown" "$got"
+got=$(run session-layer-reason PATH="$STUB:$PATH" CLAUDE_CODE_ENTRYPOINT=cli)
+check "the interactive TUI stays in-harness" "attended/cli" "$got"
+
+got=$(run session-layer PATH="$STUB:$PATH" LOOP_SPEC_NON_INTERACTIVE=1)
+check "headless with a profile, the CLI, and tomllib is session" "$have_toml" "$got"
+got=$(run session-layer-reason PATH="$STUB:$PATH" LOOP_SPEC_NON_INTERACTIVE=1)
+check "session reason names the CLI" "$toml_reason" "$got"
+got=$(run session-layer PATH="$STUB:$PATH" CLAUDE_CODE_ENTRYPOINT=sdk-cli)
+check "a headless entrypoint stamp is enough" "$have_toml" "$got"
+
+got=$(run session-layer-reason PATH="$BARE" LOOP_SPEC_NON_INTERACTIVE=1)
+check "headless without the CLI on PATH is in-harness" "cli-missing/claude" "$got"
+got=$(run session-layer-reason PATH="$STUB:$PATH" LOOP_SPEC_NON_INTERACTIVE=1 LOOP_SPEC_HARNESS=adk)
+check "a harness with no profile is in-harness" "no-profile/adk" "$got"
+
+got=$(run session-layer-reason PATH="$STUB:$PATH" LOOP_SPEC_NON_INTERACTIVE=1 LOOP_SPEC_SESSION_LAYER=0)
+check "operator off outranks the probe" "operator-disabled" "$got"
+got=$(run session-layer PATH="$BARE" LOOP_SPEC_SESSION_LAYER=1)
+check "operator on outranks the probe" "session" "$got"
+got=$(run session-layer-reason PATH="$BARE" LOOP_SPEC_SESSION_LAYER=1)
+check "operator on is named as such" "operator-enabled" "$got"
 
 # --- unknown command exits 2 ---
 rc=0

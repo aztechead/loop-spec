@@ -6,11 +6,9 @@ argument-hint: "<grill|discipline|simplicity|human-code> [on|off|status|lite|ful
 
 # Settings
 
-Four session-start directives, one switch each, all persisted as `ENABLED=0|1` in
-`.loop-spec/<mode>.conf` under the project root (`CLAUDE_PROJECT_DIR` or the cwd). The
-skill only flips the file; the directive text lives in the hook that injects it at the
-next session start, and an environment kill switch overrides the file for one session
-without modifying it.
+Each mode stores `ENABLED=0|1` in `.loop-spec/<mode>.conf` under the project root (`CLAUDE_PROJECT_DIR` or the current directory).
+Update that file to change the mode. The corresponding hook supplies its instructions at the next session start.
+An environment override disables the mode for one session without changing the file.
 
 | Mode | Default | Conf file | Hook | Kill switch | What it does |
 |---|---|---|---|---|---|
@@ -35,10 +33,10 @@ Invoked as `/loop-spec:settings <mode> <subcommand>`.
 - **`status`**: read the file. No file → `<Mode> mode: <default> (default, no conf
   file).` `ENABLED=0` → OFF; otherwise ON (simplicity adds the level).
 - **`probe [paths]`** (human-code only, changes nothing): run
-  `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" probe <paths>` (default `.`) for the
-  measured conventions, `bash "${CLAUDE_SKILL_DIR}/../../lib/house-style.sh" compare <changed files>`
-  to demonstrate a deviation, `bash "${CLAUDE_SKILL_DIR}/../../lib/failure-tells.sh" scan <code paths>`, and, for
-  markdown paths, `bash "${CLAUDE_SKILL_DIR}/../../lib/doc-tells.sh" scan <paths>`.
+  `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/house-style.sh" probe <paths>` (default `.`) for the
+  measured conventions, `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/house-style.sh" compare <changed files>`
+  to demonstrate a deviation, `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/failure-tells.sh" scan <code paths>`, and, for
+  markdown paths, `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/doc-tells.sh" scan <paths>`.
   Report the fact lines verbatim; `sample=none` means the convention is undemonstrated,
   not absent.
 

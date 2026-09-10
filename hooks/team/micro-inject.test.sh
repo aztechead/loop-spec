@@ -3,8 +3,14 @@
 #
 # Micro mode is DEFAULT ON, self-scoped to loop-spec projects (a .loop-spec/
 # dir must exist). With .loop-spec present, absent conf => inject; ENABLED=0,
-# kill switch, or autonomous mode => silent. Mirrors grill-inject.test.sh.
+# kill switch, autonomous mode, or a launch with no proven person => silent.
+# Mirrors grill-inject.test.sh.
 set -euo pipefail
+
+# The suite runs under whatever harness launched it; the cases below say what they
+# assume about the launch, and the default is the interactive TUI.
+export CLAUDE_CODE_ENTRYPOINT=cli
+unset LOOP_SPEC_NON_INTERACTIVE LOOP_SPEC_EXECUTION_PROFILE LOOP_SPEC_HARNESS LOOP_SPEC_AUTONOMOUS
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/micro-inject.sh"
 TMPDIR_TEST="${TMPDIR:-/tmp}/micro-inject-test-$$"
@@ -45,6 +51,18 @@ check_no_pattern "h: LOOP_SPEC_AUTONOMOUS=1 -> silent" 0 "additionalContext" CLA
 check_valid_json "i: LOOP_SPEC_AUTONOMOUS=1 -> valid JSON" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_AUTONOMOUS=1
 check_output "j: LOOP_SPEC_AUTONOMOUS=0 -> still injects" 0 "MICRO MODE ACTIVE" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_AUTONOMOUS=0
 
+# --- headless and unproven launches: no person, no directive ---
+check_no_pattern "h2: claude -p (sdk-cli stamp) -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" CLAUDE_CODE_ENTRYPOINT=sdk-cli
+check_valid_json "h3: sdk-cli stamp -> valid JSON" CLAUDE_PROJECT_DIR="$LS" CLAUDE_CODE_ENTRYPOINT=sdk-cli
+check_no_pattern "h4: LOOP_SPEC_NON_INTERACTIVE=1 -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_NON_INTERACTIVE=1
+check_no_pattern "h5: no entrypoint stamp -> silent (unproven is not attended)" 0 "additionalContext" -u CLAUDE_CODE_ENTRYPOINT CLAUDE_PROJECT_DIR="$LS"
+check_no_pattern "h6: an unlisted stamp -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" CLAUDE_CODE_ENTRYPOINT=remote_mobile
+check_output "h7: the operator's interactive word restores an unlisted stamp" 0 "MICRO MODE ACTIVE" CLAUDE_PROJECT_DIR="$LS" CLAUDE_CODE_ENTRYPOINT=remote_mobile LOOP_SPEC_EXECUTION_PROFILE=interactive
+check_output "h8: ENABLED=1 in micro.conf outranks an unproven launch" 0 "MICRO MODE ACTIVE" -u CLAUDE_CODE_ENTRYPOINT CLAUDE_PROJECT_DIR="$ENA"
+check_no_pattern "h9: ENABLED=1 never outranks a proven headless launch" 0 "additionalContext" CLAUDE_PROJECT_DIR="$ENA" CLAUDE_CODE_ENTRYPOINT=sdk-cli
+check_output "h10: a bridge harness with no non-interactive assertion injects" 0 "MICRO MODE ACTIVE" -u CLAUDE_CODE_ENTRYPOINT CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
+check_no_pattern "h11: a bridge harness one-shot launch -> silent" 0 "additionalContext" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=codex LOOP_SPEC_NON_INTERACTIVE=1
+
 # --- directive carries a runnable ledger path (plugin-root resolved) ---
 check_output "k: directive embeds adhoc-ledger.sh path" 0 "adhoc-ledger.sh" CLAUDE_PROJECT_DIR="$LS"
 check_output "l: CLAUDE_PLUGIN_ROOT honored in path" 0 "/opt/fake-root/lib/adhoc-ledger.sh" CLAUDE_PROJECT_DIR="$LS" CLAUDE_PLUGIN_ROOT="/opt/fake-root"
@@ -59,7 +77,6 @@ check_output "q: opencode directive uses native micro command" 0 "/loop-spec/mic
 check_output "r: opencode directive uses native intake command" 0 "/loop-spec/intake" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
 check_no_pattern "s: opencode directive omits Claude micro command" 0 "/loop-spec:micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=opencode
 check_output "s2: codex directive uses namespaced skill mention" 0 "loop-spec-micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=codex
-check_output "s3: codex directive uses namespaced auto skill" 0 "loop-spec-auto" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=codex
 check_no_pattern "s4: codex directive omits Claude micro command" 0 "/loop-spec:micro" CLAUDE_PROJECT_DIR="$LS" LOOP_SPEC_HARNESS=codex
 check_output "t: directive names exact criterion copy rule" 0 "copy each --criteria value byte-for-byte" CLAUDE_PROJECT_DIR="$LS"
 check_output "u: directive shows no-integration grammar" 0 "integration: none - <reason of at least 10 characters>" CLAUDE_PROJECT_DIR="$LS"

@@ -17,6 +17,7 @@
 # Exit codes match the scan: 0 all clean, 1 a scan found signals, 2 the
 # feature could not be resolved into targets or a scan could not run.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   echo "usage: feature-scan-each.sh <scan-script> --feature-dir DIR" >&2
@@ -39,15 +40,15 @@ feature_json="$feature_dir/feature.json"
 # successful empty set — a feature with no scan targets is unresolved.
 emit_targets() {
   local ws_type workspace_root n name rel_path base_sha repo_dir slug repo_root
-  ws_type="$(jq -r '.workspace | type' "$feature_json" 2>/dev/null)" || return 1
+  ws_type="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.workspace | type' 2>/dev/null)" || return 1
   if [[ "$ws_type" == "object" ]]; then
-    workspace_root="$(jq -r 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end' "$feature_json")" || return 1
+    workspace_root="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter 'if (.workspace != null and (.workspace.mode // "") != "single") then .workspace.root else empty end')" || return 1
     [[ -n "$workspace_root" && -d "$workspace_root" ]] || {
       echo "feature-scan-each: workspace.root is missing or not a directory" >&2
       return 1
     }
     workspace_root="$(cd "$workspace_root" && pwd)"
-    n="$(jq '.workspace.repos | length' "$feature_json" 2>/dev/null)" || return 1
+    n="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --filter '.workspace.repos | length' 2>/dev/null)" || return 1
     [[ "$n" -gt 0 ]] || {
       echo "feature-scan-each: workspace.repos is empty" >&2
       return 1
@@ -68,11 +69,11 @@ emit_targets() {
       }
       jq -nc --arg name "$name" --arg path "$repo_dir" --arg sha "$base_sha" \
         '{name:$name,path:$path,baseSha:$sha}'
-    done < <(jq -c '.workspace.repos[]' "$feature_json")
+    done < <(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -c --filter '.workspace.repos[]')
     return 0
   fi
-  slug="$(jq -r '.slug // empty' "$feature_json")"
-  base_sha="$(jq -r '.baseSha // empty' "$feature_json")"
+  slug="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.slug // empty')"
+  base_sha="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.baseSha // empty')"
   [[ -n "$base_sha" ]] || {
     echo "feature-scan-each: feature.json has no baseSha" >&2
     return 1

@@ -10,22 +10,11 @@ tools:
   - Bash
 model: inherit
 color: cyan
-memory: project
 ---
 
 # pattern-mapper
 
 You scout the codebase for the closest existing implementation of every concept the upcoming feature will need, so the planner can write tasks whose Steps reference real, copy-adaptable patterns instead of inventing new shapes.
-
-## Persistent memory (`memory: project`)
-
-You have a persistent memory directory at `.claude/agent-memory/pattern-mapper/`. Before
-scouting, skim your `MEMORY.md` for analogs you have already mapped in this project
-(concept -> canonical path+lines). After writing PATTERNS.md, record NEW canonical analogs
-there — one line per concept. Memory entries are leads, not answers: re-verify a
-remembered path still exists (and is still the canonical instance) before citing it in
-PATTERNS.md — the codebase moves between features. The path hook allows your writes only
-under `docs/loop-spec/features/**` and `.claude/agent-memory/**`.
 
 ## Input
 
@@ -34,7 +23,7 @@ under `docs/loop-spec/features/**` and `.claude/agent-memory/**`.
 
 ## Output
 
-`docs/loop-spec/features/{slug}/PATTERNS.md`, using `skills/shared/artifact-templates/PATTERNS.md.template` as the shape.
+`docs/loop-spec/features/{slug}/PATTERNS.md`, using the PATTERNS template the lead named as an absolute path (a plugin-relative path does not resolve from a subagent; never search the disk for it — if none was given, use the section order `## Concepts`, one `### <concept>` per analog, `## Concepts with no clear analog`). Size follows the tree: one entry per pattern actually observed, so a tree of a dozen files yields a short file.
 
 ## Navigation (required)
 

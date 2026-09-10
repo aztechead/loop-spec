@@ -1,20 +1,18 @@
 ---
 name: auto
-description: Autonomous entry point for Claude Code, OpenCode, ADK, and Codex SDK/headless requests. Use when a script or SDK has a grounded task and has not named cycle, debug, or micro; routes to micro, debug, compact, or full, failing upward when uncertain. Do not use from an interactive session when the user already named a skill - run that skill instead.
+description: "Route autonomous script or SDK requests to micro, debug, compact, or full based on repository evidence. Use when the caller has not selected a route. Do not replace a skill the user named in an interactive session."
 argument-hint: "<task description>"
 allowed-tools: Bash Read Glob Grep Skill
 ---
 
 # loop-spec:auto
 
-Question-free autonomous router. This skill decides how much process the request
-needs; it does not implement the request itself. Preserve the request verbatim when
-delegating and always include the `autonomous` token.
+Select a route without asking questions or implementing the request.
+Preserve the request verbatim when delegating. Always include the `autonomous` token.
 
 ## Entry Contract
 
-- `/loop-spec:auto <description>` is autonomous by definition. A redundant inline
-  `autonomous` token may be stripped from the description.
+- `/loop-spec:auto <description>` is autonomous by definition. You may remove a redundant inline `autonomous` token from the description.
 - A bare invocation aborts with usage guidance; there is no goal to infer.
 - `new`, `backlog`, a SPEC `.md` path, and requests to resume an existing cycle are
   always full. Skip broad grounding, but still validate/output a `full` decision before
@@ -78,16 +76,12 @@ replace the omitted field with exactly these ten entries:
 
 Route semantics:
 
-- **micro**: direct, well-understood maintenance with at most 3 criteria and about 5
-  reviewable edited files. Generated lockfiles do not count toward that edit surface.
-  Examples include a focused documentation refresh, config adjustment, an update to
-  already-present dependency versions, a rename, a localized fix whose mechanism is
-  already known, a merge-conflict resolution, a PR sync/rebase, a re-review against
-  the default branch, or a one-command chore — all `taskKind: maintenance`, all work
-  to execute (micro owns the current checkout and will reuse the branch's existing
-  PR). No subagents or design
-  phases. The micro skill inherits the session model in Claude Code and OpenCode;
-  classification stays on that same parent model.
+- **micro**: well-understood maintenance with at most 3 criteria and about 5 reviewable edited files.
+  Do not count generated lockfiles toward this limit.
+  Examples include focused documentation or config changes, existing dependency updates, renames, and localized fixes with known causes.
+  Use `taskKind: maintenance` for merge-conflict resolution, PR sync or rebase, re-review against the default branch, and one-command chores.
+  Micro uses the current checkout and reuses the branch's existing PR.
+  It uses no subagents or design phases. Classification and micro execution inherit the session model in Claude Code and OpenCode.
 - **debug**: a bounded bug or unexplained behavior that needs reproduction, hypotheses,
   and a sibling sweep. This is the middle route: more rigor than micro without a
   feature SPEC/PLAN DAG.
@@ -97,13 +91,11 @@ Route semantics:
   required, each exactly `{run:boolean, reason:nonblank string}`. A confident compact
   classification may handle security, migration, multi-repository, dirty-worktree,
   interface, seam, or dependency work; destructive work is always full.
-- **full**: greenfield or unknown work, destructive work, broad or unclear requests, and
-  features/refactors the classifier cannot confidently authorize as bounded compact work.
-  Maintenance that exceeds micro bounds (a large conflict resolution or a wide re-review)
-  is also `full`. A seam, interface, security, migration, multi-repository, dependency,
-  or dirty-worktree signal belongs here unless the grounded compact classification explains
-  its bounded handling in the durable plan — fail-closed promotion, not a
-  `protocol-mismatch`.
+- **full**: new projects, unknown or destructive work, broad requests, and work without enough evidence for compact.
+  Maintenance beyond micro's limits also uses `full`, including large conflict resolutions and broad re-reviews.
+  Seam, interface, security, migration, multi-repository, dependency, and dirty-worktree concerns default to `full`.
+  Compact may handle these concerns only when its saved plan explains their bounded scope using repository evidence.
+  Promote uncertain work to `full`. Do not classify it as `protocol-mismatch`.
 
 Compact reuses the existing cycle and its terminal delivery contract. The gate plan
 changes only adaptable gate choices; it does not create a separate protocol.
@@ -115,16 +107,21 @@ boundary:
 
 ```bash
 decision="$(printf '%s\n' '<one-line candidate JSON>' | \
-  bash "${CLAUDE_SKILL_DIR}/../../lib/task-route.sh" validate -)"
+  bash "${LOOP_SPEC_SKILL_DIR}/../../lib/task-route.sh" validate -)"
 ```
 
-Use `.route` from the normalized output, never the proposed route. The validator
-promotes malformed compact gate plans, confidence below 0.7, high ambiguity, more than
-12 reviewable files, more than 6 criteria, destructive compact work, and invalid
-micro/debug classifications to `full`. Working-tree conflict is measured by the script
-from the current execution root with the cycle's canonical clean-base rules; it is not
-accepted as a path or field from the semantic proposal. It remains a full promotion for
-micro/debug, but a confidently classified compact proposal may carry it in its gate plan.
+Use `.route` from the validated output, never the proposed route.
+The validator promotes the following to `full`:
+
+- Malformed compact gate plans.
+- Confidence below 0.7 or high ambiguity.
+- More than 12 reviewable files or 6 criteria.
+- Destructive compact work.
+- Invalid micro or debug classifications.
+
+The script checks working-tree conflicts from the current execution root using the cycle's clean-base rules.
+It does not accept a conflict path or field from the proposal.
+Conflicts promote micro and debug to full. A confident compact proposal may address conflicts in its gate plan.
 
 Set `introducesDependency` for compatibility whenever either dependency field is true.
 Set `introducesNewDependency` only when the change adds a dependency edge; a version-only
@@ -136,7 +133,7 @@ execution profile from the SAME normalized decision and pass it to the cycle:
 
 ```bash
 profile_line="$(printf '%s' "$decision" | \
-  bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-profile.sh" select -)"
+  bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-profile.sh" select -)"
 profile="${profile_line#profile=}"; profile="${profile%% *}"
 ```
 
@@ -147,11 +144,10 @@ one `AUTONOMOUS_ROUTE ` line containing the normalized decision.
 the existing maintenance short path; `profile=standard` is the unchanged full ladder.
 The logged line carries its own reason, so a run says why its profile was allowed.
 
-Print exactly one concise, SDK-readable JSON line containing the normalized decision,
-prefixed with `AUTONOMOUS_ROUTE `. Do not write routing state into the target repository's
-tracked tree; that would dirty a clean base before cycle or delivery guards run. The
-validator's own record (`.loop-spec/active-run.json`) is git-ignored: it arms the run so
-an exit without a terminal result is detectable from Step 4 on.
+Print the normalized decision as one JSON line prefixed with `AUTONOMOUS_ROUTE `.
+Keep routing state outside the tracked tree so cycle and delivery guards see a clean base.
+The validator records the active run in the Git-ignored `.loop-spec/active-run.json`.
+Step 4 uses this record to detect a missing terminal result.
 
 ## Step 3 - Delegate Once
 
@@ -188,7 +184,7 @@ that ends without one reads as a failure to every headless caller:
 
 ```bash
 repo_root="$(git rev-parse --show-toplevel)"
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-reconcile.sh" --result-root "$repo_root" \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-reconcile.sh" --result-root "$repo_root" \
   --reason "routed skill ended without emitting a terminal result"
 ```
 

@@ -4,6 +4,671 @@ All notable changes documented here. Format follows Keep a Changelog.
 
 ## [Unreleased]
 
+## [6.5.0] - 2026-09-09
+
+The orchestrator port's follow-up (`port audit 1`,
+F1 to F11) and the rules behind it (the port principles).
+The landing record at the end of the follow-up says what each item became.
+
+### Before you update
+
+- **The micro directive is shorter and injected only when a person is proven present.**
+  The two sentences about standing down inside a route or a cycle are gone; the guard
+  and the probe enforce what they said.
+  `lib/harness.sh attended` answers true for the Claude Code `cli` stamp, for opencode,
+  ADK, and Codex sessions with no one-shot assertion, and for
+  `LOOP_SPEC_EXECUTION_PROFILE=interactive`; a headless or unstamped launch (a `claude
+  -p` run, Claude Code on the web or in the desktop app) gets nothing. `ENABLED=1` in
+  `.loop-spec/micro.conf` restores it on an unstamped launch, never on a headless one.
+  The grill, simplicity, human-code, and discipline directives stand down only when the
+  launch is proven headless.
+- **A `/loop-spec:cycle` session that never calls the driver cannot stop, and neither
+  can one that walked out of an open phase.** `hooks/team/cycle-stamp-guard.sh` (Stop)
+  denies while the prompt stamp `cycle-driver.sh start` consumes is still present and
+  no newer `.loop-spec/last-result.json` exists, and while a feature's newest
+  `phase_start` has no `phase_end` and no newer result (until the phase is older than
+  `LOOP_SPEC_PHASE_TIMEOUT_MINS`). The deny names the driver call through the `DRV`
+  the cycle skill binds, never a path to retype. It has no switch of its own;
+  `LOOP_SPEC_INVOCATION_STAMP=0` stops the stamp and with it the first deny.
+- **The driver observes what the lead used to assert** (`port audit 4`).
+  Read-only is the task's word: the invocation token `protected:a,b` lands in
+  `feature.json.protected`, `lib/footprint.sh list` honors a read-only mark only for a
+  protected file (a mark on any other file is a plain cite, with a notice) and adds a
+  cited source file's existing test module by construction, so a changed file's test
+  is in the footprint unless the task protects it; the eval passes each task's
+  protected list. The oneshot verification skeleton's Status cells are empty, and
+  `cycle-driver.sh verification run` executes each criterion's command (the backticked
+  span of its SPEC line) and `commands.test`, writing PASS or FAIL from the exit, the
+  evidence, and the output; `next --returned-from oneshot` runs it before the exit
+  gate, `artifact-lint` flags an empty Status cell and an empty fenced block, and
+  `verification fill` takes no evidence, output, or review text any more.
+  `verification review --report` writes the Code review section from the reviewer's
+  report (`none` when it holds no finding; the boundary review does this itself) and
+  `verification verdict` records the lead's answer per finding. The three remaining
+  writers of a driver-owned file are closed: `spec write --file` refuses over the
+  oneshot skeleton, `hooks/team/result-forgery-guard.sh` denies a shell write into a
+  oneshot feature's SPEC.md or VERIFICATION.md, and the path hook's deny fails closed
+  on an unreadable spec. `spec fill --json -` fills the whole spec in one call; a test
+  module of a file that changed in the diff cannot be dropped; the eval records
+  `first_turn_input_tokens` from the session transcript and reads `bar.rounds`.
+- **A criterion is two fields, escalation is a gate's, and the four other fifth-audit
+  items** (`port audit 5`). `spec fill --command
+  <shell> --expect <text>` writes the Good Enough line and the command into the
+  frontmatter `criteria:` map that `verification run` executes; a sentence is refused,
+  `--row GE-NNN` replaces (a grounding bullet by index), a repeat is never appended,
+  and `lib/oneshot-spec-lint.sh` flags a bare Good Enough line at SPEC's exit. `spec
+  escalate` is gone from the lead's reach: the third identical REDO on ONESHOT writes
+  `route: full` with the flag classes as the reason, sets the attempt's
+  VERIFICATION.md aside, emits an `escalate` event, and hands the run to DISCUSS. A
+  fresh session that enters the phase a handoff named answers from the record instead
+  of stepping the graph again, so a phase is entered once. The reviewer session leaves
+  `dispatch/oneshot.reviewer.log` and the REDO quotes stderr's last line. The shell
+  guard denies on an unreadable spec like the path hook. The lite spec skill names the
+  one drop call beside the footprint.
+- **Three defects the first six-run reading exposed, fixed.** A criterion without a
+  backticked command made the boundary's `verification run` die before it wrote any
+  row, so every Status cell stayed empty and the run escalated; `spec fill
+  --criterion` now refuses a bare criterion and never appends the same one twice,
+  and `verification run` writes row by row, turns a bare criterion into a FAIL row
+  that says so, and adds the row and block for a criterion the spec gained after the
+  skeleton. The Claude session profile listed `--allowedTools` last, so with the
+  reviewer model `inherit` (no `--model`) the CLI read the prompt as one more tool
+  name and every driver-launched reviewer died on "no prompt"; the guarded list now
+  ends with `--permission-mode acceptEdits`. A failed reviewer session is handed to
+  the lead once, as the in-harness dispatch, instead of relaunched on every return.
+  `cycle-driver.sh decline` refuses once a feature has begun in the checkout.
+- **Live run 4** (`slugify-bug`, haiku, d17da82, this branch's run; the auditor's own run
+  on the same head read 0.42 USD, 3.5 minutes, 68 lines, 47 turns): delivered in one
+  round at 0.41 USD, 3.8 minutes, 74 artifact lines, 39 turns, zero REDO rounds; run 3 on the same fixture
+  before this work was 0.80 USD, 79 turns, 124 lines. The bar (0.25 USD, 50 lines, 3
+  minutes) is still missed; `port audit 3` records
+  where the rest sits.
+- **The port's records live on the audit branch.** The port plan, the port principles,
+  and the five port audits (items F1 to F12, N1 to N7, the fourth audit's five items,
+  and R1 to R7, each with its landing record) are the `docs/loop-spec/orchestrator-port`
+  files at commit `28c3dded3f3b0661a9936c508bd09f8873bcbf25`; code comments, the tests, and this
+  changelog cite them by those names. They change nothing the plugin does, so the
+  branch that judges outcomes carries only the plugin.
+- **The small pins the third audit asked for.** A repeated handoff answer (`next` or
+  `begin` in the session that handed off) adds no phase event pair, pinned in the
+  driver test; each eval task's pass bar is checked against the plan's figures
+  (`tests/eval-record-coverage.test.sh`); the four port findings documents under
+  `evals/` leave the tree per the policy PR 93 set, and the changelog names the runs
+  instead. The state-ref commit count on a driver-delivered branch was already pinned
+  (`tests/lib/cycle-driver.test.sh`, "carries no state commit", in place and in a
+  worktree). PR 93's four variables and three guards stay as merged, each recorded
+  with its observed failure in `port audit 3`.
+- **The short route's reading list is bounded as a path.** `skills/spec-lite/SKILL.md`
+  is SPEC's entry on every cycle (the graph's `spec` node names it with the new node
+  key `skill`, printed as `EXT skill=spec-lite` under `NEXT`): the scout, the oneshot
+  candidate from the scout's record, and the short route's spec fills; it hands to
+  `loop-spec:spec` on the full route, whose body lost the candidate section. The cycle
+  skill is the launcher: `begin` answers `decisions` with the init and resume commands
+  it wants next (`.next`), `finish` prints the completion `report`, and
+  `cycle-driver.sh decline --reason` writes the protocol-mismatch result; the
+  headless-run and team-dispatch sections, whose contracts belong to the docs and the
+  phase skills, are gone. `tests/lib/context-load.test.sh` holds the cycle, lite spec,
+  and oneshot bodies with their cites at or under 600 lines.
+- **The lead never writes a shape on the short route.** `cycle-driver.sh spec fill`
+  (`--intent`, `--file/--note`, `--criterion`, `--grounding`), `spec escalate
+  --reason`, and `verification fill` (`--row` with `--implementation/--proof`,
+  `--integration/--integration-proof`, `--evidence`, `--output`; `--review`; `--tests`)
+  fill the driver-written skeletons one value per call and answer with the exit lints'
+  flags over the file as it stands. `hooks/restrict-agent-paths.sh` denies a Write or
+  Edit of SPEC.md or VERIFICATION.md while `lib/graph/probes/oneshot.sh` answers
+  `route=oneshot` for the feature, naming the fill commands. The oneshot node's
+  VERIFICATION.md skeleton is `VERIFICATION-oneshot.md.template`, the sections the
+  gates read and nothing more (44 lines for two criteria against 99 filled from the
+  full template on live run 3). Every REDO answer is a driver-observed `redo` event
+  with the flag classes; `evals/eval_run.py` records `redo` and `format_redo` and the
+  summary prints them (`tests/eval-record-coverage.test.sh`).
+- **The footprint has no prose exit.** `lib/oneshot-exit-gate.sh` flags every
+  footprint file the diff since `baseSha` never touched, whatever Implementation notes
+  say; `cycle-driver.sh spec footprint drop --file --reason` is the one way out, a
+  ruling in `decisions.jsonl` and a line in the spec, and it refuses the test module of
+  a file that stays in the footprint. The gate's `unchanged`/`read-only` bullet reading
+  and its silent drop of an untouched non-test file are gone.
+- **A cycle never initializes the plugin's own repository.** `cycle-driver.sh init`
+  exits 3 when the checkout carries this plugin's `.claude-plugin/plugin.json` and is
+  not the project the harness opened, or when the driver runs from a copy inside that
+  checkout (the eval's layout). `tests/run-all.sh` refuses to start while an active
+  cycle lives in another worktree of the repository, naming it, so a leaked feature
+  cannot turn a guard suite green or red by accident; the ad-hoc verify guard's suite
+  runs from its fixture directory for the same reason.
+- **The short route is one session end to end.** The graph's `human.after-spec` to
+  `oneshot` edge and its `oneshot` to `deliver` edge carry `"sameSession": true`;
+  `cycle-driver.sh next` answers `NEXT` across them instead of `HANDOFF`, and
+  `hooks/team/phase-handoff-guard.sh` allows the calls. A supervisor counting rounds
+  sees one round for a oneshot fix; the escalated route (`oneshot` to `discuss`) still
+  hands off.
+- **The footprint is the scout's ledger.** `lib/footprint.sh cite <path>:<line>`
+  (with `--read-only`) writes `<featureDir>/footprint.jsonl`; `lib/graph/probes/oneshot.sh
+  --candidate` and `cycle-driver.sh spec skeleton` read it and take no file argument.
+  The oneshot spec template keeps only `gate_passed` and `unresolved_dimensions` in
+  its frontmatter.
+- **`lib/feature-read.sh --all` fails on a key the schema does not declare**, naming
+  it. `--drop-strays` projects without them; the driver passes it in its one
+  stray-dropping rewrite. A dashboard that called `--all` on a feature with legacy keys
+  now sees exit 1 until the driver's next phase activation drops them.
+- **The oneshot exit gate escalates on its own.** A changed file outside the footprint
+  writes `route: full` into SPEC.md with the file named and routes the run to DISCUSS;
+  an untouched non-test footprint file is dropped from the footprint with a note; a
+  test module named and untouched stays a flag. `route: full` still runs the scans
+  and the verification lints.
+- **The handoff marker is `LOOP_SPEC_HANDOFF`.** `LOOP_SPEC_PHASE_HANDOFF` was the
+  removed variable's name; the marker the cycle skill prints and the nested-session
+  guard names is renamed. A supervisor grepping the old marker updates its pattern.
+- **`lib/review-triage-lint.sh` reads every bullet under `## Code review`**, under
+  any subheading, and a location needs a path separator or a known source extension
+  (`Makefile`, `Dockerfile`, and the like count). A finding parked under
+  `### Resolution` is linted now.
+
+### Added
+
+- `lib/context-load.sh sum|cites`: the lines a phase skill makes the lead read, with
+  `path.md#Heading` counting one section; `tests/lib/context-load.test.sh` holds the
+  oneshot path under 600 lines and the spec skill body under 260.
+- `skills/spec/SKILL.md` "1a. The oneshot candidate": the lite path, one driver call,
+  no score, no transcript, intent gaps asked once.
+- `cycle-driver.sh spec skeleton` (the candidate's route and SPEC.md skeleton), `spec
+  write --file` (the one target a draft lands at), `task run --role
+  implementer|reviewer` (the session rung's launch, in the driver), and `oneshot
+  review` (ONESHOT's one review pass as a driver-launched session where the session
+  layer answers, with the dispatch event driver-observed).
+- The eval tasks `slugify-bug` and `wc-json` carry `bar` figures (cost, artifact lines,
+  minutes); the record carries `bar.met` and the summary says "at the bar" or "over the
+  bar" per task, so the pass bar is read, not argued.
+- A phase node's ingress may list `skeletons` ({path, template}); `phase-begin` writes
+  each absent one. The oneshot node lists VERIFICATION.md with one grounding row and
+  one acceptance row per Good Enough criterion.
+- `lib/graph/phases.sh same-session <from> <to>` and the edge key `sameSession` in
+  `graph/schema.json`.
+- `lib/harness.sh attended` and `attended-reason`.
+- `evals/eval_run.py` records `cycle_begun`; the summary reports a run with no
+  feature.json as "no cycle".
+- `tests/graph-phase-subsets.test.sh` reads every literal phase subset in the driver,
+  `lib/phase-mode.sh`, and the placeholder guard back against the graph.
+
+### Changed
+
+- `hooks/restrict-agent-paths.sh` applies the feature-checkout deny to every caller,
+  the main thread included: a feature artifact lands in the checkout that holds its
+  feature.json.
+- `hooks/team/nested-session-guard.sh` allow-lists the bundled launchers by path
+  token, never by substring, and scans a script that merely mentions one.
+- `skills/oneshot/SKILL.md` cites the compact directives and the telemetry section by
+  heading, not the whole contracts; the driver's skeleton is what it fills.
+- `skills/shared/execute-rungs.md` describes the session rung as the driver's launch.
+- `lib/pause-snapshot.sh`, `lib/ralph-remediation.sh`, `hooks/team/task-completed.sh`,
+  `lib/cycle-reconcile.sh`, `skills/pause/SKILL.md`, and
+  `skills/shared/execute-loop-fleet.md` read feature.json through the typed reader;
+  `tests/feature-read-coverage.test.sh` is a two-pass scan with a reasoned allow-list.
+- the port plan records the WP4 shim and the cycle
+  skill's launcher steps, the WP5 vendoring decision and its partial state, and the
+  required third-party attribution exception.
+
+### Merged from 6.3.0 (PR 93)
+
+The 6.3.0 fixes are combined here. Where the two branches collided the port's version
+stands, and what 6.3.0 had that the port lacked is adopted: the BLOCKED acceptance
+status and the veto of a PASS whose evidence says the check never ran
+(`lib/converged-floor.sh`); the ITERATE `escalate` route for a gap only an operator can
+close (`lib/iterate-judged.sh`, ended by the driver as `DONE status=escalated`); a
+headless or gitfile checkout works in place on the feature branch (`lib/graph/driver.py`);
+the dispatch contract's "dispatch, then stop" holds under `claude -p`; the critic reads
+only the EVID rows the artifact cites; PLAN adds the `blockedBy` edges its prose states
+(`lib/plan-conflicts.sh edges`); accepted `[minor]` items are applied before a critique
+gate closes at its ceiling. Not adopted: `plan-render.sh` as the source of PLAN.md's task
+sections (the port derives tasks.json from PLAN.md), and the fix-list `@file` form (the
+port's `critique fail` takes a path or stdin). 6.3.0's `dispatch-prompt-guard.sh` and
+`artifact-lint-feedback.sh` hooks and its `plan-render.sh`, `task-batch.sh`, and
+environment probe come along unchanged.
+
+### Fixed
+
+- The oneshot VERIFICATION.md skeleton escapes a `|` inside a Good Enough criterion (a
+  shell pipeline is a common criterion); the bare pipe split the table row and
+  `lib/converged-floor.sh` read the status from the wrong cell, one REDO and ten edits
+  on a live run.
+
+- The oneshot exit gate passed on a frontmatter the probe could not read, skipped the
+  footprint check in workspace mode, and never checked the diff against the footprint
+  in the other direction.
+- `llms.txt` and `docs/loop-spec/configuration.md` told the reader to set a variable
+  that no longer exists.
+
+## [6.4.0] - 2026-09-09
+
+### Before you update
+
+For the operator who runs the plugin and the engineer who embeds it
+(`docs/loop-spec/supervisor-interface.md`). Each item names what changed, who it
+touches, and what to do.
+
+- **The `autonomous` token counts only at the edges of the arguments.** A prompt builder
+  that puts the word inside the description (`/loop-spec:cycle fix the autonomous chain`)
+  no longer arms autonomous mode. Put it first (`/loop-spec:cycle autonomous <task>`),
+  last, or set `LOOP_SPEC_AUTONOMOUS=1`. `/loop-spec:auto <task>` is unchanged.
+- **The challenger runs on `sonnet` under Claude Code.** A `CLAUDE.md` alias allow-list
+  built from `bash lib/feature-init.sh all-models` now needs `sonnet`; re-run the command
+  and copy the list. `LOOP_SPEC_MODEL_CHALLENGER=inherit` restores the old default. Under
+  implicit agent teams an alias selector makes the challenger a nameless one-shot Agent
+  instead of a named teammate (`skills/shared/dispatch.md`); nothing to do unless a
+  hook keys on the teammate name `challenger-1`.
+- **The `plan-feasibility` gate is gone.** `feature.json.currentGate.gate` and
+  `gateHistory[].gate` carry `plan-critique` for the whole PLAN review; the paused
+  reason `plan-feasibility-cap` is gone with it (a mechanical FLAG that survives the
+  review round now reaches the driver's bounded `REDO`, then escalation). A sink or a
+  dashboard that matches either string needs the new names.
+- **One delta round per critique gate.** `graph/critique.graph.json` declares a ceiling
+  of 1. `LOOP_SPEC_CRITIQUE_ROUNDS=2` restores the old bound; `0` is still unbounded.
+- **`tasks.json` is derived from PLAN.md.** A custom planner agent (an OpenCode or Codex
+  agent generated from `agents/planner.md`, or an ADK role) must write every field in
+  the task block: `**Files:**`, `**Verify:**`, `**Acceptance criteria:**`, and
+  `**BlockedBy:**` (the Task DAG table is the fallback), plus `**Repo:**` in workspace
+  mode. A `tasks[]` array in the completion message is no longer read. `lib/phase-exit.sh
+  plan` refuses a sidecar whose ids differ from PLAN.md; `bash lib/plan-tasks.sh extract
+  PLAN.md` is the recovery for a feature paused mid-PLAN on 6.2.0.
+- **New gate-log files.** `gate-logs/<gate>-state.json`, `gate-logs/<gate>-delta.diff`,
+  and a `## delta-findings-lint` section in every delta round log. A mirror store that
+  copies `gate-logs/` picks them up; nothing else reads them.
+- **Every one-shot `Agent` call carries `run_in_background: false`, and headless
+  launchers need `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`.** Claude Code's fork mode
+  backgrounds every Agent regardless of the key (a headless run saw the stub on all eight
+  calls), and the variable is the documented switch that forces the foreground. The eval
+  driver and the cloud profile docs set it; an SDK embedding sets it in
+  `ClaudeAgentOptions.env`. An SDK `can_use_tool` hook that inspects `Agent` tool input
+  sees the new key. The peer harnesses drop it.
+- **Longer challenger replies.** The "top 5-7, under 500 words" caps are gone; a sink
+  that stores `gate_round` payloads or gate-logs sees the full findings pass.
+- **One phase per invocation is the only mode.** `/loop-spec:cycle` runs one phase
+  and returns with a paused `phase-handoff` result; the next invocation enters the next
+  phase in a fresh context. A caller that ran a whole cycle in one `claude -p` now loops
+  until `.loop-spec/last-result.json` is not `paused`/`phase-handoff`
+  (`docs/loop-spec/cloud-run-autonomous.md` is the bounded controller; the eval driver
+  does the same). `LOOP_SPEC_PHASE_HANDOFF`, `LOOP_SPEC_ITERATE_FRESH`, and the
+  `phaseHandoff` state key are gone; `phase:fresh` is accepted and changes nothing;
+  `phase:continuous` is reported as a legacy token and ignored. The driver answers
+  `HANDOFF next=<p> model=<m>` at every phase boundary and `REWIND next=<p>` when the
+  graph lists the next phase before the one that returned; both mean relaunch.
+  `hooks/team/phase-handoff-guard.sh` enforces the one-phase rule whenever a feature is
+  active, with no switch. `hooks/team/stop-deflection-guard.sh` is removed with its
+  three variables: it denied a stop that said "fresh session", which is now the
+  designed ending of every phase.
+- **The cycle driver is Python.** `lib/cycle-driver.sh` is a launcher for
+  `lib/graph/driver.py`, which runs the graph engine (`lib/graph/engine.py`) in
+  process; every subcommand, answer line, and exit code is unchanged. A test or a
+  supervisor that grepped the Bash driver for a contract string reads the module now.
+
+- **Feature state never lands on the feature branch.** `feature.json` and `PROGRESS.md`
+  are snapshotted onto `refs/loop-spec/state/<slug>` at every phase transition
+  (`lib/state-ref.sh commit|restore|show`); the checkpoint push carries that ref; a
+  recreated worktree restores from it. The driver no longer commits `chore: <slug> state
+  @ <phase>` and never writes the project's `.gitignore`. `LOOP_SPEC_SQUASH_STATE_COMMITS`
+  is gone (`lib/state-commit-policy.sh` with it). A supervisor that read state from the
+  branch reads `git show refs/loop-spec/state/<slug>:feature.json` instead, and a
+  checkout whose `.gitignore` still carries the two `!/.loop-spec/features/*/...`
+  negations can delete them: every dirt check now goes through `git-ops.sh dirt`, which
+  skips the state paths, and `runtime-ignore.sh ensure` removes the same negations
+  from `info/exclude`.
+- **One feature per checkout is a guard, not a side effect.** `cycle-driver.sh init`
+  refuses a second feature while another is active in the same checkout; before, the
+  clean guard tripped on state dirt that no longer exists.
+- **A converged-floor veto with no FAIL row rewinds to VERIFY.** `iterate-gap.sh` answers
+  `gap=verify`, the graph routes `iterate -> verify`, and the verifier completes the
+  record; no implementer runs. A FAIL row still rewinds to EXECUTE.
+- **A small change takes the oneshot route.** `lib/graph/probes/oneshot.sh` reads
+  SPEC.md's new frontmatter `footprint:` (the files the change touches): at most three,
+  `unresolved_dimensions` empty, and no security signal in SPEC.md or those files routes
+  `human.after-spec` to the new ONESHOT phase (`skills/oneshot/SKILL.md`: implement on
+  the main thread, one `loop-spec:code-reviewer` pass, verify, write VERIFICATION.md),
+  then DELIVER. DISCUSS, PLAN, EXECUTE, VERIFY, and ITERATE do not run. Escalation is
+  `route: full` in the frontmatter, written by SPEC or by ONESHOT, and routes to
+  DISCUSS; `LOOP_SPEC_ROUTE=full` is the operator's override, and nothing demotes a
+  full run. SPEC writes the oneshot spec shape
+  (`skills/shared/artifact-templates/SPEC-oneshot.md.template`, at most 60 lines) when
+  the same facts hold, and the autonomous paths write no interview transcript. That
+  shape opens with the ask inside a frozen `## Intent` block (`<!-- intent: frozen -->`
+  to `<!-- /intent -->`) that ONESHOT's exit proves unchanged since SPEC committed it;
+  `lib/artifact-lint.sh spec` accepts both shapes (`tests/fixtures/real-SPEC.md`,
+  `tests/fixtures/oneshot-SPEC.md`). A spec writer of your own that omits `footprint:`
+  gets the full path, unchanged.
+  `checkpoint.sh tag post-oneshot`, `LOOP_SPEC_PHASE_MODEL_ONESHOT`, and
+  `phaseModels.oneshot` follow from the graph.
+- **The phase vocabulary, and each phase's door and exit, are the graph's.**
+  `lib/graph/phases.sh list|regex|validate|suffix` derives the phase ids from
+  `graph/cycle.graph.json`; `feature-init.sh`, `phase-entry.sh`, `phase-exit.sh`,
+  `checkpoint.sh`, the driver, the engine, and the team hooks read it, and
+  `LOOP_SPEC_GRAPH` names another graph for all of them. Each phase agent node now
+  carries `ingress` (the entry packet) and `egress` (the exit gates, pointers, commit,
+  checkpoint, and the egress guard's allow-list); `phase-entry.sh` and `phase-exit.sh`
+  are loops over those blocks (`skills/shared/graph-contract.md`, Phase ingress and
+  egress). PLAN's and EXECUTE's multi-step checks are `lib/plan-exit-gate.sh` and
+  `lib/execute-exit-gate.sh`, listed as gates. A graph of your own that adds a phase
+  gives its node both blocks; `lib/graph/validate.sh --strict` flags a phase node
+  without `ingress`. `checkpoint.sh tag` accepts `post-<phase>` for every phase of the
+  graph; the four-name list is gone.
+- **The eval driver has no judge model.** `evals/eval_run.py` reports over-build as app
+  lines added over `reference_app_lines`; the `judge` record key and the summary's
+  `judge meets/over` column are gone.
+- **VERIFICATION.md's acceptance table has a grammar, and VERIFY's exit enforces it.**
+  One row per Good Enough criterion keyed `GE-NNN` or its number in the `#` column; the
+  status in the `Status` or `Result` column begins with `PASS`, `FAIL`, or `N/A`. A
+  verifier of your own that writes another shape gets `FLAG [acceptance-table]` at
+  `phase-exit.sh verify` (a REDO) instead of a converged-floor veto in ITERATE. The
+  parser also accepts what the bundled verifier already wrote (`PASS (12 passed)`, a
+  `Result` column after the verify command, `\|` inside a cell), so existing records
+  keep reading.
+- **A feature artifact must be written in the feature's checkout.** When the feature
+  lives in a worktree, `hooks/restrict-agent-paths.sh` denies a spec-writer or planner
+  Write under `docs/loop-spec/features/<slug>/` that lands in another checkout and
+  names the path to use; `phase-exit.sh` flags `[misplaced]` with the move when it finds
+  the file elsewhere. Briefs of your own pass absolute artifact paths.
+- **`lib/verification-baseline.sh` no longer counts `docs/loop-spec/` as candidate
+  dirt.** An uncommitted cycle artifact never changes what test, lint, or typecheck see;
+  any other uncommitted file still fails the compare with exit 21.
+- **`docs-probe.sh latest <runtime>` has a mirror and a refusal.** When endoflife.date
+  is unreachable the probe reads the endoflife project's release data on
+  raw.githubusercontent.com; when neither answers, a bare lookup (no `--ecosystem`)
+  answers `unverified` rather than a same-named package from a registry. Pass
+  `--ecosystem pypi` (or npm, crates, rubygems, go) for a package on such a network.
+
+### Changed
+
+- The critique gate's bookkeeping is one driver call per step: `cycle-driver.sh
+  critique open|findings|fail|revised|delta|pass` (`lib/critique-step.sh`) writes the
+  gate-logs, counts the round, emits the event, appends the history entry, asks the
+  probe, snapshots and diffs the artifact, runs `lib/delta-findings-lint.sh`, and closes
+  the gate on a verified delta or a spent ceiling. The lead keeps adjudication, the
+  teammate messages, and the probes; the reply no longer passes through its context
+  twice (`tests/lib/critique-step.test.sh`).
+- The challenger runs on `sonnet` by default under Claude Code. The critic reads and
+  writes nothing, and an Opus session paid Opus for every round. A phase route or
+  `LOOP_SPEC_MODEL_CHALLENGER` still outranks it; the peer harnesses keep `inherit`.
+- PLAN is one review round. The mechanical gates (`lib/phase-exit.sh plan`) and the
+  challenger's findings pass run in the same response, their FLAG lines and findings go
+  to the planner as ONE fix-list, and the one revision gets one delta re-verify that
+  counts surviving FLAGs with the delta survivors. The separate `plan-feasibility` gate
+  is gone, a `REDO` from the driver is one planner dispatch with the FLAG lines and never
+  re-opens the critique, and the pruning pass runs once. A field run spent an hour and
+  fifty dollars on Opus bouncing PLAN.md through the feasibility loop, the critique
+  loop, and the feasibility loop again. Worst case is now five planner dispatches and
+  two challenger calls; the common case is two and two.
+- The critique gate is one exhaustive findings pass, one revision, one delta re-verify.
+  `agents/challenger.md` and `skills/shared/team-prompts/critic.md` drop the "top 5-7"
+  and 500-word caps: a challenger capped at seven held findings back and raised them in
+  the delta round as `introduced:` lines on rewritten text, so every revision bought
+  another revision. `graph/critique.graph.json` allows one delta round instead of two
+  (`LOOP_SPEC_CRITIQUE_ROUNDS` still overrides). `lib/delta-findings-lint.sh` applies
+  the delta scope the prose already stated: only `unaddressed:` lines and `[major]`
+  `introduced:` lines that quote a line the diff added reach the lead; every other line
+  is dropped with a reason in the gate-log (`tests/lib/delta-findings-lint.test.sh`).
+
+### Added
+
+- `hooks/team/nested-session-guard.sh` (PreToolUse, Bash): a phase lead that launches a
+  nested harness session (`claude -p`, `codex exec`, `opencode run`, `adk run`, in the
+  command or in a script it runs) is denied while a feature is active. A live run had
+  written its own round script after the DISCUSS handoff and spent its budget twice.
+  The bundled launchers (`session_run.py`, the loop-runner scripts, the eval driver)
+  pass. `LOOP_SPEC_NESTED_SESSION_GUARD=0` stands it down.
+- `extensions/sessions/`: the headless session layer. `lib/harness.sh session-layer`
+  answers `session` when the invocation is headless, a profile exists for the harness
+  CLI (`profiles/claude.toml`, `codex.toml`, `opencode.toml`), the CLI is on PATH, and
+  `python3` is 3.11 or newer; `lib/execute-rung.sh` then selects the new `session` rung,
+  and each implementer and reviewer runs as its own `claude -p` / `codex exec` /
+  `opencode run` process through `session_run.py` (one profile, one prompt file, one
+  JSON result line; provider faults the profile names are `env-fault`, not an attempt).
+  Every unknown leg answers `in-harness`; `LOOP_SPEC_SESSION_LAYER=1|0` is the operator's
+  word. The profile shape and the fault patterns are vendored under MIT (`NOTICE`); the
+  source project's adapters are not, because their import closure reaches the modules
+  the port plan excludes (`tests/sessions-extension.test.sh`, `tests/lib/harness.test.sh`,
+  `tests/lib/execute-rung.test.sh`).
+- `lib/review-triage-lint.sh`: every code-review finding in VERIFICATION.md is one bullet
+  with a `file:line`, a `verdict: true` with its commit or backlog id, or a `verdict:
+  false` with a disproof sentence. The `verify` and `oneshot` exits run it; a finding
+  nobody could place, or a rejection nobody could explain, is a FLAG instead of a
+  backlog line (the false off-by-one a head-to-head run wrote to its backlog).
+- `lib/docs-probe.sh`: the plugin's own current-version and current-docs lookup.
+  `latest <name>` answers `version=<v> source=<url>` from the registry or the release
+  tracker over the network; `docs <name> --topic <question>` returns the sections of the
+  current documentation that match (`llms.txt` where the docs live, else the README at
+  the version's tag, else the registry's readme, else the docs page). Sources are a
+  table in `lib/docs-probe.py`, one row per ecosystem (runtime via endoflife.date, PyPI,
+  npm, crates.io, RubyGems, the Go proxy); the ecosystem comes from `--ecosystem`, else
+  the manifest in the directory, else every row. Nothing answers: `unverified`, exit 1.
+  The grounding protocol, the version directive, and SPEC's greenfield lookup call it
+  before any web tool. `LOOP_SPEC_DOCS_CACHE_DIR`, `LOOP_SPEC_DOCS_CACHE_TTL_SECS`,
+  `LOOP_SPEC_DOCS_FIXTURES` (`tests/lib/docs-probe.test.sh`).
+
+### Fixed
+
+- `lib/parse-invocation.sh` refuses a flag only while it leads the arguments; after the
+  first description word a dash token is the description's own text (`python3 -m
+  unittest`, `accepts --due YYYY-MM-DD`). Refusing those made a lead reword the task, the
+  reworded slug matched no paused feature, and the next invocation started a second
+  cycle in the wrong directory (`tests/lib/parse-invocation.test.sh`).
+- `cycle-driver.sh start`: an autonomous invocation with exactly one paused feature
+  resumes it even when the title differs; a different feature is a human decision
+  (`tests/lib/cycle-driver.test.sh`).
+- `evals/eval_run.py` and `extensions/sessions/session_run.py` drop the parent's
+  session identity (`CLAUDE_CODE_SESSION_ID` and the remote-session plumbing next to it)
+  from the child's environment: a nested `claude -p` that inherits it appends every
+  round to the parent's transcript, and the handoff guard then reads an earlier round's
+  phase as this invocation's. Both drop the parent's launch stamp
+  (`CLAUDE_CODE_ENTRYPOINT`) too: the CLI writes it only when it is unset, so a child
+  under an attended session inherited `remote_mobile`, `lib/harness.sh session-layer`
+  answered `attended`, and the session rung never ran (`tests/sessions-extension.test.sh`).
+- `cycle-driver.sh` holds the handoff line itself: `next` answers `HANDOFF` or `REWIND`
+  and records the session (`feature.json.handoffSession`); from that session `next`
+  repeats the answer, and `begin` or `phase-begin` of the next phase exits 4. A lead
+  denied by the Skill-tool guard had read the next phase's SKILL.md by hand and run it
+  in the session that had handed off. Each of the three puts the paused result pointer
+  back: a lead that re-invoked `/loop-spec:cycle` in the session that had handed off
+  ran `begin`, whose preflight clears the pointer, and the caller then read no result
+  and ended the run after SPEC (`tests/lib/cycle-driver.test.sh`).
+- `lib/cycle-result.sh write --status completed` publishes nothing, whatever the phase,
+  when the feature has no delivery record and no PR (the proven no-change path still
+  names its reason): the check used to exempt `deliver`, and a lead whose `finish` was
+  refused called the writer itself from that phase, so the eval read a finished run
+  whose fix never left the worktree (`tests/lib/cycle-result.test.sh`, case A0).
+- `hooks/team/phase-handoff-guard.sh` no longer counts a denied attempt as a prior
+  phase: a lead denied once for the next phase invoked it again and passed as a
+  same-phase retry, so the oneshot route ran SPEC, ONESHOT, and DELIVER in one session.
+- `lib/oneshot-spec-lint.sh` flags a footprint file whose existing test module the spec
+  never names: in the footprint when it changes, in Implementation notes as unchanged
+  when it does not. A run shipped a flag without its test and the reviewer deferred it.
+- Ten findings from the second and third live runs (the 2026-09-09 haiku runs, rounds two and three; the findings document stays out of the tree):
+  the version directive and SPEC's greenfield lookup say a stale installer is upgraded
+  before anything is installed, never worked around with an older build or a
+  pre-release; `critique open` answers the challenger's model alias for the Agent call;
+  `critique findings` snapshots the artifact the challenger read, so the author may edit
+  before or after `fail`; `critique revised` keeps the diff in its file and the delta
+  brief names the path; `lib/phase-exit.sh plan` flags a verify command that installs or
+  creates an environment; `lib/integrate-task.sh` carries the verify output's last lines
+  in a `verify-failed` refusal; `agents/implementer.md` commits a lockfile written next to
+  a manifest the task changed; the pruning pass is a nameless Agent, never a cycle role;
+  the eval driver's round timeout is 150 minutes (`--round-timeout-mins`) and
+  `--phase-fresh` runs each phase in a fresh lead context, the largest cost lever
+  measured: one lead's 569 calls re-read 277k tokens each, 71 percent of a run's cost.
+- `lib/graph/probes/discuss-critique.sh` no longer skips the spec critique on a gate the
+  autonomous run scored itself: with no supervisor, the interview self-answers and
+  `gate_passed` is true by construction, so the challenger was the spec's only
+  independent read and two live runs skipped it. A human-answered or supervisor-answered
+  gate still skips. Costs one challenger pass per autonomous run.
+- Five defects from the first live run on 6.3.0 (the first live run on 6.3.0; the findings document stays out of the tree):
+  `lib/git-ops.sh slugify` bounds a slug at 64 characters on a word boundary (a
+  whole-description title made a 470-character branch git could not lock);
+  `lib/parse-invocation.sh` refuses a flag as a title (`begin --help` initialized a
+  feature named "help"); `lib/execute-step.sh integrate` names a dirty feature worktree
+  `dirty-worktree` with the paths instead of `rebase-conflict`; `task_start` and
+  `task_end` are emitted once, by the driver steps, and `execute-subagent.md` no longer
+  asks the lead to emit them too; the version directive sends a runtime version to the
+  language's release page or a network registry, never a local catalog.
+- `tasks.json` is derived from PLAN.md, never copied from the planner's completion
+  message. `lib/plan-tasks.sh extract` reads every `### task-NNN:` block (files,
+  read_first, verify command, acceptance criteria, `**BlockedBy:**` with the Task DAG
+  table as the fallback, interfaces, and the optional repo, batch group, model tier, and
+  spec path lines); `skills/plan/SKILL.md` runs it after every planner report and
+  revision. A run wrote PLAN.md whole and saved an empty `tasks[]` from the message, and
+  EXECUTE, which reads only the sidecar, finished with nothing built.
+  `lib/phase-exit.sh plan` now also flags a sidecar whose task ids differ from PLAN.md's
+  and names the extract command in both that flag and the missing-sidecar flag
+  (`tests/lib/plan-tasks.test.sh`, `tests/lib/phase-exit.test.sh`). The PLAN template's
+  task block carries the `**BlockedBy:**` line.
+- Every one-shot `Agent` dispatch carries `run_in_background: false`. Claude Code now
+  launches an Agent in the background by default, and a background launch answers with
+  a launch stub instead of the report; a lead that read the stub as an empty report
+  dispatched the SPEC pruner twice. `skills/shared/dispatch.md` says a stub is never a
+  reason to re-dispatch, the three peer harness contracts drop the key, and
+  `tests/lib/harness-call-shapes.test.sh` case 8 now requires the key on every one-shot
+  template instead of forbidding it.
+- the port plan is the ordered plan from the head-to-head
+  against the reference implementation; this release lands its WP0 (the defects that run showed) and WP1 (the
+  oneshot route).
+- `lib/converged-floor.sh` reads the acceptance table the verifier writes: the header
+  names the status column, `PASS (12 passed)` is PASS, `\|` inside a cell is a literal
+  pipe, and `--shape` checks the grammar alone. `phase-exit.sh verify` runs `--shape`, so
+  an unreadable table is VERIFY's REDO. A run whose judge said converged saw the floor
+  veto a table it could not parse, the lead rewrote VERIFICATION.md to fit the parser,
+  the driver rewound to an EXECUTE with nothing to do, and VERIFY then died on the
+  uncommitted file; `skills/iterate/SKILL.md` says never to edit VERIFICATION.md there.
+- `hooks/restrict-agent-paths.sh` denies a spec-writer or planner write under
+  `docs/loop-spec/features/<slug>/` in a checkout other than the one holding that
+  feature's `feature.json`, naming the path to write; `phase-exit.sh` names a
+  `[misplaced]` copy in another worktree and the `mv` that fixes it. A bug-fix cycle's
+  spec-writer wrote SPEC.md into the main checkout while the gate read the feature
+  worktree, and the driver escalated after four identical REDO rounds.
+- `lib/verification-baseline.sh` excludes `docs/loop-spec/` from the clean-candidate
+  check (`tests/lib/verification-baseline.test.sh`).
+- `lib/docs-probe.py` distinguishes an unreachable host from a definite miss, mirrors
+  the runtime row through the endoflife project's release data on GitHub (newest final
+  version by number, never map order or a pre-release), and refuses to let a registry
+  answer a bare runtime lookup whose sources never answered: on a network that blocks
+  endoflife.date, `latest python` had answered `0.0.4` from an npm package of that name,
+  and the fourth live run pinned Python 3.14.0rc2 from a stale `uv` and escalated
+  (the fourth live run; the findings document stays out of the tree). `agents/implementer.md` binds the
+  stale-installer rule where installs happen.
+- `phase-exit.sh plan` also flags `uv sync`, `npm ci`, and `poetry install` in a verify
+  command.
+- `evals/tasks/wc-json/check.sh` and `evals/tasks/todo-due/check.sh` grep test sources
+  only (`--include="*.py"`): after a test run, `tests/__pycache__/*.pyc` matched the
+  word and passed a control that had added no test.
+- `lib/parse-invocation.sh` honors the `autonomous` token only at the leading or trailing
+  edge of the arguments. Inside the description it is prose: a feature described as "fix
+  the autonomous chain bound" armed autonomous mode, stripped the word from the title,
+  and ran the cycle without asking a question.
+
+## [6.3.0] - 2026-09-07
+
+### Fixed
+
+- A live headless cycle on a real Terragrunt repository (the 2026-09-07 tf-meldn runs)
+  lost about a third of its tool calls to twelve deterministic defects, each now fixed
+  with a test: `git-ops.sh slugify` caps a prose-derived slug at 60 characters (a 400-char
+  branch name failed `git worktree add`); `LOOP_SPEC_ANSWER_*` are honored under the inline
+  `autonomous` token; a gitfile checkout (submodule or linked worktree) works in place
+  because Claude Code's `EnterWorktree` refuses worktrees there; `.gitignore` exceptions
+  land as one delimited block (`owned-gitignore.sh ensure`); `acceptance-lint.sh` no longer
+  takes minutes on bash 3.2 (`${var//[[:space:]]/}` replaced by a regex test, four sibling
+  sites swept); `evidence.sh add` refuses email addresses and credential paths; the
+  preflight headless warning is dropped once the `autonomous` token is parsed; an
+  autonomous `begin` auto-picks the single resumable feature and `.claude/agent-memory/` no
+  longer counts as dirt. The plugin no longer refuses its own state as dirt: `execute-step
+  integrate` commits tracked `.loop-spec` changes before publishing, the verification
+  baseline ignores `.loop-spec`, `finalize-delivery-candidate` stages feature.json,
+  PROGRESS.md, and the artifact directory in every state-commit mode, `task dispatch`
+  refuses a task whose blockers are not done, `task package` names the task worktree
+  for the reviewer, and `phase-exit` records a re-entered phase once.
+- Subagent dispatches carry absolute template paths (a pattern-mapper searched the whole
+  disk for a plugin-relative one) and the planner brief names `PLAN.md.template` and the
+  three labels the artifact lint parses; DISCUSS names the exact `feature-write.sh`
+  command and the forgery guard's deny text carries its usage.
+
+- EXECUTE spends fewer seats and less context per seat, all of it deterministic. On the
+  live run eleven tasks cost twenty-two subagents, each re-reading four artifacts (about
+  100 KB) and re-probing the toolchain, and each reviewer re-ran the implementer's verify
+  including live `terragrunt plan`. `lib/task-batch.sh` now merges a linear chain of
+  local-verify tasks into one dispatch and tiers a doc/config-only task with a local
+  verify as `mechanical` (`LOOP_SPEC_TASK_BATCH_AUTO`, `LOOP_SPEC_TASK_BATCH_CHAIN_FILES`);
+  `execute-step` dispatches the collapsed task and marks every member done (the
+  `batchGroup` collapse never reached the dispatch before). The brief carries PLAN.md's
+  Global constraints verbatim, the EVIDENCE rows the task cites, and `dispatch/environment.txt`
+  (tool versions `execute-prepare` probes once), and both prompts tell the subagent not to
+  open the artifacts. The reviewer packet names the verify command so the reviewer can be
+  told not to run it.
+
+- A second observed run on the same repository (the 2026-09-07 tf-meldn runs,
+  round 4) ended with the lead asking an absent operator a question after the ITERATE
+  judge found the only gap was an expired gcloud token, and with two plan-dependent
+  criteria marked PASS because PASS was the only cell that converged. ITERATE now routes
+  `escalate` when the judge marks a gap `needs_operator` or the same `fix_first` survives
+  a remediation round, and the cycle's `next` ends the run `DONE status=escalated` with
+  the operator action as the reason; `VERIFICATION.md` has a `BLOCKED` status that the
+  converged floor refuses to converge on, and a PASS row whose evidence says the check
+  did not run is a floor violation. Also from that run: `grounding-lint` lints the
+  backticked command of an ASSUMPTION, not the prose after it (two false flags);
+  `acceptance-lint` accepts a whole-line or key = value grep against a declarative file
+  (HCL, YAML, TOML, INI, JSON); `task-batch` and the environment probe split pipelines
+  outside quotes (a quoted `a|b` pattern was probed as two programs) and treat
+  `terragrunt hcl format` and `tofu fmt` as local; `execute-step` labels a failed
+  integrate with its real reason instead of `rebase-conflict`; `.claude/agent-memory` is
+  not dirt for the dirty checks, and `pattern-mapper` and `code-reviewer` no longer keep
+  a per-repository memory (a one-shot reviewer's notes have no reader and were landing
+  in the user's PR); the execute contract says to pass the packet's `.model`, to issue a
+  wave's Agent calls in one message, and that a subagent's final message is its result
+  (three `SendMessage` failures per reviewer); the cycle skill says `begin` already
+  initialized the feature.
+
+- PLAN was 42 of round 4's 110 minutes: five planner round trips (two lint rounds, three
+  critique rounds), each a fresh planner context re-reading everything to change one
+  field, plus a prose pruner over a plan that was mostly rendered task blocks.
+  `plan-conflicts.sh edges` adds the `blockedBy` edges the task prose
+  already states before the challenger reads the plan (a live round was spent on one such
+  omission); the delta re-verify hands the challenger the diff path instead of inlining
+  it into the lead's context; the prose-pruning pass runs only when
+  `plan-render.sh prose-lines` counts 120 or more prose lines.
+
+- Round 5 (the PLAN wave measured live) spent a lint round on seven SPEC decisions the
+  planner paraphrased instead of copying; `plan-render.sh decisions` copies the missing
+  statements verbatim before the gate.
+  Also from round 5: headless runs work in place instead of entering a session worktree
+  (Claude Code's worktree guard refused four plugin calls whose quoted text it could not
+  prove git-free); the dispatch-prompt guard denies a brief with a line that is
+  only a `$(...)` substitution (a pruner was dispatched twice for one); the critic reads
+  only the EVIDENCE rows the artifact cites and never PATTERNS, transcripts, or gate logs;
+  `plan-conflicts.sh edges` prints the updated array on stdout; the checkpoint PR of an
+  escalated run carries the BLOCKED verification rows and the operator action; and a
+  headless run never selects the team rung, because `claude -p` disables the harness
+  task list that rung runs on (three teammates each failed on `TaskList`); `execute-step`
+  commits new `.loop-spec` files (a pruner's BACKLOG.md) as state before integrating, and
+  `integrate-task` no longer counts tool caches a verify leaves behind (`.terraform/`, a
+  lock file, `node_modules/`, `__pycache__/`) as task dirt; the verify gate and the
+  critique gate read their JSON arrays from `@path` files (a `\.github` path inside inline
+  JSON killed a live gate call on quoting); the write-time hook runs the verification
+  grounding lint on VERIFICATION.md.
+
+### Added
+
+- `lib/plan-render.sh`: renders PLAN.md's `## Task DAG` and `## Tasks` from tasks.json,
+  preserving every other section. tasks.json is the single source for task fields; the
+  planner writes the prose sections and returns `tasks[]` with `goal`, `read_first`,
+  `interfaces`, `steps`, and `expected`. The shape the artifact lint parses is produced,
+  not checked, and a critique fix to a task is one edit plus a re-render.
+- `hooks/team/artifact-lint-feedback.sh` (PostToolUse on Write/Edit): runs the matching
+  artifact lint on SPEC.md, PLAN.md, PATTERNS.md, and tasks.json the moment they are
+  written and returns the flags to the author, lead or subagent. On the live run every
+  lint ran only at phase exit, so three 20-millisecond checks cost three planner
+  round trips; the exit gate stays as the backstop.
+- `hooks/team/dispatch-prompt-guard.sh` (PreToolUse on Agent): denies a prompt that is an
+  unexpanded `$(...)` substitution or under 40 characters (a live lead dispatched both
+  wave-one implementers with `$(cat /tmp/prompt.txt)` as their whole brief).
+  `execute-step.sh dispatch` now refuses a task whose `blockedBy` are not done.
+- `skills/shared/dispatch.md` and the critique protocol state that "dispatch, then stop"
+  holds under `claude -p`, verified live (a lead ran 24 background sleep loops waiting for
+  a reply the harness delivers by resuming the turn); the critique protocol applies
+  accepted `[minor]` items before closing at the round ceiling.
+
 ## [6.2.0] - 2026-09-06
 
 ### Changed
@@ -29,8 +694,7 @@ All notable changes documented here. Format follows Keep a Changelog.
   scripts, a driver that runs each through `claude -p "/loop-spec:cycle autonomous …"`
   against a snapshot of the plugin and records cost, time, diff shape, workarounds,
   and plugin tampering). Not registered by `tests/run-all.sh`; refuses to run without
-  `LOOP_SPEC_EVAL_LIVE=1` and `--confirm-spend`. Findings from the first runs:
-  `evals/findings-2026-09-06.md`.
+  `LOOP_SPEC_EVAL_LIVE=1` and `--confirm-spend`.
 - `feature.json.driverNext`: the phase the driver last answered with `NEXT`.
   `cycle-result.sh write` refuses `--status failed|terminal|escalated` over it unless
   `--reason` says what stopped the phase.
@@ -576,7 +1240,7 @@ harness resumes this turn. Dummy wait questions are forbidden.
   never emit `run_in_background`. Pinned by
   `tests/output-style-coverage.test.sh`,
   `tests/lib/harness-call-shapes.test.sh`, and
-  `tests/bmad-import-coverage.test.sh`.
+  `tests/review-extension-coverage.test.sh`.
 
 ## [4.6.0] - 2026-08-28
 

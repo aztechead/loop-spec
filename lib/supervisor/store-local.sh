@@ -2,8 +2,8 @@
 # store-local.sh - Default state-store adapter: the checkout is the store.
 #
 # This is today's behavior behind the port. The feature directory lives in the
-# checkout and lib/phase-exit.sh commits it at each phase transition, so open and
-# persist have nothing to do. persist cannot fail, which is what a default must
+# checkout and lib/cycle-driver.sh snapshots it onto refs/loop-spec/state/<slug> at
+# each phase transition (lib/state-ref.sh), so open and persist have nothing to do. persist cannot fail, which is what a default must
 # promise; open fails only when the checkout holds no working copy, because there is
 # nowhere else to look.
 #

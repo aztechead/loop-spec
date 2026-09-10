@@ -6,7 +6,8 @@ argument-hint: "[path/to/feature.json]  (optional; defaults to the active featur
 
 # Pause
 
-Invoked as `/loop-spec:pause`. Captures the current feature state into two crash-recovery artifacts so work can resume safely in a later session.
+Run as `/loop-spec:pause`.
+Save the current feature state in two recovery artifacts for the next session.
 
 ## Inputs
 
@@ -31,25 +32,28 @@ resume will re-dispatch with `scriptPath + args` and receive a new runId.
 ### Step 1 - Run pause-snapshot
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/pause-snapshot.sh" [--feature-dir <path>]
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/pause-snapshot.sh" [--feature-dir <path>]
 ```
 
-`lib/pause-snapshot.sh` generates both artifacts atomically into `.loop-spec/features/{slug}/`. Kill switch: if `LOOP_SPEC_PAUSE=0` is set the script exits 0 without writing any file.
+`lib/pause-snapshot.sh` writes both artifacts atomically into `.loop-spec/features/{slug}/`.
+If `LOOP_SPEC_PAUSE=0`, the script exits 0 without writing files.
 
 Write the machine-readable result contract (non-fatal — must not block the pause snapshot):
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "${feature_dir}" \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" write "${feature_dir}" \
   --status paused --reason "user pause" \
-  --summary "Paused $(jq -r '.feature_title // .slug' "${feature_dir}/feature.json") during $(jq -r '.currentPhase' "${feature_dir}/feature.json"); the resume snapshot preserves pending work." || true
+  --summary "Paused $(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/feature-read.sh" "${feature_dir}" -r --filter '"\(.feature_title // .slug) during \(.currentPhase)"'); the resume snapshot preserves pending work." || true
 ```
 
 This also emits the `paused` event to `events.jsonl`.
 
-Push the branch and open/reuse a draft PR as a salvage checkpoint. Gated: on by default for autonomous runs; LOOP_SPEC_CHECKPOINT_PR=1/0 overrides. Never blocks the pause flow.
+Push the branch and create or reuse a draft PR as a recovery checkpoint when enabled.
+Autonomous runs enable this by default. `LOOP_SPEC_CHECKPOINT_PR=1/0` overrides the default.
+A checkpoint failure must not block the pause.
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/checkpoint-pr.sh" create "${feature_dir}" \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/checkpoint-pr.sh" create "${feature_dir}" \
   --reason "user pause" || true
 ```
 
@@ -81,7 +85,9 @@ If the feature's `feature.json` contains a `worktreePath` field (single-repo mod
 ExitWorktree({ action: "keep" })
 ```
 
-This returns the session to the main checkout while the feature worktree and branch `feat/{slug}` remain on disk for later resume. Skip this step for workspace-mode features (`workspace` block non-null, no `worktreePath`), which run in place at the workspace root.
+This returns the session to the main checkout. It keeps the feature worktree and `feat/{slug}` branch for later use.
+Skip this step for workspace mode, where `workspace` is non-null and `worktreePath` is absent.
+Workspace features run at the workspace root.
 
 ## HANDOFF.json schema
 
@@ -158,4 +164,4 @@ An ordered list of files to read before writing any code in a resumed session.
 - If only `[advisory:` lines are found: auto-resume proceeds. The advisory items are printed as warnings before the first task is dispatched.
 - If `.continue-here.md` is absent: resume proceeds normally (treated as no constraints).
 
-This parsing allows the severity level written at pause time to directly control the re-entry posture at resume time, without requiring a separate configuration file.
+The saved severity tags control how the cycle resumes.

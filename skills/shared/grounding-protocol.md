@@ -22,9 +22,14 @@ from model memory.** Before treating any such premise as fact, run the cheapest
 read-only probe available and record its output.
 
 When a request names something you do not confidently recognize, or names a
-fast-moving developer tool, model, service, or library, search for that name before
-answering. Include the name as the user wrote it in at least one query; partial
-familiarity is not evidence that the current state is known.
+fast-moving developer tool, model, service, or library, ask before answering. The
+plugin's own tool comes first: `bash lib/docs-probe.sh latest <name>` answers
+`version=<v> source=<url>` from the registry or the release tracker over the network
+(a runtime is `--ecosystem runtime`), and `version=unverified` when nothing answered;
+then search with the name as the user wrote it in at least one query. A local catalog
+(`uv python list`, `pyenv install --list`) is the installer's memory, not the
+language's, and never the answer. Partial familiarity is not evidence that the current
+state is known.
 
 When a retrieved source is quoted, mark it as a quotation and cite the source. Do not
 let copied source wording appear as the plugin's own conclusion.
@@ -55,27 +60,29 @@ gathering. The read-only constraint is absolute.
 
 ## Current documentation — the dependency-idiom rule
 
-Model memory of a fast-moving framework is a hypothesis, and designing from it is
-how a plan ships hacks the current docs would have prevented. When the ask is
-"implement X with framework Y", look up how Y's current release does X before
-asserting the approach.
+Before choosing a framework approach, check how its current release supports the requested behavior.
+Treat remembered APIs as hypotheses until verified.
 
 **Which dependencies?** Only the ones the touched files import — never the whole
 manifest, which is context bloat. The deterministic answer is:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/doc-deps.sh" scan <touched files>
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/doc-deps.sh" scan <touched files>
 # ANSWER=google-adk,fastapi REASON=imports of N file(s) intersected with declared dependencies
 ```
 
 `LOOP_SPEC_DOC_DEPS=<comma-list|none>` overrides the scan when the operator knows
 better.
 
-**How to fetch.** Use whatever tool the session provides that can search the web or
-retrieve a URL — the rule names the capability, not a tool, because the harnesses
-name these differently, deployments may block the native web tools by policy, and a
-custom or MCP search tool may stand in their place; `curl -s <url>` through Bash is
-the floor. Writers with such a tool fetch for themselves; a writer whose allow-list
+**How to fetch.** First `bash lib/docs-probe.sh docs <dep> --topic <the idiom question>`:
+it resolves the dependency through its registry, then returns the sections of the
+current docs that match the topic (`llms.txt` where the docs live, else the README at
+the version's tag, else the registry's readme, else the docs page), and says
+`docs: unverified` when no source answers. Then use whatever tool the session provides
+that can search the web or retrieve a URL — the rule names the capability, not a
+tool, because the harnesses name these differently, deployments may block the native
+web tools by policy, and a custom or MCP search tool may stand in their place;
+`curl -s <url>` through Bash is the floor. Writers with such a tool fetch for themselves; a writer whose allow-list
 reaches no web-capable tool returns the need (`NEEDS_CONTEXT` or `UNGROUNDED:`) and
 the lead — which holds the session's full tool set, custom search tools included —
 fetches.
@@ -107,7 +114,7 @@ alongside the artifacts.
 guarantee sequential ids, sanitization, and idempotency:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/evidence.sh" add \
   "docs/loop-spec/features/{slug}/EVIDENCE.md" \
   "<claim>" \
   "<command>" \
@@ -132,7 +139,7 @@ not obviously a line or two through `lib/output-digest.sh`, which keeps the whol
 on disk for the ledger and citation while a fixed excerpt enters context:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/output-digest.sh" run \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/output-digest.sh" run \
   --log ".loop-spec/features/{slug}/logs/probe-{n}.log" --label "probe {n}" -- <probe>
 ```
 
@@ -158,9 +165,8 @@ Rules:
 - In **autonomous styles**: record the assumption in the decisions record
   (`lib/decisions.sh add`) and proceed — never block on a user question. The
   audit trail is the point.
-- In **step / interactive styles**: the assumption may be surfaced conversationally,
-  but the operator must not be blocked indefinitely; if no answer arrives, treat
-  as autonomous and record.
+- In **step / interactive styles**: explain the assumption when it affects a user decision.
+  A missing response does not authorize a change. Keep required intent or authorization questions unresolved until answered.
 - The `verify:` command must be syntactically valid shell (checked by
   `bash -n -c "<cmd>"`); it is the probe that would have been run with access.
 
@@ -215,8 +221,7 @@ are still preferred):
   continuation line is indented; the lint joins them into one logical bullet
   before validating. Column-0 lines are prose, never continuations.
 
-`lib/grounding-lint.sh` is the deterministic gate. It runs before the DISCUSS
-Step 6 commit and before the PLAN Step 5.5 gate cluster clears. Exit 1 (with
+`lib/grounding-lint.sh` runs in the DISCUSS and PLAN exit gates. Exit 1 (with
 `FLAG <artifact>:<lineno>:` lines) blocks the commit and re-dispatches the writer.
 Exit 0 (`grounding-lint: ok`) clears the gate. The lint strips complete
 `<!-- ... -->` comment blocks before validation and only inspects `- `-prefixed

@@ -8,11 +8,9 @@ argument-hint: '<pr-number | pr-url> [autonomous]'
 
 Invoked as `/loop-spec:revise <pr# | url> [autonomous]`.
 
-The cycle ends at PR-open; human review comments arrive after. This skill is the
-machine path for consuming them — the last manual seam in the lifecycle. It is
-standalone (no running cycle required) and reuses existing machinery: comment
-fetching via `lib/pr-comments.sh`, gap classification from the iterate taxonomy,
-fixes via the EXECUTE remediation-task contract, telemetry via `lib/events.sh`.
+Process PR feedback after cycle delivery. No active cycle is required.
+Fetch comments with `lib/pr-comments.sh` and classify them with the ITERATE gap taxonomy.
+Apply fixes through EXECUTE remediation tasks. Record telemetry through `lib/events.sh`.
 
 **Autonomous mode** (inline `autonomous` token or `LOOP_SPEC_AUTONOMOUS=1`):
 no questions — the recommended classification is applied and recorded. Interactive
@@ -41,6 +39,8 @@ mode asks exactly ONE confirmation (the classification table) before acting.
 ## Procedure
 
 ### Step 1 - Preconditions and PR resolution
+
+`<arg>` is the PR number or URL from the invocation.
 
 ```bash
 command -v gh >/dev/null || # abort: "revise requires gh on PATH"
@@ -79,14 +79,14 @@ case "${LOOP_SPEC_WORKTREES:-1}" in
   1)
     # Resolved, not hard-coded: default remains .loop-spec/worktrees/{slug}-revise
     # and relocates when that base cannot hold a checkout.
-    requested_root="$(bash "${CLAUDE_SKILL_DIR}/../../lib/worktree-base.sh" \
+    requested_root="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/worktree-base.sh" \
       resolve "$repo_root" task "{slug}-revise" | jq -r '.path')"
-    prep="$(bash "${CLAUDE_SKILL_DIR}/../../lib/revise-branch.sh" \
+    prep="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/revise-branch.sh" \
       prepare "$repo_root" "$branch" 1 "$requested_root")"
     ;;
   0)
     # The helper requires this checkout to be clean before it can switch branches.
-    prep="$(bash "${CLAUDE_SKILL_DIR}/../../lib/revise-branch.sh" \
+    prep="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/revise-branch.sh" \
       prepare "$repo_root" "$branch" 0)"
     ;;
   *)
@@ -114,7 +114,7 @@ existing record (phase → revise, fills `commands.test` if empty), or writes a
 schema-7 skeleton:
 
 ```bash
-state="$(bash "${CLAUDE_SKILL_DIR}/../../lib/revise-state.sh" ensure \
+state="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/revise-state.sh" ensure \
   "$revision_root" "$slug" \
   --branch "$branch" --base-branch "$base_branch" --title "$pr_title" \
   --autonomous <0|1>)"
@@ -124,7 +124,7 @@ fdir="$(jq -r '.featureDir' <<<"$state")"
 Emit `phase_start` only now:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" phase_start --phase revise || true
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit "$fdir" phase_start --phase revise || true
 ```
 
 `feature.json`, its `.bak`, event ledger, and every other `.loop-spec` runtime file
@@ -137,7 +137,7 @@ artifact that may be committed is the explicit
 ### Step 4 - Fetch and triage feedback
 
 ```bash
-items="$(bash "${CLAUDE_SKILL_DIR}/../../lib/pr-comments.sh" fetch "$pr")"
+items="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/pr-comments.sh" fetch "$pr")"
 ```
 
 Triage every item using the probe fields, not a model judgment about the author:
@@ -188,12 +188,9 @@ command once in `revision_root` and confirm each item's acceptance criterion.
 
 ### Step 7 - plan/spec-class items are NOT silently fixed
 
-A plan- or spec-class request is a scope change riding in a review comment.
-v1 deliberately does not redesign inside revise: append each to
-`.loop-spec/BACKLOG.md` (`lib/backlog.sh add`) with the comment URL, and answer
-the comment in the summary (Step 9) with the backlog entry + the recommended
-follow-up (`/loop-spec:cycle <refined description>`). This mirrors the iterate
-limit-spent contract: gaps are recorded loudly, never absorbed silently.
+Plan- and spec-class requests change scope. Do not redesign the feature inside revise.
+Add each request to `.loop-spec/BACKLOG.md` through `lib/backlog.sh add`, with its comment URL.
+In step 9's summary, include the backlog entry and recommended `/loop-spec:cycle <refined description>` invocation.
 
 ### Step 8 - Push + artifacts
 
@@ -208,9 +205,11 @@ on the PR branch; do not use `git add -A`, and never include `.loop-spec/*` runt
 state in a revise commit.
 Emit `phase_end` and refresh the result contract:
 
+Replace `<count>` with the number of review items processed. Use the actual fixed, answered, and backlogged counts in the summary.
+
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit "$fdir" phase_end --phase revise --data '{"next":"done"}' || true
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$fdir" --status completed \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit "$fdir" phase_end --phase revise --data '{"next":"done"}' || true
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" write "$fdir" --status completed \
   --pr-url "<pr url>" \
   --summary "Processed <count> review items: <fixed count> fixed, <answered count> answered, <backlogged count> classified as scope changes." || true
 ```
@@ -218,6 +217,8 @@ bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write "$fdir" --status comp
 ### Step 9 - One summary comment
 
 Post exactly one comment (marker first line so a later run can skip it):
+
+`<follow-up>` is the recommended cycle invocation for a scope-changing request from step 7.
 
 ```bash
 gh pr comment "$pr" --body "<!-- loop-spec:revise -->

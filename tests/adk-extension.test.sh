@@ -71,18 +71,19 @@ async def tool_names(agent):
 async def main():
     await bridge.environment.initialize()
 
-    # CLAUDE_SKILL_DIR advances per session, and a real lib script runs through it.
+    # LOOP_SPEC_SKILL_DIR advances per session, and a real lib script runs through it.
     state = {}
     bridge.set_skill_dir("cycle", state)
-    r = await bridge.execute('bash "$CLAUDE_SKILL_DIR/../../lib/harness.sh" detect', state)
+    r = await bridge.execute('bash "$LOOP_SPEC_SKILL_DIR/../../lib/harness.sh" detect', state)
     out["detect"] = (r.get("stdout") or "").strip()
-    out["skill_dir_is_cycle"] = bridge.environment_for(state)["CLAUDE_SKILL_DIR"].endswith("/skills/cycle")
+    out["skill_dir_is_cycle"] = bridge.environment_for(state)["LOOP_SPEC_SKILL_DIR"].endswith("/skills/cycle")
+    out["legacy_skill_alias"] = bridge.environment_for(state)["CLAUDE_SKILL_DIR"] == bridge.environment_for(state)["LOOP_SPEC_SKILL_DIR"]
 
     # An unknown skill name must not clobber the directory of the running skill.
     bridge.set_skill_dir("no-such-skill", state)
-    out["unknown_skill_keeps_dir"] = bridge.environment_for(state)["CLAUDE_SKILL_DIR"].endswith("/skills/cycle")
+    out["unknown_skill_keeps_dir"] = bridge.environment_for(state)["LOOP_SPEC_SKILL_DIR"].endswith("/skills/cycle")
     bridge.set_skill_dir("execute", state)
-    out["skill_dir_moves"] = bridge.environment_for(state)["CLAUDE_SKILL_DIR"].endswith("/skills/execute")
+    out["skill_dir_moves"] = bridge.environment_for(state)["LOOP_SPEC_SKILL_DIR"].endswith("/skills/execute")
 
     # Persistent ADK apps share one bridge across sessions. Their active skills
     # must stay isolated even when Execute calls overlap.
@@ -90,8 +91,8 @@ async def main():
     bridge.set_skill_dir("cycle", cycle_state)
     bridge.set_skill_dir("deliver", deliver_state)
     first, second = await asyncio.gather(
-        bridge.execute('basename "$CLAUDE_SKILL_DIR"', cycle_state),
-        bridge.execute('basename "$CLAUDE_SKILL_DIR"', deliver_state))
+        bridge.execute('basename "$LOOP_SPEC_SKILL_DIR"', cycle_state),
+        bridge.execute('basename "$LOOP_SPEC_SKILL_DIR"', deliver_state))
     out["session_skill_dirs"] = [first.get("stdout", "").strip(),
                                  second.get("stdout", "").strip()]
 
@@ -130,7 +131,7 @@ async def main():
         tool_args={"skill_name": "deliver"},
         tool_context=type("C", (), {"state": tool_state})(), result={})
     out["plugin_sets_skill_dir"] = b2.environment_for(tool_state).get(
-        "CLAUDE_SKILL_DIR", "").endswith("/skills/deliver")
+        "LOOP_SPEC_SKILL_DIR", "").endswith("/skills/deliver")
 
     # Only an explicit one-shot marker selects the non-interactive profile.
     out["persistent_not_headless"] = "LOOP_SPEC_NON_INTERACTIVE" not in LoopSpecBridge(
@@ -159,6 +160,17 @@ async def main():
     out["session_hooks_once"] = sum(p in hook_calls for p in plugin_module.SESSION_START_HOOKS)
     out["prompt_hook_each_time"] = hook_calls.count("hooks/team/done-criteria.sh")
 
+    with tempfile.TemporaryDirectory() as guarded_dir:
+        os.mkdir(os.path.join(guarded_dir, ".loop-spec"))
+        guarded = LoopSpecPlugin(LoopSpecBridge(guarded_dir))
+        for name, args in [("Execute", {"command": "codex exec nested"}),
+                           ("WriteFile", {"path": ".loop-spec/last-result.json", "content": "{}"})]:
+            response = await guarded.before_tool_callback(
+                tool=type("T", (), {"name": name})(), tool_args=args, tool_context=None)
+            assert response and response["status"] == "error", (name, response)
+        assert await guarded.before_tool_callback(
+            tool=type("T", (), {"name": "WriteFile"})(),
+            tool_args={"path": "app.py", "content": "pass"}, tool_context=None) is None
     print(json.dumps(out))
 
 asyncio.run(main())
@@ -192,8 +204,9 @@ check "CLAUDE_PLUGIN_ROOT is the repo" "$(get plugin_root_is_repo)" "True"
 check "CLAUDE_PROJECT_DIR set"        "$(get project_dir_set)" "True"
 check "every skill loads"             "$(get skills_loaded)" "$SKILL_COUNT"
 check "every agent charter loads"     "$(get roles_loaded)" "$ROLE_COUNT"
-check "lib script runs via CLAUDE_SKILL_DIR" "$(get detect)" "adk"
+check "lib script runs via LOOP_SPEC_SKILL_DIR" "$(get detect)" "adk"
 check "skill dir points at the skill" "$(get skill_dir_is_cycle)" "True"
+check "legacy skill alias remains available" "$(get legacy_skill_alias)" "True"
 check "unknown skill keeps prior dir" "$(get unknown_skill_keeps_dir)" "True"
 check "skill dir advances"            "$(get skill_dir_moves)" "True"
 check "concurrent session dirs isolate" "$(get session_skill_dirs)" "['cycle', 'deliver']"

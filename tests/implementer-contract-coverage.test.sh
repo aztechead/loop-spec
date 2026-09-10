@@ -27,7 +27,7 @@ checks=(
   "lib/workflows/execute-dag.js	more modular"
   "lib/workflows/execute-dag.js	hold at production "
   "skills/execute/SKILL.md	implementer-contract.md"
-  "skills/execute/SKILL.md	does this hold at production scale"
+  "skills/execute/SKILL.md	skills/shared/engineering-directives.md"
   "agents/code-reviewer.md	scale:"
   "agents/challenger.md	Does this scale"
 )

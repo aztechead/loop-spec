@@ -8,8 +8,8 @@
 # Contract (the "clear, concise, easy to follow" rules):
 #   - Bounded excerpts, never whole artifacts: Summary + Acceptance criteria from the
 #     spec, the opening evidence of VERIFICATION.md, the verdict of ITERATION.md.
-#   - SPEC frontmatter never leaks raw: ambiguity_scores decimals are re-rendered as
-#     a "Spec quality" percentage table (score + gate + pass mark per dimension);
+#   - SPEC frontmatter never leaks raw: unresolved questions are rendered as
+#     a "Spec quality" unresolved-question list;
 #     the YAML block itself is stripped before excerpting.
 #   - Artifact headings are demoted to bold text so the body keeps one clean H2
 #     hierarchy (an inlined "# Spec" H1 breaks GitHub's rendering outline).
@@ -30,7 +30,7 @@ case "${LOOP_SPEC_PR_BODY_VERBOSE:-0}" in 0|1) ;; *)
 case "${LOOP_SPEC_ARTIFACTS_IN_PR:-1}" in 0|1) ;; *)
   echo "pr-body.sh: LOOP_SPEC_ARTIFACTS_IN_PR must be 0 or 1" >&2; exit 2;; esac
 
-python3 - "$1" "$2" "$3" <<'PY'
+PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" "$2" "$3" <<'PY'
 import json, os, re, subprocess, sys
 
 feature_path, root, output = sys.argv[1:]
@@ -147,9 +147,7 @@ def section(text, names, max_lines):
 def split_frontmatter(text):
     """Separate a leading YAML frontmatter block from the document body.
 
-    The raw block must never reach the rendered body (bare decimals convey
-    nothing to a PR reviewer); the scores inside it are re-rendered as a
-    percentage table by spec_quality_table().
+    Raw metadata obscures the requirements; the question list is rendered separately.
     """
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -161,66 +159,16 @@ def split_frontmatter(text):
 
 
 def spec_quality_table(frontmatter):
-    """Render ambiguity_scores as a GFM table in percentages.
-
-    Clarity dimensions read "higher is better"; the composite ambiguity reads
-    "lower is better" — each row shows its own gate so the numbers carry
-    meaning without knowing the formula.
-    """
     if not frontmatter:
         return None
-    scores = {}
-    in_block = False
-    for line in frontmatter.splitlines():
-        if re.match(r"^ambiguity_scores:\s*$", line):
-            in_block = True
-            continue
-        if in_block:
-            m = re.match(r"^\s+([a-z_]+):\s*([\d.]+|true|false|\[.*\])\s*$", line)
-            if not m:
-                if line.strip() and not line.startswith((" ", "\t")):
-                    in_block = False
-                continue
-            scores[m.group(1)] = m.group(2)
-    if "ambiguity" not in scores:
-        return None
-
-    def pct(key):
-        try:
-            return "%d%%" % round(float(scores[key]) * 100)
-        except (KeyError, ValueError):
-            return None
-
-    # Dimension label, score key, gate (from skills/spec/SKILL.md).
-    dims = [
-        ("Goal clarity", "goal_clarity", ">= 60%", 0.60, False),
-        ("Boundary clarity", "boundary_clarity", ">= 50%", 0.50, False),
-        ("Constraint clarity", "constraint_clarity", ">= 40%", 0.40, False),
-        ("Acceptance clarity", "acceptance_clarity", ">= 50%", 0.50, False),
-        ("**Ambiguity (overall)**", "ambiguity", "<= 20%", 0.20, True),
-    ]
-    rows = ["| Dimension | Score | Gate | |", "|---|---|---|---|"]
-    for label, key, gate, threshold, lower_is_better in dims:
-        value = pct(key)
-        if value is None:
-            continue
-        try:
-            ok = (float(scores[key]) <= threshold) if lower_is_better \
-                else (float(scores[key]) >= threshold)
-        except ValueError:
-            ok = False
-        score_cell = "**%s**" % value if key == "ambiguity" else value
-        rows.append("| %s | %s | %s | %s |" % (label, score_cell, gate, "✅" if ok else "❌"))
-    if len(rows) == 2:
-        return None
-    gate_passed = scores.get("gate_passed") == "true"
-    rounds = scores.get("rounds_completed")
-    note = "Gate %s" % ("passed" if gate_passed else "**not passed**")
-    if rounds is not None:
-        note += " after %s interview round(s)." % rounds
-    else:
-        note += "."
-    return "\n".join(rows) + "\n\n" + note
+    from spec_questions import read_questions
+    try:
+        questions = read_questions("---\n" + frontmatter + "\n---\n")
+    except ValueError as exc:
+        return "Unresolved questions could not be read: " + str(exc)
+    if not questions:
+        return "No unresolved intent questions."
+    return "Unresolved intent questions:\n\n" + "\n".join("- " + q for q in questions)
 
 
 parts = ["**Goal:** " + (feature.get("feature_title") or feature.get("slug", ""))]

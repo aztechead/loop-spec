@@ -1,9 +1,5 @@
-# feature.json is the resume contract -- commit it so resume survives clone / hand-off.
-# Everything else under a feature dir (feature.json.bak, gate-logs/, transcripts) is
-# per-machine churn and stays ignored.
+# Feature runtime state lives on refs/loop-spec/state/<slug>.
 /.loop-spec/features/*/*
-!/.loop-spec/features/*/feature.json
-!/.loop-spec/features/*/PROGRESS.md
 /.loop-spec/worktrees/
 .worktrees/
 .claude/worktrees/
@@ -23,6 +19,9 @@ docs/superpowers/
 # machine-readable result pointer (lib/cycle-result.sh); local telemetry
 .loop-spec/last-result.json
 .loop-spec/runtime.json
+.loop-spec/sessions/
+.loop-spec/launcher-result.json
+.loop-spec/launcher.lock
 .loop-spec/decisions-staging/
 
 # loop-runner runtime state (skills/loop-runner; EXECUTE loop-fleet rung)

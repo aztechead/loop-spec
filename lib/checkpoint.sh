@@ -11,7 +11,9 @@
 #   tag <type>      Create a git tag loop-spec-checkpoint-{type}-YYYYMMDD-HHMMSS
 #   rollback <tag>  Restore files to <tag> via git checkout (requires LOOP_SPEC_ROLLBACK_CONFIRMED=1)
 #
-# Valid types: post-discuss, post-plan, post-execute, post-verify, pre-rollback, manual
+# Valid types: post-<phase> for every phase of graph/cycle.graph.json (lib/graph/phases.sh
+# list; a graph copy is selected with LOOP_SPEC_GRAPH), pre-rollback, manual. The phase
+# list is read at call time so a phase added to the graph tags without a second edit here.
 #
 # Exit codes:
 #   0 success
@@ -19,7 +21,8 @@
 #   2 invalid type or missing argument
 set -euo pipefail
 
-VALID_TYPES="post-discuss post-plan post-execute post-verify pre-rollback manual"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VALID_TYPES="$(bash "$SCRIPT_DIR/graph/phases.sh" list | sed 's/^/post-/' | paste -sd' ' -) pre-rollback manual"
 
 usage() {
   cat >&2 <<'EOF'
@@ -33,7 +36,7 @@ Subcommands:
   rollback <tag>  Restore to <tag> via git checkout TAG -- :/ (creates new commit)
                   Requires env var: LOOP_SPEC_ROLLBACK_CONFIRMED=1
 
-Valid types for tag: post-discuss, post-plan, post-execute, post-verify, pre-rollback, manual
+Valid types for tag: post-<phase> (lib/graph/phases.sh list), pre-rollback, manual
 EOF
 }
 

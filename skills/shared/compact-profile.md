@@ -4,13 +4,11 @@
 bounded feature or refactor. Compact stays inside the existing cycle with
 `autonomous profile:compact`; it is not a separate lifecycle.
 
-The classifier proposes the route after grounding in the repository. The validator
-authorizes it only when confidence is at least `0.7`, ambiguity is not `high`, there
-are at most 12 reviewable files and 6 acceptance criteria, and the proposal is not
-destructive. A destructive compact proposal promotes to `full`. Security, migration,
-multi-repository, dirty-worktree, interface, seam, and dependency signals are not
-category hard gates for compact: the classifier may select compact when its grounded
-gate plan explains the bounded handling.
+The classifier proposes the route from repository evidence.
+The validator requires confidence of at least `0.7`, ambiguity below `high`, at most 12 reviewable files, and at most 6 criteria.
+Destructive compact proposals promote to `full`.
+Security, migration, multi-repository, dirty-worktree, interface, seam, and dependency signals do not automatically exclude compact.
+The gate plan must explain how the bounded change handles those concerns, using repository evidence.
 
 ## `gatePlan` schema
 

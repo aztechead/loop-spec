@@ -89,5 +89,14 @@ check "next-id with no args exits 1" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 bash "$LIB" >/dev/null 2>&1
 check "unknown subcommand exits 1" "$([[ $? -eq 1 ]] && echo 1 || echo 0)"
 
+# Identity and credential locations are refused: the ledger is committed and pushed.
+ec=0; bash "$LIB" add "$WORK/priv.md" "ADC exist for chris@example.dev" "gcloud auth list" "chris@example.dev ACTIVE" >/dev/null 2>&1 || ec=$?
+check "add refuses an email address" "$([[ $ec -eq 1 ]] && echo 1 || echo 0)"
+ec=0; bash "$LIB" add "$WORK/priv.md" "ADC file present" "ls creds" "/Users/x/.config/gcloud/application_default_credentials.json exists" >/dev/null 2>&1 || ec=$?
+check "add refuses a credential path" "$([[ $ec -eq 1 ]] && echo 1 || echo 0)"
+check "refused entries leave no ledger" "$([[ ! -f "$WORK/priv.md" ]] && echo 1 || echo 0)"
+ec=0; bash "$LIB" add "$WORK/priv.md" "gcloud ADC are present, so plan authenticates" "gcloud auth list" "one ACTIVE account" >/dev/null 2>&1 || ec=$?
+check "add accepts auth-works phrasing" "$([[ $ec -eq 0 ]] && echo 1 || echo 0)"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1

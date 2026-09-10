@@ -43,7 +43,7 @@ feature_dir() {
   fi
   for d in "$root"/.loop-spec/features/*/; do
     [[ -f "$d/feature.json" ]] || continue
-    [[ "$(jq -r '.currentPhase // ""' "$d/feature.json" 2>/dev/null)" == "completed" ]] && continue
+    [[ "$(bash "$PLUGIN_ROOT/lib/feature-read.sh" "$d" -r --filter '.currentPhase // ""' 2>/dev/null)" == "completed" ]] && continue
     open+=("${d%/}")
   done
   [[ ${#open[@]} -eq 1 ]] && printf '%s' "${open[0]}"
@@ -55,7 +55,7 @@ FEATURE_DIR="$(feature_dir "$PWD")"
 mode="$(bash "$PLUGIN_ROOT/lib/supervisor/oracle.sh" mode --feature-dir "$FEATURE_DIR" 2>/dev/null || true)"
 [[ "$mode" == oracle=supervisor* ]] || exit 0
 
-phase="$(jq -r '.currentPhase // "cycle"' "$FEATURE_DIR/feature.json" 2>/dev/null || echo cycle)"
+phase="$(bash "$PLUGIN_ROOT/lib/feature-read.sh" "$FEATURE_DIR" -r --filter '.currentPhase // "cycle"' 2>/dev/null || echo cycle)"
 event="$(jq -r '.hook_event_name // "PostToolUse"' <<<"$INPUT")"
 
 if [[ "$event" == "PostToolUseFailure" ]]; then

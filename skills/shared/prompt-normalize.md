@@ -21,7 +21,7 @@ task sentence, a vague symptom report. Everything else travels verbatim:
   acceptance criteria. These are evidence; paraphrasing one destroys it.
 - **Invocation tokens** (`autonomous`, `new`, `style:...`, `profile:...`, `backlog`,
   `--no-run`) and file-path arguments - they are grammar, not prose.
-- **SPEC-shaped sources** (an `ambiguity_scores` frontmatter block, or the SPEC.md
+- **SPEC-shaped sources** (an `unresolved_questions` frontmatter block, or the SPEC.md
   section skeleton) - the SPEC phase's ingest gate already normalizes those;
   rewriting a spec into a spec adds nothing but drift.
 - **Input another loop-spec skill produced** (an escalation brief from micro, a
@@ -57,7 +57,7 @@ task sentence, a vague symptom report. Everything else travels verbatim:
 
 - **Normalize, never invent.** No new requirements, constraints, criteria, or
   assumptions; every statement in the output must be traceable to the input. Gaps
-  stay gaps - the ambiguity gate, DISCUSS, and micro's one question own resolution,
+  stay gaps - the unresolved-question gate, DISCUSS, and micro's one question own resolution,
   and a rewrite that fills a hole has fabricated a goal the implementer never stated.
 - **Context is never cruft.** Audience, product, environment facts, quality bar,
   and the reasons behind constraints all survive; never justify a cut by length.

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Route probe: classify ITERATE's outstanding gap for graph/cycle.graph.json's
-# rewind routes (iterate -> execute | plan | spec | deliver).
+# rewind routes (iterate -> execute | plan | spec | verify | deliver). `verify` is the
+# converged floor's veto over an incomplete verification record with no FAIL row: the
+# verifier completes the record; no implementer is dispatched.
 #
 # Usage:
 #   iterate-gap.sh --feature-dir DIR
@@ -24,7 +26,7 @@ usage() {
 }
 
 if [[ "${1:-}" == "--answers" ]]; then
-  printf 'gap=execute\ngap=plan\ngap=spec\ngap=none\n'
+  printf 'gap=execute\ngap=plan\ngap=spec\ngap=verify\ngap=none\n'
   exit 0
 fi
 
@@ -44,7 +46,7 @@ state="$(jq -r '
   if (.iterate | type) != "object" then "UNRESOLVED"
   elif (.iterate | has("feedback") | not) then "UNRESOLVED"
   elif .iterate.feedback == null then "NONE"
-  elif ((.iterate.feedback.type // "") | test("^(execute|plan|spec)$")) then .iterate.feedback.type
+  elif ((.iterate.feedback.type // "") | test("^(execute|plan|spec|verify)$")) then .iterate.feedback.type
   else "UNRESOLVED"
   end
 ' "$feature_json" 2>/dev/null)" || exit 1
@@ -53,7 +55,7 @@ case "$state" in
   NONE)
     echo "gap=none reason=iterate.feedback is null (converged, no rewind pending)"
     ;;
-  execute|plan|spec)
+  execute|plan|spec|verify)
     echo "gap=${state} reason=iterate.feedback.type=${state}"
     ;;
   *)

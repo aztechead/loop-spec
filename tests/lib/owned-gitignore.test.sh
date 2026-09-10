@@ -51,6 +51,22 @@ chmod +x "$WORK/.gitignore"
 rc=0; bash "$SCRIPT" check "$WORK" || rc=$?
 check "file mode change rejected" "1" "$rc"
 
+
+# ensure: the exceptions land as one block under our own header, separated from the
+# user's last group, and re-running adds nothing.
+ENS="$WORK/ensure"; mkdir -p "$ENS"; git -C "$ENS" init -q -b main
+printf '# lock note: keep the lock file\n' > "$ENS/.gitignore"
+git -C "$ENS" -c user.email=t@t -c user.name=t add .gitignore; git -C "$ENS" -c user.email=t@t -c user.name=t commit -q -m ignore
+bash "$SCRIPT" ensure "$ENS" '!/.loop-spec/features/*/PROGRESS.md' '!/.loop-spec/RULES.md' >/dev/null
+check "ensure: blank line separates the block from the user comment" "" "$(sed -n 2p "$ENS/.gitignore")"
+check "ensure: header precedes the exceptions" "# loop-spec: keep these tracked despite the ignores above" "$(sed -n 3p "$ENS/.gitignore")"
+check "ensure: both lines present" "2" "$(grep -c '^!/.loop-spec/' "$ENS/.gitignore")"
+before="$(wc -l < "$ENS/.gitignore")"
+bash "$SCRIPT" ensure "$ENS" '!/.loop-spec/RULES.md' >/dev/null
+check "ensure: idempotent" "$before" "$(wc -l < "$ENS/.gitignore")"
+git -C "$ENS" add .gitignore >/dev/null; rc=0; bash "$SCRIPT" check "$ENS" || rc=$?
+check "check: accepts the ensured block" "0" "$rc"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

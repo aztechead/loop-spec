@@ -10,6 +10,7 @@
  *   active skill directory    tool.execute.after metadata from skill/read
  *   SessionStart              session.created + first chat.message barrier
  *   UserPromptSubmit          chat.message
+ *   PreToolUse                tool.execute.before (throws on denial)
  *   Stop (best effort)        session.idle
  *
  * OpenCode can run root and child sessions concurrently, and event callback
@@ -42,6 +43,7 @@ const SELF = (() => {
 const PKG_ROOT = path.resolve(path.dirname(SELF), "..", "..");
 const HOOK_TIMEOUT_MS = 15000;
 const SESSION_START_SCRIPTS = [
+  "hooks/team/skill-paths-inject.sh",
   "hooks/team/discipline-inject.sh",
   "hooks/team/grill-inject.sh",
   "hooks/team/simplicity-inject.sh",
@@ -51,22 +53,27 @@ const SESSION_START_SCRIPTS = [
 ];
 
 /** Run a bundled hook and return additionalContext, failing open. */
-function runHook(scriptRel, stdinPayload, cwd, env = {}) {
-  return new Promise((resolve) => {
+function runHook(scriptRel, stdinPayload, cwd, env = {}, enforce = false) {
+  return new Promise((resolve, reject) => {
     try {
       const script = path.join(PKG_ROOT, scriptRel);
-      const proc = spawn("bash", [script], {
+      const proc = spawn(scriptRel.endsWith(".py") ? "python3" : "bash", [script], {
         cwd,
         env: { ...process.env, ...env },
         detached: process.platform !== "win32",
       });
       let out = "";
+      let err = "";
       let settled = false;
       let timer;
       const settle = (value) => {
         if (settled) return;
         settled = true;
         if (timer) clearTimeout(timer);
+        if (enforce && value === null) {
+          reject(new Error("loop-spec could not verify this tool call; retry after fixing the guard failure"));
+          return;
+        }
         resolve(value);
       };
       timer = setTimeout(() => {
@@ -82,6 +89,7 @@ function runHook(scriptRel, stdinPayload, cwd, env = {}) {
         settle(null);
       }, HOOK_TIMEOUT_MS);
       proc.stdout.on("data", (data) => (out += String(data)));
+      proc.stderr.on("data", (data) => (err += String(data)));
       // Some hooks exit before reading stdin. Swallow EPIPE but keep the
       // close/timeout lifecycle active so a child that merely closed stdin
       // cannot outlive the 15-second bound.
@@ -89,7 +97,14 @@ function runHook(scriptRel, stdinPayload, cwd, env = {}) {
       proc.on("error", () => settle(null));
       proc.on("close", (code) => {
         if (settled) return;
-        if (code !== 0 || !out.trim()) return settle(null);
+        if (enforce && code === 2) {
+          settled = true;
+          if (timer) clearTimeout(timer);
+          reject(new Error(err.trim() || "loop-spec denied this tool call"));
+          return;
+        }
+        if (code !== 0) return settle(null);
+        if (!out.trim()) return settle("");
         try {
           // jq emits pretty-printed multiline JSON. If a hook logged first,
           // retry from each line that could begin the final JSON object.
@@ -182,7 +197,10 @@ export const LoopSpecPlugin = async (input) => {
       CLAUDE_PLUGIN_ROOT: PKG_ROOT,
       CLAUDE_PROJECT_DIR: state.projectDir,
     };
-    if (state.skillDir) env.CLAUDE_SKILL_DIR = state.skillDir;
+    if (state.skillDir) {
+      env.LOOP_SPEC_SKILL_DIR = state.skillDir;
+      env.CLAUDE_SKILL_DIR = state.skillDir;
+    }
     if (sessionID) {
       env.CLAUDE_CODE_SESSION_ID = sessionID;
       env.CLAUDE_SESSION_ID = sessionID;
@@ -254,6 +272,15 @@ export const LoopSpecPlugin = async (input) => {
       } catch {
         /* fail-open */
       }
+    },
+
+    "tool.execute.before": async (hookInput, output) => {
+      const state = await resolveState(hookInput?.sessionID);
+      await runHook("hooks/pre-tool-guard.py", {
+        tool_name: hookInput?.tool,
+        tool_input: output?.args ?? {},
+        cwd: state.projectDir,
+      }, state.projectDir, hookEnv(state, hookInput?.sessionID), true);
     },
 
     "chat.message": async (hookInput, output) => {

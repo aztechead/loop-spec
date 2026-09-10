@@ -8,13 +8,8 @@ argument-hint: '[<slug> | <base-ref>] [--write | --walk]'
 
 Invoked as `/loop-spec:walkthrough [slug|base-ref] [--write|--walk]`.
 
-The cycle spends seven phases proving a change to itself and then hands a human a flat
-diff. Everything the loop learned about *why* the change is shaped this way — which file
-is the entry point, which cluster of edits serves one concern, which files are just
-supporting cast — is discarded at exactly the moment a reviewer needs it. This skill
-writes that down.
-
-The ordering and the checking are `lib/review-trail.sh`'s job. The framing is yours.
+Write a review guide that explains the change's entry points, design concerns, and supporting files.
+`lib/review-trail.sh` measures and checks the review order. You explain each stop.
 
 ## Modes
 
@@ -32,7 +27,7 @@ of the current branch and the default branch.
 ## Step 2 — Measure the surface
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/review-trail.sh" surface <base> <head>
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/review-trail.sh" surface <base> <head>
 ```
 
 Each line is a fact you do not re-derive: the file, whether it is `core` or `peripheral`,
@@ -54,10 +49,9 @@ concerns; one concern may span several files.
 - Target 2–5 concerns. One is fine — do not invent groupings. More than 7 is a signal the
   change is too large; write it anyway and say so.
 
-Ground every concern in what the change actually does. If a SPEC.md exists, its intent and
-any rejected alternatives are the best source for the *why*; read it before writing
-framing. Do not describe a rationale the artifacts do not support — an invented "why" is
-worse than none, because a reviewer will believe it.
+Ground each concern in the actual change.
+Read SPEC.md, when present, for intent and rejected alternatives before writing explanations.
+Do not invent reasons that the artifacts do not support.
 
 ## Step 4 — Write the trail
 
@@ -82,8 +76,7 @@ the repo root, or the path given). Framing first, anchor underneath:
 
 Rules the lint measures, so meet them deliberately:
 
-- Every `core` file gets at least one stop. A guide that silently omits part of the change
-  is worse than no guide, because it reads as complete.
+- Include at least one stop for every `core` file.
 - Framing is at most 15 words. It is a phrase, not a sentence, and never a paragraph.
 - Every stop is a real `path:line` inside the change surface, and the line exists.
 - No peripheral stop precedes the last core stop.
@@ -91,7 +84,7 @@ Rules the lint measures, so meet them deliberately:
 ## Step 5 — Lint it
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/review-trail.sh" lint <trail-file> <base> <head>
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/review-trail.sh" lint <trail-file> <base> <head>
 ```
 
 Fix every finding and re-run until clean. `finding=uncovered` means a core file has no
@@ -115,7 +108,4 @@ rethink it, done reviewing — confirm what they mean before acting on it.
 - **`/loop-spec:revise`** re-runs this after fixing review feedback, so the second reviewer
   pass gets a trail of what changed since the first.
 
-Nothing here gates delivery. A missing or failing trail is a degraded handoff, not a
-failed change: DELIVER notes its absence and ships. The reviewer's guide exists to save a
-human's time, and a gate that blocked a verified change over prose would cost more of it
-than it saves.
+This guide does not gate delivery. DELIVER reports a missing or invalid guide and continues delivery.

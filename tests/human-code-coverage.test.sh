@@ -111,7 +111,7 @@ done
 
 # The probes ship inside the plugin; a dispatched agent's cwd is the target repository.
 # A bare `lib/...` invocation resolves to nothing there, so no dispatch site may carry one
-# -- each must substitute a real path (CLAUDE_SKILL_DIR, an injected arg, BASH_SOURCE, or
+# -- each must substitute a real path (LOOP_SPEC_SKILL_DIR, an injected arg, BASH_SOURCE, or
 # the probe_dir brief input) before the directive goes out.
 for f in skills/shared/human-code.md agents/implementer.md agents/code-reviewer.md \
          agents/planner.md skills/shared/team-prompts/implementer.md \
@@ -127,8 +127,8 @@ done
 
 # Each site must resolve the path by its own available mechanism.
 resolvers=(
-  "skills/shared/execute-subagent.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib/house-style\.sh"
-  "skills/shared/team-prompts/implementer.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib/house-style\.sh"
+  "skills/shared/execute-subagent.md	LOOP_SPEC_SKILL_DIR}/\.\./\.\./lib/house-style\.sh"
+  "skills/shared/team-prompts/implementer.md	LOOP_SPEC_SKILL_DIR}/\.\./\.\./lib/house-style\.sh"
   "lib/plan-to-loop.sh	LIB_DIR=\"\\\$\(cd"
   "lib/workflows/execute-dag.js	skillDir \? "
   "hooks/team/human-code-inject.sh	LIB_DIR=\"\\\$\(cd"

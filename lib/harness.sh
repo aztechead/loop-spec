@@ -29,9 +29,22 @@
 #   harness.sh headless    -> "true" | "false" (is this a one-shot, unattended
 #                             invocation with no human and no persistent
 #                             session? the single execution-profile answer)
+#   harness.sh attended    -> "true" | "false" (is a person PROVEN to be at the
+#                             keyboard? "true" only on evidence: the operator's
+#                             word, the harness's interactive stamp, or a bridge
+#                             harness that asserts nothing else; every unknown
+#                             answers "false", see below)
+#   harness.sh attended-reason -> stable reason for the attended answer
 #   harness.sh loop-runtime -> "true" | "false" (can this invocation keep a
 #                              synchronous, long-running fleet tool call alive?)
 #   harness.sh loop-runtime-reason -> stable reason for rung telemetry
+#   harness.sh session-layer -> "session" | "in-harness" (may EXECUTE run each
+#                               agent node as its own headless CLI process through
+#                               extensions/sessions/? "session" only when the
+#                               invocation is headless, a profile exists for this
+#                               harness's CLI, the CLI is on PATH, and python3 has
+#                               tomllib; every unknown leg answers "in-harness")
+#   harness.sh session-layer-reason -> stable reason for rung telemetry
 #
 # Detection order (first match wins):
 #   1. LOOP_SPEC_HARNESS=claude|opencode|adk|codex   explicit override. The retired
@@ -71,6 +84,23 @@
 #   claude-desktop, claude-code-github-action, ...) are neither proven headless
 #   nor proven interactive here, so they stay unknown and fail safe.
 #
+# Attended proof (`attended`):
+#   The inverse question, asked by the SessionStart directives that only a person
+#   should receive (hooks/team/micro-inject.sh). It is NOT `headless` negated: an
+#   unknown stamp is "not headless" and also "not attended". The safe direction
+#   differs per caller. A directive injected into a headless cycle run competed
+#   with the cycle skill and won (the dda2cca wc-json run: the lead followed the
+#   ad-hoc micro protocol, edited in place, and never began a cycle;
+#   port audit 1, F1), so a directive meant for a
+#   person is injected only when a person is proven. Evidence, strongest first:
+#     1. LOOP_SPEC_NON_INTERACTIVE=1 / EXECUTION_PROFILE=headless -> false
+#     2. a headless entrypoint stamp -> false (a fact; it outranks the claim below)
+#     3. LOOP_SPEC_EXECUTION_PROFILE=interactive -> true (the operator's word)
+#     4. Claude Code: the `cli` stamp -> true; any other stamp or none -> false
+#     5. opencode, ADK, Codex: true. They stamp nothing; their one-shot launchers
+#        assert LOOP_SPEC_NON_INTERACTIVE=1 (leg 1), so the bridge's silence is the
+#        harness's word that a session is attended, the only channel it has.
+#
 #   This matters because it is DETERMINISTIC. Before it, an unattended run had to
 #   remember to export LOOP_SPEC_NON_INTERACTIVE=1; forgetting it left the
 #   execution profile "unproven", and a stale LOOP_SPEC_EXECUTION_PROFILE=interactive
@@ -87,12 +117,23 @@
 #   an assertion rather than a proof, which is why it ranks below a stamp and
 #   above an inherited EXECUTION_PROFILE claim.
 #
-# detect/cli/subagents/entrypoint/headless always exit 0 with the answer on
-# stdout; an unknown command exits 2.
+# Session layer (`session-layer`):
+#   LOOP_SPEC_SESSION_LAYER=1|0 is the operator's word and outranks the probe; unset,
+#   the answer is "session" only when every leg above is proven. The probe never
+#   launches anything: extensions/sessions/session_run.py exits 3 on its own when
+#   the binary or the interpreter is missing at launch time.
+#
+# detect/cli/subagents/entrypoint/headless/attended/session-layer always exit 0 with
+# the answer on stdout; an unknown command exits 2.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SESSION_PROFILES="$SCRIPT_DIR/../extensions/sessions/profiles"
 
 # Entrypoint stamps that prove a one-shot, unattended invocation.
 HEADLESS_ENTRYPOINTS=" sdk-cli sdk-py sdk-ts "
+# Entrypoint stamps that prove a person at the keyboard: the interactive TUI.
+ATTENDED_ENTRYPOINTS=" cli "
 
 entrypoint() {
   local ep="${CLAUDE_CODE_ENTRYPOINT:-}"
@@ -104,6 +145,18 @@ entrypoint_headless() {
   local ep
   ep="$(entrypoint)"
   if [[ "$HEADLESS_ENTRYPOINTS" == *" $ep "* ]]; then echo "true"; else echo "false"; fi
+}
+
+# One execution-profile answer, from strongest evidence down:
+#   1. operator assertion (LOOP_SPEC_NON_INTERACTIVE / EXECUTION_PROFILE=headless)
+#   2. the harness's own entrypoint stamp
+#   3. EXECUTION_PROFILE=interactive, or no evidence -> not headless
+headless() {
+  if [[ "${LOOP_SPEC_NON_INTERACTIVE:-}" == "1" || "${LOOP_SPEC_EXECUTION_PROFILE:-}" == "headless" ]]; then
+    echo "true"
+  else
+    entrypoint_headless
+  fi
 }
 
 detect() {
@@ -151,15 +204,51 @@ case "$cmd" in
     entrypoint
     ;;
   headless)
-    # One execution-profile answer, from strongest evidence down:
-    #   1. operator assertion (LOOP_SPEC_NON_INTERACTIVE / EXECUTION_PROFILE=headless)
-    #   2. the harness's own entrypoint stamp
-    #   3. EXECUTION_PROFILE=interactive, or no evidence -> not headless
+    headless
+    ;;
+  attended|attended-reason)
+    attended="false"
     if [[ "${LOOP_SPEC_NON_INTERACTIVE:-}" == "1" || "${LOOP_SPEC_EXECUTION_PROFILE:-}" == "headless" ]]; then
-      echo "true"
+      reason="headless/operator"
+    elif [[ "$(entrypoint_headless)" == "true" ]]; then
+      reason="headless/$(entrypoint)"
+    elif [[ "${LOOP_SPEC_EXECUTION_PROFILE:-}" == "interactive" ]]; then
+      attended="true"; reason="interactive-profile"
     else
-      entrypoint_headless
+      harness="$(detect)" || exit $?
+      ep="$(entrypoint)"
+      if [[ "$harness" != "claude" ]]; then
+        attended="true"; reason="bridge/$harness"
+      elif [[ "$ATTENDED_ENTRYPOINTS" == *" $ep "* ]]; then
+        attended="true"; reason="attended/$ep"
+      else
+        reason="unproven/$ep"
+      fi
     fi
+    if [[ "$cmd" == "attended" ]]; then echo "$attended"; else echo "$reason"; fi
+    ;;
+  session-layer|session-layer-reason)
+    layer="in-harness"
+    case "${LOOP_SPEC_SESSION_LAYER:-}" in
+      1) layer="session"; reason="operator-enabled" ;;
+      0) reason="operator-disabled" ;;
+      *)
+        cli="$(detect)" || exit $?
+        if [[ "$(headless)" != "true" ]]; then
+          reason="attended/$(entrypoint)"
+        elif [[ ! -f "$SESSION_PROFILES/$cli.toml" ]]; then
+          reason="no-profile/$cli"
+        elif ! command -v "$cli" >/dev/null 2>&1; then
+          reason="cli-missing/$cli"
+        elif ! python3 -c 'import tomllib' >/dev/null 2>&1; then
+          reason="python-below-3.11"
+        else
+          layer="session"
+          reason="headless/$cli"
+        fi
+        ;;
+    esac
+    if [[ "$cmd" == "session-layer" ]]; then echo "$layer"; else echo "$reason"; fi
     ;;
   loop-runtime|loop-runtime-reason)
     runtime="false"
@@ -190,7 +279,7 @@ case "$cmd" in
     if [[ "$cmd" == "loop-runtime" ]]; then echo "$runtime"; else echo "$reason"; fi
     ;;
   *)
-    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|entrypoint|headless|loop-runtime|loop-runtime-reason)" >&2
+    echo "harness.sh: unknown command '${cmd}' (detect|cli|subagents|entrypoint|headless|attended|attended-reason|loop-runtime|loop-runtime-reason|session-layer|session-layer-reason)" >&2
     exit 2
     ;;
 esac

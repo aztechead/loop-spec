@@ -1,39 +1,18 @@
-# Loop patterns and lineage
+# Loop patterns
 
 Read this when building orchestration loops (one loop supervising others), designing
 verifiers, or debugging a loop that misbehaves. The SKILL.md covers the day-to-day; this
-is the theory and the sharp edges.
+covers operating choices and failure modes.
 
-Contents: the lineage · orchestration (loops supervising loops) · designing a good
-verifier · prompt-anchoring discipline · failure modes to design against · the honest
-framing.
+Contents: loop types · orchestration · verifier design · context reset · failure modes.
 
-## The lineage — know which "loop" someone means
+## Loop types
 
-The word *loop* hides at least five different things. When people argue about loops they
-are usually talking past each other across these stages. Oldest to newest:
-
-1. **The academic while-loop (ReAct, 2022).** The model reasons, calls a tool, reads the
-   result, repeats until done. One model, one loop, a human watching. This is the
-   primitive everything else is built on.
-2. **AutoGPT (2023).** Gave the loop a goal and let it prompt itself. Became famous for
-   spinning forever doing nothing — which is exactly why no-progress detection and
-   iteration caps are non-negotiable.
-3. **The ralph loop (2025).** Almost insultingly simple: pipe the same prompt file into
-   the agent over and over. Its real innovation was *discipline* — every iteration resets
-   context to a fixed set of anchor files instead of letting the conversation grow. This
-   is `--mode fresh` in the harness. "Single-agent ralph is old hat" — but it's old hat
-   because it *works*; it's the dependable base layer.
-4. **`/goal`-style productized loops (2026).** Ralph plus a small validator model that
-   confirms the task is actually done before stopping. This is `--judge` in the harness.
-5. **Continuous orchestration (now).** The genuinely new layer. Four things changed:
-   the loop became the unit of work (not the task); loops supervise other loops,
-   concurrently and on a schedule; scheduling replaced the human kickoff (it runs on
-   infrastructure time, not your attention); and durability became explicit, with
-   git-backed state and crash recovery, because the loop must survive a restart.
-
-`scripts/loop.py` gives you stages 3–4 directly and is the worker unit you compose to
-build stage 5.
+- A task loop repeats work and verification for one task.
+- Fresh mode resets context from the task, current verifier output, and progress notes.
+- Continue mode resumes the same session.
+- A supervisor schedules task loops, collects results, and applies retry or halt policy.
+- A cron or CI job can invoke the supervisor on a schedule.
 
 ## Orchestration: loops supervising loops
 
@@ -105,15 +84,3 @@ iteration sharp. Use `--mode continue` only when carrying memory genuinely helps
   the requirement). Strengthen the verifier; add `--judge` for important runs.
 - **The colliding fleet.** Multiple workers editing the same files. Isolate with git
   worktrees.
-
-## The honest framing
-
-"It's just a cron job with a hat on" is half right: the scheduling layer *is* cron, and
-that's fine. What cron never had is a decision-maker in the body — a model that picks the
-next action each tick rather than running a fixed script. The interesting engineering is
-everything you wrap around that decision so it halts safely. That wrapper is this skill.
-
-Reality check on the hype: agentic AI sits near the peak of inflated expectations, with
-only a small fraction of organizations actually running agents in production. The gap
-between the timeline and the receipts is real. Loops are useful and worth building — and
-the boring guardrails are what separate a useful loop from a runaway one.

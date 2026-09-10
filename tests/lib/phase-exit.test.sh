@@ -19,6 +19,8 @@ check() {
 }
 
 WORK="${TMPDIR:-/tmp}"; WORK="${WORK%/}/phase-exit-test.$$"
+mkdir -p "$WORK"
+WORK="$(cd "$WORK" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
 REPO="$WORK/repo"; mkdir -p "$REPO"
 git -C "$REPO" init -q -b main
@@ -65,40 +67,71 @@ rm -f "$FD/spec-draft.md"
 ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit spec: missing SPEC.md flags" "1" "$ec"
 check "exit spec: the answer line names the count" "phase-exit: 1 flag(s) (spec)" "$(tail -1 <<<"$out")"
+# The writer put SPEC.md in another checkout of this repository: name it and the move.
+git worktree add -q "$WORK/other" -b other >/dev/null 2>&1
+mkdir -p "$WORK/other/docs/loop-spec/features/my-feature"; printf '# stray\n' > "$WORK/other/docs/loop-spec/features/my-feature/SPEC.md"
+ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit spec: a SPEC.md in another checkout is named as misplaced" "1" "$(grep -c "FLAG \[misplaced\] SPEC.md was written to $WORK/other/docs/loop-spec/features/my-feature/SPEC.md" <<<"$out")"
+check "exit spec: the misplaced flag names the move" "1" "$(grep -c "mv $WORK/other/docs/loop-spec/features/my-feature/SPEC.md $REPO/docs/loop-spec/features/my-feature/SPEC.md" <<<"$out")"
+git worktree remove --force "$WORK/other" >/dev/null 2>&1; git branch -q -D other >/dev/null 2>&1
 
-cat > "$DOCS/SPEC.md" <<'MD'
+# The feature lives in a worktree and the parent checkout holds a stale copy of its
+# docs directory (the dda2cca run wrote SPEC.md next to the lead, twice). The gate is
+# run from the parent, the lead's cwd, and reads the worktree copy: the stale one is
+# never linted, never committed, and never named as misplaced.
+git worktree add -q "$WORK/wt" -b feat/wt-feature >/dev/null 2>&1
+WFD="$WORK/wt/.loop-spec/features/wt-feature"; WDOCS="$WORK/wt/docs/loop-spec/features/wt-feature"
+mkdir -p "$WFD" "$WDOCS" "$REPO/docs/loop-spec/features/wt-feature"
+jq '.slug = "wt-feature" | .feature_title = "wt feature" | .branch = "feat/wt-feature" | .worktreePath = "'"$WORK/wt"'" | .artifacts = {}' \
+  "$FD/feature.json" > "$WFD/feature.json"
+printf '# stale: not a spec at all\n' > "$REPO/docs/loop-spec/features/wt-feature/SPEC.md"
+cat > "$WDOCS/SPEC.md" <<'MD'
 ---
-ambiguity_scores:
-  ambiguity: 0.1
-  gate_passed: true
-  unresolved_dimensions: []
+unresolved_questions: []
 ---
-# My Feature
+# wt feature
 
 ## Problem
 
-Something is broken.
+The worktree copy is the real one.
+
+## Goals
+
+Produce the requested behavior.
+
+## Boundaries (what NOT to do)
+
+Do not change unrelated behavior.
 
 ## Success criteria
 
 ### Good Enough
 
-- [ ] `bash -n a.sh` exits 0
-
-### Exceptional
-
-- [ ] stretch
+- [ ] `true` exits 0
 
 ## Grounding
 
 - none
 MD
-printf '# transcript\n' > "$FD/spec-interview-transcript.md"
+bash "$REPO_ROOT/lib/cycle-driver.sh" spec approve --feature-dir "$WFD" --source human >/dev/null
+ec=0; out="$(cd "$REPO" && bash "$EXIT" spec --feature-dir "$WFD" 2>&1)" || ec=$?
+check "exit spec from a worktree feature: the worktree copy is the one read (clean exit)" "phase-exit: ok (spec)" "$(tail -1 <<<"$out")"
+check "exit spec from a worktree feature: the stale parent copy is not named as misplaced" "0" "$(grep -c 'misplaced' <<<"$out")"
+check "exit spec from a worktree feature: the worktree copy is committed on the feature branch" "1" "$(git -C "$WORK/wt" show HEAD:docs/loop-spec/features/wt-feature/SPEC.md 2>/dev/null | grep -c 'The worktree copy is the real one')"
+check "exit spec from a worktree feature: the parent checkout commits nothing" "0" "$(git -C "$REPO" log --oneline -- docs/loop-spec/features/wt-feature 2>/dev/null | wc -l | tr -d ' ')"
+check "exit spec from a worktree feature: the artifact pointer is the worktree-relative path" "docs/loop-spec/features/wt-feature/SPEC.md" "$(jq -r '.artifacts.spec' "$WFD/feature.json")"
+rm -rf "$REPO/docs/loop-spec/features/wt-feature"
+git worktree remove --force "$WORK/wt" >/dev/null 2>&1; git branch -q -D feat/wt-feature >/dev/null 2>&1
+
+cp "$REPO_ROOT/tests/fixtures/minimal-SPEC.md" "$DOCS/SPEC.md"
+bash "$REPO_ROOT/lib/cycle-driver.sh" spec approve --feature-dir "$FD" --source human >/dev/null
 ec=0; out="$(bash "$EXIT" spec --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit spec: well-formed SPEC.md passes" "0" "$ec"
 check "exit spec: artifact pointer recorded" "docs/loop-spec/features/my-feature/SPEC.md" "$(fj '.artifacts.spec')"
-check "exit spec: transcript pointer recorded" "1" "$([[ "$(fj '.artifacts.specInterview')" == *transcript.md ]] && echo 1 || echo 0)"
+check "exit spec: no interview transcript is recorded" "null" "$(fj '.artifacts.specInterview')"
 check "exit spec: phase closed" "spec" "$(fj '.completedPhases[-1]')"
+bash "$EXIT" spec --feature-dir "$FD" >/dev/null 2>&1 || true
+check "exit spec: a re-entered phase closes once" "1" "$(fj '[.completedPhases[] | select(. == "spec")] | length')"
 check "exit spec: SPEC.md committed" "1" "$(git log --oneline | grep -c 'spec: my-feature')"
 # A single-mode workspace record (what lib/workspace.sh detect reports for an ordinary
 # repository) must not read as workspace mode: the haiku re-run of todo-due carried one
@@ -183,9 +216,28 @@ printf '# PATTERNS.md - my feature\n\n## Concept: writer\n\ndetail\n' > "$DOCS/P
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: missing tasks.json flags" "1" "$ec"
 check "exit plan: names the sidecar" "1" "$(grep -c 'tasks.json missing' <<<"$out")"
+check "exit plan: missing sidecar names the extract command" "1" "$(grep -c 'plan-tasks.sh extract' <<<"$out")"
+printf '[]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: an empty tasks.json flags" "1" "$ec"
+check "exit plan: empty sidecar differs from PLAN.md ids" "1" "$(grep -c 'task-001) differ from' <<<"$out")"
+printf '[{"id":"task-009","brief":"stale","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: a sidecar whose ids differ from PLAN.md flags" "1" "$(grep -c 'differ from' <<<"$out")"
+bash "$REPO_ROOT/lib/plan-tasks.sh" extract "$DOCS/PLAN.md" > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: the derived sidecar carries no [tasks] flag" "0" "$(grep -c '^FLAG \[tasks\]' <<<"$out")"
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":["task-001"],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
 check "exit plan: a self-blocking task is a cycle" "1" "$(grep -c 'dependency cycle' <<<"$out")"
+printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"pip install -e . && uv venv --python 3.14 && bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit plan: a verify command that installs is a feasibility flag" "1" "$(grep -c 'installs or creates an environment' <<<"$out")"
+for cmd in "uv sync && bash -n a.sh" "npm ci && bash -n a.sh" "poetry install && bash -n a.sh"; do
+  printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"%s","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' "$cmd" > "$FD/tasks.json"
+  out="$(bash "$EXIT" plan --feature-dir "$FD" 2>&1 || true)"
+  check "exit plan: '$cmd' is an install flag" "1" "$(grep -c 'installs or creates an environment' <<<"$out")"
+done
 printf '[{"id":"task-001","brief":"do a thing","files":["a.sh"],"blockedBy":[],"verifyCommand":"bash -n a.sh","acceptanceCriteria":["`bash -n a.sh` exits 0"]}]' > "$FD/tasks.json"
 out="$(bash "$MODE" plan --feature-dir "$FD")"
 check "mode plan: one small task takes the fast path" "critique=skip" "${out%% *}"
@@ -204,6 +256,40 @@ ec=0; bash "$EXIT" execute --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit execute: all published passes" "0" "$ec"
 check "exit execute: merge queue cleared" "0" "$(fj '.mergeQueue | length')"
 check "exit execute: checkpoint tagged" "1" "$(git tag | grep -c 'post-execute')"
+
+# Every exit refusal below must occur even though the published task is done.
+for pending in '[{"id":"still-queued","subject":"not dispatched"}]' 'false' '{}'; do
+  bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks "$pending" >/dev/null
+  ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
+  check "exit execute: pending remediation $pending blocks exit" "1" "$ec"
+  check "exit execute: pending remediation diagnostic" "1" "$(grep -c 'pendingRemediationTasks' <<<"$out")"
+done
+bash "$REPO_ROOT/lib/feature-write.sh" set "$FD" pendingRemediationTasks '[]' >/dev/null
+cp "$FD/tasks.json" "$WORK/published-tasks.json"
+for broken in '{' '[{}]' '[]' '{"tasks":[]}'; do
+  printf '%s' "$broken" > "$FD/tasks.json"
+  ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
+  check "exit execute: malformed sidecar $broken blocks exit" "1" "$ec"
+done
+rm "$FD/tasks.json"
+ec=0; out="$(bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit execute: unreadable sidecar blocks exit" "1" "$ec"
+cp "$WORK/published-tasks.json" "$FD/tasks.json"
+mkdir -p "$WORK/unreadable-progress"
+real_python="$(python3 -c 'import sys; print(sys.executable)')"
+cat > "$WORK/unreadable-progress/python3" <<SH
+#!/usr/bin/env bash
+if [[ "\${1:-}" == - && "\${2:-}" == remaining ]]; then
+  echo 'task-progress: injected unreadable task sidecar' >&2
+  exit 1
+fi
+exec "$real_python" "\$@"
+SH
+chmod +x "$WORK/unreadable-progress/python3"
+ec=0; out="$(PATH="$WORK/unreadable-progress:$PATH" bash "$EXIT" execute --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit execute: unreadable task progress blocks exit after successful lint" "1" "$ec"
+check "exit execute: task-progress error is an actionable flag" "1" "$(grep -c 'cannot read task progress' <<<"$out")"
+
 
 # --- verify -------------------------------------------------------------------------
 printf 'echo ok\n' > a.sh; git add a.sh; git commit -q -m "feat: a.sh"
@@ -226,6 +312,18 @@ ec=0; bash "$EXIT" verify --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
 check "exit verify: grounded verification passes" "0" "$ec"
 check "exit verify: pointer recorded" "docs/loop-spec/features/my-feature/VERIFICATION.md" "$(fj '.artifacts.verification')"
 check "exit verify: team state cleared" "null" "$(fj '.currentTeamName')"
+# A table ITERATE's floor cannot read is VERIFY's REDO, never a converged-verdict veto
+# that rewinds through an empty EXECUTE (the 6.3.0 fastapi runs).
+cp "$DOCS/VERIFICATION.md" "$WORK/verification.shape"
+sed 's/| PASS |/| passed |/' "$WORK/verification.shape" > "$DOCS/VERIFICATION.md"
+ec=0; out="$(bash "$EXIT" verify --feature-dir "$FD" 2>&1)" || ec=$?
+check "exit verify: an unreadable acceptance status is a flag" "1" "$ec"
+check "exit verify: the flag names the acceptance-table gate and the grammar" "1" "$(grep -c 'FLAG \[acceptance-table\] FLOOR GE-001 acceptance result is unreadable' <<<"$out")"
+sed 's/| PASS |/| FAIL |/' "$WORK/verification.shape" > "$DOCS/VERIFICATION.md"
+ec=0; bash "$EXIT" verify --feature-dir "$FD" >/dev/null 2>&1 || ec=$?
+check "exit verify: a FAIL result is readable, not a format flag" "0" "$ec"
+cp "$WORK/verification.shape" "$DOCS/VERIFICATION.md"
+bash "$EXIT" verify --feature-dir "$FD" >/dev/null 2>&1 || true
 
 # --- iterate ------------------------------------------------------------------------
 printf '# Iteration\n' > "$DOCS/ITERATION.md"

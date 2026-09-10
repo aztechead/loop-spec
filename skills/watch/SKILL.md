@@ -8,17 +8,15 @@ argument-hint: '<slug> [--window-hours 24]'
 
 Invoked as `/loop-spec:watch <slug>`.
 
-The reality check past the merge (ROADMAP-3.0 C2): a cycle that ends at
-"suite green + PR merged" has still only been *predicted* to work. This skill
-asks what actually happened afterwards, from git/CI facts. All mechanics live
-in `lib/watch.sh`; this skill is the thin command surface.
+Check Git and CI evidence after the feature merges.
+`lib/watch.sh` performs the check and records the result.
 
 ## Run it
 
 From the project root (the directory containing `.loop-spec/`):
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/watch.sh" run --slug <slug> [--window-hours 24]
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/watch.sh" run --slug <slug> [--window-hours 24]
 ```
 
 Pass the user's arguments through (`--window-hours`, `--repo`, `--branch` if
@@ -31,10 +29,9 @@ digest's `branch` field (else `feat/<slug>`).
 - **`clean=true`** — CI green in the window AND zero post-merge commits
   touched the feature's files. This is the signal that promotes trust
   (`lib/trust.sh`: `postMergeFixRate`, `watchWindowClean`).
-- **`clean=false`** — the window was dirty. The script has already queued a
-  `watch-regression` entry in `.loop-spec/BACKLOG.md` (deduped per slug+PR);
-  the sentinel will triage it as a bug. Do NOT start a fix cycle from here —
-  the loops compose through the backlog, they do not couple.
+- **`clean=false`** — the check found a regression signal.
+  The script queues a `watch-regression` entry in `.loop-spec/BACKLOG.md`, once per slug and PR.
+  The sentinel triages it as a bug. Do not start a fix cycle here.
 - **`clean=null`** — unknowable (no CI runs in the window, or the merge
   commit is unresolvable locally). Fail-closed: null never promotes trust.
 

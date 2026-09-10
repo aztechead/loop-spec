@@ -28,6 +28,15 @@ if [[ "${LOOP_SPEC_HUMAN_CODE:-1}" == "0" ]]; then
   exit 0
 fi
 
+# A proven headless session (`lib/harness.sh headless`: a `claude -p` or SDK stamp, or
+# the operator's word) is a cycle or loop-runner session: the dispatch rungs carry their own copy, and every
+# line injected here is context the lead pays for on each turn
+# (port audit 1, F3). Unknown launches still inject.
+if [[ "$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/harness.sh" headless 2>/dev/null)" == "true" ]]; then
+  printf '{}\n'
+  exit 0
+fi
+
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 
 # Self-scope: only act inside loop-spec projects, matching every other loop-spec

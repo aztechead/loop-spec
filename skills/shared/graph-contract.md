@@ -37,28 +37,16 @@ breaking checkpoints or edge references. The schema permits labels and
    `CLAUDE.md` applied to graph vocabulary. The kind is enforced by
    `lib/graph/validate.sh`; each body is an ordinary `lib/` script with its own unit
    test.
-3. **`gate`.** Runs a probe and admits or blocks — the marker scan, the tamper scan, the
-   acceptance lint, code review. A gate that is unnecessary for a given run is ROUTED
-   AROUND, never marked skippable: `route` skips the node, works for every node kind, and
-   shows up in a dry run, whereas the `skippable` field this vocabulary carried through
-   4.0 skipped only a `.sh` BODY and was never evaluated by the engine. The only shipped
-   declaration was `plan.critique.gate`, whose body is a fast-path token rather than a
-   script — so it skipped nothing, invisibly. One mechanism for "do not run this", not
-   two. `tests/lib/graph-schema.test.sh` pins the field absent from the schema;
-   `tests/lib/graph-run.test.sh` section 20 pins it absent from `graph/cycle.graph.json`.
-4. **`human`.** Interrupts and waits for a person — the `step` style's inter-phase
-   pause, ITERATE's spec-change approval. A human node is a real stop: a checkpoint is
-   written to the node ledger by `lib/graph/checkpoint.sh` (covered by
-   `tests/lib/graph-checkpoint.test.sh`), a resumable pause record is emitted, and any
-   later invocation resumes at exactly that node — resume is a lookup, not a
-   scan-and-infer procedure. Its `admit` decides whether this run pauses here, and only
-   an ANSWERED admit decides anything: a resolved non-match skips the node (`auto` and
-   `review-only` answer `gate=skip`), while an UNRESOLVED admit — an unreadable
-   `feature.json`, an `execStyle` outside the enum, a missing probe, or no `admit`
-   declared at all — aborts the run with a published `failed` result. Falling through
-   there is how a run with hand-damaged state walked past `human.after-plan` into
-   EXECUTE with nobody having decided to skip it. Pinned by section 22 of
-   `tests/lib/graph-run.test.sh`.
+3. **`gate`.** Runs a probe that admits or blocks progress.
+   Use a `route` edge to bypass an unnecessary gate. Do not add a `skippable` field.
+   The schema and shipped-graph tests reject that field.
+4. **`human`.** Pauses for a person and records a checkpoint through `lib/graph/checkpoint.sh`.
+   The next invocation resumes at the saved node.
+   The node's `admit` probe decides whether this run pauses.
+   A resolved non-match skips the node, as for `gate=skip` in `auto` and `review-only`.
+   An unresolved or missing `admit` aborts with a published `failed` result.
+   Examples include unreadable state, an invalid `execStyle`, or a missing probe.
+   `tests/lib/graph-run.test.sh` covers this distinction.
 5. **`subgraph`.** Nests another graph file via its `graph` path so a protocol is
    declared once and reused — the critique protocol lives in
    `graph/critique.graph.json` and is referenced by both `discuss.critique` and
@@ -105,6 +93,21 @@ must be reachable from `entry` — both `FLAG`s from `lib/graph/validate.sh`.
    iteration is not representable. A `route` back-edge is tolerated by the DAG check
    only when its source also declares a bounded `loop` edge — that is the declared form
    of ITERATE/DELIVER re-entry; an uncovered back-edge still `FLAG`s.
+
+An agent node may carry `skill: <name>`: the cycle invokes `Skill(loop-spec:<name>)` for
+it instead of `loop-spec:<id>`, from the `EXT skill=<name>` line `cycle-driver.sh next`
+prints under `NEXT`. The shipped graph sets it on `spec` (`spec-lite`, the scout and
+the oneshot candidate), so the short route never loads the full SPEC body
+(`tests/lib/context-load.test.sh` bounds the three bodies it does load).
+
+An edge into an agent node may carry `sameSession: true`: the phase it enters runs in
+the session that closed the previous phase, and `lib/cycle-driver.sh next` answers
+`NEXT` across it instead of `HANDOFF`. `lib/graph/phases.sh same-session <from> <to>`
+answers for the driver and for `hooks/team/phase-handoff-guard.sh` alike, walking
+through the non-agent nodes between the two phases, so the exception is never prose.
+The shipped graph sets it on `human.after-spec` to `oneshot` and on `oneshot` to
+`deliver`, and nowhere else. The short route stays in one session. Covered by
+`tests/lib/graph-run.test.sh` and `tests/lib/graph-phases.test.sh`.
 
 ## Path-length rule
 
@@ -168,6 +171,54 @@ carries its own `baseSha` and the workspace root is not a git repository. A body
 must run in both modes takes `{featureDir}` and enumerates targets itself
 (`lib/feature-scan-each.sh`); `verify.marker` and `verify.tamper` do this. Covered by
 `tests/lib/graph-gate-dispatch.test.sh`.
+
+## Phase ingress and egress
+
+A phase agent node (body `skills/<id>/SKILL.md`) carries its door and its exit as data:
+`ingress` (schema `phaseIngress`) is what `lib/phase-entry.sh` lists when the phase
+opens, `egress` (schema `phaseEgress`) is what `lib/phase-exit.sh` checks and records
+when it closes. The two scripts are loops over those blocks; neither holds a `case` on
+the phase id. Adding a phase is one edit in `graph/cycle.graph.json` plus its SKILL.md,
+and `tests/lib/graph-phases.test.sh` proves it: a graph copy with a new phase runs
+through `phase-entry.sh`, `phase-exit.sh`, `feature-init.sh`, the hooks' phase
+alternation, and `checkpoint.sh tag post-<phase>` with nothing else edited, selected
+through `LOOP_SPEC_GRAPH`.
+
+`ingress` names `fields` (the feature.json keys the packet carries), `required` files
+(each with the `writer` phase the FLAG names when the file is absent), `skeletons`
+(artifacts `lib/cycle-driver.sh phase-begin` writes from a template under
+`skills/shared/artifact-templates/` when absent, in the shape the exit gates accept, so
+a format REDO on a driver-written shape is a driver bug), and `optional`
+files (listed only when present). `egress` runs in the order the schema lists:
+`misplaced` (an artifact absent here but present in another checkout of the repository
+is named with its move), `required` files (`FLAG [label] <path> missing`), `gates` (each
+the same shape as a gate node, a `.sh` body and an argument vector, relayed as
+`FLAG [label]` lines on a non-zero exit; a `when` clause keys the gate on a feature.json
+value, the way ITERATE's converged floor runs only for a converged verdict), and
+`oracle` (a named supervisor was asked). On ok it records `artifacts`,
+`artifactsIfPresent`, and `artifactsDefault` pointers, runs `onOk` bodies (EXECUTE's
+at-end squash), makes the `commit`, tags the `checkpoint`, applies `set` resets, and
+closes the phase (`close: always`, or `terminal` for ITERATE's `--terminal` pass).
+`writes` is the egress guard's allow-list: the feature.json paths the phase may change
+between entry and exit, by prefix. A PLAN or EXECUTE check that is more than one lint
+call is its own script (`lib/plan-exit-gate.sh`, `lib/execute-exit-gate.sh`,
+`lib/oneshot-exit-gate.sh`; they open through `lib/exit-gate-prelude.sh`) and is
+listed as a gate like any other.
+
+Paths and arguments in both blocks resolve through a closed placeholder set: `{docs}`
+(the feature's docs directory, `docs/loop-spec/features/<slug>`, absolute in
+`phase-entry.sh` so a `read=` line opens from any cwd, relative in `phase-exit.sh`
+because that is what `artifacts.*` pointers record), `{featureDir}`, `{root}` (the
+repository root, or the workspace root in workspace mode), `{slug}`, `{spec}`
+(`artifacts.spec` or `{docs}/SPEC.md`), `{tasks}` (`artifacts.tasks` or
+`{featureDir}/tasks.json`), and `{f:<dotted.key>}` (that feature.json value). This is
+not the engine's `bodyArgs` set above: the engine dispatches gate NODES, these scripts
+run inside a phase. `lib/graph/validate.sh` flags an unknown placeholder, a gate body
+that does not exist, an `ingress`/`egress` on a node that is not a phase agent node, and
+(under `--strict`) a published phase node with no `ingress`; each is exercised in
+`tests/lib/graph-validate.test.sh`. A phase node without `egress` has no exit gate
+(DELIVER: its terminal states are observation-only, `lib/cycle-driver.sh`), and
+`phase-exit.sh` refuses it as a bad invocation.
 
 ## State declaration rule
 

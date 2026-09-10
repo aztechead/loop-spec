@@ -7,7 +7,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.
 checks=(
   "skills/shared/prompt-normalize.md	Normalize, never invent"
   "skills/shared/prompt-normalize.md	byte-for-byte"
-  "skills/shared/prompt-normalize.md	stay gaps - the ambiguity gate"
+  "skills/shared/prompt-normalize.md	stay gaps - the unresolved-question gate"
   "skills/shared/prompt-normalize.md	non-interactive"
   "skills/shared/prompt-normalize.md	SPEC-shaped"
   "skills/shared/prompt-normalize.md	never loop-spec output"

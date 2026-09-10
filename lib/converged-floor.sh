@@ -12,7 +12,19 @@
 #      order) has a `- criterion: GE-NNN |` grounding row in VERIFICATION.md.
 #   2. Every criterion has exactly one PASS result in "## Acceptance criteria".
 #
-# Usage: converged-floor.sh <spec-path> <verification-path>
+# Acceptance table grammar (agents/verifier.md writes it, this probe reads it):
+#   - one row per Good Enough criterion, keyed by `GE-NNN` or its number in the
+#     column whose header is `#`, `ID`, or `Criterion ID` (else the first column);
+#   - the status in the column whose header is `Status`, `Result`, `Outcome`, or
+#     `Verdict` (else the third column); the cell BEGINS with PASS, FAIL, or N/A,
+#     so `PASS (12 passed)` and `**FAIL**` read; `\|` inside a cell is a literal pipe.
+#   A record this probe cannot read is a VERIFY defect, not an ITERATE one:
+#   `--shape` checks only the grammar (each criterion has exactly one row with a
+#   readable status; FAIL is fine) so `phase-exit.sh verify` answers REDO before
+#   a converged verdict can be vetoed over formatting (the 6.3.0 fastapi runs
+#   rewound to an empty EXECUTE that way).
+#
+# Usage: converged-floor.sh [--shape] <spec-path> <verification-path>
 #
 # Exit codes:
 #   0  floor holds
@@ -23,12 +35,15 @@
 #
 # Always ends with one ANSWER+REASON line:
 #   converged-floor: ok (N criteria verified)  |  converged-floor: N violation(s)
+#   converged-floor: shape ok (N criteria)     (--shape)
 set -uo pipefail
 
+shape=0
+[[ "${1:-}" == "--shape" ]] && { shape=1; shift; }
 spec_path="${1:-}"
 verification_path="${2:-}"
 [[ -n "$spec_path" && -n "$verification_path" ]] || {
-  echo "usage: converged-floor.sh <spec-path> <verification-path>" >&2
+  echo "usage: converged-floor.sh [--shape] <spec-path> <verification-path>" >&2
   exit 2
 }
 
@@ -62,34 +77,85 @@ acceptance_rows="$(awk '
   active && /^#/ {active=0}
   active && /^\|/ {print}
 ' <<<"$verification_content")"
+
+# One pass over the table: the header names the key and status columns, every later
+# row is split with escaped pipes protected, and each row prints `key<TAB>status`
+# where status is PASS, FAIL, N/A, or the raw cell (`empty` for none). Separator
+# rows carry no cells and print nothing.
+table_rows="$(awk '
+  function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^[*`]+|[*`]+$/, "", s); return s }
+  { gsub(/\\\|/, "\001"); n = split($0, c, "|") }
+  NR == 1 {
+    for (k = 2; k < n; k++) {
+      h = tolower(trim(c[k]))
+      if (!key_col && h ~ /^(#|id|no\.?|criterion id|ge id)$/) key_col = k
+      if (!status_col && h ~ /^(status|result|outcome|verdict)$/) status_col = k
+    }
+    if (!key_col) key_col = 2
+    if (!status_col) status_col = 4
+    evidence_col = status_col + 1
+    next
+  }
+  {
+    all_sep = 1
+    for (k = 2; k < n; k++) if (trim(c[k]) !~ /^:?-+:?$/) all_sep = 0
+    if (all_sep) next
+    key = trim(c[key_col]); s = trim(c[status_col]); gsub(/\001/, "|", s)
+    ev = tolower(trim(c[evidence_col])); gsub(/\001/, "|", ev)
+    if (s ~ /^PASS([^A-Za-z]|$)/) s = "PASS"
+    else if (s ~ /^FAIL([^A-Za-z]|$)/) s = "FAIL"
+    else if (s ~ /^BLOCKED([^A-Za-z]|$)/) s = "BLOCKED"
+    else if (s ~ /^N\/A([^A-Za-z]|$)/) s = "N/A"
+    else if (s == "") s = "empty"
+    print key "\t" s "\t" ev
+  }
+' <<<"$acceptance_rows")"
+
 for ((i = 1; i <= criteria_count; i++)); do
   ge_id=$(printf 'GE-%03d' "$i")
-  if ! grep -qE "^\s*- criterion:\s*${ge_id}\b" <<<"$verification_content"; then
+  if (( shape == 0 )) && ! grep -qE "^\s*- criterion:\s*${ge_id}\b" <<<"$verification_content"; then
     echo "FLOOR $ge_id has no grounding row in $verification_path — unverified Good Enough scope cannot converge"
     violations=$((violations + 1))
   fi
-  result="$(awk -F'|' -v id="$ge_id" -v number="$i" '
-    {gsub(/^[ \t]+|[ \t]+$/, "", $2); gsub(/^[ \t]+|[ \t]+$/, "", $4)}
-    $2 == id || $2 == number {count++; status=$4}
-    END {if (count == 1 && status == "PASS") print "PASS"; else print "missing, duplicate, or non-PASS"}
-  ' <<<"$acceptance_rows")"
+  matches="$(awk -F'\t' -v id="$ge_id" -v number="$i" '$1 == id || $1 == number {print $2}' <<<"$table_rows")"
+  count=0; [[ -n "$matches" ]] && count="$(wc -l <<<"$matches" | tr -d ' ')"
+  status="$(head -1 <<<"$matches")"
+  if (( count != 1 )); then
+    (( count == 0 )) && result="missing (no acceptance row keyed $ge_id or $i)" || result="duplicate ($count acceptance rows keyed $ge_id or $i)"
+  elif (( shape )); then
+    case "$status" in PASS|FAIL|BLOCKED|N/A) result="PASS" ;; *) result="unreadable (status cell '$status' must begin with PASS, FAIL, BLOCKED, or N/A)" ;; esac
+  else
+    [[ "$status" == "PASS" ]] && result="PASS" || result="non-PASS ($status)"
+  fi
   if [[ "$result" != "PASS" ]]; then
     echo "FLOOR $ge_id acceptance result is $result in $verification_path"
     violations=$((violations + 1))
   fi
 done
 
-# Acceptance table: any FAIL status cell vetoes convergence outright.
-while IFS= read -r line; do
-  status_cell=$(awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $4); print $4}' <<<"$line")
-  if [[ "$status_cell" == "FAIL" ]]; then
-    echo "FLOOR acceptance table row still FAIL: ${line# }"
+# Acceptance table: any FAIL or BLOCKED status cell vetoes convergence outright, and so
+# does a PASS whose evidence says the check never ran. A live verifier wrote PASS for
+# "terragrunt plan succeeds" with the evidence "plan invocation is blocked by the reauth
+# lock" because PASS was the only cell that let the feature converge (PR 93); BLOCKED is
+# that cell now, and it does not converge either.
+blocked_evidence='(^|[^a-z])(blocked|could not run|not run|never ran|did not run|unable to run|skipped|reauth|credentials? (expired|locked)|not verified|unverified)([^a-z]|$)'
+if (( shape == 0 )); then
+  while IFS=$'\t' read -r key status evidence; do
+    if [[ "$status" == "FAIL" ]]; then
+      echo "FLOOR acceptance table row still FAIL: $key"
+    elif [[ "$status" == "BLOCKED" ]]; then
+      echo "FLOOR acceptance table row BLOCKED (an operator must clear it before this can converge): $key"
+    elif [[ "$status" == "PASS" && "$evidence" =~ $blocked_evidence ]]; then
+      echo "FLOOR acceptance table row is PASS but its evidence says the check did not run (mark it BLOCKED): $key"
+    else
+      continue
+    fi
     violations=$((violations + 1))
-  fi
-done <<<"$acceptance_rows"
+  done <<<"$table_rows"
+fi
 
 if [[ "$violations" -gt 0 ]]; then
   echo "converged-floor: $violations violation(s)"
   exit 1
 fi
-echo "converged-floor: ok ($criteria_count criteria verified)"
+if (( shape )); then echo "converged-floor: shape ok ($criteria_count criteria)"; else echo "converged-floor: ok ($criteria_count criteria verified)"; fi

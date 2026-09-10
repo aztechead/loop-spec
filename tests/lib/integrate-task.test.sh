@@ -61,6 +61,7 @@ make_fixture
 printf 'dirty\n' >> "$WT/task.txt"
 run_helper --verify true
 check "dirty task rejected" check-dirty-worktree "$(jq -r .reason <<<"$OUT")"
+check "dirty task rejection names the path" "1" "$(jq -r .detail <<<"$OUT" | grep -c 'task-dirty: .*task.txt')"
 check "dirty task rejection does not rebase" "$TASK_BEFORE" "$(git -C "$WT" rev-parse HEAD)"
 check "dirty task rejection leaves feature" "$FEATURE_BEFORE" "$(git -C "$REPO" rev-parse HEAD)"
 
@@ -70,6 +71,10 @@ printf '{}\n' > "$REPO/.loop/fleet-result.json"
 printf '{}\n' > "$WT/.loop-spec/results/task.json"
 run_helper --verify 'test -f task.txt'
 check "known runtime files do not block" success "$(jq -r .status <<<"$OUT")"
+
+make_fixture
+run_helper --verify 'test -f task.txt && mkdir -p modules/m/.terraform/providers && printf "x" > modules/m/.terraform/providers/lock && printf "lock" > modules/m/.terraform.lock.hcl'
+check "tool caches a verify leaves behind do not block" success "$(jq -r .status <<<"$OUT")"
 
 make_fixture
 run_helper --verify false --cleanup
@@ -120,7 +125,7 @@ mv "$FEATURE_INDEX.saved" "$FEATURE_INDEX"
 make_fixture
 printf 'feature dirt\n' > "$REPO/untracked.txt"
 run_helper --verify true
-check "dirty feature rejected before publication" feature-dirty "$(jq -r .detail <<<"$OUT")"
+check "dirty feature rejected before publication" feature-dirty "$(jq -r .detail <<<"$OUT" | cut -d: -f1)"
 check "dirty feature remains unchanged" "$FEATURE_BEFORE" "$(git -C "$REPO" rev-parse HEAD)"
 
 make_fixture
@@ -132,7 +137,7 @@ check "preflight does not publish" "$FEATURE_BEFORE" "$(git -C "$REPO" rev-parse
 make_fixture
 run_helper --verify "printf dirt > '$REPO/preflight-dirt.txt'" --preflight-only
 check "preflight rejects feature dirt" check-dirty-worktree "$(jq -r .reason <<<"$OUT")"
-check "preflight identifies dirty feature" feature-dirty "$(jq -r .detail <<<"$OUT")"
+check "preflight identifies dirty feature" feature-dirty "$(jq -r .detail <<<"$OUT" | cut -d: -f1)"
 check "dirty preflight returns no publication" false "$(jq -r .published <<<"$OUT")"
 
 make_fixture

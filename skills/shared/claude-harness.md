@@ -2,7 +2,7 @@
 
 Applies when loop-spec runs under **Claude Code**, including the **Claude Agent
 SDK** for Python and TypeScript: `bash
-"${CLAUDE_SKILL_DIR}/../../lib/harness.sh" detect` prints `claude` (equivalently,
+"${LOOP_SPEC_SKILL_DIR}/../../lib/harness.sh" detect` prints `claude` (equivalently,
 `cycle-preflight.sh` reports `harness.name == "claude"` /
 `.loop-spec/runtime.json.harness == "claude"`). loop-spec installs there as a
 Claude Code plugin (`.claude-plugin/plugin.json`).
@@ -26,14 +26,15 @@ capabilities.
 
 ## Environment contract (who sets what)
 
-Claude Code supplies `CLAUDE_PROJECT_DIR`, `CLAUDE_SKILL_DIR` (the documented
-skill substitution), and `CLAUDE_PLUGIN_ROOT` itself — no bridge is needed, which
-is the one structural advantage this harness has over the other two.
+Claude Code supplies `CLAUDE_PROJECT_DIR`, the native `CLAUDE_SKILL_DIR` substitution, and `CLAUDE_PLUGIN_ROOT` for hooks.
+Shared skills use the neutral `LOOP_SPEC_SKILL_DIR`.
+`hooks/team/skill-paths-inject.sh` supplies the package path and the export instruction at session start.
+Before each bundled shell call, export `LOOP_SPEC_SKILL_DIR` as the executing source skill's directory.
+After reading another skill, restore the executing skill's directory before using its local files.
 
-`CLAUDE_SKILL_DIR` is correct in skill Bash; `CLAUDE_PLUGIN_ROOT` is a
-hooks/MCP variable and is EMPTY in skill Bash. A skill at `skills/<name>/`
-reaches shared code as `${CLAUDE_SKILL_DIR}/../../lib/...`. This is the rule the
-other harnesses' bridges exist to reproduce.
+The native `CLAUDE_SKILL_DIR` substitution remains available for older integrations.
+Do not rely on `CLAUDE_PLUGIN_ROOT` in skill shell calls: Claude supplies it to hooks and MCP, not skill Bash.
+Rendered phase snapshots replace both skill-directory variables with absolute paths.
 
 ## Tool surface
 
@@ -61,17 +62,16 @@ may turn a capability OFF anywhere but never conjure one that is not there —
 
 ## Ambient verification enforcement
 
-Claude Code is the only harness with a vetoable `Stop` event, so it is the only
-one where ambient enforcement can BLOCK rather than merely instruct:
+Claude Code supports a vetoable `Stop` event:
 `hooks/hooks.json` wires `SessionStart`, `UserPromptSubmit`, `PreToolUse`,
 `PostToolUse`, `Stop`, `TaskCompleted`, and `TeammateIdle`, and
-`hooks/team/adhoc-verify-guard.sh` plus `route-terminal-guard.sh` can refuse a
-termination.
+`hooks/team/adhoc-verify-guard.sh`, `route-terminal-guard.sh`, and
+`cycle-stamp-guard.sh` (a `/loop-spec:cycle` prompt whose driver was never called,
+or a phase the driver opened and the session never returned) can refuse a termination.
 
-Do not read that as the other harnesses being broken. The deterministic gates
-(`lib/verification-grounding-lint.sh`, `lib/cycle-reconcile.sh`) hold the same
-contracts everywhere, and running `cycle-reconcile.sh` on every route is required
-on all three — it is simply the ONLY enforcement on opencode and ADK.
+Codex also registers the cycle and route Stop guards.
+OpenCode and ADK rely on explicit driver gates and terminal-result validation.
+Run `lib/cycle-reconcile.sh` on every route, on every harness.
 
 ## Model routing
 
@@ -91,9 +91,10 @@ Agent when `lib/implicit-team-model.sh` returns `oneshot`
 | Mode | Invocation |
 |---|---|
 | interactive session | the Claude Code TUI (`claude`) |
-| headless / autonomous | `claude -p "/loop-spec:auto <description>"` |
+| headless / autonomous | `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 claude -p "/loop-spec:auto <description>"` (the variable forces one-shot Agents to run in the foreground; without it fork mode backgrounds every dispatch and each report costs the lead a wait turn) |
 | SDK-embedded | the Claude Agent SDK for Python (`claude-agent-sdk`) or TypeScript, which loads plugins and skills natively — the same harness, not a fourth one |
 | loop-runner fleet | `claude -p --output-format json`, resolved by `bash lib/harness.sh cli` and driven as `loop.py --agent-cli claude` |
+| EXECUTE `session` rung (headless) | one `claude -p --output-format json` process per implementer and reviewer, launched by `extensions/sessions/session_run.py` from `profiles/claude.toml`; `bash lib/harness.sh session-layer` answers `session` only for a proven-headless invocation with `claude` on PATH (`execute-rungs.md`, "Disposable session") |
 
 **Headless proof:** Claude Code stamps `CLAUDE_CODE_ENTRYPOINT` into every child
 process, and three values prove a one-shot unattended invocation — `sdk-cli`

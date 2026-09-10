@@ -34,11 +34,17 @@ set -uo pipefail
 
 type="${1:-}"
 case "$type" in
-  spec|plan|patterns|verification|tasks) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
+  spec) [[ $# -eq 2 || ( $# -eq 4 && "$3" == "--feature-dir" ) ]] || { echo "usage: artifact-lint.sh spec <path|-> [--feature-dir DIR]" >&2; exit 2; } ;;
+  plan|patterns|verification|tasks) [[ $# -eq 2 ]] || { echo "usage: artifact-lint.sh $type <path|->" >&2; exit 2; } ;;
   json) [[ $# -ge 2 ]] || { echo "usage: artifact-lint.sh json <path> [<path>...]" >&2; exit 2; } ;;
   *) echo "usage: artifact-lint.sh <spec|plan|patterns|verification|tasks|json> <path> [...]" >&2; exit 2 ;;
 esac
 shift
+feature_dir=""
+if [[ "$type" == spec && $# -eq 3 ]]; then
+  feature_dir="$3"
+  set -- "$1"
+fi
 
 # The python script below is fed to the interpreter over stdin, so a `-` path cannot
 # also be read from stdin there. Slurp it into a temp file first.
@@ -55,13 +61,14 @@ for p in "$@"; do
 done
 trap '[[ -n "$stdin_tmp" ]] && rm -f "$stdin_tmp"' EXIT
 
-python3 - "$type" "${args[@]}" <<'PY'
+PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)${PYTHONPATH:+:$PYTHONPATH}" python3 - "$type" "$feature_dir" "${args[@]}" <<'PY'
 import json
 import re
 import sys
 
 atype = sys.argv[1]
-paths = sys.argv[2:]
+feature_dir = sys.argv[2]
+paths = sys.argv[3:]
 
 flags = 0
 
@@ -187,11 +194,62 @@ def require_heading(display, lines, mask, heading):
     return None
 
 
+FROZEN_OPEN = re.compile(r'^<!--\s*intent:\s*frozen\b')
+FROZEN_CLOSE = '<!-- /intent -->'
+
+
+def require_frozen_intent(display, lines, mask, intent_no):
+    """The oneshot shape keeps the ask inside a frozen block: the comment line above
+    '## Intent' opens it and `<!-- /intent -->` closes it before the next section, so
+    ONESHOT's exit can prove the block never changed after SPEC committed it."""
+    above = [line.strip() for no, line in visible(lines, mask) if no < intent_no and line.strip()]
+    if not above or not FROZEN_OPEN.match(above[-1]):
+        flag(display, intent_no, "'## Intent' has no `<!-- intent: frozen ... -->` line above it "
+             '(the oneshot shape keeps the ask in a frozen block: SPEC-oneshot.md.template)')
+    for no, line in visible(lines, mask):
+        if no <= intent_no:
+            continue
+        s = line.strip()
+        if s == FROZEN_CLOSE:
+            return
+        if s.startswith('## '):
+            break
+    flag(display, intent_no, "'## Intent' block is not closed with `<!-- /intent -->` before the next section")
+
+
 def lint_spec(display, data):
+    from spec_questions import read_questions
+    try:
+        questions = read_questions(data.decode("utf-8"))
+        if questions:
+            flag(display, 0, "unresolved intent questions: " + "; ".join(questions))
+    except (ValueError, UnicodeDecodeError) as exc:
+        flag(display, 0, str(exc))
+    if feature_dir:
+        from feature_read import load_state
+        from spec_intent import verify_intent
+        try:
+            feature = load_state(feature_dir)
+            text = data.decode("utf-8")
+            if (feature.get("specApproval") or re.search(r"^route: *full\s*$", text, re.M)
+                    or not re.search(r"^## Intent$", text, re.M)):
+                verify_intent(text, feature.get("specApproval"))
+        except (OSError, ValueError) as exc:
+            flag(display, 0, str(exc))
     lines, mask = markdown_scan(display, data, allow_frontmatter=True)
     if lines is None:
         return
-    require_heading(display, lines, mask, '## Problem')
+    # Two shapes share the criteria and grounding sections: the full SPEC opens with
+    # '## Problem'; the oneshot SPEC opens with the ask in a frozen '## Intent' block
+    # and says what changes per footprint file (skills/shared/artifact-templates/).
+    intent = next((no for no, line in visible(lines, mask) if line.strip() == '## Intent'), None)
+    if intent is not None:
+        require_frozen_intent(display, lines, mask, intent)
+        require_heading(display, lines, mask, '## Implementation notes')
+    elif not any(line.strip() == '## Problem' or line.strip().startswith('## Problem ')
+                 for _, line in visible(lines, mask)):
+        flag(display, 0, "missing required section heading '## Problem' (the full shape) "
+             "or a frozen '## Intent' block (the oneshot shape, SPEC-oneshot.md.template)")
     require_heading(display, lines, mask, '## Success criteria')
     ge = require_heading(display, lines, mask, '### Good Enough')
     require_heading(display, lines, mask, '## Grounding')
@@ -306,10 +364,28 @@ def lint_verification(display, data):
                 break
             if s.startswith('|'):
                 has_row = True
-                break
+                # An empty Status cell is a criterion nobody ran: the oneshot skeleton
+                # leaves it empty until `cycle-driver.sh verification run` observes the
+                # command's exit (port audit 4, item 2).
+                cells = [c.strip() for c in re.split(r'(?<!\\)\|', s)[1:-1]]
+                if len(cells) >= 3 and cells[0] not in ('#', '') and not set(cells[0]) <= set('-') and cells[2] == '':
+                    flag(display, no, "acceptance row %s has an empty Status cell — the driver's "
+                         "`verification run` fills it from the command's exit; nobody writes a status by hand" % cells[0])
         if not has_row:
             flag(display, ac, "'## Acceptance criteria' has no table rows — the iterate "
                  'judge and regression-scan read this table')
+    # An empty fenced block is a value nobody wrote: the bug-fix run at d17da82 shipped
+    # an empty Final test suite fence and nothing said so (port audit 4, item 4).
+    open_at = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith('```'):
+            if open_at is None:
+                open_at = i
+            else:
+                if all(not l.strip() for l in lines[open_at + 1:i]):
+                    flag(display, open_at + 1, 'empty fenced block — the block holds a command output '
+                         "the driver's `verification run` writes; an empty one is a value nobody observed")
+                open_at = None
 
 
 def decode_json_source(display, data):

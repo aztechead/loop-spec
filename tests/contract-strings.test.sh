@@ -22,14 +22,14 @@ checks=(
   "skills/iterate/SKILL.md	iterate-terminal:"
   "skills/shared/autonomous-mode.md	iterate-terminal:"
   # -- chain predicate: skill must consume the script and its stable reasons
-  "lib/cycle-driver.sh	autonomous-chain should-chain"
+  "lib/graph/driver.py	\"autonomous-chain\", \"should-chain\""
   "lib/autonomous-chain.sh	max-features-reached"
   "lib/autonomous-chain.sh	next-entry-terminal"
   # -- delivery must finish before unattended chaining continues
-  "lib/cycle-driver.sh	delivery-incomplete"
+  "lib/graph/driver.py	delivery-incomplete"
   "lib/autonomous-chain.sh	delivery-incomplete"
   # -- backlogEntryId: written by cycle drain, matched by iterate terminal rule
-  "lib/cycle-driver.sh	backlogEntryId"
+  "lib/graph/driver.py	backlogEntryId"
   "skills/iterate/SKILL.md	backlogEntryId"
   # -- gap ids: iterate stamps them via backlog.sh gap-id / add --id
   "skills/iterate/SKILL.md	gap-id"
@@ -37,14 +37,14 @@ checks=(
   # -- TERMINAL marker: backlog.sh writes/reads it; chain + iterate rely on it
   "lib/backlog.sh	-- TERMINAL: "
   # -- preflight blob keys consumed by the cycle driver
-  "lib/cycle-driver.sh	cycle-preflight run"
-  "lib/cycle-driver.sh	.workspace.mode"
-  "lib/cycle-driver.sh	.teams.mode"
-  "lib/cycle-driver.sh	.workflows.available"
+  "lib/graph/driver.py	\"cycle-preflight\", \"run\""
+  "lib/graph/driver.py	[\"workspace\"][\"mode\"]"
+  "lib/graph/driver.py	[\"teams\"][\"mode\"]"
+  "lib/graph/driver.py	[\"workflows\"][\"available\"]"
   "lib/cycle-preflight.sh	needs_probe"
-  "lib/cycle-driver.sh	needs_probe"
+  "lib/graph/driver.py	needs_probe"
   # -- invocation parser consumed by the cycle driver + intake; debug goes through debug-init
-  "lib/cycle-driver.sh	parse-invocation parse"
+  "lib/graph/driver.py	\"parse-invocation\", \"parse\""
   "skills/intake/SKILL.md	parse-invocation.sh\" parse"
   "lib/debug-init.sh	parse-invocation.sh"
   # -- decisions store: shared contract + spec/discuss/plan/cycle all call it
@@ -56,7 +56,7 @@ checks=(
   # -- debug: init consumed by the skill
   "skills/debug/SKILL.md	debug-init.sh\" init"
   # -- greenfield: bootstrap in cycle, backfill invariant in execute
-  "lib/cycle-driver.sh	greenfield-bootstrap bootstrap"
+  "lib/graph/driver.py	\"greenfield-bootstrap\", \"bootstrap\""
   "lib/execute-step.sh	greenfield-bootstrap backfill-check"
   # -- grounding: evidence ledger + lint gate + challenger marker couplings
   "skills/discuss/SKILL.md	grounding-lint.sh\""

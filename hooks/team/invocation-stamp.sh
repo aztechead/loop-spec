@@ -5,7 +5,7 @@
 #
 # Why: the cycle skill rewrites the free prose of $ARGUMENTS before it calls
 # `cycle-driver.sh start`, and two of five eval runs dropped the `autonomous` token in
-# that rewrite (evals/findings-2026-09-06.md, finding 3). The raw prompt is the one
+# that rewrite (the 2026-09-06 live evals, finding 3). The raw prompt is the one
 # place the tokens are certain, and this hook is the one reader that sees it. It writes
 # `.loop-spec/invocation-stamp.json`; `cycle-driver.sh start` merges any token the
 # rewritten arguments lost and deletes the stamp, so a stale stamp never binds a later
@@ -35,12 +35,12 @@ try:
 except ValueError:
     sys.exit(0)
 prompt = str(payload.get("prompt") or payload.get("message") or payload.get("content") or "")
-m = re.match(r"^\s*/loop-spec:(cycle|auto|intake|debug|micro)\b\s*(.*)$", prompt, re.S)
+m = re.match(r"^\s*(?:/loop-spec:|/loop-spec-|\$loop-spec-)(cycle|auto|intake|debug|micro)(?:\s+(.*))?$", prompt, re.S)
 if not m:
     sys.exit(0)
 target = os.path.join(sys.argv[1], ".loop-spec")
 os.makedirs(target, exist_ok=True)
-stamp = {"schema": 1, "skill": m.group(1), "args": m.group(2).strip(), "ts": int(time.time())}
+stamp = {"schema": 1, "skill": m.group(1), "args": (m.group(2) or "").strip(), "ts": int(time.time())}
 tmp = os.path.join(target, "invocation-stamp.json.tmp")
 with open(tmp, "w") as fh:
     json.dump(stamp, fh)

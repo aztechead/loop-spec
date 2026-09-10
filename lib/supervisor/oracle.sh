@@ -44,7 +44,7 @@ autonomous=false; why="not-autonomous"
 if [[ "${LOOP_SPEC_AUTONOMOUS:-}" == "1" ]]; then
   autonomous=true; why="LOOP_SPEC_AUTONOMOUS=1"
 elif [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] \
-  && [[ "$(jq -r '.autonomous // false' "$feature_dir/feature.json" 2>/dev/null)" == "true" ]]; then
+  && [[ "$(bash "$SCRIPT_DIR/../feature-read.sh" "$feature_dir" -r --filter '.autonomous // false' 2>/dev/null)" == "true" ]]; then
   autonomous=true; why="feature.json.autonomous"
 fi
 

@@ -44,8 +44,11 @@ expect "task_start is a documented canonical event" lib/events.sh 'task_start *-
 expect "task_end is a documented canonical event" lib/events.sh 'task_end *- an EXECUTE task finished'
 
 # EXECUTE task progress: every rung a lead can drive must announce its position.
-expect "subagent rung emits task_start" skills/shared/execute-subagent.md 'task_start --phase execute'
-expect "subagent rung emits task_end" skills/shared/execute-subagent.md 'task_end --phase execute'
+expect "subagent rung: the driver step emits task_start" skills/shared/execute-subagent.md 'emits `task_start --phase execute`'
+expect "subagent rung: the driver step emits task_end" skills/shared/execute-subagent.md 'emits `task_end --phase execute`'
+expect "subagent rung never emits task events by hand" skills/shared/execute-subagent.md 'Never emit either event by hand'
+expect "execute-step emits task_start" lib/execute-step.sh 'emit task_start'
+expect "execute-step emits task_end" lib/execute-step.sh 'task_end merged'
 expect "subagent rung counts against the whole DAG, not the wave" \
   skills/shared/execute-subagent.md 'total.*DAG, not the current wave|not the current wave'
 expect "inline rung emits task_start" skills/shared/execute-rungs.md 'task_start --phase execute'

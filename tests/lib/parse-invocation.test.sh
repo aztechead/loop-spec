@@ -45,22 +45,34 @@ out="$(bash "$SCRIPT" parse "profile:compact add bounded export")"
 check "compact profile parsed" "compact" "$(field "$out" profile)"
 check "compact profile stripped from title" "add bounded export" "$(field "$out" title)"
 
-# phase mode tokens are execution controls, never goal text
+# phase tokens are execution controls, never goal text; fresh is the only mode
 out="$(bash "$SCRIPT" parse "phase:fresh autonomous add csv export")"
-check "fresh phase mode parsed" "fresh" "$(field "$out" phase_mode)"
+check "phase:fresh is stripped without a mode field" "null" "$(field "$out" phase_mode)"
 check "phase mode stripped from title" "add csv export" "$(field "$out" title)"
 out="$(bash "$SCRIPT" parse "phase:continuous add csv export")"
-check "continuous phase mode parsed" "continuous" "$(field "$out" phase_mode)"
+check "phase:continuous is a legacy token" "phase:continuous" "$(jq -r '.legacy | join(" ")' <<<"$out")"
+check "legacy phase token stripped from title" "add csv export" "$(field "$out" title)"
 
 # legacy tokens stripped, reported, never in the title (the oracle-pollution bug)
 out="$(bash "$SCRIPT" parse "tier:quality add csv export preset:full")"
 check "legacy stripped from title" "add csv export" "$(field "$out" title)"
 check "legacy list" "tier:quality preset:full" "$(jq -r '.legacy | join(" ")' <<<"$out")"
 
-# autonomous token
+# autonomous token: honored at either edge of the arguments, prose in the middle
 out="$(bash "$SCRIPT" parse "autonomous add csv export")"
 check "autonomous parsed" "true" "$(field "$out" autonomous)"
 check "autonomous stripped from title" "add csv export" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "add csv export autonomous")"
+check "trailing autonomous parsed" "true" "$(field "$out" autonomous)"
+check "trailing autonomous stripped from title" "add csv export" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "add csv export autonomous style:step phase:fresh")"
+check "autonomous inside the trailing token zone parsed" "true" "$(field "$out" autonomous)"
+check "trailing token zone stripped from title" "add csv export" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "fix the autonomous chain bound")"
+check "mid-text autonomous is prose" "false" "$(field "$out" autonomous)"
+check "mid-text autonomous kept in title" "fix the autonomous chain bound" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "style:step fix the autonomous chain bound")"
+check "mid-text autonomous after a leading token is prose" "false" "$(field "$out" autonomous)"
 
 # leading new = greenfield, in any order with other leading tokens
 out="$(bash "$SCRIPT" parse "new build a todo app")"
@@ -74,6 +86,20 @@ check "autonomous+new title" "build a todo app" "$(field "$out" title)"
 out="$(bash "$SCRIPT" parse "add new export button")"
 check "mid-text new not greenfield" "false" "$(field "$out" greenfield)"
 check "mid-text new kept in title" "add new export button" "$(field "$out" title)"
+
+# a flag is refused, never a title (`begin --help` once initialized a feature "help")
+ec=0; err="$(bash "$SCRIPT" parse "--help" 2>&1 >/dev/null)" || ec=$?
+check "--help is refused" "1" "$ec"
+check "the refusal names the flag and the tokens" "1" "$(grep -c "unknown flag '--help'.*--no-run" <<<"$err")"
+out="$(bash "$SCRIPT" parse "add csv export -v")"
+check "a dash token after description words is description text" "add csv export -v" "$(field "$out" title)"
+out="$(bash "$SCRIPT" parse "autonomous" "a fib tool with tests runnable by python3 -m unittest and a README")"
+check "a task's own flag-like words survive (-m)" "a fib tool with tests runnable by python3 -m unittest and a README" "$(field "$out" title)"
+check "autonomous still parsed around them" "true" "$(field "$out" autonomous)"
+out="$(bash "$SCRIPT" parse "add due dates: add accepts --due YYYY-MM-DD and stores it")"
+check "a task's own long flag survives (--due)" "add due dates: add accepts --due YYYY-MM-DD and stores it" "$(field "$out" title)"
+ec=0; bash "$SCRIPT" parse "-v" "add csv export" >/dev/null 2>&1 || ec=$?
+check "a leading flag is still refused" "1" "$ec"
 
 # --no-run
 out="$(bash "$SCRIPT" parse "--no-run some pasted text")"
@@ -95,6 +121,9 @@ check "spec-file mode" "spec-file" "$(field "$out" mode)"
 check "spec path absolutized" "$WORK/spec.md" "$(field "$out" spec_path)"
 out="$(cd "$WORK" && bash "$SCRIPT" parse "autonomous spec.md")"
 check "spec-file with autonomous" "spec-file" "$(field "$out" mode)"
+out="$(cd "$WORK" && bash "$SCRIPT" parse "spec.md autonomous")"
+check "spec-file with trailing autonomous" "spec-file" "$(field "$out" mode)"
+check "spec-file trailing autonomous flag" "true" "$(field "$out" autonomous)"
 
 # a .md path that does not exist is a description, not spec-file
 out="$(bash "$SCRIPT" parse "no-such-file.md")"

@@ -20,6 +20,7 @@ trap 'printf "{}\n"; exit 0' ERR
 
 # Canonical SessionStart scripts — keep in lockstep with hooks/hooks.json
 SESSION_START_SCRIPTS=(
+  hooks/team/skill-paths-inject.sh
   hooks/team/discipline-inject.sh
   hooks/team/grill-inject.sh
   hooks/team/simplicity-inject.sh

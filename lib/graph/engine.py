@@ -4,6 +4,12 @@
 lib/graph/run.sh owns shell argument parsing and path setup. This module owns
 workflow traversal so readers and Python tooling can see the engine as Python.
 It is harness-neutral: node bodies, not graph traversal, adapt dispatch.
+
+Two callers: run.sh (main(), one process per traversal or --step) and
+lib/graph/driver.py, which configure()s the module and calls step_once() in
+process, so the cycle's loop and the graph's loop are one program
+(the port plan, WP4). Every early exit is an EngineExit
+carrying the run.sh exit code; main() turns it back into a process exit.
 """
 
 from __future__ import print_function
@@ -18,31 +24,63 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from paths import repo_path  # noqa: E402
 
-graph_path, feature_dir, dry_run, resume, step_mode, repo_root, script_dir = sys.argv[1:8]
-completed_node = sys.argv[8] if len(sys.argv) > 8 else ""
-dry_run = dry_run == "1"
-resume = resume == "1"
-step_mode = step_mode == "1"
-
-with open(graph_path, "r", encoding="utf-8") as fh:
-    graph = json.load(fh)
-
-nodes = {n["id"]: n for n in graph["nodes"]}
-edges = graph["edges"]
-entry = graph.get("entry")
-if isinstance(entry, list):
-    graph_start = entry[0]
-else:
-    graph_start = entry or graph["nodes"][0]["id"]
-
+graph_path = feature_dir = repo_root = script_dir = completed_node = ""
+dry_run = resume = step_mode = False
+graph = {}
+nodes = {}
+# Working phases an operator (and the console) can be *in*: the agent nodes whose body
+# is a phase skill, the one rule lib/graph/phases.sh also applies. `completed` is a
+# pointer the engine writes, not a phase that emits start/end markers.
+PHASE_NODE_IDS = ()
+PHASE_POINTER_IDS = ("completed",)
+edges = []
+graph_start = None
 out_edges = {}
-for e in edges:
-    out_edges.setdefault(e["from"], []).append(e)
-
 loop_counts = {}   # JSON-encoded [from,to] -> times taken, persisted in checkpoints
 node_attempts = {}  # node id -> visits so far this process (fresh each invocation)
+_repo_root_cache = []
+CYCLE_RESULT = ""
 
 
+class EngineExit(Exception):
+    """A run.sh exit code raised instead of sys.exit, so an in-process caller reads
+    it as an answer and main() still ends the process with it."""
+
+    def __init__(self, code):
+        super(EngineExit, self).__init__(code)
+        self.code = code
+
+
+def configure(graph_path_, feature_dir_, dry_run_, resume_, step_mode_,
+              repo_root_, script_dir_, completed_node_=""):
+    """Load the graph and bind the module to one feature. Called once per
+    process by main(), and per driver command by lib/graph/driver.py."""
+    global graph_path, feature_dir, dry_run, resume, step_mode, repo_root, script_dir
+    global completed_node, graph, nodes, PHASE_NODE_IDS, PHASE_POINTER_IDS, edges
+    global graph_start, out_edges, CYCLE_RESULT
+    graph_path, feature_dir, repo_root, script_dir = graph_path_, feature_dir_, repo_root_, script_dir_
+    dry_run, resume, step_mode, completed_node = bool(dry_run_), bool(resume_), bool(step_mode_), completed_node_
+    with open(graph_path, "r", encoding="utf-8") as fh:
+        graph = json.load(fh)
+    nodes = {n["id"]: n for n in graph["nodes"]}
+    PHASE_NODE_IDS = tuple(
+        n["id"] for n in graph["nodes"]
+        if n.get("kind") == "agent" and re.match(r"^skills/[^/]+/SKILL\.md$", n.get("body") or ""))
+    PHASE_POINTER_IDS = PHASE_NODE_IDS + ("completed",)
+    edges = graph["edges"]
+    entry = graph.get("entry")
+    if isinstance(entry, list):
+        graph_start = entry[0]
+    else:
+        graph_start = entry or graph["nodes"][0]["id"]
+    out_edges = {}
+    for e in edges:
+        out_edges.setdefault(e["from"], []).append(e)
+    loop_counts.clear()
+    node_attempts.clear()
+    del _repo_root_cache[:]
+    CYCLE_RESULT = os.path.realpath(os.path.join(repo_root, "lib", "cycle-result.sh"))
+    
 class RouteAbort(Exception):
     def __init__(self, node_id, diagnostics, reason="no-route-satisfied"):
         super(RouteAbort, self).__init__(node_id)
@@ -254,7 +292,7 @@ def checkpoint(node_id, edge_label, effort, status="completed"):
     if result.returncode:
         print("run.sh: checkpoint publication failed at %s; refusing to advance" % node_id,
               file=sys.stderr)
-        sys.exit(1)
+        raise EngineExit(1)
 
 
 def latest_checkpoint():
@@ -374,14 +412,6 @@ def compute_effort(node_id, node, attempt):
     return declared, "effort-probe-unresolved"
 
 
-CYCLE_RESULT = os.path.realpath(os.path.join(repo_root, "lib", "cycle-result.sh"))
-
-# Working phases an operator (and the console) can be *in*. `completed` is a
-# pointer the engine writes, not a phase that emits start/end markers.
-PHASE_NODE_IDS = (
-    "spec", "discuss", "plan", "execute", "verify", "iterate", "deliver",
-)
-PHASE_POINTER_IDS = PHASE_NODE_IDS + ("completed",)
 EDGE_KIND_RE = re.compile(
     r"^(?:chain|route|fanout|fanin|loop|routeDefault):(.+)->(.+)$"
 )
@@ -566,7 +596,7 @@ def process_node(current, admitting, defer_agent_routing):
             print("run.sh: state.sh assert-reads failed for node %s" % current, file=sys.stderr)
             if err:
                 print(err, file=sys.stderr, end="")
-            sys.exit(1)
+            raise EngineExit(1)
 
     effort, effort_reason = (node.get("effort") or "system2", "dry-run") if dry_run \
         else compute_effort(current, node, attempt)
@@ -587,7 +617,7 @@ def process_node(current, admitting, defer_agent_routing):
                 stdout=subprocess.DEVNULL)
             if write_rc:
                 print("run.sh: cannot persist phase %s; refusing dispatch" % current, file=sys.stderr)
-                sys.exit(1)
+                raise EngineExit(1)
 
     if not step_mode:
         print("%s\t%s\t%s\t%s" % (current, admitting, kind, label))
@@ -620,7 +650,7 @@ def process_node(current, admitting, defer_agent_routing):
             checkpoint(current, admitting, effort, "failed")
             publish_result("failed", detail)
             print("run.sh: %s" % detail, file=sys.stderr)
-            sys.exit(1)
+            raise EngineExit(1)
         if admitted and not dry_run:
             emit_trace(current, admitting, admit_probe, admit_reason, effort)
             checkpoint(current, admitting, effort)
@@ -643,7 +673,7 @@ def process_node(current, admitting, defer_agent_routing):
         if rc != 0:
             emit_trace(current, admitting, None, "subgraph-failed:%d" % rc, effort)
             checkpoint(current, admitting, effort, "failed")
-            sys.exit(rc)
+            raise EngineExit(rc)
 
     dispatch_rc = None
     if kind in ("function", "gate") and not dry_run:
@@ -660,18 +690,18 @@ def process_node(current, admitting, defer_agent_routing):
                 # gate found signals or could not run at all.
                 if dispatch_out:
                     print(dispatch_out, file=sys.stderr)
-                sys.exit(1)
+                raise EngineExit(1)
             print("run.sh: function body %s" % detail, file=sys.stderr)
             if dispatch_out:
                 print(dispatch_out, file=sys.stderr)
             checkpoint(current, admitting, effort, "failed")
             publish_result("failed", "function body %s" % detail)
-            sys.exit(1)
+            raise EngineExit(1)
 
     if kind == "function" and dispatch_rc is None and body and _is_cycle_result_body(
             repo_path(body, repo_root)) and not dry_run:
         if publish_result("completed", "completed at %s" % current) != 0:
-            sys.exit(3)
+            raise EngineExit(3)
 
     emit_trace(current, admitting, None, effort_reason, effort)
     checkpoint(current, admitting, effort,
@@ -713,7 +743,7 @@ def resolve_start():
     counts = latest.get("loopCounts", {})
     if not isinstance(counts, dict) or any(type(value) is not int or value < 0 for value in counts.values()):
         print("run.sh: checkpoint loopCounts is invalid; refusing to reset retry budgets", file=sys.stderr)
-        sys.exit(1)
+        raise EngineExit(1)
     loop_counts.update(counts)
     # 1. Pause record -> successor of the paused node; delete the pause record
     #    (re-entering the paused node is the deadlock this replaces).
@@ -740,7 +770,7 @@ def resolve_start():
         if last_node != completed_node or nodes.get(last_node, {}).get("kind") != "agent":
             print("run.sh: completion %s does not match pending agent %s" % (completed_node, last_node),
                   file=sys.stderr)
-            sys.exit(1)
+            raise EngineExit(1)
         checkpoint(last_node, latest.get("edge", "returned"), latest.get("effort"), "completed")
         latest["status"] = "completed"
     if not latest.get("empty"):
@@ -779,43 +809,61 @@ def _abort(abort):
             abort.node_id, abort.diagnostics)
     print(diag, file=sys.stderr)
     publish_result("failed", "%s at node %s" % (abort.reason, abort.node_id))
-    sys.exit(5)
+    raise EngineExit(5)
 
 
-if step_mode:
+def step_once():
+    """One --step: continue from the last resolved position, process one node,
+    and return (exit_code, descriptor). node_attempts starts empty, as in a
+    fresh run.sh process, so the effort probe sees the same attempt count."""
+    node_attempts.clear()
     try:
         current, admitting = resolve_start()
         result = process_node(current, admitting, defer_agent_routing=True)
     except RouteAbort as abort:
         _abort(abort)
-    print(json.dumps(result["descriptor"]))
-    if result["status"] == "paused":
-        sys.exit(4)
-    sys.exit(0)
+    return (4 if result["status"] == "paused" else 0), result["descriptor"]
 
-# Full traversal (dry-run or real). Resume resolution runs only when asked;
-# a plain invocation always starts fresh at the graph's entry node.
-try:
-    if resume:
-        current, admitting = resolve_start()
-    else:
-        current, admitting = graph_start, "entry"
 
-    steps = 0
-    max_steps = 10000
-    while current and steps < max_steps:
-        steps += 1
-        result = process_node(current, admitting, defer_agent_routing=False)
-        if result["status"] == "paused":
-            sys.exit(4)
-        if result["status"] == "terminal":
-            break
-        current, admitting = result["next"]
-except RouteAbort as abort:
-    _abort(abort)
+def traverse():
+    """Full traversal (dry-run or real). Resume resolution runs only when asked;
+    a plain invocation always starts fresh at the graph's entry node."""
+    try:
+        if resume:
+            current, admitting = resolve_start()
+        else:
+            current, admitting = graph_start, "entry"
+        steps = 0
+        max_steps = 10000
+        while current and steps < max_steps:
+            steps += 1
+            result = process_node(current, admitting, defer_agent_routing=False)
+            if result["status"] == "paused":
+                return 4
+            if result["status"] == "terminal":
+                break
+            current, admitting = result["next"]
+    except RouteAbort as abort:
+        _abort(abort)
+    if steps >= max_steps:
+        print("run.sh: step ceiling exceeded (possible unbounded traversal)", file=sys.stderr)
+        return 1
+    return 0
 
-if steps >= max_steps:
-    print("run.sh: step ceiling exceeded (possible unbounded traversal)", file=sys.stderr)
-    sys.exit(1)
 
-sys.exit(0)
+def main(argv):
+    graph_arg, feature_arg, dry_arg, resume_arg, step_arg, root_arg, dir_arg = argv[1:8]
+    configure(graph_arg, feature_arg, dry_arg == "1", resume_arg == "1", step_arg == "1",
+              root_arg, dir_arg, argv[8] if len(argv) > 8 else "")
+    try:
+        if step_mode:
+            code, descriptor = step_once()
+            print(json.dumps(descriptor))
+            return code
+        return traverse()
+    except EngineExit as exc:
+        return exc.code
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

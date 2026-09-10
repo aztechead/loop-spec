@@ -15,7 +15,12 @@ root. `integration: none` requires a concrete reason.
 
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
-| 1 | {from SPEC} | PASS / FAIL / N/A | `{verify command}` -> {output summary} |
+| 1 | {from SPEC} | PASS / FAIL / BLOCKED / N/A | `{verify command}` -> {output summary} |
+
+<!-- BLOCKED: the check could not run for a reason outside the repository (expired
+     credentials, an unreachable service, a missing approval). Name the reason and the
+     operator action. Never write PASS for a check that did not run: the converged floor
+     rejects PASS rows whose evidence says blocked, not run, skipped, or reauth. -->
 
 ## Verify command outputs
 
@@ -33,17 +38,24 @@ root. `integration: none` requires a concrete reason.
 
 ### Findings
 
+Accepted findings append `| routing: <JSON>` per `skills/shared/review-routing.md`.
+One bullet per finding, or "none": `- <file>:<line> — <claim> | verdict: true — <commit,
+backlog id, or fix>` for a finding you accepted, `- <file>:<line> — <claim> | verdict:
+false — <disproof: what you ran or read that shows it wrong>` for one you rejected.
+`lib/review-triage-lint.sh` at the exit rejects a bullet without `file:line`, without a
+verdict, or a `false` without its disproof sentence.
+
 #### Critical
-{list or "none"}
+{bullets or "none"}
 
 #### Important
-{list or "none"}
+{bullets or "none"}
 
 #### Minor (deferred)
-{list or "none"}
+{bullets or "none"; a Minor's verdict is `true — backlog <id>`}
 
 #### Performance
-{`perf:` findings from the code-reviewer's performance pass, each with the input that
+{`perf:` bullets from the code-reviewer's performance pass, each with the input that
 makes it cost and the measurement, or "none"}
 
 ### Resolution

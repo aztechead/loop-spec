@@ -1,0 +1,26 @@
+---
+unresolved_questions: []
+footprint:
+  - {path/to/file-the-change-touches}
+---
+# {feature_title}
+
+<!-- intent: frozen -->
+## Intent
+
+{One paragraph: what is broken or missing, and the outcome the change must produce, in the requester's terms.}
+<!-- /intent -->
+
+## Implementation notes
+
+- {What changes in each footprint file, one bullet per file, with the symbol or line it touches.}
+
+## Success criteria
+
+### Good Enough
+
+- [ ] `{check command}` exits 0: {what that proves}
+
+## Grounding
+
+- none

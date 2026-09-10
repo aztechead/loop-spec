@@ -31,14 +31,9 @@ if [[ -z "$FEATURE_JSON" || ! -f "$FEATURE_JSON" ]]; then
   exit 0
 fi
 
-# Parse currentPhase via jq; fall back gracefully on corrupt JSON
-CURRENT_PHASE=""
-if command -v jq >/dev/null 2>&1; then
-  CURRENT_PHASE=$(jq -r '.currentPhase // empty' "$FEATURE_JSON" 2>/dev/null) || true
-else
-  # Fallback: python3 for zero-dep environments
-  CURRENT_PHASE=$(python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('currentPhase',''))" < "$FEATURE_JSON" 2>/dev/null) || true
-fi
+# The typed reader; empty on a missing or corrupt file, advisory below.
+PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+CURRENT_PHASE=$(bash "$PLUGIN_ROOT/lib/feature-read.sh" "$FEATURE_JSON" -r --filter '.currentPhase // empty' 2>/dev/null) || true
 
 if [[ -z "$CURRENT_PHASE" ]]; then
   advisory "Could not read currentPhase from feature.json (missing or corrupt). No phase context; advisory only."
@@ -50,7 +45,7 @@ case "$CURRENT_PHASE" in
     advisory "Phase: discuss. Teammate idle during DISCUSS. Await spec-critique gate or lead instruction before claiming new work."
     ;;
   plan)
-    advisory "Phase: plan. Teammate idle during PLAN. Await plan-critique/plan-feasibility gate or lead instruction."
+    advisory "Phase: plan. Teammate idle during PLAN. Await the plan-critique gate or lead instruction."
     ;;
   execute)
     advisory "Phase: execute. Teammate idle during EXECUTE. Check task list for unclaimed or needs_rework tasks before going idle."

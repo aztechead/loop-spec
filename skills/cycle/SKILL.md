@@ -1,142 +1,131 @@
 ---
 name: cycle
-description: "ENTRY POINT for loop-spec. Give it a feature description OR a path to a pre-authored spec .md file. Runs SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER; resumes incomplete features automatically. Do not use for a pasted stack trace (that's /loop-spec:debug) or a one-file ad-hoc fix (that's /loop-spec:micro)."
-argument-hint: "[new] [feature description | path/to/spec.md | backlog]  (optional inline overrides: style:auto|step|interactive|review-only, autonomous, profile:compact|maintenance|standard, phase:fresh|continuous)"
+description: "Use when starting or resuming repository work from a feature description or spec file. Runs SPEC -> DISCUSS -> PLAN -> EXECUTE -> VERIFY -> ITERATE -> DELIVER, one phase per invocation. Use /loop-spec:debug for stack traces and /loop-spec:micro for one-file fixes."
+argument-hint: "[new] [feature description | path/to/spec.md | backlog]  (optional inline overrides: style:auto|step|interactive|review-only, autonomous, profile:compact|maintenance|standard)"
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion TeamCreate TeamDelete SendMessage TaskCreate TaskUpdate TaskList TaskGet EnterWorktree ExitWorktree ToolSearch Workflow
 ---
 
 # loop-spec:cycle
 
-You are the lead. `lib/cycle-driver.sh` owns every mechanical step of the loop and
-answers each call with one JSON object or one line. Your job is the parts that need a
-harness tool or a human: answer questions, enter and leave the worktree, and invoke
-each phase skill when the driver names it. Do not
-re-derive state, re-scan directories, or narrate the preflight.
+Lead the phase that the driver selects. `lib/cycle-driver.sh` controls the loop and returns JSON or protocol lines.
+Full-route phases start in fresh invocations. Only saved state passes between invocations.
+
+Resolve the driver's questions. Enter or leave the worktree when directed.
+Run the phase instructions that the driver selects. Stop at the phase boundary.
+
+Do not reconstruct state, scan directories again, or narrate startup checks.
 
 ```bash
-DRV="${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh"
+DRV="${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
 ```
 
-The frontmatter lists the tools this skill and its phase skills use. Any other tool the
-harness offers (a web or registry lookup, an MCP server) is available to a phase that
-needs it; the plugin restricts nothing beyond what a role's own charter says.
+Run the driver directly. Do not check its path with `ls`, `stat`, or `cat` first.
+
+The frontmatter lists the tools this skill and its phase skills use.
+Phases may use other available tools, subject to their role instructions.
+The generated adapters prepend `opencode-harness.md` or `codex-harness.md` from `skills/shared/`.
+Claude Code hooks supply its contract.
 
 ## 1. Start
 
-Rewrite the free-prose portion of `$ARGUMENTS` per `skills/shared/prompt-normalize.md`
-and splice it back between the verbatim tokens and paths; the spliced string is what
-`$ARGUMENTS` means in the call below and everywhere after. This is not a branch you
-classify your way into: tokens, file paths, and `backlog` are grammar, not prose, so
-an invocation carrying no prose passes through unchanged.
+Rewrite only the prose in `$ARGUMENTS`, following `skills/shared/prompt-normalize.md`.
+Keep tokens, file paths, and `backlog` unchanged and in place.
+Use the resulting string as `$ARGUMENTS` below. If the arguments contain no prose, use them unchanged.
 
 ```bash
 st="$(bash "$DRV" begin -- "$ARGUMENTS")"
 ```
 
-`begin` is `start` followed by `init` or `resume` whenever no human decision is
-pending, which is every autonomous and non-interactive run. Print each line of
-`.notices[]` and `.warnings[]`, nothing else. Exit 3 is an abort whose message is
-already on stderr: relay it and stop. Read `.action`:
+`begin` runs `start`, then `init` or `resume` when no user decision is pending.
+This includes autonomous runs and invocations that continue a feature.
+Print only the lines from `.notices[]` and `.warnings[]`.
+On exit 3, relay the abort message from stderr and stop.
+Otherwise, read `.action`:
 
-- `init` or `resume`: the feature is ready. `.featureDir` is the feature directory for
-  the rest of the run; call `EnterWorktree({path: .enterWorktree})` when non-null; print
-  `Launching: style=<style> title="<title>".` (or the resume lines from step 3); go to
-  step 4.
+- `init` or `resume`: use `.featureDir` as the feature directory for this run.
+  If `.enterWorktree` is non-null, call `EnterWorktree({path: .enterWorktree})`.
+  Print `Launching: style=<style> title="<title>".`
+  On resume, print `.watchdog` when non-null and `.progressTail`.
+  Print `[RESUME] tasks done/remaining` from `.tasksDone` and `.tasksRemaining` when either is non-empty.
+  Continue to step 3 unless `.recoverCompletion` is true.
+  When `.recoverCompletion` is true, skip to step 4. Run only DELIVER's feedback check on the existing targets before finishing.
+  Recovery must not skip terminal feedback observation. Never re-run project tests here. VERIFY is the only place that suite runs.
 - `decisions`: resolve `.decisions[]`, in order, with ONE `AskUserQuestion` per entry
-  (`question`, `options`; `title` is free text), then run step 2 or step 3 yourself:
+  (`question`, `options`; `title` is free text), then step 2.
 
 | id | On the answer |
 |---|---|
-| `greenfield` | "Abort" ends the run. "Start new project here" sets `greenfield=1` for step 2. |
-| `resume` | A "Resume <slug>" pick jumps to step 3 with that candidate's `featureRoot` and `slug`. "New feature" continues. |
-| `repos` | "Customize": ask for a comma-separated repo list and filter `.workspace.repos` to those names. |
+| `greenfield` | "Abort" ends the run. "Start new project here" is `--greenfield 1`. |
+| `resume` | A "Resume <slug>" pick runs `.next.resume` with that candidate's `featureRoot` and `slug`; "New feature" continues. |
+| `repos` | "Customize": ask for a comma-separated repo list and pass only those in `--repos`. |
 | `title` | The answer is the title; slug it with `lib/git-ops.sh slugify`. |
-| `commands` | "Customize": ask for each of prepare/test/lint/typecheck and replace `.commands`. |
+| `commands` | "Customize": ask for each of prepare/test/lint/typecheck and pass them in `--commands`. |
 
-The grill directive (`hooks/team/grill-inject.sh`) may already have elicited
-disambiguating answers; feed them into the title and scope. SPEC's interview continues
-the grill and DISCUSS still runs its design-shape grill afterward unless the run is
-autonomous (`execStyle: auto` is not autonomous).
+The grill directive (`hooks/team/grill-inject.sh`) may already have elicited answers;
+feed them into the title and scope. SPEC's interview continues the grill and
+DISCUSS still runs its design-shape grill afterward unless the run is autonomous
+(`execStyle: auto` is not autonomous). `.resume.cleanup[]` lists explicit-mode teams
+that may still be live; probe each with `TaskList({team})`, and if it answers, tell
+the user to `TeamDelete` that team before resuming.
 
-`.resume.autoPick` non-null means the driver already chose a feature to resume:
-go to step 3. `.resume.cleanup[]` lists explicit-mode teams that may still be live;
-probe each with `TaskList({team})`, and if it answers, tell the user to `TeamDelete`
-that team before resuming (those features are not offered).
+## 2. Run the command `begin` rendered
 
-## 2. Initialize a new feature
+Run this step only when `begin` returned `decisions` and the user answered.
+If `.action` was `init` or `resume`, initialization is complete. Do not call `init` again.
 
-```bash
-init="$(bash "$DRV" init --dir "$(jq -r '.workspace.root' <<<"$st")" \
-  --slug "<slug>" --title "<title>" --style "$(jq -r '.invocation.style' <<<"$st")" \
-  --profile "$(jq -r '.profile' <<<"$st")" --classification "$(jq -c '.classification' <<<"$st")" \
-  --autonomous "$(jq -r 'if .autonomous then 1 else 0 end' <<<"$st")" --greenfield "<0|1>" \
-  --spec-file "$(jq -r '.invocation.spec_path // ""' <<<"$st")" \
-  --commands "$(jq -c '.commands' <<<"$st")" --repos "$(jq -c '.workspace.repos' <<<"$st")" \
-  --phase-mode "$(jq -r '.invocation.phase_mode // ""' <<<"$st")" \
-  --backlog-entry "$(jq -c '.invocation.backlogEntry // empty' <<<"$st")")"
-```
+Use `.next.init` for a new feature. Replace its `<slug>`, `<title>`, and `<0|1>` placeholders with the answers.
+Use `.next.resume` for the selected existing feature. Run the selected command.
 
-Print `Launching: style=<style> title="<title>".` (spec file: `Launching from spec
-file: <path> — ...`). If `.enterWorktree` is non-null, call
-`EnterWorktree({path: .enterWorktree})` now; every later path is relative to it.
-`.featureDir` is the feature directory for the rest of the run. A non-zero exit
-already wrote a terminal result: relay stderr and stop.
+Handle its answer as step 1's `init` or `resume`.
+A non-zero exit means the driver wrote a terminal result. Relay stderr and stop.
 
-## 3. Resume an existing feature
+## 3. One phase
 
 ```bash
-rs="$(bash "$DRV" resume --dir "$PWD" --feature-root "<featureRoot>" --slug "<selected slug>" \
-  --phase-mode "$(jq -r '.invocation.phase_mode // ""' <<<"$st")")"
+ans="$(bash "$DRV" next --feature-dir "$featureDir")"
 ```
 
-Use the selected candidate's slug, including `.resume.autoPick` on automatic resume.
-The root alone is ambiguous when several features share a checkout. Exit 1 explains
-an invalid selection or where to resume; relay the message and stop.
-Call `EnterWorktree({path: .enterWorktree})` when non-null. Print `.watchdog`
-when non-null, then `.progressTail`, and `[RESUME] tasks done/remaining` from
-`.tasksDone` / `.tasksRemaining` when either is non-empty. When
-`.recoverCompletion` is true the PR was already proven: skip to step 5 and run only
-DELIVER's feedback check on the existing targets before finishing; recovery
-must not skip terminal feedback observation. Otherwise continue to step 4; never re-run
-project tests here (VERIFY is the only place that suite runs).
+Handle the first line of `ans` using these rules. Stop when the selected rule requires it.
 
-## 4. Phase loop
+- `NEXT phase=<p> label="..." effort=<system1|system2>` — print it, treat every
+  following `EXT instructions=<path> sha256=<hash>` line as the phase's rendered
+  instruction file. Read and follow that snapshot for this phase. `EXT skill` names
+  its role; the snapshot already contains the selected body and harness contract.
+  When it returns, close it:
 
-```bash
-ans="$(bash "$DRV" next --feature-dir "$featureDir")"                       # first entry
-ans="$(bash "$DRV" next --feature-dir "$featureDir" --returned-from "<phase>" \
-      --note "<one line: what the phase produced>")"                          # after each return
-```
+  ```bash
+  ans="$(bash "$DRV" next --feature-dir "$featureDir" --returned-from "<p>" \
+        --note "<one line: what the phase produced>")"
+  ```
 
-Act on the first line of `ans`:
-
-- `NEXT phase=<p> ...` — print it, treat every following `EXT ...` line as a standing
-  directive or fact file for this phase, then invoke `Skill(loop-spec:<p>)` and, when it
-  returns, call `next --returned-from <p>` again. `effort=system1` means keep the phase
-  direct; `system2` means state assumptions and check their evidence first.
-  Never AskUserQuestion as a wait while a phase agent or the DELIVER controller runs.
+  and act on that answer with the same list.
 - `REDO phase=<p> flags=<n>` followed by `FLAG ...` lines — `next` ran the phase's exit
-  gates (`lib/phase-exit.sh`) and the artifact is not ready. Invoke `Skill(loop-spec:<p>)`
-  again with the FLAG lines; the phase fixes its artifact in place and returns; then call
-  `next --returned-from <p>` again. Phase skills never run the exit themselves.
-- `PAUSED node=...` — a human gate (`style:step|interactive`). Print
-  `loop-spec: paused at <node>; re-invoke /loop-spec:cycle to continue.` and, for a
-  Claude worktree feature, `ExitWorktree({action:"keep"})`. Stop.
-- `HANDOFF next=<p> model=<m>` — print
-  `LOOP_SPEC_PHASE_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and stop; a fresh
-  session (`/loop-spec:cycle phase:fresh`) enters the next phase. Nothing from this
-  session's context travels: the phase skill's first call is
-  `lib/phase-entry.sh <p>`, whose packet is the whole ingress.
-- `REWIND next=<p>` — print `fresh-context rewind: state committed; relaunch
-  /loop-spec:cycle to re-enter <p>.` and stop.
-- `DONE status=completed` — go to step 5. `DONE status=completed
-  reason=already-satisfied` — print the result summary, exit the worktree, stop.
-  `DONE status=escalated|paused ...` — print the reason, exit the worktree, stop.
-- `ABORT ...` (exit 1) — relay stderr and stop.
+  gates (`lib/phase-exit.sh`) and the artifact is not ready.
+  Follow the same instruction snapshot again with the FLAG lines.
+  The phase fixes its artifact in place and returns.
+  Then call `next --returned-from <p>` again. Phase skills never run the exit themselves.
+- `HANDOFF next=<p> model=<m>` or `REWIND next=<p>` — the driver saved the next phase and closed this phase. Print
+  `LOOP_SPEC_HANDOFF {"slug":..,"next":"<p>","model":"<m>"}` and stop. The caller
+  re-invokes `/loop-spec:cycle`, and that invocation enters `<p>` with
+  `lib/phase-entry.sh <p>` as its whole ingress. Do not invoke `Skill(loop-spec:<p>)`
+  from here (`hooks/team/phase-handoff-guard.sh` denies a second phase in one
+  invocation). Never launch the next invocation yourself, directly or through a script.
+  `hooks/team/nested-session-guard.sh` blocks nested sessions because they spend this invocation's budget again. For a Claude worktree
+  feature, `ExitWorktree({action:"keep"})` first.
+- `PAUSED node=...` — a human gate (`style:step|interactive`). Print `loop-spec: paused
+  at <node>; re-invoke /loop-spec:cycle to continue.`, exit a Claude worktree, stop.
+- `DONE status=completed` — step 4. `DONE ... reason=already-satisfied` — print the
+  result summary, exit the worktree, stop. `DONE status=escalated|paused ...` — print
+  the reason, exit the worktree, stop. `ABORT ...` (exit 1) — relay stderr and stop.
+
+Never AskUserQuestion as a wait while a phase agent or the DELIVER controller runs.
+Team dispatch inside a phase is the phase skill's contract, not this one's: the probe
+is `lib/implicit-team-model.sh spawn-kind`, the row `.loop-spec/runtime.json.teamsMode`.
 
 The driver owns `currentPhase`, the model map, the watchdog, `PROGRESS.md`, the state
-commit, and the autonomous checkpoint PR; phase skills never write `currentPhase`.
-When a phase pauses or escalates on its own (iteration limit spent, NEEDS_CONTEXT):
+snapshot on `refs/loop-spec/state/{slug}` (`lib/state-ref.sh`), the paused result, and
+the checkpoint PR; phase skills never write `currentPhase`. When a phase pauses or
+escalates on its own (iteration limit spent, NEEDS_CONTEXT):
 
 ```bash
 esc="$(bash "$DRV" escalate --feature-dir "$featureDir" --reason "<reason>")"
@@ -144,60 +133,41 @@ esc="$(bash "$DRV" escalate --feature-dir "$featureDir" --reason "<reason>")"
 
 In explicit teams mode first `TeamDelete` the phase team. Print the reason, the
 `gateHistory` tail and artifact paths from `esc`, then the user's options (edit
-artifacts and re-invoke; reset counters in feature.json; `/loop-spec:rollback`;
-delete the feature dir to abort). `ExitWorktree({action:"keep"})` when
-`.exitWorktree` is true. Stop.
+artifacts and re-invoke; reset counters in feature.json; `/loop-spec:rollback`; delete
+the feature dir to abort). `ExitWorktree({action:"keep"})` when `.exitWorktree`. Stop.
 
-## 5. Finish
-
-```bash
-fin="$(bash "$DRV" finish --feature-dir "$featureDir" --completed "<features completed this invocation>")"
-```
-
-Exit 1 is `delivery-incomplete`: relay and stop without touching state. Otherwise write
-the completion summary in the report style (`skills/shared/report-style.md`): outcome
-first, then per target from `.targets[]` (repo, PR URL, exact SHA, checks, review
-decision and unresolved count), `.warnings[]`, elapsed time, and `.backlogCount`. If the
-feedback check reported `changesRequested`, end with `/loop-spec:revise <pr>`. The
-summary carries no self-authored deferrals; probe it before printing:
+## 4. Finish
 
 ```bash
-printf '%s' "$summary" | bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text -
+fin="$(bash "$DRV" finish --feature-dir "$featureDir" --completed <N>)"
 ```
 
-A flag is dropped scope, not wording: resume the cycle and ship the flagged item.
-`ExitWorktree({action:"keep"})` when `.exitWorktree` is true; keep the worktree until
-merge. When `.chain.chain` is true (autonomous backlog drain within
-`LOOP_SPEC_MAX_FEATURES`), start the next feature from step 1 with `.chain.entry.text`
-as the description; stop on any paused or escalated feature.
+`N` is the number of features this invocation completed, including this feature. Use `1` for a single-feature run.
+
+On exit 1 (`delivery-incomplete`), relay the error and stop without changing state.
+Otherwise, print `.report` unchanged.
+It gives the outcome, target details, warnings, elapsed time, and backlog count.
+Target details include the repo, PR URL, exact SHA, checks, review decision, and unresolved count.
+For `changesRequested`, the report ends with `/loop-spec:revise <pr>`.
+
+If `.exitWorktree` is true, call `ExitWorktree({action:"keep"})`. Keep the worktree until merge.
+If `.chain.chain` is true, start the next feature at step 1 with `.chain.entry.text` as its description.
+This drains the autonomous backlog within `LOOP_SPEC_MAX_FEATURES`. Stop on any paused or escalated feature.
 
 ## Route exit
 
-This skill is a route: it ends by publishing `.loop-spec/last-result.json`, which the
-driver does on every DONE, HANDOFF, PAUSED, and escalate answer. A request that is
-genuinely not repository work (a pure question, or work that needs a different product)
-is declined BEFORE the tree changes with the `write-terminal` snippet in
-`skills/shared/route-exit-contract.md` (`protocol-mismatch`); a rebase, sync, conflict
-resolution, re-review, or one-command chore is repository work and runs the cycle
-(`profile=maintenance` shortens the path, never skips ITERATE or DELIVER). Once the
-tree has changed, mismatch is no longer the honest ending: report what the run did.
+The driver writes `.loop-spec/last-result.json` for every DONE, HANDOFF, REWIND, PAUSED, and escalate answer.
+Before `begin`, decline requests outside repository work, such as pure questions or work that needs another product.
+Use the driver to write the protocol-mismatch result:
 
-## Headless and autonomous runs
+```bash
+bash "$DRV" decline --reason "<why this is not repository work>" --summary "<what the request needs>"
+```
 
-`LOOP_SPEC_NON_INTERACTIVE=1` replaces every question with an environment answer:
-`LOOP_SPEC_ANSWER_STYLE`, `LOOP_SPEC_ANSWER_TITLE`, `LOOP_SPEC_SPEC_FILE`,
-`LOOP_SPEC_ANSWER_REPOS`, `LOOP_SPEC_CMD_{PREPARE,TEST,LINT,TYPECHECK}`. The inline
-token `autonomous` (or `LOOP_SPEC_AUTONOMOUS=1`) is stronger: every question
-self-answers with the recommended option and the assumption lands in the decisions
-record (`skills/shared/autonomous-mode.md`). Headless form:
-`claude -p "/loop-spec:cycle autonomous <description>"`; `/loop-spec:auto` picks
-micro, debug, or this cycle first. Backlog drain: `/loop-spec:cycle backlog` runs one
-entry per invocation (`LOOP_SPEC_MAX_FEATURES` bounds chaining); an outer
-`while :; do claude -p "/loop-spec:cycle backlog"; done` is the overnight loop.
-
-Team dispatch inside phases follows `.loop-spec/runtime.json.teamsMode`: `explicit`
-creates a per-phase team, `implicit` probes `lib/implicit-team-model.sh spawn-kind` per
-teammate (`skills/shared/dispatch.md`), `none` uses one-shot agents
-(`skills/shared/dispatch.md`); rework goes to the same teammate. Follow the
-harness contract for this harness (`skills/shared/claude-harness.md`,
-`opencode-harness.md`, `codex-harness.md`, `adk-harness.md`).
+A rebase, sync, conflict resolution, re-review, or one-command chore is repository
+work and runs the cycle (`profile=maintenance` shortens the path but never skips ITERATE or DELIVER).
+Once the tree has changed, mismatch is no longer the honest ending: report what the
+run did. One invocation is one phase; a headless caller re-invokes while
+`.loop-spec/last-result.json` says `status=paused` with `reason=phase-handoff`
+(`docs/loop-spec/cloud-run-autonomous.md`), and `docs/loop-spec/configuration.md`
+holds every environment answer a non-interactive run takes.

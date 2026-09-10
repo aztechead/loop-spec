@@ -49,6 +49,7 @@
 #
 # Exit codes: always 0 (observability never aborts).
 set -uo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 EVENTS_FILE="events.jsonl"
 ATTEMPTS_FILE=".phase-attempts.json"
@@ -59,7 +60,7 @@ _resolve_slug() {
   local fj="$fdir/feature.json"
   if [[ -f "$fj" ]]; then
     local s
-    s="$(jq -r '.slug // empty' "$fj" 2>/dev/null || true)"
+    s="$(bash "$SCRIPT_DIR/feature-read.sh" "$fdir" -r --filter '.slug // empty' 2>/dev/null || true)"
     if [[ -n "$s" ]]; then
       printf '%s' "$s"
       return

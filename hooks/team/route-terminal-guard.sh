@@ -39,7 +39,9 @@ if [[ "${LOOP_SPEC_ROUTE_GUARD:-1}" == "0" ]]; then
   exit 0
 fi
 
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
+INPUT="$(cat 2>/dev/null || true)"
+payload_cwd="$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("cwd") or "")' 2>/dev/null || true)"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-${payload_cwd:-$PWD}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CYCLE_RESULT_BIN="${LOOP_SPEC_CYCLE_RESULT_BIN:-$SCRIPT_DIR/../../lib/cycle-result.sh}"
 TRACE_LOG="${LOOP_SPEC_ROUTE_GUARD_TRACE_LOG:-/tmp/claude-hooks/loop-spec-route-guard-trace.log}"
@@ -60,7 +62,6 @@ trace() {
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" >> "$TRACE_LOG" 2>/dev/null || true
 }
 
-INPUT="$(cat 2>/dev/null || true)"
 if printf '%s' "$INPUT" | python3 -c \
   "import json,sys; sys.exit(0 if json.load(sys.stdin).get('stop_hook_active') else 1)" 2>/dev/null; then
   trace "skip" "stop_hook_active"

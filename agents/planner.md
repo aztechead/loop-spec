@@ -22,15 +22,15 @@ You produce a PATTERNS.md and a PLAN.md for a feature based on its SPEC.md and t
 ## Input
 
 - `slug`
-- `spec_path`: path to SPEC.md
-- `patterns_path`: path to `docs/loop-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
+- `spec_path`: absolute path to SPEC.md
+- `patterns_path`: absolute path to `docs/loop-spec/features/{slug}/PATTERNS.md` (self-produced by you in Step 0, or pre-existing if already cached)
 
 ## Output
 
 1. `docs/loop-spec/features/{slug}/PATTERNS.md` - concept analogs from the existing codebase (produced first, in Step 0)
-2. `docs/loop-spec/features/{slug}/PLAN.md` - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
+2. `docs/loop-spec/features/{slug}/PLAN.md`, next to `spec_path` (the feature's checkout, never a path relative to your cwd) - task DAG with files, verify commands, explicit `blockedBy` edges (produced second, in Step 1)
 
-Plus a `tasks` array returned in the completion message for the lead to seed the EXECUTE harness task list via `TaskCreate`. Concurrency safety is enforced by EXECUTE Step 2b, which adds synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap, so the planner does not assign waves. In workspace mode each task object also carries `"repo": "<name>"` (matching a `workspace.repos[].name` value) so the EXECUTE harness knows which repo the task targets.
+The lead derives `tasks.json` from PLAN.md's task blocks with `lib/plan-tasks.sh extract`, so every field EXECUTE needs lives in the block: `**Files:**`, `**Verify:**`, `**Acceptance criteria:**`, `**BlockedBy:**`, and `**read_first:**`, plus `**Repo:**` in workspace mode and the optional `**Batch group:**`, `**Model tier:**`, and `**Spec path:**` lines. A `tasks` array in your completion message is a courtesy copy the lead never dispatches from. Concurrency safety is enforced by EXECUTE Step 2b, which adds synthetic `blockedBy` edges between any pair of pending tasks whose `files[]` overlap, so the planner does not assign waves. In workspace mode each task object also carries `"repo": "<name>"` (matching a `workspace.repos[].name` value) so the EXECUTE harness knows which repo the task targets.
 
 ## Procedure
 
@@ -50,13 +50,13 @@ Otherwise, produce PATTERNS.md by following the pattern-mapper role definition a
 4. For each chosen analog, capture: path+lines, imports, the 5-30 line core pattern verbatim, surrounding error handling, and a test analog if one exists.
 5. Note gotchas: 1-3 short bullets per concept calling out what NOT to carry over verbatim (deprecated patterns, code smells you saw while reading, etc.).
 6. If no clear analog exists for a concept, list it under `## Concepts with no clear analog`. Do not invent a plausible-looking analog.
-7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md`, using `skills/shared/artifact-templates/PATTERNS.md.template` as the shape.
+7. Write to `docs/loop-spec/features/{slug}/PATTERNS.md`, using the PATTERNS template the lead named as an absolute path (plugin-relative paths like `skills/shared/artifact-templates/...` do not resolve from a subagent; if no path was given, ask the lead rather than searching the disk).
 
 Top-2 analogs per concept with rationale.
 
 ### Step 1 - Read inputs and produce PLAN.md
 
-Read SPEC.md and the PATTERNS.md just produced (or pre-existing). Then produce PLAN.md.
+Read SPEC.md and the PATTERNS.md just produced (or pre-existing). Then produce PLAN.md in the shape of `template_path` (the lead's absolute path to `PLAN.md.template`) for the prose sections, and leave `## Task DAG` and `## Tasks` as bare headings: the lead renders both from your `tasks[]` with `lib/plan-render.sh`, so every task field (`goal`, `read_first`, `interfaces`, `steps`, `expected`, `files`, `verifyCommand`, `acceptanceCriteria`, `blockedBy`) belongs in the JSON, once.
 
 ## Navigation (required)
 
@@ -159,6 +159,16 @@ Autonomous-mode runs (`feature.json.autonomous == true`) surface self-answered d
 
 This record is the authority during EXECUTE: a coordinator that hits a question already answered here resolves it from the record instead of re-escalating to the user. Never write a deferred/open question whose answer is already in this record, and never recommend an option that contradicts a recorded decision. If a decision is genuinely still open, state it as an explicit assumption in the relevant task's notes, naming the artifact and its current state — not a vague "TBD".
 
+### Task granularity
+
+One task is one dispatch: an implementer seat plus a reviewer seat, each re-oriented from
+scratch. A task that edits one or two files and is verified by grep does not earn two seats.
+Downstream, `lib/task-batch.sh` merges a linear chain of such tasks (verify commands that
+only read the checkout, no test runner, no plan) into its head, and routes a doc/config-only
+task with a local verify to the mechanical tier, both deterministically. Plan for that: keep
+a task that needs a real run (`terragrunt plan`, a test suite) on its own, and let the small
+edits around it chain rather than padding them into separate tasks with invented blockers.
+
 ### Optional per-task model tier
 
 Set `modelTier: mechanical` only when the task is complete-code transcription:
@@ -197,4 +207,4 @@ Same as spec-writer: apply fix-list via Edit, preserve untouched content.
 - **Status**: DONE | NEEDS_CONTEXT
 - **Plan path**: ...
 - **Task count**: N
-- **Tasks JSON**: full tasks[] for the lead to seed the EXECUTE harness task list via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst` (from each task's `read_first` list), `specPath` (a per-task spec file path if you wrote one for a complex task, else `null`), optional `batchGroup`, optional `modelTier`, and `interfaces`)
+- **Task ids**: every `### task-NNN:` id in PLAN.md, in order. The lead derives `tasks.json` from the blocks (`lib/plan-tasks.sh extract`); EXECUTE seeds its harness task list from that file via `TaskCreate` (one call per task, with `metadata` carrying `blockedBy`, `files`, `verifyCommand`, `acceptanceCriteria`, `readFirst`, `specPath`, optional `batchGroup`, optional `modelTier`, and `interfaces`)

@@ -4,6 +4,7 @@
   "nodes": [
     {
       "id": "spec",
+      "skill": "spec-lite",
       "label": "Write the specification",
       "kind": "agent",
       "reads": [
@@ -14,18 +15,68 @@
       "writes": [
         "artifacts",
         "currentPhase",
-        "warnings"
+        "warnings",
+        "specApproval"
       ],
       "effort": "system2",
-      "body": "skills/spec/SKILL.md"
+      "body": "skills/spec/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "feature_title",
+          "execStyle",
+          "greenfield",
+          "autonomous",
+          "artifacts.spec"
+        ],
+        "optional": [
+          "{featureDir}/spec-draft.md",
+          "{featureDir}/decisions.jsonl"
+        ]
+      },
+      "egress": {
+        "misplaced": "SPEC.md",
+        "gates": [
+          {
+            "label": "artifact-lint",
+            "body": "lib/artifact-lint.sh",
+            "args": [
+              "spec",
+              "{docs}/SPEC.md"
+            ]
+          },
+          {
+            "label": "oneshot-shape",
+            "body": "lib/oneshot-spec-lint.sh",
+            "args": [
+              "{docs}/SPEC.md"
+            ]
+          }
+        ],
+        "oracle": true,
+        "writes": [
+          "artifacts.spec",
+          "specApproval"
+        ],
+        "artifacts": {
+          "spec": "{docs}/SPEC.md"
+        },
+        "commit": {
+          "message": "spec: {slug}",
+          "paths": [
+            "{docs}/SPEC.md",
+            "{docs}/EVIDENCE.md"
+          ]
+        },
+        "close": "always"
+      }
     },
     {
       "id": "human.after-spec",
       "label": "Review the specification",
       "kind": "human",
       "reads": [
-        "execStyle",
-        "phaseHandoff"
+        "execStyle"
       ],
       "writes": [
         "currentPhase"
@@ -42,6 +93,77 @@
       "routeDefault": "discuss"
     },
     {
+      "id": "oneshot",
+      "label": "Implement the small change in one pass",
+      "kind": "agent",
+      "reads": [
+        "artifacts",
+        "commands",
+        "branch"
+      ],
+      "writes": [
+        "artifacts",
+        "currentPhase",
+        "warnings"
+      ],
+      "effort": "system2",
+      "body": "skills/oneshot/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "feature_title",
+          "execStyle",
+          "autonomous",
+          "branch",
+          "baseSha",
+          "commands",
+          "artifacts.spec",
+          "models.codeReviewer"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          }
+        ],
+        "skeletons": [
+          {
+            "path": "{docs}/VERIFICATION.md",
+            "template": "skills/shared/artifact-templates/VERIFICATION-oneshot.md.template"
+          }
+        ]
+      },
+      "egress": {
+        "misplaced": "VERIFICATION.md",
+        "gates": [
+          {
+            "label": "oneshot",
+            "body": "lib/oneshot-exit-gate.sh",
+            "args": [
+              "{featureDir}"
+            ]
+          }
+        ],
+        "writes": [
+          "artifacts.spec",
+          "artifacts.verification"
+        ],
+        "artifactsIfPresent": {
+          "verification": "{docs}/VERIFICATION.md"
+        },
+        "commit": {
+          "message": "oneshot: {slug}",
+          "paths": [
+            "{docs}/SPEC.md",
+            "{docs}/VERIFICATION.md",
+            "{docs}/EVIDENCE.md"
+          ]
+        },
+        "checkpoint": "post-oneshot",
+        "close": "always"
+      }
+    },
+    {
       "id": "discuss",
       "label": "Challenge and refine the specification",
       "kind": "agent",
@@ -55,7 +177,60 @@
         "warnings"
       ],
       "effort": "system2",
-      "body": "skills/discuss/SKILL.md"
+      "body": "skills/discuss/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "feature_title",
+          "execStyle",
+          "autonomous",
+          "iterate.feedback",
+          "currentGate"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          }
+        ]
+      },
+      "egress": {
+        "misplaced": "SPEC.md",
+        "gates": [
+          {
+            "label": "artifact-lint",
+            "body": "lib/artifact-lint.sh",
+            "args": [
+              "spec",
+              "{docs}/SPEC.md"
+            ]
+          },
+          {
+            "label": "grounding-lint",
+            "body": "lib/grounding-lint.sh",
+            "args": [
+              "{docs}/SPEC.md"
+            ]
+          }
+        ],
+        "oracle": true,
+        "writes": [
+          "artifacts.spec",
+          "artifacts.patternsPrefetch"
+        ],
+        "artifacts": {
+          "spec": "{docs}/SPEC.md"
+        },
+        "commit": {
+          "message": "spec: {slug}",
+          "paths": [
+            "{docs}/SPEC.md",
+            "{docs}/EVIDENCE.md"
+          ]
+        },
+        "checkpoint": "post-discuss",
+        "close": "always"
+      }
     },
     {
       "id": "discuss.critique.gate",
@@ -91,8 +266,7 @@
       "label": "Review the refined specification",
       "kind": "human",
       "reads": [
-        "execStyle",
-        "phaseHandoff"
+        "execStyle"
       ],
       "writes": [
         "currentPhase"
@@ -122,7 +296,89 @@
         "warnings"
       ],
       "effort": "system2",
-      "body": "skills/plan/SKILL.md"
+      "body": "skills/plan/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "greenfield",
+          "workspace",
+          "iterate.feedback",
+          "currentGate",
+          "artifacts",
+          "models.planner",
+          "models.challenger"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          }
+        ],
+        "optional": [
+          "{docs}/PATTERNS.md",
+          "{docs}/EVIDENCE.md"
+        ]
+      },
+      "egress": {
+        "misplaced": "PLAN.md",
+        "gates": [
+          {
+            "label": "plan",
+            "body": "lib/plan-exit-gate.sh",
+            "args": [
+              "{featureDir}"
+            ]
+          },
+          {
+            "label": "decision-coverage",
+            "body": "lib/decision-coverage.sh",
+            "args": [
+              "{spec}",
+              "{docs}/PLAN.md"
+            ]
+          },
+          {
+            "label": "criteria-coverage",
+            "body": "lib/criteria-coverage.sh",
+            "args": [
+              "{spec}",
+              "{docs}/PLAN.md"
+            ]
+          },
+          {
+            "label": "grounding-lint",
+            "body": "lib/grounding-lint.sh",
+            "args": [
+              "{docs}/PLAN.md"
+            ]
+          }
+        ],
+        "writes": [
+          "artifacts.patternsPrefetch",
+          "artifacts.patternsSource",
+          "artifacts.patterns",
+          "artifacts.plan",
+          "artifacts.tasks"
+        ],
+        "artifacts": {
+          "plan": "{docs}/PLAN.md",
+          "patterns": "{docs}/PATTERNS.md",
+          "tasks": "{featureDir}/tasks.json"
+        },
+        "artifactsDefault": {
+          "patternsSource": "pattern-mapper"
+        },
+        "commit": {
+          "message": "plan: {slug}",
+          "paths": [
+            "{docs}/PLAN.md",
+            "{docs}/PATTERNS.md",
+            "{docs}/EVIDENCE.md"
+          ]
+        },
+        "checkpoint": "post-plan",
+        "close": "always"
+      }
     },
     {
       "id": "plan.critique.gate",
@@ -159,8 +415,7 @@
       "label": "Review the implementation plan",
       "kind": "human",
       "reads": [
-        "execStyle",
-        "phaseHandoff"
+        "execStyle"
       ],
       "writes": [
         "currentPhase"
@@ -195,7 +450,74 @@
       ],
       "effort": "system2",
       "body": "skills/execute/SKILL.md",
-      "routeDefault": "human.after-execute"
+      "routeDefault": "human.after-execute",
+      "ingress": {
+        "fields": [
+          "slug",
+          "branch",
+          "baseSha",
+          "commands",
+          "workspace",
+          "executionRootMode",
+          "worktreePath",
+          "greenfield",
+          "artifacts.tasks",
+          "pendingRemediationTasks",
+          "models.implementer",
+          "models.specComplianceReviewer"
+        ],
+        "required": [
+          {
+            "writer": "PLAN",
+            "path": "{tasks}"
+          },
+          {
+            "writer": "PLAN",
+            "path": "{docs}/PLAN.md"
+          }
+        ],
+        "optional": [
+          "{docs}/PATTERNS.md"
+        ]
+      },
+      "egress": {
+        "gates": [
+          {
+            "label": "execute",
+            "body": "lib/execute-exit-gate.sh",
+            "args": [
+              "check",
+              "{featureDir}"
+            ]
+          }
+        ],
+        "writes": [
+          "mergeQueue",
+          "pendingRemediationTasks",
+          "commands",
+          "greenfield",
+          "artifacts.tasks",
+          "artifacts.execution",
+          "artifacts.remediationReceipt",
+          "workspace"
+        ],
+        "onOk": [
+          {
+            "label": "commit-strategy",
+            "body": "lib/execute-exit-gate.sh",
+            "args": [
+              "finish",
+              "{featureDir}"
+            ]
+          }
+        ],
+        "checkpoint": "post-execute",
+        "set": {
+          "mergeQueue": [],
+          "pendingRemediationTasks": []
+        },
+        "close": "always"
+      }
     },
     {
       "id": "execute.worker",
@@ -231,8 +553,7 @@
       "label": "Review the implementation",
       "kind": "human",
       "reads": [
-        "execStyle",
-        "phaseHandoff"
+        "execStyle"
       ],
       "writes": [
         "currentPhase"
@@ -265,7 +586,93 @@
         "warnings"
       ],
       "effort": "system2",
-      "body": "skills/verify/SKILL.md"
+      "body": "skills/verify/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "baseSha",
+          "branch",
+          "commands",
+          "workspace",
+          "artifacts.spec",
+          "artifacts.plan",
+          "models.verifier",
+          "models.codeReviewer"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          },
+          {
+            "writer": "PLAN",
+            "path": "{docs}/PLAN.md"
+          }
+        ]
+      },
+      "egress": {
+        "misplaced": "VERIFICATION.md",
+        "gates": [
+          {
+            "label": "artifact-lint",
+            "body": "lib/artifact-lint.sh",
+            "args": [
+              "verification",
+              "{docs}/VERIFICATION.md"
+            ]
+          },
+          {
+            "label": "verification-grounding",
+            "body": "lib/verification-grounding-lint.sh",
+            "args": [
+              "{docs}/VERIFICATION.md",
+              "--repo",
+              "{root}",
+              "--spec",
+              "{spec}"
+            ]
+          },
+          {
+            "label": "review-triage",
+            "body": "lib/review-triage-lint.sh",
+            "args": [
+              "{docs}/VERIFICATION.md"
+            ]
+          },
+          {
+            "label": "acceptance-table",
+            "body": "lib/converged-floor.sh",
+            "args": [
+              "--shape",
+              "{spec}",
+              "{docs}/VERIFICATION.md"
+            ]
+          }
+        ],
+        "writes": [
+          "pendingRemediationTasks",
+          "artifacts.verification",
+          "artifacts.reviewOrder",
+          "verificationBaseline",
+          "workspace"
+        ],
+        "artifacts": {
+          "verification": "{docs}/VERIFICATION.md"
+        },
+        "artifactsIfPresent": {
+          "reviewOrder": "{docs}/REVIEW-ORDER.md"
+        },
+        "commit": {
+          "message": "verify: {slug}",
+          "paths": [
+            "{docs}/VERIFICATION.md",
+            "{docs}/REVIEW-ORDER.md",
+            "{docs}/EVIDENCE.md"
+          ]
+        },
+        "checkpoint": "post-verify",
+        "close": "always"
+      }
     },
     {
       "id": "verify.placeholder.gate",
@@ -416,7 +823,68 @@
         "pendingRemediationTasks"
       ],
       "effort": "system2",
-      "body": "skills/iterate/SKILL.md"
+      "body": "skills/iterate/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "feature_title",
+          "execStyle",
+          "autonomous",
+          "backlogEntryId",
+          "iterate",
+          "artifacts",
+          "models.iterateJudge"
+        ],
+        "required": [
+          {
+            "writer": "SPEC",
+            "path": "{docs}/SPEC.md"
+          },
+          {
+            "writer": "VERIFY",
+            "path": "{docs}/VERIFICATION.md"
+          }
+        ]
+      },
+      "egress": {
+        "required": [
+          {
+            "label": "iteration",
+            "path": "{docs}/ITERATION.md"
+          }
+        ],
+        "gates": [
+          {
+            "label": "converged-floor",
+            "body": "lib/converged-floor.sh",
+            "args": [
+              "{spec}",
+              "{docs}/VERIFICATION.md"
+            ],
+            "when": {
+              "field": "iterate.lastVerdict.converged",
+              "equals": "true"
+            }
+          }
+        ],
+        "writes": [
+          "iterate",
+          "artifacts.iteration",
+          "pendingRemediationTasks",
+          "backlogEntryId"
+        ],
+        "artifacts": {
+          "iteration": "{docs}/ITERATION.md"
+        },
+        "commit": {
+          "message": "iterate: {slug} iteration {f:iterate.used}",
+          "paths": [
+            "{docs}/ITERATION.md",
+            ".loop-spec/BACKLOG.md"
+          ]
+        },
+        "close": "terminal"
+      }
     },
     {
       "id": "human.iterate-spec-approval",
@@ -457,7 +925,19 @@
       ],
       "effort": "system2",
       "authorizesDelivery": true,
-      "body": "skills/deliver/SKILL.md"
+      "body": "skills/deliver/SKILL.md",
+      "ingress": {
+        "fields": [
+          "slug",
+          "branch",
+          "baseBranch",
+          "workspace",
+          "artifacts"
+        ],
+        "optional": [
+          "{featureDir}/delivery.json"
+        ]
+      }
     },
     {
       "id": "completed",
@@ -476,9 +956,69 @@
   ],
   "edges": [
     {
+      "from": "oneshot",
+      "to": "oneshot",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/review-route.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "review=bad-spec"
+      }
+    },
+    {
+      "from": "verify",
+      "to": "discuss",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/review-route.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "review=bad-spec"
+      }
+    },
+    {
+      "from": "verify",
+      "to": "execute",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/review-route.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "review=remediate"
+      }
+    },
+    {
+      "from": "verify",
+      "to": "execute",
+      "kind": "loop",
+      "ceiling": 5,
+      "strategy": "contain"
+    },
+    {
       "from": "spec",
       "to": "human.after-spec",
       "kind": "chain"
+    },
+    {
+      "from": "human.after-spec",
+      "to": "oneshot",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/oneshot.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "route=oneshot"
+      },
+      "sameSession": true
     },
     {
       "from": "human.after-spec",
@@ -535,6 +1075,35 @@
         ],
         "expects": "path=short"
       }
+    },
+    {
+      "from": "oneshot",
+      "to": "discuss",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/oneshot.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--after"
+        ],
+        "expects": "route=full"
+      }
+    },
+    {
+      "from": "oneshot",
+      "to": "deliver",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/oneshot.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--after"
+        ],
+        "expects": "route=oneshot"
+      },
+      "sameSession": true
     },
     {
       "from": "discuss",
@@ -733,17 +1302,17 @@
       "kind": "chain"
     },
     {
-      "from": "verify",
-      "to": "verify.placeholder.gate",
-      "kind": "chain"
-    },
-    {
       "from": "verify.placeholder.gate",
       "to": "verify.marker",
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "placeholderScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "placeholderScan"
+        ],
         "expects": "gate=run"
       }
     },
@@ -753,7 +1322,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "placeholderScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "placeholderScan"
+        ],
         "expects": "gate=skip"
       }
     },
@@ -763,7 +1337,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "placeholderScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "placeholderScan"
+        ],
         "expects": "gate=unplanned"
       }
     },
@@ -778,7 +1357,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "tamperScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "tamperScan"
+        ],
         "expects": "gate=run"
       }
     },
@@ -788,7 +1372,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "tamperScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "tamperScan"
+        ],
         "expects": "gate=skip"
       }
     },
@@ -798,7 +1387,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "tamperScan"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "tamperScan"
+        ],
         "expects": "gate=unplanned"
       }
     },
@@ -813,7 +1407,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "acceptance"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "acceptance"
+        ],
         "expects": "gate=run"
       }
     },
@@ -823,7 +1422,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "acceptance"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "acceptance"
+        ],
         "expects": "gate=skip"
       }
     },
@@ -833,7 +1437,12 @@
       "kind": "route",
       "condition": {
         "probe": "lib/graph/probes/compact-gate.sh",
-        "args": ["--feature-dir", "{featureDir}", "--gate", "acceptance"],
+        "args": [
+          "--feature-dir",
+          "{featureDir}",
+          "--gate",
+          "acceptance"
+        ],
         "expects": "gate=unplanned"
       }
     },
@@ -1002,6 +1611,20 @@
     },
     {
       "from": "iterate",
+      "to": "verify",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/iterate-gap.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "gap=verify"
+      },
+      "note": "converged-floor veto with no FAIL row: the verification record is incomplete, so the verifier completes it; no implementer runs"
+    },
+    {
+      "from": "iterate",
       "to": "deliver",
       "kind": "route",
       "condition": {
@@ -1108,6 +1731,33 @@
       "ceiling": 2,
       "strategy": "unroll",
       "note": "bounds the delivery retry; exhausting it aborts resumably instead of looping forever"
+    },
+    {
+      "from": "verify",
+      "to": "verify.placeholder.gate",
+      "kind": "route",
+      "condition": {
+        "probe": "lib/graph/probes/review-route.sh",
+        "args": [
+          "--feature-dir",
+          "{featureDir}"
+        ],
+        "expects": "review=continue"
+      }
+    },
+    {
+      "from": "verify",
+      "to": "discuss",
+      "kind": "loop",
+      "ceiling": 5,
+      "strategy": "contain"
+    },
+    {
+      "from": "oneshot",
+      "to": "oneshot",
+      "kind": "loop",
+      "ceiling": 5,
+      "strategy": "contain"
     }
   ]
 }

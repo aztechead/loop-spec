@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Every `${CLAUDE_SKILL_DIR}/references/<file>` pointer in a SKILL.md must resolve to an
+# Every `${LOOP_SPEC_SKILL_DIR}/references/<file>` pointer in a SKILL.md must resolve to an
 # existing file. The 500-line restructure moved load-bearing procedure into per-skill
 # references/ files; a renamed or deleted reference silently strands the skill at runtime
 # (the model reads a pointer to nothing). This lint keeps the pointer layer sound.
@@ -22,12 +22,12 @@ check() {
 # --- forward: every pointer resolves ---
 for skill_md in skills/*/SKILL.md; do
   skill_dir="$(dirname "$skill_md")"
-  # Extract referenced filenames: ${CLAUDE_SKILL_DIR}/references/<name>.md
+  # Extract referenced filenames: ${LOOP_SPEC_SKILL_DIR}/references/<name>.md
   while IFS= read -r ref; do
     [[ -z "$ref" ]] && continue
     check "$skill_md -> references/$ref exists" \
       "$([[ -f "$skill_dir/references/$ref" ]] && echo 1 || echo 0)"
-  done < <(grep -o '\${CLAUDE_SKILL_DIR}/references/[A-Za-z0-9._-]*\.md' "$skill_md" 2>/dev/null \
+  done < <(grep -o '\${LOOP_SPEC_SKILL_DIR}/references/[A-Za-z0-9._-]*\.md' "$skill_md" 2>/dev/null \
              | sed 's|.*/references/||' | sort -u)
 done
 
@@ -41,7 +41,7 @@ for ref_file in skills/*/references/*.md; do
 done
 
 # --- sanity: the lint actually saw pointers (guards against a silent regex mismatch) ---
-total_ptrs=$(grep -ho '\${CLAUDE_SKILL_DIR}/references/[A-Za-z0-9._-]*\.md' skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
+total_ptrs=$(grep -ho '\${LOOP_SPEC_SKILL_DIR}/references/[A-Za-z0-9._-]*\.md' skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
 check "lint saw at least one pointer (found: $total_ptrs)" "$([[ "$total_ptrs" -ge 1 ]] && echo 1 || echo 0)"
 
 # Stage 10: a reference over 100 lines opens with a Contents line so a partial

@@ -16,11 +16,11 @@ check() {
 }
 
 # --- Test 1: Default map has no model-family prerequisite ---
-models="$(bash "$LIB" models)"
-check "default: every role inherits" \
-  "$(echo "$models" | jq -e '[.[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
-check "default: inherit-only route needs zero Agent probes" \
-  "$([[ "$(bash "$LIB" agent-probe-models)" == "[]" ]] && echo 1 || echo 0)"
+models="$(LOOP_SPEC_HARNESS=claude bash "$LIB" models)"
+check "default: every role but the challenger inherits" \
+  "$(echo "$models" | jq -e '[del(.challenger)[]] | all(. == "inherit")' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: the challenger's sonnet is the only Agent probe" \
+  "$([[ "$(LOOP_SPEC_HARNESS=claude bash "$LIB" agent-probe-models)" == '["sonnet"]' ]] && echo 1 || echo 0)"
 
 # --- Test 2: Env override applies to the targeted role; others are unchanged ---
 overridden="$(LOOP_SPEC_MODEL_PLANNER=sonnet bash "$LIB" models)"
@@ -89,6 +89,22 @@ empty_out="$(LOOP_SPEC_MODEL_PLANNER="" bash "$LIB" models)"
 check "empty value: LOOP_SPEC_MODEL_PLANNER='' -> planner inherits" \
   "$(echo "$empty_out" | jq -e '.planner == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
 
+# --- Test 5b: the challenger runs one tier under the session on Claude Code only ---
+default_out="$(LOOP_SPEC_HARNESS=claude bash "$LIB" models)"
+check "default: challenger is sonnet on Claude Code" \
+  "$(echo "$default_out" | jq -e '.challenger == "sonnet"' >/dev/null 2>&1 && echo 1 || echo 0)"
+check "default: planner still inherits on Claude Code" \
+  "$(echo "$default_out" | jq -e '.planner == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
+oc_default="$(LOOP_SPEC_HARNESS=opencode bash "$LIB" models)"
+check "default: challenger inherits on OpenCode (no alias surface)" \
+  "$(echo "$oc_default" | jq -e '.challenger == "inherit"' >/dev/null 2>&1 && echo 1 || echo 0)"
+role_wins="$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_MODEL_CHALLENGER=opus bash "$LIB" models)"
+check "LOOP_SPEC_MODEL_CHALLENGER outranks the sonnet default" \
+  "$(echo "$role_wins" | jq -e '.challenger == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+phase_wins="$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_PHASE_MODEL_PLAN=opus bash "$LIB" models --phase plan)"
+check "a phase route outranks the sonnet default" \
+  "$(echo "$phase_wins" | jq -e '.challenger == "opus"' >/dev/null 2>&1 && echo 1 || echo 0)"
+
 # --- Test 6: A phase override becomes every role's default for that phase ---
 plan_phase="$(LOOP_SPEC_PHASE_MODEL_PLAN=sonnet bash "$LIB" models --phase plan)"
 check "phase override: PLAN routes planner to sonnet" \
@@ -117,11 +133,11 @@ check "phase map: unset DISCUSS is null" \
   "$(echo "$phase_models" | jq -e '.discuss == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 check "phase model: direct resolver supports SDK launcher" \
   "$([[ "$(LOOP_SPEC_PHASE_MODEL_VERIFY=opus bash "$LIB" phase-model verify)" == "opus" ]] && echo 1 || echo 0)"
-all_models="$(LOOP_SPEC_PHASE_MODEL_EXECUTE=haiku LOOP_SPEC_MODEL_ITERATE_JUDGE=fable \
+all_models="$(LOOP_SPEC_HARNESS=claude LOOP_SPEC_PHASE_MODEL_EXECUTE=haiku LOOP_SPEC_MODEL_ITERATE_JUDGE=fable \
   bash "$LIB" all-models)"
 check "health-check set: includes every phase and role selector" \
   "$(echo "$all_models" | jq -e \
-    'sort == ["fable","haiku","inherit"]' >/dev/null 2>&1 && echo 1 || echo 0)"
+    'sort == ["fable","haiku","inherit","sonnet"]' >/dev/null 2>&1 && echo 1 || echo 0)"
 
 phase_full_id="$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
   bash "$LIB" models --phase discuss)"
@@ -135,8 +151,8 @@ check "Claude phase full ID: startup selector set retains launcher value" \
     | jq -e 'index("claude-opus-4-8") != null and index("inherit") != null' \
     >/dev/null 2>&1 && echo 1 || echo 0)"
 check "Claude phase full ID: never sent to the Agent probe" \
-  "$([[ "$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 \
-    bash "$LIB" agent-probe-models)" == "[]" ]] && echo 1 || echo 0)"
+  "$(LOOP_SPEC_PHASE_MODEL_DISCUSS=claude-opus-4-8 bash "$LIB" agent-probe-models \
+    | jq -e 'index("claude-opus-4-8") == null' >/dev/null 2>&1 && echo 1 || echo 0)"
 oc_phase_alias_exit=0
 LOOP_SPEC_HARNESS=opencode LOOP_SPEC_PHASE_MODEL_EXECUTE=sonnet \
   bash "$LIB" models --phase execute >/dev/null 2>/dev/null || oc_phase_alias_exit=$?
@@ -215,22 +231,22 @@ validate_stderr="$(LOOP_SPEC_MODEL_PLANNER=bogus bash "$LIB" validate 2>&1 1>/de
 check "validate: stderr names the offending var" \
   "$([[ "$validate_stderr" == *"LOOP_SPEC_MODEL_PLANNER"* ]] && echo 1 || echo 0)"
 check "cycle boundary: startup validates routing through validate, not all-models" \
-  "$(grep -Fq 'feature-init validate' "$REPO_ROOT/lib/cycle-driver.sh" \
-    && ! grep -Fq 'feature-init all-models' "$REPO_ROOT/lib/cycle-driver.sh" \
+  "$(grep -Fq '"feature-init", "validate"' "$REPO_ROOT/lib/graph/driver.py" \
+    && ! grep -Fq '"feature-init", "all-models"' "$REPO_ROOT/lib/graph/driver.py" \
     && echo 1 || echo 0)"
 
 # --- Test 11: Instruction/SDK boundaries call the executable router ---
-CYCLE="$REPO_ROOT/lib/cycle-driver.sh"
+CYCLE="$REPO_ROOT/lib/graph/driver.py"
 CLOUD="$REPO_ROOT/docs/loop-spec/cloud-run-autonomous.md"
 check "cycle boundary: activation is mandatory before every phase skill" \
-  "$([[ "$(grep -c 'feature-init activate' "$CYCLE")" -ge 1 ]] && echo 1 || echo 0)"
+  "$([[ "$(grep -c '"feature-init", "activate"' "$CYCLE")" -ge 1 ]] && echo 1 || echo 0)"
 check "SDK controller: resolves model inside the per-phase query loop" \
   "$(grep -Fq 'phase = resumable_phase(ROOT)' "$CLOUD" \
     && grep -Fq 'query_overrides["model"] = value' "$CLOUD" \
     && echo 1 || echo 0)"
 check "CLI controller: passes only an explicit phase selector to --model" \
-  "$(grep -Fq '&& "$phase_model" != "inherit"' "$CLOUD" \
-    && grep -Fq 'claude_args+=(--model "$phase_model")' "$CLOUD" \
+  "$(grep -Fq 'if model and model != "inherit"' "$REPO_ROOT/extensions/sessions/session_run.py" \
+    && grep -Fq '"--model", model.stdout.strip()' "$REPO_ROOT/extensions/sessions/cycle_run.py" \
     && echo 1 || echo 0)"
 
 echo ""

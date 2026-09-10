@@ -1,6 +1,6 @@
 ---
 name: micro
-description: Use when the user has a small ad-hoc task ("add a flag", "rename this helper", "fix this typo") and wants the cycle invariants without agent ceremony; also toggles on/off/status. Ends in a PR. Do not use for a new feature that needs a spec (that's /loop-spec:cycle) or a pasted stack trace (that's /loop-spec:debug).
+description: "Use when completing a small task with criteria, verification, and PR delivery. Also supports on, off, and status. Use /loop-spec:cycle for features needing a spec and /loop-spec:debug for unexplained failures."
 argument-hint: "[autonomous] [small task description | on | off | status]"
 allowed-tools: Bash Read Write Edit Glob Grep Skill AskUserQuestion
 model: inherit
@@ -8,11 +8,9 @@ model: inherit
 
 # loop-spec:micro
 
-The full cycle is enforcement machinery for feature-scale work. At ad-hoc scale the
-same ideology survives as five invariants you apply inline — no teams, no subagents,
-no worktrees, no phase artifacts. This skill is the protocol definition; the hooks
-(`hooks/team/micro-inject.sh` SessionStart directive, `hooks/team/adhoc-verify-guard.sh`
-Stop gate) are the enforcement.
+Complete small tasks directly, without teams, subagents, worktrees, or phase artifacts.
+Follow the criteria, grounding, verification, delivery, and reporting steps below.
+`hooks/team/micro-inject.sh` supplies the session directive. `hooks/team/adhoc-verify-guard.sh` enforces the Stop gate where supported.
 
 ## Invocation
 
@@ -37,13 +35,13 @@ hold, the task is NOT micro-scale; escalate (see Escalation):
 First, before any jq-backed hook or helper can fail mid-run:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$(git rev-parse --show-toplevel)"
-bash "${CLAUDE_SKILL_DIR}/../../lib/runtime-preflight.sh" check-jq
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" clear --result-root "$(git rev-parse --show-toplevel)"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/runtime-preflight.sh" check-jq
 # Observability: micro is a favorite target of the autonomous router, and it used to
 # emit NOTHING -- an unattended run routed here was silent end to end. Events go to
 # the adhoc dir (no feature dir exists at micro scale); the console line follows.
 mkdir -p .loop-spec/adhoc
-bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit .loop-spec/adhoc phase_start --phase micro || true
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit .loop-spec/adhoc phase_start --phase micro || true
 ```
 
 Execute directly on the main thread with base tools. Do not dispatch subagents.
@@ -54,8 +52,7 @@ anything from it - the rewritten text is the task everywhere below.
 means, each verifiable. Show them to the user as part of your normal narration. If the
 task is compound (multiple asks), enumerate criteria per ask.
 
-**2. One question, not zero, not five.** If the highest-leverage unknown would change
-what you build, ask exactly one sharp question (grill mode's single-shot form). In
+**2. Resolve the main unknown.** If an unknown would change what you build, ask one focused question. In
 autonomous runs (inline `autonomous` token or `LOOP_SPEC_AUTONOMOUS=1`), self-answer with the recommended option and
 say so — never block.
 
@@ -93,11 +90,11 @@ behind a PR, with the PR checked for reviews/comments/requested changes
 prove every criterion was already satisfied before this run, make no empty commit and
 open no PR: select `no-change-needed` with reason code `already-satisfied`. A clean diff
 alone is not enough; unsupported or blocked work is a failure, not intentional no-change.
-Still zero ceremony — no worktree, no DELIVER controller:
+Use the current checkout without a worktree or DELIVER controller:
 
 - If the request names an open PR, adopt it instead of minting `micro/<slug>`:
   ```bash
-  adopt_json="$(bash "${CLAUDE_SKILL_DIR}/../../lib/adopt-pr.sh" resolve \
+  adopt_json="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/adopt-pr.sh" resolve \
     --repo "$(git rev-parse --show-toplevel)" --request "$task")"
   ```
   When `.adopt == true`, check out `.branch` (fetch first) and stay on it. That is
@@ -111,7 +108,7 @@ Still zero ceremony — no worktree, no DELIVER controller:
   Write the body to a file and gate it before creating/updating the PR — micro PRs get
   the same no-deferral guarantee as full-cycle DELIVER (`skills/shared/no-deferral.md`):
   ```bash
-  bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text "$body_file"
+  bash "${LOOP_SPEC_SKILL_DIR}/../../lib/deferral-lint.sh" text "$body_file"
   ```
   A flag means the task is not done: do the flagged work or promote to a full cycle;
   never reword past the probe. Then `gh pr create --body-file "$body_file"`.
@@ -126,14 +123,14 @@ Still zero ceremony — no worktree, no DELIVER controller:
   Never silently skip the PR step.
 
 **7. Record the ledger entry and close the run out.** After the ledger entry below,
-emit the matching end event — `bash "${CLAUDE_SKILL_DIR}/../../lib/events.sh" emit
+emit the matching end event — `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/events.sh" emit
 .loop-spec/adhoc phase_end --phase micro --data '{"next":"completed"}' || true`
 (on escalation to intake, use `'{"next":"escalated"}'`). A `[MICRO] start` with no
 `[MICRO] done` is what a stall looks like to a log watcher. Append one entry to
 `.loop-spec/adhoc-ledger.md`:
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/adhoc-ledger.sh" add \
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/adhoc-ledger.sh" add \
   --title "<task title>" \
   --criteria "<exact criterion 1 text>" \
   --grounding "<exact criterion 1 text> | repo: <file>:<positive line> | integration: <file>:<positive line>" \
@@ -156,7 +153,7 @@ and command output to back it. `--pr` binds the entry to its delivery PR; when s
 could not open one, the `--notes` say why instead.
 
 **8. Repeated mistake → rule.** If this task exposed a mistake you (or the loop) have
-made before, make it permanent: `bash "${CLAUDE_SKILL_DIR}/../../lib/rules.sh" add "<rule>" [--check "<cmd>"]`.
+made before, make it permanent: `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/rules.sh" add "<rule>" [--check "<cmd>"]`.
 
 **9. Emit the terminal result.** Every terminal path writes the shared compatibility
 record after ledger/PR/feedback side effects finish. Resolve `result_root` with
@@ -173,7 +170,7 @@ result_args=(
   --autonomous "$autonomous" --summary "$summary"
 )
 [[ -n "$no_change_reason" ]] && result_args+=(--no-change-reason "$no_change_reason")
-bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal "${result_args[@]}"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-result.sh" write-terminal "${result_args[@]}"
 ```
 
 `summary` is a non-empty, concise synthesis of the actual change and verification result,
@@ -186,7 +183,7 @@ Do not claim success if result emission warns; report the observability failure.
 The final report you print contains **no self-authored deferrals** — no "follow-ups",
 "deferred items", or "future work" you chose on your own (`skills/shared/no-deferral.md`).
 Probe the draft before printing: `printf '%s' "$report" |
-bash "${CLAUDE_SKILL_DIR}/../../lib/deferral-lint.sh" text -`. A flag means the task
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/deferral-lint.sh" text -`. A flag means the task
 is not done — do the flagged work (or promote to a full cycle), never reword past it.
 
 ## Escalation

@@ -19,6 +19,30 @@ trap 'rm -rf "$WORK"' EXIT
 git -C "$WORK" init -q
 git -C "$WORK" -c user.name=Test -c user.email=test@example.com commit --allow-empty -qm init
 
+for policy in root managed; do
+  policy_repo="$WORK/$policy"
+  git init -q "$policy_repo"
+  git -C "$policy_repo" config core.excludesFile /dev/null
+  : > "$policy_repo/.git/info/exclude"
+  if [[ "$policy" == root ]]; then
+    cp "$ROOT/.gitignore" "$policy_repo/.gitignore"
+  else
+    bash "$SCRIPT" ensure "$policy_repo"
+  fi
+  mkdir -p "$policy_repo/.loop-spec/sessions/run" "$policy_repo/.loop-spec/features/demo" "$policy_repo/lib"
+  for path in .loop-spec/sessions/run/state.json .loop-spec/launcher-result.json \
+    .loop-spec/launcher.lock .loop-spec/features/demo/feature.json .loop-spec/features/demo/PROGRESS.md; do
+    touch "$policy_repo/$path"
+    check "$policy policy ignores $path" "ignored" \
+      "$(git -C "$policy_repo" check-ignore -q "$path" && echo ignored || echo not-ignored)"
+  done
+  for path in lib/cycle-result.sh .loop-spec/RULES.md; do
+    touch "$policy_repo/$path"
+    check "$policy policy keeps $path visible" "not-ignored" \
+      "$(git -C "$policy_repo" check-ignore -q "$path" && echo ignored || echo not-ignored)"
+  done
+done
+
 bash "$SCRIPT" ensure "$WORK"
 exclude="$(git -C "$WORK" rev-parse --git-path info/exclude)"
 [[ "$exclude" == /* ]] || exclude="$WORK/$exclude"
@@ -44,10 +68,15 @@ touch "$WORK/.loop-spec/features/demo/feature.json" \
   "$WORK/graphify-out/cost.json" \
   "$WORK/graphify-out/graph.json"
 
-check "feature state remains trackable" "not-ignored" \
+check "feature state is ignored (it lives on refs/loop-spec/state/<slug>)" "ignored" \
   "$(git -C "$WORK" check-ignore -q .loop-spec/features/demo/feature.json && echo ignored || echo not-ignored)"
-check "progress remains trackable" "not-ignored" \
+check "progress is ignored" "ignored" \
   "$(git -C "$WORK" check-ignore -q .loop-spec/features/demo/PROGRESS.md && echo ignored || echo not-ignored)"
+# A checkout from before 6.4 carries the negations the driver used to need; ensure removes them.
+EXC="$WORK/.git/info/exclude"
+printf '!/.loop-spec/features/*/feature.json\n!/.loop-spec/features/*/PROGRESS.md\n' >> "$EXC"
+bash "$SCRIPT" ensure "$WORK" >/dev/null
+check "ensure removes the legacy state negations" "0" "$(grep -c 'features/\*/feature.json\|features/\*/PROGRESS.md' "$EXC")"
 for path in \
   .loop-spec/features/demo/delivery.json \
   .loop-spec/features/demo/events.jsonl \
@@ -75,7 +104,7 @@ check ".loop-spec/invocation-stamp.json ignored" "ignored" \
 
 # /revise must reuse feature-shaped runtime state without allowing it to enter a
 # remediation commit, even in repositories that historically tracked it.
-git -C "$WORK" add .loop-spec/features/demo/feature.json .loop-spec/features/demo/PROGRESS.md
+git -C "$WORK" add -f .loop-spec/features/demo/feature.json .loop-spec/features/demo/PROGRESS.md
 git -C "$WORK" commit -qm "legacy feature state"
 printf 'changed\n' >> "$WORK/.loop-spec/features/demo/feature.json"
 printf 'changed\n' >> "$WORK/.loop-spec/features/demo/PROGRESS.md"

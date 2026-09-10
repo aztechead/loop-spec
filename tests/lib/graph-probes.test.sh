@@ -134,9 +134,9 @@ ITERATE_GAP="$PROBES/iterate-gap.sh"
 
 out="$(bash "$ITERATE_GAP" --answers)"
 check "iterate-gap --answers exits 0" 0 "$ITERATE_GAP" --answers
-[[ "$out" == $'gap=execute\ngap=plan\ngap=spec\ngap=none' ]] \
-  && { echo "PASS: iterate-gap --answers lists exactly the four gap tokens"; PASS=$((PASS+1)); } \
-  || { echo "FAIL: iterate-gap --answers lists exactly the four gap tokens (got: $out)"; FAIL=$((FAIL+1)); }
+[[ "$out" == $'gap=execute\ngap=plan\ngap=spec\ngap=verify\ngap=none' ]] \
+  && { echo "PASS: iterate-gap --answers lists exactly the five gap tokens"; PASS=$((PASS+1)); } \
+  || { echo "FAIL: iterate-gap --answers lists exactly the five gap tokens (got: $out)"; FAIL=$((FAIL+1)); }
 
 d="$(feature_dir gap-execute '{"iterate":{"feedback":{"type":"execute","fix_first":"x"}}}')"
 check "iterate-gap resolves gap=execute" 0 "$ITERATE_GAP" --feature-dir "$d"
@@ -464,6 +464,84 @@ printf '{"execStyle":"step","iterate":{}}' > "$IA/feature.json"
 check "iterate-approval is unresolved when no verdict is recorded" 1 "$APPROVAL" --feature-dir "$IA"
 check_silent "iterate-approval prints nothing when unresolved" "$APPROVAL" --feature-dir "$IA"
 
+# --- oneshot: may this run take the oneshot route (SPEC -> ONESHOT -> DELIVER)? ---
+ONESHOT="$PROBES/oneshot.sh"
+check_output "oneshot enumerates route=oneshot" "route=oneshot" "$ONESHOT" --answers
+check_output "oneshot enumerates route=full" "route=full" "$ONESHOT" --answers
+check "oneshot needs a feature dir" 2 "$ONESHOT"
+# --candidate reads the scout's ledger (lib/footprint.sh), never files on the command line.
+CAND="$WORK/oneshot-candidate"; mkdir -p "$CAND/.loop-spec/features/c" "$CAND/src"
+git -C "$CAND" init -q && printf 'x = 1\n' > "$CAND/src/x.py" && git -C "$CAND" add -A && git -C "$CAND" -c user.email=t@t -c user.name=t commit -q -m init
+printf '{"slug":"c"}\n' > "$CAND/.loop-spec/features/c/feature.json"
+check_output "oneshot --candidate: no scout cite is the full path" "route=full reason=the scout cited no file" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" src/x.py:1 >/dev/null
+check_output "oneshot --candidate: one cited file is a oneshot candidate" "route=oneshot reason=candidate footprint of 1 file(s) from the scout record" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+# Read-only is the task's word (feature.json.protected), never the scout's mark alone
+# (port audit 4, item 1): the unprotected mark counts, the protected file does not.
+bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" src/big.py:1 --read-only >/dev/null
+check_output "oneshot --candidate: a read-only mark on an unprotected file counts" "footprint of 2 file(s)" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+printf '{"slug":"c","protected":["src/big.py"]}\n' > "$CAND/.loop-spec/features/c/feature.json"
+check_output "oneshot --candidate: a protected file is not in the footprint" "footprint of 1 file(s)" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+for f in a b c; do bash "$ROOT/lib/footprint.sh" cite "$CAND/.loop-spec/features/c" "src/$f.py:1" >/dev/null; done
+check_output "oneshot --candidate: four cited files is the full path" "route=full reason=footprint names 4 files" "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate
+check "oneshot --candidate with a file argument is a bad invocation" 2 "$ONESHOT" --feature-dir "$CAND/.loop-spec/features/c" --candidate src/x.py
+check_output "oneshot: no feature.json is the full path" "route=full reason=no feature.json" "$ONESHOT" --feature-dir "$WORK/oneshot-none"
+
+OS_REPO="$WORK/oneshot-repo"; mkdir -p "$OS_REPO/.loop-spec/features/os" "$OS_REPO/docs/loop-spec/features/os" "$OS_REPO/src"
+git -C "$OS_REPO" init -q
+printf '{"slug":"os","artifacts":{}}' > "$OS_REPO/.loop-spec/features/os/feature.json"
+OS_FD="$OS_REPO/.loop-spec/features/os"; OS_SPEC="$OS_REPO/docs/loop-spec/features/os/SPEC.md"
+oneshot_spec() {
+  # oneshot_spec <footprint-yaml-lines> [<extra top-level line>] -- a gated spec
+  printf -- '---\nunresolved_questions: []\n%s\n%s\n---\n# os\n\n## Problem\n\nA slug keeps its dots.\n' "$1" "${2:-}" > "$OS_SPEC"
+}
+check_output "oneshot: no SPEC.md is the full path" "route=full reason=no SPEC.md" "$ONESHOT" --feature-dir "$OS_FD"
+oneshot_spec 'footprint:
+  - src/slugify.py
+  - tests/test_slugify.py'
+printf 'def slugify(s):\n    return s\n' > "$OS_REPO/src/slugify.py"
+check_output "oneshot: two files, gated, no signal" "route=oneshot reason=footprint of 2 file(s)" "$ONESHOT" --feature-dir "$OS_FD"
+oneshot_spec 'footprint: [src/slugify.py, tests/test_slugify.py]'
+check_output "oneshot: flow-style footprint" "route=oneshot" "$ONESHOT" --feature-dir "$OS_FD"
+oneshot_spec 'footprint:
+  - a.py
+  - b.py
+  - c.py
+  - d.py'
+check_output "oneshot: four files is the full path" "route=full reason=footprint names 4 files" "$ONESHOT" --feature-dir "$OS_FD"
+oneshot_spec 'footprint: []'
+check_output "oneshot: an empty footprint is the full path" "route=full reason=footprint names no file" "$ONESHOT" --feature-dir "$OS_FD"
+printf -- '---\nunresolved_questions: []\n---\n# os\n' > "$OS_SPEC"
+check_output "oneshot: no footprint key is the full path" "route=full reason=SPEC.md frontmatter has no footprint" "$ONESHOT" --feature-dir "$OS_FD"
+printf -- '---\nunresolved_questions: ["Which behavior is required?"]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
+check_output "oneshot: a failed gate is the full path" "route=full reason=unresolved intent questions remain" "$ONESHOT" --feature-dir "$OS_FD"
+printf -- '---\nunresolved_questions: ["Which behavior is required?"]\nfootprint:\n  - src/slugify.py\n---\n# os\n' > "$OS_SPEC"
+check_output "oneshot: an unresolved dimension is the full path" "route=full reason=unresolved intent questions remain" "$ONESHOT" --feature-dir "$OS_FD"
+oneshot_spec 'footprint:
+  - src/slugify.py' 'route: full'
+check_output "oneshot: route: full in the frontmatter escalates" "route=full reason=SPEC.md frontmatter says route: full" "$ONESHOT" --feature-dir "$OS_FD"
+check_output "oneshot --after: the escalation key still reads" "route=full reason=SPEC.md frontmatter says route: full" "$ONESHOT" --feature-dir "$OS_FD" --after
+oneshot_spec 'footprint:
+  - src/slugify.py'
+check_output "oneshot --after: no escalation is route=oneshot" "route=oneshot reason=ONESHOT returned without escalating" "$ONESHOT" --feature-dir "$OS_FD" --after
+printf 'def slugify(s):\n    # strip the auth token first\n    return s\n' > "$OS_REPO/src/slugify.py"
+check_output "oneshot: a security signal in a footprint file is the full path" "route=full reason=security signal in SPEC.md or the footprint" "$ONESHOT" --feature-dir "$OS_FD"
+check_output "oneshot --after: the footprint's own edits do not reroute" "route=oneshot" "$ONESHOT" --feature-dir "$OS_FD" --after
+printf 'def slugify(s):\n    return s\n' > "$OS_REPO/src/slugify.py"
+printf -- '---\nunresolved_questions: []\nfootprint:\n  - src/slugify.py\n---\n# os\n\nRotate the credentials on save.\n' > "$OS_SPEC"
+check_output "oneshot: a security signal in SPEC.md is the full path" "route=full reason=security signal" "$ONESHOT" --feature-dir "$OS_FD"
+oneshot_spec 'footprint:
+  - src/slugify.py'
+check_output "oneshot: LOOP_SPEC_ROUTE=full is the operator's override" "route=full reason=LOOP_SPEC_ROUTE=full" -c "LOOP_SPEC_ROUTE=full bash '$ONESHOT' --feature-dir '$OS_FD'"
+check_output "oneshot: LOOP_SPEC_ROUTE=oneshot never shortens" "route=full reason=LOOP_SPEC_ROUTE=oneshot is not an override" -c "LOOP_SPEC_ROUTE=oneshot bash '$ONESHOT' --feature-dir '$OS_FD'"
+printf 'no frontmatter\n' > "$OS_SPEC"
+check_output "oneshot: a spec without frontmatter is the full path" "route=full reason=SPEC.md frontmatter missing" "$ONESHOT" --feature-dir "$OS_FD"
+# Every oneshot route in the shipped graph expects a declared answer.
+missing="$(jq -r --argjson answers "$(bash "$ONESHOT" --answers | jq -R . | jq -s .)" '
+  [.edges[] | .condition | select(. != null and (.probe | test("oneshot.sh$"))) | .expects]
+  | map(select(. as $e | $answers | index($e) | not)) | length' "$ROOT/graph/cycle.graph.json")"
+check_output "every oneshot route expects a declared answer" "0" -c "echo $missing"
+
 # --- short-path: may this run take the shorter declared path through the cycle? ---
 SHORT_PATH="$PROBES/short-path.sh"
 SP="$WORK/shortpath"
@@ -543,17 +621,10 @@ check "discuss-critique needs a feature dir" 2 "$DISCUSS_CRITIQUE"
 
 write_spec() {
   local path="$1" gate="$2" unresolved="$3"
+  [[ "$gate" != false ]] || unresolved='["Which behavior is required?"]'
   cat > "$path" <<EOF
 ---
-ambiguity_scores:
-  goal_clarity: 0.90
-  boundary_clarity: 0.90
-  constraint_clarity: 0.90
-  acceptance_clarity: 0.90
-  ambiguity: 0.10
-  rounds_completed: 2
-  gate_passed: $gate
-  unresolved_dimensions: $unresolved
+unresolved_questions: $unresolved
 ---
 
 # Spec
@@ -577,9 +648,24 @@ write_spec "$DC/SPEC.md" false '[]'
 check_output "an ungated spec runs critique" \
   "gate=run reason=spec not already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
 
-write_spec "$DC/SPEC.md" true '[goal_clarity]'
+write_spec "$DC/SPEC.md" true '["Which behavior is required?"]'
 check_output "unresolved dimensions force critique" \
   "gate=run reason=spec not already gated" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+
+write_spec "$DC/SPEC.md" true '[]'
+jq -n --arg spec "$DC/SPEC.md" \
+  '{slug:"dc",executionProfile:"standard",autonomous:true,iterate:{feedback:null},artifacts:{spec:$spec}}' \
+  > "$DC/feature.json"
+check_output "a self-scored gate in an autonomous run still runs critique" \
+  "gate=run reason=self-answered questions" "$DISCUSS_CRITIQUE" --feature-dir "$DC"
+# The driver splits a mode line on spaces and `=`; a reason carrying `oracle=self`
+# once became a field of its own and cut the reason short.
+reason_text="$(bash "$DISCUSS_CRITIQUE" --feature-dir "$DC" | sed 's/^gate=[a-z]* reason=//')"
+if grep -q '[a-z]=' <<<"$reason_text"; then
+  echo "FAIL: the probe's reason carries a field-shaped token: $reason_text"; FAIL=$((FAIL + 1))
+else
+  echo "PASS: the probe's reason carries no field-shaped token"; PASS=$((PASS + 1))
+fi
 
 write_spec "$DC/SPEC.md" true '[]'
 seed_dc standard '{"type":"spec"}'

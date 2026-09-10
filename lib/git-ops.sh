@@ -22,6 +22,12 @@
 #   slugify <text>                      Print kebab-case slug of <text>.
 #   ensure-clean-or-stash               Print "clean" if working tree clean apart from
 #                                       loop-spec's pre-feature runtime cache, else "dirty".
+#   dirt                                Print `git status --porcelain --untracked-files=all`
+#                                       without the feature state paths (feature.json,
+#                                       PROGRESS.md under .loop-spec/features/): state lives
+#                                       on refs/loop-spec/state/<slug> (lib/state-ref.sh) and
+#                                       a .gitignore that still negates it must not turn it
+#                                       into delivery dirt. Every dirt check reads this.
 #   current-sha                         Print HEAD short sha.
 #   create-feature-worktree <slug> <base_sha>
 #                                       Create a worktree at the resolved feature base
@@ -145,24 +151,36 @@ case "$cmd" in
       echo "slugify: empty input" >&2
       exit 1
     fi
+    # Bounded at 64 characters on a word boundary: a slug names a branch and a
+    # worktree directory, and a whole-description title once produced a 470-character
+    # ref that git could not lock. The title keeps the full text; only the slug is cut.
     printf '%s' "$text" \
       | tr '[:upper:]' '[:lower:]' \
-      | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g; s/-+/-/g'
+      | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g; s/-+/-/g' \
+      | sed -E '/^.{65,}/ s/^(.{1,64})-.*$/\1/; /^.{65,}/ s/^(.{64}).*$/\1/; s/-+$//'
     printf '\n'
     ;;
   ensure-clean-or-stash)
     # Startup writes these local files before the feature branch/worktree exists.
     # They are not user work and must not make the clean-base guard reject itself.
     status_output=""
+    # Agent memory is written by subagents during a cycle and never committed; left in
+    # place, it made the next cycle in the same checkout refuse to start.
     if ! status_output="$("${G[@]}" status --porcelain --untracked-files=all -- . \
       ':(top,exclude).loop-spec/runtime.json' \
-      ':(top,exclude).loop-spec/decisions-staging/**')"; then
+      ':(top,exclude).loop-spec/decisions-staging/**' \
+      ':(top,exclude).claude/agent-memory/**')"; then
       printf 'dirty\n'
     elif [[ -z "$status_output" ]]; then
       printf 'clean\n'
     else
       printf 'dirty\n'
     fi
+    ;;
+  dirt)
+    "${G[@]}" status --porcelain --untracked-files=all -- . \
+      ':(top,exclude).loop-spec/features/*/feature.json' \
+      ':(top,exclude).loop-spec/features/*/PROGRESS.md'
     ;;
   current-sha)
     "${G[@]}" rev-parse --short HEAD

@@ -24,8 +24,11 @@ and one of: `pip install claude-agent-sdk` with a Claude login, or Google ADK wi
    ```
    Check it: `bash lib/profile.sh validate` prints `profile: ok (...)`.
 2. **Hand the resolved profile to the harness.** Claude Agent SDK: pass
-   `bash lib/profile.sh resolve` `.env` as `ClaudeAgentOptions.env`. ADK: nothing; the
-   bridge reads the file. A variable you already set in the process wins over the file.
+   `bash lib/profile.sh resolve` `.env` as `ClaudeAgentOptions.env`, plus
+   `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` so one-shot Agents answer in the foreground
+   (fork mode backgrounds them otherwise, and every report costs the lead a wait turn).
+   ADK: nothing; the bridge reads the file. A variable you already set in the process
+   wins over the file.
 3. **Point at the plugin.** SDK: `plugins=[{"type": "local", "path": "<plugin>"}]`; the
    init `SystemMessage` lists `loop-spec` under `plugins`. ADK: `lib/adk-install.sh`.
 4. **Answer questions.** SDK: a `can_use_tool` callback that handles
@@ -42,6 +45,28 @@ and one of: `pip install claude-agent-sdk` with a Claude login, or Google ADK wi
    a `PostToolUse` hook on `Bash` sees the same phase markers.
 
 Runnable form of all six steps: `examples/supervisor/supervisor.py`.
+
+### Updating an embedding to 6.3.0
+
+The boundary is unchanged; four things an embedding touches moved. The full list is
+the "Before you update" section of `CHANGELOG.md` under 6.3.0.
+
+1. **Prompt builders.** The `autonomous` token counts only among the leading or
+   trailing tokens. `/loop-spec:cycle autonomous <task>` and `/loop-spec:auto <task>`
+   still arm the run; the word inside the task text no longer does. Presets that set
+   `LOOP_SPEC_AUTONOMOUS=1` are unaffected.
+2. **Gate names in state and events.** `plan-feasibility` no longer appears in
+   `currentGate.gate`, `gateHistory[].gate`, or a paused result's `reason`
+   (`plan-feasibility-cap`); PLAN's whole review is `plan-critique`. `gate_round` events
+   keep their shape and are now emitted by `cycle-driver.sh critique`.
+3. **Model allow-lists.** The challenger defaults to `sonnet` on Claude Code, so
+   `bash lib/feature-init.sh all-models` now lists it; a health check built from that
+   list needs the new entry. `LOOP_SPEC_MODEL_CHALLENGER` in the profile's `env` overrides
+   it.
+4. **A custom planner.** `tasks.json` is derived from PLAN.md's task blocks
+   (`lib/plan-tasks.sh extract`), never from the planner's completion message. A
+   planner you generated or ported must write `**BlockedBy:**` in every block; the exit
+   gate refuses a sidecar whose ids differ from PLAN.md.
 
 ## Checklist for an agent pointed at a supervised run
 
@@ -69,8 +94,8 @@ constraint the rest of the page must satisfy.
   Google ADK. Humans use Claude Code and opencode. All four harnesses stay peers behind
   `lib/harness.sh`; the two agent harnesses are proven first.
 - **One agent takes a request end to end.** There is no swarm splitting a plan. The
-  agent dies sometimes, and context fills up. Phase handoff
-  (`LOOP_SPEC_PHASE_HANDOFF=1`) is how the run survives both.
+  agent dies sometimes, and context fills up. Phase handoff (every phase returns; the
+  supervisor relaunches) is how the run survives both.
 - **The plugin ships interfaces, not opinions.** It owns the artifacts (`feature.json`,
   the phase markdown, `events.jsonl`, `decisions.jsonl`, the terminal result) and the
   contract each port obeys. The supervisor owns transport and policy: where state lives
@@ -219,8 +244,7 @@ No new code. The supervisor owns retry, timeout, budget, and relaunch; the plugi
 idempotent phases and a claimable unit of work. The pieces exist and this page names
 them as one port:
 
-- **Phase handoff.** `LOOP_SPEC_PHASE_HANDOFF=1` returns after each durable phase with a
-  paused `phase-handoff` result. The supervisor reissues the cycle command and resume
+- **Phase handoff.** Every phase returns with a paused `phase-handoff` result. The supervisor reissues the cycle command and resume
   detection continues (`docs/loop-spec/cloud-run-autonomous.md`).
 - **Armed runs.** `.loop-spec/active-run.json` is armed at routing and disarmed only by
   a published terminal result; `lib/cycle-reconcile.sh` converts a surviving armed run

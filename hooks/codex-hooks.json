@@ -32,26 +32,30 @@
             "type": "command",
             "command": "bash \"${PLUGIN_ROOT}/hooks/codex-shell-env.sh\"",
             "statusMessage": "loop-spec shell env"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${PLUGIN_ROOT}/hooks/team/no-worktrees-guard.sh\"",
-            "statusMessage": "loop-spec no-worktrees"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${PLUGIN_ROOT}/hooks/team/result-forgery-guard.sh\"",
-            "statusMessage": "loop-spec result-forgery"
           }
         ]
       },
       {
-        "matcher": "Agent",
+        "matcher": "Bash|Agent|apply_patch|Write|Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${PLUGIN_ROOT}/hooks/team/no-worktrees-guard.sh\"",
-            "statusMessage": "loop-spec no-worktrees"
+            "command": "LOOP_SPEC_HARNESS=codex python3 \"${PLUGIN_ROOT}/hooks/pre-tool-guard.py\"",
+            "statusMessage": "loop-spec tool guards"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/team/cycle-stamp-guard.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/team/route-terminal-guard.sh\""
           }
         ]
       }

@@ -24,8 +24,7 @@ whole word). Both bounds read through the tuning overlay.
 **Maintenance profile** (decided before any phase by `lib/cycle-profile.sh select` from
 a validated low-risk classification, or an explicit `profile:` / `LOOP_SPEC_CYCLE_PROFILE`
 override; persisted as `feature.json.executionProfile`): SPEC synthesizes instead of
-interviewing (the ambiguity gate still scores and falls back to the interview when a
-dimension misses its minimum); the graph short path (`lib/graph/probes/short-path.sh`)
+interviewing (the unresolved-question gate blocks until concrete intent questions are resolved); the graph short path (`lib/graph/probes/short-path.sh`)
 routes around `discuss`, the spec critique, and the `verify.code-review` agent when no
 security signal appears in the written artifacts. Same graph, same ledger, same terminal
 result; the signal is re-read from the artifacts that exist now, so a change that turns
@@ -34,8 +33,11 @@ both paths.
 
 **Critique ladder**: skip (above) or a single critic. There is no advocate and no debate.
 The lead may accept any finding and may never drop a `[major]`; a solo gate biases only
-stricter. A revision gets a delta re-verify (fix-list plus diff), never a full re-run. Delta
-rounds are bounded by the loop ceiling `graph/critique.graph.json` declares;
+stricter. The findings pass is exhaustive (no cap on count or length). A revision gets a
+delta re-verify (fix-list plus diff), never a full re-run, and
+`lib/delta-findings-lint.sh` keeps only `unaddressed:` lines and `[major]` `introduced:`
+lines that quote added text. Delta rounds are bounded by the loop ceiling
+`graph/critique.graph.json` declares;
 `lib/graph/gate.sh next` reads it and closes the gate with `cap-reached` when it is
 spent; when `LOOP_SPEC_CRITIQUE_ROUNDS` raises the ceiling, a finding that survives
 two consecutive delta rounds closes it too (`critique-gate-protocol.md`).
@@ -67,6 +69,7 @@ effective value at use time (`bash "$TUNE" get fastPathMaxTasks 2`,
 | W | Mechanism |
 |---|---|
 | any, `LOOP_SPEC_EXECUTE_LOOPS=1` + agent CLI + persistent runtime | loop fleet (`execute-loop-fleet.md`) |
+| any, headless + agent CLI + `extensions/sessions/profiles/<cli>.toml` (`lib/harness.sh session-layer`) | disposable sessions (`execute-rungs.md`); `LOOP_SPEC_SESSION_LAYER=0` keeps the subagent waves |
 | any, no subagent tool | inline (`execute-rungs.md`); the fleet takes it at `W >= t_team` when available |
 | `W == 1` | subagent, sequential (`execute-subagent.md`) |
 | `2 <= W < t_team` | subagent, batched wave |

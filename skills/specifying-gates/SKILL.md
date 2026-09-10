@@ -1,13 +1,13 @@
 ---
 name: specifying-gates
-description: Use when a user-gate task has requiresUserSpecification=true OR the checking-gates self-check concludes verification mechanics are ambiguous. Locks down verification mechanics through a short AskUserQuestion sequence and writes the answers back into the task's metadata via TaskUpdate. Does NOT run the verification itself.
+description: "Use when a user-gate task needs a clear verification method. Ask for criteria, proof, scope, and failure policy, then update task metadata. Does not run verification."
 ---
 
 # Specifying User-Thrown Gates
 
 ## When this skill runs
 
-Exactly one of:
+Use this skill when any condition applies:
 
 1. A user-gate task has `"requiresUserSpecification": true` in its `json:metadata` fence, OR
 2. The agent ran the "do I know HOW?" self-check (see `skills/checking-gates/SKILL.md`) and concluded the verification mechanics are ambiguous (Path A routing), OR
@@ -17,7 +17,7 @@ In all other cases -- where `verifyCommand` is concrete and every `acceptanceCri
 
 **Announce at start:** "I'm using the specifying-gates skill to lock down verification mechanics for Task N."
 
-## CRITICAL -- what this skill does NOT do
+## Scope
 
 - Does not run the verification command. Specification only.
 - Does not close the task. It only enriches metadata; the agent returns to `skills/execute/SKILL.md` afterward.
@@ -120,7 +120,7 @@ AskUserQuestion:
 
 Store an Other free-text answer as the exact `dispatchBrief`. For a seed briefing, store its file path. For generation, build and store the full briefing from the task's Goal, Files, and Acceptance Criteria. If the user stops, leave `requiresUserSpecification` in place and return control.
 
-## Writing back
+## Update the task
 
 After all questions are answered:
 

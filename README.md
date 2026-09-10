@@ -2,34 +2,27 @@
 
 Spec-driven development loops for [Claude Code](https://claude.com/claude-code), [opencode](https://opencode.ai), [OpenAI Codex](https://developers.openai.com/codex), and an experimental [Google ADK](https://google.github.io/adk-docs/) adapter — four peer harness contracts from one source tree.
 
-Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
+Use this guide to install loop-spec, start a cycle, and find its operating reference.
 
-Adjacent entry points on the same machinery:
+Current version: 6.5.0
 
-- `/loop-spec:cycle new <description>` — greenfield bootstrap in an empty directory
-- `/loop-spec:debug <error or symptom>` — bounded debug loop; red reproduction before any fix
-- `/loop-spec:intake <anything>` — Slack / Jira / email / prompt → spec draft → cycle
-- `autonomous` — question-free; recommended answers land in an auditable decision log
-- `/loop-spec:sentinel` — watch work sources and drive the queue within script-enforced bounds
+## Contents
 
-Design constraints:
-
-- Suggested methods are candidates: SPEC separates intent from constraints, DISCUSS
-  compares approaches, and PLAN checks them against existing code patterns. EXECUTE
-  may improve local choices when new evidence warrants it; binding decisions and
-  acceptance criteria remain intact. See [approach selection](skills/shared/approach-selection.md).
-- The base runtime is bash, jq, python3, and markdown. The optional ADK harness
-  installs Google's Python package; no loop-spec daemon or database is required.
-- Whether the loop may act without a human is decided by tested shell scripts, not skill prose.
-- No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`.
-- `lib/surface.sh find|show|covers` locates any bundled script, shared contract, or agent role — derived from the tree at call time, never a stored index.
-- Generated code is written for the person who maintains and operates it: `lib/house-style.sh` and `lib/comment-tells.sh` measure how it reads, and `lib/failure-tells.sh` measures what it says when it breaks — no swallowed errors, no silent exits, no message a person cannot act on.
-- The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
-- Works with or without Claude Code agent teams, and on both team harness generations.
-
-Current version: 6.2.0
-
-Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
+- [Install](#install)
+  - [Claude Code](#claude-code)
+  - [opencode](#opencode)
+  - [Codex](#codex)
+  - [Google ADK](#google-adk)
+- [Quick start](#quick-start)
+- [The cycle](#the-cycle)
+- [Skills](#skills)
+- [Headless and autonomous use](#headless-and-autonomous-use)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Design principles](#design-principles)
+- [Docs map](#docs-map)
+- [Tests](#tests)
+- [License](#license)
 
 ## Install
 
@@ -42,7 +35,7 @@ claude plugin marketplace add https://github.com/aztechead/loop-spec.git
 claude plugin install loop-spec@loop-spec-marketplace
 ```
 
-Optional: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables agent teams. Without it, critique/verify use one-shot subagents and EXECUTE uses the loop-fleet rung (needs `claude` on PATH). Every role inherits the model that launched the session; model-specific routing is optional (`skills/shared/model-matrix.md`).
+Optional: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables agent teams. Without it, critique/verify use one-shot subagents and EXECUTE uses the loop-fleet rung (needs `claude` on PATH). Every role but the challenger inherits the model that launched the session; the challenger runs on `sonnet`, and model-specific routing is optional (`skills/shared/model-matrix.md`). Updating from 6.2.x: read "Before you update" under 6.3.0 in [CHANGELOG.md](CHANGELOG.md) first.
 
 Adoption walkthrough: [docs/adopting.md](docs/adopting.md).
 
@@ -115,7 +108,7 @@ Or mount it yourself: `from loop_spec_adk import build_app`. Differences:
 
 1. Startup probes cache to `.loop-spec/runtime.json`.
 2. Claude Code creates a feature worktree at `.claude/worktrees/{slug}` on `feat/{slug}`. OpenCode, Codex, and ADK create the branch in place on a clean checkout — none of them has a session-root switch, so `executionRootMode` records the difference rather than faking it.
-3. SPEC interviews you (up to 6 rounds) until the ambiguity gate passes, then writes `docs/loop-spec/features/{slug}/SPEC.md`.
+3. SPEC investigates, asks one consolidated list of intent questions, records decisions, then writes `docs/loop-spec/features/{slug}/SPEC.md`.
 4. DISCUSS critiques the spec. PLAN writes `PATTERNS.md` + `PLAN.md` (task DAG with verify commands).
 5. EXECUTE implements tasks in parallel where the DAG allows, one commit per task.
 6. VERIFY runs marker/tamper scans, acceptance criteria, and a blocking code review.
@@ -128,14 +121,51 @@ Variations: `style:step` pauses after every phase; pass a spec file path to skip
 
 On Claude Code, installing the plugin binds the `loop-spec` output style (`output-styles/loop-spec.md`): name the phase when it changes, one thought per action, then one outcome-first close. Built-in Concise does not do that. OpenCode, Codex, and ADK have no output-style slot; they follow [`skills/shared/report-style.md`](skills/shared/report-style.md).
 
+## The cycle
+
+Give the cycle a feature description, or a pre-authored spec file, and it runs seven phases: SPEC, DISCUSS, PLAN, EXECUTE, VERIFY, ITERATE, DELIVER. A change whose SPEC footprint is at most three files, with no open question and no security signal, takes the oneshot route instead: SPEC, ONESHOT (implement, one review, verify), DELIVER. ITERATE judges the integrated result against your original request and rewinds until the goal is met or the iteration limit (10 by default, configurable with `LOOP_SPEC_ITERATE_MAX_ITERATIONS`) is spent. DELIVER then pushes the exact verified SHA, creates or reuses one PR, waits for required checks, and marks it ready for review. Phase state and evidence are durable in `feature.json` and committed artifacts, so interrupted runs resume instead of starting over.
+
+| Phase | Produces | Gates |
+|---|---|---|
+| SPEC | `SPEC.md` with `unresolved_questions` and decisions | No unresolved intent questions |
+| ONESHOT | one commit, `VERIFICATION.md` | Footprint ≤ 3 files, no open question, no security signal (`lib/graph/probes/oneshot.sh`); one review; scans and the converged floor at exit |
+| DISCUSS | revised SPEC.md | Challenger critique (skipped when the spec is already gated) |
+| PLAN | `PATTERNS.md` + `PLAN.md` | Critique + feasibility + criteria coverage |
+| EXECUTE | per-task commits on `feat/{slug}` | Spec-compliance review; dispatch by DAG width |
+| VERIFY | `VERIFICATION.md`, `REVIEW-ORDER.md` | Marker/tamper scans, acceptance, blocking review |
+| ITERATE | `ITERATION.md` | Goal re-judge; rewind or advance |
+| DELIVER | `delivery.targets[]`, final PR | Exact-SHA push, one-PR reconcile, required checks |
+
+Mechanics in brief:
+
+- **ITERATE** is the outer loop: VERIFY proves the checklist; ITERATE asks whether the original request is met. Gap classes `execute` / `plan` / `spec` rewind to that phase.
+- **Critique** is challenger-only: skip (already-gated spec, PLAN fast-path, or maintenance) or a single critic. A disputed `[major]` stays on the fix-list. There is no advocate debate.
+- **EXECUTE** picks dispatch from DAG width and probed capability (`lib/execute-rung.sh`): sequential, batched subagents, agent team, optional Workflow, or loop-fleet.
+- **VERIFY** defends the oracle (test-tamper + marker scans). An advisory verification-gap pass records coverage holes without blocking.
+- **Sequencing is a declared graph** from 3.0 (`graph/cycle.graph.json`, run by `lib/graph/run.sh`): typed `reads[]`/`writes[]` over `feature.json`, per-node checkpoints, probe-conditioned `route` edges, and dual-process effort (`lib/effort-probe.sh`). Phase *content* is unchanged. Upgrading from 2.x needs no action: schema stays v7 and every new variable defaults to 2.x behaviour.
+- **DELIVER** owns the final mile (`lib/pr-delivery.sh`): never force-pushes, merges, or enables auto-merge.
+
+Styles (`style:step`, default `auto`): `auto` · `step` · `interactive` · `review-only`. Every role inherits the session model except the challenger, which runs on `sonnet` under Claude Code. Optional Claude routes use `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>`; OpenCode routes use native generated-agent configuration.
+
+Greenfield: `/loop-spec:cycle new autonomous a CLI tool that ...` in an empty directory. Backlog drain: `/loop-spec:cycle backlog`. Diagrams, artifact tree, and team lifecycle: [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md).
+
 ## Skills
+
+Additional entry points:
+
+- `/loop-spec:cycle new <description>` — greenfield bootstrap in an empty directory
+- `/loop-spec:debug <error or symptom>` — bounded debug loop; red reproduction before any fix
+- `/loop-spec:intake <anything>` — Slack / Jira / email / prompt → spec draft → cycle
+- `autonomous` — question-free; recommended answers land in an auditable decision log
+- `/loop-spec:sentinel` — watch work sources and drive the queue within script-enforced bounds
 
 Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills can run alone; `cycle` chains them.
 
 | Skill | Purpose |
 |---|---|
-| `auto` | Preferred headless/SDK entry. Routes to micro, debug, or full cycle fail-closed. |
-| `cycle` | Seven-phase prompt-to-ready-PR loop. Also: `new`, `backlog`, spec-file ingest, resume. |
+| `auto` | Preferred headless/SDK entry. Routes to micro, debug, or full cycle fail-closed. Headless runs dispatch EXECUTE implementers as disposable CLI sessions (`extensions/sessions/`). |
+| `cycle` | Seven-phase prompt-to-ready-PR loop, or the three-phase oneshot route for a small footprint. Also: `new`, `backlog`, spec-file ingest, resume. |
+| `spec-lite` | SPEC's entry on every cycle: the scout, the oneshot candidate from its record, and the short route's spec fills; hands to `spec` on the full route. Cycle-internal. |
 | `intake` | Any input → spec draft → cycle. `--no-run` stops after the draft. |
 | `debug` | Bounded debug: triage, red reproduction, fix, verify. Writes `BUG.md`. |
 | `loop-debug` | One-shot debug with autonomous mode forced on. |
@@ -153,37 +183,12 @@ Invoked as `/loop-spec:<name>` (or `Skill(loop-spec:<name>)`). Per-phase skills 
 | `onboard` | Guided one-time setup for optional modes. |
 | `pause` / `rollback` / `forensics` | Cycle lifecycle utilities. |
 
-## The cycle
-
-| Phase | Produces | Gates |
-|---|---|---|
-| SPEC | `SPEC.md` with `ambiguity_scores` | Interview (max 6); ambiguity ≤ 0.20 |
-| DISCUSS | revised SPEC.md | Challenger critique (skipped when the spec is already gated) |
-| PLAN | `PATTERNS.md` + `PLAN.md` | Critique + feasibility + criteria coverage |
-| EXECUTE | per-task commits on `feat/{slug}` | Spec-compliance review; dispatch by DAG width |
-| VERIFY | `VERIFICATION.md`, `REVIEW-ORDER.md` | Marker/tamper scans, acceptance, blocking review |
-| ITERATE | `ITERATION.md` | Goal re-judge; rewind or advance |
-| DELIVER | `delivery.targets[]`, final PR | Exact-SHA push, one-PR reconcile, required checks |
-
-Mechanics in brief:
-
-- **ITERATE** is the outer loop: VERIFY proves the checklist; ITERATE asks whether the original request is met. Gap classes `execute` / `plan` / `spec` rewind to that phase.
-- **Critique** is challenger-only: skip (already-gated spec, PLAN fast-path, or maintenance) or a single critic. A disputed `[major]` stays on the fix-list. There is no advocate debate.
-- **EXECUTE** picks dispatch from DAG width and probed capability (`lib/execute-rung.sh`): sequential, batched subagents, agent team, optional Workflow, or loop-fleet.
-- **VERIFY** defends the oracle (test-tamper + marker scans). An advisory verification-gap pass records coverage holes without blocking.
-- **Sequencing is a declared graph** from 3.0 (`graph/cycle.graph.json`, run by `lib/graph/run.sh`): typed `reads[]`/`writes[]` over `feature.json`, per-node checkpoints, probe-conditioned `route` edges, and dual-process effort (`lib/effort-probe.sh`). Phase *content* is unchanged. Upgrading from 2.x needs no action: schema stays v7 and every new variable defaults to 2.x behaviour.
-- **DELIVER** owns the final mile (`lib/pr-delivery.sh`): never force-pushes, merges, or enables auto-merge.
-
-Styles (`style:step`, default `auto`): `auto` · `step` · `interactive` · `review-only`. Every role inherits the session model. Optional Claude routes use `LOOP_SPEC_PHASE_MODEL_<PHASE>` or `LOOP_SPEC_MODEL_<ROLE>`; OpenCode routes use native generated-agent configuration.
-
-Greenfield: `/loop-spec:cycle new autonomous a CLI tool that ...` in an empty directory. Backlog drain: `/loop-spec:cycle backlog`. Diagrams, artifact tree, and team lifecycle: [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md).
-
 ## Headless and autonomous use
 
 ```bash
 claude -p "/loop-spec:auto update CLAUDE.md with relevant changes"
 # Force the full seven-phase cycle:
-claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
+LOOP_SPEC_ROUTE=full claude -p "/loop-spec:cycle autonomous add rate limiting to the public API"
 ```
 
 `/loop-spec:auto` inspects likely files/tests, proposes a route, and `lib/task-route.sh` validates it fail-closed. Small maintenance → micro; bounded bugs → debug; bounded features and refactors may use compact; everything else → full cycle. Compact records the classifier's per-gate run/skip plan, including a reason for each skip; destructive, malformed, uncertain, and unbounded proposals promote to full. Exact-SHA delivery and terminal-result publication stay mandatory. SDK callers get one `AUTONOMOUS_ROUTE {...}` line; route selection writes nothing into the target repo. Full contract: [`skills/shared/autonomous-mode.md`](skills/shared/autonomous-mode.md) and the canonical [`compact profile`](skills/shared/compact-profile.md).
@@ -220,7 +225,6 @@ Common knobs:
 |---|---|---|
 | `LOOP_SPEC_AUTONOMOUS` | unset | `1` ≡ inline `autonomous` token |
 | `LOOP_SPEC_WORKTREES` | `1` | `0` = in-place branch, serial EXECUTE |
-| `LOOP_SPEC_PHASE_HANDOFF` | unset | `1` = one durable phase per invocation |
 | `LOOP_SPEC_MAX_FEATURES` | `1` | Backlog / sentinel batch size (L1+ for sentinel) |
 | `LOOP_SPEC_CHECKPOINT_PR` | on | `0` disables draft checkpoint PRs |
 | `LOOP_SPEC_CMD_TEST` (and `LOOP_SPEC_CMD_*`) | detected | Pin test/lint/typecheck/prepare commands |
@@ -234,12 +238,29 @@ Multi-repo workspaces: [docs/adopting.md](docs/adopting.md#workspace-multi-repo-
 
 ## Troubleshooting
 
-- Health check fails: allow every alias from `bash lib/feature-init.sh all-models` in `CLAUDE.md`.
-- Critique gate keeps bouncing: the spec/plan is ambiguous — use `style:step`, edit, resume.
+- Health check fails: allow every alias from `bash lib/feature-init.sh all-models` in `CLAUDE.md` (6.3.0 adds `sonnet`, the challenger's default).
+- Critique gate closed with residue (`gate-logs/<gate>-residue.md`): the one delta round is spent; the spec/plan is ambiguous — use `style:step`, edit, resume. `LOOP_SPEC_CRITIQUE_ROUNDS` raises the bound.
 - Loop-fleet halt: read `halt_reason` in `.loop/fleet-result.json` (table in `skills/shared/execute-loop-fleet.md`).
 - Teams unavailable: not a failure; set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to restore persistent teams.
 
 More: [docs/adopting.md](docs/adopting.md). Architecture: [docs/loop-spec/architecture.md](docs/loop-spec/architecture.md).
+
+## Design principles
+
+- Suggested methods are candidates: SPEC separates intent from constraints, DISCUSS
+  compares approaches, and PLAN checks them against existing code patterns. EXECUTE
+  may improve local choices when new evidence warrants it; binding decisions and
+  acceptance criteria remain intact. See [approach selection](skills/shared/approach-selection.md).
+- The base runtime is bash, jq, python3, and markdown. The optional ADK harness
+  installs Google's Python package; no loop-spec daemon or database is required.
+- Whether the loop may act without a human is decided by tested shell scripts, not skill prose.
+- No stored code map. Structure is derived from the tree when a phase needs it and grounded by citing `file:line`.
+- `lib/surface.sh find|show|covers` locates any bundled script, shared contract, or agent role — derived from the tree at call time, never a stored index.
+- Generated code is written for the person who maintains and operates it: `lib/house-style.sh` and `lib/comment-tells.sh` measure how it reads, and `lib/failure-tells.sh` measures what it says when it breaks — no swallowed errors, no silent exits, no message a person cannot act on.
+- The markdown is a deliverable too. A change that makes a document false fixes it in the same diff, and `lib/doc-tells.sh` flags the dead links, moved paths, and unrunnable commands a reader would trip over.
+- Works with or without Claude Code agent teams, and on both team harness generations.
+
+Architecture: [docs/loop-spec/gdd.md](docs/loop-spec/gdd.md).
 
 ## Docs map
 

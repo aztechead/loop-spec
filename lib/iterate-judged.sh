@@ -4,7 +4,7 @@
 # Why: ITERATE asked the lead for a limit check, a verdict extraction, three state
 # writes, an event, a floor check, a feedback write, remediation tasks per gap, and on a
 # spent budget a harvest into warnings and the backlog, each a Bash call
-# (evals/findings-2026-09-06.md, finding 7). The judge is the only model work here.
+# (the 2026-09-06 live evals, finding 7). The judge is the only model work here.
 #
 # Usage:
 #   iterate-judged.sh limit   --feature-dir DIR
@@ -15,7 +15,9 @@
 #       Extracts the verdict JSON from the judge's completion message, records it, emits
 #       iterate_verdict, runs the converged floor, writes iterate.feedback and the
 #       remediation tasks a gap needs. Prints
-#       {verdict, converged, floor:[...], route:"deliver"|"execute"|"plan"|"spec"|"harvest", tasks:[...]}.
+#       {verdict, converged, floor:[...], route:"deliver"|"execute"|"plan"|"spec"|"harvest"|"escalate", tasks:[...]}.
+#       escalate = the gap needs an operator (gap.needs_operator, or the same fix_first
+#       survived a remediation round); the cycle's `next` ends the run escalated.
 #       --confirmation never increments used and never rewinds: converged -> deliver,
 #       otherwise -> harvest.
 #   iterate-judged.sh harvest --feature-dir DIR
@@ -44,7 +46,7 @@ case "$cmd" in limit|record|harvest) ;; *) usage ;; esac
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || usage
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 fset() { lib feature-write set "$feature_dir" "$1" "$2" >/dev/null; }
 slug="$(fget '.slug')"
 used="$(fget '.iterate.used // 0')"; max="$(fget '.iterate.maxIterations // 10')"
@@ -101,7 +103,13 @@ PY
       else
         floor="$(grep '^FLOOR' <<<"$fout" | jq -R . | jq -cs .)"
         first="$(jq -r '.[0] // "verification record does not support the verdict"' <<<"$floor")"
-        verdict="$(jq -c --arg f "$first" '.converged = false | .gap = {type:"execute", description:("converged floor: " + $f), fix_first:$f}' <<<"$verdict")"
+        # A FAIL row is code work; anything else (a missing grounding row, a non-PASS
+        # result) is a verification record VERIFY has to complete. Rewinding those to
+        # EXECUTE dispatched an implementer with nothing to do (the port plan,
+        # defect 2).
+        floor_type=verify
+        grep -q 'still FAIL' <<<"$fout" && floor_type=execute
+        verdict="$(jq -c --arg f "$first" --arg t "$floor_type" '.converged = false | .gap = {type:$t, description:("converged floor: " + $f), fix_first:$f}' <<<"$verdict")"
         fset iterate.lastVerdict "$verdict"
       fi
     fi
@@ -111,7 +119,20 @@ PY
         gap="$(jq -c '.gap // {type:"execute", description:"goal not met", fix_first:(.weakest // .summary)}' <<<"$verdict")"
         fset iterate.feedback "$gap"
         route="$(jq -r '.type // "execute"' <<<"$gap")"
-        case "$route" in execute|plan|spec) ;; *) route=execute ;; esac
+        case "$route" in execute|plan|spec|verify) ;; *) route=execute ;; esac
+        # A gap only an operator can close (expired credentials, an approval, a network
+        # the sandbox lacks) is not a rewind target: a live run rewound EXECUTE to re-run
+        # a plan against a locked gcloud token, judged the identical gap, then asked a
+        # question nobody was there to answer (PR 93). The judge marks such a gap
+        # needs_operator; the same fix_first surviving a remediation round says the same
+        # thing without the judge's help. Either way the cycle's `next` ends the run
+        # escalated with the fix as the reason.
+        prior_fix="$(fget '(.iterate.history // [])[-2].gap.fix_first // ""' | tr '[:upper:]' '[:lower:]' | tr -s '[:space:]' ' ')"
+        this_fix="$(jq -r '.fix_first // ""' <<<"$gap" | tr '[:upper:]' '[:lower:]' | tr -s '[:space:]' ' ')"
+        if [[ "$(jq -r '.needs_operator // false' <<<"$gap")" == "true" ]] \
+           || [[ -n "$this_fix" && "$this_fix" == "$prior_fix" ]]; then
+          route=escalate
+        fi
         if [[ "$route" == "execute" ]]; then
           tasks="$(jq -c --arg v "$default_verify" --argjson g "$gap" '
             ([$g] + [(.remaining_gaps // [])[] | select(.type == "execute")])

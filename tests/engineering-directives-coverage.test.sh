@@ -9,6 +9,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/fixed-string-coverage.
 checks=(
   "skills/shared/engineering-directives.md	Canonical compact directive"
   "skills/shared/engineering-directives.md	never from recall"
+  "skills/shared/engineering-directives.md	Local catalogs and cached results do not prove release status"
+  "skills/shared/engineering-directives.md	docs-probe.sh"
+  "skills/shared/grounding-protocol.md	docs-probe.sh latest"
+  "skills/shared/grounding-protocol.md	docs-probe.sh docs"
+  "skills/spec/SKILL.md	docs-probe.sh"
   "skills/shared/engineering-directives.md	One test, one break"
   "skills/shared/engineering-directives.md	phase-entry.sh"
   "skills/shared/execute-subagent.md	engineering-directives.md"
@@ -63,7 +68,7 @@ for f in skills/cycle/SKILL.md agents/implementer.md; do
 done
 
 # A phase skill that still lists its inputs in prose has two ingress contracts.
-for f in skills/{spec,discuss,plan,execute,verify,iterate}/SKILL.md; do
+for f in skills/{spec,spec-lite,discuss,plan,execute,verify,iterate}/SKILL.md; do
   if grep -qE 'Inputs (come )?from' "$f"; then
     FAIL=$((FAIL+1)); echo "FAIL: $f lists inputs in prose beside the entry packet"
   else

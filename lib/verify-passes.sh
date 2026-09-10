@@ -3,7 +3,7 @@
 #
 # Why: the live run, the verification-gap scan, the plain-language probes, the docs
 # lint, the project's review layers, and the reviewer's-guide lint were six lead calls
-# whose only judgment is what to write down afterwards (evals/findings-2026-09-06.md,
+# whose only judgment is what to write down afterwards (the 2026-09-06 live evals,
 # finding 7). This runs them and hands the lead their findings as one object; the lead
 # records them in VERIFICATION.md and dispatches the reviewers the findings call for.
 #
@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="${2:-}"; shift
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || { echo "usage: verify-passes.sh run --feature-dir DIR" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 slug="$(fget '.slug')"; base="$(fget '.baseSha // ""')"
 root="$(git -C "$feature_dir" rev-parse --show-toplevel 2>/dev/null || pwd)"
 docs="$root/docs/loop-spec/features/$slug"

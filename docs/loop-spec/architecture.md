@@ -27,7 +27,7 @@ flowchart LR
     user([User]) -->|"Skill(loop-spec:cycle)"| cycle[cycle skill<br/>orchestrator]
     cycle -->|"health-check + style"| init[feature.json<br/>schema v7]
     init --> spec[SPEC phase<br/>main-thread interview]
-    spec -->|SPEC.md + ambiguity_scores| discuss[DISCUSS team<br/>grill + challenger]
+    spec -->|SPEC.md + unresolved_questions| discuss[DISCUSS team<br/>grill + challenger]
     discuss -->|SPEC.md| plan[PLAN team<br/>planner + challenger]
     plan -->|PLAN.md + task DAG| execute[EXECUTE team<br/>lead + N implementers + R reviewers]
     execute -->|merged commits on feat/&lcub;slug&rcub;| verify[VERIFY team<br/>verifier + code-reviewer]
@@ -80,7 +80,9 @@ flowchart TD
     fix -->|"non-empty"| author[SendMessage author:<br/>revise with fix-list]
     author --> delta[challenger delta re-verify]
     delta -->|"DELTA-VERIFIED"| pass
-    delta -->|"DELTA-FINDINGS"| adj
+    delta -->|"DELTA-FINDINGS"| lint[delta-findings-lint.sh:<br/>unaddressed + major introduced only]
+    lint -->|"nothing survives"| pass
+    lint -->|"survivors"| adj
 ```
 
 Gate transcripts persist under `gate-logs/` so a delta re-verify has the prior findings.
@@ -190,7 +192,7 @@ loop-spec/
 ├── extensions/opencode/loop-spec.ts # opencode bridge: shell.env/chat.message/event hooks (node builtins only)
 ├── agents/                          # specialized agent definitions (teammates)
 ├── skills/
-│   ├── cycle/ spec/ discuss/ plan/ execute/ verify/ iterate/ deliver/ # seven phases + orchestrator
+│   ├── cycle/ spec/ oneshot/ discuss/ plan/ execute/ verify/ iterate/ deliver/ # phases + orchestrator
 │   ├── assess/ debug/ intake/ quality-loop/ revise/ retro/
 │   ├── status/ sentinel/ watch/ micro/ rules/ onboard/
 │   ├── grill/ simplicity/ human-code/ discipline/               # session-mode toggles

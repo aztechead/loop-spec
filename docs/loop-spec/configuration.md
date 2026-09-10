@@ -12,8 +12,8 @@ The release’s source-to-contract utilization review is recorded in
 
 - Boolean environment variables accept only `0` or `1` when the consuming command
   validates them. `1` means enabled and `0` means disabled. Do not use
-  `true`/`false`. Safety-critical controls (`LOOP_SPEC_WORKTREES` and
-  `LOOP_SPEC_PHASE_HANDOFF`) reject any other non-empty value.
+  `true`/`false`. The safety-critical control (`LOOP_SPEC_WORKTREES`) rejects any
+  other non-empty value.
 - An explicit command token or CLI flag wins over an environment variable for the
   same invocation. An explicit environment variable wins over persisted project or feature state.
   Persisted state wins over the built-in default.
@@ -23,9 +23,11 @@ The release’s source-to-contract utilization review is recorded in
   foreground loop alive.
 - Empty is not generally the same as `0`. The documented exception is
   `LOOP_SPEC_CMD_PREPARE=""`, which explicitly disables preparation.
-- `phase:fresh` and `phase:continuous` are persisted in `feature.json`. On a later
-  bare resume, that stored policy remains active unless another inline phase token
-  or `LOOP_SPEC_PHASE_HANDOFF` overrides it.
+- Every phase hands off. The driver returns after each phase with a paused
+  `phase-handoff` result, and the next `cycle` invocation enters the next phase in a
+  fresh context. `phase:fresh` is accepted and changes nothing; `phase:continuous` is a
+  legacy token the parser reports and ignores. `LOOP_SPEC_PHASE_HANDOFF` and
+  `LOOP_SPEC_ITERATE_FRESH` are gone with the continuous mode (6.4.0).
 - `LOOP_SPEC_WORKTREES=0` is not advisory. It selects the in-place feature branch,
   forces serial implementation, makes loop-runner imply `--no-worktree`, and blocks
   worktree creation or entry at the tool boundary.
@@ -43,14 +45,13 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_NON_INTERACTIVE` | `0`/`1`; unset | `1` forbids interactive questions and reads the `LOOP_SPEC_ANSWER_*` inputs below. It also implies a headless execution profile. |
 | `LOOP_SPEC_SPEC_FILE` | path; unset | Uses the specified pre-authored Markdown spec instead of collecting a new one. |
 | `LOOP_SPEC_MAX_FEATURES` | positive integer; `1` | Maximum backlog features selected per invocation. Sentinel batch requests above one are still restricted by the trust level. |
-| `LOOP_SPEC_PHASE_TIMEOUT_MINS` | positive integer; `60` | Wall-clock watchdog ceiling for a phase. A non-integer or non-positive value is a configuration error, not a fallback. |
+| `LOOP_SPEC_PHASE_TIMEOUT_MINS` | positive integer; `60` | Wall-clock watchdog ceiling for a phase. A non-integer or non-positive value is a configuration error, not a fallback. `hooks/team/cycle-stamp-guard.sh` reads it as the age past which an open phase is a dead session's. |
 | `LOOP_SPEC_CRITIQUE_ROUNDS` | non-negative integer; unset | Replaces the delta-round ceiling `graph/critique.graph.json` declares for the SPEC and PLAN critique gates. `0` restores unbounded retries. `lib/graph/gate.sh next` reads it; any other value is a configuration error. |
-| `LOOP_SPEC_PHASE_HANDOFF` | `0`/`1`; unset | `1` permits one phase per main-agent invocation, persists the next phase, and returns `status=paused`, `reason=phase-handoff`. `0` runs phase routing continuously. The environment overrides persisted state; inline `phase:fresh`/`phase:continuous` overrides the environment. A tool-boundary guard enforces the boundary. |
-| `LOOP_SPEC_ITERATE_FRESH` | `0`/`1`; unset | `1` makes an ITERATE rewind persist state and relaunch instead of continuing in the current main-agent context. |
+| `LOOP_SPEC_ROUTE` | `full`; unset | `full` keeps a run off the oneshot route (`lib/graph/probes/oneshot.sh` answers `route=full`). The override lengthens only: any other value also answers `full`, because nothing demotes a full run to a oneshot. |
 | `LOOP_SPEC_ITERATE_MAX_ITERATIONS` | integer `1..100`; `10` | Sets the full cycle's persisted ITERATE convergence ceiling. This is independent of `LOOP_SPEC_LOOP_MAX_ITERATIONS`, which bounds each loop-fleet task. |
 | `LOOP_SPEC_CHECKPOINT_EACH_PHASE` | `0`/`1`; autonomous runs default to `1`, other runs to `0` | Pushes or reuses a draft checkpoint PR after every non-DELIVER phase. |
 | `LOOP_SPEC_CHECKPOINT_PR` | `0`/`1`; `1` | Controls the draft checkpoint PR written on pause, escalation, or terminal stop. |
-| `LOOP_SPEC_SQUASH_STATE_COMMITS` | `0`/`1`; `0` | `1` defers pure feature.json/PROGRESS phase-state commits and writes one final state commit during DELIVER. It also disables per-phase remote checkpoints because pushed intermediate state would require a later history rewrite. |
+| `LOOP_SPEC_GRAPH` | path; `graph/cycle.graph.json` | Names the workflow graph every phase-vocabulary reader uses (`lib/graph/phases.sh`, the driver, feature-init, the entry and exit gates, the hooks). An embedding that ships its own graph sets it; a test that adds a phase to a copy sets it. |
 | `LOOP_SPEC_CYCLE_PROFILE` | `maintenance`/`compact`/`standard`/`auto`; `auto` | Selects the cycle's gate ladder through `lib/cycle-profile.sh`. `auto` uses validated autonomous classification; a bounded feature or refactor may select `compact`, whose auditable run/skip plan gives every skipped gate a reason. `compact` requests (inline or environment) still require that persisted valid classification; without it they resolve `standard`. Destructive, malformed, uncertain, or unbounded compact proposals also fail upward to `standard`; exact-SHA delivery and terminal publication do not change. `maintenance` lightens SPEC and may take the existing short path. The compact schema and gate rules live in [`skills/shared/compact-profile.md`](../../skills/shared/compact-profile.md). Inline `profile:` tokens outrank this variable; invalid values fail safe to `standard`. |
 | `LOOP_SPEC_PREPARE_TIMEOUT_SECS` | non-negative integer; `1800` | Wall-clock timeout for dependency/environment preparation. `0` disables the wall-clock deadline. |
 | `LOOP_SPEC_PREPARE_IDLE_TIMEOUT_SECS` | non-negative integer; `300` | No-output timeout for preparation. `0` disables the idle deadline. |
@@ -73,9 +74,15 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_EXECUTE_LOOPS` | `0`/`1`; automatic | `1` requests loop-fleet regardless of DAG width, subject to agent-CLI and persistent-runtime capability. `0` forbids loop-fleet. |
 | `LOOP_SPEC_EXECUTE_WORKFLOW` | `0`/`1`; `0` | `1` opts sufficiently wide EXECUTE DAGs into the Workflow rung when the Workflow tool is available. |
 | `LOOP_SPEC_PLAN_MULTI_ANGLE` | `0`/`1`; `0` | `1` enables PLAN multi-angle authoring through Workflow when available. |
+| `LOOP_SPEC_DOCS_CACHE_DIR` | directory path; `$TMPDIR/loop-spec-docs-cache` | Where `lib/docs-probe.sh` caches registry and documentation fetches. |
+| `LOOP_SPEC_DOCS_CACHE_TTL_SECS` | positive integer; `3600` | How long a cached `docs-probe.sh` fetch is reused before the source is asked again. |
+| `LOOP_SPEC_DOCS_FIXTURES` | directory path; unset | Canned responses for `docs-probe.sh`, keyed by `sha1(url)[:16]`; set, the probe touches no network (the offline test double). |
 | `LOOP_SPEC_DOC_DEPS` | comma-separated dependency names, or `none`; unset | Overrides `lib/doc-deps.sh scan` (the dependency-idiom probe): the listed dependencies replace the imports-intersect-manifest answer everywhere it is consulted, including PLAN's `doc-deps` exit gate. `none` empties the list, which also clears the gate. Unset means: derive the list from the touched files' imports. |
 | `LOOP_SPEC_EXECUTION_PROFILE` | `interactive`/`headless`; probed | Declares whether the invocation can retain a foreground fleet call. `headless` disables loop-fleet. A headless host entrypoint overrides `interactive`. |
 | `LOOP_SPEC_LOOP_RUNTIME` | `0`/`1`; probed | Explicit capability assertion for a persistent foreground loop. `0` disables it. `1` is the only loop-spec setting that can override a headless entrypoint stamp. |
+| `LOOP_SPEC_SESSION_LAYER` | `0`/`1`; probed | `1` forces EXECUTE's `session` rung (one headless CLI process per implementer and reviewer, `extensions/sessions/`) and fails loudly when the agent CLI is not on PATH. `0` keeps a headless run on the subagent waves. Unset: `lib/harness.sh session-layer` answers `session` only when the invocation is headless, a profile exists for the harness CLI, the CLI is on PATH, and `python3` is 3.11 or newer. |
+| `LOOP_SPEC_SESSION_PROFILES` | directory path; unset | Searched before `extensions/sessions/profiles/` for `<cli>.toml`, so a project can copy a session profile and edit it. |
+| `LOOP_SPEC_SESSION_TIMEOUT_SECS` | positive number; `3600` | Wall-clock limit for one disposable session; `session_run.py --timeout` outranks it. A killed session reports `status: timeout`. |
 | `LOOP_SPEC_LOOP_MAX_ITERATIONS` | positive integer; `10` | Iteration cap for each loop-fleet task. |
 | `LOOP_SPEC_LOOP_MAX_BUDGET_USD` | positive decimal; unlimited | Cumulative model-cost cap for each loop-fleet task. A fleet’s worst-case cap is this value times its task count. |
 | `LOOP_SPEC_TEAMS_MODE` | `none`/`explicit`/`implicit`; probed | Overrides agent-team capability detection. |
@@ -86,7 +93,7 @@ The release’s source-to-contract utilization review is recorded in
 | `LOOP_SPEC_PORT_ROOT` | directory path; platform temp | Store root for the reference `port-local` adapter. Unset defaults under the process temp directory. |
 | `LOOP_SPEC_EFFORT` | `system1`/`system2`; unset | Global operator override for `lib/effort-probe.sh`. Invalid values fail safe to `system2`. Outranked by the more-specific overrides below. |
 | `LOOP_SPEC_EFFORT_PHASE` | `system1`/`system2`; unset | Per-phase effort override. Outranks `LOOP_SPEC_EFFORT`; outranked by `LOOP_SPEC_EFFORT_NODE`. |
-| `LOOP_SPEC_EGRESS_GUARD` | `warn`/`deny`/`off`; `warn` | How `lib/phase-exit.sh` treats a `feature.json` key a phase changed outside its allow-list (state no later phase reads): `warn` prints `WARN [egress]`, `deny` makes it a `FLAG` that keeps the phase open, `off` skips the comparison. |
+| `LOOP_SPEC_EGRESS_GUARD` | `warn`/`deny`/`off`; `warn` | How `lib/phase-exit.sh` treats a `feature.json` key a phase changed outside its allow-list, the `egress.writes` of its node in `graph/cycle.graph.json` (state no later phase reads): `warn` prints `WARN [egress]`, `deny` makes it a `FLAG` that keeps the phase open, `off` skips the comparison. |
 | `LOOP_SPEC_EFFORT_NODE` | `system1`/`system2`; unset | Per-node effort override. Most specific form; outranks phase and global. |
 | `LOOP_SPEC_FEATURE_WRITE` | executable path; `lib/feature-write.sh` | Test/seam override for the feature-state writer. Production unset uses the bundled `lib/feature-write.sh`. |
 | `LOOP_SPEC_EVENTS` | executable path; `lib/events.sh` | Test/seam override for the event emitter used by `lib/graph/trace.sh`. Production unset uses the bundled `lib/events.sh`. |
@@ -115,7 +122,8 @@ installers and therefore are part of the integration contract.
 | `CLAUDECODE` | Claude Code | `1` is a fallback harness-detection signal when `LOOP_SPEC_HARNESS` is unset. |
 | `CLAUDE_PLUGIN_ROOT` | host adapter | Absolute installed plugin root used to resolve hooks and bundled assets. The OpenCode plugin, ADK bridge, and Codex installer/hooks set it. Operator override is unsupported. |
 | `CLAUDE_PROJECT_DIR` | host adapter; current directory | Project root used for `.loop-spec` discovery. The OpenCode plugin, ADK bridge, and Codex installer/hooks set it from the session/project directory. |
-| `CLAUDE_SKILL_DIR` | host adapter | Directory of the active skill, used for bundled relative paths. The OpenCode plugin and ADK bridge update it as skills are loaded. Codex has no per-skill substitution: the installer and PreToolUse rewrite default it to `skills/cycle` as a package-relative `../../lib` anchor, and generated adapters assign the source skill directory only when the variable is empty. |
+| `LOOP_SPEC_SKILL_DIR` | harness adapter | Source directory of the executing skill. OpenCode and ADK set it per session. Codex adapters export the source directory before each bundled shell call. Claude's session-start instructions supply the same export. Phase snapshots resolve it to an absolute path. |
+| `CLAUDE_SKILL_DIR` | compatibility | Claude's native skill substitution. Other adapters keep it as an alias for older integrations. Shared loop-spec skills use `LOOP_SPEC_SKILL_DIR`. |
 | `CODEX_HOME` | operator/installer; `~/.codex` | Codex config tree used by `lib/codex-install.sh` when `--project` is omitted. |
 | `CLAUDE_CODE_SESSION_ID`, `CLAUDE_SESSION_ID` | host adapter; process ID fallback | Session identity used to scope learnings and hook failure counters. |
 | `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | OpenCode; unset | OpenCode-native opt-in for background subagents. loop-spec does not set it and does not depend on it; the OpenCode adapter’s bounded dispatch rules still apply. |
@@ -165,7 +173,7 @@ variables. They configure that published recipe, not plugin internals:
 | `LOOP_SPEC_EXTENSIONS` | path; `.loop-spec/extensions.json` | Project extension declarations read by `lib/extension-points.sh`: additional review layers, per-phase prepend/append instructions, and standing facts. Extensions add only — a declared layer can never disable, reorder, or shadow a built-in gate, and no authority script reads this file. Read paths fail open; `extension-points.sh validate` fails closed. |
 | `LOOP_SPEC_ARTIFACTS_IN_PR` | `0`/`1`; `1` | `0` copies `docs/loop-spec/features/<slug>/` and feature state to the artifact store during candidate finalization, then restores that document directory to its base image so run documents do not enter the PR diff. |
 | `LOOP_SPEC_ARTIFACT_DIR` | directory outside the working tree; Git private storage | Store root used when `LOOP_SPEC_ARTIFACTS_IN_PR=0`. The default is the repository's private Git path under `loop-spec/artifacts`; set an external mounted directory for ephemeral jobs. A working-tree path is rejected because it would reintroduce the audit payload into the candidate. |
-| `LOOP_SPEC_PR_BODY_VERBOSE` | `0`/`1`; `0` | `0` keeps reviewer-facing summary and verification sections expanded while putting spec scores, convergence prose, and artifact metadata in a collapsed Run details block. `1` expands those sections. |
+| `LOOP_SPEC_PR_BODY_VERBOSE` | `0`/`1`; `0` | `0` keeps reviewer-facing summary and verification sections expanded while putting unresolved questions, convergence prose, and artifact metadata in a collapsed Run details block. `1` expands those sections. |
 | `LOOP_SPEC_DELIVERY_RECONCILE` | `0`/`1`; `1` | `0` skips `lib/delivery-reconcile.sh`, so a GitHub PR opened outside `lib/deliver.sh` is not written into `delivery.json`. Default `1` observes required checks once (no long poll) and writes the sidecar when the PR is SHA-bound and green. |
 | `LOOP_SPEC_CHECKS_TIMEOUT_SECONDS` | integer `0..86400`; `900` | Total DELIVER wait for required PR checks. `0` performs no extended wait. |
 | `LOOP_SPEC_CHECKS_INTERVAL_SECONDS` | integer `0..3600`; `10` | Required-check polling interval. `0` polls again without sleeping. |
@@ -187,13 +195,12 @@ variables. They configure that published recipe, not plugin internals:
 
 | Variable | Accepted values / default | Exact effect |
 |---|---|---|
-| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and to **nameless** role Agents. A named implicit-team spawn inherits the session model regardless (`skills/shared/dispatch.md`); `lib/implicit-team-model.sh` selects the nameless path when an alias is set. A Claude full ID applies only to a fresh CLI/SDK main context (`LOOP_SPEC_PHASE_HANDOFF=1` or an equivalent fresh controller); role Agents omit their model key and inherit it. OpenCode consumes an explicit value only on loop-fleet subprocesses; its `task` tool has no per-call model — pin task roles with `opencode-install.sh install --model`. Codex `spawn_agent` consumes a Codex slug; pin generated custom agents with `codex-install.sh install --model`. ADK `dispatch_subagent` consumes a native role id. Unset inherits. Supported phases are `SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, and `DELIVER`. |
-| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. OpenCode accepts a native ID only for `IMPLEMENTER` on the loop-fleet rung (`provider/model`); configure other OpenCode roles through generated agents. ADK accepts a native ID (`gemini-*` or `provider/model`) for every role and forwards it on `dispatch_subagent({model})`. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, and `PATTERN_MAPPER`. |
+| `LOOP_SPEC_PHASE_MODEL_<PHASE>` | `inherit` or a harness-native model selector; unset | Sets an optional phase default. Claude aliases apply to the main context and to **nameless** role Agents. A named implicit-team spawn inherits the session model regardless (`skills/shared/dispatch.md`); `lib/implicit-team-model.sh` selects the nameless path when an alias is set. A Claude full ID applies only to a fresh CLI/SDK main context (every phase boundary hands off to one); role Agents omit their model key and inherit it. OpenCode consumes an explicit value only on loop-fleet subprocesses; its `task` tool has no per-call model — pin task roles with `opencode-install.sh install --model`. Codex `spawn_agent` consumes a Codex slug; pin generated custom agents with `codex-install.sh install --model`. ADK `dispatch_subagent` consumes a native role id. Unset inherits. The suffix is a phase id of `bash lib/graph/phases.sh list`, uppercased (`SPEC`, `DISCUSS`, `PLAN`, `EXECUTE`, `VERIFY`, `ITERATE`, `DELIVER`, and any phase a graph adds). |
+| `LOOP_SPEC_MODEL_<ROLE>` | `inherit` or a consumed harness-native selector; `inherit` (`LOOP_SPEC_MODEL_CHALLENGER`: `sonnet` on Claude Code) | Wins over the phase default. Claude role overrides accept only Agent aliases; full IDs fail early because Agent rejects them. OpenCode accepts a native ID only for `IMPLEMENTER` on the loop-fleet rung (`provider/model`); configure other OpenCode roles through generated agents. ADK accepts a native ID (`gemini-*` or `provider/model`) for every role and forwards it on `dispatch_subagent({model})`. Supported roles are `SPEC_WRITER`, `PLANNER`, `ADVOCATE`, `CHALLENGER`, `SPEC_COMPLIANCE_REVIEWER`, `ITERATE_JUDGE`, `CODE_REVIEWER`, `IMPLEMENTER`, `VERIFIER`, and `PATTERN_MAPPER`. |
 | `LOOP_SPEC_ANSWER_STYLE` | `auto`/`step`/`interactive`/`review-only`; `auto` | Supplies the cycle style when questions are disabled. |
 | `LOOP_SPEC_ANSWER_TITLE` | text; unset | Supplies the feature description. Required in non-interactive mode unless the spec file supplies one. |
 | `LOOP_SPEC_ANSWER_REPOS` | comma-separated repo names; all | Supplies workspace repo selection. |
-| `LOOP_SPEC_ANSWER_SPEC_CONFIRM` | `yes`/`no`; `yes` | After a passing synthesized gate, `yes` writes SPEC.md; `no` leaves the phase at SPEC and returns a durable `spec-confirmation-declined` pause. |
-| `LOOP_SPEC_ANSWER_SPEC_OVERRIDE` | `yes`/`no`; `yes` | After a failing synthesized gate, `yes` writes SPEC.md with failing dimensions recorded; `no` leaves the phase at SPEC and returns a durable `spec-override-declined` pause. |
+| `LOOP_SPEC_ANSWER_SPEC_CONFIRM` | `yes`/`no`; `yes` | After resolving the synthesized question list, `yes` writes SPEC.md; `no` leaves the phase at SPEC and returns a durable `spec-confirmation-declined` pause. |
 | `LOOP_SPEC_ANSWER_ITERATE_SPEC` | `reopen`/`ship`; `reopen` | On a non-interactive SPEC-level iteration gap, `reopen` returns to DISCUSS refinement; `ship` advances to DELIVER and records the accepted gap. |
 | `LOOP_SPEC_ANSWER_*` | family | Namespace used by non-interactive answers. Unknown suffixes are ignored. |
 
@@ -201,10 +208,8 @@ Concrete variables such as `LOOP_SPEC_MODEL_PLANNER`,
 `LOOP_SPEC_MODEL_IMPLEMENTER`, and
 `LOOP_SPEC_MODEL_ITERATE_JUDGE` follow the `LOOP_SPEC_MODEL_<ROLE>` contract; the
 family form is canonical for every supported role. Likewise,
-`LOOP_SPEC_PHASE_MODEL_SPEC`, `LOOP_SPEC_PHASE_MODEL_DISCUSS`,
-`LOOP_SPEC_PHASE_MODEL_PLAN`, `LOOP_SPEC_PHASE_MODEL_EXECUTE`,
-`LOOP_SPEC_PHASE_MODEL_VERIFY`, `LOOP_SPEC_PHASE_MODEL_ITERATE`, and
-`LOOP_SPEC_PHASE_MODEL_DELIVER` follow the phase-family contract.
+`LOOP_SPEC_PHASE_MODEL_<PHASE>` (one per phase id of `bash lib/graph/phases.sh list`,
+uppercased) follows the phase-family contract.
 `lib/feature-init.sh phase-model <phase>` exposes the validated value to Claude
 CLI/Agent SDK supervisors, and
 `feature.phaseModels.<phase>` persists it in durable state.
@@ -243,9 +248,10 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_GRILL` | `1` | Asks 2–4 clarifying questions immediately after an opening prompt. |
 | `LOOP_SPEC_SIMPLICITY` | `1` | Injects the minimum-diff/deletion/reuse/stdlib directive, including the DRY rung and the `lib/duplication-scan.sh` probe that measures it. Suppresses the SessionStart injection only; dispatch-rung copies travel in the prompt and are unaffected. |
 | `LOOP_SPEC_HUMAN_CODE` | `1` | Injects the house-style directive: match the neighbors' conventions, comments carry why not what, comment density follows the file. It also carries the failure path: no swallowed errors, no silent non-zero exits, and error messages that name what broke. The same switch carries the docs directive: name the document's reader, one job per document, cite rather than copy, and fix a document the change makes false in the same diff. Suppresses the SessionStart injection only; dispatch-rung copies travel in the prompt and are unaffected. |
-| `LOOP_SPEC_MICRO` | `1` | Enables the micro-mode SessionStart directive. |
+| `LOOP_SPEC_MICRO` | `1` | Enables the micro-mode SessionStart directive. It is injected only when a person is proven present (`bash lib/harness.sh attended`: the Claude Code `cli` stamp, a bridge harness with no one-shot assertion, or `LOOP_SPEC_EXECUTION_PROFILE=interactive`); a headless or unstamped launch gets nothing, because a cycle run that received it followed the ad-hoc protocol instead of the cycle. `ENABLED=1` in `.loop-spec/micro.conf` outranks an unstamped launch, never a headless one. |
 | `LOOP_SPEC_MICRO_GUARD` | `1` | Blocks stopping after code edits without a verification run; stands down for active feature cycles and docs/config-only edits. |
-| `LOOP_SPEC_INVOCATION_STAMP` | `1` | The UserPromptSubmit hook stamps the raw arguments of a `/loop-spec:<skill>` prompt to `.loop-spec/invocation-stamp.json`; `cycle-driver.sh start` restores any token the skill's prose rewrite dropped and consumes the stamp. `0` disables. |
+| `LOOP_SPEC_NESTED_SESSION_GUARD` | `0`/`1`; `1` | `0` stands down `hooks/team/nested-session-guard.sh`, which denies a Bash launch of a nested harness session (`claude -p`, `codex exec`, `opencode run`, `adk run`) while a feature is active. The bundled launchers pass. |
+| `LOOP_SPEC_INVOCATION_STAMP` | `1` | The UserPromptSubmit hook stamps the raw arguments of a `/loop-spec:<skill>` prompt to `.loop-spec/invocation-stamp.json`; `cycle-driver.sh start` restores any token the skill's prose rewrite dropped and consumes the stamp. `hooks/team/cycle-stamp-guard.sh` (Stop) denies while a `skill: cycle` stamp is still present and no newer `.loop-spec/last-result.json` exists, until `LOOP_SPEC_STAMP_MAX_AGE_MIN`; the same hook denies while a feature's newest `phase_start` has no `phase_end` and no newer result, until `LOOP_SPEC_PHASE_TIMEOUT_MINS`. `0` disables the stamp and with it the first deny. |
 | `LOOP_SPEC_STAMP_MAX_AGE_MIN` | `30` | A stamp older than this is deleted unread, so a stale prompt never binds a later run. |
 | `LOOP_SPEC_FORGERY_GUARD` | `1` | `0` disables `hooks/team/result-forgery-guard.sh`, the PreToolUse Bash hook that denies a shell redirect, `tee`, `cp`, `mv`, `install`, `sed -i`, or Python `open(..., "w")` whose target is a `.loop-spec/` contract file (`last-result.json`, `result.json`, `active-run.json`, `feature.json`, `delivery.json`). Only `lib/cycle-result.sh`, `lib/feature-write.sh`, and `lib/deliver.sh` write those. |
 | `LOOP_SPEC_MICRO_GUARD_MAX_DENIALS` | `3` | Denials per transcript before the micro guard stands down. `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` bounds consecutive blocks only; a model that does unrelated work between stops resets that count, and the eval saw 18 denials drive a run to hand-write its result. |
@@ -258,6 +264,10 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_PATH_GUARD_FORCE` | `0` | Applies path restrictions to otherwise open dispatches. |
 | `LOOP_SPEC_PLACEHOLDER_QUESTION_GUARD` | `1` | Blocks `AskUserQuestion` used as a wait or keep-alive (`n/a`, "Type something", "not a real question", header `wait`, or any question while an Agent is still running). VERIFY and DELIVER have no user questions; ITERATE only allows the Re-open SPEC gate; EXECUTE only allows Plan gap and specifying-gates. |
 | `LOOP_SPEC_BLOCKEDBY_GUARD` | `1` | Refuses completion or claim of tasks with unfinished `blockedBy` dependencies. |
+| `LOOP_SPEC_DISPATCH_PROMPT_GUARD` | `1` | `0` disables `hooks/team/dispatch-prompt-guard.sh`, the PreToolUse Agent hook that denies a prompt that is an unexpanded `$(...)` or backtick substitution, or under 40 characters. The Agent tool runs no shell; read the brief and pass its contents. |
+| `LOOP_SPEC_ARTIFACT_LINT_FEEDBACK` | `1` | `0` disables `hooks/team/artifact-lint-feedback.sh`, the PostToolUse Write/Edit hook that runs the matching artifact lint (and `acceptance-lint` for tasks.json, the converged floor for VERIFICATION.md) on a cycle artifact the moment it is written and returns the flags to the author. The phase exit stays the backstop. |
+| `LOOP_SPEC_TASK_BATCH_AUTO` | `1` | `0` limits `lib/task-batch.sh` to the explicit `batchGroup` collapse. By default EXECUTE also merges a linear chain of tasks whose verify commands only read the checkout (grep, test, jq, diff; never a test runner, a plan, or the network) into one dispatch, and sets `modelTier: mechanical` on a doc/config-only task with such a verify. A planner-set tier, model pin, or `batchGroup` always wins. |
+| `LOOP_SPEC_TASK_BATCH_CHAIN_FILES` | `6` | Most files a merged chain may touch; the merge stops at the task that would exceed it. |
 | `LOOP_SPEC_USERGATE_GUARD` | `1` | Enforces user-gate evidence at task completion. |
 | `LOOP_SPEC_USERGATE_STOP_GUARD` | `1` | Enforces user-gate evidence at Stop. |
 | `LOOP_SPEC_STRATEGY_ROTATION` | `1` | Injects a strategy-change directive after repeated failures. |
@@ -266,9 +276,6 @@ with loop-spec state, and task guards only act on loop-spec-owned tasks.
 | `LOOP_SPEC_ROUTE_GUARD` | `1` | Blocks stopping an autonomous session whose routed run never published `.loop-spec/last-result.json`. Stands down for interactive runs and for armed records past the stand-down age. |
 | `LOOP_SPEC_REDO_MAX` | `3` | `cycle-driver.sh next` answers `REDO` with the exit gate's FLAG lines when a returned phase's artifact is not ready; the same flags this many times escalate the run with them as the reason instead of looping. |
 | `LOOP_SPEC_ROUTE_GUARD_MAX_AGE_MIN` | `720` | Minutes after which an armed run is treated as a dead record rather than this session's contract. |
-| `LOOP_SPEC_DEFLECTION_GUARD` | `1` | Blocks premature “out of context” stops below the configured usage threshold. |
-| `LOOP_SPEC_DEFLECTION_THRESHOLD_PCT` | `50` | Percent of context that must be consumed before a context-exhaustion stop is accepted. |
-| `LOOP_SPEC_CONTEXT_LIMIT` | `200000` | Token context size used to compute the deflection threshold. |
 | `LOOP_SPEC_LEARNINGS` | `1` | Writes session-end learnings to `.loop-spec/learnings.jsonl`. |
 | `LOOP_SPEC_PAUSE` | `1` | Controls pause snapshot writing. |
 
@@ -281,7 +288,6 @@ not enable the guard; its switch above must also be enabled.
 |---|---|
 | `LOOP_SPEC_BLOCKEDBY_TRACE_LOG` | no file unless set |
 | `LOOP_SPEC_USERGATE_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-user-gate-trace.log` |
-| `LOOP_SPEC_DEFLECTION_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-deflection-trace.log` |
 | `LOOP_SPEC_MICRO_GUARD_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-micro-guard-trace.log` |
 | `LOOP_SPEC_DEFERRAL_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-deferral-trace.log` |
 | `LOOP_SPEC_ROUTE_GUARD_TRACE_LOG` | `/tmp/claude-hooks/loop-spec-route-guard-trace.log` |
@@ -295,7 +301,7 @@ angle brackets mean required. Inline words are tokens, not GNU flags.
 | Command | Arguments | Exact behavior |
 |---|---|---|
 | `auto` | `<task description>` | Chooses micro or full-cycle routing from task scope. |
-| `cycle` | `[new] [description \| path/to/spec.md \| backlog] [style:auto\|step\|interactive\|review-only] [autonomous] [phase:fresh\|phase:continuous]` | Starts or resumes a cycle. `new` prevents automatic resume. `backlog` selects queued work. `phase:fresh` persists one-phase-per-invocation; `phase:continuous` persists same-session routing. |
+| `cycle` | `[new] [description \| path/to/spec.md \| backlog] [style:auto\|step\|interactive\|review-only] [autonomous]` | Starts or resumes a cycle. `new` prevents automatic resume. `backlog` selects queued work. `phase:fresh` persists one-phase-per-invocation; `phase:continuous` persists same-session routing. |
 | `debug` | `<error text \| stack trace \| failing test \| symptom>` | Starts evidence-first debugging. |
 | `discipline` | `[on\|off\|status]` | Changes or reports the session discipline directive. |
 | `forensics` | `[feature slug \| failed-workflow description]` | Reconstructs a stuck/failed run. |
@@ -422,8 +428,11 @@ They are listed to remove ambiguity in wrappers and integrations.
 | `LOOP_SPEC_AUTH_ERROR_CODE`, `LOOP_SPEC_AUTH_ERROR_MESSAGE`, `LOOP_SPEC_CREDENTIAL_PREPARED_STAGES` | Mutable credential-library status; do not set. |
 | `LOOP_SPEC_INTEGRATION_CANDIDATE` | Injected candidate commit for prepare/verify integration commands; safe for those commands to read. |
 | `LOOP_SPEC_RESULT` | Machine-output marker printed to stdout, not an input variable. |
+| `LOOP_SPEC_HANDOFF` | The marker line the cycle skill prints after a `HANDOFF` or `REWIND` answer, read by the caller that re-invokes the cycle; not an input variable. |
 | `LOOP_SPEC_STAMP_INPUT` | The UserPromptSubmit payload, handed from `hooks/team/invocation-stamp.sh` to its Python reader; do not set. |
 | `LOOP_SPEC_GUARD_INPUT` | The PreToolUse payload, handed from `hooks/team/result-forgery-guard.sh` to its Python reader; do not set. |
+| `LOOP_SPEC_FOOTPRINT_ROOT` | The repository root, handed from `lib/footprint.sh list` to its Python reader so a cited source file's test module can be found; do not set. |
+| `LOOP_SPEC_PHASE_ALT` | The phase-id alternation `lib/graph/phases.sh regex` prints, handed from `hooks/team/phase-handoff-guard.sh` and `placeholder-question-guard.sh` to their Python readers; do not set. |
 | `LOOP_SPEC_PHASE_START`, `LOOP_SPEC_PHASE_END` | Event marker names printed to output, not input variables. |
 | `LOOP_SPEC_ACTIVE_CYCLE_BIN`, `LOOP_SPEC_CYCLE_RESULT_BIN`, `LOOP_SPEC_DEFERRAL_LINT_BIN`, `LOOP_SPEC_FINALIZE_CANDIDATE_BIN`, `LOOP_SPEC_PR_COMMENTS_BIN`, `LOOP_SPEC_PR_DELIVERY_BIN` | Test seams that replace internal executables. Unsupported in production wrappers. |
 | `LOOP_SPEC_FEATURE_DIR` | Hook-scoped feature-directory override used by team hooks/tests. Normal runs discover the active feature. |
@@ -441,3 +450,36 @@ They are listed to remove ambiguity in wrappers and integrations.
 When integrating loop-spec, depend only on the supported inputs and documented
 machine-result files/lines. Internal variables may change without compatibility
 guarantees.
+
+## Outer CLI launcher and phase evidence
+
+Run `bash lib/cycle-launch.sh --profile codex --cwd /path/to/project --prompt-file task.txt`
+from a terminal outside the model session. Profiles `claude`, `codex`, and `opencode`
+use the session layer and require Python 3.11. Install the plugin for the selected CLI;
+Claude also receives this checkout through its profile's plugin argument. ADK and SDK
+hosts retain their native supervisor integration.
+
+`--max-invocations` defaults to 16 and `--timeout` to 3600 seconds per invocation.
+The launcher preserves autonomous settings, selects the model for each phase, and
+relaunches only after a fresh `paused` result whose reason is `phase-handoff`.
+A stale or missing result, CLI failure, timeout, human pause, or exhausted cap exits
+nonzero. `.loop-spec/launcher-result.json` records the stop and session log paths.
+The lower-level session adapter's `--lead --plugin-root PATH` enables this lead mode;
+ordinary task sessions retain their isolated environment and tool scope.
+
+`cycle-driver.sh spec approve --feature-dir DIR --source human|autonomous|supervised`
+records the full spec's Goal and Boundary digest. No source can replace an existing
+approval. Later edits to either section fail phase entry and artifact lint even if committed.
+
+Each phase receives an immutable instruction snapshot with a SHA-256 manifest.
+`feature.json.instructionSnapshots` and the `instructions-rendered` event retain the
+hashes; `phase-begin` returns the active record. The driver verifies it at the boundary,
+and eval records compare source hashes with the pristine plugin tree. Project prepend,
+append, and persistent facts are resolved when rendering, so later edits cannot alter
+the running phase's brief.
+State checkpoints retain the snapshots and review evidence. A restored checkout
+verifies those historical hashes and renders a new active snapshot for its own paths.
+
+`verification verdict --routing JSON` accompanies an accepted finding. The JSON
+selects `intent-gap`, `bad-spec`, `patch`, or `defer` and records the root cause and
+route-specific evidence; see `skills/shared/review-routing.md`.

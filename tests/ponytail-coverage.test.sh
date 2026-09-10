@@ -111,8 +111,8 @@ done
 
 # Each site resolves the path by its own available mechanism.
 resolvers=(
-  "skills/shared/execute-subagent.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib/duplication-scan\.sh"
-  "skills/shared/team-prompts/implementer.md	CLAUDE_SKILL_DIR}/\.\./\.\./lib/duplication-scan\.sh"
+  "skills/shared/execute-subagent.md	LOOP_SPEC_SKILL_DIR}/\.\./\.\./lib/duplication-scan\.sh"
+  "skills/shared/team-prompts/implementer.md	LOOP_SPEC_SKILL_DIR}/\.\./\.\./lib/duplication-scan\.sh"
   "lib/plan-to-loop.sh	\{lib_dir\}/duplication-scan\.sh"
   "lib/workflows/execute-dag.js	libDir \+ '/duplication-scan\.sh"
   "hooks/team/simplicity-inject.sh	LIB_DIR\}/duplication-scan\.sh"

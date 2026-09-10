@@ -46,6 +46,17 @@ FIXTURE_FJ="$(jq -n '{
 }')"
 printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 
+# Case A0: a completed status needs a delivered feature; a lead whose finish was
+# refused wrote this itself and a supervisor read a finished run.
+UNDELIVERED="$LOOP_DIR/features/undelivered"; mkdir -p "$UNDELIVERED"
+jq '.slug="undelivered" | .currentPhase="deliver" | .prUrl=null | .delivery={status:"pending"}' <<<"$FIXTURE_FJ" > "$UNDELIVERED/feature.json"
+ec=0; err="$(bash "$LIB" write "$UNDELIVERED" --status completed --summary "Fix implemented and verified." 2>&1 >/dev/null)" || ec=$?
+check "A0: completed in DELIVER without a delivery record publishes nothing" "0" "$([[ -f "$UNDELIVERED/result.json" ]] && echo 1 || echo 0)"
+check "A0: the refusal says DELIVER has not run" "1" "$(grep -c 'DELIVER has not run' <<<"$err")"
+ec=0; bash "$LIB" write "$UNDELIVERED" --status completed --summary "Nothing to change." --no-change-reason already-satisfied >/dev/null 2>&1 || ec=$?
+check "A0: the proven no-change path still completes" "0" "$ec"
+rm -rf "$UNDELIVERED"
+
 # Case A: write --status completed produces valid result.json
 bash "$LIB" write "$FEAT_DIR" --status completed --summary "Rate limiting was implemented and verified." >/dev/null 2>&1
 check "A: result.json created" "1" "$([[ -f "$FEAT_DIR/result.json" ]] && echo 1 || echo 0)"
@@ -480,6 +491,67 @@ bash "$LIB" write-terminal --result-root "$GENERIC_ROOT" --cycle-type diagnostic
 check "V5: diagnostic failure recorded" "failed" "$(jq -r '.status' "$GENERIC_RESULT")"
 check "V5: diagnostic failure has no no-change reason" "null" \
   "$(jq -r '.noChangeReason' "$GENERIC_RESULT")"
+
+# Early refusals have no feature state to supply the mode.
+MODE_ROOT="$WORK/mode-root"
+mkdir -p "$MODE_ROOT"
+git -C "$MODE_ROOT" init -q
+while read -r mode_env stored flag expected; do
+  mkdir -p "$MODE_ROOT/.loop-spec"
+  rm -f "$MODE_ROOT/.loop-spec/active-run.json" "$MODE_ROOT/.loop-spec/last-result.json"
+  if [[ "$stored" != absent ]]; then
+    printf '{"autonomous":%s}\n' "$stored" > "$MODE_ROOT/.loop-spec/active-run.json"
+  fi
+  mode_args=(--verification-status not-run)
+  [[ "$flag" == absent ]] || mode_args+=(--autonomous "$flag")
+  mode_env_args=(env -u LOOP_SPEC_AUTONOMOUS)
+  [[ "$mode_env" == absent ]] || mode_env_args+=("LOOP_SPEC_AUTONOMOUS=$mode_env")
+  "${mode_env_args[@]}" bash "$LIB" write-terminal --result-root "$MODE_ROOT" \
+    --cycle-type full --status escalated --outcome protocol-mismatch --title Audit \
+    --reason wrong-project --summary no-work --converged false "${mode_args[@]}" >/dev/null
+  check "mode terminal: env=$mode_env stored=$stored flag=$flag" "$expected" \
+    "$(jq -r '.autonomous' "$MODE_ROOT/.loop-spec/last-result.json")"
+done <<'CASES'
+1 absent absent true
+1 absent false false
+absent absent absent false
+0 absent true true
+1 false absent false
+0 true absent true
+1 true false false
+1 null absent true
+1 "false" absent true
+1 absent invalid false
+CASES
+
+while read -r mode_env stored active flag expected; do
+  jq --argjson mode "$stored" '.autonomous = $mode' <<<"$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
+  printf '{"autonomous":%s}\n' "$active" > "$LOOP_DIR/active-run.json"
+  mode_args=(--verification-status not-run)
+  [[ "$flag" == absent ]] || mode_args+=(--autonomous "$flag")
+  mode_env_args=(env -u LOOP_SPEC_AUTONOMOUS "LOOP_SPEC_RESULT_ROOT=$WORK")
+  [[ "$mode_env" == absent ]] || mode_env_args+=("LOOP_SPEC_AUTONOMOUS=$mode_env")
+  "${mode_env_args[@]}" bash "$LIB" write "$FEAT_DIR" --status completed \
+    --summary "Mode precedence." "${mode_args[@]}" >/dev/null 2>&1
+  check "mode feature: env=$mode_env stored=$stored active=$active flag=$flag" "$expected" \
+    "$(jq -r '.autonomous' "$FEAT_DIR/result.json")"
+done <<'CASES'
+1 null null absent true
+absent null null absent false
+1 false true absent false
+0 true false absent true
+1 true true false false
+0 false false true true
+1 null null invalid false
+0 null true absent true
+1 null false absent false
+CASES
+jq '.autonomous = true' <<<"$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
+LOOP_SPEC_AUTONOMOUS=1 LOOP_SPEC_RESULT_ROOT="$WORK" bash "$LIB" write-terminal \
+  --result-root "$WORK" --cycle-type full --slug my-feature --status completed \
+  --outcome delivered --title "Mode alias" --summary "Mode alias." --autonomous false >/dev/null
+check "mode alias: explicit false survives delegation" false "$(jq -r '.autonomous' "$FEAT_DIR/result.json")"
+printf '%s\n' "$FIXTURE_FJ" > "$FEAT_DIR/feature.json"
 
 # Case W: a full cycle publishes an active pointer before feature state exists,
 # and an out-of-band reconciler can turn it into a terminal result.

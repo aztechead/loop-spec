@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do case "$1" in --feature-dir) feature_dir="${2:-}"; shift
 [[ -n "$feature_dir" && -f "$feature_dir/feature.json" ]] || { echo "usage: verify-prepare.sh run --feature-dir DIR" >&2; exit 2; }
 feature_dir="$(cd "$feature_dir" && pwd -P)"
 fj="$feature_dir/feature.json"
-fget() { jq -r "$1" "$fj"; }
+fget() { bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter "$1"; }
 
 mode_line="$(lib phase-mode verify --feature-dir "$feature_dir")"
 mode="$(python3 -c '

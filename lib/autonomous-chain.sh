@@ -88,20 +88,20 @@ case "$scope" in backlog|queue) ;; *)
 esac
 
 fj="$feature_dir/feature.json"
-jq -e . "$fj" >/dev/null 2>&1 || {
+bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" --all --drop-strays >/dev/null 2>&1 || {
   echo "autonomous-chain: feature.json is not valid JSON: $fj" >&2
   exit 1
 }
 
 # Check order mirrors the ladder: eligibility, then safety, then bounds, then supply.
-[[ "$(jq -r '.autonomous // false' "$fj")" == "true" ]] || no_chain "not-autonomous"
+[[ "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.autonomous // false')" == "true" ]] || no_chain "not-autonomous"
 
 delivery_file="$feature_dir/delivery.json"
 sidecar_delivery="null"
 if [[ -f "$delivery_file" ]]; then
   sidecar_delivery="$(jq -c . "$delivery_file" 2>/dev/null || echo null)"
 fi
-tracked_phase="$(jq -r '.currentPhase // ""' "$fj")"
+tracked_phase="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.currentPhase // ""')"
 if [[ "$tracked_phase" != "completed" ]]; then
   [[ "$(jq -r '.nextPhase == "completed" and
       (.status == "ready-for-review" or .status == "delivered-draft")' \
@@ -116,9 +116,8 @@ if [[ "$sidecar_delivery" != "null" ]]; then
   [[ "$(jq -r '.status // ""' <<<"$sidecar_delivery")" == "ready-for-review" ]] \
     || no_chain "delivery-incomplete"
 else
-  has_delivery="$(jq -r 'has("delivery")' "$fj")"
-  if [[ "$has_delivery" == "true" ]]; then
-    [[ "$(jq -r '.delivery.status // ""' "$fj")" == "ready-for-review" ]] \
+  if [[ "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" delivery)" != "null" ]]; then
+    [[ "$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '.delivery.status // ""')" == "ready-for-review" ]] \
       || no_chain "delivery-incomplete"
   fi
 fi
@@ -146,7 +145,7 @@ if [[ "$scope" == "queue" ]]; then
   exit 0
 fi
 
-n_gaps="$(jq -r '[(.warnings // [])[] | select(type == "string" and startswith("iterate-budget-spent:"))] | length' "$fj")"
+n_gaps="$(bash "$SCRIPT_DIR/feature-read.sh" "$feature_dir" -r --filter '[(.warnings // [])[] | select(type == "string" and startswith("iterate-budget-spent:"))] | length')"
 [[ "$n_gaps" -gt 0 ]] || no_chain "no-budget-spent-gaps"
 
 max_features="${LOOP_SPEC_MAX_FEATURES:-1}"

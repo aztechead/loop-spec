@@ -109,5 +109,25 @@ grep -q "^## Diff$" "$pkg" && r=ok || r=missing
 check "package includes the diff" "ok" "$r"
 
 echo ""
+
+# The brief carries the slices an implementer used to read four artifacts for, and a
+# merged chain's brief comes from the collapsed list.
+SL="$WORK/sliced"; mkdir -p "$SL"; git -C "$SL" init -q
+mkdir -p "$SL/.loop-spec/features/demo/dispatch" "$SL/docs/loop-spec/features/demo"
+printf '{"slug":"demo","artifacts":{"plan":"docs/loop-spec/features/demo/PLAN.md"}}' > "$SL/.loop-spec/features/demo/feature.json"
+printf '# Plan\n\n## Global constraints\n\n<!-- c -->\n- Never run apply.\n\n## File map\n\n- x\n' > "$SL/docs/loop-spec/features/demo/PLAN.md"
+printf '# Evidence\n\n- EVID-001 | t | claim: tofu 1.12 | cmd: tofu version | out: 1.12.6\n- EVID-010 | t | claim: ten | cmd: x | out: y\n' > "$SL/docs/loop-spec/features/demo/EVIDENCE.md"
+printf '[{"id":"task-001","subject":"s","brief":"per EVID-001 keep it","files":["a"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["x"]}]' > "$SL/.loop-spec/features/demo/tasks.json"
+printf '[{"id":"task-001","subject":"s","brief":"per EVID-001 keep it; merged","files":["a","b"],"memberIds":["task-001","task-002"],"blockedBy":[],"verifyCommand":"true","acceptanceCriteria":["x"]}]' > "$SL/.loop-spec/features/demo/dispatch/tasks-collapsed.json"
+printf 'tofu: OpenTofu v1.12.6\n' > "$SL/.loop-spec/features/demo/dispatch/environment.txt"
+sliced="$(bash "$SCRIPT" brief --feature-dir "$SL/.loop-spec/features/demo" --task-id task-001)"
+check "brief inlines Global constraints verbatim" "1" "$(grep -c '^- Never run apply.$' "$sliced")"
+check "brief drops the template comment" "0" "$(grep -c '<!--' "$sliced")"
+check "brief carries only the cited EVID rows" "1,0" "$(grep -c '^- EVID-001 ' "$sliced"),$(grep -c 'EVID-010' "$sliced")"
+check "brief carries the lead's environment facts" "1" "$(grep -c '^tofu: OpenTofu v1.12.6$' "$sliced")"
+check "brief tells the implementer not to open the artifacts" "1" "$(grep -c 'Do not read SPEC.md, PLAN.md, PATTERNS.md, or EVIDENCE.md' "$sliced")"
+check "brief prefers the collapsed task" "1" "$(grep -c '^- b$' "$sliced")"
+check "brief lists batch members" "1" "$(grep -c '^- task-002$' "$sliced")"
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -gt 0 ]] && exit 1 || exit 0

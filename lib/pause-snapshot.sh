@@ -72,97 +72,30 @@ fi
 
 # Determine the feature dir from the path (needed for writing artifacts).
 RESOLVED_FEATURE_DIR="$(dirname "$FEATURE_JSON_PATH")"
+# Every read goes through the typed reader (the port plan, WP3); a key the
+# schema does not declare (completedTasks, blockers, decisions) is read from --strays.
+FEATURE_READ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/feature-read.sh"
 
 # The resumed session's required reading must name THIS feature's plan. feature.json
 # records the authoritative path in artifacts.plan; fall back to the conventional
 # docs path derived from the feature dir's own slug when it has not been written yet
 # (a feature paused before PLAN has no artifacts.plan).
-PLAN_DOC_PATH=$(python3 -c "
-import json, os, sys
-fallback = 'docs/loop-spec/features/%s/PLAN.md' % os.path.basename(sys.argv[2].rstrip('/'))
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    plan = (d.get('artifacts') or {}).get('plan')
-    print(plan if isinstance(plan, str) and plan.strip() else fallback)
-except Exception:
-    print(fallback)
-" "$FEATURE_JSON_PATH" "$RESOLVED_FEATURE_DIR")
+PLAN_DOC_PATH=$(bash "$FEATURE_READ" "$RESOLVED_FEATURE_DIR" artifacts.plan -r --default "\"docs/loop-spec/features/$(basename "${RESOLVED_FEATURE_DIR%/}")/PLAN.md\"")
 
-# Extract fields from feature.json using python3 inline pattern.
-CURRENT_PHASE=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    print(d.get('currentPhase', ''))
-except Exception:
-    print('')
-" "$FEATURE_JSON_PATH")
+CURRENT_PHASE=$(bash "$FEATURE_READ" "$RESOLVED_FEATURE_DIR" currentPhase -r)
 
-# Extract arrays as JSON strings.
-COMPLETED_TASKS=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    phases = d.get('completedPhases', [])
-    # Include completed gate tasks if present.
-    tasks = d.get('completedTasks', phases)
-    print(json.dumps(tasks))
-except Exception:
-    print('[]')
-" "$FEATURE_JSON_PATH")
+COMPLETED_TASKS=$(bash "$FEATURE_READ" "$RESOLVED_FEATURE_DIR" --strays | jq -c --argjson phases "$(bash "$FEATURE_READ" "$RESOLVED_FEATURE_DIR" completedPhases --default "[]")" '.completedTasks // $phases')
 
-PENDING_TASKS=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    tasks = d.get('pendingRemediationTasks', [])
-    print(json.dumps(tasks))
-except Exception:
-    print('[]')
-" "$FEATURE_JSON_PATH")
+PENDING_TASKS=$(bash "$FEATURE_READ" "$RESOLVED_FEATURE_DIR" pendingRemediationTasks --default "[]")
 
-BLOCKERS=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    blockers = d.get('blockers', [])
-    print(json.dumps(blockers))
-except Exception:
-    print('[]')
-" "$FEATURE_JSON_PATH")
+BLOCKERS=$(bash "$FEATURE_READ" "$RESOLVED_FEATURE_DIR" --strays | jq -c '.blockers // []')
 
-DECISIONS=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    decisions = d.get('decisions', [])
-    print(json.dumps(decisions))
-except Exception:
-    print('[]')
-" "$FEATURE_JSON_PATH")
+DECISIONS=$(bash "$FEATURE_READ" "$RESOLVED_FEATURE_DIR" --strays | jq -c '.decisions // []')
 
 # Collect uncommitted files.
 # In workspace mode: iterate workspace.repos[] running git -C <abs repo> for each.
 # In single mode: run from the repo root (CWD if not in a git repo, fail-open to empty array).
-WORKSPACE_JSON=$(python3 -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        d = json.load(f)
-    w = d.get('workspace')
-    if w and isinstance(w, dict) and w.get('root') and isinstance(w.get('repos'), list):
-        print(json.dumps(w))
-    else:
-        print('null')
-except Exception:
-    print('null')
-" "$FEATURE_JSON_PATH")
+WORKSPACE_JSON=$(bash "$FEATURE_READ" "$RESOLVED_FEATURE_DIR" workspace --jq 'if . != null and (.root // "") != "" and ((.repos | type) == "array") then . else null end')
 
 if [[ "$WORKSPACE_JSON" != "null" ]]; then
   # Workspace mode: collect per-repo uncommitted files with headings.

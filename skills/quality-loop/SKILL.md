@@ -1,13 +1,14 @@
 ---
 name: quality-loop
-description: Use when the user says "review my changes", "pre-commit review", or "quality loop" before a commit. Reviews modified files (or the paths they name) until convergence. Do not use as VERIFY inside a cycle (that's /loop-spec:verify) or to implement the findings (that's /loop-spec:micro or /loop-spec:cycle).
+description: "Use when reviewing modified files or named paths before commit. Fix findings when authorized, within the review limits. Does not commit. Use /loop-spec:verify inside a cycle."
 argument-hint: "[file paths to review]  (optional; defaults to modified files)"
 allowed-tools: Bash Read Write Edit Glob Grep Agent AskUserQuestion
 ---
 
 # quality-loop
 
-Iterative pre-commit review convergence loop. Invoke this skill before committing to catch quality and security issues early. Workspace-aware: works in single-repo or multi-repo workspace setups.
+Review changes before commit in one repository or a configured workspace.
+For a review-only request, report findings without editing files. Run the fix steps only when the user authorizes fixes.
 
 ## Inputs
 
@@ -40,7 +41,7 @@ Determine the set of files to review.
 **Else: git-derived scope.** Run workspace detection:
 
 ```bash
-WORKSPACE_JSON=$(bash "${CLAUDE_SKILL_DIR}/../../lib/workspace.sh" detect)
+WORKSPACE_JSON=$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/workspace.sh" detect)
 WORKSPACE_MODE=$(echo "$WORKSPACE_JSON" | jq -r '.mode')
 ```
 
@@ -83,7 +84,7 @@ Filtering rules:
 Persist scope via the state CLI:
 
 ```bash
-QLSTATE="${CLAUDE_SKILL_DIR}/../../lib/quality-loop-state.sh"
+QLSTATE="${LOOP_SPEC_SKILL_DIR}/../../lib/quality-loop-state.sh"
 FILE_COUNT=$(bash "$QLSTATE" scope "${SCOPE_FILES[@]}")
 echo "quality-loop: scope -- ${FILE_COUNT} file(s) in review"
 ```
@@ -122,7 +123,7 @@ Note: `-w` (word boundary) is used to avoid false positives on identifiers like 
 Detect the project's lint, typecheck, and (if scope touches tested code) test commands. Use the same detection logic as the verify skill:
 
 ```bash
-DETECT_CMD="${CLAUDE_SKILL_DIR}/../../lib/detect-test-cmd.sh"
+DETECT_CMD="${LOOP_SPEC_SKILL_DIR}/../../lib/detect-test-cmd.sh"
 ```
 
 Run detected commands. Capture stdout and stderr. Any non-zero exit is a deterministic finding per failing command. Record each as:
@@ -155,7 +156,8 @@ Do not proceed to persona dispatch while deterministic findings remain.
 - Any "check whether X was fixed" framing
 - References to previous rounds or what was wrong before
 
-Each persona reviews the current state of the files as if it is the first and only review. This independence is non-negotiable: it prevents anchoring bias and ensures findings reflect actual current file state. Include `skills/shared/review-prompts/no-prejudge.md` (do not paste): never tell a reviewer what not to flag.
+Each reviewer examines the current files without prior findings or fix explanations.
+Include `skills/shared/review-prompts/no-prejudge.md` by reference. Never tell a reviewer what not to flag.
 
 Dispatch `loop-spec:code-reviewer` and `loop-spec:security-reviewer` in parallel as one-shot Agent calls.
 
@@ -167,6 +169,7 @@ Dispatch `loop-spec:code-reviewer` and `loop-spec:security-reviewer` in parallel
 Agent({
   description: "Quality-loop code review",
   subagent_type: "loop-spec:code-reviewer",
+  run_in_background: false,
   prompt: """
 You are performing a one-shot code quality review.
 
@@ -203,6 +206,7 @@ Return [] if no issues found. Return only the JSON array -- no surrounding text.
 Agent({
   description: "Quality-loop security review",
   subagent_type: "loop-spec:security-reviewer",
+  run_in_background: false,
   prompt: """
 You are performing a one-shot adversarial security review.
 
@@ -237,7 +241,9 @@ Run both Agent calls in parallel. Collect replies. If a reply cannot be parsed a
 
 ## Step 3 -- Record round and classify blocking findings
 
-Merge all findings from Step 1 (any remaining after inner fix loop -- should be zero, but record if not) and Step 2 into a combined findings array. Record the round via the state CLI:
+Combine findings from steps 1 and 2 in one array.
+Step 1 should have no unresolved findings. If any remain, keep them in the record.
+Record the round through the state CLI:
 
 ```bash
 ROUND_NUM=<current round, starting at 1>
@@ -365,17 +371,19 @@ The skill exits 0. Advisory findings are NOT suppressed from this summary. They 
 
 ## What NOT to do
 
-- **Do NOT include prior-round findings in reviewer prompts.** The independence rule is absolute. Adding "check whether X was fixed" or pasting previous findings into a reviewer prompt contaminates the review and defeats the independence protocol.
+- **Do not include prior-round findings in reviewer prompts.** Follow step 2's independence rule.
 - **Do NOT suppress security findings.** MEDIUM and LOW security findings must appear in output at every round and in the final summary. They are advisory, not invisible.
-- **Do NOT continue the loop after systemic detection.** Systemic categories require human inspection. Looping further wastes effort without resolving the root cause.
+- **Stop after systemic detection.** The recurring category requires user inspection.
 - **Do NOT skip the deterministic checks.** Lint, typecheck, and the unresolved-marker grep run every round before persona dispatch. Personas should not see files that still have marker or lint issues.
 - **Do NOT use `LOOP_SPEC_QUALITY_LOOP_MAX_ROUNDS` as a hidden variable.** Resolve,
   validate, and print `MAX_ROUNDS` at entry as specified above.
 - **Do NOT call mark-clean while blocking findings remain.** The state CLI enforces this (exit 2), but the skill must not attempt it prematurely.
 - **Do NOT commit.** This skill does not commit. It prepares files for commit; committing is the user's action.
-- **Do NOT read `quality-loop-state.sh` as a library.** Always invoke it as a subprocess: `bash "${CLAUDE_SKILL_DIR}/../../lib/quality-loop-state.sh" <subcommand>`.
+- **Do NOT read `quality-loop-state.sh` as a library.** Always invoke it as a subprocess: `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/quality-loop-state.sh" <subcommand>`.
 
 ## Standalone CLI
+
+Replace `path/to/file1.py` and `path/to/file2.ts` with the files to review.
 
 ```bash
 # Review all modified files in scope:

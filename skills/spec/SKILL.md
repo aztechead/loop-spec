@@ -1,19 +1,18 @@
 ---
 name: spec
-description: SPEC phase - Socratic interview with quantitative ambiguity scoring; gates ambiguity <= 0.20. Cycle-internal - invoked by /loop-spec:cycle; not for ad-hoc invocation (start there).
+description: "Write SPEC.md from repository evidence and recorded decisions. Resolve intent questions before approval. Internal phase of /loop-spec:cycle. Start there for repository work."
 allowed-tools: Bash Read Write Edit Glob Grep Skill Agent AskUserQuestion
 ---
 
 # SPEC
 
-You run on the main thread (a subagent cannot hold an interview). You produce
-`docs/loop-spec/features/{slug}/SPEC.md` from a grounded interview, scored on four
-ambiguity dimensions, and close the phase with one command. `feature_dir` is
-`.loop-spec/features/{slug}` (the cycle created it; this skill never bootstraps one).
-Your inputs are the entry packet and nothing else; a FLAG is a prior phase's failure, relay it:
+Run in the main thread so you can interview the user.
+Write `docs/loop-spec/features/{slug}/SPEC.md` from repository evidence and recorded decisions.
+Use the cycle's existing `.loop-spec/features/{slug}` as `feature_dir`. Never create a feature directory here.
+Read only the entry packet as input. Relay any entry FLAG and return:
 
 ```bash
-pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin spec --feature-dir "$feature_dir")"
+pb="$(bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin spec --feature-dir "$feature_dir")"
 # .entry.fields (the feature.json keys this phase consumes)  .entry.read[] (each file to read)
 # .entry.flags[] (a missing ingress; relay and return)  .mode.path=ingest|self-answer|synthesize|interview
 # .mode.oracle=supervisor|self  .mode.reason  .mode.greenfield=true|false
@@ -22,36 +21,32 @@ pb="$(bash "${CLAUDE_SKILL_DIR}/../../lib/cycle-driver.sh" phase-begin spec --fe
 `path` below is `.mode.path`; the `phase-entry.sh` and `phase-mode.sh` lines it folds
 are the same probes, read once.
 
-## Ambiguity model
+## Intent questions
 
-Score each dimension 0.0 (unclear) to 1.0 (clear) from the SPEC text you could write
-right now, never from where the conversation seems headed:
-
-| Dimension | Weight | Minimum | Measures |
-|---|---|---|---|
-| Goal clarity | 35% | 0.60 | Is the outcome specific and measurable? |
-| Boundary clarity | 25% | 0.50 | What is in scope and out of scope? |
-| Constraint clarity | 20% | 0.40 | Performance, compatibility, data requirements? |
-| Acceptance clarity | 20% | 0.50 | How do we know it is done? |
-
-`ambiguity = 1 - (0.35·goal + 0.25·boundary + 0.20·constraint + 0.20·acceptance)`.
-The gate passes when `ambiguity <= 0.20` AND every dimension meets its minimum.
-Calibration anchors and question banks: `${CLAUDE_SKILL_DIR}/references/interview-prompts.md`.
+An intent gap is a choice the user would notice in the result that repository evidence
+cannot settle. Investigate first. Decide implementation details with a one-line reason;
+collect genuine intent gaps in one list with a recommended answer and its tradeoff.
+The gate is an empty `unresolved_questions` list, never a self-assessed number.
+`${LOOP_SPEC_SKILL_DIR}/references/interview-prompts.md` gives examples of questions worth asking.
 
 ## 1. Scout
+
+`skills/spec-lite/SKILL.md` entered first and cited the files it read
+(`lib/footprint.sh show`); it handed here because the record did not make a oneshot
+candidate. Extend that scout, never restart it.
 
 Read `skills/shared/approach-selection.md`: separate the outcome and binding
 constraints from a suggested method before the interview or draft. Preserve that
 distinction in every path below, including synthesis and ingest.
 
-Read `feature_dir/` (prior transcript on resume) and `docs/loop-spec/features/{slug}/`.
-Then read the code: search the feature
-area by the user's vocabulary and the obvious symbols, read the entry points you find,
-follow imports and callers far enough to name the boundaries the change crosses. Fan
-scanning out to subagents that return `file:line` evidence (dispatch, then stop;
-`skills/shared/dispatch.md`). Workspace mode scans each repo separately and keeps the
-repo name on every finding. Greenfield has no code: ground in the goal and the chosen
-stack's conventions.
+Read `feature_dir/` (decisions ledger on resume) and `docs/loop-spec/features/{slug}/`.
+Search the feature area using the user's terms and relevant symbols.
+Read the entry points. Follow imports and callers until you can name the boundaries the change crosses.
+Delegate scans to subagents that return `file:line` evidence. Dispatch, then stop, following `skills/shared/dispatch.md`.
+
+In workspace mode, scan each repository separately. Label each finding with its repository.
+For greenfield work, use the goal and chosen stack's conventions as evidence.
+Follow the build-from-scratch stance in `skills/shared/engineering-stances.md` for data, APIs, interfaces, and scale limits.
 
 Before any factual claim about an external system (dataset, API, service, infra), run
 the cheapest read-only probe and record it; cite the `EVID-NNN` it prints, or write
@@ -59,103 +54,121 @@ the cheapest read-only probe and record it; cite the `EVID-NNN` it prints, or wr
 (`skills/shared/grounding-protocol.md`):
 
 ```bash
-bash "${CLAUDE_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<probe output>"
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/evidence.sh" add "docs/loop-spec/features/{slug}/EVIDENCE.md" "<claim>" "<command>" "<probe output>"
 ```
 
-Then name the frameworks in play:
-`bash "${CLAUDE_SKILL_DIR}/../../lib/doc-deps.sh" scan <the files the scout found>` lists
-the third-party dependencies those files import. For each one the feature will lean on,
-look up how its current release does what the feature needs — any web search or
-URL-fetch tool the session provides — and `evidence.sh add` the finding (the
-dependency-idiom rule, `skills/shared/grounding-protocol.md` "Current documentation").
-The idiom in today's docs outranks the idiom in model memory.
+Check the dependencies that the feature uses:
 
-Score the four dimensions from what you know now and display the scoring block.
+1. Run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/doc-deps.sh" scan <the files the scout found>` to list imported third-party dependencies.
+2. For each relevant dependency, run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/docs-probe.sh" latest <name>` first.
+   Include runtimes and libraries the request names by version. Use `--ecosystem runtime` for a language.
+3. Run `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/docs-probe.sh" docs <name> --topic <what the feature needs>` for current usage.
+4. For `unverified`, record an `ASSUMPTION`, then try available web search or URL-fetch tools.
+5. Record findings with `evidence.sh add`. Use the probe's `source=` URL as the command.
 
-## 2. Interview (by `path`)
+Follow `skills/shared/grounding-protocol.md`, "Current documentation".
+Never use a local catalog such as `uv python list` or `pyenv install --list` as the version source.
+If the installer lacks the verified version, probe the installer's current version and upgrade it before installing.
+Do not substitute an older build or prerelease to accommodate a stale installer.
+Use current documentation instead of remembered library conventions.
 
-Perspectives, one per round, 2-3 questions each, structured multiple-choice with
-tradeoffs whenever options are discernible: Researcher (round 1; **Foundations** when
-greenfield: stack, tooling, walking skeleton, the canonical test/lint/typecheck
-commands, and the build-from-scratch stance's data model, API surface, interface, and
-scaling input, `skills/shared/engineering-stances.md`; all land in SPEC.md as
-requirements), Simplifier, Boundary Keeper, Failure Analyst, Seed Closer (rounds 5-6,
-lowest-scoring dimensions).
+Write `footprint:` in the frontmatter with the repository-relative files the change will touch.
+Support that list with scout `file:line` evidence. For greenfield work, list the files to create.
+Never omit a file to qualify for a shorter route.
 
-- **`interview`** (a human is attached). **`execStyle: auto` still interviews.** Auto
-  means the cycle does not pause after this phase, not that nobody is there. Up to 6
-  rounds of `AskUserQuestion`. After each round re-score and display:
-  ```
-  After round N:
-    Goal:       0.xx (min 0.60) pass|needs work
-    Boundary:   0.xx (min 0.50) ...
-    Constraint: 0.xx (min 0.40) ...
-    Acceptance: 0.xx (min 0.50) ...
-    Ambiguity:  0.xx (gate <= 0.20)
-  ```
-  On gate pass emit the "Spec gate" question from the reference (write / one more
-  round / done talking). At round 6 still failing, emit the "Max rounds" question
-  (write anyway with `gate_passed: false` / keep talking / abandon). Abandon writes
-  nothing: report it and return.
-- **`self-answer`** (autonomous): the mode line carries `oracle=supervisor` or
-  `oracle=self` (`lib/supervisor/oracle.sh`). `oracle=supervisor` asks each
-  perspective's questions through `AskUserQuestion` (recommended option first) and
-  records answers as `supervised` per `skills/shared/autonomous-mode.md`
-  "The supervised path"; `phase-exit.sh` flags the phase when a named supervisor was
-  never asked. What comes back empty or recommended, and everything under `oracle=self`,
-  you answer yourself. Walk all perspectives in ONE pass, answering each question
-  with the option you would have marked recommended: what the code
-  already does first, then industry practice, then the most reversible choice. Score once
-  at the end (`rounds_completed: 1`), honestly. A failing gate gets one Seed Closer
-  follow-up pass, then writes anyway with the failing dimensions in
-  `unresolved_dimensions`. Never abandon. Record every Q, A, and rationale in one Bash
-  call chaining `bash "${CLAUDE_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<q>" "<a>" "<why>"`,
-  and render the record into SPEC.md's `<decisions>` block via `decisions.sh render`.
-- **`synthesize`** (non-interactive, maintenance, or a compact gate plan): no
-  interview. Write the best SPEC.md from the request and the scout, score it honestly.
-  `LOOP_SPEC_ANSWER_SPEC_CONFIRM=no` on a passing gate, or
-  `LOOP_SPEC_ANSWER_SPEC_OVERRIDE=no` on a failing one (defaults `yes`; any other
-  value exits 2), writes no file: publish a paused cycle result with reason
-  `spec-confirmation-declined` / `spec-override-declined` via `lib/cycle-result.sh
-  write` and return. Under the maintenance profile a dimension below its minimum falls
-  back to the ordinary interview.
-- **`ingest`** (`feature_dir/spec-draft.md` exists; the user pre-authored the spec):
-  score the draft, normalize it into the template preserving the author's requirements
-  verbatim, add only what the format requires. A dimension below its minimum gets one
-  targeted question in `step`/`interactive`; elsewhere it lands in
-  `unresolved_dimensions` for DISCUSS.
+`lib/graph/probes/oneshot.sh` selects ONESHOT only when all these conditions hold:
 
-Every interview `AskUserQuestion` is a real question. Never AskUserQuestion as a wait
-while a scout or reviewer subagent runs.
+- The footprint has at most three files.
+- No intent questions remain unresolved.
+- SPEC.md and the footprint files have no security signal.
+
+ONESHOT implements, reviews once, verifies, and delivers. A fourth file requires promotion to the full route.
+Name each footprint file's existing test module. Include it in the footprint if it changes, or mark it unchanged in Implementation notes.
+`lib/oneshot-spec-lint.sh` flags omitted test modules.
+
+## 2. Resolve questions (by `path`)
+
+Reuse prior answers before asking. Present all remaining intent questions together at
+one checkpoint after investigation. Each names the choice, recommended answer, and
+observable consequence. Do not invent questions when the request and code settle them.
+
+- **`interview`**: a human is attached, including `execStyle: auto`. Ask the consolidated
+  list once through `AskUserQuestion`; record answers and rationales. Write the draft
+  before requesting approval of its Goal and Boundary. An unanswered question stays in
+  `unresolved_questions`; never substitute a score or silently assume the answer.
+- **`self-answer`**: follow `skills/shared/autonomous-mode.md`, "The supervised path". For `oracle=supervisor`,
+  send the consolidated questions (or the concrete draft approval when no gaps remain)
+  through the question tool; retain supervised evidence and honor `halt`. For
+  `oracle=self`, take each recommended answer, preferring existing behavior, then the
+  most reversible option. Record every answer and reason using `decisions.sh add`.
+  No human wait. A question that cannot be resolved within authorization leaves a
+  named blocking condition and an escalated driver result.
+- **`synthesize`**: derive the draft from the request, prior decisions, and scout.
+  `LOOP_SPEC_ANSWER_SPEC_CONFIRM=no` publishes a paused result with reason
+  `spec-confirmation-declined`; invalid values fail with exit 2. Do not ask in a
+  non-interactive run. Resolve preference gaps with recorded recommendations.
+- **`ingest`**: preserve the supplied requirements verbatim and normalize only format.
+  Investigate gaps, then use the attended or autonomous rule above according to the
+  run mode. A supplied draft is evidence, not permission to discard a requirement.
+
+Record decisions through:
+
+```bash
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/decisions.sh" add "$feature_dir" spec "<question>" "<answer>" "<reason>"
+```
+
+Render the ledger into SPEC.md's `<decisions>` block with `decisions.sh render`.
+Never AskUserQuestion as a wait for a scout or reviewer.
 
 ## 3. Write
 
-`SPEC.md` follows `skills/shared/artifact-templates/SPEC.md.template` and begins with:
+`SPEC.md` follows `skills/shared/artifact-templates/SPEC.md.template`.
+The full route begins with this frontmatter; questions are a JSON array on one line
+(valid YAML), so punctuation inside a question is unambiguous:
 
 ```yaml
 ---
-ambiguity_scores:
-  goal_clarity: 0.85
-  boundary_clarity: 0.80
-  constraint_clarity: 0.75
-  acceptance_clarity: 0.80
-  ambiguity: 0.18
-  rounds_completed: 3
-  gate_passed: true
-  unresolved_dimensions: []
+route: full
+unresolved_questions: []
+footprint:
+  - src/slugify.py
+  - tests/test_slugify.py
 ---
 ```
 
-Write the transcript (rounds, questions, scores; `source: spec-draft.md` or
-`synthesized` when applicable) to `feature_dir/spec-interview-transcript.md`.
+While waiting for an answer, use for example
+`unresolved_questions: ["Should empty names be rejected or preserved?"]`.
+Record the answer and rationale before removing a question.
+Do not include ambiguity scores or an interview transcript. Spec-lite owns the oneshot skeleton.
 
-**Pruning pass (advisory, skip under 60 lines):** dispatch ONE fresh reviewer carrying
-`skills/shared/review-prompts/prose-pruning.md` verbatim plus SPEC.md and the template
-only (never the transcript). Apply `duplicate`/`narrative` cuts; judge the rest; never
-cut `### Good Enough` criteria, decisions, scores, or grounding lines; record every
-disposition in the transcript.
+A draft written anywhere but `docs/loop-spec/features/{slug}/SPEC.md` in the checkout
+that holds `feature.json` lands through `bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh"
+spec write --feature-dir "$feature_dir" --file <draft>`, which accepts no other target.
 
-## 4. Exit
+Before approval, for drafts over 60 lines, dispatch one fresh reviewer with SPEC.md,
+the template, and `skills/shared/review-prompts/prose-pruning.md`. Apply supported cuts,
+preserving criteria, decisions, questions, and grounding. Record dispositions in the
+ledger. This pass does not invent a transcript or score.
+
+## 4. Approval and exit
+
+Before approval, write Goal and Boundary as outcomes and constraints: for example,
+return all accepted strings. Put revisable choices such as path-versus-query input
+in an implementation section outside Goal and Boundary, unless the user explicitly
+required that interface. After approval, moving that choice out of a frozen section
+is itself an intent change; return the gap to the human.
+
+After the human approves the written Goal and Boundary, record the freeze:
+
+```bash
+bash "${LOOP_SPEC_SKILL_DIR}/../../lib/cycle-driver.sh" spec approve --feature-dir "$feature_dir" --source human
+```
+
+For unattended runs use `--source autonomous` after recording recommended decisions;
+a supervisor's explicit approval uses `--source supervised`. Never label an assumed
+answer human approval. The digest is immutable: later intent gaps return to the human,
+and cannot be fixed by changing the approval record. Phase exit verifies the digest.
+
 
 Return to the cycle; never invoke a successor phase and never run the exit yourself.
 The cycle's `next --returned-from spec` runs `lib/phase-exit.sh spec`: it records the
@@ -166,6 +179,6 @@ to fix it in place and return. In `step`/`interactive` styles say
 
 ## Resume
 
-`artifacts.spec` set: SPEC.md exists, return (step 4). Otherwise read the transcript, restore
-the prior round scores, and continue from the next round; never re-ask answered
-questions.
+Read the existing SPEC.md and decisions ledger. Reuse recorded answers and investigate
+only questions still unresolved; never restart an interview or re-grade a draft.
+Return an existing complete artifact through step 4.
